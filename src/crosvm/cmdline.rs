@@ -1760,7 +1760,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                     "unprotected-vm-with-firmware path should be an existing file".to_string(),
                 );
             }
-            cfg.protected_vm = ProtectionType::Unprotected;
+            cfg.protected_vm = ProtectionType::UnprotectedWithFirmware;
             // Balloon and USB devices only work for unprotected VMs.
             cfg.balloon = false;
             cfg.usb = false;
