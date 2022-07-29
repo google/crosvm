@@ -317,6 +317,11 @@ impl MemoryMapping {
         // This is safe because we call madvise with a valid address and size.
         let _ = libc::madvise(addr, size, libc::MADV_DONTDUMP);
 
+        // This is safe because KSM's only userspace visible effects are timing
+        // and memory consumption; it doesn't affect rust safety semantics.
+        // KSM is also disabled by default, and this flag is only a hint.
+        let _ = libc::madvise(addr, size, libc::MADV_MERGEABLE);
+
         Ok(MemoryMapping {
             addr: addr as *mut u8,
             size,
