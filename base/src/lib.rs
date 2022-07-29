@@ -38,7 +38,6 @@ pub use mmap::MemoryMapping;
 pub use mmap::MemoryMappingBuilder;
 pub use notifiers::CloseNotifier;
 pub use notifiers::ReadNotifier;
-pub use platform::gmtime_secure;
 pub use platform::ioctl::ioctl;
 pub use platform::ioctl::ioctl_with_mut_ptr;
 pub use platform::ioctl::ioctl_with_mut_ref;

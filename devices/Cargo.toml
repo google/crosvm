@@ -34,6 +34,7 @@ balloon_control = { path = "../common/balloon_control" }
 base = { path = "../base" }
 bit_field = { path = "../bit_field" }
 cfg-if = "1.0.0"
+chrono = "*"
 crc32fast = { version = "1.2.1", optional = true }
 cros_async = { path = "../cros_async" }
 data_model = { path = "../common/data_model" }
@@ -88,7 +89,6 @@ vfio_sys = { path = "../vfio_sys" }
 
 [target.'cfg(windows)'.dependencies]
 broker_ipc = { path = "../broker_ipc" }
-chrono = "*"
 metrics = { path = "../metrics" }
 tube_transporter = { path = "../tube_transporter" }
 win_util = { path = "../win_util"}
