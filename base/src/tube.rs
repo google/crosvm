@@ -144,11 +144,23 @@ mod tests {
     use serde::Serialize;
 
     use super::*;
+    use crate::descriptor::FromRawDescriptor;
+    use crate::descriptor::SafeDescriptor;
+    use crate::platform::deserialize_with_descriptors;
+    use crate::platform::SerializeDescriptors;
     use crate::Event;
+    use crate::EventToken;
+    use crate::ReadNotifier;
+    use crate::WaitContext;
 
     #[derive(Serialize, Deserialize)]
     struct DataStruct {
         x: u32,
+    }
+
+    #[derive(EventToken, Debug, Eq, PartialEq, Copy, Clone)]
+    enum Token {
+        ReceivedData,
     }
 
     // Magics to identify which producer sent a message (& detect corruption).
@@ -231,6 +243,44 @@ mod tests {
             }
         }
         (tube, id1_count, id2_count)
+    }
+
+    #[test]
+    fn test_serialize_tube_pair() {
+        let (tube_send, tube_recv) = Tube::pair().unwrap();
+
+        // Serialize the Tube
+        let msg_serialize = SerializeDescriptors::new(&tube_send);
+        let serialized = serde_json::to_vec(&msg_serialize).unwrap();
+        let msg_descriptors = msg_serialize.into_descriptors();
+
+        // Deserialize the Tube
+        let mut msg_descriptors_safe = msg_descriptors
+            .into_iter()
+            .map(|v| Some(unsafe { SafeDescriptor::from_raw_descriptor(v) }))
+            .collect();
+        let tube_deserialized: Tube = deserialize_with_descriptors(
+            || serde_json::from_slice(&serialized),
+            &mut msg_descriptors_safe,
+        )
+        .unwrap();
+
+        // Send a message through deserialized Tube
+        tube_deserialized.send(&"hi".to_string()).unwrap();
+
+        // Wait for the message to arrive
+        let wait_ctx: WaitContext<Token> =
+            WaitContext::build_with(&[(tube_recv.get_read_notifier(), Token::ReceivedData)])
+                .unwrap();
+        let events = wait_ctx.wait_timeout(Duration::from_secs(10)).unwrap();
+        let tokens: Vec<Token> = events
+            .iter()
+            .filter(|e| e.is_readable)
+            .map(|e| e.token)
+            .collect();
+        assert_eq!(tokens, vec! {Token::ReceivedData});
+
+        assert_eq!(tube_recv.recv::<String>().unwrap(), "hi");
     }
 
     #[test]
