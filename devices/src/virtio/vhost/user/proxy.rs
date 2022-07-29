@@ -772,6 +772,15 @@ impl Worker {
             );
         }
 
+        let sibling_memory_size: u64 = contexts.iter().map(|region| region.memory_size).sum();
+        if self.mem.memory_size() - self.mem_offset as u64 <= sibling_memory_size {
+            bail!(
+                "Memory size of Sibling VM ({}) must be smaller than the current memory size ({})",
+                sibling_memory_size,
+                self.mem.memory_size()
+            );
+        }
+
         for (region, file) in contexts.iter().zip(files.into_iter()) {
             let source = VmMemorySource::Descriptor {
                 descriptor: SafeDescriptor::from(file),
