@@ -6,7 +6,7 @@ filters:
 commentBody: |
   Thanks for your contribution!  Unfortunately, we don't use GitHub pull
   requests to manage code contributions to this repository.  Instead, please
-  see the [contributing guide](https://crosvm.dev/book/contributing.html)
+  see the [contributing guide](https://crosvm.dev/book/contributing/)
   which provides full instructions on how to get involved.
 
 # Whether to add a label to the closed PR.
