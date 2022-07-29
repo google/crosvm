@@ -4,9 +4,15 @@
 
 use std::io;
 use std::io::Read;
+use std::os::unix::io::AsRawFd;
+use std::os::unix::io::RawFd;
 use std::os::unix::net::UnixStream;
+use std::time::Duration;
 
 use libc::c_void;
+
+use serde::Deserialize;
+use serde::Serialize;
 
 use super::super::net::UnixSeqpacket;
 use super::super::Result;
@@ -44,13 +50,16 @@ impl AsRawDescriptor for StreamChannel {
     }
 }
 
+#[derive(Debug, Deserialize, Serialize)]
 enum SocketType {
     Message(UnixSeqpacket),
+    #[serde(with = "super::with_as_descriptor")]
     Byte(UnixStream),
 }
 
 /// An abstraction over named pipes and unix socketpairs. This abstraction can be used in a blocking
 /// and non blocking mode.
+#[derive(Debug, Deserialize, Serialize)]
 pub struct StreamChannel {
     stream: SocketType,
 }
@@ -60,6 +69,13 @@ impl StreamChannel {
         match &mut self.stream {
             SocketType::Byte(sock) => sock.set_nonblocking(nonblocking),
             SocketType::Message(sock) => sock.set_nonblocking(nonblocking),
+        }
+    }
+
+    pub fn get_framing_mode(&self) -> FramingMode {
+        match &self.stream {
+            SocketType::Message(_) => FramingMode::Message,
+            SocketType::Byte(_) => FramingMode::Byte,
         }
     }
 
@@ -131,6 +147,47 @@ impl StreamChannel {
         stream_b.set_nonblocking(is_non_blocking)?;
         Ok((stream_a, stream_b))
     }
+
+    pub fn from_unix_seqpacket(sock: UnixSeqpacket) -> StreamChannel {
+        StreamChannel {
+            stream: SocketType::Message(sock),
+        }
+    }
+
+    pub fn peek_size(&self) -> io::Result<usize> {
+        match &self.stream {
+            SocketType::Byte(_) => Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Cannot check the size of streamed data",
+            )),
+            SocketType::Message(sock) => Ok(sock.next_packet_size()?),
+        }
+    }
+
+    pub fn set_read_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        match &self.stream {
+            SocketType::Byte(sock) => sock.set_read_timeout(timeout),
+            SocketType::Message(sock) => sock.set_read_timeout(timeout),
+        }
+    }
+
+    pub fn set_write_timeout(&self, timeout: Option<Duration>) -> io::Result<()> {
+        match &self.stream {
+            SocketType::Byte(sock) => sock.set_write_timeout(timeout),
+            SocketType::Message(sock) => sock.set_write_timeout(timeout),
+        }
+    }
+
+    // WARNING: Generally, multiple StreamChannel ends are not wanted. StreamChannel behavior with
+    // > 1 reader per end is not defined.
+    pub fn try_clone(&self) -> io::Result<Self> {
+        Ok(StreamChannel {
+            stream: match &self.stream {
+                SocketType::Byte(sock) => SocketType::Byte(sock.try_clone()?),
+                SocketType::Message(sock) => SocketType::Message(sock.try_clone()?),
+            },
+        })
+    }
 }
 
 impl io::Write for StreamChannel {
@@ -145,6 +202,36 @@ impl io::Write for StreamChannel {
             SocketType::Byte(sock) => sock.flush(),
             SocketType::Message(_) => Ok(()),
         }
+    }
+}
+
+impl io::Write for &StreamChannel {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        match &self.stream {
+            SocketType::Byte(sock) => (&mut &*sock).write(buf),
+            SocketType::Message(sock) => sock.send(buf),
+        }
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        match &self.stream {
+            SocketType::Byte(sock) => (&mut &*sock).flush(),
+            SocketType::Message(_) => Ok(()),
+        }
+    }
+}
+
+impl AsRawFd for StreamChannel {
+    fn as_raw_fd(&self) -> RawFd {
+        match &self.stream {
+            SocketType::Byte(sock) => sock.as_raw_descriptor(),
+            SocketType::Message(sock) => sock.as_raw_descriptor(),
+        }
+    }
+}
+
+impl AsRawFd for &StreamChannel {
+    fn as_raw_fd(&self) -> RawFd {
+        self.as_raw_descriptor()
     }
 }
 
@@ -287,5 +374,41 @@ mod test {
         // Further reads should encounter an error since there is no available data and this is a
         // non blocking pipe.
         assert!(receiver.read(&mut recv_buffer).is_err());
+    }
+
+    #[test]
+    fn test_from_unix_seqpacket() {
+        let (sock_sender, sock_receiver) = UnixSeqpacket::pair().unwrap();
+        let mut sender = StreamChannel::from_unix_seqpacket(sock_sender);
+        let mut receiver = StreamChannel::from_unix_seqpacket(sock_receiver);
+
+        sender.write_all(&[75, 77, 54, 82, 76, 65]).unwrap();
+
+        // Wait for the data to arrive.
+        let event_ctx: EventContext<Token> =
+            EventContext::build_with(&[(receiver.get_read_notifier(), Token::ReceivedData)])
+                .unwrap();
+        let events = event_ctx.wait().unwrap();
+        let tokens: Vec<Token> = events
+            .iter()
+            .filter(|e| e.is_readable)
+            .map(|e| e.token)
+            .collect();
+        assert_eq!(tokens, vec! {Token::ReceivedData});
+
+        let mut recv_buffer: [u8; 6] = [0; 6];
+
+        let size = receiver.read(&mut recv_buffer).unwrap();
+        assert_eq!(size, 6);
+        assert_eq!(recv_buffer, [75, 77, 54, 82, 76, 65]);
+
+        // Now that we've polled for & received all data, polling again should show no events.
+        assert_eq!(
+            event_ctx
+                .wait_timeout(std::time::Duration::new(0, 0))
+                .unwrap()
+                .len(),
+            0
+        );
     }
 }
