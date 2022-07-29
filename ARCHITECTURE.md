@@ -86,8 +86,8 @@ one to use in what place using some guidelines
   available via `VolatileSlice` and several convenience functions. This type is most useful for
   mapping memory unrelated to `GuestMemory`.
 
-See [memory layout](https://google.github.io/crosvm/appendix/memory_layout.html) for details how
-crosvm arranges the guest address space.
+See [memory layout](https://crosvm.dev/book/appendix/memory_layout.html) for details how crosvm
+arranges the guest address space.
 
 ### Device Model
 
@@ -237,4 +237,4 @@ Source code is organized into crates, each with their own unit tests.
 [minijail]: https://android.googlesource.com/platform/external/minijail
 [qcow]: https://en.wikipedia.org/wiki/Qcow
 [vfio]: https://www.kernel.org/doc/html/latest/driver-api/vfio.html
-[`waitcontext`]: https://google.github.io/crosvm/doc/base/struct.WaitContext.html
+[`waitcontext`]: https://crosvm.dev/doc/base/struct.WaitContext.html

@@ -68,8 +68,8 @@ git checkout --branch myfeature --track origin/main
 ```
 
 After making the necessary changes, and testing them via
-[Presubmit Checks](https://google.github.io/crosvm/building_crosvm.html#presubmit-checks), you can
-commit and upload them:
+[Presubmit Checks](https://crosvm.dev/book/building_crosvm.html#presubmit-checks), you can commit
+and upload them:
 
 ```bash
 git commit
@@ -103,8 +103,8 @@ Once one of the [crosvm owners] has voted "Code-Review+2" on your change, you ca
 CQ" button, which will trigger the test process.
 
 Gerrit will show any test failures. Refer to
-[Building Crosvm](https://google.github.io/crosvm/building_crosvm.html) for information on how to
-run the same tests locally.
+[Building Crosvm](https://crosvm.dev/book/building_crosvm.html) for information on how to run the
+same tests locally.
 
 When all tests pass, your change is merged into `origin/main`.
 
@@ -134,4 +134,4 @@ Output is found at `docs/book/book/html/`.
 [google markdown style guide]: https://github.com/google/styleguide/blob/gh-pages/docguide/style.md
 [mdbook]: https://rust-lang.github.io/mdBook/
 [mdbook-mermaid]: https://github.com/badboy/mdbook-mermaid
-[the book of crosvm]: https://google.github.io/crosvm/
+[the book of crosvm]: https://crosvm.dev/book/

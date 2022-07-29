@@ -17,7 +17,7 @@ operating system using the platform's hypervisor.
 - [#crosvm on matrix.org](https://matrix.to/#/#crosvm:matrix.org)
 - [Source code](https://chromium.googlesource.com/crosvm/crosvm/)
   - [GitHub mirror](https://github.com/google/crosvm)
-  - [API documentation](https://google.github.io/crosvm/doc/crosvm/), useful for searching API.
+  - [API documentation](https://crosvm.dev/doc/crosvm/), useful for searching API.
   - Files for this book are under
     [/docs/](https://chromium.googlesource.com/crosvm/crosvm/+/HEAD/docs/).
 - [Issue tracker](https://bugs.chromium.org/p/chromium/issues/list?q=component:OS%3ESystems%3EContainers)

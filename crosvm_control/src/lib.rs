@@ -11,7 +11,7 @@
 //! Do not make changes to this library without consulting the crosvm externalization team.
 //! Email: crosvm-dev@chromium.org
 //! For more information see:
-//! <https://google.github.io/crosvm/running_crosvm/programmatic_interaction.html#usage>
+//! <https://crosvm.dev/book/running_crosvm/programmatic_interaction.html#usage>
 
 use std::convert::TryFrom;
 use std::convert::TryInto;
