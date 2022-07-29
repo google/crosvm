@@ -16,7 +16,7 @@ DEPS = [
 ]
 
 BOOK_URL = "gs://crosvm-dot-dev/book"
-DOCS_URL = "gs://crosvm-dot-dev/api"
+DOCS_URL = "gs://crosvm-dot-dev/doc"
 
 
 def RunSteps(api):
@@ -47,8 +47,9 @@ def RunSteps(api):
             name="Upload book",
             multithreaded=True,
         )
+        # TODO(b/239255064): Generate the redirect HTML so we can use cleanly mirror here too.
         api.gsutil(
-            ["rsync", "-r", "-d", "./docs/target/doc", DOCS_URL],
+            ["rsync", "-r", "./docs/target/doc", DOCS_URL],
             name="Upload docs",
             multithreaded=True,
         )

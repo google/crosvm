@@ -100,9 +100,8 @@
       "----",
       "rsync",
       "-r",
-      "-d",
       "./docs/target/doc",
-      "gs://crosvm-dot-dev/api"
+      "gs://crosvm-dot-dev/doc"
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
