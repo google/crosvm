@@ -42,7 +42,7 @@ const ARCH: &str = "aarch64";
 const VM_COMMUNICATION_TIMEOUT: Duration = Duration::from_secs(10);
 
 fn prebuilt_version() -> &'static str {
-    include_str!("../guest_under_test/PREBUILT_VERSION").trim()
+    include_str!("../../guest_under_test/PREBUILT_VERSION").trim()
 }
 
 fn kernel_prebuilt_url() -> String {
@@ -170,6 +170,7 @@ pub struct Config {
     o_direct: bool,
 }
 
+#[cfg(test)]
 impl Config {
     /// Creates a new `run` command with `extra_args`.
     pub fn new() -> Self {
@@ -194,6 +195,7 @@ impl Config {
 ///
 /// After creation, commands can be sent via exec_in_guest. The VM is stopped
 /// when this instance is dropped.
+#[cfg(test)]
 pub struct TestVm {
     /// Maintain ownership of test_dir until the vm is destroyed.
     #[allow(dead_code)]
