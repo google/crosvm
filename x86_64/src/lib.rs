@@ -79,6 +79,7 @@ use base::AsRawDescriptors;
 use base::Event;
 use base::SendTube;
 use base::TubeError;
+use chrono::Utc;
 pub use cpuid::adjust_cpuid;
 pub use cpuid::CpuIdContext;
 use devices::BusDevice;
@@ -1543,7 +1544,11 @@ impl X8664arch {
 
         io_bus
             .insert(
-                Arc::new(Mutex::new(devices::Cmos::new(mem_below_4g, mem_above_4g))),
+                Arc::new(Mutex::new(devices::Cmos::new(
+                    mem_below_4g,
+                    mem_above_4g,
+                    Utc::now,
+                ))),
                 0x70,
                 0x2,
             )
