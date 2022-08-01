@@ -998,6 +998,9 @@ impl DecoderSession for VaapiDecoderSession {
             .import_buffer(picture_buffer_id as u32, resource)
             .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?;
 
+        self.drain_ready_queue()
+            .map_err(VideoError::BackendFailure)?;
+
         Ok(())
     }
 
