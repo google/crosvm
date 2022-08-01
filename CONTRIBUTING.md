@@ -73,7 +73,7 @@ and upload them:
 
 ```bash
 git commit
-./tools/cl uploaad
+./tools/cl upload
 ```
 
 If you need to revise your change, you can amend the existing commit and upload again:
