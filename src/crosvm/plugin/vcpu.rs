@@ -5,11 +5,11 @@
 use std::alloc::Layout;
 use std::cell::Cell;
 use std::cell::RefCell;
+use std::cmp;
 use std::cmp::min;
 use std::cmp::Ord;
 use std::cmp::PartialEq;
 use std::cmp::PartialOrd;
-use std::cmp::{self};
 use std::collections::btree_set::BTreeSet;
 use std::io::Read;
 use std::io::Write;

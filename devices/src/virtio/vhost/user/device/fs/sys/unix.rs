@@ -12,7 +12,6 @@ use base::get_max_open_files;
 use base::RawDescriptor;
 use cros_async::Executor;
 use minijail::Minijail;
-use minijail::{self};
 
 use crate::virtio::vhost::user::device::fs::FsBackend;
 use crate::virtio::vhost::user::device::fs::Options;

@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::fmt;
 use std::fmt::Debug;
-use std::fmt::{self};
 use std::sync::Condvar as StdCondvar;
 use std::sync::MutexGuard;
 use std::sync::WaitTimeoutResult;

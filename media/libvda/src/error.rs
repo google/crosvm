@@ -5,8 +5,8 @@
 //! Errors that can happen in LibVDA.
 
 use std::error;
+use std::fmt;
 use std::fmt::Display;
-use std::fmt::{self};
 
 use super::format;
 use crate::decode;

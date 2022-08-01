@@ -3,8 +3,8 @@
 // found in the LICENSE file.
 
 use std::cmp::min;
+use std::fmt;
 use std::fmt::Display;
-use std::fmt::{self};
 use std::mem;
 use std::sync::Arc;
 use std::sync::Weak;

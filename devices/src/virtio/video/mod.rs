@@ -25,12 +25,12 @@ use serde::Serialize;
 use thiserror::Error;
 use vm_memory::GuestMemory;
 
+use crate::virtio;
 use crate::virtio::copy_config;
 use crate::virtio::virtio_device::VirtioDevice;
 use crate::virtio::DescriptorError;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
-use crate::virtio::{self};
 
 #[macro_use]
 mod macros;

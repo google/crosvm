@@ -7,8 +7,8 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::thread;
 use std::thread::JoinHandle;
-use std::thread::{self};
 use std::time::Duration;
 use std::time::Instant;
 

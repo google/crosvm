@@ -14,7 +14,6 @@ use base::FlockOperation;
 use disk::DiskFile;
 use disk::ImageType;
 use disk::QcowFile;
-use disk::{self};
 use libc::EINVAL;
 use libc::EIO;
 use libc::ENOSYS;

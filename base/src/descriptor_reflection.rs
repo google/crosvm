@@ -59,9 +59,9 @@ use std::panic::catch_unwind;
 use std::panic::resume_unwind;
 use std::panic::AssertUnwindSafe;
 
+use serde::de;
 use serde::de::Error;
 use serde::de::Visitor;
-use serde::de::{self};
 use serde::ser;
 use serde::Deserialize;
 use serde::Deserializer;

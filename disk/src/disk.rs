@@ -7,10 +7,10 @@
 use std::cmp::min;
 use std::fmt::Debug;
 use std::fs::File;
+use std::io;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
-use std::io::{self};
 use std::path::Path;
 use std::sync::Arc;
 

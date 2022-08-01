@@ -4,11 +4,11 @@
 
 use std::cmp::max;
 use std::collections::VecDeque;
+use std::io;
 use std::io::Error;
 use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Write;
-use std::io::{self};
 use std::iter::ExactSizeIterator;
 use std::os::unix::net::UnixStream;
 

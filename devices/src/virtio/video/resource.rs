@@ -14,16 +14,15 @@ use base::MemoryMappingBuilder;
 use base::MemoryMappingBuilderUnix;
 use base::MmapError;
 use base::SafeDescriptor;
-use base::{self};
 use thiserror::Error as ThisError;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
 
+use crate::virtio::resource_bridge;
 use crate::virtio::resource_bridge::ResourceBridgeError;
 use crate::virtio::resource_bridge::ResourceInfo;
 use crate::virtio::resource_bridge::ResourceRequest;
-use crate::virtio::resource_bridge::{self};
 use crate::virtio::video::format::FramePlane;
 use crate::virtio::video::format::PlaneFormat;
 use crate::virtio::video::protocol::virtio_video_mem_entry;

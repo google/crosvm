@@ -10,8 +10,8 @@ use anyhow::anyhow;
 use anyhow::Result;
 use argh::FromArgs;
 use base::info;
+use base::syslog;
 use base::syslog::LogConfig;
-use base::syslog::{self};
 use base::FromRawDescriptor;
 use base::RawDescriptor;
 use broker_ipc::common_child_setup;
@@ -19,7 +19,6 @@ use broker_ipc::CommonChildStartupArgs;
 use metrics::event_details_proto::EmulatorDllDetails;
 use metrics::event_details_proto::RecordDetails;
 use metrics::MetricEventType;
-use metrics::{self};
 #[cfg(all(feature = "slirp"))]
 use net_util::slirp::sys::windows::SlirpStartupConfig;
 use tube_transporter::TubeToken;
@@ -27,8 +26,8 @@ use tube_transporter::TubeTransporterReader;
 use win_util::DllNotificationData;
 use win_util::DllWatcher;
 
+use crate::crosvm::argument;
 use crate::crosvm::argument::Argument;
-use crate::crosvm::argument::{self};
 use crate::crosvm::cmdline::RunCommand;
 use crate::crosvm::sys::cmdline::Commands;
 use crate::crosvm::sys::cmdline::DevicesSubcommand;

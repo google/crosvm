@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::convert;
 use std::convert::TryInto;
-use std::convert::{self};
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::mem::size_of;
@@ -30,7 +30,6 @@ use hypervisor::ProtectionType;
 use sync::Mutex;
 use vhost::Vhost;
 use vhost::Vsock;
-use vhost::{self};
 use vm_memory::GuestMemory;
 use vmm_vhost::connection::vfio::Listener as VfioListener;
 use vmm_vhost::connection::Endpoint;

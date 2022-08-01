@@ -12,7 +12,6 @@ use std::slice::from_raw_parts_mut;
 use libc::c_int;
 use libc::c_uint;
 use libc::c_void;
-use libc::{self};
 use win_util::allocation_granularity;
 use win_util::get_high_order;
 use win_util::get_low_order;

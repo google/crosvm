@@ -4,8 +4,8 @@
 
 use std::convert::TryFrom;
 use std::convert::TryInto;
+use std::fmt;
 use std::fmt::Display;
-use std::fmt::{self};
 use std::iter;
 use std::sync::Arc;
 use std::thread;

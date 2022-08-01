@@ -12,13 +12,13 @@ use std::os::raw::*;
 use std::os::windows::io::AsRawHandle;
 use std::thread;
 
+use base::named_pipes;
 use base::named_pipes::BlockingMode;
 use base::named_pipes::FramingMode;
 use base::named_pipes::OverlappedWrapper;
 use base::named_pipes::PipeConnection;
 use base::named_pipes::ReadOverlapped;
 use base::named_pipes::WriteOverlapped;
-use base::named_pipes::{self};
 use base::warn;
 use base::AsRawDescriptor;
 use base::Error as SysError;

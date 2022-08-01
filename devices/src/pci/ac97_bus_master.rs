@@ -27,7 +27,6 @@ use base::AsRawDescriptor;
 use base::AsRawDescriptors;
 use base::FromRawDescriptor;
 use base::RawDescriptor;
-use base::{self};
 use remain::sorted;
 use sync::Condvar;
 use sync::Mutex;

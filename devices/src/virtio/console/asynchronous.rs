@@ -33,6 +33,7 @@ use super::handle_input;
 use super::process_transmit_queue;
 use super::QUEUE_SIZES;
 use crate::serial_device::SerialInput;
+use crate::virtio;
 use crate::virtio::async_device::AsyncQueueState;
 use crate::virtio::async_utils;
 use crate::virtio::base_features;
@@ -44,7 +45,6 @@ use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::SignalableInterrupt;
 use crate::virtio::VirtioDevice;
-use crate::virtio::{self};
 use crate::SerialDevice;
 
 /// Wrapper that makes any `SerialInput` usable as an async source by providing an implementation of

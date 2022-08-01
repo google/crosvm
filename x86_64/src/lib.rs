@@ -55,8 +55,8 @@ use std::collections::BTreeMap;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::fs::File;
+use std::io;
 use std::io::Seek;
-use std::io::{self};
 use std::mem;
 use std::sync::Arc;
 

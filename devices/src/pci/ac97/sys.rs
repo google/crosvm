@@ -12,9 +12,9 @@ cfg_if::cfg_if! {
     }
 }
 
+pub(in crate::pci::ac97) use platform::ac97_backend_from_str;
+pub(in crate::pci::ac97) use platform::create_null_server;
 #[cfg(test)]
 pub(in crate::pci::ac97) use platform::tests;
 pub use platform::Ac97Backend;
-pub(in crate::pci::ac97) use platform::{
-    ac97_backend_from_str, create_null_server, AudioStreamSource,
-};
+pub(in crate::pci::ac97) use platform::AudioStreamSource;

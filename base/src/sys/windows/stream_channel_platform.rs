@@ -14,8 +14,8 @@ use serde::Serialize;
 use serde::Serializer;
 use sync::Mutex;
 
+use super::named_pipes;
 use super::named_pipes::PipeConnection;
-use super::named_pipes::{self};
 use super::stream_channel::BlockingMode;
 use super::stream_channel::FramingMode;
 use super::Event;

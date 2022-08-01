@@ -3,12 +3,12 @@
 // found in the LICENSE file.
 
 use std::fs::File;
+use std::io;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::io::Read;
 use std::io::Write;
-use std::io::{self};
 use std::mem::size_of;
 use std::os::unix::fs::FileExt;
 use std::os::unix::io::AsRawFd;

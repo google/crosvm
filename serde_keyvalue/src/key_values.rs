@@ -3,9 +3,9 @@
 // found in the LICENSE file.
 
 use std::borrow::Cow;
+use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
-use std::fmt::{self};
 use std::num::IntErrorKind;
 use std::num::ParseIntError;
 use std::str::FromStr;

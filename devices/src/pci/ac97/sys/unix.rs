@@ -98,9 +98,9 @@ pub(in crate::pci::ac97) fn create_null_server() -> AudioStreamSource {
 
 #[cfg(test)]
 pub(in crate::pci::ac97) mod tests {
-    use super::*;
-
     use audio_streams::shm_streams::MockShmStreamSource;
+
+    use super::*;
 
     pub(in crate::pci::ac97) fn create_ac97_device(
         mem: GuestMemory,

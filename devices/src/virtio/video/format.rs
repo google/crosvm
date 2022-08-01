@@ -7,8 +7,8 @@
 use std::convert::From;
 use std::convert::Into;
 use std::convert::TryFrom;
+use std::fmt;
 use std::fmt::Display;
-use std::fmt::{self};
 use std::io;
 
 use base::error;

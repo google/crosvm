@@ -34,7 +34,6 @@ use completion_handler::WinAudioActivateAudioInterfaceCompletionHandler;
 use completion_handler::ACTIVATE_AUDIO_INTERFACE_COMPLETION_EVENT;
 use metrics::event_details_proto::RecordDetails;
 use metrics::MetricEventType;
-use metrics::{self};
 use sync::Mutex;
 use thiserror::Error as ThisError;
 use wave_format::*;

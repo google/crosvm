@@ -5,11 +5,11 @@
 use std::ffi::CStr;
 use std::fs::read_link;
 use std::fs::File;
+use std::io;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
-use std::io::{self};
 
 use libc::c_char;
 use libc::c_int;
@@ -30,7 +30,6 @@ use libc::F_SEAL_SEAL;
 use libc::F_SEAL_SHRINK;
 use libc::F_SEAL_WRITE;
 use libc::MFD_ALLOW_SEALING;
-use libc::{self};
 use serde::Deserialize;
 use serde::Serialize;
 

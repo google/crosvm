@@ -5,8 +5,8 @@
 //! Events reported by VDA encode API over pipe FD.
 
 use std::error;
+use std::fmt;
 use std::fmt::Display;
-use std::fmt::{self};
 
 use enumn::N;
 

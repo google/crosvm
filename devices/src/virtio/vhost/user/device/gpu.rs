@@ -37,6 +37,7 @@ use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
 
+use crate::virtio;
 use crate::virtio::gpu;
 use crate::virtio::vhost::user::device::handler::sys::Doorbell;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
@@ -52,7 +53,6 @@ use crate::virtio::QueueReader;
 use crate::virtio::SharedMemoryMapper;
 use crate::virtio::SharedMemoryRegion;
 use crate::virtio::VirtioDevice;
-use crate::virtio::{self};
 
 const MAX_QUEUE_NUM: usize = gpu::QUEUE_SIZES.len();
 const MAX_VRING_LEN: u16 = gpu::QUEUE_SIZES[0];

@@ -16,9 +16,9 @@ use data_model::VolatileSlice;
 use remain::sorted;
 use thiserror::Error as ThisError;
 
+use super::fd_executor;
 use super::fd_executor::FdExecutor;
 use super::fd_executor::RegisteredSource;
-use super::fd_executor::{self};
 use crate::mem::BackingMemory;
 use crate::mem::MemRegion;
 use crate::AllocateMode;

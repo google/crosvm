@@ -15,7 +15,6 @@ use libc::CLOCK_MONOTONIC;
 use libc::EAGAIN;
 use libc::POLLIN;
 use libc::TFD_CLOEXEC;
-use libc::{self};
 
 use super::super::errno_result;
 use super::super::Error;

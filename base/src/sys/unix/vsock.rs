@@ -5,8 +5,8 @@
 /// Support for virtual sockets.
 use std::fmt;
 use std::io;
+use std::mem;
 use std::mem::size_of;
-use std::mem::{self};
 use std::num::ParseIntError;
 use std::os::raw::c_uchar;
 use std::os::raw::c_uint;
@@ -28,7 +28,6 @@ use libc::O_NONBLOCK;
 use libc::VMADDR_CID_ANY;
 use libc::VMADDR_CID_HOST;
 use libc::VMADDR_CID_HYPERVISOR;
-use libc::{self};
 use thiserror::Error;
 
 // The domain for vsock sockets.

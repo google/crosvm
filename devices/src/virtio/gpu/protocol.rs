@@ -7,10 +7,10 @@
 
 use std::cmp::min;
 use std::convert::From;
+use std::fmt;
 use std::fmt::Display;
-use std::fmt::{self};
+use std::io;
 use std::io::Write;
-use std::io::{self};
 use std::marker::PhantomData;
 use std::mem::size_of;
 use std::mem::size_of_val;

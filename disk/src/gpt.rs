@@ -5,8 +5,8 @@
 //! Functions for writing GUID Partition Tables for use in a composite disk image.
 
 use std::convert::TryInto;
+use std::io;
 use std::io::Write;
-use std::io::{self};
 use std::num::TryFromIntError;
 
 use crc32fast::Hasher;

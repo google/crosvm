@@ -3,8 +3,8 @@
 // found in the LICENSE file.
 
 use std::ffi::c_void;
+use std::fmt;
 use std::fmt::Debug;
-use std::fmt::{self};
 use std::marker::PhantomData;
 use std::slice;
 

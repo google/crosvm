@@ -51,7 +51,6 @@ use arch::VcpuAffinity;
 use arch::VirtioDeviceStub;
 use arch::VmComponents;
 use arch::VmImage;
-use arch::{self};
 use base::UnixSeqpacket;
 use base::UnixSeqpacketListener;
 use base::UnlinkUnixSeqpacketListener;
@@ -60,6 +59,8 @@ use device_helpers::*;
 use devices::serial_device::SerialHardware;
 use devices::vfio::VfioCommonSetup;
 use devices::vfio::VfioCommonTrait;
+#[cfg(feature = "gpu")]
+use devices::virtio;
 use devices::virtio::memory_mapper::MemoryMapper;
 use devices::virtio::memory_mapper::MemoryMapperTrait;
 use devices::virtio::vhost::vsock::VhostVsockConfig;
@@ -67,8 +68,6 @@ use devices::virtio::vhost::vsock::VhostVsockConfig;
 use devices::virtio::BalloonMode;
 #[cfg(feature = "gpu")]
 use devices::virtio::EventDevice;
-#[cfg(feature = "gpu")]
-use devices::virtio::{self};
 #[cfg(feature = "audio")]
 use devices::Ac97Dev;
 use devices::BusDeviceObj;
@@ -101,7 +100,6 @@ use devices::StubPciDevice;
 use devices::VirtioPciDevice;
 #[cfg(feature = "usb")]
 use devices::XhciController;
-use devices::{self};
 #[cfg(feature = "gpu")]
 pub use gpu::GpuRenderServerParameters;
 #[cfg(feature = "gpu")]
@@ -124,7 +122,6 @@ use hypervisor::VmX86_64 as VmArch;
 use jail_helpers::*;
 use libc;
 use minijail::Minijail;
-use minijail::{self};
 use resources::AddressRange;
 use resources::Alloc;
 #[cfg(feature = "direct")]

@@ -3,8 +3,8 @@
 // found in the LICENSE file.
 
 use std::fs::File;
+use std::mem;
 use std::mem::ManuallyDrop;
-use std::mem::{self};
 
 use serde::Deserialize;
 use serde::Serialize;

@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::fmt;
 use std::fmt::Display;
-use std::fmt::{self};
 use std::sync::Arc;
 use std::sync::MutexGuard;
 
@@ -21,9 +21,9 @@ use vm_memory::GuestMemory;
 use super::ring_buffer::RingBuffer;
 use super::ring_buffer_stop_cb::RingBufferStopCallback;
 use super::xhci_abi::*;
+use crate::utils;
 use crate::utils::EventHandler;
 use crate::utils::EventLoop;
-use crate::utils::{self};
 
 #[sorted]
 #[derive(Error, Debug)]

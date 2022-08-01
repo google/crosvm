@@ -3,9 +3,9 @@
 // found in the LICENSE file.
 
 use std::convert::TryInto;
+use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Formatter;
-use std::fmt::{self};
 
 use base::warn;
 use metrics::event_details_proto::WaveFormat;

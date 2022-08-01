@@ -12,7 +12,6 @@ use libc::c_int;
 use libc::c_void;
 use libc::read;
 use libc::write;
-use libc::{self};
 use log::warn;
 use remain::sorted;
 

@@ -9,8 +9,8 @@ use std::cmp::Ord;
 use std::cmp::Ordering;
 use std::cmp::PartialEq;
 use std::cmp::PartialOrd;
+use std::fmt;
 use std::fmt::Display;
-use std::fmt::{self};
 use std::ops::BitAnd;
 use std::ops::BitOr;
 

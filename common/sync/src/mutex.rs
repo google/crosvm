@@ -24,9 +24,9 @@
 //! Developers should feel free to use sync::Mutex anywhere in crosvm that they
 //! would otherwise be using std::sync::Mutex.
 
+use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
-use std::fmt::{self};
 use std::sync::Mutex as StdMutex;
 use std::sync::MutexGuard;
 use std::sync::TryLockError;

@@ -21,7 +21,6 @@ use anyhow::Context;
 use anyhow::Result;
 use arch::LinuxArch;
 use arch::MsrConfig;
-use arch::{self};
 use base::*;
 use devices::Bus;
 use devices::IrqChip;
@@ -30,7 +29,6 @@ use devices::IrqChipAArch64 as IrqChipArch;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use devices::IrqChipX86_64 as IrqChipArch;
 use devices::VcpuRunState;
-use devices::{self};
 use hypervisor::IoOperation;
 use hypervisor::IoParams;
 use hypervisor::Vcpu;
@@ -49,7 +47,6 @@ use hypervisor::VmAArch64 as VmArch;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use hypervisor::VmX86_64 as VmArch;
 use libc::c_int;
-use libc::{self};
 use sync::Condvar;
 use sync::Mutex;
 use vm_control::*;

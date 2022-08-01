@@ -4,8 +4,8 @@
 
 //! Events reported by VDA over pipe FD.
 
+use std::fmt;
 use std::fmt::Display;
-use std::fmt::{self};
 
 use enumn::N;
 

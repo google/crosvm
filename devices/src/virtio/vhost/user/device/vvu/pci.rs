@@ -21,8 +21,8 @@ use data_model::DataInit;
 use memoffset::offset_of;
 use resources::Alloc;
 use vfio_sys::*;
+use virtio_sys::virtio_config;
 use virtio_sys::virtio_config::VIRTIO_F_VERSION_1;
-use virtio_sys::virtio_config::{self};
 
 use crate::pci::MsixCap;
 use crate::pci::PciAddress;

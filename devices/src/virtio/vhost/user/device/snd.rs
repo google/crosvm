@@ -26,6 +26,7 @@ use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
 
+use crate::virtio;
 use crate::virtio::copy_config;
 use crate::virtio::device_constants::snd::virtio_snd_config;
 use crate::virtio::snd::common_backend::async_funcs::handle_ctrl_queue;
@@ -44,7 +45,6 @@ use crate::virtio::vhost::user::device::handler::sys::Doorbell;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
-use crate::virtio::{self};
 
 static SND_EXECUTOR: OnceCell<Executor> = OnceCell::new();
 

@@ -15,8 +15,8 @@
 //!     Captures packets in a ring buffer and dumps them to a pcap file on exit.
 
 pub mod sys;
+use std::fmt;
 use std::fmt::Display;
-use std::fmt::{self};
 use std::io::Read;
 use std::io::Write;
 use std::net;

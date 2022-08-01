@@ -8,8 +8,8 @@
 //! This IPC crate is used by the broker process to send boot data across the
 //! different CrosVm child processes on Windows.
 
+use std::fmt;
 use std::fmt::Display;
-use std::fmt::{self};
 
 use base::deserialize_and_recv;
 use base::named_pipes::BlockingMode;

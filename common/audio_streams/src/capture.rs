@@ -30,9 +30,9 @@
 //! # }
 //! ```
 
+use std::io;
 use std::io::Read;
 use std::io::Write;
-use std::io::{self};
 use std::time::Duration;
 use std::time::Instant;
 

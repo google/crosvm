@@ -3,11 +3,11 @@
 // found in the LICENSE file.
 
 use std::fs::File;
+use std::io;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
-use std::io::{self};
 use std::mem::ManuallyDrop;
 use std::ptr::null_mut;
 use std::sync::Arc;

@@ -2,12 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::io;
 use std::io::Read;
-use std::io::{self};
 use std::os::unix::net::UnixStream;
 
 use libc::c_void;
-use libc::{self};
 
 use super::super::net::UnixSeqpacket;
 use super::super::Result;

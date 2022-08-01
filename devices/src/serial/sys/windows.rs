@@ -4,8 +4,8 @@
 
 use std::io;
 use std::io::Write;
+use std::thread;
 use std::thread::JoinHandle;
-use std::thread::{self};
 use std::time::Duration;
 
 use base::error;

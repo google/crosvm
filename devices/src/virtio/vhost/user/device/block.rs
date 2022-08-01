@@ -30,6 +30,7 @@ pub use sys::Options;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::*;
 
+use crate::virtio;
 use crate::virtio::block::asynchronous::flush_disk;
 use crate::virtio::block::asynchronous::handle_queue;
 use crate::virtio::block::build_avail_features;
@@ -40,7 +41,6 @@ use crate::virtio::block::SECTOR_SIZE;
 use crate::virtio::copy_config;
 use crate::virtio::vhost::user::device::handler::sys::Doorbell;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
-use crate::virtio::{self};
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: u16 = 16;

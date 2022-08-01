@@ -37,12 +37,12 @@ use std::convert::From;
 use std::error::Error as StdError;
 use std::fmt;
 use std::fs::File;
+use std::io;
 use std::io::IoSliceMut;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
-use std::io::{self};
 use std::mem::size_of;
 #[cfg(feature = "minigbm")]
 use std::os::raw::c_uint;

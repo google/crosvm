@@ -23,8 +23,8 @@ pub mod display;
 pub mod sys;
 
 use std::convert::TryInto;
+use std::fmt;
 use std::fmt::Display;
-use std::fmt::{self};
 use std::fs::File;
 use std::path::PathBuf;
 use std::result::Result as StdResult;

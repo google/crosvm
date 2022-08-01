@@ -6,8 +6,8 @@ use std::env;
 use std::fs::File;
 use std::io::stderr;
 use std::io::Read;
+use std::panic;
 use std::panic::PanicInfo;
-use std::panic::{self};
 use std::process::abort;
 use std::string::String;
 

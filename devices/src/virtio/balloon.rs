@@ -19,7 +19,6 @@ use base::AsRawDescriptor;
 use base::Event;
 use base::RawDescriptor;
 use base::Tube;
-use base::{self};
 use cros_async::block_on;
 use cros_async::select7;
 use cros_async::sync::Mutex as AsyncMutex;

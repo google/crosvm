@@ -46,7 +46,6 @@ use arch::RunnableLinuxVm;
 use arch::VirtioDeviceStub;
 use arch::VmComponents;
 use arch::VmImage;
-use arch::{self};
 use base::enable_high_res_timers;
 use base::error;
 #[cfg(feature = "kiwi")]
@@ -72,7 +71,6 @@ use base::Tube;
 use base::TubeError;
 use base::VmEventType;
 use base::WaitContext;
-use base::{self};
 use broker_ipc::common_child_setup;
 use broker_ipc::CommonChildStartupArgs;
 use devices::serial_device::SerialHardware;
@@ -80,13 +78,13 @@ use devices::serial_device::SerialParameters;
 use devices::tsc::get_tsc_sync_mitigations;
 use devices::tsc::standard_deviation;
 use devices::tsc::TscSyncMitigations;
+use devices::virtio;
 use devices::virtio::block::block::DiskOption;
 use devices::virtio::BalloonMode;
 use devices::virtio::Console;
 #[cfg(feature = "slirp")]
 use devices::virtio::NetExt;
 use devices::virtio::PvClock;
-use devices::virtio::{self};
 #[cfg(feature = "audio")]
 use devices::Ac97Dev;
 use devices::BusDeviceObj;
@@ -103,7 +101,6 @@ use devices::UserspaceIrqChip;
 use devices::VirtioPciDevice;
 #[cfg(feature = "whpx")]
 use devices::WhpxSplitIrqChip;
-use devices::{self};
 #[cfg(feature = "gpu")]
 use gpu_display::EventDevice;
 #[cfg(feature = "gvm")]
@@ -174,11 +171,11 @@ use vm_control::Ac97Control;
 #[cfg(feature = "kiwi")]
 use vm_control::BalloonControlCommand;
 #[cfg(feature = "kiwi")]
+use vm_control::GpuSendToMain;
+#[cfg(feature = "kiwi")]
 use vm_control::GpuSendToMain::MuteAc97;
 #[cfg(feature = "kiwi")]
 use vm_control::GpuSendToMain::SendToService;
-#[cfg(feature = "kiwi")]
-use vm_control::GpuSendToMain::{self};
 #[cfg(feature = "kiwi")]
 use vm_control::PvClockCommand;
 #[cfg(feature = "kiwi")]

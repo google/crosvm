@@ -14,10 +14,10 @@ pub mod sys;
 use std::collections::BTreeMap;
 use std::error::Error as StdError;
 use std::fs::File;
+use std::io;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
-use std::io::{self};
 use std::path::PathBuf;
 use std::sync::Arc;
 

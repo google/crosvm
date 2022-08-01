@@ -6,7 +6,6 @@ use std::mem;
 use std::result;
 
 use base::warn;
-use base::{self};
 use hypervisor::Register;
 use hypervisor::Sregs;
 use hypervisor::VcpuX86_64;

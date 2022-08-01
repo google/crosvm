@@ -13,11 +13,9 @@ use base::error;
 use base::ExternalMapping;
 use base::Protection;
 use base::SafeDescriptor;
-
 use data_model::VolatileSlice;
 use gpu_display::*;
 use libc::c_void;
-
 use rutabaga_gfx::ResourceCreate3D;
 use rutabaga_gfx::ResourceCreateBlob;
 use rutabaga_gfx::Rutabaga;
@@ -34,8 +32,8 @@ use vm_memory::udmabuf::UdmabufDriver;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
+use super::protocol::GpuResponse;
 use super::protocol::GpuResponse::*;
-use super::protocol::GpuResponse::{self};
 use super::protocol::GpuResponsePlaneInfo;
 use super::protocol::VirtioGpuResult;
 use super::protocol::VIRTIO_GPU_BLOB_FLAG_CREATE_GUEST_HANDLE;

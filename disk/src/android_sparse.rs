@@ -6,11 +6,11 @@
 
 use std::collections::BTreeMap;
 use std::fs::File;
+use std::io;
 use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
-use std::io::{self};
 use std::mem;
 
 use base::AsRawDescriptor;

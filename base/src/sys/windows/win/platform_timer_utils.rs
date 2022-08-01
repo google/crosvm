@@ -11,10 +11,10 @@ use std::time::Instant;
 
 use win_util::win32_string;
 use win_util::win32_wide_string;
+use winapi::shared::minwindef;
 use winapi::shared::minwindef::HINSTANCE;
 use winapi::shared::minwindef::HMODULE;
 use winapi::shared::minwindef::PULONG;
-use winapi::shared::minwindef::{self};
 use winapi::shared::ntdef::NTSTATUS;
 use winapi::shared::ntdef::ULONG;
 use winapi::shared::ntstatus::STATUS_SUCCESS;

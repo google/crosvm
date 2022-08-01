@@ -4,8 +4,8 @@
 
 use std::convert::From;
 use std::convert::TryInto;
+use std::fmt;
 use std::fmt::Display;
-use std::fmt::{self};
 use std::io;
 use std::result;
 

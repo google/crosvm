@@ -12,9 +12,7 @@ use base::*;
 use libc::c_ulong;
 use libc::gid_t;
 use libc::uid_t;
-use libc::{self};
 use minijail::Minijail;
-use minijail::{self};
 
 use crate::crosvm::config::JailConfig;
 

@@ -43,11 +43,11 @@ pub mod async_api;
 
 use std::cmp::min;
 use std::error;
+use std::fmt;
 use std::fmt::Display;
-use std::fmt::{self};
+use std::io;
 use std::io::Read;
 use std::io::Write;
-use std::io::{self};
 #[cfg(unix)]
 use std::os::unix::io::RawFd as RawDescriptor;
 #[cfg(windows)]
@@ -738,7 +738,6 @@ impl StreamSourceGenerator for NoopStreamSourceGenerator {
 mod tests {
     use futures::FutureExt;
     use io::Write;
-    use io::{self};
 
     use super::async_api::test::TestExecutor;
     use super::*;

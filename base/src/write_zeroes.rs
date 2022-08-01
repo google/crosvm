@@ -3,9 +3,9 @@
 // found in the LICENSE file.
 
 use std::fs::File;
+use std::io;
 use std::io::Error;
 use std::io::ErrorKind;
-use std::io::{self};
 
 /// A trait for deallocating space in a file.
 pub trait PunchHole {

@@ -20,6 +20,7 @@ use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
 
+use crate::virtio;
 use crate::virtio::console::asynchronous::ConsoleDevice;
 use crate::virtio::console::virtio_console_config;
 use crate::virtio::copy_config;
@@ -28,7 +29,6 @@ use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 use crate::virtio::vhost::user::device::VhostUserDevice;
-use crate::virtio::{self};
 use crate::SerialHardware;
 use crate::SerialParameters;
 use crate::SerialType;

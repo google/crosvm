@@ -4,7 +4,8 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::Context;
+use anyhow::Result;
 use resources::SystemAllocator;
 use sync::Mutex;
 use vm_control::GpeNotify;

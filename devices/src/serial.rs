@@ -12,7 +12,7 @@ use std::sync::mpsc::channel;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::TryRecvError;
 use std::sync::Arc;
-use std::thread::{self};
+use std::thread;
 
 use base::error;
 use base::Event;

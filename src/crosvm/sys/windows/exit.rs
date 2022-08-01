@@ -4,9 +4,9 @@
 
 //! Enum and Anyhow helpers to set the process exit code.
 
+use std::fmt;
 use std::fmt::Display;
 use std::fmt::Formatter;
-use std::fmt::{self};
 
 use anyhow::Context;
 

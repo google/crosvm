@@ -3,8 +3,8 @@
 // found in the LICENSE file.
 
 use std::cell::RefCell;
+use std::io;
 use std::io::Write;
-use std::io::{self};
 use std::mem::size_of;
 use std::rc::Rc;
 use std::result;

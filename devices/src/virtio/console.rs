@@ -10,9 +10,9 @@ pub mod asynchronous;
 mod sys;
 
 use std::collections::VecDeque;
+use std::io;
 use std::io::Read;
 use std::io::Write;
-use std::io::{self};
 use std::ops::DerefMut;
 use std::result;
 use std::sync::Arc;

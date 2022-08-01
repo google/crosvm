@@ -9,11 +9,11 @@ use std::future::pending;
 use std::future::Future;
 use std::num::Wrapping;
 use std::sync::Arc;
+use std::task;
 use std::task::Poll;
 use std::task::Waker;
-use std::task::{self};
+use std::thread;
 use std::thread::ThreadId;
-use std::thread::{self};
 use std::time::Duration;
 use std::time::Instant;
 
@@ -511,8 +511,8 @@ mod test {
     use std::fs::OpenOptions;
     use std::mem;
     use std::pin::Pin;
+    use std::thread;
     use std::thread::JoinHandle;
-    use std::thread::{self};
     use std::time::Instant;
 
     use futures::channel::mpsc;
@@ -521,9 +521,9 @@ mod test {
     use futures::future::select;
     use futures::future::Either;
     use futures::sink::SinkExt;
+    use futures::stream;
     use futures::stream::FuturesUnordered;
     use futures::stream::StreamExt;
-    use futures::stream::{self};
 
     use super::*;
     use crate::File;

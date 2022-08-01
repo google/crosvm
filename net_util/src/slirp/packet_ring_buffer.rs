@@ -3,8 +3,8 @@
 // found in the LICENSE file.
 
 use std::collections::VecDeque;
+use std::fmt;
 use std::fmt::Display;
-use std::fmt::{self};
 use std::time::Duration;
 
 use pcap_file::pcap::PacketHeader;
