@@ -861,12 +861,12 @@ impl DecoderSession for VaapiDecoderSession {
 
         match frames {
             Ok(frames) => {
-                for decoded_frame in frames {
-                    if let Some(params) = self.codec.drc() {
-                        self.change_resolution(params)
-                            .map_err(VideoError::BackendFailure)?;
-                    }
+                if let Some(params) = self.codec.drc() {
+                    self.change_resolution(params)
+                        .map_err(VideoError::BackendFailure)?;
+                }
 
+                for decoded_frame in frames {
                     self.ready_queue.push_back(decoded_frame);
 
                     self.event_queue
