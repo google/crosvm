@@ -239,16 +239,22 @@ def build_all_binaries(target: TestTarget, crosvm_direct: bool):
 
     print("Building crosvm workspace")
     features = BUILD_FEATURES[str(target.build_triple)]
+    extra_args = []
     if crosvm_direct:
         features += ",direct"
+        extra_args.append("--no-default-features")
+
+    cargo_args = [
+        "--features=" + features,
+        f"--target={target.build_triple}",
+        "--verbose",
+        "--workspace",
+        *[f"--exclude={crate}" for crate in get_workspace_excludes(target.build_triple)],
+    ]
+    cargo_args.extend(extra_args)
+
     yield from cargo_build_executables(
-        [
-            "--features=" + features,
-            f"--target={target.build_triple}",
-            "--verbose",
-            "--workspace",
-            *[f"--exclude={crate}" for crate in get_workspace_excludes(target.build_triple)],
-        ],
+        cargo_args,
         cwd=CROSVM_ROOT,
         env=build_env,
     )
