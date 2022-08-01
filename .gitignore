@@ -3,7 +3,6 @@ target/
 **/*.rs.bk
 **/*.sw[po]
 **/*.orig
-**/Cargo.lock
 **/*.pyc
 lcov.info
 .idea
