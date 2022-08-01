@@ -5,6 +5,8 @@
 use audio_streams::shm_streams::NullShmStreamSource;
 use audio_streams::shm_streams::ShmStreamSource;
 #[cfg(feature = "audio_cras")]
+use base::error;
+#[cfg(feature = "audio_cras")]
 use libcras::CrasClient;
 #[cfg(feature = "audio_cras")]
 use libcras::CrasClientType;
