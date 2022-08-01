@@ -323,7 +323,7 @@ impl TouchDeviceOption {
     }
 
     /// If the user specifies the size, use it. Otherwise, use the default values.
-    #[cfg(feature = "gpu")]
+    #[cfg(any(unix, feature = "gpu"))]
     pub fn get_size(&self) -> (u32, u32) {
         (
             self.width.unwrap_or(self.default_width),

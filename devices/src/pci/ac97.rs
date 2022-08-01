@@ -13,8 +13,6 @@ use base::RawDescriptor;
 #[cfg(windows)]
 use base::Tube;
 #[cfg(feature = "audio_cras")]
-use libcras::CrasClient;
-#[cfg(feature = "audio_cras")]
 use libcras::CrasClientType;
 #[cfg(feature = "audio_cras")]
 use libcras::CrasSocketType;

@@ -4,8 +4,14 @@
 
 use audio_streams::shm_streams::NullShmStreamSource;
 use audio_streams::shm_streams::ShmStreamSource;
-use base::error;
-use serde::{Deserialize, Serialize};
+#[cfg(feature = "audio_cras")]
+use libcras::CrasClient;
+#[cfg(feature = "audio_cras")]
+use libcras::CrasClientType;
+#[cfg(feature = "audio_cras")]
+use libcras::CrasSocketType;
+use serde::Deserialize;
+use serde::Serialize;
 use vm_memory::GuestMemory;
 
 use crate::pci::ac97::Ac97Dev;
@@ -26,10 +32,10 @@ pub enum Ac97Backend {
 impl Ac97Dev {
     pub(in crate::pci::ac97) fn initialize_backend(
         ac97_backend: &Ac97Backend,
-        mem: GuestMemory,
+        #[allow(unused_variables)] mem: GuestMemory,
         #[allow(unused_variables)] param: &Ac97Parameters,
     ) -> Result<Self> {
-        match ac97_backend {
+        match *ac97_backend {
             #[cfg(feature = "audio_cras")]
             Ac97Backend::Cras => Self::create_cras_audio_device(param, mem.clone()).or_else(|e| {
                 error!(
@@ -38,10 +44,6 @@ impl Ac97Dev {
                 );
                 Ok(Self::create_null_audio_device(mem))
             }),
-            _ => {
-                error!("Invalid ac97_backend. Fallback to null audio device");
-                Ok(Self::create_null_audio_device(mem))
-            }
         }
     }
 
@@ -71,10 +73,9 @@ impl Ac97Dev {
     /// Return the minijail policy file path for the current Ac97Dev.
     pub fn minijail_policy(&self) -> &'static str {
         match &self.backend {
-            crate::pci::ac97::Ac97Backend::System(backend) => match backend {
+            crate::pci::ac97::Ac97Backend::System(backend) => match *backend {
                 #[cfg(feature = "audio_cras")]
                 Ac97Backend::Cras => "cras_audio_device",
-                _ => "null_audio_device",
             },
             crate::pci::ac97::Ac97Backend::NULL => "null_audio_device",
         }
