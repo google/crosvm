@@ -1167,6 +1167,10 @@ pub struct RunCommand {
     ///        for this device
     pub vfio: Vec<VfioCommand>,
     #[cfg(unix)]
+    #[argh(switch)]
+    /// isolate all hotplugged passthrough vfio device behind virtio-iommu
+    pub vfio_isolate_hotplug: bool,
+    #[cfg(unix)]
     #[argh(option, arg_name = "PATH", from_str_fn(parse_vfio_platform))]
     /// path to sysfs of platform pass through
     pub vfio_platform: Vec<VfioCommand>,
@@ -1861,6 +1865,7 @@ impl TryFrom<RunCommand> for super::config::Config {
         {
             cfg.vfio.extend(cmd.vfio);
             cfg.vfio.extend(cmd.vfio_platform);
+            cfg.vfio_isolate_hotplug = cmd.vfio_isolate_hotplug;
         }
 
         // Now do validation of constructed config

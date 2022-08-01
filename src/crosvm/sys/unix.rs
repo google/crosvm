@@ -1615,7 +1615,8 @@ where
         &mut devices,
     )?;
 
-    let iommu_host_tube = if !iommu_attached_endpoints.is_empty() || !hp_endpoints_ranges.is_empty()
+    let iommu_host_tube = if !iommu_attached_endpoints.is_empty()
+        || (cfg.vfio_isolate_hotplug && !hp_endpoints_ranges.is_empty())
     {
         let (iommu_host_tube, iommu_device_tube) = Tube::pair().context("failed to create tube")?;
         let iommu_dev = create_iommu_device(
@@ -1878,6 +1879,11 @@ fn handle_vfio_command<V: VmArch, Vcpu: VcpuArch>(
     add: bool,
     hp_interrupt: bool,
 ) -> VmResponse {
+    let iommu_host_tube = if cfg.vfio_isolate_hotplug {
+        iommu_host_tube
+    } else {
+        &None
+    };
     let ret = if add {
         add_vfio_device(
             linux,

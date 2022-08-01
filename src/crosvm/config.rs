@@ -1400,6 +1400,8 @@ pub struct Config {
     pub vcpu_count: Option<usize>,
     #[cfg(unix)]
     pub vfio: Vec<super::sys::config::VfioCommand>,
+    #[cfg(unix)]
+    pub vfio_isolate_hotplug: bool,
     pub vhost_net: bool,
     #[cfg(unix)]
     pub vhost_net_device_path: PathBuf,
@@ -1589,6 +1591,8 @@ impl Default for Config {
             vcpu_count: None,
             #[cfg(unix)]
             vfio: Vec::new(),
+            #[cfg(unix)]
+            vfio_isolate_hotplug: false,
             vhost_net: false,
             #[cfg(unix)]
             vhost_net_device_path: PathBuf::from(VHOST_NET_PATH),
