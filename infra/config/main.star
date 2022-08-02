@@ -159,6 +159,7 @@ luci.notifier(
     on_status_change = True,
     notify_emails = [
         "denniskempin@google.com",
+        "keiichiw@google.com",
     ],
 )
 
