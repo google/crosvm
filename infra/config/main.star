@@ -383,6 +383,14 @@ infra_builder(
 )
 
 infra_builder(
+    name = "build_coverage",
+    executable = luci.recipe(
+        name = "build_coverage",
+    ),
+    postsubmit = True,
+)
+
+infra_builder(
     name = "update_chromeos_merges",
     executable = luci.recipe(
         name = "update_chromeos_merges",
