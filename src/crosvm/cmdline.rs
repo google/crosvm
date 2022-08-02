@@ -1213,7 +1213,7 @@ pub struct RunCommand {
     pub vhost_user_wl: Option<VhostUserWlOption>,
     #[cfg(unix)]
     #[argh(option, arg_name = "SOCKET_PATH")]
-    /// path to a socket for vhost-user vsock
+    /// path to the vhost-vsock device. (default /dev/vhost-vsock)
     pub vhost_vsock_device: Option<PathBuf>,
     #[cfg(unix)]
     #[argh(option, arg_name = "FD")]
