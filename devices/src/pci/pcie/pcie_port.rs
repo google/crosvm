@@ -305,7 +305,6 @@ impl PciePort {
                 {
                     self.removed_downstream_valid = true;
                     self.slot_status &= !PCIE_SLTSTA_PDS;
-                    self.slot_status |= PCIE_SLTSTA_PDC;
                     self.trigger_hp_interrupt();
                 }
 
@@ -476,12 +475,13 @@ impl PciePort {
         }
     }
 
-    fn trigger_hp_interrupt(&self) {
+    fn trigger_hp_interrupt(&mut self) {
         let slot_control = self.get_slot_control();
-        if (slot_control & PCIE_SLTCTL_HPIE) != 0
-            && (self.slot_status & slot_control & (PCIE_SLTCTL_ABPE | PCIE_SLTCTL_PDCE)) != 0
-        {
-            trigger_interrupt(&self.msi_config)
+        if (slot_control & PCIE_SLTCTL_HPIE) != 0 {
+            self.set_slot_status(PCIE_SLTSTA_PDC);
+            if (self.slot_status & slot_control & (PCIE_SLTCTL_ABPE | PCIE_SLTCTL_PDCE)) != 0 {
+                trigger_interrupt(&self.msi_config)
+            }
         }
     }
 

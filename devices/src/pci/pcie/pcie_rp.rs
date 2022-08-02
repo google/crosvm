@@ -142,7 +142,7 @@ impl HotPlugBus for PcieRootPort {
         }
 
         self.pcie_port
-            .set_slot_status(PCIE_SLTSTA_PDS | PCIE_SLTSTA_PDC | PCIE_SLTSTA_ABP);
+            .set_slot_status(PCIE_SLTSTA_PDS | PCIE_SLTSTA_ABP);
         self.pcie_port.trigger_hp_or_pme_interrupt();
     }
 
@@ -159,8 +159,7 @@ impl HotPlugBus for PcieRootPort {
                 self.removed_downstream.push(*guest_pci_addr);
             }
 
-            self.pcie_port
-                .set_slot_status(PCIE_SLTSTA_PDC | PCIE_SLTSTA_ABP);
+            self.pcie_port.set_slot_status(PCIE_SLTSTA_ABP);
             self.pcie_port.trigger_hp_or_pme_interrupt();
 
             if self.pcie_port.is_host() {
