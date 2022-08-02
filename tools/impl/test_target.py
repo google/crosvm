@@ -344,6 +344,7 @@ def exec_file_on_target(
     timeout: int,
     args: List[str] = [],
     extra_files: List[Path] = [],
+    profile_file: Optional[Path] = None,
     **kwargs: Any,
 ):
     """Executes a file on the test target.
@@ -370,6 +371,8 @@ def exec_file_on_target(
                 env["PATH"] += ";" + str(find_rust_lib_dir())
         else:
             raise Exception(f"Unsupported build target: {os.name}")
+        if profile_file:
+            env["LLVM_PROFILE_FILE"] = str(profile_file)
 
         cmd_line = [*prefix, str(filepath), *args]
         return subprocess.run(
@@ -383,6 +386,8 @@ def exec_file_on_target(
         filename = Path(filepath).name
         target.ssh.upload_files([filepath] + extra_files, quiet=True)
         cmd_line = [*prefix, f"./{filename}", *args]
+        if profile_file:
+            raise Exception("Coverage collection on remote hosts is not supported.")
         try:
             result = target.ssh.run(
                 f"chmod +x {filename} && sudo LD_LIBRARY_PATH=. {' '.join(cmd_line)}",

@@ -13,7 +13,7 @@ import subprocess
 import sys
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Dict, Iterable, List, NamedTuple
+from typing import Dict, Iterable, List, NamedTuple, Optional
 
 from . import test_target, testvm
 from .test_target import TestTarget, Triple
@@ -65,12 +65,20 @@ class ExecutableResults(object):
     """Container for results of a test executable."""
 
     def __init__(
-        self, name: str, success: bool, test_log: str, previous_attempts: List["ExecutableResults"]
+        self,
+        name: str,
+        binary_file: Path,
+        success: bool,
+        test_log: str,
+        previous_attempts: List["ExecutableResults"],
+        profile_file: Optional[Path],
     ):
         self.name = name
+        self.binary_file = binary_file
         self.success = success
         self.test_log = test_log
         self.previous_attempts = previous_attempts
+        self.profile_file = profile_file
 
 
 class Executable(NamedTuple):
@@ -232,10 +240,12 @@ def build_common_crate(build_env: Dict[str, str], crate: Crate):
     return list(cargo_build_executables([], env=build_env, cwd=crate.path))
 
 
-def build_all_binaries(target: TestTarget, crosvm_direct: bool):
+def build_all_binaries(target: TestTarget, crosvm_direct: bool, instrument_coverage: bool):
     """Discover all crates and build them."""
     build_env = os.environ.copy()
     build_env.update(test_target.get_cargo_env(target))
+    if instrument_coverage:
+        build_env["RUSTFLAGS"] = "-C instrument-coverage"
 
     print("Building crosvm workspace")
     features = BUILD_FEATURES[str(target.build_triple)]
@@ -276,7 +286,7 @@ def get_test_timeout(target: TestTarget, executable: Executable):
         return timeout * EMULATION_TIMEOUT_MULTIPLIER
 
 
-def execute_test(target: TestTarget, attempts: int, executable: Executable):
+def execute_test(target: TestTarget, attempts: int, collect_coverage: bool, executable: Executable):
     """
     Executes a single test on the given test targed
 
@@ -301,29 +311,43 @@ def execute_test(target: TestTarget, attempts: int, executable: Executable):
             print(f"Running test {executable.name} on {target}... (attempt {i}/{attempts})")
 
         try:
+            profile_file = None
+            if collect_coverage:
+                profile_file = binary_path.with_suffix(".profraw")
+
             # Pipe stdout/err to be printed in the main process if needed.
             test_process = test_target.exec_file_on_target(
                 target,
                 binary_path,
                 args=args,
                 timeout=get_test_timeout(target, executable),
+                profile_file=profile_file,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
             )
+            if profile_file and not profile_file.exists():
+                print()
+                print(f"Warning: Running {binary_path} did not produce profile file.")
+                profile_file = None
+
             result = ExecutableResults(
                 executable.name,
+                binary_path,
                 test_process.returncode == 0,
                 test_process.stdout,
                 previous_attempts,
+                profile_file,
             )
         except subprocess.TimeoutExpired as e:
             # Append a note about the timeout to the stdout of the process.
             msg = f"\n\nProcess timed out after {e.timeout}s\n"
             result = ExecutableResults(
                 executable.name,
+                binary_path,
                 False,
                 e.stdout.decode("utf-8") + msg,
                 previous_attempts,
+                None,
             )
         if result.success:
             break
@@ -358,6 +382,7 @@ def execute_all(
     executables: List[Executable],
     target: test_target.TestTarget,
     attempts: int,
+    collect_coverage: bool,
 ):
     """Executes all tests in the `executables` list in parallel."""
 
@@ -369,7 +394,7 @@ def execute_all(
     sys.stdout.flush()
     with Pool(PARALLELISM) as pool:
         for result in pool.imap(
-            functools.partial(execute_test, target, attempts), pool_executables
+            functools.partial(execute_test, target, attempts, collect_coverage), pool_executables
         ):
             print_test_progress(result)
             yield result
@@ -379,7 +404,7 @@ def execute_all(
     sys.stdout.write(f"Running {len(exclusive_executables)} test binaries on {target}")
     sys.stdout.flush()
     for executable in exclusive_executables:
-        result = execute_test(target, attempts, executable)
+        result = execute_test(target, attempts, collect_coverage, executable)
         print_test_progress(result)
         yield result
     print()
@@ -390,6 +415,27 @@ def find_crosvm_binary(executables: List[Executable]):
         if not executable.is_test and executable.cargo_target == "crosvm":
             return executable
     raise Exception("Cannot find crosvm executable")
+
+
+def generate_lcov(results: List[ExecutableResults], lcov_file: str):
+    print("Merging profiles")
+    merged_file = testvm.cargo_target_dir() / "merged.profraw"
+    profiles = [str(r.profile_file) for r in results if r.profile_file]
+    subprocess.check_call(["rust-profdata", "merge", "-sparse", *profiles, "-o", str(merged_file)])
+
+    print("Exporting report")
+    lcov_data = subprocess.check_output(
+        [
+            "rust-cov",
+            "export",
+            "--format=lcov",
+            "--ignore-filename-regex='/.cargo/registry'",
+            f"--instr-profile={merged_file}",
+            *(f"--object={r.binary_file}" for r in results),
+        ],
+        text=True,
+    )
+    open(lcov_file, "w").write(lcov_data)
 
 
 def main():
@@ -423,6 +469,10 @@ def main():
     parser.add_argument(
         "--build-only",
         action="store_true",
+    )
+    parser.add_argument(
+        "--generate-lcov",
+        help="Generate an lcov code coverage profile",
     )
     parser.add_argument(
         "--crosvm-direct",
@@ -465,6 +515,7 @@ def main():
         print()
         build_target = Triple.from_shorthand(args.arch)
 
+    collect_coverage = args.generate_lcov
     emulator_cmd = args.emulator.split(" ") if args.emulator else None
     build_target = Triple.from_shorthand(args.build_target) if args.build_target else None
     target = test_target.TestTarget(args.target, build_target, emulator_cmd)
@@ -475,7 +526,7 @@ def main():
         testvm.build_if_needed(target.vm)
         testvm.up(target.vm)
 
-    executables = list(build_all_binaries(target, args.crosvm_direct))
+    executables = list(build_all_binaries(target, args.crosvm_direct, collect_coverage))
 
     if args.build_only:
         print("Not running tests as requested.")
@@ -501,8 +552,11 @@ def main():
         if args.repeat > 1:
             print()
             print(f"Round {i+1}/{args.repeat}:")
-        all_results.extend(execute_all(test_executables, target, args.retry + 1))
+        all_results.extend(execute_all(test_executables, target, args.retry + 1, collect_coverage))
         random.shuffle(test_executables)
+
+    if args.generate_lcov:
+        generate_lcov(all_results, args.generate_lcov)
 
     flakes = [r for r in all_results if r.previous_attempts]
     if flakes:
