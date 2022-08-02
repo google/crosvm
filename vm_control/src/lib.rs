@@ -55,6 +55,8 @@ use base::Result;
 use base::SafeDescriptor;
 use base::SharedMemory;
 use base::Tube;
+use hypervisor::Datamatch;
+use hypervisor::IoEventAddress;
 use hypervisor::IrqRoute;
 use hypervisor::IrqSource;
 pub use hypervisor::MemSlot;
@@ -391,6 +393,14 @@ pub enum VmMemoryRequest {
     },
     /// Unregister the given memory slot that was previously registered with `RegisterMemory`.
     UnregisterMemory(MemSlot),
+    /// Register an ioeventfd
+    IoEvent {
+        evt: Event,
+        allocation: Alloc,
+        offset: u64,
+        datamatch: Datamatch,
+        register: bool,
+    },
 }
 
 /// Struct for managing `VmMemoryRequest`s IOMMU related state.
@@ -518,6 +528,40 @@ impl VmMemoryRequest {
                 Ok(_) => VmMemoryResponse::Ok,
                 Err(e) => VmMemoryResponse::Err(e),
             },
+            IoEvent {
+                evt,
+                allocation,
+                offset,
+                datamatch,
+                register,
+            } => {
+                let len = match datamatch {
+                    Datamatch::AnyLength => 1,
+                    Datamatch::U8(_) => 1,
+                    Datamatch::U16(_) => 2,
+                    Datamatch::U32(_) => 4,
+                    Datamatch::U64(_) => 8,
+                };
+                let addr = match sys_allocator
+                    .mmio_allocator_any()
+                    .address_from_pci_offset(allocation, offset, len)
+                {
+                    Ok(addr) => addr,
+                    Err(e) => {
+                        error!("error getting target address: {:#}", e);
+                        return VmMemoryResponse::Err(SysError::new(EINVAL));
+                    }
+                };
+                let res = if register {
+                    vm.register_ioevent(&evt, IoEventAddress::Mmio(addr), datamatch)
+                } else {
+                    vm.unregister_ioevent(&evt, IoEventAddress::Mmio(addr), datamatch)
+                };
+                match res {
+                    Ok(_) => VmMemoryResponse::Ok,
+                    Err(e) => VmMemoryResponse::Err(e),
+                }
+            }
         }
     }
 }
