@@ -12,7 +12,7 @@ DEPS = [
 
 def RunSteps(api):
     with api.crosvm.source_context():
-        pass
+        api.crosvm.get_git_sha()
 
 
 def GenTests(api):

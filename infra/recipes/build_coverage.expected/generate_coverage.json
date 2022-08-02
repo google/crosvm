@@ -1,0 +1,62 @@
+[
+  {
+    "cmd": [
+      "vpython3",
+      "[CACHE]/builder/crosvm/tools/dev_container",
+      "--verbose",
+      "./tools/run_tests",
+      "--verbose",
+      "--generate-lcov=coverage.lcov"
+    ],
+    "cwd": "[CACHE]/builder/crosvm",
+    "env": {
+      "CROSVM_CONTAINER_CACHE": "[CACHE]/builder/dev_container"
+    },
+    "luci_context": {
+      "realm": {
+        "name": "crosvm/crosvm:ci"
+      },
+      "resultdb": {
+        "current_invocation": {
+          "name": "invocations/build:8945511751514863184",
+          "update_token": "token"
+        },
+        "hostname": "rdbhost"
+      }
+    },
+    "name": "Run crosvm tests"
+  },
+  {
+    "cmd": [
+      "bash",
+      "RECIPE[crosvm::build_coverage].resources/codecov_wrapper.sh",
+      "[START_DIR]/cipd_tool/crosvm/codecov/latest/codecov",
+      "--nonZero",
+      "--slug",
+      "google/crosvm",
+      "--sha",
+      "",
+      "--branch",
+      "main",
+      "-f",
+      "coverage.lcov"
+    ],
+    "cwd": "[CACHE]/builder/crosvm",
+    "env": {
+      "CROSVM_CONTAINER_CACHE": "[CACHE]/builder/dev_container"
+    },
+    "luci_context": {
+      "realm": {
+        "name": "crosvm/crosvm:ci"
+      },
+      "resultdb": {
+        "current_invocation": {
+          "name": "invocations/build:8945511751514863184",
+          "update_token": "token"
+        },
+        "hostname": "rdbhost"
+      }
+    },
+    "name": "Uploading to covecov.io"
+  }
+]

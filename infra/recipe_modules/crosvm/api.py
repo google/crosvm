@@ -136,6 +136,14 @@ class CrosvmApi(recipe_api.RecipeApi):
             if not self.m.platform.is_win:
                 self.__set_git_config("credential.helper", "gcloud.sh")
 
+    def get_git_sha(self):
+        result = self.m.step(
+            "Get git sha", ["git", "rev-parse", "HEAD"], stdout=self.m.raw_io.output()
+        )
+        value = result.stdout.strip().decode("utf-8")
+        result.presentation.step_text = value
+        return value
+
     def __prepare_rust(self):
         """
         Prepares the rust toolchain via rustup.
