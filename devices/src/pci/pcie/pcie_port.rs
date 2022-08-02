@@ -308,6 +308,16 @@ impl PciePort {
                     self.trigger_hp_interrupt();
                 }
 
+                // Guest enable hotplug interrupt and has hotplug interrupt
+                // pending, inject it right row.
+                if (old_control & PCIE_SLTCTL_HPIE == 0)
+                    && (value & PCIE_SLTCTL_HPIE == PCIE_SLTCTL_HPIE)
+                    && self.hp_interrupt_pending
+                {
+                    self.hp_interrupt_pending = false;
+                    self.trigger_hp_interrupt();
+                }
+
                 if old_control != value {
                     // send Command completed events
                     self.slot_status |= PCIE_SLTSTA_CC;
@@ -368,10 +378,6 @@ impl PciePort {
                                 r.trigger_pme_interrupt();
                             } else {
                                 r.status &= !PCIE_ROOTSTA_PME_STATUS;
-                                if self.hp_interrupt_pending {
-                                    self.hp_interrupt_pending = false;
-                                    self.trigger_hp_interrupt();
-                                }
                             }
                         }
                     } else {
