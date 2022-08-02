@@ -14,19 +14,3 @@ pub mod plugin;
 pub mod sys;
 
 pub mod argument;
-
-macro_rules! check_opt_path {
-    ($struct:ident.$field:ident) => {
-        if let Some(p) = &$struct.$field {
-            if !p.exists() {
-                return Err(format!(
-                    "{} path {:?} does not exist",
-                    stringify!($field),
-                    p
-                ));
-            }
-        }
-    };
-}
-
-pub(crate) use check_opt_path;

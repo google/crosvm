@@ -50,7 +50,6 @@ use vm_control::BatteryType;
 use x86_64::set_enable_pnp_data_msr_config;
 
 use super::argument::parse_hex_or_decimal;
-use super::check_opt_path;
 pub(crate) use super::sys::HypervisorKind;
 
 cfg_if::cfg_if! {
@@ -1541,46 +1540,8 @@ impl Default for Config {
 }
 
 pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
-    if !match &cfg.executable_path {
-        Some(Executable::Bios(p)) => p,
-        Some(Executable::Kernel(p)) => p,
-        Some(Executable::Plugin(p)) => p,
-        None => {
-            return Err("Executable is not specified".to_string());
-        }
-    }
-    .exists()
-    {
-        return Err("Executable does not exist".to_string());
-    }
-
-    check_opt_path!(cfg.android_fstab);
-
-    for disk in cfg.disks.iter() {
-        if !disk.path.exists() {
-            return Err(format!("Disk path {:?} does not exist", disk.path));
-        }
-    }
-
-    for disk in cfg.pmem_devices.iter() {
-        if !disk.path.exists() {
-            return Err(format!("PMEM device path {:?} does not exist", disk.path));
-        }
-    }
-
-    for dev in cfg.virtio_input_evdevs.iter() {
-        if !dev.exists() {
-            return Err(format!("Virtio evdev device path {:?} does not exist", dev));
-        }
-    }
-
-    for p in cfg.acpi_tables.iter() {
-        if !p.exists() {
-            return Err(format!("ACPI table path {:?} does not exist", p));
-        }
-        if !p.is_file() {
-            return Err(String::from("the acpi-table path should be a file"));
-        }
+    if cfg.executable_path.is_none() {
+        return Err("Executable is not specified".to_string());
     }
 
     if cfg.plugin_root.is_some() && !executable_is_plugin(&cfg.executable_path) {

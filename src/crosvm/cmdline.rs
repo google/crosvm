@@ -1311,12 +1311,7 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.vhost_net_device_path = p;
         }
 
-        if let Some(p) = cmd.android_fstab {
-            if !p.exists() {
-                return Err(format!("android-fstab path {:?} does not exist", p));
-            }
-            cfg.android_fstab = Some(p);
-        }
+        cfg.android_fstab = cmd.android_fstab;
 
         cfg.params.extend(cmd.params);
 
