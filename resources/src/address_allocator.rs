@@ -5,6 +5,7 @@
 use std::cmp;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
+use std::ops::Bound;
 
 use crate::AddressRange;
 use crate::Alloc;
@@ -312,40 +313,55 @@ impl AddressAllocator {
             return Err(Error::AllocSizeZero);
         }
 
-        let mut left = None;
-        let mut right = None;
-        // simple coalescing with linear search over free regions.
-        //
-        // Calculating the distance between start and end of two regions we can
-        // detect if they are disjoint (>1), adjacent (=1) or possibly
-        // overlapping (<1). Saturating arithmetic is used to avoid overflow.
-        // Overlapping regions are detected if both oposite ends are overlapping.
-        // Algorithm assumes all existing regions are disjoined and represented
-        // as pair of inclusive location point (start, end), where end >= start.
-        for range in self.regions.iter() {
-            match (
-                slot.start.saturating_sub(range.end),
-                range.start.saturating_sub(slot.end),
-            ) {
-                (1, 0) => {
-                    left = Some(*range);
-                }
-                (0, 1) => {
-                    right = Some(*range);
-                }
-                (0, 0) => {
-                    return Err(Error::RegionOverlap(slot));
-                }
-                (_, _) => (),
+        // Find the region with the highest starting address that is at most
+        // |slot.start|. Check if it overlaps with |slot|, or if it is adjacent to
+        // (and thus can be coalesced with) |slot|.
+        let mut smaller_merge = None;
+        if let Some(smaller) = self
+            .regions
+            .range((Bound::Unbounded, Bound::Included(slot)))
+            .max()
+        {
+            // If there is overflow, then |smaller| covers up through u64::MAX
+            let next_addr = smaller
+                .end
+                .checked_add(1)
+                .ok_or(Error::RegionOverlap(slot))?;
+            match next_addr.cmp(&slot.start) {
+                cmp::Ordering::Less => (),
+                cmp::Ordering::Equal => smaller_merge = Some(*smaller),
+                cmp::Ordering::Greater => return Err(Error::RegionOverlap(slot)),
             }
         }
-        if let Some(left) = left {
-            self.regions.remove(&left);
-            slot.start = left.start;
+
+        // Find the region with the smallest starting address that is greater than
+        // |slot.start|. Check if it overlaps with |slot|, or if it is adjacent to
+        // (and thus can be coalesced with) |slot|.
+        let mut larger_merge = None;
+        if let Some(larger) = self
+            .regions
+            .range((Bound::Excluded(slot), Bound::Unbounded))
+            .min()
+        {
+            // If there is underflow, then |larger| covers down through 0
+            let prev_addr = larger
+                .start
+                .checked_sub(1)
+                .ok_or(Error::RegionOverlap(slot))?;
+            match slot.end.cmp(&prev_addr) {
+                cmp::Ordering::Less => (),
+                cmp::Ordering::Equal => larger_merge = Some(*larger),
+                cmp::Ordering::Greater => return Err(Error::RegionOverlap(slot)),
+            }
         }
-        if let Some(right) = right {
-            self.regions.remove(&right);
-            slot.end = right.end;
+
+        if let Some(smaller) = smaller_merge {
+            self.regions.remove(&smaller);
+            slot.start = smaller.start;
+        }
+        if let Some(larger) = larger_merge {
+            self.regions.remove(&larger);
+            slot.end = larger.end;
         }
         self.regions.insert(slot);
 
@@ -950,6 +966,51 @@ mod tests {
         assert_eq!(
             pool.allocate(0x1004, Alloc::Anon(0), String::from("bar0")),
             Ok(0x1000)
+        );
+    }
+
+    #[test]
+    fn coalescing_u64_limits() {
+        let mut pool = AddressAllocator::new(
+            AddressRange {
+                start: 0,
+                end: u64::MAX - 1,
+            },
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(pool
+            .insert_at(AddressRange {
+                start: u64::MAX,
+                end: u64::MAX,
+            })
+            .is_ok());
+        assert!(pool
+            .insert_at(AddressRange {
+                start: u64::MAX,
+                end: u64::MAX,
+            })
+            .is_err());
+        assert_eq!(
+            pool.allocate(u64::MAX, Alloc::Anon(0), String::from("bar0")),
+            Ok(0)
+        );
+
+        let mut pool = AddressAllocator::new(
+            AddressRange {
+                start: 1,
+                end: u64::MAX,
+            },
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(pool.insert_at(AddressRange { start: 0, end: 0 }).is_ok());
+        assert!(pool.insert_at(AddressRange { start: 0, end: 0 }).is_err());
+        assert_eq!(
+            pool.allocate(u64::MAX, Alloc::Anon(0), String::from("bar0")),
+            Ok(0)
         );
     }
 
