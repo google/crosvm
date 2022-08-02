@@ -39,8 +39,7 @@ pub use gpu_display::EventDevice;
 use gpu_display::*;
 pub use parameters::DisplayParameters as GpuDisplayParameters;
 pub use parameters::GpuParameters;
-pub use parameters::DEFAULT_DISPLAY_HEIGHT;
-pub use parameters::DEFAULT_DISPLAY_WIDTH;
+pub use parameters::DEFAULT_REFRESH_RATE;
 use rutabaga_gfx::*;
 use serde::Deserialize;
 use serde::Serialize;
@@ -987,6 +986,11 @@ impl Gpu {
         base_features: u64,
         channels: BTreeMap<String, PathBuf>,
     ) -> Gpu {
+        let mut display_params = gpu_parameters.display_params.clone();
+        if display_params.is_empty() {
+            display_params.push(Default::default());
+        }
+
         let mut rutabaga_channels: Vec<RutabagaChannel> = Vec::new();
         for (channel_name, path) in &channels {
             match &channel_name[..] {
@@ -1009,16 +1013,9 @@ impl Gpu {
             GpuMode::ModeGfxstream => RutabagaComponentType::Gfxstream,
         };
 
-        let mut display_width = DEFAULT_DISPLAY_WIDTH;
-        let mut display_height = DEFAULT_DISPLAY_HEIGHT;
-        if !gpu_parameters.display_params.is_empty() {
-            display_width = gpu_parameters.display_params[0].width;
-            display_height = gpu_parameters.display_params[0].height;
-        }
-
         let rutabaga_builder = RutabagaBuilder::new(component, gpu_parameters.context_mask)
-            .set_display_width(display_width)
-            .set_display_height(display_height)
+            .set_display_width(display_params[0].width)
+            .set_display_height(display_params[0].height)
             .set_rutabaga_channels(rutabaga_channels_opt)
             .set_use_egl(gpu_parameters.renderer_use_egl)
             .set_use_gles(gpu_parameters.renderer_use_gles)
@@ -1039,7 +1036,7 @@ impl Gpu {
             kill_evt: None,
             worker_thread: None,
             display_backends,
-            display_params: gpu_parameters.display_params.clone(),
+            display_params,
             rutabaga_builder: Some(rutabaga_builder),
             pci_bar_size: gpu_parameters.pci_bar_size,
             map_request,

@@ -16,6 +16,8 @@ use devices::virtio::GpuDisplayParameters;
 use devices::virtio::GpuMode;
 #[cfg(feature = "gpu")]
 use devices::virtio::GpuParameters;
+#[cfg(feature = "gpu")]
+use devices::virtio::DEFAULT_REFRESH_RATE;
 #[cfg(feature = "audio")]
 use devices::Ac97Parameters;
 use devices::SerialParameters;
@@ -97,7 +99,7 @@ fn parse_gpu_options_inner(s: &str) -> argument::Result<GpuParameters> {
     let mut dpi: Option<u32> = None;
     let mut display_mode: Option<String> = None;
     #[cfg(feature = "gfxstream")]
-    let mut vsync: Option<u32> = None;
+    let mut refresh_rate: Option<u32> = None;
     let opts = s
         .split(',')
         .map(|frag| frag.split('='))
@@ -319,21 +321,22 @@ fn parse_gpu_options_inner(s: &str) -> argument::Result<GpuParameters> {
             }
             #[cfg(feature = "gfxstream")]
             "refresh_rate" => {
-                if let Some(vsync) = vsync {
+                if let Some(refresh_rate) = refresh_rate {
                     return Err(argument::Error::TooManyArguments(format!(
                         "refresh_rate was already specified: {}",
-                        vsync
+                        refresh_rate
                     )));
                 }
-                vsync = Some(
-                    v.parse::<u32>()
-                        .map_err(|_| argument::Error::InvalidValue {
-                            value: v.to_string(),
-                            expected: String::from(
-                                "gpu parameter 'refresh_rate' must be a valid integer",
-                            ),
-                        })?,
-                );
+                refresh_rate =
+                    Some(
+                        v.parse::<u32>()
+                            .map_err(|_| argument::Error::InvalidValue {
+                                value: v.to_string(),
+                                expected: String::from(
+                                    "gpu parameter 'refresh_rate' must be a valid integer",
+                                ),
+                            })?,
+                    );
             }
             "display_mode" => {
                 if let Some(display_mode) = display_mode {
@@ -388,28 +391,33 @@ fn parse_gpu_options_inner(s: &str) -> argument::Result<GpuParameters> {
         }
     }
 
-    match display_mode.as_deref() {
-            Some("windowed") => gpu_params.display_params = GpuDisplayParameters::default_windowed(),
-            Some("borderless_full_screen") => gpu_params.display_params = GpuDisplayParameters::default_borderless_full_screen(),
-            None => {}
-            Some(display_mode) => return Err(argument::Error::InvalidValue {
+    let mut display_param = match display_mode.as_deref() {
+        Some("windowed") => GpuDisplayParameters::default_windowed(),
+        Some("borderless_full_screen") => GpuDisplayParameters::default_borderless_full_screen(),
+        None => Default::default(),
+        Some(display_mode) => {
+            return Err(argument::Error::InvalidValue {
                 value: display_mode.to_string(),
-                expected: String::from("gpu parameter 'display_mode' must be either 'borderless_full_screen' or 'windowed'")
+                expected: String::from(
+                    "gpu parameter 'display_mode' must be either 'borderless_full_screen' \
+                    or 'windowed'",
+                ),
             })
         }
+    };
 
     if let Some(hidden) = hidden {
-        gpu_params.display_params.hidden = hidden;
+        display_param.hidden = hidden;
     }
 
     #[cfg(feature = "gfxstream")]
     {
-        if let Some(vsync) = vsync {
-            gpu_params.vsync = vsync;
+        if let Some(refresh_rate) = refresh_rate {
+            gpu_params.refresh_rate = refresh_rate;
         }
     }
 
-    match gpu_params.display_params.display_mode {
+    match display_param.display_mode {
         GpuDisplayMode::Windowed {
             width: ref mut width_in_params,
             height: ref mut height_in_params,
@@ -452,13 +460,18 @@ fn parse_gpu_options_inner(s: &str) -> argument::Result<GpuParameters> {
         }
     }
 
+    gpu_params.display_params = vec![display_param];
     Ok(gpu_params)
 }
 
 #[cfg(feature = "gpu")]
 pub(crate) fn validate_gpu_config(cfg: &mut Config) -> Result<(), String> {
     if let Some(gpu_parameters) = cfg.gpu_parameters.as_ref() {
-        let (width, height) = gpu_parameters.display_params.get_virtual_display_size();
+        if gpu_parameters.display_params.is_empty() {
+            gpu_parameters.display_params.push(Default::default());
+        }
+
+        let (width, height) = gpu_parameters.display_params[0].get_virtual_display_size();
         for virtio_multi_touch in cfg.virtio_multi_touch.iter_mut() {
             virtio_multi_touch.set_default_size(width, height);
         }
@@ -466,7 +479,7 @@ pub(crate) fn validate_gpu_config(cfg: &mut Config) -> Result<(), String> {
             virtio_single_touch.set_default_size(width, height);
         }
 
-        let dpi = gpu_parameters.display_params.get_dpi();
+        let dpi = gpu_parameters.display_params[0].get_dpi();
         info!("using dpi {} on the Android guest", dpi);
         cfg.params.push(format!("androidboot.lcd_density={}", dpi));
     }
@@ -557,13 +570,12 @@ impl FromStr for HypervisorKind {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(feature = "gpu")]
-    use devices::virtio::gpu::GpuDisplayMode;
-
     #[cfg(any(feature = "audio", feature = "gpu"))]
     use super::*;
     #[cfg(feature = "gpu")]
     use crate::crosvm::sys::config::parse_gpu_options;
+    #[cfg(feature = "gpu")]
+    use devices::virtio::gpu::GpuDisplayMode;
 
     #[cfg(all(feature = "gpu", feature = "gfxstream"))]
     #[test]
@@ -681,7 +693,7 @@ mod tests {
             .unwrap()
             .display_params;
         assert!(matches!(
-            display_params.display_mode,
+            display_params[0].display_mode,
             GpuDisplayMode::Windowed { .. }
         ));
 
@@ -689,7 +701,7 @@ mod tests {
             .unwrap()
             .display_params;
         assert!(matches!(
-            display_params.display_mode,
+            display_params[0].display_mode,
             GpuDisplayMode::BorderlessFullScreen(_)
         ));
 
@@ -721,7 +733,7 @@ mod tests {
                 .unwrap()
                 .display_params;
         assert!(
-            matches!(display_params.display_mode, GpuDisplayMode::Windowed { width, .. } if width == WIDTH)
+            matches!(display_params[0].display_mode, GpuDisplayMode::Windowed { width, .. } if width == WIDTH)
         );
 
         let display_params =
@@ -729,7 +741,7 @@ mod tests {
                 .unwrap()
                 .display_params;
         assert!(
-            matches!(display_params.display_mode, GpuDisplayMode::Windowed { height, .. } if height == HEIGHT)
+            matches!(display_params[0].display_mode, GpuDisplayMode::Windowed { height, .. } if height == HEIGHT)
         );
 
         let display_params =
@@ -737,7 +749,7 @@ mod tests {
                 .unwrap()
                 .display_params;
         assert!(
-            matches!(display_params.display_mode, GpuDisplayMode::Windowed { dpi, .. } if dpi == DPI)
+            matches!(display_params[0].display_mode, GpuDisplayMode::Windowed { dpi, .. } if dpi == DPI)
         );
     }
 
@@ -747,12 +759,24 @@ mod tests {
         let display_params = parse_gpu_options(format!("hidden=true").as_str())
             .unwrap()
             .display_params;
-        assert!(display_params.hidden);
+        assert!(display_params[0].hidden);
 
         let display_params = parse_gpu_options(format!("hidden=false").as_str())
             .unwrap()
             .display_params;
-        assert!(matches!(display_params.hidden, false));
+        assert!(matches!(display_params[0].hidden, false));
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn parse_gpu_options_refresh_rate() {
+        const REFRESH_RATE: u32 = 120;
+        let display_params = parse_gpu_options(format!("refresh_rate={}", REFRESH_RATE).as_str())
+            .unwrap()
+            .display_params;
+        assert_eq!(display_params.refresh_rate, REFRESH_RATE);
+
+        assert!(parse_gpu_options(format!("refresh_rate=invalid_value").as_str()).is_err());
     }
 
     #[cfg(feature = "gpu")]

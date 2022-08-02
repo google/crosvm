@@ -14,12 +14,19 @@ use super::GpuMode;
 
 pub const DEFAULT_DISPLAY_WIDTH: u32 = 1280;
 pub const DEFAULT_DISPLAY_HEIGHT: u32 = 1024;
+pub const DEFAULT_REFRESH_RATE: u32 = 60;
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, FromKeyValues)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct DisplayParameters {
     pub width: u32,
     pub height: u32,
+    // TODO(lunpujun, b/213150276): pass this to display backend.
+    #[serde(default)]
+    pub hidden: bool,
+    // TODO(lunpujun, b/213149288): implement the virtio-gpu EDID command.
+    #[serde(default = "default_refresh_rate")]
+    pub refresh_rate: u32,
 }
 
 impl Default for DisplayParameters {
@@ -27,8 +34,14 @@ impl Default for DisplayParameters {
         DisplayParameters {
             width: DEFAULT_DISPLAY_WIDTH,
             height: DEFAULT_DISPLAY_HEIGHT,
+            hidden: false,
+            refresh_rate: DEFAULT_REFRESH_RATE,
         }
     }
+}
+
+fn default_refresh_rate() -> u32 {
+    DEFAULT_REFRESH_RATE
 }
 
 fn deserialize_wsi<'de, D: Deserializer<'de>>(
