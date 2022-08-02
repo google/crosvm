@@ -446,17 +446,15 @@ pub struct RunCommand {
     /// comma separated key=value pairs for setting up Ac97 devices.
     /// Can be given more than once.
     /// Possible key values:
-    ///     backend=(null, cras, vios) - Where to route the audio
+    ///     backend=(null, cras) - Where to route the audio
     ///          device. If not provided, backend will default to
-    ///          null. `null` for /dev/null, cras for CRAS server
-    ///          and vios for VioS server.
+    ///          null. `null` for /dev/null, cras for CRAS server.
     ///     capture - Enable audio capture
     ///     capture_effects - | separated effects to be enabled for
     ///         recording. The only supported effect value now is
     ///         EchoCancellation or aec.
     ///     client_type - Set specific client type for cras backend.
     ///     socket_type - Set specific socket type for cras backend.
-    ///     server - The to the VIOS server (unix socket)
     pub ac97: Vec<Ac97Parameters>,
     #[argh(option, long = "acpi-table", arg_name = "PATH")]
     /// path to user provided ACPI table

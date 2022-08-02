@@ -105,30 +105,6 @@ pub fn parse_ac97_options(
     Ok(())
 }
 
-#[cfg(feature = "audio")]
-pub fn check_ac97_backend(
-    #[allow(unused_variables)] ac97_params: &devices::Ac97Parameters,
-) -> Result<(), String> {
-    // server is required for and exclusive to vios backend
-    #[cfg(target_os = "android")]
-    match ac97_params.backend {
-        devices::Ac97Backend::VIOS => {
-            if ac97_params.vios_server_path.is_none() {
-                return Err(String::from("server argument is required for VIOS backend"));
-            }
-        }
-        _ => {
-            if ac97_params.vios_server_path.is_some() {
-                return Err(String::from(
-                    "server argument is exclusive to the VIOS backend",
-                ));
-            }
-        }
-    }
-
-    Ok(())
-}
-
 pub fn parse_coiommu_params(value: &str) -> Result<devices::CoIommuParameters, String> {
     let mut params: devices::CoIommuParameters = Default::default();
 

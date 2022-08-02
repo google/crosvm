@@ -885,8 +885,6 @@ pub fn parse_ac97_options(s: &str) -> Result<Ac97Parameters, String> {
         }
     }
 
-    super::sys::config::check_ac97_backend(&ac97_params)?;
-
     Ok(ac97_params)
 }
 
