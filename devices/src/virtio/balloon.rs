@@ -31,6 +31,7 @@ use data_model::Le32;
 use data_model::Le64;
 use futures::channel::mpsc;
 use futures::pin_mut;
+use futures::FutureExt;
 use futures::StreamExt;
 use remain::sorted;
 use thiserror::Error as ThisError;
@@ -303,19 +304,13 @@ fn parse_balloon_stats(reader: &mut Reader) -> BalloonStats {
 // signaled from the command socket that stats should be collected again.
 async fn handle_stats_queue(
     mem: &GuestMemory,
-    queue: Option<Queue>,
-    queue_event: Option<EventAsync>,
+    mut queue: Queue,
+    mut queue_event: EventAsync,
     mut stats_rx: mpsc::Receiver<u64>,
     command_tube: &AsyncTube,
     state: Arc<AsyncMutex<BalloonState>>,
     interrupt: Rc<RefCell<Interrupt>>,
 ) {
-    let mut queue = match queue {
-        None => std::future::pending().await,
-        Some(queue) => queue,
-    };
-    let mut queue_event = queue_event.expect("missing event");
-
     // Consume the first stats buffer sent from the guest at startup. It was not
     // requested by anyone, and the stats are stale.
     let mut index = match queue.next_async(mem, &mut queue_event).await {
@@ -404,17 +399,12 @@ async fn handle_event(
 // Async task that handles the events queue.
 async fn handle_events_queue(
     mem: &GuestMemory,
-    queue: Option<Queue>,
-    queue_event: Option<EventAsync>,
+    mut queue: Queue,
+    mut queue_event: EventAsync,
     state: Arc<AsyncMutex<BalloonState>>,
     interrupt: Rc<RefCell<Interrupt>>,
     command_tube: &AsyncTube,
 ) -> Result<()> {
-    let mut queue = match queue {
-        None => std::future::pending().await,
-        Some(queue) => queue,
-    };
-    let mut queue_event = queue_event.expect("missing event");
     loop {
         let avail_desc = queue
             .next_async(mem, &mut queue_event)
@@ -545,15 +535,19 @@ fn run_worker(
         // the id of the stats request, so we can detect if there are any stale stats
         // results that were queued during an error condition.
         let (stats_tx, stats_rx) = mpsc::channel::<u64>(1);
-        let stats = handle_stats_queue(
-            &mem,
-            queues.pop_front(),
-            queue_evts.pop_front(),
-            stats_rx,
-            &command_tube,
-            state.clone(),
-            interrupt.clone(),
-        );
+        let stats = match (queues.pop_front(), queue_evts.pop_front()) {
+            (Some(q), Some(evt)) => handle_stats_queue(
+                &mem,
+                q,
+                evt,
+                stats_rx,
+                &command_tube,
+                state.clone(),
+                interrupt.clone(),
+            )
+            .left_future(),
+            _ => std::future::pending().right_future(),
+        };
         pin_mut!(stats);
 
         // Future to handle command messages that resize the balloon.
@@ -570,14 +564,12 @@ fn run_worker(
         pin_mut!(kill);
 
         // The next queue if present is used for events.
-        let events = handle_events_queue(
-            &mem,
-            queues.pop_front(),
-            queue_evts.pop_front(),
-            state,
-            interrupt,
-            &command_tube,
-        );
+        let events = match (queues.pop_front(), queue_evts.pop_front()) {
+            (Some(q), Some(evt)) => {
+                handle_events_queue(&mem, q, evt, state, interrupt, &command_tube).left_future()
+            }
+            _ => std::future::pending().right_future(),
+        };
         pin_mut!(events);
 
         if let Err(e) = ex
