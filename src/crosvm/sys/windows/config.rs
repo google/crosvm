@@ -40,13 +40,6 @@ pub fn parse_ac97_options(
     Err(format!("unknown ac97 parameter {} {}", key, value))
 }
 
-#[cfg(feature = "audio")]
-pub(crate) fn check_ac97_backend(
-    #[allow(unused_variables)] ac97_params: &Ac97Parameters,
-) -> Result<(), String> {
-    Ok(())
-}
-
 #[cfg(feature = "gpu")]
 pub fn is_gpu_backend_deprecated(backend: &str) -> bool {
     match backend {
