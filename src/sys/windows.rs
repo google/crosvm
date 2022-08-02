@@ -597,6 +597,7 @@ fn create_devices(
     mem: &GuestMemory,
     exit_evt_wrtube: &SendTube,
     irq_control_tubes: &mut Vec<Tube>,
+    control_tubes: &mut Vec<TaggedControlTube>,
     gpu_device_tube: Tube,
     disk_device_tubes: &mut Vec<Tube>,
     balloon_device_tube: Option<Tube>,
@@ -632,13 +633,22 @@ fn create_devices(
             Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
         irq_control_tubes.push(msi_host_tube);
 
+        let shared_memory_tube = if stub.dev.get_shared_memory_region().is_some() {
+            let (host_tube, device_tube) =
+                Tube::pair().context("failed to create VVU proxy tube")?;
+            control_tubes.push(TaggedControlTube::VmMemory(host_tube));
+            Some(device_tube)
+        } else {
+            None
+        };
+
         let dev = Box::new(
             VirtioPciDevice::new(
                 mem.clone(),
                 stub.dev,
                 msi_device_tube,
                 cfg.disable_virtio_intx,
-                None,
+                shared_memory_tube,
             )
             .exit_context(Exit::VirtioPciDev, "failed to create virtio pci dev")?,
         ) as Box<dyn BusDeviceObj>;
@@ -2090,6 +2100,7 @@ where
         vm.get_memory(),
         &vm_evt_wrtube,
         &mut irq_control_tubes,
+        &mut control_tubes,
         gpu_device_tube,
         &mut disk_device_tubes,
         balloon_device_tube,
