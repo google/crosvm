@@ -109,20 +109,17 @@ const CONFIG_UUID_SIZE: usize = 16;
 // https://stefanha.github.io/virtio/vhost-user-slave.html#x1-2870004.
 const VIRTIO_VHOST_USER_STATUS_SLAVE_UP: u8 = 0;
 
-const BAR_INDEX: u8 = 2;
+const IO_BAR_INDEX: u8 = 2;
+const SHMEM_BAR_INDEX: u8 = 4;
 
 // Bar configuration.
-// All offsets are from the starting of bar `BAR_INDEX`.
+// All offsets are from the starting of bar `IO_BAR_INDEX`.
 const DOORBELL_OFFSET: u64 = 0;
 // TODO(abhishekbh): Copied from lspci in qemu with VVU support.
 const DOORBELL_SIZE: u64 = 0x2000;
 const NOTIFICATIONS_OFFSET: u64 = DOORBELL_OFFSET + DOORBELL_SIZE;
 const NOTIFICATIONS_SIZE: u64 = 0x1000;
-const SHARED_MEMORY_OFFSET: u64 = NOTIFICATIONS_OFFSET + NOTIFICATIONS_SIZE;
-// TODO(abhishekbh): Copied from qemu with VVU support. This should be same as
-// VirtioVhostUser.device_bar_size, but it's significantly  lower than the
-// memory allocated to a sibling VM. Figure out how these two are related.
-const SHARED_MEMORY_SIZE: u64 = 0x1000;
+const NOTIFICATIONS_END: u64 = NOTIFICATIONS_OFFSET + NOTIFICATIONS_SIZE;
 
 // Notifications region related constants.
 const NOTIFICATIONS_VRING_SELECT_OFFSET: u64 = 0;
@@ -248,8 +245,8 @@ struct Worker {
     // To communicate with the main process.
     main_process_tube: Tube,
 
-    // The bar representing the doorbell, notification and shared memory regions.
-    pci_bar: Alloc,
+    // The bar representing the shared memory regions.
+    shmem_pci_bar: Alloc,
 
     // Offset at which to allocate the next shared memory region, corresponding
     // to the |SET_MEM_TABLE| sibling message.
@@ -788,7 +785,7 @@ impl Worker {
                 size: region.memory_size,
             };
             let dest = VmMemoryDestination::ExistingAllocation {
-                allocation: self.pci_bar,
+                allocation: self.shmem_pci_bar,
                 offset: self.mem_offset as u64,
             };
             self.register_memory(source, dest)?;
@@ -1195,8 +1192,10 @@ pub struct VirtioVhostUser {
     // Device configuration.
     config: VirtioVhostUserConfig,
 
-    // The bar representing the doorbell, notification and shared memory regions.
-    pci_bar: Option<Alloc>,
+    // The bar representing the doorbell and notification.
+    io_pci_bar: Option<Alloc>,
+    // The bar representing the shared memory regions.
+    shmem_pci_bar: Option<Alloc>,
     // The device backend queue index selected by the driver by writing to the
     // Notifications region at offset `NOTIFICATIONS_MSIX_VECTOR_SELECT_OFFSET`
     // in the bar. This points into `notification_msix_vectors`.
@@ -1236,7 +1235,8 @@ impl VirtioVhostUser {
                 max_vhost_queues: Le32::from(MAX_VHOST_DEVICE_QUEUES as u32),
                 uuid: *uuid.unwrap_or_default().as_bytes(),
             },
-            pci_bar: None,
+            io_pci_bar: None,
+            shmem_pci_bar: None,
             notification_select: None,
             notification_msix_vectors: [None; MAX_VHOST_DEVICE_QUEUES],
             state: Arc::new(Mutex::new(State::Initialized {
@@ -1248,12 +1248,12 @@ impl VirtioVhostUser {
         })
     }
 
-    fn check_bar_metadata(&self, bar_index: PciBarIndex) -> Result<()> {
-        if bar_index != BAR_INDEX as usize {
+    fn check_io_bar_metadata(&self, bar_index: PciBarIndex) -> Result<()> {
+        if bar_index != IO_BAR_INDEX as usize {
             bail!("invalid bar index: {}", bar_index);
         }
 
-        if self.pci_bar.is_none() {
+        if self.io_pci_bar.is_none() {
             bail!("bar is not allocated for {}", bar_index);
         }
 
@@ -1428,7 +1428,7 @@ impl VirtioVhostUser {
         };
 
         // Safe because a PCI bar is guaranteed to be allocated at this point.
-        let pci_bar = self.pci_bar.expect("PCI bar unallocated");
+        let shmem_pci_bar = self.shmem_pci_bar.expect("PCI bar unallocated");
 
         // Initialize the Worker with the Msix vector values to be injected for
         // each Vhost device queue.
@@ -1464,8 +1464,8 @@ impl VirtioVhostUser {
                     rx_queue,
                     tx_queue,
                     main_process_tube,
-                    pci_bar,
-                    mem_offset: SHARED_MEMORY_OFFSET as usize,
+                    shmem_pci_bar,
+                    mem_offset: 0,
                     vrings,
                     slave_req_helper,
                     registered_memory: Vec::new(),
@@ -1629,7 +1629,7 @@ impl VirtioDevice for VirtioVhostUser {
         // following format |Doorbell|Notification|Shared Memory|.
         let mut doorbell_virtio_pci_cap = VirtioPciCap::new(
             PciCapabilityType::DoorbellConfig,
-            BAR_INDEX,
+            IO_BAR_INDEX,
             DOORBELL_OFFSET as u32,
             DOORBELL_SIZE as u32,
         );
@@ -1641,40 +1641,57 @@ impl VirtioDevice for VirtioVhostUser {
 
         let notification = Box::new(VirtioPciCap::new(
             PciCapabilityType::NotificationConfig,
-            BAR_INDEX,
+            IO_BAR_INDEX,
             NOTIFICATIONS_OFFSET as u32,
             NOTIFICATIONS_SIZE as u32,
         ));
 
         let shared_memory = Box::new(VirtioPciCap::new(
             PciCapabilityType::SharedMemoryConfig,
-            BAR_INDEX,
-            SHARED_MEMORY_OFFSET as u32,
-            SHARED_MEMORY_SIZE as u32,
+            SHMEM_BAR_INDEX,
+            0,
+            self.device_bar_size as u32,
         ));
 
         vec![doorbell, notification, shared_memory]
     }
 
     fn get_device_bars(&mut self, address: PciAddress) -> Vec<PciBarConfiguration> {
-        // A PCI bar corresponding to |Doorbell|Notification|Shared Memory| will
-        // be allocated and its address (64 bit) will be stored in BAR 2 and BAR
-        // 3. This is as per the VVU spec and qemu implementation.
-        self.pci_bar = Some(Alloc::PciBar {
+        // Allocate one PCI bar for the doorbells and notifications, and a second
+        // bar for shared memory. These are 64 bit bars, and go in bars 2|3 and 4|5,
+        // respectively. The shared memory bar is prefetchable, as recommended
+        // by the VVU spec.
+        self.io_pci_bar = Some(Alloc::PciBar {
             bus: address.bus,
             dev: address.dev,
             func: address.func,
-            bar: BAR_INDEX,
+            bar: IO_BAR_INDEX,
+        });
+        self.shmem_pci_bar = Some(Alloc::PciBar {
+            bus: address.bus,
+            dev: address.dev,
+            func: address.func,
+            bar: SHMEM_BAR_INDEX,
         });
 
-        vec![PciBarConfiguration::new(
-            BAR_INDEX as usize,
-            self.device_bar_size,
-            PciBarRegionType::Memory64BitRegion,
-            // NotPrefetchable so as to exit on every read / write event in the
-            // guest.
-            PciBarPrefetchable::NotPrefetchable,
-        )]
+        vec![
+            PciBarConfiguration::new(
+                IO_BAR_INDEX as usize,
+                NOTIFICATIONS_END.next_power_of_two(),
+                PciBarRegionType::Memory64BitRegion,
+                // Accesses to the IO bar trigger EPT faults, so it doesn't matter
+                // whether or not the bar is prefetchable.
+                PciBarPrefetchable::NotPrefetchable,
+            ),
+            PciBarConfiguration::new(
+                SHMEM_BAR_INDEX as usize,
+                self.device_bar_size,
+                PciBarRegionType::Memory64BitRegion,
+                // The shared memory bar is for regular memory mappings and
+                // should be prefetchable for better performance.
+                PciBarPrefetchable::Prefetchable,
+            ),
+        ]
     }
 
     fn set_iommu(&mut self, iommu: &Arc<Mutex<IpcMemoryMapper>>) {
@@ -1722,12 +1739,12 @@ impl VirtioDevice for VirtioVhostUser {
     }
 
     fn read_bar(&mut self, bar_index: PciBarIndex, offset: u64, data: &mut [u8]) {
-        if let Err(e) = self.check_bar_metadata(bar_index) {
+        if let Err(e) = self.check_io_bar_metadata(bar_index) {
             error!("invalid bar metadata: {}", e);
             return;
         }
 
-        if (NOTIFICATIONS_OFFSET..SHARED_MEMORY_OFFSET).contains(&offset) {
+        if (NOTIFICATIONS_OFFSET..NOTIFICATIONS_END).contains(&offset) {
             self.read_bar_notifications(offset - NOTIFICATIONS_OFFSET, data);
         } else {
             error!("addr is outside known region for reads");
@@ -1735,14 +1752,14 @@ impl VirtioDevice for VirtioVhostUser {
     }
 
     fn write_bar(&mut self, bar_index: PciBarIndex, offset: u64, data: &[u8]) {
-        if let Err(e) = self.check_bar_metadata(bar_index) {
+        if let Err(e) = self.check_io_bar_metadata(bar_index) {
             error!("invalid bar metadata: {}", e);
             return;
         }
 
         if (DOORBELL_OFFSET..NOTIFICATIONS_OFFSET).contains(&offset) {
             self.write_bar_doorbell(offset - DOORBELL_OFFSET);
-        } else if (NOTIFICATIONS_OFFSET..SHARED_MEMORY_OFFSET).contains(&offset) {
+        } else if (NOTIFICATIONS_OFFSET..NOTIFICATIONS_END).contains(&offset) {
             self.write_bar_notifications(offset - NOTIFICATIONS_OFFSET, data);
         } else {
             error!("addr is outside known region for writes");
