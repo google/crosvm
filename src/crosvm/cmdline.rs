@@ -60,7 +60,6 @@ use crate::crosvm::config::parse_cpu_capacity;
 use crate::crosvm::config::parse_cpu_set;
 #[cfg(feature = "direct")]
 use crate::crosvm::config::parse_direct_io_options;
-use crate::crosvm::config::parse_file_backed_mapping;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::crosvm::config::parse_memory_region;
 use crate::crosvm::config::parse_mmio_address_range;
@@ -625,8 +624,7 @@ pub struct RunCommand {
     #[argh(
         option,
         long = "file-backed-mapping",
-        arg_name = "addr=NUM,size=SIZE,path=PATH[,offset=NUM][,ro][,rw][,sync]",
-        from_str_fn(parse_file_backed_mapping)
+        arg_name = "addr=NUM,size=SIZE,path=PATH[,offset=NUM][,rw][,sync]"
     )]
     /// map the given file into guest memory at the specified
     /// address.
@@ -635,8 +633,7 @@ pub struct RunCommand {
     ///     size=NUM - amount of memory to map
     ///     path=PATH - path to backing file/device to map
     ///     offset=NUM - offset in backing file (default 0)
-    ///     ro - make the mapping readonly (default)
-    ///     rw - make the mapping writable
+    ///     rw - make the mapping writable (default readonly)
     ///     sync - open backing file with O_SYNC
     ///     align - whether to adjust addr and size to page
     ///        boundaries implicitly

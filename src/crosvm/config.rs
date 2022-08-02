@@ -504,14 +504,21 @@ impl FromStr for SharedDir {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, FromKeyValues)]
+#[serde(deny_unknown_fields)]
 pub struct FileBackedMappingParameters {
+    pub path: PathBuf,
+    #[serde(rename = "addr")]
     pub address: u64,
     pub size: u64,
-    pub path: PathBuf,
+    #[serde(default)]
     pub offset: u64,
+    #[serde(rename = "rw", default)]
     pub writable: bool,
+    #[serde(default)]
     pub sync: bool,
+    #[serde(default)]
+    pub align: bool,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -1032,58 +1039,6 @@ pub fn parse_direct_io_options(s: &str) -> Result<DirectIoOption, String> {
     Ok(DirectIoOption {
         path,
         ranges: ranges?,
-    })
-}
-
-pub fn parse_file_backed_mapping(s: &str) -> Result<FileBackedMappingParameters, String> {
-    let mut address = None;
-    let mut size = None;
-    let mut path = None;
-    let mut offset = None;
-    let mut writable = false;
-    let mut sync = false;
-    let mut align = false;
-    for opt in super::argument::parse_key_value_options("file-backed-mapping", s, ',') {
-        match opt.key() {
-            "addr" => address = Some(opt.parse_numeric::<u64>().map_err(|e| e.to_string())?),
-            "size" => size = Some(opt.parse_numeric::<u64>().map_err(|e| e.to_string())?),
-            "path" => path = Some(PathBuf::from(opt.value().map_err(|e| e.to_string())?)),
-            "offset" => offset = Some(opt.parse_numeric::<u64>().map_err(|e| e.to_string())?),
-            "ro" => writable = !opt.parse_or::<bool>(true).map_err(|e| e.to_string())?,
-            "rw" => writable = opt.parse_or::<bool>(true).map_err(|e| e.to_string())?,
-            "sync" => sync = opt.parse_or::<bool>(true).map_err(|e| e.to_string())?,
-            "align" => align = opt.parse_or::<bool>(true).map_err(|e| e.to_string())?,
-            _ => return Err(opt.invalid_key_err().to_string()),
-        }
-    }
-
-    let (address, path, size) = match (address, path, size) {
-        (Some(a), Some(p), Some(s)) => (a, p, s),
-        _ => {
-            return Err(String::from(
-                "file-backed-mapping: address, size, and path parameters are required",
-            ))
-        }
-    };
-
-    let pagesize_mask = pagesize() as u64 - 1;
-    let aligned_address = address & !pagesize_mask;
-    let aligned_size = ((address + size + pagesize_mask) & !pagesize_mask) - aligned_address;
-
-    if !align && (aligned_address != address || aligned_size != size) {
-        return Err(invalid_value_err(
-            s,
-            "addr and size parameters must be page size aligned",
-        ));
-    }
-
-    Ok(FileBackedMappingParameters {
-        address: aligned_address,
-        size: aligned_size,
-        path,
-        offset: offset.unwrap_or(0),
-        writable,
-        sync,
     })
 }
 
@@ -1763,8 +1718,30 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
         !cfg.vhost_user_console.is_empty(),
     );
 
+    for mapping in cfg.file_backed_mappings.iter_mut() {
+        validate_file_backed_mapping(mapping)?;
+    }
+
     // Validate platform specific things
     super::sys::config::validate_config(cfg)
+}
+
+fn validate_file_backed_mapping(mapping: &mut FileBackedMappingParameters) -> Result<(), String> {
+    let pagesize_mask = pagesize() as u64 - 1;
+    let aligned_address = mapping.address & !pagesize_mask;
+    let aligned_size =
+        ((mapping.address + mapping.size + pagesize_mask) & !pagesize_mask) - aligned_address;
+
+    if mapping.align {
+        mapping.address = aligned_address;
+        mapping.size = aligned_size;
+    } else if aligned_address != mapping.address || aligned_size != mapping.size {
+        return Err(
+            "--file-backed-mapping addr and size parameters must be page size aligned".to_string(),
+        );
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -2114,8 +2091,8 @@ mod tests {
 
     #[test]
     fn parse_file_backed_mapping_valid() {
-        let params = parse_file_backed_mapping(
-            "addr=0x1000,size=0x2000,path=/dev/mem,offset=0x3000,ro,rw,sync",
+        let params = from_key_values::<FileBackedMappingParameters>(
+            "addr=0x1000,size=0x2000,path=/dev/mem,offset=0x3000,rw,sync",
         )
         .unwrap();
         assert_eq!(params.address, 0x1000);
@@ -2128,35 +2105,51 @@ mod tests {
 
     #[test]
     fn parse_file_backed_mapping_incomplete() {
-        assert!(parse_file_backed_mapping("addr=0x1000,size=0x2000")
-            .unwrap_err()
-            .contains("required"));
-        assert!(parse_file_backed_mapping("size=0x2000,path=/dev/mem")
-            .unwrap_err()
-            .contains("required"));
-        assert!(parse_file_backed_mapping("addr=0x1000,path=/dev/mem")
-            .unwrap_err()
-            .contains("required"));
+        assert!(
+            from_key_values::<FileBackedMappingParameters>("addr=0x1000,size=0x2000")
+                .unwrap_err()
+                .contains("missing field `path`")
+        );
+        assert!(
+            from_key_values::<FileBackedMappingParameters>("size=0x2000,path=/dev/mem")
+                .unwrap_err()
+                .contains("missing field `addr`")
+        );
+        assert!(
+            from_key_values::<FileBackedMappingParameters>("addr=0x1000,path=/dev/mem")
+                .unwrap_err()
+                .contains("missing field `size`")
+        );
     }
 
     #[test]
-    fn parse_file_backed_mapping_unaligned() {
-        assert!(
-            parse_file_backed_mapping("addr=0x1001,size=0x2000,path=/dev/mem")
-                .unwrap_err()
-                .contains("aligned")
-        );
-        assert!(
-            parse_file_backed_mapping("addr=0x1000,size=0x2001,path=/dev/mem")
-                .unwrap_err()
-                .contains("aligned")
-        );
+    fn parse_file_backed_mapping_unaligned_addr() {
+        let mut params =
+            from_key_values::<FileBackedMappingParameters>("addr=0x1001,size=0x2000,path=/dev/mem")
+                .unwrap();
+        assert!(validate_file_backed_mapping(&mut params)
+            .unwrap_err()
+            .contains("aligned"));
+    }
+    #[test]
+    fn parse_file_backed_mapping_unaligned_size() {
+        let mut params =
+            from_key_values::<FileBackedMappingParameters>("addr=0x1000,size=0x2001,path=/dev/mem")
+                .unwrap();
+        assert!(validate_file_backed_mapping(&mut params)
+            .unwrap_err()
+            .contains("aligned"));
     }
 
     #[test]
     fn parse_file_backed_mapping_align() {
-        let params =
-            parse_file_backed_mapping("addr=0x3042,size=0xff0,path=/dev/mem,align").unwrap();
+        let mut params = from_key_values::<FileBackedMappingParameters>(
+            "addr=0x3042,size=0xff0,path=/dev/mem,align",
+        )
+        .unwrap();
+        assert_eq!(params.address, 0x3042);
+        assert_eq!(params.size, 0xff0);
+        validate_file_backed_mapping(&mut params).unwrap();
         assert_eq!(params.address, 0x3000);
         assert_eq!(params.size, 0x2000);
     }

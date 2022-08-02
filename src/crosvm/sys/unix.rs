@@ -2701,6 +2701,7 @@ mod tests {
             offset: 0,
             writable: false,
             sync: false,
+            align: false,
         }
     }
 
