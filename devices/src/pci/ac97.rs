@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-mod sys;
+pub(crate) mod sys;
 
 use std::default::Default;
 use std::str::FromStr;

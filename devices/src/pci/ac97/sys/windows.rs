@@ -18,7 +18,7 @@ use crate::pci::ac97::Ac97Error;
 use crate::pci::ac97::Ac97Parameters;
 use crate::pci::pci_device::Result;
 
-pub(in crate::pci::ac97) type AudioStreamSource = Arc<Mutex<dyn WinAudioServer>>;
+pub(crate) type AudioStreamSource = Arc<Mutex<dyn WinAudioServer>>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Ac97Backend {

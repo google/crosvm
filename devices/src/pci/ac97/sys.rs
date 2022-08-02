@@ -17,4 +17,4 @@ pub(in crate::pci::ac97) use platform::create_null_server;
 #[cfg(test)]
 pub(in crate::pci::ac97) use platform::tests;
 pub use platform::Ac97Backend;
-pub(in crate::pci::ac97) use platform::AudioStreamSource;
+pub(crate) use platform::AudioStreamSource;
