@@ -14,11 +14,16 @@ mod tests {
     use std::io::SeekFrom;
     use std::os::unix::io::FromRawFd;
 
-    use libc::shm_open;
-    use libc::shm_unlink;
-    use libc::O_CREAT;
-    use libc::O_EXCL;
-    use libc::O_RDWR;
+    cfg_if::cfg_if! {
+        // ANDROID: b/228881485
+        if #[cfg(not(target_os = "android"))] {
+            use libc::shm_open;
+            use libc::shm_unlink;
+            use libc::O_CREAT;
+            use libc::O_EXCL;
+            use libc::O_RDWR;
+        }
+    }
 
     use crate::syslog::*;
 
@@ -34,6 +39,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(target_os = "android"))] // ANDROID: b/228881485
     fn syslog_file() {
         ensure_inited().unwrap();
         let shm_name = CStr::from_bytes_with_nul(b"/crosvm_shm\0").unwrap();
