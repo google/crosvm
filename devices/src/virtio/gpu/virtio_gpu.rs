@@ -39,6 +39,8 @@ use super::protocol::VirtioGpuResult;
 use super::protocol::VIRTIO_GPU_BLOB_FLAG_CREATE_GUEST_HANDLE;
 use super::protocol::VIRTIO_GPU_BLOB_MEM_HOST3D;
 use super::VirtioScanoutBlobData;
+use crate::virtio::gpu::edid::DisplayInfo;
+use crate::virtio::gpu::edid::EdidBytes;
 use crate::virtio::gpu::GpuDisplayParameters;
 use crate::virtio::resource_bridge::BufferInfo;
 use crate::virtio::resource_bridge::PlaneInfo;
@@ -274,6 +276,7 @@ pub struct VirtioGpu {
     rutabaga: Rutabaga,
     resources: Map<u32, VirtioGpuResource>,
     external_blob: bool,
+    refresh_rate: u32,
     udmabuf_driver: Option<UdmabufDriver>,
 }
 
@@ -350,6 +353,7 @@ impl VirtioGpu {
             rutabaga,
             resources: Default::default(),
             external_blob,
+            refresh_rate: display_params[0].refresh_rate,
             udmabuf_driver,
         };
 
@@ -770,6 +774,13 @@ impl VirtioGpu {
             .map_err(|_| ErrUnspec)?;
         resource.shmem_offset = None;
         Ok(OkNoData)
+    }
+
+    /// Gets the EDID for the specified scanout ID. We return a virtual EDID that is identical
+    /// for all scanouts.
+    pub fn get_edid(&self, _scanout_id: u32) -> VirtioGpuResult {
+        let (width, height) = self.display_info()[0];
+        EdidBytes::new(&DisplayInfo::new(width, height, self.refresh_rate))
     }
 
     /// Creates a rutabaga context.

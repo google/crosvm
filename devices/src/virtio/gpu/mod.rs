@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+mod edid;
 mod parameters;
 mod protocol;
 mod virtio_gpu;
@@ -587,6 +588,7 @@ impl Frontend {
                 let resource_id = info.resource_id.to_native();
                 self.virtio_gpu.resource_unmap_blob(resource_id)
             }
+            GpuCommand::GetEdid(info) => self.virtio_gpu.get_edid(info.scanout.to_native()),
         }
     }
 
@@ -1176,6 +1178,7 @@ impl VirtioDevice for Gpu {
                     | 1 << VIRTIO_GPU_F_RESOURCE_UUID
                     | 1 << VIRTIO_GPU_F_RESOURCE_BLOB
                     | 1 << VIRTIO_GPU_F_CONTEXT_INIT
+                    | 1 << VIRTIO_GPU_F_EDID
                     | 1 << VIRTIO_GPU_F_RESOURCE_SYNC;
 
                 if self.udmabuf {

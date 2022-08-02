@@ -24,7 +24,6 @@ pub struct DisplayParameters {
     // TODO(lunpujun, b/213150276): pass this to display backend.
     #[serde(default)]
     pub hidden: bool,
-    // TODO(lunpujun, b/213149288): implement the virtio-gpu EDID command.
     #[serde(default = "default_refresh_rate")]
     pub refresh_rate: u32,
 }
