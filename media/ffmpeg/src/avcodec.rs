@@ -367,8 +367,7 @@ pub struct AvPacket<'a> {
     packet: ffi::AVPacket,
     /// This is just used to drop the `AvBuffer` if needed upon destruction and is not referenced
     /// otherwise.
-    #[allow(dead_code)]
-    ownership: AvPacketOwnership<'a>,
+    _ownership: AvPacketOwnership<'a>,
 }
 
 #[derive(Debug, ThisError)]
@@ -395,7 +394,7 @@ impl<'a> AvPacket<'a> {
                 // Safe because all the other elements of this struct can be zeroed.
                 ..unsafe { std::mem::zeroed() }
             },
-            ownership: AvPacketOwnership::Borrowed(PhantomData),
+            _ownership: AvPacketOwnership::Borrowed(PhantomData),
         }
     }
 
@@ -422,7 +421,7 @@ impl<'a> AvPacket<'a> {
                 // Safe because all the other elements of this struct can be zeroed.
                 ..unsafe { std::mem::zeroed() }
             },
-            ownership: AvPacketOwnership::Owned(av_buffer),
+            _ownership: AvPacketOwnership::Owned(av_buffer),
         };
 
         Ok(ret)
