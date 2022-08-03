@@ -12,6 +12,7 @@ use std::io::Seek;
 use std::io::SeekFrom;
 use std::os::unix::io::RawFd;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::RecvError;
@@ -82,8 +83,8 @@ pub enum Error {
     PlatformNotSupported,
     #[error("{0}")]
     ProtocolError(ProtocolErrorKind),
-    #[error("Failed to connect to VioS server: {0:?}")]
-    ServerConnectionError(IOError),
+    #[error("Failed to connect to VioS server {1}: {0:?}")]
+    ServerConnectionError(IOError, PathBuf),
     #[error("Failed to communicate with VioS server: {0:?}")]
     ServerError(BaseError),
     #[error("Failed to communicate with VioS server: {0:?}")]
@@ -150,7 +151,8 @@ pub struct VioSClient {
 impl VioSClient {
     /// Create a new client given the path to the audio server's socket.
     pub fn try_new<P: AsRef<Path>>(server: P) -> Result<VioSClient> {
-        let client_socket = UnixSeqpacket::connect(server).map_err(Error::ServerConnectionError)?;
+        let client_socket = UnixSeqpacket::connect(server.as_ref())
+            .map_err(|e| Error::ServerConnectionError(e, server.as_ref().into()))?;
         let mut config: VioSConfig = Default::default();
         let mut fds: Vec<RawFd> = Vec::new();
         const NUM_FDS: usize = 5;

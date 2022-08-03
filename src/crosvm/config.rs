@@ -1587,11 +1587,6 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
         }
     }
 
-    #[cfg(feature = "audio")]
-    {
-        check_opt_path!(cfg.sound);
-    }
-
     if cfg.plugin_root.is_some() && !executable_is_plugin(&cfg.executable_path) {
         return Err("`plugin-root` requires `plugin`".to_string());
     }
