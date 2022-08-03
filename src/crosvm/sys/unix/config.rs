@@ -113,7 +113,6 @@ pub fn check_serial_params(_serial_params: &SerialParameters) -> Result<(), Stri
 }
 
 pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
-    crate::crosvm::check_opt_path!(cfg.vhost_vsock_device);
     if cfg.host_ip.is_some() || cfg.netmask.is_some() || cfg.mac_address.is_some() {
         if cfg.host_ip.is_none() {
             return Err("`host-ip` missing from network config".to_string());
