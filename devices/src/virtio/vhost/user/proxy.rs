@@ -248,9 +248,9 @@ struct Worker {
     // The bar representing the shared memory regions.
     shmem_pci_bar: Alloc,
 
-    // Offset at which to allocate the next shared memory region, corresponding
-    // to the |SET_MEM_TABLE| sibling message.
-    mem_offset: usize,
+    // Offset within `shmem_pci_bar`at which to allocate the next shared memory region,
+    // corresponding to the |SET_MEM_TABLE| sibling message.
+    shmem_pci_bar_mem_offset: usize,
 
     // Vring related data sent through |SET_VRING_KICK| and |SET_VRING_CALL|
     // messages.
@@ -770,7 +770,7 @@ impl Worker {
         }
 
         let sibling_memory_size: u64 = contexts.iter().map(|region| region.memory_size).sum();
-        if self.mem.memory_size() - self.mem_offset as u64 <= sibling_memory_size {
+        if self.mem.memory_size() - self.shmem_pci_bar_mem_offset as u64 <= sibling_memory_size {
             bail!(
                 "Memory size of Sibling VM ({}) must be smaller than the current memory size ({})",
                 sibling_memory_size,
@@ -786,10 +786,10 @@ impl Worker {
             };
             let dest = VmMemoryDestination::ExistingAllocation {
                 allocation: self.shmem_pci_bar,
-                offset: self.mem_offset as u64,
+                offset: self.shmem_pci_bar_mem_offset as u64,
             };
             self.register_memory(source, dest)?;
-            self.mem_offset += region.memory_size as usize;
+            self.shmem_pci_bar_mem_offset += region.memory_size as usize;
         }
         Ok(())
     }
@@ -1465,7 +1465,7 @@ impl VirtioVhostUser {
                     tx_queue,
                     main_process_tube,
                     shmem_pci_bar,
-                    mem_offset: 0,
+                    shmem_pci_bar_mem_offset: 0,
                     vrings,
                     slave_req_helper,
                     registered_memory: Vec::new(),
