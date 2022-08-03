@@ -1389,7 +1389,12 @@ where
             (
                 None,
                 Some(Tube::new_from_unix_seqpacket(
-                    UnixSeqpacket::connect(path).context("failed to create balloon control")?,
+                    UnixSeqpacket::connect(path).with_context(|| {
+                        format!(
+                            "failed to connect to balloon control socket {}",
+                            path.display(),
+                        )
+                    })?,
                 )),
             )
         } else {

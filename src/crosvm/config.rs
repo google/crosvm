@@ -1556,8 +1556,6 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
 
     check_opt_path!(cfg.android_fstab);
 
-    check_opt_path!(cfg.balloon_control);
-
     for disk in cfg.disks.iter() {
         if !disk.path.exists() {
             return Err(format!("Disk path {:?} does not exist", disk.path));
