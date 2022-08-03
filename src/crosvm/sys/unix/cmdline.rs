@@ -8,6 +8,8 @@ use devices::virtio::vhost::user::device;
 use devices::virtio::vhost::user::VhostUserParams;
 use devices::SerialParameters;
 
+use crate::crosvm::config::from_key_values;
+use crate::crosvm::config::validate_serial_parameters;
 use crate::crosvm::config::JailConfig;
 
 #[derive(FromArgs)]
@@ -22,6 +24,14 @@ pub enum DeviceSubcommand {
     Gpu(device::GpuOptions),
     Vsock(device::VsockOptions),
     Wl(device::WlOptions),
+}
+
+fn parse_vu_serial_options(s: &str) -> Result<VhostUserParams<SerialParameters>, String> {
+    let params: VhostUserParams<SerialParameters> = from_key_values(s)?;
+
+    validate_serial_parameters(&params.device_params)?;
+
+    Ok(params)
 }
 
 #[argh_helpers::pad_description_for_argh]
@@ -47,7 +57,11 @@ pub struct DevicesCommand {
     ///         failures instead of them being fatal.
     pub jail: JailConfig,
 
-    #[argh(option, arg_name = "serial options")]
+    #[argh(
+        option,
+        arg_name = "serial options",
+        from_str_fn(parse_vu_serial_options)
+    )]
     /// start a serial device (see help from run command for options)
     pub serial: Vec<VhostUserParams<SerialParameters>>,
 
