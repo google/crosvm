@@ -30,7 +30,7 @@ use crate::crosvm::argument;
 use crate::crosvm::argument::Argument;
 use crate::crosvm::cmdline::RunCommand;
 use crate::crosvm::sys::cmdline::Commands;
-use crate::crosvm::sys::cmdline::DevicesSubcommand;
+use crate::crosvm::sys::cmdline::DeviceSubcommand;
 use crate::crosvm::sys::windows::exit::Exit;
 use crate::crosvm::sys::windows::exit::ExitContext;
 use crate::crosvm::sys::windows::exit::ExitContextAnyhow;
@@ -132,7 +132,7 @@ pub fn get_library_watcher(
     )
 }
 
-pub(crate) fn start_device(command: DevicesSubcommand) -> Result<()> {
+pub(crate) fn start_device(command: DeviceSubcommand) -> Result<()> {
     Err(anyhow!("unknown device name: {:?}", command))
 }
 

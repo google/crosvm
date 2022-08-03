@@ -13,7 +13,7 @@ use crate::crosvm::config::JailConfig;
 #[derive(FromArgs)]
 #[argh(subcommand)]
 /// Unix Devices
-pub enum DevicesSubcommand {
+pub enum DeviceSubcommand {
     Console(device::ConsoleOptions),
     #[cfg(feature = "audio")]
     Snd(device::SndOptions),

@@ -381,7 +381,7 @@ pub enum CrossPlatformDevicesCommands {
 #[derive(argh_helpers::FlattenSubcommand)]
 pub enum DeviceSubcommand {
     CrossPlatform(CrossPlatformDevicesCommands),
-    Sys(super::sys::cmdline::DevicesSubcommand),
+    Sys(super::sys::cmdline::DeviceSubcommand),
 }
 
 #[derive(FromArgs)]

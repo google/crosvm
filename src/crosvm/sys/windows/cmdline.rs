@@ -7,7 +7,7 @@ use argh_helpers::generate_catchall_args;
 #[derive(Debug, FromArgs)]
 #[argh(subcommand)]
 /// Windows Devices
-pub enum DevicesSubcommand {}
+pub enum DeviceSubcommand {}
 
 #[cfg(feature = "slirp")]
 #[generate_catchall_args]
