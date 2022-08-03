@@ -7,6 +7,8 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 #[cfg(feature = "gpu")]
+use devices::virtio::GpuDisplayMode;
+#[cfg(feature = "gpu")]
 use devices::virtio::GpuDisplayParameters;
 #[cfg(feature = "gfxstream")]
 use devices::virtio::GpuMode;
@@ -137,11 +139,8 @@ pub fn parse_gpu_options(s: &str) -> Result<GpuParameters, String> {
         gpu_params.__width_compat.take(),
         gpu_params.__height_compat.take(),
     ) {
-        let display_param = GpuDisplayParameters {
-            width,
-            height,
-            ..Default::default()
-        };
+        let display_param =
+            GpuDisplayParameters::default_with_mode(GpuDisplayMode::Windowed { width, height });
         gpu_params.display_params.push(display_param);
     }
 
@@ -178,9 +177,7 @@ pub(crate) fn validate_gpu_config(cfg: &mut Config) -> Result<(), String> {
         if gpu_parameters.display_params.is_empty() {
             gpu_parameters.display_params.push(Default::default());
         }
-
-        let width = gpu_parameters.display_params[0].width;
-        let height = gpu_parameters.display_params[0].height;
+        let (width, height) = gpu_parameters.display_params[0].get_virtual_display_size();
 
         if let Some(virtio_multi_touch) = cfg.virtio_multi_touch.first_mut() {
             virtio_multi_touch.set_default_size(width, height);
@@ -340,6 +337,10 @@ mod tests {
     use crate::crosvm::config::BindMount;
     use crate::crosvm::config::DEFAULT_TOUCH_DEVICE_HEIGHT;
     use crate::crosvm::config::DEFAULT_TOUCH_DEVICE_WIDTH;
+    #[cfg(feature = "gpu")]
+    use devices::virtio::DEFAULT_DISPLAY_HEIGHT;
+    #[cfg(feature = "gpu")]
+    use devices::virtio::DEFAULT_DISPLAY_WIDTH;
 
     #[cfg(feature = "audio_cras")]
     #[test]
@@ -607,8 +608,19 @@ mod tests {
     fn parse_gpu_display_options_valid() {
         {
             let gpu_params: GpuDisplayParameters = from_key_values("width=500,height=600").unwrap();
-            assert_eq!(gpu_params.width, 500);
-            assert_eq!(gpu_params.height, 600);
+            assert_eq!(gpu_params.get_virtual_display_size(), (500, 600));
+        }
+        {
+            let gpu_params: GpuDisplayParameters =
+                from_key_values("windowed,width=500,height=600").unwrap();
+            assert_eq!(gpu_params.get_virtual_display_size(), (500, 600));
+        }
+        {
+            let gpu_params: GpuDisplayParameters = from_key_values("windowed").unwrap();
+            assert_eq!(
+                gpu_params.get_virtual_display_size(),
+                (DEFAULT_DISPLAY_WIDTH, DEFAULT_DISPLAY_HEIGHT)
+            );
         }
     }
 
@@ -620,6 +632,12 @@ mod tests {
         }
         {
             assert!(from_key_values::<GpuDisplayParameters>("height=500").is_err());
+        }
+        {
+            assert!(from_key_values::<GpuDisplayParameters>("windowed,width=500").is_err());
+        }
+        {
+            assert!(from_key_values::<GpuDisplayParameters>("windowed,height=500").is_err());
         }
         {
             assert!(from_key_values::<GpuDisplayParameters>("width").is_err());
@@ -650,10 +668,14 @@ mod tests {
             let gpu_params = config.gpu_parameters.unwrap();
 
             assert_eq!(gpu_params.display_params.len(), 2);
-            assert_eq!(gpu_params.display_params[0].width, 500);
-            assert_eq!(gpu_params.display_params[0].height, 600);
-            assert_eq!(gpu_params.display_params[1].width, 700);
-            assert_eq!(gpu_params.display_params[1].height, 800);
+            assert_eq!(
+                gpu_params.display_params[0].get_virtual_display_size(),
+                (500, 600),
+            );
+            assert_eq!(
+                gpu_params.display_params[1].get_virtual_display_size(),
+                (700, 800),
+            );
         }
         {
             let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
@@ -673,8 +695,10 @@ mod tests {
             let gpu_params = config.gpu_parameters.unwrap();
 
             assert_eq!(gpu_params.display_params.len(), 1);
-            assert_eq!(gpu_params.display_params[0].width, 700);
-            assert_eq!(gpu_params.display_params[0].height, 800);
+            assert_eq!(
+                gpu_params.display_params[0].get_virtual_display_size(),
+                (700, 800),
+            );
         }
     }
 

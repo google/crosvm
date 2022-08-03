@@ -259,10 +259,9 @@ fn create_virtio_devices(
             let display_param = if gpu_parameters.display_params.is_empty() {
                 Default::default()
             } else {
-                gpu_parameters.display_params[0]
+                gpu_parameters.display_params[0].clone()
             };
-            let gpu_display_w = display_param.width;
-            let gpu_display_h = display_param.height;
+            let (gpu_display_w, gpu_display_h) = display_param.get_virtual_display_size();
 
             let mut event_devices = Vec::new();
             if cfg.display_window_mouse {

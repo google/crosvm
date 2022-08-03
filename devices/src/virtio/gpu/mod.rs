@@ -5,6 +5,7 @@
 mod edid;
 mod parameters;
 mod protocol;
+mod sys;
 mod virtio_gpu;
 
 use std::cell::RefCell;
@@ -38,8 +39,11 @@ use base::WaitContext;
 use data_model::*;
 pub use gpu_display::EventDevice;
 use gpu_display::*;
+pub use parameters::DisplayMode as GpuDisplayMode;
 pub use parameters::DisplayParameters as GpuDisplayParameters;
 pub use parameters::GpuParameters;
+pub use parameters::DEFAULT_DISPLAY_HEIGHT;
+pub use parameters::DEFAULT_DISPLAY_WIDTH;
 pub use parameters::DEFAULT_REFRESH_RATE;
 use rutabaga_gfx::*;
 use serde::Deserialize;
@@ -992,6 +996,7 @@ impl Gpu {
         if display_params.is_empty() {
             display_params.push(Default::default());
         }
+        let (display_width, display_height) = display_params[0].get_virtual_display_size();
 
         let mut rutabaga_channels: Vec<RutabagaChannel> = Vec::new();
         for (channel_name, path) in &channels {
@@ -1016,8 +1021,8 @@ impl Gpu {
         };
 
         let rutabaga_builder = RutabagaBuilder::new(component, gpu_parameters.context_mask)
-            .set_display_width(display_params[0].width)
-            .set_display_height(display_params[0].height)
+            .set_display_width(display_width)
+            .set_display_height(display_height)
             .set_rutabaga_channels(rutabaga_channels_opt)
             .set_use_egl(gpu_parameters.renderer_use_egl)
             .set_use_gles(gpu_parameters.renderer_use_gles)

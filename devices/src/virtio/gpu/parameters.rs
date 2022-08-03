@@ -4,38 +4,104 @@
 
 //! Definitions and utilities for GPU related parameters.
 
+#[cfg(windows)]
+use std::marker::PhantomData;
+
 use rutabaga_gfx::RutabagaWsi;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
 use serde_keyvalue::FromKeyValues;
 
+pub use super::sys::DisplayMode;
+use super::sys::DisplayModeArg;
 use super::GpuMode;
 
 pub const DEFAULT_DISPLAY_WIDTH: u32 = 1280;
 pub const DEFAULT_DISPLAY_HEIGHT: u32 = 1024;
 pub const DEFAULT_REFRESH_RATE: u32 = 60;
 
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, FromKeyValues)]
+/// Trait that the platform-specific type `DisplayMode` needs to implement.
+pub trait DisplayModeTrait {
+    fn get_virtual_display_size(&self) -> (u32, u32);
+}
+
+// This struct is only used for argument parsing. It will be converted to platform-specific
+// `DisplayParameters` implementation.
+#[derive(Deserialize, FromKeyValues)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub struct DisplayParameters {
-    pub width: u32,
-    pub height: u32,
-    // TODO(lunpujun, b/213150276): pass this to display backend.
+struct DisplayParametersArgs {
+    pub mode: Option<DisplayModeArg>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
     #[serde(default)]
     pub hidden: bool,
     #[serde(default = "default_refresh_rate")]
     pub refresh_rate: u32,
 }
 
+#[derive(Clone, Debug, Deserialize, FromKeyValues)]
+#[serde(try_from = "DisplayParametersArgs")]
+pub struct DisplayParameters {
+    pub mode: DisplayMode,
+    pub hidden: bool,
+    pub refresh_rate: u32,
+}
+
+impl DisplayParameters {
+    pub fn new(mode: DisplayMode, hidden: bool, refresh_rate: u32) -> Self {
+        Self {
+            mode,
+            hidden,
+            refresh_rate,
+        }
+    }
+
+    pub fn default_with_mode(mode: DisplayMode) -> Self {
+        Self::new(mode, false, DEFAULT_REFRESH_RATE)
+    }
+
+    pub fn get_virtual_display_size(&self) -> (u32, u32) {
+        self.mode.get_virtual_display_size()
+    }
+}
+
 impl Default for DisplayParameters {
     fn default() -> Self {
-        DisplayParameters {
-            width: DEFAULT_DISPLAY_WIDTH,
-            height: DEFAULT_DISPLAY_HEIGHT,
-            hidden: false,
-            refresh_rate: DEFAULT_REFRESH_RATE,
-        }
+        Self::default_with_mode(default_windowed_mode())
+    }
+}
+
+impl TryFrom<DisplayParametersArgs> for DisplayParameters {
+    type Error = String;
+
+    fn try_from(args: DisplayParametersArgs) -> Result<Self, Self::Error> {
+        let mode = match args.mode.unwrap_or(DisplayModeArg::Windowed) {
+            DisplayModeArg::Windowed => match (args.width, args.height) {
+                (Some(width), Some(height)) => DisplayMode::Windowed { width, height },
+                (None, None) => default_windowed_mode(),
+                _ => {
+                    return Err(
+                        "must include both 'width' and 'height' if either is supplied".to_string(),
+                    )
+                }
+            },
+
+            #[cfg(windows)]
+            DisplayModeArg::BorderlessFullScreen => match (args.width, args.height) {
+                (None, None) => DisplayMode::BorderlessFullScreen(PhantomData),
+                _ => return Err("'width' and 'height' are invalid with borderless_full_screen"),
+            },
+        };
+
+        Ok(DisplayParameters::new(mode, args.hidden, args.refresh_rate))
+    }
+}
+
+fn default_windowed_mode() -> DisplayMode {
+    DisplayMode::Windowed {
+        width: DEFAULT_DISPLAY_WIDTH,
+        height: DEFAULT_DISPLAY_HEIGHT,
     }
 }
 

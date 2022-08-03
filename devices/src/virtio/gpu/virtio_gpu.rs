@@ -333,12 +333,9 @@ impl VirtioGpu {
         let scanouts = display_params
             .iter()
             .enumerate()
-            .map(|(display_index, &display_param)| {
-                VirtioGpuScanout::new(
-                    display_param.width,
-                    display_param.height,
-                    display_index as u32,
-                )
+            .map(|(display_index, display_param)| {
+                let (width, height) = display_param.get_virtual_display_size();
+                VirtioGpuScanout::new(width, height, display_index as u32)
             })
             .collect::<Vec<_>>();
         let cursor_scanout = VirtioGpuScanout::new_cursor();

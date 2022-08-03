@@ -633,14 +633,18 @@ pub struct RunCommand {
     /// (EXPERIMENTAL) gdb on the given port
     pub gdb: Option<u32>,
     #[cfg(feature = "gpu")]
-    #[argh(option, arg_name = "[width=INT,height=INT]")]
+    #[argh(option)]
     /// (EXPERIMENTAL) Comma separated key=value pairs for setting
     /// up a display on the virtio-gpu device
     /// Possible key values:
-    ///     width=INT - The width of the virtual display connected
-    ///        to the virtio-gpu.
-    ///     height=INT - The height of the virtual display
-    ///        connected to the virtio-gpu
+    ///     mode=(borderless_full_screen|windowed) - Whether to show the window on the host in full
+    ///        screen or windowed mode. If not specified, windowed mode is used by default.
+    ///     width=INT - The width of the virtual display connected to the virtio-gpu. Can't be set
+    ///        with the borderless_full_screen display mode.
+    ///     height=INT - The height of the virtual display connected to the virtio-gpu. Can't be set
+    ///        with the borderless_full_screen display mode.
+    ///     hidden[=true|=false] - If the display window is initially hidden.
+    ///     refresh_rate=INT - Force a specific vsync generation rate in hertz on the guest.
     #[cfg(unix)]
     pub gpu_display: Vec<GpuDisplayParameters>,
     #[cfg(feature = "gpu")]
