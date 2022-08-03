@@ -90,6 +90,7 @@ pub fn run_broker_impl(cfg: Config) -> Result<()> {
     crate::crosvm::sys::windows::broker::run(cfg)
 }
 
+#[cfg(feature = "sandbox")]
 pub fn initialize_sandbox() -> Result<()> {
     if sandbox::is_sandbox_target() {
         // Get the TargetServices pointer so that it gets initialized.
@@ -137,6 +138,7 @@ pub(crate) fn start_device(command: DevicesSubcommand) -> Result<()> {
 
 pub(crate) fn run_vm_for_broker(args: Vec<String>) -> Result<()> {
     // This is a noop on unix.
+    #[cfg(feature = "sandbox")]
     initialize_sandbox()?;
     let arguments = &[Argument::value(
         "bootstrap",

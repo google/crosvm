@@ -123,11 +123,11 @@ impl std::fmt::Display for VmExitStatistics {
         for exit_index in exit_indices {
             writeln!(
                 f,
-                "{:<16}{:<16}{:<16}",
+                "{:<16}{:<16}{:<16?}",
                 exit_index_to_str(exit_index),
                 self.exit_counters[exit_index],
                 // Alignment not implemented by Debug
-                format!("{:?}", self.exit_durations[exit_index]),
+                self.exit_durations[exit_index],
             )?;
         }
 

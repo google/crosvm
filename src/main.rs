@@ -22,6 +22,7 @@ use crosvm::cmdline;
 use crosvm::config::executable_is_plugin;
 use crosvm::config::Config;
 use devices::virtio::vhost::user::device::run_block_device;
+#[cfg(unix)]
 use devices::virtio::vhost::user::device::run_net_device;
 #[cfg(feature = "composite-disk")]
 use disk::create_composite_disk;
@@ -366,6 +367,7 @@ fn start_device(opts: cmdline::DeviceCommand) -> std::result::Result<(), ()> {
     let result = match opts.command {
         cmdline::DeviceSubcommand::CrossPlatform(command) => match command {
             CrossPlatformDevicesCommands::Block(cfg) => run_block_device(cfg),
+            #[cfg(unix)]
             CrossPlatformDevicesCommands::Net(cfg) => run_net_device(cfg),
         },
         cmdline::DeviceSubcommand::Sys(command) => sys::start_device(command),
@@ -443,6 +445,7 @@ fn pkg_version() -> std::result::Result<(), ()> {
 //
 // As a special case, `-` is not treated as a flag, since it is typically used to represent
 // `stdin`/`stdout`.
+#[cfg_attr(windows, allow(unused))]
 fn is_flag(arg: &str) -> bool {
     arg.len() > 1 && arg.starts_with('-')
 }

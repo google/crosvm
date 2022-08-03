@@ -119,7 +119,7 @@ all-linux = [
     "virgl_renderer",
     "x",
     ]
-win64 = []
+win64 = ["devices/stats", "balloon", "haxm"]
 audio = ["devices/audio"]
 audio_cras = ["devices/audio_cras"]
 balloon = ["devices/balloon", "vm_control/balloon"]
@@ -220,6 +220,7 @@ p9 = "*"
 [target.'cfg(windows)'.dependencies]
 anti_tamper = { path = "anti_tamper" }
 cros_async =  { path = "cros_async" }
+ctrlc = "*"
 futures = "0.3"
 gpu_display = { path = "gpu_display", optional = true }
 rand = "0.8"

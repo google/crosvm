@@ -932,7 +932,7 @@ mod tests {
 
     fn set_up_stall_monitor(vcpu_count: usize) -> Result<SetupData> {
         let run_mode = Arc::new(VcpuRunMode::default());
-        let mut monitor = VcpuStallMonitor::init(run_mode.clone());
+        let mut monitor = VcpuStallMonitor::init(run_mode);
 
         for id in 0..vcpu_count {
             let new_vcpu = VcpuRunThread::new(id, true /* enable_vcpu_monitoring */);

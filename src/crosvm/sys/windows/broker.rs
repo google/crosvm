@@ -56,13 +56,16 @@ use broker_ipc::EmulatorProcessInvariants;
 use crash_report::product_type;
 #[cfg(feature = "crash-report")]
 use crash_report::CrashReportAttributes;
+#[cfg(feature = "slirp")]
 use devices::virtio::vhost::user::device::NetBackendConfig;
 #[cfg(feature = "gpu")]
 use gpu_display::EventDevice;
 use metrics::event_details_proto::EmulatorChildProcessExitDetails;
 use metrics::event_details_proto::RecordDetails;
 use metrics::MetricEventType;
+#[cfg(feature = "slirp")]
 use net_util::slirp::sys::windows::SlirpStartupConfig;
+#[cfg(feature = "slirp")]
 use net_util::slirp::sys::windows::SLIRP_BUFFER_SIZE;
 use tube_transporter::TubeToken;
 use tube_transporter::TubeTransferData;
@@ -126,6 +129,7 @@ const EXIT_TIMEOUT: Duration = Duration::from_secs(3);
 const METRICS_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// Maps a process type to its sandbox policy configuration.
+#[cfg(feature = "sandbox")]
 fn process_policy(process_type: ProcessType, cfg: &Config) -> sandbox::policy::Policy {
     #[allow(unused_mut)]
     let mut policy = match process_type {
@@ -143,6 +147,7 @@ fn process_policy(process_type: ProcessType, cfg: &Config) -> sandbox::policy::P
 }
 
 /// Dynamically appends rules to the main process's policy.
+#[cfg(feature = "sandbox")]
 fn main_process_policy(cfg: &Config) -> sandbox::policy::Policy {
     let mut policy = sandbox::policy::MAIN;
     if let Some(host_guid) = &cfg.host_guid {
@@ -166,6 +171,7 @@ fn main_process_policy(cfg: &Config) -> sandbox::policy::Policy {
 }
 
 /// Adjust a policy to allow ASAN builds to write output files.
+#[cfg(feature = "sandbox")]
 fn adjust_asan_policy(policy: &mut sandbox::policy::Policy) {
     if (policy.initial_token_level as i32) < (sandbox::TokenLevel::USER_RESTRICTED_NON_ADMIN as i32)
     {
@@ -177,6 +183,7 @@ fn adjust_asan_policy(policy: &mut sandbox::policy::Policy) {
 }
 
 /// Adjust a policy to allow perfetto tracing to open shared memory and use WASAPI.
+#[cfg(feature = "sandbox")]
 fn adjust_perfetto_policy(policy: &mut sandbox::policy::Policy) {
     if (policy.initial_token_level as i32)
         < (sandbox::TokenLevel::USER_RESTRICTED_SAME_ACCESS as i32)
@@ -445,6 +452,7 @@ pub fn setup_emulator_crash_reporting(cfg: &Config) -> Result<String> {
 /// Refrain from using platform specific code within this function. It will eventually be cross
 /// platform.
 fn run_internal(mut cfg: Config) -> Result<()> {
+    #[cfg(feature = "sandbox")]
     if sandbox::is_sandbox_broker() {
         // Get the BrokerServices pointer so that it gets initialized.
         sandbox::BrokerServices::get()
@@ -558,6 +566,7 @@ fn run_internal(mut cfg: Config) -> Result<()> {
         &process_invariants,
     )?;
 
+    #[cfg(feature = "slirp")]
     let (_slirp_child, _net_children) = start_up_net_backend(
         &mut main_child,
         &mut children,
@@ -1094,6 +1103,7 @@ fn spawn_block_backend(
     Ok(block_child)
 }
 
+#[cfg(feature = "sandbox")]
 fn spawn_sandboxed_child<I, S>(
     program: &str,
     args: I,
@@ -1229,6 +1239,7 @@ where
     Ok((process_id, Box::new(UnsandboxedChild(proc))))
 }
 
+#[cfg(feature = "slirp")]
 fn start_up_net_backend(
     main_child: &mut ChildProcess,
     children: &mut HashMap<u32, ChildCleanup>,
@@ -1445,6 +1456,7 @@ where
         .map(|arg| arg.as_ref())
         .chain(bootstrap.iter().map(|arg| arg.as_ref()));
 
+    #[cfg(feature = "sandbox")]
     let (process_id, child) = if use_sandbox {
         spawn_sandboxed_child(
             program,
@@ -1463,6 +1475,14 @@ where
             vec![&tube_transport_main_child],
         )?
     };
+    #[cfg(not(feature = "sandbox"))]
+    let (process_id, child) = spawn_unsandboxed_child(
+        program,
+        args,
+        stdout_file,
+        stderr_file,
+        vec![&tube_transport_main_child],
+    )?;
 
     let (mut bootstrap_tube, bootstrap_tube_child) =
         Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
@@ -1542,8 +1562,8 @@ mod tests {
             let mut wait_ctx: WaitContext<Token> = WaitContext::new().unwrap();
             let exit_events = vec![Event::new().unwrap()];
             let _child_main = spawn_child(
-                "sleep",
-                &["1"],
+                "cmd",
+                &["/C", "ping 127.0.0.1 -n 2 > NUL 2>&1"],
                 None,
                 None,
                 ProcessType::Main,
@@ -1570,8 +1590,8 @@ mod tests {
             let mut wait_ctx: WaitContext<Token> = WaitContext::new().unwrap();
             let exit_events = vec![Event::new().unwrap()];
             let _child_main = spawn_child(
-                "sleep",
-                &["3"],
+                "cmd",
+                &["/C", "ping 127.0.0.1 -n 4 > NUL 2>&1"],
                 None,
                 None,
                 ProcessType::Main,
@@ -1583,8 +1603,8 @@ mod tests {
                 &Config::default(),
             );
             let _child_device = spawn_child(
-                "sleep",
-                &["1"],
+                "cmd",
+                &["/C", "ping 127.0.0.1 -n 2 > NUL 2>&1"],
                 None,
                 None,
                 ProcessType::Block,
@@ -1610,8 +1630,8 @@ mod tests {
             let mut wait_ctx: WaitContext<Token> = WaitContext::new().unwrap();
             let exit_events = vec![Event::new().unwrap()];
             let _child_main = spawn_child(
-                "sleep",
-                &["1"],
+                "cmd",
+                &["/C", "ping 127.0.0.1 -n 2 > NUL 2>&1"],
                 None,
                 None,
                 ProcessType::Main,
@@ -1623,8 +1643,8 @@ mod tests {
                 &Config::default(),
             );
             let _child_device = spawn_child(
-                "sleep",
-                &["10"],
+                "cmd",
+                &["/C", "ping 127.0.0.1 -n 11 > NUL 2>&1"],
                 None,
                 None,
                 ProcessType::Block,
@@ -1655,8 +1675,8 @@ mod tests {
             let mut wait_ctx: WaitContext<Token> = WaitContext::new().unwrap();
             let exit_events = vec![Event::new().unwrap()];
             let _child_main = spawn_child(
-                "sleep",
-                &["10"],
+                "cmd",
+                &["/C", "ping 127.0.0.1 -n 11 > NUL 2>&1"],
                 None,
                 None,
                 ProcessType::Main,
@@ -1668,8 +1688,8 @@ mod tests {
                 &Config::default(),
             );
             let _child_device = spawn_child(
-                "sleep",
-                &["1"],
+                "cmd",
+                &["/C", "ping 127.0.0.1 -n 2 > NUL 2>&1"],
                 None,
                 None,
                 ProcessType::Block,
@@ -1700,8 +1720,8 @@ mod tests {
             let mut wait_ctx: WaitContext<Token> = WaitContext::new().unwrap();
             let exit_events = vec![Event::new().unwrap()];
             let _child_main = spawn_child(
-                "sleep",
-                &["1"],
+                "cmd",
+                &["/C", "ping 127.0.0.1 -n 2 > NUL 2>&1"],
                 None,
                 None,
                 ProcessType::Main,
@@ -1730,7 +1750,7 @@ mod tests {
                 Supervisor::broker_supervise_loop(children, wait_ctx, exit_events)
                     .to_exit_code()
                     .unwrap(),
-                ExitCode::from(to_process_type_error(-1i32 as u32, ProcessType::Block) as i32),
+                (to_process_type_error(-1i32 as u32, ProcessType::Block) as i32),
             );
         })
         .try_join(Duration::from_secs(10))
@@ -1748,8 +1768,8 @@ mod tests {
             let mut wait_ctx: WaitContext<Token> = WaitContext::new().unwrap();
             let mut children: HashMap<u32, ChildCleanup> = HashMap::new();
             let _child_main = spawn_child(
-                "sleep",
-                &["2"],
+                "cmd",
+                &["/C", "ping 127.0.0.1 -n 3 > NUL 2>&1"],
                 None,
                 None,
                 ProcessType::Main,

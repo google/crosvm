@@ -122,11 +122,11 @@ mod tests {
 
     #[test]
     fn parse_run_mp_test() {
-        let _ = RunMPCommand::from_args(&[&"run-mp"], &get_args()).unwrap();
+        let _ = RunMPCommand::from_args(&["run-mp"], &get_args()).unwrap();
     }
 
     #[test]
     fn parse_run_test() {
-        let _ = RunCommand::from_args(&[&"run-main"], &get_args()).unwrap();
+        let _ = RunCommand::from_args(&["run-main"], &get_args()).unwrap();
     }
 }

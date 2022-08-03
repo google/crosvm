@@ -2243,14 +2243,13 @@ mod tests {
 
         let config: JailConfig =
             from_key_values("pivot-root=/path/to/pivot/root,seccomp-log-failures=true").unwrap();
-        assert_eq!(
-            config,
-            JailConfig {
-                pivot_root: "/path/to/pivot/root".into(),
-                seccomp_log_failures: true,
-                ..Default::default()
-            }
-        );
+        #[allow(clippy::needless_update)]
+        let expected = JailConfig {
+            pivot_root: "/path/to/pivot/root".into(),
+            seccomp_log_failures: true,
+            ..Default::default()
+        };
+        assert_eq!(config, expected);
 
         let config: Result<JailConfig, String> =
             from_key_values("seccomp-log-failures,invalid-arg=value");

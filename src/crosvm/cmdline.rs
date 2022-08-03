@@ -375,6 +375,7 @@ pub struct DeviceCommand {
 /// Cross-platform Devices
 pub enum CrossPlatformDevicesCommands {
     Block(device::BlockOptions),
+    #[cfg(unix)]
     Net(device::NetOptions),
 }
 

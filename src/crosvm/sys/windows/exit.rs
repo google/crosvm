@@ -122,8 +122,7 @@ impl<T> ExitContextAnyhow<T> for anyhow::Result<T> {
     fn to_exit_code(&self) -> Option<ExitCode> {
         self.as_ref()
             .err()
-            .map(|e| e.downcast_ref::<ExitCodeWrapper>())
-            .flatten()
+            .and_then(|e| e.downcast_ref::<ExitCodeWrapper>())
             .map(|w| w.0)
     }
 }

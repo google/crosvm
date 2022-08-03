@@ -998,7 +998,9 @@ impl From<&Register> for vmx_msr {
     }
 }
 
+// TODO(b:241252288): Enable tests disabled with dummy feature flag - enable_haxm_tests.
 #[cfg(test)]
+#[cfg(feature = "enable_haxm_tests")]
 mod tests {
     use vm_memory::GuestAddress;
     use vm_memory::GuestMemory;
