@@ -71,6 +71,7 @@ use devices::virtio::vhost::user::VhostUserListenerTrait;
 use devices::virtio::vhost::vsock::VhostVsockConfig;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonFeatures;
+#[cfg(feature = "balloon")]
 use devices::virtio::BalloonMode;
 #[cfg(feature = "gpu")]
 use devices::virtio::EventDevice;
