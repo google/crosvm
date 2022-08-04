@@ -3,16 +3,10 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+from pathlib import Path
 from typing import List
 import sys
-from impl.common import (
-    CROSVM_ROOT,
-    parallel,
-    run_main,
-    cmd,
-    chdir,
-    argh,
-)
+from impl.common import CROSVM_ROOT, parallel, run_main, cmd, chdir, argh, cwd_context
 from impl.check_code_hygiene import has_crlf_line_endings
 from impl.health_check import Check, CheckContext, run_checks
 
@@ -50,7 +44,7 @@ def check_markdown_format(context: CheckContext):
 
 def check_rust_clippy(_: CheckContext):
     "Runs clippy on the whole project, no matter which rs files were touched."
-    cmd("./tools/clippy").fg()
+    cmd("./tools/clippy --locked").fg()
 
 
 def check_rust_format(context: CheckContext):
@@ -67,11 +61,28 @@ def check_rust_format(context: CheckContext):
     )
 
 
+def check_rust_lockfiles(_: CheckContext):
+    "Verifies that none of the Cargo.lock files require updates."
+    lockfiles = [Path("Cargo.lock"), *Path("common").glob("*/Cargo.lock")]
+    for path in lockfiles:
+        with cwd_context(path.parent):
+            if not cmd("cargo update --workspace --locked").success():
+                print(f"{path} is not up-to-date.")
+                print()
+                print("You may need to rebase your changes and run `cargo update --workspace`")
+                print("(or ./tools/run_tests) to ensure the Cargo.lock file is current.")
+                raise Exception("Cargo.lock out of date")
+
+
 # List of all checks and on which files they should run.
 CHECKS: List[Check] = [
     Check(
         check_rust_format,
         files=["**.rs"],
+    ),
+    Check(
+        check_rust_lockfiles,
+        files=["**Cargo.toml"],
     ),
     Check(
         check_rust_clippy,

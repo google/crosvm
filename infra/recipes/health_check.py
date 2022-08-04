@@ -42,7 +42,6 @@ def RunSteps(api):
                 "Checking %s" % check, ["./tools/health-check", "--all", check]
             )
 
-        # TODO: Move these into health-check
         api.crosvm.step_in_container("Checking mdbook", ["mdbook", "build", "docs/book/"])
         api.crosvm.step_in_container(
             "Checking cargo docs",
