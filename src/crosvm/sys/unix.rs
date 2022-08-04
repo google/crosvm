@@ -53,6 +53,7 @@ use arch::VirtioDeviceStub;
 use arch::VmComponents;
 use arch::VmImage;
 use base::sys::WaitStatus;
+#[cfg(feature = "balloon")]
 use base::UnixSeqpacket;
 use base::UnixSeqpacketListener;
 use base::UnlinkUnixSeqpacketListener;
