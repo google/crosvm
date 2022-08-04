@@ -172,21 +172,18 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
 #[cfg(feature = "gpu")]
 pub fn parse_gpu_options(s: &str) -> Result<GpuParameters, String> {
     use crate::crosvm::config::from_key_values;
+    let mut gpu_params: GpuParameters = from_key_values(s)?;
 
-    // This struct allows us to parse the GPU and display parameters together in a single option.
-    #[derive(Deserialize)]
-    struct GpuParametersWithDisplay {
-        #[serde(flatten)]
-        gpu_params: GpuParameters,
-        #[serde(flatten)]
-        display: Option<GpuDisplayParameters>,
-    }
-
-    let gpu_params: GpuParametersWithDisplay = from_key_values(s)?;
-
-    let (mut gpu_params, display_param) = (gpu_params.gpu_params, gpu_params.display);
-    if let Some(display_param) = display_param {
-        gpu_params.display_params.push(display_param)
+    if let (Some(width), Some(height)) = (
+        gpu_params.__width_compat.take(),
+        gpu_params.__height_compat.take(),
+    ) {
+        let display_param = GpuDisplayParameters {
+            width,
+            height,
+            ..Default::default()
+        };
+        gpu_params.display_params.push(display_param);
     }
 
     #[cfg(feature = "gfxstream")]
@@ -614,6 +611,28 @@ mod tests {
             assert_eq!(gpu_params.display_params.len(), 1);
             assert_eq!(gpu_params.display_params[0].width, 700);
             assert_eq!(gpu_params.display_params[0].height, 800);
+        }
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn parse_gpu_options_cache_size() {
+        {
+            let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+                &[],
+                &[
+                    "--gpu",
+                    "vulkan=false,cache-path=/some/path,cache-size=50M",
+                    "/dev/null",
+                ],
+            )
+            .unwrap()
+            .try_into()
+            .unwrap();
+
+            let gpu_params = config.gpu_parameters.unwrap();
+            assert_eq!(gpu_params.cache_path, Some("/some/path".into()));
+            assert_eq!(gpu_params.cache_size, Some("50M".into()));
         }
     }
 

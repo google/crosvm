@@ -71,6 +71,11 @@ pub struct GpuParameters {
     pub mode: GpuMode,
     #[serde(skip)]
     pub display_params: Vec<DisplayParameters>,
+    // `width` and `height` are supported for CLI backwards compatibility.
+    #[serde(rename = "width")]
+    pub __width_compat: Option<u32>,
+    #[serde(rename = "height")]
+    pub __height_compat: Option<u32>,
     #[serde(rename = "egl")]
     pub renderer_use_egl: bool,
     #[serde(rename = "gles")]
@@ -102,6 +107,8 @@ impl Default for GpuParameters {
     fn default() -> Self {
         GpuParameters {
             display_params: vec![],
+            __width_compat: None,
+            __height_compat: None,
             renderer_use_egl: true,
             renderer_use_gles: true,
             renderer_use_glx: false,
