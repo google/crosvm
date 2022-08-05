@@ -10,6 +10,7 @@ use std::ffi::CStr;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::marker::PhantomData;
+use std::mem::ManuallyDrop;
 use std::ops::Deref;
 
 use libc::c_char;
@@ -436,6 +437,16 @@ impl AvBuffer {
         // Safe because the data has been initialized from valid storage in the constructor.
         unsafe { std::slice::from_raw_parts_mut((*self.0).data, (*self.0).size as usize) }
     }
+
+    // Consumes the `AVBuffer`, returning a `AVBufferRef` that can be used in `AVFrame`, `AVPacket`
+    // and others.
+    //
+    // After calling, the caller is responsible for unref-ing the returned AVBufferRef, either
+    // directly or through one of the automatic management facilities in `AVFrame`, `AVPacket` or
+    // others.
+    fn into_raw(self) -> *mut ffi::AVBufferRef {
+        ManuallyDrop::new(self).0
+    }
 }
 
 impl Drop for AvBuffer {
@@ -445,17 +456,19 @@ impl Drop for AvBuffer {
     }
 }
 
-enum AvPacketOwnership<'a> {
-    Owned(AvBuffer),
-    Borrowed(PhantomData<&'a ()>),
-}
-
 /// An encoded input packet that can be submitted to `AvCodecContext::try_send_packet`.
 pub struct AvPacket<'a> {
     packet: ffi::AVPacket,
-    /// This is just used to drop the `AvBuffer` if needed upon destruction and is not referenced
-    /// otherwise.
-    _ownership: AvPacketOwnership<'a>,
+    _buffer_data: PhantomData<&'a ()>,
+}
+
+impl<'a> Drop for AvPacket<'a> {
+    fn drop(&mut self) {
+        // Safe because `self.packet` is a valid `AVPacket` instance.
+        unsafe {
+            ffi::av_free_packet(&mut self.packet);
+        }
+    }
 }
 
 #[derive(Debug, ThisError)]
@@ -482,7 +495,7 @@ impl<'a> AvPacket<'a> {
                 // Safe because all the other elements of this struct can be zeroed.
                 ..unsafe { std::mem::zeroed() }
             },
-            _ownership: AvPacketOwnership::Borrowed(PhantomData),
+            _buffer_data: PhantomData,
         }
     }
 
@@ -499,7 +512,7 @@ impl<'a> AvPacket<'a> {
 
         let ret = Self {
             packet: ffi::AVPacket {
-                buf: av_buffer.0,
+                buf: av_buffer.into_raw(),
                 pts,
                 dts: AV_NOPTS_VALUE as i64,
                 data,
@@ -509,7 +522,7 @@ impl<'a> AvPacket<'a> {
                 // Safe because all the other elements of this struct can be zeroed.
                 ..unsafe { std::mem::zeroed() }
             },
-            _ownership: AvPacketOwnership::Owned(av_buffer),
+            _buffer_data: PhantomData,
         };
 
         Ok(ret)
@@ -570,6 +583,10 @@ impl Drop for AvFrame {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ptr;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::Ordering;
+    use std::sync::Arc;
 
     #[test]
     fn test_averror() {
@@ -586,5 +603,40 @@ mod tests {
         let averror = AvError(10);
         let msg = format!("{}", averror);
         assert_eq!(msg, "Unknown avcodec error 10");
+    }
+
+    // Test that the AVPacket wrapper frees the owned AVBuffer on drop.
+    #[test]
+    fn test_avpacket_drop() {
+        struct DropTestBufferSource {
+            dropped: Arc<AtomicBool>,
+        }
+        impl Drop for DropTestBufferSource {
+            fn drop(&mut self) {
+                self.dropped.store(true, Ordering::SeqCst);
+            }
+        }
+        impl AvBufferSource for DropTestBufferSource {
+            fn as_ptr(&self) -> *const u8 {
+                ptr::null()
+            }
+
+            fn len(&self) -> usize {
+                0
+            }
+        }
+
+        let dropped = Arc::new(AtomicBool::new(false));
+
+        let pkt = AvPacket::new_owned(
+            0,
+            DropTestBufferSource {
+                dropped: dropped.clone(),
+            },
+        )
+        .unwrap();
+        assert!(!dropped.load(Ordering::SeqCst));
+        drop(pkt);
+        assert!(dropped.load(Ordering::SeqCst));
     }
 }
