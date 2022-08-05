@@ -71,6 +71,7 @@ enum CommandStatus {
     VmStop,
     VmCrash,
     GuestPanic,
+    InvalidArgs,
 }
 
 fn to_command_status(result: Result<sys::ExitState>) -> Result<CommandStatus> {
@@ -512,7 +513,7 @@ fn crosvm_main() -> Result<CommandStatus> {
         Ok(args) => args,
         Err(e) => {
             eprintln!("{}", e.output);
-            return Ok(CommandStatus::Success);
+            return Ok(CommandStatus::InvalidArgs);
         }
     };
     let extended_status = args.extended_status;
@@ -648,6 +649,7 @@ fn main() {
             info!("exiting with guest panic");
             34
         }
+        Ok(CommandStatus::InvalidArgs) => 35,
         Err(e) => {
             let exit_code = error_to_exit_code(&res);
             error!("exiting with error {}:{:?}", exit_code, e);
