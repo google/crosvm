@@ -50,6 +50,8 @@ DOCKER_ARGS = [
     "--mount type=tmpfs,destination=/tmp",
     # For plugin process jail
     "--mount type=tmpfs,destination=/var/empty",
+    f"--env OUTSIDE_UID={os.getuid()}",
+    f"--env OUTSIDE_GID={os.getgid()}",
     f"gcr.io/crosvm-infra/crosvm_dev:{IMAGE_VERSION}",
 ]
 
@@ -165,14 +167,18 @@ def main(
         tty_args = ["--interactive", "--tty"]
 
     # Start an interactive shell by default
-    if not command:
-        command = ("/bin/bash",)
-
-    quoted_cmd = list(map(quoted, command))
     if hermetic:
+        # cmd is passed to entrypoint
+        quoted_cmd = list(map(quoted, command))
         docker(f"run --rm", *tty_args, *docker_args, *quoted_cmd).fg()
     else:
+        # cmd is executed directly
         cid = ensure_container_is_alive(docker, docker_args)
+        if not command:
+            command = ("/tools/entrypoint.sh",)
+        else:
+            command = ("/tools/entrypoint.sh",) + tuple(command)
+        quoted_cmd = list(map(quoted, command))
         docker("exec", *tty_args, cid, *quoted_cmd).fg()
 
 

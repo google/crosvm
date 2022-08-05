@@ -17,7 +17,8 @@ fn prepare_disk_img() -> NamedTempFile {
     disk.as_file_mut().set_len(1024 * 1024).unwrap();
 
     // TODO(b/243127910): Use `mkfs.ext4 -d` to include test data.
-    Command::new("mkfs.ext4")
+    Command::new("sudo")
+        .arg("mkfs.ext4")
         .arg(disk.path().to_str().unwrap())
         .output()
         .expect("failed to execute process");
