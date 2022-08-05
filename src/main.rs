@@ -511,7 +511,7 @@ fn crosvm_main() -> Result<CommandStatus> {
     let args = match crosvm::cmdline::CrosvmCmdlineArgs::from_args(&args[..1], &args[1..]) {
         Ok(args) => args,
         Err(e) => {
-            println!("{}", e.output);
+            eprintln!("{}", e.output);
             return Ok(CommandStatus::Success);
         }
     };
