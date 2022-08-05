@@ -17,7 +17,7 @@ USAGE = """Choose to run tests locally, in a vm or on a remote machine.
 
 To set the default test target to run on one of the build-in VMs:
 
-    ./tools/set_test_target vm:aarch64 && source .envrc
+    ./tools/test_target set vm:aarch64 && source .envrc
 
 Then as usual run cargo or run_tests:
 
@@ -30,7 +30,7 @@ to build for the test target and execute tests on it.
 
 Arbitrary SSH remotes can be used for running tests as well. e.g.
 
-    ./tools/set_test_target ssh:remotehost
+    ./tools/test_target set ssh:remotehost
 
 The `remotehost` needs to be properly configured for passwordless
 authentication.
