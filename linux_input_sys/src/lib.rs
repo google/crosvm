@@ -194,42 +194,4 @@ impl virtio_input_event {
             value: SLe32::from(if pressed { 1 } else { 0 }),
         }
     }
-
-    #[inline]
-    pub fn is_valid_mt_event(self) -> bool {
-        match self.type_.to_native() {
-            EV_KEY => self.code.to_native() == BTN_TOUCH,
-            EV_ABS => matches!(
-                self.code.to_native(),
-                ABS_MT_SLOT
-                    | ABS_MT_TOUCH_MAJOR
-                    | ABS_MT_TOUCH_MINOR
-                    | ABS_MT_WIDTH_MAJOR
-                    | ABS_MT_WIDTH_MINOR
-                    | ABS_MT_ORIENTATION
-                    | ABS_MT_POSITION_X
-                    | ABS_MT_POSITION_Y
-                    | ABS_MT_TOOL_TYPE
-                    | ABS_MT_BLOB_ID
-                    | ABS_MT_TRACKING_ID
-                    | ABS_MT_PRESSURE
-                    | ABS_MT_DISTANCE
-                    | ABS_MT_TOOL_X
-                    | ABS_MT_TOOL_Y
-            ),
-            _ => false,
-        }
-    }
-
-    #[inline]
-    pub fn is_valid_st_event(self) -> bool {
-        match self.type_.to_native() {
-            EV_KEY => self.code.to_native() == BTN_TOUCH,
-            EV_ABS => matches!(
-                self.code.to_native(),
-                ABS_X | ABS_Y | ABS_PRESSURE | ABS_TILT_X | ABS_TILT_Y | ABS_TOOL_WIDTH
-            ),
-            _ => false,
-        }
-    }
 }
