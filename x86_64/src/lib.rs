@@ -627,7 +627,7 @@ impl arch::LinuxArch for X8664arch {
         .map_err(Error::CreatePciRoot)?;
 
         let pci = Arc::new(Mutex::new(pci));
-        pci.lock().enable_pcie_cfg_mmio(read_pcie_cfg_mmio().start);
+        pci.lock().enable_pcie_cfg_mmio(pcie_cfg_mmio_range.start);
         let pci_cfg = PciConfigIo::new(
             pci.clone(),
             vm_evt_wrtube.try_clone().map_err(Error::CloneTube)?,
@@ -636,7 +636,6 @@ impl arch::LinuxArch for X8664arch {
         io_bus.insert(pci_bus, 0xcf8, 0x8).unwrap();
 
         let pcie_cfg_mmio = Arc::new(Mutex::new(PciConfigMmio::new(pci.clone(), 12)));
-        let pcie_cfg_mmio_range = read_pcie_cfg_mmio();
         let pcie_cfg_mmio_len = pcie_cfg_mmio_range.len().unwrap();
         mmio_bus
             .insert(pcie_cfg_mmio, pcie_cfg_mmio_range.start, pcie_cfg_mmio_len)
@@ -700,7 +699,7 @@ impl arch::LinuxArch for X8664arch {
         let mut resume_notify_devices = Vec::new();
 
         // each bus occupy 1MB mmio for pcie enhanced configuration
-        let max_bus = ((read_pcie_cfg_mmio().len().unwrap() / 0x100000) - 1) as u8;
+        let max_bus = (pcie_cfg_mmio_len / 0x100000 - 1) as u8;
         let (acpi_dev_resource, bat_control) = Self::setup_acpi_devices(
             &mem,
             &io_bus,
@@ -756,7 +755,7 @@ impl arch::LinuxArch for X8664arch {
             host_cpus,
             vcpu_ids,
             &pci_irqs,
-            read_pcie_cfg_mmio().start,
+            pcie_cfg_mmio_range.start,
             max_bus,
             components.force_s2idle,
         )
