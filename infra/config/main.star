@@ -264,6 +264,7 @@ def verify_linux_builder(arch, crosvm_direct = False, **kwargs):
         },
         postsubmit_properties = {
             "repeat_tests": 3,
+            "coverage": True,
         },
         presubmit_properties = {
             "retry_tests": 2,
@@ -378,14 +379,6 @@ infra_builder(
     name = "build_docs",
     executable = luci.recipe(
         name = "build_docs",
-    ),
-    postsubmit = True,
-)
-
-infra_builder(
-    name = "build_coverage",
-    executable = luci.recipe(
-        name = "build_coverage",
     ),
     postsubmit = True,
 )
