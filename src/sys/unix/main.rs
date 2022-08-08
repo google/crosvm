@@ -13,8 +13,6 @@ use base::syslog;
 use base::syslog::LogConfig;
 use base::warn;
 use devices::virtio::vhost::user::device::run_console_device;
-#[cfg(feature = "audio_cras")]
-use devices::virtio::vhost::user::device::run_cras_snd_device;
 use devices::virtio::vhost::user::device::run_fs_device;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost::user::device::run_gpu_device;
@@ -32,9 +30,6 @@ use crate::Config;
 pub(crate) fn start_device(command: DevicesSubcommand) -> anyhow::Result<()> {
     match command {
         DevicesSubcommand::Console(cfg) => run_console_device(cfg),
-        // TODO(b/241489181): Remove once cras-snd calls are changed to snd.
-        #[cfg(feature = "audio_cras")]
-        DevicesSubcommand::CrasSnd(cfg) => run_cras_snd_device(cfg),
         #[cfg(feature = "audio")]
         DevicesSubcommand::Snd(cfg) => run_snd_device(cfg),
         DevicesSubcommand::Fs(cfg) => run_fs_device(cfg),

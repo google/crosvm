@@ -516,30 +516,6 @@ pub struct RunCommand {
     )]
     /// group the given CPUs into a cluster (default: no clusters)
     pub cpu_clusters: Vec<Vec<usize>>,
-    #[cfg(feature = "audio_cras")]
-    #[argh(
-        option,
-        arg_name = "[capture=true,client=crosvm,socket=unified,\
-        num_output_devices=1,num_input_devices=1,num_output_streams=1,num_input_streams=1]",
-        long = "cras-snd"
-    )]
-    /// comma separated key=value pairs for setting up virtio snd
-    /// devices.
-    /// Possible key values:
-    ///     capture=(false,true) - Disable/enable audio capture.
-    ///         Default is false.
-    ///     client_type=(crosvm,arcvm,borealis) - Set specific
-    ///         client type for cras backend. Default is crosvm.
-    ///     socket_type=(legacy,unified) Set specific socket type
-    ///         for cras backend. Default is unified.
-    ///     num_output_devices=INT - Set number of output PCM
-    ///         devices.
-    ///     num_input_devices=INT - Set number of input PCM devices.
-    ///     num_output_streams=INT - Set number of output PCM
-    ///         streams per device.
-    ///     num_input_streams=INT - Set number of input PCM streams
-    ///         per device.
-    pub cras_snds: Vec<SndParameters>,
     #[cfg(feature = "crash-report")]
     #[argh(option, long = "crash-pipe-name", arg_name = "\\\\.\\pipe\\PIPE_NAME")]
     /// the crash handler ipc pipe name.
@@ -1658,17 +1634,6 @@ impl TryFrom<RunCommand> for super::config::Config {
         #[cfg(feature = "audio")]
         {
             cfg.virtio_snds = cmd.virtio_snds;
-        }
-        #[cfg(feature = "audio_cras")]
-        {
-            // cmd.cras_snds is the old parameter for virtio snd with cras backend.
-            cfg.virtio_snds
-                .extend(cmd.cras_snds.into_iter().map(|s| SndParameters {
-                    backend: devices::virtio::parameters::StreamSourceBackend::Sys(
-                        devices::virtio::snd::sys::StreamSourceBackend::CRAS,
-                    ),
-                    ..s
-                }));
         }
 
         #[cfg(feature = "gpu")]
