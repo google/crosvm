@@ -282,6 +282,7 @@ fn default_keyboard_events() -> BTreeMap<u16, virtio_input_bitmap> {
             KEY_MUTE,
             KEY_VOLUMEDOWN,
             KEY_VOLUMEUP,
+            KEY_BACK,
         ]),
     );
     supported_events.insert(
