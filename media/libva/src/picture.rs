@@ -221,6 +221,13 @@ impl Picture<PictureEnd> {
             phantom: PhantomData,
         })
     }
+
+    /// Queries the status of the underlying surface. This call can be used to
+    /// implement a non-blocking path, wherein a decoder queries the status of
+    /// the surface after each decode operation instead of blocking on it.
+    pub fn query_status(&self) -> Result<bindings::VASurfaceStatus::Type> {
+        self.inner.surface.borrow_mut().query_status()
+    }
 }
 
 impl<S: PictureState> Picture<S> {

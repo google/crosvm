@@ -29,6 +29,7 @@ pub use bindings::VAImageFormat;
 pub use bindings::VAProfile;
 pub use bindings::VASurfaceAttribType;
 pub use bindings::VASurfaceID;
+pub use bindings::VASurfaceStatus;
 pub use buffer::*;
 pub use buffer_type::*;
 pub use config::*;
