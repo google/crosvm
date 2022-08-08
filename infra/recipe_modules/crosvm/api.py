@@ -144,6 +144,28 @@ class CrosvmApi(recipe_api.RecipeApi):
         result.presentation.step_text = value
         return value
 
+    def upload_coverage(self, filename):
+        with self.m.step.nest("Uploading coverage"):
+            codecov = self.m.cipd.ensure_tool("crosvm/codecov/${platform}", "latest")
+            sha = self.get_git_sha()
+            self.m.step(
+                "Uploading to covecov.io",
+                [
+                    "bash",
+                    self.resource("codecov_wrapper.sh"),
+                    codecov,
+                    "--nonZero",  # Enables error codes
+                    "--slug",
+                    "google/crosvm",
+                    "--sha",
+                    sha,
+                    "--branch",
+                    "main",
+                    "-f",
+                    filename,
+                ],
+            )
+
     def __prepare_rust(self):
         """
         Prepares the rust toolchain via rustup.

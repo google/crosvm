@@ -18,6 +18,8 @@ DEPS = [
 
 PROPERTIES = BuildLinuxProperties
 
+COVERAGE_FILE = "coverage.lcov"
+
 
 def get_test_args(api, properties):
     "Returns architecture specific arguments for ./tools/run_tests"
@@ -34,6 +36,8 @@ def get_test_args(api, properties):
         raise api.step.StepFailure("Unknown test_arch " + test_arch)
     if properties.crosvm_direct:
         args += ["--crosvm-direct"]
+    if properties.coverage:
+        args += ["--generate-lcov", COVERAGE_FILE]
     return args
 
 
@@ -58,6 +62,8 @@ def RunSteps(api, properties):
             ]
             + get_test_args(api, properties),
         )
+        if properties.coverage:
+            api.crosvm.upload_coverage(COVERAGE_FILE)
 
 
 def GenTests(api):
@@ -69,6 +75,13 @@ def GenTests(api):
         )
         + api.properties(BuildLinuxProperties(test_arch="x86_64"))
         + api.post_process(filter_steps)
+    )
+    yield (
+        api.test(
+            "build_x86_64_coverage",
+            api.buildbucket.ci_build(project="crosvm/crosvm"),
+        )
+        + api.properties(BuildLinuxProperties(test_arch="x86_64", coverage=True))
     )
     yield (
         api.test(

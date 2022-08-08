@@ -12,6 +12,7 @@ DEPS = [
 def RunSteps(api):
     with api.crosvm.container_build_context():
         api.crosvm.step_in_container("Build", ["cargo", "build"])
+        api.crosvm.upload_coverage("coverage.lcov")
 
 
 def GenTests(api):

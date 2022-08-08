@@ -15,6 +15,7 @@ DEPS = [
 
 
 def RunSteps(api):
+    # TODO(b/239255082): Remove this recipe
     with api.crosvm.container_build_context():
         api.crosvm.step_in_container(
             "Run crosvm tests",

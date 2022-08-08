@@ -23,6 +23,11 @@ Luci also provides a
 [Walkthrough](https://chromium.googlesource.com/infra/luci/recipes-py/+/refs/heads/main/doc/walkthrough.md)
 for getting started with recipes.
 
+For writing tests, documentation can be found in the
+[Recipe test API](https://chromium.googlesource.com/infra/luci/recipes-py/+/HEAD/recipe_engine/recipe_test_api.py)
+and
+[Post Process API](https://chromium.googlesource.com/infra/luci/recipes-py/+/HEAD/recipe_engine/post_process.py)
+
 ### Running recipe tests
 
 Recipes must have 100% code coverage to have tests pass. Tests can be run with:

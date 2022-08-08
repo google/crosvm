@@ -89,6 +89,8 @@ Where the crosvm source will be checked out.
 &mdash; **def [step\_in\_container](/infra/recipe_modules/crosvm/api.py#110)(self, step_name, command):**
 
 Runs a luci step inside the crosvm dev container.
+
+&mdash; **def [upload\_coverage](/infra/recipe_modules/crosvm/api.py#147)(self, filename):**
 ## Recipes
 
 ### *recipes* / [build\_chromeos](/infra/recipes/build_chromeos.py)
@@ -133,9 +135,9 @@ This recipe requires ambient luci authentication. To test locally run:
 
 PYTHON_VERSION_COMPATIBILITY: PY3
 
-&mdash; **def [RunSteps](/infra/recipes/build_linux.py#40)(api, properties):**
+&mdash; **def [RunSteps](/infra/recipes/build_linux.py#44)(api, properties):**
 
-&mdash; **def [get\_test\_args](/infra/recipes/build_linux.py#22)(api, properties):**
+&mdash; **def [get\_test\_args](/infra/recipes/build_linux.py#24)(api, properties):**
 
 Returns architecture specific arguments for ./tools/run_tests
 ### *recipes* / [build\_windows](/infra/recipes/build_windows.py)

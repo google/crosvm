@@ -15,4 +15,6 @@ message BuildLinuxProperties {
   optional uint32 repeat_tests = 3;
   // Retry tests if they failed.
   optional uint32 retry_tests = 4;
+  // Whether or not to generate and upload test coverage.
+  optional bool coverage = 5;
 }
