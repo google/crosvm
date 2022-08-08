@@ -359,7 +359,7 @@ pub fn run_wl_device(opts: Options) -> anyhow::Result<()> {
             let deadline = Instant::now() + Duration::from_secs(5);
             loop {
                 match UnixSeqpacket::connect(&p) {
-                    Ok(s) => return Ok(Tube::new(s)),
+                    Ok(s) => return Ok(Tube::new_from_unix_seqpacket(s)),
                     Err(e) => {
                         if Instant::now() < deadline {
                             thread::sleep(Duration::from_millis(50));

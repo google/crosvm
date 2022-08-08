@@ -1386,7 +1386,7 @@ where
         if let Some(ref path) = cfg.balloon_control {
             (
                 None,
-                Some(Tube::new(
+                Some(Tube::new_from_unix_seqpacket(
                     UnixSeqpacket::connect(path).context("failed to create balloon control")?,
                 )),
             )
@@ -2468,7 +2468,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                         },
                                     )
                                     .context("failed to add descriptor to wait context")?;
-                                control_tubes.push(TaggedControlTube::Vm(Tube::new(socket)));
+                                control_tubes.push(TaggedControlTube::Vm(
+                                    Tube::new_from_unix_seqpacket(socket),
+                                ));
                             }
                             Err(e) => error!("failed to accept socket: {}", e),
                         }

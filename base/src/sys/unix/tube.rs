@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::io::IoSlice;
+use std::io::IoSliceMut;
 use std::marker::PhantomData;
 use std::os::unix::prelude::AsRawFd;
 use std::os::unix::prelude::RawFd;
@@ -21,16 +22,22 @@ use crate::tube::Error;
 use crate::tube::RecvTube;
 use crate::tube::Result;
 use crate::tube::SendTube;
+use crate::BlockingMode;
+use crate::FramingMode;
 use crate::RawDescriptor;
 use crate::ReadNotifier;
 use crate::ScmSocket;
+use crate::StreamChannel;
 use crate::UnixSeqpacket;
 use crate::UnsyncMarker;
+
+// This size matches the inline buffer size of CmsgBuffer.
+const TUBE_MAX_FDS: usize = 32;
 
 /// Bidirectional tube that support both send and recv.
 #[derive(Serialize, Deserialize)]
 pub struct Tube {
-    socket: UnixSeqpacket,
+    socket: StreamChannel,
 
     // Windows is !Sync. We share that characteristic to prevent writing cross-platform incompatible
     // code.
@@ -41,16 +48,31 @@ impl Tube {
     /// Create a pair of connected tubes. Request is sent in one direction while response is in the
     /// other direction.
     pub fn pair() -> Result<(Tube, Tube)> {
-        let (socket1, socket2) = UnixSeqpacket::pair().map_err(Error::Pair)?;
-        let tube1 = Tube::new(socket1);
-        let tube2 = Tube::new(socket2);
+        let (socket1, socket2) = StreamChannel::pair(BlockingMode::Blocking, FramingMode::Message)
+            .map_err(|errno| Error::Pair(std::io::Error::from(errno)))?;
+        let tube1 = Tube::new(socket1)?;
+        let tube2 = Tube::new(socket2)?;
         Ok((tube1, tube2))
     }
 
-    /// Create a new `Tube`.
-    pub fn new(socket: UnixSeqpacket) -> Tube {
+    /// Create a new `Tube` from a `StreamChannel`.
+    /// The StreamChannel must use FramingMode::Message (meaning, must use a SOCK_SEQPACKET as the
+    /// underlying socket type), otherwise, this method returns an error.
+    pub fn new(socket: StreamChannel) -> Result<Tube> {
+        match socket.get_framing_mode() {
+            FramingMode::Message => Ok(Tube {
+                socket,
+                _unsync_marker: PhantomData,
+            }),
+            FramingMode::Byte => Err(Error::InvalidFramingMode),
+        }
+    }
+
+    /// Create a new `Tube` from a UnixSeqpacket. The StreamChannel is implicitly constructed to
+    /// have the right FramingMode by being constructed from a UnixSeqpacket.
+    pub fn new_from_unix_seqpacket(sock: UnixSeqpacket) -> Tube {
         Tube {
-            socket,
+            socket: StreamChannel::from_unix_seqpacket(sock),
             _unsync_marker: PhantomData,
         }
     }
@@ -59,13 +81,20 @@ impl Tube {
     /// directional Tube pair instead.
     #[deprecated]
     pub fn try_clone(&self) -> Result<Self> {
-        self.socket.try_clone().map(Tube::new).map_err(Error::Clone)
+        self.socket
+            .try_clone()
+            .map(Tube::new)
+            .map_err(Error::Clone)?
     }
 
     pub fn send<T: Serialize>(&self, msg: &T) -> Result<()> {
         let msg_serialize = SerializeDescriptors::new(&msg);
         let msg_json = serde_json::to_vec(&msg_serialize).map_err(Error::Json)?;
         let msg_descriptors = msg_serialize.into_descriptors();
+
+        if msg_descriptors.len() > TUBE_MAX_FDS {
+            return Err(Error::SendTooManyFds);
+        }
 
         self.socket
             .send_with_fds(&[IoSlice::new(&msg_json)], &msg_descriptors)
@@ -74,25 +103,34 @@ impl Tube {
     }
 
     pub fn recv<T: DeserializeOwned>(&self) -> Result<T> {
-        let (msg_json, msg_descriptors) =
-            self.socket.recv_as_vec_with_fds().map_err(Error::Recv)?;
+        let msg_size = self.socket.peek_size().map_err(Error::Recv)?;
+        // This buffer is the right size, as the size received in peek_size() represents the size
+        // of only the message itself and not the file descriptors. The descriptors are stored
+        // separately in msghdr::msg_control.
+        let mut msg_json = vec![0u8; msg_size];
 
-        if msg_json.is_empty() {
+        let mut msg_descriptors_full = [0; TUBE_MAX_FDS];
+
+        let (msg_json_size, descriptor_size) = (&self.socket)
+            .recv_with_fds(IoSliceMut::new(&mut msg_json), &mut msg_descriptors_full)
+            .map_err(Error::Send)?;
+
+        if msg_json_size == 0 {
             return Err(Error::Disconnected);
         }
 
-        let mut msg_descriptors_safe = msg_descriptors
-            .into_iter()
+        let mut msg_descriptors_safe = msg_descriptors_full[..descriptor_size]
+            .iter()
             .map(|v| {
                 Some(unsafe {
                     // Safe because the socket returns new fds that are owned locally by this scope.
-                    SafeDescriptor::from_raw_descriptor(v)
+                    SafeDescriptor::from_raw_descriptor(*v)
                 })
             })
             .collect();
 
         deserialize_with_descriptors(
-            || serde_json::from_slice(&msg_json),
+            || serde_json::from_slice(&msg_json[0..msg_json_size]),
             &mut msg_descriptors_safe,
         )
         .map_err(Error::Json)
@@ -136,7 +174,7 @@ impl FromRawDescriptor for Tube {
     /// (2) When the call completes, ownership of rd has transferred to the returned value.
     unsafe fn from_raw_descriptor(rd: RawDescriptor) -> Self {
         Self {
-            socket: UnixSeqpacket::from_raw_descriptor(rd),
+            socket: StreamChannel::from_unix_seqpacket(UnixSeqpacket::from_raw_descriptor(rd)),
             _unsync_marker: PhantomData,
         }
     }
@@ -172,9 +210,10 @@ mod test {
 
     #[test]
     fn test_serialize_tube_new() {
-        let (sock_send, sock_recv) = UnixSeqpacket::pair().unwrap();
-        let tube_send = Tube::new(sock_send);
-        let tube_recv = Tube::new(sock_recv);
+        let (sock_send, sock_recv) =
+            StreamChannel::pair(BlockingMode::Nonblocking, FramingMode::Message).unwrap();
+        let tube_send = Tube::new(sock_send).unwrap();
+        let tube_recv = Tube::new(sock_recv).unwrap();
 
         // Serialize the Tube
         let msg_serialize = SerializeDescriptors::new(&tube_send);
@@ -208,5 +247,37 @@ mod test {
         assert_eq!(tokens, vec! {Token::ReceivedData});
 
         assert_eq!(tube_recv.recv::<String>().unwrap(), "hi");
+    }
+
+    #[test]
+    fn test_send_recv_new_from_seqpacket() {
+        let (sock_send, sock_recv) = UnixSeqpacket::pair().unwrap();
+        let tube_send = Tube::new_from_unix_seqpacket(sock_send);
+        let tube_recv = Tube::new_from_unix_seqpacket(sock_recv);
+
+        tube_send.send(&"hi".to_string()).unwrap();
+
+        // Wait for the message to arrive
+        let event_ctx: EventContext<Token> =
+            EventContext::build_with(&[(tube_recv.get_read_notifier(), Token::ReceivedData)])
+                .unwrap();
+        let events = event_ctx.wait_timeout(EVENT_WAIT_TIME).unwrap();
+        let tokens: Vec<Token> = events
+            .iter()
+            .filter(|e| e.is_readable)
+            .map(|e| e.token)
+            .collect();
+        assert_eq!(tokens, vec! {Token::ReceivedData});
+
+        assert_eq!(tube_recv.recv::<String>().unwrap(), "hi");
+    }
+
+    #[test]
+    fn test_tube_new_byte_mode_error() {
+        let (sock_byte_mode, _) =
+            StreamChannel::pair(BlockingMode::Nonblocking, FramingMode::Byte).unwrap();
+        let tube_error = Tube::new(sock_byte_mode);
+
+        assert!(tube_error.is_err());
     }
 }

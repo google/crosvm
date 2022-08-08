@@ -411,7 +411,9 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
     for listener in resource_bridge_listeners {
         let resource_bridges = Arc::clone(&resource_bridges);
         ex.spawn_blocking(move || match listener.accept() {
-            Ok(stream) => resource_bridges.lock().push(Tube::new(stream)),
+            Ok(stream) => resource_bridges
+                .lock()
+                .push(Tube::new_from_unix_seqpacket(stream)),
             Err(e) => {
                 let path = listener
                     .path()
