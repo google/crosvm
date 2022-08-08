@@ -33,7 +33,6 @@ use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
 use super::DescriptorChain;
-
 use crate::virtio::ipc_memory_mapper::ExportedRegion;
 
 #[sorted]

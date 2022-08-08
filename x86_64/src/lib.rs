@@ -57,7 +57,8 @@ use std::fs::File;
 use std::io;
 use std::io::Seek;
 use std::mem;
-use std::sync::{mpsc, Arc};
+use std::sync::mpsc;
+use std::sync::Arc;
 
 use acpi_tables::aml;
 use acpi_tables::aml::Aml;

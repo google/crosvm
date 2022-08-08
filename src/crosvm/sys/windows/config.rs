@@ -570,12 +570,13 @@ impl FromStr for HypervisorKind {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "gpu")]
+    use devices::virtio::gpu::GpuDisplayMode;
+
     #[cfg(any(feature = "audio", feature = "gpu"))]
     use super::*;
     #[cfg(feature = "gpu")]
     use crate::crosvm::sys::config::parse_gpu_options;
-    #[cfg(feature = "gpu")]
-    use devices::virtio::gpu::GpuDisplayMode;
 
     #[cfg(all(feature = "gpu", feature = "gfxstream"))]
     #[test]

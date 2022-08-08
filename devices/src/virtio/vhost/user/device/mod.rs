@@ -10,7 +10,8 @@ pub use block::run_block_device;
 pub use block::Options as BlockOptions;
 use cros_async::Executor;
 pub use handler::VhostUserBackend;
-pub use listener::{sys::VhostUserListener, VhostUserListenerTrait};
+pub use listener::sys::VhostUserListener;
+pub use listener::VhostUserListenerTrait;
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {

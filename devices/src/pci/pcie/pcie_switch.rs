@@ -9,7 +9,8 @@ use base::error;
 use resources::SystemAllocator;
 use sync::Mutex;
 
-use crate::bus::{HostHotPlugKey, HotPlugBus};
+use crate::bus::HostHotPlugKey;
+use crate::bus::HotPlugBus;
 use crate::pci::pci_configuration::PciCapabilityID;
 use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
 use crate::pci::pcie::pcie_device::PciPmcCap;

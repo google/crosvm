@@ -11,7 +11,8 @@ use cros_async::Executor;
 use futures::Future;
 pub use sys::VhostUserListener;
 
-use crate::virtio::vhost::user::{device::handler::VhostUserBackend, VhostUserDevice};
+use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::VhostUserDevice;
 
 /// Trait that the platform-specific type `VhostUserListener` needs to implement. It contains all
 /// the methods that are ok to call from non-platform specific code.

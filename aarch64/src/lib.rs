@@ -8,7 +8,8 @@
 
 use std::collections::BTreeMap;
 use std::io;
-use std::sync::{mpsc, Arc};
+use std::sync::mpsc;
+use std::sync::Arc;
 
 use arch::get_serial_cmdline;
 use arch::GetSerialCmdlineError;

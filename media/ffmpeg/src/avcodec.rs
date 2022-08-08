@@ -582,11 +582,12 @@ impl Drop for AvFrame {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::ptr;
     use std::sync::atomic::AtomicBool;
     use std::sync::atomic::Ordering;
     use std::sync::Arc;
+
+    use super::*;
 
     #[test]
     fn test_averror() {

@@ -19,10 +19,9 @@ use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::path::PathBuf;
-use std::sync::{
-    mpsc::{self, SendError},
-    Arc,
-};
+use std::sync::mpsc;
+use std::sync::mpsc::SendError;
+use std::sync::Arc;
 
 use acpi_tables::sdt::SDT;
 use base::syslog;
