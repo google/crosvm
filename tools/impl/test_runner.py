@@ -166,10 +166,11 @@ def cargo(
 
     Note: Exits the program if the build fails.
     """
+    message_format = "json-diagnostic-rendered-ansi" if sys.stdout.isatty() else "json"
     cmd = [
         "cargo",
         cargo_command,
-        "--message-format=json-diagnostic-rendered-ansi",
+        f"--message-format={message_format}",
         *flags,
     ]
     if VERBOSE:
