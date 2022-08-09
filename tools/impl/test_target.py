@@ -100,9 +100,7 @@ class Ssh:
 
     def upload_files(self, files: List[Path], remote_dir: str = "", quiet: bool = False):
         """Wrapper around SCP."""
-        flags: List[str] = []
-        if quiet:
-            flags.append("-q")
+        flags = ["-q"] if quiet else []
         scp_cmd = [
             "scp",
             *flags,
@@ -110,7 +108,15 @@ class Ssh:
             *(str(f) for f in files),
             f"{self.hostname}:{remote_dir}",
         ]
-        subprocess.run(scp_cmd, check=True)
+        return subprocess.run(scp_cmd, check=True)
+
+    def download_file(
+        self, remote_file: str, local_file: Path, quiet: bool = False, check: bool = True
+    ):
+        """Wrapper around SCP."""
+        flags = ["-q"] if quiet else []
+        scp_cmd = ["scp", *flags, *self.opts, f"{self.hostname}:{remote_file}", str(local_file)]
+        return subprocess.run(scp_cmd, check=check)
 
 
 class Triple(NamedTuple):
@@ -386,8 +392,11 @@ def exec_file_on_target(
         filename = Path(filepath).name
         target.ssh.upload_files([filepath] + extra_files, quiet=True)
         cmd_line = [*prefix, f"./{filename}", *args]
+
+        remote_profile_file = f"/tmp/{filename}.profraw"
         if profile_file:
-            raise Exception("Coverage collection on remote hosts is not supported.")
+            cmd_line = [f"LLVM_PROFILE_FILE={remote_profile_file}", *cmd_line]
+
         try:
             result = target.ssh.run(
                 f"chmod +x {filename} && sudo LD_LIBRARY_PATH=. {' '.join(cmd_line)}",
@@ -399,6 +408,11 @@ def exec_file_on_target(
             # Remove uploaded files regardless of test result
             all_filenames = [filename] + [f.name for f in extra_files]
             target.ssh.check_output(f"sudo rm {' '.join(all_filenames)}")
+            if profile_file:
+                # Fail silently. Some tests don't write a profile file.
+                target.ssh.download_file(remote_profile_file, profile_file, check=False, quiet=True)
+                target.ssh.check_output(f"sudo rm -f {remote_profile_file}")
+
         return result
 
 
