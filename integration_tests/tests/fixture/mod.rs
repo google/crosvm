@@ -281,8 +281,8 @@ impl TestVm {
         command.args(&["--serial", &serial_params]);
     }
 
-    /// Configures the VM kernel and rootfs to load from the guest_under_test assets.
-    fn configure_kernel(command: &mut Command, o_direct: bool) {
+    /// Configures the VM rootfs to load from the guest_under_test assets.
+    fn configure_rootfs(command: &mut Command, o_direct: bool) {
         let rootfs_and_option = format!(
             "{}{}",
             rootfs_path().to_str().unwrap(),
@@ -290,8 +290,7 @@ impl TestVm {
         );
         command
             .args(&["--root", &rootfs_and_option])
-            .args(&["--params", "init=/bin/delegate"])
-            .arg(kernel_path());
+            .args(&["--params", "init=/bin/delegate"]);
     }
 
     /// Instanciate a new crosvm instance. The first call will trigger the download of prebuilt
@@ -313,10 +312,10 @@ impl TestVm {
         command.args(&["run", "--disable-sandbox"]);
         TestVm::configure_serial_devices(&mut command, &from_guest_pipe, &to_guest_pipe);
         command.args(&["--socket", control_socket_path.to_str().unwrap()]);
+        TestVm::configure_rootfs(&mut command, cfg.o_direct);
         command.args(cfg.extra_args);
-
-        TestVm::configure_kernel(&mut command, cfg.o_direct);
-
+        // Set kernel as the last argument.
+        command.arg(kernel_path());
         // Set `Stdio::piped` so we can forward the outputs to stdout later.
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
