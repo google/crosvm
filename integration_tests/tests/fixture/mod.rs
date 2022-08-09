@@ -430,5 +430,9 @@ impl Drop for TestVm {
             "TestVm stderr:\n{}",
             std::str::from_utf8(&output.stderr).unwrap()
         );
+
+        if !output.status.success() {
+            panic!("VM exited illegally: {}", output.status);
+        }
     }
 }
