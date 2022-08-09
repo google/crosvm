@@ -99,6 +99,7 @@ impl LibvdaEncoder {
                             step: 1,
                         }],
                     }],
+                    plane_align: 1,
                 }
             })
             .collect();
@@ -185,6 +186,7 @@ impl LibvdaEncoder {
                         step: 1,
                     }],
                 }],
+                plane_align: 1,
             });
 
             profiles.sort_unstable();

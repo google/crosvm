@@ -518,6 +518,7 @@ impl VaapiDecoder {
                     mask: 0,
                     format: Format::NV12,
                     frame_formats: vec![raw_frame_fmt],
+                    plane_align: 1,
                 });
 
                 n_out += 1;
@@ -527,6 +528,7 @@ impl VaapiDecoder {
                 mask: !(u64::MAX << n_out) << (out_fmts.len() - n_out),
                 format: coded_format,
                 frame_formats: vec![coded_frame_fmt],
+                plane_align: 1,
             });
         }
 

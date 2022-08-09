@@ -705,6 +705,7 @@ impl DecoderBackend for FfmpegDecoder {
                     },
                     bitrates: Default::default(),
                 }],
+                plane_align: max_buffer_alignment() as u32,
             });
         }
 
@@ -730,6 +731,7 @@ impl DecoderBackend for FfmpegDecoder {
                     },
                     bitrates: Default::default(),
                 }],
+                plane_align: max_buffer_alignment() as u32,
             })
             .collect::<Vec<_>>();
 

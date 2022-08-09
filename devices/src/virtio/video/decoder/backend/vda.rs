@@ -145,6 +145,7 @@ fn from_pixel_format(
         mask,
         format,
         frame_formats,
+        plane_align: 1,
     }
 }
 
@@ -293,6 +294,7 @@ impl DecoderBackend for LibvdaDecoder {
                             },
                             bitrates: Vec::new(),
                         }],
+                        plane_align: 1,
                     });
                     match profiles.entry(format) {
                         Entry::Occupied(mut e) => e.get_mut().push(profile),
