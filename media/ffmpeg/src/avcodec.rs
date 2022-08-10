@@ -24,6 +24,16 @@ use super::*;
 #[derive(Debug, ThisError)]
 pub struct AvError(pub libc::c_int);
 
+impl AvError {
+    pub fn result(ret: c_int) -> Result<(), Self> {
+        if ret >= 0 {
+            Ok(())
+        } else {
+            Err(AvError(ret))
+        }
+    }
+}
+
 impl Display for AvError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut buffer = [0u8; 255];
@@ -370,10 +380,7 @@ impl AvCodecContext {
     /// The flush process is complete when `try_receive_frame` returns `FlushCompleted`,
     pub fn flush(&mut self) -> Result<(), AvError> {
         // Safe because the context is valid through the life of this object.
-        match unsafe { ffi::avcodec_send_packet(self.0, std::ptr::null()) } {
-            ret if ret >= 0 => Ok(()),
-            err => Err(AvError(err)),
-        }
+        AvError::result(unsafe { ffi::avcodec_send_packet(self.0, std::ptr::null()) })
     }
 }
 
