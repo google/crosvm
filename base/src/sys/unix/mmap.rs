@@ -938,14 +938,6 @@ mod tests {
     }
 
     #[test]
-    fn slice_store() {
-        let m = MemoryMappingBuilder::new(5).build().unwrap();
-        let r = m.get_ref(2).unwrap();
-        r.store(9u16);
-        assert_eq!(m.read_obj::<u16>(2).unwrap(), 9);
-    }
-
-    #[test]
     fn slice_overflow_error() {
         let m = MemoryMappingBuilder::new(5).build().unwrap();
         let res = m.get_slice(std::usize::MAX, 3).unwrap_err();

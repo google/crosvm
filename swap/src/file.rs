@@ -380,10 +380,14 @@ mod tests {
         let slice = swap_file.get_slice(1..3).unwrap();
         assert_eq!(slice.size(), 2 * pagesize());
         for i in 0..pagesize() {
-            assert_eq!(slice.get_ref::<u8>(i).unwrap().load(), 1);
+            let mut byte = [0u8; 1];
+            slice.get_slice(i, 1).unwrap().copy_to(&mut byte);
+            assert_eq!(byte[0], 1);
         }
         for i in pagesize()..2 * pagesize() {
-            assert_eq!(slice.get_ref::<u8>(i).unwrap().load(), 2);
+            let mut byte = [0u8; 1];
+            slice.get_slice(i, 1).unwrap().copy_to(&mut byte);
+            assert_eq!(byte[0], 2);
         }
     }
 

@@ -414,7 +414,7 @@ mod tests {
             .write_bytes(0x45);
 
         for i in 0..4096 {
-            assert_eq!(mmap2.get_ref::<u8>(i).unwrap().load(), 0x45u8);
+            assert_eq!(mmap2.read_obj::<u8>(i).unwrap(), 0x45u8);
         }
     }
 
@@ -441,10 +441,10 @@ mod tests {
             .write_bytes(0x45);
 
         for i in 0..4096 {
-            assert_eq!(mmap2.get_ref::<u8>(i).unwrap().load(), 0);
+            assert_eq!(mmap2.read_obj::<u8>(i).unwrap(), 0);
         }
         for i in 4096..8092 {
-            assert_eq!(mmap2.get_ref::<u8>(i).unwrap().load(), 0x45u8);
+            assert_eq!(mmap2.read_obj::<u8>(i).unwrap(), 0x45u8);
         }
     }
 }

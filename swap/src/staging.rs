@@ -210,6 +210,7 @@ impl StagingMemory {
 #[cfg(test)]
 mod tests {
     use base::pagesize;
+    use base::MappedRegion;
 
     use super::*;
 
@@ -222,9 +223,7 @@ mod tests {
         let size = pages_to_bytes(pages);
         let mmap = MemoryMappingBuilder::new(size).build().unwrap();
         for i in 0..size {
-            unsafe {
-                *mmap.get_ref(i).unwrap().as_mut_ptr() = value;
-            }
+            mmap.write_obj(value, i).unwrap();
         }
         mmap
     }
@@ -234,7 +233,7 @@ mod tests {
         let mmap = create_mmap(1, 4);
         let mut staging_memory = StagingMemory::new(200).unwrap();
 
-        let src_addr = mmap.get_ref(0).unwrap().as_mut_ptr();
+        let src_addr = mmap.as_ptr();
         unsafe {
             staging_memory.copy(src_addr, 1, 4).unwrap();
             // empty
@@ -269,10 +268,7 @@ mod tests {
         let mut staging_memory = StagingMemory::new(200).unwrap();
 
         unsafe {
-            staging_memory
-                .copy(mmap.get_ref(0).unwrap().as_mut_ptr(), 0, 1)
-                .unwrap()
-                .execute();
+            staging_memory.copy(mmap.as_ptr(), 0, 1).unwrap().execute();
         }
 
         let page = staging_memory.page_content(0).unwrap().unwrap();
@@ -297,9 +293,7 @@ mod tests {
         let mut staging_memory = StagingMemory::new(200).unwrap();
 
         unsafe {
-            staging_memory
-                .copy(mmap.get_ref(0).unwrap().as_mut_ptr(), 0, 5)
-                .unwrap();
+            staging_memory.copy(mmap.as_ptr(), 0, 5).unwrap();
         }
         staging_memory.clear_range(1..3).unwrap();
 
@@ -326,7 +320,7 @@ mod tests {
         let mmap = create_mmap(1, 2);
         let mut staging_memory = StagingMemory::new(200).unwrap();
 
-        let src_addr = mmap.get_ref(0).unwrap().as_mut_ptr();
+        let src_addr = mmap.as_ptr();
         unsafe {
             staging_memory.copy(src_addr, 1, 2).unwrap();
             staging_memory.copy(src_addr, 3, 1).unwrap();
@@ -346,8 +340,8 @@ mod tests {
         let mmap2 = create_mmap(2, 1);
         let mut staging_memory = StagingMemory::new(200).unwrap();
 
-        let src_addr1 = mmap1.get_ref(0).unwrap().as_mut_ptr();
-        let src_addr2 = mmap2.get_ref(0).unwrap().as_mut_ptr();
+        let src_addr1 = mmap1.as_ptr();
+        let src_addr2 = mmap2.as_ptr();
         unsafe {
             staging_memory.copy(src_addr1, 1, 1).unwrap().execute();
             staging_memory.copy(src_addr2, 2, 1).unwrap().execute();
@@ -356,10 +350,14 @@ mod tests {
         let slice = staging_memory.get_slice(1..3).unwrap();
         assert_eq!(slice.size(), 2 * pagesize());
         for i in 0..pagesize() {
-            assert_eq!(slice.get_ref::<u8>(i).unwrap().load(), 1);
+            let mut byte = [0u8; 1];
+            slice.get_slice(i, 1).unwrap().copy_to(&mut byte);
+            assert_eq!(byte[0], 1);
         }
         for i in pagesize()..2 * pagesize() {
-            assert_eq!(slice.get_ref::<u8>(i).unwrap().load(), 2);
+            let mut byte = [0u8; 1];
+            slice.get_slice(i, 1).unwrap().copy_to(&mut byte);
+            assert_eq!(byte[0], 2);
         }
     }
 
@@ -380,7 +378,7 @@ mod tests {
         let mmap = create_mmap(1, 5);
         let mut staging_memory = StagingMemory::new(200).unwrap();
 
-        let src_addr = mmap.get_ref(0).unwrap().as_mut_ptr();
+        let src_addr = mmap.as_ptr();
         unsafe {
             staging_memory.copy(src_addr, 1, 4).unwrap();
             staging_memory.copy(src_addr, 12, 1).unwrap();

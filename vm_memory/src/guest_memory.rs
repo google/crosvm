@@ -11,7 +11,6 @@ use std::io::Read;
 use std::io::Write;
 use std::marker::Send;
 use std::marker::Sync;
-use std::mem::size_of;
 use std::result;
 use std::sync::Arc;
 
@@ -646,31 +645,6 @@ impl GuestMemory {
             })
     }
 
-    /// Returns a `VolatileRef` to an object at `addr`. Returns Ok(()) if the object fits, or Err if
-    /// it extends past the end.
-    ///
-    /// # Examples
-    /// * Get a &u64 at offset 0x1010.
-    ///
-    /// ```
-    /// # use base::MemoryMapping;
-    /// # use vm_memory::{GuestAddress, GuestMemory, GuestMemoryError};
-    /// # fn test_ref_u64() -> Result<(), GuestMemoryError> {
-    /// #   let start_addr = GuestAddress(0x1000);
-    /// #   let mut gm = GuestMemory::new(&vec![(start_addr, 0x400)])?;
-    ///     gm.write_obj_at_addr(47u64, GuestAddress(0x1010))?;
-    ///     let vref = gm.get_ref_at_addr::<u64>(GuestAddress(0x1010))?;
-    ///     assert_eq!(vref.load(), 47u64);
-    /// #   Ok(())
-    /// # }
-    /// ```
-    pub fn get_ref_at_addr<T: DataInit>(&self, addr: GuestAddress) -> Result<VolatileRef<T>> {
-        let buf = self.get_slice_at_addr(addr, size_of::<T>())?;
-        // Safe because we have know that `buf` is at least `size_of::<T>()` bytes and that the
-        // returned reference will not outlive this `GuestMemory`.
-        Ok(unsafe { VolatileRef::new(buf.as_mut_ptr() as *mut T) })
-    }
-
     /// Reads data from a file descriptor and writes it to guest memory.
     ///
     /// # Arguments
@@ -988,44 +962,6 @@ mod tests {
             .unwrap();
         let num1: u64 = gm.read_obj_from_addr(GuestAddress(0x500)).unwrap();
         let num2: u64 = gm.read_obj_from_addr(GuestAddress(0x10000 + 32)).unwrap();
-        assert_eq!(val1, num1);
-        assert_eq!(val2, num2);
-    }
-
-    #[test]
-    fn test_ref_load_u64() {
-        let start_addr1 = GuestAddress(0x0);
-        let start_addr2 = GuestAddress(0x10000);
-        let gm = GuestMemory::new(&[(start_addr1, 0x10000), (start_addr2, 0x10000)]).unwrap();
-
-        let val1: u64 = 0xaa55aa55aa55aa55;
-        let val2: u64 = 0x55aa55aa55aa55aa;
-        gm.write_obj_at_addr(val1, GuestAddress(0x500)).unwrap();
-        gm.write_obj_at_addr(val2, GuestAddress(0x10000 + 32))
-            .unwrap();
-        let num1: u64 = gm.get_ref_at_addr(GuestAddress(0x500)).unwrap().load();
-        let num2: u64 = gm
-            .get_ref_at_addr(GuestAddress(0x10000 + 32))
-            .unwrap()
-            .load();
-        assert_eq!(val1, num1);
-        assert_eq!(val2, num2);
-    }
-
-    #[test]
-    fn test_ref_store_u64() {
-        let start_addr1 = GuestAddress(0x0);
-        let start_addr2 = GuestAddress(0x10000);
-        let gm = GuestMemory::new(&[(start_addr1, 0x10000), (start_addr2, 0x10000)]).unwrap();
-
-        let val1: u64 = 0xaa55aa55aa55aa55;
-        let val2: u64 = 0x55aa55aa55aa55aa;
-        gm.get_ref_at_addr(GuestAddress(0x500)).unwrap().store(val1);
-        gm.get_ref_at_addr(GuestAddress(0x1000 + 32))
-            .unwrap()
-            .store(val2);
-        let num1: u64 = gm.read_obj_from_addr(GuestAddress(0x500)).unwrap();
-        let num2: u64 = gm.read_obj_from_addr(GuestAddress(0x1000 + 32)).unwrap();
         assert_eq!(val1, num1);
         assert_eq!(val2, num2);
     }

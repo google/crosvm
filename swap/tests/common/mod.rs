@@ -2,10 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use base::MappedRegion;
 use base::MemoryMapping;
 use base::MemoryMappingBuilder;
 use base::SharedMemory;
-use data_model::VolatileMemory;
 use swap::userfaultfd::Userfaultfd;
 use userfaultfd::UffdBuilder;
 
@@ -24,7 +24,7 @@ pub struct SharedMemoryMapping {
 
 impl SharedMemoryMapping {
     pub fn base_addr(&self) -> usize {
-        self.mmap.get_ref::<u8>(0).unwrap().as_mut_ptr() as usize
+        self.mmap.as_ptr() as usize
     }
 }
 
