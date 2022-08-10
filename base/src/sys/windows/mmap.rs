@@ -351,15 +351,6 @@ mod tests {
     }
 
     #[test]
-    fn slice_store() {
-        let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
-        let m = to_crate_mmap(MemoryMapping::from_descriptor(&shm, 5).unwrap());
-        let r = m.get_ref(2).unwrap();
-        r.store(9u16);
-        assert_eq!(m.read_obj::<u16>(2).unwrap(), 9);
-    }
-
-    #[test]
     fn slice_overflow_error() {
         let shm = SharedMemory::new(&CString::new("test").unwrap(), 1028).unwrap();
         let m = to_crate_mmap(MemoryMapping::from_descriptor(&shm, 5).unwrap());
