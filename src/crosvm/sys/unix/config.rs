@@ -5,7 +5,6 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::time::Duration;
 
 #[cfg(feature = "gfxstream")]
 use devices::virtio::GpuMode;
@@ -99,47 +98,6 @@ pub fn parse_ac97_options(
         }
     };
     Ok(())
-}
-
-pub fn parse_coiommu_params(value: &str) -> Result<devices::CoIommuParameters, String> {
-    let mut params: devices::CoIommuParameters = Default::default();
-
-    let opts = value
-        .split(',')
-        .map(|frag| frag.splitn(2, '='))
-        .map(|mut kv| (kv.next().unwrap_or(""), kv.next().unwrap_or("")));
-
-    for (k, v) in opts {
-        match k {
-            "unpin_policy" => {
-                params.unpin_policy = v
-                    .parse::<devices::CoIommuUnpinPolicy>()
-                    .map_err(|e| format!("{}", e))?
-            }
-            "unpin_interval" => {
-                params.unpin_interval =
-                    Duration::from_secs(v.parse::<u64>().map_err(|e| format!("{}", e))?)
-            }
-            "unpin_limit" => {
-                let limit = v.parse::<u64>().map_err(|e| format!("{}", e))?;
-
-                if limit == 0 {
-                    return Err(String::from("Please use non-zero unpin_limit value"));
-                }
-
-                params.unpin_limit = Some(limit)
-            }
-            "unpin_gen_threshold" => {
-                params.unpin_gen_threshold = v
-                    .parse::<u64>()
-                    .map_err(|e| format!("unknown argument: {}", e))?
-            }
-            _ => {
-                return Err(format!("coiommu parameter {}", k));
-            }
-        }
-    }
-    Ok(params)
 }
 
 #[cfg(feature = "gfxstream")]
@@ -372,12 +330,12 @@ mod tests {
 
     #[test]
     fn parse_coiommu_options() {
-        use super::parse_coiommu_params;
         use devices::CoIommuParameters;
         use devices::CoIommuUnpinPolicy;
+        use std::time::Duration;
 
         // unpin_policy
-        let coiommu_params = parse_coiommu_params("unpin_policy=off").unwrap();
+        let coiommu_params = from_key_values::<CoIommuParameters>("unpin_policy=off").unwrap();
         assert_eq!(
             coiommu_params,
             CoIommuParameters {
@@ -385,7 +343,7 @@ mod tests {
                 ..Default::default()
             }
         );
-        let coiommu_params = parse_coiommu_params("unpin_policy=lru").unwrap();
+        let coiommu_params = from_key_values::<CoIommuParameters>("unpin_policy=lru").unwrap();
         assert_eq!(
             coiommu_params,
             CoIommuParameters {
@@ -393,11 +351,11 @@ mod tests {
                 ..Default::default()
             }
         );
-        let coiommu_params = parse_coiommu_params("unpin_policy=foo");
+        let coiommu_params = from_key_values::<CoIommuParameters>("unpin_policy=foo");
         assert!(coiommu_params.is_err());
 
         // unpin_interval
-        let coiommu_params = parse_coiommu_params("unpin_interval=42").unwrap();
+        let coiommu_params = from_key_values::<CoIommuParameters>("unpin_interval=42").unwrap();
         assert_eq!(
             coiommu_params,
             CoIommuParameters {
@@ -405,11 +363,11 @@ mod tests {
                 ..Default::default()
             }
         );
-        let coiommu_params = parse_coiommu_params("unpin_interval=foo");
+        let coiommu_params = from_key_values::<CoIommuParameters>("unpin_interval=foo");
         assert!(coiommu_params.is_err());
 
         // unpin_limit
-        let coiommu_params = parse_coiommu_params("unpin_limit=256").unwrap();
+        let coiommu_params = from_key_values::<CoIommuParameters>("unpin_limit=256").unwrap();
         assert_eq!(
             coiommu_params,
             CoIommuParameters {
@@ -417,13 +375,14 @@ mod tests {
                 ..Default::default()
             }
         );
-        let coiommu_params = parse_coiommu_params("unpin_limit=0");
+        let coiommu_params = from_key_values::<CoIommuParameters>("unpin_limit=0");
         assert!(coiommu_params.is_err());
-        let coiommu_params = parse_coiommu_params("unpin_limit=foo");
+        let coiommu_params = from_key_values::<CoIommuParameters>("unpin_limit=foo");
         assert!(coiommu_params.is_err());
 
         // unpin_gen_threshold
-        let coiommu_params = parse_coiommu_params("unpin_gen_threshold=32").unwrap();
+        let coiommu_params =
+            from_key_values::<CoIommuParameters>("unpin_gen_threshold=32").unwrap();
         assert_eq!(
             coiommu_params,
             CoIommuParameters {
@@ -431,11 +390,11 @@ mod tests {
                 ..Default::default()
             }
         );
-        let coiommu_params = parse_coiommu_params("unpin_gen_threshold=foo");
+        let coiommu_params = from_key_values::<CoIommuParameters>("unpin_gen_threshold=foo");
         assert!(coiommu_params.is_err());
 
         // All together
-        let coiommu_params = parse_coiommu_params(
+        let coiommu_params = from_key_values::<CoIommuParameters>(
             "unpin_policy=lru,unpin_interval=90,unpin_limit=8,unpin_gen_threshold=64",
         )
         .unwrap();
@@ -450,7 +409,7 @@ mod tests {
         );
 
         // invalid parameter
-        let coiommu_params = parse_coiommu_params("unpin_invalid_param=0");
+        let coiommu_params = from_key_values::<CoIommuParameters>("unpin_invalid_param=0");
         assert!(coiommu_params.is_err());
     }
 

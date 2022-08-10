@@ -12,7 +12,7 @@ cfg_if::cfg_if! {
         use devices::virtio::vhost::user::device::parse_wayland_sock;
 
         use super::sys::config::{
-            parse_coiommu_params, VfioCommand, parse_vfio, parse_vfio_platform,
+            VfioCommand, parse_vfio, parse_vfio_platform,
         };
         use super::config::SharedDir;
     } else if #[cfg(windows)] {
@@ -487,8 +487,7 @@ pub struct RunCommand {
     #[cfg(unix)]
     #[argh(
         option,
-        arg_name = "unpin_policy=POLICY,unpin_interval=NUM,unpin_limit=NUM,unpin_gen_threshold=NUM",
-        from_str_fn(parse_coiommu_params)
+        arg_name = "unpin_policy=POLICY,unpin_interval=NUM,unpin_limit=NUM,unpin_gen_threshold=NUM"
     )]
     /// comma separated key=value pairs for setting up coiommu
     /// devices.
