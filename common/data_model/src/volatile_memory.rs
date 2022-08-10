@@ -21,7 +21,6 @@
 #![allow(deprecated)]
 
 use std::cmp::min;
-use std::marker::PhantomData;
 use std::mem::size_of;
 use std::ptr::copy;
 use std::ptr::read_volatile;
@@ -386,77 +385,6 @@ impl PartialEq<VolatileSlice<'_>> for VolatileSlice<'_> {
 
 /// The `PartialEq` implementation for `VolatileSlice` is reflexive, symmetric, and transitive.
 impl Eq for VolatileSlice<'_> {}
-
-/// A memory location that supports volatile access of a `T`.
-///
-/// # Examples
-///
-/// ```
-/// # use data_model::VolatileRef;
-///   let mut v = 5u32;
-///   assert_eq!(v, 5);
-///   let v_ref = unsafe { VolatileRef::new(&mut v as *mut u32) };
-///   assert_eq!(v_ref.load(), 5);
-///   v_ref.store(500);
-///   assert_eq!(v, 500);
-#[deprecated(
-    note = "This is an unsafe abstraction. Users should use alternatives such as read_obj() and 
-    write_obj() that do not create a long-lived mutable reference that could easily alias other 
-    slices"
-)]
-#[derive(Debug)]
-pub struct VolatileRef<'a, T: DataInit>
-where
-    T: 'a,
-{
-    addr: *mut T,
-    phantom: PhantomData<&'a T>,
-}
-
-impl<'a, T: DataInit> VolatileRef<'a, T> {
-    /// Creates a reference to raw memory that must support volatile access of `T` sized chunks.
-    ///
-    /// # Safety
-    /// To use this safely, the caller must guarantee that the memory at `addr` is big enough for a
-    /// `T` and is available for the duration of the lifetime of the new `VolatileRef`. The caller
-    /// must also guarantee that all other users of the given chunk of memory are using volatile
-    /// accesses.
-    pub unsafe fn new(addr: *mut T) -> VolatileRef<'a, T> {
-        VolatileRef {
-            addr,
-            phantom: PhantomData,
-        }
-    }
-
-    /// Gets the size of this slice.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use std::mem::size_of;
-    /// # use data_model::VolatileRef;
-    ///   let v_ref = unsafe { VolatileRef::new(0 as *mut u32) };
-    ///   assert_eq!(v_ref.size(), size_of::<u32>());
-    /// ```
-    pub fn size(&self) -> usize {
-        size_of::<T>()
-    }
-
-    /// Does a volatile write of the value `v` to the address of this ref.
-    #[inline(always)]
-    pub fn store(&self, v: T) {
-        unsafe { write_volatile(self.addr, v) };
-    }
-
-    /// Does a volatile read of the value at the address of this ref.
-    #[inline(always)]
-    pub fn load(&self) -> T {
-        // For the purposes of demonstrating why read_volatile is necessary, try replacing the code
-        // in this function with the commented code below and running `cargo test --release`.
-        // unsafe { *(self.addr as *const T) }
-        unsafe { read_volatile(self.addr) }
-    }
-}
 
 #[cfg(test)]
 mod tests {
