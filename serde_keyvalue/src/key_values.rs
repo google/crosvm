@@ -6,10 +6,31 @@ use std::borrow::Cow;
 use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
-use std::num::IntErrorKind;
 use std::num::ParseIntError;
-use std::str::FromStr;
 
+use nom::branch::alt;
+use nom::bytes::complete::escaped_transform;
+use nom::bytes::complete::is_not;
+use nom::bytes::complete::tag;
+use nom::bytes::complete::take_till1;
+use nom::bytes::complete::take_while;
+use nom::bytes::complete::take_while1;
+use nom::character::complete::anychar;
+use nom::character::complete::char;
+use nom::character::complete::digit1;
+use nom::character::complete::none_of;
+use nom::combinator::map;
+use nom::combinator::map_res;
+use nom::combinator::opt;
+use nom::combinator::peek;
+use nom::combinator::recognize;
+use nom::combinator::value;
+use nom::combinator::verify;
+use nom::sequence::delimited;
+use nom::sequence::pair;
+use nom::AsChar;
+use nom::Finish;
+use nom::IResult;
 use num_traits::Num;
 use remain::sorted;
 use serde::de;
@@ -38,10 +59,8 @@ pub enum ErrorKind {
     ExpectedString,
     #[error("\" and ' can only be used in quoted strings")]
     InvalidCharInString,
-    #[error("non-terminated string")]
-    NonTerminatedString,
-    #[error("provided number does not fit in the destination type")]
-    NumberOverflow,
+    #[error("invalid characters for number or number does not fit into its destination type")]
+    InvalidNumber,
     #[error("serde error: {0}")]
     SerdeError(String),
     #[error("remaining characters in input")]
@@ -80,6 +99,100 @@ impl de::Error for ParseError {
 
 type Result<T> = std::result::Result<T, ParseError>;
 
+/// Nom parser that returns all characters up to the next comma or EOS.
+fn take_till_comma_or_eos(s: &str) -> IResult<&str, &str> {
+    take_till1(|c| c == ',')(s)
+}
+
+/// Nom parser for valid strings.
+///
+/// A string can be quoted (using single or double quotes) or not. If it is not quoted, the string
+/// is assumed to continue until the next ',' separating character. If it is escaped, it continues
+/// until the next non-escaped quote.
+///
+/// The returned value is a slice into the current input if no characters to unescape were met,
+/// or a fully owned string if we had to unescape some characters.
+fn any_string(s: &str) -> IResult<&str, Cow<str>> {
+    // Double-quoted strings may escape " and \ characters. Since escaped strings are modified,
+    // we need to return an owned `String` instead of just a slice in the input string.
+    let double_quoted = delimited(
+        char('"'),
+        alt((
+            map(
+                escaped_transform(
+                    none_of(r#"\""#),
+                    '\\',
+                    alt((value("\"", char('"')), value("\\", char('\\')))),
+                ),
+                Cow::Owned,
+            ),
+            map(tag(""), Cow::Borrowed),
+        )),
+        char('"'),
+    );
+
+    // Single-quoted strings do not escape characters.
+    let single_quoted = map(
+        delimited(char('\''), alt((is_not(r#"'"#), tag(""))), char('\'')),
+        Cow::Borrowed,
+    );
+
+    // Unquoted strings end with the next comma and may not contain a quote character or be empty.
+    let unquoted = map(
+        take_while1(|c: char| c != ',' && c != '"' && c != '\''),
+        Cow::Borrowed,
+    );
+
+    alt((double_quoted, single_quoted, unquoted))(s)
+}
+
+/// Nom parser for valid positive of negative numbers.
+///
+/// Hexadecimal, octal, and binary values can be specified with the `0x`, `0o` and `0b` prefixes.
+fn any_number<T>(s: &str) -> IResult<&str, T>
+where
+    T: Num<FromStrRadixErr = ParseIntError>,
+{
+    /// Nom parser for determining the radix of a number from its prefix.
+    ///
+    /// This is its own function to avoid monomorphization as `any_number` is generic.
+    fn number_radix(s: &str) -> IResult<&str, u32> {
+        let mut radix = alt((
+            value(16, tag("0x")),
+            value(8, tag("0o")),
+            value(2, tag("0b")),
+            value(10, peek(pair(opt(char('-')), digit1))),
+        ));
+
+        radix(s)
+    }
+
+    let (s, r) = number_radix(s)?;
+
+    map_res(take_till_comma_or_eos, move |s| T::from_str_radix(s, r))(s)
+}
+
+/// Nom parser for booleans.
+fn any_bool(s: &str) -> IResult<&str, bool> {
+    let mut boolean = alt((value(true, tag("true")), value(false, tag("false"))));
+
+    boolean(s)
+}
+
+/// Nom parser for identifiers. An identifier may contain any alphanumeric character, as well as
+/// '_' and '-' at any place excepted the first one which cannot be '-'.
+///
+/// Usually identifiers are not allowed to start with a number, but we chose to allow this
+/// here otherwise options like "mode=2d" won't parse if "2d" is an alias for an enum variant.
+fn any_identifier(s: &str) -> IResult<&str, &str> {
+    let mut ident = recognize(pair(
+        verify(anychar, |&c| c.is_alphanum() || c == '_'),
+        take_while(|c: char| c.is_alphanum() || c == '_' || c == '-'),
+    ));
+
+    ident(s)
+}
+
 /// Serde deserializer for key-values strings.
 struct KeyValueDeserializer<'de> {
     /// Full input originally received for parsing.
@@ -96,6 +209,9 @@ struct KeyValueDeserializer<'de> {
     ///
     ///   --block "path=/path/to/disk.img,ro=true"
     next_identifier: Option<&'de str>,
+    /// Whether the '=' sign has been parsed after a key. The absence of '=' is only valid for
+    /// boolean fields, in which case the field's value will be `true`.
+    has_equal: bool,
 }
 
 impl<'de> From<&'de str> for KeyValueDeserializer<'de> {
@@ -104,6 +220,7 @@ impl<'de> From<&'de str> for KeyValueDeserializer<'de> {
             original_input: input,
             input,
             next_identifier: None,
+            has_equal: false,
         }
     }
 }
@@ -136,194 +253,68 @@ impl<'de> KeyValueDeserializer<'de> {
         Some(c)
     }
 
-    /// Try to peek the next element in the input as an identifier, without consuming it.
-    ///
-    /// Returns the parsed indentifier, an `ExpectedIdentifier` error if the next element is not
-    /// an identifier, or `Eof` if we were at the end of the input string.
-    fn peek_identifier(&self) -> Result<&'de str> {
-        // End of input?
-        if self.input.is_empty() {
-            return Err(self.error_here(ErrorKind::Eof));
-        }
-
-        let res = self.input;
-        let mut len = 0;
-        let mut iter = self.input.chars();
-        loop {
-            match iter.next() {
-                None | Some(',' | '=') => break,
-                Some(c) if c.is_ascii_alphanumeric() || c == '_' || (c == '-' && len > 0) => {
-                    len += c.len_utf8();
-                }
-                Some(_) => return Err(self.error_here(ErrorKind::ExpectedIdentifier)),
-            }
-        }
-
-        // An identifier cannot be empty.
-        if len == 0 {
-            Err(self.error_here(ErrorKind::ExpectedIdentifier))
-        } else {
-            Ok(&res[0..len])
-        }
-    }
-
-    /// Peek the next value, i.e. anything until the next comma or the end of the input string.
-    ///
-    /// This can be used to reliably peek any value, except strings which may contain commas in
-    /// quotes.
-    fn peek_value(&self) -> Result<&'de str> {
-        let res = self.input;
-        let mut len = 0;
-        let mut iter = self.input.chars();
-        loop {
-            match iter.next() {
-                None | Some(',') => break,
-                Some(c) => len += c.len_utf8(),
-            }
-        }
-
-        if len > 0 {
-            Ok(&res[0..len])
-        } else {
-            Err(self.error_here(ErrorKind::Eof))
-        }
-    }
-
     /// Attempts to parse an identifier, either for a key or for the value of an enum type.
-    ///
-    /// Usually identifiers are not allowed to start with a number, but we chose to allow this
-    /// here otherwise options like "mode=2d" won't parse if "2d" is an alias for an enum variant.
     fn parse_identifier(&mut self) -> Result<&'de str> {
-        let res = self.peek_identifier()?;
-        self.input = &self.input[res.len()..];
+        let (remainder, res) = any_identifier(self.input)
+            .finish()
+            .map_err(|_| self.error_here(ErrorKind::ExpectedIdentifier))?;
+
+        self.input = remainder;
         Ok(res)
     }
 
     /// Attempts to parse a string.
-    ///
-    /// A string can be quoted (using single or double quotes) or not. If it is not, we consume
-    /// input until the next ',' separating character. If it is, we consume input until the next
-    /// non-escaped quote.
-    ///
-    /// The returned value is a slice into the current input if no characters to unescape were met,
-    /// or a fully owned string if we had to unescape some characters.
     fn parse_string(&mut self) -> Result<Cow<'de, str>> {
-        let (s, quote) = match self.peek_char() {
-            // Beginning of quoted string.
-            quote @ Some('"' | '\'') => {
-                // Safe because we just matched against `Some`.
-                let quote = quote.unwrap();
-                // Skip the opening quote.
-                self.skip_char();
-                let mut len = 0;
-                let mut iter = self.input.chars();
-                let mut escaped = false;
-                loop {
-                    let c = match iter.next() {
-                        Some('\\') if !escaped => {
-                            escaped = true;
-                            '\\'
-                        }
-                        // Found end of quoted string if we meet a non-escaped quote.
-                        Some(c) if c == quote && !escaped => break,
-                        Some(c) => {
-                            escaped = false;
-                            c
-                        }
-                        None => return Err(self.error_here(ErrorKind::NonTerminatedString)),
-                    };
-                    len += c.len_utf8();
-                }
-                let s = &self.input[0..len];
-                self.input = &self.input[len..];
-                // Skip the closing quote
-                self.skip_char();
-                (s, Some(quote))
-            }
-            // Empty strings must use quotes.
-            None | Some(',') => return Err(self.error_here(ErrorKind::ExpectedString)),
-            // Non-quoted string.
-            Some(_) => {
-                let s = self
-                    .input
-                    .split(&[',', '"', '\''])
-                    .next()
-                    .unwrap_or(self.input);
-                self.input = &self.input[s.len()..];
-                // If a string was not quoted, it shall not contain a quote.
-                if let Some('"' | '\'') = self.peek_char() {
-                    return Err(self.error_here(ErrorKind::InvalidCharInString));
-                }
-                (s, None)
-            }
-        };
+        let (remainder, res) =
+            any_string(self.input)
+                .finish()
+                .map_err(|e: nom::error::Error<_>| {
+                    self.input = e.input;
+                    // Any error means we did not have a well-formed string.
+                    self.error_here(ErrorKind::ExpectedString)
+                })?;
 
-        if quote.is_some() {
-            let mut escaped = false;
-            let unescaped_string: String = s
-                .chars()
-                .filter_map(|c| match c {
-                    '\\' if !escaped => {
-                        escaped = true;
-                        None
-                    }
-                    c => {
-                        escaped = false;
-                        Some(c)
-                    }
-                })
-                .collect();
-            Ok(Cow::Owned(unescaped_string))
-        } else {
-            Ok(Cow::Borrowed(s))
+        self.input = remainder;
+
+        // The character following a string will be either a comma or EOS. If we have something
+        // else, this means an unquoted string should probably have been quoted.
+        match self.peek_char() {
+            Some(',') | None => Ok(res),
+            Some(_) => Err(self.error_here(ErrorKind::InvalidCharInString)),
         }
     }
 
-    /// A boolean can be 'true', 'false', or nothing (which is equivalent to 'true').
+    /// Attempt to parse a boolean.
     fn parse_bool(&mut self) -> Result<bool> {
-        // 'true' and 'false' can be picked by peek_value.
-        let s = match self.peek_value() {
-            Ok(s) => s,
-            // Consider end of input as an empty string, which will be evaluated to `true`.
-            Err(ParseError {
-                kind: ErrorKind::Eof,
-                ..
-            }) => "",
-            Err(_) => return Err(self.error_here(ErrorKind::ExpectedBoolean)),
-        };
-        let res = match s {
-            "" => Ok(true),
-            s => bool::from_str(s).map_err(|_| self.error_here(ErrorKind::ExpectedBoolean)),
-        };
+        let (remainder, res) =
+            any_bool(self.input)
+                .finish()
+                .map_err(|e: nom::error::Error<_>| {
+                    self.input = e.input;
+                    self.error_here(ErrorKind::ExpectedBoolean)
+                })?;
 
-        self.input = &self.input[s.len()..];
-
-        res
+        self.input = remainder;
+        Ok(res)
     }
 
-    /// Parse a positive or negative number.
+    /// Attempt to parse a positive or negative number.
     fn parse_number<T>(&mut self) -> Result<T>
     where
         T: Num<FromStrRadixErr = ParseIntError>,
     {
-        let num_str = self.peek_value()?;
-        let len = num_str.len();
-        let (num_str, radix) = match num_str.get(..2) {
-            Some("0x") => (&num_str[2..], 16),
-            Some("0o") => (&num_str[2..], 8),
-            Some("0b") => (&num_str[2..], 2),
-            _ => (num_str, 10),
-        };
-        let val = T::from_str_radix(num_str, radix).map_err(|e| {
-            self.error_here(
-                if let IntErrorKind::PosOverflow | IntErrorKind::NegOverflow = e.kind() {
-                    ErrorKind::NumberOverflow
-                } else {
-                    ErrorKind::ExpectedNumber
-                },
-            )
+        let (remainder, val) = any_number(self.input).finish().map_err(|e| {
+            self.input = e.input;
+            self.error_here(match e.code {
+                // If the error has happened during the number conversion, this means we had an
+                // invalid input for the number type.
+                nom::error::ErrorKind::MapRes => ErrorKind::InvalidNumber,
+                // Otherwise this means we failed to parse something ressembling a number.
+                _ => ErrorKind::ExpectedNumber,
+            })
         })?;
-        self.input = &self.input[len..];
+
+        self.input = remainder;
         Ok(val)
     }
 }
@@ -340,11 +331,15 @@ impl<'de> de::MapAccess<'de> for KeyValueDeserializer<'de> {
         if self.peek_char().is_none() {
             return Ok(None);
         }
+
+        self.has_equal = false;
+
         let val = seed.deserialize(&mut *self).map(Some)?;
 
         // We just "deserialized" the content of `next_identifier`, so there should be no equal
         // character in the input. We can return now.
         if has_next_identifier {
+            self.has_equal = true;
             return Ok(val);
         }
 
@@ -352,6 +347,7 @@ impl<'de> de::MapAccess<'de> for KeyValueDeserializer<'de> {
             // We expect an equal after an identifier.
             Some('=') => {
                 self.skip_char();
+                self.has_equal = true;
                 Ok(val)
             }
             // Ok if we are parsing a boolean where an empty value means true.
@@ -439,8 +435,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut KeyValueDeserializer<'de> {
             Some(',') | None => self.deserialize_bool(visitor),
             _ => {
                 // We probably have an unquoted string, but possibly a boolean as well.
-                match self.peek_identifier() {
-                    Ok("true") | Ok("false") => self.deserialize_bool(visitor),
+                match any_identifier(self.input) {
+                    Ok((_, "true")) | Ok((_, "false")) => self.deserialize_bool(visitor),
                     _ => self.deserialize_str(visitor),
                 }
             }
@@ -451,7 +447,14 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut KeyValueDeserializer<'de> {
     where
         V: serde::de::Visitor<'de>,
     {
-        visitor.visit_bool(self.parse_bool()?)
+        // It is valid to just mention a bool as a flag and not specify its value - in this case
+        // the value is set as `true`.
+        let val = if self.has_equal {
+            self.parse_bool()?
+        } else {
+            true
+        };
+        visitor.visit_bool(val)
     }
 
     fn deserialize_i8<V>(self, visitor: V) -> Result<V::Value>
@@ -643,8 +646,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut KeyValueDeserializer<'de> {
         // To detect this, peek the next identifier, and check if the character following is '='. If
         // it is not, then we may have a value in first position, unless the value is identical to
         // one of the field's name - in this case, assume this is a boolean using the flag syntax.
-        self.next_identifier = match self.peek_identifier() {
-            Ok(s) => match self.input.chars().nth(s.chars().count()) {
+        self.next_identifier = match any_identifier(self.input) {
+            Ok((_, s)) => match self.input.chars().nth(s.chars().count()) {
                 Some('=') => None,
                 _ => {
                     if fields.contains(&s) {
@@ -730,7 +733,7 @@ mod tests {
         assert_eq!(
             res,
             ParseError {
-                kind: ErrorKind::ExpectedNumber,
+                kind: ErrorKind::InvalidNumber,
                 pos: 2
             }
         );
@@ -741,11 +744,12 @@ mod tests {
         assert_eq!(
             res,
             ParseError {
-                kind: ErrorKind::NumberOverflow,
+                kind: ErrorKind::InvalidNumber,
                 pos: 2
             }
         );
 
+        // Not a number.
         let res = from_key_values::<SingleStruct<usize>>("m=test").unwrap_err();
         assert_eq!(
             res,
@@ -768,8 +772,8 @@ mod tests {
         assert_eq!(
             res,
             ParseError {
-                kind: ErrorKind::ExpectedNumber,
-                pos: 2,
+                kind: ErrorKind::InvalidNumber,
+                pos: 4,
             }
         );
 
@@ -784,8 +788,8 @@ mod tests {
         assert_eq!(
             res,
             ParseError {
-                kind: ErrorKind::ExpectedNumber,
-                pos: 2,
+                kind: ErrorKind::InvalidNumber,
+                pos: 4,
             }
         );
 
@@ -800,8 +804,8 @@ mod tests {
         assert_eq!(
             res,
             ParseError {
-                kind: ErrorKind::ExpectedNumber,
-                pos: 2,
+                kind: ErrorKind::InvalidNumber,
+                pos: 4,
             }
         );
     }
@@ -886,6 +890,14 @@ mod tests {
         let kv = r#"m="Escaped slash\\""#;
         let res = from_key_values::<SingleStruct<String>>(kv).unwrap();
         assert_eq!(res.m, r#"Escaped slash\"#.to_string());
+
+        // Characters within single quotes should not be escaped.
+        let kv = r#"m='Escaped \" quote'"#;
+        let res = from_key_values::<SingleStruct<String>>(kv).unwrap();
+        assert_eq!(res.m, r#"Escaped \" quote"#.to_string());
+        let kv = r#"m='Escaped slash\\'"#;
+        let res = from_key_values::<SingleStruct<String>>(kv).unwrap();
+        assert_eq!(res.m, r#"Escaped slash\\"#.to_string());
     }
 
     #[test]
@@ -900,6 +912,15 @@ mod tests {
         assert_eq!(res.m, true);
 
         let res = from_key_values::<SingleStruct<bool>>("m=10").unwrap_err();
+        assert_eq!(
+            res,
+            ParseError {
+                kind: ErrorKind::ExpectedBoolean,
+                pos: 2,
+            }
+        );
+
+        let res = from_key_values::<SingleStruct<bool>>("m=").unwrap_err();
         assert_eq!(
             res,
             ParseError {
