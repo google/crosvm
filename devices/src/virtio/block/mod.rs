@@ -9,5 +9,4 @@ pub(crate) mod sys;
 
 pub use asynchronous::BlockAsync;
 pub use asynchronous::DiskState;
-pub use block::Block;
 pub use common::*;
