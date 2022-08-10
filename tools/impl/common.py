@@ -18,24 +18,43 @@ import sys
 import subprocess
 
 
-def ensure_package_exists(package: str):
-    """Installs the specified package via pip if it does not exist."""
-    try:
-        __import__(package)
-    except ImportError:
+def ensure_packages_exist(*packages: str):
+    """Installs the specified packages via pip if it does not exist."""
+    missing_packages: List[str] = []
+
+    for package in packages:
+        try:
+            __import__(package)
+        except ImportError:
+            missing_packages.append(package)
+
+    if missing_packages:
+        try:
+            __import__("pip")
+        except ImportError:
+            print(f"Missing the 'pip' package. Please install 'python3-pip'.")
+            sys.exit(1)
+
+        package_list = ", ".join(missing_packages)
         print(
-            f"Missing the python package {package}. Do you want to install? [y/N] ",
+            f"Missing python dependencies. Do you want to install {package_list}? [y/N] ",
             end="",
             flush=True,
         )
         response = sys.stdin.readline()
         if response[:1].lower() == "y":
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "--user", package])
+            subprocess.check_call(
+                [sys.executable, "-m", "pip", "install", "--user", *missing_packages]
+            )
+            print("Success. Please re-run the command.")
+            sys.exit(0)
         else:
             sys.exit(1)
 
 
-ensure_package_exists("argh")
+# Note: These packages can be installed automatically on developer machines, but need to be
+# provided as CIPD packages for vpython in Luci CI. See tools/.vpython3 for how to add them.
+ensure_packages_exist("argh", "rich")
 
 from io import StringIO
 from math import ceil
