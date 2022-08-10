@@ -36,7 +36,7 @@ use cros_async::SelectResult;
 use cros_async::TimerAsync;
 use data_model::DataInit;
 use disk::AsyncDisk;
-use disk::ToAsyncDisk;
+use disk::DiskFile;
 use futures::pin_mut;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -502,7 +502,7 @@ fn run_worker(
 /// Virtio device for exposing block level read/write operations on a host file.
 pub struct BlockAsync {
     // We keep these members crate-public as they are accessed by the vhost-user device.
-    pub(crate) disk_image: Option<Box<dyn ToAsyncDisk>>,
+    pub(crate) disk_image: Option<Box<dyn DiskFile>>,
     pub(crate) disk_size: Arc<AtomicU64>,
     pub(crate) avail_features: u64,
     pub(crate) read_only: bool,
@@ -512,14 +512,14 @@ pub struct BlockAsync {
     pub(crate) id: Option<BlockId>,
     pub(crate) control_tube: Option<Tube>,
     kill_evt: Option<Event>,
-    worker_thread: Option<thread::JoinHandle<(Box<dyn ToAsyncDisk>, Option<Tube>)>>,
+    worker_thread: Option<thread::JoinHandle<(Box<dyn DiskFile>, Option<Tube>)>>,
 }
 
 impl BlockAsync {
     /// Create a new virtio block device that operates on the given AsyncDisk.
     pub fn new(
         base_features: u64,
-        disk_image: Box<dyn ToAsyncDisk>,
+        disk_image: Box<dyn DiskFile>,
         read_only: bool,
         sparse: bool,
         block_size: u32,

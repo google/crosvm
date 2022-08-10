@@ -16,7 +16,6 @@ use base::RawDescriptor;
 use broker_ipc::common_child_setup;
 use broker_ipc::CommonChildStartupArgs;
 use cros_async::Executor;
-use disk::async_ok;
 use disk::AsyncDisk;
 use disk::SingleFileDisk;
 use hypervisor::ProtectionType;
@@ -115,10 +114,6 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     let mut files = Vec::new();
     for _ in 0..disk_option.io_concurrency.get() {
         files.push(open_disk_file(&disk_option, take_write_lock)?);
-    }
-
-    if !async_ok(&files[0])? {
-        bail!("found non-raw image; only raw images are supported.");
     }
 
     let base_features = base_features(ProtectionType::Unprotected);

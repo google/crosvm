@@ -53,7 +53,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
 
     let block = Box::new(BlockAsync::new(
         base_features(ProtectionType::Unprotected),
-        disk.open_as_async_file()?,
+        disk.open()?,
         disk.read_only,
         disk.sparse,
         disk.block_size,

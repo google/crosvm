@@ -151,6 +151,7 @@ pub trait DiskFile:
     + PunchHole
     + WriteZeroesAt
     + FileAllocate
+    + ToAsyncDisk
     + Send
     + AsRawDescriptors
     + Debug
@@ -164,6 +165,7 @@ impl<
             + FileReadWriteAtVolatile
             + WriteZeroesAt
             + FileAllocate
+            + ToAsyncDisk
             + Send
             + AsRawDescriptors
             + Debug,
@@ -253,26 +255,6 @@ pub fn detect_image_type(file: &File) -> Result<ImageType> {
     Ok(ImageType::Raw)
 }
 
-/// Check if the image file type can be used for async disk access.
-pub fn async_ok(raw_image: &File) -> Result<bool> {
-    let image_type = detect_image_type(raw_image)?;
-    Ok(match image_type {
-        ImageType::Raw => true,
-        ImageType::Qcow2 | ImageType::AndroidSparse | ImageType::CompositeDisk => false,
-    })
-}
-
-/// Inspect the image file type and create an appropriate disk file to match it.
-pub fn create_async_disk_file(raw_image: File) -> Result<Box<dyn ToAsyncDisk>> {
-    let image_type = detect_image_type(&raw_image)?;
-    Ok(match image_type {
-        ImageType::Raw => Box::new(raw_image) as Box<dyn ToAsyncDisk>,
-        ImageType::Qcow2 | ImageType::AndroidSparse | ImageType::CompositeDisk => {
-            return Err(Error::UnknownType)
-        }
-    })
-}
-
 /// Inspect the image file type and create an appropriate disk file to match it.
 pub fn create_disk_file(
     raw_image: File,
@@ -327,7 +309,7 @@ pub fn create_disk_file(
 #[async_trait(?Send)]
 pub trait AsyncDisk: DiskGetLen + FileSetLen + FileAllocate {
     /// Returns the inner file consuming self.
-    fn into_inner(self: Box<Self>) -> Box<dyn ToAsyncDisk>;
+    fn into_inner(self: Box<Self>) -> Box<dyn DiskFile>;
 
     /// Asynchronously fsyncs any completed operations to the disk.
     async fn fsync(&self) -> Result<()>;
@@ -389,7 +371,7 @@ impl FileAllocate for SingleFileDisk {
 
 #[async_trait(?Send)]
 impl AsyncDisk for SingleFileDisk {
-    fn into_inner(self: Box<Self>) -> Box<dyn ToAsyncDisk> {
+    fn into_inner(self: Box<Self>) -> Box<dyn DiskFile> {
         Box::new(self.inner.into_source())
     }
 

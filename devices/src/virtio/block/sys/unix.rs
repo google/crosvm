@@ -13,7 +13,7 @@ use base::flock;
 use base::iov_max;
 use base::open_file;
 use base::FlockOperation;
-use disk::ToAsyncDisk;
+use disk::DiskFile;
 
 use crate::virtio::block::block::DiskOption;
 
@@ -27,8 +27,8 @@ pub fn get_seg_max(queue_size: u16) -> u32 {
 }
 
 impl DiskOption {
-    /// Open the specified disk file as a raw image.
-    pub fn open_as_raw_image(&self) -> anyhow::Result<File> {
+    /// Open the specified disk file.
+    pub fn open(&self) -> anyhow::Result<Box<dyn DiskFile>> {
         let mut options = OpenOptions::new();
         options.read(true).write(!self.read_only);
 
@@ -47,14 +47,7 @@ impl DiskOption {
         flock(&raw_image, lock_op, true)
             .with_context(|| format!("failed to lock disk image {}", self.path.display()))?;
 
-        Ok(raw_image)
-    }
-
-    pub fn open_as_async_file(&self) -> anyhow::Result<Box<dyn ToAsyncDisk>> {
-        let raw_image = self.open_as_raw_image()?;
-        let async_file = disk::create_async_disk_file(raw_image)
-            .context("failed to create async virtual disk")?;
-
-        Ok(async_file)
+        disk::create_disk_file(raw_image, self.sparse, disk::MAX_NESTING_DEPTH, &self.path)
+            .context("create_disk_file failed")
     }
 }

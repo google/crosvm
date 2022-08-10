@@ -23,7 +23,6 @@ use crate::DiskFile;
 use crate::DiskGetLen;
 use crate::Error;
 use crate::Result;
-use crate::ToAsyncDisk;
 
 /// Async wrapper around a non-async `DiskFile` using a `BlockingPool`.
 ///
@@ -68,8 +67,8 @@ impl<T: DiskFile + Send> AsRawDescriptors for AsyncDiskFileWrapper<T> {
 }
 
 #[async_trait(?Send)]
-impl<T: 'static + DiskFile + Send + ToAsyncDisk> AsyncDisk for AsyncDiskFileWrapper<T> {
-    fn into_inner(self: Box<Self>) -> Box<dyn ToAsyncDisk> {
+impl<T: 'static + DiskFile + Send> AsyncDisk for AsyncDiskFileWrapper<T> {
+    fn into_inner(self: Box<Self>) -> Box<dyn DiskFile> {
         self.blocking_pool
             .shutdown(None)
             .expect("AsyncDiskFile pool shutdown failed");
