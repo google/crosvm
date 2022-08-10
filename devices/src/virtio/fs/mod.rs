@@ -333,7 +333,7 @@ impl VirtioDevice for Fs {
             FS_BAR_NUM as usize,
             FS_BAR_SIZE,
             PciBarRegionType::Memory64BitRegion,
-            PciBarPrefetchable::NotPrefetchable,
+            PciBarPrefetchable::Prefetchable,
         )]
     }
 
