@@ -359,7 +359,7 @@ impl AvCodecContext {
     ) -> Result<TryReceiveFrameResult, AvError> {
         // Safe because the context is valid through the life of this object, and `avframe` is
         // guaranteed to contain a properly initialized frame.
-        match unsafe { ffi::avcodec_receive_frame(self.0, frame.as_mut()) } {
+        match unsafe { ffi::avcodec_receive_frame(self.0, frame.0) } {
             AVERROR_EAGAIN => Ok(TryReceiveFrameResult::TryAgain),
             AVERROR_EOF => Ok(TryReceiveFrameResult::FlushCompleted),
             ret if ret >= 0 => Ok(TryReceiveFrameResult::Received),
@@ -561,13 +561,6 @@ impl AsRef<ffi::AVFrame> for AvFrame {
     fn as_ref(&self) -> &ffi::AVFrame {
         // Safe because the AVFrame has been properly initialized during construction.
         unsafe { &*self.0 }
-    }
-}
-
-impl AsMut<ffi::AVFrame> for AvFrame {
-    fn as_mut(&mut self) -> &mut ffi::AVFrame {
-        // Safe because the AVFrame has been properly initialized during construction.
-        unsafe { &mut *self.0 }
     }
 }
 
