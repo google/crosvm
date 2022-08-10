@@ -161,6 +161,9 @@ pub enum RutabagaError {
     /// Invalid Capset
     #[error("invalid capset")]
     InvalidCapset,
+    /// A command buffer with insufficient space was submitted.
+    #[error("invalid command buffer submitted")]
+    InvalidCommandBuffer,
     /// A command size was submitted that was invalid.
     #[error("command buffer submitted with invalid size: {0}")]
     InvalidCommandSize(usize),
