@@ -118,7 +118,7 @@ enum Error {
 const UNPIN_DEFAULT_INTERVAL: Duration = Duration::from_secs(60);
 const UNPIN_GEN_DEFAULT_THRES: u64 = 10;
 /// Holds the coiommu unpin policy
-#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum CoIommuUnpinPolicy {
     Off,
     Lru,
@@ -151,7 +151,7 @@ impl fmt::Display for CoIommuUnpinPolicy {
 }
 
 /// Holds the parameters for a coiommu device
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct CoIommuParameters {
     pub unpin_policy: CoIommuUnpinPolicy,
     pub unpin_interval: Duration,

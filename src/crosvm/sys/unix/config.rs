@@ -370,6 +370,90 @@ mod tests {
         parse_ac97_options("socket_type=legacy").expect("parse should have succeded");
     }
 
+    #[test]
+    fn parse_coiommu_options() {
+        use super::parse_coiommu_params;
+        use devices::CoIommuParameters;
+        use devices::CoIommuUnpinPolicy;
+
+        // unpin_policy
+        let coiommu_params = parse_coiommu_params("unpin_policy=off").unwrap();
+        assert_eq!(
+            coiommu_params,
+            CoIommuParameters {
+                unpin_policy: CoIommuUnpinPolicy::Off,
+                ..Default::default()
+            }
+        );
+        let coiommu_params = parse_coiommu_params("unpin_policy=lru").unwrap();
+        assert_eq!(
+            coiommu_params,
+            CoIommuParameters {
+                unpin_policy: CoIommuUnpinPolicy::Lru,
+                ..Default::default()
+            }
+        );
+        let coiommu_params = parse_coiommu_params("unpin_policy=foo");
+        assert!(coiommu_params.is_err());
+
+        // unpin_interval
+        let coiommu_params = parse_coiommu_params("unpin_interval=42").unwrap();
+        assert_eq!(
+            coiommu_params,
+            CoIommuParameters {
+                unpin_interval: Duration::from_secs(42),
+                ..Default::default()
+            }
+        );
+        let coiommu_params = parse_coiommu_params("unpin_interval=foo");
+        assert!(coiommu_params.is_err());
+
+        // unpin_limit
+        let coiommu_params = parse_coiommu_params("unpin_limit=256").unwrap();
+        assert_eq!(
+            coiommu_params,
+            CoIommuParameters {
+                unpin_limit: Some(256),
+                ..Default::default()
+            }
+        );
+        let coiommu_params = parse_coiommu_params("unpin_limit=0");
+        assert!(coiommu_params.is_err());
+        let coiommu_params = parse_coiommu_params("unpin_limit=foo");
+        assert!(coiommu_params.is_err());
+
+        // unpin_gen_threshold
+        let coiommu_params = parse_coiommu_params("unpin_gen_threshold=32").unwrap();
+        assert_eq!(
+            coiommu_params,
+            CoIommuParameters {
+                unpin_gen_threshold: 32,
+                ..Default::default()
+            }
+        );
+        let coiommu_params = parse_coiommu_params("unpin_gen_threshold=foo");
+        assert!(coiommu_params.is_err());
+
+        // All together
+        let coiommu_params = parse_coiommu_params(
+            "unpin_policy=lru,unpin_interval=90,unpin_limit=8,unpin_gen_threshold=64",
+        )
+        .unwrap();
+        assert_eq!(
+            coiommu_params,
+            CoIommuParameters {
+                unpin_policy: CoIommuUnpinPolicy::Lru,
+                unpin_interval: Duration::from_secs(90),
+                unpin_limit: Some(8),
+                unpin_gen_threshold: 64,
+            }
+        );
+
+        // invalid parameter
+        let coiommu_params = parse_coiommu_params("unpin_invalid_param=0");
+        assert!(coiommu_params.is_err());
+    }
+
     #[cfg(feature = "gpu")]
     #[test]
     fn parse_gpu_options_mode() {
