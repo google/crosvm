@@ -6,6 +6,7 @@ use std::cell::RefCell;
 
 use base::Tube;
 
+use crate::virtio::block::asynchronous::NUM_QUEUES;
 use crate::virtio::vhost::user::vmm::block::Block;
 use crate::virtio::vhost::user::vmm::block::QUEUE_SIZE;
 use crate::virtio::vhost::user::vmm::handler::VhostUserHandler;
@@ -18,7 +19,7 @@ impl Block {
 
         let mut handler = VhostUserHandler::new_from_tube(
             tube,
-            /* max_queue_num= */ 1,
+            /* max_queue_num= */ NUM_QUEUES.into(),
             allow_features,
             init_features,
             allow_protocol_features,

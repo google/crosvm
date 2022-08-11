@@ -61,7 +61,7 @@ use crate::virtio::VirtioDevice;
 use crate::virtio::Writer;
 
 const QUEUE_SIZE: u16 = 256;
-const NUM_QUEUES: u16 = 16;
+pub const NUM_QUEUES: u16 = 16;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE; NUM_QUEUES as usize];
 
 #[sorted]

@@ -27,6 +27,7 @@ const VIRTIO_BLK_F_SEG_MAX: u32 = 2;
 const VIRTIO_BLK_F_RO: u32 = 5;
 const VIRTIO_BLK_F_BLK_SIZE: u32 = 6;
 const VIRTIO_BLK_F_FLUSH: u32 = 9;
+const VIRTIO_BLK_F_MQ: u32 = 12;
 const VIRTIO_BLK_F_DISCARD: u32 = 13;
 const VIRTIO_BLK_F_WRITE_ZEROES: u32 = 14;
 
@@ -46,6 +47,7 @@ impl Block {
             | 1 << VIRTIO_BLK_F_RO
             | 1 << VIRTIO_BLK_F_BLK_SIZE
             | 1 << VIRTIO_BLK_F_FLUSH
+            | 1 << VIRTIO_BLK_F_MQ
             | 1 << VIRTIO_BLK_F_DISCARD
             | 1 << VIRTIO_BLK_F_WRITE_ZEROES
             | 1 << VIRTIO_RING_F_EVENT_IDX
@@ -53,7 +55,8 @@ impl Block {
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
 
         let init_features = base_features | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
-        let allow_protocol_features = VhostUserProtocolFeatures::CONFIG;
+        let allow_protocol_features =
+            VhostUserProtocolFeatures::CONFIG | VhostUserProtocolFeatures::MQ;
 
         (allow_features, init_features, allow_protocol_features)
     }
