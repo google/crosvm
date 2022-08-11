@@ -3,57 +3,161 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import doctest
-import importlib
-import argh  # type: ignore
+from typing import List
 import sys
-from pathlib import Path
-from impl.common import CROSVM_ROOT, run_main, cmd, chdir, parallel, find_scripts
+from impl.common import (
+    CROSVM_ROOT,
+    parallel,
+    run_main,
+    cmd,
+    chdir,
+    argh,
+)
 from impl.check_code_hygiene import has_crlf_line_endings
-
-mypy = cmd("mypy --pretty --color-output").env("MYPY_FORCE_COLOR", "1").env("MYPYPATH", "tools")
-
-
-def check_python():
-    print("Running python doctests")
-    for source in Path("tools/impl").glob("*.py"):
-        lib = importlib.import_module(f"impl.{source.stem}")
-        result = doctest.testmod(lib, optionflags=doctest.ELLIPSIS)
-        if result.failed:
-            sys.exit(1)
-    print("Type-checking python")
-    parallel(
-        mypy("tools/impl"),
-        *mypy.foreach(find_scripts(Path("tools"), "/usr/bin/env python3")),
-    ).fg()
+from impl.health_check import Check, CheckContext, run_checks
 
 
-def check_crlf_line_endings():
+def check_python_tests(context: CheckContext):
+    "Run all non-main python files to execute their unit tests."
+    parallel(*cmd("python3").foreach(context.all_files)).fg()
+
+
+def check_python_types(context: CheckContext):
+    "Run mypy on all python files to type-check."
+    mypy = cmd("mypy --pretty --color-output").env("MYPY_FORCE_COLOR", "1").env("MYPYPATH", "tools")
+    parallel(*mypy.foreach(context.all_files)).fg()
+
+
+def check_python_format(context: CheckContext):
+    black = cmd("black", "--line-length 100", "--check" if not context.fix else "")
+    parallel(*black.foreach(context.modified_files)).fg()
+
+
+def check_crlf_line_endings(_: CheckContext):
+    "Checks for crlf line endingings."
     crlf_endings = has_crlf_line_endings()
     if crlf_endings:
         print("Error: Following files have crlf(dos) line encodings")
         print(*crlf_endings)
-        sys.exit(-1)
+        raise Exception("Files with crlf line endings.")
 
 
-@argh.arg("checks", choices=["python", "misc", "fmt", "clippy", "all", []])
-def main(*checks: str):
+def check_markdown_format(context: CheckContext):
+    "Runs mdformat on all markdown files."
+    mdformat = cmd("mdformat --wrap 100", "--check" if not context.fix else "")
+    parallel(*mdformat.foreach(context.modified_files)).fg()
+
+
+def check_rust_clippy(_: CheckContext):
+    "Runs clippy on the whole project, no matter which rs files were touched."
+    cmd("./tools/clippy").fg()
+
+
+def check_rust_format(context: CheckContext):
+    "Runs rustfmt on all modified files."
+    if context.nightly:
+        rustfmt = cmd(
+            cmd("rustup +nightly which rustfmt"),
+            "--config imports_granularity=item,group_imports=StdExternalCrate",
+        )
+    else:
+        rustfmt = cmd(cmd("rustup which rustfmt"))
+    parallel(*rustfmt("--check" if not context.fix else "").foreach(context.modified_files)).fg(
+        quiet=True
+    )
+
+
+# List of all checks and on which files they should run.
+CHECKS: List[Check] = [
+    Check(
+        check_rust_format,
+        files=["**.rs"],
+    ),
+    Check(
+        check_rust_clippy,
+        files=["**.rs", "**Cargo.toml"],
+    ),
+    Check(
+        check_python_tests,
+        files=["tools/impl/common.py"],
+    ),
+    Check(
+        check_python_types,
+        files=["tools/**.py"],
+        exclude=["tools/windows/*"],
+        python_tools=True,
+    ),
+    Check(
+        check_python_format,
+        files=["**.py"],
+        python_tools=True,
+        exclude=["infra/recipes.py"],
+    ),
+    Check(
+        check_markdown_format,
+        files=["**.md"],
+        exclude=[
+            "infra/README.recipes.md",
+            "docs/book/src/appendix/memory_layout.md",
+        ],
+    ),
+    Check(check_crlf_line_endings),
+]
+
+CHECKS_DICT = dict((c.name, c) for c in CHECKS)
+
+# TODO(b/239255137): Remove after transition
+LEGACY_STEPS = ["python", "misc", "fmt", "clippy"]
+
+
+@argh.arg("--list-checks", default=False, help="List names of available checks and exit.")
+@argh.arg("--fix", default=False, help="Asks checks to fix problems where possible.")
+@argh.arg("--all", default=False, help="Run on all files instead of just modified files.")
+@argh.arg(
+    "checks",
+    choices=[*CHECKS_DICT.keys(), *LEGACY_STEPS, []],
+    help="Optional list of checks to run. Defaults to run all checks.",
+)
+def main(
+    list_checks: bool = False,
+    fix: bool = False,
+    all: bool = False,
+    nightly: bool = False,
+    *checks: str,
+):
+    """
+    Run health checks on crosvm. This includes formatting, linters and other various checks.
+    """
     chdir(CROSVM_ROOT)
 
-    if not checks:
-        checks = ("all",)
+    # We need to support the old arguments while Luci is transitioning.
+    # TODO(b/239255137): Remove after transition
+    no_legacy_checks = [check for check in checks if check not in LEGACY_STEPS]
+    if "python" in checks:
+        no_legacy_checks += ["python_tests", "python_types"]
+        all = True
+    if "clippy" in checks:
+        no_legacy_checks += ["rust_clippy"]
+        all = True
+    if "misc" in checks:
+        no_legacy_checks += ["crlf_line_endings"]
+        all = True
+    if "fmt" in checks:
+        no_legacy_checks += ["python_format", "markdown_format", "rust_format"]
+        all = True
 
-    def should_check(name: str):
-        return "all" in checks or name in checks
+    if not no_legacy_checks:
+        checks_list = [*CHECKS_DICT.values()]
+    else:
+        checks_list = [CHECKS_DICT[check] for check in no_legacy_checks]
 
-    if should_check("python"):
-        check_python()
-    if should_check("misc"):
-        check_crlf_line_endings()
-    if should_check("fmt"):
-        cmd("./tools/fmt --check").fg()
-    if should_check("clippy"):
-        cmd("./tools/clippy").fg()
+    if list_checks:
+        for check in checks_list:
+            print(check.name)
+        return
+    success = run_checks(checks_list, fix=fix, run_on_all_files=all, nightly=nightly)
+
+    sys.exit(0 if success else 1)
 
 
 if __name__ == "__main__":

@@ -433,6 +433,11 @@ class ParallelCommands(object):
         with ThreadPool(os.cpu_count()) as pool:
             return pool.map(lambda command: command.stdout(), self.commands)
 
+    def success(self):
+        results = self.fg(check=False, quiet=False)
+        print(results)
+        return all(result == 0 for result in results)
+
 
 @contextlib.contextmanager
 def cwd_context(path: PathLike):
