@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::str::FromStr;
-
 use audio_streams::StreamSourceGenerator;
 use base::set_rt_prio_limit;
 use base::set_rt_round_robin;
@@ -23,34 +21,16 @@ pub enum StreamSourceBackend {
     CRAS,
 }
 
-impl FromStr for StreamSourceBackend {
-    type Err = Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+impl TryFrom<&str> for StreamSourceBackend {
+    type Error = Error;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
         match s {
             #[cfg(feature = "audio_cras")]
             "cras" => Ok(StreamSourceBackend::CRAS),
             _ => Err(Error::InvalidBackend),
         }
     }
-}
-
-#[allow(unused_variables, unused_mut)]
-pub(crate) fn parse_args(params: &mut Parameters, k: &str, v: &str) -> Result<(), Error> {
-    #[cfg(feature = "audio_cras")]
-    match k {
-        "client_type" => {
-            params.client_type = v.parse().map_err(|e: libcras::CrasSysError| {
-                Error::InvalidParameterValue(v.to_string(), e.to_string())
-            })?;
-        }
-        "socket_type" => {
-            params.socket_type = v.parse().map_err(|e: libcras::Error| {
-                Error::InvalidParameterValue(v.to_string(), e.to_string())
-            })?;
-        }
-        _ => return Err(Error::UnknownParameter(k.to_string())),
-    };
-    Ok(())
 }
 
 #[cfg(feature = "audio_cras")]

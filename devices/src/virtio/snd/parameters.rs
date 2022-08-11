@@ -3,16 +3,16 @@
 // found in the LICENSE file.
 
 use std::num::ParseIntError;
-use std::str::FromStr;
 use std::str::ParseBoolError;
 
 #[cfg(all(unix, feature = "audio_cras"))]
 use libcras::CrasClientType;
 #[cfg(all(unix, feature = "audio_cras"))]
 use libcras::CrasSocketType;
+use serde::Deserialize;
+use serde_keyvalue::FromKeyValues;
 use thiserror::Error as ThisError;
 
-use crate::virtio::snd::sys::parse_args;
 use crate::virtio::snd::sys::StreamSourceBackend as SysStreamSourceBackend;
 
 #[derive(ThisError, Debug)]
@@ -34,26 +34,27 @@ pub enum Error {
     UnknownParameter(String),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(try_from = "&str")]
 pub enum StreamSourceBackend {
     NULL,
     Sys(SysStreamSourceBackend),
 }
 
-impl FromStr for StreamSourceBackend {
-    type Err = Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+impl TryFrom<&str> for StreamSourceBackend {
+    type Error = Error;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
         match s {
             "null" => Ok(StreamSourceBackend::NULL),
-            _ => s
-                .parse::<SysStreamSourceBackend>()
-                .map(StreamSourceBackend::Sys),
+            _ => SysStreamSourceBackend::try_from(s).map(StreamSourceBackend::Sys),
         }
     }
 }
 
 /// Holds the parameters for a cras sound device
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, FromKeyValues)]
+#[serde(deny_unknown_fields, default)]
 pub struct Parameters {
     pub capture: bool,
     pub num_output_devices: u32,
@@ -62,6 +63,7 @@ pub struct Parameters {
     pub num_output_streams: u32,
     pub num_input_streams: u32,
     #[cfg(all(unix, feature = "audio_cras"))]
+    #[serde(deserialize_with = "libcras::deserialize_cras_client_type")]
     pub client_type: CrasClientType,
     #[cfg(all(unix, feature = "audio_cras"))]
     pub socket_type: CrasSocketType,
@@ -98,54 +100,12 @@ impl Parameters {
     }
 }
 
-impl FromStr for Parameters {
-    type Err = Error;
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        let mut params: Parameters = Default::default();
-        let opts = s
-            .split(',')
-            .map(|frag| frag.split('='))
-            .map(|mut kv| (kv.next().unwrap_or(""), kv.next().unwrap_or("")));
-
-        for (k, v) in opts {
-            match k {
-                "capture" => {
-                    params.capture = v.parse::<bool>().map_err(Error::InvalidBoolValue)?;
-                }
-                "backend" => {
-                    params.backend = v.parse().map_err(|e: Error| {
-                        Error::InvalidParameterValue(v.to_string(), e.to_string())
-                    })?;
-                }
-                "num_output_devices" => {
-                    params.num_output_devices = v.parse::<u32>().map_err(Error::InvalidIntValue)?;
-                }
-                "num_input_devices" => {
-                    params.num_input_devices = v.parse::<u32>().map_err(Error::InvalidIntValue)?;
-                }
-                "num_output_streams" => {
-                    params.num_output_streams = v.parse::<u32>().map_err(Error::InvalidIntValue)?;
-                }
-                "num_input_streams" => {
-                    params.num_input_streams = v.parse::<u32>().map_err(Error::InvalidIntValue)?;
-                }
-                _ => {
-                    parse_args(&mut params, k, v)?;
-                }
-            }
-        }
-
-        Ok(params)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn check_failure(s: &str) {
-        s.parse::<Parameters>()
-            .expect_err("parse should have failed");
+        serde_keyvalue::from_key_values::<Parameters>(s).expect_err("parse should have failed");
     }
 
     fn check_success(
@@ -157,7 +117,8 @@ mod tests {
         num_output_streams: u32,
         num_input_streams: u32,
     ) {
-        let params = s.parse::<Parameters>().expect("parse should have succeded");
+        let params: Parameters =
+            serde_keyvalue::from_key_values(s).expect("parse should have succeded");
         assert_eq!(params.capture, capture);
         assert_eq!(params.backend, backend);
         assert_eq!(params.num_output_devices, num_output_devices);

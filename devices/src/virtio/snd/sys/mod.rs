@@ -13,6 +13,5 @@ cfg_if::cfg_if! {
 }
 
 pub(crate) use platform::create_stream_source_generators;
-pub(crate) use platform::parse_args;
 pub(crate) use platform::set_audio_thread_priority;
 pub use platform::StreamSourceBackend;
