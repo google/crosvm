@@ -6,7 +6,6 @@ use core::ffi::c_void;
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::collections::BinaryHeap;
-use std::mem::ManuallyDrop;
 use std::sync::Arc;
 
 use base::errno_result;
@@ -18,7 +17,6 @@ use base::AsRawDescriptor;
 use base::Error;
 use base::Event;
 use base::MappedRegion;
-use base::MemoryMapping;
 use base::MmapError;
 use base::Protection;
 use base::RawDescriptor;
@@ -445,27 +443,11 @@ impl VmX86_64 for HaxmVm {
             return errno_result();
         }
 
-        // Safe because setup_tunnel returns the host userspace virtual address of the tunnel memory
-        // mapping, along with the size of the memory mapping, and we check the return code of
-        // setup_tunnel.
-        let tunnel = ManuallyDrop::new(
-            MemoryMapping::from_raw_ptr(tunnel_info.va as *mut c_void, tunnel_info.size as usize)
-                .map_err(|_| Error::new(ENOSPC))?,
-        );
-
-        // Safe because setup_tunnel returns the host userspace virtual address of the io_buffer
-        // memory mapping, which is always HAXM_IO_BUFFER_SIZE long, and we check the return
-        // code of setup_tunnel.
-        let io_buffer = ManuallyDrop::new(
-            MemoryMapping::from_raw_ptr(tunnel_info.io_va as *mut c_void, HAXM_IO_BUFFER_SIZE)
-                .map_err(|_| Error::new(ENOSPC))?,
-        );
-
         Ok(Box::new(HaxmVcpu {
             descriptor,
             id,
-            tunnel,
-            io_buffer,
+            tunnel: tunnel_info.va as *mut hax_tunnel,
+            io_buffer: tunnel_info.io_va as *mut c_void,
             vcpu_run_handle_fingerprint: Default::default(),
         }))
     }

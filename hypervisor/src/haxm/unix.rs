@@ -113,7 +113,7 @@ pub(super) fn take_run_handle(vcpu: &HaxmVcpu, signal_num: Option<c_int>) -> Res
     VCPU_THREAD.with(|v| {
         if v.borrow().is_none() {
             *v.borrow_mut() = Some(VcpuThread {
-                tunnel: vcpu.tunnel.as_ptr() as *mut hax_tunnel,
+                tunnel: vcpu.tunnel,
                 signal_num,
             });
             Ok(())

@@ -7,7 +7,6 @@ use std::arch::x86_64::CpuidResult;
 use std::cmp::min;
 use std::intrinsics::copy_nonoverlapping;
 use std::mem::size_of;
-use std::mem::ManuallyDrop;
 use std::os::raw::c_int;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
@@ -20,15 +19,12 @@ use base::ioctl_with_ref;
 use base::warn;
 use base::AsRawDescriptor;
 use base::Error;
-use base::MappedRegion;
-use base::MemoryMapping;
 use base::RawDescriptor;
 use base::Result;
 use base::SafeDescriptor;
 use data_model::vec_with_array_field;
 use libc::EINVAL;
 use libc::ENOENT;
-use libc::ENOSPC;
 use libc::ENXIO;
 use vm_memory::GuestAddress;
 
@@ -51,9 +47,6 @@ use crate::Vcpu;
 use crate::VcpuExit;
 use crate::VcpuRunHandle;
 use crate::VcpuX86_64;
-
-// from HAXM code's IOS_MAX_BUFFER
-pub(crate) const HAXM_IO_BUFFER_SIZE: usize = 64;
 
 // HAXM exit reasons
 // IO port request
@@ -92,12 +85,13 @@ const HAX_EXIT_DIRECTION_MMIO_WRITE: u8 = 1;
 pub struct HaxmVcpu {
     pub(super) descriptor: SafeDescriptor,
     pub(super) id: usize,
-    // Normally MemoryMapping would unmap the view of the file on drop, but
-    // HAXM owns the memory/does the mapping.
-    pub(super) tunnel: ManuallyDrop<MemoryMapping>,
-    pub(super) io_buffer: ManuallyDrop<MemoryMapping>,
+    pub(super) tunnel: *mut hax_tunnel,
+    pub(super) io_buffer: *mut c_void,
     pub(super) vcpu_run_handle_fingerprint: Arc<AtomicU64>,
 }
+
+unsafe impl Send for HaxmVcpu {}
+unsafe impl Sync for HaxmVcpu {}
 
 impl AsRawDescriptor for HaxmVcpu {
     fn as_raw_descriptor(&self) -> RawDescriptor {
@@ -148,24 +142,8 @@ impl Vcpu for HaxmVcpu {
         Ok(HaxmVcpu {
             descriptor: self.descriptor.try_clone()?,
             id: self.id,
-            // Safe because we know the original tunnel memory mapping can only be created in
-            // the HaxmVcpu::new function, which does so safely.
-            tunnel: ManuallyDrop::new(
-                MemoryMapping::from_raw_ptr(
-                    self.tunnel.as_ptr() as *mut c_void,
-                    self.tunnel.size(),
-                )
-                .map_err(|_| Error::new(ENOSPC))?,
-            ),
-            // Safe because we know the original io_buffer memory mapping can only be created in
-            // the HaxmVcpu::new function, which does so safely.
-            io_buffer: ManuallyDrop::new(
-                MemoryMapping::from_raw_ptr(
-                    self.io_buffer.as_ptr() as *mut c_void,
-                    self.io_buffer.size(),
-                )
-                .map_err(|_| Error::new(ENOSPC))?,
-            ),
+            tunnel: self.tunnel,
+            io_buffer: self.io_buffer,
             vcpu_run_handle_fingerprint: self.vcpu_run_handle_fingerprint.clone(),
         })
     }
@@ -186,10 +164,11 @@ impl Vcpu for HaxmVcpu {
     /// Sets the bit that requests an immediate exit.
     fn set_immediate_exit(&self, exit: bool) {
         // Safe because we know the tunnel is a pointer to a hax_tunnel and we know its size.
-        let tunnel = unsafe { &mut *(self.tunnel.as_ptr() as *mut hax_tunnel) };
         // Crosvm's HAXM implementation does not use the _exit_reason, so it's fine if we
         // overwrite it.
-        tunnel._exit_reason = if exit { HAX_EXIT_PAUSED } else { 0 };
+        unsafe {
+            (*self.tunnel)._exit_reason = if exit { HAX_EXIT_PAUSED } else { 0 };
+        }
     }
 
     /// Sets/clears the bit for immediate exit for the vcpu on the current thread.
@@ -234,15 +213,17 @@ impl Vcpu for HaxmVcpu {
     fn handle_mmio(&self, handle_fn: &mut dyn FnMut(IoParams) -> Option<[u8; 8]>) -> Result<()> {
         // Safe because we know we mapped enough memory to hold the hax_tunnel struct because the
         // kernel told us how large it was.
-        let tunnel = unsafe { &*(self.tunnel.as_ptr() as *const hax_tunnel) };
         // Verify that the handler is called for mmio context only.
-        assert!(tunnel._exit_status == HAX_EXIT_FAST_MMIO);
+        unsafe {
+            assert!((*self.tunnel)._exit_status == HAX_EXIT_FAST_MMIO);
+        }
         // Safe because the exit_reason (which comes from the kernel) told us which
         // union field to use.
-        let mmio = unsafe { &mut *(self.io_buffer.as_ptr() as *mut hax_fastmmio) };
-        let address = mmio.gpa;
-        let size = mmio.size as usize;
-        match mmio.direction {
+        let mmio = self.io_buffer as *mut hax_fastmmio;
+        let (address, size, direction) =
+            unsafe { ((*mmio).gpa, (*mmio).size as usize, (*mmio).direction) };
+
+        match direction {
             HAX_EXIT_DIRECTION_MMIO_READ => {
                 if let Some(data) = handle_fn(IoParams {
                     address,
@@ -254,7 +235,7 @@ impl Vcpu for HaxmVcpu {
                     // as a &mut [u8] of len 8 is safe.
                     let buffer = unsafe {
                         std::slice::from_raw_parts_mut(
-                            &mut mmio.__bindgen_anon_1.value as *mut u64 as *mut u8,
+                            &mut (*mmio).__bindgen_anon_1.value as *mut u64 as *mut u8,
                             8,
                         )
                     };
@@ -264,7 +245,7 @@ impl Vcpu for HaxmVcpu {
             }
             HAX_EXIT_DIRECTION_MMIO_WRITE => {
                 // safe because we trust haxm to fill in the union properly.
-                let data = unsafe { mmio.__bindgen_anon_1.value };
+                let data = unsafe { (*mmio).__bindgen_anon_1.value };
                 handle_fn(IoParams {
                     address,
                     size,
@@ -287,12 +268,13 @@ impl Vcpu for HaxmVcpu {
     fn handle_io(&self, handle_fn: &mut dyn FnMut(IoParams) -> Option<[u8; 8]>) -> Result<()> {
         // Safe because we know we mapped enough memory to hold the hax_tunnel struct because the
         // kernel told us how large it was.
-        let tunnel = unsafe { &*(self.tunnel.as_ptr() as *const hax_tunnel) };
         // Verify that the handler is called for io context only.
-        assert!(tunnel._exit_status == HAX_EXIT_IO);
+        unsafe {
+            assert!((*self.tunnel)._exit_status == HAX_EXIT_IO);
+        }
         // Safe because the exit_reason (which comes from the kernel) told us which
         // union field to use.
-        let io = unsafe { tunnel.__bindgen_anon_1.io };
+        let io = unsafe { (*self.tunnel).__bindgen_anon_1.io };
         let address = io._port.into();
         let size = (io._count as usize) * (io._size as usize);
         match io._direction as u32 {
@@ -304,19 +286,21 @@ impl Vcpu for HaxmVcpu {
                 }) {
                     // Safe because the exit_reason (which comes from the kernel) told us that
                     // this is port io, where the iobuf can be treated as a *u8
-                    let buffer = unsafe {
-                        std::slice::from_raw_parts_mut(self.io_buffer.as_ptr() as *mut u8, size)
-                    };
-                    buffer[..size].copy_from_slice(&data[..size]);
+                    unsafe {
+                        copy_nonoverlapping(data.as_ptr(), self.io_buffer as *mut u8, size);
+                    }
                 }
                 Ok(())
             }
             HAX_EXIT_DIRECTION_PIO_OUT => {
                 let mut data = [0; 8];
-                let buffer = self.io_buffer.as_ptr() as *const &[u8] as *const u8;
                 // safe because we check the size, from what the kernel told us is the max to copy.
                 unsafe {
-                    copy_nonoverlapping(buffer, data.as_mut_ptr(), min(size, data.len()));
+                    copy_nonoverlapping(
+                        self.io_buffer as *const u8,
+                        data.as_mut_ptr(),
+                        min(size, data.len()),
+                    );
                 }
                 handle_fn(IoParams {
                     address,
@@ -370,9 +354,9 @@ impl Vcpu for HaxmVcpu {
 
         // Safe because we know we mapped enough memory to hold the hax_tunnel struct because the
         // kernel told us how large it was.
-        let tunnel = unsafe { &*(self.tunnel.as_ptr() as *const hax_tunnel) };
+        let exit_status = unsafe { (*self.tunnel)._exit_status };
 
-        match tunnel._exit_status {
+        match exit_status {
             HAX_EXIT_IO => Ok(VcpuExit::Io),
             HAX_EXIT_INTERRUPT => Ok(VcpuExit::Intr),
             HAX_EXIT_UNKNOWN => Ok(VcpuExit::Unknown),
@@ -393,16 +377,16 @@ impl VcpuX86_64 for HaxmVcpu {
     fn set_interrupt_window_requested(&self, requested: bool) {
         // Safe because we know we mapped enough memory to hold the hax_tunnel struct because the
         // kernel told us how large it was.
-        let tunnel = unsafe { &mut *(self.tunnel.as_ptr() as *mut hax_tunnel) };
-        tunnel.request_interrupt_window = if requested { 1 } else { 0 };
+        unsafe {
+            (*self.tunnel).request_interrupt_window = if requested { 1 } else { 0 };
+        }
     }
 
     /// Checks if we can inject an interrupt into the VCPU.
     fn ready_for_interrupt(&self) -> bool {
         // Safe because we know we mapped enough memory to hold the hax_tunnel struct because the
         // kernel told us how large it was.
-        let tunnel = unsafe { &mut *(self.tunnel.as_ptr() as *mut hax_tunnel) };
-        tunnel.ready_for_interrupt_injection != 0
+        unsafe { (*self.tunnel).ready_for_interrupt_injection != 0 }
     }
 
     /// Injects interrupt vector `irq` into the VCPU.
