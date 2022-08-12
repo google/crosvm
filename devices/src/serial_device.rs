@@ -125,8 +125,8 @@ fn serial_parameters_default_num() -> u8 {
 }
 
 fn serial_parameters_default_debugcon_port() -> u16 {
-    // Default to the port bochs uses.
-    0xe9
+    // Default to the port OVMF expects.
+    0x402
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, FromKeyValues)]
@@ -247,7 +247,7 @@ mod tests {
                 earlycon: false,
                 stdin: false,
                 out_timestamp: false,
-                debugcon_port: 0xe9,
+                debugcon_port: 0x402,
             }
         );
 

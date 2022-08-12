@@ -966,10 +966,14 @@ pub struct RunCommand {
     /// Possible key values:
     ///     type=(stdout,syslog,sink,file) - Where to route the
     ///        serial device
-    ///     hardware=(serial,virtio-console) - Which type of serial
-    ///        hardware to emulate. Defaults to 8250 UART (serial).
+    ///     hardware=(serial,virtio-console,debugcon) - Which type
+    ///        of serial hardware to emulate. Defaults to 8250 UART
+    ///        (serial).
     ///     num=(1,2,3,4) - Serial Device Number. If not provided,
     ///        num will default to 1.
+    ///     debugcon_port=PORT - Port for the debugcon device to
+    ///        listen to. Defaults to 0x402, which is what OVMF
+    ///        expects.
     ///     path=PATH - The path to the file to write to when
     ///        type=file
     ///     input=PATH - The path to the file to read from when not
