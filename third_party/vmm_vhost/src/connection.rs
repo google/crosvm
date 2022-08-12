@@ -288,8 +288,7 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
         &mut self,
         mut bufs: &mut [&mut [u8]],
     ) -> Result<(usize, Option<Vec<File>>)> {
-        let buf_lens: Vec<usize> = bufs.iter().map(|b| b.len()).collect();
-        let data_total: usize = buf_lens.iter().sum();
+        let data_total: usize = bufs.iter().map(|b| b.len()).sum();
         let mut data_read = 0;
         let mut rfds = None;
 
