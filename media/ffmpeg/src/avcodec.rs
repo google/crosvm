@@ -415,7 +415,7 @@ impl AvBuffer {
     /// references to this buffer reaches zero.
     ///
     /// Returns `None` if the buffer could not be created due to an error in libavcodec.
-    fn new<D: AvBufferSource>(source: D) -> Option<Self> {
+    fn new<D: AvBufferSource + 'static>(source: D) -> Option<Self> {
         // Move storage to the heap so we find it at the same place in `avbuffer_free`
         let mut storage = Box::new(source);
 
@@ -425,8 +425,8 @@ impl AvBuffer {
             let _ = unsafe { Box::from_raw(opaque as *mut D) };
         }
 
-        // Safe because storage points to valid data and we are checking the return value against
-        // NULL, which signals an error.
+        // Safe because storage points to valid data throughout the lifetime of AVBuffer and we are
+        // checking the return value against NULL, which signals an error.
         Some(Self(unsafe {
             ffi::av_buffer_create(
                 storage.as_mut_ptr(),
@@ -510,7 +510,10 @@ impl<'a> AvPacket<'a> {
     ///
     /// The returned `AvPacket` will have a `'static` lifetime and will keep `input_data` alive for
     /// as long as libavcodec needs it.
-    pub fn new_owned<T: AvBufferSource>(pts: i64, input_data: T) -> Result<Self, AvPacketError> {
+    pub fn new_owned<T: AvBufferSource + 'static>(
+        pts: i64,
+        input_data: T,
+    ) -> Result<Self, AvPacketError> {
         let mut av_buffer =
             AvBuffer::new(input_data).ok_or(AvPacketError::AvBufferCreationError)?;
         let data_slice = av_buffer.as_mut_slice();
