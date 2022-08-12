@@ -452,9 +452,11 @@ impl DecoderSession for FfmpegDecoderSession {
             event_queue: Arc::downgrade(&self.event_queue),
         };
 
-        let avpacket = AvPacket::new_owned(timestamp as i64, input_buffer)
+        let avbuffer = AvBuffer::new(input_buffer)
             .context("while creating AvPacket")
             .map_err(VideoError::BackendFailure)?;
+
+        let avpacket = AvPacket::new_owned(timestamp as i64, avbuffer);
 
         self.codec_jobs.push_back(CodecJob::Packet(avpacket));
 

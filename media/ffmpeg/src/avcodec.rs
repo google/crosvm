@@ -406,7 +406,7 @@ pub trait AvBufferSource: Send {
 /// `AVBufferRef`. Doing so means that the lifetime of these buffers becomes managed by avcodec.
 /// This struct helps make this process safe by taking full ownership of an `AvBufferSource` and
 /// dropping it when libavcodec is done with it.
-struct AvBuffer(*mut ffi::AVBufferRef);
+pub struct AvBuffer(*mut ffi::AVBufferRef);
 
 impl AvBuffer {
     /// Create a new `AvBuffer` from an `AvBufferSource`.
@@ -415,7 +415,7 @@ impl AvBuffer {
     /// references to this buffer reaches zero.
     ///
     /// Returns `None` if the buffer could not be created due to an error in libavcodec.
-    fn new<D: AvBufferSource + 'static>(source: D) -> Option<Self> {
+    pub fn new<D: AvBufferSource + 'static>(source: D) -> Option<Self> {
         // Move storage to the heap so we find it at the same place in `avbuffer_free`
         let mut storage = Box::new(source);
 
@@ -440,7 +440,7 @@ impl AvBuffer {
     }
 
     /// Return a slice to the data contained in this buffer.
-    fn as_mut_slice(&mut self) -> &mut [u8] {
+    pub fn as_mut_slice(&mut self) -> &mut [u8] {
         // Safe because the data has been initialized from valid storage in the constructor.
         unsafe { std::slice::from_raw_parts_mut((*self.0).data, (*self.0).size as usize) }
     }
@@ -451,7 +451,7 @@ impl AvBuffer {
     /// After calling, the caller is responsible for unref-ing the returned AVBufferRef, either
     /// directly or through one of the automatic management facilities in `AVFrame`, `AVPacket` or
     /// others.
-    fn into_raw(self) -> *mut ffi::AVBufferRef {
+    pub fn into_raw(self) -> *mut ffi::AVBufferRef {
         ManuallyDrop::new(self).0
     }
 }
@@ -478,12 +478,6 @@ impl<'a> Drop for AvPacket<'a> {
     }
 }
 
-#[derive(Debug, ThisError)]
-pub enum AvPacketError {
-    #[error("failed to create an AvBuffer from the input buffer")]
-    AvBufferCreationError,
-}
-
 impl<'a> AvPacket<'a> {
     /// Create a new AvPacket that borrows the `input_data`.
     ///
@@ -506,21 +500,16 @@ impl<'a> AvPacket<'a> {
         }
     }
 
-    /// Create a new AvPacket that owns the `input_data`.
+    /// Create a new AvPacket that owns the `av_buffer`.
     ///
     /// The returned `AvPacket` will have a `'static` lifetime and will keep `input_data` alive for
     /// as long as libavcodec needs it.
-    pub fn new_owned<T: AvBufferSource + 'static>(
-        pts: i64,
-        input_data: T,
-    ) -> Result<Self, AvPacketError> {
-        let mut av_buffer =
-            AvBuffer::new(input_data).ok_or(AvPacketError::AvBufferCreationError)?;
+    pub fn new_owned(pts: i64, mut av_buffer: AvBuffer) -> Self {
         let data_slice = av_buffer.as_mut_slice();
         let data = data_slice.as_mut_ptr();
         let size = data_slice.len() as i32;
 
-        let ret = Self {
+        Self {
             packet: ffi::AVPacket {
                 buf: av_buffer.into_raw(),
                 pts,
@@ -533,9 +522,7 @@ impl<'a> AvPacket<'a> {
                 ..unsafe { std::mem::zeroed() }
             },
             _buffer_data: PhantomData,
-        };
-
-        Ok(ret)
+        }
     }
 }
 
