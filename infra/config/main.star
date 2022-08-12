@@ -264,7 +264,7 @@ def verify_linux_builder(arch, crosvm_direct = False, **kwargs):
         },
         postsubmit_properties = {
             "repeat_tests": 3,
-            "coverage": False,  ## Does not yet work on aarch64/armhf
+            "coverage": True,
         },
         presubmit_properties = {
             "retry_tests": 2,
