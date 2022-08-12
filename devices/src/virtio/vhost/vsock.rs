@@ -197,6 +197,7 @@ impl VirtioDevice for Vsock {
                         acked_features,
                         kill_evt,
                         None,
+                        self.supports_iommu(),
                     );
                     let activate_vqs = |handle: &VhostVsockHandle| -> Result<()> {
                         handle.set_cid(cid).map_err(Error::VhostVsockSetCid)?;

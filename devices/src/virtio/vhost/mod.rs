@@ -72,6 +72,9 @@ pub enum Error {
     /// Get features failed.
     #[error("failed to get features: {0}")]
     VhostGetFeatures(VhostError),
+    /// Vhost IOTLB required but not supported.
+    #[error("Vhost IOTLB required but not supported")]
+    VhostIotlbUnsupported,
     /// Failed to create vhost event.
     #[error("failed to create vhost event: {0}")]
     VhostIrqCreate(SysError),

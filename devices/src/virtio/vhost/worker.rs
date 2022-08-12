@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::os::raw::c_ulonglong;
-
 use base::error;
 use base::Error as SysError;
 use base::Event;
@@ -21,6 +19,7 @@ use super::Result;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::SignalableInterrupt;
+use crate::virtio::VIRTIO_F_ACCESS_PLATFORM;
 
 /// Worker that takes care of running the vhost device.
 pub struct Worker<T: Vhost> {
@@ -31,6 +30,7 @@ pub struct Worker<T: Vhost> {
     acked_features: u64,
     pub kill_evt: Event,
     pub response_tube: Option<Tube>,
+    uses_viommu: bool,
 }
 
 impl<T: Vhost> Worker<T> {
@@ -42,6 +42,7 @@ impl<T: Vhost> Worker<T> {
         acked_features: u64,
         kill_evt: Event,
         response_tube: Option<Tube>,
+        uses_viommu: bool,
     ) -> Worker<T> {
         Worker {
             interrupt,
@@ -51,6 +52,7 @@ impl<T: Vhost> Worker<T> {
             acked_features,
             kill_evt,
             response_tube,
+            uses_viommu,
         }
     }
 
@@ -69,7 +71,19 @@ impl<T: Vhost> Worker<T> {
             .get_features()
             .map_err(Error::VhostGetFeatures)?;
 
-        let features: c_ulonglong = self.acked_features & avail_features;
+        let mut features = self.acked_features & avail_features;
+        if self.acked_features & (1u64 << VIRTIO_F_ACCESS_PLATFORM) != 0 {
+            // Crosvm doesn't implement the vhost IOTLB APIs.
+            if self.uses_viommu {
+                return Err(Error::VhostIotlbUnsupported);
+            }
+            // The vhost API is a bit poorly named, this flag in the context of vhost
+            // means that it will do address translation via its IOTLB APIs. If the
+            // underlying virtio device doesn't use viommu, it doesn't need vhost
+            // translation.
+            features &= !(1u64 << VIRTIO_F_ACCESS_PLATFORM);
+        }
+
         self.vhost_handle
             .set_features(features)
             .map_err(Error::VhostSetFeatures)?;

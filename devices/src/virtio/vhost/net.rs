@@ -223,6 +223,7 @@ where
                             acked_features,
                             kill_evt,
                             socket,
+                            self.supports_iommu(),
                         );
                         let activate_vqs = |handle: &U| -> Result<()> {
                             for idx in 0..NUM_QUEUES {
