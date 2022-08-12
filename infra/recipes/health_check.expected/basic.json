@@ -5,7 +5,7 @@
       "[CACHE]/builder/crosvm/tools/dev_container",
       "--verbose",
       "./tools/health-check",
-      "python"
+      "a"
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
@@ -23,7 +23,7 @@
         "hostname": "rdbhost"
       }
     },
-    "name": "Checking python"
+    "name": "Checking a"
   },
   {
     "cmd": [
@@ -31,7 +31,7 @@
       "[CACHE]/builder/crosvm/tools/dev_container",
       "--verbose",
       "./tools/health-check",
-      "misc"
+      "b"
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
@@ -49,59 +49,7 @@
         "hostname": "rdbhost"
       }
     },
-    "name": "Checking misc"
-  },
-  {
-    "cmd": [
-      "vpython3",
-      "[CACHE]/builder/crosvm/tools/dev_container",
-      "--verbose",
-      "./tools/health-check",
-      "fmt"
-    ],
-    "cwd": "[CACHE]/builder/crosvm",
-    "env": {
-      "CROSVM_CONTAINER_CACHE": "[CACHE]/builder/dev_container"
-    },
-    "luci_context": {
-      "realm": {
-        "name": "crosvm/crosvm:ci"
-      },
-      "resultdb": {
-        "current_invocation": {
-          "name": "invocations/build:8945511751514863184",
-          "update_token": "token"
-        },
-        "hostname": "rdbhost"
-      }
-    },
-    "name": "Checking fmt"
-  },
-  {
-    "cmd": [
-      "vpython3",
-      "[CACHE]/builder/crosvm/tools/dev_container",
-      "--verbose",
-      "./tools/health-check",
-      "clippy"
-    ],
-    "cwd": "[CACHE]/builder/crosvm",
-    "env": {
-      "CROSVM_CONTAINER_CACHE": "[CACHE]/builder/dev_container"
-    },
-    "luci_context": {
-      "realm": {
-        "name": "crosvm/crosvm:ci"
-      },
-      "resultdb": {
-        "current_invocation": {
-          "name": "invocations/build:8945511751514863184",
-          "update_token": "token"
-        },
-        "hostname": "rdbhost"
-      }
-    },
-    "name": "Checking clippy"
+    "name": "Checking b"
   },
   {
     "cmd": [
