@@ -9,10 +9,10 @@ use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Write;
 use std::iter::ExactSizeIterator;
-use std::os::unix::net::UnixStream;
 
 use base::AsRawDescriptor;
 use base::RawDescriptor;
+use base::StreamChannel;
 use data_model::DataInit;
 use linux_input_sys::virtio_input_event;
 use linux_input_sys::InputEventDecoder;
@@ -48,11 +48,11 @@ pub enum EventDeviceKind {
 pub struct EventDevice {
     kind: EventDeviceKind,
     event_buffer: VecDeque<u8>,
-    event_socket: UnixStream,
+    event_socket: StreamChannel,
 }
 
 impl EventDevice {
-    pub fn new(kind: EventDeviceKind, event_socket: UnixStream) -> EventDevice {
+    pub fn new(kind: EventDeviceKind, mut event_socket: StreamChannel) -> EventDevice {
         let _ = event_socket.set_nonblocking(true);
         EventDevice {
             kind,
@@ -62,17 +62,17 @@ impl EventDevice {
     }
 
     #[inline]
-    pub fn mouse(event_socket: UnixStream) -> EventDevice {
+    pub fn mouse(event_socket: StreamChannel) -> EventDevice {
         Self::new(EventDeviceKind::Mouse, event_socket)
     }
 
     #[inline]
-    pub fn touchscreen(event_socket: UnixStream) -> EventDevice {
+    pub fn touchscreen(event_socket: StreamChannel) -> EventDevice {
         Self::new(EventDeviceKind::Touchscreen, event_socket)
     }
 
     #[inline]
-    pub fn keyboard(event_socket: UnixStream) -> EventDevice {
+    pub fn keyboard(event_socket: StreamChannel) -> EventDevice {
         Self::new(EventDeviceKind::Keyboard, event_socket)
     }
 

@@ -25,8 +25,6 @@ use std::io::stdin;
 use std::iter;
 use std::mem;
 use std::ops::RangeInclusive;
-#[cfg(feature = "gpu")]
-use std::os::unix::net::UnixStream;
 use std::os::unix::prelude::OpenOptionsExt;
 use std::path::Path;
 use std::process;
@@ -266,7 +264,8 @@ fn create_virtio_devices(
             let mut event_devices = Vec::new();
             if cfg.display_window_mouse {
                 let (event_device_socket, virtio_dev_socket) =
-                    UnixStream::pair().context("failed to create socket")?;
+                    StreamChannel::pair(BlockingMode::Nonblocking, FramingMode::Byte)
+                        .context("failed to create socket")?;
                 let (multi_touch_width, multi_touch_height) = cfg
                     .virtio_multi_touch
                     .first()
@@ -291,7 +290,8 @@ fn create_virtio_devices(
             }
             if cfg.display_window_keyboard {
                 let (event_device_socket, virtio_dev_socket) =
-                    UnixStream::pair().context("failed to create socket")?;
+                    StreamChannel::pair(BlockingMode::Nonblocking, FramingMode::Byte)
+                        .context("failed to create socket")?;
                 let dev = virtio::new_keyboard(
                     // u32::MAX is the least likely to collide with the indices generated above for
                     // the multi_touch options, which begin at 0.
