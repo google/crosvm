@@ -12,6 +12,7 @@ use std::iter::ExactSizeIterator;
 
 use base::AsRawDescriptor;
 use base::RawDescriptor;
+use base::ReadNotifier;
 use base::StreamChannel;
 use data_model::zerocopy_from_reader;
 use linux_input_sys::virtio_input_event;
@@ -171,6 +172,12 @@ impl EventDevice {
 impl AsRawDescriptor for EventDevice {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.event_socket.as_raw_descriptor()
+    }
+}
+
+impl ReadNotifier for EventDevice {
+    fn get_read_notifier(&self) -> &dyn AsRawDescriptor {
+        self.event_socket.get_read_notifier()
     }
 }
 

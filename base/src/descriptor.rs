@@ -152,6 +152,11 @@ impl AsRawDescriptor for Descriptor {
         self.0
     }
 }
+impl FromRawDescriptor for Descriptor {
+    unsafe fn from_raw_descriptor(desc: RawDescriptor) -> Self {
+        Descriptor(desc)
+    }
+}
 
 /// Implement token for implementations that wish to use this struct as such
 impl EventToken for Descriptor {

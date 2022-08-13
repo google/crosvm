@@ -9,6 +9,7 @@ use anyhow::Result;
 use base::error;
 use base::warn;
 use base::Tube;
+use linux_input_sys::virtio_input_event;
 #[cfg(feature = "kiwi")]
 use vm_control::ServiceSendToGpu;
 use winapi::shared::minwindef::LPARAM;
@@ -23,6 +24,7 @@ use super::window::Window;
 use super::window_message_dispatcher::DisplayEventDispatcher;
 use super::ObjectId;
 use crate::EventDevice;
+use crate::EventDeviceKind;
 
 /// Thread message for killing the window during a `WndProcThread` drop. This indicates an error
 /// within crosvm that internally causes the WndProc thread to be dropped, rather than when the
@@ -63,6 +65,8 @@ pub enum DisplaySendToWndProc<T: HandleWindowMessage> {
         event_device_id: ObjectId,
         event_device: EventDevice,
     },
+    /// Handle a guest -> host input_event.
+    HandleEventDevice(ObjectId),
 }
 
 /// A trait for processing messages retrieved from the window message queue. All messages routed to
@@ -136,6 +140,15 @@ pub trait HandleWindowMessage {
     #[cfg(feature = "kiwi")]
     fn on_handle_service_message(&mut self, _window: &Window, _message: &ServiceSendToGpu) {}
 
+    /// Called when processing inbound events from event devices.
+    fn on_handle_event_device(
+        &mut self,
+        _window: &Window,
+        _event_device_kind: EventDeviceKind,
+        _event: virtio_input_event,
+    ) {
+    }
+
     /// Called when processing `WM_USER_HOST_VIEWPORT_CHANGE_INTERNAL`.
     fn on_host_viewport_change(&mut self, _window: &Window, _l_param: LPARAM) {}
 
@@ -181,6 +194,19 @@ impl<T: HandleWindowMessage> WindowMessageProcessor<T> {
                 }
             })
             .context("When creating window message handler")
+    }
+
+    pub fn handle_event_device(
+        &mut self,
+        event_device_kind: EventDeviceKind,
+        event: virtio_input_event,
+    ) {
+        match &mut self.message_handler {
+            Some(handler) => handler.on_handle_event_device(&self.window, event_device_kind, event),
+            None => error!(
+                "Cannot handle event device because window message handler has not been created!",
+            ),
+        }
     }
 
     #[cfg(feature = "kiwi")]

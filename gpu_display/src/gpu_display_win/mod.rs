@@ -16,13 +16,15 @@ use std::sync::Weak;
 use std::time::Duration;
 
 use anyhow::bail;
-use anyhow::Context;
 use anyhow::Result;
 use base::error;
 use base::AsRawDescriptor;
+use base::Descriptor;
 use base::Event;
 use base::EventWaitResult;
 use base::RawDescriptor;
+use base::ReadNotifier;
+use base::SendTube;
 use euclid::size2;
 use euclid::Size2D;
 use math_util::Size2DCheckedCast;
@@ -30,6 +32,7 @@ use metrics::Metrics;
 pub use surface::NoopSurface as Surface;
 use vm_control::gpu::DisplayMode;
 use vm_control::gpu::DisplayParameters;
+use vm_control::ModifyWaitContext;
 use window_message_processor::DisplaySendToWndProc;
 pub use window_procedure_thread::WindowProcedureThread;
 
@@ -74,6 +77,9 @@ pub struct DisplayWin {
     win_metrics: Option<Weak<Metrics>>,
     display_properties: DisplayProperties,
     is_surface_created: bool,
+    #[allow(dead_code)]
+    gpu_display_wait_descriptor_ctrl: SendTube,
+    event_device_wait_descriptor_requests: Vec<ModifyWaitContext>,
 }
 
 impl DisplayWin {
@@ -81,6 +87,7 @@ impl DisplayWin {
         wndproc_thread: WindowProcedureThread<Surface>,
         win_metrics: Option<Weak<Metrics>>,
         display_properties: DisplayProperties,
+        gpu_display_wait_descriptor_ctrl: SendTube,
     ) -> Result<DisplayWin, GpuDisplayError> {
         // The display should be closed once the WndProc thread terminates.
         let display_closed_event =
@@ -96,6 +103,8 @@ impl DisplayWin {
             win_metrics,
             display_properties,
             is_surface_created: false,
+            gpu_display_wait_descriptor_ctrl,
+            event_device_wait_descriptor_requests: Vec::new(),
         })
     }
 
@@ -145,12 +154,34 @@ impl DisplayWin {
     ) -> Result<()> {
         match ObjectId::new(event_device_id) {
             Some(event_device_id) => {
-                self.wndproc_thread
-                    .post_display_command(DisplaySendToWndProc::ImportEventDevice {
+                // This is safe because the winproc thread (which owns the event device after we
+                // send it there below) will be dropped before the GPU worker thread (which is
+                // where we're sending this descriptor).
+                let req = ModifyWaitContext::Add(Descriptor(
+                    event_device.get_read_notifier().as_raw_descriptor(),
+                ));
+
+                if let Err(e) = self.wndproc_thread.post_display_command(
+                    DisplaySendToWndProc::ImportEventDevice {
                         event_device_id,
                         event_device,
-                    })
-                    .context("Failed to send ImportEventDevice message")?;
+                    },
+                ) {
+                    bail!("Failed to send ImportEventDevice message: {:?}", e);
+                }
+
+                if self.is_surface_created {
+                    if let Err(e) = self.gpu_display_wait_descriptor_ctrl.send(&req) {
+                        bail!(
+                            "failed to send event device descriptor to \
+                            GPU worker's wait context: {:?}",
+                            e
+                        )
+                    }
+                } else {
+                    self.event_device_wait_descriptor_requests.push(req);
+                }
+
                 Ok(())
             }
             None => bail!("{} cannot be converted to ObjectId", event_device_id),
@@ -198,6 +229,18 @@ impl DisplayT for DisplayWin {
             }
         }
 
+        // Now that the window is ready, we can start listening for inbound (guest -> host) events
+        // on our event devices.
+        for req in self.event_device_wait_descriptor_requests.drain(..) {
+            if let Err(e) = self.gpu_display_wait_descriptor_ctrl.send(&req) {
+                error!(
+                    "failed to send event device descriptor to GPU worker's wait context: {:?}",
+                    e
+                );
+                return Err(GpuDisplayError::FailedEventDeviceListen(e));
+            }
+        }
+
         Ok(Box::new(SurfaceWin {
             display_closed_event: self.display_closed_event.try_clone().map_err(|e| {
                 error!("Failed to clone display_closed_event: {}", e);
@@ -220,6 +263,26 @@ impl SysDisplayT for DisplayWin {
                     event_device_id, e
                 ))
             })
+    }
+
+    fn handle_event_device(&mut self, event_device_id: u32) {
+        match ObjectId::new(event_device_id) {
+            Some(event_device_id) => {
+                if let Err(e) = self
+                    .wndproc_thread
+                    .post_display_command(DisplaySendToWndProc::HandleEventDevice(event_device_id))
+                {
+                    error!(
+                        "Failed to route guest -> host input_event; event device (ID: {:?}): {:?}",
+                        event_device_id, e
+                    );
+                }
+            }
+            None => error!(
+                "Failed to route guest -> host input_event; {} cannot be converted to ObjectId",
+                event_device_id
+            ),
+        }
     }
 }
 

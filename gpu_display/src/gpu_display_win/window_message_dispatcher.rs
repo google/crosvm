@@ -4,6 +4,7 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::io::ErrorKind;
 use std::marker::PhantomPinned;
 use std::os::raw::c_void;
 use std::pin::Pin;
@@ -34,7 +35,9 @@ use crate::EventDeviceKind;
 /// The pointer to dispatcher will be stored with HWND using `SetPropW()` with the following name.
 pub(crate) const DISPATCHER_PROPERTY_NAME: &str = "PROP_WND_MSG_DISPATCHER";
 
-/// This class is used to dispatch display events to the guest device.
+/// This class is used to dispatch input events from the display to the guest input device. It is
+/// also used to receive events from the input device (e.g. guest) on behalf of the window so they
+/// can be routed back to the window for processing.
 #[derive(Clone)]
 pub struct DisplayEventDispatcher {
     event_devices: Rc<RefCell<BTreeMap<ObjectId, EventDevice>>>,
@@ -58,6 +61,25 @@ impl DisplayEventDispatcher {
                 error!("Failed to send events to event device: {}", e);
             }
         }
+    }
+
+    pub fn read_from_device(
+        &self,
+        event_device_id: ObjectId,
+    ) -> Option<(EventDeviceKind, virtio_input_event)> {
+        if let Some(device) = self.event_devices.borrow_mut().get(&event_device_id) {
+            match device.recv_event_encoded() {
+                Ok(event) => return Some((device.kind(), event)),
+                Err(e) if e.kind() == ErrorKind::WouldBlock => return None,
+                Err(e) => error!("failed to read from event device: {:?}", e),
+            }
+        } else {
+            error!(
+                "notified to read from event device {:?} but do not have a device with that ID",
+                event_device_id
+            );
+        }
+        None
     }
 
     fn import_event_device(&mut self, event_device_id: ObjectId, event_device: EventDevice) {
@@ -209,6 +231,25 @@ impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
             } => {
                 self.display_event_dispatcher
                     .import_event_device(event_device_id, event_device);
+            }
+            DisplaySendToWndProc::HandleEventDevice(event_device_id) => {
+                self.handle_event_device(event_device_id)
+            }
+        }
+    }
+
+    fn handle_event_device(&mut self, event_device_id: ObjectId) {
+        match &mut self.message_processor {
+            Some(processor) => {
+                if let Some((kind, event)) = self
+                    .display_event_dispatcher
+                    .read_from_device(event_device_id)
+                {
+                    processor.handle_event_device(kind, event);
+                }
+            }
+            None => {
+                error!("Cannot handle event device because there is no message processor!")
             }
         }
     }

@@ -33,6 +33,13 @@ impl GpuDisplayExt for GpuDisplay {
         self.next_id += 1;
         Ok(new_event_device_id)
     }
+
+    fn handle_event_device(&mut self, event_device_id: u32) {
+        if let Some(event_device) = self.event_devices.get(&event_device_id) {
+            // TODO(zachr): decode the event and forward to the device.
+            let _ = event_device.recv_event_encoded();
+        }
+    }
 }
 
 pub trait UnixGpuDisplayExt {

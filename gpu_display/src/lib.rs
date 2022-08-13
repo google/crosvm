@@ -65,6 +65,8 @@ pub enum GpuDisplayError {
     /// Failed to import an event device.
     #[error("failed to import an event device: {0}")]
     FailedEventDeviceImport(String),
+    #[error("failed to register an event device to listen for guest events: {0}")]
+    FailedEventDeviceListen(base::TubeError),
     /// Failed to import a buffer to the compositor.
     #[error("failed to import a buffer to the compositor")]
     FailedImport,
@@ -303,8 +305,11 @@ trait DisplayT: AsRawDescriptor {
 
 pub trait GpuDisplayExt {
     /// Imports the given `event_device` into the display, returning an event device id on success.
-    /// This device may be used to poll for input events.
+    /// This device may be used to dispatch input events to the guest.
     fn import_event_device(&mut self, event_device: EventDevice) -> GpuDisplayResult<u32>;
+
+    /// Called when an event device is readable.
+    fn handle_event_device(&mut self, event_device_id: u32);
 }
 
 /// A connection to the compositor and associated collection of state.
@@ -316,11 +321,14 @@ pub struct GpuDisplay {
     event_devices: BTreeMap<u32, EventDevice>,
     surfaces: BTreeMap<u32, Box<dyn GpuDisplaySurface>>,
     imports: BTreeMap<u32, Box<dyn GpuDisplayImport>>,
+    wait_ctx: WaitContext<DisplayEventToken>,
     // `inner` must be after `imports` and `surfaces` to ensure those objects are dropped before
     // the display context. The drop order for fields inside a struct is the order in which they
     // are declared [Rust RFC 1857].
+    //
+    // We also don't want to drop inner before wait_ctx because it contains references to the event
+    // devices owned by inner.display_event_dispatcher.
     inner: Box<dyn SysDisplayT>,
-    wait_ctx: WaitContext<DisplayEventToken>,
 }
 
 impl GpuDisplay {
@@ -360,13 +368,6 @@ impl GpuDisplay {
             imports: Default::default(),
             wait_ctx,
         })
-    }
-
-    fn handle_event_device(&mut self, event_device_id: u32) {
-        if let Some(event_device) = self.event_devices.get(&event_device_id) {
-            // TODO(zachr): decode the event and forward to the device.
-            let _ = event_device.recv_event_encoded();
-        }
     }
 
     fn dispatch_display_events(&mut self) -> GpuDisplayResult<()> {

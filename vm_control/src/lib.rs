@@ -2204,6 +2204,13 @@ impl Display for VmResponse {
     }
 }
 
+/// Enum that allows remote control of a wait context (used between the Windows GpuDisplay & the
+/// GPU worker).
+#[derive(Serialize, Deserialize)]
+pub enum ModifyWaitContext {
+    Add(#[serde(with = "with_as_descriptor")] Descriptor),
+}
+
 #[sorted]
 #[derive(Error, Debug)]
 pub enum VirtioIOMMUVfioError {
