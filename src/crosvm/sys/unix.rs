@@ -2188,6 +2188,10 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         DelayedIrqFd,
     }
 
+    let mut iommu_client = iommu_host_tube
+        .as_ref()
+        .map(VmMemoryRequestIommuClient::new);
+
     stdin()
         .set_raw_mode()
         .expect("failed to set terminal raw mode");
@@ -2562,7 +2566,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                             &mut sys_allocator,
                                             Arc::clone(&map_request),
                                             &mut gralloc,
-                                            &iommu_host_tube,
+                                            &mut iommu_client,
                                         );
                                         if let Err(e) = tube.send(&response) {
                                             error!("failed to send VmMemoryControlResponse: {}", e);

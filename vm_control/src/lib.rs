@@ -22,6 +22,7 @@ pub mod client;
 pub mod display;
 pub mod sys;
 
+use std::collections::BTreeSet;
 use std::convert::TryInto;
 use std::fmt;
 use std::fmt::Display;
@@ -392,6 +393,22 @@ pub enum VmMemoryRequest {
     UnregisterMemory(MemSlot),
 }
 
+/// Struct for managing `VmMemoryRequest`s IOMMU related state.
+pub struct VmMemoryRequestIommuClient<'a> {
+    tube: &'a Tube,
+    gpu_memory: BTreeSet<MemSlot>,
+}
+
+impl<'a> VmMemoryRequestIommuClient<'a> {
+    /// Constructs `VmMemoryRequestIommuClient` from a tube for communication with the viommu.
+    pub fn new(tube: &'a Tube) -> Self {
+        Self {
+            tube,
+            gpu_memory: BTreeSet::new(),
+        }
+    }
+}
+
 impl VmMemoryRequest {
     /// Executes this request on the given Vm.
     ///
@@ -408,7 +425,7 @@ impl VmMemoryRequest {
         sys_allocator: &mut SystemAllocator,
         map_request: Arc<Mutex<Option<ExternalMapping>>>,
         gralloc: &mut RutabagaGralloc,
-        iommu_host_tube: &Option<Tube>,
+        iommu_client: &mut Option<VmMemoryRequestIommuClient>,
     ) -> VmMemoryResponse {
         use self::VmMemoryRequest::*;
         match self {
@@ -436,7 +453,7 @@ impl VmMemoryRequest {
                     Err(e) => return VmMemoryResponse::Err(e),
                 };
 
-                if let (Some(descriptor), Some(iommu_tube)) = (descriptor, iommu_host_tube) {
+                if let (Some(descriptor), Some(iommu_client)) = (descriptor, iommu_client) {
                     let request =
                         VirtioIOMMURequest::VfioCommand(VirtioIOMMUVfioCommand::VfioDmabufMap {
                             mem_slot: slot,
@@ -445,7 +462,7 @@ impl VmMemoryRequest {
                             dma_buf: descriptor,
                         });
 
-                    match virtio_iommu_request(iommu_tube, &request) {
+                    match virtio_iommu_request(iommu_client.tube, &request) {
                         Ok(VirtioIOMMUResponse::VfioResponse(VirtioIOMMUVfioResult::Ok)) => (),
                         resp => {
                             error!("Unexpected message response: {:?}", resp);
@@ -453,7 +470,9 @@ impl VmMemoryRequest {
                             let _ = vm.remove_memory_region(slot);
                             return VmMemoryResponse::Err(SysError::new(EINVAL));
                         }
-                    }
+                    };
+
+                    iommu_client.gpu_memory.insert(slot);
                 }
 
                 let pfn = guest_addr.0 >> 12;
@@ -461,20 +480,23 @@ impl VmMemoryRequest {
             }
             UnregisterMemory(slot) => match vm.remove_memory_region(slot) {
                 Ok(_) => {
-                    if let Some(iommu_tube) = iommu_host_tube {
-                        let request = VirtioIOMMURequest::VfioCommand(
-                            VirtioIOMMUVfioCommand::VfioDmabufUnmap(slot),
-                        );
+                    if let Some(iommu_client) = iommu_client {
+                        if iommu_client.gpu_memory.remove(&slot) {
+                            let request = VirtioIOMMURequest::VfioCommand(
+                                VirtioIOMMUVfioCommand::VfioDmabufUnmap(slot),
+                            );
 
-                        match virtio_iommu_request(iommu_tube, &request) {
-                            Ok(VirtioIOMMUResponse::VfioResponse(VirtioIOMMUVfioResult::Ok))
-                            | Ok(VirtioIOMMUResponse::VfioResponse(
-                                VirtioIOMMUVfioResult::NoSuchMappedDmabuf,
-                            )) => VmMemoryResponse::Ok,
-                            resp => {
-                                error!("Unexpected message response: {:?}", resp);
-                                return VmMemoryResponse::Err(SysError::new(EINVAL));
+                            match virtio_iommu_request(iommu_client.tube, &request) {
+                                Ok(VirtioIOMMUResponse::VfioResponse(
+                                    VirtioIOMMUVfioResult::Ok,
+                                )) => VmMemoryResponse::Ok,
+                                resp => {
+                                    error!("Unexpected message response: {:?}", resp);
+                                    return VmMemoryResponse::Err(SysError::new(EINVAL));
+                                }
                             }
+                        } else {
+                            VmMemoryResponse::Ok
                         }
                     } else {
                         VmMemoryResponse::Ok
