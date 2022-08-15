@@ -7,10 +7,10 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
 
+#[cfg(feature = "gfxstream")]
+use devices::virtio::GpuMode;
 #[cfg(feature = "gpu")]
-use devices::virtio::GpuDisplayParameters;
-#[cfg(feature = "gpu")]
-use devices::virtio::GpuParameters;
+use devices::virtio::{GpuDisplayParameters, GpuParameters};
 use devices::IommuDevType;
 use devices::PciAddress;
 use devices::SerialParameters;
@@ -188,7 +188,7 @@ pub fn parse_gpu_options(s: &str) -> Result<GpuParameters, String> {
 
     #[cfg(feature = "gfxstream")]
     {
-        if gpu_params.vulkan.is_none() && gpu_params.mode == GpuMode::ModeGfxstream {
+        if gpu_params.use_vulkan.is_none() && gpu_params.mode == GpuMode::ModeGfxstream {
             gpu_params.use_vulkan = Some(use_vulkan());
         }
 
