@@ -110,8 +110,6 @@ impl BusDevice for Pflash {
         let offset = info.offset;
         match &self.state {
             State::ReadArray => {
-                self.status = STATUS_READY;
-
                 if offset + data.len() as u64 >= self.image_size {
                     error!("pflash read request beyond disk");
                     return;
@@ -211,7 +209,10 @@ impl BusDevice for Pflash {
                 let command = data;
 
                 match command {
-                    COMMAND_READ_ARRAY => self.state = State::ReadArray,
+                    COMMAND_READ_ARRAY => {
+                        self.state = State::ReadArray;
+                        self.status = STATUS_READY;
+                    }
                     COMMAND_READ_STATUS => self.state = State::ReadStatus,
                     COMMAND_CLEAR_STATUS => {
                         self.state = State::ReadArray;
@@ -358,6 +359,15 @@ mod tests {
 
         // Make sure we can clear the status properly.
         pflash.write(off(offset), &[COMMAND_CLEAR_STATUS]);
+        pflash.write(off(offset), &[COMMAND_READ_STATUS]);
+        pflash.read(off(offset), &mut got);
+        let want = [0; 4];
+        assert_eq!(want, got);
+
+        // We implicitly jump back into READ_ARRAY mode after reading the,
+        // status but for OVMF's probe we require that this doesn't actually
+        // affect the cleared status.
+        pflash.read(off(offset), &mut got);
         pflash.write(off(offset), &[COMMAND_READ_STATUS]);
         pflash.read(off(offset), &mut got);
         let want = [0; 4];
