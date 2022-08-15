@@ -1258,7 +1258,7 @@ impl Aml for PciRootOSC {
                             &aml::Equal::new(
                                 &aml::ZERO,
                                 &aml::And::new(
-                                    &aml::Local(0),
+                                    &aml::ZERO,
                                     &aml::Name::new_field_name("CDW1"),
                                     &aml::ONE,
                                 ),
