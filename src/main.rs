@@ -9,6 +9,7 @@ use std::fs::OpenOptions;
 use std::path::Path;
 
 use anyhow::anyhow;
+use anyhow::Context;
 use anyhow::Result;
 use argh::FromArgs;
 use base::error;
@@ -541,15 +542,13 @@ fn crosvm_main() -> Result<CommandStatus> {
                 // On windows, the device command handles its own logging setup, so we can't handle it below
                 // otherwise logging will double init.
                 if cfg!(unix) {
-                    syslog::init_with(log_config)
-                        .map_err(|e| anyhow!("failed to initialize syslog: {}", e))?;
+                    syslog::init_with(log_config).context("failed to initialize syslog")?;
                 }
                 start_device(cmd)
                     .map_err(|_| anyhow!("start_device subcommand failed"))
                     .map(|_| CommandStatus::Success)
             } else {
-                syslog::init_with(log_config)
-                    .map_err(|e| anyhow!("failed to initialize syslog: {}", e))?;
+                syslog::init_with(log_config).context("failed to initialize syslog")?;
 
                 match command {
                     #[cfg(feature = "balloon")]
@@ -613,8 +612,7 @@ fn crosvm_main() -> Result<CommandStatus> {
             // On windows, the sys commands handle their own logging setup, so we can't handle it
             // below otherwise logging will double init.
             if cfg!(unix) {
-                syslog::init_with(log_config)
-                    .map_err(|e| anyhow!("failed to initialize syslog: {}", e))?;
+                syslog::init_with(log_config).context("failed to initialize syslog")?;
             }
             sys::run_command(command).map(|_| CommandStatus::Success)
         }
