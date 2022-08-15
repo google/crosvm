@@ -238,12 +238,13 @@ def verify_builder(
             cq_group = "main",
         )
 
-def verify_linux_builder(arch, crosvm_direct = False, **kwargs):
+def verify_linux_builder(arch, crosvm_direct = False, coverage = True, **kwargs):
     """Creates a verify builder that builds crosvm on linux
 
     Args:
         arch: Architecture to build and test
         crosvm_direct: Test crosvm-direct instead of crosvm
+        coverage: Disable coverage collection
         **kwargs: Passed to verify_builder
     """
     name = "linux_%s" % arch
@@ -264,7 +265,7 @@ def verify_linux_builder(arch, crosvm_direct = False, **kwargs):
         },
         postsubmit_properties = {
             "repeat_tests": 3,
-            "coverage": True,
+            "coverage": coverage,
         },
         presubmit_properties = {
             "retry_tests": 2,
@@ -336,7 +337,7 @@ def infra_builder(name, postsubmit, **args):
 verify_linux_builder("x86_64")
 verify_linux_builder("x86_64", crosvm_direct = True)
 verify_linux_builder("aarch64")
-verify_linux_builder("armhf")
+verify_linux_builder("armhf", coverage = False)
 
 verify_chromeos_builder("amd64-generic", presubmit = False)
 
