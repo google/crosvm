@@ -117,16 +117,13 @@ CHECKS: List[Check] = [
 
 CHECKS_DICT = dict((c.name, c) for c in CHECKS)
 
-# TODO(b/239255137): Remove after transition
-LEGACY_STEPS = ["python", "misc", "fmt", "clippy"]
-
 
 @argh.arg("--list-checks", default=False, help="List names of available checks and exit.")
 @argh.arg("--fix", default=False, help="Asks checks to fix problems where possible.")
 @argh.arg("--all", default=False, help="Run on all files instead of just modified files.")
 @argh.arg(
     "checks",
-    choices=[*CHECKS_DICT.keys(), *LEGACY_STEPS, []],
+    choices=[*CHECKS_DICT.keys(), []],
     help="Optional list of checks to run. Defaults to run all checks.",
 )
 def main(
@@ -141,26 +138,10 @@ def main(
     """
     chdir(CROSVM_ROOT)
 
-    # We need to support the old arguments while Luci is transitioning.
-    # TODO(b/239255137): Remove after transition
-    no_legacy_checks = [check for check in checks if check not in LEGACY_STEPS]
-    if "python" in checks:
-        no_legacy_checks += ["python_tests", "python_types"]
-        all = True
-    if "clippy" in checks:
-        no_legacy_checks += ["rust_clippy"]
-        all = True
-    if "misc" in checks:
-        no_legacy_checks += ["crlf_line_endings"]
-        all = True
-    if "fmt" in checks:
-        no_legacy_checks += ["python_format", "markdown_format", "rust_format"]
-        all = True
-
-    if not no_legacy_checks:
+    if not checks:
         checks_list = [*CHECKS_DICT.values()]
     else:
-        checks_list = [CHECKS_DICT[check] for check in no_legacy_checks]
+        checks_list = [CHECKS_DICT[check] for check in checks]
 
     if list_checks:
         for check in checks_list:
