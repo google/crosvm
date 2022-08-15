@@ -45,6 +45,7 @@ impl From<Error> for std::io::Error {
     fn from(e: Error) -> Self {
         use Error::*;
         match e {
+            EventAsync(e) => e.into(),
             HandleExecutor(e) => e.into(),
             Timer(e) => e.into(),
             TimerAsync(e) => e.into(),

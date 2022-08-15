@@ -10,6 +10,7 @@ pub mod poll_source;
 pub mod uring_executor;
 pub mod uring_source;
 pub use fd_executor::FdExecutor;
+pub use poll_source::Error as PollSourceError;
 pub use poll_source::PollSource;
 pub use uring_executor::URingExecutor;
 pub use uring_source::UringSource;
@@ -17,7 +18,9 @@ mod timer;
 
 use std::future::Future;
 
+use crate::AsyncError;
 use crate::Error;
+use crate::Executor;
 use crate::Result;
 
 /// Creates a URingExecutor that runs one future to completion.
@@ -49,7 +52,7 @@ pub fn run_one_uring<F: Future>(fut: F) -> Result<F::Output> {
 pub fn run_one_poll<F: Future>(fut: F) -> Result<F::Output> {
     FdExecutor::new()
         .and_then(|ex| ex.run_until(fut))
-        .map_err(Error::FdExecutor)
+        .map_err(|e| Error::PollSource(PollSourceError::Executor(e)))
 }
 
 /// Creates an Executor that runs one future to completion.
@@ -63,19 +66,22 @@ pub fn run_one_poll<F: Future>(fut: F) -> Result<F::Output> {
 ///    assert_eq!(55, run_one(fut).unwrap());
 ///    ```
 pub fn run_one<F: Future>(fut: F) -> Result<F::Output> {
-    if uring_executor::use_uring() {
-        run_one_uring(fut)
-    } else {
-        run_one_poll(fut)
-    }
+    Executor::new()
+        .and_then(|ex| ex.run_until(fut))
+        .map_err(|e| match e {
+            AsyncError::EventAsync(e) => Error::EventAsync(e),
+            AsyncError::Uring(e) => Error::URingExecutor(e),
+            AsyncError::Poll(e) => Error::PollSource(e),
+        })
 }
 
 impl From<Error> for std::io::Error {
     fn from(e: Error) -> Self {
         use Error::*;
         match e {
-            FdExecutor(e) => e.into(),
+            EventAsync(e) => e.into(),
             URingExecutor(e) => e.into(),
+            PollSource(e) => e.into(),
             Timer(e) => e.into(),
             TimerAsync(e) => e.into(),
         }
