@@ -1,0 +1,11 @@
+[tool.black]
+line-length = 100
+
+[tool.pyright]
+include = ["tools"]
+exclude = ["target"]
+ignore = ["infra", "tools/windows", "tools/contrib"]
+pythonVersion = "3.9"
+pythonPlatform  = "Linux"
+typeCheckingMode = "strict"
+
