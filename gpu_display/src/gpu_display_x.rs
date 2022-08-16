@@ -45,6 +45,7 @@ use crate::GpuDisplayFramebuffer;
 use crate::GpuDisplayResult;
 use crate::GpuDisplaySurface;
 use crate::SurfaceType;
+use crate::SysDisplayT;
 
 const BUFFER_COUNT: usize = 2;
 
@@ -694,6 +695,8 @@ impl DisplayT for DisplayX {
         }
     }
 }
+
+impl SysDisplayT for DisplayX {}
 
 impl AsRawDescriptor for DisplayX {
     fn as_raw_descriptor(&self) -> RawDescriptor {

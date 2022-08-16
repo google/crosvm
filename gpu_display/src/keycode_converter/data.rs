@@ -11,7 +11,7 @@ pub struct MapEntry {
 }
 
 // Based on Chromium's chromium/chromium/ui/events/keycodes/dom/keycode_converter_data.inc.
-pub const KEYCODE_MAP: [MapEntry; 88] = [
+pub const KEYCODE_MAP: [MapEntry; 92] = [
     MapEntry {
         linux_keycode: 30,
         xkb: 0x0026,
@@ -539,5 +539,29 @@ pub const KEYCODE_MAP: [MapEntry; 88] = [
         xkb: 0x0086,
         win: 0xe05c,
         mac: 0x0036,
+    },
+    MapEntry {
+        linux_keycode: 87,
+        xkb: 0x005f,
+        win: 0x0057,
+        mac: 0x0067,
+    },
+    MapEntry {
+        linux_keycode: 55,
+        xkb: 0x003f,
+        win: 0x0037,
+        mac: 0x0043,
+    },
+    MapEntry {
+        linux_keycode: 83,
+        xkb: 0x005b,
+        win: 0x0053,
+        mac: 0x0041,
+    },
+    MapEntry {
+        linux_keycode: 74,
+        xkb: 0x0052,
+        win: 0x004a,
+        mac: 0x004e,
     },
 ];

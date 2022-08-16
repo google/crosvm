@@ -676,6 +676,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "euclid"
+version = "0.22.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b52c2ef4a78da0ba68fbe1fd920627411096d2ac478f7f4c9f3a54ba6705bade"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "fastrand"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -844,15 +853,24 @@ dependencies = [
 name = "gpu_display"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "base",
  "cc",
  "cfg-if",
  "data_model",
+ "euclid",
  "libc",
  "linux_input_sys",
+ "metrics",
+ "num-traits",
  "pkg-config",
  "remain",
+ "serde",
+ "sync",
  "thiserror",
+ "vm_control",
+ "win_util",
+ "winapi",
 ]
 
 [[package]]

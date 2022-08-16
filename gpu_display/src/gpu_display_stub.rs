@@ -13,11 +13,12 @@ use crate::GpuDisplayFramebuffer;
 use crate::GpuDisplayResult;
 use crate::GpuDisplaySurface;
 use crate::SurfaceType;
+use crate::SysDisplayT;
 
 #[allow(dead_code)]
 struct Buffer {
     width: u32,
-    height: u32,
+    _height: u32,
     bytes_per_pixel: u32,
     bytes: Vec<u8>,
 }
@@ -56,7 +57,7 @@ impl StubSurface {
 
             self.buffer = Some(Buffer {
                 width: self.width,
-                height: self.height,
+                _height: self.height,
                 bytes_per_pixel,
                 bytes: vec![0; bytes_total as usize],
             });
@@ -116,6 +117,8 @@ impl DisplayT for DisplayStub {
         }))
     }
 }
+
+impl SysDisplayT for DisplayStub {}
 
 impl AsRawDescriptor for DisplayStub {
     fn as_raw_descriptor(&self) -> RawDescriptor {

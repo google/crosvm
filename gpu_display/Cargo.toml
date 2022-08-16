@@ -6,6 +6,7 @@ edition = "2021"
 
 [features]
 x = []
+kiwi = []
 
 [dependencies]
 data_model = { path = "../common/data_model" }
@@ -14,6 +15,18 @@ base = { path = "../base" }
 linux_input_sys = { path = "../linux_input_sys" }
 remain = "*"
 thiserror = "*"
+cfg-if = "*"
+
+[target.'cfg(windows)'.dependencies]
+anyhow = "*"
+metrics = { path = "../metrics" }
+num-traits = "*"
+serde = { version = "1", features = [ "derive" ] }
+winapi = "*"
+win_util = { path = "../win_util" }
+sync = { path = "../common/sync" }
+euclid = "*"
+vm_control = { path = "../vm_control" }
 
 [build-dependencies]
 cc = "1.0.25"
