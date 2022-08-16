@@ -127,6 +127,25 @@ def check_copyright_header(context: CheckContext):
             raise Exception(f"Bad copyright header: {file}")
 
 
+def check_infra_configs(context: CheckContext):
+    "Validate luci configs by sending them to luci-config."
+    lucicfg = cmd("third_party/depot_tools/lucicfg")
+    for file in context.modified_files:
+        if context.fix:
+            lucicfg("fmt", file).fg()
+            lucicfg("generate", file).fg()
+        lucicfg("fmt --dry-run", file).fg(quiet=True)
+        # TODO: Validate config files. Requires authentication with luci inside docker.
+
+
+def check_infra_tests(context: CheckContext):
+    "Run recipe.py tests, all of them, regardless of which files were modified."
+    recipes = cmd("infra/recipes.py").add_path("third_party/depot_tools")
+    if context.fix:
+        recipes("test train --py3-only").fg()
+    recipes("test run --py3-only").fg(quiet=True)
+
+
 # List of all checks and on which files they should run.
 CHECKS: List[Check] = [
     Check(
@@ -137,6 +156,7 @@ CHECKS: List[Check] = [
     Check(
         check_rust_format,
         files=["**.rs"],
+        can_fix=True,
     ),
     Check(
         check_rust_lockfiles,
@@ -161,6 +181,17 @@ CHECKS: List[Check] = [
         files=["**.py"],
         python_tools=True,
         exclude=["infra/recipes.py"],
+        can_fix=True,
+    ),
+    Check(
+        check_infra_configs,
+        files=["infra/config/**.star"],
+        can_fix=True,
+    ),
+    Check(
+        check_infra_tests,
+        files=["infra/**.py"],
+        can_fix=True,
     ),
     Check(
         check_markdown_format,
@@ -169,6 +200,7 @@ CHECKS: List[Check] = [
             "infra/README.recipes.md",
             "docs/book/src/appendix/memory_layout.md",
         ],
+        can_fix=True,
     ),
     Check(check_crlf_line_endings),
 ]

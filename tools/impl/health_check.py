@@ -48,6 +48,9 @@ class Check(NamedTuple):
     # List of globs to exclude from this check
     exclude: List[str] = []
 
+    # Whether or not this check can fix issues.
+    can_fix: bool = False
+
     @property
     def name(self):
         name = self.check_function.__name__
@@ -142,7 +145,7 @@ def run_checks(
     else:
         modified_files = [f for (s, f) in file_diff if s in ("M", "A")]
 
-    success = True
+    failed_checks: List[Check] = []
     for check in checks_list:
         context = CheckContext(
             fix=fix,
@@ -153,5 +156,9 @@ def run_checks(
         )
         if context.modified_files:
             if not run_check(check, context):
-                success = False
-    return success
+                failed_checks.append(check)
+    if any(c.can_fix for c in failed_checks):
+        print("")
+        print("Some of the issues above can be fixed automatically with:")
+        print("./tools/health-check --fix")
+    return len(failed_checks) == 0

@@ -315,6 +315,13 @@ class Command(object):
         cmd.env_vars = {**self.env_vars, key: value}
         return cmd
 
+    def add_path(self, new_path: str):
+        path_var = self.env_vars.get("PATH", os.environ.get("PATH", ""))
+        cmd = Command()
+        cmd.args = self.args
+        cmd.env_vars = {**self.env_vars, "PATH": f"{path_var}:{new_path}"}
+        return cmd
+
     def foreach(self, arguments: Iterable[Any], batch_size: int = 1):
         """
         Yields a new command for each entry in `arguments`.
