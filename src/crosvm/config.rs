@@ -72,9 +72,12 @@ cfg_if::cfg_if! {
     }
 }
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 const ONE_MB: u64 = 1 << 20;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 const MB_ALIGNED: u64 = ONE_MB - 1;
 // the max bus number is 256 and each bus occupy 1MB, so the max pcie cfg mmio size = 256M
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 const MAX_PCIE_ECAM_SIZE: u64 = ONE_MB * 256;
 
 /// Indicates the location and kind of executable kernel for a VM.
@@ -614,6 +617,7 @@ pub fn parse_pstore(value: &str) -> Result<Pstore, String> {
     })
 }
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub fn parse_userspace_msr_options(value: &str) -> Result<(u32, MsrConfig), String> {
     let mut rw_type: Option<MsrRWType> = None;
     let mut action: Option<MsrAction> = None;
@@ -2164,6 +2168,7 @@ mod tests {
         assert_eq!(params.size, 0x2000);
     }
 
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[test]
     fn parse_userspace_msr_options_test() {
         let (pass_cpu0_index, pass_cpu0_cfg) =
