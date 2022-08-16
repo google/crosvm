@@ -3,11 +3,22 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import re
+import sys
+from datetime import datetime
 from pathlib import Path
 from typing import List
-import sys
-from impl.common import CROSVM_ROOT, parallel, run_main, cmd, chdir, argh, cwd_context
+
 from impl.check_code_hygiene import has_crlf_line_endings
+from impl.common import (
+    CROSVM_ROOT,
+    argh,
+    chdir,
+    cmd,
+    cwd_context,
+    parallel,
+    run_main,
+)
 from impl.health_check import Check, CheckContext, run_checks
 
 
@@ -74,8 +85,55 @@ def check_rust_lockfiles(_: CheckContext):
                 raise Exception("Cargo.lock out of date")
 
 
+LICENSE_HEADER_RE = (
+    # Line 1 - copyright.
+    r".*Copyright(?P<copyright> \(c\))? (?P<year>20[0-9]{2})(?:-20[0-9]{2})? "
+    r"The Chromium(?P<chromium_space_os> )?OS Authors\."
+    r"(?P<rights_reserved> All rights reserved\.)?\n"
+    # Line 2 - License.
+    r".*Use of this source code is governed by a BSD-style license that can "
+    r"be\n"
+    # Line 3 - License continuation.
+    r".*found in the LICENSE file\.\n"
+)
+
+NEW_LICENSE_HEADER = [
+    f"Copyright {datetime.now().year} The ChromiumOS Authors.",
+    "Use of this source code is governed by a BSD-style license that can be",
+    "found in the LICENSE file.",
+]
+
+
+def new_licence_header(file_suffix: str):
+    if file_suffix == ".py" or file_suffix == "":
+        prefix = "#"
+    else:
+        prefix = "//"
+    return "\n".join(f"{prefix} {line}" for line in NEW_LICENSE_HEADER) + "\n\n"
+
+
+def check_copyright_header(context: CheckContext):
+    "Checks copyright header on new files only. Can 'fix' them if needed."
+    license_re = re.compile(LICENSE_HEADER_RE, re.MULTILINE)
+    for file in context.new_files:
+        header = file.open("r").read(256)
+        license_match = license_re.search(header)
+        if license_match:
+            continue
+        if context.fix:
+            contents = file.read_text()
+            file.write_text(new_licence_header(file.suffix) + contents)
+        else:
+            raise Exception(f"Bad copyright header: {file}")
+
+
 # List of all checks and on which files they should run.
 CHECKS: List[Check] = [
+    Check(
+        check_copyright_header,
+        files=["**.rs", "**.py"],
+        python_tools=True,
+    ),
     Check(
         check_rust_format,
         files=["**.rs"],
