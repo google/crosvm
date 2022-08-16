@@ -188,7 +188,8 @@ mod tests {
             client_type: CrasClientType,
             socket_type: CrasSocketType,
         ) {
-            let params = s.parse::<Parameters>().expect("parse should have succeded");
+            let params: Parameters =
+                serde_keyvalue::from_key_values(s).expect("parse should have succeded");
             assert_eq!(params.backend, backend);
             assert_eq!(params.client_type, client_type);
             assert_eq!(params.socket_type, socket_type);
