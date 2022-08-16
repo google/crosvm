@@ -551,8 +551,14 @@ impl Bus {
 mod tests {
     use super::*;
     use crate::pci::CrosvmDeviceId;
+    use crate::suspendable::Suspendable;
+    use crate::suspendable_tests;
+    use anyhow::Context;
+    use anyhow::Result as AnyhowResult;
 
+    #[derive(Copy, Clone, Serialize, Deserialize, Eq, PartialEq, Debug)]
     struct DummyDevice;
+
     impl BusDevice for DummyDevice {
         fn device_id(&self) -> DeviceId {
             CrosvmDeviceId::Cmos.into()
@@ -562,6 +568,27 @@ mod tests {
         }
     }
 
+    impl Suspendable for DummyDevice {
+        fn snapshot(&self) -> AnyhowResult<String> {
+            serde_json::to_string_pretty(&self).context("error serializing")
+        }
+
+        fn restore(&mut self, data: &str) -> AnyhowResult<()> {
+            let deser = serde_json::from_str(data).context("error deserializing");
+            *self = deser.unwrap();
+            Ok(())
+        }
+
+        fn sleep(&mut self) -> AnyhowResult<()> {
+            Ok(())
+        }
+
+        fn wake(&mut self) -> AnyhowResult<()> {
+            Ok(())
+        }
+    }
+
+    #[derive(Copy, Clone, Serialize, Deserialize, Eq, PartialEq, Debug)]
     struct ConstantDevice {
         uses_full_addr: bool,
     }
@@ -595,6 +622,26 @@ mod tests {
             for (i, v) in data.iter().enumerate() {
                 assert_eq!(*v, (addr as u8) + (i as u8))
             }
+        }
+    }
+
+    impl Suspendable for ConstantDevice {
+        fn snapshot(&self) -> AnyhowResult<String> {
+            serde_json::to_string_pretty(&self).context("error serializing")
+        }
+
+        fn restore(&mut self, data: &str) -> AnyhowResult<()> {
+            let deser = serde_json::from_str(data).context("error deserializing");
+            *self = deser.unwrap();
+            Ok(())
+        }
+
+        fn sleep(&mut self) -> AnyhowResult<()> {
+            Ok(())
+        }
+
+        fn wake(&mut self) -> AnyhowResult<()> {
+            Ok(())
         }
     }
 
@@ -681,6 +728,16 @@ mod tests {
         assert!(bus.read(0x15, &mut values));
         assert_eq!(values, [0x15, 0x16, 0x17, 0x18]);
         assert!(bus.write(0x15, &values));
+    }
+
+    suspendable_tests! {
+        dummy_device: DummyDevice,
+        constant_device_true: ConstantDevice {
+            uses_full_addr: true,
+        },
+        constant_device_false: ConstantDevice {
+            uses_full_addr: false,
+        },
     }
 
     #[test]
