@@ -5,6 +5,7 @@
       "[CACHE]/builder/crosvm/tools/dev_container",
       "--verbose",
       "./tools/health-check",
+      "--all",
       "a"
     ],
     "cwd": "[CACHE]/builder/crosvm",
@@ -31,6 +32,7 @@
       "[CACHE]/builder/crosvm/tools/dev_container",
       "--verbose",
       "./tools/health-check",
+      "--all",
       "b"
     ],
     "cwd": "[CACHE]/builder/crosvm",
