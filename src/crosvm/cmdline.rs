@@ -883,10 +883,6 @@ pub struct RunCommand {
     #[argh(switch)]
     /// enable virtio-pvclock.
     pub pvclock: bool,
-    // Must be `Some` iff `protected_vm == ProtectionType::UnprotectedWithFirmware`.
-    #[argh(option, long = "unprotected-vm-with-firmware", arg_name = "PATH")]
-    /// (EXPERIMENTAL/FOR DEBUGGING) Use VM firmware, but allow host access to guest memory
-    pub pvm_fw: Option<PathBuf>,
     #[argh(
         option,
         arg_name = "PATH[,key=value[,key=value[,...]]",
@@ -1103,6 +1099,10 @@ pub struct RunCommand {
     #[argh(option, arg_name = "NAME[,...]")]
     /// comma-separated names of the task profiles to apply to all threads in crosvm including the vCPU threads
     pub task_profiles: Vec<String>,
+    // Must be `Some` iff `protected_vm == ProtectionType::UnprotectedWithFirmware`.
+    #[argh(option, long = "unprotected-vm-with-firmware", arg_name = "PATH")]
+    /// (EXPERIMENTAL/FOR DEBUGGING) Use VM firmware, but allow host access to guest memory
+    pub unprotected_vm_with_firmware: Option<PathBuf>,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[argh(
         option,
@@ -1705,7 +1705,7 @@ impl TryFrom<RunCommand> for super::config::Config {
         let protection_flags = [
             cmd.protected_vm,
             cmd.protected_vm_without_firmware,
-            cmd.pvm_fw.is_some(),
+            cmd.unprotected_vm_with_firmware.is_some(),
         ];
 
         if protection_flags.into_iter().filter(|b| *b).count() > 1 {
@@ -1726,7 +1726,7 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.usb = false;
             // Protected VMs can't trust the RNG device, so don't provide it.
             cfg.rng = false;
-        } else if let Some(p) = cmd.pvm_fw {
+        } else if let Some(p) = cmd.unprotected_vm_with_firmware {
             if !p.exists() || !p.is_file() {
                 return Err(
                     "unprotected-vm-with-firmware path should be an existing file".to_string(),
