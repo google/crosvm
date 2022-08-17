@@ -300,6 +300,28 @@ impl PciAddress {
             | (Self::FUNCTION_MASK & self.func as u32)
     }
 
+    /// Convert D:F PCI address to a linux style devfn.
+    ///
+    /// The device and function numbers are packed into an u8 as follows:
+    ///
+    /// | Bits 7-3 | Bits 2-0 |
+    /// |----------|----------|
+    /// |  Device  | Function |
+    pub fn devfn(&self) -> u8 {
+        (self.dev << Self::FUNCTION_BITS_NUM) | self.func
+    }
+
+    /// Convert D:F PCI address to an ACPI _ADR.
+    ///
+    /// The device and function numbers are packed into an u32 as follows:
+    ///
+    /// | Bits 31-16 | Bits 15-0 |
+    /// |------------|-----------|
+    /// |   Device   | Function  |
+    pub fn acpi_adr(&self) -> u32 {
+        ((Self::DEVICE_MASK & self.dev as u32) << 16) | (Self::FUNCTION_MASK & self.func as u32)
+    }
+
     /// Returns true if the address points to PCI root host-bridge.
     ///
     /// This is true if and only if this is the all-zero address (`00:0.0`).

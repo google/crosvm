@@ -95,6 +95,7 @@ use devices::PciAddress;
 use devices::PciConfigIo;
 use devices::PciConfigMmio;
 use devices::PciDevice;
+use devices::PciRoot;
 use devices::PciRootCommand;
 use devices::PciVirtualConfigMmio;
 use devices::Pflash;
@@ -701,6 +702,7 @@ impl arch::LinuxArch for X8664arch {
         // each bus occupy 1MB mmio for pcie enhanced configuration
         let max_bus = (pcie_cfg_mmio_len / 0x100000 - 1) as u8;
         let (acpi_dev_resource, bat_control) = Self::setup_acpi_devices(
+            pci.clone(),
             &mem,
             &io_bus,
             system_allocator,
@@ -1568,6 +1570,7 @@ impl X8664arch {
     /// * - `battery` indicate whether to create the battery
     /// * - `mmio_bus` the MMIO bus to add the devices to
     fn setup_acpi_devices(
+        pci_root: Arc<Mutex<PciRoot>>,
         mem: &GuestMemory,
         io_bus: &devices::Bus,
         resources: &mut SystemAllocator,
@@ -1710,6 +1713,18 @@ impl X8664arch {
             ],
         )
         .to_aml_bytes(&mut amls);
+
+        let root_bus = pci_root.lock().get_root_bus();
+        let addresses = root_bus.lock().get_downstream_devices();
+        for address in addresses {
+            if let Some(acpi_path) = pci_root.lock().acpi_path(&address) {
+                aml::Device::new(
+                    (*acpi_path).into(),
+                    vec![&aml::Name::new("_ADR".into(), &address.acpi_adr())],
+                )
+                .to_aml_bytes(&mut amls);
+            }
+        }
 
         let pm = Arc::new(Mutex::new(pmresource));
         io_bus

@@ -156,6 +156,22 @@ impl PciBus {
         self.bus_num
     }
 
+    // Find all PCI buses from this PCI bus to a given PCI bus
+    pub fn path_to(&self, bus_num: u8) -> Vec<u8> {
+        if self.bus_num == bus_num {
+            return vec![self.bus_num];
+        }
+
+        for (_, child_bus) in self.child_buses.iter() {
+            let mut path = child_bus.lock().path_to(bus_num);
+            if !path.is_empty() {
+                path.insert(0, self.bus_num);
+                return path;
+            }
+        }
+        Vec::new()
+    }
+
     // Add a new child device to this pci bus tree.
     pub fn add_child_device(&mut self, add_device: PciAddress) -> Result<()> {
         if self.bus_num == add_device.bus {

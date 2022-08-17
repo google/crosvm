@@ -124,6 +124,35 @@ impl PciRoot {
         }
     }
 
+    /// Get the root pci bus
+    pub fn get_root_bus(&self) -> Arc<Mutex<PciBus>> {
+        self.root_bus.clone()
+    }
+
+    /// Get the ACPI path to a PCI device
+    pub fn acpi_path(&self, address: &PciAddress) -> Option<String> {
+        if let Some(device) = self.devices.get(address) {
+            let path = self.root_bus.lock().path_to(address.bus);
+            if path.is_empty() {
+                None
+            } else {
+                Some(format!(
+                    "_SB_.{}.{}",
+                    path.iter()
+                        .map(|x| format!("PC{:02X}", x))
+                        .collect::<Vec<String>>()
+                        .join("."),
+                    match device.lock().is_bridge() {
+                        Some(bus_no) => format!("PC{:02X}", bus_no),
+                        None => format!("PE{:02X}", address.devfn()),
+                    }
+                ))
+            }
+        } else {
+            None
+        }
+    }
+
     /// enable pcie enhanced configuration access and set base mmio
     pub fn enable_pcie_cfg_mmio(&mut self, pcie_cfg_mmio: u64) {
         self.pcie_cfg_mmio = Some(pcie_cfg_mmio);
