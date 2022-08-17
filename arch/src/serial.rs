@@ -83,7 +83,7 @@ pub const SERIAL_ADDR: [u64; 4] = [0x3f8, 0x2f8, 0x3e8, 0x2e8];
 ///
 /// # Arguments
 ///
-/// * `protected_vm` - VM protection mode.
+/// * `protection_type` - VM protection mode.
 /// * `io_bus` - Bus to add the devices to
 /// * `com_evt_1_3` - event for com1 and com3
 /// * `com_evt_1_4` - event for com2 and com4
@@ -91,7 +91,7 @@ pub const SERIAL_ADDR: [u64; 4] = [0x3f8, 0x2f8, 0x3e8, 0x2e8];
 /// * `serial_jail` - minijail object cloned for use with each serial device.
 ///   All four of the traditional PC-style serial ports (COM1-COM4) must be specified.
 pub fn add_serial_devices(
-    protected_vm: ProtectionType,
+    protection_type: ProtectionType,
     io_bus: &Bus,
     com_evt_1_3: &Event,
     com_evt_2_4: &Event,
@@ -115,7 +115,7 @@ pub fn add_serial_devices(
 
         let mut preserved_descriptors = Vec::new();
         let com = param
-            .create_serial_device::<Serial>(protected_vm, com_evt, &mut preserved_descriptors)
+            .create_serial_device::<Serial>(protection_type, com_evt, &mut preserved_descriptors)
             .map_err(DeviceRegistrationError::CreateSerialDevice)?;
 
         #[cfg(unix)]

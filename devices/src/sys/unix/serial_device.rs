@@ -57,7 +57,7 @@ impl SerialInput for ConsoleInput {}
 /// output streams.
 pub trait SerialDevice {
     fn new(
-        protected_vm: ProtectionType,
+        protection_type: ProtectionType,
         interrupt_evt: Event,
         input: Option<Box<dyn SerialInput>>,
         output: Option<Box<dyn io::Write + Send>>,
@@ -140,7 +140,7 @@ impl io::Write for WriteSocket {
 
 pub(crate) fn create_system_type_serial_device<T: SerialDevice>(
     param: &SerialParameters,
-    protected_vm: ProtectionType,
+    protection_type: ProtectionType,
     evt: Event,
     input: Option<Box<dyn SerialInput>>,
     keep_rds: &mut Vec<RawDescriptor>,
@@ -208,7 +208,7 @@ pub(crate) fn create_system_type_serial_device<T: SerialDevice>(
             keep_rds.push(sock.as_raw_descriptor());
             let output: Option<Box<dyn Write + Send>> = Some(Box::new(WriteSocket::new(sock)));
             return Ok(T::new(
-                protected_vm,
+                protection_type,
                 evt,
                 input,
                 output,

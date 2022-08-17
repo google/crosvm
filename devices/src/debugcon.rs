@@ -29,7 +29,7 @@ pub struct Debugcon {
 
 impl SerialDevice for Debugcon {
     fn new(
-        _protected_vm: ProtectionType,
+        _protection_type: ProtectionType,
         _interrupt_evt: Event,
         _input: Option<Box<dyn SerialInput>>,
         out: Option<Box<dyn io::Write + Send>>,
@@ -42,7 +42,7 @@ impl SerialDevice for Debugcon {
 
     #[cfg(windows)]
     fn new_with_pipe(
-        _protected_vm: ProtectionType,
+        _protection_type: ProtectionType,
         _interrupt_evt: Event,
         _pipe_in: named_pipes::PipeConnection,
         _pipe_out: named_pipes::PipeConnection,

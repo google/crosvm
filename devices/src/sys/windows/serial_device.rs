@@ -24,7 +24,7 @@ pub const SYSTEM_SERIAL_TYPE_NAME: &str = "NamedPipe";
 /// output streams.
 pub trait SerialDevice {
     fn new(
-        protected_vm: ProtectionType,
+        protection_type: ProtectionType,
         interrupt_evt: Event,
         input: Option<Box<dyn SerialInput>>,
         output: Option<Box<dyn io::Write + Send>>,
@@ -33,7 +33,7 @@ pub trait SerialDevice {
         keep_rds: Vec<RawDescriptor>,
     ) -> Self;
     fn new_with_pipe(
-        protected_vm: ProtectionType,
+        protection_type: ProtectionType,
         interrupt_evt: Event,
         pipe_in: named_pipes::PipeConnection,
         pipe_out: named_pipes::PipeConnection,
@@ -43,7 +43,7 @@ pub trait SerialDevice {
 
 pub(crate) fn create_system_type_serial_device<T: SerialDevice>(
     param: &SerialParameters,
-    protected_vm: ProtectionType,
+    protection_type: ProtectionType,
     evt: Event,
     _input: Option<Box<dyn SerialInput>>,
     keep_rds: &mut Vec<RawDescriptor>,
@@ -74,7 +74,7 @@ pub(crate) fn create_system_type_serial_device<T: SerialDevice>(
             keep_rds.push(pipe_out.as_raw_descriptor());
 
             return Ok(T::new_with_pipe(
-                protected_vm,
+                protection_type,
                 evt,
                 pipe_in,
                 pipe_out,

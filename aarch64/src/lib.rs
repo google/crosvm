@@ -730,7 +730,7 @@ impl AArch64 {
         use_pmu: bool,
         has_bios: bool,
         image_size: usize,
-        protected_vm: ProtectionType,
+        protection_type: ProtectionType,
     ) -> Result<()> {
         let mut features = vec![VcpuFeature::PsciV0_2];
         if use_pmu {
@@ -755,7 +755,7 @@ impl AArch64 {
                 get_kernel_addr()
             };
 
-            let entry_addr = match protected_vm {
+            let entry_addr = match protection_type {
                 ProtectionType::Protected => None, // Hypervisor controls the entry point
                 ProtectionType::UnprotectedWithFirmware => Some(AARCH64_PROTECTED_VM_FW_START),
                 ProtectionType::Unprotected | ProtectionType::ProtectedWithoutFirmware => {
@@ -776,7 +776,7 @@ impl AArch64 {
                 .map_err(Error::SetReg)?;
 
             if matches!(
-                protected_vm,
+                protection_type,
                 ProtectionType::Protected | ProtectionType::UnprotectedWithFirmware
             ) {
                 /* X1 -- payload entry point */

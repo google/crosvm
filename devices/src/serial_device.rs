@@ -156,7 +156,7 @@ impl SerialParameters {
     ///                process. `evt` will always be added to this vector by this function.
     pub fn create_serial_device<T: SerialDevice>(
         &self,
-        protected_vm: ProtectionType,
+        protection_type: ProtectionType,
         evt: &Event,
         keep_rds: &mut Vec<RawDescriptor>,
     ) -> std::result::Result<T, Error> {
@@ -206,11 +206,17 @@ impl SerialParameters {
                 None => return Err(Error::PathRequired),
             },
             SerialType::SystemSerialType => {
-                return create_system_type_serial_device(self, protected_vm, evt, input, keep_rds);
+                return create_system_type_serial_device(
+                    self,
+                    protection_type,
+                    evt,
+                    input,
+                    keep_rds,
+                );
             }
         };
         Ok(T::new(
-            protected_vm,
+            protection_type,
             evt,
             input,
             output,

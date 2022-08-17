@@ -206,7 +206,7 @@ impl ConsoleDevice {
 
 impl SerialDevice for ConsoleDevice {
     fn new(
-        protected_vm: ProtectionType,
+        protection_type: ProtectionType,
         _evt: Event,
         input: Option<Box<dyn SerialInput>>,
         output: Option<Box<dyn io::Write + Send>>,
@@ -214,8 +214,8 @@ impl SerialDevice for ConsoleDevice {
         _out_timestamp: bool,
         _keep_rds: Vec<RawDescriptor>,
     ) -> ConsoleDevice {
-        let avail_features =
-            virtio::base_features(protected_vm) | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
+        let avail_features = virtio::base_features(protection_type)
+            | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         ConsoleDevice {
             input: input.map(AsyncSerialInput).map(AsyncQueueState::Stopped),
             output: AsyncQueueState::Stopped(output.unwrap_or_else(|| Box::new(io::sink()))),
@@ -242,7 +242,7 @@ pub struct AsyncConsole {
 
 impl SerialDevice for AsyncConsole {
     fn new(
-        protected_vm: ProtectionType,
+        protection_type: ProtectionType,
         evt: Event,
         input: Option<Box<dyn SerialInput>>,
         output: Option<Box<dyn io::Write + Send>>,
@@ -252,7 +252,7 @@ impl SerialDevice for AsyncConsole {
     ) -> AsyncConsole {
         AsyncConsole {
             state: VirtioConsoleState::Stopped(ConsoleDevice::new(
-                protected_vm,
+                protection_type,
                 evt,
                 input,
                 output,
@@ -260,7 +260,7 @@ impl SerialDevice for AsyncConsole {
                 out_timestamp,
                 Default::default(),
             )),
-            base_features: base_features(protected_vm),
+            base_features: base_features(protection_type),
             keep_rds,
         }
     }

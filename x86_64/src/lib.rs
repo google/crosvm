@@ -1780,7 +1780,7 @@ impl X8664arch {
     /// * - `io_bus` the I/O bus to add the devices to
     /// * - `serial_parmaters` - definitions for how the serial devices should be configured
     fn setup_serial_devices(
-        protected_vm: ProtectionType,
+        protection_type: ProtectionType,
         irq_chip: &mut dyn IrqChip,
         io_bus: &devices::Bus,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
@@ -1790,7 +1790,7 @@ impl X8664arch {
         let com_evt_2_4 = devices::IrqEdgeEvent::new().map_err(Error::CreateEvent)?;
 
         arch::add_serial_devices(
-            protected_vm,
+            protection_type,
             io_bus,
             com_evt_1_3.get_trigger(),
             com_evt_2_4.get_trigger(),
@@ -1815,7 +1815,7 @@ impl X8664arch {
     }
 
     fn setup_debugcon_devices(
-        protected_vm: ProtectionType,
+        protection_type: ProtectionType,
         io_bus: &devices::Bus,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         debugcon_jail: Option<Minijail>,
@@ -1828,7 +1828,7 @@ impl X8664arch {
             let mut preserved_fds = Vec::new();
             let con = param
                 .create_serial_device::<Debugcon>(
-                    protected_vm,
+                    protection_type,
                     // Debugcon doesn't use the interrupt event
                     &Event::new().map_err(Error::CreateEvent)?,
                     &mut preserved_fds,

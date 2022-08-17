@@ -19,7 +19,7 @@ use crate::SerialDevice;
 
 impl SerialDevice for Console {
     fn new(
-        protected_vm: ProtectionType,
+        protection_type: ProtectionType,
         _event: Event,
         _input: Option<Box<dyn SerialInput>>,
         out: Option<Box<dyn io::Write + Send>>,
@@ -28,19 +28,19 @@ impl SerialDevice for Console {
         _out_timestamp: bool,
         keep_rds: Vec<RawDescriptor>,
     ) -> Console {
-        Console::new(protected_vm, None, out, keep_rds)
+        Console::new(protection_type, None, out, keep_rds)
     }
 
     /// Constructs a console with named pipe as input/output connections.
     fn new_with_pipe(
-        protected_vm: ProtectionType,
+        protection_type: ProtectionType,
         _interrupt_evt: Event,
         pipe_in: named_pipes::PipeConnection,
         pipe_out: named_pipes::PipeConnection,
         keep_rds: Vec<RawDescriptor>,
     ) -> Console {
         Console::new(
-            protected_vm,
+            protection_type,
             Some(ConsoleInput::FromRead(Box::new(pipe_in))),
             Some(Box::new(pipe_out)),
             keep_rds,

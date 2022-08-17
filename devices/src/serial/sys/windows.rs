@@ -115,7 +115,7 @@ impl SerialDevice for Serial {
     ///
     /// The stream `input` should not block, instead returning 0 bytes if are no bytes available.
     fn new(
-        _protected_vm: ProtectionType,
+        _protection_type: ProtectionType,
         interrupt_evt: Event,
         input: Option<Box<dyn SerialInput>>,
         out: Option<Box<dyn io::Write + Send>>,
@@ -139,7 +139,7 @@ impl SerialDevice for Serial {
     /// pipe_in and pipe_out should both refer to the same end of the same pipe, but may have
     /// different underlying descriptors.
     fn new_with_pipe(
-        _protected_vm: ProtectionType,
+        _protection_type: ProtectionType,
         interrupt_evt: Event,
         pipe_in: PipeConnection,
         pipe_out: PipeConnection,
