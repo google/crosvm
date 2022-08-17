@@ -884,16 +884,16 @@ pub enum OpRegionSpace {
 }
 
 /// OperationRegion object with region name, region space type, its offset and length.
-pub struct OpRegion {
+pub struct OpRegion<'a> {
     path: Path,
     space: OpRegionSpace,
-    offset: usize,
-    length: usize,
+    offset: &'a dyn Aml,
+    length: &'a dyn Aml,
 }
 
-impl OpRegion {
+impl<'a> OpRegion<'a> {
     /// Create OperationRegion object.
-    pub fn new(path: Path, space: OpRegionSpace, offset: usize, length: usize) -> Self {
+    pub fn new(path: Path, space: OpRegionSpace, offset: &'a dyn Aml, length: &'a dyn Aml) -> Self {
         OpRegion {
             path,
             space,
@@ -903,7 +903,7 @@ impl OpRegion {
     }
 }
 
-impl Aml for OpRegion {
+impl<'a> Aml for OpRegion<'a> {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
         let mut bytes = Vec::new();
         self.path.to_aml_bytes(&mut bytes);
@@ -1829,7 +1829,13 @@ mod tests {
         ];
         let mut aml = Vec::new();
 
-        OpRegion::new("PRST".into(), OpRegionSpace::SystemIO, 0xcd8, 0xc).to_aml_bytes(&mut aml);
+        OpRegion::new(
+            "PRST".into(),
+            OpRegionSpace::SystemIO,
+            &0xcd8_usize,
+            &0xc_usize,
+        )
+        .to_aml_bytes(&mut aml);
         assert_eq!(aml, &op_region_data[..]);
     }
 
