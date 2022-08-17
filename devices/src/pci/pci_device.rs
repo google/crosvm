@@ -244,13 +244,13 @@ impl PciBus {
         Vec::new()
     }
 
-    // Get all devices in this pci bus tree
+    // Get all devices in this pci bus tree by level-order traversal (BFS)
     pub fn get_downstream_devices(&self) -> Vec<PciAddress> {
         let mut devices = Vec::new();
+        devices.extend(self.child_devices.clone());
         for child_bus in self.child_buses.values() {
             devices.extend(child_bus.lock().get_downstream_devices());
         }
-        devices.extend(self.child_devices.clone());
         devices
     }
 
