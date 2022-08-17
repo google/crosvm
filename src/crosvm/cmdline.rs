@@ -1702,7 +1702,13 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.net_vq_pairs = cmd.net_vq_pairs;
         }
 
-        if cmd.protected_vm && cmd.protected_vm_without_firmware && cmd.pvm_fw.is_some() {
+        let protection_flags = [
+            cmd.protected_vm,
+            cmd.protected_vm_without_firmware,
+            cmd.pvm_fw.is_some(),
+        ];
+
+        if protection_flags.into_iter().filter(|b| *b).count() > 1 {
             return Err("Only one protection mode has to be specified".to_string());
         }
 
