@@ -1694,7 +1694,7 @@ impl X8664arch {
         }
 
         aml::Device::new(
-            "_SB_.PCI0".into(),
+            "_SB_.PC00".into(),
             vec![
                 &aml::Name::new("_HID".into(), &aml::EISAName::new("PNP0A08")),
                 &aml::Name::new("_CID".into(), &aml::EISAName::new("PNP0A03")),
