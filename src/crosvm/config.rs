@@ -1264,11 +1264,11 @@ pub struct Config {
     pub product_name: Option<String>,
     #[cfg(windows)]
     pub product_version: Option<String>,
-    pub protected_vm: ProtectionType,
+    pub protection_type: ProtectionType,
     pub pstore: Option<Pstore>,
     #[cfg(windows)]
     pub pvclock: bool,
-    /// Must be `Some` iff `protected_vm == ProtectionType::UnprotectedWithFirmware`.
+    /// Must be `Some` iff `protection_type == ProtectionType::UnprotectedWithFirmware`.
     pub pvm_fw: Option<PathBuf>,
     pub rng: bool,
     pub rt_cpus: Vec<usize>,
@@ -1463,7 +1463,7 @@ impl Default for Config {
             process_invariants_data_size: None,
             #[cfg(windows)]
             product_name: None,
-            protected_vm: ProtectionType::Unprotected,
+            protection_type: ProtectionType::Unprotected,
             pstore: None,
             #[cfg(windows)]
             pvclock: false,

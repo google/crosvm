@@ -169,7 +169,7 @@ pub trait VirtioDeviceBuilder {
     /// Base name of the device, as it will appear in logs.
     const NAME: &'static str;
 
-    /// Create a regular virtio device from the configuration and `protected_vm` setting.
+    /// Create a regular virtio device from the configuration and `protection_type` setting.
     fn create_virtio_device(
         &self,
         protected_vm: ProtectionType,

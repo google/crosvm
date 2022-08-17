@@ -1099,7 +1099,7 @@ pub struct RunCommand {
     #[argh(option, arg_name = "NAME[,...]")]
     /// comma-separated names of the task profiles to apply to all threads in crosvm including the vCPU threads
     pub task_profiles: Vec<String>,
-    // Must be `Some` iff `protected_vm == ProtectionType::UnprotectedWithFirmware`.
+    // Must be `Some` iff `protection_type == ProtectionType::UnprotectedWithFirmware`.
     #[argh(option, long = "unprotected-vm-with-firmware", arg_name = "PATH")]
     /// (EXPERIMENTAL/FOR DEBUGGING) Use VM firmware, but allow host access to guest memory
     pub unprotected_vm_with_firmware: Option<PathBuf>,
@@ -1712,7 +1712,7 @@ impl TryFrom<RunCommand> for super::config::Config {
             return Err("Only one protection mode has to be specified".to_string());
         }
 
-        cfg.protected_vm = if cmd.protected_vm {
+        cfg.protection_type = if cmd.protected_vm {
             ProtectionType::Protected
         } else if cmd.protected_vm_without_firmware {
             ProtectionType::ProtectedWithoutFirmware
@@ -1728,7 +1728,7 @@ impl TryFrom<RunCommand> for super::config::Config {
             ProtectionType::Unprotected
         };
 
-        if !matches!(cfg.protected_vm, ProtectionType::Unprotected) {
+        if !matches!(cfg.protection_type, ProtectionType::Unprotected) {
             // Balloon and USB devices only work for unprotected VMs.
             cfg.balloon = false;
             cfg.usb = false;

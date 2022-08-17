@@ -105,7 +105,7 @@ pub fn create_gpu_device(
         event_devices,
         map_request,
         cfg.jail_config.is_some(),
-        virtio::base_features(cfg.protected_vm),
+        virtio::base_features(cfg.protection_type),
         cfg.wayland_socket_paths.clone(),
     );
 

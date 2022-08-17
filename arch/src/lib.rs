@@ -165,10 +165,10 @@ pub struct VmComponents {
     pub pcie_ecam: Option<AddressRange>,
     pub pflash_block_size: u32,
     pub pflash_image: Option<File>,
-    pub protected_vm: ProtectionType,
+    pub protection_type: ProtectionType,
     pub pstore: Option<Pstore>,
     /// A file to load as pVM firmware. Must be `Some` iff
-    /// `protected_vm == ProtectionType::UnprotectedWithFirmware`.
+    /// `protection_type == ProtectionType::UnprotectedWithFirmware`.
     pub pvm_fw: Option<File>,
     pub rt_cpus: Vec<usize>,
     pub swiotlb: Option<u64>,

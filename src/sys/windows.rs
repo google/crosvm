@@ -238,7 +238,7 @@ pub enum ExitState {
 type DeviceResult<T = VirtioDeviceStub> = Result<T>;
 
 fn create_vhost_user_block_device(cfg: &Config, disk_device_tube: Tube) -> DeviceResult {
-    let features = virtio::base_features(cfg.protected_vm);
+    let features = virtio::base_features(cfg.protection_type);
     let dev = virtio::vhost::user::vmm::Block::new(features, disk_device_tube).exit_context(
         Exit::VhostUserBlockDeviceNew,
         "failed to set up vhost-user block device",
@@ -265,7 +265,7 @@ fn create_block_device(cfg: &Config, disk: &DiskOption, disk_device_tube: Tube) 
     let disk_file =
         disk::create_disk_file(raw_image, disk.sparse, disk::MAX_NESTING_DEPTH, &disk.path)
             .exit_context(Exit::CreateAsyncDisk, "failed to create virtual disk")?;
-    let features = virtio::base_features(cfg.protected_vm);
+    let features = virtio::base_features(cfg.protection_type);
     let dev = virtio::Block::new(
         features,
         disk_file,
@@ -301,7 +301,7 @@ fn create_gpu_device(
         (&gpu_parameters.display_params).into(),
     )];
 
-    let features = virtio::base_features(cfg.protected_vm);
+    let features = virtio::base_features(cfg.protection_type);
     let dev = virtio::Gpu::new(
         vm_evt_wrtube
             .try_clone()
@@ -339,7 +339,7 @@ fn create_multi_touch_device(
         event_pipe,
         width,
         height,
-        virtio::base_features(cfg.protected_vm),
+        virtio::base_features(cfg.protection_type),
     )
     .exit_context(Exit::InputDeviceNew, "failed to set up input device")?;
     Ok(VirtioDeviceStub {
@@ -350,7 +350,7 @@ fn create_multi_touch_device(
 
 #[cfg(feature = "gpu")]
 fn create_mouse_device(cfg: &Config, event_pipe: StreamChannel, idx: u32) -> DeviceResult {
-    let dev = virtio::new_mouse(idx, event_pipe, virtio::base_features(cfg.protected_vm))
+    let dev = virtio::new_mouse(idx, event_pipe, virtio::base_features(cfg.protection_type))
         .exit_context(Exit::InputDeviceNew, "failed to set up input device")?;
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -376,7 +376,7 @@ fn create_net_device(
 
 #[cfg(feature = "slirp")]
 fn create_vhost_user_net_device(cfg: &Config, net_device_tube: Tube) -> DeviceResult {
-    let features = virtio::base_features(cfg.protected_vm);
+    let features = virtio::base_features(cfg.protection_type);
     let dev = virtio::vhost::user::vmm::Net::new(features, net_device_tube).exit_context(
         Exit::VhostUserNetDeviceNew,
         "failed to set up vhost-user net device",
@@ -389,7 +389,7 @@ fn create_vhost_user_net_device(cfg: &Config, net_device_tube: Tube) -> DeviceRe
 }
 
 fn create_rng_device(cfg: &Config) -> DeviceResult {
-    let dev = virtio::Rng::new(virtio::base_features(cfg.protected_vm))
+    let dev = virtio::Rng::new(virtio::base_features(cfg.protection_type))
         .exit_context(Exit::RngDeviceNew, "failed to set up rng")?;
 
     Ok(VirtioDeviceStub {
@@ -402,7 +402,7 @@ fn create_console_device(cfg: &Config, param: &SerialParameters) -> DeviceResult
     let mut keep_rds = Vec::new();
     let evt = Event::new().exit_context(Exit::CreateEvent, "failed to create event")?;
     let dev = param
-        .create_serial_device::<Console>(cfg.protected_vm, &evt, &mut keep_rds)
+        .create_serial_device::<Console>(cfg.protection_type, &evt, &mut keep_rds)
         .exit_context(Exit::CreateConsole, "failed to create console device")?;
 
     Ok(VirtioDeviceStub {
@@ -420,7 +420,7 @@ fn create_balloon_device(
     init_balloon_size: u64,
 ) -> DeviceResult {
     let dev = virtio::Balloon::new(
-        virtio::base_features(cfg.protected_vm),
+        virtio::base_features(cfg.protection_type),
         balloon_device_tube,
         dynamic_mapping_device_tube,
         inflate_tube,
@@ -446,7 +446,7 @@ fn create_vsock_device(cfg: &Config) -> DeviceResult {
     let dev = virtio::Vsock::new(
         cfg.cid.unwrap_or(DEFAULT_GUEST_CID),
         cfg.host_guid.clone(),
-        virtio::base_features(cfg.protected_vm),
+        virtio::base_features(cfg.protection_type),
     )
     .exit_context(
         Exit::UserspaceVsockDeviceNew,
@@ -573,7 +573,7 @@ fn create_virtio_devices(
         let dev = virtio::new_keyboard(
             /* idx= */ 0,
             virtio_input_pipe,
-            virtio::base_features(cfg.protected_vm),
+            virtio::base_features(cfg.protection_type),
         )
         .exit_context(Exit::InputDeviceNew, "failed to set up input device")?;
         devs.push(VirtioDeviceStub {
@@ -1588,7 +1588,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
                 .ok_or_else(|| anyhow!("requested swiotlb size too large"))?,
         )
     } else {
-        match cfg.protected_vm {
+        match cfg.protection_type {
             ProtectionType::Protected | ProtectionType::ProtectedWithoutFirmware => {
                 Some(64 * 1024 * 1024)
             }
@@ -1653,7 +1653,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
             .collect::<Result<Vec<SDT>>>()?,
         rt_cpus: cfg.rt_cpus.clone(),
         delay_rt: cfg.delay_rt,
-        protected_vm: cfg.protected_vm,
+        protection_type: cfg.protection_type,
         dmi_path: cfg.dmi_path.clone(),
         no_i8042: cfg.no_i8042,
         no_rtc: cfg.no_rtc,
