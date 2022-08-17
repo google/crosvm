@@ -301,18 +301,20 @@ pub trait PciDevice: Send {
     /// A vector of device-specific file descriptors that must be kept open
     /// after jailing. Must be called before the process is jailed.
     fn keep_rds(&self) -> Vec<RawDescriptor>;
+
+    /// Preferred IRQ for this device.
+    /// The device may request a specific pin and IRQ number by returning a non-`None` value.
+    /// Otherwise, an appropriate IRQ will be allocated automatically.
+    /// The device's `assign_irq` function will be called with its assigned IRQ either way.
+    fn preferred_irq(&self) -> Option<(PciInterruptPin, u32)> {
+        None
+    }
+
     /// Assign a legacy PCI IRQ to this device.
     /// The device may write to `irq_evt` to trigger an interrupt.
     /// When `irq_resample_evt` is signaled, the device should re-assert `irq_evt` if necessary.
-    /// Optional irq_num can be used for default INTx allocation, device can overwrite it.
-    /// If legacy INTx is used, function shall return requested IRQ number and PCI INTx pin.
-    fn assign_irq(
-        &mut self,
-        _irq_evt: &IrqLevelEvent,
-        _irq_num: Option<u32>,
-    ) -> Option<(u32, PciInterruptPin)> {
-        None
-    }
+    fn assign_irq(&mut self, _irq_evt: IrqLevelEvent, _pin: PciInterruptPin, _irq_num: u32) {}
+
     /// Allocates the needed IO BAR space using the `allocate` function which takes a size and
     /// returns an address. Returns a Vec of BarRange{addr, size, prefetchable}.
     fn allocate_io_bars(&mut self, _resources: &mut SystemAllocator) -> Result<Vec<BarRange>> {
@@ -593,12 +595,11 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         (**self).keep_rds()
     }
-    fn assign_irq(
-        &mut self,
-        irq_evt: &IrqLevelEvent,
-        irq_num: Option<u32>,
-    ) -> Option<(u32, PciInterruptPin)> {
-        (**self).assign_irq(irq_evt, irq_num)
+    fn preferred_irq(&self) -> Option<(PciInterruptPin, u32)> {
+        (**self).preferred_irq()
+    }
+    fn assign_irq(&mut self, irq_evt: IrqLevelEvent, pin: PciInterruptPin, irq_num: u32) {
+        (**self).assign_irq(irq_evt, pin, irq_num)
     }
     fn allocate_io_bars(&mut self, resources: &mut SystemAllocator) -> Result<Vec<BarRange>> {
         (**self).allocate_io_bars(resources)

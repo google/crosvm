@@ -258,23 +258,11 @@ impl PciDevice for PciBridge {
         rds
     }
 
-    fn assign_irq(
-        &mut self,
-        irq_evt: &IrqLevelEvent,
-        irq_num: Option<u32>,
-    ) -> Option<(u32, PciInterruptPin)> {
-        self.interrupt_evt = Some(irq_evt.try_clone().ok()?);
+    fn assign_irq(&mut self, irq_evt: IrqLevelEvent, pin: PciInterruptPin, irq_num: u32) {
+        self.interrupt_evt = Some(irq_evt);
         let msi_config_clone = self.msi_config.clone();
         self.device.lock().clone_interrupt(msi_config_clone);
-
-        let gsi = irq_num?;
-        let pin = self.pci_address.map_or(
-            PciInterruptPin::IntA,
-            PciConfiguration::suggested_interrupt_pin,
-        );
-        self.config.set_irq(gsi as u8, pin);
-
-        Some((gsi, pin))
+        self.config.set_irq(irq_num as u8, pin);
     }
 
     fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration> {

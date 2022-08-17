@@ -590,21 +590,11 @@ impl PciDevice for VirtioPciDevice {
         rds
     }
 
-    fn assign_irq(
-        &mut self,
-        irq_evt: &IrqLevelEvent,
-        irq_num: Option<u32>,
-    ) -> Option<(u32, PciInterruptPin)> {
-        self.interrupt_evt = Some(irq_evt.try_clone().ok()?);
-        let gsi = irq_num?;
-        let pin = self.pci_address.map_or(
-            PciInterruptPin::IntA,
-            PciConfiguration::suggested_interrupt_pin,
-        );
+    fn assign_irq(&mut self, irq_evt: IrqLevelEvent, pin: PciInterruptPin, irq_num: u32) {
+        self.interrupt_evt = Some(irq_evt);
         if !self.disable_intx {
-            self.config_regs.set_irq(gsi as u8, pin);
+            self.config_regs.set_irq(irq_num as u8, pin);
         }
-        Some((gsi, pin))
     }
 
     fn allocate_io_bars(

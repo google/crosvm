@@ -220,29 +220,19 @@ impl PciDevice for XhciController {
         }
     }
 
-    fn assign_irq(
-        &mut self,
-        irq_evt: &IrqLevelEvent,
-        irq_num: Option<u32>,
-    ) -> Option<(u32, PciInterruptPin)> {
-        let gsi = irq_num?;
-        let pin = self.pci_address.map_or(
-            PciInterruptPin::IntA,
-            PciConfiguration::suggested_interrupt_pin,
-        );
+    fn assign_irq(&mut self, irq_evt: IrqLevelEvent, pin: PciInterruptPin, irq_num: u32) {
         match mem::replace(&mut self.state, XhciControllerState::Unknown) {
             XhciControllerState::Created { device_provider } => {
-                self.config_regs.set_irq(gsi as u8, pin);
+                self.config_regs.set_irq(irq_num as u8, pin);
                 self.state = XhciControllerState::IrqAssigned {
                     device_provider,
-                    irq_evt: irq_evt.try_clone().ok()?,
+                    irq_evt,
                 }
             }
             _ => {
                 error!("xhci controller is in a wrong state");
             }
         }
-        Some((gsi, pin))
     }
 
     fn allocate_io_bars(
