@@ -12,7 +12,6 @@ our command line tools.
 
 Refer to the scripts in ./tools for example usage.
 """
-from __future__ import annotations
 import functools
 import json
 import sys
@@ -20,6 +19,7 @@ import subprocess
 
 if sys.version_info.major != 3 or sys.version_info.minor < 8:
     print("Python 3.8 or higher is required.")
+    print("Hint: Do not use crosvm tools inside cros_sdk.")
     sys.exit(1)
 
 
@@ -151,7 +151,7 @@ class Command(object):
     def __init__(
         self,
         *args: Any,
-        stdin_cmd: Optional[Command] = None,
+        stdin_cmd: Optional["Command"] = None,
         env_vars: Dict[str, str] = {},
     ):
         self.args = Command.__parse_cmd(args)
@@ -295,7 +295,7 @@ class Command(object):
         )
         return CommandResult(result.stdout, result.stderr, result.returncode)
 
-    def stream(self, stderr: Optional[int] = PIPE) -> subprocess.Popen[str]:
+    def stream(self, stderr: Optional[int] = PIPE) -> "subprocess.Popen[str]":
         """
         Runs a program and returns the Popen object of the running process.
         """
