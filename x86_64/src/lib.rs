@@ -1693,29 +1693,23 @@ impl X8664arch {
             crs_entries.push(entry);
         }
 
-        let mut pci_dsdt_inner_data: Vec<&dyn aml::Aml> = Vec::new();
-        let hid = aml::Name::new("_HID".into(), &aml::EISAName::new("PNP0A08"));
-        pci_dsdt_inner_data.push(&hid);
-        let cid = aml::Name::new("_CID".into(), &aml::EISAName::new("PNP0A03"));
-        pci_dsdt_inner_data.push(&cid);
-        let adr = aml::Name::new("_ADR".into(), &aml::ZERO);
-        pci_dsdt_inner_data.push(&adr);
-        let seg = aml::Name::new("_SEG".into(), &aml::ZERO);
-        pci_dsdt_inner_data.push(&seg);
-        let uid = aml::Name::new("_UID".into(), &aml::ZERO);
-        pci_dsdt_inner_data.push(&uid);
-        let supp = aml::Name::new("SUPP".into(), &aml::ZERO);
-        pci_dsdt_inner_data.push(&supp);
-        let crs = aml::Name::new(
-            "_CRS".into(),
-            &aml::ResourceTemplate::new(crs_entries.iter().map(|b| b.as_ref()).collect()),
-        );
-        pci_dsdt_inner_data.push(&crs);
-
-        let pci_root_osc = PciRootOSC {};
-        pci_dsdt_inner_data.push(&pci_root_osc);
-
-        aml::Device::new("_SB_.PCI0".into(), pci_dsdt_inner_data).to_aml_bytes(&mut amls);
+        aml::Device::new(
+            "_SB_.PCI0".into(),
+            vec![
+                &aml::Name::new("_HID".into(), &aml::EISAName::new("PNP0A08")),
+                &aml::Name::new("_CID".into(), &aml::EISAName::new("PNP0A03")),
+                &aml::Name::new("_ADR".into(), &aml::ZERO),
+                &aml::Name::new("_SEG".into(), &aml::ZERO),
+                &aml::Name::new("_UID".into(), &aml::ZERO),
+                &aml::Name::new("SUPP".into(), &aml::ZERO),
+                &aml::Name::new(
+                    "_CRS".into(),
+                    &aml::ResourceTemplate::new(crs_entries.iter().map(|b| b.as_ref()).collect()),
+                ),
+                &PciRootOSC {},
+            ],
+        )
+        .to_aml_bytes(&mut amls);
 
         let pm = Arc::new(Mutex::new(pmresource));
         io_bus
