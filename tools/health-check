@@ -3,6 +3,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import os
 import re
 import sys
 from datetime import datetime
@@ -10,15 +11,7 @@ from pathlib import Path
 from typing import List
 
 from impl.check_code_hygiene import has_crlf_line_endings
-from impl.common import (
-    CROSVM_ROOT,
-    argh,
-    chdir,
-    cmd,
-    cwd_context,
-    parallel,
-    run_main,
-)
+from impl.common import CROSVM_ROOT, argh, chdir, cmd, cwd_context, parallel, run_main
 from impl.health_check import Check, CheckContext, run_checks
 
 
@@ -146,6 +139,24 @@ def check_infra_tests(context: CheckContext):
     recipes("test run --py3-only").fg(quiet=True)
 
 
+def check_file_ends_with_newline(context: CheckContext):
+    "Checks if files end with a newline."
+    for file_path in context.modified_files:
+        with file_path.open("rb") as file:
+            # Skip empty files
+            file.seek(0, os.SEEK_END)
+            if file.tell() == 0:
+                continue
+            # Check last byte of the file
+            file.seek(-1, os.SEEK_END)
+            file_end = file.read(1)
+            if file_end.decode("utf-8") != "\n":
+                if context.fix:
+                    file_path.write_text(file_path.read_text() + "\n")
+                else:
+                    raise Exception(f"File does not end with a newline {file_path}")
+
+
 # List of all checks and on which files they should run.
 CHECKS: List[Check] = [
     Check(
@@ -201,6 +212,10 @@ CHECKS: List[Check] = [
             "docs/book/src/appendix/memory_layout.md",
         ],
         can_fix=True,
+    ),
+    Check(
+        check_file_ends_with_newline,
+        exclude=["**.h264", "**.vp8", "**.bin", "**.png", "**.min.js", "infra/**.json"],
     ),
     Check(check_crlf_line_endings),
 ]

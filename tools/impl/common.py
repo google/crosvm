@@ -573,7 +573,10 @@ def add_verbose_args(parser: argparse.ArgumentParser):
 
 
 def all_tracked_files():
-    return (Path(f) for f in cmd("git ls-files").lines())
+    for line in cmd("git ls-files").lines():
+        file = Path(line)
+        if file.is_file():
+            yield file
 
 
 def find_source_files(extension: str, ignore: List[str] = []):

@@ -69,7 +69,9 @@ def list_file_diff():
     if upstream:
         for line in git("diff --name-status", upstream).lines():
             parts = line.split("\t", 1)
-            yield (parts[0].strip(), Path(parts[1].strip()))
+            file = Path(parts[1].strip())
+            if file.is_file():
+                yield (parts[0].strip(), file)
     else:
         print("WARNING: Not tracking a branch. Checking all files.")
         for file in all_tracked_files():
