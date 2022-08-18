@@ -430,7 +430,7 @@ impl AvBuffer {
         Some(Self(unsafe {
             ffi::av_buffer_create(
                 storage.as_mut_ptr(),
-                storage.len() as c_int,
+                storage.len() as ffi::size_t,
                 Some(avbuffer_free::<D>),
                 Box::into_raw(storage) as *mut c_void,
                 0,
@@ -473,7 +473,7 @@ impl<'a> Drop for AvPacket<'a> {
     fn drop(&mut self) {
         // Safe because `self.packet` is a valid `AVPacket` instance.
         unsafe {
-            ffi::av_free_packet(&mut self.packet);
+            ffi::av_packet_unref(&mut self.packet);
         }
     }
 }

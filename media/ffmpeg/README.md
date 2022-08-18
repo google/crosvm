@@ -1,6 +1,6 @@
 # FFmpeg wrapper
 
-This is a minimal FFmpeg 4.4 wrapper for use with the virtio-video device, allowing to run a virtual
+This is a minimal FFmpeg 5.0 wrapper for use with the virtio-video device, allowing to run a virtual
 video device backed by software decoding or encoding. This is useful for development and testing in
 situations where no supported video acceleration is available on the host.
 

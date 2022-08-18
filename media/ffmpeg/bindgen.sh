@@ -21,7 +21,7 @@ bindgen media/ffmpeg/src/bindings.h -o media/ffmpeg/src/ffmpeg.rs \
     --allowlist-var "AV_.*" \
     --allowlist-var "AVERROR_.*"
 
-echo "# These version numbers are updated by the gen_bindings.sh script" >$VERSIONS
+echo "# These version numbers are updated by the bindgen.sh script" >$VERSIONS
 echo "avcodec: `pkg-config --modversion libavcodec`" >>$VERSIONS
 echo "avutil: `pkg-config --modversion libavutil`" >>$VERSIONS
 echo "swscale: `pkg-config --modversion libswscale`" >>$VERSIONS
