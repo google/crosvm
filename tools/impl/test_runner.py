@@ -71,14 +71,14 @@ class ExecutableResults(object):
         success: bool,
         test_log: str,
         previous_attempts: List["ExecutableResults"],
-        profile_file: Optional[Path],
+        profile_files: List[Path],
     ):
         self.name = name
         self.binary_file = binary_file
         self.success = success
         self.test_log = test_log
         self.previous_attempts = previous_attempts
-        self.profile_file = profile_file
+        self.profile_files = profile_files
 
 
 class Executable(NamedTuple):
@@ -250,7 +250,7 @@ def build_all_binaries(target: TestTarget, crosvm_direct: bool, instrument_cover
 
     print("Building crosvm workspace")
     features = BUILD_FEATURES[str(target.build_triple)]
-    extra_args = []
+    extra_args: List[str] = []
     if crosvm_direct:
         features += ",direct"
         extra_args.append("--no-default-features")
@@ -316,24 +316,22 @@ def execute_test(target: TestTarget, attempts: int, collect_coverage: bool, exec
             print(f"Running test {executable.name} on {target}... (attempt {i}/{attempts})")
 
         try:
-            profile_file = None
-            if collect_coverage:
-                profile_file = binary_path.with_suffix(".profraw")
-
             # Pipe stdout/err to be printed in the main process if needed.
             test_process = test_target.exec_file_on_target(
                 target,
                 binary_path,
                 args=args,
                 timeout=get_test_timeout(target, executable),
-                profile_file=profile_file,
+                generate_profile=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
             )
-            if profile_file and not profile_file.exists():
-                print()
-                print(f"Warning: Running {binary_path} did not produce profile file.")
-                profile_file = None
+            profile_files: List[Path] = []
+            if collect_coverage:
+                profile_files = [*test_target.list_profile_files(binary_path)]
+                if not profile_files:
+                    print()
+                    print(f"Warning: Running {binary_path} did not produce a profile file.")
 
             result = ExecutableResults(
                 executable.name,
@@ -341,7 +339,7 @@ def execute_test(target: TestTarget, attempts: int, collect_coverage: bool, exec
                 test_process.returncode == 0,
                 test_process.stdout,
                 previous_attempts,
-                profile_file,
+                profile_files,
             )
         except subprocess.TimeoutExpired as e:
             # Append a note about the timeout to the stdout of the process.
@@ -352,7 +350,7 @@ def execute_test(target: TestTarget, attempts: int, collect_coverage: bool, exec
                 False,
                 e.stdout.decode("utf-8") + msg,
                 previous_attempts,
-                None,
+                [],
             )
         if result.success:
             break
@@ -425,7 +423,7 @@ def find_crosvm_binary(executables: List[Executable]):
 def generate_lcov(results: List[ExecutableResults], lcov_file: str):
     print("Merging profiles")
     merged_file = testvm.cargo_target_dir() / "merged.profraw"
-    profiles = [str(r.profile_file) for r in results if r.profile_file]
+    profiles = [str(p) for r in results if r.profile_files for p in r.profile_files]
     subprocess.check_call(["rust-profdata", "merge", "-sparse", *profiles, "-o", str(merged_file)])
 
     print("Exporting report")
@@ -434,7 +432,7 @@ def generate_lcov(results: List[ExecutableResults], lcov_file: str):
             "rust-cov",
             "export",
             "--format=lcov",
-            "--ignore-filename-regex='/.cargo/registry'",
+            "--ignore-filename-regex='/registry/'",
             f"--instr-profile={merged_file}",
             *(f"--object={r.binary_file}" for r in results),
         ],
