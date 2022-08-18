@@ -631,6 +631,7 @@ fn crosvm_main() -> Result<CommandStatus> {
 }
 
 fn main() {
+    syslog::early_init();
     let res = crosvm_main();
     let exit_code = match &res {
         Ok(CommandStatus::Success | CommandStatus::VmStop) => {

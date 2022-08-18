@@ -49,9 +49,11 @@
 //!
 //! [log-crate-url]: https://docs.rs/log/
 
+use once_cell::sync::Lazy;
 use std::fmt::Display;
 use std::io;
 use std::io::Write;
+use std::sync::MutexGuard;
 
 use chrono::Local;
 pub use env_logger::fmt;
@@ -61,6 +63,7 @@ use once_cell::sync::OnceCell;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
+use sync::Mutex;
 use thiserror::Error as ThisError;
 
 use crate::platform::syslog::PlatformSyslog;
@@ -188,12 +191,33 @@ pub(crate) trait Syslog {
 }
 
 pub(crate) struct State {
-    // Record filter
+    /// Record filter
     filter: env_logger::filter::Filter,
-    // All the loggers we have
+    /// All the loggers we have
     loggers: Vec<Box<dyn Log + Send>>,
-    // Raw Descriptors to preserve
+    /// Raw Descriptors to preserve
     descriptors: Vec<RawDescriptor>,
+    /// True if we have just been initialized with safe startup defaults (stderr logging), false
+    /// after detailed initialization has occurred.
+    early_init: bool,
+}
+
+/// The logger that is provided to the `log` crate. Wraps our State struct so that we can
+/// reconfigure logging sinks on the fly.
+struct LoggingFacade {}
+
+impl Log for LoggingFacade {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        STATE.lock().enabled(metadata)
+    }
+
+    fn log(&self, record: &log::Record) {
+        STATE.lock().log(record)
+    }
+
+    fn flush(&self) {
+        STATE.lock().flush()
+    }
 }
 
 pub struct LogConfig<'a, F: 'static>
@@ -305,11 +329,19 @@ impl State {
             filter,
             loggers,
             descriptors,
+            early_init: false,
         })
     }
 }
 
-static STATE: OnceCell<State> = OnceCell::new();
+static STATE: Lazy<Mutex<State>> = Lazy::new(|| {
+    let mut state = State::new(LogConfig::default()).expect("failed to configure minimal logging");
+    state.early_init = true;
+    Mutex::new(state)
+});
+static LOGGING_FACADE: LoggingFacade = LoggingFacade {};
+static EARLY_INIT_CALLED: OnceCell<()> = OnceCell::new();
+
 /// Initialize the syslog connection and internal variables.
 ///
 /// This should only be called once per process before any other threads have been spawned or any
@@ -318,22 +350,6 @@ static STATE: OnceCell<State> = OnceCell::new();
 /// Use `init_with_filter` to initialize with filtering
 pub fn init() -> Result<(), Error> {
     init_with(Default::default())
-}
-
-/// Test only function that ensures logging has been configured. Since tests
-/// share module state, we need a way to make sure it has been initialized
-/// with *some* configuration.
-#[cfg(test)]
-pub(crate) fn ensure_inited() -> Result<(), Error> {
-    let mut first_init = false;
-    let state = STATE.get_or_try_init(|| {
-        first_init = true;
-        State::new(Default::default())
-    })?;
-    if first_init {
-        apply_logging_state(state);
-    }
-    Ok(())
 }
 
 /// Initialize the syslog connection and internal variables.
@@ -354,20 +370,55 @@ pub fn init_with<F: 'static>(cfg: LogConfig<'_, F>) -> Result<(), Error>
 where
     F: Fn(&mut fmt::Formatter, &log::Record<'_>) -> std::io::Result<()> + Sync + Send,
 {
-    let mut first_init = false;
-    let state = STATE.get_or_try_init(|| {
-        first_init = true;
-        State::new(cfg)
-    });
-    if !first_init {
+    let mut state = STATE.lock();
+    if !state.early_init {
         panic!("double-init of the logging system is not permitted.");
     }
-    apply_logging_state(state?);
+    *state = State::new(cfg)?;
+
+    // This has no effect if the logging facade was already set.
+    apply_logging_state(&LOGGING_FACADE);
+
     Ok(())
 }
 
-fn apply_logging_state(state: &'static State) {
-    let _ = log::set_logger(state);
+/// Performs early (as in, moment of process start) logging initialization. Any logging prior to
+/// this call will be SILENTLY discarded. Calling more than once per process will panic.
+pub fn early_init() {
+    let mut first_init = false;
+    let _ = EARLY_INIT_CALLED
+        .get_or_try_init(|| -> Result<(), ()> {
+            first_init = true;
+            Ok(())
+        })
+        .unwrap();
+    if first_init {
+        apply_logging_state(&LOGGING_FACADE);
+    } else {
+        panic!("double early init of the logging system is not permitted.");
+    }
+}
+
+/// Test only function that ensures logging has been configured. Since tests
+/// share module state, we need a way to make sure it has been initialized
+/// with *some* configuration.
+#[cfg(test)]
+pub(crate) fn ensure_inited() -> Result<(), Error> {
+    let mut first_init = false;
+    let _ = EARLY_INIT_CALLED
+        .get_or_try_init(|| -> Result<(), ()> {
+            first_init = true;
+            Ok(())
+        })
+        .unwrap();
+    if first_init {
+        apply_logging_state(&LOGGING_FACADE);
+    }
+    Ok(())
+}
+
+fn apply_logging_state(facade: &'static LoggingFacade) {
+    let _ = log::set_logger(facade);
     log::set_max_level(log::LevelFilter::Trace);
 }
 
@@ -378,9 +429,8 @@ fn apply_logging_state(state: &'static State) {
 ///
 /// Note that the `stderr` file descriptor is never added, as it is not owned by syslog.
 pub fn push_descriptors(fds: &mut Vec<RawDescriptor>) {
-    if let Some(state) = STATE.get() {
-        fds.extend(state.descriptors.iter());
-    }
+    let state = STATE.lock();
+    fds.extend(state.descriptors.iter());
 }
 
 impl Log for State {
@@ -404,65 +454,64 @@ impl Log for State {
 }
 
 // Struct that implements io::Write to be used for writing directly to the syslog
-pub struct Syslogger {
+pub struct Syslogger<'a> {
     buf: String,
     level: log::Level,
-    state: Option<State>,
+    get_state_fn: Box<dyn Fn() -> MutexGuard<'a, State> + Send + 'a>,
 }
 
-impl Syslogger {
-    pub fn new(level: log::Level) -> Syslogger {
+impl<'a> Syslogger<'a> {
+    pub fn new(level: log::Level) -> Syslogger<'a> {
         Syslogger {
             buf: String::new(),
             level,
-            state: None,
+            get_state_fn: Box::new(|| STATE.lock()),
         }
     }
     #[cfg(test)]
-    fn from_state(level: log::Level, state: Option<State>) -> Syslogger {
+    fn from_state<F: 'a + Fn() -> MutexGuard<'a, State> + Send>(
+        level: log::Level,
+        get_state_fn: F,
+    ) -> Syslogger<'a> {
         Syslogger {
             buf: String::new(),
             level,
-            state,
+            get_state_fn: Box::new(get_state_fn),
         }
     }
 }
 
-impl io::Write for Syslogger {
+impl<'a> io::Write for Syslogger<'a> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let state = self.state.as_ref().or_else(|| STATE.get());
-        if let Some(state) = state {
-            let parsed_str = String::from_utf8_lossy(buf);
-            self.buf.push_str(&parsed_str);
+        let state = (self.get_state_fn)();
+        let parsed_str = String::from_utf8_lossy(buf);
+        self.buf.push_str(&parsed_str);
 
-            if let Some(last_newline_idx) = self.buf.rfind('\n') {
-                for line in self.buf[..last_newline_idx].lines() {
-                    // Match is to explicitly limit lifetime of args
-                    // https://github.com/rust-lang/rust/issues/92698
-                    // https://github.com/rust-lang/rust/issues/15023
-                    #[allow(clippy::match_single_binding)]
-                    match format_args!("{}", line) {
-                        args => {
-                            let mut record_builder = log::Record::builder();
-                            record_builder.level(self.level);
-                            record_builder.target("syslogger");
-                            record_builder.args(args);
-                            let record = record_builder.build();
-                            state.log(&record);
-                        }
+        if let Some(last_newline_idx) = self.buf.rfind('\n') {
+            for line in self.buf[..last_newline_idx].lines() {
+                // Match is to explicitly limit lifetime of args
+                // https://github.com/rust-lang/rust/issues/92698
+                // https://github.com/rust-lang/rust/issues/15023
+                #[allow(clippy::match_single_binding)]
+                match format_args!("{}", line) {
+                    args => {
+                        let mut record_builder = log::Record::builder();
+                        record_builder.level(self.level);
+                        record_builder.target("syslogger");
+                        record_builder.args(args);
+                        let record = record_builder.build();
+                        state.log(&record);
                     }
                 }
-
-                self.buf.drain(..=last_newline_idx);
             }
+
+            self.buf.drain(..=last_newline_idx);
         }
         Ok(buf.len())
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        if let Some(state) = STATE.get() {
-            state.flush();
-        }
+        STATE.lock().flush();
         Ok(())
     }
 }
@@ -481,7 +530,6 @@ mod tests {
     }
 
     use std::sync::Arc;
-    use std::sync::Mutex;
     #[derive(Clone)]
     struct MockWrite {
         buffer: Arc<Mutex<Vec<u8>>>,
@@ -495,13 +543,13 @@ mod tests {
         }
 
         fn into_inner(self) -> Vec<u8> {
-            Arc::try_unwrap(self.buffer).unwrap().into_inner().unwrap()
+            Arc::try_unwrap(self.buffer).unwrap().into_inner()
         }
     }
 
     impl Write for MockWrite {
         fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            self.buffer.lock().unwrap().write(buf)
+            self.buffer.lock().write(buf)
         }
 
         fn flush(&mut self) -> io::Result<()> {
@@ -558,10 +606,9 @@ mod tests {
         let mut cfg = LogConfig::default();
         cfg.pipe_formatter = Some(pipe_formatter);
         cfg.pipe = Some(Box::new(output.clone()));
+        let state = Mutex::new(State::new(cfg).unwrap());
 
-        let state = State::new(cfg).unwrap();
-
-        let mut syslogger = Syslogger::from_state(Level::Info, Some(state));
+        let mut syslogger = Syslogger::from_state(Level::Info, || state.lock());
 
         let string = "chars";
         for c in string.chars() {
@@ -573,6 +620,7 @@ mod tests {
             .expect("error writing newline char");
 
         std::mem::drop(syslogger);
+        std::mem::drop(state);
         assert_eq!(
             format!("{}\n", string),
             String::from_utf8_lossy(&output.into_inner()[..])
@@ -585,9 +633,9 @@ mod tests {
         let mut cfg = LogConfig::default();
         cfg.pipe_formatter = Some(pipe_formatter);
         cfg.pipe = Some(Box::new(output.clone()));
-        let state = State::new(cfg).unwrap();
+        let state = Mutex::new(State::new(cfg).unwrap());
 
-        let mut syslogger = Syslogger::from_state(Level::Info, Some(state));
+        let mut syslogger = Syslogger::from_state(Level::Info, || state.lock());
 
         let s = "Writing string to syslog\n";
         syslogger
@@ -595,19 +643,22 @@ mod tests {
             .expect("error writing string");
 
         std::mem::drop(syslogger);
+        std::mem::drop(state);
         assert_eq!(s, String::from_utf8_lossy(&output.into_inner()[..]));
     }
 
     #[test]
     fn syslogger_partial() {
         let output = MockWrite::new();
-        let state = State::new(LogConfig {
-            pipe: Some(Box::new(output.clone())),
-            ..Default::default()
-        })
-        .unwrap();
+        let state = Mutex::new(
+            State::new(LogConfig {
+                pipe: Some(Box::new(output.clone())),
+                ..Default::default()
+            })
+            .unwrap(),
+        );
 
-        let mut syslogger = Syslogger::from_state(Level::Info, Some(state));
+        let mut syslogger = Syslogger::from_state(Level::Info, || state.lock());
 
         let s = "Writing partial string";
         // Should not log because there is no newline character
@@ -616,6 +667,7 @@ mod tests {
             .expect("error writing string");
 
         std::mem::drop(syslogger);
+        std::mem::drop(state);
         assert_eq!(Vec::<u8>::new(), output.into_inner());
     }
 
