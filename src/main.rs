@@ -518,6 +518,8 @@ fn crosvm_main() -> Result<CommandStatus> {
     };
     let extended_status = args.extended_status;
 
+    info!("CLI arguments parsed.");
+
     let mut log_config = LogConfig {
         filter: &args.log_level,
         proc_name: args.syslog_tag.unwrap_or("crosvm".to_string()),
@@ -632,6 +634,7 @@ fn crosvm_main() -> Result<CommandStatus> {
 
 fn main() {
     syslog::early_init();
+    info!("CrosVM started.");
     let res = crosvm_main();
     let exit_code = match &res {
         Ok(CommandStatus::Success | CommandStatus::VmStop) => {

@@ -12,6 +12,7 @@ use std::os::raw::*;
 use std::os::windows::io::AsRawHandle;
 use std::thread;
 
+use base::info;
 use base::named_pipes;
 use base::named_pipes::BlockingMode;
 use base::named_pipes::FramingMode;
@@ -123,6 +124,7 @@ impl Slirp {
 
         let disable_access_to_host = !cfg!("guest-to-host-net-loopback");
 
+        info!("starting slirp loop...");
         match handler::start_slirp(
             slirp_pipe,
             shutdown_event,

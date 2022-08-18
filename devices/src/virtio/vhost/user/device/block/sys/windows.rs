@@ -145,6 +145,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     // This is basically the event loop.
     let handler = DeviceRequestHandler::new(block);
 
+    info!("vhost-user disk device ready, starting run loop...");
     if let Err(e) = ex.run_until(handler.run(vhost_user_tube, exit_event, &ex)) {
         bail!("error occurred: {}", e);
     }

@@ -12,6 +12,7 @@ use anyhow::bail;
 use anyhow::Context;
 use argh::FromArgs;
 use base::error;
+use base::info;
 use base::validate_raw_descriptor;
 use base::warn;
 use base::Event;
@@ -361,6 +362,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         };
     }
 
+    info!("vhost-user net device ready, loop threads started.");
     for t in threads {
         match t.join() {
             Ok(r) => r?,

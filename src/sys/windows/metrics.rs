@@ -72,6 +72,7 @@ pub(crate) fn run_metrics(#[allow(unused_variables)] args: Vec<String>) -> Resul
         crate::sys::sandbox_lower_token()?;
 
         let mut metrics_controller = MetricsController::new(metrics_tubes);
+        info!("Starting metrics controller loop...");
         metrics_controller
             .run()
             .exit_context(Exit::MetricsController, "metrics controller failed")

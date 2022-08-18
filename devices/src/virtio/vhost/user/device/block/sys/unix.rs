@@ -5,6 +5,7 @@
 use anyhow::bail;
 use anyhow::Context;
 use argh::FromArgs;
+use base::info;
 use cros_async::Executor;
 use hypervisor::ProtectionType;
 
@@ -67,6 +68,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         block.max_queue_num(),
         None,
     )?;
+    info!("vhost-user disk device ready, starting run loop...");
     // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
     ex.run_until(listener.run_backend(block, &ex))?
 }
