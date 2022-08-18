@@ -749,26 +749,24 @@ impl AArch64 {
 
         // Other cpus are powered off initially
         if vcpu_id == 0 {
-            let entry_addr = if has_bios {
+            let image_addr = if has_bios {
                 get_bios_addr()
             } else {
                 get_kernel_addr()
             };
-            match protected_vm {
-                ProtectionType::Protected => {
-                    vcpu.set_one_reg(VcpuRegAArch64::X(1), entry_addr.offset())
-                        .map_err(Error::SetReg)?;
-                }
-                ProtectionType::UnprotectedWithFirmware => {
-                    vcpu.set_one_reg(VcpuRegAArch64::Pc, AARCH64_PROTECTED_VM_FW_START)
-                        .map_err(Error::SetReg)?;
-                    vcpu.set_one_reg(VcpuRegAArch64::X(1), entry_addr.offset())
-                        .map_err(Error::SetReg)?;
-                }
+
+            let entry_addr = match protected_vm {
+                ProtectionType::Protected => None, // Hypervisor controls the entry point
+                ProtectionType::UnprotectedWithFirmware => Some(AARCH64_PROTECTED_VM_FW_START),
                 ProtectionType::Unprotected | ProtectionType::ProtectedWithoutFirmware => {
-                    vcpu.set_one_reg(VcpuRegAArch64::Pc, entry_addr.offset())
-                        .map_err(Error::SetReg)?;
+                    Some(image_addr.offset())
                 }
+            };
+
+            /* PC -- entry point */
+            if let Some(entry) = entry_addr {
+                vcpu.set_one_reg(VcpuRegAArch64::Pc, entry)
+                    .map_err(Error::SetReg)?;
             }
 
             /* X0 -- fdt address */
@@ -777,11 +775,15 @@ impl AArch64 {
             vcpu.set_one_reg(VcpuRegAArch64::X(0), fdt_addr)
                 .map_err(Error::SetReg)?;
 
-            /* X2 -- image size */
             if matches!(
                 protected_vm,
                 ProtectionType::Protected | ProtectionType::UnprotectedWithFirmware
             ) {
+                /* X1 -- payload entry point */
+                vcpu.set_one_reg(VcpuRegAArch64::X(1), image_addr.offset())
+                    .map_err(Error::SetReg)?;
+
+                /* X2 -- image size */
                 vcpu.set_one_reg(VcpuRegAArch64::X(2), image_size as u64)
                     .map_err(Error::SetReg)?;
             }
