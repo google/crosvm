@@ -692,7 +692,10 @@ pub fn generate_pci_root(
 
     // Allocate legacy INTx
     let mut pci_irqs = Vec::new();
-    let mut irqs: Vec<Option<u32>> = vec![None; max_irqs];
+    let mut irqs: Vec<u32> = Vec::new();
+
+    // Mapping of (bus, dev, pin) -> IRQ number.
+    let mut dev_pin_irq = BTreeMap::new();
 
     for (dev_idx, (device, _jail)) in devices.iter_mut().enumerate() {
         let pci_address = device_addrs[dev_idx];
@@ -714,15 +717,29 @@ pub fn generate_pci_root(
                 _ => PciInterruptPin::IntD,
             };
 
-            // For default interrupt routing use next preallocated interrupt from the pool.
-            let irq_num = if let Some(irq) = irqs[dev_idx % max_irqs] {
-                irq
+            // If an IRQ number has already been assigned for a different function with this (bus,
+            // device, pin) combination, use it. Otherwise allocate a new one and insert it into the
+            // map.
+            let pin_key = (pci_address.bus, pci_address.dev, pin);
+            let irq_num = if let Some(irq_num) = dev_pin_irq.get(&pin_key) {
+                *irq_num
             } else {
-                let irq = resources
-                    .allocate_irq()
-                    .ok_or(DeviceRegistrationError::AllocateIrq)?;
-                irqs[dev_idx % max_irqs] = Some(irq);
-                irq
+                // If we have allocated fewer than `max_irqs` total, add a new irq to the `irqs`
+                // pool. Otherwise, share one of the existing `irqs`.
+                let irq_num = if irqs.len() < max_irqs {
+                    let irq_num = resources
+                        .allocate_irq()
+                        .ok_or(DeviceRegistrationError::AllocateIrq)?;
+                    irqs.push(irq_num);
+                    irq_num
+                } else {
+                    // Pick one of the existing IRQs to share, using `dev_idx` to distribute IRQ
+                    // sharing evenly across devices.
+                    irqs[dev_idx % max_irqs]
+                };
+
+                dev_pin_irq.insert(pin_key, irq_num);
+                irq_num
             };
             (pin, irq_num)
         };

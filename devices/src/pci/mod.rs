@@ -93,7 +93,7 @@ pub use self::stub::StubPciParameters;
 pub use self::vfio_pci::VfioPciDevice;
 
 /// PCI has four interrupt pins A->D.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Ord, PartialOrd, PartialEq, Eq)]
 pub enum PciInterruptPin {
     IntA,
     IntB,
