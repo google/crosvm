@@ -1085,6 +1085,7 @@ impl<D: DecoderBackend> Device for Decoder<D> {
             }
             DecoderEvent::ResetCompleted(reset_result) => {
                 ctx.is_resetting = false;
+                ctx.session = None;
                 let tag = AsyncCmdTag::Clear {
                     stream_id,
                     queue_type: QueueType::Input,
