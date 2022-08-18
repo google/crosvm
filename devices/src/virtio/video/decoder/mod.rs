@@ -845,7 +845,6 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         queue_type: QueueType,
     ) -> VideoResult<VideoCmdResponseType> {
         let ctx = self.contexts.get_mut(&stream_id)?;
-        let session = ctx.session.as_mut().ok_or(VideoError::InvalidOperation)?;
 
         // TODO(b/153406792): Though QUEUE_CLEAR is defined as a per-queue command in the
         // specification, the VDA's `Reset()` clears the input buffers and may (or may not) drop
@@ -856,17 +855,23 @@ impl<'a, D: DecoderBackend> Decoder<D> {
         // DismissPictureBuffer() method.
         match queue_type {
             QueueType::Input => {
-                session.reset()?;
-                ctx.is_resetting = true;
-                ctx.pending_responses.clear();
-                Ok(VideoCmdResponseType::Async(AsyncCmdTag::Clear {
-                    stream_id,
-                    queue_type: QueueType::Input,
-                }))
+                if let Some(session) = ctx.session.as_mut() {
+                    session.reset()?;
+                    ctx.is_resetting = true;
+                    ctx.pending_responses.clear();
+                    Ok(VideoCmdResponseType::Async(AsyncCmdTag::Clear {
+                        stream_id,
+                        queue_type: QueueType::Input,
+                    }))
+                } else {
+                    Ok(VideoCmdResponseType::Sync(CmdResponse::NoData))
+                }
             }
             QueueType::Output => {
-                session.clear_output_buffers()?;
-                ctx.out_res.queued_res_ids.clear();
+                if let Some(session) = ctx.session.as_mut() {
+                    session.clear_output_buffers()?;
+                    ctx.out_res.queued_res_ids.clear();
+                }
                 Ok(VideoCmdResponseType::Sync(CmdResponse::NoData))
             }
         }
