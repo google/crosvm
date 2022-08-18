@@ -217,7 +217,7 @@ def upload():
             return
         print()
 
-    git("push", remote, f"HEAD:refs/for/{branch}").fg()
+    git("push origin HEAD:refs/for/main").fg()
 
 
 if __name__ == "__main__":
