@@ -5,7 +5,6 @@
 import argparse
 import fnmatch
 import functools
-import itertools
 import json
 import os
 import random
@@ -13,11 +12,12 @@ import subprocess
 import sys
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Dict, Iterable, List, NamedTuple, Optional
+from typing import Dict, Iterable, List, NamedTuple
 
 from . import test_target, testvm
+from .common import all_tracked_files
+from .test_config import BUILD_FEATURES, CRATE_OPTIONS, TestOption
 from .test_target import TestTarget, Triple
-from .test_config import CRATE_OPTIONS, TestOption, BUILD_FEATURES
 
 USAGE = """\
 Runs tests for crosvm locally, in a vm or on a remote device.
@@ -420,25 +420,42 @@ def find_crosvm_binary(executables: List[Executable]):
     raise Exception("Cannot find crosvm executable")
 
 
-def generate_lcov(results: List[ExecutableResults], lcov_file: str):
+def generate_lcov(
+    results: List[ExecutableResults], crosvm_binary: Path, lcov_file: str, print_report: bool
+):
     print("Merging profiles")
     merged_file = testvm.cargo_target_dir() / "merged.profraw"
     profiles = [str(p) for r in results if r.profile_files for p in r.profile_files]
     subprocess.check_call(["rust-profdata", "merge", "-sparse", *profiles, "-o", str(merged_file)])
 
-    print("Exporting report")
+    print("Generating lcov")
+    all_rust_src = [f for f in all_tracked_files() if f.suffix == ".rs"]
     lcov_data = subprocess.check_output(
         [
             "rust-cov",
             "export",
             "--format=lcov",
-            "--ignore-filename-regex='/registry/'",
             f"--instr-profile={merged_file}",
             *(f"--object={r.binary_file}" for r in results),
+            str(crosvm_binary),
+            *all_rust_src,
         ],
         text=True,
     )
     open(lcov_file, "w").write(lcov_data)
+    if print_report:
+        subprocess.check_call(
+            [
+                "rust-cov",
+                "report",
+                "-show-region-summary=False",
+                "-show-branch-summary=False",
+                f"-instr-profile={merged_file}",
+                *(f"-object={r.binary_file}" for r in results),
+                str(crosvm_binary),
+                *all_rust_src,
+            ]
+        )
 
 
 def main():
@@ -472,6 +489,11 @@ def main():
     parser.add_argument(
         "--build-only",
         action="store_true",
+    )
+    parser.add_argument(
+        "--cov",
+        action="store_true",
+        help="Generates lcov.info and prints coverage report.",
     )
     parser.add_argument(
         "--generate-lcov",
@@ -518,7 +540,9 @@ def main():
         print()
         build_target = Triple.from_shorthand(args.arch)
 
-    collect_coverage = args.generate_lcov
+    if args.cov:
+        args.generate_lcov = "lcov.info"
+    collect_coverage = bool(args.generate_lcov)
     emulator_cmd = args.emulator.split(" ") if args.emulator else None
     build_target = Triple.from_shorthand(args.build_target) if args.build_target else None
     target = test_target.TestTarget(args.target, build_target, emulator_cmd)
@@ -537,11 +561,8 @@ def main():
 
     # Upload dependencies plus the main crosvm binary for integration tests if the
     # crosvm binary is not excluded from testing.
-    extra_files = (
-        [find_crosvm_binary(executables).binary_path]
-        if not exclude_crosvm(target.build_triple)
-        else []
-    )
+    crosvm_binary = find_crosvm_binary(executables).binary_path
+    extra_files = [crosvm_binary] if not exclude_crosvm(target.build_triple) else []
 
     test_target.prepare_target(target, extra_files=extra_files)
 
@@ -556,8 +577,8 @@ def main():
             print()
             print(f"Round {i+1}/{args.repeat}:")
         results = [*execute_all(test_executables, target, args.retry + 1, collect_coverage)]
-        if args.generate_lcov:
-            generate_lcov(results, args.generate_lcov)
+        if args.generate_lcov and i == args.repeat - 1:
+            generate_lcov(results, crosvm_binary, args.generate_lcov, args.cov)
         all_results.extend(results)
         random.shuffle(test_executables)
 
