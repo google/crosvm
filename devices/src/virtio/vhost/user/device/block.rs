@@ -17,6 +17,7 @@ use base::warn;
 use base::Event;
 use base::Timer;
 use cros_async::sync::Mutex as AsyncMutex;
+use cros_async::AsyncTube;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::TimerAsync;
@@ -32,6 +33,7 @@ use vmm_vhost::message::*;
 use crate::virtio;
 use crate::virtio::block::asynchronous::flush_disk;
 use crate::virtio::block::asynchronous::handle_queue;
+use crate::virtio::block::asynchronous::handle_vhost_user_command_tube;
 use crate::virtio::block::asynchronous::BlockAsync;
 use crate::virtio::block::build_config_space;
 use crate::virtio::block::DiskState;
@@ -107,6 +109,15 @@ impl VhostUserDevice for BlockAsync {
             Rc::clone(&flush_timer_armed),
         ))
         .detach();
+
+        if let Some(control_tube) = self.control_tube.take() {
+            let async_tube = AsyncTube::new(ex, control_tube)?;
+            ex.spawn_local(handle_vhost_user_command_tube(
+                async_tube,
+                Rc::clone(&disk_state),
+            ))
+            .detach();
+        }
 
         Ok(Box::new(BlockBackend {
             ex: ex.clone(),

@@ -55,6 +55,7 @@ use base::UnixSeqpacket;
 use base::UnixSeqpacketListener;
 use base::UnlinkUnixSeqpacketListener;
 use base::*;
+use cros_async::Executor;
 use device_helpers::*;
 use devices::serial_device::SerialHardware;
 use devices::vfio::VfioCommonSetup;
@@ -2883,6 +2884,51 @@ fn jail_and_start_vu_device<T: VirtioDeviceBuilder>(
     }
 }
 
+fn process_vhost_user_control_request(tube: Tube, disk_host_tubes: &[Tube]) -> Result<()> {
+    let command = tube
+        .recv::<VmRequest>()
+        .context("failed to receive VmRequest")?;
+    let resp = match command {
+        VmRequest::DiskCommand {
+            disk_index,
+            ref command,
+        } => match &disk_host_tubes.get(disk_index) {
+            Some(tube) => handle_disk_command(command, tube),
+            None => VmResponse::Err(base::Error::new(libc::ENODEV)),
+        },
+        request => {
+            error!(
+                "Request {:?} currently not supported in vhost user backend",
+                request
+            );
+            VmResponse::Err(base::Error::new(libc::EPERM))
+        }
+    };
+
+    tube.send(&resp).context("failed to send VmResponse")?;
+    Ok(())
+}
+
+fn start_vhost_user_control_server(
+    control_server_socket: UnlinkUnixSeqpacketListener,
+    disk_host_tubes: Vec<Tube>,
+) {
+    info!("Start vhost-user control server");
+    loop {
+        match control_server_socket.accept() {
+            Ok(socket) => {
+                let tube = Tube::new_from_unix_seqpacket(socket);
+                if let Err(e) = process_vhost_user_control_request(tube, &disk_host_tubes) {
+                    error!("failed to process control request: {:#}", e);
+                }
+            }
+            Err(e) => {
+                error!("failed to establish connection: {}", e);
+            }
+        }
+    }
+}
+
 pub fn start_devices(opts: DevicesCommand) -> anyhow::Result<()> {
     struct DeviceJailInfo {
         // Unique name for the device, in the form `foomatic-0`.
@@ -2921,16 +2967,41 @@ pub fn start_devices(opts: DevicesCommand) -> anyhow::Result<()> {
         Some(opts.jail)
     };
 
+    // Create control server socket
+    let control_server_socket = opts.control_socket.map(|path| {
+        UnlinkUnixSeqpacketListener(
+            UnixSeqpacketListener::bind(path).expect("Could not bind socket"),
+        )
+    });
+
     // Create serial devices.
     for (i, params) in opts.serial.iter().enumerate() {
         let serial_config = &params.device_params;
         add_device(i, serial_config, &params.vhost, &jail, &mut devices_jails)?;
     }
 
+    let mut disk_host_tubes = Vec::new();
+    let control_socket_exists = control_server_socket.is_some();
     // Create block devices.
     for (i, params) in opts.block.iter().enumerate() {
-        let disk_config = DiskConfig::new(&params.device_params, None);
+        let tube = if control_socket_exists {
+            let (host_tube, device_tube) = Tube::pair().context("failed to create tube")?;
+            disk_host_tubes.push(host_tube);
+            Some(device_tube)
+        } else {
+            None
+        };
+        let disk_config = DiskConfig::new(&params.device_params, tube);
         add_device(i, &disk_config, &params.vhost, &jail, &mut devices_jails)?;
+    }
+
+    let ex = Executor::new()?;
+    if let Some(control_server_socket) = control_server_socket {
+        // Start the control server in the parent process.
+        ex.spawn_blocking(move || {
+            start_vhost_user_control_server(control_server_socket, disk_host_tubes)
+        })
+        .detach();
     }
 
     // Now wait for all device processes to return.

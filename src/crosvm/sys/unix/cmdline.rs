@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::path::PathBuf;
+
 use argh::FromArgs;
 use devices::virtio::block::block::DiskOption;
 use devices::virtio::vhost::user::device;
@@ -89,6 +91,10 @@ pub struct DevicesCommand {
     #[argh(option, arg_name = "block options")]
     /// start a block device (see help from run command for options)
     pub block: Vec<VhostUserParams<DiskOption>>,
+
+    #[argh(option, short = 's', arg_name = "PATH")]
+    /// path to put the control socket.
+    pub control_socket: Option<PathBuf>,
 }
 
 #[derive(FromArgs)]
