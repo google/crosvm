@@ -82,15 +82,13 @@ async fn run_rx_queue<I: SignalableInterrupt>(
     // the regular virtio device is switched to async.
     let mut in_buffer = VecDeque::<u8>::new();
     let mut rx_buf = vec![0u8; 4096];
-    let mut input_offset = 0u64;
 
     loop {
-        match input.read_to_vec(Some(input_offset), rx_buf).await {
+        match input.read_to_vec(None, rx_buf).await {
             // Input source has closed.
             Ok((0, _)) => break,
             Ok((size, v)) => {
                 in_buffer.extend(&v[0..size]);
-                input_offset += size as u64;
                 rx_buf = v;
             }
             Err(e) => {
