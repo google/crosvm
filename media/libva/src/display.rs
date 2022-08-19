@@ -61,7 +61,7 @@ impl Display {
         }))
     }
 
-    /// Try to open a display using DRM and return the opened `VADisplay` and opened file of the
+    /// Tries to open a display using DRM and return the opened `VADisplay` and opened file of the
     /// DRM device node.
     ///
     /// Returns an error if a DRM device was found but could not be opened. `Ok(None)` is returned

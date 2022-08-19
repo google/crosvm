@@ -21,7 +21,7 @@ bitflags! {
         const USAGE_HINT_VPP_WRITE = constants::VA_SURFACE_ATTRIB_USAGE_HINT_VPP_WRITE;
         /// Surface used for display.
         const USAGE_HINT_DISPLAY = constants::VA_SURFACE_ATTRIB_USAGE_HINT_DISPLAY;
-        /// Surface used for export to third-party APIs, e.g. via vaExportSurfaceHandle().
+        /// Surface used for export to third-party APIs, e.g. via `vaExportSurfaceHandle()`.
         const USAGE_HINT_EXPORT = constants::VA_SURFACE_ATTRIB_USAGE_HINT_EXPORT;
     }
 }

@@ -910,11 +910,11 @@ impl IQMatrixBufferH264 {
 
 /// Abstraction over the `IQMatrixBuffer` types we support.
 pub enum IQMatrix {
-    /// Abstraction over VAIQMatrixBufferMPEG2
+    /// Abstraction over `VAIQMatrixBufferMPEG2`
     MPEG2(IQMatrixBufferMPEG2),
-    /// Abstraction over VAIQMatrixBufferVP8
+    /// Abstraction over `VAIQMatrixBufferVP8`
     VP8(IQMatrixBufferVP8),
-    /// Abstraction over VAIQMatrixBufferH264
+    /// Abstraction over `VAIQMatrixBufferH264`
     H264(IQMatrixBufferH264),
 }
 

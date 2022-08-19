@@ -421,6 +421,9 @@ impl FfmpegDecoderSession {
 impl DecoderSession for FfmpegDecoderSession {
     fn set_output_parameters(&mut self, buffer_count: usize, format: Format) -> VideoResult<()> {
         match self.state {
+            // It is valid to set an output format before the the initial DRC, but we won't do
+            // anything with it.
+            SessionState::AwaitingInitialResolution => Ok(()),
             SessionState::AwaitingBufferCount | SessionState::Drc => {
                 let avcontext = self.context.as_ref();
 
@@ -537,6 +540,9 @@ impl DecoderSession for FfmpegDecoderSession {
         resource: GuestResource,
     ) -> VideoResult<()> {
         let output_queue = match &mut self.state {
+            // It is valid to receive buffers before the the initial DRC, but we won't decode
+            // anything into them.
+            SessionState::AwaitingInitialResolution => return Ok(()),
             SessionState::Decoding { output_queue, .. } => output_queue,
             // Receiving buffers during DRC is valid, but we won't use them and can just drop them.
             SessionState::Drc => return Ok(()),
@@ -557,6 +563,9 @@ impl DecoderSession for FfmpegDecoderSession {
 
     fn reuse_output_buffer(&mut self, picture_buffer_id: i32) -> VideoResult<()> {
         let output_queue = match &mut self.state {
+            // It is valid to receive buffers before the the initial DRC, but we won't decode
+            // anything into them.
+            SessionState::AwaitingInitialResolution => return Ok(()),
             SessionState::Decoding { output_queue, .. } => output_queue,
             // Reusing buffers during DRC is valid, but we won't use them and can just drop them.
             SessionState::Drc => return Ok(()),
