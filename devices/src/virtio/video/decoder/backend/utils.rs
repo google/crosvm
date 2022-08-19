@@ -274,7 +274,7 @@ mod tests {
         assert_eq!(
             event_queue.queue_event(DecoderEvent::PictureReady {
                 picture_buffer_id: 0,
-                bitstream_id: 1,
+                timestamp: 42,
                 visible_rect: Rect {
                     left: 0,
                     top: 0,
@@ -295,7 +295,7 @@ mod tests {
             event_queue.dequeue_event(),
             Ok(DecoderEvent::PictureReady {
                 picture_buffer_id: 0,
-                bitstream_id: 1,
+                timestamp: 42,
                 visible_rect: Rect {
                     left: 0,
                     top: 0,

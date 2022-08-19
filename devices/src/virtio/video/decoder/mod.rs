@@ -49,8 +49,6 @@ type OutputResourceId = u32;
 // we don't need this value and can pass OutputResourceId to Chrome directly.
 type FrameBufferId = i32;
 
-type Timestamp = u64;
-
 // The result of OutputResources.queue_resource().
 enum QueueOutputResourceResult {
     UsingAsEos,                // The resource is kept as EOS buffer.
@@ -60,9 +58,6 @@ enum QueueOutputResourceResult {
 
 #[derive(Default)]
 struct InputResources {
-    // Timestamp -> InputResourceId
-    timestamp_to_res_id: BTreeMap<Timestamp, InputResourceId>,
-
     // InputResourceId -> ResourceHandle
     res_id_to_res_handle: BTreeMap<InputResourceId, GuestResource>,
 
@@ -168,7 +163,7 @@ impl OutputResources {
 enum PendingResponse {
     PictureReady {
         picture_buffer_id: i32,
-        bitstream_id: i32,
+        timestamp: u64,
     },
     FlushCompleted,
 }
@@ -249,7 +244,7 @@ impl<S: DecoderSession> Context<S> {
         let responses = match self.pending_responses.front()? {
             PendingResponse::PictureReady {
                 picture_buffer_id,
-                bitstream_id,
+                timestamp,
             } => {
                 let resource_id = self
                     .out_res
@@ -263,8 +258,7 @@ impl<S: DecoderSession> Context<S> {
                             resource_id,
                         },
                         CmdResponse::ResourceQueue {
-                            // Conversion from sec to nsec.
-                            timestamp: (*bitstream_id as u64) * 1_000_000_000,
+                            timestamp: *timestamp,
                             // TODO(b/149725148): Set buffer flags once libvda exposes them.
                             flags: 0,
                             // `size` is only used for the encoder.
@@ -357,19 +351,6 @@ impl<S: DecoderSession> Context<S> {
             // No need to set `frame_rate`, as it's only for the encoder.
             ..Default::default()
         };
-    }
-
-    fn handle_notify_end_of_bitstream_buffer(&mut self, bitstream_id: i32) -> Option<ResourceId> {
-        // `bitstream_id` in libvda is a timestamp passed via RESOURCE_QUEUE for the input buffer
-        // in second.
-        let timestamp: u64 = (bitstream_id as u64) * 1_000_000_000;
-        self.in_res
-            .timestamp_to_res_id
-            .remove(&(timestamp as u64))
-            .or_else(|| {
-                error!("failed to remove a timestamp {}", timestamp);
-                None
-            })
     }
 }
 
@@ -638,18 +619,6 @@ impl<'a, D: DecoderBackend> Decoder<D> {
             },
         )?;
 
-        // Register a mapping of timestamp to resource_id
-        if let Some(old_resource_id) = ctx
-            .in_res
-            .timestamp_to_res_id
-            .insert(timestamp, resource_id)
-        {
-            error!(
-                "Mapping from timestamp {} to resource_id ({} => {}) exists!",
-                timestamp, old_resource_id, resource_id
-            );
-        }
-
         let offset = match ctx.in_res.res_id_to_offset.get(&resource_id) {
             Some(offset) => *offset,
             None => {
@@ -658,15 +627,9 @@ impl<'a, D: DecoderBackend> Decoder<D> {
             }
         };
 
-        // While the virtio-video driver handles timestamps as nanoseconds,
-        // Chrome assumes per-second timestamps coming. So, we need a conversion from nsec
-        // to sec.
-        // Note that this value should not be an unix time stamp but a frame number that
-        // a guest passes to a driver as a 32-bit integer in our implementation.
-        // So, overflow must not happen in this conversion.
-        let ts_sec: i32 = (timestamp / 1_000_000_000) as i32;
         session.decode(
-            ts_sec,
+            resource_id,
+            timestamp,
             resource
                 .handle
                 .try_clone()
@@ -1064,8 +1027,8 @@ impl<D: DecoderBackend> Device for Decoder<D> {
                 })]
             }
             DecoderEvent::PictureReady {
-                picture_buffer_id, // FrameBufferId
-                bitstream_id,      // timestamp in second
+                picture_buffer_id,
+                timestamp,
                 ..
             } => {
                 if ctx.is_resetting {
@@ -1074,13 +1037,12 @@ impl<D: DecoderBackend> Device for Decoder<D> {
                     ctx.pending_responses
                         .push_back(PendingResponse::PictureReady {
                             picture_buffer_id,
-                            bitstream_id,
+                            timestamp,
                         });
                     ctx.output_pending_responses()
                 }
             }
-            DecoderEvent::NotifyEndOfBitstreamBuffer(bitstream_id) => {
-                let resource_id = ctx.handle_notify_end_of_bitstream_buffer(bitstream_id)?;
+            DecoderEvent::NotifyEndOfBitstreamBuffer(resource_id) => {
                 let async_response = AsyncCmdResponse::from_response(
                     AsyncCmdTag::Queue {
                         stream_id,

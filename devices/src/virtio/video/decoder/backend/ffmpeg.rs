@@ -50,8 +50,8 @@ use crate::virtio::video::resource::GuestResourceHandle;
 struct InputBuffer {
     /// Memory mapping to the encoded input data.
     mapping: MemoryMappingArena,
-    /// Bistream ID that will be sent as part of the `NotifyEndOfBitstreamBuffer` event.
-    bitstream_id: i32,
+    /// Resource ID that we will signal using `NotifyEndOfBitstreamBuffer` upon destruction.
+    resource_id: u32,
     /// Pointer to the event queue to send the `NotifyEndOfBitstreamBuffer` event to. The event will
     /// not be sent if the pointer becomes invalid.
     event_queue: Weak<SyncEventQueue<DecoderEvent>>,
@@ -63,7 +63,7 @@ impl Drop for InputBuffer {
             None => (),
             // If the event queue is still valid, send the event signaling we can be reused.
             Some(event_queue) => event_queue
-                .queue_event(DecoderEvent::NotifyEndOfBitstreamBuffer(self.bitstream_id))
+                .queue_event(DecoderEvent::NotifyEndOfBitstreamBuffer(self.resource_id))
                 .unwrap_or_else(|e| {
                     error!("cannot send end of input buffer notification: {:#}", e)
                 }),
@@ -376,7 +376,7 @@ impl FfmpegDecoderSession {
         let avframe_ref = avframe.as_ref();
         let picture_ready_event = DecoderEvent::PictureReady {
             picture_buffer_id: picture_buffer_id as i32,
-            bitstream_id: avframe_ref.pts as i32,
+            timestamp: avframe_ref.pts as u64,
             visible_rect: Rect {
                 left: 0,
                 top: 0,
@@ -437,7 +437,8 @@ impl DecoderSession for FfmpegDecoderSession {
 
     fn decode(
         &mut self,
-        bitstream_id: i32,
+        resource_id: u32,
+        timestamp: u64,
         resource: GuestResourceHandle,
         offset: u32,
         bytes_used: u32,
@@ -447,11 +448,11 @@ impl DecoderSession for FfmpegDecoderSession {
                 .get_mapping(offset as usize, bytes_used as usize)
                 .context("while mapping input buffer")
                 .map_err(VideoError::BackendFailure)?,
-            bitstream_id,
+            resource_id,
             event_queue: Arc::downgrade(&self.event_queue),
         };
 
-        let avpacket = AvPacket::new_owned(bitstream_id as i64, input_buffer)
+        let avpacket = AvPacket::new_owned(timestamp as i64, input_buffer)
             .context("while creating AvPacket")
             .map_err(VideoError::BackendFailure)?;
 
@@ -949,17 +950,25 @@ mod tests {
                 decoded_frames_count += 1;
             };
 
+        // Simple value by which we will multiply the frame number to obtain a fake timestamp.
+        const TIMESTAMP_FOR_INPUT_ID_FACTOR: u64 = 1_000_000;
         for (input_id, slice) in H264NalIterator::new(H264_STREAM).enumerate() {
             let buffer_handle = input_resource_builder(&input_shm);
             input_mapping
                 .write_slice(slice, 0)
                 .expect("Failed to write stream data into input buffer.");
             session
-                .decode(input_id as i32, buffer_handle, 0, slice.len() as u32)
+                .decode(
+                    input_id as u32,
+                    input_id as u64 * TIMESTAMP_FOR_INPUT_ID_FACTOR,
+                    buffer_handle,
+                    0,
+                    slice.len() as u32,
+                )
                 .expect("Call to decode() failed.");
 
             assert!(
-                matches!(session.read_event().unwrap(), DecoderEvent::NotifyEndOfBitstreamBuffer(index) if index == input_id as i32)
+                matches!(session.read_event().unwrap(), DecoderEvent::NotifyEndOfBitstreamBuffer(index) if index == input_id as u32)
             );
 
             // After sending the first buffer we should get the initial resolution change event and

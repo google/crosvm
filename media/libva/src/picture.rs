@@ -76,8 +76,8 @@ impl PictureReclaimableSurface for PictureNew {}
 impl PictureReclaimableSurface for PictureSync {}
 
 pub(crate) struct PictureInner {
-    /// Identifies this picture
-    frame_number: u32,
+    /// Timestamp of the picture
+    timestamp: u64,
     /// A context associated with this picture
     context: Rc<Context>,
     /// Contains the buffers used to decode the data
@@ -105,10 +105,10 @@ pub struct Picture<S: PictureState> {
 impl Picture<PictureNew> {
     /// Creates a new Picture with a given `frame_number` to identify it.
     /// `surface` is the underlying surface that libva will render to.
-    pub fn new(frame_number: u32, context: Rc<Context>, surface: Surface) -> Self {
+    pub fn new(timestamp: u64, context: Rc<Context>, surface: Surface) -> Self {
         Self {
             inner: Box::new(PictureInner {
-                frame_number,
+                timestamp,
                 context,
                 buffers: Default::default(),
                 surface,
@@ -214,9 +214,9 @@ impl Picture<PictureSync> {
 }
 
 impl<S: PictureState> Picture<S> {
-    /// Get the frame number for this picture.
-    pub fn frame_number(&self) -> u32 {
-        self.inner.frame_number
+    /// Get the timestamp for this picture.
+    pub fn timestamp(&self) -> u64 {
+        self.inner.timestamp
     }
 
     /// Returns a reference to the `inner` struct

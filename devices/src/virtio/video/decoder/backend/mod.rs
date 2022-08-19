@@ -31,22 +31,27 @@ pub trait DecoderSession {
     /// first call to `use_output_buffer()`.
     fn set_output_parameters(&mut self, buffer_count: usize, format: Format) -> VideoResult<()>;
 
-    /// Decode the compressed stream contained in [`offset`..`offset`+`bytes_used`]
-    /// of the shared memory in `resource`. `bitstream_id` is the identifier for that
-    /// part of the stream (most likely, a timestamp).
+    /// Decode the compressed stream contained in [`offset`..`offset`+`bytes_used`] of the shared
+    /// memory in the input `resource`.
     ///
-    /// The device takes ownership of `resource` and is responsible for closing it
-    /// once it is not used anymore.
+    /// `resource_id` is the ID of the input resource. It will be signaled using the
+    /// `NotifyEndOfBitstreamBuffer` once the input resource is not used anymore.
     ///
-    /// The device will emit a `NotifyEndOfBitstreamBuffer` event after the input
-    /// buffer has been entirely processed.
+    /// `timestamp` is a timestamp that will be copied into the frames decoded from that input
+    /// stream. Units are effectively free and provided by the input stream.
     ///
-    /// The device will emit a `PictureReady` event with the `bitstream_id` field
-    /// set to the same value as the argument of the same name for each picture
+    /// The device takes ownership of `resource` and is responsible for closing it once it is not
+    /// used anymore.
+    ///
+    /// The device will emit a `NotifyEndOfBitstreamBuffer` event with the `resource_id` value after
+    /// the input buffer has been entirely processed.
+    ///
+    /// The device will emit a `PictureReady` event with the `timestamp` value for each picture
     /// produced from that input buffer.
     fn decode(
         &mut self,
-        bitstream_id: i32,
+        resource_id: u32,
+        timestamp: u64,
         resource: GuestResourceHandle,
         offset: u32,
         bytes_used: u32,
@@ -129,13 +134,13 @@ pub enum DecoderEvent {
     /// to the input buffer they were produced from.
     PictureReady {
         picture_buffer_id: i32,
-        bitstream_id: i32,
+        timestamp: u64,
         visible_rect: Rect,
     },
     /// Emitted when an input buffer passed to `decode()` is not used by the
     /// device anymore and can be reused by the decoder. The parameter corresponds
-    /// to the `bitstream_id` argument passed to `decode()`.
-    NotifyEndOfBitstreamBuffer(i32),
+    /// to the `timestamp` argument passed to `decode()`.
+    NotifyEndOfBitstreamBuffer(u32),
     /// Emitted when a decoding error has occured.
     NotifyError(VideoError),
     /// Emitted after `flush()` has been called to signal that the flush is completed.
