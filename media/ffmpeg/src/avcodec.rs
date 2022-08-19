@@ -445,12 +445,12 @@ impl AvBuffer {
         unsafe { std::slice::from_raw_parts_mut((*self.0).data, (*self.0).size as usize) }
     }
 
-    // Consumes the `AVBuffer`, returning a `AVBufferRef` that can be used in `AVFrame`, `AVPacket`
-    // and others.
-    //
-    // After calling, the caller is responsible for unref-ing the returned AVBufferRef, either
-    // directly or through one of the automatic management facilities in `AVFrame`, `AVPacket` or
-    // others.
+    /// Consumes the `AVBuffer`, returning a `AVBufferRef` that can be used in `AVFrame`, `AVPacket`
+    /// and others.
+    ///
+    /// After calling, the caller is responsible for unref-ing the returned AVBufferRef, either
+    /// directly or through one of the automatic management facilities in `AVFrame`, `AVPacket` or
+    /// others.
     fn into_raw(self) -> *mut ffi::AVBufferRef {
         ManuallyDrop::new(self).0
     }
