@@ -155,12 +155,10 @@ class CrosvmApi(recipe_api.RecipeApi):
                     self.resource("codecov_wrapper.sh"),
                     codecov,
                     "--nonZero",  # Enables error codes
-                    "--slug",
-                    "google/crosvm",
-                    "--sha",
-                    sha,
-                    "--branch",
-                    "main",
+                    "--slug=google/crosvm",
+                    "--sha=" + sha,
+                    "--branch=main",
+                    "-X=search",  # Don't search for coverage files, just upload the file below.
                     "-f",
                     filename,
                 ],
