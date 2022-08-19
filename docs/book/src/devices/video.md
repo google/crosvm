@@ -109,11 +109,32 @@ ioctl: VIDIOC_ENUM_FMT
         [0]: 'NV12' (Y/CbCr 4:2:0)
 ```
 
+### Test decoding with ffmpeg
+
+[Ffmpeg](https://ffmpeg.org/) can be used to decode video streams with the virtio-video device.
+
+Simple VP8 stream:
+
+```sh
+wget https://github.com/chromium/chromium/raw/main/media/test/data/test-25fps.vp8
+ffmpeg -codec:v vp8_v4l2m2m -i test-25fps.vp8 test-25fps-%d.png
+```
+
+This should create 250 PNG files each containing a decoded frame from the stream.
+
+WEBM VP9 stream:
+
+```sh
+wget https://test-videos.co.uk/vids/bigbuckbunny/webm/vp9/720/Big_Buck_Bunny_720_10s_1MB.webm
+ffmpeg -codec:v vp9_v4l2m2m -i Big_Buck_Bunny_720_10s_1MB.webm Big_Buck_Bunny-%d.png
+```
+
+Should create 300 PNG files at 720p resolution.
+
 ### Test decoding with v4l2r
 
-Performing actual decoding with mainstream tools (like GStreamer or Ffmpeg) is unfortunately still
-quite buggy, but the [v4l2r](https://github.com/Gnurou/v4l2r) Rust crate features an example program
-that can use this driver:
+The [v4l2r](https://github.com/Gnurou/v4l2r) Rust crate also features an example program that can
+use this driver to decode simple H.264 streams:
 
 ```sh
 git clone https://github.com/Gnurou/v4l2r
@@ -124,19 +145,6 @@ cargo run --example simple_decoder test-25fps.h264 /dev/video0 --input_format h2
 
 This will decode `test-25fps.h264` and write the raw decoded frames in `NV12` format into
 `test-25fps.nv12`. You can check the result with e.g. [YUView](https://github.com/IENT/YUView).
-
-### Test decoding with ffmpeg
-
-Alternatively, [Ffmpeg](https://ffmpeg.org/) is also able (most of the time) to decode the first 3
-frames of the stream, but then stops due to driver compliance issues:
-
-```sh
-wget https://github.com/chromium/chromium/raw/main/media/test/data/test-25fps.h264
-ffmpeg -codec:v h264_v4l2m2m -i test-25fps.h264 test-25fps-%d.png
-```
-
-This should create 3 PNG files each containing a decoded frame from the stream. Specifying
-`-codec:v h264_v4l2m2m` will make use of the V4L2 decoder driver to perform the task.
 
 [v3]: https://markmail.org/message/dmw3pr4fuajvarth
 [v5]: https://markmail.org/message/zqxmuf5x7aosbmmm
