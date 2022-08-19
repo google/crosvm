@@ -1028,7 +1028,7 @@ impl<T: Encoder> EncoderDevice<T> {
         frame_height: u32,
         frame_rate: u32,
         plane_formats: Vec<PlaneFormat>,
-        _is_ext: bool,
+        resource_type: Option<ResourceType>,
     ) -> VideoResult<VideoCmdResponseType> {
         let stream = self
             .streams
@@ -1067,6 +1067,9 @@ impl<T: Encoder> EncoderDevice<T> {
                     || stream.src_params.frame_height != frame_height
                     || stream.src_params.format != format
                     || stream.src_params.plane_formats != plane_formats
+                    || resource_type
+                        .map(|resource_type| stream.src_params.resource_type != resource_type)
+                        .unwrap_or(false)
                 {
                     if resources_queued {
                         // Buffers have already been queued and encoding has already started.
@@ -1091,12 +1094,19 @@ impl<T: Encoder> EncoderDevice<T> {
                     stream.dst_params.frame_width = frame_width;
                     stream.dst_params.frame_height = frame_height;
 
+                    if let Some(resource_type) = resource_type {
+                        stream.src_params.resource_type = resource_type;
+                    }
+
                     create_session = true
                 }
             }
             QueueType::Output => {
                 if stream.dst_params.format != format
                     || stream.dst_params.plane_formats != plane_formats
+                    || resource_type
+                        .map(|resource_type| stream.dst_params.resource_type != resource_type)
+                        .unwrap_or(false)
                 {
                     if resources_queued {
                         // Buffers have already been queued and encoding has already started.
@@ -1134,6 +1144,10 @@ impl<T: Encoder> EncoderDevice<T> {
                         stream.dst_h264_level = Some(Level::H264_1_0);
                     } else {
                         stream.dst_h264_level = None;
+                    }
+
+                    if let Some(resource_type) = resource_type {
+                        stream.dst_params.resource_type = resource_type;
                     }
 
                     create_session = true;
@@ -1505,6 +1519,7 @@ impl<T: Encoder> Device for EncoderDevice<T> {
                         frame_height,
                         frame_rate,
                         plane_formats,
+                        resource_type,
                         ..
                     },
                 is_ext,
@@ -1517,7 +1532,7 @@ impl<T: Encoder> Device for EncoderDevice<T> {
                 frame_height,
                 frame_rate,
                 plane_formats,
-                is_ext,
+                if is_ext { Some(resource_type) } else { None },
             ),
             VideoCmd::QueryControl { query_ctrl_type } => self.query_control(query_ctrl_type),
             VideoCmd::GetControl {
