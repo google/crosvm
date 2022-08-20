@@ -193,7 +193,7 @@ pub struct RegisteredSource {
 impl RegisteredSource {
     pub fn start_read_to_mem(
         &self,
-        file_offset: u64,
+        file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         addrs: &[MemRegion],
     ) -> Result<PendingOperation> {
@@ -209,7 +209,7 @@ impl RegisteredSource {
 
     pub fn start_write_from_mem(
         &self,
-        file_offset: u64,
+        file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         addrs: &[MemRegion],
     ) -> Result<PendingOperation> {
@@ -645,7 +645,7 @@ impl RawExecutor {
         &self,
         source: &RegisteredSource,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        offset: u64,
+        offset: Option<u64>,
         addrs: &[MemRegion],
     ) -> Result<WakerToken> {
         if addrs
@@ -703,7 +703,7 @@ impl RawExecutor {
         &self,
         source: &RegisteredSource,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        offset: u64,
+        offset: Option<u64>,
         addrs: &[MemRegion],
     ) -> Result<WakerToken> {
         if addrs
@@ -1013,7 +1013,7 @@ mod tests {
         // Submit the op to the kernel. Next, test that the source keeps its Arc open for the duration
         // of the op.
         let pending_op = registered_source
-            .start_read_to_mem(0, Arc::clone(&bm), &[MemRegion { offset: 0, len: 8 }])
+            .start_read_to_mem(None, Arc::clone(&bm), &[MemRegion { offset: 0, len: 8 }])
             .expect("failed to start read to mem");
 
         // Here the Arc count must be two, one for `bm` and one to signify that the kernel has a
@@ -1057,7 +1057,7 @@ mod tests {
         // Submit the op to the kernel. Next, test that the source keeps its Arc open for the duration
         // of the op.
         let pending_op = registered_source
-            .start_write_from_mem(0, Arc::clone(&bm), &[MemRegion { offset: 0, len: 8 }])
+            .start_write_from_mem(None, Arc::clone(&bm), &[MemRegion { offset: 0, len: 8 }])
             .expect("failed to start write to mem");
 
         // Here the Arc count must be two, one for `bm` and one to signify that the kernel has a
@@ -1105,7 +1105,7 @@ mod tests {
         let tx_source = ex.register_source(&tx).expect("register source failed");
 
         let read_task = rx_source
-            .start_read_to_mem(0, Arc::clone(&bm), &[MemRegion { offset: 0, len: 8 }])
+            .start_read_to_mem(None, Arc::clone(&bm), &[MemRegion { offset: 0, len: 8 }])
             .expect("failed to start read to mem");
 
         ex.spawn_local(cancel_io(read_task)).detach();
@@ -1114,7 +1114,7 @@ mod tests {
         let buf =
             Arc::new(VecIoWrapper::from(vec![0xc2u8; 16])) as Arc<dyn BackingMemory + Send + Sync>;
         let write_task = tx_source
-            .start_write_from_mem(0, Arc::clone(&buf), &[MemRegion { offset: 0, len: 8 }])
+            .start_write_from_mem(None, Arc::clone(&buf), &[MemRegion { offset: 0, len: 8 }])
             .expect("failed to start write from mem");
 
         ex.run_until(check_result(write_task, 8))
@@ -1147,7 +1147,7 @@ mod tests {
         let bm = Arc::new(VecIoWrapper::from(VALUE.to_ne_bytes().to_vec()));
         let op = tx_source
             .start_write_from_mem(
-                0,
+                None,
                 bm,
                 &[MemRegion {
                     offset: 0,
@@ -1192,7 +1192,7 @@ mod tests {
         let bm = Arc::new(VecIoWrapper::from(0xf2e96u64.to_ne_bytes().to_vec()));
         let op = tx
             .start_write_from_mem(
-                0,
+                None,
                 bm,
                 &[MemRegion {
                     offset: 0,

@@ -58,7 +58,7 @@ impl<F: AsRawDescriptor> ReadAsync for UringSource<F> {
     ) -> AsyncResult<(usize, Vec<u8>)> {
         let buf = Arc::new(VecIoWrapper::from(vec));
         let op = self.registered_source.start_read_to_mem(
-            file_offset.unwrap_or(0),
+            file_offset,
             buf.clone(),
             &[MemRegion {
                 offset: 0,
@@ -88,7 +88,7 @@ impl<F: AsRawDescriptor> ReadAsync for UringSource<F> {
         // async-trait.
         let buf = Arc::new(VecIoWrapper::from(0u64.to_ne_bytes().to_vec()));
         let op = self.registered_source.start_read_to_mem(
-            0,
+            None,
             buf.clone(),
             &[MemRegion {
                 offset: 0,
@@ -120,9 +120,9 @@ impl<F: AsRawDescriptor> ReadAsync for UringSource<F> {
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: &'a [MemRegion],
     ) -> AsyncResult<usize> {
-        let op =
-            self.registered_source
-                .start_read_to_mem(file_offset.unwrap_or(0), mem, mem_offsets)?;
+        let op = self
+            .registered_source
+            .start_read_to_mem(file_offset, mem, mem_offsets)?;
         let len = op.await?;
         Ok(len as usize)
     }
@@ -138,7 +138,7 @@ impl<F: AsRawDescriptor> WriteAsync for UringSource<F> {
     ) -> AsyncResult<(usize, Vec<u8>)> {
         let buf = Arc::new(VecIoWrapper::from(vec));
         let op = self.registered_source.start_write_from_mem(
-            file_offset.unwrap_or(0),
+            file_offset,
             buf.clone(),
             &[MemRegion {
                 offset: 0,
@@ -162,11 +162,9 @@ impl<F: AsRawDescriptor> WriteAsync for UringSource<F> {
         mem: Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: &'a [MemRegion],
     ) -> AsyncResult<usize> {
-        let op = self.registered_source.start_write_from_mem(
-            file_offset.unwrap_or(0),
-            mem,
-            mem_offsets,
-        )?;
+        let op = self
+            .registered_source
+            .start_write_from_mem(file_offset, mem, mem_offsets)?;
         let len = op.await?;
         Ok(len as usize)
     }
@@ -260,7 +258,7 @@ mod tests {
         let buf: Arc<VecIoWrapper> = Arc::new(VecIoWrapper::from(vec![0x44; 8192]));
 
         let fut = io_obj.read_to_mem(
-            None,
+            Some(0),
             Arc::<VecIoWrapper>::clone(&buf),
             &[MemRegion {
                 offset: 0,
@@ -647,5 +645,51 @@ mod tests {
 
         let ex = URingExecutor::new().unwrap();
         ex.run_until(go(&ex)).unwrap();
+    }
+
+    #[test]
+    fn readwrite_current_file_position() {
+        if !use_uring() {
+            return;
+        }
+
+        let ex = URingExecutor::new().unwrap();
+        ex.run_until(async {
+            let mut f = OpenOptions::new()
+                .create(true)
+                .truncate(true)
+                .read(true)
+                .write(true)
+                .open("/tmp/write_from_vec")
+                .unwrap();
+            let source = UringSource::new(f.try_clone().unwrap(), &ex).unwrap();
+            assert_eq!(
+                32,
+                source
+                    .write_from_vec(None, vec![0x55u8; 32])
+                    .await
+                    .unwrap()
+                    .0
+            );
+            assert_eq!(
+                32,
+                source
+                    .write_from_vec(None, vec![0xffu8; 32])
+                    .await
+                    .unwrap()
+                    .0
+            );
+            use std::io::Seek;
+            f.seek(std::io::SeekFrom::Start(0)).unwrap();
+            assert_eq!(
+                (32, vec![0x55u8; 32]),
+                source.read_to_vec(None, vec![0u8; 32]).await.unwrap()
+            );
+            assert_eq!(
+                (32, vec![0xffu8; 32]),
+                source.read_to_vec(None, vec![0u8; 32]).await.unwrap()
+            );
+        })
+        .unwrap();
     }
 }
