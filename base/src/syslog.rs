@@ -316,12 +316,21 @@ impl State {
         }
 
         if cfg.syslog {
-            let (mut logger, fd) = PlatformSyslog::new(cfg.proc_name, cfg.syslog_facility)?;
-            if let Some(fd) = fd {
-                descriptors.push(fd);
-            }
-            if let Some(logger) = logger.take() {
-                loggers.push(logger);
+            match PlatformSyslog::new(cfg.proc_name, cfg.syslog_facility) {
+                Ok((mut logger, fd)) => {
+                    if let Some(fd) = fd {
+                        descriptors.push(fd);
+                    }
+                    if let Some(logger) = logger.take() {
+                        loggers.push(logger);
+                    }
+                }
+                Err(e) => {
+                    // The default log configuration used in early_init() enables syslog, so we
+                    // don't want to terminate the program if syslog can't be initialized. Warn the
+                    // user but continue running.
+                    eprintln!("syslog init failed: {}", e);
+                }
             }
         }
 
