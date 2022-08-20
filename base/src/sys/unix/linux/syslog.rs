@@ -25,6 +25,7 @@ use libc::LOG_NDELAY;
 use libc::LOG_PERROR;
 use libc::LOG_PID;
 use libc::LOG_USER;
+use once_cell::sync::OnceCell;
 
 use super::super::getpid;
 use crate::syslog::Error;
@@ -35,31 +36,35 @@ use crate::RawDescriptor;
 
 const SYSLOG_PATH: &str = "/dev/log";
 
+/// Global syslog socket derived from the fd opened by `openlog()`.
+/// This is initialized in `PlatformSyslog::new()`.
+static SYSLOG_SOCKET: OnceCell<UnixDatagram> = OnceCell::new();
+
 pub struct PlatformSyslog {}
 
-struct SyslogSocket {
-    socket: UnixDatagram,
-}
+struct SyslogSocket {}
 
 impl Write for SyslogSocket {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         const SEND_RETRY: usize = 2;
 
-        for _ in 0..SEND_RETRY {
-            match self.socket.send(buf) {
-                Ok(l) => return Ok(l),
-                Err(e) => match e.kind() {
-                    ErrorKind::ConnectionRefused
-                    | ErrorKind::ConnectionReset
-                    | ErrorKind::ConnectionAborted
-                    | ErrorKind::NotConnected => {
-                        let res = self.socket.connect(SYSLOG_PATH);
-                        if res.is_err() {
-                            break;
+        if let Some(socket) = SYSLOG_SOCKET.get() {
+            for _ in 0..SEND_RETRY {
+                match socket.send(buf) {
+                    Ok(l) => return Ok(l),
+                    Err(e) => match e.kind() {
+                        ErrorKind::ConnectionRefused
+                        | ErrorKind::ConnectionReset
+                        | ErrorKind::ConnectionAborted
+                        | ErrorKind::NotConnected => {
+                            let res = socket.connect(SYSLOG_PATH);
+                            if res.is_err() {
+                                break;
+                            }
                         }
-                    }
-                    _ => {}
-                },
+                        _ => {}
+                    },
+                }
             }
         }
         // Abandon all hope but this is fine
@@ -72,24 +77,23 @@ impl Write for SyslogSocket {
 }
 
 impl Syslog for PlatformSyslog {
-    /// WARNING: calling this function more than once will cause the previous
-    /// syslogger FD to be closed, invalidating the log::Log object in an unsafe
-    /// manner. Currently, the callers of this method are extremely careful to
-    /// call it exactly once.
-    ///
-    /// b/238923791 is tracking fixing this problem.
     fn new(
         proc_name: String,
         facility: Facility,
     ) -> Result<(Option<Box<dyn log::Log + Send>>, Option<RawDescriptor>), Error> {
-        let socket = openlog_and_get_socket()?;
+        // Calling openlog_and_get_socket() more than once will cause the previous syslogger FD to
+        // be closed, invalidating the log::Log object in an unsafe manner. The OnceCell
+        // get_or_try_init() ensures we only call it once.
+        //
+        // b/238923791 is tracking fixing this problem.
+        let socket = SYSLOG_SOCKET.get_or_try_init(openlog_and_get_socket)?;
         let mut builder = env_logger::Builder::new();
 
         // Everything is filtered layer above
         builder.filter_level(log::LevelFilter::Trace);
 
         let fd = socket.as_raw_fd();
-        builder.target(env_logger::Target::Pipe(Box::new(SyslogSocket { socket })));
+        builder.target(env_logger::Target::Pipe(Box::new(SyslogSocket {})));
         builder.format(move |buf, record| {
             const MONTHS: [&str; 12] = [
                 "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
