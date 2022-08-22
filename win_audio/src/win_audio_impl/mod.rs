@@ -536,7 +536,7 @@ impl DeviceRenderer {
         // Safe because `factory` is guaranteed to be initialized.
         let factory = unsafe { ComPtr::from_raw(factory) };
 
-        factory.cast().map_err(|hr| RenderError::from(hr))
+        factory.cast().map_err(RenderError::from)
     }
 
     // Enables automatic audio device routing (only will work for Windows 10, version 1607+).
@@ -753,7 +753,7 @@ impl DeviceRenderer {
         };
 
         PlaybackBuffer::new(frame_size_bytes, buffer_slice, self)
-            .map_err(|e| RenderError::PlaybackBuffer(e))
+            .map_err(RenderError::PlaybackBuffer)
     }
 }
 
@@ -887,7 +887,7 @@ mod tests {
         let _shared = SERIALIZE_LOCK.lock();
         let _co_init = SafeCoInit::new_coinitialize();
         let win_audio_renderer_result = DeviceRenderer::new(2, 48000, 480);
-        assert!(!win_audio_renderer_result.is_err());
+        assert!(win_audio_renderer_result.is_ok());
         let win_audio_renderer = win_audio_renderer_result.unwrap();
         assert_eq!(
             win_audio_renderer

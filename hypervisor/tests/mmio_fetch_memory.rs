@@ -57,12 +57,14 @@ fn test_whpx_mmio_fetch_memory() {
 
     vcpu.set_sregs(&vcpu_sregs).expect("set sregs failed");
 
-    let mut vcpu_regs = Regs::default();
-    vcpu_regs.rip = load_addr.offset() as u64;
-    vcpu_regs.rflags = 2;
-    vcpu_regs.rax = 0x33;
-    vcpu_regs.rbx = 0x3000;
-    vcpu_regs.rcx = 0x3010;
+    let vcpu_regs = Regs {
+        rip: load_addr.offset() as u64,
+        rflags: 2,
+        rax: 0x33,
+        rbx: 0x3000,
+        rcx: 0x3010,
+        ..Default::default()
+    };
     vcpu.set_regs(&vcpu_regs).expect("set regs failed");
 
     // Ensure we get exactly 2 exits for the mmio read and write.

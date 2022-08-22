@@ -730,7 +730,7 @@ mod tests {
         // Wait for the socket to really be readable before we return it back to the test. We've
         // seen cases in CI where send_to completes, but WSAPoll won't find the socket to be
         // readable.
-        let mut sockets = vec![poll_fd.clone()];
+        let mut sockets = vec![poll_fd];
         for _ in 0..5 {
             sockets = poll_sockets(sockets).expect("poll_sockets failed");
             if sockets[0].revents & (POLLRDNORM | POLLRDBAND) > 0 {

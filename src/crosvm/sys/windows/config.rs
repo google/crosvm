@@ -757,14 +757,10 @@ mod tests {
     #[cfg(feature = "gpu")]
     #[test]
     fn parse_gpu_options_hidden() {
-        let display_params = parse_gpu_options(format!("hidden=true").as_str())
-            .unwrap()
-            .display_params;
+        let display_params = parse_gpu_options("hidden=true").unwrap().display_params;
         assert!(display_params[0].hidden);
 
-        let display_params = parse_gpu_options(format!("hidden=false").as_str())
-            .unwrap()
-            .display_params;
+        let display_params = parse_gpu_options("hidden=false").unwrap().display_params;
         assert!(matches!(display_params[0].hidden, false));
     }
 

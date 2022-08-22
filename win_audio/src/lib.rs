@@ -71,7 +71,7 @@ pub trait WinAudioServer: StreamSource {
 
     /// Returns true if audio server is a noop stream. This determine if evicting a cache is worth
     /// doing
-    fn is_noop_stream(&mut self) -> bool;
+    fn is_noop_stream(&self) -> bool;
 }
 
 impl WinAudioServer for WinAudio {
@@ -93,7 +93,7 @@ impl WinAudioServer for WinAudio {
             self.cached_playback_buffer_stream.as_ref()
         {
             info!("Reusing playback_buffer_stream.");
-            return Ok((playback_buffer_stream.clone(), audio_format.clone()));
+            return Ok((playback_buffer_stream.clone(), *audio_format));
         }
 
         let (playback_buffer_stream, audio_shared_format): (
@@ -105,12 +105,12 @@ impl WinAudioServer for WinAudio {
             buffer_size,
         ) {
             Ok(renderer) => {
-                let audio_shared_format = renderer.device.audio_shared_format.clone();
+                let audio_shared_format = renderer.device.audio_shared_format;
                 let renderer_arc = Arc::new(Mutex::new(
                     Box::new(renderer) as Box<dyn PlaybackBufferStream>
                 ));
                 self.cached_playback_buffer_stream =
-                    Some((renderer_arc.clone(), audio_shared_format.clone()));
+                    Some((renderer_arc.clone(), audio_shared_format));
                 (renderer_arc, audio_shared_format)
             }
             Err(e) => {
@@ -143,7 +143,7 @@ impl WinAudioServer for WinAudio {
         self.cached_playback_buffer_stream = None;
     }
 
-    fn is_noop_stream(&mut self) -> bool {
+    fn is_noop_stream(&self) -> bool {
         false
     }
 }
@@ -175,7 +175,7 @@ impl WinAudioServer for NoopStreamSource {
         unimplemented!()
     }
 
-    fn is_noop_stream(&mut self) -> bool {
+    fn is_noop_stream(&self) -> bool {
         true
     }
 }

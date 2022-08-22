@@ -344,10 +344,9 @@ impl Worker {
     }
 
     fn mem_metrics_string(&self) -> String {
-        let mut buf: String;
         let guard = self.memory.lock().unwrap();
         let memory: ProcessMemory = *guard;
-        buf = format!(
+        let mut buf = format!(
             "Physical memory used: {} mb.\n",
             memory.physical / BYTES_PER_MB
         );
