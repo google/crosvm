@@ -1170,7 +1170,7 @@ impl VirtioDevice for Gpu {
 
     fn features(&self) -> u64 {
         let rutabaga_features = match self.rutabaga_component {
-            RutabagaComponentType::Rutabaga2D => 0,
+            RutabagaComponentType::Rutabaga2D => 1 << VIRTIO_GPU_F_EDID,
             _ => {
                 let mut features_3d = 0;
 
