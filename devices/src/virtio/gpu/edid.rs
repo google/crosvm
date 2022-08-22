@@ -125,8 +125,14 @@ impl EdidBytes {
 
         populate_header(&mut edid);
         populate_edid_version(&mut edid);
-        populate_detailed_timings(&mut edid, info);
         populate_standard_timings(&mut edid)?;
+
+        // 4 available descriptor blocks
+        let block0 = &mut edid[54..72];
+        populate_detailed_timing(block0, info);
+
+        let block1 = &mut edid[72..90];
+        populate_display_name(block1);
 
         calculate_checksum(&mut edid);
 
@@ -134,25 +140,14 @@ impl EdidBytes {
     }
 }
 
-fn populate_detailed_timings(edid: &mut [u8], info: &DisplayInfo) {
-    // Eventually we probably want to grab the display's underlying supported resolutions.
-    let detailed_resolutions = [
-        info.resolution,
-        Resolution::new(1920, 1080),
-        Resolution::new(1366, 768),
-        Resolution::new(2560, 1600),
-    ];
-
-    let mut info: DisplayInfo = *info;
-    for (block, resolution) in detailed_resolutions.iter().enumerate() {
-        info.resolution = *resolution;
-        populate_detailed_timing(edid, &info, block)
-    }
+fn populate_display_name(edid_block: &mut [u8]) {
+    // Display Product Name String Descriptor Tag
+    edid_block[0..5].clone_from_slice(&[0x00, 0x00, 0x00, 0xFC, 0x00]);
+    edid_block[5..].clone_from_slice("CrosvmDisplay".as_bytes());
 }
 
-fn populate_detailed_timing(edid: &mut [u8], info: &DisplayInfo, block: usize) {
-    const DETAILED_TIMING_BLOCK_SIZE: usize = 18;
-    let block_offset: usize = 54 + (DETAILED_TIMING_BLOCK_SIZE * block);
+fn populate_detailed_timing(edid_block: &mut [u8], info: &DisplayInfo) {
+    assert_eq!(edid_block.len(), 18);
 
     // Detailed timings
     //
@@ -196,28 +191,28 @@ fn populate_detailed_timing(edid: &mut [u8], info: &DisplayInfo, block: usize) {
     let mut clock: u16 = ((info.refresh_rate * htotal * vtotal) / 10000) as u16;
     // Round to nearest 10khz.
     clock = ((clock + 5) / 10) * 10;
-    edid[block_offset..block_offset + 2].copy_from_slice(&clock.to_le_bytes());
+    edid_block[0..2].copy_from_slice(&clock.to_le_bytes());
 
     let width_lsb: u8 = (info.width() & 0xFF) as u8;
     let width_msb: u8 = ((info.width() >> 8) & 0x0F) as u8;
 
     // Horizointal Addressable Video in pixels.
-    edid[block_offset + 2] = width_lsb;
+    edid_block[2] = width_lsb;
     // Horizontal blanking in pixels.
-    edid[block_offset + 3] = horizontal_blanking_lsb;
+    edid_block[3] = horizontal_blanking_lsb;
     // Upper bits of the two above vals.
-    edid[block_offset + 4] = horizontal_blanking_msb | (width_msb << 4) as u8;
+    edid_block[4] = horizontal_blanking_msb | (width_msb << 4) as u8;
 
     let vertical_active: u32 = info.height();
     let vertical_active_lsb: u8 = (vertical_active & 0xFF) as u8;
     let vertical_active_msb: u8 = ((vertical_active >> 8) & 0x0F) as u8;
 
     // Vertical addressable video in *lines*
-    edid[block_offset + 5] = vertical_active_lsb;
+    edid_block[5] = vertical_active_lsb;
     // Vertical blanking in lines
-    edid[block_offset + 6] = vertical_blanking_lsb;
+    edid_block[6] = vertical_blanking_lsb;
     // Sigbits of the above.
-    edid[block_offset + 7] = vertical_blanking_msb | (vertical_active_msb << 4);
+    edid_block[7] = vertical_blanking_msb | (vertical_active_msb << 4);
 
     let horizontal_front_lsb: u8 = (info.horizontal_front & 0xFF) as u8; // least sig 8 bits
     let horizontal_front_msb: u8 = ((info.horizontal_front >> 8) & 0x03) as u8; // most sig 2 bits
@@ -230,13 +225,13 @@ fn populate_detailed_timing(edid: &mut [u8], info: &DisplayInfo, block: usize) {
     let vertical_sync_msb: u8 = ((info.vertical_sync >> 8) & 0x0F) as u8; // most sig 2 bits
 
     // Horizontal front porch in pixels.
-    edid[block_offset + 8] = horizontal_front_lsb;
+    edid_block[8] = horizontal_front_lsb;
     // Horizontal sync pulse width in pixels.
-    edid[block_offset + 9] = horizontal_sync_lsb;
+    edid_block[9] = horizontal_sync_lsb;
     // LSB of vertical front porch and sync pulse
-    edid[block_offset + 10] = vertical_sync_lsb | (vertical_front_lsb << 4);
+    edid_block[10] = vertical_sync_lsb | (vertical_front_lsb << 4);
     // Upper 2 bits of these values.
-    edid[block_offset + 11] = vertical_sync_msb
+    edid_block[11] = vertical_sync_msb
         | (vertical_front_msb << 2)
         | (horizontal_sync_msb << 4)
         | (horizontal_front_msb << 6);
@@ -252,6 +247,26 @@ fn populate_header(edid: &mut [u8]) {
     edid[5] = 0xFF;
     edid[6] = 0xFF;
     edid[7] = 0x00;
+
+    let manufacturer_name: [char; 3] = ['G', 'G', 'L'];
+    // 00001 -> A, 00010 -> B, etc
+    let manufacturer_id: u16 = manufacturer_name
+        .iter()
+        .map(|c| (*c as u8 - b'A' + 1) & 0x1F)
+        .fold(0u16, |res, lsb| (res << 5) | (lsb as u16));
+    edid[8..10].copy_from_slice(&manufacturer_id.to_be_bytes());
+
+    let manufacture_product_id: u16 = 1;
+    edid[10..12].copy_from_slice(&manufacture_product_id.to_le_bytes());
+
+    let serial_id: u32 = 1;
+    edid[12..16].copy_from_slice(&serial_id.to_le_bytes());
+
+    let manufacture_week: u8 = 8;
+    edid[16] = manufacture_week;
+
+    let manufacture_year: u32 = 2022;
+    edid[17] = (manufacture_year - 1990u32) as u8;
 }
 
 // The standard timings are 8 timing modes with a lower priority (and different data format)
