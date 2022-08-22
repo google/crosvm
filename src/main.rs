@@ -455,7 +455,6 @@ fn pkg_version() -> std::result::Result<(), ()> {
 //
 // As a special case, `-` is not treated as a flag, since it is typically used to represent
 // `stdin`/`stdout`.
-#[cfg_attr(windows, allow(unused))]
 fn is_flag(arg: &str) -> bool {
     arg.len() > 1 && arg.starts_with('-')
 }
@@ -477,8 +476,6 @@ fn prepare_argh_args<I: IntoIterator<Item = String>>(args_iter: I) -> Vec<String
                 args.push("--balloon-bias-mib".to_string());
             }
             "-h" => args.push("--help".to_string()),
-            // TODO(238361778): This block should work on windows as well.
-            #[cfg(unix)]
             arg if is_flag(arg) => {
                 // Split `--arg=val` into `--arg val`, since argh doesn't support the former.
                 if let Some((key, value)) = arg.split_once("=") {
@@ -512,7 +509,7 @@ fn crosvm_main() -> Result<CommandStatus> {
     let args = match crosvm::cmdline::CrosvmCmdlineArgs::from_args(&args[..1], &args[1..]) {
         Ok(args) => args,
         Err(e) => {
-            eprintln!("{}", e.output);
+            eprintln!("arg parsing failed: {}", e.output);
             return Ok(CommandStatus::InvalidArgs);
         }
     };

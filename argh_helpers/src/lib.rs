@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use quote::quote;
-use syn::parse::Parser;
 
 /// A helper derive proc macro to flatten multiple subcommand enums into one
 /// Note that it is unable to check for duplicate commands and they will be
@@ -121,84 +120,6 @@ pub fn flatten_subcommand(input: proc_macro::TokenStream) -> proc_macro::TokenSt
             };
         }
     })
-    .into()
-}
-
-/// attribute macro to allow using `catch-all` style subcommand structs to
-/// use temporarily before migrating to real ones
-/// Note: USE ONLY ON EMPTY STRUCTS
-/// Adds a field 'pub args: Vec<String>' containing all remaining arguments.
-// TODO(b:240717724): Migrate the users of this macro and delete it.
-#[proc_macro_attribute]
-pub fn generate_catchall_args(
-    _attr: proc_macro::TokenStream,
-    item: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    let mut internal_struct = syn::parse_macro_input!(item as syn::Item);
-    let mut wrapper_struct = internal_struct.clone();
-    // add args field
-    let mut internal_struct = match &mut internal_struct {
-        syn::Item::Struct(ref mut s) => {
-            match &mut s.fields {
-                syn::Fields::Named(fields) => fields.named.push(
-                    syn::Field::parse_named
-                        .parse2(quote! { #[argh(positional)] pub args: Vec<String> })
-                        .unwrap(),
-                ),
-                _ => unreachable!(),
-            };
-            s
-        }
-        _ => unreachable!(),
-    };
-    // add args field
-    let wrapper_struct = match &mut wrapper_struct {
-        syn::Item::Struct(ref mut s) => {
-            match &mut s.fields {
-                syn::Fields::Named(fields) => fields.named.push(
-                    syn::Field::parse_named
-                        .parse2(quote! { pub args: Vec<String> })
-                        .unwrap(),
-                ),
-                _ => unreachable!(),
-            };
-            s
-        }
-        _ => unreachable!(),
-    };
-
-    // Rename internal
-    let name = internal_struct.ident.clone();
-    internal_struct.ident = quote::format_ident!("{}CatchAllInternal", name);
-    let internal_name = &internal_struct.ident;
-    // Remove argh from wrapper
-    wrapper_struct.attrs.clear();
-
-    // Generate FromArgs and SubCommand for Wrapper
-
-    let wrapper_impl = quote! {
-        impl argh::FromArgs for #name {
-            fn from_args(cmd_name: &[&str], args: &[&str]) -> std::result::Result<Self, argh::EarlyExit> {
-                let args: Vec<&str> = std::iter::once("--").chain(args.iter().copied()).collect();
-                <#internal_name as argh::FromArgs>::from_args(cmd_name, &args[..])
-                    .map(|v| Self { args: v.args })
-            }
-            fn redact_arg_values(cmd_name: &[&str], args: &[&str]) -> std::result::Result<Vec<String>, argh::EarlyExit> {
-                let args: Vec<&str> = std::iter::once("--").chain(args.iter().copied()).collect();
-                <#internal_name as argh::FromArgs>::redact_arg_values(cmd_name, &args[..])
-            }
-        }
-        impl argh::SubCommand for #name {
-            const COMMAND: &'static argh::CommandInfo = <#internal_name as argh::SubCommand>::COMMAND;
-        }
-    };
-
-    quote! {
-        #[derive(argh::FromArgs)]
-        #internal_struct
-        #wrapper_struct
-        #wrapper_impl
-    }
     .into()
 }
 

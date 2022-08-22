@@ -618,7 +618,7 @@ fn run_internal(mut cfg: Config) -> Result<()> {
                 None
             };
             anti_tamper::setup_common_metric_invariants(
-                &&cfg.product_version,
+                &cfg.product_version,
                 &cfg.product_channel,
                 &use_vulkan,
             );
@@ -704,13 +704,13 @@ fn init_broker_crash_reporting(cfg: &mut Config) -> Result<()> {
         // children.
         cfg.crash_pipe_name = Some(
             crash_report::setup_crash_reporting(create_crash_report_attrs(
-                &cfg,
+                cfg,
                 product_type::BROKER,
             ))
             .exit_context(Exit::CrashReportingInit, "failed to init crash reporting")?,
         );
     } else {
-        crash_report::setup_crash_reporting(create_crash_report_attrs(&cfg, product_type::BROKER))
+        crash_report::setup_crash_reporting(create_crash_report_attrs(cfg, product_type::BROKER))
             .exit_context(Exit::CrashReportingInit, "failed to init crash reporting")?;
     }
 

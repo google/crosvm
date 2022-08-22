@@ -8,7 +8,9 @@ use std::fs::OpenOptions;
 
 use anyhow::anyhow;
 use anyhow::Result;
+use argh::CommandInfo;
 use argh::FromArgs;
+use argh::SubCommand;
 use base::info;
 use base::syslog;
 use base::syslog::LogConfig;
@@ -31,6 +33,9 @@ use crate::crosvm::argument::Argument;
 use crate::crosvm::cmdline::RunCommand;
 use crate::crosvm::sys::cmdline::Commands;
 use crate::crosvm::sys::cmdline::DeviceSubcommand;
+use crate::crosvm::sys::cmdline::RunMainCommand;
+#[cfg(all(feature = "slirp"))]
+use crate::crosvm::sys::cmdline::RunSlirpCommand;
 use crate::crosvm::sys::windows::exit::Exit;
 use crate::crosvm::sys::windows::exit::ExitContext;
 use crate::crosvm::sys::windows::exit::ExitContextAnyhow;
@@ -39,21 +44,20 @@ use crate::CommandStatus;
 use crate::Config;
 
 #[cfg(all(feature = "slirp"))]
-pub(crate) fn run_slirp(args: Vec<String>) -> Result<()> {
+pub(crate) fn run_slirp(args: RunSlirpCommand) -> Result<()> {
     let arguments = &[Argument::value(
         "bootstrap",
         "TRANSPORT_TUBE_RD",
         "TubeTransporter descriptor used to bootstrap the Slirp process.",
     )];
 
-    let raw_transport_tube = set_bootstrap_arguments(args, arguments)
-        .exit_context(Exit::InvalidSubCommandArgs, "error in setting slirp args")?;
+    let raw_transport_tube = args.bootstrap as RawDescriptor;
 
     // Safe because we know that raw_transport_tube is valid (passed by inheritance),
     // and that the blocking & framing modes are accurate because we create them ourselves
     // in the broker.
     let tube_transporter =
-        unsafe { TubeTransporterReader::from_raw_descriptor(raw_transport_tube.unwrap()) };
+        unsafe { TubeTransporterReader::from_raw_descriptor(raw_transport_tube) };
 
     let mut tube_data_list = tube_transporter
         .read_tubes()
@@ -136,21 +140,14 @@ pub(crate) fn start_device(command: DeviceSubcommand) -> Result<()> {
     Err(anyhow!("unknown device name: {:?}", command))
 }
 
-pub(crate) fn run_vm_for_broker(args: Vec<String>) -> Result<()> {
+pub(crate) fn run_vm_for_broker(args: RunMainCommand) -> Result<()> {
     // This is a noop on unix.
     #[cfg(feature = "sandbox")]
     initialize_sandbox()?;
-    let arguments = &[Argument::value(
-        "bootstrap",
-        "TRANSPORT_TUBE_RD",
-        "TubeTransporter descriptor used to bootstrap the main process.",
-    )];
 
-    let raw_transport_tube = set_bootstrap_arguments(args, arguments).exit_context(
-        Exit::InvalidSubCommandArgs,
-        "error in setting crosvm broker args",
-    )?;
-    let exit_state = crate::sys::windows::run_config_for_broker(raw_transport_tube.unwrap());
+    let raw_transport_tube = args.bootstrap as RawDescriptor;
+
+    let exit_state = crate::sys::windows::run_config_for_broker(raw_transport_tube);
     crate::to_command_status(exit_state).map(|_| ())
 }
 
@@ -188,31 +185,11 @@ fn run_broker(cmd: RunCommand) -> Result<()> {
 
 pub(crate) fn run_command(cmd: Commands) -> anyhow::Result<()> {
     match cmd {
-        Commands::RunMetrics(cmd) => run_metrics(cmd.args),
-        Commands::RunMP(cmd) => {
-            let mut x: Vec<&str> = vec![];
-            for s in cmd.args.iter() {
-                if s == "backend=win_audio" {
-                    x.push(s.as_str());
-                    continue;
-                }
-                match s.split_once('=') {
-                    Some((k, v)) => {
-                        x.push(k);
-                        x.push(v);
-                    }
-                    None => x.push(s.as_str()),
-                }
-            }
-            let cmd = RunCommand::from_args(&["run-mp"], &x);
-            match cmd {
-                Ok(cmd) => run_broker(cmd),
-                Err(e) => Err(anyhow!("Failed to create config: {:?}", e)),
-            }
-        }
-        Commands::RunMain(cmd) => run_vm_for_broker(cmd.args),
+        Commands::RunMetrics(cmd) => run_metrics(cmd),
+        Commands::RunMP(cmd) => run_broker(cmd.run),
+        Commands::RunMain(cmd) => run_vm_for_broker(cmd),
         #[cfg(feature = "slirp")]
-        Commands::RunSlirp(cmd) => run_slirp(cmd.args),
+        Commands::RunSlirp(cmd) => run_slirp(cmd),
     }
 }
 

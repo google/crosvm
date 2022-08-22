@@ -2,34 +2,72 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use argh::CommandInfo;
+use argh::EarlyExit;
 use argh::FromArgs;
-use argh_helpers::generate_catchall_args;
+use argh::SubCommand;
+
+use crate::crosvm::cmdline::RunCommand;
 #[derive(Debug, FromArgs)]
 #[argh(subcommand)]
 /// Windows Devices
 pub enum DeviceSubcommand {}
 
 #[cfg(feature = "slirp")]
-#[generate_catchall_args]
+#[derive(FromArgs)]
 #[argh(subcommand, name = "run-slirp")]
-/// Start a new metrics instance
-pub struct RunSlirpCommand {}
+/// Start a new slirp instance
+pub struct RunSlirpCommand {
+    #[argh(option, arg_name = "TRANSPORT_TUBE_RD")]
+    /// tube transporter descriptor used to bootstrap the Slirp process.
+    pub bootstrap: usize,
+}
 
-#[generate_catchall_args]
+#[derive(FromArgs)]
 #[argh(subcommand, name = "run-main")]
 /// Start a new broker instance
-pub struct RunMainCommand {}
+pub struct RunMainCommand {
+    #[argh(option, arg_name = "TRANSPORT_TUBE_RD")]
+    /// tube transporter descriptor used to bootstrap the main process.
+    pub bootstrap: usize,
+}
 
-#[generate_catchall_args]
+#[derive(FromArgs)]
 #[argh(subcommand, name = "run-metrics")]
 /// Start a new metrics instance
-pub struct RunMetricsCommand {}
+pub struct RunMetricsCommand {
+    #[argh(option, arg_name = "TRANSPORT_TUBE_RD")]
+    /// tube transporter descriptor used to bootstrap the metrics process.
+    pub bootstrap: usize,
+}
+
+const RUN_MP_CMD_NAME: &'static str = "run-mp";
 
 /// Start a new mp crosvm instance
-#[generate_catchall_args]
-#[argh(subcommand, name = "run-mp")]
-pub struct RunMPCommand {}
+pub struct RunMPCommand {
+    pub run: RunCommand,
+}
 
+impl FromArgs for RunMPCommand {
+    fn from_args(cmd_name: &[&str], args: &[&str]) -> std::result::Result<Self, EarlyExit> {
+        Ok(Self {
+            run: RunCommand::from_args(cmd_name, args)?,
+        })
+    }
+    fn redact_arg_values(
+        cmd_name: &[&str],
+        args: &[&str],
+    ) -> std::result::Result<Vec<String>, EarlyExit> {
+        RunCommand::redact_arg_values(cmd_name, args)
+    }
+}
+
+impl SubCommand for RunMPCommand {
+    const COMMAND: &'static CommandInfo = &CommandInfo {
+        name: RUN_MP_CMD_NAME,
+        description: "Start a new mp crosvm instance",
+    };
+}
 #[derive(FromArgs)]
 #[argh(subcommand)]
 /// Windows Devices

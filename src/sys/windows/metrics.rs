@@ -18,6 +18,8 @@ cfg_if::cfg_if! {
 }
 
 use anyhow::Result;
+use base::RawDescriptor;
+use log::info;
 pub(crate) use metrics::get_destructor;
 pub(crate) use metrics::log_descriptor;
 #[cfg(feature = "kiwi")]
@@ -30,8 +32,9 @@ pub(crate) use metrics::MetricEventType;
 
 #[cfg(feature = "kiwi")]
 use crate::crosvm::argument::Argument;
+use crate::crosvm::sys::cmdline::RunMetricsCommand;
 
-pub(crate) fn run_metrics(#[allow(unused_variables)] args: Vec<String>) -> Result<()> {
+pub(crate) fn run_metrics(#[allow(unused_variables)] args: RunMetricsCommand) -> Result<()> {
     #[cfg(not(feature = "kiwi"))]
     return Ok(());
 
@@ -43,15 +46,12 @@ pub(crate) fn run_metrics(#[allow(unused_variables)] args: Vec<String>) -> Resul
             "TubeTransporter descriptor used to bootstrap the metrics process.",
         )];
 
-        let raw_transport_tube = set_bootstrap_arguments(args, arguments).exit_context(
-            Exit::InvalidSubCommandArgs,
-            "error in setting crosvm metrics controller args",
-        )?;
+        let raw_transport_tube = args.bootstrap as RawDescriptor;
 
         // Safe because we know that raw_transport_tube is valid (passed by inheritance), and that the
         // blocking & framing modes are accurate because we create them ourselves in the broker.
         let tube_transporter =
-            unsafe { TubeTransporterReader::from_raw_descriptor(raw_transport_tube.unwrap()) };
+            unsafe { TubeTransporterReader::from_raw_descriptor(raw_transport_tube) };
 
         let mut tube_data_list = tube_transporter
             .read_tubes()
