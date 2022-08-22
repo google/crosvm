@@ -188,6 +188,7 @@ def rebase():
     rev = git("rev-parse", upstream_branch_name).stdout(check=False)
     if rev:
         print(f"Leaving behind previous revision of {upstream_branch_name}: {rev}")
+    git("fetch origin").fg()
     git("checkout -B", upstream_branch_name, "origin/main").fg(quiet=True)
 
     print(f"Cherry-picking changes from {branch_name}")
