@@ -16,14 +16,12 @@ from impl.test_target import Triple
 
 clippy = cmd("cargo clippy")
 
-excluded_crates: list[str] = []
+excluded_crates: list[str] = list(get_workspace_excludes(Triple.host_default()))
 features: str = ""
 
 if os.name == "posix":
     features = "--features=all-linux"
-elif os.name == "nt":
-    excluded_crates = list(get_workspace_excludes(Triple.from_str("x86_64-pc-windows-msvc")))
-else:
+elif os.name != "nt":
     raise Exception(f"Unsupported build target: {os.name}")
 
 
