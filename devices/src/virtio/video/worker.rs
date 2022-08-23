@@ -5,11 +5,21 @@
 //! Worker that runs in a virtio-video thread.
 
 use std::collections::VecDeque;
+use std::time::Duration;
 
+use base::clone_descriptor;
 use base::error;
 use base::info;
 use base::Event;
+use base::FromRawDescriptor;
+use base::SafeDescriptor;
 use base::WaitContext;
+use cros_async::select3;
+use cros_async::AsyncWrapper;
+use cros_async::EventAsync;
+use cros_async::Executor;
+use cros_async::SelectResult;
+use futures::FutureExt;
 use vm_memory::GuestMemory;
 
 use crate::virtio::queue::DescriptorChain;
@@ -357,6 +367,77 @@ impl<I: SignalableInterrupt> Worker<I> {
                         self.cmd_queue_interrupt.do_interrupt_resample();
                     }
                     Token::Kill => return Ok(()),
+                }
+            }
+        }
+    }
+
+    /// Runs the video device virtio queues asynchronously.
+    ///
+    /// # Arguments
+    ///
+    /// * `device` - Instance of backend device
+    /// * `ex` - Instance of `Executor` of asynchronous operations
+    /// * `cmd_evt` - Driver-to-device kick event for the command queue
+    /// * `event_evt` - Driver-to-device kick event for the event queue
+    pub async fn run_async(
+        mut self,
+        mut device: Box<dyn Device>,
+        ex: Executor,
+        cmd_evt: Event,
+        event_evt: Event,
+    ) -> Result<()> {
+        let cmd_queue_evt =
+            EventAsync::new(cmd_evt, &ex).map_err(Error::EventAsyncCreationFailed)?;
+        let event_queue_evt =
+            EventAsync::new(event_evt, &ex).map_err(Error::EventAsyncCreationFailed)?;
+
+        // WaitContext to wait for the response from the encoder/decoder device.
+        let device_wait_ctx = WaitContext::new().map_err(Error::WaitContextCreationFailed)?;
+        let device_evt = ex
+            .async_from(AsyncWrapper::new(
+                clone_descriptor(&device_wait_ctx)
+                        // Safe because we just created this fd.
+                        .map(|fd| unsafe { SafeDescriptor::from_raw_descriptor(fd) })
+                        .map_err(Error::CloneDescriptorFailed)?,
+            ))
+            .map_err(Error::EventAsyncCreationFailed)?;
+
+        loop {
+            let (
+                cmd_queue_evt,
+                device_evt,
+                // Ignore driver-to-device kicks since the event queue is write-only for a device.
+                _event_queue_evt,
+            ) = select3(
+                cmd_queue_evt.next_val().boxed_local(),
+                device_evt.wait_readable().boxed_local(),
+                event_queue_evt.next_val().boxed_local(),
+            )
+            .await;
+
+            if let SelectResult::Finished(_) = cmd_queue_evt {
+                self.handle_command_queue(device.as_mut(), &device_wait_ctx)?;
+            }
+
+            if let SelectResult::Finished(_) = device_evt {
+                let device_events = match device_wait_ctx.wait_timeout(Duration::from_secs(0)) {
+                    Ok(device_events) => device_events,
+                    Err(_) => {
+                        error!("failed to read a device event");
+                        continue;
+                    }
+                };
+                for device_event in device_events {
+                    // A Device must trigger only Token::Event. See [`Device::process_cmd()`].
+                    if let Token::Event { id } = device_event.token {
+                        self.handle_event(device.as_mut(), id)?;
+                    } else {
+                        error!(
+                            "invalid event is triggered by a device {:?}",
+                            device_event.token
+                        );
+                    }
                 }
             }
         }
