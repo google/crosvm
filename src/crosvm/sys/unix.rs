@@ -1446,7 +1446,10 @@ where
     }
 
     let battery = if cfg.battery_config.is_some() {
-        #[cfg_attr(not(feature = "power-monitor-powerd"), allow(clippy::manual_map))]
+        #[cfg_attr(
+            not(feature = "power-monitor-powerd"),
+            allow(clippy::manual_map, clippy::needless_match)
+        )]
         let jail = match simple_jail(&cfg.jail_config, "battery")? {
             #[cfg_attr(not(feature = "power-monitor-powerd"), allow(unused_mut))]
             Some(mut jail) => {
