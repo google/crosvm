@@ -15,7 +15,7 @@ use std::sync::Arc;
 use base::Event;
 use cros_fuzz::fuzz_target;
 use devices::virtio::base_features;
-use devices::virtio::Block;
+use devices::virtio::BlockAsync;
 use devices::virtio::Interrupt;
 use devices::virtio::Queue;
 use devices::virtio::VirtioDevice;
@@ -90,7 +90,7 @@ fuzz_target!(|bytes| {
 
     let disk_file = tempfile::tempfile().unwrap();
     let mut block =
-        Block::new(features, Box::new(disk_file), false, true, 512, None, None).unwrap();
+        BlockAsync::new(features, Box::new(disk_file), false, true, 512, None, None).unwrap();
 
     block.activate(
         mem,
