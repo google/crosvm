@@ -1598,7 +1598,7 @@ mod tests {
         // wake up the completer threads may still be in the completion ring.
         assert!(uring.complete_ring.num_ready() <= NUM_COMPLETERS as u32);
         assert_eq!(
-            in_flight.lock().abs() as u32 + uring.complete_ring.num_ready(),
+            in_flight.lock().unsigned_abs() as u32 + uring.complete_ring.num_ready(),
             NUM_COMPLETERS as u32
         );
         assert_eq!(uring.submit_ring.lock().added, 0);
