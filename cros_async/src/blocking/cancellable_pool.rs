@@ -392,7 +392,7 @@ mod test {
         let unfinished = pool.spawn(|| 5, || 0);
 
         // Disarming should cancel the task.
-        let _ = pool.disarm();
+        pool.disarm();
 
         // Shutdown the blocking thread. This will allow a worker to pick up the task that has
         // to be cancelled.
@@ -403,7 +403,7 @@ mod test {
         assert_eq!(block_on(unfinished), 0);
 
         // Now the pool is empty and can be shutdown without blocking.
-        let _ = pool.shutdown().unwrap();
+        pool.shutdown().unwrap();
     }
 
     #[test]

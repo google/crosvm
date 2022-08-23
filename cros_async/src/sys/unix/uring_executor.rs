@@ -262,7 +262,7 @@ impl RegisteredSource {
 impl Drop for RegisteredSource {
     fn drop(&mut self) {
         if let Some(ex) = self.ex.upgrade() {
-            let _ = ex.deregister_source(self);
+            ex.deregister_source(self);
         }
     }
 }
