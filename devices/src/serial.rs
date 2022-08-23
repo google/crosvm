@@ -119,9 +119,7 @@ impl Serial {
             system_params,
         }
     }
-}
 
-impl Serial {
     /// Returns a unique ID for the serial device.
     pub fn device_id() -> DeviceId {
         CrosvmDeviceId::Serial.into()
