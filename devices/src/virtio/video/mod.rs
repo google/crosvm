@@ -235,14 +235,13 @@ impl VirtioDevice for VideoDevice {
             }
         };
         let mut worker = Worker::new(
-            interrupt,
             mem.clone(),
             cmd_queue,
-            cmd_evt,
+            interrupt.clone(),
             event_queue,
-            event_evt,
-            kill_evt,
+            interrupt,
         );
+
         let worker_result = match &self.device_type {
             #[cfg(feature = "video-decoder")]
             VideoDeviceType::Decoder => thread::Builder::new()
@@ -257,7 +256,7 @@ impl VirtioDevice for VideoDevice {
                             }
                         };
 
-                    if let Err(e) = worker.run(device) {
+                    if let Err(e) = worker.run(device, &cmd_evt, &event_evt, &kill_evt) {
                         error!("Failed to start decoder worker: {}", e);
                     };
                     // Don't return any information since the return value is never checked.
@@ -302,7 +301,7 @@ impl VirtioDevice for VideoDevice {
                         }
                     };
 
-                    if let Err(e) = worker.run(device) {
+                    if let Err(e) = worker.run(device, &cmd_evt, &event_evt, &kill_evt) {
                         error!("Failed to start encoder worker: {}", e);
                     }
                 }),
