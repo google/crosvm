@@ -48,7 +48,7 @@ pub async fn handle_irq_resample(ex: &Executor, interrupt: Rc<RefCell<Interrupt>
         }
     } else {
         // No resample event; park the future.
-        let () = futures::future::pending().await;
+        futures::future::pending::<()>().await;
     }
     Ok(())
 }

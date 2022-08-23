@@ -183,7 +183,7 @@ pub(in crate::virtio::iommu) async fn handle_translate_request(
     let request_tube = match request_tube {
         Some(r) => r,
         None => {
-            let () = futures::future::pending().await;
+            futures::future::pending::<()>().await;
             return Ok(());
         }
     };

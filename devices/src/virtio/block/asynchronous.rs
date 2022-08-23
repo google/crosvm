@@ -301,7 +301,7 @@ async fn handle_command_tube(
     let command_tube = match command_tube {
         Some(c) => c,
         None => {
-            let () = futures::future::pending().await;
+            futures::future::pending::<()>().await;
             return Ok(());
         }
     };
