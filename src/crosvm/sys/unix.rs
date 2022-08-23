@@ -2784,13 +2784,13 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 /// The jailing business is nasty and potentially unsafe if done from the wrong context - do not
 /// call outside of `start_devices`!
 ///
-/// Returns the jail the device process is running in, as well as its pid.
+/// Returns the pid of the jailed device process.
 fn jail_and_start_vu_device<T: VirtioDeviceBuilder>(
     jail_config: &Option<JailConfig>,
     params: &T,
     vhost: &str,
     name: &str,
-) -> anyhow::Result<(Minijail, libc::pid_t, Option<Box<dyn std::any::Any>>)> {
+) -> anyhow::Result<(libc::pid_t, Option<Box<dyn std::any::Any>>)> {
     let mut keep_rds = Vec::new();
 
     base::syslog::push_descriptors(&mut keep_rds);
@@ -2857,7 +2857,7 @@ fn jail_and_start_vu_device<T: VirtioDeviceBuilder>(
             // to clean up ourselves.
 
             info!("process for device {} (PID {}) started", &name, pid);
-            Ok((jail, pid, parent_resources))
+            Ok((pid, parent_resources))
         }
     }
 }
@@ -2866,12 +2866,7 @@ pub fn start_devices(opts: DevicesCommand) -> anyhow::Result<()> {
     struct DeviceJailInfo {
         // Unique name for the device, in the form `foomatic-0`.
         name: String,
-        // Jail the device process is running in.
-        // We are just keeping it alive for as long as the device process needs to run.
-        #[allow(dead_code)]
-        jail: Minijail,
-        #[allow(dead_code)]
-        drop_resources: Option<Box<dyn std::any::Any>>,
+        _drop_resources: Option<Box<dyn std::any::Any>>,
     }
 
     fn add_device<T: VirtioDeviceBuilder>(
@@ -2883,15 +2878,14 @@ pub fn start_devices(opts: DevicesCommand) -> anyhow::Result<()> {
     ) -> anyhow::Result<()> {
         let name = format!("{}-{}", T::NAME, i);
 
-        let (jail, pid, drop_resources) =
+        let (pid, _drop_resources) =
             jail_and_start_vu_device::<T>(jail_config, device_params, vhost, &name)?;
 
         devices_jails.insert(
             pid,
             DeviceJailInfo {
                 name,
-                jail,
-                drop_resources,
+                _drop_resources,
             },
         );
 
