@@ -6,10 +6,12 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+#[cfg(feature = "gpu")]
+use devices::virtio::GpuDisplayParameters;
 #[cfg(feature = "gfxstream")]
 use devices::virtio::GpuMode;
 #[cfg(feature = "gpu")]
-use devices::virtio::{GpuDisplayParameters, GpuParameters};
+use devices::virtio::GpuParameters;
 use devices::IommuDevType;
 use devices::PciAddress;
 use devices::SerialParameters;
@@ -349,9 +351,10 @@ mod tests {
 
     #[test]
     fn parse_coiommu_options() {
+        use std::time::Duration;
+
         use devices::CoIommuParameters;
         use devices::CoIommuUnpinPolicy;
-        use std::time::Duration;
 
         // unpin_policy
         let coiommu_params = from_key_values::<CoIommuParameters>("unpin_policy=off").unwrap();

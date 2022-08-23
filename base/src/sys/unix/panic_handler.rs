@@ -4,11 +4,12 @@
 
 //! A panic handler for better crash signatures for rust apps.
 
-use super::SharedMemory;
 use std::ffi::CString;
 use std::io;
 use std::mem;
 use std::panic;
+
+use super::SharedMemory;
 
 const PANIC_MEMFD_NAME: &str = "RUST_PANIC_SIG";
 
