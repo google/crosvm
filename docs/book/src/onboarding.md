@@ -46,8 +46,7 @@ crosvm.
 
 ### Virtio (device emulation)
 
-- [Good overview](https://developer.ibm.com/technologies/linux/articles/l-virtio/) of virtio
-  architecture from IBM
+- [Good overview](https://developer.ibm.com/articles/l-virtio/) of virtio architecture from IBM
 - [Virtio drivers](https://www.redhat.com/en/blog/virtio-devices-and-drivers-overview-headjack-and-phone)
   overview by RedHat
 - [Virtio specs](https://docs.oasis-open.org/virtio/virtio/v1.1/csprd01/virtio-v1.1-csprd01.html)
