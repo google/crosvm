@@ -19,6 +19,7 @@ kernel_cmdline = { path = "../kernel_cmdline" }
 kernel_loader = { path = "../kernel_loader" }
 libc = "*"
 memoffset = "0.6"
+rand = "0.8"
 remain = "*"
 resources = { path = "../resources" }
 sync = { path = "../common/sync" }

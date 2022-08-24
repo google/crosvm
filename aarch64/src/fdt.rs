@@ -4,7 +4,6 @@
 
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::io::Read;
 
 use arch::CpuSet;
 use arch::SERIAL_ADDR;
@@ -19,6 +18,8 @@ use devices::PciInterruptPin;
 use hypervisor::PsciVersion;
 use hypervisor::PSCI_0_2;
 use hypervisor::PSCI_1_0;
+use rand::rngs::OsRng;
+use rand::RngCore;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
@@ -275,18 +276,13 @@ fn create_chosen_node(
     // Used by android bootloader for boot console output
     fdt.property_string("stdout-path", &format!("/U6_16550A@{:x}", SERIAL_ADDR[0]))?;
 
-    let mut random_file = File::open("/dev/urandom").map_err(Error::FdtIoError)?;
     let mut kaslr_seed_bytes = [0u8; 8];
-    random_file
-        .read_exact(&mut kaslr_seed_bytes)
-        .map_err(Error::FdtIoError)?;
+    OsRng.fill_bytes(&mut kaslr_seed_bytes);
     let kaslr_seed = u64::from_le_bytes(kaslr_seed_bytes);
     fdt.property_u64("kaslr-seed", kaslr_seed)?;
 
     let mut rng_seed_bytes = [0u8; 256];
-    random_file
-        .read_exact(&mut rng_seed_bytes)
-        .map_err(Error::FdtIoError)?;
+    OsRng.fill_bytes(&mut rng_seed_bytes);
     fdt.property("rng-seed", &rng_seed_bytes)?;
 
     if let Some((initrd_addr, initrd_size)) = initrd {

@@ -19,6 +19,7 @@ dependencies = [
  "libc",
  "memoffset 0.6.5",
  "minijail",
+ "rand",
  "remain",
  "resources",
  "sync",
