@@ -69,6 +69,8 @@ pub enum AvCodecOpenError {
     ContextAllocation,
     #[error("failed to open AVContext object")]
     ContextOpen,
+    #[error("DecoderContextBuilder used with a non-decoder")]
+    NotADecoder,
 }
 
 impl AvCodec {
@@ -110,37 +112,59 @@ impl AvCodec {
         AvPixelFormatIterator(self.0.pix_fmts)
     }
 
-    /// Obtain a context that can be used to decode using this codec.
-    ///
-    /// `get_buffer`'s first element is an optional function that decides which buffer is used to
-    /// render a frame (see libavcodec's documentation for `get_buffer2` for more details). If
-    /// provided, this function must be thread-safe. If none is provided, avcodec's default function
-    /// is used. The second element is a pointer that will be passed as first argument to the
-    /// function when it is called.
-    pub fn open(
-        &self,
-        get_buffer: Option<(
-            unsafe extern "C" fn(*mut ffi::AVCodecContext, *mut ffi::AVFrame, i32) -> i32,
-            *mut libc::c_void,
-        )>,
-    ) -> Result<AvCodecContext, AvCodecOpenError> {
-        // Safe because `self.0` is a valid static AVCodec reference.
-        let mut context = unsafe { ffi::avcodec_alloc_context3(self.0).as_mut() }
+    /// Get a builder for a decoder [`AvCodecContext`] using this codec.
+    pub fn build_decoder(&self) -> Result<DecoderContextBuilder, AvCodecOpenError> {
+        if !self.is_decoder() {
+            return Err(AvCodecOpenError::NotADecoder);
+        }
+
+        Ok(DecoderContextBuilder {
+            codec: self.0,
+            context: self.alloc_context()?,
+        })
+    }
+
+    /// Internal helper for `build_decoder` to allocate an [`AvCodecContext`]. This needs to be
+    /// paired with a later call to [`AvCodecContext::init`].
+    fn alloc_context(&self) -> Result<AvCodecContext, AvCodecOpenError> {
+        let context = unsafe { ffi::avcodec_alloc_context3(self.0).as_mut() }
             .ok_or(AvCodecOpenError::ContextAllocation)?;
 
-        if let Some((get_buffer2, opaque)) = get_buffer {
-            context.get_buffer2 = Some(get_buffer2);
-            context.opaque = opaque;
-            context.thread_safe_callbacks = 1;
-        }
-
-        // Safe because `self.0` is a valid static AVCodec reference, and `context` has been
-        // successfully allocated above.
-        if unsafe { ffi::avcodec_open2(context, self.0, std::ptr::null_mut()) } < 0 {
-            return Err(AvCodecOpenError::ContextOpen);
-        }
-
         Ok(AvCodecContext(context))
+    }
+}
+
+/// A builder to create a [`AvCodecContext`] suitable for decoding.
+// This struct wraps an AvCodecContext directly, but the only way it can be taken out is to call
+// `build()`, which finalizes the context and prevent further modification to the callback, etc.
+pub struct DecoderContextBuilder {
+    codec: *const ffi::AVCodec,
+    context: AvCodecContext,
+}
+
+impl DecoderContextBuilder {
+    /// Set a custom callback that provides output buffers.
+    ///
+    /// `get_buffer2` is a function that decides which buffer is used to render a frame (see
+    /// libavcodec's documentation for `get_buffer2` for more details). If provided, this function
+    /// must be thread-safe.
+    /// `opaque` is a pointer that will be passed as first argument to `get_buffer2` when it is called.
+    pub fn set_get_buffer_2(
+        &mut self,
+        get_buffer2: unsafe extern "C" fn(*mut ffi::AVCodecContext, *mut ffi::AVFrame, i32) -> i32,
+        opaque: *mut libc::c_void,
+    ) {
+        // Safe because self.context.0 is a pointer to a live AVCodecContext allocation.
+        let context = unsafe { &mut *(self.context.0) };
+        context.get_buffer2 = Some(get_buffer2);
+        context.opaque = opaque;
+        context.thread_safe_callbacks = 1;
+    }
+
+    /// Build a decoder AvCodecContext from the configured options.
+    pub fn build(mut self) -> Result<AvCodecContext, AvCodecOpenError> {
+        self.context.init(self.codec)?;
+        Ok(self.context)
     }
 }
 
@@ -307,8 +331,10 @@ pub struct AvCodecContext(*mut ffi::AVCodecContext);
 
 impl Drop for AvCodecContext {
     fn drop(&mut self) {
-        // Safe because our context member is properly initialized, fully owned by us, and has not
-        // leaked in any form.
+        // Safe because our context member is properly allocated and owned by us.
+        // Note: `avcodec_open2` might not have been called in case we're wrapped by a
+        //       `DecoderContextBuilder` but avcodec_free_context works on both opened and closed
+        //       contexts.
         unsafe { ffi::avcodec_free_context(&mut self.0) };
     }
 }
@@ -327,6 +353,17 @@ pub enum TryReceiveFrameResult {
 }
 
 impl AvCodecContext {
+    /// Internal helper for [`DecoderContextBuilder`] to initialize the context.
+    fn init(&mut self, codec: *const ffi::AVCodec) -> Result<(), AvCodecOpenError> {
+        // Safe because `codec` is a valid static AVCodec reference, and `self.0` is a valid
+        // AVCodecContext allocation.
+        if unsafe { ffi::avcodec_open2(self.0, codec, std::ptr::null_mut()) } < 0 {
+            return Err(AvCodecOpenError::ContextOpen);
+        }
+
+        Ok(())
+    }
+
     /// Send a packet to be decoded to the codec.
     ///
     /// Returns `true` if the packet has been accepted and will be decoded, `false` if the codec can

@@ -747,7 +747,8 @@ impl DecoderBackend for FfmpegDecoder {
             // TODO we should use a custom `get_buffer` function that renders directly into the
             // target buffer if the output format is directly supported by libavcodec. Right now
             // libavcodec is allocating its own frame buffers, which forces us to perform a copy.
-            .open(None)
+            .build_decoder()
+            .and_then(|b| b.build())
             .context("while creating new session")
             .map_err(VideoError::BackendFailure)?;
         Ok(FfmpegDecoderSession {
