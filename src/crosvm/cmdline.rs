@@ -1712,33 +1712,28 @@ impl TryFrom<RunCommand> for super::config::Config {
             return Err("Only one protection mode has to be specified".to_string());
         }
 
-        if cmd.protected_vm {
-            cfg.protected_vm = ProtectionType::Protected;
-            // Balloon and USB devices only work for unprotected VMs.
-            cfg.balloon = false;
-            cfg.usb = false;
-            // Protected VMs can't trust the RNG device, so don't provide it.
-            cfg.rng = false;
+        cfg.protected_vm = if cmd.protected_vm {
+            ProtectionType::Protected
         } else if cmd.protected_vm_without_firmware {
-            cfg.protected_vm = ProtectionType::ProtectedWithoutFirmware;
-            // Balloon and USB devices only work for unprotected VMs.
-            cfg.balloon = false;
-            cfg.usb = false;
-            // Protected VMs can't trust the RNG device, so don't provide it.
-            cfg.rng = false;
+            ProtectionType::ProtectedWithoutFirmware
         } else if let Some(p) = cmd.unprotected_vm_with_firmware {
             if !p.exists() || !p.is_file() {
                 return Err(
                     "unprotected-vm-with-firmware path should be an existing file".to_string(),
                 );
             }
-            cfg.protected_vm = ProtectionType::UnprotectedWithFirmware;
+            cfg.pvm_fw = Some(p);
+            ProtectionType::UnprotectedWithFirmware
+        } else {
+            ProtectionType::Unprotected
+        };
+
+        if !matches!(cfg.protected_vm, ProtectionType::Unprotected) {
             // Balloon and USB devices only work for unprotected VMs.
             cfg.balloon = false;
             cfg.usb = false;
             // Protected VMs can't trust the RNG device, so don't provide it.
             cfg.rng = false;
-            cfg.pvm_fw = Some(p);
         }
 
         cfg.battery_config = cmd.battery;
