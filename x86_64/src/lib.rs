@@ -246,6 +246,8 @@ pub enum Error {
     SetTssAddr(base::Error),
     #[error("failed to set up cpuid: {0}")]
     SetupCpuid(cpuid::Error),
+    #[error("setup data too large")]
+    SetupDataTooLarge,
     #[error("failed to set up FPU: {0}")]
     SetupFpu(base::Error),
     #[error("failed to set up guest memory: {0}")]
@@ -274,6 +276,8 @@ pub enum Error {
     WriteRegs(base::Error),
     #[error("error writing guest memory {0}")]
     WritingGuestMemory(GuestMemoryError),
+    #[error("error writing setup_data: {0}")]
+    WritingSetupData(GuestMemoryError),
     #[error("the zero page extends past the end of guest_mem")]
     ZeroPagePastRamEnd,
     #[error("error writing the zero page of guest memory")]
@@ -283,6 +287,30 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub struct X8664arch;
+
+// Like `bootparam::setup_data` without the incomplete array field at the end, which allows us to
+// safely implement Copy, Clone, and DataInit.
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
+struct setup_data_hdr {
+    pub next: u64,
+    pub type_: u32,
+    pub len: u32,
+}
+
+unsafe impl data_model::DataInit for setup_data_hdr {}
+
+#[repr(u32)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum SetupDataType {
+    Dtb = SETUP_DTB,
+}
+
+/// A single entry to be inserted in the bootparam `setup_data` linked list.
+pub struct SetupData {
+    pub data: Vec<u8>,
+    pub type_: SetupDataType,
+}
 
 enum E820Type {
     Ram = 0x01,
@@ -475,6 +503,71 @@ fn configure_system(
         .map_err(|_| Error::ZeroPageSetup)?;
 
     Ok(())
+}
+
+/// Write setup_data entries in guest memory and link them together with the `next` field.
+///
+/// Returns the guest address of the first entry in the setup_data list, if any.
+fn write_setup_data(
+    guest_mem: &GuestMemory,
+    free_addr: &mut u64,
+    setup_data: &[SetupData],
+) -> Result<Option<GuestAddress>> {
+    let mut setup_data_list_head = None;
+
+    // Place the first setup_data at the first 64-bit aligned offset following free_addr.
+    let mut setup_data_addr = GuestAddress(*free_addr)
+        .align(8)
+        .ok_or(Error::SetupDataTooLarge)?;
+
+    let mut entry_iter = setup_data.iter().peekable();
+    while let Some(entry) = entry_iter.next() {
+        if setup_data_list_head.is_none() {
+            setup_data_list_head = Some(setup_data_addr);
+        }
+
+        // Ensure the entry (header plus data) fits into guest memory.
+        let entry_size = (mem::size_of::<setup_data_hdr>() + entry.data.len()) as u64;
+        setup_data_addr
+            .checked_add(entry_size)
+            .ok_or(Error::SetupDataTooLarge)?;
+
+        let next_setup_data_addr = if entry_iter.peek().is_some() {
+            // Place the next setup_data at a 64-bit aligned address.
+            setup_data_addr
+                .checked_add(entry_size)
+                .and_then(|addr| addr.align(8))
+                .ok_or(Error::SetupDataTooLarge)?
+        } else {
+            // This is the final entry. Terminate the list with next == 0.
+            GuestAddress(0)
+        };
+
+        let hdr = setup_data_hdr {
+            next: next_setup_data_addr.offset(),
+            type_: entry.type_ as u32,
+            len: entry
+                .data
+                .len()
+                .try_into()
+                .map_err(|_| Error::SetupDataTooLarge)?,
+        };
+
+        guest_mem
+            .write_obj_at_addr(hdr, setup_data_addr)
+            .map_err(Error::WritingSetupData)?;
+        guest_mem
+            .write_all_at_addr(
+                &entry.data,
+                setup_data_addr.unchecked_add(mem::size_of::<setup_data_hdr>() as u64),
+            )
+            .map_err(Error::WritingSetupData)?;
+
+        *free_addr = setup_data_addr.offset() + entry_size;
+        setup_data_addr = next_setup_data_addr;
+    }
+
+    Ok(setup_data_list_head)
 }
 
 /// Add an e820 region to the e820 map.
@@ -1460,21 +1553,12 @@ impl X8664arch {
         // data like the device tree blob and initrd will be loaded.
         let mut free_addr = kernel_end;
 
-        let setup_data = if let Some(android_fstab) = android_fstab {
-            let free_addr_aligned = (((free_addr + 64 - 1) / 64) * 64) + 64;
-            let dtb_start = GuestAddress(free_addr_aligned);
-            let dtb_size = fdt::create_fdt(
-                X86_64_FDT_MAX_SIZE as usize,
-                mem,
-                dtb_start.offset(),
-                android_fstab,
-            )
-            .map_err(Error::CreateFdt)?;
-            free_addr = dtb_start.offset() + dtb_size as u64;
-            Some(dtb_start)
-        } else {
-            None
-        };
+        let mut setup_data = Vec::<SetupData>::new();
+        if let Some(android_fstab) = android_fstab {
+            setup_data.push(fdt::create_fdt(android_fstab).map_err(Error::CreateFdt)?);
+        }
+
+        let setup_data = write_setup_data(mem, &mut free_addr, &setup_data)?;
 
         let initrd = match initrd_file {
             Some(mut initrd_file) => {
@@ -1953,6 +2037,8 @@ pub fn set_enable_pnp_data_msr_config(
 mod tests {
     use super::*;
 
+    use std::mem::size_of;
+
     const TEST_MEMORY_SIZE: u64 = 2 * GB;
 
     fn setup() {
@@ -2071,5 +2157,80 @@ mod tests {
         setup();
         // pci_low_start is 256 MB aligned to be friendly for MTRR mappings.
         assert_eq!(read_pci_mmio_before_32bit().start % (256 * MB), 0);
+    }
+
+    #[test]
+    fn write_setup_data_empty() {
+        let mem = GuestMemory::new(&[(GuestAddress(0), 0x2_0000)]).unwrap();
+        let setup_data = [];
+        let mut free_addr = 0x1000;
+        let setup_data_addr =
+            write_setup_data(&mem, &mut free_addr, &setup_data).expect("write_setup_data");
+        assert_eq!(setup_data_addr, None);
+        assert_eq!(free_addr, 0x1000);
+    }
+
+    #[test]
+    fn write_setup_data_two_of_them() {
+        let mem = GuestMemory::new(&[(GuestAddress(0), 0x2_0000)]).unwrap();
+
+        let mut free_addr = 0x1000;
+
+        let entry1_addr = GuestAddress(0x1000);
+        let entry1_next_addr = entry1_addr;
+        let entry1_len_addr = entry1_addr.checked_add(12).unwrap();
+        let entry1_data_addr = entry1_addr.checked_add(16).unwrap();
+        let entry1_data = [0x55u8; 13];
+        let entry1_size = (size_of::<setup_data_hdr>() + entry1_data.len()) as u64;
+        let entry1_align = 3;
+
+        let entry2_addr = GuestAddress(entry1_addr.offset() + entry1_size + entry1_align);
+        let entry2_next_addr = entry2_addr;
+        let entry2_len_addr = entry2_addr.checked_add(12).unwrap();
+        let entry2_data_addr = entry2_addr.checked_add(16).unwrap();
+        let entry2_data = [0xAAu8; 9];
+        let entry2_size = (size_of::<setup_data_hdr>() + entry2_data.len()) as u64;
+
+        let next_free_addr = entry2_addr.checked_add(entry2_size).unwrap();
+
+        let setup_data = [
+            SetupData {
+                data: entry1_data.to_vec(),
+                type_: SetupDataType::Dtb,
+            },
+            SetupData {
+                data: entry2_data.to_vec(),
+                type_: SetupDataType::Dtb,
+            },
+        ];
+
+        let setup_data_head_addr =
+            write_setup_data(&mem, &mut free_addr, &setup_data).expect("write_setup_data");
+        assert_eq!(setup_data_head_addr, Some(entry1_addr));
+        assert_eq!(free_addr, next_free_addr.offset());
+
+        assert_eq!(
+            mem.read_obj_from_addr::<u64>(entry1_next_addr).unwrap(),
+            entry2_addr.offset()
+        );
+        assert_eq!(
+            mem.read_obj_from_addr::<u32>(entry1_len_addr).unwrap(),
+            entry1_data.len() as u32
+        );
+        assert_eq!(
+            mem.read_obj_from_addr::<[u8; 13]>(entry1_data_addr)
+                .unwrap(),
+            entry1_data
+        );
+
+        assert_eq!(mem.read_obj_from_addr::<u64>(entry2_next_addr).unwrap(), 0);
+        assert_eq!(
+            mem.read_obj_from_addr::<u32>(entry2_len_addr).unwrap(),
+            entry2_data.len() as u32
+        );
+        assert_eq!(
+            mem.read_obj_from_addr::<[u8; 9]>(entry2_data_addr).unwrap(),
+            entry2_data
+        );
     }
 }
