@@ -541,7 +541,7 @@ mod test {
             pin_mut!(pending, done);
 
             match select(pending, done).await {
-                Either::Right((5, pending)) => drop(pending),
+                Either::Right((5, _pending)) => (),
                 _ => panic!("unexpected select result"),
             }
         }
