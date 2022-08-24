@@ -550,6 +550,9 @@ pub enum ProtectionType {
     /// The VM should be run in protected mode, so the host cannot access its memory directly. It
     /// should be booted via the protected VM firmware, so that it can access its secrets.
     Protected,
+    /// The VM should be run in protected mode, so the host cannot access its memory directly. It
+    /// should be booted via a custom VM firmware, useful for debugging and testing.
+    ProtectedWithCustomFirmware,
     /// The VM should be run in protected mode, but booted directly without pVM firmware. The host
     /// will still be unable to access the VM memory, but it won't be given any secrets.
     ProtectedWithoutFirmware,
@@ -562,12 +565,18 @@ pub enum ProtectionType {
 impl ProtectionType {
     /// Returns whether the hypervisor will prevent us from accessing the VM's memory.
     pub fn isolates_memory(&self) -> bool {
-        matches!(self, Self::Protected | Self::ProtectedWithoutFirmware)
+        matches!(
+            self,
+            Self::Protected | Self::ProtectedWithCustomFirmware | Self::ProtectedWithoutFirmware
+        )
     }
 
     /// Returns whether the VMM needs to load the pVM firmware.
     pub fn loads_firmware(&self) -> bool {
-        matches!(self, Self::UnprotectedWithFirmware)
+        matches!(
+            self,
+            Self::UnprotectedWithFirmware | Self::ProtectedWithCustomFirmware
+        )
     }
 
     /// Returns whether the VM runs a pVM firmware.

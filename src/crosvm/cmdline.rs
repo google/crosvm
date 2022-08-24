@@ -947,6 +947,9 @@ pub struct RunCommand {
     #[argh(switch)]
     /// prevent host access to guest memory
     pub protected_vm: bool,
+    #[argh(option, long = "protected-vm-with-firmware", arg_name = "PATH")]
+    /// (EXPERIMENTAL/FOR DEBUGGING) Use custom VM firmware to run in protected mode
+    pub protected_vm_with_firmware: Option<PathBuf>,
     #[argh(switch)]
     /// (EXPERIMENTAL) prevent host access to guest memory, but don't use protected VM firmware
     protected_vm_without_firmware: bool,
@@ -1782,6 +1785,7 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         let protection_flags = [
             cmd.protected_vm,
+            cmd.protected_vm_with_firmware.is_some(),
             cmd.protected_vm_without_firmware,
             cmd.unprotected_vm_with_firmware.is_some(),
         ];
@@ -1794,6 +1798,14 @@ impl TryFrom<RunCommand> for super::config::Config {
             ProtectionType::Protected
         } else if cmd.protected_vm_without_firmware {
             ProtectionType::ProtectedWithoutFirmware
+        } else if let Some(p) = cmd.protected_vm_with_firmware {
+            if !p.exists() || !p.is_file() {
+                return Err(
+                    "protected-vm-with-firmware path should be an existing file".to_string()
+                );
+            }
+            cfg.pvm_fw = Some(p);
+            ProtectionType::ProtectedWithCustomFirmware
         } else if let Some(p) = cmd.unprotected_vm_with_firmware {
             if !p.exists() || !p.is_file() {
                 return Err(
