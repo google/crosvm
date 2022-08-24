@@ -12,22 +12,21 @@ use nom::branch::alt;
 use nom::bytes::complete::escaped_transform;
 use nom::bytes::complete::is_not;
 use nom::bytes::complete::tag;
-use nom::bytes::complete::take_till1;
 use nom::bytes::complete::take_while;
 use nom::bytes::complete::take_while1;
+use nom::character::complete::alphanumeric1;
 use nom::character::complete::anychar;
 use nom::character::complete::char;
-use nom::character::complete::digit1;
 use nom::character::complete::none_of;
 use nom::combinator::map;
 use nom::combinator::map_res;
 use nom::combinator::opt;
-use nom::combinator::peek;
 use nom::combinator::recognize;
 use nom::combinator::value;
 use nom::combinator::verify;
 use nom::sequence::delimited;
 use nom::sequence::pair;
+use nom::sequence::tuple;
 use nom::AsChar;
 use nom::Finish;
 use nom::IResult;
@@ -53,8 +52,6 @@ pub enum ErrorKind {
     ExpectedEqual,
     #[error("expected an identifier")]
     ExpectedIdentifier,
-    #[error("expected a number or number contains invalid digits")]
-    ExpectedNumber,
     #[error("expected a string")]
     ExpectedString,
     #[error("\" and ' can only be used in quoted strings")]
@@ -98,11 +95,6 @@ impl de::Error for ParseError {
 }
 
 type Result<T> = std::result::Result<T, ParseError>;
-
-/// Nom parser that returns all characters up to the next comma or EOS.
-fn take_till_comma_or_eos(s: &str) -> IResult<&str, &str> {
-    take_till1(|c| c == ',')(s)
-}
 
 /// Nom parser for valid strings.
 ///
@@ -153,23 +145,47 @@ fn any_number<T>(s: &str) -> IResult<&str, T>
 where
     T: Num<FromStrRadixErr = ParseIntError>,
 {
-    /// Nom parser for determining the radix of a number from its prefix.
-    ///
-    /// This is its own function to avoid monomorphization as `any_number` is generic.
-    fn number_radix(s: &str) -> IResult<&str, u32> {
-        let mut radix = alt((
+    // Parses the number input and returns a tuple including the number itself (with its sign) and
+    // its radix.
+    //
+    // We move this non-generic part into its own function so it doesn't get monomorphized, which
+    // would increase the binary size more than needed.
+    fn parse_number(s: &str) -> IResult<&str, (Cow<str>, u32)> {
+        // Recognizes the sign prefix.
+        let sign = char('-');
+
+        // Recognizes the radix prefix.
+        let radix = alt((
             value(16, tag("0x")),
             value(8, tag("0o")),
             value(2, tag("0b")),
-            value(10, peek(pair(opt(char('-')), digit1))),
         ));
 
-        radix(s)
+        // Chain of parsers: sign (optional) and radix (optional), then sequence of alphanumerical
+        // characters.
+        //
+        // Then we take all 3 recognized elements and turn them into the string and radix to pass to
+        // `from_str_radix`.
+        map(
+            tuple((opt(sign), opt(radix), alphanumeric1)),
+            |(sign, radix, number)| {
+                // If the sign was specified, we need to build a string that contains it for
+                // `from_str_radix` to parse the number accurately. Otherwise, simply borrow the
+                // remainder of the input.
+                let num_string = if let Some(sign) = sign {
+                    Cow::Owned(sign.to_string() + number)
+                } else {
+                    Cow::Borrowed(number)
+                };
+
+                (num_string, radix.unwrap_or(10))
+            },
+        )(s)
     }
 
-    let (s, r) = number_radix(s)?;
-
-    map_res(take_till_comma_or_eos, move |s| T::from_str_radix(s, r))(s)
+    map_res(parse_number, |(num_string, radix)| {
+        T::from_str_radix(&num_string, radix)
+    })(s)
 }
 
 /// Nom parser for booleans.
@@ -303,16 +319,9 @@ impl<'de> KeyValueDeserializer<'de> {
     where
         T: Num<FromStrRadixErr = ParseIntError>,
     {
-        let (remainder, val) = any_number(self.input).finish().map_err(|e| {
-            self.input = e.input;
-            self.error_here(match e.code {
-                // If the error has happened during the number conversion, this means we had an
-                // invalid input for the number type.
-                nom::error::ErrorKind::MapRes => ErrorKind::InvalidNumber,
-                // Otherwise this means we failed to parse something ressembling a number.
-                _ => ErrorKind::ExpectedNumber,
-            })
-        })?;
+        let (remainder, val) = any_number(self.input)
+            .finish()
+            .map_err(|_| self.error_here(ErrorKind::InvalidNumber))?;
 
         self.input = remainder;
         Ok(val)
@@ -754,7 +763,7 @@ mod tests {
         assert_eq!(
             res,
             ParseError {
-                kind: ErrorKind::ExpectedNumber,
+                kind: ErrorKind::InvalidNumber,
                 pos: 2,
             }
         );
@@ -764,7 +773,7 @@ mod tests {
             from_key_values::<SingleStruct<usize>>("m=0x1234abcd").unwrap();
         assert_eq!(res.m, 0x1234abcd);
         let res: SingleStruct<isize> =
-            from_key_values::<SingleStruct<isize>>("m=0x-1234abcd").unwrap();
+            from_key_values::<SingleStruct<isize>>("m=-0x1234abcd").unwrap();
         assert_eq!(res.m, -0x1234abcd);
 
         // Hex value outside range
@@ -773,14 +782,14 @@ mod tests {
             res,
             ParseError {
                 kind: ErrorKind::InvalidNumber,
-                pos: 4,
+                pos: 2,
             }
         );
 
         // Parsing octal values
         let res: SingleStruct<usize> = from_key_values::<SingleStruct<usize>>("m=0o755").unwrap();
         assert_eq!(res.m, 0o755);
-        let res: SingleStruct<isize> = from_key_values::<SingleStruct<isize>>("m=0o-755").unwrap();
+        let res: SingleStruct<isize> = from_key_values::<SingleStruct<isize>>("m=-0o755").unwrap();
         assert_eq!(res.m, -0o755);
 
         // Octal value outside range
@@ -789,14 +798,14 @@ mod tests {
             res,
             ParseError {
                 kind: ErrorKind::InvalidNumber,
-                pos: 4,
+                pos: 2,
             }
         );
 
         // Parsing binary values
         let res: SingleStruct<usize> = from_key_values::<SingleStruct<usize>>("m=0b1100").unwrap();
         assert_eq!(res.m, 0b1100);
-        let res: SingleStruct<isize> = from_key_values::<SingleStruct<isize>>("m=0b-1100").unwrap();
+        let res: SingleStruct<isize> = from_key_values::<SingleStruct<isize>>("m=-0b1100").unwrap();
         assert_eq!(res.m, -0b1100);
 
         // Binary value outside range
@@ -805,7 +814,7 @@ mod tests {
             res,
             ParseError {
                 kind: ErrorKind::InvalidNumber,
-                pos: 4,
+                pos: 2,
             }
         );
     }
