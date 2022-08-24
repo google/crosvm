@@ -2525,6 +2525,7 @@ dependencies = [
  "libc",
  "minijail",
  "once_cell",
+ "rand",
  "remain",
  "resources",
  "sync",

@@ -9,6 +9,7 @@
 mod fdt;
 
 const SETUP_DTB: u32 = 2;
+const SETUP_RNG_SEED: u32 = 9;
 const X86_64_FDT_MAX_SIZE: u64 = 0x20_0000;
 
 #[allow(dead_code)]
@@ -127,6 +128,8 @@ use hypervisor::VmX86_64;
 #[cfg(unix)]
 use minijail::Minijail;
 use once_cell::sync::OnceCell;
+use rand::rngs::OsRng;
+use rand::RngCore;
 use remain::sorted;
 use resources::AddressRange;
 use resources::SystemAllocator;
@@ -304,6 +307,7 @@ unsafe impl data_model::DataInit for setup_data_hdr {}
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum SetupDataType {
     Dtb = SETUP_DTB,
+    RngSeed = SETUP_RNG_SEED,
 }
 
 /// A single entry to be inserted in the bootparam `setup_data` linked list.
@@ -568,6 +572,16 @@ fn write_setup_data(
     }
 
     Ok(setup_data_list_head)
+}
+
+/// Generate a SETUP_RNG_SEED SetupData with random seed data.
+fn setup_data_rng_seed() -> SetupData {
+    let mut data = vec![0u8; 256];
+    OsRng.fill_bytes(&mut data);
+    SetupData {
+        data,
+        type_: SetupDataType::RngSeed,
+    }
 }
 
 /// Add an e820 region to the e820 map.
@@ -1557,6 +1571,7 @@ impl X8664arch {
         if let Some(android_fstab) = android_fstab {
             setup_data.push(fdt::create_fdt(android_fstab).map_err(Error::CreateFdt)?);
         }
+        setup_data.push(setup_data_rng_seed());
 
         let setup_data = write_setup_data(mem, &mut free_addr, &setup_data)?;
 
