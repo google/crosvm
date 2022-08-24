@@ -242,10 +242,7 @@ where
                         State::Positional
                     } else if arg.starts_with("--") {
                         let param = arg.trim_start_matches('-');
-                        if param.contains('=') {
-                            let mut iter = param.splitn(2, '=');
-                            let name = iter.next().unwrap();
-                            let value = iter.next().unwrap();
+                        if let Some((name, value)) = param.split_once('=') {
                             if name.is_empty() {
                                 return Err(Error::Syntax(
                                     "expected parameter name before `=`".to_owned(),
