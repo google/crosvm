@@ -559,6 +559,23 @@ pub enum ProtectionType {
     UnprotectedWithFirmware,
 }
 
+impl ProtectionType {
+    /// Returns whether the hypervisor will prevent us from accessing the VM's memory.
+    pub fn isolates_memory(&self) -> bool {
+        matches!(self, Self::Protected | Self::ProtectedWithoutFirmware)
+    }
+
+    /// Returns whether the VMM needs to load the pVM firmware.
+    pub fn loads_firmware(&self) -> bool {
+        matches!(self, Self::UnprotectedWithFirmware)
+    }
+
+    /// Returns whether the VM runs a pVM firmware.
+    pub fn runs_firmware(&self) -> bool {
+        self.loads_firmware() || matches!(self, Self::Protected)
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct Config {
     #[cfg(target_arch = "aarch64")]

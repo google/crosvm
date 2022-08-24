@@ -1282,11 +1282,7 @@ fn run_kvm(cfg: Config, components: VmComponents, guest_mem: GuestMemory) -> Res
     }
 
     // Check that the VM was actually created in protected mode as expected.
-    if matches!(
-        cfg.protection_type,
-        ProtectionType::Protected | ProtectionType::ProtectedWithoutFirmware
-    ) && !vm.check_capability(VmCap::Protected)
-    {
+    if cfg.protection_type.isolates_memory() && !vm.check_capability(VmCap::Protected) {
         bail!("Failed to create protected VM");
     }
     let vm_clone = vm.try_clone().context("failed to clone vm")?;

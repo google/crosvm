@@ -66,11 +66,10 @@ impl Kvm {
             ret if ret < 0 => 0,
             ipa => ipa as u32,
         };
-        let protection_flag = match protection_type {
-            ProtectionType::Unprotected | ProtectionType::UnprotectedWithFirmware => 0,
-            ProtectionType::Protected | ProtectionType::ProtectedWithoutFirmware => {
-                KVM_VM_TYPE_ARM_PROTECTED
-            }
+        let protection_flag = if protection_type.isolates_memory() {
+            KVM_VM_TYPE_ARM_PROTECTED
+        } else {
+            0
         };
         // Use the lower 8 bits representing the IPA space as the machine type
         Ok((ipa_size & KVM_VM_TYPE_ARM_IPA_SIZE_MASK) | protection_flag)

@@ -278,10 +278,7 @@ impl arch::LinuxArch for AArch64 {
             vec![(GuestAddress(AARCH64_PHYS_MEM_START), components.memory_size)];
 
         // Allocate memory for the pVM firmware.
-        if matches!(
-            components.hv_cfg.protection_type,
-            ProtectionType::Protected | ProtectionType::UnprotectedWithFirmware
-        ) {
+        if components.hv_cfg.protection_type.runs_firmware() {
             memory_regions.push((
                 GuestAddress(AARCH64_PROTECTED_VM_FW_START),
                 AARCH64_PROTECTED_VM_FW_MAX_SIZE,
@@ -401,28 +398,23 @@ impl arch::LinuxArch for AArch64 {
             .map_err(Error::MapPvtimeError)?;
         }
 
-        match components.hv_cfg.protection_type {
-            ProtectionType::Protected => {
-                // Tell the hypervisor to load the pVM firmware.
-                vm.load_protected_vm_firmware(
-                    GuestAddress(AARCH64_PROTECTED_VM_FW_START),
-                    AARCH64_PROTECTED_VM_FW_MAX_SIZE,
-                )
-                .map_err(Error::ProtectVm)?;
-            }
-            ProtectionType::UnprotectedWithFirmware => {
-                // Load pVM firmware ourself, as the VM is not really protected.
-                // `components.pvm_fw` is safe to unwrap because `protection_type` is
-                // `UnprotectedWithFirmware`.
-                arch::load_image(
-                    &mem,
-                    &mut components.pvm_fw.unwrap(),
-                    GuestAddress(AARCH64_PROTECTED_VM_FW_START),
-                    AARCH64_PROTECTED_VM_FW_MAX_SIZE,
-                )
-                .map_err(Error::PvmFwLoadFailure)?;
-            }
-            ProtectionType::Unprotected | ProtectionType::ProtectedWithoutFirmware => {}
+        if components.hv_cfg.protection_type.loads_firmware() {
+            arch::load_image(
+                &mem,
+                &mut components
+                    .pvm_fw
+                    .expect("pvmfw must be available if ProtectionType loads it"),
+                GuestAddress(AARCH64_PROTECTED_VM_FW_START),
+                AARCH64_PROTECTED_VM_FW_MAX_SIZE,
+            )
+            .map_err(Error::PvmFwLoadFailure)?;
+        } else if components.hv_cfg.protection_type.runs_firmware() {
+            // Tell the hypervisor to load the pVM firmware.
+            vm.load_protected_vm_firmware(
+                GuestAddress(AARCH64_PROTECTED_VM_FW_START),
+                AARCH64_PROTECTED_VM_FW_MAX_SIZE,
+            )
+            .map_err(Error::ProtectVm)?;
         }
 
         for (vcpu_id, vcpu) in vcpus.iter().enumerate() {
@@ -858,12 +850,12 @@ impl AArch64 {
                 get_kernel_addr()
             };
 
-            let entry_addr = match protection_type {
-                ProtectionType::Protected => None, // Hypervisor controls the entry point
-                ProtectionType::UnprotectedWithFirmware => Some(AARCH64_PROTECTED_VM_FW_START),
-                ProtectionType::Unprotected | ProtectionType::ProtectedWithoutFirmware => {
-                    Some(image_addr.offset())
-                }
+            let entry_addr = if protection_type.loads_firmware() {
+                Some(AARCH64_PROTECTED_VM_FW_START)
+            } else if protection_type.runs_firmware() {
+                None // Initial PC value is set by the hypervisor
+            } else {
+                Some(image_addr.offset())
             };
 
             /* PC -- entry point */
@@ -878,10 +870,7 @@ impl AArch64 {
             vcpu.set_one_reg(VcpuRegAArch64::X(0), fdt_addr.offset())
                 .map_err(Error::SetReg)?;
 
-            if matches!(
-                protection_type,
-                ProtectionType::Protected | ProtectionType::UnprotectedWithFirmware
-            ) {
+            if protection_type.runs_firmware() {
                 /* X1 -- payload entry point */
                 vcpu.set_one_reg(VcpuRegAArch64::X(1), image_addr.offset())
                     .map_err(Error::SetReg)?;
