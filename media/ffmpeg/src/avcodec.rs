@@ -64,8 +64,15 @@ pub enum AvCodecOpenError {
     ContextAllocation,
     #[error("failed to open AVContext object")]
     ContextOpen,
-    #[error("DecoderContextBuilder used with a non-decoder")]
-    NotADecoder,
+    #[error("ContextBuilder variant does not match codec type")]
+    UnexpectedCodecType,
+}
+
+/// Dimensions of a frame, used in AvCodecContext and AvFrame.
+#[derive(Copy, Clone, Debug)]
+pub struct Dimensions {
+    pub width: u32,
+    pub height: u32,
 }
 
 impl AvCodec {
@@ -77,7 +84,7 @@ impl AvCodec {
 
     /// Returns whether the codec is an encoder.
     pub fn is_encoder(&self) -> bool {
-        // Safe because `av_codec_is_decoder` is called on a valid static `AVCodec` reference.
+        // Safe because `av_codec_is_encoder` is called on a valid static `AVCodec` reference.
         (unsafe { ffi::av_codec_is_encoder(self.0) } != 0)
     }
 
@@ -107,10 +114,22 @@ impl AvCodec {
         AvPixelFormatIterator(self.0.pix_fmts)
     }
 
+    /// Get a builder for a encoder [`AvCodecContext`] using this codec.
+    pub fn build_encoder(&self) -> Result<EncoderContextBuilder, AvCodecOpenError> {
+        if !self.is_encoder() {
+            return Err(AvCodecOpenError::UnexpectedCodecType);
+        }
+
+        Ok(EncoderContextBuilder {
+            codec: self.0,
+            context: self.alloc_context()?,
+        })
+    }
+
     /// Get a builder for a decoder [`AvCodecContext`] using this codec.
     pub fn build_decoder(&self) -> Result<DecoderContextBuilder, AvCodecOpenError> {
         if !self.is_decoder() {
-            return Err(AvCodecOpenError::NotADecoder);
+            return Err(AvCodecOpenError::UnexpectedCodecType);
         }
 
         Ok(DecoderContextBuilder {
@@ -157,6 +176,41 @@ impl DecoderContextBuilder {
     }
 
     /// Build a decoder AvCodecContext from the configured options.
+    pub fn build(mut self) -> Result<AvCodecContext, AvCodecOpenError> {
+        self.context.init(self.codec)?;
+        Ok(self.context)
+    }
+}
+
+/// A builder to create a [`AvCodecContext`] suitable for encoding.
+// This struct wraps an AvCodecContext directly, but the only way it can be taken out is to call
+// `build()`, which finalizes the context and prevent further modification to the callback, etc.
+pub struct EncoderContextBuilder {
+    codec: *const ffi::AVCodec,
+    context: AvCodecContext,
+}
+
+impl EncoderContextBuilder {
+    /// Set the width of input frames for this encoding context.
+    pub fn set_dimensions(&mut self, dimensions: Dimensions) {
+        let context = unsafe { &mut *(self.context.0) };
+        context.width = dimensions.width as _;
+        context.height = dimensions.height as _;
+    }
+
+    /// Set the time base for this encoding context.
+    pub fn set_time_base(&mut self, time_base: ffi::AVRational) {
+        let context = unsafe { &mut *(self.context.0) };
+        context.time_base = time_base;
+    }
+
+    /// Set the input pixel format for this encoding context.
+    pub fn set_pix_fmt(&mut self, fmt: AvPixelFormat) {
+        let context = unsafe { &mut *(self.context.0) };
+        context.pix_fmt = fmt.pix_fmt();
+    }
+
+    /// Build a encoder AvCodecContext from the configured options.
     pub fn build(mut self) -> Result<AvCodecContext, AvCodecOpenError> {
         self.context.init(self.codec)?;
         Ok(self.context)
