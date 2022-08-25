@@ -37,12 +37,13 @@ use vmm_vhost::message::VhostUserVirtioFeatures;
 
 use crate::virtio::base_features;
 use crate::virtio::vhost::user::device::handler::sys::Doorbell;
+use crate::virtio::vhost::user::device::handler::VhostBackendReqConnection;
+use crate::virtio::vhost::user::device::handler::VhostBackendReqConnectionState;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 use crate::virtio::wl;
 use crate::virtio::Queue;
-use crate::virtio::SharedMemoryMapper;
 use crate::virtio::SharedMemoryRegion;
 
 const MAX_QUEUE_NUM: usize = wl::QUEUE_SIZES.len();
@@ -96,7 +97,6 @@ async fn run_in_queue(
 struct WlBackend {
     ex: Executor,
     wayland_paths: Option<BTreeMap<String, PathBuf>>,
-    mapper: Option<Box<dyn SharedMemoryMapper>>,
     resource_bridge: Option<Tube>,
     use_transition_flags: bool,
     use_send_vfd_v2: bool,
@@ -105,6 +105,7 @@ struct WlBackend {
     acked_features: u64,
     wlstate: Option<Rc<RefCell<wl::WlState>>>,
     workers: [Option<AbortHandle>; MAX_QUEUE_NUM],
+    backend_req_conn: VhostBackendReqConnectionState,
 }
 
 impl WlBackend {
@@ -121,7 +122,6 @@ impl WlBackend {
         WlBackend {
             ex: ex.clone(),
             wayland_paths: Some(wayland_paths),
-            mapper: None,
             resource_bridge,
             use_transition_flags: false,
             use_send_vfd_v2: false,
@@ -130,6 +130,7 @@ impl WlBackend {
             acked_features: 0,
             wlstate: None,
             workers: Default::default(),
+            backend_req_conn: VhostBackendReqConnectionState::NoConnection,
         }
     }
 }
@@ -217,12 +218,22 @@ impl VhostUserBackend for WlBackend {
         // think we're borrowing all of `self` in the closure below.
         let WlBackend {
             ref mut wayland_paths,
-            ref mut mapper,
             ref mut resource_bridge,
             ref use_transition_flags,
             ref use_send_vfd_v2,
             ..
         } = self;
+
+        let mapper = {
+            match &mut self.backend_req_conn {
+                VhostBackendReqConnectionState::Connected(request) => {
+                    request.take_shmem_mapper()?
+                }
+                VhostBackendReqConnectionState::NoConnection => {
+                    bail!("No backend request connection found")
+                }
+            }
+        };
         #[cfg(feature = "minigbm")]
         let gralloc = RutabagaGralloc::new().context("Failed to initailize gralloc")?;
         let wlstate = self
@@ -230,7 +241,7 @@ impl VhostUserBackend for WlBackend {
             .get_or_insert_with(|| {
                 Rc::new(RefCell::new(wl::WlState::new(
                     wayland_paths.take().expect("WlState already initialized"),
-                    mapper.take().expect("WlState already initialized"),
+                    mapper,
                     *use_transition_flags,
                     *use_send_vfd_v2,
                     resource_bridge.take(),
@@ -294,8 +305,12 @@ impl VhostUserBackend for WlBackend {
         })
     }
 
-    fn set_shared_memory_mapper(&mut self, mapper: Box<dyn SharedMemoryMapper>) {
-        self.mapper = Some(mapper);
+    fn set_backend_req_connection(&mut self, conn: VhostBackendReqConnection) {
+        if let VhostBackendReqConnectionState::Connected(_) = &self.backend_req_conn {
+            warn!("connection already established. Overwriting");
+        }
+
+        self.backend_req_conn = VhostBackendReqConnectionState::Connected(conn);
     }
 }
 

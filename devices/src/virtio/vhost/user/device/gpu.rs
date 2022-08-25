@@ -35,6 +35,8 @@ use vmm_vhost::message::VhostUserVirtioFeatures;
 use crate::virtio;
 use crate::virtio::gpu;
 use crate::virtio::vhost::user::device::handler::sys::Doorbell;
+use crate::virtio::vhost::user::device::handler::VhostBackendReqConnection;
+use crate::virtio::vhost::user::device::handler::VhostBackendReqConnectionState;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
@@ -45,7 +47,6 @@ use crate::virtio::GpuDisplayParameters;
 use crate::virtio::GpuParameters;
 use crate::virtio::Queue;
 use crate::virtio::QueueReader;
-use crate::virtio::SharedMemoryMapper;
 use crate::virtio::SharedMemoryRegion;
 use crate::virtio::VirtioDevice;
 
@@ -142,7 +143,7 @@ struct GpuBackend {
     fence_state: Arc<Mutex<gpu::FenceState>>,
     display_worker: Option<Task<()>>,
     workers: [Option<Task<()>>; MAX_QUEUE_NUM],
-    mapper: Option<Box<dyn SharedMemoryMapper>>,
+    backend_req_conn: VhostBackendReqConnectionState,
 }
 
 impl VhostUserBackend for GpuBackend {
@@ -229,7 +230,18 @@ impl VhostUserBackend for GpuBackend {
         } else {
             let fence_handler =
                 gpu::create_fence_handler(mem.clone(), reader.clone(), self.fence_state.clone());
-            let mapper = self.mapper.take().context("missing mapper")?;
+
+            let mapper = {
+                match &mut self.backend_req_conn {
+                    VhostBackendReqConnectionState::Connected(request) => {
+                        request.take_shmem_mapper()?
+                    }
+                    VhostBackendReqConnectionState::NoConnection => {
+                        bail!("No backend request connection found")
+                    }
+                }
+            };
+
             let state = Rc::new(RefCell::new(
                 self.gpu
                     .borrow_mut()
@@ -297,8 +309,12 @@ impl VhostUserBackend for GpuBackend {
         self.gpu.borrow().get_shared_memory_region()
     }
 
-    fn set_shared_memory_mapper(&mut self, mapper: Box<dyn SharedMemoryMapper>) {
-        self.mapper = Some(mapper);
+    fn set_backend_req_connection(&mut self, conn: VhostBackendReqConnection) {
+        if let VhostBackendReqConnectionState::Connected(_) = &self.backend_req_conn {
+            warn!("connection already established. overwriting");
+        }
+
+        self.backend_req_conn = VhostBackendReqConnectionState::Connected(conn);
     }
 }
 
@@ -442,7 +458,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         fence_state: Default::default(),
         display_worker: None,
         workers: Default::default(),
-        mapper: None,
+        backend_req_conn: VhostBackendReqConnectionState::NoConnection,
     });
     ex.run_until(listener.run_backend(backend, &ex))?
 }

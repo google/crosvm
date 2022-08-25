@@ -54,19 +54,16 @@ impl VhostUserHandler {
             backend_pid,
         )
     }
+}
 
-    pub fn initialize_backend_req_handler(&mut self, h: BackendReqHandlerImpl) -> VhostResult<()> {
-        let backend_pid = self
-            .backend_pid
-            .expect("tube needs target pid for backend requests");
-        let mut handler = MasterReqHandler::with_tube(Arc::new(Mutex::new(h)), backend_pid)
-            .map_err(Error::CreateShmemMapperError)?;
-        self.vu
-            .set_slave_request_fd(&handler.take_tx_descriptor())
-            .map_err(Error::SetDeviceRequestChannel)?;
-        self.backend_req_handler = Some(handler);
-        Ok(())
-    }
+pub fn create_backend_req_handler(
+    h: BackendReqHandlerImpl,
+    backend_pid: Option<u32>,
+) -> VhostResult<BackendReqHandler> {
+    let backend_pid = backend_pid.expect("tube needs target pid for backend requests");
+    let mut handler = MasterReqHandler::with_tube(Arc::new(Mutex::new(h)), backend_pid)
+        .map_err(Error::CreateBackendReqHandler)?;
+    Ok(handler)
 }
 
 pub async fn run_backend_request_handler(

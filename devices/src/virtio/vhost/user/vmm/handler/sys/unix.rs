@@ -19,7 +19,6 @@ use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::Error as VhostError;
 use vmm_vhost::Master;
 use vmm_vhost::MasterReqHandler;
-use vmm_vhost::VhostUserMaster;
 
 use crate::virtio::vhost::user::vmm::handler::BackendReqHandler;
 use crate::virtio::vhost::user::vmm::handler::BackendReqHandlerImpl;
@@ -48,16 +47,12 @@ impl VhostUserHandler {
             allow_protocol_features,
         )
     }
+}
 
-    pub fn initialize_backend_req_handler(&mut self, h: BackendReqHandlerImpl) -> VhostResult<()> {
-        let mut handler = MasterReqHandler::with_stream(Arc::new(Mutex::new(h)))
-            .map_err(Error::CreateShmemMapperError)?;
-        self.vu
-            .set_slave_request_fd(&handler.take_tx_descriptor())
-            .map_err(Error::SetDeviceRequestChannel)?;
-        self.backend_req_handler = Some(handler);
-        Ok(())
-    }
+pub fn create_backend_req_handler(h: BackendReqHandlerImpl) -> VhostResult<BackendReqHandler> {
+    let handler = MasterReqHandler::with_stream(Arc::new(Mutex::new(h)))
+        .map_err(Error::CreateBackendReqHandler)?;
+    Ok(handler)
 }
 
 pub async fn run_backend_request_handler(

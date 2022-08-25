@@ -28,6 +28,7 @@ use vmm_vhost::VhostUserMasterReqHandlerMut;
 use vmm_vhost::VhostUserMemoryRegionInfo;
 use vmm_vhost::VringConfigData;
 
+use crate::virtio::vhost::user::vmm::handler::sys::create_backend_req_handler;
 use crate::virtio::vhost::user::vmm::handler::sys::SocketMaster;
 use crate::virtio::vhost::user::vmm::Error;
 use crate::virtio::vhost::user::vmm::Result;
@@ -81,12 +82,30 @@ impl VhostUserHandler {
                 .map_err(Error::SetProtocolFeatures)?;
         }
 
+        // Create backend request handler and send slave request fd to backend
+        // if protocol feature `VhostUserProtocolFeatures::SLAVE_REQ` is negotiated.
+        let backend_req_handler =
+            if protocol_features.contains(VhostUserProtocolFeatures::SLAVE_REQ) {
+                let mut handler = create_backend_req_handler(
+                    BackendReqHandlerImpl {
+                        shared_mapper_state: None,
+                    },
+                    #[cfg(windows)]
+                    backend_pid,
+                )?;
+                vu.set_slave_request_fd(&handler.take_tx_descriptor())
+                    .map_err(Error::SetDeviceRequestChannel)?;
+                Some(handler)
+            } else {
+                None
+            };
+
         Ok(VhostUserHandler {
             vu,
             avail_features,
             acked_features,
             protocol_features,
-            backend_req_handler: None,
+            backend_req_handler,
             shmem_region: None,
             #[cfg(windows)]
             backend_pid,
@@ -307,6 +326,15 @@ impl VhostUserHandler {
     }
 
     pub fn set_shared_memory_mapper(&mut self, mapper: Box<dyn SharedMemoryMapper>) -> Result<()> {
+        // Return error if backend request handler is not available. This indicates
+        // that `VhostUserProtocolFeatures::SLAVE_REQ` is not negotiated.
+        let backend_req_handler =
+            self.backend_req_handler
+                .as_mut()
+                .ok_or(Error::ProtocolFeatureNotNegoiated(
+                    VhostUserProtocolFeatures::SLAVE_REQ,
+                ))?;
+
         // The virtio framework will only call this if get_shared_memory_region returned a region
         let shmid = self
             .shmem_region
@@ -314,13 +342,29 @@ impl VhostUserHandler {
             .flatten()
             .expect("missing shmid")
             .id;
-        self.initialize_backend_req_handler(BackendReqHandlerImpl { mapper, shmid })
+
+        backend_req_handler
+            .backend()
+            .lock()
+            .unwrap()
+            .set_shared_mapper_state(SharedMapperState { mapper, shmid });
+        Ok(())
     }
 }
 
-pub struct BackendReqHandlerImpl {
+struct SharedMapperState {
     mapper: Box<dyn SharedMemoryMapper>,
     shmid: u8,
+}
+
+pub struct BackendReqHandlerImpl {
+    shared_mapper_state: Option<SharedMapperState>,
+}
+
+impl BackendReqHandlerImpl {
+    fn set_shared_mapper_state(&mut self, shared_mapper_state: SharedMapperState) {
+        self.shared_mapper_state = Some(shared_mapper_state);
+    }
 }
 
 impl VhostUserMasterReqHandlerMut for BackendReqHandlerImpl {
@@ -329,11 +373,18 @@ impl VhostUserMasterReqHandlerMut for BackendReqHandlerImpl {
         req: &VhostUserShmemMapMsg,
         fd: &dyn AsRawDescriptor,
     ) -> HandlerResult<u64> {
-        if req.shmid != self.shmid {
-            error!("bad shmid {}, expected {}", req.shmid, self.shmid);
+        let shared_mapper_state = self
+            .shared_mapper_state
+            .as_mut()
+            .ok_or_else(|| std::io::Error::from_raw_os_error(libc::EINVAL))?;
+        if req.shmid != shared_mapper_state.shmid {
+            error!(
+                "bad shmid {}, expected {}",
+                req.shmid, shared_mapper_state.shmid
+            );
             return Err(std::io::Error::from_raw_os_error(libc::EINVAL));
         }
-        match self.mapper.add_mapping(
+        match shared_mapper_state.mapper.add_mapping(
             VmMemorySource::Descriptor {
                 descriptor: SafeDescriptor::try_from(fd)
                     .map_err(|_| std::io::Error::from_raw_os_error(libc::EIO))?,
@@ -353,11 +404,18 @@ impl VhostUserMasterReqHandlerMut for BackendReqHandlerImpl {
     }
 
     fn shmem_unmap(&mut self, req: &VhostUserShmemUnmapMsg) -> HandlerResult<u64> {
-        if req.shmid != self.shmid {
-            error!("bad shmid {}, expected {}", req.shmid, self.shmid);
+        let shared_mapper_state = self
+            .shared_mapper_state
+            .as_mut()
+            .ok_or_else(|| std::io::Error::from_raw_os_error(libc::EINVAL))?;
+        if req.shmid != shared_mapper_state.shmid {
+            error!(
+                "bad shmid {}, expected {}",
+                req.shmid, shared_mapper_state.shmid
+            );
             return Err(std::io::Error::from_raw_os_error(libc::EINVAL));
         }
-        match self.mapper.remove_mapping(req.shm_offset) {
+        match shared_mapper_state.mapper.remove_mapping(req.shm_offset) {
             Ok(()) => Ok(0),
             Err(e) => {
                 error!("failed to remove mapping {:?}", e);

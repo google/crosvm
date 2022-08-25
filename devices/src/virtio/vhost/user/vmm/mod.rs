@@ -8,6 +8,7 @@ mod handler;
 use remain::sorted;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemoryError;
+use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::Error as VhostError;
 
 pub use self::block::*;
@@ -50,12 +51,15 @@ cfg_if::cfg_if! {
 #[sorted]
 #[derive(ThisError, Debug)]
 pub enum Error {
+    /// Failed to copy config to a buffer.
+    #[error("failed to copy config to a buffer: {0}")]
+    CopyConfig(std::io::Error),
+    /// Failed to create backend request handler
+    #[error("could not create backend req handler: {0}")]
+    CreateBackendReqHandler(VhostError),
     /// Failed to create `base::Event`.
     #[error("failed to create Event: {0}")]
     CreateEvent(base::Error),
-    /// Unsupported shared memory mapper
-    #[error("unsupported shared memory mapper: {0}")]
-    CreateShmemMapperError(VhostError),
     /// Failed to get config.
     #[error("failed to get config: {0}")]
     GetConfig(VhostError),
@@ -86,6 +90,8 @@ pub enum Error {
     /// MSI-X irqfd is unavailable.
     #[error("MSI-X irqfd is unavailable")]
     MsixIrqfdUnavailable,
+    #[error("protocol feature is not negotiated: {0:?}")]
+    ProtocolFeatureNotNegoiated(VhostUserProtocolFeatures),
     /// Failed to reset owner.
     #[error("failed to reset owner: {0}")]
     ResetOwner(VhostError),

@@ -206,8 +206,10 @@ pub struct MasterReqHandler<S: VhostUserMasterReqHandler> {
     serialize_tx: Box<dyn Fn(SystemStream) -> SafeDescriptor + Send>,
     // Protocol feature VHOST_USER_PROTOCOL_F_REPLY_ACK has been negotiated.
     reply_ack_negotiated: bool,
-    // the VirtIO backend device object
+
+    /// the VirtIO backend device object
     backend: Arc<S>,
+
     // whether the endpoint has encountered any failure
     error: Option<i32>,
 }
@@ -263,6 +265,11 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         } else {
             self.error = Some(error);
         }
+    }
+
+    /// Get the underlying backend device
+    pub fn backend(&self) -> Arc<S> {
+        Arc::clone(&self.backend)
     }
 
     /// Main entrance to server slave request from the slave communication channel.
