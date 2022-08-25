@@ -266,7 +266,7 @@ fn create_block_device(cfg: &Config, disk: &DiskOption, disk_device_tube: Tube) 
         disk::create_disk_file(raw_image, disk.sparse, disk::MAX_NESTING_DEPTH, &disk.path)
             .exit_context(Exit::CreateAsyncDisk, "failed to create virtual disk")?;
     let features = virtio::base_features(cfg.protection_type);
-    let dev = virtio::Block::new(
+    let dev = virtio::BlockAsync::new(
         features,
         disk_file,
         disk.read_only,
