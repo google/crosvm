@@ -1908,6 +1908,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror",
+ "tube_transporter",
 ]
 
 [[package]]

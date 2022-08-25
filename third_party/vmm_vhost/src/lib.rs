@@ -77,7 +77,7 @@ cfg_if::cfg_if! {
     }
 }
 cfg_if::cfg_if! {
-    if #[cfg(all(feature = "vmm", unix))] {
+    if #[cfg(feature = "vmm")] {
         pub use self::master_req_handler::MasterReqHandler;
     }
 }
@@ -151,7 +151,19 @@ pub enum Error {
     VfioDeviceError(anyhow::Error),
 }
 
-impl std::convert::From<base::Error> for Error {
+impl From<base::TubeError> for Error {
+    fn from(err: base::TubeError) -> Self {
+        Error::TubeError(err)
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(err: std::io::Error) -> Self {
+        Error::SocketError(err)
+    }
+}
+
+impl From<base::Error> for Error {
     /// Convert raw socket errors into meaningful vhost-user errors.
     ///
     /// The base::Error is a simple wrapper over the raw errno, which doesn't means
@@ -336,12 +348,8 @@ mod tests {
             slave.handle_request().unwrap();
             slave.handle_request().unwrap();
 
-            // set_slave_request_rd isn't implemented on Windows.
-            #[cfg(unix)]
-            {
-                // set_slave_request_fd
-                slave.handle_request().unwrap();
-            }
+            // set_slave_request_fd
+            slave.handle_request().unwrap();
 
             // set_vring_enable
             slave.handle_request().unwrap();
@@ -419,13 +427,17 @@ mod tests {
         assert_eq!(offset, 0x100);
         assert_eq!(reply_payload[0], 0xa5);
 
-        // slave request rds are not implemented on Windows.
+        #[cfg(windows)]
+        let tubes = base::Tube::pair().unwrap();
+        #[cfg(windows)]
+        // Safe because we will be importing the Tube in the other thread.
+        let descriptor =
+            unsafe { tube_transporter::packed_tube::pack(tubes.0, std::process::id()).unwrap() };
+
         #[cfg(unix)]
-        {
-            master
-                .set_slave_request_fd(&event as &dyn AsRawDescriptor)
-                .unwrap();
-        }
+        let descriptor = base::Event::new().unwrap();
+
+        master.set_slave_request_fd(&descriptor).unwrap();
         master.set_vring_enable(0, true).unwrap();
 
         // unimplemented yet

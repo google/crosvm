@@ -36,6 +36,9 @@ use super::MemRegion;
 #[sorted]
 #[derive(ThisError, Debug)]
 pub enum Error {
+    /// An error with EventAsync.
+    #[error("An error with an EventAsync: {0}")]
+    EventAsync(base::Error),
     /// An error with a polled(FD) source.
     #[error("An error with a poll source: {0}")]
     Poll(crate::sys::unix::poll_source::Error),
@@ -77,6 +80,7 @@ impl From<Error> for io::Error {
     fn from(e: Error) -> Self {
         use Error::*;
         match e {
+            EventAsync(e) => e.into(),
             Poll(e) => e.into(),
             Uring(e) => e.into(),
         }

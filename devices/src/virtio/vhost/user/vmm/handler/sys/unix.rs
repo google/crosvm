@@ -12,7 +12,6 @@ use anyhow::Context;
 use anyhow::Result;
 use base::info;
 use base::AsRawDescriptor;
-use base::Descriptor;
 use base::SafeDescriptor;
 use cros_async::AsyncWrapper;
 use cros_async::Executor;
@@ -24,6 +23,7 @@ use vmm_vhost::Master;
 use vmm_vhost::MasterReqHandler;
 use vmm_vhost::VhostUserMaster;
 
+use crate::virtio::vhost::user::vmm::handler::BackendReqHandler;
 use crate::virtio::vhost::user::vmm::handler::BackendReqHandlerImpl;
 use crate::virtio::vhost::user::vmm::handler::VhostUserHandler;
 use crate::virtio::vhost::user::vmm::Error;
@@ -31,9 +31,6 @@ use crate::virtio::vhost::user::vmm::Result as VhostResult;
 
 pub(in crate::virtio::vhost::user::vmm::handler) type SocketMaster =
     Master<SocketEndpoint<MasterReq>>;
-
-pub(in crate::virtio::vhost::user::vmm::handler) type BackendReqHandler =
-    MasterReqHandler<Mutex<BackendReqHandlerImpl>>;
 
 impl VhostUserHandler {
     /// Creates a `VhostUserHandler` instance attached to the provided UDS path
@@ -72,10 +69,10 @@ impl VhostUserHandler {
     }
 
     pub fn initialize_backend_req_handler(&mut self, h: BackendReqHandlerImpl) -> VhostResult<()> {
-        let handler = MasterReqHandler::new(Arc::new(Mutex::new(h)))
+        let mut handler = MasterReqHandler::with_stream(Arc::new(Mutex::new(h)))
             .map_err(Error::CreateShmemMapperError)?;
         self.vu
-            .set_slave_request_fd(&Descriptor(handler.get_tx_raw_fd()))
+            .set_slave_request_fd(&handler.take_tx_descriptor())
             .map_err(Error::SetDeviceRequestChannel)?;
         self.backend_req_handler = Some(handler);
         Ok(())

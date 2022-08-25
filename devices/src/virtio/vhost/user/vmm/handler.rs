@@ -6,6 +6,7 @@ mod sys;
 mod worker;
 
 use std::io::Write;
+use std::sync::Mutex;
 use std::thread;
 
 use base::error;
@@ -21,13 +22,13 @@ use vmm_vhost::message::VhostUserShmemMapMsg;
 use vmm_vhost::message::VhostUserShmemUnmapMsg;
 use vmm_vhost::message::VhostUserVirtioFeatures;
 use vmm_vhost::HandlerResult;
+use vmm_vhost::MasterReqHandler;
 use vmm_vhost::VhostBackend;
 use vmm_vhost::VhostUserMaster;
 use vmm_vhost::VhostUserMasterReqHandlerMut;
 use vmm_vhost::VhostUserMemoryRegionInfo;
 use vmm_vhost::VringConfigData;
 
-use crate::virtio::vhost::user::vmm::handler::sys::BackendReqHandler;
 use crate::virtio::vhost::user::vmm::handler::sys::SocketMaster;
 use crate::virtio::vhost::user::vmm::Error;
 use crate::virtio::vhost::user::vmm::Result;
@@ -35,6 +36,8 @@ use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::SharedMemoryMapper;
 use crate::virtio::SharedMemoryRegion;
+
+type BackendReqHandler = MasterReqHandler<Mutex<BackendReqHandlerImpl>>;
 
 fn set_features(vu: &mut SocketMaster, avail_features: u64, ack_features: u64) -> Result<u64> {
     let features = avail_features & ack_features;
@@ -50,6 +53,9 @@ pub struct VhostUserHandler {
     backend_req_handler: Option<BackendReqHandler>,
     // Shared memory region info. IPC result from backend is saved with outer Option.
     shmem_region: Option<Option<SharedMemoryRegion>>,
+    // On Windows, we need a backend pid to support backend requests.
+    #[cfg(windows)]
+    backend_pid: Option<u32>,
 }
 
 impl VhostUserHandler {
@@ -59,6 +65,7 @@ impl VhostUserHandler {
         allow_features: u64,
         init_features: u64,
         allow_protocol_features: VhostUserProtocolFeatures,
+        #[cfg(windows)] backend_pid: Option<u32>,
     ) -> Result<Self> {
         vu.set_owner().map_err(Error::SetOwner)?;
 
@@ -82,6 +89,8 @@ impl VhostUserHandler {
             protocol_features,
             backend_req_handler: None,
             shmem_region: None,
+            #[cfg(windows)]
+            backend_pid,
         })
     }
 

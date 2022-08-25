@@ -27,6 +27,8 @@ use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error as ThisError;
 
+pub mod packed_tube;
+
 pub type TransportTubeResult<T> = std::result::Result<T, TubeTransportError>;
 
 /// Contains information for a child process to set up the Tube for use.
