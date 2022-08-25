@@ -37,7 +37,7 @@ RUN useradd -ms /bin/bash crosvmdev \
     # Pass rust envs from rust toolchain image when sudo into new user
     && echo 'Defaults env_keep += "RUSTUP_HOME CARGO_HOME RUST_VERSION CARGO_TARGET_DIR"' >> /etc/sudoers \
     # Allow dependencies and build files to be used and overwritten by user
-    && chmod -R 777 /scratch /cache
+    && chown -R crosvmdev:crosvmdev /scratch /cache
 
 # Following operations will be run as crosvmdev to ensure correct permission.
 USER crosvmdev

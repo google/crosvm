@@ -3,12 +3,10 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-if [[ $OUTSIDE_GID != $(sudo -u crosvmdev id -g) ]]; then
+if [[ $OUTSIDE_GID != $(id -g crosvmdev) || $OUTSIDE_UID != $(id -u crosvmdev) ]]; then
     groupmod -g "$OUTSIDE_GID" crosvmdev
-    chgrp -R crosvmdev /home/crosvmdev
-fi
-if [[ $OUTSIDE_UID != $(sudo -u crosvmdev id -u) ]]; then
     usermod -u "$OUTSIDE_UID" crosvmdev
+    chown -R crosvmdev:crosvmdev /scratch
 fi
 
 # Transitional section to fix CI's cache permission
