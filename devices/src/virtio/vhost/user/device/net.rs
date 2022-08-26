@@ -4,8 +4,6 @@
 
 pub mod sys;
 
-use std::sync::Arc;
-
 use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
@@ -18,7 +16,6 @@ use data_model::DataInit;
 use futures::future::AbortHandle;
 use net_util::TapT;
 use once_cell::sync::OnceCell;
-use sync::Mutex;
 pub use sys::start_device as run_net_device;
 pub use sys::Options;
 use vm_memory::GuestMemory;
@@ -45,7 +42,7 @@ async fn run_tx_queue<T: TapT>(
     mut queue: virtio::Queue,
     mem: GuestMemory,
     mut tap: T,
-    doorbell: Arc<Mutex<Doorbell>>,
+    doorbell: Doorbell,
     kick_evt: EventAsync,
 ) {
     loop {
@@ -62,7 +59,7 @@ async fn run_ctrl_queue<T: TapT>(
     mut queue: virtio::Queue,
     mem: GuestMemory,
     mut tap: T,
-    doorbell: Arc<Mutex<Doorbell>>,
+    doorbell: Doorbell,
     kick_evt: EventAsync,
     acked_features: u64,
     vq_pairs: u16,
@@ -170,7 +167,7 @@ where
         idx: usize,
         queue: virtio::Queue,
         mem: GuestMemory,
-        doorbell: Arc<Mutex<Doorbell>>,
+        doorbell: Doorbell,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
         sys::start_queue(self, idx, queue, mem, doorbell, kick_evt)

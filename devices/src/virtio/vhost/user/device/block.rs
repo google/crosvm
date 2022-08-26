@@ -24,7 +24,6 @@ use cros_async::TimerAsync;
 use data_model::DataInit;
 use futures::future::AbortHandle;
 use futures::future::Abortable;
-use sync::Mutex;
 pub use sys::start_device as run_block_device;
 pub use sys::Options;
 use vm_memory::GuestMemory;
@@ -196,7 +195,7 @@ impl VhostUserBackend for BlockBackend {
         idx: usize,
         mut queue: virtio::Queue,
         mem: GuestMemory,
-        doorbell: Arc<Mutex<Doorbell>>,
+        doorbell: Doorbell,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
         if let Some(handle) = self.workers.get_mut(idx).and_then(Option::take) {

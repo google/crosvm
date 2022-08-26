@@ -2,9 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use base::Event;
 use cros_async::select3;
 use cros_async::Executor;
@@ -30,7 +27,6 @@ impl Worker {
     pub fn run(&mut self, interrupt: Interrupt) -> Result<(), String> {
         let ex = Executor::new().expect("failed to create an executor");
 
-        let interrupt = Rc::new(RefCell::new(interrupt));
         let resample = async_utils::handle_irq_resample(&ex, interrupt);
         pin_mut!(resample);
 

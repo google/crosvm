@@ -602,7 +602,7 @@ async fn request_queue<I: SignalableInterrupt>(
     state: &Rc<RefCell<State>>,
     mut queue: Queue,
     mut queue_event: EventAsync,
-    interrupt: &I,
+    interrupt: I,
 ) -> Result<()> {
     loop {
         let mem = state.borrow().mem.clone();
@@ -633,7 +633,7 @@ async fn request_queue<I: SignalableInterrupt>(
         }
 
         queue.add_used(&mem, desc_index, len as u32);
-        queue.trigger_interrupt(&mem, interrupt);
+        queue.trigger_interrupt(&mem, &interrupt);
     }
 }
 
@@ -654,8 +654,6 @@ fn run(
         .into_iter()
         .map(|e| EventAsync::new(e, &ex).expect("Failed to create async event for queue"))
         .collect();
-    let interrupt = Rc::new(RefCell::new(interrupt));
-    let interrupt_ref = &*interrupt.borrow();
 
     let (req_queue, req_evt) = (queues.remove(0), evts_async.remove(0));
 
@@ -677,7 +675,7 @@ fn run(
 
     let f_handle_translate_request =
         sys::handle_translate_request(&ex, &state, request_tube, response_tubes);
-    let f_request = request_queue(&state, req_queue, req_evt, interrupt_ref);
+    let f_request = request_queue(&state, req_queue, req_evt, interrupt);
 
     let command_tube = AsyncTube::new(&ex, iommu_device_tube).unwrap();
     // Future to handle command messages from host, such as passing vfio containers.

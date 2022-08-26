@@ -380,7 +380,7 @@ fn send_pcm_response_with_writer<I: SignalableInterrupt>(
 pub async fn send_pcm_response_worker<I: SignalableInterrupt>(
     mem: &GuestMemory,
     queue: &Rc<AsyncMutex<Queue>>,
-    interrupt: &I,
+    interrupt: I,
     recv: &mut mpsc::UnboundedReceiver<PcmResponse>,
 ) -> Result<(), Error> {
     loop {
@@ -390,7 +390,7 @@ pub async fn send_pcm_response_worker<I: SignalableInterrupt>(
                 r.desc_index,
                 mem,
                 &mut *queue.lock().await,
-                interrupt,
+                &interrupt,
                 r.status,
             )?;
 
@@ -490,7 +490,7 @@ pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
     snd_data: &SndData,
     mut queue: Queue,
     mut queue_event: EventAsync,
-    interrupt: &I,
+    interrupt: I,
     tx_send: mpsc::UnboundedSender<PcmResponse>,
     rx_send: mpsc::UnboundedSender<PcmResponse>,
 ) -> Result<(), Error> {
@@ -752,7 +752,7 @@ pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
 
         handle_ctrl_msg.await?;
         queue.add_used(mem, index, writer.bytes_written() as u32);
-        queue.trigger_interrupt(mem, interrupt);
+        queue.trigger_interrupt(mem, &interrupt);
     }
 }
 
@@ -761,7 +761,7 @@ pub async fn handle_event_queue<I: SignalableInterrupt>(
     mem: &GuestMemory,
     mut queue: Queue,
     mut queue_event: EventAsync,
-    interrupt: &I,
+    interrupt: I,
 ) -> Result<(), Error> {
     loop {
         let desc_chain = queue
@@ -772,6 +772,6 @@ pub async fn handle_event_queue<I: SignalableInterrupt>(
         // TODO(woodychow): Poll and forward events from cras asynchronously (API to be added)
         let index = desc_chain.index;
         queue.add_used(mem, index, 0);
-        queue.trigger_interrupt(mem, interrupt);
+        queue.trigger_interrupt(mem, &interrupt);
     }
 }

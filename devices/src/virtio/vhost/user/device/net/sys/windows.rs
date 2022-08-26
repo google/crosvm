@@ -82,7 +82,7 @@ async fn run_rx_queue<T: TapT>(
     mut queue: virtio::Queue,
     mem: GuestMemory,
     mut tap: Box<dyn IoSourceExt<T>>,
-    call_evt: Arc<Mutex<Doorbell>>,
+    call_evt: Doorbell,
     kick_evt: EventAsync,
     read_notifier: EventAsync,
     mut overlapped_wrapper: OverlappedWrapper,
@@ -113,7 +113,7 @@ async fn run_rx_queue<T: TapT>(
             &mut overlapped_wrapper,
         );
         if needs_interrupt {
-            call_evt.lock().signal_used_queue(queue.vector());
+            call_evt.signal_used_queue(queue.vector());
         }
 
         // There aren't any RX descriptors available for us to write packets to. Wait for the guest
@@ -133,7 +133,7 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
     idx: usize,
     mut queue: virtio::Queue,
     mem: GuestMemory,
-    doorbell: Arc<Mutex<Doorbell>>,
+    doorbell: Doorbell,
     kick_evt: Event,
 ) -> anyhow::Result<()> {
     if let Some(handle) = backend.workers.get_mut(idx).and_then(Option::take) {

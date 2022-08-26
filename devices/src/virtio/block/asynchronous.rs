@@ -253,7 +253,7 @@ pub async fn process_one_chain<I: SignalableInterrupt>(
 // There is one async task running `handle_queue` per virtio queue in use.
 // Receives messages from the guest and queues a task to complete the operations with the async
 // executor.
-pub async fn handle_queue<I: SignalableInterrupt + Clone + 'static>(
+pub async fn handle_queue<I: SignalableInterrupt + 'static>(
     ex: Executor,
     mem: GuestMemory,
     disk_state: Rc<AsyncMutex<DiskState>>,
@@ -310,7 +310,7 @@ pub async fn handle_vhost_user_command_tube(
 // once we enable sending vhost-user message from the backend to the frontend.
 async fn handle_command_tube(
     command_tube: &Option<AsyncTube>,
-    interrupt: Option<Rc<RefCell<Interrupt>>>,
+    interrupt: Option<Interrupt>,
     disk_state: Rc<AsyncMutex<DiskState>>,
 ) -> Result<(), ExecuteError> {
     let command_tube = match command_tube {
@@ -336,7 +336,7 @@ async fn handle_command_tube(
                     .map_err(ExecuteError::SendingResponse)?;
                 if let DiskControlResult::Ok = resp {
                     if let Some(interrupt) = &interrupt {
-                        interrupt.borrow().signal_config_changed();
+                        interrupt.signal_config_changed();
                     }
                 }
             }
@@ -422,22 +422,16 @@ fn run_worker(
         return Err("Number of queues and events must match.".to_string());
     }
 
-    let interrupt = Rc::new(RefCell::new(interrupt));
-
     // One flush timer per disk.
     let timer = Timer::new().expect("Failed to create a timer");
     let flush_timer_armed = Rc::new(RefCell::new(false));
 
     // Process any requests to resample the irq value.
-    let resample = async_utils::handle_irq_resample(&ex, Rc::clone(&interrupt));
+    let resample = async_utils::handle_irq_resample(&ex, interrupt.clone());
     pin_mut!(resample);
 
     // Handles control requests.
-    let control = handle_command_tube(
-        control_tube,
-        Some(Rc::clone(&interrupt)),
-        disk_state.clone(),
-    );
+    let control = handle_command_tube(control_tube, Some(interrupt.clone()), disk_state.clone());
     pin_mut!(control);
 
     // Handle all the queues in one sub-select call.
@@ -465,7 +459,7 @@ fn run_worker(
                 Rc::clone(disk_state),
                 Rc::clone(&queue),
                 event,
-                Rc::clone(&interrupt),
+                interrupt.clone(),
                 Rc::clone(&flush_timer),
                 Rc::clone(&flush_timer_armed),
             )

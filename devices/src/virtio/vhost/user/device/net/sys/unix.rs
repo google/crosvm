@@ -4,7 +4,6 @@
 
 use std::net::Ipv4Addr;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::thread;
 
 use anyhow::anyhow;
@@ -27,7 +26,6 @@ use hypervisor::ProtectionType;
 use net_util::sys::unix::Tap;
 use net_util::MacAddress;
 use net_util::TapT;
-use sync::Mutex;
 use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
@@ -140,7 +138,7 @@ async fn run_rx_queue<T: TapT>(
     mut queue: virtio::Queue,
     mem: GuestMemory,
     mut tap: Box<dyn IoSourceExt<T>>,
-    doorbell: Arc<Mutex<Doorbell>>,
+    doorbell: Doorbell,
     kick_evt: EventAsync,
 ) {
     loop {
@@ -170,7 +168,7 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
     idx: usize,
     mut queue: virtio::Queue,
     mem: GuestMemory,
-    doorbell: Arc<Mutex<Doorbell>>,
+    doorbell: Doorbell,
     kick_evt: Event,
 ) -> anyhow::Result<()> {
     if let Some(handle) = backend.workers.get_mut(idx).and_then(Option::take) {

@@ -67,8 +67,6 @@ use base::IntoRawDescriptor;
 use base::Protection;
 use base::SafeDescriptor;
 use base::SharedMemory;
-
-use sync::Mutex;
 use sys::Doorbell;
 use vm_control::VmMemorySource;
 use vm_memory::GuestAddress;
@@ -106,12 +104,13 @@ use crate::virtio::SignalableInterrupt;
 // TODO(b/187487351): To avoid sending unnecessary events, we might want to support interrupt
 // status. For this purpose, we need a mechanism to share interrupt status between the vmm and the
 // device process.
-pub struct CallEvent(Event);
+#[derive(Clone)]
+pub struct CallEvent(Arc<Event>);
 
 impl CallEvent {
     #[cfg_attr(windows, allow(dead_code))]
     pub fn into_inner(self) -> Event {
-        self.0
+        Arc::try_unwrap(self.0).unwrap()
     }
 }
 
@@ -132,7 +131,9 @@ impl SignalableInterrupt for CallEvent {
 impl From<File> for CallEvent {
     fn from(file: File) -> Self {
         // Safe because we own the file.
-        CallEvent(unsafe { Event::from_raw_descriptor(file.into_raw_descriptor()) })
+        CallEvent(Arc::new(unsafe {
+            Event::from_raw_descriptor(file.into_raw_descriptor())
+        }))
     }
 }
 
@@ -194,7 +195,7 @@ pub trait VhostUserBackend {
         idx: usize,
         queue: Queue,
         mem: GuestMemory,
-        doorbell: Arc<Mutex<Doorbell>>,
+        doorbell: Doorbell,
         kick_evt: Event,
     ) -> anyhow::Result<()>;
 
@@ -220,7 +221,7 @@ pub trait VhostUserBackend {
 /// A virtio ring entry.
 struct Vring {
     queue: Queue,
-    doorbell: Option<Arc<Mutex<Doorbell>>>,
+    doorbell: Option<Doorbell>,
     enabled: bool,
 }
 
@@ -569,19 +570,16 @@ impl<O: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for DeviceRequestHandl
         vring.queue.set_ready(true);
 
         let queue = vring.queue.clone();
-        let doorbell = vring
-            .doorbell
-            .as_ref()
-            .ok_or(VhostError::InvalidOperation)?;
+        let doorbell = vring.doorbell.clone().ok_or(VhostError::InvalidOperation)?;
         let mem = self
             .mem
             .as_ref()
             .cloned()
             .ok_or(VhostError::InvalidOperation)?;
 
-        if let Err(e) =
-            self.backend
-                .start_queue(index as usize, queue, mem, Arc::clone(doorbell), kick_evt)
+        if let Err(e) = self
+            .backend
+            .start_queue(index as usize, queue, mem, doorbell, kick_evt)
         {
             error!("Failed to start queue {}: {}", index, e);
             return Err(VhostError::SlaveInternalError);
@@ -596,16 +594,7 @@ impl<O: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for DeviceRequestHandl
         }
 
         let doorbell = self.ops.set_vring_call(index, file)?;
-        match &self.vrings[index as usize].doorbell {
-            None => {
-                self.vrings[index as usize].doorbell = Some(Arc::new(Mutex::new(doorbell)));
-            }
-            Some(cell) => {
-                let mut evt = cell.lock();
-                *evt = doorbell;
-            }
-        }
-
+        self.vrings[index as usize].doorbell = Some(doorbell);
         Ok(())
     }
 
@@ -869,7 +858,7 @@ mod tests {
             _idx: usize,
             _queue: Queue,
             _mem: GuestMemory,
-            _doorbell: Arc<Mutex<Doorbell>>,
+            _doorbell: Doorbell,
             _kick_evt: Event,
         ) -> anyhow::Result<()> {
             Ok(())

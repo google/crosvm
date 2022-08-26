@@ -6,7 +6,6 @@
 
 use std::collections::VecDeque;
 use std::io;
-use std::sync::Arc;
 use std::thread;
 
 use anyhow::Context;
@@ -25,7 +24,6 @@ use cros_async::IoSourceExt;
 use data_model::DataInit;
 use futures::FutureExt;
 use hypervisor::ProtectionType;
-use sync::Mutex;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserVirtioFeatures;
 
@@ -344,7 +342,6 @@ impl VirtioDevice for AsyncConsole {
             .name("virtio_console".to_string())
             .spawn(move || {
                 let mut console = console;
-                let interrupt = Arc::new(Mutex::new(interrupt));
 
                 console.start_receive_queue(
                     &ex,

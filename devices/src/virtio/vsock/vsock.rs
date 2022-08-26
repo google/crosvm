@@ -233,8 +233,7 @@ impl VirtioDevice for Vsock {
         let worker_result = thread::Builder::new()
             .name("userspace_virtio_vsock".to_string())
             .spawn(move || {
-                let mut worker =
-                    Worker::new(mem, Rc::new(RefCell::new(interrupt)), host_guid, guest_cid);
+                let mut worker = Worker::new(mem, interrupt, host_guid, guest_cid);
                 let result = worker.run(
                     queues.remove(0),     /* rx_queue */
                     queues.remove(0),     /* tx_queue */
@@ -327,7 +326,7 @@ struct VsockConnection {
 
 struct Worker {
     mem: GuestMemory,
-    interrupt: Rc<RefCell<Interrupt>>,
+    interrupt: Interrupt,
     host_guid: Option<String>,
     guest_cid: u64,
     // Map of host port to a VsockConnection.
@@ -338,7 +337,7 @@ struct Worker {
 impl Worker {
     fn new(
         mem: GuestMemory,
-        interrupt: Rc<RefCell<Interrupt>>,
+        interrupt: Interrupt,
         host_guid: Option<String>,
         guest_cid: u64,
     ) -> Worker {
@@ -578,7 +577,7 @@ impl Worker {
                     )
                 };
                 queue.add_used(&self.mem, index, 0);
-                queue.trigger_interrupt(&self.mem, &*self.interrupt.borrow());
+                queue.trigger_interrupt(&self.mem, &self.interrupt);
             }
         }
     }
@@ -1175,7 +1174,7 @@ impl Worker {
         let bytes_written = writer.bytes_written() as u32;
         if bytes_written > 0 {
             queue.add_used(&self.mem, desc_index, bytes_written);
-            queue.trigger_interrupt(&self.mem, &*self.interrupt.borrow());
+            queue.trigger_interrupt(&self.mem, &self.interrupt);
             Ok(())
         } else {
             error!("vsock: Failed to write bytes to queue");

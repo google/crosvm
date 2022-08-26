@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -18,7 +16,7 @@ use crate::irq_event::IrqEdgeEvent;
 use crate::irq_event::IrqLevelEvent;
 use crate::pci::MsixConfig;
 
-pub trait SignalableInterrupt {
+pub trait SignalableInterrupt: Clone {
     /// Writes to the irqfd to VMM to deliver virtual interrupt to the guest.
     fn signal(&self, vector: u16, interrupt_status_mask: u32);
 
@@ -49,9 +47,10 @@ enum Transport {
     Mmio { irq_evt_edge: IrqEdgeEvent },
 }
 
+#[derive(Clone)]
 pub struct Interrupt {
     interrupt_status: Arc<AtomicUsize>,
-    transport: Transport,
+    transport: Arc<Transport>,
 }
 
 impl SignalableInterrupt for Interrupt {
@@ -61,7 +60,7 @@ impl SignalableInterrupt for Interrupt {
     /// Write to the irqfd to VMM to deliver virtual interrupt to the guest
     fn signal(&self, vector: u16, interrupt_status_mask: u32) {
         // Don't need to set ISR for MSI-X interrupts
-        if let Transport::Pci { pci } = &self.transport {
+        if let Transport::Pci { pci } = self.transport.as_ref() {
             if let Some(msix_config) = &pci.msix_config {
                 let mut msix_config = msix_config.lock();
                 if msix_config.enabled() {
@@ -81,7 +80,7 @@ impl SignalableInterrupt for Interrupt {
             == 0
         {
             // Write to irqfd to inject PCI INTx or MMIO interrupt
-            match &self.transport {
+            match self.transport.as_ref() {
                 Transport::Pci { pci } => pci.irq_evt_lvl.trigger().unwrap(),
                 Transport::Mmio { irq_evt_edge } => irq_evt_edge.trigger().unwrap(),
             }
@@ -89,7 +88,7 @@ impl SignalableInterrupt for Interrupt {
     }
 
     fn signal_config_changed(&self) {
-        let vector = match &self.transport {
+        let vector = match self.transport.as_ref() {
             Transport::Pci { pci } => pci.config_msix_vector,
             _ => VIRTIO_MSI_NO_VECTOR,
         };
@@ -97,7 +96,7 @@ impl SignalableInterrupt for Interrupt {
     }
 
     fn get_resample_evt(&self) -> Option<&Event> {
-        match &self.transport {
+        match self.transport.as_ref() {
             Transport::Pci { pci } => Some(pci.irq_evt_lvl.get_resample()),
             _ => None,
         }
@@ -105,54 +104,12 @@ impl SignalableInterrupt for Interrupt {
 
     fn do_interrupt_resample(&self) {
         if self.interrupt_status.load(Ordering::SeqCst) != 0 {
-            match &self.transport {
+            match self.transport.as_ref() {
                 Transport::Pci { pci } => pci.irq_evt_lvl.trigger().unwrap(),
                 _ => panic!("do_interrupt_resample() not supported"),
             }
         }
     }
-}
-
-impl<I: SignalableInterrupt> SignalableInterrupt for Arc<Mutex<I>> {
-    fn signal(&self, vector: u16, interrupt_status_mask: u32) {
-        self.lock().signal(vector, interrupt_status_mask);
-    }
-
-    fn signal_used_queue(&self, vector: u16) {
-        self.lock().signal_used_queue(vector);
-    }
-
-    fn signal_config_changed(&self) {
-        self.lock().signal_config_changed();
-    }
-
-    fn get_resample_evt(&self) -> Option<&Event> {
-        // Cannot get resample event from a borrowed item.
-        None
-    }
-
-    fn do_interrupt_resample(&self) {}
-}
-
-impl<I: SignalableInterrupt> SignalableInterrupt for Rc<RefCell<I>> {
-    fn signal(&self, vector: u16, interrupt_status_mask: u32) {
-        self.borrow().signal(vector, interrupt_status_mask);
-    }
-
-    fn signal_used_queue(&self, vector: u16) {
-        self.borrow().signal_used_queue(vector);
-    }
-
-    fn signal_config_changed(&self) {
-        self.borrow().signal_config_changed();
-    }
-
-    fn get_resample_evt(&self) -> Option<&Event> {
-        // Cannot get resample event from a borrowed item.
-        None
-    }
-
-    fn do_interrupt_resample(&self) {}
 }
 
 impl Interrupt {
@@ -164,26 +121,26 @@ impl Interrupt {
     ) -> Interrupt {
         Interrupt {
             interrupt_status,
-            transport: Transport::Pci {
+            transport: Arc::new(Transport::Pci {
                 pci: TransportPci {
                     irq_evt_lvl,
                     msix_config,
                     config_msix_vector,
                 },
-            },
+            }),
         }
     }
 
     pub fn new_mmio(interrupt_status: Arc<AtomicUsize>, irq_evt_edge: IrqEdgeEvent) -> Interrupt {
         Interrupt {
             interrupt_status,
-            transport: Transport::Mmio { irq_evt_edge },
+            transport: Arc::new(Transport::Mmio { irq_evt_edge }),
         }
     }
 
     /// Get a reference to the interrupt event.
     pub fn get_interrupt_evt(&self) -> &Event {
-        match &self.transport {
+        match self.transport.as_ref() {
             Transport::Pci { pci } => pci.irq_evt_lvl.get_trigger(),
             Transport::Mmio { irq_evt_edge } => irq_evt_edge.get_trigger(),
         }
@@ -191,7 +148,7 @@ impl Interrupt {
 
     /// Handle interrupt resampling event, reading the value from the event and doing the resample.
     pub fn interrupt_resample(&self) {
-        match &self.transport {
+        match self.transport.as_ref() {
             Transport::Pci { pci } => {
                 pci.irq_evt_lvl.clear_resample();
                 self.do_interrupt_resample();
@@ -202,7 +159,7 @@ impl Interrupt {
 
     /// Get a reference to the msix configuration
     pub fn get_msix_config(&self) -> &Option<Arc<Mutex<MsixConfig>>> {
-        match &self.transport {
+        match self.transport.as_ref() {
             Transport::Pci { pci } => &pci.msix_config,
             _ => &None,
         }

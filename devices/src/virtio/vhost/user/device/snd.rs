@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::rc::Rc;
-use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::bail;
@@ -21,7 +20,6 @@ use futures::future::AbortHandle;
 use futures::future::Abortable;
 use hypervisor::ProtectionType;
 use once_cell::sync::OnceCell;
-use sync::Mutex;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
@@ -171,7 +169,7 @@ impl VhostUserBackend for SndBackend {
         idx: usize,
         mut queue: virtio::Queue,
         mem: GuestMemory,
-        doorbell: Arc<Mutex<Doorbell>>,
+        doorbell: Doorbell,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
         if let Some(handle) = self.workers.get_mut(idx).and_then(Option::take) {
@@ -198,7 +196,7 @@ impl VhostUserBackend for SndBackend {
                 ex.spawn_local(Abortable::new(
                     async move {
                         handle_ctrl_queue(
-                            ex, &mem, &streams, &*snd_data, queue, kick_evt, &doorbell, tx_send,
+                            ex, &mem, &streams, &*snd_data, queue, kick_evt, doorbell, tx_send,
                             rx_send,
                         )
                         .await
@@ -230,7 +228,7 @@ impl VhostUserBackend for SndBackend {
 
                 ex.spawn_local(Abortable::new(
                     async move {
-                        send_pcm_response_worker(&*mem2, &queue2, &doorbell, &mut recv).await
+                        send_pcm_response_worker(&*mem2, &queue2, doorbell, &mut recv).await
                     },
                     registration2,
                 ))

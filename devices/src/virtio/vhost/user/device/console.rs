@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::bail;
@@ -16,7 +15,6 @@ use base::Terminal;
 use cros_async::Executor;
 use data_model::DataInit;
 use hypervisor::ProtectionType;
-use sync::Mutex;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
@@ -149,7 +147,7 @@ impl VhostUserBackend for ConsoleBackend {
         idx: usize,
         mut queue: virtio::Queue,
         mem: GuestMemory,
-        doorbell: Arc<Mutex<Doorbell>>,
+        doorbell: Doorbell,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
         // Enable any virtqueue features that were negotiated (like VIRTIO_RING_F_EVENT_IDX).

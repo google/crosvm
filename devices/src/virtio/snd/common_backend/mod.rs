@@ -4,7 +4,6 @@
 
 // virtio-sound spec: https://github.com/oasis-tcs/virtio-spec/blob/master/virtio-sound.tex
 
-use std::cell::RefCell;
 use std::fmt;
 use std::io;
 use std::rc::Rc;
@@ -653,9 +652,6 @@ fn run_worker(
         .collect();
     let streams = Rc::new(AsyncMutex::new(streams));
 
-    let interrupt = Rc::new(RefCell::new(interrupt));
-    let interrupt_ref = &*interrupt.borrow();
-
     let ctrl_queue = queues.remove(0);
     let _event_queue = queues.remove(0);
     let tx_queue = Rc::new(AsyncMutex::new(queues.remove(0)));
@@ -683,7 +679,7 @@ fn run_worker(
         &snd_data,
         ctrl_queue,
         ctrl_queue_evt,
-        interrupt_ref,
+        interrupt.clone(),
         tx_send,
         rx_send,
     );
@@ -699,13 +695,13 @@ fn run_worker(
 
     let f_tx = handle_pcm_queue(&mem, &streams, tx_send2, &tx_queue, tx_queue_evt);
 
-    let f_tx_response = send_pcm_response_worker(&mem, &tx_queue, interrupt_ref, &mut tx_recv);
+    let f_tx_response = send_pcm_response_worker(&mem, &tx_queue, interrupt.clone(), &mut tx_recv);
 
     let f_rx = handle_pcm_queue(&mem, &streams, rx_send2, &rx_queue, rx_queue_evt);
 
-    let f_rx_response = send_pcm_response_worker(&mem, &rx_queue, interrupt_ref, &mut rx_recv);
+    let f_rx_response = send_pcm_response_worker(&mem, &rx_queue, interrupt.clone(), &mut rx_recv);
 
-    let f_resample = async_utils::handle_irq_resample(&ex, interrupt.clone());
+    let f_resample = async_utils::handle_irq_resample(&ex, interrupt);
 
     // Exit if the kill event is triggered.
     let f_kill = async_utils::await_and_exit(&ex, kill_evt);

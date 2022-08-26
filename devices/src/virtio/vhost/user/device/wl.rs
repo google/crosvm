@@ -6,7 +6,6 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use std::time::Instant;
@@ -32,7 +31,6 @@ use futures::future::Abortable;
 use hypervisor::ProtectionType;
 #[cfg(feature = "minigbm")]
 use rutabaga_gfx::RutabagaGralloc;
-use sync::Mutex;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
@@ -53,7 +51,7 @@ const MAX_VRING_LEN: u16 = wl::QUEUE_SIZE;
 async fn run_out_queue(
     mut queue: Queue,
     mem: GuestMemory,
-    doorbell: Arc<Mutex<Doorbell>>,
+    doorbell: Doorbell,
     kick_evt: EventAsync,
     wlstate: Rc<RefCell<wl::WlState>>,
 ) {
@@ -70,7 +68,7 @@ async fn run_out_queue(
 async fn run_in_queue(
     mut queue: Queue,
     mem: GuestMemory,
-    doorbell: Arc<Mutex<Doorbell>>,
+    doorbell: Doorbell,
     kick_evt: EventAsync,
     wlstate: Rc<RefCell<wl::WlState>>,
     wlstate_ctx: Box<dyn IoSourceExt<AsyncWrapper<SafeDescriptor>>>,
@@ -197,7 +195,7 @@ impl VhostUserBackend for WlBackend {
         idx: usize,
         mut queue: Queue,
         mem: GuestMemory,
-        doorbell: Arc<Mutex<Doorbell>>,
+        doorbell: Doorbell,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
         if let Some(handle) = self.workers.get_mut(idx).and_then(Option::take) {

@@ -12,7 +12,6 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::net::UnixListener;
 use std::path::Path;
 use std::str;
-use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
 
 use anyhow::bail;
@@ -27,7 +26,6 @@ use cros_async::Executor;
 use data_model::DataInit;
 use data_model::Le64;
 use hypervisor::ProtectionType;
-use sync::Mutex;
 use vhost::Vhost;
 use vhost::Vsock;
 use vm_memory::GuestMemory;
@@ -81,7 +79,7 @@ struct VsockBackend<H: VhostUserPlatformOps> {
     vmm_maps: Option<Vec<MappingInfo>>,
     queues: [Queue; NUM_QUEUES],
     // Only used for vvu device mode.
-    call_evts: [Option<Arc<Mutex<DoorbellRegion>>>; NUM_QUEUES],
+    call_evts: [Option<DoorbellRegion>; NUM_QUEUES],
 }
 
 impl<H: VhostUserPlatformOps> VsockBackend<H> {
@@ -320,17 +318,7 @@ impl<H: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for VsockBackend<H> {
         let event = match doorbell {
             Doorbell::Call(call_event) => call_event.into_inner(),
             Doorbell::Vfio(doorbell_region) => {
-                let call_evt = match self.call_evts[index].as_ref() {
-                    None => {
-                        let evt = Arc::new(Mutex::new(doorbell_region));
-                        self.call_evts[index] = Some(evt.clone());
-                        evt
-                    }
-                    Some(evt) => {
-                        *evt.lock() = doorbell_region;
-                        evt.clone()
-                    }
-                };
+                self.call_evts[index] = Some(doorbell_region.clone());
 
                 let kernel_evt = Event::new().map_err(|_| Error::SlaveInternalError)?;
                 let task_evt = EventAsync::new(
@@ -345,7 +333,7 @@ impl<H: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for VsockBackend<H> {
                                 .next_val()
                                 .await
                                 .expect("failed to wait for event fd");
-                            call_evt.signal_used_queue(index as u16);
+                            doorbell_region.signal_used_queue(index as u16);
                         }
                     })
                     .detach();

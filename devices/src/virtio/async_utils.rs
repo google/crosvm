@@ -4,9 +4,6 @@
 
 //! Virtio device async helper functions.
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use anyhow::Context;
 use anyhow::Result;
 use base::Event;
@@ -26,10 +23,9 @@ pub async fn await_and_exit(ex: &Executor, event: Event) -> Result<()> {
 
 /// Async task that resamples the status of the interrupt when the guest sends a request by
 /// signalling the resample event associated with the interrupt.
-pub async fn handle_irq_resample(ex: &Executor, interrupt: Rc<RefCell<Interrupt>>) -> Result<()> {
+pub async fn handle_irq_resample(ex: &Executor, interrupt: Interrupt) -> Result<()> {
     // Clone resample_evt if interrupt has one.
-    // This is a separate block so that we do not hold a RefCell borrow across await.
-    let resample_evt = if let Some(resample_evt) = interrupt.borrow().get_resample_evt() {
+    let resample_evt = if let Some(resample_evt) = interrupt.get_resample_evt() {
         let resample_evt = resample_evt
             .try_clone()
             .context("resample_evt.try_clone() failed")?;
@@ -44,7 +40,7 @@ pub async fn handle_irq_resample(ex: &Executor, interrupt: Rc<RefCell<Interrupt>
                 .next_val()
                 .await
                 .context("failed to read resample event")?;
-            interrupt.borrow().do_interrupt_resample();
+            interrupt.do_interrupt_resample();
         }
     } else {
         // No resample event; park the future.
