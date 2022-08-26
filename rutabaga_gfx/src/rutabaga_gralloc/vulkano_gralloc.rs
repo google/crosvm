@@ -44,6 +44,8 @@ use vulkano::memory::MemoryAllocateInfo;
 use vulkano::memory::MemoryMapError;
 use vulkano::memory::MemoryRequirements;
 use vulkano::sync::Sharing;
+use vulkano::LoadingError;
+use vulkano::VulkanLibrary;
 
 use crate::rutabaga_gralloc::gralloc::Gralloc;
 use crate::rutabaga_gralloc::gralloc::ImageAllocationInfo;
@@ -93,16 +95,21 @@ impl VulkanoGralloc {
     pub fn init() -> RutabagaResult<Box<dyn Gralloc>> {
         // Initialization copied from triangle.rs in Vulkano.  Look there for a more detailed
         // explanation of VK initialization.
+        let library = VulkanLibrary::new()?;
+
         let instance_extensions = InstanceExtensions {
             khr_external_memory_capabilities: true,
             khr_get_physical_device_properties2: true,
             ..InstanceExtensions::none()
         };
-        let instance = Instance::new(InstanceCreateInfo {
-            enabled_extensions: instance_extensions,
-            max_api_version: Some(Version::V1_1),
-            ..Default::default()
-        })?;
+        let instance = Instance::new(
+            library,
+            InstanceCreateInfo {
+                enabled_extensions: instance_extensions,
+                max_api_version: Some(Version::V1_1),
+                ..Default::default()
+            },
+        )?;
 
         let mut devices: Map<PhysicalDeviceType, Arc<Device>> = Default::default();
         let mut has_integrated_gpu = false;
@@ -175,7 +182,7 @@ impl VulkanoGralloc {
     unsafe fn create_image(
         &mut self,
         info: ImageAllocationInfo,
-    ) -> RutabagaResult<(sys::UnsafeImage, MemoryRequirements)> {
+    ) -> RutabagaResult<(Arc<sys::UnsafeImage>, MemoryRequirements)> {
         let device = if self.has_integrated_gpu {
             self.devices
                 .get(&PhysicalDeviceType::IntegratedGpu)
@@ -498,5 +505,11 @@ impl From<DeviceMemoryExportError> for RutabagaError {
 impl From<MemoryMapError> for RutabagaError {
     fn from(e: MemoryMapError) -> RutabagaError {
         RutabagaError::VkMemoryMapError(e)
+    }
+}
+
+impl From<LoadingError> for RutabagaError {
+    fn from(e: LoadingError) -> RutabagaError {
+        RutabagaError::VkLoadingError(e)
     }
 }
