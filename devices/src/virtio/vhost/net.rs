@@ -361,8 +361,6 @@ where
 pub mod tests {
     use std::path::PathBuf;
     use std::result;
-    use std::sync::atomic::AtomicUsize;
-    use std::sync::Arc;
 
     use hypervisor::ProtectionType;
     use net_util::sys::unix::fakes::FakeTap;
@@ -439,12 +437,7 @@ pub mod tests {
         // Just testing that we don't panic, for now
         net.activate(
             guest_memory,
-            Interrupt::new(
-                Arc::new(AtomicUsize::new(0)),
-                IrqLevelEvent::new().unwrap(),
-                None,
-                VIRTIO_MSI_NO_VECTOR,
-            ),
+            Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
             vec![Queue::new(1)],
             vec![Event::new().unwrap()],
         );

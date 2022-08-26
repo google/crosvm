@@ -114,13 +114,12 @@ impl SignalableInterrupt for Interrupt {
 
 impl Interrupt {
     pub fn new(
-        interrupt_status: Arc<AtomicUsize>,
         irq_evt_lvl: IrqLevelEvent,
         msix_config: Option<Arc<Mutex<MsixConfig>>>,
         config_msix_vector: u16,
     ) -> Interrupt {
         Interrupt {
-            interrupt_status,
+            interrupt_status: Arc::new(AtomicUsize::new(0)),
             transport: Arc::new(Transport::Pci {
                 pci: TransportPci {
                     irq_evt_lvl,
@@ -131,9 +130,9 @@ impl Interrupt {
         }
     }
 
-    pub fn new_mmio(interrupt_status: Arc<AtomicUsize>, irq_evt_edge: IrqEdgeEvent) -> Interrupt {
+    pub fn new_mmio(irq_evt_edge: IrqEdgeEvent) -> Interrupt {
         Interrupt {
-            interrupt_status,
+            interrupt_status: Arc::new(AtomicUsize::new(0)),
             transport: Arc::new(Transport::Mmio { irq_evt_edge }),
         }
     }
@@ -163,5 +162,21 @@ impl Interrupt {
             Transport::Pci { pci } => &pci.msix_config,
             _ => &None,
         }
+    }
+
+    /// Reads the current value of the interrupt status.
+    pub fn read_interrupt_status(&self) -> u8 {
+        self.interrupt_status.load(Ordering::SeqCst) as u8
+    }
+
+    /// Reads the current value of the interrupt status and resets it to 0.
+    pub fn read_and_reset_interrupt_status(&self) -> u8 {
+        self.interrupt_status.swap(0, Ordering::SeqCst) as u8
+    }
+
+    /// Clear the bits set in `mask` in the interrupt status.
+    pub fn clear_interrupt_status_bits(&self, mask: u8) {
+        self.interrupt_status
+            .fetch_and(!(mask as usize), Ordering::SeqCst);
     }
 }

@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use acpi_tables::aml;
@@ -53,7 +51,7 @@ pub struct VirtioMmioDevice {
     device: Box<dyn VirtioDevice>,
     device_activated: bool,
 
-    interrupt_status: Arc<AtomicUsize>,
+    interrupt: Option<Interrupt>,
     interrupt_evt: Option<IrqEdgeEvent>,
     queues: Vec<Queue>,
     queue_evts: Vec<Event>,
@@ -85,7 +83,7 @@ impl VirtioMmioDevice {
         Ok(VirtioMmioDevice {
             device,
             device_activated: false,
-            interrupt_status: Arc::new(AtomicUsize::new(0)),
+            interrupt: None,
             interrupt_evt: None,
             queues,
             queue_evts,
@@ -153,7 +151,8 @@ impl VirtioMmioDevice {
         };
 
         let mem = self.mem.clone();
-        let interrupt = Interrupt::new_mmio(self.interrupt_status.clone(), interrupt_evt);
+        let interrupt = Interrupt::new_mmio(interrupt_evt);
+        self.interrupt = Some(interrupt.clone());
 
         match self.clone_queue_evts() {
             Ok(queue_evts) => {
@@ -224,11 +223,13 @@ impl VirtioMmioDevice {
                     0
                 }
             }
-            VIRTIO_MMIO_INTERRUPT_STATUS => self
-                .interrupt_status
-                .load(Ordering::SeqCst)
-                .try_into()
-                .unwrap(),
+            VIRTIO_MMIO_INTERRUPT_STATUS => {
+                if let Some(interrupt) = &self.interrupt {
+                    interrupt.read_interrupt_status().into()
+                } else {
+                    0
+                }
+            }
             VIRTIO_MMIO_STATUS => self.driver_status.into(),
             VIRTIO_MMIO_CONFIG_GENERATION => self.config_generation,
             _ => {
@@ -308,8 +309,9 @@ impl VirtioMmioDevice {
             VIRTIO_MMIO_QUEUE_READY => self.with_queue_mut(|q| q.set_ready(val == 1)),
             VIRTIO_MMIO_QUEUE_NOTIFY => {} // Handled with ioevents.
             VIRTIO_MMIO_INTERRUPT_ACK => {
-                self.interrupt_status
-                    .fetch_and(!val as usize, Ordering::SeqCst);
+                if let Some(interrupt) = &self.interrupt {
+                    interrupt.clear_interrupt_status_bits(val as u8)
+                }
             }
             VIRTIO_MMIO_STATUS => self.driver_status = val as u8,
             VIRTIO_MMIO_QUEUE_DESC_LOW => {
@@ -357,8 +359,8 @@ impl VirtioMmioDevice {
             self.queues.iter_mut().for_each(Queue::reset);
             // select queue 0 by default
             self.queue_select = 0;
-            // clear all bits in interrupt status
-            self.interrupt_status.store(0, Ordering::SeqCst);
+            // reset interrupt
+            self.interrupt = None;
         }
     }
 
