@@ -17,7 +17,6 @@ use libc::CPU_SETSIZE;
 use libc::CPU_ZERO;
 use libc::EINVAL;
 
-use super::errno_result;
 use super::Error;
 use super::Result;
 
@@ -47,15 +46,12 @@ impl CpuSet {
 
 impl FromIterator<usize> for CpuSet {
     fn from_iter<I: IntoIterator<Item = usize>>(cpus: I) -> Self {
-        // cpu_set_t is a C struct and can be safely initialized with zeroed memory.
-        let mut cpuset: cpu_set_t = unsafe { mem::zeroed() };
-        // Safe because we pass a valid cpuset pointer.
-        unsafe { CPU_ZERO(&mut cpuset) };
+        let mut cpuset = CpuSet::new();
         for cpu in cpus {
-            // Safe because we pass a valid cpuset pointer and cpu index.
-            unsafe { CPU_SET(cpu, &mut cpuset) };
+            // Safe because we pass a valid cpu index and cpuset.0 is a valid pointer.
+            unsafe { CPU_SET(cpu, &mut cpuset.0) };
         }
-        CpuSet(cpuset)
+        cpuset
     }
 }
 
@@ -84,13 +80,9 @@ pub fn set_cpu_affinity<I: IntoIterator<Item = usize>>(cpus: I) -> Result<()> {
 
     // Safe because we pass 0 for the current thread, and cpuset is a valid pointer and only
     // used for the duration of this call.
-    let res = unsafe { sched_setaffinity(0, mem::size_of_val(&cpuset), &cpuset) };
+    crate::syscall!(unsafe { sched_setaffinity(0, mem::size_of_val(&cpuset), &cpuset) })?;
 
-    if res != 0 {
-        errno_result()
-    } else {
-        Ok(())
-    }
+    Ok(())
 }
 
 pub fn get_cpu_affinity() -> Result<Vec<usize>> {
