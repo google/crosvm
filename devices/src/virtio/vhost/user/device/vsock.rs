@@ -51,7 +51,7 @@ use vmm_vhost::SlaveReqHandler;
 use vmm_vhost::VhostUserSlaveReqHandlerMut;
 
 use crate::virtio::base_features;
-use crate::virtio::vhost::user::device::handler::run_handler;
+use crate::virtio::vhost::user::device::handler::sys::unix::run_handler;
 // TODO(acourbot) try to remove the system dependencies and make the device usable on all platforms.
 use crate::virtio::vhost::user::device::handler::sys::unix::Doorbell;
 use crate::virtio::vhost::user::device::handler::sys::unix::VvuOps;

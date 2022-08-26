@@ -58,20 +58,16 @@ use std::sync::Arc;
 
 use anyhow::bail;
 use anyhow::Context;
-use anyhow::Result;
 #[cfg(unix)]
 use base::clear_fd_flags;
 use base::error;
-use base::info;
-use base::AsRawDescriptor;
 use base::Event;
 use base::FromRawDescriptor;
 use base::IntoRawDescriptor;
 use base::Protection;
 use base::SafeDescriptor;
 use base::SharedMemory;
-use cros_async::AsyncWrapper;
-use cros_async::Executor;
+
 use sync::Mutex;
 use sys::Doorbell;
 use vm_control::VmMemorySource;
@@ -79,7 +75,6 @@ use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::MemoryRegion;
 use vmm_vhost::connection::Endpoint;
-use vmm_vhost::message::MasterReq;
 use vmm_vhost::message::SlaveReq;
 use vmm_vhost::message::VhostSharedMemoryRegion;
 use vmm_vhost::message::VhostUserConfigFlags;
@@ -97,9 +92,7 @@ use vmm_vhost::Error as VhostError;
 use vmm_vhost::Protocol;
 use vmm_vhost::Result as VhostResult;
 use vmm_vhost::Slave;
-use vmm_vhost::SlaveReqHandler;
 use vmm_vhost::VhostUserMasterReqHandler;
-use vmm_vhost::VhostUserSlaveReqHandler;
 use vmm_vhost::VhostUserSlaveReqHandlerMut;
 
 use crate::virtio::Queue;
@@ -244,39 +237,6 @@ impl Vring {
         self.queue.reset();
         self.doorbell = None;
         self.enabled = false;
-    }
-}
-
-/// Performs the run loop for an already-constructed request handler.
-#[cfg_attr(windows, allow(dead_code))]
-pub async fn run_handler<S, E>(mut req_handler: SlaveReqHandler<S, E>, ex: &Executor) -> Result<()>
-where
-    S: VhostUserSlaveReqHandler,
-    E: Endpoint<MasterReq> + AsRawDescriptor,
-{
-    let h = SafeDescriptor::try_from(&req_handler as &dyn AsRawDescriptor)
-        .map(AsyncWrapper::new)
-        .context("failed to get safe descriptor for handler")?;
-    let handler_source = ex
-        .async_from(h)
-        .context("failed to create an async source")?;
-
-    loop {
-        handler_source
-            .wait_readable()
-            .await
-            .context("failed to wait for the handler to become readable")?;
-        match req_handler.handle_request() {
-            Ok(()) => (),
-            Err(VhostError::ClientExit) => {
-                info!("vhost-user connection closed");
-                // Exit as the client closed the connection.
-                return Ok(());
-            }
-            Err(e) => {
-                bail!("failed to handle a vhost-user request: {}", e);
-            }
-        };
     }
 }
 
@@ -814,6 +774,9 @@ mod tests {
     use tempfile::Builder;
     #[cfg(unix)]
     use tempfile::TempDir;
+    use vmm_vhost::message::MasterReq;
+    use vmm_vhost::SlaveReqHandler;
+    use vmm_vhost::VhostUserSlaveReqHandler;
 
     use super::*;
     use crate::virtio::vhost::user::vmm::VhostUserHandler;
