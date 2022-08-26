@@ -5,17 +5,17 @@
 
 #[cfg(all(test, feature = "vmm"))]
 pub(crate) mod tests {
-    use crate::connection::{
-        socket::Endpoint as SocketEndpoint, socket::Listener as SocketListener, Listener,
-    };
+    use tempfile::Builder;
+    use tempfile::TempDir;
+
+    use crate::connection::socket::Endpoint as SocketEndpoint;
+    use crate::connection::socket::Listener as SocketListener;
+    use crate::connection::Listener;
     use crate::master::Master;
     use crate::message::MasterReq;
-    #[cfg(feature = "device")]
-    use crate::{
-        slave::SlaveListener,
-        slave_req_handler::{SlaveReqHandler, VhostUserSlaveReqHandler},
-    };
-    use tempfile::{Builder, TempDir};
+    use crate::slave::SlaveListener;
+    use crate::slave_req_handler::SlaveReqHandler;
+    use crate::slave_req_handler::VhostUserSlaveReqHandler;
 
     pub(crate) type TestMaster = Master<SocketEndpoint<MasterReq>>;
     pub(crate) type TestEndpoint = SocketEndpoint<MasterReq>;

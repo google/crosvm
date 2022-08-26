@@ -5,16 +5,28 @@
 
 use std::any::Any;
 use std::fs::File;
-use std::io::{ErrorKind, IoSlice, IoSliceMut};
+use std::io::ErrorKind;
+use std::io::IoSlice;
+use std::io::IoSliceMut;
 use std::marker::PhantomData;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use base::{AsRawDescriptor, FromRawDescriptor, IntoRawDescriptor, RawDescriptor, ScmSocket};
+use base::AsRawDescriptor;
+use base::FromRawDescriptor;
+use base::IntoRawDescriptor;
+use base::RawDescriptor;
+use base::ScmSocket;
 
-use super::{Error, Result};
-use crate::connection::{Endpoint as EndpointTrait, Listener as ListenerTrait, Req};
+use super::Error;
+use super::Result;
+use crate::connection::Endpoint as EndpointTrait;
+use crate::connection::Listener as ListenerTrait;
+use crate::connection::Req;
 use crate::message::*;
-use crate::{take_single_file, SystemListener, SystemStream};
+use crate::take_single_file;
+use crate::SystemListener;
+use crate::SystemStream;
 
 /// Unix domain socket listener for accepting incoming connections.
 pub struct Listener {
@@ -231,11 +243,18 @@ impl<T: Req> AsMut<SystemStream> for Endpoint<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::io::{Read, Seek, SeekFrom, Write};
-    use std::{mem, slice};
-    use tempfile::{tempfile, Builder, TempDir};
+    use std::io::Read;
+    use std::io::Seek;
+    use std::io::SeekFrom;
+    use std::io::Write;
+    use std::mem;
+    use std::slice;
 
+    use tempfile::tempfile;
+    use tempfile::Builder;
+    use tempfile::TempDir;
+
+    use super::*;
     use crate::connection::EndpointExt;
 
     fn temp_dir() -> TempDir {

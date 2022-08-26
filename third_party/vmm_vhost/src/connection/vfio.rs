@@ -5,18 +5,25 @@
 
 use std::convert::From;
 use std::fs::File;
-use std::io::{IoSlice, IoSliceMut};
+use std::io::IoSlice;
+use std::io::IoSliceMut;
 use std::marker::PhantomData;
 use std::os::unix::io::RawFd;
 use std::path::Path;
 
-use base::{AsRawDescriptor, Event, RawDescriptor};
+use base::AsRawDescriptor;
+use base::Event;
+use base::RawDescriptor;
 use remain::sorted;
 use thiserror::Error as ThisError;
 
-use super::{Error, Result};
-use crate::connection::{Endpoint as EndpointTrait, Listener as ListenerTrait, Req};
-use crate::message::{MasterReq, SlaveReq};
+use super::Error;
+use super::Result;
+use crate::connection::Endpoint as EndpointTrait;
+use crate::connection::Listener as ListenerTrait;
+use crate::connection::Req;
+use crate::message::MasterReq;
+use crate::message::SlaveReq;
 
 /// Errors for `Device::recv_into_bufs()`.
 #[sorted]

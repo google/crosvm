@@ -5,7 +5,6 @@
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use sync::Mutex;
 
 use acpi_tables::aml;
 use acpi_tables::aml::Aml;
@@ -24,6 +23,7 @@ use base::Result;
 use hypervisor::Datamatch;
 use resources::AllocOptions;
 use resources::SystemAllocator;
+use sync::Mutex;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_ACKNOWLEDGE;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_DRIVER;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_DRIVER_OK;

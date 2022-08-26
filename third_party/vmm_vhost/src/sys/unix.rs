@@ -4,7 +4,8 @@
 //! Unix specific code that keeps rest of the code in the crate platform independent.
 
 use std::io::Result;
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::net::UnixListener;
+use std::os::unix::net::UnixStream;
 
 /// Alias to enable platform independent code.
 pub type SystemListener = UnixListener;

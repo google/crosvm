@@ -215,7 +215,15 @@ CHECKS: List[Check] = [
     ),
     Check(
         check_file_ends_with_newline,
-        exclude=["**.h264", "**.vp8", "**.bin", "**.png", "**.min.js", "infra/**.json"],
+        exclude=[
+            "**.h264",
+            "**.vp8",
+            "**.bin",
+            "**.png",
+            "**.min.js",
+            "**.drawio",
+            "infra/**.json",
+        ],
     ),
     Check(check_crlf_line_endings),
 ]

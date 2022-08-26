@@ -7,9 +7,12 @@
 
 use base::AsRawDescriptor;
 
-use super::connection::{Endpoint, Listener};
+use super::connection::Endpoint;
+use super::connection::Listener;
 use super::message::*;
-use super::{Result, SlaveReqHandler, VhostUserSlaveReqHandler};
+use super::Result;
+use super::SlaveReqHandler;
+use super::VhostUserSlaveReqHandler;
 
 /// Vhost-user slave side connection listener.
 pub struct SlaveListener<L: Listener, S: VhostUserSlaveReqHandler> {

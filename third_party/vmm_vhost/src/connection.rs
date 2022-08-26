@@ -16,16 +16,18 @@ cfg_if::cfg_if! {
     }
 }
 
-use base::RawDescriptor;
 use std::fs::File;
-use std::io::{IoSlice, IoSliceMut};
+use std::io::IoSlice;
+use std::io::IoSliceMut;
 use std::mem;
 use std::path::Path;
 
+use base::RawDescriptor;
 use data_model::DataInit;
 
 use super::message::*;
-use super::{Error, Result};
+use super::Error;
+use super::Result;
 use crate::connection::Req;
 
 /// Listener for accepting connections.

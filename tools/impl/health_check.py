@@ -81,8 +81,8 @@ def list_file_diff():
 def should_run_check_on_file(check: Check, file: Path):
     "Returns true if `file` should be run on `check`."
 
-    # Skip third_party
-    if str(file).startswith("third_party"):
+    # Skip third_party except vmm_vhost.
+    if str(file).startswith("third_party") and not str(file).startswith("third_party/vmm_vhost"):
         return False
 
     # Skip excluded files

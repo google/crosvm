@@ -1124,8 +1124,9 @@ impl VhostSharedMemoryRegion {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::mem;
+
+    use super::*;
 
     #[test]
     fn check_master_request_code() {
