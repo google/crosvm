@@ -17,13 +17,13 @@ use base::RawDescriptor;
 use remain::sorted;
 use thiserror::Error as ThisError;
 
-use super::Error;
-use super::Result;
 use crate::connection::Endpoint as EndpointTrait;
 use crate::connection::Listener as ListenerTrait;
 use crate::connection::Req;
 use crate::message::MasterReq;
 use crate::message::SlaveReq;
+use crate::Error;
+use crate::Result;
 
 /// Errors for `Device::recv_into_bufs()`.
 #[sorted]

@@ -19,11 +19,11 @@ use base::Tube;
 use serde::Deserialize;
 use serde::Serialize;
 
-use super::Error;
-use super::Result;
 use crate::connection::Endpoint;
 use crate::connection::Req;
 use crate::message::SlaveReq;
+use crate::Error;
+use crate::Result;
 
 #[derive(Serialize, Deserialize)]
 struct RawDescriptorContainer {

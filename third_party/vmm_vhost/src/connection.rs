@@ -25,10 +25,10 @@ use std::path::Path;
 use base::RawDescriptor;
 use data_model::DataInit;
 
-use super::message::*;
-use super::Error;
-use super::Result;
 use crate::connection::Req;
+use crate::message::*;
+use crate::Error;
+use crate::Result;
 
 /// Listener for accepting connections.
 pub trait Listener: Sized {

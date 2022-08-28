@@ -18,13 +18,13 @@ use base::IntoRawDescriptor;
 use base::RawDescriptor;
 use base::ScmSocket;
 
-use super::Error;
-use super::Result;
 use crate::connection::Endpoint as EndpointTrait;
 use crate::connection::Listener as ListenerTrait;
 use crate::connection::Req;
 use crate::message::*;
 use crate::take_single_file;
+use crate::Error;
+use crate::Result;
 use crate::SystemListener;
 use crate::SystemStream;
 

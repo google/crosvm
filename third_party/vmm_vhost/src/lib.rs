@@ -220,12 +220,12 @@ mod tests {
     use base::AsRawDescriptor;
     use tempfile::tempfile;
 
-    use super::connection::tests::*;
-    use super::dummy_slave::DummySlaveReqHandler;
-    use super::dummy_slave::VIRTIO_FEATURES;
-    use super::message::*;
     use super::*;
     use crate::backend::VhostBackend;
+    use crate::connection::tests::*;
+    use crate::dummy_slave::DummySlaveReqHandler;
+    use crate::dummy_slave::VIRTIO_FEATURES;
+    use crate::message::*;
     use crate::VhostUserMemoryRegionInfo;
     use crate::VringConfigData;
 

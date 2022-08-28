@@ -10,13 +10,13 @@ use base::AsRawDescriptor;
 use base::RawDescriptor;
 use data_model::DataInit;
 
-use super::connection::Endpoint;
-use super::connection::EndpointExt;
-use super::message::*;
-use super::take_single_file;
-use super::Error;
-use super::Result;
+use crate::connection::Endpoint;
+use crate::connection::EndpointExt;
+use crate::message::*;
+use crate::take_single_file;
+use crate::Error;
 use crate::MasterReqEndpoint;
+use crate::Result;
 use crate::SystemStream;
 
 #[derive(PartialEq, Eq, Debug)]

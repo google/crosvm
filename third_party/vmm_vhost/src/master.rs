@@ -16,15 +16,15 @@ use base::RawDescriptor;
 use base::INVALID_DESCRIPTOR;
 use data_model::DataInit;
 
-use super::connection::Endpoint;
-use super::connection::EndpointExt;
-use super::message::*;
-use super::take_single_file;
-use super::Error as VhostUserError;
-use super::Result as VhostUserResult;
 use crate::backend::VhostBackend;
 use crate::backend::VhostUserMemoryRegionInfo;
 use crate::backend::VringConfigData;
+use crate::connection::Endpoint;
+use crate::connection::EndpointExt;
+use crate::message::*;
+use crate::take_single_file;
+use crate::Error as VhostUserError;
+use crate::Result as VhostUserResult;
 use crate::Result;
 use crate::SystemStream;
 

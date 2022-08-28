@@ -11,15 +11,15 @@ use base::AsRawDescriptor;
 use base::RawDescriptor;
 use data_model::DataInit;
 
-use super::connection::Endpoint;
-use super::connection::EndpointExt;
-use super::message::*;
-use super::Error;
-use super::HandlerResult;
-use super::Result;
-use super::SlaveReqEndpoint;
-use super::SystemStream;
-use super::VhostUserMasterReqHandler;
+use crate::connection::Endpoint;
+use crate::connection::EndpointExt;
+use crate::message::*;
+use crate::Error;
+use crate::HandlerResult;
+use crate::Result;
+use crate::SlaveReqEndpoint;
+use crate::SystemStream;
+use crate::VhostUserMasterReqHandler;
 
 struct SlaveInternal {
     sock: Box<dyn Endpoint<SlaveReq>>,

@@ -16,7 +16,7 @@ use base::Event;
 use base::RawDescriptor;
 use base::INVALID_DESCRIPTOR;
 
-use super::Result;
+use crate::Result;
 
 /// Maximum number of memory regions supported.
 pub const VHOST_MAX_MEMORY_REGIONS: usize = 255;

@@ -3,8 +3,11 @@
 
 use std::fs::File;
 
-use super::message::*;
-use super::*;
+use crate::message::*;
+use crate::Error;
+use crate::Protocol;
+use crate::Result;
+use crate::VhostUserSlaveReqHandlerMut;
 
 pub const MAX_QUEUE_NUM: usize = 2;
 pub const MAX_VRING_NUM: usize = 256;

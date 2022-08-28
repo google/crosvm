@@ -15,12 +15,15 @@ use base::AsRawDescriptor;
 use base::RawDescriptor;
 
 #[cfg(unix)]
-use super::connection::socket::Endpoint as SocketEndpoint;
-use super::connection::EndpointExt;
-use super::message::*;
-use super::Error;
-use super::HandlerResult;
-use super::Result;
+use crate::connection::socket::Endpoint as SocketEndpoint;
+#[cfg(unix)]
+use crate::connection::EndpointExt;
+use crate::message::*;
+#[cfg(unix)]
+use crate::Error;
+use crate::HandlerResult;
+#[cfg(unix)]
+use crate::Result;
 #[cfg(unix)]
 use crate::SystemStream;
 

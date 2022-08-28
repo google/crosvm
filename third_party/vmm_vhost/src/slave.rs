@@ -7,12 +7,12 @@
 
 use base::AsRawDescriptor;
 
-use super::connection::Endpoint;
-use super::connection::Listener;
-use super::message::*;
-use super::Result;
-use super::SlaveReqHandler;
-use super::VhostUserSlaveReqHandler;
+use crate::connection::Endpoint;
+use crate::connection::Listener;
+use crate::message::*;
+use crate::Result;
+use crate::SlaveReqHandler;
+use crate::VhostUserSlaveReqHandler;
 
 /// Vhost-user slave side connection listener.
 pub struct SlaveListener<L: Listener, S: VhostUserSlaveReqHandler> {
