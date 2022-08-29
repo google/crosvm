@@ -71,7 +71,6 @@ pub use descriptor::*;
 // TODO(b:231344063): Remove EventFd.
 pub use eventfd::EventFd as Event;
 pub use eventfd::EventFd;
-pub use eventfd::EventReadResult;
 pub use file_flags::*;
 pub use file_traits::AsRawFds;
 pub use file_traits::FileAllocate;

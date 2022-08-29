@@ -38,6 +38,7 @@ use crate::descriptor::FromRawDescriptor;
 use crate::descriptor::IntoRawDescriptor;
 use crate::descriptor::SafeDescriptor;
 use crate::Event as CrateEvent;
+use crate::EventReadResult;
 
 /// A safe wrapper around Windows synchapi methods used to mimic Linux eventfd (man 2 eventfd).
 /// Since the eventfd isn't using "EFD_SEMAPHORE", we don't need to keep count so we can just use
@@ -76,15 +77,6 @@ impl EventExt for CrateEvent {
     fn create_event_with_name(name: &str) -> Result<CrateEvent> {
         Event::create_event_with_name(name).map(CrateEvent)
     }
-}
-
-/// Wrapper around the return value of doing a read on an EventFd which distinguishes between
-/// getting a valid count of the number of times the eventfd has been written to and timing out
-/// waiting for the count to be non-zero.
-#[derive(Debug, PartialEq, Eq)]
-pub enum EventReadResult {
-    Count(u64),
-    Timeout,
 }
 
 impl Event {
