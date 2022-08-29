@@ -440,15 +440,6 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
         }
     }
 
-    /// Create a new vhost-user slave endpoint.
-    ///
-    /// # Arguments
-    /// * - `path` - path of Unix domain socket listener to connect to
-    /// * - `backend` - handler for requests from the master to the slave
-    pub fn connect(path: &str, backend: S) -> Result<Self> {
-        Ok(Self::new(Endpoint::<MasterReq>::connect(path)?, backend))
-    }
-
     /// Main entrance to request from the communication channel.
     ///
     /// Receive and handle one incoming request message from the vmm. The caller needs to:
