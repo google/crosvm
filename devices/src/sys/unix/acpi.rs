@@ -4,9 +4,9 @@
 
 use std::sync::Arc;
 
+use base::debug;
 use base::error;
 use base::info;
-use base::warn;
 use base::AcpiNotifyEvent;
 use base::NetlinkGenericSocket;
 use sync::Mutex;
@@ -89,7 +89,7 @@ pub(crate) fn acpi_event_run(
                 );
             }
             "button/power" => acpi_event_handle_power_button(acpi_event, pm1, sci_evt),
-            c => warn!("unknown acpi event {}", c),
+            c => debug!("ignored acpi event {}", c),
         };
     }
 }
