@@ -28,7 +28,6 @@ use base::Event;
 use base::MappedRegion;
 use base::MemoryMappingBuilder;
 use base::MemoryMappingBuilderUnix;
-use base::Protection;
 use base::RawDescriptor;
 use base::SafeDescriptor;
 use cros_async::EventAsync;
@@ -546,7 +545,7 @@ impl BackendChannelInner {
                 let mapping = MemoryMappingBuilder::new(msg.len as usize)
                     .from_descriptor(&file)
                     .offset(msg.fd_offset)
-                    .protection(Protection::from(msg.flags.bits() as libc::c_int))
+                    .protection(msg.flags.into())
                     .build()
                     .context("failed to map file")?;
 

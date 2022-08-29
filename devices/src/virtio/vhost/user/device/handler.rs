@@ -778,8 +778,7 @@ impl SharedMemoryMapper for VhostShmemMapper {
             }
             _ => bail!("unsupported source"),
         };
-        let flags = VhostUserShmemMapMsgFlags::from_bits(libc::c_int::from(prot) as u8)
-            .context(format!("unsupported protection flags {:?}", prot))?;
+        let flags = VhostUserShmemMapMsgFlags::from(prot);
         let msg = VhostUserShmemMapMsg::new(self.shmid, offset, fd_offset, size, flags);
         self.frontend
             .shmem_map(&msg, &descriptor)

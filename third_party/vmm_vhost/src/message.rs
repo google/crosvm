@@ -13,6 +13,7 @@ use std::convert::TryInto;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
+use base::Protection;
 use bitflags::bitflags;
 use data_model::DataInit;
 
@@ -860,6 +861,28 @@ bitflags! {
         const MAP_R = 0x1;
         /// Write permission.
         const MAP_W = 0x2;
+    }
+}
+
+impl From<Protection> for VhostUserShmemMapMsgFlags {
+    fn from(prot: Protection) -> Self {
+        let mut flags = Self::EMPTY;
+        flags.set(Self::MAP_R, prot.allows(&Protection::read()));
+        flags.set(Self::MAP_W, prot.allows(&Protection::write()));
+        flags
+    }
+}
+
+impl From<VhostUserShmemMapMsgFlags> for Protection {
+    fn from(flags: VhostUserShmemMapMsgFlags) -> Self {
+        let mut prot = Protection::from(0);
+        if flags.contains(VhostUserShmemMapMsgFlags::MAP_R) {
+            prot = prot.set_read();
+        }
+        if flags.contains(VhostUserShmemMapMsgFlags::MAP_W) {
+            prot = prot.set_write();
+        }
+        prot
     }
 }
 

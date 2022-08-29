@@ -345,7 +345,7 @@ impl VhostUserMasterReqHandlerMut for BackendReqHandlerImpl {
                 gpu_blob: false,
             },
             req.shm_offset,
-            Protection::from(req.flags.bits() as libc::c_int),
+            Protection::from(req.flags),
         ) {
             Ok(()) => Ok(0),
             Err(e) => {
