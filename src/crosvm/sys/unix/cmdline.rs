@@ -31,7 +31,7 @@ pub enum DeviceSubcommand {
 fn parse_vu_serial_options(s: &str) -> Result<VhostUserParams<SerialParameters>, String> {
     let params: VhostUserParams<SerialParameters> = from_key_values(s)?;
 
-    validate_serial_parameters(&params.device_params)?;
+    validate_serial_parameters(&params.device)?;
 
     Ok(params)
 }

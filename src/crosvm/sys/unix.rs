@@ -2980,7 +2980,7 @@ pub fn start_devices(opts: DevicesCommand) -> anyhow::Result<()> {
 
     // Create serial devices.
     for (i, params) in opts.serial.iter().enumerate() {
-        let serial_config = &params.device_params;
+        let serial_config = &params.device;
         add_device(i, serial_config, &params.vhost, &jail, &mut devices_jails)?;
     }
 
@@ -2995,7 +2995,7 @@ pub fn start_devices(opts: DevicesCommand) -> anyhow::Result<()> {
         } else {
             None
         };
-        let disk_config = DiskConfig::new(&params.device_params, tube);
+        let disk_config = DiskConfig::new(&params.device, tube);
         add_device(i, &disk_config, &params.vhost, &jail, &mut devices_jails)?;
     }
 

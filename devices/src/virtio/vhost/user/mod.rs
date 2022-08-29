@@ -26,7 +26,7 @@ use serde::Deserialize;
 pub struct VhostUserParams<T: Debug> {
     pub vhost: String,
     #[serde(flatten)]
-    pub device_params: T,
+    pub device: T,
 }
 
 impl<T> FromArgValue for VhostUserParams<T>
