@@ -11,17 +11,26 @@ use cros_async::Executor;
 mod args;
 mod error;
 mod performance_data;
+mod sys;
 
 use crate::args::*;
 use crate::error::Error;
 use crate::error::Result;
 use crate::performance_data::*;
+use crate::sys::create_stream_source_generator as sys_create_stream_source_generators;
+
+fn create_stream_source_generators(args: &Args) -> Box<dyn StreamSourceGenerator> {
+    match args.stream_source {
+        StreamSourceEnum::NoopStream => Box::new(NoopStreamSourceGenerator::new()),
+        StreamSourceEnum::Sys(stream_source) => {
+            sys_create_stream_source_generators(stream_source, args)
+        }
+    }
+}
 
 async fn run_playback(ex: &Executor, args: &Args) -> Result<PerformanceData> {
     let mut data = PerformanceData::default();
-    let generator: Box<dyn StreamSourceGenerator> = match args.playback_source {
-        StreamSourceEnum::NoopStream => Box::new(NoopStreamSourceGenerator::new()),
-    };
+    let generator: Box<dyn StreamSourceGenerator> = create_stream_source_generators(args);
     let num_channels = args.channels;
     let format = args.format;
     let frame_rate = args.rate;
