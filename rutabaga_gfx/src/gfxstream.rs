@@ -76,6 +76,13 @@ pub struct stream_renderer_handle {
     pub handle_type: u32,
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
+pub struct stream_renderer_vulkan_info {
+    pub memory_index: u32,
+    pub physical_device_index: u32,
+}
+
 #[allow(non_camel_case_types)]
 type stream_renderer_create_blob = ResourceCreateBlob;
 
@@ -167,6 +174,10 @@ extern "C" {
     ) -> c_int;
     fn stream_renderer_resource_unmap(res_handle: u32) -> c_int;
     fn stream_renderer_resource_map_info(res_handle: u32, map_info: *mut u32) -> c_int;
+    fn stream_renderer_vulkan_info(
+        res_handle: u32,
+        vulkan_info: *mut stream_renderer_vulkan_info,
+    ) -> c_int;
     fn stream_renderer_context_create(
         handle: u32,
         nlen: u32,
@@ -317,10 +328,23 @@ impl Gfxstream {
 
     fn map_info(&self, resource_id: u32) -> RutabagaResult<u32> {
         let mut map_info = 0;
+        // Safe because `map_info` is a local stack variable owned by us.
         let ret = unsafe { stream_renderer_resource_map_info(resource_id, &mut map_info) };
         ret_to_res(ret)?;
 
         Ok(map_info)
+    }
+
+    fn vulkan_info(&self, resource_id: u32) -> RutabagaResult<VulkanInfo> {
+        let mut vulkan_info: stream_renderer_vulkan_info = Default::default();
+        // Safe because `vulkan_info` is a local stack variable owned by us.
+        let ret = unsafe { stream_renderer_vulkan_info(resource_id, &mut vulkan_info) };
+        ret_to_res(ret)?;
+
+        Ok(VulkanInfo {
+            memory_idx: vulkan_info.memory_index,
+            physical_device_idx: vulkan_info.physical_device_index,
+        })
     }
 
     fn export_blob(&self, resource_id: u32) -> RutabagaResult<Arc<RutabagaHandle>> {
@@ -571,7 +595,7 @@ impl RutabagaComponent for Gfxstream {
             map_info: self.map_info(resource_id).ok(),
             info_2d: None,
             info_3d: None,
-            vulkan_info: None,
+            vulkan_info: self.vulkan_info(resource_id).ok(),
             backing_iovecs: iovec_opt,
             import_mask: 0,
         })
