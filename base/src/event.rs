@@ -11,7 +11,7 @@ use crate::descriptor::AsRawDescriptor;
 use crate::descriptor::FromRawDescriptor;
 use crate::descriptor::IntoRawDescriptor;
 use crate::descriptor::SafeDescriptor;
-use crate::platform::Event as PlatformEvent;
+use crate::platform::PlatformEvent;
 use crate::RawDescriptor;
 use crate::Result;
 

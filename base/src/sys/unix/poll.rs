@@ -271,13 +271,13 @@ mod tests {
 
     use base_event_token_derive::EventToken;
 
-    use super::super::Event;
+    use super::super::PlatformEvent;
     use super::*;
 
     #[test]
     fn event_context() {
-        let evt1 = Event::new().unwrap();
-        let evt2 = Event::new().unwrap();
+        let evt1 = PlatformEvent::new().unwrap();
+        let evt2 = PlatformEvent::new().unwrap();
         evt1.write(1).unwrap();
         evt2.write(1).unwrap();
         let ctx: EventContext<u32> = EventContext::build_with(&[(&evt1, 1), (&evt2, 2)]).unwrap();
@@ -308,7 +308,7 @@ mod tests {
         let ctx: EventContext<usize> = EventContext::new().unwrap();
         let mut evts = Vec::with_capacity(EVT_COUNT);
         for i in 0..EVT_COUNT {
-            let evt = Event::new().unwrap();
+            let evt = PlatformEvent::new().unwrap();
             evt.write(1).unwrap();
             ctx.add(&evt, i).unwrap();
             evts.push(evt);

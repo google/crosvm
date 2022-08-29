@@ -439,7 +439,7 @@ mod tests {
 
     use libc::cmsghdr;
 
-    use super::super::Event;
+    use super::super::PlatformEvent;
     use super::*;
 
     // Doing this as a macro makes it easier to see the line if it fails
@@ -502,7 +502,7 @@ mod tests {
     fn send_recv_only_fd() {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
 
-        let evt = Event::new().expect("failed to create event");
+        let evt = PlatformEvent::new().expect("failed to create event");
         let ioslice = IoSlice::new([].as_ref());
         let write_count = s1
             .send_with_fd(&[ioslice], evt.as_raw_fd())
@@ -533,7 +533,7 @@ mod tests {
     fn send_recv_with_fd() {
         let (s1, s2) = UnixDatagram::pair().expect("failed to create socket pair");
 
-        let evt = Event::new().expect("failed to create event");
+        let evt = PlatformEvent::new().expect("failed to create event");
         let ioslice = IoSlice::new([237].as_ref());
         let write_count = s1
             .send_with_fds(&[ioslice], &[evt.as_raw_fd()])

@@ -37,7 +37,7 @@ use crate::descriptor::AsRawDescriptor;
 use crate::descriptor::FromRawDescriptor;
 use crate::descriptor::IntoRawDescriptor;
 use crate::descriptor::SafeDescriptor;
-use crate::Event as CrateEvent;
+use crate::Event;
 use crate::EventReadResult;
 
 /// A safe wrapper around Windows synchapi methods used to mimic Linux eventfd (man 2 eventfd).
@@ -45,42 +45,42 @@ use crate::EventReadResult;
 /// events.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub(crate) struct Event {
+pub(crate) struct PlatformEvent {
     event_handle: SafeDescriptor,
 }
 
 pub trait EventExt {
     fn reset(&self) -> Result<()>;
-    fn new_with_manual_reset(manual_reset: bool) -> Result<CrateEvent>;
-    fn new_auto_reset() -> Result<CrateEvent>;
-    fn open(name: &str) -> Result<CrateEvent>;
-    fn create_event_with_name(name: &str) -> Result<CrateEvent>;
+    fn new_with_manual_reset(manual_reset: bool) -> Result<Event>;
+    fn new_auto_reset() -> Result<Event>;
+    fn open(name: &str) -> Result<Event>;
+    fn create_event_with_name(name: &str) -> Result<Event>;
 }
 
-impl EventExt for CrateEvent {
+impl EventExt for Event {
     fn reset(&self) -> Result<()> {
         self.0.reset()
     }
 
-    fn new_with_manual_reset(manual_reset: bool) -> Result<CrateEvent> {
-        Event::new_with_manual_reset(manual_reset).map(CrateEvent)
+    fn new_with_manual_reset(manual_reset: bool) -> Result<Event> {
+        PlatformEvent::new_with_manual_reset(manual_reset).map(Event)
     }
 
-    fn new_auto_reset() -> Result<CrateEvent> {
-        CrateEvent::new_with_manual_reset(false)
+    fn new_auto_reset() -> Result<Event> {
+        Event::new_with_manual_reset(false)
     }
 
-    fn open(name: &str) -> Result<CrateEvent> {
-        Event::open(name).map(CrateEvent)
+    fn open(name: &str) -> Result<Event> {
+        PlatformEvent::open(name).map(Event)
     }
 
-    fn create_event_with_name(name: &str) -> Result<CrateEvent> {
-        Event::create_event_with_name(name).map(CrateEvent)
+    fn create_event_with_name(name: &str) -> Result<Event> {
+        PlatformEvent::create_event_with_name(name).map(Event)
     }
 }
 
-impl Event {
-    pub fn new_with_manual_reset(manual_reset: bool) -> Result<Event> {
+impl PlatformEvent {
+    pub fn new_with_manual_reset(manual_reset: bool) -> Result<PlatformEvent> {
         let handle = unsafe {
             CreateEventA(
                 SecurityAttributes::new_with_security_descriptor(
@@ -96,12 +96,12 @@ impl Event {
         if handle.is_null() {
             return errno_result();
         }
-        Ok(Event {
+        Ok(PlatformEvent {
             event_handle: unsafe { SafeDescriptor::from_raw_descriptor(handle) },
         })
     }
 
-    pub fn create_event_with_name(name: &str) -> Result<Event> {
+    pub fn create_event_with_name(name: &str) -> Result<PlatformEvent> {
         let event_str = CString::new(String::from(name)).unwrap();
         let handle = unsafe {
             CreateEventA(
@@ -118,29 +118,29 @@ impl Event {
         if handle.is_null() {
             return errno_result();
         }
-        Ok(Event {
+        Ok(PlatformEvent {
             event_handle: unsafe { SafeDescriptor::from_raw_descriptor(handle) },
         })
     }
 
-    pub fn new() -> Result<Event> {
+    pub fn new() -> Result<PlatformEvent> {
         // Require manual reset
-        Event::new_with_manual_reset(true)
+        PlatformEvent::new_with_manual_reset(true)
     }
 
-    pub fn open(name: &str) -> Result<Event> {
+    pub fn open(name: &str) -> Result<PlatformEvent> {
         let event_str = CString::new(String::from(name)).unwrap();
         let handle = unsafe { OpenEventA(EVENT_MODIFY_STATE, FALSE, event_str.as_ptr()) };
         if handle.is_null() {
             return errno_result();
         }
-        Ok(Event {
+        Ok(PlatformEvent {
             event_handle: unsafe { SafeDescriptor::from_raw_descriptor(handle) },
         })
     }
 
-    pub fn new_auto_reset() -> Result<Event> {
-        Event::new_with_manual_reset(false)
+    pub fn new_auto_reset() -> Result<PlatformEvent> {
+        PlatformEvent::new_with_manual_reset(false)
     }
 
     pub fn write(&self, _v: u64) -> Result<()> {
@@ -196,7 +196,7 @@ impl Event {
         }
     }
 
-    pub fn try_clone(&self) -> Result<Event> {
+    pub fn try_clone(&self) -> Result<PlatformEvent> {
         let mut event_clone: HANDLE = MaybeUninit::uninit().as_mut_ptr();
         let duplicate_result = unsafe {
             DuplicateHandle(
@@ -212,47 +212,47 @@ impl Event {
         if duplicate_result == 0 {
             return errno_result();
         }
-        Ok(unsafe { Event::from_raw_descriptor(event_clone) })
+        Ok(unsafe { PlatformEvent::from_raw_descriptor(event_clone) })
     }
 }
 
-impl AsRawDescriptor for Event {
+impl AsRawDescriptor for PlatformEvent {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.event_handle.as_raw_descriptor()
     }
 }
 
-impl FromRawDescriptor for Event {
+impl FromRawDescriptor for PlatformEvent {
     unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Self {
-        Event {
+        PlatformEvent {
             event_handle: SafeDescriptor::from_raw_descriptor(descriptor),
         }
     }
 }
 
-impl AsRawHandle for Event {
+impl AsRawHandle for PlatformEvent {
     fn as_raw_handle(&self) -> RawHandle {
         self.as_raw_descriptor()
     }
 }
 
-impl IntoRawDescriptor for Event {
+impl IntoRawDescriptor for PlatformEvent {
     fn into_raw_descriptor(self) -> RawDescriptor {
         self.event_handle.into_raw_descriptor()
     }
 }
 
-impl From<Event> for SafeDescriptor {
-    fn from(evt: Event) -> Self {
+impl From<PlatformEvent> for SafeDescriptor {
+    fn from(evt: PlatformEvent) -> Self {
         evt.event_handle
     }
 }
 
-// Event is safe for send & Sync despite containing a raw handle to its
-// file mapping object. As long as the instance to Event stays alive, this
+// PlatformEvent is safe for send & Sync despite containing a raw handle to its
+// file mapping object. As long as the instance to PlatformEvent stays alive, this
 // pointer will be a valid handle.
-unsafe impl Send for Event {}
-unsafe impl Sync for Event {}
+unsafe impl Send for PlatformEvent {}
+unsafe impl Sync for PlatformEvent {}
 
 #[cfg(test)]
 mod tests {
@@ -264,19 +264,19 @@ mod tests {
 
     #[test]
     fn new() {
-        Event::new().unwrap();
+        PlatformEvent::new().unwrap();
     }
 
     #[test]
     fn read_write() {
-        let evt = Event::new().unwrap();
+        let evt = PlatformEvent::new().unwrap();
         evt.write(55).unwrap();
         assert_eq!(evt.read(), Ok(1));
     }
 
     #[test]
     fn read_write_auto_reset() {
-        let evt = Event::new_auto_reset().unwrap();
+        let evt = PlatformEvent::new_auto_reset().unwrap();
         evt.write(55).unwrap();
 
         // Wait for the notification.
@@ -290,7 +290,7 @@ mod tests {
 
     #[test]
     fn read_write_notifies_until_read() {
-        let evt = Event::new().unwrap();
+        let evt = PlatformEvent::new().unwrap();
         evt.write(55).unwrap();
 
         // Wait for the notification.
@@ -309,7 +309,7 @@ mod tests {
 
     #[test]
     fn clone() {
-        let evt = Event::new().unwrap();
+        let evt = PlatformEvent::new().unwrap();
         let evt_clone = evt.try_clone().unwrap();
         evt.write(923).unwrap();
         assert_eq!(evt_clone.read(), Ok(1));
@@ -317,7 +317,7 @@ mod tests {
 
     #[test]
     fn timeout() {
-        let evt = Event::new().expect("failed to create event");
+        let evt = PlatformEvent::new().expect("failed to create event");
         assert_eq!(
             evt.read_timeout(Duration::from_millis(1))
                 .expect("failed to read from event with timeout"),

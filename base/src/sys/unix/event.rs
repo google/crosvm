@@ -32,13 +32,13 @@ use crate::EventReadResult;
 /// and out of the KVM API. They can also be polled like any other file descriptor.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub(crate) struct EventFd {
+pub(crate) struct PlatformEvent {
     event_handle: SafeDescriptor,
 }
 
-impl EventFd {
-    /// Creates a new blocking EventFd with an initial value of 0.
-    pub fn new() -> Result<EventFd> {
+impl PlatformEvent {
+    /// Creates a new blocking eventfd with an initial value of 0.
+    pub fn new() -> Result<PlatformEvent> {
         // This is safe because eventfd merely allocated an eventfd for our process and we handle
         // the error case.
         let ret = unsafe { eventfd(0, 0) };
@@ -47,7 +47,7 @@ impl EventFd {
         }
         // This is safe because we checked ret for success and know the kernel gave us an fd that we
         // own.
-        Ok(EventFd {
+        Ok(PlatformEvent {
             event_handle: unsafe { SafeDescriptor::from_raw_descriptor(ret) },
         })
     }
@@ -132,43 +132,43 @@ impl EventFd {
         Ok(EventReadResult::Count(buf))
     }
 
-    /// Clones this EventFd, internally creating a new file descriptor. The new EventFd will share
+    /// Clones this eventfd, internally creating a new file descriptor. The new eventfd will share
     /// the same underlying count within the kernel.
-    pub fn try_clone(&self) -> Result<EventFd> {
+    pub fn try_clone(&self) -> Result<PlatformEvent> {
         self.event_handle
             .try_clone()
-            .map(|event_handle| EventFd { event_handle })
+            .map(|event_handle| PlatformEvent { event_handle })
     }
 }
 
-impl AsRawFd for EventFd {
+impl AsRawFd for PlatformEvent {
     fn as_raw_fd(&self) -> RawFd {
         self.event_handle.as_raw_fd()
     }
 }
 
-impl AsRawDescriptor for EventFd {
+impl AsRawDescriptor for PlatformEvent {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.event_handle.as_raw_descriptor()
     }
 }
 
-impl FromRawDescriptor for EventFd {
+impl FromRawDescriptor for PlatformEvent {
     unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Self {
-        EventFd {
+        PlatformEvent {
             event_handle: SafeDescriptor::from_raw_descriptor(descriptor),
         }
     }
 }
 
-impl IntoRawDescriptor for EventFd {
+impl IntoRawDescriptor for PlatformEvent {
     fn into_raw_descriptor(self) -> RawDescriptor {
         self.event_handle.into_raw_descriptor()
     }
 }
 
-impl From<EventFd> for SafeDescriptor {
-    fn from(evt: EventFd) -> Self {
+impl From<PlatformEvent> for SafeDescriptor {
+    fn from(evt: PlatformEvent) -> Self {
         evt.event_handle
     }
 }
@@ -179,19 +179,19 @@ mod tests {
 
     #[test]
     fn new() {
-        EventFd::new().unwrap();
+        PlatformEvent::new().unwrap();
     }
 
     #[test]
     fn read_write() {
-        let evt = EventFd::new().unwrap();
+        let evt = PlatformEvent::new().unwrap();
         evt.write(55).unwrap();
         assert_eq!(evt.read(), Ok(55));
     }
 
     #[test]
     fn clone() {
-        let evt = EventFd::new().unwrap();
+        let evt = PlatformEvent::new().unwrap();
         let evt_clone = evt.try_clone().unwrap();
         evt.write(923).unwrap();
         assert_eq!(evt_clone.read(), Ok(923));
@@ -199,7 +199,7 @@ mod tests {
 
     #[test]
     fn timeout() {
-        let evt = EventFd::new().expect("failed to create eventfd");
+        let evt = PlatformEvent::new().expect("failed to create eventfd");
         assert_eq!(
             evt.read_timeout(Duration::from_millis(1))
                 .expect("failed to read from eventfd with timeout"),
