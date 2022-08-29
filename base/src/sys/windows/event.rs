@@ -45,7 +45,7 @@ use crate::EventReadResult;
 /// events.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Event {
+pub(crate) struct Event {
     event_handle: SafeDescriptor,
 }
 
@@ -239,6 +239,12 @@ impl AsRawHandle for Event {
 impl IntoRawDescriptor for Event {
     fn into_raw_descriptor(self) -> RawDescriptor {
         self.event_handle.into_raw_descriptor()
+    }
+}
+
+impl From<Event> for SafeDescriptor {
+    fn from(evt: Event) -> Self {
+        evt.event_handle
     }
 }
 

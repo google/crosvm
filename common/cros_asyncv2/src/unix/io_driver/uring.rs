@@ -31,7 +31,6 @@ use anyhow::Context;
 use base::error;
 use base::warn;
 use base::AsRawDescriptor;
-use base::EventFd;
 use base::FromRawDescriptor;
 use base::LayoutAllocation;
 use base::SafeDescriptor;
@@ -419,7 +418,7 @@ impl State {
 
     fn submit_waker(&mut self) -> anyhow::Result<()> {
         let entry = opcode::Read::new(
-            Fd(self.waker.0.as_raw_fd()),
+            Fd(self.waker.0.as_raw_descriptor()),
             ptr::null_mut(),
             size_of::<u64>() as u32,
         )
@@ -605,10 +604,10 @@ fn unpack_buffer_id(bid: u16) -> (usize, usize) {
     (alloc_idx, buffer_idx)
 }
 
-pub struct Waker(EventFd);
+pub struct Waker(base::Event);
 impl Waker {
     fn new() -> anyhow::Result<Waker> {
-        EventFd::new()
+        base::Event::new()
             .map(Waker)
             .map_err(|e| anyhow!(io::Error::from(e)))
     }

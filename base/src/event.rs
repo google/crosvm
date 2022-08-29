@@ -10,6 +10,7 @@ use serde::Serialize;
 use crate::descriptor::AsRawDescriptor;
 use crate::descriptor::FromRawDescriptor;
 use crate::descriptor::IntoRawDescriptor;
+use crate::descriptor::SafeDescriptor;
 use crate::platform::Event as PlatformEvent;
 use crate::RawDescriptor;
 use crate::Result;
@@ -28,7 +29,7 @@ pub enum EventReadResult {
 // TODO(b:231344063) Move/update documentation.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Event(pub PlatformEvent);
+pub struct Event(pub(crate) PlatformEvent);
 impl Event {
     pub fn new() -> Result<Event> {
         PlatformEvent::new().map(Event)
@@ -66,5 +67,11 @@ impl FromRawDescriptor for Event {
 impl IntoRawDescriptor for Event {
     fn into_raw_descriptor(self) -> RawDescriptor {
         self.0.into_raw_descriptor()
+    }
+}
+
+impl From<Event> for SafeDescriptor {
+    fn from(evt: Event) -> Self {
+        Self::from(evt.0)
     }
 }

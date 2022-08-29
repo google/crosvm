@@ -41,10 +41,10 @@ impl Event {
 }
 
 #[cfg(unix)]
-impl TryFrom<base::EventFd> for Event {
+impl TryFrom<base::Event> for Event {
     type Error = anyhow::Error;
 
-    fn try_from(evt: base::EventFd) -> anyhow::Result<Event> {
+    fn try_from(evt: base::Event) -> anyhow::Result<Event> {
         sys::Event::try_from(evt).map(|inner| Event { inner })
     }
 }
@@ -73,15 +73,14 @@ mod tests {
     #[test]
     #[cfg(unix)]
     fn next_val_reads_value() {
-        use base::EventFd;
         async fn go(event: Event) -> u64 {
             event.next_val().await.unwrap()
         }
 
-        let eventfd = EventFd::new().unwrap();
-        eventfd.write(0xaa).unwrap();
+        let sync_event = base::Event::new().unwrap();
+        sync_event.write(0xaa).unwrap();
         let ex = Executor::new();
-        let val = ex.run_until(go(eventfd.try_into().unwrap())).unwrap();
+        let val = ex.run_until(go(sync_event.try_into().unwrap())).unwrap();
         assert_eq!(val, 0xaa);
     }
 

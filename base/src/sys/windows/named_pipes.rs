@@ -52,12 +52,12 @@ use winapi::um::winbase::PIPE_TYPE_MESSAGE;
 use winapi::um::winbase::PIPE_WAIT;
 use winapi::um::winbase::SECURITY_IDENTIFICATION;
 
-use super::Event;
 use super::RawDescriptor;
 use crate::descriptor::AsRawDescriptor;
 use crate::descriptor::FromRawDescriptor;
 use crate::descriptor::IntoRawDescriptor;
 use crate::descriptor::SafeDescriptor;
+use crate::Event;
 
 /// The default buffer size for all named pipes in the system. If this size is too small, writers
 /// on named pipes that expect not to block *can* block until the reading side empties the buffer.

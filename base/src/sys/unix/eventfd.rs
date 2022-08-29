@@ -32,7 +32,7 @@ use crate::EventReadResult;
 /// and out of the KVM API. They can also be polled like any other file descriptor.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct EventFd {
+pub(crate) struct EventFd {
     event_handle: SafeDescriptor,
 }
 

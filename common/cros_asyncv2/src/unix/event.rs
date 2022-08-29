@@ -9,7 +9,6 @@ use std::sync::Arc;
 
 use anyhow::ensure;
 use anyhow::Context;
-use base::EventFd;
 use base::SafeDescriptor;
 
 use super::io_driver;
@@ -21,7 +20,7 @@ pub struct Event {
 
 impl Event {
     pub fn new() -> anyhow::Result<Event> {
-        EventFd::new()
+        base::Event::new()
             .map_err(io::Error::from)
             .context("failed to create eventfd")
             .and_then(Event::try_from)
@@ -60,10 +59,10 @@ impl Event {
     }
 }
 
-impl TryFrom<EventFd> for Event {
+impl TryFrom<base::Event> for Event {
     type Error = anyhow::Error;
 
-    fn try_from(evt: EventFd) -> anyhow::Result<Event> {
+    fn try_from(evt: base::Event) -> anyhow::Result<Event> {
         io_driver::prepare(&evt)?;
         Ok(Event {
             fd: Arc::new(SafeDescriptor::from(evt)),

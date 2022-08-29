@@ -27,6 +27,7 @@ use base::warn;
 use base::AsRawDescriptor;
 use base::Error as SysError;
 use base::Event;
+use base::EventExt;
 use cros_async::select2;
 use cros_async::select6;
 use cros_async::AsyncError;
@@ -379,8 +380,7 @@ impl Worker {
                         .map_err(|e| {
                             error!("Could not clone h_event.");
                             VsockError::CloneDescriptor(e)
-                        })
-                        .map(base::Event)?;
+                        })?;
                     let evt_async = EventAsync::new(h_evt, ex).map_err(|e| {
                         error!("Could not create EventAsync.");
                         VsockError::CreateEventAsync(e)
@@ -419,7 +419,7 @@ impl Worker {
             {
                 if port.host == CONNECTION_EVENT_PORT_NUM {
                     // New connection event. Setup futures again.
-                    if let Err(e) = self.connection_event.0.reset() {
+                    if let Err(e) = self.connection_event.reset() {
                         error!("vsock: port: {}: could not reset connection_event.", port);
                         return Err(VsockError::ResetEventObject(e));
                     }
@@ -734,7 +734,7 @@ impl Worker {
             // always be negligible, but will sometimes be non-zero in cases where
             // traffic is high on the NamedPipe, especially a duplex pipe.
             if let Ok(cloned_event) = write_completed_event.try_clone() {
-                if let Ok(async_event) = EventAsync::new(Event(cloned_event), ex) {
+                if let Ok(async_event) = EventAsync::new(cloned_event, ex) {
                     let _ = async_event.next_val().await;
                 } else {
                     error!(

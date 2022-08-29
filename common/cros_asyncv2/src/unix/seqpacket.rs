@@ -439,7 +439,6 @@ mod test {
     use std::time::Instant;
 
     use base::AsRawDescriptor;
-    use base::EventFd;
 
     use super::*;
     use crate::with_deadline;
@@ -504,7 +503,7 @@ mod test {
             .run_until(async {
                 let (s1, s2) = SeqPacket::pair().expect("failed to create socket pair");
 
-                let evt = EventFd::new().expect("failed to create eventfd");
+                let evt = base::Event::new().expect("failed to create eventfd");
                 let write_count = s1
                     .send_with_fds(&[], &[evt.as_raw_descriptor()])
                     .await
@@ -540,7 +539,7 @@ mod test {
             .run_until(async {
                 let (s1, s2) = SeqPacket::pair().expect("failed to create socket pair");
 
-                let evt = EventFd::new().expect("failed to create eventfd");
+                let evt = base::Event::new().expect("failed to create eventfd");
                 let (res, _) = s1
                     .send_iobuf_with_fds(OwnedIoBuf::new(vec![]), &[evt.as_raw_descriptor()])
                     .await;
@@ -575,7 +574,7 @@ mod test {
             .run_until(async {
                 let (s1, s2) = SeqPacket::pair().expect("failed to create socket pair");
 
-                let evt = EventFd::new().expect("failed to create eventfd");
+                let evt = base::Event::new().expect("failed to create eventfd");
                 let write_count = s1
                     .send_with_fds(&[237], &[evt.as_raw_descriptor()])
                     .await
@@ -614,7 +613,7 @@ mod test {
             .run_until(async {
                 let (s1, s2) = SeqPacket::pair().expect("failed to create socket pair");
 
-                let evt = EventFd::new().expect("failed to create eventfd");
+                let evt = base::Event::new().expect("failed to create eventfd");
                 let (res, _) = s1
                     .send_iobuf_with_fds(OwnedIoBuf::new(vec![237]), &[evt.as_raw_descriptor()])
                     .await;
