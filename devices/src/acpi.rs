@@ -68,7 +68,7 @@ pub(crate) struct Pm1Resource {
 pub(crate) struct GpeResource {
     pub(crate) status: [u8; ACPIPM_RESOURCE_GPE0_BLK_LEN as usize / 2],
     enable: [u8; ACPIPM_RESOURCE_GPE0_BLK_LEN as usize / 2],
-    gpe_notify: BTreeMap<u32, Vec<Arc<Mutex<dyn GpeNotify>>>>,
+    pub(crate) gpe_notify: BTreeMap<u32, Vec<Arc<Mutex<dyn GpeNotify>>>>,
 }
 
 #[cfg(feature = "direct")]
@@ -184,8 +184,11 @@ impl ACPIPMResource {
         let sci_direct_evt = self.sci_direct_evt.take();
 
         #[cfg(feature = "direct")]
-        // Direct GPEs are forwarded via direct SCI forwarding,
-        // not via ACPI netlink events.
+        // ACPI event listener is currently used only for notifying gpe_notify
+        // notifiers when a GPE is fired in the host. For direct forwarded GPEs,
+        // we notify gpe_notify in a different way, ensuring that the notifier
+        // completes synchronously before we inject the GPE into the guest.
+        // So tell ACPI event listener to ignore direct GPEs.
         let acpi_event_ignored_gpe = self.direct_gpe.iter().map(|gpe| gpe.num).collect();
 
         #[cfg(not(feature = "direct"))]
@@ -258,12 +261,7 @@ fn run_worker(
         for event in events.iter().filter(|e| e.is_readable) {
             match event.token {
                 Token::AcpiEvent => {
-                    crate::sys::acpi_event_run(
-                        &acpi_event_sock,
-                        &gpe0,
-                        &sci_evt,
-                        &acpi_event_ignored_gpe,
-                    );
+                    crate::sys::acpi_event_run(&acpi_event_sock, &gpe0, &acpi_event_ignored_gpe);
                 }
                 Token::InterruptResample => {
                     sci_evt.clear_resample();
@@ -327,30 +325,8 @@ impl Pm1Resource {
 }
 
 impl GpeResource {
-    pub(crate) fn trigger_sci(&self, sci_evt: &IrqLevelEvent) {
-        let mut trigger = false;
-        for i in 0..self.status.len() {
-            let gpes = self.status[i] & self.enable[i];
-            if gpes == 0 {
-                continue;
-            }
-
-            for j in 0..8 {
-                if gpes & (1 << j) == 0 {
-                    continue;
-                }
-
-                let gpe_num: u32 = i as u32 * 8 + j;
-                if let Some(notify_devs) = self.gpe_notify.get(&gpe_num) {
-                    for notify_dev in notify_devs.iter() {
-                        notify_dev.lock().notify();
-                    }
-                }
-            }
-            trigger = true;
-        }
-
-        if trigger {
+    fn trigger_sci(&self, sci_evt: &IrqLevelEvent) {
+        if (0..self.status.len()).any(|i| self.status[i] & self.enable[i] != 0) {
             if let Err(e) = sci_evt.trigger() {
                 error!("ACPIPM: failed to trigger sci event for gpe: {}", e);
             }
