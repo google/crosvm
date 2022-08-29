@@ -12,9 +12,7 @@ use base::NetlinkGenericSocket;
 use sync::Mutex;
 
 use crate::acpi::ACPIPMError;
-use crate::acpi::ACPIPMFixedEvent;
 use crate::acpi::GpeResource;
-use crate::acpi::Pm1Resource;
 use crate::IrqLevelEvent;
 
 pub(crate) fn get_acpi_event_sock() -> Result<Option<NetlinkGenericSocket>, ACPIPMError> {
@@ -57,7 +55,6 @@ fn get_acpi_event_group() -> Option<u32> {
 pub(crate) fn acpi_event_run(
     acpi_event_sock: &Option<NetlinkGenericSocket>,
     gpe0: &Arc<Mutex<GpeResource>>,
-    pm1: &Arc<Mutex<Pm1Resource>>,
     sci_evt: &IrqLevelEvent,
     ignored_gpe: &[u32],
 ) {
@@ -88,25 +85,8 @@ pub(crate) fn acpi_event_run(
                     ignored_gpe,
                 );
             }
-            "button/power" => acpi_event_handle_power_button(acpi_event, pm1, sci_evt),
             c => debug!("ignored acpi event {}", c),
         };
-    }
-}
-
-const ACPI_BUTTON_NOTIFY_STATUS: u32 = 0x80;
-
-fn acpi_event_handle_power_button(
-    acpi_event: AcpiNotifyEvent,
-    pm1: &Arc<Mutex<Pm1Resource>>,
-    sci_evt: &IrqLevelEvent,
-) {
-    // If received power button event, emulate PM/PWRBTN_STS and trigger SCI
-    if acpi_event._type == ACPI_BUTTON_NOTIFY_STATUS && acpi_event.bus_id.contains("LNXPWRBN") {
-        let mut pm1 = pm1.lock();
-
-        pm1.status |= ACPIPMFixedEvent::PowerButton.bitmask();
-        pm1.trigger_sci(sci_evt);
     }
 }
 

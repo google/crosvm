@@ -261,7 +261,6 @@ fn run_worker(
                     crate::sys::acpi_event_run(
                         &acpi_event_sock,
                         &gpe0,
-                        &pm1,
                         &sci_evt,
                         &acpi_event_ignored_gpe,
                     );
@@ -318,7 +317,7 @@ impl Drop for ACPIPMResource {
 }
 
 impl Pm1Resource {
-    pub(crate) fn trigger_sci(&self, sci_evt: &IrqLevelEvent) {
+    fn trigger_sci(&self, sci_evt: &IrqLevelEvent) {
         if self.status & self.enable & ACPIPMFixedEvent::bitmask_all() != 0 {
             if let Err(e) = sci_evt.trigger() {
                 error!("ACPIPM: failed to trigger sci event for pm1: {}", e);
