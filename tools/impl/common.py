@@ -17,11 +17,6 @@ import json
 import sys
 import subprocess
 
-if sys.version_info.major != 3 or sys.version_info.minor < 8:
-    print("Python 3.8 or higher is required.")
-    print("Hint: Do not use crosvm tools inside cros_sdk.")
-    sys.exit(1)
-
 
 def ensure_package_exists(package: str):
     """Installs the specified package via pip if it does not exist."""
@@ -59,22 +54,46 @@ import re
 import shutil
 import traceback
 
-"Root directory of crosvm"
-CROSVM_ROOT = Path(__file__).parent.parent.parent.resolve()
+# File where to store http headers for gcloud authentication
+AUTH_HEADERS_FILE = Path(gettempdir()) / f"crosvm_gcloud_auth_headers_{getpass.getuser()}"
+
+PathLike = Union[Path, str]
+
+
+def find_crosvm_root():
+    "Walk up from CWD until we find the crosvm root dir."
+    path = Path("").resolve()
+    while True:
+        if (path / "tools/impl/common.py").is_file():
+            return path
+        if path.parent:
+            path = path.parent
+        else:
+            raise Exception("Cannot find crosvm root dir.")
+
+
+"Root directory of crosvm derived from CWD."
+CROSVM_ROOT = find_crosvm_root()
 
 "Cargo.toml file of crosvm"
 CROSVM_TOML = CROSVM_ROOT / "Cargo.toml"
+
+"""
+Root directory of crosvm devtools.
+
+May be different from `CROSVM_ROOT/tools`, which is allows you to run the crosvm dev
+tools from this directory on another crosvm repo.
+
+Use this if you want to call crosvm dev tools, which will use the scripts relative
+to this file.
+"""
+TOOLS_ROOT = Path(__file__).parent.parent.resolve()
 
 "Url of crosvm's gerrit review host"
 GERRIT_URL = "https://chromium-review.googlesource.com"
 
 # Ensure that we really found the crosvm root directory
 assert 'name = "crosvm"' in CROSVM_TOML.read_text()
-
-# File where to store http headers for gcloud authentication
-AUTH_HEADERS_FILE = Path(gettempdir()) / f"crosvm_gcloud_auth_headers_{getpass.getuser()}"
-
-PathLike = Union[Path, str]
 
 
 class CommandResult(NamedTuple):
@@ -175,6 +194,7 @@ class Command(object):
         self,
         quiet: bool = False,
         check: bool = True,
+        dry_run: bool = False,
     ) -> int:
         """
         Runs a program in the foreground with output streamed to the user.
@@ -200,6 +220,10 @@ class Command(object):
         Returns: The return code of the program.
         """
         self.__debug_print()
+        if dry_run:
+            print(f"Not running: {self}")
+            return 0
+
         if quiet:
             result = subprocess.run(
                 self.args,

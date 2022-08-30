@@ -11,13 +11,17 @@ from pathlib import Path
 from typing import List
 
 from impl.check_code_hygiene import has_crlf_line_endings
-from impl.common import CROSVM_ROOT, argh, chdir, cmd, cwd_context, parallel, run_main
+from impl.common import CROSVM_ROOT, TOOLS_ROOT, argh, chdir, cmd, cwd_context, parallel, run_main
 from impl.health_check import Check, CheckContext, run_checks
 
 
-def check_python_tests(context: CheckContext):
-    "Run all non-main python files to execute their unit tests."
-    parallel(*cmd("python3").foreach(context.all_files)).fg()
+def check_python_tests(_: CheckContext):
+    "No matter which python files have changed, run all available python tests."
+    PYTHON_TESTS = [
+        *TOOLS_ROOT.glob("tests/*.py"),
+        TOOLS_ROOT / "impl/common.py",
+    ]
+    parallel(*cmd("python3").foreach(PYTHON_TESTS)).fg()
 
 
 def check_python_types(context: CheckContext):
@@ -179,7 +183,8 @@ CHECKS: List[Check] = [
     ),
     Check(
         check_python_tests,
-        files=["tools/impl/common.py"],
+        files=["tools/**.py"],
+        python_tools=True,
     ),
     Check(
         check_python_types,

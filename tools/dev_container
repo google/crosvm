@@ -183,7 +183,12 @@ def main(
 
 
 class TestDevContainer(unittest.TestCase):
-    """Runs live tests using the docker service."""
+    """
+    Runs live tests using the docker service.
+
+    Note: This test is not run by health-check since it cannot be run inside the
+    container. It is run by infra/recipes/health_check.py before running health checks.
+    """
 
     docker: cmd
     docker_args = [
