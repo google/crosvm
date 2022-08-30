@@ -222,7 +222,7 @@ async fn notify_task(notify: Event, raw: Weak<RawExecutor>) {
         .expect("Failed to set notify Event as non-blocking");
 
     loop {
-        match notify.read() {
+        match notify.wait() {
             Ok(_) => {}
             Err(e) if e.errno() == libc::EWOULDBLOCK => {}
             Err(e) => panic!("Unexpected error while reading notify Event: {}", e),
@@ -315,7 +315,7 @@ impl RawExecutor {
     fn wake(&self) {
         let oldstate = self.state.swap(WOKEN, Ordering::Release);
         if oldstate == WAITING {
-            if let Err(e) = self.notify.write(1) {
+            if let Err(e) = self.notify.signal() {
                 warn!("Failed to notify executor that a future is ready: {}", e);
             }
         }

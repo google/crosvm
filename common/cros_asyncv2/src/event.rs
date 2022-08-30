@@ -60,6 +60,8 @@ mod tests {
     use super::*;
     use crate::Executor;
 
+    use base::EventExt;
+
     #[test]
     fn next_val_with_nonzero_count() {
         let ex = Executor::new();
@@ -78,7 +80,7 @@ mod tests {
         }
 
         let sync_event = base::Event::new().unwrap();
-        sync_event.write(0xaa).unwrap();
+        sync_event.write_count(0xaa).unwrap();
         let ex = Executor::new();
         let val = ex.run_until(go(sync_event.try_into().unwrap())).unwrap();
         assert_eq!(val, 0xaa);

@@ -125,7 +125,7 @@ impl Worker {
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
                     Token::QueueReady => {
-                        queue_evt.read().map_err(P9Error::ReadQueueEvent)?;
+                        queue_evt.wait().map_err(P9Error::ReadQueueEvent)?;
                         self.process_queue()?;
                     }
                     Token::InterruptResample => {
@@ -257,7 +257,7 @@ impl VirtioDevice for P9 {
 impl Drop for P9 {
     fn drop(&mut self) {
         if let Some(kill_evt) = self.kill_evt.take() {
-            if let Err(e) = kill_evt.write(1) {
+            if let Err(e) = kill_evt.signal() {
                 error!("failed to kill virtio_9p worker thread: {}", e);
                 return;
             }

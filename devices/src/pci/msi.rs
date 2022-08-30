@@ -251,7 +251,7 @@ impl MsiConfig {
 
     pub fn trigger(&self) {
         if let Some(irqfd) = self.irqfd.as_ref() {
-            irqfd.write(1).unwrap();
+            irqfd.signal().unwrap();
         }
     }
 }

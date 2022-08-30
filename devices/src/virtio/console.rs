@@ -221,7 +221,7 @@ fn spawn_input_thread(
                     Ok(0) => break, // Assume the stream of input has ended.
                     Ok(size) => {
                         buffer.lock().extend(&rx_buf[0..size]);
-                        thread_in_avail_evt.write(1).unwrap();
+                        thread_in_avail_evt.signal().unwrap();
                     }
                     Err(e) => {
                         // Being interrupted is not an error, but everything else is.
@@ -291,7 +291,7 @@ impl Worker {
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
                     Token::TransmitQueueAvailable => {
-                        if let Err(e) = self.transmit_evt.read() {
+                        if let Err(e) = self.transmit_evt.wait() {
                             error!("failed reading transmit queue Event: {}", e);
                             break 'wait;
                         }
@@ -303,7 +303,7 @@ impl Worker {
                         );
                     }
                     Token::ReceiveQueueAvailable => {
-                        if let Err(e) = self.receive_evt.read() {
+                        if let Err(e) = self.receive_evt.wait() {
                             error!("failed reading receive queue Event: {}", e);
                             break 'wait;
                         }
@@ -323,7 +323,7 @@ impl Worker {
                         }
                     }
                     Token::InputAvailable => {
-                        if let Err(e) = self.in_avail_evt.read() {
+                        if let Err(e) = self.in_avail_evt.wait() {
                             error!("failed reading in_avail_evt: {}", e);
                             break 'wait;
                         }
@@ -391,7 +391,7 @@ impl Drop for Console {
     fn drop(&mut self) {
         if let Some(kill_evt) = self.kill_evt.take() {
             // Ignore the result because there is nothing we can do about it.
-            let _ = kill_evt.write(1);
+            let _ = kill_evt.signal();
         }
 
         if let Some(worker_thread) = self.worker_thread.take() {
@@ -517,7 +517,7 @@ impl VirtioDevice for Console {
 
     fn reset(&mut self) -> bool {
         if let Some(kill_evt) = self.kill_evt.take() {
-            if kill_evt.write(1).is_err() {
+            if kill_evt.signal().is_err() {
                 error!("{}: failed to notify the kill event", self.debug_label());
                 return false;
             }

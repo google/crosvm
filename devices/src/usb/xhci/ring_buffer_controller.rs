@@ -146,7 +146,7 @@ where
         let mut state = self.state.lock();
         if *state != RingBufferState::Running {
             *state = RingBufferState::Running;
-            if let Err(e) = self.event.write(1) {
+            if let Err(e) = self.event.signal() {
                 error!("cannot start event ring: {}", e);
             }
         }
@@ -189,8 +189,8 @@ where
     T: 'static + TransferDescriptorHandler + Send,
 {
     fn on_event(&self) -> anyhow::Result<()> {
-        // `self.event` triggers ring buffer controller to run, the value read is not important.
-        let _ = self.event.read().context("cannot read from event")?;
+        // `self.event` triggers ring buffer controller to run.
+        self.event.wait().context("cannot read from event")?;
         let mut state = self.state.lock();
 
         match *state {
@@ -247,7 +247,7 @@ mod tests {
                 assert_eq!(atrb.trb.get_trb_type().unwrap(), TrbType::Normal);
                 self.sender.send(atrb.trb.get_parameter() as i32).unwrap();
             }
-            complete_event.write(1).unwrap();
+            complete_event.signal().unwrap();
             Ok(())
         }
     }

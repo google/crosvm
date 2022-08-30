@@ -28,7 +28,7 @@ pub use errno::errno_result;
 pub use errno::Error;
 pub use errno::Result;
 pub use event::Event;
-pub use event::EventReadResult;
+pub use event::EventWaitResult;
 pub use mmap::ExternalMapping;
 pub use mmap::MappedRegion;
 pub use mmap::MemoryMapping;
@@ -99,6 +99,7 @@ cfg_if::cfg_if! {
             net::{UnixSeqpacket, UnixSeqpacketListener, UnlinkUnixSeqpacketListener},
             ScmSocket, UnlinkUnixListener, SCM_SOCKET_MAX_FD_COUNT,
         };
+        pub use platform::EventExt;
     } else if #[cfg(windows)] {
         pub use platform::{EventTrigger, EventExt, WaitContextExt};
         pub use platform::MemoryMappingBuilderWindows;

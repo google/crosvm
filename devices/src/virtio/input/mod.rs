@@ -500,14 +500,14 @@ impl<T: EventSource> Worker<T> {
             for wait_event in wait_events.iter().filter(|e| e.is_readable) {
                 match wait_event.token {
                     Token::EventQAvailable => {
-                        if let Err(e) = event_queue_evt.read() {
+                        if let Err(e) = event_queue_evt.wait() {
                             error!("failed reading event queue Event: {}", e);
                             break 'wait;
                         }
                         needs_interrupt |= self.send_events();
                     }
                     Token::StatusQAvailable => {
-                        if let Err(e) = status_queue_evt.read() {
+                        if let Err(e) = status_queue_evt.wait() {
                             error!("failed reading status queue Event: {}", e);
                             break 'wait;
                         }
@@ -524,7 +524,7 @@ impl<T: EventSource> Worker<T> {
                         self.interrupt.interrupt_resample();
                     }
                     Token::Kill => {
-                        let _ = kill_evt.read();
+                        let _ = kill_evt.wait();
                         break 'wait;
                     }
                 }
@@ -556,7 +556,7 @@ impl<T: EventSource> Drop for Input<T> {
     fn drop(&mut self) {
         if let Some(kill_evt) = self.kill_evt.take() {
             // Ignore the result because there is nothing we can do about it.
-            let _ = kill_evt.write(1);
+            let _ = kill_evt.signal();
         }
 
         if let Some(worker_thread) = self.worker_thread.take() {
@@ -653,7 +653,7 @@ where
 
     fn reset(&mut self) -> bool {
         if let Some(kill_evt) = self.kill_evt.take() {
-            if kill_evt.write(1).is_err() {
+            if kill_evt.signal().is_err() {
                 error!("{}: failed to notify the kill event", self.debug_label());
                 return false;
             }

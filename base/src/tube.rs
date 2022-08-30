@@ -177,8 +177,8 @@ mod tests {
 
     #[track_caller]
     fn test_event_pair(send: Event, recv: Event) {
-        send.write(1).unwrap();
-        recv.read_timeout(Duration::from_secs(1)).unwrap();
+        send.signal().unwrap();
+        recv.wait_timeout(Duration::from_secs(1)).unwrap();
     }
 
     #[test]

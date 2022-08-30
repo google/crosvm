@@ -267,6 +267,7 @@ mod tests {
     use std::thread;
 
     use base::Event;
+    use base::EventExt;
     use sync::Mutex;
 
     use super::*;
@@ -575,28 +576,28 @@ mod tests {
         }
 
         let eventfd = Event::new().unwrap();
-        eventfd.write(0x55).unwrap();
+        eventfd.write_count(0x55).unwrap();
         let ex = URingExecutor::new().unwrap();
         let uring_source = async_uring_from(eventfd, &ex).unwrap();
         let val = ex.run_until(go(uring_source)).unwrap();
         assert_eq!(val, 0x55);
 
         let eventfd = Event::new().unwrap();
-        eventfd.write(0xaa).unwrap();
+        eventfd.write_count(0xaa).unwrap();
         let poll_ex = FdExecutor::new().unwrap();
         let poll_source = async_poll_from(eventfd, &poll_ex).unwrap();
         let val = poll_ex.run_until(go(poll_source)).unwrap();
         assert_eq!(val, 0xaa);
 
         let eventfd = Event::new().unwrap();
-        eventfd.write(0x55).unwrap();
+        eventfd.write_count(0x55).unwrap();
         let ex = URingExecutor::new().unwrap();
         let uring_source = async_uring_from_local(eventfd, &ex).unwrap();
         let val = ex.run_until(go(uring_source)).unwrap();
         assert_eq!(val, 0x55);
 
         let eventfd = Event::new().unwrap();
-        eventfd.write(0xaa).unwrap();
+        eventfd.write_count(0xaa).unwrap();
         let poll_ex = FdExecutor::new().unwrap();
         let poll_source = async_poll_from_local(eventfd, &poll_ex).unwrap();
         let val = poll_ex.run_until(go(poll_source)).unwrap();

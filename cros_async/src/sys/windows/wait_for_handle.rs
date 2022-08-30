@@ -296,7 +296,7 @@ mod tests {
 
             let ex = Executor::new().unwrap();
             let evt = Event::new().unwrap();
-            evt.write(0).unwrap();
+            evt.signal().unwrap();
             let async_evt = EventAsync::new(evt, &ex).unwrap();
 
             let fut = wait_on_signaled_event(async_evt);

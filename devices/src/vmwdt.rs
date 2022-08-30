@@ -235,7 +235,7 @@ impl Vmwdt {
 
 impl Drop for Vmwdt {
     fn drop(&mut self) {
-        if let Err(e) = self.kill_evt.write(1) {
+        if let Err(e) = self.kill_evt.signal() {
             error!("Failed to stop the bg thread: {}", e);
             return;
         }

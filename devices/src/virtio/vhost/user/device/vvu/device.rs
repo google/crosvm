@@ -25,6 +25,7 @@ use base::info;
 use base::AsRawDescriptor;
 use base::Descriptor;
 use base::Event;
+use base::EventExt;
 use base::MappedRegion;
 use base::MemoryMappingBuilder;
 use base::MemoryMappingBuilderUnix;
@@ -65,7 +66,7 @@ impl VfioSender {
     fn send(&self, buf: Vec<u8>) -> Result<()> {
         self.sender.send(buf)?;
         // Increment the event counter as we sent one buffer.
-        self.evt.write(1).context("failed to signal event")
+        self.evt.write_count(1).context("failed to signal event")
     }
 }
 
@@ -113,8 +114,8 @@ impl VfioReceiver {
             self.offset = 0;
             // Decrement the event counter as we received one buffer.
             self.evt
-                .read()
-                .and_then(|c| self.evt.write(c - 1))
+                .read_count()
+                .and_then(|c| self.evt.write_count(c - 1))
                 .context("failed to decrease event counter")
                 .map_err(RecvIntoBufsError::Fatal)?;
         }

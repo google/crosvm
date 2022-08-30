@@ -221,7 +221,7 @@ where
     T: TapT + IntoAsync,
 {
     fn drop(&mut self) {
-        let _ = self.slirp_kill_event.write(1);
+        let _ = self.slirp_kill_event.signal();
     }
 }
 

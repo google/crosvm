@@ -779,7 +779,7 @@ mod tests {
         let (_sock, _poll_fd) = create_readable_socket();
 
         let event_fd = Event::new_auto_reset().unwrap();
-        event_fd.write(0).expect("Failed to write event");
+        event_fd.signal().expect("Failed to write event");
         let (handles, _sockets) = poll(
             &wait_ctx,
             &socket_event_handle,
@@ -819,7 +819,7 @@ mod tests {
 
         let (sock, poll_fd) = create_readable_socket();
         let event_fd = Event::new_auto_reset().unwrap();
-        event_fd.write(0).expect("Failed to write event");
+        event_fd.signal().expect("Failed to write event");
 
         let (handles, sockets) = poll(
             &wait_ctx,
@@ -848,7 +848,7 @@ mod tests {
             true,
         )
         .unwrap();
-        event_fd.write(0).expect("Failed to write event");
+        event_fd.signal().expect("Failed to write event");
         start_slirp(
             host_pipe,
             event_fd.try_clone().unwrap(),
@@ -924,7 +924,7 @@ mod tests {
         thread::spawn(move || {
             thread::sleep(Duration::from_millis(TIMEOUT_MILLIS));
             shutdown_sender
-                .write(1)
+                .signal()
                 .expect("Failed to write to shutdown sender");
         });
 

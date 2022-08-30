@@ -1366,8 +1366,8 @@ mod tests {
         res.send(&e1).unwrap();
 
         let recv_event: Event = req.recv().unwrap();
-        recv_event.write(1).unwrap();
-        assert_eq!(e1.read().unwrap(), 1);
+        recv_event.signal().unwrap();
+        e1.wait().unwrap();
     }
 }
 

@@ -378,7 +378,7 @@ impl Pic {
         };
         if let Some(resample_events) = self.resample_events.get(irq as usize) {
             for resample_evt in resample_events {
-                resample_evt.write(1).unwrap();
+                resample_evt.signal().unwrap();
             }
         }
     }

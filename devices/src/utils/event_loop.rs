@@ -192,7 +192,7 @@ impl EventLoop {
 
     /// Stops this event loop asynchronously. Previous events might not be handled.
     pub fn stop(&self) {
-        match self.stop_evt.write(1) {
+        match self.stop_evt.signal() {
             Ok(_) => {}
             Err(_) => {
                 error!("fail to send event loop stop event, it might already stopped");
@@ -219,7 +219,7 @@ mod tests {
 
     impl EventHandler for EventLoopTestHandler {
         fn on_event(&self) -> anyhow::Result<()> {
-            self.evt.read().unwrap();
+            self.evt.wait().unwrap();
             *self.val.lock().unwrap() += 1;
             self.cvar.notify_one();
             Ok(())
@@ -244,7 +244,7 @@ mod tests {
         let t: Arc<dyn EventHandler> = h.clone();
         l.add_event(&h.evt, EventType::Read, Arc::downgrade(&t))
             .unwrap();
-        self_evt.write(1).unwrap();
+        self_evt.signal().unwrap();
         {
             let mut val = h.val.lock().unwrap();
             while *val < 1 {

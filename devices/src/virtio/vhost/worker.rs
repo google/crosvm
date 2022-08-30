@@ -162,7 +162,7 @@ impl<T: Vhost> Worker<T> {
                 match event.token {
                     Token::VhostIrqi { index } => {
                         self.vhost_interrupt[index]
-                            .read()
+                            .wait()
                             .map_err(Error::VhostIrqRead)?;
                         self.interrupt
                             .signal_used_queue(self.queues[index].vector());
@@ -171,7 +171,7 @@ impl<T: Vhost> Worker<T> {
                         self.interrupt.interrupt_resample();
                     }
                     Token::Kill => {
-                        let _ = self.kill_evt.read();
+                        let _ = self.kill_evt.wait();
                         break 'wait;
                     }
                     Token::ControlNotify => {

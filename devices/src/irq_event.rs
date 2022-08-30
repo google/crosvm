@@ -30,11 +30,11 @@ impl IrqEdgeEvent {
     }
 
     pub fn trigger(&self) -> Result<()> {
-        self.0.write(1)
+        self.0.signal()
     }
 
     pub fn clear_trigger(&self) {
-        let _ = self.0.read();
+        let _ = self.0.wait();
     }
 }
 
@@ -91,12 +91,12 @@ impl IrqLevelEvent {
 
     /// Allows backend to inject interrupt (typically into guest).
     pub fn trigger(&self) -> Result<()> {
-        self.trigger_evt.write(1)
+        self.trigger_evt.signal()
     }
 
     /// Allows code servicing interrupt to consume or clear the event.
     pub fn clear_trigger(&self) {
-        let _ = self.trigger_evt.read();
+        let _ = self.trigger_evt.wait();
     }
 
     /// Allows code servicing interrupt to signal that processing is done and that the backend
@@ -104,12 +104,12 @@ impl IrqLevelEvent {
     /// Note that typically resampling is signalled not by individual backends, but rather
     /// by the code implementing interrupt controller.
     pub fn trigger_resample(&self) -> Result<()> {
-        self.resample_evt.write(1)
+        self.resample_evt.signal()
     }
 
     /// Allows backend to consume or clear the resample event.
     pub fn clear_resample(&self) {
-        let _ = self.resample_evt.read();
+        let _ = self.resample_evt.wait();
     }
 }
 

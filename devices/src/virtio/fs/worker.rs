@@ -245,7 +245,7 @@ impl<F: FileSystem + Sync> Worker<F> {
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
                     Token::QueueReady => {
-                        queue_evt.read().map_err(Error::ReadQueueEvent)?;
+                        queue_evt.wait().map_err(Error::ReadQueueEvent)?;
                         if let Err(e) = process_fs_queue(
                             &self.mem,
                             &*self.irq,

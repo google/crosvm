@@ -66,7 +66,7 @@ impl FakeClock {
         self.deadlines.retain(|(ns, descriptor)| {
             let expired = *ns <= time;
             if expired {
-                descriptor.write(1).unwrap();
+                descriptor.signal().unwrap();
             }
             !expired
         });

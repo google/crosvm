@@ -29,7 +29,7 @@ use base::AsRawDescriptor;
 use base::Error;
 use base::Event;
 use base::EventExt;
-use base::EventReadResult;
+use base::EventWaitResult;
 use completion_handler::WinAudioActivateAudioInterfaceCompletionHandler;
 use completion_handler::ACTIVATE_AUDIO_INTERFACE_COMPLETION_EVENT;
 use metrics::event_details_proto::RecordDetails;
@@ -629,8 +629,8 @@ impl DeviceRenderer {
             .read_timeout(ACTIVATE_AUDIO_EVENT_TIMEOUT)
         {
             Ok(event_result) => match event_result {
-                EventReadResult::Count(_) => {}
-                EventReadResult::Timeout => {
+                EventWaitResult::Signaled => {}
+                EventWaitResult::TimedOut => {
                     return Err(RenderError::ActivateAudioEventTimeoutError);
                 }
             },

@@ -981,7 +981,7 @@ mod tests {
     fn stall_monitor_closes_on_exit_evt() -> Result<()> {
         let SetupData { monitor, exit_evt } = set_up_stall_monitor(1)?;
 
-        let _ = exit_evt.write(1)?;
+        let _ = exit_evt.signal()?;
         let _ = monitor
             .run(&exit_evt)?
             .join()

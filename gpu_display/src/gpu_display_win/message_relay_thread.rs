@@ -132,7 +132,7 @@ impl<T: DeserializeOwned + 'static> MessageRelayThread<T> {
 
 impl<T: DeserializeOwned + 'static> Drop for MessageRelayThread<T> {
     fn drop(&mut self) {
-        if let Err(e) = self.exit_event.write(1) {
+        if let Err(e) = self.exit_event.signal() {
             error!("Failed to inform message relay thread to exit: {:?}", e);
             return;
         }

@@ -117,7 +117,7 @@ impl Worker {
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
                     Token::QueueAvailable => {
-                        if let Err(e) = queue_evt.read() {
+                        if let Err(e) = queue_evt.wait() {
                             error!("failed reading queue Event: {}", e);
                             break 'wait;
                         }
@@ -158,7 +158,7 @@ impl Drop for Rng {
     fn drop(&mut self) {
         if let Some(kill_evt) = self.kill_evt.take() {
             // Ignore the result because there is nothing we can do about it.
-            let _ = kill_evt.write(1);
+            let _ = kill_evt.signal();
         }
 
         if let Some(worker_thread) = self.worker_thread.take() {
@@ -231,7 +231,7 @@ impl VirtioDevice for Rng {
 
     fn reset(&mut self) -> bool {
         if let Some(kill_evt) = self.kill_evt.take() {
-            if kill_evt.write(1).is_err() {
+            if kill_evt.signal().is_err() {
                 error!("{}: failed to notify the kill event", self.debug_label());
                 return false;
             }

@@ -781,7 +781,7 @@ impl Iommu {
 impl Drop for Iommu {
     fn drop(&mut self) {
         if let Some(kill_evt) = self.kill_evt.take() {
-            let _ = kill_evt.write(1);
+            let _ = kill_evt.signal();
         }
 
         if let Some(worker_thread) = self.worker_thread.take() {

@@ -25,7 +25,7 @@ use anyhow::Result;
 use base::error;
 use base::AsRawDescriptor;
 use base::Event;
-use base::EventReadResult;
+use base::EventWaitResult;
 use base::RawDescriptor;
 #[cfg(feature = "kiwi")]
 use base::Tube;
@@ -246,10 +246,10 @@ impl GpuDisplaySurface for SurfaceWin {
     fn close_requested(&self) -> bool {
         match self
             .display_closed_event
-            .read_timeout(Duration::from_secs(0))
+            .wait_timeout(Duration::from_secs(0))
         {
-            Ok(EventReadResult::Count(_)) => true,
-            Ok(EventReadResult::Timeout) => false,
+            Ok(EventWaitResult::Signaled) => true,
+            Ok(EventWaitResult::TimedOut) => false,
             Err(e) => {
                 error!("Failed to read whether display is closed: {}", e);
                 false

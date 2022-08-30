@@ -153,7 +153,7 @@ impl Worker {
                 match wait_evt.token {
                     Token::ControlQAvailable => {
                         self.control_queue_evt
-                            .read()
+                            .wait()
                             .map_err(SoundError::QueueEvt)?;
                         self.process_controlq_buffers()?;
                     }
@@ -161,17 +161,17 @@ impl Worker {
                         // Just read from the event object to make sure the producer of such events
                         // never blocks. The buffers will only be used when actual virtio-snd
                         // events are triggered.
-                        self.event_queue_evt.read().map_err(SoundError::QueueEvt)?;
+                        self.event_queue_evt.wait().map_err(SoundError::QueueEvt)?;
                     }
                     Token::EventTriggered => {
-                        event_notifier.read().map_err(SoundError::QueueEvt)?;
+                        event_notifier.wait().map_err(SoundError::QueueEvt)?;
                         self.process_event_triggered()?;
                     }
                     Token::InterruptResample => {
                         self.interrupt.interrupt_resample();
                     }
                     Token::Kill => {
-                        let _ = kill_evt.read();
+                        let _ = kill_evt.wait();
                         break 'wait;
                     }
                 }
@@ -181,7 +181,7 @@ impl Worker {
     }
 
     fn stop_io_thread(&mut self) {
-        if let Err(e) = self.io_kill.write(1) {
+        if let Err(e) = self.io_kill.signal() {
             error!(
                 "virtio-snd: Failed to send Break msg to stream thread: {}",
                 e
@@ -566,15 +566,15 @@ fn io_loop(
         for wait_evt in wait_events.iter().filter(|e| e.is_readable) {
             let queue = match wait_evt.token {
                 Token::TxQAvailable => {
-                    tx_queue_evt.read().map_err(SoundError::QueueEvt)?;
+                    tx_queue_evt.wait().map_err(SoundError::QueueEvt)?;
                     &tx_queue
                 }
                 Token::RxQAvailable => {
-                    rx_queue_evt.read().map_err(SoundError::QueueEvt)?;
+                    rx_queue_evt.wait().map_err(SoundError::QueueEvt)?;
                     &rx_queue
                 }
                 Token::Kill => {
-                    let _ = kill_evt.read();
+                    let _ = kill_evt.wait();
                     break 'wait;
                 }
             };

@@ -400,7 +400,7 @@ where
                         tap_polling_enabled = false;
                     }
                     Token::RxQueue => {
-                        if let Err(e) = rx_queue_evt.read() {
+                        if let Err(e) = rx_queue_evt.wait() {
                             error!("net: error reading rx queue Event: {}", e);
                             break 'wait;
                         }
@@ -408,7 +408,7 @@ where
                         tap_polling_enabled = true;
                     }
                     Token::TxQueue => {
-                        if let Err(e) = tx_queue_evt.read() {
+                        if let Err(e) = tx_queue_evt.wait() {
                             error!("net: error reading tx queue Event: {}", e);
                             break 'wait;
                         }
@@ -416,7 +416,7 @@ where
                     }
                     Token::CtrlQueue => {
                         if let Some(ctrl_evt) = &ctrl_queue_evt {
-                            if let Err(e) = ctrl_evt.read() {
+                            if let Err(e) = ctrl_evt.wait() {
                                 error!("net: error reading ctrl queue Event: {}", e);
                                 break 'wait;
                             }
@@ -430,11 +430,11 @@ where
                     }
                     Token::InterruptResample => {
                         // We can unwrap safely because interrupt must have the event.
-                        let _ = self.interrupt.get_resample_evt().unwrap().read();
+                        let _ = self.interrupt.get_resample_evt().unwrap().wait();
                         self.interrupt.do_interrupt_resample();
                     }
                     Token::Kill => {
-                        let _ = self.kill_evt.read();
+                        let _ = self.kill_evt.wait();
                         break 'wait;
                     }
                 }
@@ -615,14 +615,14 @@ where
             if self.workers_kill_evt.get(i).is_none() {
                 if let Some(kill_evt) = self.kill_evts.get(i) {
                     // Ignore the result because there is nothing we can do about it.
-                    let _ = kill_evt.write(1);
+                    let _ = kill_evt.signal();
                 }
             }
         }
         #[cfg(windows)]
         {
             if let Some(slirp_kill_evt) = self.slirp_kill_evt.take() {
-                let _ = slirp_kill_evt.write(1);
+                let _ = slirp_kill_evt.signal();
             }
         }
 
@@ -796,7 +796,7 @@ where
             // Only kill the child if it claimed its event.
             if self.workers_kill_evt.get(i).is_none() {
                 if let Some(kill_evt) = self.kill_evts.get(i) {
-                    if kill_evt.write(1).is_err() {
+                    if kill_evt.signal().is_err() {
                         error!("{}: failed to notify the kill event", self.debug_label());
                         return false;
                     }

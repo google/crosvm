@@ -591,7 +591,7 @@ impl CoreWinMetrics {
 impl Drop for CoreWinMetrics {
     fn drop(&mut self) {
         if let Some(join_handle) = self.worker_thread.take() {
-            let _ = self.exit_evt.write(1);
+            let _ = self.exit_evt.signal();
             join_handle
                 .join()
                 .expect("fail to join the worker thread of a win core metrics collector.");

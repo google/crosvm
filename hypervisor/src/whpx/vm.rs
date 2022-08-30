@@ -582,7 +582,7 @@ impl Vm for WhpxVm {
         match self.ioevents.get(&addr) {
             None => {}
             Some(evt) => {
-                evt.write(1)?;
+                evt.signal()?;
             }
         };
         Ok(())
@@ -761,7 +761,7 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
-    use base::EventReadResult;
+    use base::EventWaitResult;
     use base::MemoryMappingBuilder;
     use base::SharedMemory;
 
@@ -924,41 +924,41 @@ mod tests {
         vm.handle_io_events(IoEventAddress::Pio(0x1000), &[])
             .expect("failed to handle_io_events");
         assert_ne!(
-            evt.read_timeout(Duration::from_millis(10))
+            evt.wait_timeout(Duration::from_millis(10))
                 .expect("failed to read event"),
-            EventReadResult::Timeout
+            EventWaitResult::TimedOut
         );
         assert_eq!(
-            evt2.read_timeout(Duration::from_millis(10))
+            evt2.wait_timeout(Duration::from_millis(10))
                 .expect("failed to read event"),
-            EventReadResult::Timeout
+            EventWaitResult::TimedOut
         );
         // Check an mmio address
         vm.handle_io_events(IoEventAddress::Mmio(0x1000), &[])
             .expect("failed to handle_io_events");
         assert_eq!(
-            evt.read_timeout(Duration::from_millis(10))
+            evt.wait_timeout(Duration::from_millis(10))
                 .expect("failed to read event"),
-            EventReadResult::Timeout
+            EventWaitResult::TimedOut
         );
         assert_ne!(
-            evt2.read_timeout(Duration::from_millis(10))
+            evt2.wait_timeout(Duration::from_millis(10))
                 .expect("failed to read event"),
-            EventReadResult::Timeout
+            EventWaitResult::TimedOut
         );
 
         // Check an address that does not match any registered ioevents
         vm.handle_io_events(IoEventAddress::Pio(0x1001), &[])
             .expect("failed to handle_io_events");
         assert_eq!(
-            evt.read_timeout(Duration::from_millis(10))
+            evt.wait_timeout(Duration::from_millis(10))
                 .expect("failed to read event"),
-            EventReadResult::Timeout
+            EventWaitResult::TimedOut
         );
         assert_eq!(
-            evt2.read_timeout(Duration::from_millis(10))
+            evt2.wait_timeout(Duration::from_millis(10))
                 .expect("failed to read event"),
-            EventReadResult::Timeout
+            EventWaitResult::TimedOut
         );
     }
 

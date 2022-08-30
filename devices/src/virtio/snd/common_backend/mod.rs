@@ -411,7 +411,7 @@ impl VirtioDevice for VirtioSnd {
     fn reset(&mut self) -> bool {
         if let Some(kill_evt) = self.kill_evt.take() {
             // Ignore the result because there is nothing we can do about it.
-            let _ = kill_evt.write(1);
+            let _ = kill_evt.signal();
         }
 
         true

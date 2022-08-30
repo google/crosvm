@@ -102,8 +102,8 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
 
                 Self::run_message_loop(thread_id_sender, message_loop_state_clone);
 
-                if let Err(e) = thread_terminated_event_clone.write(1) {
-                    error!("Failed to write to thread terminated event: {}", e);
+                if let Err(e) = thread_terminated_event_clone.signal() {
+                    error!("Failed to signal thread terminated event: {}", e);
                 }
             }) {
             Ok(thread) => thread,

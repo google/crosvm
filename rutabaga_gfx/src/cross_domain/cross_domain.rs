@@ -336,7 +336,7 @@ impl CrossDomainWorker {
                     //
                     // Fence handling is tied to some new data transfer across a pollable
                     // descriptor.  When we're adding new descriptors, we stop polling.
-                    resample_evt.read()?;
+                    resample_evt.wait()?;
                     self.state.add_job(CrossDomainJob::HandleFence(fence));
                 }
                 CrossDomainToken::WaylandReadPipe(pipe_id) => {
@@ -587,7 +587,7 @@ impl Drop for CrossDomainContext {
         if let Some(kill_evt) = self.kill_evt.take() {
             // Don't join the the worker thread unless the write to `kill_evt` is successful.
             // Otherwise, this may block indefinitely.
-            match kill_evt.write(1) {
+            match kill_evt.signal() {
                 Ok(_) => (),
                 Err(e) => {
                     error!("failed to write cross domain kill event: {}", e);

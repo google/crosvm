@@ -163,7 +163,7 @@ impl Drop for Vsock {
     fn drop(&mut self) {
         if let Some(kill_evt) = self.kill_evt.take() {
             // Ignore the result because there is nothing we can do about it.
-            let _ = kill_evt.write(1);
+            let _ = kill_evt.signal();
         }
 
         if let Some(worker_thread) = self.worker_thread.take() {
@@ -684,9 +684,12 @@ impl Worker {
                     is_buffer_full: false,
                 };
                 self.connections.write().unwrap().insert(port, connection);
-                self.connection_event
-                    .write(0) // 0 is arbitrary
-                    .unwrap_or_else(|_| panic!("Failed to signal new connection event for vsock port {}.", port));
+                self.connection_event.signal().unwrap_or_else(|_| {
+                    panic!(
+                        "Failed to signal new connection event for vsock port {}.",
+                        port
+                    )
+                });
                 true
             }
             Err(e) => {
@@ -984,7 +987,7 @@ impl Worker {
                     .expect("vsock: failed to write to queue");
                     let _ = self
                         .connection_event
-                        .write(1)
+                        .signal()
                         .expect("vsock: failed to write to event");
                 } else {
                     error!("vsock: Attempted to close unopened port: {}", port);

@@ -2527,7 +2527,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 }
                 Token::Suspend => {
                     info!("VM requested suspend");
-                    linux.suspend_evt.read().unwrap();
+                    linux.suspend_evt.wait().unwrap();
                     vcpu::kick_all_vcpus(
                         &vcpu_handles,
                         linux.irq_chip.as_irq_chip(),

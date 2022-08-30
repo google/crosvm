@@ -180,7 +180,7 @@ impl Serial {
                                 break;
                             }
                             if (interrupt_enable.load(Ordering::SeqCst) & IER_RECV_BIT) != 0 {
-                                interrupt_evt.write(1).unwrap();
+                                interrupt_evt.signal().unwrap();
                             }
                         }
                         Err(e) => {
@@ -281,7 +281,7 @@ impl Serial {
     }
 
     fn trigger_interrupt(&mut self) -> Result<()> {
-        self.interrupt_evt.write(1)
+        self.interrupt_evt.signal()
     }
 
     fn set_data_bit(&mut self) {
@@ -480,7 +480,7 @@ mod tests {
         serial.write(serial_bus_address(IER), &[IER_RECV_BIT]);
         serial.queue_input_bytes(&[b'a', b'b', b'c']).unwrap();
 
-        assert_eq!(intr_evt.read(), Ok(1));
+        assert_eq!(intr_evt.wait(), Ok(()));
         let mut data = [0u8; 1];
         serial.read(serial_bus_address(DATA), &mut data[..]);
         assert_eq!(data[0], b'a');

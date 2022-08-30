@@ -1887,7 +1887,7 @@ impl Worker {
             for event in &events {
                 match event.token {
                     Token::InQueue => {
-                        let _ = in_queue_evt.read();
+                        let _ = in_queue_evt.wait();
                         if !watching_state_ctx {
                             if let Err(e) =
                                 wait_ctx.modify(&self.state.wait_ctx, EventType::Read, Token::State)
@@ -1899,7 +1899,7 @@ impl Worker {
                         }
                     }
                     Token::OutQueue => {
-                        let _ = out_queue_evt.read();
+                        let _ = out_queue_evt.wait();
                         process_out_queue(
                             &self.interrupt,
                             &mut self.out_queue,
@@ -1978,7 +1978,7 @@ impl Drop for Wl {
     fn drop(&mut self) {
         if let Some(kill_evt) = self.kill_evt.take() {
             // Ignore the result because there is nothing we can do about it.
-            let _ = kill_evt.write(1);
+            let _ = kill_evt.signal();
         }
 
         if let Some(worker_thread) = self.worker_thread.take() {

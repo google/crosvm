@@ -317,7 +317,7 @@ impl IrqChip for WhpxSplitIrqChip {
         } else {
             return Ok(());
         };
-        evt.event.read()?;
+        evt.event.wait()?;
 
         for route in self.routes.lock()[evt.gsi as usize].iter() {
             match *route {
@@ -351,7 +351,7 @@ impl IrqChip for WhpxSplitIrqChip {
                     } else {
                         let mut delayed_events = self.delayed_ioapic_irq_events.lock();
                         delayed_events.events.push(event_index);
-                        delayed_events.trigger.write(1)?;
+                        delayed_events.trigger.signal()?;
                     }
                 }
                 IrqSource::Msi { address, data } => self.send_msi(address as u32, data)?,
@@ -521,7 +521,7 @@ impl IrqChip for WhpxSplitIrqChip {
         });
 
         if delayed_events.events.is_empty() {
-            delayed_events.trigger.read()?;
+            delayed_events.trigger.wait()?;
         }
         Ok(())
     }
@@ -612,7 +612,7 @@ impl IrqChipX86_64 for WhpxSplitIrqChip {
 
 #[cfg(test)]
 mod tests {
-    use base::EventReadResult;
+    use base::EventWaitResult;
     use hypervisor::whpx::Whpx;
     use hypervisor::whpx::WhpxFeature;
     use hypervisor::CpuId;
@@ -875,7 +875,7 @@ mod tests {
             evt.get_resample()
                 .read_timeout(std::time::Duration::from_secs(1))
                 .expect("failed to read_timeout"),
-            EventReadResult::Count(1)
+            EventWaitResult::Signaled
         );
 
         // setup a ioapic redirection table entry 14
@@ -973,7 +973,7 @@ mod tests {
             evt.get_resample()
                 .read_timeout(std::time::Duration::from_millis(10))
                 .expect("failed to read_timeout"),
-            EventReadResult::Timeout
+            EventWaitResult::TimedOut
         );
 
         // irq line 1 should be asserted
@@ -992,7 +992,7 @@ mod tests {
             evt.get_resample()
                 .read_timeout(std::time::Duration::from_millis(10))
                 .expect("failed to read_timeout"),
-            EventReadResult::Count(1)
+            EventWaitResult::Signaled
         );
     }
 }

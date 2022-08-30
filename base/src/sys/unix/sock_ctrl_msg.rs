@@ -526,7 +526,7 @@ mod tests {
         file.write_all(unsafe { from_raw_parts(&1203u64 as *const u64 as *const u8, 8) })
             .expect("failed to write to sent fd");
 
-        assert_eq!(evt.read().expect("failed to read from event"), 1203);
+        assert_eq!(evt.read_count().expect("failed to read from event"), 1203);
     }
 
     #[test]
@@ -560,6 +560,6 @@ mod tests {
         file.write_all(unsafe { from_raw_parts(&1203u64 as *const u64 as *const u8, 8) })
             .expect("failed to write to sent fd");
 
-        assert_eq!(evt.read().expect("failed to read from event"), 1203);
+        assert_eq!(evt.read_count().expect("failed to read from event"), 1203);
     }
 }

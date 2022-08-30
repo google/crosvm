@@ -385,7 +385,7 @@ impl VirtioDevice for AsyncConsole {
             VirtioConsoleState::Running {
                 kill_evt,
                 worker_thread,
-            } => match kill_evt.write(1) {
+            } => match kill_evt.signal() {
                 Ok(_) => {
                     let thread_res = match worker_thread.join() {
                         Ok(thread_res) => thread_res,

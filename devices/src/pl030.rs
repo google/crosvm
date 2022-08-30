@@ -179,7 +179,7 @@ mod tests {
         device.write(pl030_bus_address(RTCEOI), &[1, 0, 0, 0]);
         device.read(pl030_bus_address(RTCSTAT), &mut register);
         assert_eq!(register, [1, 0, 0, 0]);
-        assert_eq!(event.get_trigger().read().unwrap(), 1);
+        event.get_trigger().wait().unwrap();
 
         // clear interrupt
         device.write(pl030_bus_address(RTCEOI), &[0, 0, 0, 0]);

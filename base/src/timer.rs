@@ -9,7 +9,7 @@ use std::time::Instant;
 use sync::Mutex;
 
 use super::Event;
-use super::EventReadResult;
+use super::EventWaitResult;
 use super::FakeClock;
 use super::RawDescriptor;
 use super::Result;
@@ -113,14 +113,14 @@ impl FakeTimer {
             if let Some(timeout) = timeout {
                 let elapsed = Instant::now() - wait_start;
                 if let Some(remaining) = elapsed.checked_sub(timeout) {
-                    if let EventReadResult::Timeout = self.event.read_timeout(remaining)? {
+                    if let EventWaitResult::TimedOut = self.event.wait_timeout(remaining)? {
                         return Ok(WaitResult::Timeout);
                     }
                 } else {
                     return Ok(WaitResult::Timeout);
                 }
             } else {
-                self.event.read()?;
+                self.event.wait()?;
             }
 
             if let Some(deadline_ns) = &mut self.deadline_ns {

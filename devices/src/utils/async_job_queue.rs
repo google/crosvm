@@ -37,14 +37,14 @@ impl AsyncJobQueue {
     /// Queue a new job. It will be invoked on event loop.
     pub fn queue_job<T: Fn() + 'static + Send>(&self, cb: T) -> Result<()> {
         self.jobs.lock().push(Box::new(cb));
-        self.evt.write(1).map_err(Error::WriteEvent)
+        self.evt.signal().map_err(Error::WriteEvent)
     }
 }
 
 impl EventHandler for AsyncJobQueue {
     fn on_event(&self) -> anyhow::Result<()> {
-        // We want to read out the event, but the value is not important.
-        let _ = self.evt.read().context("read event failed")?;
+        // We want to read out the event.
+        self.evt.wait().context("read event failed")?;
 
         let jobs = mem::take(&mut *self.jobs.lock());
         for mut cb in jobs {

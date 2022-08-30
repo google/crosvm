@@ -439,6 +439,7 @@ mod test {
     use std::time::Instant;
 
     use base::AsRawDescriptor;
+    use base::EventExt;
 
     use super::*;
     use crate::with_deadline;
@@ -528,7 +529,7 @@ mod test {
                 file.write_all(&1203u64.to_ne_bytes())
                     .expect("failed to write to sent fd");
 
-                assert_eq!(evt.read().expect("failed to read from eventfd"), 1203);
+                assert_eq!(evt.read_count().expect("failed to read from eventfd"), 1203);
             })
             .unwrap();
     }
@@ -563,7 +564,7 @@ mod test {
                 file.write_all(&1203u64.to_ne_bytes())
                     .expect("failed to write to sent fd");
 
-                assert_eq!(evt.read().expect("failed to read from eventfd"), 1203);
+                assert_eq!(evt.read_count().expect("failed to read from eventfd"), 1203);
             })
             .unwrap();
     }
@@ -602,7 +603,7 @@ mod test {
                 file.write_all(&1203u64.to_ne_bytes())
                     .expect("failed to write to sent fd");
 
-                assert_eq!(evt.read().expect("failed to read from eventfd"), 1203);
+                assert_eq!(evt.read_count().expect("failed to read from eventfd"), 1203);
             })
             .unwrap();
     }
@@ -639,7 +640,7 @@ mod test {
                 file.write_all(&1203u64.to_ne_bytes())
                     .expect("failed to write to sent fd");
 
-                assert_eq!(evt.read().expect("failed to read from eventfd"), 1203);
+                assert_eq!(evt.read_count().expect("failed to read from eventfd"), 1203);
             })
             .unwrap();
     }

@@ -148,7 +148,7 @@ impl Worker {
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
                     Token::QueueAvailable => {
-                        if let Err(e) = self.queue_evt.read() {
+                        if let Err(e) = self.queue_evt.wait() {
                             error!("vtpm failed reading queue Event: {}", e);
                             break 'wait;
                         }
@@ -189,7 +189,7 @@ impl Tpm {
 impl Drop for Tpm {
     fn drop(&mut self) {
         if let Some(kill_evt) = self.kill_evt.take() {
-            let _ = kill_evt.write(1);
+            let _ = kill_evt.signal();
         }
 
         if let Some(worker_thread) = self.worker_thread.take() {

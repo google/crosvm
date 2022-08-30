@@ -350,25 +350,26 @@ mod tests {
         }
 
         use base::Event;
+        use base::EventExt;
 
         async fn write_event(ev: Event, wait: Event, ex: &URingExecutor) {
             let wait = UringSource::new(wait, ex).unwrap();
-            ev.write(55).unwrap();
+            ev.write_count(55).unwrap();
             read_u64(&wait).await;
-            ev.write(66).unwrap();
+            ev.write_count(66).unwrap();
             read_u64(&wait).await;
-            ev.write(77).unwrap();
+            ev.write_count(77).unwrap();
             read_u64(&wait).await;
         }
 
         async fn read_events(ev: Event, signal: Event, ex: &URingExecutor) {
             let source = UringSource::new(ev, ex).unwrap();
             assert_eq!(read_u64(&source).await, 55);
-            signal.write(1).unwrap();
+            signal.signal().unwrap();
             assert_eq!(read_u64(&source).await, 66);
-            signal.write(1).unwrap();
+            signal.signal().unwrap();
             assert_eq!(read_u64(&source).await, 77);
-            signal.write(1).unwrap();
+            signal.signal().unwrap();
         }
 
         let event = Event::new().unwrap();

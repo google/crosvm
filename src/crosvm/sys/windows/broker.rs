@@ -507,7 +507,7 @@ fn run_internal(mut cfg: Config) -> Result<()> {
         .try_clone()
         .exit_context(Exit::CloneEvent, "failed to clone event")?;
     ctrlc::set_handler(move || {
-        sigterm_event_ctrlc.write(0).unwrap();
+        sigterm_event_ctrlc.signal().unwrap();
     })
     .exit_context(Exit::SetSigintHandler, "failed to set sigint handler")?;
     wait_ctx.add(&sigterm_event, Token::Sigterm).exit_context(
@@ -837,7 +837,7 @@ impl Supervisor {
                     Token::Sigterm => {
                         // Signal all children other than metrics to exit.
                         for exit_event in &self.exit_events {
-                            if let Err(e) = exit_event.write(1) {
+                            if let Err(e) = exit_event.signal() {
                                 error!("failed to signal exit event to child: {}", e);
                             }
                         }
@@ -1781,7 +1781,7 @@ mod tests {
                 &Config::default(),
             );
             wait_ctx.add(&sigterm_event, Token::Sigterm).unwrap();
-            sigterm_event.write(1).unwrap();
+            sigterm_event.signal().unwrap();
 
             assert_eq!(
                 Supervisor::broker_supervise_loop(children, wait_ctx, vec![exit_event_copy])
@@ -1793,6 +1793,6 @@ mod tests {
         .try_join(Duration::from_secs(10))
         .unwrap();
 
-        exit_event.read_timeout(Duration::from_secs(0)).unwrap();
+        exit_event.wait_timeout(Duration::from_secs(0)).unwrap();
     }
 }

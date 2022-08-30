@@ -270,7 +270,7 @@ impl Drop for Pmem {
     fn drop(&mut self) {
         if let Some(kill_evt) = self.kill_event.take() {
             // Ignore the result because there is nothing we can do about it.
-            let _ = kill_evt.write(1);
+            let _ = kill_evt.signal();
         }
 
         if let Some(worker_thread) = self.worker_thread.take() {

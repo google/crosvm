@@ -101,7 +101,7 @@ fuzz_target!(|bytes| {
         queue_evts,
     );
 
-    queue_evt.write(77).unwrap(); // Rings the doorbell, any byte will do.
+    queue_evt.signal().unwrap(); // Rings the doorbell
 });
 
 fn read_u64<T: Read>(readable: &mut T) -> u64 {

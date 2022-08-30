@@ -204,7 +204,7 @@ pub struct Pit {
 
 impl Drop for Pit {
     fn drop(&mut self) {
-        if let Err(e) = self.kill_evt.write(1) {
+        if let Err(e) = self.kill_evt.signal() {
             error!("failed to kill PIT worker threads: {}", e);
             return;
         }
@@ -1163,7 +1163,7 @@ mod tests {
         write_counter(&mut data.pit, 0, 0xffff, CommandAccess::CommandRWBoth);
         // Advance clock enough to trigger interrupt.
         advance_by_ticks(&mut data, 0xffff);
-        assert_eq!(data.irqfd.read().unwrap(), 1);
+        data.irqfd.wait().unwrap();
     }
 
     /// Tests that Rate Generator mode (mode 2) handls the interrupt properly when the timer
@@ -1180,15 +1180,15 @@ mod tests {
         write_counter(&mut data.pit, 0, 0xffff, CommandAccess::CommandRWBoth);
         // Repatedly advance clock and expect interrupt.
         advance_by_ticks(&mut data, 0xffff);
-        assert_eq!(data.irqfd.read().unwrap(), 1);
+        data.irqfd.wait().unwrap();
 
         // Repatedly advance clock and expect interrupt.
         advance_by_ticks(&mut data, 0xffff);
-        assert_eq!(data.irqfd.read().unwrap(), 1);
+        data.irqfd.wait().unwrap();
 
         // Repatedly advance clock and expect interrupt.
         advance_by_ticks(&mut data, 0xffff);
-        assert_eq!(data.irqfd.read().unwrap(), 1);
+        data.irqfd.wait().unwrap();
     }
 
     /// Tests that square wave mode advances the counter correctly.

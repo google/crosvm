@@ -1322,7 +1322,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
     let mut res = Ok(exit_state);
     guest_os.irq_chip.kick_halted_vcpus();
-    let _ = exit_evt.write(1);
+    let _ = exit_evt.signal();
     // Ensure any child threads have ended by sending the Exit vm event (possibly again) to ensure
     // their run loops are aborted.
     let _ = vm_evt_wrtube.send::<VmEventType>(&VmEventType::Exit);

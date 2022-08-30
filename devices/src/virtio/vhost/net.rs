@@ -122,7 +122,7 @@ where
         // Only kill the child if it claimed its event.
         if self.workers_kill_evt.is_none() {
             // Ignore the result because there is nothing we can do about it.
-            let _ = self.kill_evt.write(1);
+            let _ = self.kill_evt.signal();
         }
 
         if let Some(worker_thread) = self.worker_thread.take() {
@@ -332,7 +332,7 @@ where
 
     fn reset(&mut self) -> bool {
         // Only kill the child if it claimed its event.
-        if self.workers_kill_evt.is_none() && self.kill_evt.write(1).is_err() {
+        if self.workers_kill_evt.is_none() && self.kill_evt.signal().is_err() {
             error!("{}: failed to notify the kill event", self.debug_label());
             return false;
         }

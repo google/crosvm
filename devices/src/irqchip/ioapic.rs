@@ -272,7 +272,7 @@ impl Ioapic {
 
                 if let Some(resample_events) = self.resample_events.get(i) {
                     for resample_evt in resample_events {
-                        resample_evt.write(1).unwrap();
+                        resample_evt.signal().unwrap();
                     }
                 }
                 self.redirect_table[i].set_remote_irr(false);
@@ -319,7 +319,7 @@ impl Ioapic {
         }
 
         let injected = match self.out_events.get(irq) {
-            Some(Some(evt)) => evt.event.write(1).is_ok(),
+            Some(Some(evt)) => evt.event.signal().is_ok(),
             _ => false,
         };
 

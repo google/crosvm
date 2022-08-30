@@ -499,7 +499,7 @@ impl Worker {
                         }
                     }
                     Token::RxQueue => {
-                        if let Err(e) = rx_queue_evt.read() {
+                        if let Err(e) = rx_queue_evt.wait() {
                             bail!("error reading rx queue Event: {}", e);
                         }
 
@@ -511,7 +511,7 @@ impl Worker {
                         }
                     }
                     Token::TxQueue => {
-                        if let Err(e) = tx_queue_evt.read() {
+                        if let Err(e) = tx_queue_evt.wait() {
                             bail!("error reading tx queue event: {}", e);
                         }
                         self.process_tx()
@@ -530,7 +530,7 @@ impl Worker {
                         }
                     }
                     Token::Kill => {
-                        let _ = kill_evt.read();
+                        let _ = kill_evt.wait();
                         return Ok(ExitReason::Killed);
                     }
                 }
@@ -1138,7 +1138,7 @@ impl Worker {
             .as_ref()
             .with_context(|| format!("kick data not set for {}-th vring", index))?;
         kick_evt
-            .read()
+            .wait()
             .map_err(|e| anyhow!("failed to read kick event for {}-th vring: {}", index, e))?;
         match kick_data.msi_vector {
             Some(msi_vector) => {
@@ -1703,7 +1703,7 @@ impl Drop for VirtioVhostUser {
             ..
         } = std::mem::replace(&mut *state, State::Invalid)
         {
-            match kill_evt.write(1) {
+            match kill_evt.signal() {
                 Ok(()) => {
                     // Ignore the result because there is nothing we can do about it.
                     let _ = worker_thread.join();
@@ -1964,7 +1964,7 @@ impl VirtioDevice for VirtioVhostUser {
                 // e.g. The VVU device backend in the guest is killed unexpectedly.
                 // To support this case, we might need to reset iommu's state as well.
 
-                if let Err(e) = kill_evt.write(1) {
+                if let Err(e) = kill_evt.signal() {
                     error!("failed to notify the kill event: {}", e);
                 }
 

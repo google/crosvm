@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use base::AsRawDescriptor;
 use base::Event;
+use base::EventExt;
 use sync::Mutex;
 use thiserror::Error as ThisError;
 
@@ -39,14 +40,14 @@ impl<T> EventQueue<T> {
     /// Add `event` to the queue.
     pub fn queue_event(&mut self, event: T) -> base::Result<()> {
         self.pending_events.push_back(event);
-        self.event.write(1)?;
+        self.event.write_count(1)?;
         Ok(())
     }
 
     /// Read the next event, blocking until an event becomes available.
     pub fn dequeue_event(&mut self) -> base::Result<T> {
         // Wait until at least one event is written, if necessary.
-        let cpt = self.event.read()?;
+        let cpt = self.event.read_count()?;
         let event = match self.pending_events.pop_front() {
             Some(event) => event,
             None => panic!("event signaled but no pending event - this is a bug."),
@@ -54,7 +55,7 @@ impl<T> EventQueue<T> {
         // If we have more than one event pending, write the remainder back into the event so it
         // keeps signalling.
         if cpt > 1 {
-            self.event.write(cpt - 1)?;
+            self.event.write_count(cpt - 1)?;
         }
 
         Ok(event)
@@ -65,8 +66,8 @@ impl<T> EventQueue<T> {
         if self.pending_events.len() > 0 {
             let _ = self
                 .event
-                .read_timeout(Duration::from_millis(0))
-                .expect("read_timeout failure");
+                .wait_timeout(Duration::from_millis(0))
+                .expect("wait_timeout failure");
         }
 
         self.pending_events.retain(predicate);
@@ -74,7 +75,7 @@ impl<T> EventQueue<T> {
         let num_pending_events = self.pending_events.len();
         if num_pending_events > 0 {
             self.event
-                .write(num_pending_events as u64)
+                .write_count(num_pending_events as u64)
                 .expect("write failure");
         }
     }

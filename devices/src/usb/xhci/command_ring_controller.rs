@@ -113,7 +113,7 @@ impl CommandRingTrbHandler {
             .lock()
             .send_command_completion_trb(completion_code, slot_id, GuestAddress(trb_addr))
             .map_err(Error::SendInterrupt)?;
-        event.write(1).map_err(Error::WriteEvent)
+        event.signal().map_err(Error::WriteEvent)
     }
 
     fn enable_slot(&self, atrb: &AddressedTrb, event: Event) -> Result<()> {
@@ -396,7 +396,7 @@ impl TransferDescriptorHandler for CommandRingTrbHandler {
                     GuestAddress(atrb.gpa),
                 ) {
                     Err(e) => Err(Error::SendInterrupt(e)),
-                    Ok(_) => complete_event.write(1).map_err(Error::WriteEvent),
+                    Ok(_) => complete_event.signal().map_err(Error::WriteEvent),
                 }
             }
         };

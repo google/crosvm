@@ -620,10 +620,7 @@ impl Waker {
     }
 
     pub fn wake(&self) -> anyhow::Result<()> {
-        self.0
-            .write(1)
-            .map(drop)
-            .map_err(|e| anyhow!(io::Error::from(e)))
+        self.0.signal().map_err(|e| anyhow!(io::Error::from(e)))
     }
 }
 

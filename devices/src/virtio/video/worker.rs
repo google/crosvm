@@ -346,11 +346,11 @@ impl<I: SignalableInterrupt> Worker<I> {
             for wait_event in wait_events.iter().filter(|e| e.is_readable) {
                 match wait_event.token {
                     Token::CmdQueue => {
-                        let _ = cmd_evt.read();
+                        let _ = cmd_evt.wait();
                         self.handle_command_queue(device.as_mut(), &wait_ctx)?;
                     }
                     Token::EventQueue => {
-                        let _ = event_evt.read();
+                        let _ = event_evt.wait();
                     }
                     Token::Event { id } => {
                         self.handle_event(device.as_mut(), id)?;
@@ -363,7 +363,7 @@ impl<I: SignalableInterrupt> Worker<I> {
                             .cmd_queue_interrupt
                             .get_resample_evt()
                             .expect("resample event for the command queue doesn't exist")
-                            .read();
+                            .wait();
                         self.cmd_queue_interrupt.do_interrupt_resample();
                     }
                     Token::Kill => return Ok(()),

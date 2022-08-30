@@ -184,7 +184,7 @@ impl CrossDomainContext {
 
             if let Some(read_pipe_id) = read_pipe_id_opt {
                 state.add_job(CrossDomainJob::AddReadPipe(read_pipe_id));
-                resample_evt.write(1)?;
+                resample_evt.signal()?;
             }
         } else {
             return Err(RutabagaError::InvalidCrossDomainState);

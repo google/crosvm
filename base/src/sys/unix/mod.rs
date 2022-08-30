@@ -66,6 +66,7 @@ use std::time::Duration;
 pub use acpi_event::*;
 pub use capabilities::drop_capabilities;
 pub use descriptor::*;
+pub use event::EventExt;
 pub(crate) use event::PlatformEvent;
 pub use file_flags::*;
 pub use file_traits::AsRawFds;

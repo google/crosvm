@@ -512,7 +512,7 @@ impl IrqChip for KvmSplitIrqChip {
     /// from the Event that triggered the irq event).
     fn service_irq_event(&mut self, event_index: IrqEventIndex) -> Result<()> {
         if let Some(evt) = &self.irq_events.lock()[event_index] {
-            evt.event.read()?;
+            evt.event.wait()?;
             let chips = self.routes_to_chips(evt.gsi);
 
             for (chip, pin) in chips {
@@ -532,7 +532,7 @@ impl IrqChip for KvmSplitIrqChip {
                             }
                         } else {
                             self.delayed_ioapic_irq_events.lock().push(event_index);
-                            self.delayed_ioapic_irq_trigger.write(1).unwrap();
+                            self.delayed_ioapic_irq_trigger.signal().unwrap();
                         }
                     }
                     _ => {}
@@ -711,7 +711,7 @@ impl IrqChip for KvmSplitIrqChip {
             });
 
         if self.delayed_ioapic_irq_events.lock().is_empty() {
-            self.delayed_ioapic_irq_trigger.read()?;
+            self.delayed_ioapic_irq_trigger.wait()?;
         }
 
         Ok(())
@@ -810,7 +810,7 @@ impl IrqChipX86_64 for KvmSplitIrqChip {
 #[cfg(test)]
 mod tests {
 
-    use base::EventReadResult;
+    use base::EventWaitResult;
     use hypervisor::kvm::Kvm;
     use hypervisor::IoapicRedirectionTableEntry;
     use hypervisor::PitRWMode;
@@ -1108,9 +1108,9 @@ mod tests {
         let resample_evt = evt.get_resample().try_clone().unwrap();
         assert_eq!(
             resample_evt
-                .read_timeout(std::time::Duration::from_secs(1))
+                .wait_timeout(std::time::Duration::from_secs(1))
                 .expect("failed to read_timeout"),
-            EventReadResult::Count(1)
+            EventWaitResult::Signaled
         );
 
         // setup a ioapic redirection table entry 14
@@ -1220,9 +1220,9 @@ mod tests {
         // resample event should not be written to
         assert_eq!(
             evt.get_resample()
-                .read_timeout(std::time::Duration::from_millis(10))
+                .wait_timeout(std::time::Duration::from_millis(10))
                 .expect("failed to read_timeout"),
-            EventReadResult::Timeout
+            EventWaitResult::TimedOut
         );
 
         // irq line 1 should be asserted
@@ -1239,9 +1239,9 @@ mod tests {
         // resample event should be written to by ioapic
         assert_eq!(
             evt.get_resample()
-                .read_timeout(std::time::Duration::from_millis(10))
+                .wait_timeout(std::time::Duration::from_millis(10))
                 .expect("failed to read_timeout"),
-            EventReadResult::Count(1)
+            EventWaitResult::Signaled
         );
     }
 }

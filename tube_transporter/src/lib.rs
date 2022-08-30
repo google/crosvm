@@ -191,7 +191,7 @@ mod tests {
     use base::named_pipes::BlockingMode;
     use base::named_pipes::FramingMode;
     use base::Event;
-    use base::EventReadResult;
+    use base::EventWaitResult;
     use winapi::um::processthreadsapi::GetCurrentProcessId;
 
     use super::*;
@@ -292,7 +292,7 @@ mod tests {
             duped_handle
                 .read_timeout(std::time::Duration::from_millis(2000))
                 .unwrap(),
-            EventReadResult::Count { .. }
+            EventWaitResult::Signaled
         ));
     }
 }

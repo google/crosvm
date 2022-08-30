@@ -305,7 +305,7 @@ fn run_worker(
 impl Drop for ACPIPMResource {
     fn drop(&mut self) {
         if let Some(kill_evt) = self.kill_evt.take() {
-            let _ = kill_evt.write(1);
+            let _ = kill_evt.signal();
         }
 
         if let Some(worker_thread) = self.worker_thread.take() {
@@ -865,7 +865,7 @@ impl BusDevice for ACPIPMResource {
                     #[cfg(not(feature = "direct"))]
                     match val & BITMASK_PM1CNT_SLEEP_TYPE {
                         SLEEP_TYPE_S1 => {
-                            if let Err(e) = self.suspend_evt.write(1) {
+                            if let Err(e) = self.suspend_evt.signal() {
                                 error!("ACPIPM: failed to trigger suspend event: {}", e);
                             }
                         }

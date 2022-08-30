@@ -909,13 +909,13 @@ impl Worker {
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
                     WorkerToken::CtrlQueue => {
-                        let _ = self.ctrl_evt.read();
+                        let _ = self.ctrl_evt.wait();
                         // Set flag that control queue is available to be read, but defer reading
                         // until rest of the events are processed.
                         ctrl_available = true;
                     }
                     WorkerToken::CursorQueue => {
-                        let _ = self.cursor_evt.read();
+                        let _ = self.cursor_evt.wait();
                         if self.state.process_queue(&self.mem, &self.cursor_queue) {
                             signal_used_cursor = true;
                         }
@@ -1246,7 +1246,7 @@ impl Drop for Gpu {
     fn drop(&mut self) {
         if let Some(kill_evt) = self.kill_evt.take() {
             // Ignore the result because there is nothing we can do about it.
-            let _ = kill_evt.write(1);
+            let _ = kill_evt.signal();
         }
 
         if let Some(worker_thread) = self.worker_thread.take() {

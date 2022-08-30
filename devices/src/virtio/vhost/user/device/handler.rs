@@ -117,7 +117,7 @@ impl CallEvent {
 
 impl SignalableInterrupt for CallEvent {
     fn signal(&self, _vector: u16, _interrupt_status_mask: u32) {
-        self.0.write(1).unwrap();
+        self.0.signal().unwrap();
     }
 
     fn signal_config_changed(&self) {} // TODO(dgreid)

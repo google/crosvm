@@ -324,12 +324,12 @@ impl XhciTransfer {
                 // kernel driver does not do anything meaningful when it sees a stopped event.
                 return self
                     .transfer_completion_event
-                    .write(1)
+                    .signal()
                     .map_err(Error::WriteCompletionEvent);
             }
             TransferStatus::Completed => {
                 self.transfer_completion_event
-                    .write(1)
+                    .signal()
                     .map_err(Error::WriteCompletionEvent)?;
             }
             _ => {
@@ -337,7 +337,7 @@ impl XhciTransfer {
                 // short packets for in transfer and might think control transfer is successful. It
                 // will eventually find out device is in a wrong state.
                 self.transfer_completion_event
-                    .write(1)
+                    .signal()
                     .map_err(Error::WriteCompletionEvent)?;
             }
         }
@@ -421,14 +421,14 @@ impl XhciTransfer {
                 None => {
                     error!("backend is already disconnected");
                     self.transfer_completion_event
-                        .write(1)
+                        .signal()
                         .map_err(Error::WriteCompletionEvent)?;
                 }
             }
         } else {
             error!("invalid td on transfer ring");
             self.transfer_completion_event
-                .write(1)
+                .signal()
                 .map_err(Error::WriteCompletionEvent)?;
         }
         Ok(())

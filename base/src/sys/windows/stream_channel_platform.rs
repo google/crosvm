@@ -138,7 +138,7 @@ impl Serialize for StreamChannel {
 impl Drop for StreamChannel {
     fn drop(&mut self) {
         if *self.is_channel_closed_on_drop.borrow() {
-            if let Err(e) = self.pipe_closed.write(0) {
+            if let Err(e) = self.pipe_closed.signal() {
                 warn!("failed to notify on channel drop: {}", e);
             }
         }
@@ -206,7 +206,7 @@ impl StreamChannel {
             if byte_count > 0 {
                 // It's always safe to set the read notifier here because we know there is data in the
                 // pipe, and no one else could read it out from under us.
-                self.read_notify.write(0).map_err(|e| {
+                self.read_notify.signal().map_err(|e| {
                     io::Error::new(
                         io::ErrorKind::Other,
                         format!("failed to write to read notifier: {:?}", e),
@@ -239,7 +239,7 @@ impl StreamChannel {
                 let byte_count = self.get_readable_byte_count()?;
                 if byte_count > 0 {
                     // Safe because no one else can be reading from the pipe.
-                    self.read_notify.write(0).map_err(|e| {
+                    self.read_notify.signal().map_err(|e| {
                         io::Error::new(
                             io::ErrorKind::Other,
                             format!("failed to write to read notifier: {:?}", e),
@@ -288,7 +288,7 @@ impl StreamChannel {
         //      2) a read has completed and is blocked on the lock. The notification state is
         //         already correct, and the read's resync won't change that.
         if res.is_ok() {
-            self.write_notify.write(0).map_err(|e| {
+            self.write_notify.signal().map_err(|e| {
                 io::Error::new(
                     io::ErrorKind::Other,
                     format!("failed to write to read notifier: {:?}", e),

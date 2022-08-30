@@ -24,7 +24,7 @@ use crate::descriptor::AsRawDescriptor;
 use crate::descriptor::FromRawDescriptor;
 use crate::descriptor::IntoRawDescriptor;
 use crate::descriptor::SafeDescriptor;
-use crate::EventReadResult;
+use crate::EventWaitResult;
 
 /// A safe wrapper around a Linux eventfd (man 2 eventfd).
 ///
@@ -34,6 +34,24 @@ use crate::EventReadResult;
 #[serde(transparent)]
 pub(crate) struct PlatformEvent {
     event_handle: SafeDescriptor,
+}
+
+/// Linux specific extensions to `Event`.
+pub trait EventExt {
+    /// Adds `v` to the eventfd's count, blocking until this won't overflow the count.
+    fn write_count(&self, v: u64) -> Result<()>;
+    /// Blocks until the the eventfd's count is non-zero, then resets the count to zero.
+    fn read_count(&self) -> Result<u64>;
+}
+
+impl EventExt for crate::Event {
+    fn write_count(&self, v: u64) -> Result<()> {
+        self.0.write_count(v)
+    }
+
+    fn read_count(&self) -> Result<u64> {
+        self.0.read_count()
+    }
 }
 
 impl PlatformEvent {
@@ -52,8 +70,8 @@ impl PlatformEvent {
         })
     }
 
-    /// Adds `v` to the eventfd's count, blocking until this won't overflow the count.
-    pub fn write(&self, v: u64) -> Result<()> {
+    /// See `EventExt::write_count`.
+    pub fn write_count(&self, v: u64) -> Result<()> {
         // This is safe because we made this fd and the pointer we pass can not overflow because we
         // give the syscall's size parameter properly.
         let ret = unsafe {
@@ -69,8 +87,8 @@ impl PlatformEvent {
         Ok(())
     }
 
-    /// Blocks until the the eventfd's count is non-zero, then resets the count to zero.
-    pub fn read(&self) -> Result<u64> {
+    /// See `EventExt::read_count`.
+    pub fn read_count(&self) -> Result<u64> {
         let mut buf: u64 = 0;
         let ret = unsafe {
             // This is safe because we made this fd and the pointer we pass can not overflow because
@@ -87,11 +105,18 @@ impl PlatformEvent {
         Ok(buf)
     }
 
-    /// Blocks for a maximum of `timeout` duration until the the eventfd's count is non-zero. If
-    /// a timeout does not occur then the count is returned as a EventReadResult::Count(count),
-    /// and the count is reset to 0. If a timeout does occur then this function will return
-    /// EventReadResult::Timeout.
-    pub fn read_timeout(&self, timeout: Duration) -> Result<EventReadResult> {
+    /// See `Event::signal`.
+    pub fn signal(&self) -> Result<()> {
+        self.write_count(1)
+    }
+
+    /// See `Event::wait`.
+    pub fn wait(&self) -> Result<()> {
+        self.read_count().map(|_| ())
+    }
+
+    /// See `Event::wait_timeout`.
+    pub fn wait_timeout(&self, timeout: Duration) -> Result<EventWaitResult> {
         let mut pfd = libc::pollfd {
             fd: self.as_raw_descriptor(),
             events: POLLIN,
@@ -113,23 +138,11 @@ impl PlatformEvent {
 
         // no return events (revents) means we got a timeout
         if pfd.revents == 0 {
-            return Ok(EventReadResult::Timeout);
+            return Ok(EventWaitResult::TimedOut);
         }
 
-        let mut buf = 0u64;
-        // This is safe because we made this fd and the pointer we pass can not overflow because
-        // we give the syscall's size parameter properly.
-        let ret = unsafe {
-            libc::read(
-                self.as_raw_descriptor(),
-                &mut buf as *mut _ as *mut c_void,
-                mem::size_of::<u64>(),
-            )
-        };
-        if ret < 0 {
-            return errno_result();
-        }
-        Ok(EventReadResult::Count(buf))
+        self.wait()?;
+        Ok(EventWaitResult::Signaled)
     }
 
     /// Clones this eventfd, internally creating a new file descriptor. The new eventfd will share
@@ -185,25 +198,25 @@ mod tests {
     #[test]
     fn read_write() {
         let evt = PlatformEvent::new().unwrap();
-        evt.write(55).unwrap();
-        assert_eq!(evt.read(), Ok(55));
+        evt.write_count(55).unwrap();
+        assert_eq!(evt.read_count(), Ok(55));
     }
 
     #[test]
     fn clone() {
         let evt = PlatformEvent::new().unwrap();
         let evt_clone = evt.try_clone().unwrap();
-        evt.write(923).unwrap();
-        assert_eq!(evt_clone.read(), Ok(923));
+        evt.write_count(923).unwrap();
+        assert_eq!(evt_clone.read_count(), Ok(923));
     }
 
     #[test]
     fn timeout() {
         let evt = PlatformEvent::new().expect("failed to create eventfd");
         assert_eq!(
-            evt.read_timeout(Duration::from_millis(1))
+            evt.wait_timeout(Duration::from_millis(1))
                 .expect("failed to read from eventfd with timeout"),
-            EventReadResult::Timeout
+            EventWaitResult::TimedOut
         );
     }
 }

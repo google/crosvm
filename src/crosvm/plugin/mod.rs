@@ -529,7 +529,7 @@ pub fn run_vcpus(
                         }
                     }
                     vcpu_exit_evt
-                        .write(1)
+                        .signal()
                         .expect("failed to signal vcpu exit event");
                 })
                 .context("error spawning vcpu thread")?,

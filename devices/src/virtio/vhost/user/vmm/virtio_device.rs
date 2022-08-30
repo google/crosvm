@@ -213,7 +213,7 @@ impl Drop for VhostUserVirtioDevice {
     fn drop(&mut self) {
         if let Some(kill_evt) = self.kill_evt.take() {
             if let Some(worker_thread) = self.worker_thread.take() {
-                if let Err(e) = kill_evt.write(1) {
+                if let Err(e) = kill_evt.signal() {
                     error!("failed to write to kill_evt: {}", e);
                     return;
                 }

@@ -193,7 +193,7 @@ impl VirtioDevice for Sound {
     fn reset(&mut self) -> bool {
         let mut ret = true;
         if let Some(kill_evt) = self.kill_evt.take() {
-            if let Err(e) = kill_evt.write(1) {
+            if let Err(e) = kill_evt.signal() {
                 error!("virtio-snd: failed to notify the kill event: {}", e);
                 ret = false;
             }

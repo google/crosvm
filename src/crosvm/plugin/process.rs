@@ -307,7 +307,7 @@ impl Process {
     /// Any blocked VCPU connections will get interrupted so that the VCPU threads can exit cleanly.
     /// Any subsequent attempt to use the VCPU connections will fail.
     pub fn signal_kill(&mut self) -> SysResult<()> {
-        self.kill_evt.write(1)?;
+        self.kill_evt.signal()?;
         // Normally we'd get any blocked recv() calls in the VCPU threads
         // to unblock by calling shutdown().  However, we're using pipes
         // (for improved performance), and pipes don't have shutdown so
