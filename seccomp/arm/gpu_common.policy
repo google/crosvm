@@ -102,6 +102,9 @@ sched_setscheduler: 1
 sched_setaffinity: 1
 kcmp: 1
 
+# Rules for Mesa's u_trace thread
+setpriority: 1
+
 # Rules for Vulkan loader / layers
 access: 1
 getgid32: 1
