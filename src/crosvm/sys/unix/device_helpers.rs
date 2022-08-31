@@ -39,16 +39,7 @@ use devices::virtio::memory_mapper::MemoryMapperTrait;
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vfio_wrapper::VfioWrapper;
 use devices::virtio::vhost::user::proxy::VirtioVhostUser;
-use devices::virtio::vhost::user::vmm::Block as VhostUserBlock;
-use devices::virtio::vhost::user::vmm::Console as VhostUserConsole;
-use devices::virtio::vhost::user::vmm::Fs as VhostUserFs;
-use devices::virtio::vhost::user::vmm::Gpu as VhostUserGpu;
-use devices::virtio::vhost::user::vmm::Mac80211Hwsim as VhostUserMac80211Hwsim;
-use devices::virtio::vhost::user::vmm::Net as VhostUserNet;
-use devices::virtio::vhost::user::vmm::Snd as VhostUserSnd;
-use devices::virtio::vhost::user::vmm::Video as VhostUserVideo;
-use devices::virtio::vhost::user::vmm::Vsock as VhostUserVsock;
-use devices::virtio::vhost::user::vmm::Wl as VhostUserWl;
+use devices::virtio::vhost::user::vmm::VhostUserVirtioDevice;
 use devices::virtio::vhost::user::VhostUserDevice;
 use devices::virtio::vhost::vsock::VhostVsockConfig;
 #[cfg(feature = "balloon")]
@@ -308,7 +299,7 @@ pub fn create_vhost_user_block_device(
     protection_type: ProtectionType,
     opt: &VhostUserOption,
 ) -> DeviceResult {
-    let dev = VhostUserBlock::new(
+    let dev = VhostUserVirtioDevice::new_block(
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
     )
@@ -325,7 +316,7 @@ pub fn create_vhost_user_console_device(
     protection_type: ProtectionType,
     opt: &VhostUserOption,
 ) -> DeviceResult {
-    let dev = VhostUserConsole::new(
+    let dev = VhostUserVirtioDevice::new_console(
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
     )
@@ -342,7 +333,7 @@ pub fn create_vhost_user_fs_device(
     protection_type: ProtectionType,
     option: &VhostUserFsOption,
 ) -> DeviceResult {
-    let dev = VhostUserFs::new(
+    let dev = VhostUserVirtioDevice::new_fs(
         virtio::base_features(protection_type),
         vhost_user_connection(&option.socket)?,
         &option.tag,
@@ -360,7 +351,7 @@ pub fn create_vhost_user_mac80211_hwsim_device(
     protection_type: ProtectionType,
     opt: &VhostUserOption,
 ) -> DeviceResult {
-    let dev = VhostUserMac80211Hwsim::new(
+    let dev = VhostUserVirtioDevice::new_mac80211_hwsim(
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
     )
@@ -377,7 +368,7 @@ pub fn create_vhost_user_snd_device(
     protection_type: ProtectionType,
     option: &VhostUserOption,
 ) -> DeviceResult {
-    let dev = VhostUserSnd::new(
+    let dev = VhostUserVirtioDevice::new_snd(
         virtio::base_features(protection_type),
         vhost_user_connection(&option.socket)?,
     )
@@ -396,7 +387,7 @@ pub fn create_vhost_user_gpu_device(
 ) -> DeviceResult {
     // The crosvm gpu device expects us to connect the tube before it will accept a vhost-user
     // connection.
-    let dev = VhostUserGpu::new(
+    let dev = VhostUserVirtioDevice::new_gpu(
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
     )
@@ -901,7 +892,7 @@ pub fn create_vhost_user_net_device(
     protection_type: ProtectionType,
     opt: &VhostUserOption,
 ) -> DeviceResult {
-    let dev = VhostUserNet::new(
+    let dev = VhostUserVirtioDevice::new_net(
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
     )
@@ -918,7 +909,7 @@ pub fn create_vhost_user_vsock_device(
     protection_type: ProtectionType,
     opt: &VhostUserOption,
 ) -> DeviceResult {
-    let dev = VhostUserVsock::new(
+    let dev = VhostUserVirtioDevice::new_vsock(
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
     )
@@ -937,7 +928,7 @@ pub fn create_vhost_user_wl_device(
 ) -> DeviceResult {
     // The crosvm wl device expects us to connect the tube before it will accept a vhost-user
     // connection.
-    let dev = VhostUserWl::new(
+    let dev = VhostUserVirtioDevice::new_wl(
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
     )
@@ -1092,7 +1083,7 @@ pub fn create_vhost_user_video_device(
     opt: &VhostUserOption,
     device_type: VideoDeviceType,
 ) -> DeviceResult {
-    let dev = VhostUserVideo::new(
+    let dev = VhostUserVirtioDevice::new_video(
         virtio::base_features(protection_type),
         vhost_user_connection(&opt.socket)?,
         device_type,

@@ -239,10 +239,12 @@ type DeviceResult<T = VirtioDeviceStub> = Result<T>;
 
 fn create_vhost_user_block_device(cfg: &Config, disk_device_tube: Tube) -> DeviceResult {
     let features = virtio::base_features(cfg.protection_type);
-    let dev = virtio::vhost::user::vmm::Block::new(features, disk_device_tube).exit_context(
-        Exit::VhostUserBlockDeviceNew,
-        "failed to set up vhost-user block device",
-    )?;
+    let dev =
+        virtio::vhost::user::vmm::VhostUserVirtioDevice::new_block(features, disk_device_tube)
+            .exit_context(
+                Exit::VhostUserBlockDeviceNew,
+                "failed to set up vhost-user block device",
+            )?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -369,7 +371,8 @@ fn create_net_device(
 #[cfg(feature = "slirp")]
 fn create_vhost_user_net_device(cfg: &Config, net_device_tube: Tube) -> DeviceResult {
     let features = virtio::base_features(cfg.protection_type);
-    let dev = virtio::vhost::user::vmm::Net::new(features, net_device_tube).exit_context(
+    let dev = virtio::vhost::user::vmm::VhostUserVirtioDevice::new_net(features, net_device_tube)
+        .exit_context(
         Exit::VhostUserNetDeviceNew,
         "failed to set up vhost-user net device",
     )?;
