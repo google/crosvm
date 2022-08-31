@@ -1764,6 +1764,7 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         cfg.vhost_user_blk = cmd.vhost_user_blk;
         cfg.vhost_user_console = cmd.vhost_user_console;
+        cfg.vhost_user_fs = cmd.vhost_user_fs;
         cfg.vhost_user_gpu = cmd.vhost_user_gpu;
         cfg.vhost_user_mac80211_hwsim = cmd.vhost_user_mac80211_hwsim;
         cfg.vhost_user_net = cmd.vhost_user_net;
