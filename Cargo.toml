@@ -132,7 +132,14 @@ default = ["audio", "balloon", "gpu", "qcow", "usb"]
 default-no-sandbox = []
 direct = ["balloon", "devices/direct", "arch/direct", "x86_64/direct"]
 ffmpeg = ["devices/ffmpeg"]
-gdb = ["gdbstub", "gdbstub_arch", "arch/gdb", "vm_control/gdb", "x86_64/gdb"]
+gdb = [
+    "aarch64/gdb",
+    "arch/gdb",
+    "gdbstub",
+    "gdbstub_arch",
+    "vm_control/gdb",
+    "x86_64/gdb",
+]
 gfxstream = ["devices/gfxstream"]
 gpu = ["devices/gpu", "gpu_display"]
 haxm = ["hypervisor/haxm"]

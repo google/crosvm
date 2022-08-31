@@ -215,7 +215,7 @@ where
     Ok((vcpu, vcpu_run_handle))
 }
 
-#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+#[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
 fn handle_debug_msg<V>(
     cpu_id: usize,
     vcpu: &V,
@@ -359,7 +359,7 @@ fn vcpu_loop<V>(
     from_main_tube: mpsc::Receiver<VcpuControl>,
     use_hypervisor_signals: bool,
     privileged_vm: bool,
-    #[cfg(all(target_arch = "x86_64", feature = "gdb"))] to_gdb_tube: Option<
+    #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))] to_gdb_tube: Option<
         mpsc::Sender<VcpuDebugStatusMessage>,
     >,
     #[cfg(feature = "gdb")] guest_mem: GuestMemory,
@@ -431,7 +431,10 @@ where
                                 VmRunMode::Exiting => return ExitState::Stop,
                             }
                         }
-                        #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+                        #[cfg(all(
+                            any(target_arch = "x86_64", target_arch = "aarch64"),
+                            feature = "gdb"
+                        ))]
                         VcpuControl::Debug(d) => match &to_gdb_tube {
                             Some(ref ch) => {
                                 if let Err(e) = handle_debug_msg(cpu_id, &vcpu, &guest_mem, d, ch) {
@@ -532,7 +535,7 @@ where
                     handle_s2idle_request(privileged_vm, &guest_suspended_cvar);
                 }
                 #[rustfmt::skip] Ok(VcpuExit::Debug { .. }) => {
-                    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+                    #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
                     {
                         let msg = VcpuDebugStatusMessage {
                             cpu: cpu_id as usize,
@@ -597,7 +600,7 @@ pub fn run_vcpu<V>(
     requires_pvclock_ctrl: bool,
     from_main_tube: mpsc::Receiver<VcpuControl>,
     use_hypervisor_signals: bool,
-    #[cfg(all(target_arch = "x86_64", feature = "gdb"))] to_gdb_tube: Option<
+    #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))] to_gdb_tube: Option<
         mpsc::Sender<VcpuDebugStatusMessage>,
     >,
     enable_per_vm_core_scheduling: bool,
@@ -667,7 +670,7 @@ where
 
                 #[allow(unused_mut)]
                 let mut run_mode = VmRunMode::Running;
-                #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+                #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
                 if to_gdb_tube.is_some() {
                     // Wait until a GDB client attaches
                     run_mode = VmRunMode::Breakpoint;
@@ -690,7 +693,10 @@ where
                     from_main_tube,
                     use_hypervisor_signals,
                     privileged_vm,
-                    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+                    #[cfg(all(
+                        any(target_arch = "x86_64", target_arch = "aarch64"),
+                        feature = "gdb"
+                    ))]
                     to_gdb_tube,
                     #[cfg(feature = "gdb")]
                     guest_mem,

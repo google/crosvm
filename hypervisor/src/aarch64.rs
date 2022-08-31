@@ -7,6 +7,10 @@ use std::convert::TryFrom;
 use base::Error;
 use base::Result;
 use downcast_rs::impl_downcast;
+#[cfg(feature = "gdb")]
+use gdbstub::arch::Arch;
+#[cfg(feature = "gdb")]
+use gdbstub_arch::aarch64::AArch64 as GdbArch;
 use libc::EINVAL;
 use vm_memory::GuestAddress;
 
@@ -93,6 +97,22 @@ pub trait VcpuAArch64: Vcpu {
 
     /// Gets the current PSCI version.
     fn get_psci_version(&self) -> Result<PsciVersion>;
+
+    #[cfg(feature = "gdb")]
+    /// Sets up debug registers and configure vcpu for handling guest debug events.
+    fn set_guest_debug(&self, addrs: &[GuestAddress], enable_singlestep: bool) -> Result<()>;
+
+    #[cfg(feature = "gdb")]
+    /// Sets the VCPU general registers used by GDB 'G' packets.
+    fn set_gdb_registers(&self, regs: &<GdbArch as Arch>::Registers) -> Result<()>;
+
+    #[cfg(feature = "gdb")]
+    /// Gets the VCPU general registers used by GDB 'g' packets.
+    fn get_gdb_registers(&self, regs: &mut <GdbArch as Arch>::Registers) -> Result<()>;
+
+    #[cfg(feature = "gdb")]
+    /// Gets the max number of hardware breakpoints.
+    fn get_max_hw_bps(&self) -> Result<usize>;
 }
 
 impl_downcast!(VcpuAArch64);

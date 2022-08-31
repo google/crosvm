@@ -13,6 +13,10 @@ use base::warn;
 use base::Error;
 use base::MemoryMappingBuilder;
 use base::Result;
+#[cfg(feature = "gdb")]
+use gdbstub::arch::Arch;
+#[cfg(feature = "gdb")]
+use gdbstub_arch::aarch64::AArch64 as GdbArch;
 use kvm_sys::*;
 use libc::EINVAL;
 use libc::ENOMEM;
@@ -256,6 +260,29 @@ impl KvmVcpu {
         } else {
             errno_result()
         }
+    }
+}
+
+#[cfg(feature = "gdb")]
+impl KvmVcpu {
+    fn set_one_kvm_reg_u32(&self, kvm_reg_id: KvmVcpuRegister, data: u32) -> Result<()> {
+        self.set_one_kvm_reg(kvm_reg_id, data.to_ne_bytes().as_slice())
+    }
+
+    fn set_one_kvm_reg_u128(&self, kvm_reg_id: KvmVcpuRegister, data: u128) -> Result<()> {
+        self.set_one_kvm_reg(kvm_reg_id, data.to_ne_bytes().as_slice())
+    }
+
+    fn get_one_kvm_reg_u32(&self, kvm_reg_id: KvmVcpuRegister) -> Result<u32> {
+        let mut bytes = 0u32.to_ne_bytes();
+        self.get_one_kvm_reg(kvm_reg_id, bytes.as_mut_slice())?;
+        Ok(u32::from_ne_bytes(bytes))
+    }
+
+    fn get_one_kvm_reg_u128(&self, kvm_reg_id: KvmVcpuRegister) -> Result<u128> {
+        let mut bytes = 0u128.to_ne_bytes();
+        self.get_one_kvm_reg(kvm_reg_id, bytes.as_mut_slice())?;
+        Ok(u128::from_ne_bytes(bytes))
     }
 }
 
@@ -535,6 +562,117 @@ impl VcpuAArch64 for KvmVcpu {
         } else {
             Ok(version)
         }
+    }
+
+    #[cfg(feature = "gdb")]
+    fn get_max_hw_bps(&self) -> Result<usize> {
+        // Safe because the kernel will only return the result of the ioctl.
+        let max_hw_bps = unsafe {
+            ioctl_with_val(
+                &self.vm,
+                KVM_CHECK_EXTENSION(),
+                KVM_CAP_GUEST_DEBUG_HW_BPS.into(),
+            )
+        };
+
+        if max_hw_bps < 0 {
+            errno_result()
+        } else {
+            Ok(max_hw_bps.try_into().expect("can't represent u64 as usize"))
+        }
+    }
+
+    #[cfg(feature = "gdb")]
+    fn set_guest_debug(&self, addrs: &[GuestAddress], enable_singlestep: bool) -> Result<()> {
+        let mut dbg: kvm_guest_debug = Default::default();
+
+        dbg.control = KVM_GUESTDBG_ENABLE;
+        if enable_singlestep {
+            dbg.control |= KVM_GUESTDBG_SINGLESTEP;
+        }
+        if !addrs.is_empty() {
+            dbg.control |= KVM_GUESTDBG_USE_HW;
+        }
+
+        for (i, guest_addr) in addrs.iter().enumerate() {
+            // From the ARMv8 Architecture Reference Manual (DDI0487H.a) D31.3.{2,3}:
+            // When DBGBCR<n>_EL1.BT == 0b000x:
+            //      DBGBVR<n>_EL1, Bits [1:0]: Reserved, RES0
+            if guest_addr.0 & 0b11 != 0 {
+                return Err(Error::new(EINVAL));
+            }
+            let sign_ext = 15;
+            //      DBGBVR<n>_EL1.RESS[14:0], bits [63:49]: Reserved, Sign extended
+            dbg.arch.dbg_bvr[i] = (((guest_addr.0 << sign_ext) as i64) >> sign_ext) as u64;
+            // DBGBCR<n>_EL1.BT, bits [23:20]: Breakpoint Type
+            //      0b0000: Unlinked instruction address match.
+            //              DBGBVR<n>_EL1 is the address of an instruction.
+            // DBGBCR<n>_EL1.BAS, bits [8:5]: Byte address select
+            //      0b1111: Use for A64 and A32 instructions
+            // DBGBCR<n>_EL1.PMC, bits [2:1]: Privilege mode control
+            //      0b11: EL1 & EL0
+            // DBGBCR<n>_EL1.E, bit [0]: Enable breakpoint
+            //      0b1: Enabled
+            dbg.arch.dbg_bcr[i] = 0b1111_11_1;
+        }
+
+        // Safe because the kernel won't read past the end of the kvm_guest_debug struct.
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_GUEST_DEBUG(), &dbg) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
+    #[cfg(feature = "gdb")]
+    fn set_gdb_registers(&self, regs: &<GdbArch as Arch>::Registers) -> Result<()> {
+        assert!(
+            regs.x.len() == 31,
+            "unexpected number of Xn general purpose registers"
+        );
+        for (i, reg) in regs.x.iter().enumerate() {
+            let n = u8::try_from(i).expect("invalid Xn general purpose register index");
+            self.set_one_kvm_reg_u64(KvmVcpuRegister::X(n), *reg)?;
+        }
+        self.set_one_kvm_reg_u64(KvmVcpuRegister::Sp, regs.sp)?;
+        self.set_one_kvm_reg_u64(KvmVcpuRegister::Pc, regs.pc)?;
+        // GDB gives a 32-bit value for "CPSR" but KVM wants a 64-bit Pstate.
+        let pstate = self.get_one_kvm_reg_u64(KvmVcpuRegister::Pstate)?;
+        let pstate = (pstate & 0xffff_ffff_0000_0000) | (regs.cpsr as u64);
+        self.set_one_kvm_reg_u64(KvmVcpuRegister::Pstate, pstate)?;
+        for (i, reg) in regs.v.iter().enumerate() {
+            let n = u8::try_from(i).expect("invalid Vn general purpose register index");
+            self.set_one_kvm_reg_u128(KvmVcpuRegister::V(n), *reg)?;
+        }
+        self.set_one_kvm_reg_u32(KvmVcpuRegister::Fpcr, regs.fpcr)?;
+        self.set_one_kvm_reg_u32(KvmVcpuRegister::Fpsr, regs.fpsr)?;
+
+        Ok(())
+    }
+
+    #[cfg(feature = "gdb")]
+    fn get_gdb_registers(&self, regs: &mut <GdbArch as Arch>::Registers) -> Result<()> {
+        assert!(
+            regs.x.len() == 31,
+            "unexpected number of Xn general purpose registers"
+        );
+        for (i, reg) in regs.x.iter_mut().enumerate() {
+            let n = u8::try_from(i).expect("invalid Xn general purpose register index");
+            *reg = self.get_one_kvm_reg_u64(KvmVcpuRegister::X(n))?;
+        }
+        regs.sp = self.get_one_kvm_reg_u64(KvmVcpuRegister::Sp)?;
+        regs.pc = self.get_one_kvm_reg_u64(KvmVcpuRegister::Pc)?;
+        // KVM gives a 64-bit value for Pstate but GDB wants a 32-bit "CPSR".
+        regs.cpsr = self.get_one_kvm_reg_u64(KvmVcpuRegister::Pstate)? as u32;
+        for (i, reg) in regs.v.iter_mut().enumerate() {
+            let n = u8::try_from(i).expect("invalid Vn general purpose register index");
+            *reg = self.get_one_kvm_reg_u128(KvmVcpuRegister::V(n))?;
+        }
+        regs.fpcr = self.get_one_kvm_reg_u32(KvmVcpuRegister::Fpcr)?;
+        regs.fpsr = self.get_one_kvm_reg_u32(KvmVcpuRegister::Fpsr)?;
+
+        Ok(())
     }
 }
 

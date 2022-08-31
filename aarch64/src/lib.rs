@@ -36,6 +36,10 @@ use devices::PciConfigMmio;
 use devices::PciDevice;
 use devices::PciRootCommand;
 use devices::Serial;
+#[cfg(all(target_arch = "aarch64", feature = "gdb"))]
+use gdbstub::arch::Arch;
+#[cfg(all(target_arch = "aarch64", feature = "gdb"))]
+use gdbstub_arch::aarch64::AArch64 as GdbArch;
 use hypervisor::CpuConfigAArch64;
 use hypervisor::DeviceKind;
 use hypervisor::Hypervisor;
@@ -181,8 +185,12 @@ pub enum Error {
     CreateVcpu(base::Error),
     #[error("vm created wrong kind of vcpu")]
     DowncastVcpu,
+    #[error("failed to enable singlestep execution: {0}")]
+    EnableSinglestep(base::Error),
     #[error("failed to finalize IRQ chip: {0}")]
     FinalizeIrqChip(base::Error),
+    #[error("failed to get HW breakpoint count: {0}")]
+    GetMaxHwBreakPoint(base::Error),
     #[error("failed to get PSCI version: {0}")]
     GetPsciVersion(base::Error),
     #[error("failed to get serial cmdline: {0}")]
@@ -203,6 +211,10 @@ pub enum Error {
     PvmFwLoadFailure(arch::LoadImageError),
     #[error("ramoops address is different from high_mmio_base: {0} vs {1}")]
     RamoopsAddress(u64, u64),
+    #[error("error reading guest memory: {0}")]
+    ReadGuestMemory(vm_memory::GuestMemoryError),
+    #[error("error reading CPU registers: {0}")]
+    ReadRegs(base::Error),
     #[error("failed to register irq fd: {0}")]
     RegisterIrqfd(base::Error),
     #[error("error registering PCI bus: {0}")]
@@ -211,6 +223,8 @@ pub enum Error {
     RegisterVsock(arch::DeviceRegistrationError),
     #[error("failed to set device attr: {0}")]
     SetDeviceAttr(base::Error),
+    #[error("failed to set a hardware breakpoint: {0}")]
+    SetHwBreakpoint(base::Error),
     #[error("failed to set register: {0}")]
     SetReg(base::Error),
     #[error("failed to set up guest memory: {0}")]
@@ -219,6 +233,10 @@ pub enum Error {
     Unsupported,
     #[error("failed to initialize VCPU: {0}")]
     VcpuInit(base::Error),
+    #[error("error writing guest memory: {0}")]
+    WriteGuestMemory(GuestMemoryError),
+    #[error("error writing CPU registers: {0}")]
+    WriteRegs(base::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -594,6 +612,8 @@ impl arch::LinuxArch for AArch64 {
             rt_cpus: components.rt_cpus,
             delay_rt: components.delay_rt,
             bat_control,
+            #[cfg(all(target_arch = "aarch64", feature = "gdb"))]
+            gdb: components.gdb,
             pm: None,
             resume_notify_devices: Vec::new(),
             root_config: pci_root,
@@ -626,6 +646,65 @@ impl arch::LinuxArch for AArch64 {
     ) -> std::result::Result<PciAddress, Self::Error> {
         // hotplug function isn't verified on AArch64, so set it unsupported here.
         Err(Error::Unsupported)
+    }
+}
+
+#[cfg(all(target_arch = "aarch64", feature = "gdb"))]
+impl<T: VcpuAArch64> arch::GdbOps<T> for AArch64 {
+    type Error = Error;
+
+    fn read_memory(
+        _vcpu: &T,
+        guest_mem: &GuestMemory,
+        vaddr: GuestAddress,
+        len: usize,
+    ) -> Result<Vec<u8>> {
+        let mut buf = vec![0; len];
+
+        guest_mem
+            .read_exact_at_addr(&mut buf, vaddr)
+            .map_err(Error::ReadGuestMemory)?;
+
+        Ok(buf)
+    }
+
+    fn write_memory(
+        _vcpu: &T,
+        guest_mem: &GuestMemory,
+        vaddr: GuestAddress,
+        buf: &[u8],
+    ) -> Result<()> {
+        guest_mem
+            .write_all_at_addr(buf, vaddr)
+            .map_err(Error::WriteGuestMemory)
+    }
+
+    fn read_registers(vcpu: &T) -> Result<<GdbArch as Arch>::Registers> {
+        let mut regs: <GdbArch as Arch>::Registers = Default::default();
+
+        vcpu.get_gdb_registers(&mut regs).map_err(Error::ReadRegs)?;
+
+        Ok(regs)
+    }
+
+    fn write_registers(vcpu: &T, regs: &<GdbArch as Arch>::Registers) -> Result<()> {
+        vcpu.set_gdb_registers(regs).map_err(Error::WriteRegs)
+    }
+
+    fn enable_singlestep(vcpu: &T) -> Result<()> {
+        const SINGLE_STEP: bool = true;
+        vcpu.set_guest_debug(&[], SINGLE_STEP)
+            .map_err(Error::EnableSinglestep)
+    }
+
+    fn get_max_hw_breakpoints(vcpu: &T) -> Result<usize> {
+        vcpu.get_max_hw_bps().map_err(Error::GetMaxHwBreakPoint)
+    }
+
+    fn set_hw_breakpoints(vcpu: &T, breakpoints: &[GuestAddress]) -> Result<()> {
+        const SINGLE_STEP: bool = false;
+        vcpu.set_guest_debug(breakpoints, SINGLE_STEP)
+            .map_err(Error::SetHwBreakpoint)
     }
 }
 

@@ -30,6 +30,8 @@ use gdbstub::target::ext::breakpoints::HwBreakpointOps;
 use gdbstub::target::Target;
 use gdbstub::target::TargetError::NonFatal;
 use gdbstub::target::TargetResult;
+#[cfg(target_arch = "aarch64")]
+use gdbstub_arch::aarch64::AArch64 as GdbArch;
 #[cfg(target_arch = "x86_64")]
 use gdbstub_arch::x86::X86_64_SSE as GdbArch;
 use remain::sorted;

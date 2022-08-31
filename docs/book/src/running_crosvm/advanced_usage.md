@@ -83,7 +83,7 @@ argument. The sandbox can be disabled for testing with the `--disable-sandbox` o
 ## GDB Support
 
 crosvm supports [GDB Remote Serial Protocol] to allow developers to debug guest kernel via GDB
-(**x86 only**).
+(**x86_64 or AArch64 only**).
 
 You can enable the feature by `--gdb` flag:
 

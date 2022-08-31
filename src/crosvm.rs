@@ -7,7 +7,7 @@
 
 pub mod cmdline;
 pub mod config;
-#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+#[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
 pub mod gdb;
 #[cfg(feature = "plugin")]
 pub mod plugin;

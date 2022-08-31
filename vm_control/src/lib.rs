@@ -10,7 +10,7 @@
 //! The wire message format is a little-endian C-struct of fixed size, along with a file descriptor
 //! if the request type expects one.
 
-#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+#[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
 pub mod gdb;
 
 #[cfg(unix)]
@@ -93,17 +93,17 @@ use crate::display::MouseMode;
 use crate::display::WindowEvent;
 use crate::display::WindowMode;
 use crate::display::WindowVisibility;
-#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+#[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
 pub use crate::gdb::VcpuDebug;
-#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+#[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
 pub use crate::gdb::VcpuDebugStatus;
-#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+#[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
 pub use crate::gdb::VcpuDebugStatusMessage;
 
 /// Control the state of a particular VM CPU.
 #[derive(Clone, Debug)]
 pub enum VcpuControl {
-    #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+    #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
     Debug(VcpuDebug),
     RunState(VmRunMode),
     MakeRT,

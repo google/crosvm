@@ -4,10 +4,15 @@ version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 edition = "2021"
 
+[features]
+gdb = ["gdbstub", "gdbstub_arch", "arch/gdb", "hypervisor/gdb"]
+
 [dependencies]
 arch = { path = "../arch" }
 data_model = { path = "../common/data_model" }
 devices = { path = "../devices" }
+gdbstub = { version = "0.6.3", optional = true }
+gdbstub_arch = { version = "0.2.4", optional = true }
 hypervisor = { path = "../hypervisor" }
 kernel_cmdline = { path = "../kernel_cmdline" }
 kernel_loader = { path = "../kernel_loader" }

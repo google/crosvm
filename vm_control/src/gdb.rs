@@ -3,6 +3,8 @@
 // found in the LICENSE file.
 
 use gdbstub::arch::Arch;
+#[cfg(target_arch = "aarch64")]
+use gdbstub_arch::aarch64::AArch64 as GdbArch;
 #[cfg(target_arch = "x86_64")]
 use gdbstub_arch::x86::X86_64_SSE as GdbArch;
 use vm_memory::GuestAddress;
