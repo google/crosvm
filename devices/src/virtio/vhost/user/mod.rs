@@ -37,3 +37,57 @@ where
         serde_keyvalue::from_key_values(value).map_err(|e| e.to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use argh::FromArgValue;
+    use serde::Deserialize;
+    use serde_keyvalue::*;
+
+    use super::VhostUserParams;
+
+    #[derive(Debug, Deserialize, PartialEq, Eq)]
+    #[serde(deny_unknown_fields, rename_all = "kebab-case")]
+    struct DummyDevice {
+        path: PathBuf,
+        #[serde(default)]
+        boom_range: u32,
+    }
+
+    fn from_arg_value(s: &str) -> Result<VhostUserParams<DummyDevice>, String> {
+        VhostUserParams::<DummyDevice>::from_arg_value(s)
+    }
+
+    #[test]
+    fn vhost_user_params() {
+        let device = from_arg_value("vhost=vhost_sock,path=/path/to/dummy,boom-range=42").unwrap();
+        assert_eq!(device.vhost.as_str(), "vhost_sock");
+        assert_eq!(
+            device.device,
+            DummyDevice {
+                path: "/path/to/dummy".into(),
+                boom_range: 42,
+            }
+        );
+
+        // Default parameter of device not specified.
+        let device = from_arg_value("vhost=vhost_sock,path=/path/to/dummy").unwrap();
+        assert_eq!(device.vhost.as_str(), "vhost_sock");
+        assert_eq!(
+            device.device,
+            DummyDevice {
+                path: "/path/to/dummy".into(),
+                boom_range: Default::default(),
+            }
+        );
+
+        // Invalid parameter is rejected.
+        assert_eq!(
+            from_arg_value("vhost=vhost_sock,path=/path/to/dummy,boom-range=42,invalid-param=10")
+                .unwrap_err(),
+            "unknown field `invalid-param`".to_string(),
+        );
+    }
+}
