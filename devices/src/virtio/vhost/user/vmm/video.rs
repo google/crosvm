@@ -15,7 +15,6 @@ use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
 
 use crate::virtio::device_constants::video::all_backend_virtio_features;
-use crate::virtio::device_constants::video::virtio_video_config;
 use crate::virtio::device_constants::video::VideoDeviceType;
 use crate::virtio::device_constants::video::QUEUE_SIZES;
 use crate::virtio::vhost::user::vmm::VhostUserHandler;
@@ -90,11 +89,7 @@ impl VirtioDevice for Video {
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
-        if let Err(e) = self
-            .handler
-            .borrow_mut()
-            .read_config::<virtio_video_config>(offset, data)
-        {
+        if let Err(e) = self.handler.borrow_mut().read_config(offset, data) {
             error!("failed to read video config: {}", e);
         }
     }

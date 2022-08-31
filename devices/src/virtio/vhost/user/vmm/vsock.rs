@@ -10,7 +10,6 @@ use std::thread;
 use base::error;
 use base::Event;
 use base::RawDescriptor;
-use data_model::Le64;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
@@ -95,7 +94,7 @@ impl VirtioDevice for Vsock {
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
-        if let Err(e) = self.handler.borrow_mut().read_config::<Le64>(offset, data) {
+        if let Err(e) = self.handler.borrow_mut().read_config(offset, data) {
             error!("failed to read config: {}", e);
         }
     }

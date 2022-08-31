@@ -5,7 +5,6 @@
 mod sys;
 mod worker;
 
-use std::io::Write;
 use std::sync::Mutex;
 use std::thread;
 
@@ -119,45 +118,34 @@ impl VhostUserHandler {
     }
 
     /// Gets the device configuration space at `offset` and writes it into `data`.
-    pub fn read_config<T>(&mut self, offset: u64, mut data: &mut [u8]) -> Result<()> {
-        let config_len = std::mem::size_of::<T>() as u64;
-        let data_len = data.len() as u64;
-        offset
-            .checked_add(data_len)
-            .and_then(|l| if l <= config_len { Some(()) } else { None })
-            .ok_or(Error::InvalidConfigOffset {
-                data_len,
-                offset,
-                config_len,
-            })?;
-
-        let buf = vec![0u8; config_len as usize];
+    pub fn read_config(&mut self, offset: u64, data: &mut [u8]) -> Result<()> {
         let (_, config) = self
             .vu
-            .get_config(0, config_len as u32, VhostUserConfigFlags::WRITABLE, &buf)
+            .get_config(
+                offset
+                    .try_into()
+                    .map_err(|_| Error::InvalidConfigOffset(offset))?,
+                data.len()
+                    .try_into()
+                    .map_err(|_| Error::InvalidConfigLen(data.len()))?,
+                VhostUserConfigFlags::WRITABLE,
+                data,
+            )
             .map_err(Error::GetConfig)?;
-
-        data.write_all(
-            &config[offset as usize..std::cmp::min(data_len + offset, config_len) as usize],
-        )
-        .map_err(Error::CopyConfig)
+        data.copy_from_slice(&config);
+        Ok(())
     }
 
     /// Writes `data` into the device configuration space at `offset`.
-    pub fn write_config<T>(&mut self, offset: u64, data: &[u8]) -> Result<()> {
-        let config_len = std::mem::size_of::<T>() as u64;
-        let data_len = data.len() as u64;
-        offset
-            .checked_add(data_len)
-            .and_then(|l| if l <= config_len { Some(()) } else { None })
-            .ok_or(Error::InvalidConfigOffset {
-                data_len,
-                offset,
-                config_len,
-            })?;
-
+    pub fn write_config(&mut self, offset: u64, data: &[u8]) -> Result<()> {
         self.vu
-            .set_config(offset as u32, VhostUserConfigFlags::empty(), data)
+            .set_config(
+                offset
+                    .try_into()
+                    .map_err(|_| Error::InvalidConfigOffset(offset))?,
+                VhostUserConfigFlags::empty(),
+                data,
+            )
             .map_err(Error::SetConfig)
     }
 

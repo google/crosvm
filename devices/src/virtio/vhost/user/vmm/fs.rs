@@ -109,11 +109,7 @@ impl VirtioDevice for Fs {
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
-        match self
-            .handler
-            .borrow_mut()
-            .read_config::<virtio_fs_config>(offset, data)
-        {
+        match self.handler.borrow_mut().read_config(offset, data) {
             Ok(()) => {}
             // copy local config when VhostUserProtocolFeatures::CONFIG is not supported by the
             // device

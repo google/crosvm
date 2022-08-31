@@ -93,21 +93,13 @@ impl VirtioDevice for Gpu {
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
-        if let Err(e) = self
-            .handler
-            .borrow_mut()
-            .read_config::<gpu::virtio_gpu_config>(offset, data)
-        {
+        if let Err(e) = self.handler.borrow_mut().read_config(offset, data) {
             error!("failed to read gpu config: {}", e);
         }
     }
 
     fn write_config(&mut self, offset: u64, data: &[u8]) {
-        if let Err(e) = self
-            .handler
-            .borrow_mut()
-            .write_config::<gpu::virtio_gpu_config>(offset, data)
-        {
+        if let Err(e) = self.handler.borrow_mut().write_config(offset, data) {
             error!("failed to write gpu config: {}", e);
         }
     }

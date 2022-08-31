@@ -14,7 +14,6 @@ use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
 
-use crate::virtio::console::virtio_console_config;
 use crate::virtio::console::QUEUE_SIZE;
 use crate::virtio::vhost::user::vmm::handler::VhostUserHandler;
 use crate::virtio::vhost::user::vmm::Error;
@@ -81,11 +80,7 @@ impl VirtioDevice for Console {
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
-        if let Err(e) = self
-            .handler
-            .borrow_mut()
-            .read_config::<virtio_console_config>(offset, data)
-        {
+        if let Err(e) = self.handler.borrow_mut().read_config(offset, data) {
             error!("failed to read config: {}", e);
         }
     }
