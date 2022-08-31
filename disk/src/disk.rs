@@ -32,8 +32,11 @@ use thiserror::Error as ThisError;
 
 mod asynchronous;
 pub(crate) use asynchronous::AsyncDiskFileWrapper;
+#[cfg(feature = "qcow")]
 mod qcow;
+#[cfg(feature = "qcow")]
 pub use qcow::QcowFile;
+#[cfg(feature = "qcow")]
 pub use qcow::QCOW_MAGIC;
 mod sys;
 
@@ -92,6 +95,7 @@ pub enum Error {
     MaxNestingDepthExceeded,
     #[error("failure to punch hole: {0}")]
     PunchHole(io::Error),
+    #[cfg(feature = "qcow")]
     #[error("failure in qcow: {0}")]
     QcowError(qcow::Error),
     #[error("failed to read data: {0}")]
@@ -237,9 +241,11 @@ pub fn detect_image_type(file: &File) -> Result<ImageType> {
     }
 
     if let Some(magic4) = magic.data.get(0..4) {
+        #[cfg(feature = "qcow")]
         if magic4 == QCOW_MAGIC.to_be_bytes() {
             return Ok(ImageType::Qcow2);
-        } else if magic4 == SPARSE_HEADER_MAGIC.to_le_bytes() {
+        }
+        if magic4 == SPARSE_HEADER_MAGIC.to_le_bytes() {
             return Ok(ImageType::AndroidSparse);
         }
     }
@@ -271,14 +277,18 @@ pub fn create_async_disk_file(raw_image: File) -> Result<Box<dyn ToAsyncDisk>> {
 pub fn create_disk_file(
     raw_image: File,
     is_sparse_file: bool,
-    mut max_nesting_depth: u32,
+    // max_nesting_depth is only used if the composite-disk or qcow features are enabled.
+    #[allow(unused_variables)] mut max_nesting_depth: u32,
     // image_path is only used if the composite-disk feature is enabled.
     #[allow(unused_variables)] image_path: &Path,
 ) -> Result<Box<dyn DiskFile>> {
     if max_nesting_depth == 0 {
         return Err(Error::MaxNestingDepthExceeded);
     }
-    max_nesting_depth -= 1;
+    #[allow(unused_assignments)]
+    {
+        max_nesting_depth -= 1;
+    }
 
     let image_type = detect_image_type(&raw_image)?;
     Ok(match image_type {
@@ -286,6 +296,7 @@ pub fn create_disk_file(
             sys::apply_raw_disk_file_options(&raw_image, is_sparse_file)?;
             Box::new(raw_image) as Box<dyn DiskFile>
         }
+        #[cfg(feature = "qcow")]
         ImageType::Qcow2 => {
             Box::new(QcowFile::from(raw_image, max_nesting_depth).map_err(Error::QcowError)?)
                 as Box<dyn DiskFile>
@@ -303,12 +314,12 @@ pub fn create_disk_file(
                 .map_err(Error::CreateCompositeDisk)?,
             ) as Box<dyn DiskFile>
         }
-        #[cfg(not(feature = "composite-disk"))]
-        ImageType::CompositeDisk => return Err(Error::UnknownType),
         ImageType::AndroidSparse => {
             Box::new(AndroidSparse::from_file(raw_image).map_err(Error::CreateAndroidSparseDisk)?)
                 as Box<dyn DiskFile>
         }
+        #[allow(unreachable_patterns)]
+        _ => return Err(Error::UnknownType),
     })
 }
 

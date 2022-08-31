@@ -67,6 +67,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "qcow")]
     fn detect_image_type_qcow2() {
         let mut t = tempfile::tempfile().unwrap();
         // Write the qcow2 magic signature. The rest of the header is not filled in, so if

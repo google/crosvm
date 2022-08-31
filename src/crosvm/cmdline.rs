@@ -121,6 +121,7 @@ pub enum CrossPlatformCommands {
     Battery(BatteryCommand),
     #[cfg(feature = "composite-disk")]
     CreateComposite(CreateCompositeCommand),
+    #[cfg(feature = "qcow")]
     CreateQcow2(CreateQcow2Command),
     Device(DeviceCommand),
     Disk(DiskCommand),
@@ -198,6 +199,7 @@ pub struct CreateCompositeCommand {
     pub partitions: Vec<String>,
 }
 
+#[cfg(feature = "qcow")]
 #[derive(FromArgs)]
 #[argh(subcommand, name = "create_qcow2")]
 /// Create Qcow2 image given path and size

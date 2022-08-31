@@ -13,38 +13,45 @@ use base::flock;
 use base::FlockOperation;
 use disk::DiskFile;
 use disk::ImageType;
+#[cfg(feature = "qcow")]
 use disk::QcowFile;
 use libc::EINVAL;
 use libc::EIO;
 use libc::ENOSYS;
 
 #[no_mangle]
+#[allow(unused_variables)] // If the qcow feature is disabled, this function becomes an empty stub.
 pub unsafe extern "C" fn create_qcow_with_size(path: *const c_char, virtual_size: u64) -> c_int {
-    // NULL pointers are checked, but this will access any other invalid pointer passed from C
-    // code. It's the caller's responsibility to pass a valid pointer.
-    if path.is_null() {
-        return -EINVAL;
-    }
-    let c_str = CStr::from_ptr(path);
-    let file_path = match c_str.to_str() {
-        Ok(s) => s,
-        Err(_) => return -EINVAL,
-    };
-
-    let file = match OpenOptions::new()
-        .create(true)
-        .read(true)
-        .write(true)
-        .open(file_path)
+    #[cfg(feature = "qcow")]
     {
-        Ok(f) => f,
-        Err(_) => return -1,
-    };
+        // NULL pointers are checked, but this will access any other invalid pointer passed from C
+        // code. It's the caller's responsibility to pass a valid pointer.
+        if path.is_null() {
+            return -EINVAL;
+        }
+        let c_str = CStr::from_ptr(path);
+        let file_path = match c_str.to_str() {
+            Ok(s) => s,
+            Err(_) => return -EINVAL,
+        };
 
-    match QcowFile::new(file, virtual_size) {
-        Ok(_) => 0,
-        Err(_) => -1,
+        let file = match OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(file_path)
+        {
+            Ok(f) => f,
+            Err(_) => return -1,
+        };
+
+        match QcowFile::new(file, virtual_size) {
+            Ok(_) => 0,
+            Err(_) => -1,
+        }
     }
+    #[cfg(not(feature = "qcow"))]
+    -ENOSYS // Not implemented
 }
 
 #[no_mangle]
@@ -77,6 +84,7 @@ pub unsafe extern "C" fn expand_disk_image(path: *const c_char, virtual_size: u6
 
     let disk_image: Box<dyn DiskFile> = match image_type {
         ImageType::Raw => Box::new(raw_image),
+        #[cfg(feature = "qcow")]
         ImageType::Qcow2 => match QcowFile::from(raw_image, disk::MAX_NESTING_DEPTH) {
             Ok(f) => Box::new(f),
             Err(_) => return -EINVAL,

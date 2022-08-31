@@ -9,6 +9,7 @@ path = "src/disk.rs"
 
 [features]
 composite-disk = ["crc32fast", "protos", "protobuf", "uuid"]
+qcow = []
 
 [dependencies]
 async-trait = "*"
