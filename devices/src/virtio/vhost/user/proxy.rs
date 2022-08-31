@@ -824,7 +824,6 @@ impl Worker {
                 descriptor: SafeDescriptor::from(file),
                 offset: region.mmap_offset,
                 size: region.memory_size,
-                gpu_blob: false,
             };
             let dest = VmMemoryDestination::ExistingAllocation {
                 allocation: self.shmem_pci_bar,

@@ -178,6 +178,15 @@ pub trait VirtioDevice: Send {
         None
     }
 
+    /// If true, VFIO passthrough devices can access descriptors mapped into
+    /// this region by mapping the corresponding addresses from this device's
+    /// PCI bar into their IO address space with virtio-iommu.
+    ///
+    /// NOTE: Not all vm_control::VmMemorySource types are supported.
+    fn expose_shmem_descriptors_with_viommu(&self) -> bool {
+        false
+    }
+
     /// Provides the trait object used to map files into the device's shared
     /// memory region.
     ///

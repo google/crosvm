@@ -986,7 +986,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                             &mut guest_os.vm,
                                             &mut sys_allocator_mutex.lock(),
                                             &mut gralloc,
-                                            &mut None,
+                                            None,
                                         );
                                         if let Err(e) = tube.send(&response) {
                                             error!("failed to send VmMemoryControlResponse: {}", e);

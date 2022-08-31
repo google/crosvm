@@ -275,7 +275,6 @@ pub enum VmMemorySource {
         offset: u64,
         /// Size of the mapping in bytes.
         size: u64,
-        gpu_blob: bool,
     },
     /// Register memory mapped by Vulkano.
     Vulkan {
@@ -301,11 +300,10 @@ impl VmMemorySource {
                 descriptor,
                 offset,
                 size,
-                gpu_blob,
             } => (
                 map_descriptor(&descriptor, offset, size, prot)?,
                 size,
-                if gpu_blob { Some(descriptor) } else { None },
+                Some(descriptor),
             ),
 
             VmMemorySource::SharedMemory(shm) => {
@@ -435,7 +433,7 @@ impl VmMemoryRequest {
         vm: &mut impl Vm,
         sys_allocator: &mut SystemAllocator,
         gralloc: &mut RutabagaGralloc,
-        iommu_client: &mut Option<VmMemoryRequestIommuClient>,
+        iommu_client: Option<&mut VmMemoryRequestIommuClient>,
     ) -> VmMemoryResponse {
         use self::VmMemoryRequest::*;
         match self {

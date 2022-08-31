@@ -1143,7 +1143,6 @@ impl CoIommuDev {
                 descriptor,
                 offset,
                 size: size as u64,
-                gpu_blob: false,
             },
             dest: VmMemoryDestination::GuestPhysicalAddress(gpa),
             prot,

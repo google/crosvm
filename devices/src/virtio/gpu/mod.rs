@@ -1340,6 +1340,10 @@ impl VirtioDevice for Gpu {
     fn set_shared_memory_mapper(&mut self, mapper: Box<dyn SharedMemoryMapper>) {
         self.mapper = Some(mapper);
     }
+
+    fn expose_shmem_descriptors_with_viommu(&self) -> bool {
+        true
+    }
 }
 
 /// This struct takes the ownership of resource bridges and tracks which ones should be processed.

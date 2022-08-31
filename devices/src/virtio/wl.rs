@@ -529,7 +529,6 @@ impl VmRequester {
             descriptor,
             offset: 0,
             size,
-            gpu_blob: false,
         };
         let alloc = Alloc::Anon(state.next_alloc);
         state.next_alloc += 1;

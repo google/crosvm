@@ -768,7 +768,10 @@ fn create_devices(
                     .context("failed to get vfio container")?;
             let (coiommu_host_tube, coiommu_device_tube) =
                 Tube::pair().context("failed to create coiommu tube")?;
-            control_tubes.push(TaggedControlTube::VmMemory(coiommu_host_tube));
+            control_tubes.push(TaggedControlTube::VmMemory {
+                tube: coiommu_host_tube,
+                expose_with_viommu: false,
+            });
             let vcpu_count = cfg.vcpu_count.unwrap_or(1) as u64;
             #[cfg(feature = "balloon")]
             match Tube::pair() {
@@ -826,7 +829,10 @@ fn create_devices(
                 let shared_memory_tube = if stub.dev.get_shared_memory_region().is_some() {
                     let (host_tube, device_tube) =
                         Tube::pair().context("failed to create VVU proxy tube")?;
-                    control_tubes.push(TaggedControlTube::VmMemory(host_tube));
+                    control_tubes.push(TaggedControlTube::VmMemory {
+                        tube: host_tube,
+                        expose_with_viommu: stub.dev.expose_shmem_descriptors_with_viommu(),
+                    });
                     Some(device_tube)
                 } else {
                     None
@@ -1505,7 +1511,10 @@ where
     for _ in 0..cfg.vvu_proxy.len() {
         let (vvu_proxy_host_tube, vvu_proxy_device_tube) =
             Tube::pair().context("failed to create VVU proxy tube")?;
-        control_tubes.push(TaggedControlTube::VmMemory(vvu_proxy_host_tube));
+        control_tubes.push(TaggedControlTube::VmMemory {
+            tube: vvu_proxy_host_tube,
+            expose_with_viommu: false,
+        });
         vvu_proxy_device_tubes.push(vvu_proxy_device_tube);
     }
 
@@ -2594,28 +2603,33 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                     }
                                 }
                             },
-                            TaggedControlTube::VmMemory(tube) => {
-                                match tube.recv::<VmMemoryRequest>() {
-                                    Ok(request) => {
-                                        let response = request.execute(
-                                            &mut linux.vm,
-                                            &mut sys_allocator,
-                                            &mut gralloc,
-                                            &mut iommu_client,
-                                        );
-                                        if let Err(e) = tube.send(&response) {
-                                            error!("failed to send VmMemoryControlResponse: {}", e);
-                                        }
-                                    }
-                                    Err(e) => {
-                                        if let TubeError::Disconnected = e {
-                                            vm_control_indices_to_remove.push(index);
+                            TaggedControlTube::VmMemory {
+                                tube,
+                                expose_with_viommu,
+                            } => match tube.recv::<VmMemoryRequest>() {
+                                Ok(request) => {
+                                    let response = request.execute(
+                                        &mut linux.vm,
+                                        &mut sys_allocator,
+                                        &mut gralloc,
+                                        if *expose_with_viommu {
+                                            iommu_client.as_mut()
                                         } else {
-                                            error!("failed to recv VmMemoryControlRequest: {}", e);
-                                        }
+                                            None
+                                        },
+                                    );
+                                    if let Err(e) = tube.send(&response) {
+                                        error!("failed to send VmMemoryControlResponse: {}", e);
                                     }
                                 }
-                            }
+                                Err(e) => {
+                                    if let TubeError::Disconnected = e {
+                                        vm_control_indices_to_remove.push(index);
+                                    } else {
+                                        error!("failed to recv VmMemoryControlRequest: {}", e);
+                                    }
+                                }
+                            },
                             TaggedControlTube::VmIrq(tube) => match tube.recv::<VmIrqRequest>() {
                                 Ok(request) => {
                                     let response = {

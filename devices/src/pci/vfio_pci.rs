@@ -1140,7 +1140,6 @@ impl VfioPciDevice {
                             descriptor,
                             offset,
                             size: mmap_size,
-                            gpu_blob: false,
                         },
                         dest: VmMemoryDestination::GuestPhysicalAddress(guest_map_start),
                         prot: Protection::read_write(),

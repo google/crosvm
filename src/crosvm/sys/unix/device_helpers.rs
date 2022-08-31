@@ -86,7 +86,11 @@ use crate::crosvm::config::VvuOption;
 pub enum TaggedControlTube {
     Fs(Tube),
     Vm(Tube),
-    VmMemory(Tube),
+    VmMemory {
+        tube: Tube,
+        /// See devices::virtio::VirtioDevice.expose_shared_memory_region_with_viommu
+        expose_with_viommu: bool,
+    },
     VmIrq(Tube),
     VmMsync(Tube),
 }
@@ -95,7 +99,7 @@ impl AsRef<Tube> for TaggedControlTube {
     fn as_ref(&self) -> &Tube {
         use self::TaggedControlTube::*;
         match &self {
-            Fs(tube) | Vm(tube) | VmMemory(tube) | VmIrq(tube) | VmMsync(tube) => tube,
+            Fs(tube) | Vm(tube) | VmMemory { tube, .. } | VmIrq(tube) | VmMsync(tube) => tube,
         }
     }
 }
@@ -1461,7 +1465,10 @@ pub fn create_vfio_device(
 
     let (vfio_host_tube_mem, vfio_device_tube_mem) =
         Tube::pair().context("failed to create tube")?;
-    control_tubes.push(TaggedControlTube::VmMemory(vfio_host_tube_mem));
+    control_tubes.push(TaggedControlTube::VmMemory {
+        tube: vfio_host_tube_mem,
+        expose_with_viommu: false,
+    });
 
     let vfio_device_tube_vm = if hotplug {
         let (vfio_host_tube_vm, device_tube_vm) = Tube::pair().context("failed to create tube")?;
@@ -1537,7 +1544,10 @@ pub fn create_vfio_platform_device(
 
     let (vfio_host_tube_mem, vfio_device_tube_mem) =
         Tube::pair().context("failed to create tube")?;
-    control_tubes.push(TaggedControlTube::VmMemory(vfio_host_tube_mem));
+    control_tubes.push(TaggedControlTube::VmMemory {
+        tube: vfio_host_tube_mem,
+        expose_with_viommu: false,
+    });
 
     let vfio_device = VfioDevice::new_passthrough(
         &vfio_path,

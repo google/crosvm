@@ -142,6 +142,10 @@ impl VirtioDevice for Gpu {
         }
     }
 
+    fn expose_shmem_descriptors_with_viommu(&self) -> bool {
+        true
+    }
+
     fn reset(&mut self) -> bool {
         if let Err(e) = self.handler.borrow_mut().reset(self.queue_sizes.len()) {
             error!("Failed to reset gpu device: {}", e);
