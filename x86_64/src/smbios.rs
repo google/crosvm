@@ -37,9 +37,15 @@ pub enum Error {
     /// There was too little guest memory to store the entire SMBIOS table.
     #[error("There was too little guest memory to store the SMBIOS table")]
     NotEnoughMemory,
+    /// A provided OEM string contained a null character
+    #[error("a provided SMBIOS OEM string contains a null character")]
+    OemStringHasNullCharacter,
     /// Failure while opening SMBIOS data file
     #[error("Failure while opening SMBIOS data file {1}: {0}")]
     OpenFailed(std::io::Error, PathBuf),
+    /// Too many OEM strings provided
+    #[error("Too many OEM strings were provided, limited to 255")]
+    TooManyOemStrings,
     /// Failure to write additional data to memory
     #[error("Failure to write additional data to memory")]
     WriteData,
@@ -59,6 +65,7 @@ const SM2_MAGIC_IDENT: &[u8; 4usize] = b"_SM_";
 const SM3_MAGIC_IDENT: &[u8; 5usize] = b"_SM3_";
 const BIOS_INFORMATION: u8 = 0;
 const SYSTEM_INFORMATION: u8 = 1;
+const OEM_STRING: u8 = 11;
 const END_OF_TABLE: u8 = 127;
 const PCI_SUPPORTED: u64 = 1 << 7;
 const IS_VIRTUAL_MACHINE: u8 = 1 << 4;
@@ -155,6 +162,17 @@ pub struct SmbiosSysInfo {
 
 unsafe impl data_model::DataInit for SmbiosSysInfo {}
 
+#[repr(packed)]
+#[derive(Default, Clone, Copy)]
+pub struct SmbiosOemStrings {
+    pub typ: u8,
+    pub length: u8,
+    pub handle: u16,
+    pub count: u8,
+}
+
+unsafe impl data_model::DataInit for SmbiosOemStrings {}
+
 fn write_and_incr<T: DataInit>(
     mem: &GuestMemory,
     val: T,
@@ -248,7 +266,11 @@ fn setup_smbios_from_file(mem: &GuestMemory, path: &Path) -> Result<()> {
     Err(Error::InvalidInput)
 }
 
-pub fn setup_smbios(mem: &GuestMemory, dmi_path: Option<PathBuf>) -> Result<()> {
+pub fn setup_smbios(
+    mem: &GuestMemory,
+    dmi_path: Option<PathBuf>,
+    oem_strings: &[String],
+) -> Result<()> {
     if let Some(dmi_path) = dmi_path {
         return setup_smbios_from_file(mem, &dmi_path);
     }
@@ -290,6 +312,30 @@ pub fn setup_smbios(mem: &GuestMemory, dmi_path: Option<PathBuf>) -> Result<()> 
         curptr = write_and_incr(mem, smbios_sysinfo, curptr)?;
         curptr = write_string(mem, "ChromiumOS", curptr)?;
         curptr = write_string(mem, "crosvm", curptr)?;
+        curptr = write_and_incr(mem, 0u8, curptr)?;
+    }
+
+    if !oem_strings.is_empty() {
+        // AFAIK nothing prevents us from creating multiple OEM string tables
+        // if we have more than 255 strings, but 255 already seems pretty
+        // excessive.
+        if oem_strings.len() > u8::MAX.into() {
+            return Err(Error::TooManyOemStrings);
+        }
+        handle += 1;
+        let smbios_oemstring = SmbiosOemStrings {
+            typ: OEM_STRING,
+            length: mem::size_of::<SmbiosOemStrings>() as u8,
+            handle,
+            count: oem_strings.len() as u8,
+        };
+        curptr = write_and_incr(mem, smbios_oemstring, curptr)?;
+        for oem_string in oem_strings {
+            if oem_string.contains("\0") {
+                return Err(Error::OemStringHasNullCharacter);
+            }
+            curptr = write_string(mem, oem_string, curptr)?;
+        }
         curptr = write_and_incr(mem, 0u8, curptr)?;
     }
 
@@ -350,6 +396,11 @@ mod tests {
             0x1busize,
             concat!("Size of: ", stringify!(SmbiosSysInfo))
         );
+        assert_eq!(
+            mem::size_of::<SmbiosOemStrings>(),
+            0x5usize,
+            concat!("Size of: ", stringify!(SmbiosOemStrings))
+        )
     }
 
     #[test]
@@ -357,7 +408,7 @@ mod tests {
         let mem = GuestMemory::new(&[(GuestAddress(SMBIOS_START), 4096)]).unwrap();
 
         // Use default 3.0 SMBIOS format.
-        setup_smbios(&mem, None).unwrap();
+        setup_smbios(&mem, None, &Vec::new()).unwrap();
 
         let smbios_ep: Smbios30Entrypoint =
             mem.read_obj_from_addr(GuestAddress(SMBIOS_START)).unwrap();

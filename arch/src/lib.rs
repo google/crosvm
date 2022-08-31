@@ -161,6 +161,8 @@ pub struct VmComponents {
     pub no_rtc: bool,
     pub no_smt: bool,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub oem_strings: Vec<String>,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub pci_low_start: Option<u64>,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub pcie_ecam: Option<AddressRange>,

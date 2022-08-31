@@ -1239,6 +1239,8 @@ pub struct Config {
     pub no_i8042: bool,
     pub no_rtc: bool,
     pub no_smt: bool,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub oem_strings: Vec<String>,
     pub params: Vec<String>,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub pci_low_start: Option<u64>,
@@ -1442,6 +1444,8 @@ impl Default for Config {
             no_i8042: false,
             no_rtc: false,
             no_smt: false,
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            oem_strings: Vec::new(),
             params: Vec::new(),
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             pci_low_start: None,

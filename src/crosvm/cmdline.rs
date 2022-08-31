@@ -781,6 +781,10 @@ pub struct RunCommand {
     #[argh(switch)]
     /// don't use usb devices in the guest
     pub no_usb: bool,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[argh(option, arg_name = "OEM_STRING")]
+    /// SMBIOS OEM string values to add to the DMI tables
+    pub oem_strings: Vec<String>,
     #[argh(option, short = 'p', arg_name = "PARAMS")]
     /// extra kernel or plugin command line arguments. Can be given more than once
     pub params: Vec<String>,
@@ -1756,7 +1760,11 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.pci_low_start = cmd.pci_low_start;
             cfg.no_i8042 = cmd.no_i8042;
             cfg.no_rtc = cmd.no_rtc;
+            cfg.oem_strings = cmd.oem_strings;
 
+            if !cfg.oem_strings.is_empty() && cfg.dmi_path.is_some() {
+                return Err("unable to use oem-strings and dmi-path together".to_string());
+            }
             for (index, msr_config) in cmd.userspace_msr {
                 if cfg.userspace_msr.insert(index, msr_config).is_some() {
                     return Err(String::from("msr must be unique"));
