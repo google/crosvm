@@ -88,7 +88,6 @@ use crate::crosvm::config::HypervisorKind;
 use crate::crosvm::config::TouchDeviceOption;
 use crate::crosvm::config::VhostUserFsOption;
 use crate::crosvm::config::VhostUserOption;
-use crate::crosvm::config::VhostUserWlOption;
 use crate::crosvm::config::VvuOption;
 
 #[derive(FromArgs)]
@@ -1210,7 +1209,7 @@ pub struct RunCommand {
     pub vhost_user_vsock: Vec<VhostUserOption>,
     #[argh(option, arg_name = "SOCKET_PATH")]
     /// path to a vhost-user socket for wayland
-    pub vhost_user_wl: Option<VhostUserWlOption>,
+    pub vhost_user_wl: Option<VhostUserOption>,
     #[cfg(unix)]
     #[argh(option, arg_name = "SOCKET_PATH")]
     /// path to the vhost-vsock device. (default /dev/vhost-vsock)
