@@ -629,10 +629,6 @@ impl<O: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for DeviceRequestHandl
         size: u32,
         _flags: VhostUserConfigFlags,
     ) -> VhostResult<Vec<u8>> {
-        if offset >= size {
-            return Err(VhostError::InvalidParam);
-        }
-
         let mut data = vec![0; size as usize];
         self.backend.read_config(u64::from(offset), &mut data);
         Ok(data)
