@@ -14,6 +14,7 @@ use std::mem::size_of;
 use std::mem::transmute;
 use std::os::raw::c_char;
 use std::os::raw::c_int;
+use std::os::raw::c_uchar;
 use std::os::raw::c_uint;
 use std::os::raw::c_void;
 use std::ptr::null;
@@ -157,6 +158,15 @@ extern "C" {
     fn pipe_virgl_renderer_ctx_attach_resource(ctx_id: c_int, res_handle: c_int);
     fn pipe_virgl_renderer_ctx_detach_resource(ctx_id: c_int, res_handle: c_int);
 
+    fn stream_renderer_flush_resource_and_readback(
+        res_handle: u32,
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+        pixels: *mut c_uchar,
+        max_bytes: u32,
+    );
     fn stream_renderer_create_blob(
         ctx_id: u32,
         res_handle: u32,
@@ -548,6 +558,21 @@ impl RutabagaComponent for Gfxstream {
             )
         };
         ret_to_res(ret)
+    }
+
+    fn resource_flush(&self, resource: &mut RutabagaResource) -> RutabagaResult<()> {
+        unsafe {
+            stream_renderer_flush_resource_and_readback(
+                resource.resource_id,
+                0,
+                0,
+                0,
+                0,
+                null_mut(),
+                0,
+            );
+        }
+        Ok(())
     }
 
     fn create_blob(

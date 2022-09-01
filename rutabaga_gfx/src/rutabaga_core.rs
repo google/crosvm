@@ -135,6 +135,11 @@ pub trait RutabagaComponent {
         Err(RutabagaError::Unsupported)
     }
 
+    /// Implementations must flush the given resource to the display.
+    fn resource_flush(&self, _resource_id: &mut RutabagaResource) -> RutabagaResult<()> {
+        Err(RutabagaError::Unsupported)
+    }
+
     /// Implementations must create a blob resource on success.  The memory parameters, size, and
     /// usage of the blob resource is given by `resource_create_blob`.
     fn create_blob(
@@ -530,6 +535,20 @@ impl Rutabaga {
             .ok_or(RutabagaError::InvalidResourceId)?;
 
         component.transfer_read(ctx_id, resource, transfer, buf)
+    }
+
+    pub fn resource_flush(&mut self, resource_id: u32) -> RutabagaResult<()> {
+        let component = self
+            .components
+            .get(&self.default_component)
+            .ok_or(RutabagaError::Unsupported)?;
+
+        let resource = self
+            .resources
+            .get_mut(&resource_id)
+            .ok_or(RutabagaError::InvalidResourceId)?;
+
+        component.resource_flush(resource)
     }
 
     /// Creates a blob resource with the `ctx_id` and `resource_create_blob` metadata.

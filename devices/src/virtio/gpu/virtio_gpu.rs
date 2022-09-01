@@ -431,6 +431,13 @@ impl VirtioGpu {
             return Ok(OkNoData);
         }
 
+        #[cfg(windows)]
+        match self.rutabaga.resource_flush(resource_id) {
+            Ok(_) => return Ok(OkNoData),
+            Err(RutabagaError::Unsupported) => {}
+            Err(e) => return Err(ErrRutabaga(e)),
+        }
+
         let resource = self
             .resources
             .get_mut(&resource_id)
