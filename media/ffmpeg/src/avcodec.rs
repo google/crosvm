@@ -658,11 +658,11 @@ mod tests {
 
         let pkt = AvPacket::new_owned(
             0,
-            DropTestBufferSource {
+            AvBuffer::new(DropTestBufferSource {
                 dropped: dropped.clone(),
-            },
-        )
-        .unwrap();
+            })
+            .unwrap(),
+        );
         assert!(!dropped.load(Ordering::SeqCst));
         drop(pkt);
         assert!(dropped.load(Ordering::SeqCst));
