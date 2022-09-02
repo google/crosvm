@@ -414,7 +414,7 @@ impl AsRef<ffi::AVCodecContext> for AvCodecContext {
     }
 }
 
-pub enum TryReceiveFrameResult {
+pub enum TryReceiveResult {
     Received,
     TryAgain,
     FlushCompleted,
@@ -432,7 +432,7 @@ impl AvCodecContext {
         Ok(())
     }
 
-    /// Send a packet to be decoded to the codec.
+    /// Send a packet to be decoded by the codec.
     ///
     /// Returns `true` if the packet has been accepted and will be decoded, `false` if the codec can
     /// not accept frames at the moment - in this case `try_receive_frame` must be called before
@@ -457,17 +457,54 @@ impl AvCodecContext {
     /// submit more input to decode), or `FlushCompleted` to signal that a previous flush triggered
     /// by calling the `flush` method has completed.
     ///
-    /// Error codes are the same as those returned by `avcodec_receive_frame`.
-    pub fn try_receive_frame(
-        &mut self,
-        frame: &mut AvFrame,
-    ) -> Result<TryReceiveFrameResult, AvError> {
+    /// Error codes are the same as those returned by `avcodec_receive_frame` with the exception of
+    /// EAGAIN and EOF which are handled as `TryAgain` and `FlushCompleted` respectively.
+    pub fn try_receive_frame(&mut self, frame: &mut AvFrame) -> Result<TryReceiveResult, AvError> {
         // Safe because the context is valid through the life of this object, and `avframe` is
         // guaranteed to contain a properly initialized frame.
         match unsafe { ffi::avcodec_receive_frame(self.0, frame.0) } {
-            AVERROR_EAGAIN => Ok(TryReceiveFrameResult::TryAgain),
-            AVERROR_EOF => Ok(TryReceiveFrameResult::FlushCompleted),
-            ret if ret >= 0 => Ok(TryReceiveFrameResult::Received),
+            AVERROR_EAGAIN => Ok(TryReceiveResult::TryAgain),
+            AVERROR_EOF => Ok(TryReceiveResult::FlushCompleted),
+            ret if ret >= 0 => Ok(TryReceiveResult::Received),
+            err => Err(AvError(err)),
+        }
+    }
+
+    /// Send a frame to be encoded by the codec.
+    ///
+    /// Returns `true` if the frame has been accepted and will be encoded, `false` if the codec can
+    /// not accept input at the moment - in this case `try_receive_frame` must be called before
+    /// the frame can be submitted again.
+    ///
+    /// Error codes are the same as those returned by `avcodec_send_frame` with the exception of
+    /// EAGAIN which is converted into `Ok(false)` as it is not actually an error.
+    pub fn try_send_frame(&mut self, frame: &AvFrame) -> Result<bool, AvError> {
+        match unsafe { ffi::avcodec_send_frame(self.0, frame.0 as *const _) } {
+            AVERROR_EAGAIN => Ok(false),
+            ret if ret >= 0 => Ok(true),
+            err => Err(AvError(err)),
+        }
+    }
+
+    /// Attempt to write an encoded frame in `packet` if the codec has enough data to do so.
+    ///
+    /// Returned `Received` if `packet` has been filled with encoded data, `TryAgain` if
+    /// no packet could be returned at that time (in which case `try_send_frame` should be called to
+    /// submit more input to decode), or `FlushCompleted` to signal that a previous flush triggered
+    /// by calling the `flush` method has completed.
+    ///
+    /// Error codes are the same as those returned by `avcodec_receive_packet` with the exception of
+    /// EAGAIN and EOF which are handled as `TryAgain` and `FlushCompleted` respectively.
+    pub fn try_receive_packet(
+        &mut self,
+        packet: &mut AvPacket,
+    ) -> Result<TryReceiveResult, AvError> {
+        // Safe because the context is valid through the life of this object, and `avframe` is
+        // guaranteed to contain a properly initialized frame.
+        match unsafe { ffi::avcodec_receive_packet(self.0, &mut packet.packet) } {
+            AVERROR_EAGAIN => Ok(TryReceiveResult::TryAgain),
+            AVERROR_EOF => Ok(TryReceiveResult::FlushCompleted),
+            ret if ret >= 0 => Ok(TryReceiveResult::Received),
             err => Err(AvError(err)),
         }
     }
