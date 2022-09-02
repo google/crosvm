@@ -329,6 +329,22 @@ impl AvPixelFormat {
         // handles any value passed as argument.
         unsafe { ffi::avcodec_pix_fmt_to_codec_tag(self.0) }.to_le_bytes()
     }
+
+    /// Given the width and plane index, returns the line size (data pointer increment per row) in
+    /// bytes.
+    pub fn line_size(&self, width: u32, plane: usize) -> Result<usize, AvError> {
+        av_image_line_size(*self, width, plane)
+    }
+
+    /// Given an iterator of line sizes and height, return the size required for each plane's buffer
+    /// in bytes.
+    pub fn plane_sizes<I: IntoIterator<Item = u32>>(
+        &self,
+        linesizes: I,
+        height: u32,
+    ) -> Result<Vec<usize>, AvError> {
+        av_image_plane_sizes(*self, linesizes, height)
+    }
 }
 
 impl Display for AvPixelFormat {
