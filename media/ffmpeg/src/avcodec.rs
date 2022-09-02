@@ -18,6 +18,8 @@ use libc::c_int;
 use libc::c_void;
 use thiserror::Error as ThisError;
 
+use crate::ffi::AVPictureType;
+
 use super::*;
 
 /// An error returned by a low-level libavcodec function.
@@ -295,6 +297,7 @@ impl Iterator for AvProfileIterator {
     }
 }
 
+#[derive(Clone, Copy)]
 /// Simple wrapper over `AVPixelFormat` that provides helpful methods.
 pub struct AvPixelFormat(ffi::AVPixelFormat);
 
@@ -632,10 +635,36 @@ impl<'a> AvPacket<'a> {
 /// destination buffer.
 pub struct AvFrame(*mut ffi::AVFrame);
 
+/// A builder for AVFrame that allows specifying buffers and image metadata.
+pub struct AvFrameBuilder(AvFrame);
+
+/// A descriptor describing a subslice of `buffers` in [`AvFrameBuilder::build_owned`] that
+/// represents a plane's image data.
+pub struct PlaneDescriptor {
+    /// The index within `buffers`.
+    pub buffer_index: usize,
+    /// The offset from the start of `buffers[buffer_index]`.
+    pub offset: usize,
+    /// The increment of data pointer in bytes per row of the plane.
+    pub stride: usize,
+}
+
 #[derive(Debug, ThisError)]
 pub enum AvFrameError {
     #[error("failed to allocate AVFrame object")]
     FrameAllocationFailed,
+    #[error("dimension is negative or too large")]
+    DimensionOverflow,
+    #[error("a row does not fit in the specified stride")]
+    InvalidStride,
+    #[error("buffer index out of range")]
+    BufferOutOfRange,
+    #[error("specified dimensions overflow the buffer size")]
+    BufferTooSmall,
+    #[error("plane reference to buffer alias each other")]
+    BufferAlias,
+    #[error("error while calling libavcodec")]
+    AvError(#[from] AvError),
 }
 
 impl AvFrame {
@@ -646,6 +675,161 @@ impl AvFrame {
             // Safe because `av_frame_alloc` does not take any input.
             unsafe { ffi::av_frame_alloc().as_mut() }.ok_or(AvFrameError::FrameAllocationFailed)?,
         ))
+    }
+
+    /// Create a new AvFrame builder that allows setting the frame's parameters and backing memory
+    /// through its methods.
+    pub fn builder() -> Result<AvFrameBuilder, AvFrameError> {
+        AvFrame::new().map(AvFrameBuilder)
+    }
+
+    /// Return the frame's width and height.
+    pub fn dimensions(&self) -> Dimensions {
+        Dimensions {
+            width: self.as_ref().width as _,
+            height: self.as_ref().height as _,
+        }
+    }
+
+    /// Return the frame's pixel format.
+    pub fn format(&self) -> AvPixelFormat {
+        AvPixelFormat(self.as_ref().format)
+    }
+
+    /// Set the picture type (I-frame, P-frame etc.) on this frame.
+    pub fn set_pict_type(&mut self, ty: AVPictureType) {
+        // Safe because self.0 is a valid AVFrame reference.
+        unsafe {
+            (*self.0).pict_type = ty;
+        }
+    }
+
+    /// Set the presentation timestamp (PTS) of this frame.
+    pub fn set_pts(&mut self, ts: i64) {
+        // Safe because self.0 is a valid AVFrame reference.
+        unsafe {
+            (*self.0).pts = ts;
+        }
+    }
+}
+
+impl AvFrameBuilder {
+    /// Set the frame's width and height.
+    ///
+    /// The dimensions must not be greater than `i32::MAX`.
+    pub fn set_dimensions(&mut self, dimensions: Dimensions) -> Result<(), AvFrameError> {
+        // Safe because self.0 is a valid AVFrame instance and width and height are in range.
+        unsafe {
+            (*self.0 .0).width = dimensions
+                .width
+                .try_into()
+                .map_err(|_| AvFrameError::DimensionOverflow)?;
+            (*self.0 .0).height = dimensions
+                .height
+                .try_into()
+                .map_err(|_| AvFrameError::DimensionOverflow)?;
+        }
+        Ok(())
+    }
+
+    /// Set the frame's format.
+    pub fn set_format(&mut self, format: AvPixelFormat) -> Result<(), AvFrameError> {
+        // Safe because self.0 is a valid AVFrame instance and format is a valid pixel format.
+        unsafe {
+            (*self.0 .0).format = format.pix_fmt();
+        }
+        Ok(())
+    }
+
+    /// Build an AvFrame from iterators of [`AvBuffer`]s and subslice of buffers describing the
+    /// planes.
+    ///
+    /// The frame will own the `buffers`.
+    ///
+    /// This function checks that:
+    /// - Each plane fits inside the bounds of the associated buffer.
+    /// - Different planes do not overlap each other's buffer slice.
+    ///   In this check, all planes are assumed to be potentially mutable, regardless of whether
+    ///   the AvFrame is actually used for read or write access. Aliasing reference to the same
+    ///   buffer will be rejected, since it can potentially allow routines to overwrite each
+    //    other's result.
+    ///   An exception to this is when the same buffer is passed multiple times in `buffers`. In
+    ///   this case, each buffer is treated as a different buffer. Since clones have to be made to
+    ///   be passed multiple times in `buffers`, the frame will not be considered [writable]. Hence
+    ///   aliasing is safe in this case, but the caller is required to explicit opt-in to this
+    ///   read-only handling by passing clones of the buffer into `buffers` and have a different
+    ///   buffer index for each plane combination that could overlap in their range.
+    ///
+    /// [writable]: AvFrame::is_writable
+    pub fn build_owned<
+        BI: IntoIterator<Item = AvBuffer>,
+        PI: IntoIterator<Item = PlaneDescriptor>,
+    >(
+        mut self,
+        buffers: BI,
+        planes: PI,
+    ) -> Result<AvFrame, AvFrameError> {
+        let mut buffers: Vec<_> = buffers.into_iter().collect();
+        let planes: Vec<_> = planes.into_iter().collect();
+        let format = self.0.format();
+        let plane_sizes = format.plane_sizes(
+            planes.iter().map(|x| x.stride as u32),
+            self.0.dimensions().height,
+        )?;
+        let mut ranges = vec![];
+
+        for (
+            plane,
+            PlaneDescriptor {
+                buffer_index,
+                offset,
+                stride,
+            },
+        ) in planes.into_iter().enumerate()
+        {
+            if buffer_index > buffers.len() {
+                return Err(AvFrameError::BufferOutOfRange);
+            }
+            let end = offset + plane_sizes[plane];
+            if end > buffers[buffer_index].as_mut_slice().len() {
+                return Err(AvFrameError::BufferTooSmall);
+            }
+            if stride < format.line_size(self.0.dimensions().width, plane)? {
+                return Err(AvFrameError::InvalidStride);
+            }
+            unsafe {
+                (*self.0 .0).data[plane] =
+                    buffers[buffer_index].as_mut_slice()[offset..].as_mut_ptr();
+                (*self.0 .0).linesize[plane] = stride as c_int;
+            }
+            ranges.push((buffer_index, offset, end));
+        }
+
+        // Check for range overlaps.
+        // See function documentation for the exact rule and reasoning.
+        ranges.sort_unstable();
+        for pair in ranges.windows(2) {
+            // (buffer_index, start, end)
+            let (b0, _s0, e0) = pair[0];
+            let (b1, s1, _e1) = pair[1];
+
+            if b0 != b1 {
+                continue;
+            }
+            // Note that s0 <= s1 always holds, so we only need to check
+            // that the start of the second range is before the end of the first range.
+            if s1 < e0 {
+                return Err(AvFrameError::BufferAlias);
+            }
+        }
+
+        for (i, buf) in buffers.into_iter().enumerate() {
+            // Safe because self.0 is a valid AVFrame instance and buffers contains valid AvBuffers.
+            unsafe {
+                (*self.0 .0).buf[i] = buf.into_raw();
+            }
+        }
+        Ok(self.0)
     }
 }
 
