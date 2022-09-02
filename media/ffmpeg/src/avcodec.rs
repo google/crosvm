@@ -520,9 +520,18 @@ impl AvCodecContext {
     /// frames for them.
     ///
     /// The flush process is complete when `try_receive_frame` returns `FlushCompleted`,
-    pub fn flush(&mut self) -> Result<(), AvError> {
+    pub fn flush_decoder(&mut self) -> Result<(), AvError> {
         // Safe because the context is valid through the life of this object.
         AvError::result(unsafe { ffi::avcodec_send_packet(self.0, std::ptr::null()) })
+    }
+
+    /// Ask the context to start flushing, i.e. to process all pending input frames and produce
+    /// packets for them.
+    ///
+    /// The flush process is complete when `try_receive_packet` returns `FlushCompleted`,
+    pub fn flush_encoder(&mut self) -> Result<(), AvError> {
+        // Safe because the context is valid through the life of this object.
+        AvError::result(unsafe { ffi::avcodec_send_frame(self.0, std::ptr::null()) })
     }
 }
 

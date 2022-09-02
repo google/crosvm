@@ -303,7 +303,7 @@ impl FfmpegDecoderSession {
                     // Start flushing. `try_receive_frame` will return `FlushCompleted` when the
                     // flush is completed. `TryAgain` will not be returned again until the flush is
                     // completed.
-                    match self.context.flush() {
+                    match self.context.flush_decoder() {
                         // Call ourselves again so we can process the flush.
                         Ok(()) => self.try_receive_frame(),
                         Err(err) => {
