@@ -210,7 +210,7 @@ fn any_identifier(s: &str) -> IResult<&str, &str> {
 }
 
 /// Serde deserializer for key-values strings.
-struct KeyValueDeserializer<'de> {
+pub struct KeyValueDeserializer<'de> {
     /// Full input originally received for parsing.
     original_input: &'de str,
     /// Input currently remaining to parse.
@@ -243,7 +243,7 @@ impl<'de> From<&'de str> for KeyValueDeserializer<'de> {
 
 impl<'de> KeyValueDeserializer<'de> {
     /// Return an `kind` error for the current position of the input.
-    fn error_here(&self, kind: ErrorKind) -> ParseError {
+    pub fn error_here(&self, kind: ErrorKind) -> ParseError {
         ParseError {
             kind,
             pos: self.original_input.len() - self.input.len(),
@@ -252,25 +252,25 @@ impl<'de> KeyValueDeserializer<'de> {
 
     /// Returns the next char in the input string without consuming it, or None
     /// if we reached the end of input.
-    fn peek_char(&self) -> Option<char> {
+    pub fn peek_char(&self) -> Option<char> {
         self.input.chars().next()
     }
 
     /// Skip the next char in the input string.
-    fn skip_char(&mut self) {
+    pub fn skip_char(&mut self) {
         let _ = self.next_char();
     }
 
     /// Returns the next char in the input string and consume it, or returns
     /// None if we reached the end of input.
-    fn next_char(&mut self) -> Option<char> {
+    pub fn next_char(&mut self) -> Option<char> {
         let c = self.peek_char()?;
         self.input = &self.input[c.len_utf8()..];
         Some(c)
     }
 
     /// Attempts to parse an identifier, either for a key or for the value of an enum type.
-    fn parse_identifier(&mut self) -> Result<&'de str> {
+    pub fn parse_identifier(&mut self) -> Result<&'de str> {
         let (remainder, res) = any_identifier(self.input)
             .finish()
             .map_err(|_| self.error_here(ErrorKind::ExpectedIdentifier))?;
@@ -280,7 +280,7 @@ impl<'de> KeyValueDeserializer<'de> {
     }
 
     /// Attempts to parse a string.
-    fn parse_string(&mut self) -> Result<Cow<'de, str>> {
+    pub fn parse_string(&mut self) -> Result<Cow<'de, str>> {
         let (remainder, res) =
             any_string(self.input)
                 .finish()
@@ -301,7 +301,7 @@ impl<'de> KeyValueDeserializer<'de> {
     }
 
     /// Attempt to parse a boolean.
-    fn parse_bool(&mut self) -> Result<bool> {
+    pub fn parse_bool(&mut self) -> Result<bool> {
         let (remainder, res) =
             any_bool(self.input)
                 .finish()
@@ -315,7 +315,7 @@ impl<'de> KeyValueDeserializer<'de> {
     }
 
     /// Attempt to parse a positive or negative number.
-    fn parse_number<T>(&mut self) -> Result<T>
+    pub fn parse_number<T>(&mut self) -> Result<T>
     where
         T: Num<FromStrRadixErr = ParseIntError>,
     {
@@ -325,6 +325,18 @@ impl<'de> KeyValueDeserializer<'de> {
 
         self.input = remainder;
         Ok(val)
+    }
+
+    /// Consume this deserializer and return a `TrailingCharacters` error if some input was
+    /// remaining.
+    ///
+    /// This is useful to confirm that the whole input has been consumed without any extra elements.
+    pub fn finish(self) -> Result<()> {
+        if self.input.is_empty() {
+            Ok(())
+        } else {
+            Err(self.error_here(ErrorKind::TrailingCharacters))
+        }
     }
 }
 
@@ -713,12 +725,10 @@ where
     T: Deserialize<'a>,
 {
     let mut deserializer = KeyValueDeserializer::from(input);
-    let t = T::deserialize(&mut deserializer)?;
-    if deserializer.input.is_empty() {
-        Ok(t)
-    } else {
-        Err(deserializer.error_here(ErrorKind::TrailingCharacters))
-    }
+    let ret = T::deserialize(&mut deserializer)?;
+    deserializer.finish()?;
+
+    Ok(ret)
 }
 
 #[cfg(test)]

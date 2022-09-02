@@ -291,6 +291,7 @@ mod key_values;
 pub use argh;
 pub use key_values::from_key_values;
 pub use key_values::ErrorKind;
+pub use key_values::KeyValueDeserializer;
 pub use key_values::ParseError;
 #[cfg(feature = "argh_derive")]
 pub use serde_keyvalue_derive::FromKeyValues;
