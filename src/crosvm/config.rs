@@ -1238,6 +1238,7 @@ pub struct Config {
     pub split_irqchip: bool,
     pub strict_balloon: bool,
     pub stub_pci_devices: Vec<StubPciParameters>,
+    pub swap_dir: Option<PathBuf>,
     pub swiotlb: Option<u64>,
     #[cfg(windows)]
     pub syslog_tag: Option<String>,
@@ -1432,6 +1433,7 @@ impl Default for Config {
             shared_dirs: Vec::new(),
             #[cfg(feature = "slirp-ring-capture")]
             slirp_capture_file: None,
+            swap_dir: None,
             socket_path: None,
             #[cfg(feature = "tpm")]
             software_tpm: false,

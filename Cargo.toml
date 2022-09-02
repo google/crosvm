@@ -148,6 +148,9 @@ panic-memfd = []
 ## Enables the use of the qcow format for block devices.
 qcow = ["disk/qcow"]
 
+## Enables vmm-swap of guest memory. This is only available on Linux.
+swap = ["vm_control/swap", "dep:swap"]
+
 ## Enables collection of VM statistics.
 stats = ["devices/stats"]
 

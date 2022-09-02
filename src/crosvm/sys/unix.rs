@@ -147,6 +147,8 @@ use resources::Alloc;
 use resources::Error as ResourceError;
 use resources::SystemAllocator;
 use rutabaga_gfx::RutabagaGralloc;
+#[cfg(feature = "swap")]
+use swap::SwapController;
 use sync::Condvar;
 use sync::Mutex;
 use vm_control::*;
@@ -1307,7 +1309,12 @@ fn punch_holes_in_guest_mem_layout_for_mappings(
         .collect()
 }
 
-fn run_kvm(cfg: Config, components: VmComponents, guest_mem: GuestMemory) -> Result<ExitState> {
+fn run_kvm(
+    cfg: Config,
+    components: VmComponents,
+    guest_mem: GuestMemory,
+    #[cfg(feature = "swap")] swap_controller: Option<SwapController>,
+) -> Result<ExitState> {
     let kvm = Kvm::new_with_path(&cfg.kvm_device_path).with_context(|| {
         format!(
             "failed to open KVM device {}",
@@ -1381,7 +1388,15 @@ fn run_kvm(cfg: Config, components: VmComponents, guest_mem: GuestMemory) -> Res
         )
     };
 
-    run_vm::<KvmVcpu, KvmVm>(cfg, components, vm, irq_chip.as_mut(), ioapic_host_tube)
+    run_vm::<KvmVcpu, KvmVm>(
+        cfg,
+        components,
+        vm,
+        irq_chip.as_mut(),
+        ioapic_host_tube,
+        #[cfg(feature = "swap")]
+        swap_controller,
+    )
 }
 
 fn get_default_hypervisor() -> Result<HypervisorKind> {
@@ -1413,13 +1428,28 @@ pub fn run_config(cfg: Config) -> Result<ExitState> {
     }
     guest_mem.set_memory_policy(mem_policy);
 
+    // Setup page fault handlers for vmm-swap.
+    // This should be called before device processes are forked.
+    #[cfg(feature = "swap")]
+    let swap_controller = cfg
+        .swap_dir
+        .as_ref()
+        .map(|swap_dir| SwapController::launch(guest_mem.clone(), swap_dir.clone()))
+        .transpose()?;
+
     let default_hypervisor = get_default_hypervisor().context("no enabled hypervisor")?;
     let hypervisor = cfg.hypervisor.unwrap_or(default_hypervisor);
 
     debug!("creating {:?} hypervisor", hypervisor);
 
     match hypervisor {
-        HypervisorKind::Kvm => run_kvm(cfg, components, guest_mem),
+        HypervisorKind::Kvm => run_kvm(
+            cfg,
+            components,
+            guest_mem,
+            #[cfg(feature = "swap")]
+            swap_controller,
+        ),
     }
 }
 
@@ -1429,6 +1459,7 @@ fn run_vm<Vcpu, V>(
     mut vm: V,
     irq_chip: &mut dyn IrqChipArch,
     ioapic_host_tube: Option<Tube>,
+    #[cfg(feature = "swap")] swap_controller: Option<SwapController>,
 ) -> Result<ExitState>
 where
     Vcpu: VcpuArch + 'static,
@@ -1893,6 +1924,8 @@ where
         iommu_host_tube,
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         hp_control_tube,
+        #[cfg(feature = "swap")]
+        swap_controller,
     )
 }
 
@@ -2319,6 +2352,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] hp_control_tube: mpsc::Sender<
         PciRootCommand,
     >,
+    #[cfg(feature = "swap")] swap_controller: Option<SwapController>,
 ) -> Result<ExitState> {
     #[derive(EventToken)]
     enum Token {
@@ -2699,6 +2733,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                 &mut linux.bat_control,
                                                 &vcpu_handles,
                                                 cfg.force_s2idle,
+                                                #[cfg(feature = "swap")]
+                                                swap_controller.as_ref(),
                                             );
 
                                             // For non s2idle guest suspension we are done
@@ -2970,6 +3006,14 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     for (handle, _) in vcpu_handles {
         if let Err(e) = handle.join() {
             error!("failed to join vcpu thread: {:?}", e);
+        }
+    }
+
+    #[cfg(feature = "swap")]
+    // Stop the snapshot monitor process
+    if let Some(swap_controller) = swap_controller {
+        if let Err(e) = swap_controller.exit() {
+            error!("failed to exit snapshot monitor process: {:?}", e);
         }
     }
 

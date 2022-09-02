@@ -139,6 +139,7 @@ pub enum CrossPlatformCommands {
     Run(RunCommand),
     Stop(StopCommand),
     Suspend(SuspendCommand),
+    Swap(SwapCommand),
     Powerbtn(PowerbtnCommand),
     Sleepbtn(SleepCommand),
     Gpe(GpeCommand),
@@ -288,6 +289,39 @@ pub struct SuspendCommand {
     #[argh(positional, arg_name = "VM_SOCKET")]
     /// VM Socket path
     pub socket_path: String,
+}
+
+#[derive(FromArgs)]
+#[argh(subcommand, name = "enable")]
+/// Enable swap of a VM
+pub struct SwapEnableCommand {
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
+
+#[derive(FromArgs)]
+#[argh(subcommand, name = "status")]
+/// Get swap status of a VM
+pub struct SwapStatusCommand {
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
+
+#[derive(FromArgs)]
+#[argh(subcommand, name = "swap", description = "vmm-swap related commands")]
+pub struct SwapCommand {
+    #[argh(subcommand)]
+    pub nested: SwapSubcommands,
+}
+
+#[derive(FromArgs)]
+#[argh(subcommand)]
+/// Swap related operations
+pub enum SwapSubcommands {
+    Enable(SwapEnableCommand),
+    Status(SwapStatusCommand),
 }
 
 #[derive(FromArgs)]
@@ -1467,6 +1501,10 @@ pub struct RunCommand {
     ///     revision=NUM - revision
     pub stub_pci_device: Vec<StubPciParameters>,
 
+    #[argh(option, long = "swap", arg_name = "PATH")]
+    /// path to create the swap files from. The PATH should be a directory.
+    pub swap_dir: Option<PathBuf>,
+
     #[argh(option, arg_name = "N")]
     /// (EXPERIMENTAL) Size of virtio swiotlb buffer in MiB (default: 64 if `--protected-vm` or `--protected-vm-without-firmware` is present)
     pub swiotlb: Option<u64>,
@@ -1954,6 +1992,8 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         cfg.display_window_keyboard = cmd.display_window_keyboard;
         cfg.display_window_mouse = cmd.display_window_mouse;
+
+        cfg.swap_dir = cmd.swap_dir;
 
         if let Some(mut socket_path) = cmd.socket {
             if socket_path.is_dir() {

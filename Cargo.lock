@@ -1965,9 +1965,14 @@ dependencies = [
  "base",
  "data_model",
  "libc",
+ "minijail",
+ "remain",
+ "serde",
+ "sync",
  "tempfile",
  "thiserror",
  "userfaultfd",
+ "vm_memory",
 ]
 
 [[package]]
@@ -2258,6 +2263,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_keyvalue",
+ "swap",
  "sync",
  "thiserror",
  "vm_memory",

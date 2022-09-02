@@ -54,6 +54,7 @@ use vm_control::client::do_gpu_display_list;
 #[cfg(feature = "gpu")]
 use vm_control::client::do_gpu_display_remove;
 use vm_control::client::do_modify_battery;
+use vm_control::client::do_swap_status;
 use vm_control::client::do_usb_attach;
 use vm_control::client::do_usb_detach;
 use vm_control::client::do_usb_list;
@@ -67,6 +68,7 @@ use vm_control::BalloonControlCommand;
 use vm_control::DiskControlCommand;
 use vm_control::HotPlugDeviceInfo;
 use vm_control::HotPlugDeviceType;
+use vm_control::SwapCommand;
 use vm_control::UsbControlResult;
 use vm_control::VmRequest;
 #[cfg(feature = "balloon")]
@@ -166,6 +168,17 @@ fn stop_vms(cmd: cmdline::StopCommand) -> std::result::Result<(), ()> {
 
 fn suspend_vms(cmd: cmdline::SuspendCommand) -> std::result::Result<(), ()> {
     vms_request(&VmRequest::Suspend, cmd.socket_path)
+}
+
+fn swap_vms(cmd: cmdline::SwapCommand) -> std::result::Result<(), ()> {
+    use cmdline::SwapSubcommands::*;
+    match cmd.nested {
+        Enable(params) => {
+            let req = VmRequest::Swap(SwapCommand::Enable);
+            vms_request(&req, &Path::new(&params.socket_path))
+        }
+        Status(params) => do_swap_status(&Path::new(&params.socket_path)),
+    }
 }
 
 fn resume_vms(cmd: cmdline::ResumeCommand) -> std::result::Result<(), ()> {
@@ -654,6 +667,9 @@ fn crosvm_main<I: IntoIterator<Item = String>>(args: I) -> Result<CommandStatus>
                     }
                     CrossPlatformCommands::Suspend(cmd) => {
                         suspend_vms(cmd).map_err(|_| anyhow!("suspend subcommand failed"))
+                    }
+                    CrossPlatformCommands::Swap(cmd) => {
+                        swap_vms(cmd).map_err(|_| anyhow!("swap subcommand failed"))
                     }
                     CrossPlatformCommands::Powerbtn(cmd) => {
                         powerbtn_vms(cmd).map_err(|_| anyhow!("powerbtn subcommand failed"))

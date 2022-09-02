@@ -906,6 +906,22 @@ pub enum PvClockCommandResponse {
     Err(SysError),
 }
 
+/// Commands for vmm-swap feature
+#[derive(Serialize, Deserialize, Debug)]
+pub enum SwapCommand {
+    Enable,
+    Status,
+}
+
+cfg_if::cfg_if! {
+    if #[cfg(feature = "swap")] {
+        use swap::Status as SwapStatus;
+    } else {
+        #[derive(Serialize, Deserialize, Debug, Clone)]
+        pub enum SwapStatus {}
+    }
+}
+
 ///
 /// A request to the main process to perform some operation on the VM.
 ///
@@ -920,6 +936,8 @@ pub enum VmRequest {
     Sleepbtn,
     /// Suspend the VM's VCPUs until resume.
     Suspend,
+    /// Swap the memory content into files on a disk
+    Swap(SwapCommand),
     /// Resume the VM's VCPUs that were previously suspended.
     Resume,
     /// Inject a general-purpose event.
@@ -1004,6 +1022,7 @@ impl VmRequest {
         bat_control: &mut Option<BatControl>,
         vcpu_handles: &[(JoinHandle<()>, mpsc::Sender<VcpuControl>)],
         force_s2idle: bool,
+        #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
     ) -> VmResponse {
         match *self {
             VmRequest::Exit => {
@@ -1031,6 +1050,32 @@ impl VmRequest {
             VmRequest::Suspend => {
                 *run_mode = Some(VmRunMode::Suspending);
                 VmResponse::Ok
+            }
+            VmRequest::Swap(SwapCommand::Enable) => {
+                #[cfg(feature = "swap")]
+                if let Some(swap_controller) = swap_controller {
+                    return match swap_controller.enable() {
+                        Ok(()) => VmResponse::Ok,
+                        Err(e) => {
+                            error!("swap enable failed: {}", e);
+                            VmResponse::Err(SysError::new(EINVAL))
+                        }
+                    };
+                }
+                VmResponse::Err(SysError::new(ENOTSUP))
+            }
+            VmRequest::Swap(SwapCommand::Status) => {
+                #[cfg(feature = "swap")]
+                if let Some(swap_controller) = swap_controller {
+                    return match swap_controller.status() {
+                        Ok(status) => VmResponse::SwapStatus(status),
+                        Err(e) => {
+                            error!("swap status failed: {}", e);
+                            VmResponse::Err(SysError::new(EINVAL))
+                        }
+                    };
+                }
+                VmResponse::Err(SysError::new(ENOTSUP))
             }
             VmRequest::Resume => {
                 *run_mode = Some(VmRunMode::Running);
@@ -1230,6 +1275,8 @@ pub enum VmResponse {
     GpuResponse(GpuControlResult),
     /// Results of battery control commands.
     BatResponse(BatControlResult),
+    /// Results of swap status command.
+    SwapStatus(SwapStatus),
 }
 
 impl Display for VmResponse {
@@ -1260,6 +1307,14 @@ impl Display for VmResponse {
             #[cfg(feature = "gpu")]
             GpuResponse(result) => write!(f, "gpu control request result {:?}", result),
             BatResponse(result) => write!(f, "{}", result),
+            SwapStatus(status) => {
+                write!(
+                    f,
+                    "{}",
+                    serde_json::to_string(&status)
+                        .unwrap_or_else(|_| "invalid_response".to_string()),
+                )
+            }
         }
     }
 }
