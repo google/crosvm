@@ -47,6 +47,7 @@ use sync::Mutex;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 
+use crate::virtio::async_utils;
 use crate::virtio::copy_config;
 use crate::virtio::virtio_vsock_config;
 use crate::virtio::virtio_vsock_event;
@@ -1222,27 +1223,6 @@ impl Worker {
             .map(|r| (r, index))
     }
 
-    // Async task that resamples the status of the interrupt when the guest sends a request by
-    // signalling the resample event associated with the interrupt.
-    // TODO(b/237811512): Extract this code which is repeated in some form across the devices.
-    async fn handle_irq_resample(ex: &Executor, interrupt: Rc<RefCell<Interrupt>>) {
-        let resample_evt = if let Some(resample_evt) = interrupt.borrow_mut().get_resample_evt() {
-            let resample_evt = resample_evt.try_clone().unwrap();
-            let resample_evt = EventAsync::new(resample_evt, ex).unwrap();
-            Some(resample_evt)
-        } else {
-            None
-        };
-        if let Some(resample_evt) = resample_evt {
-            while resample_evt.next_val().await.is_ok() {
-                interrupt.borrow_mut().do_interrupt_resample();
-            }
-        } else {
-            // No resample event, park the future.
-            let () = futures::future::pending().await;
-        }
-    }
-
     fn run(
         &mut self,
         rx_queue: Queue,
@@ -1287,7 +1267,7 @@ impl Worker {
         pin_mut!(event_handler);
 
         // Process any requests to resample the irq value.
-        let resample_handler = Self::handle_irq_resample(&ex, self.interrupt.clone());
+        let resample_handler = async_utils::handle_irq_resample(&ex, self.interrupt.clone());
         pin_mut!(resample_handler);
 
         let kill_evt = EventAsync::new(kill_evt, &ex).expect("Failed to set up the kill event");
