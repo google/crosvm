@@ -68,6 +68,7 @@ pub struct DevicesCommand {
     /// devices. Can be given more than once.
     /// Possible key values:
     ///     vhost=PATH - Path to a vhost-user endpoint to listen to.
+    ///        This parameter must be given in first position.
     ///     type=(stdout,syslog,sink,file) - Where to route the
     ///        serial device
     ///     hardware=(serial,virtio-console) - Which type of serial
