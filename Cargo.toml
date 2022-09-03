@@ -68,6 +68,7 @@ members = [
     "kvm",
     "kvm_sys",
     "linux_input_sys",
+    "media/cros-codecs",
     "media/ffmpeg",
     "media/libva",
     "media/libvda",
