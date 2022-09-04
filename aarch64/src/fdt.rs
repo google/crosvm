@@ -4,6 +4,7 @@
 
 use std::collections::BTreeMap;
 use std::fs::File;
+use std::path::PathBuf;
 
 use arch::CpuSet;
 use arch::SERIAL_ADDR;
@@ -553,6 +554,7 @@ pub fn create_fdt(
     swiotlb: Option<(Option<GuestAddress>, u64)>,
     bat_mmio_base_and_irq: Option<(u64, u32)>,
     vmwdt_cfg: VmWdtConfig,
+    dump_device_tree_blob: Option<PathBuf>,
 ) -> Result<()> {
     let mut fdt = FdtWriter::new(&[]);
 
