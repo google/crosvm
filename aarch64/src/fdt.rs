@@ -4,6 +4,7 @@
 
 use std::collections::BTreeMap;
 use std::fs::File;
+use std::path::PathBuf;
 
 use arch::CpuSet;
 use arch::SERIAL_ADDR;
@@ -547,6 +548,7 @@ pub fn create_fdt(
     swiotlb: Option<u64>,
     bat_mmio_base_and_irq: Option<(u64, u32)>,
     vmwdt_cfg: VmWdtConfig,
+    dump_device_tree_blob: Option<PathBuf>,
 ) -> Result<()> {
     let mut fdt = FdtWriter::new(&[]);
 
@@ -588,6 +590,12 @@ pub fn create_fdt(
     if written < fdt_max_size {
         return Err(Error::FdtGuestMemoryWriteError);
     }
+
+    if let Some(file_path) = dump_device_tree_blob {
+        std::fs::write(&file_path, &fdt_final)
+            .map_err(|e| Error::FdtDumpIoError(e, file_path.clone()))?;
+    }
+
     Ok(())
 }
 

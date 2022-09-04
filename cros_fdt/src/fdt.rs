@@ -17,6 +17,8 @@ use thiserror::Error as ThisError;
 #[sorted]
 #[derive(ThisError, Debug)]
 pub enum Error {
+    #[error("I/O error dumping FDT to file code={} path={}", .0, .1.display())]
+    FdtDumpIoError(io::Error, std::path::PathBuf),
     #[error("Parse error reading FDT parameters")]
     FdtFileParseError,
     #[error("Error writing FDT to guest memory")]

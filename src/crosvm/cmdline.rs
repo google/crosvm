@@ -1074,6 +1074,12 @@ pub struct RunCommand {
     /// directory with smbios_entry_point/DMI files
     pub dmi: Option<PathBuf>,
 
+    #[argh(option, long = "dump-device-tree-blob", arg_name = "FILE")]
+    #[serde(skip)] // TODO(b/255223604)
+    #[merge(strategy = overwrite_option)]
+    /// dump generated device tree as a DTB file
+    pub dump_device_tree_blob: Option<PathBuf>,
+
     #[argh(switch)]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_false)]
@@ -2789,6 +2795,8 @@ impl TryFrom<RunCommand> for super::config::Config {
         cfg.disable_virtio_intx = cmd.disable_virtio_intx;
 
         cfg.dmi_path = cmd.dmi;
+
+        cfg.dump_device_tree_blob = cmd.dump_device_tree_blob;
 
         cfg.itmt = cmd.itmt;
 
