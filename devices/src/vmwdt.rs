@@ -49,7 +49,6 @@ pub const VMWDT_DEFAULT_TIMEOUT_SEC: u32 = 10;
 pub const VMWDT_DEFAULT_CLOCK_HZ: u32 = 2;
 
 // Proc stat indexes
-const PROCSTAT_UTIME_INDX: usize = 13;
 const PROCSTAT_GUEST_TIME_INDX: usize = 42;
 
 #[sorted]
@@ -73,15 +72,19 @@ type VmwdtResult<T> = std::result::Result<T, VmwdtError>;
 pub struct VmwdtPerCpu {
     // Flag which indicated if the watchdog is started
     is_enabled: bool,
-    // Counter value decremented periodically by the timer
-    counter: i32,
     // Timer used to generate periodic events at `timer_freq_hz` frequency
     timer: Timer,
     // The frequency of the `timer`
     timer_freq_hz: u64,
-    // Timestamp measured in systicks which is updated with every `pet` event
-    // that tells how many ticks were lost while guest is not running
-    not_running_last_timestamp: u64,
+    // Timestamp measured in miliseconds of the last guest activity
+    last_guest_time_ms: i64,
+    // The pid of the thread this vcpu belongs to
+    pid: u32,
+    // The process id of the task this vcpu belongs to
+    ppid: u32,
+    // The pre-programmed one-shot expiration interval. If the guest runs in this
+    // interval but we don't receive a periodic event, the guest is stalled.
+    next_expiration_interval_ms: i64,
 }
 
 pub struct Vmwdt {
@@ -100,11 +103,13 @@ impl Vmwdt {
         let mut vec = Vec::new();
         for _ in 0..cpu_count {
             vec.push(VmwdtPerCpu {
-                counter: 0,
-                not_running_last_timestamp: 0,
+                last_guest_time_ms: 0,
+                pid: 0,
+                ppid: 0,
                 is_enabled: false,
                 timer: Timer::new().unwrap(),
                 timer_freq_hz: 0,
+                next_expiration_interval_ms: 0,
             });
         }
         let vm_wdts = Arc::new(Mutex::new(vec));
@@ -132,7 +137,6 @@ impl Vmwdt {
 
         let wait_ctx: WaitContext<Token> = WaitContext::new().unwrap();
         wait_ctx.add(&kill_evt, Token::Kill).unwrap();
-        let mut interrupt_active = false;
 
         let len = vm_wdts.lock().len();
         for clock_id in 0..len {
@@ -149,28 +153,32 @@ impl Vmwdt {
                     Token::Kill => {
                         return;
                     }
-                    Token::Timer(clock_id) => {
-                        let cnt = {
-                            let mut wdts_locked = vm_wdts.lock();
-                            let mut watchdog = &mut wdts_locked[clock_id];
-                            if let Err(_e) = watchdog.timer.wait() {
-                                error!("error waiting for timer event");
+                    Token::Timer(cpu_id) => {
+                        let mut wdts_locked = vm_wdts.lock();
+                        let mut watchdog = &mut wdts_locked[cpu_id];
+                        if let Err(_e) = watchdog.timer.wait() {
+                            error!("error waiting for timer event on vcpu {}", cpu_id);
+                        }
+
+                        let current_guest_time_ms =
+                            Vmwdt::get_guest_time_ms(watchdog.ppid, watchdog.pid);
+                        let remaining_time_ms = watchdog.next_expiration_interval_ms
+                            - (current_guest_time_ms - watchdog.last_guest_time_ms);
+
+                        if remaining_time_ms > 0 {
+                            watchdog.next_expiration_interval_ms = remaining_time_ms;
+                            if let Err(_e) = watchdog
+                                .timer
+                                .reset(Duration::from_millis(remaining_time_ms as u64), None)
+                            {
+                                error!("failed to reset internal timer on vcpu {}", cpu_id);
                             }
-                            watchdog.counter -= 1;
-                            watchdog.counter
-                        };
-
-                        if cnt <= 0 {
-                            // vCPU is not petting the watchdog fast enough, reset vm
-                            warn!("clock {} detected stall {}", clock_id, cnt);
-
-                            if !interrupt_active {
-                                if let Err(_e) =
-                                    reset_evt_wrtube.send::<VmEventType>(&VmEventType::Reset)
-                                {
-                                    error!("failed to send reset event")
-                                }
-                                interrupt_active = true;
+                        } else {
+                            // The guest ran but it did not send the periodic event
+                            if let Err(_e) =
+                                reset_evt_wrtube.send::<VmEventType>(&VmEventType::Reset)
+                            {
+                                error!("failed to send reset event from vcpu {}", cpu_id)
                             }
                         }
                     }
@@ -202,53 +210,25 @@ impl Vmwdt {
     }
 
     #[cfg(any(target_os = "linux", target_os = "android"))]
-    fn get_nonrunning_time_ms(&mut self, cpu_id: usize) -> u64 {
-        let ppid = process::id();
-        let pid = gettid();
-
+    pub fn get_guest_time_ms(ppid: u32, pid: u32) -> i64 {
         // TODO: @sebastianene check if we can avoid open-read-close on each call
         let stat_path = format!("/proc/{}/task/{}/stat", ppid, pid);
         let contents = fs::read_to_string(stat_path).expect("error reading the stat");
 
         let coll: Vec<_> = contents.split_whitespace().collect();
-        let utime = coll[PROCSTAT_UTIME_INDX].parse::<u64>();
         let guest_time = coll[PROCSTAT_GUEST_TIME_INDX].parse::<u64>();
-
-        // The lost time since the last tick event
-        let mut non_guest_time_delta: u64 = 0;
-        let utime_ticks = match utime {
-            Err(_e) => return 0,
-            Ok(f) => f,
-        };
         let gtime_ticks = match guest_time {
-            Err(_e) => return 0,
+            Err(_e) => 0,
             Ok(f) => f,
         };
-
-        if utime_ticks > gtime_ticks {
-            // Time that the guest is not running measured in systicks
-            let non_guest_time = utime_ticks - gtime_ticks;
-            non_guest_time_delta = {
-                let mut vm_wdts_locked = self.vm_wdts.lock();
-                let not_running_last_timestamp = vm_wdts_locked[cpu_id].not_running_last_timestamp;
-
-                if non_guest_time > not_running_last_timestamp {
-                    // Save the current timestamp
-                    vm_wdts_locked[cpu_id].not_running_last_timestamp = non_guest_time;
-                    non_guest_time - not_running_last_timestamp
-                } else {
-                    0
-                }
-            };
-        }
 
         // Safe because this just returns an integer
         let ticks_per_sec = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as u64;
-        non_guest_time_delta * 1000 / ticks_per_sec
+        (gtime_ticks * 1000 / ticks_per_sec) as i64
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "android")))]
-    fn get_nonrunning_time_ms(&mut self, cpu_id: usize) -> u64 {
+    pub fn get_guest_time_ms(ppid: u32, pid: u32) -> i64 {
         0
     }
 }
@@ -293,7 +273,7 @@ impl BusDevice for Vmwdt {
             }
         };
 
-        let mut reg_val = u32::from_ne_bytes(*data_array);
+        let reg_val = u32::from_ne_bytes(*data_array);
         let cpu_index: usize = (info.offset / VMWDT_REG_LEN) as usize;
         let reg_offset = (info.offset % VMWDT_REG_LEN) as u32;
 
@@ -320,21 +300,26 @@ impl BusDevice for Vmwdt {
                 }
             }
             VMWDT_REG_LOAD_CNT => {
-                // Account for lost time(Time that the guest is not running)
-                let not_running_time_ms = self.get_nonrunning_time_ms(cpu_index);
+                let ppid = process::id();
+                let pid = gettid();
+                let guest_time_ms = Vmwdt::get_guest_time_ms(ppid, pid as u32);
                 let mut wdts_locked = self.vm_wdts.lock();
                 let mut cpu_watchdog = &mut wdts_locked[cpu_index];
+                let next_expiration_interval_ms =
+                    reg_val as u64 * 1000 / cpu_watchdog.timer_freq_hz;
 
-                if not_running_time_ms > 0 {
-                    reg_val += (not_running_time_ms * cpu_watchdog.timer_freq_hz / 1000) as u32;
-                }
+                cpu_watchdog.pid = pid as u32;
+                cpu_watchdog.ppid = ppid;
+                cpu_watchdog.last_guest_time_ms = guest_time_ms;
+                cpu_watchdog.next_expiration_interval_ms = next_expiration_interval_ms as i64;
 
-                cpu_watchdog.counter = reg_val as i32;
                 if cpu_watchdog.is_enabled {
-                    let due = Duration::from_nanos(1);
-                    let interval =
-                        Duration::from_millis((1000 / cpu_watchdog.timer_freq_hz) as u64);
-                    cpu_watchdog.timer.reset(due, Some(interval)).unwrap();
+                    if let Err(_e) = cpu_watchdog
+                        .timer
+                        .reset(Duration::from_millis(next_expiration_interval_ms), None)
+                    {
+                        error!("failed to reset one-shot vcpu time {}", cpu_index);
+                    }
                 }
             }
             VMWDT_REG_CURRENT_CNT => {
@@ -352,5 +337,81 @@ impl BusDevice for Vmwdt {
             }
             _ => unreachable!(),
         }
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use base::Tube;
+    use std::thread::sleep;
+
+    const AARCH64_VMWDT_ADDR: u64 = 0x3000;
+    const TEST_VMWDT_CPU_NO: usize = 0x1;
+
+    fn vmwdt_bus_address(offset: u64) -> BusAccessInfo {
+        BusAccessInfo {
+            offset,
+            address: AARCH64_VMWDT_ADDR,
+            id: 0,
+        }
+    }
+
+    #[test]
+    fn test_watchdog_internal_timer() {
+        let (vm_evt_wrtube, _vm_evt_rdtube) = Tube::directional_pair().unwrap();
+        let mut device = Vmwdt::new(TEST_VMWDT_CPU_NO, vm_evt_wrtube).unwrap();
+
+        // Configure the watchdog device, 2Hz internal clock
+        device.write(
+            vmwdt_bus_address(VMWDT_REG_CLOCK_FREQ_HZ as u64),
+            &[10, 0, 0, 0],
+        );
+        device.write(vmwdt_bus_address(VMWDT_REG_LOAD_CNT as u64), &[1, 0, 0, 0]);
+        device.write(vmwdt_bus_address(VMWDT_REG_STATUS as u64), &[1, 0, 0, 0]);
+        let next_expiration_ms = {
+            let mut vmwdt_locked = device.vm_wdts.lock();
+            // In the test scenario the guest does not interpret the /proc/stat::guest_time, thus
+            // the function get_guest_time() returns 0
+            vmwdt_locked[0].last_guest_time_ms = 10;
+            vmwdt_locked[0].next_expiration_interval_ms
+        };
+
+        sleep(Duration::from_secs(1));
+
+        // Verify that our timer expired and the next_expiration_interval_ms changed
+        let vmwdt_locked = device.vm_wdts.lock();
+        assert_eq!(
+            vmwdt_locked[0].next_expiration_interval_ms != next_expiration_ms,
+            true
+        );
+    }
+
+    #[test]
+    fn test_watchdog_expiration() {
+        let (vm_evt_wrtube, vm_evt_rdtube) = Tube::directional_pair().unwrap();
+        let mut device = Vmwdt::new(TEST_VMWDT_CPU_NO, vm_evt_wrtube).unwrap();
+
+        // Configure the watchdog device, 2Hz internal clock
+        device.write(
+            vmwdt_bus_address(VMWDT_REG_CLOCK_FREQ_HZ as u64),
+            &[10, 0, 0, 0],
+        );
+        device.write(vmwdt_bus_address(VMWDT_REG_LOAD_CNT as u64), &[1, 0, 0, 0]);
+        device.write(vmwdt_bus_address(VMWDT_REG_STATUS as u64), &[1, 0, 0, 0]);
+        // In the test scenario the guest does not interpret the /proc/stat::guest_time, thus
+        // the function get_guest_time() returns 0
+        device.vm_wdts.lock()[0].last_guest_time_ms = -1000;
+
+        sleep(Duration::from_secs(1));
+
+        // Verify that our timer expired and the next_expiration_interval_ms changed
+        match vm_evt_rdtube.recv::<VmEventType>() {
+            Ok(vm_event) => {
+                assert!(vm_event == VmEventType::Reset);
+            }
+            Err(_e) => {
+                panic!();
+            }
+        };
     }
 }
