@@ -15,7 +15,7 @@ gpu = ["gpu_display"]
 libvda-stub = ["libvda/libvda-stub"]
 tpm = ["tpm2"]
 usb = []
-vaapi = ["libva", "vp8", "downcast-rs", "crc32fast"]
+vaapi = ["libva", "cros-codecs/vaapi", "downcast-rs", "crc32fast"]
 video-decoder = []
 video-encoder = []
 minigbm = ["rutabaga_gfx/minigbm"]
@@ -41,6 +41,7 @@ cfg-if = "1.0.0"
 chrono = "*"
 crc32fast = { version = "1.2.1", optional = true }
 cros_async = { path = "../cros_async" }
+cros-codecs = { path = "../media/cros-codecs", optional = true }
 crosvm_cli = { path = "../crosvm_cli" }
 data_model = { path = "../common/data_model" }
 dbus = { version = "0.9", optional = true }
@@ -81,7 +82,6 @@ vmm_vhost = { path = "../third_party/vmm_vhost", features = ["vmm", "device", "v
 virtio_sys = { path = "../virtio_sys" }
 vm_control = { path = "../vm_control" }
 vm_memory = { path = "../vm_memory" }
-vp8 = { path = "../media/vp8", optional = true }
 
 [target.'cfg(unix)'.dependencies]
 fuse = {path = "../fuse" }

@@ -72,7 +72,7 @@ members = [
     "media/ffmpeg",
     "media/libva",
     "media/libvda",
-    "media/vp8",
+    "media/cros-codecs",
     "net_sys",
     "net_util",
     "power_monitor",

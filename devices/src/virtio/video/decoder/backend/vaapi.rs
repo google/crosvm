@@ -4,9 +4,7 @@
 
 #![deny(missing_docs)]
 
-use std::any::Any;
 use std::borrow::Borrow;
-use std::cell::RefCell;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
@@ -17,14 +15,10 @@ use anyhow::anyhow;
 use anyhow::Result;
 use base::MappedRegion;
 use base::MemoryMappingArena;
-use libva::Config;
-use libva::Context;
+use cros_codecs::decoders::DynDecodedHandle;
+use cros_codecs::decoders::VideoDecoder;
+use cros_codecs::DecodedFormat;
 use libva::Display;
-use libva::Image;
-use libva::Picture;
-use libva::PictureSync;
-use libva::Surface;
-use libva::UsageHint;
 
 use crate::virtio::video::decoder::Capability;
 use crate::virtio::video::decoder::DecoderBackend;
@@ -45,108 +39,6 @@ use crate::virtio::video::resource::GuestResourceHandle;
 use crate::virtio::video::utils::EventQueue;
 use crate::virtio::video::utils::OutputQueue;
 
-mod vp8;
-
-/// A surface pool handle to reduce the number of costly Surface allocations.
-#[derive(Clone)]
-pub struct SurfacePoolHandle {
-    surfaces: Rc<RefCell<VecDeque<Surface>>>,
-    current_resolution: Resolution,
-}
-
-impl SurfacePoolHandle {
-    /// Creates a new pool
-    pub fn new(surfaces: Vec<Surface>, resolution: Resolution) -> Self {
-        Self {
-            surfaces: Rc::new(RefCell::new(VecDeque::from(surfaces))),
-            current_resolution: resolution,
-        }
-    }
-
-    /// Retrieve the current resolution for the pool
-    pub fn current_resolution(&self) -> &Resolution {
-        &self.current_resolution
-    }
-
-    /// Sets the current resolution for the pool
-    pub fn set_current_resolution(&mut self, resolution: Resolution) {
-        self.current_resolution = resolution;
-    }
-
-    /// Adds a new surface to the pool
-    pub fn add_surface(&mut self, surface: Surface) {
-        self.surfaces.borrow_mut().push_back(surface)
-    }
-
-    /// Gets a free surface from the pool
-    pub fn get_surface(&mut self) -> Result<Surface> {
-        let mut vec = self.surfaces.borrow_mut();
-        vec.pop_front().ok_or(anyhow!("Out of surfaces"))
-    }
-
-    /// Drops all surfaces from the pool
-    pub fn drop_surfaces(&mut self) {
-        self.surfaces = Default::default();
-    }
-}
-
-/// A decoded frame handle.
-#[derive(Clone)]
-pub struct DecodedFrameHandle {
-    /// The actual picture backing the handle.
-    picture: Option<Rc<RefCell<Picture<PictureSync>>>>,
-    /// The bitstream header parsed for this frame
-    header: Rc<dyn Any>,
-    /// The decoder resolution when this frame was processed. Not all codecs
-    /// send resolution data in every frame header.
-    resolution: Resolution,
-    /// A handle to the surface pool.
-    surface_pool: SurfacePoolHandle,
-}
-
-impl DecodedFrameHandle {
-    /// Creates a new handle
-    pub fn new(
-        picture: Rc<RefCell<Picture<PictureSync>>>,
-        header: Rc<dyn Any>,
-        resolution: Resolution,
-        surface_pool: SurfacePoolHandle,
-    ) -> Self {
-        Self {
-            picture: Some(picture),
-            header,
-            resolution,
-            surface_pool,
-        }
-    }
-
-    /// Retrieves a reference into the picture backing the handle
-    pub fn picture(&self) -> Rc<RefCell<Picture<PictureSync>>> {
-        Rc::clone(self.picture.as_ref().unwrap())
-    }
-
-    // Returns the resolution when this frame was processed
-    pub fn resolution(&self) -> &Resolution {
-        &self.resolution
-    }
-}
-
-impl Drop for DecodedFrameHandle {
-    fn drop(&mut self) {
-        if let Ok(picture) = Rc::try_unwrap(self.picture.take().unwrap()) {
-            let pool = &mut self.surface_pool;
-
-            // Only retrieve if the resolutions match, otherwise let the stale Surface drop.
-            if *pool.current_resolution() == self.resolution {
-                // Retrieve if not currently used by another field.
-                if let Ok(surface) = picture.into_inner().take_surface() {
-                    pool.add_surface(surface);
-                }
-            }
-        }
-    }
-}
-
 /// A set of params returned when a dynamic resolution change is found in the
 /// bitstream.
 pub struct DrcParams {
@@ -158,6 +50,28 @@ pub struct DrcParams {
     height: u32,
     /// The visible resolution.
     visible_rect: Rect,
+}
+
+impl TryFrom<DecodedFormat> for Format {
+    type Error = anyhow::Error;
+
+    fn try_from(value: DecodedFormat) -> Result<Self, Self::Error> {
+        match value {
+            DecodedFormat::NV12 => Ok(Format::NV12),
+            DecodedFormat::I420 => Err(anyhow!("Unsupported format")),
+        }
+    }
+}
+
+impl TryFrom<Format> for DecodedFormat {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Format) -> Result<Self, Self::Error> {
+        match value {
+            Format::NV12 => Ok(DecodedFormat::NV12),
+            _ => Err(anyhow!("Unsupported format")),
+        }
+    }
 }
 
 impl TryFrom<libva::VAProfile::Type> for Profile {
@@ -182,52 +96,6 @@ impl TryFrom<libva::VAProfile::Type> for Profile {
                 value
             )),
         }
-    }
-}
-
-/// State of the input stream, which can be either unparsed (we don't know the stream properties
-/// yet) or parsed (we know the stream properties and are ready to decode).
-pub enum StreamMetadataState {
-    /// The metadata for the current stream has not yet been parsed.
-    Unparsed { display: Rc<Display> },
-
-    /// The metadata for the current stream has been parsed and a suitable
-    /// VAContext has been created to accomodate it.
-    Parsed {
-        /// A VAContext from which we can decode from.
-        context: Rc<Context>,
-        /// The VAConfig that created the context.
-        config: Config,
-        /// A pool of surfaces. We reuse surfaces as they are expensive to allocate.
-        surface_pool: SurfacePoolHandle,
-    },
-}
-
-impl StreamMetadataState {
-    fn display(&self) -> Rc<libva::Display> {
-        match self {
-            StreamMetadataState::Unparsed { display } => Rc::clone(display),
-            StreamMetadataState::Parsed { context, .. } => context.display(),
-        }
-    }
-
-    fn context(&self) -> Result<Rc<libva::Context>> {
-        match self {
-            StreamMetadataState::Unparsed { .. } => Err(anyhow!("Stream metadata not parsed yet")),
-            StreamMetadataState::Parsed { context, .. } => Ok(Rc::clone(context)),
-        }
-    }
-
-    fn surface_pool(&self) -> Result<SurfacePoolHandle> {
-        match self {
-            StreamMetadataState::Unparsed { .. } => Err(anyhow!("Invalid state")),
-            StreamMetadataState::Parsed { surface_pool, .. } => Ok(surface_pool.clone()),
-        }
-    }
-
-    fn get_surface(&mut self) -> Result<Surface> {
-        let mut surface_pool = self.surface_pool()?;
-        surface_pool.get_surface()
     }
 }
 
@@ -550,12 +418,12 @@ pub struct Resolution {
 /// A decoder session for the libva backend
 pub struct VaapiDecoderSession {
     /// The implementation for the codec specific logic.
-    codec: Box<dyn VaapiCodec>,
+    codec: Box<dyn VideoDecoder>,
     /// The state for the output queue. Updated when `set_output_buffer_count`
     /// is called or when we detect a dynamic resolution change.
     output_queue_state: OutputQueueState,
     /// Queue containing decoded pictures.
-    ready_queue: VecDeque<DecodedFrameHandle>,
+    ready_queue: VecDeque<Box<dyn DynDecodedHandle>>,
     /// The event queue we can use to signal new events.
     event_queue: EventQueue<DecoderEvent>,
     /// Whether the decoder is currently flushing.
@@ -607,25 +475,6 @@ impl<T: Borrow<U>, U: BufferHandle> AsMut<[u8]> for BufferMapping<T, U> {
 }
 
 impl VaapiDecoderSession {
-    /// Create the `num_surfaces` surfaces for a combination of `width`,
-    /// `height` and `rt_format`.
-    fn create_surfaces(
-        display: Rc<Display>,
-        width: u32,
-        height: u32,
-        rt_format: u32,
-        num_surfaces: usize,
-    ) -> Result<Vec<Surface>> {
-        display.create_surfaces(
-            rt_format,
-            Some(libva::constants::VA_FOURCC_NV12), // NV12 is hardcoded for now
-            width,
-            height,
-            Some(UsageHint::USAGE_HINT_DECODER),
-            num_surfaces as u32,
-        )
-    }
-
     fn change_resolution(&mut self, new_params: DrcParams) -> Result<()> {
         // Ask the client for new buffers.
         self.event_queue
@@ -647,77 +496,8 @@ impl VaapiDecoderSession {
         Ok(())
     }
 
-    /// Copies `src` into `dst` as NV12, removing any extra padding.
-    fn nv12_copy(
-        mut src: &[u8],
-        mut dst: &mut [u8],
-        width: u32,
-        height: u32,
-        strides: [u32; 3],
-        offsets: [u32; 3],
-    ) {
-        let width = width.try_into().unwrap();
-        let height = height.try_into().unwrap();
-        let data = src;
-
-        // Copy luma
-        for _ in 0..height {
-            dst[..width].copy_from_slice(&src[..width]);
-            dst = &mut dst[width..];
-            src = &src[strides[0] as usize..];
-        }
-
-        // Advance to the offset of the chroma plane
-        let mut src = &data[offsets[1] as usize..];
-
-        // Copy chroma
-        for _ in 0..height / 2 {
-            dst[..width].copy_from_slice(&src[..width]);
-            dst = &mut dst[width..];
-            src = &src[strides[1_usize] as usize..];
-        }
-    }
-
-    /// Copy the decoded `image` into `output_buffer`, removing any extra
-    /// padding. This is hardcoded to NV12 for now.
-    fn copy_image_to_output(image: &Image, output_buffer: &mut GuestResource) -> Result<()> {
-        let va_img = image.image();
-
-        if va_img.format.fourcc != libva::constants::VA_FOURCC_NV12 {
-            panic!("Unsupported format")
-        }
-
-        // Get a mapping from the start of the buffer to the size of the
-        // underlying decoded data in the Image.
-        let mut output_map: BufferMapping<_, GuestResourceHandle> = BufferMapping::new(
-            &mut output_buffer.handle,
-            0,
-            usize::from(va_img.width) * usize::from(va_img.height) * 3 / 2,
-        )?;
-
-        let output_bytes = output_map.as_mut();
-
-        let decoded_bytes = image.as_ref();
-
-        VaapiDecoderSession::nv12_copy(
-            decoded_bytes,
-            output_bytes,
-            u32::from(va_img.width),
-            u32::from(va_img.height),
-            va_img.pitches,
-            va_img.offsets,
-        );
-
-        Ok(())
-    }
-
     /// Copy raw decoded data from `image` into the output buffer
-    pub fn output_picture(
-        &mut self,
-        decoded_frame: DecodedFrameHandle,
-        resolution: Resolution,
-        image_format: &libva::VAImageFormat,
-    ) -> Result<bool> {
+    pub fn output_picture(&mut self, decoded_frame: &dyn DynDecodedHandle) -> Result<bool> {
         let output_queue = self.output_queue_state.output_queue_mut()?;
 
         // Output buffer to be used.
@@ -728,27 +508,29 @@ impl VaapiDecoderSession {
             }
         };
 
-        let timestamp = RefCell::borrow(&decoded_frame.picture()).timestamp();
-        let picture = decoded_frame.picture();
-        let mut picture = picture.borrow_mut();
+        let mapped_resolution = decoded_frame
+            .dyn_picture_mut()
+            .dyn_mappable_handle_mut()
+            .mapped_resolution()?;
 
-        // Get the associated VAImage, which will map the
-        // VASurface onto our address space.
-        let image = Image::new(
-            &mut picture,
-            *image_format,
-            resolution.width,
-            resolution.height,
-            false,
+        let display_resolution = decoded_frame.display_resolution();
+
+        // Get a mapping from the start of the buffer to the size of the
+        // underlying decoded data in the Image.
+        let mut output_map: BufferMapping<_, GuestResourceHandle> = BufferMapping::new(
+            &mut output_buffer.handle,
+            0,
+            mapped_resolution.width as usize * mapped_resolution.height as usize * 3 / 2,
         )?;
 
-        VaapiDecoderSession::copy_image_to_output(&image, output_buffer)?;
+        let output_bytes = output_map.as_mut();
 
-        // The actual width and height. Note that The width and height fields
-        // returned in the VAImage structure may get enlarged for some YUV
-        // formats.
-        let width = i32::from(image.image().width);
-        let height = i32::from(image.image().height);
+        decoded_frame
+            .dyn_picture_mut()
+            .dyn_mappable_handle_mut()
+            .read(output_bytes)?;
+
+        let timestamp = decoded_frame.timestamp();
         let picture_buffer_id = picture_buffer_id as i32;
 
         // Say that we are done decoding this picture.
@@ -759,8 +541,8 @@ impl VaapiDecoderSession {
                 visible_rect: Rect {
                     left: 0,
                     top: 0,
-                    right: width as i32,
-                    bottom: height as i32,
+                    right: display_resolution.width as i32,
+                    bottom: display_resolution.height as i32,
                 },
             })
             .map_err(|e| {
@@ -771,17 +553,8 @@ impl VaapiDecoderSession {
     }
 
     fn drain_ready_queue(&mut self) -> Result<()> {
-        let image_format = match self.codec.va_image_fmt() {
-            Some(image_fmt) => *image_fmt,
-            // No image format currently set means we have no output to drain.
-            None => return Ok(()),
-        };
-
         while let Some(decoded_frame) = self.ready_queue.pop_front() {
-            let resolution = *decoded_frame.resolution();
-
-            let outputted =
-                self.output_picture(decoded_frame.clone(), resolution, &image_format)?;
+            let outputted = self.output_picture(decoded_frame.as_ref())?;
             if !outputted {
                 self.ready_queue.push_front(decoded_frame);
                 break;
@@ -789,45 +562,6 @@ impl VaapiDecoderSession {
         }
 
         Ok(())
-    }
-
-    /// Convenience function to get the test NV12 result. This can be used to,
-    /// e.g.: dump it to disk or compute a CRC32
-    #[cfg(test)]
-    #[allow(dead_code)]
-    fn get_test_nv12<T: Fn(&[u8]) -> U, U>(
-        display: Rc<Display>,
-        picture: Rc<RefCell<Picture<PictureSync>>>,
-        width: u32,
-        height: u32,
-        action: T,
-    ) -> U {
-        let mut picture = picture.borrow_mut();
-
-        let image_fmts = display.query_image_formats().unwrap();
-        let image_fmt = image_fmts
-            .into_iter()
-            .find(|f| f.fourcc == libva::constants::VA_FOURCC_NV12)
-            .expect("No valid VAImageFormat found for NV12");
-
-        // Get the associated VAImage, which will map the
-        // VASurface onto our address space.
-        let image = Image::new(&mut picture, image_fmt, width, height, false).unwrap();
-
-        let va_img = image.image();
-        let mut out: Vec<u8> =
-            vec![0; usize::from(va_img.width) * usize::from(va_img.height) * 3 / 2];
-
-        VaapiDecoderSession::nv12_copy(
-            image.as_ref(),
-            &mut out,
-            u32::from(va_img.width),
-            u32::from(va_img.height),
-            va_img.pitches,
-            va_img.offsets,
-        );
-
-        action(&out)
     }
 
     fn try_emit_flush_completed(&mut self) -> Result<()> {
@@ -848,14 +582,58 @@ impl VaapiDecoderSession {
 }
 
 impl DecoderSession for VaapiDecoderSession {
-    fn set_output_parameters(&mut self, buffer_count: usize, format: Format) -> VideoResult<()> {
+    fn set_output_parameters(&mut self, buffer_count: usize, _: Format) -> VideoResult<()> {
         let output_queue_state = &mut self.output_queue_state;
+
+        // This logic can still be improved, in particular it needs better
+        // support at the virtio-video protocol level.
+        //
+        // We must ensure that set_output_parameters is only called after we are
+        // sure that we have processed some stream metadata, which currently is
+        // not the case. In particular, the {SET|GET}_PARAMS logic currently
+        // takes place *before* we had a chance to parse any stream metadata at
+        // all.
+        //
+        // This can lead to a situation where we accept a format (say, NV12),
+        // but then discover we are unable to decode it after processing some
+        // buffers (because the stream indicates that the bit depth is 10, for
+        // example). Note that there is no way to reject said stream as of right
+        // now unless we hardcode NV12 in cros-codecs itself.
+        //
+        // Nevertheless, the support is already in place in cros-codecs: the
+        // decoders will queue buffers until they read some metadata. At this
+        // point, it will allow for the negotiation of the decoded format until
+        // a new call to decode() is made. At the crosvm level, we can use this
+        // window of time to try different decoded formats with .try_format().
+        //
+        // For now, we accept the default format chosen by cros-codecs instead.
+        // In practice, this means NV12 if it the stream can be decoded into
+        // NV12 and if the hardware can do so.
 
         match output_queue_state {
             OutputQueueState::AwaitingBufferCount | OutputQueueState::Drc => {
-                self.codec
-                    .set_raw_fmt(format)
-                    .map_err(VideoError::BackendFailure)?;
+                // Accept the default format chosen by cros-codecs instead.
+                //
+                // if let Some(backend_format) = self.backend.backend().format() {
+                //     let backend_format = Format::try_from(backend_format);
+
+                //     let format_matches = match backend_format {
+                //         Ok(backend_format) => backend_format != format,
+                //         Err(_) => false,
+                //     };
+
+                //     if !format_matches {
+                //         let format =
+                //             DecodedFormat::try_from(format).map_err(VideoError::BackendFailure)?;
+
+                //         self.backend.backend().try_format(format).map_err(|e| {
+                //             VideoError::BackendFailure(anyhow!(
+                //                 "Failed to set the codec backend format: {}",
+                //                 e
+                //             ))
+                //         })?;
+                //     }
+                // }
 
                 *output_queue_state = OutputQueueState::Decoding {
                     output_queue: OutputQueue::new(buffer_count),
@@ -877,12 +655,19 @@ impl DecoderSession for VaapiDecoderSession {
         offset: u32,
         bytes_used: u32,
     ) -> VideoResult<()> {
-        let frames = self.codec.decode(timestamp, &resource, offset, bytes_used);
+        let bitstream_map: BufferMapping<_, GuestResourceHandle> = BufferMapping::new(
+            resource,
+            offset.try_into().unwrap(),
+            bytes_used.try_into().unwrap(),
+        )
+        .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?;
+
+        let frames = self.codec.decode(timestamp, &bitstream_map);
 
         match frames {
             Ok(frames) => {
                 self.event_queue
-                    .queue_event(DecoderEvent::NotifyEndOfBitstreamBuffer(resource_id))
+                    .queue_event(DecoderEvent::NotifyEndOfBitstreamBuffer(timestamp as u32))
                     .map_err(|e| {
                         VideoError::BackendFailure(anyhow!(
                             "Can't queue the NotifyEndOfBitstream event {}",
@@ -890,8 +675,22 @@ impl DecoderSession for VaapiDecoderSession {
                         ))
                     })?;
 
-                if let Some(params) = self.codec.drc() {
-                    self.change_resolution(params)
+                if self.codec.negotiation_possible() {
+                    let resolution = self.codec.backend().coded_resolution().unwrap();
+
+                    let drc_params = DrcParams {
+                        min_num_buffers: self.codec.backend().num_resources_total(),
+                        width: resolution.width,
+                        height: resolution.height,
+                        visible_rect: Rect {
+                            left: 0,
+                            top: 0,
+                            right: resolution.width as i32,
+                            bottom: resolution.height as i32,
+                        },
+                    };
+
+                    self.change_resolution(drc_params)
                         .map_err(VideoError::BackendFailure)?;
                 }
 
@@ -919,7 +718,7 @@ impl DecoderSession for VaapiDecoderSession {
                         ))
                     })?;
 
-                Err(VideoError::BackendFailure(e))
+                Err(VideoError::BackendFailure(anyhow!(e)))
             }
         }
     }
@@ -928,7 +727,11 @@ impl DecoderSession for VaapiDecoderSession {
         self.flushing = true;
 
         // Retrieve ready frames from the codec, if any.
-        let pics = self.codec.flush().map_err(VideoError::BackendFailure)?;
+        let pics = self
+            .codec
+            .flush()
+            .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?;
+
         self.ready_queue.extend(pics);
 
         self.drain_ready_queue()
@@ -952,10 +755,57 @@ impl DecoderSession for VaapiDecoderSession {
             })?;
 
         let display = Rc::new(Display::open().map_err(VideoError::BackendFailure)?);
-        let codec = match self.coded_format {
-            Format::VP8 => Box::new(
-                vp8::Vp8Codec::new(display).map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
-            ),
+        let codec: Box<dyn VideoDecoder> = match self.coded_format {
+            Format::VP8 => {
+                let backend = Box::new(
+                    cros_codecs::decoders::vp8::backends::stateless::vaapi::Backend::new(
+                        Rc::clone(&display),
+                    )
+                    .unwrap(),
+                );
+
+                Box::new(
+                    cros_codecs::decoders::vp8::decoder::Decoder::new(
+                        backend,
+                        cros_codecs::decoders::BlockingMode::NonBlocking,
+                    )
+                    .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
+                )
+            }
+
+            Format::VP9 => {
+                let backend = Box::new(
+                    cros_codecs::decoders::vp9::backends::stateless::vaapi::Backend::new(
+                        Rc::clone(&display),
+                    )
+                    .unwrap(),
+                );
+
+                Box::new(
+                    cros_codecs::decoders::vp9::decoder::Decoder::new(
+                        backend,
+                        cros_codecs::decoders::BlockingMode::NonBlocking,
+                    )
+                    .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
+                )
+            }
+
+            Format::H264 => {
+                let backend = Box::new(
+                    cros_codecs::decoders::h264::backends::stateless::vaapi::Backend::new(
+                        Rc::clone(&display),
+                    )
+                    .unwrap(),
+                );
+                Box::new(
+                    cros_codecs::decoders::h264::decoder::Decoder::new(
+                        backend,
+                        cros_codecs::decoders::BlockingMode::NonBlocking,
+                    )
+                    .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
+                )
+            }
+
             _ => return Err(VideoError::InvalidFormat),
         };
 
@@ -1062,10 +912,56 @@ impl DecoderBackend for VaapiDecoder {
     fn new_session(&mut self, format: Format) -> VideoResult<Self::Session> {
         let display = Rc::new(Display::open().map_err(VideoError::BackendFailure)?);
 
-        let codec = match format {
-            Format::VP8 => Box::new(
-                vp8::Vp8Codec::new(display).map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
-            ),
+        let codec: Box<dyn VideoDecoder> = match format {
+            Format::VP8 => {
+                let backend = Box::new(
+                    cros_codecs::decoders::vp8::backends::stateless::vaapi::Backend::new(
+                        Rc::clone(&display),
+                    )
+                    .unwrap(),
+                );
+
+                Box::new(
+                    cros_codecs::decoders::vp8::decoder::Decoder::new(
+                        backend,
+                        cros_codecs::decoders::BlockingMode::NonBlocking,
+                    )
+                    .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
+                )
+            }
+
+            Format::VP9 => {
+                let backend = Box::new(
+                    cros_codecs::decoders::vp9::backends::stateless::vaapi::Backend::new(
+                        Rc::clone(&display),
+                    )
+                    .unwrap(),
+                );
+
+                Box::new(
+                    cros_codecs::decoders::vp9::decoder::Decoder::new(
+                        backend,
+                        cros_codecs::decoders::BlockingMode::NonBlocking,
+                    )
+                    .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
+                )
+            }
+
+            Format::H264 => {
+                let backend = Box::new(
+                    cros_codecs::decoders::h264::backends::stateless::vaapi::Backend::new(
+                        Rc::clone(&display),
+                    )
+                    .unwrap(),
+                );
+                Box::new(
+                    cros_codecs::decoders::h264::decoder::Decoder::new(
+                        backend,
+                        cros_codecs::decoders::BlockingMode::NonBlocking,
+                    )
+                    .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
+                )
+            }
             _ => return Err(VideoError::InvalidFormat),
         };
 
@@ -1080,74 +976,9 @@ impl DecoderBackend for VaapiDecoder {
     }
 }
 
-pub trait VaapiCodec: downcast_rs::Downcast {
-    /// Decode the compressed stream contained in
-    /// [`offset`..`offset`+`bytes_used`] of the shared memory in `resource`.
-    /// `timestamp` is the timestamp for that part of the stream.
-    /// Returns zero or more decoded pictures depending on the compressed
-    /// stream, which might also be part of the codec's decoded picture buffer
-    /// (DPB).
-    fn decode(
-        &mut self,
-        timestamp: u64,
-        resource: &GuestResourceHandle,
-        offset: u32,
-        bytes_used: u32,
-    ) -> Result<Vec<DecodedFrameHandle>>;
-
-    /// Flush the decoder i.e. finish processing all queued decode requests and
-    /// emit frames for them.
-    fn flush(&mut self) -> Result<Vec<DecodedFrameHandle>>;
-
-    /// Returns the current VA image format
-    fn va_image_fmt(&self) -> &Option<libva::VAImageFormat>;
-
-    /// Set the raw picture format.
-    fn set_raw_fmt(&mut self, format: Format) -> Result<()>;
-
-    /// Whether the codec has encountered a dynamic resolution change, i.e.:
-    /// Whether there were changes in coded resolution (OUTPUT width and
-    /// height), in the visible resolution (selection rectangles), in the
-    /// minimum number of buffers needed for decoding or in bit-depth of the
-    /// bitstream. This function will be called at every frame by the session.
-    fn drc(&mut self) -> Option<DrcParams>;
-}
-downcast_rs::impl_downcast!(VaapiCodec); // Used in unit tests.
-
 #[cfg(test)]
 mod tests {
-    use base::FromRawDescriptor;
-    use base::MemoryMappingBuilder;
-    use base::SafeDescriptor;
-    use base::SharedMemory;
-
     use super::*;
-    use crate::virtio::video::resource::GuestMemArea;
-    use crate::virtio::video::resource::GuestMemHandle;
-
-    pub(crate) fn build_resource(slice: &[u8]) -> GuestResourceHandle {
-        let input_shm = SharedMemory::new("", u64::try_from(slice.len()).unwrap()).unwrap();
-
-        let input_mapping = MemoryMappingBuilder::new(input_shm.size() as usize)
-            .from_shared_memory(&input_shm)
-            .build()
-            .unwrap();
-
-        input_mapping
-            .write_slice(slice, 0)
-            .expect("Failed to write stream data into input buffer.");
-
-        GuestResourceHandle::GuestPages(GuestMemHandle {
-            // Safe because we are taking ownership of a just-duplicated FD.
-            desc: unsafe {
-                SafeDescriptor::from_raw_descriptor(base::clone_descriptor(&input_shm).unwrap())
-            },
-            mem_areas: vec![GuestMemArea {
-                offset: 0,
-                length: input_shm.size() as usize,
-            }],
-        })
-    }
 
     #[test]
     // Ignore this test by default as it requires libva-compatible hardware.

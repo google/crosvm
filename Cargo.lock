@@ -637,6 +637,7 @@ dependencies = [
  "cfg-if",
  "chrono",
  "crc32fast",
+ "cros-codecs",
  "cros_async",
  "cros_tracing",
  "crosvm_cli",
@@ -690,7 +691,6 @@ dependencies = [
  "vm_control",
  "vm_memory",
  "vmm_vhost",
- "vp8",
  "win_util",
  "winapi",
 ]
@@ -2084,15 +2084,6 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tube_transporter",
-]
-
-[[package]]
-name = "vp8"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytes",
- "log",
 ]
 
 [[package]]
