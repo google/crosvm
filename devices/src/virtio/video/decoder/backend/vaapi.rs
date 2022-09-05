@@ -39,6 +39,15 @@ use crate::virtio::video::resource::GuestResourceHandle;
 use crate::virtio::video::utils::EventQueue;
 use crate::virtio::video::utils::OutputQueue;
 
+/// Represents a buffer we have not yet sent to the accelerator.
+struct PendingJob {
+    resource_id: u32,
+    timestamp: u64,
+    resource: GuestResourceHandle,
+    offset: u32,
+    bytes_used: u32,
+}
+
 /// A set of params returned when a dynamic resolution change is found in the
 /// bitstream.
 pub struct DrcParams {
@@ -424,6 +433,8 @@ pub struct VaapiDecoderSession {
     output_queue_state: OutputQueueState,
     /// Queue containing decoded pictures.
     ready_queue: VecDeque<Box<dyn DynDecodedHandle>>,
+    /// Queue containing the buffers we have not yet submitted to the codec.
+    submit_queue: VecDeque<PendingJob>,
     /// The event queue we can use to signal new events.
     event_queue: EventQueue<DecoderEvent>,
     /// Whether the decoder is currently flushing.
@@ -565,9 +576,10 @@ impl VaapiDecoderSession {
     }
 
     fn try_emit_flush_completed(&mut self) -> Result<()> {
-        let num_remaining = self.ready_queue.len();
+        let num_ready_remaining = self.ready_queue.len();
+        let num_submit_remaining = self.submit_queue.len();
 
-        if num_remaining == 0 {
+        if num_ready_remaining == 0 && num_submit_remaining == 0 {
             self.flushing = false;
 
             let event_queue = &mut self.event_queue;
@@ -578,6 +590,98 @@ impl VaapiDecoderSession {
         } else {
             Ok(())
         }
+    }
+
+    fn decode_one_job(&mut self, job: PendingJob) -> VideoResult<()> {
+        let PendingJob {
+            resource_id,
+            timestamp,
+            resource,
+            offset,
+            bytes_used,
+        } = job;
+
+        let bitstream_map: BufferMapping<_, GuestResourceHandle> = BufferMapping::new(
+            resource,
+            offset.try_into().unwrap(),
+            bytes_used.try_into().unwrap(),
+        )
+        .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?;
+
+        let frames = self.codec.decode(timestamp, &bitstream_map);
+
+        match frames {
+            Ok(frames) => {
+                self.event_queue
+                    .queue_event(DecoderEvent::NotifyEndOfBitstreamBuffer(timestamp as u32))
+                    .map_err(|e| {
+                        VideoError::BackendFailure(anyhow!(
+                            "Can't queue the NotifyEndOfBitstream event {}",
+                            e
+                        ))
+                    })?;
+
+                if self.codec.negotiation_possible() {
+                    let resolution = self.codec.backend().coded_resolution().unwrap();
+
+                    let drc_params = DrcParams {
+                        min_num_buffers: self.codec.backend().num_resources_total(),
+                        width: resolution.width,
+                        height: resolution.height,
+                        visible_rect: Rect {
+                            left: 0,
+                            top: 0,
+                            right: resolution.width as i32,
+                            bottom: resolution.height as i32,
+                        },
+                    };
+
+                    self.change_resolution(drc_params)
+                        .map_err(VideoError::BackendFailure)?;
+                }
+
+                for decoded_frame in frames {
+                    self.ready_queue.push_back(decoded_frame);
+                }
+
+                self.drain_ready_queue()
+                    .map_err(VideoError::BackendFailure)?;
+
+                Ok(())
+            }
+
+            Err(e) => {
+                let event_queue = &mut self.event_queue;
+
+                event_queue
+                    .queue_event(DecoderEvent::NotifyError(VideoError::BackendFailure(
+                        anyhow!("Decoding buffer {} failed", resource_id),
+                    )))
+                    .map_err(|e| {
+                        VideoError::BackendFailure(anyhow!(
+                            "Can't queue the NotifyError event {}",
+                            e
+                        ))
+                    })?;
+
+                Err(VideoError::BackendFailure(anyhow!(e)))
+            }
+        }
+    }
+
+    fn drain_submit_queue(&mut self) -> VideoResult<()> {
+        while let Some(queued_buffer) = self.submit_queue.pop_front() {
+            match self.codec.num_resources_left() {
+                Some(left) if left == 0 => {
+                    self.submit_queue.push_front(queued_buffer);
+                    break;
+                }
+
+                _ => self.decode_one_job(queued_buffer)?,
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -655,76 +759,24 @@ impl DecoderSession for VaapiDecoderSession {
         offset: u32,
         bytes_used: u32,
     ) -> VideoResult<()> {
-        let bitstream_map: BufferMapping<_, GuestResourceHandle> = BufferMapping::new(
+        let job = PendingJob {
+            resource_id,
+            timestamp,
             resource,
-            offset.try_into().unwrap(),
-            bytes_used.try_into().unwrap(),
-        )
-        .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?;
+            offset,
+            bytes_used,
+        };
 
-        let frames = self.codec.decode(timestamp, &bitstream_map);
+        self.submit_queue.push_back(job);
+        self.drain_submit_queue()?;
 
-        match frames {
-            Ok(frames) => {
-                self.event_queue
-                    .queue_event(DecoderEvent::NotifyEndOfBitstreamBuffer(timestamp as u32))
-                    .map_err(|e| {
-                        VideoError::BackendFailure(anyhow!(
-                            "Can't queue the NotifyEndOfBitstream event {}",
-                            e
-                        ))
-                    })?;
-
-                if self.codec.negotiation_possible() {
-                    let resolution = self.codec.backend().coded_resolution().unwrap();
-
-                    let drc_params = DrcParams {
-                        min_num_buffers: self.codec.backend().num_resources_total(),
-                        width: resolution.width,
-                        height: resolution.height,
-                        visible_rect: Rect {
-                            left: 0,
-                            top: 0,
-                            right: resolution.width as i32,
-                            bottom: resolution.height as i32,
-                        },
-                    };
-
-                    self.change_resolution(drc_params)
-                        .map_err(VideoError::BackendFailure)?;
-                }
-
-                for decoded_frame in frames {
-                    self.ready_queue.push_back(decoded_frame);
-                }
-
-                self.drain_ready_queue()
-                    .map_err(VideoError::BackendFailure)?;
-
-                Ok(())
-            }
-
-            Err(e) => {
-                let event_queue = &mut self.event_queue;
-
-                event_queue
-                    .queue_event(DecoderEvent::NotifyError(VideoError::BackendFailure(
-                        anyhow!("Decoding buffer {} failed", resource_id),
-                    )))
-                    .map_err(|e| {
-                        VideoError::BackendFailure(anyhow!(
-                            "Can't queue the NotifyError event {}",
-                            e
-                        ))
-                    })?;
-
-                Err(VideoError::BackendFailure(anyhow!(e)))
-            }
-        }
+        Ok(())
     }
 
     fn flush(&mut self) -> VideoResult<()> {
         self.flushing = true;
+
+        self.drain_submit_queue()?;
 
         // Retrieve ready frames from the codec, if any.
         let pics = self
@@ -813,6 +865,7 @@ impl DecoderSession for VaapiDecoderSession {
             codec,
             output_queue_state: OutputQueueState::AwaitingBufferCount,
             ready_queue: Default::default(),
+            submit_queue: Default::default(),
             event_queue: EventQueue::new().map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
             flushing: Default::default(),
             coded_format: self.coded_format,
@@ -969,6 +1022,7 @@ impl DecoderBackend for VaapiDecoder {
             codec,
             output_queue_state: OutputQueueState::AwaitingBufferCount,
             ready_queue: Default::default(),
+            submit_queue: Default::default(),
             event_queue: EventQueue::new().map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
             flushing: Default::default(),
             coded_format: format,
