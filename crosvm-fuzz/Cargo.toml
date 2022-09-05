@@ -19,6 +19,9 @@ tempfile = "3"
 usb_util = { path = "../usb_util" }
 vm_memory = { path = "../vm_memory" }
 
+[features]
+default = ["disk/qcow"]
+
 [[bin]]
 name = "crosvm_block_fuzzer"
 path = "block_fuzzer.rs"
