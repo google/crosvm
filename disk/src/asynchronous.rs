@@ -34,6 +34,7 @@ pub struct AsyncDiskFileWrapper<T: DiskFile + Send> {
 }
 
 impl<T: DiskFile + Send> AsyncDiskFileWrapper<T> {
+    #[allow(dead_code)] // Only used if qcow or android-sparse features are enabled
     pub fn new(disk_file: T, _ex: &Executor) -> Self {
         Self {
             blocking_pool: BlockingPool::new(1, Duration::from_secs(10)),

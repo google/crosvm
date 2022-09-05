@@ -31,6 +31,7 @@ use cros_async::IoSourceExt;
 use thiserror::Error as ThisError;
 
 mod asynchronous;
+#[allow(unused)]
 pub(crate) use asynchronous::AsyncDiskFileWrapper;
 #[cfg(feature = "qcow")]
 mod qcow;
@@ -63,8 +64,11 @@ pub use composite::PartitionInfo;
 #[cfg(feature = "composite-disk")]
 pub use gpt::Error as GptError;
 
+#[cfg(feature = "android-sparse")]
 mod android_sparse;
+#[cfg(feature = "android-sparse")]
 use android_sparse::AndroidSparse;
+#[cfg(feature = "android-sparse")]
 use android_sparse::SPARSE_HEADER_MAGIC;
 
 /// Nesting depth limit for disk formats that can open other disk files.
@@ -76,6 +80,7 @@ pub enum Error {
     BlockDeviceNew(base::Error),
     #[error("requested file conversion not supported")]
     ConversionNotSupported,
+    #[cfg(feature = "android-sparse")]
     #[error("failure in android sparse disk: {0}")]
     CreateAndroidSparseDisk(android_sparse::Error),
     #[cfg(feature = "composite-disk")]
@@ -242,11 +247,13 @@ pub fn detect_image_type(file: &File) -> Result<ImageType> {
         }
     }
 
+    #[allow(unused_variables)] // magic4 is only used with the qcow or android-sparse features.
     if let Some(magic4) = magic.data.get(0..4) {
         #[cfg(feature = "qcow")]
         if magic4 == QCOW_MAGIC.to_be_bytes() {
             return Ok(ImageType::Qcow2);
         }
+        #[cfg(feature = "android-sparse")]
         if magic4 == SPARSE_HEADER_MAGIC.to_le_bytes() {
             return Ok(ImageType::AndroidSparse);
         }
@@ -296,6 +303,7 @@ pub fn create_disk_file(
                 .map_err(Error::CreateCompositeDisk)?,
             ) as Box<dyn DiskFile>
         }
+        #[cfg(feature = "android-sparse")]
         ImageType::AndroidSparse => {
             Box::new(AndroidSparse::from_file(raw_image).map_err(Error::CreateAndroidSparseDisk)?)
                 as Box<dyn DiskFile>

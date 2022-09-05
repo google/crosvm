@@ -8,6 +8,7 @@ edition = "2021"
 path = "src/disk.rs"
 
 [features]
+android-sparse = []
 composite-disk = ["crc32fast", "protos", "protobuf", "uuid"]
 qcow = []
 

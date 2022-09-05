@@ -80,6 +80,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "android-sparse")]
     fn detect_image_type_android_sparse() {
         let mut t = tempfile::tempfile().unwrap();
         // Write the Android sparse magic signature. The rest of the header is not filled in, so if
