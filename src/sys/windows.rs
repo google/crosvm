@@ -1558,13 +1558,10 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
             size.checked_mul(1024 * 1024)
                 .ok_or_else(|| anyhow!("requested swiotlb size too large"))?,
         )
+    } else if matches!(cfg.protection_type, ProtectionType::Unprotected) {
+        None
     } else {
-        match cfg.protection_type {
-            ProtectionType::Protected | ProtectionType::ProtectedWithoutFirmware => {
-                Some(64 * 1024 * 1024)
-            }
-            ProtectionType::Unprotected | ProtectionType::UnprotectedWithFirmware => None,
-        }
+        Some(64 * 1024 * 1024)
     };
 
     let (pflash_image, pflash_block_size) = if let Some(pflash_parameters) = &cfg.pflash_parameters
