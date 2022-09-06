@@ -1067,9 +1067,6 @@ impl<T: Encoder> EncoderDevice<T> {
                     || stream.src_params.frame_height != frame_height
                     || stream.src_params.format != format
                     || stream.src_params.plane_formats != plane_formats
-                    || resource_type
-                        .map(|resource_type| stream.src_params.resource_type != resource_type)
-                        .unwrap_or(false)
                 {
                     if resources_queued {
                         // Buffers have already been queued and encoding has already started.
@@ -1094,19 +1091,12 @@ impl<T: Encoder> EncoderDevice<T> {
                     stream.dst_params.frame_width = frame_width;
                     stream.dst_params.frame_height = frame_height;
 
-                    if let Some(resource_type) = resource_type {
-                        stream.src_params.resource_type = resource_type;
-                    }
-
                     create_session = true
                 }
             }
             QueueType::Output => {
                 if stream.dst_params.format != format
                     || stream.dst_params.plane_formats != plane_formats
-                    || resource_type
-                        .map(|resource_type| stream.dst_params.resource_type != resource_type)
-                        .unwrap_or(false)
                 {
                     if resources_queued {
                         // Buffers have already been queued and encoding has already started.
@@ -1144,10 +1134,6 @@ impl<T: Encoder> EncoderDevice<T> {
                         stream.dst_h264_level = Some(Level::H264_1_0);
                     } else {
                         stream.dst_h264_level = None;
-                    }
-
-                    if let Some(resource_type) = resource_type {
-                        stream.dst_params.resource_type = resource_type;
                     }
 
                     create_session = true;

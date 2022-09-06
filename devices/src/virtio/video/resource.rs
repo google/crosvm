@@ -29,7 +29,7 @@ use crate::virtio::video::protocol::virtio_video_mem_entry;
 use crate::virtio::video::protocol::virtio_video_object_entry;
 
 /// Defines how resources for a given queue are represented.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub enum ResourceType {
     /// Resources are backed by guest memory pages.
     GuestPages,
