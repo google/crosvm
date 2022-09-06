@@ -301,6 +301,12 @@ impl PciBus {
     }
 }
 
+pub enum PreferredIrq {
+    None,
+    Any,
+    Fixed { pin: PciInterruptPin, gsi: u32 },
+}
+
 pub trait PciDevice: Send {
     /// Returns a label suitable for debug output.
     fn debug_label(&self) -> String;
@@ -320,11 +326,12 @@ pub trait PciDevice: Send {
     fn keep_rds(&self) -> Vec<RawDescriptor>;
 
     /// Preferred IRQ for this device.
-    /// The device may request a specific pin and IRQ number by returning a non-`None` value.
+    /// The device may request a specific pin and IRQ number by returning a `Fixed` value.
+    /// If a device does not support INTx# interrupts at all, it should return `None`.
     /// Otherwise, an appropriate IRQ will be allocated automatically.
     /// The device's `assign_irq` function will be called with its assigned IRQ either way.
-    fn preferred_irq(&self) -> Option<(PciInterruptPin, u32)> {
-        None
+    fn preferred_irq(&self) -> PreferredIrq {
+        PreferredIrq::Any
     }
 
     /// Assign a legacy PCI IRQ to this device.
@@ -618,7 +625,7 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         (**self).keep_rds()
     }
-    fn preferred_irq(&self) -> Option<(PciInterruptPin, u32)> {
+    fn preferred_irq(&self) -> PreferredIrq {
         (**self).preferred_irq()
     }
     fn assign_irq(&mut self, irq_evt: IrqLevelEvent, pin: PciInterruptPin, irq_num: u32) {

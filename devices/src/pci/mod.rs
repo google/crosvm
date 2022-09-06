@@ -72,6 +72,7 @@ pub use self::pci_device::BarRange;
 pub use self::pci_device::Error as PciDeviceError;
 pub use self::pci_device::PciBus;
 pub use self::pci_device::PciDevice;
+pub use self::pci_device::PreferredIrq;
 pub use self::pci_root::PciConfigIo;
 pub use self::pci_root::PciConfigMmio;
 pub use self::pci_root::PciRoot;

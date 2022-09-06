@@ -72,6 +72,7 @@ use crate::pci::pci_configuration::HEADER_TYPE_REG;
 use crate::pci::pci_device::BarRange;
 use crate::pci::pci_device::Error as PciDeviceError;
 use crate::pci::pci_device::PciDevice;
+use crate::pci::pci_device::PreferredIrq;
 use crate::pci::PciAddress;
 use crate::pci::PciBarConfiguration;
 use crate::pci::PciBarIndex;
@@ -1710,15 +1711,15 @@ impl PciDevice for VfioPciDevice {
         rds
     }
 
-    fn preferred_irq(&self) -> Option<(PciInterruptPin, u32)> {
+    fn preferred_irq(&self) -> PreferredIrq {
         // Is INTx configured?
         let pin = match self.config.read_config::<u8>(PCI_INTERRUPT_PIN) {
-            1 => Some(PciInterruptPin::IntA),
-            2 => Some(PciInterruptPin::IntB),
-            3 => Some(PciInterruptPin::IntC),
-            4 => Some(PciInterruptPin::IntD),
-            _ => None,
-        }?;
+            1 => PciInterruptPin::IntA,
+            2 => PciInterruptPin::IntB,
+            3 => PciInterruptPin::IntC,
+            4 => PciInterruptPin::IntD,
+            _ => return PreferredIrq::None,
+        };
 
         // TODO: replace sysfs/irq value parsing with vfio interface
         //       reporting host allocated interrupt number and type.
@@ -1729,7 +1730,7 @@ impl PciDevice for VfioPciDevice {
             .map(|v| v.trim().parse::<u32>().unwrap_or(0))
             .unwrap_or(0);
 
-        Some((pin, gsi))
+        PreferredIrq::Fixed { pin, gsi }
     }
 
     fn assign_irq(&mut self, irq_evt: IrqLevelEvent, pin: PciInterruptPin, irq_num: u32) {
