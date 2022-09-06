@@ -802,7 +802,7 @@ impl<'a> Aml for Return<'a> {
     }
 }
 
-/// FiledAccessType defines the filed accessing types.
+/// FieldAccessType defines the field accessing types.
 #[derive(Clone, Copy)]
 pub enum FieldAccessType {
     Any,
@@ -813,7 +813,14 @@ pub enum FieldAccessType {
     Buffer,
 }
 
-/// FiledUpdateRule defines the rules to update the filed.
+/// FieldLockRule defines the rules whether to use the Global Lock.
+#[derive(Clone, Copy)]
+pub enum FieldLockRule {
+    NoLock = 0,
+    Lock = 1,
+}
+
+/// FieldUpdateRule defines the rules to update the field.
 #[derive(Clone, Copy)]
 pub enum FieldUpdateRule {
     Preserve = 0,
@@ -821,18 +828,19 @@ pub enum FieldUpdateRule {
     WriteAsZeroes = 2,
 }
 
-/// FiledEntry defines the filed entry.
+/// FieldEntry defines the field entry.
 pub enum FieldEntry {
     Named([u8; 4], usize),
     Reserved(usize),
 }
 
-/// Field object with the region name, filed entries, access type and update rules.
+/// Field object with the region name, field entries, access type and update rules.
 pub struct Field {
     path: Path,
 
     fields: Vec<FieldEntry>,
     access_type: FieldAccessType,
+    lock_rule: FieldLockRule,
     update_rule: FieldUpdateRule,
 }
 
@@ -841,12 +849,14 @@ impl Field {
     pub fn new(
         path: Path,
         access_type: FieldAccessType,
+        lock_rule: FieldLockRule,
         update_rule: FieldUpdateRule,
         fields: Vec<FieldEntry>,
     ) -> Self {
         Field {
             path,
             access_type,
+            lock_rule,
             update_rule,
             fields,
         }
@@ -858,7 +868,8 @@ impl Aml for Field {
         let mut bytes = Vec::new();
         self.path.to_aml_bytes(&mut bytes);
 
-        let flags: u8 = self.access_type as u8 | (self.update_rule as u8) << 5;
+        let flags: u8 =
+            self.access_type as u8 | (self.lock_rule as u8) << 4 | (self.update_rule as u8) << 5;
         bytes.push(flags);
 
         for field in self.fields.iter() {
@@ -1816,6 +1827,7 @@ mod tests {
         Field::new(
             "PRST".into(),
             FieldAccessType::Byte,
+            FieldLockRule::NoLock,
             FieldUpdateRule::WriteAsZeroes,
             vec![
                 FieldEntry::Reserved(32),
@@ -1831,7 +1843,7 @@ mod tests {
         assert_eq!(aml, &field_data[..]);
 
         /*
-            Field (PRST, DWordAcc, NoLock, Preserve)
+            Field (PRST, DWordAcc, Lock, Preserve)
             {
                 CSEL,   32,
                 Offset (0x08),
@@ -1840,7 +1852,7 @@ mod tests {
         */
 
         let field_data = [
-            0x5Bu8, 0x81, 0x12, 0x50, 0x52, 0x53, 0x54, 0x03, 0x43, 0x53, 0x45, 0x4C, 0x20, 0x00,
+            0x5Bu8, 0x81, 0x12, 0x50, 0x52, 0x53, 0x54, 0x13, 0x43, 0x53, 0x45, 0x4C, 0x20, 0x00,
             0x20, 0x43, 0x44, 0x41, 0x54, 0x20,
         ];
         aml.clear();
@@ -1848,6 +1860,7 @@ mod tests {
         Field::new(
             "PRST".into(),
             FieldAccessType::DWord,
+            FieldLockRule::Lock,
             FieldUpdateRule::Preserve,
             vec![
                 FieldEntry::Named(*b"CSEL", 32),
