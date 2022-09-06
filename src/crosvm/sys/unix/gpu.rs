@@ -4,7 +4,7 @@
 
 //! GPU related things
 //! depends on "gpu" feature
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
@@ -156,18 +156,16 @@ pub struct GpuRenderServerParameters {
 }
 
 fn get_gpu_render_server_environment(cache_info: Option<&GpuCacheInfo>) -> Result<Vec<String>> {
-    let mut env = Vec::new();
-    let mut env_keys = HashSet::new();
+    let mut env = HashMap::<String, String>::new();
     let os_env_len = env::vars_os().count();
 
     if let Some(cache_info) = cache_info {
-        env_keys.reserve(cache_info.environment.len() + os_env_len);
+        env.reserve(os_env_len + cache_info.environment.len());
         for (key, val) in cache_info.environment.iter() {
-            env.push(format!("{}={}", key, val));
-            env_keys.insert(key.to_string());
+            env.insert(key.to_string(), val.to_string());
         }
     } else {
-        env_keys.reserve(os_env_len);
+        env.reserve(os_env_len);
     }
 
     for (key_os, val_os) in env::vars_os() {
@@ -175,19 +173,15 @@ fn get_gpu_render_server_environment(cache_info: Option<&GpuCacheInfo>) -> Resul
         let into_string_err = |_| anyhow!("invalid environment key/val");
         let key = key_os.into_string().map_err(into_string_err)?;
         let val = val_os.into_string().map_err(into_string_err)?;
-
-        if !env_keys.contains(&key) {
-            env.push(format!("{}={}", key, val));
-            env_keys.insert(key);
-        }
+        env.entry(key).or_insert(val);
     }
 
     // TODO(b/237493180): workaround to enable ETC2 format emulation in RADV for ARCVM
-    if !env_keys.contains("radv_require_etc2") {
-        env.push("radv_require_etc2=true".to_string());
+    if !env.contains_key("radv_require_etc2") {
+        env.insert("radv_require_etc2".to_string(), "true".to_string());
     }
 
-    Ok(env)
+    Ok(env.iter().map(|(k, v)| format!("{}={}", k, v)).collect())
 }
 
 pub fn start_gpu_render_server(
