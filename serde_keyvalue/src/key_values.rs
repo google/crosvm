@@ -436,19 +436,22 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut KeyValueDeserializer<'de> {
     where
         V: serde::de::Visitor<'de>,
     {
+        // If we have no value following, then we are dealing with a boolean flag.
         match self.peek_char() {
-            Some('0'..='9') => self.deserialize_u64(visitor),
-            Some('-') => self.deserialize_i64(visitor),
-            Some('"') => self.deserialize_string(visitor),
-            // Only possible option here is boolean flag.
-            Some(',') | None => self.deserialize_bool(visitor),
-            _ => {
-                // We probably have an unquoted string, but possibly a boolean as well.
-                match any_identifier(self.input) {
-                    Ok((_, "true")) | Ok((_, "false")) => self.deserialize_bool(visitor),
-                    _ => self.deserialize_str(visitor),
-                }
-            }
+            Some(',') | None => return self.deserialize_bool(visitor),
+            _ => (),
+        }
+
+        // This is ambiguous as technically any argument could be an unquoted string. However we
+        // don't have any type information here, so try to guess it on a best-effort basis...
+        if any_number::<i64>(self.input).is_ok() {
+            self.deserialize_i64(visitor)
+        } else if any_number::<u64>(self.input).is_ok() {
+            self.deserialize_u64(visitor)
+        } else if any_bool(self.input).is_ok() {
+            self.deserialize_bool(visitor)
+        } else {
+            self.deserialize_str(visitor)
         }
     }
 
