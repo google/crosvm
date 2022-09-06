@@ -66,26 +66,6 @@ pub struct DiskOption {
     pub io_concurrency: NonZeroU32,
 }
 
-// TODO(b/237829580): Have platform specific impl once virtio block sys is
-// refactored to match the style guide.
-impl Default for DiskOption {
-    fn default() -> Self {
-        Self {
-            path: PathBuf::from(""),
-            read_only: true,
-            sparse: false,
-            o_direct: false,
-            #[cfg(unix)]
-            block_size: 512,
-            #[cfg(windows)]
-            block_size: base::pagesize() as u32,
-            id: None,
-            #[cfg(windows)]
-            io_concurrency: NonZeroU32::new(1).unwrap(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use serde_keyvalue::*;
