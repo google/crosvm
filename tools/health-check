@@ -11,8 +11,23 @@ from pathlib import Path
 from typing import List
 
 from impl.check_code_hygiene import has_crlf_line_endings
-from impl.common import CROSVM_ROOT, TOOLS_ROOT, argh, chdir, cmd, cwd_context, parallel, run_main
+from impl.common import (
+    CROSVM_ROOT,
+    TOOLS_ROOT,
+    argh,
+    chdir,
+    cmd,
+    cwd_context,
+    parallel,
+    run_main,
+)
 from impl.health_check import Check, CheckContext, run_checks
+
+python = cmd("python3")
+mypy = cmd("mypy").with_color_env("MYPY_FORCE_COLOR")
+black = cmd("black").with_color_arg(always="--color", never="--no-color")
+mdformat = cmd("mdformat")
+lucicfg = cmd("third_party/depot_tools/lucicfg")
 
 
 def check_python_tests(_: CheckContext):
@@ -26,13 +41,13 @@ def check_python_tests(_: CheckContext):
 
 def check_python_types(context: CheckContext):
     "Run mypy on all python files to type-check."
-    mypy = cmd("mypy --pretty --color-output").with_env("MYPY_FORCE_COLOR", "1")
-    parallel(*mypy.foreach(context.all_files)).fg(quiet=True)
+    parallel(*mypy("--pretty").foreach(context.all_files)).fg(quiet=True)
 
 
 def check_python_format(context: CheckContext):
-    black = cmd("black", "--check" if not context.fix else "")
-    parallel(*black.foreach(context.modified_files)).fg(quiet=not context.fix)
+    parallel(*black("--check" if not context.fix else None).foreach(context.modified_files)).fg(
+        quiet=not context.fix
+    )
 
 
 def check_crlf_line_endings(_: CheckContext):
@@ -46,13 +61,16 @@ def check_crlf_line_endings(_: CheckContext):
 
 def check_markdown_format(context: CheckContext):
     "Runs mdformat on all markdown files."
-    mdformat = cmd("mdformat --wrap 100", "--check" if not context.fix else "")
-    parallel(*mdformat.foreach(context.modified_files)).fg(quiet=not context.fix)
+    parallel(
+        *mdformat("--wrap 100", "--check" if not context.fix else "").foreach(
+            context.modified_files
+        )
+    ).fg(quiet=not context.fix)
 
 
 def check_rust_clippy(_: CheckContext):
     "Runs clippy on the whole project, no matter which rs files were touched."
-    cmd("./tools/clippy --locked").fg(quiet=True)
+    cmd("./tools/clippy --locked").with_color_flag().fg(quiet=True)
 
 
 def check_rust_format(context: CheckContext):
@@ -61,12 +79,14 @@ def check_rust_format(context: CheckContext):
         rustfmt = cmd(
             cmd("rustup +nightly which rustfmt"),
             "--config imports_granularity=item,group_imports=StdExternalCrate",
-        )
+        ).with_color_flag()
     else:
         rustfmt = cmd(cmd("rustup which rustfmt"))
-    parallel(*rustfmt("--check" if not context.fix else "").foreach(context.modified_files)).fg(
-        quiet=not context.fix
-    )
+    parallel(
+        *rustfmt("--check" if not context.fix else "")
+        .with_color_flag()
+        .foreach(context.modified_files)
+    ).fg(quiet=not context.fix)
 
 
 def check_rust_lockfiles(_: CheckContext):
@@ -126,7 +146,6 @@ def check_copyright_header(context: CheckContext):
 
 def check_infra_configs(context: CheckContext):
     "Validate luci configs by sending them to luci-config."
-    lucicfg = cmd("third_party/depot_tools/lucicfg")
     for file in context.modified_files:
         if context.fix:
             lucicfg("fmt", file).fg()

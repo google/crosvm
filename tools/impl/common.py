@@ -230,6 +230,29 @@ class Command(object):
         cmd.env_vars = {**self.env_vars, "PATH": f"{path_var}:{new_path}"}
         return cmd
 
+    def with_color_arg(
+        self,
+        always: Optional[str] = None,
+        never: Optional[str] = None,
+    ):
+        """Returns a command with an argument added to pass through enabled/disabled colors."""
+        new_cmd = self
+        if color_enabled():
+            if always:
+                new_cmd = new_cmd(always)
+        else:
+            if never:
+                new_cmd = new_cmd(never)
+        return new_cmd
+
+    def with_color_env(self, var_name: str):
+        """Returns a command with an env var added to pass through enabled/disabled colors."""
+        return self.with_env(var_name, "1" if color_enabled() else "0")
+
+    def with_color_flag(self, flag: str = "--color"):
+        """Returns a command with an added --color=always/never/auto flag."""
+        return self.with_color_arg(always=f"{flag}=always", never=f"{flag}=never")
+
     def foreach(self, arguments: Iterable[Any], batch_size: int = 1):
         """
         Yields a new command for each entry in `arguments`.
@@ -616,6 +639,12 @@ def parse_common_args():
 def add_common_args(parser: argparse.ArgumentParser):
     "These args are added to all commands."
     parser.add_argument(
+        "--color",
+        default="auto",
+        choices=("always", "never", "auto"),
+        help="Force enable or disable colors. Defaults to automatic detection.",
+    )
+    parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
@@ -627,7 +656,7 @@ def add_common_args(parser: argparse.ArgumentParser):
         "-vv",
         action="store_true",
         default=False,
-        help="Print detailed debug information for script developers.",
+        help="Print more debug output",
     )
 
 
@@ -637,6 +666,15 @@ def verbose():
 
 def very_verbose():
     return parse_common_args().very_verbose
+
+
+def color_enabled():
+    color_arg = parse_common_args().color
+    if color_arg == "never":
+        return False
+    if color_arg == "always":
+        return True
+    return sys.stdout.isatty()
 
 
 def all_tracked_files():

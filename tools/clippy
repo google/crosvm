@@ -14,7 +14,7 @@ from impl.common import CROSVM_ROOT, cwd, run_main, cmd, chdir
 from impl.test_runner import get_workspace_excludes
 from impl.test_target import Triple
 
-clippy = cmd("cargo clippy")
+clippy = cmd("cargo clippy").with_color_flag()
 
 excluded_crates: list[str] = list(get_workspace_excludes(Triple.host_default()))
 features: str = ""
