@@ -18,7 +18,6 @@ use std::sync::Arc;
 use base::AsRawDescriptor;
 use base::Error as BaseError;
 use base::FromRawDescriptor;
-use base::RawDescriptor;
 
 use crate::rutabaga_gralloc::formats::DrmFormat;
 use crate::rutabaga_gralloc::gralloc::Gralloc;
@@ -29,7 +28,7 @@ use crate::rutabaga_gralloc::rendernode;
 use crate::rutabaga_utils::*;
 
 struct MinigbmDeviceInner {
-    fd: File,
+    _fd: File,
     gbm: *mut gbm_device,
 }
 
@@ -75,7 +74,7 @@ impl MinigbmDevice {
         let device_name: &str = c_str.to_str()?;
 
         Ok(Box::new(MinigbmDevice {
-            minigbm_device: Arc::new(MinigbmDeviceInner { fd, gbm }),
+            minigbm_device: Arc::new(MinigbmDeviceInner { _fd: fd, gbm }),
             last_buffer: None,
             device_name,
         }))
