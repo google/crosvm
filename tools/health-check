@@ -21,18 +21,18 @@ def check_python_tests(_: CheckContext):
         *TOOLS_ROOT.glob("tests/*.py"),
         TOOLS_ROOT / "impl/common.py",
     ]
-    parallel(*cmd("python3").foreach(PYTHON_TESTS)).fg()
+    parallel(*cmd("python3").foreach(PYTHON_TESTS)).fg(quiet=True)
 
 
 def check_python_types(context: CheckContext):
     "Run mypy on all python files to type-check."
-    mypy = cmd("mypy --pretty --color-output").env("MYPY_FORCE_COLOR", "1")
-    parallel(*mypy.foreach(context.all_files)).fg()
+    mypy = cmd("mypy --pretty --color-output").with_env("MYPY_FORCE_COLOR", "1")
+    parallel(*mypy.foreach(context.all_files)).fg(quiet=True)
 
 
 def check_python_format(context: CheckContext):
     black = cmd("black", "--check" if not context.fix else "")
-    parallel(*black.foreach(context.modified_files)).fg()
+    parallel(*black.foreach(context.modified_files)).fg(quiet=not context.fix)
 
 
 def check_crlf_line_endings(_: CheckContext):
@@ -47,12 +47,12 @@ def check_crlf_line_endings(_: CheckContext):
 def check_markdown_format(context: CheckContext):
     "Runs mdformat on all markdown files."
     mdformat = cmd("mdformat --wrap 100", "--check" if not context.fix else "")
-    parallel(*mdformat.foreach(context.modified_files)).fg()
+    parallel(*mdformat.foreach(context.modified_files)).fg(quiet=not context.fix)
 
 
 def check_rust_clippy(_: CheckContext):
     "Runs clippy on the whole project, no matter which rs files were touched."
-    cmd("./tools/clippy --locked").fg()
+    cmd("./tools/clippy --locked").fg(quiet=True)
 
 
 def check_rust_format(context: CheckContext):
@@ -65,7 +65,7 @@ def check_rust_format(context: CheckContext):
     else:
         rustfmt = cmd(cmd("rustup which rustfmt"))
     parallel(*rustfmt("--check" if not context.fix else "").foreach(context.modified_files)).fg(
-        quiet=True
+        quiet=not context.fix
     )
 
 
@@ -137,7 +137,7 @@ def check_infra_configs(context: CheckContext):
 
 def check_infra_tests(context: CheckContext):
     "Run recipe.py tests, all of them, regardless of which files were modified."
-    recipes = cmd("infra/recipes.py").add_path("third_party/depot_tools")
+    recipes = cmd("infra/recipes.py").with_path_env("third_party/depot_tools")
     if context.fix:
         recipes("test train --py3-only").fg()
     recipes("test run --py3-only").fg(quiet=True)

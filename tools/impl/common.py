@@ -108,6 +108,23 @@ class Command(object):
     """
     Simplified subprocess handling for shell-like scripts.
 
+    ## Example Usage
+
+    To run a program on behalf of the user:
+
+    >> cmd("cargo build").fg()
+
+    This will run the program with stdio passed to the user. Developer tools usually run a set of
+    actions on behalf of the user. These should be executed with fg().
+
+    To make calls in the background to gather information use success/stdout/lines:
+
+    >> cmd("git branch").lines()
+    >> cmd("git rev-parse foo").success()
+
+    These will capture all program output. Try to avoid using these to run mutating commands,
+    as they will remain hidden to the user even when using --verbose.
+
     ## Arguments
 
     Arguments are provided as a list similar to subprocess.run():
@@ -131,6 +148,8 @@ class Command(object):
     >>> Command('cargo build', '--workspace' if all else None)
     Command('cargo', 'build')
 
+    ## Nesting
+
     Commands can be nested, similar to $() subshells in bash. The sub-commands will be executed
     right away and their output will undergo the usual splitting:
 
@@ -149,22 +168,14 @@ class Command(object):
     >>> Command('echo "abcd"').pipe(wc('-c')).stdout()
     '5'
 
-    Programs will be looked up in PATH or absolute paths to programs can be supplied as well:
+    ## Verbosity
 
-    >>> Command('/usr/bin/env').executable
-    PosixPath('/usr/bin/env')
+    The --verbose flag is intended for users and will show all command lines executed in the
+    foreground with fg(), it'll also include output of programs run with fg(quiet=True). Commands
+    executed in the background are not shown.
 
-    ## Executing
-
-    Once built, commands can be executed using `Command.fg()`, to run the command in the
-    foreground, visible to the user, or `Command.stdout()` to capture the stdout.
-
-    By default, any non-zero exit code will trigger an Exception and stderr is always directed to
-    the user.
-
-    More complex use-cases are supported with the `Command.run()` or `Command.stream()` methods.
-    A Command instance can also be passed to the subprocess.run() for any use-cases unsupported by
-    this API.
+    For script developers, the --very-verbose flag will print full details and output of all
+    executed command lines, including those run hidden from the user.
     """
 
     def __init__(
@@ -176,170 +187,43 @@ class Command(object):
         self.args = Command.__parse_cmd(args)
         self.stdin_cmd = stdin_cmd
         self.env_vars = env_vars
-        if len(self.args) > 0:
-            executable = self.args[0]
-            if Path(executable).exists():
-                self.executable = Path(executable)
-            else:
-                path = shutil.which(executable)
-                if not path:
-                    raise ValueError(f'Required program "{executable}" cannot be found in PATH.')
-                elif very_verbose():
-                    print(f"Using {executable}: {path}")
-                self.executable = Path(path)
 
-    ### High level execution API
+    ### Builder API to construct commands
 
-    def fg(
-        self,
-        quiet: bool = False,
-        check: bool = True,
-        dry_run: bool = False,
-    ) -> int:
+    def with_args(self, *args: Any):
+        """Returns a new Command with added arguments.
+
+        >>> cargo = Command('cargo')
+        >>> cargo.with_args('clippy')
+        Command('cargo', 'clippy')
         """
-        Runs a program in the foreground with output streamed to the user.
-
-        >>> Command('true').fg()
-        0
-
-        Non-zero exit codes will trigger an Exception
-        >>> Command('false').fg()
-        Traceback (most recent call last):
-        ...
-        subprocess.CalledProcessError: Command 'false' returned non-zero exit status 1.
-
-        But can be disabled:
-
-        >>> Command('false').fg(check=False)
-        1
-
-        Arguments:
-            quiet: Do not show stdout unless the program failed.
-            check: Raise an exception if the program returned an error code.
-
-        Returns: The return code of the program.
-        """
-        self.__debug_print()
-        if dry_run:
-            print(f"Not running: {self}")
-            return 0
-
-        if quiet:
-            result = subprocess.run(
-                self.args,
-                stdout=PIPE,
-                stderr=STDOUT,
-                stdin=self.__stdin_stream(),
-                env={**os.environ, **self.env_vars},
-                text=True,
-            )
-        else:
-            result = subprocess.run(
-                self.args,
-                stdin=self.__stdin_stream(),
-                env={**os.environ, **self.env_vars},
-                text=True,
-            )
-
-        if result.returncode != 0:
-            if quiet and check and result.stdout:
-                print(result.stdout)
-            if check:
-                raise subprocess.CalledProcessError(result.returncode, str(self), result.stdout)
-        return result.returncode
-
-    def success(self):
-        return self.fg(check=False, quiet=True) == 0
-
-    def stdout(self, check: bool = True):
-        """
-        Runs a program and returns stdout. Stderr is still directed to the user.
-        """
-        return self.run(stderr=None, check=check).stdout.strip()
-
-    def lines(self):
-        """
-        Runs a program and returns stdout line by line. Stderr is still directed to the user.
-        """
-        return self.stdout().splitlines()
-
-    def write_to(self, filename: Path):
-        """
-        Writes all program output (stdout and stderr) to the provided file.
-        """
-        with open(filename, "w") as file:
-            file.write(self.run(stderr=STDOUT).stdout)
-
-    def append_to(self, filename: Path):
-        """
-        Appends all program output (stdout and stderr) to the provided file.
-        """
-        with open(filename, "a") as file:
-            file.write(self.run(stderr=STDOUT).stdout)
-
-    def pipe(self, *args: Any):
-        """
-        Pipes the output of this command into another process.
-
-        The target can either be another Command or the argument list to build a new command.
-        """
-        if len(args) == 1 and isinstance(args[0], Command):
-            cmd = Command(stdin_cmd=self)
-            cmd.args = args[0].args
-            cmd.env_vars = self.env_vars.copy()
-            return cmd
-        else:
-            return Command(*args, stdin_cmd=self, env_vars=self.env_vars)
-
-    ### Lower level execution API
-
-    def run(self, check: bool = True, stderr: Optional[int] = PIPE) -> CommandResult:
-        """
-        Runs a program with stdout, stderr and error code returned.
-
-        >>> Command('echo', 'Foo').run()
-        CommandResult(stdout='Foo\\n', stderr='', returncode=0)
-
-        Non-zero exit codes will trigger an Exception by default.
-
-        Arguments:
-            check: Raise an exception if the program returned an error code.
-
-        Returns: CommandResult(stdout, stderr, returncode)
-        """
-        self.__debug_print()
-        result = subprocess.run(
-            self.args,
-            stdout=subprocess.PIPE,
-            stderr=stderr,
-            stdin=self.__stdin_stream(),
-            env={**os.environ, **self.env_vars},
-            check=check,
-            text=True,
-        )
-        return CommandResult(result.stdout, result.stderr, result.returncode)
-
-    def stream(self, stderr: Optional[int] = PIPE) -> "subprocess.Popen[str]":
-        """
-        Runs a program and returns the Popen object of the running process.
-        """
-        self.__debug_print()
-        return subprocess.Popen(
-            self.args,
-            stdout=subprocess.PIPE,
-            stderr=stderr,
-            stdin=self.__stdin_stream(),
-            env={**os.environ, **self.env_vars},
-            text=True,
-        )
-
-    def env(self, key: str, value: str):
         cmd = Command()
-        cmd.args = self.args
-        cmd.env_vars = {**self.env_vars, key: value}
+        cmd.args = [*self.args, *Command.__parse_cmd(args)]
+        cmd.env_vars = self.env_vars
         return cmd
 
-    def add_path(self, new_path: str):
+    def __call__(self, *args: Any):
+        """Shorthand for Command.with_args"""
+        return self.with_args(*args)
+
+    def with_env(self, key: str, value: Optional[str]):
+        """
+        Returns a command with an added env variable.
+
+        The variable is removed if value is None.
+        """
+        cmd = Command()
+        cmd.args = self.args
+        if value is not None:
+            cmd.env_vars = {**self.env_vars, key: value}
+        else:
+            cmd.env_vars = {**self.env_vars}
+            if key in cmd.env_vars:
+                del cmd.env_vars[key]
+        return cmd
+
+    def with_path_env(self, new_path: str):
+        """Returns a command with a path added to the PATH variable."""
         path_var = self.env_vars.get("PATH", os.environ.get("PATH", ""))
         cmd = Command()
         cmd.args = self.args
@@ -367,21 +251,130 @@ class Command(object):
         for batch in batched(arguments, batch_size):
             yield self(*batch)
 
-    def __call__(self, *args: Any):
-        """Returns a new Command with added arguments.
-
-        >>> cargo = Command('cargo')
-        >>> cargo('clippy')
-        Command('cargo', 'clippy')
+    def pipe(self, *args: Any):
         """
-        cmd = Command()
-        cmd.args = [*self.args, *Command.__parse_cmd(args)]
-        cmd.env_vars = self.env_vars
-        return cmd
+        Pipes the output of this command into another process.
 
-    def __iter__(self):
-        """Allows a `Command` to be treated like a list of arguments for subprocess.run()."""
-        return iter(self.args)
+        The target can either be another Command or the argument list to build a new command.
+        """
+        if len(args) == 1 and isinstance(args[0], Command):
+            cmd = Command(stdin_cmd=self)
+            cmd.args = args[0].args
+            cmd.env_vars = self.env_vars.copy()
+            return cmd
+        else:
+            return Command(*args, stdin_cmd=self, env_vars=self.env_vars)
+
+    ### Executing programs in the foreground
+
+    def run_foreground(self, quiet: bool = False, check: bool = True, dry_run: bool = False):
+        """
+        Runs a program in the foreground with output streamed to the user.
+
+        >>> Command('true').fg()
+        0
+
+        Non-zero exit codes will trigger an Exception
+
+        >>> Command('false').fg()
+        Traceback (most recent call last):
+        ...
+        subprocess.CalledProcessError: Command 'false' returned non-zero exit status 1.
+
+        But can be disabled:
+
+        >>> Command('false').fg(check=False)
+        1
+
+        Output can be hidden by setting quiet=True:
+
+        >>> Command("echo foo").fg(quiet=True)
+        0
+
+        This will hide the programs stdout and stderr unless the program fails.
+
+        Arguments:
+            quiet: Do not show stdout/stderr unless the program failed.
+            check: Raise an exception if the program returned an error code.
+
+        Returns: The return code of the program.
+        """
+        if dry_run:
+            print(f"Not running: {self}")
+            return 0
+
+        if verbose():
+            print(f"$ {self}")
+        if quiet:
+            result = self.__run(stdout=PIPE, stderr=STDOUT, check=False)
+        else:
+            result = self.__run(stdout=None, stderr=None, check=False)
+
+        # If stdout was capured, print it if the program failed (or verbose is enabled).
+        # Skip this if very_verbose is enabled since __run will print captured output already.
+        if result.stdout and (verbose() or result.returncode != 0) and not very_verbose():
+            print(result.stdout)
+
+        if result.returncode != 0:
+            if check:
+                raise subprocess.CalledProcessError(result.returncode, str(self), result.stdout)
+        return result.returncode
+
+    def fg(self, quiet: bool = False, check: bool = True, dry_run: bool = False):
+        """
+        Shorthand for Command.run_foreground()
+        """
+        return self.run_foreground(quiet, check, dry_run)
+
+    def write_to(self, filename: Path):
+        """
+        Writes stdout to the provided file.
+        """
+        if verbose():
+            print(f"$ {self} > {filename}")
+        with open(filename, "w") as file:
+            file.write(self.__run(stdout=PIPE, stderr=PIPE).stdout)
+
+    def append_to(self, filename: Path):
+        """
+        Appends stdout to the provided file.
+        """
+        if verbose():
+            print(f"$ {self} >> {filename}")
+        with open(filename, "a") as file:
+            file.write(self.__run(stdout=PIPE, stderr=PIPE).stdout)
+
+    ### API for executing commands hidden from the user
+
+    def success(self):
+        """
+        Returns True if the program succeeded (i.e. returned 0).
+
+        The program will not be visible to the user unless --very-verbose is specified.
+        """
+        if very_verbose():
+            print(f"$ {self}")
+        return self.__run(stdout=PIPE, stderr=PIPE, check=False).returncode == 0
+
+    def stdout(self, check: bool = True):
+        """
+        Runs a program and returns stdout.
+
+        The program will not be visible to the user unless --very-verbose is specified.
+        """
+        if very_verbose():
+            print(f"$ {self}")
+        return self.__run(stdout=PIPE, stderr=PIPE, check=check).stdout.strip()
+
+    def lines(self, check: bool = True):
+        """
+        Runs a program and returns stdout line by line.
+
+        The program will not be visible to the user unless --very-verbose is specified.
+        """
+        return self.stdout(check=check).splitlines()
+
+    ### Utilities
 
     def __str__(self):
         def fmt_arg(arg: str):
@@ -401,16 +394,56 @@ class Command(object):
             stdin = ", stdin_cmd=" + repr(self.stdin_cmd)
         return f"Command({', '.join(repr(a) for a in self.args)}{stdin})"
 
-    ### Private utilities
+    ### Private implementation details
+
+    def __run(
+        self,
+        stdout: Optional[int],
+        stderr: Optional[int],
+        check: bool = True,
+    ) -> CommandResult:
+        "Run this command in subprocess.run()"
+        if very_verbose():
+            print(f"cwd: {Path().resolve()}")
+            for k, v in self.env_vars.items():
+                print(f"env: {k}={v}")
+        result = subprocess.run(
+            self.args,
+            stdout=stdout,
+            stderr=stderr,
+            stdin=self.__stdin_stream(),
+            env={**os.environ, **self.env_vars},
+            check=check,
+            text=True,
+        )
+        if very_verbose():
+            if result.stdout:
+                for line in result.stdout.splitlines():
+                    print("stdout:", line)
+                for line in result.stderr.splitlines():
+                    print("stderr:", line)
+                print("returncode:", result.returncode)
+        if check and result.returncode != 0:
+            raise subprocess.CalledProcessError(result.returncode, str(self), result.stdout)
+        return CommandResult(result.stdout, result.stderr, result.returncode)
 
     def __stdin_stream(self):
         if self.stdin_cmd:
-            return self.stdin_cmd.stream().stdout
+            return self.stdin_cmd.__popen().stdout
         return None
 
-    def __debug_print(self):
-        if verbose():
-            print("$", repr(self) if very_verbose() else str(self))
+    def __popen(self, stderr: Optional[int] = PIPE) -> "subprocess.Popen[str]":
+        """
+        Runs a program and returns the Popen object of the running process.
+        """
+        return subprocess.Popen(
+            self.args,
+            stdout=subprocess.PIPE,
+            stderr=stderr,
+            stdin=self.__stdin_stream(),
+            env={**os.environ, **self.env_vars},
+            text=True,
+        )
 
     @staticmethod
     def __shell_like_split(value: str):
@@ -456,7 +489,7 @@ class ParallelCommands(object):
     def __init__(self, *commands: Command):
         self.commands = commands
 
-    def fg(self, quiet: bool = True, check: bool = True):
+    def fg(self, quiet: bool = False, check: bool = True):
         with ThreadPool(os.cpu_count()) as pool:
             return pool.map(lambda command: command.fg(quiet=quiet, check=check), self.commands)
 
@@ -465,8 +498,7 @@ class ParallelCommands(object):
             return pool.map(lambda command: command.stdout(), self.commands)
 
     def success(self):
-        results = self.fg(check=False, quiet=False)
-        print(results)
+        results = self.fg(check=False, quiet=True)
         return all(result == 0 for result in results)
 
 
@@ -549,9 +581,8 @@ def run_commands(
     function arguments via argh: https://pythonhosted.org/argh
     """
     try:
-        # Add global verbose arguments
         parser = argparse.ArgumentParser(usage=usage)
-        add_verbose_args(parser)
+        add_common_args(parser)
 
         # Add provided commands to parser. Do not use sub-commands if we just got one function.
         if functions:
@@ -569,31 +600,43 @@ def run_commands(
         sys.exit(1)
 
 
-def verbose():
-    return very_verbose() or "-v" in sys.argv or "--verbose" in sys.argv
+@functools.lru_cache(None)
+def parse_common_args():
+    """
+    Parse args common to all scripts
+
+    These args are parsed separately of the run_main/run_commands method so we can access
+    verbose/etc before the commands arguments are parsed.
+    """
+    parser = argparse.ArgumentParser()
+    add_common_args(parser)
+    return parser.parse_known_args()[0]
 
 
-def very_verbose():
-    return "-vv" in sys.argv or "--very-verbose" in sys.argv
-
-
-def add_verbose_args(parser: argparse.ArgumentParser):
-    # This just serves as documentation to argparse. The verbose variables are directly
-    # parsed from argv above to ensure they are accessible early.
+def add_common_args(parser: argparse.ArgumentParser):
+    "These args are added to all commands."
     parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
         default=False,
-        help="Print debug output",
+        help="Print more details about the commands this script is running.",
     )
     parser.add_argument(
         "--very-verbose",
         "-vv",
         action="store_true",
         default=False,
-        help="Print more debug output",
+        help="Print detailed debug information for script developers.",
     )
+
+
+def verbose():
+    return very_verbose() or parse_common_args().verbose
+
+
+def very_verbose():
+    return parse_common_args().very_verbose
 
 
 def all_tracked_files():
@@ -620,7 +663,7 @@ def find_scripts(path: Path, shebang: str):
             yield file
 
 
-def confirm(message: str, default=False):
+def confirm(message: str, default: bool = False):
     print(message, "[y/N]" if default == False else "[Y/n]", end=" ", flush=True)
     response = sys.stdin.readline().strip()
     if response in ("y", "Y"):
