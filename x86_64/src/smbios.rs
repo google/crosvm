@@ -74,7 +74,7 @@ fn compute_checksum<T: Copy>(v: &T) -> u8 {
 }
 
 #[repr(packed)]
-#[derive(Default, Copy)]
+#[derive(Default, Clone, Copy)]
 pub struct Smbios23Intermediate {
     pub signature: [u8; 5usize],
     pub checksum: u8,
@@ -86,14 +86,8 @@ pub struct Smbios23Intermediate {
 
 unsafe impl data_model::DataInit for Smbios23Intermediate {}
 
-impl Clone for Smbios23Intermediate {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
 #[repr(packed)]
-#[derive(Default, Copy)]
+#[derive(Default, Clone, Copy)]
 pub struct Smbios23Entrypoint {
     pub signature: [u8; 4usize],
     pub checksum: u8,
@@ -108,14 +102,8 @@ pub struct Smbios23Entrypoint {
 
 unsafe impl data_model::DataInit for Smbios23Entrypoint {}
 
-impl Clone for Smbios23Entrypoint {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
 #[repr(packed)]
-#[derive(Default, Copy)]
+#[derive(Default, Clone, Copy)]
 pub struct Smbios30Entrypoint {
     pub signature: [u8; 5usize],
     pub checksum: u8,
@@ -128,16 +116,11 @@ pub struct Smbios30Entrypoint {
     pub max_size: u32,
     pub physptr: u64,
 }
+
 unsafe impl data_model::DataInit for Smbios30Entrypoint {}
 
-impl Clone for Smbios30Entrypoint {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
 #[repr(packed)]
-#[derive(Default, Copy)]
+#[derive(Default, Clone, Copy)]
 pub struct SmbiosBiosInfo {
     pub typ: u8,
     pub length: u8,
@@ -152,16 +135,10 @@ pub struct SmbiosBiosInfo {
     pub characteristics_ext2: u8,
 }
 
-impl Clone for SmbiosBiosInfo {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
 unsafe impl data_model::DataInit for SmbiosBiosInfo {}
 
 #[repr(packed)]
-#[derive(Default, Copy)]
+#[derive(Default, Clone, Copy)]
 pub struct SmbiosSysInfo {
     pub typ: u8,
     pub length: u8,
@@ -174,12 +151,6 @@ pub struct SmbiosSysInfo {
     pub wake_up_type: u8,
     pub sku: u8,
     pub family: u8,
-}
-
-impl Clone for SmbiosSysInfo {
-    fn clone(&self) -> Self {
-        *self
-    }
 }
 
 unsafe impl data_model::DataInit for SmbiosSysInfo {}
