@@ -12,7 +12,6 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
 use std::convert::TryFrom;
-use std::i64;
 use std::io::Read;
 use std::mem;
 use std::mem::size_of;
@@ -20,7 +19,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
 
 use anyhow::Context;
 use base::debug;
@@ -86,8 +84,6 @@ pub enum GpuMode {
     #[serde(rename = "gfxstream")]
     ModeGfxstream,
 }
-
-pub const FENCE_POLL_INTERVAL: Duration = Duration::from_millis(1);
 
 #[derive(Copy, Clone, Debug)]
 pub struct VirtioScanoutBlobData {
@@ -737,14 +733,6 @@ impl Frontend {
         self.return_cursor_descriptors.pop_front()
     }
 
-    pub fn fence_poll(&mut self) {
-        self.virtio_gpu.fence_poll();
-    }
-
-    pub fn has_pending_fences(&self) -> bool {
-        !self.fence_state.lock().descs.is_empty()
-    }
-
     pub fn event_poll(&self) {
         self.virtio_gpu.event_poll();
     }
@@ -822,15 +810,7 @@ impl Worker {
         // Declare this outside the loop so we don't keep allocating and freeing the vector.
         let mut process_resource_bridge = Vec::with_capacity(self.resource_bridges.len());
         'wait: loop {
-            // If there are outstanding fences, wake up early to poll them.
-            let duration =
-                if self.state.virtio_gpu.needs_fence_poll() && self.state.has_pending_fences() {
-                    FENCE_POLL_INTERVAL
-                } else {
-                    Duration::new(i64::MAX as u64, 0)
-                };
-
-            let events = match wait_ctx.wait_timeout(duration) {
+            let events = match wait_ctx.wait() {
                 Ok(v) => v,
                 Err(e) => {
                     error!("failed polling for events: {}", e);
@@ -897,10 +877,6 @@ impl Worker {
 
             if ctrl_available && self.state.process_queue(&self.mem, &self.ctrl_queue) {
                 signal_used_ctrl = true;
-            }
-
-            if self.state.virtio_gpu.needs_fence_poll() {
-                self.state.fence_poll();
             }
 
             // Process the entire control queue before the resource bridge in case a resource is

@@ -303,14 +303,14 @@ pub type RutabagaResult<T> = std::result::Result<T, RutabagaError>;
 
 /// Flags for virglrenderer.  Copied from virglrenderer bindings.
 const VIRGLRENDERER_USE_EGL: u32 = 1 << 0;
-pub const VIRGLRENDERER_THREAD_SYNC: u32 = 1 << 1;
+const VIRGLRENDERER_THREAD_SYNC: u32 = 1 << 1;
 const VIRGLRENDERER_USE_GLX: u32 = 1 << 2;
 const VIRGLRENDERER_USE_SURFACELESS: u32 = 1 << 3;
 const VIRGLRENDERER_USE_GLES: u32 = 1 << 4;
 const VIRGLRENDERER_USE_EXTERNAL_BLOB: u32 = 1 << 5;
 const VIRGLRENDERER_VENUS: u32 = 1 << 6;
 const VIRGLRENDERER_NO_VIRGL: u32 = 1 << 7;
-pub const VIRGLRENDERER_USE_ASYNC_FENCE_CB: u32 = 1 << 8;
+const VIRGLRENDERER_USE_ASYNC_FENCE_CB: u32 = 1 << 8;
 const VIRGLRENDERER_RENDER_SERVER: u32 = 1 << 9;
 const VIRGLRENDERER_DRM: u32 = 1 << 10;
 
@@ -421,7 +421,7 @@ const GFXSTREAM_RENDERER_FLAGS_USE_GLES: u32 = 1 << 4;
 const GFXSTREAM_RENDERER_FLAGS_NO_VK_BIT: u32 = 1 << 5;
 const GFXSTREAM_RENDERER_FLAGS_GUEST_USES_ANGLE: u32 = 1 << 21;
 const GFXSTREAM_RENDERER_FLAGS_VULKAN_NATIVE_SWAPCHAIN_BIT: u32 = 1 << 22;
-pub const GFXSTREAM_RENDERER_FLAGS_ASYNC_FENCE_CB: u32 = 1 << 23;
+const GFXSTREAM_RENDERER_FLAGS_ASYNC_FENCE_CB: u32 = 1 << 23;
 
 /// gfxstream flag struct.
 #[derive(Copy, Clone, Default)]

@@ -8,7 +8,6 @@
 
 #![cfg(feature = "gfxstream")]
 
-use std::cell::RefCell;
 use std::convert::TryInto;
 use std::mem::size_of;
 use std::mem::transmute;
@@ -19,7 +18,6 @@ use std::os::raw::c_uint;
 use std::os::raw::c_void;
 use std::ptr::null;
 use std::ptr::null_mut;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use base::ExternalMapping;
@@ -108,7 +106,6 @@ extern "C" {
     // forwarding and the notification of new API calls forwarded by the guest, unless they
     // correspond to minigbm resource targets (PIPE_TEXTURE_2D), in which case they create globally
     // visible shared GL textures to support gralloc.
-    fn pipe_virgl_renderer_poll();
     fn pipe_virgl_renderer_resource_create(
         args: *mut virgl_renderer_resource_create_args,
         iov: *mut iovec,
@@ -198,11 +195,7 @@ extern "C" {
 }
 
 /// The virtio-gpu backend state tracker which supports accelerated rendering.
-pub struct Gfxstream {
-    fence_state: Rc<RefCell<FenceState>>,
-    fence_handler: RutabagaFenceHandler,
-    use_async_fence_cb: bool,
-}
+pub struct Gfxstream {}
 
 struct GfxstreamContext {
     ctx_id: u32,
@@ -305,16 +298,9 @@ impl Gfxstream {
         gfxstream_flags: GfxstreamFlags,
         fence_handler: RutabagaFenceHandler,
     ) -> RutabagaResult<Box<dyn RutabagaComponent>> {
-        let fence_state = Rc::new(RefCell::new(FenceState { latest_fence: 0 }));
-
-        let use_async_fence_cb =
-            (u32::from(gfxstream_flags) & GFXSTREAM_RENDERER_FLAGS_ASYNC_FENCE_CB) != 0;
-
         let cookie: *mut VirglCookie = Box::into_raw(Box::new(VirglCookie {
-            fence_state: Rc::clone(&fence_state),
             render_server_fd: None,
             fence_handler: Some(fence_handler.clone()),
-            use_async_fence_cb,
         }));
 
         unsafe {
@@ -329,11 +315,7 @@ impl Gfxstream {
             );
         }
 
-        Ok(Box::new(Gfxstream {
-            fence_state,
-            fence_handler,
-            use_async_fence_cb,
-        }))
+        Ok(Box::new(Gfxstream {}))
     }
 
     fn map_info(&self, resource_id: u32) -> RutabagaResult<u32> {
@@ -385,20 +367,7 @@ impl RutabagaComponent for Gfxstream {
 
     fn create_fence(&mut self, fence: RutabagaFence) -> RutabagaResult<()> {
         let ret = unsafe { pipe_virgl_renderer_create_fence(fence.fence_id as i32, fence.ctx_id) };
-
-        // When async_fence_cb is enabled, gfxstream directly calls the write_fence callback in
-        // pipe_virgl_renderer_create_fence.
-        // TODO: this can be removed when timer-based fence handling is removed.
-        if !self.use_async_fence_cb {
-            self.fence_handler.call(fence);
-        }
-
         ret_to_res(ret)
-    }
-
-    fn poll(&self) -> u32 {
-        unsafe { pipe_virgl_renderer_poll() };
-        self.fence_state.borrow().latest_fence
     }
 
     fn create_3d(

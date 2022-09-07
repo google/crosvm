@@ -137,28 +137,19 @@ pub fn transfer_2d<'a, S: Iterator<Item = VolatileSlice<'a>>>(
 }
 
 pub struct Rutabaga2D {
-    latest_created_fence_id: u32,
     fence_handler: RutabagaFenceHandler,
 }
 
 impl Rutabaga2D {
     pub fn init(fence_handler: RutabagaFenceHandler) -> RutabagaResult<Box<dyn RutabagaComponent>> {
-        Ok(Box::new(Rutabaga2D {
-            latest_created_fence_id: 0,
-            fence_handler,
-        }))
+        Ok(Box::new(Rutabaga2D { fence_handler }))
     }
 }
 
 impl RutabagaComponent for Rutabaga2D {
     fn create_fence(&mut self, fence: RutabagaFence) -> RutabagaResult<()> {
-        self.latest_created_fence_id = fence.fence_id as u32;
         self.fence_handler.call(fence);
         Ok(())
-    }
-
-    fn poll(&self) -> u32 {
-        self.latest_created_fence_id
     }
 
     fn create_3d(

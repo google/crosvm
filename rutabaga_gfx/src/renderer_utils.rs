@@ -4,12 +4,10 @@
 
 //! renderer_utils: Utility functions and structs used by virgl_renderer and gfxstream.
 
-use std::cell::RefCell;
 use std::os::raw::c_int;
 use std::os::raw::c_void;
 use std::panic::catch_unwind;
 use std::process::abort;
-use std::rc::Rc;
 
 use base::IntoRawDescriptor;
 use base::SafeDescriptor;
@@ -40,29 +38,9 @@ pub fn ret_to_res(ret: i32) -> RutabagaResult<()> {
     }
 }
 
-pub struct FenceState {
-    pub latest_fence: u32,
-}
-
-impl FenceState {
-    pub fn write(&mut self, latest_fence: u32, fence_handler: &RutabagaFenceHandler) {
-        if latest_fence > self.latest_fence {
-            self.latest_fence = latest_fence;
-            fence_handler.call(RutabagaFence {
-                flags: RUTABAGA_FLAG_FENCE,
-                fence_id: latest_fence as u64,
-                ctx_id: 0,
-                ring_idx: 0,
-            });
-        }
-    }
-}
-
 pub struct VirglCookie {
-    pub fence_state: Rc<RefCell<FenceState>>,
     pub render_server_fd: Option<SafeDescriptor>,
     pub fence_handler: Option<RutabagaFenceHandler>,
-    pub use_async_fence_cb: bool,
 }
 
 pub unsafe extern "C" fn write_fence(cookie: *mut c_void, fence: u32) {
@@ -70,22 +48,14 @@ pub unsafe extern "C" fn write_fence(cookie: *mut c_void, fence: u32) {
         assert!(!cookie.is_null());
         let cookie = &*(cookie as *mut VirglCookie);
 
-        if cookie.use_async_fence_cb {
-            // Call fence completion callback
-            if let Some(handler) = &cookie.fence_handler {
-                handler.call(RutabagaFence {
-                    flags: RUTABAGA_FLAG_FENCE,
-                    fence_id: fence as u64,
-                    ctx_id: 0,
-                    ring_idx: 0,
-                });
-            }
-        } else {
-            // Track the most recent fence.
-            if let Some(handler) = &cookie.fence_handler {
-                let mut fence_state = cookie.fence_state.borrow_mut();
-                fence_state.write(fence, handler);
-            }
+        // Call fence completion callback
+        if let Some(handler) = &cookie.fence_handler {
+            handler.call(RutabagaFence {
+                flags: RUTABAGA_FLAG_FENCE,
+                fence_id: fence as u64,
+                ctx_id: 0,
+                ring_idx: 0,
+            });
         }
     })
     .unwrap_or_else(|_| abort())
@@ -101,11 +71,6 @@ pub extern "C" fn write_context_fence(
     catch_unwind(|| {
         assert!(!cookie.is_null());
         let cookie = unsafe { &*(cookie as *mut VirglCookie) };
-
-        // Per-context fencing is only supported when async fence handling is enabled.
-        // TODO(ryanneph): Synchronous fence handling via periodic polling will be removed
-        // shortly after all RutabagaComponents switch to using async_fence_cb.
-        assert!(cookie.use_async_fence_cb);
         if let Some(handler) = &cookie.fence_handler {
             handler.call(RutabagaFence {
                 flags: RUTABAGA_FLAG_FENCE | RUTABAGA_FLAG_INFO_RING_IDX,
