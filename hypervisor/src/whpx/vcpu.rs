@@ -1507,6 +1507,9 @@ mod tests {
         const EFER_SCE: u64 = 0x00000001;
         const EFER_LME: u64 = 0x00000100;
         const EFER_LMA: u64 = 0x00000400;
+        const X86_CR0_PE: u64 = 0x1;
+        const X86_CR0_PG: u64 = 0x80000000;
+        const X86_CR4_PAE: u64 = 0x20;
 
         let cpu_count = 1;
         let mem =
@@ -1519,12 +1522,18 @@ mod tests {
         assert_eq!(sregs.efer, 0);
 
         // Enable and activate long mode
+        sregs.cr0 |= X86_CR0_PE; // enable protected mode
+        sregs.cr0 |= X86_CR0_PG; // enable paging
+        sregs.cr4 |= X86_CR4_PAE; // enable physical address extension
         sregs.efer = EFER_LMA | EFER_LME;
         vcpu.set_sregs(&sregs).expect("failed to set sregs");
 
         // Verify that setting stuck
         let sregs = vcpu.get_sregs().expect("failed to get sregs");
         assert_eq!(sregs.efer, EFER_LMA | EFER_LME);
+        assert_eq!(sregs.cr0 & X86_CR0_PE, X86_CR0_PE);
+        assert_eq!(sregs.cr0 & X86_CR0_PG, X86_CR0_PG);
+        assert_eq!(sregs.cr4 & X86_CR4_PAE, X86_CR4_PAE);
 
         let mut efer_reg = vec![Register {
             id: MSR_EFER,
