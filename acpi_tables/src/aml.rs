@@ -163,8 +163,14 @@ pub type Byte = u8;
 
 impl Aml for Byte {
     fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
-        bytes.push(BYTEPREFIX);
-        bytes.push(*self);
+        match *self {
+            0 => ZERO.to_aml_bytes(bytes),
+            1 => ONE.to_aml_bytes(bytes),
+            _ => {
+                bytes.push(BYTEPREFIX);
+                bytes.push(*self);
+            }
+        }
     }
 }
 
@@ -172,8 +178,12 @@ pub type Word = u16;
 
 impl Aml for Word {
     fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
-        bytes.push(WORDPREFIX);
-        bytes.append(&mut self.to_le_bytes().to_vec());
+        if *self <= Byte::max_value().into() {
+            (*self as Byte).to_aml_bytes(bytes);
+        } else {
+            bytes.push(WORDPREFIX);
+            bytes.append(&mut self.to_le_bytes().to_vec());
+        }
     }
 }
 
@@ -181,8 +191,12 @@ pub type DWord = u32;
 
 impl Aml for DWord {
     fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
-        bytes.push(DWORDPREFIX);
-        bytes.append(&mut self.to_le_bytes().to_vec());
+        if *self <= Word::max_value().into() {
+            (*self as Word).to_aml_bytes(bytes);
+        } else {
+            bytes.push(DWORDPREFIX);
+            bytes.append(&mut self.to_le_bytes().to_vec());
+        }
     }
 }
 
@@ -190,8 +204,12 @@ pub type QWord = u64;
 
 impl Aml for QWord {
     fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
-        bytes.push(QWORDPREFIX);
-        bytes.append(&mut self.to_le_bytes().to_vec());
+        if *self <= DWord::max_value().into() {
+            (*self as DWord).to_aml_bytes(bytes);
+        } else {
+            bytes.push(QWORDPREFIX);
+            bytes.append(&mut self.to_le_bytes().to_vec());
+        }
     }
 }
 
@@ -347,27 +365,16 @@ impl Aml for EISAName {
     }
 }
 
-fn create_integer(v: usize, bytes: &mut Vec<u8>) {
-    if v == 0_usize {
-        ZERO.to_aml_bytes(bytes);
-    } else if v == 1_usize {
-        ONE.to_aml_bytes(bytes);
-    } else if v <= u8::max_value().into() {
-        (v as u8).to_aml_bytes(bytes);
-    } else if v <= u16::max_value().into() {
-        (v as u16).to_aml_bytes(bytes);
-    } else if v <= u32::max_value() as usize {
-        (v as u32).to_aml_bytes(bytes);
-    } else {
-        (v as u64).to_aml_bytes(bytes);
-    }
-}
-
 pub type Usize = usize;
 
 impl Aml for Usize {
     fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
-        create_integer(*self, bytes);
+        #[cfg(target_pointer_width = "16")]
+        (*self as u16).to_aml_bytes(bytes);
+        #[cfg(target_pointer_width = "32")]
+        (*self as u32).to_aml_bytes(bytes);
+        #[cfg(target_pointer_width = "64")]
+        (*self as u64).to_aml_bytes(bytes);
     }
 }
 
@@ -1739,6 +1746,70 @@ mod tests {
         0xdeca_fbad_deca_fbadu64.to_aml_bytes(&mut aml);
         assert_eq!(aml, [0x0e, 0xad, 0xfb, 0xca, 0xde, 0xad, 0xfb, 0xca, 0xde]);
         aml.clear();
+
+        // u8
+        0x00_u8.to_aml_bytes(&mut aml);
+        assert_eq!(aml, [0x00]);
+        aml.clear();
+        0x01_u8.to_aml_bytes(&mut aml);
+        assert_eq!(aml, [0x01]);
+        aml.clear();
+        0x86_u8.to_aml_bytes(&mut aml);
+        assert_eq!(aml, [0x0a, 0x86]);
+        aml.clear();
+
+        // u16
+        0x00_u16.to_aml_bytes(&mut aml);
+        assert_eq!(aml, [0x00]);
+        aml.clear();
+        0x01_u16.to_aml_bytes(&mut aml);
+        assert_eq!(aml, [0x01]);
+        aml.clear();
+        0x86_u16.to_aml_bytes(&mut aml);
+        assert_eq!(aml, [0x0a, 0x86]);
+        aml.clear();
+        0xF00D_u16.to_aml_bytes(&mut aml);
+        assert_eq!(aml, [0x0b, 0x0d, 0xf0]);
+        aml.clear();
+
+        // u32
+        0x00_u32.to_aml_bytes(&mut aml);
+        assert_eq!(aml, [0x00]);
+        aml.clear();
+        0x01_u32.to_aml_bytes(&mut aml);
+        assert_eq!(aml, [0x01]);
+        aml.clear();
+        0x86_u32.to_aml_bytes(&mut aml);
+        assert_eq!(aml, [0x0a, 0x86]);
+        aml.clear();
+        0xF00D_u32.to_aml_bytes(&mut aml);
+        assert_eq!(aml, [0x0b, 0x0d, 0xf0]);
+        aml.clear();
+        0xDECAF_u32.to_aml_bytes(&mut aml);
+        assert_eq!(aml, [0x0c, 0xaf, 0xec, 0x0d, 0x00]);
+        aml.clear();
+
+        // u64
+        0x00_u64.to_aml_bytes(&mut aml);
+        assert_eq!(aml, [0x00]);
+        aml.clear();
+        0x01_u64.to_aml_bytes(&mut aml);
+        assert_eq!(aml, [0x01]);
+        aml.clear();
+        0x86_u64.to_aml_bytes(&mut aml);
+        assert_eq!(aml, [0x0a, 0x86]);
+        aml.clear();
+        0xF00D_u64.to_aml_bytes(&mut aml);
+        assert_eq!(aml, [0x0b, 0x0d, 0xf0]);
+        aml.clear();
+        0xDECAF_u64.to_aml_bytes(&mut aml);
+        assert_eq!(aml, [0x0c, 0xaf, 0xec, 0x0d, 0x00]);
+        aml.clear();
+        0xDECAFC0FFEE_u64.to_aml_bytes(&mut aml);
+        assert_eq!(aml, [0x0e, 0xee, 0xff, 0xc0, 0xaf, 0xec, 0x0d, 0x00, 0x00]);
+        aml.clear();
+
+        // usize
         0x00_usize.to_aml_bytes(&mut aml);
         assert_eq!(aml, [0x00]);
         aml.clear();
