@@ -636,18 +636,28 @@ impl URingContext {
                 self.in_flight.fetch_add(added, Ordering::Release);
             }
             Err(e) => {
-                self.submit_ring.lock().fail_submit(added);
+                // An EBUSY return means that some completed events must be processed before
+                // submitting more, so wait for some to finish without pushing the new sqes in
+                // that case.
+                // An EINTR means we successfully submitted the events but were interrupted while
+                // waiting, so just wait again.
+                // Any other error should be propagated up.
 
-                if wait_nr == 0 || e != libc::EBUSY {
+                if e != libc::EINTR {
+                    self.submit_ring.lock().fail_submit(added);
+                }
+
+                if wait_nr == 0 || (e != libc::EBUSY && e != libc::EINTR) {
                     return Err(Error::RingEnter(e));
                 }
 
-                // An ebusy return means that some completed events must be processed before
-                // submitting more, wait for some to finish without pushing the new sqes in
-                // that case.
-                unsafe {
-                    io_uring_enter(self.ring_file.as_raw_fd(), 0, wait_nr, flags)
-                        .map_err(Error::RingEnter)?;
+                loop {
+                    // Safe because the only memory modified is in the completion queue.
+                    let res =
+                        unsafe { io_uring_enter(self.ring_file.as_raw_fd(), 0, wait_nr, flags) };
+                    if res != Err(libc::EINTR) {
+                        return res.map_err(Error::RingEnter);
+                    }
                 }
             }
         }
