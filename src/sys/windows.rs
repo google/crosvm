@@ -80,6 +80,7 @@ use devices::tsc::standard_deviation;
 use devices::tsc::TscSyncMitigations;
 use devices::virtio;
 use devices::virtio::block::block::DiskOption;
+#[cfg(feature = "balloon")]
 use devices::virtio::BalloonMode;
 use devices::virtio::Console;
 #[cfg(feature = "slirp")]
@@ -413,6 +414,7 @@ fn create_console_device(cfg: &Config, param: &SerialParameters) -> DeviceResult
 }
 
 #[allow(dead_code)] // TODO(b/234031017): balloon device startup gets stuck on Windows
+#[cfg(feature = "balloon")]
 fn create_balloon_device(
     cfg: &Config,
     balloon_device_tube: Tube,
