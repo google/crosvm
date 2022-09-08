@@ -19,6 +19,6 @@
         "--mount=type=tmpfs,destination=/var/empty",
     ],
     "containerUser": "crosvmdev",
-    "updateContentCommand": "sudo chown -R --reference=/workspaces/crosvm /home/crosvmdev",
+    "updateContentCommand": "sudo chown -R --reference=/workspaces/crosvm /home/crosvmdev /cache /scratch",
     "postCreateCommand": "sudo chmod 666 /dev/kvm",
 }
