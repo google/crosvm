@@ -2,6 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::arch::x86_64::CpuidResult;
+use std::arch::x86_64::__cpuid;
+use std::arch::x86_64::__cpuid_count;
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
 use acpi_tables::aml;
 use acpi_tables::facs::FACS;
 use acpi_tables::rsdp::RSDP;
@@ -14,11 +20,6 @@ use devices::ACPIPMResource;
 use devices::PciAddress;
 use devices::PciInterruptPin;
 use devices::PciRoot;
-use std::arch::x86_64::CpuidResult;
-use std::arch::x86_64::__cpuid;
-use std::arch::x86_64::__cpuid_count;
-use std::collections::BTreeMap;
-use std::sync::Arc;
 use sync::Mutex;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;

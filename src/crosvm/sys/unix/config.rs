@@ -329,6 +329,10 @@ mod tests {
     use std::path::PathBuf;
 
     use argh::FromArgs;
+    #[cfg(feature = "gpu")]
+    use devices::virtio::DEFAULT_DISPLAY_HEIGHT;
+    #[cfg(feature = "gpu")]
+    use devices::virtio::DEFAULT_DISPLAY_WIDTH;
 
     use super::*;
     use crate::crosvm::config::from_key_values;
@@ -337,10 +341,6 @@ mod tests {
     use crate::crosvm::config::BindMount;
     use crate::crosvm::config::DEFAULT_TOUCH_DEVICE_HEIGHT;
     use crate::crosvm::config::DEFAULT_TOUCH_DEVICE_WIDTH;
-    #[cfg(feature = "gpu")]
-    use devices::virtio::DEFAULT_DISPLAY_HEIGHT;
-    #[cfg(feature = "gpu")]
-    use devices::virtio::DEFAULT_DISPLAY_WIDTH;
 
     #[cfg(feature = "audio_cras")]
     #[test]

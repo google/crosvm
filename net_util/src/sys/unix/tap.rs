@@ -13,10 +13,12 @@ use std::os::unix::io::AsRawFd;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::io::RawFd;
 
+use base::error;
 use base::ioctl_with_mut_ref;
 use base::ioctl_with_ref;
 use base::ioctl_with_val;
 use base::volatile_impl;
+use base::warn;
 use base::AsRawDescriptor;
 use base::Error as SysError;
 use base::FileReadWriteVolatile;
@@ -432,12 +434,23 @@ impl ReadNotifier for Tap {
 fn create_socket() -> Result<net::UdpSocket> {
     // This is safe since we check the return value.
     let sock = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
-    if sock < 0 {
-        return Err(Error::CreateSocket(SysError::last()));
+    if sock >= 0 {
+        // This is safe; nothing else will use or hold onto the raw sock descriptor.
+        return Ok(unsafe { net::UdpSocket::from_raw_fd(sock) });
     }
 
-    // This is safe; nothing else will use or hold onto the raw sock descriptor.
-    Ok(unsafe { net::UdpSocket::from_raw_fd(sock) })
+    warn!("INET not supported on this machine. Trying to open an INET6 socket.");
+
+    // Open an AF_INET6 socket
+    let sock6 = unsafe { libc::socket(libc::AF_INET6, libc::SOCK_DGRAM, 0) };
+    if sock6 >= 0 {
+        // This is safe; nothing else will use or hold onto the raw sock descriptor.
+        return Ok(unsafe { net::UdpSocket::from_raw_fd(sock6) });
+    }
+
+    error!("Neither INET nor INET6 supported on this machine");
+
+    return Err(Error::CreateSocket(SysError::last()));
 }
 
 /// Create a sockaddr_in from an IPv4 address, and expose it as
