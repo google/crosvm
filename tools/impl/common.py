@@ -443,9 +443,10 @@ class Command(object):
             if result.stdout:
                 for line in result.stdout.splitlines():
                     print("stdout:", line)
+            if result.stderr:
                 for line in result.stderr.splitlines():
                     print("stderr:", line)
-                print("returncode:", result.returncode)
+            print("returncode:", result.returncode)
         if check and result.returncode != 0:
             raise subprocess.CalledProcessError(result.returncode, str(self), result.stdout)
         return CommandResult(result.stdout, result.stderr, result.returncode)
@@ -513,11 +514,11 @@ class ParallelCommands(object):
         self.commands = commands
 
     def fg(self, quiet: bool = False, check: bool = True):
-        with ThreadPool(os.cpu_count()) as pool:
+        with ThreadPool(1 if very_verbose() else os.cpu_count()) as pool:
             return pool.map(lambda command: command.fg(quiet=quiet, check=check), self.commands)
 
     def stdout(self):
-        with ThreadPool(os.cpu_count()) as pool:
+        with ThreadPool(1 if very_verbose() else os.cpu_count()) as pool:
             return pool.map(lambda command: command.stdout(), self.commands)
 
     def success(self):
