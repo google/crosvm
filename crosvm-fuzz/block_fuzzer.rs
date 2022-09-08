@@ -9,8 +9,6 @@ use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::mem::size_of;
-use std::sync::atomic::AtomicUsize;
-use std::sync::Arc;
 
 use base::Event;
 use cros_fuzz::fuzz_target;
@@ -95,7 +93,6 @@ fuzz_target!(|bytes| {
     block.activate(
         mem,
         Interrupt::new(
-            Arc::new(AtomicUsize::new(0)),
             IrqLevelEvent::new().unwrap(),
             None,   // msix_config
             0xFFFF, // VIRTIO_MSI_NO_VECTOR
