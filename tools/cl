@@ -4,10 +4,12 @@
 # found in the LICENSE file.
 
 import functools
+import re
+import sys
 from os import chdir
 from pathlib import Path
-from impl.common import CROSVM_ROOT, GerritChange, confirm, run_commands, cmd
-import sys
+
+from impl.common import CROSVM_ROOT, GerritChange, cmd, confirm, run_commands
 
 USAGE = """\
 ./tools/cl [upload|rebase|status|prune]
@@ -66,8 +68,18 @@ class LocalChange(object):
             yield cls(sha_title[0], sha_title[1])
 
     @functools.cached_property
+    def change_id(self):
+        msg = git("log -1 --format=email", self.sha).stdout()
+        match = re.search("^Change-Id: (I[a-f0-9]+)", msg, re.MULTILINE)
+        if not match:
+            return None
+        return match.group(1)
+
+    @functools.cached_property
     def gerrit(self):
-        results = GerritChange.query("project:crosvm/crosvm", self.sha)
+        if not self.change_id:
+            return None
+        results = GerritChange.query("project:crosvm/crosvm", self.change_id)
         if len(results) > 1:
             raise Exception(f"Multiple gerrit changes found for commit {self.sha}: {self.title}.")
         return results[0] if results else None
@@ -127,7 +139,12 @@ def prerequisites():
 
 
 def print_branch_summary(branch: str):
-    print("Branch", branch, "tracking", get_upstream(branch))
+    upstream = get_upstream(branch)
+    if not upstream:
+        print("Branch", branch, "is not tracking an upstream branch")
+        print()
+        return
+    print("Branch", branch, "tracking", upstream)
     changes = [*LocalChange.list_changes(branch)]
     for change in changes:
         if change.gerrit:
