@@ -6,13 +6,8 @@
 
 mod guest_address;
 pub mod guest_memory;
-
-cfg_if::cfg_if! {
-    if #[cfg(unix)] {
-        pub mod udmabuf;
-        mod udmabuf_bindings;
-    }
-}
+pub mod udmabuf;
+mod udmabuf_bindings;
 
 pub use guest_address::*;
 pub use guest_memory::Error as GuestMemoryError;

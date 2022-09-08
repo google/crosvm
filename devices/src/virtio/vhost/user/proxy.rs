@@ -54,6 +54,7 @@ use vm_control::VmMemoryRequest;
 use vm_control::VmMemoryResponse;
 use vm_control::VmMemorySource;
 use vm_memory::udmabuf::UdmabufDriver;
+use vm_memory::udmabuf::UdmabufDriverTrait;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vmm_vhost::connection::socket::Endpoint as SocketEndpoint;

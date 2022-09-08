@@ -29,6 +29,7 @@ use rutabaga_gfx::RUTABAGA_MEM_HANDLE_TYPE_DMABUF;
 use sync::Mutex;
 use vm_control::VmMemorySource;
 use vm_memory::udmabuf::UdmabufDriver;
+use vm_memory::udmabuf::UdmabufDriverTrait;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 

@@ -6,7 +6,7 @@
 
 use std::fs::File;
 use std::fs::OpenOptions;
-use std::io;
+use std::io::Error as IoError;
 use std::os::raw::c_uint;
 use std::path::Path;
 
@@ -18,10 +18,11 @@ use base::MappedRegion;
 use base::SafeDescriptor;
 use data_model::flexible_array_impl;
 use data_model::FlexibleArrayWrapper;
-use remain::sorted;
-use thiserror::Error;
 
-use super::udmabuf_bindings::*;
+use crate::udmabuf::UdmabufDriverTrait;
+use crate::udmabuf::UdmabufError;
+use crate::udmabuf::UdmabufResult;
+use crate::udmabuf_bindings::*;
 use crate::GuestAddress;
 use crate::GuestMemory;
 use crate::GuestMemoryError;
@@ -38,22 +39,6 @@ ioctl_iow_nr!(
 
 flexible_array_impl!(udmabuf_create_list, udmabuf_create_item, count, list);
 type UdmabufCreateList = FlexibleArrayWrapper<udmabuf_create_list, udmabuf_create_item>;
-
-#[sorted]
-#[derive(Error, Debug)]
-pub enum UdmabufError {
-    #[error("failed to create buffer: {0:?}")]
-    DmabufCreationFail(io::Error),
-    #[error("failed to open udmabuf driver: {0:?}")]
-    DriverOpenFailed(io::Error),
-    #[error("failed to get region offset: {0:?}")]
-    InvalidOffset(GuestMemoryError),
-    #[error("All guest addresses must aligned to 4KiB")]
-    NotPageAligned,
-}
-
-/// The result of an operation in this file.
-pub type UdmabufResult<T> = std::result::Result<T, UdmabufError>;
 
 // Returns absolute offset within the memory corresponding to a particular guest address.
 // This offset is not relative to a particular mapping.
@@ -86,13 +71,12 @@ fn memory_offset(mem: &GuestMemory, guest_addr: GuestAddress, len: u64) -> Udmab
 /// udmabuf is a kernel driver that turns memfd pages into dmabufs. It can be used for
 /// zero-copy buffer sharing between the guest and host when guest memory is backed by
 /// memfd pages.
-pub struct UdmabufDriver {
+pub struct UnixUdmabufDriver {
     driver_fd: File,
 }
 
-impl UdmabufDriver {
-    /// Opens the udmabuf device on success.
-    pub fn new() -> UdmabufResult<UdmabufDriver> {
+impl UdmabufDriverTrait for UnixUdmabufDriver {
+    fn new() -> UdmabufResult<UnixUdmabufDriver> {
         const UDMABUF_PATH: &str = "/dev/udmabuf";
         let path = Path::new(UDMABUF_PATH);
         let fd = OpenOptions::new()
@@ -101,11 +85,10 @@ impl UdmabufDriver {
             .open(path)
             .map_err(UdmabufError::DriverOpenFailed)?;
 
-        Ok(UdmabufDriver { driver_fd: fd })
+        Ok(UnixUdmabufDriver { driver_fd: fd })
     }
 
-    /// Creates a dma-buf fd for the given scatter-gather list of guest memory pages (`iovecs`).
-    pub fn create_udmabuf(
+    fn create_udmabuf(
         &self,
         mem: &GuestMemory,
         iovecs: &[(GuestAddress, usize)],
@@ -136,7 +119,7 @@ impl UdmabufDriver {
         };
 
         if fd < 0 {
-            return Err(UdmabufError::DmabufCreationFail(io::Error::last_os_error()));
+            return Err(UdmabufError::DmabufCreationFail(IoError::last_os_error()));
         }
 
         // Safe because we validated the file exists.
@@ -186,7 +169,7 @@ mod tests {
             return;
         }
 
-        let driver_result = UdmabufDriver::new();
+        let driver_result = UnixUdmabufDriver::new();
 
         // Most kernels will not have udmabuf support.
         if driver_result.is_err() {
