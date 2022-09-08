@@ -143,6 +143,35 @@ impl Tube {
         })
     }
 
+    #[cfg(feature = "kiwi")]
+    fn send_proto<M: protobuf::Message>(&self, msg: &M) -> Result<()> {
+        let bytes = msg.write_to_bytes().map_err(Error::Proto)?;
+        let size_header = bytes.len();
+
+        let mut data_packet =
+            Cursor::new(Vec::with_capacity(mem::size_of::<usize>() + size_header));
+        data_packet
+            .write(&size_header.to_le_bytes())
+            .map_err(Error::SendIoBuf)?;
+        data_packet.write(&bytes).map_err(Error::SendIoBuf)?;
+        self.socket
+            .write_immutable(&data_packet.into_inner())
+            .map_err(Error::SendIo)?;
+
+        Ok(())
+    }
+
+    #[cfg(feature = "kiwi")]
+    fn recv_proto<M: protobuf::Message>(&self) -> Result<M> {
+        let mut header_bytes = [0u8; mem::size_of::<usize>()];
+        perform_read(&|buf| (&self.socket).read(buf), &mut header_bytes).map_err(Error::Recv)?;
+        let size_header = usize::from_le_bytes(header_bytes);
+
+        let mut proto_bytes = vec![0u8; size_header];
+        perform_read(&|buf| (&self.socket).read(buf), &mut proto_bytes).map_err(Error::Recv)?;
+        protobuf::Message::parse_from_bytes(&proto_bytes).map_err(Error::Proto)
+    }
+
     pub fn send<T: Serialize>(&self, msg: &T) -> Result<()> {
         serialize_and_send(|buf| self.socket.write_immutable(buf), msg, self.target_pid)
     }
@@ -409,5 +438,32 @@ impl DuplicateHandleTube {
         res.handle
             .map(|h| h as RawHandle)
             .ok_or(Error::BrokerDupDescriptor)
+    }
+}
+
+/// Wrapper for Tube used for sending and recving protos. The main usecase is to send a message
+/// without serialization bloat caused from `serde-json`.
+#[cfg(feature = "kiwi")]
+pub struct ProtoTube(Tube);
+
+#[cfg(feature = "kiwi")]
+impl ProtoTube {
+    pub fn pair_with_buffer_size(size: usize) -> Result<(ProtoTube, ProtoTube)> {
+        Tube::pair_with_buffer_size(size).map(|(t1, t2)| (ProtoTube(t1), ProtoTube(t2)))
+    }
+
+    pub fn send_proto<M: protobuf::Message>(&self, msg: &M) -> Result<()> {
+        self.0.send_proto(msg)
+    }
+
+    pub fn recv_proto<M: protobuf::Message>(&self) -> Result<M> {
+        self.0.recv_proto()
+    }
+}
+
+#[cfg(feature = "kiwi")]
+impl ReadNotifier for ProtoTube {
+    fn get_read_notifier(&self) -> &dyn AsRawDescriptor {
+        self.0.get_read_notifier()
     }
 }

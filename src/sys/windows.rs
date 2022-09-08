@@ -785,7 +785,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         },
         #[cfg(feature = "kiwi")]
         ServiceIpc,
-        #[cfg(feature = "proto-tube-hack")]
+        #[cfg(feature = "kiwi")]
         ProtoIpc,
         #[cfg(all(feature = "kiwi", feature = "anti-tamper"))]
         AntiTamper,
@@ -799,7 +799,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         Tube::pair_with_buffer_size(anti_tamper::MAX_CHALLENGE_SIZE)
             .expect("Could not create Tube::pair()!");
 
-    #[cfg(feature = "proto-tube-hack")]
+    #[cfg(feature = "kiwi")]
     let (proto_main_loop_tube, proto_service_ipc_tube) =
         base::ProtoTube::pair_with_buffer_size(anti_tamper::MAX_CHALLENGE_SIZE)
             .expect("Could not create Tube::pair()!");
@@ -808,7 +808,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     let _service_ipc = ServiceIpc::start_ipc_listening_loops(
         service_pipe_name,
         ipc_service_ipc_tube,
-        #[cfg(feature = "proto-tube-hack")]
+        #[cfg(feature = "kiwi")]
         proto_service_ipc_tube,
     );
 
@@ -838,7 +838,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         (vm_evt_rdtube.get_read_notifier(), Token::VmEvent),
         #[cfg(feature = "kiwi")]
         (ipc_main_loop_tube.get_read_notifier(), Token::ServiceIpc),
-        #[cfg(feature = "proto-tube-hack")]
+        #[cfg(feature = "kiwi")]
         (proto_main_loop_tube.get_read_notifier(), Token::ProtoIpc),
     ])
     .exit_context(
@@ -893,16 +893,12 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             .collect(),
     };
 
-    #[cfg(all(
-        feature = "kiwi",
-        feature = "anti-tamper",
-        not(feature = "proto-tube-hack")
-    ))]
+    #[cfg(all(feature = "kiwi", feature = "anti-tamper", not(feature = "kiwi")))]
     let (anti_tamper_main_thread_tube, anti_tamper_dedicated_thread_tube) =
         Tube::pair_with_buffer_size(anti_tamper::MAX_CHALLENGE_SIZE)
             .expect("Could not create Tube::pair()!");
 
-    #[cfg(all(feature = "kiwi", feature = "anti-tamper", feature = "proto-tube-hack"))]
+    #[cfg(all(feature = "anti-tamper", feature = "kiwi"))]
     let (anti_tamper_main_thread_tube, anti_tamper_dedicated_thread_tube) =
         base::ProtoTube::pair_with_buffer_size(anti_tamper::MAX_CHALLENGE_SIZE)
             .expect("Could not create Tube::pair()!");
@@ -1101,7 +1097,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                         }
                     }
                 }
-                #[cfg(feature = "proto-tube-hack")]
+                #[cfg(feature = "kiwi")]
                 Token::ProtoIpc => {
                     anti_tamper::forward_security_challenge(
                         &proto_main_loop_tube,
@@ -1184,9 +1180,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
                             run_mode_arc.set_and_notify(VmRunMode::Running);
                         }
-                        #[cfg(any(not(feature = "anti-tamper"), feature = "proto-tube-hack"))]
+                        #[cfg(any(not(feature = "anti-tamper"), feature = "kiwi"))]
                         MessageFromService::ReceiveSecurityChallenge(_) => {}
-                        #[cfg(all(feature = "anti-tamper", not(feature = "proto-tube-hack")))]
+                        #[cfg(all(feature = "anti-tamper", not(feature = "kiwi")))]
                         MessageFromService::ReceiveSecurityChallenge(security_challenge) => {
                             if let Err(_e) = anti_tamper_main_thread_tube.send(&security_challenge)
                             {
@@ -1269,29 +1265,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     },
                     Err(_e) => {}
                 },
-                #[cfg(all(
-                    feature = "kiwi",
-                    feature = "anti-tamper",
-                    not(feature = "proto-tube-hack")
-                ))]
-                Token::AntiTamper => {
-                    match anti_tamper_main_thread_tube.recv::<MessageToService>() {
-                        Ok(msg) => {
-                            if let Err(_e) = ipc_main_loop_tube.send(&msg) {
-                                #[cfg(debug_assertions)]
-                                error!("Failed to send anti-tamper signal to the service: {}", _e);
-                            }
-                        }
-                        Err(_e) => {
-                            #[cfg(debug_assertions)]
-                            error!(
-                                "Failed to receive challenge signal from anti-tamper thread: {}",
-                                _e
-                            );
-                        }
-                    }
-                }
-                #[cfg(all(feature = "kiwi", feature = "anti-tamper", feature = "proto-tube-hack"))]
+                #[cfg(all(feature = "kiwi", feature = "anti-tamper"))]
                 Token::AntiTamper => anti_tamper::forward_security_signal(
                     &anti_tamper_main_thread_tube,
                     &ipc_main_loop_tube,
@@ -1316,7 +1290,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                         _ => {}
                     }*/
                 }
-                #[cfg(feature = "proto-tube-hack")]
+                #[cfg(feature = "kiwi")]
                 Token::ProtoIpc => {}
                 #[cfg(feature = "kiwi")]
                 Token::ServiceIpc => {}

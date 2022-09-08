@@ -79,6 +79,7 @@ dependencies = [
  "libc",
  "log",
  "once_cell",
+ "protobuf",
  "rand",
  "remain",
  "serde",
@@ -471,6 +472,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c278e965f1d8cf32d6e0e96de3d3e79712178ae67986d9cf9151f51e95aac89b"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "protobuf"
+version = "2.27.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf7e6d18738ecd0902d30d1ad232c9125985a3422929b16c65517b38adc14f96"
+dependencies = [
+ "serde",
+ "serde_derive",
 ]
 
 [[package]]

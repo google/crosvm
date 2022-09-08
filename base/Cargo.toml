@@ -6,6 +6,7 @@ edition = "2021"
 
 [features]
 chromeos = []
+kiwi = []
 
 [dependencies]
 audio_streams = { path = "../common/audio_streams" } # provided by ebuild
@@ -31,6 +32,7 @@ uuid = { version = "0.8.2", features = ["v4"] }
 rand = "0.8"
 winapi = "*"
 win_util = { path = "../win_util"}
+protobuf = { version = "*", features = [ "with-serde" ] }
 
 [target.'cfg(windows)'.dev-dependencies]
 regex = "*"

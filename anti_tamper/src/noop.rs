@@ -13,10 +13,10 @@ pub fn setup_common_metric_invariants(
 ) {
 }
 
-#[cfg(feature = "proto-tube-hack")]
+#[cfg(feature = "kiwi")]
 pub fn forward_security_challenge(_recv: &Tube, _sender: &Tube) {}
 
-#[cfg(feature = "proto-tube-hack")]
+#[cfg(feature = "kiwi")]
 pub fn forward_security_signal(_recv: &Tube, _sender: &Tube) {}
 
 pub fn enable_vcpu_monitoring() -> bool {
@@ -27,9 +27,6 @@ pub fn enable_vcpu_monitoring() -> bool {
 // deadlock if exceeded (b/223807352).
 pub const MAX_CHALLENGE_SIZE: usize = 1;
 
-pub fn spawn_dedicated_anti_tamper_thread(
-    #[cfg(not(feature = "proto-tube-hack"))] _tube_to_main_thread: Tube,
-    #[cfg(feature = "proto-tube-hack")] _tube_to_main_thread: base::Tube,
-) -> thread::JoinHandle<()> {
+pub fn spawn_dedicated_anti_tamper_thread(_tube_to_main_thread: Tube) -> thread::JoinHandle<()> {
     thread::spawn(move || {})
 }

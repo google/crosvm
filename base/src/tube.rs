@@ -117,6 +117,9 @@ pub enum Error {
     OperationCancelled,
     #[error("failed to crate tube pair: {0}")]
     Pair(io::Error),
+    #[cfg(windows)]
+    #[error("encountered protobuf error: {0}")]
+    Proto(protobuf::ProtobufError),
     #[error("failed to receive packet: {0}")]
     Recv(io::Error),
     #[error("Received a message with a zero sized body. This should not happen.")]

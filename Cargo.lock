@@ -198,6 +198,7 @@ dependencies = [
  "libc",
  "log",
  "once_cell",
+ "protobuf",
  "rand",
  "regex",
  "remain",
