@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::rc::Rc;
+use std::time::Duration;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -25,6 +26,13 @@ use super::window_message_dispatcher::DisplayEventDispatcher;
 use super::ObjectId;
 use crate::EventDevice;
 use crate::EventDeviceKind;
+
+// Once a window message is added to the message queue, if it is not retrieved within 5 seconds,
+// Windows will mark the application as "Not Responding", so we'd better finish processing any
+// message within this timeout and retrieve the next one.
+// https://docs.microsoft.com/en-us/windows/win32/win7appqual/preventing-hangs-in-windows-applications
+#[allow(dead_code)]
+pub(crate) const HANDLE_WINDOW_MESSAGE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Thread message for killing the window during a `WndProcThread` drop. This indicates an error
 /// within crosvm that internally causes the WndProc thread to be dropped, rather than when the
