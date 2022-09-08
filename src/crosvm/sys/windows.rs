@@ -7,4 +7,5 @@ pub mod config;
 
 pub(crate) mod broker;
 pub(crate) mod exit;
+#[cfg(feature = "stats")]
 pub(crate) mod stats;

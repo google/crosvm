@@ -118,7 +118,7 @@ all-linux = [
     "virgl_renderer",
     "x",
     ]
-win64 = ["devices/stats", "balloon", "haxm"]
+win64 = ["stats", "balloon", "haxm"]
 audio = ["devices/audio"]
 audio_cras = ["devices/audio_cras"]
 balloon = ["devices/balloon", "vm_control/balloon"]
@@ -149,6 +149,7 @@ plugin-render-server = []
 power-monitor-powerd = ["arch/power-monitor-powerd"]
 qcow = ["disk/qcow"]
 slirp = ["devices/slirp"]
+stats = ["devices/stats"]
 tpm = ["devices/tpm"]
 usb = ["devices/usb"]
 video-decoder = ["devices/video-decoder"]

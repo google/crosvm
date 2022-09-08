@@ -210,6 +210,7 @@ use crate::crosvm::sys::config::IrqChipKind;
 use crate::crosvm::sys::windows::exit::Exit;
 use crate::crosvm::sys::windows::exit::ExitContext;
 use crate::crosvm::sys::windows::exit::ExitContextAnyhow;
+#[cfg(feature = "stats")]
 use crate::crosvm::sys::windows::stats::StatisticsCollector;
 use crate::sys::windows::metrics::log_descriptor;
 use crate::sys::windows::metrics::MetricEventType;
@@ -759,7 +760,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     pvclock_host_tube: Option<Tube>,
     map_request: Arc<Mutex<Option<ExternalMapping>>>,
     mut gralloc: RutabagaGralloc,
-    stats: Option<Arc<Mutex<StatisticsCollector>>>,
+    #[cfg(feature = "stats")] stats: Option<Arc<Mutex<StatisticsCollector>>>,
     #[cfg(feature = "kiwi")] service_pipe_name: Option<String>,
     ac97_host_tubes: Vec<Tube>,
     memory_size_mb: u64,
@@ -932,6 +933,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         &exit_evt,
         &vm_evt_wrtube,
         &pvclock_host_tube,
+        #[cfg(feature = "stats")]
         &stats,
         host_cpu_topology,
         run_mode_arc.clone(),
@@ -1353,6 +1355,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
     let _ = irq_join_handle.join();
 
+    #[cfg(feature = "stats")]
     if let Some(stats) = stats {
         println!("Statistics Collected:\n{}", stats.lock());
         println!("Statistics JSON:\n{}", stats.lock().json());
@@ -2126,6 +2129,7 @@ where
 
     let _render_node_host = ();
 
+    #[cfg(feature = "stats")]
     let stats = if cfg.exit_stats {
         Some(Arc::new(Mutex::new(StatisticsCollector::new())))
     } else {
@@ -2144,6 +2148,7 @@ where
         pvclock_host_tube,
         Arc::clone(&map_request),
         gralloc,
+        #[cfg(feature = "stats")]
         stats,
         #[cfg(feature = "kiwi")]
         cfg.service_pipe_name,
