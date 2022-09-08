@@ -193,7 +193,7 @@ def guess_emulator(native_triple: Triple, build_triple: Triple) -> Optional[List
         return None
     # Use wine64 to run windows binaries on linux
     if build_triple.sys == "windows" and str(native_triple) == "x86_64-unknown-linux-gnu":
-        return ["wine64"]
+        return ["wine64-stable"]
     # Use qemu to run aarch64 on x86
     if build_triple.arch == "aarch64" and native_triple.arch == "x86_64":
         return ["qemu-aarch64-static"]
@@ -221,7 +221,11 @@ class TestTarget(object):
 
     @classmethod
     def default(cls):
-        return cls(os.environ.get("CROSVM_TEST_TARGET", "host"))
+        build_target = os.environ.get("CARGO_BUILD_TARGET", None)
+        return cls(
+            os.environ.get("CROSVM_TEST_TARGET", "host"),
+            Triple.from_str(build_target) if build_target else None,
+        )
 
     def __init__(
         self,
@@ -324,7 +328,7 @@ def get_cargo_env(target: TestTarget):
     cargo_target = str(target.build_triple)
     upper_target = cargo_target.upper().replace("-", "_")
     env["CARGO_BUILD_TARGET"] = cargo_target
-    if not target.is_host:
+    if not target.is_host or target.emulator_cmd:
         script_path = CROSVM_ROOT / "tools/test_target"
         env[f"CARGO_TARGET_{upper_target}_RUNNER"] = f"{script_path} exec-file"
     env["CROSVM_TEST_TARGET"] = target.target_str
@@ -487,7 +491,7 @@ def main():
     if args.command == "set":
         if len(args.remainder) != 1:
             parser.error("Need to specify a target.")
-        set_target(TestTarget(args.remainder[0], args.build_target))
+        set_target(TestTarget(args.remainder[0], Triple.from_shorthand(args.build_target)))
         return
 
     if args.target:
