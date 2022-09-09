@@ -15,7 +15,6 @@ use win_util::duplicate_handle;
 use winapi::um::winnt::PAGE_READWRITE;
 
 pub use super::mmap_platform::MemoryMappingArena;
-use crate::external_mapping::ExternalMapping;
 use crate::AsRawDescriptor;
 use crate::Descriptor;
 use crate::FromRawDescriptor;
@@ -177,18 +176,6 @@ unsafe impl MappedRegion for MemoryMapping {
 
     fn size(&self) -> usize {
         self.size
-    }
-}
-
-unsafe impl MappedRegion for ExternalMapping {
-    /// used for passing this region to ioctls for setting guest memory.
-    fn as_ptr(&self) -> *mut u8 {
-        self.as_ptr()
-    }
-
-    /// Returns the size of the memory region in bytes.
-    fn size(&self) -> usize {
-        self.size()
     }
 }
 

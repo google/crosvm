@@ -11,7 +11,6 @@ use std::path::PathBuf;
 use std::str::Utf8Error;
 
 use base::Error as BaseError;
-use base::ExternalMappingError;
 use base::SafeDescriptor;
 use data_model::VolatileMemoryError;
 use remain::sorted;
@@ -79,6 +78,11 @@ pub struct ResourceCreateBlob {
     pub blob_mem: u32,
     pub blob_flags: u32,
     pub blob_id: u64,
+    pub size: u64,
+}
+
+pub struct RutabagaMapping {
+    pub ptr: u64,
     pub size: u64,
 }
 
@@ -221,8 +225,8 @@ pub enum RutabagaError {
     #[error("an input/output error occur: {0}")]
     IoError(IoError),
     /// The mapping failed.
-    #[error("The mapping failed for the following reason: {0}")]
-    MappingFailed(ExternalMappingError),
+    #[error("The mapping failed with library error: {0}")]
+    MappingFailed(i32),
     /// Violation of the Rutabaga spec occured.
     #[error("violation of the rutabaga spec: {0}")]
     SpecViolation(&'static str),

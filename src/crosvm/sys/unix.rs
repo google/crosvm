@@ -187,9 +187,6 @@ fn create_virtio_devices(
     #[cfg(feature = "balloon")] init_balloon_size: u64,
     disk_device_tubes: &mut Vec<Tube>,
     pmem_device_tubes: &mut Vec<Tube>,
-    #[cfg_attr(not(feature = "gpu"), allow(unused_variables))] map_request: Arc<
-        Mutex<Option<ExternalMapping>>,
-    >,
     fs_device_tubes: &mut Vec<Tube>,
     #[cfg(feature = "gpu")] render_server_fd: Option<SafeDescriptor>,
     vvu_proxy_device_tubes: &mut Vec<Tube>,
@@ -318,7 +315,6 @@ fn create_virtio_devices(
                 cfg.x_display.clone(),
                 render_server_fd,
                 event_devices,
-                map_request,
             )?);
         }
     }
@@ -665,7 +661,6 @@ fn create_devices(
     pmem_device_tubes: &mut Vec<Tube>,
     fs_device_tubes: &mut Vec<Tube>,
     #[cfg(feature = "usb")] usb_provider: HostBackendDeviceProvider,
-    map_request: Arc<Mutex<Option<ExternalMapping>>>,
     #[cfg(feature = "gpu")] render_server_fd: Option<SafeDescriptor>,
     vvu_proxy_device_tubes: &mut Vec<Tube>,
     vvu_proxy_max_sibling_mem_size: u64,
@@ -809,7 +804,6 @@ fn create_devices(
         init_balloon_size,
         disk_device_tubes,
         pmem_device_tubes,
-        map_request,
         fs_device_tubes,
         #[cfg(feature = "gpu")]
         render_server_fd,
@@ -1490,8 +1484,6 @@ where
         (cfg.battery_config.as_ref().map(|c| c.type_), None)
     };
 
-    let map_request: Arc<Mutex<Option<ExternalMapping>>> = Arc::new(Mutex::new(None));
-
     let fs_count = cfg
         .shared_dirs
         .iter()
@@ -1640,7 +1632,6 @@ where
         &mut fs_device_tubes,
         #[cfg(feature = "usb")]
         usb_provider,
-        Arc::clone(&map_request),
         #[cfg(feature = "gpu")]
         render_server_fd,
         &mut vvu_proxy_device_tubes,
@@ -1819,7 +1810,6 @@ where
         vm_evt_rdtube,
         vm_evt_wrtube,
         sigchld_fd,
-        Arc::clone(&map_request),
         gralloc,
         vcpu_ids,
         iommu_host_tube,
@@ -2204,7 +2194,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     vm_evt_rdtube: RecvTube,
     vm_evt_wrtube: SendTube,
     sigchld_fd: SignalFd,
-    map_request: Arc<Mutex<Option<ExternalMapping>>>,
     mut gralloc: RutabagaGralloc,
     vcpu_ids: Vec<usize>,
     iommu_host_tube: Option<Tube>,
@@ -2606,7 +2595,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                         let response = request.execute(
                                             &mut linux.vm,
                                             &mut sys_allocator,
-                                            Arc::clone(&map_request),
                                             &mut gralloc,
                                             &mut iommu_client,
                                         );

@@ -17,7 +17,6 @@ use std::mem::size_of_val;
 use std::str::from_utf8;
 
 use base::Error as BaseError;
-use base::ExternalMappingError;
 use base::TubeError;
 use data_model::DataInit;
 use data_model::Le32;
@@ -819,7 +818,6 @@ pub enum GpuResponse {
     ErrBase(BaseError),
     ErrRutabaga(RutabagaError),
     ErrDisplay(GpuDisplayError),
-    ErrMapping(ExternalMappingError),
     ErrScanout {
         num_scanouts: u32,
     },
@@ -847,12 +845,6 @@ impl From<RutabagaError> for GpuResponse {
 impl From<GpuDisplayError> for GpuResponse {
     fn from(e: GpuDisplayError) -> GpuResponse {
         GpuResponse::ErrDisplay(e)
-    }
-}
-
-impl From<ExternalMappingError> for GpuResponse {
-    fn from(e: ExternalMappingError) -> GpuResponse {
-        GpuResponse::ErrMapping(e)
     }
 }
 
@@ -1049,7 +1041,6 @@ impl GpuResponse {
             GpuResponse::ErrBase(_) => VIRTIO_GPU_RESP_ERR_UNSPEC,
             GpuResponse::ErrRutabaga(_) => VIRTIO_GPU_RESP_ERR_UNSPEC,
             GpuResponse::ErrDisplay(_) => VIRTIO_GPU_RESP_ERR_UNSPEC,
-            GpuResponse::ErrMapping(_) => VIRTIO_GPU_RESP_ERR_UNSPEC,
             GpuResponse::ErrUdmabuf(_) => VIRTIO_GPU_RESP_ERR_UNSPEC,
             GpuResponse::ErrScanout { num_scanouts: _ } => VIRTIO_GPU_RESP_ERR_UNSPEC,
             GpuResponse::ErrEdid(_) => VIRTIO_GPU_RESP_ERR_UNSPEC,

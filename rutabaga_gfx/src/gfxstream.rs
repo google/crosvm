@@ -20,9 +20,6 @@ use std::ptr::null;
 use std::ptr::null_mut;
 use std::sync::Arc;
 
-use base::ExternalMapping;
-use base::ExternalMappingError;
-use base::ExternalMappingResult;
 use base::FromRawDescriptor;
 use base::IntoRawDescriptor;
 use base::SafeDescriptor;
@@ -273,23 +270,6 @@ const GFXSTREAM_RENDERER_CALLBACKS: &VirglRendererCallbacks = &VirglRendererCall
     get_drm_fd: None,
     write_context_fence,
 };
-
-fn map_func(resource_id: u32) -> ExternalMappingResult<(u64, usize)> {
-    let mut map: *mut c_void = null_mut();
-    let map_ptr: *mut *mut c_void = &mut map;
-    let mut size: u64 = 0;
-
-    // Safe because the Stream renderer wraps and validates use of vkMapMemory.
-    let ret = unsafe { stream_renderer_resource_map(resource_id, map_ptr, &mut size) };
-    if ret != 0 {
-        return Err(ExternalMappingError::LibraryError(ret));
-    }
-    Ok((map as u64, size as usize))
-}
-
-fn unmap_func(resource_id: u32) {
-    unsafe { stream_renderer_resource_unmap(resource_id) };
-}
 
 impl Gfxstream {
     pub fn init(
@@ -595,12 +575,24 @@ impl RutabagaComponent for Gfxstream {
         })
     }
 
-    fn map(&self, resource_id: u32) -> RutabagaResult<ExternalMapping> {
-        let map_result = unsafe { ExternalMapping::new(resource_id, map_func, unmap_func) };
-        match map_result {
-            Ok(mapping) => Ok(mapping),
-            Err(e) => Err(RutabagaError::MappingFailed(e)),
+    fn map(&self, resource_id: u32) -> RutabagaResult<RutabagaMapping> {
+        let mut map: *mut c_void = null_mut();
+        let mut size: u64 = 0;
+
+        // Safe because the Stream renderer wraps and validates use of vkMapMemory.
+        let ret = unsafe { stream_renderer_resource_map(resource_id, &mut map, &mut size) };
+        if ret != 0 {
+            return Err(RutabagaError::MappingFailed(ret));
         }
+        Ok(RutabagaMapping {
+            ptr: map as u64,
+            size,
+        })
+    }
+
+    fn unmap(&self, resource_id: u32) -> RutabagaResult<()> {
+        let ret = unsafe { stream_renderer_resource_unmap(resource_id) };
+        ret_to_res(ret)
     }
 
     fn create_context(

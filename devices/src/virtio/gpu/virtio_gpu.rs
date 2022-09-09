@@ -7,10 +7,8 @@ use std::collections::BTreeMap as Map;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::result::Result;
-use std::sync::Arc;
 
 use base::error;
-use base::ExternalMapping;
 use base::Protection;
 use base::SafeDescriptor;
 use data_model::VolatileSlice;
@@ -26,7 +24,6 @@ use rutabaga_gfx::RutabagaHandle;
 use rutabaga_gfx::RutabagaIovec;
 use rutabaga_gfx::Transfer3D;
 use rutabaga_gfx::RUTABAGA_MEM_HANDLE_TYPE_DMABUF;
-use sync::Mutex;
 use vm_control::VmMemorySource;
 use vm_memory::udmabuf::UdmabufDriver;
 use vm_memory::udmabuf::UdmabufDriverTrait;
@@ -57,6 +54,7 @@ struct VirtioGpuResource {
     shmem_offset: Option<u64>,
     scanout_data: Option<VirtioScanoutBlobData>,
     display_import: Option<u32>,
+    rutabaga_external_mapping: bool,
 }
 
 impl VirtioGpuResource {
@@ -71,6 +69,7 @@ impl VirtioGpuResource {
             shmem_offset: None,
             scanout_data: None,
             display_import: None,
+            rutabaga_external_mapping: false,
         }
     }
 }
@@ -273,7 +272,6 @@ pub struct VirtioGpu {
     // Maps event devices to scanout number.
     event_devices: Map<u32, u32>,
     mapper: Box<dyn SharedMemoryMapper>,
-    map_request: Arc<Mutex<Option<ExternalMapping>>>,
     rutabaga: Rutabaga,
     resources: Map<u32, VirtioGpuResource>,
     external_blob: bool,
@@ -311,7 +309,6 @@ impl VirtioGpu {
         rutabaga_builder: RutabagaBuilder,
         event_devices: Vec<EventDevice>,
         mapper: Box<dyn SharedMemoryMapper>,
-        map_request: Arc<Mutex<Option<ExternalMapping>>>,
         external_blob: bool,
         udmabuf: bool,
         fence_handler: RutabagaFenceHandler,
@@ -347,7 +344,6 @@ impl VirtioGpu {
             cursor_scanout,
             event_devices: Default::default(),
             mapper,
-            map_request,
             rutabaga,
             resources: Default::default(),
             external_blob,
@@ -627,9 +623,14 @@ impl VirtioGpu {
 
     /// Releases guest kernel reference on the resource.
     pub fn unref_resource(&mut self, resource_id: u32) -> VirtioGpuResult {
-        self.resources
+        let resource = self
+            .resources
             .remove(&resource_id)
             .ok_or(ErrInvalidResourceId)?;
+
+        if resource.rutabaga_external_mapping {
+            self.rutabaga.unmap(resource_id)?;
+        }
 
         self.rutabaga.unref_resource(resource_id)?;
         Ok(OkNoData)
@@ -736,16 +737,11 @@ impl VirtioGpu {
             }
 
             let mapping = self.rutabaga.map(resource_id)?;
-            // Scope for lock
-            {
-                let mut map_req = self.map_request.lock();
-                if map_req.is_some() {
-                    return Err(ErrUnspec);
-                }
-                *map_req = Some(mapping);
-            }
+            // resources mapped via rutabaga must also be marked for unmap via rutabaga.
+            resource.rutabaga_external_mapping = true;
             VmMemorySource::ExternalMapping {
-                size: resource.size,
+                ptr: mapping.ptr,
+                size: mapping.size,
             }
         };
 
@@ -769,6 +765,12 @@ impl VirtioGpu {
             .remove_mapping(shmem_offset)
             .map_err(|_| ErrUnspec)?;
         resource.shmem_offset = None;
+
+        if resource.rutabaga_external_mapping {
+            self.rutabaga.unmap(resource_id)?;
+            resource.rutabaga_external_mapping = false;
+        }
+
         Ok(OkNoData)
     }
 

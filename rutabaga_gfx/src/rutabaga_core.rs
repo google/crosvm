@@ -7,7 +7,6 @@
 use std::collections::BTreeMap as Map;
 use std::sync::Arc;
 
-use base::ExternalMapping;
 use base::SafeDescriptor;
 use data_model::VolatileSlice;
 
@@ -150,7 +149,13 @@ pub trait RutabagaComponent {
 
     /// Implementations must map the blob resource on success.  This is typically done by
     /// glMapBufferRange(...) or vkMapMemory.
-    fn map(&self, _resource_id: u32) -> RutabagaResult<ExternalMapping> {
+    fn map(&self, _resource_id: u32) -> RutabagaResult<RutabagaMapping> {
+        Err(RutabagaError::Unsupported)
+    }
+
+    /// Implementations must unmap the blob resource on success.  This is typically done by
+    /// glUnmapBuffer(...) or vkUnmapMemory.
+    fn unmap(&self, _resource_id: u32) -> RutabagaResult<()> {
         Err(RutabagaError::Unsupported)
     }
 
@@ -546,7 +551,7 @@ impl Rutabaga {
     }
 
     /// Returns a memory mapping of the blob resource.
-    pub fn map(&self, resource_id: u32) -> RutabagaResult<ExternalMapping> {
+    pub fn map(&self, resource_id: u32) -> RutabagaResult<RutabagaMapping> {
         let component = self
             .components
             .get(&self.default_component)
@@ -557,6 +562,20 @@ impl Rutabaga {
         }
 
         component.map(resource_id)
+    }
+
+    /// Unmaps the blob resource from the default component
+    pub fn unmap(&self, resource_id: u32) -> RutabagaResult<()> {
+        let component = self
+            .components
+            .get(&self.default_component)
+            .ok_or(RutabagaError::InvalidComponent)?;
+
+        if !self.resources.contains_key(&resource_id) {
+            return Err(RutabagaError::InvalidResourceId);
+        }
+
+        component.unmap(resource_id)
     }
 
     /// Returns the `map_info` of the blob resource. The valid values for `map_info`

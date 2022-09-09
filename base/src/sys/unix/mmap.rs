@@ -17,7 +17,6 @@ use remain::sorted;
 
 use super::pagesize;
 use super::Error as ErrnoError;
-use crate::external_mapping::ExternalMapping;
 use crate::AsRawDescriptor;
 use crate::Descriptor;
 use crate::MappedRegion;
@@ -89,17 +88,6 @@ impl dyn MappedRegion {
         } else {
             Err(Error::SystemCallFailed(ErrnoError::last()))
         }
-    }
-}
-
-unsafe impl MappedRegion for ExternalMapping {
-    fn as_ptr(&self) -> *mut u8 {
-        self.as_ptr()
-    }
-
-    /// Returns the size of the memory region in bytes.
-    fn size(&self) -> usize {
-        self.size()
     }
 }
 

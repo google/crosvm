@@ -25,7 +25,6 @@ use base::warn;
 use base::AsRawDescriptor;
 use base::Event;
 use base::EventToken;
-use base::ExternalMapping;
 use base::RawDescriptor;
 use base::SafeDescriptor;
 use base::SendTube;
@@ -185,7 +184,6 @@ fn build(
     rutabaga_builder: RutabagaBuilder,
     event_devices: Vec<EventDevice>,
     mapper: Box<dyn SharedMemoryMapper>,
-    map_request: Arc<Mutex<Option<ExternalMapping>>>,
     external_blob: bool,
     udmabuf: bool,
     fence_handler: RutabagaFenceHandler,
@@ -216,7 +214,6 @@ fn build(
         rutabaga_builder,
         event_devices,
         mapper,
-        map_request,
         external_blob,
         udmabuf,
         fence_handler,
@@ -903,7 +900,6 @@ pub struct Gpu {
     display_params: Vec<GpuDisplayParameters>,
     rutabaga_builder: Option<RutabagaBuilder>,
     pci_bar_size: u64,
-    map_request: Arc<Mutex<Option<ExternalMapping>>>,
     external_blob: bool,
     rutabaga_component: RutabagaComponentType,
     base_features: u64,
@@ -920,7 +916,6 @@ impl Gpu {
         gpu_parameters: &GpuParameters,
         render_server_fd: Option<SafeDescriptor>,
         event_devices: Vec<EventDevice>,
-        map_request: Arc<Mutex<Option<ExternalMapping>>>,
         external_blob: bool,
         base_features: u64,
         channels: BTreeMap<String, PathBuf>,
@@ -979,7 +974,6 @@ impl Gpu {
             display_params,
             rutabaga_builder: Some(rutabaga_builder),
             pci_bar_size: gpu_parameters.pci_bar_size,
-            map_request,
             external_blob,
             rutabaga_component: component,
             base_features,
@@ -1006,7 +1000,6 @@ impl Gpu {
             rutabaga_builder,
             event_devices,
             mapper,
-            self.map_request.clone(),
             self.external_blob,
             self.udmabuf,
             fence_handler,
@@ -1184,7 +1177,6 @@ impl VirtioDevice for Gpu {
         let display_backends = self.display_backends.clone();
         let display_params = self.display_params.clone();
         let event_devices = self.event_devices.split_off(0);
-        let map_request = Arc::clone(&self.map_request);
         let external_blob = self.external_blob;
         let udmabuf = self.udmabuf;
         let fence_state = Arc::new(Mutex::new(Default::default()));
@@ -1208,7 +1200,6 @@ impl VirtioDevice for Gpu {
                             rutabaga_builder,
                             event_devices,
                             mapper,
-                            map_request,
                             external_blob,
                             udmabuf,
                             fence_handler,

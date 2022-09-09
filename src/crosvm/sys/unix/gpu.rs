@@ -73,7 +73,6 @@ pub fn create_gpu_device(
     x_display: Option<String>,
     render_server_fd: Option<SafeDescriptor>,
     event_devices: Vec<EventDevice>,
-    map_request: Arc<Mutex<Option<ExternalMapping>>>,
 ) -> DeviceResult {
     let mut display_backends = vec![
         virtio::DisplayBackend::X(x_display),
@@ -103,7 +102,6 @@ pub fn create_gpu_device(
         cfg.gpu_parameters.as_ref().unwrap(),
         render_server_fd,
         event_devices,
-        map_request,
         cfg.jail_config.is_some(),
         virtio::base_features(cfg.protection_type),
         cfg.wayland_socket_paths.clone(),

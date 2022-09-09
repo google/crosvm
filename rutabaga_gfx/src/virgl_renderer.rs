@@ -23,9 +23,6 @@ use std::sync::Arc;
 
 use base::warn;
 use base::Error as SysError;
-use base::ExternalMapping;
-use base::ExternalMappingError;
-use base::ExternalMappingResult;
 use base::FromRawDescriptor;
 use base::SafeDescriptor;
 use data_model::VolatileSlice;
@@ -230,40 +227,6 @@ fn export_query(resource_id: u32) -> RutabagaResult<Query> {
 
     ret_to_res(ret)?;
     Ok(query)
-}
-
-#[allow(unused_variables)]
-fn map_func(resource_id: u32) -> ExternalMappingResult<(u64, usize)> {
-    #[cfg(feature = "virgl_renderer_next")]
-    {
-        let mut map: *mut c_void = null_mut();
-        let map_ptr: *mut *mut c_void = &mut map;
-        let mut size: u64 = 0;
-        // Safe because virglrenderer wraps and validates use of GL/VK.
-        let ret = unsafe { virgl_renderer_resource_map(resource_id, map_ptr, &mut size) };
-        if ret != 0 {
-            return Err(ExternalMappingError::LibraryError(ret));
-        }
-
-        Ok((map as u64, size as usize))
-    }
-    #[cfg(not(feature = "virgl_renderer_next"))]
-    Err(ExternalMappingError::Unsupported)
-}
-
-#[allow(unused_variables)]
-fn unmap_func(resource_id: u32) {
-    #[cfg(feature = "virgl_renderer_next")]
-    {
-        unsafe {
-            // Usually, process_gpu_command forces ctx0 when processing a virtio-gpu command.
-            // During VM shutdown, the KVM thread releases mappings without virtio-gpu being
-            // involved, so force ctx0 here. It's a no-op when the ctx is already 0, so there's
-            // little performance loss during normal VM operation.
-            virgl_renderer_force_ctx_0();
-            virgl_renderer_resource_unmap(resource_id);
-        }
-    }
 }
 
 impl VirglRenderer {
@@ -648,12 +611,35 @@ impl RutabagaComponent for VirglRenderer {
         Err(RutabagaError::Unsupported)
     }
 
-    fn map(&self, resource_id: u32) -> RutabagaResult<ExternalMapping> {
-        let map_result = unsafe { ExternalMapping::new(resource_id, map_func, unmap_func) };
-        match map_result {
-            Ok(mapping) => Ok(mapping),
-            Err(e) => Err(RutabagaError::MappingFailed(e)),
+    fn map(&self, resource_id: u32) -> RutabagaResult<RutabagaMapping> {
+        #[cfg(feature = "virgl_renderer_next")]
+        {
+            let mut map: *mut c_void = null_mut();
+            let mut size: u64 = 0;
+            // Safe because virglrenderer wraps and validates use of GL/VK.
+            let ret = unsafe { virgl_renderer_resource_map(resource_id, &mut map, &mut size) };
+            if ret != 0 {
+                return Err(RutabagaError::MappingFailed(ret));
+            }
+
+            Ok(RutabagaMapping {
+                ptr: map as u64,
+                size,
+            })
         }
+        #[cfg(not(feature = "virgl_renderer_next"))]
+        Err(RutabagaError::Unsupported)
+    }
+
+    fn unmap(&self, resource_id: u32) -> RutabagaResult<()> {
+        #[cfg(feature = "virgl_renderer_next")]
+        {
+            // Safe because virglrenderer is initialized by now.
+            let ret = unsafe { virgl_renderer_resource_unmap(resource_id) };
+            ret_to_res(ret)
+        }
+        #[cfg(not(feature = "virgl_renderer_next"))]
+        Err(RutabagaError::Unsupported)
     }
 
     #[allow(unused_variables)]

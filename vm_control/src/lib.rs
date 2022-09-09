@@ -286,14 +286,13 @@ pub enum VmMemorySource {
         size: u64,
     },
     /// Register the current rutabaga external mapping.
-    ExternalMapping { size: u64 },
+    ExternalMapping { ptr: u64, size: u64 },
 }
 
 impl VmMemorySource {
     /// Map the resource and return its mapping and size in bytes.
     pub fn map(
         self,
-        map_request: Arc<Mutex<Option<ExternalMapping>>>,
         gralloc: &mut RutabagaGralloc,
         prot: Protection,
     ) -> Result<(Box<dyn MappedRegion>, u64, Option<SafeDescriptor>)> {
@@ -338,13 +337,11 @@ impl VmMemorySource {
                 };
                 (mapped_region, size, None)
             }
-            VmMemorySource::ExternalMapping { size } => {
-                let mem = map_request
-                    .lock()
-                    .take()
-                    .ok_or_else(|| VmMemoryResponse::Err(SysError::new(EINVAL)))
-                    .unwrap();
-                let mapped_region: Box<dyn MappedRegion> = Box::new(mem);
+            VmMemorySource::ExternalMapping { ptr, size } => {
+                let mapped_region: Box<dyn MappedRegion> = Box::new(ExternalMapping {
+                    ptr,
+                    size: size as usize,
+                });
                 (mapped_region, size, None)
             }
         };
@@ -437,7 +434,6 @@ impl VmMemoryRequest {
         self,
         vm: &mut impl Vm,
         sys_allocator: &mut SystemAllocator,
-        map_request: Arc<Mutex<Option<ExternalMapping>>>,
         gralloc: &mut RutabagaGralloc,
         iommu_client: &mut Option<VmMemoryRequestIommuClient>,
     ) -> VmMemoryResponse {
@@ -446,8 +442,7 @@ impl VmMemoryRequest {
             RegisterMemory { source, dest, prot } => {
                 // Correct on Windows because callers of this IPC guarantee descriptor is a mapping
                 // handle.
-                let (mapped_region, size, descriptor) = match source.map(map_request, gralloc, prot)
-                {
+                let (mapped_region, size, descriptor) = match source.map(gralloc, prot) {
                     Ok((region, size, descriptor)) => (region, size, descriptor),
                     Err(e) => return VmMemoryResponse::Err(e),
                 };
