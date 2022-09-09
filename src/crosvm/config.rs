@@ -2166,7 +2166,9 @@ mod tests {
             config,
             JailConfig {
                 pivot_root: jail_config_default_pivot_root(),
-                #[cfg(unix)]
+                #[cfg(feature = "chromeos")]
+                seccomp_policy_dir: Some(PathBuf::from(SECCOMP_POLICY_DIR)),
+                #[cfg(all(unix, not(feature = "chromeos")))]
                 seccomp_policy_dir: None,
                 seccomp_log_failures: false,
             }
