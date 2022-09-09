@@ -69,17 +69,63 @@ Note: See internal [crosvm/infra](http://go/crosvm/infra) documentation on acces
 Some things cannot be tested locally and need to be run on one of our build bots. This can be done
 with the [led](http://go/luci-how-to-led) tool.
 
-To test changes to an existing recipe, you need to find a previous build that you want to use as a
-template and get it's buildbucket id:
+Commonly used led commands are:
 
-![buildbucket id](https://screenshot.googleplex.com/9FuL6PhrvJgZLGs.png)
+- `led get-builder $NAME` will download and output the job template for that builder.
+- `led get-build $BBID` will download the job definition of a previous build.
+- `led edit-recipe-bundle` will update the job to use your local version recipes
+- `led edit-cr-cl` will update the job to run on a gerrit change
+- `led launch` launches a new job using the input job definition.
 
-Then `git commit` your recipe changes locally and run:
+Important: Changes to recipes are applied separately from changes to crosvm code.
+
+#### Testing recipe changes on post-submit builders
+
+To test a local recipe change, you can launch a post-submit build using `led`. First `git commit`
+your recipe changes locally, then combine the led commands to:
 
 ```
-led get-build $BBID | led edit-recipe-bundle | led launch
+led get-builder luci.crosvm.ci:linux_x86_64
+ | led-edit-recipe-bundle
+ | led launch
 ```
 
-`get-build` will download and output the job definition, `led edit-recipe-bundle` will upload a
-version of your local recipes and update the job definition to use them. The resulting job
-definition can then be launched on a bot via `led launch`.
+This will run the `linux_x86_64` builder on the current `main` revision of crosvm using the local
+version of recipes.
+
+Important: Changes to crosvm source outside of recipes will not be part of the build.
+
+#### Testing recipe and source changes on pre-submit builders
+
+If we want to test a combination of both recipe and source changes, we can test those on a
+pre-submit builder, which patch in a gerrit change to test.
+
+We can specify that gerrit change via `led edit-cr-cl`.
+
+So to test, first `git commit` and `./tools/cl upload` your local changes. Then build a job
+definition to run:
+
+```
+led get-builder luci.crosvm.try:linux_x86_64
+ | led-edit-recipe-bundle
+ | led-edit-cr-cl $GERRIT_URL
+ | led launch
+```
+
+This will launch a presubmit builder using the local version of recipes, and runs it on the gerrit
+change at $GERRIT_URL.
+
+#### Testing a new recipe
+
+This is a little tricker, but you can change the recipe name that is launched by `led`. So you can:
+
+```
+led get-builder luci.crosvm.ci:linux_x86_64 > job.json
+```
+
+Then edit the `job.json` file to use the newly added recipe, and launch the job using the local
+version of recipes.
+
+```
+cat job.json | led-edit-recipe-bundle | led launch
+```
