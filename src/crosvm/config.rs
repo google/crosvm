@@ -63,8 +63,6 @@ cfg_if::cfg_if! {
 
         static KVM_PATH: &str = "/dev/kvm";
         static VHOST_NET_PATH: &str = "/dev/vhost-net";
-        #[cfg(feature="chromeos")]
-        static SECCOMP_POLICY_DIR: &str = "/usr/share/policy/crosvm";
     } else if #[cfg(windows)] {
         use base::{Event, Tube};
 
@@ -534,12 +532,22 @@ fn jail_config_default_pivot_root() -> PathBuf {
     PathBuf::from(option_env!("DEFAULT_PIVOT_ROOT").unwrap_or("/var/empty"))
 }
 
+#[cfg(unix)]
+fn jail_config_default_seccomp_policy_dir() -> Option<PathBuf> {
+    if cfg!(feature = "chromeos") {
+        Some(PathBuf::from("/usr/share/policy/crosvm"))
+    } else {
+        None
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, serde_keyvalue::FromKeyValues)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct JailConfig {
     #[serde(default = "jail_config_default_pivot_root")]
     pub pivot_root: PathBuf,
     #[cfg(unix)]
+    #[serde(default = "jail_config_default_seccomp_policy_dir")]
     pub seccomp_policy_dir: Option<PathBuf>,
     #[serde(default)]
     pub seccomp_log_failures: bool,
@@ -549,10 +557,8 @@ impl Default for JailConfig {
     fn default() -> Self {
         JailConfig {
             pivot_root: jail_config_default_pivot_root(),
-            #[cfg(feature = "chromeos")]
-            seccomp_policy_dir: Some(PathBuf::from(SECCOMP_POLICY_DIR)),
-            #[cfg(all(unix, not(feature = "chromeos")))]
-            seccomp_policy_dir: None,
+            #[cfg(unix)]
+            seccomp_policy_dir: jail_config_default_seccomp_policy_dir(),
             seccomp_log_failures: false,
         }
     }
@@ -2167,7 +2173,7 @@ mod tests {
             JailConfig {
                 pivot_root: jail_config_default_pivot_root(),
                 #[cfg(feature = "chromeos")]
-                seccomp_policy_dir: Some(PathBuf::from(SECCOMP_POLICY_DIR)),
+                seccomp_policy_dir: Some(PathBuf::from("/usr/share/policy/crosvm")),
                 #[cfg(all(unix, not(feature = "chromeos")))]
                 seccomp_policy_dir: None,
                 seccomp_log_failures: false,
