@@ -268,6 +268,14 @@ class CrosvmApi(recipe_api.RecipeApi):
                         "--stop",
                     ],
                 )
+                self.m.step(
+                    "Force pull dev_container",
+                    [
+                        "vpython3",
+                        self.source_dir.join("tools/dev_container"),
+                        "--pull",
+                    ],
+                )
                 self.m.crosvm.step_in_container("Ensure dev container exists", ["true"])
 
     def __set_git_config(self, prop, value):

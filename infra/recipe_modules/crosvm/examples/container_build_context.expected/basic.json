@@ -237,6 +237,19 @@
     "cmd": [
       "vpython3",
       "[CACHE]/builder/crosvm/tools/dev_container",
+      "--pull"
+    ],
+    "cwd": "[CACHE]/builder/crosvm",
+    "infra_step": true,
+    "name": "Prepare Container Build.Prepare dev_container.Force pull dev_container",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@2@@@"
+    ]
+  },
+  {
+    "cmd": [
+      "vpython3",
+      "[CACHE]/builder/crosvm/tools/dev_container",
       "--verbose",
       "true"
     ],
