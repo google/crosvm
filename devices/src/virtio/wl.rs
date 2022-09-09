@@ -1693,9 +1693,6 @@ pub fn process_in_queue<I: SignalableInterrupt>(
     mem: &GuestMemory,
     state: &mut WlState,
 ) -> ::std::result::Result<(), DescriptorsExhausted> {
-    const MIN_IN_DESC_LEN: u32 =
-        (size_of::<CtrlVfdRecv>() + size_of::<Le32>() * VIRTWL_SEND_MAX_ALLOCS) as u32;
-
     state.process_wait_context();
 
     let mut needs_interrupt = false;
@@ -1707,12 +1704,6 @@ pub fn process_in_queue<I: SignalableInterrupt>(
             exhausted_queue = true;
             break;
         };
-        if desc.len < MIN_IN_DESC_LEN || desc.is_read_only() {
-            needs_interrupt = true;
-            in_queue.pop_peeked(mem);
-            in_queue.add_used(mem, desc.index, 0);
-            continue;
-        }
 
         let index = desc.index;
         let mut should_pop = false;
