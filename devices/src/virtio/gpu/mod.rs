@@ -11,7 +11,6 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
 use std::io::Read;
-use std::mem::size_of;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
@@ -624,46 +623,27 @@ impl Frontend {
         }
     }
 
-    fn validate_desc(desc: &DescriptorChain) -> bool {
-        desc.len as usize >= size_of::<virtio_gpu_ctrl_hdr>() && !desc.is_write_only()
-    }
-
     /// Processes virtio messages on `queue`.
     pub fn process_queue(&mut self, mem: &GuestMemory, queue: &dyn QueueReader) -> bool {
         let mut signal_used = false;
         while let Some(desc) = queue.pop(mem) {
-            if Frontend::validate_desc(&desc) {
-                match (
-                    Reader::new(mem.clone(), desc.clone()),
-                    Writer::new(mem.clone(), desc.clone()),
-                ) {
-                    (Ok(mut reader), Ok(mut writer)) => {
-                        if let Some(ret_desc) =
-                            self.process_descriptor(mem, desc.index, &mut reader, &mut writer)
-                        {
-                            queue.add_used(mem, ret_desc.index, ret_desc.len);
-                            signal_used = true;
-                        }
-                    }
-                    (_, Err(e)) | (Err(e), _) => {
-                        debug!("invalid descriptor: {}", e);
-                        queue.add_used(mem, desc.index, 0);
+            match (
+                Reader::new(mem.clone(), desc.clone()),
+                Writer::new(mem.clone(), desc.clone()),
+            ) {
+                (Ok(mut reader), Ok(mut writer)) => {
+                    if let Some(ret_desc) =
+                        self.process_descriptor(mem, desc.index, &mut reader, &mut writer)
+                    {
+                        queue.add_used(mem, ret_desc.index, ret_desc.len);
                         signal_used = true;
                     }
                 }
-            } else {
-                let likely_type = mem
-                    .read_obj_from_addr(desc.addr)
-                    .unwrap_or_else(|_| Le32::from(0));
-                debug!(
-                    "queue bad descriptor index = {} len = {} write = {} type = {}",
-                    desc.index,
-                    desc.len,
-                    desc.is_write_only(),
-                    virtio_gpu_cmd_str(likely_type.to_native())
-                );
-                queue.add_used(mem, desc.index, 0);
-                signal_used = true;
+                (_, Err(e)) | (Err(e), _) => {
+                    debug!("invalid descriptor: {}", e);
+                    queue.add_used(mem, desc.index, 0);
+                    signal_used = true;
+                }
             }
         }
 
