@@ -12,8 +12,6 @@ use base::Event;
 use sync::Mutex;
 use thiserror::Error as ThisError;
 
-#[cfg(feature = "ffmpeg")]
-use crate::virtio::video::resource::BufferHandle;
 use crate::virtio::video::resource::GuestResource;
 
 /// Manages a pollable queue of events to be sent to the decoder or encoder.
@@ -129,25 +127,6 @@ impl<T> SyncEventQueue<T> {
 impl<T> AsRawDescriptor for SyncEventQueue<T> {
     fn as_raw_descriptor(&self) -> base::RawDescriptor {
         self.0.lock().as_raw_descriptor()
-    }
-}
-
-#[cfg(feature = "ffmpeg")]
-impl ffmpeg::swscale::SwConverterTarget for GuestResource {
-    fn stride(&self) -> Option<usize> {
-        self.planes.get(0).map(|p| p.stride)
-    }
-
-    fn num_planes(&self) -> usize {
-        self.planes.len()
-    }
-
-    fn get_mapping(
-        &mut self,
-        plane: usize,
-        required_size: usize,
-    ) -> Result<base::MemoryMappingArena, base::MmapError> {
-        self.handle.get_mapping(plane, required_size)
     }
 }
 

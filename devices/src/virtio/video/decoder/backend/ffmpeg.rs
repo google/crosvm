@@ -33,6 +33,9 @@ use base::MemoryMappingArena;
 use thiserror::Error as ThisError;
 
 use crate::virtio::video::decoder::backend::*;
+use crate::virtio::video::ffmpeg::GuestResourceToAvFrameError;
+use crate::virtio::video::ffmpeg::MemoryMappingAvBufferSource;
+use crate::virtio::video::ffmpeg::TryAsAvFrameExt;
 use crate::virtio::video::format::FormatDesc;
 use crate::virtio::video::format::FormatRange;
 use crate::virtio::video::format::FrameFormat;
@@ -131,6 +134,8 @@ pub struct FfmpegDecoderSession {
 enum TrySendFrameError {
     #[error("error while converting frame: {0}")]
     CannotConvertFrame(#[from] ConversionError),
+    #[error("error while constructing AvFrame: {0}")]
+    IntoAvFrame(#[from] GuestResourceToAvFrameError),
     #[error("error while sending picture ready event: {0}")]
     BrokenPipe(#[from] base::Error),
 }
@@ -386,7 +391,10 @@ impl FfmpegDecoderSession {
         };
 
         // Convert the frame into the target buffer and emit the picture ready event.
-        format_converter.convert(&avframe, target_buffer)?;
+        format_converter.convert(
+            &avframe,
+            &mut target_buffer.try_as_av_frame(MemoryMappingAvBufferSource::from)?,
+        )?;
         self.event_queue.queue_event(picture_ready_event)?;
 
         Ok(true)

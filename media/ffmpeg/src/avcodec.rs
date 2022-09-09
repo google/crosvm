@@ -71,7 +71,7 @@ pub enum AvCodecOpenError {
 }
 
 /// Dimensions of a frame, used in AvCodecContext and AvFrame.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Dimensions {
     pub width: u32,
     pub height: u32,
