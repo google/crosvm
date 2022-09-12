@@ -4,15 +4,12 @@
 
 // virtio-sound spec: https://github.com/oasis-tcs/virtio-spec/blob/master/virtio-sound.tex
 
-use std::fmt;
 use std::io;
 use std::rc::Rc;
 use std::thread;
 
 use anyhow::Context;
 use audio_streams::BoxError;
-use audio_streams::SampleFormat;
-use audio_streams::StreamSource;
 use audio_streams::StreamSourceGenerator;
 use base::error;
 use base::warn;
@@ -29,17 +26,15 @@ use futures::channel::oneshot;
 use futures::channel::oneshot::Canceled;
 use futures::pin_mut;
 use futures::select;
-use futures::Future;
 use futures::FutureExt;
-use futures::TryFutureExt;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 
 use crate::virtio::async_utils;
 use crate::virtio::copy_config;
 use crate::virtio::device_constants::snd::virtio_snd_config;
-use crate::virtio::snd::common::*;
 use crate::virtio::snd::common_backend::async_funcs::*;
+use crate::virtio::snd::common_backend::stream_info::StreamInfo;
 use crate::virtio::snd::constants::*;
 use crate::virtio::snd::layout::*;
 use crate::virtio::snd::null_backend::create_null_stream_source_generators;
@@ -47,7 +42,6 @@ use crate::virtio::snd::parameters::Parameters;
 use crate::virtio::snd::parameters::StreamSourceBackend;
 use crate::virtio::snd::sys::create_stream_source_generators as sys_create_stream_source_generators;
 use crate::virtio::snd::sys::set_audio_thread_priority;
-use crate::virtio::DescriptorChain;
 use crate::virtio::DescriptorError;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
@@ -56,6 +50,7 @@ use crate::virtio::VirtioDevice;
 use crate::virtio::Writer;
 
 pub mod async_funcs;
+pub mod stream_info;
 
 // control + event + tx + rx queue
 pub const MAX_QUEUE_NUM: usize = 4;
@@ -137,37 +132,6 @@ pub enum WorkerStatus {
     Quit = 2,
 }
 
-pub struct StreamInfo {
-    stream_source: Option<Box<dyn StreamSource>>,
-    stream_source_generator: Box<dyn StreamSourceGenerator>,
-    channels: u8,
-    format: SampleFormat,
-    frame_rate: u32,
-    buffer_bytes: usize,
-    period_bytes: usize,
-    direction: u8, // VIRTIO_SND_D_*
-    state: u32,    // VIRTIO_SND_R_PCM_SET_PARAMS -> VIRTIO_SND_R_PCM_STOP, or 0 (uninitialized)
-
-    // Worker related
-    status_mutex: Rc<AsyncMutex<WorkerStatus>>,
-    sender: Option<mpsc::UnboundedSender<DescriptorChain>>,
-    worker_future: Option<Box<dyn Future<Output = Result<(), Error>> + Unpin>>,
-}
-
-impl fmt::Debug for StreamInfo {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("StreamInfo")
-            .field("channels", &self.channels)
-            .field("format", &self.format)
-            .field("frame_rate", &self.frame_rate)
-            .field("buffer_bytes", &self.buffer_bytes)
-            .field("period_bytes", &self.period_bytes)
-            .field("direction", &get_virtio_direction_name(self.direction))
-            .field("state", &get_virtio_snd_r_pcm_cmd_name(self.state))
-            .finish()
-    }
-}
-
 // Stores constant data
 pub struct SndData {
     jack_info: Vec<virtio_snd_jack_info>,
@@ -199,179 +163,6 @@ pub struct PcmResponse {
     status: virtio_snd_pcm_status, // response to the pcm message
     writer: Writer,
     done: Option<oneshot::Sender<()>>, // when pcm response is written to the queue
-}
-
-impl StreamInfo {
-    pub fn new(stream_source_generator: Box<dyn StreamSourceGenerator>) -> Self {
-        StreamInfo {
-            stream_source: None,
-            stream_source_generator,
-            channels: 0,
-            format: SampleFormat::U8,
-            frame_rate: 0,
-            buffer_bytes: 0,
-            period_bytes: 0,
-            direction: 0,
-            state: 0,
-            status_mutex: Rc::new(AsyncMutex::new(WorkerStatus::Pause)),
-            sender: None,
-            worker_future: None,
-        }
-    }
-
-    async fn prepare(
-        &mut self,
-        ex: &Executor,
-        mem: GuestMemory,
-        tx_send: &mpsc::UnboundedSender<PcmResponse>,
-        rx_send: &mpsc::UnboundedSender<PcmResponse>,
-    ) -> Result<(), Error> {
-        if self.state != VIRTIO_SND_R_PCM_SET_PARAMS
-            && self.state != VIRTIO_SND_R_PCM_PREPARE
-            && self.state != VIRTIO_SND_R_PCM_RELEASE
-        {
-            error!(
-                "Invalid PCM state transition from {} to {}",
-                get_virtio_snd_r_pcm_cmd_name(self.state),
-                get_virtio_snd_r_pcm_cmd_name(VIRTIO_SND_R_PCM_PREPARE)
-            );
-            return Err(Error::OperationNotSupported);
-        }
-        if self.state == VIRTIO_SND_R_PCM_PREPARE {
-            self.release_worker().await?;
-        }
-        let frame_size = self.channels as usize * self.format.sample_bytes();
-        if self.period_bytes % frame_size != 0 {
-            error!("period_bytes must be divisible by frame size");
-            return Err(Error::OperationNotSupported);
-        }
-        if self.stream_source.is_none() {
-            self.stream_source = Some(
-                self.stream_source_generator
-                    .generate()
-                    .map_err(Error::GenerateStreamSource)?,
-            );
-        }
-        // (*)
-        // `buffer_size` in `audio_streams` API indicates the buffer size in bytes that the stream
-        // consumes (or transmits) each time (next_playback/capture_buffer).
-        // `period_bytes` in virtio-snd device (or ALSA) indicates the device transmits (or
-        // consumes) for each PCM message.
-        // Therefore, `buffer_size` in `audio_streams` == `period_bytes` in virtio-snd.
-        let (stream, pcm_sender) = match self.direction {
-            VIRTIO_SND_D_OUTPUT => (
-                DirectionalStream::Output(
-                    self.stream_source
-                        .as_mut()
-                        .unwrap()
-                        .new_async_playback_stream(
-                            self.channels as usize,
-                            self.format,
-                            self.frame_rate,
-                            // See (*)
-                            self.period_bytes / frame_size,
-                            ex,
-                        )
-                        .map_err(Error::CreateStream)?
-                        .1,
-                ),
-                tx_send.clone(),
-            ),
-            VIRTIO_SND_D_INPUT => {
-                (
-                    DirectionalStream::Input(
-                        self.stream_source
-                            .as_mut()
-                            .unwrap()
-                            .new_async_capture_stream(
-                                self.channels as usize,
-                                self.format,
-                                self.frame_rate,
-                                // See (*)
-                                self.period_bytes / frame_size,
-                                &[],
-                                ex,
-                            )
-                            .map_err(Error::CreateStream)?
-                            .1,
-                    ),
-                    rx_send.clone(),
-                )
-            }
-            _ => unreachable!(),
-        };
-
-        let (sender, receiver) = mpsc::unbounded();
-        self.sender = Some(sender);
-        self.state = VIRTIO_SND_R_PCM_PREPARE;
-
-        self.status_mutex = Rc::new(AsyncMutex::new(WorkerStatus::Pause));
-        let f = start_pcm_worker(
-            ex.clone(),
-            stream,
-            receiver,
-            self.status_mutex.clone(),
-            mem,
-            pcm_sender,
-            self.period_bytes,
-        );
-        self.worker_future = Some(Box::new(ex.spawn_local(f).into_future()));
-        Ok(())
-    }
-
-    async fn start(&mut self) -> Result<(), Error> {
-        if self.state != VIRTIO_SND_R_PCM_PREPARE && self.state != VIRTIO_SND_R_PCM_STOP {
-            error!(
-                "Invalid PCM state transition from {} to {}",
-                get_virtio_snd_r_pcm_cmd_name(self.state),
-                get_virtio_snd_r_pcm_cmd_name(VIRTIO_SND_R_PCM_START)
-            );
-            return Err(Error::OperationNotSupported);
-        }
-        self.state = VIRTIO_SND_R_PCM_START;
-        *self.status_mutex.lock().await = WorkerStatus::Running;
-        Ok(())
-    }
-
-    async fn stop(&mut self) -> Result<(), Error> {
-        if self.state != VIRTIO_SND_R_PCM_START {
-            error!(
-                "Invalid PCM state transition from {} to {}",
-                get_virtio_snd_r_pcm_cmd_name(self.state),
-                get_virtio_snd_r_pcm_cmd_name(VIRTIO_SND_R_PCM_STOP)
-            );
-            return Err(Error::OperationNotSupported);
-        }
-        self.state = VIRTIO_SND_R_PCM_STOP;
-        *self.status_mutex.lock().await = WorkerStatus::Pause;
-        Ok(())
-    }
-
-    async fn release(&mut self) -> Result<(), Error> {
-        if self.state != VIRTIO_SND_R_PCM_PREPARE && self.state != VIRTIO_SND_R_PCM_STOP {
-            error!(
-                "Invalid PCM state transition from {} to {}",
-                get_virtio_snd_r_pcm_cmd_name(self.state),
-                get_virtio_snd_r_pcm_cmd_name(VIRTIO_SND_R_PCM_RELEASE)
-            );
-            return Err(Error::OperationNotSupported);
-        }
-        self.state = VIRTIO_SND_R_PCM_RELEASE;
-        self.release_worker().await?;
-        self.stream_source = None;
-        Ok(())
-    }
-
-    async fn release_worker(&mut self) -> Result<(), Error> {
-        *self.status_mutex.lock().await = WorkerStatus::Quit;
-        if let Some(s) = self.sender.take() {
-            s.close_channel();
-        }
-        if let Some(f) = self.worker_future.take() {
-            f.await?;
-        }
-        Ok(())
-    }
 }
 
 pub struct VirtioSnd {

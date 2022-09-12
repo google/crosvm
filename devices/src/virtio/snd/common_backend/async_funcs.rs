@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::fmt;
 use std::io;
 use std::io::Read;
 use std::io::Write;
@@ -20,14 +21,16 @@ use futures::channel::mpsc;
 use futures::channel::oneshot;
 use futures::SinkExt;
 use futures::StreamExt;
+use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 
 use super::DirectionalStream;
 use super::Error;
 use super::SndData;
-use super::StreamInfo;
 use super::WorkerStatus;
 use crate::virtio::snd::common::*;
+use crate::virtio::snd::common_backend::stream_info::SetParams;
+use crate::virtio::snd::common_backend::stream_info::StreamInfo;
 use crate::virtio::snd::common_backend::PcmResponse;
 use crate::virtio::snd::constants::*;
 use crate::virtio::snd::layout::*;
@@ -37,6 +40,71 @@ use crate::virtio::Reader;
 use crate::virtio::SignalableInterrupt;
 use crate::virtio::Writer;
 
+#[derive(Debug)]
+enum VirtioSndPcmCmd {
+    SetParams { set_params: SetParams },
+    Prepare,
+    Start,
+    Stop,
+    Release,
+}
+
+impl fmt::Display for VirtioSndPcmCmd {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let cmd_code = match self {
+            VirtioSndPcmCmd::SetParams { set_params: _ } => VIRTIO_SND_R_PCM_SET_PARAMS,
+            VirtioSndPcmCmd::Prepare => VIRTIO_SND_R_PCM_PREPARE,
+            VirtioSndPcmCmd::Start => VIRTIO_SND_R_PCM_START,
+            VirtioSndPcmCmd::Stop => VIRTIO_SND_R_PCM_STOP,
+            VirtioSndPcmCmd::Release => VIRTIO_SND_R_PCM_RELEASE,
+        };
+        f.write_str(get_virtio_snd_r_pcm_cmd_name(cmd_code))
+    }
+}
+
+#[derive(ThisError, Debug)]
+enum VirtioSndPcmCmdError {
+    #[error("SetParams requires additional parameters")]
+    SetParams,
+    #[error("Invalid virtio snd command code")]
+    InvalidCode,
+}
+
+impl TryFrom<u32> for VirtioSndPcmCmd {
+    type Error = VirtioSndPcmCmdError;
+
+    fn try_from(code: u32) -> Result<Self, Self::Error> {
+        match code {
+            VIRTIO_SND_R_PCM_PREPARE => Ok(VirtioSndPcmCmd::Prepare),
+            VIRTIO_SND_R_PCM_START => Ok(VirtioSndPcmCmd::Start),
+            VIRTIO_SND_R_PCM_STOP => Ok(VirtioSndPcmCmd::Stop),
+            VIRTIO_SND_R_PCM_RELEASE => Ok(VirtioSndPcmCmd::Release),
+            VIRTIO_SND_R_PCM_SET_PARAMS => Err(VirtioSndPcmCmdError::SetParams),
+            _ => Err(VirtioSndPcmCmdError::InvalidCode),
+        }
+    }
+}
+
+impl VirtioSndPcmCmd {
+    fn with_set_params_and_direction(
+        set_params: virtio_snd_pcm_set_params,
+        dir: u8,
+    ) -> VirtioSndPcmCmd {
+        let buffer_bytes: u32 = set_params.buffer_bytes.into();
+        let period_bytes: u32 = set_params.period_bytes.into();
+        VirtioSndPcmCmd::SetParams {
+            set_params: SetParams {
+                channels: set_params.channels,
+                format: from_virtio_sample_format(set_params.format).unwrap(),
+                frame_rate: from_virtio_frame_rate(set_params.rate).unwrap(),
+                buffer_bytes: buffer_bytes as usize,
+                period_bytes: period_bytes as usize,
+                dir,
+            },
+        }
+    }
+}
+
 // Returns true if the operation is successful. Returns error if there is
 // a runtime/internal error
 async fn process_pcm_ctrl(
@@ -45,7 +113,7 @@ async fn process_pcm_ctrl(
     tx_send: &mpsc::UnboundedSender<PcmResponse>,
     rx_send: &mpsc::UnboundedSender<PcmResponse>,
     streams: &Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo>>>>,
-    cmd_code: u32,
+    cmd: VirtioSndPcmCmd,
     writer: &mut Writer,
     stream_id: usize,
 ) -> Result<(), Error> {
@@ -55,8 +123,7 @@ async fn process_pcm_ctrl(
         None => {
             error!(
                 "Stream id={} not found for {}. Error code: VIRTIO_SND_S_BAD_MSG",
-                stream_id,
-                get_virtio_snd_r_pcm_cmd_name(cmd_code)
+                stream_id, cmd
             );
             return writer
                 .write_obj(VIRTIO_SND_S_BAD_MSG)
@@ -64,18 +131,23 @@ async fn process_pcm_ctrl(
         }
     };
 
-    debug!(
-        "{} for stream id={}",
-        get_virtio_snd_r_pcm_cmd_name(cmd_code),
-        stream_id
-    );
+    debug!("{} for stream id={}", cmd, stream_id);
 
-    let result = match cmd_code {
-        VIRTIO_SND_R_PCM_PREPARE => stream.prepare(ex, mem.clone(), tx_send, rx_send).await,
-        VIRTIO_SND_R_PCM_START => stream.start().await,
-        VIRTIO_SND_R_PCM_STOP => stream.stop().await,
-        VIRTIO_SND_R_PCM_RELEASE => stream.release().await,
-        _ => unreachable!(),
+    let result = match cmd {
+        VirtioSndPcmCmd::SetParams { set_params } => {
+            let result = stream.set_params(set_params).await;
+            if result.is_ok() {
+                debug!(
+                    "VIRTIO_SND_R_PCM_SET_PARAMS for stream id={}. Stream info: {:#?}",
+                    stream_id, *stream
+                );
+            }
+            result
+        }
+        VirtioSndPcmCmd::Prepare => stream.prepare(ex, mem.clone(), tx_send, rx_send).await,
+        VirtioSndPcmCmd::Start => stream.start().await,
+        VirtioSndPcmCmd::Stop => stream.stop().await,
+        VirtioSndPcmCmd::Release => stream.release().await,
     };
     match result {
         Ok(_) => {
@@ -86,8 +158,7 @@ async fn process_pcm_ctrl(
         Err(Error::OperationNotSupported) => {
             error!(
                 "{} for stream id={} failed. Error code: VIRTIO_SND_S_NOT_SUPP.",
-                get_virtio_snd_r_pcm_cmd_name(cmd_code),
-                stream_id
+                cmd, stream_id
             );
 
             return writer
@@ -99,9 +170,7 @@ async fn process_pcm_ctrl(
             // no such error type
             error!(
                 "{} for stream id={} failed. Error code: VIRTIO_SND_S_IO_ERR. Actual error: {}",
-                get_virtio_snd_r_pcm_cmd_name(cmd_code),
-                stream_id,
-                e
+                cmd, stream_id, e
             );
             return writer
                 .write_obj(VIRTIO_SND_S_IO_ERR)
@@ -675,51 +744,17 @@ pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
                             .map_err(Error::WriteResponse);
                     }
 
-                    let streams = streams.read_lock().await;
-                    let mut stream_info = match streams.get(stream_id) {
-                        Some(stream_info) => stream_info.lock().await,
-                        None => {
-                            error!("stream_id {} < streams {}", stream_id, streams.len());
-                            return writer
-                                .write_obj(VIRTIO_SND_S_BAD_MSG)
-                                .map_err(Error::WriteResponse);
-                        }
-                    };
-
-                    if stream_info.state != 0
-                        && stream_info.state != VIRTIO_SND_R_PCM_SET_PARAMS
-                        && stream_info.state != VIRTIO_SND_R_PCM_PREPARE
-                        && stream_info.state != VIRTIO_SND_R_PCM_RELEASE
-                    {
-                        error!(
-                            "Invalid PCM state transition from {} to {}",
-                            get_virtio_snd_r_pcm_cmd_name(stream_info.state),
-                            get_virtio_snd_r_pcm_cmd_name(VIRTIO_SND_R_PCM_SET_PARAMS)
-                        );
-                        return writer
-                            .write_obj(VIRTIO_SND_S_NOT_SUPP)
-                            .map_err(Error::WriteResponse);
-                    }
-
-                    // Only required for PREPARE -> SET_PARAMS
-                    stream_info.release_worker().await?;
-
-                    stream_info.channels = set_params.channels;
-                    stream_info.format = from_virtio_sample_format(set_params.format).unwrap();
-                    stream_info.frame_rate = from_virtio_frame_rate(set_params.rate).unwrap();
-                    stream_info.buffer_bytes = buffer_bytes as usize;
-                    stream_info.period_bytes = period_bytes as usize;
-                    stream_info.direction = dir;
-                    stream_info.state = VIRTIO_SND_R_PCM_SET_PARAMS;
-
-                    debug!(
-                        "VIRTIO_SND_R_PCM_SET_PARAMS for stream id={}. Stream info: {:#?}",
-                        stream_id, *stream_info
-                    );
-
-                    writer
-                        .write_obj(VIRTIO_SND_S_OK)
-                        .map_err(Error::WriteResponse)
+                    process_pcm_ctrl(
+                        ex,
+                        &mem.clone(),
+                        &tx_send,
+                        &rx_send,
+                        streams,
+                        VirtioSndPcmCmd::with_set_params_and_direction(set_params, dir),
+                        &mut writer,
+                        stream_id,
+                    )
+                    .await
                 }
                 VIRTIO_SND_R_PCM_PREPARE
                 | VIRTIO_SND_R_PCM_START
@@ -727,13 +762,22 @@ pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
                 | VIRTIO_SND_R_PCM_RELEASE => {
                     let hdr: virtio_snd_pcm_hdr = reader.read_obj().map_err(Error::ReadMessage)?;
                     let stream_id: usize = u32::from(hdr.stream_id) as usize;
+                    let cmd = match VirtioSndPcmCmd::try_from(code) {
+                        Ok(cmd) => cmd,
+                        Err(err) => {
+                            error!("Error converting code to command: {}", err);
+                            return writer
+                                .write_obj(VIRTIO_SND_S_BAD_MSG)
+                                .map_err(Error::WriteResponse);
+                        }
+                    };
                     process_pcm_ctrl(
                         ex,
                         &mem.clone(),
                         &tx_send,
                         &rx_send,
                         streams,
-                        code,
+                        cmd,
                         &mut writer,
                         stream_id,
                     )
