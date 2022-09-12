@@ -7,6 +7,7 @@ use std::io::Write;
 use std::mem;
 use std::net::Ipv4Addr;
 use std::os::raw::c_uint;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::thread;
 
@@ -28,6 +29,8 @@ use net_util::Error as TapError;
 use net_util::MacAddress;
 use net_util::TapT;
 use remain::sorted;
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error as ThisError;
 use virtio_sys::virtio_net;
 use virtio_sys::virtio_net::virtio_net_hdr_v1;
@@ -134,6 +137,37 @@ pub enum NetError {
     #[cfg(unix)]
     #[error("failed to write to guest buffer: {0}")]
     WriteBuffer(io::Error),
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[serde(untagged, deny_unknown_fields)]
+pub enum NetParametersMode {
+    TapName {
+        tap_name: String,
+    },
+    TapFd {
+        tap_fd: i32,
+    },
+    RawConfig {
+        #[serde(default)]
+        vhost_net: bool,
+        host_ip: Ipv4Addr,
+        netmask: Ipv4Addr,
+        mac: MacAddress,
+    },
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+pub struct NetParameters {
+    #[serde(flatten)]
+    pub mode: NetParametersMode,
+}
+
+impl FromStr for NetParameters {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        serde_keyvalue::from_key_values(s).map_err(|e| e.to_string())
+    }
 }
 
 #[repr(C, packed)]
@@ -785,5 +819,91 @@ where
         }
 
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_keyvalue::*;
+
+    use super::*;
+
+    fn from_net_arg(options: &str) -> Result<NetParameters, ParseError> {
+        from_key_values(options)
+    }
+
+    #[test]
+    fn params_from_key_values() {
+        let params = from_net_arg("");
+        assert!(params.is_err());
+
+        let params = from_net_arg("tap_name=tap").unwrap();
+        assert_eq!(
+            params,
+            NetParameters {
+                mode: NetParametersMode::TapName {
+                    tap_name: "tap".to_string()
+                }
+            }
+        );
+
+        let params = from_net_arg("tap_fd=12").unwrap();
+        assert_eq!(
+            params,
+            NetParameters {
+                mode: NetParametersMode::TapFd { tap_fd: 12 }
+            }
+        );
+
+        let params = from_net_arg(
+            "host_ip=\"192.168.10.1\",netmask=\"255.255.255.0\",mac=\"3d:70:eb:61:1a:91\"",
+        )
+        .unwrap();
+        assert_eq!(
+            params,
+            NetParameters {
+                mode: NetParametersMode::RawConfig {
+                    host_ip: Ipv4Addr::from_str("192.168.10.1").unwrap(),
+                    netmask: Ipv4Addr::from_str("255.255.255.0").unwrap(),
+                    mac: MacAddress::from_str("3d:70:eb:61:1a:91").unwrap(),
+                    vhost_net: false
+                }
+            }
+        );
+
+        let params = from_net_arg(
+            "vhost_net=true,\
+                host_ip=\"192.168.10.1\",\
+                netmask=\"255.255.255.0\",\
+                mac=\"3d:70:eb:61:1a:91\"",
+        )
+        .unwrap();
+        assert_eq!(
+            params,
+            NetParameters {
+                mode: NetParametersMode::RawConfig {
+                    host_ip: Ipv4Addr::from_str("192.168.10.1").unwrap(),
+                    netmask: Ipv4Addr::from_str("255.255.255.0").unwrap(),
+                    mac: MacAddress::from_str("3d:70:eb:61:1a:91").unwrap(),
+                    vhost_net: true
+                }
+            }
+        );
+
+        // mixed configs
+        assert!(from_net_arg(
+            "tap_name=tap,\
+            vhost_net=true,\
+            host_ip=\"192.168.10.1\",\
+            netmask=\"255.255.255.0\",\
+            mac=\"3d:70:eb:61:1a:91\"",
+        )
+        .is_err());
+
+        // missing netmask
+        assert!(from_net_arg("host_ip=\"192.168.10.1\",mac=\"3d:70:eb:61:1a:91\"").is_err());
+
+        // invalid parameter
+        assert!(from_net_arg("tap_name=tap,foomatic=true").is_err());
     }
 }

@@ -34,3 +34,6 @@ libslirp-sys = { version = "4.2.1", optional = true }
 [build-dependencies]
 anyhow = "*"
 prebuilts = { path = "../prebuilts" }
+
+[dev-dependencies]
+serde_json = "*"

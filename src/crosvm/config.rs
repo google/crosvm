@@ -29,6 +29,7 @@ use devices::virtio::device_constants::video::VideoDeviceConfig;
 use devices::virtio::gpu::GpuParameters;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
+use devices::virtio::NetParameters;
 #[cfg(feature = "audio")]
 use devices::Ac97Backend;
 #[cfg(feature = "audio")]
@@ -1226,6 +1227,7 @@ pub struct Config {
     pub mmio_address_ranges: Vec<AddressRange>,
     #[cfg(target_arch = "aarch64")]
     pub mte: bool,
+    pub net: Vec<NetParameters>,
     #[cfg(windows)]
     pub net_vhost_user_tube: Option<Tube>,
     pub net_vq_pairs: Option<u16>,
@@ -1433,6 +1435,7 @@ impl Default for Config {
             mmio_address_ranges: Vec::new(),
             #[cfg(target_arch = "aarch64")]
             mte: false,
+            net: Vec::new(),
             #[cfg(windows)]
             net_vhost_user_tube: None,
             net_vq_pairs: None,

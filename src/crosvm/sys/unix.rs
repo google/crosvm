@@ -75,6 +75,7 @@ use devices::virtio::BalloonFeatures;
 use devices::virtio::BalloonMode;
 #[cfg(feature = "gpu")]
 use devices::virtio::EventDevice;
+use devices::virtio::NetParametersMode;
 use devices::virtio::VirtioTransportType;
 #[cfg(feature = "audio")]
 use devices::Ac97Dev;
@@ -467,6 +468,55 @@ fn create_virtio_devices(
             init_balloon_size,
             balloon_features,
         )?);
+    }
+
+    for opt in &cfg.net {
+        match &opt.mode {
+            NetParametersMode::TapName { tap_name } => {
+                devs.push(create_tap_net_device_from_name(
+                    cfg.protection_type,
+                    &cfg.jail_config,
+                    cfg.net_vq_pairs.unwrap_or(1),
+                    cfg.vcpu_count.unwrap_or(1),
+                    tap_name.as_bytes(),
+                )?);
+            }
+            NetParametersMode::TapFd { tap_fd } => {
+                devs.push(create_tap_net_device_from_fd(
+                    cfg.protection_type,
+                    &cfg.jail_config,
+                    cfg.net_vq_pairs.unwrap_or(1),
+                    cfg.vcpu_count.unwrap_or(1),
+                    *tap_fd,
+                )?);
+            }
+            NetParametersMode::RawConfig {
+                host_ip,
+                netmask,
+                mac,
+                vhost_net,
+            } => {
+                if !cfg.vhost_user_net.is_empty() {
+                    bail!(
+                        "vhost-user-net cannot be used with any of --host-ip, --netmask or --mac"
+                    );
+                }
+                devs.push(create_net_device_from_config(
+                    cfg.protection_type,
+                    &cfg.jail_config,
+                    cfg.net_vq_pairs.unwrap_or(1),
+                    cfg.vcpu_count.unwrap_or(1),
+                    if *vhost_net {
+                        Some(cfg.vhost_net_device_path.clone())
+                    } else {
+                        None
+                    },
+                    *host_ip,
+                    *netmask,
+                    *mac,
+                )?);
+            }
+        }
     }
 
     // We checked above that if the IP is defined, then the netmask is, too.

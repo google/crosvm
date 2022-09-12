@@ -35,6 +35,7 @@ use devices::virtio::device_constants::video::VideoDeviceConfig;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vhost::user::device;
+use devices::virtio::NetParameters;
 #[cfg(feature = "audio")]
 use devices::Ac97Parameters;
 use devices::PflashParameters;
@@ -819,6 +820,26 @@ pub struct RunCommand {
     #[argh(switch)]
     /// enable the Memory Tagging Extension in the guest
     pub mte: bool,
+    #[cfg(unix)]
+    #[argh(
+        option,
+        long = "net",
+        arg_name = "tap_name=TAP_NAME|tap_fd=TAP_FD|host_ip=IP,netmask=NETMASK,mac=MAC_ADDRESS"
+    )]
+    /// comma separated key=value pairs for setting
+    /// up a vhost-user net device
+    /// Possible key values:
+    ///     tap_name=STRING - name of a configured persistent TAP
+    ///        interface to use for networking.
+    ///     tap_fd=INT - File descriptor for configured tap device.
+    ///     host_ip=STRING - IP address to assign to
+    ///         host tap interface.
+    ///     netmask=STRING - Netmask for VM subnet.
+    ///     mac=STRING - MAC address for VM.
+    /// Either one tap_name, one tap_fd or a triplet of host_ip,
+    /// netmask and mac can be specified as arguments for
+    /// one --net parameter--net parameter.
+    pub net: Vec<NetParameters>,
     #[cfg(unix)]
     #[argh(option, arg_name = "N")]
     /// virtio net virtual queue pairs. (default: 1)
@@ -1754,6 +1775,7 @@ impl TryFrom<RunCommand> for super::config::Config {
 
             cfg.shared_dirs = cmd.shared_dirs;
 
+            cfg.net = cmd.net;
             cfg.host_ip = cmd.host_ip;
             cfg.netmask = cmd.netmask;
             cfg.mac_address = cmd.mac_address;

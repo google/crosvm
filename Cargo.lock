@@ -1294,6 +1294,7 @@ dependencies = [
  "prebuilts",
  "remain",
  "serde",
+ "serde_json",
  "smallvec",
  "thiserror",
  "virtio_sys",

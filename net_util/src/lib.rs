@@ -29,7 +29,9 @@ use base::Error as SysError;
 use base::RawDescriptor;
 use remain::sorted;
 use serde::Deserialize;
+use serde::Deserializer;
 use serde::Serialize;
+use serde::Serializer;
 pub use sys::TapT;
 use thiserror::Error as ThisError;
 
@@ -78,7 +80,7 @@ impl Error {
 }
 
 #[sorted]
-#[derive(ThisError, Debug)]
+#[derive(ThisError, Debug, PartialEq)]
 pub enum MacAddressError {
     /// Invalid number of octets.
     #[error("invalid number of octets: {0}")]
@@ -90,7 +92,7 @@ pub enum MacAddressError {
 
 /// An Ethernet mac address. This struct is compatible with the C `struct sockaddr`.
 #[repr(C)]
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct MacAddress {
     family: net_sys::sa_family_t,
     addr: [u8; 6usize],
@@ -133,6 +135,25 @@ impl Display for MacAddress {
             "{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
             self.addr[0], self.addr[1], self.addr[2], self.addr[3], self.addr[4], self.addr[5]
         )
+    }
+}
+
+impl<'de> Deserialize<'de> for MacAddress {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        FromStr::from_str(&s).map_err(serde::de::Error::custom)
+    }
+}
+
+impl Serialize for MacAddress {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.collect_str(&self)
     }
 }
 
@@ -197,4 +218,25 @@ pub trait TapTCommon: Read + Write + AsRawDescriptor + Send + Sized {
 
     /// Convert raw descriptor to
     unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Result<Self>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::*;
+
+    #[test]
+    fn json_serialize_deserialize() {
+        let mac_address = MacAddress {
+            family: net_sys::ARPHRD_ETHER,
+            addr: [0x3d, 0x70, 0xeb, 0x61, 0x1a, 0x91],
+            __pad: [0; 8usize],
+        };
+        const SERIALIZED_ADDRESS: &str = "\"3D:70:EB:61:1A:91\"";
+        assert_eq!(to_string(&mac_address).unwrap(), SERIALIZED_ADDRESS);
+        assert_eq!(
+            from_str::<MacAddress>(SERIALIZED_ADDRESS).unwrap(),
+            mac_address
+        );
+    }
 }
