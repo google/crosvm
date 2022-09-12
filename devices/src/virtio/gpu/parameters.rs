@@ -109,21 +109,6 @@ fn default_refresh_rate() -> u32 {
     DEFAULT_REFRESH_RATE
 }
 
-fn deserialize_wsi<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<RutabagaWsi>, D::Error> {
-    let s = String::deserialize(deserializer)?;
-
-    match s.as_str() {
-        "vk" => Ok(Some(RutabagaWsi::Vulkan)),
-        "vulkan" => Ok(Some(RutabagaWsi::Vulkan)),
-        _ => Err(serde::de::Error::custom(format!(
-            "unrecognized gpu parameter {} for 'wsi' option",
-            s.as_str(),
-        ))),
-    }
-}
-
 fn deserialize_context_mask<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
     let s = String::deserialize(deserializer)?;
     let context_types: Vec<String> = s.split(':').map(|s| s.to_string()).collect();
@@ -157,7 +142,6 @@ pub struct GpuParameters {
     pub use_vulkan: Option<bool>,
     #[serde(skip)]
     pub gfxstream_support_gles31: bool,
-    #[serde(deserialize_with = "deserialize_wsi")]
     pub wsi: Option<RutabagaWsi>,
     pub udmabuf: bool,
     pub cache_path: Option<String>,

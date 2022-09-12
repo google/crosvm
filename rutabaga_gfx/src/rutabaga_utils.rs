@@ -430,6 +430,7 @@ pub struct GfxstreamFlags(u32);
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RutabagaWsi {
+    #[serde(alias = "vk")]
     Vulkan,
 }
 
