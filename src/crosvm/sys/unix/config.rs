@@ -565,6 +565,10 @@ mod tests {
         let gpu_params: GpuParameters = parse_gpu_options("backend=virglrenderer,wsi=vk").unwrap();
         assert!(matches!(gpu_params.wsi, Some(RutabagaWsi::Vulkan)));
 
+        let gpu_params: GpuParameters =
+            parse_gpu_options("backend=virglrenderer,wsi=vulkan").unwrap();
+        assert!(matches!(gpu_params.wsi, Some(RutabagaWsi::Vulkan)));
+
         let gpu_params: GpuParameters = parse_gpu_options("wsi=vk,backend=virglrenderer").unwrap();
         assert!(matches!(gpu_params.wsi, Some(RutabagaWsi::Vulkan)));
 

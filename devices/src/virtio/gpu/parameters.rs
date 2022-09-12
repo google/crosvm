@@ -116,9 +116,11 @@ fn deserialize_wsi<'de, D: Deserializer<'de>>(
 
     match s.as_str() {
         "vk" => Ok(Some(RutabagaWsi::Vulkan)),
-        _ => Err(serde::de::Error::custom(
-            "gpu parameter 'wsi' should be vk".to_string(),
-        )),
+        "vulkan" => Ok(Some(RutabagaWsi::Vulkan)),
+        _ => Err(serde::de::Error::custom(format!(
+            "unrecognized gpu parameter {} for 'wsi' option",
+            s.as_str(),
+        ))),
     }
 }
 
