@@ -84,8 +84,8 @@ pub enum VfioError {
     NoRescAlloc,
     #[error("failed to open /dev/vfio/vfio container: {0}")]
     OpenContainer(io::Error),
-    #[error("failed to open /dev/vfio/$group_num group: {0}")]
-    OpenGroup(io::Error),
+    #[error("failed to open {1} group: {0}")]
+    OpenGroup(io::Error, String),
     #[error("resources error: {0}")]
     Resources(ResourcesError),
     #[error(
@@ -482,7 +482,7 @@ impl VfioGroup {
             .read(true)
             .write(true)
             .open(Path::new(&group_path))
-            .map_err(VfioError::OpenGroup)?;
+            .map_err(|e| VfioError::OpenGroup(e, group_path))?;
 
         let mut group_status = vfio_group_status {
             argsz: mem::size_of::<vfio_group_status>() as u32,
