@@ -252,7 +252,7 @@ impl arch::LinuxArch for AArch64 {
 
         // Allocate memory for the pVM firmware.
         if matches!(
-            components.protection_type,
+            components.hv_cfg.protection_type,
             ProtectionType::Protected | ProtectionType::UnprotectedWithFirmware
         ) {
             memory_regions.push((
@@ -352,7 +352,7 @@ impl arch::LinuxArch for AArch64 {
                 use_pmu,
                 has_bios,
                 image_size,
-                components.protection_type,
+                components.hv_cfg.protection_type,
             )?;
             has_pvtime &= vcpu.has_pvtime_support();
             vcpus.push(vcpu);
@@ -374,7 +374,7 @@ impl arch::LinuxArch for AArch64 {
             .map_err(Error::MapPvtimeError)?;
         }
 
-        match components.protection_type {
+        match components.hv_cfg.protection_type {
             ProtectionType::Protected => {
                 // Tell the hypervisor to load the pVM firmware.
                 vm.load_protected_vm_firmware(
@@ -465,7 +465,7 @@ impl arch::LinuxArch for AArch64 {
         let com_evt_1_3 = devices::IrqEdgeEvent::new().map_err(Error::CreateEvent)?;
         let com_evt_2_4 = devices::IrqEdgeEvent::new().map_err(Error::CreateEvent)?;
         arch::add_serial_devices(
-            components.protection_type,
+            components.hv_cfg.protection_type,
             &mmio_bus,
             com_evt_1_3.get_trigger(),
             com_evt_2_4.get_trigger(),

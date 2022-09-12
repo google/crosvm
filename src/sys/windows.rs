@@ -1606,6 +1606,9 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         cpu_capacity: cfg.cpu_capacity.clone(),
         no_smt: cfg.no_smt,
         hugepages: cfg.hugepages,
+        hv_cfg: hypervisor::Config {
+            protection_type: cfg.protection_type,
+        },
         vm_image,
         android_fstab: cfg
             .android_fstab
@@ -1632,7 +1635,6 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
             .collect::<Result<Vec<SDT>>>()?,
         rt_cpus: cfg.rt_cpus.clone(),
         delay_rt: cfg.delay_rt,
-        protection_type: cfg.protection_type,
         dmi_path: cfg.dmi_path.clone(),
         no_i8042: cfg.no_i8042,
         no_rtc: cfg.no_rtc,

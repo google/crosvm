@@ -1439,7 +1439,7 @@ mod tests {
     fn check_vm_arch_capability() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x1000)]).unwrap();
-        let vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
+        let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
         assert!(vm.check_capability(VmCap::PvClock));
     }
 
@@ -1615,7 +1615,7 @@ mod tests {
     fn clock_handling() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-        let vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
+        let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
         let mut clock_data = vm.get_pvclock().unwrap();
         clock_data.clock += 1000;
         vm.set_pvclock(&clock_data).unwrap();
@@ -1625,7 +1625,7 @@ mod tests {
     fn set_gsi_routing() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-        let vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
+        let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
         vm.create_irq_chip().unwrap();
         vm.set_gsi_routing(&[]).unwrap();
         vm.set_gsi_routing(&[IrqRoute {
@@ -1667,7 +1667,7 @@ mod tests {
     fn set_identity_map_addr() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-        let vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
+        let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
         vm.set_identity_map_addr(GuestAddress(0x20000)).unwrap();
     }
 
@@ -1675,7 +1675,7 @@ mod tests {
     fn mp_state() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-        let vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
+        let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
         vm.create_irq_chip().unwrap();
         let vcpu = vm.create_vcpu(0).unwrap();
         let state = vcpu.get_mp_state().unwrap();
@@ -1686,7 +1686,7 @@ mod tests {
     fn enable_feature() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-        let vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
+        let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
         vm.create_irq_chip().unwrap();
         let vcpu = vm.create_vcpu(0).unwrap();
         unsafe { vcpu.enable_raw_capability(kvm_sys::KVM_CAP_HYPERV_SYNIC, &[0; 4]) }.unwrap();
@@ -1711,7 +1711,7 @@ mod tests {
     fn debugregs() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-        let vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
+        let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
         let vcpu = vm.create_vcpu(0).unwrap();
         let mut dregs = vcpu.get_debugregs().unwrap();
         dregs.dr7 = 13;
@@ -1728,7 +1728,7 @@ mod tests {
         }
 
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-        let vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
+        let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
         let vcpu = vm.create_vcpu(0).unwrap();
         let mut xcrs = vcpu.get_xcrs().unwrap();
         xcrs[0].value = 1;
@@ -1741,7 +1741,7 @@ mod tests {
     fn get_msrs() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-        let vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
+        let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
         let vcpu = vm.create_vcpu(0).unwrap();
         let mut msrs = vec![
             // This one should succeed
@@ -1763,7 +1763,7 @@ mod tests {
     fn set_msrs() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-        let vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
+        let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
         let vcpu = vm.create_vcpu(0).unwrap();
 
         const MSR_TSC_AUX: u32 = 0xc0000103;
@@ -1784,7 +1784,7 @@ mod tests {
     fn get_hyperv_cpuid() {
         let kvm = Kvm::new().unwrap();
         let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-        let vm = KvmVm::new(&kvm, gm, ProtectionType::Unprotected).unwrap();
+        let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
         let vcpu = vm.create_vcpu(0).unwrap();
         let cpuid = vcpu.get_hyperv_cpuid();
         // Older kernels don't support so tolerate this kind of failure.

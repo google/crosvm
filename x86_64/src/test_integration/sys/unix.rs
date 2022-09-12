@@ -3,8 +3,6 @@
 // found in the LICENSE file.
 
 // TODO(b/210705746): See if we can bring in the changes compiled out from go/playcl/50499
-use hypervisor::ProtectionType;
-
 use crate::test_integration::simple_vm_test;
 
 #[test]
@@ -14,8 +12,8 @@ fn simple_kvm_test() {
     simple_vm_test::<_, _, KvmVcpu, _, _, _>(
         |guest_mem| {
             let kvm = Kvm::new().expect("failed to create kvm");
-            let vm = KvmVm::new(&kvm, guest_mem, ProtectionType::Unprotected)
-                .expect("failed to create kvm vm");
+            let vm =
+                KvmVm::new(&kvm, guest_mem, Default::default()).expect("failed to create kvm vm");
             (kvm, vm)
         },
         |vm, vcpu_count, _| {
@@ -31,8 +29,8 @@ fn simple_kvm_kernel_irqchip_test() {
     simple_vm_test::<_, _, KvmVcpu, _, _, _>(
         |guest_mem| {
             let kvm = Kvm::new().expect("failed to create kvm");
-            let vm = KvmVm::new(&kvm, guest_mem, ProtectionType::Unprotected)
-                .expect("failed to create kvm vm");
+            let vm =
+                KvmVm::new(&kvm, guest_mem, Default::default()).expect("failed to create kvm vm");
             (kvm, vm)
         },
         |vm, vcpu_count, _| {
@@ -48,8 +46,8 @@ fn simple_kvm_split_irqchip_test() {
     simple_vm_test::<_, _, KvmVcpu, _, _, _>(
         |guest_mem| {
             let kvm = Kvm::new().expect("failed to create kvm");
-            let vm = KvmVm::new(&kvm, guest_mem, ProtectionType::Unprotected)
-                .expect("failed to create kvm vm");
+            let vm =
+                KvmVm::new(&kvm, guest_mem, Default::default()).expect("failed to create kvm vm");
             (kvm, vm)
         },
         |vm, vcpu_count, device_tube| {

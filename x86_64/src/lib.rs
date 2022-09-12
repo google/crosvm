@@ -569,7 +569,7 @@ impl arch::LinuxArch for X8664arch {
         V: VmX86_64,
         Vcpu: VcpuX86_64,
     {
-        if components.protection_type != ProtectionType::Unprotected {
+        if components.hv_cfg.protection_type != ProtectionType::Unprotected {
             return Err(Error::UnsupportedProtectionType);
         }
 
@@ -688,14 +688,14 @@ impl arch::LinuxArch for X8664arch {
             Self::setup_legacy_cmos_device(&io_bus, components.memory_size)?;
         }
         Self::setup_serial_devices(
-            components.protection_type,
+            components.hv_cfg.protection_type,
             irq_chip.as_irq_chip_mut(),
             &io_bus,
             serial_parameters,
             serial_jail,
         )?;
         Self::setup_debugcon_devices(
-            components.protection_type,
+            components.hv_cfg.protection_type,
             &io_bus,
             serial_parameters,
             debugcon_jail,

@@ -219,7 +219,6 @@ mod tests {
     use hypervisor::kvm::Kvm;
     use hypervisor::kvm::KvmVm;
     use hypervisor::MPState;
-    use hypervisor::ProtectionType;
     use hypervisor::Vm;
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     use hypervisor::VmAArch64;
@@ -234,8 +233,7 @@ mod tests {
     fn create_kvm_kernel_irqchip() {
         let kvm = Kvm::new().expect("failed to instantiate Kvm");
         let mem = GuestMemory::new(&[]).unwrap();
-        let vm =
-            KvmVm::new(&kvm, mem, ProtectionType::Unprotected).expect("failed to instantiate vm");
+        let vm = KvmVm::new(&kvm, mem, Default::default()).expect("failed to instantiate vm");
 
         let mut chip = KvmKernelIrqChip::new(vm.try_clone().expect("failed to clone vm"), 1)
             .expect("failed to instantiate KvmKernelIrqChip");
@@ -249,8 +247,7 @@ mod tests {
     fn mp_state() {
         let kvm = Kvm::new().expect("failed to instantiate Kvm");
         let mem = GuestMemory::new(&[]).unwrap();
-        let vm =
-            KvmVm::new(&kvm, mem, ProtectionType::Unprotected).expect("failed to instantiate vm");
+        let vm = KvmVm::new(&kvm, mem, Default::default()).expect("failed to instantiate vm");
 
         let mut chip = KvmKernelIrqChip::new(vm.try_clone().expect("failed to clone vm"), 1)
             .expect("failed to instantiate KvmKernelIrqChip");

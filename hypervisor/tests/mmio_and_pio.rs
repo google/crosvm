@@ -19,8 +19,7 @@ fn test_kvm_mmio_and_pio() {
     use hypervisor::kvm::*;
     test_mmio_and_pio(|guest_mem| {
         let kvm = Kvm::new().expect("failed to create kvm");
-        let vm =
-            KvmVm::new(&kvm, guest_mem, ProtectionType::Unprotected).expect("failed to create vm");
+        let vm = KvmVm::new(&kvm, guest_mem, Default::default()).expect("failed to create vm");
         (kvm, vm)
     });
 }

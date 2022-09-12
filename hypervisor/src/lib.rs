@@ -558,3 +558,16 @@ pub enum ProtectionType {
     /// useful for debugging the protected VM firmware and other protected mode issues.
     UnprotectedWithFirmware,
 }
+
+#[derive(Clone, Copy)]
+pub struct Config {
+    pub protection_type: ProtectionType,
+}
+
+impl Default for Config {
+    fn default() -> Config {
+        Config {
+            protection_type: ProtectionType::Unprotected,
+        }
+    }
+}
