@@ -570,7 +570,7 @@ pub struct RunCommand {
         option,
         short = 'd',
         long = "disk",
-        arg_name = "PATH[,key=value[,key=value[,...]]",
+        arg_name = "PATH[,key=value[,key=value[,...]]]",
         from_str_fn(numbered_disk_option)
     )]
     /// path to a disk image followed by optional comma-separated
@@ -893,7 +893,7 @@ pub struct RunCommand {
     pub pvclock: bool,
     #[argh(
         option,
-        arg_name = "PATH[,key=value[,key=value[,...]]",
+        arg_name = "PATH[,key=value[,key=value[,...]]]",
         short = 'r',
         from_str_fn(numbered_disk_option)
     )]
@@ -917,7 +917,7 @@ pub struct RunCommand {
     #[argh(
         option,
         long = "rwdisk",
-        arg_name = "PATH[,key=value[,key=value[,...]]",
+        arg_name = "PATH[,key=value[,key=value[,...]]]",
         from_str_fn(numbered_disk_option)
     )]
     /// path to a read-write disk image followed by optional
@@ -933,7 +933,7 @@ pub struct RunCommand {
     rwdisks: Vec<(usize, DiskOption)>,
     #[argh(
         option,
-        arg_name = "PATH[,key=value[,key=value[,...]]",
+        arg_name = "PATH[,key=value[,key=value[,...]]]",
         from_str_fn(numbered_disk_option)
     )]
     /// path to a read-write root disk image followed by optional
