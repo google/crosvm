@@ -40,6 +40,7 @@ sudo apt-get install --yes --no-install-recommends \
     qemu-system-x86 \
     rsync \
     screen \
+    wget \
     wine64 \
     gcc-mingw-w64-x86-64-win32 \
     wayland-protocols
@@ -51,12 +52,22 @@ pip3 install \
     mypy \
     black
 
-rustup component add clippy
-rustup component add rustfmt
+if ! command -v rustup &> /dev/null; then
+    wget "https://static.rust-lang.org/rustup/archive/1.25.1/x86_64-unknown-linux-gnu/rustup-init"
+    echo "5cc9ffd1026e82e7fb2eec2121ad71f4b0f044e88bca39207b3f6b769aaa799c *rustup-init" | sha256sum -c -; \
+    chmod +x rustup-init
+    ./rustup-init -y --no-modify-path --profile minimal --default-toolchain none
+    rm rustup-init
+fi
+
+# Install required rust components.
+# This will also ensure the toolchain required by ./rust-toolchain is installed.
+rustup component add cargo clippy rustfmt
 
 # LLVM tools are used to generate and process coverage files
 rustup component add llvm-tools-preview
 
+# Allow cross-compilation via mingw64
 rustup target add x86_64-pc-windows-gnu
 
 # The bindgen tool is required to build a crosvm dependency.

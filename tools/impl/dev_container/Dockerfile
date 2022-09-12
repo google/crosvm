@@ -1,8 +1,11 @@
 # Copyright 2021 The ChromiumOS Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
-ARG RUST_VERSION
-FROM docker.io/rust:${RUST_VERSION}-slim-bullseye
+FROM docker.io/debian:testing-20220822-slim
+
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH
 
 # Use a dedicated target directory so we do not write into the source directory.
 RUN mkdir -p /scratch/cargo_target \
@@ -16,19 +19,22 @@ ENV CARGO_TARGET_DIR=/scratch/cargo_target
 RUN dpkg --add-architecture arm64 \
     && dpkg --add-architecture armhf
 
-# Install dependencies.
-COPY tools/install-deps tools/install-aarch64-deps tools/install-armhf-deps tools/install-docs-deps /tools/
-RUN chmod 755 /tools/install-deps /tools/install-aarch64-deps /tools/install-armhf-deps /tools/install-docs-deps \
-    && apt update \
-    && apt install --yes sudo \
-    && /tools/install-deps \
-    && /tools/install-aarch64-deps \
-    && /tools/install-armhf-deps \
-    && /tools/install-docs-deps \
-    # Clear apt cache to save space in layer.
-    && rm -rf /var/lib/apt/lists/* \
-    # Delete build artifacts from 'cargo install' to save space in layer.
-    && rm -rf /scratch/cargo_target/*
+# Allow APT to cache packages between docker image builds
+RUN rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
+
+# Install dependencies (APT and cargo packages are cached between image builds for faster iterative builds).
+COPY tools/install-deps tools/install-aarch64-deps tools/install-armhf-deps tools/install-docs-deps rust-toolchain /tools/
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    --mount=type=cache,target=/scratch/cargo_target,sharing=locked \
+    cd /tools \
+    && chmod +x * \
+    && apt-get update \
+    && apt-get install --yes sudo \
+    && ./install-deps \
+    && ./install-aarch64-deps \
+    && ./install-armhf-deps \
+    && ./install-docs-deps
 
 # Add a new password-less sudoer user crosvmdev
 RUN useradd -ms /bin/bash crosvmdev \
@@ -53,7 +59,7 @@ RUN sudo ln -sf /usr/bin/wine64-stable /usr/bin/wine64 \
 COPY tools/aarch64vm /tools/
 COPY /tools/impl/testvm.py /tools/impl/
 COPY /tools/impl/testvm/version /tools/impl/testvm/
-RUN sudo chmod 755 /tools/aarch64vm /tools/impl/testvm.py \
+RUN sudo chmod 755 -R /tools \
     && /tools/aarch64vm build
 
 # Cache CARGO_HOME between container runs in CI.

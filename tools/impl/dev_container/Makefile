@@ -19,7 +19,6 @@ export DOCKER_BUILDKIT=1
 
 TAG_BASE=gcr.io/crosvm-infra
 VERSION=$(shell cat version)
-RUST_VERSION=$(shell cat ../../../rust-toolchain | grep channel | grep -E -o "[0-9\.]+")
 BUILD_CONTEXT=$(shell realpath ../../../)
 
 DOCKER ?= docker
@@ -31,7 +30,6 @@ upload: all
 
 crosvm_dev:
 	$(DOCKER) build \
-		--build-arg RUST_VERSION=$(RUST_VERSION) \
 		-t $(TAG_BASE)/$@:$(VERSION) \
 		-f Dockerfile \
 		$(BUILD_CONTEXT)
