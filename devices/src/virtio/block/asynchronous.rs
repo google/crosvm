@@ -35,6 +35,9 @@ use cros_async::Executor;
 use cros_async::SelectResult;
 use cros_async::TimerAsync;
 use data_model::DataInit;
+use data_model::Le16;
+use data_model::Le32;
+use data_model::Le64;
 use disk::AsyncDisk;
 use disk::DiskFile;
 use futures::pin_mut;
@@ -63,6 +66,18 @@ use crate::virtio::Writer;
 const QUEUE_SIZE: u16 = 256;
 pub const NUM_QUEUES: u16 = 16;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE; NUM_QUEUES as usize];
+
+const SECTOR_SHIFT: u8 = 9;
+const SECTOR_SIZE: u64 = 0x01 << SECTOR_SHIFT;
+
+const MAX_DISCARD_SECTORS: u32 = u32::MAX;
+const MAX_WRITE_ZEROES_SECTORS: u32 = u32::MAX;
+// Arbitrary limits for number of discard/write zeroes segments.
+const MAX_DISCARD_SEG: u32 = 32;
+const MAX_WRITE_ZEROES_SEG: u32 = 32;
+// Hard-coded to 64 KiB (in 512-byte sectors) for now,
+// but this should probably be based on cluster size for qcow.
+const DISCARD_SECTOR_ALIGNMENT: u32 = 128;
 
 #[sorted]
 #[derive(ThisError, Debug)]
@@ -150,6 +165,14 @@ pub enum ControlError {
     #[error("couldn't read the resample event: {0}")]
     ReadResampleEvent(AsyncError),
 }
+
+/// Maximum length of the virtio-block ID string field.
+pub const ID_LEN: usize = 20;
+
+/// Virtio block device identifier.
+/// This is an ASCII string terminated by a \0, unless all 20 bytes are used,
+/// in which case the \0 terminator is omitted.
+pub type BlockId = [u8; ID_LEN];
 
 /// Tracks the state of an anynchronous disk.
 pub struct DiskState {
@@ -536,7 +559,7 @@ impl BlockAsync {
             );
         }
 
-        let avail_features = build_avail_features(base_features, read_only, sparse, true);
+        let avail_features = Self::build_avail_features(base_features, read_only, sparse, true);
 
         let seg_max = get_seg_max(QUEUE_SIZE);
 
@@ -553,6 +576,31 @@ impl BlockAsync {
             worker_thread: None,
             control_tube,
         })
+    }
+
+    /// Returns the feature flags given the specified attributes.
+    fn build_avail_features(
+        base_features: u64,
+        read_only: bool,
+        sparse: bool,
+        multi_queue: bool,
+    ) -> u64 {
+        let mut avail_features = base_features;
+        avail_features |= 1 << VIRTIO_BLK_F_FLUSH;
+        if read_only {
+            avail_features |= 1 << VIRTIO_BLK_F_RO;
+        } else {
+            if sparse {
+                avail_features |= 1 << VIRTIO_BLK_F_DISCARD;
+            }
+            avail_features |= 1 << VIRTIO_BLK_F_WRITE_ZEROES;
+        }
+        avail_features |= 1 << VIRTIO_BLK_F_SEG_MAX;
+        avail_features |= 1 << VIRTIO_BLK_F_BLK_SIZE;
+        if multi_queue {
+            avail_features |= 1 << VIRTIO_BLK_F_MQ;
+        }
+        avail_features
     }
 
     // Execute a single block device request.
@@ -720,6 +768,29 @@ impl BlockAsync {
         };
         Ok(())
     }
+
+    /// Builds and returns the config structure used to specify block features.
+    pub fn build_config_space(
+        disk_size: u64,
+        seg_max: u32,
+        block_size: u32,
+        num_queues: u16,
+    ) -> virtio_blk_config {
+        virtio_blk_config {
+            // If the image is not a multiple of the sector size, the tail bits are not exposed.
+            capacity: Le64::from(disk_size >> SECTOR_SHIFT),
+            seg_max: Le32::from(seg_max),
+            blk_size: Le32::from(block_size),
+            num_queues: Le16::from(num_queues),
+            max_discard_sectors: Le32::from(MAX_DISCARD_SECTORS),
+            discard_sector_alignment: Le32::from(DISCARD_SECTOR_ALIGNMENT),
+            max_write_zeroes_sectors: Le32::from(MAX_WRITE_ZEROES_SECTORS),
+            write_zeroes_may_unmap: 1,
+            max_discard_seg: Le32::from(MAX_DISCARD_SEG),
+            max_write_zeroes_seg: Le32::from(MAX_WRITE_ZEROES_SEG),
+            ..Default::default()
+        }
+    }
 }
 
 impl Drop for BlockAsync {
@@ -765,7 +836,7 @@ impl VirtioDevice for BlockAsync {
     fn read_config(&self, offset: u64, data: &mut [u8]) {
         let config_space = {
             let disk_size = self.disk_size.load(Ordering::Acquire);
-            build_config_space(disk_size, self.seg_max, self.block_size, NUM_QUEUES)
+            Self::build_config_space(disk_size, self.seg_max, self.block_size, NUM_QUEUES)
         };
         copy_config(data, 0, config_space.as_slice(), offset);
     }

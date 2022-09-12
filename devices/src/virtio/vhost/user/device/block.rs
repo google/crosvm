@@ -34,7 +34,6 @@ use crate::virtio::block::asynchronous::flush_disk;
 use crate::virtio::block::asynchronous::handle_queue;
 use crate::virtio::block::asynchronous::handle_vhost_user_command_tube;
 use crate::virtio::block::asynchronous::BlockAsync;
-use crate::virtio::block::build_config_space;
 use crate::virtio::block::DiskState;
 use crate::virtio::copy_config;
 use crate::virtio::vhost::user::device::handler::sys::Doorbell;
@@ -181,7 +180,7 @@ impl VhostUserBackend for BlockBackend {
     fn read_config(&self, offset: u64, data: &mut [u8]) {
         let config_space = {
             let disk_size = self.disk_size.load(Ordering::Relaxed);
-            build_config_space(disk_size, self.seg_max, self.block_size, NUM_QUEUES)
+            BlockAsync::build_config_space(disk_size, self.seg_max, self.block_size, NUM_QUEUES)
         };
         copy_config(data, 0, config_space.as_slice(), offset);
     }

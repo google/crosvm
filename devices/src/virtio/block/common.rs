@@ -7,24 +7,6 @@ use data_model::Le16;
 use data_model::Le32;
 use data_model::Le64;
 
-pub const SECTOR_SHIFT: u8 = 9;
-pub const SECTOR_SIZE: u64 = 0x01 << SECTOR_SHIFT;
-pub const MAX_DISCARD_SECTORS: u32 = u32::MAX;
-pub const MAX_WRITE_ZEROES_SECTORS: u32 = u32::MAX;
-// Arbitrary limits for number of discard/write zeroes segments.
-pub const MAX_DISCARD_SEG: u32 = 32;
-pub const MAX_WRITE_ZEROES_SEG: u32 = 32;
-// Hard-coded to 64 KiB (in 512-byte sectors) for now,
-// but this should probably be based on cluster size for qcow.
-pub const DISCARD_SECTOR_ALIGNMENT: u32 = 128;
-
-pub const ID_LEN: usize = 20;
-
-/// Virtio block device identifier.
-/// This is an ASCII string terminated by a \0, unless all 20 bytes are used,
-/// in which case the \0 terminator is omitted.
-pub type BlockId = [u8; ID_LEN];
-
 pub const VIRTIO_BLK_T_IN: u32 = 0;
 pub const VIRTIO_BLK_T_OUT: u32 = 1;
 pub const VIRTIO_BLK_T_FLUSH: u32 = 4;
@@ -114,51 +96,3 @@ pub(crate) const VIRTIO_BLK_DISCARD_WRITE_ZEROES_FLAG_UNMAP: u32 = 1 << 0;
 
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_blk_discard_write_zeroes {}
-
-/// Builds and returns the config structure used to specify block features.
-pub fn build_config_space(
-    disk_size: u64,
-    seg_max: u32,
-    block_size: u32,
-    num_queues: u16,
-) -> virtio_blk_config {
-    virtio_blk_config {
-        // If the image is not a multiple of the sector size, the tail bits are not exposed.
-        capacity: Le64::from(disk_size >> SECTOR_SHIFT),
-        seg_max: Le32::from(seg_max),
-        blk_size: Le32::from(block_size),
-        num_queues: Le16::from(num_queues),
-        max_discard_sectors: Le32::from(MAX_DISCARD_SECTORS),
-        discard_sector_alignment: Le32::from(DISCARD_SECTOR_ALIGNMENT),
-        max_write_zeroes_sectors: Le32::from(MAX_WRITE_ZEROES_SECTORS),
-        write_zeroes_may_unmap: 1,
-        max_discard_seg: Le32::from(MAX_DISCARD_SEG),
-        max_write_zeroes_seg: Le32::from(MAX_WRITE_ZEROES_SEG),
-        ..Default::default()
-    }
-}
-
-/// Returns the feature flags given the specified attributes.
-pub fn build_avail_features(
-    base_features: u64,
-    read_only: bool,
-    sparse: bool,
-    multi_queue: bool,
-) -> u64 {
-    let mut avail_features = base_features;
-    avail_features |= 1 << VIRTIO_BLK_F_FLUSH;
-    if read_only {
-        avail_features |= 1 << VIRTIO_BLK_F_RO;
-    } else {
-        if sparse {
-            avail_features |= 1 << VIRTIO_BLK_F_DISCARD;
-        }
-        avail_features |= 1 << VIRTIO_BLK_F_WRITE_ZEROES;
-    }
-    avail_features |= 1 << VIRTIO_BLK_F_SEG_MAX;
-    avail_features |= 1 << VIRTIO_BLK_F_BLK_SIZE;
-    if multi_queue {
-        avail_features |= 1 << VIRTIO_BLK_F_MQ;
-    }
-    avail_features
-}
