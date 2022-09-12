@@ -2,9 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// TODO(acourbot): Remove once we start using this file
-#![allow(dead_code)]
-
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
@@ -258,8 +255,30 @@ mod tests {
     use base::WaitContext;
 
     use super::*;
-    use crate::virtio::video::decoder::DecoderEvent;
+    use crate::virtio::video::error::VideoError;
+    use crate::virtio::video::error::VideoResult;
     use crate::virtio::video::format::Rect;
+
+    /// This is the same as DecoderEvent but copied here so that the test can be compiled
+    /// without depending on the "video-decoder" feature.
+    #[derive(Debug)]
+    pub enum TestEvent {
+        ProvidePictureBuffers {
+            min_num_buffers: u32,
+            width: i32,
+            height: i32,
+            visible_rect: Rect,
+        },
+        PictureReady {
+            picture_buffer_id: i32,
+            timestamp: u64,
+            visible_rect: Rect,
+        },
+        NotifyEndOfBitstreamBuffer(u32),
+        NotifyError(VideoError),
+        FlushCompleted(VideoResult<()>),
+        ResetCompleted(VideoResult<()>),
+    }
 
     /// Test basic queue/dequeue functionality of `EventQueue`.
     #[test]
@@ -267,12 +286,12 @@ mod tests {
         let mut event_queue = EventQueue::new().unwrap();
 
         assert_eq!(
-            event_queue.queue_event(DecoderEvent::NotifyEndOfBitstreamBuffer(1)),
+            event_queue.queue_event(TestEvent::NotifyEndOfBitstreamBuffer(1)),
             Ok(())
         );
         assert_eq!(event_queue.len(), 1);
         assert_eq!(
-            event_queue.queue_event(DecoderEvent::PictureReady {
+            event_queue.queue_event(TestEvent::PictureReady {
                 picture_buffer_id: 0,
                 timestamp: 42,
                 visible_rect: Rect {
@@ -288,12 +307,12 @@ mod tests {
 
         assert!(matches!(
             event_queue.dequeue_event(),
-            Ok(DecoderEvent::NotifyEndOfBitstreamBuffer(1))
+            Ok(TestEvent::NotifyEndOfBitstreamBuffer(1))
         ));
         assert_eq!(event_queue.len(), 1);
         assert!(matches!(
             event_queue.dequeue_event(),
-            Ok(DecoderEvent::PictureReady {
+            Ok(TestEvent::PictureReady {
                 picture_buffer_id: 0,
                 timestamp: 42,
                 visible_rect: Rect {
@@ -307,7 +326,7 @@ mod tests {
         assert_eq!(event_queue.len(), 0);
     }
 
-    /// Test polling of `DecoderEventQueue`'s `event_pipe`.
+    /// Test polling of `TestEventQueue`'s `event_pipe`.
     #[test]
     fn decoder_event_queue_polling() {
         #[derive(EventToken)]
@@ -323,15 +342,15 @@ mod tests {
 
         // `event_pipe` should signal as long as the queue is not empty.
         event_queue
-            .queue_event(DecoderEvent::NotifyEndOfBitstreamBuffer(1))
+            .queue_event(TestEvent::NotifyEndOfBitstreamBuffer(1))
             .unwrap();
         assert_eq!(wait_context.wait_timeout(Duration::ZERO).unwrap().len(), 1);
         event_queue
-            .queue_event(DecoderEvent::NotifyEndOfBitstreamBuffer(2))
+            .queue_event(TestEvent::NotifyEndOfBitstreamBuffer(2))
             .unwrap();
         assert_eq!(wait_context.wait_timeout(Duration::ZERO).unwrap().len(), 1);
         event_queue
-            .queue_event(DecoderEvent::NotifyEndOfBitstreamBuffer(3))
+            .queue_event(TestEvent::NotifyEndOfBitstreamBuffer(3))
             .unwrap();
         assert_eq!(wait_context.wait_timeout(Duration::ZERO).unwrap().len(), 1);
 
