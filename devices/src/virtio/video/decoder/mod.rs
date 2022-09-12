@@ -413,7 +413,7 @@ pub struct Decoder<D: DecoderBackend> {
     mem: GuestMemory,
 }
 
-impl<'a, D: DecoderBackend> Decoder<D> {
+impl<D: DecoderBackend> Decoder<D> {
     /// Build a new decoder using the provided `backend`.
     pub fn new(backend: D, resource_bridge: Tube, mem: GuestMemory) -> Self {
         let capability = backend.get_capabilities();
