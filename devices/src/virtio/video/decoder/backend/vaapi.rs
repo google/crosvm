@@ -26,8 +26,6 @@ use libva::PictureSync;
 use libva::Surface;
 use libva::UsageHint;
 
-use crate::virtio::video::decoder::utils::EventQueue;
-use crate::virtio::video::decoder::utils::OutputQueue;
 use crate::virtio::video::decoder::Capability;
 use crate::virtio::video::decoder::DecoderBackend;
 use crate::virtio::video::decoder::DecoderEvent;
@@ -44,6 +42,8 @@ use crate::virtio::video::format::Rect;
 use crate::virtio::video::resource::BufferHandle;
 use crate::virtio::video::resource::GuestResource;
 use crate::virtio::video::resource::GuestResourceHandle;
+use crate::virtio::video::utils::EventQueue;
+use crate::virtio::video::utils::OutputQueue;
 
 mod vp8;
 

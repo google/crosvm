@@ -32,9 +32,6 @@ use base::MappedRegion;
 use base::MemoryMappingArena;
 use thiserror::Error as ThisError;
 
-use crate::virtio::video::decoder::backend::utils::EventQueue;
-use crate::virtio::video::decoder::backend::utils::OutputQueue;
-use crate::virtio::video::decoder::backend::utils::SyncEventQueue;
 use crate::virtio::video::decoder::backend::*;
 use crate::virtio::video::format::FormatDesc;
 use crate::virtio::video::format::FormatRange;
@@ -44,6 +41,9 @@ use crate::virtio::video::format::Profile;
 use crate::virtio::video::resource::BufferHandle;
 use crate::virtio::video::resource::GuestResource;
 use crate::virtio::video::resource::GuestResourceHandle;
+use crate::virtio::video::utils::EventQueue;
+use crate::virtio::video::utils::OutputQueue;
+use crate::virtio::video::utils::SyncEventQueue;
 
 /// Structure maintaining a mapping for an encoded input buffer that can be used as a libavcodec
 /// buffer source. It also sends a `NotifyEndOfBitstreamBuffer` event when dropped.

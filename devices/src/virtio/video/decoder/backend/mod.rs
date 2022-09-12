@@ -17,7 +17,6 @@ use crate::virtio::video::resource::GuestResourceHandle;
 
 #[cfg(feature = "ffmpeg")]
 pub mod ffmpeg;
-pub mod utils;
 
 #[cfg(feature = "vaapi")]
 pub mod vaapi;

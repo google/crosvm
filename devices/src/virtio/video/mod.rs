@@ -47,6 +47,7 @@ mod params;
 mod protocol;
 mod resource;
 mod response;
+mod utils;
 mod worker;
 
 #[cfg(all(
