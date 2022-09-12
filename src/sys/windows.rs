@@ -188,7 +188,6 @@ use vm_control::ServiceSendToGpu;
 use vm_control::VmMemoryRequest;
 use vm_control::VmRunMode;
 use vm_memory::GuestMemory;
-use winapi::um::winnt::FILE_SHARE_READ;
 #[cfg(feature = "whpx")]
 use x86_64::cpuid::adjust_cpuid;
 #[cfg(feature = "whpx")]
@@ -252,24 +251,10 @@ fn create_vhost_user_block_device(cfg: &Config, disk_device_tube: Tube) -> Devic
 }
 
 fn create_block_device(cfg: &Config, disk: &DiskOption, disk_device_tube: Tube) -> DeviceResult {
-    // Lock the disk image to prevent other crosvm instances from using it, unless it is read_only.
-    let share_flags = if disk.read_only { FILE_SHARE_READ } else { 0 };
-    let raw_image: File = OpenOptions::new()
-        .read(true)
-        .write(!disk.read_only)
-        .share_mode(share_flags)
-        .open(&disk.path)
-        .with_exit_context(Exit::Disk, || {
-            format!("failed to load disk image {}", disk.path.display())
-        })?;
-
-    let disk_file =
-        disk::create_disk_file(raw_image, disk.sparse, disk::MAX_NESTING_DEPTH, &disk.path)
-            .exit_context(Exit::CreateAsyncDisk, "failed to create virtual disk")?;
     let features = virtio::base_features(cfg.protection_type);
     let dev = virtio::BlockAsync::new(
         features,
-        disk_file,
+        disk.open()?,
         disk.read_only,
         disk.sparse,
         disk.block_size,
