@@ -1150,6 +1150,8 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         no_smt: cfg.no_smt,
         hugepages: cfg.hugepages,
         hv_cfg: hypervisor::Config {
+            #[cfg(target_arch = "aarch64")]
+            mte: cfg.mte,
             protection_type: cfg.protection_type,
         },
         vm_image,

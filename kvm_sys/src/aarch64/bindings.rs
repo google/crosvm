@@ -5,6 +5,8 @@
 #![allow(non_snake_case)]
 #![allow(dead_code)]
 
+// TODO(pcc): Remove this when Chrome OS updates its kernel.
+pub const KVM_CAP_ARM_MTE: u32 = 205;
 // Added by kvm_sys/bindgen.sh
 pub const KVM_SYSTEM_EVENT_S2IDLE: u32 = 4;
 pub const KVM_SYSTEM_EVENT_RESET_FLAG_PSCI_RESET2: u64 = 0x1;

@@ -10,7 +10,9 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 source tools/impl/bindgen-common.sh
 
-KVM_EXTRAS="// Added by kvm_sys/bindgen.sh
+KVM_EXTRAS="// TODO(pcc): Remove this when Chrome OS updates its kernel.
+pub const KVM_CAP_ARM_MTE: u32 = 205;
+// Added by kvm_sys/bindgen.sh
 pub const KVM_SYSTEM_EVENT_S2IDLE: u32 = 4;
 pub const KVM_SYSTEM_EVENT_RESET_FLAG_PSCI_RESET2: u64 = 0x1;
 // TODO(tjeznach): Remove this when reporting KVM_IOAPIC_NUM_PINS is no longer required.

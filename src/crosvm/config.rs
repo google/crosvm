@@ -1235,6 +1235,8 @@ pub struct Config {
     pub memory: Option<u64>,
     pub memory_file: Option<PathBuf>,
     pub mmio_address_ranges: Vec<AddressRange>,
+    #[cfg(target_arch = "aarch64")]
+    pub mte: bool,
     #[cfg(windows)]
     pub net_vhost_user_tube: Option<Tube>,
     pub net_vq_pairs: Option<u16>,
@@ -1440,6 +1442,8 @@ impl Default for Config {
             memory: None,
             memory_file: None,
             mmio_address_ranges: Vec::new(),
+            #[cfg(target_arch = "aarch64")]
+            mte: false,
             #[cfg(windows)]
             net_vhost_user_tube: None,
             net_vq_pairs: None,

@@ -23,6 +23,7 @@ use libc::E2BIG;
 use libc::ENXIO;
 use vm_memory::GuestAddress;
 
+use super::Config;
 use super::Kvm;
 use super::KvmVcpu;
 use super::KvmVm;
@@ -158,6 +159,11 @@ impl HypervisorX86_64 for Kvm {
 }
 
 impl KvmVm {
+    /// Does platform specific initialization for the KvmVm.
+    pub fn init_arch(&self, _cfg: &Config) -> Result<()> {
+        Ok(())
+    }
+
     /// Checks if a particular `VmCap` is available, or returns None if arch-independent
     /// Vm.check_capability() should handle the check.
     pub fn check_capability_arch(&self, c: VmCap) -> Option<bool> {

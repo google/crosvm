@@ -561,12 +561,17 @@ pub enum ProtectionType {
 
 #[derive(Clone, Copy)]
 pub struct Config {
+    #[cfg(target_arch = "aarch64")]
+    /// enable the Memory Tagging Extension in the guest
+    pub mte: bool,
     pub protection_type: ProtectionType,
 }
 
 impl Default for Config {
     fn default() -> Config {
         Config {
+            #[cfg(target_arch = "aarch64")]
+            mte: false,
             protection_type: ProtectionType::Unprotected,
         }
     }

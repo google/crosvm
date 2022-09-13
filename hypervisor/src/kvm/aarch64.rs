@@ -20,6 +20,7 @@ use libc::ENOTSUP;
 use libc::ENXIO;
 use vm_memory::GuestAddress;
 
+use super::Config;
 use super::Kvm;
 use super::KvmCap;
 use super::KvmVcpu;
@@ -76,6 +77,16 @@ impl Kvm {
 }
 
 impl KvmVm {
+    /// Does platform specific initialization for the KvmVm.
+    pub fn init_arch(&self, cfg: &Config) -> Result<()> {
+        #[cfg(target_arch = "aarch64")]
+        if cfg.mte {
+            // Safe because it does not take pointer arguments.
+            unsafe { self.enable_raw_capability(KvmCap::ArmMte, 0, &[0, 0, 0, 0])? }
+        }
+        Ok(())
+    }
+
     /// Checks if a particular `VmCap` is available, or returns None if arch-independent
     /// Vm.check_capability() should handle the check.
     pub fn check_capability_arch(&self, _c: VmCap) -> Option<bool> {

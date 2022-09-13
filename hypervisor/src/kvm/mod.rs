@@ -238,13 +238,15 @@ impl KvmVm {
             }
         })?;
 
-        Ok(KvmVm {
+        let vm = KvmVm {
             kvm: kvm.try_clone()?,
             vm: vm_descriptor,
             guest_mem,
             mem_regions: Arc::new(Mutex::new(BTreeMap::new())),
             mem_slot_gaps: Arc::new(Mutex::new(BinaryHeap::new())),
-        })
+        };
+        vm.init_arch(&cfg)?;
+        Ok(vm)
     }
 
     fn create_vcpu(&self, id: usize) -> Result<KvmVcpu> {

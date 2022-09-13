@@ -753,6 +753,10 @@ pub struct RunCommand {
     )]
     /// MMIO address ranges
     pub mmio_address_ranges: Option<Vec<AddressRange>>,
+    #[cfg(target_arch = "aarch64")]
+    #[argh(switch)]
+    /// enable the Memory Tagging Extension in the guest
+    pub mte: bool,
     #[cfg(unix)]
     #[argh(option, arg_name = "N")]
     /// virtio net virtual queue pairs. (default: 1)
@@ -1351,6 +1355,13 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         #[cfg(target_arch = "aarch64")]
         {
+            if cmd.mte && !(cmd.pmem_devices.is_empty() && cmd.rw_pmem_devices.is_empty()) {
+                return Err(
+                    "--mte cannot be specified together with --pmem-device or --rw-pmem-device"
+                        .to_string(),
+                );
+            }
+            cfg.mte = cmd.mte;
             cfg.swiotlb = cmd.swiotlb;
         }
 
