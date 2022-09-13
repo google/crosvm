@@ -277,6 +277,8 @@ pub struct VirtioGpu {
     external_blob: bool,
     refresh_rate: u32,
     udmabuf_driver: Option<UdmabufDriver>,
+    #[cfg(feature = "kiwi")]
+    gpu_device_service_tube: Tube,
 }
 
 fn sglist_to_rutabaga_iovecs(
@@ -312,6 +314,7 @@ impl VirtioGpu {
         external_blob: bool,
         udmabuf: bool,
         fence_handler: RutabagaFenceHandler,
+        #[cfg(feature = "kiwi")] gpu_device_service_tube: Tube,
         render_server_fd: Option<SafeDescriptor>,
     ) -> Option<VirtioGpu> {
         let rutabaga = rutabaga_builder
@@ -349,6 +352,8 @@ impl VirtioGpu {
             external_blob,
             refresh_rate: display_params[0].refresh_rate,
             udmabuf_driver,
+            #[cfg(feature = "kiwi")]
+            gpu_device_service_tube,
         };
 
         for event_device in event_devices {

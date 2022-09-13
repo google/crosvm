@@ -297,17 +297,24 @@ fn create_gpu_device(
         .gpu_parameters
         .as_ref()
         .expect("No GPU parameters provided in config!");
-    let display_backends = vec![virtio::DisplayBackend::WinAPI(
-        (&gpu_parameters.display_params).into(),
+    let display_backends = vec![virtio::DisplayBackend::WinApi(
+        (&gpu_parameters.display_params[0]).into(),
     )];
+    let wndproc_thread = virtio::gpu::start_wndproc_thread(
+        #[cfg(feature = "kiwi")]
+        gpu_parameters.display_params[0]
+            .gpu_main_display_tube
+            .clone(),
+        #[cfg(not(feature = "kiwi"))]
+        None,
+    )
+    .expect("Failed to start wndproc_thread!");
 
     let features = virtio::base_features(cfg.protection_type);
     let dev = virtio::Gpu::new(
         vm_evt_wrtube
             .try_clone()
             .exit_context(Exit::CloneTube, "failed to clone tube")?,
-        Some(gpu_device_tube),
-        NonZeroU8::new(1).unwrap(), // number of scanouts
         resource_bridges,
         display_backends,
         gpu_parameters,
@@ -317,6 +324,7 @@ fn create_gpu_device(
         BTreeMap::new(),
         #[cfg(feature = "kiwi")]
         Some(gpu_device_service_tube),
+        wndproc_thread,
     );
 
     Ok(VirtioDeviceStub {
