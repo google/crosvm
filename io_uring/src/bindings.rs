@@ -44,7 +44,17 @@ pub const IORING_SETUP_ATTACH_WQ: u32 = 32;
 pub const IORING_SETUP_R_DISABLED: u32 = 64;
 pub const IORING_FSYNC_DATASYNC: u32 = 1;
 pub const IORING_TIMEOUT_ABS: u32 = 1;
+pub const IORING_TIMEOUT_UPDATE: u32 = 2;
+pub const IORING_TIMEOUT_BOOTTIME: u32 = 4;
+pub const IORING_TIMEOUT_REALTIME: u32 = 8;
+pub const IORING_LINK_TIMEOUT_UPDATE: u32 = 16;
+pub const IORING_TIMEOUT_CLOCK_MASK: u32 = 12;
+pub const IORING_TIMEOUT_UPDATE_MASK: u32 = 18;
+pub const IORING_POLL_ADD_MULTI: u32 = 1;
+pub const IORING_POLL_UPDATE_EVENTS: u32 = 2;
+pub const IORING_POLL_UPDATE_USER_DATA: u32 = 4;
 pub const IORING_CQE_F_BUFFER: u32 = 1;
+pub const IORING_CQE_F_MORE: u32 = 2;
 pub const IORING_OFF_SQ_RING: u32 = 0;
 pub const IORING_OFF_CQ_RING: u32 = 134217728;
 pub const IORING_OFF_SQES: u32 = 268435456;
@@ -54,6 +64,7 @@ pub const IORING_CQ_EVENTFD_DISABLED: u32 = 1;
 pub const IORING_ENTER_GETEVENTS: u32 = 1;
 pub const IORING_ENTER_SQ_WAKEUP: u32 = 2;
 pub const IORING_ENTER_SQ_WAIT: u32 = 4;
+pub const IORING_ENTER_EXT_ARG: u32 = 8;
 pub const IORING_FEAT_SINGLE_MMAP: u32 = 1;
 pub const IORING_FEAT_NODROP: u32 = 2;
 pub const IORING_FEAT_SUBMIT_STABLE: u32 = 4;
@@ -61,6 +72,11 @@ pub const IORING_FEAT_RW_CUR_POS: u32 = 8;
 pub const IORING_FEAT_CUR_PERSONALITY: u32 = 16;
 pub const IORING_FEAT_FAST_POLL: u32 = 32;
 pub const IORING_FEAT_POLL_32BITS: u32 = 64;
+pub const IORING_FEAT_SQPOLL_NONFIXED: u32 = 128;
+pub const IORING_FEAT_EXT_ARG: u32 = 256;
+pub const IORING_FEAT_NATIVE_WORKERS: u32 = 512;
+pub const IORING_FEAT_RSRC_TAGS: u32 = 1024;
+pub const IORING_REGISTER_FILES_SKIP: i32 = -2;
 pub const IO_URING_OP_SUPPORTED: u32 = 1;
 pub type __kernel_rwf_t = ::std::os::raw::c_int;
 #[repr(C)]
@@ -76,6 +92,9 @@ pub struct io_uring_sqe {
     pub __bindgen_anon_3: io_uring_sqe__bindgen_ty_3,
     pub user_data: u64,
     pub __bindgen_anon_4: io_uring_sqe__bindgen_ty_4,
+    pub personality: u16,
+    pub __bindgen_anon_5: io_uring_sqe__bindgen_ty_5,
+    pub __pad2: [u64; 2usize],
 }
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -123,6 +142,9 @@ pub union io_uring_sqe__bindgen_ty_3 {
     pub statx_flags: u32,
     pub fadvise_advice: u32,
     pub splice_flags: u32,
+    pub rename_flags: u32,
+    pub unlink_flags: u32,
+    pub hardlink_flags: u32,
 }
 impl Default for io_uring_sqe__bindgen_ty_3 {
     fn default() -> Self {
@@ -133,44 +155,28 @@ impl Default for io_uring_sqe__bindgen_ty_3 {
         }
     }
 }
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub union io_uring_sqe__bindgen_ty_4 {
-    pub __bindgen_anon_1: io_uring_sqe__bindgen_ty_4__bindgen_ty_1,
-    pub __pad2: [u64; 3usize],
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct io_uring_sqe__bindgen_ty_4__bindgen_ty_1 {
-    pub __bindgen_anon_1: io_uring_sqe__bindgen_ty_4__bindgen_ty_1__bindgen_ty_1,
-    pub personality: u16,
-    pub splice_fd_in: i32,
-}
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
-pub union io_uring_sqe__bindgen_ty_4__bindgen_ty_1__bindgen_ty_1 {
+pub union io_uring_sqe__bindgen_ty_4 {
     pub buf_index: u16,
     pub buf_group: u16,
 }
-impl Default for io_uring_sqe__bindgen_ty_4__bindgen_ty_1__bindgen_ty_1 {
-    fn default() -> Self {
-        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-impl Default for io_uring_sqe__bindgen_ty_4__bindgen_ty_1 {
-    fn default() -> Self {
-        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
 impl Default for io_uring_sqe__bindgen_ty_4 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union io_uring_sqe__bindgen_ty_5 {
+    pub splice_fd_in: i32,
+    pub file_index: u32,
+}
+impl Default for io_uring_sqe__bindgen_ty_5 {
     fn default() -> Self {
         let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
         unsafe {
@@ -222,7 +228,13 @@ pub const IORING_OP_SPLICE: ::std::os::raw::c_uint = 30;
 pub const IORING_OP_PROVIDE_BUFFERS: ::std::os::raw::c_uint = 31;
 pub const IORING_OP_REMOVE_BUFFERS: ::std::os::raw::c_uint = 32;
 pub const IORING_OP_TEE: ::std::os::raw::c_uint = 33;
-pub const IORING_OP_LAST: ::std::os::raw::c_uint = 34;
+pub const IORING_OP_SHUTDOWN: ::std::os::raw::c_uint = 34;
+pub const IORING_OP_RENAMEAT: ::std::os::raw::c_uint = 35;
+pub const IORING_OP_UNLINKAT: ::std::os::raw::c_uint = 36;
+pub const IORING_OP_MKDIRAT: ::std::os::raw::c_uint = 37;
+pub const IORING_OP_SYMLINKAT: ::std::os::raw::c_uint = 38;
+pub const IORING_OP_LINKAT: ::std::os::raw::c_uint = 39;
+pub const IORING_OP_LAST: ::std::os::raw::c_uint = 40;
 pub type _bindgen_ty_2 = ::std::os::raw::c_uint;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -286,7 +298,14 @@ pub const IORING_REGISTER_PERSONALITY: ::std::os::raw::c_uint = 9;
 pub const IORING_UNREGISTER_PERSONALITY: ::std::os::raw::c_uint = 10;
 pub const IORING_REGISTER_RESTRICTIONS: ::std::os::raw::c_uint = 11;
 pub const IORING_REGISTER_ENABLE_RINGS: ::std::os::raw::c_uint = 12;
-pub const IORING_REGISTER_LAST: ::std::os::raw::c_uint = 13;
+pub const IORING_REGISTER_FILES2: ::std::os::raw::c_uint = 13;
+pub const IORING_REGISTER_FILES_UPDATE2: ::std::os::raw::c_uint = 14;
+pub const IORING_REGISTER_BUFFERS2: ::std::os::raw::c_uint = 15;
+pub const IORING_REGISTER_BUFFERS_UPDATE: ::std::os::raw::c_uint = 16;
+pub const IORING_REGISTER_IOWQ_AFF: ::std::os::raw::c_uint = 17;
+pub const IORING_UNREGISTER_IOWQ_AFF: ::std::os::raw::c_uint = 18;
+pub const IORING_REGISTER_IOWQ_MAX_WORKERS: ::std::os::raw::c_uint = 19;
+pub const IORING_REGISTER_LAST: ::std::os::raw::c_uint = 20;
 pub type _bindgen_ty_4 = ::std::os::raw::c_uint;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -294,6 +313,32 @@ pub struct io_uring_files_update {
     pub offset: u32,
     pub resv: u32,
     pub fds: u64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct io_uring_rsrc_register {
+    pub nr: u32,
+    pub resv: u32,
+    pub resv2: u64,
+    pub data: u64,
+    pub tags: u64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct io_uring_rsrc_update {
+    pub offset: u32,
+    pub resv: u32,
+    pub data: u64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct io_uring_rsrc_update2 {
+    pub offset: u32,
+    pub resv: u32,
+    pub data: u64,
+    pub tags: u64,
+    pub nr: u32,
+    pub resv2: u32,
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -350,4 +395,12 @@ pub const IORING_RESTRICTION_SQE_OP: ::std::os::raw::c_uint = 1;
 pub const IORING_RESTRICTION_SQE_FLAGS_ALLOWED: ::std::os::raw::c_uint = 2;
 pub const IORING_RESTRICTION_SQE_FLAGS_REQUIRED: ::std::os::raw::c_uint = 3;
 pub const IORING_RESTRICTION_LAST: ::std::os::raw::c_uint = 4;
-pub type _bindgen_ty_5 = ::std::os::raw::c_uint;
+pub type _bindgen_ty_6 = ::std::os::raw::c_uint;
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct io_uring_getevents_arg {
+    pub sigmask: u64,
+    pub sigmask_sz: u32,
+    pub pad: u32,
+    pub ts: u64,
+}

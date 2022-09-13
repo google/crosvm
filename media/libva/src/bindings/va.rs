@@ -259,7 +259,8 @@ pub mod VAConfigAttribType {
     pub const VAConfigAttribEncAV1: Type = 52;
     pub const VAConfigAttribEncAV1Ext1: Type = 53;
     pub const VAConfigAttribEncAV1Ext2: Type = 54;
-    pub const VAConfigAttribTypeMax: Type = 55;
+    pub const VAConfigAttribEncPerBlockControl: Type = 55;
+    pub const VAConfigAttribTypeMax: Type = 56;
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -516,7 +517,8 @@ pub mod VABufferType {
     pub const VAContextParameterUpdateBufferType: Type = 58;
     pub const VAProtectedSessionExecuteBufferType: Type = 59;
     pub const VAEncryptionParameterBufferType: Type = 60;
-    pub const VABufferTypeMax: Type = 61;
+    pub const VAEncDeltaQpPerBlockBufferType: Type = 61;
+    pub const VABufferTypeMax: Type = 62;
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
@@ -1767,6 +1769,7 @@ pub mod VADisplayAttribType {
     pub const VADisplayAttribRenderRect: Type = 18;
     pub const VADisplayAttribSubDevice: Type = 19;
     pub const VADisplayAttribCopy: Type = 20;
+    pub const VADisplayPCIID: Type = 21;
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

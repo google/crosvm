@@ -46,7 +46,7 @@ pub const VIRTIO_ID_VHOST_USER: u32 = 61;
 
 bindgen_generate \
     --raw-line "${VIRTIO_IDS_EXTRAS}" \
-    --allowlist-var='VIRTIO_.*' \
+    --allowlist-var='VIRTIO_ID_.*' \
     --allowlist-type='virtio_.*' \
     "${BINDGEN_LINUX_X86_HEADERS}/include/linux/virtio_ids.h" \
     -- \

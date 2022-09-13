@@ -100,10 +100,7 @@ impl io_uring_sqe {
     }
 
     pub fn set_buf_index(&mut self, val: u16) {
-        self.__bindgen_anon_4
-            .__bindgen_anon_1
-            .__bindgen_anon_1
-            .buf_index = val;
+        self.__bindgen_anon_4.buf_index = val;
     }
 
     pub fn set_rw_flags(&mut self, val: libc::c_int) {

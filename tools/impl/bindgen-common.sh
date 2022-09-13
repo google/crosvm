@@ -4,9 +4,7 @@
 
 # Helper functions for bindgen scripts sourced by tools/bindgen-all-the-things.
 
-# virtio-video bindings need some types that are only in the 5.10-arcvm branch.
-# This should be switched to a vanilla kernel when these are upstream.
-export BINDGEN_LINUX="${PWD}/../../third_party/kernel/v5.10-arcvm"
+export BINDGEN_LINUX="${PWD}/../../third_party/kernel/v5.15"
 
 export BINDGEN_PLATFORM2="${PWD}/../../platform2"
 

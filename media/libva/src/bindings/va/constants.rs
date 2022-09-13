@@ -6,10 +6,10 @@
 #![allow(dead_code)]
 
 pub const VA_MAJOR_VERSION: u32 = 1;
-pub const VA_MINOR_VERSION: u32 = 14;
+pub const VA_MINOR_VERSION: u32 = 15;
 pub const VA_MICRO_VERSION: u32 = 0;
-pub const VA_VERSION_S: &[u8; 7usize] = b"1.14.0\0";
-pub const VA_VERSION_HEX: u32 = 17694720;
+pub const VA_VERSION_S: &[u8; 7usize] = b"1.15.0\0";
+pub const VA_VERSION_HEX: u32 = 17760256;
 pub const VA_STATUS_SUCCESS: u32 = 0;
 pub const VA_STATUS_ERROR_OPERATION_FAILED: u32 = 1;
 pub const VA_STATUS_ERROR_ALLOCATION_FAILED: u32 = 2;
