@@ -7,7 +7,8 @@ mod avutil;
 pub use avutil::*;
 mod error;
 pub use error::*;
-mod ffi;
+mod ffmpeg;
+use ffmpeg as ffi;
 pub mod swscale;
 
 pub use ffi::AVPixelFormat_AV_PIX_FMT_NV12;

@@ -10,16 +10,18 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 VERSIONS="media/ffmpeg/VERSIONS"
 
-#source tools/impl/bindgen-common.sh
+source tools/impl/bindgen-common.sh
 
-bindgen media/ffmpeg/src/bindings.h -o media/ffmpeg/src/ffmpeg.rs \
+bindgen_generate \
     --allowlist-function "av_.*" \
     --allowlist-function "avcodec_.*" \
     --allowlist-function "sws_.*" \
     --allowlist-function "av_image_.*" \
     --allowlist-var "FF_PROFILE.*" \
     --allowlist-var "AV_.*" \
-    --allowlist-var "AVERROR_.*"
+    --allowlist-var "AVERROR_.*" \
+    media/ffmpeg/src/bindings.h \
+    > media/ffmpeg/src/ffmpeg.rs
 
 echo "# These version numbers are updated by the bindgen.sh script" >$VERSIONS
 echo "avcodec: `pkg-config --modversion libavcodec`" >>$VERSIONS

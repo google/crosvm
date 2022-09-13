@@ -38,13 +38,8 @@ impl Display for AvError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut buffer = [0u8; 255];
         // Safe because we are passing valid bounds for the buffer.
-        let ret = unsafe {
-            ffi::av_strerror(
-                self.0,
-                buffer.as_mut_ptr() as *mut c_char,
-                buffer.len() as ffi::size_t,
-            )
-        };
+        let ret =
+            unsafe { ffi::av_strerror(self.0, buffer.as_mut_ptr() as *mut c_char, buffer.len()) };
         match ret {
             ret if ret >= 0 => {
                 let end_of_string = buffer.iter().position(|i| *i == 0).unwrap_or(buffer.len());
@@ -467,7 +462,7 @@ impl AvBuffer {
         Some(Self(unsafe {
             ffi::av_buffer_create(
                 storage.as_mut_ptr(),
-                storage.len() as ffi::size_t,
+                storage.len(),
                 Some(avbuffer_free::<D>),
                 Box::into_raw(storage) as *mut c_void,
                 0,
