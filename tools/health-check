@@ -61,6 +61,11 @@ def check_crlf_line_endings(_: CheckContext):
 
 def check_markdown_format(context: CheckContext):
     "Runs mdformat on all markdown files."
+    if "blaze" in mdformat("--version").stdout():
+        raise Exception(
+            "You are using google's mdformat. "
+            + "Please update your PATH to ensure the pip installed mdformat is available."
+        )
     parallel(
         *mdformat("--wrap 100", "--check" if not context.fix else "").foreach(
             context.modified_files
