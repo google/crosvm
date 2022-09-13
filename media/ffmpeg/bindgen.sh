@@ -28,6 +28,8 @@ echo "avcodec: `pkg-config --modversion libavcodec`" >>$VERSIONS
 echo "avutil: `pkg-config --modversion libavutil`" >>$VERSIONS
 echo "swscale: `pkg-config --modversion libswscale`" >>$VERSIONS
 
-echo "Libraries versions updated in the VERSIONS file."
-echo "Please check the minimum required versions in build.rs and make sure that"
-echo "the major number is the same"
+if ! git --no-pager diff --exit-code $VERSIONS; then
+    echo "Libraries versions updated in the $VERSIONS file."
+    echo "Please check the minimum required versions in build.rs and make sure that"
+    echo "the major number is the same"
+fi
