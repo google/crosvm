@@ -170,6 +170,9 @@ def main(
         if not sys.stdin.isatty():
             raise Exception("Trying to run an interactive session in a non-interactive terminal.")
         tty_args = ["--interactive", "--tty"]
+    elif sys.stdin.isatty():
+        # Even if run non-interactively, we do want to pass along a tty for proper output.
+        tty_args = ["--tty"]
 
     # Start an interactive shell by default
     if hermetic:
