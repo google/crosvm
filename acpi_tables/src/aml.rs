@@ -24,6 +24,7 @@ const QWORDPREFIX: u8 = 0x0e;
 const SCOPEOP: u8 = 0x10;
 const BUFFEROP: u8 = 0x11;
 const PACKAGEOP: u8 = 0x12;
+const VARPACKAGEOP: u8 = 0x13;
 const METHODOP: u8 = 0x14;
 const DUALNAMEPREFIX: u8 = 0x2e;
 const MULTINAMEPREFIX: u8 = 0x2f;
@@ -31,11 +32,13 @@ const NAMECHARBASE: u8 = 0x40;
 
 const EXTOPPREFIX: u8 = 0x5b;
 const MUTEXOP: u8 = 0x01;
+const CREATEFIELDOP: u8 = 0x13;
 const ACQUIREOP: u8 = 0x23;
 const RELEASEOP: u8 = 0x27;
 const OPREGIONOP: u8 = 0x80;
 const FIELDOP: u8 = 0x81;
 const DEVICEOP: u8 = 0x82;
+const POWERRESOURCEOP: u8 = 0x84;
 
 const LOCAL0OP: u8 = 0x60;
 const ARG0OP: u8 = 0x68;
@@ -51,14 +54,23 @@ const NANDOP: u8 = 0x7c;
 const OROP: u8 = 0x7d;
 const NOROP: u8 = 0x7e;
 const XOROP: u8 = 0x7f;
+const DEREFOFOP: u8 = 0x83;
 const CONCATRESOP: u8 = 0x84;
 const MODOP: u8 = 0x85;
 const NOTIFYOP: u8 = 0x86;
+const SIZEOFOP: u8 = 0x87;
 const INDEXOP: u8 = 0x88;
 const CREATEDWFIELDOP: u8 = 0x8a;
+const OBJECTTYPEOP: u8 = 0x8e;
+const CREATEQWFIELDOP: u8 = 0x8f;
+const LNOTOP: u8 = 0x92;
 const LEQUALOP: u8 = 0x93;
+const LGREATEROP: u8 = 0x94;
 const LLESSOP: u8 = 0x95;
+const TOBUFFEROP: u8 = 0x96;
+const TOINTEGEROP: u8 = 0x99;
 const TOSTRINGOP: u8 = 0x9c;
+const MIDOP: u8 = 0x9e;
 const IFOP: u8 = 0xa0;
 const ELSEOP: u8 = 0xa1;
 const WHILEOP: u8 = 0xa2;
@@ -274,6 +286,35 @@ impl<'a> Package<'a> {
     /// Create Package object:
     pub fn new(children: Vec<&'a dyn Aml>) -> Self {
         Package { children }
+    }
+}
+
+/// Variable Package Term
+pub struct VarPackageTerm<'a> {
+    data: &'a dyn Aml,
+}
+
+impl<'a> Aml for VarPackageTerm<'a> {
+    fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
+        let mut bytes = Vec::new();
+        self.data.to_aml_bytes(&mut bytes);
+
+        let mut pkg_length = create_pkg_length(&bytes, true);
+        pkg_length.reverse();
+        for byte in pkg_length {
+            bytes.insert(0, byte);
+        }
+
+        bytes.insert(0, VARPACKAGEOP);
+
+        aml.append(&mut bytes)
+    }
+}
+
+impl<'a> VarPackageTerm<'a> {
+    /// Create Variable Package Term
+    pub fn new(data: &'a dyn Aml) -> Self {
+        VarPackageTerm { data }
     }
 }
 
@@ -790,25 +831,6 @@ impl<'a> Aml for Method<'a> {
     }
 }
 
-/// Return object with its return value.
-pub struct Return<'a> {
-    value: &'a dyn Aml,
-}
-
-impl<'a> Return<'a> {
-    /// Create Return object
-    pub fn new(value: &'a dyn Aml) -> Self {
-        Return { value }
-    }
-}
-
-impl<'a> Aml for Return<'a> {
-    fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
-        bytes.push(RETURNOP);
-        self.value.to_aml_bytes(bytes);
-    }
-}
-
 /// FieldAccessType defines the field accessing types.
 #[derive(Clone, Copy)]
 pub enum FieldAccessType {
@@ -1017,47 +1039,40 @@ impl<'a> Aml for Else<'a> {
     }
 }
 
-/// Equal object with its right part and left part, which are both ACPI objects.
-pub struct Equal<'a> {
-    right: &'a dyn Aml,
-    left: &'a dyn Aml,
+macro_rules! compare_op {
+    ($name:ident, $opcode:expr, $invert:expr) => {
+        /// Compare object with its right part and left part, which are both ACPI Object.
+        pub struct $name<'a> {
+            right: &'a dyn Aml,
+            left: &'a dyn Aml,
+        }
+
+        impl<'a> $name<'a> {
+            /// Create the compare object method.
+            pub fn new(left: &'a dyn Aml, right: &'a dyn Aml) -> Self {
+                $name { left, right }
+            }
+        }
+
+        impl<'a> Aml for $name<'a> {
+            fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
+                if $invert {
+                    bytes.push(LNOTOP);
+                }
+                bytes.push($opcode);
+                self.left.to_aml_bytes(bytes);
+                self.right.to_aml_bytes(bytes);
+            }
+        }
+    };
 }
 
-impl<'a> Equal<'a> {
-    /// Create Equal object.
-    pub fn new(left: &'a dyn Aml, right: &'a dyn Aml) -> Self {
-        Equal { left, right }
-    }
-}
-
-impl<'a> Aml for Equal<'a> {
-    fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
-        bytes.push(LEQUALOP);
-        self.left.to_aml_bytes(bytes);
-        self.right.to_aml_bytes(bytes);
-    }
-}
-
-/// LessThan object with its right part and left part, which are both ACPI objects.
-pub struct LessThan<'a> {
-    right: &'a dyn Aml,
-    left: &'a dyn Aml,
-}
-
-impl<'a> LessThan<'a> {
-    /// Create LessThan object.
-    pub fn new(left: &'a dyn Aml, right: &'a dyn Aml) -> Self {
-        LessThan { left, right }
-    }
-}
-
-impl<'a> Aml for LessThan<'a> {
-    fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
-        bytes.push(LLESSOP);
-        self.left.to_aml_bytes(bytes);
-        self.right.to_aml_bytes(bytes);
-    }
-}
+compare_op!(Equal, LEQUALOP, false);
+compare_op!(LessThan, LLESSOP, false);
+compare_op!(GreaterThan, LGREATEROP, false);
+compare_op!(NotEqual, LEQUALOP, true);
+compare_op!(GreaterEqual, LLESSOP, true);
+compare_op!(LessEqual, LGREATEROP, true);
 
 /// Argx object.
 pub struct Arg(pub u8);
@@ -1226,6 +1241,34 @@ impl<'a> Aml for While<'a> {
     }
 }
 
+macro_rules! object_op {
+    ($name:ident, $opcode:expr) => {
+        /// General operation on a object.
+        pub struct $name<'a> {
+            a: &'a dyn Aml,
+        }
+
+        impl<'a> $name<'a> {
+            /// Create the object method.
+            pub fn new(a: &'a dyn Aml) -> Self {
+                $name { a }
+            }
+        }
+
+        impl<'a> Aml for $name<'a> {
+            fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
+                bytes.push($opcode);
+                self.a.to_aml_bytes(bytes);
+            }
+        }
+    };
+}
+
+object_op!(ObjectType, OBJECTTYPEOP);
+object_op!(SizeOf, SIZEOFOP);
+object_op!(Return, RETURNOP);
+object_op!(DeRefOf, DEREFOFOP);
+
 macro_rules! binary_op {
     ($name:ident, $opcode:expr) => {
         /// General operation object with the operator a/b and a target.
@@ -1269,6 +1312,104 @@ binary_op!(Mod, MODOP);
 binary_op!(Index, INDEXOP);
 binary_op!(ToString, TOSTRINGOP);
 binary_op!(CreateDWordField, CREATEDWFIELDOP);
+binary_op!(CreateQWordField, CREATEQWFIELDOP);
+
+macro_rules! convert_op {
+    ($name:ident, $opcode:expr) => {
+        /// General operation object with the operator a/b and a target.
+        pub struct $name<'a> {
+            a: &'a dyn Aml,
+            target: &'a dyn Aml,
+        }
+
+        impl<'a> $name<'a> {
+            /// Create the object.
+            pub fn new(target: &'a dyn Aml, a: &'a dyn Aml) -> Self {
+                $name { target, a }
+            }
+        }
+
+        impl<'a> Aml for $name<'a> {
+            fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
+                bytes.push($opcode); /* Op for the binary operator */
+                self.a.to_aml_bytes(bytes);
+                self.target.to_aml_bytes(bytes);
+            }
+        }
+    };
+}
+
+convert_op!(ToBuffer, TOBUFFEROP);
+convert_op!(ToInteger, TOINTEGEROP);
+
+/// Create Field Object.
+pub struct CreateField<'a> {
+    name_string: &'a dyn Aml,
+    source: &'a dyn Aml,
+    bit_index: &'a dyn Aml,
+    bit_num: &'a dyn Aml,
+}
+
+impl<'a> CreateField<'a> {
+    pub fn new(
+        name_string: &'a dyn Aml,
+        source: &'a dyn Aml,
+        bit_index: &'a dyn Aml,
+        bit_num: &'a dyn Aml,
+    ) -> Self {
+        CreateField {
+            name_string,
+            source,
+            bit_index,
+            bit_num,
+        }
+    }
+}
+
+impl<'a> Aml for CreateField<'a> {
+    fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
+        bytes.push(EXTOPPREFIX);
+        bytes.push(CREATEFIELDOP);
+        self.source.to_aml_bytes(bytes);
+        self.bit_index.to_aml_bytes(bytes);
+        self.bit_num.to_aml_bytes(bytes);
+        self.name_string.to_aml_bytes(bytes);
+    }
+}
+
+/// Mid object with the source, index, length, and result objects.
+pub struct Mid<'a> {
+    source: &'a dyn Aml,
+    index: &'a dyn Aml,
+    length: &'a dyn Aml,
+    result: &'a dyn Aml,
+}
+
+impl<'a> Mid<'a> {
+    pub fn new(
+        source: &'a dyn Aml,
+        index: &'a dyn Aml,
+        length: &'a dyn Aml,
+        result: &'a dyn Aml,
+    ) -> Self {
+        Mid {
+            source,
+            index,
+            length,
+            result,
+        }
+    }
+}
+
+impl<'a> Aml for Mid<'a> {
+    fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
+        bytes.push(MIDOP);
+        self.source.to_aml_bytes(bytes);
+        self.index.to_aml_bytes(bytes);
+        self.length.to_aml_bytes(bytes);
+        self.result.to_aml_bytes(bytes);
+    }
+}
 
 /// MethodCall object with the method name and parameter objects.
 pub struct MethodCall<'a> {
@@ -1292,19 +1433,48 @@ impl<'a> Aml for MethodCall<'a> {
     }
 }
 
-/// Buffer object with the data in it.
-pub struct Buffer {
-    data: Vec<u8>,
+/// Buffer object with the TermArg in it.
+pub struct BufferTerm<'a> {
+    data: &'a dyn Aml,
 }
 
-impl Buffer {
-    /// Create Buffer object.
-    pub fn new(data: Vec<u8>) -> Self {
-        Buffer { data }
+impl<'a> BufferTerm<'a> {
+    /// Create BufferTerm object.
+    pub fn new(data: &'a dyn Aml) -> Self {
+        BufferTerm { data }
     }
 }
 
-impl Aml for Buffer {
+impl<'a> Aml for BufferTerm<'a> {
+    fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
+        let mut bytes = Vec::new();
+        self.data.to_aml_bytes(&mut bytes);
+
+        let mut pkg_length = create_pkg_length(&bytes, true);
+        pkg_length.reverse();
+        for byte in pkg_length {
+            bytes.insert(0, byte);
+        }
+
+        bytes.insert(0, BUFFEROP);
+
+        aml.append(&mut bytes)
+    }
+}
+
+/// Buffer object with the data in it.
+struct BufferData {
+    data: Vec<u8>,
+}
+
+impl BufferData {
+    /// Create BufferData object.
+    pub fn new(data: Vec<u8>) -> Self {
+        BufferData { data }
+    }
+}
+
+impl Aml for BufferData {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
         let mut bytes = Vec::new();
         self.data.len().to_aml_bytes(&mut bytes);
@@ -1323,7 +1493,7 @@ impl Aml for Buffer {
 }
 
 pub struct Uuid {
-    name: Buffer,
+    name: BufferData,
 }
 
 fn hex2byte(v1: char, v2: char) -> u8 {
@@ -1386,7 +1556,7 @@ impl Uuid {
         data.push(hex2byte(name_vec[34], name_vec[35]));
 
         Uuid {
-            name: Buffer::new(data),
+            name: BufferData::new(data),
         }
     }
 }
@@ -1394,6 +1564,57 @@ impl Uuid {
 impl Aml for Uuid {
     fn to_aml_bytes(&self, bytes: &mut Vec<u8>) {
         self.name.to_aml_bytes(bytes)
+    }
+}
+
+/// Power Resource object. 'children' represents Power Resource method.
+pub struct PowerResource<'a> {
+    name: Path,
+    level: u8,
+    order: u16,
+    children: Vec<&'a dyn Aml>,
+}
+
+impl<'a> PowerResource<'a> {
+    /// Create Power Resouce object
+    pub fn new(name: Path, level: u8, order: u16, children: Vec<&'a dyn Aml>) -> Self {
+        PowerResource {
+            name,
+            level,
+            order,
+            children,
+        }
+    }
+}
+
+impl<'a> Aml for PowerResource<'a> {
+    fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
+        let mut bytes = Vec::new();
+
+        // Add name string
+        self.name.to_aml_bytes(&mut bytes);
+        // Add system level
+        bytes.push(self.level);
+        // Add Resource Order
+        let orders = self.order.to_le_bytes();
+        bytes.push(orders[0]);
+        bytes.push(orders[1]);
+        // Add child data
+        for child in &self.children {
+            child.to_aml_bytes(&mut bytes);
+        }
+
+        // PkgLength
+        let mut pkg_length = create_pkg_length(&bytes, true);
+        pkg_length.reverse();
+        for byte in pkg_length {
+            bytes.insert(0, byte);
+        }
+
+        bytes.insert(0, POWERRESOURCEOP);
+        bytes.insert(0, EXTOPPREFIX);
+
+        aml.append(&mut bytes);
     }
 }
 
@@ -2202,7 +2423,7 @@ mod tests {
 
         Name::new(
             "_MAT".into(),
-            &Buffer::new(vec![0x00, 0x08, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00]),
+            &BufferData::new(vec![0x00, 0x08, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00]),
         )
         .to_aml_bytes(&mut aml);
         assert_eq!(aml, &buffer_data[..])
