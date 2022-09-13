@@ -2,7 +2,7 @@
 # Copyright 2022 The ChromiumOS Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
-#
+
 # Note: To simulate this locally, sudo needs to be passwordless for the duration of the build (~1h).
 # This could be achieved by refreshing sudo in the background before running ci/simulate.py:
 #

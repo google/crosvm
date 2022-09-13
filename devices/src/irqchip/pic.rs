@@ -1,7 +1,7 @@
 // Copyright 2019 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-//
+
 // Software implementation of an Intel 8259A Programmable Interrupt Controller
 // This is a legacy device used by older OSs and briefly during start-up by
 // modern OSs that use a legacy BIOS.

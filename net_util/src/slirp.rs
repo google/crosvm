@@ -1,7 +1,6 @@
 // Copyright 2022 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-//
 
 //! Contains the Rust implementation of the libslirp consumer main loop, high
 //! level interfaces to libslirp that are used to implement that loop, and

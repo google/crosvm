@@ -1,6 +1,7 @@
 // Copyright 2020 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
 pub const VIRTIO_SND_R_JACK_INFO: u32 = 1;
 pub const VIRTIO_SND_R_JACK_REMAP: u32 = 2;
 

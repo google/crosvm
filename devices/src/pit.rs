@@ -1,6 +1,7 @@
 // Copyright 2019 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
 // Based heavily on GCE VMM's pit.cc.
 
 use std::io::Error as IoError;

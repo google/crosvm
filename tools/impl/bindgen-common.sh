@@ -1,7 +1,7 @@
 # Copyright 2022 The ChromiumOS Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
-#
+
 # Helper functions for bindgen scripts sourced by tools/bindgen-all-the-things.
 
 # virtio-video bindings need some types that are only in the 5.10-arcvm branch.
