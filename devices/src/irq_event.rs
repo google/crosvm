@@ -39,13 +39,18 @@ impl IrqEdgeEvent {
 }
 
 /// A structure suitable for implementing level triggered interrupts in device backends.
+///
+/// Level-triggered interrupts require the device to monitor a resample event from the IRQ chip,
+/// which can be retrieved with [`IrqLevelEvent::get_resample()`]. When the guest OS acknowledges
+/// the interrupt with an End of Interrupt (EOI) command, the IRQ chip will signal the resample
+/// event. Each time the resample event is signalled, the device should re-check its state and call
+/// [`IrqLevelEvent::trigger()`] again if the interrupt should still be asserted.
 pub struct IrqLevelEvent {
     /// An event used by the device backend to signal hypervisor/VM about data or new unit
     /// of work being available.
     trigger_evt: Event,
-    /// An event used by the hypervisor to signal device backend that it completed processing
-    /// a unit of work and that device should re-raise `trigger_evt` if there is additional
-    /// work needs to be done.
+    /// An event used by the hypervisor to signal device backend that it completed processing a unit
+    /// of work and that device should re-raise `trigger_evt` if additional work needs to be done.
     resample_evt: Event,
 }
 
