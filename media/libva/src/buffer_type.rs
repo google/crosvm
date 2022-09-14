@@ -714,7 +714,7 @@ impl SliceParameterBufferVP9 {
         slice_data_size: u32,
         slice_data_offset: u32,
         slice_data_flag: u32,
-        seg_param: [&SegmentParameterVP9; 8usize],
+        seg_param: [SegmentParameterVP9; 8usize],
     ) -> Self {
         let seg_param = seg_param.map(|param| param.0);
 
