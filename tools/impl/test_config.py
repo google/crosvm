@@ -71,6 +71,7 @@ WIN64_DISABLED_CRATES = [
     "p9",
     "qcow_utils",
     "rutabaga_gralloc",
+    "swap",
     "system_api_stub",
     "tpm2-sys",
     "tpm2",
