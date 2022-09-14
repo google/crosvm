@@ -24,6 +24,7 @@ use rutabaga_gfx::RutabagaHandle;
 use rutabaga_gfx::RutabagaIovec;
 use rutabaga_gfx::Transfer3D;
 use rutabaga_gfx::RUTABAGA_MEM_HANDLE_TYPE_DMABUF;
+use rutabaga_gfx::RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_FD;
 use vm_control::VmMemorySource;
 use vm_memory::udmabuf::UdmabufDriver;
 use vm_memory::udmabuf::UdmabufDriverTrait;
@@ -715,6 +716,11 @@ impl VirtioGpu {
     }
 
     /// Uses the hypervisor to map the rutabaga blob resource.
+    ///
+    /// When sandboxing is disabled, external_blob is unset and opaque fds are mapped by
+    /// rutabaga as ExternalMapping.
+    /// When sandboxing is enabled, external_blob is set and opaque fds must be mapped in the
+    /// hypervisor process by Vulkano using metadata provided by Rutabaga::vulkan_info().
     pub fn resource_map_blob(&mut self, resource_id: u32, offset: u64) -> VirtioGpuResult {
         let resource = self
             .resources
@@ -722,25 +728,29 @@ impl VirtioGpu {
             .ok_or(ErrInvalidResourceId)?;
 
         let map_info = self.rutabaga.map_info(resource_id).map_err(|_| ErrUnspec)?;
-        let vulkan_info_opt = self.rutabaga.vulkan_info(resource_id).ok();
 
-        let source = if let Ok(export) = self.rutabaga.export_blob(resource_id) {
-            match vulkan_info_opt {
-                Some(vulkan_info) => VmMemorySource::Vulkan {
+        let mut source: Option<VmMemorySource> = None;
+        if let Ok(export) = self.rutabaga.export_blob(resource_id) {
+            if let Ok(vulkan_info) = self.rutabaga.vulkan_info(resource_id) {
+                source = Some(VmMemorySource::Vulkan {
                     descriptor: export.os_handle,
                     handle_type: export.handle_type,
                     memory_idx: vulkan_info.memory_idx,
                     physical_device_idx: vulkan_info.physical_device_idx,
                     size: resource.size,
-                },
-                None => VmMemorySource::Descriptor {
+                });
+            } else if export.handle_type != RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_FD {
+                source = Some(VmMemorySource::Descriptor {
                     descriptor: export.os_handle,
                     offset: 0,
                     size: resource.size,
                     gpu_blob: true,
-                },
+                });
             }
-        } else {
+        }
+
+        // fallback to ExternalMapping via rutabaga if sandboxing (hence external_blob) is disabled.
+        if source.is_none() {
             if self.external_blob {
                 return Err(ErrUnspec);
             }
@@ -748,14 +758,14 @@ impl VirtioGpu {
             let mapping = self.rutabaga.map(resource_id)?;
             // resources mapped via rutabaga must also be marked for unmap via rutabaga.
             resource.rutabaga_external_mapping = true;
-            VmMemorySource::ExternalMapping {
+            source = Some(VmMemorySource::ExternalMapping {
                 ptr: mapping.ptr,
                 size: mapping.size,
-            }
+            });
         };
 
         self.mapper
-            .add_mapping(source, offset, Protection::read_write())
+            .add_mapping(source.unwrap(), offset, Protection::read_write())
             .map_err(|_| ErrUnspec)?;
 
         resource.shmem_offset = Some(offset);

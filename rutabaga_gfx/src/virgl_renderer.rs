@@ -328,6 +328,7 @@ impl VirglRenderer {
             let handle_type = match fd_type {
                 VIRGL_RENDERER_BLOB_FD_TYPE_DMABUF => RUTABAGA_MEM_HANDLE_TYPE_DMABUF,
                 VIRGL_RENDERER_BLOB_FD_TYPE_SHM => RUTABAGA_MEM_HANDLE_TYPE_SHM,
+                VIRGL_RENDERER_BLOB_FD_TYPE_OPAQUE => RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_FD,
                 _ => {
                     return Err(RutabagaError::Unsupported);
                 }
@@ -593,6 +594,8 @@ impl RutabagaComponent for VirglRenderer {
             let ret = unsafe { virgl_renderer_resource_create_blob(&resource_create_args) };
             ret_to_res(ret)?;
 
+            // TODO(b/244591751): assign vulkan_info to support opaque_fd mapping via Vulkano when
+            // sandboxing (hence external_blob) is enabled.
             Ok(RutabagaResource {
                 resource_id,
                 handle: self.export_blob(resource_id).ok(),
