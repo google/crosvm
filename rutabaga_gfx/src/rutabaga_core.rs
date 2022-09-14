@@ -870,7 +870,7 @@ impl RutabagaBuilder {
     pub fn build(
         mut self,
         fence_handler: RutabagaFenceHandler,
-        render_server_fd: Option<SafeDescriptor>,
+        #[cfg(feature = "virgl_renderer_next")] render_server_fd: Option<SafeDescriptor>,
     ) -> RutabagaResult<Rutabaga> {
         let mut rutabaga_components: Map<RutabagaComponentType, Box<dyn RutabagaComponent>> =
             Default::default();
@@ -930,13 +930,6 @@ impl RutabagaBuilder {
         if self.default_component == RutabagaComponentType::Gfxstream {
             return Err(RutabagaError::InvalidRutabagaBuild(
                 "gfxstream feature not enabled",
-            ));
-        }
-
-        #[cfg(not(feature = "virgl_renderer_next"))]
-        if render_server_fd.is_some() {
-            return Err(RutabagaError::InvalidRutabagaBuild(
-                "render server FD is not supported with virgl_renderer_next feature",
             ));
         }
 

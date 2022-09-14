@@ -25,6 +25,7 @@ use base::AsRawDescriptor;
 use base::Event;
 use base::EventToken;
 use base::RawDescriptor;
+#[cfg(feature = "virgl_renderer_next")]
 use base::SafeDescriptor;
 use base::SendTube;
 use base::Tube;
@@ -187,7 +188,7 @@ fn build(
     #[cfg(windows)] wndproc_thread: &mut Option<WindowProcedureThread>,
     udmabuf: bool,
     fence_handler: RutabagaFenceHandler,
-    render_server_fd: Option<SafeDescriptor>,
+    #[cfg(feature = "virgl_renderer_next")] render_server_fd: Option<SafeDescriptor>,
     #[cfg(feature = "kiwi")] gpu_device_service_tube: Tube,
 ) -> Option<VirtioGpu> {
     let mut display_opt = None;
@@ -221,6 +222,7 @@ fn build(
         external_blob,
         udmabuf,
         fence_handler,
+        #[cfg(feature = "virgl_renderer_next")]
         render_server_fd,
         #[cfg(feature = "kiwi")]
         gpu_device_service_tube,
@@ -934,6 +936,7 @@ pub struct Gpu {
     wndproc_thread: Option<WindowProcedureThread>,
     base_features: u64,
     udmabuf: bool,
+    #[cfg(feature = "virgl_renderer_next")]
     render_server_fd: Option<SafeDescriptor>,
     #[cfg(feature = "kiwi")]
     gpu_device_service_tube: Option<Tube>,
@@ -946,7 +949,7 @@ impl Gpu {
         resource_bridges: Vec<Tube>,
         display_backends: Vec<DisplayBackend>,
         gpu_parameters: &GpuParameters,
-        render_server_fd: Option<SafeDescriptor>,
+        #[cfg(feature = "virgl_renderer_next")] render_server_fd: Option<SafeDescriptor>,
         event_devices: Vec<EventDevice>,
         external_blob: bool,
         base_features: u64,
@@ -982,6 +985,12 @@ impl Gpu {
             GpuMode::ModeGfxstream => RutabagaComponentType::Gfxstream,
         };
 
+        #[cfg(feature = "virgl_renderer_next")]
+        let use_render_server = render_server_fd.is_some();
+
+        #[cfg(not(feature = "virgl_renderer_next"))]
+        let use_render_server = false;
+
         let rutabaga_builder = RutabagaBuilder::new(component, gpu_parameters.context_mask)
             .set_display_width(display_width)
             .set_display_height(display_height)
@@ -995,7 +1004,7 @@ impl Gpu {
             .set_support_gles31(gpu_parameters.gfxstream_support_gles31)
             .set_wsi(gpu_parameters.wsi.as_ref())
             .set_use_external_blob(external_blob)
-            .set_use_render_server(render_server_fd.is_some());
+            .set_use_render_server(use_render_server);
 
         Gpu {
             exit_evt_wrtube,
@@ -1015,6 +1024,7 @@ impl Gpu {
             wndproc_thread: Some(wndproc_thread),
             base_features,
             udmabuf: gpu_parameters.udmabuf,
+            #[cfg(feature = "virgl_renderer_next")]
             render_server_fd,
             #[cfg(feature = "kiwi")]
             gpu_device_service_tube,
@@ -1030,6 +1040,7 @@ impl Gpu {
         mapper: Box<dyn SharedMemoryMapper>,
     ) -> Option<Frontend> {
         let rutabaga_builder = self.rutabaga_builder.take()?;
+        #[cfg(feature = "virgl_renderer_next")]
         let render_server_fd = self.render_server_fd.take();
         let event_devices = self.event_devices.split_off(0);
         #[cfg(feature = "kiwi")]
@@ -1046,6 +1057,7 @@ impl Gpu {
             &mut self.wndproc_thread,
             self.udmabuf,
             fence_handler,
+            #[cfg(feature = "virgl_renderer_next")]
             render_server_fd,
             #[cfg(feature = "kiwi")]
             gpu_device_service_tube,
@@ -1124,6 +1136,7 @@ impl VirtioDevice for Gpu {
             }
         }
 
+        #[cfg(feature = "virgl_renderer_next")]
         if let Some(ref render_server_fd) = self.render_server_fd {
             keep_rds.push(render_server_fd.as_raw_descriptor());
         }
@@ -1232,6 +1245,7 @@ impl VirtioDevice for Gpu {
         let external_blob = self.external_blob;
         let udmabuf = self.udmabuf;
         let fence_state = Arc::new(Mutex::new(Default::default()));
+        #[cfg(feature = "virgl_renderer_next")]
         let render_server_fd = self.render_server_fd.take();
 
         #[cfg(windows)]
@@ -1261,6 +1275,7 @@ impl VirtioDevice for Gpu {
                             &mut wndproc_thread,
                             udmabuf,
                             fence_handler,
+                            #[cfg(feature = "virgl_renderer_next")]
                             render_server_fd,
                         ) {
                             Some(backend) => backend,

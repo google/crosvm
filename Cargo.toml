@@ -159,7 +159,7 @@ usb = ["devices/usb"]
 video-decoder = ["devices/video-decoder"]
 video-encoder = ["devices/video-encoder"]
 virgl_renderer = ["devices/virgl_renderer"]
-virgl_renderer_next = ["rutabaga_gfx/virgl_renderer_next"]
+virgl_renderer_next = ["devices/virgl_renderer_next", "rutabaga_gfx/virgl_renderer_next"]
 wl-dmabuf = ["devices/minigbm"]
 x = ["devices/x"]
 

@@ -4,6 +4,8 @@
 
 //! GPU related things
 //! depends on "gpu" feature
+
+#[cfg(feature = "virgl_renderer_next")]
 use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
@@ -71,7 +73,7 @@ pub fn create_gpu_device(
     resource_bridges: Vec<Tube>,
     wayland_socket_path: Option<&PathBuf>,
     x_display: Option<String>,
-    render_server_fd: Option<SafeDescriptor>,
+    #[cfg(feature = "virgl_renderer_next")] render_server_fd: Option<SafeDescriptor>,
     event_devices: Vec<EventDevice>,
 ) -> DeviceResult {
     let mut display_backends = vec![
@@ -100,6 +102,7 @@ pub fn create_gpu_device(
         resource_bridges,
         display_backends,
         cfg.gpu_parameters.as_ref().unwrap(),
+        #[cfg(feature = "virgl_renderer_next")]
         render_server_fd,
         event_devices,
         cfg.jail_config.is_some(),
@@ -153,6 +156,7 @@ pub struct GpuRenderServerParameters {
     pub cache_size: Option<String>,
 }
 
+#[cfg(feature = "virgl_renderer_next")]
 fn get_gpu_render_server_environment(cache_info: Option<&GpuCacheInfo>) -> Result<Vec<String>> {
     let mut env = HashMap::<String, String>::new();
     let os_env_len = env::vars_os().count();
@@ -182,6 +186,7 @@ fn get_gpu_render_server_environment(cache_info: Option<&GpuCacheInfo>) -> Resul
     Ok(env.iter().map(|(k, v)| format!("{}={}", k, v)).collect())
 }
 
+#[cfg(feature = "virgl_renderer_next")]
 pub fn start_gpu_render_server(
     cfg: &Config,
     render_server_parameters: &GpuRenderServerParameters,
