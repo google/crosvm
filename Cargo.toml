@@ -85,6 +85,7 @@ members = [
     "resources",
     "rutabaga_gfx",
     "serde_keyvalue",
+    "swap",
     "system_api",
     "third_party/vmm_vhost",
     "tpm2-sys",
@@ -388,6 +389,9 @@ aarch64 = { path = "aarch64" }
 [target.'cfg(unix)'.dependencies]
 minijail = "*" # provided by ebuild
 p9 = "*"
+
+[target.'cfg(target_os="linux")'.dependencies]
+swap = { path = "swap", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 anti_tamper = { path = "anti_tamper" }
