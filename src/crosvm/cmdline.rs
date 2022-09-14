@@ -1620,10 +1620,6 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         cfg.initrd_path = cmd.initrd_path;
 
-        if cmd.disable_sandbox {
-            cfg.jail_config = None;
-        }
-
         if let Some(p) = cmd.bios {
             if cfg.executable_path.is_some() {
                 return Err(format!(
@@ -1853,6 +1849,12 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.vfio.extend(cmd.vfio);
             cfg.vfio.extend(cmd.vfio_platform);
             cfg.vfio_isolate_hotplug = cmd.vfio_isolate_hotplug;
+        }
+
+        // `--disable-sandbox` has the effect of disabling sandboxing altogether, so make sure
+        // to handle it after other sandboxing options since they implicitly enable it.
+        if cmd.disable_sandbox {
+            cfg.jail_config = None;
         }
 
         // Now do validation of constructed config
