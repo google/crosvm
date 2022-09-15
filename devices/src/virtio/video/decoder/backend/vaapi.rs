@@ -243,7 +243,7 @@ impl VaapiDecoder {
             let max_width = match max_width.get(0) {
                 Some(libva::GenericValue::Integer(i)) => *i as u32,
                 Some(other) => panic!("Unexpected VAGenericValue {:?}", other),
-                None => 1,
+                None => coded_cap.max_width,
             };
 
             let max_height = config.query_surface_attributes_by_type(
@@ -252,7 +252,7 @@ impl VaapiDecoder {
             let max_height = match max_height.get(0) {
                 Some(libva::GenericValue::Integer(i)) => *i as u32,
                 Some(other) => panic!("Unexpected VAGenericValue {:?}", other),
-                None => 1,
+                None => coded_cap.max_height,
             };
 
             raw_caps.push(RawCap {
