@@ -201,6 +201,10 @@ impl ProxyDevice {
                 device.on_sandboxed();
                 child_proc(child_tube, &mut device);
 
+                // Explicitly drop the device so that its Drop implementation has a chance to run
+                // before the call to `libc::exit()`.
+                std::mem::drop(device);
+
                 // We're explicitly not using std::process::exit here to avoid the cleanup of
                 // stdout/stderr globals. This can cause cascading panics and SIGILL if a worker
                 // thread attempts to log to stderr after at_exit handlers have been run.
