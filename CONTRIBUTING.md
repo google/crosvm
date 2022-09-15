@@ -24,6 +24,8 @@ The following is high level guidance for producing contributions to crosvm.
 
 ## Style guidelines
 
+### Formatting
+
 To format all code, crosvm defers to rustfmt. In addition, the code adheres to the following rules:
 
 The `use` statements for each module should be grouped in this order
@@ -36,6 +38,32 @@ The `use` statements for each module should be grouped in this order
 
 crosvm uses the [remain](https://github.com/dtolnay/remain) crate to keep error enums sorted, along
 with the `#[sorted]` attribute to keep their corresponding match statements in the same order.
+
+### Unit test code
+
+Unit tests and other highly-specific tests (which may include some small, but not all, integration
+tests) should be written differently than how non-test code is written. Tests prevent regressions
+from being committed, show how APIs can be used, and help with understanding bugs in code. That
+means tests must be clear both now and in the future to a developer with low familiarity of the code
+under test. They should be understandable by reading from top to bottom without referencing any
+other code. Towards these goals, tests should:
+
+- To the extent reasonable, be structured as Arrange-Act-Assert.
+- Test the minimum number of behaviors in a single test. Make separate tests for separate behavior.
+- Avoid helper methods that send critical inputs or assert outputs within the helper itself. It
+  should be easy to read a test and determine the critical inputs/outputs without digging through
+  helper methods. Setup common to many tests is fine to factor out, but lean toward duplicating code
+  if it aids readability.
+- Avoid branching statements like conditionals and loops (which can make debugging more difficult).
+- Document the reason constants were chosen in the test, including if they were picked arbitrarily
+  such that in the future, changing the value is okay. (This can be done with constant variable
+  names, which is ideal if the value is used more than once, or in a comment.)
+- Name tests to describe what is being tested and the expected outcome, for example
+  `test_foo_invalid_bar_returns_baz`.
+
+Less-specific tests, such as most integration tests and system tests, are more likely to require
+obfuscating work behind helper methods. It is still good to strive for clarity and ease of debugging
+in those tests, but they do not need to follow these guidelines.
 
 ## Contributing Code
 
