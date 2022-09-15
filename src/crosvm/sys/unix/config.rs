@@ -80,28 +80,23 @@ pub fn parse_gpu_render_server_options(
     }
 }
 
-#[cfg(feature = "audio_cras")]
+#[cfg(feature = "audio")]
 pub fn parse_ac97_options(
-    ac97_params: &mut devices::Ac97Parameters,
+    #[allow(unused_variables)] ac97_params: &mut devices::Ac97Parameters,
     key: &str,
     #[allow(unused_variables)] value: &str,
 ) -> Result<(), String> {
     match key {
-        "client_type" => {
-            ac97_params
-                .set_client_type(value)
-                .map_err(|e| crate::crosvm::config::invalid_value_err(value, e))?;
-        }
-        "socket_type" => {
-            ac97_params
-                .set_socket_type(value)
-                .map_err(|e| crate::crosvm::config::invalid_value_err(value, e))?;
-        }
-        _ => {
-            return Err(format!("unknown ac97 parameter {}", key));
-        }
-    };
-    Ok(())
+        #[cfg(feature = "audio_cras")]
+        "client_type" => ac97_params
+            .set_client_type(value)
+            .map_err(|e| crate::crosvm::config::invalid_value_err(value, e)),
+        #[cfg(feature = "audio_cras")]
+        "socket_type" => ac97_params
+            .set_socket_type(value)
+            .map_err(|e| crate::crosvm::config::invalid_value_err(value, e)),
+        _ => Err(format!("unknown ac97 parameter {}", key)),
+    }
 }
 
 #[cfg(feature = "gfxstream")]
