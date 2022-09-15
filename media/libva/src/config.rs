@@ -103,20 +103,19 @@ impl Config {
         Ok(attrs)
     }
 
-    /// Query the surface attribute of type `attr_type`. The attribute may or
+    /// Query the surface attributes of type `attr_type`. The attribute may or
     /// may not be defined by the driver.
-    pub fn query_surface_attribute(
+    pub fn query_surface_attributes_by_type(
         &mut self,
         attr_type: bindings::VASurfaceAttribType::Type,
-    ) -> Result<Option<GenericValue>> {
+    ) -> Result<Vec<GenericValue>> {
         let surface_attributes = self.query_surface_attributes()?;
 
         surface_attributes
             .into_iter()
-            .find(|attr| attr.type_ == attr_type)
-            .map_or(Ok(None), |attrib| {
-                Ok(Some(GenericValue::try_from(attrib.value)?))
-            })
+            .filter(|attr| attr.type_ == attr_type)
+            .map(|attrib| GenericValue::try_from(attrib.value))
+            .collect()
     }
 }
 

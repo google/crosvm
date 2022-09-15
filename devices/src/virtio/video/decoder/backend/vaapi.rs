@@ -143,8 +143,6 @@ struct CodedCap {
     profile: libva::VAProfile::Type,
     max_width: u32,
     max_height: u32,
-    // bitmask containing the OR'd supported raw formats
-    rt_fmts: u32,
 }
 
 // The VA capabilities for the raw side
@@ -171,17 +169,12 @@ impl VaapiDecoder {
                 type_: libva::VAConfigAttribType::VAConfigAttribMaxPictureHeight,
                 value: 0,
             },
-            libva::VAConfigAttrib {
-                type_: libva::VAConfigAttribType::VAConfigAttribRTFormat,
-                value: 0,
-            },
         ];
 
         display.get_config_attributes(profile, libva::VAEntrypoint::VAEntrypointVLD, &mut attrs)?;
 
         let mut max_width = 1u32;
         let mut max_height = 1u32;
-        let mut rt_fmts = 0u32;
 
         for attr in &attrs {
             if attr.value == libva::constants::VA_ATTRIB_NOT_SUPPORTED {
@@ -193,7 +186,6 @@ impl VaapiDecoder {
                 libva::VAConfigAttribType::VAConfigAttribMaxPictureHeight => {
                     max_height = attr.value
                 }
-                libva::VAConfigAttribType::VAConfigAttribRTFormat => rt_fmts = attr.value,
 
                 _ => panic!("Unexpected VAConfigAttribType {}", attr.type_),
             }
@@ -203,88 +195,62 @@ impl VaapiDecoder {
             profile,
             max_width,
             max_height,
-            rt_fmts,
         })
     }
 
     // Query the capabilities for the raw format
     fn get_raw_caps(display: Rc<libva::Display>, coded_cap: &CodedCap) -> Result<Vec<RawCap>> {
-        const RT_FMTS: [u32; 18] = [
-            libva::constants::VA_RT_FORMAT_YUV420,
-            libva::constants::VA_RT_FORMAT_YUV422,
-            libva::constants::VA_RT_FORMAT_YUV444,
-            libva::constants::VA_RT_FORMAT_YUV411,
-            libva::constants::VA_RT_FORMAT_YUV400,
-            libva::constants::VA_RT_FORMAT_YUV420_10,
-            libva::constants::VA_RT_FORMAT_YUV422_10,
-            libva::constants::VA_RT_FORMAT_YUV444_10,
-            libva::constants::VA_RT_FORMAT_YUV420_12,
-            libva::constants::VA_RT_FORMAT_YUV422_12,
-            libva::constants::VA_RT_FORMAT_YUV444_12,
-            libva::constants::VA_RT_FORMAT_RGB16,
-            libva::constants::VA_RT_FORMAT_RGB32,
-            libva::constants::VA_RT_FORMAT_RGBP,
-            libva::constants::VA_RT_FORMAT_RGB32_10,
-            libva::constants::VA_RT_FORMAT_PROTECTED,
-            libva::constants::VA_RT_FORMAT_RGB32_10BPP,
-            libva::constants::VA_RT_FORMAT_YUV420_10BPP,
-        ];
-
         let mut raw_caps = Vec::new();
 
-        for rt_fmt in RT_FMTS {
-            if coded_cap.rt_fmts & rt_fmt == 0 {
-                continue;
-            }
+        let mut config = display.create_config(
+            None,
+            coded_cap.profile,
+            libva::VAEntrypoint::VAEntrypointVLD,
+        )?;
 
-            // Create a config with this RTFormat, so we can query surface
-            // attributes
-            let attrs = vec![libva::VAConfigAttrib {
-                type_: libva::VAConfigAttribType::VAConfigAttribRTFormat,
-                value: rt_fmt,
-            }];
+        let fourccs = config.query_surface_attributes_by_type(
+            libva::VASurfaceAttribType::VASurfaceAttribPixelFormat,
+        )?;
 
-            let mut config = display.create_config(
-                Some(attrs),
-                coded_cap.profile,
-                libva::VAEntrypoint::VAEntrypointVLD,
+        for fourcc in fourccs {
+            let fourcc = match fourcc {
+                libva::GenericValue::Integer(i) => i as u32,
+                other => panic!("Unexpected VAGenericValue {:?}", other),
+            };
+
+            let min_width = config.query_surface_attributes_by_type(
+                libva::VASurfaceAttribType::VASurfaceAttribMinWidth,
             )?;
 
-            let fourcc = match config
-                .query_surface_attribute(libva::VASurfaceAttribType::VASurfaceAttribPixelFormat)?
-            {
-                Some(libva::GenericValue::Integer(i)) => i as u32,
-                Some(other) => panic!("Unexpected VAGenericValue {:?}", other),
-                None => continue,
-            };
-
-            let min_width = match config
-                .query_surface_attribute(libva::VASurfaceAttribType::VASurfaceAttribMinWidth)?
-            {
-                Some(libva::GenericValue::Integer(i)) => i as u32,
+            let min_width = match min_width.get(0) {
+                Some(libva::GenericValue::Integer(i)) => *i as u32,
                 Some(other) => panic!("Unexpected VAGenericValue {:?}", other),
                 None => 1,
             };
 
-            let min_height = match config
-                .query_surface_attribute(libva::VASurfaceAttribType::VASurfaceAttribMinHeight)?
-            {
-                Some(libva::GenericValue::Integer(i)) => i as u32,
-                Some(other) => panic!("Unexpected VAGenericValue {:?}", other),
-                None => 1,
-            };
-            let max_width = match config
-                .query_surface_attribute(libva::VASurfaceAttribType::VASurfaceAttribMaxWidth)?
-            {
-                Some(libva::GenericValue::Integer(i)) => i as u32,
+            let min_height = config.query_surface_attributes_by_type(
+                libva::VASurfaceAttribType::VASurfaceAttribMinHeight,
+            )?;
+            let min_height = match min_height.get(0) {
+                Some(libva::GenericValue::Integer(i)) => *i as u32,
                 Some(other) => panic!("Unexpected VAGenericValue {:?}", other),
                 None => 1,
             };
 
-            let max_height = match config
-                .query_surface_attribute(libva::VASurfaceAttribType::VASurfaceAttribMaxHeight)?
-            {
-                Some(libva::GenericValue::Integer(i)) => i as u32,
+            let max_width = config.query_surface_attributes_by_type(
+                libva::VASurfaceAttribType::VASurfaceAttribMaxWidth,
+            )?;
+            let max_width = match max_width.get(0) {
+                Some(libva::GenericValue::Integer(i)) => *i as u32,
+                Some(other) => panic!("Unexpected VAGenericValue {:?}", other),
+                None => 1,
+            };
+
+            let max_height = config.query_surface_attributes_by_type(
+                libva::VASurfaceAttribType::VASurfaceAttribMaxHeight,
+            )?;
+            let max_height = match max_height.get(0) {
+                Some(libva::GenericValue::Integer(i)) => *i as u32,
                 Some(other) => panic!("Unexpected VAGenericValue {:?}", other),
                 None => 1,
             };
