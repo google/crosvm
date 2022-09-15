@@ -370,12 +370,16 @@ impl VaapiDecoder {
                 n_out += 1;
             }
 
-            in_fmts.push(FormatDesc {
-                mask: !(u64::MAX << n_out) << (out_fmts.len() - n_out),
-                format: coded_format,
-                frame_formats: vec![coded_frame_fmt],
-                plane_align: 1,
-            });
+            let mask = !(u64::MAX << n_out) << (out_fmts.len() - n_out);
+
+            if mask != 0 {
+                in_fmts.push(FormatDesc {
+                    mask,
+                    format: coded_format,
+                    frame_formats: vec![coded_frame_fmt],
+                    plane_align: 1,
+                });
+            }
         }
 
         Ok(Self {
