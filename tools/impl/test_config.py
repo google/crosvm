@@ -33,6 +33,12 @@ class TestOption(enum.Enum):
     # This test needs to be the only one runnning to prevent interference with other tests.
     RUN_EXCLUSIVE = "run_exclusive"
 
+    # This unit test requires special privileges and needs to be run in a test VM like an
+    # integration test.
+    # Note: This flag should be transitory and tests should be refactored to only require
+    # privileges in integration tests.
+    UNIT_AS_INTEGRATION_TEST = "unit_as_integration_test"
+
     # This test needs longer than usual to run.
     LARGE = "large"
 
@@ -74,7 +80,7 @@ WIN64_DISABLED_CRATES = [
 CRATE_OPTIONS: Dict[str, List[TestOption]] = {
     "base": [TestOption.SINGLE_THREADED, TestOption.LARGE],
     "cros_async": [TestOption.LARGE, TestOption.RUN_EXCLUSIVE],
-    "crosvm": [TestOption.SINGLE_THREADED],
+    "crosvm": [TestOption.SINGLE_THREADED, TestOption.UNIT_AS_INTEGRATION_TEST],
     "crosvm_plugin": [
         TestOption.DO_NOT_BUILD_AARCH64,
         TestOption.DO_NOT_BUILD_ARMHF,
@@ -86,6 +92,7 @@ CRATE_OPTIONS: Dict[str, List[TestOption]] = {
         TestOption.LARGE,
         TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL,
         TestOption.DO_NOT_RUN_ARMHF,
+        TestOption.UNIT_AS_INTEGRATION_TEST,
     ],
     "disk": [TestOption.DO_NOT_RUN_AARCH64, TestOption.DO_NOT_RUN_ARMHF],  # b/202294155
     # FFmpeg 5.0 not available on Debian Bullseye used in container images.
@@ -123,7 +130,7 @@ CRATE_OPTIONS: Dict[str, List[TestOption]] = {
     ],
     "libvda": [TestOption.DO_NOT_BUILD],  # b/202293971
     "rutabaga_gfx": [TestOption.DO_NOT_BUILD_ARMHF],  # b/210015864
-    "vhost": [TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL],
+    "vhost": [TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL, TestOption.UNIT_AS_INTEGRATION_TEST],
     "vm_control": [TestOption.DO_NOT_BUILD_ARMHF],  # b/210015864
 }
 

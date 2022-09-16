@@ -93,20 +93,25 @@ aarch64_wrapper() {
 
 commands=(
     "./tools/health-check"
-    "./tools/run_tests --target=host"
 )
 
 if [ "$ALL" == true ]; then
     commands+=(
-        "$(aarch64_wrapper) ./tools/run_tests --target=vm:aarch64"
-        "$(aarch64_wrapper) ./tools/run_tests --target=vm:aarch64 --build-target=armhf"
-        "./tools/run_tests --target=host --build-target=mingw64 --build-only"
+        "./tools/run_tests"
+        "./tools/run_tests --target=mingw64"
+        "$(aarch64_wrapper) ./tools/run_tests --platform=aarch64"
+        "$(aarch64_wrapper) ./tools/run_tests --platform=armhf"
         "cargo build --verbose --no-default-features"
     )
 elif [ "$QUICK" != true ]; then
     commands+=(
-        "$(aarch64_wrapper) ./tools/run_tests --target=vm:aarch64"
-        "./tools/run_tests --target=host --build-target=mingw64 --build-only"
+        "./tools/run_tests"
+        "$(aarch64_wrapper) ./tools/run_tests --platform=aarch64 --unit-tests"
+        "./tools/run_tests --target=mingw64 --unit-tests"
+    )
+else
+    commands+=(
+        "./tools/run_tests --unit-tests"
     )
 fi
 
