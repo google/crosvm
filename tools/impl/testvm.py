@@ -2,17 +2,20 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-from pathlib import Path
-from typing import Iterable, Optional, Literal, Dict, List, Tuple
 import argparse
 import itertools
+import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request as request
-import json
+from contextlib import closing
+from pathlib import Path
+from typing import Dict, Iterable, List, Literal, Optional, Tuple
 
 # Cache busting 1
 
@@ -86,7 +89,7 @@ def cargo_target_dir():
 
 
 def data_dir(arch: Arch):
-    return cargo_target_dir().joinpath("crosvm_tools").joinpath(arch)
+    return Path(tempfile.gettempdir()).joinpath("crosvm_tools").joinpath(arch)
 
 
 def pid_path(arch: Arch):
@@ -129,7 +132,7 @@ ARCH_TO_QEMU: Dict[Arch, Tuple[str, List[Iterable[str]]]] = {
     "x86_64": (
         "qemu-system-x86_64",
         [
-            ("-cpu", "Broadwell,vmx=on"),
+            ("-cpu", "kvm64,vmx=on"),
             ("-netdev", f"user,id=net0,hostfwd=tcp::{SSH_PORTS['x86_64']}-:22"),
             *([("-enable-kvm",)] if KVM_SUPPORT else []),
             *SHARED_ARGS,
@@ -214,6 +217,11 @@ def run_qemu(
     hda: Path,
     background: bool = False,
 ):
+    if not is_ssh_port_available(arch):
+        print(f"Port {SSH_PORTS[arch]} is occupied, but is required for the {arch} vm to run.")
+        print(f"You may be running the {arch}vm in another place and need to kill it.")
+        sys.exit(1)
+
     (binary, arch_args) = ARCH_TO_QEMU[arch]
     qemu_args = [*arch_args, ("-hda", str(hda))]
     if background:
@@ -290,9 +298,15 @@ def build_if_needed(arch: Arch, reset: bool = False):
         ).check_returncode()
 
 
+def is_ssh_port_available(arch: Arch):
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+        return sock.connect_ex(("127.0.0.1", SSH_PORTS[arch])) != 0
+
+
 def up(arch: Arch):
     if is_running(arch):
         return
+
     print("Booting VM...")
     run_qemu(
         arch,
@@ -358,7 +372,8 @@ def kill(arch: Arch):
 def clean(arch: Arch):
     if is_running(arch):
         kill(arch)
-    shutil.rmtree(data_dir(arch))
+    if data_dir(arch).exists():
+        shutil.rmtree(data_dir(arch))
 
 
 def main(arch: Arch, argv: List[str]):
