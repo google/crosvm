@@ -580,17 +580,18 @@ impl VaapiDecoderSession {
 
         let frames = self.codec.decode(timestamp, &bitstream_map);
 
+        // We are always done with the input buffer after `self.codec.decode()`.
+        self.event_queue
+            .queue_event(DecoderEvent::NotifyEndOfBitstreamBuffer(resource_id))
+            .map_err(|e| {
+                VideoError::BackendFailure(anyhow!(
+                    "Can't queue the NotifyEndOfBitstream event {}",
+                    e
+                ))
+            })?;
+
         match frames {
             Ok(frames) => {
-                self.event_queue
-                    .queue_event(DecoderEvent::NotifyEndOfBitstreamBuffer(timestamp as u32))
-                    .map_err(|e| {
-                        VideoError::BackendFailure(anyhow!(
-                            "Can't queue the NotifyEndOfBitstream event {}",
-                            e
-                        ))
-                    })?;
-
                 if self.codec.negotiation_possible() {
                     let resolution = self.codec.backend().coded_resolution().unwrap();
 
