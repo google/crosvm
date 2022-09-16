@@ -654,6 +654,19 @@ impl VaapiDecoderSession {
 
         Ok(())
     }
+
+    fn try_make_progress(&mut self) -> VideoResult<()> {
+        // Note that the ready queue must be drained first to avoid deadlock.
+        // This is because draining the submit queue will fail if the ready
+        // queue is full enough, since this prevents the deallocation of the
+        // VASurfaces embedded in the handles stored in the ready queue.
+        // This means that no progress gets done.
+        self.drain_ready_queue()
+            .map_err(VideoError::BackendFailure)?;
+        self.drain_submit_queue()?;
+
+        Ok(())
+    }
 }
 
 impl DecoderSession for VaapiDecoderSession {
@@ -739,7 +752,7 @@ impl DecoderSession for VaapiDecoderSession {
         };
 
         self.submit_queue.push_back(job);
-        self.drain_submit_queue()?;
+        self.try_make_progress()?;
 
         Ok(())
     }
@@ -747,7 +760,7 @@ impl DecoderSession for VaapiDecoderSession {
     fn flush(&mut self) -> VideoResult<()> {
         self.flushing = true;
 
-        self.drain_submit_queue()?;
+        self.try_make_progress()?;
 
         // Retrieve ready frames from the codec, if any.
         let pics = self
@@ -910,6 +923,8 @@ impl DecoderSession for VaapiDecoderSession {
         output_queue
             .reuse_buffer(picture_buffer_id as u32)
             .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?;
+
+        self.try_make_progress()?;
 
         if self.flushing {
             // Try flushing again now that we have a new buffer. This might let
