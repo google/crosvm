@@ -52,6 +52,7 @@ pub struct StreamInfo {
     pub status_mutex: Rc<AsyncMutex<WorkerStatus>>,
     pub sender: Option<mpsc::UnboundedSender<DescriptorChain>>,
     worker_future: Option<Box<dyn Future<Output = Result<(), Error>> + Unpin>>,
+    ex: Option<Executor>, // Executor provided on `prepare()`. Used on `drop()`.
 }
 
 impl fmt::Debug for StreamInfo {
@@ -65,6 +66,27 @@ impl fmt::Debug for StreamInfo {
             .field("direction", &get_virtio_direction_name(self.direction))
             .field("state", &get_virtio_snd_r_pcm_cmd_name(self.state))
             .finish()
+    }
+}
+
+impl Drop for StreamInfo {
+    fn drop(&mut self) {
+        if let Some(ex) = self.ex.take() {
+            if self.state == VIRTIO_SND_R_PCM_START {
+                match ex.run_until(self.stop()) {
+                    Err(e) => error!("Drop stream error on stop in executor: {}", e),
+                    Ok(Err(e)) => error!("Drop stream error on stop: {}", e),
+                    _ => {}
+                }
+            }
+            if self.state == VIRTIO_SND_R_PCM_PREPARE || self.state == VIRTIO_SND_R_PCM_STOP {
+                match ex.run_until(self.release()) {
+                    Err(e) => error!("Drop stream error on release in executor: {}", e),
+                    Ok(Err(e)) => error!("Drop stream error on release: {}", e),
+                    _ => {}
+                }
+            }
+        }
     }
 }
 
@@ -86,6 +108,7 @@ impl StreamInfo {
             status_mutex: Rc::new(AsyncMutex::new(WorkerStatus::Pause)),
             sender: None,
             worker_future: None,
+            ex: None,
         }
     }
 
@@ -222,6 +245,7 @@ impl StreamInfo {
             self.period_bytes,
         );
         self.worker_future = Some(Box::new(ex.spawn_local(f).into_future()));
+        self.ex = Some(ex.clone());
         Ok(())
     }
 
@@ -285,6 +309,7 @@ impl StreamInfo {
         if let Some(f) = self.worker_future.take() {
             f.await?;
         }
+        self.ex.take(); // Remove ex as the worker is finished
         Ok(())
     }
 }
