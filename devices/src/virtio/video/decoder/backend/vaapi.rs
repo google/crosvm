@@ -409,8 +409,6 @@ pub struct VaapiDecoderSession {
     event_queue: EventQueue<DecoderEvent>,
     /// Whether the decoder is currently flushing.
     flushing: bool,
-    /// The coded format we are decoding.
-    coded_format: Format,
 }
 
 /// A convenience type implementing persistent slice access for BufferHandles.
@@ -781,79 +779,17 @@ impl DecoderSession for VaapiDecoderSession {
         // Drop the queued output buffers.
         self.clear_output_buffers()?;
 
-        // TODO(acourbot) IIUC we don't need to reset the resolution here, we can be optimistic
-        // and assume that it won't change - if it does we will get a DRC event anyway.
+        self.submit_queue.clear();
+        self.ready_queue.clear();
+        self.codec
+            .flush()
+            .map_err(|e| VideoError::BackendFailure(anyhow!("Flushing the codec failed {}", e)))?;
 
         self.event_queue
             .queue_event(DecoderEvent::ResetCompleted(Ok(())))
             .map_err(|e| {
                 VideoError::BackendFailure(anyhow!("Can't queue the ResetCompleted event {}", e))
             })?;
-
-        let display = Rc::new(Display::open().map_err(VideoError::BackendFailure)?);
-        let codec: Box<dyn VideoDecoder> = match self.coded_format {
-            Format::VP8 => {
-                let backend = Box::new(
-                    cros_codecs::decoders::vp8::backends::stateless::vaapi::Backend::new(
-                        Rc::clone(&display),
-                    )
-                    .unwrap(),
-                );
-
-                Box::new(
-                    cros_codecs::decoders::vp8::decoder::Decoder::new(
-                        backend,
-                        cros_codecs::decoders::BlockingMode::NonBlocking,
-                    )
-                    .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
-                )
-            }
-
-            Format::VP9 => {
-                let backend = Box::new(
-                    cros_codecs::decoders::vp9::backends::stateless::vaapi::Backend::new(
-                        Rc::clone(&display),
-                    )
-                    .unwrap(),
-                );
-
-                Box::new(
-                    cros_codecs::decoders::vp9::decoder::Decoder::new(
-                        backend,
-                        cros_codecs::decoders::BlockingMode::NonBlocking,
-                    )
-                    .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
-                )
-            }
-
-            Format::H264 => {
-                let backend = Box::new(
-                    cros_codecs::decoders::h264::backends::stateless::vaapi::Backend::new(
-                        Rc::clone(&display),
-                    )
-                    .unwrap(),
-                );
-                Box::new(
-                    cros_codecs::decoders::h264::decoder::Decoder::new(
-                        backend,
-                        cros_codecs::decoders::BlockingMode::NonBlocking,
-                    )
-                    .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
-                )
-            }
-
-            _ => return Err(VideoError::InvalidFormat),
-        };
-
-        *self = VaapiDecoderSession {
-            codec,
-            output_queue_state: OutputQueueState::AwaitingBufferCount,
-            ready_queue: Default::default(),
-            submit_queue: Default::default(),
-            event_queue: EventQueue::new().map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
-            flushing: Default::default(),
-            coded_format: self.coded_format,
-        };
 
         Ok(())
     }
@@ -1011,7 +947,6 @@ impl DecoderBackend for VaapiDecoder {
             submit_queue: Default::default(),
             event_queue: EventQueue::new().map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
             flushing: Default::default(),
-            coded_format: format,
         })
     }
 }
