@@ -532,6 +532,11 @@ impl VaapiDecoderSession {
     }
 
     fn drain_ready_queue(&mut self) -> Result<()> {
+        // Do not do anything if we haven't been given buffers yet.
+        if !matches!(self.output_queue_state, OutputQueueState::Decoding { .. }) {
+            return Ok(());
+        }
+
         while let Some(decoded_frame) = self.ready_queue.pop_front() {
             let outputted = self.output_picture(decoded_frame.as_ref())?;
             if !outputted {
