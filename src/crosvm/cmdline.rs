@@ -8,7 +8,7 @@ cfg_if::cfg_if! {
 
         use base::RawDescriptor;
         #[cfg(feature = "gpu")]
-        use devices::virtio::GpuDisplayParameters;
+        use vm_control::gpu::DisplayParameters as GpuDisplayParameters;
         use devices::virtio::vhost::user::device::parse_wayland_sock;
 
         use super::sys::config::{
@@ -129,6 +129,8 @@ pub enum CrossPlatformCommands {
     CreateQcow2(CreateQcow2Command),
     Device(DeviceCommand),
     Disk(DiskCommand),
+    #[cfg(feature = "gpu")]
+    Gpu(GpuCommand),
     MakeRT(MakeRTCommand),
     Resume(ResumeCommand),
     Run(RunCommand),
@@ -323,6 +325,15 @@ pub struct UsbCommand {
     pub command: UsbSubCommand,
 }
 
+#[cfg(feature = "gpu")]
+#[derive(FromArgs)]
+#[argh(subcommand, name = "gpu")]
+/// Manage attached virtual GPU device.
+pub struct GpuCommand {
+    #[argh(subcommand)]
+    pub command: GpuSubCommand,
+}
+
 #[derive(FromArgs)]
 #[argh(subcommand, name = "version")]
 /// Show package version.
@@ -388,6 +399,52 @@ pub enum CrossPlatformDevicesCommands {
 pub enum DeviceSubcommand {
     CrossPlatform(CrossPlatformDevicesCommands),
     Sys(super::sys::cmdline::DeviceSubcommand),
+}
+
+#[cfg(feature = "gpu")]
+#[derive(FromArgs)]
+#[argh(subcommand)]
+pub enum GpuSubCommand {
+    AddDisplays(GpuAddDisplaysCommand),
+    ListDisplays(GpuListDisplaysCommand),
+    RemoveDisplays(GpuRemoveDisplaysCommand),
+}
+
+#[cfg(feature = "gpu")]
+#[derive(FromArgs)]
+/// Attach a new display to the GPU device.
+#[argh(subcommand, name = "add-displays")]
+pub struct GpuAddDisplaysCommand {
+    #[argh(option)]
+    /// displays
+    pub gpu_display: Vec<vm_control::gpu::DisplayParameters>,
+
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
+
+#[cfg(feature = "gpu")]
+#[derive(FromArgs)]
+/// List the displays currently attached to the GPU device.
+#[argh(subcommand, name = "list-displays")]
+pub struct GpuListDisplaysCommand {
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
+
+#[cfg(feature = "gpu")]
+#[derive(FromArgs)]
+/// Detach an existing display from the GPU device.
+#[argh(subcommand, name = "remove-displays")]
+pub struct GpuRemoveDisplaysCommand {
+    #[argh(option)]
+    /// display id
+    pub display_id: Vec<u32>,
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
 }
 
 #[derive(FromArgs)]

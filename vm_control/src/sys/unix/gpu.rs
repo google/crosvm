@@ -5,7 +5,7 @@
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::virtio::gpu::parameters::DisplayModeTrait;
+use crate::gpu::DisplayModeTrait;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

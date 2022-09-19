@@ -310,7 +310,7 @@ pub struct virtio_gpu_display_one {
 unsafe impl DataInit for virtio_gpu_display_one {}
 
 /* VIRTIO_GPU_RESP_OK_DISPLAY_INFO */
-const VIRTIO_GPU_MAX_SCANOUTS: usize = 16;
+pub const VIRTIO_GPU_MAX_SCANOUTS: usize = 16;
 #[derive(Copy, Clone, Debug, Default)]
 #[repr(C)]
 pub struct virtio_gpu_resp_display_info {
@@ -795,7 +795,7 @@ pub struct GpuResponsePlaneInfo {
 #[derive(Debug)]
 pub enum GpuResponse {
     OkNoData,
-    OkDisplayInfo(Vec<(u32, u32)>),
+    OkDisplayInfo(Vec<(u32, u32, bool)>),
     OkCapsetInfo {
         capset_id: u32,
         version: u32,
@@ -928,10 +928,11 @@ impl GpuResponse {
                     hdr,
                     pmodes: Default::default(),
                 };
-                for (disp_mode, &(width, height)) in disp_info.pmodes.iter_mut().zip(info) {
+                for (disp_mode, &(width, height, enabled)) in disp_info.pmodes.iter_mut().zip(info)
+                {
                     disp_mode.r.width = Le32::from(width);
                     disp_mode.r.height = Le32::from(height);
-                    disp_mode.enabled = Le32::from(1);
+                    disp_mode.enabled = Le32::from(enabled as u32);
                 }
                 resp.write_obj(disp_info)?;
                 size_of_val(&disp_info)

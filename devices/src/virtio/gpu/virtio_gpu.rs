@@ -4,9 +4,13 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeMap as Map;
+use std::collections::BTreeSet as Set;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::result::Result;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use base::error;
 use base::Protection;
@@ -25,6 +29,9 @@ use rutabaga_gfx::RutabagaIovec;
 use rutabaga_gfx::Transfer3D;
 use rutabaga_gfx::RUTABAGA_MEM_HANDLE_TYPE_DMABUF;
 use rutabaga_gfx::RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_FD;
+use vm_control::gpu::DisplayParameters;
+use vm_control::gpu::GpuControlCommand;
+use vm_control::gpu::GpuControlResult;
 use vm_control::VmMemorySource;
 use vm_memory::udmabuf::UdmabufDriver;
 use vm_memory::udmabuf::UdmabufDriverTrait;
@@ -41,6 +48,7 @@ use super::VirtioScanoutBlobData;
 use crate::virtio::gpu::edid::DisplayInfo;
 use crate::virtio::gpu::edid::EdidBytes;
 use crate::virtio::gpu::GpuDisplayParameters;
+use crate::virtio::gpu::VIRTIO_GPU_MAX_SCANOUTS;
 use crate::virtio::resource_bridge::BufferInfo;
 use crate::virtio::resource_bridge::PlaneInfo;
 use crate::virtio::resource_bridge::ResourceInfo;
@@ -83,17 +91,21 @@ struct VirtioGpuScanout {
     scanout_type: SurfaceType,
     // If this scanout is a primary scanout, the scanout id.
     scanout_id: Option<u32>,
+    // If this scanout is a primary scanout, the display properties.
+    display_params: Option<GpuDisplayParameters>,
     // If this scanout is a cursor scanout, the scanout that this is cursor is overlayed onto.
     parent_surface_id: Option<u32>,
 }
 
 impl VirtioGpuScanout {
-    fn new(width: u32, height: u32, scanout_id: u32) -> VirtioGpuScanout {
+    fn new_primary(scanout_id: u32, params: GpuDisplayParameters) -> VirtioGpuScanout {
+        let (width, height) = params.get_virtual_display_size();
         VirtioGpuScanout {
             width,
             height,
             scanout_type: SurfaceType::Scanout,
             scanout_id: Some(scanout_id),
+            display_params: Some(params),
             surface_id: None,
             resource_id: None,
             parent_surface_id: None,
@@ -108,6 +120,7 @@ impl VirtioGpuScanout {
             height: 64,
             scanout_type: SurfaceType::Cursor,
             scanout_id: None,
+            display_params: None,
             surface_id: None,
             resource_id: None,
             parent_surface_id: None,
@@ -268,7 +281,8 @@ impl VirtioGpuScanout {
 /// Handles functionality related to displays, input events and hypervisor memory management.
 pub struct VirtioGpu {
     display: Rc<RefCell<GpuDisplay>>,
-    scanouts: Vec<VirtioGpuScanout>,
+    scanouts: Map<u32, VirtioGpuScanout>,
+    scanouts_updated: Arc<AtomicBool>,
     cursor_scanout: VirtioGpuScanout,
     // Maps event devices to scanout number.
     event_devices: Map<u32, u32>,
@@ -309,6 +323,7 @@ impl VirtioGpu {
     pub fn new(
         display: GpuDisplay,
         display_params: Vec<GpuDisplayParameters>,
+        display_event: Arc<AtomicBool>,
         rutabaga_builder: RutabagaBuilder,
         event_devices: Vec<EventDevice>,
         mapper: Box<dyn SharedMemoryMapper>,
@@ -340,15 +355,18 @@ impl VirtioGpu {
             .iter()
             .enumerate()
             .map(|(display_index, display_param)| {
-                let (width, height) = display_param.get_virtual_display_size();
-                VirtioGpuScanout::new(width, height, display_index as u32)
+                (
+                    display_index as u32,
+                    VirtioGpuScanout::new_primary(display_index as u32, display_param.clone()),
+                )
             })
-            .collect::<Vec<_>>();
+            .collect::<Map<_, _>>();
         let cursor_scanout = VirtioGpuScanout::new_cursor();
 
         let mut virtio_gpu = VirtioGpu {
             display: Rc::new(RefCell::new(display)),
             scanouts,
+            scanouts_updated: display_event,
             cursor_scanout,
             event_devices: Default::default(),
             mapper,
@@ -388,12 +406,100 @@ impl VirtioGpu {
         &self.display
     }
 
-    /// Gets the list of supported display resolutions as a slice of `(width, height)` tuples.
-    pub fn display_info(&self) -> Vec<(u32, u32)> {
-        self.scanouts
-            .iter()
-            .map(|scanout| (scanout.width, scanout.height))
+    /// Gets the list of supported display resolutions as a slice of `(width, height, enabled)` tuples.
+    pub fn display_info(&self) -> Vec<(u32, u32, bool)> {
+        (0..VIRTIO_GPU_MAX_SCANOUTS)
+            .map(|scanout_id| scanout_id as u32)
+            .map(|scanout_id| {
+                self.scanouts
+                    .get(&scanout_id)
+                    .map_or((0, 0, false), |scanout| {
+                        (scanout.width, scanout.height, true)
+                    })
+            })
             .collect::<Vec<_>>()
+    }
+
+    // Connects new displays to the device.
+    fn add_displays(&mut self, displays: Vec<DisplayParameters>) -> GpuControlResult {
+        if self.scanouts.len() + displays.len() > VIRTIO_GPU_MAX_SCANOUTS {
+            return GpuControlResult::TooManyDisplays(VIRTIO_GPU_MAX_SCANOUTS);
+        }
+
+        let mut available_scanout_ids = (0..VIRTIO_GPU_MAX_SCANOUTS)
+            .map(|s| s as u32)
+            .collect::<Set<u32>>();
+
+        self.scanouts.keys().for_each(|scanout_id| {
+            available_scanout_ids.remove(scanout_id);
+        });
+
+        for display_params in displays.into_iter() {
+            let new_scanout_id = *available_scanout_ids.iter().next().unwrap();
+            available_scanout_ids.remove(&new_scanout_id);
+
+            self.scanouts.insert(
+                new_scanout_id,
+                VirtioGpuScanout::new_primary(new_scanout_id, display_params),
+            );
+        }
+
+        self.scanouts_updated.store(true, Ordering::Relaxed);
+
+        GpuControlResult::DisplaysUpdated
+    }
+
+    /// Returns the list of displays currently connected to the device.
+    fn list_displays(&self) -> GpuControlResult {
+        GpuControlResult::DisplayList {
+            displays: self
+                .scanouts
+                .iter()
+                .filter_map(|(scanout_id, scanout)| {
+                    scanout
+                        .display_params
+                        .as_ref()
+                        .cloned()
+                        .map(|display_params| (*scanout_id, display_params))
+                })
+                .collect(),
+        }
+    }
+
+    /// Removes the specified displays from the device.
+    fn remove_displays(&mut self, display_ids: Vec<u32>) -> GpuControlResult {
+        let display_ids_to_remove = Set::from_iter(display_ids.iter());
+        display_ids_to_remove
+            .into_iter()
+            .try_for_each(|display_id| {
+                self.scanouts
+                    .get_mut(display_id)
+                    .ok_or(GpuControlResult::NoSuchDisplay {
+                        display_id: *display_id,
+                    })
+                    .map(|scanout| {
+                        scanout.release_surface(&self.display);
+                        scanout
+                    })?;
+
+                self.scanouts.remove(display_id);
+
+                Ok(())
+            })
+            .err()
+            .unwrap_or_else(|| {
+                self.scanouts_updated.store(true, Ordering::Relaxed);
+                GpuControlResult::DisplaysUpdated
+            })
+    }
+
+    /// Performs the given command to interact with or modify the device.
+    pub fn process_gpu_control_command(&mut self, cmd: GpuControlCommand) -> GpuControlResult {
+        match cmd {
+            GpuControlCommand::AddDisplays { displays } => self.add_displays(displays),
+            GpuControlCommand::ListDisplays => self.list_displays(),
+            GpuControlCommand::RemoveDisplays { display_ids } => self.remove_displays(display_ids),
+        }
     }
 
     /// Processes the internal `display` events and returns `true` if any display was closed.
@@ -405,7 +511,7 @@ impl VirtioGpu {
             Err(e) => error!("failed to dispatch events: {}", e),
         }
 
-        for scanout in &self.scanouts {
+        for scanout in self.scanouts.values() {
             let close_requested = scanout
                 .surface_id
                 .map(|surface_id| display.close_requested(surface_id))
@@ -453,7 +559,7 @@ impl VirtioGpu {
             None => return Ok(OkNoData),
         };
 
-        for scanout in &mut self.scanouts {
+        for scanout in self.scanouts.values_mut() {
             if scanout.resource_id == resource_id {
                 scanout.flush(&self.display, resource, &mut self.rutabaga)?;
             }
@@ -794,13 +900,16 @@ impl VirtioGpu {
 
     /// Gets the EDID for the specified scanout ID.
     pub fn get_edid(&self, scanout_id: u32) -> VirtioGpuResult {
-        let display_infos = self.display_info();
-
-        let (width, height) = display_infos
-            .get(scanout_id as usize)
+        let scanout = self
+            .scanouts
+            .get(&scanout_id)
             .ok_or(ErrEdid(format!("Invalid scanout id: {}", scanout_id)))?;
 
-        EdidBytes::new(&DisplayInfo::new(*width, *height, self.refresh_rate))
+        EdidBytes::new(&DisplayInfo::new(
+            scanout.width,
+            scanout.height,
+            self.refresh_rate,
+        ))
     }
 
     /// Creates a rutabaga context.
@@ -876,7 +985,7 @@ impl VirtioGpu {
 
                 scanout_parent_surface_id = self
                     .scanouts
-                    .get(parent_scanout_id as usize)
+                    .get(&parent_scanout_id)
                     .ok_or(ErrInvalidScanoutId)
                     .map(|parent_scanout| parent_scanout.surface_id)?;
 
@@ -885,7 +994,7 @@ impl VirtioGpu {
             SurfaceType::Scanout => {
                 scanout = self
                     .scanouts
-                    .get_mut(scanout_id as usize)
+                    .get_mut(&scanout_id)
                     .ok_or(ErrInvalidScanoutId)?;
             }
         };

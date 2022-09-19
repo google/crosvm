@@ -7,9 +7,13 @@ cfg_if::cfg_if! {
         pub mod unix;
         use unix as platform;
         pub use platform::{VmMsyncRequest, VmMsyncResponse, FsMappingRequest};
+        #[cfg(feature = "gpu")]
+        pub use platform::gpu::UnixDisplayMode as DisplayMode;
     } else if #[cfg(windows)] {
         pub mod windows;
         pub use windows as platform;
+        #[cfg(feature = "gpu")]
+        pub type DisplayMode = platform::gpu::WinDisplayMode<windows::DisplayDataProvider>;
     } else {
         compile_error!("Unsupported platform");
     }

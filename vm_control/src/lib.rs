@@ -12,6 +12,8 @@
 
 #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
 pub mod gdb;
+#[cfg(feature = "gpu")]
+pub mod gpu;
 
 #[cfg(unix)]
 use base::MemoryMappingBuilderUnix;
@@ -100,6 +102,10 @@ pub use crate::gdb::VcpuDebug;
 pub use crate::gdb::VcpuDebugStatus;
 #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
 pub use crate::gdb::VcpuDebugStatusMessage;
+#[cfg(feature = "gpu")]
+use crate::gpu::GpuControlCommand;
+#[cfg(feature = "gpu")]
+use crate::gpu::GpuControlResult;
 
 /// Control the state of a particular VM CPU.
 #[derive(Clone, Debug)]
@@ -933,6 +939,9 @@ pub enum VmRequest {
     },
     /// Command to use controller.
     UsbCommand(UsbControlCommand),
+    #[cfg(feature = "gpu")]
+    /// Command to modify the gpu.
+    GpuCommand(GpuControlCommand),
     /// Command to set battery.
     BatCommand(BatteryType, BatControlCommand),
     /// Command to add/remove multiple pci devices
@@ -1022,6 +1031,7 @@ impl VmRequest {
         #[cfg(feature = "balloon")] balloon_stats_id: &mut u64,
         disk_host_tubes: &[Tube],
         pm: &mut Option<Arc<Mutex<dyn PmResource>>>,
+        #[cfg(feature = "gpu")] gpu_control_tube: &Tube,
         usb_control_tube: Option<&Tube>,
         bat_control: &mut Option<BatControl>,
         vcpu_handles: &[(JoinHandle<()>, mpsc::Sender<VcpuControl>)],
@@ -1167,6 +1177,21 @@ impl VmRequest {
                 Some(tube) => handle_disk_command(command, tube),
                 None => VmResponse::Err(SysError::new(ENODEV)),
             },
+            #[cfg(feature = "gpu")]
+            VmRequest::GpuCommand(ref cmd) => {
+                let res = gpu_control_tube.send(cmd);
+                if let Err(e) = res {
+                    error!("fail to send command to gpu control socket: {}", e);
+                    return VmResponse::Err(SysError::new(EIO));
+                }
+                match gpu_control_tube.recv() {
+                    Ok(response) => VmResponse::GpuResponse(response),
+                    Err(e) => {
+                        error!("fail to recv command from gpu control socket: {}", e);
+                        VmResponse::Err(SysError::new(EIO))
+                    }
+                }
+            }
             VmRequest::UsbCommand(ref cmd) => {
                 let usb_control_tube = match usb_control_tube {
                     Some(t) => t,
@@ -1237,6 +1262,9 @@ pub enum VmResponse {
     },
     /// Results of usb control commands.
     UsbResponse(UsbControlResult),
+    #[cfg(feature = "gpu")]
+    /// Results of gpu control commands.
+    GpuResponse(GpuControlResult),
     /// Results of battery control commands.
     BatResponse(BatControlResult),
 }
@@ -1266,6 +1294,8 @@ impl Display for VmResponse {
                 )
             }
             UsbResponse(result) => write!(f, "usb control request get result {:?}", result),
+            #[cfg(feature = "gpu")]
+            GpuResponse(result) => write!(f, "gpu control request result {:?}", result),
             BatResponse(result) => write!(f, "{}", result),
         }
     }

@@ -5,16 +5,13 @@
 use std::marker::PhantomData;
 
 use base::info;
-use base::RawDescriptor;
-use base::Tube;
-use base::WaitContext;
 use serde::Deserialize;
 use serde::Serialize;
 use winapi::um::winuser::GetSystemMetrics;
 use winapi::um::winuser::SM_CXSCREEN;
 use winapi::um::winuser::SM_CYSCREEN;
 
-use crate::virtio::gpu::parameters::DisplayModeTrait;
+use crate::gpu::DisplayModeTrait;
 
 const DISPLAY_WIDTH_SOFT_MAX: u32 = 1920;
 const DISPLAY_HEIGHT_SOFT_MAX: u32 = 1080;
@@ -26,7 +23,7 @@ pub enum WinDisplayMode<T> {
     BorderlessFullScreen(PhantomData<T>),
 }
 
-impl DisplayModeTrait<T> for WinDisplayMode<T> {
+impl<T> DisplayModeTrait for WinDisplayMode<T> {
     fn get_virtual_display_size(&self) -> (u32, u32) {
         let (width, height) = match self {
             Self::Windowed(width, height) => (*width, *height),
@@ -40,12 +37,22 @@ impl DisplayModeTrait<T> for WinDisplayMode<T> {
     }
 }
 
+impl<T> From<WinDisplayMode<T>> for WinDisplayModeArg {
+    fn from(mode: WinDisplayMode<T>) -> WinDisplayModeArg {
+        match mode {
+            WinDisplayMode::Windowed { .. } => WinDisplayModeArg::Windowed,
+            WinDisplayMode::BorderlessFullScreen(_) => WinDisplayModeArg::BorderlessFullScreen,
+        }
+    }
+}
+
 /// Trait for returning host display data such as resolution. Tests may overwrite this to specify
 /// display data rather than rely on properties of the actual display device.
 trait ProvideDisplayData {
     fn get_host_display_size() -> (u32, u32);
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct DisplayDataProvider;
 
 impl ProvideDisplayData for DisplayDataProvider {
@@ -70,40 +77,4 @@ fn adjust_virtual_display_size(width: u32, height: u32) -> (u32, u32) {
     // Widths that aren't a multiple of 8 break gfxstream: b/156110663.
     let width = width - (width % 8);
     (width, height)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn borderless_full_screen_virtual_window_width_should_be_multiple_of_8() {
-        struct MockDisplayDataProvider;
-
-        impl ProvideDisplayData for MockDisplayDataProvider {
-            fn get_host_display_size() -> (u32, u32) {
-                (1366, 768)
-            }
-        }
-
-        let mode = DisplayMode::<MockDisplayDataProvider>::BorderlessFullScreen(PhantomData);
-        let (width, _) = mode.get_virtual_display_size();
-        assert_eq!(width % 8, 0);
-    }
-
-    #[test]
-    fn borderless_full_screen_virtual_window_size_should_be_smaller_than_soft_max() {
-        struct MockDisplayDataProvider;
-
-        impl ProvideDisplayData for MockDisplayDataProvider {
-            fn get_host_display_size() -> (u32, u32) {
-                (DISPLAY_WIDTH_SOFT_MAX + 1, DISPLAY_HEIGHT_SOFT_MAX + 1)
-            }
-        }
-
-        let mode = DisplayMode::<MockDisplayDataProvider>::BorderlessFullScreen(PhantomData);
-        let (width, height) = mode.get_virtual_display_size();
-        assert!(width <= DISPLAY_WIDTH_SOFT_MAX);
-        assert!(height <= DISPLAY_HEIGHT_SOFT_MAX);
-    }
 }

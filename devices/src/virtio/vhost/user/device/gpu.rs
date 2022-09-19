@@ -416,6 +416,8 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
     let (exit_evt_wrtube, _) =
         Tube::directional_pair().context("failed to create vm event tube")?;
 
+    let (gpu_control_tube, _) = Tube::pair().context("failed to create gpu control tube")?;
+
     let mut display_backends = vec![
         virtio::DisplayBackend::X(x_display),
         virtio::DisplayBackend::Stub,
@@ -437,6 +439,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
 
     let gpu = Rc::new(RefCell::new(Gpu::new(
         exit_evt_wrtube,
+        gpu_control_tube,
         Vec::new(), // resource_bridges, handled separately by us
         display_backends,
         &gpu_parameters,

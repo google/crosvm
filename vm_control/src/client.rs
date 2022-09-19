@@ -13,6 +13,9 @@ use thiserror::Error;
 pub use crate::sys::handle_request;
 pub use crate::*;
 
+#[cfg(feature = "gpu")]
+pub use crate::gpu::*;
+
 #[sorted]
 #[derive(Error, Debug)]
 enum ModifyBatError {

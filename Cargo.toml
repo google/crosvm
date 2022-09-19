@@ -151,7 +151,7 @@ gdb = [
     "x86_64/gdb",
 ]
 gfxstream = ["devices/gfxstream"]
-gpu = ["devices/gpu", "gpu_display"]
+gpu = ["devices/gpu", "gpu_display", "vm_control/gpu"]
 haxm = ["hypervisor/haxm"]
 whpx = ["devices/whpx", "hypervisor/whpx"]
 vaapi = ["devices/vaapi"]

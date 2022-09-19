@@ -13,63 +13,9 @@ use serde::Deserializer;
 use serde::Serialize;
 use serde::Serializer;
 use serde_keyvalue::FromKeyValues;
+use vm_control::gpu::DisplayParameters;
 
-pub use super::sys::DisplayMode;
 use super::GpuMode;
-
-pub const DEFAULT_DISPLAY_WIDTH: u32 = 1280;
-pub const DEFAULT_DISPLAY_HEIGHT: u32 = 1024;
-pub const DEFAULT_REFRESH_RATE: u32 = 60;
-
-/// Trait that the platform-specific type `DisplayMode` needs to implement.
-pub trait DisplayModeTrait {
-    fn get_virtual_display_size(&self) -> (u32, u32);
-}
-
-impl Default for DisplayMode {
-    fn default() -> Self {
-        Self::Windowed(DEFAULT_DISPLAY_WIDTH, DEFAULT_DISPLAY_HEIGHT)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Deserialize, FromKeyValues)]
-#[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub struct DisplayParameters {
-    #[serde(default)]
-    pub mode: DisplayMode,
-    #[serde(default)]
-    pub hidden: bool,
-    #[serde(default = "default_refresh_rate")]
-    pub refresh_rate: u32,
-}
-
-impl DisplayParameters {
-    pub fn new(mode: DisplayMode, hidden: bool, refresh_rate: u32) -> Self {
-        Self {
-            mode,
-            hidden,
-            refresh_rate,
-        }
-    }
-
-    pub fn default_with_mode(mode: DisplayMode) -> Self {
-        Self::new(mode, false, DEFAULT_REFRESH_RATE)
-    }
-
-    pub fn get_virtual_display_size(&self) -> (u32, u32) {
-        self.mode.get_virtual_display_size()
-    }
-}
-
-impl Default for DisplayParameters {
-    fn default() -> Self {
-        Self::default_with_mode(Default::default())
-    }
-}
-
-fn default_refresh_rate() -> u32 {
-    DEFAULT_REFRESH_RATE
-}
 
 mod serde_context_mask {
     use super::*;

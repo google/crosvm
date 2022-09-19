@@ -73,6 +73,7 @@ pub fn get_gpu_cache_info<'a>(
 pub fn create_gpu_device(
     cfg: &Config,
     exit_evt_wrtube: &SendTube,
+    gpu_control_tube: Tube,
     resource_bridges: Vec<Tube>,
     wayland_socket_path: Option<&PathBuf>,
     x_display: Option<String>,
@@ -102,6 +103,7 @@ pub fn create_gpu_device(
         exit_evt_wrtube
             .try_clone()
             .context("failed to clone tube")?,
+        gpu_control_tube,
         resource_bridges,
         display_backends,
         cfg.gpu_parameters.as_ref().unwrap(),

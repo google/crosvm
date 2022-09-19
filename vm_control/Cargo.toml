@@ -7,6 +7,7 @@ edition = "2021"
 [features]
 balloon = []
 gdb = ["gdbstub", "gdbstub_arch"]
+gpu = []
 
 [dependencies]
 anyhow = "*"
@@ -23,6 +24,7 @@ resources = { path = "../resources" }
 rutabaga_gfx = { path = "../rutabaga_gfx"}
 serde = { version = "1", features = [ "derive" ] }
 serde_json = "*"
+serde_keyvalue = { path = "../serde_keyvalue", features = ["argh_derive"] }
 sync = { path = "../common/sync" }
 thiserror = "*"
 vm_memory = { path = "../vm_memory" }

@@ -188,6 +188,7 @@ fn create_virtio_devices(
     disk_device_tubes: &mut Vec<Tube>,
     pmem_device_tubes: &mut Vec<Tube>,
     fs_device_tubes: &mut Vec<Tube>,
+    #[cfg(feature = "gpu")] gpu_control_tube: Tube,
     #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))] render_server_fd: Option<
         SafeDescriptor,
     >,
@@ -311,6 +312,7 @@ fn create_virtio_devices(
             devs.push(create_gpu_device(
                 cfg,
                 vm_evt_wrtube,
+                gpu_control_tube,
                 resource_bridges,
                 // Use the unnamed socket for GPU display screens.
                 cfg.wayland_socket_paths.get(""),
@@ -664,6 +666,7 @@ fn create_devices(
     pmem_device_tubes: &mut Vec<Tube>,
     fs_device_tubes: &mut Vec<Tube>,
     #[cfg(feature = "usb")] usb_provider: HostBackendDeviceProvider,
+    #[cfg(feature = "gpu")] gpu_control_tube: Tube,
     #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))] render_server_fd: Option<
         SafeDescriptor,
     >,
@@ -813,6 +816,8 @@ fn create_devices(
         disk_device_tubes,
         pmem_device_tubes,
         fs_device_tubes,
+        #[cfg(feature = "gpu")]
+        gpu_control_tube,
         #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
         render_server_fd,
         vvu_proxy_device_tubes,
@@ -1385,6 +1390,10 @@ where
         info!("crosvm entering multiprocess mode");
     }
 
+    #[cfg(feature = "gpu")]
+    let (gpu_control_host_tube, gpu_control_device_tube) =
+        Tube::pair().context("failed to create gpu tube")?;
+
     #[cfg(feature = "usb")]
     let (usb_control_tube, usb_provider) =
         HostBackendDeviceProvider::new().context("failed to create usb provider")?;
@@ -1646,6 +1655,8 @@ where
         &mut fs_device_tubes,
         #[cfg(feature = "usb")]
         usb_provider,
+        #[cfg(feature = "gpu")]
+        gpu_control_device_tube,
         #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
         render_server_fd,
         &mut vvu_proxy_device_tubes,
@@ -1819,6 +1830,8 @@ where
         #[cfg(feature = "balloon")]
         balloon_host_tube,
         &disk_host_tubes,
+        #[cfg(feature = "gpu")]
+        gpu_control_host_tube,
         #[cfg(feature = "usb")]
         usb_control_tube,
         vm_evt_rdtube,
@@ -2204,6 +2217,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     mut control_tubes: Vec<TaggedControlTube>,
     #[cfg(feature = "balloon")] balloon_host_tube: Option<Tube>,
     disk_host_tubes: &[Tube],
+    #[cfg(feature = "gpu")] gpu_control_tube: Tube,
     #[cfg(feature = "usb")] usb_control_tube: Tube,
     vm_evt_rdtube: RecvTube,
     vm_evt_wrtube: SendTube,
@@ -2560,6 +2574,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                             &mut balloon_stats_id,
                                             disk_host_tubes,
                                             &mut linux.pm,
+                                            #[cfg(feature = "gpu")]
+                                            &gpu_control_tube,
                                             #[cfg(feature = "usb")]
                                             Some(&usb_control_tube),
                                             #[cfg(not(feature = "usb"))]

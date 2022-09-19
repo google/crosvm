@@ -1958,6 +1958,7 @@ dependencies = [
  "rutabaga_gfx",
  "serde",
  "serde_json",
+ "serde_keyvalue",
  "sync",
  "thiserror",
  "vm_memory",
