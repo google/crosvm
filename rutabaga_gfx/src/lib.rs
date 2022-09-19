@@ -19,6 +19,7 @@ mod rutabaga_utils;
 mod virgl_renderer;
 
 pub use crate::rutabaga_core::calculate_context_mask;
+pub use crate::rutabaga_core::calculate_context_types;
 pub use crate::rutabaga_core::Rutabaga;
 pub use crate::rutabaga_core::RutabagaBuilder;
 pub use crate::rutabaga_gralloc::DrmFormat;

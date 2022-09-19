@@ -259,6 +259,14 @@ pub fn calculate_context_mask(context_names: Vec<String>) -> u64 {
     context_mask
 }
 
+pub fn calculate_context_types(context_mask: u64) -> Vec<String> {
+    RUTABAGA_CAPSETS
+        .iter()
+        .filter(|capset| context_mask & (1 << capset.capset_id) != 0)
+        .map(|capset| capset.name.to_string())
+        .collect()
+}
+
 /// The global libary handle used to query capability sets, create resources and contexts.
 ///
 /// Currently, Rutabaga only supports one default component.  Many components running at the

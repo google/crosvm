@@ -11,6 +11,7 @@ use rutabaga_gfx::RutabagaWsi;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
+use serde::Serializer;
 use serde_keyvalue::FromKeyValues;
 
 pub use super::sys::DisplayMode;
@@ -109,11 +110,24 @@ fn default_refresh_rate() -> u32 {
     DEFAULT_REFRESH_RATE
 }
 
-fn deserialize_context_mask<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
-    let s = String::deserialize(deserializer)?;
-    let context_types: Vec<String> = s.split(':').map(|s| s.to_string()).collect();
+mod serde_context_mask {
+    use super::*;
 
-    Ok(rutabaga_gfx::calculate_context_mask(context_types))
+    pub fn serialize<S>(context_mask: &u64, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let context_types = rutabaga_gfx::calculate_context_types(*context_mask).join(":");
+
+        serializer.serialize_str(context_types.as_str())
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        let context_types: Vec<String> = s.split(':').map(|s| s.to_string()).collect();
+
+        Ok(rutabaga_gfx::calculate_context_mask(context_types))
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, FromKeyValues)]
@@ -147,10 +161,7 @@ pub struct GpuParameters {
     pub cache_path: Option<String>,
     pub cache_size: Option<String>,
     pub pci_bar_size: u64,
-    #[serde(
-        rename = "context-types",
-        deserialize_with = "deserialize_context_mask"
-    )]
+    #[serde(rename = "context-types", with = "serde_context_mask")]
     pub context_mask: u64,
 }
 
@@ -179,5 +190,36 @@ impl Default for GpuParameters {
             udmabuf: false,
             context_mask: 0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::*;
+
+    use super::*;
+
+    #[test]
+    fn context_mask_serialize_deserialize() {
+        #[derive(Debug, Serialize, Deserialize, PartialEq)]
+        struct ContextMask {
+            #[serde(rename = "context-types", with = "serde_context_mask")]
+            pub value: u64,
+        }
+
+        // Capset "virgl", id: 1, context_mask: 0b0010
+        // Capset "gfxstream", id: 3, context_mask: 0b1000
+        const CONTEXT_MASK: u64 = 0b1010;
+        const SERIALIZED_CONTEXT_MASK: &str = "{\"context-types\":\"virgl:gfxstream\"}";
+
+        let context_mask = ContextMask {
+            value: CONTEXT_MASK,
+        };
+
+        assert_eq!(to_string(&context_mask).unwrap(), SERIALIZED_CONTEXT_MASK);
+        assert_eq!(
+            from_str::<ContextMask>(SERIALIZED_CONTEXT_MASK).unwrap(),
+            context_mask
+        );
     }
 }
