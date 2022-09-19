@@ -114,13 +114,7 @@ impl Gralloc for MinigbmDevice {
         // perhaps minigbm will be deprecated by then.  Other display drivers (rockchip, mediatek,
         // amdgpu) typically use write combine memory.  We can also consider use flags too if this
         // heuristic proves insufficient.
-        //
-        // Existing qcom devices use a mix of cached and WC buffers.  We don't *yet* have a good
-        // way to differentiate, but https://patchwork.freedesktop.org/series/106847/ is a proposal
-        // to fix that.  But existing devices without the FWB feature, the resulting mapping attrs
-        // are the more restrictive of the combination for S1 and S2 mappings.  So if we map as
-        // cached in S2 pgtables, but S1 has WC, then the result will be WC.
-        if self.device_name == "i915" || self.device_name == "msm" {
+        if self.device_name == "i915" {
             reqs.map_info = RUTABAGA_MAP_CACHE_CACHED;
         } else {
             reqs.map_info = RUTABAGA_MAP_CACHE_WC;
