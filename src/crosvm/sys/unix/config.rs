@@ -328,6 +328,8 @@ mod tests {
     use devices::virtio::DEFAULT_DISPLAY_HEIGHT;
     #[cfg(feature = "gpu")]
     use devices::virtio::DEFAULT_DISPLAY_WIDTH;
+    #[cfg(feature = "gpu")]
+    use devices::virtio::DEFAULT_REFRESH_RATE;
 
     use super::*;
     use crate::crosvm::config::from_key_values;
@@ -620,6 +622,15 @@ mod tests {
                 gpu_params.get_virtual_display_size(),
                 (DEFAULT_DISPLAY_WIDTH, DEFAULT_DISPLAY_HEIGHT)
             );
+            assert_eq!(gpu_params.hidden, false);
+            assert_eq!(gpu_params.refresh_rate, DEFAULT_REFRESH_RATE);
+        }
+        {
+            let gpu_params: GpuDisplayParameters =
+                from_key_values("width=500,height=600,hidden,refresh-rate=100").unwrap();
+            assert_eq!(gpu_params.get_virtual_display_size(), (500, 600));
+            assert_eq!(gpu_params.hidden, true);
+            assert_eq!(gpu_params.refresh_rate, 100);
         }
     }
 
