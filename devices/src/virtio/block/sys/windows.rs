@@ -6,9 +6,6 @@ use std::fs::OpenOptions;
 use std::os::windows::fs::OpenOptionsExt;
 
 use anyhow::Context;
-use disk::AsyncDisk;
-use disk::DiskFile;
-use disk::SingleFileDisk;
 use winapi::um::winnt::FILE_SHARE_READ;
 use winapi::um::winnt::FILE_SHARE_WRITE;
 
@@ -21,29 +18,17 @@ pub fn get_seg_max(_queue_size: u16) -> u32 {
 
 impl DiskOption {
     /// Open the specified disk file.
-    pub fn open(&self) -> anyhow::Result<Box<dyn DiskFile>> {
-        let io_concurrency = self.io_concurrency.get();
-
-        // We can only take the write lock if a single handle is used (otherwise we can't open
-        // multiple handles).
-        let share_flags = if io_concurrency == 1 {
-            FILE_SHARE_READ
-        } else {
-            FILE_SHARE_READ | FILE_SHARE_WRITE
-        };
-
-        let mut files = Vec::new();
-        for _ in 0..io_concurrency {
-            files.push(
-                OpenOptions::new()
-                    .read(true)
-                    .write(!self.read_only)
-                    .share_mode(share_flags)
-                    .open(&self.path)
-                    .context("Failed to open disk file")?,
-            );
-        }
-
-        Ok(Box::new(SingleFileDisk::new_from_files(files)?).into_inner())
+    pub fn open(&self) -> anyhow::Result<Box<dyn disk::DiskFile>> {
+        Ok(disk::create_disk_file(
+            OpenOptions::new()
+                .read(true)
+                .write(!self.read_only)
+                .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+                .open(&self.path)
+                .context("Failed to open disk file")?,
+            self.sparse,
+            disk::MAX_NESTING_DEPTH,
+            &self.path,
+        )?)
     }
 }
