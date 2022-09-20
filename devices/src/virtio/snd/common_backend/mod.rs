@@ -133,6 +133,7 @@ pub enum WorkerStatus {
 }
 
 // Stores constant data
+#[derive(Clone)]
 pub struct SndData {
     jack_info: Vec<virtio_snd_jack_info>,
     pcm_info: Vec<virtio_snd_pcm_info>,
@@ -167,13 +168,13 @@ pub struct PcmResponse {
 
 pub struct VirtioSnd {
     cfg: virtio_snd_config,
-    snd_data: Option<SndData>,
+    snd_data: SndData,
     avail_features: u64,
     acked_features: u64,
     queue_sizes: Box<[u16]>,
     worker_threads: Vec<thread::JoinHandle<()>>,
     kill_evt: Option<Event>,
-    stream_source_generators: Option<Vec<Box<dyn StreamSourceGenerator>>>,
+    params: Parameters,
 }
 
 impl VirtioSnd {
@@ -181,17 +182,16 @@ impl VirtioSnd {
         let cfg = hardcoded_virtio_snd_config(&params);
         let snd_data = hardcoded_snd_data(&params);
         let avail_features = base_features;
-        let stream_source_generators = create_stream_source_generators(&params, &snd_data);
 
         Ok(VirtioSnd {
             cfg,
-            snd_data: Some(snd_data),
+            snd_data,
             avail_features,
             acked_features: 0,
             queue_sizes: vec![MAX_VRING_LEN; MAX_QUEUE_NUM].into_boxed_slice(),
             worker_threads: Vec::new(),
             kill_evt: None,
-            stream_source_generators: Some(stream_source_generators),
+            params,
         })
     }
 }
@@ -371,12 +371,8 @@ impl VirtioDevice for VirtioSnd {
             };
         self.kill_evt = Some(self_kill_evt);
 
-        let snd_data = self.snd_data.take().expect("snd_data is none");
-        let stream_source_generators = self
-            .stream_source_generators
-            .take()
-            .expect("stream_source_generators is none");
-
+        let snd_data = self.snd_data.clone();
+        let stream_source_generators = create_stream_source_generators(&self.params, &snd_data);
         let worker_result = thread::Builder::new()
             .name("virtio_snd w".to_string())
             .spawn(move || {
