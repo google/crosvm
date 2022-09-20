@@ -95,7 +95,7 @@ impl TryFrom<libva::VAProfile::Type> for Profile {
             libva::VAProfile::VAProfileH264MultiviewHigh => Ok(Self::H264MultiviewHigh),
             libva::VAProfile::VAProfileHEVCMain => Ok(Self::HevcMain),
             libva::VAProfile::VAProfileHEVCMain10 => Ok(Self::HevcMain10),
-            // (VP8Version0_3, VP8Profile0),
+            libva::VAProfile::VAProfileVP8Version0_3 => Ok(Self::VP8Profile0),
             libva::VAProfile::VAProfileVP9Profile0 => Ok(Self::VP9Profile0),
             libva::VAProfile::VAProfileVP9Profile1 => Ok(Self::VP9Profile1),
             libva::VAProfile::VAProfileVP9Profile2 => Ok(Self::VP9Profile2),
