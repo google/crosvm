@@ -27,7 +27,7 @@ mod test {
             ffi::av_strerror(
                 averror,
                 buffer.as_mut_ptr() as *mut c_char,
-                buffer.len() as ffi::size_t,
+                buffer.len() as usize,
             )
         };
         assert_eq!(ret, 0);
