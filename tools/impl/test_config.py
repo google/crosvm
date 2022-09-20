@@ -95,8 +95,7 @@ CRATE_OPTIONS: Dict[str, List[TestOption]] = {
         TestOption.UNIT_AS_INTEGRATION_TEST,
     ],
     "disk": [TestOption.DO_NOT_RUN_AARCH64, TestOption.DO_NOT_RUN_ARMHF],  # b/202294155
-    # FFmpeg 5.0 not available on Debian Bullseye used in container images.
-    "ffmpeg": [TestOption.DO_NOT_BUILD],
+    "ffmpeg": [TestOption.DO_NOT_BUILD_ARMHF],
     "cros-fuzz": [TestOption.DO_NOT_BUILD],
     "fuzz": [TestOption.DO_NOT_BUILD],
     "hypervisor": [

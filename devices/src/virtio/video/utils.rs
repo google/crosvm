@@ -242,6 +242,7 @@ mod tests {
     /// without depending on the "video-decoder" feature.
     #[derive(Debug)]
     pub enum TestEvent {
+        #[allow(dead_code)]
         ProvidePictureBuffers {
             min_num_buffers: u32,
             width: i32,
@@ -254,8 +255,11 @@ mod tests {
             visible_rect: Rect,
         },
         NotifyEndOfBitstreamBuffer(u32),
+        #[allow(dead_code)]
         NotifyError(VideoError),
+        #[allow(dead_code)]
         FlushCompleted(VideoResult<()>),
+        #[allow(dead_code)]
         ResetCompleted(VideoResult<()>),
     }
 
