@@ -9,8 +9,7 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 
 use anyhow::Context;
-
-use crate::crosvm::sys::config::ProcessType;
+use win_util::ProcessType;
 
 pub type ExitCode = i32;
 

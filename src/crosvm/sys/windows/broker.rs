@@ -71,11 +71,11 @@ use tube_transporter::TubeToken;
 use tube_transporter::TubeTransferData;
 use tube_transporter::TubeTransporter;
 use win_util::get_exit_code_process;
+use win_util::ProcessType;
 use winapi::shared::winerror::ERROR_ACCESS_DENIED;
 use winapi::um::processthreadsapi::TerminateProcess;
 
 use crate::bail_exit_code;
-use crate::crosvm::sys::config::ProcessType;
 use crate::crosvm::sys::windows::exit::to_process_type_error;
 use crate::crosvm::sys::windows::exit::Exit;
 use crate::crosvm::sys::windows::exit::ExitCode;

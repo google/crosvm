@@ -6,9 +6,11 @@ edition = "2021"
 
 [dependencies]
 anyhow = "*"
+enumn = "0.1.0"
 winapi = { version = "*", features = ["everything", "std", "impl-default"] }
 libc = "*"
 once_cell = "1.7"
+serde = { version = "1", features = [ "derive" ] }
 windows = "0.10.0"
 
 [build-dependencies]

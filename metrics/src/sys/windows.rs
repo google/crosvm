@@ -8,6 +8,9 @@ pub(crate) mod system_metrics;
 pub mod wmi;
 
 pub use gpu_metrics::*;
+use win_util::ProcessType;
+
+use crate::event_details_proto::EmulatorProcessType;
 
 pub const METRIC_UPLOAD_INTERVAL_SECONDS: i64 = 60;
 pub const API_GUEST_ANGLE_VK_ENUM_NAME: &str = "API_GUEST_ANGLE_VK";
@@ -22,3 +25,15 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl From<ProcessType> for EmulatorProcessType {
+    fn from(process_type: ProcessType) -> Self {
+        match process_type {
+            ProcessType::Block => EmulatorProcessType::PROCESS_TYPE_BLOCK,
+            ProcessType::Main => EmulatorProcessType::PROCESS_TYPE_MAIN,
+            ProcessType::Metrics => EmulatorProcessType::PROCESS_TYPE_METRICS,
+            ProcessType::Net => EmulatorProcessType::PROCESS_TYPE_NET,
+            ProcessType::Slirp => EmulatorProcessType::PROCESS_TYPE_SLIRP,
+        }
+    }
+}

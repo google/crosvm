@@ -171,6 +171,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "enumn"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "038b1afa59052df211f9efd58f8b1d84c242935ede1c3dbaed26b018a9e06ae2"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "env_logger"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -722,8 +733,10 @@ name = "win_util"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "enumn",
  "libc",
  "once_cell",
+ "serde",
  "winapi",
  "windows",
 ]

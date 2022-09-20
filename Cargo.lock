@@ -1168,6 +1168,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sync",
+ "win_util",
  "winapi",
  "wmi",
 ]
@@ -1972,8 +1973,10 @@ name = "win_util"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "enumn",
  "libc",
  "once_cell",
+ "serde",
  "winapi",
  "windows",
 ]

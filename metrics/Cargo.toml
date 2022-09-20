@@ -20,6 +20,7 @@ sync = { path = "../common/sync", optional = true }
 [target.'cfg(windows)'.dependencies]
 chrono = { version = "*" }
 winapi = { version = "*" }
+win_util = { path = "../win_util" }
 wmi = { version = "^0.9" }
 
 

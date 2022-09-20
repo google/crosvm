@@ -31,6 +31,8 @@ use std::slice;
 use std::sync::Once;
 
 use libc::c_ulong;
+use serde::Deserialize;
+use serde::Serialize;
 use winapi::shared::minwindef::DWORD;
 use winapi::shared::minwindef::FALSE;
 use winapi::shared::minwindef::TRUE;
@@ -316,6 +318,22 @@ mod bindings {
 }
 #[cfg(target_env = "msvc")]
 pub use bindings::Windows::Win32::Globalization::ImmDisableIME;
+
+/// Each type of process should have its own type here. This affects both exit
+/// handling and sandboxing policy.
+///
+/// WARNING: do NOT change the values items in this enum. The enum value is used in our exit codes,
+/// and relied upon by metrics analysis. The max value for this enum is 0x1F = 31 as it is
+/// restricted to five bits per `crate::crosvm::sys::windows::exit::to_process_type_error`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Serialize, Deserialize, enumn::N)]
+#[repr(u8)]
+pub enum ProcessType {
+    Block = 1,
+    Main = 2,
+    Metrics = 3,
+    Net = 4,
+    Slirp = 5,
+}
 
 #[cfg(test)]
 mod tests {
