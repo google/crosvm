@@ -116,6 +116,7 @@ all-linux = [
     "tpm",
     "virgl_renderer_next",
     "virgl_renderer",
+    "wl-dmabuf",
     "x",
     ]
 win64 = ["stats", "balloon", "haxm"]
