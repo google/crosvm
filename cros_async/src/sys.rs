@@ -5,9 +5,16 @@
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
         pub mod unix;
-        pub use unix::{async_types, event, executor::Executor, run_one};
+        pub use unix as platform;
     } else if #[cfg(windows)] {
         pub mod windows;
-        pub use windows::{async_types, event, executor::Executor, run_one};
+        pub use windows as platform;
     }
 }
+
+pub use platform::async_types;
+pub use platform::event;
+pub use platform::executor::Executor;
+pub use platform::executor::ExecutorKind;
+pub use platform::executor::SetDefaultExecutorKindError;
+pub use platform::run_one;

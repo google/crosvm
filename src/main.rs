@@ -528,6 +528,11 @@ fn crosvm_main() -> Result<CommandStatus> {
         ..Default::default()
     };
 
+    if let Some(async_executor) = args.async_executor {
+        cros_async::Executor::set_default_executor_kind(async_executor)
+            .context("Failed to set the default async executor")?;
+    }
+
     let ret = match args.command {
         Command::CrossPlatform(command) => {
             // Past this point, usage of exit is in danger of leaking zombie processes.
