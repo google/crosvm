@@ -133,6 +133,7 @@ pub trait DynDecodedHandle {
     fn dyn_picture_mut(&self) -> RefMut<dyn DynPicture>;
     fn timestamp(&self) -> u64;
     fn display_resolution(&self) -> Resolution;
+    fn display_order(&self) -> Option<u64>;
 }
 
 pub trait DynPicture {

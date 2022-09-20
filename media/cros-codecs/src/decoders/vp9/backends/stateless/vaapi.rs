@@ -956,6 +956,14 @@ impl DecodedHandle for VADecodedHandle<InnerHandle> {
             height: hdr.height() as u32,
         }
     }
+
+    fn display_order(&self) -> Option<u64> {
+        self.display_order
+    }
+
+    fn set_display_order(&mut self, display_order: u64) {
+        self.display_order = Some(display_order)
+    }
 }
 
 impl DynDecodedHandle for VADecodedHandle<InnerHandle> {
@@ -973,6 +981,10 @@ impl DynDecodedHandle for VADecodedHandle<InnerHandle> {
 
     fn display_resolution(&self) -> Resolution {
         DecodedHandle::display_resolution(self)
+    }
+
+    fn display_order(&self) -> Option<u64> {
+        DecodedHandle::display_order(self)
     }
 }
 

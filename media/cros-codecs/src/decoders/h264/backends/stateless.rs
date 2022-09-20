@@ -157,4 +157,8 @@ pub trait DecodedHandle: Clone {
     fn timestamp(&self) -> u64;
     /// Returns the display resolution at the time this handle was decoded.
     fn display_resolution(&self) -> Resolution;
+    /// Returns the display order for this picture, if set by the decoder.
+    fn display_order(&self) -> Option<u64>;
+    /// Sets the display order for this picture.
+    fn set_display_order(&mut self, display_order: u64);
 }

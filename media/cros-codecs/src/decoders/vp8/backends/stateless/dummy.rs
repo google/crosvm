@@ -82,6 +82,12 @@ impl DecodedHandle for Handle {
     fn display_resolution(&self) -> Resolution {
         Default::default()
     }
+
+    fn display_order(&self) -> Option<u64> {
+        None
+    }
+
+    fn set_display_order(&mut self, _: u64) {}
 }
 
 impl DynDecodedHandle for Handle {
@@ -99,6 +105,10 @@ impl DynDecodedHandle for Handle {
 
     fn display_resolution(&self) -> Resolution {
         DecodedHandle::display_resolution(self)
+    }
+
+    fn display_order(&self) -> Option<u64> {
+        DecodedHandle::display_order(self)
     }
 }
 

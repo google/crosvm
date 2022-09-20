@@ -111,6 +111,9 @@ pub struct DecodedHandle<T: SurfaceContainer> {
     resolution: Resolution,
     /// A handle to the surface pool.
     surface_pool: SurfacePoolHandle,
+    /// A monotonically increasing counter that denotes the display order of
+    /// this handle in comparison with other handles.
+    pub display_order: Option<u64>,
 }
 
 impl<T: SurfaceContainer> Clone for DecodedHandle<T> {
@@ -122,6 +125,7 @@ impl<T: SurfaceContainer> Clone for DecodedHandle<T> {
             inner: self.inner.clone(),
             resolution: self.resolution,
             surface_pool: self.surface_pool.clone(),
+            display_order: self.display_order,
         }
     }
 }
@@ -133,6 +137,7 @@ impl<T: SurfaceContainer> DecodedHandle<T> {
             inner: Some(inner),
             resolution,
             surface_pool,
+            display_order: None,
         }
     }
 

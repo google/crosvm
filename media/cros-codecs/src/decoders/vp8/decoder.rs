@@ -89,6 +89,10 @@ pub struct Decoder<T> {
     /// A queue with the pictures that are ready to be sent to the client.
     ready_queue: Vec<T>,
 
+    /// A monotonically increasing counter used to tag pictures in display
+    /// order
+    current_display_order: u64,
+
     #[cfg(test)]
     test_params: TestParams<T>,
 }
@@ -110,6 +114,7 @@ impl<T: DecodedHandle + DynDecodedHandle + 'static> Decoder<T> {
             alt_ref_picture: Default::default(),
             coded_resolution: Default::default(),
             ready_queue: Default::default(),
+            current_display_order: Default::default(),
 
             #[cfg(test)]
             test_params: Default::default(),
@@ -338,16 +343,21 @@ impl<T: DecodedHandle + DynDecodedHandle + 'static> VideoDecoder for Decoder<T> 
                 header: *header,
             };
 
-            let handle = self.handle_frame(key_frame, timestamp, Some(*parser))?;
+            let mut handle = self.handle_frame(key_frame, timestamp, Some(*parser))?;
 
             if handle.picture().header.show_frame() {
+                let order = self.current_display_order;
+
+                handle.set_display_order(order);
+                self.current_display_order += 1;
+
                 self.ready_queue.push(handle);
             }
 
             self.negotiation_status = NegotiationStatus::Negotiated;
         }
 
-        let handle = self.handle_frame(frame, timestamp, None)?;
+        let mut handle = self.handle_frame(frame, timestamp, None)?;
 
         if self.backend.num_resources_left() == 0 {
             self.block_on_one()?;
@@ -356,6 +366,11 @@ impl<T: DecodedHandle + DynDecodedHandle + 'static> VideoDecoder for Decoder<T> 
         self.backend.poll(self.blocking_mode)?;
 
         if handle.picture().header.show_frame() {
+            let order = self.current_display_order;
+
+            handle.set_display_order(order);
+            self.current_display_order += 1;
+
             self.ready_queue.push(handle);
         }
 

@@ -95,6 +95,10 @@ pub struct Decoder<T> {
     /// Cached value for profile
     profile: Profile,
 
+    /// A monotonically increasing counter used to tag pictures in display
+    /// order
+    current_display_order: u64,
+
     #[cfg(test)]
     test_params: TestParams<T>,
 }
@@ -115,6 +119,7 @@ impl<T: DecodedHandle + DynDecodedHandle + 'static> Decoder<T> {
             ready_queue: Default::default(),
             bit_depth: Default::default(),
             profile: Default::default(),
+            current_display_order: Default::default(),
 
             #[cfg(test)]
             test_params: Default::default(),
@@ -314,9 +319,13 @@ impl<T: DecodedHandle + DynDecodedHandle + 'static> VideoDecoder for Decoder<T> 
                 let key_frame = Frame::new(bitstream, *header, 0, sz);
 
                 let show_existing_frame = frame.header.show_existing_frame();
-                let handle = self.handle_frame(key_frame, timestamp)?;
+                let mut handle = self.handle_frame(key_frame, timestamp)?;
 
                 if handle.picture().header.show_frame() || show_existing_frame {
+                    let order = self.current_display_order;
+                    handle.set_display_order(order);
+                    self.current_display_order += 1;
+
                     self.ready_queue.push(handle);
                 }
 
@@ -324,7 +333,7 @@ impl<T: DecodedHandle + DynDecodedHandle + 'static> VideoDecoder for Decoder<T> 
             }
 
             let show_existing_frame = frame.header.show_existing_frame();
-            let handle = self.handle_frame(frame, timestamp)?;
+            let mut handle = self.handle_frame(frame, timestamp)?;
 
             if self.backend.num_resources_left() == 0 {
                 self.block_on_one()?;
@@ -333,6 +342,10 @@ impl<T: DecodedHandle + DynDecodedHandle + 'static> VideoDecoder for Decoder<T> 
             self.backend.poll(self.blocking_mode)?;
 
             if handle.picture().header.show_frame() || show_existing_frame {
+                let order = self.current_display_order;
+                handle.set_display_order(order);
+                self.current_display_order += 1;
+
                 self.ready_queue.push(handle);
             }
         }

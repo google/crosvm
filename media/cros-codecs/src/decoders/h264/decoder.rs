@@ -206,6 +206,10 @@ pub struct Decoder<T: DecodedHandle + DynDecodedHandle> {
     /// than or equal to max_num_reorder_frames.
     max_num_reorder_frames: u32,
 
+    /// A monotonically increasing counter used to tag pictures in display
+    /// order
+    current_display_order: u64,
+
     /// The current active SPS id.
     cur_sps_id: u8,
     /// The current active PPS id.
@@ -277,6 +281,7 @@ impl<T: DecodedHandle + DynDecodedHandle + 'static> Decoder<T> {
             negotiation_status: Default::default(),
             dpb: Default::default(),
             max_num_reorder_frames: Default::default(),
+            current_display_order: Default::default(),
             cur_sps_id: Default::default(),
             cur_pps_id: Default::default(),
             prev_ref_pic_info: Default::default(),
@@ -1760,6 +1765,14 @@ impl<T: DecodedHandle + DynDecodedHandle + 'static> Decoder<T> {
 
     /// Get the DecodedFrameHandle s for the pictures in the ready queue.
     fn get_ready_frames(&mut self) -> Vec<T> {
+        for h in &mut self.ready_queue {
+            if DecodedHandle::display_order(h).is_none() {
+                let order = self.current_display_order;
+                h.set_display_order(order);
+                self.current_display_order += 1;
+            }
+        }
+
         let ready = self
             .ready_queue
             .iter()
