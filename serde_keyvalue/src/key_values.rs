@@ -923,6 +923,16 @@ mod tests {
     }
 
     #[test]
+    fn deserialize_unit() {
+        from_key_values::<SingleStruct<()>>("m").unwrap();
+        from_key_values::<SingleStruct<()>>("m=").unwrap();
+
+        from_key_values::<SingleStruct<()>>("").unwrap_err();
+        from_key_values::<SingleStruct<()>>("p").unwrap_err();
+        from_key_values::<SingleStruct<()>>("m=10").unwrap_err();
+    }
+
+    #[test]
     fn deserialize_bool() {
         let res = from_key_values::<SingleStruct<bool>>("m=true").unwrap();
         assert_eq!(res.m, true);
@@ -1106,6 +1116,35 @@ mod tests {
                 active: false,
             }
         );
+    }
+
+    #[test]
+    fn deserialize_untagged_enum() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        #[serde(untagged)]
+        enum TestEnum {
+            FirstVariant { first: u32 },
+            SecondVariant { second: bool },
+        }
+
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct TestStruct {
+            #[serde(flatten)]
+            variant: TestEnum,
+        }
+
+        let res: TestStruct = from_key_values("first=10").unwrap();
+        assert_eq!(res.variant, TestEnum::FirstVariant { first: 10 });
+
+        let res: TestStruct = from_key_values("second=false").unwrap();
+        assert_eq!(res.variant, TestEnum::SecondVariant { second: false },);
+
+        let res: TestStruct = from_key_values("second").unwrap();
+        assert_eq!(res.variant, TestEnum::SecondVariant { second: true },);
+
+        from_key_values::<TestStruct>("third=10").unwrap_err();
+        from_key_values::<TestStruct>("first=some_string").unwrap_err();
+        from_key_values::<TestStruct>("second=10").unwrap_err();
     }
 
     #[test]
