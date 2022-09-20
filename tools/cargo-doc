@@ -19,7 +19,6 @@ DISABLED_FEATURES=(
     chromeos
     crash-report
     libvda
-    power-monitor-powerd
     video-decoder
     video-encoder
 )

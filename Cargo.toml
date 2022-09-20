@@ -113,6 +113,7 @@ all-linux = [
     "composite-disk",
     "default",
     "gdb",
+    "power-monitor-powerd",
     "tpm",
     "virgl_renderer_next",
     "virgl_renderer",
