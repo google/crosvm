@@ -27,11 +27,11 @@ def get_test_args(api, properties):
     test_arch = properties.test_arch
     args = []
     if test_arch == "" or test_arch == "x86_64":
-        args += ["--target=host"]
+        args += []
     elif test_arch == "aarch64":
-        args += ["--target=vm:aarch64"]
+        args += ["--platform=aarch64"]
     elif test_arch == "armhf":
-        args += ["--target=vm:aarch64", "--build-target=armhf"]
+        args += ["--platform=armhf"]
     else:
         raise api.step.StepFailure("Unknown test_arch " + test_arch)
     if properties.crosvm_direct:

@@ -414,7 +414,6 @@
       "./tools/run_tests",
       "--verbose",
       "--build-only",
-      "--target=host",
       "--generate-lcov",
       "coverage.lcov"
     ],
@@ -445,7 +444,6 @@
       "--verbose",
       "--retry=0",
       "--repeat=1",
-      "--target=host",
       "--generate-lcov",
       "coverage.lcov"
     ],

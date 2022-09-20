@@ -4,7 +4,6 @@
       "vpython3",
       "./tools/run_tests",
       "--verbose",
-      "--target=host",
       "--build-only"
     ],
     "cwd": "[CACHE]/builder/crosvm",
@@ -37,8 +36,7 @@
     "cmd": [
       "vpython3",
       "./tools/run_tests",
-      "--verbose",
-      "--target=host"
+      "--verbose"
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {

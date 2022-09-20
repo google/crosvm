@@ -7,8 +7,7 @@
       "./tools/run_tests",
       "--verbose",
       "--build-only",
-      "--target=vm:aarch64",
-      "--build-target=armhf"
+      "--platform=armhf"
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
@@ -37,8 +36,7 @@
       "--verbose",
       "--retry=0",
       "--repeat=1",
-      "--target=vm:aarch64",
-      "--build-target=armhf"
+      "--platform=armhf"
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
