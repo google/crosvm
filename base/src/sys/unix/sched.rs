@@ -115,7 +115,7 @@ pub fn enable_core_scheduling() -> Result<()> {
         PIDTYPE_PGID,
     }
 
-    let ret = match unsafe {
+    let ret = unsafe {
         prctl(
             PR_SCHED_CORE,
             PR_SCHED_CORE_CREATE,
@@ -123,14 +123,6 @@ pub fn enable_core_scheduling() -> Result<()> {
             pid_type::PIDTYPE_PID as i32, // PID scopes to this thread only
             0,                            // ignored by PR_SCHED_CORE_CREATE command
         )
-    } {
-        #[cfg(feature = "chromeos")]
-        -1 => {
-            // Chrome OS has an pre-upstream version of this functionality which might work.
-            const PR_SET_CORE_SCHED: i32 = 0x200;
-            unsafe { prctl(PR_SET_CORE_SCHED, 1) }
-        }
-        ret => ret,
     };
     if ret == -1 {
         let error = Error::last();
