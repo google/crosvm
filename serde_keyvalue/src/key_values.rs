@@ -384,8 +384,11 @@ impl<'de> de::MapAccess<'de> for KeyValueDeserializer<'de> {
         let val = seed.deserialize(&mut *self)?;
 
         // We must have a comma or end of input after a value.
-        match self.next_char() {
-            Some(',') | None => Ok(val),
+        match self.peek_char() {
+            Some(',') | None => {
+                let _ = self.next_char();
+                Ok(val)
+            }
             Some(_) => Err(self.error_here(ErrorKind::ExpectedComma)),
         }
     }
