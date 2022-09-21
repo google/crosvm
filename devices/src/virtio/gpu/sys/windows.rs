@@ -5,6 +5,7 @@
 use std::marker::PhantomData;
 
 use base::info;
+use base::RawDescriptor;
 use base::Tube;
 use base::WaitContext;
 use serde::Deserialize;
@@ -103,6 +104,8 @@ impl WinResourceBridges {
 }
 
 impl ResourceBridgesTrait for WinResourceBridges {
+    fn append_raw_descriptors(&self, _rds: &mut Vec<RawDescriptor>) {}
+
     fn add_to_wait_context(&self, _wait_ctx: &mut WaitContext<WorkerToken>) {}
 
     fn set_should_process(&mut self, _index: usize) {}

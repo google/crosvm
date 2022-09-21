@@ -4,6 +4,8 @@
 
 use anyhow::Context;
 use base::error;
+use base::AsRawDescriptor;
+use base::RawDescriptor;
 use base::Tube;
 use base::WaitContext;
 use serde::Deserialize;
@@ -88,6 +90,12 @@ impl UnixResourceBridges {
 }
 
 impl ResourceBridgesTrait for UnixResourceBridges {
+    fn append_raw_descriptors(&self, rds: &mut Vec<RawDescriptor>) {
+        for bridge in &self.resource_bridges {
+            rds.push(bridge.as_raw_descriptor());
+        }
+    }
+
     fn add_to_wait_context(&self, wait_ctx: &mut WaitContext<WorkerToken>) {
         for (index, bridge) in self.resource_bridges.iter().enumerate() {
             if let Err(e) = wait_ctx.add(bridge, WorkerToken::ResourceBridge { index }) {

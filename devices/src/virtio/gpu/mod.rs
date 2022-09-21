@@ -12,7 +12,6 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
 use std::io::Read;
-use std::mem;
 use std::mem::size_of;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -920,7 +919,7 @@ impl DisplayBackend {
 pub struct Gpu {
     exit_evt_wrtube: SendTube,
     mapper: Option<Box<dyn SharedMemoryMapper>>,
-    resource_bridges: Vec<Tube>,
+    resource_bridges: Option<ResourceBridges>,
     event_devices: Vec<EventDevice>,
     kill_evt: Option<Event>,
     config_event: bool,
@@ -1001,7 +1000,7 @@ impl Gpu {
         Gpu {
             exit_evt_wrtube,
             mapper: None,
-            resource_bridges,
+            resource_bridges: Some(ResourceBridges::new(resource_bridges)),
             event_devices,
             config_event: false,
             kill_evt: None,
@@ -1130,8 +1129,9 @@ impl VirtioDevice for Gpu {
         }
 
         keep_rds.push(self.exit_evt_wrtube.as_raw_descriptor());
-        for bridge in &self.resource_bridges {
-            keep_rds.push(bridge.as_raw_descriptor());
+
+        if let Some(resource_bridges) = &self.resource_bridges {
+            resource_bridges.append_raw_descriptors(&mut keep_rds);
         }
 
         keep_rds
@@ -1213,7 +1213,13 @@ impl VirtioDevice for Gpu {
         };
         self.kill_evt = Some(self_kill_evt);
 
-        let resource_bridges = ResourceBridges::new(mem::take(&mut self.resource_bridges));
+        let resource_bridges = match self.resource_bridges.take() {
+            Some(bridges) => bridges,
+            None => {
+                error!("resource_bridges is none");
+                return;
+            }
+        };
 
         let irq = Arc::new(interrupt);
         let ctrl_queue = SharedQueueReader::new(queues.remove(0), &irq);
@@ -1302,6 +1308,9 @@ impl VirtioDevice for Gpu {
 
 /// Trait that the platform-specific type `ResourceBridges` needs to implement.
 trait ResourceBridgesTrait {
+    // Appends raw descriptors of all resource bridges to the given vector.
+    fn append_raw_descriptors(&self, _rds: &mut Vec<RawDescriptor>);
+
     /// Adds all resource bridges to WaitContext.
     fn add_to_wait_context(&self, _wait_ctx: &mut WaitContext<WorkerToken>);
 
