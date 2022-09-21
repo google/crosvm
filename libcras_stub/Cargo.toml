@@ -6,3 +6,7 @@ edition = "2021"
 
 [lib]
 path = "src/libcras.rs"
+
+[dependencies]
+audio_streams = "*"
+serde = "*"

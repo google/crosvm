@@ -110,6 +110,7 @@ exclude = [
 [features]
 all-linux = [
     # TODO(b/203105868): Enable remaining features on linux builds.
+    "audio_cras",
     "composite-disk",
     "default",
     "gdb",

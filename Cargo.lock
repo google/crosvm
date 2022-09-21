@@ -1046,6 +1046,10 @@ checksum = "349d5a591cd28b49e1d1037471617a32ddcda5731b99419008085f72d5a53836"
 [[package]]
 name = "libcras"
 version = "0.1.0"
+dependencies = [
+ "audio_streams",
+ "serde",
+]
 
 [[package]]
 name = "libdbus-sys"
