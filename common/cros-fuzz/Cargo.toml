@@ -7,5 +7,9 @@ include = ["Cargo.toml", "src/*.rs"]
 
 [dependencies]
 rand_core = {version = "0.6", features = ["std"]}
+libfuzzer-sys = { version = "*", optional = true }
+
+[features]
+upstream-fuzz = ["dep:libfuzzer-sys"]
 
 [workspace]

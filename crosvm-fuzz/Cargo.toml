@@ -4,8 +4,11 @@ version = "0.0.1"
 authors = ["The Chromium OS Authors"]
 edition = "2021"
 
+[package.metadata]
+cargo-fuzz = true
+
 [dependencies]
-cros_fuzz = "*"
+cros_fuzz = { path = "../common/cros-fuzz" }
 data_model = { path = "../common/data_model" }
 devices = { path = "../devices" }
 disk = { path = "../disk" }
@@ -20,6 +23,7 @@ usb_util = { path = "../usb_util" }
 vm_memory = { path = "../vm_memory" }
 
 [features]
+upstream-fuzz = ["cros_fuzz/upstream-fuzz"]
 default = ["disk/qcow"]
 
 [[bin]]

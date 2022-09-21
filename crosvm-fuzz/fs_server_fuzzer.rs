@@ -6,14 +6,13 @@
 
 #[cfg(fuzzing)]
 mod fs_server_fuzzer {
-    use std::convert::TryInto;
-
     use cros_fuzz::fuzz_target;
     use devices::virtio::create_descriptor_chain;
     use devices::virtio::DescriptorType;
     use devices::virtio::Reader;
     use devices::virtio::Writer;
     use fuse::fuzzing::fuzz_server;
+    use std::convert::TryInto;
     use vm_memory::GuestAddress;
     use vm_memory::GuestMemory;
 

@@ -4,14 +4,13 @@
 
 #![no_main]
 
-use std::mem::size_of;
-
 use cros_fuzz::fuzz_target;
 use cros_fuzz::rand::FuzzRng;
 use devices::virtio::DescriptorChain;
 use devices::virtio::Queue;
 use rand::Rng;
 use rand::RngCore;
+use std::mem::size_of;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
