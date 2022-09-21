@@ -423,6 +423,7 @@ const GFXSTREAM_RENDERER_FLAGS_USE_GLX: u32 = 1 << 2;
 const GFXSTREAM_RENDERER_FLAGS_USE_SURFACELESS: u32 = 1 << 3;
 const GFXSTREAM_RENDERER_FLAGS_USE_GLES: u32 = 1 << 4;
 const GFXSTREAM_RENDERER_FLAGS_NO_VK_BIT: u32 = 1 << 5;
+const GFXSTREAM_RENDERER_FLAGS_ENABLE_GLES31_BIT: u32 = 1 << 9;
 const GFXSTREAM_RENDERER_FLAGS_GUEST_USES_ANGLE: u32 = 1 << 21;
 const GFXSTREAM_RENDERER_FLAGS_VULKAN_NATIVE_SWAPCHAIN_BIT: u32 = 1 << 22;
 const GFXSTREAM_RENDERER_FLAGS_ASYNC_FENCE_CB: u32 = 1 << 23;
@@ -485,6 +486,11 @@ impl GfxstreamFlags {
     /// Use async fence completion callback.
     pub fn use_async_fence_cb(self, v: bool) -> GfxstreamFlags {
         self.set_flag(GFXSTREAM_RENDERER_FLAGS_ASYNC_FENCE_CB, v)
+    }
+
+    /// Enable GLES 3.1 support.
+    pub fn support_gles31(self, v: bool) -> GfxstreamFlags {
+        self.set_flag(GFXSTREAM_RENDERER_FLAGS_ENABLE_GLES31_BIT, v)
     }
 
     /// Use the Vulkan swapchain to draw on the host window.

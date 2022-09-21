@@ -993,6 +993,7 @@ impl Gpu {
             .set_use_surfaceless(gpu_parameters.renderer_use_surfaceless)
             .set_use_vulkan(gpu_parameters.use_vulkan.unwrap_or_default())
             .set_use_guest_angle(gpu_parameters.gfxstream_use_guest_angle.unwrap_or_default())
+            .set_support_gles31(gpu_parameters.gfxstream_support_gles31)
             .set_wsi(gpu_parameters.wsi.as_ref())
             .set_use_external_blob(external_blob)
             .set_use_render_server(render_server_fd.is_some());
