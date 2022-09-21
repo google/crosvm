@@ -612,7 +612,7 @@ impl VirtioGpu {
     }
 
     /// Attaches backing memory to the given resource, represented by a `Vec` of `(address, size)`
-    /// tuples in the guest's physical address space. Converts to RutabageIovec from the memory
+    /// tuples in the guest's physical address space. Converts to RutabagaIovec from the memory
     /// mapping.
     pub fn attach_backing(
         &mut self,
