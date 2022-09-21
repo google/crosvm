@@ -12,6 +12,10 @@ buganizer {
   component_id: 982362  # ChromeOS > Platform > Virtualization > crosvm
 }
 
+buganizer_public: {
+  component_id: 1161302  # ChromeOS Public Tracker > Core Systems > Virtualization > Platform
+}
+
 chromeos {
   cq {
     source_test_plans {
