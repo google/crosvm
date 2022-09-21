@@ -409,6 +409,8 @@ pub struct VaapiDecoderSession {
     event_queue: EventQueue<DecoderEvent>,
     /// Whether the decoder is currently flushing.
     flushing: bool,
+    /// The last value for "display_order" we have managed to output.
+    last_display_order: u64,
 }
 
 /// A convenience type implementing persistent slice access for BufferHandles.
@@ -537,12 +539,74 @@ impl VaapiDecoderSession {
             return Ok(());
         }
 
-        while let Some(decoded_frame) = self.ready_queue.pop_front() {
+        while let Some(mut decoded_frame) = self.ready_queue.pop_front() {
+            let display_order = decoded_frame.display_order().expect(
+                "A frame should have its display order set before being returned from the decoder.",
+            );
+
+            // We are receiving frames as-is from the decoder, which means there
+            // may be gaps if the decoder returns frames out of order.
+            // We simply wait in this case, as the decoder will eventually
+            // produce more frames that makes the gap not exist anymore.
+            //
+            // On the other hand, we take care to not stall. We compromise by
+            // emitting frames out of order instead. This should not really
+            // happen in production and a warn is left so we can think about
+            // bumping the number of resources allocated by the backends.
+            let gap = display_order != 0 && display_order != self.last_display_order + 1;
+
+            let stall = if let Some(left) = self.codec.num_resources_left() {
+                left == 0
+            } else {
+                false
+            };
+
+            if gap && !stall {
+                self.ready_queue.push_front(decoded_frame);
+                break;
+            } else if gap && stall {
+                self.ready_queue.push_front(decoded_frame);
+
+                // Try polling the decoder for all pending jobs.
+                let handles = self.codec.poll(true)?;
+                self.ready_queue.extend(handles);
+
+                self.ready_queue
+                    .make_contiguous()
+                    .sort_by_key(|h| h.display_order());
+
+                decoded_frame = self.ready_queue.pop_front().unwrap();
+
+                // See whether we *still* have a gap
+                let display_order = decoded_frame.display_order().expect(
+                "A frame should have its display order set before being returned from the decoder."
+                );
+
+                let gap = display_order != 0 && display_order != self.last_display_order + 1;
+
+                if gap {
+                    // If the stall is not due to a missing frame, then this may
+                    // signal that we are not allocating enough resources.
+                    base::warn!("Outputting out of order to avoid stalling.");
+                    base::warn!(
+                        "Expected {}, got {}",
+                        self.last_display_order + 1,
+                        display_order
+                    );
+                    base::warn!("Either a dropped frame, or not enough resources for the codec.");
+                    base::warn!(
+                        "Increasing the number of allocated resources can possibly fix this."
+                    );
+                }
+            }
+
             let outputted = self.output_picture(decoded_frame.as_ref())?;
             if !outputted {
                 self.ready_queue.push_front(decoded_frame);
                 break;
             }
+
+            self.last_display_order = display_order;
         }
 
         Ok(())
@@ -617,6 +681,10 @@ impl VaapiDecoderSession {
                 for decoded_frame in frames {
                     self.ready_queue.push_back(decoded_frame);
                 }
+
+                self.ready_queue
+                    .make_contiguous()
+                    .sort_by_key(|h| h.display_order());
 
                 self.drain_ready_queue()
                     .map_err(VideoError::BackendFailure)?;
@@ -772,6 +840,9 @@ impl DecoderSession for VaapiDecoderSession {
             .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?;
 
         self.ready_queue.extend(pics);
+        self.ready_queue
+            .make_contiguous()
+            .sort_by_key(|h| h.display_order());
 
         self.drain_ready_queue()
             .map_err(VideoError::BackendFailure)?;
@@ -952,6 +1023,7 @@ impl DecoderBackend for VaapiDecoder {
             submit_queue: Default::default(),
             event_queue: EventQueue::new().map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
             flushing: Default::default(),
+            last_display_order: Default::default(),
         })
     }
 }
