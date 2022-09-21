@@ -833,6 +833,10 @@ impl DecoderSession for VaapiDecoderSession {
 
         self.try_make_progress()?;
 
+        if self.submit_queue.len() != 0 {
+            return Ok(());
+        }
+
         // Retrieve ready frames from the codec, if any.
         let pics = self
             .codec
