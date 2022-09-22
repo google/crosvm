@@ -245,7 +245,7 @@ impl Ac97BusMaster {
                     )?;
                 self.po_info.stream_control = Some(Box::new(NoopStreamControl::new()));
                 self.update_mixer_settings(mixer);
-                let mute = self.sys.mute.clone();
+                let mute = Arc::new(AtomicBool::new(*self.sys.mute.lock()));
 
                 self.po_info.thread = Some(
                     thread::Builder::new()
@@ -351,7 +351,7 @@ fn play_buffer(
     mem: &GuestMemory,
     out_buffer: &mut PlaybackBuffer,
     intermediate_resampler_buffer: &mut IntermediateResamplerBuffer,
-    mute: &Arc<Mutex<bool>>,
+    mute: &Arc<AtomicBool>,
 ) -> AudioResult<()> {
     // If the current buffer had any samples in it, mark it as done.
     if regs.func_regs_mut(Ac97Function::Output).picb > 0 {
@@ -362,7 +362,9 @@ fn play_buffer(
     // If mute is set to true, we want to drop all the audio samples coming from the guest.
     // We still want to read from the guest to prevent it from thinking there is a buffer
     // overrun and to make sure the guest is not in a weird state.
-    if let Some(buffer) = next_guest_buffer(func_regs, mem)?.filter(|_| !*mute.lock()) {
+    if let Some(buffer) =
+        next_guest_buffer(func_regs, mem)?.filter(|_| !mute.load(Ordering::Relaxed))
+    {
         // Safe because we know that `buffer` is a volatile slice, which can be converted to
         // an array of bytes.
         let buffer_slice = unsafe { slice::from_raw_parts(buffer.as_ptr(), buffer.size()) };
@@ -379,7 +381,7 @@ fn play_buffer(
                             next_period.len(),
                             out.len(),
                         );
-                        *mute.lock() = true;
+                        mute.store(true, Ordering::Relaxed);
                         out.fill(0);
                     }
                 })
@@ -409,7 +411,7 @@ fn audio_out_thread(
     thread_run: &AtomicBool,
     output_stream: Arc<Mutex<Box<dyn PlaybackBufferStream>>>,
     mut intermediate_resampler_buffer: IntermediateResamplerBuffer,
-    mute: Arc<Mutex<bool>>,
+    mute: Arc<AtomicBool>,
     guest_num_channels: usize,
 ) -> AudioResult<()> {
     while thread_run.load(Ordering::Relaxed) {
