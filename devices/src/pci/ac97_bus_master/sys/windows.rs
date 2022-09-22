@@ -373,7 +373,7 @@ fn play_buffer(
             out_buffer
                 .copy_cb_with_checks(next_period.len(), |out| {
                     if out.len() == next_period.len() {
-                        out.copy_from_slice(&next_period);
+                        out.copy_from_slice(next_period);
                     } else {
                         error!(
                             "Audio resample buffer length mismatch: can't copy {} to {}. \

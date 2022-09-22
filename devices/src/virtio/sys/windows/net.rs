@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::io;
 use std::io::Read;
 use std::io::Write;
-use std::io::{self};
 use std::result;
 
 use base::error;

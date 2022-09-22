@@ -3,10 +3,8 @@
 // found in the LICENSE file.
 
 use crate::pci::ac97_regs::*;
+use crate::pci::PCI_VENDOR_ID_INTEL;
 
-// AC97 Vendor ID
-const AC97_VENDOR_ID1: u16 = 0x8086;
-const AC97_VENDOR_ID2: u16 = 0x8086;
 // Extented Audio ID
 const AC97_EXTENDED_ID: u16 = MIXER_EI_VRA | MIXER_EI_CDAC | MIXER_EI_SDAC | MIXER_EI_LDAC;
 
@@ -80,8 +78,8 @@ impl Ac97Mixer {
             MIXER_REC_VOL_MUTE_1C => self.get_record_gain_reg(),
             MIXER_POWER_DOWN_CONTROL_26 => self.power_down_control,
             MIXER_EXTENDED_AUDIO_ID_28 => AC97_EXTENDED_ID,
-            MIXER_VENDOR_ID1_7C => AC97_VENDOR_ID1,
-            MIXER_VENDOR_ID2_7E => AC97_VENDOR_ID2,
+            MIXER_VENDOR_ID1_7C => PCI_VENDOR_ID_INTEL,
+            MIXER_VENDOR_ID2_7E => PCI_VENDOR_ID_INTEL,
             MIXER_EXTENDED_AUDIO_STATUS_CONTROL_28 => self.ext_audio_status_ctl,
             MIXER_PCM_FRONT_DAC_RATE_2C => self.pcm_front_dac_rate,
             MIXER_PCM_SURR_DAC_RATE_2E => self.pcm_surr_dac_rate,
