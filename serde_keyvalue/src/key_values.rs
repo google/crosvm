@@ -394,15 +394,7 @@ impl<'de> de::MapAccess<'de> for KeyValueDeserializer<'de> {
     }
 }
 
-struct Enum<'a, 'de: 'a>(&'a mut KeyValueDeserializer<'de>);
-
-impl<'a, 'de> Enum<'a, 'de> {
-    fn new(de: &'a mut KeyValueDeserializer<'de>) -> Self {
-        Self(de)
-    }
-}
-
-impl<'a, 'de> de::EnumAccess<'de> for Enum<'a, 'de> {
+impl<'a, 'de> de::EnumAccess<'de> for &'a mut KeyValueDeserializer<'de> {
     type Error = ParseError;
     type Variant = Self;
 
@@ -410,12 +402,12 @@ impl<'a, 'de> de::EnumAccess<'de> for Enum<'a, 'de> {
     where
         V: de::DeserializeSeed<'de>,
     {
-        let val = seed.deserialize(&mut *self.0)?;
+        let val = seed.deserialize(&mut *self)?;
         Ok((val, self))
     }
 }
 
-impl<'a, 'de> de::VariantAccess<'de> for Enum<'a, 'de> {
+impl<'a, 'de> de::VariantAccess<'de> for &'a mut KeyValueDeserializer<'de> {
     type Error = ParseError;
 
     fn unit_variant(self) -> Result<()> {
@@ -699,7 +691,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut KeyValueDeserializer<'de> {
     where
         V: serde::de::Visitor<'de>,
     {
-        visitor.visit_enum(Enum::new(self))
+        visitor.visit_enum(self)
     }
 
     fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value>
