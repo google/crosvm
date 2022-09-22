@@ -12,6 +12,7 @@ use ffmpeg as ffi;
 pub mod swscale;
 
 pub use ffi::AVPixelFormat_AV_PIX_FMT_NV12;
+pub use ffi::AVPixelFormat_AV_PIX_FMT_YUV420P;
 pub use ffi::AV_CODEC_CAP_DR1;
 pub use ffi::FF_PROFILE_H264_BASELINE;
 pub use ffi::FF_PROFILE_H264_EXTENDED;

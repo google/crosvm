@@ -59,6 +59,8 @@ compile_error!("The \"video-decoder\" feature requires at least one of \"ffmpeg\
 #[cfg(all(feature = "video-encoder", not(feature = "libvda")))]
 compile_error!("The \"video-encoder\" feature requires \"libvda\" to also be enabled.");
 
+#[cfg(feature = "ffmpeg")]
+mod ffmpeg;
 #[cfg(feature = "libvda")]
 mod vda;
 

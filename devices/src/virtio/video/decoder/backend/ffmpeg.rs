@@ -411,10 +411,8 @@ impl DecoderSession for FfmpegDecoderSession {
             SessionState::AwaitingBufferCount | SessionState::Drc => {
                 let avcontext = self.context.as_ref();
 
-                let dst_pix_format = match format {
-                    Format::NV12 => AVPixelFormat_AV_PIX_FMT_NV12,
-                    _ => return Err(VideoError::InvalidFormat),
-                };
+                let dst_pix_format: AvPixelFormat =
+                    format.try_into().map_err(|_| VideoError::InvalidFormat)?;
 
                 self.state = SessionState::Decoding {
                     output_queue: OutputQueue::new(buffer_count),
@@ -422,7 +420,7 @@ impl DecoderSession for FfmpegDecoderSession {
                         avcontext.width as usize,
                         avcontext.height as usize,
                         avcontext.pix_fmt as i32,
-                        dst_pix_format,
+                        dst_pix_format.pix_fmt(),
                     )
                     .context("while setting output parameters")
                     .map_err(VideoError::BackendFailure)?,
