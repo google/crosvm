@@ -76,6 +76,7 @@ pub enum Ac97Error {
     #[error("Must be cras or null")]
     InvalidBackend,
     #[cfg(windows)]
+    #[error("Must be win_audio or null")]
     InvalidBackend,
 }
 
@@ -133,6 +134,7 @@ pub struct Ac97Dev {
     irq_evt: Option<IrqLevelEvent>,
     bus_master: Ac97BusMaster,
     mixer: Ac97Mixer,
+    #[cfg_attr(windows, allow(dead_code))]
     backend: Ac97Backend,
 }
 
@@ -161,7 +163,12 @@ impl Ac97Dev {
             config_regs,
             pci_address: None,
             irq_evt: None,
-            bus_master: Ac97BusMaster::new(mem, audio_server),
+            bus_master: Ac97BusMaster::new(
+                mem,
+                audio_server,
+                #[cfg(windows)]
+                ac97_device_tube,
+            ),
             mixer: Ac97Mixer::new(),
             backend,
         }

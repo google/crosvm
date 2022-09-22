@@ -21,6 +21,7 @@ use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
 use crate::pci::ac97::sys::AudioStreamSource;
+use crate::pci::ac97_bus_master::sys::Ac97BusMasterSys;
 pub(crate) use crate::pci::ac97_bus_master::sys::AudioError;
 use crate::pci::ac97_mixer::Ac97Mixer;
 use crate::pci::ac97_regs::*;
@@ -168,6 +169,8 @@ pub struct Ac97BusMaster {
 
     // Thread for hadlind IRQ resample events from the guest.
     irq_resample_thread: Option<thread::JoinHandle<()>>,
+    #[cfg_attr(unix, allow(dead_code))]
+    sys: Ac97BusMasterSys,
 }
 
 impl Ac97BusMaster {
@@ -588,16 +591,31 @@ fn current_buffer_size(
 
 #[cfg(test)]
 mod tests {
-    use audio_streams::shm_streams::MockShmStreamSource;
 
     use super::*;
 
+    #[cfg(unix)]
+    fn new_mock_ac97_bus_master() -> Ac97BusMaster {
+        Ac97BusMaster::new(
+            GuestMemory::new(&[]).expect("Creating guest memory failed."),
+            Box::new(audio_streams::shm_streams::MockShmStreamSource::new()),
+        )
+    }
+
+    #[cfg(windows)]
+    fn new_mock_ac97_bus_master() -> Ac97BusMaster {
+        let memory_start_addr = GuestAddress(0x0);
+        Ac97BusMaster::new(
+            GuestMemory::new(&[(memory_start_addr, 0x1000)])
+                .expect("Creating guest memory failed."),
+            Arc::new(Mutex::new(audio_streams::NoopStreamSource::new())),
+            None,
+        )
+    }
+
     #[test]
     fn bm_bdbar() {
-        let mut bm = Ac97BusMaster::new(
-            GuestMemory::new(&[]).expect("Creating guest memory failed."),
-            Box::new(MockShmStreamSource::new()),
-        );
+        let mut bm = new_mock_ac97_bus_master();
         let mut mixer = Ac97Mixer::new();
 
         let bdbars = [0x00u64, 0x10, 0x20];
@@ -619,10 +637,7 @@ mod tests {
 
     #[test]
     fn bm_status_reg() {
-        let mut bm = Ac97BusMaster::new(
-            GuestMemory::new(&[]).expect("Creating guest memory failed."),
-            Box::new(MockShmStreamSource::new()),
-        );
+        let mut bm = new_mock_ac97_bus_master();
         let mixer = Ac97Mixer::new();
 
         let sr_addrs = [0x06u64, 0x16, 0x26];
@@ -636,10 +651,7 @@ mod tests {
 
     #[test]
     fn bm_global_control() {
-        let mut bm = Ac97BusMaster::new(
-            GuestMemory::new(&[]).expect("Creating guest memory failed."),
-            Box::new(MockShmStreamSource::new()),
-        );
+        let mut bm = new_mock_ac97_bus_master();
         let mut mixer = Ac97Mixer::new();
 
         assert_eq!(bm.readl(GLOB_CNT_2C), 0x0000_0000);

@@ -15,6 +15,7 @@ use audio_streams::capture::CaptureBufferStream;
 use audio_streams::BoxError;
 use audio_streams::NoopStreamControl;
 use audio_streams::PlaybackBuffer;
+use audio_streams::PlaybackBufferError;
 use audio_streams::PlaybackBufferStream;
 use audio_streams::SampleFormat;
 use base::error;
@@ -29,7 +30,9 @@ use base::ReadNotifier;
 use base::Tube;
 use base::WaitContext;
 use data_model::VolatileSlice;
+use remain::sorted;
 use sync::Mutex;
+use thiserror::Error;
 use vm_control::Ac97Control;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
@@ -42,7 +45,6 @@ use crate::pci::ac97_bus_master::buffer_completed;
 use crate::pci::ac97_bus_master::current_buffer_size;
 use crate::pci::ac97_bus_master::Ac97BusMaster;
 use crate::pci::ac97_bus_master::Ac97BusMasterRegs;
-use crate::pci::ac97_bus_master::AudioError;
 use crate::pci::ac97_bus_master::AudioResult;
 use crate::pci::ac97_bus_master::AudioThreadInfo;
 use crate::pci::ac97_bus_master::GuestMemoryError;
@@ -50,13 +52,45 @@ use crate::pci::ac97_bus_master::GuestMemoryResult;
 use crate::pci::ac97_mixer::Ac97Mixer;
 use crate::pci::ac97_regs::*;
 
+// Internal error type used for reporting errors from the audio thread.
+#[sorted]
+#[derive(Error, Debug)]
+pub(crate) enum AudioError {
+    // Failure writing to the audio output.
+    #[error("Failed to write audio output: {0}")]
+    CaptureCopyFailure(std::io::Error),
+    // Failure to copy samples to host buffer
+    #[error("Failed to write samples to host buffer: {0}")]
+    PlaybackCopyingFailure(PlaybackBufferError),
+    // Failure to read guest memory.
+    #[error("Failed to read guest memory: {0}")]
+    ReadingGuestError(GuestMemoryError),
+    // Failure to get an buffer from the stream.
+    #[error("Failed to get a buffer from the stream: {0}")]
+    StreamError(BoxError),
+    // Failure writing to the audio output.
+    #[error("Failed to write audio output: {0}")]
+    WritingOutput(std::io::Error),
+}
+
+// Windows specific members of Ac97BusMaster.
+#[derive(Default)]
+pub struct Ac97BusMasterSys {
+    // If true, drop audio samples from the guest.
+    mute: Arc<Mutex<bool>>,
+    // Event to fire to stop the event listening thread.
+    exit_event: Option<Event>,
+    // JoinHandle to event listening thread.
+    event_listening_thread: Option<thread::JoinHandle<Result<(), AudioError>>>,
+}
+
 impl Ac97BusMaster {
     /// Creates an Ac97BusMaster` object that plays audio from `mem` to streams provided by
     /// `audio_server`.
     pub(crate) fn new(
         mem: GuestMemory,
         audio_server: AudioStreamSource,
-        #[cfg(windows)] ac97_device_tube: Option<Tube>,
+        ac97_device_tube: Option<Tube>,
     ) -> Self {
         let res = Ac97BusMaster {
             mem,
@@ -69,21 +103,20 @@ impl Ac97BusMaster {
             audio_server,
 
             irq_resample_thread: None,
-            #[cfg(windows)]
-            mute: Arc::new(Mutex::new(false)),
-            #[cfg(windows)]
-            exit_event: None,
-            #[cfg(windows)]
-            event_listening_thread: None,
+            sys: Ac97BusMasterSys {
+                mute: Arc::new(Mutex::new(false)),
+                exit_event: None,
+                event_listening_thread: None,
+            },
         };
 
         let mut res = res;
         if let Some(ac97_device_tube) = ac97_device_tube {
-            res.exit_event = Some(Event::new().unwrap());
-            res.event_listening_thread = Some(Ac97BusMaster::start_event_loop(
+            res.sys.exit_event = Some(Event::new().unwrap());
+            res.sys.event_listening_thread = Some(Ac97BusMaster::start_event_loop(
                 ac97_device_tube,
-                res.mute.clone(),
-                res.exit_event.as_ref().unwrap().try_clone().unwrap(),
+                res.sys.mute.clone(),
+                res.sys.exit_event.as_ref().unwrap().try_clone().unwrap(),
                 res.audio_server.clone(),
             ));
         }
@@ -212,7 +245,7 @@ impl Ac97BusMaster {
                     )?;
                 self.po_info.stream_control = Some(Box::new(NoopStreamControl::new()));
                 self.update_mixer_settings(mixer);
-                let mute = self.mute.clone();
+                let mute = self.sys.mute.clone();
 
                 self.po_info.thread = Some(
                     thread::Builder::new()
@@ -255,13 +288,13 @@ impl Ac97BusMaster {
 
 impl Drop for Ac97BusMaster {
     fn drop(&mut self) {
-        if let Some(exit_event) = &self.exit_event {
+        if let Some(exit_event) = &self.sys.exit_event {
             exit_event
                 .write(1)
                 .expect("Failed to write to exit_event in Ac97BusMaster");
         }
 
-        if let Some(event_listening_thread) = self.event_listening_thread.take() {
+        if let Some(event_listening_thread) = self.sys.event_listening_thread.take() {
             match event_listening_thread.join() {
                 Ok(thread_join) => {
                     if let Err(e) = thread_join {
@@ -308,7 +341,7 @@ fn next_guest_buffer<'a>(
     let read_pos = GuestAddress(u64::from(buffer_addr));
     Ok(Some(
         mem.get_slice_at_addr(read_pos, samples_remaining * sample_size)
-            .map_err(GuestMemoryError::ReadingGuestSamples)?,
+            .map_err(GuestMemoryError::ReadingGuestBufferAddress)?,
     ))
 }
 

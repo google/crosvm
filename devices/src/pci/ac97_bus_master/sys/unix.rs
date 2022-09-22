@@ -77,6 +77,10 @@ pub(crate) enum AudioError {
     WaitForAction(BoxError),
 }
 
+// Unix specific members of Ac97BusMaster - a placeholder.
+#[derive(Default)]
+pub struct Ac97BusMasterSys {}
+
 impl AudioThreadInfo {
     fn start(&mut self, mut worker: AudioWorker) {
         const AUDIO_THREAD_RTPRIO: u16 = 10; // Matches other cros audio clients.
@@ -114,6 +118,7 @@ impl Ac97BusMaster {
             audio_server,
 
             irq_resample_thread: None,
+            sys: Default::default(),
         }
     }
 
