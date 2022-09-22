@@ -4,17 +4,13 @@
 
 //! Implements pci devices and busses.
 
-// TODO(b:236297362): build it on windows as weil.
-#[cfg(all(unix, feature = "audio"))]
+#[cfg(feature = "audio")]
 mod ac97;
-// TODO(b:236297362): build it on windows as weil.
-#[cfg(all(unix, feature = "audio"))]
+#[cfg(feature = "audio")]
 mod ac97_bus_master;
-// TODO(b:236297362): build it on windows as weil.
-#[cfg(all(unix, feature = "audio"))]
+#[cfg(feature = "audio")]
 mod ac97_mixer;
-// TODO(b:236297362): build it on windows as weil.
-#[cfg(all(unix, feature = "audio"))]
+#[cfg(feature = "audio")]
 mod ac97_regs;
 mod acpi;
 #[cfg(unix)]
@@ -34,12 +30,11 @@ mod vfio_pci;
 
 use libc::EINVAL;
 
-// TODO(b:236297362): build it on windows as weil.
-#[cfg(all(unix, feature = "audio"))]
+#[cfg(feature = "audio")]
 pub use self::ac97::Ac97Backend;
-#[cfg(all(unix, feature = "audio"))]
+#[cfg(feature = "audio")]
 pub use self::ac97::Ac97Dev;
-#[cfg(all(unix, feature = "audio"))]
+#[cfg(feature = "audio")]
 pub use self::ac97::Ac97Parameters;
 pub use self::acpi::DeviceVcfgRegister;
 pub use self::acpi::PowerResourceMethod;

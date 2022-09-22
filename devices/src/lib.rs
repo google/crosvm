@@ -32,6 +32,10 @@ pub mod serial_device;
 mod software_tpm;
 mod suspendable;
 mod sys;
+#[cfg(feature = "usb")]
+pub mod usb;
+#[cfg(feature = "usb")]
+mod utils;
 pub mod virtio;
 #[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
 mod vtpm_proxy;
@@ -76,6 +80,12 @@ pub use self::i8042::I8042Device;
 pub use self::irq_event::IrqEdgeEvent;
 pub use self::irq_event::IrqLevelEvent;
 pub use self::irqchip::*;
+#[cfg(feature = "audio")]
+pub use self::pci::Ac97Backend;
+#[cfg(feature = "audio")]
+pub use self::pci::Ac97Dev;
+#[cfg(feature = "audio")]
+pub use self::pci::Ac97Parameters;
 pub use self::pci::BarRange;
 pub use self::pci::CrosvmDeviceId;
 pub use self::pci::PciAddress;
@@ -117,18 +127,12 @@ cfg_if::cfg_if! {
         mod platform;
         mod proxy;
         pub mod vmwdt;
-        #[cfg(feature = "usb")]
-        pub mod usb;
-        #[cfg(feature = "usb")]
-        mod utils;
         pub mod vfio;
 
-        #[cfg(feature = "audio")]
-        pub use self::pci::{Ac97Backend, Ac97Dev, Ac97Parameters};
         pub use self::pci::{
-            CoIommuDev, CoIommuParameters, CoIommuUnpinPolicy,
-            PvPanicCode, PcieRootPort, PcieHostPort,
-            PvPanicPciDevice, VfioPciDevice, PciBridge, PcieDownstreamPort, PcieUpstreamPort
+            CoIommuDev, CoIommuParameters, CoIommuUnpinPolicy, PciBridge, PcieDownstreamPort,
+            PcieHostPort, PcieRootPort, PcieUpstreamPort, PvPanicCode, PvPanicPciDevice,
+            VfioPciDevice,
         };
         pub use self::platform::VfioPlatformDevice;
         pub use self::proxy::Error as ProxyError;
