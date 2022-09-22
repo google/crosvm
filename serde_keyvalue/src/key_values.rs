@@ -46,12 +46,16 @@ pub enum ErrorKind {
     Eof,
     #[error("expected a boolean")]
     ExpectedBoolean,
+    #[error("expected ']'")]
+    ExpectedCloseBracket,
     #[error("expected ','")]
     ExpectedComma,
     #[error("expected '='")]
     ExpectedEqual,
     #[error("expected an identifier")]
     ExpectedIdentifier,
+    #[error("expected '['")]
+    ExpectedOpenBracket,
     #[error("expected a string")]
     ExpectedString,
     #[error("\" and ' can only be used in quoted strings")]
@@ -437,6 +441,31 @@ impl<'a, 'de> de::VariantAccess<'de> for &'a mut KeyValueDeserializer<'de> {
     }
 }
 
+impl<'de> de::SeqAccess<'de> for KeyValueDeserializer<'de> {
+    type Error = ParseError;
+
+    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
+    where
+        T: de::DeserializeSeed<'de>,
+    {
+        if self.peek_char() == Some(']') {
+            return Ok(None);
+        }
+
+        let value = seed.deserialize(&mut *self)?;
+
+        // We must have a comma or end of input after a value.
+        match self.peek_char() {
+            Some(',') => {
+                let _ = self.next_char();
+                Ok(Some(value))
+            }
+            Some(']') | None => Ok(Some(value)),
+            _ => Err(self.error_here(ErrorKind::ExpectedComma)),
+        }
+    }
+}
+
 impl<'de, 'a> de::Deserializer<'de> for &'a mut KeyValueDeserializer<'de> {
     type Error = ParseError;
 
@@ -444,9 +473,11 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut KeyValueDeserializer<'de> {
     where
         V: serde::de::Visitor<'de>,
     {
-        // If we have no value following, then we are dealing with a boolean flag.
         match self.peek_char() {
+            // If we have no value following, then we are dealing with a boolean flag.
             Some(',') | None => return self.deserialize_bool(visitor),
+            // Opening bracket means we have a sequence.
+            Some('[') => return self.deserialize_seq(visitor),
             _ => (),
         }
 
@@ -618,18 +649,30 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut KeyValueDeserializer<'de> {
         visitor.visit_newtype_struct(self)
     }
 
-    fn deserialize_seq<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value>
     where
         V: serde::de::Visitor<'de>,
     {
-        unimplemented!()
+        if self.peek_char() == Some('[') {
+            self.next_char();
+            let val = visitor.visit_seq(&mut *self)?;
+
+            if self.peek_char() != Some(']') {
+                Err(self.error_here(ErrorKind::ExpectedCloseBracket))
+            } else {
+                self.next_char();
+                Ok(val)
+            }
+        } else {
+            Err(self.error_here(ErrorKind::ExpectedOpenBracket))
+        }
     }
 
-    fn deserialize_tuple<V>(self, _len: usize, _visitor: V) -> Result<V::Value>
+    fn deserialize_tuple<V>(self, _len: usize, visitor: V) -> Result<V::Value>
     where
         V: serde::de::Visitor<'de>,
     {
-        unimplemented!()
+        self.deserialize_seq(visitor)
     }
 
     fn deserialize_tuple_struct<V>(
@@ -729,6 +772,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
     use std::path::PathBuf;
 
     use super::*;
@@ -1202,6 +1246,99 @@ mod tests {
             TestStruct {
                 num: 12,
                 name: "foo".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn deserialize_tuple() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct TestStruct {
+            size: (u32, u32),
+        }
+
+        let res: TestStruct = from_key_values("size=[320,200]").unwrap();
+        assert_eq!(res, TestStruct { size: (320, 200) });
+
+        // Unterminated tuple.
+        let err = from_key_values::<TestStruct>("size=[320]").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: ErrorKind::SerdeError("invalid length 1, expected a tuple of size 2".into()),
+                pos: 0,
+            }
+        );
+
+        // Too many elements in tuple.
+        let err = from_key_values::<TestStruct>("size=[320,200,255]").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: ErrorKind::ExpectedCloseBracket,
+                pos: 14,
+            }
+        );
+
+        // Non-closed sequence is invalid.
+        let err = from_key_values::<TestStruct>("size=[320,200").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: ErrorKind::ExpectedCloseBracket,
+                pos: 13,
+            }
+        );
+    }
+
+    #[test]
+    fn deserialize_vector() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct TestStruct {
+            numbers: Vec<u32>,
+        }
+
+        let res: TestStruct = from_key_values("numbers=[1,2,4,8,16,32,64]").unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                numbers: vec![1, 2, 4, 8, 16, 32, 64],
+            }
+        );
+    }
+
+    #[test]
+    fn deserialize_set() {
+        #[derive(Deserialize, PartialEq, Eq, Debug, PartialOrd, Ord)]
+        #[serde(rename_all = "kebab-case")]
+        enum Flags {
+            Awesome,
+            Fluffy,
+            Transparent,
+        }
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct TestStruct {
+            flags: BTreeSet<Flags>,
+        }
+
+        let res: TestStruct = from_key_values("flags=[awesome,fluffy]").unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                flags: BTreeSet::from([Flags::Awesome, Flags::Fluffy]),
+            }
+        );
+
+        // Unknown enum variant?
+        let err = from_key_values::<TestStruct>("flags=[awesome,spiky]").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: ErrorKind::SerdeError(
+                    "unknown variant `spiky`, expected one of `awesome`, `fluffy`, `transparent`"
+                        .into()
+                ),
+                pos: 0,
             }
         );
     }

@@ -138,6 +138,21 @@
 //! assert_eq!(config, Config { path: r#"/some/"strange"/pa,th"#.into() });
 //! ```
 //!
+//! Tuples and vectors are allowed and must be specified between `[` and `]`:
+//!
+//! ```
+//! # use serde_keyvalue::from_key_values;
+//! # use serde::Deserialize;
+//! #[derive(Debug, PartialEq, Deserialize)]
+//! struct Layout {
+//!     resolution: (u16, u16),
+//!     scanlines: Vec<u16>,
+//! }
+//!
+//! let layout: Layout = from_key_values("resolution=[320,200],scanlines=[0,64,128]").unwrap();
+//! assert_eq!(layout, Layout { resolution: (320, 200), scanlines: vec![0, 64, 128] });
+//! ```
+//!
 //! Enums can be directly specified by name. It is recommended to use the `rename_all` serde
 //! container attribute to make them parseable using snake or kebab case representation. Serde's
 //! `rename` and `alias` field attributes can also be used to provide shorter values:
@@ -164,6 +179,33 @@
 //!
 //! let config: Config = from_key_values("mode=ludicrous").unwrap();
 //! assert_eq!(config, Config { mode: Mode::LudicrousSpeed });
+//! ```
+//!
+//! A nice use of enums is along with sets, where it allows to e.g. easily specify flags:
+//!
+//! ```
+//! # use std::collections::BTreeSet;
+//! # use serde_keyvalue::from_key_values;
+//! # use serde::Deserialize;
+//! #[derive(Deserialize, PartialEq, Eq, Debug, PartialOrd, Ord)]
+//! #[serde(rename_all = "kebab-case")]
+//! enum Flags {
+//!     Awesome,
+//!     Fluffy,
+//!     Transparent,
+//! }
+//! #[derive(Deserialize, PartialEq, Debug)]
+//! struct TestStruct {
+//!     flags: BTreeSet<Flags>,
+//! }
+//!
+//! let res: TestStruct = from_key_values("flags=[awesome,fluffy]").unwrap();
+//! assert_eq!(
+//!     res,
+//!     TestStruct {
+//!         flags: BTreeSet::from([Flags::Awesome, Flags::Fluffy]),
+//!     }
+//! );
 //! ```
 //!
 //! Enums taking a single value should use the `flatten` field attribute in order to be inferred
