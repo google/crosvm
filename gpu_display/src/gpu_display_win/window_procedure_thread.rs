@@ -175,7 +175,7 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
         loop {
             let mut message = mem::MaybeUninit::uninit();
             // Safe because we know the lifetime of `message`.
-            match unsafe { GetMessageA(message.as_mut_ptr(), null_mut(), 0, 0) } {
+            match unsafe { GetMessageW(message.as_mut_ptr(), null_mut(), 0, 0) } {
                 0 => {
                     info!("WndProc thread exiting message loop since WM_QUIT is received");
                     message_loop_state
@@ -184,7 +184,7 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
                 }
                 -1 => {
                     error!(
-                        "WndProc thread exiting message loop because GetMessageA() failed with \
+                        "WndProc thread exiting message loop because GetMessageW() failed with \
                         error code {}",
                         unsafe { GetLastError() }
                     );
@@ -195,19 +195,19 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
                 _ => (),
             }
 
-            // Safe because `GetMessageA()` will block until `message` is populated.
+            // Safe because `GetMessageW()` will block until `message` is populated.
             let new_message = unsafe { message.assume_init() };
-            if new_message.hwnd == null_mut() {
+            if new_message.hwnd.is_null() {
                 // Thread messages don't target a specific window and `DispatchMessageA()` won't
                 // send them to `wnd_proc()` function, hence we need to handle it as a special case.
                 dispatcher
                     .as_mut()
                     .process_thread_message(&new_message.into());
             } else {
-                // Safe because `GetMessageA()` will block until `message` is populated.
+                // Safe because `GetMessageW()` will block until `message` is populated.
                 unsafe {
                     TranslateMessage(&new_message);
-                    DispatchMessageA(&new_message);
+                    DispatchMessageW(&new_message);
                 }
             }
         }
@@ -266,8 +266,8 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
     /// processing `WM_NCDESTROY`, because the window handle will become invalid afterwards.
     unsafe fn create_window() -> Result<Window> {
         // Gfxstream window is a child window of CrosVM window. Without WS_CLIPCHILDREN, the parent
-        // window may use the background brush to clear the gfxstream window client area when drawing
-        // occurs. This caused the screen flickering issue during resizing.
+        // window may use the background brush to clear the gfxstream window client area when
+        // drawing occurs. This caused the screen flickering issue during resizing.
         // See b/197786842 for details.
         let dw_style = WS_POPUP | WS_CLIPCHILDREN;
         Window::new(

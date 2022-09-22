@@ -209,12 +209,11 @@ impl DisplayT for DisplayWin {
             }
         }
 
-        let display_closed_event = self.display_closed_event.try_clone().map_err(|e| {
-            error!("Failed to clone display_closed_event: {}", e);
-            GpuDisplayError::Allocate
-        })?;
         Ok(Box::new(SurfaceWin {
-            display_closed_event,
+            display_closed_event: self.display_closed_event.try_clone().map_err(|e| {
+                error!("Failed to clone display_closed_event: {}", e);
+                GpuDisplayError::Allocate
+            })?,
         }))
     }
 }

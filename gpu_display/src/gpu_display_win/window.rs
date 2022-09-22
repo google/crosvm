@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::convert::From;
-use std::ffi::CString;
 use std::fmt;
 use std::mem;
 use std::os::raw::c_int;
@@ -23,6 +22,7 @@ use euclid::Size2D;
 use vm_control::display::WindowVisibility;
 use win_util::syscall_bail;
 use win_util::win32_string;
+use win_util::win32_wide_string;
 use winapi::shared::minwindef::DWORD;
 use winapi::shared::minwindef::FALSE;
 use winapi::shared::minwindef::HINSTANCE;
@@ -123,10 +123,7 @@ impl Window {
         info!("Creating window");
         static CONTEXT_MESSAGE: &str = "When creating Window";
 
-        let class_name = win32_string(class_name);
-        let title = win32_string(title);
         let hinstance = Self::get_current_module_handle();
-
         // If we fail to load any UI element below, use NULL to let the system use the default UI
         // rather than crash.
         let hicon = Self::load_custom_icon(hinstance, icon_resource_id).unwrap_or(null_mut());
@@ -136,21 +133,16 @@ impl Window {
         Self::register_window_class(
             wnd_proc,
             hinstance,
-            &class_name,
+            class_name,
             hicon,
             hcursor,
             hbrush_background,
         )
         .context(CONTEXT_MESSAGE)?;
 
-        let hwnd = Self::create_sys_window(
-            hinstance,
-            &class_name,
-            &title,
-            dw_style,
-            initial_window_size,
-        )
-        .context(CONTEXT_MESSAGE)?;
+        let hwnd =
+            Self::create_sys_window(hinstance, class_name, title, dw_style, initial_window_size)
+                .context(CONTEXT_MESSAGE)?;
 
         Ok(Self {
             hwnd,
@@ -339,7 +331,7 @@ impl Window {
     /// Calls `MonitorFromWindow()` internally.
     pub fn is_on_active_display(&self) -> bool {
         // Safe because `Window` object won't outlive the HWND.
-        unsafe { MonitorFromWindow(self.hwnd, MONITOR_DEFAULTTONULL) != null_mut() }
+        unsafe { !MonitorFromWindow(self.hwnd, MONITOR_DEFAULTTONULL).is_null() }
     }
 
     /// Calls `SetWindowPos()` internally.
@@ -499,8 +491,10 @@ impl Window {
 
     /// Calls `GetWindowPlacement()` and `SetWindowPlacement()` internally.
     pub fn set_restored_pos(&self, window_rect: &Rect) -> Result<()> {
-        let mut window_placement: WINDOWPLACEMENT = Default::default();
-        window_placement.length = mem::size_of::<WINDOWPLACEMENT>().try_into().unwrap();
+        let mut window_placement = WINDOWPLACEMENT {
+            length: mem::size_of::<WINDOWPLACEMENT>().try_into().unwrap(),
+            ..Default::default()
+        };
         // Safe because `Window` object won't outlive the HWND, we know `window_placement` is valid,
         // and failures are handled below.
         unsafe {
@@ -596,13 +590,13 @@ impl Window {
     fn register_window_class(
         wnd_proc: WNDPROC,
         hinstance: HINSTANCE,
-        class_name: &CString,
+        class_name: &str,
         hicon: HICON,
         hcursor: HCURSOR,
         hbrush_background: HBRUSH,
     ) -> Result<()> {
-        let window_class = WNDCLASSEXA {
-            cbSize: std::mem::size_of::<WNDCLASSEXA>() as u32,
+        let window_class = WNDCLASSEXW {
+            cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
             style: CS_OWNDC | CS_HREDRAW | CS_VREDRAW,
             lpfnWndProc: wnd_proc,
             cbClsExtra: 0,
@@ -612,14 +606,14 @@ impl Window {
             hCursor: hcursor,
             hbrBackground: hbrush_background,
             lpszMenuName: null_mut(),
-            lpszClassName: class_name.as_ptr(),
+            lpszClassName: win32_wide_string(class_name).as_ptr(),
             hIconSm: hicon,
         };
 
         // Safe because we know the lifetime of `window_class`, and we handle failures below.
         unsafe {
-            if RegisterClassExA(&window_class) == 0 {
-                syscall_bail!("Failed to call RegisterClassExA()");
+            if RegisterClassExW(&window_class) == 0 {
+                syscall_bail!("Failed to call RegisterClassExW()");
             }
             Ok(())
         }
@@ -627,17 +621,17 @@ impl Window {
 
     fn create_sys_window(
         hinstance: HINSTANCE,
-        class_name: &CString,
-        title: &CString,
+        class_name: &str,
+        title: &str,
         dw_style: DWORD,
         initial_window_size: &Size2D<i32, HostWindowSpace>,
     ) -> Result<HWND> {
         // Safe because we handle failures below.
         unsafe {
-            let hwnd = CreateWindowExA(
+            let hwnd = CreateWindowExW(
                 0,
-                class_name.as_ptr(),
-                title.as_ptr(),
+                win32_wide_string(class_name).as_ptr(),
+                win32_wide_string(title).as_ptr(),
                 dw_style,
                 0,
                 0,
@@ -648,8 +642,8 @@ impl Window {
                 hinstance,
                 null_mut(),
             );
-            if hwnd == null_mut() {
-                syscall_bail!("Failed to call CreateWindowExA()");
+            if hwnd.is_null() {
+                syscall_bail!("Failed to call CreateWindowExW()");
             }
             Ok(hwnd)
         }
@@ -692,8 +686,10 @@ impl MonitorInfo {
     /// # Safety
     /// Caller is responsible for ensuring that `hmonitor` is a valid handle.
     unsafe fn get_monitor_info(hmonitor: HMONITOR) -> Result<MONITORINFO> {
-        let mut monitor_info: MONITORINFO = Default::default();
-        monitor_info.cbSize = mem::size_of::<MONITORINFO>().try_into().unwrap();
+        let mut monitor_info = MONITORINFO {
+            cbSize: mem::size_of::<MONITORINFO>().try_into().unwrap(),
+            ..Default::default()
+        };
         if GetMonitorInfoA(hmonitor, &mut monitor_info) == 0 {
             syscall_bail!("Failed to call GetMonitorInfoA()");
         }

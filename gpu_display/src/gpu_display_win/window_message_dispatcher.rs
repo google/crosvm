@@ -47,16 +47,16 @@ impl DisplayEventDispatcher {
     }
 
     pub fn dispatch(&self, events: &[virtio_input_event], device_type: EventDeviceKind) {
-        let _ = self
+        for event_device in self
             .event_devices
             .borrow_mut()
-            .iter_mut()
-            .filter(|(_, event_device)| event_device.kind() == device_type)
-            .map(|(_, event_device)| {
-                if let Err(e) = event_device.send_report(events.iter().cloned()) {
-                    error!("Failed to send events to event device: {}", e);
-                }
-            });
+            .values_mut()
+            .filter(|event_device| event_device.kind() == device_type)
+        {
+            if let Err(e) = event_device.send_report(events.iter().cloned()) {
+                error!("Failed to send events to event device: {}", e);
+            }
+        }
     }
 
     fn import_event_device(&mut self, event_device_id: ObjectId, event_device: EventDevice) {
@@ -187,7 +187,7 @@ impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
                 }
                 None => debug!("No window to destroy on WndProc thread drop"),
             },
-            // Safe because we are processing a message tageting this thread.
+            // Safe because we are processing a message targeting this thread.
             _ => unsafe {
                 DefWindowProcA(null_mut(), msg, w_param, l_param);
             },

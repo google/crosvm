@@ -82,9 +82,6 @@ pub trait HandleWindowMessage {
     /// Called when processing `WM_SETFOCUS`.
     fn on_set_focus(&mut self) {}
 
-    /// Called when processing `WM_KILLFOCUS`.
-    fn on_kill_focus(&mut self) {}
-
     /// Called when processing `WM_INPUT`.
     fn on_raw_input(&mut self, _window: &Window, _l_param: LPARAM) {}
 
@@ -92,7 +89,7 @@ pub trait HandleWindowMessage {
     fn on_mouse_move(&mut self, _w_param: WPARAM, _l_param: LPARAM) {}
 
     /// Called when processing `WM_LBUTTONDOWN` and `WM_LBUTTONUP`.
-    fn on_mouse_button_left(&mut self, _is_down: bool, _l_param: LPARAM) {}
+    fn on_mouse_button_left(&mut self, _window: &Window, _is_down: bool, _l_param: LPARAM) {}
 
     /// Called when processing `WM_RBUTTONDOWN` and `WM_RBUTTONUP`.
     fn on_mouse_button_right(&mut self, _is_down: bool) {}
@@ -225,10 +222,6 @@ impl<T: HandleWindowMessage> WindowMessageProcessor<T> {
                 handler.on_set_focus();
                 0
             }
-            WM_KILLFOCUS => {
-                handler.on_kill_focus();
-                0
-            }
             WM_INPUT => {
                 handler.on_raw_input(&self.window, l_param);
                 self.window.default_process_message(packet)
@@ -238,7 +231,8 @@ impl<T: HandleWindowMessage> WindowMessageProcessor<T> {
                 0
             }
             WM_LBUTTONDOWN | WM_LBUTTONUP => {
-                handler.on_mouse_button_left(/* is_down= */ msg == WM_LBUTTONDOWN, l_param);
+                let is_down = msg == WM_LBUTTONDOWN;
+                handler.on_mouse_button_left(&self.window, is_down, l_param);
                 0
             }
             WM_RBUTTONDOWN | WM_RBUTTONUP => {
