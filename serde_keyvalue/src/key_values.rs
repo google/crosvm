@@ -99,7 +99,7 @@ type Result<T> = std::result::Result<T, ParseError>;
 /// Nom parser for valid strings.
 ///
 /// A string can be quoted (using single or double quotes) or not. If it is not quoted, the string
-/// is assumed to continue until the next ',' separating character. If it is escaped, it continues
+/// is assumed to continue until the next ',', '[', or ']' character. If it is escaped, it continues
 /// until the next non-escaped quote.
 ///
 /// The returned value is a slice into the current input if no characters to unescape were met,
@@ -129,9 +129,10 @@ fn any_string(s: &str) -> IResult<&str, Cow<str>> {
         Cow::Borrowed,
     );
 
-    // Unquoted strings end with the next comma and may not contain a quote character or be empty.
+    // Unquoted strings end with the next comma or bracket and may not contain a quote or bracket
+    // character or be empty.
     let unquoted = map(
-        take_while1(|c: char| c != ',' && c != '"' && c != '\''),
+        take_while1(|c: char| c != ',' && c != '"' && c != '\'' && c != '[' && c != ']'),
         Cow::Borrowed,
     );
 
@@ -865,7 +866,7 @@ mod tests {
         let res = from_key_values::<SingleStruct<String>>(kv).unwrap();
         assert_eq!(res.m, "".to_string());
 
-        // "=", "," and "'"" in quote.
+        // "=", ",", "[", "]" and "'" in quote.
         let kv = r#"m="val = [10, 20, 'a']""#;
         let res = from_key_values::<SingleStruct<String>>(kv).unwrap();
         assert_eq!(res.m, r#"val = [10, 20, 'a']"#.to_string());
@@ -881,6 +882,17 @@ mod tests {
             }
         );
         let kv = r#"m=val='a'"#;
+        let err = from_key_values::<SingleStruct<String>>(kv).unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: ErrorKind::InvalidCharInString,
+                pos: 6
+            }
+        );
+
+        // Brackets in unquoted strings are forbidden.
+        let kv = r#"m=val=[a]"#;
         let err = from_key_values::<SingleStruct<String>>(kv).unwrap_err();
         assert_eq!(
             err,

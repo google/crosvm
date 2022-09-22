@@ -122,8 +122,9 @@
 //! assert_eq!(config, Config { active: true, delayed: false, pooled: true });
 //! ```
 //!
-//! Strings can be quoted, which is useful if they e.g. need to include a comma. Quoted strings can
-//! also contain escaped characters, where any character after a `\` is repeated as-is:
+//! Strings can be quoted, which is useful if they need to include a comma or a bracket, which are
+//! considered separators for unquoted strings. Quoted strings can also contain escaped characters,
+//! where any character after a `\` is repeated as-is:
 //!
 //! ```
 //! # use serde_keyvalue::from_key_values;
