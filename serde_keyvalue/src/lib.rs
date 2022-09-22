@@ -208,8 +208,8 @@
 //! );
 //! ```
 //!
-//! Enums taking a single value should use the `flatten` field attribute in order to be inferred
-//! from their variant key directly:
+//! Enums taking a single value can use the `flatten` field attribute in order to be inferred from
+//! their variant key directly:
 //!
 //! ```
 //! # use serde_keyvalue::from_key_values;
@@ -268,8 +268,8 @@
 //! );
 //! ```
 //!
-//! If an enum's variants are made of structs, it should take the `untagged` container attribute so
-//! it can be inferred directly from the fields of the embedded structs:
+//! If an enum's variants are made of structs, it can take the `untagged` container attribute to be
+//! inferred directly from the fields of the embedded structs:
 //!
 //! ```
 //! # use serde_keyvalue::from_key_values;
@@ -331,8 +331,9 @@
 //! is not available to the deserializer, it will try to determine the type of fields using the
 //! input as its sole hint. For instance, any number will be returned as an integer type, and if the
 //! parsed structure was actually expecting a number as a string, then an error will occur.
+//! Struct enums also cannot be flattened and won't be recognized at all.
 //!
-//! For this reason it is discouraged to use `flatten` except when neither the embedding not the
+//! For these reasons, it is discouraged to use `flatten` except when neither the embedding not the
 //! flattened structs has a member of string type.
 //!
 //! Most of the time, similar functionality can be obtained by implementing a custom deserializer

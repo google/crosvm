@@ -34,6 +34,7 @@ use num_traits::Num;
 use remain::sorted;
 use serde::de;
 use serde::Deserialize;
+use serde::Deserializer;
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq)]
@@ -274,6 +275,20 @@ impl<'de> KeyValueDeserializer<'de> {
         Some(c)
     }
 
+    /// Confirm that we have a separator (i.e. ',' or ']') character or have reached the end of the
+    /// input string.
+    fn confirm_separator(&mut self) -> Result<()> {
+        // We must have a comma or end of input after a value.
+        match self.peek_char() {
+            Some(',') => {
+                let _ = self.next_char();
+                Ok(())
+            }
+            Some(']') | None => Ok(()),
+            Some(_) => Err(self.error_here(ErrorKind::ExpectedComma)),
+        }
+    }
+
     /// Attempts to parse an identifier, either for a key or for the value of an enum type.
     pub fn parse_identifier(&mut self) -> Result<&'de str> {
         let (remainder, res) = any_identifier(self.input)
@@ -354,8 +369,9 @@ impl<'de> de::MapAccess<'de> for KeyValueDeserializer<'de> {
     {
         let has_next_identifier = self.next_identifier.is_some();
 
-        if self.peek_char().is_none() {
-            return Ok(None);
+        match self.peek_char() {
+            None | Some(']') => return Ok(None),
+            _ => (),
         }
 
         self.has_equal = false;
@@ -377,7 +393,7 @@ impl<'de> de::MapAccess<'de> for KeyValueDeserializer<'de> {
                 Ok(val)
             }
             // Ok if we are parsing a boolean where an empty value means true.
-            Some(',') | None => Ok(val),
+            Some(',') | Some(']') | None => Ok(val),
             Some(_) => Err(self.error_here(ErrorKind::ExpectedEqual)),
         }
     }
@@ -388,14 +404,63 @@ impl<'de> de::MapAccess<'de> for KeyValueDeserializer<'de> {
     {
         let val = seed.deserialize(&mut *self)?;
 
-        // We must have a comma or end of input after a value.
-        match self.peek_char() {
-            Some(',') | None => {
-                let _ = self.next_char();
-                Ok(val)
-            }
-            Some(_) => Err(self.error_here(ErrorKind::ExpectedComma)),
-        }
+        self.confirm_separator()?;
+
+        Ok(val)
+    }
+}
+
+/// `MapAccess` for a map with no members specified.
+///
+/// This is used to allow a struct enum type to be specified without `[` and `]`, in which case
+/// all its members will take their default value:
+///
+/// ```
+/// # use serde_keyvalue::from_key_values;
+/// # use serde::Deserialize;
+/// #[derive(Deserialize, PartialEq, Debug)]
+/// #[serde(rename_all = "kebab-case")]
+/// enum FlipMode {
+///     Active {
+///         #[serde(default)]
+///         switch1: bool,
+///         #[serde(default)]
+///         switch2: bool,
+///     },
+/// }
+/// #[derive(Deserialize, PartialEq, Debug)]
+/// struct TestStruct {
+///     mode: FlipMode,
+/// }
+/// let res: TestStruct = from_key_values("mode=active").unwrap();
+/// assert_eq!(
+///     res,
+///     TestStruct {
+///         mode: FlipMode::Active {
+///             switch1: false,
+///             switch2: false
+///         }
+///     }
+///  );
+/// ```
+struct EmptyMapAccess;
+
+impl<'de> de::MapAccess<'de> for EmptyMapAccess {
+    type Error = ParseError;
+
+    fn next_key_seed<K>(&mut self, _seed: K) -> Result<Option<K::Value>>
+    where
+        K: de::DeserializeSeed<'de>,
+    {
+        Ok(None)
+    }
+
+    fn next_value_seed<V>(&mut self, _seed: V) -> Result<V::Value>
+    where
+        V: de::DeserializeSeed<'de>,
+    {
+        // Never reached because `next_key_seed` never returns a valid key.
+        unreachable!()
     }
 }
 
@@ -426,18 +491,34 @@ impl<'a, 'de> de::VariantAccess<'de> for &'a mut KeyValueDeserializer<'de> {
         unimplemented!()
     }
 
-    fn tuple_variant<V>(self, _len: usize, _visitor: V) -> Result<V::Value>
+    fn tuple_variant<V>(self, len: usize, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!()
+        self.deserialize_tuple(len, visitor)
     }
 
-    fn struct_variant<V>(self, _fields: &'static [&'static str], _visitor: V) -> Result<V::Value>
+    fn struct_variant<V>(self, _fields: &'static [&'static str], visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        unimplemented!()
+        if self.peek_char() == Some('[') {
+            self.next_char();
+            let val = self.deserialize_map(visitor)?;
+
+            if self.peek_char() != Some(']') {
+                Err(self.error_here(ErrorKind::ExpectedCloseBracket))
+            } else {
+                self.next_char();
+                Ok(val)
+            }
+        } else {
+            // The `EmptyMapAccess` failing to parse means that this enum must take arguments, i.e.
+            // that an opening bracket is expected.
+            visitor
+                .visit_map(EmptyMapAccess)
+                .map_err(|_| self.error_here(ErrorKind::ExpectedOpenBracket))
+        }
     }
 }
 
@@ -454,15 +535,9 @@ impl<'de> de::SeqAccess<'de> for KeyValueDeserializer<'de> {
 
         let value = seed.deserialize(&mut *self)?;
 
-        // We must have a comma or end of input after a value.
-        match self.peek_char() {
-            Some(',') => {
-                let _ = self.next_char();
-                Ok(Some(value))
-            }
-            Some(']') | None => Ok(Some(value)),
-            _ => Err(self.error_here(ErrorKind::ExpectedComma)),
-        }
+        self.confirm_separator()?;
+
+        Ok(Some(value))
     }
 }
 
@@ -1339,6 +1414,157 @@ mod tests {
                         .into()
                 ),
                 pos: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn deserialize_struct_and_tuple_enum() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        #[serde(rename_all = "kebab-case")]
+        enum VideoMode {
+            Fullscreen,
+            WindowAsTuple(u32, u32),
+            WindowAsStruct { width: u32, height: u32 },
+        }
+
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct TestStruct {
+            mode: VideoMode,
+        }
+
+        let res: TestStruct = from_key_values("mode=fullscreen").unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                mode: VideoMode::Fullscreen
+            }
+        );
+
+        let res: TestStruct = from_key_values("mode=window-as-tuple[640,480]").unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                mode: VideoMode::WindowAsTuple(640, 480),
+            }
+        );
+
+        // Missing values
+        let err = from_key_values::<TestStruct>("mode=window-as-tuple").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: ErrorKind::ExpectedOpenBracket,
+                pos: 20,
+            }
+        );
+
+        let res: TestStruct =
+            from_key_values("mode=window-as-struct[width=800,height=600]").unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                mode: VideoMode::WindowAsStruct {
+                    width: 800,
+                    height: 600,
+                }
+            }
+        );
+
+        // Missing values.
+        let err = from_key_values::<TestStruct>("mode=window-as-struct").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: ErrorKind::ExpectedOpenBracket,
+                pos: 21,
+            }
+        );
+    }
+
+    #[test]
+    fn deserialize_struct_enum_with_default() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        #[serde(rename_all = "kebab-case")]
+        enum FlipMode {
+            Inactive,
+            Active {
+                #[serde(default)]
+                switch1: bool,
+                #[serde(default)]
+                switch2: bool,
+            },
+        }
+
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct TestStruct {
+            mode: FlipMode,
+        }
+
+        // Only specify one member and expect the other to be default.
+        let res: TestStruct = from_key_values("mode=active[switch1=true]").unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                mode: FlipMode::Active {
+                    switch1: true,
+                    switch2: false
+                }
+            }
+        );
+
+        // Specify boolean members without explicit value.
+        let res: TestStruct = from_key_values("mode=active[switch1,switch2]").unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                mode: FlipMode::Active {
+                    switch1: true,
+                    switch2: true
+                }
+            }
+        );
+
+        // No member specified, braces present.
+        let res: TestStruct = from_key_values("mode=active[]").unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                mode: FlipMode::Active {
+                    switch1: false,
+                    switch2: false
+                }
+            }
+        );
+
+        // No member specified and no braces.
+        let res: TestStruct = from_key_values("mode=active").unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                mode: FlipMode::Active {
+                    switch1: false,
+                    switch2: false
+                }
+            }
+        );
+
+        // Non-struct variant should be recognized without braces.
+        let res: TestStruct = from_key_values("mode=inactive").unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                mode: FlipMode::Inactive,
+            }
+        );
+
+        // Non-struct variant should not accept braces.
+        let err = from_key_values::<TestStruct>("mode=inactive[]").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: ErrorKind::ExpectedComma,
+                pos: 13,
             }
         );
     }
