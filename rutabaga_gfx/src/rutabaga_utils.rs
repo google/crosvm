@@ -24,13 +24,13 @@ use vulkano::image::ImageCreationError;
 #[cfg(feature = "vulkano")]
 use vulkano::instance::InstanceCreationError;
 #[cfg(feature = "vulkano")]
-use vulkano::memory::DeviceMemoryAllocationError;
-#[cfg(feature = "vulkano")]
-use vulkano::memory::DeviceMemoryExportError;
+use vulkano::memory::DeviceMemoryError;
 #[cfg(feature = "vulkano")]
 use vulkano::memory::MemoryMapError;
 #[cfg(feature = "vulkano")]
 use vulkano::LoadingError;
+#[cfg(feature = "vulkano")]
+use vulkano::VulkanError;
 
 /// Represents a buffer.  `base` contains the address of a buffer, while `len` contains the length
 /// of the buffer.
@@ -243,14 +243,14 @@ pub enum RutabagaError {
     #[cfg(feature = "vulkano")]
     #[error("vulkano device creation failure {0}")]
     VkDeviceCreationError(DeviceCreationError),
-    /// Device memory allocation error
+    /// Device memory error
     #[cfg(feature = "vulkano")]
-    #[error("vulkano device memory allocation failure {0}")]
-    VkDeviceMemoryAllocationError(DeviceMemoryAllocationError),
-    /// Device memory export error
+    #[error("vulkano device memory failure {0}")]
+    VkDeviceMemoryError(DeviceMemoryError),
+    /// General Vulkan error
     #[cfg(feature = "vulkano")]
-    #[error("vulkano device memory export failure {0}")]
-    VkDeviceMemoryExportError(DeviceMemoryExportError),
+    #[error("vulkano failure {0}")]
+    VkError(VulkanError),
     /// Image creation error
     #[cfg(feature = "vulkano")]
     #[error("vulkano image creation failure {0}")]

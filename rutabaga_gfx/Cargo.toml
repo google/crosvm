@@ -9,7 +9,7 @@ gfxstream = []
 virgl_renderer = []
 virgl_renderer_next = []
 minigbm = []
-# To try out Vulkano, delete the following line and uncomment the line in "dependencies".  vulkano
+# To try out Vulkano, delete the following line and uncomment the line in "dependencies". Vulkano
 # features are just a prototype and not integrated yet into the ChromeOS build system.
 vulkano = []
 x = []
@@ -23,7 +23,8 @@ remain = "*"
 sync = { path = "../common/sync" }
 thiserror = "*"
 serde = { version = "1", features = [ "derive" ] }
-#vulkano = {git = "https:/github.com/vulkano-rs/vulkano.git", optional = true}
+# To build latest Vulkano, change version to git = "https:/github.com/vulkano-rs/vulkano.git"
+# vulkano = { version = "0.31.0", optional = true }
 
 [build-dependencies]
 pkg-config = "*"
