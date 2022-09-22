@@ -350,6 +350,21 @@ impl AvPixelFormat {
     }
 }
 
+#[derive(Debug)]
+pub struct FromAVPixelFormatError(());
+
+impl TryFrom<ffi::AVPixelFormat> for AvPixelFormat {
+    type Error = FromAVPixelFormatError;
+
+    fn try_from(value: ffi::AVPixelFormat) -> Result<Self, Self::Error> {
+        if value > ffi::AVPixelFormat_AV_PIX_FMT_NONE && value < ffi::AVPixelFormat_AV_PIX_FMT_NB {
+            Ok(AvPixelFormat(value))
+        } else {
+            Err(FromAVPixelFormatError(()))
+        }
+    }
+}
+
 impl Display for AvPixelFormat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.name())
