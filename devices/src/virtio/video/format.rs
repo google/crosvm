@@ -306,4 +306,5 @@ pub struct Rect {
 pub struct FramePlane {
     pub offset: usize,
     pub stride: usize,
+    pub size: usize,
 }

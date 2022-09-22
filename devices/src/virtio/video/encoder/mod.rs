@@ -672,6 +672,7 @@ impl<T: Encoder> EncoderDevice<T> {
                             // exactly one element.
                             unsafe { entries.get(0).unwrap().object },
                             &self.resource_bridge,
+                            &stream.src_params,
                         )
                         .map_err(|_| VideoError::InvalidArgument)?
                     }
@@ -684,7 +685,7 @@ impl<T: Encoder> EncoderDevice<T> {
                             )
                         },
                         &self.mem,
-                        &stream.src_params.plane_formats,
+                        &stream.src_params,
                     )
                     .map_err(|_| VideoError::InvalidArgument)?,
                 };
@@ -719,6 +720,7 @@ impl<T: Encoder> EncoderDevice<T> {
                             // exactly one element.
                             unsafe { entries.get(0).unwrap().object },
                             &self.resource_bridge,
+                            &stream.dst_params,
                         )
                         .map_err(|_| VideoError::InvalidArgument)?
                     }
@@ -731,7 +733,7 @@ impl<T: Encoder> EncoderDevice<T> {
                             )
                         },
                         &self.mem,
-                        &stream.dst_params.plane_formats,
+                        &stream.dst_params,
                     )
                     .map_err(|_| VideoError::InvalidArgument)?,
                 };

@@ -990,8 +990,10 @@ mod tests {
                     }
                 ));
 
+                let out_format = Format::NV12;
+
                 session
-                    .set_output_parameters(NUM_OUTPUT_BUFFERS, Format::NV12)
+                    .set_output_parameters(NUM_OUTPUT_BUFFERS, out_format)
                     .unwrap();
 
                 // Pass the buffers we will decode into.
@@ -1005,12 +1007,17 @@ mod tests {
                                     FramePlane {
                                         offset: 0,
                                         stride: H264_STREAM_WIDTH as usize,
+                                        size: (H264_STREAM_WIDTH * H264_STREAM_HEIGHT) as usize,
                                     },
                                     FramePlane {
                                         offset: (H264_STREAM_WIDTH * H264_STREAM_HEIGHT) as usize,
                                         stride: H264_STREAM_WIDTH as usize,
+                                        size: (H264_STREAM_WIDTH * H264_STREAM_HEIGHT) as usize,
                                     },
                                 ],
+                                width: H264_STREAM_WIDTH as _,
+                                height: H264_STREAM_HEIGHT as _,
+                                format: out_format,
                             },
                         )
                         .unwrap();

@@ -23,8 +23,9 @@ use crate::virtio::resource_bridge;
 use crate::virtio::resource_bridge::ResourceBridgeError;
 use crate::virtio::resource_bridge::ResourceInfo;
 use crate::virtio::resource_bridge::ResourceRequest;
+use crate::virtio::video::format::Format;
 use crate::virtio::video::format::FramePlane;
-use crate::virtio::video::format::PlaneFormat;
+use crate::virtio::video::params::Params;
 use crate::virtio::video::protocol::virtio_video_mem_entry;
 use crate::virtio::video::protocol::virtio_video_object_entry;
 
@@ -178,6 +179,9 @@ pub struct GuestResource {
     pub handle: GuestResourceHandle,
     /// Layout of color planes, if the resource will receive frames.
     pub planes: Vec<FramePlane>,
+    pub width: u32,
+    pub height: u32,
+    pub format: Format,
 }
 
 #[derive(Debug, ThisError)]
@@ -207,11 +211,14 @@ impl GuestResource {
     /// resource.
     ///
     /// Convert `mem_entry` into the guest memory resource it represents and resolve it through
-    /// `mem`. `planes_format` describes the format of the individual planes for the buffer.
+    /// `mem`.
+    /// Width, height and format is set from `params`.
+    ///
+    /// Panics if `params.format` is `None`.
     pub fn from_virtio_guest_mem_entry(
         mem_entries: &[virtio_video_mem_entry],
         mem: &GuestMemory,
-        planes_format: &[PlaneFormat],
+        params: &Params,
     ) -> Result<GuestResource, GuestMemResourceCreationError> {
         let region_desc = match mem_entries.first() {
             None => return Err(GuestMemResourceCreationError::NoEntriesProvided),
@@ -245,9 +252,15 @@ impl GuestResource {
             })
             .collect();
 
+        let handle = GuestResourceHandle::GuestPages(GuestMemHandle {
+            desc: region_desc,
+            mem_areas,
+        });
+
         // The plane information can be computed from the currently set format.
         let mut buffer_offset = 0;
-        let planes = planes_format
+        let planes = params
+            .plane_formats
             .iter()
             .map(|p| {
                 let plane_offset = buffer_offset;
@@ -256,16 +269,17 @@ impl GuestResource {
                 FramePlane {
                     offset: plane_offset as usize,
                     stride: p.stride as usize,
+                    size: p.plane_size as usize,
                 }
             })
             .collect();
 
         Ok(GuestResource {
-            handle: GuestResourceHandle::GuestPages(GuestMemHandle {
-                desc: region_desc,
-                mem_areas,
-            }),
+            handle,
             planes,
+            width: params.frame_width,
+            height: params.frame_height,
+            format: params.format.unwrap(),
         })
     }
 
@@ -277,6 +291,7 @@ impl GuestResource {
     pub fn from_virtio_object_entry(
         object: virtio_video_object_entry,
         res_bridge: &base::Tube,
+        params: &Params,
     ) -> Result<GuestResource, ObjectResourceCreationError> {
         // We trust that the caller has chosen the correct object type.
         let uuid = u128::from_be_bytes(object.uuid);
@@ -296,24 +311,45 @@ impl GuestResource {
             Err(e) => return Err(ObjectResourceCreationError::ResourceBridgeFailure(e)),
         };
 
+        let handle = GuestResourceHandle::VirtioObject(VirtioObjectHandle {
+            // Safe because `buffer_info.file` is a valid file descriptor and we are stealing
+            // it.
+            desc: unsafe {
+                SafeDescriptor::from_raw_descriptor(buffer_info.handle.into_raw_descriptor())
+            },
+            modifier: buffer_info.modifier,
+        });
+
+        // TODO(ishitatsuyuki): Right now, there are two sources of metadata: through the
+        //                      virtio_video_params fields, or through the buffer metadata provided
+        //                      by the VirtioObject backend.
+        //                      Unfortunately neither is sufficient. The virtio_video_params struct
+        //                      lacks the plane offset, while some virtio-gpu backend doesn't
+        //                      have information about the plane size, or in some cases even the
+        //                      overall frame width and height.
+        //                      We will mix-and-match metadata from the more reliable data source
+        //                      below; ideally this should be fixed to use single source of truth.
+        let planes = params
+            .plane_formats
+            .iter()
+            .zip(&buffer_info.planes)
+            .map(|(param, buffer)| FramePlane {
+                // When the virtio object backend was implemented, the buffer and stride was sourced
+                // from the object backend's metadata (`buffer`). To lean on the safe side, we'll
+                // keep using data from `buffer`, even in case of stride it's also provided by
+                // `param`.
+                offset: buffer.offset as usize,
+                stride: buffer.stride as usize,
+                size: param.plane_size as usize,
+            })
+            .collect();
+
         Ok(GuestResource {
-            handle: GuestResourceHandle::VirtioObject(VirtioObjectHandle {
-                // Safe because `buffer_info.file` is a valid file descriptor and we are stealing
-                // it.
-                desc: unsafe {
-                    SafeDescriptor::from_raw_descriptor(buffer_info.handle.into_raw_descriptor())
-                },
-                modifier: buffer_info.modifier,
-            }),
-            planes: buffer_info
-                .planes
-                .iter()
-                .take_while(|p| p.offset != 0 || p.stride != 0)
-                .map(|p| FramePlane {
-                    offset: p.offset as usize,
-                    stride: p.stride as usize,
-                })
-                .collect(),
+            handle,
+            planes,
+            width: params.frame_width,
+            height: params.frame_height,
+            format: params.format.unwrap(),
         })
     }
 
@@ -322,6 +358,9 @@ impl GuestResource {
         Ok(Self {
             handle: self.handle.try_clone()?,
             planes: self.planes.clone(),
+            width: self.width,
+            height: self.height,
+            format: self.format,
         })
     }
 }
