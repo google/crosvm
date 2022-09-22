@@ -333,6 +333,8 @@ impl StreamInfo {
     }
 }
 
+// TODO(b/246997900): Get these new tests to run on Windows.
+#[cfg(unix)]
 #[cfg(test)]
 mod tests {
     use audio_streams::NoopStreamSourceGenerator;

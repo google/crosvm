@@ -290,7 +290,7 @@ impl Drop for Ac97BusMaster {
     fn drop(&mut self) {
         if let Some(exit_event) = &self.sys.exit_event {
             exit_event
-                .write(1)
+                .signal()
                 .expect("Failed to write to exit_event in Ac97BusMaster");
         }
 
