@@ -23,19 +23,12 @@ mod irq_event;
 pub mod irqchip;
 mod pci;
 pub mod pl030;
-#[cfg(feature = "usb")]
-#[macro_use]
-mod register_space;
 mod serial;
 pub mod serial_device;
 #[cfg(feature = "tpm")]
 mod software_tpm;
 mod suspendable;
 mod sys;
-#[cfg(feature = "usb")]
-pub mod usb;
-#[cfg(feature = "usb")]
-mod utils;
 pub mod virtio;
 #[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
 mod vtpm_proxy;
@@ -128,6 +121,13 @@ cfg_if::cfg_if! {
         mod proxy;
         pub mod vmwdt;
         pub mod vfio;
+        #[cfg(feature = "usb")]
+        #[macro_use]
+        mod register_space;
+        #[cfg(feature = "usb")]
+        pub mod usb;
+        #[cfg(feature = "usb")]
+        mod utils;
 
         pub use self::pci::{
             CoIommuDev, CoIommuParameters, CoIommuUnpinPolicy, PciBridge, PcieDownstreamPort,

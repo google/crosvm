@@ -150,6 +150,7 @@ stats = ["devices/stats"]
 tpm = ["devices/tpm"]
 
 ## Enables USB host device passthrough via an emulated XHCI controller.
+## USB is supported only on unix/linux. The feature is a no-op on windows.
 usb = ["devices/usb"]
 
 ## Enables the non-upstream virtio wayland protocol. This can be used in conjuction with the gpu

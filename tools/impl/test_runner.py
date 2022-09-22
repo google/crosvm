@@ -250,10 +250,6 @@ def build_all_binaries(target: TestTarget, crosvm_direct: bool, instrument_cover
         features += ",direct"
         extra_args.append("--no-default-features")
 
-    # TODO(:b:241251677) Enable default features on windows.
-    if target.build_triple.sys == "windows":
-        extra_args.append("--no-default-features")
-
     cargo_args = [
         "--features=" + features,
         f"--target={target.build_triple}",

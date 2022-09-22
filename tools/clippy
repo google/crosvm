@@ -37,7 +37,6 @@ def main(
         "--message-format=json" if json else None,
         "--locked" if locked else None,
         "--all-targets",
-        "--no-default-features" if triple.sys == "windows" else None,
         "--",
         "-Dwarnings",
     ]

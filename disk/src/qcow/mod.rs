@@ -1830,6 +1830,7 @@ mod tests {
         });
     }
 
+    #[cfg_attr(windows, ignore = "TODO(b/257958782): Enable large test on windows")]
     #[test]
     fn test_header_1_tb_file() {
         let mut header = test_huge_header();
@@ -1868,6 +1869,7 @@ mod tests {
         });
     }
 
+    #[cfg_attr(windows, ignore = "TODO(b/257958782): Enable large test on windows")]
     #[test]
     fn write_read_start() {
         with_basic_file(&valid_header(), |disk_file: File| {
@@ -1879,6 +1881,7 @@ mod tests {
         });
     }
 
+    #[cfg_attr(windows, ignore = "TODO(b/257958782): Enable large test on windows")]
     #[test]
     fn write_read_start_backing() {
         let disk_file = basic_file(&valid_header());
@@ -1892,6 +1895,7 @@ mod tests {
         assert_eq!(&buf, b"test");
     }
 
+    #[cfg_attr(windows, ignore = "TODO(b/257958782): Enable large test on windows")]
     #[test]
     fn write_read_start_backing_overlap() {
         let disk_file = basic_file(&valid_header());
@@ -1906,6 +1910,7 @@ mod tests {
         assert_eq!(&buf, b"TEST first");
     }
 
+    #[cfg_attr(windows, ignore = "TODO(b/257958782): Enable large test on windows")]
     #[test]
     fn offset_write_read() {
         with_basic_file(&valid_header(), |disk_file: File| {
@@ -1918,6 +1923,7 @@ mod tests {
         });
     }
 
+    #[cfg_attr(windows, ignore = "TODO(b/257958782): Enable large test on windows")]
     #[test]
     fn write_zeroes_read() {
         with_basic_file(&valid_header(), |disk_file: File| {
@@ -1938,6 +1944,7 @@ mod tests {
         });
     }
 
+    #[cfg_attr(windows, ignore = "TODO(b/257958782): Enable large test on windows")]
     #[test]
     fn write_zeroes_full_cluster() {
         // Choose a size that is larger than a cluster.
@@ -1959,6 +1966,7 @@ mod tests {
         });
     }
 
+    #[cfg_attr(windows, ignore = "TODO(b/257958782): Enable large test on windows")]
     #[test]
     fn write_zeroes_backing() {
         let disk_file = basic_file(&valid_header());
@@ -2001,6 +2009,7 @@ mod tests {
         });
     }
 
+    #[cfg_attr(windows, ignore = "TODO(b/257958782): Enable large test on windows")]
     #[test]
     fn replay_ext4() {
         with_basic_file(&valid_header(), |disk_file: File| {
@@ -2375,6 +2384,7 @@ mod tests {
         });
     }
 
+    #[cfg_attr(windows, ignore = "TODO(b/257958782): Enable large test on windows")]
     #[test]
     fn combo_write_read() {
         with_default_file(1024 * 1024 * 1024 * 256, |mut qcow_file| {
@@ -2423,6 +2433,7 @@ mod tests {
         });
     }
 
+    #[cfg_attr(windows, ignore = "TODO(b/257958782): Enable large test on windows")]
     #[test]
     fn nested_qcow() {
         let tmp_dir = TempDir::new().unwrap();
