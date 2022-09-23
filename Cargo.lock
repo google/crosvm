@@ -252,6 +252,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base",
+ "crash_report",
  "metrics",
  "serde",
 ]
@@ -335,6 +336,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fb58b6451e8c2a812ad979ed1d83378caa5e927eef2622017a45f251457c2c9d"
 
 [[package]]
+name = "crash_report"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base",
+ "serde",
+ "win_util",
+]
+
+[[package]]
 name = "crc32fast"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -409,6 +420,7 @@ dependencies = [
  "broker_ipc",
  "cc",
  "cfg-if",
+ "crash_report",
  "cros_async",
  "crosvm_plugin",
  "ctrlc",

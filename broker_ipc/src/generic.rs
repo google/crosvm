@@ -18,7 +18,11 @@ use crate::CommonChildStartupArgs;
 pub struct ProductAttributes {}
 
 impl CommonChildStartupArgs {
-    pub fn new(syslog_path: Option<PathBuf>, metrics_tube: Option<Tube>) -> anyhow::Result<Self> {
+    pub fn new(
+        syslog_path: Option<PathBuf>,
+        #[cfg(feature = "crash-report")] _crash_attrs: crash_report::CrashReportAttributes,
+        metrics_tube: Option<Tube>,
+    ) -> anyhow::Result<Self> {
         Ok(Self {
             product_attrs: ProductAttributes {},
             metrics_tube,

@@ -4,9 +4,13 @@ authors = ["The Chromium OS Authors"]
 version = "0.1.0"
 edition = "2021"
 
+[features]
+crash-report = []
+
 [dependencies]
 anyhow = "1.0.32"
 base = { path = "../base" }
+crash_report = { path = "../crash_report" }
 serde = { version = "1", features = [ "derive" ] }
 metrics = { path = "../metrics" }
 

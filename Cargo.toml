@@ -49,6 +49,7 @@ members = [
     "base",
     "bit_field",
     "broker_ipc",
+    "crash_report",
     "cros_async",
     "crosvm-fuzz",
     "crosvm_control",
@@ -121,13 +122,13 @@ all-linux = [
     "wl-dmabuf",
     "x",
     ]
-win64 = ["stats", "balloon", "haxm"]
+win64 = [ "balloon", "crash_report", "haxm", "stats" ]
 audio = ["devices/audio"]
 audio_cras = ["devices/audio_cras"]
 balloon = ["devices/balloon", "vm_control/balloon"]
 chromeos = ["base/chromeos", "audio_cras", "devices/chromeos", "panic-memfd"]
 composite-disk = ["protos/composite-disk", "protobuf", "disk/composite-disk"]
-crash-report = []
+crash-report = ["broker_ipc/crash-report", "crash_report"]
 default = ["audio", "balloon", "gpu", "qcow", "usb"]
 default-no-sandbox = []
 direct = ["balloon", "devices/direct", "arch/direct", "x86_64/direct"]
@@ -232,6 +233,7 @@ p9 = "*"
 
 [target.'cfg(windows)'.dependencies]
 anti_tamper = { path = "anti_tamper" }
+crash_report = { path = "crash_report", optional = true }
 cros_async =  { path = "cros_async" }
 ctrlc = "*"
 futures = "0.3"
