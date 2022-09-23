@@ -3033,6 +3033,19 @@ pub fn start_devices(opts: DevicesCommand) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Setup crash reporting for a process. Each process MUST provide a unique `product_type` to avoid
+/// making crash reports incomprehensible.
+#[cfg(feature = "crash-report")]
+pub fn setup_emulator_crash_reporting(_cfg: &Config) -> anyhow::Result<String> {
+    crash_report::setup_crash_reporting(crash_report::CrashReportAttributes {
+        product_type: "emulator".to_owned(),
+        pipe_name: None,
+        report_uuid: None,
+        product_name: None,
+        product_version: None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;

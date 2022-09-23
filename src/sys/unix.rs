@@ -3,6 +3,8 @@
 // found in the LICENSE file.
 
 pub(crate) mod main;
+#[cfg(not(feature = "crash-report"))]
 mod panic_hook;
 
+#[cfg(not(feature = "crash-report"))]
 pub(crate) use panic_hook::set_panic_hook;

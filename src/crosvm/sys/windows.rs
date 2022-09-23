@@ -9,3 +9,6 @@ pub(crate) mod broker;
 pub(crate) mod exit;
 #[cfg(feature = "stats")]
 pub(crate) mod stats;
+
+#[cfg(feature = "crash-report")]
+pub(crate) use broker::setup_emulator_crash_reporting;

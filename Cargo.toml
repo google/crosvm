@@ -113,9 +113,11 @@ all-linux = [
     # TODO(b/203105868): Enable remaining features on linux builds.
     "audio_cras",
     "composite-disk",
+    "crash-report",
     "default",
     "gdb",
     "power-monitor-powerd",
+    "slirp",
     "tpm",
     "virgl_renderer_next",
     "virgl_renderer",
@@ -182,6 +184,7 @@ base = "*"
 bit_field = { path = "bit_field" }
 broker_ipc = { path = "broker_ipc" }
 cfg-if = "1.0.0"
+crash_report = { path = "crash_report", optional = true }
 cros_async = { path = "cros_async" }
 crosvm_plugin = { path = "crosvm_plugin", optional = true }
 data_model = "*"
@@ -233,7 +236,6 @@ p9 = "*"
 
 [target.'cfg(windows)'.dependencies]
 anti_tamper = { path = "anti_tamper" }
-crash_report = { path = "crash_report", optional = true }
 cros_async =  { path = "cros_async" }
 ctrlc = "*"
 futures = "0.3"
