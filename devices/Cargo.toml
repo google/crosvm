@@ -5,6 +5,7 @@ authors = ["The Chromium OS Authors"]
 edition = "2021"
 
 [features]
+arc_quota = ["dbus", "protobuf", "system_api"]
 audio = []
 audio_cras = ["libcras"]
 balloon = []

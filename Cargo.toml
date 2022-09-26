@@ -112,6 +112,7 @@ exclude = [
 [features]
 all-linux = [
     # TODO(b/203105868): Enable remaining features on linux builds.
+    "arc_quota",
     "audio_cras",
     "composite-disk",
     "crash-report",
@@ -126,10 +127,11 @@ all-linux = [
     "x",
     ]
 win64 = [ "balloon", "crash_report", "haxm", "stats" ]
+arc_quota = ["devices/arc_quota"]
 audio = ["devices/audio"]
 audio_cras = ["devices/audio_cras"]
 balloon = ["devices/balloon", "vm_control/balloon"]
-chromeos = ["base/chromeos", "audio_cras", "devices/chromeos", "panic-memfd"]
+chromeos = ["base/chromeos", "audio_cras", "devices/chromeos", "panic-memfd", "arc_quota"]
 composite-disk = ["protos/composite-disk", "protobuf", "disk/composite-disk"]
 crash-report = ["broker_ipc/crash-report", "crash_report"]
 default = ["audio", "balloon", "gpu", "qcow", "usb"]

@@ -53,20 +53,20 @@ use fuse::filesystem::ZeroCopyWriter;
 use fuse::filesystem::ROOT_ID;
 use fuse::sys::WRITE_KILL_PRIV;
 use fuse::Mapper;
-#[cfg(feature = "chromeos")]
+#[cfg(feature = "arc_quota")]
 use protobuf::Message;
 use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
-#[cfg(feature = "chromeos")]
+#[cfg(feature = "arc_quota")]
 use system_api::client::OrgChromiumArcQuota;
-#[cfg(feature = "chromeos")]
+#[cfg(feature = "arc_quota")]
 use system_api::UserDataAuth::SetMediaRWDataFileProjectIdReply;
-#[cfg(feature = "chromeos")]
+#[cfg(feature = "arc_quota")]
 use system_api::UserDataAuth::SetMediaRWDataFileProjectIdRequest;
-#[cfg(feature = "chromeos")]
+#[cfg(feature = "arc_quota")]
 use system_api::UserDataAuth::SetMediaRWDataFileProjectInheritanceFlagReply;
-#[cfg(feature = "chromeos")]
+#[cfg(feature = "arc_quota")]
 use system_api::UserDataAuth::SetMediaRWDataFileProjectInheritanceFlagRequest;
 
 use crate::virtio::fs::caps::Capability;
@@ -87,11 +87,11 @@ const SELINUX_XATTR: &[u8] = b"security.selinux";
 const FSCRYPT_KEY_DESCRIPTOR_SIZE: usize = 8;
 const FSCRYPT_KEY_IDENTIFIER_SIZE: usize = 16;
 
-#[cfg(feature = "chromeos")]
+#[cfg(feature = "arc_quota")]
 const FS_PROJINHERIT_FL: c_int = 0x20000000;
 
 // 25 seconds is the default timeout for dbus-send.
-#[cfg(feature = "chromeos")]
+#[cfg(feature = "arc_quota")]
 const DEFAULT_DBUS_TIMEOUT: Duration = Duration::from_secs(25);
 
 #[repr(C)]
@@ -519,7 +519,7 @@ pub struct Config {
     // check so we consult this list when the VM tries to set the project quota and the process uid
     // doesn't match the owner uid. In that case, all uids in this list are treated as if they have
     // CAP_FOWNER.
-    #[cfg(feature = "chromeos")]
+    #[cfg(feature = "arc_quota")]
     pub privileged_quota_uids: Vec<libc::uid_t>,
 
     /// Use DAX for shared files.
@@ -551,7 +551,7 @@ impl Default for Config {
             writeback: false,
             rewrite_security_xattrs: false,
             ascii_casefold: false,
-            #[cfg(feature = "chromeos")]
+            #[cfg(feature = "arc_quota")]
             privileged_quota_uids: Default::default(),
             use_dax: false,
             posix_acl: true,
@@ -591,9 +591,9 @@ pub struct PassthroughFs {
     zero_message_opendir: AtomicBool,
 
     // Used to communicate with other processes using D-Bus.
-    #[cfg(feature = "chromeos")]
+    #[cfg(feature = "arc_quota")]
     dbus_connection: Option<Mutex<dbus::blocking::Connection>>,
-    #[cfg(feature = "chromeos")]
+    #[cfg(feature = "arc_quota")]
     dbus_fd: Option<std::os::unix::io::RawFd>,
 
     cfg: Config,
@@ -614,7 +614,7 @@ impl PassthroughFs {
         })?;
 
         // Privileged UIDs can use D-Bus to perform some operations.
-        #[cfg(feature = "chromeos")]
+        #[cfg(feature = "arc_quota")]
         let (dbus_connection, dbus_fd) = if cfg.privileged_quota_uids.is_empty() {
             (None, None)
         } else {
@@ -645,9 +645,9 @@ impl PassthroughFs {
             zero_message_open: AtomicBool::new(false),
             zero_message_opendir: AtomicBool::new(false),
 
-            #[cfg(feature = "chromeos")]
+            #[cfg(feature = "arc_quota")]
             dbus_connection,
-            #[cfg(feature = "chromeos")]
+            #[cfg(feature = "arc_quota")]
             dbus_fd,
 
             cfg,
@@ -659,9 +659,9 @@ impl PassthroughFs {
     }
 
     pub fn keep_rds(&self) -> Vec<RawDescriptor> {
-        #[cfg_attr(not(feature = "chromeos"), allow(unused_mut))]
+        #[cfg_attr(not(feature = "arc_quota"), allow(unused_mut))]
         let mut keep_rds = vec![self.proc.as_raw_descriptor()];
-        #[cfg(feature = "chromeos")]
+        #[cfg(feature = "arc_quota")]
         if let Some(fd) = self.dbus_fd {
             keep_rds.push(fd);
         }
@@ -1026,7 +1026,7 @@ impl PassthroughFs {
 
     fn set_fsxattr<R: io::Read>(
         &self,
-        #[cfg_attr(not(feature = "chromeos"), allow(unused_variables))] ctx: Context,
+        #[cfg_attr(not(feature = "arc_quota"), allow(unused_variables))] ctx: Context,
         inode: Inode,
         handle: Handle,
         r: R,
@@ -1039,12 +1039,12 @@ impl PassthroughFs {
 
         let in_attr = fsxattr::from_reader(r)?;
 
-        #[cfg(feature = "chromeos")]
+        #[cfg(feature = "arc_quota")]
         let st = stat(&*data)?;
 
         // Changing quota project ID requires CAP_FOWNER or being file owner.
         // Here we use privileged_quota_uids because we cannot perform a CAP_FOWNER check.
-        #[cfg(feature = "chromeos")]
+        #[cfg(feature = "arc_quota")]
         if ctx.uid == st.st_uid || self.cfg.privileged_quota_uids.contains(&ctx.uid) {
             // Get the current fsxattr.
             let mut buf = MaybeUninit::<fsxattr>::zeroed();
@@ -1116,7 +1116,7 @@ impl PassthroughFs {
 
     fn set_flags<R: io::Read>(
         &self,
-        #[cfg_attr(not(feature = "chromeos"), allow(unused_variables))] ctx: Context,
+        #[cfg_attr(not(feature = "arc_quota"), allow(unused_variables))] ctx: Context,
         inode: Inode,
         handle: Handle,
         r: R,
@@ -1130,11 +1130,11 @@ impl PassthroughFs {
         // The ioctl encoding is a long but the parameter is actually an int.
         let in_flags = c_int::from_reader(r)?;
 
-        #[cfg(feature = "chromeos")]
+        #[cfg(feature = "arc_quota")]
         let st = stat(&*data)?;
 
         // Only privleged uid can perform FS_IOC_SETFLAGS through cryptohome.
-        #[cfg(feature = "chromeos")]
+        #[cfg(feature = "arc_quota")]
         if ctx.uid == st.st_uid || self.cfg.privileged_quota_uids.contains(&ctx.uid) {
             // Get the current flag.
             let mut buf = MaybeUninit::<c_int>::zeroed();
