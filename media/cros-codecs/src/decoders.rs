@@ -126,6 +126,11 @@ pub trait VideoDecoder {
     /// Gets the number of output resources left in the backend after accounting
     /// for any buffers that might be queued in the decoder.
     fn num_resources_left(&self) -> Option<usize>;
+
+    /// Polls the decoder, emitting frames for all queued decode requests. This
+    /// is similar to flush, but it does not change the state of the decoded
+    /// picture buffer nor does it reset any internal state.
+    fn poll(&mut self, block: bool) -> Result<Vec<Box<dyn DynDecodedHandle>>>;
 }
 
 pub trait DynDecodedHandle {

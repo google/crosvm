@@ -439,6 +439,21 @@ impl<T: DecodedHandle + DynDecodedHandle + 'static> VideoDecoder for Decoder<T> 
             Some(left_in_the_backend)
         }
     }
+
+    fn poll(&mut self, block: bool) -> VideoDecoderResult<Vec<Box<dyn DynDecodedHandle>>> {
+        let blocking_mode = if block {
+            BlockingMode::Blocking
+        } else {
+            BlockingMode::NonBlocking
+        };
+
+        let handles = self.backend.poll(blocking_mode)?;
+
+        Ok(handles
+            .into_iter()
+            .map(|h| Box::new(h) as Box<dyn DynDecodedHandle>)
+            .collect())
+    }
 }
 #[cfg(test)]
 pub mod tests {
