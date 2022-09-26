@@ -6,3 +6,7 @@ edition = "2021"
 
 [lib]
 path = "src/system_api.rs"
+
+[target.'cfg(unix)'.dependencies]
+dbus = "0.9"
+protobuf = "2.24"

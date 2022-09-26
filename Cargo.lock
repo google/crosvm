@@ -1688,6 +1688,10 @@ dependencies = [
 [[package]]
 name = "system_api"
 version = "0.1.0"
+dependencies = [
+ "dbus",
+ "protobuf",
+]
 
 [[package]]
 name = "tempfile"

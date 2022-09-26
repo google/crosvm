@@ -78,6 +78,7 @@ members = [
     "resources",
     "rutabaga_gfx",
     "serde_keyvalue",
+    "system_api",
     "tpm2",
     "tpm2-sys",
     "tracing",
@@ -262,6 +263,5 @@ data_model = { path = "common/data_model" }
 libcras = { path = "libcras_stub" } # ignored by ebuild
 p9 = { path = "common/p9" } # ignored by ebuild
 sync = { path = "common/sync" }
-system_api = { path = "system_api_stub" } # ignored by ebuild
 wire_format_derive = { path = "common/p9/wire_format_derive" } # ignored by ebuild
 minijail = { path = "third_party/minijail/rust/minijail" } # ignored by ebuild

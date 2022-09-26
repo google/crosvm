@@ -195,12 +195,14 @@ CHECKS: List[Check] = [
             "hypervisor/src/whpx/whpx_sys/*.h",
             "third_party/vmm_vhost/*",
             "net_sys/src/lib.rs",
+            "system_api/src/bindings/*",
         ],
         python_tools=True,
     ),
     Check(
         check_rust_format,
         files=["**.rs"],
+        exclude=["system_api/src/bindings/*"],
         can_fix=True,
     ),
     Check(
