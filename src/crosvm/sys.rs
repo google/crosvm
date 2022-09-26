@@ -14,9 +14,9 @@ cfg_if::cfg_if! {
 
         #[cfg(feature = "gpu")]
         pub(crate) use unix::gpu::GpuRenderServerParameters;
-        #[cfg(all(feature = "gpu", feature = "plugin"))]
+        #[cfg(all(feature = "virgl_renderer_next", feature = "plugin"))]
         pub(crate) use unix::gpu::start_gpu_render_server;
-        #[cfg(all(feature = "gpu", feature = "plugin"))]
+        #[cfg(all(feature = "virgl_renderer_next", feature = "plugin"))]
         pub(crate) use unix::jail_helpers;
     } else if #[cfg(windows)] {
         use windows as platform;

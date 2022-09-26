@@ -97,7 +97,7 @@ use crate::Config;
 
 const MAX_DATAGRAM_SIZE: usize = 4096;
 const MAX_VCPU_DATAGRAM_SIZE: usize = 0x40000;
-#[cfg(feature = "gpu")]
+#[cfg(feature = "virgl_renderer_next")]
 const CROSVM_GPU_SERVER_FD_ENV: &str = "CROSVM_GPU_SERVER_FD";
 
 /// An error that occurs when communicating with the plugin process.
