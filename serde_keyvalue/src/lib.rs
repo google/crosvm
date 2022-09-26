@@ -294,7 +294,7 @@
 //!
 //! Most of the time, similar functionality can be obtained by implementing a custom deserializer
 //! that parses the embedding struct's member and then the flattened struct in a specific order
-//! using the [`serde_keyvalue::key_values::KeyValueDeserializer`] interface directly.
+//! using the [`key_values::KeyValueDeserializer`] interface directly.
 //!
 //! Another limitation of using `flatten` that is inherent to serde is that it won't allow
 //! `deny_unknown_fields` to be used in either the embedding or the flattened struct.
