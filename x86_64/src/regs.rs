@@ -160,10 +160,16 @@ pub fn mtrr_msrs(vm: &dyn Vm, pci_start: u64) -> Vec<Register> {
 ///
 /// Currently only sets IA32_TSC to 0.
 pub fn default_msrs() -> Vec<Register> {
-    vec![Register {
-        id: crate::msr_index::MSR_IA32_TSC,
-        value: 0x0,
-    }]
+    vec![
+        Register {
+            id: crate::msr_index::MSR_IA32_TSC,
+            value: 0x0,
+        },
+        Register {
+            id: crate::msr_index::MSR_IA32_MISC_ENABLE,
+            value: crate::msr_index::MSR_IA32_MISC_ENABLE_FAST_STRING as u64,
+        },
+    ]
 }
 
 /// Configure Model specific registers for long (64-bit) mode.
