@@ -60,6 +60,8 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         disk.block_size,
         None,
         None,
+        None,
+        None,
     )?)
     .into_backend(&ex)?;
 

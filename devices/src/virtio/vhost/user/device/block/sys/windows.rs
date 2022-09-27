@@ -73,6 +73,8 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         disk_option.block_size,
         None,
         None,
+        None,
+        None,
     )?)
     .into_backend(&ex)?;
 

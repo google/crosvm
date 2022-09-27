@@ -85,9 +85,8 @@ use crate::virtio::SignalableInterrupt;
 use crate::virtio::VirtioDevice;
 use crate::virtio::Writer;
 
-const QUEUE_SIZE: u16 = 256;
-pub const NUM_QUEUES: u16 = 16;
-const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE; NUM_QUEUES as usize];
+const DEFAULT_QUEUE_SIZE: u16 = 256;
+pub const DEFAULT_NUM_QUEUES: u16 = 16;
 
 const SECTOR_SHIFT: u8 = 9;
 const SECTOR_SIZE: u64 = 0x01 << SECTOR_SHIFT;
@@ -573,6 +572,7 @@ pub struct BlockAsync {
     pub(crate) block_size: u32,
     pub(crate) id: Option<BlockId>,
     pub(crate) control_tube: Option<Tube>,
+    pub(crate) queue_sizes: Vec<u16>,
     kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<(Box<dyn DiskFile>, Option<Tube>)>>,
 }
@@ -587,6 +587,8 @@ impl BlockAsync {
         block_size: u32,
         id: Option<BlockId>,
         control_tube: Option<Tube>,
+        queue_size: Option<u16>,
+        num_queues: Option<u16>,
     ) -> SysResult<BlockAsync> {
         if block_size % SECTOR_SIZE as u32 != 0 {
             error!(
@@ -603,10 +605,23 @@ impl BlockAsync {
                 disk_size, block_size,
             );
         }
+        let num_queues = num_queues.unwrap_or(DEFAULT_NUM_QUEUES);
+        let multi_queue = match num_queues {
+            0 => panic!("Number of queues cannot be zero for a block device"),
+            1 => false,
+            _ => true,
+        };
+        let q_size = queue_size.unwrap_or(DEFAULT_QUEUE_SIZE);
+        if !q_size.is_power_of_two() {
+            error!("queue size {} is not a power of 2.", q_size);
+            return Err(SysError::new(libc::EINVAL));
+        }
+        let queue_sizes = vec![q_size; num_queues as usize];
 
-        let avail_features = Self::build_avail_features(base_features, read_only, sparse, true);
+        let avail_features =
+            Self::build_avail_features(base_features, read_only, sparse, multi_queue);
 
-        let seg_max = get_seg_max(QUEUE_SIZE);
+        let seg_max = get_seg_max(q_size);
 
         Ok(BlockAsync {
             disk_image: Some(disk_image),
@@ -617,6 +632,7 @@ impl BlockAsync {
             seg_max,
             block_size,
             id,
+            queue_sizes,
             kill_evt: None,
             worker_thread: None,
             control_tube,
@@ -875,13 +891,18 @@ impl VirtioDevice for BlockAsync {
     }
 
     fn queue_max_sizes(&self) -> &[u16] {
-        QUEUE_SIZES
+        &self.queue_sizes
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
         let config_space = {
             let disk_size = self.disk_size.load(Ordering::Acquire);
-            Self::build_config_space(disk_size, self.seg_max, self.block_size, NUM_QUEUES)
+            Self::build_config_space(
+                disk_size,
+                self.seg_max,
+                self.block_size,
+                self.queue_sizes.len() as u16,
+            )
         };
         copy_config(data, 0, config_space.as_slice(), offset);
     }
@@ -1015,7 +1036,18 @@ mod tests {
         f.set_len(0x1000).unwrap();
 
         let features = base_features(ProtectionType::Unprotected);
-        let b = BlockAsync::new(features, Box::new(f), true, false, 512, None, None).unwrap();
+        let b = BlockAsync::new(
+            features,
+            Box::new(f),
+            true,
+            false,
+            512,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
         let mut num_sectors = [0u8; 4];
         b.read_config(0, &mut num_sectors);
         // size is 0x1000, so num_sectors is 8 (4096/512).
@@ -1035,7 +1067,18 @@ mod tests {
         f.set_len(0x1000).unwrap();
 
         let features = base_features(ProtectionType::Unprotected);
-        let b = BlockAsync::new(features, Box::new(f), true, false, 4096, None, None).unwrap();
+        let b = BlockAsync::new(
+            features,
+            Box::new(f),
+            true,
+            false,
+            4096,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
         let mut blk_size = [0u8; 4];
         b.read_config(20, &mut blk_size);
         // blk_size should be 4096 (0x1000).
@@ -1052,7 +1095,18 @@ mod tests {
         {
             let f = File::create(&path).unwrap();
             let features = base_features(ProtectionType::Unprotected);
-            let b = BlockAsync::new(features, Box::new(f), false, true, 512, None, None).unwrap();
+            let b = BlockAsync::new(
+                features,
+                Box::new(f),
+                false,
+                true,
+                512,
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
             // writable device should set VIRTIO_BLK_F_FLUSH + VIRTIO_BLK_F_DISCARD
             // + VIRTIO_BLK_F_WRITE_ZEROES + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE
             // + VIRTIO_BLK_F_SEG_MAX + VIRTIO_BLK_F_MQ + VIRTIO_RING_F_EVENT_IDX
@@ -1063,7 +1117,18 @@ mod tests {
         {
             let f = File::create(&path).unwrap();
             let features = base_features(ProtectionType::Unprotected);
-            let b = BlockAsync::new(features, Box::new(f), false, false, 512, None, None).unwrap();
+            let b = BlockAsync::new(
+                features,
+                Box::new(f),
+                false,
+                false,
+                512,
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
             // read-only device should set VIRTIO_BLK_F_FLUSH and VIRTIO_BLK_F_RO
             // + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE + VIRTIO_BLK_F_SEG_MAX
             // + VIRTIO_BLK_F_MQ + VIRTIO_RING_F_EVENT_IDX
@@ -1074,12 +1139,68 @@ mod tests {
         {
             let f = File::create(&path).unwrap();
             let features = base_features(ProtectionType::Unprotected);
-            let b = BlockAsync::new(features, Box::new(f), true, true, 512, None, None).unwrap();
+            let b = BlockAsync::new(
+                features,
+                Box::new(f),
+                true,
+                true,
+                512,
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
             // read-only device should set VIRTIO_BLK_F_FLUSH and VIRTIO_BLK_F_RO
             // + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE + VIRTIO_BLK_F_SEG_MAX
             // + VIRTIO_BLK_F_MQ + VIRTIO_RING_F_EVENT_IDX
             assert_eq!(0x120001264, b.features());
         }
+    }
+
+    #[test]
+    fn check_runtime_blk_queue_configurability() {
+        let tempdir = TempDir::new().unwrap();
+        let mut path = tempdir.path().to_owned();
+        path.push("disk_image");
+        let features = base_features(ProtectionType::Unprotected);
+
+        // Default case
+        let f = File::create(&path).unwrap();
+        let b = BlockAsync::new(
+            features,
+            Box::new(f),
+            false,
+            true,
+            512,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            [DEFAULT_QUEUE_SIZE; DEFAULT_NUM_QUEUES as usize],
+            b.queue_max_sizes()
+        );
+
+        // Single queue of size 128
+        let f = File::create(&path).unwrap();
+        let b = BlockAsync::new(
+            features,
+            Box::new(f),
+            false,
+            false,
+            512,
+            None,
+            None,
+            Some(128),
+            Some(1),
+        )
+        .unwrap();
+        assert_eq!([128; 1], b.queue_max_sizes());
+        // Single queue device should not set VIRTIO_BLK_F_MQ
+        assert_eq!(0, b.features() & (1 << VIRTIO_BLK_F_MQ) as u64);
     }
 
     #[test]
