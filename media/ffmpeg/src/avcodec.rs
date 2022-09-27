@@ -772,6 +772,21 @@ impl AvFrame {
             (*self.0).pts = ts;
         }
     }
+
+    /// Query if this AvFrame is writable, i.e. it is refcounted and the refcounts are 1.
+    pub fn is_writable(&self) -> bool {
+        // Safe because self.0 is a valid AVFrame reference.
+        unsafe { ffi::av_frame_is_writable(self.0) != 0 }
+    }
+
+    /// If the frame is not writable already (see [`is_writable`]), make a copy of its buffer to
+    /// make it writable.
+    ///
+    /// [`is_writable`]: AvFrame::is_writable
+    pub fn make_writable(&mut self) -> Result<(), AvFrameError> {
+        // Safe because self.0 is a valid AVFrame reference.
+        AvError::result(unsafe { ffi::av_frame_make_writable(self.0) }).map_err(Into::into)
+    }
 }
 
 impl AvFrameBuilder {
