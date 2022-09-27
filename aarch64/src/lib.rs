@@ -245,17 +245,22 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-fn fdt_offset(mem_size: u64, has_bios: bool) -> u64 {
+/// Returns the address in guest memory at which the FDT should be located.
+fn fdt_address(memory_end: GuestAddress, has_bios: bool) -> GuestAddress {
     // TODO(rammuthiah) make kernel and BIOS startup use FDT from the same location. ARCVM startup
     // currently expects the kernel at 0x80080000 and the FDT at the end of RAM for unknown reasons.
     // Root cause and figure out how to fold these code paths together.
     if has_bios {
-        AARCH64_FDT_OFFSET_IN_BIOS_MODE
+        GuestAddress(AARCH64_PHYS_MEM_START + AARCH64_FDT_OFFSET_IN_BIOS_MODE)
     } else {
         // Put fdt up near the top of memory
         // TODO(sonnyrao): will have to handle this differently if there's
         // > 4GB memory
-        mem_size - AARCH64_FDT_MAX_SIZE - 0x10000
+        memory_end
+            .checked_sub(AARCH64_FDT_MAX_SIZE)
+            .expect("Not enough memory for FDT")
+            .checked_sub(0x10000)
+            .expect("Not enough memory for FDT")
     }
 }
 
@@ -288,7 +293,7 @@ impl arch::LinuxArch for AArch64 {
 
     fn get_system_allocator_config<V: Vm>(vm: &V) -> SystemAllocatorConfig {
         Self::get_resource_allocator_config(
-            vm.get_memory().memory_size(),
+            vm.get_memory().end_addr(),
             vm.get_guest_phys_addr_bits(),
         )
     }
@@ -576,6 +581,7 @@ impl arch::LinuxArch for AArch64 {
             timeout_sec: VMWDT_DEFAULT_TIMEOUT_SEC,
         };
 
+        let memory_end = GuestAddress(AARCH64_PHYS_MEM_START + components.memory_size);
         fdt::create_fdt(
             AARCH64_FDT_MAX_SIZE as usize,
             &mem,
@@ -585,7 +591,7 @@ impl arch::LinuxArch for AArch64 {
             vcpu_count as u32,
             components.cpu_clusters,
             components.cpu_capacity,
-            fdt_offset(components.memory_size, has_bios),
+            fdt_address(memory_end, has_bios),
             cmdline.as_str(),
             initrd,
             components.android_fstab,
@@ -737,15 +743,15 @@ impl AArch64 {
     ///
     /// # Arguments
     ///
-    /// * `mem_size` - Size of guest memory (RAM) in bytes.
+    /// * `memory_end` - The first address beyond the end of guest memory.
     /// * `guest_phys_addr_bits` - Size of guest physical addresses (IPA) in bits.
     fn get_resource_allocator_config(
-        mem_size: u64,
+        memory_end: GuestAddress,
         guest_phys_addr_bits: u8,
     ) -> SystemAllocatorConfig {
         let guest_phys_end = 1u64 << guest_phys_addr_bits;
         // The platform MMIO region is immediately past the end of RAM.
-        let plat_mmio_base = AARCH64_PHYS_MEM_START + mem_size;
+        let plat_mmio_base = memory_end.offset();
         let plat_mmio_size = AARCH64_PLATFORM_MMIO_SIZE;
         // The high MMIO region is the rest of the address space after the platform MMIO region.
         let high_mmio_base = plat_mmio_base + plat_mmio_size;
@@ -867,9 +873,9 @@ impl AArch64 {
             }
 
             /* X0 -- fdt address */
-            let mem_size = guest_mem.memory_size();
-            let fdt_addr = (AARCH64_PHYS_MEM_START + fdt_offset(mem_size, has_bios)) as u64;
-            vcpu.set_one_reg(VcpuRegAArch64::X(0), fdt_addr)
+            let memory_end = guest_mem.end_addr();
+            let fdt_addr = fdt_address(memory_end, has_bios);
+            vcpu.set_one_reg(VcpuRegAArch64::X(0), fdt_addr.offset())
                 .map_err(Error::SetReg)?;
 
             if matches!(

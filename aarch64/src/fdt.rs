@@ -27,9 +27,8 @@ use crate::AARCH64_GIC_CPUI_SIZE;
 use crate::AARCH64_GIC_DIST_BASE;
 use crate::AARCH64_GIC_DIST_SIZE;
 use crate::AARCH64_GIC_REDIST_SIZE;
-// This is the start of DRAM in the physical address space.
-use crate::AARCH64_PHYS_MEM_START;
 use crate::AARCH64_PMU_IRQ;
+use crate::AARCH64_PROTECTED_VM_FW_START;
 // These are RTC related constants
 use crate::AARCH64_RTC_ADDR;
 use crate::AARCH64_RTC_IRQ;
@@ -60,13 +59,20 @@ const IRQ_TYPE_LEVEL_HIGH: u32 = 0x00000004;
 const IRQ_TYPE_LEVEL_LOW: u32 = 0x00000008;
 
 fn create_memory_node(fdt: &mut FdtWriter, guest_mem: &GuestMemory) -> Result<()> {
-    let mem_size = guest_mem.memory_size();
-    let mem_reg_prop = [AARCH64_PHYS_MEM_START, mem_size];
+    let mut mem_reg_prop = Vec::new();
+    for region in guest_mem.guest_memory_regions() {
+        if region.0.offset() == AARCH64_PROTECTED_VM_FW_START {
+            continue;
+        }
+        mem_reg_prop.push(region.0.offset());
+        mem_reg_prop.push(region.1 as u64);
+    }
 
     let memory_node = fdt.begin_node("memory")?;
     fdt.property_string("device_type", "memory")?;
     fdt.property_array_u64("reg", &mem_reg_prop)?;
     fdt.end_node(memory_node)?;
+
     Ok(())
 }
 
@@ -518,7 +524,7 @@ pub fn create_fdt(
     num_cpus: u32,
     cpu_clusters: Vec<Vec<usize>>,
     cpu_capacity: BTreeMap<usize, u32>,
-    fdt_load_offset: u64,
+    fdt_address: GuestAddress,
     cmdline: &str,
     initrd: Option<(GuestAddress, usize)>,
     android_fstab: Option<File>,
@@ -562,7 +568,6 @@ pub fn create_fdt(
 
     let fdt_final = fdt.finish(fdt_max_size)?;
 
-    let fdt_address = GuestAddress(AARCH64_PHYS_MEM_START + fdt_load_offset);
     let written = guest_mem
         .write_at_addr(fdt_final.as_slice(), fdt_address)
         .map_err(|_| Error::FdtGuestMemoryWriteError)?;

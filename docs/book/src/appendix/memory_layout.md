@@ -71,7 +71,7 @@ These apply when no bootloader is passed, so crosvm boots a kernel directly.
 | ------------------------- | ----------------- | --------------- | ----- | ---------------------------- |
 | [`AARCH64_KERNEL_OFFSET`] | `8080_0000`       |                 |       | Kernel load location in RAM  |
 | [`initrd_addr`]           | after kernel      |                 |       | Linux initrd location in RAM |
-| [`fdt_offset`]            | before end of RAM |                 | 2 MiB | Flattened device tree in RAM |
+| [`fdt_address`]           | before end of RAM |                 | 2 MiB | Flattened device tree in RAM |
 
 ### Layout when booting a bootloader
 
@@ -97,6 +97,6 @@ These apply when a bootloader is passed with `--bios`.
 [`high_mmio_base`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=554?q=high_mmio_base
 [`aarch64_kernel_offset`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=35?q=AARCH64_KERNEL_OFFSET
 [`initrd_addr`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=270?q=initrd_addr
-[`fdt_offset`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=184?q=fdt_offset
+[`fdt_address`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=184?q=fdt_address
 [`aarch64_fdt_offset_in_bios_mode`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=49?q=AARCH64_FDT_OFFSET_IN_BIOS_MODE
 [`aarch64_bios_offset`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=51?q=AARCH64_BIOS_OFFSET
