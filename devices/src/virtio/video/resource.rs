@@ -301,7 +301,7 @@ impl GuestResource {
                 // Safe because `buffer_info.file` is a valid file descriptor and we are stealing
                 // it.
                 desc: unsafe {
-                    SafeDescriptor::from_raw_descriptor(buffer_info.file.into_raw_descriptor())
+                    SafeDescriptor::from_raw_descriptor(buffer_info.handle.into_raw_descriptor())
                 },
                 modifier: buffer_info.modifier,
             }),
