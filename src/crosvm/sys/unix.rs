@@ -882,7 +882,7 @@ fn create_devices(
                 devices.push((Box::new(dev) as Box<dyn BusDeviceObj>, stub.jail));
             }
             VirtioTransportType::Mmio => {
-                let dev = VirtioMmioDevice::new(vm.get_memory().clone(), stub.dev)
+                let dev = VirtioMmioDevice::new(vm.get_memory().clone(), stub.dev, false)
                     .context("failed to create virtio mmio dev")?;
                 devices.push((Box::new(dev) as Box<dyn BusDeviceObj>, stub.jail));
             }
@@ -1295,7 +1295,7 @@ fn create_guest_memory(
     cfg: &Config,
     components: &VmComponents,
     hypervisor: &impl Hypervisor,
-) -> Result<CreateGuestMemoryResult> {
+) -> Result<GuestMemory> {
     let guest_mem_layout = Arch::guest_memory_layout(components, hypervisor)
         .context("failed to create guest memory layout")?;
 
