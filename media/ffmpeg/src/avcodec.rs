@@ -662,6 +662,12 @@ impl<'a> Drop for AvPacket<'a> {
     }
 }
 
+impl<'a> AsRef<ffi::AVPacket> for AvPacket<'a> {
+    fn as_ref(&self) -> &ffi::AVPacket {
+        &self.packet
+    }
+}
+
 impl<'a> AvPacket<'a> {
     /// Create a new AvPacket that borrows the `input_data`.
     ///
