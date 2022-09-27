@@ -854,17 +854,10 @@ impl<T: Encoder> EncoderDevice<T> {
                     },
                 )?;
 
-                let mut buffer_size = data_sizes[0];
-
-                // It seems that data_sizes[0] is 0 here. For now, take the stride
-                // from resource_info instead because we're always allocating <size> x 1
-                // blobs..
-                // TODO(alexlau): Figure out how to fix this.
-                if buffer_size == 0 {
-                    buffer_size = (dst_resource.resource.planes[0].offset
-                        + dst_resource.resource.planes[0].stride)
-                        as u32;
-                }
+                // data_sizes is always 0 for output buffers. We should fetch them from the
+                // negotiated parameters, although right now the VirtioObject backend uses the
+                // buffer's metadata instead.
+                let buffer_size = dst_resource.resource.planes[0].size as u32;
 
                 // Stores an output buffer to notify EOS.
                 // This is necessary because libvda is unable to indicate EOS along with returned buffers.
