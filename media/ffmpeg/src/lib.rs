@@ -30,3 +30,5 @@ pub use ffi::FF_PROFILE_VP9_0;
 pub use ffi::FF_PROFILE_VP9_1;
 pub use ffi::FF_PROFILE_VP9_2;
 pub use ffi::FF_PROFILE_VP9_3;
+
+pub use ffi::AVRational;

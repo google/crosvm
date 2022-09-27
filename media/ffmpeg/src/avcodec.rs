@@ -548,6 +548,24 @@ impl AvCodecContext {
         // Safe because the context is valid through the life of this object.
         AvError::result(unsafe { ffi::avcodec_send_frame(self.0, std::ptr::null()) })
     }
+
+    /// Set the time base for this context.
+    pub fn set_time_base(&mut self, time_base: AVRational) {
+        let context = unsafe { &mut *(self.0) };
+        context.time_base = time_base;
+    }
+
+    /// Set the bit rate for this context.
+    pub fn set_bit_rate(&mut self, bit_rate: u64) {
+        let context = unsafe { &mut *(self.0) };
+        context.bit_rate = bit_rate as _;
+    }
+
+    /// Set the max bit rate (rc_max_rate) for this context.
+    pub fn set_max_bit_rate(&mut self, bit_rate: u64) {
+        let context = unsafe { &mut *(self.0) };
+        context.rc_max_rate = bit_rate as _;
+    }
 }
 
 /// Trait for types that can be used as data provider for a `AVBuffer`.
