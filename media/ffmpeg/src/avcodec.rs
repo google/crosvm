@@ -669,6 +669,23 @@ impl<'a> AsRef<ffi::AVPacket> for AvPacket<'a> {
 }
 
 impl<'a> AvPacket<'a> {
+    /// Create an empty AvPacket without buffers.
+    ///
+    /// This packet should be only used with an encoder; in which case the encoder will
+    /// automatically allocate a buffer of appropriate size and store it inside this `AvPacket`.
+    pub fn empty() -> Self {
+        Self {
+            packet: ffi::AVPacket {
+                pts: AV_NOPTS_VALUE as i64,
+                dts: AV_NOPTS_VALUE as i64,
+                pos: -1,
+                // Safe because all the other elements of this struct can be zeroed.
+                ..unsafe { std::mem::zeroed() }
+            },
+            _buffer_data: PhantomData,
+        }
+    }
+
     /// Create a new AvPacket that borrows the `input_data`.
     ///
     /// The returned `AvPacket` will hold a reference to `input_data`, meaning that libavcodec might
