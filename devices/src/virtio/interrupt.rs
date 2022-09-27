@@ -50,6 +50,7 @@ enum Transport {
 struct InterruptInner {
     interrupt_status: AtomicUsize,
     transport: Transport,
+    async_intr_status: bool,
 }
 
 #[derive(Clone)]
@@ -78,12 +79,15 @@ impl SignalableInterrupt for Interrupt {
 
         // Set bit in ISR and inject the interrupt if it was not already pending.
         // Don't need to inject the interrupt if the guest hasn't processed it.
+        // In hypervisors where interrupt_status is updated asynchronously, inject the
+        // interrupt even if the previous interrupt appears to be already pending.
         if self
             .inner
             .as_ref()
             .interrupt_status
             .fetch_or(interrupt_status_mask as usize, Ordering::SeqCst)
             == 0
+            || self.inner.as_ref().async_intr_status
         {
             // Write to irqfd to inject PCI INTx or MMIO interrupt
             match &self.inner.as_ref().transport {
@@ -127,6 +131,7 @@ impl Interrupt {
         Interrupt {
             inner: Arc::new(InterruptInner {
                 interrupt_status: AtomicUsize::new(0),
+                async_intr_status: false,
                 transport: Transport::Pci {
                     pci: TransportPci {
                         irq_evt_lvl,
@@ -138,11 +143,12 @@ impl Interrupt {
         }
     }
 
-    pub fn new_mmio(irq_evt_edge: IrqEdgeEvent) -> Interrupt {
+    pub fn new_mmio(irq_evt_edge: IrqEdgeEvent, async_intr_status: bool) -> Interrupt {
         Interrupt {
             inner: Arc::new(InterruptInner {
                 interrupt_status: AtomicUsize::new(0),
                 transport: Transport::Mmio { irq_evt_edge },
+                async_intr_status,
             }),
         }
     }
