@@ -135,7 +135,7 @@ pub fn parse_gpu_options(s: &str) -> Result<GpuParameters, String> {
         gpu_params.__height_compat.take(),
     ) {
         let display_param =
-            GpuDisplayParameters::default_with_mode(GpuDisplayMode::Windowed { width, height });
+            GpuDisplayParameters::default_with_mode(GpuDisplayMode::Windowed(width, height));
         gpu_params.display_params.push(display_param);
     }
 
@@ -324,12 +324,6 @@ mod tests {
     use std::path::PathBuf;
 
     use argh::FromArgs;
-    #[cfg(feature = "gpu")]
-    use devices::virtio::DEFAULT_DISPLAY_HEIGHT;
-    #[cfg(feature = "gpu")]
-    use devices::virtio::DEFAULT_DISPLAY_WIDTH;
-    #[cfg(feature = "gpu")]
-    use devices::virtio::DEFAULT_REFRESH_RATE;
 
     use super::*;
     use crate::crosvm::config::from_key_values;
@@ -607,54 +601,30 @@ mod tests {
     #[cfg(feature = "gpu")]
     #[test]
     fn parse_gpu_display_options_valid() {
-        {
-            let gpu_params: GpuDisplayParameters = from_key_values("width=500,height=600").unwrap();
-            assert_eq!(gpu_params.get_virtual_display_size(), (500, 600));
-        }
-        {
-            let gpu_params: GpuDisplayParameters =
-                from_key_values("windowed,width=500,height=600").unwrap();
-            assert_eq!(gpu_params.get_virtual_display_size(), (500, 600));
-        }
-        {
-            let gpu_params: GpuDisplayParameters = from_key_values("windowed").unwrap();
-            assert_eq!(
-                gpu_params.get_virtual_display_size(),
-                (DEFAULT_DISPLAY_WIDTH, DEFAULT_DISPLAY_HEIGHT)
-            );
-            assert_eq!(gpu_params.hidden, false);
-            assert_eq!(gpu_params.refresh_rate, DEFAULT_REFRESH_RATE);
-        }
-        {
-            let gpu_params: GpuDisplayParameters =
-                from_key_values("width=500,height=600,hidden,refresh-rate=100").unwrap();
-            assert_eq!(gpu_params.get_virtual_display_size(), (500, 600));
-            assert_eq!(gpu_params.hidden, true);
-            assert_eq!(gpu_params.refresh_rate, 100);
-        }
-    }
+        // Default values.
+        let gpu_params: GpuDisplayParameters = from_key_values("").unwrap();
+        assert_eq!(gpu_params, GpuDisplayParameters::default());
 
-    #[cfg(feature = "gpu")]
-    #[test]
-    fn parse_gpu_display_options_invalid() {
-        {
-            assert!(from_key_values::<GpuDisplayParameters>("width=500").is_err());
-        }
-        {
-            assert!(from_key_values::<GpuDisplayParameters>("height=500").is_err());
-        }
-        {
-            assert!(from_key_values::<GpuDisplayParameters>("windowed,width=500").is_err());
-        }
-        {
-            assert!(from_key_values::<GpuDisplayParameters>("windowed,height=500").is_err());
-        }
-        {
-            assert!(from_key_values::<GpuDisplayParameters>("width").is_err());
-        }
-        {
-            assert!(from_key_values::<GpuDisplayParameters>("blah").is_err());
-        }
+        let gpu_params: GpuDisplayParameters = from_key_values("mode=windowed[800,600]").unwrap();
+        assert_eq!(
+            gpu_params,
+            GpuDisplayParameters {
+                mode: GpuDisplayMode::Windowed(800, 600),
+                ..Default::default()
+            }
+        );
+
+        assert!(from_key_values::<GpuDisplayParameters>("mode=invalid").is_err());
+
+        let gpu_params: GpuDisplayParameters = from_key_values("hidden,refresh-rate=100").unwrap();
+        assert_eq!(
+            gpu_params,
+            GpuDisplayParameters {
+                hidden: true,
+                refresh_rate: 100,
+                ..Default::default()
+            }
+        );
     }
 
     #[cfg(feature = "gpu")]
@@ -667,7 +637,7 @@ mod tests {
                     "--gpu",
                     "2D,width=500,height=600",
                     "--gpu-display",
-                    "width=700,height=800",
+                    "mode=windowed[700,800]",
                     "/dev/null",
                 ],
             )
@@ -694,7 +664,7 @@ mod tests {
                     "--gpu",
                     "2D",
                     "--gpu-display",
-                    "width=700,height=800",
+                    "mode=windowed[700,800]",
                     "/dev/null",
                 ],
             )

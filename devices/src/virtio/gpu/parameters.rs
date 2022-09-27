@@ -15,7 +15,6 @@ use serde::Serializer;
 use serde_keyvalue::FromKeyValues;
 
 pub use super::sys::DisplayMode;
-use super::sys::DisplayModeArg;
 use super::GpuMode;
 
 pub const DEFAULT_DISPLAY_WIDTH: u32 = 1280;
@@ -27,25 +26,20 @@ pub trait DisplayModeTrait {
     fn get_virtual_display_size(&self) -> (u32, u32);
 }
 
-// This struct is only used for argument parsing. It will be converted to platform-specific
-// `DisplayParameters` implementation.
-#[derive(Deserialize, FromKeyValues)]
+impl Default for DisplayMode {
+    fn default() -> Self {
+        Self::Windowed(DEFAULT_DISPLAY_WIDTH, DEFAULT_DISPLAY_HEIGHT)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, FromKeyValues)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-struct DisplayParametersArgs {
-    pub mode: Option<DisplayModeArg>,
-    pub width: Option<u32>,
-    pub height: Option<u32>,
+pub struct DisplayParameters {
+    #[serde(default)]
+    pub mode: DisplayMode,
     #[serde(default)]
     pub hidden: bool,
     #[serde(default = "default_refresh_rate")]
-    pub refresh_rate: u32,
-}
-
-#[derive(Clone, Debug, Deserialize, FromKeyValues)]
-#[serde(try_from = "DisplayParametersArgs")]
-pub struct DisplayParameters {
-    pub mode: DisplayMode,
-    pub hidden: bool,
     pub refresh_rate: u32,
 }
 
@@ -69,40 +63,7 @@ impl DisplayParameters {
 
 impl Default for DisplayParameters {
     fn default() -> Self {
-        Self::default_with_mode(default_windowed_mode())
-    }
-}
-
-impl TryFrom<DisplayParametersArgs> for DisplayParameters {
-    type Error = String;
-
-    fn try_from(args: DisplayParametersArgs) -> Result<Self, Self::Error> {
-        let mode = match args.mode.unwrap_or(DisplayModeArg::Windowed) {
-            DisplayModeArg::Windowed => match (args.width, args.height) {
-                (Some(width), Some(height)) => DisplayMode::Windowed { width, height },
-                (None, None) => default_windowed_mode(),
-                _ => {
-                    return Err(
-                        "must include both 'width' and 'height' if either is supplied".to_string(),
-                    )
-                }
-            },
-
-            #[cfg(windows)]
-            DisplayModeArg::BorderlessFullScreen => match (args.width, args.height) {
-                (None, None) => DisplayMode::BorderlessFullScreen(PhantomData),
-                _ => return Err("'width' and 'height' are invalid with borderless_full_screen"),
-            },
-        };
-
-        Ok(DisplayParameters::new(mode, args.hidden, args.refresh_rate))
-    }
-}
-
-fn default_windowed_mode() -> DisplayMode {
-    DisplayMode::Windowed {
-        width: DEFAULT_DISPLAY_WIDTH,
-        height: DEFAULT_DISPLAY_HEIGHT,
+        Self::default_with_mode(Default::default())
     }
 }
 

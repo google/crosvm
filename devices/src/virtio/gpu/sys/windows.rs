@@ -19,24 +19,17 @@ use crate::virtio::gpu::parameters::DisplayModeTrait;
 const DISPLAY_WIDTH_SOFT_MAX: u32 = 1920;
 const DISPLAY_HEIGHT_SOFT_MAX: u32 = 1080;
 
-// This struct is only used for argument parsing.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum WinDisplayModeArg {
-    Windowed,
-    BorderlessFullScreen,
-}
-
-#[derive(Clone, Debug)]
 pub enum WinDisplayMode<T> {
-    Windowed { width: u32, height: u32 },
+    Windowed(u32, u32),
     BorderlessFullScreen(PhantomData<T>),
 }
 
 impl DisplayModeTrait<T> for WinDisplayMode<T> {
     fn get_virtual_display_size(&self) -> (u32, u32) {
         let (width, height) = match self {
-            Self::Windowed { width, height, .. } => (*width, *height),
+            Self::Windowed(width, height) => (*width, *height),
             Self::BorderlessFullScreen(_) => {
                 let (width, height) = DisplayDataProvider::get_host_display_size();
                 adjust_virtual_display_size(width, height)
