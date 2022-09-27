@@ -56,8 +56,11 @@ pub mod worker;
 ))]
 compile_error!("The \"video-decoder\" feature requires at least one of \"ffmpeg\", \"libvda\" or \"vaapi\" to also be enabled.");
 
-#[cfg(all(feature = "video-encoder", not(feature = "libvda")))]
-compile_error!("The \"video-encoder\" feature requires \"libvda\" to also be enabled.");
+#[cfg(all(
+    feature = "video-encoder",
+    not(any(feature = "libvda", feature = "ffmpeg"))
+))]
+compile_error!("The \"video-encoder\" feature requires at least one of \"ffmpeg\" or \"libvda\" to also be enabled.");
 
 #[cfg(feature = "ffmpeg")]
 mod ffmpeg;
@@ -299,8 +302,15 @@ impl VirtioDevice for VideoDevice {
                         }
                         #[cfg(feature = "ffmpeg")]
                         VideoBackendType::Ffmpeg => {
-                            error!("ffmpeg encoder is not supported yet");
-                            return;
+                            let ffmpeg = encoder::backend::ffmpeg::FfmpegEncoder::new();
+
+                            match encoder::EncoderDevice::new(ffmpeg, resource_bridge, mem) {
+                                Ok(encoder) => Box::new(encoder),
+                                Err(e) => {
+                                    error!("Failed to create encoder device: {}", e);
+                                    return;
+                                }
+                            }
                         }
                         #[cfg(feature = "vaapi")]
                         VideoBackendType::Vaapi => {

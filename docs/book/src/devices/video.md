@@ -11,9 +11,9 @@ backends are:
 - `libvda`, a hardware-accelerated backend that supports both decoding and encoding by delegating
   the work to a running instance of Chrome. It can only be built and used in a Chrome OS
   environment.
-- `ffmpeg`, a software-based backend that only supports decoding at the moment. It exists to make
-  testing and development of virtio-video easier, as it does not require any particular hardware and
-  is based on a reliable codec library.
+- `ffmpeg`, a software-based backend that supports encoding and decoding. It exists to make testing
+  and development of virtio-video easier, as it does not require any particular hardware and is
+  based on a reliable codec library.
 
 The rest of this document will solely focus on the `ffmpeg` backend. More accelerated backends will
 be added in the future.
@@ -39,32 +39,42 @@ The resulting kernel image that can be passed to `crosvm` will be in
 
 ## Crosvm requirements
 
-Since virtio-video is still experimental, support is not built by default and must be explicitly
-enabled through the `video-decoder` feature. The Ffmpeg backend must also be enabled with the
-`ffmpeg` feature - since it only supports decoding for now, we don't enable the `video-encoder`
-feature.
+The virtio-video support is experimental and needs to be opted-in through the `"video-decoder"` or
+`"video-encoder"` Cargo feature. In the instruction below we'll be using the FFmpeg backend which
+requires the `"ffmpeg"` feature to be enabled as well.
+
+The following example builds crosvm with FFmpeg encoder and decoder backend support:
 
 ```sh
-cargo build --features "video-decoder,ffmpeg"
+cargo build --features "video-encoder,video-decoder,ffmpeg"
 ```
 
-To enable the decoder device, crosvm must also be started with the `--video-decoder=ffmpeg`
-command-line argument:
+To enable the **decoder** device, start crosvm with the `--video-decoder=ffmpeg` command-line
+argument:
 
 ```sh
 crosvm run --disable-sandbox --video-decoder=ffmpeg -c 4 -m 2048 --rwroot /path/to/disk.img --serial type=stdout,hardware=virtio-console,console=true,stdin=true /path/to/vmlinux.bin
+```
+
+Alternatively, to enable the **encoder** device, start crosvm with the `--video-encoder=ffmpeg`
+command-line argument:
+
+```sh
+crosvm run --disable-sandbox --video-encoder=ffmpeg -c 4 -m 2048 --rwroot /path/to/disk.img --serial type=stdout,hardware=virtio-console,console=true,stdin=true /path/to/vmlinux.bin
 ```
 
 If the guest kernel includes the virtio-video driver, then the device should be probed and show up.
 
 ## Testing the device from the guest
 
-Video capabilities are exposed to the guest using V4L2. The decoder device should appear as
-`/dev/videoX`, probably `/dev/video0` if there are no V4L2 devices.
+Video capabilities are exposed to the guest using V4L2. The encoder or decoder device should appear
+as `/dev/videoX`, probably `/dev/video0` if there are no additional V4L2 devices.
 
 ### Checking capabilities and formats
 
-`v4l2-ctl`, part of the `v4l-utils` package, can be used to confirm the device is here:
+`v4l2-ctl`, part of the `v4l-utils` package, can be used to test the device's existence.
+
+Example output for the decoder is shown below.
 
 ```sh
 v4l2-ctl -d/dev/video0 --info
@@ -111,7 +121,7 @@ ioctl: VIDIOC_ENUM_FMT
 
 ### Test decoding with ffmpeg
 
-[Ffmpeg](https://ffmpeg.org/) can be used to decode video streams with the virtio-video device.
+[FFmpeg](https://ffmpeg.org/) can be used to decode video streams with the virtio-video device.
 
 Simple VP8 stream:
 
@@ -145,6 +155,26 @@ cargo run --example simple_decoder test-25fps.h264 /dev/video0 --input_format h2
 
 This will decode `test-25fps.h264` and write the raw decoded frames in `NV12` format into
 `test-25fps.nv12`. You can check the result with e.g. [YUView](https://github.com/IENT/YUView).
+
+### Test encoding with ffmpeg
+
+[FFmpeg](https://ffmpeg.org/) can be used to encode video streams with the virtio-video device.
+
+The following examples generates a test clip through libavfilter and encode it using the virtual
+H.264, H.265 and VP8 encoder, respectively. (VP9 v4l2m2m support is missing in FFmpeg for some
+reason.)
+
+```sh
+# H264
+ffmpeg -f lavfi -i smptebars=duration=10:size=640x480:rate=30 \
+  -pix_fmt nv12 -c:v h264_v4l2m2m smptebars.h264.mp4
+# H265
+ffmpeg -f lavfi -i smptebars=duration=10:size=640x480:rate=30 \
+  -pix_fmt yuv420p -c:v hevc_v4l2m2m smptebars.h265.mp4
+# VP8
+ffmpeg -f lavfi -i smptebars=duration=10:size=640x480:rate=30 \
+  -pix_fmt yuv420p -c:v vp8_v4l2m2m smptebars.vp8.webm
+```
 
 [v3]: https://markmail.org/message/dmw3pr4fuajvarth
 [v5]: https://markmail.org/message/zqxmuf5x7aosbmmm
