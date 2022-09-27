@@ -1036,7 +1036,10 @@ impl<T: Encoder> EncoderDevice<T> {
             .ok_or(VideoError::InvalidStreamId(stream_id))?;
 
         let mut create_session = stream.encoder_session.is_none();
-        let resources_queued = stream.src_resources.len() > 0 || stream.dst_resources.len() > 0;
+        // TODO(ishitatsuyuki): We should additionally check that no resources are *attached* while
+        //                      a params is being set.
+        let src_resources_queued = stream.src_resources.len() > 0;
+        let dst_resources_queued = stream.dst_resources.len() > 0;
 
         // Dynamic framerate changes are allowed. The framerate can be set on either the input or
         // output queue. Changing the framerate can influence the selected H.264 level, as the
@@ -1049,7 +1052,7 @@ impl<T: Encoder> EncoderDevice<T> {
             stream.src_params.frame_rate = frame_rate;
             stream.dst_params.frame_rate = frame_rate;
             if let Some(ref mut encoder_session) = stream.encoder_session {
-                if !resources_queued {
+                if !(src_resources_queued || dst_resources_queued) {
                     create_session = true;
                 } else if let Err(e) = encoder_session.request_encoding_params_change(
                     stream.dst_bitrate,
@@ -1071,7 +1074,7 @@ impl<T: Encoder> EncoderDevice<T> {
                         .map(|resource_type| stream.src_params.resource_type != resource_type)
                         .unwrap_or(false)
                 {
-                    if resources_queued {
+                    if src_resources_queued {
                         // Buffers have already been queued and encoding has already started.
                         return Err(VideoError::InvalidOperation);
                     }
@@ -1108,7 +1111,7 @@ impl<T: Encoder> EncoderDevice<T> {
                         .map(|resource_type| stream.dst_params.resource_type != resource_type)
                         .unwrap_or(false)
                 {
-                    if resources_queued {
+                    if dst_resources_queued {
                         // Buffers have already been queued and encoding has already started.
                         return Err(VideoError::InvalidOperation);
                     }
