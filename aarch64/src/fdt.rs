@@ -63,12 +63,27 @@ const IRQ_TYPE_LEVEL_LOW: u32 = 0x00000008;
 
 fn create_memory_node(fdt: &mut FdtWriter, guest_mem: &GuestMemory) -> Result<()> {
     let mut mem_reg_prop = Vec::new();
-    for region in guest_mem.guest_memory_regions() {
+    let mut previous_memory_region_end = None;
+    let mut regions = guest_mem.guest_memory_regions();
+    regions.sort();
+    for region in regions {
         if region.0.offset() == AARCH64_PROTECTED_VM_FW_START {
             continue;
         }
+        // Merge with the previous region if possible.
+        if let Some(previous_end) = previous_memory_region_end {
+            if region.0 == previous_end {
+                *mem_reg_prop.last_mut().unwrap() += region.1 as u64;
+                previous_memory_region_end =
+                    Some(previous_end.checked_add(region.1 as u64).unwrap());
+                continue;
+            }
+            assert!(region.0 > previous_end, "Memory regions overlap");
+        }
+
         mem_reg_prop.push(region.0.offset());
         mem_reg_prop.push(region.1 as u64);
+        previous_memory_region_end = Some(region.0.checked_add(region.1 as u64).unwrap());
     }
 
     let memory_node = fdt.begin_node("memory")?;
