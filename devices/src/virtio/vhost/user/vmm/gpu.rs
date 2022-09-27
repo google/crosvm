@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::cell::RefCell;
-use std::path::Path;
 use std::thread;
 
 use base::error;
@@ -14,6 +13,7 @@ use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
 
 use crate::virtio::device_constants::gpu;
+use crate::virtio::vhost::user::vmm::Connection;
 use crate::virtio::vhost::user::vmm::Result;
 use crate::virtio::vhost::user::vmm::VhostUserHandler;
 use crate::virtio::DeviceType;
@@ -36,7 +36,7 @@ impl Gpu {
     /// `base_features` is the desired set of virtio features.
     /// `socket_path` is the path to the socket of the GPU device.
     /// `pci_bar_size` is the size for the PCI BAR in bytes
-    pub fn new<P: AsRef<Path>>(base_features: u64, socket_path: P) -> Result<Gpu> {
+    pub fn new(base_features: u64, connection: Connection) -> Result<Gpu> {
         let default_queue_size = gpu::QUEUE_SIZES.len();
 
         let allow_features = 1u64 << crate::virtio::VIRTIO_F_VERSION_1
@@ -52,8 +52,8 @@ impl Gpu {
         let allow_protocol_features =
             VhostUserProtocolFeatures::CONFIG | VhostUserProtocolFeatures::SLAVE_REQ;
 
-        let handler = VhostUserHandler::new_from_path(
-            socket_path,
+        let handler = VhostUserHandler::new_from_connection(
+            connection,
             default_queue_size as u64,
             allow_features,
             init_features,

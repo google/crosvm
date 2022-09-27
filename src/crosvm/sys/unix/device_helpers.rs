@@ -291,12 +291,24 @@ impl<'a> VirtioDeviceBuilder for DiskConfig<'a> {
     }
 }
 
+fn vhost_user_connection(path: &Path) -> Result<UnixStream> {
+    UnixStream::connect(path).with_context(|| {
+        format!(
+            "failed to connect to vhost-user socket path {}",
+            path.display()
+        )
+    })
+}
+
 pub fn create_vhost_user_block_device(
     protection_type: ProtectionType,
     opt: &VhostUserOption,
 ) -> DeviceResult {
-    let dev = VhostUserBlock::new(virtio::base_features(protection_type), &opt.socket)
-        .context("failed to set up vhost-user block device")?;
+    let dev = VhostUserBlock::new(
+        virtio::base_features(protection_type),
+        vhost_user_connection(&opt.socket)?,
+    )
+    .context("failed to set up vhost-user block device")?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -309,8 +321,11 @@ pub fn create_vhost_user_console_device(
     protection_type: ProtectionType,
     opt: &VhostUserOption,
 ) -> DeviceResult {
-    let dev = VhostUserConsole::new(virtio::base_features(protection_type), &opt.socket)
-        .context("failed to set up vhost-user console device")?;
+    let dev = VhostUserConsole::new(
+        virtio::base_features(protection_type),
+        vhost_user_connection(&opt.socket)?,
+    )
+    .context("failed to set up vhost-user console device")?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -325,7 +340,7 @@ pub fn create_vhost_user_fs_device(
 ) -> DeviceResult {
     let dev = VhostUserFs::new(
         virtio::base_features(protection_type),
-        &option.socket,
+        vhost_user_connection(&option.socket)?,
         &option.tag,
     )
     .context("failed to set up vhost-user fs device")?;
@@ -341,8 +356,11 @@ pub fn create_vhost_user_mac80211_hwsim_device(
     protection_type: ProtectionType,
     opt: &VhostUserOption,
 ) -> DeviceResult {
-    let dev = VhostUserMac80211Hwsim::new(virtio::base_features(protection_type), &opt.socket)
-        .context("failed to set up vhost-user mac80211_hwsim device")?;
+    let dev = VhostUserMac80211Hwsim::new(
+        virtio::base_features(protection_type),
+        vhost_user_connection(&opt.socket)?,
+    )
+    .context("failed to set up vhost-user mac80211_hwsim device")?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -355,8 +373,11 @@ pub fn create_vhost_user_snd_device(
     protection_type: ProtectionType,
     option: &VhostUserOption,
 ) -> DeviceResult {
-    let dev = VhostUserSnd::new(virtio::base_features(protection_type), &option.socket)
-        .context("failed to set up vhost-user snd device")?;
+    let dev = VhostUserSnd::new(
+        virtio::base_features(protection_type),
+        vhost_user_connection(&option.socket)?,
+    )
+    .context("failed to set up vhost-user snd device")?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -371,8 +392,11 @@ pub fn create_vhost_user_gpu_device(
 ) -> DeviceResult {
     // The crosvm gpu device expects us to connect the tube before it will accept a vhost-user
     // connection.
-    let dev = VhostUserGpu::new(virtio::base_features(protection_type), &opt.socket)
-        .context("failed to set up vhost-user gpu device")?;
+    let dev = VhostUserGpu::new(
+        virtio::base_features(protection_type),
+        vhost_user_connection(&opt.socket)?,
+    )
+    .context("failed to set up vhost-user gpu device")?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -873,8 +897,11 @@ pub fn create_vhost_user_net_device(
     protection_type: ProtectionType,
     opt: &VhostUserOption,
 ) -> DeviceResult {
-    let dev = VhostUserNet::new(virtio::base_features(protection_type), &opt.socket)
-        .context("failed to set up vhost-user net device")?;
+    let dev = VhostUserNet::new(
+        virtio::base_features(protection_type),
+        vhost_user_connection(&opt.socket)?,
+    )
+    .context("failed to set up vhost-user net device")?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -887,8 +914,11 @@ pub fn create_vhost_user_vsock_device(
     protection_type: ProtectionType,
     opt: &VhostUserOption,
 ) -> DeviceResult {
-    let dev = VhostUserVsock::new(virtio::base_features(protection_type), &opt.socket)
-        .context("failed to set up vhost-user vsock device")?;
+    let dev = VhostUserVsock::new(
+        virtio::base_features(protection_type),
+        vhost_user_connection(&opt.socket)?,
+    )
+    .context("failed to set up vhost-user vsock device")?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -903,8 +933,11 @@ pub fn create_vhost_user_wl_device(
 ) -> DeviceResult {
     // The crosvm wl device expects us to connect the tube before it will accept a vhost-user
     // connection.
-    let dev = VhostUserWl::new(virtio::base_features(protection_type), &opt.socket)
-        .context("failed to set up vhost-user wl device")?;
+    let dev = VhostUserWl::new(
+        virtio::base_features(protection_type),
+        vhost_user_connection(&opt.socket)?,
+    )
+    .context("failed to set up vhost-user wl device")?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -1057,7 +1090,7 @@ pub fn create_vhost_user_video_device(
 ) -> DeviceResult {
     let dev = VhostUserVideo::new(
         virtio::base_features(protection_type),
-        &opt.socket,
+        vhost_user_connection(&opt.socket)?,
         device_type,
     )
     .context("failed to set up vhost-user video device")?;

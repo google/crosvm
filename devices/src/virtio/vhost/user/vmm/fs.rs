@@ -3,8 +3,6 @@
 // found in the LICENSE file.
 
 use std::cell::RefCell;
-use std::os::unix::net::UnixStream;
-use std::path::Path;
 use std::thread;
 
 use base::error;
@@ -22,6 +20,7 @@ use crate::virtio::fs::virtio_fs_config;
 use crate::virtio::fs::FS_MAX_TAG_LEN;
 use crate::virtio::fs::QUEUE_SIZE;
 use crate::virtio::vhost::user::vmm::handler::VhostUserHandler;
+use crate::virtio::vhost::user::vmm::Connection;
 use crate::virtio::vhost::user::vmm::Error;
 use crate::virtio::vhost::user::vmm::Result;
 use crate::virtio::DeviceType;
@@ -37,7 +36,7 @@ pub struct Fs {
     queue_sizes: Vec<u16>,
 }
 impl Fs {
-    pub fn new<P: AsRef<Path>>(base_features: u64, socket_path: P, tag: &str) -> Result<Fs> {
+    pub fn new(base_features: u64, connection: Connection, tag: &str) -> Result<Fs> {
         if tag.len() > FS_MAX_TAG_LEN {
             return Err(Error::TagTooLong {
                 len: tag.len(),
@@ -57,8 +56,6 @@ impl Fs {
             num_request_queues: Le32::from(default_queue_size - 1),
         };
 
-        let socket = UnixStream::connect(&socket_path).map_err(Error::SocketConnect)?;
-
         let allow_features = 1u64 << crate::virtio::VIRTIO_F_VERSION_1
             | base_features
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
@@ -66,8 +63,8 @@ impl Fs {
         let allow_protocol_features =
             VhostUserProtocolFeatures::MQ | VhostUserProtocolFeatures::CONFIG;
 
-        let mut handler = VhostUserHandler::new_from_stream(
-            socket,
+        let mut handler = VhostUserHandler::new_from_connection(
+            connection,
             default_queue_size as u64,
             allow_features,
             init_features,

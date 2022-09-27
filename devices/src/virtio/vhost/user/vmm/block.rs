@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-mod sys;
-
 use std::cell::RefCell;
 use std::thread;
 
@@ -15,6 +13,7 @@ use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
 
+use crate::virtio::block::asynchronous::NUM_QUEUES;
 use crate::virtio::device_constants::block::VIRTIO_BLK_F_BLK_SIZE;
 use crate::virtio::device_constants::block::VIRTIO_BLK_F_DISCARD;
 use crate::virtio::device_constants::block::VIRTIO_BLK_F_FLUSH;
@@ -23,6 +22,8 @@ use crate::virtio::device_constants::block::VIRTIO_BLK_F_RO;
 use crate::virtio::device_constants::block::VIRTIO_BLK_F_SEG_MAX;
 use crate::virtio::device_constants::block::VIRTIO_BLK_F_WRITE_ZEROES;
 use crate::virtio::vhost::user::vmm::handler::VhostUserHandler;
+use crate::virtio::vhost::user::vmm::Connection;
+use crate::virtio::vhost::user::vmm::Result;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
@@ -38,7 +39,7 @@ pub struct Block {
 }
 
 impl Block {
-    fn get_all_features(base_features: u64) -> (u64, u64, VhostUserProtocolFeatures) {
+    pub fn new(base_features: u64, connection: Connection) -> Result<Block> {
         let allow_features = 1u64 << crate::virtio::VIRTIO_F_VERSION_1
             | 1 << VIRTIO_BLK_F_SEG_MAX
             | 1 << VIRTIO_BLK_F_RO
@@ -55,7 +56,21 @@ impl Block {
         let allow_protocol_features =
             VhostUserProtocolFeatures::CONFIG | VhostUserProtocolFeatures::MQ;
 
-        (allow_features, init_features, allow_protocol_features)
+        let mut handler = VhostUserHandler::new_from_connection(
+            connection,
+            NUM_QUEUES.into(), /* queues_num */
+            allow_features,
+            init_features,
+            allow_protocol_features,
+        )?;
+        let queue_sizes = handler.queue_sizes(QUEUE_SIZE, 1)?;
+
+        Ok(Block {
+            kill_evt: None,
+            worker_thread: None,
+            handler: RefCell::new(handler),
+            queue_sizes,
+        })
     }
 }
 

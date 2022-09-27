@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::cell::RefCell;
-use std::path::Path;
 use std::thread;
 
 use base::error;
@@ -13,6 +12,7 @@ use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
 
+use crate::virtio::vhost::user::vmm::Connection;
 use crate::virtio::vhost::user::vmm::Result;
 use crate::virtio::vhost::user::vmm::VhostUserHandler;
 use crate::virtio::wl::QUEUE_SIZE;
@@ -35,7 +35,7 @@ pub struct Wl {
 }
 
 impl Wl {
-    pub fn new<P: AsRef<Path>>(base_features: u64, socket_path: P) -> Result<Wl> {
+    pub fn new(base_features: u64, connection: Connection) -> Result<Wl> {
         let default_queue_size = QUEUE_SIZES.len();
 
         let allow_features = base_features
@@ -48,8 +48,8 @@ impl Wl {
             | VhostUserProtocolFeatures::CONFIG
             | VhostUserProtocolFeatures::SLAVE_REQ;
 
-        let mut handler = VhostUserHandler::new_from_path(
-            socket_path,
+        let mut handler = VhostUserHandler::new_from_connection(
+            connection,
             default_queue_size as u64,
             allow_features,
             init_features,

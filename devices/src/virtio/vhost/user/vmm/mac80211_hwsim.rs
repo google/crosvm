@@ -3,8 +3,6 @@
 // found in the LICENSE file.
 
 use std::cell::RefCell;
-use std::os::unix::net::UnixStream;
-use std::path::Path;
 use std::result::Result;
 use std::thread;
 
@@ -16,6 +14,7 @@ use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
 
 use crate::virtio::vhost::user::vmm::handler::VhostUserHandler;
+use crate::virtio::vhost::user::vmm::Connection;
 use crate::virtio::vhost::user::vmm::Error;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
@@ -33,15 +32,13 @@ pub struct Mac80211Hwsim {
 }
 
 impl Mac80211Hwsim {
-    pub fn new<P: AsRef<Path>>(base_features: u64, socket_path: P) -> Result<Mac80211Hwsim, Error> {
-        let socket = UnixStream::connect(&socket_path).map_err(Error::SocketConnect)?;
-
+    pub fn new(base_features: u64, connection: Connection) -> Result<Mac80211Hwsim, Error> {
         let allow_features = base_features | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         let init_features = base_features | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         let allow_protocol_features = VhostUserProtocolFeatures::empty();
 
-        let mut handler = VhostUserHandler::new_from_stream(
-            socket,
+        let mut handler = VhostUserHandler::new_from_connection(
+            connection,
             QUEUE_COUNT as u64, /* # of queues */
             allow_features,
             init_features,

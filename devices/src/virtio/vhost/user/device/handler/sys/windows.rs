@@ -112,7 +112,7 @@ mod tests {
             let init_features = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
             let allow_protocol_features = VhostUserProtocolFeatures::CONFIG;
 
-            let mut vmm_handler = VhostUserHandler::new_from_tube(
+            let mut vmm_handler = VhostUserHandler::new_from_connection(
                 main_tube,
                 QUEUES_NUM as u64,
                 allow_features,

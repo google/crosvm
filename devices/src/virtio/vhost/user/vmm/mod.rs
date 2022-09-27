@@ -34,12 +34,16 @@ cfg_if::cfg_if! {
         pub use self::console::*;
         pub use self::fs::*;
         pub use self::video::*;
+
+        pub type Connection = std::os::unix::net::UnixStream;
     } else if #[cfg(windows)] {
         #[cfg(feature = "slirp")]
         pub mod net;
 
         #[cfg(feature = "slirp")]
         pub use self::net::*;
+
+        pub type Connection = base::Tube;
     }
 }
 

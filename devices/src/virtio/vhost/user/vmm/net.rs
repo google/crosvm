@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-mod sys;
-
 use std::cell::RefCell;
 use std::thread;
 
@@ -16,13 +14,12 @@ use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
 
 use crate::virtio::vhost::user::vmm::handler::VhostUserHandler;
-use crate::virtio::vhost::user::vmm::Error;
+use crate::virtio::vhost::user::vmm::Connection;
+use crate::virtio::vhost::user::vmm::Result;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::VirtioDevice;
-
-type Result<T> = std::result::Result<T, Error>;
 
 const QUEUE_SIZE: u16 = 1024;
 
@@ -34,7 +31,7 @@ pub struct Net {
 }
 
 impl Net {
-    fn get_all_features(base_features: u64) -> (u64, u64, VhostUserProtocolFeatures) {
+    pub fn new(base_features: u64, connection: Connection) -> Result<Net> {
         let allow_features = base_features
             | 1 << virtio_net::VIRTIO_NET_F_CSUM
             | 1 << virtio_net::VIRTIO_NET_F_CTRL_VQ
@@ -51,7 +48,21 @@ impl Net {
         let allow_protocol_features =
             VhostUserProtocolFeatures::MQ | VhostUserProtocolFeatures::CONFIG;
 
-        (allow_features, init_features, allow_protocol_features)
+        let mut handler = VhostUserHandler::new_from_connection(
+            connection,
+            /* max_queue_num= */ 3,
+            allow_features,
+            init_features,
+            allow_protocol_features,
+        )?;
+
+        let queue_sizes = handler.queue_sizes(QUEUE_SIZE, 3 /* rx, tx, ctrl */)?;
+        Ok(Net {
+            kill_evt: None,
+            worker_thread: None,
+            handler: RefCell::new(handler),
+            queue_sizes,
+        })
     }
 }
 

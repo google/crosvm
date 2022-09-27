@@ -267,6 +267,7 @@ mod tests {
 
     #[test]
     fn test_vhost_user_activate() {
+        use std::os::unix::net::UnixStream;
         use vmm_vhost::connection::socket::Listener as SocketListener;
         use vmm_vhost::SlaveListener;
 
@@ -289,8 +290,9 @@ mod tests {
             let allow_features = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
             let init_features = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
             let allow_protocol_features = VhostUserProtocolFeatures::CONFIG;
-            let mut vmm_handler = VhostUserHandler::new_from_path(
-                &path,
+            let connection = UnixStream::connect(&path).unwrap();
+            let mut vmm_handler = VhostUserHandler::new_from_connection(
+                connection,
                 QUEUES_NUM as u64,
                 allow_features,
                 init_features,
