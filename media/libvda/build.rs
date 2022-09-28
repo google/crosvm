@@ -3,21 +3,12 @@
 // found in the LICENSE file.
 
 fn main() {
-    // Skip installing dependencies when generating documents.
-    if std::env::var("CARGO_DOC").is_ok() {
-        return;
+    // libvda is only avalable on chromeos build.
+    // To enable clippy checks with this feature enabled upstream we will just skip
+    // linking the library, allowing the crate to be compiled, but not linked.
+    println!("cargo:rerun-if-env-changed=CROSVM_BUILD_VARIANT");
+    if std::env::var("CROSVM_BUILD_VARIANT").unwrap_or(String::new()) == "chromeos" {
+        pkg_config::probe_library("libvda").unwrap();
+        println!("cargo:rustc-link-lib=dylib=vda");
     }
-
-    #[allow(clippy::single_match)]
-    match pkg_config::probe_library("libvda") {
-        Ok(_) => (),
-        // Ignore pkg-config failures on non-chromeos platforms to allow cargo-clippy to run even
-        // if libvda.pc doesn't exist.
-        #[cfg(not(feature = "chromeos"))]
-        Err(_) => (),
-        #[cfg(feature = "chromeos")]
-        Err(e) => panic!("{}", e),
-    };
-
-    println!("cargo:rustc-link-lib=dylib=vda");
 }

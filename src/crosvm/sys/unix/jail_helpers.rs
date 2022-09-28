@@ -17,16 +17,8 @@ use once_cell::sync::Lazy;
 
 use crate::crosvm::config::JailConfig;
 
-static EMBEDDED_BPFS: Lazy<std::collections::HashMap<&str, Vec<u8>>> = Lazy::new(|| {
-    #[cfg(not(feature = "chromeos"))]
-    {
-        include!(concat!(env!("OUT_DIR"), "/bpf_includes.in"))
-    }
-    #[cfg(feature = "chromeos")]
-    {
-        std::collections::HashMap::<&str, Vec<u8>>::new()
-    }
-});
+static EMBEDDED_BPFS: Lazy<std::collections::HashMap<&str, Vec<u8>>> =
+    Lazy::new(|| include!(concat!(env!("OUT_DIR"), "/bpf_includes.in")));
 
 pub(super) struct SandboxConfig<'a> {
     pub(super) limit_caps: bool,

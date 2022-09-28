@@ -118,9 +118,7 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=seccomp");
 
-    if env::var("CARGO_CFG_TARGET_FAMILY").unwrap() != "unix"
-        || env::var("CARGO_FEATURE_CHROMEOS").is_ok()
-    {
+    if env::var("CARGO_CFG_TARGET_FAMILY").unwrap() != "unix" {
         return;
     }
 
@@ -133,6 +131,13 @@ fn main() {
     };
 
     let target = env::var("TARGET").unwrap();
+
+    // Disable embedding of seccomp policy files on ChromeOS builds.
+    println!("cargo:rerun-if-env-changed=CROSVM_BUILD_VARIANT");
+    if env::var("CROSVM_BUILD_VARIANT").unwrap_or(String::new()) == "chromeos" {
+        fs::write(out_dir.join("bpf_includes.in"), "Default::default()").unwrap();
+        return;
+    }
 
     generate_preprocessed(&minijail_dir, &out_dir);
     generate_llvm_ir(&minijail_dir, &out_dir, &target);
