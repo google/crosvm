@@ -562,7 +562,7 @@ pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
     Ok(pci_address)
 }
 
-/// Creates a Virtio MMIO devices for use by this Vm.
+/// Creates Virtio MMIO devices for use by this Vm.
 pub fn generate_virtio_mmio_bus(
     devices: Vec<(VirtioMmioDevice, Option<Minijail>)>,
     irq_chip: &mut dyn IrqChip,
@@ -885,6 +885,7 @@ pub fn generate_pci_root(
             .partition(|(_, (_, jail))| jail.is_some());
         sandboxed.into_iter().chain(non_sandboxed.into_iter())
     };
+
     let mut amls = BTreeMap::new();
     for (dev_idx, dev_value) in devices {
         #[cfg(unix)]

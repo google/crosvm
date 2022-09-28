@@ -265,6 +265,21 @@ impl Display for UsbControlResult {
     }
 }
 
+/// Commands for snapshot feature
+#[derive(Serialize, Deserialize, Debug)]
+pub enum SnapshotCommand {
+    Take,
+}
+
+/// Response for [SnapshotCommand]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum SnapshotControlResult {
+    /// The request is accepted successfully.
+    Ok,
+    /// The command fails.
+    Failed,
+}
+
 /// Source of a `VmMemoryRequest::RegisterMemory` mapping.
 #[derive(Serialize, Deserialize)]
 pub enum VmMemorySource {
@@ -966,6 +981,8 @@ pub enum VmRequest {
         device: HotPlugDeviceInfo,
         add: bool,
     },
+    /// Command to Snapshot devices
+    Snapshot(SnapshotCommand),
 }
 
 pub fn handle_disk_command(command: &DiskControlCommand, disk_host_tube: &Tube) -> VmResponse {
@@ -1275,6 +1292,7 @@ impl VmRequest {
                 }
             }
             VmRequest::HotPlugCommand { device: _, add: _ } => VmResponse::Ok,
+            VmRequest::Snapshot(SnapshotCommand::Take) => VmResponse::Ok,
         }
     }
 }
@@ -1305,6 +1323,8 @@ pub enum VmResponse {
     BatResponse(BatControlResult),
     /// Results of swap status command.
     SwapStatus(SwapStatus),
+    /// Results of snapshot commands.
+    SnapshotResponse(SnapshotControlResult),
 }
 
 impl Display for VmResponse {
@@ -1343,6 +1363,7 @@ impl Display for VmResponse {
                         .unwrap_or_else(|_| "invalid_response".to_string()),
                 )
             }
+            SnapshotResponse(result) => write!(f, "snapshot control request result {:?}", result),
         }
     }
 }

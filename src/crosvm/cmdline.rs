@@ -152,6 +152,7 @@ pub enum CrossPlatformCommands {
     Usb(UsbCommand),
     Version(VersionCommand),
     Vfio(VfioCrosvmCommand),
+    Snapshot(SnapshotCommand),
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -595,6 +596,30 @@ impl From<DiskOption> for DiskOptionWithId {
             index: DISK_COUNTER.fetch_add(1, Ordering::Relaxed),
         }
     }
+}
+
+#[derive(FromArgs)]
+#[argh(subcommand, name = "snapshot", description = "Snapshot commands")]
+/// Snapshot commands
+pub struct SnapshotCommand {
+    #[argh(subcommand)]
+    pub snapshot_command: SnapshotSubCommands,
+}
+
+#[derive(FromArgs)]
+#[argh(subcommand, name = "take")]
+/// Take a snapshot of the VM
+pub struct SnapshotTakeCommand {
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
+
+#[derive(FromArgs)]
+#[argh(subcommand)]
+/// Snapshot commands
+pub enum SnapshotSubCommands {
+    Take(SnapshotTakeCommand),
 }
 
 /// Container for GpuParameters that have been fixed after parsing using serde.

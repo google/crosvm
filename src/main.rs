@@ -70,6 +70,7 @@ use vm_control::BalloonControlCommand;
 use vm_control::DiskControlCommand;
 use vm_control::HotPlugDeviceInfo;
 use vm_control::HotPlugDeviceType;
+use vm_control::SnapshotCommand;
 use vm_control::SwapCommand;
 use vm_control::UsbControlResult;
 use vm_control::VmRequest;
@@ -525,6 +526,18 @@ fn modify_usb(cmd: cmdline::UsbCommand) -> std::result::Result<(), ()> {
     }
 }
 
+fn snapshot_vm(cmd: cmdline::SnapshotCommand) -> std::result::Result<(), ()> {
+    use cmdline::SnapshotSubCommands::*;
+    let (socket_path, request) = match cmd.snapshot_command {
+        Take(path) => {
+            let req = VmRequest::Snapshot(SnapshotCommand::Take);
+            (path.socket_path, req)
+        }
+    };
+    let socket_path = Path::new(&socket_path);
+    vms_request(&request, socket_path)
+}
+
 #[allow(clippy::unnecessary_wraps)]
 fn pkg_version() -> std::result::Result<(), ()> {
     const VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
@@ -699,6 +712,9 @@ fn crosvm_main<I: IntoIterator<Item = String>>(args: I) -> Result<CommandStatus>
                     }
                     CrossPlatformCommands::Vfio(cmd) => {
                         modify_vfio(cmd).map_err(|_| anyhow!("vfio subcommand failed"))
+                    }
+                    CrossPlatformCommands::Snapshot(cmd) => {
+                        snapshot_vm(cmd).map_err(|_| anyhow!("snapshot subcommand failed"))
                     }
                 }
                 .map(|_| CommandStatus::SuccessOrVmStop)
