@@ -173,6 +173,10 @@ impl_from_for_interconvertible_structs!(virtio_video_plane_format, PlaneFormat, 
 
 impl PlaneFormat {
     pub fn get_plane_layout(format: Format, width: u32, height: u32) -> Option<Vec<PlaneFormat>> {
+        // Halved size for UV sampling, but rounded up to cover all samples in case of odd input
+        // resolution.
+        let half_width = (width + 1) / 2;
+        let half_height = (height + 1) / 2;
         match format {
             Format::NV12 => Some(vec![
                 // Y plane, 1 sample per pixel.
@@ -184,8 +188,25 @@ impl PlaneFormat {
                 PlaneFormat {
                     // Add one vertical line so odd resolutions result in an extra UV line to cover all the
                     // Y samples.
-                    plane_size: width * ((height + 1) / 2),
+                    plane_size: width * half_height,
                     stride: width,
+                },
+            ]),
+            Format::YUV420 => Some(vec![
+                // Y plane, 1 sample per pixel.
+                PlaneFormat {
+                    plane_size: width * height,
+                    stride: width,
+                },
+                // U plane, 1 sample per group of 4 pixels.
+                PlaneFormat {
+                    plane_size: half_width * half_height,
+                    stride: half_width,
+                },
+                // V plane, same layout as U plane.
+                PlaneFormat {
+                    plane_size: half_width * half_height,
+                    stride: half_width,
                 },
             ]),
             _ => None,
