@@ -17,7 +17,7 @@ mod queue;
 mod rng;
 #[cfg(unix)]
 mod sys;
-#[cfg(feature = "tpm")]
+#[cfg(any(feature = "tpm", feature = "vtpm"))]
 mod tpm;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 mod video;
@@ -44,7 +44,7 @@ pub use self::interrupt::*;
 pub use self::iommu::*;
 pub use self::queue::*;
 pub use self::rng::*;
-#[cfg(feature = "tpm")]
+#[cfg(any(feature = "tpm", feature = "vtpm"))]
 pub use self::tpm::*;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 pub use self::video::*;

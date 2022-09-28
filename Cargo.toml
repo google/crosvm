@@ -122,6 +122,7 @@ all-linux = [
     "power-monitor-powerd",
     "slirp",
     "tpm",
+    "vtpm",
     "virgl_renderer_next",
     "virgl_renderer",
     "wl-dmabuf",
@@ -132,7 +133,7 @@ arc_quota = ["devices/arc_quota"]
 audio = ["devices/audio"]
 audio_cras = ["devices/audio_cras"]
 balloon = ["devices/balloon", "vm_control/balloon"]
-chromeos = ["base/chromeos", "audio_cras", "devices/chromeos", "panic-memfd", "arc_quota"]
+chromeos = ["base/chromeos", "audio_cras", "devices/chromeos", "panic-memfd", "arc_quota", "vtpm"]
 composite-disk = ["protos/composite-disk", "protobuf", "disk/composite-disk"]
 crash-report = ["broker_ipc/crash-report", "crash_report"]
 default = ["audio", "balloon", "gpu", "qcow", "usb"]
@@ -174,6 +175,7 @@ video-decoder = ["devices/video-decoder"]
 video-encoder = ["devices/video-encoder"]
 virgl_renderer = ["devices/virgl_renderer"]
 virgl_renderer_next = ["devices/virgl_renderer_next", "rutabaga_gfx/virgl_renderer_next"]
+vtpm = ["devices/vtpm"]
 wl-dmabuf = ["devices/minigbm"]
 x = ["devices/x"]
 

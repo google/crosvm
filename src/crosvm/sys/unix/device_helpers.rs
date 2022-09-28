@@ -63,7 +63,7 @@ use devices::SoftwareTpm;
 use devices::VfioDevice;
 use devices::VfioPciDevice;
 use devices::VfioPlatformDevice;
-#[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]
+#[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
 use devices::VtpmProxy;
 use hypervisor::ProtectionType;
 use hypervisor::Vm;
@@ -551,7 +551,7 @@ pub fn create_software_tpm_device(
     })
 }
 
-#[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]
+#[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
 pub fn create_vtpm_proxy_device(
     protection_type: ProtectionType,
     jail_config: &Option<JailConfig>,

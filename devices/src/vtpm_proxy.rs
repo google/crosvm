@@ -48,11 +48,11 @@ impl VtpmProxy {
         }
     }
 
-    fn get_or_create_dbus_connection<'a>(
-        &'a mut self,
-    ) -> anyhow::Result<&'a dbus::blocking::Connection, dbus::Error> {
+    fn get_or_create_dbus_connection(
+        &mut self,
+    ) -> anyhow::Result<&dbus::blocking::Connection, dbus::Error> {
         return match self.dbus_connection {
-            Some(ref dbus_connection) => Ok(&dbus_connection),
+            Some(ref dbus_connection) => Ok(dbus_connection),
             None => {
                 let dbus_connection = dbus::blocking::Connection::new_system()?;
                 self.dbus_connection = Some(dbus_connection);
@@ -61,7 +61,7 @@ impl VtpmProxy {
         };
     }
 
-    fn try_execute_command<'a>(&'a mut self, command: &[u8]) -> anyhow::Result<(), Error> {
+    fn try_execute_command(&mut self, command: &[u8]) -> anyhow::Result<(), Error> {
         let dbus_connection = self
             .get_or_create_dbus_connection()
             .map_err(Error::DBusError)?;

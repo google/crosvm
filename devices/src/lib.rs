@@ -32,7 +32,7 @@ pub mod serial_device;
 mod software_tpm;
 mod sys;
 pub mod virtio;
-#[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]
+#[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
 mod vtpm_proxy;
 
 cfg_if::cfg_if! {
@@ -103,7 +103,7 @@ pub use self::serial_device::SerialType;
 pub use self::software_tpm::SoftwareTpm;
 pub use self::virtio::VirtioMmioDevice;
 pub use self::virtio::VirtioPciDevice;
-#[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]
+#[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
 pub use self::vtpm_proxy::VtpmProxy;
 
 mod pflash;

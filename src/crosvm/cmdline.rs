@@ -1280,7 +1280,7 @@ pub struct RunCommand {
     #[argh(option, long = "trackpad", arg_name = "PATH:WIDTH:HEIGHT")]
     /// path to a socket from where to read trackpad input events and write status updates to, optionally followed by screen width and height (defaults to 800x1280)
     pub virtio_trackpad: Vec<TouchDeviceOption>,
-    #[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]
+    #[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
     #[argh(switch)]
     /// enable the virtio-tpm connection to vtpm daemon
     pub vtpm_proxy: bool,
@@ -1610,7 +1610,7 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.software_tpm = cmd.software_tpm;
         }
 
-        #[cfg(all(feature = "tpm", feature = "chromeos", target_arch = "x86_64"))]
+        #[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
         {
             cfg.vtpm_proxy = cmd.vtpm_proxy;
         }
