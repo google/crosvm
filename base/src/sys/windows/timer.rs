@@ -89,9 +89,16 @@ impl Timer {
             -((dur.as_secs() * 10_000_000 + (dur.subsec_nanos() as u64) / 100) as i64),
         );
         let period: i32 = match interval {
-            // Period is in ms, and 0ms means non-periodic, so we convert to ms and
-            // make sure it's non-zero.
-            Some(int) => std::cmp::max(1, int.as_millis() as i32),
+            Some(int) => {
+                if int.is_zero() {
+                    // Duration of zero implies non-periodic, which means setting period
+                    // to 0ms.
+                    0
+                } else {
+                    // Otherwise, convert to ms and make sure it's >=1ms.
+                    std::cmp::max(1, int.as_millis() as i32)
+                }
+            }
             // Period of 0ms=non-periodic.
             None => 0,
         };

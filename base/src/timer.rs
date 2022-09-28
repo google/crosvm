@@ -88,8 +88,8 @@ impl FakeTimer {
         }
     }
 
-    /// Sets the timer to expire after `dur`.  If `interval` is not `None` it represents
-    /// the period for repeated expirations after the initial expiration.  Otherwise
+    /// Sets the timer to expire after `dur`.  If `interval` is not `None` and non-zero it
+    /// represents the period for repeated expirations after the initial expiration.  Otherwise
     /// the timer will expire just once.  Cancels any existing duration and repeating interval.
     pub fn reset(&mut self, dur: Duration, interval: Option<Duration>) -> Result<()> {
         let mut guard = self.clock.lock();
