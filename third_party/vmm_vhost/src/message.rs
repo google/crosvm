@@ -457,6 +457,15 @@ impl VhostUserU64 {
 
 impl VhostUserMsgValidator for VhostUserU64 {}
 
+/// A generic message for empty message.
+#[derive(Default, Clone, Copy)]
+pub struct VhostUserEmptyMessage;
+
+// Safe because it has no data
+unsafe impl DataInit for VhostUserEmptyMessage {}
+
+impl VhostUserMsgValidator for VhostUserEmptyMessage {}
+
 /// Memory region descriptor for the SET_MEM_TABLE request.
 #[repr(packed)]
 #[derive(Default, Clone, Copy)]

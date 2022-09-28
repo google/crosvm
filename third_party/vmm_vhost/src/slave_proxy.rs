@@ -160,6 +160,15 @@ impl VhostUserMasterReqHandler for Slave {
         self.send_message(SlaveReq::SHMEM_UNMAP, req, None)
     }
 
+    /// Handle config change requests.
+    fn handle_config_change(&self) -> HandlerResult<u64> {
+        self.send_message(
+            SlaveReq::CONFIG_CHANGE_MSG,
+            &VhostUserEmptyMessage::default(),
+            None,
+        )
+    }
+
     /// Forward vhost-user-fs map file requests to the slave.
     fn fs_slave_map(
         &self,

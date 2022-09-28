@@ -9,6 +9,7 @@ use std::rc::Rc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use sync::Mutex;
 
 use anyhow::anyhow;
 use anyhow::bail;
@@ -37,6 +38,8 @@ use crate::virtio::block::asynchronous::BlockAsync;
 use crate::virtio::block::DiskState;
 use crate::virtio::copy_config;
 use crate::virtio::vhost::user::device::handler::sys::Doorbell;
+use crate::virtio::vhost::user::device::handler::VhostBackendReqConnection;
+use crate::virtio::vhost::user::device::handler::VhostBackendReqConnectionState;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 use crate::virtio::vhost::user::device::VhostUserDevice;
 
@@ -54,6 +57,7 @@ struct BlockBackend {
     acked_protocol_features: VhostUserProtocolFeatures,
     flush_timer: Rc<RefCell<TimerAsync>>,
     flush_timer_armed: Rc<RefCell<bool>>,
+    backend_req_conn: Arc<Mutex<VhostBackendReqConnectionState>>,
     workers: [Option<AbortHandle>; NUM_QUEUES as usize],
 }
 
@@ -108,10 +112,12 @@ impl VhostUserDevice for BlockAsync {
         ))
         .detach();
 
+        let backend_req_conn = Arc::new(Mutex::new(VhostBackendReqConnectionState::NoConnection));
         if let Some(control_tube) = self.control_tube.take() {
             let async_tube = AsyncTube::new(ex, control_tube)?;
             ex.spawn_local(handle_vhost_user_command_tube(
                 async_tube,
+                Arc::clone(&backend_req_conn),
                 Rc::clone(&disk_state),
             ))
             .detach();
@@ -127,6 +133,7 @@ impl VhostUserDevice for BlockAsync {
             acked_features: 0,
             acked_protocol_features: VhostUserProtocolFeatures::empty(),
             flush_timer: flush_timer_write,
+            backend_req_conn: Arc::clone(&backend_req_conn),
             flush_timer_armed,
             workers: Default::default(),
         }))
@@ -162,7 +169,9 @@ impl VhostUserBackend for BlockBackend {
     }
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
-        VhostUserProtocolFeatures::CONFIG | VhostUserProtocolFeatures::MQ
+        VhostUserProtocolFeatures::CONFIG
+            | VhostUserProtocolFeatures::MQ
+            | VhostUserProtocolFeatures::SLAVE_REQ
     }
 
     fn ack_protocol_features(&mut self, features: u64) -> anyhow::Result<()> {
@@ -236,5 +245,15 @@ impl VhostUserBackend for BlockBackend {
         if let Some(handle) = self.workers.get_mut(idx).and_then(Option::take) {
             handle.abort();
         }
+    }
+
+    fn set_backend_req_connection(&mut self, conn: VhostBackendReqConnection) {
+        let mut backend_req_conn = self.backend_req_conn.lock();
+
+        if let VhostBackendReqConnectionState::Connected(_) = &*backend_req_conn {
+            warn!("Backend Request Connection already established. Overwriting");
+        }
+
+        *backend_req_conn = VhostBackendReqConnectionState::Connected(conn);
     }
 }

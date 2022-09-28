@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use std::io;
 use std::io::Write;
 use std::mem::size_of;
+use std::ops::Deref;
 use std::rc::Rc;
 use std::result;
 use std::sync::atomic::AtomicU64;
@@ -44,6 +45,7 @@ use futures::pin_mut;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use remain::sorted;
+use sync::Mutex;
 use thiserror::Error as ThisError;
 use vm_control::DiskControlCommand;
 use vm_control::DiskControlResult;
@@ -72,6 +74,7 @@ use crate::virtio::device_constants::block::VIRTIO_BLK_T_GET_ID;
 use crate::virtio::device_constants::block::VIRTIO_BLK_T_IN;
 use crate::virtio::device_constants::block::VIRTIO_BLK_T_OUT;
 use crate::virtio::device_constants::block::VIRTIO_BLK_T_WRITE_ZEROES;
+use crate::virtio::vhost::user::device::VhostBackendReqConnectionState;
 use crate::virtio::DescriptorChain;
 use crate::virtio::DescriptorError;
 use crate::virtio::DeviceType;
@@ -338,21 +341,26 @@ pub async fn handle_queue<I: SignalableInterrupt + 'static>(
 /// handles the disk control requests from the vhost user backend control server.
 pub async fn handle_vhost_user_command_tube(
     command_tube: AsyncTube,
+    backend_req_connection: Arc<Mutex<VhostBackendReqConnectionState>>,
     disk_state: Rc<AsyncMutex<DiskState>>,
 ) -> Result<(), ExecuteError> {
-    // Process the commands. Sets |interrupt| to None since vhost user backend
-    // currently does not support sending interrupts to the guest kernel.
-    // TODO(b/191845881): Use backend to frontend vhost user message
-    // CONFIG_CHANGE_MSG to notify the guest kernel once sending such message
-    // is supported.
-    handle_command_tube(&Some(command_tube), None, Rc::clone(&disk_state)).await
+    // Process the commands.
+    handle_command_tube(
+        &Some(command_tube),
+        ConfigChangeSignal::VhostUserBackendRequest(backend_req_connection),
+        Rc::clone(&disk_state),
+    )
+    .await
 }
 
-// TODO(b/191845881): Update argument |interrupt| from Option to non-Option value
-// once we enable sending vhost-user message from the backend to the frontend.
+enum ConfigChangeSignal {
+    Interrupt(Interrupt),
+    VhostUserBackendRequest(Arc<Mutex<VhostBackendReqConnectionState>>),
+}
+
 async fn handle_command_tube(
     command_tube: &Option<AsyncTube>,
-    interrupt: Option<Interrupt>,
+    signal: ConfigChangeSignal,
     disk_state: Rc<AsyncMutex<DiskState>>,
 ) -> Result<(), ExecuteError> {
     let command_tube = match command_tube {
@@ -377,9 +385,23 @@ async fn handle_command_tube(
                     .await
                     .map_err(ExecuteError::SendingResponse)?;
                 if let DiskControlResult::Ok = resp {
-                    if let Some(interrupt) = &interrupt {
-                        interrupt.signal_config_changed();
-                    }
+                    match &signal {
+                        ConfigChangeSignal::Interrupt(interrupt) => {
+                            interrupt.signal_config_changed();
+                        }
+                        ConfigChangeSignal::VhostUserBackendRequest(request) => {
+                            match &request.lock().deref() {
+                                VhostBackendReqConnectionState::Connected(frontend) => {
+                                    if let Err(e) = frontend.send_config_changed() {
+                                        error!("Failed to notify config change: {}", e);
+                                    }
+                                }
+                                VhostBackendReqConnectionState::NoConnection => {
+                                    error!("No Backend request connection found");
+                                }
+                            }
+                        }
+                    };
                 }
             }
             Err(e) => return Err(ExecuteError::ReceivingCommand(e)),
@@ -473,7 +495,11 @@ fn run_worker(
     pin_mut!(resample);
 
     // Handles control requests.
-    let control = handle_command_tube(control_tube, Some(interrupt.clone()), disk_state.clone());
+    let control = handle_command_tube(
+        control_tube,
+        ConfigChangeSignal::Interrupt(interrupt.clone()),
+        disk_state.clone(),
+    );
     pin_mut!(control);
 
     // Handle all the queues in one sub-select call.

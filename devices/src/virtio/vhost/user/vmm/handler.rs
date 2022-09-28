@@ -9,6 +9,7 @@ use std::sync::Mutex;
 use std::thread;
 
 use base::error;
+use base::info;
 use base::AsRawDescriptor;
 use base::Event;
 use base::Protection;
@@ -36,6 +37,7 @@ use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::SharedMemoryMapper;
 use crate::virtio::SharedMemoryRegion;
+use crate::virtio::SignalableInterrupt;
 
 type BackendReqHandler = MasterReqHandler<Mutex<BackendReqHandlerImpl>>;
 
@@ -82,12 +84,12 @@ impl VhostUserHandler {
                 .map_err(Error::SetProtocolFeatures)?;
         }
 
-        // Create backend request handler and send slave request fd to backend
         // if protocol feature `VhostUserProtocolFeatures::SLAVE_REQ` is negotiated.
         let backend_req_handler =
             if protocol_features.contains(VhostUserProtocolFeatures::SLAVE_REQ) {
                 let mut handler = create_backend_req_handler(
                     BackendReqHandlerImpl {
+                        interrupt: None,
                         shared_mapper_state: None,
                     },
                     #[cfg(windows)]
@@ -272,7 +274,17 @@ impl VhostUserHandler {
         let label = format!("vhost_user_virtio_{}", label);
         let kill_evt = Event::new().map_err(Error::CreateEvent)?;
         let self_kill_evt = kill_evt.try_clone().map_err(Error::CreateEvent)?;
+
         let backend_req_handler = self.backend_req_handler.take();
+        if let Some(handler) = &backend_req_handler {
+            // Using unwrap here to get the mutex protected value
+            handler
+                .backend()
+                .lock()
+                .unwrap()
+                .set_interrupt(interrupt.clone());
+        }
+
         thread::Builder::new()
             .name(label.clone())
             .spawn(move || {
@@ -358,10 +370,15 @@ struct SharedMapperState {
 }
 
 pub struct BackendReqHandlerImpl {
+    interrupt: Option<Interrupt>,
     shared_mapper_state: Option<SharedMapperState>,
 }
 
 impl BackendReqHandlerImpl {
+    fn set_interrupt(&mut self, interrupt: Interrupt) {
+        self.interrupt = Some(interrupt);
+    }
+
     fn set_shared_mapper_state(&mut self, shared_mapper_state: SharedMapperState) {
         self.shared_mapper_state = Some(shared_mapper_state);
     }
@@ -420,6 +437,20 @@ impl VhostUserMasterReqHandlerMut for BackendReqHandlerImpl {
             Err(e) => {
                 error!("failed to remove mapping {:?}", e);
                 Err(std::io::Error::from_raw_os_error(libc::EINVAL))
+            }
+        }
+    }
+
+    fn handle_config_change(&mut self) -> HandlerResult<u64> {
+        info!("Handle Config Change called");
+        match &self.interrupt {
+            Some(interrupt) => {
+                interrupt.signal_config_changed();
+                Ok(0)
+            }
+            None => {
+                error!("cannot send interrupt");
+                Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
             }
         }
     }

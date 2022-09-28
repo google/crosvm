@@ -53,8 +53,9 @@ impl Block {
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
 
         let init_features = base_features | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
-        let allow_protocol_features =
-            VhostUserProtocolFeatures::CONFIG | VhostUserProtocolFeatures::MQ;
+        let allow_protocol_features = VhostUserProtocolFeatures::CONFIG
+            | VhostUserProtocolFeatures::MQ
+            | VhostUserProtocolFeatures::SLAVE_REQ;
 
         let mut handler = VhostUserHandler::new_from_connection(
             connection,
