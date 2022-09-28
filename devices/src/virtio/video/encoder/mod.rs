@@ -1074,11 +1074,6 @@ impl<T: Encoder> EncoderDevice<T> {
                         return Err(VideoError::InvalidOperation);
                     }
 
-                    // There should be at least a single plane.
-                    if plane_formats.is_empty() {
-                        return Err(VideoError::InvalidArgument);
-                    }
-
                     let desired_format =
                         format.or(stream.src_params.format).unwrap_or(Format::NV12);
                     self.cros_capabilities.populate_src_params(
@@ -1086,7 +1081,7 @@ impl<T: Encoder> EncoderDevice<T> {
                         desired_format,
                         frame_width,
                         frame_height,
-                        plane_formats[0].stride,
+                        plane_formats.get(0).map(|fmt| fmt.stride).unwrap_or(0),
                     )?;
 
                     stream.dst_params.frame_width = frame_width;
