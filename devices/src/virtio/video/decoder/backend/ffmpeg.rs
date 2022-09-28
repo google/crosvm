@@ -330,6 +330,11 @@ impl FfmpegDecoderSession {
                 self.context.reset();
                 Ok(false)
             }
+            // If we got invalid data, keep going in hope that we will catch a valid state later.
+            Err(AvError(AVERROR_INVALIDDATA)) => {
+                warn!("Invalid data in stream, ignoring...");
+                Ok(false)
+            }
             Err(av_err) => {
                 // This is a decoding error, so signal it using a `NotifyError` event to reflect the
                 // same asynchronous flow as a hardware decoder would.
