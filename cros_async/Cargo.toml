@@ -22,6 +22,7 @@ thiserror = "1.0.20"
 audio_streams = { path = "../common/audio_streams" } # provided by ebuild
 anyhow = "1.0"
 serde = "*"
+serde_keyvalue = { path = "../serde_keyvalue" }
 
 [target.'cfg(unix)'.dependencies]
 io_uring = { path = "../io_uring" } # provided by ebuild

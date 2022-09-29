@@ -385,6 +385,7 @@ dependencies = [
  "pin-utils",
  "remain",
  "serde",
+ "serde_keyvalue",
  "slab",
  "smallvec",
  "sync",

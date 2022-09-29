@@ -3,10 +3,10 @@
 // found in the LICENSE file.
 
 use std::future::Future;
-use std::str::FromStr;
 
 use async_task::Task;
 use once_cell::sync::OnceCell;
+use serde::Deserialize;
 use thiserror::Error as ThisError;
 
 use super::HandleExecutor;
@@ -126,24 +126,14 @@ pub enum Executor {
 }
 
 /// An enum to express the kind of the backend of `Executor`
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, serde_keyvalue::FromKeyValues)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub enum ExecutorKind {
     Handle,
 }
 
 /// If set, [`Executor::new()`] is created with `ExecutorKind` of `DEFAULT_EXECUTOR_KIND`.
 static DEFAULT_EXECUTOR_KIND: OnceCell<ExecutorKind> = OnceCell::new();
-
-impl FromStr for ExecutorKind {
-    type Err = &'static str;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "handle" => Ok(ExecutorKind::Handle),
-            _ => Err("unknown executor kind"),
-        }
-    }
-}
 
 impl Default for ExecutorKind {
     fn default() -> Self {
