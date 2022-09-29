@@ -230,7 +230,7 @@ mod tests {
     use std::fs::OpenOptions;
     use std::path::PathBuf;
 
-    use super::super::uring_executor::is_uring_stable;
+    use super::super::uring_executor::use_uring;
     use super::super::UringSource;
     use super::*;
     use crate::io_ext::ReadAsync;
@@ -238,7 +238,7 @@ mod tests {
 
     #[test]
     fn read_to_mem() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
 
@@ -277,7 +277,7 @@ mod tests {
 
     #[test]
     fn readvec() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
 
@@ -299,7 +299,7 @@ mod tests {
 
     #[test]
     fn readmulti() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
 
@@ -334,7 +334,7 @@ mod tests {
 
     #[test]
     fn u64_from_file() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
 
@@ -347,7 +347,7 @@ mod tests {
 
     #[test]
     fn event() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
 
@@ -388,7 +388,7 @@ mod tests {
 
     #[test]
     fn pend_on_pipe() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
 
@@ -418,7 +418,7 @@ mod tests {
 
     #[test]
     fn readmem() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
 
@@ -472,7 +472,7 @@ mod tests {
 
     #[test]
     fn range_error() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
 
@@ -500,7 +500,7 @@ mod tests {
 
     #[test]
     fn fallocate() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
 
@@ -539,7 +539,7 @@ mod tests {
 
     #[test]
     fn fsync() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
 
@@ -555,7 +555,7 @@ mod tests {
 
     #[test]
     fn wait_read() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
 
@@ -571,7 +571,7 @@ mod tests {
 
     #[test]
     fn writemem() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
 
@@ -597,7 +597,7 @@ mod tests {
 
     #[test]
     fn writevec() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
 
@@ -622,7 +622,7 @@ mod tests {
 
     #[test]
     fn writemulti() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
 

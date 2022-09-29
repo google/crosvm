@@ -275,7 +275,7 @@ mod tests {
     use crate::sys::unix::executor::async_poll_from_local;
     use crate::sys::unix::executor::async_uring_from;
     use crate::sys::unix::executor::async_uring_from_local;
-    use crate::sys::unix::uring_executor::is_uring_stable;
+    use crate::sys::unix::uring_executor::use_uring;
     use crate::sys::unix::FdExecutor;
     use crate::sys::unix::PollSource;
     use crate::sys::unix::URingExecutor;
@@ -319,7 +319,7 @@ mod tests {
 
     #[test]
     fn await_uring_from_poll() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
         // Start a uring operation and then await the result from an FdExecutor.
@@ -353,7 +353,7 @@ mod tests {
 
     #[test]
     fn await_poll_from_uring() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
         // Start a poll operation and then await the result from a URingExecutor.
@@ -387,7 +387,7 @@ mod tests {
 
     #[test]
     fn readvec() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
         async fn go<F: AsRawDescriptor>(async_source: Box<dyn IoSourceExt<F>>) {
@@ -423,7 +423,7 @@ mod tests {
 
     #[test]
     fn writevec() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
         async fn go<F: AsRawDescriptor>(async_source: Box<dyn IoSourceExt<F>>) {
@@ -458,7 +458,7 @@ mod tests {
 
     #[test]
     fn readmem() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
         async fn go<F: AsRawDescriptor>(async_source: Box<dyn IoSourceExt<F>>) {
@@ -511,7 +511,7 @@ mod tests {
 
     #[test]
     fn writemem() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
         async fn go<F: AsRawDescriptor>(async_source: Box<dyn IoSourceExt<F>>) {
@@ -550,7 +550,7 @@ mod tests {
 
     #[test]
     fn read_u64s() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
         async fn go(async_source: File, ex: URingExecutor) -> u64 {
@@ -566,7 +566,7 @@ mod tests {
 
     #[test]
     fn read_eventfds() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
 
@@ -605,7 +605,7 @@ mod tests {
 
     #[test]
     fn fsync() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
         async fn go<F: AsRawDescriptor>(source: Box<dyn IoSourceExt<F>>) {

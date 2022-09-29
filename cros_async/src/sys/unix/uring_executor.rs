@@ -148,7 +148,7 @@ impl From<Error> for io::Error {
     }
 }
 
-static IS_URING_STABLE: Lazy<bool> = Lazy::new(|| {
+static USE_URING: Lazy<bool> = Lazy::new(|| {
     let mut utsname = MaybeUninit::zeroed();
 
     // Safe because this will only modify `utsname` and we check the return value.
@@ -178,20 +178,11 @@ static IS_URING_STABLE: Lazy<bool> = Lazy::new(|| {
     }
 });
 
-// Checks if the uring executor is stable.
+// Checks if the uring executor is available.
 // Caches the result so that the check is only run once.
 // Useful for falling back to the FD executor on pre-uring kernels.
-pub(crate) fn is_uring_stable() -> bool {
-    *IS_URING_STABLE
-}
-
-// Checks the uring availability by checking if the uring creation succeeds.
-// If uring creation succeeds, it returns `Ok(())`. It returns an `URingContextError` otherwise.
-// It fails if the kernel does not support io_uring, but note that the cause is not limited to it.
-pub(crate) fn check_uring_availability() -> Result<()> {
-    URingContext::new(8)
-        .map(drop)
-        .map_err(Error::URingContextError)
+pub(crate) fn use_uring() -> bool {
+    *USE_URING
 }
 
 pub struct RegisteredSource {
@@ -1001,7 +992,7 @@ mod tests {
 
     #[test]
     fn dont_drop_backing_mem_read() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
 
@@ -1045,7 +1036,7 @@ mod tests {
 
     #[test]
     fn dont_drop_backing_mem_write() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
 
@@ -1090,7 +1081,7 @@ mod tests {
 
     #[test]
     fn canceled_before_completion() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
 
@@ -1134,7 +1125,7 @@ mod tests {
     #[ignore]
     #[test]
     fn drop_before_completion() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
 
@@ -1183,7 +1174,7 @@ mod tests {
 
     #[test]
     fn drop_on_different_thread() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
 

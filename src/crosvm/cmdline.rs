@@ -30,7 +30,6 @@ use arch::Pstore;
 use arch::VcpuAffinity;
 use argh::FromArgs;
 use base::getpid;
-use cros_async::ExecutorKind;
 use devices::virtio::block::block::DiskOption;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::device_constants::video::VideoDeviceConfig;
@@ -106,10 +105,6 @@ pub struct CrosvmCmdlineArgs {
     #[argh(switch)]
     /// disable output to syslog
     pub no_syslog: bool,
-    /// configure async executor backend; "uring" or "epoll" on Linux, "handle" on Windows.
-    /// If this option is omitted on Linux, "epoll" is used by default.
-    #[argh(option, arg_name = "EXECUTOR")]
-    pub async_executor: Option<ExecutorKind>,
     #[argh(subcommand)]
     pub command: Command,
 }

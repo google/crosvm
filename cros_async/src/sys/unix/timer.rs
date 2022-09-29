@@ -28,7 +28,7 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
-    use crate::sys::unix::uring_executor::is_uring_stable;
+    use crate::sys::unix::uring_executor::use_uring;
     use crate::Executor;
 
     #[test]
@@ -46,7 +46,7 @@ mod tests {
 
     #[test]
     fn one_shot() {
-        if !is_uring_stable() {
+        if !use_uring() {
             return;
         }
 
