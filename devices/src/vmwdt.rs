@@ -35,6 +35,7 @@ use crate::pci::CrosvmDeviceId;
 use crate::BusAccessInfo;
 use crate::BusDevice;
 use crate::DeviceId;
+use crate::Suspendable;
 
 // Registers offsets
 const VMWDT_REG_STATUS: u32 = 0x00;
@@ -339,6 +340,9 @@ impl BusDevice for Vmwdt {
         }
     }
 }
+
+impl Suspendable for Vmwdt {}
+
 #[cfg(test)]
 mod tests {
     use std::thread::sleep;

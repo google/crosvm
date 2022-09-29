@@ -13,6 +13,7 @@ use crate::pci::CrosvmDeviceId;
 use crate::BusAccessInfo;
 use crate::BusDevice;
 use crate::DeviceId;
+use crate::Suspendable;
 
 const INDEX_MASK: u8 = 0x7f;
 const INDEX_OFFSET: u64 = 0x0;
@@ -121,6 +122,8 @@ impl BusDevice for Cmos {
         }
     }
 }
+
+impl Suspendable for Cmos {}
 
 #[cfg(test)]
 mod tests {

@@ -80,6 +80,7 @@ use crate::pci::pci_device::Result as PciResult;
 use crate::pci::PciAddress;
 use crate::pci::PciDeviceError;
 use crate::vfio::VfioContainer;
+use crate::Suspendable;
 use crate::UnpinRequest;
 use crate::UnpinResponse;
 
@@ -1675,3 +1676,5 @@ impl Drop for CoIommuDev {
         }
     }
 }
+
+impl Suspendable for CoIommuDev {}

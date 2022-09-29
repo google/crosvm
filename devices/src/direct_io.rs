@@ -23,6 +23,7 @@ use crate::BusDevice;
 use crate::BusDeviceSync;
 use crate::BusRange;
 use crate::DeviceId;
+use crate::Suspendable;
 
 pub struct DirectIo {
     dev: Mutex<File>,
@@ -85,6 +86,8 @@ impl BusDeviceSync for DirectIo {
         self.iowr(ai.address, data);
     }
 }
+
+impl Suspendable for DirectIo {}
 
 pub struct DirectMmio {
     dev: Mutex<Vec<(BusRange, MemoryMapping)>>,
@@ -216,3 +219,5 @@ impl BusDeviceSync for DirectMmio {
         self.iowr(ai, data);
     }
 }
+
+impl Suspendable for DirectMmio {}

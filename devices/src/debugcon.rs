@@ -20,6 +20,7 @@ use crate::BusAccessInfo;
 use crate::BusDevice;
 use crate::DeviceId;
 use crate::SerialDevice;
+use crate::Suspendable;
 
 const BOCHS_DEBUGCON_READBACK: u8 = 0xe9;
 
@@ -87,6 +88,8 @@ impl Debugcon {
         Ok(())
     }
 }
+
+impl Suspendable for Debugcon {}
 
 #[cfg(test)]
 mod tests {

@@ -46,6 +46,7 @@ use crate::pci::PciDeviceError;
 use crate::pci::PciInterruptPin;
 use crate::pci::PCI_VENDOR_ID_INTEL;
 use crate::IrqLevelEvent;
+use crate::Suspendable;
 
 // Use 82801AA because it's what qemu does.
 const PCI_DEVICE_ID_INTEL_82801AA_5: u16 = 0x2415;
@@ -404,6 +405,8 @@ impl PciDevice for Ac97Dev {
         }
     }
 }
+
+impl Suspendable for Ac97Dev {}
 
 #[cfg(test)]
 mod tests {

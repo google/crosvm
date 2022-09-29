@@ -31,6 +31,7 @@ use crate::pci::PciHeaderType;
 use crate::pci::PCI_VENDOR_ID_INTEL;
 use crate::IrqLevelEvent;
 use crate::PciInterruptPin;
+use crate::Suspendable;
 
 pub const BR_BUS_NUMBER_REG: usize = 0x6;
 pub const BR_BUS_SUBORDINATE_OFFSET: usize = 0x2;
@@ -504,3 +505,5 @@ impl PciDevice for PciBridge {
         self.msi_config.lock().destroy()
     }
 }
+
+impl Suspendable for PciBridge {}

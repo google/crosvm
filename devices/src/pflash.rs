@@ -34,6 +34,7 @@ use crate::pci::CrosvmDeviceId;
 use crate::BusAccessInfo;
 use crate::BusDevice;
 use crate::DeviceId;
+use crate::Suspendable;
 
 const COMMAND_WRITE_BYTE: u8 = 0x10;
 const COMMAND_BLOCK_ERASE: u8 = 0x20;
@@ -229,6 +230,8 @@ impl BusDevice for Pflash {
         }
     }
 }
+
+impl Suspendable for Pflash {}
 
 #[cfg(test)]
 mod tests {

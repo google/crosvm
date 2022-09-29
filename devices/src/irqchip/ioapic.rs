@@ -31,6 +31,7 @@ use crate::pci::CrosvmDeviceId;
 use crate::BusDevice;
 use crate::DeviceId;
 use crate::IrqEventSource;
+use crate::Suspendable;
 
 // ICH10 I/O APIC version: 0x20
 const IOAPIC_VERSION_ID: u32 = 0x00000020;
@@ -497,6 +498,8 @@ impl Ioapic {
         }
     }
 }
+
+impl Suspendable for Ioapic {}
 
 #[sorted]
 #[derive(Error, Debug)]

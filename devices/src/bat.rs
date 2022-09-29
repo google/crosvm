@@ -28,6 +28,7 @@ use crate::BusAccessInfo;
 use crate::BusDevice;
 use crate::DeviceId;
 use crate::IrqLevelEvent;
+use crate::Suspendable;
 
 /// Errors for battery devices.
 #[sorted]
@@ -472,3 +473,5 @@ impl Aml for GoldfishBattery {
         .to_aml_bytes(bytes);
     }
 }
+
+impl Suspendable for GoldfishBattery {}

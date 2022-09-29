@@ -36,6 +36,7 @@ use crate::pci::pci_device::Result;
 use crate::pci::PciAddress;
 use crate::pci::PciDeviceError;
 use crate::pci::PCI_VENDOR_ID_REDHAT;
+use crate::Suspendable;
 
 const PCI_DEVICE_ID_REDHAT_PVPANIC: u16 = 0x0011;
 const PCI_PVPANIC_REVISION_ID: u8 = 1;
@@ -204,6 +205,8 @@ impl PciDevice for PvPanicPciDevice {
         }
     }
 }
+
+impl Suspendable for PvPanicPciDevice {}
 
 #[cfg(test)]
 mod test {

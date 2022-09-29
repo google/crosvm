@@ -36,6 +36,7 @@ use crate::BusDevice;
 use crate::BusResumeDevice;
 use crate::DeviceId;
 use crate::IrqLevelEvent;
+use crate::Suspendable;
 
 #[derive(Error, Debug)]
 pub enum ACPIPMError {
@@ -216,6 +217,8 @@ impl ACPIPMResource {
         }
     }
 }
+
+impl Suspendable for ACPIPMResource {}
 
 fn run_worker(
     sci_evt: IrqLevelEvent,

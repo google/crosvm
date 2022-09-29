@@ -62,6 +62,7 @@ use crate::pci::PciInterruptPin;
 use crate::pci::PciSubclass;
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 use crate::IrqLevelEvent;
+use crate::Suspendable;
 
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, enumn::N)]
@@ -932,6 +933,8 @@ impl PciDevice for VirtioPciDevice {
         Ok(())
     }
 }
+
+impl Suspendable for VirtioPciDevice {}
 
 struct VmRequester {
     tube: Tube,

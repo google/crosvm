@@ -20,7 +20,7 @@ pub enum DeviceState {
 pub trait Suspendable {
     /// Save the device state in an image that can be restored.
     fn snapshot(&self) -> AnyhowResult<String> {
-        Ok(format!(
+        Err(anyhow!(
             "Suspendable::snapshot not implemented for {}",
             std::any::type_name::<Self>()
         ))

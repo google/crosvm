@@ -41,6 +41,7 @@ use crate::pci::CrosvmDeviceId;
 use crate::BusDevice;
 use crate::DeviceId;
 use crate::IrqEdgeEvent;
+use crate::Suspendable;
 
 // Bitmask for areas of standard (non-ReadBack) Control Word Format. Constant
 // names are kept the same as Intel PIT data sheet.
@@ -379,6 +380,8 @@ impl Pit {
             .set_channel_state(&state.channels[2]);
     }
 }
+
+impl Suspendable for Pit {}
 
 // Each instance of this represents one of the PIT counters. They are used to
 // implement one-shot and repeating timer alarms. An 8254 has three counters.

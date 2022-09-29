@@ -10,6 +10,7 @@ use crate::pci::CrosvmDeviceId;
 use crate::BusAccessInfo;
 use crate::BusDevice;
 use crate::DeviceId;
+use crate::Suspendable;
 
 /// A i8042 PS/2 controller that emulates just enough to shutdown the machine.
 pub struct I8042Device {
@@ -55,3 +56,5 @@ impl BusDevice for I8042Device {
         }
     }
 }
+
+impl Suspendable for I8042Device {}

@@ -13,6 +13,7 @@ use crate::BusAccessInfo;
 use crate::BusDevice;
 use crate::DeviceId;
 use crate::IrqEdgeEvent;
+use crate::Suspendable;
 
 // Register offsets
 // Data register
@@ -154,6 +155,9 @@ impl BusDevice for Pl030 {
         *data_array = reg_content.to_ne_bytes();
     }
 }
+
+impl Suspendable for Pl030 {}
+
 #[cfg(test)]
 mod tests {
     use super::*;

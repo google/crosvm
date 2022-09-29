@@ -33,6 +33,7 @@ use crate::BusAccessInfo;
 use crate::BusDevice;
 use crate::BusType;
 use crate::DeviceId;
+use crate::Suspendable;
 
 // A PciDevice that holds the root hub's configuration.
 struct PciRootConfiguration {
@@ -70,6 +71,8 @@ impl PciDevice for PciRootConfiguration {
         self.config.get_bar_configuration(bar_num)
     }
 }
+
+impl Suspendable for PciRootConfiguration {}
 
 // Command send to pci root worker thread to add/remove device from pci root
 pub enum PciRootCommand {
@@ -428,6 +431,8 @@ impl BusDevice for PciConfigIo {
     }
 }
 
+impl Suspendable for PciConfigIo {}
+
 /// Emulates PCI memory-mapped configuration access mechanism.
 pub struct PciConfigMmio {
     /// PCI root bridge.
@@ -493,7 +498,9 @@ impl BusDevice for PciConfigMmio {
     }
 }
 
-/// Inspired by PCI configuration space, crosvm provides 2048 dword virtual registers (8KiB in
+impl Suspendable for PciConfigMmio {}
+
+/// Inspired by PCI configuration space, CrosVM provides 2048 dword virtual registers (8KiB in
 /// total) for each PCI device. The guest can use these registers to exchange device-specific
 /// information with crosvm. The first 4kB is trapped by crosvm and crosvm supplies these
 /// register's emulation. The second 4KB is mapped into guest directly as shared memory, so
@@ -567,3 +574,5 @@ impl BusDevice for PciVirtualConfigMmio {
             .virtual_config_space_write(address, register, value)
     }
 }
+
+impl Suspendable for PciVirtualConfigMmio {}

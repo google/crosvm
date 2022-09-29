@@ -76,6 +76,7 @@ use crate::IrqEventSource;
 use crate::IrqLevelEvent;
 use crate::Pit;
 use crate::PitError;
+use crate::Suspendable;
 
 /// PIT channel 0 timer is connected to IRQ 0
 const PIT_CHANNEL0_IRQ: u32 = 0;
@@ -859,6 +860,8 @@ impl<V: VcpuX86_64 + 'static> BusDevice for UserspaceIrqChip<V> {
         CrosvmDeviceId::UserspaceIrqChip.into()
     }
 }
+
+impl<V: VcpuX86_64 + 'static> Suspendable for UserspaceIrqChip<V> {}
 
 impl<V: VcpuX86_64 + 'static> BusDeviceSync for UserspaceIrqChip<V> {
     fn read(&self, info: BusAccessInfo, data: &mut [u8]) {

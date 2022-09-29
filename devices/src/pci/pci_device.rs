@@ -44,6 +44,7 @@ use crate::BusAccessInfo;
 use crate::BusDevice;
 use crate::DeviceId;
 use crate::IrqLevelEvent;
+use crate::Suspendable;
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -307,7 +308,7 @@ pub enum PreferredIrq {
     Fixed { pin: PciInterruptPin, gsi: u32 },
 }
 
-pub trait PciDevice: Send {
+pub trait PciDevice: Send + Suspendable {
     /// Returns a label suitable for debug output.
     fn debug_label(&self) -> String;
 
@@ -697,6 +698,24 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     }
 }
 
+impl<T: PciDevice + ?Sized> Suspendable for Box<T> {
+    fn snapshot(&self) -> anyhow::Result<String> {
+        (**self).snapshot()
+    }
+
+    fn restore(&mut self, data: &str) -> anyhow::Result<()> {
+        (**self).restore(data)
+    }
+
+    fn sleep(&mut self) -> anyhow::Result<()> {
+        (**self).sleep()
+    }
+
+    fn wake(&mut self) -> anyhow::Result<()> {
+        (**self).wake()
+    }
+}
+
 impl<T: 'static + PciDevice> BusDeviceObj for T {
     fn as_pci_device(&self) -> Option<&dyn PciDevice> {
         Some(self)
@@ -758,6 +777,8 @@ mod tests {
             self.config_regs.get_bar_configuration(bar_num)
         }
     }
+
+    impl Suspendable for TestDev {}
 
     #[test]
     fn config_write_result() {

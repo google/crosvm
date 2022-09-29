@@ -89,6 +89,7 @@ use crate::vfio::VfioError;
 use crate::vfio::VfioIrqType;
 use crate::vfio::VfioPciConfig;
 use crate::IrqLevelEvent;
+use crate::Suspendable;
 
 const PCI_VENDOR_ID: u32 = 0x0;
 const PCI_DEVICE_ID: u32 = 0x2;
@@ -2191,6 +2192,8 @@ impl Drop for VfioPciDevice {
         }
     }
 }
+
+impl Suspendable for VfioPciDevice {}
 
 #[cfg(test)]
 mod tests {

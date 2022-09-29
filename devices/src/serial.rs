@@ -21,6 +21,7 @@ use base::Result;
 use crate::bus::BusAccessInfo;
 use crate::pci::CrosvmDeviceId;
 use crate::serial_device::SerialInput;
+use crate::suspendable::Suspendable;
 use crate::BusDevice;
 use crate::DeviceId;
 
@@ -398,6 +399,8 @@ impl BusDevice for Serial {
         };
     }
 }
+
+impl Suspendable for Serial {}
 
 #[cfg(test)]
 mod tests {

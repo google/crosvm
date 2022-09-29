@@ -23,6 +23,7 @@ use crate::bus::BusAccessInfo;
 use crate::pci::CrosvmDeviceId;
 use crate::BusDevice;
 use crate::DeviceId;
+use crate::Suspendable;
 
 pub struct Pic {
     // Indicates a pending INTR signal to LINT0 of vCPU, checked by vCPU thread.
@@ -537,6 +538,8 @@ impl Pic {
         }
     }
 }
+
+impl Suspendable for Pic {}
 
 #[cfg(test)]
 mod tests {

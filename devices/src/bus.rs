@@ -26,6 +26,7 @@ use crate::BusStatistics;
 use crate::DeviceId;
 use crate::PciAddress;
 use crate::PciDevice;
+use crate::Suspendable;
 #[cfg(unix)]
 use crate::VfioPlatformDevice;
 use crate::VirtioMmioDevice;
@@ -80,7 +81,7 @@ pub enum BusType {
 /// The device does not care where it exists in address space as each method is only given an offset
 /// into its allocated portion of address space.
 #[allow(unused_variables)]
-pub trait BusDevice: Send {
+pub trait BusDevice: Send + Suspendable {
     /// Returns a label suitable for debug output.
     fn debug_label(&self) -> String;
     /// Returns a unique id per device type suitable for metrics gathering.

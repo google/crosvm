@@ -38,6 +38,7 @@ use crate::BusDevice;
 use crate::BusDeviceObj;
 use crate::DeviceId;
 use crate::IrqEdgeEvent;
+use crate::Suspendable;
 
 const VIRT_MAGIC: u32 = 0x74726976; /* 'virt' */
 const VIRT_VERSION: u8 = 2;
@@ -506,3 +507,5 @@ impl BusDevice for VirtioMmioDevice {
         self.on_device_sandboxed();
     }
 }
+
+impl Suspendable for VirtioMmioDevice {}

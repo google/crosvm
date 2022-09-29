@@ -28,6 +28,7 @@ use crate::pci::pci_device::PciDevice;
 use crate::pci::pci_device::Result;
 use crate::pci::PciAddress;
 use crate::pci::PciDeviceError;
+use crate::Suspendable;
 
 #[derive(Serialize, Deserialize)]
 pub struct StubPciParameters {
@@ -135,6 +136,8 @@ impl PciDevice for StubPciDevice {
 
     fn write_bar(&mut self, _addr: u64, _data: &[u8]) {}
 }
+
+impl Suspendable for StubPciDevice {}
 
 #[cfg(test)]
 mod test {

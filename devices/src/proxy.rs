@@ -27,6 +27,7 @@ use crate::BusDevice;
 use crate::BusRange;
 use crate::BusType;
 use crate::DeviceId;
+use crate::Suspendable;
 
 /// Errors for proxy devices.
 #[sorted]
@@ -359,6 +360,8 @@ impl BusDevice for ProxyDevice {
     }
 }
 
+impl Suspendable for ProxyDevice {}
+
 impl Drop for ProxyDevice {
     fn drop(&mut self) {
         self.sync_send(&Command::Shutdown);
@@ -419,6 +422,8 @@ mod tests {
             self.config as u32
         }
     }
+
+    impl Suspendable for EchoDevice {}
 
     fn new_proxied_echo_device() -> ProxyDevice {
         let device = EchoDevice::new();

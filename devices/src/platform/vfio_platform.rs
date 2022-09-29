@@ -37,6 +37,7 @@ use crate::BusDeviceObj;
 use crate::DeviceId;
 use crate::IrqEdgeEvent;
 use crate::IrqLevelEvent;
+use crate::Suspendable;
 
 struct MmioInfo {
     index: u32,
@@ -71,6 +72,8 @@ impl BusDevice for VfioPlatformDevice {
         self.write_mmio(info.address, data)
     }
 }
+
+impl Suspendable for VfioPlatformDevice {}
 
 impl BusDeviceObj for VfioPlatformDevice {
     fn as_platform_device(&self) -> Option<&VfioPlatformDevice> {
