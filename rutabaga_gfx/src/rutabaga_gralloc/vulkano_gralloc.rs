@@ -55,7 +55,7 @@ use crate::rutabaga_utils::*;
 /// A gralloc implementation capable of allocation `VkDeviceMemory`.
 pub struct VulkanoGralloc {
     devices: Map<PhysicalDeviceType, Arc<Device>>,
-    device_physical_index: Map<PhysicalDeviceType, usize>,
+    device_by_id: Map<DeviceId, Arc<Device>>,
     has_integrated_gpu: bool,
 }
 
@@ -91,6 +91,21 @@ unsafe impl MappedRegion for VulkanoMapping {
     }
 }
 
+trait DeviceExt {
+    /// Get a unique identifier for the device.
+    fn get_id(&self) -> DeviceId;
+}
+
+impl DeviceExt for Device {
+    fn get_id(&self) -> DeviceId {
+        let properties = self.physical_device().properties;
+        DeviceId {
+            device_uuid: properties.device_uuid.expect("Vulkan should support uuid"),
+            driver_uuid: properties.driver_uuid.expect("Vulkan should support uuid"),
+        }
+    }
+}
+
 impl VulkanoGralloc {
     /// Returns a new `VulkanGralloc' instance upon success.
     pub fn init() -> RutabagaResult<Box<dyn Gralloc>> {
@@ -113,10 +128,10 @@ impl VulkanoGralloc {
         )?;
 
         let mut devices: Map<PhysicalDeviceType, Arc<Device>> = Default::default();
-        let mut device_physical_index: Map<PhysicalDeviceType, usize> = Default::default();
+        let mut device_by_id: Map<DeviceId, Arc<Device>> = Default::default();
         let mut has_integrated_gpu = false;
 
-        for (physical_index, physical) in instance.enumerate_physical_devices()?.enumerate() {
+        for physical in instance.enumerate_physical_devices()? {
             let queue_family_index = physical
                 .queue_family_properties()
                 .iter()
@@ -154,8 +169,8 @@ impl VulkanoGralloc {
                 // If we have two devices of the same type (two integrated GPUs), the old value is
                 // dropped.  Vulkano is verbose enough such that a keener selection algorithm may
                 // be used, but the need for such complexity does not seem to exist now.
-                devices.insert(device_type, device);
-                device_physical_index.insert(device_type, physical_index);
+                devices.insert(device_type, device.clone());
+                device_by_id.insert(device.get_id(), device);
             };
         }
 
@@ -167,7 +182,7 @@ impl VulkanoGralloc {
 
         Ok(Box::new(VulkanoGralloc {
             devices,
-            device_physical_index,
+            device_by_id,
             has_integrated_gpu,
         }))
     }
@@ -274,10 +289,6 @@ impl Gralloc for VulkanoGralloc {
             &PhysicalDeviceType::DiscreteGpu
         };
 
-        let physical_index = *self
-            .device_physical_index
-            .get(device_type)
-            .ok_or(RutabagaError::InvalidGrallocGpuType)?;
         let device = self
             .devices
             .get(device_type)
@@ -360,7 +371,7 @@ impl Gralloc for VulkanoGralloc {
 
         reqs.vulkan_info = Some(VulkanInfo {
             memory_idx: memory_type_index as u32,
-            physical_device_idx: physical_index as u32,
+            device_id: device.get_id(),
         });
 
         Ok(reqs)
@@ -448,16 +459,9 @@ impl Gralloc for VulkanoGralloc {
         vulkan_info: VulkanInfo,
         size: u64,
     ) -> RutabagaResult<Box<dyn MappedRegion>> {
-        let device_type = self
-            .device_physical_index
-            .iter()
-            .find(|entry| *entry.1 == vulkan_info.physical_device_idx as usize)
-            .ok_or(RutabagaError::InvalidVulkanInfo)?
-            .0;
-
         let device = self
-            .devices
-            .get(device_type)
+            .device_by_id
+            .get(&vulkan_info.device_id)
             .ok_or(RutabagaError::InvalidVulkanInfo)?;
 
         let device_memory = unsafe {

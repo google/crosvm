@@ -528,7 +528,9 @@ impl CrossDomainContext {
 
         if let Some(ref vk_info) = reqs.vulkan_info {
             response.memory_idx = vk_info.memory_idx as i32;
-            response.physical_device_idx = vk_info.physical_device_idx as i32;
+            // We return -1 for now since physical_device_idx is deprecated. If this backend is
+            // put back into action, it should be using device_id from the request instead.
+            response.physical_device_idx = -1;
         }
 
         if let Some(state) = &self.state {

@@ -736,7 +736,7 @@ impl VirtioGpu {
                     descriptor: export.os_handle,
                     handle_type: export.handle_type,
                     memory_idx: vulkan_info.memory_idx,
-                    physical_device_idx: vulkan_info.physical_device_idx,
+                    device_id: vulkan_info.device_id,
                     size: resource.size,
                 });
             } else if export.handle_type != RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_FD {

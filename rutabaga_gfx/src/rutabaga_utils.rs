@@ -97,11 +97,20 @@ pub struct Resource3DInfo {
     pub modifier: u64,
 }
 
-/// Memory index and physical device index of the associated VkDeviceMemory.
+/// A unique identifier for a device.
+#[derive(
+    Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize,
+)]
+pub struct DeviceId {
+    pub device_uuid: [u8; 16],
+    pub driver_uuid: [u8; 16],
+}
+
+/// Memory index and physical device id of the associated VkDeviceMemory.
 #[derive(Copy, Clone, Default)]
 pub struct VulkanInfo {
     pub memory_idx: u32,
-    pub physical_device_idx: u32,
+    pub device_id: DeviceId,
 }
 
 /// Rutabaga context init capset id mask.

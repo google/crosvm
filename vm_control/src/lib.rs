@@ -69,6 +69,7 @@ use libc::ERANGE;
 use remain::sorted;
 use resources::Alloc;
 use resources::SystemAllocator;
+use rutabaga_gfx::DeviceId;
 use rutabaga_gfx::RutabagaGralloc;
 use rutabaga_gfx::RutabagaHandle;
 use rutabaga_gfx::VulkanInfo;
@@ -281,7 +282,7 @@ pub enum VmMemorySource {
         descriptor: SafeDescriptor,
         handle_type: u32,
         memory_idx: u32,
-        physical_device_idx: u32,
+        device_id: DeviceId,
         size: u64,
     },
     /// Register the current rutabaga external mapping.
@@ -313,7 +314,7 @@ impl VmMemorySource {
                 descriptor,
                 handle_type,
                 memory_idx,
-                physical_device_idx,
+                device_id,
                 size,
             } => {
                 let mapped_region = match gralloc.import_and_map(
@@ -323,7 +324,7 @@ impl VmMemorySource {
                     },
                     VulkanInfo {
                         memory_idx,
-                        physical_device_idx,
+                        device_id,
                     },
                     size,
                 ) {

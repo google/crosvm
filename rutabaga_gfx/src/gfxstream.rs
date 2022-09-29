@@ -76,7 +76,8 @@ pub struct stream_renderer_handle {
 #[derive(Copy, Clone, Default)]
 pub struct stream_renderer_vulkan_info {
     pub memory_index: u32,
-    pub physical_device_index: u32,
+    pub device_uuid: [u8; 16],
+    pub driver_uuid: [u8; 16],
 }
 
 #[allow(non_camel_case_types)]
@@ -315,7 +316,10 @@ impl Gfxstream {
 
         Ok(VulkanInfo {
             memory_idx: vulkan_info.memory_index,
-            physical_device_idx: vulkan_info.physical_device_index,
+            device_id: DeviceId {
+                device_uuid: vulkan_info.device_uuid,
+                driver_uuid: vulkan_info.driver_uuid,
+            },
         })
     }
 
