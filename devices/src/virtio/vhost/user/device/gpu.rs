@@ -34,7 +34,6 @@ use vmm_vhost::message::VhostUserVirtioFeatures;
 
 use crate::virtio;
 use crate::virtio::gpu;
-use crate::virtio::gpu::GpuFrontendExt;
 use crate::virtio::vhost::user::device::handler::sys::Doorbell;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;

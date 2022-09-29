@@ -18,6 +18,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::thread;
 
+use anyhow::Context;
 use base::debug;
 use base::error;
 use base::warn;
@@ -44,9 +45,6 @@ use rutabaga_gfx::*;
 use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
-use sys::ResourceBridges;
-#[cfg(unix)]
-pub use sys::UnixFrontendExt as GpuFrontendExt;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
@@ -63,6 +61,8 @@ use self::protocol::*;
 use self::virtio_gpu::VirtioGpu;
 use super::copy_config;
 pub use super::device_constants::gpu::QUEUE_SIZES;
+use super::resource_bridge::ResourceRequest;
+use super::resource_bridge::ResourceResponse;
 use super::DescriptorChain;
 use super::DeviceType;
 use super::Interrupt;
@@ -299,6 +299,27 @@ impl Frontend {
     /// Processes the internal `display` events and returns `true` if any display was closed.
     pub fn process_display(&mut self) -> bool {
         self.virtio_gpu.process_display()
+    }
+
+    /// Processes incoming requests on `resource_bridge`.
+    pub fn process_resource_bridge(&mut self, resource_bridge: &Tube) -> anyhow::Result<()> {
+        let response = match resource_bridge.recv() {
+            Ok(ResourceRequest::GetBuffer { id }) => self.virtio_gpu.export_resource(id),
+            Ok(ResourceRequest::GetFence { seqno }) => {
+                // The seqno originated from self.backend, so it should fit in a u32.
+                match u32::try_from(seqno) {
+                    Ok(fence_id) => self.virtio_gpu.export_fence(fence_id),
+                    Err(_) => ResourceResponse::Invalid,
+                }
+            }
+            Err(e) => return Err(e).context("Error receiving resource bridge request"),
+        };
+
+        resource_bridge
+            .send(&response)
+            .context("Error sending resource bridge response")?;
+
+        Ok(())
     }
 
     fn process_gpu_command(
@@ -1321,25 +1342,76 @@ impl VirtioDevice for Gpu {
     }
 }
 
-/// Trait that the platform-specific type `ResourceBridges` needs to implement.
-trait ResourceBridgesTrait {
+/// This struct takes the ownership of resource bridges and tracks which ones should be processed.
+struct ResourceBridges {
+    resource_bridges: Vec<Tube>,
+    should_process: Vec<bool>,
+}
+
+impl ResourceBridges {
+    pub fn new(resource_bridges: Vec<Tube>) -> Self {
+        #[cfg(windows)]
+        assert!(
+            resource_bridges.is_empty(),
+            "resource bridges are not supported on Windows"
+        );
+
+        let mut resource_bridges = Self {
+            resource_bridges,
+            should_process: Default::default(),
+        };
+        resource_bridges.reset_should_process();
+        resource_bridges
+    }
+
     // Appends raw descriptors of all resource bridges to the given vector.
-    fn append_raw_descriptors(&self, _rds: &mut Vec<RawDescriptor>);
+    pub fn append_raw_descriptors(&self, rds: &mut Vec<RawDescriptor>) {
+        for bridge in &self.resource_bridges {
+            rds.push(bridge.as_raw_descriptor());
+        }
+    }
 
     /// Adds all resource bridges to WaitContext.
-    fn add_to_wait_context(&self, _wait_ctx: &mut WaitContext<WorkerToken>);
+    pub fn add_to_wait_context(&self, wait_ctx: &mut WaitContext<WorkerToken>) {
+        for (index, bridge) in self.resource_bridges.iter().enumerate() {
+            if let Err(e) = wait_ctx.add(bridge, WorkerToken::ResourceBridge { index }) {
+                error!("failed to add resource bridge to WaitContext: {}", e);
+            }
+        }
+    }
 
     /// Marks that the resource bridge at the given index should be processed when
     /// `process_resource_bridges()` is called.
-    fn set_should_process(&mut self, _index: usize);
+    pub fn set_should_process(&mut self, index: usize) {
+        self.should_process[index] = true;
+    }
 
     /// Processes all resource bridges that have been marked as should be processed.  The markings
     /// will be cleared before returning. Faulty resource bridges will be removed from WaitContext.
-    fn process_resource_bridges(
+    pub fn process_resource_bridges(
         &mut self,
-        _state: &mut Frontend,
-        _wait_ctx: &mut WaitContext<WorkerToken>,
-    );
+        state: &mut Frontend,
+        wait_ctx: &mut WaitContext<WorkerToken>,
+    ) {
+        for (bridge, &should_process) in self.resource_bridges.iter().zip(&self.should_process) {
+            if should_process {
+                if let Err(e) = state.process_resource_bridge(bridge) {
+                    error!("Failed to process resource bridge: {:#}", e);
+                    error!("Removing that resource bridge from the wait context.");
+                    wait_ctx.delete(bridge).unwrap_or_else(|e| {
+                        error!("Failed to remove faulty resource bridge: {:#}", e)
+                    });
+                }
+            }
+        }
+        self.reset_should_process();
+    }
+
+    fn reset_should_process(&mut self) {
+        self.should_process.clear();
+        self.should_process
+            .resize(self.resource_bridges.len(), false);
+    }
 }
 
 /// This function creates the window procedure thread and windows.
