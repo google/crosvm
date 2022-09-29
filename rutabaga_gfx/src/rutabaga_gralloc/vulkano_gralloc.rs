@@ -9,6 +9,8 @@
 
 #![cfg(feature = "vulkano")]
 
+mod sys;
+
 use std::collections::HashMap as Map;
 use std::convert::TryInto;
 use std::sync::Arc;
@@ -18,9 +20,8 @@ use vulkano::device::physical::PhysicalDeviceType;
 use vulkano::device::Device;
 use vulkano::device::DeviceCreateInfo;
 use vulkano::device::DeviceCreationError;
-use vulkano::device::DeviceExtensions;
 use vulkano::device::QueueCreateInfo;
-use vulkano::image::sys;
+use vulkano::image;
 use vulkano::image::ImageCreationError;
 use vulkano::image::ImageDimensions;
 use vulkano::image::ImageUsage;
@@ -129,14 +130,7 @@ impl VulkanoGralloc {
 
             let supported_extensions = physical.supported_extensions();
 
-            let desired_extensions = DeviceExtensions {
-                khr_dedicated_allocation: true,
-                khr_get_memory_requirements2: true,
-                khr_external_memory: true,
-                khr_external_memory_fd: true,
-                ext_external_memory_dma_buf: true,
-                ..DeviceExtensions::empty()
-            };
+            let desired_extensions = Self::get_desired_device_extensions();
 
             let intersection = supported_extensions.intersection(&desired_extensions);
 
@@ -189,7 +183,7 @@ impl VulkanoGralloc {
     unsafe fn create_image(
         &mut self,
         info: ImageAllocationInfo,
-    ) -> RutabagaResult<(Arc<sys::UnsafeImage>, MemoryRequirements)> {
+    ) -> RutabagaResult<(Arc<image::sys::UnsafeImage>, MemoryRequirements)> {
         let device = if self.has_integrated_gpu {
             self.devices
                 .get(&PhysicalDeviceType::IntegratedGpu)
@@ -222,9 +216,9 @@ impl VulkanoGralloc {
         }
 
         let vulkan_format = info.drm_format.vulkan_format()?;
-        let unsafe_image = sys::UnsafeImage::new(
+        let unsafe_image = image::sys::UnsafeImage::new(
             device.clone(),
-            sys::UnsafeImageCreateInfo {
+            image::sys::UnsafeImageCreateInfo {
                 dimensions: ImageDimensions::Dim2d {
                     width: info.width,
                     height: info.height,
@@ -466,27 +460,17 @@ impl Gralloc for VulkanoGralloc {
             .get(device_type)
             .ok_or(RutabagaError::InvalidVulkanInfo)?;
 
-        let export_handle_types = match handle.handle_type {
-            RUTABAGA_MEM_HANDLE_TYPE_DMABUF => ExternalMemoryHandleTypes {
-                dma_buf: true,
-                ..ExternalMemoryHandleTypes::empty()
-            },
-            RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_FD => ExternalMemoryHandleTypes {
-                opaque_fd: true,
-                ..ExternalMemoryHandleTypes::empty()
-            },
-            _ => return Err(RutabagaError::InvalidRutabagaHandle),
+        let device_memory = unsafe {
+            VulkanoGralloc::import_memory(
+                device.clone(),
+                MemoryAllocateInfo {
+                    allocation_size: size,
+                    memory_type_index: vulkan_info.memory_idx,
+                    ..Default::default()
+                },
+                handle,
+            )?
         };
-
-        let device_memory = DeviceMemory::allocate(
-            device.clone(),
-            MemoryAllocateInfo {
-                allocation_size: size,
-                memory_type_index: vulkan_info.memory_idx,
-                export_handle_types,
-                ..Default::default()
-            },
-        )?;
 
         let mapped_memory = MappedDeviceMemory::new(device_memory, 0..size)?;
 
