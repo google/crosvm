@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use backend::*;
+use base::debug;
 use base::error;
 use base::info;
 use base::warn;
@@ -657,7 +658,7 @@ impl<T: Encoder> EncoderDevice<T> {
                 }
 
                 if stream.src_resources.contains_key(&resource_id) {
-                    warn!("Replacing source resource with id {}", resource_id);
+                    debug!("Replacing source resource with id {}", resource_id);
                 }
 
                 let resource = match stream.src_params.resource_type {
@@ -705,7 +706,7 @@ impl<T: Encoder> EncoderDevice<T> {
                 }
 
                 if stream.dst_resources.contains_key(&resource_id) {
-                    warn!("Replacing dest resource with id {}", resource_id);
+                    debug!("Replacing dest resource with id {}", resource_id);
                 }
 
                 let resource = match stream.dst_params.resource_type {
