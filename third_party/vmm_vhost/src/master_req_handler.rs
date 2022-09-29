@@ -91,6 +91,15 @@ pub trait VhostUserMasterReqHandler {
 
     // fn handle_iotlb_msg(&mut self, iotlb: VhostUserIotlb);
     // fn handle_vring_host_notifier(&mut self, area: VhostUserVringArea, fd: &dyn AsRawDescriptor);
+
+    /// Handle GPU shared memory region mapping requests.
+    fn gpu_map(
+        &self,
+        _req: &VhostUserGpuMapMsg,
+        _descriptor: &dyn AsRawDescriptor,
+    ) -> HandlerResult<u64> {
+        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
+    }
 }
 
 /// A helper trait mirroring [VhostUserMasterReqHandler] but without interior mutability.
@@ -146,6 +155,15 @@ pub trait VhostUserMasterReqHandlerMut {
 
     // fn handle_iotlb_msg(&mut self, iotlb: VhostUserIotlb);
     // fn handle_vring_host_notifier(&mut self, area: VhostUserVringArea, fd: RawDescriptor);
+
+    /// Handle GPU shared memory region mapping requests.
+    fn gpu_map(
+        &mut self,
+        _req: &VhostUserGpuMapMsg,
+        _descriptor: &dyn AsRawDescriptor,
+    ) -> HandlerResult<u64> {
+        Err(std::io::Error::from_raw_os_error(libc::ENOSYS))
+    }
 }
 
 impl<S: VhostUserMasterReqHandlerMut> VhostUserMasterReqHandler for Mutex<S> {
@@ -187,6 +205,14 @@ impl<S: VhostUserMasterReqHandlerMut> VhostUserMasterReqHandler for Mutex<S> {
         fd: &dyn AsRawDescriptor,
     ) -> HandlerResult<u64> {
         self.lock().unwrap().fs_slave_io(fs, fd)
+    }
+
+    fn gpu_map(
+        &self,
+        req: &VhostUserGpuMapMsg,
+        descriptor: &dyn AsRawDescriptor,
+    ) -> HandlerResult<u64> {
+        self.lock().unwrap().gpu_map(req, descriptor)
     }
 }
 
@@ -354,6 +380,13 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
                     .fs_slave_io(&msg, &files.unwrap()[0])
                     .map_err(Error::ReqHandlerError)
             }
+            SlaveReq::GPU_MAP => {
+                let msg = self.extract_msg_body::<VhostUserGpuMapMsg>(&hdr, size, &buf)?;
+                // check_attached_files() has validated files
+                self.backend
+                    .gpu_map(&msg, &files.unwrap()[0])
+                    .map_err(Error::ReqHandlerError)
+            }
             _ => Err(Error::InvalidMessage),
         };
 
@@ -391,7 +424,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         files: &Option<Vec<File>>,
     ) -> Result<()> {
         match hdr.get_code() {
-            SlaveReq::SHMEM_MAP | SlaveReq::FS_MAP | SlaveReq::FS_IO => {
+            SlaveReq::SHMEM_MAP | SlaveReq::FS_MAP | SlaveReq::FS_IO | SlaveReq::GPU_MAP => {
                 // Expect a single file is passed.
                 match files {
                     Some(files) if files.len() == 1 => Ok(()),
@@ -435,6 +468,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
     fn send_reply(&mut self, req: &VhostUserMsgHeader<SlaveReq>, res: &Result<u64>) -> Result<()> {
         if req.get_code() == SlaveReq::SHMEM_MAP
             || req.get_code() == SlaveReq::SHMEM_UNMAP
+            || req.get_code() == SlaveReq::GPU_MAP
             || (self.reply_ack_negotiated && req.is_need_reply())
         {
             let hdr = self.new_reply_header::<VhostUserU64>(req)?;

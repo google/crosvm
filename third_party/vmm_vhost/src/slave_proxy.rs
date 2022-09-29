@@ -64,6 +64,7 @@ impl SlaveInternal {
         self.check_state()?;
         if hdr.get_code() != SlaveReq::SHMEM_MAP
             && hdr.get_code() != SlaveReq::SHMEM_UNMAP
+            && hdr.get_code() != SlaveReq::GPU_MAP
             && !self.reply_ack_negotiated
         {
             return Ok(0);
@@ -181,6 +182,19 @@ impl VhostUserMasterReqHandler for Slave {
     /// Forward vhost-user-fs unmap file requests to the master.
     fn fs_slave_unmap(&self, fs: &VhostUserFSSlaveMsg) -> HandlerResult<u64> {
         self.send_message(SlaveReq::FS_UNMAP, fs, None)
+    }
+
+    /// Handle GPU shared memory region mapping requests.
+    fn gpu_map(
+        &self,
+        req: &VhostUserGpuMapMsg,
+        descriptor: &dyn AsRawDescriptor,
+    ) -> HandlerResult<u64> {
+        self.send_message(
+            SlaveReq::GPU_MAP,
+            req,
+            Some(&[descriptor.as_raw_descriptor()]),
+        )
     }
 }
 

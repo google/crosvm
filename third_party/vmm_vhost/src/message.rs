@@ -190,8 +190,10 @@ pub enum SlaveReq {
     FS_SYNC = 10,
     /// Virtio-fs draft: perform a read/write from an fd directly to GPA.
     FS_IO = 11,
+    /// Indicates a request to map GPU memory into a shared memory region.
+    GPU_MAP = 12,
     /// Upper bound of valid commands.
-    MAX_CMD = 12,
+    MAX_CMD = 13,
 }
 
 impl From<SlaveReq> for u32 {
@@ -938,6 +940,59 @@ impl VhostUserShmemMapMsg {
             shm_offset,
             fd_offset,
             len,
+        }
+    }
+}
+
+/// Slave request message to map GPU memory into a shared memory region.
+#[repr(C, packed)]
+#[derive(Default, Copy, Clone)]
+pub struct VhostUserGpuMapMsg {
+    /// Shared memory region id.
+    pub shmid: u8,
+    padding: [u8; 7],
+    /// Offset into the shared memory region.
+    pub shm_offset: u64,
+    /// Size of region to map.
+    pub len: u64,
+    /// Index of the memory type.
+    pub memory_idx: u32,
+    /// Type of share handle.
+    pub handle_type: u32,
+    /// Device UUID
+    pub device_uuid: [u8; 16],
+    /// Driver UUID
+    pub driver_uuid: [u8; 16],
+}
+// Safe because it only has data and has no implicit padding.
+unsafe impl DataInit for VhostUserGpuMapMsg {}
+
+impl VhostUserMsgValidator for VhostUserGpuMapMsg {
+    fn is_valid(&self) -> bool {
+        self.len > 0
+    }
+}
+
+impl VhostUserGpuMapMsg {
+    /// New instance of VhostUserGpuMapMsg struct
+    pub fn new(
+        shmid: u8,
+        shm_offset: u64,
+        len: u64,
+        memory_idx: u32,
+        handle_type: u32,
+        device_uuid: [u8; 16],
+        driver_uuid: [u8; 16],
+    ) -> Self {
+        Self {
+            shmid,
+            padding: [0; 7],
+            shm_offset,
+            len,
+            memory_idx,
+            handle_type,
+            device_uuid,
+            driver_uuid,
         }
     }
 }
