@@ -26,7 +26,7 @@ use base::AsRawDescriptor;
 use base::Event;
 use base::EventToken;
 use base::RawDescriptor;
-#[cfg(feature = "virgl_renderer_next")]
+use base::Result;
 use base::SafeDescriptor;
 use base::SendTube;
 use base::Tube;
@@ -742,7 +742,7 @@ impl Frontend {
     }
 }
 
-#[derive(EventToken)]
+#[derive(EventToken, PartialEq, Clone, Copy, Debug)]
 enum WorkerToken {
     CtrlQueue,
     CursorQueue,
@@ -751,6 +751,48 @@ enum WorkerToken {
     Kill,
     ResourceBridge { index: usize },
     VirtioGpuPoll,
+}
+
+struct EventManager<'a> {
+    pub wait_ctx: WaitContext<WorkerToken>,
+    events: Vec<(&'a dyn AsRawDescriptor, WorkerToken)>,
+}
+
+impl<'a> EventManager<'a> {
+    pub fn new() -> Result<EventManager<'a>> {
+        Ok(EventManager {
+            wait_ctx: WaitContext::new()?,
+            events: vec![],
+        })
+    }
+
+    pub fn build_with(
+        triggers: &[(&'a dyn AsRawDescriptor, WorkerToken)],
+    ) -> Result<EventManager<'a>> {
+        let mut manager = EventManager::new()?;
+        manager.wait_ctx.add_many(triggers)?;
+
+        for (descriptor, token) in triggers {
+            manager.events.push((*descriptor, *token));
+        }
+        Ok(manager)
+    }
+
+    pub fn add(&mut self, descriptor: &'a dyn AsRawDescriptor, token: WorkerToken) -> Result<()> {
+        self.wait_ctx.add(descriptor, token)?;
+        self.events.push((descriptor, token));
+        Ok(())
+    }
+
+    pub fn delete(&mut self, token: WorkerToken) {
+        self.events.retain(|event| {
+            if event.1 == token {
+                self.wait_ctx.delete(event.0).ok();
+                return false;
+            }
+            true
+        });
+    }
 }
 
 struct Worker {
@@ -768,36 +810,50 @@ struct Worker {
 
 impl Worker {
     fn run(&mut self) {
-        let mut wait_ctx: WaitContext<WorkerToken> = match WaitContext::build_with(&[
+        let display_desc =
+            match SafeDescriptor::try_from(&*self.state.display().borrow() as &dyn AsRawDescriptor)
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    error!("failed getting event descriptor for display: {}", e);
+                    return;
+                }
+            };
+
+        let mut event_manager = match EventManager::build_with(&[
             (&self.ctrl_evt, WorkerToken::CtrlQueue),
             (&self.cursor_evt, WorkerToken::CursorQueue),
-            (&*self.state.display().borrow(), WorkerToken::Display),
+            (&display_desc, WorkerToken::Display),
             (&self.kill_evt, WorkerToken::Kill),
         ]) {
-            Ok(pc) => pc,
+            Ok(v) => v,
             Err(e) => {
                 error!("failed creating WaitContext: {}", e);
                 return;
             }
         };
+
         if let Some(resample_evt) = self.interrupt.get_resample_evt() {
-            if wait_ctx
-                .add(resample_evt, WorkerToken::InterruptResample)
-                .is_err()
-            {
-                error!("failed creating WaitContext");
+            if let Err(e) = event_manager.add(resample_evt, WorkerToken::InterruptResample) {
+                error!(
+                    "failed adding interrupt resample event to WaitContext: {}",
+                    e
+                );
                 return;
             }
         }
 
-        if let Some(poll_desc) = self.state.virtio_gpu.poll_descriptor() {
-            if let Err(e) = wait_ctx.add(&poll_desc, WorkerToken::VirtioGpuPoll) {
-                error!("failed adding poll eventfd to WaitContext: {}", e);
+        let poll_desc: SafeDescriptor;
+        if let Some(desc) = self.state.virtio_gpu.poll_descriptor() {
+            poll_desc = desc;
+            if let Err(e) = event_manager.add(&poll_desc, WorkerToken::VirtioGpuPoll) {
+                error!("failed adding poll event to WaitContext: {}", e);
                 return;
             }
         }
 
-        self.resource_bridges.add_to_wait_context(&mut wait_ctx);
+        self.resource_bridges
+            .add_to_wait_context(&mut event_manager.wait_ctx);
 
         // TODO(davidriley): The entire main loop processing is somewhat racey and incorrect with
         // respect to cursor vs control queue processing.  As both currently and originally
@@ -808,7 +864,7 @@ impl Worker {
         // isn't used so this isn't a huge issue.
 
         'wait: loop {
-            let events = match wait_ctx.wait() {
+            let events = match event_manager.wait_ctx.wait() {
                 Ok(v) => v,
                 Err(e) => {
                     error!("failed polling for events: {}", e);
@@ -819,13 +875,14 @@ impl Worker {
             let mut signal_used_ctrl = false;
             let mut ctrl_available = false;
 
-            // This display isn't typically used when the virt-wl device is available and it can
-            // lead to hung fds (crbug.com/1027379). Disable if it's hung.
+            // Remove event triggers that have been hung-up to prevent unnecessary worker wake-ups
+            // (see b/244486346#comment62 for context).
             for event in events.iter().filter(|e| e.is_hungup) {
-                if let WorkerToken::Display = event.token {
-                    error!("default display hang-up detected");
-                    let _ = wait_ctx.delete(&*self.state.display().borrow());
-                }
+                error!(
+                    "unhandled virtio-gpu worker event hang-up detected: {:?}",
+                    event.token
+                );
+                event_manager.delete(event.token);
             }
 
             for event in events.iter().filter(|e| e.is_readable) {
@@ -880,7 +937,7 @@ impl Worker {
             // and the resource bridge request come in at the same time after the control queue is
             // processed above and before the corresponding bridge is processed below.
             self.resource_bridges
-                .process_resource_bridges(&mut self.state, &mut wait_ctx);
+                .process_resource_bridges(&mut self.state, &mut event_manager.wait_ctx);
 
             if signal_used_ctrl {
                 self.ctrl_queue.signal_used(&self.mem);
