@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::error::Error;
+use std::fmt::{Display, Formatter};
 
 use thiserror::Error as ThisError;
 
@@ -130,6 +131,17 @@ impl TryAsAvFrameExt for GuestResource {
 // The empty field prevents constructing this and allows extending it in the future.
 #[derive(Debug)]
 pub struct TryFromFormatError(());
+
+impl Display for TryFromFormatError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "No matching format to convert between AvPixelFormat and Format"
+        )
+    }
+}
+
+impl Error for TryFromFormatError {}
 
 impl TryFrom<Format> for AvPixelFormat {
     type Error = TryFromFormatError;
