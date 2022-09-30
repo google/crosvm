@@ -800,9 +800,47 @@ impl DecoderSession for VaapiDecoderSession {
 
                 Ok(())
             }
-            _ => Err(VideoError::BackendFailure(anyhow!(
-                "Invalid state while calling set_output_parameters"
-            ))),
+            OutputQueueState::Decoding { .. } => {
+                // Covers the slightly awkward ffmpeg v4l2 stateful
+                // implementation for the capture queue setup.
+                //
+                // ffmpeg will queue a single OUTPUT buffer and immediately
+                // follow up with a VIDIOC_G_FMT call on the CAPTURE queue.
+                // This leads to a race condition, because it takes some
+                // appreciable time for the real resolution to propagate back to
+                // the guest as the virtio machinery processes and delivers the
+                // event.
+                //
+                // In the event that VIDIOC_G_FMT(capture) returns the default
+                // format, ffmpeg allocates buffers of the default resolution
+                // (640x480) only to immediately reallocate as soon as it
+                // processes the SRC_CH v4l2 event. Otherwise (if the resolution
+                // has propagated in time), this path will not be taken during
+                // the initialization.
+                //
+                // This leads to the following workflow in the virtio video
+                // worker:
+                // RESOURCE_QUEUE -> QUEUE_CLEAR -> RESOURCE_QUEUE
+                //
+                // Failing to accept this (as we previously did), leaves us
+                // with bad state and completely breaks the decoding process. We
+                // should replace the queue even if this is not 100% according
+                // to spec.
+                //
+                // On the other hand, this branch still exists to highlight the
+                // fact that we should assert that we have emitted a buffer with
+                // the LAST flag when support for buffer flags is implemented in
+                // a future CL. If a buffer with the LAST flag hasn't been
+                // emitted, it's technically a mistake to be here because we
+                // still have buffers of the old resolution to deliver.
+                *output_queue_state = OutputQueueState::Decoding {
+                    output_queue: OutputQueue::new(buffer_count),
+                };
+
+                // TODO: check whether we have emitted a buffer with the LAST
+                // flag before returning.
+                Ok(())
+            }
         }
     }
 
