@@ -530,7 +530,9 @@ fn snapshot_vm(cmd: cmdline::SnapshotCommand) -> std::result::Result<(), ()> {
     use cmdline::SnapshotSubCommands::*;
     let (socket_path, request) = match cmd.snapshot_command {
         Take(path) => {
-            let req = VmRequest::Snapshot(SnapshotCommand::Take);
+            let req = VmRequest::Snapshot(SnapshotCommand::Take {
+                snapshot_path: path.snapshot_path,
+            });
             (path.socket_path, req)
         }
     };

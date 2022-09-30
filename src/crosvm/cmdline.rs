@@ -612,6 +612,9 @@ pub struct SnapshotCommand {
 #[argh(subcommand, name = "take")]
 /// Take a snapshot of the VM
 pub struct SnapshotTakeCommand {
+    #[argh(positional, arg_name = "snapshot_path")]
+    /// VM Image path
+    pub snapshot_path: PathBuf,
     #[argh(positional, arg_name = "VM_SOCKET")]
     /// VM Socket path
     pub socket_path: String,

@@ -75,6 +75,7 @@ use broker_ipc::CommonChildStartupArgs;
 use crosvm_cli::sys::windows::exit::Exit;
 use crosvm_cli::sys::windows::exit::ExitContext;
 use crosvm_cli::sys::windows::exit::ExitContextAnyhow;
+use devices::create_devices_worker_thread;
 use devices::serial_device::SerialHardware;
 use devices::serial_device::SerialParameters;
 use devices::tsc::get_tsc_sync_mitigations;
@@ -893,6 +894,18 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             _ => (),
         }
     }
+
+    let (device_ctrl_tube, device_ctrl_resp) = Tube::pair().context("failed to create tube")?;
+    guest_os.devices_thread = match create_devices_worker_thread(
+        guest_os.io_bus.clone(),
+        guest_os.mmio_bus.clone(),
+        device_ctrl_resp,
+    ) {
+        Ok(join_handle) => Some(join_handle),
+        Err(e) => {
+            return Err(anyhow!("Failed to start devices thread: {}", e));
+        }
+    };
 
     let vcpus: Vec<Option<_>> = match guest_os.vcpus.take() {
         Some(vec) => vec.into_iter().map(|vcpu| Some(vcpu)).collect(),

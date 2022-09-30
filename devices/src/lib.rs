@@ -22,6 +22,7 @@ mod i8042;
 mod irq_event;
 pub mod irqchip;
 mod pci;
+mod pflash;
 pub mod pl030;
 mod serial;
 pub mod serial_device;
@@ -41,6 +42,19 @@ cfg_if::cfg_if! {
     }
 }
 
+use std::fs::OpenOptions;
+use std::sync::Arc;
+
+use anyhow::anyhow;
+use base::error;
+use base::info;
+use base::Tube;
+use base::TubeError;
+use cros_async::AsyncTube;
+use cros_async::Executor;
+use vm_control::DeviceControlCommand;
+use vm_control::SnapshotControlResult;
+
 pub use self::acpi::ACPIPMFixedEvent;
 pub use self::acpi::ACPIPMResource;
 pub use self::bat::BatteryError;
@@ -56,6 +70,7 @@ pub use self::bus::BusType;
 pub use self::bus::Error as BusError;
 pub use self::bus::HostHotPlugKey;
 pub use self::bus::HotPlugBus;
+use self::bus::SerializedDevice;
 #[cfg(feature = "stats")]
 pub use self::bus_stats::BusStatistics;
 pub use self::cmos::Cmos;
@@ -96,6 +111,8 @@ pub use self::pci::PciVirtualConfigMmio;
 pub use self::pci::PreferredIrq;
 pub use self::pci::StubPciDevice;
 pub use self::pci::StubPciParameters;
+pub use self::pflash::Pflash;
+pub use self::pflash::PflashParameters;
 pub use self::pl030::Pl030;
 pub use self::serial::Serial;
 pub use self::serial_device::Error as SerialError;
@@ -112,9 +129,6 @@ pub use self::virtio::VirtioPciDevice;
 #[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
 pub use self::vtpm_proxy::VtpmProxy;
 
-mod pflash;
-pub use self::pflash::Pflash;
-pub use self::pflash::PflashParameters;
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
         mod platform;
@@ -193,6 +207,183 @@ impl FromStr for IommuDevType {
             "viommu" => Ok(IommuDevType::VirtioIommu),
             "coiommu" => Ok(IommuDevType::CoIommu),
             _ => Err(ParseIommuDevTypeResult::NoSuchType),
+        }
+    }
+}
+
+// Thread that handles commands sent to devices - such as snapshot, sleep, suspend
+// Created when the VM is first created, and re-created on resumption of the VM.
+pub fn create_devices_worker_thread(
+    io_bus: Arc<Bus>,
+    mmio_bus: Arc<Bus>,
+    device_ctrl_resp: Tube,
+) -> std::io::Result<std::thread::JoinHandle<()>> {
+    std::thread::Builder::new()
+        .name("device_control".to_string())
+        .spawn(|| {
+            let ex = Executor::new().expect("Failed to create an executor");
+
+            let async_control = AsyncTube::new(&ex, device_ctrl_resp).unwrap();
+            match ex.run_until(ex.spawn_local(async move {
+                handle_command_tube(async_control, io_bus, mmio_bus).await
+            })) {
+                Ok(_) => {}
+                Err(e) => {
+                    error!("Device control thread exited with error: {}", e);
+                }
+            };
+        })
+}
+
+fn sleep_devices(bus: &Bus) -> anyhow::Result<()> {
+    match bus.sleep_devices() {
+        Ok(_) => {
+            info!("Devices slept successfully");
+            Ok(())
+        }
+        Err(e) => {
+            return Err(anyhow!(
+                "Failed to sleep all devices: {}. Waking up sleeping devices.",
+                e
+            ));
+        }
+    }
+}
+
+fn wake_devices(bus: &Bus) {
+    match bus.wake_devices() {
+        Ok(_) => {
+            info!("Devices awoken successfully");
+        }
+        Err(e) => {
+            // Some devices may have slept. Eternally.
+            // Recovery - impossible.
+            // Shut down VM.
+            panic!(
+                "Failed to wake devices: {}. VM panicked to avoid unexpected behavior",
+                e
+            )
+        }
+    }
+}
+
+fn snapshot_devices(bus: &Bus, devices_vec: &mut Vec<SerializedDevice>) -> anyhow::Result<()> {
+    match bus.snapshot_devices(devices_vec) {
+        Ok(_) => {
+            info!("Devices snapshot successfully");
+            Ok(())
+        }
+        Err(e) => {
+            // If snapshot fails, wake devices and return error
+            error!("failed to snapshot devices: {}", e);
+            Err(e)
+        }
+    }
+}
+
+async fn handle_command_tube(
+    command_tube: AsyncTube,
+    io_bus: Arc<Bus>,
+    mmio_bus: Arc<Bus>,
+) -> anyhow::Result<()> {
+    'listener: loop {
+        match command_tube.next().await {
+            Ok(command) => {
+                match command {
+                    DeviceControlCommand::SnapshotDevices {
+                        snapshot_path: path,
+                    } => {
+                        let mut devices_vec: Vec<SerializedDevice> = Vec::new();
+                        let file_res = OpenOptions::new()
+                            .create(true)
+                            .write(true)
+                            .truncate(true)
+                            .open(&path);
+
+                        let mut file = match file_res {
+                            Ok(file) => file,
+                            Err(e) => {
+                                error!(
+                                    "failed to open {} for writing snapshot: {}",
+                                    path.as_path().display(),
+                                    e
+                                );
+                                if let Err(e) = command_tube
+                                    .send(SnapshotControlResult::Failed(e.to_string()))
+                                    .await
+                                {
+                                    return Err(anyhow!("Failed to send response: {}", e));
+                                }
+                                continue;
+                            }
+                        };
+
+                        let buses = [&io_bus, &mmio_bus];
+                        for bus in &buses {
+                            if let Err(e) = sleep_devices(bus) {
+                                // Failing to sleep could mean a single device failing to sleep.
+                                // Wake up devices to resume functionality of the VM.
+                                for bus in &buses {
+                                    wake_devices(bus);
+                                }
+                                if let Err(e) = command_tube
+                                    .send(SnapshotControlResult::Failed(e.to_string()))
+                                    .await
+                                {
+                                    return Err(anyhow!("Failed to send response: {}", e));
+                                }
+                                // After sending the error, continue to the initial loop and wait
+                                // for a new event
+                                continue 'listener;
+                            }
+                        }
+                        for bus in &buses {
+                            if let Err(e) = snapshot_devices(bus, &mut devices_vec) {
+                                // If snapshot fails, wake devices and return error
+                                error!("failed to snapshot devices: {}", e);
+                                for bus in &buses {
+                                    wake_devices(bus);
+                                }
+                                if let Err(e) = command_tube
+                                    .send(SnapshotControlResult::Failed(e.to_string()))
+                                    .await
+                                {
+                                    return Err(anyhow!("Failed to send response: {}", e));
+                                }
+                                // After sending the error, continue to the initial loop and wait
+                                // for a new event
+                                continue 'listener;
+                            }
+                        }
+                        for bus in buses {
+                            wake_devices(bus);
+                        }
+
+                        if let Err(e) = serde_json::to_writer(&mut file, &devices_vec) {
+                            error!("failed to write serialized device to snapshot");
+                            if let Err(e) = command_tube
+                                .send(SnapshotControlResult::Failed(e.to_string()))
+                                .await
+                            {
+                                return Err(anyhow!("Failed to send response: {}", e));
+                            }
+                        }
+                        if let Err(e) = command_tube.send(SnapshotControlResult::Ok).await {
+                            return Err(anyhow!("Failed to send response: {}", e));
+                        }
+                    }
+                };
+                if let Err(e) = command_tube.send(SnapshotControlResult::Ok).await {
+                    return Err(anyhow!("Failed to send response: {}", e));
+                }
+            }
+            Err(e) => {
+                if matches!(e, TubeError::Disconnected) {
+                    // Tube disconnected - shut down thread.
+                    return Ok(());
+                }
+                return Err(anyhow!("Failed to receive: {}", e));
+            }
         }
     }
 }

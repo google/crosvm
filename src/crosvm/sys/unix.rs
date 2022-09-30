@@ -55,6 +55,7 @@ use base::UnlinkUnixSeqpacketListener;
 use base::*;
 use cros_async::Executor;
 use device_helpers::*;
+use devices::create_devices_worker_thread;
 use devices::serial_device::SerialHardware;
 use devices::vfio::VfioCommonSetup;
 use devices::vfio::VfioCommonTrait;
@@ -1903,6 +1904,7 @@ where
     };
 
     let gralloc = RutabagaGralloc::new().context("failed to create gralloc")?;
+
     run_control(
         linux,
         sys_allocator,
@@ -2411,6 +2413,18 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         (None, None)
     };
 
+    let (device_ctrl_tube, device_ctrl_resp) = Tube::pair().context("failed to create tube")?;
+    linux.devices_thread = match create_devices_worker_thread(
+        linux.io_bus.clone(),
+        linux.mmio_bus.clone(),
+        device_ctrl_resp,
+    ) {
+        Ok(join_handle) => Some(join_handle),
+        Err(e) => {
+            return Err(anyhow!("Failed to start devices thread: {}", e));
+        }
+    };
+
     let mut vcpu_handles = Vec::with_capacity(linux.vcpu_count);
     let vcpu_thread_barrier = Arc::new(Barrier::new(linux.vcpu_count + 1));
     let use_hypervisor_signals = !linux
@@ -2724,6 +2738,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                 cfg.force_s2idle,
                                                 #[cfg(feature = "swap")]
                                                 swap_controller.as_ref(),
+                                                &device_ctrl_tube,
                                             );
 
                                             // For non s2idle guest suspension we are done

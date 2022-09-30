@@ -268,7 +268,7 @@ impl Display for UsbControlResult {
 /// Commands for snapshot feature
 #[derive(Serialize, Deserialize, Debug)]
 pub enum SnapshotCommand {
-    Take,
+    Take { snapshot_path: PathBuf },
 }
 
 /// Response for [SnapshotCommand]
@@ -277,7 +277,15 @@ pub enum SnapshotControlResult {
     /// The request is accepted successfully.
     Ok,
     /// The command fails.
-    Failed,
+    Failed(String),
+    /// Request VM shut down in case of major failures.
+    Shutdown,
+}
+
+/// Commands for actions on devices and the devices control thread.
+#[derive(Serialize, Deserialize, Debug)]
+pub enum DeviceControlCommand {
+    SnapshotDevices { snapshot_path: PathBuf },
 }
 
 /// Source of a `VmMemoryRequest::RegisterMemory` mapping.
@@ -1042,6 +1050,7 @@ impl VmRequest {
         vcpu_handles: &[(JoinHandle<()>, mpsc::Sender<VcpuControl>)],
         force_s2idle: bool,
         #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
+        device_control_tube: &Tube,
     ) -> VmResponse {
         match *self {
             VmRequest::Exit => {
@@ -1292,7 +1301,23 @@ impl VmRequest {
                 }
             }
             VmRequest::HotPlugCommand { device: _, add: _ } => VmResponse::Ok,
-            VmRequest::Snapshot(SnapshotCommand::Take) => VmResponse::Ok,
+            VmRequest::Snapshot(SnapshotCommand::Take { ref snapshot_path }) => {
+                let res = device_control_tube.send(&DeviceControlCommand::SnapshotDevices {
+                    snapshot_path: snapshot_path.clone(),
+                });
+                if let Err(e) = res {
+                    error!("fail to send command to devices control socket: {}", e);
+                    return VmResponse::Err(SysError::new(EIO));
+                };
+
+                match device_control_tube.recv() {
+                    Ok(response) => VmResponse::SnapshotResponse(response),
+                    Err(e) => {
+                        error!("fail to recv command from device control socket: {}", e);
+                        VmResponse::Err(SysError::new(EIO))
+                    }
+                }
+            }
         }
     }
 }

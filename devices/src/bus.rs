@@ -13,6 +13,8 @@ use std::fmt;
 use std::result;
 use std::sync::Arc;
 
+use anyhow::anyhow;
+use anyhow::Context;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
@@ -137,6 +139,35 @@ pub trait BusDevice: Send + Suspendable {
 pub trait BusDeviceSync: BusDevice + Sync {
     fn read(&self, offset: BusAccessInfo, data: &mut [u8]);
     fn write(&self, offset: BusAccessInfo, data: &[u8]);
+    fn snapshot_sync(&self) -> anyhow::Result<String> {
+        Err(anyhow!(
+            "snapshot_sync not implemented for {}",
+            std::any::type_name::<Self>()
+        ))
+    }
+    /// Load a saved snapshot of an image.
+    fn restore_sync(&self, _data: &str) -> anyhow::Result<()> {
+        Err(anyhow!(
+            "restore_sync not implemented for {}",
+            std::any::type_name::<Self>()
+        ))
+    }
+    /// Stop all threads related to the device.
+    /// Sleep should be idempotent.
+    fn sleep_sync(&self) -> anyhow::Result<()> {
+        Err(anyhow!(
+            "sleep_sync not implemented for {}",
+            std::any::type_name::<Self>()
+        ))
+    }
+    /// Create/Resume all threads related to the device.
+    /// Wake should be idempotent.
+    fn wake_sync(&self) -> anyhow::Result<()> {
+        Err(anyhow!(
+            "wake_sync not implemented for {}",
+            std::any::type_name::<Self>()
+        ))
+    }
 }
 
 pub trait BusResumeDevice: Send {
@@ -288,6 +319,12 @@ enum BusDeviceEntry {
     InnerSync(Arc<dyn BusDeviceSync>),
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct SerializedDevice {
+    pub device_id: u32,
+    pub serialized_device: String,
+}
+
 /// A device container for routing reads and writes over some address space.
 ///
 /// This doesn't have any restrictions on what kind of device or address space this applies to. The
@@ -333,6 +370,82 @@ impl Bus {
             }
         }
         None
+    }
+
+    pub fn sleep_devices(&self) -> anyhow::Result<()> {
+        let devices_lock = &(self.devices).lock();
+        for (_, device_entry) in devices_lock.iter() {
+            match &(device_entry.device) {
+                BusDeviceEntry::OuterSync(dev) => {
+                    let mut device_lock = (*dev).lock();
+                    if let Err(e) = device_lock.sleep() {
+                        //TODO: Enable this line when b/232437513 is done
+                        // return Err(anyhow!("Failed to sleep {}.", (*device_lock).debug_label()));
+                        eprintln!("Failed to sleep {}: {}", (*device_lock).debug_label(), e);
+                    }
+                }
+                BusDeviceEntry::InnerSync(dev) => {
+                    (**dev).sleep_sync().context("failed to sleep device")?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn wake_devices(&self) -> anyhow::Result<()> {
+        let devices_lock = &(self.devices).lock();
+        for (_, device_entry) in devices_lock.iter() {
+            match &(device_entry.device) {
+                BusDeviceEntry::OuterSync(dev) => {
+                    let mut device_lock = (*dev).lock();
+                    if let Err(e) = device_lock.wake() {
+                        //TODO: Enable this line when b/232437513 is done
+                        // return Err(anyhow!("Failed to wake {}.", (*device_lock).debug_label()));
+                        eprintln!("Failed to wake {}: {}", (*device_lock).debug_label(), e);
+                    };
+                }
+                BusDeviceEntry::InnerSync(dev) => {
+                    (**dev).wake_sync().context("failed to wake device")?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn snapshot_devices(&self, devices_vec: &mut Vec<SerializedDevice>) -> anyhow::Result<()> {
+        let devices_lock = &(self.devices).lock();
+        for (_, device_entry) in devices_lock.iter() {
+            let (device_id, serialized_device, device_label) = match &(device_entry.device) {
+                BusDeviceEntry::OuterSync(dev) => {
+                    let device_lock = (*dev).lock();
+                    (
+                        u32::from((&device_lock).device_id()),
+                        (*device_lock).snapshot(),
+                        (*device_lock).debug_label(),
+                    )
+                }
+                BusDeviceEntry::InnerSync(dev) => (
+                    u32::from((dev).device_id()),
+                    (&**dev).snapshot_sync(),
+                    (&**dev).debug_label(),
+                ),
+            };
+            match serialized_device {
+                Ok(device) => {
+                    let serialized_dev = SerializedDevice {
+                        device_id,
+                        serialized_device: device,
+                    };
+                    devices_vec.push(serialized_dev);
+                }
+                Err(e) => {
+                    //TODO: Enable this line when b/232437513 is done
+                    // return Err(anyhow!("Failed to snapshot {}.", (*device_lock).debug_label()));
+                    eprintln!("Failed to snapshot {}: {}.", device_label, e);
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Puts the given device at the given address space.
@@ -550,7 +663,6 @@ impl Bus {
 
 #[cfg(test)]
 mod tests {
-    use anyhow::Context;
     use anyhow::Result as AnyhowResult;
 
     use super::*;
