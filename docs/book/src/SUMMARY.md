@@ -13,6 +13,7 @@
   - [Block](./devices/block.md)
   - [Network](./devices/net.md)
   - [Balloon](./devices/balloon.md)
+  - [Vsock](./devices/vsock.md)
   - [Pmem](./devices/pmem.md)
   - [Wayland](./devices/wayland.md)
   - [Video (experimental)](./devices/video.md)
