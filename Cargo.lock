@@ -1954,7 +1954,10 @@ name = "swap"
 version = "0.1.0"
 dependencies = [
  "base",
+ "data_model",
  "libc",
+ "tempfile",
+ "thiserror",
  "userfaultfd",
 ]
 

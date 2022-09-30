@@ -8,4 +8,5 @@
 #![allow(dead_code)]
 #![deny(missing_docs)]
 
+mod file;
 mod userfaultfd;
