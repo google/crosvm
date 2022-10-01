@@ -1394,6 +1394,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eb9f9e6e233e5c4a35559a617bf40a4ec447db2e84c20b55a6f83167b7e57872"
 
 [[package]]
+name = "prebuilts"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cfg-if",
+ "tempfile",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"

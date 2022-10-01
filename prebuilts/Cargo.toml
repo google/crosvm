@@ -1,0 +1,12 @@
+[package]
+name = "prebuilts"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+edition = "2021"
+
+[dependencies]
+anyhow = "*"
+cfg-if = "*"
+
+[dev-dependencies]
+tempfile = "*"

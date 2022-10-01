@@ -73,6 +73,7 @@ members = [
     "net_sys",
     "net_util",
     "power_monitor",
+    "prebuilts",
     "protos",
     "qcow_utils",
     "resources",
