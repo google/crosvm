@@ -1754,8 +1754,7 @@ impl TryFrom<RunCommand> for super::config::Config {
         };
 
         if !matches!(cfg.protection_type, ProtectionType::Unprotected) {
-            // Balloon and USB devices only work for unprotected VMs.
-            cfg.balloon = false;
+            // USB devices only work for unprotected VMs.
             cfg.usb = false;
             // Protected VMs can't trust the RNG device, so don't provide it.
             cfg.rng = false;
