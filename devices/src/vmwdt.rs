@@ -341,9 +341,11 @@ impl BusDevice for Vmwdt {
 }
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use base::Tube;
     use std::thread::sleep;
+
+    use base::Tube;
+
+    use super::*;
 
     const AARCH64_VMWDT_ADDR: u64 = 0x3000;
     const TEST_VMWDT_CPU_NO: usize = 0x1;

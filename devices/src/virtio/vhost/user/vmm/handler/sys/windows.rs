@@ -2,13 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use anyhow::Context;
-use futures::pin_mut;
-use futures::select;
-use futures::FutureExt;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use anyhow::Context;
 use anyhow::Result;
 use base::info;
 use base::CloseNotifier;
@@ -16,6 +13,9 @@ use base::ReadNotifier;
 use base::Tube;
 use cros_async::EventAsync;
 use cros_async::Executor;
+use futures::pin_mut;
+use futures::select;
+use futures::FutureExt;
 use vmm_vhost::connection::TubeEndpoint;
 use vmm_vhost::message::MasterReq;
 use vmm_vhost::message::VhostUserProtocolFeatures;

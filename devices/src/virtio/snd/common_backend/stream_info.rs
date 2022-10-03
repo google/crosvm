@@ -316,8 +316,9 @@ impl StreamInfo {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use audio_streams::NoopStreamSourceGenerator;
+
+    use super::*;
 
     fn new_stream() -> StreamInfo {
         StreamInfo::new(Box::new(NoopStreamSourceGenerator::new()))

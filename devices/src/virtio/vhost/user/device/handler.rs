@@ -872,6 +872,7 @@ mod tests {
     #[test]
     fn test_vhost_user_activate() {
         use std::os::unix::net::UnixStream;
+
         use vmm_vhost::connection::socket::Listener as SocketListener;
         use vmm_vhost::SlaveListener;
 

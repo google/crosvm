@@ -93,9 +93,9 @@ pub unsafe fn unpack(descriptor: SafeDescriptor) -> PackedTubeResult<Tube> {
 
 #[cfg(test)]
 mod tests {
-    use crate::packed_tube;
-
     use base::Tube;
+
+    use crate::packed_tube;
 
     #[test]
     /// Tests packing and unpacking.

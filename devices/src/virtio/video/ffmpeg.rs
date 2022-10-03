@@ -3,9 +3,8 @@
 // found in the LICENSE file.
 
 use std::error::Error;
-use std::fmt::{Display, Formatter};
-
-use thiserror::Error as ThisError;
+use std::fmt::Display;
+use std::fmt::Formatter;
 
 use base::MappedRegion;
 use base::MemoryMappingArena;
@@ -18,6 +17,7 @@ use ffmpeg::avcodec::AvFrameError;
 use ffmpeg::avcodec::AvPixelFormat;
 use ffmpeg::avcodec::Dimensions;
 use ffmpeg::avcodec::PlaneDescriptor;
+use thiserror::Error as ThisError;
 
 use crate::virtio::video::format::Format;
 use crate::virtio::video::resource::BufferHandle;

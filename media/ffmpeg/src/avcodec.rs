@@ -18,9 +18,8 @@ use libc::c_int;
 use libc::c_void;
 use thiserror::Error as ThisError;
 
-use crate::ffi::AVPictureType;
-
 use super::*;
+use crate::ffi::AVPictureType;
 
 /// An error returned by a low-level libavcodec function.
 #[derive(Debug, ThisError)]

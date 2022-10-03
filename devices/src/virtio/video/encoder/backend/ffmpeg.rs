@@ -11,7 +11,6 @@ use std::sync::Weak;
 
 use anyhow::anyhow;
 use anyhow::Context;
-
 use base::error;
 use base::AsRawDescriptor;
 use base::MappedRegion;

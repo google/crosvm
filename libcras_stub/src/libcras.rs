@@ -14,14 +14,19 @@
 //
 // Instantiating a CrasClient using this will always panic!
 
-use audio_streams::{
-    shm_streams::{SharedMemory, ShmStream, ShmStreamSource},
-    BoxError, SampleFormat, StreamDirection, StreamEffect, StreamSource, StreamSourceGenerator,
-};
 use std::error;
 use std::fmt;
 use std::str::FromStr;
 
+use audio_streams::shm_streams::SharedMemory;
+use audio_streams::shm_streams::ShmStream;
+use audio_streams::shm_streams::ShmStreamSource;
+use audio_streams::BoxError;
+use audio_streams::SampleFormat;
+use audio_streams::StreamDirection;
+use audio_streams::StreamEffect;
+use audio_streams::StreamSource;
+use audio_streams::StreamSourceGenerator;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
