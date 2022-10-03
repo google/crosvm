@@ -11,5 +11,6 @@
 mod file;
 // this is public only for integration tests.
 pub mod page_handler;
+mod processes;
 // this is public only for integration tests.
 pub mod userfaultfd;
