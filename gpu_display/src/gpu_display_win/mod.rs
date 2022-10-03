@@ -13,9 +13,8 @@ mod window_message_processor;
 pub mod window_procedure_thread;
 
 use std::num::NonZeroU32;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::AtomicI32;
-use std::sync::atomic::Ordering;
+use std::sync::mpsc::channel;
+#[cfg(feature = "kiwi")]
 use std::sync::Arc;
 use std::sync::Weak;
 use std::time::Duration;
@@ -103,12 +102,8 @@ impl DisplayWin {
         let metrics = self.win_metrics.clone();
         let display_properties = self.display_properties.clone();
         // This function should not return until surface creation finishes. Besides, we would like
-        // to know if the creation succeeds. Hence, we use atomic variables so that we can wait to
-        // see the result.
-        let result = Arc::new(AtomicI32::new(CreateSurfaceResult::NotFinished as i32));
-        let result_ready_lock = Arc::new(AtomicBool::new(false));
-        let result_clone = Arc::clone(&result);
-        let result_ready_lock_clone = Arc::clone(&result_ready_lock);
+        // to know if the creation succeeds. Hence, we use channels to wait to see the result.
+        let (result_sender, result_receiver) = channel();
 
         // Post a message to the WndProc thread to create the surface.
         self.wndproc_thread
@@ -123,30 +118,18 @@ impl DisplayWin {
                     )
                 }),
                 callback: Box::new(move |success| {
-                    result_clone.store(success.into(), Ordering::SeqCst);
-                    drop(result_clone);
-                    result_ready_lock_clone.store(true, Ordering::SeqCst);
+                    if let Err(e) = result_sender.send(success) {
+                        error!("Failed to send surface creation result: {}", e);
+                    }
                 }),
             })?;
 
         // Block until the surface creation finishes and check the result.
-        // TODO(b/243184256): Use `Condvar` to avoid busy-waiting on the atomic variable.
-        while !result_ready_lock.load(Ordering::SeqCst) {}
-
-        let result = match Arc::try_unwrap(result) {
-            Ok(unwrapped_result) => unwrapped_result.into_inner(),
-            Err(result) => bail!(
-                "Failed to unwrap surface creation result! (Current value: {})",
-                result.load(Ordering::SeqCst)
-            ),
-        };
-        if result != CreateSurfaceResult::Success as i32 {
-            bail!(
-                "WndProc thread failed to create surface! (Result value: {})",
-                result
-            );
+        match result_receiver.recv() {
+            Ok(true) => Ok(()),
+            Ok(false) => bail!("WndProc thread failed to create surface!"),
+            Err(e) => bail!("Failed to receive surface creation result: {}", e),
         }
-        Ok(())
     }
 
     fn import_event_device_internal(
@@ -275,22 +258,6 @@ impl GpuDisplaySurface for SurfaceWin {
                 error!("Failed to read whether display is closed: {}", e);
                 false
             }
-        }
-    }
-}
-
-enum CreateSurfaceResult {
-    NotFinished = 0,
-    Success,
-    Failure,
-}
-
-impl From<bool> for CreateSurfaceResult {
-    fn from(success: bool) -> Self {
-        if success {
-            Self::Success
-        } else {
-            Self::Failure
         }
     }
 }
