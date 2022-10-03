@@ -70,6 +70,7 @@ mod select;
 pub mod sync;
 pub mod sys;
 pub use sys::Executor;
+pub use sys::ExecutorKind;
 mod timer;
 mod waker;
 

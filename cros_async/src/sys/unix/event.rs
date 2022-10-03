@@ -37,7 +37,7 @@ impl EventAsync {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sys::unix::uring_executor::use_uring;
+    use crate::sys::unix::uring_executor::is_uring_stable;
 
     #[test]
     fn next_val_reads_value() {
@@ -55,7 +55,7 @@ mod tests {
 
     #[test]
     fn next_val_reads_value_poll_and_ring() {
-        if !use_uring() {
+        if !is_uring_stable() {
             return;
         }
 

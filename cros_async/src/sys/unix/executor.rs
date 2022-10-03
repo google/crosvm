@@ -3,13 +3,19 @@
 // found in the LICENSE file.
 
 use std::future::Future;
+use std::str::FromStr;
 
 use async_task::Task;
+use base::warn;
 use base::AsRawDescriptors;
 use base::RawDescriptor;
+use once_cell::sync::OnceCell;
+use thiserror::Error as ThisError;
 
 use super::poll_source::Error as PollError;
-use super::uring_executor::use_uring;
+use super::uring_executor::check_uring_availability;
+use super::uring_executor::is_uring_stable;
+use super::uring_executor::Error as UringError;
 use super::FdExecutor;
 use super::PollSource;
 use super::URingExecutor;
@@ -154,16 +160,84 @@ pub enum Executor {
     Fd(FdExecutor),
 }
 
+/// An enum to express the kind of the backend of `Executor`
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExecutorKind {
+    Uring,
+    Fd,
+}
+
+/// If set, [`ExecutorKind::default()`] returns the value of `DEFAULT_EXECUTOR_KIND`.
+/// If not set, [`ExecutorKind::default()`] returns a statically-chosen default value, and
+/// [`ExecutorKind::default()`] initializes `DEFAULT_EXECUTOR_KIND` with that value.
+static DEFAULT_EXECUTOR_KIND: OnceCell<ExecutorKind> = OnceCell::new();
+
+impl Default for ExecutorKind {
+    fn default() -> Self {
+        *DEFAULT_EXECUTOR_KIND.get_or_init(|| ExecutorKind::Fd)
+    }
+}
+
+impl FromStr for ExecutorKind {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "uring" => Ok(ExecutorKind::Uring),
+            // For command-line parsing, user-friendly "epoll" is chosen instead of fd.
+            "epoll" => Ok(ExecutorKind::Fd),
+            _ => Err("unknown executor kind"),
+        }
+    }
+}
+
+/// The error type for [`Executor::set_default_executor_kind()`].
+#[derive(Debug, ThisError)]
+pub enum SetDefaultExecutorKindError {
+    /// The default executor kind is set more than once.
+    #[error("The default executor kind is already set to {0:?}")]
+    SetMoreThanOnce(ExecutorKind),
+
+    /// io_uring is unavailable. The reason might be the lack of the kernel support,
+    /// but is not limited to that.
+    #[error("io_uring is unavailable: {0}")]
+    UringUnavailable(UringError),
+}
+
 impl Executor {
     /// Create a new `Executor`.
     pub fn new() -> AsyncResult<Self> {
-        if use_uring() {
-            Ok(URingExecutor::new().map(Executor::Uring)?)
-        } else {
-            Ok(FdExecutor::new()
+        match ExecutorKind::default() {
+            ExecutorKind::Uring => Ok(URingExecutor::new().map(Executor::Uring)?),
+            ExecutorKind::Fd => Ok(FdExecutor::new()
                 .map(Executor::Fd)
-                .map_err(PollError::Executor)?)
+                .map_err(PollError::Executor)?),
         }
+    }
+
+    /// Set the default ExecutorKind for [`Self::new()`]. This call is effective only once.
+    /// If a call is the first call, it sets the default, and `set_default_executor_kind`
+    /// returns `Ok(())`. Otherwise, it returns `SetDefaultExecutorKindError::SetMoreThanOnce`
+    /// which contains the existing ExecutorKind value configured by the first call.
+    pub fn set_default_executor_kind(
+        executor_kind: ExecutorKind,
+    ) -> Result<(), SetDefaultExecutorKindError> {
+        if executor_kind == ExecutorKind::Uring {
+            check_uring_availability().map_err(SetDefaultExecutorKindError::UringUnavailable)?;
+            if !is_uring_stable() {
+                warn!(
+                    "Enabling io_uring executor on the kernel version where io_uring is unstable"
+                );
+            }
+        }
+
+        DEFAULT_EXECUTOR_KIND.set(executor_kind).map_err(|_|
+            // `expect` succeeds since this closure runs only when DEFAULT_EXECUTOR_KIND is set.
+            SetDefaultExecutorKindError::SetMoreThanOnce(
+                *DEFAULT_EXECUTOR_KIND
+                    .get()
+                    .expect("Failed to get DEFAULT_EXECUTOR_KIND"),
+            ))
     }
 
     /// Create a new `Box<dyn IoSourceExt<F>>` associated with `self`. Callers may then use the
