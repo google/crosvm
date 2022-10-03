@@ -52,6 +52,9 @@ pub fn get_gpu_cache_info<'a>(
 
             env.push(("MESA_SHADER_CACHE_DISABLE", "false"));
             env.push(("MESA_SHADER_CACHE_DIR", cache_dir.as_str()));
+
+            env.push(("MESA_DISK_CACHE_DATABASE", "1"));
+
             if let Some(cache_size) = cache_size {
                 // Deprecated in https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/15390
                 env.push(("MESA_GLSL_CACHE_MAX_SIZE", cache_size.as_str()));
