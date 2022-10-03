@@ -10,5 +10,7 @@ edition = "2021"
 base = { path = "../base" }
 anyhow = "1.0.32"
 serde = "*"
+
+[target.'cfg(windows)'.dependencies]
 win_util = { path = "../win_util"}
 
