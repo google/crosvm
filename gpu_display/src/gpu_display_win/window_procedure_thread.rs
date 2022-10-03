@@ -4,10 +4,12 @@
 
 use std::marker::PhantomData;
 use std::mem;
+use std::pin::Pin;
 use std::ptr::null_mut;
 use std::sync::atomic::AtomicI32;
-use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
+use std::sync::mpsc::channel;
+use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::thread::Builder as ThreadBuilder;
 use std::thread::JoinHandle;
@@ -48,9 +50,6 @@ use super::window_message_processor::*;
 // The default app icon id, which is defined in crosvm-manifest.rc.
 const APP_ICON_ID: u16 = 1;
 
-// 0 is not a valid thread ID: https://devblogs.microsoft.com/oldnewthing/20040223-00/?p=40503
-const INVALID_THREAD_ID: u32 = 0;
-
 #[derive(Debug)]
 enum MessageLoopState {
     /// The initial state.
@@ -77,17 +76,16 @@ pub struct WindowProcedureThread<T: HandleWindowMessage> {
 
 impl<T: HandleWindowMessage> WindowProcedureThread<T> {
     pub fn start_thread(vm_tube: Option<Arc<Mutex<Tube>>>) -> Result<Self> {
-        let thread_id = Arc::new(AtomicU32::new(INVALID_THREAD_ID));
+        let (thread_id_sender, thread_id_receiver) = channel();
         let message_loop_state = Arc::new(AtomicI32::new(MessageLoopState::NotStarted as i32));
         let thread_terminated_event = Event::new().unwrap();
 
-        let thread_id_clone = Arc::clone(&thread_id);
         let message_loop_state_clone = Arc::clone(&message_loop_state);
         let thread_terminated_event_clone = thread_terminated_event
             .try_clone()
             .map_err(|e| anyhow!("Failed to clone thread_terminated_event: {}", e))?;
 
-        match ThreadBuilder::new()
+        let thread = match ThreadBuilder::new()
             .name("gpu_display_wndproc".into())
             .spawn(move || {
                 // Safe because GetCurrentThreadId has no failure mode.
@@ -95,8 +93,6 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
 
                 // Must be called before any other threads post messages to the WndProc thread.
                 thread_message_util::force_create_message_queue();
-                thread_id_clone.store(thread_id, Ordering::SeqCst);
-                drop(thread_id_clone);
 
                 // Safe because the message queue has been created, and the returned thread will go
                 // out of scope and get dropped before the WndProc thread exits.
@@ -104,31 +100,28 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
                     vm_tube.and_then(|tube| Self::start_message_relay_thread(tube, thread_id))
                 };
 
-                Self::run_message_loop(message_loop_state_clone);
+                Self::run_message_loop(thread_id_sender, message_loop_state_clone);
 
                 if let Err(e) = thread_terminated_event_clone.write(1) {
                     error!("Failed to write to thread terminated event: {}", e);
                 }
             }) {
-            Ok(thread) => {
-                // TODO(b/243184256): Use `Condvar` to avoid busy-waiting on the atomic variable.
-                while message_loop_state.load(Ordering::SeqCst)
-                    == MessageLoopState::NotStarted as i32
-                {}
+            Ok(thread) => thread,
+            Err(e) => bail!("Failed to spawn WndProc thread: {}", e),
+        };
 
-                let thread_id = Arc::try_unwrap(thread_id).unwrap().into_inner();
-                if thread_id == INVALID_THREAD_ID {
-                    bail!("Failed to retrieve thread ID when spawning WndProc thread!");
-                }
-                Ok(Self {
+        match thread_id_receiver.recv() {
+            Ok(thread_id_res) => match thread_id_res {
+                Ok(thread_id) => Ok(Self {
                     thread: Some(thread),
                     thread_id,
                     message_loop_state: Some(message_loop_state),
                     thread_terminated_event,
                     _marker: PhantomData,
-                })
-            }
-            Err(e) => bail!("Failed to spawn WndProc thread: {:?}", e),
+                }),
+                Err(e) => bail!("WndProc internal failure: {:?}", e),
+            },
+            Err(e) => bail!("Failed to receive WndProc thread ID: {}", e),
         }
     }
 
@@ -154,24 +147,35 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
         }
     }
 
-    fn run_message_loop(message_loop_state: Arc<AtomicI32>) {
+    fn run_message_loop(thread_id_sender: Sender<Result<u32>>, message_loop_state: Arc<AtomicI32>) {
         // Safe because the dispatcher will take care of the lifetime of the `Window` object.
-        let mut dispatcher = match unsafe {
-            Self::create_window().and_then(|window| WindowMessageDispatcher::<T>::create(window))
-        } {
-            Ok(dispatcher) => dispatcher,
+        let create_window_res = unsafe { Self::create_window() };
+        match create_window_res.and_then(|window| WindowMessageDispatcher::<T>::create(window)) {
+            Ok(dispatcher) => {
+                info!("WndProc thread entering message loop");
+                message_loop_state.store(MessageLoopState::Running as i32, Ordering::SeqCst);
+                if let Err(e) = thread_id_sender.send(Ok(unsafe { GetCurrentThreadId() })) {
+                    error!("Failed to send WndProc thread ID: {}", e);
+                }
+                Self::run_message_loop_body(dispatcher, message_loop_state);
+            }
             Err(e) => {
                 error!("WndProc thread didn't enter message loop: {:?}", e);
                 message_loop_state.store(
                     MessageLoopState::EarlyTerminatedWithError as i32,
                     Ordering::SeqCst,
                 );
-                return;
+                if let Err(e) = thread_id_sender.send(Err(e)) {
+                    error!("Failed to report message loop early termination: {}", e)
+                }
             }
-        };
+        }
+    }
 
-        info!("WndProc thread entering message loop");
-        message_loop_state.store(MessageLoopState::Running as i32, Ordering::SeqCst);
+    fn run_message_loop_body(
+        mut message_dispatcher: Pin<Box<WindowMessageDispatcher<T>>>,
+        message_loop_state: Arc<AtomicI32>,
+    ) {
         loop {
             let mut message = mem::MaybeUninit::uninit();
             // Safe because we know the lifetime of `message`.
@@ -200,7 +204,7 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
             if new_message.hwnd.is_null() {
                 // Thread messages don't target a specific window and `DispatchMessageA()` won't
                 // send them to `wnd_proc()` function, hence we need to handle it as a special case.
-                dispatcher
+                message_dispatcher
                     .as_mut()
                     .process_thread_message(&new_message.into());
             } else {
