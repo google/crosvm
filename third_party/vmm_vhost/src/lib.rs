@@ -32,7 +32,6 @@
 
 #![deny(missing_docs)]
 
-#[cfg(any(feature = "vmm", feature = "device"))]
 use std::fs::File;
 use std::io::Error as IOError;
 
@@ -210,7 +209,6 @@ pub type HandlerResult<T> = std::result::Result<T, IOError>;
 
 /// Utility function to take the first element from option of a vector of files.
 /// Returns `None` if the vector contains no file or more than one file.
-#[cfg(any(feature = "vmm", feature = "device"))]
 pub(crate) fn take_single_file(files: Option<Vec<File>>) -> Option<File> {
     let mut files = files?;
     if files.len() != 1 {
