@@ -23,9 +23,9 @@ use crate::connection::Listener as ListenerTrait;
 use crate::connection::Req;
 use crate::message::*;
 use crate::take_single_file;
+use crate::unix::SystemListener;
 use crate::Error;
 use crate::Result;
-use crate::SystemListener;
 use crate::SystemStream;
 
 /// Unix domain socket listener for accepting incoming connections.

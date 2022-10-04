@@ -5,12 +5,18 @@
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
-        mod unix;
-        pub use unix::*;
+        pub mod unix;
+        use unix as platform;
     } else if #[cfg(windows)] {
-        mod windows;
-        pub use windows::*;
+        pub mod windows;
+        use windows as platform;
     } else {
         compile_error!("Unsupported platform");
     }
 }
+
+#[cfg(feature = "device")]
+pub(crate) use platform::MasterReqEndpoint;
+#[cfg(feature = "device")]
+pub(crate) use platform::SlaveReqEndpoint;
+pub use platform::SystemStream;

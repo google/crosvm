@@ -17,6 +17,3 @@ cfg_if::cfg_if! {
         pub(crate) type MasterReqEndpoint = TubeEndpoint<MasterReq>;
     }
 }
-
-/// Collection of platform-specific methods that  SystemListener  provides.
-pub(crate) trait SystemListenerExt {}
