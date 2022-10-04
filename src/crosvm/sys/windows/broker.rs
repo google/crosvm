@@ -1562,8 +1562,8 @@ mod tests {
             let mut wait_ctx: WaitContext<Token> = WaitContext::new().unwrap();
             let exit_events = vec![Event::new().unwrap()];
             let _child_main = spawn_child(
-                "cmd",
-                &["/C", "ping 127.0.0.1 -n 2 > NUL 2>&1"],
+                "ping",
+                &["127.0.0.1", "-n", "2"],
                 None,
                 None,
                 ProcessType::Main,
@@ -1590,8 +1590,8 @@ mod tests {
             let mut wait_ctx: WaitContext<Token> = WaitContext::new().unwrap();
             let exit_events = vec![Event::new().unwrap()];
             let _child_main = spawn_child(
-                "cmd",
-                &["/C", "ping 127.0.0.1 -n 4 > NUL 2>&1"],
+                "ping",
+                &["127.0.0.1", "-n", "4"],
                 None,
                 None,
                 ProcessType::Main,
@@ -1603,8 +1603,8 @@ mod tests {
                 &Config::default(),
             );
             let _child_device = spawn_child(
-                "cmd",
-                &["/C", "ping 127.0.0.1 -n 2 > NUL 2>&1"],
+                "ping",
+                &["127.0.0.1", "-n", "2"],
                 None,
                 None,
                 ProcessType::Block,
@@ -1630,8 +1630,8 @@ mod tests {
             let mut wait_ctx: WaitContext<Token> = WaitContext::new().unwrap();
             let exit_events = vec![Event::new().unwrap()];
             let _child_main = spawn_child(
-                "cmd",
-                &["/C", "ping 127.0.0.1 -n 2 > NUL 2>&1"],
+                "ping",
+                &["127.0.0.1", "-n", "2"],
                 None,
                 None,
                 ProcessType::Main,
@@ -1643,8 +1643,8 @@ mod tests {
                 &Config::default(),
             );
             let _child_device = spawn_child(
-                "cmd",
-                &["/C", "ping 127.0.0.1 -n 11 > NUL 2>&1"],
+                "ping",
+                &["127.0.0.1", "-n", "11"],
                 None,
                 None,
                 ProcessType::Block,
@@ -1675,8 +1675,8 @@ mod tests {
             let mut wait_ctx: WaitContext<Token> = WaitContext::new().unwrap();
             let exit_events = vec![Event::new().unwrap()];
             let _child_main = spawn_child(
-                "cmd",
-                &["/C", "ping 127.0.0.1 -n 11 > NUL 2>&1"],
+                "ping",
+                &["127.0.0.1", "-n", "11"],
                 None,
                 None,
                 ProcessType::Main,
@@ -1688,8 +1688,8 @@ mod tests {
                 &Config::default(),
             );
             let _child_device = spawn_child(
-                "cmd",
-                &["/C", "ping 127.0.0.1 -n 2 > NUL 2>&1"],
+                "ping",
+                &["127.0.0.1", "-n", "2"],
                 None,
                 None,
                 ProcessType::Block,
@@ -1720,8 +1720,8 @@ mod tests {
             let mut wait_ctx: WaitContext<Token> = WaitContext::new().unwrap();
             let exit_events = vec![Event::new().unwrap()];
             let _child_main = spawn_child(
-                "cmd",
-                &["/C", "ping 127.0.0.1 -n 2 > NUL 2>&1"],
+                "ping",
+                &["127.0.0.1", "-n", "2"],
                 None,
                 None,
                 ProcessType::Main,
@@ -1768,8 +1768,8 @@ mod tests {
             let mut wait_ctx: WaitContext<Token> = WaitContext::new().unwrap();
             let mut children: HashMap<u32, ChildCleanup> = HashMap::new();
             let _child_main = spawn_child(
-                "cmd",
-                &["/C", "ping 127.0.0.1 -n 3 > NUL 2>&1"],
+                "ping",
+                &["127.0.0.1", "-n", "3"],
                 None,
                 None,
                 ProcessType::Main,
