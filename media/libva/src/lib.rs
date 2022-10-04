@@ -116,9 +116,7 @@ mod tests {
         assert!(attrs[0].value != bindings::constants::VA_ATTRIB_NOT_SUPPORTED);
         assert!(attrs[0].value & bindings::constants::VA_RT_FORMAT_YUV420 != 0);
 
-        let config = display
-            .create_config(Some(attrs), profile, entrypoint)
-            .unwrap();
+        let config = display.create_config(attrs, profile, entrypoint).unwrap();
 
         let mut surfaces = display
             .create_surfaces(

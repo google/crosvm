@@ -260,7 +260,7 @@ impl Display {
     /// values
     pub fn create_config(
         self: &Rc<Self>,
-        attrs: Option<Vec<bindings::VAConfigAttrib>>,
+        attrs: Vec<bindings::VAConfigAttrib>,
         profile: bindings::VAProfile::Type,
         entrypoint: bindings::VAEntrypoint::Type,
     ) -> Result<Config> {

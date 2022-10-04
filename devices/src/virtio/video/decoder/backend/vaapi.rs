@@ -203,7 +203,7 @@ impl VaapiDecoder {
         let mut raw_caps = Vec::new();
 
         let mut config = display.create_config(
-            None,
+            vec![],
             coded_cap.profile,
             libva::VAEntrypoint::VAEntrypointVLD,
         )?;

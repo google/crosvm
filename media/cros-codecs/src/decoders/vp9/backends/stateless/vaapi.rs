@@ -276,11 +276,8 @@ impl Backend {
             value: rt_format,
         }];
 
-        let config = display.create_config(
-            Some(attrs),
-            va_profile,
-            libva::VAEntrypoint::VAEntrypointVLD,
-        )?;
+        let config =
+            display.create_config(attrs, va_profile, libva::VAEntrypoint::VAEntrypointVLD)?;
 
         let format_map = if let Some(format_map) = format_map {
             format_map

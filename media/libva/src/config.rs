@@ -26,12 +26,11 @@ impl Config {
     /// values
     pub(crate) fn new(
         display: Rc<Display>,
-        attrs: Option<Vec<bindings::VAConfigAttrib>>,
+        mut attrs: Vec<bindings::VAConfigAttrib>,
         profile: bindings::VAProfile::Type,
         entrypoint: bindings::VAEntrypoint::Type,
     ) -> Result<Self> {
         let mut config_id = 0u32;
-        let mut attrs = attrs.unwrap_or_default();
 
         // Safe because `self` represents a valid VADisplay  The "attrs" vectors
         // is properly initialized and a valid size is passed to the C function,
