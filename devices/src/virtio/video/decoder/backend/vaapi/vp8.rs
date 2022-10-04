@@ -841,14 +841,24 @@ mod tests {
                                     FramePlane {
                                         offset: 0,
                                         stride: TEST_25_FPS_VP8_STREAM_WIDTH as usize,
+                                        size: (TEST_25_FPS_VP8_STREAM_WIDTH
+                                            * TEST_25_FPS_VP8_STREAM_HEIGHT)
+                                            as usize,
                                     },
                                     FramePlane {
                                         offset: (TEST_25_FPS_VP8_STREAM_WIDTH
                                             * TEST_25_FPS_VP8_STREAM_HEIGHT)
                                             as usize,
                                         stride: TEST_25_FPS_VP8_STREAM_WIDTH as usize,
+                                        size: (TEST_25_FPS_VP8_STREAM_WIDTH
+                                            * TEST_25_FPS_VP8_STREAM_HEIGHT
+                                            / 2)
+                                            as usize,
                                     },
                                 ],
+                                width: TEST_25_FPS_VP8_STREAM_WIDTH as u32,
+                                height: TEST_25_FPS_VP8_STREAM_HEIGHT as u32,
+                                format: Format::NV12,
                             },
                         )
                         .unwrap();
