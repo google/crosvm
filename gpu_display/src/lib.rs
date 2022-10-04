@@ -302,9 +302,6 @@ pub trait GpuDisplayExt {
     /// Imports the given `event_device` into the display, returning an event device id on success.
     /// This device may be used to poll for input events.
     fn import_event_device(&mut self, event_device: EventDevice) -> GpuDisplayResult<u32>;
-
-    /// Releases an event device from the display, given an `event_device_id`.
-    fn release_event_device(&mut self, event_device_id: u32);
 }
 
 /// A connection to the compositor and associated collection of state.

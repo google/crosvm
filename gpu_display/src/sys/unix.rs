@@ -33,10 +33,6 @@ impl GpuDisplayExt for GpuDisplay {
         self.next_id += 1;
         Ok(new_event_device_id)
     }
-
-    fn release_event_device(&mut self, event_device_id: u32) {
-        self.event_devices.remove(&event_device_id);
-    }
 }
 
 pub trait UnixGpuDisplayExt {

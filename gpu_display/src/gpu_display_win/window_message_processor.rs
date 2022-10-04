@@ -60,7 +60,6 @@ pub enum DisplaySendToWndProc<T: HandleWindowMessage> {
         event_device_id: ObjectId,
         event_device: EventDevice,
     },
-    ReleaseEventDevice(ObjectId),
 }
 
 /// A trait for processing messages retrieved from the window message queue. All messages routed to

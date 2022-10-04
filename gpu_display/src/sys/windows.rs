@@ -28,9 +28,6 @@ pub(crate) trait WinDisplayT: DisplayT {
     ) -> GpuDisplayResult<()> {
         Ok(())
     }
-
-    /// Release an event device from the display backend.
-    fn release_event_device(&mut self, _event_device_id: u32) {}
 }
 
 impl GpuDisplayExt for GpuDisplay {
@@ -41,10 +38,6 @@ impl GpuDisplayExt for GpuDisplay {
 
         self.next_id += 1;
         Ok(new_event_device_id)
-    }
-
-    fn release_event_device(&mut self, event_device_id: u32) {
-        self.inner.release_event_device(event_device_id);
     }
 }
 

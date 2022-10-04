@@ -215,26 +215,6 @@ impl SysDisplayT for DisplayWin {
                 ))
             })
     }
-
-    fn release_event_device(&mut self, event_device_id: u32) {
-        match ObjectId::new(event_device_id) {
-            Some(event_device_id) => {
-                if let Err(e) = self
-                    .wndproc_thread
-                    .post_display_command(DisplaySendToWndProc::ReleaseEventDevice(event_device_id))
-                {
-                    error!(
-                        "Failed to release event device (ID: {:?}): {:?}",
-                        event_device_id, e
-                    );
-                }
-            }
-            None => error!(
-                "Failed to release event device: {} cannot be converted to ObjectId",
-                event_device_id
-            ),
-        }
-    }
 }
 
 /// The display logic for Windows is quite different from other platforms since display events are

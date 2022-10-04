@@ -65,11 +65,6 @@ impl DisplayEventDispatcher {
             .borrow_mut()
             .insert(event_device_id, event_device);
     }
-
-    fn release_event_device(&mut self, event_device_id: &ObjectId) {
-        info!("Releasing event device (ID: {:?})", event_device_id);
-        self.event_devices.borrow_mut().remove(event_device_id);
-    }
 }
 
 /// This class is used for dispatching thread and window messages. It should be created before any
@@ -205,10 +200,6 @@ impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
             } => {
                 self.display_event_dispatcher
                     .import_event_device(event_device_id, event_device);
-            }
-            DisplaySendToWndProc::ReleaseEventDevice(event_device_id) => {
-                self.display_event_dispatcher
-                    .release_event_device(&event_device_id);
             }
         }
     }
