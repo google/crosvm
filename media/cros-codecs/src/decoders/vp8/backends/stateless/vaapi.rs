@@ -189,13 +189,13 @@ impl Backend {
 
         self.num_allocated_surfaces = NUM_SURFACES;
 
-        let context = Rc::new(display.create_context(
+        let context = display.create_context(
             &config,
             i32::try_from(frame_w)?,
             i32::try_from(frame_h)?,
             Some(&surfaces),
             true,
-        )?);
+        )?;
 
         let coded_resolution = Resolution {
             width: frame_w,

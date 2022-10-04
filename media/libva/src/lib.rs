@@ -87,7 +87,7 @@ mod tests {
     #[ignore]
     fn libva_utils_mpeg2vldemo() {
         // Adapted from <https://github.com/intel/libva-utils/blob/master/decode/mpeg2vldemo.cpp>
-        let display = Rc::new(Display::open().unwrap());
+        let display = Display::open().unwrap();
 
         assert!(!display.query_vendor_string().unwrap().is_empty());
         let profiles = display.query_config_profiles().unwrap();
@@ -128,17 +128,15 @@ mod tests {
                 1,
             )
             .unwrap();
-        let context = Rc::new(
-            display
-                .create_context(
-                    &config,
-                    width as i32,
-                    (((height + 15) / 16) * 16) as i32,
-                    Some(&surfaces),
-                    true,
-                )
-                .unwrap(),
-        );
+        let context = display
+            .create_context(
+                &config,
+                width as i32,
+                (((height + 15) / 16) * 16) as i32,
+                Some(&surfaces),
+                true,
+            )
+            .unwrap();
 
         // The picture data is adapted from libva-utils at decode/mpeg2vldemo.cpp
         // Data dump of a 16x16 MPEG2 video clip,it has one I frame

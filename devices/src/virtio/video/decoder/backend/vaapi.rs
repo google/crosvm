@@ -269,7 +269,7 @@ impl VaapiDecoder {
 
     /// Creates a new instance of the Vaapi decoder.
     pub fn new() -> Result<Self> {
-        let display = Rc::new(libva::Display::open()?);
+        let display = libva::Display::open()?;
 
         let va_profiles = display.query_config_profiles()?;
 
@@ -1003,7 +1003,7 @@ impl DecoderBackend for VaapiDecoder {
     }
 
     fn new_session(&mut self, format: Format) -> VideoResult<Self::Session> {
-        let display = Rc::new(Display::open().map_err(VideoError::BackendFailure)?);
+        let display = Display::open().map_err(VideoError::BackendFailure)?;
 
         let codec: Box<dyn VideoDecoder> = match format {
             Format::VP8 => {

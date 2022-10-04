@@ -29,7 +29,7 @@ pub struct Display {
 
 impl Display {
     /// Opens and initializes an owned Display
-    pub fn open() -> Result<Self> {
+    pub fn open() -> Result<Rc<Self>> {
         let (display, drm_file) = match Display::drm_open()? {
             Some(x) => x,
             None => return Err(anyhow!("Couldn't open a suitable DRM file descriptor")),
@@ -47,10 +47,10 @@ impl Display {
             return Err(error);
         }
 
-        Ok(Self {
+        Ok(Rc::new(Self {
             handle: display,
             drm_file,
-        })
+        }))
     }
 
     fn drm_open() -> Result<Option<(bindings::VADisplay, File)>> {
@@ -242,7 +242,7 @@ impl Display {
         coded_height: i32,
         surfaces: Option<&Vec<Surface>>,
         progressive: bool,
-    ) -> Result<Context> {
+    ) -> Result<Rc<Context>> {
         Context::new(
             Rc::clone(self),
             config,

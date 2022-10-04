@@ -35,7 +35,7 @@ impl Context {
         coded_height: i32,
         surfaces: Option<&Vec<Surface>>,
         progressive: bool,
-    ) -> Result<Self> {
+    ) -> Result<Rc<Self>> {
         let mut context_id = 0;
         let flags = if progressive {
             bindings::constants::VA_PROGRESSIVE as i32
@@ -65,10 +65,10 @@ impl Context {
         })
         .check()?;
 
-        Ok(Self {
+        Ok(Rc::new(Self {
             display,
             id: context_id,
-        })
+        }))
     }
 
     /// Returns the inner VADisplay
