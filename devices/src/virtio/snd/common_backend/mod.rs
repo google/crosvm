@@ -24,8 +24,10 @@ use data_model::DataInit;
 use futures::channel::mpsc;
 use futures::channel::oneshot;
 use futures::channel::oneshot::Canceled;
+use futures::future::FusedFuture;
 use futures::pin_mut;
 use futures::select;
+use futures::Future;
 use futures::FutureExt;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
@@ -456,14 +458,64 @@ fn run_worker(
 
     let (tx_send, mut tx_recv) = mpsc::unbounded();
     let (rx_send, mut rx_recv) = mpsc::unbounded();
+
+    let f_resample = async_utils::handle_irq_resample(&ex, interrupt.clone()).fuse();
+
+    // Exit if the kill event is triggered.
+    let f_kill = async_utils::await_and_exit(&ex, kill_evt).fuse();
+
+    pin_mut!(f_resample, f_kill);
+
+    run_worker_once(
+        &ex,
+        &streams,
+        &mem,
+        interrupt,
+        &snd_data,
+        &mut f_kill,
+        &mut f_resample,
+        ctrl_queue,
+        ctrl_queue_evt,
+        &tx_queue,
+        tx_queue_evt,
+        tx_send,
+        &mut tx_recv,
+        &rx_queue,
+        rx_queue_evt,
+        rx_send,
+        &mut rx_recv,
+    );
+
+    Ok(())
+}
+
+fn run_worker_once(
+    ex: &Executor,
+    streams: &Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo>>>>,
+    mem: &GuestMemory,
+    interrupt: Interrupt,
+    snd_data: &SndData,
+    mut f_kill: &mut (impl Future<Output = anyhow::Result<()>> + FusedFuture + Unpin),
+    mut f_resample: &mut (impl Future<Output = anyhow::Result<()>> + FusedFuture + Unpin),
+    ctrl_queue: Queue,
+    ctrl_queue_evt: EventAsync,
+    tx_queue: &Rc<AsyncMutex<Queue>>,
+    tx_queue_evt: EventAsync,
+    tx_send: mpsc::UnboundedSender<PcmResponse>,
+    tx_recv: &mut mpsc::UnboundedReceiver<PcmResponse>,
+    rx_queue: &Rc<AsyncMutex<Queue>>,
+    rx_queue_evt: EventAsync,
+    rx_send: mpsc::UnboundedSender<PcmResponse>,
+    rx_recv: &mut mpsc::UnboundedReceiver<PcmResponse>,
+) {
     let tx_send2 = tx_send.clone();
     let rx_send2 = rx_send.clone();
 
     let f_ctrl = handle_ctrl_queue(
-        &ex,
-        &mem,
-        &streams,
-        &snd_data,
+        ex,
+        mem,
+        streams,
+        snd_data,
         ctrl_queue,
         ctrl_queue_evt,
         interrupt.clone(),
@@ -480,28 +532,15 @@ fn run_worker(
     //     interrupt,
     // );
 
-    let f_tx = handle_pcm_queue(&mem, &streams, tx_send2, &tx_queue, tx_queue_evt);
+    let f_tx = handle_pcm_queue(mem, streams, tx_send2, tx_queue, tx_queue_evt);
 
-    let f_tx_response = send_pcm_response_worker(&mem, &tx_queue, interrupt.clone(), &mut tx_recv);
+    let f_tx_response = send_pcm_response_worker(mem, tx_queue, interrupt.clone(), tx_recv);
 
-    let f_rx = handle_pcm_queue(&mem, &streams, rx_send2, &rx_queue, rx_queue_evt);
+    let f_rx = handle_pcm_queue(mem, streams, rx_send2, rx_queue, rx_queue_evt);
 
-    let f_rx_response = send_pcm_response_worker(&mem, &rx_queue, interrupt.clone(), &mut rx_recv);
+    let f_rx_response = send_pcm_response_worker(mem, rx_queue, interrupt, rx_recv);
 
-    let f_resample = async_utils::handle_irq_resample(&ex, interrupt);
-
-    // Exit if the kill event is triggered.
-    let f_kill = async_utils::await_and_exit(&ex, kill_evt);
-
-    pin_mut!(
-        f_ctrl,
-        f_tx,
-        f_tx_response,
-        f_rx,
-        f_rx_response,
-        f_resample,
-        f_kill
-    );
+    pin_mut!(f_ctrl, f_tx, f_tx_response, f_rx, f_rx_response);
 
     let done = async {
         select! {
@@ -510,8 +549,8 @@ fn run_worker(
             res = f_tx_response.fuse() => res.context("error in handling tx response"),
             res = f_rx.fuse() => res.context("error in handling rx queue"),
             res = f_rx_response.fuse() => res.context("error in handling rx response"),
-            res = f_resample.fuse() => res.context("error in handle_irq_resample"),
-            res = f_kill.fuse() => res.context("error in await_and_exit"),
+            res = f_resample => res.context("error in handle_irq_resample"),
+            res = f_kill => res.context("error in await_and_exit"),
         }
     };
     match ex.run_until(done) {
@@ -519,6 +558,4 @@ fn run_worker(
         Ok(Err(e)) => error!("Error in worker: {}", e),
         Err(e) => error!("Error happened in executor: {}", e),
     }
-
-    Ok(())
 }
