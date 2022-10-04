@@ -183,7 +183,7 @@ impl VhostUserBackend for SndBackend {
         // Enable any virtqueue features that were negotiated (like VIRTIO_RING_F_EVENT_IDX).
         queue.ack_features(self.acked_features);
 
-        let kick_evt =
+        let mut kick_evt =
             EventAsync::new(kick_evt, ex).context("failed to create EventAsync for kick_evt")?;
         let (handle, registration) = AbortHandle::new_pair();
         match idx {
@@ -196,8 +196,16 @@ impl VhostUserBackend for SndBackend {
                 ex.spawn_local(Abortable::new(
                     async move {
                         handle_ctrl_queue(
-                            ex, &mem, &streams, &*snd_data, queue, kick_evt, doorbell, tx_send,
+                            ex,
+                            &mem,
+                            &streams,
+                            &*snd_data,
+                            &mut queue,
+                            &mut kick_evt,
+                            doorbell,
+                            tx_send,
                             rx_send,
+                            None,
                         )
                         .await
                     },
@@ -219,7 +227,9 @@ impl VhostUserBackend for SndBackend {
                 let mem2 = Rc::clone(&mem);
                 let streams = Rc::clone(&self.streams);
                 ex.spawn_local(Abortable::new(
-                    async move { handle_pcm_queue(&*mem, &streams, send, &queue, kick_evt).await },
+                    async move {
+                        handle_pcm_queue(&*mem, &streams, send, &queue, &kick_evt, None).await
+                    },
                     registration,
                 ))
                 .detach();
@@ -228,7 +238,7 @@ impl VhostUserBackend for SndBackend {
 
                 ex.spawn_local(Abortable::new(
                     async move {
-                        send_pcm_response_worker(&*mem2, &queue2, doorbell, &mut recv).await
+                        send_pcm_response_worker(&*mem2, &queue2, doorbell, &mut recv, None).await
                     },
                     registration2,
                 ))

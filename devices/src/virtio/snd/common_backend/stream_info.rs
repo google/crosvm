@@ -48,6 +48,10 @@ pub struct StreamInfo {
     direction: u8,  // VIRTIO_SND_D_*
     pub state: u32, // VIRTIO_SND_R_PCM_SET_PARAMS -> VIRTIO_SND_R_PCM_STOP, or 0 (uninitialized)
 
+    // just_reset set to true after reset. Make invalid state transition return Ok. Set to false
+    // after a valid state transition to SET_PARAMS or PREPARE.
+    pub just_reset: bool,
+
     // Worker related
     pub status_mutex: Rc<AsyncMutex<WorkerStatus>>,
     pub sender: Option<mpsc::UnboundedSender<DescriptorChain>>,
@@ -105,6 +109,7 @@ impl StreamInfo {
             period_bytes: 0,
             direction: 0,
             state: 0,
+            just_reset: false,
             status_mutex: Rc::new(AsyncMutex::new(WorkerStatus::Pause)),
             sender: None,
             worker_future: None,
@@ -139,6 +144,7 @@ impl StreamInfo {
         self.period_bytes = params.period_bytes;
         self.direction = params.dir;
         self.state = VIRTIO_SND_R_PCM_SET_PARAMS;
+        self.just_reset = false;
         Ok(())
     }
 
@@ -155,6 +161,9 @@ impl StreamInfo {
         tx_send: &mpsc::UnboundedSender<PcmResponse>,
         rx_send: &mpsc::UnboundedSender<PcmResponse>,
     ) -> Result<(), Error> {
+        if self.state == 0 && self.just_reset {
+            return Ok(());
+        }
         if self.state != VIRTIO_SND_R_PCM_SET_PARAMS
             && self.state != VIRTIO_SND_R_PCM_PREPARE
             && self.state != VIRTIO_SND_R_PCM_RELEASE
@@ -166,6 +175,7 @@ impl StreamInfo {
             );
             return Err(Error::OperationNotSupported);
         }
+        self.just_reset = false;
         if self.state == VIRTIO_SND_R_PCM_PREPARE {
             self.release_worker().await?;
         }
@@ -251,6 +261,9 @@ impl StreamInfo {
 
     /// Starts the stream, putting it into [`VIRTIO_SND_R_PCM_START`] state.
     pub async fn start(&mut self) -> Result<(), Error> {
+        if self.just_reset {
+            return Ok(());
+        }
         if self.state != VIRTIO_SND_R_PCM_PREPARE && self.state != VIRTIO_SND_R_PCM_STOP {
             error!(
                 "Invalid PCM state transition from {} to {}",
@@ -269,6 +282,9 @@ impl StreamInfo {
 
     /// Stops the stream, putting it into [`VIRTIO_SND_R_PCM_STOP`] state.
     pub async fn stop(&mut self) -> Result<(), Error> {
+        if self.just_reset {
+            return Ok(());
+        }
         if self.state != VIRTIO_SND_R_PCM_START {
             error!(
                 "Invalid PCM state transition from {} to {}",
@@ -287,6 +303,9 @@ impl StreamInfo {
 
     /// Releases the stream, putting it into [`VIRTIO_SND_R_PCM_RELEASE`] state.
     pub async fn release(&mut self) -> Result<(), Error> {
+        if self.just_reset {
+            return Ok(());
+        }
         if self.state != VIRTIO_SND_R_PCM_PREPARE && self.state != VIRTIO_SND_R_PCM_STOP {
             error!(
                 "Invalid PCM state transition from {} to {}",
@@ -296,8 +315,8 @@ impl StreamInfo {
             return Err(Error::OperationNotSupported);
         }
         self.state = VIRTIO_SND_R_PCM_RELEASE;
-        self.release_worker().await?;
         self.stream_source = None;
+        self.release_worker().await?;
         Ok(())
     }
 
@@ -523,5 +542,99 @@ mod tests {
         stream_start(new_stream_release(), &ex, false, VIRTIO_SND_R_PCM_RELEASE);
         stream_stop(new_stream_release(), &ex, false, VIRTIO_SND_R_PCM_RELEASE);
         stream_release(new_stream_release(), &ex, false, VIRTIO_SND_R_PCM_RELEASE);
+    }
+
+    #[test]
+    fn test_transitions_from_0_just_reset() {
+        let ex = Executor::new().expect("Failed to create an executor");
+        let new_stream_0 = || -> StreamInfo {
+            let mut stream = new_stream();
+            stream.just_reset = true;
+            stream
+        };
+
+        // Valid transition to: {SET_PARAMS}
+        // After valid transition, just_reset reset to false
+        let mut stream = new_stream_0();
+        stream = stream_set_params(stream, &ex, true, VIRTIO_SND_R_PCM_SET_PARAMS);
+        assert_eq!(stream.just_reset, false);
+
+        // Invalid transition to: {PREPARE, START, STOP, RELEASE}
+        // Return Ok but state doesn't change
+        stream_prepare(new_stream_0(), &ex, true, 0);
+        stream_start(new_stream_0(), &ex, true, 0);
+        stream_stop(new_stream_0(), &ex, true, 0);
+        stream_release(new_stream_0(), &ex, true, 0);
+    }
+
+    #[test]
+    fn test_transitions_from_set_params_just_reset() {
+        let ex = Executor::new().expect("Failed to create an executor");
+        let new_stream_set_params = || -> StreamInfo {
+            let mut stream =
+                stream_set_params(new_stream(), &ex, true, VIRTIO_SND_R_PCM_SET_PARAMS);
+            stream.just_reset = true;
+            stream
+        };
+
+        // Valid transition to: {SET_PARAMS, PREPARE}
+        // After valid transition, just_reset reset to false
+        let mut stream = new_stream_set_params();
+        stream = stream_set_params(stream, &ex, true, VIRTIO_SND_R_PCM_SET_PARAMS);
+        assert_eq!(stream.just_reset, false);
+
+        let mut stream = new_stream_set_params();
+        stream = stream_prepare(stream, &ex, true, VIRTIO_SND_R_PCM_PREPARE);
+        assert_eq!(stream.just_reset, false);
+
+        // Invalid transition to: {START, STOP, RELEASE}
+        // Return Ok but state doesn't change
+        stream_start(
+            new_stream_set_params(),
+            &ex,
+            true,
+            VIRTIO_SND_R_PCM_SET_PARAMS,
+        );
+        stream_stop(
+            new_stream_set_params(),
+            &ex,
+            true,
+            VIRTIO_SND_R_PCM_SET_PARAMS,
+        );
+        stream_release(
+            new_stream_set_params(),
+            &ex,
+            true,
+            VIRTIO_SND_R_PCM_SET_PARAMS,
+        );
+    }
+
+    #[test]
+    fn test_transitions_from_release_just_reset() {
+        let ex = Executor::new().expect("Failed to create an executor");
+        let new_stream_release = || -> StreamInfo {
+            let mut stream =
+                stream_set_params(new_stream(), &ex, true, VIRTIO_SND_R_PCM_SET_PARAMS);
+            stream = stream_prepare(stream, &ex, true, VIRTIO_SND_R_PCM_PREPARE);
+            stream = stream_release(stream, &ex, true, VIRTIO_SND_R_PCM_RELEASE);
+            stream.just_reset = true;
+            stream
+        };
+
+        // Valid transition to: {SET_PARAMS, PREPARE}
+        // After valid transition, just_reset reset to false
+        let mut stream = new_stream_release();
+        stream = stream_set_params(stream, &ex, true, VIRTIO_SND_R_PCM_SET_PARAMS);
+        assert_eq!(stream.just_reset, false);
+
+        let mut stream = new_stream_release();
+        stream = stream_prepare(stream, &ex, true, VIRTIO_SND_R_PCM_PREPARE);
+        assert_eq!(stream.just_reset, false);
+
+        // Invalid transition to: {START, STOP, RELEASE}
+        // Return Ok but state doesn't change
+        stream_start(new_stream_release(), &ex, true, VIRTIO_SND_R_PCM_RELEASE);
+        stream_stop(new_stream_release(), &ex, true, VIRTIO_SND_R_PCM_RELEASE);
+        stream_release(new_stream_release(), &ex, true, VIRTIO_SND_R_PCM_RELEASE);
     }
 }

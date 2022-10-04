@@ -12,6 +12,7 @@ use audio_streams::capture::AsyncCaptureBuffer;
 use audio_streams::AsyncPlaybackBuffer;
 use base::debug;
 use base::error;
+use cros_async::sync::Condvar;
 use cros_async::sync::Mutex as AsyncMutex;
 use cros_async::EventAsync;
 use cros_async::Executor;
@@ -19,6 +20,9 @@ use data_model::DataInit;
 use data_model::Le32;
 use futures::channel::mpsc;
 use futures::channel::oneshot;
+use futures::pin_mut;
+use futures::select;
+use futures::FutureExt;
 use futures::SinkExt;
 use futures::StreamExt;
 use thiserror::Error as ThisError;
@@ -300,6 +304,38 @@ pub async fn start_pcm_worker(
     mut sender: mpsc::UnboundedSender<PcmResponse>,
     period_bytes: usize,
 ) -> Result<(), Error> {
+    let res = pcm_worker_loop(
+        ex,
+        dstream,
+        &mut desc_receiver,
+        &status_mutex,
+        &mem,
+        &mut sender,
+        period_bytes,
+    )
+    .await;
+    *status_mutex.lock().await = WorkerStatus::Quit;
+    if res.is_err() {
+        error!(
+            "pcm_worker error: {:#?}. Draining desc_receiver",
+            res.as_ref().err()
+        );
+        // On error, guaranteed that desc_receiver has not been drained, so drain it here.
+        // Note that drain blocks until the stream is release.
+        drain_desc_receiver(&mut desc_receiver, &mem, &mut sender).await?;
+    }
+    res
+}
+
+async fn pcm_worker_loop(
+    ex: Executor,
+    dstream: DirectionalStream,
+    desc_receiver: &mut mpsc::UnboundedReceiver<DescriptorChain>,
+    status_mutex: &Rc<AsyncMutex<WorkerStatus>>,
+    mem: &GuestMemory,
+    sender: &mut mpsc::UnboundedSender<PcmResponse>,
+    period_bytes: usize,
+) -> Result<(), Error> {
     match dstream {
         DirectionalStream::Output(mut stream) => {
             loop {
@@ -310,8 +346,10 @@ pub async fn start_pcm_worker(
                 let worker_status = status_mutex.lock().await;
                 match *worker_status {
                     WorkerStatus::Quit => {
-                        drain_desc_receiver(&mut desc_receiver, &mem, &mut sender).await?;
-                        write_data(dst_buf, None, period_bytes).await?;
+                        drain_desc_receiver(desc_receiver, mem, sender).await?;
+                        if let Err(e) = write_data(dst_buf, None, period_bytes).await {
+                            error!("Error on write_data after worker quit: {}", e)
+                        }
                         break Ok(());
                     }
                     WorkerStatus::Pause => {
@@ -362,8 +400,10 @@ pub async fn start_pcm_worker(
                 let worker_status = status_mutex.lock().await;
                 match *worker_status {
                     WorkerStatus::Quit => {
-                        drain_desc_receiver(&mut desc_receiver, &mem, &mut sender).await?;
-                        read_data(src_buf, None, period_bytes).await?;
+                        drain_desc_receiver(desc_receiver, mem, sender).await?;
+                        if let Err(e) = read_data(src_buf, None, period_bytes).await {
+                            error!("Error on read_data after worker quit: {}", e)
+                        }
                         break Ok(());
                     }
                     WorkerStatus::Pause => {
@@ -446,14 +486,39 @@ fn send_pcm_response_with_writer<I: SignalableInterrupt>(
     Ok(())
 }
 
+// Await until reset_signal has been released
+async fn await_reset_signal(reset_signal_option: Option<&(AsyncMutex<bool>, Condvar)>) {
+    match reset_signal_option {
+        Some((lock, cvar)) => {
+            let mut reset = lock.lock().await;
+            while !*reset {
+                reset = cvar.wait(reset).await;
+            }
+        }
+        None => futures::future::pending().await,
+    };
+}
+
 pub async fn send_pcm_response_worker<I: SignalableInterrupt>(
     mem: &GuestMemory,
     queue: &Rc<AsyncMutex<Queue>>,
     interrupt: I,
     recv: &mut mpsc::UnboundedReceiver<PcmResponse>,
+    reset_signal: Option<&(AsyncMutex<bool>, Condvar)>,
 ) -> Result<(), Error> {
+    let on_reset = await_reset_signal(reset_signal).fuse();
+    pin_mut!(on_reset);
+
     loop {
-        if let Some(r) = recv.next().await {
+        let next_async = recv.next().fuse();
+        pin_mut!(next_async);
+
+        let res = select! {
+            _ = on_reset => break,
+            res = next_async => res,
+        };
+
+        if let Some(r) = res {
             send_pcm_response_with_writer(
                 r.writer,
                 r.desc_index,
@@ -477,13 +542,17 @@ pub async fn send_pcm_response_worker<I: SignalableInterrupt>(
 
 /// Handle messages from the tx or the rx queue. One invocation is needed for
 /// each queue.
-pub async fn handle_pcm_queue<'a>(
+pub async fn handle_pcm_queue(
     mem: &GuestMemory,
     streams: &Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo>>>>,
     mut response_sender: mpsc::UnboundedSender<PcmResponse>,
     queue: &Rc<AsyncMutex<Queue>>,
-    queue_event: EventAsync,
+    queue_event: &EventAsync,
+    reset_signal: Option<&(AsyncMutex<bool>, Condvar)>,
 ) -> Result<(), Error> {
+    let on_reset = await_reset_signal(reset_signal).fuse();
+    pin_mut!(on_reset);
+
     loop {
         // Manual queue.next_async() to avoid holding the mutex
         let next_async = async {
@@ -494,9 +563,15 @@ pub async fn handle_pcm_queue<'a>(
                 }
                 queue_event.next_val().await?;
             }
+        }
+        .fuse();
+        pin_mut!(next_async);
+
+        let desc_chain = select! {
+            _ = on_reset => break,
+            res = next_async => res.map_err(Error::Async)?,
         };
 
-        let desc_chain = next_async.await.map_err(Error::Async)?;
         let mut reader =
             Reader::new(mem.clone(), desc_chain.clone()).map_err(Error::DescriptorChain)?;
 
@@ -529,13 +604,20 @@ pub async fn handle_pcm_queue<'a>(
         match stream_info.sender.as_ref() {
             Some(mut s) => {
                 s.send(desc_chain).await.map_err(Error::MpscSend)?;
+                if *stream_info.status_mutex.lock().await == WorkerStatus::Quit {
+                    // If sender channel is still intact but worker status is quit,
+                    // the worker quitted unexpectedly. Return error to request a reset.
+                    return Err(Error::PCMWorkerQuittedUnexpectedly);
+                }
             }
             None => {
-                error!(
-                    "stream {} is not ready. state: {}",
-                    stream_id,
-                    get_virtio_snd_r_pcm_cmd_name(stream_info.state)
-                );
+                if !stream_info.just_reset {
+                    error!(
+                        "stream {} is not ready. state: {}",
+                        stream_id,
+                        get_virtio_snd_r_pcm_cmd_name(stream_info.state)
+                    );
+                }
                 defer_pcm_response_to_worker(
                     desc_chain,
                     mem,
@@ -549,6 +631,7 @@ pub async fn handle_pcm_queue<'a>(
             }
         };
     }
+    Ok(())
 }
 
 /// Handle all the control messages from the ctrl queue.
@@ -557,17 +640,26 @@ pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
     mem: &GuestMemory,
     streams: &Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo>>>>,
     snd_data: &SndData,
-    mut queue: Queue,
-    mut queue_event: EventAsync,
+    queue: &mut Queue,
+    queue_event: &mut EventAsync,
     interrupt: I,
     tx_send: mpsc::UnboundedSender<PcmResponse>,
     rx_send: mpsc::UnboundedSender<PcmResponse>,
+    reset_signal: Option<&(AsyncMutex<bool>, Condvar)>,
 ) -> Result<(), Error> {
+    let on_reset = await_reset_signal(reset_signal).fuse();
+    pin_mut!(on_reset);
+
     loop {
-        let desc_chain = queue
-            .next_async(mem, &mut queue_event)
-            .await
-            .map_err(Error::Async)?;
+        let desc_chain = {
+            let next_async = queue.next_async(mem, queue_event).fuse();
+            pin_mut!(next_async);
+
+            select! {
+                _ = on_reset => break,
+                res = next_async => res.map_err(Error::Async)?,
+            }
+        };
 
         let index = desc_chain.index;
 
@@ -798,6 +890,7 @@ pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
         queue.add_used(mem, index, writer.bytes_written() as u32);
         queue.trigger_interrupt(mem, &interrupt);
     }
+    Ok(())
 }
 
 /// Send events to the audio driver.

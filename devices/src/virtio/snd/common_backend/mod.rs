@@ -11,11 +11,14 @@ use std::thread;
 use anyhow::Context;
 use audio_streams::BoxError;
 use audio_streams::StreamSourceGenerator;
+use base::debug;
 use base::error;
 use base::warn;
 use base::Error as SysError;
 use base::Event;
 use base::RawDescriptor;
+use cros_async::block_on;
+use cros_async::sync::Condvar;
 use cros_async::sync::Mutex as AsyncMutex;
 use cros_async::AsyncError;
 use cros_async::EventAsync;
@@ -25,6 +28,7 @@ use futures::channel::mpsc;
 use futures::channel::oneshot;
 use futures::channel::oneshot::Canceled;
 use futures::future::FusedFuture;
+use futures::join;
 use futures::pin_mut;
 use futures::select;
 use futures::Future;
@@ -120,6 +124,9 @@ pub enum Error {
     // Failed to generate StreamSource
     #[error("Failed to generate stream source: {0}")]
     GenerateStreamSource(BoxError),
+    // PCM worker unexpectedly quitted.
+    #[error("PCM worker quitted unexpectedly")]
+    PCMWorkerQuittedUnexpectedly,
 }
 
 pub enum DirectionalStream {
@@ -417,6 +424,12 @@ impl Drop for VirtioSnd {
     }
 }
 
+#[derive(PartialEq)]
+enum LoopState {
+    Continue,
+    Break,
+}
+
 fn run_worker(
     interrupt: Interrupt,
     mut queues: Vec<Queue>,
@@ -441,7 +454,7 @@ fn run_worker(
         .collect();
     let streams = Rc::new(AsyncMutex::new(streams));
 
-    let ctrl_queue = queues.remove(0);
+    let mut ctrl_queue = queues.remove(0);
     let _event_queue = queues.remove(0);
     let tx_queue = Rc::new(AsyncMutex::new(queues.remove(0)));
     let rx_queue = Rc::new(AsyncMutex::new(queues.remove(0)));
@@ -451,7 +464,7 @@ fn run_worker(
         .map(|e| EventAsync::new(e, &ex).expect("Failed to create async event for queue"))
         .collect();
 
-    let ctrl_queue_evt = evts_async.remove(0);
+    let mut ctrl_queue_evt = evts_async.remove(0);
     let _event_queue_evt = evts_async.remove(0);
     let tx_queue_evt = evts_async.remove(0);
     let rx_queue_evt = evts_async.remove(0);
@@ -466,29 +479,61 @@ fn run_worker(
 
     pin_mut!(f_resample, f_kill);
 
-    run_worker_once(
-        &ex,
-        &streams,
-        &mem,
-        interrupt,
-        &snd_data,
-        &mut f_kill,
-        &mut f_resample,
-        ctrl_queue,
-        ctrl_queue_evt,
-        &tx_queue,
-        tx_queue_evt,
-        tx_send,
-        &mut tx_recv,
-        &rx_queue,
-        rx_queue_evt,
-        rx_send,
-        &mut rx_recv,
-    );
+    loop {
+        if run_worker_once(
+            &ex,
+            &streams,
+            &mem,
+            interrupt.clone(),
+            &snd_data,
+            &mut f_kill,
+            &mut f_resample,
+            &mut ctrl_queue,
+            &mut ctrl_queue_evt,
+            &tx_queue,
+            &tx_queue_evt,
+            tx_send.clone(),
+            &mut tx_recv,
+            &rx_queue,
+            &rx_queue_evt,
+            rx_send.clone(),
+            &mut rx_recv,
+        ) == LoopState::Break
+        {
+            break;
+        }
+
+        if let Err(e) = reset_streams(
+            &ex,
+            &streams,
+            &mem,
+            interrupt.clone(),
+            &tx_queue,
+            &mut tx_recv,
+            &rx_queue,
+            &mut rx_recv,
+        ) {
+            error!("Error reset streams: {}", e);
+            break;
+        }
+    }
 
     Ok(())
 }
 
+async fn notify_reset_signal(reset_signal: &(AsyncMutex<bool>, Condvar)) {
+    let (lock, cvar) = reset_signal;
+    *lock.lock().await = true;
+    cvar.notify_all();
+}
+
+/// Runs all workers once and exit if any worker exit.
+///
+/// Returns [`LoopState::Break`] if the worker `f_kill` or `f_resample` exit, or something went wrong
+/// on shutdown process. The caller should not run the worker again and should exit the main loop.
+///
+/// If this function returns [`LoopState::Continue`], the caller can continue the main loop by resetting
+/// the streams and run the worker again.
 fn run_worker_once(
     ex: &Executor,
     streams: &Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo>>>>,
@@ -497,19 +542,21 @@ fn run_worker_once(
     snd_data: &SndData,
     mut f_kill: &mut (impl Future<Output = anyhow::Result<()>> + FusedFuture + Unpin),
     mut f_resample: &mut (impl Future<Output = anyhow::Result<()>> + FusedFuture + Unpin),
-    ctrl_queue: Queue,
-    ctrl_queue_evt: EventAsync,
+    ctrl_queue: &mut Queue,
+    ctrl_queue_evt: &mut EventAsync,
     tx_queue: &Rc<AsyncMutex<Queue>>,
-    tx_queue_evt: EventAsync,
+    tx_queue_evt: &EventAsync,
     tx_send: mpsc::UnboundedSender<PcmResponse>,
     tx_recv: &mut mpsc::UnboundedReceiver<PcmResponse>,
     rx_queue: &Rc<AsyncMutex<Queue>>,
-    rx_queue_evt: EventAsync,
+    rx_queue_evt: &EventAsync,
     rx_send: mpsc::UnboundedSender<PcmResponse>,
     rx_recv: &mut mpsc::UnboundedReceiver<PcmResponse>,
-) {
+) -> LoopState {
     let tx_send2 = tx_send.clone();
     let rx_send2 = rx_send.clone();
+
+    let reset_signal = (AsyncMutex::new(false), Condvar::new());
 
     let f_ctrl = handle_ctrl_queue(
         ex,
@@ -521,7 +568,9 @@ fn run_worker_once(
         interrupt.clone(),
         tx_send,
         rx_send,
-    );
+        Some(&reset_signal),
+    )
+    .fuse();
 
     // TODO(woodychow): Enable this when libcras sends jack connect/disconnect evts
     // let f_event = handle_event_queue(
@@ -531,31 +580,157 @@ fn run_worker_once(
     //     event_queue_evt,
     //     interrupt,
     // );
-
-    let f_tx = handle_pcm_queue(mem, streams, tx_send2, tx_queue, tx_queue_evt);
-
-    let f_tx_response = send_pcm_response_worker(mem, tx_queue, interrupt.clone(), tx_recv);
-
-    let f_rx = handle_pcm_queue(mem, streams, rx_send2, rx_queue, rx_queue_evt);
-
-    let f_rx_response = send_pcm_response_worker(mem, rx_queue, interrupt, rx_recv);
+    let f_tx = handle_pcm_queue(
+        mem,
+        streams,
+        tx_send2,
+        tx_queue,
+        tx_queue_evt,
+        Some(&reset_signal),
+    )
+    .fuse();
+    let f_tx_response = send_pcm_response_worker(
+        mem,
+        tx_queue,
+        interrupt.clone(),
+        tx_recv,
+        Some(&reset_signal),
+    )
+    .fuse();
+    let f_rx = handle_pcm_queue(
+        mem,
+        streams,
+        rx_send2,
+        rx_queue,
+        rx_queue_evt,
+        Some(&reset_signal),
+    )
+    .fuse();
+    let f_rx_response =
+        send_pcm_response_worker(mem, rx_queue, interrupt, rx_recv, Some(&reset_signal)).fuse();
 
     pin_mut!(f_ctrl, f_tx, f_tx_response, f_rx, f_rx_response);
 
     let done = async {
         select! {
-            res = f_ctrl.fuse() => res.context("error in handling ctrl queue"),
-            res = f_tx.fuse() => res.context("error in handling tx queue"),
-            res = f_tx_response.fuse() => res.context("error in handling tx response"),
-            res = f_rx.fuse() => res.context("error in handling rx queue"),
-            res = f_rx_response.fuse() => res.context("error in handling rx response"),
-            res = f_resample => res.context("error in handle_irq_resample"),
-            res = f_kill => res.context("error in await_and_exit"),
+            res = f_ctrl => (res.context("error in handling ctrl queue"), LoopState::Continue),
+            res = f_tx => (res.context("error in handling tx queue"), LoopState::Continue),
+            res = f_tx_response => (res.context("error in handling tx response"), LoopState::Continue),
+            res = f_rx => (res.context("error in handling rx queue"), LoopState::Continue),
+            res = f_rx_response => (res.context("error in handling rx response"), LoopState::Continue),
+
+            // For following workers, do not continue the loop
+            res = f_resample => (res.context("error in handle_irq_resample"), LoopState::Break),
+            res = f_kill => (res.context("error in await_and_exit"), LoopState::Break),
         }
     };
+
     match ex.run_until(done) {
-        Ok(Ok(())) => {}
-        Ok(Err(e)) => error!("Error in worker: {}", e),
-        Err(e) => error!("Error happened in executor: {}", e),
+        Ok((res, loop_state)) => {
+            if let Err(e) = res {
+                error!("Error in worker: {:#}", e);
+            }
+            if loop_state == LoopState::Break {
+                return LoopState::Break;
+            }
+        }
+        Err(e) => {
+            error!("Error happened in executor: {}", e);
+        }
     }
+
+    warn!("Shutting down all workers for reset procedure");
+    block_on(notify_reset_signal(&reset_signal));
+
+    let shutdown = async {
+        loop {
+            let (res, worker_name) = select!(
+                res = f_ctrl => (res, "f_ctrl"),
+                res = f_tx => (res, "f_tx"),
+                res = f_tx_response => (res, "f_tx_response"),
+                res = f_rx => (res, "f_rx"),
+                res = f_rx_response => (res, "f_rx_response"),
+                complete => break,
+            );
+            match res {
+                Ok(_) => debug!("Worker {} stopped", worker_name),
+                Err(e) => error!("Worker {} stopped with error {}", worker_name, e),
+            };
+        }
+    };
+
+    if let Err(e) = ex.run_until(shutdown) {
+        error!("Error happened in executor while shutdown: {}", e);
+        return LoopState::Break;
+    }
+
+    LoopState::Continue
+}
+
+fn reset_streams(
+    ex: &Executor,
+    streams: &Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo>>>>,
+    mem: &GuestMemory,
+    interrupt: Interrupt,
+    tx_queue: &Rc<AsyncMutex<Queue>>,
+    tx_recv: &mut mpsc::UnboundedReceiver<PcmResponse>,
+    rx_queue: &Rc<AsyncMutex<Queue>>,
+    rx_recv: &mut mpsc::UnboundedReceiver<PcmResponse>,
+) -> Result<(), AsyncError> {
+    let reset_signal = (AsyncMutex::new(false), Condvar::new());
+
+    let do_reset = async {
+        let streams = streams.read_lock().await;
+        for stream_info in &*streams {
+            let mut stream_info = stream_info.lock().await;
+            if stream_info.state == VIRTIO_SND_R_PCM_START {
+                if let Err(e) = stream_info.stop().await {
+                    error!("Error on stop while resetting stream: {}", e);
+                }
+            }
+            if stream_info.state == VIRTIO_SND_R_PCM_STOP
+                || stream_info.state == VIRTIO_SND_R_PCM_PREPARE
+            {
+                if let Err(e) = stream_info.release().await {
+                    error!("Error on release while resetting stream: {}", e);
+                }
+            }
+            stream_info.just_reset = true;
+        }
+
+        notify_reset_signal(&reset_signal).await;
+    };
+
+    // Run these in a loop to ensure that they will survive until do_reset is finished
+    let f_tx_response = async {
+        while send_pcm_response_worker(
+            mem,
+            tx_queue,
+            interrupt.clone(),
+            tx_recv,
+            Some(&reset_signal),
+        )
+        .await
+        .is_err()
+        {}
+    };
+
+    let f_rx_response = async {
+        while send_pcm_response_worker(
+            mem,
+            rx_queue,
+            interrupt.clone(),
+            rx_recv,
+            Some(&reset_signal),
+        )
+        .await
+        .is_err()
+        {}
+    };
+
+    let reset = async {
+        join!(f_tx_response, f_rx_response, do_reset);
+    };
+
+    ex.run_until(reset)
 }
