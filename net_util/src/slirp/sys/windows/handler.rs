@@ -21,20 +21,20 @@ use base::AsRawDescriptor;
 use base::Descriptor;
 use base::Error as SysError;
 use base::Event;
+use base::EventExt;
 use base::EventToken;
-use base::EventWindows;
 use base::RawDescriptor;
 use base::Timer;
 use base::WaitContext;
+use base::WaitContextExt;
 use data_model::DataInit;
-use data_model::Le16;
 use metrics::MetricEventType;
 use metrics::PeriodicLogger;
 #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
 use pcap_file::pcap::PcapWriter;
 use smallvec::SmallVec;
-use virtio_sys::virtio_net_hdr;
-use virtio_sys::virtio_net_hdr_mrg_rxbuf;
+use virtio_sys::virtio_net::virtio_net_hdr;
+use virtio_sys::virtio_net::virtio_net_hdr_mrg_rxbuf;
 use winapi::shared::minwindef::MAKEWORD;
 use winapi::um::winnt::LONG;
 use winapi::um::winnt::SHORT;
@@ -61,6 +61,7 @@ use crate::slirp::context::Context;
 use crate::slirp::context::PollEvents;
 #[cfg(feature = "slirp-ring-capture")]
 use crate::slirp::packet_ring_buffer::PacketRingBuffer;
+use crate::slirp::SlirpError;
 use crate::slirp::ETHERNET_FRAME_SIZE;
 use crate::Error;
 use crate::Result;
@@ -113,7 +114,7 @@ impl CallbackHandler for Handler {
                 hdr_len: 0,
                 csum_start: 0,
                 csum_offset: 0,
-                gso_type: virtio_sys::VIRTIO_NET_HDR_GSO_NONE as u8,
+                gso_type: virtio_sys::virtio_net::VIRTIO_NET_HDR_GSO_NONE as u8,
             },
             num_buffers: 1,
         };
@@ -359,7 +360,7 @@ impl<'a> EventSelectedSocket<'a> {
             )
         };
         if res == SOCKET_ERROR {
-            return Err(Error::SlirpIOPollError(last_wsa_error()));
+            return Err(Error::Slirp(SlirpError::SlirpIOPollError(last_wsa_error())));
         }
         Ok(EventSelectedSocket { socket, event })
     }
@@ -402,28 +403,32 @@ fn poll<'a>(
         selected_sockets.push(EventSelectedSocket::new(*socket, socket_event_handle)?);
     }
 
-    wait_ctx.clear().map_err(Error::SlirpPollError)?;
+    wait_ctx
+        .clear()
+        .map_err(|e| Error::Slirp(SlirpError::SlirpPollError(e)))?;
     for (i, handle) in handles.iter().enumerate() {
         match wait_ctx.add(*handle, Token::EventHandleReady(i)) {
             Ok(v) => v,
             Err(e) => {
-                return Err(Error::SlirpPollError(e));
+                return Err(Error::Slirp(SlirpError::SlirpPollError(e)));
             }
         }
     }
     match wait_ctx.add(socket_event_handle, Token::SocketReady) {
         Ok(v) => v,
         Err(e) => {
-            return Err(Error::SlirpPollError(e));
+            return Err(Error::Slirp(SlirpError::SlirpPollError(e)));
         }
     }
 
     let events = if let Some(timeout) = timeout {
         wait_ctx
             .wait_timeout(timeout)
-            .map_err(Error::SlirpPollError)?
+            .map_err(|e| Error::Slirp(SlirpError::SlirpPollError(e)))?
     } else {
-        wait_ctx.wait().map_err(Error::SlirpPollError)?
+        wait_ctx
+            .wait()
+            .map_err(|e| Error::Slirp(SlirpError::SlirpPollError(e)))?
     };
 
     let tokens: Vec<Token> = events
@@ -446,7 +451,7 @@ fn poll<'a>(
     let socket_results = if sockets.is_empty() {
         Vec::new()
     } else {
-        poll_sockets(sockets).map_err(Error::SlirpIOPollError)?
+        poll_sockets(sockets).map_err(|e| Error::Slirp(SlirpError::SlirpIOPollError(e)))?
     };
 
     Ok((handle_results, socket_results))
@@ -466,7 +471,9 @@ impl WSAContext {
         // Safe because ctx.data is guaranteed to exist, and we check the return code.
         let err = unsafe { WSAStartup(MAKEWORD(2, 0), &mut ctx.data) };
         if err != 0 {
-            Err(Error::WSAStartupError(SysError::new(err)))
+            Err(Error::Slirp(SlirpError::WSAStartupError(SysError::new(
+                err,
+            ))))
         } else {
             Ok(ctx)
         }
@@ -506,8 +513,10 @@ pub fn start_slirp(
     let shutdown_event_handle = shutdown_event.as_raw_descriptor();
 
     // Stack data for the poll function.
-    let wait_ctx: WaitContext<Token> = WaitContext::new().map_err(Error::SlirpPollError)?;
-    let socket_event_handle = Event::new_auto_reset().map_err(Error::SlirpPollError)?;
+    let wait_ctx: WaitContext<Token> =
+        WaitContext::new().map_err(|e| Error::Slirp(SlirpError::SlirpPollError(e)))?;
+    let socket_event_handle =
+        Event::new_auto_reset().map_err(|e| Error::Slirp(SlirpError::SlirpPollError(e)))?;
 
     'slirp: loop {
         // Request the FDs that we should poll from Slirp. Slirp provides them to us by way of a

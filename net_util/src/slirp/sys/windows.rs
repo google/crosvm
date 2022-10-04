@@ -30,6 +30,7 @@ use cros_async::IntoAsync;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::slirp::SlirpError;
 use crate::slirp::ETHERNET_FRAME_SIZE;
 use crate::Error;
 use crate::MacAddress;
@@ -69,7 +70,7 @@ impl Slirp {
             #[cfg(feature = "slirp-ring-capture")]
             let slirp_capture_file_clone = slirp_capture_file.clone();
             slirp_thread = thread::spawn(move || {
-                let disable_access_to_host = !cfg!("guest-to-host-net-loopback");
+                let disable_access_to_host = !cfg!(feature = "guest-to-host-net-loopback");
 
                 handler::start_slirp(
                     slirp_pipe,
@@ -100,7 +101,10 @@ impl Slirp {
 
     fn try_clone(&self) -> Result<Self> {
         Ok(Slirp {
-            guest_pipe: self.guest_pipe.try_clone().map_err(Error::CloneFailed)?,
+            guest_pipe: self
+                .guest_pipe
+                .try_clone()
+                .map_err(|e| Error::Slirp(SlirpError::CloneFailed(e)))?,
             overlapped_wrapper: OverlappedWrapper::new(true).unwrap(),
             slirp_thread: None,
         })
@@ -122,7 +126,7 @@ impl Slirp {
         // because libslirp logs *everything* as a debug entry.
         std::env::set_var("G_MESSAGES_DEBUG", "all");
 
-        let disable_access_to_host = !cfg!("guest-to-host-net-loopback");
+        let disable_access_to_host = !cfg!(feature = "guest-to-host-net-loopback");
 
         info!("starting slirp loop...");
         match handler::start_slirp(
@@ -132,7 +136,9 @@ impl Slirp {
             #[cfg(feature = "slirp-ring-capture")]
             slirp_capture_file.take(),
         ) {
-            Err(Error::BrokenPipe(e)) => warn!("exited slirp listening loop: {}", e),
+            Err(Error::Slirp(SlirpError::BrokenPipe(e))) => {
+                warn!("exited slirp listening loop: {}", e)
+            }
             Err(e) => panic!("error while running slirp listening loop: {}", e),
             _ => {}
         }
@@ -226,7 +232,7 @@ impl TapTCommon for Slirp {
         unimplemented!("not used by Slirp");
     }
 
-    fn if_flags(&self) -> i32 {
+    fn if_flags(&self) -> u32 {
         // This function is unused by the Slirp code paths.
         unimplemented!("not used by Slirp");
     }

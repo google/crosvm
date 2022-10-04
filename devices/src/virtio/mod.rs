@@ -15,7 +15,6 @@ mod interrupt;
 mod iommu;
 mod queue;
 mod rng;
-#[cfg(unix)]
 mod sys;
 #[cfg(any(feature = "tpm", feature = "vtpm"))]
 mod tpm;
@@ -80,6 +79,8 @@ cfg_if::cfg_if! {
 
         #[cfg(feature = "slirp")]
         pub use self::net::*;
+        #[cfg(feature = "slirp")]
+        pub use self::sys::windows::NetExt;
         pub use self::vsock::*;
     } else {
         compile_error!("Unsupported platform");

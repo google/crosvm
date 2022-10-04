@@ -22,7 +22,9 @@ sudo apt-get install --yes --no-install-recommends \
     libdbus-1-dev \
     libdrm-dev \
     libepoxy-dev \
+    libglib2.0-dev \
     libguestfs-tools \
+    libslirp-dev \
     libssl-dev \
     libswscale-dev \
     libudev-dev \

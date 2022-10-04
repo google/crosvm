@@ -1260,6 +1260,7 @@ dependencies = [
 name = "net_util"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "base",
  "cfg-if",
  "cros_async",
@@ -1269,6 +1270,7 @@ dependencies = [
  "metrics",
  "net_sys",
  "pcap-file",
+ "prebuilts",
  "remain",
  "serde",
  "smallvec",

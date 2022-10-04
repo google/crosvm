@@ -130,7 +130,7 @@ all-linux = [
     "wl-dmabuf",
     "x",
     ]
-win64 = [ "balloon", "crash_report", "haxm", "stats" ]
+win64 = [ "balloon", "crash_report", "haxm", "slirp", "stats" ]
 arc_quota = ["devices/arc_quota"]
 audio = ["devices/audio"]
 audio_cras = ["devices/audio_cras"]
@@ -169,7 +169,7 @@ plugin = ["protos/plugin", "crosvm_plugin", "kvm", "kvm_sys", "protobuf"]
 plugin-render-server = []
 power-monitor-powerd = ["arch/power-monitor-powerd"]
 qcow = ["disk/qcow"]
-slirp = ["devices/slirp"]
+slirp = ["devices/slirp", "net_util/slirp"]
 stats = ["devices/stats"]
 tpm = ["devices/tpm"]
 usb = ["devices/usb"]

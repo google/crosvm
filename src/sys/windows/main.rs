@@ -74,6 +74,7 @@ pub(crate) fn run_slirp(args: RunSlirpCommand) -> Result<()> {
 
     let slirp_config = bootstrap_tube.recv::<SlirpStartupConfig>().unwrap();
 
+    #[cfg(feature = "sandbox")]
     if let Some(mut target) = sandbox::TargetServices::get()
         .exit_context(Exit::SandboxError, "sandbox operation failed")?
     {

@@ -163,13 +163,11 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
                 let tap = ex
                     .async_from(tap)
                     .context("failed to create async tap device")?;
-                let read_notifier = base::Event(
-                    overlapped_wrapper
-                        .get_h_event_ref()
-                        .unwrap()
-                        .try_clone()
-                        .unwrap(),
-                );
+                let read_notifier = overlapped_wrapper
+                    .get_h_event_ref()
+                    .unwrap()
+                    .try_clone()
+                    .unwrap();
                 let read_notifier = EventAsync::new_without_reset(read_notifier, ex)
                     .context("failed to create async read notifier")?;
 

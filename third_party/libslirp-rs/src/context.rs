@@ -52,6 +52,7 @@ use base::error;
 use base::RawDescriptor;
 use libslirp_sys::*;
 
+use crate::slirp::SlirpError;
 use crate::Error;
 use crate::Result;
 
@@ -512,10 +513,10 @@ impl<H: CallbackHandler> Context<H> {
         assert!(!slirp.is_null());
         match ret.callback_handler.begin_read_from_guest() {
             Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
-                return Err(Error::BrokenPipe(e));
+                return Err(Error::Slirp(SlirpError::BrokenPipe(e)));
             }
             Err(e) => {
-                return Err(Error::OverlappedError(e));
+                return Err(Error::Slirp(SlirpError::OverlappedError(e)));
             }
             _ => {}
         }
@@ -545,15 +546,15 @@ impl<H: CallbackHandler> Context<H> {
                     break;
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
-                    return Err(Error::BrokenPipe(e));
+                    return Err(Error::Slirp(SlirpError::BrokenPipe(e)));
                 }
                 Err(_) => {
                     match self.callback_handler.begin_read_from_guest() {
                         Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
-                            return Err(Error::BrokenPipe(e));
+                            return Err(Error::Slirp(SlirpError::BrokenPipe(e)));
                         }
                         Err(e) => {
-                            return Err(Error::OverlappedError(e));
+                            return Err(Error::Slirp(SlirpError::OverlappedError(e)));
                         }
                         _ => {}
                     }
@@ -562,10 +563,10 @@ impl<H: CallbackHandler> Context<H> {
             }
             match self.callback_handler.begin_read_from_guest() {
                 Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
-                    return Err(Error::BrokenPipe(e));
+                    return Err(Error::Slirp(SlirpError::BrokenPipe(e)));
                 }
                 Err(e) => {
-                    return Err(Error::OverlappedError(e));
+                    return Err(Error::Slirp(SlirpError::OverlappedError(e)));
                 }
                 _ => {}
             }
