@@ -11,20 +11,15 @@ use crate::display::Display;
 use crate::status::Status;
 use crate::UsageHint;
 
-/// An owned VASurface that is tied to the lifetime of a particular VADisplay
+/// An owned VA surface that is tied to the lifetime of a particular VADisplay
 pub struct Surface {
     display: Rc<Display>,
     id: bindings::VASurfaceID,
 }
 
 impl Surface {
-    /// Create VASurfaces by wrapping around a vaCreateSurfaces call
-    ///  `rt_format` is the desired surface format. See VA_RT_FORMAT_*
-    ///  `va_fourcc` is the desired pixel format. See VA_FOURCC_*
-    ///  `width` is the surface width
-    ///  `height` is the surface height
-    ///  `usage_hint` gives the driver a hint of intended usage to optimize allocation (e.g. tiling)
-    ///  `num_surfaces` is the number of surfaces to create
+    /// Create `Surfaces` by wrapping around a `vaCreateSurfaces` call. This is just a helper for
+    /// [`Display::create_surfaces`].
     pub(crate) fn new(
         display: Rc<Display>,
         rt_format: u32,
@@ -66,10 +61,9 @@ impl Surface {
 
         let mut surfaces = Vec::with_capacity(num_surfaces as usize);
 
-        // Safe because `self` represents a valid VADisplay. The "surface" and
-        // "attrs" vectors are properly initialized and valid sizes are passed
-        // to the C function, so it is impossible to write past the end of their
-        // storage by mistake
+        // Safe because `self` represents a valid VADisplay. The `surface` and `attrs` vectors are
+        // properly initialized and valid sizes are passed to the C function, so it is impossible to
+        // write past the end of their storage by mistake.
         Status(unsafe {
             bindings::vaCreateSurfaces(
                 display.handle(),
@@ -84,9 +78,8 @@ impl Surface {
         })
         .check()?;
 
-        // Safe because the C function will have written to exactly
-        // "num_surface" entries, which is known to be within the vector's
-        // capacity.
+        // Safe because the C function will have written to exactly `num_surfaces` entries, which is
+        // known to be within the vector's capacity.
         unsafe {
             surfaces.set_len(num_surfaces as usize);
         }
@@ -102,22 +95,20 @@ impl Surface {
         Ok(va_surfaces)
     }
 
-    /// This function blocks until all pending operations on the render target
-    /// have been completed.  Upon return it is safe to use the render target
-    /// for a different picture.
+    /// Blocks until all pending operations on the render target have been completed. Upon return it
+    /// is safe to use the render target for a different picture.
     pub fn sync(&self) -> Result<()> {
         // Safe because `self` represents a valid VASurface.
         Status(unsafe { bindings::vaSyncSurface(self.display.handle(), self.id) }).check()
     }
 
-    /// Convenience function to return a VASurfaceID vector. Useful to interface
-    /// with the C API where a surface array might be needed.
+    /// Convenience function to return a VASurfaceID vector. Useful to interface with the C API
+    /// where a surface array might be needed.
     pub fn as_id_vec(surfaces: &[Self]) -> Vec<bindings::VASurfaceID> {
         surfaces.iter().map(|surface| surface.id).collect()
     }
 
-    /// A wrapper over vaQuerySurfaceStatus. Finds out any pending ops on the
-    /// render target.
+    /// Wrapper over `vaQuerySurfaceStatus` to find out any pending ops on the render target.
     pub fn query_status(&self) -> Result<bindings::VASurfaceStatus::Type> {
         let mut status: bindings::VASurfaceStatus::Type = 0;
         // Safe because `self` represents a valid VASurface.
@@ -128,7 +119,7 @@ impl Surface {
         Ok(status)
     }
 
-    /// Return the VASurfaceID for this surface
+    /// Returns the ID of this surface.
     pub fn id(&self) -> bindings::VASurfaceID {
         self.id
     }

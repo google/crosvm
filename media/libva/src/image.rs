@@ -9,22 +9,22 @@ use crate::picture::Picture;
 use crate::picture::PictureSync;
 use crate::status::Status;
 
-/// An owned VAImage that is tied to the lifetime of a given Picture.
-/// A VAImage is used to either get the surface data to client memory, or
-/// to copy image data in client memory to a surface.
+/// Wrapper around `VAImage` that is tied to the lifetime of a given `Picture`.
+///
+/// An image is used to either get the surface data to client memory, or to copy image data in
+/// client memory to a surface.
 pub struct Image<'a> {
-    /// The picture whose Surface we use in the vaGetImage call.
+    /// The picture whose `Surface` we use as the source of pixel data.
     picture: &'a Picture<PictureSync>,
-    /// The VAImage returned by libva.
+    /// The `VAImage` returned by libva.
     image: bindings::VAImage,
     /// The mapped surface data.
     data: &'a mut [u8],
-    /// Whether the image was derived using the `vaDeriveImage` API or created
-    /// using the `vaCreateImage` API.
+    /// Whether the image was derived using the `vaDeriveImage` API or created using the
+    /// `vaCreateImage` API.
     derived: bool,
-    /// Tracks whether the underlying data has possibly been written to, i.e. an
-    /// encoder will create an Image and map its buffer in order to write to it,
-    /// so we must writeback later.
+    /// Tracks whether the underlying data has possibly been written to, i.e. an encoder will create
+    /// an image and map its buffer in order to write to it, so we must writeback later.
     dirty: bool,
 }
 
@@ -36,12 +36,14 @@ impl<'a> Image<'a> {
     /// by VAAPI.
     ///
     /// # Arguments
-    /// * `picture` is the Picture that owns the Surface this Image will be created from.
-    /// * `format` is a VAImageFormat returned by the vaQueryImageFormats wrapper.
-    /// * `width` is the Image's desired width.
-    /// * `height` is the Image's desired height.
-    /// * `derive` whether to try deriving the image. Deriving may fail, in
-    ///    which case vaCreateImage will be used instead.
+    ///
+    /// * `picture` - The [`Picture`] that owns the Surface this image will be created from.
+    /// * `format` - A `VAImageFormat` returned by [`crate::Display::query_image_formats`].
+    /// * `width` - The image's desired width.
+    /// * `height` - The image's desired height.
+    /// * `derive` - Whether to try deriving the image from `picture`, which allows zero-copy access
+    ///    to the surface data. Deriving may fail, in which case vaCreateImage will be used instead,
+    ///    incurring an extra data copy.
     pub fn new(
         picture: &'a mut Picture<PictureSync>,
         mut format: bindings::VAImageFormat,
@@ -49,9 +51,7 @@ impl<'a> Image<'a> {
         height: u32,
         derive: bool,
     ) -> Result<Self> {
-        // Safe because an all-zero byte-pattern represent a valid value for
-        // bindings::VAImage. Note that this is a FFI type and that it does not have
-        // any references in it.
+        // An all-zero byte-pattern is a valid initial value for `VAImage`.
         let mut image: bindings::VAImage = Default::default();
         let mut addr = std::ptr::null_mut();
         let mut derived = false;
@@ -64,10 +64,8 @@ impl<'a> Image<'a> {
             Image::create_image(picture, &mut image, &mut format, width, height)?;
         }
 
-        // Safe since `picture.inner.context` represents a valid VAContext.
-        // Image creation is ensured by either the vaDeriveImage or
-        // vaCreateImage APIs and vaGetImage is called if the VAImage was not
-        // derived, as mandated by VAAPI.
+        // Safe since `picture.inner.context` represents a valid `VAContext` and `image` has been
+        // successfully created at this point.
         match Status(unsafe {
             bindings::vaMapBuffer(
                 picture.inner().context().display().handle(),
@@ -78,11 +76,9 @@ impl<'a> Image<'a> {
         .check()
         {
             Ok(_) => {
-                // Safe since addr will point to data mapped onto our address
-                // space since we call vaGetImage above, which also guarantees
-                // that the data is valid for len * mem::size_of<u8>().
-                // Furthermore, we can only access the underlying memory using
-                // the slice below.
+                // Safe since `addr` points to data mapped onto our address space since we called
+                // `vaMapBuffer` above, which also guarantees that the data is valid for
+                // `image.data_size`.
                 let data =
                     unsafe { std::slice::from_raw_parts_mut(addr as _, image.data_size as usize) };
                 Ok(Self {
@@ -94,8 +90,8 @@ impl<'a> Image<'a> {
                 })
             }
             Err(e) => {
-                // Safe because `picture.inner.context` represents a valid
-                // VAContext and `image` represents a valid VAImage.
+                // Safe because `picture.inner.context` represents a valid `VAContext` and `image`
+                // represents a valid `VAImage`.
                 unsafe {
                     bindings::vaDestroyImage(
                         picture.inner().context().display().handle(),
@@ -107,6 +103,8 @@ impl<'a> Image<'a> {
         }
     }
 
+    /// Creates `image` from `picture` using `vaCreateImage` and `vaGetImage` in order to copy the
+    /// surface data into the image buffer.
     fn create_image(
         picture: &'a mut Picture<PictureSync>,
         image: &mut bindings::VAImage,
@@ -147,6 +145,11 @@ impl<'a> Image<'a> {
         Ok(())
     }
 
+    /// Tries to derive `image` from `picture` to access the raw surface data without copy.
+    ///
+    /// Returns `Ok(true)` if the image has been successfully derived, `Ok(false)` if deriving is
+    /// not possible and `create_image` should be used as a fallback, or an error if an error
+    /// occurred.
     fn derive_image(
         picture: &'a mut Picture<PictureSync>,
         image: &mut bindings::VAImage,
@@ -168,7 +171,7 @@ impl<'a> Image<'a> {
         }
     }
 
-    /// Get a reference to the underlying VAImage that describes this Image.
+    /// Get a reference to the underlying `VAImage` that describes this image.
     pub fn image(&self) -> &bindings::VAImage {
         &self.image
     }
@@ -189,17 +192,14 @@ impl<'a> AsMut<[u8]> for Image<'a> {
 
 impl<'a> Drop for Image<'a> {
     fn drop(&mut self) {
-        // Safe because `picture.inner.context` represents a valid VAContext,
-        // `picture.surface` represents a valid VASurface and `image` represents
-        // a valid `VAImage`. Lastly, the buffer is mapped in Image::new, so
-        // self.image.buf points to a valid VABufferID.
-        let surface = self.picture.surface();
-
         if !self.derived && self.dirty {
+            // Safe because `picture.inner.context` represents a valid `VAContext`,
+            // `picture.surface` represents a valid `VASurface` and `image` represents a valid
+            // `VAImage`.
             unsafe {
                 bindings::vaPutImage(
                     self.picture.inner().context().display().handle(),
-                    surface.id(),
+                    self.picture.surface().id(),
                     self.image.image_id,
                     0,
                     0,
@@ -213,15 +213,13 @@ impl<'a> Drop for Image<'a> {
             }
         }
         unsafe {
-            // Safe since the buffer is mapped in Image::new, so self.image.buf
-            // points to a valid VABufferID.
+            // Safe since the buffer is mapped in `Image::new`, so `self.image.buf` points to a
+            // valid `VABufferID`.
             bindings::vaUnmapBuffer(
                 self.picture.inner().context().display().handle(),
                 self.image.buf,
             );
-        }
-        unsafe {
-            // Safe since `self.image` represents a valid VAImage.
+            // Safe since `self.image` represents a valid `VAImage`.
             bindings::vaDestroyImage(
                 self.picture.inner().context().display().handle(),
                 self.image.image_id,

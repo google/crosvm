@@ -15,14 +15,15 @@ use crate::IQMatrix;
 use crate::PictureParameter;
 use crate::SliceParameter;
 
-/// A wrapper type representing a buffer created with vaCreateBuffer
+/// Wrapper type representing a buffer created with `vaCreateBuffer`.
 pub struct Buffer {
     context: Rc<Context>,
     id: bindings::VABufferID,
 }
 
 impl Buffer {
-    /// Creates a new Buffer
+    /// Creates a new buffer by wrapping a `vaCreateBuffer` call. This is just a helper for
+    /// [`Context::create_buffer`].
     pub(crate) fn new(context: Rc<Context>, mut type_: BufferType) -> Result<Self> {
         let mut buffer_id = 0;
 
@@ -90,10 +91,9 @@ impl Buffer {
             }
         };
 
-        // Safe because `self` represents a valid VAContext. `ptr` and `size`
-        // are also ensured to be correct, as `ptr` is just a cast to `*c_void`
-        // from a Rust struct, and `size` is computed from
-        // `std::mem::size_of_val`
+        // Safe because `self` represents a valid `VAContext`. `ptr` and `size` are also ensured to
+        // be correct, as `ptr` is just a cast to `*c_void` from a Rust struct, and `size` is
+        // computed from `std::mem::size_of_val`.
         Status(unsafe {
             bindings::vaCreateBuffer(
                 context.display().handle(),
@@ -113,8 +113,8 @@ impl Buffer {
         })
     }
 
-    /// Convenience function to return a VABufferID vector. Useful to interface
-    /// with the C API where a buffer array might be needed.
+    /// Convenience function to return a `VABufferID` vector from a slice of `Buffer`s in order to
+    /// easily interface with the C API where a buffer array might be needed.
     pub fn as_id_vec(buffers: &[Self]) -> Vec<bindings::VABufferID> {
         buffers.iter().map(|buffer| buffer.id).collect()
     }

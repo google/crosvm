@@ -15,19 +15,15 @@ use crate::status::Status;
 use crate::Config;
 use crate::Surface;
 
-/// An owned Context that is tied to the lifetime of a particular Display
+/// A VA context for a particular [`Display`].
 pub struct Context {
     display: Rc<Display>,
     id: bindings::VAContextID,
 }
 
 impl Context {
-    /// Create a Context by wrapping around a vaCreateContext call.
-    ///  `config` is the configuration for the context
-    ///  `coded_width` is the coded picture width
-    ///  `coded_height` is the coded picture height
-    ///  `progressive` is whether only progressive frame pictures are present in the sequence
-    ///  `surfaces` are a hint for the amount of surfaces tied to the context
+    /// Creates a Context by wrapping around a `vaCreateContext` call. This is just a helper for
+    /// [`Display::create_context`].
     pub(crate) fn new(
         display: Rc<Display>,
         config: &Config,
@@ -71,18 +67,17 @@ impl Context {
         }))
     }
 
-    /// Returns the inner VADisplay
+    /// Returns a shared reference to the [`Display`] used by this context.
     pub fn display(&self) -> Rc<Display> {
         Rc::clone(&self.display)
     }
 
-    /// Returns the VAContextID for this Context
+    /// Returns the ID of this context.
     pub(crate) fn id(&self) -> bindings::VAContextID {
         self.id
     }
 
-    /// Create a buffer by wrapping a vaCreateBuffer call. `type_` describes the
-    /// underlying data to libva.
+    /// Create a new buffer of type `type_`.
     pub fn create_buffer(self: &Rc<Self>, type_: BufferType) -> Result<Buffer> {
         Buffer::new(Rc::clone(self), type_)
     }

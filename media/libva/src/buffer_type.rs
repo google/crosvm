@@ -4,17 +4,17 @@
 
 use crate::bindings;
 
-/// An abstraction over VA BufferTypes
+/// Abstraction over `VABufferType`s.
 pub enum BufferType {
-    /// An abstraction over VAPictureParameterBufferType. Needed for MPEG2, VP8, VP9, H264
+    /// Abstraction over `VAPictureParameterBufferType`. Needed for MPEG2, VP8, VP9, H264.
     PictureParameter(PictureParameter),
-    /// An abstraction over VASliceParameterBufferType. Needed for MPEG2, VP8, VP9, H264
+    /// Abstraction over `VASliceParameterBufferType`. Needed for MPEG2, VP8, VP9, H264.
     SliceParameter(SliceParameter),
-    /// An abstraction over VAIQMatrixBufferType. Needed for VP8, H264
+    /// Abstraction over `VAIQMatrixBufferType`. Needed for VP8, H264.
     IQMatrix(IQMatrix),
-    /// An abstraction over VAProbabilityDataBuffeTyper. Needed for VP8
+    /// Abstraction over `VAProbabilityDataBufferType`. Needed for VP8.
     Probability(ProbabilityDataBufferVP8),
-    /// An abstraction over VASliceDataBufferType. Needed for VP9, H264
+    /// Abstraction over `VASliceDataBufferType`. Needed for VP9, H264.
     SliceData(Vec<u8>),
 }
 
@@ -31,11 +31,11 @@ impl BufferType {
     }
 }
 
-/// Wrapper over the `picture_coding_extension` bindgen field in VAPictureParameterBufferMPEG2
+/// Wrapper over the `picture_coding_extension` bindgen field in `VAPictureParameterBufferMPEG2`.
 pub struct MPEG2PictureCodingExtension(bindings::_VAPictureParameterBufferMPEG2__bindgen_ty_1);
 
 impl MPEG2PictureCodingExtension {
-    /// Creates the bindgen field
+    /// Creates the bindgen field.
     pub fn new(
         intra_dc_precision: u32,
         picture_structure: u32,
@@ -79,11 +79,11 @@ impl MPEG2PictureCodingExtension {
     }
 }
 
-/// Wrapper over the PictureParameterBufferMPEG2 FFI type.
+/// Wrapper over the `PictureParameterBufferMPEG2` FFI type.
 pub struct PictureParameterBufferMPEG2(Box<bindings::VAPictureParameterBufferMPEG2>);
 
 impl PictureParameterBufferMPEG2 {
-    /// Creates the wrapper
+    /// Creates the wrapper.
     pub fn new(
         horizontal_size: u16,
         vertical_size: u16,
@@ -117,7 +117,7 @@ impl PictureParameterBufferMPEG2 {
     }
 }
 
-/// Wrapper over the `pic_fields` bindgen field in VAPictureParameterBufferVP8
+/// Wrapper over the `pic_fields` bindgen field in `VAPictureParameterBufferVP8`.
 pub struct VP8PicFields(bindings::_VAPictureParameterBufferVP8__bindgen_ty_1);
 
 impl VP8PicFields {
@@ -169,7 +169,7 @@ impl VP8PicFields {
     }
 }
 
-/// Wrapper over the VABoolCoderContextVPX FFI type
+/// Wrapper over the `VABoolCoderContextVPX` FFI type.
 pub struct BoolCoderContextVPX(bindings::VABoolCoderContextVPX);
 
 impl BoolCoderContextVPX {
@@ -183,7 +183,7 @@ impl BoolCoderContextVPX {
     }
 }
 
-/// Wrapper over the PictureParameterBufferVP8 FFI type
+/// Wrapper over the `PictureParameterBufferVP8` FFI type.
 pub struct PictureParameterBufferVP8(Box<bindings::VAPictureParameterBufferVP8>);
 
 impl PictureParameterBufferVP8 {
@@ -245,7 +245,7 @@ impl PictureParameterBufferVP8 {
     }
 }
 
-/// Wrapper over the `pic_fields` bindgen field in VAPictureParameterBufferVP9
+/// Wrapper over the `pic_fields` bindgen field in `VAPictureParameterBufferVP9`.
 pub struct VP9PicFields(bindings::_VADecPictureParameterBufferVP9__bindgen_ty_1);
 
 impl VP9PicFields {
@@ -314,7 +314,7 @@ impl VP9PicFields {
     }
 }
 
-/// Wrapper over the PictureParameterBufferVP9 FFI type
+/// Wrapper over the `PictureParameterBufferVP9` FFI type.
 pub struct PictureParameterBufferVP9(Box<bindings::VADecPictureParameterBufferVP9>);
 
 impl PictureParameterBufferVP9 {
@@ -366,7 +366,7 @@ impl PictureParameterBufferVP9 {
     }
 }
 
-/// Wrapper over the VAPictureH264 FFI type
+/// Wrapper over the `VAPictureH264` FFI type.
 pub struct PictureH264(bindings::VAPictureH264);
 
 impl PictureH264 {
@@ -389,7 +389,7 @@ impl PictureH264 {
     }
 }
 
-/// Wrapper over the `seq_fields` bindgen field in VAPictureParameterBufferH264
+/// Wrapper over the `seq_fields` bindgen field in `VAPictureParameterBufferH264`.
 pub struct H264SeqFields(bindings::_VAPictureParameterBufferH264__bindgen_ty_1);
 
 impl H264SeqFields {
@@ -437,7 +437,7 @@ impl H264SeqFields {
     }
 }
 
-/// Wrapper over the `pic_fields` bindgen field in VAPictureParameterBufferH264
+/// Wrapper over the `pic_fields` bindgen field in `VAPictureParameterBufferH264`.
 pub struct H264PicFields(bindings::_VAPictureParameterBufferH264__bindgen_ty_2);
 
 impl H264PicFields {
@@ -483,7 +483,7 @@ impl H264PicFields {
     }
 }
 
-/// A wrapper over VAPictureParameterBufferH264 FFI type
+/// A wrapper over `VAPictureParameterBufferH264` FFI type
 pub struct PictureParameterBufferH264(Box<bindings::VAPictureParameterBufferH264>);
 
 impl PictureParameterBufferH264 {
@@ -550,23 +550,23 @@ impl PictureParameterBufferH264 {
     }
 }
 
-/// An abstraction over the PictureParameterBuffer types we support
+/// Abstraction over the `PictureParameterBuffer` types we support.
 pub enum PictureParameter {
-    /// A wrapper over VAPictureParameterBufferMPEG2
+    /// Wrapper over VAPictureParameterBufferMPEG2.
     MPEG2(PictureParameterBufferMPEG2),
-    /// A wrapper over VAPictureParameterBufferVP8
+    /// Wrapper over VAPictureParameterBufferVP8.
     VP8(PictureParameterBufferVP8),
-    /// A wrapper over VAPictureParameterBufferVP9
+    /// Wrapper over VAPictureParameterBufferVP9.
     VP9(PictureParameterBufferVP9),
-    /// A wrapper over VAPictureParameterBufferH264
+    /// Wrapper over VAPictureParameterBufferH264.
     H264(PictureParameterBufferH264),
 }
 
-/// Wrapper over the VASliceParameterBufferMPEG2 FFI type
+/// Wrapper over the `VASliceParameterBufferMPEG2` FFI type.
 pub struct SliceParameterBufferMPEG2(Box<bindings::VASliceParameterBufferMPEG2>);
 
 impl SliceParameterBufferMPEG2 {
-    /// Creates the wrapper
+    /// Creates the wrapper.
     pub fn new(
         slice_data_size: u32,
         slice_data_offset: u32,
@@ -600,23 +600,23 @@ impl SliceParameterBufferMPEG2 {
     }
 }
 
-/// An abstraction over the SliceParameterBuffer types we support
+/// Abstraction over the `SliceParameterBuffer` types we support
 pub enum SliceParameter {
-    /// A wrapper over VASliceParameterBufferMPEG2
+    /// Wrapper over VASliceParameterBufferMPEG2
     MPEG2(SliceParameterBufferMPEG2),
-    /// A wrapper over VASliceParameterBufferVP8
+    /// Wrapper over VASliceParameterBufferVP8
     VP8(SliceParameterBufferVP8),
-    /// A wrapper over VASliceParameterBufferVP9
+    /// Wrapper over VASliceParameterBufferVP9
     VP9(SliceParameterBufferVP9),
-    /// A wrapper over VASliceParameterBufferH264
+    /// Wrapper over VASliceParameterBufferH264
     H264(SliceParameterBufferH264),
 }
 
-/// Wrapper over the VASliceParameterBufferVP8 FFI type
+/// Wrapper over the `VASliceParameterBufferVP8` FFI type.
 pub struct SliceParameterBufferVP8(Box<bindings::VASliceParameterBufferVP8>);
 
 impl SliceParameterBufferVP8 {
-    /// Creates the wrapper
+    /// Creates the wrapper.
     pub fn new(
         slice_data_size: u32,
         slice_data_offset: u32,
@@ -646,11 +646,11 @@ impl SliceParameterBufferVP8 {
     }
 }
 
-/// Wrapper over the `segment_flags` bindgen field in VASegmentParameterVP9
+/// Wrapper over the `segment_flags` bindgen field in `VASegmentParameterVP9`.
 pub struct VP9SegmentFlags(bindings::_VASegmentParameterVP9__bindgen_ty_1);
 
 impl VP9SegmentFlags {
-    /// Creates the wrapper
+    /// Creates the wrapper.
     pub fn new(
         segment_reference_enabled: u16,
         segment_reference: u16,
@@ -678,11 +678,11 @@ impl VP9SegmentFlags {
     }
 }
 
-/// Wrapper over the VASegmentParameterVP9 FFI type
+/// Wrapper over the `VASegmentParameterVP9` FFI type.
 pub struct SegmentParameterVP9(bindings::VASegmentParameterVP9);
 
 impl SegmentParameterVP9 {
-    /// Creates the wrapper
+    /// Creates the wrapper.
     pub fn new(
         segment_flags: &VP9SegmentFlags,
         filter_level: [[u8; 2usize]; 4usize],
@@ -705,11 +705,11 @@ impl SegmentParameterVP9 {
     }
 }
 
-/// Wrapper over the VASliceParameterBufferVP9 FFI type
+/// Wrapper over the `VASliceParameterBufferVP9` FFI type.
 pub struct SliceParameterBufferVP9(Box<bindings::VASliceParameterBufferVP9>);
 
 impl SliceParameterBufferVP9 {
-    /// Creates the wrapper
+    /// Creates the wrapper.
     pub fn new(
         slice_data_size: u32,
         slice_data_offset: u32,
@@ -737,7 +737,7 @@ impl SliceParameterBufferVP9 {
     }
 }
 
-/// Wrapper over the VASliceParameterBufferH264 FFI type
+/// Wrapper over the `VASliceParameterBufferH264` FFI type.
 pub struct SliceParameterBufferH264(Box<bindings::VASliceParameterBufferH264>);
 
 impl SliceParameterBufferH264 {
@@ -822,11 +822,11 @@ impl SliceParameterBufferH264 {
     }
 }
 
-/// Wrapper over the VAIQMatrixBufferMPEG2 FFI type
+/// Wrapper over the `VAIQMatrixBufferMPEG2` FFI type.
 pub struct IQMatrixBufferMPEG2(Box<bindings::VAIQMatrixBufferMPEG2>);
 
 impl IQMatrixBufferMPEG2 {
-    /// Creates the wrapper
+    /// Creates the wrapper.
     pub fn new(
         load_intra_quantiser_matrix: i32,
         load_non_intra_quantiser_matrix: i32,
@@ -860,11 +860,11 @@ impl IQMatrixBufferMPEG2 {
     }
 }
 
-/// Wrapper over the VAIQMatrixBufferVP8 FFI type
+/// Wrapper over the `VAIQMatrixBufferVP8` FFI type.
 pub struct IQMatrixBufferVP8(Box<bindings::VAIQMatrixBufferVP8>);
 
 impl IQMatrixBufferVP8 {
-    /// Creates the wrapper
+    /// Creates the wrapper.
     pub fn new(quantization_index: [[u16; 6usize]; 4usize]) -> Self {
         Self(Box::new(bindings::VAIQMatrixBufferVP8 {
             quantization_index,
@@ -882,11 +882,11 @@ impl IQMatrixBufferVP8 {
     }
 }
 
-/// Wrapper over the VAIQMatrixBufferH264 FFI type
+/// Wrapper over the `VAIQMatrixBufferH264` FFI type
 pub struct IQMatrixBufferH264(Box<bindings::VAIQMatrixBufferH264>);
 
 impl IQMatrixBufferH264 {
-    /// Creates the wrapper
+    /// Creates the wrapper.
     pub fn new(
         scaling_list4x4: [[u8; 16usize]; 6usize],
         scaling_list8x8: [[u8; 64usize]; 2usize],
@@ -908,21 +908,21 @@ impl IQMatrixBufferH264 {
     }
 }
 
-/// An abstraction over the IQMatrixBuffer types we support
+/// Abstraction over the `IQMatrixBuffer` types we support.
 pub enum IQMatrix {
-    /// An abstraction over VAIQMatrixBufferMPEG2
+    /// Abstraction over VAIQMatrixBufferMPEG2
     MPEG2(IQMatrixBufferMPEG2),
-    /// An abstraction over VAIQMatrixBufferVP8
+    /// Abstraction over VAIQMatrixBufferVP8
     VP8(IQMatrixBufferVP8),
-    /// An abstraction over VAIQMatrixBufferH264
+    /// Abstraction over VAIQMatrixBufferH264
     H264(IQMatrixBufferH264),
 }
 
-/// Wrapper over the VAProbabilityDataBufferVP8 FFI type
+/// Wrapper over the VAProbabilityDataBufferVP8 FFI type.
 pub struct ProbabilityDataBufferVP8(Box<bindings::VAProbabilityDataBufferVP8>);
 
 impl ProbabilityDataBufferVP8 {
-    /// Creates the wrapper
+    /// Creates the wrapper.
     pub fn new(dct_coeff_probs: [[[[u8; 11usize]; 3usize]; 8usize]; 4usize]) -> Self {
         Self(Box::new(bindings::VAProbabilityDataBufferVP8 {
             dct_coeff_probs,

@@ -12,18 +12,15 @@ use crate::display::Display;
 use crate::generic_value::GenericValue;
 use crate::status::Status;
 
-/// An owned VAConfig that is tied to the lifetime of a particular VADisplay
+/// A configuration for a given [`Display`].
 pub struct Config {
     display: Rc<Display>,
     id: bindings::VAConfigID,
 }
 
 impl Config {
-    /// Create a VAConfig by wrapping around the vaCreateConfig call. `attrs`
-    /// describe the attributes to set for this config. A list of the supported
-    /// attributes for a given profile/entrypoint pair can be retrieved using
-    /// Display::get_config_attributes. Other attributes will take their default
-    /// values
+    /// Creates a Config by wrapping around the `vaCreateConfig` call. This is just a helper for
+    /// [`Display::create_config`].
     pub(crate) fn new(
         display: Rc<Display>,
         mut attrs: Vec<bindings::VAConfigAttrib>,
@@ -32,10 +29,10 @@ impl Config {
     ) -> Result<Self> {
         let mut config_id = 0u32;
 
-        // Safe because `self` represents a valid VADisplay  The "attrs" vectors
-        // is properly initialized and a valid size is passed to the C function,
-        // so it is impossible to write past the end of the vector's storage by
-        // mistake
+        // Safe because `self` represents a valid `VADisplay`.
+        //
+        // The `attrs` vector is also properly initialized and its actual size is passed to
+        // `vaCreateConfig`, so it is impossible to write past the end of its storage by mistake.
         Status(unsafe {
             bindings::vaCreateConfig(
                 display.handle(),
@@ -54,16 +51,16 @@ impl Config {
         })
     }
 
-    /// Returns the associated VAConfigID
+    /// Returns the ID of this config.
     pub(crate) fn id(&self) -> bindings::VAConfigID {
         self.id
     }
 
-    // Queries surface attributes for the supplied config. This function
-    // queries for all supported attributes for the supplied VA config. In
-    // particular, if the underlying hardware supports the creation of VA
-    // surfaces in various formats, then this function will enumerate all pixel
-    // formats that are supported.
+    // Queries surface attributes for this config.
+    //
+    // This function queries for all supported attributes for this configuration. In particular, if
+    // the underlying hardware supports the creation of VA surfaces in various formats, then this
+    // function will enumerate all pixel formats that are supported.
     fn query_surface_attributes(&mut self) -> Result<Vec<bindings::VASurfaceAttrib>> {
         // Safe because `self` represents a valid VAConfig. We first query how
         // much space is needed by the C API by passing in NULL in the first
@@ -102,8 +99,8 @@ impl Config {
         Ok(attrs)
     }
 
-    /// Query the surface attributes of type `attr_type`. The attribute may or
-    /// may not be defined by the driver.
+    /// Query the surface attributes of type `attr_type`. The attribute may or may not be defined by
+    /// the driver.
     pub fn query_surface_attributes_by_type(
         &mut self,
         attr_type: bindings::VASurfaceAttribType::Type,

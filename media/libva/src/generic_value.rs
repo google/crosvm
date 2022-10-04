@@ -7,8 +7,7 @@ use anyhow::Result;
 
 use crate::bindings;
 
-/// A wrapper over VAGenericValue so we can safely access the underlying union
-/// members
+/// A wrapper over `VAGenericValue` giving us safe access to the underlying union members.
 #[derive(Debug)]
 pub enum GenericValue {
     /// A wrapper over VAGenericValueTypeInteger

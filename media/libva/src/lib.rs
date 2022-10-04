@@ -2,9 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-//! This module implements a lightweight and safe decoder interface over
-//! `libva`. It is designed to concentrate all calls to unsafe methods in one
-//! place
+//! Implements a lightweight and safe interface over `libva`.
+//!
+//! The starting point to using this crate is to open a [`Display`], from which a [`Context`] and
+//! [`Surface`]s can be allocated and used for doing actual work.
 
 #![deny(missing_docs)]
 
