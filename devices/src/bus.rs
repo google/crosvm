@@ -9,6 +9,8 @@ use std::cmp::Ordering;
 use std::cmp::PartialEq;
 use std::cmp::PartialOrd;
 use std::collections::btree_map::BTreeMap;
+use std::collections::hash_map::HashMap;
+use std::collections::VecDeque;
 use std::fmt;
 use std::result;
 use std::sync::Arc;
@@ -442,6 +444,45 @@ impl Bus {
                     //TODO: Enable this line when b/232437513 is done
                     // return Err(anyhow!("Failed to snapshot {}.", (*device_lock).debug_label()));
                     eprintln!("Failed to snapshot {}: {}.", device_label, e);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn restore_devices(
+        &self,
+        devices_map: &mut HashMap<u32, VecDeque<String>>,
+    ) -> anyhow::Result<()> {
+        let devices_lock = &(self.devices).lock();
+        for (_, device_entry) in devices_lock.iter() {
+            match &(device_entry.device) {
+                BusDeviceEntry::OuterSync(dev) => {
+                    let mut device_lock = (*dev).lock();
+                    let device_id = u32::from((&device_lock).device_id());
+                    let device_data = devices_map.get_mut(&device_id);
+                    match device_data {
+                        Some(dev_dq) => {
+                            match dev_dq.pop_front() {
+                                Some(dev_data) => (*device_lock).restore(&dev_data).context("device failed to restore snapshot")?,
+                                None => {},
+                            }
+                        },
+                        None => base::info!("device does not have stored data in the snapshot. Device data will not change."),
+                    }
+                }
+                BusDeviceEntry::InnerSync(dev) => {
+                    let device_id = u32::from(dev.device_id());
+                    let device_data = devices_map.get_mut(&device_id);
+                    match device_data {
+                        Some(dev_dq) => {
+                            match dev_dq.pop_front() {
+                                Some(dev_data) => (**dev).restore_sync(&dev_data).context("device failed to restore snapshot")?,
+                                None => {},
+                            }
+                        },
+                        None => base::info!("device does not have stored data in the snapshot. Device data will not change."),
+                    }
                 }
             }
         }

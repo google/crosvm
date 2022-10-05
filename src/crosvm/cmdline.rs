@@ -154,6 +154,7 @@ pub enum CrossPlatformCommands {
     Version(VersionCommand),
     Vfio(VfioCrosvmCommand),
     Snapshot(SnapshotCommand),
+    Restore(RestoreCommand),
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -625,6 +626,32 @@ pub struct SnapshotTakeCommand {
 /// Snapshot commands
 pub enum SnapshotSubCommands {
     Take(SnapshotTakeCommand),
+}
+#[derive(FromArgs)]
+#[argh(subcommand, name = "restore", description = "Restore commands")]
+/// Restore commands
+pub struct RestoreCommand {
+    #[argh(subcommand)]
+    pub restore_command: RestoreSubCommands,
+}
+
+#[derive(FromArgs)]
+#[argh(subcommand, name = "apply")]
+/// Restore VM
+pub struct RestoreApplyCommand {
+    #[argh(positional, arg_name = "restore_path")]
+    /// VM Restore image path
+    pub restore_path: PathBuf,
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
+
+#[derive(FromArgs)]
+#[argh(subcommand)]
+/// Restore commands
+pub enum RestoreSubCommands {
+    Apply(RestoreApplyCommand),
 }
 
 /// Container for GpuParameters that have been fixed after parsing using serde.
@@ -1575,6 +1602,12 @@ pub struct RunCommand {
     /// enable virtio-pvclock.
     pub pvclock: bool,
 
+    #[argh(option, long = "restore", arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
+    #[merge(strategy = overwrite_option)]
+    /// path of the snapshot that is used to restore the VM on startup.
+    pub restore: Option<PathBuf>,
+
     #[argh(option, arg_name = "PATH[,key=value[,key=value[,...]]]", short = 'r')]
     #[serde(skip)] // Deprecated - use `block` instead.
     #[merge(strategy = overwrite_option)]
@@ -2396,6 +2429,7 @@ impl TryFrom<RunCommand> for super::config::Config {
         cfg.display_window_mouse = cmd.display_window_mouse;
 
         cfg.swap_dir = cmd.swap_dir;
+        cfg.restore_path = cmd.restore;
 
         if let Some(mut socket_path) = cmd.socket {
             if socket_path.is_dir() {

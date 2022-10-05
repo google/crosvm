@@ -2414,6 +2414,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     };
 
     let (device_ctrl_tube, device_ctrl_resp) = Tube::pair().context("failed to create tube")?;
+    // Create devices thread, and restore if a restore file exists.
     linux.devices_thread = match create_devices_worker_thread(
         linux.io_bus.clone(),
         linux.mmio_bus.clone(),
@@ -2424,6 +2425,13 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             return Err(anyhow!("Failed to start devices thread: {}", e));
         }
     };
+    if let Some(path) = cfg.restore_path.clone() {
+        if let Err(e) =
+            device_ctrl_tube.send(&DeviceControlCommand::RestoreDevices { restore_path: path })
+        {
+            error!("fail to send command to devices control socket: {}", e);
+        };
+    }
 
     let mut vcpu_handles = Vec::with_capacity(linux.vcpu_count);
     let vcpu_thread_barrier = Arc::new(Barrier::new(linux.vcpu_count + 1));

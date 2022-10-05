@@ -1157,6 +1157,7 @@ pub struct Config {
     pub pvclock: bool,
     /// Must be `Some` iff `protection_type == ProtectionType::UnprotectedWithFirmware`.
     pub pvm_fw: Option<PathBuf>,
+    pub restore_path: Option<PathBuf>,
     pub rng: bool,
     pub rt_cpus: CpuSet,
     #[serde(with = "serde_serial_params")]
@@ -1370,6 +1371,7 @@ impl Default for Config {
             #[cfg(windows)]
             pvclock: false,
             pvm_fw: None,
+            restore_path: None,
             rng: true,
             rt_cpus: Default::default(),
             serial_parameters: BTreeMap::new(),

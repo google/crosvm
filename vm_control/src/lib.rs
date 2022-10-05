@@ -281,11 +281,26 @@ pub enum SnapshotControlResult {
     /// Request VM shut down in case of major failures.
     Shutdown,
 }
+/// Commands for restore feature
+#[derive(Serialize, Deserialize, Debug)]
+pub enum RestoreCommand {
+    Apply { restore_path: PathBuf },
+}
+
+/// Response for [RestoreCommand]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum RestoreControlResult {
+    /// The request is accepted successfully.
+    Ok,
+    /// The command fails.
+    Failed(String),
+}
 
 /// Commands for actions on devices and the devices control thread.
 #[derive(Serialize, Deserialize, Debug)]
 pub enum DeviceControlCommand {
     SnapshotDevices { snapshot_path: PathBuf },
+    RestoreDevices { restore_path: PathBuf },
 }
 
 /// Source of a `VmMemoryRequest::RegisterMemory` mapping.
@@ -991,6 +1006,8 @@ pub enum VmRequest {
     },
     /// Command to Snapshot devices
     Snapshot(SnapshotCommand),
+    /// Command to Restore devices
+    Restore(RestoreCommand),
 }
 
 pub fn handle_disk_command(command: &DiskControlCommand, disk_host_tube: &Tube) -> VmResponse {
@@ -1318,6 +1335,23 @@ impl VmRequest {
                     }
                 }
             }
+            VmRequest::Restore(RestoreCommand::Apply { ref restore_path }) => {
+                let res = device_control_tube.send(&DeviceControlCommand::RestoreDevices {
+                    restore_path: restore_path.clone(),
+                });
+                if let Err(e) = res {
+                    error!("fail to send command to devices control socket: {}", e);
+                    return VmResponse::Err(SysError::new(EIO));
+                };
+
+                match device_control_tube.recv() {
+                    Ok(response) => VmResponse::RestoreResponse(response),
+                    Err(e) => {
+                        error!("fail to recv command from device control socket: {}", e);
+                        VmResponse::Err(SysError::new(EIO))
+                    }
+                }
+            }
         }
     }
 }
@@ -1350,6 +1384,8 @@ pub enum VmResponse {
     SwapStatus(SwapStatus),
     /// Results of snapshot commands.
     SnapshotResponse(SnapshotControlResult),
+    /// Results of restore commands.
+    RestoreResponse(RestoreControlResult),
 }
 
 impl Display for VmResponse {
@@ -1389,6 +1425,7 @@ impl Display for VmResponse {
                 )
             }
             SnapshotResponse(result) => write!(f, "snapshot control request result {:?}", result),
+            RestoreResponse(result) => write!(f, "restore control request result {:?}", result),
         }
     }
 }

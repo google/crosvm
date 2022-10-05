@@ -28,6 +28,7 @@ use std::mem;
 #[cfg(feature = "gpu")]
 use std::num::NonZeroU8;
 use std::os::windows::fs::OpenOptionsExt;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
@@ -181,6 +182,7 @@ use tube_transporter::TubeTransporterReader;
 use vm_control::Ac97Control;
 #[cfg(feature = "kiwi")]
 use vm_control::BalloonControlCommand;
+use vm_control::DeviceControlCommand;
 #[cfg(feature = "kiwi")]
 use vm_control::GpuSendToMain;
 #[cfg(feature = "kiwi")]
@@ -775,6 +777,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     host_cpu_topology: bool,
     tsc_sync_mitigations: TscSyncMitigations,
     force_calibrated_tsc_leaf: bool,
+    restore_path: Option<PathBuf>,
 ) -> Result<ExitState> {
     #[cfg(not(feature = "kiwi"))]
     {
@@ -906,6 +909,13 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             return Err(anyhow!("Failed to start devices thread: {}", e));
         }
     };
+    if let Some(path) = restore_path {
+        if let Err(e) =
+            device_ctrl_tube.send(&DeviceControlCommand::RestoreDevices { restore_path: path })
+        {
+            error!("fail to send command to devices control socket: {}", e);
+        };
+    }
 
     let vcpus: Vec<Option<_>> = match guest_os.vcpus.take() {
         Some(vec) => vec.into_iter().map(|vcpu| Some(vcpu)).collect(),
@@ -2149,6 +2159,7 @@ where
         cfg.host_cpu_topology,
         tsc_sync_mitigations,
         cfg.force_calibrated_tsc_leaf,
+        cfg.restore_path,
     )
 }
 
