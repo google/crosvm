@@ -204,6 +204,7 @@ dependencies = [
  "env_logger",
  "libc",
  "log",
+ "minijail",
  "once_cell",
  "protobuf",
  "rand",
