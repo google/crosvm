@@ -35,6 +35,7 @@ pub mod panic_handler;
 pub mod platform_timer_resolution;
 mod poll;
 mod priority;
+pub mod process;
 mod sched;
 pub mod scoped_signal_handler;
 mod shm;
