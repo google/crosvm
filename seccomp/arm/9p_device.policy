@@ -26,7 +26,9 @@ utimensat: 1
 utimensat_time64: 1
 ftruncate64: 1
 fchmod: 1
+fchmodat: 1
 fchown: 1
+fchownat: 1
 fstatfs: 1
 fstatfs64: 1
 fstatat64: 1

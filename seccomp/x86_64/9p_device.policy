@@ -25,7 +25,9 @@ fdatasync: 1
 utimensat: 1
 ftruncate: 1
 fchmod: 1
+fchmodat: 1
 fchown: 1
+fchownat: 1
 fstatfs: 1
 newfstatat: 1
 prctl: arg0 == PR_SET_NAME
