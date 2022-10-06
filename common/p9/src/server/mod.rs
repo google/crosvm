@@ -257,6 +257,16 @@ impl<'a, T> Deref for MaybeOwned<'a, T> {
     }
 }
 
+impl<'a, T> AsRef<T> for MaybeOwned<'a, T> {
+    fn as_ref(&self) -> &T {
+        use MaybeOwned::*;
+        match self {
+            Borrowed(borrowed) => borrowed,
+            Owned(ref owned) => owned,
+        }
+    }
+}
+
 fn ebadf() -> io::Error {
     io::Error::from_raw_os_error(libc::EBADF)
 }
@@ -300,27 +310,30 @@ fn lookup(parent: &File, name: &CStr) -> io::Result<File> {
 fn do_walk(
     proc: &File,
     wnames: Vec<String>,
-    start: File,
+    start: &File,
     ascii_casefold: bool,
     mds: &mut Vec<libc::stat64>,
 ) -> io::Result<File> {
-    let mut current = start;
+    let mut current = MaybeOwned::Borrowed(start);
 
     for wname in wnames {
         let name = string_to_cstring(wname)?;
-        current = lookup(&current, &name).or_else(|e| {
+        current = MaybeOwned::Owned(lookup(current.as_ref(), &name).or_else(|e| {
             if ascii_casefold {
                 if let Some(libc::ENOENT) = e.raw_os_error() {
-                    return ascii_casefold_lookup(proc, &current, name.to_bytes());
+                    return ascii_casefold_lookup(proc, current.as_ref(), name.to_bytes());
                 }
             }
 
             Err(e)
-        })?;
+        })?);
         mds.push(stat(&current)?);
     }
 
-    Ok(current)
+    match current {
+        MaybeOwned::Owned(owned) => Ok(owned),
+        MaybeOwned::Borrowed(borrowed) => borrowed.try_clone(),
+    }
 }
 
 fn open_fid(proc: &File, path: &File, p9_flags: u32) -> io::Result<File> {
@@ -544,11 +557,7 @@ impl Server {
         }
 
         // We need to walk the tree.  First get the starting path.
-        let start = self
-            .fids
-            .get(&walk.fid)
-            .ok_or_else(ebadf)
-            .and_then(|fid| fid.path.try_clone())?;
+        let start = &self.fids.get(&walk.fid).ok_or_else(ebadf)?.path;
 
         // Now walk the tree and break on the first error, if any.
         let expected_len = walk.wnames.len();
