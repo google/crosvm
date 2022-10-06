@@ -152,7 +152,6 @@ impl VulkanoGralloc {
             if let Ok((device, mut _queues)) = Device::new(
                 physical.clone(),
                 DeviceCreateInfo {
-                    enabled_features: physical.supported_features().clone(),
                     enabled_extensions: intersection,
                     queue_create_infos: vec![QueueCreateInfo {
                         queue_family_index: queue_family_index as u32,
