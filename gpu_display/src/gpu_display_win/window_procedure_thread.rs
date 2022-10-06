@@ -28,6 +28,7 @@ use sync::Mutex;
 #[cfg(feature = "kiwi")]
 use vm_control::ServiceSendToGpu;
 use win_util::win32_wide_string;
+use winapi::shared::minwindef::FALSE;
 use winapi::shared::minwindef::LPARAM;
 use winapi::shared::minwindef::LRESULT;
 use winapi::shared::minwindef::UINT;
@@ -35,6 +36,9 @@ use winapi::shared::minwindef::WPARAM;
 use winapi::shared::windef::HWND;
 use winapi::um::errhandlingapi::GetLastError;
 use winapi::um::processthreadsapi::GetCurrentThreadId;
+use winapi::um::winbase::INFINITE;
+use winapi::um::winbase::WAIT_FAILED;
+use winapi::um::winbase::WAIT_OBJECT_0;
 use winapi::um::winuser::*;
 
 #[cfg(feature = "kiwi")]
@@ -154,10 +158,13 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
             Ok(dispatcher) => {
                 info!("WndProc thread entering message loop");
                 message_loop_state.store(MessageLoopState::Running as i32, Ordering::SeqCst);
+                // Safe because `GetCurrentThreadId()` has no failure mode.
                 if let Err(e) = thread_id_sender.send(Ok(unsafe { GetCurrentThreadId() })) {
                     error!("Failed to send WndProc thread ID: {}", e);
                 }
-                Self::run_message_loop_body(dispatcher, message_loop_state);
+
+                let exit_state = Self::run_message_loop_body(dispatcher);
+                message_loop_state.store(exit_state as i32, Ordering::SeqCst);
             }
             Err(e) => {
                 error!("WndProc thread didn't enter message loop: {:?}", e);
@@ -174,33 +181,78 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
 
     fn run_message_loop_body(
         mut message_dispatcher: Pin<Box<WindowMessageDispatcher<T>>>,
-        message_loop_state: Arc<AtomicI32>,
-    ) {
+    ) -> MessageLoopState {
         loop {
-            let mut message = mem::MaybeUninit::uninit();
-            // Safe because we know the lifetime of `message`.
-            match unsafe { GetMessageW(message.as_mut_ptr(), null_mut(), 0, 0) } {
-                0 => {
-                    info!("WndProc thread exiting message loop since WM_QUIT is received");
-                    message_loop_state
-                        .store(MessageLoopState::ExitedNormally as i32, Ordering::SeqCst);
-                    break;
+            // Safe because we don't pass in any handle, and failures are handled below.
+            match unsafe {
+                MsgWaitForMultipleObjects(
+                    /* nCount= */ 0,
+                    /* pHandles= */ null_mut(),
+                    /* fWaitAll= */ FALSE,
+                    INFINITE,
+                    QS_ALLINPUT,
+                )
+            } {
+                WAIT_OBJECT_0 => {
+                    if !Self::retrieve_and_dispatch_messages(&mut message_dispatcher) {
+                        info!("WndProc thread exiting message loop normally");
+                        return MessageLoopState::ExitedNormally;
+                    }
                 }
-                -1 => {
+                WAIT_FAILED => {
                     error!(
-                        "WndProc thread exiting message loop because GetMessageW() failed with \
-                        error code {}",
+                        "WndProc thread exiting message loop because MsgWaitForMultipleObjects() \
+                        failed with error code {}",
                         unsafe { GetLastError() }
                     );
-                    message_loop_state
-                        .store(MessageLoopState::ExitedWithError as i32, Ordering::SeqCst);
-                    break;
+                    return MessageLoopState::ExitedWithError;
                 }
-                _ => (),
+                ret => warn!(
+                    "MsgWaitForMultipleObjects() returned unexpected value {}",
+                    ret
+                ),
+            }
+        }
+    }
+
+    /// Retrieves and dispatches all messages in the queue, and returns whether the message loop
+    /// should continue running.
+    fn retrieve_and_dispatch_messages(
+        message_dispatcher: &mut Pin<Box<WindowMessageDispatcher<T>>>,
+    ) -> bool {
+        // Since `MsgWaitForMultipleObjects()` returns only when there is a new event in the queue,
+        // if we call `MsgWaitForMultipleObjects()` again without draining the queue, it will ignore
+        // existing events and will not return immediately. Hence, we need to keep calling
+        // `PeekMessageW()` with `PM_REMOVE` until the queue is drained before returning.
+        // https://devblogs.microsoft.com/oldnewthing/20050217-00/?p=36423
+        // Alternatively we could use `MsgWaitForMultipleObjectsEx()` with the `MWMO_INPUTAVAILABLE`
+        // flag, which will always return if there is any message in the queue, no matter that is a
+        // new message or not. However, we found that it may also return when there is no message at
+        // all, so we slightly prefer `MsgWaitForMultipleObjects()`.
+        loop {
+            // Safe because if `message` is initialized, we will call `assume_init()` to extract the
+            // value, which will get dropped eventually.
+            let mut message = mem::MaybeUninit::uninit();
+            // Safe because `message` lives at least as long as the function call.
+            if unsafe {
+                PeekMessageW(
+                    message.as_mut_ptr(),
+                    /* hWnd= */ null_mut(),
+                    /* wMsgFilterMin= */ 0,
+                    /* wMsgFilterMax= */ 0,
+                    PM_REMOVE,
+                ) == 0
+            } {
+                // No more message in the queue.
+                return true;
             }
 
-            // Safe because `GetMessageW()` will block until `message` is populated.
+            // Safe because `PeekMessageW()` has populated `message`.
             let new_message = unsafe { message.assume_init() };
+            if new_message.message == WM_QUIT {
+                return false;
+            }
+
             if new_message.hwnd.is_null() {
                 // Thread messages don't target a specific window and `DispatchMessageW()` won't
                 // send them to `wnd_proc()` function, hence we need to handle it as a special case.
@@ -208,7 +260,8 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
                     .as_mut()
                     .process_thread_message(&new_message.into());
             } else {
-                // Safe because `GetMessageW()` will block until `message` is populated.
+                // Dispatch window-specific messages.
+                // Safe because `PeekMessageW()` has populated `message`.
                 unsafe {
                     TranslateMessage(&new_message);
                     DispatchMessageW(&new_message);
