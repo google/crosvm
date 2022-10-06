@@ -456,6 +456,7 @@ dependencies = [
  "net_util",
  "once_cell",
  "p9",
+ "prebuilts",
  "protobuf",
  "protos",
  "rand",
@@ -982,6 +983,7 @@ dependencies = [
  "base",
  "cfg-if",
  "libc",
+ "prebuilts",
  "tempfile",
 ]
 
@@ -1399,7 +1401,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "cfg-if",
- "tempfile",
 ]
 
 [[package]]

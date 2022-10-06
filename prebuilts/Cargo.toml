@@ -7,6 +7,3 @@ edition = "2021"
 [dependencies]
 anyhow = "*"
 cfg-if = "*"
-
-[dev-dependencies]
-tempfile = "*"

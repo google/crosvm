@@ -10,6 +10,7 @@ arch = { path = "../arch" }
 base = "*"
 cfg-if = "*"
 libc = "0.2.65"
+prebuilts = { path = "../prebuilts" }
 tempfile = "3"
 
 [features]

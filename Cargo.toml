@@ -259,6 +259,7 @@ cc = "*"
 
 [dev-dependencies]
 base = "*"
+prebuilts = { path = "prebuilts" }
 
 [patch.crates-io]
 assertions = { path = "common/assertions" }
