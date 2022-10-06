@@ -657,7 +657,10 @@ fn main() {
             info!("exiting with guest panic");
             34
         }
-        Ok(CommandStatus::InvalidArgs) => 35,
+        Ok(CommandStatus::InvalidArgs) => {
+            info!("invalid argument");
+            35
+        }
         Err(e) => {
             let exit_code = error_to_exit_code(&res);
             error!("exiting with error {}:{:?}", exit_code, e);
