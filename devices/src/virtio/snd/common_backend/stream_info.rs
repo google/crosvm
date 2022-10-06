@@ -97,7 +97,7 @@ impl Drop for StreamInfo {
 impl StreamInfo {
     /// Creates a new [`StreamInfo`].
     ///
-    /// * `stream_source_generator`: Generator which generates stream source in [`prepare()`].
+    /// * `stream_source_generator`: Generator which generates stream source in [`StreamInfo::prepare()`].
     pub fn new(stream_source_generator: Box<dyn StreamSourceGenerator>) -> Self {
         StreamInfo {
             stream_source: None,

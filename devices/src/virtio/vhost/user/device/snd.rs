@@ -289,7 +289,7 @@ pub struct Options {
     /// comma separated key=value pairs for setting up cras snd devices.
     /// Possible key values:
     /// capture - Enable audio capture. Default to false.
-    /// backend(null,[cras]) - Which backend to use for vhost-snd.
+    /// backend - Which backend to use for vhost-snd (null|cras).
     /// client_type - Set specific client type for cras backend.
     /// socket_type - Set socket type for cras backend.
     /// num_output_devices - Set number of output PCM devices.

@@ -479,7 +479,7 @@ impl Queue {
         Ok(())
     }
 
-    /// Releases memory exported by a previous call to [export_memory].
+    /// Releases memory exported by a previous call to [`Queue::export_memory()`].
     pub fn release_exported_memory(&mut self) {
         self.exported_desc_table = None;
         self.exported_avail_ring = None;

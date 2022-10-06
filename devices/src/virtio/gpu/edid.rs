@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 //! Implementation of the EDID specification provided by software.
-//! EDID spec: https://glenwing.github.io/docs/VESA-EEDID-A2.pdf
+//! EDID spec: <https://glenwing.github.io/docs/VESA-EEDID-A2.pdf>
 
 use std::fmt;
 use std::fmt::Debug;
