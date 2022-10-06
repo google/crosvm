@@ -116,5 +116,12 @@ The following are crosvm's default arguments and how to override them.
 - run in multiprocess mode (run in single process mode with `--disable-sandbox`)
 - no control socket (set with `-s`)
 
+## Exit code
+
+Crosvm will exit with a non-zero exit code on failure.
+
+See [CommandStatus](https://crosvm.dev/doc/crosvm/enum.CommandStatus.html) for meaning of the major
+exit codes.
+
 [gdb remote serial protocol]: https://sourceware.org/gdb/onlinedocs/gdb/Remote-Protocol.html
 [kernel documentation]: https://www.kernel.org/doc/html/latest/dev-tools/gdb-kernel-debugging.html

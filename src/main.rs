@@ -68,20 +68,39 @@ use crate::sys::init_log;
 #[global_allocator]
 static ALLOCATOR: scudo::GlobalScudoAllocator = scudo::GlobalScudoAllocator;
 
+#[repr(i32)]
+#[derive(Clone, Copy)]
+/// Exit code from crosvm,
 enum CommandStatus {
-    Success,
-    VmReset,
-    VmStop,
-    VmCrash,
-    GuestPanic,
-    InvalidArgs,
+    /// Exit with success. Also used to mean VM stopped successfully.
+    SuccessOrVmStop = 0,
+    /// VM requested reset.
+    VmReset = 32,
+    /// VM crashed.
+    VmCrash = 33,
+    /// VM exit due to kernel panic in guest.
+    GuestPanic = 34,
+    /// Invalid argument was given to crosvm.
+    InvalidArgs = 35,
+}
+
+impl CommandStatus {
+    fn message(&self) -> &'static str {
+        match self {
+            Self::SuccessOrVmStop => "exiting with success",
+            Self::VmReset => "exiting with reset",
+            Self::VmCrash => "exiting with crash",
+            Self::GuestPanic => "exiting with guest panic",
+            Self::InvalidArgs => "invalid argument",
+        }
+    }
 }
 
 fn to_command_status(result: Result<sys::ExitState>) -> Result<CommandStatus> {
     match result {
         Ok(sys::ExitState::Stop) => {
             info!("crosvm has exited normally");
-            Ok(CommandStatus::VmStop)
+            Ok(CommandStatus::SuccessOrVmStop)
         }
         Ok(sys::ExitState::Reset) => {
             info!("crosvm has exited normally due to reset request");
@@ -119,7 +138,7 @@ where
         let res = match crosvm::plugin::run_config(cfg) {
             Ok(_) => {
                 info!("crosvm and plugin have exited normally");
-                Ok(CommandStatus::VmStop)
+                Ok(CommandStatus::SuccessOrVmStop)
             }
             Err(e) => {
                 eprintln!("{:#}", e);
@@ -551,7 +570,7 @@ fn crosvm_main() -> Result<CommandStatus> {
                 }
                 start_device(cmd)
                     .map_err(|_| anyhow!("start_device subcommand failed"))
-                    .map(|_| CommandStatus::Success)
+                    .map(|_| CommandStatus::SuccessOrVmStop)
             } else {
                 syslog::init_with(log_config).context("failed to initialize syslog")?;
 
@@ -610,7 +629,7 @@ fn crosvm_main() -> Result<CommandStatus> {
                         modify_vfio(cmd).map_err(|_| anyhow!("vfio subcommand failed"))
                     }
                 }
-                .map(|_| CommandStatus::Success)
+                .map(|_| CommandStatus::SuccessOrVmStop)
             }
         }
         cmdline::Command::Sys(command) => {
@@ -619,7 +638,7 @@ fn crosvm_main() -> Result<CommandStatus> {
             if cfg!(unix) {
                 syslog::init_with(log_config).context("failed to initialize syslog")?;
             }
-            sys::run_command(command).map(|_| CommandStatus::Success)
+            sys::run_command(command).map(|_| CommandStatus::SuccessOrVmStop)
         }
     };
 
@@ -631,7 +650,7 @@ fn crosvm_main() -> Result<CommandStatus> {
         if extended_status {
             s
         } else {
-            CommandStatus::Success
+            CommandStatus::SuccessOrVmStop
         }
     })
 }
@@ -640,26 +659,11 @@ fn main() {
     syslog::early_init();
     info!("crosvm started.");
     let res = crosvm_main();
+
     let exit_code = match &res {
-        Ok(CommandStatus::Success | CommandStatus::VmStop) => {
-            info!("exiting with success");
-            0
-        }
-        Ok(CommandStatus::VmReset) => {
-            info!("exiting with reset");
-            32
-        }
-        Ok(CommandStatus::VmCrash) => {
-            info!("exiting with crash");
-            33
-        }
-        Ok(CommandStatus::GuestPanic) => {
-            info!("exiting with guest panic");
-            34
-        }
-        Ok(CommandStatus::InvalidArgs) => {
-            info!("invalid argument");
-            35
+        Ok(code) => {
+            info!("{}", code.message());
+            *code as i32
         }
         Err(e) => {
             let exit_code = error_to_exit_code(&res);
