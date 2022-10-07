@@ -627,10 +627,10 @@ impl Vm for WhpxVm {
     }
 
     /// In order to fully unmap a memory range such that the host can reclaim the memory,
-    /// we unmap it from the hypervisor partition, and then mark CrosVm's process as uninterested
+    /// we unmap it from the hypervisor partition, and then mark crosvm's process as uninterested
     /// in the memory.
     ///
-    /// This will make CrosVm unable to access the memory, and allow Windows to reclaim it for other
+    /// This will make crosvm unable to access the memory, and allow Windows to reclaim it for other
     /// uses when memory is in demand.
     fn handle_inflate(&mut self, guest_address: GuestAddress, size: u64) -> Result<()> {
         info!(

@@ -6,7 +6,7 @@
 #![cfg(windows)]
 
 //! This IPC crate is used by the broker process to send boot data across the
-//! different CrosVm child processes on Windows.
+//! different crosvm child processes on Windows.
 
 use std::fmt;
 use std::fmt::Display;

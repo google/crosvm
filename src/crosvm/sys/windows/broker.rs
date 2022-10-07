@@ -610,7 +610,7 @@ fn run_internal(mut cfg: Config) -> Result<()> {
                 match &cfg.gpu_parameters {
                     Some(params) => Some(params.use_vulkan),
                     None => {
-                        warn!("No GPU parameters set on CrosVM config.");
+                        warn!("No GPU parameters set on crosvm config.");
                         None
                     }
                 }

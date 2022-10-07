@@ -21,7 +21,7 @@ pub enum HypervisorCap {
     ///
     /// Hypervisors which do not provide the TSC frequency (e.g. via the kvm
     /// pvclock) or have another suitable calibration source can declare this
-    /// capability, which causes CrosVM to substitute a calibrated value in leaf
+    /// capability, which causes crosvm to substitute a calibrated value in leaf
     /// 0x15 that will be accurate enough for use in a clocksource.
     CalibratedTscLeafRequired,
 }

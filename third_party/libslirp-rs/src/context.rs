@@ -130,10 +130,10 @@ pub trait CallbackHandler {
     /// Runs the handler function for a specific timer.
     fn execute_timer(&mut self, timer: RawDescriptor);
 
-    // Normally in CrosVM we refer to FDs as descriptors, because FDs are platform specific;
+    // Normally in crosvm we refer to FDs as descriptors, because FDs are platform specific;
     // however, this interface is very close to the libslirp FFI, and libslirp follows the Linux
     // philosophy of everything is an FD. Since even Windows refers to FDs in WSAPoll, keeping FD
-    // as a concept here helps keep terminology consistent between CrosVM code interfacing with
+    // as a concept here helps keep terminology consistent between crosvm code interfacing with
     // libslirp, and libslirp itself.
     fn register_poll_fd(&mut self, fd: i32);
     fn unregister_poll_fd(&mut self, fd: i32);
@@ -650,7 +650,7 @@ impl<H: CallbackHandler> Context<H> {
         // guaranteed to be valid. While this function may fail, interpretation of the error code
         // is the responsibility of the caller.
         //
-        // TODO(nkgold): if state_load becomes used by CrosVM, interpretation of the error code
+        // TODO(nkgold): if state_load becomes used by crosvm, interpretation of the error code
         // should occur here.
         let cb = &mut (&mut read_cb as &mut dyn FnMut(&mut [u8]) -> isize);
         unsafe {

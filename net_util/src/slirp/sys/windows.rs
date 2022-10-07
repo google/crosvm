@@ -89,7 +89,7 @@ impl Slirp {
         })
     }
 
-    /// Instantiate Slirp when running CrosVm in multi process mode.
+    /// Instantiate Slirp when running crosvm in multi process mode.
     pub fn new_for_multi_process(guest_pipe: PipeConnection) -> Result<Slirp> {
         Ok(Slirp {
             guest_pipe,
@@ -106,7 +106,7 @@ impl Slirp {
         })
     }
 
-    /// Start the Slirp listening loop. This is meant to be called when running CrosVm in multi
+    /// Start the Slirp listening loop. This is meant to be called when running crosvm in multi
     /// process mode.
     pub fn run_slirp_process(
         slirp_pipe: PipeConnection,

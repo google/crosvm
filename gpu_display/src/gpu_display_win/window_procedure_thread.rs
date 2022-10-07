@@ -269,7 +269,7 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
     /// The owner of the returned `Window` object is responsible for dropping it before we finish
     /// processing `WM_NCDESTROY`, because the window handle will become invalid afterwards.
     unsafe fn create_window() -> Result<Window> {
-        // Gfxstream window is a child window of CrosVM window. Without WS_CLIPCHILDREN, the parent
+        // Gfxstream window is a child window of crosvm window. Without WS_CLIPCHILDREN, the parent
         // window may use the background brush to clear the gfxstream window client area when
         // drawing occurs. This caused the screen flickering issue during resizing.
         // See b/197786842 for details.

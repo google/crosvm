@@ -83,7 +83,7 @@ impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
     /// This function should only be called once from the WndProc thread. It will take the ownership
     /// of the `Window` object, and drop it before the underlying window is completely gone.
     /// TODO(b/238680252): This should be good enough for supporting multi-windowing, but we should
-    /// revisit it if we also want to manage some child windows of the CrosVM window.
+    /// revisit it if we also want to manage some child windows of the crosvm window.
     pub fn create(window: Window) -> Result<Pin<Box<Self>>> {
         let mut dispatcher = Box::pin(Self {
             message_processor: Default::default(),

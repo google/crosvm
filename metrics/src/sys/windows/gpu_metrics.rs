@@ -12,7 +12,7 @@ use crate::windows::Result;
 
 static INSTANCE_EXISTS: AtomicBool = AtomicBool::new(false);
 
-/// Used by gpu_display to show metrics in the CrosVm performance overlay.
+/// Used by gpu_display to show metrics in the crosvm performance overlay.
 pub struct Metrics {
     metrics: Vec<Box<dyn ToString + Send + Sync>>,
     // more_metrics is for metrics which have multiple owners (e.g., device dependent).

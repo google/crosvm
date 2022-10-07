@@ -118,7 +118,7 @@ impl WinAudio {
 impl StreamSource for WinAudio {
     // Returns a stream control and a buffer generator object. The stream control object is not used.
     // The buffer generator object is a wrapper around WASAPI's objects that will create a buffer for
-    // CrosVM to copy audio bytes into.
+    // crosvm to copy audio bytes into.
     fn new_playback_stream(
         &mut self,
         num_channels: usize,
@@ -215,7 +215,7 @@ impl PlaybackBufferStream for WinAudioRenderer {
     }
 }
 
-// Implementation of buffer generator object. Used to get a buffer from WASAPI for CrosVM to copy audio
+// Implementation of buffer generator object. Used to get a buffer from WASAPI for crosvm to copy audio
 // bytes from the guest memory into.
 pub(crate) struct DeviceRenderer {
     audio_render_client: ComPtr<IAudioRenderClient>,

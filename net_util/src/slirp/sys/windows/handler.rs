@@ -516,9 +516,9 @@ pub fn start_slirp(
         // flow can be thought of as follows:
         //    1. pollfds_fill creates a map of index -> fd inside Slirp based on the return values from
         //       the pollfds_fill callback.
-        //    2. CrosVM invokes poll on the FDs provided by Slirp.
-        //    3. CrosVM notifies Slirp via pollfds_poll that polling completed for the provided FDs.
-        //    4. Slirp calls into CrosVM via the pollfds_poll callback and asks for the statuses using
+        //    2. crosvm invokes poll on the FDs provided by Slirp.
+        //    3. crosvm notifies Slirp via pollfds_poll that polling completed for the provided FDs.
+        //    4. Slirp calls into crosvm via the pollfds_poll callback and asks for the statuses using
         //       the fd indicies registered in step #1.
         let mut poll_fds = Vec::new();
         // We'd like to sleep as long as possible (assuming no actionable notifications arrive).
