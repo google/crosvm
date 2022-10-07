@@ -110,31 +110,14 @@ impl CommandStatus {
     }
 }
 
-fn to_command_status(result: Result<sys::ExitState>) -> Result<CommandStatus> {
-    match result {
-        Ok(sys::ExitState::Stop) => {
-            info!("crosvm has exited normally");
-            Ok(CommandStatus::SuccessOrVmStop)
-        }
-        Ok(sys::ExitState::Reset) => {
-            info!("crosvm has exited normally due to reset request");
-            Ok(CommandStatus::VmReset)
-        }
-        Ok(sys::ExitState::Crash) => {
-            info!("crosvm has exited due to a VM crash");
-            Ok(CommandStatus::VmCrash)
-        }
-        Ok(sys::ExitState::GuestPanic) => {
-            info!("crosvm has exited due to a kernel panic in guest");
-            Ok(CommandStatus::GuestPanic)
-        }
-        Ok(sys::ExitState::WatchdogReset) => {
-            info!("crosvm has exited due to watchdog reboot");
-            Ok(CommandStatus::WatchdogReset)
-        }
-        Err(e) => {
-            error!("crosvm has exited with error: {:#}", e);
-            Err(e)
+impl From<sys::ExitState> for CommandStatus {
+    fn from(result: sys::ExitState) -> CommandStatus {
+        match result {
+            sys::ExitState::Stop => CommandStatus::SuccessOrVmStop,
+            sys::ExitState::Reset => CommandStatus::VmReset,
+            sys::ExitState::Crash => CommandStatus::VmCrash,
+            sys::ExitState::GuestPanic => CommandStatus::GuestPanic,
+            sys::ExitState::WatchdogReset => CommandStatus::WatchdogReset,
         }
     }
 }
@@ -173,8 +156,8 @@ where
     metrics::setup_metrics_reporting()?;
 
     init_log(log_config, &cfg)?;
-    let exit_state = crate::sys::run_config(cfg);
-    to_command_status(exit_state)
+    let exit_state = crate::sys::run_config(cfg)?;
+    Ok(CommandStatus::from(exit_state))
 }
 
 fn stop_vms(cmd: cmdline::StopCommand) -> std::result::Result<(), ()> {

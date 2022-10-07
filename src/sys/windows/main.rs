@@ -148,8 +148,9 @@ pub(crate) fn run_vm_for_broker(args: RunMainCommand) -> Result<()> {
 
     let raw_transport_tube = args.bootstrap as RawDescriptor;
 
-    let exit_state = crate::sys::windows::run_config_for_broker(raw_transport_tube);
-    crate::to_command_status(exit_state).map(|_| ())
+    let exit_state = crate::sys::windows::run_config_for_broker(raw_transport_tube)?;
+    info!("{}", CommandStatus::from(exit_state).message());
+    Ok(())
 }
 
 pub(crate) fn set_bootstrap_arguments(
