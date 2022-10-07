@@ -98,7 +98,7 @@ trait DeviceExt {
 
 impl DeviceExt for Device {
     fn get_id(&self) -> DeviceId {
-        let properties = self.physical_device().properties;
+        let properties = self.physical_device().properties();
         DeviceId {
             device_uuid: properties.device_uuid.expect("Vulkan should support uuid"),
             driver_uuid: properties.driver_uuid.expect("Vulkan should support uuid"),
