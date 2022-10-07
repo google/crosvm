@@ -7,8 +7,6 @@ cfg_if::cfg_if! {
         use std::net;
 
         use base::RawDescriptor;
-        #[cfg(feature = "gpu")]
-        use vm_control::gpu::DisplayParameters as GpuDisplayParameters;
         use devices::virtio::vhost::user::device::parse_wayland_sock;
 
         use super::sys::config::{
@@ -45,6 +43,8 @@ use devices::SerialParameters;
 use devices::StubPciParameters;
 use hypervisor::ProtectionType;
 use resources::AddressRange;
+#[cfg(feature = "gpu")]
+use vm_control::gpu::DisplayParameters as GpuDisplayParameters;
 
 #[cfg(feature = "gpu")]
 use super::sys::config::parse_gpu_options;
@@ -708,7 +708,6 @@ pub struct RunCommand {
     ///        initially hidden (default: false).
     ///     refresh-rate=INT - Force a specific vsync generation
     ///        rate in hertz on the guest (default: 60)
-    #[cfg(unix)]
     pub gpu_display: Vec<GpuDisplayParameters>,
     #[cfg(feature = "gpu")]
     #[argh(option, long = "gpu", from_str_fn(parse_gpu_options))]
@@ -1720,6 +1719,23 @@ impl TryFrom<RunCommand> for super::config::Config {
         #[cfg(feature = "gpu")]
         {
             cfg.gpu_parameters = cmd.gpu_params;
+            if !cmd.gpu_display.is_empty() {
+                cfg.gpu_parameters
+                    .get_or_insert_with(Default::default)
+                    .display_params
+                    .extend(cmd.gpu_display);
+            }
+
+            #[cfg(windows)]
+            if let Some(gpu_parameters) = &cfg.gpu_parameters {
+                let num_displays = gpu_parameters.display_params.len();
+                if num_displays > 1 {
+                    return Err(format!(
+                        "Only one display is supported (supplied {})",
+                        num_displays
+                    ));
+                }
+            }
         }
 
         #[cfg(unix)]
@@ -1768,16 +1784,6 @@ impl TryFrom<RunCommand> for super::config::Config {
                 cfg.jail_config
                     .get_or_insert_with(Default::default)
                     .pivot_root = p;
-            }
-
-            #[cfg(feature = "gpu")]
-            {
-                if !cmd.gpu_display.is_empty() {
-                    cfg.gpu_parameters
-                        .get_or_insert_with(Default::default)
-                        .display_params
-                        .extend(cmd.gpu_display);
-                }
             }
 
             cfg.net_vq_pairs = cmd.net_vq_pairs;

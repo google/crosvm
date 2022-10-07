@@ -446,8 +446,11 @@ mod tests {
         let gpu_params: GpuParameters = from_key_values("backend=virglrenderer").unwrap();
         assert_eq!(gpu_params.mode, GpuMode::ModeVirglRenderer);
 
-        let gpu_params: GpuParameters = from_key_values("backend=gfxstream").unwrap();
-        assert_eq!(gpu_params.mode, GpuMode::ModeGfxstream);
+        #[cfg(feature = "gfxstream")]
+        {
+            let gpu_params: GpuParameters = from_key_values("backend=gfxstream").unwrap();
+            assert_eq!(gpu_params.mode, GpuMode::ModeGfxstream);
+        }
     }
 
     #[cfg(feature = "gpu")]

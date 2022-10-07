@@ -16,33 +16,26 @@ use crate::gpu::DisplayModeTrait;
 const DISPLAY_WIDTH_SOFT_MAX: u32 = 1920;
 const DISPLAY_HEIGHT_SOFT_MAX: u32 = 1080;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WinDisplayMode<T> {
     Windowed(u32, u32),
-    BorderlessFullScreen(PhantomData<T>),
+    BorderlessFullScreen(#[serde(skip)] PhantomData<T>),
 }
 
-impl<T> DisplayModeTrait for WinDisplayMode<T> {
-    fn get_virtual_display_size(&self) -> (u32, u32) {
-        let (width, height) = match self {
+impl<T: ProvideDisplayData> DisplayModeTrait for WinDisplayMode<T> {
+    fn get_window_size(&self) -> (u32, u32) {
+        match self {
             Self::Windowed(width, height) => (*width, *height),
-            Self::BorderlessFullScreen(_) => {
-                let (width, height) = DisplayDataProvider::get_host_display_size();
-                adjust_virtual_display_size(width, height)
-            }
-        };
+            Self::BorderlessFullScreen(_) => T::get_host_display_size(),
+        }
+    }
+
+    fn get_virtual_display_size(&self) -> (u32, u32) {
+        let (width, height) = self.get_window_size();
+        let (width, height) = adjust_virtual_display_size(width, height);
         info!("Guest display size: {}x{}", width, height);
         (width, height)
-    }
-}
-
-impl<T> From<WinDisplayMode<T>> for WinDisplayModeArg {
-    fn from(mode: WinDisplayMode<T>) -> WinDisplayModeArg {
-        match mode {
-            WinDisplayMode::Windowed { .. } => WinDisplayModeArg::Windowed,
-            WinDisplayMode::BorderlessFullScreen(_) => WinDisplayModeArg::BorderlessFullScreen,
-        }
     }
 }
 
@@ -52,7 +45,7 @@ trait ProvideDisplayData {
     fn get_host_display_size() -> (u32, u32);
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DisplayDataProvider;
 
 impl ProvideDisplayData for DisplayDataProvider {
@@ -77,4 +70,40 @@ fn adjust_virtual_display_size(width: u32, height: u32) -> (u32, u32) {
     // Widths that aren't a multiple of 8 break gfxstream: b/156110663.
     let width = width - (width % 8);
     (width, height)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn borderless_full_screen_virtual_window_width_should_be_multiple_of_8() {
+        struct MockDisplayDataProvider;
+
+        impl ProvideDisplayData for MockDisplayDataProvider {
+            fn get_host_display_size() -> (u32, u32) {
+                (1366, 768)
+            }
+        }
+
+        let mode = WinDisplayMode::<MockDisplayDataProvider>::BorderlessFullScreen(PhantomData);
+        let (width, _) = mode.get_virtual_display_size();
+        assert_eq!(width % 8, 0);
+    }
+
+    #[test]
+    fn borderless_full_screen_virtual_window_size_should_be_smaller_than_soft_max() {
+        struct MockDisplayDataProvider;
+
+        impl ProvideDisplayData for MockDisplayDataProvider {
+            fn get_host_display_size() -> (u32, u32) {
+                (DISPLAY_WIDTH_SOFT_MAX + 1, DISPLAY_HEIGHT_SOFT_MAX + 1)
+            }
+        }
+
+        let mode = WinDisplayMode::<MockDisplayDataProvider>::BorderlessFullScreen(PhantomData);
+        let (width, height) = mode.get_virtual_display_size();
+        assert!(width <= DISPLAY_WIDTH_SOFT_MAX);
+        assert!(height <= DISPLAY_HEIGHT_SOFT_MAX);
+    }
 }

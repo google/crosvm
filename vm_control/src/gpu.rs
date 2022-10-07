@@ -5,8 +5,6 @@
 use std::collections::BTreeMap as Map;
 use std::fmt;
 use std::fmt::Display;
-#[cfg(windows)]
-use std::marker::PhantomData;
 use std::path::Path;
 
 use serde::Deserialize;
@@ -32,7 +30,14 @@ fn default_dpi() -> u32 {
 }
 
 /// Trait that the platform-specific type `DisplayMode` needs to implement.
-pub trait DisplayModeTrait {
+pub(crate) trait DisplayModeTrait {
+    /// Returns the initial host window size.
+    fn get_window_size(&self) -> (u32, u32);
+
+    /// Returns the virtual display size used for creating the display device.
+    ///
+    /// This may be different from the initial host window size since different display backends may
+    /// have different alignment requirements on it.
     fn get_virtual_display_size(&self) -> (u32, u32);
 }
 
@@ -42,7 +47,7 @@ impl Default for DisplayMode {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, FromKeyValues, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, FromKeyValues)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct DisplayParameters {
     #[serde(default)]
@@ -76,6 +81,10 @@ impl DisplayParameters {
 
     pub fn default_with_mode(mode: DisplayMode) -> Self {
         Self::new(mode, false, DEFAULT_REFRESH_RATE, DEFAULT_DPI, DEFAULT_DPI)
+    }
+
+    pub fn get_window_size(&self) -> (u32, u32) {
+        self.mode.get_window_size()
     }
 
     pub fn get_virtual_display_size(&self) -> (u32, u32) {

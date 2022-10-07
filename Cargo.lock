@@ -1990,6 +1990,7 @@ dependencies = [
  "sync",
  "thiserror",
  "vm_memory",
+ "winapi",
 ]
 
 [[package]]

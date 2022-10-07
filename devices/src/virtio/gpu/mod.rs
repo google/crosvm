@@ -83,6 +83,7 @@ pub enum GpuMode {
     Mode2D,
     #[serde(rename = "virglrenderer", alias = "3d", alias = "3D")]
     ModeVirglRenderer,
+    #[cfg(feature = "gfxstream")]
     #[serde(rename = "gfxstream")]
     ModeGfxstream,
 }
@@ -1108,6 +1109,7 @@ impl Gpu {
         let component = match gpu_parameters.mode {
             GpuMode::Mode2D => RutabagaComponentType::Rutabaga2D,
             GpuMode::ModeVirglRenderer => RutabagaComponentType::VirglRenderer,
+            #[cfg(feature = "gfxstream")]
             GpuMode::ModeGfxstream => RutabagaComponentType::Gfxstream,
         };
 
@@ -1126,11 +1128,14 @@ impl Gpu {
             .set_use_glx(gpu_parameters.renderer_use_glx)
             .set_use_surfaceless(gpu_parameters.renderer_use_surfaceless)
             .set_use_vulkan(gpu_parameters.use_vulkan.unwrap_or_default())
-            .set_use_guest_angle(gpu_parameters.gfxstream_use_guest_angle.unwrap_or_default())
-            .set_support_gles31(gpu_parameters.gfxstream_support_gles31)
             .set_wsi(gpu_parameters.wsi.as_ref())
             .set_use_external_blob(external_blob)
             .set_use_render_server(use_render_server);
+
+        #[cfg(feature = "gfxstream")]
+        let rutabaga_builder = rutabaga_builder
+            .set_use_guest_angle(gpu_parameters.gfxstream_use_guest_angle.unwrap_or_default())
+            .set_support_gles31(gpu_parameters.gfxstream_support_gles31);
 
         Gpu {
             exit_evt_wrtube,

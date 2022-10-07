@@ -143,8 +143,12 @@ mod tests {
                 "568",
             ]);
         }
-        if cfg!(feature = "gpu") {
+        if cfg!(all(feature = "gpu", feature = "gfxstream")) {
             args.extend(["--gpu", "angle=true,backend=gfxstream,egl=true,gles=false,glx=false,refresh_rate=60,surfaceless=false,vulkan=true,wsi=vk,display_mode=borderless_full_screen,hidden"]);
+            args.extend([
+                "--gpu-display",
+                "mode=borderless_full_screen,hidden,refresh-rate=60",
+            ]);
         }
         if cfg!(feature = "audio") {
             args.extend(["--ac97", "backend=win_audio"]);

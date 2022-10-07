@@ -28,3 +28,6 @@ serde_keyvalue = { path = "../serde_keyvalue", features = ["argh_derive"] }
 sync = { path = "../common/sync" }
 thiserror = "*"
 vm_memory = { path = "../vm_memory" }
+
+[target.'cfg(windows)'.dependencies]
+winapi = "*"

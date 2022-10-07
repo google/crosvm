@@ -27,6 +27,8 @@ mod virtio_pci_device;
 
 pub mod block;
 pub mod console;
+#[cfg(feature = "gpu")]
+pub mod gpu;
 pub mod resource_bridge;
 #[cfg(feature = "audio")]
 pub mod snd;
@@ -38,6 +40,8 @@ pub use self::block::*;
 pub use self::console::*;
 pub use self::descriptor_utils::Error as DescriptorError;
 pub use self::descriptor_utils::*;
+#[cfg(feature = "gpu")]
+pub use self::gpu::*;
 pub use self::input::*;
 pub use self::interrupt::*;
 pub use self::iommu::*;
@@ -54,15 +58,11 @@ cfg_if::cfg_if! {
     if #[cfg(unix)] {
         mod p9;
         mod pmem;
-        pub mod wl;
 
+        pub mod wl;
         pub mod fs;
-        #[cfg(feature = "gpu")]
-        pub mod gpu;
         pub mod net;
 
-        #[cfg(feature = "gpu")]
-        pub use self::gpu::*;
         pub use self::iommu::sys::unix::vfio_wrapper;
         pub use self::net::*;
         pub use self::p9::*;

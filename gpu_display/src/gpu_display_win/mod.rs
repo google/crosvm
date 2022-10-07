@@ -36,6 +36,8 @@ use metrics::Metrics;
 pub use surface::NoopSurface as Surface;
 #[cfg(feature = "kiwi")]
 use sync::Mutex;
+use vm_control::gpu::DisplayMode;
+use vm_control::gpu::DisplayParameters;
 use window_message_processor::DisplaySendToWndProc;
 pub use window_procedure_thread::WindowProcedureThread;
 
@@ -60,6 +62,20 @@ pub struct DisplayProperties {
     pub window_height: u32,
     #[cfg(feature = "kiwi")]
     pub gpu_main_display_tube: Option<Arc<Mutex<Tube>>>,
+}
+
+impl From<&DisplayParameters> for DisplayProperties {
+    fn from(params: &DisplayParameters) -> Self {
+        let is_fullscreen = matches!(params.mode, DisplayMode::BorderlessFullScreen(_));
+        let (window_width, window_height) = params.get_window_size();
+
+        Self {
+            start_hidden: params.hidden,
+            is_fullscreen,
+            window_width,
+            window_height,
+        }
+    }
 }
 
 pub struct DisplayWin {

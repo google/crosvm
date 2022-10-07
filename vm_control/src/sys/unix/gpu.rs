@@ -14,9 +14,13 @@ pub enum UnixDisplayMode {
 }
 
 impl DisplayModeTrait for UnixDisplayMode {
-    fn get_virtual_display_size(&self) -> (u32, u32) {
+    fn get_window_size(&self) -> (u32, u32) {
         match self {
             Self::Windowed(width, height) => (*width, *height),
         }
+    }
+
+    fn get_virtual_display_size(&self) -> (u32, u32) {
+        self.get_window_size()
     }
 }

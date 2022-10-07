@@ -13,7 +13,7 @@ cfg_if::cfg_if! {
         pub mod windows;
         pub use windows as platform;
         #[cfg(feature = "gpu")]
-        pub type DisplayMode = platform::gpu::WinDisplayMode<windows::DisplayDataProvider>;
+        pub type DisplayMode = platform::gpu::WinDisplayMode<platform::gpu::DisplayDataProvider>;
     } else {
         compile_error!("Unsupported platform");
     }

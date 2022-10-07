@@ -4,32 +4,22 @@
 
 use std::str::FromStr;
 
-#[cfg(feature = "gpu")]
-use base::info;
 #[cfg(all(feature = "prod-build", feature = "kiwi"))]
 use devices::serial_device::SerialType;
 #[cfg(feature = "gpu")]
 use devices::virtio::GpuDisplayMode;
 #[cfg(feature = "gpu")]
 use devices::virtio::GpuDisplayParameters;
-#[cfg(feature = "gpu")]
+#[cfg(all(feature = "gpu", feature = "gfxstream"))]
 use devices::virtio::GpuMode;
 #[cfg(feature = "gpu")]
 use devices::virtio::GpuParameters;
-#[cfg(feature = "gpu")]
-use devices::virtio::DEFAULT_REFRESH_RATE;
 #[cfg(feature = "audio")]
 use devices::Ac97Parameters;
 use devices::SerialParameters;
-#[cfg(feature = "gpu")]
-use rutabaga_gfx::calculate_context_mask;
-#[cfg(feature = "gpu")]
-use rutabaga_gfx::RutabagaWsi;
 use serde::Deserialize;
 use serde::Serialize;
 
-#[cfg(feature = "gpu")]
-use crate::crosvm::argument;
 use crate::crosvm::config::Config;
 
 #[cfg(feature = "audio")]
@@ -39,16 +29,6 @@ pub fn parse_ac97_options(
     value: &str,
 ) -> Result<(), String> {
     Err(format!("unknown ac97 parameter {} {}", key, value))
-}
-
-#[cfg(feature = "gpu")]
-pub fn is_gpu_backend_deprecated(backend: &str) -> bool {
-    match backend {
-        "2d" | "2D" | "3d" | "3D" | "virglrenderer" => {
-            cfg!(feature = "gfxstream")
-        }
-        _ => false,
-    }
 }
 
 #[cfg(feature = "gfxstream")]
@@ -80,392 +60,43 @@ pub fn validate_config(_cfg: &mut Config) -> std::result::Result<(), String> {
 
 #[cfg(feature = "gpu")]
 pub fn parse_gpu_options(s: &str) -> Result<GpuParameters, String> {
-    parse_gpu_options_inner(s).map_err(|e| e.to_string())
-}
+    use crate::crosvm::config::from_key_values;
+    let mut gpu_params: GpuParameters = from_key_values(s)?;
 
-#[cfg(feature = "gpu")]
-fn parse_gpu_options_inner(s: &str) -> argument::Result<GpuParameters> {
-    let mut gpu_params: GpuParameters = Default::default();
-    #[cfg(feature = "gfxstream")]
-    let mut vulkan_specified = false;
-    #[cfg(feature = "gfxstream")]
-    let mut gles31_specified = false;
-    #[cfg(feature = "gfxstream")]
-    let mut angle_specified = false;
-
-    let mut width: Option<u32> = None;
-    let mut height: Option<u32> = None;
-    let mut dpi: Option<u32> = None;
-    let mut display_mode: Option<String> = None;
-    #[cfg(feature = "gfxstream")]
-    let mut refresh_rate: Option<u32> = None;
-    let opts = s
-        .split(',')
-        .map(|frag| frag.split('='))
-        .map(|mut kv| (kv.next().unwrap_or(""), kv.next().unwrap_or("")));
-    let mut hidden: Option<bool> = None;
-
-    for (k, v) in opts {
-        match k {
-            "backend" => match v {
-                "2d" | "2D" => {
-                    if crate::crosvm::sys::config::is_gpu_backend_deprecated(v) {
-                        return Err(argument::Error::InvalidValue {
-                            value: v.to_string(),
-                            expected: String::from(
-                                "this backend type is deprecated, please use gfxstream.",
-                            ),
-                        });
-                    } else {
-                        gpu_params.mode = GpuMode::Mode2D;
-                    }
-                }
-                "3d" | "3D" | "virglrenderer" => {
-                    if crate::crosvm::sys::config::is_gpu_backend_deprecated(v) {
-                        return Err(argument::Error::InvalidValue {
-                            value: v.to_string(),
-                            expected: String::from(
-                                "this backend type is deprecated, please use gfxstream.",
-                            ),
-                        });
-                    } else {
-                        gpu_params.mode = GpuMode::ModeVirglRenderer;
-                    }
-                }
-                #[cfg(feature = "gfxstream")]
-                "gfxstream" => {
-                    gpu_params.mode = GpuMode::ModeGfxstream;
-                }
-                _ => {
-                    return Err(argument::Error::InvalidValue {
-                        value: v.to_string(),
-                        expected: String::from(
-                            #[cfg(feature = "gfxstream")]
-                            "gpu parameter 'backend' should be one of (2d|virglrenderer|gfxstream)",
-                            #[cfg(not(feature = "gfxstream"))]
-                            "gpu parameter 'backend' should be one of (2d|3d)",
-                        ),
-                    });
-                }
-            },
-            "egl" => match v {
-                "true" | "" => {
-                    gpu_params.renderer_use_egl = true;
-                }
-                "false" => {
-                    gpu_params.renderer_use_egl = false;
-                }
-                _ => {
-                    return Err(argument::Error::InvalidValue {
-                        value: v.to_string(),
-                        expected: String::from("gpu parameter 'egl' should be a boolean"),
-                    });
-                }
-            },
-            "gles" => match v {
-                "true" | "" => {
-                    gpu_params.renderer_use_gles = true;
-                }
-                "false" => {
-                    gpu_params.renderer_use_gles = false;
-                }
-                _ => {
-                    return Err(argument::Error::InvalidValue {
-                        value: v.to_string(),
-                        expected: String::from("gpu parameter 'gles' should be a boolean"),
-                    });
-                }
-            },
-            "glx" => match v {
-                "true" | "" => {
-                    gpu_params.renderer_use_glx = true;
-                }
-                "false" => {
-                    gpu_params.renderer_use_glx = false;
-                }
-                _ => {
-                    return Err(argument::Error::InvalidValue {
-                        value: v.to_string(),
-                        expected: String::from("gpu parameter 'glx' should be a boolean"),
-                    });
-                }
-            },
-            "surfaceless" => match v {
-                "true" | "" => {
-                    gpu_params.renderer_use_surfaceless = true;
-                }
-                "false" => {
-                    gpu_params.renderer_use_surfaceless = false;
-                }
-                _ => {
-                    return Err(argument::Error::InvalidValue {
-                        value: v.to_string(),
-                        expected: String::from("gpu parameter 'surfaceless' should be a boolean"),
-                    });
-                }
-            },
-            #[cfg(feature = "gfxstream")]
-            "angle" => {
-                angle_specified = true;
-                match v {
-                    "true" | "" => {
-                        gpu_params.gfxstream_use_guest_angle = true;
-                    }
-                    "false" => {
-                        gpu_params.gfxstream_use_guest_angle = false;
-                    }
-                    _ => {
-                        return Err(argument::Error::InvalidValue {
-                            value: v.to_string(),
-                            expected: String::from("gpu parameter 'angle' should be a boolean"),
-                        });
-                    }
-                }
-            }
-            "vulkan" => {
-                #[cfg(feature = "gfxstream")]
-                {
-                    vulkan_specified = true;
-                }
-                match v {
-                    "true" | "" => {
-                        gpu_params.use_vulkan = true;
-                    }
-                    "false" => {
-                        gpu_params.use_vulkan = false;
-                    }
-                    _ => {
-                        return Err(argument::Error::InvalidValue {
-                            value: v.to_string(),
-                            expected: String::from("gpu parameter 'vulkan' should be a boolean"),
-                        });
-                    }
-                }
-            }
-            #[cfg(feature = "gfxstream")]
-            "gles3.1" => {
-                gles31_specified = true;
-                match v {
-                    "true" | "" => {
-                        gpu_params.gfxstream_support_gles31 = true;
-                    }
-                    "false" => {
-                        gpu_params.gfxstream_support_gles31 = false;
-                    }
-                    _ => {
-                        return Err(argument::Error::InvalidValue {
-                            value: v.to_string(),
-                            expected: String::from("gpu parameter 'gles3.1' should be a boolean"),
-                        });
-                    }
-                }
-            }
-            "wsi" => match v {
-                "vk" => {
-                    gpu_params.wsi = Some(RutabagaWsi::Vulkan);
-                }
-                _ => {
-                    return Err(argument::Error::InvalidValue {
-                        value: v.to_string(),
-                        expected: String::from("gpu parameter 'wsi' should be vk"),
-                    });
-                }
-            },
-            "width" => {
-                if let Some(width) = width {
-                    return Err(argument::Error::TooManyArguments(format!(
-                        "width was already specified: {}",
-                        width
-                    )));
-                }
-                width = Some(
-                    v.parse::<u32>()
-                        .map_err(|_| argument::Error::InvalidValue {
-                            value: v.to_string(),
-                            expected: String::from("gpu parameter 'width' must be a valid integer"),
-                        })?,
-                );
-            }
-            "height" => {
-                if let Some(height) = height {
-                    return Err(argument::Error::TooManyArguments(format!(
-                        "height was already specified: {}",
-                        height
-                    )));
-                }
-                height = Some(
-                    v.parse::<u32>()
-                        .map_err(|_| argument::Error::InvalidValue {
-                            value: v.to_string(),
-                            expected: String::from(
-                                "gpu parameter 'height' must be a valid integer",
-                            ),
-                        })?,
-                );
-            }
-            "dpi" => {
-                if let Some(dpi) = dpi {
-                    return Err(argument::Error::TooManyArguments(format!(
-                        "dpi was already specified: {}",
-                        dpi
-                    )));
-                }
-                dpi = Some(
-                    v.parse::<u32>()
-                        .map_err(|_| argument::Error::InvalidValue {
-                            value: v.to_string(),
-                            expected: String::from("gpu parameter 'dpi' must be a valid integer"),
-                        })?,
-                );
-            }
-            #[cfg(feature = "gfxstream")]
-            "refresh_rate" => {
-                if let Some(refresh_rate) = refresh_rate {
-                    return Err(argument::Error::TooManyArguments(format!(
-                        "refresh_rate was already specified: {}",
-                        refresh_rate
-                    )));
-                }
-                refresh_rate =
-                    Some(
-                        v.parse::<u32>()
-                            .map_err(|_| argument::Error::InvalidValue {
-                                value: v.to_string(),
-                                expected: String::from(
-                                    "gpu parameter 'refresh_rate' must be a valid integer",
-                                ),
-                            })?,
-                    );
-            }
-            "display_mode" => {
-                if let Some(display_mode) = display_mode {
-                    return Err(argument::Error::TooManyArguments(format!(
-                        "display_mode was already specified: {}",
-                        display_mode
-                    )));
-                }
-                display_mode = Some(String::from(v));
-            }
-            "hidden" => match v {
-                "true" | "" => {
-                    hidden = Some(true);
-                }
-                "false" => {
-                    hidden = Some(false);
-                }
-                _ => {
-                    return Err(argument::Error::InvalidValue {
-                        value: v.to_string(),
-                        expected: String::from("gpu parameter 'hidden' should be a boolean"),
-                    });
-                }
-            },
-            "cache-path" => gpu_params.cache_path = Some(v.to_string()),
-            "cache-size" => gpu_params.cache_size = Some(v.to_string()),
-            "udmabuf" => match v {
-                "true" | "" => {
-                    gpu_params.udmabuf = true;
-                }
-                "false" => {
-                    gpu_params.udmabuf = false;
-                }
-                _ => {
-                    return Err(argument::Error::InvalidValue {
-                        value: v.to_string(),
-                        expected: String::from("gpu parameter 'udmabuf' should be a boolean"),
-                    });
-                }
-            },
-            "context-types" => {
-                let context_types: Vec<String> = v.split(':').map(|s| s.to_string()).collect();
-                gpu_params.context_mask = calculate_context_mask(context_types);
-            }
-            "" => {}
-            _ => {
-                return Err(argument::Error::UnknownArgument(format!(
-                    "gpu parameter {}",
-                    k
-                )));
-            }
+    match (
+        gpu_params.__width_compat.take(),
+        gpu_params.__height_compat.take(),
+    ) {
+        (Some(width), Some(height)) => {
+            let display_mode = GpuDisplayMode::Windowed(width, height);
+            gpu_params
+                .display_params
+                .push(GpuDisplayParameters::default_with_mode(display_mode));
         }
-    }
-
-    let mut display_param = match display_mode.as_deref() {
-        Some("windowed") => GpuDisplayParameters::default_windowed(),
-        Some("borderless_full_screen") => GpuDisplayParameters::default_borderless_full_screen(),
-        None => Default::default(),
-        Some(display_mode) => {
-            return Err(argument::Error::InvalidValue {
-                value: display_mode.to_string(),
-                expected: String::from(
-                    "gpu parameter 'display_mode' must be either 'borderless_full_screen' \
-                    or 'windowed'",
-                ),
-            })
-        }
-    };
-
-    if let Some(hidden) = hidden {
-        display_param.hidden = hidden;
-    }
-
-    #[cfg(feature = "gfxstream")]
-    {
-        if let Some(refresh_rate) = refresh_rate {
-            gpu_params.refresh_rate = refresh_rate;
-        }
-    }
-
-    match display_param.display_mode {
-        GpuDisplayMode::Windowed {
-            width: ref mut width_in_params,
-            height: ref mut height_in_params,
-            dpi: ref mut dpi_in_params,
-        } => {
-            if let Some(width) = width {
-                *width_in_params = width;
-            }
-            if let Some(height) = height {
-                *height_in_params = height;
-            }
-            if let Some(dpi) = dpi {
-                *dpi_in_params = dpi;
-            }
-        }
-        GpuDisplayMode::BorderlessFullScreen(_) => {
-            if width.is_some() || height.is_some() || dpi.is_some() {
-                return Err(argument::Error::UnknownArgument(
-                    "width, height, or dpi is only supported for windowed display mode".to_string(),
-                ));
-            }
+        (None, None) => {}
+        _ => {
+            return Err("must include both 'width' and 'height' if either is supplied".to_string())
         }
     }
 
     #[cfg(feature = "gfxstream")]
-    {
-        if !vulkan_specified && gpu_params.mode == GpuMode::ModeGfxstream {
-            gpu_params.use_vulkan = crate::crosvm::sys::config::use_vulkan();
+    if matches!(gpu_params.mode, GpuMode::ModeGfxstream) {
+        if gpu_params.use_vulkan.is_none() {
+            gpu_params.use_vulkan = Some(use_vulkan());
         }
-        if angle_specified || gles31_specified {
-            match gpu_params.mode {
-                GpuMode::ModeGfxstream => {}
-                _ => {
-                    return Err(argument::Error::UnknownArgument(
-                        "gpu parameters angle and gles3.1 are only supported for gfxstream backend"
-                            .to_string(),
-                    ));
-                }
-            }
-        }
+    } else {
+        return Err(format!(
+            "backend type {:?} is deprecated, please use gfxstream",
+            gpu_params.mode
+        ));
     }
 
-    gpu_params.display_params = vec![display_param];
     Ok(gpu_params)
 }
 
 #[cfg(feature = "gpu")]
 pub(crate) fn validate_gpu_config(cfg: &mut Config) -> Result<(), String> {
-    if let Some(gpu_parameters) = cfg.gpu_parameters.as_ref() {
+    if let Some(gpu_parameters) = cfg.gpu_parameters.as_mut() {
         if gpu_parameters.display_params.is_empty() {
             gpu_parameters.display_params.push(Default::default());
         }
@@ -477,10 +108,6 @@ pub(crate) fn validate_gpu_config(cfg: &mut Config) -> Result<(), String> {
         for virtio_single_touch in cfg.virtio_single_touch.iter_mut() {
             virtio_single_touch.set_default_size(width, height);
         }
-
-        let dpi = gpu_parameters.display_params[0].get_dpi();
-        info!("using dpi {} on the Android guest", dpi);
-        cfg.params.push(format!("androidboot.lcd_density={}", dpi));
     }
     Ok(())
 }
@@ -542,12 +169,23 @@ impl FromStr for HypervisorKind {
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "gpu")]
+    use argh::FromArgs;
+    #[cfg(feature = "gpu")]
     use devices::virtio::gpu::GpuDisplayMode;
+    #[cfg(all(feature = "gpu", feature = "gfxstream"))]
+    use rutabaga_gfx::RutabagaWsi;
 
     #[cfg(any(feature = "audio", feature = "gpu"))]
     use super::*;
     #[cfg(feature = "gpu")]
+    use crate::crosvm::config::from_key_values;
+    #[cfg(feature = "gpu")]
     use crate::crosvm::sys::config::parse_gpu_options;
+
+    #[cfg(feature = "gpu")]
+    fn parse_gpu_display_options(s: &str) -> Result<GpuDisplayParameters, String> {
+        from_key_values::<GpuDisplayParameters>(s)
+    }
 
     #[cfg(all(feature = "gpu", feature = "gfxstream"))]
     #[test]
@@ -578,49 +216,24 @@ mod tests {
     #[cfg(all(feature = "gpu"))]
     #[test]
     fn parse_gpu_options_default_vulkan_support() {
-        #[cfg(unix)]
-        assert!(
-            !parse_gpu_options("backend=virglrenderer")
-                .unwrap()
-                .use_vulkan
-        );
         #[cfg(feature = "gfxstream")]
-        assert!(!parse_gpu_options("backend=gfxstream").unwrap().use_vulkan);
-        #[cfg(all(feature = "gfxstream", unix))]
-        assert!(parse_gpu_options("backend=gfxstream").unwrap().use_vulkan);
+        assert_eq!(
+            parse_gpu_options("backend=gfxstream").unwrap().use_vulkan,
+            Some(false)
+        );
     }
 
     #[cfg(all(feature = "gpu"))]
     #[test]
     fn parse_gpu_options_with_vulkan_specified() {
-        assert!(parse_gpu_options("vulkan=true").unwrap().use_vulkan);
-        #[cfg(unix)]
-        assert!(
-            parse_gpu_options("backend=virglrenderer,vulkan=true")
-                .unwrap()
-                .use_vulkan
+        assert_eq!(
+            parse_gpu_options("vulkan=true").unwrap().use_vulkan,
+            Some(true)
         );
-        #[cfg(unix)]
-        assert!(
-            parse_gpu_options("vulkan=true,backend=virglrenderer")
-                .unwrap()
-                .use_vulkan
+        assert_eq!(
+            parse_gpu_options("vulkan=false").unwrap().use_vulkan,
+            Some(false)
         );
-        assert!(!parse_gpu_options("vulkan=false").unwrap().use_vulkan);
-        #[cfg(unix)]
-        assert!(
-            !parse_gpu_options("backend=virglrenderer,vulkan=false")
-                .unwrap()
-                .use_vulkan
-        );
-        #[cfg(unix)]
-        assert!(
-            !parse_gpu_options("vulkan=false,backend=virglrenderer")
-                .unwrap()
-                .use_vulkan
-        );
-        #[cfg(unix)]
-        assert!(parse_gpu_options("backend=virglrenderer,vulkan=invalid_value").is_err());
         assert!(parse_gpu_options("vulkan=invalid_value,backend=virglrenderer").is_err());
     }
 
@@ -628,130 +241,248 @@ mod tests {
     #[test]
     fn parse_gpu_options_gfxstream_with_gles31_specified() {
         assert!(
-            parse_gpu_options("backend=gfxstream,gles3.1=true")
+            parse_gpu_options("backend=gfxstream,gles31=true")
                 .unwrap()
                 .gfxstream_support_gles31
         );
         assert!(
-            parse_gpu_options("gles3.1=true,backend=gfxstream")
+            parse_gpu_options("gles31=true,backend=gfxstream")
                 .unwrap()
                 .gfxstream_support_gles31
         );
         assert!(
-            !parse_gpu_options("backend=gfxstream,gles3.1=false")
+            !parse_gpu_options("backend=gfxstream,gles31=false")
                 .unwrap()
                 .gfxstream_support_gles31
         );
         assert!(
-            !parse_gpu_options("gles3.1=false,backend=gfxstream")
+            !parse_gpu_options("gles31=false,backend=gfxstream")
                 .unwrap()
                 .gfxstream_support_gles31
         );
-        assert!(parse_gpu_options("backend=gfxstream,gles3.1=invalid_value").is_err());
-        assert!(parse_gpu_options("gles3.1=invalid_value,backend=gfxstream").is_err());
+        assert!(parse_gpu_options("backend=gfxstream,gles31=invalid_value").is_err());
+        assert!(parse_gpu_options("gles31=invalid_value,backend=gfxstream").is_err());
     }
 
     #[cfg(all(feature = "gpu", feature = "gfxstream"))]
     #[test]
     fn parse_gpu_options_not_gfxstream_with_gles31_specified() {
-        assert!(parse_gpu_options("backend=virglrenderer,gles3.1=true").is_err());
-        assert!(parse_gpu_options("gles3.1=true,backend=virglrenderer").is_err());
+        assert!(parse_gpu_options("backend=virglrenderer,gles31=true").is_err());
+        assert!(parse_gpu_options("gles31=true,backend=virglrenderer").is_err());
     }
 
     #[cfg(feature = "gpu")]
     #[test]
-    fn parse_gpu_options_gpu_display_mode() {
-        let display_params = parse_gpu_options("display_mode=windowed")
+    fn parse_gpu_options_no_display_specified() {
+        let display_params = parse_gpu_options("").unwrap().display_params;
+        assert!(display_params.is_empty());
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn parse_gpu_options_display_size_valid() {
+        const WIDTH: u32 = 1720;
+        const HEIGHT: u32 = 1800;
+
+        let display_params = parse_gpu_options(format!("width={},height=720", WIDTH).as_str())
             .unwrap()
             .display_params;
+        assert_eq!(display_params.len(), 1);
+        assert!(
+            matches!(display_params[0].mode, GpuDisplayMode::Windowed(width, _) if width == WIDTH)
+        );
+
+        let display_params = parse_gpu_options(format!("width=1280,height={}", HEIGHT).as_str())
+            .unwrap()
+            .display_params;
+        assert_eq!(display_params.len(), 1);
+        assert!(
+            matches!(display_params[0].mode, GpuDisplayMode::Windowed(_, height) if height == HEIGHT)
+        );
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn parse_gpu_options_display_size_incomplete() {
+        assert!(parse_gpu_options("width=1280").is_err());
+        assert!(parse_gpu_options("height=720").is_err());
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn parse_gpu_options_display_size_duplicated() {
+        assert!(parse_gpu_options("width=1280,width=1280,height=720").is_err());
+        assert!(parse_gpu_options("width=1280,height=720,height=720").is_err());
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn parse_gpu_display_options_mode() {
+        let display_params = parse_gpu_display_options("mode=windowed[1280,720]").unwrap();
         assert!(matches!(
-            display_params[0].display_mode,
-            GpuDisplayMode::Windowed { .. }
+            display_params.mode,
+            GpuDisplayMode::Windowed(_, _)
         ));
 
-        let display_params = parse_gpu_options("display_mode=borderless_full_screen")
-            .unwrap()
-            .display_params;
+        let display_params = parse_gpu_display_options("mode=borderless_full_screen").unwrap();
         assert!(matches!(
-            display_params[0].display_mode,
+            display_params.mode,
             GpuDisplayMode::BorderlessFullScreen(_)
         ));
 
-        assert!(parse_gpu_options("display_mode=invalid_mode").is_err());
+        assert!(parse_gpu_display_options("mode=invalid_mode").is_err());
     }
 
     #[cfg(feature = "gpu")]
     #[test]
-    fn parse_gpu_options_gpu_display_mode_duplicated() {
-        assert!(parse_gpu_options("display_mode=windowed,display_mode=windowed").is_err());
+    fn parse_gpu_display_options_mode_duplicated() {
+        assert!(
+            parse_gpu_display_options("mode=windowed[1280,720],mode=windowed[1280,720]").is_err()
+        );
     }
 
     #[cfg(feature = "gpu")]
     #[test]
-    fn parse_gpu_options_borderless_full_screen_shouldnt_be_specified_with_size() {
-        assert!(parse_gpu_options("display_mode=borderless_full_screen,width=1280").is_err());
-        assert!(parse_gpu_options("display_mode=borderless_full_screen,height=720").is_err());
+    fn parse_gpu_display_options_borderless_full_screen_should_not_be_specified_with_size() {
+        assert!(parse_gpu_display_options("mode=borderless_full_screen[1280,720]").is_err());
     }
 
     #[cfg(feature = "gpu")]
     #[test]
-    fn parse_gpu_options_windowed_with_size() {
+    fn parse_gpu_display_options_windowed_with_size() {
         const WIDTH: u32 = 1720;
         const HEIGHT: u32 = 1800;
-        const DPI: u32 = 1808;
 
         let display_params =
-            parse_gpu_options(format!("display_mode=windowed,width={}", WIDTH).as_str())
-                .unwrap()
-                .display_params;
-        assert!(
-            matches!(display_params[0].display_mode, GpuDisplayMode::Windowed { width, .. } if width == WIDTH)
-        );
+            parse_gpu_display_options(format!("mode=windowed[{},720]", WIDTH).as_str()).unwrap();
+        assert!(matches!(
+            display_params.mode,
+            GpuDisplayMode::Windowed(width, _) if width == WIDTH
+        ));
 
         let display_params =
-            parse_gpu_options(format!("display_mode=windowed,height={}", HEIGHT).as_str())
-                .unwrap()
-                .display_params;
-        assert!(
-            matches!(display_params[0].display_mode, GpuDisplayMode::Windowed { height, .. } if height == HEIGHT)
-        );
+            parse_gpu_display_options(format!("mode=windowed[1280,{}]", HEIGHT).as_str()).unwrap();
+        assert!(matches!(
+            display_params.mode,
+            GpuDisplayMode::Windowed(_, height) if height == HEIGHT
+        ));
 
-        let display_params =
-            parse_gpu_options(format!("display_mode=windowed,dpi={}", DPI).as_str())
-                .unwrap()
-                .display_params;
-        assert!(
-            matches!(display_params[0].display_mode, GpuDisplayMode::Windowed { dpi, .. } if dpi == DPI)
-        );
+        assert!(parse_gpu_display_options("mode=windowed[]").is_err());
+        assert!(parse_gpu_display_options("mode=windowed[1280]").is_err());
     }
 
     #[cfg(feature = "gpu")]
     #[test]
-    fn parse_gpu_options_hidden() {
-        let display_params = parse_gpu_options("hidden=true").unwrap().display_params;
-        assert!(display_params[0].hidden);
+    fn parse_gpu_display_options_hidden() {
+        let display_params = parse_gpu_display_options("hidden").unwrap();
+        assert!(display_params.hidden);
 
-        let display_params = parse_gpu_options("hidden=false").unwrap().display_params;
-        assert!(matches!(display_params[0].hidden, false));
+        let display_params = parse_gpu_display_options("hidden=true").unwrap();
+        assert!(display_params.hidden);
+
+        let display_params = parse_gpu_display_options("hidden=false").unwrap();
+        assert!(!display_params.hidden);
     }
 
     #[cfg(feature = "gpu")]
     #[test]
-    fn parse_gpu_options_refresh_rate() {
-        const REFRESH_RATE: u32 = 120;
-        let display_params = parse_gpu_options(format!("refresh_rate={}", REFRESH_RATE).as_str())
-            .unwrap()
-            .display_params;
+    fn parse_gpu_display_options_hidden_duplicated() {
+        assert!(parse_gpu_display_options("hidden,hidden").is_err());
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn parse_gpu_display_options_refresh_rate() {
+        const REFRESH_RATE: u32 = 30;
+
+        let display_params =
+            parse_gpu_display_options(format!("refresh-rate={}", REFRESH_RATE).as_str()).unwrap();
         assert_eq!(display_params.refresh_rate, REFRESH_RATE);
-
-        assert!(parse_gpu_options(format!("refresh_rate=invalid_value").as_str()).is_err());
     }
 
     #[cfg(feature = "gpu")]
     #[test]
-    fn parse_gpu_options_size_duplicated() {
-        assert!(parse_gpu_options("width=1280,width=1280").is_err());
-        assert!(parse_gpu_options("height=1280,height=1280").is_err());
-        assert!(parse_gpu_options("dpi=1280,dpi=1280").is_err());
+    fn parse_gpu_display_options_refresh_rate_duplicated() {
+        assert!(parse_gpu_display_options("refresh-rate=30,refresh-rate=60").is_err());
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn parse_gpu_options_and_gpu_display_options_valid() {
+        const WIDTH: u32 = 1720;
+        const HEIGHT: u32 = 1800;
+        const EXPECTED_DISPLAY_MODE: GpuDisplayMode = GpuDisplayMode::Windowed(WIDTH, HEIGHT);
+        const BACKEND: &str = if cfg!(feature = "gfxstream") {
+            "gfxstream"
+        } else {
+            "2d"
+        };
+
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &[
+                "--gpu",
+                format!("backend={}", BACKEND).as_str(),
+                "--gpu-display",
+                format!("windowed[{},{}]", WIDTH, HEIGHT).as_str(),
+                "/dev/null",
+            ],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        let gpu_params = config.gpu_parameters.unwrap();
+
+        assert_eq!(gpu_params.display_params.len(), 1);
+        assert_eq!(gpu_params.display_params[0].mode, EXPECTED_DISPLAY_MODE);
+
+        // `width` and `height` in GPU options are supported for CLI backward compatibility.
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &[
+                "--gpu",
+                format!("backend={},width={},height={}", BACKEND, WIDTH, HEIGHT).as_str(),
+                "/dev/null",
+            ],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        let gpu_params = config.gpu_parameters.unwrap();
+
+        assert_eq!(gpu_params.display_params.len(), 1);
+        assert_eq!(gpu_params.display_params[0].mode, EXPECTED_DISPLAY_MODE);
+    }
+
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn parse_gpu_options_and_gpu_display_options_multi_display_unsupported() {
+        let command = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &[
+                "--gpu-display",
+                "mode=borderless_full_screen",
+                "--gpu-display",
+                "mode=borderless_full_screen",
+                "/dev/null",
+            ],
+        )
+        .unwrap();
+        assert!(Config::try_from(command).is_err());
+
+        let command = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &[
+                "--gpu",
+                "width=1280,height=720",
+                "--gpu-display",
+                "mode=borderless_full_screen",
+                "/dev/null",
+            ],
+        )
+        .unwrap();
+        assert!(Config::try_from(command).is_err());
     }
 }
