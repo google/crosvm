@@ -78,12 +78,6 @@ mod tests {
         let tx_descriptor = handler.take_tx_descriptor();
         assert!(tx_descriptor.as_raw_descriptor() >= 0);
         assert!(handler.as_raw_descriptor() != INVALID_DESCRIPTOR);
-        handler.check_state().unwrap();
-
-        assert_eq!(handler.error, None);
-        handler.set_failed(libc::EAGAIN);
-        assert_eq!(handler.error, Some(libc::EAGAIN));
-        handler.check_state().unwrap_err();
     }
 
     #[cfg(feature = "device")]

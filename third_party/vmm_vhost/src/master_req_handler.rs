@@ -235,9 +235,6 @@ pub struct MasterReqHandler<S: VhostUserMasterReqHandler> {
 
     /// the VirtIO backend device object
     backend: Arc<S>,
-
-    // whether the endpoint has encountered any failure
-    error: Option<i32>,
 }
 
 impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
@@ -261,7 +258,6 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
             serialize_tx,
             reply_ack_negotiated: false,
             backend,
-            error: None,
         })
     }
 
@@ -284,15 +280,6 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         self.reply_ack_negotiated = enable;
     }
 
-    /// Mark endpoint as failed or in normal state.
-    pub fn set_failed(&mut self, error: i32) {
-        if error == 0 {
-            self.error = None;
-        } else {
-            self.error = Some(error);
-        }
-    }
-
     /// Get the underlying backend device
     pub fn backend(&self) -> Arc<S> {
         Arc::clone(&self.backend)
@@ -305,9 +292,6 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
     /// - decide what to do when errer happens
     /// - optional recover from failure
     pub fn handle_request(&mut self) -> Result<u64> {
-        // Return error if the endpoint is already in failed state.
-        self.check_state()?;
-
         // The underlying communication channel is a Unix domain socket in
         // stream mode, and recvmsg() is a little tricky here. To successfully
         // receive attached file descriptors, we need to receive messages and
@@ -395,13 +379,6 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         res
     }
 
-    fn check_state(&self) -> Result<()> {
-        match self.error {
-            Some(e) => Err(Error::SocketBroken(std::io::Error::from_raw_os_error(e))),
-            None => Ok(()),
-        }
-    }
-
     fn check_msg_size(
         &self,
         hdr: &VhostUserMsgHeader<SlaveReq>,
@@ -457,7 +434,6 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         if mem::size_of::<T>() > MAX_MSG_SIZE {
             return Err(Error::InvalidParam);
         }
-        self.check_state()?;
         Ok(VhostUserMsgHeader::new(
             req.get_code(),
             VhostUserHeaderFlag::REPLY.bits(),

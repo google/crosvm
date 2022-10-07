@@ -78,16 +78,10 @@ mod tests {
     #[test]
     fn test_new_master_req_handler() {
         let backend = Arc::new(Mutex::new(MockMasterReqHandler {}));
-        let mut handler = MasterReqHandler::with_tube(backend, std::process::id()).unwrap();
+        let handler = MasterReqHandler::with_tube(backend, std::process::id()).unwrap();
 
         assert!(handler.get_read_notifier().as_raw_descriptor() != INVALID_DESCRIPTOR);
         assert!(handler.get_close_notifier().as_raw_descriptor() != INVALID_DESCRIPTOR);
-        handler.check_state().unwrap();
-
-        assert_eq!(handler.error, None);
-        handler.set_failed(libc::EAGAIN);
-        assert_eq!(handler.error, Some(libc::EAGAIN));
-        handler.check_state().unwrap_err();
     }
 
     #[cfg(feature = "device")]

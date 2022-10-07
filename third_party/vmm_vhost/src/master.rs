@@ -109,7 +109,6 @@ impl<E: Endpoint<MasterReq>> Master<E> {
                 acked_protocol_features: 0,
                 protocol_features_ready: false,
                 max_queue_num,
-                error: None,
                 hdr_flags: VhostUserHeaderFlag::empty(),
             })),
         }
@@ -639,8 +638,6 @@ struct MasterInternal<E: Endpoint<MasterReq>> {
     protocol_features_ready: bool,
     // Cached maxinum number of queues supported from the slave.
     max_queue_num: u64,
-    // Internal flag to mark failure state.
-    error: Option<i32>,
     // List of header flags.
     hdr_flags: VhostUserHeaderFlag,
 }
@@ -651,7 +648,6 @@ impl<E: Endpoint<MasterReq>> MasterInternal<E> {
         code: MasterReq,
         fds: Option<&[RawDescriptor]>,
     ) -> VhostUserResult<VhostUserMsgHeader<MasterReq>> {
-        self.check_state()?;
         let hdr = self.new_request_header(code, 0);
         self.main_sock.send_header(&hdr, fds)?;
         Ok(hdr)
@@ -666,8 +662,6 @@ impl<E: Endpoint<MasterReq>> MasterInternal<E> {
         if mem::size_of::<T>() > MAX_MSG_SIZE {
             return Err(VhostUserError::InvalidParam);
         }
-        self.check_state()?;
-
         let hdr = self.new_request_header(code, mem::size_of::<T>() as u32);
         self.main_sock.send_message(&hdr, msg, fds)?;
         Ok(hdr)
@@ -689,8 +683,6 @@ impl<E: Endpoint<MasterReq>> MasterInternal<E> {
                 return Err(VhostUserError::InvalidParam);
             }
         }
-        self.check_state()?;
-
         let hdr = self.new_request_header(code, len as u32);
         self.main_sock
             .send_message_with_payload(&hdr, msg, payload, fds)?;
@@ -706,8 +698,6 @@ impl<E: Endpoint<MasterReq>> MasterInternal<E> {
         if queue_index as u64 >= self.max_queue_num {
             return Err(VhostUserError::InvalidParam);
         }
-        self.check_state()?;
-
         // Bits (0-7) of the payload contain the vring index. Bit 8 is the invalid FD flag.
         // This flag is set when there is no file descriptor in the ancillary data. This signals
         // that polling will be used instead of waiting for the call.
@@ -724,8 +714,6 @@ impl<E: Endpoint<MasterReq>> MasterInternal<E> {
         if mem::size_of::<T>() > MAX_MSG_SIZE || hdr.is_reply() {
             return Err(VhostUserError::InvalidParam);
         }
-        self.check_state()?;
-
         let (reply, body, rfds) = self.main_sock.recv_body::<T>()?;
         if !reply.is_reply_for(hdr) || rfds.is_some() || !body.is_valid() {
             return Err(VhostUserError::InvalidMessage);
@@ -740,7 +728,6 @@ impl<E: Endpoint<MasterReq>> MasterInternal<E> {
         if mem::size_of::<T>() > MAX_MSG_SIZE || hdr.is_reply() {
             return Err(VhostUserError::InvalidParam);
         }
-        self.check_state()?;
 
         let (reply, body, files) = self.main_sock.recv_body::<T>()?;
         if !reply.is_reply_for(hdr) || files.is_none() || !body.is_valid() {
@@ -756,7 +743,6 @@ impl<E: Endpoint<MasterReq>> MasterInternal<E> {
         if mem::size_of::<T>() > MAX_MSG_SIZE || hdr.is_reply() {
             return Err(VhostUserError::InvalidParam);
         }
-        self.check_state()?;
 
         let (reply, body, buf, files) = self.main_sock.recv_payload_into_buf::<T>()?;
         if !reply.is_reply_for(hdr) || files.is_some() || !body.is_valid() {
@@ -772,7 +758,6 @@ impl<E: Endpoint<MasterReq>> MasterInternal<E> {
         {
             return Ok(());
         }
-        self.check_state()?;
 
         let (reply, body, rfds) = self.main_sock.recv_body::<VhostUserU64>()?;
         if !reply.is_reply_for(hdr) || rfds.is_some() || !body.is_valid() {
@@ -786,15 +771,6 @@ impl<E: Endpoint<MasterReq>> MasterInternal<E> {
 
     fn is_feature_mq_available(&self) -> bool {
         self.acked_protocol_features & VhostUserProtocolFeatures::MQ.bits() != 0
-    }
-
-    fn check_state(&self) -> VhostUserResult<()> {
-        match self.error {
-            Some(e) => Err(VhostUserError::SocketBroken(
-                std::io::Error::from_raw_os_error(e),
-            )),
-            None => Ok(()),
-        }
     }
 
     #[inline]

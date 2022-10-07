@@ -412,9 +412,6 @@ pub struct SlaveReqHandler<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> 
     acked_virtio_features: u64,
     protocol_features: VhostUserProtocolFeatures,
     acked_protocol_features: u64,
-
-    // whether the endpoint has encountered any failure
-    error: Option<i32>,
 }
 
 impl<S: VhostUserSlaveReqHandler> SlaveReqHandler<S, MasterReqEndpoint> {
@@ -440,7 +437,6 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
             acked_virtio_features: 0,
             protocol_features: VhostUserProtocolFeatures::empty(),
             acked_protocol_features: 0,
-            error: None,
         }
     }
 
@@ -451,11 +447,6 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
     /// * - `backend` - handler for requests from the master to the slave
     pub fn connect(path: &str, backend: S) -> Result<Self> {
         Ok(Self::new(Endpoint::<MasterReq>::connect(path)?, backend))
-    }
-
-    /// Mark endpoint as failed with specified error code.
-    pub fn set_failed(&mut self, error: i32) {
-        self.error = Some(error);
     }
 
     /// Main entrance to request from the communication channel.
@@ -472,9 +463,6 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
     /// * - `Err(InvalidMessage)`: the vmm sent a illegal message.
     /// * - other errors: failed to handle a request.
     pub fn handle_request(&mut self) -> Result<()> {
-        // Return error if the endpoint is already in failed state.
-        self.check_state()?;
-
         // The underlying communication channel is a Unix domain socket in
         // stream mode, and recvmsg() is a little tricky here. To successfully
         // receive attached file descriptors, we need to receive messages and
@@ -881,13 +869,6 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
         self.slave_req_helper.handle_vring_fd_request(buf, files)
     }
 
-    fn check_state(&self) -> Result<()> {
-        match self.error {
-            Some(e) => Err(Error::SocketBroken(std::io::Error::from_raw_os_error(e))),
-            None => Ok(()),
-        }
-    }
-
     fn check_request_size(
         &self,
         hdr: &VhostUserMsgHeader<MasterReq>,
@@ -975,11 +956,8 @@ mod tests {
         let (p1, _p2) = SystemStream::pair().unwrap();
         let endpoint = MasterReqEndpoint::from(p1);
         let backend = Mutex::new(DummySlaveReqHandler::new());
-        let mut handler = SlaveReqHandler::new(endpoint, backend);
+        let handler = SlaveReqHandler::new(endpoint, backend);
 
-        handler.check_state().unwrap();
-        handler.set_failed(libc::EAGAIN);
-        handler.check_state().unwrap_err();
         assert!(handler.as_raw_descriptor() != INVALID_DESCRIPTOR);
     }
 }
