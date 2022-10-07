@@ -733,6 +733,7 @@ where
                 ExitState::Crash => VmEventType::Crash,
                 // vcpu_loop doesn't exit with GuestPanic.
                 ExitState::GuestPanic => unreachable!(),
+                ExitState::WatchdogReset => VmEventType::WatchdogReset,
             };
             if let Err(e) = vm_evt_wrtube.send::<VmEventType>(&final_event_data) {
                 error!(

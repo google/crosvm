@@ -191,4 +191,5 @@ pub enum VmEventType {
     Reset,
     Crash,
     Panic(u8),
+    WatchdogReset,
 }

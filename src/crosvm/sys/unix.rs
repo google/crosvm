@@ -1213,6 +1213,7 @@ pub enum ExitState {
     Stop,
     Crash,
     GuestPanic,
+    WatchdogReset,
 }
 // Remove ranges in `guest_mem_layout` that overlap with ranges in `file_backed_mappings`.
 // Returns the updated guest memory layout.
@@ -2464,6 +2465,10 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                 pvpanic_code = PvPanicCode::from_u8(panic_code);
                                 info!("Guest reported panic [Code: {}]", pvpanic_code);
                                 break_to_wait = false;
+                            }
+                            VmEventType::WatchdogReset => {
+                                info!("vcpu stall detected");
+                                exit_state = ExitState::WatchdogReset;
                             }
                         },
                         Err(e) => {

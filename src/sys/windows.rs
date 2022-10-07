@@ -233,6 +233,7 @@ pub enum ExitState {
     Crash,
     #[allow(dead_code)]
     GuestPanic,
+    WatchdogReset,
 }
 
 type DeviceResult<T = VirtioDeviceStub> = Result<T>;
@@ -965,6 +966,10 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                             }
                             VmEventType::Panic(_) => {
                                 error!("got pvpanic event. this event is not expected on Windows.");
+                            }
+                            VmEventType::WatchdogReset => {
+                                info!("vcpu stall detected");
+                                exit_state = ExitState::WatchdogReset;
                             }
                         }
                         break 'poll;

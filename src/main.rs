@@ -90,6 +90,8 @@ enum CommandStatus {
     GuestPanic = 34,
     /// Invalid argument was given to crosvm.
     InvalidArgs = 35,
+    /// VM exit due to vcpu stall detection.
+    WatchdogReset = 36,
 }
 
 impl CommandStatus {
@@ -100,6 +102,7 @@ impl CommandStatus {
             Self::VmCrash => "exiting with crash",
             Self::GuestPanic => "exiting with guest panic",
             Self::InvalidArgs => "invalid argument",
+            Self::WatchdogReset => "exiting with watchdog reset",
         }
     }
 }
@@ -121,6 +124,10 @@ fn to_command_status(result: Result<sys::ExitState>) -> Result<CommandStatus> {
         Ok(sys::ExitState::GuestPanic) => {
             info!("crosvm has exited due to a kernel panic in guest");
             Ok(CommandStatus::GuestPanic)
+        }
+        Ok(sys::ExitState::WatchdogReset) => {
+            info!("crosvm has exited due to watchdog reboot");
+            Ok(CommandStatus::WatchdogReset)
         }
         Err(e) => {
             error!("crosvm has exited with error: {:#}", e);

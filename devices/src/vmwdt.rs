@@ -176,7 +176,7 @@ impl Vmwdt {
                         } else {
                             // The guest ran but it did not send the periodic event
                             if let Err(_e) =
-                                reset_evt_wrtube.send::<VmEventType>(&VmEventType::Reset)
+                                reset_evt_wrtube.send::<VmEventType>(&VmEventType::WatchdogReset)
                             {
                                 error!("failed to send reset event from vcpu {}", cpu_id)
                             }
@@ -409,7 +409,7 @@ mod tests {
         // Verify that our timer expired and the next_expiration_interval_ms changed
         match vm_evt_rdtube.recv::<VmEventType>() {
             Ok(vm_event) => {
-                assert!(vm_event == VmEventType::Reset);
+                assert!(vm_event == VmEventType::WatchdogReset);
             }
             Err(_e) => {
                 panic!();
