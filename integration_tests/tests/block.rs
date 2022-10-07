@@ -6,6 +6,7 @@
 
 pub mod fixture;
 
+use std::env;
 use std::process::Command;
 
 use fixture::Config;
@@ -16,10 +17,15 @@ fn prepare_disk_img() -> NamedTempFile {
     let mut disk = NamedTempFile::new().unwrap();
     disk.as_file_mut().set_len(1024 * 1024).unwrap();
 
+    // Add /sbin and /usr/sbin to PATH since some distributions put mkfs.ext4 in one of those
+    // directories but don't add them to non-root PATH.
+    let path = env::var("PATH").unwrap();
+    let path = [&path, "/sbin", "/usr/sbin"].join(":");
+
     // TODO(b/243127910): Use `mkfs.ext4 -d` to include test data.
-    Command::new("sudo")
-        .arg("mkfs.ext4")
+    Command::new("mkfs.ext4")
         .arg(disk.path().to_str().unwrap())
+        .env("PATH", path)
         .output()
         .expect("failed to execute process");
     disk
