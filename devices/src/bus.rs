@@ -574,8 +574,7 @@ mod tests {
         }
 
         fn restore(&mut self, data: &str) -> AnyhowResult<()> {
-            let deser = serde_json::from_str(data).context("error deserializing");
-            *self = deser.unwrap();
+            *self = serde_json::from_str(data).context("error deserializing")?;
             Ok(())
         }
 
@@ -631,8 +630,7 @@ mod tests {
         }
 
         fn restore(&mut self, data: &str) -> AnyhowResult<()> {
-            let deser = serde_json::from_str(data).context("error deserializing");
-            *self = deser.unwrap();
+            *self = serde_json::from_str(data).context("error deserializing")?;
             Ok(())
         }
 
