@@ -10,7 +10,7 @@ exit_group: 1
 futex: 1
 kill: 1
 lseek: 1
-mprotect: 1
+mprotect: arg2 in ~PROT_EXEC || arg2 in ~PROT_WRITE
 munmap: 1
 read: 1
 recvfrom: 1
@@ -39,7 +39,7 @@ getrlimit: 1
 ioctl: arg1 == 0x800454CF
 madvise: 1
 memfd_create: 1
-mmap: 1
+mmap: arg2 in ~PROT_EXEC || arg2 in ~PROT_WRITE
 open: 1
 openat: 1
 prlimit64: arg2 == 0 && arg3 != 0
