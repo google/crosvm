@@ -712,6 +712,7 @@ impl IntoRawFd for UnixSeqpacket {
 /// Like a `UnixListener` but for accepting `UnixSeqpacket` type sockets.
 pub struct UnixSeqpacketListener {
     fd: RawFd,
+    no_path: bool,
 }
 
 impl UnixSeqpacketListener {
@@ -746,7 +747,7 @@ impl UnixSeqpacketListener {
                     "specified descriptor is not a listening socket",
                 ));
             }
-            return Ok(UnixSeqpacketListener { fd });
+            return Ok(UnixSeqpacketListener { fd, no_path: true });
         }
         // Safe socket initialization since we handle the returned error.
         let fd = unsafe {
@@ -769,7 +770,7 @@ impl UnixSeqpacketListener {
                 return Err(io::Error::last_os_error());
             }
         }
-        Ok(UnixSeqpacketListener { fd })
+        Ok(UnixSeqpacketListener { fd, no_path: false })
     }
 
     /// Blocks for and accepts a new incoming connection and returns the socket associated with that
@@ -819,6 +820,12 @@ impl UnixSeqpacketListener {
             sun_family: libc::AF_UNIX as libc::sa_family_t,
             sun_path: [0; 108],
         };
+        if self.no_path {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "socket has no path",
+            ));
+        }
         let sun_path_offset = (&addr.sun_path as *const _ as usize
             - &addr.sun_family as *const _ as usize)
             as libc::socklen_t;
@@ -880,7 +887,7 @@ impl Drop for UnixSeqpacketListener {
 impl FromRawFd for UnixSeqpacketListener {
     // Unsafe in drop function
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
-        Self { fd }
+        Self { fd, no_path: false }
     }
 }
 
@@ -1004,18 +1011,22 @@ mod tests {
             UnixSeqpacketListener::bind(&socket_path)
                 .expect("failed to create UnixSeqpacketListener"),
         );
-        // UnixSeqpacketListener should succeed on a valid listening desriptor.
+        // UnixSeqpacketListener should succeed on a valid listening descriptor.
         let good_dup = UnixSeqpacketListener::bind(&format!("/proc/self/fd/{}", unsafe {
             libc::dup(listener.as_raw_fd())
         }));
-        good_dup.expect("failed to create dup UnixSeqpacketListener");
+        let good_dup_path = good_dup
+            .expect("failed to create dup UnixSeqpacketListener")
+            .path();
+        // Path of socket created by descriptor should be hidden.
+        assert!(good_dup_path.is_err());
         // UnixSeqpacketListener must fail on an existing non-listener socket.
         let s1 =
             UnixSeqpacket::connect(socket_path.as_path()).expect("UnixSeqpacket::connect failed");
         let bad_dup = UnixSeqpacketListener::bind(&format!("/proc/self/fd/{}", unsafe {
             libc::dup(s1.as_raw_fd())
         }));
-        assert!(bad_dup.is_err())
+        assert!(bad_dup.is_err());
     }
 
     #[test]
