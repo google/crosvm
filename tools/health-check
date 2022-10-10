@@ -84,7 +84,7 @@ def check_rust_format(context: CheckContext):
         rustfmt = cmd(
             cmd("rustup +nightly which rustfmt"),
             "--config imports_granularity=item,group_imports=StdExternalCrate",
-        ).with_color_flag()
+        )
     else:
         rustfmt = cmd(cmd("rustup which rustfmt"))
     parallel(
