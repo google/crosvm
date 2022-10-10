@@ -110,15 +110,11 @@ def check_rust_lockfiles(_: CheckContext):
 
 # These crosvm features are currently not built upstream. Do not add to this list.
 KNOWN_DISABLED_FEATURES = [
-    "chromeos",
     "default-no-sandbox",
     "direct",
     "gfxstream",
     "libvda",
-    "panic-memfd",
     "plugin-render-server",
-    "protos",
-    "scudo",
     "vaapi",
     "video-encoder",
     "whpx",
@@ -134,8 +130,9 @@ def check_rust_features(_: CheckContext):
     def collect_features(feature_name: str) -> Generator[str, None, None]:
         yield feature_name
         for feature in features[feature_name]:
-            if feature in features:
-                yield from collect_features(feature)
+            name = feature.split("/")[0]
+            if name in features:
+                yield from collect_features(name)
 
     all_platform_features = set(
         (

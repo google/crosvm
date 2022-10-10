@@ -115,6 +115,8 @@ exclude = [
 all-linux = [
     # TODO(b/203105868): Enable remaining features on linux builds.
     "arc_quota",
+    "chromeos",
+    "panic-memfd",
     "audio_cras",
     "composite-disk",
     "crash-report",
@@ -163,7 +165,7 @@ linux-armhf = [
     "gdb",
     "tpm",
     ]
-linux-x86_64 = ["all-linux", "plugin"]
+linux-x86_64 = ["all-linux", "plugin", "scudo"]
 linux-aarch64 = ["all-linux"]
 panic-memfd = []
 plugin = ["protos/plugin", "crosvm_plugin", "kvm", "kvm_sys", "protobuf"]
