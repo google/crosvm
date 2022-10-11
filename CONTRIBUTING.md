@@ -88,6 +88,45 @@ redistribute your contributions as part of the project. Head over to
 You generally only need to submit a CLA once, so if you've already submitted one (even if it was for
 a different project), you probably don't need to do it again.
 
+### Commit Messages
+
+As for commit messages, we follow
+[ChromeOS's guideline](https://chromium.googlesource.com/chromiumos/docs/+/HEAD/contributing.md#commit-messages)
+in general.
+
+Here is an example of a good commit message:
+
+```
+devices: vhost: user: vmm: Add Connection type
+
+This abstracts away the cross-platform differences: cfg(unix) uses a
+Unix domain stream socket to connect to the vhost-user backend, and
+cfg(windows) uses a Tube.
+
+BUG=b:249361790
+TEST=tools/presubmit --all
+
+Change-Id: I47651060c2ce3a7e9f850b7ed9af8bd035f82de6
+```
+
+- The first line is a subject that starts with a tag that represents which components your commit
+  relates to. Tags are usually a name of the crate you modified such as `devices:` or `base:`. If
+  you only modified a specific component in a crate, you can specify the path to the component as a
+  tag like `devices: vhost: user:`. If your commit modified multiple crates, specify the crate your
+  main change exists. The subject should be no more than 50 characters, including any tags.
+- The body should consist of a motivation followed by an impact/action. The body text should be
+  wrapped to 72 characters.
+- `BUG` lines are used to specify an associated issue number. If the issue is filed at
+  [the Google's issue tracker](https://issuetracker.google.com/), write `BUG=b:<bug number>`. If no
+  issue is associated, write `BUG=None`. You can have multiple `BUG` lines.
+- `TEST` lines are used to describe how you tested your commit in a free form. You can have multiple
+  `TEST` lines.
+- `Change-Id` is used to identify your change on Gerrit. It's inserted by the gerrit commit message
+  hook as explained in
+  [the previous section](https://crosvm.dev/book/contributing/index.html#prerequisites). If a new
+  commit is uploaded with the same `Change-Id` with an existing CL's one, the gerrit will recognize
+  the new commit as a new patchset of the existing CL.
+
 ### Uploading changes
 
 To make changes to crosvm, start your work on a new branch tracking `origin/main`.
