@@ -9,4 +9,7 @@
 #![deny(missing_docs)]
 
 mod file;
-mod userfaultfd;
+// this is public only for integration tests.
+pub mod page_handler;
+// this is public only for integration tests.
+pub mod userfaultfd;
