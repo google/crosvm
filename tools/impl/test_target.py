@@ -119,6 +119,15 @@ class Ssh:
         return subprocess.run(scp_cmd, check=check)
 
 
+SHORTHANDS = {
+    "mingw64": "x86_64-pc-windows-gnu",
+    "msvc64": "x86_64-pc-windows-msvc",
+    "armhf": "armv7-unknown-linux-gnueabihf",
+    "aarch64": "aarch64-unknown-linux-gnu",
+    "x86_64": "x86_64-unknown-linux-gnu",
+}
+
+
 class Triple(NamedTuple):
     """
     Build triple in cargo format.
@@ -137,16 +146,8 @@ class Triple(NamedTuple):
         "These shorthands make it easier to specify triples on the command line."
         if "-" in shorthand:
             triple = shorthand
-        elif shorthand == "mingw64":
-            triple = "x86_64-pc-windows-gnu"
-        elif shorthand == "msvc64":
-            triple = "x86_64-pc-windows-msvc"
-        elif shorthand == "armhf":
-            triple = "armv7-unknown-linux-gnueabihf"
-        elif shorthand == "aarch64":
-            triple = "aarch64-unknown-linux-gnu"
-        elif shorthand == "x86_64":
-            triple = "x86_64-unknown-linux-gnu"
+        elif shorthand in SHORTHANDS:
+            triple = SHORTHANDS[shorthand]
         else:
             raise Exception(f"Not a valid build triple shorthand: {shorthand}")
         return cls.from_str(triple)
@@ -179,6 +180,14 @@ class Triple(NamedTuple):
         if not match:
             raise Exception(f"Cannot parse rustc info: {rustc_info}")
         return cls.from_str(match.group(1))
+
+    @property
+    def feature_flag(self):
+        triple_to_shorthand = {v: k for k, v in SHORTHANDS.items()}
+        shorthand = triple_to_shorthand.get(str(self))
+        if not shorthand:
+            raise Exception(f"No feature set for triple {self}")
+        return f"all-{shorthand}"
 
     def __str__(self):
         return f"{self.arch}-{self.vendor}-{self.sys}-{self.abi}"

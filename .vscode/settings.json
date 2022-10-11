@@ -4,6 +4,6 @@
     "python.analysis.typeCheckingMode": "strict",
     // Rust
     "rust-analyzer.cargo.features": [
-        "all-linux"
+        "all-x86_64"
     ]
 }

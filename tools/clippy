@@ -15,14 +15,10 @@ from impl.test_runner import get_workspace_excludes
 from impl.test_target import Triple
 
 clippy = cmd("cargo clippy").with_color_flag()
+triple = Triple.host_default()
 
-excluded_crates: list[str] = list(get_workspace_excludes(Triple.host_default()))
-features: str = ""
-
-if os.name == "posix":
-    features = "--features=all-linux"
-elif os.name != "nt":
-    raise Exception(f"Unsupported build target: {os.name}")
+excluded_crates: list[str] = list(get_workspace_excludes(triple))
+features: str = f"--features={triple.feature_flag}"
 
 
 def is_crate_excluded(crate: str) -> bool:

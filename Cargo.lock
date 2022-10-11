@@ -438,6 +438,7 @@ dependencies = [
  "data_model",
  "devices",
  "disk",
+ "document-features",
  "enumn",
  "futures",
  "gdbstub",
@@ -664,6 +665,15 @@ dependencies = [
  "thiserror",
  "uuid",
  "vm_memory",
+]
+
+[[package]]
+name = "document-features"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3267e1ade4f1f6ddd35fed44a04b6514e244ffeda90c6a14a9ee30f9c9fd7a1"
+dependencies = [
+ "litrs",
 ]
 
 [[package]]
@@ -1167,6 +1177,12 @@ dependencies = [
  "data_model",
  "libc",
 ]
+
+[[package]]
+name = "litrs"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9275e0933cf8bb20f008924c0cb07a0692fe54d8064996520bf998de9eb79aa"
 
 [[package]]
 name = "log"

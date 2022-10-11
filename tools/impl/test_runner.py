@@ -249,7 +249,7 @@ def build_all_binaries(target: TestTarget, crosvm_direct: bool, instrument_cover
         build_env["RUSTFLAGS"] = "-C instrument-coverage"
 
     print("Building crosvm workspace")
-    features = BUILD_FEATURES[str(target.build_triple)]
+    features = target.build_triple.feature_flag
     extra_args: List[str] = []
     if crosvm_direct:
         features += ",direct"

@@ -180,6 +180,7 @@ fn build_assembly(src: &str) -> Vec<u8> {
 fn format_as_hex(data: &[u8]) -> String {
     let mut out = String::new();
     for (i, d) in data.iter().enumerate() {
+        #[allow(clippy::format_push_string)]
         out.push_str(&format!("0x{:02x}", d));
         if i < data.len() - 1 {
             out.push(',')

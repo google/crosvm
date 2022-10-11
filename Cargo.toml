@@ -112,39 +112,22 @@ exclude = [
 ]
 
 [features]
-all-linux = [
-    # TODO(b/203105868): Enable remaining features on linux builds.
-    "arc_quota",
-    "chromeos",
-    "panic-memfd",
-    "audio_cras",
-    "composite-disk",
-    "crash-report",
-    "default",
-    "ffmpeg",
-    "gdb",
-    "power-monitor-powerd",
-    "slirp",
-    "tpm",
-    "vtpm",
-    "video-decoder",
-    "virgl_renderer_next",
-    "virgl_renderer",
-    "wl-dmabuf",
-    "x",
-    ]
-win64 = [ "balloon", "crash_report", "haxm", "slirp", "stats" ]
-arc_quota = ["devices/arc_quota"]
-audio = ["devices/audio"]
-audio_cras = ["devices/audio_cras"]
-balloon = ["devices/balloon", "vm_control/balloon"]
-chromeos = ["base/chromeos", "audio_cras", "devices/chromeos", "panic-memfd", "arc_quota", "vtpm"]
-composite-disk = ["protos/composite-disk", "protobuf", "disk/composite-disk"]
-crash-report = ["broker_ipc/crash-report", "crash_report"]
+## Default features of crosvm. This selection is somewhat arbitrary for historical reasons.
 default = ["audio", "balloon", "gpu", "qcow", "usb"]
-default-no-sandbox = []
-direct = ["balloon", "devices/direct", "arch/direct", "x86_64/direct"]
-ffmpeg = ["devices/ffmpeg"]
+
+## Enables cross-platform audio devices
+audio = ["devices/audio"]
+
+## Enables the virtio-balloon device which allows dynamic scaling of memory via vm_control commands.
+## See [Balloon Device](https://crosvm.dev/book/devices/balloon.html) for more information.
+balloon = ["devices/balloon", "vm_control/balloon"]
+
+## Enables the composite-disk format, which adds protobufs as a dependency of the build. This format
+## is intended to speed up crosvm's usage in CI environments that might otherwise have to
+## concatenate large file system images into a single disk image.
+composite-disk = ["protos/composite-disk", "protobuf", "disk/composite-disk"]
+
+## Enables using gdb to debug the guest kernel.
 gdb = [
     "aarch64/gdb",
     "arch/gdb",
@@ -153,36 +136,184 @@ gdb = [
     "vm_control/gdb",
     "x86_64/gdb",
 ]
-gfxstream = ["devices/gfxstream"]
+
+## Enables a panic handler that writes panic info to the RUST_PANIC_SIG memfd.
+panic-memfd = []
+
+## Enables the use of the qcow format for block devices.
+qcow = ["disk/qcow"]
+
+## Enables collection of VM statistics.
+stats = ["devices/stats"]
+
+## Enables trusted platform module emulation for the guest. This relies on the software emulated
+## TPM implementation from libtpm2 which is suited only for testing purposes.
+tpm = ["devices/tpm"]
+
+## Enables USB host device passthrough via an emulated XHCI controller.
+usb = ["devices/usb"]
+
+## Enables the non-upstream virtio wayland protocol. This can be used in conjuction with the gpu
+## feature to enable a zero-copy display pipeline.
+wl-dmabuf = ["devices/minigbm"]
+
+## Enables the usage of the X11 protocol for display on the host.
+x = ["devices/x"]
+
+#! ### Graphics features
+
+## Enables basic virtio-gpu support. This includes basic display and input features, but lacks 3D
+## acceleration in the absence of other crosvm features.
 gpu = ["devices/gpu", "gpu_display", "vm_control/gpu"]
-haxm = ["hypervisor/haxm"]
-whpx = ["devices/whpx", "hypervisor/whpx"]
+
+## Enables 3D acceleration for guest via the gfxstream protocol over virtio-gpu. This is used for
+## compatibility with the Android Emulator. The protocol provides the best speed and compatibility
+## with GL/vulkan versions by forwarding the guest's calls to the host's graphics libraries and GPU.
+## However, this means the sandbox is not enabled for the virtio-gpu device.
+## Note: This feature is currently not enabled and tested in upstream crosvm.
+gfxstream = ["devices/gfxstream"]
+
+## Enables 3D acceleration for the guest via the virglrenderer library over virtio-gpu.
+virgl_renderer = ["devices/virgl_renderer"]
+
+## Enables in development features of virglrenderer to support newer OpenGL versions.
+virgl_renderer_next = ["devices/virgl_renderer_next", "rutabaga_gfx/virgl_renderer_next"]
+
+#! ### Video features
+#!
+#! See [Video Device](https://crosvm.dev/book/devices/video.html) for more information.
+
+## Enables the video decoding device
+video-decoder = ["devices/video-decoder"]
+
+## Enables the video encoding device
+video-encoder = ["devices/video-encoder"]
+
+## Enables the ffmpeg backend of video devices.
+ffmpeg = ["devices/ffmpeg"]
+
+# Enables the VAAPI backend of video devices.
 vaapi = ["devices/vaapi"]
+
+#! ### Windows-specific feature flags
+#!
+#! These feature flags are only available on Windows builds of crosvm.
+
+## Enables the use of the HAXM hypervisor
+haxm = ["hypervisor/haxm"]
+
+## Enables the use of the WHPX hypervisor
+whpx = ["devices/whpx", "hypervisor/whpx"]
+
+## Enables a libslirp based network device. Currently only supported on Windows.
+slirp = ["devices/slirp", "net_util/slirp"]
+
+
+#! ### Non-additive feature flags
+#!
+#! These feature flags change the behavior of crosvm instead of adding functionality.
+#! This is deprecated and will be phased out.
+
+## Run crosvm with --disable-sandbox by default.
+default-no-sandbox = []
+
+## Special build of crosvm for ChromeOS that only supports direct device passthrough.
+direct = ["balloon", "devices/direct", "arch/direct", "x86_64/direct"]
+
+#! ### Project specific features
+#!
+#! These features are specific to downstream projects and may not be functional or useful
+#! for standard linux builds of crosvm.
+#! They are however enabled in upstream builds for compile and test coverage in CI.
+
+#! #### ChromeOS
+#!
+#! These features will only be functional in ChromeOS builds running on ChromeOS.
+
+## Enables virtio-fs quota reporting for ARCVM. Requires access to the
+## org.chromium.ArcQuota dbus service.
+arc_quota = ["devices/arc_quota"]
+
+## Enables use of the ChromeOS audio server. ChromeOS builds will replace libcras_stub with an
+## implementation that talks to the audio server. In upstream builds, using this option will panic.
+audio_cras = ["devices/audio_cras"]
+
+## Enables the VDA backend of the video devices. This feature requires the ChromeOS only
+## libvda library and can be compiled but not linked. See b/244619291.
 libvda = ["devices/libvda"]
-linux-armhf = [
+
+## Enables the crosvm plugin API where functionality is provided via a FFI plugin API.
+## This feature is used to integrate Parallels with crosvm and is not functional upstream.
+plugin = ["protos/plugin", "crosvm_plugin", "kvm", "kvm_sys", "protobuf"]
+
+## Defaults to use virgl_renderer render server when running in plugin mode.
+plugin-render-server = []
+
+## Enables battery reporting via the ChromeOS powerd. Requires access to the
+## org.chromium.PowerManager dbus service.
+power-monitor-powerd = ["arch/power-monitor-powerd"]
+
+## Enables a virtualized TPM device that uses the org.chromium.Vtpm dbus service.
+vtpm = ["devices/vtpm"]
+
+#! #### Windows-future
+#!
+#! These features will only be functional in future builds of windows crosvm.
+
+## Enables reporting of crosvm crashes
+crash-report = ["broker_ipc/crash-report", "crash_report"]
+
+#! ### Platform Feature Sets
+#!
+#! These feature flags enable all features that are supported for a given platform.
+#! Note that these may include project specific features that will not be functional at runtime but
+#! are enabled for compile and test coverage.
+
+## All features that are compiled and tested for aarch64
+all-aarch64 = [
+    "arc_quota",
+    "audio_cras",
+    "chromeos",
+    "composite-disk",
+    "crash-report",
+    "default",
+    "ffmpeg",
+    "gdb",
+    "panic-memfd",
+    "power-monitor-powerd",
+    "slirp",
+    "tpm",
+    "video-decoder",
+    "virgl_renderer_next",
+    "virgl_renderer",
+    "vtpm",
+    "wl-dmabuf",
+    "x",
+]
+
+## All features that are compiled and tested for x86_64
+all-x86_64 = ["all-aarch64", "plugin", "scudo"]
+
+## All features that are compiled and tested for armhf
+## Note: This platform is deprecated and will be phased out.
+all-armhf = [
     "composite-disk",
     "default",
     "gdb",
     "tpm",
     ]
-linux-x86_64 = ["all-linux", "plugin", "scudo"]
-linux-aarch64 = ["all-linux"]
-panic-memfd = []
-plugin = ["protos/plugin", "crosvm_plugin", "kvm", "kvm_sys", "protobuf"]
-plugin-render-server = []
-power-monitor-powerd = ["arch/power-monitor-powerd"]
-qcow = ["disk/qcow"]
-slirp = ["devices/slirp", "net_util/slirp"]
-stats = ["devices/stats"]
-tpm = ["devices/tpm"]
-usb = ["devices/usb"]
-video-decoder = ["devices/video-decoder"]
-video-encoder = ["devices/video-encoder"]
-virgl_renderer = ["devices/virgl_renderer"]
-virgl_renderer_next = ["devices/virgl_renderer_next", "rutabaga_gfx/virgl_renderer_next"]
-vtpm = ["devices/vtpm"]
-wl-dmabuf = ["devices/minigbm"]
-x = ["devices/x"]
+
+## All features that are compiled and tested for mingw64
+all-mingw64 = [ "balloon", "crash_report", "haxm", "slirp", "stats" ]
+
+## All features that are compiled and tested for msvc64
+all-msvc64 = [ "all-mingw64" ]
+
+## All features that are enabled in ChromeOS builds.
+all-chromeos = ["base/chromeos", "audio_cras", "devices/chromeos", "panic-memfd", "arc_quota", "vtpm"]
+
+# Deprecated feature flag. Remove after ChromeOS-side is updated.
+chromeos = ["all-chromeos"]
 
 [dependencies]
 anyhow = "1.0.32"
@@ -201,6 +332,7 @@ crosvm_plugin = { path = "crosvm_plugin", optional = true }
 data_model = "*"
 devices = { path = "devices" }
 disk = { path = "disk" }
+document-features = "0.2"
 enumn = "0.1.0"
 gdbstub = { version = "0.6.3", optional = true }
 gdbstub_arch = { version = "0.2.4", optional = true }
