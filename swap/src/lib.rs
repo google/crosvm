@@ -9,4 +9,5 @@
 #![deny(missing_docs)]
 
 mod file;
+mod page_handler;
 mod userfaultfd;
