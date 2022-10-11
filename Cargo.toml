@@ -246,9 +246,6 @@ libvda = ["devices/libvda"]
 ## This feature is used to integrate Parallels with crosvm and is not functional upstream.
 plugin = ["protos/plugin", "crosvm_plugin", "kvm", "kvm_sys", "protobuf"]
 
-## Defaults to use virgl_renderer render server when running in plugin mode.
-plugin-render-server = []
-
 ## Enables battery reporting via the ChromeOS powerd. Requires access to the
 ## org.chromium.PowerManager dbus service.
 power-monitor-powerd = ["arch/power-monitor-powerd"]

@@ -1389,19 +1389,6 @@ fn to_crosvm_rc<T>(r: result::Result<T, c_int>) -> c_int {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn crosvm_get_render_server_fd() -> c_int {
-    let fd = match env::var(CROSVM_GPU_SERVER_FD_ENV) {
-        Ok(v) => v,
-        _ => return -EINVAL,
-    };
-
-    match fd.parse() {
-        Ok(v) if v >= 0 => v,
-        _ => -EINVAL,
-    }
-}
-
-#[no_mangle]
 pub unsafe extern "C" fn crosvm_connect(out: *mut *mut crosvm) -> c_int {
     let _u = record(Stat::Connect);
     let socket_name = match env::var(CROSVM_SOCKET_ENV) {

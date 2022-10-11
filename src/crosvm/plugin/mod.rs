@@ -37,7 +37,6 @@ use base::register_rt_signal_handler;
 use base::validate_raw_descriptor;
 use base::warn;
 use base::AsRawDescriptor;
-use base::Descriptor;
 use base::Error as SysError;
 use base::Event;
 use base::EventToken;
@@ -97,8 +96,6 @@ use crate::Config;
 
 const MAX_DATAGRAM_SIZE: usize = 4096;
 const MAX_VCPU_DATAGRAM_SIZE: usize = 0x40000;
-#[cfg(feature = "virgl_renderer_next")]
-const CROSVM_GPU_SERVER_FD_ENV: &str = "CROSVM_GPU_SERVER_FD";
 
 /// An error that occurs when communicating with the plugin process.
 #[sorted]
@@ -566,42 +563,6 @@ pub fn run_config(cfg: Config) -> Result<()> {
     add_fd_flags(stderr_rd.as_raw_descriptor(), O_NONBLOCK)
         .context("error marking stderr nonblocking")?;
 
-    #[allow(unused_mut)]
-    let mut env_fds: Vec<(String, Descriptor)> = Vec::default();
-
-    #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
-    // Hold on to the render server jail so it keeps running until we exit run_config()
-    let (_render_server_jail, _render_server_fd) = {
-        let _default_render_server_params = crate::crosvm::sys::GpuRenderServerParameters {
-            path: std::path::PathBuf::from("/usr/libexec/virgl_render_server"),
-            cache_path: None,
-            cache_size: None,
-        };
-
-        let gpu_render_server_parameters =
-            if let Some(parameters) = &cfg.gpu_render_server_parameters {
-                Some(parameters)
-            } else if cfg!(feature = "plugin-render-server") {
-                Some(&_default_render_server_params)
-            } else {
-                None
-            };
-
-        if let Some(parameters) = gpu_render_server_parameters {
-            let (jail, fd) = crate::crosvm::sys::start_gpu_render_server(&cfg, parameters)?;
-            env_fds.push((
-                CROSVM_GPU_SERVER_FD_ENV.to_string(),
-                Descriptor(fd.as_raw_descriptor()),
-            ));
-            (
-                Some(crate::crosvm::sys::jail_helpers::ScopedMinijail(jail)),
-                Some(fd),
-            )
-        } else {
-            (None, None)
-        }
-    };
-
     let jail = if let Some(jail_config) = &cfg.jail_config {
         // An empty directory for jailed plugin pivot root.
         let root_path = match &cfg.plugin_root {
@@ -718,14 +679,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
         .context("failed to create kvm irqchip")?;
     vm.create_pit().context("failed to create kvm PIT")?;
 
-    let mut plugin = Process::new(
-        vcpu_count,
-        plugin_path,
-        &plugin_args,
-        jail,
-        stderr_wr,
-        env_fds,
-    )?;
+    let mut plugin = Process::new(vcpu_count, plugin_path, &plugin_args, jail, stderr_wr)?;
     // Now that the jail for the plugin has been created and we had a chance to adjust gids there,
     // we can drop all our capabilities in case we had any.
     drop_capabilities().context("failed to drop process capabilities")?;

@@ -176,15 +176,12 @@ impl Process {
     /// * `args`: arguments to plugin executable
     /// * `jail`: jail to launch plugin in. If None plugin will just be spawned as a child
     /// * `stderr`: File to redirect stderr of plugin process to
-    /// * `env_fds`: collection of (Name, FD) where FD will be inherited by spawned process
-    ///             and added to child's environment as a variable Name
     pub fn new(
         cpu_count: u32,
         cmd: &Path,
         args: &[&str],
         jail: Option<Minijail>,
         stderr: File,
-        env_fds: Vec<(String, Descriptor)>,
     ) -> Result<Process> {
         let (request_socket, child_socket) =
             new_seqpacket_pair().context("error creating main request socket")?;
@@ -203,49 +200,29 @@ impl Process {
                     CROSVM_SOCKET_ENV,
                     child_socket.as_raw_descriptor().to_string(),
                 );
-                env_fds
-                    .iter()
-                    .for_each(|(k, fd)| set_var(k, fd.as_raw_descriptor().to_string()));
                 jail.run_remap(
                     cmd,
-                    &env_fds
-                        .into_iter()
-                        .map(|(_, fd)| (fd.as_raw_descriptor(), fd.as_raw_descriptor()))
-                        .chain(
-                            [
-                                (stderr.as_raw_descriptor(), STDERR_FILENO),
-                                (
-                                    child_socket.as_raw_descriptor(),
-                                    child_socket.as_raw_descriptor(),
-                                ),
-                            ]
-                            .into_iter(),
-                        )
-                        .collect::<Vec<_>>(),
+                    &[
+                        (stderr.as_raw_descriptor(), STDERR_FILENO),
+                        (
+                            child_socket.as_raw_descriptor(),
+                            child_socket.as_raw_descriptor(),
+                        ),
+                    ],
                     args,
                 )
                 .context("failed to run plugin jail")?
             }
-            None => {
-                for (_, fd) in env_fds.iter() {
-                    base::clear_descriptor_cloexec(fd)?;
-                }
-                Command::new(cmd)
-                    .args(args)
-                    .envs(
-                        env_fds
-                            .into_iter()
-                            .map(|(k, fd)| (k, { fd.as_raw_descriptor().to_string() })),
-                    )
-                    .env(
-                        CROSVM_SOCKET_ENV,
-                        child_socket.as_raw_descriptor().to_string(),
-                    )
-                    .stderr(stderr)
-                    .spawn()
-                    .context("failed to spawn plugin")?
-                    .id() as pid_t
-            }
+            None => Command::new(cmd)
+                .args(args)
+                .env(
+                    "CROSVM_SOCKET",
+                    child_socket.as_raw_descriptor().to_string(),
+                )
+                .stderr(stderr)
+                .spawn()
+                .context("failed to spawn plugin")?
+                .id() as pid_t,
         };
 
         Ok(Process {

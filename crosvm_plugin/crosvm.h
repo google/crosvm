@@ -175,11 +175,6 @@ static_assert(sizeof(struct crosvm_net_config) == 20,
 #endif
 
 /*
- * Gets fd for the gpu server.
- */
-int crosvm_get_render_server_fd(void);
-
-/*
  * Gets the network configuration.
  */
 int crosvm_net_get_config(struct crosvm*, struct crosvm_net_config*);
