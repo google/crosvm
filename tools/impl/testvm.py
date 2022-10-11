@@ -17,8 +17,6 @@ from contextlib import closing
 from pathlib import Path
 from typing import Dict, Iterable, List, Literal, Optional, Tuple
 
-# Cache busting 1
-
 USAGE = """%(prog)s {command} [options]
 
 Manages VMs for testing crosvm.

@@ -16,6 +16,8 @@ sudo apt-get install --yes --no-install-recommends \
     libepoxy-dev:arm64 \
     libssl-dev:arm64 \
     libswscale-dev:arm64 \
+    libudev-dev:arm64 \
+    libva-dev:arm64 \
     libwayland-dev:arm64 \
     libxext-dev:arm64 \
     qemu-efi-aarch64 \

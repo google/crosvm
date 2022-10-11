@@ -20,13 +20,6 @@ users:
 
 preserve_hostname: true
 
-{% if v1.machine == 'aarch64' -%}
-# This needs to run as bootcmd to preceed processing `packages` section
-bootcmd:
-    - dpkg --add-architecture armhf
-{%- endif %}
-
-
 # Runtime dependencies of crosvm binaries.
 # Note: Keep in sync with ./install-[aarch64-]deps.sh
 packages:
@@ -38,19 +31,11 @@ packages:
     - libepoxy0
     - libssl3
     - libswscale6
+    - libva2
     - libwayland-client0
     - libx11-6
     - libxext6
     - rsync
-{% if v1.machine == 'aarch64' %}
-    # We run armhf tests on the aarch64 VM. But only some, install the needed runtime
-    # dependencies for those.
-    - libcap2:armhf
-    - libssl3:armhf
-    - libx11-6:armhf
-    - libwayland-client0:armhf
-    - libepoxy0:armhf
-{%- endif %}
 
 # Commands to run once during setup
 runcmd:

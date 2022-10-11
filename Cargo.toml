@@ -280,6 +280,7 @@ all-aarch64 = [
     "power-monitor-powerd",
     "slirp",
     "tpm",
+    "vaapi",
     "video-decoder",
     "virgl_renderer_next",
     "virgl_renderer",

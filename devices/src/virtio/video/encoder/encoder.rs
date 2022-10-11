@@ -40,6 +40,7 @@ pub enum EncoderEvent {
     FlushResponse {
         flush_done: bool,
     },
+    #[allow(dead_code)]
     NotifyError {
         error: VideoError,
     },
