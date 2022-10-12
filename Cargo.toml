@@ -249,6 +249,10 @@ audio_cras = ["devices/audio_cras"]
 ## libvda library and can be compiled but not linked. See b/244619291.
 libvda = ["devices/libvda"]
 
+## Builds the VDA video backend with a set of no-ops stubs instead of linking with libvda, which is
+## only available on ChromeOS.
+libvda-stub = ["devices/libvda-stub"]
+
 ## Enables the crosvm plugin API where functionality is provided via a FFI plugin API.
 ## This feature is used to integrate Parallels with crosvm and is not functional upstream.
 plugin = ["protos/plugin", "crosvm_plugin", "kvm", "kvm_sys", "protobuf"]
@@ -285,6 +289,7 @@ all-aarch64 = [
     "gdb",
     "gfxstream",
     "gfxstream_stub",
+    "libvda-stub",
     "panic-memfd",
     "power-monitor-powerd",
     "slirp",

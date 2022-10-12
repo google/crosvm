@@ -5,6 +5,9 @@ authors = ["The Chromium OS Authors"]
 edition = "2021"
 links = "vda"
 
+[features]
+libvda-stub = []
+
 [dependencies]
 enumn = "0.1.0"
 libc = "*"
