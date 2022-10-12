@@ -36,6 +36,13 @@ cfg_if::cfg_if! {
 }
 
 cfg_if::cfg_if! {
+    if #[cfg(all(unix, any(target_arch = "arm", target_arch = "aarch64"), feature = "gunyah"))] {
+        mod gunyah;
+        pub use self::gunyah::GunyahIrqChip;
+    }
+}
+
+cfg_if::cfg_if! {
     if #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] {
         mod x86_64;
         pub use x86_64::*;

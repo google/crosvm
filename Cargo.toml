@@ -233,7 +233,7 @@ trace_marker = ["cros_tracing/trace_marker"]
 seccomp_trace = ["jail/seccomp_trace","base/seccomp_trace","devices/seccomp_trace"]
 
 ## Enables the use of the Gunyah hypervisor
-gunyah = ["hypervisor/gunyah"]
+gunyah = ["hypervisor/gunyah", "devices/gunyah"]
 
 #! ### Windows-specific feature flags
 #!
