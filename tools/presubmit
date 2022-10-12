@@ -98,7 +98,7 @@ commands=(
 if [ "$ALL" == true ]; then
     commands+=(
         "./tools/run_tests"
-        "./tools/run_tests --target=mingw64"
+        "./tools/run_tests --platform=mingw64"
         "$(aarch64_wrapper) ./tools/run_tests --platform=aarch64"
         "$(aarch64_wrapper) ./tools/run_tests --platform=armhf"
         "cargo build --verbose --no-default-features"
@@ -107,7 +107,7 @@ elif [ "$QUICK" != true ]; then
     commands+=(
         "./tools/run_tests"
         "$(aarch64_wrapper) ./tools/run_tests --platform=aarch64 --unit-tests"
-        "./tools/run_tests --target=mingw64 --unit-tests"
+        "./tools/run_tests --platform=mingw64 --unit-tests"
     )
 else
     commands+=(
