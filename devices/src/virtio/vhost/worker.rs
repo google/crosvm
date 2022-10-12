@@ -94,7 +94,7 @@ impl<T: Vhost> Worker<T> {
 
         for (queue_index, queue) in self.queues.iter().enumerate() {
             self.vhost_handle
-                .set_vring_num(queue_index, queue.max_size)
+                .set_vring_num(queue_index, queue.actual_size())
                 .map_err(Error::VhostSetVringNum)?;
 
             self.vhost_handle
