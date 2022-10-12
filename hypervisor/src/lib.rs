@@ -7,6 +7,12 @@
 pub mod aarch64;
 pub mod caps;
 
+#[cfg(all(
+    unix,
+    any(target_arch = "arm", target_arch = "aarch64"),
+    feature = "gunyah"
+))]
+pub mod gunyah;
 #[cfg(all(windows, feature = "haxm"))]
 pub mod haxm;
 #[cfg(unix)]
