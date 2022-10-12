@@ -758,10 +758,13 @@ enum WorkerToken {
     CtrlQueue,
     CursorQueue,
     Display,
+    #[cfg(unix)]
     GpuControl,
     InterruptResample,
     Kill,
-    ResourceBridge { index: usize },
+    ResourceBridge {
+        index: usize,
+    },
     VirtioGpuPoll,
 }
 
@@ -810,6 +813,7 @@ impl<'a> EventManager<'a> {
 struct Worker {
     interrupt: Arc<Interrupt>,
     exit_evt_wrtube: SendTube,
+    #[cfg(unix)]
     gpu_control_tube: Tube,
     mem: GuestMemory,
     ctrl_queue: SharedQueueReader,
@@ -837,6 +841,7 @@ impl Worker {
             (&self.ctrl_evt, WorkerToken::CtrlQueue),
             (&self.cursor_evt, WorkerToken::CursorQueue),
             (&display_desc, WorkerToken::Display),
+            #[cfg(unix)]
             (&self.gpu_control_tube, WorkerToken::GpuControl),
             (&self.kill_evt, WorkerToken::Kill),
         ]) {
@@ -920,6 +925,7 @@ impl Worker {
                             let _ = self.exit_evt_wrtube.send::<VmEventType>(&VmEventType::Exit);
                         }
                     }
+                    #[cfg(unix)]
                     WorkerToken::GpuControl => {
                         let req = match self.gpu_control_tube.recv() {
                             Ok(req) => req,
@@ -1020,7 +1026,7 @@ impl DisplayBackend {
             DisplayBackend::X(display) => GpuDisplay::open_x(display.as_ref()),
             DisplayBackend::Stub => GpuDisplay::open_stub(),
             #[cfg(windows)]
-            DisplayBackend::WinAPI(display_properties) => match wndproc_thread.take() {
+            DisplayBackend::WinApi(display_properties) => match wndproc_thread.take() {
                 Some(wndproc_thread) => GpuDisplay::open_winapi(
                     wndproc_thread,
                     /* win_metrics= */ None,
@@ -1037,6 +1043,7 @@ impl DisplayBackend {
 
 pub struct Gpu {
     exit_evt_wrtube: SendTube,
+    #[cfg(unix)]
     gpu_control_tube: Option<Tube>,
     mapper: Option<Box<dyn SharedMemoryMapper>>,
     resource_bridges: Option<ResourceBridges>,
@@ -1064,7 +1071,7 @@ pub struct Gpu {
 impl Gpu {
     pub fn new(
         exit_evt_wrtube: SendTube,
-        gpu_control_tube: Tube,
+        #[cfg(unix)] gpu_control_tube: Tube,
         resource_bridges: Vec<Tube>,
         display_backends: Vec<DisplayBackend>,
         gpu_parameters: &GpuParameters,
@@ -1127,6 +1134,7 @@ impl Gpu {
 
         Gpu {
             exit_evt_wrtube,
+            #[cfg(unix)]
             gpu_control_tube: Some(gpu_control_tube),
             mapper: None,
             resource_bridges: Some(ResourceBridges::new(resource_bridges)),
@@ -1245,8 +1253,13 @@ impl Drop for Gpu {
 impl VirtioDevice for Gpu {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         let mut keep_rds = Vec::new();
+
+        // To find the RawDescriptor associated with stdout and stderr on Windows is difficult.
+        // Resource bridges are used only for Wayland displays. There is also no meaningful way
+        // casting the underlying DMA buffer wrapped in File to a copyable RawDescriptor.
         // TODO(davidriley): Remove once virgl has another path to include
         // debugging logs.
+        #[cfg(unix)]
         if cfg!(debug_assertions) {
             keep_rds.push(libc::STDOUT_FILENO);
             keep_rds.push(libc::STDERR_FILENO);
@@ -1265,6 +1278,7 @@ impl VirtioDevice for Gpu {
 
         keep_rds.push(self.exit_evt_wrtube.as_raw_descriptor());
 
+        #[cfg(unix)]
         if let Some(gpu_control_tube) = &self.gpu_control_tube {
             keep_rds.push(gpu_control_tube.as_raw_descriptor());
         }
@@ -1343,6 +1357,7 @@ impl VirtioDevice for Gpu {
             }
         };
 
+        #[cfg(unix)]
         let gpu_control_tube = match self.gpu_control_tube.take() {
             Some(gpu_control_tube) => gpu_control_tube,
             None => {
@@ -1421,6 +1436,7 @@ impl VirtioDevice for Gpu {
                         Worker {
                             interrupt: irq,
                             exit_evt_wrtube,
+                            #[cfg(unix)]
                             gpu_control_tube,
                             mem,
                             ctrl_queue: ctrl_queue.clone(),

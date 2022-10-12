@@ -5,6 +5,7 @@
 use std::convert::From;
 use std::fmt;
 use std::mem;
+#[cfg(feature = "gfxstream")]
 use std::os::raw::c_int;
 use std::os::raw::c_void;
 use std::ptr::null_mut;
@@ -57,6 +58,7 @@ use winapi::um::winuser::*;
 use super::math_util::*;
 use super::HostWindowSpace;
 
+#[cfg(feature = "gfxstream")]
 #[link(name = "gfxstream_backend")]
 extern "C" {
     fn gfxstream_backend_setup_window(
@@ -212,6 +214,7 @@ impl Window {
     /// Updates the rectangle in the window's client area to which gfxstream renders.
     pub fn update_virtual_display_projection(&self, projection_box: &Box2D<i32, HostWindowSpace>) {
         // Safe because `Window` object won't outlive the HWND.
+        #[cfg(feature = "gfxstream")]
         unsafe {
             gfxstream_backend_setup_window(
                 self.hwnd as *const c_void,
