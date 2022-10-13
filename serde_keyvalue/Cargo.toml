@@ -9,7 +9,7 @@ argh_derive = ["argh", "serde_keyvalue_derive"]
 
 [dependencies]
 argh = { version = "0.1.7", optional = true }
-serde_keyvalue_derive = { path = "serde_keyvalue_derive", optional = true }
+serde_keyvalue_derive = { path = "serde_keyvalue_derive", optional = true } # provided by ebuild
 serde = "1"
 thiserror = { version = "1.0.20" }
 remain = "*"
