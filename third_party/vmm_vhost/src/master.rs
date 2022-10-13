@@ -372,6 +372,11 @@ impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {
         if node.virtio_features & flag == 0 {
             return Err(VhostUserError::InvalidOperation);
         }
+        if features.contains(VhostUserProtocolFeatures::SHARED_MEMORY_REGIONS)
+            && !features.contains(VhostUserProtocolFeatures::SLAVE_REQ)
+        {
+            return Err(VhostUserError::FeatureMismatch);
+        }
         let val = VhostUserU64::new(features.bits());
         let hdr = node.send_request_with_body(MasterReq::SET_PROTOCOL_FEATURES, &val, None)?;
         // Don't wait for ACK here because the protocol feature negotiation process hasn't been

@@ -169,6 +169,7 @@ impl VhostUserBackend for GpuBackend {
         VhostUserProtocolFeatures::CONFIG
             | VhostUserProtocolFeatures::SLAVE_REQ
             | VhostUserProtocolFeatures::MQ
+            | VhostUserProtocolFeatures::SHARED_MEMORY_REGIONS
     }
 
     fn ack_protocol_features(&mut self, features: u64) -> anyhow::Result<()> {

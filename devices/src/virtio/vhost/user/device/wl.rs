@@ -174,12 +174,20 @@ impl VhostUserBackend for WlBackend {
     }
 
     fn protocol_features(&self) -> VhostUserProtocolFeatures {
-        VhostUserProtocolFeatures::SLAVE_REQ
+        VhostUserProtocolFeatures::SLAVE_REQ | VhostUserProtocolFeatures::SHARED_MEMORY_REGIONS
     }
 
     fn ack_protocol_features(&mut self, features: u64) -> anyhow::Result<()> {
-        if features != VhostUserProtocolFeatures::SLAVE_REQ.bits() {
-            Err(anyhow!("Unexpected protocol features: {:#x}", features))
+        if features & self.protocol_features().bits() != self.protocol_features().bits() {
+            Err(anyhow!(
+                "Acked features {:#x} missing required protocol features",
+                features
+            ))
+        } else if features & !self.protocol_features().bits() != 0 {
+            Err(anyhow!(
+                "Acked features {:#x} contains unexpected features",
+                features
+            ))
         } else {
             Ok(())
         }

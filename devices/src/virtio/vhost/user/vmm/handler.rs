@@ -319,6 +319,12 @@ impl VhostUserHandler {
     }
 
     pub fn get_shared_memory_region(&mut self) -> Result<Option<SharedMemoryRegion>> {
+        if !self
+            .protocol_features
+            .contains(VhostUserProtocolFeatures::SHARED_MEMORY_REGIONS)
+        {
+            return Ok(None);
+        }
         if let Some(r) = self.shmem_region.as_ref() {
             return Ok(r.clone());
         }

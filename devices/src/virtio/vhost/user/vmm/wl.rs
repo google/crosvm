@@ -29,7 +29,8 @@ impl VhostUserVirtioDevice {
 
         let allow_protocol_features = VhostUserProtocolFeatures::MQ
             | VhostUserProtocolFeatures::CONFIG
-            | VhostUserProtocolFeatures::SLAVE_REQ;
+            | VhostUserProtocolFeatures::SLAVE_REQ
+            | VhostUserProtocolFeatures::SHARED_MEMORY_REGIONS;
 
         VhostUserVirtioDevice::new(
             connection,

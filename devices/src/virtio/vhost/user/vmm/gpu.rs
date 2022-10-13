@@ -23,8 +23,9 @@ impl VhostUserVirtioDevice {
             | 1 << gpu::VIRTIO_GPU_F_RESOURCE_SYNC
             | 1 << gpu::VIRTIO_GPU_F_CREATE_GUEST_HANDLE;
 
-        let allow_protocol_features =
-            VhostUserProtocolFeatures::CONFIG | VhostUserProtocolFeatures::SLAVE_REQ;
+        let allow_protocol_features = VhostUserProtocolFeatures::CONFIG
+            | VhostUserProtocolFeatures::SLAVE_REQ
+            | VhostUserProtocolFeatures::SHARED_MEMORY_REGIONS;
 
         VhostUserVirtioDevice::new(
             connection,
