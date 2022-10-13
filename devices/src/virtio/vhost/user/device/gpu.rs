@@ -12,7 +12,6 @@ use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
 use argh::FromArgs;
-use async_task::Task;
 use base::clone_descriptor;
 use base::error;
 use base::warn;
@@ -26,6 +25,8 @@ use cros_async::AsyncWrapper;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::IoSourceExt;
+use futures::future::AbortHandle;
+use futures::future::Abortable;
 use hypervisor::ProtectionType;
 use sync::Mutex;
 use vm_memory::GuestMemory;
@@ -130,10 +131,6 @@ async fn run_resource_bridge(tube: Box<dyn IoSourceExt<Tube>>, state: Rc<RefCell
     }
 }
 
-fn cancel_task<R: 'static>(ex: &Executor, task: Task<R>) {
-    ex.spawn_local(task.cancel()).detach()
-}
-
 struct GpuBackend {
     ex: Executor,
     gpu: Rc<RefCell<Gpu>>,
@@ -141,8 +138,8 @@ struct GpuBackend {
     acked_protocol_features: u64,
     state: Option<Rc<RefCell<gpu::Frontend>>>,
     fence_state: Arc<Mutex<gpu::FenceState>>,
-    display_worker: Option<Task<()>>,
-    workers: [Option<Task<()>>; MAX_QUEUE_NUM],
+    display_worker: Option<AbortHandle>,
+    workers: [Option<AbortHandle>; MAX_QUEUE_NUM],
     backend_req_conn: VhostBackendReqConnectionState,
 }
 
@@ -199,14 +196,14 @@ impl VhostUserBackend for GpuBackend {
     fn start_queue(
         &mut self,
         idx: usize,
-        queue: Queue,
+        mut queue: Queue,
         mem: GuestMemory,
         doorbell: Doorbell,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
-        if let Some(task) = self.workers.get_mut(idx).and_then(Option::take) {
+        if let Some(handle) = self.workers.get_mut(idx).and_then(Option::take) {
             warn!("Starting new queue handler without stopping old handler");
-            cancel_task(&self.ex, task);
+            handle.abort();
         }
 
         match idx {
@@ -216,6 +213,9 @@ impl VhostUserBackend for GpuBackend {
             1 => return Ok(()),
             _ => bail!("attempted to start unknown queue: {}", idx),
         }
+
+        // Enable any virtqueue features that were negotiated (like VIRTIO_RING_F_EVENT_IDX).
+        queue.ack_features(self.acked_features());
 
         let kick_evt = EventAsync::new(kick_evt, &self.ex)
             .context("failed to create EventAsync for kick_evt")?;
@@ -252,7 +252,7 @@ impl VhostUserBackend for GpuBackend {
             state
         };
 
-        // Start handling the resource bridges if we haven't already.
+        // Start handling the resource bridges, if we haven't already.
         for bridge in self.resource_bridges.lock().drain(..) {
             let tube = self
                 .ex
@@ -277,31 +277,42 @@ impl VhostUserBackend for GpuBackend {
                         .context("failed to create async WaitContext")
                 })?;
 
-            let task = self.ex.spawn_local(run_display(display, state.clone()));
-            self.display_worker = Some(task);
+            let (handle, registration) = AbortHandle::new_pair();
+            self.ex
+                .spawn_local(Abortable::new(
+                    run_display(display, state.clone()),
+                    registration,
+                ))
+                .detach();
+            self.display_worker = Some(handle);
         }
 
-        let task = self
-            .ex
-            .spawn_local(run_ctrl_queue(reader, mem, kick_evt, state));
+        // Start handling the control queue.
+        let (handle, registration) = AbortHandle::new_pair();
+        self.ex
+            .spawn_local(Abortable::new(
+                run_ctrl_queue(reader, mem, kick_evt, state),
+                registration,
+            ))
+            .detach();
 
-        self.workers[idx] = Some(task);
+        self.workers[idx] = Some(handle);
         Ok(())
     }
 
     fn stop_queue(&mut self, idx: usize) {
-        if let Some(task) = self.workers.get_mut(idx).and_then(Option::take) {
-            cancel_task(&self.ex, task)
+        if let Some(handle) = self.workers.get_mut(idx).and_then(Option::take) {
+            handle.abort();
         }
     }
 
     fn reset(&mut self) {
-        if let Some(task) = self.display_worker.take() {
-            cancel_task(&self.ex, task)
+        if let Some(handle) = self.display_worker.take() {
+            handle.abort();
         }
 
-        for task in self.workers.iter_mut().filter_map(Option::take) {
-            cancel_task(&self.ex, task)
+        for queue_num in 0..self.max_queue_num() {
+            self.stop_queue(queue_num);
         }
     }
 
