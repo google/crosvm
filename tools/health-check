@@ -114,7 +114,6 @@ KNOWN_DISABLED_FEATURES = [
     "direct",
     "gfxstream",
     "libvda",
-    "video-encoder",
     "whpx",
 ]
 

@@ -282,6 +282,7 @@ all-aarch64 = [
     "tpm",
     "vaapi",
     "video-decoder",
+    "video-encoder",
     "virgl_renderer_next",
     "virgl_renderer",
     "vtpm",
