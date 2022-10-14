@@ -21,7 +21,6 @@ use std::thread::JoinHandle;
 
 use base::error;
 use base::AsRawDescriptor;
-use base::Descriptor;
 use base::Error as SysError;
 use base::Event;
 use base::IntoRawDescriptor;
