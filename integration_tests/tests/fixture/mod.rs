@@ -391,8 +391,9 @@ impl TestVm {
         Ok(trimmed.to_string())
     }
 
-    fn crosvm_command(&self, command: &str) -> Result<()> {
-        let args = [self.control_socket_path.to_str().unwrap()];
+    fn crosvm_command(&self, command: &str, mut args: Vec<String>) -> Result<()> {
+        args.push(self.control_socket_path.to_str().unwrap().to_string());
+
         println!("$ crosvm {} {:?}", command, &args.join(" "));
 
         let mut cmd = Command::new(find_crosvm_binary());
@@ -422,15 +423,19 @@ impl TestVm {
     }
 
     pub fn stop(&self) -> Result<()> {
-        self.crosvm_command("stop")
+        self.crosvm_command("stop", vec![])
     }
 
     pub fn suspend(&self) -> Result<()> {
-        self.crosvm_command("suspend")
+        self.crosvm_command("suspend", vec![])
     }
 
     pub fn resume(&self) -> Result<()> {
-        self.crosvm_command("resume")
+        self.crosvm_command("resume", vec![])
+    }
+
+    pub fn disk(&self, args: Vec<String>) -> Result<()> {
+        self.crosvm_command("disk", args)
     }
 }
 

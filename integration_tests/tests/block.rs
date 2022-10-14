@@ -13,9 +13,11 @@ use fixture::Config;
 use fixture::TestVm;
 use tempfile::NamedTempFile;
 
+const DEFAULT_BLOCK_SIZE: u64 = 1024 * 1024;
+
 fn prepare_disk_img() -> NamedTempFile {
     let mut disk = NamedTempFile::new().unwrap();
-    disk.as_file_mut().set_len(1024 * 1024).unwrap();
+    disk.as_file_mut().set_len(DEFAULT_BLOCK_SIZE).unwrap();
 
     // Add /sbin and /usr/sbin to PATH since some distributions put mkfs.ext4 in one of those
     // directories but don't add them to non-root PATH.
@@ -45,5 +47,47 @@ fn mount_block() {
             .unwrap()
             .trim(),
         "42"
+    );
+}
+
+#[test]
+fn resize() {
+    let disk = prepare_disk_img();
+    let disk_path = disk.path().to_str().unwrap().to_string();
+    println!("disk={disk_path}");
+
+    let config = Config::new().extra_args(vec!["--rwdisk".to_string(), disk_path]);
+    let mut vm = TestVm::new(config).unwrap();
+
+    // Check the initial block device size.
+    assert_eq!(
+        vm.exec_in_guest("blockdev --getsize64 /dev/vdb")
+            .unwrap()
+            .trim()
+            .parse::<u64>()
+            .unwrap(),
+        DEFAULT_BLOCK_SIZE
+    );
+
+    let new_size = DEFAULT_BLOCK_SIZE * 2;
+
+    // The index of the disk to resize.
+    let disk_index = 1;
+
+    vm.disk(vec![
+        "resize".to_string(),
+        disk_index.to_string(),
+        new_size.to_string(),
+    ])
+    .expect("Disk resizing command failed");
+
+    // Check the new block device size.
+    assert_eq!(
+        vm.exec_in_guest("blockdev --getsize64 /dev/vdb")
+            .unwrap()
+            .trim()
+            .parse::<u64>()
+            .unwrap(),
+        new_size
     );
 }
