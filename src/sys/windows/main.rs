@@ -91,7 +91,7 @@ pub(crate) fn run_slirp(args: RunSlirpCommand) -> Result<()> {
 }
 
 pub fn run_broker_impl(cfg: Config) -> Result<()> {
-    tracing::init();
+    cros_tracing::init();
     crate::crosvm::sys::windows::broker::run(cfg)
 }
 

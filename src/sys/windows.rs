@@ -1742,7 +1742,7 @@ fn set_tsc_clock_snapshot() {
             // The host builtin clock ids are all offset from the guest ids by
             // HOST_GUEST_CLOCK_ID_OFFSET when the traces are merged. Because this snapshot
             // contains both a guest and host clock, we need to offset it before merge.
-            perfetto::BuiltinClock::Tsc as u32 + tracing::HOST_GUEST_CLOCK_ID_OFFSET,
+            perfetto::BuiltinClock::Tsc as u32 + cros_tracing::HOST_GUEST_CLOCK_ID_OFFSET,
             host_tsc,
         )
         .set_multiplier(freq as u64),
@@ -1809,9 +1809,9 @@ fn run_config_inner(cfg: Config) -> Result<ExitState> {
         );
     }
 
-    tracing::init();
+    cros_tracing::init();
     #[cfg(feature = "cperfetto")]
-    tracing::add_per_trace_callback(set_tsc_clock_snapshot);
+    cros_tracing::add_per_trace_callback(set_tsc_clock_snapshot);
 
     let components: VmComponents = setup_vm_components(&cfg)?;
 

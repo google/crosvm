@@ -40,6 +40,7 @@ use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::SelectResult;
 use cros_async::TimerAsync;
+use cros_tracing::trace_event;
 use devices::tsc::TscSyncMitigations;
 use devices::Bus;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
@@ -71,7 +72,6 @@ use hypervisor::VmAArch64 as VmArch;
 use hypervisor::VmX86_64 as VmArch;
 use sync::Condvar;
 use sync::Mutex;
-use tracing::trace_event;
 use vm_control::VmRunMode;
 use winapi::shared::winerror::ERROR_RETRY;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]

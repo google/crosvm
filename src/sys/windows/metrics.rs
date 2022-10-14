@@ -68,7 +68,7 @@ pub(crate) fn run_metrics(#[allow(unused_variables)] args: RunMetricsCommand) ->
 
         let metrics_tubes = bootstrap_tube.recv::<Vec<Tube>>().unwrap();
 
-        tracing::init();
+        cros_tracing::init();
         crate::sys::sandbox_lower_token()?;
 
         let mut metrics_controller = MetricsController::new(metrics_tubes);

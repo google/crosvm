@@ -82,7 +82,7 @@ members = [
     "system_api",
     "tpm2",
     "tpm2-sys",
-    "tracing",
+    "cros_tracing",
     "usb_sys",
     "usb_util",
     "vfio_sys",
@@ -384,7 +384,7 @@ futures = "0.3"
 gpu_display = { path = "gpu_display", optional = true }
 rand = "0.8"
 sandbox = { path = "sandbox" }
-tracing = { path = "tracing" }
+cros_tracing = { path = "cros_tracing" }
 tube_transporter = { path = "tube_transporter" }
 winapi = "*"
 win_util = { path = "win_util"}

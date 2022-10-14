@@ -17,7 +17,6 @@ use broker_ipc::common_child_setup;
 use broker_ipc::CommonChildStartupArgs;
 use cros_async::Executor;
 use hypervisor::ProtectionType;
-use tracing;
 use tube_transporter::TubeToken;
 
 use crate::virtio::base_features;
@@ -41,7 +40,7 @@ pub struct Options {
 }
 
 pub fn start_device(opts: Options) -> anyhow::Result<()> {
-    tracing::init();
+    cros_tracing::init();
 
     let raw_transport_tube = opts.bootstrap as RawDescriptor;
 
