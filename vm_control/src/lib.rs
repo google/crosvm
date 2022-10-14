@@ -911,6 +911,7 @@ pub enum PvClockCommandResponse {
 pub enum SwapCommand {
     Enable,
     Status,
+    StartPageFaultLogging,
 }
 
 cfg_if::cfg_if! {
@@ -1071,6 +1072,19 @@ impl VmRequest {
                         Ok(status) => VmResponse::SwapStatus(status),
                         Err(e) => {
                             error!("swap status failed: {}", e);
+                            VmResponse::Err(SysError::new(EINVAL))
+                        }
+                    };
+                }
+                VmResponse::Err(SysError::new(ENOTSUP))
+            }
+            VmRequest::Swap(SwapCommand::StartPageFaultLogging) => {
+                #[cfg(feature = "swap")]
+                if let Some(swap_controller) = swap_controller {
+                    return match swap_controller.start_page_fault_logging() {
+                        Ok(()) => VmResponse::Ok,
+                        Err(e) => {
+                            error!("swap log_page_fault failed: {}", e);
                             VmResponse::Err(SysError::new(EINVAL))
                         }
                     };

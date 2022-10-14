@@ -7,6 +7,7 @@
 #![deny(missing_docs)]
 
 mod file;
+mod logger;
 // this is public only for integration tests.
 pub mod page_handler;
 mod processes;
@@ -41,6 +42,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use vm_memory::GuestMemory;
 
+use crate::logger::PageFaultEventLogger;
 use crate::page_handler::PageHandler;
 use crate::processes::freeze_all_processes;
 use crate::userfaultfd::UffdEvent;
@@ -69,6 +71,7 @@ enum Command {
     Enable,
     Exit,
     Status,
+    StartPageFaultLogging,
 }
 
 /// [SwapController] provides APIs to control vmm-swap.
@@ -173,6 +176,17 @@ impl SwapController {
             .context("send swap status request")?;
         let status = self.tube.recv().context("receive swap status")?;
         Ok(status)
+    }
+
+    /// Start page fault logging.
+    ///
+    /// This returns as soon as it succeeds to send request to the monitor process.
+    /// Requests will be ignored if it is already start logging.
+    pub fn start_page_fault_logging(&self) -> anyhow::Result<()> {
+        self.tube
+            .send(&Command::StartPageFaultLogging)
+            .context("send page fault logging request")?;
+        Ok(())
     }
 
     /// Shutdown the monitor process.
@@ -289,6 +303,7 @@ fn monitor_process(
     let mut uffd_list = UffdList::new(uffd, &wait_ctx);
     let mut status = Status::Ready;
     let mut page_handler_opt: Option<PageHandler> = None;
+    let mut page_fault_logger: Option<PageFaultEventLogger> = None;
 
     'wait: loop {
         let events = wait_ctx.wait().context("wait poll events")?;
@@ -311,6 +326,9 @@ fn monitor_process(
                     } {
                         match event {
                             UffdEvent::Pagefault { addr, .. } => {
+                                if let Some(ref mut page_fault_logger) = page_fault_logger {
+                                    page_fault_logger.log_page_fault(addr as usize);
+                                }
                                 if let Some(ref mut page_handler) = page_handler_opt {
                                     page_handler
                                         .handle_page_fault(uffd, addr as usize)
@@ -389,6 +407,14 @@ fn monitor_process(
                     }
                     Command::Status => {
                         tube.send(&status).context("send status response")?;
+                    }
+                    Command::StartPageFaultLogging => {
+                        if page_fault_logger.is_none() {
+                            page_fault_logger = Some(
+                                PageFaultEventLogger::create(&swap_dir, &guest_memory)
+                                    .context("create page fault logger")?,
+                            )
+                        }
                     }
                 },
             };

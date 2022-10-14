@@ -54,15 +54,9 @@ impl From<FileError> for Error {
 
 /// [Region] represents a memory region and corresponding [SwapFile].
 struct Region {
+    /// the head page index of the region.
     head_page_idx: usize,
     file: SwapFile,
-}
-
-impl Region {
-    /// the number of pages in the region.
-    pub fn len(&self) -> usize {
-        self.file.len()
-    }
 }
 
 /// PageHandler manages the page states of multiple regions.
@@ -145,7 +139,7 @@ impl PageHandler {
         // sequential search the corresponding page map from the list. It should be fast enough
         // because there are a few regions (usually only 1).
         self.regions.iter().position(|region| {
-            region.head_page_idx <= page_idx && page_idx < region.head_page_idx + region.len()
+            region.head_page_idx <= page_idx && page_idx < region.head_page_idx + region.file.len()
         })
     }
 
@@ -188,7 +182,7 @@ impl PageHandler {
         // find an overlaping region
         match self.regions.iter().position(|region| {
             if region.head_page_idx < head_page_idx {
-                region.head_page_idx + region.len() > head_page_idx
+                region.head_page_idx + region.file.len() > head_page_idx
             } else {
                 region.head_page_idx < head_page_idx + num_of_pages
             }
@@ -199,7 +193,7 @@ impl PageHandler {
                 Err(Error::RegionOverlap(
                     address_range.clone(),
                     self.page_idx_to_addr(region.head_page_idx)
-                        ..(self.page_idx_to_addr(region.head_page_idx + region.len())),
+                        ..(self.page_idx_to_addr(region.head_page_idx + region.file.len())),
                 ))
             }
             None => {
@@ -351,7 +345,7 @@ impl PageHandler {
         if self.regions[region_position].head_page_idx != head_page_idx {
             return Err(Error::InvalidAddress(base_addr));
         }
-        let region_size = self.regions[region_position].len() << self.pagesize_shift;
+        let region_size = self.regions[region_position].file.len() << self.pagesize_shift;
         let file_data = FileDataIterator::new(memfd, base_offset);
 
         for data_range in file_data {

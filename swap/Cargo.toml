@@ -12,6 +12,7 @@ libc = "*"
 minijail = "*"
 remain = "*"
 serde = { version = "1", features = [ "derive" ] }
+serde_json = "*"
 sync = { path = "../common/sync" } # provided by ebuild
 tempfile = "*"
 thiserror = "*"

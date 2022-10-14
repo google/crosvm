@@ -310,6 +310,15 @@ pub struct SwapStatusCommand {
 }
 
 #[derive(FromArgs)]
+#[argh(subcommand, name = "log_pagefault")]
+/// Get swap status of a VM
+pub struct SwapLogPageFaultCommand {
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
+
+#[derive(FromArgs)]
 #[argh(subcommand, name = "swap", description = "vmm-swap related commands")]
 pub struct SwapCommand {
     #[argh(subcommand)]
@@ -322,6 +331,7 @@ pub struct SwapCommand {
 pub enum SwapSubcommands {
     Enable(SwapEnableCommand),
     Status(SwapStatusCommand),
+    LogPageFault(SwapLogPageFaultCommand),
 }
 
 #[derive(FromArgs)]

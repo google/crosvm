@@ -178,6 +178,10 @@ fn swap_vms(cmd: cmdline::SwapCommand) -> std::result::Result<(), ()> {
             vms_request(&req, &Path::new(&params.socket_path))
         }
         Status(params) => do_swap_status(&Path::new(&params.socket_path)),
+        LogPageFault(params) => {
+            let req = VmRequest::Swap(SwapCommand::StartPageFaultLogging);
+            vms_request(&req, &Path::new(&params.socket_path))
+        }
     }
 }
 
