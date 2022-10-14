@@ -24,6 +24,10 @@ pub enum HypervisorKind {
     Geniezone {
         device: Option<PathBuf>,
     },
+    #[cfg(all(any(target_arch = "arm", target_arch = "aarch64"), feature = "gunyah"))]
+    Gunyah {
+        device: Option<PathBuf>,
+    },
 }
 
 #[cfg(feature = "audio")]
