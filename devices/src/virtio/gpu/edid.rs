@@ -38,6 +38,27 @@ pub struct EdidBytes {
 }
 
 impl EdidBytes {
+    /// Creates a virtual EDID block.
+    pub fn new(info: &DisplayInfo) -> VirtioGpuResult {
+        let mut edid: [u8; EDID_DATA_LENGTH] = [0; EDID_DATA_LENGTH];
+
+        populate_header(&mut edid);
+        populate_edid_version(&mut edid);
+        populate_size(&mut edid, info);
+        populate_standard_timings(&mut edid)?;
+
+        // 4 available descriptor blocks
+        let block0 = &mut edid[54..72];
+        populate_detailed_timing(block0, info);
+
+        let block1 = &mut edid[72..90];
+        populate_display_name(block1);
+
+        calculate_checksum(&mut edid);
+
+        Ok(OkEdid(Self { bytes: edid }))
+    }
+
     pub fn len(&self) -> usize {
         self.bytes.len()
     }
@@ -143,29 +164,6 @@ impl DisplayInfo {
 
     pub fn height_centimeters(&self) -> u8 {
         (self.height_millimeters / 10) as u8
-    }
-}
-
-impl EdidBytes {
-    /// Creates a virtual EDID block.
-    pub fn new(info: &DisplayInfo) -> VirtioGpuResult {
-        let mut edid: [u8; EDID_DATA_LENGTH] = [0; EDID_DATA_LENGTH];
-
-        populate_header(&mut edid);
-        populate_edid_version(&mut edid);
-        populate_size(&mut edid, info);
-        populate_standard_timings(&mut edid)?;
-
-        // 4 available descriptor blocks
-        let block0 = &mut edid[54..72];
-        populate_detailed_timing(block0, info);
-
-        let block1 = &mut edid[72..90];
-        populate_display_name(block1);
-
-        calculate_checksum(&mut edid);
-
-        Ok(OkEdid(Self { bytes: edid }))
     }
 }
 
