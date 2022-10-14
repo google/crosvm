@@ -8,6 +8,8 @@
 use std::fmt;
 use std::fmt::Debug;
 
+use crate::virtio::gpu::GpuDisplayParameters;
+
 use super::protocol::GpuResponse::*;
 use super::protocol::VirtioGpuResult;
 
@@ -18,6 +20,7 @@ const DEFAULT_HORIZONTAL_FRONT_PORCH: u16 = 64;
 const DEFAULT_VERTICAL_FRONT_PORCH: u16 = 1;
 const DEFAULT_HORIZONTAL_SYNC_PULSE: u16 = 192;
 const DEFAULT_VERTICAL_SYNC_PULSE: u16 = 3;
+const MILLIMETERS_PER_INCH: f32 = 25.4;
 
 /// This class is used to create the Extended Display Identification Data (EDID), which will be
 /// exposed to the guest system.
@@ -90,22 +93,39 @@ pub struct DisplayInfo {
     vertical_front: u16,
     horizontal_sync: u16,
     vertical_sync: u16,
+    width_millimeters: u16,
+    height_millimeters: u16,
 }
 
 impl DisplayInfo {
     /// Only width, height and refresh rate are required for the graphics stack to work, so instead
     /// of pulling actual numbers from the system, we just use some typical values to populate other
     /// fields for now.
-    pub fn new(width: u32, height: u32, refresh_rate: u32) -> Self {
+    pub fn new(params: &GpuDisplayParameters) -> Self {
+        let (width, height) = params.get_virtual_display_size();
+
+        let width_millimeters = if params.horizontal_dpi != 0 {
+            ((width as f32 / params.horizontal_dpi as f32) * MILLIMETERS_PER_INCH) as u16
+        } else {
+            0
+        };
+        let height_millimeters = if params.vertical_dpi != 0 {
+            ((height as f32 / params.vertical_dpi as f32) * MILLIMETERS_PER_INCH) as u16
+        } else {
+            0
+        };
+
         Self {
             resolution: Resolution::new(width, height),
-            refresh_rate,
+            refresh_rate: params.refresh_rate,
             horizontal_blanking: DEFAULT_HORIZONTAL_BLANKING,
             vertical_blanking: DEFAULT_VERTICAL_BLANKING,
             horizontal_front: DEFAULT_HORIZONTAL_FRONT_PORCH,
             vertical_front: DEFAULT_VERTICAL_FRONT_PORCH,
             horizontal_sync: DEFAULT_HORIZONTAL_SYNC_PULSE,
             vertical_sync: DEFAULT_VERTICAL_SYNC_PULSE,
+            width_millimeters,
+            height_millimeters,
         }
     }
 
@@ -116,6 +136,14 @@ impl DisplayInfo {
     pub fn height(&self) -> u32 {
         self.resolution.height
     }
+
+    pub fn width_centimeters(&self) -> u8 {
+        (self.width_millimeters / 10) as u8
+    }
+
+    pub fn height_centimeters(&self) -> u8 {
+        (self.height_millimeters / 10) as u8
+    }
 }
 
 impl EdidBytes {
@@ -125,6 +153,7 @@ impl EdidBytes {
 
         populate_header(&mut edid);
         populate_edid_version(&mut edid);
+        populate_size(&mut edid, info);
         populate_standard_timings(&mut edid)?;
 
         // 4 available descriptor blocks
@@ -235,6 +264,16 @@ fn populate_detailed_timing(edid_block: &mut [u8], info: &DisplayInfo) {
         | (vertical_front_msb << 2)
         | (horizontal_sync_msb << 4)
         | (horizontal_front_msb << 6);
+
+    let width_millimeters_lsb: u8 = (info.width_millimeters & 0xFF) as u8; // least sig 8 bits
+    let width_millimeters_msb: u8 = ((info.width_millimeters >> 8) & 0xF) as u8; // most sig 4 bits
+
+    let height_millimeters_lsb: u8 = (info.height_millimeters & 0xFF) as u8; // least sig 8 bits
+    let height_millimeters_msb: u8 = ((info.height_millimeters >> 8) & 0xF) as u8; // most sig 4 bits
+
+    edid_block[12] = width_millimeters_lsb;
+    edid_block[13] = height_millimeters_lsb;
+    edid_block[14] = height_millimeters_msb | (width_millimeters_msb << 4);
 }
 
 // The EDID header. This is defined by the EDID spec.
@@ -304,6 +343,11 @@ fn populate_standard_timings(edid: &mut [u8]) -> VirtioGpuResult {
 fn populate_edid_version(edid: &mut [u8]) {
     edid[18] = 1;
     edid[19] = 4;
+}
+
+fn populate_size(edid: &mut [u8], info: &DisplayInfo) {
+    edid[21] = info.width_centimeters();
+    edid[22] = info.height_centimeters();
 }
 
 fn calculate_checksum(edid: &mut [u8]) {

@@ -290,7 +290,6 @@ pub struct VirtioGpu {
     rutabaga: Rutabaga,
     resources: Map<u32, VirtioGpuResource>,
     external_blob: bool,
-    refresh_rate: u32,
     udmabuf_driver: Option<UdmabufDriver>,
     #[cfg(feature = "kiwi")]
     gpu_device_service_tube: Tube,
@@ -373,7 +372,6 @@ impl VirtioGpu {
             rutabaga,
             resources: Default::default(),
             external_blob,
-            refresh_rate: display_params[0].refresh_rate,
             udmabuf_driver,
             #[cfg(feature = "kiwi")]
             gpu_device_service_tube,
@@ -905,11 +903,10 @@ impl VirtioGpu {
             .get(&scanout_id)
             .ok_or(ErrEdid(format!("Invalid scanout id: {}", scanout_id)))?;
 
-        EdidBytes::new(&DisplayInfo::new(
-            scanout.width,
-            scanout.height,
-            self.refresh_rate,
-        ))
+        // Primary scanouts should always have display params.
+        let params = scanout.display_params.as_ref().unwrap();
+
+        EdidBytes::new(&DisplayInfo::new(params))
     }
 
     /// Creates a rutabaga context.

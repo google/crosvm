@@ -625,6 +625,17 @@ mod tests {
                 ..Default::default()
             }
         );
+
+        let gpu_params: GpuDisplayParameters =
+            from_key_values("horizontal-dpi=320,vertical-dpi=25").unwrap();
+        assert_eq!(
+            gpu_params,
+            GpuDisplayParameters {
+                horizontal_dpi: 320,
+                vertical_dpi: 25,
+                ..Default::default()
+            }
+        );
     }
 
     #[cfg(feature = "gpu")]

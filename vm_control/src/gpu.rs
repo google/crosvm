@@ -20,10 +20,15 @@ pub use crate::*;
 
 pub const DEFAULT_DISPLAY_WIDTH: u32 = 1280;
 pub const DEFAULT_DISPLAY_HEIGHT: u32 = 1024;
+pub const DEFAULT_DPI: u32 = 320;
 pub const DEFAULT_REFRESH_RATE: u32 = 60;
 
 fn default_refresh_rate() -> u32 {
     DEFAULT_REFRESH_RATE
+}
+
+fn default_dpi() -> u32 {
+    DEFAULT_DPI
 }
 
 /// Trait that the platform-specific type `DisplayMode` needs to implement.
@@ -46,19 +51,31 @@ pub struct DisplayParameters {
     pub hidden: bool,
     #[serde(default = "default_refresh_rate")]
     pub refresh_rate: u32,
+    #[serde(default = "default_dpi")]
+    pub horizontal_dpi: u32,
+    #[serde(default = "default_dpi")]
+    pub vertical_dpi: u32,
 }
 
 impl DisplayParameters {
-    pub fn new(mode: DisplayMode, hidden: bool, refresh_rate: u32) -> Self {
+    pub fn new(
+        mode: DisplayMode,
+        hidden: bool,
+        refresh_rate: u32,
+        horizontal_dpi: u32,
+        vertical_dpi: u32,
+    ) -> Self {
         Self {
             mode,
             hidden,
             refresh_rate,
+            horizontal_dpi,
+            vertical_dpi,
         }
     }
 
     pub fn default_with_mode(mode: DisplayMode) -> Self {
-        Self::new(mode, false, DEFAULT_REFRESH_RATE)
+        Self::new(mode, false, DEFAULT_REFRESH_RATE, DEFAULT_DPI, DEFAULT_DPI)
     }
 
     pub fn get_virtual_display_size(&self) -> (u32, u32) {
