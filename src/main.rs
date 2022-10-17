@@ -80,7 +80,7 @@ use crate::sys::init_log;
 static ALLOCATOR: scudo::GlobalScudoAllocator = scudo::GlobalScudoAllocator;
 
 #[repr(i32)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 /// Exit code from crosvm,
 enum CommandStatus {
     /// Exit with success. Also used to mean VM stopped successfully.
@@ -567,7 +567,7 @@ fn prepare_argh_args<I: IntoIterator<Item = String>>(args_iter: I) -> Vec<String
     args
 }
 
-fn crosvm_main() -> Result<CommandStatus> {
+fn crosvm_main<I: IntoIterator<Item = String>>(args: I) -> Result<CommandStatus> {
     let _library_watcher = sys::get_library_watcher();
 
     // The following panic hook will stop our crashpad hook on windows.
@@ -579,10 +579,16 @@ fn crosvm_main() -> Result<CommandStatus> {
     #[cfg(windows)]
     let _metrics_destructor = metrics::get_destructor();
 
-    let args = prepare_argh_args(std::env::args());
+    let args = prepare_argh_args(args);
     let args = args.iter().map(|s| s.as_str()).collect::<Vec<_>>();
     let args = match crosvm::cmdline::CrosvmCmdlineArgs::from_args(&args[..1], &args[1..]) {
         Ok(args) => args,
+        Err(e) if e.status.is_ok() => {
+            // If parsing succeeded and the user requested --help, print the usage message to stdout
+            // and exit with success.
+            println!("{}", e.output);
+            return Ok(CommandStatus::SuccessOrVmStop);
+        }
         Err(e) => {
             eprintln!("arg parsing failed: {}", e.output);
             return Ok(CommandStatus::InvalidArgs);
@@ -714,7 +720,7 @@ fn crosvm_main() -> Result<CommandStatus> {
 fn main() {
     syslog::early_init();
     info!("crosvm started.");
-    let res = crosvm_main();
+    let res = crosvm_main(std::env::args());
 
     let exit_code = match &res {
         Ok(code) => {
@@ -820,5 +826,21 @@ mod tests {
                 "vm_kernel"
             ]
         );
+    }
+
+    #[test]
+    fn help_success() {
+        let args = ["crosvm", "--help"];
+        let res = crosvm_main(args.iter().map(|s| s.to_string()));
+        let status = res.expect("arg parsing should succeed");
+        assert_eq!(status, CommandStatus::SuccessOrVmStop);
+    }
+
+    #[test]
+    fn invalid_arg_failure() {
+        let args = ["crosvm", "--heeeelp"];
+        let res = crosvm_main(args.iter().map(|s| s.to_string()));
+        let status = res.expect("arg parsing should succeed");
+        assert_eq!(status, CommandStatus::InvalidArgs);
     }
 }
