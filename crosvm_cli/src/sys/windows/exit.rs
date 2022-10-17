@@ -336,6 +336,8 @@ pub enum Exit {
     TscCalibrationFailed = 0xE0000096,
     UnknownError = 0xE0000097,
     CommonChildSetupError = 0xE0000098,
+    CreateImeThread = 0xE0000099,
+    OpenDiskImage = 0xE000009A,
 }
 
 impl From<Exit> for ExitCode {

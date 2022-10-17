@@ -16,6 +16,9 @@ use base::RawDescriptor;
 use broker_ipc::common_child_setup;
 use broker_ipc::CommonChildStartupArgs;
 use cros_async::Executor;
+use crosvm_cli::sys::windows::exit::Exit;
+use crosvm_cli::sys::windows::exit::ExitContext;
+use crosvm_cli::sys::windows::exit::ExitContextAnyhow;
 use hypervisor::ProtectionType;
 use tube_transporter::TubeToken;
 
@@ -67,7 +70,9 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
 
     let block = Box::new(BlockAsync::new(
         base_features(ProtectionType::Unprotected),
-        disk_option.open()?,
+        disk_option
+            .open()
+            .exit_context(Exit::OpenDiskImage, "failed to open disk image")?,
         disk_option.read_only,
         disk_option.sparse,
         disk_option.block_size,

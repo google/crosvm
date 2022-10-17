@@ -615,6 +615,7 @@ dependencies = [
  "crc32fast",
  "cros_async",
  "cros_tracing",
+ "crosvm_cli",
  "data_model",
  "dbus",
  "disk",

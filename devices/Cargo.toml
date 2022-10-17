@@ -40,6 +40,7 @@ cfg-if = "1.0.0"
 chrono = "*"
 crc32fast = { version = "1.2.1", optional = true }
 cros_async = { path = "../cros_async" }
+crosvm_cli = { path = "../crosvm_cli" }
 data_model = { path = "../common/data_model" }
 dbus = { version = "0.9", optional = true }
 disk = { path = "../disk" }
