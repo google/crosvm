@@ -72,6 +72,9 @@ use base::VmEventType;
 use base::WaitContext;
 use broker_ipc::common_child_setup;
 use broker_ipc::CommonChildStartupArgs;
+use crosvm_cli::sys::windows::exit::Exit;
+use crosvm_cli::sys::windows::exit::ExitContext;
+use crosvm_cli::sys::windows::exit::ExitContextAnyhow;
 use devices::serial_device::SerialHardware;
 use devices::serial_device::SerialParameters;
 use devices::tsc::get_tsc_sync_mitigations;
@@ -206,9 +209,6 @@ use crate::crosvm::config::TouchDeviceOption;
 use crate::crosvm::sys::config::HypervisorKind;
 #[cfg(any(feature = "gvm", feature = "whpx"))]
 use crate::crosvm::sys::config::IrqChipKind;
-use crate::crosvm::sys::windows::exit::Exit;
-use crate::crosvm::sys::windows::exit::ExitContext;
-use crate::crosvm::sys::windows::exit::ExitContextAnyhow;
 #[cfg(feature = "stats")]
 use crate::crosvm::sys::windows::stats::StatisticsCollector;
 use crate::sys::windows::metrics::log_descriptor;

@@ -41,6 +41,10 @@ use cros_async::Executor;
 use cros_async::SelectResult;
 use cros_async::TimerAsync;
 use cros_tracing::trace_event;
+use crosvm_cli::bail_exit_code;
+use crosvm_cli::sys::windows::exit::Exit;
+use crosvm_cli::sys::windows::exit::ExitContext;
+use crosvm_cli::sys::windows::exit::ExitContextAnyhow;
 use devices::tsc::TscSyncMitigations;
 use devices::Bus;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
@@ -81,10 +85,6 @@ use x86_64::cpuid::CpuIdContext;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use x86_64::X8664arch as Arch;
 
-use crate::bail_exit_code;
-use crate::crosvm::sys::windows::exit::Exit;
-use crate::crosvm::sys::windows::exit::ExitContext;
-use crate::crosvm::sys::windows::exit::ExitContextAnyhow;
 #[cfg(feature = "stats")]
 use crate::crosvm::sys::windows::stats::StatisticsCollector;
 #[cfg(feature = "stats")]

@@ -56,6 +56,14 @@ use broker_ipc::EmulatorProcessInvariants;
 use crash_report::product_type;
 #[cfg(feature = "crash-report")]
 use crash_report::CrashReportAttributes;
+use crosvm_cli::bail_exit_code;
+use crosvm_cli::ensure_exit_code;
+use crosvm_cli::sys::windows::exit::to_process_type_error;
+use crosvm_cli::sys::windows::exit::Exit;
+use crosvm_cli::sys::windows::exit::ExitCode;
+use crosvm_cli::sys::windows::exit::ExitCodeWrapper;
+use crosvm_cli::sys::windows::exit::ExitContext;
+use crosvm_cli::sys::windows::exit::ExitContextAnyhow;
 #[cfg(feature = "slirp")]
 use devices::virtio::vhost::user::device::NetBackendConfig;
 #[cfg(feature = "gpu")]
@@ -75,14 +83,6 @@ use win_util::ProcessType;
 use winapi::shared::winerror::ERROR_ACCESS_DENIED;
 use winapi::um::processthreadsapi::TerminateProcess;
 
-use crate::bail_exit_code;
-use crate::crosvm::sys::windows::exit::to_process_type_error;
-use crate::crosvm::sys::windows::exit::Exit;
-use crate::crosvm::sys::windows::exit::ExitCode;
-use crate::crosvm::sys::windows::exit::ExitCodeWrapper;
-use crate::crosvm::sys::windows::exit::ExitContext;
-use crate::crosvm::sys::windows::exit::ExitContextAnyhow;
-use crate::ensure_exit_code;
 use crate::Config;
 
 const KILL_CHILD_EXIT_CODE: u32 = 1;

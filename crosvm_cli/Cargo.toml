@@ -1,0 +1,15 @@
+[package]
+name = "crosvm_cli"
+authors = ["The Chromium OS Authors"]
+version = "0.1.0"
+edition = "2021"
+
+[features]
+
+[dependencies]
+anyhow = "1.0.32"
+cfg-if = "1.0.0"
+
+[target.'cfg(windows)'.dependencies]
+win_util = { path = "../win_util" }
+winapi = "*"

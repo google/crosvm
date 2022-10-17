@@ -10,7 +10,7 @@ cfg_if::cfg_if! {
         use base::Tube;
         use std::thread;
         use metrics_crate::MetricsController;
-        use crate::crosvm::sys::windows::exit::{Exit, ExitContext, ExitContextAnyhow};
+        use crosvm_cli::sys::windows::exit::{Exit, ExitContext, ExitContextAnyhow};
         use crate::sys::windows::main::set_bootstrap_arguments;
         use tube_transporter::{TubeToken, TubeTransporterReader};
         use base::FromRawDescriptor;

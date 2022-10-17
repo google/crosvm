@@ -449,6 +449,7 @@ dependencies = [
  "crash_report",
  "cros_async",
  "cros_tracing",
+ "crosvm_cli",
  "crosvm_plugin",
  "ctrlc",
  "data_model",
@@ -516,6 +517,16 @@ dependencies = [
  "tempfile",
  "usb_util",
  "vm_memory",
+]
+
+[[package]]
+name = "crosvm_cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cfg-if",
+ "win_util",
+ "winapi",
 ]
 
 [[package]]

@@ -53,6 +53,7 @@ members = [
     "cros_async",
     "cros_fdt",
     "crosvm-fuzz",
+    "crosvm_cli",
     "crosvm_control",
     "crosvm_plugin",
     "devices",
@@ -335,6 +336,7 @@ broker_ipc = { path = "broker_ipc" }
 cfg-if = "1.0.0"
 crash_report = { path = "crash_report", optional = true }
 cros_async = { path = "cros_async" }
+crosvm_cli = { path = "crosvm_cli" }
 crosvm_plugin = { path = "crosvm_plugin", optional = true }
 data_model = "*"
 devices = { path = "devices" }
