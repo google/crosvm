@@ -1381,6 +1381,7 @@ pub struct RunCommand {
     )]
     /// path to the Wayland socket to use. The unnamed one is used for displaying virtual screens. Named ones are only for IPC
     pub wayland_socket_paths: Vec<(String, PathBuf)>,
+    #[cfg(unix)]
     #[argh(option, arg_name = "DISPLAY")]
     /// X11 display name to use
     pub x_display: Option<String>,
@@ -1614,7 +1615,10 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.wayland_socket_paths.insert(name, params);
         }
 
-        cfg.x_display = cmd.x_display;
+        #[cfg(unix)]
+        {
+            cfg.x_display = cmd.x_display;
+        }
 
         cfg.display_window_keyboard = cmd.display_window_keyboard;
         cfg.display_window_mouse = cmd.display_window_mouse;
