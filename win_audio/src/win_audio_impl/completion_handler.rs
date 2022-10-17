@@ -79,7 +79,7 @@ impl WinAudioActivateAudioInterfaceCompletionHandler {
         info!("Activate Completed handler called from ActiviateAudioInterfaceAsync.");
         match Event::open(ACTIVATE_AUDIO_INTERFACE_COMPLETION_EVENT) {
             Ok(event) => {
-                event.write(1).expect("Failed to notify audioclientevent");
+                event.signal().expect("Failed to notify audioclientevent");
             }
             Err(e) => {
                 error!("Activate audio event cannot be opened: {}", e);
@@ -173,9 +173,9 @@ const IWIN_AUDIO_COMPLETION_HANDLER_VTBL: &IActivateAudioInterfaceCompletionHand
                         let ref_count = (*win_audio_completion_handler).decrement_counter();
                         if ref_count == 0 {
                             // Delete the pointer
-                            Box::from_raw(
+                            drop(Box::from_raw(
                                 this as *mut WinAudioActivateAudioInterfaceCompletionHandler,
-                            );
+                            ));
                         }
                         ref_count
                     }

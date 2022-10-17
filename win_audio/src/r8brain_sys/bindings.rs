@@ -3,11 +3,6 @@ See instructions from: https://rust-lang.github.io/rust-bindgen/print.html
 
 Original library: https://github.com/avaneev/r8brain-free-src
 
-This library should be included in the third_party folder when running
-`repo sync`. Otherwise the library can be cloned with:
-
-    git clone "sso://play-internal/battlestar/kiwivm/thirdparty/r8brain""
-
 To generate bindings:
 1. go to the r8brain-free-src location. In my case it'll be:
 

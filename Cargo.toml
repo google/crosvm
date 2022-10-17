@@ -398,6 +398,7 @@ sandbox = { path = "sandbox" }
 cros_tracing = { path = "cros_tracing" }
 tube_transporter = { path = "tube_transporter" }
 winapi = "*"
+win_audio = { path = "win_audio"}
 win_util = { path = "win_util"}
 
 [build-dependencies]

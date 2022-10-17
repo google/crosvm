@@ -626,7 +626,7 @@ impl DeviceRenderer {
         // never hang, but added a long timeout just incase.
         match activate_audio_interface_complete_event
             .unwrap()
-            .read_timeout(ACTIVATE_AUDIO_EVENT_TIMEOUT)
+            .wait_timeout(ACTIVATE_AUDIO_EVENT_TIMEOUT)
         {
             Ok(event_result) => match event_result {
                 EventWaitResult::Signaled => {}

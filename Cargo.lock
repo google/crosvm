@@ -540,6 +540,7 @@ dependencies = [
  "vhost",
  "vm_control",
  "vm_memory",
+ "win_audio",
  "win_util",
  "winapi",
  "x86_64",
@@ -712,6 +713,7 @@ dependencies = [
  "vm_control",
  "vm_memory",
  "vmm_vhost",
+ "win_audio",
  "win_util",
  "winapi",
 ]
@@ -2184,6 +2186,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "17882f045410753661207383517a6f62ec3dbeb6a4ed2acce01f0728238d1983"
 
 [[package]]
+name = "win_audio"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "audio_streams",
+ "base",
+ "libc",
+ "metrics",
+ "once_cell",
+ "prebuilts",
+ "sync",
+ "thiserror",
+ "win_util",
+ "winapi",
+ "wio",
+]
+
+[[package]]
 name = "win_util"
 version = "0.1.0"
 dependencies = [
@@ -2252,6 +2272,15 @@ checksum = "f757e7665f81f33ace9f89b0f0fc3a7c770e24ff4fa1475c6503bb35b4524893"
 dependencies = [
  "syn 1.0.103",
  "windows_gen",
+]
+
+[[package]]
+name = "wio"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d129932f4644ac2396cb456385cbf9e63b5b30c6e8dc4820bdca4eb082037a5"
+dependencies = [
+ "winapi",
 ]
 
 [[package]]

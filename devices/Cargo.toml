@@ -96,6 +96,7 @@ vfio_sys = { path = "../vfio_sys" }
 broker_ipc = { path = "../broker_ipc" }
 metrics = { path = "../metrics" }
 tube_transporter = { path = "../tube_transporter" }
+win_audio = { path = "../win_audio"}
 win_util = { path = "../win_util"}
 winapi = "*"
 

@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![cfg(windows)]
 #![allow(non_upper_case_globals)]
 include!(concat!(
     env!("CARGO_MANIFEST_DIR"),
