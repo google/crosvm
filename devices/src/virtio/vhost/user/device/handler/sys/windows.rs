@@ -49,10 +49,10 @@ impl DeviceRequestHandler<VhostUserRegularOps> {
         let read_notifier = vhost_user_tube.get_read_notifier();
         let close_notifier = vhost_user_tube.get_close_notifier();
 
-        let read_event =
-            EventAsync::clone_raw(read_notifier, ex).context("failed to create an async event")?;
-        let close_event =
-            EventAsync::clone_raw(close_notifier, ex).context("failed to create an async event")?;
+        let read_event = EventAsync::clone_raw_without_reset(read_notifier, ex)
+            .context("failed to create an async event")?;
+        let close_event = EventAsync::clone_raw_without_reset(close_notifier, ex)
+            .context("failed to create an async event")?;
         let exit_event =
             EventAsync::new(exit_event, ex).context("failed to create an async event")?;
 

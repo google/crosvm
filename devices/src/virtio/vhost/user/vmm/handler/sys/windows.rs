@@ -78,10 +78,10 @@ pub async fn run_backend_request_handler(
     let read_notifier = handler.get_read_notifier();
     let close_notifier = handler.get_close_notifier();
 
-    let read_event =
-        EventAsync::clone_raw(read_notifier, ex).context("failed to create an async event")?;
-    let close_event =
-        EventAsync::clone_raw(close_notifier, ex).context("failed to create an async event")?;
+    let read_event = EventAsync::clone_raw_without_reset(read_notifier, ex)
+        .context("failed to create an async event")?;
+    let close_event = EventAsync::clone_raw_without_reset(close_notifier, ex)
+        .context("failed to create an async event")?;
 
     let read_event_fut = read_event.next_val().fuse();
     let close_event_fut = close_event.next_val().fuse();
