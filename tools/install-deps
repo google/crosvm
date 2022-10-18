@@ -73,7 +73,7 @@ rustup component add llvm-tools-preview
 rustup target add x86_64-pc-windows-gnu
 
 # The bindgen tool is required to build a crosvm dependency.
-cargo install bindgen
+cargo install bindgen-cli
 
 # binutils are wrappers to call the rustup bundled versions of llvm tools.
 cargo install cargo-binutils
