@@ -68,7 +68,7 @@ pub trait RutabagaComponent {
     /// Implementations must create a fence that represents the completion of prior work.  This is
     /// required for synchronization with the guest kernel.
     fn create_fence(&mut self, _fence: RutabagaFence) -> RutabagaResult<()> {
-        Err(RutabagaError::Unsupported)
+        Ok(())
     }
 
     /// Used only by VirglRenderer to poll when its poll_descriptor is signaled.
@@ -85,10 +85,22 @@ pub trait RutabagaComponent {
     /// buffer.  Vulkan components should use blob resources instead.
     fn create_3d(
         &self,
-        _resource_id: u32,
+        resource_id: u32,
         _resource_create_3d: ResourceCreate3D,
     ) -> RutabagaResult<RutabagaResource> {
-        Err(RutabagaError::Unsupported)
+        Ok(RutabagaResource {
+            resource_id,
+            handle: None,
+            blob: false,
+            blob_mem: 0,
+            blob_flags: 0,
+            map_info: None,
+            info_2d: None,
+            info_3d: None,
+            vulkan_info: None,
+            backing_iovecs: None,
+            import_mask: 0,
+        })
     }
 
     /// Implementations must attach `vecs` to the resource.
@@ -114,7 +126,7 @@ pub trait RutabagaComponent {
         _resource: &mut RutabagaResource,
         _transfer: Transfer3D,
     ) -> RutabagaResult<()> {
-        Err(RutabagaError::Unsupported)
+        Ok(())
     }
 
     /// Implementations must perform the transfer read operation.  For 2D rutabaga components, this
@@ -126,7 +138,7 @@ pub trait RutabagaComponent {
         _transfer: Transfer3D,
         _buf: Option<VolatileSlice>,
     ) -> RutabagaResult<()> {
-        Err(RutabagaError::Unsupported)
+        Ok(())
     }
 
     /// Implementations must flush the given resource to the display.

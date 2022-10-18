@@ -16,11 +16,10 @@ Make sure your guest kernel is either this version or a more recent one, and tha
 
 ## Crosvm requirements
 
-Wayland forwarding requires the GPU feature and any non-2d virtio-gpu mode to be enabled, so pass
-them to your `cargo build` or `cargo run` command, e.g:
+Wayland forwarding requires the GPU feature and the virtio-gpu cross domain mode to be enabled.
 
-```sh
-cargo build --features "gpu,virgl_renderer,virgl_renderer_next"
+```
+cargo build --features "gpu"
 ```
 
 ## Building sommelier
@@ -62,7 +61,9 @@ from all Wayland guest applications to it. To enable this you need to know the s
 server running on your host - typically it would be `$XDG_RUNTIME_DIR/wayland-0`.
 
 Once you have confirmed the socket, create a GPU device and enable forwarding by adding the
-`--gpu --wayland-sock $XDG_RUNTIME_DIR/wayland-0` arguments to your crosvm command-line.
+`--gpu=context-types=cross-domain --wayland-sock $XDG_RUNTIME_DIR/wayland-0` arguments to your
+crosvm command-line. Other context types may be also enabled for those interested in 3D
+acceleration.
 
 You can now run Wayland clients through sommelier, e.g:
 

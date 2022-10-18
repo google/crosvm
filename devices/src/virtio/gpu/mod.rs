@@ -1299,27 +1299,24 @@ impl VirtioDevice for Gpu {
     }
 
     fn features(&self) -> u64 {
-        let rutabaga_features = match self.rutabaga_component {
-            RutabagaComponentType::Rutabaga2D => 1 << VIRTIO_GPU_F_EDID,
-            _ => {
-                let mut features_3d = 0;
+        let mut virtio_gpu_features = 1 << VIRTIO_GPU_F_EDID;
 
-                features_3d |= 1 << VIRTIO_GPU_F_VIRGL
-                    | 1 << VIRTIO_GPU_F_RESOURCE_UUID
-                    | 1 << VIRTIO_GPU_F_RESOURCE_BLOB
-                    | 1 << VIRTIO_GPU_F_CONTEXT_INIT
-                    | 1 << VIRTIO_GPU_F_EDID
-                    | 1 << VIRTIO_GPU_F_RESOURCE_SYNC;
+        // If a non-2D component is specified, enable 3D features.  It is possible to run display
+        // contexts without 3D backend (i.e, gfxstream / virglrender), so check for that too.
+        if self.rutabaga_component != RutabagaComponentType::Rutabaga2D || self.context_mask != 0 {
+            virtio_gpu_features |= 1 << VIRTIO_GPU_F_VIRGL
+                | 1 << VIRTIO_GPU_F_RESOURCE_UUID
+                | 1 << VIRTIO_GPU_F_RESOURCE_BLOB
+                | 1 << VIRTIO_GPU_F_CONTEXT_INIT
+                | 1 << VIRTIO_GPU_F_EDID
+                | 1 << VIRTIO_GPU_F_RESOURCE_SYNC;
 
-                if self.udmabuf {
-                    features_3d |= 1 << VIRTIO_GPU_F_CREATE_GUEST_HANDLE;
-                }
-
-                features_3d
+            if self.udmabuf {
+                virtio_gpu_features |= 1 << VIRTIO_GPU_F_CREATE_GUEST_HANDLE;
             }
-        };
+        }
 
-        self.base_features | rutabaga_features
+        self.base_features | virtio_gpu_features
     }
 
     fn ack_features(&mut self, value: u64) {
