@@ -17,6 +17,7 @@ crosvm is currently used to run Linux/Android guests on Chrome OS devices.
   - For contribution, see [the contributor guide](https://crosvm.dev/book/contributing/). Mirror
     repository is available at [GitHub](https://github.com/google/crosvm) for your convenience, but
     we don't accept bug reports or pull requests there.
-- [Issue tracker](https://bugs.chromium.org/p/chromium/issues/list?q=component:OS%3ESystems%3EContainers)
+- [Public issue tracker](https://issuetracker.google.com/issues?q=status:open%20componentid:1161302)
+  - For Googlers: See [go/crosvm#filing-bugs](https://goto.google.com/crosvm#filing-bugs).
 
 ![Logo](./logo/logo_512.png)

@@ -7,9 +7,10 @@ reviewers, developers, and integrators who each share an interest in guiding cro
 
 ## Bug Reports
 
-We use the Chromium issue tracker. Please use
-[`OS>Systems>Containers`](https://bugs.chromium.org/p/chromium/issues/list?q=component:OS%3ESystems%3EContainers)
-component.
+We use Google issue tracker. Please use
+[the public crosvm component](https://issuetracker.google.com/issues?q=status:open%20componentid:1161302).
+
+**For Googlers**: See [go/crosvm#filing-bugs](https://goto.google.com/crosvm#filing-bugs).
 
 ## Philosophy
 

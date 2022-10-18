@@ -20,6 +20,7 @@ operating system using the platform's hypervisor.
   - [API documentation](https://crosvm.dev/doc/crosvm/), useful for searching API.
   - Files for this book are under
     [/docs/](https://chromium.googlesource.com/crosvm/crosvm/+/HEAD/docs/).
-- [Issue tracker](https://bugs.chromium.org/p/chromium/issues/list?q=component:OS%3ESystems%3EContainers)
+- [Public issue tracker](https://issuetracker.google.com/issues?q=status:open%20componentid:1161302)
+  - For Googlers: See [go/crosvm#filing-bugs](https://goto.google.com/crosvm#filing-bugs).
 
 ![logo](./logo.svg)
