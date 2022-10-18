@@ -51,6 +51,7 @@ members = [
     "broker_ipc",
     "crash_report",
     "cros_async",
+    "cros_fdt",
     "crosvm-fuzz",
     "crosvm_control",
     "crosvm_plugin",

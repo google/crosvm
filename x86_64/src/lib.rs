@@ -175,7 +175,7 @@ pub enum Error {
     #[error("unable to make an Event: {0}")]
     CreateEvent(base::Error),
     #[error("failed to create fdt: {0}")]
-    CreateFdt(arch::fdt::Error),
+    CreateFdt(cros_fdt::Error),
     #[error("failed to create IOAPIC device: {0}")]
     CreateIoapicDevice(base::Error),
     #[error("failed to create a PCI root hub: {0}")]

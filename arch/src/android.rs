@@ -6,9 +6,9 @@ use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
 
-use crate::fdt::Error;
-use crate::fdt::FdtWriter;
-use crate::fdt::Result;
+use cros_fdt::Error;
+use cros_fdt::FdtWriter;
+use cros_fdt::Result;
 
 fn parse_fstab_line(line: &str) -> Result<Vec<String>> {
     let vec: Vec<&str> = line.split_whitespace().collect();

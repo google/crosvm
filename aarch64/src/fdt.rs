@@ -6,10 +6,10 @@ use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::Read;
 
-use arch::fdt::Error;
-use arch::fdt::FdtWriter;
-use arch::fdt::Result;
 use arch::SERIAL_ADDR;
+use cros_fdt::Error;
+use cros_fdt::FdtWriter;
+use cros_fdt::Result;
 // This is a Battery related constant
 use devices::bat::GOLDFISHBAT_MMIO_LEN;
 use devices::pl030::PL030_AMBA_ID;

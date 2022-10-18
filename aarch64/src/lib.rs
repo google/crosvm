@@ -170,7 +170,7 @@ pub enum Error {
     #[error("unable to make an Event: {0}")]
     CreateEvent(base::Error),
     #[error("FDT could not be created: {0}")]
-    CreateFdt(arch::fdt::Error),
+    CreateFdt(cros_fdt::Error),
     #[error("failed to create GIC: {0}")]
     CreateGICFailure(base::Error),
     #[error("failed to create a PCI root hub: {0}")]

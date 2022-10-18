@@ -6,8 +6,8 @@ use std::fs::File;
 use std::mem;
 
 use arch::android::create_android_fdt;
-use arch::fdt::Error;
-use arch::fdt::FdtWriter;
+use cros_fdt::Error;
+use cros_fdt::FdtWriter;
 use data_model::DataInit;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;

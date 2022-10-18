@@ -8,6 +8,7 @@ version = "0.1.0"
 dependencies = [
  "arch",
  "base",
+ "cros_fdt",
  "data_model",
  "devices",
  "gdbstub",
@@ -81,6 +82,7 @@ dependencies = [
  "anyhow",
  "base",
  "cfg-if",
+ "cros_fdt",
  "devices",
  "gdbstub",
  "gdbstub_arch",
@@ -393,6 +395,15 @@ dependencies = [
  "thiserror",
  "win_util",
  "winapi",
+]
+
+[[package]]
+name = "cros_fdt"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "remain",
+ "thiserror",
 ]
 
 [[package]]
@@ -2170,6 +2181,7 @@ dependencies = [
  "base",
  "cfg-if",
  "chrono",
+ "cros_fdt",
  "data_model",
  "devices",
  "gdbstub_arch",

@@ -9,6 +9,7 @@ gdb = ["gdbstub", "gdbstub_arch", "arch/gdb", "hypervisor/gdb"]
 
 [dependencies]
 arch = { path = "../arch" }
+cros_fdt = { path = "../cros_fdt" }
 data_model = { path = "../common/data_model" }
 devices = { path = "../devices" }
 gdbstub = { version = "0.6.3", optional = true }

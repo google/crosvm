@@ -5,7 +5,6 @@
 //! Virtual machine architecture support code.
 
 pub mod android;
-pub mod fdt;
 pub mod pstore;
 pub mod serial;
 
