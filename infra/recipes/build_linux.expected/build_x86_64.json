@@ -6,7 +6,8 @@
       "--verbose",
       "./tools/run_tests",
       "--verbose",
-      "--build-only"
+      "--build-only",
+      "--platform=x86_64"
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
@@ -34,7 +35,8 @@
       "./tools/run_tests",
       "--verbose",
       "--retry=0",
-      "--repeat=1"
+      "--repeat=1",
+      "--platform=x86_64"
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {

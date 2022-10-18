@@ -25,15 +25,7 @@ def get_test_args(api, properties):
     "Returns architecture specific arguments for ./tools/run_tests"
     # TODO(denniskempin): Move this logic into ./tools/presubmit
     test_arch = properties.test_arch
-    args = []
-    if test_arch == "" or test_arch == "x86_64":
-        args += []
-    elif test_arch == "aarch64":
-        args += ["--platform=aarch64"]
-    elif test_arch == "armhf":
-        args += ["--platform=armhf"]
-    else:
-        raise api.step.StepFailure("Unknown test_arch " + test_arch)
+    args = ["--platform=" + test_arch]
     if properties.crosvm_direct:
         args += ["--crosvm-direct"]
     if properties.coverage:
@@ -109,10 +101,9 @@ def GenTests(api):
     )
     yield (
         api.test(
-            "build_unknown",
+            "build_mingw64",
             api.buildbucket.ci_build(project="crosvm/crosvm"),
         )
-        + api.properties(BuildLinuxProperties(test_arch="foobar"))
-        + api.post_process(StatusFailure)
-        + api.post_process(DropExpectation)
+        + api.properties(BuildLinuxProperties(test_arch="mingw_64"))
+        + api.post_process(filter_steps)
     )
