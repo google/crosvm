@@ -303,7 +303,7 @@ all-armhf = [
     ]
 
 ## All features that are compiled and tested for mingw64
-all-mingw64 = [ "balloon", "crash_report", "haxm", "slirp", "stats" ]
+all-mingw64 = [ "balloon", "crash_report", "gpu", "haxm", "slirp", "stats" ]
 
 ## All features that are compiled and tested for msvc64
 all-msvc64 = [ "all-mingw64" ]
