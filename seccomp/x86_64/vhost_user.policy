@@ -8,8 +8,5 @@
 # TCGETS/TCSETS: used on FD 0, probably for serial.
 # b/239779171: try moving this to the serial device once we can extend ioctls across policy files.
 ioctl: arg1 == FIONBIO || arg1 == TCGETS || arg1 == TCSETS
-# For seeking over the received connection.
-# b/239779171 : temporarily disabled as it conflicts with block's definition.
-# lseek: arg2 == SEEK_END
 # For accepting a client connection over the socket.
 accept4: 1

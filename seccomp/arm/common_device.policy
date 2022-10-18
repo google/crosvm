@@ -25,6 +25,8 @@ gettimeofday: 1
 io_uring_setup: 1
 io_uring_enter: 1
 kill: 1
+lseek: 1
+_llseek: 1
 madvise: arg2 == MADV_DONTNEED || arg2 == MADV_DONTDUMP || arg2 == MADV_REMOVE || arg2 == MADV_MERGEABLE
 mmap2: arg2 in ~PROT_EXEC
 mprotect: arg2 in ~PROT_EXEC

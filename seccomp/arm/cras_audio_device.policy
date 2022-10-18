@@ -4,8 +4,6 @@
 
 @include /usr/share/policy/crosvm/common_device.policy
 
-_llseek: 1
-lseek: 1
 open: return ENOENT
 openat: return ENOENT
 prlimit64: 1

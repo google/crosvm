@@ -10,7 +10,6 @@ fstat64: 1
 fstatat64: 1
 fsync: 1
 ftruncate64: 1
-_llseek: 1
 open: return ENOENT
 openat: return ENOENT
 pread64: 1

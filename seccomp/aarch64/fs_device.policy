@@ -39,7 +39,6 @@ ioctl: arg1 == FS_IOC_FSGETXATTR || \
        arg1 == 0x40806685 || \
        arg1 == 0xc0046686
 linkat: 1
-lseek: 1
 mkdirat: 1
 mknodat: 1
 openat: 1

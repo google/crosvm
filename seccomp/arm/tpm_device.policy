@@ -10,7 +10,6 @@ fsync: 1
 ftruncate: 1
 getrandom: 1
 getuid: 1
-lseek: 1
 mkdir: 1
 open: 1
 openat: 1

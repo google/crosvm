@@ -33,5 +33,4 @@ socket: arg0 == AF_NETLINK
 ioctl: arg1 == 0xc0185500 || arg1 == 0x8038550a || arg1 == 0x8004551a || arg1 == 0x4008550d || arg1 == 0x8004550f || arg1 == 0x80045510 || arg1 == 0x80045515 || arg1 == 0x550b || arg1 == 0x5514 || arg1 == 0x80045505 || arg1 == 0x8108551b || arg1 == 0x40085511 || arg1 == 0x80185520
 fstat: 1
 getrandom: 1
-lseek: 1
 prctl: arg0 == PR_SET_NAME

@@ -4,7 +4,6 @@
 
 @include /usr/share/policy/crosvm/common_device.policy
 
-lseek: 1
 openat: return ENOENT
 prlimit64: 1
 sched_setscheduler: 1

@@ -7,7 +7,6 @@ fdatasync: 1
 fstat: 1
 fsync: 1
 ftruncate: 1
-lseek: 1
 open: return ENOENT
 openat: return ENOENT
 newfstatat: 1

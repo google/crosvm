@@ -16,7 +16,6 @@ linkat: 1
 unlinkat: 1
 renameat: 1
 pread64: 1
-lseek: 1
 getdents64: 1
 mkdirat: 1
 rmdir: 1

@@ -40,5 +40,4 @@ newfstatat: 1
 getrandom: 1
 getdents: 1
 getdents64: 1
-lseek: 1
 prctl: arg0 == PR_SET_NAME

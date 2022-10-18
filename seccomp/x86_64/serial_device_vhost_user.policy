@@ -8,6 +8,3 @@
 
 @include /usr/share/policy/crosvm/common_device.policy
 @include /usr/share/policy/crosvm/serial.policy
-
-# From vhost_user.policy.
-lseek: arg2 == SEEK_END
