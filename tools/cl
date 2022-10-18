@@ -228,6 +228,10 @@ def upload(dry_run: bool = False):
         print(" ", change.sha, change.title)
     print()
 
+    if len(changes) > 1:
+        if not confirm("Uploading {} changes, continue?".format(len(changes))):
+            return
+
     if (remote, branch) != ("origin", "main"):
         print(f"WARNING! Your changes are based on {remote}/{branch}, not origin/main.")
         print("If gerrit rejects your changes, try `./tools/cl rebase -h`.")
