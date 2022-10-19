@@ -135,7 +135,7 @@ pub enum EventType {
 /// ])?;
 ///
 /// // Trigger one of the `SomeEvent` events.
-/// evt2.write(1)?;
+/// evt2.signal()?;
 ///
 /// // Wait for an event to fire. `wait()` will return immediately in this example because `evt2`
 /// // has already been triggered, but in normal use, `wait()` will block until at least one event
@@ -146,17 +146,17 @@ pub enum EventType {
 /// assert_eq!(tokens, [ExampleToken::SomeEvent(2)]);
 ///
 /// // Reset evt2 so it doesn't trigger again in the next `wait()` call.
-/// let _ = evt2.read()?;
+/// let _ = evt2.reset()?;
 ///
 /// // Trigger a different event.
-/// another_evt.write(1)?;
+/// another_evt.signal()?;
 ///
 /// let events = ctx.wait()?;
 /// let tokens: Vec<ExampleToken> = events.iter().filter(|e| e.is_readable)
 ///     .map(|e| e.token).collect();
 /// assert_eq!(tokens, [ExampleToken::AnotherEvent]);
 ///
-/// let _ = another_evt.read()?;
+/// let _ = another_evt.reset()?;
 /// # Ok::<(), base::Error>(())
 /// ```
 pub struct WaitContext<T: EventToken>(pub(crate) EventContext<T>);
