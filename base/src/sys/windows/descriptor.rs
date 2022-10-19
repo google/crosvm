@@ -167,10 +167,10 @@ AsRawDescriptor!(Stderr);
 #[test]
 #[allow(clippy::eq_op)]
 fn clone_equality() {
-    use super::PlatformEvent;
     use crate::descriptor::IntoRawDescriptor;
+    use crate::Event;
 
-    let evt = PlatformEvent::new().unwrap();
+    let evt = Event::new().unwrap();
     let descriptor = unsafe { SafeDescriptor::from_raw_descriptor(evt.into_raw_descriptor()) };
 
     assert_eq!(descriptor, descriptor);
@@ -180,7 +180,7 @@ fn clone_equality() {
         descriptor.try_clone().expect("failed to clone event")
     );
 
-    let evt2 = PlatformEvent::new().unwrap();
+    let evt2 = Event::new().unwrap();
     let another = unsafe { SafeDescriptor::from_raw_descriptor(evt2.into_raw_descriptor()) };
 
     assert_ne!(descriptor, another);

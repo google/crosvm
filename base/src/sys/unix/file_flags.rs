@@ -43,8 +43,8 @@ impl FileFlags {
 #[cfg(test)]
 mod tests {
     use super::super::pipe;
-    use super::super::PlatformEvent;
     use super::*;
+    use crate::Event;
 
     #[test]
     fn pipe_pair() {
@@ -55,7 +55,7 @@ mod tests {
 
     #[test]
     fn event() {
-        let evt = PlatformEvent::new().unwrap();
+        let evt = Event::new().unwrap();
         assert_eq!(FileFlags::from_file(&evt).unwrap(), FileFlags::ReadWrite);
     }
 }

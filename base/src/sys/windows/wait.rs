@@ -20,11 +20,11 @@ use winapi::um::winbase::WAIT_OBJECT_0;
 use super::errno_result;
 use super::Error;
 use super::EventTrigger;
-use super::PlatformEvent;
 use super::Result;
 use crate::descriptor::AsRawDescriptor;
 use crate::descriptor::Descriptor;
 use crate::error;
+use crate::Event;
 use crate::EventToken;
 use crate::EventType;
 use crate::RawDescriptor;
@@ -59,7 +59,7 @@ pub struct EventContext<T: EventToken> {
     // mid-wait. This is to solve for instances where Thread A has started waiting and
     // Thread B adds an event trigger, which needs to notify Thread A a change has been
     // made.
-    handles_modified_event: PlatformEvent,
+    handles_modified_event: Event,
 }
 
 impl<T: EventToken> EventContext<T> {
@@ -69,7 +69,7 @@ impl<T: EventToken> EventContext<T> {
                 triggers: HashMap::new(),
                 raw_handles: Vec::new(),
             })),
-            handles_modified_event: PlatformEvent::new().unwrap(),
+            handles_modified_event: Event::new().unwrap(),
         };
         // The handles-modified event will be everpresent on the raw_handles to be waited
         // upon to ensure the wait stops and we update it any time the handles list is

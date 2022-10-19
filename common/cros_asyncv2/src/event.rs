@@ -53,14 +53,13 @@ impl TryFrom<base::Event> for Event {
 mod tests {
     use std::convert::TryInto;
 
+    use base::EventExt;
     use futures::channel::oneshot::channel;
     use futures::channel::oneshot::Receiver;
     use futures::channel::oneshot::Sender;
 
     use super::*;
     use crate::Executor;
-
-    use base::EventExt;
 
     #[test]
     fn next_val_with_nonzero_count() {

@@ -191,22 +191,24 @@ impl From<PlatformEvent> for SafeDescriptor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Event;
+    use crate::EventExt;
 
     #[test]
     fn new() {
-        PlatformEvent::new().unwrap();
+        Event::new().unwrap();
     }
 
     #[test]
     fn read_write() {
-        let evt = PlatformEvent::new().unwrap();
+        let evt = Event::new().unwrap();
         evt.write_count(55).unwrap();
         assert_eq!(evt.read_count(), Ok(55));
     }
 
     #[test]
     fn clone() {
-        let evt = PlatformEvent::new().unwrap();
+        let evt = Event::new().unwrap();
         let evt_clone = evt.try_clone().unwrap();
         evt.write_count(923).unwrap();
         assert_eq!(evt_clone.read_count(), Ok(923));
@@ -214,7 +216,7 @@ mod tests {
 
     #[test]
     fn timeout() {
-        let evt = PlatformEvent::new().expect("failed to create eventfd");
+        let evt = Event::new().expect("failed to create eventfd");
         assert_eq!(
             evt.wait_timeout(Duration::from_millis(1))
                 .expect("failed to read from eventfd with timeout"),

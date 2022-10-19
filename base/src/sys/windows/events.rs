@@ -37,13 +37,13 @@ impl<T: EventToken> Clone for EventTrigger<T> {
 mod tests {
     use std::time::Duration;
 
-    use super::super::PlatformEvent;
     use super::*;
+    use crate::Event;
 
     #[test]
     fn event_context() {
-        let evt1 = PlatformEvent::new().unwrap();
-        let evt2 = PlatformEvent::new().unwrap();
+        let evt1 = Event::new().unwrap();
+        let evt2 = Event::new().unwrap();
         evt1.signal().unwrap();
         evt2.signal().unwrap();
         let ctx: EventContext<u32> =
@@ -78,7 +78,7 @@ mod tests {
     //     let ctx: EventContext<usize> = EventContext::new().unwrap();
     //     let mut evts = Vec::with_capacity(EVT_COUNT);
     //     for i in 0..EVT_COUNT {
-    //         let evt = PlatformEvent::new().unwrap();
+    //         let evt = Event::new().unwrap();
     //         evt.signal().unwrap();
     //         ctx.add(&evt, i).unwrap();
     //         evts.push(evt);
@@ -95,7 +95,7 @@ mod tests {
     #[test]
     fn poll_context_timeout() {
         let ctx: EventContext<u32> = EventContext::new().unwrap();
-        let evt = PlatformEvent::new().unwrap();
+        let evt = Event::new().unwrap();
         ctx.add(EventTrigger::from(&evt, 1))
             .expect("Failed to add event.");
         let dur = Duration::from_millis(100);
@@ -105,9 +105,9 @@ mod tests {
 
     #[test]
     fn wait_returns_mulitple_signal_events() {
-        let evt1 = PlatformEvent::new().unwrap();
-        let evt2 = PlatformEvent::new().unwrap();
-        let evt3 = PlatformEvent::new().unwrap();
+        let evt1 = Event::new().unwrap();
+        let evt2 = Event::new().unwrap();
+        let evt3 = Event::new().unwrap();
         evt1.signal().expect("Failed to write to event.");
         evt2.signal().expect("Failed to write to event.");
         evt3.signal().expect("Failed to write to event.");
@@ -126,13 +126,13 @@ mod tests {
 
     #[test]
     fn wait_returns_mulitple_signal_and_unsignaled_events() {
-        let evt1 = PlatformEvent::new().unwrap();
-        let evt2 = PlatformEvent::new().unwrap();
-        let evt3 = PlatformEvent::new().unwrap();
-        let evt4 = PlatformEvent::new().unwrap();
-        let evt5 = PlatformEvent::new().unwrap();
-        let evt6 = PlatformEvent::new().unwrap();
-        let evt7 = PlatformEvent::new().unwrap();
+        let evt1 = Event::new().unwrap();
+        let evt2 = Event::new().unwrap();
+        let evt3 = Event::new().unwrap();
+        let evt4 = Event::new().unwrap();
+        let evt5 = Event::new().unwrap();
+        let evt6 = Event::new().unwrap();
+        let evt7 = Event::new().unwrap();
         evt1.signal().unwrap();
         evt2.signal().unwrap();
         evt4.signal().unwrap();
