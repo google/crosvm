@@ -441,6 +441,7 @@ mod tests {
 
     use super::super::PlatformEvent;
     use super::*;
+    use crate::AsRawDescriptor;
 
     // Doing this as a macro makes it easier to see the line if it fails
     macro_rules! CMSG_SPACE_TEST {
@@ -505,7 +506,7 @@ mod tests {
         let evt = PlatformEvent::new().expect("failed to create event");
         let ioslice = IoSlice::new([].as_ref());
         let write_count = s1
-            .send_with_fd(&[ioslice], evt.as_raw_fd())
+            .send_with_fd(&[ioslice], evt.as_raw_descriptor())
             .expect("failed to send fd");
 
         assert_eq!(write_count, 0);
@@ -521,7 +522,7 @@ mod tests {
         assert!(file.as_raw_fd() >= 0);
         assert_ne!(file.as_raw_fd(), s1.as_raw_fd());
         assert_ne!(file.as_raw_fd(), s2.as_raw_fd());
-        assert_ne!(file.as_raw_fd(), evt.as_raw_fd());
+        assert_ne!(file.as_raw_fd(), evt.as_raw_descriptor());
 
         file.write_all(unsafe { from_raw_parts(&1203u64 as *const u64 as *const u8, 8) })
             .expect("failed to write to sent fd");
@@ -536,7 +537,7 @@ mod tests {
         let evt = PlatformEvent::new().expect("failed to create event");
         let ioslice = IoSlice::new([237].as_ref());
         let write_count = s1
-            .send_with_fds(&[ioslice], &[evt.as_raw_fd()])
+            .send_with_fds(&[ioslice], &[evt.as_raw_descriptor()])
             .expect("failed to send fd");
 
         assert_eq!(write_count, 1);
@@ -553,7 +554,7 @@ mod tests {
         assert!(files[0] >= 0);
         assert_ne!(files[0], s1.as_raw_fd());
         assert_ne!(files[0], s2.as_raw_fd());
-        assert_ne!(files[0], evt.as_raw_fd());
+        assert_ne!(files[0], evt.as_raw_descriptor());
 
         let mut file = unsafe { File::from_raw_fd(files[0]) };
 

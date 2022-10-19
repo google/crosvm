@@ -3,8 +3,6 @@
 // found in the LICENSE file.
 
 use std::mem;
-use std::os::unix::io::AsRawFd;
-use std::os::unix::io::RawFd;
 use std::ptr;
 use std::time::Duration;
 
@@ -76,7 +74,7 @@ impl PlatformEvent {
         // give the syscall's size parameter properly.
         let ret = unsafe {
             write(
-                self.as_raw_fd(),
+                self.as_raw_descriptor(),
                 &v as *const u64 as *const c_void,
                 mem::size_of::<u64>(),
             )
@@ -94,7 +92,7 @@ impl PlatformEvent {
             // This is safe because we made this fd and the pointer we pass can not overflow because
             // we give the syscall's size parameter properly.
             read(
-                self.as_raw_fd(),
+                self.as_raw_descriptor(),
                 &mut buf as *mut u64 as *mut c_void,
                 mem::size_of::<u64>(),
             )
@@ -161,12 +159,6 @@ impl PlatformEvent {
         self.event_handle
             .try_clone()
             .map(|event_handle| PlatformEvent { event_handle })
-    }
-}
-
-impl AsRawFd for PlatformEvent {
-    fn as_raw_fd(&self) -> RawFd {
-        self.event_handle.as_raw_fd()
     }
 }
 

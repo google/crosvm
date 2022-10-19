@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::os::unix::io::AsRawFd;
-
 use libc::fcntl;
 use libc::EINVAL;
 use libc::F_GETFL;
@@ -15,6 +13,7 @@ use libc::O_WRONLY;
 use super::errno_result;
 use super::Error;
 use super::Result;
+use crate::AsRawDescriptor;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum FileFlags {
@@ -24,10 +23,10 @@ pub enum FileFlags {
 }
 
 impl FileFlags {
-    pub fn from_file(file: &dyn AsRawFd) -> Result<FileFlags> {
+    pub fn from_file(file: &dyn AsRawDescriptor) -> Result<FileFlags> {
         // Trivially safe because fcntl with the F_GETFL command is totally safe and we check for
         // error.
-        let flags = unsafe { fcntl(file.as_raw_fd(), F_GETFL) };
+        let flags = unsafe { fcntl(file.as_raw_descriptor(), F_GETFL) };
         if flags == -1 {
             errno_result()
         } else {
