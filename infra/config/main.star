@@ -338,7 +338,7 @@ verify_linux_builder("x86_64")
 verify_linux_builder("x86_64", crosvm_direct = True)
 verify_linux_builder("aarch64")
 verify_linux_builder("armhf", coverage = False)
-verify_linux_builder("mingw64", presubmit = False)
+verify_linux_builder("mingw64", coverage = False)
 
 verify_chromeos_builder("amd64-generic", presubmit = False)
 
