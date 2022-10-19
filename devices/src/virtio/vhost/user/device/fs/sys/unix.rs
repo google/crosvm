@@ -91,7 +91,7 @@ fn jail_and_fork(
 /// Returns an error if the given `args` is invalid or the device fails to run.
 pub fn start_device(opts: Options) -> anyhow::Result<()> {
     let ex = Executor::new().context("Failed to create executor")?;
-    let fs_device = Box::new(FsBackend::new(&ex, &opts.tag)?);
+    let fs_device = Box::new(FsBackend::new(&ex, &opts.tag, opts.cfg)?);
 
     let mut keep_rds = fs_device.keep_rds.clone();
     let listener = VhostUserListener::new_from_socket_or_vfio(

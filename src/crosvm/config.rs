@@ -73,7 +73,6 @@ pub(crate) use super::sys::HypervisorKind;
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
-        use std::time::Duration;
         use base::RawDescriptor;
         use devices::virtio::fs::passthrough;
         #[cfg(feature = "gpu")]
@@ -478,6 +477,7 @@ impl FromStr for SharedDir {
             tag,
             ..Default::default()
         };
+        let mut type_opts = vec![];
         for opt in components {
             let mut o = opt.splitn(2, '=');
             let kind = o.next().ok_or("`shared-dir` options must not be empty")?;
@@ -493,53 +493,17 @@ impl FromStr for SharedDir {
                 }
                 "uidmap" => shared_dir.uid_map = value.into(),
                 "gidmap" => shared_dir.gid_map = value.into(),
-                #[cfg(feature = "arc_quota")]
-                "privileged_quota_uids" => {
-                    shared_dir.fs_cfg.privileged_quota_uids =
-                        value.split(' ').map(|s| s.parse().unwrap()).collect();
-                }
-                "timeout" => {
-                    let seconds = value.parse().map_err(|_| "`timeout` must be an integer")?;
-
-                    let dur = Duration::from_secs(seconds);
-                    shared_dir.fs_cfg.entry_timeout = dur;
-                    shared_dir.fs_cfg.attr_timeout = dur;
-                }
-                "cache" => {
-                    let policy = value
-                        .parse()
-                        .map_err(|_| "`cache` must be one of `never`, `always`, or `auto`")?;
-                    shared_dir.fs_cfg.cache_policy = policy;
-                }
-                "writeback" => {
-                    let writeback = value.parse().map_err(|_| "`writeback` must be a boolean")?;
-                    shared_dir.fs_cfg.writeback = writeback;
-                }
-                "rewrite-security-xattrs" => {
-                    let rewrite_security_xattrs = value
-                        .parse()
-                        .map_err(|_| "`rewrite-security-xattrs` must be a boolean")?;
-                    shared_dir.fs_cfg.rewrite_security_xattrs = rewrite_security_xattrs;
-                }
-                "ascii_casefold" => {
-                    let ascii_casefold = value
-                        .parse()
-                        .map_err(|_| "`ascii_casefold` must be a boolean")?;
-                    shared_dir.fs_cfg.ascii_casefold = ascii_casefold;
-                    shared_dir.p9_cfg.ascii_casefold = ascii_casefold;
-                }
-                "dax" => {
-                    let use_dax = value.parse().map_err(|_| "`dax` must be a boolean")?;
-                    shared_dir.fs_cfg.use_dax = use_dax;
-                }
-                "posix_acl" => {
-                    let posix_acl = value.parse().map_err(|_| "`posix_acl` must be a boolean")?;
-                    shared_dir.fs_cfg.posix_acl = posix_acl;
-                }
-                _ => return Err("unrecognized option for `shared-dir`"),
+                _ => type_opts.push(opt),
             }
         }
-
+        match shared_dir.kind {
+            SharedDirKind::FS => {
+                shared_dir.fs_cfg = type_opts.join(":").parse()?;
+            }
+            SharedDirKind::P9 => {
+                shared_dir.p9_cfg = type_opts.join(":").parse()?;
+            }
+        }
         Ok(shared_dir)
     }
 }
@@ -1649,6 +1613,8 @@ mod tests {
     use argh::FromArgs;
     use devices::PciClassCode;
     use devices::StubPciParameters;
+    #[cfg(unix)]
+    use std::time::Duration;
 
     use super::*;
 

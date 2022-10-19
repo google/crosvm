@@ -557,6 +557,70 @@ impl Default for Config {
     }
 }
 
+impl FromStr for Config {
+    type Err = &'static str;
+
+    fn from_str(params: &str) -> Result<Self, Self::Err> {
+        let mut cfg = Self::default();
+        if params.is_empty() {
+            return Ok(cfg);
+        }
+        for opt in params.split(':') {
+            let mut o = opt.splitn(2, '=');
+            let kind = o.next().ok_or("`cfg` options mut not be empty")?;
+            let value = o
+                .next()
+                .ok_or("`cfg` options must be of the form `kind=value`")?;
+            match kind {
+                #[cfg(feature = "arc_quota")]
+                "privileged_quota_uids" => {
+                    cfg.privileged_quota_uids =
+                        value.split(' ').map(|s| s.parse().unwrap()).collect();
+                }
+                "timeout" => {
+                    let seconds = value.parse().map_err(|_| "`timeout` must be an integer")?;
+
+                    let dur = Duration::from_secs(seconds);
+                    cfg.entry_timeout = dur;
+                    cfg.attr_timeout = dur;
+                }
+                "cache" => {
+                    let policy = value
+                        .parse()
+                        .map_err(|_| "`cache` must be one of `never`, `always`, or `auto`")?;
+                    cfg.cache_policy = policy;
+                }
+                "writeback" => {
+                    let writeback = value.parse().map_err(|_| "`writeback` must be a boolean")?;
+                    cfg.writeback = writeback;
+                }
+                "rewrite-security-xattrs" => {
+                    let rewrite_security_xattrs = value
+                        .parse()
+                        .map_err(|_| "`rewrite-security-xattrs` must be a boolean")?;
+                    cfg.rewrite_security_xattrs = rewrite_security_xattrs;
+                }
+                "ascii_casefold" => {
+                    let ascii_casefold = value
+                        .parse()
+                        .map_err(|_| "`ascii_casefold` must be a boolean")?;
+                    cfg.ascii_casefold = ascii_casefold;
+                }
+                "dax" => {
+                    let use_dax = value.parse().map_err(|_| "`dax` must be a boolean")?;
+                    cfg.use_dax = use_dax;
+                }
+                "posix_acl" => {
+                    let posix_acl = value.parse().map_err(|_| "`posix_acl` must be a boolean")?;
+                    cfg.posix_acl = posix_acl;
+                }
+                _ => return Err("unrecognized option for virtio-fs config"),
+            }
+        }
+        Ok(cfg)
+    }
+}
+
 /// A file system that simply "passes through" all requests it receives to the underlying file
 /// system. To keep the implementation simple it servers the contents of its root directory. Users
 /// that wish to serve only a specific directory should set up the environment so that that

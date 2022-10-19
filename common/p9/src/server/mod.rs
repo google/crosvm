@@ -23,6 +23,7 @@ use std::os::unix::io::AsRawFd;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::io::RawFd;
 use std::path::Path;
+use std::str::FromStr;
 
 use read_dir::read_dir;
 use serde::Deserialize;
@@ -374,6 +375,34 @@ pub struct Config {
     pub gid_map: ServerGidMap,
 
     pub ascii_casefold: bool,
+}
+
+impl FromStr for Config {
+    type Err = &'static str;
+
+    fn from_str(params: &str) -> Result<Self, Self::Err> {
+        let mut cfg = Self::default();
+        if params.is_empty() {
+            return Ok(cfg);
+        }
+        for opt in params.split(':') {
+            let mut o = opt.splitn(2, '=');
+            let kind = o.next().ok_or("`cfg` options mut not be empty")?;
+            let value = o
+                .next()
+                .ok_or("`cfg` options must be of the form `kind=value`")?;
+            match kind {
+                "ascii_casefold" => {
+                    let ascii_casefold = value
+                        .parse()
+                        .map_err(|_| "`ascii_casefold` must be a boolean")?;
+                    cfg.ascii_casefold = ascii_casefold;
+                }
+                _ => return Err("unrecognized option for p9 config"),
+            }
+        }
+        Ok(cfg)
+    }
 }
 
 impl Default for Config {

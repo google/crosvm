@@ -35,6 +35,7 @@ use zerocopy::AsBytes;
 use crate::virtio;
 use crate::virtio::copy_config;
 use crate::virtio::device_constants::fs::FS_MAX_TAG_LEN;
+use crate::virtio::fs::passthrough::Config;
 use crate::virtio::fs::passthrough::PassthroughFs;
 use crate::virtio::fs::process_fs_queue;
 use crate::virtio::vhost::user::device::handler::sys::Doorbell;
@@ -77,7 +78,7 @@ struct FsBackend {
 }
 
 impl FsBackend {
-    pub fn new(ex: &Executor, tag: &str) -> anyhow::Result<Self> {
+    pub fn new(ex: &Executor, tag: &str, cfg: Option<Config>) -> anyhow::Result<Self> {
         if tag.len() > FS_MAX_TAG_LEN {
             bail!(
                 "fs tag is too long: {} (max supported: {})",
@@ -92,7 +93,7 @@ impl FsBackend {
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
 
         // Use default passthroughfs config
-        let fs = PassthroughFs::new(Default::default())?;
+        let fs = PassthroughFs::new(cfg.unwrap_or_default())?;
 
         let mut keep_rds: Vec<RawDescriptor> = [0, 1, 2].to_vec();
         keep_rds.append(&mut fs.keep_rds());
@@ -234,4 +235,10 @@ pub struct Options {
     #[argh(option, arg_name = "GIDMAP")]
     /// gid map to use
     gid_map: Option<String>,
+    #[argh(option, arg_name = "CFG")]
+    /// colon-separated options for configuring a directory to be
+    /// shared with the VM through virtio-fs. The format is the same as
+    /// `crosvm run --shared-dir` flag except only the keys related to virtio-fs
+    /// are valid here.
+    cfg: Option<Config>,
 }
