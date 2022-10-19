@@ -69,6 +69,13 @@ impl Event {
         self.0.wait_timeout(timeout)
     }
 
+    /// Clears the event without blocking.
+    ///
+    /// If the event is not signaled, this has no effect and returns immediately.
+    pub fn reset(&self) -> Result<()> {
+        self.0.reset()
+    }
+
     /// Clones the event. The event's state is shared between cloned instances.
     ///
     /// The documented caveats for `Event` also apply to a set of cloned instances, e.g., it is

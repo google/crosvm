@@ -6,7 +6,6 @@ use std::mem::ManuallyDrop;
 
 use base::AsRawDescriptor;
 use base::Event;
-use base::EventExt;
 use base::FromRawDescriptor;
 
 use crate::AsyncError;

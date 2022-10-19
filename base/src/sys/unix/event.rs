@@ -145,6 +145,16 @@ impl PlatformEvent {
         Ok(EventWaitResult::Signaled)
     }
 
+    /// See `Event::reset`.
+    pub fn reset(&self) -> Result<()> {
+        // If the eventfd is currently signaled (counter > 0), `wait_timeout()` will `read()` it to
+        // reset the count. Otherwise (if the eventfd is not signaled), `wait_timeout()` will return
+        // immediately since we pass a zero duration. We don't care about the EventWaitResult; we
+        // just want a non-blocking read to reset the counter.
+        let _: EventWaitResult = self.wait_timeout(Duration::ZERO)?;
+        Ok(())
+    }
+
     /// Clones this eventfd, internally creating a new file descriptor. The new eventfd will share
     /// the same underlying count within the kernel.
     pub fn try_clone(&self) -> Result<PlatformEvent> {
