@@ -24,7 +24,9 @@ use winapi::um::synchapi::OpenEventA;
 use winapi::um::synchapi::ResetEvent;
 use winapi::um::synchapi::SetEvent;
 use winapi::um::synchapi::WaitForSingleObject;
+use winapi::um::winbase::INFINITE;
 use winapi::um::winbase::WAIT_FAILED;
+use winapi::um::winbase::WAIT_OBJECT_0;
 use winapi::um::winnt::DUPLICATE_SAME_ACCESS;
 use winapi::um::winnt::EVENT_MODIFY_STATE;
 use winapi::um::winnt::HANDLE;
@@ -142,16 +144,6 @@ impl PlatformEvent {
         Ok(())
     }
 
-    /// See `Event::wait`.
-    pub fn wait(&self) -> Result<()> {
-        let read_result = self.wait_timeout(Duration::new(std::i64::MAX as u64, 0));
-        match read_result {
-            Ok(EventWaitResult::Signaled) => Ok(()),
-            Ok(EventWaitResult::TimedOut) => Err(Error::new(WAIT_TIMEOUT)),
-            Err(e) => Err(e),
-        }
-    }
-
     pub fn reset(&self) -> Result<()> {
         let res = unsafe { ResetEvent(self.event_handle.as_raw_descriptor()) };
         if res == 0 {
@@ -161,28 +153,42 @@ impl PlatformEvent {
         }
     }
 
-    /// See `Event::wait_timeout`.
-    pub fn wait_timeout(&self, timeout: Duration) -> Result<EventWaitResult> {
-        let wait_result = unsafe {
-            WaitForSingleObject(
-                self.event_handle.as_raw_descriptor(),
-                timeout.as_millis() as DWORD,
-            )
+    /// Wait for the event with an optional timeout and reset the event if it was signaled.
+    fn wait_and_reset(&self, timeout: Option<Duration>) -> Result<EventWaitResult> {
+        let milliseconds = match timeout {
+            Some(timeout) => timeout.as_millis() as DWORD,
+            None => INFINITE,
         };
 
-        // We are using an infinite timeout so we can ignore WAIT_ABANDONED
-        match wait_result {
-            WAIT_FAILED => errno_result(),
+        // Safe because we pass an event object handle owned by this PlatformEvent.
+        let wait_result = match unsafe {
+            WaitForSingleObject(self.event_handle.as_raw_descriptor(), milliseconds)
+        } {
+            WAIT_OBJECT_0 => Ok(EventWaitResult::Signaled),
             WAIT_TIMEOUT => Ok(EventWaitResult::TimedOut),
-            _ => {
-                // Safe because self manages the handle and we know it was valid as it
-                // was just successfully waited upon. It is safe to reset a non manual reset event as well.
-                match unsafe { ResetEvent(self.event_handle.as_raw_descriptor()) } {
-                    0 => errno_result(),
-                    _ => Ok(EventWaitResult::Signaled),
-                }
-            }
+            WAIT_FAILED => errno_result(),
+            other => Err(Error::new(other)),
+        }?;
+
+        if wait_result == EventWaitResult::Signaled {
+            self.reset()?;
         }
+
+        Ok(wait_result)
+    }
+
+    /// See `Event::wait`.
+    pub fn wait(&self) -> Result<()> {
+        let wait_result = self.wait_and_reset(None)?;
+        // Waiting with `INFINITE` can only return when the event is signaled or an error occurs.
+        // `EventWaitResult::TimedOut` is not valid here.
+        assert_eq!(wait_result, EventWaitResult::Signaled);
+        Ok(())
+    }
+
+    /// See `Event::wait_timeout`.
+    pub fn wait_timeout(&self, timeout: Duration) -> Result<EventWaitResult> {
+        self.wait_and_reset(Some(timeout))
     }
 
     pub fn try_clone(&self) -> Result<PlatformEvent> {
