@@ -265,7 +265,7 @@ impl DeviceRenderer {
             "Audio Client Initialize() failed."
         )?;
 
-        let ready_to_read_event = Event::new_with_manual_reset(false).unwrap();
+        let ready_to_read_event = Event::new_auto_reset().unwrap();
         // Safe because `ready_to_read_event` will be initialized and also it has the same
         // lifetime as `audio_client` because they are owned by DeviceRenderer on return
         let hr = unsafe { audio_client.SetEventHandle(ready_to_read_event.as_raw_descriptor()) };

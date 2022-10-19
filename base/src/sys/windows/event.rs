@@ -50,19 +50,14 @@ pub(crate) struct PlatformEvent {
 }
 
 pub trait EventExt {
-    fn new_with_manual_reset(manual_reset: bool) -> Result<Event>;
     fn new_auto_reset() -> Result<Event>;
     fn open(name: &str) -> Result<Event>;
     fn create_event_with_name(name: &str) -> Result<Event>;
 }
 
 impl EventExt for Event {
-    fn new_with_manual_reset(manual_reset: bool) -> Result<Event> {
-        PlatformEvent::new_with_manual_reset(manual_reset).map(Event)
-    }
-
     fn new_auto_reset() -> Result<Event> {
-        Event::new_with_manual_reset(false)
+        PlatformEvent::new_with_manual_reset(false).map(Event)
     }
 
     fn open(name: &str) -> Result<Event> {
