@@ -7,12 +7,16 @@ steps:
 - name: 'gcr.io/cloud-builders/docker'
   args: [ 'buildx', 'create', '--use', '--name', 'insecure-builder', '--buildkitd-flags', '--allow-insecure-entitlement security.insecure']
 - name: 'gcr.io/cloud-builders/docker'
-  args: [ 'buildx', 'build', '-t', 'gcr.io/crosvm-infra-experimental/crosvm_cros_cloudbuild', '--allow', 'security.insecure', '.' ]
+  args: [ 'buildx', 'build', '-t', 'gcr.io/crosvm-infra-experimental/crosvm_cros_cloudbuild', '--cache-to=type=local,dest=/docker_cache', '--allow', 'security.insecure', '.' ]
+# docker push is separated out because of https://github.com/docker/buildx/issues/1205
 - name: 'gcr.io/cloud-builders/docker'
   args: [ 'buildx', 'stop', 'insecure-builder']
 - name: 'gcr.io/cloud-builders/docker'
-  args: [ 'buildx', 'build', '-t', 'gcr.io/crosvm-infra-experimental/crosvm_cros_cloudbuild', '--push', '--allow', 'security.insecure', '.' ]
+  args: [ 'buildx', 'build', '-t', 'gcr.io/crosvm-infra-experimental/crosvm_cros_cloudbuild', '--cache-from=type=local,src=/docker_cache', '--push', '--allow', 'security.insecure', '.' ]
 timeout: 30000s
 options:
   machineType: 'E2_HIGHCPU_32'
-  diskSizeGb: '500'
+  diskSizeGb: '1000'
+  volumes:
+    - name: 'docker_cache'
+      path: '/docker_cache'

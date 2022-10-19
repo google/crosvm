@@ -343,6 +343,19 @@ verify_linux_builder("mingw64", coverage = False)
 verify_chromeos_builder("amd64-generic", presubmit = False)
 
 verify_builder(
+    name = "chromeos_hatch",
+    dimensions = {
+        "os": "Ubuntu",
+        "cpu": "x86-64",
+    },
+    executable = luci.recipe(
+        name = "build_chromeos_container",
+    ),
+    category = "linux",
+    presubmit = False,
+)
+
+verify_builder(
     name = "windows",
     dimensions = {
         "os": "Windows",

@@ -76,6 +76,40 @@ class CrosvmApi(recipe_api.RecipeApi):
         }
         return self.m.context(cwd=self.source_dir, env=env)
 
+    def cros_container_build_context(self):
+        """
+        Prepares source and system to build crosvm via cros container.
+
+        Usage:
+            with api.crosvm.cros_container_build_context():
+                api.crosvm.step_in_container("build crosvm", ["cargo build"], cros=True)
+        """
+        with self.m.step.nest("Prepare Cros Container Build"):
+            with self.m.context(infra_steps=True):
+                self.__prepare_source()
+            with self.m.context(cwd=self.source_dir):
+                self.m.step(
+                    "Stop existing cros containers",
+                    [
+                        "vpython3",
+                        self.source_dir.join("tools/dev_container"),
+                        "--verbose",
+                        "--stop",
+                        "--cros",
+                    ],
+                )
+                self.m.step(
+                    "Force pull cros_container",
+                    [
+                        "vpython3",
+                        self.source_dir.join("tools/dev_container"),
+                        "--pull",
+                        "--cros",
+                    ],
+                )
+                self.m.crosvm.step_in_container("Ensure cros container exists", ["true"], cros=True)
+        return self.m.context(cwd=self.source_dir)
+
     def host_build_context(self):
         """
         Prepares source and system to build crosvm directly on the host.
@@ -107,7 +141,7 @@ class CrosvmApi(recipe_api.RecipeApi):
 
                 return self.m.context(env=env, env_prefixes=env_prefixes, cwd=self.source_dir)
 
-    def step_in_container(self, step_name, command):
+    def step_in_container(self, step_name, command, cros=False):
         """
         Runs a luci step inside the crosvm dev container.
         """
@@ -118,6 +152,7 @@ class CrosvmApi(recipe_api.RecipeApi):
                 self.source_dir.join("tools/dev_container"),
                 "--verbose",
             ]
+            + (["--cros"] if cros else [])
             + command,
         )
 

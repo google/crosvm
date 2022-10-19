@@ -3,7 +3,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-FROM docker.io/debian:testing-20220822-slim
+FROM docker.io/debian:testing-slim
 ARG BOARD=hatch
 
 RUN apt update \
@@ -13,6 +13,10 @@ RUN apt update \
 RUN useradd -ms /bin/bash crosvmdev \
     && usermod -aG sudo crosvmdev \
     && echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+
+COPY entrypoint.sh /tools/
+RUN chmod 755 /tools/entrypoint.sh
+ENTRYPOINT [ "/tools/entrypoint.sh" ]
 
 # Following operations will be run as crosvmdev to ensure correct permission.
 USER crosvmdev

@@ -1,0 +1,27 @@
+[
+  {
+    "cmd": [
+      "vpython3",
+      "[CACHE]/builder/crosvm/tools/dev_container",
+      "--verbose",
+      "--cros",
+      "cros_sdk",
+      "emerge-hatch",
+      "crosvm"
+    ],
+    "cwd": "[CACHE]/builder/crosvm",
+    "luci_context": {
+      "realm": {
+        "name": "crosvm/crosvm:ci"
+      },
+      "resultdb": {
+        "current_invocation": {
+          "name": "invocations/build:8945511751514863184",
+          "update_token": "token"
+        },
+        "hostname": "rdbhost"
+      }
+    },
+    "name": "Build crosvm"
+  }
+]

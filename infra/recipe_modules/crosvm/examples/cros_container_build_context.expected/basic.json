@@ -1,0 +1,270 @@
+[
+  {
+    "cmd": [],
+    "name": "Prepare Cros Container Build"
+  },
+  {
+    "cmd": [],
+    "name": "Prepare Cros Container Build.Prepare git",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@1@@@"
+    ]
+  },
+  {
+    "cmd": [
+      "git",
+      "config",
+      "--get",
+      "user.name"
+    ],
+    "infra_step": true,
+    "name": "Prepare Cros Container Build.Prepare git.git config user.name",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@2@@@"
+    ]
+  },
+  {
+    "cmd": [
+      "git",
+      "config",
+      "--get",
+      "user.email"
+    ],
+    "infra_step": true,
+    "name": "Prepare Cros Container Build.Prepare git.git config user.email",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@2@@@"
+    ]
+  },
+  {
+    "cmd": [
+      "git",
+      "config",
+      "--global",
+      "user.name",
+      "Crosvm Bot"
+    ],
+    "infra_step": true,
+    "name": "Prepare Cros Container Build.Prepare git.Set git config: user.name",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@2@@@"
+    ]
+  },
+  {
+    "cmd": [
+      "git",
+      "config",
+      "--global",
+      "user.email",
+      "crosvm-bot@crosvm-infra.iam.gserviceaccount.com"
+    ],
+    "infra_step": true,
+    "name": "Prepare Cros Container Build.Prepare git.Set git config: user.email",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@2@@@"
+    ]
+  },
+  {
+    "cmd": [
+      "git",
+      "config",
+      "--global",
+      "credential.helper",
+      "gcloud.sh"
+    ],
+    "infra_step": true,
+    "name": "Prepare Cros Container Build.Prepare git.Set git config: credential.helper",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@2@@@"
+    ]
+  },
+  {
+    "cmd": [],
+    "name": "Prepare Cros Container Build.Prepare source",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@1@@@"
+    ]
+  },
+  {
+    "cmd": [
+      "vpython3",
+      "-u",
+      "RECIPE_MODULE[recipe_engine::file]/resources/fileutil.py",
+      "--json-output",
+      "/path/to/tmp/json",
+      "ensure-directory",
+      "--mode",
+      "0777",
+      "[CACHE]/builder"
+    ],
+    "infra_step": true,
+    "name": "Prepare Cros Container Build.Prepare source.Ensure builder_cache exists",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@2@@@"
+    ]
+  },
+  {
+    "cmd": [
+      "vpython3",
+      "-u",
+      "RECIPE_MODULE[depot_tools::bot_update]/resources/bot_update.py",
+      "--spec-path",
+      "cache_dir = '[CACHE]/git'\nsolutions = [{'deps_file': '.DEPS.git', 'managed': True, 'name': 'crosvm', 'url': 'https://chromium.googlesource.com/crosvm/crosvm'}]",
+      "--revision_mapping_file",
+      "{\"got_revision\": \"crosvm\"}",
+      "--git-cache-dir",
+      "[CACHE]/git",
+      "--cleanup-dir",
+      "[CLEANUP]/bot_update",
+      "--output_json",
+      "/path/to/tmp/json",
+      "--revision",
+      "crosvm@HEAD",
+      "--gerrit_no_reset"
+    ],
+    "cwd": "[CACHE]/builder",
+    "env": {
+      "DEPOT_TOOLS_COLLECT_METRICS": "0",
+      "GIT_HTTP_LOW_SPEED_LIMIT": "102400",
+      "GIT_HTTP_LOW_SPEED_TIME": "1800"
+    },
+    "env_suffixes": {
+      "DEPOT_TOOLS_UPDATE": [
+        "0"
+      ],
+      "PATH": [
+        "RECIPE_REPO[depot_tools]"
+      ]
+    },
+    "infra_step": true,
+    "name": "Prepare Cros Container Build.Prepare source.bot_update",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@2@@@",
+      "@@@STEP_TEXT@Some step text@@@",
+      "@@@STEP_LOG_LINE@json.output@{@@@",
+      "@@@STEP_LOG_LINE@json.output@  \"did_run\": true, @@@",
+      "@@@STEP_LOG_LINE@json.output@  \"fixed_revisions\": {@@@",
+      "@@@STEP_LOG_LINE@json.output@    \"crosvm\": \"HEAD\"@@@",
+      "@@@STEP_LOG_LINE@json.output@  }, @@@",
+      "@@@STEP_LOG_LINE@json.output@  \"manifest\": {@@@",
+      "@@@STEP_LOG_LINE@json.output@    \"crosvm\": {@@@",
+      "@@@STEP_LOG_LINE@json.output@      \"repository\": \"https://fake.org/crosvm.git\", @@@",
+      "@@@STEP_LOG_LINE@json.output@      \"revision\": \"2e31dd442a44af9e1e51e96aeca18017ddb9922c\"@@@",
+      "@@@STEP_LOG_LINE@json.output@    }@@@",
+      "@@@STEP_LOG_LINE@json.output@  }, @@@",
+      "@@@STEP_LOG_LINE@json.output@  \"patch_failure\": false, @@@",
+      "@@@STEP_LOG_LINE@json.output@  \"patch_root\": \"crosvm\", @@@",
+      "@@@STEP_LOG_LINE@json.output@  \"properties\": {@@@",
+      "@@@STEP_LOG_LINE@json.output@    \"got_revision\": \"2e31dd442a44af9e1e51e96aeca18017ddb9922c\", @@@",
+      "@@@STEP_LOG_LINE@json.output@    \"got_revision_cp\": \"refs/heads/main@{#119844}\"@@@",
+      "@@@STEP_LOG_LINE@json.output@  }, @@@",
+      "@@@STEP_LOG_LINE@json.output@  \"root\": \"crosvm\", @@@",
+      "@@@STEP_LOG_LINE@json.output@  \"source_manifest\": {@@@",
+      "@@@STEP_LOG_LINE@json.output@    \"directories\": {@@@",
+      "@@@STEP_LOG_LINE@json.output@      \"crosvm\": {@@@",
+      "@@@STEP_LOG_LINE@json.output@        \"git_checkout\": {@@@",
+      "@@@STEP_LOG_LINE@json.output@          \"repo_url\": \"https://fake.org/crosvm.git\", @@@",
+      "@@@STEP_LOG_LINE@json.output@          \"revision\": \"2e31dd442a44af9e1e51e96aeca18017ddb9922c\"@@@",
+      "@@@STEP_LOG_LINE@json.output@        }@@@",
+      "@@@STEP_LOG_LINE@json.output@      }@@@",
+      "@@@STEP_LOG_LINE@json.output@    }, @@@",
+      "@@@STEP_LOG_LINE@json.output@    \"version\": 0@@@",
+      "@@@STEP_LOG_LINE@json.output@  }, @@@",
+      "@@@STEP_LOG_LINE@json.output@  \"step_text\": \"Some step text\"@@@",
+      "@@@STEP_LOG_LINE@json.output@}@@@",
+      "@@@STEP_LOG_END@json.output@@@",
+      "@@@SET_BUILD_PROPERTY@got_revision@\"2e31dd442a44af9e1e51e96aeca18017ddb9922c\"@@@",
+      "@@@SET_BUILD_PROPERTY@got_revision_cp@\"refs/heads/main@{#119844}\"@@@"
+    ]
+  },
+  {
+    "cmd": [],
+    "name": "Prepare Cros Container Build.Prepare source.Sync submodules",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@2@@@"
+    ]
+  },
+  {
+    "cmd": [
+      "git",
+      "submodule",
+      "update",
+      "--force",
+      "--init"
+    ],
+    "cwd": "[CACHE]/builder/crosvm",
+    "infra_step": true,
+    "name": "Prepare Cros Container Build.Prepare source.Sync submodules.Init / Update submodules",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@3@@@"
+    ]
+  },
+  {
+    "cmd": [
+      "git",
+      "repack",
+      "-a"
+    ],
+    "cwd": "[CACHE]/builder/crosvm",
+    "infra_step": true,
+    "name": "Prepare Cros Container Build.Prepare source.Repack repository",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@2@@@"
+    ]
+  },
+  {
+    "cmd": [
+      "vpython3",
+      "[CACHE]/builder/crosvm/tools/dev_container",
+      "--verbose",
+      "--stop",
+      "--cros"
+    ],
+    "cwd": "[CACHE]/builder/crosvm",
+    "name": "Prepare Cros Container Build.Stop existing cros containers",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@1@@@"
+    ]
+  },
+  {
+    "cmd": [
+      "vpython3",
+      "[CACHE]/builder/crosvm/tools/dev_container",
+      "--pull",
+      "--cros"
+    ],
+    "cwd": "[CACHE]/builder/crosvm",
+    "name": "Prepare Cros Container Build.Force pull cros_container",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@1@@@"
+    ]
+  },
+  {
+    "cmd": [
+      "vpython3",
+      "[CACHE]/builder/crosvm/tools/dev_container",
+      "--verbose",
+      "--cros",
+      "true"
+    ],
+    "cwd": "[CACHE]/builder/crosvm",
+    "name": "Prepare Cros Container Build.Ensure cros container exists",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@1@@@"
+    ]
+  },
+  {
+    "cmd": [
+      "vpython3",
+      "[CACHE]/builder/crosvm/tools/dev_container",
+      "--verbose",
+      "--cros",
+      "true"
+    ],
+    "cwd": "[CACHE]/builder/crosvm",
+    "name": "true"
+  },
+  {
+    "name": "$result"
+  }
+]
