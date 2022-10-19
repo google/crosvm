@@ -6,6 +6,7 @@ edition = "2021"
 
 [features]
 gfxstream = []
+gfxstream_stub = []
 virgl_renderer = []
 virgl_renderer_next = []
 minigbm = []

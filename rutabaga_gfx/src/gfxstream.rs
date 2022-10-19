@@ -81,9 +81,8 @@ pub struct stream_renderer_vulkan_info {
 }
 
 #[allow(non_camel_case_types)]
-type stream_renderer_create_blob = ResourceCreateBlob;
+pub type stream_renderer_create_blob = ResourceCreateBlob;
 
-#[link(name = "gfxstream_backend")]
 extern "C" {
 
     // Function to globally init gfxstream backend's internal state, taking display/renderer

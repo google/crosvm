@@ -501,13 +501,13 @@ mod tests {
     #[test]
     fn parse_gpu_options_default_vulkan_support() {
         {
-            let gpu_params: GpuParameters = from_key_values("backend=virglrenderer").unwrap();
+            let gpu_params: GpuParameters = parse_gpu_options("backend=virglrenderer").unwrap();
             assert_eq!(gpu_params.use_vulkan, None);
         }
 
         #[cfg(feature = "gfxstream")]
         {
-            let gpu_params: GpuParameters = from_key_values("backend=gfxstream").unwrap();
+            let gpu_params: GpuParameters = parse_gpu_options("backend=gfxstream").unwrap();
             assert_eq!(gpu_params.use_vulkan, Some(true));
         }
     }

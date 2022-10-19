@@ -172,9 +172,10 @@ fn virglrenderer() -> Result<()> {
     Ok(())
 }
 
-#[cfg(feature = "gfxstream")]
+#[cfg(all(feature = "gfxstream", not(feature = "gfxstream_stub")))]
 fn gfxstream() -> Result<()> {
     let gfxstream_path = std::env::var("GFXSTREAM_PATH")?;
+    println!("cargo:rustc-link-lib=gfxstream_backend");
     println!("cargo:rustc-link-search={}", gfxstream_path);
     Ok(())
 }
@@ -187,7 +188,7 @@ fn main() -> Result<()> {
 
     #[cfg(feature = "virgl_renderer")]
     virglrenderer()?;
-    #[cfg(feature = "gfxstream")]
+    #[cfg(all(feature = "gfxstream", not(feature = "gfxstream_stub")))]
     gfxstream()?;
 
     Ok(())

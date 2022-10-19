@@ -112,7 +112,6 @@ def check_rust_lockfiles(_: CheckContext):
 KNOWN_DISABLED_FEATURES = [
     "default-no-sandbox",
     "direct",
-    "gfxstream",
     "libvda",
     "whpx",
 ]
