@@ -224,22 +224,22 @@ impl VhostUserBackend for WlBackend {
             ..
         } = self;
 
-        let mapper = {
-            match &mut self.backend_req_conn {
-                VhostBackendReqConnectionState::Connected(request) => {
-                    request.take_shmem_mapper()?
-                }
-                VhostBackendReqConnectionState::NoConnection => {
-                    bail!("No backend request connection found")
-                }
-            }
-        };
         #[cfg(feature = "minigbm")]
         let gralloc = RutabagaGralloc::new().context("Failed to initailize gralloc")?;
-        let wlstate = self
-            .wlstate
-            .get_or_insert_with(|| {
-                Rc::new(RefCell::new(wl::WlState::new(
+        let wlstate = match &self.wlstate {
+            None => {
+                let mapper = {
+                    match &mut self.backend_req_conn {
+                        VhostBackendReqConnectionState::Connected(request) => {
+                            request.take_shmem_mapper()?
+                        }
+                        VhostBackendReqConnectionState::NoConnection => {
+                            bail!("No backend request connection found")
+                        }
+                    }
+                };
+
+                let wlstate = Rc::new(RefCell::new(wl::WlState::new(
                     wayland_paths.take().expect("WlState already initialized"),
                     mapper,
                     *use_transition_flags,
@@ -248,9 +248,12 @@ impl VhostUserBackend for WlBackend {
                     #[cfg(feature = "minigbm")]
                     gralloc,
                     None, /* address_offset */
-                )))
-            })
-            .clone();
+                )));
+                self.wlstate = Some(wlstate.clone());
+                wlstate
+            }
+            Some(state) => state.clone(),
+        };
         let (handle, registration) = AbortHandle::new_pair();
         match idx {
             0 => {

@@ -372,7 +372,6 @@ where
     mem: Option<GuestMemory>,
     backend: Box<dyn VhostUserBackend>,
     ops: O,
-    shmid: Option<u8>,
 }
 
 impl DeviceRequestHandler<VhostUserRegularOps> {
@@ -400,7 +399,6 @@ where
             mem: None,
             backend,
             ops,
-            shmid: None,
         }
     }
 }
@@ -648,7 +646,10 @@ impl<O: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for DeviceRequestHandl
     }
 
     fn set_slave_req_fd(&mut self, ep: Box<dyn Endpoint<SlaveReq>>) {
-        let conn = VhostBackendReqConnection::new(Slave::new(ep), self.shmid);
+        let conn = VhostBackendReqConnection::new(
+            Slave::new(ep),
+            self.backend.get_shared_memory_region().map(|r| r.id),
+        );
         self.backend.set_backend_req_connection(conn);
     }
 
@@ -684,7 +685,6 @@ impl<O: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for DeviceRequestHandl
 
     fn get_shared_memory_regions(&mut self) -> VhostResult<Vec<VhostSharedMemoryRegion>> {
         Ok(if let Some(r) = self.backend.get_shared_memory_region() {
-            self.shmid = Some(r.id);
             vec![VhostSharedMemoryRegion::new(r.id, r.length)]
         } else {
             Vec::new()
