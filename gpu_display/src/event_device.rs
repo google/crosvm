@@ -17,6 +17,8 @@ use base::StreamChannel;
 use data_model::DataInit;
 use linux_input_sys::virtio_input_event;
 use linux_input_sys::InputEventDecoder;
+use serde::Deserialize;
+use serde::Serialize;
 
 const EVENT_SIZE: usize = virtio_input_event::SIZE;
 const EVENT_BUFFER_LEN_MAX: usize = 64 * EVENT_SIZE;
@@ -35,7 +37,7 @@ const EVENT_BUFFER_LEN_MAX: usize = 64 * EVENT_SIZE;
 //     }
 // }
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum EventDeviceKind {
     /// Produces relative mouse motions, wheel, and button clicks while the real mouse is captured.
     Mouse,
@@ -46,6 +48,7 @@ pub enum EventDeviceKind {
 }
 
 /// Encapsulates a virtual event device, such as a mouse or keyboard
+#[derive(Deserialize, Serialize)]
 pub struct EventDevice {
     kind: EventDeviceKind,
     event_buffer: VecDeque<u8>,

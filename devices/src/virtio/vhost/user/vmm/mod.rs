@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 mod block;
+mod gpu;
 mod handler;
 mod virtio_device;
 
@@ -15,13 +16,13 @@ use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::Error as VhostError;
 
 pub use self::block::*;
+pub use self::gpu::*;
 pub use self::handler::VhostUserHandler;
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
         mod console;
         mod fs;
-        mod gpu;
         mod mac80211_hwsim;
         mod net;
         mod snd;
@@ -34,7 +35,6 @@ cfg_if::cfg_if! {
         pub use self::wl::*;
         pub use self::net::*;
         pub use self::mac80211_hwsim::*;
-        pub use self::gpu::*;
         pub use self::console::*;
         pub use self::fs::*;
         pub use self::video::*;
