@@ -591,6 +591,27 @@ pub struct RunCommand {
     /// path to BIOS/firmware ROM
     pub bios: Option<PathBuf>,
 
+    #[argh(option, arg_name = "PATH[,key=value[,key=value[,...]]]")]
+    /// parameters for setting up a block device.
+    /// Valid keys:
+    ///     path=PATH - Path to the disk image. Can be specified
+    ///         without the key as the first argument.
+    ///     ro=BOOL - Whether the block should be read-only.
+    ///         (default: false)
+    ///     root=BOOL - Whether the block device should be mounted
+    ///         as the root filesystem. This will add the required
+    ///         parameters to the kernel command-line. Can only be
+    ///         specified once. (default: false)
+    ///     sparse=BOOL - Indicates whether the disk should support
+    ///         the discard operation. (default: true)
+    ///     block_size=BYTES - Set the reported block size of the
+    ///         disk. (default: 512)
+    ///     id=STRING - Set the block device identifier to an ASCII
+    ///         string, up to 20 characters. (default: no ID)
+    ///     o_direct=BOOL - Use O_DIRECT mode to bypass page cache.
+    ///         (default: false)
+    block: Vec<DiskOptionWithId>,
+
     #[argh(option, arg_name = "CID")]
     /// context ID for virtual sockets.
     pub cid: Option<u64>,
@@ -1724,6 +1745,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                 d.disk_option.root = false;
                 d
             }))
+            .chain(cmd.block.into_iter())
             .collect::<Vec<_>>();
 
         // Sort all our disks by index.
