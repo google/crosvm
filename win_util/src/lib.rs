@@ -333,6 +333,7 @@ pub enum ProcessType {
     Metrics = 3,
     Net = 4,
     Slirp = 5,
+    Gpu = 6,
 }
 
 #[cfg(test)]

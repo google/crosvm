@@ -113,3 +113,19 @@ pub const SLIRP: Policy = Policy {
     exceptions: vec![],
     dll_blocklist: vec![],
 };
+
+/// Policy for the GPU process.
+pub const GPU: Policy = Policy {
+    initial_token_level: TokenLevel::USER_RESTRICTED_SAME_ACCESS,
+    lockdown_token_level: TokenLevel::USER_RESTRICTED_NON_ADMIN,
+    integrity_level: IntegrityLevel::INTEGRITY_LEVEL_MEDIUM,
+    delayed_integrity_level: IntegrityLevel::INTEGRITY_LEVEL_LOW,
+    // Needed for access to UI APIs.
+    job_level: JobLevel::JOB_LIMITED_USER,
+    ui_exceptions: JOB_OBJECT_UILIMIT_READCLIPBOARD | JOB_OBJECT_UILIMIT_WRITECLIPBOARD,
+    // Needed to display window on main desktop.
+    alternate_desktop: false,
+    alternate_winstation: false,
+    exceptions: vec![],
+    dll_blocklist: vec![],
+};

@@ -441,7 +441,7 @@ const GFXSTREAM_RENDERER_FLAGS_ASYNC_FENCE_CB: u32 = 1 << 23;
 #[derive(Copy, Clone, Default)]
 pub struct GfxstreamFlags(u32);
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RutabagaWsi {
     #[serde(alias = "vk")]

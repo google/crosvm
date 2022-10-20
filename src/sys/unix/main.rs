@@ -14,8 +14,6 @@ use base::syslog::LogConfig;
 use base::warn;
 use devices::virtio::vhost::user::device::run_console_device;
 use devices::virtio::vhost::user::device::run_fs_device;
-#[cfg(feature = "gpu")]
-use devices::virtio::vhost::user::device::run_gpu_device;
 #[cfg(feature = "audio")]
 use devices::virtio::vhost::user::device::run_snd_device;
 use devices::virtio::vhost::user::device::run_vsock_device;
@@ -33,8 +31,6 @@ pub(crate) fn start_device(command: DeviceSubcommand) -> anyhow::Result<()> {
         #[cfg(feature = "audio")]
         DeviceSubcommand::Snd(cfg) => run_snd_device(cfg),
         DeviceSubcommand::Fs(cfg) => run_fs_device(cfg),
-        #[cfg(feature = "gpu")]
-        DeviceSubcommand::Gpu(cfg) => run_gpu_device(cfg),
         DeviceSubcommand::Vsock(cfg) => run_vsock_device(cfg),
         DeviceSubcommand::Wl(cfg) => run_wl_device(cfg),
     }

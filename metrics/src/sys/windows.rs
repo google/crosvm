@@ -34,6 +34,7 @@ impl From<ProcessType> for EmulatorProcessType {
             ProcessType::Metrics => EmulatorProcessType::PROCESS_TYPE_METRICS,
             ProcessType::Net => EmulatorProcessType::PROCESS_TYPE_NET,
             ProcessType::Slirp => EmulatorProcessType::PROCESS_TYPE_SLIRP,
+            ProcessType::Gpu => EmulatorProcessType::PROCESS_TYPE_GPU,
         }
     }
 }

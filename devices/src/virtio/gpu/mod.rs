@@ -1261,6 +1261,13 @@ impl Gpu {
             num_capsets: Le32::from(num_capsets),
         }
     }
+
+    /// Send a request to exit the process to VMM.
+    pub fn send_exit_evt(&self) -> anyhow::Result<()> {
+        self.exit_evt_wrtube
+            .send::<VmEventType>(&VmEventType::Exit)
+            .context("failed to send exit event")
+    }
 }
 
 impl Drop for Gpu {

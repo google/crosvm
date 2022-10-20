@@ -21,6 +21,10 @@ use arch::Pstore;
 use arch::VcpuAffinity;
 use base::debug;
 use base::pagesize;
+#[cfg(windows)]
+use base::RecvTube;
+#[cfg(windows)]
+use base::SendTube;
 use cros_async::ExecutorKind;
 use devices::serial_device::SerialHardware;
 use devices::serial_device::SerialParameters;
@@ -31,6 +35,10 @@ use devices::virtio::device_constants::video::VideoDeviceConfig;
 use devices::virtio::gpu::GpuParameters;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
+#[cfg(all(windows, feature = "gpu"))]
+use devices::virtio::vhost::user::device::gpu::sys::windows::GpuBackendConfig;
+#[cfg(all(windows, feature = "gpu"))]
+use devices::virtio::vhost::user::device::gpu::sys::windows::GpuVmmConfig;
 use devices::virtio::NetParameters;
 #[cfg(feature = "audio")]
 use devices::Ac97Backend;
@@ -1162,10 +1170,14 @@ pub struct Config {
     pub force_s2idle: bool,
     #[cfg(feature = "gdb")]
     pub gdb: Option<u32>,
+    #[cfg(all(windows, feature = "gpu"))]
+    pub gpu_backend_config: Option<GpuBackendConfig>,
     #[cfg(feature = "gpu")]
     pub gpu_parameters: Option<GpuParameters>,
     #[cfg(all(unix, feature = "gpu"))]
     pub gpu_render_server_parameters: Option<GpuRenderServerParameters>,
+    #[cfg(all(windows, feature = "gpu"))]
+    pub gpu_vmm_config: Option<GpuVmmConfig>,
     pub host_cpu_topology: bool,
     #[cfg(windows)]
     pub host_guid: Option<String>,
@@ -1301,6 +1313,10 @@ pub struct Config {
     pub virtio_snds: Vec<SndParameters>,
     pub virtio_switches: Vec<PathBuf>,
     pub virtio_trackpad: Vec<TouchDeviceOption>,
+    #[cfg(windows)]
+    pub vm_evt_rdtube: Option<RecvTube>,
+    #[cfg(windows)]
+    pub vm_evt_wrtube: Option<SendTube>,
     #[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
     pub vtpm_proxy: bool,
     pub vvu_proxy: Vec<VvuOption>,
@@ -1364,10 +1380,14 @@ impl Default for Config {
             force_s2idle: false,
             #[cfg(feature = "gdb")]
             gdb: None,
+            #[cfg(all(windows, feature = "gpu"))]
+            gpu_backend_config: None,
             #[cfg(feature = "gpu")]
             gpu_parameters: None,
             #[cfg(all(unix, feature = "gpu"))]
             gpu_render_server_parameters: None,
+            #[cfg(all(windows, feature = "gpu"))]
+            gpu_vmm_config: None,
             host_cpu_topology: false,
             #[cfg(windows)]
             host_guid: None,
@@ -1503,6 +1523,10 @@ impl Default for Config {
             virtio_snds: Vec::new(),
             virtio_switches: Vec::new(),
             virtio_trackpad: Vec::new(),
+            #[cfg(windows)]
+            vm_evt_rdtube: None,
+            #[cfg(windows)]
+            vm_evt_wrtube: None,
             #[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
             vtpm_proxy: false,
             vvu_proxy: Vec::new(),

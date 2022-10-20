@@ -4,7 +4,7 @@
 
 mod block;
 #[cfg(feature = "gpu")]
-mod gpu;
+pub mod gpu;
 mod handler;
 mod listener;
 

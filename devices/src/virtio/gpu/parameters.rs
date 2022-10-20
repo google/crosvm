@@ -37,7 +37,7 @@ mod serde_context_mask {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, FromKeyValues)]
+#[derive(Clone, Debug, Serialize, Deserialize, FromKeyValues)]
 #[serde(deny_unknown_fields, default, rename_all = "kebab-case")]
 pub struct GpuParameters {
     #[serde(rename = "backend")]

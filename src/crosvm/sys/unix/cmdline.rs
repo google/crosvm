@@ -23,8 +23,6 @@ pub enum DeviceSubcommand {
     #[cfg(feature = "audio")]
     Snd(device::SndOptions),
     Fs(device::FsOptions),
-    #[cfg(feature = "gpu")]
-    Gpu(device::GpuOptions),
     Vsock(device::VsockOptions),
     Wl(device::WlOptions),
 }

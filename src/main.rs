@@ -27,6 +27,8 @@ use crosvm::cmdline;
 use crosvm::config::executable_is_plugin;
 use crosvm::config::Config;
 use devices::virtio::vhost::user::device::run_block_device;
+#[cfg(feature = "gpu")]
+use devices::virtio::vhost::user::device::run_gpu_device;
 #[cfg(unix)]
 use devices::virtio::vhost::user::device::run_net_device;
 #[cfg(feature = "composite-disk")]
@@ -426,6 +428,8 @@ fn start_device(opts: cmdline::DeviceCommand) -> std::result::Result<(), ()> {
     let result = match opts.command {
         cmdline::DeviceSubcommand::CrossPlatform(command) => match command {
             CrossPlatformDevicesCommands::Block(cfg) => run_block_device(cfg),
+            #[cfg(feature = "gpu")]
+            CrossPlatformDevicesCommands::Gpu(cfg) => run_gpu_device(cfg),
             #[cfg(unix)]
             CrossPlatformDevicesCommands::Net(cfg) => run_net_device(cfg),
         },
