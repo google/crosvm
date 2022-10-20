@@ -118,7 +118,7 @@ exclude = [
 
 [features]
 ## Default features of crosvm. This selection is somewhat arbitrary for historical reasons.
-default = ["audio", "balloon", "gpu", "qcow", "usb"]
+default = ["audio", "balloon", "config-file", "gpu", "qcow", "usb"]
 
 ## Enables cross-platform audio devices
 audio = ["devices/audio"]
@@ -131,6 +131,9 @@ balloon = ["devices/balloon", "vm_control/balloon"]
 ## is intended to speed up crosvm's usage in CI environments that might otherwise have to
 ## concatenate large file system images into a single disk image.
 composite-disk = ["protos/composite-disk", "protobuf", "disk/composite-disk"]
+
+## Enables support for JSON configuration files that can be specified using `--cfg`.
+config-file = []
 
 ## Enables using gdb to debug the guest kernel.
 gdb = [
@@ -368,6 +371,7 @@ libc = "0.2.93"
 libcras = "*"
 # Compile out trace statements in release builds
 log = { version = "0", features = ["release_max_level_debug"]}
+merge = "0.1.0"
 metrics = { path = "metrics" }
 net_util = { path = "net_util" }
 once_cell = "1.7"
