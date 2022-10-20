@@ -54,9 +54,9 @@ pip3 install \
     mypy \
     black
 
-if ! command -v rustup &> /dev/null; then
+if ! command -v rustup &>/dev/null; then
     wget "https://static.rust-lang.org/rustup/archive/1.25.1/x86_64-unknown-linux-gnu/rustup-init"
-    echo "5cc9ffd1026e82e7fb2eec2121ad71f4b0f044e88bca39207b3f6b769aaa799c *rustup-init" | sha256sum -c -; \
+    echo "5cc9ffd1026e82e7fb2eec2121ad71f4b0f044e88bca39207b3f6b769aaa799c *rustup-init" | sha256sum -c -
     chmod +x rustup-init
     ./rustup-init -y --no-modify-path --profile minimal --default-toolchain none
     rm rustup-init
@@ -73,7 +73,7 @@ rustup component add llvm-tools-preview
 rustup target add x86_64-pc-windows-gnu
 
 # The bindgen tool is required to build a crosvm dependency.
-cargo install bindgen-cli
+cargo install bindgen --version=0.60.1
 
 # binutils are wrappers to call the rustup bundled versions of llvm tools.
 cargo install cargo-binutils
