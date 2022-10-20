@@ -190,7 +190,7 @@ pub(crate) trait Syslog {
     ) -> Result<(Option<Box<dyn Log + Send>>, Option<RawDescriptor>), Error>;
 }
 
-pub(crate) struct State {
+pub struct State {
     /// Record filter
     filter: env_logger::filter::Filter,
     /// All the loggers we have

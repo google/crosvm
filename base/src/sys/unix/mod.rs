@@ -668,8 +668,6 @@ pub fn number_of_logical_cores() -> Result<usize> {
 mod tests {
     use std::io::Write;
 
-    use libc::EBADF;
-
     use super::*;
 
     #[test]
@@ -681,36 +679,5 @@ mod tests {
         add_fd_flags(tx.as_raw_fd(), libc::O_NONBLOCK).expect("Failed to set tx non blocking");
         tx.write(&[0u8; 8])
             .expect_err("Write after fill didn't fail");
-    }
-
-    #[test]
-    fn safe_descriptor_from_path_valid() {
-        assert!(safe_descriptor_from_path(Path::new("/proc/self/fd/2"))
-            .unwrap()
-            .is_some());
-    }
-
-    #[test]
-    fn safe_descriptor_from_path_invalid_integer() {
-        assert_eq!(
-            safe_descriptor_from_path(Path::new("/proc/self/fd/blah")),
-            Err(Error::new(EINVAL))
-        );
-    }
-
-    #[test]
-    fn safe_descriptor_from_path_invalid_fd() {
-        assert_eq!(
-            safe_descriptor_from_path(Path::new("/proc/self/fd/42")),
-            Err(Error::new(EBADF))
-        );
-    }
-
-    #[test]
-    fn safe_descriptor_from_path_none() {
-        assert_eq!(
-            safe_descriptor_from_path(Path::new("/something/else")).unwrap(),
-            None
-        );
     }
 }

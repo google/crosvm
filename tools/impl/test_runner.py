@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, NamedTuple, Optional
 
 from . import test_target, testvm
-from .common import all_tracked_files
+from .common import all_tracked_files, very_verbose
 from .test_config import BUILD_FEATURES, CRATE_OPTIONS, TestOption
 from .test_target import TestTarget, Triple
 
@@ -262,10 +262,11 @@ def build_all_binaries(target: TestTarget, crosvm_direct: bool, instrument_cover
     cargo_args = [
         "--features=" + features,
         f"--target={target.build_triple}",
-        "--verbose",
         "--workspace",
         *[f"--exclude={crate}" for crate in get_workspace_excludes(target.build_triple)],
     ]
+    if very_verbose():
+        cargo_args.append("--verbose")
     cargo_args.extend(extra_args)
 
     yield from cargo_build_executables(
@@ -291,7 +292,13 @@ def get_test_timeout(target: TestTarget, executable: Executable):
         return timeout * EMULATION_TIMEOUT_MULTIPLIER
 
 
-def execute_test(target: TestTarget, attempts: int, collect_coverage: bool, executable: Executable):
+def execute_test(
+    target: TestTarget,
+    attempts: int,
+    collect_coverage: bool,
+    integration_test: bool,
+    executable: Executable,
+):
     """
     Executes a single test on the given test targed
 
@@ -301,7 +308,7 @@ def execute_test(target: TestTarget, attempts: int, collect_coverage: bool, exec
     """
     options = CRATE_OPTIONS.get(executable.crate_name, [])
     args: List[str] = []
-    if TestOption.SINGLE_THREADED in options:
+    if TestOption.SINGLE_THREADED in options or integration_test:
         args += ["--test-threads=1"]
 
     binary_path = executable.binary_path
@@ -400,7 +407,9 @@ def execute_all(
         sys.stdout.flush()
         with Pool(PARALLELISM) as pool:
             for result in pool.imap(
-                functools.partial(execute_test, unit_test_target, attempts, collect_coverage),
+                functools.partial(
+                    execute_test, unit_test_target, attempts, collect_coverage, False
+                ),
                 unit_tests,
             ):
                 print_test_progress(result)
@@ -416,7 +425,9 @@ def execute_all(
         )
         sys.stdout.flush()
         for executable in integration_tests:
-            result = execute_test(integration_test_target, attempts, collect_coverage, executable)
+            result = execute_test(
+                integration_test_target, attempts, collect_coverage, True, executable
+            )
             print_test_progress(result)
             yield result
         print()
