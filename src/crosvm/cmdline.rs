@@ -21,6 +21,9 @@ cfg_if::cfg_if! {
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::str::FromStr;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use arch::MsrConfig;
@@ -44,6 +47,7 @@ use devices::SerialParameters;
 use devices::StubPciParameters;
 use hypervisor::ProtectionType;
 use resources::AddressRange;
+use serde::Deserialize;
 #[cfg(feature = "gpu")]
 use vm_control::gpu::DisplayParameters as GpuDisplayParameters;
 
@@ -53,7 +57,7 @@ use super::sys::config::parse_gpu_options;
 use super::sys::config::parse_gpu_render_server_options;
 #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
 use super::sys::GpuRenderServerParameters;
-use crate::crosvm::config::numbered_disk_option;
+use crate::crosvm::config::from_key_values;
 #[cfg(feature = "audio")]
 use crate::crosvm::config::parse_ac97_options;
 use crate::crosvm::config::parse_bus_id_addr;
@@ -495,6 +499,40 @@ pub struct UsbListCommand {
     pub socket_path: String,
 }
 
+/// Structure containing the parameters for a single disk as well as a unique counter increasing
+/// each time a new disk parameter is parsed.
+///
+/// This allows the letters assigned to each disk to reflect the order of their declaration, as
+/// we have several options for specifying disks (rwroot, root, etc) and order can thus be lost
+/// when they are aggregated.
+#[derive(Deserialize, Debug)]
+#[serde(deny_unknown_fields, from = "DiskOption")]
+struct DiskOptionWithId {
+    disk_option: DiskOption,
+    index: usize,
+}
+
+/// FromStr implementation for argh.
+impl FromStr for DiskOptionWithId {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let disk_option: DiskOption = from_key_values(s)?;
+        Ok(Self::from(disk_option))
+    }
+}
+
+/// Assign the next id to `disk_option`.
+impl From<DiskOption> for DiskOptionWithId {
+    fn from(disk_option: DiskOption) -> Self {
+        static DISK_COUNTER: AtomicUsize = AtomicUsize::new(0);
+        Self {
+            disk_option,
+            index: DISK_COUNTER.fetch_add(1, Ordering::Relaxed),
+        }
+    }
+}
+
 /// Start a new crosvm instance
 #[remain::sorted]
 #[argh_helpers::pad_description_for_argh]
@@ -654,8 +692,7 @@ pub struct RunCommand {
         option,
         short = 'd',
         long = "disk",
-        arg_name = "PATH[,key=value[,key=value[,...]]]",
-        from_str_fn(numbered_disk_option)
+        arg_name = "PATH[,key=value[,key=value[,...]]]"
     )]
     /// path to a disk image followed by optional comma-separated
     /// options.
@@ -667,7 +704,7 @@ pub struct RunCommand {
     ///    id=STRING - Set the block device identifier to an ASCII
     ///        string, up to 20 characters (default: no ID)
     ///    o_direct=BOOL - Use O_DIRECT mode to bypass page cache"
-    pub disks: Vec<(usize, DiskOption)>,
+    disks: Vec<DiskOptionWithId>,
 
     #[argh(switch)]
     /// capture keyboard input from the display window
@@ -1070,12 +1107,7 @@ pub struct RunCommand {
     /// enable virtio-pvclock.
     pub pvclock: bool,
 
-    #[argh(
-        option,
-        arg_name = "PATH[,key=value[,key=value[,...]]]",
-        short = 'r',
-        from_str_fn(numbered_disk_option)
-    )]
+    #[argh(option, arg_name = "PATH[,key=value[,key=value[,...]]]", short = 'r')]
     /// path to a disk image followed by optional comma-separated
     /// options.
     /// Valid keys:
@@ -1086,7 +1118,7 @@ pub struct RunCommand {
     ///     id=STRING - Set the block device identifier to an ASCII
     ///     string, up to 20 characters (default: no ID)
     ///     o_direct=BOOL - Use O_DIRECT mode to bypass page cache
-    root: Option<(usize, DiskOption)>,
+    root: Option<DiskOptionWithId>,
 
     #[argh(option, arg_name = "CPUSET", from_str_fn(parse_cpu_set))]
     /// comma-separated list of CPUs or CPU ranges to run VCPUs on. (e.g. 0,1-3,5) (default: none)
@@ -1099,8 +1131,7 @@ pub struct RunCommand {
     #[argh(
         option,
         long = "rwdisk",
-        arg_name = "PATH[,key=value[,key=value[,...]]]",
-        from_str_fn(numbered_disk_option)
+        arg_name = "PATH[,key=value[,key=value[,...]]]"
     )]
     /// path to a read-write disk image followed by optional
     /// comma-separated options.
@@ -1112,13 +1143,9 @@ pub struct RunCommand {
     ///     id=STRING - Set the block device identifier to an ASCII
     ///       string, up to 20 characters (default: no ID)
     ///     o_direct=BOOL - Use O_DIRECT mode to bypass page cache
-    rwdisks: Vec<(usize, DiskOption)>,
+    rwdisks: Vec<DiskOptionWithId>,
 
-    #[argh(
-        option,
-        arg_name = "PATH[,key=value[,key=value[,...]]]",
-        from_str_fn(numbered_disk_option)
-    )]
+    #[argh(option, arg_name = "PATH[,key=value[,key=value[,...]]]")]
     /// path to a read-write root disk image followed by optional
     /// comma-separated options.
     /// Valid keys:
@@ -1129,7 +1156,7 @@ pub struct RunCommand {
     ///     id=STRING - Set the block device identifier to an ASCII
     ///        string, up to 20 characters (default: no ID)
     ///     o_direct=BOOL - Use O_DIRECT mode to bypass page cache
-    rwroot: Option<(usize, DiskOption)>,
+    rwroot: Option<DiskOptionWithId>,
 
     #[argh(switch)]
     /// set Low Power S0 Idle Capable Flag for guest Fixed ACPI
@@ -1676,39 +1703,39 @@ impl TryFrom<RunCommand> for super::config::Config {
             return Err("Only one of [root,rwroot] has to be specified".to_string());
         }
 
-        let root_disk = if let Some((read_only, (index, mut disk_option))) = cmd
+        let root_disk = if let Some((read_only, mut d)) = cmd
             .root
             .map(|d| (true, d))
             .or(cmd.rwroot.map(|d| (false, d)))
         {
-            if index >= 26 {
+            if d.index >= 26 {
                 return Err("ran out of letters for to assign to root disk".to_string());
             }
-            disk_option.read_only = read_only;
+            d.disk_option.read_only = read_only;
 
             cfg.params.push(format!(
                 "root=/dev/vd{} {}",
-                char::from(b'a' + index as u8),
+                char::from(b'a' + d.index as u8),
                 if read_only { "ro" } else { "rw" }
             ));
-            Some((index, disk_option))
+            Some(d)
         } else {
             None
         };
 
         let mut disks = root_disk
             .into_iter()
-            .chain(cmd.disks.into_iter().map(|(i, mut d)| {
-                d.read_only = true;
-                (i, d)
+            .chain(cmd.disks.into_iter().map(|mut d| {
+                d.disk_option.read_only = true;
+                d
             }))
-            .chain(cmd.rwdisks.into_iter().map(|(i, mut d)| {
-                d.read_only = false;
-                (i, d)
+            .chain(cmd.rwdisks.into_iter().map(|mut d| {
+                d.disk_option.read_only = false;
+                d
             }))
             .collect::<Vec<_>>();
-        disks.sort_by_key(|(i, _)| *i);
-        cfg.disks = disks.into_iter().map(|(_, d)| d).collect();
+        disks.sort_by_key(|d| d.index);
+        cfg.disks = disks.into_iter().map(|d| d.disk_option).collect();
 
         for (mut pmem, read_only) in cmd
             .pmem_devices

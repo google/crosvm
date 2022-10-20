@@ -7,8 +7,6 @@ use std::net;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 
 use arch::set_default_serial_parameters;
 use arch::MsrAction;
@@ -961,12 +959,6 @@ pub fn parse_cpu_set(s: &str) -> Result<Vec<usize>, String> {
 
 pub fn from_key_values<'a, T: Deserialize<'a>>(value: &'a str) -> Result<T, String> {
     serde_keyvalue::from_key_values(value).map_err(|e| e.to_string())
-}
-
-pub fn numbered_disk_option(value: &str) -> Result<(usize, DiskOption), String> {
-    static DISK_COUNTER: AtomicUsize = AtomicUsize::new(0);
-    let disk = from_key_values(value)?;
-    Ok((DISK_COUNTER.fetch_add(1, Ordering::Relaxed), disk))
 }
 
 /// Parse a list of guest to host CPU mappings.
