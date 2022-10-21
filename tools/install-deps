@@ -73,10 +73,15 @@ rustup component add llvm-tools-preview
 rustup target add x86_64-pc-windows-gnu
 
 # The bindgen tool is required to build a crosvm dependency.
-cargo install bindgen --version=0.60.1
+cargo install -f bindgen --version=0.60.1
 
 # binutils are wrappers to call the rustup bundled versions of llvm tools.
-cargo install cargo-binutils
+cargo install -f cargo-binutils
 
 # Install dependencies used to generate mdbook documentation.
 $(dirname "$0")/install-docs-deps
+
+# Install wine related dependencies if this is a local install and not a docker build
+if [[ -z "${DOCKER_WINE_SETUP}" ]]; then
+  $(dirname "$0")/install-wine-deps
+fi

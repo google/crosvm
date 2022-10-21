@@ -20,6 +20,9 @@ RUN useradd -ms /bin/bash crosvmdev \
     # Allow dependencies and build files to be used and overwritten by user
     && chown -R crosvmdev:crosvmdev /scratch /cache
 
+COPY tools/install-wine-deps /tools/
+RUN chmod 755 /tools/install-wine-deps
+
 # Following operations will be run as crosvmdev to ensure correct permission.
 USER crosvmdev
 
@@ -27,6 +30,8 @@ USER crosvmdev
 RUN echo 'export PATH=/cache/cargo_home/bin:/usr/local/cargo/bin:$PATH' >> /home/crosvmdev/.profile
 
 RUN wine64 wineboot
+
+RUN  /tools/install-wine-deps
 
 # Switch back to root to avoid usermod crosvmdev as crosvmdev
 USER root

@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Copyright 2022 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+set -ex
+
+WINETRICKS_COMMIT_HASH="b666e05a0bf28fd940e5c258ccdfc0a2799d1948"
+WINETRICKS_URL="https://raw.githubusercontent.com/Winetricks/winetricks/"$WINETRICKS_COMMIT_HASH"/src/winetricks"
+WINESTRICKS_SCRIPT_SHA="40fdf1f89f3636187201858e3591e86752172814"
+
+# Setup wine windows prebuilt dependecies.
+export WINEARCH=win64
+export WINE=wine64
+sudo wget https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks -O winetricks
+echo "$WINESTRICKS_SCRIPT_SHA winetricks" | sha1sum -c -
+sudo chmod +x winetricks
+
+# winetricks command fails while setting up dll registry post installation. During docker build
+# this command fails because it tries to create a regedit window but we do not have DISPLAY set.
+# Failure happens after installing dlls that we need so we ignore the failure.
+# TODO(b:255824543): Find a way to clean install vcrun2015
+./winetricks --force vcrun2015 || true
+ln -fs ~/.wine/drive_c/windows/system32/ucrtbase.dll ~/.wine/drive_c/windows/system32/ucrtbased.dll
+ln -fs ~/.wine/drive_c/windows/system32/vcruntime140.dll ~/.wine/drive_c/windows/system32/vcruntime140d.dll
+

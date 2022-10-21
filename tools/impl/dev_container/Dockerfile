@@ -30,6 +30,10 @@ RUN dpkg --add-architecture arm64 \
 # Allow APT to cache packages between docker image builds
 RUN rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
 
+# Setting this will help install-deps skip installing wine deps, which
+# will be installed by Dockerfile.user
+ENV DOCKER_WINE_SETUP=1
+
 # Install dependencies (APT and cargo packages are cached between image builds for faster iterative builds).
 COPY tools/install-deps tools/install-aarch64-deps tools/install-armhf-deps tools/install-docs-deps rust-toolchain /tools/
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
