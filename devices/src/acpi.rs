@@ -15,6 +15,7 @@ use std::thread;
 
 use acpi_tables::aml;
 use acpi_tables::aml::Aml;
+use anyhow::Context;
 use base::error;
 use base::warn;
 use base::Error as SysError;
@@ -60,15 +61,18 @@ pub enum ACPIPMFixedEvent {
     RTC,
 }
 
+#[derive(Serialize, Deserialize, Copy, Clone)]
 pub(crate) struct Pm1Resource {
     pub(crate) status: u16,
     enable: u16,
     control: u16,
 }
 
+#[derive(Serialize, Deserialize)]
 pub(crate) struct GpeResource {
     pub(crate) status: [u8; ACPIPM_RESOURCE_GPE0_BLK_LEN as usize / 2],
     enable: [u8; ACPIPM_RESOURCE_GPE0_BLK_LEN as usize / 2],
+    #[serde(skip_serializing, skip_deserializing)]
     pub(crate) gpe_notify: BTreeMap<u32, Vec<Arc<Mutex<dyn GpeNotify>>>>,
 }
 
@@ -106,6 +110,26 @@ pub struct ACPIPMResource {
     exit_evt_wrtube: SendTube,
     pm1: Arc<Mutex<Pm1Resource>>,
     gpe0: Arc<Mutex<GpeResource>>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ACPIPMResrourceSnapshot {
+    pm1: Pm1Resource,
+    gpe0: GpeResource,
+}
+
+impl ACPIPMResrourceSnapshot {
+    fn new(pm1: Arc<Mutex<Pm1Resource>>, gpe0: Arc<Mutex<GpeResource>>) -> ACPIPMResrourceSnapshot {
+        let gpe_lock = &*gpe0.lock();
+        ACPIPMResrourceSnapshot {
+            pm1: *pm1.lock(),
+            gpe0: GpeResource {
+                status: gpe_lock.status,
+                enable: gpe_lock.enable,
+                gpe_notify: BTreeMap::new(),
+            },
+        }
+    }
 }
 
 impl ACPIPMResource {
@@ -218,7 +242,37 @@ impl ACPIPMResource {
     }
 }
 
-impl Suspendable for ACPIPMResource {}
+impl Suspendable for ACPIPMResource {
+    fn snapshot(&self) -> anyhow::Result<String> {
+        let snap_ready_acpi = ACPIPMResrourceSnapshot::new(self.pm1.clone(), self.gpe0.clone());
+        let serialized = serde_json::to_string(&snap_ready_acpi).context("error serializing")?;
+        Ok(serialized)
+    }
+
+    fn restore(&mut self, data: &str) -> anyhow::Result<()> {
+        let acpi_snapshot: ACPIPMResrourceSnapshot =
+            serde_json::from_str(data).context("error deserializing")?;
+        self.pm1 = Arc::new(Mutex::new(acpi_snapshot.pm1));
+        self.gpe0 = Arc::new(Mutex::new(acpi_snapshot.gpe0));
+        Ok(())
+    }
+
+    fn sleep(&mut self) -> anyhow::Result<()> {
+        if let Some(kill_evt) = self.kill_evt.take() {
+            let _ = kill_evt.signal();
+        }
+
+        if let Some(worker_thread) = self.worker_thread.take() {
+            let _ = worker_thread.join();
+        }
+        Ok(())
+    }
+
+    fn wake(&mut self) -> anyhow::Result<()> {
+        self.start();
+        Ok(())
+    }
+}
 
 fn run_worker(
     sci_evt: IrqLevelEvent,
