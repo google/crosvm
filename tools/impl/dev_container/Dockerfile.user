@@ -1,0 +1,35 @@
+# Copyright 2022 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# Extends the "./Dockerfile" created image by adding a non-root user and ensuring
+# that user can access the necessary files and devices for development.
+#
+# This will allow the user to use the same UID/GID inside the container that they have
+# on the outside, preventing container created files from being owned by root.
+
+ARG VERSION
+FROM gcr.io/crosvm-infra/crosvm_dev:${VERSION}
+
+# Add a new password-less sudoer user crosvmdev
+RUN useradd -ms /bin/bash crosvmdev \
+    && usermod -aG sudo crosvmdev \
+    && echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers \
+    # Pass rust envs from rust toolchain image when sudo into new user
+    && echo 'Defaults env_keep += "RUSTUP_HOME CARGO_HOME RUST_VERSION CARGO_TARGET_DIR"' >> /etc/sudoers \
+    # Allow dependencies and build files to be used and overwritten by user
+    && chown -R crosvmdev:crosvmdev /scratch /cache
+
+# Following operations will be run as crosvmdev to ensure correct permission.
+USER crosvmdev
+
+# Prepare path to rust toolchain for crosvmdev
+RUN echo 'export PATH=/cache/cargo_home/bin:/usr/local/cargo/bin:$PATH' >> /home/crosvmdev/.profile
+
+RUN wine64 wineboot
+
+# Switch back to root to avoid usermod crosvmdev as crosvmdev
+USER root
+COPY tools/impl/dev_container/entrypoint.sh tools/impl/dev_container/setup-user.sh /tools/
+RUN chmod 755 /tools/entrypoint.sh /tools/setup-user.sh
+ENTRYPOINT ["/tools/entrypoint.sh"]

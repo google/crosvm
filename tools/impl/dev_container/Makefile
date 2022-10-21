@@ -23,15 +23,23 @@ BUILD_CONTEXT=$(shell realpath ../../../)
 
 DOCKER ?= docker
 
-all: crosvm_dev
+all: crosvm_dev crosvm_dev_user
 
 upload: all
 	$(DOCKER) push $(TAG_BASE)/crosvm_dev:$(VERSION)
+	$(DOCKER) push $(TAG_BASE)/crosvm_dev_user:$(VERSION)
 
 crosvm_dev:
 	$(DOCKER) build \
 		-t $(TAG_BASE)/$@:$(VERSION) \
 		-f Dockerfile \
+		$(BUILD_CONTEXT)
+
+crosvm_dev_user:
+	$(DOCKER) build \
+		-t $(TAG_BASE)/$@:$(VERSION) \
+		-f Dockerfile.user \
+		--build-arg=VERSION=$(VERSION) \
 		$(BUILD_CONTEXT)
 
 .PHONY: all crosvm_dev upload
