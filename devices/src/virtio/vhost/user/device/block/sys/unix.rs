@@ -46,6 +46,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     let disk = DiskOption {
         path: filename.into(),
         read_only: fileopts.contains(&"read-only"),
+        root: false,
         sparse: false,
         o_direct: false,
         block_size: 512,

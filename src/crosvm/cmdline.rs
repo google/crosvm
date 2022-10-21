@@ -1699,42 +1699,54 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.serial_parameters.insert(key, serial_params);
         }
 
-        if cmd.root.is_some() && cmd.rwroot.is_some() {
-            return Err("Only one of [root,rwroot] has to be specified".to_string());
-        }
-
-        let root_disk = if let Some((read_only, mut d)) = cmd
+        // Aggregate all the disks with the expected read-only and root values according to the
+        // option they have been passed with.
+        let mut disks = cmd
             .root
-            .map(|d| (true, d))
-            .or(cmd.rwroot.map(|d| (false, d)))
-        {
-            if d.index >= 26 {
-                return Err("ran out of letters for to assign to root disk".to_string());
-            }
-            d.disk_option.read_only = read_only;
-
-            cfg.params.push(format!(
-                "root=/dev/vd{} {}",
-                char::from(b'a' + d.index as u8),
-                if read_only { "ro" } else { "rw" }
-            ));
-            Some(d)
-        } else {
-            None
-        };
-
-        let mut disks = root_disk
             .into_iter()
+            .map(|mut d| {
+                d.disk_option.read_only = true;
+                d.disk_option.root = true;
+                d
+            })
+            .chain(cmd.rwroot.into_iter().map(|mut d| {
+                d.disk_option.read_only = false;
+                d.disk_option.root = true;
+                d
+            }))
             .chain(cmd.disks.into_iter().map(|mut d| {
                 d.disk_option.read_only = true;
+                d.disk_option.root = false;
                 d
             }))
             .chain(cmd.rwdisks.into_iter().map(|mut d| {
                 d.disk_option.read_only = false;
+                d.disk_option.root = false;
                 d
             }))
             .collect::<Vec<_>>();
+
+        // Sort all our disks by index.
         disks.sort_by_key(|d| d.index);
+
+        // Check that we don't have more than one root disk.
+        if disks.iter().filter(|d| d.disk_option.root).count() > 1 {
+            return Err("only one root disk can be specified".to_string());
+        }
+
+        // If we have a root disk, add the corresponding command-line parameters.
+        if let Some(d) = disks.iter().find(|d| d.disk_option.root) {
+            if d.index >= 26 {
+                return Err("ran out of letters for to assign to root disk".to_string());
+            }
+            cfg.params.push(format!(
+                "root=/dev/vd{} {}",
+                char::from(b'a' + d.index as u8),
+                if d.disk_option.read_only { "ro" } else { "rw" }
+            ));
+        }
+
+        // Pass the sorted disks to the VM config.
         cfg.disks = disks.into_iter().map(|d| d.disk_option).collect();
 
         for (mut pmem, read_only) in cmd

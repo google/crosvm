@@ -53,6 +53,10 @@ pub struct DiskOption {
     pub path: PathBuf,
     #[serde(default, rename = "ro")]
     pub read_only: bool,
+    #[serde(default)]
+    /// Whether this disk should be the root device. Can only be set once. Only useful for adding
+    /// specific command-line options.
+    pub root: bool,
     #[serde(default = "block_option_sparse_default")]
     pub sparse: bool,
     #[serde(default)]
@@ -95,6 +99,7 @@ mod tests {
             DiskOption {
                 path: "/path/to/disk.img".into(),
                 read_only: false,
+                root: false,
                 sparse: true,
                 o_direct: false,
                 block_size: 512,
@@ -111,6 +116,7 @@ mod tests {
             DiskOption {
                 path: "/path/to/disk.img".into(),
                 read_only: false,
+                root: false,
                 sparse: true,
                 o_direct: false,
                 block_size: 512,
@@ -127,6 +133,24 @@ mod tests {
             DiskOption {
                 path: "/some/path.img".into(),
                 read_only: true,
+                root: false,
+                sparse: true,
+                o_direct: false,
+                block_size: 512,
+                id: None,
+                #[cfg(windows)]
+                io_concurrency: NonZeroU32::new(1).unwrap(),
+            }
+        );
+
+        // root
+        let params = from_block_arg("/some/path.img,root").unwrap();
+        assert_eq!(
+            params,
+            DiskOption {
+                path: "/some/path.img".into(),
+                read_only: false,
+                root: true,
                 sparse: true,
                 o_direct: false,
                 block_size: 512,
@@ -143,6 +167,7 @@ mod tests {
             DiskOption {
                 path: "/some/path.img".into(),
                 read_only: false,
+                root: false,
                 sparse: true,
                 o_direct: false,
                 block_size: 512,
@@ -157,6 +182,7 @@ mod tests {
             DiskOption {
                 path: "/some/path.img".into(),
                 read_only: false,
+                root: false,
                 sparse: false,
                 o_direct: false,
                 block_size: 512,
@@ -173,6 +199,7 @@ mod tests {
             DiskOption {
                 path: "/some/path.img".into(),
                 read_only: false,
+                root: false,
                 sparse: true,
                 o_direct: true,
                 block_size: 512,
@@ -189,6 +216,7 @@ mod tests {
             DiskOption {
                 path: "/some/path.img".into(),
                 read_only: false,
+                root: false,
                 sparse: true,
                 o_direct: false,
                 block_size: 128,
@@ -207,6 +235,7 @@ mod tests {
                 DiskOption {
                     path: "/some/path.img".into(),
                     read_only: false,
+                    root: false,
                     sparse: true,
                     o_direct: false,
                     block_size: 512,
@@ -223,6 +252,7 @@ mod tests {
             DiskOption {
                 path: "/some/path.img".into(),
                 read_only: false,
+                root: false,
                 sparse: true,
                 o_direct: false,
                 block_size: 512,
@@ -241,14 +271,16 @@ mod tests {
         );
 
         // All together
-        let params =
-            from_block_arg("/some/path.img,block_size=256,ro,sparse=false,id=DISK_LABEL,o_direct")
-                .unwrap();
+        let params = from_block_arg(
+            "/some/path.img,block_size=256,ro,root,sparse=false,id=DISK_LABEL,o_direct",
+        )
+        .unwrap();
         assert_eq!(
             params,
             DiskOption {
                 path: "/some/path.img".into(),
                 read_only: true,
+                root: true,
                 sparse: false,
                 o_direct: true,
                 block_size: 256,
