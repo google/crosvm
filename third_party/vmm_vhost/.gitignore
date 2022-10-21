@@ -1,6 +1,0 @@
-/build
-/kcov_build
-/target
-.idea
-**/*.rs.bk
-Cargo.lock

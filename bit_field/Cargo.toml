@@ -1,8 +1,0 @@
-[package]
-name = "bit_field"
-version = "0.1.0"
-authors = ["The Chromium OS Authors"]
-edition = "2021"
-
-[dependencies]
-bit_field_derive = { path = "bit_field_derive" }

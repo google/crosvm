@@ -1,8 +1,0 @@
-# Copyright 2018 The ChromiumOS Authors
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
-
-@include /usr/share/policy/crosvm/gpu_common.policy
-
-socket: arg0 == AF_UNIX && arg1 == SOCK_STREAM|SOCK_CLOEXEC && arg2 == 0
-clone: arg0 & CLONE_THREAD

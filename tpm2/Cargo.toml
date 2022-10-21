@@ -1,8 +1,0 @@
-[package]
-name = "tpm2"
-version = "0.1.0"
-authors = ["The Chromium OS Authors"]
-edition = "2021"
-
-[dependencies]
-tpm2-sys = { path = "../tpm2-sys" }
