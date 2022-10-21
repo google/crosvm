@@ -1,6 +1,14 @@
 # Copyright 2021 The ChromiumOS Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
+
+# Development container for crosvm.
+#
+# Provides all dependencies specified in install-deps with some additonal
+# logic to cache cargo data in CI runs.
+#
+# Note, if you are using docker, you will probably be using "Dockerfile.user".
+
 FROM docker.io/debian:testing-20220822-slim
 
 ENV RUSTUP_HOME=/usr/local/rustup \
@@ -36,21 +44,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && ./install-armhf-deps \
     && ./install-docs-deps
 
-# Add a new password-less sudoer user crosvmdev
-RUN useradd -ms /bin/bash crosvmdev \
-    && usermod -aG sudo crosvmdev \
-    && echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers \
-    # Pass rust envs from rust toolchain image when sudo into new user
-    && echo 'Defaults env_keep += "RUSTUP_HOME CARGO_HOME RUST_VERSION CARGO_TARGET_DIR"' >> /etc/sudoers \
-    # Allow dependencies and build files to be used and overwritten by user
-    && chown -R crosvmdev:crosvmdev /scratch /cache
-
-# Following operations will be run as crosvmdev to ensure correct permission.
-USER crosvmdev
-
-# Prepare path to rust toolchain for crosvmdev
-RUN echo 'export PATH=/cache/cargo_home/bin:/usr/local/cargo/bin:$PATH' >> /home/crosvmdev/.profile
-
 # Prepare wine64
 RUN sudo ln -sf /usr/bin/wine64-stable /usr/bin/wine64 \
     && wine64 wineboot
@@ -68,9 +61,3 @@ ENV CARGO_HOME=/cache/cargo_home
 
 VOLUME /workspace
 WORKDIR /workspace
-
-# Switch back to root to avoid usermod crosvmdev as crosvmdev
-USER root
-COPY tools/impl/dev_container/entrypoint.sh tools/impl/dev_container/setup-user.sh /tools/
-RUN chmod 755 /tools/entrypoint.sh /tools/setup-user.sh
-ENTRYPOINT ["/tools/entrypoint.sh"]
