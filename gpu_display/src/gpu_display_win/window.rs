@@ -22,7 +22,6 @@ use euclid::Box2D;
 use euclid::Size2D;
 use vm_control::display::WindowVisibility;
 use win_util::syscall_bail;
-use win_util::win32_string;
 use win_util::win32_wide_string;
 use winapi::shared::minwindef::DWORD;
 use winapi::shared::minwindef::FALSE;
@@ -46,7 +45,7 @@ use winapi::um::dwmapi::DWM_BB_ENABLE;
 use winapi::um::dwmapi::DWM_BLURBEHIND;
 use winapi::um::errhandlingapi::GetLastError;
 use winapi::um::errhandlingapi::SetLastError;
-use winapi::um::libloaderapi::GetModuleHandleA;
+use winapi::um::libloaderapi::GetModuleHandleW;
 use winapi::um::shellscalingapi::GetDpiForMonitor;
 use winapi::um::shellscalingapi::MDT_DEFAULT;
 use winapi::um::shellscalingapi::MDT_RAW_DPI;
@@ -187,25 +186,25 @@ impl Window {
         unsafe { IsWindow(self.hwnd) != 0 }
     }
 
-    /// Calls `SetPropA()` internally.
+    /// Calls `SetPropW()` internally.
     pub fn set_property(&self, property: &str, data: *mut c_void) -> Result<()> {
         // Safe because `Window` object won't outlive the HWND, and failures are handled below.
         unsafe {
-            if SetPropA(self.hwnd, win32_string(property).as_ptr(), data) == 0 {
-                syscall_bail!("Failed to call SetPropA()");
+            if SetPropW(self.hwnd, win32_wide_string(property).as_ptr(), data) == 0 {
+                syscall_bail!("Failed to call SetPropW()");
             }
         }
         Ok(())
     }
 
-    /// Calls `RemovePropA()` internally.
+    /// Calls `RemovePropW()` internally.
     pub fn remove_property(&self, property: &str) -> Result<()> {
         // Safe because `Window` object won't outlive the HWND, and failures are handled below.
         unsafe {
             SetLastError(0);
-            RemovePropA(self.hwnd, win32_string(property).as_ptr());
+            RemovePropW(self.hwnd, win32_wide_string(property).as_ptr());
             if GetLastError() != 0 {
-                syscall_bail!("Failed to call RemovePropA()");
+                syscall_bail!("Failed to call RemovePropW()");
             }
         }
         Ok(())
@@ -228,31 +227,31 @@ impl Window {
         }
     }
 
-    /// Calls `GetWindowLongPtrA()` internally.
+    /// Calls `GetWindowLongPtrW()` internally.
     pub fn get_attribute(&self, index: i32) -> Result<isize> {
         // Safe because `Window` object won't outlive the HWND, and failures are handled below.
         unsafe {
-            // GetWindowLongPtrA() may return zero if we haven't set that attribute before, so we
+            // GetWindowLongPtrW() may return zero if we haven't set that attribute before, so we
             // need to check if the error code is non-zero.
             SetLastError(0);
-            let value = GetWindowLongPtrA(self.hwnd, index);
+            let value = GetWindowLongPtrW(self.hwnd, index);
             if value == 0 && GetLastError() != 0 {
-                syscall_bail!("Failed to call GetWindowLongPtrA()");
+                syscall_bail!("Failed to call GetWindowLongPtrW()");
             }
             Ok(value)
         }
     }
 
-    /// Calls `SetWindowLongPtrA()` internally.
+    /// Calls `SetWindowLongPtrW()` internally.
     pub fn set_attribute(&self, index: i32, value: isize) -> Result<()> {
         // Safe because `Window` object won't outlive the HWND, and failures are handled below.
         unsafe {
-            // SetWindowLongPtrA() may return zero if the previous value of that attribute was zero,
+            // SetWindowLongPtrW() may return zero if the previous value of that attribute was zero,
             // so we need to check if the error code is non-zero.
             SetLastError(0);
-            let prev_value = SetWindowLongPtrA(self.hwnd, index, value);
+            let prev_value = SetWindowLongPtrW(self.hwnd, index, value);
             if prev_value == 0 && GetLastError() != 0 {
-                syscall_bail!("Failed to call SetWindowLongPtrA()");
+                syscall_bail!("Failed to call SetWindowLongPtrW()");
             }
             Ok(())
         }
@@ -512,12 +511,12 @@ impl Window {
         Ok(())
     }
 
-    /// Calls `PostMessageA()` internally.
+    /// Calls `PostMessageW()` internally.
     pub fn post_message(&self, msg: UINT, w_param: WPARAM, l_param: LPARAM) -> Result<()> {
         // Safe because `Window` object won't outlive the HWND.
         unsafe {
-            if PostMessageA(self.hwnd, msg, w_param, l_param) == 0 {
-                syscall_bail!("Failed to call PostMessageA()");
+            if PostMessageW(self.hwnd, msg, w_param, l_param) == 0 {
+                syscall_bail!("Failed to call PostMessageW()");
             }
         }
         Ok(())
@@ -534,32 +533,32 @@ impl Window {
         Ok(())
     }
 
-    /// Calls `DefWindowProcA()` internally.
+    /// Calls `DefWindowProcW()` internally.
     pub fn default_process_message(&self, packet: &MessagePacket) -> LRESULT {
         // Safe because `Window` object won't outlive the HWND.
-        unsafe { DefWindowProcA(self.hwnd, packet.msg, packet.w_param, packet.l_param) }
+        unsafe { DefWindowProcW(self.hwnd, packet.msg, packet.w_param, packet.l_param) }
     }
 
-    /// Calls `GetModuleHandleA()` internally.
+    /// Calls `GetModuleHandleW()` internally.
     fn get_current_module_handle() -> HMODULE {
         // Safe because we handle failures below.
-        let hmodule = unsafe { GetModuleHandleA(null_mut()) };
-        if hmodule == null_mut() {
+        let hmodule = unsafe { GetModuleHandleW(null_mut()) };
+        if hmodule.is_null() {
             // If it fails, we are in a very broken state and it doesn't make sense to keep running.
             panic!(
-                "Failed to call GetModuleHandleA() for the current module (Error code {})",
+                "Failed to call GetModuleHandleW() for the current module (Error code {})",
                 unsafe { GetLastError() }
             );
         }
         hmodule
     }
 
-    /// Calls `LoadIconA()` internally.
+    /// Calls `LoadIconW()` internally.
     fn load_custom_icon(hinstance: HINSTANCE, resource_id: WORD) -> Result<HICON> {
         // Safe because we handle failures below.
         unsafe {
             let hicon = LoadIconW(hinstance, MAKEINTRESOURCEW(resource_id));
-            if hicon == null_mut() {
+            if hicon.is_null() {
                 syscall_bail!("Failed to call LoadIconW()");
             }
             Ok(hicon)
@@ -571,7 +570,7 @@ impl Window {
         // Safe because we handle failures below.
         unsafe {
             let hcursor = LoadCursorW(null_mut(), cursor_id);
-            if hcursor == null_mut() {
+            if hcursor.is_null() {
                 syscall_bail!("Failed to call LoadCursorW()");
             }
             Ok(hcursor)
@@ -583,7 +582,7 @@ impl Window {
         // Safe because we handle failures below.
         unsafe {
             let hobject = GetStockObject(BLACK_BRUSH as i32);
-            if hobject == null_mut() {
+            if hobject.is_null() {
                 syscall_bail!("Failed to call GetStockObject()");
             }
             Ok(hobject as HBRUSH)
@@ -598,6 +597,7 @@ impl Window {
         hcursor: HCURSOR,
         hbrush_background: HBRUSH,
     ) -> Result<()> {
+        let class_name = win32_wide_string(class_name);
         let window_class = WNDCLASSEXW {
             cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
             style: CS_OWNDC | CS_HREDRAW | CS_VREDRAW,
@@ -609,7 +609,7 @@ impl Window {
             hCursor: hcursor,
             hbrBackground: hbrush_background,
             lpszMenuName: null_mut(),
-            lpszClassName: win32_wide_string(class_name).as_ptr(),
+            lpszClassName: class_name.as_ptr(),
             hIconSm: hicon,
         };
 
@@ -685,7 +685,7 @@ impl MonitorInfo {
         })
     }
 
-    /// Calls `GetMonitorInfoA()` internally.
+    /// Calls `GetMonitorInfoW()` internally.
     /// # Safety
     /// Caller is responsible for ensuring that `hmonitor` is a valid handle.
     unsafe fn get_monitor_info(hmonitor: HMONITOR) -> Result<MONITORINFO> {
@@ -693,8 +693,8 @@ impl MonitorInfo {
             cbSize: mem::size_of::<MONITORINFO>().try_into().unwrap(),
             ..Default::default()
         };
-        if GetMonitorInfoA(hmonitor, &mut monitor_info) == 0 {
-            syscall_bail!("Failed to call GetMonitorInfoA()");
+        if GetMonitorInfoW(hmonitor, &mut monitor_info) == 0 {
+            syscall_bail!("Failed to call GetMonitorInfoW()");
         }
         Ok(monitor_info)
     }

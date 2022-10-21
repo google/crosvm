@@ -27,7 +27,7 @@ use euclid::size2;
 use sync::Mutex;
 #[cfg(feature = "kiwi")]
 use vm_control::ServiceSendToGpu;
-use win_util::win32_string;
+use win_util::win32_wide_string;
 use winapi::shared::minwindef::LPARAM;
 use winapi::shared::minwindef::LRESULT;
 use winapi::shared::minwindef::UINT;
@@ -202,7 +202,7 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
             // Safe because `GetMessageW()` will block until `message` is populated.
             let new_message = unsafe { message.assume_init() };
             if new_message.hwnd.is_null() {
-                // Thread messages don't target a specific window and `DispatchMessageA()` won't
+                // Thread messages don't target a specific window and `DispatchMessageW()` won't
                 // send them to `wnd_proc()` function, hence we need to handle it as a special case.
                 message_dispatcher
                     .as_mut()
@@ -318,7 +318,7 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
         w_param: WPARAM,
         l_param: LPARAM,
     ) -> LRESULT {
-        let dispatcher_ptr = GetPropA(hwnd, win32_string(DISPATCHER_PROPERTY_NAME).as_ptr())
+        let dispatcher_ptr = GetPropW(hwnd, win32_wide_string(DISPATCHER_PROPERTY_NAME).as_ptr())
             as *mut WindowMessageDispatcher<T>;
         if let Some(dispatcher) = dispatcher_ptr.as_mut() {
             if let Some(ret) =
@@ -327,7 +327,7 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
                 return ret;
             }
         }
-        DefWindowProcA(hwnd, msg, w_param, l_param)
+        DefWindowProcW(hwnd, msg, w_param, l_param)
     }
 }
 

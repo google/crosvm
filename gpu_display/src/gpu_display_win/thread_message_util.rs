@@ -13,17 +13,17 @@ use winapi::shared::minwindef::UINT;
 use winapi::shared::minwindef::WPARAM;
 use winapi::um::winuser::*;
 
-/// Using `PostThreadMessageA()` requires that the thread-specific message queue must have been
-/// created on the targeted thread. We can call `PeekMessageA()` from the targeted thread first to
+/// Using `PostThreadMessageW()` requires that the thread-specific message queue must have been
+/// created on the targeted thread. We can call `PeekMessageW()` from the targeted thread first to
 /// ensure it:
 /// https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-postthreadmessagea#remarks
 /// It does no harm calling this function multiple times, since it won't remove any message from the
 /// queue.
 pub(crate) fn force_create_message_queue() {
     let mut message = mem::MaybeUninit::uninit();
-    // Safe because we know the lifetime of `message`, and `PeekMessageA()` has no failure mode.
+    // Safe because we know the lifetime of `message`, and `PeekMessageW()` has no failure mode.
     unsafe {
-        PeekMessageA(
+        PeekMessageW(
             message.as_mut_ptr(),
             null_mut(),
             WM_USER,
@@ -33,7 +33,7 @@ pub(crate) fn force_create_message_queue() {
     }
 }
 
-/// Calls `PostThreadMessageA()` internally.
+/// Calls `PostThreadMessageW()` internally.
 /// # Safety
 /// The caller must make sure the thread is still running and has created the message queue.
 pub(crate) unsafe fn post_message(
@@ -42,13 +42,13 @@ pub(crate) unsafe fn post_message(
     w_param: WPARAM,
     l_param: LPARAM,
 ) -> Result<()> {
-    if PostThreadMessageA(thread_id, msg, w_param, l_param) == 0 {
-        syscall_bail!("Failed to call PostThreadMessageA()");
+    if PostThreadMessageW(thread_id, msg, w_param, l_param) == 0 {
+        syscall_bail!("Failed to call PostThreadMessageW()");
     }
     Ok(())
 }
 
-/// Calls `PostThreadMessageA()` internally. This is a common pattern, where we send a pointer to
+/// Calls `PostThreadMessageW()` internally. This is a common pattern, where we send a pointer to
 /// the given object as the lParam. The receiver is responsible for destructing the object.
 /// # Safety
 /// The caller must make sure the thread is still running and has created the message queue.

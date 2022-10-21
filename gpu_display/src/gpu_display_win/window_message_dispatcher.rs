@@ -30,7 +30,7 @@ use super::ObjectId;
 use crate::EventDevice;
 use crate::EventDeviceKind;
 
-/// The pointer to dispatcher will be stored with HWND using `SetPropA()` with the following name.
+/// The pointer to dispatcher will be stored with HWND using `SetPropW()` with the following name.
 pub(crate) const DISPATCHER_PROPERTY_NAME: &str = "PROP_WND_MSG_DISPATCHER";
 
 /// This class is used to dispatch display events to the guest device.
@@ -184,7 +184,7 @@ impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
             },
             // Safe because we are processing a message targeting this thread.
             _ => unsafe {
-                DefWindowProcA(null_mut(), msg, w_param, l_param);
+                DefWindowProcW(null_mut(), msg, w_param, l_param);
             },
         }
     }
