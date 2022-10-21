@@ -555,8 +555,9 @@ impl TryFrom<GpuParameters> for FixedGpuParameters {
 /// Start a new crosvm instance
 #[remain::sorted]
 #[argh_helpers::pad_description_for_argh]
-#[derive(FromArgs)]
+#[derive(FromArgs, Deserialize)]
 #[argh(subcommand, name = "run")]
+#[serde(deny_unknown_fields)]
 pub struct RunCommand {
     #[cfg(feature = "audio")]
     #[argh(
@@ -564,6 +565,7 @@ pub struct RunCommand {
         from_str_fn(parse_ac97_options),
         arg_name = "[backend=BACKEND,capture=true,capture_effect=EFFECT,client_type=TYPE,shm-fd=FD,client-fd=FD,server-fd=FD]"
     )]
+    #[serde(skip)] // TODO(b/255223604)
     /// comma separated key=value pairs for setting up Ac97 devices.
     /// Can be given more than once.
     /// Possible key values:
@@ -579,22 +581,27 @@ pub struct RunCommand {
     pub ac97: Vec<Ac97Parameters>,
 
     #[argh(option, arg_name = "PATH")]
+    #[serde(default)]
     /// path to user provided ACPI table
     pub acpi_table: Vec<PathBuf>,
 
     #[argh(option)]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to Android fstab
     pub android_fstab: Option<PathBuf>,
 
     #[argh(option, arg_name = "N")]
+    #[serde(skip)] // TODO(b/255223604)
     /// amount to bias balance of memory between host and guest as the balloon inflates, in mib.
     pub balloon_bias_mib: Option<i64>,
 
     #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// path for balloon controller socket.
     pub balloon_control: Option<PathBuf>,
 
     #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
     /// enable page reporting in balloon.
     pub balloon_page_reporting: bool,
 
@@ -611,6 +618,7 @@ pub struct RunCommand {
     pub bios: Option<PathBuf>,
 
     #[argh(option, arg_name = "PATH[,key=value[,key=value[,...]]]")]
+    #[serde(default)]
     /// parameters for setting up a block device.
     /// Valid keys:
     ///     path=PATH - Path to the disk image. Can be specified
@@ -653,6 +661,7 @@ pub struct RunCommand {
     pub coiommu: Option<devices::CoIommuParameters>,
 
     #[argh(option, arg_name = "CPUSET", from_str_fn(parse_cpu_affinity))]
+    #[serde(skip)] // TODO(b/255223604)
     /// comma-separated list of CPUs or CPU ranges to run VCPUs on (e.g. 0,1-3,5)
     /// or colon-separated list of assignments of guest to host CPU assignments (e.g. 0=0:1=1:2=2) (default: no mask)
     pub cpu_affinity: Option<VcpuAffinity>,
@@ -662,10 +671,12 @@ pub struct RunCommand {
         arg_name = "CPU=CAP[,CPU=CAP[,...]]",
         from_str_fn(parse_cpu_capacity)
     )]
+    #[serde(skip)] // TODO(b/255223604)
     /// set the relative capacity of the given CPU (default: no capacity)
     pub cpu_capacity: Option<BTreeMap<usize, u32>>, // CPU index -> capacity
 
     #[argh(option, arg_name = "CPUSET", from_str_fn(parse_cpu_set))]
+    #[serde(skip)] // TODO(b/255223604)
     /// group the given CPUs into a cluster (default: no clusters)
     pub cpu_cluster: Vec<Vec<usize>>,
 
@@ -675,30 +686,36 @@ pub struct RunCommand {
 
     #[cfg(feature = "crash-report")]
     #[argh(option, arg_name = "\\\\.\\pipe\\PIPE_NAME")]
+    #[serde(skip)] // TODO(b/255223604)
     /// the crash handler ipc pipe name.
     pub crash_pipe_name: Option<String>,
 
     #[argh(switch)]
+    #[serde(default)]
     /// don't set VCPUs real-time until make-rt command is run
     pub delay_rt: bool,
 
     #[cfg(feature = "direct")]
     #[argh(option, arg_name = "irq")]
+    #[serde(skip)] // TODO(b/255223604)
     /// enable interrupt passthrough
     pub direct_edge_irq: Vec<u32>,
 
     #[cfg(feature = "direct")]
     #[argh(option, arg_name = "event=gbllock|powerbtn|sleepbtn|rtc")]
+    #[serde(skip)] // TODO(b/255223604)
     /// enable ACPI fixed event interrupt and register access passthrough
     pub direct_fixed_event: Vec<devices::ACPIPMFixedEvent>,
 
     #[cfg(feature = "direct")]
     #[argh(option, arg_name = "gpe")]
+    #[serde(skip)] // TODO(b/255223604)
     /// enable GPE interrupt and register access passthrough
     pub direct_gpe: Vec<u32>,
 
     #[cfg(feature = "direct")]
     #[argh(option, arg_name = "irq")]
+    #[serde(skip)] // TODO(b/255223604)
     /// enable interrupt passthrough
     pub direct_level_irq: Vec<u32>,
 
@@ -708,6 +725,7 @@ pub struct RunCommand {
         arg_name = "PATH@RANGE[,RANGE[,...]]",
         from_str_fn(parse_direct_io_options)
     )]
+    #[serde(skip)] // TODO(b/255223604)
     /// path and ranges for direct memory mapped I/O access. RANGE may be decimal or hex (starting with 0x)
     pub direct_mmio: Option<DirectIoOption>,
 
@@ -717,18 +735,22 @@ pub struct RunCommand {
         arg_name = "PATH@RANGE[,RANGE[,...]]",
         from_str_fn(parse_direct_io_options)
     )]
+    #[serde(skip)] // TODO(b/255223604)
     /// path and ranges for direct port mapped I/O access. RANGE may be decimal or hex (starting with 0x)
     pub direct_pmio: Option<DirectIoOption>,
 
     #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
     /// run all devices in one, non-sandboxed process
     pub disable_sandbox: bool,
 
     #[argh(switch)]
+    #[serde(default)]
     /// disable INTx in virtio devices
     pub disable_virtio_intx: bool,
 
     #[argh(option, short = 'd', arg_name = "PATH[,key=value[,key=value[,...]]]")]
+    #[serde(skip)] // Deprecated - use `block` instead.
     /// path to a disk image followed by optional comma-separated
     /// options.
     /// Valid keys:
@@ -742,26 +764,32 @@ pub struct RunCommand {
     disk: Vec<DiskOptionWithId>,
 
     #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
     /// capture keyboard input from the display window
     pub display_window_keyboard: bool,
 
     #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
     /// capture keyboard input from the display window
     pub display_window_mouse: bool,
 
     #[argh(option, arg_name = "DIR")]
+    #[serde(skip)] // TODO(b/255223604)
     /// directory with smbios_entry_point/DMI files
     pub dmi: Option<PathBuf>,
 
     #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
     /// expose HWP feature to the guest
     pub enable_hwp: bool,
 
     #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
     /// expose Power and Perfomance (PnP) data to guest and guest can show these PnP data
     pub enable_pnp_data: bool,
 
     #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to an event device node. The device will be grabbed (unusable from the host) and made available to the guest with the same configuration it shows on the host
     pub evdev: Vec<PathBuf>,
 
@@ -771,6 +799,7 @@ pub struct RunCommand {
 
     #[cfg(windows)]
     #[argh(switch)]
+    #[serde(default)]
     /// gather and display statistics on Vm Exits and Bus Reads/Writes.
     pub exit_stats: bool,
 
@@ -778,6 +807,7 @@ pub struct RunCommand {
         option,
         arg_name = "addr=NUM,size=SIZE,path=PATH[,offset=NUM][,rw][,sync]"
     )]
+    #[serde(default)]
     /// map the given file into guest memory at the specified
     /// address.
     /// Parameters (addr, size, path are required):
@@ -793,6 +823,7 @@ pub struct RunCommand {
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[argh(switch)]
+    #[serde(default)]
     /// force use of a calibrated TSC cpuid leaf (0x15) even if the hypervisor
     /// doesn't require one.
     pub force_calibrated_tsc_leaf: bool,
@@ -804,6 +835,7 @@ pub struct RunCommand {
 
     #[cfg(feature = "gpu")]
     #[argh(option)]
+    #[serde(skip)] // TODO(b/255223604)
     /// (EXPERIMENTAL) Comma separated key=value pairs for setting
     /// up a virtio-gpu device
     /// Possible key values:
@@ -837,6 +869,7 @@ pub struct RunCommand {
 
     #[cfg(feature = "gpu")]
     #[argh(option)]
+    #[serde(skip)] // TODO(b/255223604)
     /// (EXPERIMENTAL) Comma separated key=value pairs for setting
     /// up a display on the virtio-gpu device
     /// Possible key values:
@@ -854,6 +887,7 @@ pub struct RunCommand {
 
     #[cfg(all(unix, feature = "gpu", feature = "virgl_renderer_next"))]
     #[argh(option, from_str_fn(parse_gpu_render_server_options))]
+    #[serde(skip)] // TODO(b/255223604)
     /// (EXPERIMENTAL) Comma separated key=value pairs for setting
     /// up a render server for the virtio-gpu device
     /// Possible key values:
@@ -864,20 +898,24 @@ pub struct RunCommand {
     pub gpu_render_server: Option<GpuRenderServerParameters>,
 
     #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
     /// use mirror cpu topology of Host for Guest VM, also copy some cpu feature to Guest VM
     pub host_cpu_topology: bool,
 
     #[cfg(windows)]
     #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// string representation of the host guid in registry format, for namespacing vsock connections.
     pub host_guid: Option<String>,
 
     #[cfg(unix)]
     #[argh(option, arg_name = "IP")]
+    #[serde(skip)] // Deprecated - use `net` instead.
     /// IP address to assign to host tap interface
     pub host_ip: Option<net::Ipv4Addr>,
 
     #[argh(switch)]
+    #[serde(default)]
     /// advise the kernel to use Huge Pages for guest memory mappings
     pub hugepages: bool,
 
@@ -895,19 +933,23 @@ pub struct RunCommand {
 
     #[cfg(windows)]
     #[argh(option, arg_name = "kernel|split|userspace")]
+    #[serde(skip)] // TODO(b/255223604)
     /// type of interrupt controller emulation.  \"split\" is only available for x86 KVM.
     pub irqchip: Option<IrqChipKind>,
 
     #[argh(switch)]
+    #[serde(default)]
     /// allow to enable ITMT scheduling feature in VM. The success of enabling depends on HWP and ACPI CPPC support on hardware
     pub itmt: bool,
 
     #[cfg(windows)]
     #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// forward hypervisor kernel driver logs for this VM to a file.
     pub kernel_log_file: Option<String>,
 
     #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to a socket from where to read keyboard input events and write status updates to
     pub keyboard: Vec<PathBuf>,
 
@@ -918,21 +960,25 @@ pub struct RunCommand {
 
     #[cfg(unix)]
     #[argh(switch)]
+    #[serde(default)]
     /// disable host swap on guest VM pages.
     pub lock_guest_memory: bool,
 
     #[cfg(windows)]
     #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// redirect logs to the supplied log file at PATH rather than stderr. For multi-process mode, use --logs-directory instead
     pub log_file: Option<String>,
 
     #[cfg(windows)]
     #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to the logs directory used for crosvm processes. Logs will be sent to stderr if unset, and stderr/stdout will be uncaptured
     pub logs_directory: Option<String>,
 
     #[cfg(unix)]
     #[argh(option, arg_name = "MAC", long = "mac")]
+    #[serde(skip)] // Deprecated - use `net` instead.
     /// MAC address for VM
     pub mac_address: Option<net_util::MacAddress>,
 
@@ -941,19 +987,23 @@ pub struct RunCommand {
     pub mem: Option<u64>,
 
     #[argh(option, from_str_fn(parse_mmio_address_range))]
+    #[serde(skip)] // TODO(b/255223604)
     /// MMIO address ranges
     pub mmio_address_range: Option<Vec<AddressRange>>,
 
     #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to a socket from where to read mouse input events and write status updates to
     pub mouse: Vec<PathBuf>,
 
     #[cfg(target_arch = "aarch64")]
     #[argh(switch)]
+    #[serde(default)]
     /// enable the Memory Tagging Extension in the guest
     pub mte: bool,
 
     #[argh(option, arg_name = "PATH:WIDTH:HEIGHT")]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to a socket from where to read multi touch input events (such as those from a touchscreen) and write status updates to, optionally followed by width and height (defaults to 800x1280)
     pub multi_touch: Vec<TouchDeviceOption>,
 
@@ -962,6 +1012,7 @@ pub struct RunCommand {
         option,
         arg_name = "tap_name=TAP_NAME|tap_fd=TAP_FD|host_ip=IP,netmask=NETMASK,mac=MAC_ADDRESS"
     )]
+    #[serde(default)]
     /// comma separated key=value pairs for setting
     /// up a vhost-user net device
     /// Possible key values:
@@ -979,51 +1030,62 @@ pub struct RunCommand {
 
     #[cfg(unix)]
     #[argh(option, arg_name = "N")]
+    #[serde(skip)] // TODO(b/255223604)
     /// virtio net virtual queue pairs. (default: 1)
     pub net_vq_pairs: Option<u16>,
 
     #[cfg(unix)]
     #[argh(option, arg_name = "NETMASK")]
+    #[serde(skip)] // Deprecated - use `net` instead.
     /// netmask for VM subnet
     pub netmask: Option<net::Ipv4Addr>,
 
     #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
     /// don't use virtio-balloon device in the guest
     pub no_balloon: bool,
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[argh(switch)]
+    #[serde(default)]
     /// don't use legacy KBD devices emulation
     pub no_i8042: bool,
 
     #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
     /// don't create RNG device in the guest
     pub no_rng: bool,
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
     /// don't use legacy RTC devices emulation
     pub no_rtc: bool,
 
     #[argh(switch)]
+    #[serde(default)]
     /// don't use SMT in the guest
     pub no_smt: bool,
 
     #[argh(switch)]
+    #[serde(default)]
     /// don't use usb devices in the guest
     pub no_usb: bool,
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[argh(option, arg_name = "OEM_STRING")]
+    #[serde(default)]
     /// SMBIOS OEM string values to add to the DMI tables
     pub oem_strings: Vec<String>,
 
     #[argh(option, short = 'p', arg_name = "PARAMS")]
+    #[serde(default)]
     /// extra kernel or plugin command line arguments. Can be given more than once
     pub params: Vec<String>,
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[argh(option, arg_name = "pci_low_mmio_start")]
+    #[serde(skip)] // TODO(b/255223604)
     /// the pci mmio start address below 4G
     pub pci_start: Option<u64>,
 
@@ -1033,6 +1095,7 @@ pub struct RunCommand {
         arg_name = "mmio_base,mmio_length",
         from_str_fn(parse_memory_region)
     )]
+    #[serde(skip)] // TODO(b/255223604)
     /// region for PCIe Enhanced Configuration Access Mechanism
     pub pcie_ecam: Option<AddressRange>,
 
@@ -1042,10 +1105,12 @@ pub struct RunCommand {
         arg_name = "PATH[,hp_gpe=NUM]",
         from_str_fn(parse_pcie_root_port_params)
     )]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to sysfs of host pcie root port and host pcie root port hotplug gpe number
     pub pcie_root_port: Vec<HostPcieRootPortParameters>,
 
     #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
     /// enable per-VM core scheduling intead of the default one (per-vCPU core scheduing) by
     /// making all vCPU threads share same cookie for core scheduling.
     /// This option is no-op on devices that have neither MDS nor L1TF vulnerability
@@ -1056,87 +1121,105 @@ pub struct RunCommand {
         arg_name = "path=PATH,[block_size=SIZE]",
         from_str_fn(parse_pflash_parameters)
     )]
+    #[serde(skip)] // TODO(b/255223604)
     /// comma-seperated key-value pair for setting up the pflash device, which provides space to store UEFI variables.
     /// block_size defaults to 4K.
     /// [--pflash <path=PATH,[block_size=SIZE]>]
     pub pflash: Option<PflashParameters>,
 
     #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to empty directory to use for sandbox pivot root
     pub pivot_root: Option<PathBuf>,
 
     #[cfg(feature = "plugin")]
     #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// absolute path to plugin process to run under crosvm
     pub plugin: Option<PathBuf>,
 
     #[cfg(feature = "plugin")]
     #[argh(option, arg_name = "GID:GID:INT")]
+    #[serde(skip)] // TODO(b/255223604)
     /// supplemental GIDs that should be mapped in plugin jail.  Can be given more than once
     pub plugin_gid_map: Vec<GidMap>,
 
     #[cfg(feature = "plugin")]
     #[argh(option)]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to the file listing supplemental GIDs that should be mapped in plugin jail.  Can be given more than once
     pub plugin_gid_map_file: Option<PathBuf>,
 
     #[cfg(feature = "plugin")]
     #[argh(option, arg_name = "PATH:PATH:BOOL")]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to be mounted into the plugin's root filesystem.  Can be given more than once
     pub plugin_mount: Vec<BindMount>,
 
     #[cfg(feature = "plugin")]
     #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to the file listing paths be mounted into the plugin's root filesystem.  Can be given more than once
     pub plugin_mount_file: Option<PathBuf>,
 
     #[cfg(feature = "plugin")]
     #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// absolute path to a directory that will become root filesystem for the plugin process.
     pub plugin_root: Option<PathBuf>,
 
     #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to a disk image
     pub pmem_device: Vec<DiskOption>,
 
     #[argh(switch)]
+    #[serde(default)]
     /// grant this Guest VM certain privileges to manage Host resources, such as power management
     pub privileged_vm: bool,
 
     #[cfg(feature = "process-invariants")]
     #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// shared read-only memory address for a serialized EmulatorProcessInvariants proto
     pub process_invariants_handle: Option<u64>,
 
     #[cfg(feature = "process-invariants")]
     #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// size of the serialized EmulatorProcessInvariants proto pointed at by process-invariants-handle
     pub process_invariants_size: Option<usize>,
 
     #[cfg(windows)]
     #[argh(option)]
+    #[serde(skip)] // TODO(b/255223604)
     /// product channel
     pub product_channel: Option<String>,
 
     #[cfg(windows)]
     #[argh(option)]
+    #[serde(skip)] // TODO(b/255223604)
     /// the product name for file paths.
     pub product_name: Option<String>,
 
     #[cfg(windows)]
     #[argh(option)]
+    #[serde(skip)] // TODO(b/255223604)
     /// product version
     pub product_version: Option<String>,
 
     #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
     /// prevent host access to guest memory
     pub protected_vm: bool,
 
     #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// (EXPERIMENTAL/FOR DEBUGGING) Use custom VM firmware to run in protected mode
     pub protected_vm_with_firmware: Option<PathBuf>,
 
     #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
     /// (EXPERIMENTAL) prevent host access to guest memory, but don't use protected VM firmware
     protected_vm_without_firmware: bool,
 
@@ -1147,10 +1230,12 @@ pub struct RunCommand {
 
     #[cfg(windows)]
     #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
     /// enable virtio-pvclock.
     pub pvclock: bool,
 
     #[argh(option, arg_name = "PATH[,key=value[,key=value[,...]]]", short = 'r')]
+    #[serde(skip)] // Deprecated - use `block` instead.
     /// path to a disk image followed by optional comma-separated
     /// options.
     /// Valid keys:
@@ -1164,14 +1249,17 @@ pub struct RunCommand {
     root: Option<DiskOptionWithId>,
 
     #[argh(option, arg_name = "CPUSET", from_str_fn(parse_cpu_set))]
+    #[serde(skip)] // TODO(b/255223604)
     /// comma-separated list of CPUs or CPU ranges to run VCPUs on. (e.g. 0,1-3,5) (default: none)
     pub rt_cpus: Option<Vec<usize>>,
 
     #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to a writable disk image
     rw_pmem_device: Vec<DiskOption>,
 
     #[argh(option, arg_name = "PATH[,key=value[,key=value[,...]]]")]
+    #[serde(skip)] // Deprecated - use `block` instead.
     /// path to a read-write disk image followed by optional
     /// comma-separated options.
     /// Valid keys:
@@ -1185,6 +1273,7 @@ pub struct RunCommand {
     rwdisk: Vec<DiskOptionWithId>,
 
     #[argh(option, arg_name = "PATH[,key=value[,key=value[,...]]]")]
+    #[serde(skip)] // Deprecated - use `block` instead.
     /// path to a read-write root disk image followed by optional
     /// comma-separated options.
     /// Valid keys:
@@ -1198,6 +1287,7 @@ pub struct RunCommand {
     rwroot: Option<DiskOptionWithId>,
 
     #[argh(switch)]
+    #[serde(default)]
     /// set Low Power S0 Idle Capable Flag for guest Fixed ACPI
     /// Description Table, additionally use enhanced crosvm suspend and resume
     /// routines to perform full guest suspension/resumption
@@ -1205,11 +1295,13 @@ pub struct RunCommand {
 
     #[cfg(unix)]
     #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
     /// instead of seccomp filter failures being fatal, they will be logged instead
     pub seccomp_log_failures: bool,
 
     #[cfg(unix)]
     #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to seccomp .policy files
     pub seccomp_policy_dir: Option<PathBuf>,
 
@@ -1218,6 +1310,7 @@ pub struct RunCommand {
         arg_name = "type=TYPE,[hardware=HW,num=NUM,path=PATH,input=PATH,console,earlycon,stdin]",
         from_str_fn(parse_serial_options)
     )]
+    #[serde(default)]
     /// comma separated key=value pairs for setting up serial
     /// devices. Can be given more than once.
     /// Possible key values:
@@ -1255,6 +1348,9 @@ pub struct RunCommand {
         option,
         arg_name = "PATH:TAG[:type=TYPE:writeback=BOOL:timeout=SECONDS:uidmap=UIDMAP:gidmap=GIDMAP:cache=CACHE:dax=BOOL,posix_acl=BOOL]"
     )]
+    // TODO(b/218223240) add Deserialize implementation for SharedDir so it can be supported by the
+    // config file.
+    #[serde(skip)]
     /// colon-separated options for configuring a directory to be
     /// shared with the VM. The first field is the directory to be
     /// shared and the second field is the tag that the VM can use
@@ -1304,34 +1400,41 @@ pub struct RunCommand {
     pub shared_dir: Vec<SharedDir>,
 
     #[argh(option, arg_name = "PATH:WIDTH:HEIGHT")]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to a socket from where to read single touch input events (such as those from a touchscreen) and write status updates to, optionally followed by width and height (defaults to 800x1280)
     pub single_touch: Vec<TouchDeviceOption>,
 
     #[cfg(feature = "slirp-ring-capture")]
     #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// Redirects slirp network packets to the supplied log file rather than the current directory as `slirp_capture_packets.pcap`
     pub slirp_capture_file: Option<String>,
 
     #[argh(option, short = 's', arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to put the control socket. If PATH is a directory, a name will be generated
     pub socket: Option<PathBuf>,
 
     #[cfg(feature = "tpm")]
     #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
     /// enable a software emulated trusted platform module device
     pub software_tpm: bool,
 
     #[cfg(feature = "audio")]
     #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to the VioS server socket for setting up virtio-snd devices
     pub sound: Option<PathBuf>,
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
     /// (EXPERIMENTAL) enable split-irqchip support
     pub split_irqchip: bool,
 
     #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
     /// don't allow guest to use pages from the balloon
     pub strict_balloon: bool,
 
@@ -1340,6 +1443,7 @@ pub struct RunCommand {
         arg_name = "DOMAIN:BUS:DEVICE.FUNCTION[,vendor=NUM][,device=NUM][,class=NUM][,subsystem_vendor=NUM][,subsystem_device=NUM][,revision=NUM]",
         from_str_fn(parse_stub_pci_parameters)
     )]
+    #[serde(skip)] // TODO(b/255223604)
     /// comma-separated key=value pairs for setting up a stub PCI
     /// device that just enumerates. The first option in the list
     /// must specify a PCI address to claim.
@@ -1358,6 +1462,7 @@ pub struct RunCommand {
     pub swiotlb: Option<u64>,
 
     #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to a socket from where to read switch input events and write status updates to
     pub switches: Vec<PathBuf>,
 
@@ -1367,25 +1472,30 @@ pub struct RunCommand {
 
     #[cfg(unix)]
     #[argh(option)]
+    #[serde(skip)] // Deprecated - use `net` instead.
     /// file descriptor for configured tap device. A different virtual network card will be added each time this argument is given
     pub tap_fd: Vec<RawDescriptor>,
 
     #[cfg(unix)]
     #[argh(option)]
+    #[serde(skip)] // Deprecated - use `net` instead.
     /// name of a configured persistent TAP interface to use for networking. A different virtual network card will be added each time this argument is given
     pub tap_name: Vec<String>,
 
     #[cfg(target_os = "android")]
     #[argh(option, arg_name = "NAME[,...]")]
+    #[serde(default)]
     /// comma-separated names of the task profiles to apply to all threads in crosvm including the vCPU threads
     pub task_profiles: Vec<String>,
 
     #[argh(option, arg_name = "PATH:WIDTH:HEIGHT")]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to a socket from where to read trackpad input events and write status updates to, optionally followed by screen width and height (defaults to 800x1280)
     pub trackpad: Vec<TouchDeviceOption>,
 
     // Must be `Some` iff `protection_type == ProtectionType::UnprotectedWithFirmware`.
     #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// (EXPERIMENTAL/FOR DEBUGGING) Use VM firmware, but allow host access to guest memory
     pub unprotected_vm_with_firmware: Option<PathBuf>,
 
@@ -1395,6 +1505,7 @@ pub struct RunCommand {
         arg_name = "INDEX,type=TYPE,action=ACTION,[from=FROM],[filter=FILTER]",
         from_str_fn(parse_userspace_msr_options)
     )]
+    #[serde(skip)] // TODO(b/255223604)
     /// userspace MSR handling. Takes INDEX of the MSR and how they
     ///  are handled.
     ///     type=(r|w|rw|wr) - read/write permission control.
@@ -1406,6 +1517,7 @@ pub struct RunCommand {
     pub userspace_msr: Vec<(u32, MsrConfig)>,
 
     #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// move all vCPU threads to this CGroup (default: nothing moves)
     pub vcpu_cgroup_path: Option<PathBuf>,
 
@@ -1415,6 +1527,7 @@ pub struct RunCommand {
         arg_name = "PATH[,guest-address=auto|<BUS:DEVICE.FUNCTION>][,iommu=on|off]",
         from_str_fn(parse_vfio)
     )]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to sysfs of PCI pass through or mdev device.
     ///     guest-address=auto|<BUS:DEVICE.FUNCTION> - PCI address
     ///        that the device will be assigned in the guest
@@ -1427,20 +1540,24 @@ pub struct RunCommand {
 
     #[cfg(unix)]
     #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
     /// isolate all hotplugged passthrough vfio device behind virtio-iommu
     pub vfio_isolate_hotplug: bool,
 
     #[cfg(unix)]
     #[argh(option, arg_name = "PATH", from_str_fn(parse_vfio_platform))]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to sysfs of platform pass through
     pub vfio_platform: Vec<VfioCommand>,
 
     #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
     /// use vhost for networking
     pub vhost_net: bool,
 
     #[cfg(unix)]
     #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to the vhost-net device. (default /dev/vhost-net)
     pub vhost_net_device: Option<PathBuf>,
 
@@ -1453,30 +1570,37 @@ pub struct RunCommand {
     pub vhost_user_console: Vec<VhostUserOption>,
 
     #[argh(option, arg_name = "SOCKET_PATH:TAG")]
+    #[serde(default)]
     /// path to a socket path for vhost-user fs, and tag for the shared dir
     pub vhost_user_fs: Vec<VhostUserFsOption>,
 
     #[argh(option, arg_name = "SOCKET_PATH")]
+    #[serde(default)]
     /// paths to a vhost-user socket for gpu
     pub vhost_user_gpu: Vec<VhostUserOption>,
 
     #[argh(option, arg_name = "SOCKET_PATH")]
+    #[serde(default)]
     /// path to a socket for vhost-user mac80211_hwsim
     pub vhost_user_mac80211_hwsim: Option<VhostUserOption>,
 
     #[argh(option, arg_name = "SOCKET_PATH")]
+    #[serde(default)]
     /// path to a socket for vhost-user net
     pub vhost_user_net: Vec<VhostUserOption>,
 
     #[argh(option, arg_name = "SOCKET_PATH")]
+    #[serde(default)]
     /// path to a socket for vhost-user snd
     pub vhost_user_snd: Vec<VhostUserOption>,
 
     #[argh(option, arg_name = "SOCKET_PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to a socket for vhost-user video decoder
     pub vhost_user_video_decoder: Option<VhostUserOption>,
 
     #[argh(option, arg_name = "SOCKET_PATH")]
+    #[serde(default)]
     /// path to a socket for vhost-user vsock
     pub vhost_user_vsock: Vec<VhostUserOption>,
 
@@ -1486,22 +1610,26 @@ pub struct RunCommand {
 
     #[cfg(unix)]
     #[argh(option, arg_name = "SOCKET_PATH")]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to the vhost-vsock device. (default /dev/vhost-vsock)
     pub vhost_vsock_device: Option<PathBuf>,
 
     #[cfg(unix)]
     #[argh(option, arg_name = "FD")]
+    #[serde(skip)] // TODO(b/255223604)
     /// open FD to the vhost-vsock device, mutually exclusive with vhost-vsock-device
     pub vhost_vsock_fd: Option<RawDescriptor>,
 
     #[cfg(feature = "video-decoder")]
     #[argh(option, arg_name = "[backend]")]
+    #[serde(skip)] // TODO(b/255223604)
     /// (EXPERIMENTAL) enable virtio-video decoder device
     /// Possible backend values: libvda, ffmpeg, vaapi
     pub video_decoder: Option<VideoDeviceConfig>,
 
     #[cfg(feature = "video-encoder")]
     #[argh(option, arg_name = "[backend]")]
+    #[serde(skip)] // TODO(b/255223604)
     /// (EXPERIMENTAL) enable virtio-video encoder device
     /// Possible backend values: libvda
     pub video_encoder: Option<VideoDeviceConfig>,
@@ -1512,6 +1640,7 @@ pub struct RunCommand {
         arg_name = "[capture=true,backend=BACKEND,num_output_devices=1,
         num_input_devices=1,num_output_streams=1,num_input_streams=1]"
     )]
+    #[serde(default)]
     /// comma separated key=value pairs for setting up virtio snd
     /// devices.
     /// Possible key values:
@@ -1534,6 +1663,7 @@ pub struct RunCommand {
 
     #[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
     #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
     /// enable the virtio-tpm connection to vtpm daemon
     pub vtpm_proxy: bool,
 
@@ -1541,6 +1671,7 @@ pub struct RunCommand {
         option,
         arg_name = "SOCKET_PATH[,addr=DOMAIN:BUS:DEVICE.FUNCTION,uuid=UUID]"
     )]
+    #[serde(default)]
     /// socket path for the Virtio Vhost User proxy device.
     /// Parameters
     ///     addr=BUS:DEVICE.FUNCTION - PCI address that the proxy
@@ -1552,11 +1683,13 @@ pub struct RunCommand {
 
     #[cfg(unix)]
     #[argh(option, arg_name = "PATH[,name=NAME]", from_str_fn(parse_wayland_sock))]
+    #[serde(skip)] // TODO(b/255223604)
     /// path to the Wayland socket to use. The unnamed one is used for displaying virtual screens. Named ones are only for IPC
     pub wayland_sock: Vec<(String, PathBuf)>,
 
     #[cfg(unix)]
     #[argh(option, arg_name = "DISPLAY")]
+    #[serde(skip)] // TODO(b/255223604)
     /// X11 display name to use
     pub x_display: Option<String>,
 }
