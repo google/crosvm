@@ -131,6 +131,9 @@ const AARCH64_RTC_SIZE: u64 = 0x1000;
 // The RTC device gets the second interrupt line
 const AARCH64_RTC_IRQ: u32 = 1;
 
+// The Goldfish battery device gets the 3rd interrupt line
+const AARCH64_BAT_IRQ: u32 = 3;
+
 // Place the virtual watchdog device at page 3
 const AARCH64_VMWDT_ADDR: u64 = 0x3000;
 // The virtual watchdog device gets one 4k page
@@ -144,8 +147,8 @@ const AARCH64_PCI_CFG_SIZE: u64 = 0x1000000;
 const AARCH64_MMIO_BASE: u64 = 0x2000000;
 // Size of the whole MMIO region.
 const AARCH64_MMIO_SIZE: u64 = 0x2000000;
-// Virtio devices start at SPI interrupt number 3
-const AARCH64_IRQ_BASE: u32 = 3;
+// Virtio devices start at SPI interrupt number 4
+const AARCH64_IRQ_BASE: u32 = 4;
 
 // PMU PPI interrupt, same as qemu
 const AARCH64_PMU_IRQ: u32 = 7;
@@ -542,7 +545,7 @@ impl arch::LinuxArch for AArch64 {
 
         let (bat_control, bat_mmio_base_and_irq) = match bat_type {
             Some(BatteryType::Goldfish) => {
-                let bat_irq = system_allocator.allocate_irq().ok_or(Error::AllocateIrq)?;
+                let bat_irq = AARCH64_BAT_IRQ;
 
                 // a dummy AML buffer. Aarch64 crosvm doesn't use ACPI.
                 let mut amls = Vec::new();
