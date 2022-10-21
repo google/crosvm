@@ -437,14 +437,17 @@ mod tests {
         let gpu_params: GpuParameters = from_key_values("backend=2D").unwrap();
         assert_eq!(gpu_params.mode, GpuMode::Mode2D);
 
-        let gpu_params: GpuParameters = from_key_values("backend=3d").unwrap();
-        assert_eq!(gpu_params.mode, GpuMode::ModeVirglRenderer);
+        #[cfg(feature = "virgl_renderer")]
+        {
+            let gpu_params: GpuParameters = from_key_values("backend=3d").unwrap();
+            assert_eq!(gpu_params.mode, GpuMode::ModeVirglRenderer);
 
-        let gpu_params: GpuParameters = from_key_values("backend=3D").unwrap();
-        assert_eq!(gpu_params.mode, GpuMode::ModeVirglRenderer);
+            let gpu_params: GpuParameters = from_key_values("backend=3D").unwrap();
+            assert_eq!(gpu_params.mode, GpuMode::ModeVirglRenderer);
 
-        let gpu_params: GpuParameters = from_key_values("backend=virglrenderer").unwrap();
-        assert_eq!(gpu_params.mode, GpuMode::ModeVirglRenderer);
+            let gpu_params: GpuParameters = from_key_values("backend=virglrenderer").unwrap();
+            assert_eq!(gpu_params.mode, GpuMode::ModeVirglRenderer);
+        }
 
         #[cfg(feature = "gfxstream")]
         {

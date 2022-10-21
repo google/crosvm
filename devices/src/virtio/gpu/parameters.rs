@@ -87,11 +87,7 @@ impl Default for GpuParameters {
             #[cfg(feature = "gfxstream")]
             gfxstream_use_guest_angle: None,
             use_vulkan: None,
-            mode: if cfg!(feature = "virgl_renderer") {
-                GpuMode::ModeVirglRenderer
-            } else {
-                GpuMode::Mode2D
-            },
+            mode: Default::default(),
             #[cfg(feature = "gfxstream")]
             gfxstream_support_gles31: true,
             wsi: None,

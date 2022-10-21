@@ -81,11 +81,28 @@ use super::Writer;
 pub enum GpuMode {
     #[serde(rename = "2d", alias = "2D")]
     Mode2D,
+    #[cfg(feature = "virgl_renderer")]
     #[serde(rename = "virglrenderer", alias = "3d", alias = "3D")]
     ModeVirglRenderer,
     #[cfg(feature = "gfxstream")]
     #[serde(rename = "gfxstream")]
     ModeGfxstream,
+}
+
+impl Default for GpuMode {
+    fn default() -> Self {
+        #[cfg(all(windows, feature = "gfxstream"))]
+        return GpuMode::ModeGfxstream;
+
+        #[cfg(all(unix, feature = "virgl_renderer"))]
+        return GpuMode::ModeVirglRenderer;
+
+        #[cfg(not(any(
+            all(windows, feature = "gfxstream"),
+            all(unix, feature = "virgl_renderer"),
+        )))]
+        return GpuMode::Mode2D;
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -1108,6 +1125,7 @@ impl Gpu {
         let rutabaga_channels_opt = Some(rutabaga_channels);
         let component = match gpu_parameters.mode {
             GpuMode::Mode2D => RutabagaComponentType::Rutabaga2D,
+            #[cfg(feature = "virgl_renderer")]
             GpuMode::ModeVirglRenderer => RutabagaComponentType::VirglRenderer,
             #[cfg(feature = "gfxstream")]
             GpuMode::ModeGfxstream => RutabagaComponentType::Gfxstream,
