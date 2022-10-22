@@ -23,8 +23,6 @@ cfg_if::cfg_if! {
 
 pub(crate) use platform::cmdline;
 pub(crate) use platform::config;
-#[cfg(feature = "gpu")]
-pub(crate) use platform::config::validate_gpu_config;
 pub(crate) use platform::config::HypervisorKind;
 #[cfg(feature = "crash-report")]
 pub(crate) use platform::setup_emulator_crash_reporting;

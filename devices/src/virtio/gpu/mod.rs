@@ -1168,7 +1168,7 @@ impl Gpu {
         #[cfg(feature = "gfxstream")]
         let rutabaga_builder = rutabaga_builder
             .set_use_guest_angle(gpu_parameters.gfxstream_use_guest_angle.unwrap_or_default())
-            .set_support_gles31(gpu_parameters.gfxstream_support_gles31);
+            .set_support_gles31(gpu_parameters.gfxstream_support_gles31.unwrap_or_default());
 
         Gpu {
             exit_evt_wrtube,

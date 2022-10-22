@@ -57,7 +57,7 @@ use serde_keyvalue::FromKeyValues;
 use vm_control::gpu::DisplayParameters as GpuDisplayParameters;
 
 #[cfg(feature = "gpu")]
-use super::sys::config::fixup_gpu_options;
+use super::gpu_config::fixup_gpu_options;
 #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
 use super::sys::GpuRenderServerParameters;
 use crate::crosvm::config::from_key_values;

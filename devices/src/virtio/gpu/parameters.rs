@@ -62,9 +62,12 @@ pub struct GpuParameters {
     pub gfxstream_use_guest_angle: Option<bool>,
     #[serde(rename = "vulkan")]
     pub use_vulkan: Option<bool>,
+    // It is possible that we compile with the gfxstream feature but don't use the gfxstream
+    // backend, in which case we want to ensure this option is not touched accidentally, so we make
+    // it an `Option` with default value `None`.
     #[cfg(feature = "gfxstream")]
     #[serde(rename = "gles31")]
-    pub gfxstream_support_gles31: bool,
+    pub gfxstream_support_gles31: Option<bool>,
     pub wsi: Option<RutabagaWsi>,
     pub udmabuf: bool,
     pub cache_path: Option<String>,
@@ -89,7 +92,7 @@ impl Default for GpuParameters {
             use_vulkan: None,
             mode: Default::default(),
             #[cfg(feature = "gfxstream")]
-            gfxstream_support_gles31: true,
+            gfxstream_support_gles31: None,
             wsi: None,
             cache_path: None,
             cache_size: None,

@@ -1507,7 +1507,7 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
 
     #[cfg(feature = "gpu")]
     {
-        crate::crosvm::sys::validate_gpu_config(cfg)?;
+        crate::crosvm::gpu_config::validate_gpu_config(cfg)?;
     }
     #[cfg(feature = "gdb")]
     if cfg.gdb.is_some() && cfg.vcpu_count.unwrap_or(1) != 1 {
