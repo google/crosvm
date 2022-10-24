@@ -16,6 +16,7 @@ use anyhow::Result;
 use base::debug;
 use base::error;
 use base::info;
+use base::warn;
 use euclid::point2;
 use euclid::size2;
 use euclid::Box2D;
@@ -100,13 +101,111 @@ impl From<MSG> for MessagePacket {
     }
 }
 
+/// The state of window moving or sizing modal loop.
+///
+/// We do receive `WM_ENTERSIZEMOVE` when the window is about to be resized or moved, but it doesn't
+/// tell us whether resizing or moving should be expected. We won't know that until later we receive
+/// `WM_SIZING` or `WM_MOVING`. Corner cases are:
+/// (1) If the user long presses the title bar, window borders or corners, and then releases without
+///     moving the mouse, we would receive both `WM_ENTERSIZEMOVE` and `WM_EXITSIZEMOVE`, but
+///     without any `WM_SIZING` or `WM_MOVING` in between.
+/// (2) When the window is maximized, if we drag the title bar of it, it will be restored to the
+///     normal size and then move along with the cursor. In this case, we would expect
+///     `WM_ENTERSIZEMOVE` to be followed by one `WM_SIZING`, and then multiple `WM_MOVING`.
+///
+/// This enum tracks the modal loop state. Possible state transition:
+/// (1) NotInLoop -> WillResizeOrMove -> IsResizing -> NotInLoop. This is for sizing modal loops.
+/// (2) NotInLoop -> WillResizeOrMove -> IsMoving -> NotInLoop. This is for moving modal loops.
+/// (3) NotInLoop -> WillResizeOrMove -> NotInLoop. This may occur if the user long presses the
+///     window title bar, window borders or corners, but doesn't actually resize or move the window.
+#[derive(Copy, Clone, Debug, PartialEq)]
+enum SizeMoveLoopState {
+    /// The window is not in the moving or sizing modal loop.
+    NotInLoop,
+    /// We have received `WM_ENTERSIZEMOVE` but haven't received either `WM_SIZING` or `WM_MOVING`,
+    /// so we don't know if the window is going to be resized or moved at this point.
+    WillResizeOrMove,
+    /// We have received `WM_SIZING` after `WM_ENTERSIZEMOVE`. `is_first` indicates whether this is
+    /// the first `WM_SIZING`.
+    IsResizing { is_first: bool },
+    /// We have received `WM_MOVING` after `WM_ENTERSIZEMOVE`. `is_first` indicates whether this is
+    /// the first `WM_MOVING`.
+    IsMoving { is_first: bool },
+}
+
+impl SizeMoveLoopState {
+    pub fn new() -> Self {
+        Self::NotInLoop
+    }
+
+    pub fn update(&mut self, msg: UINT, w_param: WPARAM) {
+        match msg {
+            WM_ENTERSIZEMOVE => self.on_entering_loop(),
+            WM_EXITSIZEMOVE => self.on_exiting_loop(),
+            WM_SIZING => self.on_resizing_window(w_param),
+            WM_MOVING => self.on_moving_window(),
+            _ => (),
+        };
+    }
+
+    pub fn is_in_loop(&self) -> bool {
+        *self != Self::NotInLoop
+    }
+
+    pub fn is_resizing_starting(&self) -> bool {
+        *self == Self::IsResizing { is_first: true }
+    }
+
+    fn on_entering_loop(&mut self) {
+        info!("Entering window sizing/moving modal loop");
+        *self = Self::WillResizeOrMove;
+    }
+
+    fn on_exiting_loop(&mut self) {
+        info!("Exiting window sizing/moving modal loop");
+        *self = Self::NotInLoop;
+    }
+
+    fn on_resizing_window(&mut self, w_param: WPARAM) {
+        match *self {
+            Self::NotInLoop => (),
+            Self::WillResizeOrMove => match w_param as u32 {
+                // In these cases, the user is dragging window borders or corners for resizing.
+                WMSZ_LEFT | WMSZ_RIGHT | WMSZ_TOP | WMSZ_BOTTOM | WMSZ_TOPLEFT | WMSZ_TOPRIGHT
+                | WMSZ_BOTTOMLEFT | WMSZ_BOTTOMRIGHT => {
+                    info!("Window is being resized");
+                    *self = Self::IsResizing { is_first: true };
+                }
+                // In this case, the user is dragging the title bar of the maximized window. The
+                // window will be restored to the normal size and then move along with the cursor,
+                // so we can expect `WM_MOVING` coming and entering the moving modal loop.
+                _ => info!("Window is being restored"),
+            },
+            Self::IsResizing { .. } => *self = Self::IsResizing { is_first: false },
+            Self::IsMoving { .. } => warn!("WM_SIZING is unexpected in moving modal loops!"),
+        }
+    }
+
+    fn on_moving_window(&mut self) {
+        match *self {
+            Self::NotInLoop => (),
+            Self::WillResizeOrMove => {
+                info!("Window is being moved");
+                *self = Self::IsMoving { is_first: true };
+            }
+            Self::IsMoving { .. } => *self = Self::IsMoving { is_first: false },
+            Self::IsResizing { .. } => warn!("WM_MOVING is unexpected in sizing modal loops!"),
+        }
+    }
+}
+
 /// This class helps create and operate on a window using Windows APIs. The owner of `Window` object
 /// is responsible for:
 /// (1) Calling `update_states()` when a new window message arrives.
 /// (2) Dropping the `Window` object before the underlying window is completely gone.
 pub struct Window {
     hwnd: HWND,
-    is_sizing_or_moving: bool,
+    size_move_loop_state: SizeMoveLoopState,
 }
 
 impl Window {
@@ -147,7 +246,7 @@ impl Window {
 
         Ok(Self {
             hwnd,
-            is_sizing_or_moving: false,
+            size_move_loop_state: SizeMoveLoopState::new(),
         })
     }
 
@@ -162,22 +261,16 @@ impl Window {
         hwnd == self.hwnd
     }
 
-    pub fn update_states(&mut self, msg: UINT) {
-        match msg {
-            WM_ENTERSIZEMOVE => {
-                debug!("Entering window sizing/moving modal loop");
-                self.is_sizing_or_moving = true;
-            }
-            WM_EXITSIZEMOVE => {
-                debug!("Exiting window sizing/moving modal loop");
-                self.is_sizing_or_moving = false;
-            }
-            _ => (),
-        }
+    pub fn update_states(&mut self, msg: UINT, w_param: WPARAM) {
+        self.size_move_loop_state.update(msg, w_param);
     }
 
     pub fn is_sizing_or_moving(&self) -> bool {
-        self.is_sizing_or_moving
+        self.size_move_loop_state.is_in_loop()
+    }
+
+    pub fn is_resizing_loop_starting(&self) -> bool {
+        self.size_move_loop_state.is_resizing_starting()
     }
 
     /// Calls `IsWindow()` internally. Returns true if the HWND identifies an existing window.

@@ -199,7 +199,7 @@ impl<T: HandleWindowMessage> WindowMessageProcessor<T> {
         } = *packet;
 
         // The handler may read window states so we should update them first.
-        self.window.update_states(msg);
+        self.window.update_states(msg, w_param);
 
         let handler = match &mut self.message_handler {
             Some(handler) => handler,
