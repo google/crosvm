@@ -195,7 +195,7 @@ pub mod video {
 
     #[derive(Debug, Serialize, Deserialize, FromKeyValues)]
     pub struct VideoDeviceConfig {
-        pub backend_type: VideoBackendType,
+        pub backend: VideoBackendType,
     }
 
     /// The same set of virtio features is supported by the ffmpeg decoder and encoder.

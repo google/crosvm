@@ -2229,22 +2229,22 @@ mod tests {
         #[cfg(feature = "libvda")]
         {
             let params: VideoDeviceConfig = from_key_values("libvda").unwrap();
-            assert_eq!(params.backend_type, VideoBackendType::Libvda);
+            assert_eq!(params.backend, VideoBackendType::Libvda);
 
             let params: VideoDeviceConfig = from_key_values("libvda-vd").unwrap();
-            assert_eq!(params.backend_type, VideoBackendType::LibvdaVd);
+            assert_eq!(params.backend, VideoBackendType::LibvdaVd);
         }
 
         #[cfg(feature = "ffmpeg")]
         {
             let params: VideoDeviceConfig = from_key_values("ffmpeg").unwrap();
-            assert_eq!(params.backend_type, VideoBackendType::Ffmpeg);
+            assert_eq!(params.backend, VideoBackendType::Ffmpeg);
         }
 
         #[cfg(feature = "vaapi")]
         {
             let params: VideoDeviceConfig = from_key_values("vaapi").unwrap();
-            assert_eq!(params.backend_type, VideoBackendType::Vaapi);
+            assert_eq!(params.backend, VideoBackendType::Vaapi);
         }
     }
 
