@@ -437,7 +437,7 @@ mod tests {
         const FRAGMENT_SIZE: usize = BUFFER_SIZE / 2;
 
         const GUEST_ADDR_BASE: u32 = 0x100_0000;
-        let mem = GuestMemory::new(&[(GuestAddress(GUEST_ADDR_BASE as u64), 1024 * 1024 * 1024)])
+        let mem = GuestMemory::new(&[(GuestAddress(GUEST_ADDR_BASE as u64), 1024 * 1024 * 8)])
             .expect("Creating guest memory failed.");
         let stream_source = MockShmStreamSource::new();
         let mut bm = Ac97BusMaster::new(mem.clone(), Box::new(stream_source.clone()));
@@ -545,7 +545,7 @@ mod tests {
         const FRAGMENT_SIZE: usize = BUFFER_SIZE / 2;
 
         const GUEST_ADDR_BASE: u32 = 0x100_0000;
-        let mem = GuestMemory::new(&[(GuestAddress(GUEST_ADDR_BASE as u64), 1024 * 1024 * 1024)])
+        let mem = GuestMemory::new(&[(GuestAddress(GUEST_ADDR_BASE as u64), 1024 * 1024 * 8)])
             .expect("Creating guest memory failed.");
         let stream_source = MockShmStreamSource::new();
         let mut bm = Ac97BusMaster::new(mem.clone(), Box::new(stream_source.clone()));

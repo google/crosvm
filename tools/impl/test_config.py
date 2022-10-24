@@ -85,14 +85,6 @@ CRATE_OPTIONS: Dict[str, List[TestOption]] = {
         TestOption.DO_NOT_BUILD_ARMHF,
     ],
     "crosvm-fuzz": [TestOption.DO_NOT_BUILD],  # b/194499769
-    "devices": [
-        TestOption.SINGLE_THREADED,
-        TestOption.RUN_EXCLUSIVE,
-        TestOption.LARGE,
-        TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL,
-        TestOption.DO_NOT_RUN_ARMHF,
-        TestOption.UNIT_AS_INTEGRATION_TEST,
-    ],
     "disk": [TestOption.DO_NOT_RUN_AARCH64, TestOption.DO_NOT_RUN_ARMHF],  # b/202294155
     "ffmpeg": [TestOption.DO_NOT_BUILD_ARMHF],
     "cros-fuzz": [TestOption.DO_NOT_BUILD],
