@@ -113,7 +113,6 @@ KNOWN_DISABLED_FEATURES = [
     "default-no-sandbox",
     "direct",
     "libvda",
-    "scudo",
     "whpx",
 ]
 
