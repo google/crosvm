@@ -53,6 +53,9 @@ pub enum GpuDisplayError {
     /// Connecting to the compositor failed.
     #[error("failed to connect to compositor")]
     Connect,
+    /// Connection to compositor has been broken.
+    #[error("connection to compositor has been broken")]
+    ConnectionBroken,
     /// Creating event file descriptor failed.
     #[error("failed to create event file descriptor")]
     CreateEvent,
@@ -109,7 +112,7 @@ pub enum SurfaceType {
 }
 
 /// Event token for display instances
-#[derive(EventToken)]
+#[derive(EventToken, Debug)]
 pub enum DisplayEventToken {
     Display,
     EventDevice { event_device_id: u32 },
@@ -406,6 +409,16 @@ impl GpuDisplay {
     /// `dispatch_events`.
     pub fn dispatch_events(&mut self) -> GpuDisplayResult<()> {
         let wait_events = self.wait_ctx.wait_timeout(Duration::default())?;
+
+        if let Some(wait_event) = wait_events.iter().find(|e| e.is_hungup) {
+            base::error!(
+                "Display signaled with a hungup event for token {:?}",
+                wait_event.token
+            );
+            self.wait_ctx = WaitContext::new().unwrap();
+            return GpuDisplayResult::Err(GpuDisplayError::ConnectionBroken);
+        }
+
         for wait_event in wait_events.iter().filter(|e| e.is_writable) {
             if let DisplayEventToken::EventDevice { event_device_id } = wait_event.token {
                 if let Some(event_device) = self.event_devices.get_mut(&event_device_id) {

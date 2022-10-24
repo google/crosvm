@@ -61,6 +61,7 @@ pub use self::protocol::VIRTIO_GPU_F_RESOURCE_UUID;
 pub use self::protocol::VIRTIO_GPU_F_VIRGL;
 pub use self::protocol::VIRTIO_GPU_SHM_ID_HOST_VISIBLE;
 use self::protocol::*;
+pub use self::virtio_gpu::ProcessDisplayResult;
 use self::virtio_gpu::VirtioGpu;
 use super::copy_config;
 pub use super::device_constants::gpu::QUEUE_SIZES;
@@ -320,7 +321,7 @@ impl Frontend {
     }
 
     /// Processes the internal `display` events and returns `true` if any display was closed.
-    pub fn process_display(&mut self) -> bool {
+    pub fn process_display(&mut self) -> ProcessDisplayResult {
         self.virtio_gpu.process_display()
     }
 
@@ -911,6 +912,7 @@ impl Worker {
             let mut signal_used_cursor = false;
             let mut signal_used_ctrl = false;
             let mut ctrl_available = false;
+            let mut display_available = false;
             let mut needs_config_interrupt = false;
 
             // Remove event triggers that have been hung-up to prevent unnecessary worker wake-ups
@@ -938,10 +940,9 @@ impl Worker {
                         }
                     }
                     WorkerToken::Display => {
-                        let close_requested = self.state.process_display();
-                        if close_requested {
-                            let _ = self.exit_evt_wrtube.send::<VmEventType>(&VmEventType::Exit);
-                        }
+                        // We only need to process_display once-per-wake, regardless of how many
+                        // WorkerToken::Display events are received.
+                        display_available = true;
                     }
                     #[cfg(unix)]
                     WorkerToken::GpuControl => {
@@ -983,6 +984,19 @@ impl Worker {
             while let Some(desc) = self.state.return_cursor() {
                 self.cursor_queue.add_used(&self.mem, desc.index, desc.len);
                 signal_used_cursor = true;
+            }
+
+            if display_available {
+                match self.state.process_display() {
+                    ProcessDisplayResult::CloseRequested => {
+                        let _ = self.exit_evt_wrtube.send::<VmEventType>(&VmEventType::Exit);
+                    }
+                    ProcessDisplayResult::Error(_e) => {
+                        base::error!("Display processing failed, disabling display event handler.");
+                        event_manager.delete(WorkerToken::Display);
+                    }
+                    ProcessDisplayResult::Success => (),
+                };
             }
 
             if ctrl_available && self.state.process_queue(&self.mem, &self.ctrl_queue) {

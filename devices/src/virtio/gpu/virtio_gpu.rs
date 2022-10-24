@@ -319,6 +319,12 @@ fn sglist_to_rutabaga_iovecs(
     Ok(rutabaga_iovecs)
 }
 
+pub enum ProcessDisplayResult {
+    Success,
+    CloseRequested,
+    Error(GpuDisplayError),
+}
+
 impl VirtioGpu {
     /// Creates a new instance of the VirtioGpu state tracker.
     pub fn new(
@@ -503,12 +509,15 @@ impl VirtioGpu {
     }
 
     /// Processes the internal `display` events and returns `true` if any display was closed.
-    pub fn process_display(&mut self) -> bool {
+    pub fn process_display(&mut self) -> ProcessDisplayResult {
         let mut display = self.display.borrow_mut();
         let result = display.dispatch_events();
         match result {
             Ok(_) => (),
-            Err(e) => error!("failed to dispatch events: {}", e),
+            Err(e) => {
+                error!("failed to dispatch events: {}", e);
+                return ProcessDisplayResult::Error(e);
+            }
         }
 
         for scanout in self.scanouts.values() {
@@ -518,11 +527,11 @@ impl VirtioGpu {
                 .unwrap_or(false);
 
             if close_requested {
-                return true;
+                return ProcessDisplayResult::CloseRequested;
             }
         }
 
-        false
+        ProcessDisplayResult::Success
     }
 
     /// Sets the given resource id as the source of scanout to the display.

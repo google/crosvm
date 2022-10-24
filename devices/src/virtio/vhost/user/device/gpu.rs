@@ -35,6 +35,7 @@ use vmm_vhost::message::VhostUserVirtioFeatures;
 
 use crate::virtio;
 use crate::virtio::gpu;
+use crate::virtio::gpu::ProcessDisplayResult;
 use crate::virtio::vhost::user::device::handler::sys::Doorbell;
 use crate::virtio::vhost::user::device::handler::VhostBackendReqConnection;
 use crate::virtio::vhost::user::device::handler::VhostBackendReqConnectionState;
@@ -108,8 +109,13 @@ async fn run_display(
             break;
         }
 
-        if state.borrow_mut().process_display() {
-            break;
+        match state.borrow_mut().process_display() {
+            ProcessDisplayResult::Error(e) => {
+                error!("Failed to process display events: {}", e);
+                break;
+            }
+            ProcessDisplayResult::CloseRequested => break,
+            ProcessDisplayResult::Success => {}
         }
     }
 }

@@ -421,6 +421,6 @@ impl SysDisplayT for DisplayWl {}
 impl AsRawDescriptor for DisplayWl {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         // Safe given that the context pointer is valid.
-        unsafe { dwl_context_fd(self.ctx.0) }
+        self.ctx.as_raw_descriptor()
     }
 }
