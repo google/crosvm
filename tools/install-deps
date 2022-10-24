@@ -34,6 +34,7 @@ sudo apt-get install --yes --no-install-recommends \
     make \
     mold \
     nasm \
+    ncat \
     ninja-build \
     openssh-client \
     pkg-config \

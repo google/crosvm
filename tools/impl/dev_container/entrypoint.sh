@@ -11,6 +11,11 @@ if [ -e "/dev/kvm" ]; then
     chmod 666 /dev/kvm
 fi
 
+# Give a vhost device correct permission
+if [ -e "/dev/vhost-vsock" ]; then
+    chmod 666 /dev/vhost-vsock
+fi
+
 # Run provided command or interactive shell
 if [[ $# -eq 0 ]]; then
     sudo -u crosvmdev /bin/bash -l

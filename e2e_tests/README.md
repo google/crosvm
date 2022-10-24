@@ -20,7 +20,8 @@ Note: Only Googlers with access to the crosvm-testing cloud storage bin can uplo
 To upload the modified rootfs, you will have to uprev the `PREBUILT_VERSION` variable in:
 
 - `./guest_under_test/PREBUILT_VERSION`
-- `src/third_party/chromiumos-overlay/chromeos-base/crosvm/crosvm-9999.ebuild`
 
-Then run the upload script to build and upload the new prebuilts. **Never** try to modify an
-existing prebuilt as the new images may break tests in older versions.
+and [request a permission](http://go/crosvm/infra.md?cl=head#access-on-demand-to-upload-artifacts)
+to become a member of the `crosvm-policy-uploader` group. Then run the upload script to build and
+upload the new prebuilts. **Never** try to modify an existing prebuilt as the new images may break
+tests in older versions.
