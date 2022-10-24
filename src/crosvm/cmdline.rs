@@ -835,6 +835,10 @@ pub struct RunCommand {
 
     #[cfg(feature = "gpu")]
     #[argh(option)]
+    // Although `gpu` is a vector, we are currently limited to a single GPU device due to the
+    // resource bridge and interaction with other video devices. We do use a vector so the GPU
+    // device can be specified like other device classes in the configuration file, and because we
+    // hope to lift this limitation eventually.
     #[serde(skip)] // TODO(b/255223604)
     /// (EXPERIMENTAL) Comma separated key=value pairs for setting
     /// up a virtio-gpu device
@@ -865,7 +869,7 @@ pub struct RunCommand {
     ///     cache-size=SIZE - The maximum size of the shader cache.
     ///     pci-bar-size=SIZE - The size for the PCI BAR in bytes
     ///        (default 8gb).
-    pub gpu: Option<FixedGpuParameters>,
+    pub gpu: Vec<FixedGpuParameters>,
 
     #[cfg(feature = "gpu")]
     #[argh(option)]
@@ -2063,7 +2067,11 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         #[cfg(feature = "gpu")]
         {
-            cfg.gpu_parameters = cmd.gpu.map(|p| p.0);
+            // Due to the resource bridge, we can only create a single GPU device at the moment.
+            if cmd.gpu.len() > 1 {
+                return Err("at most one GPU device can currently be created".to_string());
+            }
+            cfg.gpu_parameters = cmd.gpu.into_iter().map(|p| p.0).take(1).next();
             if !cmd.gpu_display.is_empty() {
                 cfg.gpu_parameters
                     .get_or_insert_with(Default::default)
