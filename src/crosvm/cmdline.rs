@@ -1601,7 +1601,7 @@ pub struct RunCommand {
     #[argh(option, arg_name = "SOCKET_PATH")]
     #[serde(skip)] // TODO(b/255223604)
     /// path to a socket for vhost-user video decoder
-    pub vhost_user_video_decoder: Option<VhostUserOption>,
+    pub vhost_user_video_decoder: Vec<VhostUserOption>,
 
     #[argh(option, arg_name = "SOCKET_PATH")]
     #[serde(default)]
@@ -1629,14 +1629,14 @@ pub struct RunCommand {
     #[serde(skip)] // TODO(b/255223604)
     /// (EXPERIMENTAL) enable virtio-video decoder device
     /// Possible backend values: libvda, ffmpeg, vaapi
-    pub video_decoder: Option<VideoDeviceConfig>,
+    pub video_decoder: Vec<VideoDeviceConfig>,
 
     #[cfg(feature = "video-encoder")]
     #[argh(option, arg_name = "[backend]")]
     #[serde(skip)] // TODO(b/255223604)
     /// (EXPERIMENTAL) enable virtio-video encoder device
     /// Possible backend values: libvda
-    pub video_encoder: Option<VideoDeviceConfig>,
+    pub video_encoder: Vec<VideoDeviceConfig>,
 
     #[cfg(feature = "audio")]
     #[argh(

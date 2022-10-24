@@ -237,22 +237,28 @@ fn create_virtio_devices(
     }
 
     #[cfg(feature = "video-decoder")]
-    let video_dec_cfg = if let Some(config) = &cfg.video_dec {
-        let (video_tube, gpu_tube) = Tube::pair().context("failed to create tube")?;
-        resource_bridges.push(gpu_tube);
-        Some((video_tube, config.backend))
-    } else {
-        None
-    };
+    let video_dec_cfg = cfg
+        .video_dec
+        .iter()
+        .map(|config| {
+            let (video_tube, gpu_tube) =
+                Tube::pair().expect("failed to create tube for video decoder");
+            resource_bridges.push(gpu_tube);
+            (video_tube, config.backend)
+        })
+        .collect::<Vec<_>>();
 
     #[cfg(feature = "video-encoder")]
-    let video_enc_cfg = if let Some(config) = &cfg.video_enc {
-        let (video_tube, gpu_tube) = Tube::pair().context("failed to create tube")?;
-        resource_bridges.push(gpu_tube);
-        Some((video_tube, config.backend))
-    } else {
-        None
-    };
+    let video_enc_cfg = cfg
+        .video_enc
+        .iter()
+        .map(|config| {
+            let (video_tube, gpu_tube) =
+                Tube::pair().expect("failed to create tube for video encoder");
+            resource_bridges.push(gpu_tube);
+            (video_tube, config.backend)
+        })
+        .collect::<Vec<_>>();
 
     #[cfg(feature = "gpu")]
     {
@@ -587,18 +593,18 @@ fn create_virtio_devices(
 
     #[cfg(feature = "video-decoder")]
     {
-        if let Some((video_dec_tube, video_dec_backend)) = video_dec_cfg {
+        for (tube, backend) in video_dec_cfg {
             register_video_device(
-                video_dec_backend,
+                backend,
                 &mut devs,
-                video_dec_tube,
+                tube,
                 cfg.protection_type,
                 &cfg.jail_config,
                 VideoDeviceType::Decoder,
             )?;
         }
     }
-    if let Some(socket_path) = &cfg.vhost_user_video_dec {
+    for socket_path in &cfg.vhost_user_video_dec {
         devs.push(create_vhost_user_video_device(
             cfg.protection_type,
             socket_path,
@@ -608,11 +614,11 @@ fn create_virtio_devices(
 
     #[cfg(feature = "video-encoder")]
     {
-        if let Some((video_enc_tube, video_enc_backend)) = video_enc_cfg {
+        for (tube, backend) in video_enc_cfg {
             register_video_device(
-                video_enc_backend,
+                backend,
                 &mut devs,
-                video_enc_tube,
+                tube,
                 cfg.protection_type,
                 &cfg.jail_config,
                 VideoDeviceType::Encoder,
