@@ -38,6 +38,7 @@ use devices::virtio::device_constants::video::VideoDeviceConfig;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vhost::user::device;
+use devices::virtio::GpuParameters;
 use devices::virtio::NetParameters;
 #[cfg(feature = "audio")]
 use devices::Ac97Parameters;
@@ -48,11 +49,12 @@ use devices::StubPciParameters;
 use hypervisor::ProtectionType;
 use resources::AddressRange;
 use serde::Deserialize;
+use serde_keyvalue::FromKeyValues;
 #[cfg(feature = "gpu")]
 use vm_control::gpu::DisplayParameters as GpuDisplayParameters;
 
 #[cfg(feature = "gpu")]
-use super::sys::config::parse_gpu_options;
+use super::sys::config::fixup_gpu_options;
 #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
 use super::sys::config::parse_gpu_render_server_options;
 #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
@@ -533,6 +535,23 @@ impl From<DiskOption> for DiskOptionWithId {
     }
 }
 
+/// Container for GpuParameters that have been fixed after parsing using serde.
+///
+/// This deserializes as a regular `GpuParameters` and applies validation.
+#[cfg(feature = "gpu")]
+#[derive(Debug, Deserialize, FromKeyValues)]
+#[serde(try_from = "GpuParameters")]
+pub struct FixedGpuParameters(pub GpuParameters);
+
+#[cfg(feature = "gpu")]
+impl TryFrom<GpuParameters> for FixedGpuParameters {
+    type Error = String;
+
+    fn try_from(gpu_params: GpuParameters) -> Result<Self, Self::Error> {
+        fixup_gpu_options(gpu_params)
+    }
+}
+
 /// Start a new crosvm instance
 #[remain::sorted]
 #[argh_helpers::pad_description_for_argh]
@@ -784,7 +803,7 @@ pub struct RunCommand {
     pub gdb: Option<u32>,
 
     #[cfg(feature = "gpu")]
-    #[argh(option, from_str_fn(parse_gpu_options))]
+    #[argh(option)]
     /// (EXPERIMENTAL) Comma separated key=value pairs for setting
     /// up a virtio-gpu device
     /// Possible key values:
@@ -814,7 +833,7 @@ pub struct RunCommand {
     ///     cache-size=SIZE - The maximum size of the shader cache.
     ///     pci-bar-size=SIZE - The size for the PCI BAR in bytes
     ///        (default 8gb).
-    pub gpu: Option<devices::virtio::GpuParameters>,
+    pub gpu: Option<FixedGpuParameters>,
 
     #[cfg(feature = "gpu")]
     #[argh(option)]
@@ -1911,7 +1930,7 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         #[cfg(feature = "gpu")]
         {
-            cfg.gpu_parameters = cmd.gpu;
+            cfg.gpu_parameters = cmd.gpu.map(|p| p.0);
             if !cmd.gpu_display.is_empty() {
                 cfg.gpu_parameters
                     .get_or_insert_with(Default::default)

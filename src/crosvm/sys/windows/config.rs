@@ -20,6 +20,7 @@ use devices::SerialParameters;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::crosvm::cmdline::FixedGpuParameters;
 use crate::crosvm::config::Config;
 
 #[cfg(feature = "audio")]
@@ -59,10 +60,7 @@ pub fn validate_config(_cfg: &mut Config) -> std::result::Result<(), String> {
 }
 
 #[cfg(feature = "gpu")]
-pub fn parse_gpu_options(s: &str) -> Result<GpuParameters, String> {
-    use crate::crosvm::config::from_key_values;
-    let mut gpu_params: GpuParameters = from_key_values(s)?;
-
+pub fn fixup_gpu_options(mut gpu_params: GpuParameters) -> Result<FixedGpuParameters, String> {
     match (
         gpu_params.__width_compat.take(),
         gpu_params.__height_compat.take(),
@@ -91,7 +89,7 @@ pub fn parse_gpu_options(s: &str) -> Result<GpuParameters, String> {
         ));
     }
 
-    Ok(gpu_params)
+    Ok(FixedGpuParameters(gpu_params))
 }
 
 #[cfg(feature = "gpu")]
@@ -179,8 +177,12 @@ mod tests {
     use super::*;
     #[cfg(feature = "gpu")]
     use crate::crosvm::config::from_key_values;
+
+    /// Parses and fix up a `GpuParameters` from a command-line option string.
     #[cfg(feature = "gpu")]
-    use crate::crosvm::sys::config::parse_gpu_options;
+    fn parse_gpu_options(s: &str) -> Result<GpuParameters, String> {
+        from_key_values::<FixedGpuParameters>(s).map(|p| p.0)
+    }
 
     #[cfg(feature = "gpu")]
     fn parse_gpu_display_options(s: &str) -> Result<GpuDisplayParameters, String> {
