@@ -12,7 +12,7 @@ use base::FromRawDescriptor;
 use base::MappedRegion;
 use base::Result;
 use base::SafeDescriptor;
-use libc::open;
+use libc::open64;
 use libc::EBUSY;
 use libc::O_CLOEXEC;
 use libc::O_RDWR;
@@ -25,7 +25,7 @@ use crate::VcpuRunHandle;
 pub(super) fn open_haxm_device(_use_ghaxm: bool) -> Result<SafeDescriptor> {
     // Open calls are safe because we give a constant nul-terminated string and verify the
     // result.
-    let ret = unsafe { open("/dev/HAX\0".as_ptr() as *const c_char, O_RDWR | O_CLOEXEC) };
+    let ret = unsafe { open64("/dev/HAX\0".as_ptr() as *const c_char, O_RDWR | O_CLOEXEC) };
     if ret < 0 {
         return errno_result();
     }
@@ -37,7 +37,7 @@ pub(super) fn open_haxm_vm_device(_use_ghaxm: bool, vm_id: u32) -> Result<SafeDe
     // Haxm creates additional device paths when VMs are created
     let path = format!("/dev/hax_vm/vm{:02}\0", vm_id);
 
-    let ret = unsafe { open(path.as_ptr() as *const c_char, O_RDWR | O_CLOEXEC) };
+    let ret = unsafe { open64(path.as_ptr() as *const c_char, O_RDWR | O_CLOEXEC) };
     if ret < 0 {
         return errno_result();
     }
@@ -54,7 +54,7 @@ pub(super) fn open_haxm_vcpu_device(
     // Haxm creates additional device paths when VMs are created
     let path = format!("/dev/hax_vm{:02}/vcpu{:02}\0", vm_id, vcpu_id);
 
-    let ret = unsafe { open(path.as_ptr() as *const c_char, O_RDWR | O_CLOEXEC) };
+    let ret = unsafe { open64(path.as_ptr() as *const c_char, O_RDWR | O_CLOEXEC) };
     if ret < 0 {
         return errno_result();
     }

@@ -72,7 +72,7 @@ use data_model::vec_with_array_field;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use data_model::FlexibleArrayWrapper;
 use kvm_sys::*;
-use libc::open;
+use libc::open64;
 use libc::sigset_t;
 use libc::EBUSY;
 use libc::EINVAL;
@@ -149,7 +149,7 @@ impl Kvm {
     pub fn new_with_path(device_path: &Path) -> Result<Kvm> {
         // Open calls are safe because we give a nul-terminated string and verify the result.
         let c_path = CString::new(device_path.as_os_str().as_bytes()).unwrap();
-        let ret = unsafe { open(c_path.as_ptr(), O_RDWR | O_CLOEXEC) };
+        let ret = unsafe { open64(c_path.as_ptr(), O_RDWR | O_CLOEXEC) };
         if ret < 0 {
             return errno_result();
         }

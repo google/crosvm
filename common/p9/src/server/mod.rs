@@ -286,7 +286,7 @@ fn ascii_casefold_lookup(proc: &File, parent: &File, name: &[u8]) -> io::Result<
 fn lookup(parent: &File, name: &CStr) -> io::Result<File> {
     // Safe because this doesn't modify any memory and we check the return value.
     let fd = syscall!(unsafe {
-        libc::openat(
+        libc::openat64(
             parent.as_raw_fd(),
             name.as_ptr(),
             libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC,
@@ -341,7 +341,7 @@ fn open_fid(proc: &File, path: &File, p9_flags: u32) -> io::Result<File> {
     // Safe because this doesn't modify any memory and we check the return value. We need to
     // clear the O_NOFOLLOW flag because we want to follow the proc symlink.
     let fd = syscall!(unsafe {
-        libc::openat(
+        libc::openat64(
             proc.as_raw_fd(),
             pathname.as_ptr(),
             flags & !libc::O_NOFOLLOW,
@@ -401,7 +401,7 @@ impl Server {
 
         // Safe because this doesn't modify any memory and we check the return value.
         let fd = syscall!(unsafe {
-            libc::openat(
+            libc::openat64(
                 libc::AT_FDCWD,
                 proc_cstr.as_ptr(),
                 libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC,
@@ -488,7 +488,7 @@ impl Server {
 
                 // Safe because this doesn't modify any memory and we check the return value.
                 let fd = syscall!(unsafe {
-                    libc::openat(
+                    libc::openat64(
                         libc::AT_FDCWD,
                         root.as_ptr(),
                         libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC,
@@ -702,7 +702,7 @@ impl Server {
 
         // Safe because this doesn't modify any memory and we check the return value.
         let fd = syscall!(unsafe {
-            libc::openat(fid.path.as_raw_fd(), name.as_ptr(), flags, lcreate.mode)
+            libc::openat64(fid.path.as_raw_fd(), name.as_ptr(), flags, lcreate.mode)
         })?;
 
         // Safe because we just opened this fd and we know it is valid.
@@ -972,9 +972,9 @@ impl Server {
         syscall!(unsafe {
             // Safe because zero-filled libc::stat is a valid value, fstat
             // populates the struct fields.
-            let mut stbuf: libc::stat = std::mem::zeroed();
+            let mut stbuf: libc::stat64 = std::mem::zeroed();
             // Safe because this doesn't modify memory and we check the return value.
-            libc::fstat(fd, &mut stbuf)
+            libc::fstat64(fd, &mut stbuf)
         })?;
 
         Ok(Rlock {
@@ -996,8 +996,8 @@ impl Server {
 
         // Safe because this doesn't modify memory and we check the return value.
         syscall!(unsafe {
-            let mut stbuf: libc::stat = std::mem::zeroed();
-            libc::fstat(fd, &mut stbuf)
+            let mut stbuf: libc::stat64 = std::mem::zeroed();
+            libc::fstat64(fd, &mut stbuf)
         })?;
 
         Ok(Rgetlock {

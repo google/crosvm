@@ -35,7 +35,7 @@ pub enum Error {
     InvalidAddress,
     #[error("invalid argument provided when creating mapping")]
     InvalidArgument,
-    #[error("requested offset is out of range of off_t")]
+    #[error("requested offset is out of range of off64_t")]
     InvalidOffset,
     #[error("requested memory range spans past the end of the region: offset={0} count={1} region_size={2}")]
     InvalidRange(usize, usize, usize),
@@ -290,14 +290,14 @@ impl MemoryMapping {
         // If fd is provided, validate fd offset is within bounds
         let (fd, offset) = match fd {
             Some((fd, offset)) => {
-                if offset > libc::off_t::max_value() as u64 {
+                if offset > libc::off64_t::max_value() as u64 {
                     return Err(Error::InvalidOffset);
                 }
-                (fd.as_raw_descriptor(), offset as libc::off_t)
+                (fd.as_raw_descriptor(), offset as libc::off64_t)
             }
             None => (-1, 0),
         };
-        let addr = libc::mmap(addr, size, prot, flags, fd, offset);
+        let addr = libc::mmap64(addr, size, prot, flags, fd, offset);
         if addr == libc::MAP_FAILED {
             return Err(Error::SystemCallFailed(ErrnoError::last()));
         }
@@ -967,7 +967,7 @@ mod tests {
     #[test]
     fn from_fd_offset_invalid() {
         let fd = tempfile().unwrap();
-        let res = MemoryMapping::from_fd_offset(&fd, 4096, (libc::off_t::max_value() as u64) + 1)
+        let res = MemoryMapping::from_fd_offset(&fd, 4096, (libc::off64_t::max_value() as u64) + 1)
             .unwrap_err();
         match res {
             Error::InvalidOffset => {}

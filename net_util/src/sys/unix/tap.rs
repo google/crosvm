@@ -74,7 +74,7 @@ impl Tap {
         // Open calls are safe because we give a constant nul-terminated
         // string and verify the result.
         let rd = unsafe {
-            libc::open(
+            libc::open64(
                 b"/dev/net/tun\0".as_ptr() as *const c_char,
                 libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC,
             )
