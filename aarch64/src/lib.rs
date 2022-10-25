@@ -51,6 +51,7 @@ use hypervisor::VcpuInitAArch64;
 use hypervisor::VcpuRegAArch64;
 use hypervisor::Vm;
 use hypervisor::VmAArch64;
+use kernel_loader::LoadedKernel;
 use minijail::Minijail;
 use remain::sorted;
 use resources::AddressRange;
@@ -107,6 +108,14 @@ const PSR_F_BIT: u64 = 0x00000040;
 const PSR_I_BIT: u64 = 0x00000080;
 const PSR_A_BIT: u64 = 0x00000100;
 const PSR_D_BIT: u64 = 0x00000200;
+
+enum PayloadType {
+    Bios {
+        entry: GuestAddress,
+        image_size: u64,
+    },
+    Kernel(LoadedKernel),
+}
 
 fn get_kernel_addr() -> GuestAddress {
     GuestAddress(AARCH64_PHYS_MEM_START + AARCH64_KERNEL_OFFSET)
@@ -204,7 +213,7 @@ pub enum Error {
     #[error("initrd could not be loaded: {0}")]
     InitrdLoadFailure(arch::LoadImageError),
     #[error("kernel could not be loaded: {0}")]
-    KernelLoadFailure(arch::LoadImageError),
+    KernelLoadFailure(kernel_loader::Error),
     #[error("error loading Kernel from Elf image: {0}")]
     LoadElfKernel(kernel_loader::Error),
     #[error("failed to map arm pvtime memory: {0}")]
@@ -323,25 +332,26 @@ impl arch::LinuxArch for AArch64 {
         // separate out image loading from other setup to get a specific error for
         // image loading
         let mut initrd = None;
-        let image_size = match components.vm_image {
+        let payload = match components.vm_image {
             VmImage::Bios(ref mut bios) => {
-                arch::load_image(&mem, bios, get_bios_addr(), AARCH64_BIOS_MAX_LEN)
-                    .map_err(Error::BiosLoadFailure)?
+                let image_size =
+                    arch::load_image(&mem, bios, get_bios_addr(), AARCH64_BIOS_MAX_LEN)
+                        .map_err(Error::BiosLoadFailure)?;
+                PayloadType::Bios {
+                    entry: get_bios_addr(),
+                    image_size: image_size as u64,
+                }
             }
             VmImage::Kernel(ref mut kernel_image) => {
-                let kernel_end: u64;
-                let kernel_size: usize;
-                let elf_result = kernel_loader::load_elf64(&mem, get_kernel_addr(), kernel_image);
-                if elf_result == Err(kernel_loader::Error::InvalidMagicNumber) {
-                    kernel_size =
-                        arch::load_image(&mem, kernel_image, get_kernel_addr(), u64::max_value())
-                            .map_err(Error::KernelLoadFailure)?;
-                    kernel_end = get_kernel_addr().offset() + kernel_size as u64;
+                let loaded_kernel = if let Ok(elf_kernel) =
+                    kernel_loader::load_elf64(&mem, get_kernel_addr(), kernel_image)
+                {
+                    elf_kernel
                 } else {
-                    let loaded_kernel = elf_result.map_err(Error::LoadElfKernel)?;
-                    kernel_size = loaded_kernel.size as usize;
-                    kernel_end = loaded_kernel.address_range.end;
-                }
+                    kernel_loader::load_arm64_kernel(&mem, get_kernel_addr(), kernel_image)
+                        .map_err(Error::KernelLoadFailure)?
+                };
+                let kernel_end = loaded_kernel.address_range.end;
                 initrd = match components.initrd_image {
                     Some(initrd_file) => {
                         let mut initrd_file = initrd_file;
@@ -357,7 +367,7 @@ impl arch::LinuxArch for AArch64 {
                     }
                     None => None,
                 };
-                kernel_size
+                PayloadType::Kernel(loaded_kernel)
             }
         };
 
@@ -379,9 +389,8 @@ impl arch::LinuxArch for AArch64 {
                 .map_err(|_| Error::DowncastVcpu)?;
             let per_vcpu_init = Self::vcpu_init(
                 vcpu_id,
-                has_bios,
+                &payload,
                 fdt_offset,
-                image_size,
                 components.hv_cfg.protection_type,
             );
             has_pvtime &= vcpu.has_pvtime_support();
@@ -843,9 +852,8 @@ impl AArch64 {
     /// * `vcpu_id` - The VM's index for `vcpu`.
     fn vcpu_init(
         vcpu_id: usize,
-        has_bios: bool,
+        payload: &PayloadType,
         fdt_address: GuestAddress,
-        image_size: usize,
         protection_type: ProtectionType,
     ) -> VcpuInitAArch64 {
         let mut regs: BTreeMap<VcpuRegAArch64, u64> = Default::default();
@@ -856,10 +864,9 @@ impl AArch64 {
 
         // Other cpus are powered off initially
         if vcpu_id == 0 {
-            let image_addr = if has_bios {
-                get_bios_addr()
-            } else {
-                get_kernel_addr()
+            let (image_addr, image_size) = match payload {
+                PayloadType::Bios { entry, image_size } => (*entry, *image_size),
+                PayloadType::Kernel(loaded_kernel) => (loaded_kernel.entry, loaded_kernel.size),
             };
 
             let entry_addr = if protection_type.loads_firmware() {
@@ -922,12 +929,15 @@ mod tests {
 
     #[test]
     fn vcpu_init_unprotected_kernel() {
-        let has_bios = false;
+        let payload = PayloadType::Kernel(LoadedKernel {
+            address_range: AddressRange::from_start_and_size(0x8080_0000, 0x1000).unwrap(),
+            size: 0x1000,
+            entry: GuestAddress(0x8080_0000),
+        });
         let fdt_address = GuestAddress(0x1234);
-        let image_size = 0x1000;
         let prot = ProtectionType::Unprotected;
 
-        let vcpu_init = AArch64::vcpu_init(0, has_bios, fdt_address, image_size, prot);
+        let vcpu_init = AArch64::vcpu_init(0, &payload, fdt_address, prot);
 
         // PC: kernel image entry point
         assert_eq!(vcpu_init.regs.get(&VcpuRegAArch64::Pc), Some(&0x8080_0000));
@@ -938,12 +948,14 @@ mod tests {
 
     #[test]
     fn vcpu_init_unprotected_bios() {
-        let has_bios = true;
+        let payload = PayloadType::Bios {
+            entry: GuestAddress(0x8020_0000),
+            image_size: 0x1000,
+        };
         let fdt_address = GuestAddress(0x1234);
-        let image_size = 0x1000;
         let prot = ProtectionType::Unprotected;
 
-        let vcpu_init = AArch64::vcpu_init(0, has_bios, fdt_address, image_size, prot);
+        let vcpu_init = AArch64::vcpu_init(0, &payload, fdt_address, prot);
 
         // PC: bios image entry point
         assert_eq!(vcpu_init.regs.get(&VcpuRegAArch64::Pc), Some(&0x8020_0000));
@@ -954,12 +966,15 @@ mod tests {
 
     #[test]
     fn vcpu_init_protected_kernel() {
-        let has_bios = false;
+        let payload = PayloadType::Kernel(LoadedKernel {
+            address_range: AddressRange::from_start_and_size(0x8080_0000, 0x1000).unwrap(),
+            size: 0x1000,
+            entry: GuestAddress(0x8080_0000),
+        });
         let fdt_address = GuestAddress(0x1234);
-        let image_size = 0x1000;
         let prot = ProtectionType::Protected;
 
-        let vcpu_init = AArch64::vcpu_init(0, has_bios, fdt_address, image_size, prot);
+        let vcpu_init = AArch64::vcpu_init(0, &payload, fdt_address, prot);
 
         // The hypervisor provides the initial value of PC, so PC should not be present in the
         // vcpu_init register map.

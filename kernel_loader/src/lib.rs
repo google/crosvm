@@ -25,6 +25,10 @@ use vm_memory::GuestMemory;
 #[allow(clippy::all)]
 mod elf;
 
+mod arm64;
+
+pub use arm64::load_arm64_kernel;
+
 // Elf32_Ehdr is plain old data with no implicit padding.
 unsafe impl data_model::DataInit for elf::Elf32_Ehdr {}
 
@@ -52,6 +56,10 @@ pub enum Error {
     InvalidElfVersion,
     #[error("invalid entry point")]
     InvalidEntryPoint,
+    #[error("invalid kernel offset")]
+    InvalidKernelOffset,
+    #[error("invalid kernel size")]
+    InvalidKernelSize,
     #[error("invalid magic number")]
     InvalidMagicNumber,
     #[error("invalid Program Header Address")]
@@ -72,6 +80,8 @@ pub enum Error {
     ReadKernelImage,
     #[error("unable to read program header")]
     ReadProgramHeader,
+    #[error("unable to seek to kernel end")]
+    SeekKernelEnd,
     #[error("unable to seek to kernel start")]
     SeekKernelStart,
     #[error("unable to seek to program header")]
