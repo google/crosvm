@@ -12,6 +12,7 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 use serde::Serialize;
+use serde_keyvalue::FromKeyValues;
 
 use super::*;
 use crate::crosvm::config::Config;
@@ -153,8 +154,8 @@ pub fn create_gpu_device(
     })
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Debug, Deserialize, Serialize, FromKeyValues, PartialEq)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct GpuRenderServerParameters {
     pub path: PathBuf,
     pub cache_path: Option<String>,
@@ -254,4 +255,52 @@ pub fn start_gpu_render_server(
     .context("failed to start gpu render server")?;
 
     Ok((jail, SafeDescriptor::from(client_socket)))
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::crosvm::config::from_key_values;
+
+    use super::*;
+
+    #[test]
+    fn parse_gpu_render_server_parameters() {
+        let res: GpuRenderServerParameters = from_key_values("path=/some/path").unwrap();
+        assert_eq!(
+            res,
+            GpuRenderServerParameters {
+                path: "/some/path".into(),
+                cache_path: None,
+                cache_size: None,
+            }
+        );
+
+        let res: GpuRenderServerParameters = from_key_values("/some/path").unwrap();
+        assert_eq!(
+            res,
+            GpuRenderServerParameters {
+                path: "/some/path".into(),
+                cache_path: None,
+                cache_size: None,
+            }
+        );
+
+        let res: GpuRenderServerParameters =
+            from_key_values("path=/some/path,cache-path=/cache/path,cache-size=16M").unwrap();
+        assert_eq!(
+            res,
+            GpuRenderServerParameters {
+                path: "/some/path".into(),
+                cache_path: Some("/cache/path".into()),
+                cache_size: Some("16M".into()),
+            }
+        );
+
+        let res =
+            from_key_values::<GpuRenderServerParameters>("cache-path=/cache/path,cache-size=16M");
+        assert!(res.is_err());
+
+        let res = from_key_values::<GpuRenderServerParameters>("");
+        assert!(res.is_err());
+    }
 }

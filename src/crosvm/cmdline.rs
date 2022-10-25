@@ -56,8 +56,6 @@ use vm_control::gpu::DisplayParameters as GpuDisplayParameters;
 #[cfg(feature = "gpu")]
 use super::sys::config::fixup_gpu_options;
 #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
-use super::sys::config::parse_gpu_render_server_options;
-#[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
 use super::sys::GpuRenderServerParameters;
 use crate::crosvm::config::from_key_values;
 #[cfg(feature = "audio")]
@@ -890,7 +888,7 @@ pub struct RunCommand {
     pub gpu_display: Vec<GpuDisplayParameters>,
 
     #[cfg(all(unix, feature = "gpu", feature = "virgl_renderer_next"))]
-    #[argh(option, from_str_fn(parse_gpu_render_server_options))]
+    #[argh(option)]
     #[serde(skip)] // TODO(b/255223604)
     /// (EXPERIMENTAL) Comma separated key=value pairs for setting
     /// up a render server for the virtio-gpu device

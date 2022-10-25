@@ -122,8 +122,6 @@ use devices::VirtioPciDevice;
 #[cfg(feature = "usb")]
 use devices::XhciController;
 #[cfg(feature = "gpu")]
-pub use gpu::GpuRenderServerParameters;
-#[cfg(feature = "gpu")]
 use gpu::*;
 use hypervisor::kvm::Kvm;
 use hypervisor::kvm::KvmVcpu;

@@ -40,47 +40,6 @@ impl FromStr for HypervisorKind {
     }
 }
 
-#[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
-pub fn parse_gpu_render_server_options(
-    s: &str,
-) -> Result<crate::crosvm::sys::GpuRenderServerParameters, String> {
-    use crate::crosvm::sys::GpuRenderServerParameters;
-
-    let mut path: Option<PathBuf> = None;
-    let mut cache_path = None;
-    let mut cache_size = None;
-
-    let opts = s
-        .split(',')
-        .map(|frag| frag.split('='))
-        .map(|mut kv| (kv.next().unwrap_or(""), kv.next().unwrap_or("")));
-
-    for (k, v) in opts {
-        match k {
-            "path" => path = Some(PathBuf::from_str(v).map_err(|e| invalid_value_err(v, e))?),
-            "cache-path" => cache_path = Some(v.to_string()),
-            "cache-size" => cache_size = Some(v.to_string()),
-            "" => {}
-            _ => {
-                return Err(format!("invalid gpu-render-server parameter {}", k));
-            }
-        }
-    }
-
-    if let Some(p) = path {
-        Ok(GpuRenderServerParameters {
-            path: p,
-            cache_path,
-            cache_size,
-        })
-    } else {
-        Err(invalid_value_err(
-            s,
-            "gpu-render-server must include 'path'",
-        ))
-    }
-}
-
 #[cfg(feature = "audio")]
 pub fn parse_ac97_options(
     #[allow(unused_variables)] ac97_params: &mut devices::Ac97Parameters,
