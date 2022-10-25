@@ -74,7 +74,6 @@ use crate::crosvm::config::parse_pcie_root_port_params;
 use crate::crosvm::config::parse_pflash_parameters;
 #[cfg(feature = "plugin")]
 use crate::crosvm::config::parse_plugin_mount_option;
-use crate::crosvm::config::parse_pstore;
 use crate::crosvm::config::parse_serial_options;
 use crate::crosvm::config::parse_stub_pci_parameters;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -1225,7 +1224,7 @@ pub struct RunCommand {
     /// (EXPERIMENTAL) prevent host access to guest memory, but don't use protected VM firmware
     protected_vm_without_firmware: bool,
 
-    #[argh(option, arg_name = "path=PATH,size=SIZE", from_str_fn(parse_pstore))]
+    #[argh(option, arg_name = "path=PATH,size=SIZE")]
     /// path to pstore buffer backend file followed by size
     ///     [--pstore <path=PATH,size=SIZE>]
     pub pstore: Option<Pstore>,

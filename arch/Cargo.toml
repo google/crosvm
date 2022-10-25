@@ -24,6 +24,7 @@ libc = "*"
 resources = { path = "../resources" }
 remain = "*"
 serde = { version = "*", features = [ "derive"] }
+serde_keyvalue = { path = "../serde_keyvalue", features = ["argh_derive"] }
 sync = { path = "../common/sync" }
 thiserror = "1.0.20"
 vm_control = { path = "../vm_control" }

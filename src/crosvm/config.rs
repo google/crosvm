@@ -576,38 +576,6 @@ pub fn parse_mmio_address_range(s: &str) -> Result<Vec<AddressRange>, String> {
         .collect()
 }
 
-pub fn parse_pstore(value: &str) -> Result<Pstore, String> {
-    let components: Vec<&str> = value.split(',').collect();
-    if components.len() != 2 {
-        return Err(invalid_value_err(
-            value,
-            "pstore must have exactly 2 components: path=<path>,size=<size>",
-        ));
-    }
-    Ok(Pstore {
-        path: {
-            if components[0].len() <= 5 || !components[0].starts_with("path=") {
-                return Err(invalid_value_err(
-                    components[0],
-                    "pstore path must follow with `path=`",
-                ));
-            };
-            PathBuf::from(&components[0][5..])
-        },
-        size: {
-            if components[1].len() <= 5 || !components[1].starts_with("size=") {
-                return Err(invalid_value_err(
-                    components[1],
-                    "pstore size must follow with `size=`",
-                ));
-            };
-            components[1][5..]
-                .parse()
-                .map_err(|_| invalid_value_err(value, "pstore size must be an integer"))?
-        },
-    })
-}
-
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub fn parse_userspace_msr_options(value: &str) -> Result<(u32, MsrConfig), String> {
     let mut rw_type: Option<MsrRWType> = None;
