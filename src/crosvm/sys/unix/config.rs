@@ -503,6 +503,7 @@ mod tests {
     #[cfg(feature = "gpu")]
     #[test]
     fn parse_gpu_options_default_vulkan_support() {
+        #[cfg(feature = "virgl_renderer")]
         {
             let gpu_params: GpuParameters = parse_gpu_options("backend=virglrenderer").unwrap();
             assert_eq!(gpu_params.use_vulkan, None);
@@ -515,7 +516,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "gpu")]
+    #[cfg(all(feature = "gpu", feature = "virglrenderer"))]
     #[test]
     fn parse_gpu_options_with_vulkan_specified() {
         {
@@ -554,7 +555,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "gpu")]
+    #[cfg(all(feature = "gpu", feature = "virgl_renderer"))]
     #[test]
     fn parse_gpu_options_gfxstream_with_wsi_specified() {
         use rutabaga_gfx::RutabagaWsi;
