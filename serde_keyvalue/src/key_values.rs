@@ -367,8 +367,7 @@ impl<'de> de::MapAccess<'de> for KeyValueDeserializer<'de> {
     where
         K: de::DeserializeSeed<'de>,
     {
-        let has_next_identifier = self.next_identifier.is_some();
-
+        // Detect end of input or struct.
         match self.peek_char() {
             None | Some(']') => return Ok(None),
             _ => (),
@@ -376,11 +375,11 @@ impl<'de> de::MapAccess<'de> for KeyValueDeserializer<'de> {
 
         self.has_equal = false;
 
+        let had_implicit_identifier = self.next_identifier.is_some();
         let val = seed.deserialize(&mut *self).map(Some)?;
-
         // We just "deserialized" the content of `next_identifier`, so there should be no equal
         // character in the input. We can return now.
-        if has_next_identifier {
+        if had_implicit_identifier {
             self.has_equal = true;
             return Ok(val);
         }
