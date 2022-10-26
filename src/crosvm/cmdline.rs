@@ -1907,7 +1907,7 @@ pub struct RunCommand {
     pub vhost_user_snd: Vec<VhostUserOption>,
 
     #[argh(option, arg_name = "SOCKET_PATH")]
-    #[serde(skip)] // TODO(b/255223604)
+    #[serde(default)]
     #[merge(strategy = append)]
     /// path to a socket for vhost-user video decoder
     pub vhost_user_video_decoder: Vec<VhostUserOption>,
@@ -1940,7 +1940,7 @@ pub struct RunCommand {
 
     #[cfg(feature = "video-decoder")]
     #[argh(option, arg_name = "[backend]")]
-    #[serde(skip)] // TODO(b/255223604)
+    #[serde(default)]
     #[merge(strategy = append)]
     /// (EXPERIMENTAL) enable virtio-video decoder device
     /// Possible backend values: libvda, ffmpeg, vaapi
@@ -1948,7 +1948,7 @@ pub struct RunCommand {
 
     #[cfg(feature = "video-encoder")]
     #[argh(option, arg_name = "[backend]")]
-    #[serde(skip)] // TODO(b/255223604)
+    #[serde(default)]
     #[merge(strategy = append)]
     /// (EXPERIMENTAL) enable virtio-video encoder device
     /// Possible backend values: libvda
