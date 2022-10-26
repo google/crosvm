@@ -288,12 +288,12 @@ impl TestVm {
     /// Configures the VM rootfs to load from the guest_under_test assets.
     fn configure_rootfs(command: &mut Command, o_direct: bool) {
         let rootfs_and_option = format!(
-            "{}{}",
+            "{}{},ro,root",
             rootfs_path().to_str().unwrap(),
             if o_direct { ",o_direct=true" } else { "" }
         );
         command
-            .args(&["--root", &rootfs_and_option])
+            .args(&["--block", &rootfs_and_option])
             .args(&["--params", "init=/bin/delegate"]);
     }
 

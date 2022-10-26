@@ -37,10 +37,10 @@ fn prepare_disk_img() -> NamedTempFile {
 #[test]
 fn mount_block() {
     let disk = prepare_disk_img();
-    let disk_path = disk.path().to_str().unwrap().to_string();
+    let disk_path = disk.path().to_str().unwrap();
     println!("disk={disk_path}");
 
-    let config = Config::new().extra_args(vec!["--rwdisk".to_string(), disk_path]);
+    let config = Config::new().extra_args(vec!["--block".to_string(), format!("{},ro", disk_path)]);
     let mut vm = TestVm::new(config).unwrap();
     assert_eq!(
         vm.exec_in_guest("mount -t ext4 /dev/vdb /mnt && echo 42")
@@ -56,7 +56,7 @@ fn resize() {
     let disk_path = disk.path().to_str().unwrap().to_string();
     println!("disk={disk_path}");
 
-    let config = Config::new().extra_args(vec!["--rwdisk".to_string(), disk_path]);
+    let config = Config::new().extra_args(vec!["--block".to_string(), disk_path]);
     let mut vm = TestVm::new(config).unwrap();
 
     // Check the initial block device size.
