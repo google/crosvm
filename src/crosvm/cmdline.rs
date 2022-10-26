@@ -1017,10 +1017,10 @@ pub struct RunCommand {
     /// comma separated key=value pairs for setting
     /// up a vhost-user net device
     /// Possible key values:
-    ///     tap_name=STRING - name of a configured persistent TAP
+    ///     tap-name=STRING - name of a configured persistent TAP
     ///        interface to use for networking.
-    ///     tap_fd=INT - File descriptor for configured tap device.
-    ///     host_ip=STRING - IP address to assign to
+    ///     tap-fd=INT - File descriptor for configured tap device.
+    ///     host-ip=STRING - IP address to assign to
     ///         host tap interface.
     ///     netmask=STRING - Netmask for VM subnet.
     ///     mac=STRING - MAC address for VM.
