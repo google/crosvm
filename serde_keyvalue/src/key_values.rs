@@ -234,6 +234,9 @@ pub struct KeyValueDeserializer<'de> {
     /// Whether the '=' sign has been parsed after a key. The absence of '=' is only valid for
     /// boolean fields, in which case the field's value will be `true`.
     has_equal: bool,
+    /// Whether the top structure has been parsed yet or not. The top structure is the only one that
+    /// does not require to be enclosed within braces.
+    top_struct_parsed: bool,
 }
 
 impl<'de> From<&'de str> for KeyValueDeserializer<'de> {
@@ -243,6 +246,7 @@ impl<'de> From<&'de str> for KeyValueDeserializer<'de> {
             input,
             next_identifier: None,
             has_equal: false,
+            top_struct_parsed: false,
         }
     }
 }
@@ -777,6 +781,18 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut KeyValueDeserializer<'de> {
     where
         V: serde::de::Visitor<'de>,
     {
+        // The top structure (i.e. the first structure that we will ever parse) does not need to be
+        // enclosed in braces, but inner structures do.
+        let top_struct_parsed = std::mem::replace(&mut self.top_struct_parsed, true);
+
+        if top_struct_parsed {
+            if self.peek_char() == Some('[') {
+                self.next_char();
+            } else {
+                return Err(self.error_here(ErrorKind::ExpectedOpenBracket));
+            }
+        }
+
         // The name of the first field of a struct can be omitted (see documentation of
         // `next_identifier` for details).
         //
@@ -797,7 +813,18 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut KeyValueDeserializer<'de> {
             // Not an identifier, probably means this is a value for the first field then.
             Err(_) => fields.get(0).copied(),
         };
-        visitor.visit_map(self)
+
+        let ret = visitor.visit_map(&mut *self)?;
+
+        if top_struct_parsed {
+            if self.peek_char() == Some(']') {
+                self.next_char();
+            } else {
+                return Err(self.error_here(ErrorKind::ExpectedCloseBracket));
+            }
+        }
+
+        Ok(ret)
     }
 
     fn deserialize_enum<V>(
@@ -1377,6 +1404,89 @@ mod tests {
             res,
             TestStruct {
                 numbers: vec![1, 2, 4, 8, 16, 32, 64],
+            }
+        );
+    }
+
+    #[test]
+    fn deserialize_vector_of_structs() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        #[serde(deny_unknown_fields)]
+        struct Display {
+            size: (u32, u32),
+            #[serde(default)]
+            disabled: bool,
+        }
+
+        #[derive(Deserialize, PartialEq, Debug)]
+        #[serde(deny_unknown_fields)]
+        struct TestStruct {
+            displays: Vec<Display>,
+            hostname: Option<String>,
+        }
+
+        let res: TestStruct = from_key_values("displays=[[size=[640,480]]]").unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                displays: vec![Display {
+                    size: (640, 480),
+                    disabled: false,
+                }],
+                hostname: None,
+            }
+        );
+
+        let res: TestStruct =
+            from_key_values("hostname=crosmatic,displays=[[size=[800,600],disabled]]").unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                displays: vec![Display {
+                    size: (800, 600),
+                    disabled: true,
+                }],
+                hostname: Some("crosmatic".to_string()),
+            }
+        );
+
+        // First field of a struct does not need to be named even if it is not the top-level struct.
+        let res: TestStruct =
+            from_key_values("displays=[[[640,480]],[[800,600],disabled]]").unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                displays: vec![
+                    Display {
+                        size: (640, 480),
+                        disabled: false,
+                    },
+                    Display {
+                        size: (800, 600),
+                        disabled: true,
+                    }
+                ],
+                hostname: None,
+            }
+        );
+
+        let res: TestStruct =
+            from_key_values("displays=[[[1024,768]],[size=[800,600],disabled]],hostname=crosmatic")
+                .unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                displays: vec![
+                    Display {
+                        size: (1024, 768),
+                        disabled: false,
+                    },
+                    Display {
+                        size: (800, 600),
+                        disabled: true,
+                    }
+                ],
+                hostname: Some("crosmatic".to_string()),
             }
         );
     }
