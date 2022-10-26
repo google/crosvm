@@ -711,6 +711,7 @@ impl Server {
         let iounit = st.st_blksize as u32;
 
         fid.file = Some(file);
+        fid.filetype = FileType::Regular;
 
         // This fid now refers to the newly created file so we need to update the O_PATH fd for it
         // as well.

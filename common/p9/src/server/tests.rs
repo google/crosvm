@@ -1276,3 +1276,41 @@ create_test!(
 );
 create_test!(append_read_write_file_create, P9_APPEND | P9_RDWR, 0o600u32);
 create_test!(append_wronly_file_create, P9_APPEND | P9_WRONLY, 0o600u32);
+
+#[test]
+fn lcreate_set_len() {
+    let (test_dir, mut server) = setup("lcreate_set_len");
+
+    let name = "foo.txt";
+    let fid = ROOT_FID + 1;
+    create(
+        &mut server,
+        &*test_dir,
+        ROOT_FID,
+        fid,
+        name,
+        P9_RDWR,
+        0o600u32,
+    )
+    .expect("failed to create file");
+
+    let tsetattr = Tsetattr {
+        fid,
+        valid: 0x8, // P9_SETATTR_SIZE
+        size: 100,
+        // The other fields are not used because the relevant flags aren't set in `valid`.
+        mode: 0,
+        uid: 0,
+        gid: 0,
+        atime_sec: 0,
+        atime_nsec: 0,
+        mtime_sec: 0,
+        mtime_nsec: 0,
+    };
+    server
+        .set_attr(&tsetattr)
+        .expect("failed to set file length after lcreate");
+
+    let tclunk = Tclunk { fid };
+    server.clunk(&tclunk).expect("Unable to clunk file");
+}
