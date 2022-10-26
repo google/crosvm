@@ -349,7 +349,7 @@ verify_builder(
         "cpu": "x86-64",
     },
     executable = luci.recipe(
-        name = "build_chromeos_container",
+        name = "build_chromeos_hatch",
     ),
     category = "linux",
     presubmit = False,
