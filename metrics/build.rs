@@ -47,7 +47,7 @@ fn create_gen_file(proto_files: Vec<&str>, out_dir: &str) {
             .to_str()
             .unwrap()
             .to_owned();
-        let out_dir = out_dir.replace("\\", "/");
+        let out_dir = out_dir.replace('\\', "/");
         writeln!(&out, "#[path = \"{}/{}.rs\"]", out_dir, file_stem)
             .expect("failed to write to generated.");
         writeln!(&out, "pub mod {}_proto;", file_stem).expect("failed to write to generated.");

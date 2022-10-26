@@ -238,7 +238,7 @@ def cargo_build_executables(
 
 def build_common_crate(build_env: Dict[str, str], crate: Crate):
     print(f"Building tests for: common/{crate.name}")
-    return list(cargo_build_executables([], env=build_env, cwd=crate.path))
+    return list(cargo_build_executables(["--all-features"], env=build_env, cwd=crate.path))
 
 
 def build_all_binaries(target: TestTarget, crosvm_direct: bool, instrument_coverage: bool):

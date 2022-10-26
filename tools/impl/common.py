@@ -212,14 +212,23 @@ class Command(object):
 
         The variable is removed if value is None.
         """
+        return self.with_envs({key: value})
+
+    def with_envs(self, envs: Union[Dict[str, Optional[str]], Dict[str, str]]):
+        """
+        Returns a command with an added env variable.
+
+        The variable is removed if value is None.
+        """
         cmd = Command()
         cmd.args = self.args
-        if value is not None:
-            cmd.env_vars = {**self.env_vars, key: value}
-        else:
-            cmd.env_vars = {**self.env_vars}
-            if key in cmd.env_vars:
-                del cmd.env_vars[key]
+        cmd.env_vars = self.env_vars
+        for key, value in envs.items():
+            if value is not None:
+                cmd.env_vars[key] = value
+            else:
+                if key in cmd.env_vars:
+                    del cmd.env_vars[key]
         return cmd
 
     def with_path_env(self, new_path: str):

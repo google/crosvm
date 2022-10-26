@@ -128,6 +128,17 @@ SHORTHANDS = {
 }
 
 
+def crosvm_target_dir():
+    crosvm_target = os.environ.get("CROSVM_TARGET_DIR")
+    cargo_target = os.environ.get("CARGO_TARGET_DIR")
+    if crosvm_target:
+        return Path(crosvm_target)
+    elif cargo_target:
+        return Path(cargo_target) / "crosvm"
+    else:
+        return CROSVM_ROOT / "target/crosvm"
+
+
 class Triple(NamedTuple):
     """
     Build triple in cargo format.
@@ -188,6 +199,19 @@ class Triple(NamedTuple):
         if not shorthand:
             raise Exception(f"No feature set for triple {self}")
         return f"all-{shorthand}"
+
+    @property
+    def target_dir(self):
+        return crosvm_target_dir() / str(self)
+
+    def get_cargo_env(self):
+        """Environment variables to make cargo use the test target."""
+        env: Dict[str, str] = BUILD_ENV.copy()
+        cargo_target = str(self)
+        env["CARGO_BUILD_TARGET"] = cargo_target
+        env["CARGO_TARGET_DIR"] = str(self.target_dir)
+        env["CROSVM_TARGET_DIR"] = str(crosvm_target_dir)
+        return env
 
     def __str__(self):
         return f"{self.arch}-{self.vendor}-{self.sys}-{self.abi}"
@@ -334,9 +358,9 @@ def prepare_target(target: TestTarget, extra_files: List[Path] = []):
 def get_cargo_env(target: TestTarget):
     """Environment variables to make cargo use the test target."""
     env: Dict[str, str] = BUILD_ENV.copy()
+    env.update(target.build_triple.get_cargo_env())
     cargo_target = str(target.build_triple)
     upper_target = cargo_target.upper().replace("-", "_")
-    env["CARGO_BUILD_TARGET"] = cargo_target
     if not target.is_host or target.emulator_cmd:
         script_path = CROSVM_ROOT / "tools/test_target"
         env[f"CARGO_TARGET_{upper_target}_RUNNER"] = f"{script_path} exec-file"

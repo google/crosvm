@@ -7,7 +7,7 @@ fn main() {
     // To enable clippy checks with this feature enabled upstream we will just skip
     // linking the library, allowing the crate to be compiled, but not linked.
     println!("cargo:rerun-if-env-changed=CROSVM_BUILD_VARIANT");
-    if std::env::var("CROSVM_BUILD_VARIANT").unwrap_or(String::new()) == "chromeos" {
+    if std::env::var("CROSVM_BUILD_VARIANT").unwrap_or_default() == "chromeos" {
         pkg_config::probe_library("libvda").unwrap();
         println!("cargo:rustc-link-lib=dylib=vda");
     }

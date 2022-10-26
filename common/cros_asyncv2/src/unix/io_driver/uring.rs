@@ -793,7 +793,8 @@ pub async fn read(
     let mut read =
         opcode::Read::new(Fd(desc.as_raw_fd()), ptr::null_mut(), len).buf_group(BUFFER_GROUP);
     if let Some(offset) = offset {
-        read = read.offset(offset as libc::off64_t);
+        // TODO(b/256213235): Use offset64 instead of casting to off_t
+        read = read.offset(offset as libc::off_t);
     }
     let entry = read.build().flags(squeue::Flags::BUFFER_SELECT);
     let state = clone_state()?;
@@ -809,7 +810,8 @@ pub async fn read_iobuf<B: AsIoBufs + Unpin + 'static>(
     let iobufs = IoBufMut::as_iobufs(buf.as_iobufs());
     let mut readv = opcode::Readv::new(Fd(desc.as_raw_fd()), iobufs.as_ptr(), iobufs.len() as u32);
     if let Some(off) = offset {
-        readv = readv.offset(off as libc::off64_t);
+        // TODO(b/256213235): Use offset64 instead of casting to off_t
+        readv = readv.offset(off as libc::off_t);
     }
 
     let state = match clone_state() {
@@ -840,7 +842,8 @@ pub async fn write_iobuf<B: AsIoBufs + Unpin + 'static>(
     let mut writev =
         opcode::Writev::new(Fd(desc.as_raw_fd()), iobufs.as_ptr(), iobufs.len() as u32);
     if let Some(off) = offset {
-        writev = writev.offset(off as libc::off64_t);
+        // TODO(b/256213235): Use offset64 instead of casting to off_t
+        writev = writev.offset(off as libc::off_t);
     }
 
     let state = match clone_state() {
@@ -857,8 +860,9 @@ pub async fn fallocate(
     len: u64,
     mode: u32,
 ) -> anyhow::Result<()> {
-    let entry = opcode::Fallocate::new(Fd(desc.as_raw_fd()), len as libc::off64_t)
-        .offset(file_offset as libc::off64_t)
+    // TODO(b/256213235): Use offset64 instead of casting to off_t
+    let entry = opcode::Fallocate::new(Fd(desc.as_raw_fd()), len as libc::off_t)
+        .offset(file_offset as libc::off_t)
         .mode(mode as libc::c_int)
         .build();
     let state = clone_state()?;

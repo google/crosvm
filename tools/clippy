@@ -9,7 +9,6 @@
 # To fix violations where possible:
 # $ ./tools/clippy --fix
 
-import os
 from impl.common import CROSVM_ROOT, cwd, run_main, cmd, chdir
 from impl.test_runner import get_workspace_excludes
 from impl.test_target import Triple
@@ -18,7 +17,6 @@ clippy = cmd("cargo clippy").with_color_flag()
 triple = Triple.host_default()
 
 excluded_crates: list[str] = list(get_workspace_excludes(triple))
-features: str = f"--features={triple.feature_flag}"
 
 
 def is_crate_excluded(crate: str) -> bool:
@@ -40,17 +38,13 @@ def main(fix: bool = False, json: bool = False, locked: bool = False):
     print("Clippy crosvm workspace")
     clippy(
         "--workspace",
-        features,
+        f"--features={triple.feature_flag}",
         *[f"--exclude={crate}" for crate in excluded_crates],
         *common_args,
-    ).fg()
+    ).with_envs(triple.get_cargo_env()).fg()
 
     for crate in CROSVM_ROOT.glob("common/*/Cargo.toml"):
-        # TODO(b/213147081): remove the cros_async exclude this once
-        # common/cros_async is gone.
-        if is_crate_excluded(crate.parent.name) or (
-            os.name == "nt" and crate.parent.name == "cros_async"
-        ):
+        if is_crate_excluded(crate.parent.name):
             print("Skipping crate", crate.parent.relative_to(CROSVM_ROOT))
         else:
             print("Clippy", crate.parent.relative_to(CROSVM_ROOT))

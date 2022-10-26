@@ -17,15 +17,15 @@ static BASE_URL: &str = "https://storage.googleapis.com/chromeos-localmirror/dis
 fn get_deps_directory() -> Result<PathBuf> {
     let out_dir = env::var("OUT_DIR")
         .ok()
-        .ok_or(anyhow!("OUT_DIR is not set"))?;
+        .ok_or_else(|| anyhow!("OUT_DIR is not set"))?;
 
     let dest = PathBuf::from(&out_dir)
         .parent()
-        .ok_or(anyhow!("../ not found for {:?}", out_dir))?
+        .ok_or_else(|| anyhow!("../ not found for {:?}", out_dir))?
         .parent()
-        .ok_or(anyhow!("../../ not found for {:?}", out_dir))?
+        .ok_or_else(|| anyhow!("../../ not found for {:?}", out_dir))?
         .parent()
-        .ok_or(anyhow!("../../../ not found for {:?}", out_dir))?
+        .ok_or_else(|| anyhow!("../../../ not found for {:?}", out_dir))?
         .join("deps");
     if dest.is_dir() {
         Ok(dest)

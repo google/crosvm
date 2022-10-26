@@ -134,7 +134,7 @@ fn main() {
 
     // Disable embedding of seccomp policy files on ChromeOS builds.
     println!("cargo:rerun-if-env-changed=CROSVM_BUILD_VARIANT");
-    if env::var("CROSVM_BUILD_VARIANT").unwrap_or(String::new()) == "chromeos" {
+    if env::var("CROSVM_BUILD_VARIANT").unwrap_or_default() == "chromeos" {
         fs::write(out_dir.join("bpf_includes.in"), "Default::default()").unwrap();
         return;
     }
