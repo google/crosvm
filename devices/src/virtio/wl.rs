@@ -131,6 +131,7 @@ use super::SharedMemoryRegion;
 use super::SignalableInterrupt;
 use super::VirtioDevice;
 use super::Writer;
+use crate::Suspendable;
 
 const VIRTWL_SEND_MAX_ALLOCS: usize = 28;
 const VIRTIO_WL_CMD_VFD_NEW: u32 = 256;
@@ -2124,3 +2125,5 @@ impl VirtioDevice for Wl {
         self.mapper = Some(mapper);
     }
 }
+
+impl Suspendable for Wl {}

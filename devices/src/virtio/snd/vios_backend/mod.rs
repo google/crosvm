@@ -39,6 +39,7 @@ use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::VirtioDevice;
+use crate::Suspendable;
 
 const QUEUE_SIZES: &[u16] = &[64, 64, 64, 64];
 
@@ -215,6 +216,8 @@ impl VirtioDevice for Sound {
         ret
     }
 }
+
+impl Suspendable for Sound {}
 
 /// Creates a new virtio sound device connected to a VioS backend
 pub fn new_sound<P: AsRef<Path>>(path: P, virtio_features: u64) -> Result<Sound> {

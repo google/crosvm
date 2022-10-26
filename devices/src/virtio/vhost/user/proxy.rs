@@ -97,6 +97,7 @@ use crate::virtio::Writer;
 use crate::virtio::VIRTIO_F_ACCESS_PLATFORM;
 use crate::virtio::VIRTIO_MSI_NO_VECTOR;
 use crate::PciAddress;
+use crate::Suspendable;
 
 // Note: There are two sets of queues that will be mentioned here. 1st set is
 // for this Virtio PCI device itself. 2nd set is the actual device backends
@@ -1989,3 +1990,5 @@ impl VirtioDevice for VirtioVhostUser {
         self.pci_address
     }
 }
+
+impl Suspendable for VirtioVhostUser {}

@@ -934,7 +934,23 @@ impl PciDevice for VirtioPciDevice {
     }
 }
 
-impl Suspendable for VirtioPciDevice {}
+impl Suspendable for VirtioPciDevice {
+    fn sleep(&mut self) -> anyhow::Result<()> {
+        self.device.sleep()
+    }
+
+    fn wake(&mut self) -> anyhow::Result<()> {
+        self.device.wake()
+    }
+
+    fn snapshot(&self) -> anyhow::Result<String> {
+        self.device.snapshot()
+    }
+
+    fn restore(&mut self, data: &str) -> anyhow::Result<()> {
+        self.device.restore(data)
+    }
+}
 
 struct VmRequester {
     tube: Tube,

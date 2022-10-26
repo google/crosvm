@@ -51,6 +51,7 @@ use super::Reader;
 use super::SignalableInterrupt;
 use super::VirtioDevice;
 use super::Writer;
+use crate::Suspendable;
 
 /// The maximum buffer size when segmentation offload is enabled. This
 /// includes the 12-byte virtio net header.
@@ -820,6 +821,8 @@ where
         true
     }
 }
+
+impl<T> Suspendable for Net<T> where T: 'static + TapT + ReadNotifier {}
 
 #[cfg(test)]
 mod tests {

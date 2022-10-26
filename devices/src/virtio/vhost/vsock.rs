@@ -29,6 +29,7 @@ use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::VirtioDevice;
+use crate::Suspendable;
 
 pub const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 3;
@@ -246,6 +247,8 @@ impl VirtioDevice for Vsock {
         }
     }
 }
+
+impl Suspendable for Vsock {}
 
 #[cfg(test)]
 mod tests {

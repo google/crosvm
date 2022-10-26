@@ -28,6 +28,7 @@ use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::VirtioDevice;
+use crate::Suspendable;
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 2;
@@ -355,6 +356,13 @@ where
         }
         false
     }
+}
+
+impl<T, U> Suspendable for Net<T, U>
+where
+    T: TapT + 'static,
+    U: VhostNetT<T> + 'static,
+{
 }
 
 #[cfg(test)]

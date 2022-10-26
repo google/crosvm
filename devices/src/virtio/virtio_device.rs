@@ -22,6 +22,7 @@ use crate::pci::PciBarConfiguration;
 use crate::pci::PciBarIndex;
 use crate::pci::PciCapability;
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
+use crate::Suspendable;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum VirtioTransportType {
@@ -57,7 +58,7 @@ pub trait SharedMemoryMapper: Send {
 /// and all the events, memory, and queues for device operation will be moved into the device.
 /// Optionally, a virtio device can implement device reset in which it returns said resources and
 /// resets its internal.
-pub trait VirtioDevice: Send {
+pub trait VirtioDevice: Send + Suspendable {
     /// Returns a label suitable for debug output.
     fn debug_label(&self) -> String {
         format!("virtio-{}", self.device_type())

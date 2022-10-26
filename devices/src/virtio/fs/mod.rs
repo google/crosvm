@@ -37,6 +37,7 @@ use crate::virtio::PciCapabilityType;
 use crate::virtio::Queue;
 use crate::virtio::VirtioDevice;
 use crate::virtio::VirtioPciShmCap;
+use crate::Suspendable;
 
 mod caps;
 mod multikey;
@@ -351,6 +352,8 @@ impl VirtioDevice for Fs {
         ))]
     }
 }
+
+impl Suspendable for Fs {}
 
 impl Drop for Fs {
     fn drop(&mut self) {

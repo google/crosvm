@@ -46,6 +46,7 @@ use super::Queue;
 use super::Reader;
 use super::SignalableInterrupt;
 use super::VirtioDevice;
+use crate::Suspendable;
 use crate::UnpinRequest;
 use crate::UnpinResponse;
 
@@ -914,6 +915,8 @@ impl VirtioDevice for Balloon {
         false
     }
 }
+
+impl Suspendable for Balloon {}
 
 #[cfg(test)]
 mod tests {

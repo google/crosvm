@@ -63,6 +63,7 @@ use crate::virtio::SignalableInterrupt;
 use crate::virtio::VirtioDevice;
 use crate::virtio::Writer;
 use crate::virtio::TYPE_STREAM_SOCKET;
+use crate::Suspendable;
 
 #[sorted]
 #[derive(ThisError, Debug)]
@@ -260,6 +261,8 @@ impl VirtioDevice for Vsock {
         }
     }
 }
+
+impl Suspendable for Vsock {}
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub struct PortPair {

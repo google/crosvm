@@ -26,6 +26,7 @@ use super::Reader;
 use super::SignalableInterrupt;
 use super::VirtioDevice;
 use super::Writer;
+use crate::Suspendable;
 
 // A single queue of size 2. The guest kernel driver will enqueue a single
 // descriptor chain containing one command buffer and one response buffer at a
@@ -268,6 +269,8 @@ impl VirtioDevice for Tpm {
         }
     }
 }
+
+impl Suspendable for Tpm {}
 
 #[derive(PartialEq)]
 enum NeedsInterrupt {

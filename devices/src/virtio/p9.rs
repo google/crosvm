@@ -28,6 +28,7 @@ use super::Reader;
 use super::SignalableInterrupt;
 use super::VirtioDevice;
 use super::Writer;
+use crate::Suspendable;
 
 const QUEUE_SIZE: u16 = 128;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
@@ -253,6 +254,8 @@ impl VirtioDevice for P9 {
         }
     }
 }
+
+impl Suspendable for P9 {}
 
 impl Drop for P9 {
     fn drop(&mut self) {

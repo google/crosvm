@@ -54,6 +54,7 @@ use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::VirtioDevice;
 use crate::virtio::Writer;
+use crate::Suspendable;
 
 pub mod async_funcs;
 pub mod stream_info;
@@ -417,6 +418,8 @@ impl VirtioDevice for VirtioSnd {
         true
     }
 }
+
+impl Suspendable for VirtioSnd {}
 
 impl Drop for VirtioSnd {
     fn drop(&mut self) {

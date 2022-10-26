@@ -38,6 +38,7 @@ use super::Queue;
 use super::Reader;
 use super::VirtioDevice;
 use super::Writer;
+use crate::Suspendable;
 
 const QUEUE_SIZE: u16 = 256;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
@@ -368,3 +369,5 @@ impl VirtioDevice for Pmem {
         }
     }
 }
+
+impl Suspendable for Pmem {}
