@@ -40,35 +40,20 @@ CACHE_DIR = os.environ.get("CROSVM_CONTAINER_CACHE", None)
 DOCKER_ARGS = [
     # Share cache dir
     f"--volume {CACHE_DIR}:/cache:rw" if CACHE_DIR else None,
-    # Use tmpfs in the container for faster performance.
-    "--mount type=tmpfs,destination=/tmp",
-    # KVM is required to run a VM for testing.
-    "--device /dev/kvm",
-    f"--env OUTSIDE_UID={os.getuid()}",
-    f"--env OUTSIDE_GID={os.getgid()}",
-    f"gcr.io/crosvm-infra/crosvm_dev_user:{IMAGE_VERSION}",
-]
-
-PODMAN_ARGS = [
-    # Share cache dir
-    f"--volume {CACHE_DIR}:/cache:rw" if CACHE_DIR else None,
-    # Use tmpfs in the container for faster performance.
-    "--mount type=tmpfs,destination=/tmp",
-    # KVM is required to run a VM for testing.
-    "--device /dev/kvm",
-    f"gcr.io/crosvm-infra/crosvm_dev:{IMAGE_VERSION}",
-]
-
-PRIVILEGED_ARGS = [
     # Share devices and syslog
+    "--device /dev/kvm",
     "--volume /dev/log:/dev/log",
     "--device /dev/net/tun",
     "--device /dev/vhost-net",
     "--device /dev/vhost-vsock",
+    # Use tmpfs in the container for faster performance.
+    "--mount type=tmpfs,destination=/tmp",
     # For plugin process jail
     "--mount type=tmpfs,destination=/var/empty",
+    f"--env OUTSIDE_UID={os.getuid()}",
+    f"--env OUTSIDE_GID={os.getgid()}",
+    f"gcr.io/crosvm-infra/crosvm_dev:{IMAGE_VERSION}",
 ]
-
 
 PODMAN_IS_DEFAULT = shutil.which("docker") == None
 
@@ -126,9 +111,7 @@ def ensure_container_is_alive(docker: cmd, docker_args: List[Optional[str]]):
 
     if not container_is_running(docker):
         # Run neverending sleep to keep container alive while we 'docker exec' commands.
-        docker(f"run --detach --name {CONTAINER_NAME}", *docker_args, "sleep infinity").fg(
-            quiet=True
-        )
+        docker(f"run --detach --name {CONTAINER_NAME}", *docker_args, "sleep infinity").stdout()
         cid = container_id(docker)
         print(f"Started dev-container ({cid}).")
     else:
@@ -147,31 +130,21 @@ def main(
     podman: bool = PODMAN_IS_DEFAULT,
     self_test: bool = False,
     pull: bool = False,
-    unprivileged: bool = False,
 ):
     chdir(CROSVM_ROOT)
 
-    if unprivileged:
-        print("WARNING: Running dev_container with --unprivileged is a work in progress.")
-        print("Not all tests are expected to pass.")
-        print()
-
+    docker = cmd("podman" if podman else "docker")
     docker_args = [
+        # Podman will not share devices when `--privileged` is specified
+        "--privileged" if not podman else None,
         *workspace_mount_args(),
-        *(PRIVILEGED_ARGS if not unprivileged else []),
+        *DOCKER_ARGS,
     ]
+
     if podman:
-        print("WARNING: Running dev_container with podman is experimental.")
-        print("It is strongly recommended to use docker.")
+        print("WARNING: Running dev_container with podman is not fully supported.")
+        print("Some crosvm tests require privileges podman cannot provide and may fail.")
         print()
-        docker = cmd("podman")
-        docker_args += [*PODMAN_ARGS]
-    else:
-        docker = cmd("docker")
-        docker_args += [
-            "--privileged" if not unprivileged else None,
-            *DOCKER_ARGS,
-        ]
 
     if self_test:
         TestDevContainer.docker = docker
@@ -189,7 +162,6 @@ def main(
 
     if pull:
         docker("pull", f"gcr.io/crosvm-infra/crosvm_dev:{IMAGE_VERSION}").fg()
-        docker("pull", f"gcr.io/crosvm-infra/crosvm_dev_user:{IMAGE_VERSION}").fg()
         return
 
     # If a command is provided run non-interactive unless explicitly asked for.
@@ -210,14 +182,10 @@ def main(
     else:
         # cmd is executed directly
         cid = ensure_container_is_alive(docker, docker_args)
-        if podman:
-            if not command:
-                command = ("/bin/bash",)
+        if not command:
+            command = ("/tools/entrypoint.sh",)
         else:
-            if not command:
-                command = ("/tools/entrypoint.sh",)
-            else:
-                command = ("/tools/entrypoint.sh",) + tuple(command)
+            command = ("/tools/entrypoint.sh",) + tuple(command)
         quoted_cmd = list(map(quoted, command))
         docker("exec", *tty_args, cid, *quoted_cmd).fg()
 
