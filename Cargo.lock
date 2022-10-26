@@ -1677,9 +1677,9 @@ dependencies = [
 
 [[package]]
 name = "scudo-sys"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7aedac72a22df5e73d23abf6b26a9b124a3e10f0e5cc74b9aa8121c7e14cf106"
+checksum = "bcdbdfb28236bf083b47d0babb07e486bb003ed85011072b023ea4ed27760ddb"
 dependencies = [
  "cc",
  "libc",
