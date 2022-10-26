@@ -42,7 +42,7 @@ mod serde_context_mask {
 pub struct GpuParameters {
     #[serde(rename = "backend")]
     pub mode: GpuMode,
-    #[serde(skip)]
+    #[serde(rename = "displays")]
     pub display_params: Vec<DisplayParameters>,
     // `width` and `height` are supported for CLI backwards compatibility.
     #[serde(rename = "width")]

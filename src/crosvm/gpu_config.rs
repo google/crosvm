@@ -659,19 +659,71 @@ mod tests {
     }
 
     #[test]
-    fn parse_gpu_options_and_gpu_display_options_valid() {
-        const WIDTH: u32 = 1720;
-        const HEIGHT: u32 = 1800;
-        const EXPECTED_DISPLAY_MODE: GpuDisplayMode = GpuDisplayMode::Windowed(WIDTH, HEIGHT);
+    fn parse_gpu_options_single_display() {
+        {
+            let gpu_params = parse_gpu_options("displays=[[mode=windowed[800,600]]]").unwrap();
+            assert_eq!(gpu_params.display_params.len(), 1);
+            assert_eq!(
+                gpu_params.display_params[0].mode,
+                GpuDisplayMode::Windowed(800, 600)
+            );
+        }
+
+        #[cfg(windows)]
+        {
+            let gpu_params = parse_gpu_options("displays=[[mode=borderless_full_screen]]").unwrap();
+            assert_eq!(gpu_params.display_params.len(), 1);
+            assert!(matches!(
+                gpu_params.display_params[0].mode,
+                GpuDisplayMode::BorderlessFullScreen(_)
+            ));
+        }
+    }
+
+    #[test]
+    fn parse_gpu_options_multi_display() {
+        {
+            let gpu_params =
+                parse_gpu_options("displays=[[mode=windowed[500,600]],[mode=windowed[700,800]]]")
+                    .unwrap();
+            assert_eq!(gpu_params.display_params.len(), 2);
+            assert_eq!(
+                gpu_params.display_params[0].mode,
+                GpuDisplayMode::Windowed(500, 600)
+            );
+            assert_eq!(
+                gpu_params.display_params[1].mode,
+                GpuDisplayMode::Windowed(700, 800)
+            );
+        }
+
+        #[cfg(windows)]
+        {
+            let gpu_params = parse_gpu_options(
+                "displays=[[mode=windowed[800,600]],[mode=borderless_full_screen]]",
+            )
+            .unwrap();
+            assert_eq!(gpu_params.display_params.len(), 2);
+            assert_eq!(
+                gpu_params.display_params[0].mode,
+                GpuDisplayMode::Windowed(800, 600)
+            );
+            assert!(matches!(
+                gpu_params.display_params[1].mode,
+                GpuDisplayMode::BorderlessFullScreen(_)
+            ));
+        }
+    }
+
+    #[test]
+    fn parse_gpu_options_single_display_compat() {
         const BACKEND: &str = get_backend_name();
 
         let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
             &[],
             &[
                 "--gpu",
-                format!("backend={}", BACKEND).as_str(),
-                "--gpu-display",
-                format!("windowed[{},{}]", WIDTH, HEIGHT).as_str(),
+                format!("backend={},width=500,height=600", BACKEND,).as_str(),
                 "/dev/null",
             ],
         )
@@ -682,14 +734,18 @@ mod tests {
         let gpu_params = config.gpu_parameters.unwrap();
 
         assert_eq!(gpu_params.display_params.len(), 1);
-        assert_eq!(gpu_params.display_params[0].mode, EXPECTED_DISPLAY_MODE);
+        assert_eq!(
+            gpu_params.display_params[0].mode,
+            GpuDisplayMode::Windowed(500, 600)
+        );
 
-        // `width` and `height` in GPU options are supported for CLI backward compatibility.
         let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
             &[],
             &[
                 "--gpu",
-                format!("backend={},width={},height={}", BACKEND, WIDTH, HEIGHT).as_str(),
+                format!("backend={}", BACKEND,).as_str(),
+                "--gpu-display",
+                "mode=windowed[700,800]",
                 "/dev/null",
             ],
         )
@@ -700,7 +756,10 @@ mod tests {
         let gpu_params = config.gpu_parameters.unwrap();
 
         assert_eq!(gpu_params.display_params.len(), 1);
-        assert_eq!(gpu_params.display_params[0].mode, EXPECTED_DISPLAY_MODE);
+        assert_eq!(
+            gpu_params.display_params[0].mode,
+            GpuDisplayMode::Windowed(700, 800)
+        );
     }
 
     #[cfg(unix)]
@@ -711,9 +770,13 @@ mod tests {
                 &[],
                 &[
                     "--gpu",
-                    format!("backend={},width=500,height=600", get_backend_name()).as_str(),
+                    format!(
+                        "backend={},width=500,height=600,displays=[[mode=windowed[700,800]]]",
+                        get_backend_name()
+                    )
+                    .as_str(),
                     "--gpu-display",
-                    "mode=windowed[700,800]",
+                    "mode=windowed[900,1000]",
                     "/dev/null",
                 ],
             )
@@ -723,14 +786,18 @@ mod tests {
 
             let gpu_params = config.gpu_parameters.unwrap();
 
-            assert_eq!(gpu_params.display_params.len(), 2);
+            assert_eq!(gpu_params.display_params.len(), 3);
             assert_eq!(
-                gpu_params.display_params[0].get_virtual_display_size(),
-                (500, 600),
+                gpu_params.display_params[0].mode,
+                GpuDisplayMode::Windowed(700, 800)
             );
             assert_eq!(
-                gpu_params.display_params[1].get_virtual_display_size(),
-                (700, 800),
+                gpu_params.display_params[1].mode,
+                GpuDisplayMode::Windowed(500, 600)
+            );
+            assert_eq!(
+                gpu_params.display_params[2].mode,
+                GpuDisplayMode::Windowed(900, 1000)
             );
         }
     }
@@ -758,6 +825,30 @@ mod tests {
                 "width=1280,height=720",
                 "--gpu-display",
                 "mode=borderless_full_screen",
+                "/dev/null",
+            ],
+        )
+        .unwrap();
+        assert!(Config::try_from(command).is_err());
+
+        let command = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &[
+                "--gpu",
+                "displays=[[mode=windowed[1280,720]]]",
+                "--gpu-display",
+                "mode=borderless_full_screen",
+                "/dev/null",
+            ],
+        )
+        .unwrap();
+        assert!(Config::try_from(command).is_err());
+
+        let command = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &[
+                "--gpu",
+                "displays=[[mode=windowed[500,600]],[mode=windowed[700,800]]]",
                 "/dev/null",
             ],
         )

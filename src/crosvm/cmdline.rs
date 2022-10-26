@@ -489,7 +489,7 @@ pub enum GpuSubCommand {
 pub struct GpuAddDisplaysCommand {
     #[argh(option)]
     /// displays
-    pub gpu_display: Vec<vm_control::gpu::DisplayParameters>,
+    pub gpu_display: Vec<GpuDisplayParameters>,
 
     #[argh(positional, arg_name = "VM_SOCKET")]
     /// VM Socket path
@@ -1079,12 +1079,17 @@ pub struct RunCommand {
     /// Possible key values:
     ///     backend=(2d|virglrenderer|gfxstream) - Which backend to
     ///        use for virtio-gpu (determining rendering protocol)
+    ///     displays=[[GpuDisplayParameters]] - The list of virtual
+    ///         displays to create. See the possible key values for
+    ///         GpuDisplayParameters in the section below.
     ///     context-types=LIST - The list of supported context
     ///       types, separated by ':' (default: no contexts enabled)
     ///     width=INT - The width of the virtual display connected
     ///        to the virtio-gpu.
+    ///        Deprecated - use `displays` instead.
     ///     height=INT - The height of the virtual display
     ///        connected to the virtio-gpu.
+    ///        Deprecated - use `displays` instead.
     ///     egl[=true|=false] - If the backend should use a EGL
     ///        context for rendering.
     ///     glx[=true|=false] - If the backend should use a GLX
@@ -1103,15 +1108,8 @@ pub struct RunCommand {
     ///     cache-size=SIZE - The maximum size of the shader cache.
     ///     pci-bar-size=SIZE - The size for the PCI BAR in bytes
     ///        (default 8gb).
-    pub gpu: Vec<FixedGpuParameters>,
-
-    #[cfg(feature = "gpu")]
-    #[argh(option)]
-    #[serde(skip)] // TODO(b/255223604)
-    #[merge(strategy = append)]
-    /// (EXPERIMENTAL) Comma separated key=value pairs for setting
-    /// up a display on the virtio-gpu device
-    /// Possible key values:
+    ///
+    /// Possible key values for GpuDisplayParameters:
     ///     mode=(borderless_full_screen|windowed[width,height]) -
     ///        Whether to show the window on the host in full
     ///        screen or windowed mode. If not specified, windowed
@@ -1130,6 +1128,15 @@ pub struct RunCommand {
     ///     vertical-dpi=INT - The vertical DPI of the display
     ///        (default: 320)
     ///        Deprecated - use `dpi` instead.
+    pub gpu: Vec<FixedGpuParameters>,
+
+    #[cfg(feature = "gpu")]
+    #[argh(option)]
+    #[serde(skip)] // TODO(b/255223604). Deprecated - use `gpu` instead.
+    #[merge(strategy = append)]
+    /// (EXPERIMENTAL) Comma separated key=value pairs for setting
+    /// up a display on the virtio-gpu device. See comments for `gpu`
+    /// for possible key values of GpuDisplayParameters.
     pub gpu_display: Vec<FixedGpuDisplayParameters>,
 
     #[cfg(all(unix, feature = "gpu", feature = "virgl_renderer_next"))]
