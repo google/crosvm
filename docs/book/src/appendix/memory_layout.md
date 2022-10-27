@@ -44,24 +44,25 @@ All addresses are IPA in hexadecimal.
 
 These apply for all boot modes.
 
-| Name/source link                  | Address         | End (exclusive) | Size       | Notes                                                         |
-| --------------------------------- | --------------- | --------------- | ---------- | ------------------------------------------------------------- |
-| [`SERIAL_ADDR[3]`][serial_addr]   | `2e8`           | `2f0`           | 8 bytes    | Serial port MMIO                                              |
-| [`SERIAL_ADDR[1]`][serial_addr]   | `2f8`           | `300`           | 8 bytes    | Serial port MMIO                                              |
-| [`SERIAL_ADDR[2]`][serial_addr]   | `3e8`           | `3f0`           | 8 bytes    | Serial port MMIO                                              |
-| [`SERIAL_ADDR[0]`][serial_addr]   | `3f8`           | `400`           | 8 bytes    | Serial port MMIO                                              |
-| [`AARCH64_RTC_ADDR`]              | `2000`          | `3000`          | 4 KiB      | Real-time clock                                               |
-| [`AARCH64_VMWDT_ADDR`]            | `3000`          | `4000`          | 4 KiB      | Watchdog device                                               |
-| [`AARCH64_PCI_CFG_BASE`]          | `1_0000`        | `2_0000`        | 64 KiB     | PCI configuration (CAM)                                       |
-| [`AARCH64_PVTIME_IPA_START`]      | `1f0_0000`      | `200_0000`      | 64 KiB     | Paravirtualized time                                          |
-| [`AARCH64_MMIO_BASE`]             | `200_0000`      | `400_0000`      | 32 MiB     | Low MMIO allocation area                                      |
-| [`AARCH64_GIC_CPUI_BASE`]         | `3ffd_0000`     | `3fff_0000`     | 128 KiB    | vGIC                                                          |
-| [`AARCH64_GIC_DIST_BASE`]         | `3fff_0000`     | `4000_0000`     | 64 KiB     | vGIC                                                          |
-| [`AARCH64_AXI_BASE`]              | `4000_0000`     |                 |            | Seemingly unused? Is this hard-coded somewhere in the kernel? |
-| [`AARCH64_PROTECTED_VM_FW_START`] | `7fc0_0000`     | `8000_0000`     | 4 MiB      | pVM firmware (if running a protected VM)                      |
-| [`AARCH64_PHYS_MEM_START`]        | `8000_0000`     |                 | --mem size | RAM (starts at IPA = 2 GiB)                                   |
-| [`plat_mmio_base`]                | after RAM       | +0x800000       | 8 MiB      | Platform device MMIO region                                   |
-| [`high_mmio_base`]                | after plat_mmio | max phys addr   |            | High MMIO allocation area                                     |
+| Name/source link                  | Address         | End (exclusive) | Size           | Notes                                                         |
+| --------------------------------- | --------------- | --------------- | ----------     | ------------------------------------------------------------- |
+| [`SERIAL_ADDR[3]`][serial_addr]   | `2e8`           | `2f0`           | 8 bytes        | Serial port MMIO                                              |
+| [`SERIAL_ADDR[1]`][serial_addr]   | `2f8`           | `300`           | 8 bytes        | Serial port MMIO                                              |
+| [`SERIAL_ADDR[2]`][serial_addr]   | `3e8`           | `3f0`           | 8 bytes        | Serial port MMIO                                              |
+| [`SERIAL_ADDR[0]`][serial_addr]   | `3f8`           | `400`           | 8 bytes        | Serial port MMIO                                              |
+| [`AARCH64_RTC_ADDR`]              | `2000`          | `3000`          | 4 KiB          | Real-time clock                                               |
+| [`AARCH64_VMWDT_ADDR`]            | `3000`          | `4000`          | 4 KiB          | Watchdog device                                               |
+| [`AARCH64_PCI_CFG_BASE`]          | `1_0000`        | `2_0000`        | 64 KiB         | PCI configuration (CAM)                                       |
+| [`AARCH64_PVTIME_IPA_START`]      | `1f0_0000`      | `200_0000`      | 64 KiB         | Paravirtualized time                                          |
+| [`AARCH64_MMIO_BASE`]             | `200_0000`      | `400_0000`      | 32 MiB         | Low MMIO allocation area                                      |
+| [`AARCH64_GIC_CPUI_BASE`]         | `3ffd_0000`     | `3fff_0000`     | 128 KiB        | vGIC                                                          |
+| [`AARCH64_GIC_DIST_BASE`]         | `3fff_0000`     | `4000_0000`     | 64 KiB         | vGIC                                                          |
+| [`AARCH64_AXI_BASE`]              | `4000_0000`     |                 |                | Seemingly unused? Is this hard-coded somewhere in the kernel? |
+| [`AARCH64_PROTECTED_VM_FW_START`] | `7fc0_0000`     | `8000_0000`     | 4 MiB          | pVM firmware (if running a protected VM)                      |
+| [`AARCH64_PHYS_MEM_START`]        | `8000_0000`     |                 | --mem size     | RAM (starts at IPA = 2 GiB)                                   |
+| [`get_swiotlb_addr`]              | after RAM       |                 | --swiotlb size | Only present for hypervisors requiring static swiotlb alloc   |
+| [`plat_mmio_base`]                | after swiotlb   | +0x800000       | 8 MiB          | Platform device MMIO region                                   |
+| [`high_mmio_base`]                | after plat_mmio | max phys addr   |                | High MMIO allocation area                                     |
 
 ### Layout when booting a kernel
 
@@ -93,6 +94,7 @@ These apply when a bootloader is passed with `--bios`.
 [`aarch64_pvtime_ipa_start`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=59?q=AARCH64_PVTIME_IPA_START
 [`aarch64_protected_vm_fw_start`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=55?q=AARCH64_PROTECTED_VM_FW_START
 [`aarch64_phys_mem_start`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=44?q=AARCH64_PHYS_MEM_START
+[`get_swiotlb_addr`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs?q=get_swiotlb_addr
 [`plat_mmio_base`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=551?q=plat_mmio_base
 [`high_mmio_base`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=554?q=high_mmio_base
 [`aarch64_kernel_offset`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=35?q=AARCH64_KERNEL_OFFSET

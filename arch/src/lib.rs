@@ -399,7 +399,7 @@ pub trait LinuxArch {
     /// * `components` - Parts used to determine the memory layout.
     fn guest_memory_layout(
         components: &VmComponents,
-        _hypervisor: &impl hypervisor::Hypervisor,
+        hypervisor: &impl hypervisor::Hypervisor,
     ) -> std::result::Result<Vec<(GuestAddress, u64)>, Self::Error>;
 
     /// Gets the configuration for a new `SystemAllocator` that fits the given `Vm`'s memory layout.

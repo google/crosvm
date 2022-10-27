@@ -1222,6 +1222,7 @@ impl TryFrom<HypervisorCap> for KvmCap {
             HypervisorCap::Xcrs => Ok(KvmCap::Xcrs),
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             HypervisorCap::CalibratedTscLeafRequired => Err(Error::new(libc::EINVAL)),
+            HypervisorCap::StaticSwiotlbAllocationRequired => Err(Error::new(libc::EINVAL)),
         }
     }
 }

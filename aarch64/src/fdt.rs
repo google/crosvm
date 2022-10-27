@@ -79,13 +79,24 @@ fn create_memory_node(fdt: &mut FdtWriter, guest_mem: &GuestMemory) -> Result<()
     Ok(())
 }
 
-fn create_resv_memory_node(fdt: &mut FdtWriter, resv_size: u64) -> Result<u32> {
+fn create_resv_memory_node(
+    fdt: &mut FdtWriter,
+    resv_addr_and_size: (Option<GuestAddress>, u64),
+) -> Result<u32> {
+    let (resv_addr, resv_size) = resv_addr_and_size;
+
     let resv_memory_node = fdt.begin_node("reserved-memory")?;
     fdt.property_u32("#address-cells", 0x2)?;
     fdt.property_u32("#size-cells", 0x2)?;
     fdt.property_null("ranges")?;
 
-    let restricted_dma_pool = fdt.begin_node("restricted_dma_reserved")?;
+    let restricted_dma_pool = if let Some(resv_addr) = resv_addr {
+        let node = fdt.begin_node(&format!("restricted_dma_reserved@{:x}", resv_addr.0))?;
+        fdt.property_array_u64("reg", &[resv_addr.0, resv_size])?;
+        node
+    } else {
+        fdt.begin_node("restricted_dma_reserved")?
+    };
     fdt.property_u32("phandle", PHANDLE_RESTRICTED_DMA_POOL)?;
     fdt.property_string("compatible", "restricted-dma-pool")?;
     fdt.property_u64("size", resv_size)?;
@@ -520,7 +531,7 @@ fn create_vmwdt_node(fdt: &mut FdtWriter, vmwdt_cfg: VmWdtConfig) -> Result<()> 
 /// * `android_fstab` - An optional file holding Android fstab entries
 /// * `is_gicv3` - True if gicv3, false if v2
 /// * `psci_version` - the current PSCI version
-/// * `swiotlb` - Reserve a memory pool for DMA
+/// * `swiotlb` - Reserve a memory pool for DMA. Tuple of base address and size.
 /// * `bat_mmio_base_and_irq` - The battery base address and irq number
 /// * `vmwdt_cfg` - The virtual watchdog configuration
 /// * `dump_device_tree_blob` - Option path to write DTB to
@@ -541,7 +552,7 @@ pub fn create_fdt(
     is_gicv3: bool,
     use_pmu: bool,
     psci_version: PsciVersion,
-    swiotlb: Option<u64>,
+    swiotlb: Option<(Option<GuestAddress>, u64)>,
     bat_mmio_base_and_irq: Option<(u64, u32)>,
     vmwdt_cfg: VmWdtConfig,
     dump_device_tree_blob: Option<PathBuf>,
