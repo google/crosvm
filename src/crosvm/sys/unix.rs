@@ -1391,6 +1391,11 @@ fn get_default_hypervisor() -> Result<HypervisorKind> {
 }
 
 pub fn run_config(cfg: Config) -> Result<ExitState> {
+    if let Some(async_executor) = cfg.async_executor {
+        Executor::set_default_executor_kind(async_executor)
+            .context("Failed to set the default async executor")?;
+    }
+
     let components = setup_vm_components(&cfg)?;
 
     let guest_mem_layout =
@@ -3014,6 +3019,11 @@ fn start_vhost_user_control_server(
 }
 
 pub fn start_devices(opts: DevicesCommand) -> anyhow::Result<()> {
+    if let Some(async_executor) = opts.async_executor {
+        Executor::set_default_executor_kind(async_executor)
+            .context("Failed to set the default async executor")?;
+    }
+
     struct DeviceJailInfo {
         // Unique name for the device, in the form `foomatic-0`.
         name: String,

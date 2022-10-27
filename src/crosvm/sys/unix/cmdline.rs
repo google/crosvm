@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 
 use argh::FromArgs;
+use cros_async::ExecutorKind;
 use devices::virtio::block::block::DiskOption;
 use devices::virtio::vhost::user::device;
 use devices::virtio::vhost::user::VhostUserParams;
@@ -41,6 +42,10 @@ fn parse_vu_serial_options(s: &str) -> Result<VhostUserParams<SerialParameters>,
 #[argh(subcommand, name = "devices")]
 /// Start one or several jailed device processes.
 pub struct DevicesCommand {
+    /// configure async executor backend to "uring" or "epoll" (default).
+    #[argh(option, arg_name = "EXECUTOR")]
+    pub async_executor: Option<ExecutorKind>,
+
     #[argh(switch)]
     /// disable sandboxing. Will nullify the --jail option if it was present.
     pub disable_sandbox: bool,

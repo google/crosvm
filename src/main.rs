@@ -398,6 +398,11 @@ fn create_qcow2(cmd: cmdline::CreateQcow2Command) -> std::result::Result<(), ()>
 }
 
 fn start_device(opts: cmdline::DeviceCommand) -> std::result::Result<(), ()> {
+    if let Some(async_executor) = opts.async_executor {
+        cros_async::Executor::set_default_executor_kind(async_executor)
+            .map_err(|e| error!("Failed to set the default async executor: {:#}", e))?;
+    }
+
     let result = match opts.command {
         cmdline::DeviceSubcommand::CrossPlatform(command) => match command {
             CrossPlatformDevicesCommands::Block(cfg) => run_block_device(cfg),
@@ -587,11 +592,6 @@ fn crosvm_main<I: IntoIterator<Item = String>>(args: I) -> Result<CommandStatus>
         syslog: !args.no_syslog,
         ..Default::default()
     };
-
-    if let Some(async_executor) = args.async_executor {
-        cros_async::Executor::set_default_executor_kind(async_executor)
-            .context("Failed to set the default async executor")?;
-    }
 
     let ret = match args.command {
         Command::CrossPlatform(command) => {

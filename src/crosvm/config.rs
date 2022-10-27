@@ -18,6 +18,7 @@ use arch::Pstore;
 use arch::VcpuAffinity;
 use base::debug;
 use base::pagesize;
+use cros_async::ExecutorKind;
 use devices::serial_device::SerialHardware;
 use devices::serial_device::SerialParameters;
 use devices::virtio::block::block::DiskOption;
@@ -1095,6 +1096,7 @@ pub struct Config {
     pub ac97_parameters: Vec<Ac97Parameters>,
     pub acpi_tables: Vec<PathBuf>,
     pub android_fstab: Option<PathBuf>,
+    pub async_executor: Option<ExecutorKind>,
     pub balloon: bool,
     pub balloon_bias: i64,
     pub balloon_control: Option<PathBuf>,
@@ -1295,6 +1297,7 @@ impl Default for Config {
             ac97_parameters: Vec::new(),
             acpi_tables: Vec::new(),
             android_fstab: None,
+            async_executor: None,
             balloon: true,
             balloon_bias: 0,
             balloon_control: None,
