@@ -5,7 +5,7 @@ authors = ["The Chromium OS Authors"]
 edition = "2021"
 
 [dependencies]
-assertions = { path = "../common/assertions" }
+static_assertions = "1.1"
 libc = "*"
 net_util = { path = "../net_util" }
 base = { path = "../base" }

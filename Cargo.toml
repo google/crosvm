@@ -97,7 +97,6 @@ members = [
     "third_party/vmm_vhost",
 ]
 exclude = [
-    "common/assertions",
     "common/audio_streams",
     "common/balloon_control",
     "common/cros-fuzz",
@@ -334,7 +333,6 @@ anyhow = "1.0.32"
 arch = { path = "arch" }
 argh = "0.1"
 argh_helpers = { path = "argh_helpers" }
-assertions = { path = "common/assertions" }
 audio_streams = "*"
 base = "*"
 bit_field = { path = "bit_field" }
@@ -372,6 +370,7 @@ scudo = { version = "0.1", optional = true }
 serde = "*"
 serde_json = "*"
 serde_keyvalue = { path = "serde_keyvalue", features = ["argh_derive"] }
+static_assertions = "1.1"
 sync = { path = "common/sync" }
 tempfile = "3"
 terminal_size = "0.1.17"
@@ -413,7 +412,6 @@ base = "*"
 prebuilts = { path = "prebuilts" }
 
 [patch.crates-io]
-assertions = { path = "common/assertions" }
 audio_streams = { path = "common/audio_streams" }
 base = { path = "base" }
 cros_async =  { path = "cros_async" }

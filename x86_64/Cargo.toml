@@ -12,7 +12,6 @@ direct = ["arch/direct", "devices/direct"]
 acpi_tables = {path = "../acpi_tables" }
 arch = { path = "../arch" }
 anyhow = "*"
-assertions = { path = "../common/assertions" }
 cfg-if = "1.0.0"
 chrono = "*"
 cros_fdt = { path = "../cros_fdt" }

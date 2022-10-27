@@ -4,8 +4,8 @@
 
 use std::mem::size_of;
 
-use assertions::const_assert;
 use data_model::DataInit;
+use static_assertions::const_assert;
 
 /// Standard USB descriptor types.
 pub enum DescriptorType {

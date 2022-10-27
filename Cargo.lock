@@ -141,10 +141,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47253b98986dafc7a3e1cf3259194f1f47ac61abb57a57f46ec09e48d004ecda"
 
 [[package]]
-name = "assertions"
-version = "0.1.0"
-
-[[package]]
 name = "async-task"
 version = "4.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -464,7 +460,6 @@ dependencies = [
  "arch",
  "argh",
  "argh_helpers",
- "assertions",
  "audio_streams",
  "base",
  "bit_field",
@@ -511,6 +506,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_keyvalue",
+ "static_assertions",
  "sync",
  "tempfile",
  "terminal_size",
@@ -591,11 +587,11 @@ dependencies = [
 name = "data_model"
 version = "0.1.0"
 dependencies = [
- "assertions",
  "cfg-if",
  "libc",
  "remain",
  "serde",
+ "static_assertions",
  "thiserror",
  "winapi",
 ]
@@ -1780,6 +1776,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2fd0db749597d91ff862fd1d55ea87f7855a744a8425a64695b6fca237d1dad1"
 
 [[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
+
+[[package]]
 name = "strsim"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1974,11 +1976,11 @@ dependencies = [
 name = "usb_util"
 version = "0.1.0"
 dependencies = [
- "assertions",
  "base",
  "data_model",
  "libc",
  "remain",
+ "static_assertions",
  "thiserror",
  "usb_sys",
 ]
@@ -2011,11 +2013,11 @@ dependencies = [
 name = "vhost"
 version = "0.1.0"
 dependencies = [
- "assertions",
  "base",
  "libc",
  "net_util",
  "remain",
+ "static_assertions",
  "thiserror",
  "virtio_sys",
  "vm_memory",
@@ -2217,7 +2219,6 @@ dependencies = [
  "acpi_tables",
  "anyhow",
  "arch",
- "assertions",
  "base",
  "cfg-if",
  "chrono",

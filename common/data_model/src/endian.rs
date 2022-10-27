@@ -33,11 +33,11 @@
 use std::mem::align_of;
 use std::mem::size_of;
 
-use assertions::const_assert;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
 use serde::Serializer;
+use static_assertions::const_assert;
 
 use crate::DataInit;
 

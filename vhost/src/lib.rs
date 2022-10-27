@@ -12,7 +12,6 @@ use std::alloc::Layout;
 use std::io::Error as IoError;
 use std::ptr::null;
 
-use assertions::const_assert;
 use base::ioctl;
 use base::ioctl_with_mut_ref;
 use base::ioctl_with_ptr;
@@ -21,6 +20,7 @@ use base::AsRawDescriptor;
 use base::Event;
 use base::LayoutAllocation;
 use remain::sorted;
+use static_assertions::const_assert;
 use thiserror::Error;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
@@ -127,9 +127,9 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
         const SIZE_OF_MEMORY: usize = std::mem::size_of::<virtio_sys::vhost::vhost_memory>();
         const SIZE_OF_REGION: usize = std::mem::size_of::<virtio_sys::vhost::vhost_memory_region>();
         const ALIGN_OF_MEMORY: usize = std::mem::align_of::<virtio_sys::vhost::vhost_memory>();
-        const ALIGN_OF_REGION: usize =
-            std::mem::align_of::<virtio_sys::vhost::vhost_memory_region>();
-        const_assert!(ALIGN_OF_MEMORY >= ALIGN_OF_REGION);
+        const_assert!(
+            ALIGN_OF_MEMORY >= std::mem::align_of::<virtio_sys::vhost::vhost_memory_region>()
+        );
 
         let num_regions = mem.num_regions() as usize;
         let size = SIZE_OF_MEMORY + num_regions * SIZE_OF_REGION;

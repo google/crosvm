@@ -3,10 +3,6 @@
 version = 3
 
 [[package]]
-name = "assertions"
-version = "0.1.0"
-
-[[package]]
 name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -16,11 +12,11 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 name = "data_model"
 version = "0.1.0"
 dependencies = [
- "assertions",
  "cfg-if",
  "libc",
  "remain",
  "serde",
+ "static_assertions",
  "thiserror",
  "winapi",
 ]
@@ -79,6 +75,12 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "syn"
