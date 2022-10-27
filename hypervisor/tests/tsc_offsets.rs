@@ -61,7 +61,7 @@ fn test_gvm_tsc_offsets() {
 }
 
 #[test]
-#[cfg(feature = "whpx")]
+#[cfg(all(windows, feature = "whpx"))]
 fn test_whpx_tsc_offsets() {
     use hypervisor::whpx::*;
     if !Whpx::is_enabled() {

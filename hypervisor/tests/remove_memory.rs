@@ -46,7 +46,7 @@ fn test_gvm_remove_memory() {
 }
 
 #[test]
-#[cfg(feature = "whpx")]
+#[cfg(all(windows, feature = "whpx"))]
 fn test_whpx_remove_memory() {
     use hypervisor::whpx::*;
     if !Whpx::is_enabled() {

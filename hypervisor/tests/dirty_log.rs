@@ -50,7 +50,7 @@ fn test_gvm_dirty_log() {
 }
 
 #[test]
-#[cfg(feature = "whpx")]
+#[cfg(all(windows, feature = "whpx"))]
 fn test_whpx_dirty_log() {
     use hypervisor::whpx::*;
     if !Whpx::is_enabled() {

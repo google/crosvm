@@ -36,7 +36,7 @@ fn test_haxm_mmio_and_pio() {
 }
 
 #[test]
-#[cfg(feature = "whpx")]
+#[cfg(all(windows, feature = "whpx"))]
 fn test_whpx_mmio_and_pio() {
     use hypervisor::whpx::*;
     if !Whpx::is_enabled() {

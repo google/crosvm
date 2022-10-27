@@ -45,7 +45,7 @@ fn test_gvm_real_run_addr() {
 }
 
 #[test]
-#[cfg(feature = "whpx")]
+#[cfg(all(windows, feature = "whpx"))]
 fn test_whpx_real_run_addr() {
     use hypervisor::whpx::*;
     if !Whpx::is_enabled() {

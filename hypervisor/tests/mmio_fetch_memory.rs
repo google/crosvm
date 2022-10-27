@@ -4,7 +4,7 @@
 
 #![cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 // Test applies to whpx only.
-#![cfg(feature = "whpx")]
+#![cfg(all(windows, feature = "whpx"))]
 
 use std::sync::atomic::AtomicU16;
 use std::sync::atomic::Ordering;

@@ -52,7 +52,7 @@ fn test_gvm_read_only_memory() {
 
 // TODO(b/163163457): whpx also fails with guest cannot be faulted
 /*#[test]
-#[cfg(feature = "whpx")]
+#[cfg(all(windows, feature = "whpx"))]
 fn test_whpx_read_only_memory() {
     use hypervisor::whpx::*;
     if !Whpx::is_enabled() { return; }
