@@ -6,6 +6,7 @@
 # for gpu.
 brk: 1
 clock_gettime: 1
+clone3: 1
 close: 1
 dup3: 1
 dup: 1

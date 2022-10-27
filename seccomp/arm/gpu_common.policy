@@ -5,6 +5,7 @@
 # Rules from common_device.policy with some rules removed because they block certain flags needed
 # for gpu.
 brk: 1
+clone3: 1
 close: 1
 dup2: 1
 dup: 1
