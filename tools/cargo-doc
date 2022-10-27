@@ -8,42 +8,10 @@ set -ex
 # Build cargo-doc
 # $ ./tools/cargo-doc --target-dir /path/to/dir
 
-echo "start cargo-doc"
-
-MANIFEST_PATH=$(dirname "$0")/../Cargo.toml
-
-echo "manifest = ${MANIFEST_PATH}"
-
-DISABLED_FEATURES=(
-    audio_cras
-    chromeos
-    crash-report
-    libvda
-    video-decoder
-    video-encoder
-)
-
-ALL_FEATURES=$(
-    cargo metadata --manifest-path "${MANIFEST_PATH}" | \
-    jq -r '.packages[] |
-        select(.name == "crosvm") |
-        .features |
-        keys[]')
-
-features=""
-
-for f in $ALL_FEATURES; do
-    if [[ ! "${DISABLED_FEATURES[*]}" =~ $f ]]; then
-        features+=",${f}"
-    fi
-done
-
-# Set an environment variable 'CARGO_DOC' here so that each build.rs can skip
-# building unnecessary dependencies to generate documentations.
-CARGO_DOC="true" cargo doc \
-      --manifest-path="${MANIFEST_PATH}" \
-      --workspace \
-      --no-deps \
-      --exclude crosvm-fuzz \
-      --features="${features}" "$@" \
-      --document-private-items
+cargo doc \
+    --workspace \
+    --no-deps \
+    --exclude crosvm-fuzz \
+    --features="all-x86_64" \
+    --document-private-items \
+    "$@"
