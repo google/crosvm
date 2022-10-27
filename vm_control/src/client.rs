@@ -10,11 +10,10 @@ use base::open_file;
 use remain::sorted;
 use thiserror::Error;
 
-pub use crate::sys::handle_request;
-pub use crate::*;
-
 #[cfg(feature = "gpu")]
 pub use crate::gpu::*;
+pub use crate::sys::handle_request;
+pub use crate::*;
 
 #[sorted]
 #[derive(Error, Debug)]

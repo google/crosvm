@@ -550,12 +550,13 @@ impl Bus {
 
 #[cfg(test)]
 mod tests {
+    use anyhow::Context;
+    use anyhow::Result as AnyhowResult;
+
     use super::*;
     use crate::pci::CrosvmDeviceId;
     use crate::suspendable::Suspendable;
     use crate::suspendable_tests;
-    use anyhow::Context;
-    use anyhow::Result as AnyhowResult;
 
     #[derive(Copy, Clone, Serialize, Deserialize, Eq, PartialEq, Debug)]
     struct DummyDevice;

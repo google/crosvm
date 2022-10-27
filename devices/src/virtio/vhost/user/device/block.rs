@@ -9,7 +9,6 @@ use std::rc::Rc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use sync::Mutex;
 
 use anyhow::anyhow;
 use anyhow::bail;
@@ -25,6 +24,7 @@ use cros_async::TimerAsync;
 use data_model::DataInit;
 use futures::future::AbortHandle;
 use futures::future::Abortable;
+use sync::Mutex;
 pub use sys::start_device as run_block_device;
 pub use sys::Options;
 use vm_memory::GuestMemory;

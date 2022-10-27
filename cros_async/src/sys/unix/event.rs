@@ -36,9 +36,10 @@ impl EventAsync {
 
 #[cfg(test)]
 mod tests {
+    use base::EventExt;
+
     use super::*;
     use crate::sys::unix::uring_executor::is_uring_stable;
-    use base::EventExt;
 
     #[test]
     fn next_val_reads_value() {

@@ -8,7 +8,8 @@ use std::cell::RefMut;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
-use anyhow::{anyhow, Result};
+use anyhow::anyhow;
+use anyhow::Result;
 
 use crate::bindings;
 use crate::buffer::Buffer;

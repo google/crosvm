@@ -8,12 +8,6 @@ use std::sync::Barrier;
 use std::thread;
 use std::time::Duration;
 
-use base::RecvTube;
-use base::SendTube;
-use base::Tube;
-use serde::Deserialize;
-use serde::Serialize;
-
 use base::descriptor::FromRawDescriptor;
 use base::descriptor::SafeDescriptor;
 use base::platform::deserialize_with_descriptors;
@@ -21,7 +15,12 @@ use base::platform::SerializeDescriptors;
 use base::Event;
 use base::EventToken;
 use base::ReadNotifier;
+use base::RecvTube;
+use base::SendTube;
+use base::Tube;
 use base::WaitContext;
+use serde::Deserialize;
+use serde::Serialize;
 
 #[derive(Serialize, Deserialize)]
 struct DataStruct {

@@ -15,10 +15,9 @@ pub mod context;
 pub mod packet_ring_buffer;
 
 pub mod sys;
-pub use sys::Slirp;
-
 use base::Error as SysError;
 use remain::sorted;
+pub use sys::Slirp;
 use thiserror::Error as ThisError;
 
 /// Length includes space for an ethernet frame & the vnet header. See the virtio spec for details:

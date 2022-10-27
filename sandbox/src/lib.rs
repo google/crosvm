@@ -31,8 +31,17 @@ pub use bindings::ResultCode;
 pub use bindings::Semantics;
 pub use bindings::SubSystem;
 pub use bindings::TokenLevel;
-
 use bindings::DWORD;
+pub use bindings::JOB_OBJECT_UILIMIT_ALL;
+pub use bindings::JOB_OBJECT_UILIMIT_DESKTOP;
+pub use bindings::JOB_OBJECT_UILIMIT_DISPLAYSETTINGS;
+pub use bindings::JOB_OBJECT_UILIMIT_EXITWINDOWS;
+pub use bindings::JOB_OBJECT_UILIMIT_GLOBALATOMS;
+pub use bindings::JOB_OBJECT_UILIMIT_HANDLES;
+pub use bindings::JOB_OBJECT_UILIMIT_NONE;
+pub use bindings::JOB_OBJECT_UILIMIT_READCLIPBOARD;
+pub use bindings::JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS;
+pub use bindings::JOB_OBJECT_UILIMIT_WRITECLIPBOARD;
 pub use bindings::MITIGATION_BOTTOM_UP_ASLR;
 pub use bindings::MITIGATION_CET_DISABLED;
 pub use bindings::MITIGATION_DEP;
@@ -57,18 +66,6 @@ pub use bindings::MITIGATION_RESTRICT_INDIRECT_BRANCH_PREDICTION;
 pub use bindings::MITIGATION_SEHOP;
 pub use bindings::MITIGATION_STRICT_HANDLE_CHECKS;
 pub use bindings::MITIGATION_WIN32K_DISABLE;
-
-pub use bindings::JOB_OBJECT_UILIMIT_ALL;
-pub use bindings::JOB_OBJECT_UILIMIT_DESKTOP;
-pub use bindings::JOB_OBJECT_UILIMIT_DISPLAYSETTINGS;
-pub use bindings::JOB_OBJECT_UILIMIT_EXITWINDOWS;
-pub use bindings::JOB_OBJECT_UILIMIT_GLOBALATOMS;
-pub use bindings::JOB_OBJECT_UILIMIT_HANDLES;
-pub use bindings::JOB_OBJECT_UILIMIT_NONE;
-pub use bindings::JOB_OBJECT_UILIMIT_READCLIPBOARD;
-pub use bindings::JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS;
-pub use bindings::JOB_OBJECT_UILIMIT_WRITECLIPBOARD;
-
 use bindings::PROCESS_INFORMATION;
 
 type Result<T> = std::result::Result<T, SandboxError>;

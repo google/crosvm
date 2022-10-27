@@ -5,6 +5,17 @@
 #![cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use base::EventWaitResult;
 use base::Tube;
+use devices::Bus;
+use devices::CrosvmDeviceId;
+use devices::DeviceId;
+use devices::IrqChip;
+use devices::IrqChipX86_64;
+use devices::IrqEdgeEvent;
+use devices::IrqEventSource;
+use devices::IrqLevelEvent;
+use devices::KvmKernelIrqChip;
+use devices::KvmSplitIrqChip;
+use devices::IOAPIC_BASE_ADDRESS;
 use hypervisor::kvm::Kvm;
 use hypervisor::kvm::KvmVm;
 use hypervisor::IoapicRedirectionTableEntry;
@@ -20,17 +31,15 @@ use resources::SystemAllocator;
 use resources::SystemAllocatorConfig;
 use vm_memory::GuestMemory;
 
-use crate::x86_64::{
-    test_get_ioapic, test_get_lapic, test_get_pic, test_get_pit, test_route_irq, test_set_ioapic,
-    test_set_lapic, test_set_pic, test_set_pit,
-};
-use devices::CrosvmDeviceId;
-use devices::DeviceId;
-use devices::IrqChip;
-use devices::{
-    Bus, IrqChipX86_64, IrqEdgeEvent, IrqEventSource, IrqLevelEvent, KvmKernelIrqChip,
-    KvmSplitIrqChip, IOAPIC_BASE_ADDRESS,
-};
+use crate::x86_64::test_get_ioapic;
+use crate::x86_64::test_get_lapic;
+use crate::x86_64::test_get_pic;
+use crate::x86_64::test_get_pit;
+use crate::x86_64::test_route_irq;
+use crate::x86_64::test_set_ioapic;
+use crate::x86_64::test_set_lapic;
+use crate::x86_64::test_set_pic;
+use crate::x86_64::test_set_pit;
 
 /// Helper function for setting up a KvmKernelIrqChip
 fn get_kernel_chip() -> KvmKernelIrqChip {

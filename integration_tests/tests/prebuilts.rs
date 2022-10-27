@@ -4,10 +4,9 @@
 
 use std::env;
 
-use tempfile::TempDir;
-
 use prebuilts::download_prebuilt;
 use prebuilts::download_prebuilts;
+use tempfile::TempDir;
 
 static LIBRARY: &str = "prebuilts_test";
 static PREBUILT_FILE1: &str = "prebuilt_test";

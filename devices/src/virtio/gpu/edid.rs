@@ -8,10 +8,9 @@
 use std::fmt;
 use std::fmt::Debug;
 
-use crate::virtio::gpu::GpuDisplayParameters;
-
 use super::protocol::GpuResponse::*;
 use super::protocol::VirtioGpuResult;
+use crate::virtio::gpu::GpuDisplayParameters;
 
 const EDID_DATA_LENGTH: usize = 128;
 const DEFAULT_HORIZONTAL_BLANKING: u16 = 560;

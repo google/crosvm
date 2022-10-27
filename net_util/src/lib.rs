@@ -222,8 +222,9 @@ pub trait TapTCommon: Read + Write + AsRawDescriptor + Send + Sized {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use serde_json::*;
+
+    use super::*;
 
     #[test]
     fn json_serialize_deserialize() {

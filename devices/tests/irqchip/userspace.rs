@@ -12,7 +12,6 @@ use std::time::Instant;
 
 use base::Clock;
 use base::EventWaitResult;
-
 use base::Result;
 use base::Tube;
 use devices::Bus;

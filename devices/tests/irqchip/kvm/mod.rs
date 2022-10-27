@@ -6,6 +6,8 @@
 
 mod x86_64;
 
+use devices::irqchip::IrqChip;
+use devices::irqchip::KvmKernelIrqChip;
 use hypervisor::kvm::Kvm;
 use hypervisor::kvm::KvmVm;
 use hypervisor::MPState;
@@ -15,9 +17,6 @@ use hypervisor::VmAArch64;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use hypervisor::VmX86_64;
 use vm_memory::GuestMemory;
-
-use devices::irqchip::IrqChip;
-use devices::irqchip::KvmKernelIrqChip;
 
 #[test]
 fn create_kvm_kernel_irqchip() {
