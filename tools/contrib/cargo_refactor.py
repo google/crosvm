@@ -79,17 +79,12 @@ def update_workspace_members():
     members.append("members = [")
     for toml in sorted(Path().glob("*/Cargo.toml")):
         members.append(f'    "{toml.parent}",')
+    for toml in sorted(Path().glob("common/*/Cargo.toml")):
+        members.append(f'    "{toml.parent}",')
     members.append('    "third_party/vmm_vhost",')
 
     members.append("]")
     replace_in_file(Path("Cargo.toml"), re.compile(r"members = \[[^\]]+\]"), "\n".join(members))
-
-    exclude: list[str] = []
-    exclude.append("exclude = [")
-    for toml in sorted(Path().glob("common/*/Cargo.toml")):
-        exclude.append(f'    "{toml.parent}",')
-    exclude.append("]")
-    replace_in_file(Path("Cargo.toml"), re.compile(r"exclude = \[[^\]]+\]"), "\n".join(exclude))
 
 
 @contextmanager
@@ -130,85 +125,7 @@ fn main() {
 
 def main():
     os.chdir(Path(__file__).parent.parent.parent)
-
-    subprocess.check_call(["git", "checkout", "-f", "--", "base"])
-
-    # Move crates to base
-    move_crate(Path("common/win_util"), Path("win_util"))
-    copy_crate_src_to_module("common/win_sys_util/src", "base/src/windows")
-    Path("base/build.rs").write_text(BUILD_RS)
-
-    # Load the added module
-    replace_in_file(Path("base/src/lib.rs"), "pub mod unix;", IMPORT)
-
-    # Flatten all imports for easier replacements
-    subprocess.check_call(
-        ["rustfmt", "+nightly", "--config=imports_granularity=item", "base/src/lib.rs"]
-    )
-
-    # Update references to the above crates in base:
-    replace_in_files(
-        "base/src/**/*.rs",
-        [
-            ("sys_util_core::", "crate::common::"),
-            ("win_sys_util::", "crate::platform::"),
-            ("crate::unix::", "crate::platform::"),
-            ("use poll_token_derive::", "use base_event_token_derive::"),
-        ],
-    )
-
-    # Fixup macros since they like to have special treatement.
-    macros = [
-        "debug",
-        "error",
-        "handle_eintr_errno",
-        "info",
-        "ioctl_io_nr",
-        "ioctl_ior_nr",
-        "ioctl_iow_nr",
-        "ioctl_iowr_nr",
-        "syscall",
-        "warn",
-        "volatile_at_impl",
-        "volatile_impl",
-        "generate_scoped_event",
-        "syslog_lock",
-        "CHRONO_TIMESTAMP_FIXED_FMT",
-    ]
-    for macro in macros:
-        # Update use statments. #[macro_export] exports them on the crate scoped
-        replace_in_files(
-            "base/src/windows/**/*.rs",
-            [
-                (f"crate::common::{macro}", f"crate::{macro}"),
-                (f"super::super::{macro}", f"crate::{macro}"),
-                (f"super::{macro}", f"crate::{macro}"),
-            ],
-        )
-
-    # Replace $crate:: with $crate::windows (unless it's a macro invocation..)
-    def replace_references_in_macros(match: re.Match[str]):
-        name = match.group(0)
-        if not name.endswith("!"):
-            return name.replace("$crate", f"$crate::platform")
-        return name
-
-    replace_in_files(
-        f"base/src/windows/**/*.rs",
-        [
-            (
-                re.compile(r"([\w\*\_\$]+\:\:)+([\w\*\_\!]+)"),
-                replace_references_in_macros,
-            )
-        ],
-    )
-
-    # Unflatten imports again
-    subprocess.check_call(
-        ["rustfmt", "+nightly", "--config=imports_granularity=crate", "base/src/lib.rs"]
-    )
-
-    subprocess.check_call(["git", "rm", "-r", "common/win_sys_util", "common/win_util"])
+    update_workspace_members()
 
 
 main()

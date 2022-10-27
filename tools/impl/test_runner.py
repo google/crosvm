@@ -236,11 +236,6 @@ def cargo_build_executables(
     yield from cargo("test", cwd, ["--no-run", *flags], env)
 
 
-def build_common_crate(build_env: Dict[str, str], crate: Crate):
-    print(f"Building tests for: common/{crate.name}")
-    return list(cargo_build_executables(["--all-features"], env=build_env, cwd=crate.path))
-
-
 def build_all_binaries(target: TestTarget, crosvm_direct: bool, instrument_coverage: bool):
     """Discover all crates and build them."""
     build_env = os.environ.copy()
@@ -274,13 +269,6 @@ def build_all_binaries(target: TestTarget, crosvm_direct: bool, instrument_cover
         cwd=CROSVM_ROOT,
         env=build_env,
     )
-
-    with Pool(PARALLELISM) as pool:
-        for executables in pool.imap(
-            functools.partial(build_common_crate, build_env),
-            list_common_crates(target.build_triple),
-        ):
-            yield from executables
 
 
 def get_test_timeout(target: TestTarget, executable: Executable):

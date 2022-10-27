@@ -12,4 +12,4 @@ wire_format_derive = { path = "wire_format_derive", version = "*" }
 [features]
 trace = []
 
-[workspace]
+

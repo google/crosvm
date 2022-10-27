@@ -12,4 +12,4 @@ libfuzzer-sys = { version = "*", optional = true }
 [features]
 upstream-fuzz = ["dep:libfuzzer-sys"]
 
-[workspace]
+

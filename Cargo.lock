@@ -419,6 +419,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "cros_asyncv2"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "async-task",
+ "base",
+ "data_model",
+ "futures",
+ "futures-executor",
+ "futures-util",
+ "intrusive-collections",
+ "io-uring",
+ "libc",
+ "memoffset 0.6.5",
+ "mio",
+ "once_cell",
+ "slab",
+ "smallvec",
+ "sync",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "cros_fdt"
 version = "0.1.0"
 dependencies = [
@@ -1056,6 +1080,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "io-uring"
+version = "0.5.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00d78c9f2db2a9800dfd15c69543896dae2135112dde0d1944442e83da8ce23a"
+dependencies = [
+ "bitflags",
+ "libc",
+]
+
+[[package]]
 name = "io_uring"
 version = "0.1.1"
 dependencies = [
@@ -1314,6 +1348,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 
 [[package]]
+name = "mio"
+version = "0.7.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8067b404fe97c70829f082dec8bcf4f71225d7eaea1d8645349cb76fa06205cc"
+dependencies = [
+ "libc",
+ "log",
+ "miow",
+ "ntapi",
+ "winapi",
+]
+
+[[package]]
+name = "miow"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9f1c5b025cda876f66ef43a113f91ebc9f4ccef34843000e0adf6ebbab84e21"
+dependencies = [
+ "winapi",
+]
+
+[[package]]
 name = "net_sys"
 version = "0.1.0"
 dependencies = [
@@ -1364,6 +1420,15 @@ checksum = "a8903e5a29a317527874d0402f867152a3d21c908bb0b933e416c65e301d4c36"
 dependencies = [
  "memchr",
  "minimal-lexical",
+]
+
+[[package]]
+name = "ntapi"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c28774a7fd2fbb4f0babd8237ce554b73af68021b5f695a3cebd6c59bac0980f"
+dependencies = [
+ "winapi",
 ]
 
 [[package]]

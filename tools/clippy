@@ -43,14 +43,6 @@ def main(fix: bool = False, json: bool = False, locked: bool = False):
         *common_args,
     ).with_envs(triple.get_cargo_env()).fg()
 
-    for crate in CROSVM_ROOT.glob("common/*/Cargo.toml"):
-        if is_crate_excluded(crate.parent.name):
-            print("Skipping crate", crate.parent.relative_to(CROSVM_ROOT))
-        else:
-            print("Clippy", crate.parent.relative_to(CROSVM_ROOT))
-            with cwd(crate.parent):
-                clippy("--all-features", *common_args).fg()
-
 
 if __name__ == "__main__":
     run_main(main)

@@ -19,4 +19,4 @@ winapi = { version = "*", features = ["everything", "std", "impl-default"] }
 [target.'cfg(unix)'.dependencies]
 libc = "*"
 
-[workspace]
+

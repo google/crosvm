@@ -5,4 +5,4 @@ authors = ["The Chromium OS Authors"]
 edition = "2021"
 include = ["src/**/*", "Cargo.toml"]
 
-[workspace]
+

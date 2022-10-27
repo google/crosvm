@@ -8,7 +8,7 @@ edition = "2021"
 p9 = { path = "../" }
 cros_fuzz = { path = "../../cros-fuzz" }  # provided by ebuild
 
-[workspace]
+
 members = ["."]
 
 [[bin]]
