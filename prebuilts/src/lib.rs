@@ -38,10 +38,26 @@ fn get_deps_directory() -> Result<PathBuf> {
     }
 }
 
-fn get_dest_path(filename: &str) -> Result<PathBuf> {
-    let dest = get_deps_directory()?;
+// We download the prebuilt into deps directory and create a symlink to the downloaded prebuilt in
+// deps parent directory.
+// The symlink will help windows find the dll when an executable is manually run.
+// For example, `file` is downloaded in
+// `target/x86_64-pc-windows-gnu/release/deps/` and a `link` will be crated in
+// `target/x86_64-pc-windows-gnu/release/`.
+// Any executable in those two directories will be able to find the dlls they depend as in the same
+// directory.
+struct PrebuiltPath {
+    file: PathBuf,
+    link: PathBuf,
+}
 
-    Ok(dest.join(filename))
+fn get_dest_path(filename: &str) -> Result<PrebuiltPath> {
+    let deps = get_deps_directory()?;
+
+    Ok(PrebuiltPath {
+        file: deps.join(filename),
+        link: deps.parent().unwrap().join(filename),
+    })
 }
 
 fn get_url(library: &str, filename: &str, version: u32) -> String {
@@ -76,10 +92,19 @@ fn download_file(url: &str, destination: &Path) -> Result<()> {
 pub fn download_prebuilt(library: &str, version: u32, filename: &str) -> Result<PathBuf> {
     let dest_path = get_dest_path(filename)?;
     let url = get_url(library, filename, version);
-    println!("downloading prebuilt:{} to:{:?}", url, dest_path);
 
-    download_file(&url, Path::new(&dest_path))?;
-    Ok(dest_path)
+    println!("downloading prebuilt:{} to:{:?}", url, dest_path.file);
+    download_file(&url, Path::new(&dest_path.file))?;
+    println!(
+        "creating symlink:{:?} linking to:{:?}",
+        dest_path.link, dest_path.file
+    );
+    let _ = std::fs::remove_file(&dest_path.link);
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&dest_path.file, &dest_path.link)?;
+    #[cfg(windows)]
+    let _ = std::fs::copy(&dest_path.file, &dest_path.link)?;
+    Ok(dest_path.file)
 }
 
 /// Downloads a list of prebuilt file, with names in `filenames` of `version` from the `library`
