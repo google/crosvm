@@ -261,7 +261,7 @@ impl KvmSplitIrqChip {
         #[cfg(feature = "direct")]
         chip.ioapic
             .lock()
-            .init_direct_gsi(|gsi, event| chip.vm.register_irqfd(gsi as u32, &event, None))?;
+            .init_direct_gsi(|gsi, event| chip.vm.register_irqfd(gsi as u32, event, None))?;
 
         // Setup standard x86 irq routes
         let mut routes = kvm_default_irq_routing_table(ioapic_pins);

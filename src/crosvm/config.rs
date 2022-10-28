@@ -979,11 +979,11 @@ pub fn parse_direct_io_options(s: &str) -> Result<DirectIoOption, String> {
         .map(|mut range| {
             let base = range
                 .next()
-                .map(|v| parse_hex_or_decimal(v))
+                .map(parse_hex_or_decimal)
                 .map_or(Ok(None), |r| r.map(Some));
             let last = range
                 .next()
-                .map(|v| parse_hex_or_decimal(v))
+                .map(parse_hex_or_decimal)
                 .map_or(Ok(None), |r| r.map(Some));
             (base, last)
         })
