@@ -87,8 +87,18 @@ fuzz_target!(|bytes| {
     let features = base_features(ProtectionType::Unprotected);
 
     let disk_file = tempfile::tempfile().unwrap();
-    let mut block =
-        BlockAsync::new(features, Box::new(disk_file), false, true, 512, None, None).unwrap();
+    let mut block = BlockAsync::new(
+        features,
+        Box::new(disk_file),
+        false,
+        true,
+        512,
+        None,
+        None,
+        None,
+        None,
+    )
+    .unwrap();
 
     block.activate(
         mem,
