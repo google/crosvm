@@ -308,7 +308,7 @@ CHECKS: List[Check] = [
             "**.png",
             "**.min.js",
             "**.drawio",
-            "infra/**.json",
+            "**.json",
         ],
     ),
     Check(check_crlf_line_endings),

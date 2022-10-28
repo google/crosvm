@@ -8,61 +8,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 
-fn generate_preprocessed(minijail_dir: &Path, out_dir: &Path) {
-    let env_cc = cc::Build::new()
-        .get_compiler()
-        .path()
-        .as_os_str()
-        .to_owned();
-
-    Command::new(minijail_dir.join("gen_constants.sh"))
-        .env("CC", &env_cc)
-        .env("SRC", &minijail_dir)
-        .arg(out_dir.join("libconstants.gen.c"))
-        .spawn()
-        .unwrap()
-        .wait()
-        .expect("Generate kernel constant table failed");
-
-    Command::new(minijail_dir.join("gen_syscalls.sh"))
-        .env("CC", &env_cc)
-        .env("SRC", &minijail_dir)
-        .arg(out_dir.join("libsyscalls.gen.c"))
-        .spawn()
-        .unwrap()
-        .wait()
-        .expect("Generate syscall table failed");
-}
-
-fn generate_llvm_ir(minijail_dir: &Path, out_dir: &Path, target: &str) {
-    Command::new("clang")
-        .arg("-target")
-        .arg(target)
-        .arg("-S")
-        .arg("-emit-llvm")
-        .arg("-I")
-        .arg(minijail_dir)
-        .arg(out_dir.join("libconstants.gen.c"))
-        .arg(out_dir.join("libsyscalls.gen.c"))
-        .current_dir(&out_dir)
-        .spawn()
-        .unwrap()
-        .wait()
-        .expect("Convert kernel constants and syscalls to llvm ir failed");
-}
-
-fn generate_constants_json(minijail_dir: &Path, out_dir: &Path) {
-    Command::new(minijail_dir.join("tools/generate_constants_json.py"))
-        .arg("--output")
-        .arg(out_dir.join("constants.json"))
-        .arg(out_dir.join("libconstants.gen.ll"))
-        .arg(out_dir.join("libsyscalls.gen.ll"))
-        .spawn()
-        .unwrap()
-        .wait()
-        .expect("Generate constants.json failed");
-}
-
 fn rewrite_policies(seccomp_policy_path: &Path, rewrote_policy_folder: &Path) {
     for entry in fs::read_dir(seccomp_policy_path).unwrap() {
         let policy_file = entry.unwrap();
@@ -93,7 +38,7 @@ fn compile_policies(out_dir: &Path, rewrote_policy_folder: &Path, minijail_dir: 
             );
             Command::new(minijail_dir.join("tools/compile_seccomp_policy.py"))
                 .arg("--arch-json")
-                .arg(out_dir.join("constants.json"))
+                .arg(rewrote_policy_folder.join("constants.json"))
                 .arg("--default-action")
                 .arg("trap")
                 .arg(policy_file.path())
@@ -130,18 +75,12 @@ fn main() {
         src_dir.join("third_party/minijail")
     };
 
-    let target = env::var("TARGET").unwrap();
-
     // Disable embedding of seccomp policy files on ChromeOS builds.
     println!("cargo:rerun-if-env-changed=CROSVM_BUILD_VARIANT");
     if env::var("CROSVM_BUILD_VARIANT").unwrap_or_default() == "chromeos" {
         fs::write(out_dir.join("bpf_includes.in"), "Default::default()").unwrap();
         return;
     }
-
-    generate_preprocessed(&minijail_dir, &out_dir);
-    generate_llvm_ir(&minijail_dir, &out_dir, &target);
-    generate_constants_json(&minijail_dir, &out_dir);
 
     // check policies exist for target architecuture
     let seccomp_arch_name = match env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str() {
