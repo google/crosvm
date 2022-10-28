@@ -302,6 +302,8 @@ CHECKS: List[Check] = [
         exclude=[
             "**.h264",
             "**.vp8",
+            "**.vp9",
+            "**.ivf",
             "**.bin",
             "**.png",
             "**.min.js",
