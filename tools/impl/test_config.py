@@ -90,11 +90,8 @@ CRATE_OPTIONS: Dict[str, List[TestOption]] = {
         TestOption.DO_NOT_RUN_AARCH64,
     ],
     "io_uring": [TestOption.DO_NOT_RUN],  # b/202294403
-    "kvm_sys": [TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL],
     "kvm": [
         TestOption.DO_NOT_RUN_AARCH64,
-        TestOption.DO_NOT_RUN_ARMHF,
-        TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL,
     ],  # b/181674144
     "libvda": [TestOption.DO_NOT_RUN],  # b/202293971
     "sandbox": [TestOption.DO_NOT_RUN],
