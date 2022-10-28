@@ -5,10 +5,8 @@
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering::SeqCst;
 
-use base::error;
 use base::info;
 use base::Event;
-use base::EventExt;
 use libc::c_void;
 use winapi::shared::guiddef::IsEqualGUID;
 use winapi::shared::guiddef::REFIID;
@@ -25,8 +23,6 @@ use winapi::um::winnt::HRESULT;
 use winapi::Interface;
 use wio::com::ComPtr;
 
-pub const ACTIVATE_AUDIO_INTERFACE_COMPLETION_EVENT: &str = "ActivateAudioCompletionEvent";
-
 /// This struct is used to create the completion handler `IActivateAudioInterfaceCompletionHandler`
 /// that is passed into `ActivateAudioInterfaceAsync`. In other words, the first field in the struct
 /// must be `IActivateAudioInterfaceCompletionHandlerVtbl`.
@@ -38,15 +34,19 @@ pub const ACTIVATE_AUDIO_INTERFACE_COMPLETION_EVENT: &str = "ActivateAudioComple
 pub struct WinAudioActivateAudioInterfaceCompletionHandler {
     pub lp_vtbl: &'static IActivateAudioInterfaceCompletionHandlerVtbl,
     ref_count: AtomicU32,
+    activate_audio_interface_complete_event: Event,
 }
 
 impl WinAudioActivateAudioInterfaceCompletionHandler {
     /// The ComPtr is a `WinAudioActivateAudioInterfaceCompletionHandler` casted as an
     /// `IActivateAudioInterfaceCompletionHandler`.
-    pub fn create_com_ptr() -> ComPtr<IActivateAudioInterfaceCompletionHandler> {
+    pub fn create_com_ptr(
+        activate_audio_interface_complete_event: Event,
+    ) -> ComPtr<IActivateAudioInterfaceCompletionHandler> {
         let win_completion_handler = Box::new(WinAudioActivateAudioInterfaceCompletionHandler {
             lp_vtbl: IWIN_AUDIO_COMPLETION_HANDLER_VTBL,
             ref_count: AtomicU32::new(1),
+            activate_audio_interface_complete_event,
         });
 
         // This is safe if the value passed into `from_raw` is structured in a way where it can
@@ -75,16 +75,11 @@ impl WinAudioActivateAudioInterfaceCompletionHandler {
         old_val - 1
     }
 
-    fn activate_completed() {
+    fn activate_completed(&self) {
         info!("Activate Completed handler called from ActiviateAudioInterfaceAsync.");
-        match Event::open(ACTIVATE_AUDIO_INTERFACE_COMPLETION_EVENT) {
-            Ok(event) => {
-                event.signal().expect("Failed to notify audioclientevent");
-            }
-            Err(e) => {
-                error!("Activate audio event cannot be opened: {}", e);
-            }
-        }
+        self.activate_audio_interface_complete_event
+            .signal()
+            .expect("Failed to notify audioclientevent");
     }
 }
 
@@ -98,12 +93,16 @@ impl Drop for WinAudioActivateAudioInterfaceCompletionHandler {
 /// triggered, the IAudioClient will be available.
 /// More info: https://docs.microsoft.com/en-us/windows/win32/api/mmdeviceapi/nf-mmdeviceapi-iactivateaudiointerfacecompletionhandler-activatecompleted
 ///
-/// Safe because all that happens is an event gets called.
+/// Safe because we are certain that `completion_handler` can be casted to
+/// `WinAudioActivateAudioInterfaceHandler`, since that is its original type during construction.
 unsafe extern "system" fn activate_completed(
-    _completion_handler: *mut IActivateAudioInterfaceCompletionHandler,
+    completion_handler: *mut IActivateAudioInterfaceCompletionHandler,
     _activate_operation: *mut IActivateAudioInterfaceAsyncOperation,
 ) -> HRESULT {
-    WinAudioActivateAudioInterfaceCompletionHandler::activate_completed();
+    let win_audio_activate_interface =
+        completion_handler as *mut WinAudioActivateAudioInterfaceCompletionHandler;
+    (*win_audio_activate_interface).activate_completed();
+
     S_OK
 }
 
@@ -193,11 +192,15 @@ unsafe impl Sync for WinAudioActivateAudioInterfaceCompletionHandler {}
 
 #[cfg(test)]
 mod test {
+    use base::EventExt;
+
     use super::*;
 
     #[test]
     fn test_query_interface_valid() {
-        let completion_handler = WinAudioActivateAudioInterfaceCompletionHandler::create_com_ptr();
+        let completion_handler = WinAudioActivateAudioInterfaceCompletionHandler::create_com_ptr(
+            Event::new_auto_reset().unwrap(),
+        );
         let invalid_ref_iid = IUnknown::uuidof();
         let mut null_value = std::ptr::null_mut();
         let ppv_object: *mut *mut c_void = &mut null_value;
@@ -241,7 +244,9 @@ mod test {
 
     #[test]
     fn test_query_interface_invalid() {
-        let completion_handler = WinAudioActivateAudioInterfaceCompletionHandler::create_com_ptr();
+        let completion_handler = WinAudioActivateAudioInterfaceCompletionHandler::create_com_ptr(
+            Event::new_auto_reset().unwrap(),
+        );
         let invalid_ref_iid = IMMDeviceCollection::uuidof();
         let mut null_value = std::ptr::null_mut();
         let ppv_object: *mut *mut c_void = &mut null_value;
@@ -260,7 +265,9 @@ mod test {
     #[test]
     fn test_add_ref() {
         // ref_count = 1
-        let completion_handler = WinAudioActivateAudioInterfaceCompletionHandler::create_com_ptr();
+        let completion_handler = WinAudioActivateAudioInterfaceCompletionHandler::create_com_ptr(
+            Event::new_auto_reset().unwrap(),
+        );
         // ref_count = 2
         let ref_count = add_ref(&completion_handler);
         assert_eq!(ref_count, 2);
@@ -272,7 +279,9 @@ mod test {
     #[test]
     fn test_release() {
         // ref_count = 1
-        let completion_handler = WinAudioActivateAudioInterfaceCompletionHandler::create_com_ptr();
+        let completion_handler = WinAudioActivateAudioInterfaceCompletionHandler::create_com_ptr(
+            Event::new_auto_reset().unwrap(),
+        );
         // ref_count = 2
         let ref_count = add_ref(&completion_handler);
         assert_eq!(ref_count, 2);

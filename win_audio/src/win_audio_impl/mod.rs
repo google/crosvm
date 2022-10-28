@@ -36,7 +36,6 @@ use base::Event;
 use base::EventExt;
 use base::EventWaitResult;
 use completion_handler::WinAudioActivateAudioInterfaceCompletionHandler;
-use completion_handler::ACTIVATE_AUDIO_INTERFACE_COMPLETION_EVENT;
 use sync::Mutex;
 use thiserror::Error as ThisError;
 use wave_format::*;
@@ -619,21 +618,19 @@ fn create_audio_client(dataflow: EDataFlow) -> Result<ComPtr<IAudioClient>, Rend
 fn enable_auto_stream_routing_and_wait(
     is_render: bool,
 ) -> Result<ComPtr<IActivateAudioInterfaceAsyncOperation>, RenderError> {
+    // Event that fires when callback is called.
+    let activate_audio_interface_complete_event =
+        Event::new_auto_reset().map_err(RenderError::CreateActivateAudioEventError)?;
+
+    let cloned_activate_event = activate_audio_interface_complete_event
+        .try_clone()
+        .map_err(RenderError::CloneEvent)?;
+
     // Create the callback that is called when `ActivateAudioInterfaceAsync` is finished.
     // The field `parent` is irrelevant and is only there to fill in the struct so that
     // this code will run. `ActivateCompleted` is the callback.
-    let completion_handler = WinAudioActivateAudioInterfaceCompletionHandler::create_com_ptr();
-    // Event that fires when callback is called.
-    //
-    // WARNING:
-    // Creating a named event works fine if `enable_auto_stream_routing_and_wait` is called
-    // serially. However, if multiple threads call it simultaneous (ie. when the tests below
-    // run with more than one thread) then it's possible for the event to already be triggered
-    // and thus `(*async_op).GetActivateResult(...)` may return with E_ILLEGAL_METHOD_CALL.
-    //
-    // TODO:(b/253509368): Need different event name for playback and capture.
-    let activate_audio_interface_complete_event =
-        Event::create_event_with_name(ACTIVATE_AUDIO_INTERFACE_COMPLETION_EVENT);
+    let completion_handler =
+        WinAudioActivateAudioInterfaceCompletionHandler::create_com_ptr(cloned_activate_event);
 
     // Retrieve GUID that represents the default audio device.
     let mut audio_direction_guid_string: *mut u16 = std::ptr::null_mut();
@@ -667,8 +664,7 @@ fn enable_auto_stream_routing_and_wait(
     )?;
 
     let mut async_op: *mut IActivateAudioInterfaceAsyncOperation = std::ptr::null_mut();
-    // Event that fires when callback is called.
-    // let event = Event::create_event_with_name(ACTIVATE_AUDIO_INTERFACE_COMPLETION_EVENT);
+
     // This will asynchronously run and when completed, it will trigger the
     // `IActivateINterfaceCompletetionHandler` callback.
     // The callback is where the AudioClient can be retrived. This would be easier in C/C++,
@@ -704,10 +700,7 @@ fn enable_auto_stream_routing_and_wait(
 
     // Wait for `ActivateAudioInterfaceAsync` to finish. `ActivateAudioInterfaceAsync` should
     // never hang, but added a long timeout just incase.
-    match activate_audio_interface_complete_event
-        .unwrap()
-        .wait_timeout(ACTIVATE_AUDIO_EVENT_TIMEOUT)
-    {
+    match activate_audio_interface_complete_event.wait_timeout(ACTIVATE_AUDIO_EVENT_TIMEOUT) {
         Ok(event_result) => match event_result {
             EventWaitResult::Signaled => {}
             EventWaitResult::TimedOut => {
@@ -849,8 +842,10 @@ pub enum RenderError {
     PlaybackBuffer(PlaybackBufferError),
     #[error("Incoming buffer size invalid")]
     InvalidIncomingBufferSize,
-    #[error("Failed to wait for Activate Audio Event callback")]
+    #[error("Failed to wait for Activate Audio Event callback: {0}")]
     ActivateAudioEventError(Error),
+    #[error("Failed to create Activate Audio Event: {0}")]
+    CreateActivateAudioEventError(Error),
     #[error("Timed out waiting for Activate Audio Event callback.")]
     ActivateAudioEventTimeoutError,
     #[error("Something went wrong in windows audio.")]
@@ -861,6 +856,8 @@ pub enum RenderError {
     AsyncError(std::io::Error, String),
     #[error("Ready to read async event was not set during win_audio initialization.")]
     MissingEventAsync,
+    #[error("Failed to clone an event: {0}")]
+    CloneEvent(Error),
 }
 
 impl From<i32> for RenderError {
