@@ -593,13 +593,15 @@ def main():
     else:
         build_target = build_target or Triple.host_default()
         unit_test_target = test_target.TestTarget("host", build_target)
-        if str(build_target) == "x86_64-unknown-linux-gnu":
+        if str(build_target) == "x86_64-unknown-linux-gnu" and os.name == "posix":
             print("Note: x86 tests are temporarily all run on the host until we improve the")
             print("      performance of the built-in VM. See http://b/247139912")
             print("")
             integration_test_target = unit_test_target
         elif str(build_target) == "aarch64-unknown-linux-gnu":
             integration_test_target = test_target.TestTarget("vm:aarch64", build_target)
+        elif str(build_target) == "x86_64-pc-windows-gnu" and os.name == "nt":
+            integration_test_target = unit_test_target
         else:
             # Do not run integration tests in unrecognized scenarios.
             integration_test_target = None
