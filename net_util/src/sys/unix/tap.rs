@@ -28,7 +28,6 @@ use base::IoctlNr;
 use base::RawDescriptor;
 use base::ReadNotifier;
 use cros_async::IntoAsync;
-use libc::EPERM;
 
 use crate::Error;
 use crate::MacAddress;
@@ -95,12 +94,7 @@ impl Tap {
         let ret = unsafe { ioctl_with_mut_ref(&tuntap, net_sys::TUNSETIFF(), ifreq) };
 
         if ret < 0 {
-            let error = SysError::last();
-
-            // In a non-root, test environment, we won't have permission to call this; allow
-            if !(cfg!(test) && error.errno() == EPERM) {
-                return Err(Error::CreateTap(error));
-            }
+            return Err(Error::CreateTap(SysError::last()));
         }
 
         // Safe since only the name is accessed, and it's copied out.
@@ -619,58 +613,4 @@ pub mod fakes {
     }
     impl TapT for FakeTap {}
     volatile_impl!(FakeTap);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn tap_create() {
-        Tap::new(true, false).unwrap();
-    }
-
-    #[test]
-    fn tap_configure() {
-        let tap = Tap::new(true, false).unwrap();
-        let ip_addr: net::Ipv4Addr = "100.115.92.5".parse().unwrap();
-        let netmask: net::Ipv4Addr = "255.255.255.252".parse().unwrap();
-        let mac_addr: MacAddress = "a2:06:b9:3d:68:4d".parse().unwrap();
-
-        let ret = tap.set_ip_addr(ip_addr);
-        assert_ok_or_perm_denied(ret);
-        let ret = tap.set_netmask(netmask);
-        assert_ok_or_perm_denied(ret);
-        let ret = tap.set_mac_address(mac_addr);
-        assert_ok_or_perm_denied(ret);
-    }
-
-    /// This test will only work if the test is run with root permissions and, unlike other tests
-    /// in this file, do not return PermissionDenied. They fail because the TAP descriptor is not
-    /// initialized (as opposed to permission denial). Run this with "cargo test -- --ignored".
-    #[test]
-    #[ignore]
-    fn root_only_tests() {
-        // This line will fail to provide an initialized descriptor if the test is not run as root.
-        let tap = Tap::new(true, false).unwrap();
-        tap.set_vnet_hdr_size(16).unwrap();
-        tap.set_offload(0).unwrap();
-    }
-
-    #[test]
-    fn tap_enable() {
-        let tap = Tap::new(true, false).unwrap();
-
-        let ret = tap.enable();
-        assert_ok_or_perm_denied(ret);
-    }
-
-    fn assert_ok_or_perm_denied<T>(res: Result<T>) {
-        match res {
-            // We won't have permission in test environments; allow that
-            Ok(_t) => {}
-            Err(Error::IoctlError(e)) if e.errno() == EPERM => {}
-            Err(e) => panic!("Unexpected Error:\n{}", e),
-        }
-    }
 }
