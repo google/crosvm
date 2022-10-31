@@ -11,7 +11,7 @@ WINESTRICKS_SCRIPT_SHA="40fdf1f89f3636187201858e3591e86752172814"
 # Setup wine windows prebuilt dependecies.
 export WINEARCH=win64
 export WINE=wine64
-sudo wget https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks -O winetricks
+sudo wget "$WINETRICKS_URL" -O winetricks
 echo "$WINESTRICKS_SCRIPT_SHA winetricks" | sha1sum -c -
 sudo chmod +x winetricks
 
@@ -22,4 +22,3 @@ sudo chmod +x winetricks
 ./winetricks --force vcrun2015 || true
 ln -fs ~/.wine/drive_c/windows/system32/ucrtbase.dll ~/.wine/drive_c/windows/system32/ucrtbased.dll
 ln -fs ~/.wine/drive_c/windows/system32/vcruntime140.dll ~/.wine/drive_c/windows/system32/vcruntime140d.dll
-

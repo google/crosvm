@@ -7,7 +7,7 @@
 flock /tmp/entrypoint_lock /tools/setup-user.sh
 
 # Give KVM device correct permission
-if [ -f "/dev/kvm" ]; then
+if [ -e "/dev/kvm" ]; then
     chmod 666 /dev/kvm
 fi
 
