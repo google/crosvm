@@ -20,6 +20,7 @@ use devices::SerialParameters;
 use serde::Deserialize;
 use serde::Serialize;
 
+#[cfg(feature = "gpu")]
 use crate::crosvm::cmdline::FixedGpuParameters;
 use crate::crosvm::config::invalid_value_err;
 use crate::crosvm::config::Config;

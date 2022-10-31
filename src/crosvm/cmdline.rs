@@ -38,6 +38,7 @@ use devices::virtio::device_constants::video::VideoDeviceConfig;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vhost::user::device;
+#[cfg(feature = "gpu")]
 use devices::virtio::GpuParameters;
 use devices::virtio::NetParameters;
 #[cfg(feature = "audio")]
@@ -49,6 +50,7 @@ use devices::StubPciParameters;
 use hypervisor::ProtectionType;
 use resources::AddressRange;
 use serde::Deserialize;
+#[cfg(feature = "gpu")]
 use serde_keyvalue::FromKeyValues;
 #[cfg(feature = "gpu")]
 use vm_control::gpu::DisplayParameters as GpuDisplayParameters;
