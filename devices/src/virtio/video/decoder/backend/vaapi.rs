@@ -15,6 +15,7 @@ use anyhow::anyhow;
 use anyhow::Result;
 use base::MappedRegion;
 use base::MemoryMappingArena;
+use cros_codecs::decoders::BlockingMode;
 use cros_codecs::decoders::DynDecodedHandle;
 use cros_codecs::decoders::VideoDecoder;
 use cros_codecs::DecodedFormat;
@@ -568,7 +569,7 @@ impl VaapiDecoderSession {
                 self.ready_queue.push_front(decoded_frame);
 
                 // Try polling the decoder for all pending jobs.
-                let handles = self.codec.poll(true)?;
+                let handles = self.codec.poll(BlockingMode::Blocking)?;
                 self.ready_queue.extend(handles);
 
                 self.ready_queue

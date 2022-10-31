@@ -440,13 +440,10 @@ impl<T: DecodedHandle + DynDecodedHandle + 'static> VideoDecoder for Decoder<T> 
         }
     }
 
-    fn poll(&mut self, block: bool) -> VideoDecoderResult<Vec<Box<dyn DynDecodedHandle>>> {
-        let blocking_mode = if block {
-            BlockingMode::Blocking
-        } else {
-            BlockingMode::NonBlocking
-        };
-
+    fn poll(
+        &mut self,
+        blocking_mode: BlockingMode,
+    ) -> VideoDecoderResult<Vec<Box<dyn DynDecodedHandle>>> {
         let handles = self.backend.poll(blocking_mode)?;
 
         Ok(handles
