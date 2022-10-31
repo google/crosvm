@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// This file contains a dummy backend whose only purpose is to let the decoder
-// run so we can test it in isolation.
+//! This file contains a dummy backend whose only purpose is to let the decoder
+//! run so we can test it in isolation.
 
 use std::cell::Ref;
 use std::cell::RefCell;

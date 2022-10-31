@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-/// A VP8 boolean decoder based on the implementation in Chromium and GStreamer.
+//! A VP8 boolean decoder based on the implementation in Chromium and GStreamer.
+
 use std::{convert::TryFrom, io::Cursor};
 
 use anyhow::{anyhow, Result};

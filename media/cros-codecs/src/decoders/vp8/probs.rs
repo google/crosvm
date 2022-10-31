@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-/// VP8 probability tables as per the reference software and specification.
+//! VP8 probability tables as per the reference software and specification.
 
 pub const MV_UPDATE_PROBS: [[u8; 19]; 2] = [
     [

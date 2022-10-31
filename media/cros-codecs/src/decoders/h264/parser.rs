@@ -606,7 +606,7 @@ pub struct Sps {
     /// QP′Y is defined in 7-38 as QP′Y = QPY + QpBdOffsetY
     qpprime_y_zero_transform_bypass_flag: bool,
 
-    /// Whether seq_scaling_list_present_flag[i] for i = 0..7 or i = 0..11 is
+    /// Whether `seq_scaling_list_present_flag[i]` for i = 0..7 or i = 0..11 is
     /// present or whether the sequence level scaling list shall be specified by
     /// Flat_4x4_16 for i = 0..5 and flat_8x8_16 for i = 6..11
     seq_scaling_matrix_present_flag: bool,
@@ -987,40 +987,40 @@ impl Default for Sps {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct HrdParams {
     /// Plus 1 specifies the number of alternative CPB specifications in the
-    /// bitstream. The value of cpb_cnt_minus1 shall be in the range of 0 to 31,
+    /// bitstream. The value of `cpb_cnt_minus1` shall be in the range of 0 to 31,
     /// inclusive
     cpb_cnt_minus1: u8,
-    /// Together with bit_rate_value_minus1[ SchedSelIdx ] specifies the
-    /// maximum input bit rate of the SchedSelIdx-th CPB.
+    /// Together with `bit_rate_value_minus1[ SchedSelIdx ]` specifies the
+    /// maximum input bit rate of the `SchedSelIdx`-th CPB.
     bit_rate_scale: u8,
-    /// Together with cpb_size_value_minus1[ SchedSelIdx ] specifies the CPB
+    /// Together with `cpb_size_value_minus1[ SchedSelIdx ]` specifies the CPB
     /// size of the SchedSelIdx-th CPB.
     cpb_size_scale: u8,
 
-    /// [ SchedSelIdx ] (together with bit_rate_scale) specifies the maximum
+    /// `[ SchedSelIdx ]` (together with bit_rate_scale) specifies the maximum
     /// input bit rate for the SchedSelIdx-th CPB.
     bit_rate_value_minus1: [u32; 32],
-    /// [ SchedSelIdx ] is used together with cpb_size_scale to specify the
+    /// `[ SchedSelIdx ]` is used together with cpb_size_scale to specify the
     /// SchedSelIdx-th CPB size.
     cpb_size_value_minus1: [u32; 32],
-    /// [ SchedSelIdx ] equal to 0 specifies that to decode this bitstream by
-    /// the HRD using the SchedSelIdx-th CPB specification, the hypothetical
+    /// `[ SchedSelIdx ]` equal to 0 specifies that to decode this bitstream by
+    /// the HRD using the `SchedSelIdx`-th CPB specification, the hypothetical
     /// stream delivery scheduler (HSS) operates in an intermittent bit rate
-    /// mode. cbr_flag[ SchedSelIdx ] equal to 1 specifies that the HSS operates
+    /// mode. `cbr_flag[ SchedSelIdx ]` equal to 1 specifies that the HSS operates
     /// in a constant bit rate (CBR) mode
     cbr_flag: [bool; 32],
 
-    /// Specifies the length in bits of the initial_cpb_removal_delay[
-    /// SchedSelIdx ] and initial_cpb_removal_delay_offset[ SchedSelIdx ] syntax
+    /// Specifies the length in bits of the `initial_cpb_removal_delay[
+    /// SchedSelIdx ]` and `initial_cpb_removal_delay_offset[ SchedSelIdx ]` syntax
     /// elements of the buffering period SEI message.
     initial_cpb_removal_delay_length_minus1: u8,
-    /// Specifies the length in bits of the cpb_removal_delay syntax element.
+    /// Specifies the length in bits of the `cpb_removal_delay` syntax element.
     cpb_removal_delay_length_minus1: u8,
-    /// Specifies the length in bits of the dpb_output_delay syntax element.
+    /// Specifies the length in bits of the `dpb_output_delay` syntax element.
     dpb_output_delay_length_minus1: u8,
-    /// If greater than 0, specifies the length in bits of the time_offset
-    /// syntax element. time_offset_length equal to 0 specifies that the
-    /// time_offset syntax element is not present
+    /// If greater than 0, specifies the length in bits of the `time_offset`
+    /// syntax element. `time_offset_length` equal to 0 specifies that the
+    /// `time_offset` syntax element is not present
     time_offset_length: u8,
 }
 
