@@ -1423,7 +1423,7 @@ impl X8664arch {
                     loaded_kernel.entry,
                 ))
             }
-            Err(kernel_loader::Error::InvalidElfMagicNumber) => {
+            Err(kernel_loader::Error::InvalidMagicNumber) => {
                 // The image failed to parse as ELF, so try to load it as a bzImage.
                 let (boot_params, bzimage_end) =
                     bzimage::load_bzimage(mem, kernel_start, kernel_image)

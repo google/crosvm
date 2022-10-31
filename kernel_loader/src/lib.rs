@@ -41,19 +41,19 @@ unsafe impl data_model::DataInit for elf::Elf64_Phdr {}
 #[derive(Error, Debug, PartialEq)]
 pub enum Error {
     #[error("trying to load big-endian binary on little-endian machine")]
-    BigEndianElfOnLittle,
+    BigEndianOnLittle,
     #[error("failed writing command line to guest memory")]
     CommandLineCopy,
     #[error("command line overflowed guest memory")]
     CommandLineOverflow,
     #[error("invalid elf class")]
     InvalidElfClass,
-    #[error("invalid Elf magic number")]
-    InvalidElfMagicNumber,
     #[error("invalid elf version")]
     InvalidElfVersion,
     #[error("invalid entry point")]
     InvalidEntryPoint,
+    #[error("invalid magic number")]
+    InvalidMagicNumber,
     #[error("invalid Program Header Address")]
     InvalidProgramHeaderAddress,
     #[error("invalid Program Header memory size")]
@@ -66,14 +66,12 @@ pub enum Error {
     NoLoadableProgramHeaders,
     #[error("program header address out of allowed address range")]
     ProgramHeaderAddressOutOfRange,
-    #[error("unable to read elf header")]
-    ReadElfHeader,
+    #[error("unable to read header")]
+    ReadHeader,
     #[error("unable to read kernel image")]
     ReadKernelImage,
     #[error("unable to read program header")]
     ReadProgramHeader,
-    #[error("unable to seek to elf start")]
-    SeekElfStart,
     #[error("unable to seek to kernel start")]
     SeekKernelStart,
     #[error("unable to seek to program header")]
@@ -276,10 +274,9 @@ where
 {
     // Read the ELF identification (e_ident) block.
     file.seek(SeekFrom::Start(0))
-        .map_err(|_| Error::SeekElfStart)?;
+        .map_err(|_| Error::SeekKernelStart)?;
     let mut ident = [0u8; 16];
-    file.read_exact(&mut ident)
-        .map_err(|_| Error::ReadElfHeader)?;
+    file.read_exact(&mut ident).map_err(|_| Error::ReadHeader)?;
 
     // e_ident checks
     if ident[elf::EI_MAG0 as usize] != elf::ELFMAG0 as u8
@@ -287,10 +284,10 @@ where
         || ident[elf::EI_MAG2 as usize] != elf::ELFMAG2
         || ident[elf::EI_MAG3 as usize] != elf::ELFMAG3
     {
-        return Err(Error::InvalidElfMagicNumber);
+        return Err(Error::InvalidMagicNumber);
     }
     if ident[elf::EI_DATA as usize] != elf::ELFDATA2LSB as u8 {
-        return Err(Error::BigEndianElfOnLittle);
+        return Err(Error::BigEndianOnLittle);
     }
     if ident[elf::EI_VERSION as usize] != elf::EV_CURRENT as u8 {
         return Err(Error::InvalidElfVersion);
@@ -320,8 +317,8 @@ where
     ProgramHeader: DataInit + Default + Into<elf::Elf64_Phdr>,
 {
     file.seek(SeekFrom::Start(0))
-        .map_err(|_| Error::SeekElfStart)?;
-    let ehdr: FileHeader = FileHeader::from_reader(&mut file).map_err(|_| Error::ReadElfHeader)?;
+        .map_err(|_| Error::SeekKernelStart)?;
+    let ehdr: FileHeader = FileHeader::from_reader(&mut file).map_err(|_| Error::ReadHeader)?;
     let ehdr: elf::Elf64_Ehdr = ehdr.into();
 
     if ehdr.e_phentsize as usize != mem::size_of::<ProgramHeader>() {
@@ -498,7 +495,7 @@ mod test {
         let mut bad_image = make_elf64_bin();
         mutate_elf_bin(&bad_image, 0x1, 0x33);
         assert_eq!(
-            Err(Error::InvalidElfMagicNumber),
+            Err(Error::InvalidMagicNumber),
             load_elf(&gm, kernel_addr, &mut bad_image)
         );
     }
@@ -511,7 +508,7 @@ mod test {
         let mut bad_image = make_elf64_bin();
         mutate_elf_bin(&bad_image, 0x5, 2);
         assert_eq!(
-            Err(Error::BigEndianElfOnLittle),
+            Err(Error::BigEndianOnLittle),
             load_elf(&gm, kernel_addr, &mut bad_image)
         );
     }
