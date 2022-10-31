@@ -11,6 +11,7 @@ use hypervisor::IrqSource;
 use hypervisor::IrqSourceChip;
 use hypervisor::PicSelect;
 
+#[allow(unused)]
 pub fn test_get_pic(mut chip: impl IrqChipX86_64) {
     let state = chip
         .get_pic_state(PicSelect::Primary)
@@ -117,6 +118,7 @@ pub fn test_set_pit(mut chip: impl IrqChipX86_64) {
     assert_eq!(state.channels[0].mode, 1);
 }
 
+#[allow(unused)]
 pub fn test_get_lapic(chip: impl IrqChipX86_64) {
     let state = chip.get_lapic_state(0).expect("failed to get lapic state");
 
@@ -127,6 +129,7 @@ pub fn test_get_lapic(chip: impl IrqChipX86_64) {
     assert_eq!(state.regs[0xf], 0xff);
 }
 
+#[allow(unused)]
 pub fn test_set_lapic(mut chip: impl IrqChipX86_64) {
     // Get default state
     let mut state = chip.get_lapic_state(0).expect("failed to get lapic state");

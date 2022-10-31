@@ -4,4 +4,6 @@
 
 mod kvm;
 mod userspace;
+#[cfg(all(windows, feature = "whpx"))]
+mod whpx;
 mod x86_64;
