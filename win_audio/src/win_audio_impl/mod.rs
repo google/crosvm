@@ -37,17 +37,11 @@ use base::EventExt;
 use base::EventWaitResult;
 use completion_handler::WinAudioActivateAudioInterfaceCompletionHandler;
 use completion_handler::ACTIVATE_AUDIO_INTERFACE_COMPLETION_EVENT;
-use metrics::event_details_proto::RecordDetails;
-use metrics::MetricEventType;
 use sync::Mutex;
 use thiserror::Error as ThisError;
 use wave_format::*;
 use winapi::shared::guiddef::GUID;
 use winapi::shared::guiddef::REFCLSID;
-use winapi::shared::ksmedia::KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
-use winapi::shared::mmreg::WAVEFORMATEX;
-use winapi::shared::winerror::S_FALSE;
-use winapi::shared::winerror::S_OK;
 use winapi::um::audioclient::*;
 use winapi::um::audiosessiontypes::AUDCLNT_SESSIONFLAGS_DISPLAY_HIDEWHENEXPIRED;
 use winapi::um::audiosessiontypes::AUDCLNT_SESSIONFLAGS_EXPIREWHENUNOWNED;
@@ -281,9 +275,9 @@ impl DeviceRenderer {
             return Err(RenderError::InvalidChannelCount(num_channels));
         }
 
-        let audio_client = DeviceRenderer::create_audio_client()?;
+        let audio_client = create_audio_client(eRender)?;
 
-        let format = DeviceRenderer::get_valid_mix_format(&audio_client)?;
+        let format = get_valid_mix_format(&audio_client)?;
 
         // Safe because `audio_client` is initialized
         let hr = unsafe {
@@ -311,50 +305,22 @@ impl DeviceRenderer {
             "Audio Client Initialize() failed."
         )?;
 
-        let ready_to_read_event = Event::new_auto_reset().unwrap();
-        // Safe because `ready_to_read_event` will be initialized and also it has the same
-        // lifetime as `audio_client` because they are owned by DeviceRenderer on return
-        let hr = unsafe { audio_client.SetEventHandle(ready_to_read_event.as_raw_descriptor()) };
-        check_hresult!(hr, RenderError::from(hr), "SetEventHandle() failed.")?;
+        let (ready_to_read_event, async_ready_to_read_event) =
+            create_and_set_audio_client_event(&audio_client, &ex)?;
 
         let audio_render_client = DeviceRenderer::create_audio_render_client(&audio_client)?;
 
-        let mut shared_default_size_in_100nanoseconds: i64 = 0;
-        let mut exclusive_min: i64 = 0;
-        // Safe because `GetDevicePeriod` are taking in intialized valid i64's on the stack created above.
-        unsafe {
-            audio_client.GetDevicePeriod(
-                &mut shared_default_size_in_100nanoseconds,
-                &mut exclusive_min,
-            );
-        };
+        let shared_audio_engine_period_in_frames =
+            get_device_period_in_frames(&audio_client, &format);
 
-        let shared_audio_engine_period_in_frames = format
-            .get_shared_audio_engine_period_in_frames(shared_default_size_in_100nanoseconds as f64);
-
+        let audio_render_client_buffer_frame_count =
+            check_endpoint_buffer_size(&audio_client, shared_audio_engine_period_in_frames)?;
         if incoming_buffer_size_in_frames % shared_audio_engine_period_in_frames != 0 {
             warn!(
                 "Guest period size: `{}` not divisible by shared audio engine period size: `{}`. \
                  Audio glitches may occur if sample rate conversion isn't on.",
                 incoming_buffer_size_in_frames, shared_audio_engine_period_in_frames
             );
-        }
-
-        let mut audio_render_client_buffer_frame_count: u32 = 0;
-        // Safe because audio_render_client_buffer_frame_count is created above.
-        let hr = unsafe { audio_client.GetBufferSize(&mut audio_render_client_buffer_frame_count) };
-        check_hresult!(
-            hr,
-            RenderError::from(hr),
-            "Audio Client GetBufferSize() failed."
-        )?;
-
-        if audio_render_client_buffer_frame_count < shared_audio_engine_period_in_frames as u32 {
-            warn!(
-                "incoming buffer size: {} is bigger than optimal Audio Client buffer size: {}",
-                shared_audio_engine_period_in_frames, audio_render_client_buffer_frame_count
-            );
-            return Err(RenderError::InvalidIncomingBufferSize);
         }
 
         // Safe because `audio_client` is initialized
@@ -368,20 +334,6 @@ impl DeviceRenderer {
             "Audio Render Client Start() failed."
         )?;
 
-        let async_ready_to_read_event = if let Some(ex) = ex {
-            // Unsafe if `ready_to_read_event` and `async_ready_to_read_event` have different
-            // lifetimes because both can close the underlying `RawDescriptor`. However, both
-            // are stored in the `DeviceRenderer` fields, so this is safe.
-            Some(unsafe {
-                ex.async_event(ready_to_read_event.as_raw_descriptor())
-                    .map_err(|e| {
-                        RenderError::AsyncError(e, "Failed to create async event".to_string())
-                    })?
-            })
-        } else {
-            None
-        };
-
         Ok(Self {
             audio_render_client,
             audio_client,
@@ -392,317 +344,6 @@ impl DeviceRenderer {
             ready_to_read_event,
             async_ready_to_read_event,
         })
-    }
-
-    fn get_valid_mix_format(
-        audio_client: &ComPtr<IAudioClient>,
-    ) -> Result<WaveAudioFormat, RenderError> {
-        // Safe because `format_ptr` is owned by this unsafe block. `format_ptr` is guarenteed to
-        // be not null by the time it reached `WaveAudioFormat::new` (check_hresult! should make
-        // sure of that), which is also release the pointer passed in.
-        let mut format = unsafe {
-            let mut format_ptr: *mut WAVEFORMATEX = std::ptr::null_mut();
-            let hr = audio_client.GetMixFormat(&mut format_ptr);
-            check_hresult!(
-                hr,
-                RenderError::from(hr),
-                "Failed to retrieve audio engine's shared format"
-            )?;
-
-            WaveAudioFormat::new(format_ptr)
-        };
-
-        let mut wave_format_details = WaveFormatDetailsProto::new();
-        let mut event_code = MetricEventType::AudioFormatRequestOk;
-        wave_format_details.set_requested(WaveFormatProto::from(&format));
-
-        info!("Printing mix format from `GetMixFormat`:\n{:?}", format);
-        const BIT_DEPTH: usize = 32;
-        format.modify_mix_format(BIT_DEPTH, KSDATAFORMAT_SUBTYPE_IEEE_FLOAT);
-
-        let modified_wave_format = WaveFormatProto::from(&format);
-        if &modified_wave_format != wave_format_details.get_requested() {
-            wave_format_details.set_modified(modified_wave_format);
-            event_code = MetricEventType::AudioFormatModifiedOk;
-        }
-
-        info!("Audio Engine Mix Format Used: \n{:?}", format);
-        Self::check_format(audio_client, &format, wave_format_details, event_code)?;
-
-        Ok(format)
-    }
-
-    fn check_format(
-        audio_client: &IAudioClient,
-        format: &WaveAudioFormat,
-        mut wave_format_details: WaveFormatDetailsProto,
-        event_code: MetricEventType,
-    ) -> Result<(), RenderError> {
-        let mut closest_match_format: *mut WAVEFORMATEX = std::ptr::null_mut();
-        // Safe because all values passed into `IsFormatSupport` is owned by us and we will
-        // guarentee they won't be dropped and are valid.
-        let hr = unsafe {
-            audio_client.IsFormatSupported(
-                AUDCLNT_SHAREMODE_SHARED,
-                format.as_ptr(),
-                &mut closest_match_format,
-            )
-        };
-
-        // If the audio engine does not support the format.
-        if hr != S_OK {
-            if hr == S_FALSE {
-                // Safe because if the `hr` value is `S_FALSE`, then `IsFormatSupported` must've
-                // given us a closest match.
-                let closest_match_enum = unsafe { WaveAudioFormat::new(closest_match_format) };
-                wave_format_details.set_closest_matched(WaveFormatProto::from(&closest_match_enum));
-
-                error!(
-                    "Current audio format not supported, the closest format is:\n{:?}",
-                    closest_match_enum
-                );
-            } else {
-                error!("IsFormatSupported failed with hr: {}", hr);
-            }
-
-            // Get last error here just incase `upload_metrics` causes an error.
-            let last_error = Error::last();
-            DeviceRenderer::upload_metrics(wave_format_details, MetricEventType::AudioFormatFailed);
-
-            Err(RenderError::WindowsError(hr, last_error))
-        } else {
-            DeviceRenderer::upload_metrics(wave_format_details, event_code);
-
-            Ok(())
-        }
-    }
-
-    fn upload_metrics(
-        wave_format_details: WaveFormatDetailsProto,
-        metrics_event_code: MetricEventType,
-    ) {
-        let mut details = RecordDetails::new();
-        details.set_wave_format_details(wave_format_details);
-        metrics::log_event_with_details(metrics_event_code, &details);
-    }
-
-    // Prints the friendly name for audio `device` to the log.
-    // Safe when `device` is guaranteed to be successfully initialized.
-    fn print_device_info(device: &IMMDevice) -> Result<(), RenderError> {
-        let mut props: *mut IPropertyStore = null_mut();
-        // Safe because `device` is guaranteed to be initialized
-        let hr = unsafe { device.OpenPropertyStore(STGM_READ, &mut props) };
-        check_hresult!(
-            hr,
-            RenderError::from(hr),
-            "Win audio OpenPropertyStore failed."
-        )?;
-
-        // Safe because `props` is guaranteed to be initialized
-        let props = unsafe { ComPtr::from_raw(props) };
-
-        let mut val: PROPVARIANT = Default::default();
-        // Safe because `props` is guaranteed to be initialized
-        let hr = unsafe { props.GetValue(&PKEY_Device_FriendlyName, &mut val) };
-        check_hresult!(
-            hr,
-            RenderError::from(hr),
-            "Win audio property store GetValue failed."
-        )?;
-
-        // Safe because `val` was populated by a successful GetValue call that returns a pwszVal
-        if unsafe { val.data.pwszVal().is_null() } {
-            warn!("Win audio property store GetValue returned a null string");
-            return Err(RenderError::GenericError);
-        }
-        // Safe because `val` was populated by a successful GetValue call that returned a non-null
-        // null-terminated pwszVal
-        let device_name = unsafe { win_util::from_ptr_win32_wide_string(*val.data.pwszVal()) };
-        info!("Creating audio client: {}", device_name);
-        // Safe because `val` was populated by a successful GetValue call
-        unsafe {
-            PropVariantClear(&mut val);
-        }
-
-        Ok(())
-    }
-
-    // Create the `IAudioClient` which is used to create `IAudioRenderClient` which is used for
-    // audio playback.
-    fn create_audio_client() -> Result<ComPtr<IAudioClient>, RenderError> {
-        let mut device_enumerator: *mut c_void = null_mut();
-
-        // Creates a device enumerator in order to select our default audio device.
-        //
-        // Safe because only `device_enumerator` is being modified and we own it.
-        let hr = unsafe {
-            CoCreateInstance(
-                &CLSID_MMDeviceEnumerator as REFCLSID,
-                null_mut(),
-                CLSCTX_ALL,
-                &IMMDeviceEnumerator::uuidof(),
-                &mut device_enumerator,
-            )
-        };
-        check_hresult!(
-            hr,
-            RenderError::from(hr),
-            "Win audio create client CoCreateInstance() failed."
-        )?;
-
-        // Safe because `device_enumerator` is guaranteed to be initialized
-        let device_enumerator =
-            unsafe { ComPtr::from_raw(device_enumerator as *mut IMMDeviceEnumerator) };
-
-        let mut device: *mut IMMDevice = null_mut();
-        // Safe because `device_enumerator` is guaranteed to be initialized otherwise this method would've
-        // exited
-        let hr =
-            unsafe { device_enumerator.GetDefaultAudioEndpoint(eRender, eConsole, &mut device) };
-        check_hresult!(
-            hr,
-            RenderError::from(hr),
-            "Device Enumerator GetDefaultAudioEndpoint() failed."
-        )?;
-
-        // Safe because `device` is guaranteed to be initialized
-        let device = unsafe { ComPtr::from_raw(device) };
-        Self::print_device_info(&device)?;
-
-        // Call Windows API functions to get the `async_op` which will be used to retrieve the
-        // AudioClient. More details above function definition.
-        let async_op = DeviceRenderer::enable_auto_stream_routing_and_wait()?;
-
-        let mut factory: *mut IUnknown = null_mut();
-
-        // Safe because `async_op` should be initialized at this point.
-        let activate_result_hr = unsafe {
-            let mut activate_result_hr = 0;
-            let hr = (*async_op).GetActivateResult(&mut activate_result_hr, &mut factory);
-
-            check_hresult!(
-                hr,
-                RenderError::from(hr),
-                "GetActivateResult failed. Cannot retrieve factory to create the Audio Client."
-            )?;
-
-            activate_result_hr
-        };
-        check_hresult!(
-            activate_result_hr,
-            RenderError::from(activate_result_hr),
-            "activateResult is an error. Cannot retrieve factory to create the Audio Client."
-        )?;
-
-        // Safe because `factory` is guaranteed to be initialized.
-        let factory = unsafe { ComPtr::from_raw(factory) };
-
-        factory.cast().map_err(RenderError::from)
-    }
-
-    // Enables automatic audio device routing (only will work for Windows 10, version 1607+).
-    // This will return IActivateAudioInterfaceAsyncOperation that can be used to retrive the
-    // AudioClient.
-    //
-    // This function will pretty much works as follows:
-    // 1. Create the parameters to pass into `ActivateAudioInterfaceAsync`
-    // 2. Call `ActivateAudioInterfaceAsync` which will run asynchrnously and will call
-    //    a callback when completed.
-    // 3. Wait on an event that will be notified when that callback is triggered.
-    // 4. Return an IActivateAudioInterfaceAsyncOperation which can be used to retrived the
-    //    AudioClient.
-    fn enable_auto_stream_routing_and_wait(
-    ) -> Result<ComPtr<IActivateAudioInterfaceAsyncOperation>, RenderError> {
-        // Create the callback that is called when `ActivateAudioInterfaceAsync` is finished.
-        // The field `parent` is irrelevant and is only there to fill in the struct so that
-        // this code will run. `ActivateCompleted` is the callback.
-        let completion_handler = WinAudioActivateAudioInterfaceCompletionHandler::create_com_ptr();
-        // Event that fires when callback is called.
-        //
-        // WARNING:
-        // Creating a named event works fine if `enable_auto_stream_routing_and_wait` is called
-        // serially. However, if multiple threads call it simultaneous (ie. when the tests below
-        // run with more than one thread) then it's possible for the event to already be triggered
-        // and thus `(*async_op).GetActivateResult(...)` may return with E_ILLEGAL_METHOD_CALL.
-        let activate_audio_interface_complete_event =
-            Event::create_event_with_name(ACTIVATE_AUDIO_INTERFACE_COMPLETION_EVENT);
-
-        // Retrieve GUID that represents the default audio device.
-        let mut audio_render_guid_string: *mut u16 = std::ptr::null_mut();
-
-        // This will get the GUID that represents the device we want `ActivateAudioInterfaceAsync`
-        // to activate. `DEVINTERFACE_AUDIO_RENDER` represents the users default audio device, so
-        // as a result Windows will always route sound to the default device.
-        //
-        // Safe because we own `audio_render_guid_string`.
-        let hr = unsafe {
-            StringFromIID(
-                &DEVINTERFACE_AUDIO_RENDER as *const winapi::shared::guiddef::GUID,
-                &mut audio_render_guid_string,
-            )
-        };
-        check_hresult!(
-            hr,
-            RenderError::from(hr),
-            "Failed to retrive DEVINTERFACE_AUDIO_RENDER GUID."
-        )?;
-
-        let mut async_op: *mut IActivateAudioInterfaceAsyncOperation = std::ptr::null_mut();
-        // Event that fires when callback is called.
-        // let event = Event::create_event_with_name(ACTIVATE_AUDIO_INTERFACE_COMPLETION_EVENT);
-        // This will asynchronously run and when completed, it will trigger the
-        // `IActivateINterfaceCompletetionHandler` callback.
-        // The callback is where the AudioClient can be retrived. This would be easier in C/C++,
-        // but since in rust the callback is an extern function, it would be difficult to get the
-        // `IAudioClient` from the callback to the scope here, so we use an
-        // event to wait for the callback.
-        //
-        // Safe because we own async_op and the completion handler.
-        let hr = unsafe {
-            ActivateAudioInterfaceAsync(
-                audio_render_guid_string,
-                &IAudioClient::uuidof(),
-                /* activateParams= */ std::ptr::null_mut(),
-                completion_handler.as_raw(),
-                &mut async_op,
-            )
-        };
-
-        // We want to free memory before error checking for `ActivateAudioInterfaceAsync` to prevent
-        // a memory leak.
-        //
-        // Safe because `audio_render_guid_string` should have valid memory
-        // and we are freeing up memory here.
-        unsafe {
-            CoTaskMemFree(audio_render_guid_string as *mut std::ffi::c_void);
-        }
-
-        check_hresult!(
-            hr,
-            RenderError::from(hr),
-            "`Activate AudioInterfaceAsync failed."
-        )?;
-
-        // Wait for `ActivateAudioInterfaceAsync` to finish. `ActivateAudioInterfaceAsync` should
-        // never hang, but added a long timeout just incase.
-        match activate_audio_interface_complete_event
-            .unwrap()
-            .wait_timeout(ACTIVATE_AUDIO_EVENT_TIMEOUT)
-        {
-            Ok(event_result) => match event_result {
-                EventWaitResult::Signaled => {}
-                EventWaitResult::TimedOut => {
-                    return Err(RenderError::ActivateAudioEventTimeoutError);
-                }
-            },
-            Err(e) => {
-                return Err(RenderError::ActivateAudioEventError(e));
-            }
-        }
-
-        // Safe because we own `async_op` and it shouldn't be null if the activate audio event
-        // fired.
-        unsafe { Ok(ComPtr::from_raw(async_op)) }
     }
 
     fn create_audio_render_client(
@@ -890,6 +531,309 @@ impl Drop for DeviceRenderer {
 
 unsafe impl Send for DeviceRenderer {}
 
+// Create the `IAudioClient` which is used to create `IAudioRenderClient`, which is used for
+// audio playback, or used to create `IAudioCaptureClient`, which is used for audio capture.
+fn create_audio_client(dataflow: EDataFlow) -> Result<ComPtr<IAudioClient>, RenderError> {
+    let mut device_enumerator: *mut c_void = null_mut();
+
+    // Creates a device enumerator in order to select our default audio device.
+    //
+    // Safe because only `device_enumerator` is being modified and we own it.
+    let hr = unsafe {
+        CoCreateInstance(
+            &CLSID_MMDeviceEnumerator as REFCLSID,
+            null_mut(),
+            CLSCTX_ALL,
+            &IMMDeviceEnumerator::uuidof(),
+            &mut device_enumerator,
+        )
+    };
+    check_hresult!(
+        hr,
+        RenderError::from(hr),
+        "Win audio create client CoCreateInstance() failed."
+    )?;
+
+    // Safe because `device_enumerator` is guaranteed to be initialized
+    let device_enumerator =
+        unsafe { ComPtr::from_raw(device_enumerator as *mut IMMDeviceEnumerator) };
+
+    let mut device: *mut IMMDevice = null_mut();
+    // Safe because `device_enumerator` is guaranteed to be initialized otherwise this method would've
+    // exited
+    let hr = unsafe { device_enumerator.GetDefaultAudioEndpoint(dataflow, eConsole, &mut device) };
+    check_hresult!(
+        hr,
+        RenderError::from(hr),
+        "Device Enumerator GetDefaultAudioEndpoint() failed."
+    )?;
+
+    // Safe because `device` is guaranteed to be initialized
+    let device = unsafe { ComPtr::from_raw(device) };
+    print_device_info(&device)?;
+
+    let is_render = if dataflow == eRender { true } else { false };
+
+    // Call Windows API functions to get the `async_op` which will be used to retrieve the
+    // AudioClient. More details above function definition.
+    let async_op = enable_auto_stream_routing_and_wait(is_render)?;
+
+    let mut factory: *mut IUnknown = null_mut();
+
+    // Safe because `async_op` should be initialized at this point.
+    let activate_result_hr = unsafe {
+        let mut activate_result_hr = 0;
+        let hr = (*async_op).GetActivateResult(&mut activate_result_hr, &mut factory);
+
+        check_hresult!(
+            hr,
+            RenderError::from(hr),
+            "GetActivateResult failed. Cannot retrieve factory to create the Audio Client."
+        )?;
+
+        activate_result_hr
+    };
+    check_hresult!(
+        activate_result_hr,
+        RenderError::from(activate_result_hr),
+        "activateResult is an error. Cannot retrieve factory to create the Audio Client."
+    )?;
+
+    // Safe because `factory` is guaranteed to be initialized.
+    let factory = unsafe { ComPtr::from_raw(factory) };
+
+    factory.cast().map_err(RenderError::from)
+}
+
+// Enables automatic audio device routing (only will work for Windows 10, version 1607+).
+// This will return IActivateAudioInterfaceAsyncOperation that can be used to retrive the
+// AudioClient.
+//
+// This function will pretty much works as follows:
+// 1. Create the parameters to pass into `ActivateAudioInterfaceAsync`
+// 2. Call `ActivateAudioInterfaceAsync` which will run asynchrnously and will call
+//    a callback when completed.
+// 3. Wait on an event that will be notified when that callback is triggered.
+// 4. Return an IActivateAudioInterfaceAsyncOperation which can be used to retrived the
+//    AudioClient.
+fn enable_auto_stream_routing_and_wait(
+    is_render: bool,
+) -> Result<ComPtr<IActivateAudioInterfaceAsyncOperation>, RenderError> {
+    // Create the callback that is called when `ActivateAudioInterfaceAsync` is finished.
+    // The field `parent` is irrelevant and is only there to fill in the struct so that
+    // this code will run. `ActivateCompleted` is the callback.
+    let completion_handler = WinAudioActivateAudioInterfaceCompletionHandler::create_com_ptr();
+    // Event that fires when callback is called.
+    //
+    // WARNING:
+    // Creating a named event works fine if `enable_auto_stream_routing_and_wait` is called
+    // serially. However, if multiple threads call it simultaneous (ie. when the tests below
+    // run with more than one thread) then it's possible for the event to already be triggered
+    // and thus `(*async_op).GetActivateResult(...)` may return with E_ILLEGAL_METHOD_CALL.
+    //
+    // TODO:(b/253509368): Need different event name for playback and capture.
+    let activate_audio_interface_complete_event =
+        Event::create_event_with_name(ACTIVATE_AUDIO_INTERFACE_COMPLETION_EVENT);
+
+    // Retrieve GUID that represents the default audio device.
+    let mut audio_direction_guid_string: *mut u16 = std::ptr::null_mut();
+
+    // This will get the GUID that represents the device we want `ActivateAudioInterfaceAsync`
+    // to activate. `DEVINTERFACE_AUDIO_RENDER` represents the users default audio render device, so
+    // as a result Windows will always route sound to the default device. Likewise,
+    // `DEVINTERFACE_AUDIO_CAPTURE` represents the default audio capture device.
+    //
+    // Safe because we own `audio_direction_guid_string`.
+    let hr = unsafe {
+        if is_render {
+            StringFromIID(
+                &DEVINTERFACE_AUDIO_RENDER as *const winapi::shared::guiddef::GUID,
+                &mut audio_direction_guid_string,
+            )
+        } else {
+            StringFromIID(
+                &DEVINTERFACE_AUDIO_CAPTURE as *const winapi::shared::guiddef::GUID,
+                &mut audio_direction_guid_string,
+            )
+        }
+    };
+    check_hresult!(
+        hr,
+        RenderError::from(hr),
+        format!(
+            "Failed to retrive DEVINTERFACE_AUDIO GUID for {}",
+            if is_render { "rendering" } else { "capturing" }
+        )
+    )?;
+
+    let mut async_op: *mut IActivateAudioInterfaceAsyncOperation = std::ptr::null_mut();
+    // Event that fires when callback is called.
+    // let event = Event::create_event_with_name(ACTIVATE_AUDIO_INTERFACE_COMPLETION_EVENT);
+    // This will asynchronously run and when completed, it will trigger the
+    // `IActivateINterfaceCompletetionHandler` callback.
+    // The callback is where the AudioClient can be retrived. This would be easier in C/C++,
+    // but since in rust the callback is an extern function, it would be difficult to get the
+    // `IAudioClient` from the callback to the scope here, so we use an
+    // event to wait for the callback.
+    //
+    // Safe because we own async_op and the completion handler.
+    let hr = unsafe {
+        ActivateAudioInterfaceAsync(
+            audio_direction_guid_string,
+            &IAudioClient::uuidof(),
+            /* activateParams= */ std::ptr::null_mut(),
+            completion_handler.as_raw(),
+            &mut async_op,
+        )
+    };
+
+    // We want to free memory before error checking for `ActivateAudioInterfaceAsync` to prevent
+    // a memory leak.
+    //
+    // Safe because `audio_direction_guid_string` should have valid memory
+    // and we are freeing up memory here.
+    unsafe {
+        CoTaskMemFree(audio_direction_guid_string as *mut std::ffi::c_void);
+    }
+
+    check_hresult!(
+        hr,
+        RenderError::from(hr),
+        "`Activate AudioInterfaceAsync failed."
+    )?;
+
+    // Wait for `ActivateAudioInterfaceAsync` to finish. `ActivateAudioInterfaceAsync` should
+    // never hang, but added a long timeout just incase.
+    match activate_audio_interface_complete_event
+        .unwrap()
+        .wait_timeout(ACTIVATE_AUDIO_EVENT_TIMEOUT)
+    {
+        Ok(event_result) => match event_result {
+            EventWaitResult::Signaled => {}
+            EventWaitResult::TimedOut => {
+                return Err(RenderError::ActivateAudioEventTimeoutError);
+            }
+        },
+        Err(e) => {
+            return Err(RenderError::ActivateAudioEventError(e));
+        }
+    }
+
+    // Safe because we own `async_op` and it shouldn't be null if the activate audio event
+    // fired.
+    unsafe { Ok(ComPtr::from_raw(async_op)) }
+}
+
+// Prints the friendly name for audio `device` to the log.
+// Safe when `device` is guaranteed to be successfully initialized.
+fn print_device_info(device: &IMMDevice) -> Result<(), RenderError> {
+    let mut props: *mut IPropertyStore = null_mut();
+    // Safe because `device` is guaranteed to be initialized
+    let hr = unsafe { device.OpenPropertyStore(STGM_READ, &mut props) };
+    check_hresult!(
+        hr,
+        RenderError::from(hr),
+        "Win audio OpenPropertyStore failed."
+    )?;
+
+    // Safe because `props` is guaranteed to be initialized
+    let props = unsafe { ComPtr::from_raw(props) };
+
+    let mut val: PROPVARIANT = Default::default();
+    // Safe because `props` is guaranteed to be initialized
+    let hr = unsafe { props.GetValue(&PKEY_Device_FriendlyName, &mut val) };
+    check_hresult!(
+        hr,
+        RenderError::from(hr),
+        "Win audio property store GetValue failed."
+    )?;
+
+    // Safe because `val` was populated by a successful GetValue call that returns a pwszVal
+    if unsafe { val.data.pwszVal().is_null() } {
+        warn!("Win audio property store GetValue returned a null string");
+        return Err(RenderError::GenericError);
+    }
+    // Safe because `val` was populated by a successful GetValue call that returned a non-null
+    // null-terminated pwszVal
+    let device_name = unsafe { win_util::from_ptr_win32_wide_string(*val.data.pwszVal()) };
+    info!("Creating audio client: {}", device_name);
+    // Safe because `val` was populated by a successful GetValue call
+    unsafe {
+        // TODO(b/256244007): `PropVariantClear` doesn't get called if this function errors or
+        // returns early.
+        PropVariantClear(&mut val);
+    }
+
+    Ok(())
+}
+
+fn create_and_set_audio_client_event(
+    audio_client: &IAudioClient,
+    ex: &Option<&dyn audio_streams::AudioStreamsExecutor>,
+) -> Result<(Event, Option<Box<dyn EventAsyncWrapper>>), RenderError> {
+    let ready_event = Event::new_auto_reset().unwrap();
+    // Safe because `ready_event` will be initialized and also it will have the same
+    // lifetime as `audio_client` because they are owned by DeviceRenderer or DeviceCapturer on
+    // return.
+    let hr = unsafe { audio_client.SetEventHandle(ready_event.as_raw_descriptor()) };
+    check_hresult!(hr, RenderError::from(hr), "SetEventHandle() failed.")?;
+
+    let async_ready_event = if let Some(ex) = ex {
+        // Unsafe if `ready_event` and `async_ready_event` have different
+        // lifetimes because both can close the underlying `RawDescriptor`. However, both
+        // will be stored in the `DeviceRenderer` or `DeviceCapturer` fields, so this should be
+        // safe.
+        Some(unsafe {
+            ex.async_event(ready_event.as_raw_descriptor())
+                .map_err(|e| {
+                    RenderError::AsyncError(e, "Failed to create async event".to_string())
+                })?
+        })
+    } else {
+        None
+    };
+    Ok((ready_event, async_ready_event))
+}
+
+fn get_device_period_in_frames(audio_client: &IAudioClient, format: &WaveAudioFormat) -> usize {
+    let mut shared_default_size_in_100nanoseconds: i64 = 0;
+    let mut exclusive_min: i64 = 0;
+    // Safe because `GetDevicePeriod` are taking in intialized valid i64's on the stack created above.
+    unsafe {
+        audio_client.GetDevicePeriod(
+            &mut shared_default_size_in_100nanoseconds,
+            &mut exclusive_min,
+        );
+    };
+
+    format.get_shared_audio_engine_period_in_frames(shared_default_size_in_100nanoseconds as f64)
+}
+
+fn check_endpoint_buffer_size(
+    audio_client: &IAudioClient,
+    shared_audio_engine_period_in_frames: usize,
+) -> Result<u32, RenderError> {
+    let mut audio_client_buffer_frame_count: u32 = 0;
+    // Safe because audio_client_buffer_frame_count is created above.
+    let hr = unsafe { audio_client.GetBufferSize(&mut audio_client_buffer_frame_count) };
+    check_hresult!(
+        hr,
+        RenderError::from(hr),
+        "Audio Client GetBufferSize() failed."
+    )?;
+
+    if audio_client_buffer_frame_count < shared_audio_engine_period_in_frames as u32 {
+        warn!(
+            "The Windows audio engine period size in frames: {} /
+            is bigger than the Audio Client's buffer size in frames: {}",
+            shared_audio_engine_period_in_frames, audio_client_buffer_frame_count
+        );
+        return Err(RenderError::InvalidIncomingBufferSize);
+    }
+    Ok(audio_client_buffer_frame_count)
+}
+
+// TODO(b/253509368): Rename error so it is more generic for rendering and capturing.
 #[derive(Debug, ThisError)]
 pub enum RenderError {
     /// The audio device was unplugged or became unavailable.
@@ -942,7 +886,10 @@ impl From<i32> for RenderError {
 mod tests {
     use std::thread;
 
+    use metrics::MetricEventType;
     use once_cell::sync::Lazy;
+    use winapi::shared::ksmedia::KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
+    use winapi::shared::mmreg::WAVEFORMATEX;
     use winapi::shared::mmreg::WAVEFORMATEXTENSIBLE;
     use winapi::shared::mmreg::WAVE_FORMAT_EXTENSIBLE;
     use winapi::shared::winerror::S_OK;
@@ -1048,14 +995,15 @@ mod tests {
     }
 
     // Test may be flakey because other tests will be creating an AudioClient. Putting all tests
-    // in one so we can run this individually to prevent the flakiness.
+    // in one so we can run this individually to prevent the flakiness. This test may fail
+    // depending on your selected default audio device.
     #[ignore]
     #[test]
     fn test_check_format_get_mix_format_success() {
         let _shared = SERIALIZE_LOCK.lock();
 
         let _co_init = SafeCoInit::new_coinitialize();
-        let audio_client = DeviceRenderer::create_audio_client().unwrap();
+        let audio_client = create_audio_client(eRender).unwrap();
         let mut format_ptr: *mut WAVEFORMATEX = std::ptr::null_mut();
         let _hr = unsafe { audio_client.GetMixFormat(&mut format_ptr) };
 
@@ -1063,7 +1011,7 @@ mod tests {
         let format = unsafe { WaveAudioFormat::new(format_ptr) };
 
         // Test format from `GetMixFormat`. This should ALWAYS be valid.
-        assert!(DeviceRenderer::check_format(
+        assert!(check_format(
             &*audio_client,
             &format,
             WaveFormatDetailsProto::new(),
@@ -1092,7 +1040,7 @@ mod tests {
         let format = unsafe { WaveAudioFormat::new((&format) as *const _ as *mut WAVEFORMATEX) };
 
         // Test valid custom format.
-        assert!(DeviceRenderer::check_format(
+        assert!(check_format(
             &*audio_client,
             &format,
             WaveFormatDetailsProto::new(),
@@ -1122,7 +1070,7 @@ mod tests {
         let format = unsafe { WaveAudioFormat::new((&format) as *const _ as *mut WAVEFORMATEX) };
 
         // Test invalid format
-        assert!(DeviceRenderer::check_format(
+        assert!(check_format(
             &*audio_client,
             &format,
             WaveFormatDetailsProto::new(),
