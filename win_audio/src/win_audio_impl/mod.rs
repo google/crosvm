@@ -2,9 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+pub mod async_stream;
+mod completion_handler;
+mod wave_format;
+
 use std::convert::From;
 use std::fmt::Debug;
-use std::mem::MaybeUninit;
 use std::os::raw::c_void;
 use std::ptr::null_mut;
 use std::sync::Arc;
@@ -12,6 +15,8 @@ use std::sync::Once;
 use std::thread_local;
 use std::time::Duration;
 
+use audio_streams::async_api::EventAsyncWrapper;
+use audio_streams::AsyncPlaybackBufferStream;
 use audio_streams::BoxError;
 use audio_streams::BufferCommit;
 use audio_streams::NoopStream;
@@ -44,6 +49,8 @@ use winapi::shared::mmreg::WAVEFORMATEX;
 use winapi::shared::winerror::S_FALSE;
 use winapi::shared::winerror::S_OK;
 use winapi::um::audioclient::*;
+use winapi::um::audiosessiontypes::AUDCLNT_SESSIONFLAGS_DISPLAY_HIDEWHENEXPIRED;
+use winapi::um::audiosessiontypes::AUDCLNT_SESSIONFLAGS_EXPIREWHENUNOWNED;
 use winapi::um::audiosessiontypes::AUDCLNT_SHAREMODE_SHARED;
 use winapi::um::audiosessiontypes::AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
 use winapi::um::combaseapi::*;
@@ -61,9 +68,6 @@ use winapi::Interface;
 use wio::com::ComPtr;
 
 use crate::AudioSharedFormat;
-
-mod completion_handler;
-mod wave_format;
 
 const READY_TO_READ_TIMEOUT_MS: u32 = 2000;
 pub const STEREO_CHANNEL_COUNT: u16 = 2;
@@ -116,9 +120,9 @@ impl WinAudio {
 }
 
 impl StreamSource for WinAudio {
-    // Returns a stream control and a buffer generator object. The stream control object is not used.
-    // The buffer generator object is a wrapper around WASAPI's objects that will create a buffer for
-    // crosvm to copy audio bytes into.
+    /// Returns a stream control and a buffer generator object. The stream control object is not
+    /// used. The buffer generator object is a wrapper around WASAPI's objects that will create a
+    /// buffer for crosvm to copy audio bytes into.
     fn new_playback_stream(
         &mut self,
         num_channels: usize,
@@ -148,6 +152,25 @@ impl StreamSource for WinAudio {
 
         Ok((Box::new(NoopStreamControl::new()), playback_buffer_stream))
     }
+
+    /// Similar to `new_playback_stream, but will return an `AsyncPlaybackBufferStream` that can
+    /// run async operations.
+    fn new_async_playback_stream(
+        &mut self,
+        num_channels: usize,
+        format: SampleFormat,
+        frame_rate: u32,
+        buffer_size: usize,
+        ex: &dyn audio_streams::AudioStreamsExecutor,
+    ) -> Result<(Box<dyn StreamControl>, Box<dyn AsyncPlaybackBufferStream>), BoxError> {
+        WinAudio::new_async_playback_stream_helper(
+            num_channels,
+            format,
+            frame_rate,
+            buffer_size,
+            ex,
+        )
+    }
 }
 
 /// Proxy for a `DeviceRenderer` that handles device invalidated errors by switching to a new
@@ -160,26 +183,45 @@ pub(crate) struct WinAudioRenderer {
 }
 
 impl WinAudioRenderer {
+    const MAX_REATTACH_TRIES: usize = 50;
+
     // Initializes WASAPI objects needed for audio.
     pub fn new(
         num_channels: usize,
         frame_rate: u32,
         incoming_buffer_size_in_frames: usize,
     ) -> Result<Self, RenderError> {
-        let start = std::time::Instant::now();
-        let device = DeviceRenderer::new(num_channels, frame_rate, incoming_buffer_size_in_frames)?;
-        // This can give us insights to how other long other machines take to intialize audio.
-        // Eventually this should be a histogram metric.
-        info!(
-            "DeviceRenderer took {}ms to initialize audio.",
-            start.elapsed().as_millis()
-        );
+        let device = Self::create_device_renderer_and_log_time(
+            num_channels,
+            frame_rate,
+            incoming_buffer_size_in_frames,
+            None,
+        )?;
+
         Ok(Self {
             device,
             num_channels,
             frame_rate,                     // guest frame rate
             incoming_buffer_size_in_frames, // from the guest`
         })
+    }
+
+    fn create_device_renderer_and_log_time(
+        num_channels: usize,
+        frame_rate: u32,
+        incoming_buffer_size_in_frames: usize,
+        ex: Option<&dyn audio_streams::AudioStreamsExecutor>,
+    ) -> Result<DeviceRenderer, RenderError> {
+        let start = std::time::Instant::now();
+        let device =
+            DeviceRenderer::new(num_channels, frame_rate, incoming_buffer_size_in_frames, ex)?;
+        // This can give us insights to how other long other machines take to initialize audio.
+        // Eventually this should be a histogram metric.
+        info!(
+            "DeviceRenderer took {}ms to initialize audio.",
+            start.elapsed().as_millis()
+        );
+        Ok(device)
     }
 
     // Drops the existing DeviceRenderer and initializes a new DeviceRenderer for the default
@@ -189,6 +231,7 @@ impl WinAudioRenderer {
             self.num_channels,
             self.frame_rate,
             self.incoming_buffer_size_in_frames,
+            None,
         )?;
         Ok(())
     }
@@ -197,8 +240,7 @@ impl WinAudioRenderer {
 impl PlaybackBufferStream for WinAudioRenderer {
     /// Returns a wrapper around the WASAPI buffer.
     fn next_playback_buffer<'b, 's: 'b>(&'s mut self) -> Result<PlaybackBuffer<'b>, BoxError> {
-        const MAX_REATTACH_TRIES: usize = 50;
-        for _ in 0..MAX_REATTACH_TRIES {
+        for _ in 0..Self::MAX_REATTACH_TRIES {
             match self.device.next_win_buffer() {
                 Ok(_) => return self.device.playback_buffer().map_err(|e| Box::new(e) as _),
                 // If the audio device was disconnected, set up whatever is now the default device
@@ -220,10 +262,11 @@ impl PlaybackBufferStream for WinAudioRenderer {
 pub(crate) struct DeviceRenderer {
     audio_render_client: ComPtr<IAudioRenderClient>,
     audio_client: ComPtr<IAudioClient>,
-    win_buffer: *mut *mut u8,
+    win_buffer: *mut u8,
     pub audio_shared_format: AudioSharedFormat,
     audio_render_client_buffer_frame_count: u32,
     ready_to_read_event: Event,
+    async_ready_to_read_event: Option<Box<dyn EventAsyncWrapper>>,
 }
 
 impl DeviceRenderer {
@@ -232,6 +275,7 @@ impl DeviceRenderer {
         num_channels: usize,
         _guest_frame_rate: u32,
         incoming_buffer_size_in_frames: usize,
+        ex: Option<&dyn audio_streams::AudioStreamsExecutor>,
     ) -> Result<Self, RenderError> {
         if num_channels > 2 {
             return Err(RenderError::InvalidChannelCount(num_channels));
@@ -252,7 +296,9 @@ impl DeviceRenderer {
                 AUDCLNT_SHAREMODE_SHARED,
                 AUDCLNT_STREAMFLAGS_EVENTCALLBACK
                     | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
-                    | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
+                    | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY
+                    | AUDCLNT_SESSIONFLAGS_DISPLAY_HIDEWHENEXPIRED
+                    | AUDCLNT_SESSIONFLAGS_EXPIREWHENUNOWNED,
                 0, /* hnsBufferDuration */
                 0, /* hnsPeriodicity */
                 format.as_ptr(),
@@ -271,7 +317,7 @@ impl DeviceRenderer {
         let hr = unsafe { audio_client.SetEventHandle(ready_to_read_event.as_raw_descriptor()) };
         check_hresult!(hr, RenderError::from(hr), "SetEventHandle() failed.")?;
 
-        let audio_render_client = DeviceRenderer::create_audio_render_client(&*audio_client)?;
+        let audio_render_client = DeviceRenderer::create_audio_render_client(&audio_client)?;
 
         let mut shared_default_size_in_100nanoseconds: i64 = 0;
         let mut exclusive_min: i64 = 0;
@@ -322,14 +368,29 @@ impl DeviceRenderer {
             "Audio Render Client Start() failed."
         )?;
 
+        let async_ready_to_read_event = if let Some(ex) = ex {
+            // Unsafe if `ready_to_read_event` and `async_ready_to_read_event` have different
+            // lifetimes because both can close the underlying `RawDescriptor`. However, both
+            // are stored in the `DeviceRenderer` fields, so this is safe.
+            Some(unsafe {
+                ex.async_event(ready_to_read_event.as_raw_descriptor())
+                    .map_err(|e| {
+                        RenderError::AsyncError(e, "Failed to create async event".to_string())
+                    })?
+            })
+        } else {
+            None
+        };
+
         Ok(Self {
             audio_render_client,
             audio_client,
-            win_buffer: MaybeUninit::uninit().as_mut_ptr(),
+            win_buffer: std::ptr::null_mut(),
             audio_shared_format: format
                 .create_audio_shared_format(shared_audio_engine_period_in_frames),
             audio_render_client_buffer_frame_count,
             ready_to_read_event,
+            async_ready_to_read_event,
         })
     }
 
@@ -366,7 +427,7 @@ impl DeviceRenderer {
         }
 
         info!("Audio Engine Mix Format Used: \n{:?}", format);
-        Self::check_format(&*audio_client, &format, wave_format_details, event_code)?;
+        Self::check_format(audio_client, &format, wave_format_details, event_code)?;
 
         Ok(format)
     }
@@ -506,7 +567,7 @@ impl DeviceRenderer {
 
         // Safe because `device` is guaranteed to be initialized
         let device = unsafe { ComPtr::from_raw(device) };
-        Self::print_device_info(&*device)?;
+        Self::print_device_info(&device)?;
 
         // Call Windows API functions to get the `async_op` which will be used to retrieve the
         // AudioClient. More details above function definition.
@@ -672,8 +733,6 @@ impl DeviceRenderer {
 
     // Returns a wraper around the WASAPI buffer
     fn next_win_buffer(&mut self) -> Result<(), RenderError> {
-        self.win_buffer = MaybeUninit::uninit().as_mut_ptr();
-
         // We will wait for windows to tell us when it is ready to take in the next set of
         // audio samples from the guest
         loop {
@@ -691,35 +750,53 @@ impl DeviceRenderer {
                     );
                     break;
                 }
-                let num_frames_padding: *mut u32 = MaybeUninit::uninit().as_mut_ptr();
-                let hr = self.audio_client.GetCurrentPadding(num_frames_padding);
-                check_hresult!(
-                    hr,
-                    RenderError::from(hr),
-                    "Audio Client GetCurrentPadding() failed."
-                )?;
-
-                // If the available free frames is less than the frames that are being sent over from the guest, then
-                // we want to only grab the number of frames available.
-                let num_frames_available =
-                    (self.audio_render_client_buffer_frame_count - *num_frames_padding) as usize;
-
-                if num_frames_available
-                    >= self
-                        .audio_shared_format
-                        .shared_audio_engine_period_in_frames
-                {
+                if self.enough_available_frames()? {
                     break;
                 }
             }
         }
 
+        self.get_buffer()?;
+
+        Ok(())
+    }
+
+    /// Returns true if the number of frames avaialble in the Windows playback buffer is at least
+    /// the size of one full period worth of audio samples.
+    fn enough_available_frames(&mut self) -> Result<bool, RenderError> {
+        // Safe because `num_frames_padding` is an u32 and `GetCurrentPadding` is a simple
+        // Windows function that shouldn't fail.
+        let mut num_frames_padding = 0u32;
+        let hr = unsafe { self.audio_client.GetCurrentPadding(&mut num_frames_padding) };
+        check_hresult!(
+            hr,
+            RenderError::from(hr),
+            "Audio Client GetCurrentPadding() failed."
+        )?;
+
+        // If the available free frames is less than the frames that are being sent over from the
+        // guest, then we want to only grab the number of frames available.
+        let num_frames_available =
+            (self.audio_render_client_buffer_frame_count - num_frames_padding) as usize;
+
+        Ok(num_frames_available
+            >= self
+                .audio_shared_format
+                .shared_audio_engine_period_in_frames)
+    }
+
+    fn get_buffer(&mut self) -> Result<(), RenderError> {
+        self.win_buffer = std::ptr::null_mut();
+
         // This unsafe block will get the playback buffer and return the size of the buffer
+        //
+        // This is safe because the contents of `win_buffer` will be
+        // released when `ReleaseBuffer` is called in the `BufferCommit` implementation.
         unsafe {
             let hr = self.audio_render_client.GetBuffer(
                 self.audio_shared_format
                     .shared_audio_engine_period_in_frames as u32,
-                self.win_buffer,
+                &mut self.win_buffer,
             );
             check_hresult!(
                 hr,
@@ -732,28 +809,50 @@ impl DeviceRenderer {
     }
 
     fn playback_buffer(&mut self) -> Result<PlaybackBuffer, RenderError> {
-        if self.win_buffer.is_null() {
-            return Err(RenderError::InvalidBuffer);
-        }
-
-        let frame_size_bytes = self.audio_shared_format.bit_depth as usize
-            * self.audio_shared_format.channels as usize
-            / 8;
-
         // Safe because `win_buffer` is allocated and retrieved from WASAPI. The size requested,
         // which we specified in `next_win_buffer` is exactly
         // `shared_audio_engine_period_in_frames`, so the size parameter should be valid.
-        let buffer_slice = unsafe {
-            std::slice::from_raw_parts_mut(
-                *self.win_buffer,
+        let (frame_size_bytes, buffer_slice) = unsafe {
+            Self::get_frame_size_and_buffer_slice(
+                self.audio_shared_format.bit_depth as usize,
+                self.audio_shared_format.channels as usize,
+                self.win_buffer,
                 self.audio_shared_format
-                    .shared_audio_engine_period_in_frames
-                    * frame_size_bytes,
-            )
+                    .shared_audio_engine_period_in_frames,
+            )?
         };
 
         PlaybackBuffer::new(frame_size_bytes, buffer_slice, self)
             .map_err(RenderError::PlaybackBuffer)
+    }
+
+    /// # Safety
+    ///
+    /// Safe only if:
+    ///   1. `win_buffer` is pointing to a valid buffer used for holding audio bytes.
+    ///   2. `bit_depth`, `channels`, and `shared_audio_engine_period_in_frames` are accurate with
+    ///      respect to `win_buffer`, so that a valid slice can be made.
+    ///   3. The variables mentioned in reason "2." must calculate a size no greater than the size
+    ///      of the buffer pointed to by `win_buffer`.
+    unsafe fn get_frame_size_and_buffer_slice<'a>(
+        bit_depth: usize,
+        channels: usize,
+        win_buffer: *mut u8,
+        shared_audio_engine_period_in_frames: usize,
+    ) -> Result<(usize, &'a mut [u8]), RenderError> {
+        if win_buffer.is_null() {
+            return Err(RenderError::InvalidBuffer);
+        }
+
+        let frame_size_bytes = bit_depth * channels / 8;
+
+        Ok((
+            frame_size_bytes,
+            std::slice::from_raw_parts_mut(
+                win_buffer,
+                shared_audio_engine_period_in_frames * frame_size_bytes,
+            ),
+        ))
     }
 }
 
@@ -789,7 +888,7 @@ impl Drop for DeviceRenderer {
     }
 }
 
-unsafe impl<'a> Send for DeviceRenderer {}
+unsafe impl Send for DeviceRenderer {}
 
 #[derive(Debug, ThisError)]
 pub enum RenderError {
@@ -814,6 +913,10 @@ pub enum RenderError {
     GenericError,
     #[error("Invalid guest channel count {0} is > than 2")]
     InvalidChannelCount(usize),
+    #[error("Async related error: {0}: {1}")]
+    AsyncError(std::io::Error, String),
+    #[error("Ready to read async event was not set during win_audio initialization.")]
+    MissingEventAsync,
 }
 
 impl From<i32> for RenderError {
@@ -877,7 +980,7 @@ mod tests {
     #[test]
     fn test_create_win_audio_renderer_no_co_initliazed() {
         let _shared = SERIALIZE_LOCK.lock();
-        let win_audio_renderer = DeviceRenderer::new(2, 48000, 720);
+        let win_audio_renderer = DeviceRenderer::new(2, 48000, 720, None);
         assert!(win_audio_renderer.is_err());
     }
 
@@ -886,7 +989,7 @@ mod tests {
     fn test_create_win_audio_renderer() {
         let _shared = SERIALIZE_LOCK.lock();
         let _co_init = SafeCoInit::new_coinitialize();
-        let win_audio_renderer_result = DeviceRenderer::new(2, 48000, 480);
+        let win_audio_renderer_result = DeviceRenderer::new(2, 48000, 480, None);
         assert!(win_audio_renderer_result.is_ok());
         let win_audio_renderer = win_audio_renderer_result.unwrap();
         assert_eq!(
@@ -916,7 +1019,7 @@ mod tests {
     // there is no way to copy audio samples over succiently.
     fn test_guest_buffer_size_bigger_than_audio_render_client_buffer_size() {
         let _shared = SERIALIZE_LOCK.lock();
-        let win_audio_renderer = DeviceRenderer::new(2, 48000, 100000);
+        let win_audio_renderer = DeviceRenderer::new(2, 48000, 100000, None);
 
         assert!(win_audio_renderer.is_err());
     }

@@ -5,8 +5,10 @@ authors = ["The Chromium OS Authors"]
 edition = "2021"
 
 [target.'cfg(windows)'.dependencies]
+async-trait = "0.1.36"
 audio_streams = { path = "../common/audio_streams"}
 base = { path = "../base" }
+cros_async = { path = "../cros_async" }
 libc = "*"
 win_util = { path = "../win_util" }
 winapi = "*"

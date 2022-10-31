@@ -55,6 +55,7 @@ impl WaveAudioFormat {
     /// Unsafe if `wave_format_ptr` is pointing to null. This function will assume it's not null
     /// and dereference it.
     /// Also `format_ptr` will be deallocated after this function completes, so it cannot be used.
+    #[allow(clippy::let_and_return)]
     pub unsafe fn new(format_ptr: *mut WAVEFORMATEX) -> Self {
         let format_tag = { (*format_ptr).wFormatTag };
         let result = if format_tag != WAVE_FORMAT_EXTENSIBLE {
@@ -278,12 +279,20 @@ impl Debug for WaveAudioFormat {
 
                 let subformat = wave_format_extensible.SubFormat;
 
-                if !IsEqualGUID(
-                    &{ wave_format_extensible.SubFormat },
-                    &KSDATAFORMAT_SUBTYPE_IEEE_FLOAT,
-                ) {
-                    warn!("Audio Engine format is NOT IEEE FLOAT");
-                }
+                // TODO(b/240186720): Passing in `KSDATAFORMAT_SUBTYPE_PCM` will cause a
+                // freeze. IsEqualGUID is unsafe even though it isn't marked as such. Look into
+                // fixing or possibily write our own, that works.
+                //
+                // This check would be a nice to have, but not necessary. Right now, the subformat
+                // used will always be `IEEE_FLOAT`, so this check will be useless if nothing
+                // changes.
+                //
+                // if !IsEqualGUID(
+                //     &{ wave_format_extensible.SubFormat },
+                //     &KSDATAFORMAT_SUBTYPE_IEEE_FLOAT,
+                // ) {
+                //     warn!("Audio Engine format is NOT IEEE FLOAT");
+                // }
 
                 let audio_engine_extensible_format = format!(
                     "\nSamples: {}, \ndwChannelMask: {}, \nSubFormat: {}-{}-{}-{:?}",

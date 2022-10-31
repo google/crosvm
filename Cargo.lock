@@ -2191,8 +2191,10 @@ name = "win_audio"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "audio_streams",
  "base",
+ "cros_async",
  "libc",
  "metrics",
  "once_cell",

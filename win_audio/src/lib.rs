@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#![cfg(windows)]
 #![allow(non_upper_case_globals)]
 include!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -25,17 +24,36 @@ mod win_audio_impl;
 use std::error;
 use std::sync::Arc;
 
+use audio_streams::AsyncPlaybackBufferStream;
 use audio_streams::NoopStream;
 use audio_streams::NoopStreamSource;
+use audio_streams::NoopStreamSourceGenerator;
 use audio_streams::PlaybackBufferStream;
 use audio_streams::SampleFormat;
 use audio_streams::StreamSource;
 use base::info;
 use base::warn;
 use sync::Mutex;
-use win_audio_impl::*;
+use win_audio_impl::async_stream::WinAudioStreamSourceGenerator;
+pub use win_audio_impl::*;
 
 pub type BoxError = Box<dyn error::Error + Send + Sync>;
+
+pub trait WinStreamSourceGenerator: Send + Sync {
+    fn generate(&self) -> Result<Box<dyn WinAudioServer>, BoxError>;
+}
+
+impl WinStreamSourceGenerator for WinAudioStreamSourceGenerator {
+    fn generate(&self) -> std::result::Result<Box<dyn WinAudioServer>, BoxError> {
+        Ok(Box::new(WinAudio::new()?))
+    }
+}
+
+impl WinStreamSourceGenerator for NoopStreamSourceGenerator {
+    fn generate(&self) -> Result<Box<dyn WinAudioServer>, BoxError> {
+        Ok(Box::new(NoopStreamSource))
+    }
+}
 
 /// Contains information about the audio engine's properties, such as its audio sample format
 /// and its period in frames.
@@ -66,9 +84,22 @@ pub trait WinAudioServer: StreamSource {
         buffer_size: usize,
     ) -> Result<(Arc<Mutex<Box<dyn PlaybackBufferStream>>>, AudioSharedFormat), BoxError>;
 
+    fn new_async_playback_stream_and_get_shared_format(
+        &mut self,
+        _num_channels: usize,
+        _format: SampleFormat,
+        _frame_rate: usize,
+        _buffer_size: usize,
+        _ex: &dyn audio_streams::AudioStreamsExecutor,
+    ) -> Result<(Box<dyn AsyncPlaybackBufferStream>, AudioSharedFormat), BoxError> {
+        unimplemented!()
+    }
+
     /// Evict the playback stream cache so that the audio device can be released, thus allowing
     /// for machines to go to sleep.
-    fn evict_playback_stream_cache(&mut self);
+    fn evict_playback_stream_cache(&mut self) {
+        unimplemented!()
+    }
 
     /// Returns true if audio server is a noop stream. This determine if evicting a cache is worth
     /// doing
@@ -140,6 +171,57 @@ impl WinAudioServer for WinAudio {
         Ok((playback_buffer_stream, audio_shared_format))
     }
 
+    fn new_async_playback_stream_and_get_shared_format(
+        &mut self,
+        num_channels: usize,
+        _format: SampleFormat,
+        frame_rate: usize,
+        buffer_size: usize,
+        ex: &dyn audio_streams::AudioStreamsExecutor,
+    ) -> Result<(Box<dyn AsyncPlaybackBufferStream>, AudioSharedFormat), BoxError> {
+        let hr = WinAudio::co_init_once_per_thread();
+        let _ = check_hresult!(hr, RenderError::from(hr), "Co Initialized failed");
+
+        let (async_playback_buffer_stream, audio_shared_format): (
+            Box<dyn AsyncPlaybackBufferStream>,
+            AudioSharedFormat,
+        ) = match win_audio_impl::WinAudioRenderer::new_async(
+            num_channels,
+            frame_rate as u32,
+            buffer_size,
+            ex,
+        ) {
+            Ok(renderer) => {
+                let audio_shared_format = renderer.device.audio_shared_format;
+                let renderer_box = Box::new(renderer) as Box<dyn AsyncPlaybackBufferStream>;
+                (renderer_box, audio_shared_format)
+            }
+            Err(e) => {
+                warn!(
+                    "Failed to create WinAudioRenderer. Fallback to NoopStream with error: {}",
+                    e
+                );
+                (
+                    Box::new(NoopStream::new(
+                        num_channels,
+                        SampleFormat::S16LE,
+                        frame_rate as u32,
+                        buffer_size,
+                    )),
+                    AudioSharedFormat {
+                        bit_depth: 16,
+                        frame_rate,
+                        channels: 2,
+                        shared_audio_engine_period_in_frames: frame_rate / 100,
+                        channel_mask: None,
+                    },
+                )
+            }
+        };
+
+        Ok((async_playback_buffer_stream, audio_shared_format))
+    }
+
     fn evict_playback_stream_cache(&mut self) {
         self.cached_playback_buffer_stream = None;
     }
@@ -170,10 +252,6 @@ impl WinAudioServer for NoopStreamSource {
                 channel_mask: None,
             },
         ))
-    }
-
-    fn evict_playback_stream_cache(&mut self) {
-        unimplemented!()
     }
 
     fn is_noop_stream(&self) -> bool {

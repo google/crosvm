@@ -9,18 +9,24 @@
 use std::io::Result;
 #[cfg(unix)]
 use std::os::unix::net::UnixStream;
+#[cfg(windows)]
+use std::os::windows::io::RawHandle;
 use std::time::Duration;
 
 use async_trait::async_trait;
 #[cfg(unix)]
 use audio_streams::async_api::AsyncStream;
 use audio_streams::async_api::AudioStreamsExecutor;
+use audio_streams::async_api::EventAsyncWrapper;
 use audio_streams::async_api::ReadAsync;
 use audio_streams::async_api::ReadWriteAsync;
 use audio_streams::async_api::WriteAsync;
+#[cfg(windows)]
+use base::{Event, FromRawDescriptor};
 
 #[cfg(unix)]
 use super::AsyncWrapper;
+use crate::EventAsync;
 use crate::IntoAsync;
 use crate::IoSourceExt;
 use crate::TimerAsync;
@@ -62,12 +68,29 @@ impl<T: IntoAsync + Send> WriteAsync for IoSourceWrapper<T> {
 impl<T: IntoAsync + Send> ReadWriteAsync for IoSourceWrapper<T> {}
 
 #[async_trait(?Send)]
+impl EventAsyncWrapper for EventAsync {
+    async fn wait(&self) -> Result<u64> {
+        self.next_val().await.map_err(Into::into)
+    }
+}
+
+#[async_trait(?Send)]
 impl AudioStreamsExecutor for super::Executor {
     #[cfg(unix)]
     fn async_unix_stream(&self, stream: UnixStream) -> Result<AsyncStream> {
         return Ok(Box::new(IoSourceWrapper {
             source: self.async_from(AsyncWrapper::new(stream))?,
         }));
+    }
+
+    /// # Safety
+    /// This is only safe if `event` is a handle to a Windows Event.
+    #[cfg(windows)]
+    unsafe fn async_event(&self, event: RawHandle) -> Result<Box<dyn EventAsyncWrapper>> {
+        Ok(Box::new(
+            EventAsync::new(Event::from_raw_descriptor(event), self)
+                .map_err(std::io::Error::from)?,
+        ))
     }
 
     async fn delay(&self, dur: Duration) -> Result<()> {
