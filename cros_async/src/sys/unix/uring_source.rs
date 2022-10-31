@@ -228,6 +228,8 @@ mod tests {
     use std::fs::OpenOptions;
     use std::path::PathBuf;
 
+    use tempfile::tempfile;
+
     use super::super::uring_executor::is_uring_stable;
     use super::super::UringSource;
     use super::*;
@@ -575,11 +577,7 @@ mod tests {
         }
 
         async fn go(ex: &URingExecutor) {
-            let f = OpenOptions::new()
-                .create(true)
-                .write(true)
-                .open("/tmp/write_from_vec")
-                .unwrap();
+            let f = tempfile().unwrap();
             let source = UringSource::new(f, ex).unwrap();
             let v = vec![0x55u8; 64];
             let vw = Arc::new(crate::mem::VecIoWrapper::from(v));
@@ -601,12 +599,7 @@ mod tests {
         }
 
         async fn go(ex: &URingExecutor) {
-            let f = OpenOptions::new()
-                .create(true)
-                .truncate(true)
-                .write(true)
-                .open("/tmp/write_from_vec")
-                .unwrap();
+            let f = tempfile().unwrap();
             let source = UringSource::new(f, ex).unwrap();
             let v = vec![0x55u8; 32];
             let v_ptr = v.as_ptr();
@@ -626,12 +619,7 @@ mod tests {
         }
 
         async fn go(ex: &URingExecutor) {
-            let f = OpenOptions::new()
-                .create(true)
-                .truncate(true)
-                .write(true)
-                .open("/tmp/write_from_vec")
-                .unwrap();
+            let f = tempfile().unwrap();
             let source = UringSource::new(f, ex).unwrap();
             let v = vec![0x55u8; 32];
             let v2 = vec![0x55u8; 32];
@@ -656,13 +644,7 @@ mod tests {
 
         let ex = URingExecutor::new().unwrap();
         ex.run_until(async {
-            let mut f = OpenOptions::new()
-                .create(true)
-                .truncate(true)
-                .read(true)
-                .write(true)
-                .open("/tmp/write_from_vec")
-                .unwrap();
+            let mut f = tempfile().unwrap();
             let source = UringSource::new(f.try_clone().unwrap(), &ex).unwrap();
             assert_eq!(
                 32,
