@@ -305,7 +305,7 @@ impl Window {
     /// Updates the rectangle in the window's client area to which gfxstream renders.
     pub fn update_virtual_display_projection(
         &self,
-        #[allow(unsed)] projection_box: &Box2D<i32, HostWindowSpace>,
+        #[allow(unused)] projection_box: &Box2D<i32, HostWindowSpace>,
     ) {
         // Safe because `Window` object won't outlive the HWND.
         #[cfg(feature = "gfxstream")]
