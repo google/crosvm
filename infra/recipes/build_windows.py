@@ -37,6 +37,13 @@ def RunSteps(api):
                 "--verbose",
             ],
         )
+        api.step(
+            "Clippy windows crosvm",
+            [
+                "vpython3",
+                "./tools/clippy",
+            ],
+        )
 
 
 def GenTests(api):
