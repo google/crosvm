@@ -131,10 +131,6 @@ impl PlatformEvent {
         })
     }
 
-    pub fn new_auto_reset() -> Result<PlatformEvent> {
-        PlatformEvent::new_with_manual_reset(false)
-    }
-
     /// See `Event::signal`.
     pub fn signal(&self) -> Result<()> {
         let event_result = unsafe { SetEvent(self.event_handle.as_raw_descriptor()) };
@@ -271,7 +267,7 @@ mod tests {
 
     #[test]
     fn read_write_auto_reset() {
-        let evt = PlatformEvent::new_auto_reset().unwrap();
+        let evt = PlatformEvent::new_with_manual_reset(false).unwrap();
         evt.signal().unwrap();
 
         // Wait for the notification.

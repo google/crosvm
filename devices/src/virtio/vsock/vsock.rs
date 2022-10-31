@@ -2,6 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// TODO(247548758): Remove this once all the wanrning are fixed.
+#![allow(clippy::await_holding_lock)]
+
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
@@ -875,7 +878,7 @@ impl Worker {
         mut rx_queue_evt: EventAsync,
         ex: &Executor,
     ) -> PortPair {
-        while let Some((header, mut data)) = packet_recv_queue.next().await {
+        while let Some((header, data)) = packet_recv_queue.next().await {
             if !self
                 .handle_tx_packet(header, &data, send_queue, &mut rx_queue_evt, ex)
                 .await
@@ -988,8 +991,7 @@ impl Worker {
                     )
                     .await
                     .expect("vsock: failed to write to queue");
-                    let _ = self
-                        .connection_event
+                    self.connection_event
                         .signal()
                         .expect("vsock: failed to write to event");
                 } else {

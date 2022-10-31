@@ -2120,8 +2120,6 @@ where
     )
     .exit_context(Exit::BuildVm, "the architecture failed to build the vm")?;
 
-    let _render_node_host = ();
-
     #[cfg(feature = "stats")]
     let stats = if cfg.exit_stats {
         Some(Arc::new(Mutex::new(StatisticsCollector::new())))

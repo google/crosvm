@@ -371,7 +371,7 @@ impl StreamChannel {
     /// Blocks until the pipe buffer is empty.
     /// NOTE: that this will only work for server pipes on Windows.
     pub fn flush_blocking(&self) -> io::Result<()> {
-        self.pipe_conn.flush_data_blocking().map_err(|e| e)
+        self.pipe_conn.flush_data_blocking()
     }
 }
 

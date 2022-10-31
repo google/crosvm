@@ -40,6 +40,7 @@ use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vhost::user::device;
 #[cfg(feature = "gpu")]
 use devices::virtio::GpuParameters;
+#[cfg(unix)]
 use devices::virtio::NetParameters;
 #[cfg(feature = "audio")]
 use devices::Ac97Parameters;

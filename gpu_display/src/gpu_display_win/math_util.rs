@@ -39,7 +39,7 @@ impl SizeExtension for Size {
         expected_aspect_ratio: f32,
         should_adjust_width: bool,
     ) -> Self {
-        let mut size = original_size.clone();
+        let mut size = *original_size;
         if should_adjust_width {
             size.width = (size.height as f32 * expected_aspect_ratio).round() as i32;
         } else {
@@ -50,7 +50,7 @@ impl SizeExtension for Size {
 
     fn get_largest_inner_rect_size(original_size: &Self, expected_aspect_ratio: f32) -> Self {
         Size::create_and_enforce_aspect_ratio(
-            &original_size,
+            original_size,
             expected_aspect_ratio,
             /* should_adjust_width */ original_size.aspect_ratio() > expected_aspect_ratio,
         )

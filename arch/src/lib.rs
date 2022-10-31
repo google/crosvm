@@ -571,6 +571,7 @@ pub fn generate_virtio_mmio_bus(
     vm: &mut impl Vm,
     mut sdts: Vec<SDT>,
 ) -> Result<(BTreeMap<u32, String>, Vec<SDT>), DeviceRegistrationError> {
+    #[cfg_attr(windows, allow(unused_mut))]
     let mut pid_labels = BTreeMap::new();
 
     for dev_value in devices.into_iter() {

@@ -19,7 +19,7 @@ macro_rules! volatile_impl {
         use std::io::Seek as _;
 
         #[allow(unused_imports)]
-        use crate::AsRawDescriptor as _;
+        use $crate::AsRawDescriptor as _;
         impl FileReadWriteVolatile for $ty {
             fn read_volatile(&mut self, slice: VolatileSlice) -> Result<usize> {
                 // Safe because only bytes inside the slice are accessed and the kernel is expected

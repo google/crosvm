@@ -245,9 +245,9 @@ impl std::fmt::Display for BusStatistics {
         for (opname, op) in &[("Read", BusOperation::Read), ("Write", BusOperation::Write)] {
             writeln!(
                 f,
-                "Device Name                   Device Id      Address Range            {:<15}{:<15}",
-                format!("{}s", opname),
-                format!("{} Duration", opname)
+                "Device Name                   Device Id      Address Range            {:<15}s{:<15} Duration",
+                opname,
+                opname
             )?;
 
             let mut device_indices: Vec<usize> = (0..self.device_stats.len()).collect();
@@ -257,6 +257,7 @@ impl std::fmt::Display for BusStatistics {
             for i in device_indices.iter() {
                 let device_identifier = &self.device_identifiers.lock()[*i];
                 let (count, duration) = self.device_stats[*i].get(*op);
+                #[allow(clippy::format_in_format_args)]
                 writeln!(
                     f,
                     "{:<30}0x{:<13x}{:<25}{:<15}{:<15}",

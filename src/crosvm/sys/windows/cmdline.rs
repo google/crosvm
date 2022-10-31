@@ -41,7 +41,7 @@ pub struct RunMetricsCommand {
     pub bootstrap: usize,
 }
 
-const RUN_MP_CMD_NAME: &'static str = "run-mp";
+const RUN_MP_CMD_NAME: &str = "run-mp";
 
 /// Start a new mp crosvm instance
 pub struct RunMPCommand {
@@ -68,6 +68,9 @@ impl SubCommand for RunMPCommand {
         description: "Start a new mp crosvm instance",
     };
 }
+
+// Suppress complaint about RunMPCommand and RunMetricsCommand having a large size variation.
+#[allow(clippy::large_enum_variant)]
 #[derive(FromArgs)]
 #[argh(subcommand)]
 /// Windows Devices
