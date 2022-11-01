@@ -32,3 +32,11 @@ vm_control = { path = "../vm_control" }
 cc = "1.0.25"
 pkg-config = "0.3.11"
 cfg-if = "1.0.0"
+
+[[bin]]
+name = "simple"
+path = "examples/simple.rs"
+
+[[bin]]
+name = "simple_open"
+path = "examples/simple_open.rs"
