@@ -29,20 +29,6 @@ impl<T> Picture<T> {
         }
     }
 
-    /// Gets a shared reference to the backend handle of this picture. Assumes
-    /// that this picture is backed by a handle, which may not be the case if
-    /// the picture has "show_previous_frame" set, for example.
-    pub fn backend_handle_unchecked(&self) -> &T {
-        self.backend_handle.as_ref().unwrap()
-    }
-
-    /// Gets an exclusive reference to the backend handle of this picture.
-    /// Assumes that this picture is backed by a handle, which may not be the
-    /// case if the picture has "show_previous_frame" set, for example.
-    pub fn backend_handle_unchecked_mut(&mut self) -> &mut T {
-        self.backend_handle.as_mut().unwrap()
-    }
-
     /// Whether two pictures are the same.
     pub fn same(lhs: &Rc<RefCell<Self>>, rhs: &Rc<RefCell<Self>>) -> bool {
         Rc::ptr_eq(lhs, rhs)

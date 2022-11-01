@@ -1147,7 +1147,7 @@ mod tests {
     use crate::decoders::h264::decoder::tests::process_ready_frames;
     use crate::decoders::h264::decoder::tests::run_decoding_loop;
     use crate::decoders::h264::decoder::Decoder;
-    use crate::decoders::MappableHandle;
+    use crate::decoders::DynPicture;
 
     fn as_vaapi_backend(
         backend: &dyn StatelessDecoderBackend<Handle = AssociatedHandle>,
@@ -1164,7 +1164,7 @@ mod tests {
         frame_num: i32,
     ) {
         let mut picture = handle.picture_mut();
-        let backend_handle = picture.backend_handle_unchecked_mut();
+        let backend_handle = picture.dyn_mappable_handle_mut();
 
         let resolution = backend_handle.mapped_resolution().unwrap();
 

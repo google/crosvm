@@ -372,20 +372,6 @@ impl<BackendHandle> Picture<BackendHandle> {
         self.is_second_field = true;
     }
 
-    /// Gets a shared reference to the backend handle of this picture. Assumes
-    /// that this picture is backed by a handle, which may not be the case if
-    /// the picture is a "non-existing" picture, for example.
-    pub fn backend_handle_unchecked(&self) -> &BackendHandle {
-        self.backend_handle.as_ref().unwrap()
-    }
-
-    /// Gets an exclusive reference to the backend handle of this picture.
-    /// Assumes that this picture is backed by a handle, which may not be the
-    /// case if the picture is a "non-existing" picture, for example.
-    pub fn backend_handle_unchecked_mut(&mut self) -> &mut BackendHandle {
-        self.backend_handle.as_mut().unwrap()
-    }
-
     /// Get a reference to the picture's timestamp.
     pub fn timestamp(&self) -> u64 {
         self.timestamp

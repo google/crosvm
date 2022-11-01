@@ -142,7 +142,11 @@ pub trait DynDecodedHandle {
 }
 
 pub trait DynPicture {
+    /// Gets a shared reference to the backend handle of this picture. Assumes
+    /// that this picture is backed by a handle and panics if not the case.
     fn dyn_mappable_handle(&self) -> &dyn MappableHandle;
+    /// Gets an exclusive reference to the backend handle of this picture.
+    /// Assumes that this picture is backed by a handle and panics if not the case.
     fn dyn_mappable_handle_mut(&mut self) -> &mut dyn MappableHandle;
 }
 
