@@ -32,6 +32,7 @@ sudo apt-get install --yes --no-install-recommends \
     libwayland-dev \
     libxext-dev \
     make \
+    mold \
     nasm \
     ninja-build \
     openssh-client \
@@ -42,6 +43,7 @@ sudo apt-get install --yes --no-install-recommends \
     qemu-system-x86 \
     rsync \
     screen \
+    tmux \
     wget \
     wine64 \
     gcc-mingw-w64-x86-64-win32 \
@@ -83,5 +85,5 @@ $(dirname "$0")/install-docs-deps
 
 # Install wine related dependencies if this is a local install and not a docker build
 if [[ -z "${DOCKER_WINE_SETUP}" ]]; then
-  $(dirname "$0")/install-wine-deps
+    $(dirname "$0")/install-wine-deps
 fi
