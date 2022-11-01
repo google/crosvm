@@ -213,3 +213,35 @@ impl<CodecData, BackendHandle: MappableHandle> DynPicture for Picture<CodecData,
         self.backend_handle.as_mut().unwrap()
     }
 }
+
+/// The handle type used by the stateless decoder backend. The only requirement
+/// from implementors is that they give access to the underlying Picture and
+/// that they can be (cheaply) cloned.
+pub trait DecodedHandle: Clone {
+    /// Codec-specific data for the handle.
+    type CodecData;
+    /// The type of the handle used by the backend.
+    type BackendHandle;
+
+    /// Returns the actual container of the inner `Picture`.
+    fn picture_container(&self) -> &Rc<RefCell<Picture<Self::CodecData, Self::BackendHandle>>>;
+    /// Returns the display resolution at the time this handle was decoded.
+    fn display_resolution(&self) -> Resolution;
+    /// Returns the display order for this picture, if set by the decoder.
+    fn display_order(&self) -> Option<u64>;
+    /// Sets the display order for this picture.
+    fn set_display_order(&mut self, display_order: u64);
+
+    /// Returns a shared reference to the inner `Picture`.
+    fn picture(&self) -> Ref<Picture<Self::CodecData, Self::BackendHandle>> {
+        self.picture_container().borrow()
+    }
+    /// Returns a mutable reference to the inner `Picture`.
+    fn picture_mut(&self) -> RefMut<Picture<Self::CodecData, Self::BackendHandle>> {
+        self.picture_container().borrow_mut()
+    }
+    /// Returns the timestamp for the picture.
+    fn timestamp(&self) -> u64 {
+        self.picture().timestamp()
+    }
+}

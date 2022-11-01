@@ -598,7 +598,7 @@ impl StatelessDecoderBackend for Backend {
             // Remove from the queue in order.
             let job = &self.pending_jobs[i];
 
-            if Vp8Picture::same(&job.vp8_picture, &handle.picture_container()) {
+            if Vp8Picture::same(&job.vp8_picture, handle.picture_container()) {
                 let job = self.pending_jobs.remove(i).unwrap();
 
                 let current_picture = job.va_picture.sync()?;
@@ -714,22 +714,11 @@ impl VideoDecoderBackend for Backend {
 type InnerHandle = Vp8Picture<GenericBackendHandle>;
 
 impl DecodedHandle for VADecodedHandle<InnerHandle> {
+    type CodecData = Header;
     type BackendHandle = GenericBackendHandle;
 
-    fn picture(&self) -> Ref<Vp8Picture<Self::BackendHandle>> {
-        self.inner().borrow()
-    }
-
-    fn picture_mut(&self) -> RefMut<Vp8Picture<Self::BackendHandle>> {
-        self.inner().borrow_mut()
-    }
-
-    fn picture_container(&self) -> Rc<RefCell<Vp8Picture<Self::BackendHandle>>> {
-        self.inner().clone()
-    }
-
-    fn timestamp(&self) -> u64 {
-        self.picture().timestamp()
+    fn picture_container(&self) -> &ContainedPicture<Self::BackendHandle> {
+        self.inner()
     }
 
     fn display_resolution(&self) -> Resolution {

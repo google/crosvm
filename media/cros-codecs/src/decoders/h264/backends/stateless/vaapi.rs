@@ -37,6 +37,7 @@ use crate::decoders::h264::parser::Slice;
 use crate::decoders::h264::parser::Sps;
 use crate::decoders::h264::picture::Field;
 use crate::decoders::h264::picture::H264Picture;
+use crate::decoders::h264::picture::PictureData;
 use crate::decoders::h264::picture::Reference;
 use crate::decoders::DynDecodedHandle;
 use crate::decoders::DynPicture;
@@ -1024,7 +1025,7 @@ impl StatelessDecoderBackend for Backend {
             // Remove from the queue in order.
             let job = &self.pending_jobs[i];
 
-            if H264Picture::same(&job.h264_picture, &handle.picture_container()) {
+            if H264Picture::same(&job.h264_picture, handle.picture_container()) {
                 let job = self.pending_jobs.remove(i).unwrap();
 
                 let current_picture = job.va_picture.sync()?;
@@ -1053,22 +1054,11 @@ impl StatelessDecoderBackend for Backend {
 type InnerHandle = H264Picture<GenericBackendHandle>;
 
 impl DecodedHandle for VADecodedHandle<InnerHandle> {
+    type CodecData = PictureData<Self::BackendHandle>;
     type BackendHandle = GenericBackendHandle;
 
-    fn picture(&self) -> Ref<H264Picture<Self::BackendHandle>> {
-        self.inner().borrow()
-    }
-
-    fn picture_mut(&self) -> RefMut<H264Picture<Self::BackendHandle>> {
-        self.inner().borrow_mut()
-    }
-
-    fn picture_container(&self) -> Rc<RefCell<H264Picture<Self::BackendHandle>>> {
-        self.inner().clone()
-    }
-
-    fn timestamp(&self) -> u64 {
-        self.picture().timestamp()
+    fn picture_container(&self) -> &ContainedPicture<Self::BackendHandle> {
+        self.inner()
     }
 
     fn display_resolution(&self) -> Resolution {

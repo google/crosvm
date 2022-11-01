@@ -11,11 +11,12 @@ use anyhow::Result;
 use log::debug;
 
 use crate::decoders::h264::backends::stateless::ContainedPicture;
-use crate::decoders::h264::backends::stateless::DecodedHandle;
 use crate::decoders::h264::picture::Field;
 use crate::decoders::h264::picture::H264Picture;
 use crate::decoders::h264::picture::IsIdr;
+use crate::decoders::h264::picture::PictureData;
 use crate::decoders::h264::picture::Reference;
+use crate::decoders::DecodedHandle;
 
 pub struct Dpb<T> {
     /// The list of handles to decoded pictures.
@@ -30,7 +31,10 @@ pub struct Dpb<T> {
     interlaced: bool,
 }
 
-impl<T: DecodedHandle> Dpb<T> {
+impl<T> Dpb<T>
+where
+    T: DecodedHandle<CodecData = PictureData<<T as DecodedHandle>::BackendHandle>>,
+{
     /// Returns an iterator over the underlying H264 pictures stored in the
     /// handles.
     pub fn pictures(
@@ -179,7 +183,7 @@ impl<T: DecodedHandle> Dpb<T> {
             let first_field_rc = pic_mut.other_field_unchecked();
             let mut first_field = first_field_rc.borrow_mut();
             drop(pic_mut);
-            first_field.set_second_field_to(handle.picture_container());
+            first_field.set_second_field_to(Rc::clone(handle.picture_container()));
             pic_mut = handle.picture_mut();
         }
 
@@ -285,7 +289,7 @@ impl<T: DecodedHandle> Dpb<T> {
     fn get_position(&self, needle: &ContainedPicture<T::BackendHandle>) -> Option<usize> {
         self.handles.iter().position(|handle| {
             let p = handle.picture_container();
-            Rc::ptr_eq(&p, needle)
+            Rc::ptr_eq(p, needle)
         })
     }
 
@@ -301,7 +305,7 @@ impl<T: DecodedHandle> Dpb<T> {
         pic.needed_for_output = false;
 
         if !pic.is_ref() || flush {
-            let index = self.get_position(&pic_rc).unwrap();
+            let index = self.get_position(pic_rc).unwrap();
             log::debug!("removed picture {:#?} from dpb", pic);
             self.handles.remove(index);
         }
@@ -381,7 +385,10 @@ impl<Handle> Default for Dpb<Handle> {
     }
 }
 
-impl<Handle: DecodedHandle> std::fmt::Debug for Dpb<Handle> {
+impl<T> std::fmt::Debug for Dpb<T>
+where
+    T: DecodedHandle<CodecData = PictureData<<T as DecodedHandle>::BackendHandle>>,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let pics = self.pictures().enumerate().collect::<Vec<_>>();
         f.debug_struct("Dpb")

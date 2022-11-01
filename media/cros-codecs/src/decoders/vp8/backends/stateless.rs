@@ -2,9 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cell::Ref;
 use std::cell::RefCell;
-use std::cell::RefMut;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
@@ -12,9 +10,8 @@ use crate::decoders::vp8::parser::Header;
 use crate::decoders::vp8::parser::Parser;
 use crate::decoders::vp8::picture::Vp8Picture;
 use crate::decoders::BlockingMode;
-use crate::decoders::MappableHandle;
+use crate::decoders::DecodedHandle;
 use crate::decoders::VideoDecoderBackend;
-use crate::Resolution;
 
 #[cfg(test)]
 pub mod dummy;
@@ -87,26 +84,3 @@ pub trait StatelessDecoderBackend: VideoDecoderBackend + downcast_rs::Downcast {
     fn as_video_decoder_backend(&self) -> &dyn VideoDecoderBackend;
 }
 downcast_rs::impl_downcast!(StatelessDecoderBackend assoc Handle where Handle: DecodedHandle);
-
-/// The handle type used by the stateless decoder backend. The only requirement
-/// from implementors is that they give access to the underlying Picture and
-/// that they can be (cheaply) cloned.
-pub trait DecodedHandle: Clone {
-    /// The type of the handle used by the backend.
-    type BackendHandle: MappableHandle;
-
-    /// Returns a shared reference to the inner `Picture`.
-    fn picture(&self) -> Ref<Vp8Picture<Self::BackendHandle>>;
-    /// Returns a mutable reference to the inner `Picture`.
-    fn picture_mut(&self) -> RefMut<Vp8Picture<Self::BackendHandle>>;
-    /// Returns the actual container of the inner `Picture`.
-    fn picture_container(&self) -> ContainedPicture<Self::BackendHandle>;
-    /// Returns the timestamp for the picture.
-    fn timestamp(&self) -> u64;
-    /// Returns the display resolution at the time this handle was decoded.
-    fn display_resolution(&self) -> Resolution;
-    /// Returns the display order for this picture, if set by the decoder.
-    fn display_order(&self) -> Option<u64>;
-    /// Sets the display order for this picture.
-    fn set_display_order(&mut self, display_order: u64);
-}

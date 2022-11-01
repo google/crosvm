@@ -6,7 +6,6 @@ use anyhow::anyhow;
 use anyhow::Result;
 use log::debug;
 
-use crate::decoders::vp9::backends::stateless::DecodedHandle;
 use crate::decoders::vp9::backends::stateless::StatelessDecoderBackend;
 use crate::decoders::vp9::parser::BitDepth;
 use crate::decoders::vp9::parser::Frame;
@@ -17,6 +16,7 @@ use crate::decoders::vp9::parser::Profile;
 use crate::decoders::vp9::parser::NUM_REF_FRAMES;
 use crate::decoders::vp9::picture::Vp9Picture;
 use crate::decoders::BlockingMode;
+use crate::decoders::DecodedHandle;
 use crate::decoders::DynDecodedHandle;
 use crate::decoders::Result as VideoDecoderResult;
 use crate::decoders::VideoDecoder;
@@ -67,7 +67,7 @@ impl Default for NegotiationStatus {
     }
 }
 
-pub struct Decoder<T> {
+pub struct Decoder<T: DecodedHandle<CodecData = Header>> {
     /// A parser to extract bitstream data and build frame data in turn
     parser: Parser,
 
@@ -103,7 +103,7 @@ pub struct Decoder<T> {
     test_params: TestParams<T>,
 }
 
-impl<T: DecodedHandle + DynDecodedHandle + 'static> Decoder<T> {
+impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> Decoder<T> {
     /// Create a new codec backend for VP8.
     pub fn new(
         backend: Box<dyn StatelessDecoderBackend<Handle = T>>,
@@ -254,7 +254,9 @@ impl<T: DecodedHandle + DynDecodedHandle + 'static> Decoder<T> {
     }
 }
 
-impl<T: DecodedHandle + DynDecodedHandle + 'static> VideoDecoder for Decoder<T> {
+impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> VideoDecoder
+    for Decoder<T>
+{
     fn decode(
         &mut self,
         timestamp: u64,
@@ -439,9 +441,10 @@ pub mod tests {
     use bytes::Buf;
 
     use crate::decoders::vp9::backends::stateless::dummy::Backend;
-    use crate::decoders::vp9::backends::stateless::DecodedHandle;
     use crate::decoders::vp9::decoder::Decoder;
+    use crate::decoders::vp9::parser::Header;
     use crate::decoders::BlockingMode;
+    use crate::decoders::DecodedHandle;
     use crate::decoders::DynDecodedHandle;
     use crate::decoders::VideoDecoder;
 
@@ -463,7 +466,7 @@ pub mod tests {
     }
 
     pub fn run_decoding_loop<
-        Handle: DecodedHandle + DynDecodedHandle + 'static,
+        Handle: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static,
         F: FnMut(&mut Decoder<Handle>),
     >(
         decoder: &mut Decoder<Handle>,
@@ -493,7 +496,7 @@ pub mod tests {
         }
     }
 
-    pub fn process_ready_frames<Handle: DecodedHandle + DynDecodedHandle>(
+    pub fn process_ready_frames<Handle: DecodedHandle<CodecData = Header> + DynDecodedHandle>(
         decoder: &mut Decoder<Handle>,
         action: &mut dyn FnMut(&mut Decoder<Handle>, &Handle),
     ) {

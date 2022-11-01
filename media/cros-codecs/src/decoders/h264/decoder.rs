@@ -12,7 +12,6 @@ use anyhow::Result;
 use enumn::N;
 use log::debug;
 
-use crate::decoders::h264::backends::stateless::DecodedHandle;
 use crate::decoders::h264::backends::stateless::StatelessDecoderBackend;
 use crate::decoders::h264::dpb::Dpb;
 use crate::decoders::h264::parser::Nalu;
@@ -25,8 +24,10 @@ use crate::decoders::h264::parser::Sps;
 use crate::decoders::h264::picture::Field;
 use crate::decoders::h264::picture::H264Picture;
 use crate::decoders::h264::picture::IsIdr;
+use crate::decoders::h264::picture::PictureData;
 use crate::decoders::h264::picture::Reference;
 use crate::decoders::BlockingMode;
+use crate::decoders::DecodedHandle;
 use crate::decoders::DynDecodedHandle;
 use crate::decoders::Error as VideoDecoderError;
 use crate::decoders::Result as VideoDecoderResult;
@@ -176,7 +177,11 @@ impl Default for NegotiationStatus {
     }
 }
 
-pub struct Decoder<T: DecodedHandle + DynDecodedHandle> {
+pub struct Decoder<T>
+where
+    T: DecodedHandle<CodecData = PictureData<<T as DecodedHandle>::BackendHandle>>
+        + DynDecodedHandle,
+{
     /// A parser to extract bitstream metadata
     parser: Parser,
 
@@ -267,7 +272,12 @@ pub struct Decoder<T: DecodedHandle + DynDecodedHandle> {
     params: Params<T>,
 }
 
-impl<T: DecodedHandle + DynDecodedHandle + 'static> Decoder<T> {
+impl<T> Decoder<T>
+where
+    T: DecodedHandle<CodecData = PictureData<<T as DecodedHandle>::BackendHandle>>
+        + DynDecodedHandle
+        + 'static,
+{
     // Creates a new instance of the decoder.
     pub fn new(
         backend: Box<dyn StatelessDecoderBackend<Handle = T>>,
@@ -818,7 +828,7 @@ impl<T: DecodedHandle + DynDecodedHandle + 'static> Decoder<T> {
         {
             let mut equals = true;
             for (x1, x2) in self.ref_pic_list_b0.iter().zip(self.ref_pic_list_b1.iter()) {
-                if !Rc::ptr_eq(&x1.picture_container(), &x2.picture_container()) {
+                if !Rc::ptr_eq(x1.picture_container(), x2.picture_container()) {
                     equals = false;
                     break;
                 }
@@ -1301,11 +1311,11 @@ impl<T: DecodedHandle + DynDecodedHandle + 'static> Decoder<T> {
                     let fields_do_not_reference_each_other =
                         !H264Picture::same(
                             &dpb_pic.other_field_unchecked(),
-                            &to_mark_as_long.picture_container(),
+                            to_mark_as_long.picture_container(),
                         ) && (to_mark_as_long.picture().other_field().is_none()
                             || !H264Picture::same(
                                 &to_mark_as_long.picture().other_field_unchecked(),
-                                &handle.picture_container(),
+                                handle.picture_container(),
                             ));
 
                     fields_do_not_reference_each_other
@@ -1545,7 +1555,7 @@ impl<T: DecodedHandle + DynDecodedHandle + 'static> Decoder<T> {
                 && handle.picture().other_field().is_some()
                 && H264Picture::same(
                     &handle.picture().other_field_unchecked(),
-                    &self.last_field.as_ref().unwrap().picture_container(),
+                    self.last_field.as_ref().unwrap().picture_container(),
                 )
             {
                 // If we have a cached field for this picture, we must combine
@@ -1575,7 +1585,7 @@ impl<T: DecodedHandle + DynDecodedHandle + 'static> Decoder<T> {
             || handle.picture().other_field().is_none()
             || !H264Picture::same(
                 &handle.picture().other_field_unchecked(),
-                &self.last_field.as_ref().unwrap().picture_container(),
+                self.last_field.as_ref().unwrap().picture_container(),
             )
         {
             // Somehow, the last field is not paired with the current field.
@@ -1585,7 +1595,7 @@ impl<T: DecodedHandle + DynDecodedHandle + 'static> Decoder<T> {
 
             to_output
                 .picture_mut()
-                .set_second_field_to(handle.picture_container());
+                .set_second_field_to(Rc::clone(handle.picture_container()));
 
             self.ready_queue.push(to_output);
         }
@@ -1640,10 +1650,12 @@ impl<T: DecodedHandle + DynDecodedHandle + 'static> Decoder<T> {
             if self.dpb.interlaced() && matches!(handle.picture().field, Field::Frame) {
                 // Split the Frame into two complementary fields so reference
                 // marking is easier. This is inspired by the GStreamer implementation.
-                let other_field = H264Picture::split_frame(handle.picture_container());
+                let other_field = H264Picture::split_frame(Rc::clone(handle.picture_container()));
 
-                self.backend
-                    .new_split_picture(handle.picture_container(), Rc::clone(&other_field))?;
+                self.backend.new_split_picture(
+                    Rc::clone(handle.picture_container()),
+                    Rc::clone(&other_field),
+                )?;
 
                 let other_field = self.backend.new_handle(other_field)?;
 
@@ -1730,7 +1742,7 @@ impl<T: DecodedHandle + DynDecodedHandle + 'static> Decoder<T> {
         let mut pic = H264Picture::new_from_slice(slice, sps, timestamp);
 
         if let Some(first_field) = first_field {
-            pic.set_first_field_to(first_field.picture_container());
+            pic.set_first_field_to(Rc::clone(first_field.picture_container()));
         }
 
         self.compute_pic_order_count(&mut pic)?;
@@ -2396,7 +2408,12 @@ impl<T: DecodedHandle + DynDecodedHandle + 'static> Decoder<T> {
     }
 }
 
-impl<T: DecodedHandle + DynDecodedHandle + 'static> VideoDecoder for Decoder<T> {
+impl<T> VideoDecoder for Decoder<T>
+where
+    T: DecodedHandle<CodecData = PictureData<<T as DecodedHandle>::BackendHandle>>
+        + DynDecodedHandle
+        + 'static,
+{
     fn decode(
         &mut self,
         timestamp: u64,
@@ -2542,19 +2559,23 @@ pub mod tests {
     use std::io::Cursor;
 
     use crate::decoders::h264::backends::stateless::dummy::Backend;
-    use crate::decoders::h264::backends::stateless::DecodedHandle;
     use crate::decoders::h264::decoder::Decoder;
     use crate::decoders::h264::nalu_reader::NaluReader;
     use crate::decoders::h264::parser::Nalu;
     use crate::decoders::h264::parser::NaluType;
+    use crate::decoders::h264::picture::PictureData;
     use crate::decoders::BlockingMode;
+    use crate::decoders::DecodedHandle;
     use crate::decoders::DynDecodedHandle;
     use crate::decoders::VideoDecoder;
 
-    pub fn process_ready_frames<Handle: DecodedHandle + DynDecodedHandle>(
+    pub fn process_ready_frames<Handle>(
         decoder: &mut Decoder<Handle>,
         action: &mut dyn FnMut(&mut Decoder<Handle>, &Handle),
-    ) {
+    ) where
+        Handle: DecodedHandle<CodecData = PictureData<<Handle as DecodedHandle>::BackendHandle>>
+            + DynDecodedHandle,
+    {
         let ready_pics = decoder.params.ready_pics.drain(..).collect::<Vec<_>>();
 
         for handle in ready_pics {
@@ -2562,14 +2583,16 @@ pub mod tests {
         }
     }
 
-    pub fn run_decoding_loop<
-        Handle: DecodedHandle + DynDecodedHandle + 'static,
-        F: FnMut(&mut Decoder<Handle>),
-    >(
+    pub fn run_decoding_loop<Handle, F>(
         decoder: &mut Decoder<Handle>,
         test_stream: &[u8],
         mut on_new_iteration: F,
-    ) {
+    ) where
+        Handle: DecodedHandle<CodecData = PictureData<<Handle as DecodedHandle>::BackendHandle>>
+            + DynDecodedHandle
+            + 'static,
+        F: FnMut(&mut Decoder<Handle>),
+    {
         let mut cursor = Cursor::new(test_stream);
 
         let mut aud_parser = AccessUnitParser::default();

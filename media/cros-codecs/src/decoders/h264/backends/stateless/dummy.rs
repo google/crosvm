@@ -23,6 +23,7 @@ use crate::decoders::h264::parser::Pps;
 use crate::decoders::h264::parser::Slice;
 use crate::decoders::h264::parser::Sps;
 use crate::decoders::h264::picture::H264Picture;
+use crate::decoders::h264::picture::PictureData;
 use crate::decoders::DynDecodedHandle;
 use crate::decoders::DynPicture;
 use crate::decoders::VideoDecoderBackend;
@@ -68,26 +69,15 @@ pub struct Handle {
 pub struct Backend;
 
 impl DecodedHandle for Handle {
+    type CodecData = PictureData<Self::BackendHandle>;
     type BackendHandle = BackendHandle;
 
-    fn picture(&self) -> Ref<H264Picture<Self::BackendHandle>> {
-        self.handle.borrow()
-    }
-
-    fn picture_mut(&self) -> RefMut<H264Picture<Self::BackendHandle>> {
-        self.handle.borrow_mut()
-    }
-
-    fn picture_container(&self) -> ContainedPicture<Self::BackendHandle> {
-        self.handle.clone()
-    }
-
-    fn timestamp(&self) -> u64 {
-        0
+    fn picture_container(&self) -> &ContainedPicture<Self::BackendHandle> {
+        &self.handle
     }
 
     fn display_resolution(&self) -> Resolution {
-        Default::default()
+        self.picture().display_resolution
     }
 
     fn display_order(&self) -> Option<u64> {

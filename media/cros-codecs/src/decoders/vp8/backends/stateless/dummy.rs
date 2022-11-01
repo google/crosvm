@@ -16,6 +16,7 @@ use crate::decoders::vp8::backends::stateless::ContainedPicture;
 use crate::decoders::vp8::backends::stateless::DecodedHandle;
 use crate::decoders::vp8::backends::stateless::StatelessDecoderBackend;
 use crate::decoders::vp8::backends::stateless::Vp8Picture;
+use crate::decoders::vp8::parser::Header;
 use crate::decoders::DynDecodedHandle;
 use crate::decoders::DynPicture;
 use crate::decoders::VideoDecoderBackend;
@@ -61,22 +62,11 @@ pub struct Handle {
 pub struct Backend;
 
 impl DecodedHandle for Handle {
+    type CodecData = Header;
     type BackendHandle = BackendHandle;
 
-    fn picture(&self) -> Ref<Vp8Picture<Self::BackendHandle>> {
-        self.handle.borrow()
-    }
-
-    fn picture_mut(&self) -> RefMut<Vp8Picture<Self::BackendHandle>> {
-        self.handle.borrow_mut()
-    }
-
-    fn picture_container(&self) -> ContainedPicture<Self::BackendHandle> {
-        self.handle.clone()
-    }
-
-    fn timestamp(&self) -> u64 {
-        0
+    fn picture_container(&self) -> &ContainedPicture<Self::BackendHandle> {
+        &self.handle
     }
 
     fn display_resolution(&self) -> Resolution {
