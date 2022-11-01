@@ -28,7 +28,7 @@ The interface is now configured and can be used by crosvm:
 ```sh
 crosvm run \
   ...
-  --tap-name crosvm_tap \
+  --net tap-name=crosvm_tap \
   ...
 ```
 

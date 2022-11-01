@@ -20,20 +20,24 @@ the case of x86 at `arch/x86/boot/compressed/vmlinux`.
 In most cases, you will want to give the VM a virtual block device to use as a root file system:
 
 ```sh
-crosvm run -r "${ROOT_IMAGE}" "${KERNEL_PATH}"
+crosvm run -b "${ROOT_IMAGE},root,ro" "${KERNEL_PATH}"
 ```
 
 The root image must be a path to a disk image formatted in a way that the kernel can read. Typically
-this is a squashfs image made with `mksquashfs` or an ext4 image made with `mkfs.ext4`. By using the
-`-r` argument, the kernel is automatically told to use that image as the root, and therefore can
-only be given once. More disks can be given with `-d` or `--rwdisk` if a writable disk is desired.
+this is a squashfs image made with `mksquashfs` or an ext4 image made with `mkfs.ext4`. By
+specifying the `root` flag, the kernel is automatically told to use that image as the root, and
+therefore it can only be given once. The `ro` flag also makes the disk image read-only for the
+guest. More disks images can be given with `-b` or `--block` if needed.
 
-To run crosvm with a writable rootfs:
+To run crosvm with a writable rootfs, just remove the `ro` flag from the command-line above.
 
 > **WARNING:** Writable disks are at risk of corruption by a malicious or malfunctioning guest OS.
 
+Without the `root` flag, mounting a disk image as the root filesystem requires to pass the
+corresponding kernel argument manually using the `-p` option:
+
 ```sh
-crosvm run --rwdisk "${ROOT_IMAGE}" -p "root=/dev/vda" vmlinux
+crosvm run --block "${ROOT_IMAGE}" -p "root=/dev/vda" vmlinux
 ```
 
 > **NOTE:** If more disks arguments are added prior to the desired rootfs image, the `root=/dev/vda`
@@ -109,8 +113,8 @@ The following are crosvm's default arguments and how to override them.
 
 - 256MB of memory (set with `-m`)
 - 1 virtual CPU (set with `-c`)
-- no block devices (set with `-r`, `-d`, or `--rwdisk`)
-- no network (set with `--host-ip`, `--netmask`, and `--mac`)
+- no block devices (set with `-b`, `--block`)
+- no network device (set with `--net`)
 - only the kernel arguments necessary to run with the supported devices (add more with `-p`)
 - run in multiprocess mode (run in single process mode with `--disable-sandbox`)
 - no control socket (set with `-s`)

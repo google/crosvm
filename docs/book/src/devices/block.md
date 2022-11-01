@@ -11,34 +11,46 @@ fallocate -l 1G disk.img
 mkfs.ext4 disk.img
 ```
 
-Then, pass it with `--rwdisk` flag so the disk will be exposed as `/dev/vda`, `/dev/vdb`, etc. The
+Then, pass it with `--block` flag so the disk will be exposed as `/dev/vda`, `/dev/vdb`, etc. The
 device can be mounted with the `mount` command.
 
 ```sh
 crosvm run \
-  --rwdisk disk.img
+  --block disk.img
   ... # usual crosvm args
 ```
 
-To expose the block device as a read-only disk, you can use `--disk` instead of `--rwdisk`.
+To expose the block device as a read-only disk, you can add the `ro` flag after the disk image path:
+
+```sh
+crosvm run \
+  --block disk.img,ro
+  ... # usual crosvm args
+```
 
 ## Rootfs
 
-If you use a block device as guest's rootfs, you can specify `--root` (for a read-only disk) or
-`--rwroot` (for writable disk). These options are equivalent to `--disk` or `--rwdisk`,
-respectively, except that the `root` variants automatically add a `root=/dev/vdX ro` kernel
-parameter with the corresponding virtio-block device name and read-only (`ro`) or read-write (`rw`)
-option.
+If you use a block device as guest's rootfs, you can add the `root` flag to the `--block` parameter:
+
+```sh
+crosvm run \
+  --block disk.img,root
+  ... # usual crosvm args
+```
+
+This flag automatically adds a `root=/dev/vdX` kernel parameter with the corresponding virtio-block
+device name and read-only (`ro`) or read-write (`rw`) option depending on whether the `ro` flag has
+also been specified or not.
 
 ## Options
 
-The block device flags (`--disk`, `--rwdisk`, `--root`, and `--rwroot`) support additional options
-to enable features and control disk parameters. These may be specified as extra comma-separated
-`key=value` options appended to the required filename option. For example:
+The `--block` parameter support additional options to enable features and control disk parameters.
+These may be specified as extra comma-separated `key=value` options appended to the required
+filename option. For example:
 
 ```sh
 crosvm run
-  --disk disk.img,sparse=false,o_direct=true,block_size=4096,id=MYSERIALNO
+  --block disk.img,ro,sparse=false,o_direct=true,block_size=4096,id=MYSERIALNO
   ... # usual crosvm args
 ```
 
@@ -95,8 +107,7 @@ the `-s` control socket, then using the `crosvm disk` command to send a resize r
 
 `crosvm disk resize DISK_INDEX NEW_SIZE VM_SOCKET`
 
-- `DISK_INDEX`: 0-based index of the block device (counting all `--disk`, `--root`, and `rw`
-  variants in order).
+- `DISK_INDEX`: 0-based index of the block device (counting all `--block` in order).
 - `NEW_SIZE`: desired size of the disk image in bytes.
 - `VM_SOCKET`: path to the VM control socket specified when running crosvm (`-s`/`--socket` option).
 
@@ -108,7 +119,7 @@ truncate -s 1G disk.img
 
 # Run crosvm with a control socket
 crosvm run \
-  --rwdisk disk.img,sparse=false \
+  --block disk.img,sparse=false \
   -s /tmp/crosvm.sock \
   ... # other crosvm args
 

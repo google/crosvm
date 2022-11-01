@@ -39,6 +39,6 @@ crosvm run \
   vmlinux
 ```
 
-As a result, `disk.img` should be exposed as `/dev/vda` just like with `--rwdisk disk.img`.
+As a result, `disk.img` should be exposed as `/dev/vda` just like with `--block disk.img`.
 
 [vhost-user]: https://qemu.readthedocs.io/en/latest/interop/vhost-user.html
