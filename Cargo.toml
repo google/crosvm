@@ -28,6 +28,7 @@ panic = 'unwind'
 [profile.chromeos]
 inherits = "release"
 opt-level = "s"
+strip = "symbols"
 
 # Enables LTO to further reduce the size of the binary.
 [profile.lto]
