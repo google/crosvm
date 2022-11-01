@@ -3,8 +3,10 @@
 // found in the LICENSE file.
 
 use std::cell::Ref;
+use std::cell::RefCell;
 use std::cell::RefMut;
 use std::collections::HashSet;
+use std::rc::Rc;
 
 use thiserror::Error;
 
@@ -174,5 +176,40 @@ pub enum BlockingMode {
 impl Default for BlockingMode {
     fn default() -> Self {
         Self::Blocking
+    }
+}
+
+/// Type for a picture being decoded by a stateless codec.
+///
+/// This contains the codec-specific state of the picture, as well as the backend-specific handle
+/// representing the memory into which the frame will be decoded.
+pub struct Picture<CodecData, BackendHandle> {
+    /// Codec-specific data for this picture.
+    pub data: CodecData,
+    /// Backend-specific handle with the memory needed by the backend to back this picture.
+    pub backend_handle: Option<BackendHandle>,
+    /// A number that identifies the picture.
+    timestamp: u64,
+}
+
+impl<CodecData, BackendHandle> Picture<CodecData, BackendHandle> {
+    /// Whether two pictures are the same.
+    pub fn same(lhs: &Rc<RefCell<Self>>, rhs: &Rc<RefCell<Self>>) -> bool {
+        Rc::ptr_eq(lhs, rhs)
+    }
+
+    /// Get a reference to the picture's timestamp.
+    pub fn timestamp(&self) -> u64 {
+        self.timestamp
+    }
+}
+
+impl<CodecData, BackendHandle: MappableHandle> DynPicture for Picture<CodecData, BackendHandle> {
+    fn dyn_mappable_handle(&self) -> &dyn MappableHandle {
+        self.backend_handle.as_ref().unwrap()
+    }
+
+    fn dyn_mappable_handle_mut(&mut self) -> &mut dyn MappableHandle {
+        self.backend_handle.as_mut().unwrap()
     }
 }

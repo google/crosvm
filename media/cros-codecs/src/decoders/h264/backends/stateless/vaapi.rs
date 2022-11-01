@@ -37,7 +37,7 @@ use crate::decoders::h264::parser::Pps;
 use crate::decoders::h264::parser::Slice;
 use crate::decoders::h264::parser::Sps;
 use crate::decoders::h264::picture::Field;
-use crate::decoders::h264::picture::Picture as H264Picture;
+use crate::decoders::h264::picture::H264Picture;
 use crate::decoders::h264::picture::Reference;
 use crate::decoders::DynDecodedHandle;
 use crate::decoders::DynPicture;

@@ -15,7 +15,7 @@ use crate::decoders::vp9::parser::Header;
 use crate::decoders::vp9::parser::Parser;
 use crate::decoders::vp9::parser::Profile;
 use crate::decoders::vp9::parser::NUM_REF_FRAMES;
-use crate::decoders::vp9::picture::Picture;
+use crate::decoders::vp9::picture::Vp9Picture;
 use crate::decoders::BlockingMode;
 use crate::decoders::DynDecodedHandle;
 use crate::decoders::Result as VideoDecoderResult;
@@ -198,7 +198,7 @@ impl<T: DecodedHandle + DynDecodedHandle + 'static> Decoder<T> {
             let offset = frame.offset();
             let size = frame.size();
 
-            let picture = Picture::new(frame.header, None, timestamp);
+            let picture = Vp9Picture::new_vp9(frame.header, None, timestamp);
 
             let block = matches!(self.blocking_mode, BlockingMode::Blocking)
                 || matches!(
@@ -321,7 +321,7 @@ impl<T: DecodedHandle + DynDecodedHandle + 'static> VideoDecoder for Decoder<T> 
                 let show_existing_frame = frame.header.show_existing_frame();
                 let mut handle = self.handle_frame(key_frame, timestamp)?;
 
-                if handle.picture().header.show_frame() || show_existing_frame {
+                if handle.picture().data.show_frame() || show_existing_frame {
                     let order = self.current_display_order;
                     handle.set_display_order(order);
                     self.current_display_order += 1;
@@ -341,7 +341,7 @@ impl<T: DecodedHandle + DynDecodedHandle + 'static> VideoDecoder for Decoder<T> 
 
             self.backend.poll(self.blocking_mode)?;
 
-            if handle.picture().header.show_frame() || show_existing_frame {
+            if handle.picture().data.show_frame() || show_existing_frame {
                 let order = self.current_display_order;
                 handle.set_display_order(order);
                 self.current_display_order += 1;

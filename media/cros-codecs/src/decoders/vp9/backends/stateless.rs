@@ -10,7 +10,7 @@ use std::rc::Rc;
 
 use crate::decoders::vp9::parser::Header;
 use crate::decoders::vp9::parser::NUM_REF_FRAMES;
-use crate::decoders::vp9::picture::Picture;
+use crate::decoders::vp9::picture::Vp9Picture;
 use crate::decoders::BlockingMode;
 use crate::decoders::MappableHandle;
 use crate::decoders::VideoDecoderBackend;
@@ -27,7 +27,7 @@ pub type Result<T> = std::result::Result<T, crate::decoders::StatelessBackendErr
 /// as they may be shared.
 ///
 /// Pictures are contained as soon as they are submitted to the accelerator.
-pub type ContainedPicture<T> = Rc<RefCell<Picture<T>>>;
+pub type ContainedPicture<T> = Rc<RefCell<Vp9Picture<T>>>;
 
 /// A convenience type that casts using fully-qualified syntax.
 pub type AsBackendHandle<Handle> = <Handle as DecodedHandle>::BackendHandle;
@@ -56,7 +56,7 @@ pub trait StatelessDecoderBackend: VideoDecoderBackend + downcast_rs::Downcast {
     /// and then assign the ownership of the Picture to the Handle.
     fn submit_picture(
         &mut self,
-        picture: Picture<AsBackendHandle<Self::Handle>>,
+        picture: Vp9Picture<AsBackendHandle<Self::Handle>>,
         reference_frames: &[Option<Self::Handle>; NUM_REF_FRAMES],
         bitstream: &dyn AsRef<[u8]>,
         timestamp: u64,
@@ -93,9 +93,9 @@ pub trait DecodedHandle: Clone {
     type BackendHandle: MappableHandle;
 
     /// Returns a shared reference to the inner `Picture`.
-    fn picture(&self) -> Ref<Picture<Self::BackendHandle>>;
+    fn picture(&self) -> Ref<Vp9Picture<Self::BackendHandle>>;
     /// Returns a mutable reference to the inner `Picture`.
-    fn picture_mut(&self) -> RefMut<Picture<Self::BackendHandle>>;
+    fn picture_mut(&self) -> RefMut<Vp9Picture<Self::BackendHandle>>;
     /// Returns the actual container of the inner `Picture`.
     fn picture_container(&self) -> ContainedPicture<Self::BackendHandle>;
     /// Returns the timestamp for the picture.

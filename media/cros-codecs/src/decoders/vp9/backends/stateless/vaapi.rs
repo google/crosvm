@@ -24,6 +24,7 @@ use crate::decoders::vp9::backends::stateless::ContainedPicture;
 use crate::decoders::vp9::backends::stateless::DecodedHandle;
 use crate::decoders::vp9::backends::stateless::Result as StatelessBackendResult;
 use crate::decoders::vp9::backends::stateless::StatelessDecoderBackend;
+use crate::decoders::vp9::backends::stateless::Vp9Picture;
 use crate::decoders::vp9::lookups::AC_QLOOKUP;
 use crate::decoders::vp9::lookups::AC_QLOOKUP_10;
 use crate::decoders::vp9::lookups::AC_QLOOKUP_12;
@@ -45,7 +46,6 @@ use crate::decoders::vp9::parser::NUM_REF_FRAMES;
 use crate::decoders::vp9::parser::SEG_LVL_ALT_L;
 use crate::decoders::vp9::parser::SEG_LVL_REF_FRAME;
 use crate::decoders::vp9::parser::SEG_LVL_SKIP;
-use crate::decoders::vp9::picture::Picture as Vp9Picture;
 use crate::decoders::DynDecodedHandle;
 use crate::decoders::DynPicture;
 use crate::decoders::Error as DecoderError;
@@ -660,20 +660,20 @@ impl StatelessDecoderBackend for Backend {
         let context = self.metadata_state.context()?;
 
         let pic_param =
-            context.create_buffer(Backend::build_pic_param(&picture.header, reference_frames)?)?;
+            context.create_buffer(Backend::build_pic_param(&picture.data, reference_frames)?)?;
 
         #[cfg(test)]
         {
             let mut seg = self.segmentation.clone();
             self.save_params(
-                Backend::build_pic_param(&picture.header, reference_frames)?,
-                Backend::build_slice_param(&picture.header, &mut seg, bitstream.as_ref().len())?,
+                Backend::build_pic_param(&picture.data, reference_frames)?,
+                Backend::build_slice_param(&picture.data, &mut seg, bitstream.as_ref().len())?,
                 libva::BufferType::SliceData(Vec::from(bitstream.as_ref())),
             );
         }
 
         let slice_param = context.create_buffer(Backend::build_slice_param(
-            &picture.header,
+            &picture.data,
             &mut self.segmentation,
             bitstream.as_ref().len(),
         )?)?;
@@ -947,7 +947,7 @@ impl DecodedHandle for VADecodedHandle<InnerHandle> {
     }
 
     fn display_resolution(&self) -> Resolution {
-        let hdr = &self.picture().header;
+        let hdr = &self.picture().data;
         Resolution {
             width: hdr.width() as u32,
             height: hdr.height() as u32,
@@ -1555,7 +1555,7 @@ mod tests {
                     // check so as to not fail because of that, as some of the
                     // intermediary resolutions in this file fail this
                     // condition.
-                    let expected_crcs = if handle.picture().header.width() % 4 == 0 {
+                    let expected_crcs = if handle.picture().data.width() % 4 == 0 {
                         Some(&mut expected_crcs)
                     } else {
                         None

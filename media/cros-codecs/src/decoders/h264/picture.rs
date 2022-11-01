@@ -14,9 +14,10 @@ use crate::decoders::h264::parser::RefPicMarking;
 use crate::decoders::h264::parser::Slice;
 use crate::decoders::h264::parser::SliceType;
 use crate::decoders::h264::parser::Sps;
-use crate::decoders::DynPicture;
-use crate::decoders::MappableHandle;
+use crate::decoders::Picture;
 use crate::Resolution;
+
+pub type H264Picture<BackendHandle> = Picture<PictureData<BackendHandle>, BackendHandle>;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Field {
@@ -111,22 +112,10 @@ pub struct PictureData<BackendHandle> {
     pub ref_pic_marking: RefPicMarking,
 
     is_second_field: bool,
-    other_field: Option<Weak<RefCell<Picture<BackendHandle>>>>,
+    other_field: Option<Weak<RefCell<H264Picture<BackendHandle>>>>,
 }
 
-pub struct Picture<BackendHandle> {
-    /// Codec-specific data for this picture.
-    pub data: PictureData<BackendHandle>,
-
-    /// The backend handle with any data the backend needs in order to back this
-    /// picture.
-    pub backend_handle: Option<BackendHandle>,
-
-    /// A number that identifies the picture.
-    timestamp: u64,
-}
-
-impl<BackendHandle> Picture<BackendHandle> {
+impl<BackendHandle> H264Picture<BackendHandle> {
     pub fn new_non_existing(frame_num: i32, timestamp: u64) -> Self {
         let data = PictureData {
             frame_num,
@@ -364,18 +353,13 @@ impl<BackendHandle> Picture<BackendHandle> {
         self.other_field.as_ref().unwrap().upgrade().unwrap()
     }
 
-    /// Whether two pictures are the same.
-    pub fn same(lhs: &Rc<RefCell<Self>>, rhs: &Rc<RefCell<Self>>) -> bool {
-        Rc::ptr_eq(lhs, rhs)
-    }
-
     /// Whether this picture is a second field.
     pub fn is_second_field(&self) -> bool {
         self.is_second_field
     }
 
     /// Get a reference to the picture's other field, if any.
-    pub fn other_field(&self) -> Option<&Weak<RefCell<Picture<BackendHandle>>>> {
+    pub fn other_field(&self) -> Option<&Weak<RefCell<H264Picture<BackendHandle>>>> {
         self.other_field.as_ref()
     }
 
@@ -389,11 +373,6 @@ impl<BackendHandle> Picture<BackendHandle> {
     pub fn set_first_field_to(&mut self, other_field: Rc<RefCell<Self>>) {
         self.other_field = Some(Rc::downgrade(&other_field));
         self.is_second_field = true;
-    }
-
-    /// Get a reference to the picture's timestamp.
-    pub fn timestamp(&self) -> u64 {
-        self.timestamp
     }
 }
 
@@ -435,7 +414,7 @@ impl<BackendHandle> Default for PictureData<BackendHandle> {
     }
 }
 
-impl<BackendHandle> Default for Picture<BackendHandle> {
+impl<BackendHandle> Default for H264Picture<BackendHandle> {
     // See https://github.com/rust-lang/rust/issues/26925
     fn default() -> Self {
         Self {
@@ -446,7 +425,7 @@ impl<BackendHandle> Default for Picture<BackendHandle> {
     }
 }
 
-impl<BackendHandle> std::fmt::Debug for Picture<BackendHandle> {
+impl<BackendHandle> std::fmt::Debug for H264Picture<BackendHandle> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Picture")
             .field("pic_order_cnt_type", &self.pic_order_cnt_type)
@@ -500,7 +479,7 @@ impl<BackendHandle> std::fmt::Debug for Picture<BackendHandle> {
 
 /// Give direct access to `data`'s members from a regular Picture as the H.264 code assumed these
 /// members were inlined.
-impl<BackendHandle> Deref for Picture<BackendHandle> {
+impl<BackendHandle> Deref for H264Picture<BackendHandle> {
     type Target = PictureData<BackendHandle>;
 
     fn deref(&self) -> &Self::Target {
@@ -508,18 +487,8 @@ impl<BackendHandle> Deref for Picture<BackendHandle> {
     }
 }
 
-impl<BackendHandle> DerefMut for Picture<BackendHandle> {
+impl<BackendHandle> DerefMut for H264Picture<BackendHandle> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.data
-    }
-}
-
-impl<BackendHandle: MappableHandle> DynPicture for Picture<BackendHandle> {
-    fn dyn_mappable_handle(&self) -> &dyn MappableHandle {
-        self.backend_handle.as_ref().unwrap()
-    }
-
-    fn dyn_mappable_handle_mut(&mut self) -> &mut dyn MappableHandle {
-        self.backend_handle.as_mut().unwrap()
     }
 }

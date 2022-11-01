@@ -26,11 +26,11 @@ use crate::decoders::vp8::backends::stateless::BlockingMode;
 use crate::decoders::vp8::backends::stateless::ContainedPicture;
 use crate::decoders::vp8::backends::stateless::DecodedHandle;
 use crate::decoders::vp8::backends::stateless::StatelessDecoderBackend;
+use crate::decoders::vp8::backends::stateless::Vp8Picture;
 use crate::decoders::vp8::parser::Header;
 use crate::decoders::vp8::parser::MbLfAdjustments;
 use crate::decoders::vp8::parser::Parser;
 use crate::decoders::vp8::parser::Segmentation;
-use crate::decoders::vp8::picture::Picture as Vp8Picture;
 use crate::decoders::DynDecodedHandle;
 use crate::decoders::DynPicture;
 use crate::decoders::Error as DecoderError;
@@ -449,15 +449,14 @@ impl StatelessDecoderBackend for Backend {
 
         let context = self.metadata_state.context()?;
 
-        let iq_buffer =
-            context.create_buffer(Backend::build_iq_matrix(&picture.header, parser)?)?;
+        let iq_buffer = context.create_buffer(Backend::build_iq_matrix(&picture.data, parser)?)?;
 
-        let probs = context.create_buffer(Backend::build_probability_table(&picture.header))?;
+        let probs = context.create_buffer(Backend::build_probability_table(&picture.data))?;
 
         let coded_resolution = self.metadata_state.coded_resolution()?;
 
         let pic_param = context.create_buffer(Backend::build_pic_param(
-            &picture.header,
+            &picture.data,
             &coded_resolution,
             parser.segmentation(),
             parser.mb_lf_adjust(),
@@ -467,7 +466,7 @@ impl StatelessDecoderBackend for Backend {
         )?)?;
 
         let slice_param = context.create_buffer(Backend::build_slice_param(
-            &picture.header,
+            &picture.data,
             bitstream.as_ref().len(),
         )?)?;
 
@@ -497,7 +496,7 @@ impl StatelessDecoderBackend for Backend {
         #[cfg(test)]
         self.save_params(
             Backend::build_pic_param(
-                &picture.header,
+                &picture.data,
                 &coded_resolution,
                 parser.segmentation(),
                 parser.mb_lf_adjust(),
@@ -505,10 +504,10 @@ impl StatelessDecoderBackend for Backend {
                 golden_ref,
                 alt_ref,
             )?,
-            Backend::build_slice_param(&picture.header, bitstream.as_ref().len())?,
+            Backend::build_slice_param(&picture.data, bitstream.as_ref().len())?,
             libva::BufferType::SliceData(Vec::from(bitstream.as_ref())),
-            Backend::build_iq_matrix(&picture.header, parser)?,
-            Backend::build_probability_table(&picture.header),
+            Backend::build_iq_matrix(&picture.data, parser)?,
+            Backend::build_probability_table(&picture.data),
         );
 
         let picture = Rc::new(RefCell::new(picture));
@@ -759,7 +758,7 @@ impl DecodedHandle for VADecodedHandle<InnerHandle> {
     }
 
     fn display_resolution(&self) -> Resolution {
-        let hdr = &self.picture().header;
+        let hdr = &self.picture().data;
         Resolution {
             width: hdr.width() as u32,
             height: hdr.height() as u32,

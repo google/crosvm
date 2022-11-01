@@ -12,7 +12,7 @@ use crate::decoders::h264::dpb::Dpb;
 use crate::decoders::h264::parser::Pps;
 use crate::decoders::h264::parser::Slice;
 use crate::decoders::h264::parser::Sps;
-use crate::decoders::h264::picture::Picture;
+use crate::decoders::h264::picture::H264Picture;
 use crate::decoders::BlockingMode;
 use crate::decoders::VideoDecoderBackend;
 use crate::Resolution;
@@ -29,7 +29,7 @@ pub mod vaapi;
 /// each other.
 ///
 /// Pictures are contained as soon as they are submitted to the accelerator.
-pub type ContainedPicture<T> = Rc<RefCell<Picture<T>>>;
+pub type ContainedPicture<T> = Rc<RefCell<H264Picture<T>>>;
 
 /// A convenience type that casts using fully-qualified syntax.
 pub type AsBackendHandle<Handle> = <Handle as DecodedHandle>::BackendHandle;
@@ -52,7 +52,7 @@ pub trait StatelessDecoderBackend: VideoDecoderBackend + downcast_rs::Downcast {
     /// Called when the decoder determines that a frame or field was found.
     fn new_picture(
         &mut self,
-        picture: &Picture<AsBackendHandle<Self::Handle>>,
+        picture: &H264Picture<AsBackendHandle<Self::Handle>>,
         timestamp: u64,
     ) -> Result<()>;
 
@@ -62,7 +62,7 @@ pub trait StatelessDecoderBackend: VideoDecoderBackend + downcast_rs::Downcast {
     /// resource and can thus be presented together as a single frame.
     fn new_field_picture(
         &mut self,
-        picture: &Picture<AsBackendHandle<Self::Handle>>,
+        picture: &H264Picture<AsBackendHandle<Self::Handle>>,
         timestamp: u64,
         first_field: &Self::Handle,
     ) -> Result<()>;
@@ -70,7 +70,7 @@ pub trait StatelessDecoderBackend: VideoDecoderBackend + downcast_rs::Downcast {
     /// Called by the decoder for every frame or field found.
     fn handle_picture(
         &mut self,
-        picture: &Picture<AsBackendHandle<Self::Handle>>,
+        picture: &H264Picture<AsBackendHandle<Self::Handle>>,
         timestamp: u64,
         sps: &Sps,
         pps: &Pps,
@@ -107,7 +107,7 @@ pub trait StatelessDecoderBackend: VideoDecoderBackend + downcast_rs::Downcast {
     /// and then assign the ownership of the Picture to the Handle.
     fn submit_picture(
         &mut self,
-        picture: Picture<AsBackendHandle<Self::Handle>>,
+        picture: H264Picture<AsBackendHandle<Self::Handle>>,
         block: bool,
     ) -> Result<Self::Handle>;
 
@@ -148,9 +148,9 @@ pub trait DecodedHandle: Clone {
     type BackendHandle: crate::decoders::MappableHandle;
 
     /// Returns a shared reference to the inner `Picture`.
-    fn picture(&self) -> Ref<Picture<Self::BackendHandle>>;
+    fn picture(&self) -> Ref<H264Picture<Self::BackendHandle>>;
     /// Returns a mutable reference to the inner `Picture`.
-    fn picture_mut(&self) -> RefMut<Picture<Self::BackendHandle>>;
+    fn picture_mut(&self) -> RefMut<H264Picture<Self::BackendHandle>>;
     /// Returns the actual container of the inner `Picture`.
     fn picture_container(&self) -> ContainedPicture<Self::BackendHandle>;
     /// Returns the timestamp for the picture.

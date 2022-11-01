@@ -22,7 +22,7 @@ use crate::decoders::h264::dpb::Dpb;
 use crate::decoders::h264::parser::Pps;
 use crate::decoders::h264::parser::Slice;
 use crate::decoders::h264::parser::Sps;
-use crate::decoders::h264::picture::Picture;
+use crate::decoders::h264::picture::H264Picture;
 use crate::decoders::DynDecodedHandle;
 use crate::decoders::DynPicture;
 use crate::decoders::VideoDecoderBackend;
@@ -62,7 +62,7 @@ impl crate::decoders::MappableHandle for BackendHandle {
 
 #[derive(Clone)]
 pub struct Handle {
-    handle: Rc<RefCell<Picture<BackendHandle>>>,
+    handle: Rc<RefCell<H264Picture<BackendHandle>>>,
 }
 
 pub struct Backend;
@@ -70,11 +70,11 @@ pub struct Backend;
 impl DecodedHandle for Handle {
     type BackendHandle = BackendHandle;
 
-    fn picture(&self) -> Ref<Picture<Self::BackendHandle>> {
+    fn picture(&self) -> Ref<H264Picture<Self::BackendHandle>> {
         self.handle.borrow()
     }
 
-    fn picture_mut(&self) -> RefMut<Picture<Self::BackendHandle>> {
+    fn picture_mut(&self) -> RefMut<H264Picture<Self::BackendHandle>> {
         self.handle.borrow_mut()
     }
 
@@ -158,7 +158,7 @@ impl StatelessDecoderBackend for Backend {
 
     fn handle_picture(
         &mut self,
-        _: &Picture<AssociatedDummyBackendHandle>,
+        _: &H264Picture<AssociatedDummyBackendHandle>,
         _: u64,
         _: &Sps,
         _: &Pps,
@@ -170,7 +170,7 @@ impl StatelessDecoderBackend for Backend {
 
     fn new_field_picture(
         &mut self,
-        _: &Picture<AssociatedDummyBackendHandle>,
+        _: &H264Picture<AssociatedDummyBackendHandle>,
         _: u64,
         _: &Self::Handle,
     ) -> StatelessBackendResult<()> {
@@ -191,7 +191,7 @@ impl StatelessDecoderBackend for Backend {
 
     fn submit_picture(
         &mut self,
-        picture: Picture<AsBackendHandle<Self::Handle>>,
+        picture: H264Picture<AsBackendHandle<Self::Handle>>,
         _: bool,
     ) -> StatelessBackendResult<Self::Handle> {
         Ok(Handle {
@@ -220,7 +220,7 @@ impl StatelessDecoderBackend for Backend {
 
     fn new_picture(
         &mut self,
-        _: &Picture<AsBackendHandle<Self::Handle>>,
+        _: &H264Picture<AsBackendHandle<Self::Handle>>,
         _: u64,
     ) -> StatelessBackendResult<()> {
         Ok(())

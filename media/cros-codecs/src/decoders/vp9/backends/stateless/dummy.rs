@@ -15,8 +15,8 @@ use std::rc::Rc;
 use crate::decoders::vp9::backends::stateless::ContainedPicture;
 use crate::decoders::vp9::backends::stateless::DecodedHandle;
 use crate::decoders::vp9::backends::stateless::StatelessDecoderBackend;
+use crate::decoders::vp9::backends::stateless::Vp9Picture;
 use crate::decoders::vp9::parser::NUM_REF_FRAMES;
-use crate::decoders::vp9::picture::Picture;
 use crate::decoders::DynDecodedHandle;
 use crate::decoders::DynPicture;
 use crate::decoders::VideoDecoderBackend;
@@ -56,7 +56,7 @@ impl crate::decoders::MappableHandle for BackendHandle {
 
 #[derive(Clone)]
 pub struct Handle {
-    handle: Rc<RefCell<Picture<BackendHandle>>>,
+    handle: Rc<RefCell<Vp9Picture<BackendHandle>>>,
 }
 
 pub struct Backend;
@@ -64,11 +64,11 @@ pub struct Backend;
 impl DecodedHandle for Handle {
     type BackendHandle = BackendHandle;
 
-    fn picture(&self) -> Ref<Picture<Self::BackendHandle>> {
+    fn picture(&self) -> Ref<Vp9Picture<Self::BackendHandle>> {
         self.handle.borrow()
     }
 
-    fn picture_mut(&self) -> RefMut<Picture<Self::BackendHandle>> {
+    fn picture_mut(&self) -> RefMut<Vp9Picture<Self::BackendHandle>> {
         self.handle.borrow_mut()
     }
 
@@ -152,7 +152,7 @@ impl StatelessDecoderBackend for Backend {
 
     fn submit_picture(
         &mut self,
-        picture: Picture<super::AsBackendHandle<Self::Handle>>,
+        picture: Vp9Picture<super::AsBackendHandle<Self::Handle>>,
         _: &[Option<Self::Handle>; NUM_REF_FRAMES],
         _: &dyn AsRef<[u8]>,
         _: u64,

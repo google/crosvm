@@ -13,8 +13,8 @@ use log::debug;
 use crate::decoders::h264::backends::stateless::ContainedPicture;
 use crate::decoders::h264::backends::stateless::DecodedHandle;
 use crate::decoders::h264::picture::Field;
+use crate::decoders::h264::picture::H264Picture;
 use crate::decoders::h264::picture::IsIdr;
-use crate::decoders::h264::picture::Picture;
 use crate::decoders::h264::picture::Reference;
 
 pub struct Dpb<T> {
@@ -35,7 +35,7 @@ impl<T: DecodedHandle> Dpb<T> {
     /// handles.
     pub fn pictures(
         &self,
-    ) -> impl Iterator<Item = Ref<'_, Picture<<T as DecodedHandle>::BackendHandle>>> + '_ {
+    ) -> impl Iterator<Item = Ref<'_, H264Picture<<T as DecodedHandle>::BackendHandle>>> + '_ {
         self.handles.iter().map(|h| h.picture())
     }
 
@@ -43,7 +43,8 @@ impl<T: DecodedHandle> Dpb<T> {
     /// the handles.
     pub fn pictures_mut(
         &self,
-    ) -> impl Iterator<Item = RefMut<'_, Picture<<T as DecodedHandle>::BackendHandle>>> + '_ {
+    ) -> impl Iterator<Item = RefMut<'_, H264Picture<<T as DecodedHandle>::BackendHandle>>> + '_
+    {
         self.handles.iter().map(|h| h.picture_mut())
     }
 
@@ -214,7 +215,7 @@ impl<T: DecodedHandle> Dpb<T> {
 
     /// Whether the DPB needs bumping, as described by clauses 1, 4, 5, 6 of
     /// C.4.5.3 "Bumping" process.
-    pub fn needs_bumping(&self, to_insert: &Picture<T::BackendHandle>) -> bool {
+    pub fn needs_bumping(&self, to_insert: &H264Picture<T::BackendHandle>) -> bool {
         // In C.4.5.3 we handle clauses 2 and 3 separately. All other clauses
         // check for an empty frame buffer first. Here we handle:
         //    - There is no empty frame buffer and a empty frame buffer is
