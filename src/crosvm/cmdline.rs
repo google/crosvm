@@ -616,7 +616,7 @@ pub struct RunCommand {
     /// path to BIOS/firmware ROM
     pub bios: Option<PathBuf>,
 
-    #[argh(option, arg_name = "PATH[,key=value[,key=value[,...]]]")]
+    #[argh(option, short = 'b', arg_name = "PATH[,key=value[,key=value[,...]]]")]
     #[serde(default)]
     /// parameters for setting up a block device.
     /// Valid keys:
