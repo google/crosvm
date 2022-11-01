@@ -3,11 +3,14 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import argparse
 import functools
 import re
 import sys
+from argh import arg  # type: ignore
 from os import chdir
 from pathlib import Path
+from typing import List, Optional, Tuple
 
 from impl.common import CROSVM_ROOT, GerritChange, cmd, confirm, run_commands
 
@@ -213,7 +216,13 @@ def rebase():
     git(f"cherry-pick {branch_name}@{{u}}..{branch_name}").fg()
 
 
-def upload(dry_run: bool = False):
+def upload(
+    dry_run: bool = False,
+    reviewer: Optional[str] = None,
+    auto_submit: bool = False,
+    submit: bool = False,
+    try_: bool = False,
+):
     """
     Uploads changes to the crosvm main branch.
     """
@@ -240,7 +249,18 @@ def upload(dry_run: bool = False):
             return
         print()
 
-    git("push origin HEAD:refs/for/main").fg(dry_run=dry_run)
+    extra_args: List[str] = []
+    if auto_submit:
+        extra_args.append("l=Auto-Submit+1")
+        try_ = True
+    if try_:
+        extra_args.append("l=Commit-Queue+1")
+    if submit:
+        extra_args.append(f"l=Commit-Queue+2")
+    if reviewer:
+        extra_args.append(f"r={reviewer}")
+
+    git(f"push origin HEAD:refs/for/main%{','.join(extra_args)}").fg(dry_run=dry_run)
 
 
 if __name__ == "__main__":

@@ -58,7 +58,7 @@ class ClTests(unittest.TestCase):
 Uploading to origin/main:
   {sha} Test Commit
 
-Not running: git push origin HEAD:refs/for/main"""
+Not running: git push origin HEAD:refs/for/main%"""
 
         self.assertEqual(cl("upload --dry-run").stdout(), expected)
 
