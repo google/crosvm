@@ -20,16 +20,22 @@ use winapi::um::winuser::*;
 /// It does no harm calling this function multiple times, since it won't remove any message from the
 /// queue.
 pub(crate) fn force_create_message_queue() {
+    // Safe because if `message` is initialized, we will extract and drop the value.
     let mut message = mem::MaybeUninit::uninit();
     // Safe because we know the lifetime of `message`, and `PeekMessageW()` has no failure mode.
-    unsafe {
+    if unsafe {
         PeekMessageW(
             message.as_mut_ptr(),
             null_mut(),
             WM_USER,
             WM_USER,
             PM_NOREMOVE,
-        );
+        ) != 0
+    } {
+        // Safe because `PeekMessageW()` has populated `message`.
+        unsafe {
+            message.assume_init_drop();
+        }
     }
 }
 
