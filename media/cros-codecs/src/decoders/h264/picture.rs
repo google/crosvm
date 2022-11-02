@@ -3,6 +3,8 @@
 // found in the LICENSE file.
 
 use std::cell::RefCell;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::rc::Rc;
 use std::rc::Weak;
 
@@ -65,7 +67,7 @@ impl Default for IsIdr {
     }
 }
 
-pub struct Picture<BackendHandle> {
+pub struct PictureData<BackendHandle> {
     pub pic_order_cnt_type: u8,
     pub top_field_order_cnt: i32,
     pub bottom_field_order_cnt: i32,
@@ -110,6 +112,11 @@ pub struct Picture<BackendHandle> {
 
     is_second_field: bool,
     other_field: Option<Weak<RefCell<Picture<BackendHandle>>>>,
+}
+
+pub struct Picture<BackendHandle> {
+    /// Codec-specific data for this picture.
+    pub data: PictureData<BackendHandle>,
 
     /// The backend handle with any data the backend needs in order to back this
     /// picture.
@@ -121,9 +128,8 @@ pub struct Picture<BackendHandle> {
 
 impl<BackendHandle> Picture<BackendHandle> {
     pub fn new_non_existing(frame_num: i32, timestamp: u64) -> Self {
-        Self {
+        let data = PictureData {
             frame_num,
-            timestamp,
             nonexisting: true,
             nal_ref_idc: 1,
             field: Field::Frame,
@@ -153,7 +159,12 @@ impl<BackendHandle> Picture<BackendHandle> {
             is_second_field: Default::default(),
             other_field: Default::default(),
             ref_pic_marking: Default::default(),
+        };
+
+        Self {
+            data,
             backend_handle: Default::default(),
+            timestamp,
         }
     }
 
@@ -228,7 +239,7 @@ impl<BackendHandle> Picture<BackendHandle> {
             height: visible_rect.max.y - visible_rect.min.y,
         };
 
-        Self {
+        let pic_data = PictureData {
             pic_order_cnt_type: sps.pic_order_cnt_type(),
             pic_order_cnt_lsb: i32::from(pic_order_cnt_lsb),
             delta_pic_order_cnt_bottom,
@@ -243,6 +254,11 @@ impl<BackendHandle> Picture<BackendHandle> {
             ref_pic_marking: hdr.dec_ref_pic_marking().clone(),
             coded_resolution,
             display_resolution,
+            ..Default::default()
+        };
+
+        Self {
+            data: pic_data,
             timestamp,
             ..Default::default()
         }
@@ -303,13 +319,16 @@ impl<BackendHandle> Picture<BackendHandle> {
         }
 
         let mut other_field = Self {
-            top_field_order_cnt: pic.top_field_order_cnt,
-            bottom_field_order_cnt: pic.bottom_field_order_cnt,
-            frame_num: pic.frame_num,
-            reference: pic.reference,
-            nonexisting: pic.nonexisting,
-            pic_order_cnt,
-            field,
+            data: PictureData {
+                top_field_order_cnt: pic.top_field_order_cnt,
+                bottom_field_order_cnt: pic.bottom_field_order_cnt,
+                frame_num: pic.frame_num,
+                reference: pic.reference,
+                nonexisting: pic.nonexisting,
+                pic_order_cnt,
+                field,
+                ..Default::default()
+            },
             ..Default::default()
         };
 
@@ -378,11 +397,10 @@ impl<BackendHandle> Picture<BackendHandle> {
     }
 }
 
-impl<BackendHandle> Default for Picture<BackendHandle> {
+impl<BackendHandle> Default for PictureData<BackendHandle> {
     // See https://github.com/rust-lang/rust/issues/26925
     fn default() -> Self {
         Self {
-            backend_handle: None,
             pic_order_cnt_type: Default::default(),
             top_field_order_cnt: Default::default(),
             bottom_field_order_cnt: Default::default(),
@@ -413,6 +431,16 @@ impl<BackendHandle> Default for Picture<BackendHandle> {
             ref_pic_marking: Default::default(),
             is_second_field: Default::default(),
             other_field: Default::default(),
+        }
+    }
+}
+
+impl<BackendHandle> Default for Picture<BackendHandle> {
+    // See https://github.com/rust-lang/rust/issues/26925
+    fn default() -> Self {
+        Self {
+            data: Default::default(),
+            backend_handle: Default::default(),
             timestamp: Default::default(),
         }
     }
@@ -467,6 +495,22 @@ impl<BackendHandle> std::fmt::Debug for Picture<BackendHandle> {
             )
             .field("timestamp", &self.timestamp)
             .finish()
+    }
+}
+
+/// Give direct access to `data`'s members from a regular Picture as the H.264 code assumed these
+/// members were inlined.
+impl<BackendHandle> Deref for Picture<BackendHandle> {
+    type Target = PictureData<BackendHandle>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+
+impl<BackendHandle> DerefMut for Picture<BackendHandle> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.data
     }
 }
 
