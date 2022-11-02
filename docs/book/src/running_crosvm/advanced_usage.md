@@ -76,9 +76,8 @@ any OS resources that might have stuck around if crosvm were terminated early.
 ## Multiprocess Mode
 
 By default crosvm runs in multiprocess mode. Each device that supports running inside of a sandbox
-will run in a jailed child process of crosvm. The appropriate minijail seccomp policy files must be
-present either in `/usr/share/policy/crosvm` or in the path specified by the `--seccomp-policy-dir`
-argument. The sandbox can be disabled for testing with the `--disable-sandbox` option.
+will run in a jailed child process of crosvm. The sandbox can be disabled for testing with the
+`--disable-sandbox` option.
 
 ## GDB Support
 

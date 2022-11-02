@@ -172,13 +172,6 @@ The `--quick` variant will skip some slower checks, like building for other plat
 
 ## Known issues
 
-- If your Linux header files are too old, you may find minijail rejecting seccomp filters for
-  containing unknown syscalls. You can try removing the offending lines from the filter file and
-  recompile or add `--seccomp-log-failures` to the crosvm command line to turn these into warnings.
-  Using this option also requires you to specify path to seccomp policiy source files with
-  `--seccomp-policy-dir` and adhere to (or modify) the hardcoded absolute include paths in them.
-  Note that this option will also stop minijail from killing processes that violate the seccomp
-  rule, making the sandboxing much less aggressive.
 - Devices can't be jailed if `/var/empty` doesn't exist. `sudo mkdir -p /var/empty` to work around
   this for now.
 - You need read/write permissions for `/dev/kvm` to run tests or other crosvm instances. Usually
