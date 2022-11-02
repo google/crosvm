@@ -410,7 +410,7 @@ impl Backend {
 }
 
 impl StatelessDecoderBackend for Backend {
-    type Handle = VADecodedHandle<InnerHandle>;
+    type Handle = VADecodedHandle<Vp8Picture<GenericBackendHandle>>;
 
     fn new_sequence(&mut self, header: &Header) -> StatelessBackendResult<()> {
         let open = self
@@ -707,9 +707,7 @@ impl VideoDecoderBackend for Backend {
     }
 }
 
-type InnerHandle = Vp8Picture<GenericBackendHandle>;
-
-impl DecodedHandle for VADecodedHandle<InnerHandle> {
+impl DecodedHandle for VADecodedHandle<Vp8Picture<GenericBackendHandle>> {
     type CodecData = Header;
     type BackendHandle = GenericBackendHandle;
 

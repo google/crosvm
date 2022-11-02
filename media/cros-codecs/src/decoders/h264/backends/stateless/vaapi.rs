@@ -732,7 +732,7 @@ impl VideoDecoderBackend for Backend {
 }
 
 impl StatelessDecoderBackend for Backend {
-    type Handle = VADecodedHandle<InnerHandle>;
+    type Handle = VADecodedHandle<H264Picture<GenericBackendHandle>>;
 
     fn new_sequence(&mut self, sps: &Sps, dpb_size: usize) -> StatelessBackendResult<()> {
         self.negotiation_status = NegotiationStatus::Possible {
@@ -1047,9 +1047,7 @@ impl StatelessDecoderBackend for Backend {
     }
 }
 
-type InnerHandle = H264Picture<GenericBackendHandle>;
-
-impl DecodedHandle for VADecodedHandle<InnerHandle> {
+impl DecodedHandle for VADecodedHandle<H264Picture<GenericBackendHandle>> {
     type CodecData = PictureData<Self::BackendHandle>;
     type BackendHandle = GenericBackendHandle;
 
