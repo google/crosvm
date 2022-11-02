@@ -9,8 +9,6 @@ p9 = { path = "../" }
 cros_fuzz = { path = "../../cros-fuzz" }  # provided by ebuild
 
 
-members = ["."]
-
 [[bin]]
 name = "p9_tframe_decode_fuzzer"
 path = "tframe_decode.rs"
