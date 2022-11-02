@@ -15,7 +15,6 @@ use libva::BufferType;
 use libva::Picture as VaPicture;
 use libva::PictureEnd;
 use libva::SegmentParameterVP9;
-use libva::Surface;
 use libva::UsageHint;
 
 use crate::decoders::vp9::backends::stateless::AsBackendHandle;
@@ -58,7 +57,6 @@ use crate::utils::vaapi::FormatMap;
 use crate::utils::vaapi::GenericBackendHandle;
 use crate::utils::vaapi::GenericBackendHandleInner;
 use crate::utils::vaapi::StreamMetadataState;
-use crate::utils::vaapi::SurfaceContainer;
 use crate::utils::vaapi::SurfacePoolHandle;
 use crate::DecodedFormat;
 use crate::Resolution;
@@ -902,30 +900,7 @@ impl VideoDecoderBackend for Backend {
     }
 }
 
-type InnerHandle = RefCell<Vp9Picture<GenericBackendHandle>>;
-
-impl SurfaceContainer for InnerHandle {
-    fn into_surface(self) -> Result<Option<Surface>> {
-        let backend_handle = self.into_inner().backend_handle;
-
-        let backend_handle = match backend_handle {
-            Some(backend_handle) => backend_handle,
-            None => return Ok(None),
-        };
-
-        let surface = match backend_handle.inner {
-            GenericBackendHandleInner::Ready { picture, .. } => picture.take_surface().map(Some),
-            GenericBackendHandleInner::Pending(id) => {
-                return Err(anyhow!(
-                "Attempting to retrieve a surface (id: {:?}) that might have operations pending.",
-                id
-            ))
-            }
-        };
-
-        surface
-    }
-}
+type InnerHandle = Vp9Picture<GenericBackendHandle>;
 
 impl DecodedHandle for VADecodedHandle<InnerHandle> {
     type BackendHandle = GenericBackendHandle;

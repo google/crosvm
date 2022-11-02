@@ -96,16 +96,39 @@ pub fn supported_formats_for_rt_format(
     Ok(supported_formats)
 }
 
-/// A trait for objects that hold a Surface.
-pub trait SurfaceContainer {
-    /// Return the inner surface.
-    fn into_surface(self) -> Result<Option<Surface>>;
+pub trait IntoSurface: TryInto<Option<Surface>> {}
+
+impl<T> TryInto<Option<Surface>> for crate::decoders::Picture<T, GenericBackendHandle> {
+    type Error = anyhow::Error;
+
+    fn try_into(self) -> Result<Option<Surface>, Self::Error> {
+        let backend_handle = self.backend_handle;
+
+        let backend_handle = match backend_handle {
+            Some(backend_handle) => backend_handle,
+            None => return Ok(None),
+        };
+
+        let surface = match backend_handle.inner {
+            GenericBackendHandleInner::Ready { picture, .. } => picture.take_surface().map(Some),
+            GenericBackendHandleInner::Pending(id) => {
+                return Err(anyhow!(
+                "Attempting to retrieve a surface (id: {:?}) that might have operations pending.",
+                id
+            ))
+            }
+        };
+
+        surface
+    }
 }
 
+impl<T> IntoSurface for crate::decoders::Picture<T, GenericBackendHandle> {}
+
 /// A decoded frame handle.
-pub struct DecodedHandle<T: SurfaceContainer> {
+pub struct DecodedHandle<T: IntoSurface> {
     /// The actual object backing the handle.
-    inner: Option<Rc<T>>,
+    inner: Option<Rc<RefCell<T>>>,
     /// The decoder resolution when this frame was processed. Not all codecs
     /// send resolution data in every frame header.
     resolution: Resolution,
@@ -116,7 +139,7 @@ pub struct DecodedHandle<T: SurfaceContainer> {
     pub display_order: Option<u64>,
 }
 
-impl<T: SurfaceContainer> Clone for DecodedHandle<T> {
+impl<T: IntoSurface> Clone for DecodedHandle<T> {
     // See https://stegosaurusdormant.com/understanding-derive-clone/ on why
     // this cannot be derived. Note that T probably doesn't implement Clone, but
     // it's not a problem, since Rc is Clone.
@@ -130,9 +153,13 @@ impl<T: SurfaceContainer> Clone for DecodedHandle<T> {
     }
 }
 
-impl<T: SurfaceContainer> DecodedHandle<T> {
+impl<T: IntoSurface> DecodedHandle<T> {
     /// Creates a new handle
-    pub fn new(inner: Rc<T>, resolution: Resolution, surface_pool: SurfacePoolHandle) -> Self {
+    pub fn new(
+        inner: Rc<RefCell<T>>,
+        resolution: Resolution,
+        surface_pool: SurfacePoolHandle,
+    ) -> Self {
         Self {
             inner: Some(inner),
             resolution,
@@ -141,7 +168,7 @@ impl<T: SurfaceContainer> DecodedHandle<T> {
         }
     }
 
-    pub fn inner(&self) -> &Rc<T> {
+    pub fn inner(&self) -> &Rc<RefCell<T>> {
         // The Option is used as a well known strategy to move out of a field
         // when dropping. This is needed for the surface pool to be able to
         // retrieve the surface from the handle.
@@ -149,15 +176,15 @@ impl<T: SurfaceContainer> DecodedHandle<T> {
     }
 }
 
-impl<T: SurfaceContainer> Drop for DecodedHandle<T> {
+impl<T: IntoSurface> Drop for DecodedHandle<T> {
     fn drop(&mut self) {
-        if let Ok(inner) = Rc::try_unwrap(self.inner.take().unwrap()) {
+        if let Ok(inner) = Rc::try_unwrap(self.inner.take().unwrap()).map(|i| i.into_inner()) {
             let pool = &mut self.surface_pool;
 
             // Only retrieve if the resolutions match, otherwise let the stale Surface drop.
             if *pool.current_resolution() == self.resolution {
                 // Retrieve if not currently used by another field.
-                if let Ok(Some(surface)) = inner.into_surface() {
+                if let Ok(Some(surface)) = inner.try_into() {
                     pool.add_surface(surface);
                 }
             }
