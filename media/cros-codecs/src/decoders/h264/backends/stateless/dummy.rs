@@ -5,9 +5,7 @@
 //! This file contains a dummy backend whose only purpose is to let the decoder
 //! run so we can test it in isolation.
 
-use std::cell::Ref;
 use std::cell::RefCell;
-use std::cell::RefMut;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::rc::Rc;
@@ -24,8 +22,6 @@ use crate::decoders::h264::parser::Slice;
 use crate::decoders::h264::parser::Sps;
 use crate::decoders::h264::picture::H264Picture;
 use crate::decoders::h264::picture::PictureData;
-use crate::decoders::DynDecodedHandle;
-use crate::decoders::DynPicture;
 use crate::decoders::VideoDecoderBackend;
 use crate::DecodedFormat;
 use crate::Resolution;
@@ -85,28 +81,6 @@ impl DecodedHandle for Handle {
     }
 
     fn set_display_order(&mut self, _: u64) {}
-}
-
-impl DynDecodedHandle for Handle {
-    fn dyn_picture(&self) -> Ref<dyn crate::decoders::DynPicture> {
-        self.picture()
-    }
-
-    fn dyn_picture_mut(&self) -> RefMut<dyn DynPicture> {
-        self.picture_mut()
-    }
-
-    fn timestamp(&self) -> u64 {
-        DecodedHandle::timestamp(self)
-    }
-
-    fn display_resolution(&self) -> Resolution {
-        DecodedHandle::display_resolution(self)
-    }
-
-    fn display_order(&self) -> Option<u64> {
-        DecodedHandle::display_order(self)
-    }
 }
 
 impl VideoDecoderBackend for Backend {

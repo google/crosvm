@@ -2,9 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cell::Ref;
 use std::cell::RefCell;
-use std::cell::RefMut;
 use std::collections::VecDeque;
 use std::convert::TryFrom;
 use std::rc::Rc;
@@ -30,8 +28,6 @@ use crate::decoders::vp8::parser::Header;
 use crate::decoders::vp8::parser::MbLfAdjustments;
 use crate::decoders::vp8::parser::Parser;
 use crate::decoders::vp8::parser::Segmentation;
-use crate::decoders::DynDecodedHandle;
-use crate::decoders::DynPicture;
 use crate::decoders::Error as DecoderError;
 use crate::decoders::Result as DecoderResult;
 use crate::decoders::StatelessBackendError;
@@ -735,28 +731,6 @@ impl DecodedHandle for VADecodedHandle<InnerHandle> {
 
     fn set_display_order(&mut self, display_order: u64) {
         self.display_order = Some(display_order)
-    }
-}
-
-impl DynDecodedHandle for VADecodedHandle<InnerHandle> {
-    fn dyn_picture(&self) -> Ref<dyn crate::decoders::DynPicture> {
-        self.picture()
-    }
-
-    fn dyn_picture_mut(&self) -> RefMut<dyn DynPicture> {
-        self.picture_mut()
-    }
-
-    fn timestamp(&self) -> u64 {
-        DecodedHandle::timestamp(self)
-    }
-
-    fn display_resolution(&self) -> Resolution {
-        DecodedHandle::display_resolution(self)
-    }
-
-    fn display_order(&self) -> Option<u64> {
-        DecodedHandle::display_order(self)
     }
 }
 

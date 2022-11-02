@@ -143,10 +143,33 @@ pub trait DynDecodedHandle {
     fn display_order(&self) -> Option<u64>;
 }
 
+impl<T> DynDecodedHandle for T
+where
+    T: DecodedHandle,
+    <T as DecodedHandle>::BackendHandle: MappableHandle,
+{
+    fn dyn_picture(&self) -> Ref<dyn DynPicture> {
+        self.picture()
+    }
+
+    fn dyn_picture_mut(&self) -> RefMut<dyn DynPicture> {
+        self.picture_mut()
+    }
+
+    fn timestamp(&self) -> u64 {
+        DecodedHandle::timestamp(self)
+    }
+
+    fn display_resolution(&self) -> Resolution {
+        DecodedHandle::display_resolution(self)
+    }
+
+    fn display_order(&self) -> Option<u64> {
+        DecodedHandle::display_order(self)
+    }
+}
+
 pub trait DynPicture {
-    /// Gets a shared reference to the backend handle of this picture. Assumes
-    /// that this picture is backed by a handle and panics if not the case.
-    fn dyn_mappable_handle(&self) -> &dyn MappableHandle;
     /// Gets an exclusive reference to the backend handle of this picture.
     /// Assumes that this picture is backed by a handle and panics if not the case.
     fn dyn_mappable_handle_mut(&mut self) -> &mut dyn MappableHandle;
@@ -204,11 +227,8 @@ impl<CodecData, BackendHandle> Picture<CodecData, BackendHandle> {
     }
 }
 
+/// Automatic `DynPicture` implementation for handles that are `MappableHandle`s.
 impl<CodecData, BackendHandle: MappableHandle> DynPicture for Picture<CodecData, BackendHandle> {
-    fn dyn_mappable_handle(&self) -> &dyn MappableHandle {
-        self.backend_handle.as_ref().unwrap()
-    }
-
     fn dyn_mappable_handle_mut(&mut self) -> &mut dyn MappableHandle {
         self.backend_handle.as_mut().unwrap()
     }
