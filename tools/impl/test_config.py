@@ -85,8 +85,6 @@ CRATE_OPTIONS: Dict[str, List[TestOption]] = {
     "fuzz": [TestOption.DO_NOT_BUILD],
     "hypervisor": [
         TestOption.DO_NOT_RUN_AARCH64,
-        TestOption.DO_NOT_RUN_ARMHF,
-        TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL,
     ],  # b/181672912
     "e2e_tests": [  # b/180196508
         TestOption.LARGE,

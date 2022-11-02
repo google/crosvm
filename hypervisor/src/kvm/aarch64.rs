@@ -195,8 +195,8 @@ impl VmAArch64 for KvmVm {
 
     fn create_vcpu(&self, id: usize) -> Result<Box<dyn VcpuAArch64>> {
         // create_vcpu is declared separately in VmAArch64 and VmX86, so it can return VcpuAArch64
-        // or VcpuX86.  But both use the same implementation in KvmVm::create_vcpu.
-        Ok(Box::new(KvmVm::create_vcpu(self, id)?))
+        // or VcpuX86.  But both use the same implementation in KvmVm::create_kvm_vcpu.
+        Ok(Box::new(self.create_kvm_vcpu(id)?))
     }
 }
 
@@ -824,59 +824,5 @@ pub(super) fn chip_to_kvm_chip(chip: IrqSourceChip) -> u32 {
             error!("Invalid IrqChipSource for ARM {:?}", chip);
             0
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use vm_memory::GuestAddress;
-    use vm_memory::GuestMemory;
-
-    use super::super::Kvm;
-    use super::*;
-    use crate::IrqRoute;
-    use crate::IrqSource;
-    use crate::IrqSourceChip;
-
-    #[test]
-    fn set_gsi_routing() {
-        let kvm = Kvm::new().unwrap();
-        let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-        let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
-        vm.create_irq_chip().unwrap();
-        vm.set_gsi_routing(&[]).unwrap();
-        vm.set_gsi_routing(&[IrqRoute {
-            gsi: 1,
-            source: IrqSource::Irqchip {
-                chip: IrqSourceChip::Gic,
-                pin: 3,
-            },
-        }])
-        .unwrap();
-        vm.set_gsi_routing(&[IrqRoute {
-            gsi: 1,
-            source: IrqSource::Msi {
-                address: 0xf000000,
-                data: 0xa0,
-            },
-        }])
-        .unwrap();
-        vm.set_gsi_routing(&[
-            IrqRoute {
-                gsi: 1,
-                source: IrqSource::Irqchip {
-                    chip: IrqSourceChip::Gic,
-                    pin: 3,
-                },
-            },
-            IrqRoute {
-                gsi: 2,
-                source: IrqSource::Msi {
-                    address: 0xf000000,
-                    data: 0xa0,
-                },
-            },
-        ])
-        .unwrap();
     }
 }
