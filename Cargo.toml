@@ -404,6 +404,7 @@ win_util = { path = "win_util"}
 
 [build-dependencies]
 cc = "*"
+which = "4"
 
 [dev-dependencies]
 base = "*"

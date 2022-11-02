@@ -22,7 +22,7 @@ fn rewrite_policies(seccomp_policy_path: &Path, rewrote_policy_folder: &Path) {
     }
 }
 
-fn compile_policies(out_dir: &Path, rewrote_policy_folder: &Path, minijail_dir: &Path) {
+fn compile_policies(out_dir: &Path, rewrote_policy_folder: &Path, compile_seccomp_policy: &Path) {
     let compiled_policy_folder = out_dir.join("policy_output");
     fs::create_dir_all(&compiled_policy_folder).unwrap();
     let mut include_all_bytes = String::from("std::collections::HashMap::from([\n");
@@ -36,7 +36,7 @@ fn compile_policies(out_dir: &Path, rewrote_policy_folder: &Path, minijail_dir: 
                     .file_name()
                     .unwrap(),
             );
-            Command::new(minijail_dir.join("tools/compile_seccomp_policy.py"))
+            Command::new(compile_seccomp_policy)
                 .arg("--arch-json")
                 .arg(rewrote_policy_folder.join("constants.json"))
                 .arg("--default-action")
@@ -69,18 +69,19 @@ fn main() {
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let src_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let minijail_dir = if let Ok(minijail_dir_env) = env::var("MINIJAIL_DIR") {
-        PathBuf::from(minijail_dir_env)
-    } else {
-        src_dir.join("third_party/minijail")
-    };
 
-    // Disable embedding of seccomp policy files on ChromeOS builds.
-    println!("cargo:rerun-if-env-changed=CROSVM_BUILD_VARIANT");
-    if env::var("CROSVM_BUILD_VARIANT").unwrap_or_default() == "chromeos" {
-        fs::write(out_dir.join("bpf_includes.in"), "Default::default()").unwrap();
-        return;
-    }
+    let compile_seccomp_policy = if let Ok(path) = which::which("compile_seccomp_policy") {
+        // If `compile_seccomp_policy` exists in the path (e.g. ChromeOS builds), use it.
+        path
+    } else {
+        // Otherwise, use compile_seccomp_policy.py from the minijail submodule.
+        let minijail_dir = if let Ok(minijail_dir_env) = env::var("MINIJAIL_DIR") {
+            PathBuf::from(minijail_dir_env)
+        } else {
+            src_dir.join("third_party/minijail")
+        };
+        minijail_dir.join("tools/compile_seccomp_policy.py")
+    };
 
     // check policies exist for target architecuture
     let seccomp_arch_name = match env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str() {
@@ -96,5 +97,5 @@ fn main() {
     let rewrote_policy_folder = out_dir.join("policy_input");
     fs::create_dir_all(&rewrote_policy_folder).unwrap();
     rewrite_policies(&seccomp_policy_path, &rewrote_policy_folder);
-    compile_policies(&out_dir, &rewrote_policy_folder, &minijail_dir);
+    compile_policies(&out_dir, &rewrote_policy_folder, &compile_seccomp_policy);
 }

@@ -540,6 +540,7 @@ dependencies = [
  "vhost",
  "vm_control",
  "vm_memory",
+ "which",
  "win_audio",
  "win_util",
  "winapi",
