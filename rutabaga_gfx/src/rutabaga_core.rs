@@ -951,6 +951,9 @@ impl RutabagaBuilder {
         } else {
             #[cfg(feature = "virgl_renderer")]
             if self.default_component == RutabagaComponentType::VirglRenderer {
+                #[cfg(not(feature = "virgl_renderer_next"))]
+                let render_server_fd = None;
+
                 let virgl = VirglRenderer::init(
                     self.virglrenderer_flags,
                     fence_handler.clone(),
