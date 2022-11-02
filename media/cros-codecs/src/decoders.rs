@@ -29,13 +29,13 @@ pub enum Error {
 
 #[derive(Error, Debug)]
 pub enum StatelessBackendError {
-    #[error("Not enough resources to proceed with the operation now.")]
+    #[error("not enough resources to proceed with the operation now")]
     OutOfResources,
-    #[error("This resource is not ready.")]
+    #[error("this resource is not ready")]
     ResourceNotReady,
-    #[error("This format is not supported.")]
+    #[error("this format is not supported")]
     UnsupportedFormat,
-    #[error("Negotiation failed")]
+    #[error("negotiation failed")]
     NegotiationFailed(anyhow::Error),
     #[error(transparent)]
     Other(#[from] anyhow::Error),
