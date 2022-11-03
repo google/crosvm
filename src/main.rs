@@ -573,7 +573,7 @@ fn crosvm_main<I: IntoIterator<Item = String>>(args: I) -> Result<CommandStatus>
             return Ok(CommandStatus::SuccessOrVmStop);
         }
         Err(e) => {
-            eprintln!("arg parsing failed: {}", e.output);
+            error!("arg parsing failed: {}", e.output);
             return Ok(CommandStatus::InvalidArgs);
         }
     };
