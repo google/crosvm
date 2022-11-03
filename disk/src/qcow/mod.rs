@@ -2388,7 +2388,7 @@ mod tests {
     #[test]
     fn combo_write_read() {
         with_default_file(1024 * 1024 * 1024 * 256, |mut qcow_file| {
-            const NUM_BLOCKS: usize = 555;
+            const NUM_BLOCKS: usize = 55;
             const BLOCK_SIZE: usize = 0x1_0000;
             const OFFSET: u64 = 0x1_0000_0020;
             let data = [0x55u8; BLOCK_SIZE];
