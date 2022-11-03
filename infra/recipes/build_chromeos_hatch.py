@@ -20,7 +20,7 @@ def RunSteps(api):
     with api.crosvm.cros_container_build_context():
         gitilies = api.buildbucket.build.input.gitiles_commit
         upstream_url = "https://chromium.googlesource.com/crosvm/crosvm"
-        revision = gitilies.id or "HEAD"
+        revision = gitilies.id or "upstream/main"
 
         api.crosvm.step_in_container(
             "Sync repo",
@@ -33,12 +33,23 @@ def RunSteps(api):
             cros=True,
         )
 
-        # Overwrite crosvm with the upstream revision we need to test
         api.crosvm.step_in_container(
-            "Fetch upstream crosvm", ["git", "fetch", upstream_url], cros=True
+            "Add crosvm upstream remote",
+            ["git", "remote", "add", "upstream", upstream_url],
+            cros=True,
         )
+
         api.crosvm.step_in_container(
-            "Checkout upstream revision", ["git", "checkout", revision], cros=True
+            "Unshallow crosvm", ["git", "fetch", "cros", "--unshallow"], cros=True
+        )
+
+        api.crosvm.step_in_container(
+            "Fetch upstream crosvm", ["git", "fetch", "upstream"], cros=True
+        )
+
+        # Apply unmerged commit from upstream to crOS tree
+        api.crosvm.step_in_container(
+            "Cherry-pick from upstream revision", ["git", "cherry-pick", ".." + revision], cros=True
         )
 
         api.crosvm.step_in_container(
