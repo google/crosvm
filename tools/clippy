@@ -9,21 +9,26 @@
 # To fix violations where possible:
 # $ ./tools/clippy --fix
 
-from impl.common import CROSVM_ROOT, cwd, run_main, cmd, chdir
+from typing import List
+from impl.common import CROSVM_ROOT, run_main, cmd, chdir
 from impl.test_runner import get_workspace_excludes
-from impl.test_target import Triple
+from impl.test_target import Triple, SHORTHANDS
 
 clippy = cmd("cargo clippy").with_color_flag()
-triple = Triple.host_default()
-
-excluded_crates: list[str] = list(get_workspace_excludes(triple))
 
 
-def is_crate_excluded(crate: str) -> bool:
-    return crate in excluded_crates
+def main(
+    fix: bool = False,
+    json: bool = False,
+    locked: bool = False,
+    platform: str = None,
+):
+    try:
+        triple: Triple = Triple.from_shorthand(platform) if platform else Triple.host_default()
+    except Exception as e:
+        raise type(e)(str(e) + f"\nValid platforms are {', '.join(SHORTHANDS.keys())}")
+    excluded_crates: List[str] = list(get_workspace_excludes(triple))
 
-
-def main(fix: bool = False, json: bool = False, locked: bool = False):
     chdir(CROSVM_ROOT)
 
     # Note: Clippy checks are configured in .cargo/config.toml
@@ -32,6 +37,7 @@ def main(fix: bool = False, json: bool = False, locked: bool = False):
         "--message-format=json" if json else None,
         "--locked" if locked else None,
         "--all-targets",
+        "--no-default-features" if triple.sys == "windows" else None,
         "--",
         "-Dwarnings",
     ]
