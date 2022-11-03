@@ -2,8 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::mem;
+use std::os::windows::io::RawHandle;
 use std::pin::Pin;
 use std::ptr::null_mut;
 use std::sync::atomic::AtomicI32;
@@ -21,29 +23,29 @@ use anyhow::Result;
 use base::error;
 use base::info;
 use base::warn;
+use base::AsRawDescriptor;
 use base::Event;
+use base::ReadNotifier;
 use base::Tube;
 use euclid::size2;
 use sync::Mutex;
 #[cfg(feature = "kiwi")]
 use vm_control::ServiceSendToGpu;
+use win_util::syscall_bail;
 use win_util::win32_wide_string;
+use winapi::shared::minwindef::DWORD;
 use winapi::shared::minwindef::FALSE;
 use winapi::shared::minwindef::LPARAM;
 use winapi::shared::minwindef::LRESULT;
 use winapi::shared::minwindef::UINT;
 use winapi::shared::minwindef::WPARAM;
 use winapi::shared::windef::HWND;
-use winapi::um::errhandlingapi::GetLastError;
 use winapi::um::processthreadsapi::GetCurrentThreadId;
 use winapi::um::winbase::INFINITE;
-use winapi::um::winbase::WAIT_FAILED;
 use winapi::um::winbase::WAIT_OBJECT_0;
+use winapi::um::winnt::MAXIMUM_WAIT_OBJECTS;
 use winapi::um::winuser::*;
 
-#[cfg(feature = "kiwi")]
-use super::message_relay_thread::MessageRelayThread;
-use super::message_relay_thread::MessageRelayThreadTrait;
 use super::thread_message_util;
 use super::window::MessagePacket;
 use super::window::Window;
@@ -66,6 +68,81 @@ enum MessageLoopState {
     EarlyTerminatedWithError,
     /// The loop has ended because errors occurred.
     ExitedWithError,
+}
+
+#[derive(Copy, Clone, PartialEq)]
+enum Token {
+    MessagePump,
+    ServiceMessage,
+}
+
+/// A context that can wait on both the thread-specific message queue and the given handles.
+struct MsgWaitContext {
+    triggers: HashMap<RawHandle, Token>,
+    raw_handles: Vec<RawHandle>,
+}
+
+impl MsgWaitContext {
+    pub fn new() -> Self {
+        Self {
+            triggers: HashMap::new(),
+            raw_handles: Vec::new(),
+        }
+    }
+
+    /// Note that since there is no handle associated with `Token::MessagePump`, this token will be
+    /// used internally by `MsgWaitContext` and the caller should never use it.
+    pub fn add(&mut self, handle: &dyn AsRawDescriptor, token: Token) -> Result<()> {
+        if token == Token::MessagePump {
+            bail!("Token::MessagePump is reserved!");
+        }
+        if self.raw_handles.len() == MAXIMUM_WAIT_OBJECTS as usize {
+            bail!("Number of raw handles exceeding MAXIMUM_WAIT_OBJECTS!");
+        }
+
+        let raw_descriptor = handle.as_raw_descriptor();
+        if self.triggers.contains_key(&raw_descriptor) {
+            bail!("The handle has already been registered in MsgWaitContext!")
+        }
+
+        self.triggers.insert(raw_descriptor, token);
+        self.raw_handles.push(raw_descriptor);
+        Ok(())
+    }
+
+    /// Blocks the thread until there is any new message available on the message queue, or if any
+    /// of the given handles is signaled, and returns the associated token.
+    ///
+    /// If multiple handles are signaled, this will return the token associated with the one that
+    /// was first added to this context.
+    ///
+    /// # Safety
+    ///
+    /// Caller is responsible for ensuring that the handles are still valid.
+    pub unsafe fn wait(&self) -> Result<Token> {
+        let num_handles = self.raw_handles.len();
+        // Safe because the caller is required to guarantee that the handles are valid, and failures
+        // are handled below.
+        let result = MsgWaitForMultipleObjects(
+            num_handles as DWORD,
+            self.raw_handles.as_ptr(),
+            /* fWaitAll= */ FALSE,
+            INFINITE,
+            QS_ALLINPUT,
+        );
+        match (result - WAIT_OBJECT_0) as usize {
+            // At least one of the handles has been signaled.
+            index if index < num_handles => Ok(self.triggers[&self.raw_handles[index]]),
+            // At least one message is available at the message queue.
+            index if index == num_handles => Ok(Token::MessagePump),
+            // Invalid cases. This is most likely a `WAIT_FAILED`, but anything not matched by the
+            // above is an error case.
+            _ => syscall_bail!(format!(
+                "MsgWaitForMultipleObjects() unexpectedly returned {}",
+                result
+            )),
+        }
+    }
 }
 
 /// This class runs the WndProc thread, and provides helper functions for other threads to
@@ -92,19 +169,10 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
         let thread = match ThreadBuilder::new()
             .name("gpu_display_wndproc".into())
             .spawn(move || {
-                // Safe because GetCurrentThreadId has no failure mode.
-                let thread_id = unsafe { GetCurrentThreadId() };
-
                 // Must be called before any other threads post messages to the WndProc thread.
                 thread_message_util::force_create_message_queue();
 
-                // Safe because the message queue has been created, and the returned thread will go
-                // out of scope and get dropped before the WndProc thread exits.
-                let _message_relay_thread = unsafe {
-                    vm_tube.and_then(|tube| Self::start_message_relay_thread(tube, thread_id))
-                };
-
-                Self::run_message_loop(thread_id_sender, message_loop_state_clone);
+                Self::run_message_loop(thread_id_sender, message_loop_state_clone, vm_tube);
 
                 if let Err(e) = thread_terminated_event_clone.signal() {
                     error!("Failed to signal thread terminated event: {}", e);
@@ -151,7 +219,11 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
         }
     }
 
-    fn run_message_loop(thread_id_sender: Sender<Result<u32>>, message_loop_state: Arc<AtomicI32>) {
+    fn run_message_loop(
+        thread_id_sender: Sender<Result<u32>>,
+        message_loop_state: Arc<AtomicI32>,
+        vm_tube: Option<Arc<Mutex<Tube>>>,
+    ) {
         // Safe because the dispatcher will take care of the lifetime of the `Window` object.
         let create_window_res = unsafe { Self::create_window() };
         match create_window_res.and_then(|window| WindowMessageDispatcher::<T>::create(window)) {
@@ -163,7 +235,7 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
                     error!("Failed to send WndProc thread ID: {}", e);
                 }
 
-                let exit_state = Self::run_message_loop_body(dispatcher);
+                let exit_state = Self::run_message_loop_body(dispatcher, vm_tube);
                 message_loop_state.store(exit_state as i32, Ordering::SeqCst);
             }
             Err(e) => {
@@ -181,36 +253,47 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
 
     fn run_message_loop_body(
         mut message_dispatcher: Pin<Box<WindowMessageDispatcher<T>>>,
+        vm_tube: Option<Arc<Mutex<Tube>>>,
     ) -> MessageLoopState {
+        let mut msg_wait_ctx = MsgWaitContext::new();
+        if let Some(tube) = &vm_tube {
+            if let Err(e) = msg_wait_ctx.add(tube.lock().get_read_notifier(), Token::ServiceMessage)
+            {
+                error!(
+                    "Failed to add service message read notifier to MsgWaitContext: {:?}",
+                    e
+                );
+                return MessageLoopState::EarlyTerminatedWithError;
+            }
+        }
+
         loop {
-            // Safe because we don't pass in any handle, and failures are handled below.
-            match unsafe {
-                MsgWaitForMultipleObjects(
-                    /* nCount= */ 0,
-                    /* pHandles= */ null_mut(),
-                    /* fWaitAll= */ FALSE,
-                    INFINITE,
-                    QS_ALLINPUT,
-                )
-            } {
-                WAIT_OBJECT_0 => {
-                    if !Self::retrieve_and_dispatch_messages(&mut message_dispatcher) {
-                        info!("WndProc thread exiting message loop normally");
-                        return MessageLoopState::ExitedNormally;
+            // Safe because the lifetime of handles are at least as long as the function call.
+            match unsafe { msg_wait_ctx.wait() } {
+                Ok(token) => match token {
+                    Token::MessagePump => {
+                        if !Self::retrieve_and_dispatch_messages(&mut message_dispatcher) {
+                            info!("WndProc thread exiting message loop normally");
+                            return MessageLoopState::ExitedNormally;
+                        }
                     }
-                }
-                WAIT_FAILED => {
+                    Token::ServiceMessage => {
+                        #[cfg(feature = "kiwi")]
+                        Self::read_and_dispatch_service_message(
+                            &mut message_dispatcher,
+                            // We never use this token if `vm_tube` is None, so `expect()` should
+                            // always succeed.
+                            vm_tube.as_ref().expect("Service message tube is None"),
+                        );
+                    }
+                },
+                Err(e) => {
                     error!(
-                        "WndProc thread exiting message loop because MsgWaitForMultipleObjects() \
-                        failed with error code {}",
-                        unsafe { GetLastError() }
+                        "WndProc thread exiting message loop because of error: {:?}",
+                        e
                     );
                     return MessageLoopState::ExitedWithError;
                 }
-                ret => warn!(
-                    "MsgWaitForMultipleObjects() returned unexpected value {}",
-                    ret
-                ),
             }
         }
     }
@@ -268,6 +351,25 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
                 }
             }
         }
+    }
+
+    #[cfg(feature = "kiwi")]
+    fn read_and_dispatch_service_message(
+        message_dispatcher: &mut Pin<Box<WindowMessageDispatcher<T>>>,
+        vm_tube: &Arc<Mutex<Tube>>,
+    ) {
+        // We might want to send messages via `vm_tube` while processing service messages, so we
+        // have to make sure the mutex on this tube has been released before processing the message.
+        let message = match vm_tube.lock().recv::<ServiceSendToGpu>() {
+            Ok(message) => message,
+            Err(e) => {
+                error!("Failed to receive service message through the tube: {}", e);
+                return;
+            }
+        };
+        message_dispatcher
+            .as_mut()
+            .process_service_message(&message);
     }
 
     fn is_message_loop_running(&self) -> bool {
@@ -338,33 +440,6 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
         )
     }
 
-    /// # Safety
-    /// The message queue must have been created on the WndProc thread before calling this, and the
-    /// returned thread must not outlive the WndProc thread.
-    unsafe fn start_message_relay_thread(
-        #[allow(unused_variables)] vm_tube: Arc<Mutex<Tube>>,
-        #[allow(unused_variables)] wndproc_thread_id: u32,
-    ) -> Option<Box<dyn MessageRelayThreadTrait>> {
-        #[cfg(feature = "kiwi")]
-        match MessageRelayThread::<ServiceSendToGpu>::start_thread(
-            vm_tube,
-            wndproc_thread_id,
-            WM_USER_HANDLE_SERVICE_MESSAGE_INTERNAL,
-        ) {
-            Ok(thread) => Some(thread),
-            // We won't get messages from the service if we failed to spawn this thread. It may not
-            // worth terminating the WndProc thread and crashing the emulator in that case, so we
-            // just log the error.
-            Err(e) => {
-                error!("{:?}", e);
-                None
-            }
-        }
-
-        #[cfg(not(feature = "kiwi"))]
-        None
-    }
-
     unsafe extern "system" fn wnd_proc(
         hwnd: HWND,
         msg: UINT,
@@ -398,3 +473,23 @@ impl<T: HandleWindowMessage> Drop for WindowProcedureThread<T> {
 // Since `WindowProcedureThread` does not hold anything that cannot be transferred between threads,
 // we can implement `Send` for it.
 unsafe impl<T: HandleWindowMessage> Send for WindowProcedureThread<T> {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn error_on_adding_reserved_token_to_context() {
+        let mut ctx = MsgWaitContext::new();
+        let event = Event::new().unwrap();
+        assert!(ctx.add(&event, Token::MessagePump).is_err());
+    }
+
+    #[test]
+    fn error_on_adding_duplicated_handle_to_context() {
+        let mut ctx = MsgWaitContext::new();
+        let event = Event::new().unwrap();
+        assert!(ctx.add(&event, Token::ServiceMessage).is_ok());
+        assert!(ctx.add(&event, Token::ServiceMessage).is_err());
+    }
+}

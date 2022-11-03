@@ -3,8 +3,6 @@
 // found in the LICENSE file.
 
 mod math_util;
-#[allow(dead_code)]
-mod message_relay_thread;
 pub mod surface;
 mod thread_message_util;
 mod window;

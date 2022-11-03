@@ -103,8 +103,17 @@ impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
         Ok(dispatcher)
     }
 
+    #[cfg(feature = "kiwi")]
+    pub fn process_service_message(self: Pin<&mut Self>, message: &ServiceSendToGpu) {
+        // Safe because we won't move the dispatcher out of the returned mutable reference.
+        match unsafe { self.get_unchecked_mut().message_processor.as_mut() } {
+            Some(processor) => processor.handle_service_message(message),
+            None => error!("Cannot handle service message because there is no message processor!"),
+        }
+    }
+
     pub fn process_thread_message(self: Pin<&mut Self>, packet: &MessagePacket) {
-        // Safe because we won't move the dispatcher out of it.
+        // Safe because we won't move the dispatcher out of the returned mutable reference.
         unsafe {
             self.get_unchecked_mut()
                 .process_thread_message_internal(packet);
@@ -158,18 +167,6 @@ impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
             l_param,
         } = *packet;
         match msg {
-            #[cfg(feature = "kiwi")]
-            WM_USER_HANDLE_SERVICE_MESSAGE_INTERNAL => {
-                // Safe because the sender gives up the ownership and expects the receiver to
-                // destruct the message.
-                let message = unsafe { Box::from_raw(l_param as *mut ServiceSendToGpu) };
-                match &mut self.message_processor {
-                    Some(processor) => processor.handle_service_message(&*message),
-                    None => error!(
-                        "Cannot handle service message because there is no message processor!"
-                    ),
-                }
-            }
             WM_USER_HANDLE_DISPLAY_MESSAGE_INTERNAL => {
                 // Safe because the sender gives up the ownership and expects the receiver to
                 // destruct the message.

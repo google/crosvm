@@ -28,21 +28,15 @@ use crate::EventDevice;
 /// Relying on destructors might be a safer choice.
 pub(crate) const WM_USER_WNDPROC_THREAD_DROP_KILL_WINDOW_INTERNAL: UINT = WM_USER;
 
-// Thread message for handling the message sent from service. When the main event loop receives a
-// message from service, it converts that to `ServiceSendToGpu` enum and sends it through a tube.
-// The message relay thread receives it and sends the pointer to `ServiceSendToGpu` as the lParam.
-#[cfg(feature = "kiwi")]
-pub(crate) const WM_USER_HANDLE_SERVICE_MESSAGE_INTERNAL: UINT = WM_USER + 1;
-
 // Message for handling the change in host viewport. This is sent when the host window size changes
 // and we need to render to a different part of the window. The new width and height are sent as the
 // low/high word of lParam.
-pub(crate) const WM_USER_HOST_VIEWPORT_CHANGE_INTERNAL: UINT = WM_USER + 2;
+pub(crate) const WM_USER_HOST_VIEWPORT_CHANGE_INTERNAL: UINT = WM_USER + 1;
 
 /// Thread message for handling the message sent from the GPU worker thread. A pointer to enum
 /// `DisplaySendToWndProc` is sent as the lParam. Note that the receiver is responsible for
 /// destructing the message.
-pub(crate) const WM_USER_HANDLE_DISPLAY_MESSAGE_INTERNAL: UINT = WM_USER + 3;
+pub(crate) const WM_USER_HANDLE_DISPLAY_MESSAGE_INTERNAL: UINT = WM_USER + 2;
 
 pub type CreateMessageHandlerFunction<T> =
     Box<dyn FnOnce(&Window, DisplayEventDispatcher) -> Result<T>>;
@@ -129,7 +123,7 @@ pub trait HandleWindowMessage {
     /// Called when processing `WM_DISPLAYCHANGE`.
     fn on_display_change(&mut self, _window: &Window) {}
 
-    /// Called when processing `WM_USER_HANDLE_SERVICE_MESSAGE_INTERNAL`.
+    /// Called when processing requests from the service.
     #[cfg(feature = "kiwi")]
     fn on_handle_service_message(&mut self, _window: &Window, _message: &ServiceSendToGpu) {}
 
