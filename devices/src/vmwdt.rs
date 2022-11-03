@@ -382,7 +382,7 @@ mod tests {
             vmwdt_locked[0].next_expiration_interval_ms
         };
 
-        sleep(Duration::from_secs(1));
+        sleep(Duration::from_millis(100));
 
         // Verify that our timer expired and the next_expiration_interval_ms changed
         let vmwdt_locked = device.vm_wdts.lock();
@@ -406,9 +406,9 @@ mod tests {
         device.write(vmwdt_bus_address(VMWDT_REG_STATUS as u64), &[1, 0, 0, 0]);
         // In the test scenario the guest does not interpret the /proc/stat::guest_time, thus
         // the function get_guest_time() returns 0
-        device.vm_wdts.lock()[0].last_guest_time_ms = -1000;
+        device.vm_wdts.lock()[0].last_guest_time_ms = -100;
 
-        sleep(Duration::from_secs(1));
+        sleep(Duration::from_millis(100));
 
         // Verify that our timer expired and the next_expiration_interval_ms changed
         match vm_evt_rdtube.recv::<VmEventType>() {
