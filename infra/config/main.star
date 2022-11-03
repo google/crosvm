@@ -277,29 +277,6 @@ def verify_linux_builder(arch, crosvm_direct = False, coverage = True, **kwargs)
         **kwargs
     )
 
-def verify_chromeos_builder(board, **kwargs):
-    """Creates a verify builder that builds crosvm for ChromeOS
-
-    Args:
-        board: ChromeOS board to build and test
-        **kwargs: Passed to verify_builder
-    """
-    verify_builder(
-        name = "chromeos_%s" % board,
-        dimensions = {
-            "os": "Ubuntu",
-            "cpu": "x86-64",
-        },
-        executable = luci.recipe(
-            name = "build_chromeos",
-        ),
-        properties = {
-            "board": board,
-        },
-        category = "linux",
-        **kwargs
-    )
-
 def infra_builder(name, postsubmit, **args):
     """Creates a ci job to run infra recipes that are not involved in verifying changes.
 
@@ -339,8 +316,6 @@ verify_linux_builder("x86_64", crosvm_direct = True)
 verify_linux_builder("aarch64")
 verify_linux_builder("armhf", coverage = False)
 verify_linux_builder("mingw64", coverage = False)
-
-verify_chromeos_builder("amd64-generic", presubmit = False)
 
 verify_builder(
     name = "chromeos_hatch",

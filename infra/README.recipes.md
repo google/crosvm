@@ -6,7 +6,6 @@
   * [crosvm](#recipe_modules-crosvm) (Python3 ✅)
 
 **[Recipes](#Recipes)**
-  * [build_chromeos](#recipes-build_chromeos) (Python3 ✅)
   * [build_chromeos_hatch](#recipes-build_chromeos_hatch) (Python3 ✅)
   * [build_docs](#recipes-build_docs) (Python3 ✅)
   * [build_linux](#recipes-build_linux) (Python3 ✅)
@@ -102,23 +101,6 @@ Runs a luci step inside the crosvm dev container.
 &mdash; **def [upload\_coverage](/infra/recipe_modules/crosvm/api.py#182)(self, filename):**
 ## Recipes
 
-### *recipes* / [build\_chromeos](/infra/recipes/build_chromeos.py)
-
-[DEPS](/infra/recipes/build_chromeos.py#9): [crosvm](#recipe_modules-crosvm), [depot\_tools/depot\_tools][depot_tools/recipe_modules/depot_tools], [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/file][recipe_engine/recipe_modules/file], [recipe\_engine/path][recipe_engine/recipe_modules/path], [recipe\_engine/properties][recipe_engine/recipe_modules/properties], [recipe\_engine/step][recipe_engine/recipe_modules/step]
-
-PYTHON_VERSION_COMPATIBILITY: PY3
-
-&mdash; **def [BuildAndTest](/infra/recipes/build_chromeos.py#76)(api, board):**
-
-&mdash; **def [CleanUp](/infra/recipes/build_chromeos.py#101)(api):**
-
-&mdash; **def [PrepareBuild](/infra/recipes/build_chromeos.py#61)(api):**
-
-&mdash; **def [RunSteps](/infra/recipes/build_chromeos.py#106)(api, properties):**
-
-&mdash; **def [SetupSource](/infra/recipes/build_chromeos.py#27)(api, workspace):**
-
-&mdash; **def [TestCrosWorkonFlow](/infra/recipes/build_chromeos.py#89)(api, board):**
 ### *recipes* / [build\_chromeos\_hatch](/infra/recipes/build_chromeos_hatch.py)
 
 [DEPS](/infra/recipes/build_chromeos_hatch.py#9): [crosvm](#recipe_modules-crosvm), [depot\_tools/depot\_tools][depot_tools/recipe_modules/depot_tools], [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/properties][recipe_engine/recipe_modules/properties], [recipe\_engine/step][recipe_engine/recipe_modules/step]
