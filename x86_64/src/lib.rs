@@ -15,7 +15,7 @@ const X86_64_FDT_MAX_SIZE: u64 = 0x20_0000;
 #[allow(non_upper_case_globals)]
 #[allow(non_camel_case_types)]
 #[allow(non_snake_case)]
-mod bootparam;
+pub mod bootparam;
 
 // boot_params is just a series of ints, it is safe to initialize it.
 unsafe impl data_model::DataInit for bootparam::boot_params {}
@@ -41,14 +41,14 @@ unsafe impl data_model::DataInit for mpspec::mpf_intel {}
 #[cfg(unix)]
 pub mod msr;
 
-mod acpi;
+pub mod acpi;
 mod bzimage;
 pub mod cpuid;
 mod gdt;
-mod interrupts;
-mod mptable;
-mod regs;
-mod smbios;
+pub mod interrupts;
+pub mod mptable;
+pub mod regs;
+pub mod smbios;
 
 use std::collections::BTreeMap;
 use std::ffi::CStr;
@@ -292,16 +292,16 @@ enum E820Type {
 const MB: u64 = 1 << 20;
 const GB: u64 = 1 << 30;
 
-const BOOT_STACK_POINTER: u64 = 0x8000;
+pub const BOOT_STACK_POINTER: u64 = 0x8000;
 const START_OF_RAM_32BITS: u64 = if cfg!(feature = "direct") { 0x1000 } else { 0 };
 const FIRST_ADDR_PAST_32BITS: u64 = 1 << 32;
 // Linux (with 4-level paging) has a physical memory limit of 46 bits (64 TiB).
 const HIGH_MMIO_MAX_END: u64 = (1u64 << 46) - 1;
-const KERNEL_64BIT_ENTRY_OFFSET: u64 = 0x200;
-const ZERO_PAGE_OFFSET: u64 = 0x7000;
+pub const KERNEL_64BIT_ENTRY_OFFSET: u64 = 0x200;
+pub const ZERO_PAGE_OFFSET: u64 = 0x7000;
 const TSS_ADDR: u64 = 0xfffb_d000;
 
-const KERNEL_START_OFFSET: u64 = 0x20_0000;
+pub const KERNEL_START_OFFSET: u64 = 0x20_0000;
 const CMDLINE_OFFSET: u64 = 0x2_0000;
 const CMDLINE_MAX_SIZE: u64 = KERNEL_START_OFFSET - CMDLINE_OFFSET;
 const X86_64_SERIAL_1_3_IRQ: u32 = 4;
@@ -338,7 +338,7 @@ struct LowMemoryLayout {
 
 static LOW_MEMORY_LAYOUT: OnceCell<LowMemoryLayout> = OnceCell::new();
 
-fn init_low_memory_layout(pcie_ecam: Option<AddressRange>, pci_low_start: Option<u64>) {
+pub fn init_low_memory_layout(pcie_ecam: Option<AddressRange>, pci_low_start: Option<u64>) {
     LOW_MEMORY_LAYOUT.get_or_init(|| {
         // Make sure it align to 256MB for MTRR convenient
         const MEM_32BIT_GAP_SIZE: u64 = if cfg!(feature = "direct") {
@@ -388,10 +388,10 @@ fn init_low_memory_layout(pcie_ecam: Option<AddressRange>, pci_low_start: Option
     });
 }
 
-fn read_pci_mmio_before_32bit() -> AddressRange {
+pub fn read_pci_mmio_before_32bit() -> AddressRange {
     LOW_MEMORY_LAYOUT.get().unwrap().pci_mmio
 }
-fn read_pcie_cfg_mmio() -> AddressRange {
+pub fn read_pcie_cfg_mmio() -> AddressRange {
     LOW_MEMORY_LAYOUT.get().unwrap().pcie_cfg_mmio
 }
 
@@ -498,7 +498,7 @@ fn add_e820_entry(params: &mut boot_params, range: AddressRange, mem_type: E820T
 /// These should be used to configure the GuestMemory structure for the platform.
 /// For x86_64 all addresses are valid from the start of the kernel except a
 /// carve out at the end of 32bit address space.
-fn arch_memory_regions(size: u64, bios_size: Option<u64>) -> Vec<(GuestAddress, u64)> {
+pub fn arch_memory_regions(size: u64, bios_size: Option<u64>) -> Vec<(GuestAddress, u64)> {
     let mem_start = START_OF_RAM_32BITS;
     let mem_end = GuestAddress(size + mem_start);
 
@@ -1445,7 +1445,7 @@ impl X8664arch {
     /// * `mem` - The memory to be used by the guest.
     /// * `cmdline` - the kernel commandline
     /// * `initrd_file` - an initial ramdisk image
-    fn setup_system_memory(
+    pub fn setup_system_memory(
         mem: &GuestMemory,
         cmdline: &CStr,
         initrd_file: Option<File>,
@@ -1538,7 +1538,7 @@ impl X8664arch {
     }
 
     /// This returns a minimal kernel command for this architecture
-    fn get_base_linux_cmdline() -> kernel_cmdline::Cmdline {
+    pub fn get_base_linux_cmdline() -> kernel_cmdline::Cmdline {
         let mut cmdline = kernel_cmdline::Cmdline::new(CMDLINE_MAX_SIZE as usize);
         cmdline.insert_str("panic=-1").unwrap();
 
@@ -1552,7 +1552,7 @@ impl X8664arch {
     /// * - `io_bus` - the IO bus object
     /// * - `pit_uses_speaker_port` - does the PIT use port 0x61 for the PC speaker
     /// * - `vm_evt_wrtube` - the event object which should receive exit events
-    fn setup_legacy_i8042_device(
+    pub fn setup_legacy_i8042_device(
         io_bus: &devices::Bus,
         pit_uses_speaker_port: bool,
         vm_evt_wrtube: SendTube,
@@ -1575,7 +1575,7 @@ impl X8664arch {
     ///
     /// * - `io_bus` - the IO bus object
     /// * - `mem_size` - the size in bytes of physical ram for the guest
-    fn setup_legacy_cmos_device(io_bus: &devices::Bus, mem_size: u64) -> Result<()> {
+    pub fn setup_legacy_cmos_device(io_bus: &devices::Bus, mem_size: u64) -> Result<()> {
         let mem_regions = arch_memory_regions(mem_size, None);
 
         let mem_below_4g = mem_regions
@@ -1618,7 +1618,7 @@ impl X8664arch {
     /// * - `irq_chip` the IrqChip object for registering irq events
     /// * - `battery` indicate whether to create the battery
     /// * - `mmio_bus` the MMIO bus to add the devices to
-    fn setup_acpi_devices(
+    pub fn setup_acpi_devices(
         pci_root: Arc<Mutex<PciRoot>>,
         mem: &GuestMemory,
         io_bus: &devices::Bus,
@@ -1804,7 +1804,7 @@ impl X8664arch {
     /// * - `irq_chip` the IrqChip object for registering irq events
     /// * - `io_bus` the I/O bus to add the devices to
     /// * - `serial_parmaters` - definitions for how the serial devices should be configured
-    fn setup_serial_devices(
+    pub fn setup_serial_devices(
         protection_type: ProtectionType,
         irq_chip: &mut dyn IrqChip,
         io_bus: &devices::Bus,
@@ -1948,9 +1948,6 @@ pub fn set_enable_pnp_data_msr_config(
 
     Ok(())
 }
-
-#[cfg(test)]
-mod test_integration;
 
 #[cfg(test)]
 mod tests {

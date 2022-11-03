@@ -33,27 +33,27 @@ pub enum Error {
 pub type Result<T> = result::Result<T, Error>;
 
 // CPUID bits in ebx, ecx, and edx.
-const EBX_CLFLUSH_CACHELINE: u32 = 8; // Flush a cache line size.
-const EBX_CLFLUSH_SIZE_SHIFT: u32 = 8; // Bytes flushed when executing CLFLUSH.
-const EBX_CPU_COUNT_SHIFT: u32 = 16; // Index of this CPU.
-const EBX_CPUID_SHIFT: u32 = 24; // Index of this CPU.
-const ECX_EPB_SHIFT: u32 = 3; // "Energy Performance Bias" bit.
-const ECX_X2APIC_SHIFT: u32 = 21; // APIC supports extended xAPIC (x2APIC) standard.
-const ECX_TSC_DEADLINE_TIMER_SHIFT: u32 = 24; // TSC deadline mode of APIC timer.
-const ECX_HYPERVISOR_SHIFT: u32 = 31; // Flag to be set when the cpu is running on a hypervisor.
-const EDX_HTT_SHIFT: u32 = 28; // Hyper Threading Enabled.
-const ECX_TOPO_TYPE_SHIFT: u32 = 8; // Topology Level type.
-const ECX_TOPO_SMT_TYPE: u32 = 1; // SMT type.
-const ECX_TOPO_CORE_TYPE: u32 = 2; // CORE type.
-const ECX_HCFC_PERF_SHIFT: u32 = 0; // Presence of IA32_MPERF and IA32_APERF.
-const EAX_CPU_CORES_SHIFT: u32 = 26; // Index of cpu cores in the same physical package.
-const EDX_HYBRID_CPU_SHIFT: u32 = 15; // Hybrid. The processor is identified as a hybrid part.
-const EAX_HWP_SHIFT: u32 = 7; // Intel Hardware P-states.
-const EAX_HWP_NOTIFICATION_SHIFT: u32 = 8; // IA32_HWP_INTERRUPT MSR is supported
-const EAX_HWP_EPP_SHIFT: u32 = 10; // HWP Energy Perf. Preference.
-const EAX_ITMT_SHIFT: u32 = 14; // Intel Turbo Boost Max Technology 3.0 available.
-const EAX_CORE_TEMP: u32 = 0; // Core Temperature
-const EAX_PKG_TEMP: u32 = 6; // Package Temperature
+pub const EBX_CLFLUSH_CACHELINE: u32 = 8; // Flush a cache line size.
+pub const EBX_CLFLUSH_SIZE_SHIFT: u32 = 8; // Bytes flushed when executing CLFLUSH.
+pub const EBX_CPU_COUNT_SHIFT: u32 = 16; // Index of this CPU.
+pub const EBX_CPUID_SHIFT: u32 = 24; // Index of this CPU.
+pub const ECX_EPB_SHIFT: u32 = 3; // "Energy Performance Bias" bit.
+pub const ECX_X2APIC_SHIFT: u32 = 21; // APIC supports extended xAPIC (x2APIC) standard.
+pub const ECX_TSC_DEADLINE_TIMER_SHIFT: u32 = 24; // TSC deadline mode of APIC timer.
+pub const ECX_HYPERVISOR_SHIFT: u32 = 31; // Flag to be set when the cpu is running on a hypervisor.
+pub const EDX_HTT_SHIFT: u32 = 28; // Hyper Threading Enabled.
+pub const ECX_TOPO_TYPE_SHIFT: u32 = 8; // Topology Level type.
+pub const ECX_TOPO_SMT_TYPE: u32 = 1; // SMT type.
+pub const ECX_TOPO_CORE_TYPE: u32 = 2; // CORE type.
+pub const ECX_HCFC_PERF_SHIFT: u32 = 0; // Presence of IA32_MPERF and IA32_APERF.
+pub const EAX_CPU_CORES_SHIFT: u32 = 26; // Index of cpu cores in the same physical package.
+pub const EDX_HYBRID_CPU_SHIFT: u32 = 15; // Hybrid. The processor is identified as a hybrid part.
+pub const EAX_HWP_SHIFT: u32 = 7; // Intel Hardware P-states.
+pub const EAX_HWP_NOTIFICATION_SHIFT: u32 = 8; // IA32_HWP_INTERRUPT MSR is supported
+pub const EAX_HWP_EPP_SHIFT: u32 = 10; // HWP Energy Perf. Preference.
+pub const EAX_ITMT_SHIFT: u32 = 14; // Intel Turbo Boost Max Technology 3.0 available.
+pub const EAX_CORE_TEMP: u32 = 0; // Core Temperature
+pub const EAX_PKG_TEMP: u32 = 6; // Package Temperature
 
 /// All of the context required to emulate the CPUID instruction.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -281,7 +281,7 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
 
 /// Adjust all the entries in `cpuid` based on crosvm's cpuid logic and `ctx`. Calls `adjust_cpuid`
 /// on each entry in `cpuid`, and adds any entries that should exist and are missing from `cpuid`.
-fn filter_cpuid(cpuid: &mut hypervisor::CpuId, ctx: &CpuIdContext) {
+pub fn filter_cpuid(cpuid: &mut hypervisor::CpuId, ctx: &CpuIdContext) {
     // Add an empty leaf 0x15 if we have a tsc_frequency and it's not in the current set of leaves.
     // It will be filled with the appropriate frequency information by `adjust_cpuid`.
     if ctx.tsc_frequency.is_some()
@@ -377,69 +377,6 @@ mod tests {
         // this should be amd or intel. We don't support other processors for virtualization.
         let manufacturer = cpu_manufacturer();
         assert_ne!(manufacturer, CpuManufacturer::Unknown);
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn feature_and_vendor_name() {
-        let mut cpuid = hypervisor::CpuId::new(2);
-        let guest_mem =
-            vm_memory::GuestMemory::new(&[(vm_memory::GuestAddress(0), 0x10000)]).unwrap();
-        let kvm = hypervisor::kvm::Kvm::new().unwrap();
-        let vm = hypervisor::kvm::KvmVm::new(&kvm, guest_mem, Default::default()).unwrap();
-        let irq_chip = devices::KvmKernelIrqChip::new(vm, 1).unwrap();
-
-        let entries = &mut cpuid.cpu_id_entries;
-        entries.push(hypervisor::CpuIdEntry {
-            function: 0,
-            index: 0,
-            flags: 0,
-            cpuid: CpuidResult {
-                eax: 0,
-                ebx: 0,
-                ecx: 0,
-                edx: 0,
-            },
-        });
-        entries.push(hypervisor::CpuIdEntry {
-            function: 1,
-            index: 0,
-            flags: 0,
-            cpuid: CpuidResult {
-                eax: 0,
-                ebx: 0,
-                ecx: 0x10,
-                edx: 0,
-            },
-        });
-
-        let cpu_config = CpuConfigX86_64::new(false, false, false, false, false, false);
-        filter_cpuid(
-            &mut cpuid,
-            &CpuIdContext::new(
-                1,
-                2,
-                Some(&irq_chip),
-                cpu_config,
-                false,
-                __cpuid_count,
-                __cpuid,
-            ),
-        );
-
-        let entries = &mut cpuid.cpu_id_entries;
-        assert_eq!(entries[0].function, 0);
-        assert_eq!(1, (entries[1].cpuid.ebx >> EBX_CPUID_SHIFT) & 0x000000ff);
-        assert_eq!(
-            2,
-            (entries[1].cpuid.ebx >> EBX_CPU_COUNT_SHIFT) & 0x000000ff
-        );
-        assert_eq!(
-            EBX_CLFLUSH_CACHELINE,
-            (entries[1].cpuid.ebx >> EBX_CLFLUSH_SIZE_SHIFT) & 0x000000ff
-        );
-        assert_ne!(0, entries[1].cpuid.ecx & (1 << ECX_HYPERVISOR_SHIFT));
-        assert_ne!(0, entries[1].cpuid.edx & (1 << EDX_HTT_SHIFT));
     }
 
     #[test]

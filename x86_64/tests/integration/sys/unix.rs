@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 // TODO(b/210705746): See if we can bring in the changes compiled out from go/playcl/50499
-use crate::test_integration::simple_vm_test;
+use crate::simple_vm_test;
 
 #[test]
 fn simple_kvm_test() {

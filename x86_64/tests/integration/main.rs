@@ -1,4 +1,4 @@
-// Copyright 2020 The ChromiumOS Authors
+// Copyright 2022 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -36,26 +36,26 @@ use sync::Mutex;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
-use super::acpi;
-use super::arch_memory_regions;
-use super::bootparam;
-use super::cpuid::setup_cpuid;
-use super::init_low_memory_layout;
-use super::interrupts::set_lint;
-use super::mptable;
-use super::read_pci_mmio_before_32bit;
-use super::read_pcie_cfg_mmio;
-use super::regs::configure_segments_and_sregs;
-use super::regs::long_mode_msrs;
-use super::regs::mtrr_msrs;
-use super::regs::setup_page_tables;
-use super::smbios;
-use super::X8664arch;
-use super::BOOT_STACK_POINTER;
-use super::KERNEL_64BIT_ENTRY_OFFSET;
-use super::KERNEL_START_OFFSET;
-use super::X86_64_SCI_IRQ;
-use super::ZERO_PAGE_OFFSET;
+use x86_64::acpi;
+use x86_64::arch_memory_regions;
+use x86_64::bootparam;
+use x86_64::cpuid::setup_cpuid;
+use x86_64::init_low_memory_layout;
+use x86_64::interrupts::set_lint;
+use x86_64::mptable;
+use x86_64::read_pci_mmio_before_32bit;
+use x86_64::read_pcie_cfg_mmio;
+use x86_64::regs::configure_segments_and_sregs;
+use x86_64::regs::long_mode_msrs;
+use x86_64::regs::mtrr_msrs;
+use x86_64::regs::setup_page_tables;
+use x86_64::smbios;
+use x86_64::X8664arch;
+use x86_64::BOOT_STACK_POINTER;
+use x86_64::KERNEL_64BIT_ENTRY_OFFSET;
+use x86_64::KERNEL_START_OFFSET;
+use x86_64::X86_64_SCI_IRQ;
+use x86_64::ZERO_PAGE_OFFSET;
 
 enum TaggedControlTube {
     VmMemory(Tube),
