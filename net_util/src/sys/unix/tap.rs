@@ -13,6 +13,7 @@ use std::os::unix::io::AsRawFd;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::io::RawFd;
 
+use base::add_fd_flags;
 use base::error;
 use base::ioctl_with_mut_ref;
 use base::ioctl_with_ref;
@@ -54,6 +55,10 @@ impl Tap {
     ///    the returned value (`Tap`), or is closed (if an error is returned).
     pub unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Result<Tap> {
         let tap_file = File::from_raw_descriptor(descriptor);
+
+        // Ensure that the file is opened non-blocking, otherwise
+        // ipvtaps with shell-provided FDs are very slow.
+        add_fd_flags(tap_file.as_raw_descriptor(), libc::O_NONBLOCK).map_err(Error::IoctlError)?;
 
         // Get the interface name since we will need it for some ioctls.
         let mut ifreq: net_sys::ifreq = Default::default();
