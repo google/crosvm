@@ -285,6 +285,10 @@ impl CancellableBlockingPool {
     /// thread will not complete and `await`ing on the `Task` for that work will panic.
     ///
     pub fn shutdown(&self) -> Result<(), Error> {
+        self.shutdown_with_timeout(DEFAULT_SHUTDOWN_TIMEOUT)
+    }
+
+    fn shutdown_with_timeout(&self, timeout: Duration) -> Result<(), Error> {
         self.disarm();
         {
             let mut state = self.inner.state.lock();
@@ -297,9 +301,10 @@ impl CancellableBlockingPool {
             state.wind_down = WindDownStates::ShuttingDown;
         }
 
-        let res = self.inner.blocking_pool.shutdown(/* deadline: */ Some(
-            Instant::now() + DEFAULT_SHUTDOWN_TIMEOUT,
-        ));
+        let res = self
+            .inner
+            .blocking_pool
+            .shutdown(/* deadline: */ Some(Instant::now() + timeout));
 
         self.inner.state.lock().wind_down = WindDownStates::ShutDown;
         match res {
@@ -360,6 +365,8 @@ mod test {
     use crate::blocking::Error;
     use crate::CancellableBlockingPool;
 
+    const TEST_SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(100);
+
     #[test]
     fn disarm_with_pending_work() {
         // Create a pool with only one thread.
@@ -403,7 +410,7 @@ mod test {
         assert_eq!(block_on(unfinished), 0);
 
         // Now the pool is empty and can be shutdown without blocking.
-        pool.shutdown().unwrap();
+        pool.shutdown_with_timeout(TEST_SHUTDOWN_TIMEOUT).unwrap();
     }
 
     #[test]
@@ -427,14 +434,20 @@ mod test {
             is_running = running.1.wait(is_running);
         }
 
-        assert_eq!(pool.shutdown().err().unwrap(), Error::Timedout);
+        assert_eq!(
+            pool.shutdown_with_timeout(TEST_SHUTDOWN_TIMEOUT),
+            Err(Error::Timedout)
+        );
     }
 
     #[test]
     fn multiple_shutdown_returns_error() {
         let pool = CancellableBlockingPool::new(1, Duration::from_secs(10));
         let _ = pool.shutdown();
-        assert_eq!(pool.shutdown(), Err(Error::AlreadyShutdown));
+        assert_eq!(
+            pool.shutdown_with_timeout(TEST_SHUTDOWN_TIMEOUT),
+            Err(Error::AlreadyShutdown)
+        );
     }
 
     #[test]
@@ -461,8 +474,14 @@ mod test {
         let pool_clone = pool.clone();
         thread::spawn(move || {
             while !pool_clone.inner.blocking_pool.shutting_down() {}
-            assert_eq!(pool_clone.shutdown(), Err(Error::ShutdownInProgress));
+            assert_eq!(
+                pool_clone.shutdown_with_timeout(TEST_SHUTDOWN_TIMEOUT),
+                Err(Error::ShutdownInProgress)
+            );
         });
-        assert_eq!(pool.shutdown().err().unwrap(), Error::Timedout);
+        assert_eq!(
+            pool.shutdown_with_timeout(TEST_SHUTDOWN_TIMEOUT),
+            Err(Error::Timedout)
+        );
     }
 }
