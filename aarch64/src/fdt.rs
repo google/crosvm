@@ -299,6 +299,21 @@ fn create_chosen_node(
     Ok(())
 }
 
+fn create_config_node(fdt: &mut FdtWriter, (addr, size): (GuestAddress, usize)) -> Result<()> {
+    let addr = addr
+        .offset()
+        .try_into()
+        .map_err(|_| Error::PropertyValueTooLarge)?;
+    let size = size.try_into().map_err(|_| Error::PropertyValueTooLarge)?;
+
+    let config_node = fdt.begin_node("config")?;
+    fdt.property_u32("kernel-address", addr)?;
+    fdt.property_u32("kernel-size", size)?;
+    fdt.end_node(config_node)?;
+
+    Ok(())
+}
+
 /// PCI host controller address range.
 ///
 /// This represents a single entry in the "ranges" property for a PCI host controller.
@@ -526,6 +541,7 @@ pub fn create_fdt(
     cpu_capacity: BTreeMap<usize, u32>,
     fdt_address: GuestAddress,
     cmdline: &str,
+    image: (GuestAddress, usize),
     initrd: Option<(GuestAddress, usize)>,
     android_fstab: Option<File>,
     is_gicv3: bool,
@@ -547,6 +563,7 @@ pub fn create_fdt(
         arch::android::create_android_fdt(&mut fdt, android_fstab)?;
     }
     create_chosen_node(&mut fdt, cmdline, initrd)?;
+    create_config_node(&mut fdt, image)?;
     create_memory_node(&mut fdt, guest_mem)?;
     let dma_pool_phandle = create_resv_memory_node(&mut fdt, swiotlb)?;
     create_cpu_nodes(&mut fdt, num_cpus, cpu_clusters, cpu_capacity)?;

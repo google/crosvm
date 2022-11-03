@@ -631,6 +631,7 @@ impl arch::LinuxArch for AArch64 {
             components.cpu_capacity,
             fdt_offset,
             cmdline.as_str(),
+            (payload.entry(), payload.size() as usize),
             initrd,
             components.android_fstab,
             irq_chip.get_vgic_version() == DeviceKind::ArmVgicV3,
