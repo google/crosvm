@@ -99,6 +99,7 @@ if [ "$ALL" == true ]; then
     commands+=(
         "./tools/run_tests"
         "./tools/run_tests --platform=mingw64"
+        "./tools/clippy --platform=mingw64"
         "$(aarch64_wrapper) ./tools/run_tests --platform=aarch64"
         "$(aarch64_wrapper) ./tools/run_tests --platform=armhf"
         "cargo build --verbose --no-default-features"
