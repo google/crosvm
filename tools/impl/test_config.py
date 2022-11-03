@@ -79,14 +79,8 @@ WIN64_DISABLED_CRATES = [
 
 CRATE_OPTIONS: Dict[str, List[TestOption]] = {
     "cros_async": [TestOption.LARGE, TestOption.RUN_EXCLUSIVE],
-    "crosvm": [TestOption.SINGLE_THREADED, TestOption.UNIT_AS_INTEGRATION_TEST],
-    "crosvm_plugin": [
-        TestOption.DO_NOT_BUILD_AARCH64,
-        TestOption.DO_NOT_BUILD_ARMHF,
-    ],
     "crosvm-fuzz": [TestOption.DO_NOT_BUILD],  # b/194499769
     "disk": [TestOption.DO_NOT_RUN_AARCH64, TestOption.DO_NOT_RUN_ARMHF],  # b/202294155
-    "ffmpeg": [TestOption.DO_NOT_BUILD_ARMHF],
     "cros-fuzz": [TestOption.DO_NOT_BUILD],
     "fuzz": [TestOption.DO_NOT_BUILD],
     "hypervisor": [
@@ -95,12 +89,8 @@ CRATE_OPTIONS: Dict[str, List[TestOption]] = {
         TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL,
     ],  # b/181672912
     "e2e_tests": [  # b/180196508
-        TestOption.SINGLE_THREADED,
-        TestOption.RUN_EXCLUSIVE,
         TestOption.LARGE,
         TestOption.DO_NOT_RUN_AARCH64,
-        TestOption.DO_NOT_RUN_ARMHF,
-        TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL,
     ],
     "io_uring": [TestOption.DO_NOT_RUN],  # b/202294403
     "kvm_sys": [TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL],
@@ -109,21 +99,9 @@ CRATE_OPTIONS: Dict[str, List[TestOption]] = {
         TestOption.DO_NOT_RUN_ARMHF,
         TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL,
     ],  # b/181674144
-    "libcrosvm_control": [TestOption.DO_NOT_BUILD_ARMHF],  # b/210015864
-    "libva": [
-        # Libva only makes sense for x86 Linux platforms, disable building on others.
-        TestOption.DO_NOT_BUILD_AARCH64,
-        TestOption.DO_NOT_BUILD_ARMHF,
-        TestOption.DO_NOT_BUILD_WIN64,
-        # Only run libva on Linux x86. Note that all tests are not enabled, see b/238047780.
-        TestOption.DO_NOT_RUN_AARCH64,
-        TestOption.DO_NOT_RUN_ARMHF,
-    ],
-    "libvda": [TestOption.DO_NOT_BUILD],  # b/202293971
-    "rutabaga_gfx": [TestOption.DO_NOT_BUILD_ARMHF],  # b/210015864
+    "libvda": [TestOption.DO_NOT_RUN],  # b/202293971
     "sandbox": [TestOption.DO_NOT_RUN],
-    "vhost": [TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL, TestOption.UNIT_AS_INTEGRATION_TEST],
-    "vm_control": [TestOption.DO_NOT_BUILD_ARMHF],  # b/210015864
+    "vhost": [TestOption.UNIT_AS_INTEGRATION_TEST],
 }
 
 for name in WIN64_DISABLED_CRATES:

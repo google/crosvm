@@ -310,6 +310,7 @@ all-armhf = [
     "composite-disk",
     "default",
     "gdb",
+    "libvda-stub",
     "tpm",
     ]
 
