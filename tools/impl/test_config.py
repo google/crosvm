@@ -60,7 +60,7 @@ WIN64_DISABLED_CRATES = [
     "fuse",
     "fuzz",
     "gpu_display",
-    "integration_tests",
+    "e2e_tests",
     "io_uring",
     "kvm",
     "libcras_stub",
@@ -94,7 +94,7 @@ CRATE_OPTIONS: Dict[str, List[TestOption]] = {
         TestOption.DO_NOT_RUN_ARMHF,
         TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL,
     ],  # b/181672912
-    "integration_tests": [  # b/180196508
+    "e2e_tests": [  # b/180196508
         TestOption.SINGLE_THREADED,
         TestOption.RUN_EXCLUSIVE,
         TestOption.LARGE,

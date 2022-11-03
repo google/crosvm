@@ -758,6 +758,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ea835d29036a4087793836fa931b08837ad5e957da9e23886b29586fb9b6650"
 
 [[package]]
+name = "e2e_tests"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arch",
+ "base",
+ "cfg-if",
+ "libc",
+ "prebuilts",
+ "tempfile",
+]
+
+[[package]]
 name = "either"
 version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1058,19 +1071,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a5bbe824c507c5da5956355e86a746d82e0e1464f65d862cc5e71da70e94b2c"
 dependencies = [
  "cfg-if",
-]
-
-[[package]]
-name = "integration_tests"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "arch",
- "base",
- "cfg-if",
- "libc",
- "prebuilts",
- "tempfile",
 ]
 
 [[package]]

@@ -3,7 +3,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-# Exports env variables to make the integration_tests use a locally built
+# Exports env variables to make the e2e_tests use a locally built
 # kernel / rootfs.
 #
 # Note: `source` this file, do not run it if you want it to set the environmens

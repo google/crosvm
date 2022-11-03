@@ -212,7 +212,7 @@ Source code is organized into crates, each with their own unit tests.
 - `disk` - Library to create and manipulate several types of disks such as raw disk, [qcow], etc.
 - `hypervisor` - Abstract layer to interact with hypervisors. For Linux, this crate is a wrapper of
   `kvm`.
-- `integration_tests` - End-to-end tests that run a crosvm VM.
+- `e2e_tests` - End-to-end tests that run a crosvm VM.
 - `kernel_loader` - Loads elf64 kernel files to a slice of memory.
 - `kvm_sys` - Low-level (mostly) auto-generated structures and constants for using KVM.
 - `kvm` - Unsafe, low-level wrapper code for using `kvm_sys`.

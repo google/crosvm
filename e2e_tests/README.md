@@ -1,4 +1,4 @@
-# Crosvm Integration Tests
+# Crosvm End to End Tests
 
 These tests run a crosvm VM on the host to verify end to end behavior. They use a prebuilt guest
 kernel and rootfs, which is downloaded from google cloud storage.

@@ -1,5 +1,5 @@
 [package]
-name = "integration_tests"
+name = "e2e_tests"
 version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 edition = "2021"
