@@ -8,6 +8,10 @@ edition = "2021"
 path = "src/qcow_utils.rs"
 crate-type = ["cdylib"]
 
+[features]
+default = ["qcow"]
+qcow = []
+
 [dependencies]
 libc = "*"
 disk = { path = "../disk" }
