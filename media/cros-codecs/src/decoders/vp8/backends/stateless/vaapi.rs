@@ -49,10 +49,10 @@ use crate::DecodedFormat;
 use crate::Resolution;
 
 /// Resolves to the type used as Handle by the backend.
-pub type AssociatedHandle = <Backend as StatelessDecoderBackend>::Handle;
+type AssociatedHandle = <Backend as StatelessDecoderBackend>::Handle;
 
 /// Resolves to the type used as BackendHandle by the backend.
-pub type AssociatedBackendHandle = <AssociatedHandle as DecodedHandle>::BackendHandle;
+type AssociatedBackendHandle = <AssociatedHandle as DecodedHandle>::BackendHandle;
 
 /// The number of surfaces to allocate for this codec. Same as GStreamer's vavp8dec.
 const NUM_SURFACES: usize = 7;

@@ -57,10 +57,10 @@ use crate::DecodedFormat;
 use crate::Resolution;
 
 /// Resolves to the type used as Handle by the backend.
-pub type AssociatedHandle = <Backend as StatelessDecoderBackend>::Handle;
+type AssociatedHandle = <Backend as StatelessDecoderBackend>::Handle;
 
 /// Resolves to the type used as BackendHandle by the backend.
-pub type AssociatedBackendHandle = <AssociatedHandle as DecodedHandle>::BackendHandle;
+type AssociatedBackendHandle = <AssociatedHandle as DecodedHandle>::BackendHandle;
 
 /// Keeps track of where the backend is in the negotiation process.
 #[derive(Clone, Debug)]
