@@ -31,7 +31,8 @@ impl VhostUserVirtioDevice {
             | 1 << virtio_net::VIRTIO_NET_F_HOST_TSO4
             | 1 << virtio_net::VIRTIO_NET_F_HOST_UFO
             | 1 << virtio_net::VIRTIO_NET_F_MAC
-            | 1 << virtio_net::VIRTIO_NET_F_MQ;
+            | 1 << virtio_net::VIRTIO_NET_F_MQ
+            | 1 << virtio_net::VIRTIO_NET_F_MTU;
 
         let allow_protocol_features =
             VhostUserProtocolFeatures::MQ | VhostUserProtocolFeatures::CONFIG;
