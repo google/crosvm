@@ -12,8 +12,6 @@ pub mod window_procedure_thread;
 
 use std::num::NonZeroU32;
 use std::sync::mpsc::channel;
-#[cfg(feature = "kiwi")]
-use std::sync::Arc;
 use std::sync::Weak;
 use std::time::Duration;
 
@@ -25,15 +23,11 @@ use base::AsRawDescriptor;
 use base::Event;
 use base::EventWaitResult;
 use base::RawDescriptor;
-#[cfg(feature = "kiwi")]
-use base::Tube;
 use euclid::size2;
 use euclid::Size2D;
 use math_util::Size2DCheckedCast;
 use metrics::Metrics;
 pub use surface::NoopSurface as Surface;
-#[cfg(feature = "kiwi")]
-use sync::Mutex;
 use vm_control::gpu::DisplayMode;
 use vm_control::gpu::DisplayParameters;
 use window_message_processor::DisplaySendToWndProc;

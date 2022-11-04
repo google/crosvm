@@ -1640,7 +1640,10 @@ impl ResourceBridges {
 #[cfg(windows)]
 #[inline]
 pub fn start_wndproc_thread(
-    vm_tube: Option<Arc<Mutex<Tube>>>,
+    #[cfg(feature = "kiwi")] gpu_main_display_tube: Option<Tube>,
 ) -> anyhow::Result<WindowProcedureThread> {
-    WindowProcedureThread::start_thread(vm_tube)
+    WindowProcedureThread::start_thread(
+        #[cfg(feature = "kiwi")]
+        gpu_main_display_tube,
+    )
 }

@@ -16,6 +16,7 @@ use anyhow::Result;
 use base::debug;
 use base::error;
 use base::info;
+use base::Tube;
 use linux_input_sys::virtio_input_event;
 #[cfg(feature = "kiwi")]
 use vm_control::ServiceSendToGpu;
@@ -80,6 +81,7 @@ impl Default for DisplayEventDispatcher {
 pub(crate) struct WindowMessageDispatcher<T: HandleWindowMessage> {
     message_processor: Option<WindowMessageProcessor<T>>,
     display_event_dispatcher: DisplayEventDispatcher,
+    gpu_main_display_tube: Option<Rc<Tube>>,
     // The dispatcher is pinned so that its address in the memory won't change, and it is always
     // safe to use the pointer to it stored in the window.
     _pinned_marker: PhantomPinned,
@@ -90,10 +92,14 @@ impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
     /// of the `Window` object, and drop it before the underlying window is completely gone.
     /// TODO(b/238680252): This should be good enough for supporting multi-windowing, but we should
     /// revisit it if we also want to manage some child windows of the crosvm window.
-    pub fn create(window: Window) -> Result<Pin<Box<Self>>> {
+    pub fn create(
+        window: Window,
+        gpu_main_display_tube: Option<Rc<Tube>>,
+    ) -> Result<Pin<Box<Self>>> {
         let mut dispatcher = Box::pin(Self {
             message_processor: Default::default(),
             display_event_dispatcher: DisplayEventDispatcher::new(),
+            gpu_main_display_tube,
             _pinned_marker: PhantomPinned,
         });
         dispatcher
@@ -213,12 +219,16 @@ impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
         create_handler_func: CreateMessageHandlerFunction<T>,
     ) -> bool {
         match &mut self.message_processor {
-            Some(processor) => match processor
-                .create_message_handler(create_handler_func, self.display_event_dispatcher.clone())
-            {
-                Ok(_) => return true,
-                Err(e) => error!("Failed to create message handler: {:?}", e),
-            },
+            Some(processor) => {
+                let resources = MessageHandlerResources {
+                    display_event_dispatcher: self.display_event_dispatcher.clone(),
+                    gpu_main_display_tube: self.gpu_main_display_tube.clone(),
+                };
+                match processor.create_message_handler(create_handler_func, resources) {
+                    Ok(_) => return true,
+                    Err(e) => error!("Failed to create message handler: {:?}", e),
+                }
+            }
             None => {
                 error!("Cannot create message handler because there is no message processor!")
             }

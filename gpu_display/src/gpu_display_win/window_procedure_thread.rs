@@ -8,6 +8,7 @@ use std::mem;
 use std::os::windows::io::RawHandle;
 use std::pin::Pin;
 use std::ptr::null_mut;
+use std::rc::Rc;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::channel;
@@ -28,7 +29,6 @@ use base::Event;
 use base::ReadNotifier;
 use base::Tube;
 use euclid::size2;
-use sync::Mutex;
 #[cfg(feature = "kiwi")]
 use vm_control::ServiceSendToGpu;
 use win_util::syscall_bail;
@@ -156,7 +156,9 @@ pub struct WindowProcedureThread<T: HandleWindowMessage> {
 }
 
 impl<T: HandleWindowMessage> WindowProcedureThread<T> {
-    pub fn start_thread(vm_tube: Option<Arc<Mutex<Tube>>>) -> Result<Self> {
+    pub fn start_thread(
+        #[cfg(feature = "kiwi")] gpu_main_display_tube: Option<Tube>,
+    ) -> Result<Self> {
         let (thread_id_sender, thread_id_receiver) = channel();
         let message_loop_state = Arc::new(AtomicI32::new(MessageLoopState::NotStarted as i32));
         let thread_terminated_event = Event::new().unwrap();
@@ -166,13 +168,19 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
             .try_clone()
             .map_err(|e| anyhow!("Failed to clone thread_terminated_event: {}", e))?;
 
+        #[cfg(not(feature = "kiwi"))]
+        let gpu_main_display_tube = None;
         let thread = match ThreadBuilder::new()
             .name("gpu_display_wndproc".into())
             .spawn(move || {
                 // Must be called before any other threads post messages to the WndProc thread.
                 thread_message_util::force_create_message_queue();
 
-                Self::run_message_loop(thread_id_sender, message_loop_state_clone, vm_tube);
+                Self::run_message_loop(
+                    thread_id_sender,
+                    message_loop_state_clone,
+                    gpu_main_display_tube,
+                );
 
                 if let Err(e) = thread_terminated_event_clone.signal() {
                     error!("Failed to signal thread terminated event: {}", e);
@@ -222,11 +230,14 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
     fn run_message_loop(
         thread_id_sender: Sender<Result<u32>>,
         message_loop_state: Arc<AtomicI32>,
-        vm_tube: Option<Arc<Mutex<Tube>>>,
+        gpu_main_display_tube: Option<Tube>,
     ) {
+        let gpu_main_display_tube = gpu_main_display_tube.map(Rc::new);
         // Safe because the dispatcher will take care of the lifetime of the `Window` object.
         let create_window_res = unsafe { Self::create_window() };
-        match create_window_res.and_then(|window| WindowMessageDispatcher::<T>::create(window)) {
+        match create_window_res.and_then(|window| {
+            WindowMessageDispatcher::<T>::create(window, gpu_main_display_tube.clone())
+        }) {
             Ok(dispatcher) => {
                 info!("WndProc thread entering message loop");
                 message_loop_state.store(MessageLoopState::Running as i32, Ordering::SeqCst);
@@ -235,7 +246,7 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
                     error!("Failed to send WndProc thread ID: {}", e);
                 }
 
-                let exit_state = Self::run_message_loop_body(dispatcher, vm_tube);
+                let exit_state = Self::run_message_loop_body(dispatcher, gpu_main_display_tube);
                 message_loop_state.store(exit_state as i32, Ordering::SeqCst);
             }
             Err(e) => {
@@ -253,12 +264,11 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
 
     fn run_message_loop_body(
         mut message_dispatcher: Pin<Box<WindowMessageDispatcher<T>>>,
-        vm_tube: Option<Arc<Mutex<Tube>>>,
+        gpu_main_display_tube: Option<Rc<Tube>>,
     ) -> MessageLoopState {
         let mut msg_wait_ctx = MsgWaitContext::new();
-        if let Some(tube) = &vm_tube {
-            if let Err(e) = msg_wait_ctx.add(tube.lock().get_read_notifier(), Token::ServiceMessage)
-            {
+        if let Some(tube) = &gpu_main_display_tube {
+            if let Err(e) = msg_wait_ctx.add(tube.get_read_notifier(), Token::ServiceMessage) {
                 error!(
                     "Failed to add service message read notifier to MsgWaitContext: {:?}",
                     e
@@ -277,15 +287,14 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
                             return MessageLoopState::ExitedNormally;
                         }
                     }
-                    Token::ServiceMessage => {
-                        #[cfg(feature = "kiwi")]
-                        Self::read_and_dispatch_service_message(
-                            &mut message_dispatcher,
-                            // We never use this token if `vm_tube` is None, so `expect()` should
-                            // always succeed.
-                            vm_tube.as_ref().expect("Service message tube is None"),
-                        );
-                    }
+                    Token::ServiceMessage => Self::read_and_dispatch_service_message(
+                        &mut message_dispatcher,
+                        // We never use this token if `gpu_main_display_tube` is None, so `expect()`
+                        // should always succeed.
+                        gpu_main_display_tube
+                            .as_ref()
+                            .expect("Service message tube is None"),
+                    ),
                 },
                 Err(e) => {
                     error!(
@@ -356,20 +365,23 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
     #[cfg(feature = "kiwi")]
     fn read_and_dispatch_service_message(
         message_dispatcher: &mut Pin<Box<WindowMessageDispatcher<T>>>,
-        vm_tube: &Arc<Mutex<Tube>>,
+        gpu_main_display_tube: &Tube,
     ) {
-        // We might want to send messages via `vm_tube` while processing service messages, so we
-        // have to make sure the mutex on this tube has been released before processing the message.
-        let message = match vm_tube.lock().recv::<ServiceSendToGpu>() {
-            Ok(message) => message,
+        match gpu_main_display_tube.recv::<ServiceSendToGpu>() {
+            Ok(message) => message_dispatcher
+                .as_mut()
+                .process_service_message(&message),
             Err(e) => {
-                error!("Failed to receive service message through the tube: {}", e);
-                return;
+                error!("Failed to receive service message through the tube: {}", e)
             }
-        };
-        message_dispatcher
-            .as_mut()
-            .process_service_message(&message);
+        }
+    }
+
+    #[cfg(not(feature = "kiwi"))]
+    fn read_and_dispatch_service_message(
+        _: &mut Pin<Box<WindowMessageDispatcher<T>>>,
+        _gpu_main_display_tube: &Tube,
+    ) {
     }
 
     fn is_message_loop_running(&self) -> bool {

@@ -2,10 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::rc::Rc;
+
 use anyhow::Context;
 use anyhow::Result;
 use base::error;
 use base::warn;
+use base::Tube;
 #[cfg(feature = "kiwi")]
 use vm_control::ServiceSendToGpu;
 use winapi::shared::minwindef::LPARAM;
@@ -38,8 +41,14 @@ pub(crate) const WM_USER_HOST_VIEWPORT_CHANGE_INTERNAL: UINT = WM_USER + 1;
 /// destructing the message.
 pub(crate) const WM_USER_HANDLE_DISPLAY_MESSAGE_INTERNAL: UINT = WM_USER + 2;
 
+/// Struct for resources used for window message handler creation.
+pub struct MessageHandlerResources {
+    pub display_event_dispatcher: DisplayEventDispatcher,
+    pub gpu_main_display_tube: Option<Rc<Tube>>,
+}
+
 pub type CreateMessageHandlerFunction<T> =
-    Box<dyn FnOnce(&Window, DisplayEventDispatcher) -> Result<T>>;
+    Box<dyn FnOnce(&Window, MessageHandlerResources) -> Result<T>>;
 
 /// Called after the handler creation finishes. The argument indicates whether that was successful.
 pub type CreateMessageHandlerCallback = Box<dyn FnOnce(bool)>;
@@ -162,9 +171,9 @@ impl<T: HandleWindowMessage> WindowMessageProcessor<T> {
     pub fn create_message_handler(
         &mut self,
         create_handler_func: CreateMessageHandlerFunction<T>,
-        display_event_dispatcher: DisplayEventDispatcher,
+        handler_resources: MessageHandlerResources,
     ) -> Result<()> {
-        create_handler_func(&self.window, display_event_dispatcher)
+        create_handler_func(&self.window, handler_resources)
             .map(|handler| {
                 self.message_handler.replace(handler);
                 if let Some(handler) = &mut self.message_handler {
