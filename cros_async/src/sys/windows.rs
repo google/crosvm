@@ -17,6 +17,7 @@ pub use handle_executor::HandleExecutor;
 pub use handle_executor::HandleExecutorTaskHandle;
 pub use handle_source::HandleSource;
 pub use handle_source::HandleWrapper;
+pub use overlapped_source::OverlappedSource;
 pub(crate) use wait_for_handle::WaitForHandle;
 
 use crate::Error;

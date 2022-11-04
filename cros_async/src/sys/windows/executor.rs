@@ -14,14 +14,13 @@ use super::HandleExecutor;
 use super::HandleSource;
 use crate::AsyncResult;
 use crate::IntoAsync;
-use crate::IoSourceExt;
+use crate::IoSource;
 
-/// Creates a concrete `IoSourceExt` using the handle_executor.
-pub(crate) fn async_handle_from<'a, F: IntoAsync + 'a + Send>(
-    f: F,
-) -> AsyncResult<Box<dyn IoSourceExt<F> + 'a + Send>> {
-    Ok(HandleSource::new(vec![f].into_boxed_slice())
-        .map(|u| Box::new(u) as Box<dyn IoSourceExt<F> + Send>)?)
+/// Creates a concrete `IoSource` using the handle_executor.
+pub(crate) fn async_handle_from<'a, F: IntoAsync + 'a + Send>(f: F) -> AsyncResult<IoSource<F>> {
+    Ok(IoSource::Handle(HandleSource::new(
+        vec![f].into_boxed_slice(),
+    )?))
 }
 
 /// An executor for scheduling tasks that poll futures to completion.
@@ -48,11 +47,11 @@ pub(crate) fn async_handle_from<'a, F: IntoAsync + 'a + Send>(
 /// use std::error::Error;
 /// use std::fs::{File, OpenOptions};
 ///
-/// use cros_async::{AsyncResult, Executor, IoSourceExt, complete3};
+/// use cros_async::{AsyncResult, Executor, IoSource, complete3};
 /// const CHUNK_SIZE: usize = 32;
 ///
 /// // Write all bytes from `data` to `f`.
-/// async fn write_file(f: &dyn IoSourceExt<File>, mut data: Vec<u8>) -> AsyncResult<()> {
+/// async fn write_file(f: &IoSource<File>, mut data: Vec<u8>) -> AsyncResult<()> {
 ///     while data.len() > 0 {
 ///         let (count, mut buf) = f.write_from_vec(Some(0), data).await?;
 ///
@@ -64,8 +63,8 @@ pub(crate) fn async_handle_from<'a, F: IntoAsync + 'a + Send>(
 ///
 /// // Transfer `len` bytes of data from `from` to `to`.
 /// async fn transfer_data(
-///     from: Box<dyn IoSourceExt<File>>,
-///     to: Box<dyn IoSourceExt<File>>,
+///     from: IoSource<File>,
+///     to: IoSource<File>,
 ///     len: usize,
 /// ) -> AsyncResult<usize> {
 ///     let mut rem = len;
@@ -192,13 +191,10 @@ impl Executor {
         }
     }
 
-    /// Create a new `Box<dyn IoSourceExt<F>>` associated with `self`. Callers may then use the
-    /// returned `IoSourceExt` to directly start async operations without needing a separate
-    /// reference to the executor.
-    pub fn async_from<'a, F: IntoAsync + 'a + Send>(
-        &self,
-        f: F,
-    ) -> AsyncResult<Box<dyn IoSourceExt<F> + 'a + Send>> {
+    /// Create a new `IoSource<F>` associated with `self`. Callers may then use the returned
+    /// `IoSource` to directly start async operations without needing a separate reference to the
+    /// executor.
+    pub fn async_from<'a, F: IntoAsync + 'a + Send>(&self, f: F) -> AsyncResult<IoSource<F>> {
         match self {
             Executor::Handle(_) => async_handle_from(f),
         }

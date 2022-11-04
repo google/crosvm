@@ -11,10 +11,10 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::Executor;
-use crate::IoSourceExt;
+use crate::IoSource;
 
 pub struct AsyncTube {
-    inner: Box<dyn IoSourceExt<Tube>>,
+    inner: IoSource<Tube>,
 }
 
 impl AsyncTube {

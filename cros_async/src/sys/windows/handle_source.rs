@@ -13,7 +13,6 @@ use std::ptr::null_mut;
 use std::sync::Arc;
 use std::time::Duration;
 
-use async_trait::async_trait;
 use base::error;
 use base::warn;
 use base::AsRawDescriptor;
@@ -37,9 +36,6 @@ use crate::mem::MemRegion;
 use crate::AsyncError;
 use crate::AsyncResult;
 use crate::CancellableBlockingPool;
-use crate::IoSourceExt;
-use crate::ReadAsync;
-use crate::WriteAsync;
 
 #[derive(ThisError, Debug)]
 pub enum Error {
@@ -202,11 +198,10 @@ fn get_thread_file(descriptors: Vec<Descriptor>) -> ManuallyDrop<File> {
     }
 }
 
-#[async_trait(?Send)]
-impl<F: AsRawDescriptor> ReadAsync for HandleSource<F> {
+impl<F: AsRawDescriptor> HandleSource<F> {
     /// Reads from the iosource at `file_offset` and fill the given `vec`.
-    async fn read_to_vec<'a>(
-        &'a self,
+    pub async fn read_to_vec(
+        &self,
         file_offset: Option<u64>,
         mut vec: Vec<u8>,
     ) -> AsyncResult<(usize, Vec<u8>)> {
@@ -233,7 +228,7 @@ impl<F: AsRawDescriptor> ReadAsync for HandleSource<F> {
     }
 
     /// Reads to the given `mem` at the given offsets from the file starting at `file_offset`.
-    async fn read_to_mem<'a>(
+    pub async fn read_to_mem<'a>(
         &'a self,
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
@@ -265,21 +260,18 @@ impl<F: AsRawDescriptor> ReadAsync for HandleSource<F> {
     }
 
     /// Wait for the handle of `self` to be readable.
-    async fn wait_readable(&self) -> AsyncResult<()> {
+    pub async fn wait_readable(&self) -> AsyncResult<()> {
         unimplemented!()
     }
 
     /// Reads a single u64 from the current offset.
-    async fn read_u64(&self) -> AsyncResult<u64> {
+    pub async fn read_u64(&self) -> AsyncResult<u64> {
         unimplemented!()
     }
-}
 
-#[async_trait(?Send)]
-impl<F: AsRawDescriptor> WriteAsync for HandleSource<F> {
     /// Writes from the given `vec` to the file starting at `file_offset`.
-    async fn write_from_vec<'a>(
-        &'a self,
+    pub async fn write_from_vec(
+        &self,
         file_offset: Option<u64>,
         vec: Vec<u8>,
     ) -> AsyncResult<(usize, Vec<u8>)> {
@@ -306,7 +298,7 @@ impl<F: AsRawDescriptor> WriteAsync for HandleSource<F> {
     }
 
     /// Writes from the given `mem` from the given offsets to the file starting at `file_offset`.
-    async fn write_from_mem<'a>(
+    pub async fn write_from_mem<'a>(
         &'a self,
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
@@ -338,7 +330,12 @@ impl<F: AsRawDescriptor> WriteAsync for HandleSource<F> {
     }
 
     /// See `fallocate(2)`. Note this op is synchronous when using the Polled backend.
-    async fn fallocate(&self, file_offset: u64, len: u64, mode: AllocateMode) -> AsyncResult<()> {
+    pub async fn fallocate(
+        &self,
+        file_offset: u64,
+        len: u64,
+        mode: AllocateMode,
+    ) -> AsyncResult<()> {
         let handles = HandleWrapper::new(self.as_descriptors());
         let descriptors = self.source_descriptors.clone();
         self.blocking_pool
@@ -366,7 +363,7 @@ impl<F: AsRawDescriptor> WriteAsync for HandleSource<F> {
     }
 
     /// Sync all completed write operations to the backing storage.
-    async fn fsync(&self) -> AsyncResult<()> {
+    pub async fn fsync(&self) -> AsyncResult<()> {
         let handles = HandleWrapper::new(self.as_descriptors());
         let descriptors = self.source_descriptors.clone();
 
@@ -381,22 +378,17 @@ impl<F: AsRawDescriptor> WriteAsync for HandleSource<F> {
             .await
             .map_err(AsyncError::HandleSource)
     }
-}
 
-/// Subtrait for general async IO. Some not supported on Windows when multiple
-/// sources are present.
-///
-/// Note that on Windows w/ multiple sources these functions do not make sense.
-/// TODO(nkgold): decide on what these should mean.
-#[async_trait(?Send)]
-impl<F: AsRawDescriptor> IoSourceExt<F> for HandleSource<F> {
+    /// Note that on Windows w/ multiple sources these functions do not make sense.
+    /// TODO(nkgold): decide on what these should mean.
+
     /// Yields the underlying IO source.
-    fn into_source(self: Box<Self>) -> F {
+    pub fn into_source(self) -> F {
         unimplemented!("`into_source` is not supported on Windows.")
     }
 
     /// Provides a mutable ref to the underlying IO source.
-    fn as_source_mut(&mut self) -> &mut F {
+    pub fn as_source_mut(&mut self) -> &mut F {
         if self.sources.len() == 1 {
             return &mut self.sources[0];
         }
@@ -411,12 +403,14 @@ impl<F: AsRawDescriptor> IoSourceExt<F> for HandleSource<F> {
     ///
     /// In the multi-source case, the 0th source will be returned. If sources are not
     /// interchangeable, behavior is undefined.
-    fn as_source(&self) -> &F {
+    pub fn as_source(&self) -> &F {
         &self.sources[0]
     }
 
-    async fn wait_for_handle(&self) -> AsyncResult<u64> {
-        let waiter = super::WaitForHandle::new(self);
+    /// In the multi-source case, the 0th source is waited on. If sources are not interchangeable,
+    /// behavior is undefined.
+    pub async fn wait_for_handle(&self) -> AsyncResult<u64> {
+        let waiter = super::WaitForHandle::new(&self.sources[0]);
         match waiter.await {
             Err(e) => Err(AsyncError::HandleSource(e)),
             Ok(()) => Ok(0),

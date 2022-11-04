@@ -25,7 +25,7 @@ use base::UnixSeqpacket;
 use cros_async::AsyncWrapper;
 use cros_async::EventAsync;
 use cros_async::Executor;
-use cros_async::IoSourceExt;
+use cros_async::IoSource;
 use futures::future::AbortHandle;
 use futures::future::Abortable;
 use hypervisor::ProtectionType;
@@ -75,7 +75,7 @@ async fn run_in_queue(
     doorbell: Doorbell,
     kick_evt: EventAsync,
     wlstate: Rc<RefCell<wl::WlState>>,
-    wlstate_ctx: Box<dyn IoSourceExt<AsyncWrapper<SafeDescriptor>>>,
+    wlstate_ctx: IoSource<AsyncWrapper<SafeDescriptor>>,
 ) {
     loop {
         if let Err(e) = wlstate_ctx.wait_readable().await {

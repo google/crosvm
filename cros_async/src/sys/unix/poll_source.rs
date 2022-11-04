@@ -2,15 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-//! A wrapped IO source that uses FdExecutor to drive asynchronous completion. Used from
-//! `IoSourceExt::new` when uring isn't available in the kernel.
-
 use std::io;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use base::AsRawDescriptor;
 use data_model::VolatileSlice;
 use remain::sorted;
@@ -24,9 +20,6 @@ use crate::mem::MemRegion;
 use crate::AllocateMode;
 use crate::AsyncError;
 use crate::AsyncResult;
-use crate::IoSourceExt;
-use crate::ReadAsync;
-use crate::WriteAsync;
 
 #[sorted]
 #[derive(ThisError, Debug)]
@@ -71,7 +64,6 @@ impl From<Error> for io::Error {
 }
 
 /// Async wrapper for an IO source that uses the FD executor to drive async operations.
-/// Used by `IoSourceExt::new` when uring isn't available.
 pub struct PollSource<F>(RegisteredSource<F>);
 
 impl<F: AsRawDescriptor> PollSource<F> {
@@ -80,11 +72,6 @@ impl<F: AsRawDescriptor> PollSource<F> {
         ex.register_source(f)
             .map(PollSource)
             .map_err(Error::Executor)
-    }
-
-    /// Return the inner source.
-    pub fn into_source(self) -> F {
-        self.0.into_source()
     }
 }
 
@@ -102,11 +89,10 @@ impl<F: AsRawDescriptor> DerefMut for PollSource<F> {
     }
 }
 
-#[async_trait(?Send)]
-impl<F: AsRawDescriptor> ReadAsync for PollSource<F> {
+impl<F: AsRawDescriptor> PollSource<F> {
     /// Reads from the iosource at `file_offset` and fill the given `vec`.
-    async fn read_to_vec<'a>(
-        &'a self,
+    pub async fn read_to_vec(
+        &self,
         file_offset: Option<u64>,
         mut vec: Vec<u8>,
     ) -> AsyncResult<(usize, Vec<u8>)> {
@@ -146,7 +132,7 @@ impl<F: AsRawDescriptor> ReadAsync for PollSource<F> {
     }
 
     /// Reads to the given `mem` at the given offsets from the file starting at `file_offset`.
-    async fn read_to_mem<'a>(
+    pub async fn read_to_mem<'a>(
         &'a self,
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
@@ -194,13 +180,13 @@ impl<F: AsRawDescriptor> ReadAsync for PollSource<F> {
     }
 
     /// Wait for the FD of `self` to be readable.
-    async fn wait_readable(&self) -> AsyncResult<()> {
+    pub async fn wait_readable(&self) -> AsyncResult<()> {
         let op = self.0.wait_readable().map_err(Error::AddingWaker)?;
         op.await.map_err(Error::Executor)?;
         Ok(())
     }
 
-    async fn read_u64(&self) -> AsyncResult<u64> {
+    pub async fn read_u64(&self) -> AsyncResult<u64> {
         let mut buf = 0u64.to_ne_bytes();
         loop {
             // Safe because this will only modify `buf` and we check the return value.
@@ -225,13 +211,10 @@ impl<F: AsRawDescriptor> ReadAsync for PollSource<F> {
             }
         }
     }
-}
 
-#[async_trait(?Send)]
-impl<F: AsRawDescriptor> WriteAsync for PollSource<F> {
     /// Writes from the given `vec` to the file starting at `file_offset`.
-    async fn write_from_vec<'a>(
-        &'a self,
+    pub async fn write_from_vec(
+        &self,
         file_offset: Option<u64>,
         vec: Vec<u8>,
     ) -> AsyncResult<(usize, Vec<u8>)> {
@@ -271,7 +254,7 @@ impl<F: AsRawDescriptor> WriteAsync for PollSource<F> {
     }
 
     /// Writes from the given `mem` from the given offsets to the file starting at `file_offset`.
-    async fn write_from_mem<'a>(
+    pub async fn write_from_mem<'a>(
         &'a self,
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
@@ -320,7 +303,12 @@ impl<F: AsRawDescriptor> WriteAsync for PollSource<F> {
     }
 
     /// See `fallocate(2)` for details.
-    async fn fallocate(&self, file_offset: u64, len: u64, mode: AllocateMode) -> AsyncResult<()> {
+    pub async fn fallocate(
+        &self,
+        file_offset: u64,
+        len: u64,
+        mode: AllocateMode,
+    ) -> AsyncResult<()> {
         let mode_u32: u32 = mode.into();
         let ret = unsafe {
             libc::fallocate64(
@@ -338,7 +326,7 @@ impl<F: AsRawDescriptor> WriteAsync for PollSource<F> {
     }
 
     /// Sync all completed write operations to the backing storage.
-    async fn fsync(&self) -> AsyncResult<()> {
+    pub async fn fsync(&self) -> AsyncResult<()> {
         let ret = unsafe { libc::fsync(self.as_raw_descriptor()) };
         if ret == 0 {
             Ok(())
@@ -346,26 +334,23 @@ impl<F: AsRawDescriptor> WriteAsync for PollSource<F> {
             Err(AsyncError::Poll(Error::Fsync(base::Error::last())))
         }
     }
-}
 
-#[async_trait(?Send)]
-impl<F: AsRawDescriptor> IoSourceExt<F> for PollSource<F> {
     /// Yields the underlying IO source.
-    fn into_source(self: Box<Self>) -> F {
+    pub fn into_source(self) -> F {
         self.0.into_source()
     }
 
     /// Provides a mutable ref to the underlying IO source.
-    fn as_source_mut(&mut self) -> &mut F {
+    pub fn as_source_mut(&mut self) -> &mut F {
         self
     }
 
     /// Provides a ref to the underlying IO source.
-    fn as_source(&self) -> &F {
+    pub fn as_source(&self) -> &F {
         self
     }
 
-    async fn wait_for_handle(&self) -> AsyncResult<u64> {
+    pub async fn wait_for_handle(&self) -> AsyncResult<u64> {
         self.read_u64().await
     }
 }

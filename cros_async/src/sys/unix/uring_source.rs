@@ -8,7 +8,6 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use base::AsRawDescriptor;
 
 use super::uring_executor::Error;
@@ -21,12 +20,9 @@ use crate::mem::VecIoWrapper;
 use crate::AllocateMode;
 use crate::AsyncError;
 use crate::AsyncResult;
-use crate::ReadAsync;
-use crate::WriteAsync;
 
 /// `UringSource` wraps FD backed IO sources for use with io_uring. It is a thin wrapper around
 /// registering an IO source with the uring that provides an `IoSource` implementation.
-/// Most useful functions are provided by 'IoSourceExt'.
 pub struct UringSource<F: AsRawDescriptor> {
     registered_source: RegisteredSource,
     source: F,
@@ -42,17 +38,9 @@ impl<F: AsRawDescriptor> UringSource<F> {
         })
     }
 
-    /// Consume `self` and return the object used to create it.
-    pub fn into_source(self) -> F {
-        self.source
-    }
-}
-
-#[async_trait(?Send)]
-impl<F: AsRawDescriptor> ReadAsync for UringSource<F> {
     /// Reads from the iosource at `file_offset` and fill the given `vec`.
-    async fn read_to_vec<'a>(
-        &'a self,
+    pub async fn read_to_vec(
+        &self,
         file_offset: Option<u64>,
         vec: Vec<u8>,
     ) -> AsyncResult<(usize, Vec<u8>)> {
@@ -76,14 +64,14 @@ impl<F: AsRawDescriptor> ReadAsync for UringSource<F> {
     }
 
     /// Wait for the FD of `self` to be readable.
-    async fn wait_readable(&self) -> AsyncResult<()> {
+    pub async fn wait_readable(&self) -> AsyncResult<()> {
         let op = self.registered_source.poll_fd_readable()?;
         op.await?;
         Ok(())
     }
 
     /// Reads a single u64 (e.g. from an eventfd).
-    async fn read_u64(&self) -> AsyncResult<u64> {
+    pub async fn read_u64(&self) -> AsyncResult<u64> {
         // This doesn't just forward to read_to_vec to avoid an unnecessary extra allocation from
         // async-trait.
         let buf = Arc::new(VecIoWrapper::from(0u64.to_ne_bytes().to_vec()));
@@ -114,11 +102,11 @@ impl<F: AsRawDescriptor> ReadAsync for UringSource<F> {
     }
 
     /// Reads to the given `mem` at the given offsets from the file starting at `file_offset`.
-    async fn read_to_mem<'a>(
-        &'a self,
+    pub async fn read_to_mem(
+        &self,
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        mem_offsets: &'a [MemRegion],
+        mem_offsets: &[MemRegion],
     ) -> AsyncResult<usize> {
         let op = self
             .registered_source
@@ -126,13 +114,10 @@ impl<F: AsRawDescriptor> ReadAsync for UringSource<F> {
         let len = op.await?;
         Ok(len as usize)
     }
-}
 
-#[async_trait(?Send)]
-impl<F: AsRawDescriptor> WriteAsync for UringSource<F> {
     /// Writes from the given `vec` to the file starting at `file_offset`.
-    async fn write_from_vec<'a>(
-        &'a self,
+    pub async fn write_from_vec(
+        &self,
         file_offset: Option<u64>,
         vec: Vec<u8>,
     ) -> AsyncResult<(usize, Vec<u8>)> {
@@ -156,11 +141,11 @@ impl<F: AsRawDescriptor> WriteAsync for UringSource<F> {
     }
 
     /// Writes from the given `mem` from the given offsets to the file starting at `file_offset`.
-    async fn write_from_mem<'a>(
-        &'a self,
+    pub async fn write_from_mem(
+        &self,
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        mem_offsets: &'a [MemRegion],
+        mem_offsets: &[MemRegion],
     ) -> AsyncResult<usize> {
         let op = self
             .registered_source
@@ -170,7 +155,12 @@ impl<F: AsRawDescriptor> WriteAsync for UringSource<F> {
     }
 
     /// See `fallocate(2)`. Note this op is synchronous when using the Polled backend.
-    async fn fallocate(&self, file_offset: u64, len: u64, mode: AllocateMode) -> AsyncResult<()> {
+    pub async fn fallocate(
+        &self,
+        file_offset: u64,
+        len: u64,
+        mode: AllocateMode,
+    ) -> AsyncResult<()> {
         let op = self
             .registered_source
             .start_fallocate(file_offset, len, mode.into())?;
@@ -179,31 +169,28 @@ impl<F: AsRawDescriptor> WriteAsync for UringSource<F> {
     }
 
     /// Sync all completed write operations to the backing storage.
-    async fn fsync(&self) -> AsyncResult<()> {
+    pub async fn fsync(&self) -> AsyncResult<()> {
         let op = self.registered_source.start_fsync()?;
         let _ = op.await?;
         Ok(())
     }
-}
 
-#[async_trait(?Send)]
-impl<F: AsRawDescriptor> crate::IoSourceExt<F> for UringSource<F> {
     /// Yields the underlying IO source.
-    fn into_source(self: Box<Self>) -> F {
+    pub fn into_source(self) -> F {
         self.source
     }
 
     /// Provides a mutable ref to the underlying IO source.
-    fn as_source(&self) -> &F {
+    pub fn as_source(&self) -> &F {
         &self.source
     }
 
     /// Provides a ref to the underlying IO source.
-    fn as_source_mut(&mut self) -> &mut F {
+    pub fn as_source_mut(&mut self) -> &mut F {
         &mut self.source
     }
 
-    async fn wait_for_handle(&self) -> AsyncResult<u64> {
+    pub async fn wait_for_handle(&self) -> AsyncResult<u64> {
         self.read_u64().await
     }
 }
@@ -233,8 +220,6 @@ mod tests {
     use super::super::uring_executor::is_uring_stable;
     use super::super::UringSource;
     use super::*;
-    use crate::io_ext::ReadAsync;
-    use crate::io_ext::WriteAsync;
 
     #[test]
     fn read_to_mem() {

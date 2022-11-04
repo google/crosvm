@@ -5,7 +5,7 @@
 use std::fs::File;
 
 use cros_async::sys::windows::HandleSource;
-use cros_async::IoSourceExt;
+use cros_async::IoSource;
 
 use crate::Error;
 use crate::Result;
@@ -16,7 +16,7 @@ impl SingleFileDisk {
         HandleSource::new(disk_files.into_boxed_slice())
             .map_err(|e| Error::CreateSingleFileDisk(cros_async::AsyncError::HandleSource(e)))
             .map(|inner| SingleFileDisk {
-                inner: Box::new(inner) as Box<dyn IoSourceExt<File>>,
+                inner: IoSource::Handle(inner),
             })
     }
 }

@@ -193,7 +193,7 @@ pub trait WriteAsync {
 #[async_trait(?Send)]
 pub trait IoSourceExt<F>: ReadAsync + WriteAsync {
     /// Yields the underlying IO source.
-    fn into_source(self: Box<Self>) -> F;
+    fn into_source(self) -> F;
 
     /// Provides a mutable ref to the underlying IO source.
     fn as_source_mut(&mut self) -> &mut F;
@@ -392,7 +392,7 @@ mod tests {
         if !is_uring_stable() {
             return;
         }
-        async fn go<F: AsRawDescriptor>(async_source: Box<dyn IoSourceExt<F>>) {
+        async fn go<F: AsRawDescriptor>(async_source: impl IoSourceExt<F>) {
             let v = vec![0x55u8; 32];
             let v_ptr = v.as_ptr();
             let ret = async_source.read_to_vec(None, v).await.unwrap();
@@ -428,7 +428,7 @@ mod tests {
         if !is_uring_stable() {
             return;
         }
-        async fn go<F: AsRawDescriptor>(async_source: Box<dyn IoSourceExt<F>>) {
+        async fn go<F: AsRawDescriptor>(async_source: impl IoSourceExt<F>) {
             let v = vec![0x55u8; 32];
             let v_ptr = v.as_ptr();
             let ret = async_source.write_from_vec(None, v).await.unwrap();
@@ -463,7 +463,7 @@ mod tests {
         if !is_uring_stable() {
             return;
         }
-        async fn go<F: AsRawDescriptor>(async_source: Box<dyn IoSourceExt<F>>) {
+        async fn go<F: AsRawDescriptor>(async_source: impl IoSourceExt<F>) {
             let mem = Arc::new(VecIoWrapper::from(vec![0x55u8; 8192]));
             let ret = async_source
                 .read_to_mem(
@@ -516,7 +516,7 @@ mod tests {
         if !is_uring_stable() {
             return;
         }
-        async fn go<F: AsRawDescriptor>(async_source: Box<dyn IoSourceExt<F>>) {
+        async fn go<F: AsRawDescriptor>(async_source: impl IoSourceExt<F>) {
             let mem = Arc::new(VecIoWrapper::from(vec![0x55u8; 8192]));
             let ret = async_source
                 .write_from_mem(
@@ -572,7 +572,7 @@ mod tests {
             return;
         }
 
-        async fn go<F: AsRawDescriptor>(source: Box<dyn IoSourceExt<F>>) -> u64 {
+        async fn go<F: AsRawDescriptor>(source: impl IoSourceExt<F>) -> u64 {
             source.read_u64().await.unwrap()
         }
 
@@ -610,7 +610,7 @@ mod tests {
         if !is_uring_stable() {
             return;
         }
-        async fn go<F: AsRawDescriptor>(source: Box<dyn IoSourceExt<F>>) {
+        async fn go<F: AsRawDescriptor>(source: impl IoSourceExt<F>) {
             let v = vec![0x55u8; 32];
             let v_ptr = v.as_ptr();
             let ret = source.write_from_vec(None, v).await.unwrap();

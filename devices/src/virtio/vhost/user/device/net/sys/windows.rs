@@ -19,6 +19,7 @@ use broker_ipc::CommonChildStartupArgs;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::IntoAsync;
+use cros_async::IoSource;
 use cros_async::IoSourceExt;
 use futures::future::AbortHandle;
 use futures::future::Abortable;
@@ -83,7 +84,7 @@ where
 async fn run_rx_queue<T: TapT>(
     mut queue: virtio::Queue,
     mem: GuestMemory,
-    mut tap: Box<dyn IoSourceExt<T>>,
+    mut tap: IoSource<T>,
     call_evt: Doorbell,
     kick_evt: EventAsync,
     read_notifier: EventAsync,

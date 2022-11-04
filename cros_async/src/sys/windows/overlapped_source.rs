@@ -10,7 +10,6 @@ use std::io::Write;
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use base::error;
 use base::AsRawDescriptor;
 use base::Descriptor;
@@ -32,9 +31,6 @@ use crate::sys::windows::HandleExecutor;
 use crate::AsyncError;
 use crate::AsyncResult;
 use crate::BlockingPool;
-use crate::IoSourceExt;
-use crate::ReadAsync;
-use crate::WriteAsync;
 
 #[derive(ThisError, Debug)]
 pub enum Error {
@@ -160,11 +156,10 @@ unsafe fn write(
         .map_err(|e| AsyncError::OverlappedSource(Error::StdIoWriteError(e)))
 }
 
-#[async_trait(?Send)]
-impl<F: AsRawDescriptor> ReadAsync for OverlappedSource<F> {
+impl<F: AsRawDescriptor> OverlappedSource<F> {
     /// Reads from the iosource at `file_offset` and fill the given `vec`.
-    async fn read_to_vec<'a>(
-        &'a self,
+    pub async fn read_to_vec(
+        &self,
         file_offset: Option<u64>,
         mut vec: Vec<u8>,
     ) -> AsyncResult<(usize, Vec<u8>)> {
@@ -193,7 +188,7 @@ impl<F: AsRawDescriptor> ReadAsync for OverlappedSource<F> {
     }
 
     /// Reads to the given `mem` at the given offsets from the file starting at `file_offset`.
-    async fn read_to_mem<'a>(
+    pub async fn read_to_mem<'a>(
         &'a self,
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
@@ -238,21 +233,18 @@ impl<F: AsRawDescriptor> ReadAsync for OverlappedSource<F> {
     }
 
     /// Wait for the handle of `self` to be readable.
-    async fn wait_readable(&self) -> AsyncResult<()> {
+    pub async fn wait_readable(&self) -> AsyncResult<()> {
         unimplemented!()
     }
 
     /// Reads a single u64 from the current offset.
-    async fn read_u64(&self) -> AsyncResult<u64> {
+    pub async fn read_u64(&self) -> AsyncResult<u64> {
         unimplemented!()
     }
-}
 
-#[async_trait(?Send)]
-impl<F: AsRawDescriptor> WriteAsync for OverlappedSource<F> {
     /// Writes from the given `vec` to the file starting at `file_offset`.
-    async fn write_from_vec<'a>(
-        &'a self,
+    pub async fn write_from_vec(
+        &self,
         file_offset: Option<u64>,
         vec: Vec<u8>,
     ) -> AsyncResult<(usize, Vec<u8>)> {
@@ -282,7 +274,7 @@ impl<F: AsRawDescriptor> WriteAsync for OverlappedSource<F> {
     }
 
     /// Writes from the given `mem` from the given offsets to the file starting at `file_offset`.
-    async fn write_from_mem<'a>(
+    pub async fn write_from_mem<'a>(
         &'a self,
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
@@ -330,7 +322,12 @@ impl<F: AsRawDescriptor> WriteAsync for OverlappedSource<F> {
     ///
     /// TODO(nkgold): currently this is sync on the executor, which is bad / very hacky. With a
     /// little wrapper work, we can make overlapped DeviceIoControl calls instead.
-    async fn fallocate(&self, file_offset: u64, len: u64, mode: AllocateMode) -> AsyncResult<()> {
+    pub async fn fallocate(
+        &self,
+        file_offset: u64,
+        len: u64,
+        mode: AllocateMode,
+    ) -> AsyncResult<()> {
         if self.seek_forbidden {
             return Err(AsyncError::OverlappedSource(Error::IoSeekError(
                 io::Error::new(
@@ -359,7 +356,7 @@ impl<F: AsRawDescriptor> WriteAsync for OverlappedSource<F> {
     }
 
     /// Sync all completed write operations to the backing storage.
-    async fn fsync(&self) -> AsyncResult<()> {
+    pub async fn fsync(&self) -> AsyncResult<()> {
         // Safe because self.source lives at least as long as the blocking pool thread. Note that
         // if the blocking pool stalls and shutdown fails, the thread could outlive the file;
         // however, this would mean things are already badly broken and we have a similar risk in
@@ -375,18 +372,14 @@ impl<F: AsRawDescriptor> WriteAsync for OverlappedSource<F> {
             .await
             .map_err(AsyncError::OverlappedSource)
     }
-}
 
-/// Subtrait for general async IO.
-#[async_trait(?Send)]
-impl<F: AsRawDescriptor> IoSourceExt<F> for OverlappedSource<F> {
     /// Yields the underlying IO source.
-    fn into_source(self: Box<Self>) -> F {
+    pub fn into_source(self) -> F {
         unimplemented!("`into_source` is not supported on Windows.")
     }
 
     /// Provides a mutable ref to the underlying IO source.
-    fn as_source_mut(&mut self) -> &mut F {
+    pub fn as_source_mut(&mut self) -> &mut F {
         &mut self.source
     }
 
@@ -394,12 +387,12 @@ impl<F: AsRawDescriptor> IoSourceExt<F> for OverlappedSource<F> {
     ///
     /// In the multi-source case, the 0th source will be returned. If sources are not
     /// interchangeable, behavior is undefined.
-    fn as_source(&self) -> &F {
+    pub fn as_source(&self) -> &F {
         &self.source
     }
 
-    async fn wait_for_handle(&self) -> AsyncResult<u64> {
-        let waiter = super::WaitForHandle::new(self);
+    pub async fn wait_for_handle(&self) -> AsyncResult<u64> {
+        let waiter = super::WaitForHandle::new(&self.source);
         match waiter.await {
             Err(e) => Err(AsyncError::HandleSource(e)),
             Ok(()) => Ok(0),

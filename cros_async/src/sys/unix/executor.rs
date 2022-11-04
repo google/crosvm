@@ -24,21 +24,21 @@ use super::URingExecutor;
 use super::UringSource;
 use crate::AsyncResult;
 use crate::IntoAsync;
-use crate::IoSourceExt;
+use crate::IoSource;
 
 pub(crate) fn async_uring_from<'a, F: IntoAsync + Send + 'a>(
     f: F,
     ex: &URingExecutor,
-) -> AsyncResult<Box<dyn IoSourceExt<F> + 'a + Send>> {
-    Ok(UringSource::new(f, ex).map(|u| Box::new(u) as Box<dyn IoSourceExt<F> + Send>)?)
+) -> AsyncResult<IoSource<F>> {
+    Ok(IoSource::Uring(UringSource::new(f, ex)?))
 }
 
-/// Creates a concrete `IoSourceExt` using the fd_executor.
+/// Creates an `IoSource` using the fd_executor.
 pub(crate) fn async_poll_from<'a, F: IntoAsync + Send + 'a>(
     f: F,
     ex: &FdExecutor,
-) -> AsyncResult<Box<dyn IoSourceExt<F> + Send + 'a>> {
-    Ok(PollSource::new(f, ex).map(|u| Box::new(u) as Box<dyn IoSourceExt<F> + Send>)?)
+) -> AsyncResult<IoSource<F>> {
+    Ok(IoSource::Epoll(PollSource::new(f, ex)?))
 }
 
 /// Same as [`async_uring_from`], but without the `Send` requirement and only usable on thread-local
@@ -46,8 +46,8 @@ pub(crate) fn async_poll_from<'a, F: IntoAsync + Send + 'a>(
 pub(crate) fn async_uring_from_local<'a, F: IntoAsync + 'a>(
     f: F,
     ex: &URingExecutor,
-) -> AsyncResult<Box<dyn IoSourceExt<F> + 'a>> {
-    Ok(UringSource::new(f, ex).map(|u| Box::new(u) as Box<dyn IoSourceExt<F>>)?)
+) -> AsyncResult<IoSource<F>> {
+    Ok(IoSource::Uring(UringSource::new(f, ex)?))
 }
 
 /// Same as [`async_poll_from`], but without the `Send` requirement and only usable on thread-local
@@ -55,8 +55,8 @@ pub(crate) fn async_uring_from_local<'a, F: IntoAsync + 'a>(
 pub(crate) fn async_poll_from_local<'a, F: IntoAsync + 'a>(
     f: F,
     ex: &FdExecutor,
-) -> AsyncResult<Box<dyn IoSourceExt<F> + 'a>> {
-    Ok(PollSource::new(f, ex).map(|u| Box::new(u) as Box<dyn IoSourceExt<F>>)?)
+) -> AsyncResult<IoSource<F>> {
+    Ok(IoSource::Epoll(PollSource::new(f, ex)?))
 }
 
 /// An executor for scheduling tasks that poll futures to completion.
@@ -83,11 +83,11 @@ pub(crate) fn async_poll_from_local<'a, F: IntoAsync + 'a>(
 /// use std::error::Error;
 /// use std::fs::{File, OpenOptions};
 ///
-/// use cros_async::{AsyncResult, Executor, IoSourceExt, complete3};
+/// use cros_async::{AsyncResult, Executor, IoSource, complete3};
 /// const CHUNK_SIZE: usize = 32;
 ///
 /// // Write all bytes from `data` to `f`.
-/// async fn write_file(f: &dyn IoSourceExt<File>, mut data: Vec<u8>) -> AsyncResult<()> {
+/// async fn write_file(f: &IoSource<File>, mut data: Vec<u8>) -> AsyncResult<()> {
 ///     while data.len() > 0 {
 ///         let (count, mut buf) = f.write_from_vec(None, data).await?;
 ///
@@ -99,8 +99,8 @@ pub(crate) fn async_poll_from_local<'a, F: IntoAsync + 'a>(
 ///
 /// // Transfer `len` bytes of data from `from` to `to`.
 /// async fn transfer_data(
-///     from: Box<dyn IoSourceExt<File>>,
-///     to: Box<dyn IoSourceExt<File>>,
+///     from: IoSource<File>,
+///     to: IoSource<File>,
 ///     len: usize,
 /// ) -> AsyncResult<usize> {
 ///     let mut rem = len;
@@ -115,7 +115,7 @@ pub(crate) fn async_poll_from_local<'a, F: IntoAsync + 'a>(
 ///         }
 ///
 ///         data.truncate(count);
-///         write_file(&*to, data).await?;
+///         write_file(&to, data).await?;
 ///
 ///         rem = rem.saturating_sub(count);
 ///     }
@@ -265,13 +265,10 @@ impl Executor {
             ))
     }
 
-    /// Create a new `Box<dyn IoSourceExt<F>>` associated with `self`. Callers may then use the
-    /// returned `IoSourceExt` to directly start async operations without needing a separate
-    /// reference to the executor.
-    pub fn async_from<'a, F: IntoAsync + Send + 'a>(
-        &self,
-        f: F,
-    ) -> AsyncResult<Box<dyn IoSourceExt<F> + Send + 'a>> {
+    /// Create a new `IoSource<F>` associated with `self`. Callers may then use the returned
+    /// `IoSource` to directly start async operations without needing a separate reference to the
+    /// executor.
+    pub fn async_from<'a, F: IntoAsync + Send + 'a>(&self, f: F) -> AsyncResult<IoSource<F>> {
         match self {
             Executor::Uring(ex) => async_uring_from(f, ex),
             Executor::Fd(ex) => async_poll_from(f, ex),
@@ -280,10 +277,7 @@ impl Executor {
 
     /// Same as [`Executor::async_from()`], but without the `Send` requirement and only usable on thread-local
     /// executors.
-    pub fn async_from_local<'a, F: IntoAsync + 'a>(
-        &self,
-        f: F,
-    ) -> AsyncResult<Box<dyn IoSourceExt<F> + 'a>> {
+    pub fn async_from_local<'a, F: IntoAsync + 'a>(&self, f: F) -> AsyncResult<IoSource<F>> {
         match self {
             Executor::Uring(ex) => async_uring_from_local(f, ex),
             Executor::Fd(ex) => async_poll_from_local(f, ex),

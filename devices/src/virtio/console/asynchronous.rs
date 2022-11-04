@@ -20,7 +20,7 @@ use cros_async::AsyncResult;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::IntoAsync;
-use cros_async::IoSourceExt;
+use cros_async::IoSource;
 use futures::FutureExt;
 use hypervisor::ProtectionType;
 use vm_memory::GuestMemory;
@@ -77,7 +77,7 @@ async fn run_rx_queue<I: SignalableInterrupt>(
     mem: GuestMemory,
     doorbell: I,
     kick_evt: EventAsync,
-    input: &dyn IoSourceExt<AsyncSerialInput>,
+    input: &IoSource<AsyncSerialInput>,
 ) {
     // Staging buffer, required because of `handle_input`'s API. We can probably remove this once
     // the regular virtio device is switched to async.
@@ -149,8 +149,7 @@ impl ConsoleDevice {
 
             Ok(async move {
                 select2(
-                    run_rx_queue(queue, mem, doorbell, kick_evt, async_input.as_ref())
-                        .boxed_local(),
+                    run_rx_queue(queue, mem, doorbell, kick_evt, &async_input).boxed_local(),
                     abort,
                 )
                 .await;

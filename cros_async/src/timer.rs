@@ -11,11 +11,11 @@ use crate::AsyncResult;
 use crate::Error;
 use crate::Executor;
 use crate::IntoAsync;
-use crate::IoSourceExt;
+use crate::IoSource;
 
 /// An async version of base::Timer.
 pub struct TimerAsync {
-    pub(crate) io_source: Box<dyn IoSourceExt<Timer>>,
+    pub(crate) io_source: IoSource<Timer>,
 }
 
 impl TimerAsync {

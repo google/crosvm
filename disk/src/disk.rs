@@ -25,7 +25,7 @@ use base::PunchHole;
 use cros_async::AllocateMode;
 use cros_async::BackingMemory;
 use cros_async::Executor;
-use cros_async::IoSourceExt;
+use cros_async::IoSource;
 use thiserror::Error as ThisError;
 
 mod asynchronous;
@@ -387,7 +387,7 @@ pub trait AsyncDisk: DiskGetLen + FileSetLen + FileAllocate {
 
 /// A disk backed by a single file that implements `AsyncDisk` for access.
 pub struct SingleFileDisk {
-    inner: Box<dyn IoSourceExt<File>>,
+    inner: IoSource<File>,
 }
 
 impl SingleFileDisk {

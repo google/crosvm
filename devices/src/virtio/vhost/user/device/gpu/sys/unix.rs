@@ -19,7 +19,7 @@ use base::UnixSeqpacketListener;
 use base::UnlinkUnixSeqpacketListener;
 use cros_async::AsyncWrapper;
 use cros_async::Executor;
-use cros_async::IoSourceExt;
+use cros_async::IoSource;
 use futures::future::AbortHandle;
 use futures::future::Abortable;
 use hypervisor::ProtectionType;
@@ -39,7 +39,7 @@ use crate::virtio::GpuDisplayParameters;
 use crate::virtio::GpuParameters;
 
 async fn run_display(
-    display: Box<dyn IoSourceExt<AsyncWrapper<SafeDescriptor>>>,
+    display: IoSource<AsyncWrapper<SafeDescriptor>>,
     state: Rc<RefCell<gpu::Frontend>>,
 ) {
     loop {
@@ -62,7 +62,7 @@ async fn run_display(
     }
 }
 
-async fn run_resource_bridge(tube: Box<dyn IoSourceExt<Tube>>, state: Rc<RefCell<gpu::Frontend>>) {
+async fn run_resource_bridge(tube: IoSource<Tube>, state: Rc<RefCell<gpu::Frontend>>) {
     loop {
         if let Err(e) = tube.wait_readable().await {
             error!(

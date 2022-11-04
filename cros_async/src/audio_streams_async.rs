@@ -34,12 +34,12 @@ use base::RawDescriptor;
 use super::AsyncWrapper;
 use crate::EventAsync;
 use crate::IntoAsync;
-use crate::IoSourceExt;
+use crate::IoSource;
 use crate::TimerAsync;
 
-/// A wrapper around IoSourceExt that is compatible with the audio_streams traits.
+/// A wrapper around IoSource that is compatible with the audio_streams traits.
 pub struct IoSourceWrapper<T: IntoAsync + Send> {
-    source: Box<dyn IoSourceExt<T> + Send>,
+    source: IoSource<T>,
 }
 
 #[async_trait(?Send)]

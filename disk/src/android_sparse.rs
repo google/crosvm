@@ -22,7 +22,7 @@ use base::FileSetLen;
 use base::RawDescriptor;
 use cros_async::BackingMemory;
 use cros_async::Executor;
-use cros_async::IoSourceExt;
+use cros_async::IoSource;
 use data_model::DataInit;
 use data_model::Le16;
 use data_model::Le32;
@@ -313,7 +313,7 @@ impl DiskFile for AndroidSparse {}
 
 /// An Android Sparse disk that implements `AsyncDisk` for access.
 pub struct AsyncAndroidSparse {
-    inner: Box<dyn IoSourceExt<File>>,
+    inner: IoSource<File>,
     total_size: u64,
     chunks: BTreeMap<u64, ChunkWithSize>,
 }
