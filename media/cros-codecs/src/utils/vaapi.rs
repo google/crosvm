@@ -213,11 +213,6 @@ impl SurfacePoolHandle {
         &self.current_resolution
     }
 
-    /// Sets the current resolution for the pool
-    pub fn set_current_resolution(&mut self, resolution: Resolution) {
-        self.current_resolution = resolution;
-    }
-
     /// Adds a new surface to the pool
     pub fn add_surface(&mut self, surface: Surface) {
         self.surfaces.borrow_mut().push_back(surface)
@@ -227,11 +222,6 @@ impl SurfacePoolHandle {
     pub fn get_surface(&mut self) -> Option<Surface> {
         let mut vec = self.surfaces.borrow_mut();
         vec.pop_front()
-    }
-
-    /// Drops all surfaces from the pool
-    pub fn drop_surfaces(&mut self) {
-        self.surfaces = Default::default();
     }
 
     /// Returns new number of surfaces left.
