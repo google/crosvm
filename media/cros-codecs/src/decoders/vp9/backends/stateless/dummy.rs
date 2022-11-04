@@ -24,21 +24,9 @@ pub type AssociatedDummyHandle = <Backend as StatelessDecoderBackend>::Handle;
 
 pub type AssociatedDummyBackendHandle = <AssociatedDummyHandle as DecodedHandle>::BackendHandle;
 
-pub struct MappedHandle;
-
-impl AsRef<[u8]> for MappedHandle {
-    fn as_ref(&self) -> &[u8] {
-        &[]
-    }
-}
-
 pub struct BackendHandle;
 
 impl crate::decoders::MappableHandle for BackendHandle {
-    fn map(&mut self) -> crate::decoders::Result<Box<dyn AsRef<[u8]> + '_>> {
-        Ok(Box::new(MappedHandle {}))
-    }
-
     fn read(&mut self, _: &mut [u8]) -> crate::decoders::Result<()> {
         Ok(())
     }

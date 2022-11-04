@@ -177,10 +177,6 @@ pub trait DynPicture {
 
 /// A trait for types that can be mapped into the client's address space.
 pub trait MappableHandle: downcast_rs::Downcast {
-    /// Map &self as-is into the client's address space. The bytes may be laid out
-    /// in a hardware-optimized way.
-    fn map(&mut self) -> Result<Box<dyn AsRef<[u8]> + '_>>;
-
     /// Read the contents of `self` into `buffer`.
     fn read(&mut self, buffer: &mut [u8]) -> Result<()>;
 

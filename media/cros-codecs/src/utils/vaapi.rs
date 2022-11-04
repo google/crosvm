@@ -383,11 +383,6 @@ pub(crate) enum GenericBackendHandleInner {
 }
 
 impl MappableHandle for GenericBackendHandle {
-    fn map(&mut self) -> VideoDecoderResult<Box<dyn AsRef<[u8]> + '_>> {
-        let image = self.image()?;
-        Ok(Box::new(image))
-    }
-
     fn read(&mut self, buffer: &mut [u8]) -> VideoDecoderResult<()> {
         let map_format = match &self.inner {
             GenericBackendHandleInner::Ready { map_format, .. } => Rc::clone(map_format),
