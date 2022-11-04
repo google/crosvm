@@ -1103,9 +1103,8 @@ mod tests {
         let mut picture = handle.picture_mut();
         let backend_handle = picture.dyn_mappable_handle_mut();
 
-        let resolution = backend_handle.mapped_resolution().unwrap();
-
-        let mut nv12 = vec![0; resolution.width as usize * resolution.height as usize * 3 / 2];
+        let buffer_size = backend_handle.image_size().unwrap();
+        let mut nv12 = vec![0; buffer_size];
 
         backend_handle.read(&mut nv12).unwrap();
 

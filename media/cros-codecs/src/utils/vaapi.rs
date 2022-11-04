@@ -384,6 +384,7 @@ pub(crate) enum GenericBackendHandleInner {
 
 impl MappableHandle for GenericBackendHandle {
     fn read(&mut self, buffer: &mut [u8]) -> VideoDecoderResult<()> {
+        let image_size = self.image_size()?;
         let map_format = match &self.inner {
             GenericBackendHandleInner::Ready { map_format, .. } => Rc::clone(map_format),
             GenericBackendHandleInner::Pending(_) => {
@@ -399,14 +400,18 @@ impl MappableHandle for GenericBackendHandle {
         let width = image_inner.width as u32;
         let height = image_inner.height as u32;
 
+        if buffer.len() != image_size {
+            return Err(VideoDecoderError::StatelessBackendError(
+                StatelessBackendError::Other(anyhow!(
+                    "buffer size is {} while image size is {}",
+                    buffer.len(),
+                    image_size
+                )),
+            ));
+        }
+
         match map_format.fourcc {
             libva::constants::VA_FOURCC_NV12 => {
-                if buffer.len() < (width * height * 3 / 2) as usize {
-                    return Err(VideoDecoderError::StatelessBackendError(
-                        StatelessBackendError::Other(anyhow!("Buffer is too small")),
-                    ));
-                }
-
                 nv12_copy(
                     image.as_ref(),
                     buffer,
@@ -417,12 +422,6 @@ impl MappableHandle for GenericBackendHandle {
                 );
             }
             libva::constants::VA_FOURCC_I420 => {
-                if buffer.len() < (width * height * 3 / 2) as usize {
-                    return Err(VideoDecoderError::StatelessBackendError(
-                        StatelessBackendError::Other(anyhow!("Buffer is too small")),
-                    ));
-                }
-
                 i420_copy(
                     image.as_ref(),
                     buffer,
@@ -442,14 +441,15 @@ impl MappableHandle for GenericBackendHandle {
         Ok(())
     }
 
-    fn mapped_resolution(&mut self) -> VideoDecoderResult<Resolution> {
-        let image = self.image()?;
-        let image = image.image();
+    fn image_size(&mut self) -> VideoDecoderResult<usize> {
+        let image_outer = self.image()?;
+        let image = image_outer.image();
 
-        Ok(Resolution {
-            width: u32::from(image.width),
-            height: u32::from(image.height),
-        })
+        Ok(crate::decoded_frame_size(
+            (&image.format).try_into().unwrap(),
+            image.width,
+            image.height,
+        ))
     }
 }
 

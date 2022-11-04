@@ -92,3 +92,12 @@ pub fn i420_copy(
         src = &src[strides[2] as usize..];
     }
 }
+
+/// Returns the size required to store a frame of `format` with size `width`x`height`, without any
+/// padding. This is the minimum size of the destination buffer passed to `nv12_copy` or
+/// `i420_copy`.
+pub fn decoded_frame_size(format: DecodedFormat, width: u16, height: u16) -> usize {
+    match format {
+        DecodedFormat::I420 | DecodedFormat::NV12 => width as usize * height as usize * 3 / 2,
+    }
+}

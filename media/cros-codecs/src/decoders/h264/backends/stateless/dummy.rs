@@ -37,11 +37,8 @@ impl crate::decoders::MappableHandle for BackendHandle {
         Ok(())
     }
 
-    fn mapped_resolution(&mut self) -> crate::decoders::Result<Resolution> {
-        Ok(Resolution {
-            width: 1,
-            height: 1,
-        })
+    fn image_size(&mut self) -> crate::decoders::Result<usize> {
+        Ok(1)
     }
 }
 

@@ -490,27 +490,22 @@ impl VaapiDecoderSession {
             }
         };
 
-        let mapped_resolution = decoded_frame
-            .dyn_picture_mut()
-            .dyn_mappable_handle_mut()
-            .mapped_resolution()?;
-
         let display_resolution = decoded_frame.display_resolution();
+
+        let mut picture = decoded_frame.dyn_picture_mut();
+        let backend_handle = picture.dyn_mappable_handle_mut();
+        let buffer_size = backend_handle.image_size()?;
 
         // Get a mapping from the start of the buffer to the size of the
         // underlying decoded data in the Image.
-        let mut output_map: BufferMapping<_, GuestResourceHandle> = BufferMapping::new(
-            &mut output_buffer.handle,
-            0,
-            mapped_resolution.width as usize * mapped_resolution.height as usize * 3 / 2,
-        )?;
+        let mut output_map: BufferMapping<_, GuestResourceHandle> =
+            BufferMapping::new(&mut output_buffer.handle, 0, buffer_size)?;
 
         let output_bytes = output_map.as_mut();
 
-        decoded_frame
-            .dyn_picture_mut()
-            .dyn_mappable_handle_mut()
-            .read(output_bytes)?;
+        backend_handle.read(output_bytes)?;
+
+        drop(picture);
 
         let timestamp = decoded_frame.timestamp();
         let picture_buffer_id = picture_buffer_id as i32;

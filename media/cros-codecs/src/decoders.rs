@@ -178,9 +178,12 @@ pub trait DynPicture {
 /// A trait for types that can be mapped into the client's address space.
 pub trait MappableHandle: downcast_rs::Downcast {
     /// Read the contents of `self` into `buffer`.
+    ///
+    /// The size of `buffer` must be equal to `image_size()`, or an error will be returned.
     fn read(&mut self, buffer: &mut [u8]) -> Result<()>;
 
-    fn mapped_resolution(&mut self) -> Result<Resolution>;
+    /// Returns the size of the `buffer` argument required to call `read` on this handle.
+    fn image_size(&mut self) -> Result<usize>;
 }
 downcast_rs::impl_downcast!(MappableHandle);
 
