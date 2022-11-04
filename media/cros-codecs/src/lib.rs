@@ -46,7 +46,7 @@ pub fn nv12_copy(
     for _ in 0..height / 2 {
         dst[..width].copy_from_slice(&src[..width]);
         dst = &mut dst[width..];
-        src = &src[strides[1_usize] as usize..];
+        src = &src[strides[1] as usize..];
     }
 }
 
@@ -79,7 +79,7 @@ pub fn i420_copy(
     for _ in 0..height / 2 {
         dst[..width].copy_from_slice(&src[..width]);
         dst = &mut dst[width..];
-        src = &src[strides[1_usize] as usize..];
+        src = &src[strides[1] as usize..];
     }
 
     // Advance to the offset of the V plane
@@ -89,6 +89,6 @@ pub fn i420_copy(
     for _ in 0..height / 2 {
         dst[..width].copy_from_slice(&src[..width]);
         dst = &mut dst[width..];
-        src = &src[strides[2_usize] as usize..];
+        src = &src[strides[2] as usize..];
     }
 }
