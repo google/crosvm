@@ -13,14 +13,15 @@ use libva::Config;
 use libva::Context;
 use libva::Display;
 use libva::Image;
-use libva::Picture;
 use libva::PictureSync;
 use libva::Surface;
 use libva::VAConfigAttrib;
 use libva::VAConfigAttribType;
 
+use crate::decoders::DynPicture;
 use crate::decoders::Error as VideoDecoderError;
 use crate::decoders::MappableHandle;
+use crate::decoders::Picture;
 use crate::decoders::Result as VideoDecoderResult;
 use crate::decoders::StatelessBackendError;
 use crate::i420_copy;
@@ -344,7 +345,7 @@ impl GenericBackendHandle {
 
     /// Creates a new ready handle on a completed `picture`.
     pub(crate) fn new_ready(
-        picture: Picture<PictureSync>,
+        picture: libva::Picture<PictureSync>,
         map_format: Rc<libva::VAImageFormat>,
         display_resolution: Resolution,
     ) -> Self {
@@ -385,7 +386,7 @@ impl GenericBackendHandle {
     }
 
     /// Returns the picture of this handle.
-    pub fn picture(&self) -> Option<&Picture<PictureSync>> {
+    pub fn picture(&self) -> Option<&libva::Picture<PictureSync>> {
         match &self.0 {
             GenericBackendHandleInner::Ready { picture, .. } => Some(picture),
             GenericBackendHandleInner::Pending(_) => None,
@@ -428,26 +429,16 @@ impl Clone for GenericBackendHandle {
 enum GenericBackendHandleInner {
     Ready {
         map_format: Rc<libva::VAImageFormat>,
-        picture: Picture<PictureSync>,
+        picture: libva::Picture<PictureSync>,
         display_resolution: Resolution,
     },
     Pending(libva::VASurfaceID),
 }
 
-impl MappableHandle for GenericBackendHandle {
+impl<'a> MappableHandle for Image<'a> {
     fn read(&mut self, buffer: &mut [u8]) -> VideoDecoderResult<()> {
-        let image_size = self.image_size()?;
-        let map_format = match &self.0 {
-            GenericBackendHandleInner::Ready { map_format, .. } => Rc::clone(map_format),
-            GenericBackendHandleInner::Pending(_) => {
-                return Err(VideoDecoderError::StatelessBackendError(
-                    StatelessBackendError::ResourceNotReady,
-                ))
-            }
-        };
-
-        let image = self.image()?;
-        let image_inner = image.image();
+        let image_size = self.image_size();
+        let image_inner = self.image();
 
         let width = image_inner.width as u32;
         let height = image_inner.height as u32;
@@ -462,10 +453,10 @@ impl MappableHandle for GenericBackendHandle {
             ));
         }
 
-        match map_format.fourcc {
+        match image_inner.format.fourcc {
             libva::constants::VA_FOURCC_NV12 => {
                 nv12_copy(
-                    image.as_ref(),
+                    self.as_ref(),
                     buffer,
                     width,
                     height,
@@ -475,7 +466,7 @@ impl MappableHandle for GenericBackendHandle {
             }
             libva::constants::VA_FOURCC_I420 => {
                 i420_copy(
-                    image.as_ref(),
+                    self.as_ref(),
                     buffer,
                     width,
                     height,
@@ -493,15 +484,20 @@ impl MappableHandle for GenericBackendHandle {
         Ok(())
     }
 
-    fn image_size(&mut self) -> VideoDecoderResult<usize> {
-        let image_outer = self.image()?;
-        let image = image_outer.image();
+    fn image_size(&mut self) -> usize {
+        let image = self.image();
 
-        Ok(crate::decoded_frame_size(
+        crate::decoded_frame_size(
             (&image.format).try_into().unwrap(),
             image.width,
             image.height,
-        ))
+        )
+    }
+}
+
+impl<CodecData> DynPicture for Picture<CodecData, GenericBackendHandle> {
+    fn dyn_mappable_handle_mut<'a>(&'a mut self) -> Box<dyn MappableHandle + 'a> {
+        Box::new(self.backend_handle.as_mut().unwrap().image().unwrap())
     }
 }
 

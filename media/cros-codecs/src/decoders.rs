@@ -136,7 +136,6 @@ pub trait VideoDecoder {
 }
 
 pub trait DynDecodedHandle {
-    fn dyn_picture(&self) -> Ref<dyn DynPicture>;
     fn dyn_picture_mut(&self) -> RefMut<dyn DynPicture>;
     fn timestamp(&self) -> u64;
     fn display_resolution(&self) -> Resolution;
@@ -146,14 +145,10 @@ pub trait DynDecodedHandle {
 impl<T> DynDecodedHandle for T
 where
     T: DecodedHandle,
-    <T as DecodedHandle>::BackendHandle: MappableHandle,
+    Picture<T::CodecData, T::BackendHandle>: DynPicture,
 {
-    fn dyn_picture(&self) -> Ref<dyn DynPicture> {
-        self.picture()
-    }
-
     fn dyn_picture_mut(&self) -> RefMut<dyn DynPicture> {
-        self.picture_mut()
+        DecodedHandle::picture_mut(self)
     }
 
     fn timestamp(&self) -> u64 {
@@ -172,20 +167,19 @@ where
 pub trait DynPicture {
     /// Gets an exclusive reference to the backend handle of this picture.
     /// Assumes that this picture is backed by a handle and panics if not the case.
-    fn dyn_mappable_handle_mut(&mut self) -> &mut dyn MappableHandle;
+    fn dyn_mappable_handle_mut<'a>(&'a mut self) -> Box<dyn MappableHandle + 'a>;
 }
 
 /// A trait for types that can be mapped into the client's address space.
-pub trait MappableHandle: downcast_rs::Downcast {
+pub trait MappableHandle {
     /// Read the contents of `self` into `buffer`.
     ///
     /// The size of `buffer` must be equal to `image_size()`, or an error will be returned.
     fn read(&mut self, buffer: &mut [u8]) -> Result<()>;
 
     /// Returns the size of the `buffer` argument required to call `read` on this handle.
-    fn image_size(&mut self) -> Result<usize>;
+    fn image_size(&mut self) -> usize;
 }
-downcast_rs::impl_downcast!(MappableHandle);
 
 /// Instructs the decoder on whether it should block on the decode operations.
 /// Nonblocking mode is conditional on backend support.
@@ -223,13 +217,6 @@ impl<CodecData, BackendHandle> Picture<CodecData, BackendHandle> {
     /// Get a reference to the picture's timestamp.
     pub fn timestamp(&self) -> u64 {
         self.timestamp
-    }
-}
-
-/// Automatic `DynPicture` implementation for handles that are `MappableHandle`s.
-impl<CodecData, BackendHandle: MappableHandle> DynPicture for Picture<CodecData, BackendHandle> {
-    fn dyn_mappable_handle_mut(&mut self) -> &mut dyn MappableHandle {
-        self.backend_handle.as_mut().unwrap()
     }
 }
 

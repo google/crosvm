@@ -493,8 +493,8 @@ impl VaapiDecoderSession {
         let display_resolution = decoded_frame.display_resolution();
 
         let mut picture = decoded_frame.dyn_picture_mut();
-        let backend_handle = picture.dyn_mappable_handle_mut();
-        let buffer_size = backend_handle.image_size()?;
+        let mut backend_handle = picture.dyn_mappable_handle_mut();
+        let buffer_size = backend_handle.image_size();
 
         // Get a mapping from the start of the buffer to the size of the
         // underlying decoded data in the Image.
@@ -505,6 +505,7 @@ impl VaapiDecoderSession {
 
         backend_handle.read(output_bytes)?;
 
+        drop(backend_handle);
         drop(picture);
 
         let timestamp = decoded_frame.timestamp();

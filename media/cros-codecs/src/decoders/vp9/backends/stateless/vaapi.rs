@@ -942,9 +942,9 @@ mod tests {
         frame_num: i32,
     ) {
         let mut picture = handle.picture_mut();
-        let backend_handle = picture.dyn_mappable_handle_mut();
+        let mut backend_handle = picture.dyn_mappable_handle_mut();
 
-        let buffer_size = backend_handle.image_size().unwrap();
+        let buffer_size = backend_handle.image_size();
         let mut nv12 = vec![0; buffer_size];
 
         backend_handle.read(&mut nv12).unwrap();
