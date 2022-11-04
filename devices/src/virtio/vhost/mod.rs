@@ -28,10 +28,14 @@ cfg_if::cfg_if! {
     if #[cfg(unix)] {
         mod net;
         pub mod vsock;
+        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        pub mod scmi;
         mod worker;
 
         pub use self::net::Net;
         pub use self::vsock::Vsock;
+        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        pub use self::scmi::Scmi;
     } else if #[cfg(windows)] {}
 }
 

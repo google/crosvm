@@ -7,6 +7,9 @@
 #![cfg(unix)]
 
 pub mod net;
+#[cfg(unix)]
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+mod scmi;
 mod vsock;
 
 use std::alloc::Layout;
@@ -32,6 +35,9 @@ use vm_memory::MemoryRegionInformation;
 pub use crate::net::Net;
 #[cfg(unix)]
 pub use crate::net::NetT;
+#[cfg(unix)]
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+pub use crate::scmi::Scmi;
 pub use crate::vsock::Vsock;
 
 #[sorted]

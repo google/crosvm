@@ -1098,6 +1098,23 @@ impl VirtioDeviceBuilder for &VsockConfig {
     }
 }
 
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+pub fn create_vhost_scmi_device(
+    protected_vm: ProtectionType,
+    jail_config: &Option<JailConfig>,
+    vhost_scmi_dev_path: PathBuf,
+) -> DeviceResult {
+    let features = virtio::base_features(protected_vm);
+
+    let dev = virtio::vhost::Scmi::new(&vhost_scmi_dev_path, features)
+        .context("failed to set up vhost scmi device")?;
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        jail: simple_jail(jail_config, "vhost_scmi_device")?,
+    })
+}
+
 pub fn create_fs_device(
     protection_type: ProtectionType,
     jail_config: &Option<JailConfig>,

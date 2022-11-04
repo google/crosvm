@@ -168,6 +168,7 @@ pub enum DeviceType {
     Mac80211HwSim = virtio_ids::VIRTIO_ID_MAC80211_HWSIM,
     VideoEnc = virtio_ids::VIRTIO_ID_VIDEO_ENCODER,
     VideoDec = virtio_ids::VIRTIO_ID_VIDEO_DECODER,
+    Scmi = virtio_ids::VIRTIO_ID_SCMI,
     Wl = virtio_ids::VIRTIO_ID_WL,
     Tpm = virtio_ids::VIRTIO_ID_TPM,
     Pvclock = virtio_ids::VIRTIO_ID_PVCLOCK,
@@ -203,6 +204,7 @@ impl std::fmt::Display for DeviceType {
             DeviceType::VideoDec => write!(f, "video-decoder"),
             DeviceType::VideoEnc => write!(f, "video-encoder"),
             DeviceType::Mac80211HwSim => write!(f, "mac-80211-hw-sim"),
+            DeviceType::Scmi => write!(f, "scmi"),
         }
     }
 }

@@ -582,6 +582,16 @@ fn create_virtio_devices(
         );
     }
 
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    {
+        if cfg.vhost_scmi {
+            devs.push(create_vhost_scmi_device(
+                cfg.protection_type,
+                &cfg.jail_config,
+                cfg.vhost_scmi_device.clone(),
+            )?);
+        }
+    }
     for vhost_user_fs in &cfg.vhost_user_fs {
         devs.push(create_vhost_user_fs_device(
             cfg.protection_type,

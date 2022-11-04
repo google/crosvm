@@ -79,6 +79,9 @@ cfg_if::cfg_if! {
         #[cfg(feature = "gpu")]
         use crate::crosvm::sys::GpuRenderServerParameters;
         use libc::{getegid, geteuid};
+
+        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        static VHOST_SCMI_PATH: &str = "/dev/vhost-scmi";
     } else if #[cfg(windows)] {
         use base::{Event, Tube};
     }
@@ -1215,6 +1218,12 @@ pub struct Config {
     pub vfio: Vec<super::sys::config::VfioOption>,
     #[cfg(unix)]
     pub vfio_isolate_hotplug: bool,
+    #[cfg(unix)]
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    pub vhost_scmi: bool,
+    #[cfg(unix)]
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    pub vhost_scmi_device: PathBuf,
     pub vhost_user_blk: Vec<VhostUserOption>,
     pub vhost_user_console: Vec<VhostUserOption>,
     pub vhost_user_fs: Vec<VhostUserFsOption>,
@@ -1425,6 +1434,12 @@ impl Default for Config {
             vfio: Vec::new(),
             #[cfg(unix)]
             vfio_isolate_hotplug: false,
+            #[cfg(unix)]
+            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+            vhost_scmi: false,
+            #[cfg(unix)]
+            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+            vhost_scmi_device: PathBuf::from(VHOST_SCMI_PATH),
             vhost_user_blk: Vec::new(),
             vhost_user_console: Vec::new(),
             vhost_user_video_dec: Vec::new(),
