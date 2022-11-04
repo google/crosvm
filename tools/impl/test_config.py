@@ -99,7 +99,6 @@ CRATE_OPTIONS: Dict[str, List[TestOption]] = {
     ],  # b/181674144
     "libvda": [TestOption.DO_NOT_RUN],  # b/202293971
     "sandbox": [TestOption.DO_NOT_RUN],
-    "vhost": [TestOption.UNIT_AS_INTEGRATION_TEST],
 }
 
 for name in WIN64_DISABLED_CRATES:
