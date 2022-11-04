@@ -109,7 +109,7 @@ impl<T> TryInto<Option<Surface>> for crate::decoders::Picture<T, GenericBackendH
             None => return Ok(None),
         };
 
-        let surface = match backend_handle.inner {
+        let surface = match backend_handle.0 {
             GenericBackendHandleInner::Ready { picture, .. } => picture.take_surface().map(Some),
             GenericBackendHandleInner::Pending(id) => {
                 return Err(anyhow!(
@@ -331,13 +331,28 @@ impl StreamMetadataState {
 }
 
 /// The VA-API backend handle.
-pub struct GenericBackendHandle {
-    pub(crate) inner: GenericBackendHandleInner,
-}
+///
+/// This is just a wrapper around the `GenericBackendHandleInner` enum in order to make its variants
+/// private.
+pub struct GenericBackendHandle(GenericBackendHandleInner);
 
 impl GenericBackendHandle {
-    pub(crate) fn new(inner: GenericBackendHandleInner) -> Self {
-        Self { inner }
+    /// Creates a new pending handle on `surface_id`.
+    pub(crate) fn new_pending(surface_id: u32) -> Self {
+        Self(GenericBackendHandleInner::Pending(surface_id))
+    }
+
+    /// Creates a new ready handle on a completed `picture`.
+    pub(crate) fn new_ready(
+        picture: Picture<PictureSync>,
+        map_format: Rc<libva::VAImageFormat>,
+        display_resolution: Resolution,
+    ) -> Self {
+        Self(GenericBackendHandleInner::Ready {
+            map_format,
+            picture,
+            display_resolution,
+        })
     }
 
     /// Returns a mapped VAImage. this maps the VASurface onto our address space.
@@ -346,7 +361,7 @@ impl GenericBackendHandle {
     ///
     /// Note that DynMappableHandle is downcastable.
     pub fn image(&mut self) -> Result<Image> {
-        match &mut self.inner {
+        match &mut self.0 {
             GenericBackendHandleInner::Ready {
                 map_format,
                 picture,
@@ -368,13 +383,50 @@ impl GenericBackendHandle {
             GenericBackendHandleInner::Pending(_) => Err(anyhow!("Mapping failed")),
         }
     }
+
+    /// Returns the picture of this handle.
+    pub fn picture(&self) -> Option<&Picture<PictureSync>> {
+        match &self.0 {
+            GenericBackendHandleInner::Ready { picture, .. } => Some(picture),
+            GenericBackendHandleInner::Pending(_) => None,
+        }
+    }
+
+    /// Returns the id of the VA surface backing this handle.
+    pub fn surface_id(&self) -> libva::VASurfaceID {
+        match &self.0 {
+            GenericBackendHandleInner::Ready { picture, .. } => picture.surface().id(),
+            GenericBackendHandleInner::Pending(id) => *id,
+        }
+    }
+
+    /// Returns `true` if this handle is ready.
+    pub fn is_ready(&self) -> bool {
+        matches!(self.0, GenericBackendHandleInner::Ready { .. })
+    }
+}
+
+impl Clone for GenericBackendHandle {
+    fn clone(&self) -> Self {
+        match &self.0 {
+            GenericBackendHandleInner::Ready {
+                map_format,
+                picture,
+                display_resolution: resolution,
+            } => GenericBackendHandle::new_ready(
+                libva::Picture::new_from_same_surface(picture.timestamp(), picture),
+                Rc::clone(map_format),
+                *resolution,
+            ),
+            GenericBackendHandleInner::Pending(id) => GenericBackendHandle::new_pending(*id),
+        }
+    }
 }
 
 /// A type so we do not expose the enum in the public interface, as enum members
 /// are inherently public.
-pub(crate) enum GenericBackendHandleInner {
+enum GenericBackendHandleInner {
     Ready {
-        context: Rc<Context>,
         map_format: Rc<libva::VAImageFormat>,
         picture: Picture<PictureSync>,
         display_resolution: Resolution,
@@ -385,7 +437,7 @@ pub(crate) enum GenericBackendHandleInner {
 impl MappableHandle for GenericBackendHandle {
     fn read(&mut self, buffer: &mut [u8]) -> VideoDecoderResult<()> {
         let image_size = self.image_size()?;
-        let map_format = match &self.inner {
+        let map_format = match &self.0 {
             GenericBackendHandleInner::Ready { map_format, .. } => Rc::clone(map_format),
             GenericBackendHandleInner::Pending(_) => {
                 return Err(VideoDecoderError::StatelessBackendError(

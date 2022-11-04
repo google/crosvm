@@ -45,7 +45,6 @@ use crate::utils;
 use crate::utils::vaapi::DecodedHandle as VADecodedHandle;
 use crate::utils::vaapi::FormatMap;
 use crate::utils::vaapi::GenericBackendHandle;
-use crate::utils::vaapi::GenericBackendHandleInner;
 use crate::utils::vaapi::StreamMetadataState;
 use crate::utils::vaapi::SurfacePoolHandle;
 use crate::DecodedFormat;
@@ -280,12 +279,7 @@ impl Backend {
             return libva::constants::VA_INVALID_SURFACE;
         }
 
-        let va_picture = &picture.backend_handle.as_ref().unwrap().inner;
-
-        match va_picture {
-            GenericBackendHandleInner::Ready { picture, .. } => picture.surface().id(),
-            GenericBackendHandleInner::Pending(id) => *id,
-        }
+        picture.backend_handle.as_ref().unwrap().surface_id()
     }
 
     /// Fills the internal `va_pic` picture parameter with data from `h264_pic`
@@ -843,12 +837,11 @@ impl StatelessDecoderBackend for Backend {
             let current_picture = current_picture.sync()?;
             let map_format = self.metadata_state.map_format()?;
 
-            let backend_handle = GenericBackendHandle::new(GenericBackendHandleInner::Ready {
-                context: self.metadata_state.context()?,
-                map_format: Rc::clone(map_format),
-                picture: current_picture,
-                display_resolution: self.metadata_state.display_resolution()?,
-            });
+            let backend_handle = GenericBackendHandle::new_ready(
+                current_picture,
+                Rc::clone(map_format),
+                self.metadata_state.display_resolution()?,
+            );
 
             picture.borrow_mut().backend_handle = Some(backend_handle);
         } else {
@@ -860,9 +853,8 @@ impl StatelessDecoderBackend for Backend {
 
             self.pending_jobs.push_back(pending_job);
 
-            picture.borrow_mut().backend_handle = Some(GenericBackendHandle::new(
-                GenericBackendHandleInner::Pending(surface_id),
-            ));
+            picture.borrow_mut().backend_handle =
+                Some(GenericBackendHandle::new_pending(surface_id));
         }
 
         self.build_va_decoded_handle(&picture)
@@ -889,12 +881,11 @@ impl StatelessDecoderBackend for Backend {
 
             let map_format = self.metadata_state.map_format()?;
 
-            let backend_handle = GenericBackendHandle::new(GenericBackendHandleInner::Ready {
-                context: self.metadata_state.context()?,
-                map_format: Rc::clone(map_format),
-                picture: current_picture,
-                display_resolution: self.metadata_state.display_resolution()?,
-            });
+            let backend_handle = GenericBackendHandle::new_ready(
+                current_picture,
+                Rc::clone(map_format),
+                self.metadata_state.display_resolution()?,
+            );
 
             job.h264_picture.borrow_mut().backend_handle = Some(backend_handle);
 
@@ -922,26 +913,7 @@ impl StatelessDecoderBackend for Backend {
         split_picture: ContainedPicture<AssociatedBackendHandle>,
         new_picture: ContainedPicture<AssociatedBackendHandle>,
     ) -> StatelessBackendResult<()> {
-        let backend_handle = split_picture
-            .borrow()
-            .backend_handle
-            .as_ref()
-            .map(|backend_handle| match &backend_handle.inner {
-                GenericBackendHandleInner::Ready {
-                    context,
-                    map_format,
-                    picture,
-                    display_resolution: resolution,
-                } => GenericBackendHandle::new(GenericBackendHandleInner::Ready {
-                    context: Rc::clone(context),
-                    map_format: Rc::clone(map_format),
-                    picture: VaPicture::new_from_same_surface(picture.timestamp(), picture),
-                    display_resolution: *resolution,
-                }),
-                GenericBackendHandleInner::Pending(id) => {
-                    GenericBackendHandle::new(GenericBackendHandleInner::Pending(*id))
-                }
-            });
+        let backend_handle = split_picture.borrow().backend_handle.as_ref().cloned();
 
         new_picture.borrow_mut().backend_handle = backend_handle;
 
@@ -976,19 +948,16 @@ impl StatelessDecoderBackend for Backend {
         let first_va_picture = first_field.picture();
         let backend_handle = first_va_picture.backend_handle.as_ref().unwrap();
 
-        if matches!(backend_handle.inner, GenericBackendHandleInner::Pending(_)) {
+        if !backend_handle.is_ready() {
             drop(first_va_picture);
             self.block_on_handle(first_field)?;
         }
 
         let first_va_picture = first_field.picture();
         let backend_handle = first_va_picture.backend_handle.as_ref().unwrap();
-        let backend_handle = match &backend_handle.inner {
-            GenericBackendHandleInner::Ready { picture, .. } => picture,
-            GenericBackendHandleInner::Pending(_) => {
-                panic!("No valid backend handle after blocking on it")
-            }
-        };
+        let backend_handle = backend_handle
+            .picture()
+            .expect("no valid backend handle after blocking on it");
 
         // Decode to the same surface as the first field picture.
         self.current_picture = Some(VaPicture::new_from_same_surface(timestamp, backend_handle));
@@ -998,12 +967,7 @@ impl StatelessDecoderBackend for Backend {
 
     fn handle_is_ready(&self, handle: &Self::Handle) -> bool {
         match &handle.picture().backend_handle {
-            Some(backend_handle) => {
-                matches!(
-                    backend_handle.inner,
-                    GenericBackendHandleInner::Ready { .. }
-                )
-            }
+            Some(backend_handle) => backend_handle.is_ready(),
             None => true,
         }
     }
@@ -1028,12 +992,11 @@ impl StatelessDecoderBackend for Backend {
 
                 let map_format = self.metadata_state.map_format()?;
 
-                let backend_handle = GenericBackendHandle::new(GenericBackendHandleInner::Ready {
-                    context: self.metadata_state.context()?,
-                    map_format: Rc::clone(map_format),
-                    picture: current_picture,
-                    display_resolution: self.metadata_state.display_resolution()?,
-                });
+                let backend_handle = GenericBackendHandle::new_ready(
+                    current_picture,
+                    Rc::clone(map_format),
+                    self.metadata_state.display_resolution()?,
+                );
 
                 job.h264_picture.borrow_mut().backend_handle = Some(backend_handle);
 
