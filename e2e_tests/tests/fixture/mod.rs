@@ -28,7 +28,7 @@ use base::syslog;
 use libc::O_DIRECT;
 use tempfile::TempDir;
 
-const PREBUILT_URL: &str = "https://storage.googleapis.com/chromeos-localmirror/distfiles";
+const PREBUILT_URL: &str = "https://storage.googleapis.com/crosvm/integration_tests";
 
 #[cfg(target_arch = "x86_64")]
 const ARCH: &str = "x86_64";
@@ -47,7 +47,7 @@ fn prebuilt_version() -> &'static str {
 
 fn kernel_prebuilt_url() -> String {
     format!(
-        "{}/crosvm-testing-bzimage-{}-{}",
+        "{}/guest-bzimage-{}-{}",
         PREBUILT_URL,
         ARCH,
         prebuilt_version()
@@ -56,7 +56,7 @@ fn kernel_prebuilt_url() -> String {
 
 fn rootfs_prebuilt_url() -> String {
     format!(
-        "{}/crosvm-testing-rootfs-{}-{}",
+        "{}/guest-rootfs-{}-{}",
         PREBUILT_URL,
         ARCH,
         prebuilt_version()
