@@ -208,7 +208,7 @@ pub fn create_customize_ssdt(
         }
     }
 
-    return Some(ssdt);
+    Some(ssdt)
 }
 
 fn create_dsdt_table(amls: &[u8]) -> SDT {

@@ -122,7 +122,7 @@ impl GpuBackend {
             .detach();
         self.platform_workers.borrow_mut().push(handle);
 
-        return Ok(());
+        Ok(())
     }
 }
 fn gpu_parameters_from_str(input: &str) -> Result<GpuParameters, String> {

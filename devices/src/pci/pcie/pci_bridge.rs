@@ -210,13 +210,11 @@ fn finalize_window(
                 .prefetchable(prefetchable)
                 .align(BR_WINDOW_ALIGNMENT),
         ) {
-            Ok(addr) => return Ok((addr, size)),
-            Err(e) => {
-                return Err(PciDeviceError::PciBusWindowAllocationFailure(format!(
-                    "failed to allocate bridge window: {}",
-                    e
-                )))
-            }
+            Ok(addr) => Ok((addr, size)),
+            Err(e) => Err(PciDeviceError::PciBusWindowAllocationFailure(format!(
+                "failed to allocate bridge window: {}",
+                e
+            ))),
         }
     } else {
         // align base to 1MB
@@ -228,7 +226,7 @@ fn finalize_window(
             }
             base &= BR_WINDOW_MASK;
         }
-        return Ok((base, size));
+        Ok((base, size))
     }
 }
 

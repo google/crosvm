@@ -154,20 +154,18 @@ async fn process_pcm_ctrl(
         VirtioSndPcmCmd::Release => stream.release().await,
     };
     match result {
-        Ok(_) => {
-            return writer
-                .write_obj(VIRTIO_SND_S_OK)
-                .map_err(Error::WriteResponse);
-        }
+        Ok(_) => writer
+            .write_obj(VIRTIO_SND_S_OK)
+            .map_err(Error::WriteResponse),
         Err(Error::OperationNotSupported) => {
             error!(
                 "{} for stream id={} failed. Error code: VIRTIO_SND_S_NOT_SUPP.",
                 cmd, stream_id
             );
 
-            return writer
+            writer
                 .write_obj(VIRTIO_SND_S_NOT_SUPP)
-                .map_err(Error::WriteResponse);
+                .map_err(Error::WriteResponse)
         }
         Err(e) => {
             // Runtime/internal error would be more appropriate, but there's
@@ -176,11 +174,11 @@ async fn process_pcm_ctrl(
                 "{} for stream id={} failed. Error code: VIRTIO_SND_S_IO_ERR. Actual error: {}",
                 cmd, stream_id, e
             );
-            return writer
+            writer
                 .write_obj(VIRTIO_SND_S_IO_ERR)
-                .map_err(Error::WriteResponse);
+                .map_err(Error::WriteResponse)
         }
-    };
+    }
 }
 
 async fn write_data(

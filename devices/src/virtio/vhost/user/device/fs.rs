@@ -118,11 +118,11 @@ impl FsBackend {
 
 impl VhostUserBackend for FsBackend {
     fn max_queue_num(&self) -> usize {
-        return MAX_QUEUE_NUM;
+        MAX_QUEUE_NUM
     }
 
     fn max_vring_len(&self) -> u16 {
-        return MAX_VRING_LEN;
+        MAX_VRING_LEN
     }
 
     fn features(&self) -> u64 {

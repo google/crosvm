@@ -29,9 +29,7 @@ pub(crate) fn get_acpi_event_sock() -> Result<Option<NetlinkGenericSocket>, ACPI
 
     match NetlinkGenericSocket::new(nl_groups) {
         Ok(acpi_sock) => Ok(Some(acpi_sock)),
-        Err(e) => {
-            return Err(ACPIPMError::AcpiEventSockError(e));
-        }
+        Err(e) => Err(ACPIPMError::AcpiEventSockError(e)),
     }
 }
 
@@ -48,7 +46,7 @@ fn get_acpi_event_group() -> Option<u32> {
     let nlmsg_family_response = netlink_ctrl_sock
         .family_name_query("acpi_event".to_string())
         .unwrap();
-    return nlmsg_family_response.get_multicast_group_id("acpi_mc_group".to_string());
+    nlmsg_family_response.get_multicast_group_id("acpi_mc_group".to_string())
 }
 
 pub(crate) fn acpi_event_run(

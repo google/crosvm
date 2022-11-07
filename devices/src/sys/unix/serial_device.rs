@@ -207,7 +207,7 @@ pub(crate) fn create_system_type_serial_device<T: SerialDevice>(
             }
             keep_rds.push(sock.as_raw_descriptor());
             let output: Option<Box<dyn Write + Send>> = Some(Box::new(WriteSocket::new(sock)));
-            return Ok(T::new(
+            Ok(T::new(
                 protection_type,
                 evt,
                 input,
@@ -215,8 +215,8 @@ pub(crate) fn create_system_type_serial_device<T: SerialDevice>(
                 None,
                 false,
                 keep_rds.to_vec(),
-            ));
+            ))
         }
-        None => return Err(Error::PathRequired),
+        None => Err(Error::PathRequired),
     }
 }

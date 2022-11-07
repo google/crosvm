@@ -782,12 +782,12 @@ impl CrateMemoryMapping {
     }
 
     pub fn from_raw_ptr(addr: RawDescriptor, size: usize) -> Result<CrateMemoryMapping> {
-        return MemoryMapping::from_fd_offset(&Descriptor(addr), size, 0).map(|mapping| {
+        MemoryMapping::from_fd_offset(&Descriptor(addr), size, 0).map(|mapping| {
             CrateMemoryMapping {
                 mapping,
                 _file_descriptor: None,
             }
-        });
+        })
     }
 }
 

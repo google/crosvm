@@ -449,7 +449,7 @@ fn create_socket() -> Result<net::UdpSocket> {
 
     error!("Neither INET nor INET6 supported on this machine");
 
-    return Err(Error::CreateSocket(SysError::last()));
+    Err(Error::CreateSocket(SysError::last()))
 }
 
 /// Create a sockaddr_in from an IPv4 address, and expose it as

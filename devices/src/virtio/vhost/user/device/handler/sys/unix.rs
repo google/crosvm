@@ -101,7 +101,7 @@ impl VvuOps {
 
 impl VhostUserPlatformOps for VvuOps {
     fn protocol(&self) -> Protocol {
-        return Protocol::Virtio;
+        Protocol::Virtio
     }
 
     fn set_mem_table(
