@@ -65,11 +65,18 @@ fn jail_and_fork(
     // Make sure there are no duplicates in keep_rds
     keep_rds.dedup();
 
+    let tz = std::env::var("TZ").unwrap_or_default();
+
     // fork on the jail here
     let pid = unsafe { j.fork(Some(&keep_rds))? };
 
     if pid > 0 {
         unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) };
+    }
+
+    if pid == 0 {
+        // Preserve TZ for `chrono::Local` (b/257987535).
+        std::env::set_var("TZ", tz);
     }
 
     if pid < 0 {

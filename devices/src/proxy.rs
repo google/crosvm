@@ -188,6 +188,8 @@ impl ProxyDevice {
         keep_rds.sort_unstable();
         keep_rds.dedup();
 
+        let tz = std::env::var("TZ").unwrap_or_default();
+
         // Forking here is safe as long as the program is still single threaded.
         // We own the jail object and nobody else will try to reuse it.
         let pid = match unsafe { jail.fork(Some(&keep_rds)) }.map_err(Error::ForkingJail)? {
@@ -199,6 +201,10 @@ impl ProxyDevice {
                 // thread_name is a valid pointer and setting name of this thread should be safe.
                 let _ =
                     unsafe { libc::pthread_setname_np(libc::pthread_self(), thread_name.as_ptr()) };
+
+                // Preserve TZ for `chrono::Local` (b/257987535).
+                std::env::set_var("TZ", tz);
+
                 device.on_sandboxed();
                 child_proc(child_tube, &mut device);
 
