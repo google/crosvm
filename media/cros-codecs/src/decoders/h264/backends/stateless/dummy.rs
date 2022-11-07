@@ -23,24 +23,13 @@ use crate::decoders::h264::parser::Sps;
 use crate::decoders::h264::picture::H264Picture;
 use crate::decoders::h264::picture::PictureData;
 use crate::decoders::VideoDecoderBackend;
+use crate::utils::dummy::*;
 use crate::DecodedFormat;
 use crate::Resolution;
 
 pub type AssociatedDummyHandle = <Backend as StatelessDecoderBackend>::Handle;
 
 pub type AssociatedDummyBackendHandle = <AssociatedDummyHandle as DecodedHandle>::BackendHandle;
-
-pub struct BackendHandle;
-
-impl crate::decoders::MappableHandle for BackendHandle {
-    fn read(&mut self, _: &mut [u8]) -> crate::decoders::Result<()> {
-        Ok(())
-    }
-
-    fn image_size(&mut self) -> crate::decoders::Result<usize> {
-        Ok(1)
-    }
-}
 
 #[derive(Clone)]
 pub struct Handle {
