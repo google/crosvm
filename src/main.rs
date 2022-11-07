@@ -172,16 +172,19 @@ fn suspend_vms(cmd: cmdline::SuspendCommand) -> std::result::Result<(), ()> {
 
 fn swap_vms(cmd: cmdline::SwapCommand) -> std::result::Result<(), ()> {
     use cmdline::SwapSubcommands::*;
-    match cmd.nested {
-        Enable(params) => {
-            let req = VmRequest::Swap(SwapCommand::Enable);
-            vms_request(&req, &Path::new(&params.socket_path))
-        }
-        Status(params) => do_swap_status(&Path::new(&params.socket_path)),
-        LogPageFault(params) => {
-            let req = VmRequest::Swap(SwapCommand::StartPageFaultLogging);
-            vms_request(&req, &Path::new(&params.socket_path))
-        }
+    let (req, path) = match &cmd.nested {
+        Enable(params) => (VmRequest::Swap(SwapCommand::Enable), &params.socket_path),
+        Disable(params) => (VmRequest::Swap(SwapCommand::Disable), &params.socket_path),
+        Status(params) => (VmRequest::Swap(SwapCommand::Status), &params.socket_path),
+        LogPageFault(params) => (
+            VmRequest::Swap(SwapCommand::StartPageFaultLogging),
+            &params.socket_path,
+        ),
+    };
+    if let VmRequest::Swap(SwapCommand::Status) = req {
+        do_swap_status(path)
+    } else {
+        vms_request(&req, path)
     }
 }
 

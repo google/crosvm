@@ -13,6 +13,7 @@ use base::error;
 use base::pagesize;
 use base::unix::FileDataIterator;
 use base::AsRawDescriptor;
+use data_model::VolatileSlice;
 use thiserror::Error as ThisError;
 
 use crate::file::Error as FileError;
@@ -69,29 +70,14 @@ pub struct PageHandler {
 }
 
 impl PageHandler {
-    /// Creates [PageHandler] and register the regions to userfaultfd.
+    /// Creates [PageHandler] and [SwapFile] corresponding to each region.
     ///
     /// # Arguments
     ///
-    /// * `uffds` - the reference to the list of [Userfaultfd] for all the processes which may touch
-    ///   the `address_range` to be registered.
     /// * `swap_dir` - path to the directory to create a swap file from.
     /// * `regions` - the list of the region. the start address must align with page. the size must
     ///   be multiple of pagesize.
-    ///
-    /// # Safety
-    ///
-    /// Each address range in `regions` must be from guest memory.
-    ///
-    /// The `uffds` must cover all the processes which may touch the `address_range`. otherwise some
-    /// pages are zeroed by kernel on the unregistered process instead of swapping in from the swap
-    /// file.
-    #[deny(unsafe_op_in_unsafe_fn)]
-    pub unsafe fn register_regions(
-        uffds: &[Userfaultfd],
-        swap_dir: &Path,
-        regions: &[Range<usize>],
-    ) -> Result<Self> {
+    pub fn create(swap_dir: &Path, regions: &[Range<usize>]) -> Result<Self> {
         let pagesize_shift = pagesize().trailing_zeros();
         // pagesize() should be power of 2 in almost all cases. vmm-swap feature does not support
         // systems in which page size is not power of 2.
@@ -105,11 +91,7 @@ impl PageHandler {
         };
 
         for address_range in regions {
-            // safe because `address_range` in `regions` are from guest memory and `uffds` covers
-            // all the processes.
-            unsafe {
-                handler.register_region(uffds, swap_dir, address_range)?;
-            }
+            handler.add_region(swap_dir, address_range)?;
         }
 
         Ok(handler)
@@ -148,33 +130,16 @@ impl PageHandler {
             .map(|i| &mut self.regions[i])
     }
 
-    /// Register the memory region to userfaultfd and create a new internal context to handle
-    /// userfaultfd events and swap out request.
+    /// Create a new internal context to handle userfaultfd events and swap in/out request.
     ///
     /// If the regions overlaps an existing region, it returns [Error::RegionOverlap].
     ///
     /// # Arguments
     ///
-    /// * `uffds` - the reference to the list of [Userfaultfd] for all the processes which may touch
-    ///   the `address_range` to be registered.
     /// * `swap_dir` - path to the directory to create a swap file from.
     /// * `address_range` - the range of the region. the start address must align with page. the
     ///   size must be multiple of pagesize.
-    ///
-    /// # Safety
-    ///
-    /// The `address_range` must be from guest memory.
-    ///
-    /// The `uffds` must cover all the processes which may touch the `address_range`. otherwise some
-    /// pages are zeroed by kernel on the unregistered process instead of swapping in from the swap
-    /// file.
-    #[deny(unsafe_op_in_unsafe_fn)]
-    unsafe fn register_region(
-        &mut self,
-        uffds: &[Userfaultfd],
-        swap_dir: &Path,
-        address_range: &Range<usize>,
-    ) -> Result<()> {
+    fn add_region(&mut self, swap_dir: &Path, address_range: &Range<usize>) -> Result<()> {
         let head_page_idx = self.addr_to_page_idx(address_range.start);
         let region_size = address_range.end - address_range.start;
         let num_of_pages = region_size >> self.pagesize_shift;
@@ -202,26 +167,33 @@ impl PageHandler {
                 assert!(self.is_page_aligned(region_size));
 
                 let file = SwapFile::new(swap_dir, num_of_pages)?;
-                for uffd in uffds {
-                    // safe because the range is from the guest memory region. Even after the memory
-                    // is removed by `MADV_REMOVE` at [PageHandler::swap_out()], the content will be
-                    // swapped in from the swap file safely on a page fault.
-                    let result = unsafe { uffd.register(base_addr, region_size) };
-                    match result {
-                        Ok(_) => Ok(()),
-                        // Userfaultfd returns `ENOMEM` if the corresponding process dies or run as
-                        // another program by `exec` system call. crosvm just skip the userfaultfd.
-                        Err(UffdError::SystemError(errno)) if errno as i32 == libc::ENOMEM => {
-                            Ok(())
-                        }
-                        Err(e) => Err(e),
-                    }?;
-                }
                 self.regions.push(Region {
                     head_page_idx,
                     file,
                 });
                 Ok(())
+            }
+        }
+    }
+
+    fn copy_all(
+        uffd: &Userfaultfd,
+        page_addr: usize,
+        data_slice: &mut VolatileSlice,
+        wake: bool,
+    ) -> std::result::Result<(), UffdError> {
+        loop {
+            let result = uffd.copy(page_addr, data_slice.size(), data_slice.as_ptr(), wake);
+            match result {
+                Err(UffdError::PartiallyCopied(copied)) => {
+                    data_slice.advance(copied);
+                }
+                other => {
+                    // Even EEXIST for copy operation should be an error for page fault handling. If
+                    // the page was swapped in before, the page should be cleared from the swap file
+                    // and do `Userfaultfd::zero()` instead.
+                    return other.map(|_| ());
+                }
             }
         }
     }
@@ -250,24 +222,7 @@ impl PageHandler {
         match page_content {
             Some(file_content) => {
                 let mut data_slice = file_content.get_page()?;
-                loop {
-                    // safe because the fault page is notified by uffd.
-                    let result = uffd.copy(page_addr, data_slice.size(), data_slice.as_ptr(), true);
-                    match result {
-                        Ok(_) => {
-                            break;
-                        }
-                        Err(UffdError::PartiallyCopied(copied)) => {
-                            data_slice.advance(copied);
-                        }
-                        Err(e) => {
-                            // Even EEXIST for copy operation should be an error for page fault
-                            // handling. If the page was swapped in before, the page should be
-                            // cleared from the swap file and do `Userfaultfd::zero()` instead.
-                            return Err(e.into());
-                        }
-                    }
-                }
+                Self::copy_all(uffd, page_addr, &mut data_slice, true)?;
                 file.clear(idx_in_region)?;
                 Ok(())
             }
@@ -330,10 +285,24 @@ impl PageHandler {
     ///
     /// # Arguments
     ///
-    /// * `region` - the memory region context to swap out.
+    /// * `base_addr` - the head address of the memory region to swap out.
     /// * `memfd` - the file descriptor of the memfd backing the guest memory region.
     /// * `base_offset` - the offset of the memory region in the memfd.
-    pub fn swap_out<T>(&mut self, base_addr: usize, memfd: &T, base_offset: u64) -> Result<()>
+    ///
+    /// # Safety
+    ///
+    /// The region must have been registered to all userfaultfd of processes which may touch the
+    /// region.
+    ///
+    /// The page fault events for the region from the userfaultfd must be handled by
+    /// [PageHandler::handle_page_fault].
+    #[deny(unsafe_op_in_unsafe_fn)]
+    pub unsafe fn swap_out<T>(
+        &mut self,
+        base_addr: usize,
+        memfd: &T,
+        base_offset: u64,
+    ) -> Result<()>
     where
         T: AsRawDescriptor,
     {
@@ -366,8 +335,8 @@ impl PageHandler {
             // TODO(kawasin): free the page cache of the swap file. or direct I/O.
         }
 
-        // safe because the memory area is already backed by the file and the content will be
-        // swapped in on a page fault.
+        // safe because the region is already backed by the file and the content will be swapped in
+        // on a page fault.
         unsafe {
             libc::madvise(
                 base_addr as *mut libc::c_void,
@@ -376,6 +345,23 @@ impl PageHandler {
             );
         }
 
+        Ok(())
+    }
+
+    /// Swap in all the content.
+    ///
+    /// # Arguments
+    ///
+    /// * `uffd` - the main [Userfaultfd].
+    pub fn swap_in(self, uffd: &Userfaultfd) -> Result<()> {
+        for region in self.regions.iter() {
+            for pages in region.file.all_present_pages() {
+                let page_idx = region.head_page_idx + pages.base_idx;
+                let page_addr = self.page_idx_to_addr(page_idx);
+                let mut data_slice = pages.content.get_page()?;
+                Self::copy_all(uffd, page_addr, &mut data_slice, false)?;
+            }
+        }
         Ok(())
     }
 }

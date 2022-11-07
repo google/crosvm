@@ -16,6 +16,7 @@ pub mod userfaultfd;
 
 use std::io::stderr;
 use std::io::stdout;
+use std::ops::Range;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -45,6 +46,7 @@ use vm_memory::GuestMemory;
 use crate::logger::PageFaultEventLogger;
 use crate::page_handler::PageHandler;
 use crate::processes::freeze_all_processes;
+use crate::userfaultfd::UffdError;
 use crate::userfaultfd::UffdEvent;
 use crate::userfaultfd::Userfaultfd;
 
@@ -69,6 +71,7 @@ pub enum Status {
 #[derive(Serialize, Deserialize, Debug)]
 enum Command {
     Enable,
+    Disable,
     Exit,
     Status,
     StartPageFaultLogging,
@@ -167,6 +170,16 @@ impl SwapController {
         Ok(())
     }
 
+    /// Swap in all the guest memory and disable monitoring page faults.
+    ///
+    /// This returns as soon as it succeeds to send request to the monitor process.
+    pub fn disable(&self) -> anyhow::Result<()> {
+        self.tube
+            .send(&Command::Disable)
+            .context("send swap disable request")?;
+        Ok(())
+    }
+
     /// Return current swap status.
     ///
     /// This blocks until response from the monitor process arrives to the main process.
@@ -245,9 +258,93 @@ impl<'a> UffdList<'a> {
         self.list.get(id as usize)
     }
 
+    fn main_uffd(&self) -> &Userfaultfd {
+        &self.list[Self::ID_MAIN_UFFD as usize]
+    }
+
     fn get_list(&self) -> &[Userfaultfd] {
         &self.list
     }
+}
+
+/// Register all the regions to all the userfaultfd
+///
+/// This is public only for integration tests.
+///
+/// # Arguments
+///
+/// * `regions` - the list of address range of regions.
+/// * `uffds` - the reference to the list of [Userfaultfd] for all the processes which may touch
+///   the `address_range` to be registered.
+///
+/// # Safety
+///
+/// Each address range in `regions` must be from guest memory.
+///
+/// The `uffds` must cover all the processes which may touch the `address_range`. otherwise some
+/// pages are zeroed by kernel on the unregistered process instead of swapping in from the swap
+/// file.
+#[deny(unsafe_op_in_unsafe_fn)]
+pub unsafe fn register_regions(
+    regions: &[Range<usize>],
+    uffds: &[Userfaultfd],
+) -> anyhow::Result<()> {
+    for address_range in regions {
+        for uffd in uffds {
+            // safe because the range is from the guest memory region. Even after the memory
+            // is removed by `MADV_REMOVE` at [PageHandler::swap_out()], the content will be
+            // swapped in from the swap file safely on a page fault.
+            let result = unsafe {
+                uffd.register(address_range.start, address_range.end - address_range.start)
+            };
+            match result {
+                Ok(_) => Ok(()),
+                // Userfaultfd returns `ENOMEM` if the corresponding process dies or run as
+                // another program by `exec` system call. crosvm just skip the userfaultfd.
+                Err(UffdError::SystemError(errno)) if errno as i32 == libc::ENOMEM => Ok(()),
+                Err(e) => Err(e),
+            }?;
+        }
+    }
+    Ok(())
+}
+
+/// Unregister all the regions from all the userfaultfd.
+///
+/// This is public only for integration tests.
+///
+/// # Arguments
+///
+/// * `regions` - the list of address range of regions.
+/// * `uffds` - the reference to the list of registered [Userfaultfd].
+pub fn unregister_regions(regions: &[Range<usize>], uffds: &[Userfaultfd]) -> anyhow::Result<()> {
+    for address_range in regions {
+        for uffd in uffds {
+            // `UFFDIO_UNREGISTER` unblocks any threads currently waiting on the region and
+            // remove page fault events on the region from the userfaultfd event queue.
+            let result =
+                uffd.unregister(address_range.start, address_range.end - address_range.start);
+            match result {
+                Ok(_) => Ok(()),
+                // Userfaultfd returns `ENOMEM` if the corresponding process dies or run as
+                // another program by `exec` system call. crosvm just skip the userfaultfd.
+                Err(UffdError::SystemError(errno)) if errno as i32 == libc::ENOMEM => Ok(()),
+                Err(e) => Err(e),
+            }?;
+        }
+    }
+    Ok(())
+}
+
+fn regions_from_guest_memory(guest_memory: &GuestMemory) -> Vec<Range<usize>> {
+    let mut regions = Vec::new();
+    guest_memory
+        .with_regions::<_, ()>(|_, _, region_size, host_addr, _, _| {
+            regions.push(host_addr..(host_addr + region_size));
+            Ok(())
+        })
+        .unwrap(); // the callback never return error.
+    regions
 }
 
 fn start_monitoring(
@@ -270,16 +367,27 @@ fn start_monitoring(
         uffd_list.register(uffd).context("register uffd")?;
     }
 
-    let mut regions = Vec::new();
-    guest_memory.with_regions::<_, anyhow::Error>(|_, _, region_size, host_addr, _, _| {
-        regions.push(host_addr..(host_addr + region_size));
-        Ok(())
-    })?;
+    let regions = regions_from_guest_memory(guest_memory);
+
+    let page_hander = PageHandler::create(swap_dir, &regions).context("enable swap")?;
 
     // safe because the regions are from guest memory and uffd_list contains all the processes of
     // crosvm.
-    unsafe { PageHandler::register_regions(uffd_list.get_list(), swap_dir, &regions) }
-        .context("enable swap")
+    unsafe { register_regions(&regions, uffd_list.get_list()) }.context("register regions")?;
+
+    Ok(page_hander)
+}
+
+fn disable_monitoring(
+    page_handler: PageHandler,
+    uffd_list: &UffdList,
+    guest_memory: &GuestMemory,
+) -> anyhow::Result<()> {
+    page_handler
+        .swap_in(uffd_list.main_uffd())
+        .context("unregister all regions")?;
+    let regions = regions_from_guest_memory(guest_memory);
+    unregister_regions(&regions, uffd_list.get_list()).context("unregister regions")
 }
 
 /// the main thread of the monitor process.
@@ -385,8 +493,9 @@ fn monitor_process(
                         let t0 = std::time::Instant::now();
                         let result = guest_memory.with_regions::<_, anyhow::Error>(
                             |_, _, _, host_addr, shm, shm_offset| {
-                                page_handler
-                                    .swap_out(host_addr, shm, shm_offset)
+                                // safe because all the regions are registered to all userfaultfd
+                                // and page fault events are handled by PageHandler.
+                                unsafe { page_handler.swap_out(host_addr, shm, shm_offset) }
                                     .context("swap out")
                             },
                         );
@@ -400,6 +509,15 @@ fn monitor_process(
                                 error!("failed to swapping out the state: {}", e);
                                 status = Status::Failed;
                             }
+                        }
+                    }
+                    Command::Disable => {
+                        status = Status::Ready;
+                        if let Some(page_handler) = page_handler_opt.take() {
+                            disable_monitoring(page_handler, &uffd_list, &guest_memory)?;
+                            info!("swap in all pages. swap disabled.");
+                        } else {
+                            warn!("swap is disabled.");
                         }
                     }
                     Command::Exit => {

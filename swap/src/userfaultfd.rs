@@ -83,6 +83,16 @@ impl Userfaultfd {
         self.uffd.register(addr as *mut libc::c_void, len)
     }
 
+    /// Unregister a range of memory from the userfaultfd.
+    ///
+    /// # Arguments
+    ///
+    /// * `addr` - the starting address of the range of memory.
+    /// * `len` - the length in bytes of the range of memory.
+    pub fn unregister(&self, addr: usize, len: usize) -> Result<()> {
+        self.uffd.unregister(addr as *mut libc::c_void, len)
+    }
+
     /// Initialize page(s) and fill it with zero.
     ///
     /// # Arguments

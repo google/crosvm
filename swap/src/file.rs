@@ -49,18 +49,19 @@ impl From<MmapError> for Error {
     }
 }
 
-/// Single page in the file.
+/// Pages in the file.
 #[derive(Debug)]
 pub struct FileContent<'a> {
     file_mmap: &'a MemoryMapping,
     page_idx: usize,
+    num_of_pages: usize,
 }
 
 impl FileContent<'_> {
     /// Returns [VolatileSlice] from mmap.
     pub fn get_page(&self) -> Result<VolatileSlice> {
         self.file_mmap
-            .get_slice(self.page_idx * pagesize(), pagesize())
+            .get_slice(self.page_idx * pagesize(), self.num_of_pages * pagesize())
             .map_err(Error::VolatileMemory)
     }
 }
@@ -134,6 +135,7 @@ impl SwapFile {
                     Ok(Some(FileContent {
                         file_mmap: &self.file_mmap,
                         page_idx: idx,
+                        num_of_pages: 1,
                     }))
                 } else {
                     Ok(None)
@@ -186,6 +188,57 @@ impl SwapFile {
             self.state_list[i] = true;
         }
         Ok(())
+    }
+
+    /// Returns all present pages in the swap file.
+    pub fn all_present_pages(&self) -> PresentPagesIterator {
+        PresentPagesIterator {
+            swap_file: self,
+            idx: 0,
+        }
+    }
+}
+
+/// [Iterator] traversing all present pages in the swap file.
+pub struct PresentPagesIterator<'a> {
+    swap_file: &'a SwapFile,
+    idx: usize,
+}
+
+/// Subsequent pages present in a swap file.
+pub struct Pages<'a> {
+    pub base_idx: usize,
+    pub content: FileContent<'a>,
+}
+
+impl<'a> Iterator for PresentPagesIterator<'a> {
+    type Item = Pages<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut head_idx = self.idx;
+        loop {
+            if head_idx >= self.swap_file.state_list.len() {
+                self.idx = head_idx;
+                return None;
+            } else if self.swap_file.state_list[head_idx] {
+                break;
+            } else {
+                head_idx += 1;
+            }
+        }
+        let mut idx = head_idx + 1;
+        while idx < self.swap_file.state_list.len() && self.swap_file.state_list[idx] {
+            idx += 1;
+        }
+        self.idx = idx;
+        Some(Pages {
+            base_idx: head_idx,
+            content: FileContent {
+                file_mmap: &self.swap_file.file_mmap,
+                page_idx: head_idx,
+                num_of_pages: idx - head_idx,
+            },
+        })
     }
 }
 
@@ -324,5 +377,83 @@ mod tests {
             Err(Error::OutOfRange) => {}
             _ => unreachable!("not out of range"),
         };
+    }
+
+    #[test]
+    fn all_present_pages_empty() {
+        let dir_path = tempfile::tempdir().unwrap();
+        let swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
+
+        let mut iter = swap_file.all_present_pages();
+
+        assert_eq!(iter.next().is_none(), true);
+    }
+
+    #[test]
+    fn all_present_pages_return_pages() {
+        let dir_path = tempfile::tempdir().unwrap();
+        let mut swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
+
+        swap_file
+            .write_to_file(1, &vec![1_u8; 2 * pagesize()])
+            .unwrap();
+        // whole pages are cleared
+        swap_file
+            .write_to_file(10, &vec![2_u8; 2 * pagesize()])
+            .unwrap();
+        swap_file.clear(10).unwrap();
+        swap_file.clear(11).unwrap();
+        // pages are partially cleared.
+        swap_file
+            .write_to_file(13, &vec![3_u8; 3 * pagesize()])
+            .unwrap();
+        swap_file.clear(13).unwrap();
+        // pages are splitted
+        swap_file
+            .write_to_file(17, &vec![4_u8; 3 * pagesize()])
+            .unwrap();
+        swap_file.clear(18).unwrap();
+        // pages are combined
+        swap_file
+            .write_to_file(30, &vec![5_u8; pagesize()])
+            .unwrap();
+        swap_file
+            .write_to_file(31, &vec![6_u8; pagesize()])
+            .unwrap();
+
+        let mut iter = swap_file.all_present_pages();
+
+        let pages = iter.next().unwrap();
+        assert_eq!(pages.base_idx, 1);
+        assert_eq!(pages.content.get_page().unwrap().size(), 2 * pagesize());
+        assert_eq!(unsafe { *pages.content.get_page().unwrap().as_ptr() }, 1_u8);
+        let pages = iter.next().unwrap();
+        assert_eq!(pages.base_idx, 14);
+        assert_eq!(pages.content.get_page().unwrap().size(), 2 * pagesize());
+        assert_eq!(unsafe { *pages.content.get_page().unwrap().as_ptr() }, 3_u8);
+        let pages = iter.next().unwrap();
+        assert_eq!(pages.base_idx, 17);
+        assert_eq!(pages.content.get_page().unwrap().size(), pagesize());
+        assert_eq!(unsafe { *pages.content.get_page().unwrap().as_ptr() }, 4_u8);
+        let pages = iter.next().unwrap();
+        assert_eq!(pages.base_idx, 19);
+        assert_eq!(pages.content.get_page().unwrap().size(), pagesize());
+        assert_eq!(unsafe { *pages.content.get_page().unwrap().as_ptr() }, 4_u8);
+        let pages = iter.next().unwrap();
+        assert_eq!(pages.base_idx, 30);
+        assert_eq!(pages.content.get_page().unwrap().size(), 2 * pagesize());
+        assert_eq!(unsafe { *pages.content.get_page().unwrap().as_ptr() }, 5_u8);
+        assert_eq!(
+            unsafe {
+                *pages
+                    .content
+                    .get_page()
+                    .unwrap()
+                    .offset(pagesize())
+                    .unwrap()
+                    .as_ptr()
+            },
+            6_u8
+        );
     }
 }
