@@ -5,6 +5,7 @@
 use std::future::Future;
 
 use async_task::Task;
+use base::debug;
 use base::warn;
 use base::AsRawDescriptors;
 use base::RawDescriptor;
@@ -224,6 +225,7 @@ impl Executor {
             }
         }
 
+        debug!("setting the default executor to {:?}", executor_kind);
         DEFAULT_EXECUTOR_KIND.set(executor_kind).map_err(|_|
             // `expect` succeeds since this closure runs only when DEFAULT_EXECUTOR_KIND is set.
             SetDefaultExecutorKindError::SetMoreThanOnce(
