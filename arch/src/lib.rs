@@ -198,7 +198,7 @@ pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch> {
     pub pid_debug_label_map: BTreeMap<u32, String>,
     #[cfg(unix)]
     pub platform_devices: Vec<Arc<Mutex<dyn BusDevice>>>,
-    pub pm: Option<Arc<Mutex<dyn PmResource>>>,
+    pub pm: Option<Arc<Mutex<dyn PmResource + Send>>>,
     /// Devices to be notified before the system resumes from the S3 suspended state.
     pub resume_notify_devices: Vec<Arc<Mutex<dyn BusResumeDevice>>>,
     pub root_config: Arc<Mutex<PciRoot>>,

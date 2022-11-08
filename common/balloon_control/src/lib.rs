@@ -29,7 +29,7 @@ pub enum BalloonTubeCommand {
 }
 
 // BalloonStats holds stats returned from the stats_queue.
-#[derive(Default, Serialize, Deserialize, Debug)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct BalloonStats {
     pub swap_in: Option<u64>,
     pub swap_out: Option<u64>,

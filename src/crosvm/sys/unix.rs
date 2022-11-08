@@ -2214,6 +2214,46 @@ fn remove_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
     ))
 }
 
+pub fn trigger_vm_suspend_and_wait_for_entry(
+    guest_suspended_cvar: Arc<(Mutex<bool>, Condvar)>,
+    tube: &SendTube,
+    response: vm_control::VmResponse,
+    suspend_evt: Event,
+    pm: Option<Arc<Mutex<dyn PmResource + Send>>>,
+) {
+    let (lock, cvar) = &*guest_suspended_cvar;
+    let mut guest_suspended = lock.lock();
+
+    *guest_suspended = false;
+
+    // During suspend also emulate sleepbtn, which allows to suspend VM (if running e.g. acpid and
+    // reacts on sleep button events)
+    if let Some(pm) = pm {
+        pm.lock().slpbtn_evt();
+    } else {
+        error!("generating sleepbtn during suspend not supported");
+    }
+
+    // Wait for notification about guest suspension, if not received after 15sec,
+    // proceed anyway.
+    let result = cvar.wait_timeout(guest_suspended, std::time::Duration::from_secs(15));
+    guest_suspended = result.0;
+
+    if result.1.timed_out() {
+        warn!("Guest suspension timeout - proceeding anyway");
+    } else if *guest_suspended {
+        info!("Guest suspended");
+    }
+
+    if let Err(e) = suspend_evt.signal() {
+        error!("failed to trigger suspend event: {}", e);
+    }
+    // Now we ready to send response over the tube and communicate that VM suspend has finished
+    if let Err(e) = tube.send(&response) {
+        error!("failed to send VmResponse: {}", e);
+    }
+}
+
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn handle_hotplug_command<V: VmArch, Vcpu: VcpuArch>(
     linux: &mut RunnableLinuxVm<V, Vcpu>,
@@ -2610,6 +2650,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                         match socket {
                             TaggedControlTube::Vm(tube) => match tube.recv::<VmRequest>() {
                                 Ok(request) => {
+                                    let mut suspend_requested = false;
                                     let mut run_mode_opt = None;
                                     let response = match request {
                                         VmRequest::HotPlugCommand { device, add } => {
@@ -2640,30 +2681,70 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                 VmResponse::Ok
                                             }
                                         }
-                                        _ => request.execute(
-                                            &mut run_mode_opt,
-                                            #[cfg(feature = "balloon")]
-                                            balloon_host_tube.as_ref(),
-                                            #[cfg(feature = "balloon")]
-                                            &mut balloon_stats_id,
-                                            disk_host_tubes,
-                                            &mut linux.pm,
-                                            #[cfg(feature = "gpu")]
-                                            &gpu_control_tube,
-                                            #[cfg(feature = "usb")]
-                                            Some(&usb_control_tube),
-                                            #[cfg(not(feature = "usb"))]
-                                            None,
-                                            &mut linux.bat_control,
-                                            &vcpu_handles,
-                                            cfg.force_s2idle,
-                                            guest_suspended_cvar.clone(),
-                                        ),
+                                        _ => {
+                                            let response = request.execute(
+                                                &mut run_mode_opt,
+                                                #[cfg(feature = "balloon")]
+                                                balloon_host_tube.as_ref(),
+                                                #[cfg(feature = "balloon")]
+                                                &mut balloon_stats_id,
+                                                disk_host_tubes,
+                                                &mut linux.pm,
+                                                #[cfg(feature = "gpu")]
+                                                &gpu_control_tube,
+                                                #[cfg(feature = "usb")]
+                                                Some(&usb_control_tube),
+                                                #[cfg(not(feature = "usb"))]
+                                                None,
+                                                &mut linux.bat_control,
+                                                &vcpu_handles,
+                                                cfg.force_s2idle,
+                                            );
+
+                                            // For non s2idle guest suspension we are done
+                                            if let VmRequest::Suspend = request {
+                                                if cfg.force_s2idle {
+                                                    suspend_requested = true;
+
+                                                    // Spawn s2idle wait thread.
+                                                    let send_tube =
+                                                        tube.try_clone_send_tube().unwrap();
+                                                    let suspend_evt =
+                                                        linux.suspend_evt.try_clone().unwrap();
+                                                    let guest_suspended_cvar =
+                                                        guest_suspended_cvar.clone();
+                                                    let delayed_response = response.clone();
+                                                    let pm = linux.pm.clone();
+
+                                                    std::thread::Builder::new()
+                                                        .name("s2idle_wait".to_owned())
+                                                        .spawn(move || {
+                                                            trigger_vm_suspend_and_wait_for_entry(
+                                                                guest_suspended_cvar,
+                                                                &send_tube,
+                                                                delayed_response,
+                                                                suspend_evt,
+                                                                pm,
+                                                            )
+                                                        })
+                                                        .context(
+                                                            "failed to spawn s2idle_wait thread",
+                                                        )?;
+                                                }
+                                            }
+                                            response
+                                        }
                                     };
 
-                                    if let Err(e) = tube.send(&response) {
-                                        error!("failed to send VmResponse: {}", e);
+                                    // If suspend requested skip that step since it will be
+                                    // performed by s2idle_wait thread when suspension actually
+                                    // happens.
+                                    if !suspend_requested {
+                                        if let Err(e) = tube.send(&response) {
+                                            error!("failed to send VmResponse: {}", e);
+                                        }
                                     }
+
                                     if let Some(run_mode) = run_mode_opt {
                                         info!("control socket changed run mode to {}", run_mode);
                                         match run_mode {
@@ -2676,11 +2757,16 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                         dev.lock().resume_imminent();
                                                     }
                                                 }
-                                                vcpu::kick_all_vcpus(
-                                                    &vcpu_handles,
-                                                    linux.irq_chip.as_irq_chip(),
-                                                    VcpuControl::RunState(other),
-                                                );
+                                                // If suspend requested skip that step since it
+                                                // will be performed by s2idle_wait thread when
+                                                // needed.
+                                                if !suspend_requested {
+                                                    vcpu::kick_all_vcpus(
+                                                        &vcpu_handles,
+                                                        linux.irq_chip.as_irq_chip(),
+                                                        VcpuControl::RunState(other),
+                                                    );
+                                                }
                                             }
                                         }
                                     }

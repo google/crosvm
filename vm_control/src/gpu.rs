@@ -104,7 +104,7 @@ pub enum GpuControlCommand {
     RemoveDisplays { display_ids: Vec<u32> },
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum GpuControlResult {
     DisplaysUpdated,
     DisplayList {
