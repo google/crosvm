@@ -2,9 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// TODO(247548758): Remove this once all the wanrning are fixed.
-#![allow(clippy::await_holding_lock)]
-
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
@@ -16,7 +13,6 @@ use std::os::windows::io::RawHandle;
 use std::rc::Rc;
 use std::result;
 use std::sync::Arc;
-use std::sync::RwLock;
 use std::thread;
 
 use base::error;
@@ -33,6 +29,7 @@ use base::Event;
 use base::EventExt;
 use cros_async::select2;
 use cros_async::select6;
+use cros_async::sync::Mutex;
 use cros_async::AsyncError;
 use cros_async::EventAsync;
 use cros_async::Executor;
@@ -47,7 +44,6 @@ use futures::FutureExt;
 use futures::SinkExt;
 use futures::StreamExt;
 use remain::sorted;
-use sync::Mutex;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 
@@ -291,7 +287,7 @@ impl PortPair {
 }
 
 // Note: variables herein do not have to be atomic because this struct is guarded
-// by a RwLock.
+// by a Mutex.
 struct VsockConnection {
     // The guest port.
     guest_port: Le32,
@@ -339,7 +335,7 @@ struct Worker {
     host_guid: Option<String>,
     guest_cid: u64,
     // Map of host port to a VsockConnection.
-    connections: RwLock<HashMap<PortPair, VsockConnection>>,
+    connections: Mutex<HashMap<PortPair, VsockConnection>>,
     connection_event: Event,
 }
 
@@ -355,7 +351,7 @@ impl Worker {
             interrupt,
             host_guid,
             guest_cid,
-            connections: RwLock::new(HashMap::new()),
+            connections: Mutex::new(HashMap::new()),
             connection_event: Event::new().unwrap(),
         }
     }
@@ -372,9 +368,9 @@ impl Worker {
             // TODO(b/200810561): Optimize this FuturesUnordered code.
             // Set up the EventAsyncs to select on
             let futures = FuturesUnordered::new();
-            // This needs to be its own scope since it holds a RwLock on `self.connections`.
+            // This needs to be its own scope since it holds a Mutex on `self.connections`.
             {
-                let connections = self.connections.read().unwrap();
+                let connections = self.connections.read_lock().await;
                 for (port, connection) in connections.iter() {
                     let h_evt = connection
                         .overlapped
@@ -433,7 +429,7 @@ impl Worker {
                     }
                     continue 'connections_changed;
                 }
-                let mut connections = self.connections.write().unwrap();
+                let mut connections = self.connections.lock().await;
                 let connection = if let Some(conn) = connections.get_mut(&port) {
                     conn
                 } else {
@@ -520,7 +516,7 @@ impl Worker {
                 header_and_data[..HEADER_SIZE].copy_from_slice(response_header.as_slice());
                 header_and_data[HEADER_SIZE..].copy_from_slice(data_read);
                 self.write_bytes_to_queue(
-                    &mut recv_queue.lock(),
+                    &mut *recv_queue.lock().await,
                     &mut rx_queue_evt,
                     &header_and_data[..],
                 )
@@ -621,11 +617,11 @@ impl Worker {
 
     /// Processes a connection request and returns whether to return a response (true), or reset
     /// (false).
-    fn handle_vsock_connection_request(&self, header: virtio_vsock_hdr) -> bool {
+    async fn handle_vsock_connection_request(&self, header: virtio_vsock_hdr) -> bool {
         let port = PortPair::from_tx_header(&header);
         info!("vsock: Received connection request for port {}", port);
 
-        if self.connections.read().unwrap().contains_key(&port) {
+        if self.connections.read_lock().await.contains_key(&port) {
             // Connection exists, nothing for us to do.
             warn!(
                 "vsock: accepting connection request on already connected port {}",
@@ -691,7 +687,7 @@ impl Worker {
                     tx_cnt: 0_usize,
                     is_buffer_full: false,
                 };
-                self.connections.write().unwrap().insert(port, connection);
+                self.connections.lock().await.insert(port, connection);
                 self.connection_event.signal().unwrap_or_else(|_| {
                     panic!(
                         "Failed to signal new connection event for vsock port {}.",
@@ -720,7 +716,7 @@ impl Worker {
         let port = PortPair::from_tx_header(&header);
         let mut overlapped_wrapper = OverlappedWrapper::new(/* include_event= */ true).unwrap();
         {
-            let mut connections = self.connections.write().unwrap();
+            let mut connections = self.connections.lock().await;
             if let Some(connection) = connections.get_mut(&port) {
                 // Update peer buffer/recv counters
                 connection.peer_recv_cnt = header.fwd_cnt.to_native() as usize;
@@ -766,7 +762,7 @@ impl Worker {
             );
         }
 
-        let mut connections = self.connections.write().unwrap();
+        let mut connections = self.connections.lock().await;
         if let Some(connection) = connections.get_mut(&port) {
             let pipe = &mut connection.pipe;
             match pipe.get_overlapped_result(&mut overlapped_wrapper) {
@@ -911,29 +907,29 @@ impl Worker {
                 error!("vsock: Invalid Operation requested, dropping packet");
             }
             vsock_op::VIRTIO_VSOCK_OP_REQUEST => {
-                let (resp_op, buf_alloc, fwd_cnt) = if self.handle_vsock_connection_request(header)
-                {
-                    let connections = self.connections.read().unwrap();
-                    let port = PortPair::from_tx_header(&header);
+                let (resp_op, buf_alloc, fwd_cnt) =
+                    if self.handle_vsock_connection_request(header).await {
+                        let connections = self.connections.read_lock().await;
+                        let port = PortPair::from_tx_header(&header);
 
-                    connections.get(&port).map_or_else(
-                        || {
-                            warn!("vsock: port: {} connection closed during connect", port);
-                            is_open = false;
-                            (vsock_op::VIRTIO_VSOCK_OP_RST, 0, 0)
-                        },
-                        |conn| {
-                            (
-                                vsock_op::VIRTIO_VSOCK_OP_RESPONSE,
-                                conn.buf_alloc as u32,
-                                conn.recv_cnt as u32,
-                            )
-                        },
-                    )
-                } else {
-                    is_open = false;
-                    (vsock_op::VIRTIO_VSOCK_OP_RST, 0, 0)
-                };
+                        connections.get(&port).map_or_else(
+                            || {
+                                warn!("vsock: port: {} connection closed during connect", port);
+                                is_open = false;
+                                (vsock_op::VIRTIO_VSOCK_OP_RST, 0, 0)
+                            },
+                            |conn| {
+                                (
+                                    vsock_op::VIRTIO_VSOCK_OP_RESPONSE,
+                                    conn.buf_alloc as u32,
+                                    conn.recv_cnt as u32,
+                                )
+                            },
+                        )
+                    } else {
+                        is_open = false;
+                        (vsock_op::VIRTIO_VSOCK_OP_RST, 0, 0)
+                    };
 
                 let response_header = virtio_vsock_hdr {
                     src_cid: { header.dst_cid },
@@ -950,7 +946,7 @@ impl Worker {
                 // Safe because virtio_vsock_hdr is a simple data struct and converts cleanly to
                 // bytes.
                 self.write_bytes_to_queue(
-                    &mut send_queue.lock(),
+                    &mut *send_queue.lock().await,
                     rx_queue_evt,
                     response_header.as_slice(),
                 )
@@ -969,7 +965,7 @@ impl Worker {
                 // TODO(b/237811512): Provide an optimal way to notify host of shutdowns
                 // while still maintaining easy reconnections.
                 let port = PortPair::from_tx_header(&header);
-                let mut connections = self.connections.write().unwrap();
+                let mut connections = self.connections.lock().await;
                 if connections.remove(&port).is_some() {
                     let mut response = virtio_vsock_hdr {
                         src_cid: { header.dst_cid },
@@ -987,7 +983,7 @@ impl Worker {
                     };
                     // Safe because virtio_vsock_hdr is a simple data struct and converts cleanly to bytes
                     self.write_bytes_to_queue(
-                        &mut send_queue.lock(),
+                        &mut *send_queue.lock().await,
                         rx_queue_evt,
                         response.as_mut_slice(),
                     )
@@ -1004,7 +1000,11 @@ impl Worker {
             vsock_op::VIRTIO_VSOCK_OP_RW => {
                 match self.handle_vsock_guest_data(header, data, ex).await {
                     Ok(()) => {
-                        if self.check_free_buffer_threshold(header).unwrap_or(false) {
+                        if self
+                            .check_free_buffer_threshold(header)
+                            .await
+                            .unwrap_or(false)
+                        {
                             // Send a credit update if we're below the minimum free
                             // buffer size. We skip this if the connection is closed,
                             // which could've happened if we were closed on the other
@@ -1026,7 +1026,7 @@ impl Worker {
             // (probably) due to a a credit request *we* made.
             vsock_op::VIRTIO_VSOCK_OP_CREDIT_UPDATE => {
                 let port = PortPair::from_tx_header(&header);
-                let mut connections = self.connections.write().unwrap();
+                let mut connections = self.connections.lock().await;
                 if let Some(connection) = connections.get_mut(&port) {
                     connection.peer_recv_cnt = header.fwd_cnt.to_native() as usize;
                     connection.peer_buf_alloc = header.buf_alloc.to_native() as usize;
@@ -1053,8 +1053,8 @@ impl Worker {
 
     // Checks if how much free buffer our peer thinks that *we* have available
     // is below our threshold percentage. If the connection is closed, returns `None`.
-    fn check_free_buffer_threshold(&self, header: virtio_vsock_hdr) -> Option<bool> {
-        let mut connections = self.connections.write().unwrap();
+    async fn check_free_buffer_threshold(&self, header: virtio_vsock_hdr) -> Option<bool> {
+        let mut connections = self.connections.lock().await;
         let port = PortPair::from_tx_header(&header);
         connections.get_mut(&port).map(|connection| {
             let threshold: usize = (MIN_FREE_BUFFER_PCT * connection.buf_alloc as f64) as usize;
@@ -1068,7 +1068,7 @@ impl Worker {
         rx_queue_evt: &mut EventAsync,
         header: virtio_vsock_hdr,
     ) {
-        let mut connections = self.connections.write().unwrap();
+        let mut connections = self.connections.lock().await;
         let port = PortPair::from_tx_header(&header);
 
         if let Some(connection) = connections.get_mut(&port) {
@@ -1090,7 +1090,7 @@ impl Worker {
             // Safe because virtio_vsock_hdr is a simple data struct and converts cleanly
             // to bytes
             self.write_bytes_to_queue(
-                &mut send_queue.lock(),
+                &mut *send_queue.lock().await,
                 rx_queue_evt,
                 response.as_mut_slice(),
             )
@@ -1110,7 +1110,7 @@ impl Worker {
         rx_queue_evt: &mut EventAsync,
         header: virtio_vsock_hdr,
     ) {
-        let mut connections = self.connections.write().unwrap();
+        let mut connections = self.connections.lock().await;
         let port = PortPair::from_tx_header(&header);
         if let Some(connection) = connections.remove(&port) {
             let mut response = virtio_vsock_hdr {
@@ -1129,7 +1129,7 @@ impl Worker {
             // Safe because virtio_vsock_hdr is a simple data struct and converts cleanly
             // to bytes
             self.write_bytes_to_queue(
-                &mut send_queue.lock(),
+                &mut *send_queue.lock().await,
                 rx_queue_evt,
                 response.as_mut_slice(),
             )
