@@ -767,6 +767,7 @@ dependencies = [
  "cfg-if",
  "libc",
  "prebuilts",
+ "rand",
  "tempfile",
 ]
 

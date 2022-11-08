@@ -11,6 +11,7 @@ base = "*"
 cfg-if = "*"
 libc = "0.2.65"
 prebuilts = { path = "../prebuilts" }
+rand = "0.8"
 tempfile = "3"
 
 [features]
