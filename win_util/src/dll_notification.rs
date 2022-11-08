@@ -345,19 +345,32 @@ mod tests {
     use std::ffi::CString;
     use std::io;
 
+    use winapi::shared::minwindef::FALSE;
+    use winapi::shared::minwindef::TRUE;
+    use winapi::um::handleapi::CloseHandle;
     use winapi::um::libloaderapi::FreeLibrary;
     use winapi::um::libloaderapi::LoadLibraryA;
+    use winapi::um::synchapi::CreateEventA;
+    use winapi::um::synchapi::SetEvent;
+    use winapi::um::synchapi::WaitForSingleObject;
+    use winapi::um::winbase::WAIT_OBJECT_0;
 
     use super::*;
 
-    // Arbitrarily chosen DLL for load/unload test. Chosen because it's
-    // hopefully esoteric enough that it's probably not already loaded in
+    // Arbitrarily chosen DLLs for load/unload test. Chosen because they're
+    // hopefully esoteric enough that they're probably not already loaded in
     // the process so we can test load/unload notifications.
-    const TEST_DLL_NAME: &'static str = "Imagehlp.dll";
+    //
+    // Using a single DLL can lead to flakiness; since the tests are run in the
+    // same process, it can be hard to rely on the OS to clean up the DLL loaded
+    // by one test before the other test runs. Using a different DLL makes the
+    // tests more independent.
+    const TEST_DLL_NAME_1: &'static str = "Imagehlp.dll";
+    const TEST_DLL_NAME_2: &'static str = "dbghelp.dll";
 
     #[test]
     fn load_dll() {
-        let test_dll_name = CString::new(TEST_DLL_NAME).expect("failed to create CString");
+        let test_dll_name = CString::new(TEST_DLL_NAME_1).expect("failed to create CString");
         let mut loaded_dlls: HashSet<OsString> = HashSet::new();
         let h_module = {
             let _watcher = DllWatcher::new(
@@ -373,7 +386,7 @@ mod tests {
         assert!(
             !h_module.is_null(),
             "failed to load {}: {}",
-            TEST_DLL_NAME,
+            TEST_DLL_NAME_1,
             io::Error::last_os_error()
         );
         assert!(
@@ -381,31 +394,39 @@ mod tests {
             "no DLL loads recorded by DLL watcher"
         );
         assert!(
-            loaded_dlls.contains::<OsString>(&(TEST_DLL_NAME.to_owned().into())),
+            loaded_dlls.contains::<OsString>(&(TEST_DLL_NAME_1.to_owned().into())),
             "{} load wasn't recorded by DLL watcher",
-            TEST_DLL_NAME
+            TEST_DLL_NAME_1
         );
         // Safe because we initialized h_module with a LoadLibraryA call.
         let success = unsafe { FreeLibrary(h_module) } > 0;
         assert!(
             success,
             "failed to free {}: {}",
-            TEST_DLL_NAME,
+            TEST_DLL_NAME_1,
             io::Error::last_os_error(),
         )
     }
 
-    // TODO(b/229288169): re-enable after the test is made more reliable.
-    #[ignore]
     #[test]
     fn unload_dll() {
         let mut unloaded_dlls: HashSet<OsString> = HashSet::new();
+        // Safe as no pointers are passed. The handle may leak if the test fails.
+        let event =
+            unsafe { CreateEventA(std::ptr::null_mut(), TRUE, FALSE, std::ptr::null_mut()) };
+        assert!(
+            !event.is_null(),
+            "failed to create event; event was NULL: {}",
+            io::Error::last_os_error()
+        );
         {
-            let test_dll_name = CString::new(TEST_DLL_NAME).expect("failed to create CString");
+            let test_dll_name = CString::new(TEST_DLL_NAME_2).expect("failed to create CString");
             let _watcher = DllWatcher::new(
                 |_data| (),
                 |data| {
                     unloaded_dlls.insert(data.base_dll_name);
+                    // Safe as we assert that the event is valid above.
+                    unsafe { SetEvent(event) };
                 },
             )
             .expect("failed to create DllWatcher");
@@ -414,7 +435,7 @@ mod tests {
             assert!(
                 !h_module.is_null(),
                 "failed to load {}: {}",
-                TEST_DLL_NAME,
+                TEST_DLL_NAME_2,
                 io::Error::last_os_error()
             );
             // Safe because we initialized h_module with a LoadLibraryA call.
@@ -422,18 +443,22 @@ mod tests {
             assert!(
                 success,
                 "failed to free {}: {}",
-                TEST_DLL_NAME,
+                TEST_DLL_NAME_2,
                 io::Error::last_os_error(),
             )
         };
+        // Safe as we assert that the event is valid above.
+        assert_eq!(unsafe { WaitForSingleObject(event, 5000) }, WAIT_OBJECT_0);
         assert!(
             unloaded_dlls.len() >= 1,
             "no DLL unloads recorded by DLL watcher"
         );
         assert!(
-            unloaded_dlls.contains::<OsString>(&(TEST_DLL_NAME.to_owned().into())),
+            unloaded_dlls.contains::<OsString>(&(TEST_DLL_NAME_2.to_owned().into())),
             "{} unload wasn't recorded by DLL watcher",
-            TEST_DLL_NAME
+            TEST_DLL_NAME_2
         );
+        // Safe as we assert that the event is valid above.
+        unsafe { CloseHandle(event) };
     }
 }
