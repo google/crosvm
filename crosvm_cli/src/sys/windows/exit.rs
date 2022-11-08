@@ -368,27 +368,36 @@ use bitmasks::*;
 /// This function is unfortunately what happens when you only have six bits to store auxiliary
 /// information, and have to fit in with an existing bitfield's schema.
 ///
+/// For reference, the format of the NTSTATUS field is as follows:
+///
+/// | [31, 30] |      [29]         |      [28]       | [27, 16] | [15, 0] |
+/// | Severity |  Customer/vendor  |  N (reserved)   | Facility |  Code   |
+///
 /// This function packs bits in NTSTATUS results (generally what a Windows exit code should be).
 /// There are three primary cases it deals with:
-///   * Vendor specific exits. These are error codes we generate explicitly in crosvm. We will
-///     pack these codes with the lower 6 "facility" bits set so they can't collide with the other
-///     cases. The MSB of the facility field will be clear.
+///   1. Vendor specific exits. These are error codes we generate explicitly in crosvm. We will
+///      pack these codes with the lower 6 "facility" bits ([21, 16]) set so they can't collide
+///      with the other cases (this makes our facility value > FACILITY_MAXIMUM_VALUE). The top
+///      6 bits of the facility field ([27, 22]) will be clear at this point.
 ///
-///   * Non vendor NTSTATUS exits. These are error codes which come from Windows. We flip the
-///     vendor bit on these because we're going to pack the facility field, and leaving it unset
-///     would cause us to violate the rule that if the vendor bit is unset, we shouldn't exceed
-///     FACILITY_MAXIMUM_VALUE in that field. The MSB of the facility field will be clear.
+///   2. Non vendor NTSTATUS exits. These are error codes which come from Windows. We flip the
+///      vendor bit on these because we're going to pack the facility field, and leaving it unset
+///      would cause us to violate the rule that if the vendor bit is unset, we shouldn't exceed
+///      FACILITY_MAXIMUM_VALUE in that field. The top six bits of the facility field ([27, 22])
+///      will be clear in this scenario because Windows won't exceed FACILITY_MAXIMUM_VALUE;
+///      however, if for some reason we see a non vendor code with any of those bits set, we will
+///      fall through to case #3.
 ///
-///   * Non NTSTATUS errors. We detect these with two heuristics:
-///     a) Reserved field is set.
-///     b) The facility field has exceeded the bottom six bits.
+///   3. Non NTSTATUS errors. We detect these with two heuristics:
+///      a) Reserved field is set.
+///      b) The facility field has exceeded the bottom six bits ([21, 16]).
 ///
-///     For such cases, we pack as much of the error as we can into the lower 6 bits of the
-///     facility field, and code field (2 bytes). In this case, the most significant bit of the
-///     facility field is set.
+///      For such cases, we pack as much of the error as we can into the lower 6 bits of the
+///      facility field, and code field (2 bytes). In this case, the most significant bit of the
+///      facility field is set.
 ///
-/// For all of the cases above, we pack the most significant 5 bits of the facility field with
-/// information about what command type generated this error.
+/// For all of the cases above, we pack the 5 bits following the most significant bit of the
+/// facility field (e.g. [26, 22]) with information about what command type generated this error.
 pub fn to_process_type_error(error_code: u32, cmd_type: ProcessType) -> u32 {
     let is_vendor = error_code & VENDOR_FIELD_MASK != 0;
 
@@ -396,7 +405,7 @@ pub fn to_process_type_error(error_code: u32, cmd_type: ProcessType) -> u32 {
     let is_reserved_bit_clear = error_code & RESERVED_BIT_MASK == 0;
 
     // The six most significant bits of the facility field are where we'll be storing our
-    // command type (and whether we have a valid NTSTATUS error). If bits are already set there,
+    // command type and whether we have a valid NTSTATUS error. If bits are already set there,
     // it means this isn't a valid NTSTATUS code.
     let is_extra_data_field_clear = error_code & EXTRA_DATA_FIELD_MASK == 0;
 
