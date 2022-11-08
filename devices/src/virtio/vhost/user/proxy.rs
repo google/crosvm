@@ -1680,17 +1680,15 @@ impl VirtioVhostUser {
                 }
             });
 
-        match worker_result {
+        *state = match worker_result {
             Err(e) => {
                 error!("failed to spawn virtio_vhost_user worker: {}", e);
                 return;
             }
-            Ok(worker_thread) => {
-                *state = State::Running {
-                    kill_evt: self_kill_evt,
-                    worker_thread,
-                };
-            }
+            Ok(worker_thread) => State::Running {
+                kill_evt: self_kill_evt,
+                worker_thread,
+            },
         }
     }
 }

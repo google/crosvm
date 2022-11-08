@@ -357,14 +357,12 @@ impl VirtioDevice for Pmem {
                     )
                 });
 
-            match worker_result {
+            self.worker_thread = match worker_result {
                 Err(e) => {
                     error!("failed to spawn virtio_pmem worker: {}", e);
                     return;
                 }
-                Ok(join_handle) => {
-                    self.worker_thread = Some(join_handle);
-                }
+                Ok(join_handle) => Some(join_handle),
             }
         }
     }
