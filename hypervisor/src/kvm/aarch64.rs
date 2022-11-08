@@ -11,7 +11,6 @@ use base::ioctl_with_ref;
 use base::ioctl_with_val;
 use base::warn;
 use base::Error;
-use base::MemoryMappingBuilder;
 use base::Result;
 #[cfg(feature = "gdb")]
 use gdbstub::arch::Arch;
@@ -47,7 +46,6 @@ use crate::VcpuAArch64;
 use crate::VcpuExit;
 use crate::VcpuFeature;
 use crate::VcpuRegAArch64;
-use crate::Vm;
 use crate::VmAArch64;
 use crate::VmCap;
 use crate::PSCI_0_2;
@@ -95,6 +93,12 @@ impl KvmVm {
             // Safe because it does not take pointer arguments.
             unsafe { self.enable_raw_capability(KvmCap::ArmMte, 0, &[0, 0, 0, 0])? }
         }
+        #[cfg(not(target_arch = "aarch64"))]
+        {
+            // Suppress warning.
+            let _ = cfg;
+        }
+
         Ok(())
     }
 

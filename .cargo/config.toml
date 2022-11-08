@@ -4,8 +4,7 @@
 # https://github.com/rust-lang/cargo/issues/5034
 [target.'cfg(all())']
 rustflags = [
-    # TODO(b/181763000): Fail builds on warnings
-    # "-Dwarnings",
+    "-Dwarnings",
 
     # TODO(crbug/908640): To be resolved.
     "-Aclippy::needless_return",

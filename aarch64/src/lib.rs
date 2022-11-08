@@ -61,6 +61,7 @@ use thiserror::Error;
 use vm_control::BatControl;
 use vm_control::BatteryType;
 use vm_memory::GuestAddress;
+#[cfg(all(target_arch = "aarch64", feature = "gdb"))]
 use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
 

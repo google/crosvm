@@ -569,11 +569,14 @@ pub fn generate_virtio_mmio_bus(
     mmio_bus: &Bus,
     resources: &mut SystemAllocator,
     vm: &mut impl Vm,
-    mut sdts: Vec<SDT>,
+    sdts: Vec<SDT>,
 ) -> Result<(BTreeMap<u32, String>, Vec<SDT>), DeviceRegistrationError> {
     #[cfg_attr(windows, allow(unused_mut))]
     let mut pid_labels = BTreeMap::new();
 
+    // sdts can be updated only on x86 platforms.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    let mut sdts = sdts;
     for dev_value in devices.into_iter() {
         #[cfg(unix)]
         let (mut device, jail) = dev_value;

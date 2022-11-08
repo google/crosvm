@@ -2621,7 +2621,11 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                 target_arch = "x86",
                                                 target_arch = "x86_64"
                                             )))]
-                                            VmResponse::Ok
+                                            {
+                                                // Suppress warnings.
+                                                let _ = (device, add);
+                                                VmResponse::Ok
+                                            }
                                         }
                                         _ => request.execute(
                                             &mut run_mode_opt,

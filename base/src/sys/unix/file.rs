@@ -42,7 +42,7 @@ impl<'a> FileDataIterator<'a> {
     ///
     /// # Arguments
     ///
-    /// * `fd` - the [AsRawDescriptor] of the file
+    /// * `fd` - the [trait@AsRawDescriptor] of the file
     /// * `offset` - the offset to start traversing from.
     pub fn new(fd: &'a dyn AsRawDescriptor, offset: u64) -> Self {
         Self { fd, offset }
