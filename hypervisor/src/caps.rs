@@ -39,4 +39,7 @@ pub enum VmCap {
     Protected,
     /// VM completes initialization of CPUID at creation time, not required after.
     EarlyInitCpuid,
+    /// VM can detect the bus lock
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    BusLockDetect,
 }

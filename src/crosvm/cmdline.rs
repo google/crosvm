@@ -856,6 +856,13 @@ pub struct RunCommand {
     ///         precedence over the global --async-executor option.
     block: Vec<DiskOptionWithId>,
 
+    /// ratelimit enforced on detected bus locks in guest.
+    /// The default value of the bus_lock_ratelimit is 0 per second,
+    /// which means no limitation on the guest's bus locks.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[argh(option)]
+    pub bus_lock_ratelimit: Option<u64>,
+
     #[cfg(feature = "config-file")]
     #[argh(option, arg_name = "CONFIG_FILE", from_str_fn(load_config_file))]
     // TODO(b/218223240) We only allow one configuration file because accurate merging is not
@@ -2190,6 +2197,11 @@ impl TryFrom<RunCommand> for super::config::Config {
         cfg.android_fstab = cmd.android_fstab;
 
         cfg.async_executor = cmd.async_executor;
+
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        if let Some(p) = cmd.bus_lock_ratelimit {
+            cfg.bus_lock_ratelimit = p;
+        }
 
         cfg.params.extend(cmd.params);
 

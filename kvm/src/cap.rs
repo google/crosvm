@@ -123,4 +123,6 @@ pub enum Cap {
     IoapicNumPins = KVM_CAP_IOAPIC_NUM_PINS,
     ArmProtectedVm = KVM_CAP_ARM_PROTECTED_VM,
     ArmMte = KVM_CAP_ARM_MTE,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    BusLockDetect = KVM_CAP_X86_BUS_LOCK_EXIT,
 }

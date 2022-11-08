@@ -174,6 +174,8 @@ use crate::crosvm::config::SharedDirKind;
 use crate::crosvm::gdb::gdb_thread;
 #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
 use crate::crosvm::gdb::GdbStub;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use crate::crosvm::ratelimit::Ratelimit;
 use crate::crosvm::sys::cmdline::DevicesCommand;
 use crate::crosvm::sys::config::VfioType;
 
@@ -2468,6 +2470,25 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             Some(f)
         }
     };
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    let bus_lock_ratelimit_ctrl: Arc<Mutex<Ratelimit>> = Arc::new(Mutex::new(Ratelimit::new()));
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    if cfg.bus_lock_ratelimit > 0 {
+        let bus_lock_ratelimit = cfg.bus_lock_ratelimit;
+        if linux.vm.check_capability(VmCap::BusLockDetect) {
+            info!("Hypervisor support bus lock detect");
+            linux
+                .vm
+                .enable_capability(VmCap::BusLockDetect, 0)
+                .expect("kvm: Failed to enable bus lock detection cap");
+            info!("Hypervisor enabled bus lock detect");
+            bus_lock_ratelimit_ctrl
+                .lock()
+                .ratelimit_set_speed(bus_lock_ratelimit);
+        } else {
+            bail!("Kvm: bus lock detection unsuported");
+        }
+    }
 
     #[cfg(target_os = "android")]
     android::set_process_profiles(&cfg.task_profiles)?;
@@ -2495,6 +2516,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             cfg.no_smt,
             cfg.itmt,
         ));
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        let bus_lock_ratelimit_ctrl = Arc::clone(&bus_lock_ratelimit_ctrl);
 
         #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
         let cpu_config = None;
@@ -2537,6 +2560,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             },
             cfg.userspace_msr.clone(),
             guest_suspended_cvar.clone(),
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            bus_lock_ratelimit_ctrl,
         )?;
         vcpu_handles.push((handle, to_vcpu_channel));
     }
