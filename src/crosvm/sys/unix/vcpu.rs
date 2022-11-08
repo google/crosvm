@@ -335,6 +335,8 @@ fn handle_s2idle_request(
 ) {
 }
 
+// Allow error! and early return anywhere in function
+#[allow(clippy::needless_return)]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn handle_s2idle_request(privileged_vm: bool, guest_suspended_cvar: &Arc<(Mutex<bool>, Condvar)>) {
     const POWER_STATE_FREEZE: &[u8] = b"freeze";

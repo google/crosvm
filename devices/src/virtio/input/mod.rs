@@ -452,6 +452,8 @@ impl<T: EventSource> Worker<T> {
         Ok(needs_interrupt)
     }
 
+    // Allow error! and early return anywhere in function
+    #[allow(clippy::needless_return)]
     fn run(&mut self, event_queue_evt: Event, status_queue_evt: Event, kill_evt: Event) {
         if let Err(e) = self.event_source.init() {
             error!("failed initializing event source: {}", e);

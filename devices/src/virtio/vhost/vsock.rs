@@ -177,6 +177,8 @@ impl VirtioDevice for Vsock {
         self.acked_features |= v;
     }
 
+    // Allow error! and early return anywhere in function
+    #[allow(clippy::needless_return)]
     fn activate(
         &mut self,
         mem: GuestMemory,
