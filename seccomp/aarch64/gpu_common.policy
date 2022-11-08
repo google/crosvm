@@ -25,7 +25,8 @@ io_uring_setup: 1
 io_uring_register: 1
 io_uring_enter: 1
 kill: 1
-madvise: arg2 == MADV_DONTNEED || arg2 == MADV_DONTDUMP || arg2 == MADV_REMOVE || arg2 == MADV_MERGEABLE
+madvise: arg2 == MADV_DONTNEED || arg2 == MADV_DONTDUMP || arg2 == MADV_REMOVE || arg2 == MADV_MERGEABLE || arg2 == MADV_FREE
+membarrier: 1
 mremap: 1
 munmap: 1
 nanosleep: 1
