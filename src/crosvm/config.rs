@@ -555,9 +555,7 @@ pub fn parse_mmio_address_range(s: &str) -> Result<Vec<AddressRange>, String> {
             let parse = |s: &str| -> Result<u64, String> {
                 match parse_hex_or_decimal(s) {
                     Ok(v) => Ok(v),
-                    Err(_) => {
-                        return Err(invalid_value_err(s, "expected u64 value"));
-                    }
+                    Err(_) => Err(invalid_value_err(s, "expected u64 value")),
                 }
             };
             Ok(AddressRange {

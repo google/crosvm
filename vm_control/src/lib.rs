@@ -506,7 +506,7 @@ impl VmMemoryRequest {
                                 )) => VmMemoryResponse::Ok,
                                 resp => {
                                     error!("Unexpected message response: {:?}", resp);
-                                    return VmMemoryResponse::Err(SysError::new(EINVAL));
+                                    VmMemoryResponse::Err(SysError::new(EINVAL))
                                 }
                             }
                         } else {
