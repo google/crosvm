@@ -52,9 +52,6 @@ use crate::Resolution;
 /// Resolves to the type used as Handle by the backend.
 type AssociatedHandle = <Backend as StatelessDecoderBackend>::Handle;
 
-/// Resolves to the type used as BackendHandle by the backend.
-type AssociatedBackendHandle = <AssociatedHandle as DecodedHandle>::BackendHandle;
-
 /// Keeps track of where the backend is in the negotiation process.
 #[derive(Clone, Debug)]
 enum NegotiationStatus {
@@ -117,7 +114,7 @@ pub struct Backend {
     /// The current picture being worked on.
     current_picture: Option<VaPicture<PictureNew>>,
     /// The FIFO for all pending pictures, in the order they were submitted.
-    pending_jobs: VecDeque<PendingJob<AssociatedBackendHandle>>,
+    pending_jobs: VecDeque<PendingJob<GenericBackendHandle>>,
     /// The image formats we can decode into.
     image_formats: Rc<Vec<libva::VAImageFormat>>,
     /// The number of allocated surfaces.
@@ -273,7 +270,7 @@ impl Backend {
     }
 
     /// Gets the VASurfaceID for the given `picture`.
-    fn surface_id(picture: &H264Picture<AssociatedBackendHandle>) -> libva::VASurfaceID {
+    fn surface_id(picture: &H264Picture<GenericBackendHandle>) -> libva::VASurfaceID {
         if picture.nonexisting {
             return libva::constants::VA_INVALID_SURFACE;
         }
@@ -283,7 +280,7 @@ impl Backend {
 
     /// Fills the internal `va_pic` picture parameter with data from `h264_pic`
     fn fill_va_h264_pic(
-        h264_pic: &H264Picture<AssociatedBackendHandle>,
+        h264_pic: &H264Picture<GenericBackendHandle>,
         surface_id: libva::VASurfaceID,
         merge_other_field: bool,
     ) -> libva::PictureH264 {
@@ -382,7 +379,7 @@ impl Backend {
 
     fn build_pic_param(
         slice: &Slice<impl AsRef<[u8]>>,
-        current_picture: &H264Picture<AssociatedBackendHandle>,
+        current_picture: &H264Picture<GenericBackendHandle>,
         current_surface_id: libva::VASurfaceID,
         dpb: &Dpb<AssociatedHandle>,
         sps: &Sps,
@@ -492,7 +489,7 @@ impl Backend {
 
     fn build_va_decoded_handle(
         &self,
-        picture: &ContainedPicture<AssociatedBackendHandle>,
+        picture: &ContainedPicture<GenericBackendHandle>,
     ) -> Result<AssociatedHandle> {
         Ok(VADecodedHandle::new(
             Rc::clone(picture),
@@ -739,7 +736,7 @@ impl StatelessDecoderBackend for Backend {
 
     fn handle_picture(
         &mut self,
-        picture: &H264Picture<AssociatedBackendHandle>,
+        picture: &H264Picture<GenericBackendHandle>,
         timestamp: u64,
         sps: &Sps,
         pps: &Pps,
@@ -822,7 +819,7 @@ impl StatelessDecoderBackend for Backend {
 
     fn submit_picture(
         &mut self,
-        picture: H264Picture<AssociatedBackendHandle>,
+        picture: H264Picture<GenericBackendHandle>,
         block: bool,
     ) -> StatelessBackendResult<Self::Handle> {
         let current_picture = self.current_picture.take().unwrap();
@@ -901,7 +898,7 @@ impl StatelessDecoderBackend for Backend {
 
     fn new_handle(
         &mut self,
-        picture: ContainedPicture<AssociatedBackendHandle>,
+        picture: ContainedPicture<GenericBackendHandle>,
     ) -> StatelessBackendResult<Self::Handle> {
         self.build_va_decoded_handle(&picture)
             .map_err(|e| StatelessBackendError::Other(anyhow!(e)))
@@ -909,8 +906,8 @@ impl StatelessDecoderBackend for Backend {
 
     fn new_split_picture(
         &mut self,
-        split_picture: ContainedPicture<AssociatedBackendHandle>,
-        new_picture: ContainedPicture<AssociatedBackendHandle>,
+        split_picture: ContainedPicture<GenericBackendHandle>,
+        new_picture: ContainedPicture<GenericBackendHandle>,
     ) -> StatelessBackendResult<()> {
         let backend_handle = split_picture.borrow().backend_handle.as_ref().cloned();
 

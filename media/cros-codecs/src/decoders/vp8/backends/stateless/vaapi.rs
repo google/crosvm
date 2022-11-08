@@ -44,9 +44,6 @@ use crate::Resolution;
 /// Resolves to the type used as Handle by the backend.
 type AssociatedHandle = <Backend as StatelessDecoderBackend>::Handle;
 
-/// Resolves to the type used as BackendHandle by the backend.
-type AssociatedBackendHandle = <AssociatedHandle as DecodedHandle>::BackendHandle;
-
 /// The number of surfaces to allocate for this codec. Same as GStreamer's vavp8dec.
 const NUM_SURFACES: usize = 7;
 
@@ -93,7 +90,7 @@ pub struct Backend {
     /// The metadata state. Updated whenever the decoder reads new data from the stream.
     metadata_state: StreamMetadataState,
     /// The FIFO for all pending pictures, in the order they were submitted.
-    pending_jobs: VecDeque<PendingJob<AssociatedBackendHandle>>,
+    pending_jobs: VecDeque<PendingJob<GenericBackendHandle>>,
     /// The image formats we can decode into.
     image_formats: Rc<Vec<libva::VAImageFormat>>,
     /// The number of allocated surfaces.
@@ -212,7 +209,7 @@ impl Backend {
     }
 
     /// Gets the VASurfaceID for the given `picture`.
-    fn surface_id(picture: &Vp8Picture<AssociatedBackendHandle>) -> libva::VASurfaceID {
+    fn surface_id(picture: &Vp8Picture<GenericBackendHandle>) -> libva::VASurfaceID {
         picture.backend_handle.as_ref().unwrap().surface_id()
     }
 
@@ -393,7 +390,7 @@ impl Backend {
 
     fn build_va_decoded_handle(
         &self,
-        picture: &ContainedPicture<AssociatedBackendHandle>,
+        picture: &ContainedPicture<GenericBackendHandle>,
     ) -> Result<AssociatedHandle> {
         Ok(VADecodedHandle::new(
             Rc::clone(picture),
