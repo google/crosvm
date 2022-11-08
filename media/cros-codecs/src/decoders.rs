@@ -195,11 +195,17 @@ impl Default for BlockingMode {
     }
 }
 
+/// Codec-specific information for a single frame.
+pub trait FrameInfo {
+    /// Returns the display resolution of this frame.
+    fn display_resolution(&self) -> Resolution;
+}
+
 /// Type for a picture being decoded by a stateless codec.
 ///
 /// This contains the codec-specific state of the picture, as well as the backend-specific handle
 /// representing the memory into which the frame will be decoded.
-pub struct Picture<CodecData, BackendHandle> {
+pub struct Picture<CodecData: FrameInfo, BackendHandle> {
     /// Codec-specific data for this picture.
     pub data: CodecData,
     /// Backend-specific handle with the memory needed by the backend to back this picture.
@@ -208,7 +214,7 @@ pub struct Picture<CodecData, BackendHandle> {
     timestamp: u64,
 }
 
-impl<CodecData, BackendHandle> Picture<CodecData, BackendHandle> {
+impl<CodecData: FrameInfo, BackendHandle> Picture<CodecData, BackendHandle> {
     /// Whether two pictures are the same.
     pub fn same(lhs: &Rc<RefCell<Self>>, rhs: &Rc<RefCell<Self>>) -> bool {
         Rc::ptr_eq(lhs, rhs)
@@ -225,14 +231,12 @@ impl<CodecData, BackendHandle> Picture<CodecData, BackendHandle> {
 /// that they can be (cheaply) cloned.
 pub trait DecodedHandle: Clone {
     /// Codec-specific data for the handle.
-    type CodecData;
+    type CodecData: FrameInfo;
     /// The type of the handle used by the backend.
     type BackendHandle;
 
     /// Returns the actual container of the inner `Picture`.
     fn picture_container(&self) -> &Rc<RefCell<Picture<Self::CodecData, Self::BackendHandle>>>;
-    /// Returns the display resolution at the time this handle was decoded.
-    fn display_resolution(&self) -> Resolution;
     /// Returns the display order for this picture, if set by the decoder.
     fn display_order(&self) -> Option<u64>;
     /// Sets the display order for this picture.
@@ -249,5 +253,10 @@ pub trait DecodedHandle: Clone {
     /// Returns the timestamp for the picture.
     fn timestamp(&self) -> u64 {
         self.picture().timestamp()
+    }
+
+    /// Returns the display resolution at the time this handle was decoded.
+    fn display_resolution(&self) -> Resolution {
+        self.picture().data.display_resolution()
     }
 }

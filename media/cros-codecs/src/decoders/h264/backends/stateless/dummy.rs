@@ -13,7 +13,6 @@ use std::rc::Rc;
 use crate::decoders::h264::backends::stateless::AsBackendHandle;
 use crate::decoders::h264::backends::stateless::BlockingMode;
 use crate::decoders::h264::backends::stateless::ContainedPicture;
-use crate::decoders::h264::backends::stateless::DecodedHandle;
 use crate::decoders::h264::backends::stateless::Result as StatelessBackendResult;
 use crate::decoders::h264::backends::stateless::StatelessDecoderBackend;
 use crate::decoders::h264::dpb::Dpb;
@@ -21,41 +20,12 @@ use crate::decoders::h264::parser::Pps;
 use crate::decoders::h264::parser::Slice;
 use crate::decoders::h264::parser::Sps;
 use crate::decoders::h264::picture::H264Picture;
-use crate::decoders::h264::picture::PictureData;
 use crate::decoders::VideoDecoderBackend;
 use crate::utils::dummy::*;
 use crate::DecodedFormat;
 use crate::Resolution;
 
-pub type AssociatedDummyHandle = <Backend as StatelessDecoderBackend>::Handle;
-
-pub type AssociatedDummyBackendHandle = <AssociatedDummyHandle as DecodedHandle>::BackendHandle;
-
-#[derive(Clone)]
-pub struct Handle {
-    handle: Rc<RefCell<H264Picture<BackendHandle>>>,
-}
-
 pub struct Backend;
-
-impl DecodedHandle for Handle {
-    type CodecData = PictureData<Self::BackendHandle>;
-    type BackendHandle = BackendHandle;
-
-    fn picture_container(&self) -> &ContainedPicture<Self::BackendHandle> {
-        &self.handle
-    }
-
-    fn display_resolution(&self) -> Resolution {
-        self.picture().display_resolution
-    }
-
-    fn display_order(&self) -> Option<u64> {
-        None
-    }
-
-    fn set_display_order(&mut self, _: u64) {}
-}
 
 impl VideoDecoderBackend for Backend {
     fn num_resources_total(&self) -> usize {
@@ -88,7 +58,7 @@ impl VideoDecoderBackend for Backend {
 }
 
 impl StatelessDecoderBackend for Backend {
-    type Handle = Handle;
+    type Handle = Handle<H264Picture<BackendHandle>>;
 
     fn new_sequence(&mut self, _: &Sps, _: usize) -> StatelessBackendResult<()> {
         Ok(())
@@ -96,7 +66,7 @@ impl StatelessDecoderBackend for Backend {
 
     fn handle_picture(
         &mut self,
-        _: &H264Picture<AssociatedDummyBackendHandle>,
+        _: &H264Picture<BackendHandle>,
         _: u64,
         _: &Sps,
         _: &Pps,
@@ -108,7 +78,7 @@ impl StatelessDecoderBackend for Backend {
 
     fn new_field_picture(
         &mut self,
-        _: &H264Picture<AssociatedDummyBackendHandle>,
+        _: &H264Picture<BackendHandle>,
         _: u64,
         _: &Self::Handle,
     ) -> StatelessBackendResult<()> {

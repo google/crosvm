@@ -10,45 +10,14 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
-use crate::decoders::vp8::backends::stateless::ContainedPicture;
-use crate::decoders::vp8::backends::stateless::DecodedHandle;
 use crate::decoders::vp8::backends::stateless::StatelessDecoderBackend;
 use crate::decoders::vp8::backends::stateless::Vp8Picture;
-use crate::decoders::vp8::parser::Header;
 use crate::decoders::VideoDecoderBackend;
 use crate::utils::dummy::*;
 use crate::DecodedFormat;
 use crate::Resolution;
 
-pub type AssociatedDummyHandle = <Backend as StatelessDecoderBackend>::Handle;
-
-pub type AssociatedDummyBackendHandle = <AssociatedDummyHandle as DecodedHandle>::BackendHandle;
-
-#[derive(Clone)]
-pub struct Handle {
-    handle: Rc<RefCell<Vp8Picture<BackendHandle>>>,
-}
-
 pub struct Backend;
-
-impl DecodedHandle for Handle {
-    type CodecData = Header;
-    type BackendHandle = BackendHandle;
-
-    fn picture_container(&self) -> &ContainedPicture<Self::BackendHandle> {
-        &self.handle
-    }
-
-    fn display_resolution(&self) -> Resolution {
-        Default::default()
-    }
-
-    fn display_order(&self) -> Option<u64> {
-        None
-    }
-
-    fn set_display_order(&mut self, _: u64) {}
-}
 
 impl VideoDecoderBackend for Backend {
     fn num_resources_total(&self) -> usize {
@@ -81,7 +50,7 @@ impl VideoDecoderBackend for Backend {
 }
 
 impl StatelessDecoderBackend for Backend {
-    type Handle = Handle;
+    type Handle = Handle<Vp8Picture<BackendHandle>>;
 
     fn new_sequence(&mut self, _: &crate::decoders::vp8::parser::Header) -> super::Result<()> {
         Ok(())

@@ -14,6 +14,7 @@ use crate::decoders::h264::parser::RefPicMarking;
 use crate::decoders::h264::parser::Slice;
 use crate::decoders::h264::parser::SliceType;
 use crate::decoders::h264::parser::Sps;
+use crate::decoders::FrameInfo;
 use crate::decoders::Picture;
 use crate::Resolution;
 
@@ -411,6 +412,12 @@ impl<BackendHandle> Default for PictureData<BackendHandle> {
             is_second_field: Default::default(),
             other_field: Default::default(),
         }
+    }
+}
+
+impl<BackendHandle> FrameInfo for PictureData<BackendHandle> {
+    fn display_resolution(&self) -> Resolution {
+        self.display_resolution
     }
 }
 

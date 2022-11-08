@@ -35,7 +35,6 @@ use crate::decoders::h264::parser::Slice;
 use crate::decoders::h264::parser::Sps;
 use crate::decoders::h264::picture::Field;
 use crate::decoders::h264::picture::H264Picture;
-use crate::decoders::h264::picture::PictureData;
 use crate::decoders::h264::picture::Reference;
 use crate::decoders::Error as DecoderError;
 use crate::decoders::Result as DecoderResult;
@@ -1007,27 +1006,6 @@ impl StatelessDecoderBackend for Backend {
         Err(StatelessBackendError::Other(anyhow!(
             "Asked to block on a pending job that doesn't exist"
         )))
-    }
-}
-
-impl DecodedHandle for VADecodedHandle<H264Picture<GenericBackendHandle>> {
-    type CodecData = PictureData<Self::BackendHandle>;
-    type BackendHandle = GenericBackendHandle;
-
-    fn picture_container(&self) -> &ContainedPicture<Self::BackendHandle> {
-        self.inner()
-    }
-
-    fn display_resolution(&self) -> Resolution {
-        self.picture().display_resolution
-    }
-
-    fn display_order(&self) -> Option<u64> {
-        self.display_order
-    }
-
-    fn set_display_order(&mut self, display_order: u64) {
-        self.display_order = Some(display_order)
     }
 }
 

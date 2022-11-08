@@ -692,31 +692,6 @@ impl VideoDecoderBackend for Backend {
     }
 }
 
-impl DecodedHandle for VADecodedHandle<Vp8Picture<GenericBackendHandle>> {
-    type CodecData = Header;
-    type BackendHandle = GenericBackendHandle;
-
-    fn picture_container(&self) -> &ContainedPicture<Self::BackendHandle> {
-        self.inner()
-    }
-
-    fn display_resolution(&self) -> Resolution {
-        let hdr = &self.picture().data;
-        Resolution {
-            width: hdr.width() as u32,
-            height: hdr.height() as u32,
-        }
-    }
-
-    fn display_order(&self) -> Option<u64> {
-        self.display_order
-    }
-
-    fn set_display_order(&mut self, display_order: u64) {
-        self.display_order = Some(display_order)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;

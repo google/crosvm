@@ -18,8 +18,10 @@ use libva::Surface;
 use libva::VAConfigAttrib;
 use libva::VAConfigAttribType;
 
+use crate::decoders::DecodedHandle as DecodedHandleTrait;
 use crate::decoders::DynPicture;
 use crate::decoders::Error as VideoDecoderError;
+use crate::decoders::FrameInfo;
 use crate::decoders::MappableHandle;
 use crate::decoders::Picture;
 use crate::decoders::Result as VideoDecoderResult;
@@ -99,7 +101,7 @@ pub fn supported_formats_for_rt_format(
 
 pub trait IntoSurface: TryInto<Option<Surface>> {}
 
-impl<T> TryInto<Option<Surface>> for crate::decoders::Picture<T, GenericBackendHandle> {
+impl<T: FrameInfo> TryInto<Option<Surface>> for crate::decoders::Picture<T, GenericBackendHandle> {
     type Error = anyhow::Error;
 
     fn try_into(self) -> Result<Option<Surface>, Self::Error> {
@@ -124,7 +126,7 @@ impl<T> TryInto<Option<Surface>> for crate::decoders::Picture<T, GenericBackendH
     }
 }
 
-impl<T> IntoSurface for crate::decoders::Picture<T, GenericBackendHandle> {}
+impl<T: FrameInfo> IntoSurface for crate::decoders::Picture<T, GenericBackendHandle> {}
 
 /// A decoded frame handle.
 pub struct DecodedHandle<T: IntoSurface> {
@@ -190,6 +192,25 @@ impl<T: IntoSurface> Drop for DecodedHandle<T> {
                 }
             }
         }
+    }
+}
+
+impl<CodecData: FrameInfo> DecodedHandleTrait
+    for DecodedHandle<Picture<CodecData, GenericBackendHandle>>
+{
+    type CodecData = CodecData;
+    type BackendHandle = GenericBackendHandle;
+
+    fn picture_container(&self) -> &Rc<RefCell<Picture<Self::CodecData, Self::BackendHandle>>> {
+        self.inner()
+    }
+
+    fn display_order(&self) -> Option<u64> {
+        self.display_order
+    }
+
+    fn set_display_order(&mut self, display_order: u64) {
+        self.display_order = Some(display_order)
     }
 }
 
@@ -495,7 +516,7 @@ impl<'a> MappableHandle for Image<'a> {
     }
 }
 
-impl<CodecData> DynPicture for Picture<CodecData, GenericBackendHandle> {
+impl<CodecData: FrameInfo> DynPicture for Picture<CodecData, GenericBackendHandle> {
     fn dyn_mappable_handle_mut<'a>(&'a mut self) -> Box<dyn MappableHandle + 'a> {
         Box::new(self.backend_handle.as_mut().unwrap().image().unwrap())
     }
