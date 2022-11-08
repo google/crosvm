@@ -24,7 +24,7 @@ virgl_renderer = ["gpu", "rutabaga_gfx/virgl_renderer"]
 virgl_renderer_next = ["gpu", "rutabaga_gfx/virgl_renderer_next"]
 vtpm = ["system_api", "protobuf", "dbus"]
 gfxstream = ["gpu", "rutabaga_gfx/gfxstream"]
-slirp = []
+slirp = ["net_util/slirp"]
 stats = []
 whpx = []
 
@@ -59,7 +59,7 @@ libvda = { path = "../media/libvda", optional = true }
 linux_input_sys = { path = "../linux_input_sys" }
 memoffset = { version = "0.6" }
 net_sys = { path = "../net_sys" }
-net_util = { path = "../net_util" }
+net_util = { path = "../net_util", features = ["slirp"] }
 num-traits = "0.2"
 once_cell = "1.7.2"
 protobuf = { version = "2.3", optional = true }
