@@ -10,12 +10,15 @@ use std::env;
 use std::process::Command;
 use std::time;
 
-use fixture::vm::Config;
+use fixture::vhost_user::Config as VuConfig;
+use fixture::vhost_user::VhostUserBackend;
+use fixture::vm::Config as VmConfig;
 use fixture::vm::TestVm;
 use tempfile::NamedTempFile;
 
 const DEFAULT_BLOCK_SIZE: u64 = 1024 * 1024;
 
+/// Prepare a temporary ext4 disk file.
 fn prepare_disk_img() -> NamedTempFile {
     let mut disk = NamedTempFile::new().unwrap();
     disk.as_file_mut().set_len(DEFAULT_BLOCK_SIZE).unwrap();
@@ -41,7 +44,8 @@ fn mount_block() {
     let disk_path = disk.path().to_str().unwrap();
     println!("disk={disk_path}");
 
-    let config = Config::new().extra_args(vec!["--block".to_string(), format!("{},ro", disk_path)]);
+    let config =
+        VmConfig::new().extra_args(vec!["--block".to_string(), format!("{},ro", disk_path)]);
     let mut vm = TestVm::new(config).unwrap();
     assert_eq!(
         vm.exec_in_guest("mount -t ext4 /dev/vdb /mnt && echo 42")
@@ -57,7 +61,7 @@ fn resize() {
     let disk_path = disk.path().to_str().unwrap().to_string();
     println!("disk={disk_path}");
 
-    let config = Config::new().extra_args(vec!["--block".to_string(), disk_path]);
+    let config = VmConfig::new().extra_args(vec!["--block".to_string(), disk_path]);
     let mut vm = TestVm::new(config).unwrap();
 
     // Check the initial block device size.
@@ -105,5 +109,31 @@ fn resize() {
             .parse::<u64>()
             .unwrap(),
         new_size
+    );
+}
+
+#[test]
+fn vhost_user_mount() {
+    let disk = prepare_disk_img();
+    let disk_path = disk.path().to_str().unwrap().to_string();
+    let socket = NamedTempFile::new().unwrap();
+    let socket_path = socket.path().to_str().unwrap().to_string();
+    println!("disk={disk_path}, socket={socket_path}");
+
+    let vu_config = VuConfig::new("block").extra_args(vec![
+        "--socket".to_string(),
+        socket_path.clone(),
+        "--file".to_string(),
+        disk_path,
+    ]);
+    let _vu_device = VhostUserBackend::new(vu_config).unwrap();
+
+    let config = VmConfig::new().extra_args(vec!["--vhost-user-blk".to_string(), socket_path]);
+    let mut vm = TestVm::new(config).unwrap();
+    assert_eq!(
+        vm.exec_in_guest("mount -t ext4 /dev/vdb /mnt && echo 42")
+            .unwrap()
+            .trim(),
+        "42"
     );
 }
