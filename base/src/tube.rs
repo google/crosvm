@@ -23,6 +23,13 @@ impl Tube {
         let (t1, t2) = Self::pair()?;
         Ok((SendTube(t1), RecvTube(t2)))
     }
+
+    pub fn try_clone_send_tube(&self) -> Result<SendTube> {
+        // Safe because receiving is only allowed on original Tube.
+        #[allow(deprecated)]
+        let send_end = self.try_clone()?;
+        Ok(SendTube(send_end))
+    }
 }
 
 use crate::AsRawDescriptor;
