@@ -13,8 +13,8 @@ use std::time::Duration;
 
 use rand::Rng;
 
-use fixture::Config;
-use fixture::TestVm;
+use fixture::vm::Config;
+use fixture::vm::TestVm;
 
 const HOST_CID: u64 = 2;
 const VSOCK_COM_PORT: u64 = 11111;

@@ -3,8 +3,8 @@
 // found in the LICENSE file.
 
 pub mod fixture;
-use fixture::Config;
-use fixture::TestVm;
+use fixture::vm::Config;
+use fixture::vm::TestVm;
 
 #[test]
 fn boot_test_vm() {

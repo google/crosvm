@@ -10,8 +10,8 @@ use std::env;
 use std::process::Command;
 use std::time;
 
-use fixture::Config;
-use fixture::TestVm;
+use fixture::vm::Config;
+use fixture::vm::TestVm;
 use tempfile::NamedTempFile;
 
 const DEFAULT_BLOCK_SIZE: u64 = 1024 * 1024;
