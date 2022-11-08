@@ -61,7 +61,6 @@ members = [
     "crosvm_cli",
     "crosvm_control",
     "crosvm_plugin",
-    "crosvm-fuzz",
     "devices",
     "disk",
     "e2e_tests",
@@ -108,6 +107,7 @@ exclude = [
     "tube_transporter",
     "win_audio",
     "win_util",
+    "crosvm-fuzz",
 ]
 
 [features]
