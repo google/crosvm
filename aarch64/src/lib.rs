@@ -68,8 +68,8 @@ use vm_memory::GuestMemoryError;
 
 mod fdt;
 
-// We place the kernel at offset 8MB
-const AARCH64_KERNEL_OFFSET: u64 = 0x800000;
+// We place the kernel at the very beginning of physical memory.
+const AARCH64_KERNEL_OFFSET: u64 = 0;
 const AARCH64_FDT_MAX_SIZE: u64 = 0x200000;
 const AARCH64_INITRD_ALIGN: u64 = 0x1000000;
 

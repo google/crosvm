@@ -69,7 +69,7 @@ These apply when no bootloader is passed, so crosvm boots a kernel directly.
 
 | Name/source link          | Address           | End (exclusive) | Size  | Notes                        |
 | ------------------------- | ----------------- | --------------- | ----- | ---------------------------- |
-| [`AARCH64_KERNEL_OFFSET`] | `8080_0000`       |                 |       | Kernel load location in RAM  |
+| [`AARCH64_KERNEL_OFFSET`] | `8000_0000`       |                 |       | Kernel load location in RAM  |
 | [`initrd_addr`]           | after kernel      |                 |       | Linux initrd location in RAM |
 | [`fdt_address`]           | before end of RAM |                 | 2 MiB | Flattened device tree in RAM |
 
