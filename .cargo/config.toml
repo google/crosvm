@@ -8,8 +8,6 @@ rustflags = [
 
     # TODO(crbug/908640): To be resolved.
     "-Aclippy::needless_return",
-    "-Aclippy::needless_doctest_main",
-    "-Aclippy::blocks_in_if_conditions",
     "-Aclippy::missing_safety_doc", # 26 errors
 
     # We don't care about these lints. Okay to remain suppressed globally.
