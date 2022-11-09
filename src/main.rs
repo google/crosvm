@@ -712,7 +712,7 @@ fn main() {
         }
         Err(e) => {
             let exit_code = error_to_exit_code(&res);
-            error!("exiting with error {}:{:?}", exit_code, e);
+            error!("exiting with error {}: {:?}", exit_code, e);
             exit_code
         }
     };
