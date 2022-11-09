@@ -413,11 +413,10 @@ impl GuestMemory {
     /// # }
     /// ```
     pub fn write_at_addr(&self, buf: &[u8], guest_addr: GuestAddress) -> Result<usize> {
-        self.do_in_region(guest_addr, move |mapping, offset, _| {
-            mapping
-                .write_slice(buf, offset)
-                .map_err(|e| Error::MemoryAccess(guest_addr, e))
-        })
+        let (mapping, offset, _) = self.find_region(guest_addr)?;
+        mapping
+            .write_slice(buf, offset)
+            .map_err(|e| Error::MemoryAccess(guest_addr, e))
     }
 
     /// Writes the entire contents of a slice to guest memory at the specified
@@ -472,11 +471,10 @@ impl GuestMemory {
     /// # }
     /// ```
     pub fn read_at_addr(&self, buf: &mut [u8], guest_addr: GuestAddress) -> Result<usize> {
-        self.do_in_region(guest_addr, move |mapping, offset, _| {
-            mapping
-                .read_slice(buf, offset)
-                .map_err(|e| Error::MemoryAccess(guest_addr, e))
-        })
+        let (mapping, offset, _) = self.find_region(guest_addr)?;
+        mapping
+            .read_slice(buf, offset)
+            .map_err(|e| Error::MemoryAccess(guest_addr, e))
     }
 
     /// Reads from guest memory at the specified address to fill the entire
@@ -532,11 +530,10 @@ impl GuestMemory {
     /// # }
     /// ```
     pub fn read_obj_from_addr<T: DataInit>(&self, guest_addr: GuestAddress) -> Result<T> {
-        self.do_in_region(guest_addr, |mapping, offset, _| {
-            mapping
-                .read_obj(offset)
-                .map_err(|e| Error::MemoryAccess(guest_addr, e))
-        })
+        let (mapping, offset, _) = self.find_region(guest_addr)?;
+        mapping
+            .read_obj(offset)
+            .map_err(|e| Error::MemoryAccess(guest_addr, e))
     }
 
     /// Writes an object to the memory region at the specified guest address.
@@ -556,11 +553,10 @@ impl GuestMemory {
     /// # }
     /// ```
     pub fn write_obj_at_addr<T: DataInit>(&self, val: T, guest_addr: GuestAddress) -> Result<()> {
-        self.do_in_region(guest_addr, move |mapping, offset, _| {
-            mapping
-                .write_obj(val, offset)
-                .map_err(|e| Error::MemoryAccess(guest_addr, e))
-        })
+        let (mapping, offset, _) = self.find_region(guest_addr)?;
+        mapping
+            .write_obj(val, offset)
+            .map_err(|e| Error::MemoryAccess(guest_addr, e))
     }
 
     /// Returns a `VolatileSlice` of `len` bytes starting at `addr`. Returns an error if the slice
@@ -653,11 +649,10 @@ impl GuestMemory {
         src: &mut F,
         count: usize,
     ) -> Result<()> {
-        self.do_in_region(guest_addr, move |mapping, offset, _| {
-            mapping
-                .read_to_memory(offset, src, count)
-                .map_err(|e| Error::MemoryAccess(guest_addr, e))
-        })
+        let (mapping, offset, _) = self.find_region(guest_addr)?;
+        mapping
+            .read_to_memory(offset, src, count)
+            .map_err(|e| Error::MemoryAccess(guest_addr, e))
     }
 
     /// Writes data from memory to a file descriptor.
@@ -691,11 +686,10 @@ impl GuestMemory {
         dst: &mut F,
         count: usize,
     ) -> Result<()> {
-        self.do_in_region(guest_addr, move |mapping, offset, _| {
-            mapping
-                .write_from_memory(offset, dst, count)
-                .map_err(|e| Error::MemoryAccess(guest_addr, e))
-        })
+        let (mapping, offset, _) = self.find_region(guest_addr)?;
+        mapping
+            .write_from_memory(offset, dst, count)
+            .map_err(|e| Error::MemoryAccess(guest_addr, e))
     }
 
     /// Convert a GuestAddress into a pointer in the address space of this
@@ -719,11 +713,10 @@ impl GuestMemory {
     /// # }
     /// ```
     pub fn get_host_address(&self, guest_addr: GuestAddress) -> Result<*const u8> {
-        self.do_in_region(guest_addr, |mapping, offset, _| {
-            // This is safe; `do_in_region` already checks that offset is in
-            // bounds.
-            Ok(unsafe { mapping.as_ptr().add(offset) } as *const u8)
-        })
+        let (mapping, offset, _) = self.find_region(guest_addr)?;
+        // This is safe; `find_region` already checks that offset is in
+        // bounds.
+        Ok(unsafe { mapping.as_ptr().add(offset) } as *const u8)
     }
 
     /// Convert a GuestAddress into a pointer in the address space of this
@@ -757,19 +750,19 @@ impl GuestMemory {
         }
 
         // Assume no overlap among regions
-        self.do_in_region(guest_addr, |mapping, offset, _| {
-            if mapping
-                .size()
-                .checked_sub(offset)
-                .map_or(true, |v| v < size)
-            {
-                return Err(Error::InvalidGuestAddress(guest_addr));
-            }
+        let (mapping, offset, _) = self.find_region(guest_addr)?;
 
-            // This is safe; `do_in_region` already checks that offset is in
-            // bounds.
-            Ok(unsafe { mapping.as_ptr().add(offset) } as *const u8)
-        })
+        if mapping
+            .size()
+            .checked_sub(offset)
+            .map_or(true, |v| v < size)
+        {
+            return Err(Error::InvalidGuestAddress(guest_addr));
+        }
+
+        // This is safe; `find_region` already checks that offset is in
+        // bounds.
+        Ok(unsafe { mapping.as_ptr().add(offset) } as *const u8)
     }
 
     /// Returns a reference to the region that backs the given address.
@@ -792,25 +785,22 @@ impl GuestMemory {
         )
     }
 
-    /// Loops over all guest memory regions of `self`, and performs the callback function `F` in
-    /// the target region that contains `guest_addr`.  The callback function `F` takes in:
+    /// Loops over all guest memory regions of `self`, and returns the
+    /// target region that contains `guest_addr`. On success, this
+    /// function returns a tuple with the following fields:
     ///
     /// (i) the memory mapping associated with the target region.
     /// (ii) the relative offset from the start of the target region to `guest_addr`.
     /// (iii) the absolute offset from the start of the memory mapping to the target region.
     ///
-    /// If no target region is found, an error is returned.  The callback function `F` may return
-    /// an Ok(`T`) on success or a `GuestMemoryError` on failure.
-    pub fn do_in_region<F, T>(&self, guest_addr: GuestAddress, cb: F) -> Result<T>
-    where
-        F: FnOnce(&MemoryMapping, usize, u64) -> Result<T>,
-    {
+    /// If no target region is found, an error is returned.
+    pub fn find_region(&self, guest_addr: GuestAddress) -> Result<(&MemoryMapping, usize, u64)> {
         self.regions
             .iter()
             .find(|region| region.contains(guest_addr))
             .ok_or(Error::InvalidGuestAddress(guest_addr))
-            .and_then(|region| {
-                cb(
+            .map(|region| {
+                (
                     &region.mapping,
                     guest_addr.offset_from(region.start()) as usize,
                     region.obj_offset,
@@ -1003,7 +993,7 @@ mod tests {
 
     // Get the base address of the mapping for a GuestAddress.
     fn get_mapping(mem: &GuestMemory, addr: GuestAddress) -> Result<*const u8> {
-        mem.do_in_region(addr, |mapping, _, _| Ok(mapping.as_ptr() as *const u8))
+        Ok(mem.find_region(addr)?.0.as_ptr() as *const u8)
     }
 
     #[test]

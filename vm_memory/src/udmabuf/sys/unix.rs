@@ -52,18 +52,20 @@ type UdmabufCreateList = FlexibleArrayWrapper<udmabuf_create_list, udmabuf_creat
 // #    assert_eq!(memory_offset(&mem, GuestAddress(0x1100), 0x1000).unwrap(),0x1000);
 // #}
 fn memory_offset(mem: &GuestMemory, guest_addr: GuestAddress, len: u64) -> UdmabufResult<u64> {
-    mem.do_in_region(guest_addr, move |mapping, map_offset, memfd_offset| {
-        let map_offset = map_offset as u64;
-        if map_offset
-            .checked_add(len)
-            .map_or(true, |a| a > mapping.size() as u64)
-        {
-            return Err(GuestMemoryError::InvalidGuestAddress(guest_addr));
-        }
+    let (mapping, map_offset, memfd_offset) = mem
+        .find_region(guest_addr)
+        .map_err(UdmabufError::InvalidOffset)?;
+    let map_offset = map_offset as u64;
+    if map_offset
+        .checked_add(len)
+        .map_or(true, |a| a > mapping.size() as u64)
+    {
+        return Err(UdmabufError::InvalidOffset(
+            GuestMemoryError::InvalidGuestAddress(guest_addr),
+        ));
+    }
 
-        Ok(memfd_offset + map_offset)
-    })
-    .map_err(UdmabufError::InvalidOffset)
+    Ok(memfd_offset + map_offset)
 }
 
 /// A convenience wrapper for the Linux kernel's udmabuf driver.
