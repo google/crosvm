@@ -4,8 +4,6 @@
 # https://github.com/rust-lang/cargo/issues/5034
 [target.'cfg(all())']
 rustflags = [
-    "-Dwarnings",
-
     # TODO(crbug/908640): To be resolved.
     "-Aclippy::needless_return",
     "-Aclippy::missing_safety_doc", # 26 errors

@@ -240,8 +240,11 @@ def build_all_binaries(target: TestTarget, crosvm_direct: bool, instrument_cover
     """Discover all crates and build them."""
     build_env = os.environ.copy()
     build_env.update(test_target.get_cargo_env(target))
+
+    build_env.setdefault("RUSTFLAGS", "")
+    build_env["RUSTFLAGS"] += " -D warnings"
     if instrument_coverage:
-        build_env["RUSTFLAGS"] = "-C instrument-coverage"
+        build_env["RUSTFLAGS"] += " -C instrument-coverage"
 
     print("Building crosvm workspace")
     features = target.build_triple.feature_flag
