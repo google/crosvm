@@ -51,6 +51,7 @@ pub mod mptable;
 pub mod regs;
 pub mod smbios;
 
+use std::arch::x86_64::CpuidResult;
 use std::collections::BTreeMap;
 use std::ffi::CStr;
 use std::ffi::CString;
@@ -143,6 +144,7 @@ use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
 
 use crate::bootparam::boot_params;
+use crate::cpuid::EDX_HYBRID_CPU_SHIFT;
 use crate::msr_index::*;
 
 #[sorted]
@@ -2045,6 +2047,67 @@ pub fn set_enable_pnp_data_msr_config(
 
     insert_msrs(msr_map, &msrs)?;
 
+    Ok(())
+}
+
+#[derive(Error, Debug)]
+pub enum HybridSupportError {
+    #[error("Host CPU doesn't support hybrid architecture.")]
+    UnsupportedHostCpu,
+}
+
+/// The wrapper for CPUID call functions.
+pub struct CpuIdCall {
+    /// __cpuid_count or a fake function for test.
+    cpuid_count: unsafe fn(u32, u32) -> CpuidResult,
+    /// __cpuid or a fake function for test.
+    cpuid: unsafe fn(u32) -> CpuidResult,
+}
+
+impl CpuIdCall {
+    pub fn new(
+        cpuid_count: unsafe fn(u32, u32) -> CpuidResult,
+        cpuid: unsafe fn(u32) -> CpuidResult,
+    ) -> CpuIdCall {
+        CpuIdCall { cpuid_count, cpuid }
+    }
+}
+
+/// Check if host supports hybrid CPU feature. The check include:
+///     1. Check if CPUID.1AH exists. CPUID.1AH is hybrid information enumeration leaf.
+///     2. Check if CPUID.07H.00H:EDX[bit 15] sets. This bit means the processor is
+///        identified as a hybrid part.
+///     3. Check if CPUID.1AH:EAX sets. The hybrid core type is set in EAX.
+///
+/// # Arguments
+///
+/// * - `cpuid` the wrapped cpuid functions used to get CPUID info.
+pub fn check_host_hybrid_support(cpuid: &CpuIdCall) -> std::result::Result<(), HybridSupportError> {
+    // CPUID.0H.EAX returns maximum input value for basic CPUID information.
+    //
+    // Safe because we pass 0 for this call and the host supports the
+    // `cpuid` instruction.
+    let mut cpuid_entry = unsafe { (cpuid.cpuid)(0x0) };
+    if cpuid_entry.eax < 0x1A {
+        return Err(HybridSupportError::UnsupportedHostCpu);
+    }
+    // Safe because we pass 0x7 and 0 for this call and the host supports the
+    // `cpuid` instruction.
+    cpuid_entry = unsafe { (cpuid.cpuid_count)(0x7, 0) };
+    if cpuid_entry.edx & 1 << EDX_HYBRID_CPU_SHIFT == 0 {
+        return Err(HybridSupportError::UnsupportedHostCpu);
+    }
+    // From SDM, if a value entered for CPUID.EAX is less than or equal to the
+    // maximum input value and the leaf is not supported on that processor then
+    // 0 is returned in all the registers.
+    // For the CPU with hybrid support, its CPUID.1AH.EAX shouldn't be zero.
+    //
+    // Safe because we pass 0 for this call and the host supports the
+    // `cpuid` instruction.
+    cpuid_entry = unsafe { (cpuid.cpuid)(0x1A) };
+    if cpuid_entry.eax == 0 {
+        return Err(HybridSupportError::UnsupportedHostCpu);
+    }
     Ok(())
 }
 
