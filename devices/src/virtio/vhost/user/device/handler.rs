@@ -1027,31 +1027,31 @@ mod tests {
         let mut listener = listener.accept().unwrap().unwrap();
 
         // VhostUserHandler::new()
-        listener.handle_request().expect("set_owner");
-        listener.handle_request().expect("get_features");
-        listener.handle_request().expect("set_features");
-        listener.handle_request().expect("get_protocol_features");
-        listener.handle_request().expect("set_protocol_features");
+        handle_request(&mut listener).expect("set_owner");
+        handle_request(&mut listener).expect("get_features");
+        handle_request(&mut listener).expect("set_features");
+        handle_request(&mut listener).expect("get_protocol_features");
+        handle_request(&mut listener).expect("set_protocol_features");
 
         // VhostUserHandler::read_config()
-        listener.handle_request().expect("get_config");
+        handle_request(&mut listener).expect("get_config");
 
         // VhostUserHandler::set_mem_table()
-        listener.handle_request().expect("set_mem_table");
+        handle_request(&mut listener).expect("set_mem_table");
 
         for _ in 0..QUEUES_NUM {
             // VhostUserHandler::activate_vring()
-            listener.handle_request().expect("set_vring_num");
-            listener.handle_request().expect("set_vring_addr");
-            listener.handle_request().expect("set_vring_base");
-            listener.handle_request().expect("set_vring_call");
-            listener.handle_request().expect("set_vring_kick");
-            listener.handle_request().expect("set_vring_enable");
+            handle_request(&mut listener).expect("set_vring_num");
+            handle_request(&mut listener).expect("set_vring_addr");
+            handle_request(&mut listener).expect("set_vring_base");
+            handle_request(&mut listener).expect("set_vring_call");
+            handle_request(&mut listener).expect("set_vring_kick");
+            handle_request(&mut listener).expect("set_vring_enable");
         }
 
         dev_bar.wait();
 
-        match listener.handle_request() {
+        match handle_request(&mut listener) {
             Err(VhostError::ClientExit) => (),
             r => panic!("Err(ClientExit) was expected but {:?}", r),
         }
@@ -1081,31 +1081,38 @@ mod tests {
         }
     }
 
+    fn handle_request<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>>(
+        handler: &mut SlaveReqHandler<S, E>,
+    ) -> Result<(), VhostError> {
+        let (hdr, files) = handler.recv_header()?;
+        handler.process_message(hdr, files)
+    }
+
     pub(super) fn test_handle_requests<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>>(
         req_handler: &mut SlaveReqHandler<S, E>,
         queues_num: usize,
     ) {
         // VhostUserHandler::new()
-        req_handler.handle_request().expect("set_owner");
-        req_handler.handle_request().expect("get_features");
-        req_handler.handle_request().expect("set_features");
-        req_handler.handle_request().expect("get_protocol_features");
-        req_handler.handle_request().expect("set_protocol_features");
+        handle_request(req_handler).expect("set_owner");
+        handle_request(req_handler).expect("get_features");
+        handle_request(req_handler).expect("set_features");
+        handle_request(req_handler).expect("get_protocol_features");
+        handle_request(req_handler).expect("set_protocol_features");
 
         // VhostUserHandler::read_config()
-        req_handler.handle_request().expect("get_config");
+        handle_request(req_handler).expect("get_config");
 
         // VhostUserHandler::set_mem_table()
-        req_handler.handle_request().expect("set_mem_table");
+        handle_request(req_handler).expect("set_mem_table");
 
         for _ in 0..queues_num {
             // VhostUserHandler::activate_vring()
-            req_handler.handle_request().expect("set_vring_num");
-            req_handler.handle_request().expect("set_vring_addr");
-            req_handler.handle_request().expect("set_vring_base");
-            req_handler.handle_request().expect("set_vring_call");
-            req_handler.handle_request().expect("set_vring_kick");
-            req_handler.handle_request().expect("set_vring_enable");
+            handle_request(req_handler).expect("set_vring_num");
+            handle_request(req_handler).expect("set_vring_addr");
+            handle_request(req_handler).expect("set_vring_base");
+            handle_request(req_handler).expect("set_vring_call");
+            handle_request(req_handler).expect("set_vring_kick");
+            handle_request(req_handler).expect("set_vring_enable");
         }
     }
 }

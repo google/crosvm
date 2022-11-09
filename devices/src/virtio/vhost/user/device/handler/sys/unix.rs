@@ -5,7 +5,6 @@
 use std::fs::File;
 use std::sync::Arc;
 
-use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
 use base::error;
@@ -199,17 +198,25 @@ where
             .wait_readable()
             .await
             .context("failed to wait for the handler to become readable")?;
-        match req_handler.handle_request() {
-            Ok(()) => (),
+        let (hdr, files) = match req_handler.recv_header() {
+            Ok((hdr, files)) => (hdr, files),
             Err(VhostError::ClientExit) => {
                 info!("vhost-user connection closed");
                 // Exit as the client closed the connection.
                 return Ok(());
             }
             Err(e) => {
-                bail!("failed to handle a vhost-user request: {}", e);
+                return Err(e.into());
             }
         };
+
+        if req_handler.needs_wait_for_payload(&hdr) {
+            handler_source
+                .wait_readable()
+                .await
+                .context("failed to wait for the handler to become readable")?;
+        }
+        req_handler.process_message(hdr, files)?;
     }
 }
 
@@ -325,7 +332,7 @@ mod tests {
 
         dev_bar.wait();
 
-        match listener.handle_request() {
+        match listener.recv_header() {
             Err(VhostError::ClientExit) => (),
             r => panic!("Err(ClientExit) was expected but {:?}", r),
         }

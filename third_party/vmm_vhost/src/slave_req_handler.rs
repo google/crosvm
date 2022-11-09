@@ -29,6 +29,21 @@ pub enum Protocol {
     Virtio,
 }
 
+impl Protocol {
+    /// Returns whether the protocol assumes that messages are sent in stream mode like Unix's SOCK_STREAM.
+    ///
+    /// In stream mode, the receivers cannot know the size of the entire message in advance so a
+    /// message header with the body size and the message body will be sent separately. See
+    /// [`SlaveReqHandler::recv_header()`]'s doc comment for more details.
+    fn is_stream_mode(&self) -> bool {
+        match self {
+            Protocol::Regular => true,
+            // VVU proxy sends a message header and its payload at once.
+            Protocol::Virtio => false,
+        }
+    }
+}
+
 /// Services provided to the master by the slave with interior mutability.
 ///
 /// The [VhostUserSlaveReqHandler] trait defines the services provided to the master by the slave.
@@ -440,20 +455,54 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
         }
     }
 
-    /// Main entrance to request from the communication channel.
+    /// Receives and validates a vhost-user message header and optional files.
     ///
-    /// Receive and handle one incoming request message from the vmm. The caller needs to:
-    /// - serialize calls to this function
-    /// - decide what to do when error happens
-    /// - optional recover from failure
+    /// Since the length of vhost-user messages are different among message types, regular
+    /// vhost-user messages are sent via an underlying communication channel in stream mode.
+    /// (e.g. `SOCK_STREAM` in UNIX)
+    /// So, the logic of receiving and handling a message consists of the following steps:
     ///
-    /// # Return:
-    /// * - `Ok(())`: one request was successfully handled.
-    /// * - `Err(ClientExit)`: the vmm closed the connection properly. This isn't an actual failure.
-    /// * - `Err(Disconnect)`: the connection was closed unexpectedly.
-    /// * - `Err(InvalidMessage)`: the vmm sent a illegal message.
-    /// * - other errors: failed to handle a request.
-    pub fn handle_request(&mut self) -> Result<()> {
+    /// 1. Receives a message header and optional attached file.
+    /// 2. Validates the message header.
+    /// 3. Check if optional payloads is expected.
+    /// 4. Wait for the optional payloads.
+    /// 5. Receives optional payloads.
+    /// 6. Processes the message.
+    ///
+    /// This method [`SlaveReqHandler::recv_header()`] is in charge of the step (1) and (2),
+    /// [`SlaveReqHandler::needs_wait_for_payload()`] is (3), and
+    /// [`SlaveReqHandler::process_message()`] is (5) and (6).
+    /// We need to have the three method separately for multi-platform supports;
+    /// [`SlaveReqHandler::recv_header()`] and [`SlaveReqHandler::process_message()`] need to be
+    /// separated because the way of waiting for incoming messages differs between Unix and Windows
+    /// so it's the caller's responsibility to wait before [`SlaveReqHandler::process_message()`].
+    ///
+    /// Note that some vhost-user protocol variant such as VVU doesn't assume stream mode. In this
+    /// case, a message header and its body are sent together so the step (4) is skipped. We handle
+    /// this case in [`SlaveReqHandler::needs_wait_for_payload()`].
+    ///
+    /// The following pseudo code describes how a caller should process incoming vhost-user
+    /// messages:
+    /// ```ignore
+    /// loop {
+    ///   // block until a message header comes.
+    ///   // The actual code differs, depending on platforms.
+    ///   connection.wait_readable().unwrap();
+    ///
+    ///   // (1) and (2)
+    ///   let (hdr, files) = slave_req_handler.recv_header();
+    ///
+    ///   // (3)
+    ///   if slave_req_handler.needs_wait_for_payload(&hdr) {
+    ///     // (4) block until a payload comes if needed.
+    ///     connection.wait_readable().unwrap();
+    ///   }
+    ///
+    ///   // (5) and (6)
+    ///   slave_req_handler.process_message(&hdr, &files).unwrap();
+    /// }
+    /// ```
+    pub fn recv_header(&mut self) -> Result<(VhostUserMsgHeader<MasterReq>, Option<Vec<File>>)> {
         // The underlying communication channel is a Unix domain socket in
         // stream mode, and recvmsg() is a little tricky here. To successfully
         // receive attached file descriptors, we need to receive messages and
@@ -477,6 +526,35 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
 
         self.check_attached_files(&hdr, &files)?;
 
+        Ok((hdr, files))
+    }
+
+    /// Returns whether the caller needs to wait for the incoming message before calling
+    /// [`SlaveReqHandler::process_message`].
+    ///
+    /// See [`SlaveReqHandler::recv_header`]'s doc comment for the usage.
+    pub fn needs_wait_for_payload(&self, hdr: &VhostUserMsgHeader<MasterReq>) -> bool {
+        // For the vhost-user protocols using stream mode, we need to wait until an additional
+        // payload is available if exists.
+        self.backend.protocol().is_stream_mode() && hdr.get_size() != 0
+    }
+
+    /// Main entrance to request from the communication channel.
+    ///
+    /// Receive and handle one incoming request message from the vmm.
+    /// See [`SlaveReqHandler::recv_header`]'s doc comment for the usage.
+    ///
+    /// # Return:
+    /// * - `Ok(())`: one request was successfully handled.
+    /// * - `Err(ClientExit)`: the vmm closed the connection properly. This isn't an actual failure.
+    /// * - `Err(Disconnect)`: the connection was closed unexpectedly.
+    /// * - `Err(InvalidMessage)`: the vmm sent a illegal message.
+    /// * - other errors: failed to handle a request.
+    pub fn process_message(
+        &mut self,
+        hdr: VhostUserMsgHeader<MasterReq>,
+        files: Option<Vec<File>>,
+    ) -> Result<()> {
         let buf = match hdr.get_size() {
             0 => vec![0u8; 0],
             len => {
