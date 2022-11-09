@@ -6,11 +6,5 @@ edition = "2021"
 
 [dependencies]
 base = { path = "../base" }
-data_model = "*"
 libc = "*"
-tempfile = "*"
-thiserror = "*"
 userfaultfd = "0.5.0"
-
-[patch.crates-io]
-data_model = { path = "../common/data_model" }
