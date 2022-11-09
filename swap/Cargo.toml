@@ -5,7 +5,6 @@ authors = ["The Chromium OS Authors"]
 edition = "2021"
 
 [dependencies]
-anyhow = "*"
 base = { path = "../base" }
 data_model = "*"
 libc = "*"
