@@ -30,7 +30,6 @@ mod sched;
 mod shm;
 mod shm_platform;
 mod stream_channel;
-mod stream_channel_platform;
 mod timer;
 mod wait;
 
