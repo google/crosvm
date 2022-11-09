@@ -54,7 +54,7 @@ use libc::c_int;
 use sync::Condvar;
 use sync::Mutex;
 use vm_control::*;
-#[cfg(feature = "gdb")]
+#[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
 use vm_memory::GuestMemory;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use x86_64::msr::MsrHandlers;
@@ -381,10 +381,12 @@ fn vcpu_loop<V>(
     from_main_tube: mpsc::Receiver<VcpuControl>,
     use_hypervisor_signals: bool,
     privileged_vm: bool,
-    #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))] to_gdb_tube: Option<
+    #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
+    to_gdb_tube: Option<
         mpsc::Sender<VcpuDebugStatusMessage>,
     >,
-    #[cfg(feature = "gdb")] guest_mem: GuestMemory,
+    #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
+    guest_mem: GuestMemory,
     msr_handlers: MsrHandlers,
     guest_suspended_cvar: Arc<(Mutex<bool>, Condvar)>,
 ) -> ExitState
@@ -652,7 +654,7 @@ where
                     return ExitState::Stop;
                 }
 
-                #[cfg(feature = "gdb")]
+                #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
                 let guest_mem = vm.get_memory().clone();
 
                 let runnable_vcpu = runnable_vcpu(
@@ -720,7 +722,10 @@ where
                         feature = "gdb"
                     ))]
                     to_gdb_tube,
-                    #[cfg(feature = "gdb")]
+                    #[cfg(all(
+                        any(target_arch = "x86_64", target_arch = "aarch64"),
+                        feature = "gdb"
+                    ))]
                     guest_mem,
                     msr_handlers,
                     guest_suspended_cvar,

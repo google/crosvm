@@ -16,9 +16,3 @@ pub mod plugin;
 pub mod sys;
 
 pub mod argument;
-
-#[cfg(all(
-    not(any(target_arch = "x86_64", target_arch = "aarch64")),
-    feature = "gdb"
-))]
-compile_error!("gdb feature is supported only on x86_64 and aarch64");

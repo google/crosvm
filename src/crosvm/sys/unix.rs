@@ -31,8 +31,6 @@ use std::process;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Barrier;
-#[cfg(any(target_arch = "x86_64", feature = "gdb"))]
-use std::thread;
 #[cfg(feature = "balloon")]
 use std::time::Duration;
 
@@ -1840,7 +1838,7 @@ where
         }
 
         let pci_root = linux.root_config.clone();
-        thread::Builder::new()
+        std::thread::Builder::new()
             .name("pci_root".to_string())
             .spawn(move || start_pci_root_worker(pci_root, hp_worker_tube))?;
     }
@@ -2470,7 +2468,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             to_vcpu_channels,
             from_vcpu_channel.unwrap(), // Must succeed to unwrap()
         );
-        thread::Builder::new()
+        std::thread::Builder::new()
             .name("gdb".to_owned())
             .spawn(move || gdb_thread(target, gdb_port_num))
             .context("failed to spawn GDB thread")?;

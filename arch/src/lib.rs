@@ -28,7 +28,7 @@ use base::AsRawDescriptor;
 use base::AsRawDescriptors;
 use base::Event;
 use base::SendTube;
-#[cfg(feature = "gdb")]
+#[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
 use base::Tube;
 use devices::virtio::VirtioDevice;
 use devices::BarRange;

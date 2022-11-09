@@ -310,6 +310,7 @@ all-x86_64 = ["all-aarch64", "plugin", "scudo"]
 all-armhf = [
     "composite-disk",
     "default",
+    "gdb", # no effect because gdb is not supported for armhf
     "libvda-stub",
     "tpm",
     ]
