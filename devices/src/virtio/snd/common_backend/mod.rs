@@ -10,7 +10,6 @@ use std::thread;
 
 use anyhow::Context;
 use audio_streams::BoxError;
-use audio_streams::StreamSourceGenerator;
 use base::debug;
 use base::error;
 use base::warn;
@@ -48,6 +47,9 @@ use crate::virtio::snd::parameters::Parameters;
 use crate::virtio::snd::parameters::StreamSourceBackend;
 use crate::virtio::snd::sys::create_stream_source_generators as sys_create_stream_source_generators;
 use crate::virtio::snd::sys::set_audio_thread_priority;
+use crate::virtio::snd::sys::SysAsyncStreamObjects;
+use crate::virtio::snd::sys::SysAudioStreamSourceGenerator;
+use crate::virtio::snd::sys::SysBufferWriter;
 use crate::virtio::DescriptorError;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
@@ -71,6 +73,9 @@ pub enum Error {
     /// Creating stream failed.
     #[error("Failed to create stream: {0}")]
     CreateStream(BoxError),
+    /// Creating stream failed.
+    #[error("No stream source found.")]
+    EmptyStreamSource,
     /// Creating kill event failed.
     #[error("Failed to create kill event: {0}")]
     CreateKillEvent(SysError),
@@ -131,8 +136,14 @@ pub enum Error {
 }
 
 pub enum DirectionalStream {
-    Input(Box<dyn audio_streams::capture::AsyncCaptureBufferStream>),
-    Output(Box<dyn audio_streams::AsyncPlaybackBufferStream>),
+    Input(
+        Box<dyn audio_streams::capture::AsyncCaptureBufferStream>,
+        usize, // `period_size` in `usize`
+    ),
+    Output(
+        Box<dyn audio_streams::AsyncPlaybackBufferStream>,
+        Box<dyn PlaybackBufferWriter>,
+    ),
 }
 
 #[derive(Copy, Clone, std::cmp::PartialEq, Eq)]
@@ -170,10 +181,10 @@ const SUPPORTED_FRAME_RATES: u64 = 1 << VIRTIO_SND_PCM_RATE_8000
 
 // Response from pcm_worker to pcm_queue
 pub struct PcmResponse {
-    desc_index: u16,
-    status: virtio_snd_pcm_status, // response to the pcm message
-    writer: Writer,
-    done: Option<oneshot::Sender<()>>, // when pcm response is written to the queue
+    pub(crate) desc_index: u16,
+    pub(crate) status: virtio_snd_pcm_status, // response to the pcm message
+    pub(crate) writer: Writer,
+    pub(crate) done: Option<oneshot::Sender<()>>, // when pcm response is written to the queue
 }
 
 pub struct VirtioSnd {
@@ -209,7 +220,7 @@ impl VirtioSnd {
 pub(crate) fn create_stream_source_generators(
     params: &Parameters,
     snd_data: &SndData,
-) -> Vec<Box<dyn StreamSourceGenerator>> {
+) -> Vec<SysAudioStreamSourceGenerator> {
     match params.backend {
         StreamSourceBackend::NULL => create_null_stream_source_generators(snd_data),
         StreamSourceBackend::Sys(backend) => {
@@ -441,7 +452,7 @@ fn run_worker(
     snd_data: SndData,
     queue_evts: Vec<Event>,
     kill_evt: Event,
-    stream_source_generators: Vec<Box<dyn StreamSourceGenerator>>,
+    stream_source_generators: Vec<SysAudioStreamSourceGenerator>,
 ) -> Result<(), String> {
     let ex = Executor::new().expect("Failed to create an executor");
 

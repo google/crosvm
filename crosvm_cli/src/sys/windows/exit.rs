@@ -338,6 +338,7 @@ pub enum Exit {
     CommonChildSetupError = 0xE0000098,
     CreateImeThread = 0xE0000099,
     OpenDiskImage = 0xE000009A,
+    VirtioSoundDeviceNew = 0xE000009B,
 }
 
 impl From<Exit> for ExitCode {

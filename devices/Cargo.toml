@@ -33,6 +33,7 @@ argh = "0.1.7"
 async-task = "4"
 acpi_tables = {path = "../acpi_tables" }
 anyhow = "*"
+async-trait = "0.1.36"
 audio_streams = "*"
 balloon_control = { path = "../common/balloon_control" }
 base = { path = "../base" }

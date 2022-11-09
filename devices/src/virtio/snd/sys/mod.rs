@@ -7,7 +7,7 @@ cfg_if::cfg_if! {
         mod unix;
         use unix as platform;
     } else if #[cfg(windows)] {
-        mod windows;
+        pub(crate) mod windows;
         use windows as platform;
     }
 }
@@ -15,3 +15,7 @@ cfg_if::cfg_if! {
 pub(crate) use platform::create_stream_source_generators;
 pub(crate) use platform::set_audio_thread_priority;
 pub use platform::StreamSourceBackend;
+pub(crate) use platform::SysAsyncStreamObjects;
+pub(crate) use platform::SysAudioStreamSource;
+pub(crate) use platform::SysAudioStreamSourceGenerator;
+pub(crate) use platform::SysBufferWriter;

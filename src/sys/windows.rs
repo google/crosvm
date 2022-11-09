@@ -84,6 +84,8 @@ use devices::tsc::standard_deviation;
 use devices::tsc::TscSyncMitigations;
 use devices::virtio;
 use devices::virtio::block::block::DiskOption;
+use devices::virtio::snd::common_backend::VirtioSnd;
+use devices::virtio::snd::parameters::Parameters as SndParameters;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost::user::device::gpu::sys::windows::GpuVmmConfig;
 #[cfg(feature = "balloon")]
@@ -505,6 +507,20 @@ fn create_virtio_devices(
         let dev = create_console_device(cfg, param)?;
         devs.push(dev);
     }
+
+    let features = virtio::base_features(cfg.protection_type);
+    let snd_params = SndParameters {
+        backend: ExitContext::exit_context(
+            "winaudio".try_into(),
+            Exit::VirtioSoundDeviceNew,
+            "failed to set up virtio sound device",
+        )?,
+        ..Default::default()
+    };
+    devs.push(VirtioDeviceStub {
+        dev: Box::new(VirtioSnd::new(features, snd_params)?),
+        jail: None,
+    });
 
     if let Some(tube) = pvclock_device_tube {
         #[cfg(feature = "pvclock")]

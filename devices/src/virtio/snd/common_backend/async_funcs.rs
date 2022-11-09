@@ -8,6 +8,7 @@ use std::io::Read;
 use std::io::Write;
 use std::rc::Rc;
 
+use async_trait::async_trait;
 use audio_streams::capture::AsyncCaptureBuffer;
 use audio_streams::AsyncPlaybackBuffer;
 use base::debug;
@@ -27,14 +28,16 @@ use futures::SinkExt;
 use futures::StreamExt;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
+#[cfg(windows)]
+use win_audio::AudioSharedFormat;
 
-use super::DirectionalStream;
 use super::Error;
 use super::SndData;
 use super::WorkerStatus;
 use crate::virtio::snd::common::*;
 use crate::virtio::snd::common_backend::stream_info::SetParams;
 use crate::virtio::snd::common_backend::stream_info::StreamInfo;
+use crate::virtio::snd::common_backend::DirectionalStream;
 use crate::virtio::snd::common_backend::PcmResponse;
 use crate::virtio::snd::constants::*;
 use crate::virtio::snd::layout::*;
@@ -43,6 +46,46 @@ use crate::virtio::Queue;
 use crate::virtio::Reader;
 use crate::virtio::SignalableInterrupt;
 use crate::virtio::Writer;
+
+// TODO(b/246601226): Remove once a generic audio_stream solution that can accpet
+// arbitrarily size buffers.
+/// Trait to wrap system specific helpers for writing to endpoint playback buffers.
+#[async_trait(?Send)]
+pub trait PlaybackBufferWriter {
+    fn new(
+        guest_period_bytes: usize,
+        #[cfg(windows)] frame_size: usize,
+        #[cfg(windows)] frame_rate: usize,
+        #[cfg(windows)] guest_num_channels: usize,
+        #[cfg(windows)] audio_shared_format: AudioSharedFormat,
+    ) -> Self
+    where
+        Self: Sized;
+
+    /// Returns the period of the endpoint device.
+    fn endpoint_period_bytes(&self) -> usize;
+
+    /// Read audio samples from the tx virtqueue.
+    fn copy_to_buffer(
+        &mut self,
+        dst_buf: &mut AsyncPlaybackBuffer<'_>,
+        reader: &mut Reader,
+    ) -> Result<usize, Error> {
+        dst_buf.copy_from(reader).map_err(Error::Io)
+    }
+    /// Check to see if an additional read from the tx virtqueue is needed during a playback
+    /// loop. If so, read from the virtqueue.
+    ///
+    /// Prefill will happen, for example, if the endpoint buffer requires a 513 frame period, but
+    /// each tx virtqueue read only produces 480 frames.
+    #[cfg(windows)]
+    async fn check_and_prefill(
+        &mut self,
+        mem: &GuestMemory,
+        desc_receiver: &mut mpsc::UnboundedReceiver<DescriptorChain>,
+        sender: &mut mpsc::UnboundedSender<PcmResponse>,
+    ) -> Result<(), Error>;
+}
 
 #[derive(Debug)]
 enum VirtioSndPcmCmd {
@@ -184,17 +227,20 @@ async fn process_pcm_ctrl(
 async fn write_data(
     mut dst_buf: AsyncPlaybackBuffer<'_>,
     reader: Option<Reader>,
-    period_bytes: usize,
+    buffer_writer: &mut Box<dyn PlaybackBufferWriter>,
 ) -> Result<(), Error> {
     let transferred = match reader {
-        Some(mut reader) => dst_buf.copy_from(&mut reader),
-        None => dst_buf.copy_from(&mut io::repeat(0).take(period_bytes as u64)),
-    }
-    .map_err(Error::Io)?;
-    if transferred as usize != period_bytes {
+        Some(mut reader) => buffer_writer.copy_to_buffer(&mut dst_buf, &mut reader)?,
+        None => dst_buf
+            .copy_from(&mut io::repeat(0).take(buffer_writer.endpoint_period_bytes() as u64))
+            .map_err(Error::Io)?,
+    };
+
+    if transferred as usize != buffer_writer.endpoint_period_bytes() {
         error!(
             "Bytes written {} != period_bytes {}",
-            transferred, period_bytes
+            transferred,
+            buffer_writer.endpoint_period_bytes()
         );
         Err(Error::InvalidBufferSize)
     } else {
@@ -288,6 +334,19 @@ async fn drain_desc_receiver(
     Ok(())
 }
 
+pub(crate) fn get_index_with_reader_and_writer(
+    mem: &GuestMemory,
+    desc_chain: DescriptorChain,
+) -> Result<(u16, Reader, Writer), Error> {
+    let desc_index = desc_chain.index;
+    let mut reader =
+        Reader::new(mem.clone(), desc_chain.clone()).map_err(Error::DescriptorChain)?;
+    // stream_id was already read in handle_pcm_queue
+    reader.consume(std::mem::size_of::<virtio_snd_pcm_xfer>());
+    let writer = Writer::new(mem.clone(), desc_chain).map_err(Error::DescriptorChain)?;
+    Ok((desc_index, reader, writer))
+}
+
 /// Start a pcm worker that receives descriptors containing PCM frames (audio data) from the tx/rx
 /// queue, and forward them to CRAS. One pcm worker per stream.
 ///
@@ -300,7 +359,6 @@ pub async fn start_pcm_worker(
     status_mutex: Rc<AsyncMutex<WorkerStatus>>,
     mem: GuestMemory,
     mut sender: mpsc::UnboundedSender<PcmResponse>,
-    period_bytes: usize,
 ) -> Result<(), Error> {
     let res = pcm_worker_loop(
         ex,
@@ -309,7 +367,6 @@ pub async fn start_pcm_worker(
         &status_mutex,
         &mem,
         &mut sender,
-        period_bytes,
     )
     .await;
     *status_mutex.lock().await = WorkerStatus::Quit;
@@ -332,50 +389,52 @@ async fn pcm_worker_loop(
     status_mutex: &Rc<AsyncMutex<WorkerStatus>>,
     mem: &GuestMemory,
     sender: &mut mpsc::UnboundedSender<PcmResponse>,
-    period_bytes: usize,
 ) -> Result<(), Error> {
     match dstream {
-        DirectionalStream::Output(mut stream) => {
-            loop {
-                let dst_buf = stream
-                    .next_playback_buffer(&ex)
-                    .await
-                    .map_err(Error::FetchBuffer)?;
-                let worker_status = status_mutex.lock().await;
-                match *worker_status {
-                    WorkerStatus::Quit => {
-                        drain_desc_receiver(desc_receiver, mem, sender).await?;
-                        if let Err(e) = write_data(dst_buf, None, period_bytes).await {
-                            error!("Error on write_data after worker quit: {}", e)
-                        }
-                        break Ok(());
+        #[allow(unused_mut)]
+        DirectionalStream::Output(mut stream, mut buffer_writer) => loop {
+            let dst_buf = stream
+                .next_playback_buffer(&ex)
+                .await
+                .map_err(Error::FetchBuffer)?;
+            let worker_status = status_mutex.lock().await;
+            match *worker_status {
+                WorkerStatus::Quit => {
+                    drain_desc_receiver(desc_receiver, mem, sender).await?;
+                    if let Err(e) = write_data(dst_buf, None, &mut buffer_writer).await {
+                        error!("Error on write_data after worker quit: {}", e)
                     }
-                    WorkerStatus::Pause => {
-                        write_data(dst_buf, None, period_bytes).await?;
-                    }
-                    WorkerStatus::Running => match desc_receiver.try_next() {
+                    break Ok(());
+                }
+                WorkerStatus::Pause => {
+                    write_data(dst_buf, None, &mut buffer_writer).await?;
+                }
+                WorkerStatus::Running => {
+                    // TODO(b/246601226): Remove once a generic audio_stream solution that can
+                    // accpet arbitrarily size buffers
+                    #[cfg(windows)]
+                    buffer_writer
+                        .check_and_prefill(mem, desc_receiver, sender)
+                        .await?;
+
+                    match desc_receiver.try_next() {
                         Err(e) => {
                             error!("Underrun. No new DescriptorChain while running: {}", e);
-                            write_data(dst_buf, None, period_bytes).await?;
+                            write_data(dst_buf, None, &mut buffer_writer).await?;
                         }
                         Ok(None) => {
                             error!("Unreachable. status should be Quit when the channel is closed");
-                            write_data(dst_buf, None, period_bytes).await?;
+                            write_data(dst_buf, None, &mut buffer_writer).await?;
                             return Err(Error::InvalidPCMWorkerState);
                         }
                         Ok(Some(desc_chain)) => {
-                            let desc_index = desc_chain.index;
-                            let mut reader = Reader::new(mem.clone(), desc_chain.clone())
-                                .map_err(Error::DescriptorChain)?;
-                            // stream_id was already read in handle_pcm_queue
-                            reader.consume(std::mem::size_of::<virtio_snd_pcm_xfer>());
-                            let writer = Writer::new(mem.clone(), desc_chain)
-                                .map_err(Error::DescriptorChain)?;
+                            let (desc_index, reader, writer) =
+                                get_index_with_reader_and_writer(mem, desc_chain)?;
 
                             sender
                                 .send(PcmResponse {
                                     desc_index,
-                                    status: write_data(dst_buf, Some(reader), period_bytes)
+                                    status: write_data(dst_buf, Some(reader), &mut buffer_writer)
                                         .await
                                         .into(),
                                     writer,
@@ -384,64 +443,57 @@ async fn pcm_worker_loop(
                                 .await
                                 .map_err(Error::MpscSend)?;
                         }
-                    },
+                    }
                 }
             }
-        }
-        DirectionalStream::Input(mut stream) => {
-            loop {
-                let src_buf = stream
-                    .next_capture_buffer(&ex)
-                    .await
-                    .map_err(Error::FetchBuffer)?;
+        },
+        DirectionalStream::Input(mut stream, period_bytes) => loop {
+            let src_buf = stream
+                .next_capture_buffer(&ex)
+                .await
+                .map_err(Error::FetchBuffer)?;
 
-                let worker_status = status_mutex.lock().await;
-                match *worker_status {
-                    WorkerStatus::Quit => {
-                        drain_desc_receiver(desc_receiver, mem, sender).await?;
-                        if let Err(e) = read_data(src_buf, None, period_bytes).await {
-                            error!("Error on read_data after worker quit: {}", e)
-                        }
-                        break Ok(());
+            let worker_status = status_mutex.lock().await;
+            match *worker_status {
+                WorkerStatus::Quit => {
+                    drain_desc_receiver(desc_receiver, mem, sender).await?;
+                    if let Err(e) = read_data(src_buf, None, period_bytes).await {
+                        error!("Error on read_data after worker quit: {}", e)
                     }
-                    WorkerStatus::Pause => {
+                    break Ok(());
+                }
+                WorkerStatus::Pause => {
+                    read_data(src_buf, None, period_bytes).await?;
+                }
+                WorkerStatus::Running => match desc_receiver.try_next() {
+                    Err(e) => {
+                        error!("Overrun. No new DescriptorChain while running: {}", e);
                         read_data(src_buf, None, period_bytes).await?;
                     }
-                    WorkerStatus::Running => match desc_receiver.try_next() {
-                        Err(e) => {
-                            error!("Overrun. No new DescriptorChain while running: {}", e);
-                            read_data(src_buf, None, period_bytes).await?;
-                        }
-                        Ok(None) => {
-                            error!("Unreachable. status should be Quit when the channel is closed");
-                            read_data(src_buf, None, period_bytes).await?;
-                            return Err(Error::InvalidPCMWorkerState);
-                        }
-                        Ok(Some(desc_chain)) => {
-                            let desc_index = desc_chain.index;
-                            let mut reader = Reader::new(mem.clone(), desc_chain.clone())
-                                .map_err(Error::DescriptorChain)?;
-                            // stream_id was already read in handle_pcm_queue
-                            reader.consume(std::mem::size_of::<virtio_snd_pcm_xfer>());
-                            let mut writer = Writer::new(mem.clone(), desc_chain)
-                                .map_err(Error::DescriptorChain)?;
+                    Ok(None) => {
+                        error!("Unreachable. status should be Quit when the channel is closed");
+                        read_data(src_buf, None, period_bytes).await?;
+                        return Err(Error::InvalidPCMWorkerState);
+                    }
+                    Ok(Some(desc_chain)) => {
+                        let (desc_index, _reader, mut writer) =
+                            get_index_with_reader_and_writer(mem, desc_chain)?;
 
-                            sender
-                                .send(PcmResponse {
-                                    desc_index,
-                                    status: read_data(src_buf, Some(&mut writer), period_bytes)
-                                        .await
-                                        .into(),
-                                    writer,
-                                    done: None,
-                                })
-                                .await
-                                .map_err(Error::MpscSend)?;
-                        }
-                    },
-                }
+                        sender
+                            .send(PcmResponse {
+                                desc_index,
+                                status: read_data(src_buf, Some(&mut writer), period_bytes)
+                                    .await
+                                    .into(),
+                                writer,
+                                done: None,
+                            })
+                            .await
+                            .map_err(Error::MpscSend)?;
+                    }
+                },
             }
-        }
+        },
     }
 }
 
@@ -745,7 +797,7 @@ pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
                             the number of chmaps ({})",
                             start_id,
                             count,
-                            snd_data.pcm_info.len()
+                            snd_data.chmap_info.len()
                         );
                         return writer
                             .write_obj(VIRTIO_SND_S_BAD_MSG)

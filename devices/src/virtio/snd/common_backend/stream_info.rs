@@ -6,8 +6,6 @@ use std::fmt;
 use std::rc::Rc;
 
 use audio_streams::SampleFormat;
-use audio_streams::StreamSource;
-use audio_streams::StreamSourceGenerator;
 use base::error;
 use cros_async::sync::Mutex as AsyncMutex;
 use cros_async::Executor;
@@ -22,7 +20,11 @@ use super::WorkerStatus;
 use crate::virtio::snd::common::*;
 use crate::virtio::snd::common_backend::async_funcs::*;
 use crate::virtio::snd::common_backend::DirectionalStream;
+use crate::virtio::snd::common_backend::SysAsyncStreamObjects;
+use crate::virtio::snd::common_backend::SysBufferWriter;
 use crate::virtio::snd::constants::*;
+use crate::virtio::snd::sys::SysAudioStreamSource;
+use crate::virtio::snd::sys::SysAudioStreamSourceGenerator;
 use crate::virtio::DescriptorChain;
 
 /// Parameters for setting parameters in StreamInfo
@@ -38,13 +40,13 @@ pub struct SetParams {
 
 /// StreamInfo represents a virtio snd stream.
 pub struct StreamInfo {
-    stream_source: Option<Box<dyn StreamSource>>,
-    stream_source_generator: Box<dyn StreamSourceGenerator>,
-    channels: u8,
-    format: SampleFormat,
-    frame_rate: u32,
+    pub(crate) stream_source: Option<SysAudioStreamSource>,
+    stream_source_generator: SysAudioStreamSourceGenerator,
+    pub(crate) channels: u8,
+    pub(crate) format: SampleFormat,
+    pub(crate) frame_rate: u32,
     buffer_bytes: usize,
-    period_bytes: usize,
+    pub(crate) period_bytes: usize,
     direction: u8,  // VIRTIO_SND_D_*
     pub state: u32, // VIRTIO_SND_R_PCM_SET_PARAMS -> VIRTIO_SND_R_PCM_STOP, or 0 (uninitialized)
 
@@ -98,7 +100,7 @@ impl StreamInfo {
     /// Creates a new [`StreamInfo`].
     ///
     /// * `stream_source_generator`: Generator which generates stream source in [`StreamInfo::prepare()`].
-    pub fn new(stream_source_generator: Box<dyn StreamSourceGenerator>) -> Self {
+    pub fn new(stream_source_generator: SysAudioStreamSourceGenerator) -> Self {
         StreamInfo {
             stream_source: None,
             stream_source_generator,
@@ -191,53 +193,48 @@ impl StreamInfo {
                     .map_err(Error::GenerateStreamSource)?,
             );
         }
-        // (*)
-        // `buffer_size` in `audio_streams` API indicates the buffer size in bytes that the stream
-        // consumes (or transmits) each time (next_playback/capture_buffer).
-        // `period_bytes` in virtio-snd device (or ALSA) indicates the device transmits (or
-        // consumes) for each PCM message.
-        // Therefore, `buffer_size` in `audio_streams` == `period_bytes` in virtio-snd.
-        let (stream, pcm_sender) = match self.direction {
-            VIRTIO_SND_D_OUTPUT => (
-                DirectionalStream::Output(
-                    self.stream_source
-                        .as_mut()
-                        .unwrap()
-                        .async_new_async_playback_stream(
-                            self.channels as usize,
-                            self.format,
-                            self.frame_rate,
-                            // See (*)
-                            self.period_bytes / frame_size,
-                            ex,
-                        )
-                        .await
-                        .map_err(Error::CreateStream)?
-                        .1,
-                ),
-                tx_send.clone(),
-            ),
-            VIRTIO_SND_D_INPUT => {
-                (
-                    DirectionalStream::Input(
-                        self.stream_source
-                            .as_mut()
-                            .unwrap()
-                            .async_new_async_capture_stream(
-                                self.channels as usize,
-                                self.format,
-                                self.frame_rate,
-                                // See (*)
-                                self.period_bytes / frame_size,
-                                &[],
-                                ex,
-                            )
-                            .await
-                            .map_err(Error::CreateStream)?
-                            .1,
+        let SysAsyncStreamObjects { stream, pcm_sender } = match self.direction {
+            VIRTIO_SND_D_OUTPUT => {
+                let sys_async_stream = self.set_up_async_playback_stream(frame_size, ex).await?;
+
+                let buffer_writer = SysBufferWriter::new(
+                    self.period_bytes,
+                    #[cfg(windows)]
+                    frame_size,
+                    #[cfg(windows)]
+                    usize::try_from(self.frame_rate).expect("Failed to cast from u32 to usize"),
+                    #[cfg(windows)]
+                    usize::try_from(self.channels).expect("Failed to cast from u32 to usize"),
+                    #[cfg(windows)]
+                    sys_async_stream.audio_shared_format,
+                );
+                SysAsyncStreamObjects {
+                    stream: DirectionalStream::Output(
+                        sys_async_stream.async_playback_buffer_stream,
+                        Box::new(buffer_writer),
                     ),
-                    rx_send.clone(),
-                )
+                    pcm_sender: tx_send.clone(),
+                }
+            }
+            VIRTIO_SND_D_INPUT => {
+                let async_stream = self
+                    .stream_source
+                    .as_mut()
+                    .ok_or(Error::EmptyStreamSource)?
+                    .new_async_capture_stream(
+                        self.channels as usize,
+                        self.format,
+                        self.frame_rate,
+                        self.period_bytes / frame_size,
+                        &[],
+                        ex,
+                    )
+                    .map_err(Error::CreateStream)?
+                    .1;
+                SysAsyncStreamObjects {
+                    stream: DirectionalStream::Input(async_stream, self.period_bytes),
+                    pcm_sender: rx_send.clone(),
+                }
             }
             _ => unreachable!(),
         };
@@ -254,7 +251,6 @@ impl StreamInfo {
             self.status_mutex.clone(),
             mem,
             pcm_sender,
-            self.period_bytes,
         );
         self.worker_future = Some(Box::new(ex.spawn_local(f).into_future()));
         self.ex = Some(ex.clone());
@@ -336,10 +332,11 @@ impl StreamInfo {
 }
 
 // TODO(b/246997900): Get these new tests to run on Windows.
-#[cfg(unix)]
 #[cfg(test)]
 mod tests {
     use audio_streams::NoopStreamSourceGenerator;
+    #[cfg(windows)]
+    use vm_memory::GuestAddress;
 
     use super::*;
 
@@ -372,6 +369,9 @@ mod tests {
         expected_ok: bool,
         expected_state: u32,
     ) -> StreamInfo {
+        #[cfg(windows)]
+        let mem = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+        #[cfg(unix)]
         let mem = GuestMemory::new(&[]).unwrap();
         let (tx_send, _) = mpsc::unbounded();
         let (rx_send, _) = mpsc::unbounded();

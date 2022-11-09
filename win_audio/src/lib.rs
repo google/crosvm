@@ -254,6 +254,29 @@ impl WinAudioServer for NoopStreamSource {
         ))
     }
 
+    fn new_async_playback_stream_and_get_shared_format(
+        &mut self,
+        num_channels: usize,
+        format: SampleFormat,
+        frame_rate: usize,
+        buffer_size: usize,
+        ex: &dyn audio_streams::AudioStreamsExecutor,
+    ) -> Result<(Box<dyn AsyncPlaybackBufferStream>, AudioSharedFormat), BoxError> {
+        let (_, playback_stream) = self
+            .new_async_playback_stream(num_channels, format, frame_rate as u32, buffer_size, ex)
+            .unwrap();
+
+        // Set shared format to be the same as the incoming audio format.
+        let format = AudioSharedFormat {
+            bit_depth: format.sample_bytes() * 8,
+            frame_rate,
+            channels: num_channels,
+            shared_audio_engine_period_in_frames: buffer_size * format.sample_bytes(),
+            channel_mask: None,
+        };
+        Ok((playback_stream, format))
+    }
+
     fn is_noop_stream(&self) -> bool {
         true
     }
