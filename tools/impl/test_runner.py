@@ -283,7 +283,6 @@ def execute_test(
     target: TestTarget,
     attempts: int,
     collect_coverage: bool,
-    integration_test: bool,
     executable: Executable,
 ):
     """
@@ -295,7 +294,7 @@ def execute_test(
     """
     options = CRATE_OPTIONS.get(executable.crate_name, [])
     args: List[str] = []
-    if TestOption.SINGLE_THREADED in options or integration_test:
+    if TestOption.SINGLE_THREADED in options:
         args += ["--test-threads=1"]
 
     binary_path = executable.binary_path
@@ -354,6 +353,68 @@ def execute_test(
     return result  # type: ignore
 
 
+def execute_integration_test(
+    target: TestTarget,
+    attempts: int,
+    collect_coverage: bool,
+    executable: Executable,
+):
+    """
+    Executes a single integration test on the given test targed
+
+    Test output is hidden unless the test fails or VERBOSE mode is enabled.
+    """
+    args: List[str] = ["--test-threads=1"]
+    binary_path = executable.binary_path
+
+    previous_attempts: List[ExecutableResults] = []
+    for i in range(1, attempts + 1):
+        print(f"Running integration test {executable.name} on {target}... (attempt {i}/{attempts})")
+
+        try:
+            test_process = test_target.exec_file_on_target(
+                target,
+                binary_path,
+                args=args,
+                timeout=get_test_timeout(target, executable),
+                generate_profile=True,
+                stdout=None if VERBOSE else subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+            profile_files: List[Path] = []
+            if collect_coverage:
+                profile_files = [*test_target.list_profile_files(binary_path)]
+                if not profile_files:
+                    print()
+                    print(f"Warning: Running {binary_path} did not produce a profile file.")
+
+            result = ExecutableResults(
+                executable.name,
+                binary_path,
+                test_process.returncode == 0,
+                test_process.stdout,
+                previous_attempts,
+                profile_files,
+            )
+        except subprocess.TimeoutExpired as e:
+            # Append a note about the timeout to the stdout of the process.
+            msg = f"\n\nProcess timed out after {e.timeout}s\n"
+            result = ExecutableResults(
+                executable.name,
+                binary_path,
+                False,
+                e.stdout.decode("utf-8") + msg if e.stdout else msg,
+                previous_attempts,
+                [],
+            )
+        if result.success:
+            break
+        else:
+            previous_attempts.append(result)
+
+    return result  # type: ignore
+
+
 def print_test_progress(result: ExecutableResults):
     if not result.success or result.previous_attempts or VERBOSE:
         if result.success:
@@ -394,9 +455,7 @@ def execute_all(
         sys.stdout.flush()
         with Pool(PARALLELISM) as pool:
             for result in pool.imap(
-                functools.partial(
-                    execute_test, unit_test_target, attempts, collect_coverage, False
-                ),
+                functools.partial(execute_test, unit_test_target, attempts, collect_coverage),
                 unit_tests,
             ):
                 print_test_progress(result)
@@ -412,10 +471,11 @@ def execute_all(
         )
         sys.stdout.flush()
         for executable in integration_tests:
-            result = execute_test(
-                integration_test_target, attempts, collect_coverage, True, executable
+            result = execute_integration_test(
+                integration_test_target, attempts, collect_coverage, executable
             )
-            print_test_progress(result)
+            if not result.success:
+                print(result.test_log)
             yield result
         print()
 
