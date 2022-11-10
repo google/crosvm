@@ -2225,15 +2225,14 @@ where
 
         if let SliceType::P | SliceType::Sp = current_slice.header().slice_type() {
             self.copy_into_ref_pic_list(RefPicList::RefPicList0, RefPicListName::P0);
-            return self.modify_ref_pic_list(current_slice, RefPicList::RefPicList0);
+            self.modify_ref_pic_list(current_slice, RefPicList::RefPicList0)
         } else if let SliceType::B = current_slice.header().slice_type() {
             self.copy_into_ref_pic_list(RefPicList::RefPicList0, RefPicListName::B0);
             self.copy_into_ref_pic_list(RefPicList::RefPicList1, RefPicListName::B1);
-            return self
-                .modify_ref_pic_list(current_slice, RefPicList::RefPicList0)
-                .and(self.modify_ref_pic_list(current_slice, RefPicList::RefPicList1));
+            self.modify_ref_pic_list(current_slice, RefPicList::RefPicList0)
+                .and(self.modify_ref_pic_list(current_slice, RefPicList::RefPicList1))
         } else {
-            return Ok(());
+            Ok(())
         }
     }
 

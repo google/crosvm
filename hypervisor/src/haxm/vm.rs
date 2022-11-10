@@ -117,7 +117,7 @@ impl HaxmVm {
             return false;
         }
 
-        return (cap & capability_info.winfo as u32) != 0;
+        (cap & capability_info.winfo as u32) != 0
     }
 
     pub fn register_log_file(&self, path: &str) -> Result<()> {

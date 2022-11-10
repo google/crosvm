@@ -40,7 +40,7 @@ pub const INVALID_DESCRIPTOR: RawDescriptor = INVALID_HANDLE_VALUE;
 
 impl PartialEq for SafeDescriptor {
     fn eq(&self, other: &Self) -> bool {
-        return compare_object_handles(self.descriptor, other.as_raw_descriptor());
+        compare_object_handles(self.descriptor, other.as_raw_descriptor())
     }
 }
 

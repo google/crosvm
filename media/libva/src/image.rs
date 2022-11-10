@@ -164,7 +164,7 @@ impl<'a> Image<'a> {
 
         if status.0 == bindings::constants::VA_STATUS_ERROR_OPERATION_FAILED as i32 {
             // The implementation can't derive, try the create API instead.
-            return Ok(false);
+            Ok(false)
         } else {
             status.check()?;
             Ok(true)

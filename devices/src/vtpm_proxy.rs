@@ -84,7 +84,7 @@ impl VtpmProxy {
 
         self.buf = response.get_response().to_vec();
 
-        return Ok(());
+        Ok(())
     }
 }
 

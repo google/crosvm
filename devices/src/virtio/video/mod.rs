@@ -202,6 +202,8 @@ impl VirtioDevice for VideoDevice {
         copy_config(data, 0, cfg.as_mut_slice(), offset);
     }
 
+    // Allow error! and early return anywhere in function
+    #[allow(clippy::needless_return)]
     fn activate(
         &mut self,
         mem: GuestMemory,

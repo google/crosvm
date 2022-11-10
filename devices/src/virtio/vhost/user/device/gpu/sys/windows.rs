@@ -90,7 +90,7 @@ impl GpuBackend {
             .detach();
         self.platform_workers.borrow_mut().push(handle);
 
-        return Ok(());
+        Ok(())
     }
 }
 

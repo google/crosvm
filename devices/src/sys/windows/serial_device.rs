@@ -49,7 +49,7 @@ pub(crate) fn create_system_type_serial_device<T: SerialDevice>(
     keep_rds: &mut Vec<RawDescriptor>,
 ) -> std::result::Result<T, Error> {
     match &param.path {
-        None => return Err(Error::PathRequired),
+        None => Err(Error::PathRequired),
         Some(path) => {
             // We must create this pipe in non-blocking mode because a blocking
             // read in one thread will block a write in another thread having a
@@ -73,13 +73,13 @@ pub(crate) fn create_system_type_serial_device<T: SerialDevice>(
             keep_rds.push(pipe_in.as_raw_descriptor());
             keep_rds.push(pipe_out.as_raw_descriptor());
 
-            return Ok(T::new_with_pipe(
+            Ok(T::new_with_pipe(
                 protection_type,
                 evt,
                 pipe_in,
                 pipe_out,
                 keep_rds.to_vec(),
-            ));
+            ))
         }
     }
 }

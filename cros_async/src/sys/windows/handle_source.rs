@@ -412,7 +412,7 @@ impl<F: AsRawDescriptor> IoSourceExt<F> for HandleSource<F> {
     /// In the multi-source case, the 0th source will be returned. If sources are not
     /// interchangeable, behavior is undefined.
     fn as_source(&self) -> &F {
-        return &self.sources[0];
+        &self.sources[0]
     }
 
     async fn wait_for_handle(&self) -> AsyncResult<u64> {
