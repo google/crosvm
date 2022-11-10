@@ -21,8 +21,8 @@ use broker_ipc::CommonChildStartupArgs;
 use crosvm_cli::sys::windows::exit::Exit;
 use crosvm_cli::sys::windows::exit::ExitContext;
 use crosvm_cli::sys::windows::exit::ExitContextAnyhow;
-use metrics::event_details_proto::EmulatorDllDetails;
-use metrics::event_details_proto::RecordDetails;
+use metrics::protos::event_details::EmulatorDllDetails;
+use metrics::protos::event_details::RecordDetails;
 use metrics::MetricEventType;
 #[cfg(all(feature = "slirp"))]
 use net_util::slirp::sys::windows::SlirpStartupConfig;

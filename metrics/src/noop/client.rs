@@ -4,7 +4,7 @@
 
 use base::Tube;
 
-use crate::event_details_proto::RecordDetails;
+use crate::protos::event_details::RecordDetails;
 use crate::MetricEventType;
 use crate::MetricsClientDestructor;
 

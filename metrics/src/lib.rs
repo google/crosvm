@@ -17,8 +17,9 @@ mod metrics_cleanup;
 mod metrics_requests;
 mod noop;
 mod sys;
-// Exports a <name>_proto module for each proto file
-include!(concat!(env!("OUT_DIR"), "/metrics_protos/generated.rs"));
+pub mod protos {
+    include!(concat!(env!("OUT_DIR"), "/metrics_protos/generated.rs"));
+}
 
 pub use controller::MetricsController;
 pub use event_types::MetricEventType;

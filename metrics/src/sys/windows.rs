@@ -10,7 +10,7 @@ pub mod wmi;
 pub use gpu_metrics::*;
 use win_util::ProcessType;
 
-use crate::event_details_proto::EmulatorProcessType;
+use crate::protos::event_details::EmulatorProcessType;
 
 pub const METRIC_UPLOAD_INTERVAL_SECONDS: i64 = 60;
 pub const API_GUEST_ANGLE_VK_ENUM_NAME: &str = "API_GUEST_ANGLE_VK";

@@ -25,4 +25,4 @@ wmi = { version = "^0.9" }
 
 
 [build-dependencies]
-protoc-rust = "2.24"
+proto_build_tools = { path = "../proto_build_tools" }

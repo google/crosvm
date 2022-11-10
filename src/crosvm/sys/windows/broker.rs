@@ -68,8 +68,8 @@ use crosvm_cli::sys::windows::exit::ExitContextAnyhow;
 use devices::virtio::vhost::user::device::NetBackendConfig;
 #[cfg(feature = "gpu")]
 use gpu_display::EventDevice;
-use metrics::event_details_proto::EmulatorChildProcessExitDetails;
-use metrics::event_details_proto::RecordDetails;
+use metrics::protos::event_details::EmulatorChildProcessExitDetails;
+use metrics::protos::event_details::RecordDetails;
 use metrics::MetricEventType;
 #[cfg(feature = "slirp")]
 use net_util::slirp::sys::windows::SlirpStartupConfig;
