@@ -85,6 +85,7 @@ members = [
     "power_monitor",
     "prebuilts",
     "protos",
+    "proto_build_tools",
     "qcow_utils",
     "resources",
     "rutabaga_gfx",

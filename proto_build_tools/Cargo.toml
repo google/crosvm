@@ -1,0 +1,11 @@
+[package]
+name = "proto_build_tools"
+authors = ["The Chromium OS Authors"]
+version = "0.1.0"
+edition = "2021"
+
+[features]
+
+[dependencies]
+protoc-rust = "2.22"
+
