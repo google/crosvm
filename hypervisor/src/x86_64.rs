@@ -215,6 +215,9 @@ pub struct CpuConfigX86_64 {
 
     /// whether enabling ITMT scheduler
     pub itmt: bool,
+
+    /// whether setting hybrid CPU type
+    pub hybrid_type: Option<CpuHybridType>,
 }
 
 impl CpuConfigX86_64 {
@@ -225,6 +228,7 @@ impl CpuConfigX86_64 {
         enable_pnp_data: bool,
         no_smt: bool,
         itmt: bool,
+        hybrid_type: Option<CpuHybridType>,
     ) -> Self {
         CpuConfigX86_64 {
             force_calibrated_tsc_leaf,
@@ -233,6 +237,7 @@ impl CpuConfigX86_64 {
             enable_pnp_data,
             no_smt,
             itmt,
+            hybrid_type,
         }
     }
 }
@@ -843,4 +848,13 @@ pub struct DebugRegs {
 pub struct Register {
     pub id: u32,
     pub value: u64,
+}
+
+/// The hybrid type for intel hybrid CPU.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CpuHybridType {
+    /// Intel Atom.
+    Atom,
+    /// Intel Core.
+    Core,
 }

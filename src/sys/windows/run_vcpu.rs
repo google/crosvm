@@ -212,6 +212,7 @@ impl VcpuRunThread {
             false, /* enable_pnp_data */
             no_smt,
             false, /* itmt */
+            None,  /* hybrid_type */
         ));
 
         #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
@@ -317,6 +318,7 @@ impl VcpuRunThread {
                         false, /* enable_pnp_data */
                         no_smt,
                         false, /* itmt */
+                        None,  /* hybrid_type */
                     );
 
                     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]

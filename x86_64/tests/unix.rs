@@ -50,7 +50,7 @@ fn feature_and_vendor_name() {
         },
     });
 
-    let cpu_config = CpuConfigX86_64::new(false, false, false, false, false, false);
+    let cpu_config = CpuConfigX86_64::new(false, false, false, false, false, false, None);
     filter_cpuid(
         &mut cpuid,
         &CpuIdContext::new(

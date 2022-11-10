@@ -1202,6 +1202,7 @@ fn create_whpx(
         false, /* enable_pnp_data */
         no_smt,
         false, /* itmt */
+        None,  /* hybrid_type */
     );
 
     // context for non-cpu-specific cpuid results

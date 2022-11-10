@@ -2468,6 +2468,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             cfg.enable_pnp_data,
             cfg.no_smt,
             cfg.itmt,
+            None, /* hybrid_type */
         ));
         #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
         let bus_lock_ratelimit_ctrl = Arc::clone(&bus_lock_ratelimit_ctrl);

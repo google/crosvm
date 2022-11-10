@@ -260,7 +260,7 @@ where
                 .add_vcpu(0, &vcpu)
                 .expect("failed to add vcpu to irqchip");
 
-            let cpu_config = CpuConfigX86_64::new(false, false, false, false, false, false);
+            let cpu_config = CpuConfigX86_64::new(false, false, false, false, false, false, None);
             if !vm.check_capability(VmCap::EarlyInitCpuid) {
                 setup_cpuid(&hyp, &irq_chip, &vcpu, 0, 1, cpu_config).unwrap();
             }

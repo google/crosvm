@@ -12,6 +12,7 @@ use devices::Apic;
 use devices::IrqChipCap;
 use devices::IrqChipX86_64;
 use hypervisor::CpuConfigX86_64;
+use hypervisor::CpuHybridType;
 use hypervisor::CpuIdEntry;
 use hypervisor::HypervisorCap;
 use hypervisor::HypervisorX86_64;
@@ -54,6 +55,10 @@ pub const EAX_HWP_EPP_SHIFT: u32 = 10; // HWP Energy Perf. Preference.
 pub const EAX_ITMT_SHIFT: u32 = 14; // Intel Turbo Boost Max Technology 3.0 available.
 pub const EAX_CORE_TEMP: u32 = 0; // Core Temperature
 pub const EAX_PKG_TEMP: u32 = 6; // Package Temperature
+pub const EAX_CORE_TYPE_SHIFT: u32 = 24; // Hybrid information. Hybrid core type.
+
+const EAX_CORE_TYPE_ATOM: u32 = 0x20; // Hybrid Atom CPU.
+const EAX_CORE_TYPE_CORE: u32 = 0x40; // Hybrid Core CPU.
 
 /// All of the context required to emulate the CPUID instruction.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -209,6 +214,9 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
                 let result = unsafe { (ctx.cpuid_count)(entry.function, entry.index) };
                 entry.cpuid.edx |= result.edx & (1 << EDX_HYBRID_CPU_SHIFT);
             }
+            if ctx.cpu_config.hybrid_type.is_some() && entry.index == 0 {
+                entry.cpuid.edx |= 1 << EDX_HYBRID_CPU_SHIFT;
+            }
         }
         0x15 => {
             if ctx.calibrated_tsc_leaf_required
@@ -235,6 +243,16 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
                 // Safe because we pass 0x1A for this call and the host supports the
                 // `cpuid` instruction
                 entry.cpuid = unsafe { (ctx.cpuid)(entry.function) };
+            }
+            if let Some(hybrid) = &ctx.cpu_config.hybrid_type {
+                match hybrid {
+                    CpuHybridType::Atom => {
+                        entry.cpuid.eax |= EAX_CORE_TYPE_ATOM << EAX_CORE_TYPE_SHIFT;
+                    }
+                    CpuHybridType::Core => {
+                        entry.cpuid.eax |= EAX_CORE_TYPE_CORE << EAX_CORE_TYPE_SHIFT;
+                    }
+                }
             }
         }
         0xB | 0x1F => {
@@ -400,6 +418,7 @@ mod tests {
             enable_pnp_data: false,
             no_smt: false,
             itmt: false,
+            hybrid_type: None,
         };
         let ctx = CpuIdContext {
             vcpu_id: 0,
