@@ -5,7 +5,6 @@
 [target.'cfg(all())']
 rustflags = [
     # TODO(crbug/908640): To be resolved.
-    "-Aclippy::needless_return",
     "-Aclippy::missing_safety_doc", # 26 errors
 
     # We don't care about these lints. Okay to remain suppressed globally.
