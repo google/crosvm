@@ -20,5 +20,8 @@ fi
 if [[ $# -eq 0 ]]; then
     sudo -u crosvmdev /bin/bash -l
 else
-    sudo -u crosvmdev /bin/bash -l -c "$*"
+    # Use "@Q" expansion to correctly quote the arguments.
+    # For more details, see the "${parameter@operator}" section of
+    # https://www.gnu.org/software/bash/manual/html_node/Shell-Parameter-Expansion.html.
+    sudo -u crosvmdev /bin/bash -l -c "${*@Q}"
 fi
