@@ -745,7 +745,7 @@ impl Worker {
             // always be negligible, but will sometimes be non-zero in cases where
             // traffic is high on the NamedPipe, especially a duplex pipe.
             if let Ok(cloned_event) = write_completed_event.try_clone() {
-                if let Ok(async_event) = EventAsync::new(cloned_event, ex) {
+                if let Ok(async_event) = EventAsync::new_without_reset(cloned_event, ex) {
                     let _ = async_event.next_val().await;
                 } else {
                     error!(
