@@ -2461,6 +2461,13 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         };
 
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        let vcpu_hybrid_type = if !cfg.vcpu_hybrid_type.is_empty() {
+            Some(*cfg.vcpu_hybrid_type.get(&cpu_id).unwrap())
+        } else {
+            None
+        };
+
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         let cpu_config = Some(CpuConfigX86_64::new(
             cfg.force_calibrated_tsc_leaf,
             cfg.host_cpu_topology,
@@ -2468,7 +2475,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             cfg.enable_pnp_data,
             cfg.no_smt,
             cfg.itmt,
-            None, /* hybrid_type */
+            vcpu_hybrid_type,
         ));
         #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
         let bus_lock_ratelimit_ctrl = Arc::clone(&bus_lock_ratelimit_ctrl);

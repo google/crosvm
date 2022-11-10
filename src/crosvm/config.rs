@@ -2,6 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use std::arch::x86_64::__cpuid;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use std::arch::x86_64::__cpuid_count;
 use std::collections::BTreeMap;
 use std::net;
 use std::path::Path;
@@ -50,6 +54,8 @@ use devices::BusRange;
 use devices::PciAddress;
 use devices::PflashParameters;
 use devices::StubPciParameters;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use hypervisor::CpuHybridType;
 use hypervisor::ProtectionType;
 use resources::AddressRange;
 use serde::Deserialize;
@@ -58,7 +64,11 @@ use serde_keyvalue::FromKeyValues;
 use uuid::Uuid;
 use vm_control::BatteryType;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use x86_64::check_host_hybrid_support;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use x86_64::set_enable_pnp_data_msr_config;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use x86_64::CpuIdCall;
 
 pub(crate) use super::sys::HypervisorKind;
 
@@ -100,6 +110,17 @@ pub enum Executable {
     Plugin(PathBuf),
 }
 
+/// The core types in hybrid architecture.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[derive(Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct CpuCoreType {
+    /// Intel Atom.
+    pub atom: CpuSet,
+    /// Intel Core.
+    pub core: CpuSet,
+}
+
 #[derive(Debug, Default, PartialEq, Eq, Deserialize, FromKeyValues)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct CpuOptions {
@@ -109,6 +130,9 @@ pub struct CpuOptions {
     /// Vector of CPU ids to be grouped into the same cluster.
     #[serde(default)]
     pub clusters: Vec<CpuSet>,
+    /// Core Type of CPUs.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub core_types: Option<CpuCoreType>,
 }
 
 #[derive(Debug, Default, Deserialize, FromKeyValues)]
@@ -1193,6 +1217,8 @@ pub struct Config {
     pub vcpu_affinity: Option<VcpuAffinity>,
     pub vcpu_cgroup_path: Option<PathBuf>,
     pub vcpu_count: Option<usize>,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub vcpu_hybrid_type: BTreeMap<usize, CpuHybridType>, // CPU index -> hybrid type
     #[cfg(unix)]
     pub vfio: Vec<super::sys::config::VfioOption>,
     #[cfg(unix)]
@@ -1407,6 +1433,8 @@ impl Default for Config {
             vcpu_affinity: None,
             vcpu_cgroup_path: None,
             vcpu_count: None,
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            vcpu_hybrid_type: BTreeMap::new(),
             #[cfg(unix)]
             vfio: Vec::new(),
             #[cfg(unix)]
@@ -1518,6 +1546,22 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
                             .to_string(),
                     );
                 }
+            }
+        }
+    }
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    if !cfg.vcpu_hybrid_type.is_empty() {
+        if cfg.host_cpu_topology {
+            return Err("`core-types` cannot be set with `host-cpu-topology`.".to_string());
+        }
+        check_host_hybrid_support(&CpuIdCall::new(__cpuid_count, __cpuid))
+            .map_err(|e| format!("the cpu doesn't support `core-types`: {}", e))?;
+        if cfg.vcpu_hybrid_type.len() != cfg.vcpu_count.unwrap_or(1) {
+            return Err("`core-types` must be set for all virtual CPUs".to_string());
+        }
+        for cpu_id in 0..cfg.vcpu_count.unwrap_or(1) {
+            if !cfg.vcpu_hybrid_type.contains_key(&cpu_id) {
+                return Err("`core-types` must be set for all virtual CPUs".to_string());
             }
         }
     }
@@ -1690,6 +1734,21 @@ mod tests {
             }
         );
 
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            let res: CpuOptions = from_key_values("core-types=[atom=[1,3-7],core=[0,2]]").unwrap();
+            assert_eq!(
+                res,
+                CpuOptions {
+                    core_types: Some(CpuCoreType {
+                        atom: CpuSet::new([1, 3, 4, 5, 6, 7]),
+                        core: CpuSet::new([0, 2])
+                    }),
+                    ..Default::default()
+                }
+            );
+        }
+
         // All together
         let res: CpuOptions = from_key_values("16,clusters=[[0],[4-6],[7]]").unwrap();
         assert_eq!(
@@ -1697,6 +1756,7 @@ mod tests {
             CpuOptions {
                 num_cores: Some(16),
                 clusters: vec![CpuSet::new([0]), CpuSet::new([4, 5, 6]), CpuSet::new([7])],
+                ..Default::default()
             }
         );
 
@@ -1706,6 +1766,7 @@ mod tests {
             CpuOptions {
                 num_cores: Some(32),
                 clusters: vec![CpuSet::new([0, 1, 2, 3, 4, 5, 6, 7]), CpuSet::new([30, 31])],
+                ..Default::default()
             }
         );
     }
