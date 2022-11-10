@@ -13,4 +13,4 @@ kvm_sys = { path = "../kvm_sys", optional = true }
 protobuf = "2.3"
 
 [build-dependencies]
-protoc-rust = "2.3"
+proto_build_tools = { path = "../proto_build_tools" }
