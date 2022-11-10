@@ -374,6 +374,7 @@ impl ScmSocket for StreamChannel {
 /// Trait for types that can be converted into an `iovec` that can be referenced by a syscall for
 /// the lifetime of this object.
 ///
+/// # Safety
 /// This trait is unsafe because interfaces that use this trait depend on the base pointer and size
 /// being accurate.
 pub unsafe trait AsIobuf: Sized {

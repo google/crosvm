@@ -909,6 +909,7 @@ impl Vm {
 
     /// Enable the specified capability.
     /// See documentation for KVM_ENABLE_CAP.
+    /// # Safety
     /// This function is marked as unsafe because `cap` may contain values which are interpreted as
     /// pointers by the kernel.
     pub unsafe fn kvm_enable_cap(&self, cap: &kvm_enable_cap) -> Result<()> {
@@ -1482,6 +1483,7 @@ impl Vcpu {
 
     /// Enable the specified capability.
     /// See documentation for KVM_ENABLE_CAP.
+    /// # Safety
     /// This function is marked as unsafe because `cap` may contain values which are interpreted as
     /// pointers by the kernel.
     pub unsafe fn kvm_enable_cap(&self, cap: &kvm_enable_cap) -> Result<()> {

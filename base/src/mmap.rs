@@ -375,6 +375,7 @@ impl VolatileMemory for MemoryMapping {
 
 /// A range of memory that can be msynced, for abstracting over different types of memory mappings.
 ///
+/// # Safety
 /// Safe when implementers guarantee `ptr`..`ptr+size` is an mmaped region owned by this object that
 /// can't be unmapped during the `MappedRegion`'s lifetime.
 pub unsafe trait MappedRegion: Send + Sync {

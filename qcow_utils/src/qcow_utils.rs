@@ -19,6 +19,8 @@ use libc::EINVAL;
 use libc::EIO;
 use libc::ENOSYS;
 
+/// # Safety
+/// The path passed in must be a valid pointer to a path; only NULL pointers are rejected.
 #[no_mangle]
 #[allow(unused_variables)] // If the qcow feature is disabled, this function becomes an empty stub.
 pub unsafe extern "C" fn create_qcow_with_size(path: *const c_char, virtual_size: u64) -> c_int {
@@ -54,6 +56,8 @@ pub unsafe extern "C" fn create_qcow_with_size(path: *const c_char, virtual_size
     -ENOSYS // Not implemented
 }
 
+/// # Safety
+/// The path passed in must be a valid pointer to a path; only NULL pointers are rejected.
 #[no_mangle]
 pub unsafe extern "C" fn expand_disk_image(path: *const c_char, virtual_size: u64) -> c_int {
     // NULL pointers are checked, but this will access any other invalid pointer passed from C

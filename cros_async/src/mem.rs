@@ -26,6 +26,7 @@ pub struct MemRegion {
 }
 
 /// Trait for memory that can yield both iovecs in to the backing memory.
+/// # Safety
 /// Must be OK to modify the backing memory without owning a mut able reference. For example,
 /// this is safe for GuestMemory and VolatileSlices in crosvm as those types guarantee they are
 /// dealt with as volatile.

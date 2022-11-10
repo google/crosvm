@@ -69,6 +69,7 @@ pub fn read_raw_stdin(out: &mut [u8]) -> Result<usize> {
 
 /// Trait for file descriptors that are TTYs, according to `isatty(3)`.
 ///
+/// # Safety
 /// This is marked unsafe because the implementation must promise that the returned RawFd is a valid
 /// fd and that the lifetime of the returned fd is at least that of the trait object.
 pub unsafe trait Terminal {

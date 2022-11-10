@@ -543,6 +543,7 @@ pub unsafe fn kill(pid: Pid, signum: c_int) -> Result<()> {
 /// Note that this is only useful for signals between SIGRTMIN and SIGRTMAX because these are
 /// guaranteed to not be used by the C runtime.
 ///
+/// # Safety
 /// This is marked unsafe because the implementation of this trait must guarantee that the returned
 /// pthread_t is valid and has a lifetime at least that of the trait object.
 pub unsafe trait Killable {
