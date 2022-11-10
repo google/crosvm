@@ -8,7 +8,6 @@ use std::time::Duration;
 use std::time::Instant;
 
 use anyhow::anyhow;
-use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
 use base::set_cpu_affinity;
@@ -274,40 +273,95 @@ pub fn calibrate_tsc_state() -> Result<TscState> {
 /// * `rdtsc` - Function for reading the TSC value, usually just runs RDTSC instruction.
 /// * `cores` - Cores to measure the TSC offset of.
 fn calibrate_tsc_state_inner(rdtsc: fn() -> u64, cores: Vec<usize>) -> Result<TscState> {
-    let handle = std::thread::spawn(move || {
-        calibrate_tsc_frequency(
-            rdtsc,
-            0, // calibrate on core 0. Core 0 should always be available.
-            TSC_CALIBRATION_SAMPLES,
-            TSC_CALIBRATION_DURATION,
-            TSC_CALIBRATION_STANDARD_DEVIATION_LIMIT,
-        )
-        .context("Failed to calibrate tsc frequency")
-    });
+    // For loops can't return values unfortunately
+    let mut calibration_contents: Option<(u64, Vec<TscMoment>)> = None;
+    for core in &cores {
+        // Copy the value of core to a moveable variable now.
+        let moved_core = *core;
+        let handle = std::thread::Builder::new()
+            .name(format!("tsc_calibration_core_{}", core).to_string())
+            .spawn(move || {
+                calibrate_tsc_frequency(
+                    rdtsc,
+                    moved_core,
+                    TSC_CALIBRATION_SAMPLES,
+                    TSC_CALIBRATION_DURATION,
+                    TSC_CALIBRATION_STANDARD_DEVIATION_LIMIT,
+                )
+            })
+            .map_err(|e| {
+                anyhow!(
+                    "TSC frequency calibration thread for core {} failed: {:?}",
+                    core,
+                    e
+                )
+            })?;
 
-    let (freq, reference_moments) = handle
-        .join()
-        .unwrap_or_else(|e| Err(anyhow!("TSC calibration thread failed: {:?}", e)))?;
+        match handle.join() {
+            Ok(calibrate_result) => match calibrate_result {
+                Ok((freq, reference_moments)) => {
+                    if freq <= 0 {
+                        warn!(
+                            "TSC calibration on core {} resulted in TSC frequency of {} Hz, \
+                    trying on another core.",
+                            core, freq
+                        );
+                        continue;
+                    };
+                    calibration_contents = Some((freq as u64, reference_moments));
+                    break;
+                }
 
-    let freq = if freq <= 0 {
-        bail!("TSC calibration resulted in TSC frequency of {} Hz", freq);
-    } else {
-        freq as u64
-    };
+                Err(TscCalibrationError::SetCpuAffinityError { core, err }) => {
+                    // There are several legitimate reasons why it might not be possible for crosvm
+                    // to run on some cores:
+                    //  1. Some cores may be offline.
+                    //  2. On Windows, the process affinity mask may not contain all cores.
+                    //
+                    // We thus just warn in this situation.
+                    warn!(
+                        "Failed to set thread affinity to {} during tsc frequency calibration due \
+                            to {}. This core is probably offline.",
+                        core, err
+                    );
+                }
+            },
+            // thread failed
+            Err(e) => {
+                return Err(anyhow!(
+                    "TSC frequency calibration thread for core {} failed: {:?}",
+                    core,
+                    e
+                ));
+            }
+        };
+    }
+
+    let (freq, reference_moments) =
+        calibration_contents.ok_or(anyhow!("Failed to calibrate TSC frequency on all cores"))?;
 
     let mut offsets: Vec<(usize, i128)> = Vec::with_capacity(cores.len());
     for core in cores {
         let thread_reference_moments = reference_moments.clone();
-        let handle = std::thread::spawn(move || {
-            measure_tsc_offset(
-                core,
-                rdtsc,
-                freq,
-                thread_reference_moments,
-                TSC_CALIBRATION_SAMPLES,
-                TSC_CALIBRATION_STANDARD_DEVIATION_LIMIT,
-            )
-        });
+        let handle = std::thread::Builder::new()
+            .name(format!("measure_tsc_offset_core_{}", core).to_string())
+            .spawn(move || {
+                measure_tsc_offset(
+                    core,
+                    rdtsc,
+                    freq,
+                    thread_reference_moments,
+                    TSC_CALIBRATION_SAMPLES,
+                    TSC_CALIBRATION_STANDARD_DEVIATION_LIMIT,
+                )
+            })
+            .map_err(|e| {
+                anyhow!(
+                    "TSC offset measurement thread for core {} failed: {:?}",
+                    core,
+                    e
+                )
+            })?;
         let offset = match handle.join() {
             // thread succeeded
             Ok(measurement_result) => match measurement_result {
