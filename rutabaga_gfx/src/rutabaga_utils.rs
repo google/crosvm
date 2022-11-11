@@ -530,6 +530,12 @@ impl From<GfxstreamFlags> for i32 {
     }
 }
 
+impl From<GfxstreamFlags> for u64 {
+    fn from(flags: GfxstreamFlags) -> u64 {
+        flags.0 as u64
+    }
+}
+
 /// Transfers {to, from} 1D buffers, 2D textures, 3D textures, and cubemaps.
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]

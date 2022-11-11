@@ -10,7 +10,6 @@
 
 use std::convert::TryInto;
 use std::mem::size_of;
-use std::mem::transmute;
 use std::os::raw::c_char;
 use std::os::raw::c_int;
 use std::os::raw::c_uchar;
@@ -34,35 +33,38 @@ use crate::rutabaga_core::RutabagaContext;
 use crate::rutabaga_core::RutabagaResource;
 use crate::rutabaga_utils::*;
 
-#[repr(C)]
-pub struct VirglRendererGlCtxParam {
-    pub version: c_int,
-    pub shared: bool,
-    pub major_ver: c_int,
-    pub minor_ver: c_int,
-}
+// User data, for custom use by renderer. An example is VirglCookie which includes a fence
+// handler and render server descriptor.
+const STREAM_RENDERER_PARAM_USER_DATA: u64 = 1;
 
-// In gfxstream, only write_fence is used (for synchronization of commands delivered)
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct VirglRendererCallbacks {
-    pub version: c_int,
-    pub write_fence: unsafe extern "C" fn(cookie: *mut c_void, fence: u32),
-    pub create_gl_context: Option<
-        unsafe extern "C" fn(
-            cookie: *mut c_void,
-            scanout_idx: c_int,
-            param: *mut VirglRendererGlCtxParam,
-        ) -> *mut c_void,
-    >,
-    pub destroy_gl_context: Option<unsafe extern "C" fn(cookie: *mut c_void, ctx: *mut c_void)>,
-    pub make_current: Option<
-        unsafe extern "C" fn(cookie: *mut c_void, scanout_idx: c_int, ctx: *mut c_void) -> c_int,
-    >,
+// Bitwise flags for the renderer.
+const STREAM_RENDERER_PARAM_RENDERER_FLAGS: u64 = 2;
 
-    pub get_drm_fd: Option<unsafe extern "C" fn(cookie: *mut c_void) -> c_int>,
-    pub write_context_fence:
-        unsafe extern "C" fn(cookie: *mut c_void, fence_id: u64, ctx_id: u32, ring_idx: u8),
+// Reserved to replace write_fence / write_context_fence.
+#[allow(dead_code)]
+const STREAM_RENDERER_PARAM_FENCE_CALLBACK: u64 = 3;
+
+// Callback for writing a fence.
+const STREAM_RENDERER_PARAM_WRITE_FENCE_CALLBACK: u64 = 4;
+type StreamRendererParamWriteFenceCallback =
+    unsafe extern "C" fn(cookie: *mut c_void, fence_id: u32);
+
+// Callback for writing a fence with context.
+const STREAM_RENDERER_PARAM_WRITE_CONTEXT_FENCE_CALLBACK: u64 = 5;
+type StreamRendererParamWriteContextFenceCallback =
+    unsafe extern "C" fn(cookie: *mut c_void, fence_id: u64, ctx_id: u32, ring_idx: u8);
+
+// Window 0's width.
+const STREAM_RENDERER_PARAM_WIN0_WIDTH: u64 = 6;
+
+// Window 0's height.
+const STREAM_RENDERER_PARAM_WIN0_HEIGHT: u64 = 7;
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct StreamRendererParam {
+    key: u64,
+    value: u64,
 }
 
 #[repr(C)]
@@ -84,18 +86,11 @@ pub struct stream_renderer_vulkan_info {
 pub type stream_renderer_create_blob = ResourceCreateBlob;
 
 extern "C" {
-
-    // Function to globally init gfxstream backend's internal state, taking display/renderer
-    // parameters.
-    fn gfxstream_backend_init(
-        display_width: u32,
-        display_height: u32,
-        display_type: u32,
-        renderer_cookie: *mut c_void,
-        renderer_flags: i32,
-        renderer_callbacks: *mut VirglRendererCallbacks,
-        gfxstream_callbacks: *mut c_void,
-    );
+    // Entry point for the stream renderer.
+    fn stream_renderer_init(
+        stream_renderer_params: *mut StreamRendererParam,
+        num_params: u64,
+    ) -> c_int;
 
     // virtio-gpu-3d ioctl functions (begin)
 
@@ -261,16 +256,6 @@ impl Drop for GfxstreamContext {
     }
 }
 
-const GFXSTREAM_RENDERER_CALLBACKS: &VirglRendererCallbacks = &VirglRendererCallbacks {
-    version: 3,
-    write_fence,
-    create_gl_context: None,
-    destroy_gl_context: None,
-    make_current: None,
-    get_drm_fd: None,
-    write_context_fence,
-};
-
 impl Gfxstream {
     pub fn init(
         display_width: u32,
@@ -283,16 +268,39 @@ impl Gfxstream {
             fence_handler: Some(fence_handler.clone()),
         }));
 
+        let mut stream_renderer_params = [
+            StreamRendererParam {
+                key: STREAM_RENDERER_PARAM_USER_DATA,
+                value: cookie as u64,
+            },
+            StreamRendererParam {
+                key: STREAM_RENDERER_PARAM_RENDERER_FLAGS,
+                value: gfxstream_flags.into(),
+            },
+            StreamRendererParam {
+                key: STREAM_RENDERER_PARAM_WRITE_FENCE_CALLBACK,
+                value: write_fence as StreamRendererParamWriteFenceCallback as usize as u64,
+            },
+            StreamRendererParam {
+                key: STREAM_RENDERER_PARAM_WRITE_CONTEXT_FENCE_CALLBACK,
+                value: write_context_fence as StreamRendererParamWriteContextFenceCallback as usize
+                    as u64,
+            },
+            StreamRendererParam {
+                key: STREAM_RENDERER_PARAM_WIN0_WIDTH,
+                value: display_width as u64,
+            },
+            StreamRendererParam {
+                key: STREAM_RENDERER_PARAM_WIN0_HEIGHT,
+                value: display_height as u64,
+            },
+        ];
+
         unsafe {
-            gfxstream_backend_init(
-                display_width,
-                display_height,
-                1, /* default to shmem display */
-                cookie as *mut c_void,
-                gfxstream_flags.into(),
-                transmute(GFXSTREAM_RENDERER_CALLBACKS),
-                null_mut(),
-            );
+            ret_to_res(stream_renderer_init(
+                stream_renderer_params.as_mut_ptr(),
+                stream_renderer_params.len() as u64,
+            ))?;
         }
 
         Ok(Box::new(Gfxstream {}))
