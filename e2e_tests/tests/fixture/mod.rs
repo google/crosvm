@@ -195,6 +195,12 @@ impl Config {
     }
 }
 
+static PREP_ONCE: Once = Once::new();
+const FROM_GUEST_PIPE: &str = "from_guest";
+const TO_GUEST_PIPE: &str = "to_guest";
+const CONTROL_PIPE: &str = "control";
+const VM_JSON_CONFIG_FILE: &str = "vm.json";
+
 /// Test fixture to spin up a VM running a guest that can be communicated with.
 ///
 /// After creation, commands can be sent via exec_in_guest. The VM is stopped
@@ -299,27 +305,30 @@ impl TestVm {
 
     /// Instanciate a new crosvm instance. The first call will trigger the download of prebuilt
     /// files if necessary.
-    pub fn new(cfg: Config) -> Result<TestVm> {
-        static PREP_ONCE: Once = Once::new();
+    ///
+    /// This generic method takes a `FnOnce` argument which is in charge of completing the `Command`
+    /// with all the relevant options needed to boot the VM.
+    pub fn new_generic<F>(f: F, cfg: Config) -> Result<TestVm>
+    where
+        F: FnOnce(&mut Command, &Path, &Config) -> Result<()>,
+    {
         PREP_ONCE.call_once(TestVm::initialize_once);
 
         // Create two named pipes to communicate with the guest.
         let test_dir = TempDir::new()?;
-        let from_guest_pipe = test_dir.path().join("from_guest");
-        let to_guest_pipe = test_dir.path().join("to_guest");
+        let from_guest_pipe = test_dir.path().join(FROM_GUEST_PIPE);
+        let to_guest_pipe = test_dir.path().join(TO_GUEST_PIPE);
         mkfifo(&from_guest_pipe)?;
         mkfifo(&to_guest_pipe)?;
 
-        let control_socket_path = test_dir.path().join("control");
+        let control_socket_path = test_dir.path().join(CONTROL_PIPE);
 
         let mut command = Command::new(find_crosvm_binary());
         command.args(&["run"]);
-        TestVm::configure_serial_devices(&mut command, &from_guest_pipe, &to_guest_pipe);
-        command.args(&["--socket", control_socket_path.to_str().unwrap()]);
-        TestVm::configure_rootfs(&mut command, cfg.o_direct);
-        command.args(cfg.extra_args);
-        // Set kernel as the last argument.
-        command.arg(kernel_path());
+
+        f(&mut command, test_dir.path(), &cfg)?;
+
+        command.args(&cfg.extra_args);
         // Set `Stdio::piped` so we can forward the outputs to stdout later.
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
@@ -363,6 +372,83 @@ impl TestVm {
             control_socket_path,
             process,
         })
+    }
+
+    pub fn new(cfg: Config) -> Result<TestVm> {
+        TestVm::new_generic(
+            |command, test_dir, cfg| {
+                TestVm::configure_serial_devices(
+                    command,
+                    &test_dir.join(FROM_GUEST_PIPE),
+                    &test_dir.join(TO_GUEST_PIPE),
+                );
+                command.args(&["--socket", test_dir.join(CONTROL_PIPE).to_str().unwrap()]);
+                TestVm::configure_rootfs(command, cfg.o_direct);
+                // Set kernel as the last argument.
+                command.arg(kernel_path());
+
+                Ok(())
+            },
+            cfg,
+        )
+    }
+
+    /// Generate a JSON configuration file for `cfg` and returns its path.
+    fn generate_json_config_file(test_dir: &Path, cfg: &Config) -> Result<PathBuf> {
+        let config_file_path = test_dir.join(VM_JSON_CONFIG_FILE);
+        let mut config_file = File::create(&config_file_path)?;
+
+        writeln!(
+            config_file,
+            r#"
+            {{
+              "executable-path": "{}",
+              "socket": "{}",
+              "params": [ "init=/bin/delegate" ],
+              "serial": [
+                {{
+                  "type": "syslog"
+                }},
+                {{
+                  "type": "file",
+                  "path": "{}",
+                  "input": "{}",
+                  "num": 2
+                }}
+              ],
+              "block": [
+                {{
+                  "path": "{}",
+                  "ro": true,
+                  "root": true,
+                  "o_direct": {}
+                }}
+              ]
+            }}
+            "#,
+            kernel_path().display(),
+            test_dir.join(CONTROL_PIPE).display(),
+            test_dir.join(FROM_GUEST_PIPE).display(),
+            test_dir.join(TO_GUEST_PIPE).display(),
+            rootfs_path().to_str().unwrap(),
+            cfg.o_direct,
+        )?;
+
+        Ok(config_file_path)
+    }
+
+    /// Instanciate a new crosvm instance using a configuration file. The first call will trigger
+    /// the download of prebuilt files if necessary.
+    pub fn new_with_config_file(cfg: Config) -> Result<TestVm> {
+        TestVm::new_generic(
+            |command, test_dir, cfg| {
+                let config_file_path = TestVm::generate_json_config_file(test_dir, cfg)?;
+                command.args(&["--cfg", config_file_path.to_str().unwrap()]);
+
+                Ok(())
+            },
+            cfg,
+        )
     }
 
     /// Executes the shell command `command` and returns the programs stdout.
