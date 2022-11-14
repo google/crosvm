@@ -11,14 +11,14 @@
 ARCH ?= $(shell arch)
 ifeq ($(ARCH), x86_64)
   KERNEL_ARCH=x86
-  KERNEL_CONFIG=arch/x86/configs/chromiumos-container-vm-x86_64_defconfig
+  KERNEL_CONFIG_NAME=container-vm-x86_64
   KERNEL_BINARY=bzImage
   DOCKER_ARCH=amd64
   CROSS_COMPILE=
   RUSTFLAGS=
 else ifeq ($(ARCH), aarch64)
   KERNEL_ARCH=arm64
-  KERNEL_CONFIG=arch/arm64/configs/chromiumos-container-vm-arm64_defconfig
+  KERNEL_CONFIG_NAME=container-vm-arm64
   KERNEL_BINARY=Image
   DOCKER_ARCH=arm64v8
   CROSS_COMPILE=aarch64-linux-gnu-
@@ -40,7 +40,7 @@ $(shell mkdir -p $(TARGET))
 
 # Parameteters for building the kernel locally
 KERNEL_REPO ?= https://chromium.googlesource.com/chromiumos/third_party/kernel
-KERNEL_BRANCH ?= chromeos-4.19
+KERNEL_BRANCH ?= chromeos-5.10
 
 ################################################################################
 # Main targets
@@ -87,7 +87,9 @@ $(TARGET)/bzImage: $(TARGET)/kernel-source $(TARGET)/kernel-build
 
 $(TARGET)/kernel-build: $(TARGET)/kernel-source
 	mkdir -p $@
-	cp -f $(TARGET)/kernel-source/$(KERNEL_CONFIG) $@/.config
+	cd $(TARGET)/kernel-source && \
+		CHROMEOS_KERNEL_FAMILY=termina \
+		chromeos/scripts/prepareconfig $(KERNEL_CONFIG_NAME) $@/.config
 
 $(TARGET)/kernel-source:
 	rm -rf $@

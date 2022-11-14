@@ -13,4 +13,6 @@ sudo apt install \
     squashfs-tools-ng \
     libelf-dev \
     flex \
-    bison
+    bison \
+    bc \
+    binfmt-support

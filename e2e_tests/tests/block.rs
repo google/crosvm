@@ -8,6 +8,7 @@ pub mod fixture;
 
 use std::env;
 use std::process::Command;
+use std::time;
 
 use fixture::Config;
 use fixture::TestVm;
@@ -81,6 +82,21 @@ fn resize() {
     ])
     .expect("Disk resizing command failed");
 
+    // Allow block device size to be updated within 500ms
+    let now = time::Instant::now();
+
+    while now.elapsed() <= time::Duration::from_millis(500) {
+        if vm
+            .exec_in_guest("blockdev --getsize64 /dev/vdb")
+            .unwrap()
+            .trim()
+            .parse::<u64>()
+            .unwrap()
+            == new_size
+        {
+            return;
+        }
+    }
     // Check the new block device size.
     assert_eq!(
         vm.exec_in_guest("blockdev --getsize64 /dev/vdb")

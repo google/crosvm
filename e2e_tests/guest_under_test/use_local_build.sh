@@ -9,10 +9,11 @@
 # Note: `source` this file, do not run it if you want it to set the environmens
 # variables for you.
 
+ARCH=$(arch)
 CARGO_TARGET=$(cargo metadata --no-deps --format-version 1 |
     jq -r ".target_directory")
-LOCAL_BZIMAGE=${CARGO_TARGET}/guest_under_test/bzImage
-LOCAL_ROOTFS=${CARGO_TARGET}/guest_under_test/rootfs
+LOCAL_BZIMAGE=${CARGO_TARGET}/guest_under_test/${ARCH}/bzImage
+LOCAL_ROOTFS=${CARGO_TARGET}/guest_under_test/${ARCH}/rootfs
 
 cd "${0%/*}" && make "${LOCAL_BZIMAGE}" "${LOCAL_ROOTFS}"
 
