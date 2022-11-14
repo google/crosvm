@@ -40,7 +40,11 @@ def RunSteps(api):
 
         # Ignore errors from unshallow as repo sync sometimes resulted in full git history
         api.crosvm.step_in_container(
-            "Unshallow crosvm", ["git", "fetch", "cros", "--unshallow"], cros=True, ok_ret="any"
+            "Unshallow crosvm as needed",
+            [
+                "for i in $(seq 1 5);do if [[ $(git rev-parse --is-shallow-repository) == 'true' ]]; then git fetch cros --unshallow; else break; fi; done"
+            ],
+            cros=True,
         )
 
         api.crosvm.step_in_container("Print current git log", ["git", "log"], cros=True)
