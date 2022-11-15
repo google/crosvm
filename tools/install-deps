@@ -53,6 +53,7 @@ sudo apt-get install --yes --no-install-recommends \
 pip3 install \
     meson \
     mdformat \
+    mdformat-tables \
     argh \
     mypy \
     black

@@ -9,7 +9,7 @@
 # To fix violations where possible:
 # $ ./tools/clippy --fix
 
-from typing import List
+from typing import List, Optional
 from impl.common import CROSVM_ROOT, run_main, cmd, chdir
 from impl.test_runner import get_workspace_excludes
 from impl.test_target import Triple, SHORTHANDS
@@ -21,7 +21,7 @@ def main(
     fix: bool = False,
     json: bool = False,
     locked: bool = False,
-    platform: str = None,
+    platform: Optional[str] = None,
 ):
     try:
         triple: Triple = Triple.from_shorthand(platform) if platform else Triple.host_default()

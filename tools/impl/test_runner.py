@@ -341,7 +341,7 @@ def execute_test(
                 executable.name,
                 binary_path,
                 False,
-                e.stdout.decode("utf-8") + msg,
+                e.stdout.decode("utf-8") if e.stdout else "" + msg,
                 previous_attempts,
                 [],
             )
