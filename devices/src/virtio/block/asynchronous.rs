@@ -648,13 +648,13 @@ impl BlockAsync {
         multi_queue: bool,
     ) -> u64 {
         let mut avail_features = base_features;
-        avail_features |= 1 << VIRTIO_BLK_F_FLUSH;
         if read_only {
             avail_features |= 1 << VIRTIO_BLK_F_RO;
         } else {
             if sparse {
                 avail_features |= 1 << VIRTIO_BLK_F_DISCARD;
             }
+            avail_features |= 1 << VIRTIO_BLK_F_FLUSH;
             avail_features |= 1 << VIRTIO_BLK_F_WRITE_ZEROES;
         }
         avail_features |= 1 << VIRTIO_BLK_F_SEG_MAX;
@@ -1130,7 +1130,7 @@ mod tests {
                 None,
             )
             .unwrap();
-            // read-only device should set VIRTIO_BLK_F_FLUSH and VIRTIO_BLK_F_RO
+            // writable device should set VIRTIO_F_FLUSH + VIRTIO_BLK_F_RO
             // + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE + VIRTIO_BLK_F_SEG_MAX
             // + VIRTIO_BLK_F_MQ + VIRTIO_RING_F_EVENT_IDX
             assert_eq!(0x120005244, b.features());
@@ -1152,10 +1152,10 @@ mod tests {
                 None,
             )
             .unwrap();
-            // read-only device should set VIRTIO_BLK_F_FLUSH and VIRTIO_BLK_F_RO
+            // read-only device should set VIRTIO_BLK_F_RO
             // + VIRTIO_F_VERSION_1 + VIRTIO_BLK_F_BLK_SIZE + VIRTIO_BLK_F_SEG_MAX
             // + VIRTIO_BLK_F_MQ + VIRTIO_RING_F_EVENT_IDX
-            assert_eq!(0x120001264, b.features());
+            assert_eq!(0x120001064, b.features());
         }
     }
 
