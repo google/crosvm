@@ -4,11 +4,13 @@
 
 //! renderer_utils: Utility functions and structs used by virgl_renderer and gfxstream.
 
+#[cfg(feature = "virgl_renderer_next")]
 use std::os::raw::c_int;
 use std::os::raw::c_void;
 use std::panic::catch_unwind;
 use std::process::abort;
 
+#[cfg(feature = "virgl_renderer_next")]
 use base::IntoRawDescriptor;
 use base::SafeDescriptor;
 
@@ -83,7 +85,7 @@ pub extern "C" fn write_context_fence(
     .unwrap_or_else(|_| abort())
 }
 
-#[allow(dead_code)]
+#[cfg(feature = "virgl_renderer_next")]
 pub unsafe extern "C" fn get_server_fd(cookie: *mut c_void, version: u32) -> c_int {
     catch_unwind(|| {
         assert!(!cookie.is_null());

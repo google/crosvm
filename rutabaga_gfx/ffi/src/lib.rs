@@ -157,7 +157,10 @@ pub unsafe extern "C" fn rutabaga_init(builder: &rutabaga_builder, ptr: &mut *mu
             .set_use_vulkan(true)
             .set_use_external_blob(true)
             .set_rutabaga_channels(rutabaga_channels_opt)
-            .build(fence_handler, None);
+            .build(
+                fence_handler,
+                #[cfg(feature = "virgl_renderer_next")] /* render_server_fd= */ None,
+            );
 
         let rtbg = return_on_error!(result);
         *ptr = Box::into_raw(Box::new(rtbg)) as _;
