@@ -755,8 +755,6 @@ mod tests {
         assert!(!is_flag("no-leading-dash"));
     }
 
-    // TODO(b/238361778) this doesn't work on Windows because is_flag isn't called yet.
-    #[cfg(unix)]
     #[test]
     fn args_split_long() {
         assert_eq!(
@@ -767,8 +765,6 @@ mod tests {
         );
     }
 
-    // TODO(b/238361778) this doesn't work on Windows because is_flag isn't called yet.
-    #[cfg(unix)]
     #[test]
     fn args_split_short() {
         assert_eq!(
