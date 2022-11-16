@@ -51,23 +51,22 @@ Upstream crosvm is not involved in these tests and they are not executed in cros
 The platforms below can all be tested using `tools/run_tests -p $platform`. The table indicates how
 these tests are executed:
 
-| Platform                      | Build |           Unit Tests            | Integration Tests | E2E Tests |
-| :---------------------------- | :---: | :-----------------------------: | :---------------: | :-------: |
-| x86_64 (linux)                |   ✅   |                ✅                |         ✅         |     ✅     |
-| aarch64 (linux)               |   ✅   | ✅ (qemu-static\[^qemu-static\]) | ✅ (qemu\[^qemu\]) |     ❌     |
-| armhf (linux)                 |   ✅   | ✅ (qemu-static\[^qemu-static\]) |         ❌         |     ❌     |
-| mingw64\[^windows\] (linux)   |   🚧   |           🚧 (wine64)            |         ❌         |     ❌     |
-| mingw64\[^windows\] (windows) |   🚧   |                🚧                |         🚧         |     ❌     |
+| Platform                    | Build |          Unit Tests           | Integration Tests | E2E Tests |
+| :-------------------------- | :---: | :---------------------------: | :---------------: | :-------: |
+| x86_64 (linux)              |   ✅   |               ✅               |         ✅         |     ✅     |
+| aarch64 (linux)             |   ✅   | ✅ (qemu-static[^qemu-static]) |  ✅ (qemu[^qemu])  |     ❌     |
+| armhf (linux)               |   ✅   | ✅ (qemu-static[^qemu-static]) |         ❌         |     ❌     |
+| mingw64[^windows] (linux)   |   🚧   |          🚧 (wine64)           |         ❌         |     ❌     |
+| mingw64[^windows] (windows) |   🚧   |               🚧               |         🚧         |     ❌     |
 
 Crosvm CI will use the same configuration as `tools/run_tests`.
 
-\[^qemu-static\]: qemu-static-aarch64 or qemu-static-arm translate instructions into x86 and
-executes them on the host kernel. This works well for unit tests, but will fail when interacting
-with platform specific kernel features.
+[^qemu-static]: qemu-static-aarch64 or qemu-static-arm translate instructions into x86 and executes them on the
+    host kernel. This works well for unit tests, but will fail when interacting with platform
+    specific kernel features.
 
-\[^qemu\]: run_tests will launch a VM for testing in the background. This VM is using full system
-emulation, which causes tests to be slow. Also not all aarch64 features are properly emulated, which
-prevents us from running e2e tests.
+[^qemu]: run_tests will launch a VM for testing in the background. This VM is using full system
+    emulation, which causes tests to be slow. Also not all aarch64 features are properly emulated,
+    which prevents us from running e2e tests.
 
-\[^windows\]: Windows builds of crosvm are a work in progress. Some tests are executed via wine64 on
-linux
+[^windows]: Windows builds of crosvm are a work in progress. Some tests are executed via wine64 on linux
