@@ -367,6 +367,10 @@ pub struct UnixSeqpacket {
     fd: RawFd,
 }
 
+// Safety: UnixSeqpacket is just a file descriptor, and it is safe to send FDs
+// between threads.
+unsafe impl Send for UnixSeqpacket {}
+
 impl UnixSeqpacket {
     /// Open a `SOCK_SEQPACKET` connection to socket named by `path`.
     ///

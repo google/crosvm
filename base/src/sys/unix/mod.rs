@@ -48,7 +48,6 @@ mod timer;
 pub mod vsock;
 mod write_zeroes;
 
-use std::cell::Cell;
 use std::convert::TryFrom;
 use std::ffi::CStr;
 use std::fs::remove_file;
@@ -138,9 +137,6 @@ pub type Pid = libc::pid_t;
 pub type Uid = libc::uid_t;
 pub type Gid = libc::gid_t;
 pub type Mode = libc::mode_t;
-
-/// Used to mark types as !Sync.
-pub type UnsyncMarker = std::marker::PhantomData<Cell<usize>>;
 
 #[macro_export]
 macro_rules! syscall {

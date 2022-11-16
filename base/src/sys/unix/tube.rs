@@ -4,7 +4,6 @@
 
 use std::io::IoSlice;
 use std::io::IoSliceMut;
-use std::marker::PhantomData;
 use std::os::unix::prelude::AsRawFd;
 use std::os::unix::prelude::RawFd;
 use std::time::Duration;
@@ -29,7 +28,6 @@ use crate::ReadNotifier;
 use crate::ScmSocket;
 use crate::StreamChannel;
 use crate::UnixSeqpacket;
-use crate::UnsyncMarker;
 
 // This size matches the inline buffer size of CmsgBuffer.
 const TUBE_MAX_FDS: usize = 32;
@@ -38,10 +36,6 @@ const TUBE_MAX_FDS: usize = 32;
 #[derive(Serialize, Deserialize)]
 pub struct Tube {
     socket: StreamChannel,
-
-    // Windows is !Sync. We share that characteristic to prevent writing cross-platform incompatible
-    // code.
-    _unsync_marker: UnsyncMarker,
 }
 
 impl Tube {
@@ -60,10 +54,7 @@ impl Tube {
     /// underlying socket type), otherwise, this method returns an error.
     pub fn new(socket: StreamChannel) -> Result<Tube> {
         match socket.get_framing_mode() {
-            FramingMode::Message => Ok(Tube {
-                socket,
-                _unsync_marker: PhantomData,
-            }),
+            FramingMode::Message => Ok(Tube { socket }),
             FramingMode::Byte => Err(Error::InvalidFramingMode),
         }
     }
@@ -73,7 +64,6 @@ impl Tube {
     pub fn new_from_unix_seqpacket(sock: UnixSeqpacket) -> Tube {
         Tube {
             socket: StreamChannel::from_unix_seqpacket(sock),
-            _unsync_marker: PhantomData,
         }
     }
 
@@ -175,7 +165,6 @@ impl FromRawDescriptor for Tube {
     unsafe fn from_raw_descriptor(rd: RawDescriptor) -> Self {
         Self {
             socket: StreamChannel::from_unix_seqpacket(UnixSeqpacket::from_raw_descriptor(rd)),
-            _unsync_marker: PhantomData,
         }
     }
 }

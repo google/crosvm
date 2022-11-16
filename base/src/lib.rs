@@ -160,7 +160,6 @@ pub use platform::MmapError;
 pub use platform::RawDescriptor;
 pub use platform::SerializeDescriptors;
 pub use platform::StreamChannel;
-pub use platform::UnsyncMarker;
 pub use platform::INVALID_DESCRIPTOR;
 use uuid::Uuid;
 
