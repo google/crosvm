@@ -9,6 +9,7 @@ x = []
 kiwi = []
 
 [dependencies]
+anyhow = "*"
 data_model = { path = "../common/data_model" }
 libc = "*"
 base = { path = "../base" }
@@ -19,7 +20,6 @@ cfg-if = "*"
 serde = { version = "1", features = [ "derive" ] }
 
 [target.'cfg(windows)'.dependencies]
-anyhow = "*"
 metrics = { path = "../metrics" }
 num-traits = "*"
 winapi = "*"

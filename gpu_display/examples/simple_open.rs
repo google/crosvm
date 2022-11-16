@@ -2,16 +2,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::process::exit;
+
+use anyhow::Context;
+use anyhow::Result;
 use gpu_display::GpuDisplay;
 use gpu_display::SurfaceType;
 
-fn main() {
-    let mut disp = GpuDisplay::open_x(None::<&str>).unwrap();
+fn run() -> Result<()> {
+    let mut disp = GpuDisplay::open_x(None::<&str>).context("open_x")?;
     let surface_id = disp
         .create_surface(None, 1280, 1024, SurfaceType::Scanout)
-        .unwrap();
+        .context("create_surface")?;
 
-    let mem = disp.framebuffer(surface_id).unwrap();
+    let mem = disp.framebuffer(surface_id).context("framebuffer")?;
     for y in 0..1024 {
         let mut row = [0u32; 1280];
         for (x, item) in row.iter_mut().enumerate() {
@@ -27,6 +31,15 @@ fn main() {
     disp.flip(surface_id);
 
     while !disp.close_requested(surface_id) {
-        disp.dispatch_events().unwrap();
+        disp.dispatch_events().context("dispatch_events")?;
+    }
+
+    Ok(())
+}
+
+fn main() {
+    if let Err(e) = run() {
+        eprintln!("error: {:#}", e);
+        exit(1);
     }
 }
