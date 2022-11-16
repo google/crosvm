@@ -5,19 +5,24 @@
 //! Integration tests for [PageHandler]. these are more than unit tests since [PageHandler] rely on
 //! the userfaultfd(2) kernel feature.
 
-use userfaultfd::UffdBuilder;
-
 use std::array;
 use std::thread;
 use std::time;
 
 use base::pagesize;
+use base::sys::wait_for_pid;
+use base::AsRawDescriptor;
+use base::FromRawDescriptor;
+use base::IntoRawDescriptor;
 use base::MemoryMappingBuilder;
+use base::SafeDescriptor;
 use base::SharedMemory;
+use base::Tube;
 use data_model::VolatileMemory;
 use swap::page_handler::Error;
 use swap::page_handler::PageHandler;
 use swap::userfaultfd::Userfaultfd;
+use userfaultfd::UffdBuilder;
 
 fn create_uffd_for_test() -> Userfaultfd {
     UffdBuilder::new()
@@ -45,6 +50,41 @@ fn register_region_success() {
         )
     };
 
+    assert_eq!(result.is_ok(), true);
+}
+
+#[test]
+fn register_region_skip_obsolete_process() {
+    let dir_path = tempfile::tempdir().unwrap();
+    let mmap = MemoryMappingBuilder::new(6 * pagesize()).build().unwrap();
+    let uffd: Userfaultfd = create_uffd_for_test();
+    let base_addr = mmap.get_ref::<u8>(0).unwrap().as_mut_ptr() as usize;
+    let (tube_main, tube_child) = Tube::pair().unwrap();
+    let pid = unsafe { libc::fork() };
+    if pid == 0 {
+        // child process
+        let uffd = create_uffd_for_test();
+        tube_child
+            .send(&unsafe { SafeDescriptor::from_raw_descriptor(uffd.as_raw_descriptor()) })
+            .unwrap();
+        std::process::exit(0);
+    }
+    let uffd_descriptor = tube_main
+        .recv::<SafeDescriptor>()
+        .unwrap()
+        .into_raw_descriptor();
+    wait_for_pid(pid, 0).unwrap();
+    let uffd_child = unsafe { Userfaultfd::from_raw_descriptor(uffd_descriptor) };
+
+    let result = unsafe {
+        PageHandler::register_regions(
+            &[uffd, uffd_child],
+            dir_path.path(),
+            &[base_addr..(base_addr + 3 * pagesize())],
+        )
+    };
+
+    // no error from ENOMEM
     assert_eq!(result.is_ok(), true);
 }
 

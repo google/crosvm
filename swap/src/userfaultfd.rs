@@ -8,8 +8,10 @@
 
 use std::convert::From;
 use std::os::unix::io::AsRawFd;
+use std::os::unix::prelude::FromRawFd;
 
 use base::AsRawDescriptor;
+use base::FromRawDescriptor;
 use base::RawDescriptor;
 pub use userfaultfd::Error as UffdError;
 pub use userfaultfd::Event as UffdEvent;
@@ -128,6 +130,12 @@ impl Userfaultfd {
 impl From<Uffd> for Userfaultfd {
     fn from(uffd: Uffd) -> Self {
         Self { uffd }
+    }
+}
+
+impl FromRawDescriptor for Userfaultfd {
+    unsafe fn from_raw_descriptor(descriptor: RawDescriptor) -> Self {
+        Self::from(Uffd::from_raw_fd(descriptor))
     }
 }
 

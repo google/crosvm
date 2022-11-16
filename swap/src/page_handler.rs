@@ -212,9 +212,16 @@ impl PageHandler {
                     // safe because the range is from the guest memory region. Even after the memory
                     // is removed by `MADV_REMOVE` at [PageHandler::swap_out()], the content will be
                     // swapped in from the swap file safely on a page fault.
-                    unsafe {
-                        uffd.register(base_addr, region_size)?;
-                    }
+                    let result = unsafe { uffd.register(base_addr, region_size) };
+                    match result {
+                        Ok(_) => Ok(()),
+                        // Userfaultfd returns `ENOMEM` if the corresponding process dies or run as
+                        // another program by `exec` system call. crosvm just skip the userfaultfd.
+                        Err(UffdError::SystemError(errno)) if errno as i32 == libc::ENOMEM => {
+                            Ok(())
+                        }
+                        Err(e) => Err(e),
+                    }?;
                 }
                 self.regions.push(Region {
                     head_page_idx,
