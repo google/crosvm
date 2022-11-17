@@ -19,6 +19,7 @@ set_robust_list: 1
 sigaltstack: 1
 # Disallow clone's other than new threads.
 clone: arg0 & 0x00010000
+clone3: 1
 write: 1
 eventfd2: 1
 poll: 1
@@ -26,6 +27,7 @@ getpid: 1
 getppid: 1
 # Allow PR_SET_NAME only.
 prctl: arg0 == 15
+rseq: 1
 access: 1
 arch_prctl: 1
 brk: 1
