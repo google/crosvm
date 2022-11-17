@@ -101,6 +101,14 @@ pub struct CpuOptions {
     pub num_cores: Option<usize>,
 }
 
+#[derive(Debug, Default, Deserialize, FromKeyValues)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct MemOptions {
+    /// Amount of guest memory in MiB.
+    #[serde(default)]
+    pub size: Option<u64>,
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct VhostUserOption {
     pub socket: PathBuf,
@@ -1779,6 +1787,18 @@ mod tests {
             parse_cpu_affinity("0=0,1,2:1=3-5:2=6,7-8").expect("parse failed"),
             VcpuAffinity::PerVcpu(expected_map),
         );
+    }
+
+    #[test]
+    fn parse_mem_opts() {
+        let res: MemOptions = from_key_values("").unwrap();
+        assert_eq!(res.size, None);
+
+        let res: MemOptions = from_key_values("1024").unwrap();
+        assert_eq!(res.size, Some(1024));
+
+        let res: MemOptions = from_key_values("size=0x4000").unwrap();
+        assert_eq!(res.size, Some(16384));
     }
 
     #[cfg(feature = "audio_cras")]
