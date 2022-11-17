@@ -281,7 +281,6 @@ fn create_gpu_device(
     gpu_device_tube: Tube,
     resource_bridges: Vec<Tube>,
     event_devices: Vec<EventDevice>,
-    #[cfg(feature = "kiwi")] gpu_device_service_tube: Tube,
 ) -> DeviceResult {
     let gpu_parameters = cfg
         .gpu_parameters
@@ -290,15 +289,8 @@ fn create_gpu_device(
     let display_backends = vec![virtio::DisplayBackend::WinApi(
         (&gpu_parameters.display_params[0]).into(),
     )];
-    let wndproc_thread = virtio::gpu::start_wndproc_thread(
-        #[cfg(feature = "kiwi")]
-        gpu_parameters.display_params[0]
-            .gpu_main_display_tube
-            .clone(),
-        #[cfg(not(feature = "kiwi"))]
-        None,
-    )
-    .expect("Failed to start wndproc_thread!");
+    let wndproc_thread =
+        virtio::gpu::start_wndproc_thread(None).expect("Failed to start wndproc_thread!");
 
     let features = virtio::base_features(cfg.protection_type);
     let dev = virtio::Gpu::new(
@@ -312,8 +304,6 @@ fn create_gpu_device(
         /* external_blob= */ false,
         features,
         BTreeMap::new(),
-        #[cfg(feature = "kiwi")]
-        Some(gpu_device_service_tube),
         wndproc_thread,
     );
 
@@ -469,7 +459,6 @@ fn create_virtio_devices(
     _dynamic_mapping_device_tube: Option<Tube>,
     _inflate_tube: Option<Tube>,
     _init_balloon_size: u64,
-    #[cfg(feature = "kiwi")] gpu_device_service_tube: Tube,
     tsc_frequency: u64,
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
     let mut devs = Vec::new();
@@ -586,8 +575,6 @@ fn create_virtio_devices(
             gpu_device_tube,
             resource_bridges,
             event_devices,
-            #[cfg(feature = "kiwi")]
-            gpu_device_service_tube,
         )?);
     }
 
@@ -608,7 +595,6 @@ fn create_devices(
     inflate_tube: Option<Tube>,
     init_balloon_size: u64,
     #[allow(unused)] ac97_device_tubes: Vec<Tube>,
-    #[cfg(feature = "kiwi")] gpu_device_service_tube: Tube,
     tsc_frequency: u64,
 ) -> DeviceResult<Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>> {
     let stubs = create_virtio_devices(
@@ -621,8 +607,6 @@ fn create_devices(
         dynamic_mapping_device_tube,
         inflate_tube,
         init_balloon_size,
-        #[cfg(feature = "kiwi")]
-        gpu_device_service_tube,
         tsc_frequency,
     )?;
 
@@ -1995,32 +1979,6 @@ where
         (None, None)
     };
 
-    #[cfg(feature = "kiwi")]
-    {
-        if cfg.service_pipe_name.is_some() {
-            let (gpu_main_host_tube, gpu_main_display_tube) =
-                Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
-            control_tubes.push(TaggedControlTube::GpuServiceComm(gpu_main_host_tube));
-            let mut gpu_parameters = cfg
-                .gpu_parameters
-                .as_mut()
-                .expect("missing GpuParameters in config");
-            gpu_parameters.display_params.gpu_main_display_tube =
-                Some(Arc::new(Mutex::new(gpu_main_display_tube)));
-        }
-    };
-
-    // Create a ServiceComm tube to pass to the gpu device
-    #[cfg(feature = "kiwi")]
-    let gpu_device_service_tube = {
-        let (gpu_device_service_tube, gpu_device_service_host_tube) =
-            Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
-        control_tubes.push(TaggedControlTube::GpuDeviceServiceComm(
-            gpu_device_service_host_tube,
-        ));
-        gpu_device_service_tube
-    };
-
     let gralloc =
         RutabagaGralloc::new().exit_context(Exit::CreateGralloc, "failed to create gralloc")?;
 
@@ -2096,8 +2054,6 @@ where
         /* inflate_tube= */ None,
         init_balloon_size,
         ac97_host_tubes,
-        #[cfg(feature = "kiwi")]
-        gpu_device_service_tube,
         tsc_state.frequency,
     )?;
 

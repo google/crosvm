@@ -213,7 +213,6 @@ fn build(
     udmabuf: bool,
     fence_handler: RutabagaFenceHandler,
     #[cfg(feature = "virgl_renderer_next")] render_server_fd: Option<SafeDescriptor>,
-    #[cfg(feature = "kiwi")] gpu_device_service_tube: Tube,
 ) -> Option<VirtioGpu> {
     let mut display_opt = None;
     for display_backend in display_backends {
@@ -249,8 +248,6 @@ fn build(
         fence_handler,
         #[cfg(feature = "virgl_renderer_next")]
         render_server_fd,
-        #[cfg(feature = "kiwi")]
-        gpu_device_service_tube,
     )
 }
 
@@ -1096,8 +1093,6 @@ pub struct Gpu {
     udmabuf: bool,
     #[cfg(feature = "virgl_renderer_next")]
     render_server_fd: Option<SafeDescriptor>,
-    #[cfg(feature = "kiwi")]
-    gpu_device_service_tube: Option<Tube>,
     context_mask: u64,
 }
 
@@ -1113,7 +1108,6 @@ impl Gpu {
         external_blob: bool,
         base_features: u64,
         channels: BTreeMap<String, PathBuf>,
-        #[cfg(feature = "kiwi")] gpu_device_service_tube: Option<Tube>,
         #[cfg(windows)] wndproc_thread: WindowProcedureThread,
     ) -> Gpu {
         let mut display_params = gpu_parameters.display_params.clone();
@@ -1192,8 +1186,6 @@ impl Gpu {
             udmabuf: gpu_parameters.udmabuf,
             #[cfg(feature = "virgl_renderer_next")]
             render_server_fd,
-            #[cfg(feature = "kiwi")]
-            gpu_device_service_tube,
             context_mask: gpu_parameters.context_mask,
         }
     }
@@ -1209,8 +1201,6 @@ impl Gpu {
         #[cfg(feature = "virgl_renderer_next")]
         let render_server_fd = self.render_server_fd.take();
         let event_devices = self.event_devices.split_off(0);
-        #[cfg(feature = "kiwi")]
-        let gpu_device_service_tube = self.gpu_device_service_tube.take()?;
 
         build(
             &self.display_backends,
@@ -1226,8 +1216,6 @@ impl Gpu {
             fence_handler,
             #[cfg(feature = "virgl_renderer_next")]
             render_server_fd,
-            #[cfg(feature = "kiwi")]
-            gpu_device_service_tube,
         )
         .map(|vgpu| Frontend::new(vgpu, fence_state))
     }

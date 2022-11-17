@@ -60,8 +60,6 @@ pub struct DisplayProperties {
     pub is_fullscreen: bool,
     pub window_width: u32,
     pub window_height: u32,
-    #[cfg(feature = "kiwi")]
-    pub gpu_main_display_tube: Option<Arc<Mutex<Tube>>>,
 }
 
 impl From<&DisplayParameters> for DisplayProperties {

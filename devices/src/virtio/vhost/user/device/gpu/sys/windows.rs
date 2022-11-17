@@ -127,8 +127,6 @@ pub struct GpuBackendConfig {
     pub exit_evt_wrtube: SendTube,
     // Event devices to send input events to.
     pub event_devices: Vec<EventDevice>,
-    // Tube for service.
-    pub gpu_device_service_tube: Tube,
     // GPU parameters.
     pub params: GpuParameters,
 }
@@ -161,15 +159,8 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         (&config.params.display_params[0]).into(),
     )];
 
-    let wndproc_thread = virtio::gpu::start_wndproc_thread(
-        #[cfg(feature = "kiwi")]
-        config.params.display_params[0]
-            .gpu_main_display_tube
-            .clone(),
-        #[cfg(not(feature = "kiwi"))]
-        None,
-    )
-    .context("failed to start wndproc_thread")?;
+    let wndproc_thread =
+        virtio::gpu::start_wndproc_thread(None).context("failed to start wndproc_thread")?;
 
     // Required to share memory across processes.
     let external_blob = true;
@@ -187,8 +178,6 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         external_blob,
         base_features,
         /*channels=*/ Default::default(),
-        #[cfg(feature = "kiwi")]
-        Some(config.gpu_device_service_tube),
         wndproc_thread,
     )));
 
