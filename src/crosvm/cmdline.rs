@@ -88,6 +88,7 @@ use crate::crosvm::config::parse_userspace_msr_options;
 use crate::crosvm::config::BatteryConfig;
 #[cfg(feature = "plugin")]
 use crate::crosvm::config::BindMount;
+use crate::crosvm::config::CpuOptions;
 #[cfg(feature = "direct")]
 use crate::crosvm::config::DirectIoOption;
 use crate::crosvm::config::Executable;
@@ -846,10 +847,11 @@ pub struct RunCommand {
     pub cpu_cluster: Vec<Vec<usize>>,
 
     #[argh(option, short = 'c')]
-    #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
-    /// number of VCPUs. (default: 1)
-    pub cpus: Option<usize>,
+    /// cpu parameters.
+    /// Possible key values:
+    ///     num-cores=NUM - number of VCPUs. (default: 1)
+    pub cpus: Option<CpuOptions>,
 
     #[cfg(feature = "crash-report")]
     #[argh(option, arg_name = "\\\\.\\pipe\\PIPE_NAME")]
@@ -2079,7 +2081,8 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         cfg.per_vm_core_scheduling = cmd.per_vm_core_scheduling;
 
-        cfg.vcpu_count = cmd.cpus;
+        let cpus = cmd.cpus.unwrap_or_default();
+        cfg.vcpu_count = cpus.num_cores;
 
         cfg.vcpu_affinity = cmd.cpu_affinity;
 

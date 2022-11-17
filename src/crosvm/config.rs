@@ -93,6 +93,14 @@ pub enum Executable {
     Plugin(PathBuf),
 }
 
+#[derive(Debug, Default, Deserialize, FromKeyValues)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct CpuOptions {
+    /// Number of CPU cores.
+    #[serde(default)]
+    pub num_cores: Option<usize>,
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct VhostUserOption {
     pub socket: PathBuf,
@@ -1670,6 +1678,18 @@ mod tests {
     use argh::FromArgs;
 
     use super::*;
+
+    #[test]
+    fn parse_cpu_opts() {
+        let res: CpuOptions = from_key_values("").unwrap();
+        assert_eq!(res.num_cores, None);
+
+        let res: CpuOptions = from_key_values("12").unwrap();
+        assert_eq!(res.num_cores, Some(12));
+
+        let res: CpuOptions = from_key_values("num-cores=16").unwrap();
+        assert_eq!(res.num_cores, Some(16));
+    }
 
     #[test]
     fn parse_cpu_set_single() {
