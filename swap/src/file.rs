@@ -197,9 +197,9 @@ mod tests {
 
     #[test]
     fn new_success() {
-        let dir_path = tempfile::tempdir().unwrap().into_path();
+        let dir_path = tempfile::tempdir().unwrap();
 
-        assert_eq!(SwapFile::new(&dir_path, 200).is_ok(), true);
+        assert_eq!(SwapFile::new(dir_path.path(), 200).is_ok(), true);
     }
 
     #[test]
@@ -210,24 +210,24 @@ mod tests {
 
     #[test]
     fn len() {
-        let dir_path = tempfile::tempdir().unwrap().into_path();
-        let swap_file = SwapFile::new(&dir_path, 200).unwrap();
+        let dir_path = tempfile::tempdir().unwrap();
+        let swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
 
         assert_eq!(swap_file.len(), 200);
     }
 
     #[test]
     fn page_content_default_is_none() {
-        let dir_path = tempfile::tempdir().unwrap().into_path();
-        let swap_file = SwapFile::new(&dir_path, 200).unwrap();
+        let dir_path = tempfile::tempdir().unwrap();
+        let swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
 
         assert_eq!(swap_file.page_content(0).unwrap().is_none(), true);
     }
 
     #[test]
     fn page_content_returns_content() {
-        let dir_path = tempfile::tempdir().unwrap().into_path();
-        let mut swap_file = SwapFile::new(&dir_path, 200).unwrap();
+        let dir_path = tempfile::tempdir().unwrap();
+        let mut swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
 
         let data = &vec![1; pagesize()];
         swap_file.write_to_file(0, data).unwrap();
@@ -240,8 +240,8 @@ mod tests {
 
     #[test]
     fn page_content_out_of_range() {
-        let dir_path = tempfile::tempdir().unwrap().into_path();
-        let swap_file = SwapFile::new(&dir_path, 200).unwrap();
+        let dir_path = tempfile::tempdir().unwrap();
+        let swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
 
         assert_eq!(swap_file.page_content(199).is_ok(), true);
         match swap_file.page_content(200) {
@@ -259,8 +259,8 @@ mod tests {
 
     #[test]
     fn write_to_file_swap_file() {
-        let dir_path = tempfile::tempdir().unwrap().into_path();
-        let mut swap_file = SwapFile::new(&dir_path, 200).unwrap();
+        let dir_path = tempfile::tempdir().unwrap();
+        let mut swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
 
         let buf1 = &vec![1; pagesize()];
         let buf2 = &vec![2; 2 * pagesize()];
@@ -275,8 +275,8 @@ mod tests {
 
     #[test]
     fn write_to_file_invalid_size() {
-        let dir_path = tempfile::tempdir().unwrap().into_path();
-        let mut swap_file = SwapFile::new(&dir_path, 200).unwrap();
+        let dir_path = tempfile::tempdir().unwrap();
+        let mut swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
 
         let buf = &vec![1; pagesize() + 1];
         match swap_file.write_to_file(0, buf) {
@@ -287,8 +287,8 @@ mod tests {
 
     #[test]
     fn write_to_file_out_of_range() {
-        let dir_path = tempfile::tempdir().unwrap().into_path();
-        let mut swap_file = SwapFile::new(&dir_path, 200).unwrap();
+        let dir_path = tempfile::tempdir().unwrap();
+        let mut swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
 
         let buf1 = &vec![1; pagesize()];
         let buf2 = &vec![2; 2 * pagesize()];
@@ -304,8 +304,8 @@ mod tests {
 
     #[test]
     fn clear() {
-        let dir_path = tempfile::tempdir().unwrap().into_path();
-        let mut swap_file = SwapFile::new(&dir_path, 200).unwrap();
+        let dir_path = tempfile::tempdir().unwrap();
+        let mut swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
 
         let data = &vec![1; pagesize()];
         swap_file.write_to_file(0, data).unwrap();
@@ -316,8 +316,8 @@ mod tests {
 
     #[test]
     fn clear_out_of_range() {
-        let dir_path = tempfile::tempdir().unwrap().into_path();
-        let mut swap_file = SwapFile::new(&dir_path, 200).unwrap();
+        let dir_path = tempfile::tempdir().unwrap();
+        let mut swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
 
         assert_eq!(swap_file.clear(199).is_ok(), true);
         match swap_file.clear(200) {
