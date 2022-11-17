@@ -179,7 +179,7 @@ impl PageHandler {
     fn copy_all(
         uffd: &Userfaultfd,
         page_addr: usize,
-        data_slice: &mut VolatileSlice,
+        mut data_slice: VolatileSlice,
         wake: bool,
     ) -> std::result::Result<(), UffdError> {
         loop {
@@ -217,12 +217,9 @@ impl PageHandler {
             .ok_or(Error::InvalidAddress(address))?;
 
         let idx_in_region = page_idx - *head_page_idx;
-        let page_content = file.page_content(idx_in_region)?;
-
-        match page_content {
-            Some(file_content) => {
-                let mut data_slice = file_content.get_page()?;
-                Self::copy_all(uffd, page_addr, &mut data_slice, true)?;
+        match file.page_content(idx_in_region)? {
+            Some(page_slice) => {
+                Self::copy_all(uffd, page_addr, page_slice, true)?;
                 file.clear(idx_in_region)?;
                 Ok(())
             }
@@ -358,8 +355,7 @@ impl PageHandler {
             for pages in region.file.all_present_pages() {
                 let page_idx = region.head_page_idx + pages.base_idx;
                 let page_addr = self.page_idx_to_addr(page_idx);
-                let mut data_slice = pages.content.get_page()?;
-                Self::copy_all(uffd, page_addr, &mut data_slice, false)?;
+                Self::copy_all(uffd, page_addr, pages.content, false)?;
             }
         }
         Ok(())

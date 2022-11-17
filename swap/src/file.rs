@@ -49,20 +49,9 @@ impl From<MmapError> for Error {
     }
 }
 
-/// Pages in the file.
-#[derive(Debug)]
-pub struct FileContent<'a> {
-    file_mmap: &'a MemoryMapping,
-    page_idx: usize,
-    num_of_pages: usize,
-}
-
-impl FileContent<'_> {
-    /// Returns [VolatileSlice] from mmap.
-    pub fn get_page(&self) -> Result<VolatileSlice> {
-        self.file_mmap
-            .get_slice(self.page_idx * pagesize(), self.num_of_pages * pagesize())
-            .map_err(Error::VolatileMemory)
+impl From<VolatileMemoryError> for Error {
+    fn from(e: VolatileMemoryError) -> Self {
+        Self::VolatileMemory(e)
     }
 }
 
@@ -128,15 +117,12 @@ impl SwapFile {
     /// # Arguments
     ///
     /// * `idx` - the index of the page from the head of the pages.
-    pub fn page_content(&self, idx: usize) -> Result<Option<FileContent>> {
+    pub fn page_content(&self, idx: usize) -> Result<Option<VolatileSlice>> {
         match self.state_list.get(idx) {
             Some(is_present) => {
                 if *is_present {
-                    Ok(Some(FileContent {
-                        file_mmap: &self.file_mmap,
-                        page_idx: idx,
-                        num_of_pages: 1,
-                    }))
+                    let slice = self.file_mmap.get_slice(idx * pagesize(), pagesize())?;
+                    Ok(Some(slice))
                 } else {
                     Ok(None)
                 }
@@ -208,7 +194,7 @@ pub struct PresentPagesIterator<'a> {
 /// Subsequent pages present in a swap file.
 pub struct Pages<'a> {
     pub base_idx: usize,
-    pub content: FileContent<'a>,
+    pub content: VolatileSlice<'a>,
 }
 
 impl<'a> Iterator for PresentPagesIterator<'a> {
@@ -231,13 +217,16 @@ impl<'a> Iterator for PresentPagesIterator<'a> {
             idx += 1;
         }
         self.idx = idx;
+        let num_of_page = idx - head_idx;
+        // The offset and count must be correct and never cause [VolatileMemoryError].
+        let slice = self
+            .swap_file
+            .file_mmap
+            .get_slice(head_idx * pagesize(), num_of_page * pagesize())
+            .unwrap();
         Some(Pages {
             base_idx: head_idx,
-            content: FileContent {
-                file_mmap: &self.swap_file.file_mmap,
-                page_idx: head_idx,
-                num_of_pages: idx - head_idx,
-            },
+            content: slice,
         })
     }
 }
@@ -285,8 +274,7 @@ mod tests {
         let data = &vec![1; pagesize()];
         swap_file.write_to_file(0, data).unwrap();
 
-        let content = swap_file.page_content(0).unwrap().unwrap();
-        let page = content.get_page().unwrap();
+        let page = swap_file.page_content(0).unwrap().unwrap();
         let result = unsafe { slice::from_raw_parts(page.as_ptr() as *const u8, pagesize()) };
         assert_eq!(result, data);
     }
@@ -304,8 +292,7 @@ mod tests {
     }
 
     fn assert_page_content(swap_file: &SwapFile, idx: usize, data: &[u8]) {
-        let content = swap_file.page_content(idx).unwrap().unwrap();
-        let page = content.get_page().unwrap();
+        let page = swap_file.page_content(idx).unwrap().unwrap();
         let result = unsafe { slice::from_raw_parts(page.as_ptr() as *const u8, pagesize()) };
         assert_eq!(result, data);
     }
@@ -425,34 +412,26 @@ mod tests {
 
         let pages = iter.next().unwrap();
         assert_eq!(pages.base_idx, 1);
-        assert_eq!(pages.content.get_page().unwrap().size(), 2 * pagesize());
-        assert_eq!(unsafe { *pages.content.get_page().unwrap().as_ptr() }, 1_u8);
+        assert_eq!(pages.content.size(), 2 * pagesize());
+        assert_eq!(unsafe { *pages.content.as_ptr() }, 1_u8);
         let pages = iter.next().unwrap();
         assert_eq!(pages.base_idx, 14);
-        assert_eq!(pages.content.get_page().unwrap().size(), 2 * pagesize());
-        assert_eq!(unsafe { *pages.content.get_page().unwrap().as_ptr() }, 3_u8);
+        assert_eq!(pages.content.size(), 2 * pagesize());
+        assert_eq!(unsafe { *pages.content.as_ptr() }, 3_u8);
         let pages = iter.next().unwrap();
         assert_eq!(pages.base_idx, 17);
-        assert_eq!(pages.content.get_page().unwrap().size(), pagesize());
-        assert_eq!(unsafe { *pages.content.get_page().unwrap().as_ptr() }, 4_u8);
+        assert_eq!(pages.content.size(), pagesize());
+        assert_eq!(unsafe { *pages.content.as_ptr() }, 4_u8);
         let pages = iter.next().unwrap();
         assert_eq!(pages.base_idx, 19);
-        assert_eq!(pages.content.get_page().unwrap().size(), pagesize());
-        assert_eq!(unsafe { *pages.content.get_page().unwrap().as_ptr() }, 4_u8);
+        assert_eq!(pages.content.size(), pagesize());
+        assert_eq!(unsafe { *pages.content.as_ptr() }, 4_u8);
         let pages = iter.next().unwrap();
         assert_eq!(pages.base_idx, 30);
-        assert_eq!(pages.content.get_page().unwrap().size(), 2 * pagesize());
-        assert_eq!(unsafe { *pages.content.get_page().unwrap().as_ptr() }, 5_u8);
+        assert_eq!(pages.content.size(), 2 * pagesize());
+        assert_eq!(unsafe { *pages.content.as_ptr() }, 5_u8);
         assert_eq!(
-            unsafe {
-                *pages
-                    .content
-                    .get_page()
-                    .unwrap()
-                    .offset(pagesize())
-                    .unwrap()
-                    .as_ptr()
-            },
+            unsafe { *pages.content.offset(pagesize()).unwrap().as_ptr() },
             6_u8
         );
     }
