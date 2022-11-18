@@ -178,7 +178,7 @@ impl PageHandler {
 
     fn copy_all(
         uffd: &Userfaultfd,
-        page_addr: usize,
+        mut page_addr: usize,
         mut data_slice: VolatileSlice,
         wake: bool,
     ) -> std::result::Result<(), UffdError> {
@@ -186,6 +186,7 @@ impl PageHandler {
             let result = uffd.copy(page_addr, data_slice.size(), data_slice.as_ptr(), wake);
             match result {
                 Err(UffdError::PartiallyCopied(copied)) => {
+                    page_addr += copied;
                     data_slice.advance(copied);
                 }
                 other => {
