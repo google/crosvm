@@ -1413,7 +1413,7 @@ impl X8664arch {
         kernel_image: &mut File,
     ) -> Result<(boot_params, u64, GuestAddress)> {
         let kernel_start = GuestAddress(KERNEL_START_OFFSET);
-        match kernel_loader::load_elf64(mem, kernel_start, kernel_image) {
+        match kernel_loader::load_elf64(mem, kernel_start, kernel_image, 0) {
             Ok(loaded_kernel) => {
                 // ELF kernels don't contain a `boot_params` structure, so synthesize a default one.
                 let boot_params = Default::default();

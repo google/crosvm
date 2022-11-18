@@ -114,15 +114,23 @@ pub struct LoadedKernel {
 /// * `guest_mem` - The guest memory region the kernel is written to.
 /// * `kernel_start` - The minimum guest address to allow when loading program headers.
 /// * `kernel_image` - Input vmlinux image.
+/// * `phys_offset` - An offset in bytes to add to each physical address (`p_paddr`).
 pub fn load_elf32<F>(
     guest_mem: &GuestMemory,
     kernel_start: GuestAddress,
     kernel_image: &mut F,
+    phys_offset: u64,
 ) -> Result<LoadedKernel>
 where
     F: Read + Seek + AsRawDescriptor,
 {
-    load_elf_for_class(guest_mem, kernel_start, kernel_image, Some(elf::ELFCLASS32))
+    load_elf_for_class(
+        guest_mem,
+        kernel_start,
+        kernel_image,
+        phys_offset,
+        Some(elf::ELFCLASS32),
+    )
 }
 
 /// Loads a kernel from a 64-bit ELF image into memory.
@@ -135,15 +143,23 @@ where
 /// * `guest_mem` - The guest memory region the kernel is written to.
 /// * `kernel_start` - The minimum guest address to allow when loading program headers.
 /// * `kernel_image` - Input vmlinux image.
+/// * `phys_offset` - An offset in bytes to add to each physical address (`p_paddr`).
 pub fn load_elf64<F>(
     guest_mem: &GuestMemory,
     kernel_start: GuestAddress,
     kernel_image: &mut F,
+    phys_offset: u64,
 ) -> Result<LoadedKernel>
 where
     F: Read + Seek + AsRawDescriptor,
 {
-    load_elf_for_class(guest_mem, kernel_start, kernel_image, Some(elf::ELFCLASS64))
+    load_elf_for_class(
+        guest_mem,
+        kernel_start,
+        kernel_image,
+        phys_offset,
+        Some(elf::ELFCLASS64),
+    )
 }
 
 /// Loads a kernel from a 32-bit or 64-bit ELF image into memory.
@@ -156,21 +172,24 @@ where
 /// * `guest_mem` - The guest memory region the kernel is written to.
 /// * `kernel_start` - The minimum guest address to allow when loading program headers.
 /// * `kernel_image` - Input vmlinux image.
+/// * `phys_offset` - An offset in bytes to add to each physical address (`p_paddr`).
 pub fn load_elf<F>(
     guest_mem: &GuestMemory,
     kernel_start: GuestAddress,
     kernel_image: &mut F,
+    phys_offset: u64,
 ) -> Result<LoadedKernel>
 where
     F: Read + Seek + AsRawDescriptor,
 {
-    load_elf_for_class(guest_mem, kernel_start, kernel_image, None)
+    load_elf_for_class(guest_mem, kernel_start, kernel_image, phys_offset, None)
 }
 
 fn load_elf_for_class<F>(
     guest_mem: &GuestMemory,
     kernel_start: GuestAddress,
     kernel_image: &mut F,
+    phys_offset: u64,
     ei_class: Option<u32>,
 ) -> Result<LoadedKernel>
 where
@@ -186,16 +205,20 @@ where
             continue;
         }
 
-        if phdr.p_paddr < kernel_start.offset() {
+        let paddr = phdr
+            .p_paddr
+            .checked_add(phys_offset)
+            .ok_or(Error::ProgramHeaderAddressOutOfRange)?;
+
+        if paddr < kernel_start.offset() {
             return Err(Error::ProgramHeaderAddressOutOfRange);
         }
 
         if start.is_none() {
-            start = Some(phdr.p_paddr);
+            start = Some(paddr);
         }
 
-        end = phdr
-            .p_paddr
+        end = paddr
             .checked_add(phdr.p_memsz)
             .ok_or(Error::InvalidProgramHeaderMemSize)?;
 
@@ -208,11 +231,7 @@ where
             .map_err(|_| Error::SeekKernelStart)?;
 
         guest_mem
-            .read_to_memory(
-                GuestAddress(phdr.p_paddr),
-                kernel_image,
-                phdr.p_filesz as usize,
-            )
+            .read_to_memory(GuestAddress(paddr), kernel_image, phdr.p_filesz as usize)
             .map_err(|_| Error::ReadKernelImage)?;
     }
 
@@ -225,17 +244,21 @@ where
 
     let address_range = AddressRange { start, end };
 
-    // `e_entry` of 0 means there is no entry point, which we do not want to allow.
-    // The entry point address must also fall within one of the loaded sections.
+    // The entry point address must fall within one of the loaded sections.
     // We approximate this by checking whether it within the bounds of the first and last sections.
-    if elf.file_header.e_entry == 0 || !address_range.contains(elf.file_header.e_entry) {
+    let entry = elf
+        .file_header
+        .e_entry
+        .checked_add(phys_offset)
+        .ok_or(Error::InvalidEntryPoint)?;
+    if !address_range.contains(entry) {
         return Err(Error::InvalidEntryPoint);
     }
 
     Ok(LoadedKernel {
         address_range,
         size,
-        entry: GuestAddress(elf.file_header.e_entry),
+        entry: GuestAddress(entry),
     })
 }
 
@@ -479,7 +502,7 @@ mod test {
         let gm = create_guest_mem();
         let kernel_addr = GuestAddress(0x0);
         let mut image = make_elf32_bin();
-        let kernel = load_elf(&gm, kernel_addr, &mut image).unwrap();
+        let kernel = load_elf(&gm, kernel_addr, &mut image, 0).unwrap();
         assert_eq!(kernel.address_range.start, 0);
         assert_eq!(kernel.address_range.end, 0xa_2038);
         assert_eq!(kernel.size, 0xa_2038);
@@ -491,7 +514,7 @@ mod test {
         let gm = create_guest_mem();
         let kernel_addr = GuestAddress(0x0);
         let mut image = make_elf64_bin();
-        let kernel = load_elf(&gm, kernel_addr, &mut image).expect("failed to load ELF");
+        let kernel = load_elf(&gm, kernel_addr, &mut image, 0).expect("failed to load ELF");
         assert_eq!(kernel.address_range.start, 0x20_0000);
         assert_eq!(kernel.address_range.end, 0x20_0035);
         assert_eq!(kernel.size, 0x35);
@@ -506,7 +529,7 @@ mod test {
         mutate_elf_bin(&bad_image, 0x1, 0x33);
         assert_eq!(
             Err(Error::InvalidMagicNumber),
-            load_elf(&gm, kernel_addr, &mut bad_image)
+            load_elf(&gm, kernel_addr, &mut bad_image, 0)
         );
     }
 
@@ -519,7 +542,7 @@ mod test {
         mutate_elf_bin(&bad_image, 0x5, 2);
         assert_eq!(
             Err(Error::BigEndianOnLittle),
-            load_elf(&gm, kernel_addr, &mut bad_image)
+            load_elf(&gm, kernel_addr, &mut bad_image, 0)
         );
     }
 
@@ -532,7 +555,7 @@ mod test {
         mutate_elf_bin(&bad_image, 0x20, 0x10);
         assert_eq!(
             Err(Error::InvalidProgramHeaderOffset),
-            load_elf(&gm, kernel_addr, &mut bad_image)
+            load_elf(&gm, kernel_addr, &mut bad_image, 0)
         );
     }
 
@@ -542,7 +565,7 @@ mod test {
         // test_elf.bin loads a phdr at 0x20_0000, so this will fail due to an out-of-bounds address
         let kernel_addr = GuestAddress(0x30_0000);
         let mut image = make_elf64_bin();
-        let res = load_elf(&gm, kernel_addr, &mut image);
+        let res = load_elf(&gm, kernel_addr, &mut image, 0);
         assert_eq!(res, Err(Error::ProgramHeaderAddressOutOfRange));
     }
 }

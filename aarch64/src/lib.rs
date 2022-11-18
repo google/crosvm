@@ -343,9 +343,12 @@ impl arch::LinuxArch for AArch64 {
                 }
             }
             VmImage::Kernel(ref mut kernel_image) => {
-                let loaded_kernel = if let Ok(elf_kernel) =
-                    kernel_loader::load_elf64(&mem, get_kernel_addr(), kernel_image)
-                {
+                let loaded_kernel = if let Ok(elf_kernel) = kernel_loader::load_elf64(
+                    &mem,
+                    get_kernel_addr(),
+                    kernel_image,
+                    AARCH64_PHYS_MEM_START,
+                ) {
                     elf_kernel
                 } else {
                     kernel_loader::load_arm64_kernel(&mem, get_kernel_addr(), kernel_image)
