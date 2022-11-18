@@ -157,7 +157,7 @@ impl VirtioDevice for Sound {
             .spawn(move || {
                 match Worker::try_new(
                     vios_client,
-                    Arc::new(interrupt),
+                    interrupt,
                     mem,
                     Arc::new(Mutex::new(control_queue)),
                     control_queue_evt,

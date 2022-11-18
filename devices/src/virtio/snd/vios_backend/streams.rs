@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::collections::VecDeque;
-use std::ops::Deref;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
@@ -60,7 +59,7 @@ pub struct Stream {
     guest_memory: GuestMemory,
     control_queue: Arc<Mutex<Queue>>,
     io_queue: Arc<Mutex<Queue>>,
-    interrupt: Arc<Interrupt>,
+    interrupt: Interrupt,
     capture: bool,
     current_state: StreamState,
     period: Duration,
@@ -75,7 +74,7 @@ impl Stream {
         stream_id: u32,
         vios_client: Arc<VioSClient>,
         guest_memory: GuestMemory,
-        interrupt: Arc<Interrupt>,
+        interrupt: Interrupt,
         control_queue: Arc<Mutex<Queue>>,
         io_queue: Arc<Mutex<Queue>>,
         capture: bool,
@@ -222,7 +221,7 @@ impl Stream {
             desc,
             &self.guest_memory,
             &self.control_queue,
-            self.interrupt.deref(),
+            &self.interrupt,
         )?;
         self.current_state = next_state;
         Ok(true)
@@ -289,7 +288,7 @@ impl Stream {
                             desc_index,
                             writer.bytes_written() as u32,
                         );
-                        io_queue_lock.trigger_interrupt(&self.guest_memory, self.interrupt.deref());
+                        io_queue_lock.trigger_interrupt(&self.guest_memory, &self.interrupt);
                     }
                 }
             }
@@ -307,7 +306,7 @@ impl Stream {
                         desc,
                         &self.guest_memory,
                         &self.io_queue,
-                        self.interrupt.deref(),
+                        &self.interrupt,
                     )?;
                 }
             }
@@ -337,7 +336,7 @@ impl Drop for Stream {
                 desc,
                 &self.guest_memory,
                 &self.io_queue,
-                self.interrupt.deref(),
+                &self.interrupt,
             ) {
                 error!(
                     "virtio-snd: Failed to reply buffer on stream {}: {}",

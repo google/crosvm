@@ -144,7 +144,7 @@ pub struct Worker<F: FileSystem + Sync> {
     mem: GuestMemory,
     queue: Queue,
     server: Arc<fuse::Server<F>>,
-    irq: Arc<Interrupt>,
+    irq: Interrupt,
     tube: Arc<Mutex<Tube>>,
     slot: u32,
 }
@@ -178,7 +178,7 @@ impl<F: FileSystem + Sync> Worker<F> {
         mem: GuestMemory,
         queue: Queue,
         server: Arc<fuse::Server<F>>,
-        irq: Arc<Interrupt>,
+        irq: Interrupt,
         tube: Arc<Mutex<Tube>>,
         slot: u32,
     ) -> Worker<F> {
@@ -248,7 +248,7 @@ impl<F: FileSystem + Sync> Worker<F> {
                         queue_evt.wait().map_err(Error::ReadQueueEvent)?;
                         if let Err(e) = process_fs_queue(
                             &self.mem,
-                            &*self.irq,
+                            &self.irq,
                             &mut self.queue,
                             &self.server,
                             &self.tube,

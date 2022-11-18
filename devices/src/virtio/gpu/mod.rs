@@ -143,14 +143,14 @@ pub trait QueueReader {
 
 struct LocalQueueReader {
     queue: RefCell<Queue>,
-    interrupt: Arc<Interrupt>,
+    interrupt: Interrupt,
 }
 
 impl LocalQueueReader {
-    fn new(queue: Queue, interrupt: &Arc<Interrupt>) -> Self {
+    fn new(queue: Queue, interrupt: Interrupt) -> Self {
         Self {
             queue: RefCell::new(queue),
-            interrupt: interrupt.clone(),
+            interrupt,
         }
     }
 }
@@ -167,21 +167,21 @@ impl QueueReader for LocalQueueReader {
     fn signal_used(&self, mem: &GuestMemory) {
         self.queue
             .borrow_mut()
-            .trigger_interrupt(mem, &*self.interrupt);
+            .trigger_interrupt(mem, &self.interrupt);
     }
 }
 
 #[derive(Clone)]
 struct SharedQueueReader {
     queue: Arc<Mutex<Queue>>,
-    interrupt: Arc<Interrupt>,
+    interrupt: Interrupt,
 }
 
 impl SharedQueueReader {
-    fn new(queue: Queue, interrupt: &Arc<Interrupt>) -> Self {
+    fn new(queue: Queue, interrupt: Interrupt) -> Self {
         Self {
             queue: Arc::new(Mutex::new(queue)),
-            interrupt: interrupt.clone(),
+            interrupt,
         }
     }
 }
@@ -196,7 +196,7 @@ impl QueueReader for SharedQueueReader {
     }
 
     fn signal_used(&self, mem: &GuestMemory) {
-        self.queue.lock().trigger_interrupt(mem, &*self.interrupt);
+        self.queue.lock().trigger_interrupt(mem, &self.interrupt);
     }
 }
 
@@ -831,7 +831,7 @@ impl<'a> EventManager<'a> {
 }
 
 struct Worker {
-    interrupt: Arc<Interrupt>,
+    interrupt: Interrupt,
     exit_evt_wrtube: SendTube,
     #[cfg(unix)]
     gpu_control_tube: Tube,
@@ -1418,10 +1418,9 @@ impl VirtioDevice for Gpu {
             }
         };
 
-        let irq = Arc::new(interrupt);
-        let ctrl_queue = SharedQueueReader::new(queues.remove(0), &irq);
+        let ctrl_queue = SharedQueueReader::new(queues.remove(0), interrupt.clone());
         let ctrl_evt = queue_evts.remove(0);
-        let cursor_queue = LocalQueueReader::new(queues.remove(0), &irq);
+        let cursor_queue = LocalQueueReader::new(queues.remove(0), interrupt.clone());
         let cursor_evt = queue_evts.remove(0);
         let display_backends = self.display_backends.clone();
         let display_params = self.display_params.clone();
@@ -1469,7 +1468,7 @@ impl VirtioDevice for Gpu {
                         };
 
                         Worker {
-                            interrupt: irq,
+                            interrupt,
                             exit_evt_wrtube,
                             #[cfg(unix)]
                             gpu_control_tube,

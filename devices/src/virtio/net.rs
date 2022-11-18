@@ -8,7 +8,6 @@ use std::mem;
 use std::net::Ipv4Addr;
 use std::os::raw::c_uint;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::thread;
 
 use base::error;
@@ -305,7 +304,7 @@ pub enum Token {
 }
 
 pub(super) struct Worker<T: TapT> {
-    pub(super) interrupt: Arc<Interrupt>,
+    pub(super) interrupt: Interrupt,
     pub(super) mem: GuestMemory,
     pub(super) rx_queue: Queue,
     pub(super) tx_queue: Queue,
@@ -331,7 +330,7 @@ where
 {
     fn process_tx(&mut self) {
         process_tx(
-            self.interrupt.as_ref(),
+            &self.interrupt,
             &mut self.tx_queue,
             &self.mem,
             &mut self.tap,
@@ -345,7 +344,7 @@ where
         };
 
         process_ctrl(
-            self.interrupt.as_ref(),
+            &self.interrupt,
             ctrl_queue,
             &self.mem,
             &mut self.tap,
@@ -726,11 +725,10 @@ where
             );
             return;
         }
-        let interrupt_arc = Arc::new(interrupt);
         for i in 0..vq_pairs {
             let tap = self.taps.remove(0);
             let acked_features = self.acked_features;
-            let interrupt = interrupt_arc.clone();
+            let interrupt = interrupt.clone();
             let memory = mem.clone();
             let kill_evt = self.workers_kill_evt.remove(0);
             // Queues alternate between rx0, tx0, rx1, tx1, ..., rxN, txN, ctrl.

@@ -254,7 +254,6 @@ impl VirtioDevice for Fs {
         let use_dax = fs.cfg().use_dax;
 
         let server = Arc::new(Server::new(fs));
-        let irq = Arc::new(interrupt);
         let socket = self.tube.take().expect("missing mapping socket");
         let mut slot = 0;
 
@@ -293,7 +292,7 @@ impl VirtioDevice for Fs {
 
             let mem = guest_mem.clone();
             let server = server.clone();
-            let irq = irq.clone();
+            let irq = interrupt.clone();
             let socket = Arc::clone(&socket);
 
             let worker_result = thread::Builder::new()

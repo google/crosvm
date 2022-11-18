@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::io::Read;
-use std::ops::Deref;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::thread;
@@ -33,7 +32,7 @@ use crate::virtio::Writer;
 
 pub struct Worker {
     // Lock order: Must never hold more than one queue lock at the same time.
-    interrupt: Arc<Interrupt>,
+    interrupt: Interrupt,
     control_queue: Arc<Mutex<Queue>>,
     control_queue_evt: Event,
     event_queue: Queue,
@@ -49,7 +48,7 @@ impl Worker {
     /// Creates a new virtio-snd worker.
     pub fn try_new(
         vios_client: Arc<VioSClient>,
-        interrupt: Arc<Interrupt>,
+        interrupt: Interrupt,
         guest_memory: GuestMemory,
         control_queue: Arc<Mutex<Queue>>,
         control_queue_evt: Event,
@@ -218,7 +217,7 @@ impl Worker {
                     avail_desc,
                     &self.guest_memory,
                     &self.control_queue,
-                    self.interrupt.deref(),
+                    &self.interrupt,
                 );
             }
             let mut read_buf = vec![0u8; available_bytes];
@@ -294,7 +293,7 @@ impl Worker {
                             desc_index,
                             writer.bytes_written() as u32,
                         );
-                        queue_lock.trigger_interrupt(&self.guest_memory, self.interrupt.deref());
+                        queue_lock.trigger_interrupt(&self.guest_memory, &self.interrupt);
                     }
                 }
                 VIRTIO_SND_R_CHMAP_INFO => {
@@ -374,7 +373,7 @@ impl Worker {
                         avail_desc,
                         &self.guest_memory,
                         &self.control_queue,
-                        self.interrupt.deref(),
+                        &self.interrupt,
                     )?;
                 }
             }
@@ -396,7 +395,7 @@ impl Worker {
                 );
                 {
                     self.event_queue
-                        .trigger_interrupt(&self.guest_memory, self.interrupt.deref());
+                        .trigger_interrupt(&self.guest_memory, &self.interrupt);
                 }
             } else {
                 warn!("virtio-snd: Dropping event because there are no buffers in virtqueue");
@@ -432,7 +431,7 @@ impl Worker {
                 desc,
                 &self.guest_memory,
                 &self.control_queue,
-                self.interrupt.deref(),
+                &self.interrupt,
             );
         }
         let mut params: virtio_snd_pcm_set_params = Default::default();
@@ -450,7 +449,7 @@ impl Worker {
                 desc,
                 &self.guest_memory,
                 &self.control_queue,
-                self.interrupt.deref(),
+                &self.interrupt,
             )
         }
     }
@@ -473,7 +472,7 @@ impl Worker {
                 },
                 &self.guest_memory,
                 &self.control_queue,
-                self.interrupt.deref(),
+                &self.interrupt,
             );
         }
         let mut pcm_hdr: virtio_snd_pcm_hdr = Default::default();
@@ -497,7 +496,7 @@ impl Worker {
                 },
                 &self.guest_memory,
                 &self.control_queue,
-                self.interrupt.deref(),
+                &self.interrupt,
             )
         }
     }
@@ -526,7 +525,7 @@ impl Worker {
                 desc_index,
                 writer.bytes_written() as u32,
             );
-            queue_lock.trigger_interrupt(&self.guest_memory, self.interrupt.deref());
+            queue_lock.trigger_interrupt(&self.guest_memory, &self.interrupt);
         }
         Ok(())
     }
@@ -539,7 +538,7 @@ impl Drop for Worker {
 }
 
 fn io_loop(
-    interrupt: Arc<Interrupt>,
+    interrupt: Interrupt,
     guest_memory: GuestMemory,
     tx_queue: Arc<Mutex<Queue>>,
     tx_queue_evt: Event,
@@ -594,7 +593,7 @@ fn io_loop(
                         avail_desc,
                         &guest_memory,
                         queue,
-                        interrupt.deref(),
+                        &interrupt,
                     )?;
                 } else {
                     StreamProxy::send_msg(

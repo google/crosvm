@@ -244,7 +244,7 @@ where
 {
     pub(super) fn process_rx_slirp(&mut self) -> bool {
         process_rx(
-            self.interrupt.as_ref(),
+            &self.interrupt,
             &mut self.rx_queue,
             &self.mem,
             &mut self.tap,
