@@ -78,9 +78,9 @@ impl EventAsyncWrapper for EventAsync {
 impl AudioStreamsExecutor for super::Executor {
     #[cfg(unix)]
     fn async_unix_stream(&self, stream: UnixStream) -> Result<AsyncStream> {
-        return Ok(Box::new(IoSourceWrapper {
+        Ok(Box::new(IoSourceWrapper {
             source: self.async_from(AsyncWrapper::new(stream))?,
-        }));
+        }))
     }
 
     /// # Safety

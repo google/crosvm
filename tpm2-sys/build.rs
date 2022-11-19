@@ -26,7 +26,7 @@ fn get_cross_compile_prefix() -> String {
     } else {
         env::var("CARGO_CFG_TARGET_ENV").unwrap()
     };
-    return format!("{}-{}-{}-", arch, os, env);
+    format!("{}-{}-{}-", arch, os, env)
 }
 
 fn build_libtpm2(out_dir: &Path) -> Result<()> {

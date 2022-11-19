@@ -19,10 +19,11 @@ pub struct AsyncTube {
 
 impl AsyncTube {
     pub fn new(ex: &Executor, tube: Tube) -> io::Result<AsyncTube> {
-        return Ok(AsyncTube {
+        Ok(AsyncTube {
             inner: ex.async_from(tube)?,
-        });
+        })
     }
+
     pub async fn next<T: DeserializeOwned>(&self) -> TubeResult<T> {
         self.inner.wait_readable().await.unwrap();
         self.inner.as_source().recv()
