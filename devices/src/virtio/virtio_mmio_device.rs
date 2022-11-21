@@ -132,14 +132,6 @@ impl VirtioMmioDevice {
         self.driver_status == DEVICE_RESET as u8
     }
 
-    fn are_queues_valid(&mut self) -> bool {
-        // All queues marked as ready must be valid.
-        self.queues
-            .iter_mut()
-            .filter(|q| q.ready())
-            .all(|q| q.is_valid(&self.mem))
-    }
-
     fn clone_queue_evts(&self) -> Result<Vec<Event>> {
         self.queue_evts.iter().map(|e| e.try_clone()).collect()
     }
@@ -346,10 +338,8 @@ impl VirtioMmioDevice {
                 }
             }
 
-            if self.are_queues_valid() {
-                if let Err(e) = self.activate() {
-                    error!("failed to activate device: {:#}", e);
-                }
+            if let Err(e) = self.activate() {
+                error!("failed to activate device: {:#}", e);
             }
         }
 

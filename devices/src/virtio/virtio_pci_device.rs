@@ -400,14 +400,6 @@ impl VirtioPciDevice {
         self.common_config.driver_status == DEVICE_RESET as u8
     }
 
-    fn are_queues_valid(&mut self) -> bool {
-        // All queues marked as ready must be valid.
-        self.queues
-            .iter_mut()
-            .filter(|q| q.ready())
-            .all(|q| q.is_valid(&self.mem))
-    }
-
     fn add_settings_pci_capabilities(
         &mut self,
         settings_bar: u8,
@@ -901,10 +893,8 @@ impl PciDevice for VirtioPciDevice {
                 }
             }
 
-            if self.are_queues_valid() {
-                if let Err(e) = self.activate() {
-                    error!("failed to activate device: {:#}", e);
-                }
+            if let Err(e) = self.activate() {
+                error!("failed to activate device: {:#}", e);
             }
         }
 
