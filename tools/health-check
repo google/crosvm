@@ -79,6 +79,13 @@ def check_rust_clippy(_: CheckContext):
     cmd("./tools/clippy --locked").with_color_flag().fg(quiet=True)
 
 
+def check_cargo_doc(_: CheckContext):
+    "Runs cargo-doc on the whole project and verifies that no warnings are emitted."
+    cmd("./tools/cargo-doc").with_env("RUSTDOCFLAGS", "-D warnings").with_color_flag().fg(
+        quiet=True
+    )
+
+
 def check_rust_format(context: CheckContext):
     "Runs rustfmt on all modified files."
     if context.nightly:
@@ -258,6 +265,10 @@ CHECKS: List[Check] = [
     ),
     Check(
         check_rust_clippy,
+        files=["**.rs", "**Cargo.toml"],
+    ),
+    Check(
+        check_cargo_doc,
         files=["**.rs", "**Cargo.toml"],
     ),
     Check(
