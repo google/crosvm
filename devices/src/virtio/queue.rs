@@ -620,11 +620,8 @@ impl Queue {
             return None;
         }
 
-        let queue_size = self.actual_size();
         let avail_index = self.get_avail_index(mem);
-        let avail_len = avail_index - self.next_avail;
-
-        if avail_len.0 > queue_size || self.next_avail == avail_index {
+        if self.next_avail == avail_index {
             return None;
         }
 
@@ -633,6 +630,7 @@ impl Queue {
         // checking that there is a slot available.
         fence(Ordering::SeqCst);
 
+        let queue_size = self.actual_size();
         let desc_idx_addr_offset = 4 + (u64::from(self.next_avail.0 % queue_size) * 2);
         let desc_idx_addr = self.avail_ring.checked_add(desc_idx_addr_offset)?;
 
