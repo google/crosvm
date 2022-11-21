@@ -121,7 +121,8 @@ impl PageHandler {
         // sequential search the corresponding page map from the list. It should be fast enough
         // because there are a few regions (usually only 1).
         self.regions.iter().position(|region| {
-            region.head_page_idx <= page_idx && page_idx < region.head_page_idx + region.file.len()
+            region.head_page_idx <= page_idx
+                && page_idx < region.head_page_idx + region.file.num_pages()
         })
     }
 
@@ -147,7 +148,7 @@ impl PageHandler {
         // find an overlaping region
         match self.regions.iter().position(|region| {
             if region.head_page_idx < head_page_idx {
-                region.head_page_idx + region.file.len() > head_page_idx
+                region.head_page_idx + region.file.num_pages() > head_page_idx
             } else {
                 region.head_page_idx < head_page_idx + num_of_pages
             }
@@ -158,7 +159,7 @@ impl PageHandler {
                 Err(Error::RegionOverlap(
                     address_range.clone(),
                     self.page_idx_to_addr(region.head_page_idx)
-                        ..(self.page_idx_to_addr(region.head_page_idx + region.file.len())),
+                        ..(self.page_idx_to_addr(region.head_page_idx + region.file.num_pages())),
                 ))
             }
             None => {
@@ -312,8 +313,8 @@ impl PageHandler {
         if self.regions[region_position].head_page_idx != head_page_idx {
             return Err(Error::InvalidAddress(base_addr));
         }
-        let region_size = self.regions[region_position].file.len() << self.pagesize_shift;
-        let file_data = FileDataIterator::new(memfd, base_offset);
+        let region_size = self.regions[region_position].file.num_pages() << self.pagesize_shift;
+        let file_data = FileDataIterator::new(memfd, base_offset, region_size as u64);
 
         for data_range in file_data {
             // assert offset is page aligned

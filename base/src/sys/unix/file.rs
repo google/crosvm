@@ -35,6 +35,7 @@ fn lseek(fd: &dyn AsRawDescriptor, offset: u64, option: LseekOption) -> Result<u
 pub struct FileDataIterator<'a> {
     fd: &'a dyn AsRawDescriptor,
     offset: u64,
+    end: u64,
 }
 
 impl<'a> FileDataIterator<'a> {
@@ -44,13 +45,24 @@ impl<'a> FileDataIterator<'a> {
     ///
     /// * `fd` - the [trait@AsRawDescriptor] of the file
     /// * `offset` - the offset to start traversing from.
-    pub fn new(fd: &'a dyn AsRawDescriptor, offset: u64) -> Self {
-        Self { fd, offset }
+    /// * `len` - the len of the region over which to iterate
+    pub fn new(fd: &'a dyn AsRawDescriptor, offset: u64, len: u64) -> Self {
+        Self {
+            fd,
+            offset,
+            end: offset + len,
+        }
     }
 
     fn find_next_data(&self) -> Result<Option<Range<u64>>> {
         let offset_data = match lseek(self.fd, self.offset, LseekOption::Data) {
-            Ok(offset) => offset,
+            Ok(offset) => {
+                if offset >= self.end {
+                    return Ok(None);
+                } else {
+                    offset
+                }
+            }
             Err(e) => {
                 return match e.errno() {
                     libc::ENXIO => Ok(None),
@@ -60,7 +72,7 @@ impl<'a> FileDataIterator<'a> {
         };
         let offset_hole = lseek(self.fd, offset_data, LseekOption::Hole)?;
 
-        Ok(Some(offset_data..offset_hole))
+        Ok(Some(offset_data..offset_hole.min(self.end)))
     }
 }
 
@@ -99,11 +111,27 @@ mod tests {
         file.write_at(&[1_u8], 2 * pagesize() as u64).unwrap();
         file.write_at(&[1_u8], (4 * pagesize() - 1) as u64).unwrap();
 
-        let iter = FileDataIterator::new(&file, 0);
+        let iter = FileDataIterator::new(&file, 0, 4 * pagesize() as u64);
 
         let result: Vec<Range<u64>> = iter.collect();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0], 0..(pagesize() as u64));
         assert_eq!(result[1], (2 * pagesize() as u64)..(4 * pagesize() as u64));
+    }
+
+    #[test]
+    fn file_data_iterator_subrange() {
+        let file = tempfile::tempfile().unwrap();
+
+        file.write_at(&[1_u8], 0).unwrap();
+        file.write_at(&[1_u8], pagesize() as u64).unwrap();
+        file.write_at(&[1_u8], 2 * pagesize() as u64).unwrap();
+        file.write_at(&[1_u8], 4 * pagesize() as u64).unwrap();
+
+        let iter = FileDataIterator::new(&file, pagesize() as u64, pagesize() as u64);
+
+        let result: Vec<Range<u64>> = iter.collect();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], (pagesize() as u64)..(2 * pagesize() as u64));
     }
 }

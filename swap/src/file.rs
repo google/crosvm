@@ -104,7 +104,7 @@ impl SwapFile {
     }
 
     /// Returns the total count of managed pages.
-    pub fn len(&self) -> usize {
+    pub fn num_pages(&self) -> usize {
         self.state_list.len()
     }
 
@@ -255,7 +255,7 @@ mod tests {
         let dir_path = tempfile::tempdir().unwrap();
         let swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
 
-        assert_eq!(swap_file.len(), 200);
+        assert_eq!(swap_file.num_pages(), 200);
     }
 
     #[test]
