@@ -1240,19 +1240,20 @@ pub struct RunCommand {
     )]
     #[serde(default)]
     #[merge(strategy = append)]
-    /// comma separated key=value pairs for setting
-    /// up a vhost-user net device
+    /// comma separated key=value pairs for setting up a network
+    /// device.
     /// Possible key values:
     ///     tap-name=STRING - name of a configured persistent TAP
     ///        interface to use for networking.
+    /// OR
     ///     tap-fd=INT - File descriptor for configured tap device.
+    /// OR
     ///     host-ip=STRING - IP address to assign to
     ///         host tap interface.
     ///     netmask=STRING - Netmask for VM subnet.
     ///     mac=STRING - MAC address for VM.
     /// Either one tap_name, one tap_fd or a triplet of host_ip,
-    /// netmask and mac can be specified as arguments for
-    /// one --net parameter--net parameter.
+    /// netmask and mac must be specified.
     pub net: Vec<NetParameters>,
 
     #[cfg(unix)]
