@@ -7,5 +7,7 @@ This chapter includes instructions on how to run crosvm.
   of crosvm.
 - [Custom Kernel / Rootfs](./custom_kernel_rootfs.md): Instructions on how to build a kernel and
   rootfs for crosvm.
+- [Options and Configuration Files](./options.md): How to specify command-line options and use
+  configuration files
 - [System Requirements](./requirements.md): Host and guest requirements for running crosvm
 - [Features](./features.md): Feature flags available when building crosvm
