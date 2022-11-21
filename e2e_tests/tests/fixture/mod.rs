@@ -296,7 +296,7 @@ impl TestVm {
         let rootfs_and_option = format!(
             "{}{},ro,root",
             rootfs_path().to_str().unwrap(),
-            if o_direct { ",o_direct=true" } else { "" }
+            if o_direct { ",direct=true" } else { "" }
         );
         command
             .args(&["--block", &rootfs_and_option])
@@ -421,7 +421,7 @@ impl TestVm {
                   "path": "{}",
                   "ro": true,
                   "root": true,
-                  "o_direct": {}
+                  "direct": {}
                 }}
               ]
             }}

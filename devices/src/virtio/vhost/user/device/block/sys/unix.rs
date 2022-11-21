@@ -48,7 +48,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         read_only: fileopts.contains(&"read-only"),
         root: false,
         sparse: false,
-        o_direct: false,
+        direct: false,
         block_size: 512,
         id: None,
     };

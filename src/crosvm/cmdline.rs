@@ -795,11 +795,11 @@ pub struct RunCommand {
     ///         specified once. (default: false)
     ///     sparse=BOOL - Indicates whether the disk should support
     ///         the discard operation. (default: true)
-    ///     block_size=BYTES - Set the reported block size of the
+    ///     block-size=BYTES - Set the reported block size of the
     ///         disk. (default: 512)
     ///     id=STRING - Set the block device identifier to an ASCII
     ///         string, up to 20 characters. (default: no ID)
-    ///     o_direct=BOOL - Use O_DIRECT mode to bypass page cache.
+    ///     direct=BOOL - Use O_DIRECT mode to bypass page cache.
     ///         (default: false)
     block: Vec<DiskOptionWithId>,
 

@@ -48,7 +48,7 @@ fn deserialize_disk_id<'de, D: Deserializer<'de>>(
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, serde_keyvalue::FromKeyValues)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct DiskOption {
     pub path: PathBuf,
     #[serde(default, rename = "ro")]
@@ -59,14 +59,20 @@ pub struct DiskOption {
     pub root: bool,
     #[serde(default = "block_option_sparse_default")]
     pub sparse: bool,
-    #[serde(default)]
-    pub o_direct: bool,
-    #[serde(default = "block_option_block_size_default")]
+    // camel_case variant allowed for backward compatibility.
+    #[serde(default, alias = "o_direct")]
+    pub direct: bool,
+    // camel_case variant allowed for backward compatibility.
+    #[serde(default = "block_option_block_size_default", alias = "block_size")]
     pub block_size: u32,
     #[serde(default, deserialize_with = "deserialize_disk_id")]
     pub id: Option<[u8; DISK_ID_LEN]>,
+    // camel_case variant allowed for backward compatibility.
     #[cfg(windows)]
-    #[serde(default = "block_option_io_concurrency_default")]
+    #[serde(
+        default = "block_option_io_concurrency_default",
+        alias = "io_concurrency"
+    )]
     pub io_concurrency: NonZeroU32,
 }
 
@@ -101,7 +107,7 @@ mod tests {
                 read_only: false,
                 root: false,
                 sparse: true,
-                o_direct: false,
+                direct: false,
                 block_size: 512,
                 id: None,
                 #[cfg(windows)]
@@ -118,7 +124,7 @@ mod tests {
                 read_only: false,
                 root: false,
                 sparse: true,
-                o_direct: false,
+                direct: false,
                 block_size: 512,
                 id: None,
                 #[cfg(windows)]
@@ -135,7 +141,7 @@ mod tests {
                 read_only: true,
                 root: false,
                 sparse: true,
-                o_direct: false,
+                direct: false,
                 block_size: 512,
                 id: None,
                 #[cfg(windows)]
@@ -152,7 +158,7 @@ mod tests {
                 read_only: false,
                 root: true,
                 sparse: true,
-                o_direct: false,
+                direct: false,
                 block_size: 512,
                 id: None,
                 #[cfg(windows)]
@@ -169,7 +175,7 @@ mod tests {
                 read_only: false,
                 root: false,
                 sparse: true,
-                o_direct: false,
+                direct: false,
                 block_size: 512,
                 id: None,
                 #[cfg(windows)]
@@ -184,7 +190,7 @@ mod tests {
                 read_only: false,
                 root: false,
                 sparse: false,
-                o_direct: false,
+                direct: false,
                 block_size: 512,
                 id: None,
                 #[cfg(windows)]
@@ -192,7 +198,24 @@ mod tests {
             }
         );
 
-        // o_direct
+        // direct
+        let params = from_block_arg("/some/path.img,direct").unwrap();
+        assert_eq!(
+            params,
+            DiskOption {
+                path: "/some/path.img".into(),
+                read_only: false,
+                root: false,
+                sparse: true,
+                direct: true,
+                block_size: 512,
+                id: None,
+                #[cfg(windows)]
+                io_concurrency: NonZeroU32::new(1).unwrap(),
+            }
+        );
+
+        // o_direct (deprecated, kept for backward compatibility)
         let params = from_block_arg("/some/path.img,o_direct").unwrap();
         assert_eq!(
             params,
@@ -201,7 +224,7 @@ mod tests {
                 read_only: false,
                 root: false,
                 sparse: true,
-                o_direct: true,
+                direct: true,
                 block_size: 512,
                 id: None,
                 #[cfg(windows)]
@@ -209,7 +232,24 @@ mod tests {
             }
         );
 
-        // block_size
+        // block-size
+        let params = from_block_arg("/some/path.img,block-size=128").unwrap();
+        assert_eq!(
+            params,
+            DiskOption {
+                path: "/some/path.img".into(),
+                read_only: false,
+                root: false,
+                sparse: true,
+                direct: false,
+                block_size: 128,
+                id: None,
+                #[cfg(windows)]
+                io_concurrency: NonZeroU32::new(1).unwrap(),
+            }
+        );
+        //
+        // block_size (deprecated, kept for backward compatibility)
         let params = from_block_arg("/some/path.img,block_size=128").unwrap();
         assert_eq!(
             params,
@@ -218,7 +258,7 @@ mod tests {
                 read_only: false,
                 root: false,
                 sparse: true,
-                o_direct: false,
+                direct: false,
                 block_size: 128,
                 id: None,
                 #[cfg(windows)]
@@ -237,7 +277,7 @@ mod tests {
                     read_only: false,
                     root: false,
                     sparse: true,
-                    o_direct: false,
+                    direct: false,
                     block_size: 512,
                     id: None,
                     io_concurrency: NonZeroU32::new(4).unwrap(),
@@ -254,7 +294,7 @@ mod tests {
                 read_only: false,
                 root: false,
                 sparse: true,
-                o_direct: false,
+                direct: false,
                 block_size: 512,
                 id: Some(*b"DISK\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"),
                 #[cfg(windows)]
@@ -272,7 +312,7 @@ mod tests {
 
         // All together
         let params = from_block_arg(
-            "/some/path.img,block_size=256,ro,root,sparse=false,id=DISK_LABEL,o_direct",
+            "/some/path.img,block_size=256,ro,root,sparse=false,id=DISK_LABEL,direct",
         )
         .unwrap();
         assert_eq!(
@@ -282,7 +322,7 @@ mod tests {
                 read_only: true,
                 root: true,
                 sparse: false,
-                o_direct: true,
+                direct: true,
                 block_size: 256,
                 id: Some(*b"DISK_LABEL\0\0\0\0\0\0\0\0\0\0"),
                 #[cfg(windows)]

@@ -32,7 +32,7 @@ impl DiskOption {
         let mut options = OpenOptions::new();
         options.read(true).write(!self.read_only);
 
-        if self.o_direct {
+        if self.direct {
             options.custom_flags(libc::O_DIRECT);
         }
 
