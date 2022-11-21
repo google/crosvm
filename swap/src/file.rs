@@ -112,7 +112,7 @@ impl SwapFile {
     ///
     /// Returns [Option::None] if no content in the file.
     ///
-    /// Returns [Error::OutOfRange] if the [idx] is out of range.
+    /// Returns [Error::OutOfRange] if the `idx` is out of range.
     ///
     /// # Arguments
     ///

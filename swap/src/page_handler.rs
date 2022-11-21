@@ -70,7 +70,7 @@ pub struct PageHandler {
 }
 
 impl PageHandler {
-    /// Creates [PageHandler] and [SwapFile] corresponding to each region.
+    /// Creates [PageHandler] for the given region.
     ///
     /// # Arguments
     ///
