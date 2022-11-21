@@ -427,6 +427,14 @@ impl Queue {
         self.size = val;
     }
 
+    // Return `index` modulo the currently configured queue size.
+    fn wrap_queue_index(&self, index: Wrapping<u16>) -> u16 {
+        // We know that `self.size` is a power of two (enforced by `set_size()`), so the modulus can
+        // be calculated with a bitmask rather than actual division.
+        debug_assert!(self.size.is_power_of_two());
+        index.0 & (self.size - 1)
+    }
+
     /// Reset queue to a clean state
     pub fn reset(&mut self) {
         self.ready = false;
@@ -645,8 +653,7 @@ impl Queue {
         // checking that there is a slot available.
         fence(Ordering::SeqCst);
 
-        let queue_size = self.size;
-        let desc_idx_addr_offset = 4 + (u64::from(self.next_avail.0 % queue_size) * 2);
+        let desc_idx_addr_offset = 4 + (u64::from(self.wrap_queue_index(self.next_avail)) * 2);
         let desc_idx_addr = self.avail_ring.checked_add(desc_idx_addr_offset)?;
 
         // This index is checked below in checked_new.
@@ -657,7 +664,7 @@ impl Queue {
         DescriptorChain::checked_new(
             mem,
             self.desc_table,
-            queue_size,
+            self.size,
             descriptor_index,
             0,
             iommu,
@@ -720,7 +727,7 @@ impl Queue {
         }
 
         let used_ring = self.used_ring;
-        let next_used = (self.next_used.0 % self.size) as usize;
+        let next_used = self.wrap_queue_index(self.next_used) as usize;
         let used_elem = used_ring.unchecked_add((4 + next_used * 8) as u64);
 
         // These writes can't fail as we are guaranteed to be within the descriptor ring.
