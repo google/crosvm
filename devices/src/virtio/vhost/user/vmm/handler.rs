@@ -207,12 +207,12 @@ impl VhostUserHandler {
         irqfd: &Event,
     ) -> Result<()> {
         self.vu
-            .set_vring_num(queue_index, queue.actual_size())
+            .set_vring_num(queue_index, queue.size())
             .map_err(Error::SetVringNum)?;
 
         let config_data = VringConfigData {
             queue_max_size: queue.max_size,
-            queue_size: queue.actual_size(),
+            queue_size: queue.size(),
             flags: 0u32,
             desc_table_addr: mem
                 .get_host_address(queue.desc_table())
