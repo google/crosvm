@@ -342,20 +342,21 @@ impl VirtioDevice for Pmem {
                 };
             self.kill_event = Some(self_kill_event);
 
-            let worker_result = thread::Builder::new()
-                .name("virtio_pmem".to_string())
-                .spawn(move || {
-                    run_worker(
-                        queue_event,
-                        queue,
-                        pmem_device_tube,
-                        interrupt,
-                        kill_event,
-                        memory,
-                        mapping_arena_slot,
-                        mapping_size,
-                    )
-                });
+            let worker_result =
+                thread::Builder::new()
+                    .name("v_pmem".to_string())
+                    .spawn(move || {
+                        run_worker(
+                            queue_event,
+                            queue,
+                            pmem_device_tube,
+                            interrupt,
+                            kill_event,
+                            memory,
+                            mapping_arena_slot,
+                            mapping_size,
+                        )
+                    });
 
             self.worker_thread = match worker_result {
                 Err(e) => {

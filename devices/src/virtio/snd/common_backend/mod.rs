@@ -384,7 +384,7 @@ impl VirtioDevice for VirtioSnd {
         let snd_data = self.snd_data.clone();
         let stream_source_generators = create_stream_source_generators(&self.params, &snd_data);
         let worker_result = thread::Builder::new()
-            .name("virtio_snd w".to_string())
+            .name("v_snd_common".to_string())
             .spawn(move || {
                 set_audio_thread_priority();
                 if let Err(err_string) = run_worker(

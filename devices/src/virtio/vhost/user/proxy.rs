@@ -1580,7 +1580,7 @@ impl VirtioVhostUser {
         // This thread will wait for the sibling to connect and the continuously parse messages from
         // the sibling as well as the device (over Virtio).
         let worker_result = thread::Builder::new()
-            .name("virtio_vhost_user".to_string())
+            .name("v_vhost_user".to_string())
             .spawn(move || {
                 // Block until the connection with the sibling is established. We do this in a
                 // thread to avoid blocking the main thread.

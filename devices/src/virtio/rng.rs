@@ -207,18 +207,17 @@ impl VirtioDevice for Rng {
 
         let queue = queues.remove(0);
 
-        let worker_result =
-            thread::Builder::new()
-                .name("virtio_rng".to_string())
-                .spawn(move || {
-                    let mut worker = Worker {
-                        interrupt,
-                        queue,
-                        mem,
-                    };
-                    worker.run(queue_evts.remove(0), kill_evt);
-                    worker
-                });
+        let worker_result = thread::Builder::new()
+            .name("v_rng".to_string())
+            .spawn(move || {
+                let mut worker = Worker {
+                    interrupt,
+                    queue,
+                    mem,
+                };
+                worker.run(queue_evts.remove(0), kill_evt);
+                worker
+            });
 
         match worker_result {
             Err(e) => {

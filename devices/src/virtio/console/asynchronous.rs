@@ -338,7 +338,7 @@ impl VirtioDevice for AsyncConsole {
         let transmit_evt = queue_evts.remove(0);
 
         let worker_result = thread::Builder::new()
-            .name("virtio_console".to_string())
+            .name("v_console".to_string())
             .spawn(move || {
                 let mut console = console;
 

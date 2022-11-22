@@ -2077,26 +2077,25 @@ impl VirtioDevice for Wl {
             } else {
                 None
             };
-            let worker_result =
-                thread::Builder::new()
-                    .name("virtio_wl".to_string())
-                    .spawn(move || {
-                        Worker::new(
-                            mem,
-                            interrupt,
-                            queues.remove(0),
-                            queues.remove(0),
-                            wayland_paths,
-                            mapper,
-                            use_transition_flags,
-                            use_send_vfd_v2,
-                            resource_bridge,
-                            #[cfg(feature = "minigbm")]
-                            gralloc,
-                            address_offset,
-                        )
-                        .run(queue_evts, kill_evt);
-                    });
+            let worker_result = thread::Builder::new()
+                .name("v_wl".to_string())
+                .spawn(move || {
+                    Worker::new(
+                        mem,
+                        interrupt,
+                        queues.remove(0),
+                        queues.remove(0),
+                        wayland_paths,
+                        mapper,
+                        use_transition_flags,
+                        use_send_vfd_v2,
+                        resource_bridge,
+                        #[cfg(feature = "minigbm")]
+                        gralloc,
+                        address_offset,
+                    )
+                    .run(queue_evts, kill_evt);
+                });
 
             self.worker_thread = match worker_result {
                 Err(e) => {

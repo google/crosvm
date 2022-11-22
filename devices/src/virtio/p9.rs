@@ -233,19 +233,18 @@ impl VirtioDevice for P9 {
         self.kill_evt = Some(self_kill_evt);
 
         if let Some(server) = self.server.take() {
-            let worker_result =
-                thread::Builder::new()
-                    .name("virtio_9p".to_string())
-                    .spawn(move || {
-                        let mut worker = Worker {
-                            interrupt,
-                            mem: guest_mem,
-                            queue: queues.remove(0),
-                            server,
-                        };
+            let worker_result = thread::Builder::new()
+                .name("v_9p".to_string())
+                .spawn(move || {
+                    let mut worker = Worker {
+                        interrupt,
+                        mem: guest_mem,
+                        queue: queues.remove(0),
+                        server,
+                    };
 
-                        worker.run(queue_evts.remove(0), kill_evt)
-                    });
+                    worker.run(queue_evts.remove(0), kill_evt)
+                });
 
             match worker_result {
                 Ok(worker) => self.worker = Some(worker),

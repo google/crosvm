@@ -295,12 +295,13 @@ impl VirtioDevice for Fs {
             let irq = interrupt.clone();
             let socket = Arc::clone(&socket);
 
-            let worker_result = thread::Builder::new()
-                .name(format!("virtio-fs worker {}", idx))
-                .spawn(move || {
-                    let mut worker = Worker::new(mem, queue, server, irq, socket, slot);
-                    worker.run(evt, kill_evt, watch_resample_event)
-                });
+            let worker_result =
+                thread::Builder::new()
+                    .name(format!("v_fs:{idx}"))
+                    .spawn(move || {
+                        let mut worker = Worker::new(mem, queue, server, irq, socket, slot);
+                        worker.run(evt, kill_evt, watch_resample_event)
+                    });
 
             if watch_resample_event {
                 watch_resample_event = false;

@@ -87,7 +87,7 @@ impl Worker {
         let senders: Vec<Sender<StreamMsg>> =
             streams.iter().map(|sp| sp.msg_sender().clone()).collect();
         let io_thread = thread::Builder::new()
-            .name(String::from("virtio_snd_io"))
+            .name("v_snd_io".to_string())
             .spawn(move || {
                 try_set_real_time_priority();
 

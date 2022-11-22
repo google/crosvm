@@ -259,7 +259,7 @@ impl VirtioDevice for VideoDevice {
         let worker_result = match &self.device_type {
             #[cfg(feature = "video-decoder")]
             VideoDeviceType::Decoder => thread::Builder::new()
-                .name("virtio video decoder".to_owned())
+                .name("v_video_decoder".to_owned())
                 .spawn(move || {
                     let device: Box<dyn Device> =
                         match create_decoder_device(backend, resource_bridge, mem) {
@@ -277,7 +277,7 @@ impl VirtioDevice for VideoDevice {
                 }),
             #[cfg(feature = "video-encoder")]
             VideoDeviceType::Encoder => thread::Builder::new()
-                .name("virtio video encoder".to_owned())
+                .name("v_video_encoder".to_owned())
                 .spawn(move || {
                     let device: Box<dyn Device> = match backend {
                         #[cfg(feature = "libvda")]

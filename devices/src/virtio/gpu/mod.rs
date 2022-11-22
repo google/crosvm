@@ -1433,51 +1433,47 @@ impl VirtioDevice for Gpu {
         if let (Some(mapper), Some(rutabaga_builder)) =
             (self.mapper.take(), self.rutabaga_builder.take())
         {
-            let worker_result =
-                thread::Builder::new()
-                    .name("virtio_gpu".to_string())
-                    .spawn(move || {
-                        let fence_handler = create_fence_handler(
-                            mem.clone(),
-                            ctrl_queue.clone(),
-                            fence_state.clone(),
-                        );
+            let worker_result = thread::Builder::new()
+                .name("v_gpu".to_string())
+                .spawn(move || {
+                    let fence_handler =
+                        create_fence_handler(mem.clone(), ctrl_queue.clone(), fence_state.clone());
 
-                        let virtio_gpu = match build(
-                            &display_backends,
-                            display_params,
-                            display_event,
-                            rutabaga_builder,
-                            event_devices,
-                            mapper,
-                            external_blob,
-                            #[cfg(windows)]
-                            &mut wndproc_thread,
-                            udmabuf,
-                            fence_handler,
-                            #[cfg(feature = "virgl_renderer_next")]
-                            render_server_fd,
-                        ) {
-                            Some(backend) => backend,
-                            None => return,
-                        };
+                    let virtio_gpu = match build(
+                        &display_backends,
+                        display_params,
+                        display_event,
+                        rutabaga_builder,
+                        event_devices,
+                        mapper,
+                        external_blob,
+                        #[cfg(windows)]
+                        &mut wndproc_thread,
+                        udmabuf,
+                        fence_handler,
+                        #[cfg(feature = "virgl_renderer_next")]
+                        render_server_fd,
+                    ) {
+                        Some(backend) => backend,
+                        None => return,
+                    };
 
-                        Worker {
-                            interrupt,
-                            exit_evt_wrtube,
-                            #[cfg(unix)]
-                            gpu_control_tube,
-                            mem,
-                            ctrl_queue: ctrl_queue.clone(),
-                            ctrl_evt,
-                            cursor_queue,
-                            cursor_evt,
-                            resource_bridges,
-                            kill_evt,
-                            state: Frontend::new(virtio_gpu, fence_state),
-                        }
-                        .run()
-                    });
+                    Worker {
+                        interrupt,
+                        exit_evt_wrtube,
+                        #[cfg(unix)]
+                        gpu_control_tube,
+                        mem,
+                        ctrl_queue: ctrl_queue.clone(),
+                        ctrl_evt,
+                        cursor_queue,
+                        cursor_evt,
+                        resource_bridges,
+                        kill_evt,
+                        state: Frontend::new(virtio_gpu, fence_state),
+                    }
+                    .run()
+                });
 
             self.worker_thread = match worker_result {
                 Err(e) => {

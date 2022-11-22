@@ -627,19 +627,20 @@ where
         let event_queue_evt = queue_evts.remove(0);
 
         if let Some(source) = self.source.take() {
-            let worker_result = thread::Builder::new()
-                .name(String::from("virtio_input"))
-                .spawn(move || {
-                    let mut worker = Worker {
-                        interrupt,
-                        event_source: source,
-                        event_queue,
-                        status_queue,
-                        guest_memory: mem,
-                    };
-                    worker.run(event_queue_evt, status_queue_evt, kill_evt);
-                    worker
-                });
+            let worker_result =
+                thread::Builder::new()
+                    .name("v_input".to_string())
+                    .spawn(move || {
+                        let mut worker = Worker {
+                            interrupt,
+                            event_source: source,
+                            event_queue,
+                            status_queue,
+                            guest_memory: mem,
+                        };
+                        worker.run(event_queue_evt, status_queue_evt, kill_evt);
+                        worker
+                    });
 
             match worker_result {
                 Err(e) => {

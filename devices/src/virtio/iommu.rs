@@ -863,32 +863,33 @@ impl VirtioDevice for Iommu {
 
         match self.iommu_device_tube.take() {
             Some(iommu_device_tube) => {
-                let worker_result = thread::Builder::new()
-                    .name("virtio_iommu".to_string())
-                    .spawn(move || {
-                        let state = State {
-                            mem,
-                            page_mask,
-                            hp_endpoints_ranges,
-                            endpoint_map: BTreeMap::new(),
-                            domain_map: BTreeMap::new(),
-                            endpoints: eps,
-                            dmabuf_mem: BTreeMap::new(),
-                        };
-                        let result = run(
-                            state,
-                            iommu_device_tube,
-                            queues,
-                            queue_evts,
-                            kill_evt,
-                            interrupt,
-                            translate_response_senders,
-                            translate_request_rx,
-                        );
-                        if let Err(e) = result {
-                            error!("virtio-iommu worker thread exited with error: {}", e);
-                        }
-                    });
+                let worker_result =
+                    thread::Builder::new()
+                        .name("v_iommu".to_string())
+                        .spawn(move || {
+                            let state = State {
+                                mem,
+                                page_mask,
+                                hp_endpoints_ranges,
+                                endpoint_map: BTreeMap::new(),
+                                domain_map: BTreeMap::new(),
+                                endpoints: eps,
+                                dmabuf_mem: BTreeMap::new(),
+                            };
+                            let result = run(
+                                state,
+                                iommu_device_tube,
+                                queues,
+                                queue_evts,
+                                kill_evt,
+                                interrupt,
+                                translate_response_senders,
+                                translate_request_rx,
+                            );
+                            if let Err(e) = result {
+                                error!("virtio-iommu worker thread exited with error: {}", e);
+                            }
+                        });
 
                 match worker_result {
                     Err(e) => error!("failed to spawn virtio_iommu worker thread: {}", e),

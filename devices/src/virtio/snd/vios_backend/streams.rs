@@ -81,7 +81,7 @@ impl Stream {
     ) -> Result<StreamProxy> {
         let (sender, receiver): (Sender<StreamMsg>, Receiver<StreamMsg>) = channel();
         let thread = thread::Builder::new()
-            .name(format!("virtio_snd stream {}", stream_id))
+            .name(format!("v_snd_stream:{stream_id}"))
             .spawn(move || {
                 try_set_real_time_priority();
 

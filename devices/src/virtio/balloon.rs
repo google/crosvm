@@ -865,7 +865,7 @@ impl VirtioDevice for Balloon {
         let release_memory_tube = self.release_memory_tube.take();
         let acked_features = self.acked_features;
         let worker_result = thread::Builder::new()
-            .name("virtio_balloon".to_string())
+            .name("v_balloon".to_string())
             .spawn(move || {
                 run_worker(
                     queue_evts,

@@ -256,7 +256,7 @@ impl VirtioDevice for Tpm {
         };
 
         let worker_result = thread::Builder::new()
-            .name("virtio_tpm".to_string())
+            .name("v_tpm".to_string())
             .spawn(|| worker.run());
 
         match worker_result {

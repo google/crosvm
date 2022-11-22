@@ -749,34 +749,35 @@ where
             };
             #[cfg(windows)]
             let overlapped_wrapper = OverlappedWrapper::new(true).unwrap();
-            let worker_result = thread::Builder::new()
-                .name(format!("virtio_net worker {}", i))
-                .spawn(move || {
-                    let mut worker = Worker {
-                        interrupt,
-                        mem: memory,
-                        rx_queue,
-                        tx_queue,
-                        ctrl_queue,
-                        tap,
-                        #[cfg(windows)]
-                        overlapped_wrapper,
-                        acked_features,
-                        vq_pairs: pairs,
-                        #[cfg(windows)]
-                        rx_buf: [0u8; MAX_BUFFER_SIZE],
-                        #[cfg(windows)]
-                        rx_count: 0,
-                        #[cfg(windows)]
-                        deferred_rx: false,
-                        kill_evt,
-                    };
-                    let result = worker.run(rx_queue_evt, tx_queue_evt, ctrl_queue_evt);
-                    if let Err(e) = result {
-                        error!("net worker thread exited with error: {}", e);
-                    }
-                    worker
-                });
+            let worker_result =
+                thread::Builder::new()
+                    .name(format!("v_net:{i}"))
+                    .spawn(move || {
+                        let mut worker = Worker {
+                            interrupt,
+                            mem: memory,
+                            rx_queue,
+                            tx_queue,
+                            ctrl_queue,
+                            tap,
+                            #[cfg(windows)]
+                            overlapped_wrapper,
+                            acked_features,
+                            vq_pairs: pairs,
+                            #[cfg(windows)]
+                            rx_buf: [0u8; MAX_BUFFER_SIZE],
+                            #[cfg(windows)]
+                            rx_count: 0,
+                            #[cfg(windows)]
+                            deferred_rx: false,
+                            kill_evt,
+                        };
+                        let result = worker.run(rx_queue_evt, tx_queue_evt, ctrl_queue_evt);
+                        if let Err(e) = result {
+                            error!("net worker thread exited with error: {}", e);
+                        }
+                        worker
+                    });
 
             match worker_result {
                 Err(e) => {

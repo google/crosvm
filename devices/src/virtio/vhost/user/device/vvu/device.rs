@@ -427,7 +427,7 @@ impl VfioDeviceTrait for VvuDevice {
         let frontend_sender = VfioSender::new(rxq_sender, rxq_evt);
         let backend_sender = VfioSender::new(backend_rxq_sender, backend_rxq_evt2);
         thread::Builder::new()
-            .name("virtio-vhost-user driver".to_string())
+            .name("vvu_driver".to_string())
             .spawn(move || {
                 device.start().expect("failed to start device");
                 if let Err(e) = run_worker(

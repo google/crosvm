@@ -486,7 +486,7 @@ impl VirtioDevice for Console {
         let output = self.output.take().unwrap_or_else(|| Box::new(io::sink()));
 
         let worker_result = thread::Builder::new()
-            .name("virtio_console".to_string())
+            .name("v_console".to_string())
             .spawn(move || {
                 let mut worker = Worker {
                     mem,

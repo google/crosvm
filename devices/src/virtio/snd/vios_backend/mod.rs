@@ -152,35 +152,36 @@ impl VirtioDevice for Sound {
             error!("Failed to start vios background thread: {}", e);
         }
 
-        let thread_result = thread::Builder::new()
-            .name(String::from("virtio_snd"))
-            .spawn(move || {
-                match Worker::try_new(
-                    vios_client,
-                    interrupt,
-                    mem,
-                    Arc::new(Mutex::new(control_queue)),
-                    control_queue_evt,
-                    event_queue,
-                    event_queue_evt,
-                    Arc::new(Mutex::new(tx_queue)),
-                    tx_queue_evt,
-                    Arc::new(Mutex::new(rx_queue)),
-                    rx_queue_evt,
-                ) {
-                    Ok(mut worker) => match worker.control_loop(kill_evt) {
-                        Ok(_) => true,
+        let thread_result =
+            thread::Builder::new()
+                .name("v_snd_vios".to_string())
+                .spawn(move || {
+                    match Worker::try_new(
+                        vios_client,
+                        interrupt,
+                        mem,
+                        Arc::new(Mutex::new(control_queue)),
+                        control_queue_evt,
+                        event_queue,
+                        event_queue_evt,
+                        Arc::new(Mutex::new(tx_queue)),
+                        tx_queue_evt,
+                        Arc::new(Mutex::new(rx_queue)),
+                        rx_queue_evt,
+                    ) {
+                        Ok(mut worker) => match worker.control_loop(kill_evt) {
+                            Ok(_) => true,
+                            Err(e) => {
+                                error!("virtio-snd: Error in worker loop: {}", e);
+                                false
+                            }
+                        },
                         Err(e) => {
-                            error!("virtio-snd: Error in worker loop: {}", e);
+                            error!("virtio-snd: Failed to create worker: {}", e);
                             false
                         }
-                    },
-                    Err(e) => {
-                        error!("virtio-snd: Failed to create worker: {}", e);
-                        false
                     }
-                }
-            });
+                });
         match thread_result {
             Err(e) => {
                 error!("failed to spawn virtio_snd worker thread: {}", e);
