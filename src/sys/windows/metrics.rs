@@ -11,7 +11,6 @@ cfg_if::cfg_if! {
         use std::thread;
         use metrics_crate::MetricsController;
         use crosvm_cli::sys::windows::exit::{Exit, ExitContext, ExitContextAnyhow};
-        use crate::sys::windows::main::set_bootstrap_arguments;
         use tube_transporter::{TubeToken, TubeTransporterReader};
         use base::FromRawDescriptor;
     }
@@ -30,8 +29,6 @@ pub(crate) use metrics::set_auth_token;
 pub(crate) use metrics::set_package_name;
 pub(crate) use metrics::MetricEventType;
 
-#[cfg(feature = "kiwi")]
-use crate::crosvm::argument::Argument;
 use crate::crosvm::sys::cmdline::RunMetricsCommand;
 
 pub(crate) fn run_metrics(#[allow(unused_variables)] args: RunMetricsCommand) -> Result<()> {
@@ -40,12 +37,6 @@ pub(crate) fn run_metrics(#[allow(unused_variables)] args: RunMetricsCommand) ->
 
     #[cfg(feature = "kiwi")]
     {
-        let arguments = &[Argument::value(
-            "bootstrap",
-            "TRANSPORT_TUBE_RD",
-            "TubeTransporter descriptor used to bootstrap the metrics process.",
-        )];
-
         let raw_transport_tube = args.bootstrap as RawDescriptor;
 
         // Safe because we know that raw_transport_tube is valid (passed by inheritance), and that the

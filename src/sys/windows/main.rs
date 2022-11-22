@@ -31,8 +31,6 @@ use tube_transporter::TubeTransporterReader;
 use win_util::DllNotificationData;
 use win_util::DllWatcher;
 
-use crate::crosvm::argument;
-use crate::crosvm::argument::Argument;
 use crate::crosvm::cmdline::RunCommand;
 use crate::crosvm::sys::cmdline::Commands;
 use crate::crosvm::sys::cmdline::DeviceSubcommand;
@@ -45,12 +43,6 @@ use crate::Config;
 
 #[cfg(all(feature = "slirp"))]
 pub(crate) fn run_slirp(args: RunSlirpCommand) -> Result<()> {
-    let arguments = &[Argument::value(
-        "bootstrap",
-        "TRANSPORT_TUBE_RD",
-        "TubeTransporter descriptor used to bootstrap the Slirp process.",
-    )];
-
     let raw_transport_tube = args.bootstrap as RawDescriptor;
 
     // Safe because we know that raw_transport_tube is valid (passed by inheritance),
@@ -151,26 +143,6 @@ pub(crate) fn run_vm_for_broker(args: RunMainCommand) -> Result<()> {
     let exit_state = crate::sys::windows::run_config_for_broker(raw_transport_tube)?;
     info!("{}", CommandStatus::from(exit_state).message());
     Ok(())
-}
-
-pub(crate) fn set_bootstrap_arguments(
-    args: Vec<String>,
-    arguments: &[Argument],
-) -> std::result::Result<Option<RawDescriptor>, argument::Error> {
-    let mut raw_transport_tube = None;
-    crate::crosvm::argument::set_arguments(args.iter(), arguments, |name, value| {
-        if name == "bootstrap" {
-            raw_transport_tube = Some(value.unwrap().parse::<usize>().or(Err(
-                argument::Error::InvalidValue {
-                    value: value.unwrap().to_string(),
-                    expected: String::from("a raw descriptor integer"),
-                },
-            ))? as RawDescriptor);
-        }
-        Ok(())
-    })
-    .expect("Failed to set bootstrap arguments");
-    Ok(raw_transport_tube)
 }
 
 pub(crate) fn cleanup() {
