@@ -395,25 +395,6 @@ pub struct Resolution {
     height: u32,
 }
 
-/// A decoder session for the libva backend
-pub struct VaapiDecoderSession {
-    /// The implementation for the codec specific logic.
-    codec: Box<dyn VideoDecoder>,
-    /// The state for the output queue. Updated when `set_output_buffer_count`
-    /// is called or when we detect a dynamic resolution change.
-    output_queue_state: OutputQueueState,
-    /// Queue containing decoded pictures.
-    ready_queue: VecDeque<Box<dyn DynDecodedHandle>>,
-    /// Queue containing the buffers we have not yet submitted to the codec.
-    submit_queue: VecDeque<PendingJob>,
-    /// The event queue we can use to signal new events.
-    event_queue: EventQueue<DecoderEvent>,
-    /// Whether the decoder is currently flushing.
-    flushing: bool,
-    /// The last value for "display_order" we have managed to output.
-    last_display_order: u64,
-}
-
 /// A convenience type implementing persistent slice access for BufferHandles.
 pub struct BufferMapping<T: Borrow<U>, U: BufferHandle> {
     #[allow(dead_code)]
@@ -454,6 +435,25 @@ impl<T: Borrow<U>, U: BufferHandle> AsMut<[u8]> for BufferMapping<T, U> {
         // the lifetime of this slice.
         unsafe { std::slice::from_raw_parts_mut(mapping.as_ptr(), mapping.size()) }
     }
+}
+
+/// A decoder session for the libva backend
+pub struct VaapiDecoderSession {
+    /// The implementation for the codec specific logic.
+    codec: Box<dyn VideoDecoder>,
+    /// The state for the output queue. Updated when `set_output_buffer_count`
+    /// is called or when we detect a dynamic resolution change.
+    output_queue_state: OutputQueueState,
+    /// Queue containing decoded pictures.
+    ready_queue: VecDeque<Box<dyn DynDecodedHandle>>,
+    /// Queue containing the buffers we have not yet submitted to the codec.
+    submit_queue: VecDeque<PendingJob>,
+    /// The event queue we can use to signal new events.
+    event_queue: EventQueue<DecoderEvent>,
+    /// Whether the decoder is currently flushing.
+    flushing: bool,
+    /// The last value for "display_order" we have managed to output.
+    last_display_order: u64,
 }
 
 impl VaapiDecoderSession {
