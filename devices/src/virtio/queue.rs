@@ -304,7 +304,7 @@ impl<'a, 'b> Iterator for AvailIter<'a, 'b> {
 /// TODO(b/201119859) drop Clone from this struct.
 pub struct Queue {
     /// The maximal size in elements offered by the device
-    pub max_size: u16,
+    max_size: u16,
 
     /// The queue size in elements the driver selected. This is always guaranteed to be a power of
     /// two less than or equal to `max_size`, as required for split virtqueues. These invariants are
@@ -397,6 +397,11 @@ impl Queue {
     accessors!(desc_table, GuestAddress, set_desc_table);
     accessors!(avail_ring, GuestAddress, set_avail_ring);
     accessors!(used_ring, GuestAddress, set_used_ring);
+
+    /// Return the maximum size of this queue.
+    pub fn max_size(&self) -> u16 {
+        self.max_size
+    }
 
     /// Return the actual size of the queue, as the driver may not set up a
     /// queue as big as the device allows.

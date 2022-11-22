@@ -242,7 +242,7 @@ impl<H: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for VsockBackend<H> {
         self.handle
             .set_vring_addr(
                 mem,
-                queue.max_size,
+                queue.max_size(),
                 queue.size(),
                 index,
                 flags.bits(),

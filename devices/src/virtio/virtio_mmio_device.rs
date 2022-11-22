@@ -214,7 +214,7 @@ impl VirtioMmioDevice {
                     0
                 }
             }
-            VIRTIO_MMIO_QUEUE_NUM_MAX => self.with_queue(|q| q.max_size).unwrap_or(0).into(),
+            VIRTIO_MMIO_QUEUE_NUM_MAX => self.with_queue(|q| q.max_size()).unwrap_or(0).into(),
             VIRTIO_MMIO_QUEUE_PFN => {
                 warn!(
                     "{}: read from legacy register {}, in non-legacy mode",
