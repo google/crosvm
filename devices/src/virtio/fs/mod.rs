@@ -131,6 +131,7 @@ pub type Result<T> = ::std::result::Result<T, Error>;
 
 pub struct Fs {
     cfg: virtio_fs_config,
+    tag: String,
     fs: Option<PassthroughFs>,
     queue_sizes: Box<[u16]>,
     avail_features: u64,
@@ -167,6 +168,7 @@ impl Fs {
 
         Ok(Fs {
             cfg,
+            tag: tag.to_string(),
             fs: Some(fs),
             queue_sizes: vec![QUEUE_SIZE; num_queues].into_boxed_slice(),
             avail_features: base_features,
@@ -295,13 +297,12 @@ impl VirtioDevice for Fs {
             let irq = interrupt.clone();
             let socket = Arc::clone(&socket);
 
-            let worker_result =
-                thread::Builder::new()
-                    .name(format!("v_fs:{idx}"))
-                    .spawn(move || {
-                        let mut worker = Worker::new(mem, queue, server, irq, socket, slot);
-                        worker.run(evt, kill_evt, watch_resample_event)
-                    });
+            let worker_result = thread::Builder::new()
+                .name(format!("v_fs:{}:{}", self.tag, idx))
+                .spawn(move || {
+                    let mut worker = Worker::new(mem, queue, server, irq, socket, slot);
+                    worker.run(evt, kill_evt, watch_resample_event)
+                });
 
             if watch_resample_event {
                 watch_resample_event = false;
