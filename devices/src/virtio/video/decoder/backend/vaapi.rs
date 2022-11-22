@@ -4,11 +4,9 @@
 
 #![deny(missing_docs)]
 
-use std::borrow::Borrow;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
-use std::marker::PhantomData;
 use std::rc::Rc;
 
 use anyhow::anyhow;
@@ -395,31 +393,46 @@ pub struct Resolution {
     height: u32,
 }
 
+trait AsBufferHandle {
+    type BufferHandle: BufferHandle;
+    fn as_buffer_handle(&self) -> &Self::BufferHandle;
+}
+
+impl AsBufferHandle for &mut GuestResource {
+    type BufferHandle = GuestResourceHandle;
+
+    fn as_buffer_handle(&self) -> &Self::BufferHandle {
+        &self.handle
+    }
+}
+
+impl AsBufferHandle for GuestResourceHandle {
+    type BufferHandle = Self;
+
+    fn as_buffer_handle(&self) -> &Self::BufferHandle {
+        self
+    }
+}
+
 /// A convenience type implementing persistent slice access for BufferHandles.
-pub struct BufferMapping<T: Borrow<U>, U: BufferHandle> {
+struct BufferMapping<T: AsBufferHandle> {
     #[allow(dead_code)]
     /// The underlying resource. Must be kept so as not to drop the BufferHandle
     resource: T,
     /// The mapping that backs the underlying slices returned by AsRef and AsMut
     mapping: MemoryMappingArena,
-    /// A phantom so that the U parameter is used.
-    phantom: PhantomData<U>,
 }
 
-impl<T: Borrow<U>, U: BufferHandle> BufferMapping<T, U> {
+impl<T: AsBufferHandle> BufferMapping<T> {
     /// Creates a new BufferMap
     pub fn new(resource: T, offset: usize, size: usize) -> Result<Self> {
-        let mapping = resource.borrow().get_mapping(offset, size)?;
+        let mapping = resource.as_buffer_handle().get_mapping(offset, size)?;
 
-        Ok(Self {
-            resource,
-            mapping,
-            phantom: PhantomData,
-        })
+        Ok(Self { resource, mapping })
     }
 }
 
-impl<T: Borrow<U>, U: BufferHandle> AsRef<[u8]> for BufferMapping<T, U> {
+impl<T: AsBufferHandle> AsRef<[u8]> for BufferMapping<T> {
     fn as_ref(&self) -> &[u8] {
         let mapping = &self.mapping;
         // Safe because the mapping is linear and we own it, so it will not be unmapped during
@@ -428,7 +441,7 @@ impl<T: Borrow<U>, U: BufferHandle> AsRef<[u8]> for BufferMapping<T, U> {
     }
 }
 
-impl<T: Borrow<U>, U: BufferHandle> AsMut<[u8]> for BufferMapping<T, U> {
+impl<T: AsBufferHandle> AsMut<[u8]> for BufferMapping<T> {
     fn as_mut(&mut self) -> &mut [u8] {
         let mapping = &self.mapping;
         // Safe because the mapping is linear and we own it, so it will not be unmapped during
@@ -498,8 +511,7 @@ impl VaapiDecoderSession {
 
         // Get a mapping from the start of the buffer to the size of the
         // underlying decoded data in the Image.
-        let mut output_map: BufferMapping<_, GuestResourceHandle> =
-            BufferMapping::new(&mut output_buffer.handle, 0, buffer_size)?;
+        let mut output_map = BufferMapping::new(output_buffer, 0, buffer_size)?;
 
         let output_bytes = output_map.as_mut();
 
@@ -635,7 +647,7 @@ impl VaapiDecoderSession {
             bytes_used,
         } = job;
 
-        let bitstream_map: BufferMapping<_, GuestResourceHandle> = BufferMapping::new(
+        let bitstream_map = BufferMapping::new(
             resource,
             offset.try_into().unwrap(),
             bytes_used.try_into().unwrap(),
