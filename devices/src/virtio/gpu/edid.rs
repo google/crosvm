@@ -124,13 +124,13 @@ impl DisplayInfo {
     pub fn new(params: &GpuDisplayParameters) -> Self {
         let (width, height) = params.get_virtual_display_size();
 
-        let width_millimeters = if params.horizontal_dpi != 0 {
-            ((width as f32 / params.horizontal_dpi as f32) * MILLIMETERS_PER_INCH) as u16
+        let width_millimeters = if params.horizontal_dpi() != 0 {
+            ((width as f32 / params.horizontal_dpi() as f32) * MILLIMETERS_PER_INCH) as u16
         } else {
             0
         };
-        let height_millimeters = if params.vertical_dpi != 0 {
-            ((height as f32 / params.vertical_dpi as f32) * MILLIMETERS_PER_INCH) as u16
+        let height_millimeters = if params.vertical_dpi() != 0 {
+            ((height as f32 / params.vertical_dpi() as f32) * MILLIMETERS_PER_INCH) as u16
         } else {
             0
         };

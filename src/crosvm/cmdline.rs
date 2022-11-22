@@ -41,6 +41,8 @@ use devices::virtio::device_constants::video::VideoDeviceConfig;
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vhost::user::device;
 #[cfg(feature = "gpu")]
+use devices::virtio::GpuDisplayParameters;
+#[cfg(feature = "gpu")]
 use devices::virtio::GpuParameters;
 #[cfg(unix)]
 use devices::virtio::NetParameters;
@@ -57,9 +59,9 @@ use resources::AddressRange;
 use serde::Deserialize;
 #[cfg(feature = "gpu")]
 use serde_keyvalue::FromKeyValues;
-#[cfg(feature = "gpu")]
-use vm_control::gpu::DisplayParameters as GpuDisplayParameters;
 
+#[cfg(feature = "gpu")]
+use super::gpu_config::fixup_gpu_display_options;
 #[cfg(feature = "gpu")]
 use super::gpu_config::fixup_gpu_options;
 #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
@@ -639,6 +641,24 @@ impl TryFrom<GpuParameters> for FixedGpuParameters {
     }
 }
 
+/// Container for `GpuDisplayParameters` that have been fixed after parsing using serde.
+///
+/// This deserializes as a regular `GpuDisplayParameters` and applies validation.
+/// TODO(b/260101753): Remove this once the old syntax for specifying DPI is deprecated.
+#[cfg(feature = "gpu")]
+#[derive(Debug, Deserialize, FromKeyValues)]
+#[serde(try_from = "GpuDisplayParameters")]
+pub struct FixedGpuDisplayParameters(pub GpuDisplayParameters);
+
+#[cfg(feature = "gpu")]
+impl TryFrom<GpuDisplayParameters> for FixedGpuDisplayParameters {
+    type Error = String;
+
+    fn try_from(gpu_display_params: GpuDisplayParameters) -> Result<Self, Self::Error> {
+        fixup_gpu_display_options(gpu_display_params)
+    }
+}
+
 /// Deserialize `config_file` into a `RunCommand`.
 #[cfg(feature = "config-file")]
 fn load_config_file<P: AsRef<Path>>(config_file: P) -> Result<Box<RunCommand>, String> {
@@ -1102,7 +1122,15 @@ pub struct RunCommand {
     ///        initially hidden (default: false).
     ///     refresh-rate=INT - Force a specific vsync generation
     ///        rate in hertz on the guest (default: 60)
-    pub gpu_display: Vec<GpuDisplayParameters>,
+    ///     dpi=[INT,INT] - The horizontal and vertical DPI of the
+    ///        display (default: [320,320])
+    ///     horizontal-dpi=INT - The horizontal DPI of the display
+    ///        (default: 320)
+    ///        Deprecated - use `dpi` instead.
+    ///     vertical-dpi=INT - The vertical DPI of the display
+    ///        (default: 320)
+    ///        Deprecated - use `dpi` instead.
+    pub gpu_display: Vec<FixedGpuDisplayParameters>,
 
     #[cfg(all(unix, feature = "gpu", feature = "virgl_renderer_next"))]
     #[argh(option)]
@@ -2461,7 +2489,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                 cfg.gpu_parameters
                     .get_or_insert_with(Default::default)
                     .display_params
-                    .extend(cmd.gpu_display);
+                    .extend(cmd.gpu_display.into_iter().map(|p| p.0));
             }
 
             #[cfg(windows)]

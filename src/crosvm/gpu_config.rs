@@ -7,7 +7,9 @@ use devices::virtio::GpuDisplayParameters;
 #[cfg(feature = "gfxstream")]
 use devices::virtio::GpuMode;
 use devices::virtio::GpuParameters;
+use vm_control::gpu::DEFAULT_DPI;
 
+use crate::crosvm::cmdline::FixedGpuDisplayParameters;
 use crate::crosvm::cmdline::FixedGpuParameters;
 use crate::crosvm::config::Config;
 
@@ -16,7 +18,9 @@ fn default_use_vulkan() -> bool {
     !cfg!(window)
 }
 
-pub fn fixup_gpu_options(mut gpu_params: GpuParameters) -> Result<FixedGpuParameters, String> {
+pub(crate) fn fixup_gpu_options(
+    mut gpu_params: GpuParameters,
+) -> Result<FixedGpuParameters, String> {
     match (
         gpu_params.__width_compat.take(),
         gpu_params.__height_compat.take(),
@@ -57,6 +61,36 @@ pub fn fixup_gpu_options(mut gpu_params: GpuParameters) -> Result<FixedGpuParame
     }
 
     Ok(FixedGpuParameters(gpu_params))
+}
+
+/// Fixes `GpuDisplayParameters` after parsing using serde.
+///
+/// The `dpi` field is guaranteed to be populated after this is called.
+pub(crate) fn fixup_gpu_display_options(
+    mut display_params: GpuDisplayParameters,
+) -> Result<FixedGpuDisplayParameters, String> {
+    let (horizontal_dpi_compat, vertical_dpi_compat) = (
+        display_params.__horizontal_dpi_compat.take(),
+        display_params.__vertical_dpi_compat.take(),
+    );
+    // Make sure `display_params.dpi` is always populated.
+    display_params.dpi = Some(match display_params.dpi {
+        Some(dpi) => {
+            if horizontal_dpi_compat.is_some() || vertical_dpi_compat.is_some() {
+                return Err(
+                    "if 'dpi' is supplied, 'horizontal-dpi' and 'vertical-dpi' must not be supplied"
+                        .to_string(),
+                );
+            }
+            dpi
+        }
+        None => (
+            horizontal_dpi_compat.unwrap_or(DEFAULT_DPI),
+            vertical_dpi_compat.unwrap_or(DEFAULT_DPI),
+        ),
+    });
+
+    Ok(FixedGpuDisplayParameters(display_params))
 }
 
 pub(crate) fn validate_gpu_config(cfg: &mut Config) -> Result<(), String> {
@@ -518,25 +552,110 @@ mod tests {
 
     #[test]
     fn parse_gpu_display_options_dpi() {
-        const HORIZONTAL_DPI: u32 = 320;
+        const HORIZONTAL_DPI: u32 = 160;
         const VERTICAL_DPI: u32 = 25;
 
-        let display_params = parse_gpu_display_options(
-            format!(
-                "horizontal-dpi={},vertical-dpi={}",
-                HORIZONTAL_DPI, VERTICAL_DPI
-            )
-            .as_str(),
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &[
+                "--gpu-display",
+                format!("dpi=[{},{}]", HORIZONTAL_DPI, VERTICAL_DPI).as_str(),
+                "/dev/null",
+            ],
         )
+        .unwrap()
+        .try_into()
         .unwrap();
-        assert_eq!(display_params.horizontal_dpi, HORIZONTAL_DPI);
-        assert_eq!(display_params.vertical_dpi, VERTICAL_DPI);
+
+        let gpu_params = config.gpu_parameters.unwrap();
+
+        assert_eq!(gpu_params.display_params.len(), 1);
+        assert_eq!(
+            gpu_params.display_params[0].horizontal_dpi(),
+            HORIZONTAL_DPI
+        );
+        assert_eq!(gpu_params.display_params[0].vertical_dpi(), VERTICAL_DPI);
+    }
+
+    #[test]
+    fn parse_gpu_display_options_default_dpi() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &["--gpu-display", "mode=windowed[800,600]", "/dev/null"],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        let gpu_params = config.gpu_parameters.unwrap();
+
+        assert_eq!(gpu_params.display_params.len(), 1);
+        assert_eq!(gpu_params.display_params[0].horizontal_dpi(), DEFAULT_DPI);
+        assert_eq!(gpu_params.display_params[0].vertical_dpi(), DEFAULT_DPI);
+    }
+
+    #[test]
+    fn parse_gpu_display_options_dpi_compat() {
+        const HORIZONTAL_DPI: u32 = 160;
+        const VERTICAL_DPI: u32 = 25;
+
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &[
+                "--gpu-display",
+                format!(
+                    "horizontal-dpi={},vertical-dpi={}",
+                    HORIZONTAL_DPI, VERTICAL_DPI
+                )
+                .as_str(),
+                "/dev/null",
+            ],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        let gpu_params = config.gpu_parameters.unwrap();
+
+        assert_eq!(gpu_params.display_params.len(), 1);
+        assert_eq!(
+            gpu_params.display_params[0].horizontal_dpi(),
+            HORIZONTAL_DPI
+        );
+        assert_eq!(gpu_params.display_params[0].vertical_dpi(), VERTICAL_DPI);
     }
 
     #[test]
     fn parse_gpu_display_options_dpi_duplicated() {
-        assert!(parse_gpu_display_options("horizontal-dpi=160,horizontal-dpi=320").is_err());
-        assert!(parse_gpu_display_options("vertical-dpi=25,vertical-dpi=50").is_err());
+        assert!(crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &[
+                "--gpu-display",
+                "horizontal-dpi=160,horizontal-dpi=320",
+                "/dev/null",
+            ],
+        )
+        .is_err());
+
+        assert!(crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &[
+                "--gpu-display",
+                "vertical-dpi=25,vertical-dpi=50",
+                "/dev/null",
+            ],
+        )
+        .is_err());
+
+        assert!(crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &[
+                "--gpu-display",
+                "dpi=[160,320],horizontal-dpi=160,vertical-dpi=25",
+                "/dev/null",
+            ],
+        )
+        .is_err());
     }
 
     #[test]
