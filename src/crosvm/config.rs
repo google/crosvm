@@ -590,59 +590,40 @@ pub fn parse_mmio_address_range(s: &str) -> Result<Vec<AddressRange>, String> {
 }
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[derive(Deserialize, Serialize, serde_keyvalue::FromKeyValues)]
+#[serde(deny_unknown_fields)]
+struct UserspaceMsrOptions {
+    pub index: u32,
+    #[serde(rename = "type")]
+    pub rw_type: MsrRWType,
+    pub action: MsrAction,
+    #[serde(default = "default_msr_value_from")]
+    pub from: MsrValueFrom,
+    #[serde(default = "default_msr_filter")]
+    pub filter: MsrFilter,
+}
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+fn default_msr_value_from() -> MsrValueFrom {
+    MsrValueFrom::RWFromRunningCPU
+}
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+fn default_msr_filter() -> MsrFilter {
+    MsrFilter::Default
+}
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub fn parse_userspace_msr_options(value: &str) -> Result<(u32, MsrConfig), String> {
-    let mut rw_type: Option<MsrRWType> = None;
-    let mut action: Option<MsrAction> = None;
-    let mut from = MsrValueFrom::RWFromRunningCPU;
-    let mut filter = MsrFilter::Default;
-
-    let mut options = super::argument::parse_key_value_options("userspace-msr", value, ',');
-    let index: u32 = options
-        .next()
-        .ok_or(String::from("userspace-msr: expected index"))?
-        .key_numeric()
-        .map_err(|e| e.to_string())?;
-
-    for opt in options {
-        match opt.key() {
-            "type" => match opt.value().map_err(|e| e.to_string())? {
-                "r" => rw_type = Some(MsrRWType::ReadOnly),
-                "w" => rw_type = Some(MsrRWType::WriteOnly),
-                "rw" | "wr" => rw_type = Some(MsrRWType::ReadWrite),
-                _ => {
-                    return Err(String::from("bad type"));
-                }
-            },
-            "action" => match opt.value().map_err(|e| e.to_string())? {
-                "pass" => action = Some(MsrAction::MsrPassthrough),
-                "emu" => action = Some(MsrAction::MsrEmulate),
-                _ => return Err(String::from("bad action")),
-            },
-            "from" => match opt.value().map_err(|e| e.to_string())? {
-                "cpu0" => from = MsrValueFrom::RWFromCPU0,
-                _ => return Err(String::from("bad from")),
-            },
-            "filter" => match opt.value().map_err(|e| e.to_string())? {
-                "yes" => filter = MsrFilter::Override,
-                "no" => filter = MsrFilter::Default,
-                _ => return Err(String::from("bad filter")),
-            },
-
-            _ => return Err(opt.invalid_key_err().to_string()),
-        }
-    }
-
-    let rw_type = rw_type.ok_or(String::from("userspace-msr: type is required"))?;
-
-    let action = action.ok_or(String::from("userspace-msr: action is required"))?;
+    let options: UserspaceMsrOptions = from_key_values(value)?;
 
     Ok((
-        index,
+        options.index,
         MsrConfig {
-            rw_type,
-            action,
-            from,
-            filter,
+            rw_type: options.rw_type,
+            action: options.action,
+            from: options.from,
+            filter: options.filter,
         },
     ))
 }

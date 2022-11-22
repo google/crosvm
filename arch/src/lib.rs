@@ -1066,8 +1066,11 @@ where
 /// Wrap read_allow and write_allow to store them in MsrHandlers level.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub enum MsrRWType {
+    #[serde(rename = "r")]
     ReadOnly,
+    #[serde(rename = "w")]
     WriteOnly,
+    #[serde(rename = "rw", alias = "wr")]
     ReadWrite,
 }
 
@@ -1076,9 +1079,11 @@ pub enum MsrRWType {
 pub enum MsrAction {
     /// Read and write from host directly, and the control of MSR will
     /// take effect on host.
+    #[serde(rename = "pass")]
     MsrPassthrough,
     /// Store the dummy value for msr (copy from host or custom values),
     /// and the control(WRMSR) of MSR won't take effect on host.
+    #[serde(rename = "emu")]
     MsrEmulate,
 }
 
@@ -1089,9 +1094,11 @@ pub enum MsrAction {
 pub enum MsrValueFrom {
     /// Read/write MSR value from/into CPU 0.
     /// The MSR source CPU always be CPU 0.
+    #[serde(rename = "cpu0")]
     RWFromCPU0,
     /// Read/write MSR value from/into the running CPU.
     /// If vCPU migrates to another pcpu, the MSR source CPU will also change.
+    #[serde(skip)]
     RWFromRunningCPU,
 }
 
@@ -1099,9 +1106,11 @@ pub enum MsrValueFrom {
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub enum MsrFilter {
     /// Leave it to hypervisor (KVM) default.
+    #[serde(rename = "no")]
     Default,
     /// Don't let KVM do the default thing and use our userspace MSR
     /// implementation.
+    #[serde(rename = "yes")]
     Override,
 }
 
