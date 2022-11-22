@@ -402,7 +402,7 @@ impl TestVm {
             config_file,
             r#"
             {{
-              "executable-path": "{}",
+              "kernel": "{}",
               "socket": "{}",
               "params": [ "init=/bin/delegate" ],
               "serial": [

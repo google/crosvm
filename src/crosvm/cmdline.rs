@@ -1006,11 +1006,6 @@ pub struct RunCommand {
     /// path to an event device node. The device will be grabbed (unusable from the host) and made available to the guest with the same configuration it shows on the host
     pub evdev: Vec<PathBuf>,
 
-    #[argh(positional, arg_name = "KERNEL")]
-    #[merge(strategy = overwrite_option)]
-    /// bzImage of kernel to run
-    pub executable_path: Option<PathBuf>,
-
     #[cfg(windows)]
     #[argh(switch)]
     #[serde(skip)] // TODO(b/255223604)
@@ -1177,6 +1172,11 @@ pub struct RunCommand {
     #[merge(strategy = overwrite_false)]
     /// allow to enable ITMT scheduling feature in VM. The success of enabling depends on HWP and ACPI CPPC support on hardware
     pub itmt: bool,
+
+    #[argh(positional, arg_name = "KERNEL")]
+    #[merge(strategy = overwrite_option)]
+    /// bzImage of kernel to run
+    pub kernel: Option<PathBuf>,
 
     #[cfg(windows)]
     #[argh(option, arg_name = "PATH")]
@@ -2085,7 +2085,7 @@ impl TryFrom<RunCommand> for super::config::Config {
         // TODO: we need to factor out some(?) of the checks into config::validate_config
 
         // Process arguments
-        if let Some(p) = cmd.executable_path {
+        if let Some(p) = cmd.kernel {
             cfg.executable_path = Some(Executable::Kernel(p));
         }
 
