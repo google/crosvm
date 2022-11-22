@@ -16,7 +16,9 @@ use base::RawDescriptor;
 use resources::Alloc;
 use resources::SystemAllocator;
 use serde::Deserialize;
+use serde::Deserializer;
 use serde::Serialize;
+use serde::Serializer;
 
 use crate::pci::pci_configuration::PciBarConfiguration;
 use crate::pci::pci_configuration::PciClassCode;
@@ -30,17 +32,78 @@ use crate::pci::PciAddress;
 use crate::pci::PciDeviceError;
 use crate::Suspendable;
 
-#[derive(Serialize, Deserialize)]
-pub struct StubPciParameters {
-    pub address: PciAddress,
-    pub vendor_id: u16,
-    pub device_id: u16,
+#[derive(Debug)]
+pub struct PciClassParameters {
     pub class: PciClassCode,
     pub subclass: u8,
     pub programming_interface: u8,
-    pub subsystem_vendor_id: u16,
-    pub subsystem_device_id: u16,
-    pub revision_id: u8,
+}
+
+impl Default for PciClassParameters {
+    fn default() -> Self {
+        PciClassParameters {
+            class: PciClassCode::Other,
+            subclass: 0,
+            programming_interface: 0,
+        }
+    }
+}
+
+// Deserialize the combined class, subclass, and programming interface as a single numeric value.
+// This matches the numeric format used in `/sys/bus/pci/devices/*/class`.
+impl<'de> Deserialize<'de> for PciClassParameters {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<PciClassParameters, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let class_numeric = u32::deserialize(deserializer)?;
+
+        let class_code = (class_numeric >> 16) as u8;
+        let class = PciClassCode::try_from(class_code as u8).map_err(|_| {
+            serde::de::Error::custom(format!("Unknown class code {:#x}", class_code))
+        })?;
+
+        let subclass = (class_numeric >> 8) as u8;
+
+        let programming_interface = class_numeric as u8;
+
+        Ok(PciClassParameters {
+            class,
+            subclass,
+            programming_interface,
+        })
+    }
+}
+
+impl Serialize for PciClassParameters {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let class_numeric: u32 = ((self.class as u32) << 16)
+            | ((self.subclass as u32) << 8)
+            | self.programming_interface as u32;
+
+        serializer.serialize_u32(class_numeric)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, serde_keyvalue::FromKeyValues)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct StubPciParameters {
+    pub address: PciAddress,
+    #[serde(default)]
+    pub vendor: u16,
+    #[serde(default)]
+    pub device: u16,
+    #[serde(default)]
+    pub class: PciClassParameters,
+    #[serde(default, alias = "subsystem_vendor")]
+    pub subsystem_vendor: u16,
+    #[serde(default, alias = "subsystem_device")]
+    pub subsystem_device: u16,
+    #[serde(default)]
+    pub revision: u8,
 }
 
 pub struct StubPciDevice {
@@ -68,17 +131,17 @@ impl PciProgrammingInterface for NumericPciProgrammingInterface {
 impl StubPciDevice {
     pub fn new(config: &StubPciParameters) -> StubPciDevice {
         let config_regs = PciConfiguration::new(
-            config.vendor_id,
-            config.device_id,
-            config.class,
-            &NumericPciSubClass(config.subclass),
+            config.vendor,
+            config.device,
+            config.class.class,
+            &NumericPciSubClass(config.class.subclass),
             Some(&NumericPciProgrammingInterface(
-                config.programming_interface,
+                config.class.programming_interface,
             )),
             PciHeaderType::Device,
-            config.subsystem_vendor_id,
-            config.subsystem_device_id,
-            config.revision_id,
+            config.subsystem_vendor,
+            config.subsystem_device,
+            config.revision,
         );
 
         Self {
@@ -144,6 +207,9 @@ mod test {
     use resources::AddressRange;
     use resources::SystemAllocator;
     use resources::SystemAllocatorConfig;
+    use serde_keyvalue::from_key_values;
+    use serde_keyvalue::ErrorKind;
+    use serde_keyvalue::ParseError;
 
     use super::*;
 
@@ -153,15 +219,21 @@ mod test {
             dev: 0x0b,
             func: 0x1,
         },
-        vendor_id: 2,
-        device_id: 3,
-        class: PciClassCode::MultimediaController,
-        subclass: 5,
-        programming_interface: 6,
-        subsystem_vendor_id: 7,
-        subsystem_device_id: 8,
-        revision_id: 9,
+        vendor: 2,
+        device: 3,
+        class: PciClassParameters {
+            class: PciClassCode::MultimediaController,
+            subclass: 5,
+            programming_interface: 6,
+        },
+        subsystem_vendor: 7,
+        subsystem_device: 8,
+        revision: 9,
     };
+
+    fn from_stub_arg(options: &str) -> std::result::Result<StubPciParameters, ParseError> {
+        from_key_values(options)
+    }
 
     #[test]
     fn configuration() {
@@ -199,5 +271,88 @@ mod test {
 
         assert!(device.allocate_address(&mut allocator).is_ok());
         assert!(allocator.release_pci(0xa, 0xb, 1));
+    }
+
+    #[test]
+    fn params_missing_address() {
+        // PCI address argument is mandatory.
+        let err = from_stub_arg("").unwrap_err();
+        assert_eq!(
+            err,
+            ParseError {
+                kind: ErrorKind::SerdeError("missing field `address`".into()),
+                pos: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn params_address_implicit() {
+        // Address is the default argument.
+        let params = from_stub_arg("0000:00:01.2").unwrap();
+        assert_eq!(
+            params.address,
+            PciAddress {
+                bus: 0,
+                dev: 1,
+                func: 2
+            }
+        );
+    }
+
+    #[test]
+    fn params_address_explicit() {
+        // Explicitly-specified address.
+        let params = from_stub_arg("address=0000:00:01.2").unwrap();
+        assert_eq!(
+            params.address,
+            PciAddress {
+                bus: 0,
+                dev: 1,
+                func: 2
+            }
+        );
+    }
+
+    #[test]
+    fn params_class() {
+        // Class, subclass, and programming interface are encoded as a single number.
+        let params = from_stub_arg("address=0000:00:01.2,class=0x012345").unwrap();
+        assert_eq!(params.class.class, PciClassCode::MassStorage);
+        assert_eq!(params.class.subclass, 0x23);
+        assert_eq!(params.class.programming_interface, 0x45);
+    }
+
+    #[test]
+    fn params_subsystem_underscores() {
+        // Accept aliases with underscores rather than hyphens for compatibility.
+        let params =
+            from_stub_arg("address=0000:00:01.2,subsystem_vendor=0x8675,subsystem_device=0x309")
+                .unwrap();
+        assert_eq!(params.subsystem_vendor, 0x8675);
+        assert_eq!(params.subsystem_device, 0x0309);
+    }
+
+    #[test]
+    fn params_full() {
+        let params = from_stub_arg(
+            "address=0000:00:01.2,vendor=0x1234,device=0x5678,subsystem-vendor=0x8675,subsystem-device=0x309,class=0x012345,revision=52",
+        ).unwrap();
+        assert_eq!(
+            params.address,
+            PciAddress {
+                bus: 0,
+                dev: 1,
+                func: 2
+            }
+        );
+        assert_eq!(params.vendor, 0x1234);
+        assert_eq!(params.device, 0x5678);
+        assert_eq!(params.subsystem_vendor, 0x8675);
+        assert_eq!(params.subsystem_device, 0x0309);
+        assert_eq!(params.class.class, PciClassCode::MassStorage);
+        assert_eq!(params.class.subclass, 0x23);
+        assert_eq!(params.class.programming_interface, 0x45);
+        assert_eq!(params.revision, 52);
     }
 }

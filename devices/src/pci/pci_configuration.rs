@@ -56,7 +56,7 @@ pub enum PciHeaderType {
 
 /// Classes of PCI nodes.
 #[allow(dead_code)]
-#[derive(Copy, Clone, enumn::N, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, enumn::N, Serialize, Deserialize, PartialEq)]
 pub enum PciClassCode {
     TooOld,
     MassStorage,

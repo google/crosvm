@@ -47,7 +47,6 @@ use devices::Ac97Parameters;
 #[cfg(feature = "direct")]
 use devices::BusRange;
 use devices::PciAddress;
-use devices::PciClassCode;
 use devices::PflashParameters;
 use devices::StubPciParameters;
 use hypervisor::ProtectionType;
@@ -1022,58 +1021,6 @@ pub fn executable_is_plugin(executable: &Option<Executable>) -> bool {
     matches!(executable, Some(Executable::Plugin(_)))
 }
 
-pub fn parse_stub_pci_parameters(s: &str) -> Result<StubPciParameters, String> {
-    let mut options = super::argument::parse_key_value_options("stub-pci-device", s, ',');
-    let addr = options
-        .next()
-        .ok_or(String::from("stub-pci-device: expected device address"))?
-        .key();
-    let mut params = StubPciParameters {
-        address: PciAddress::from_str(addr).map_err(|e| {
-            invalid_value_err(
-                addr,
-                format!("stub-pci-device: expected PCI address: {}", e),
-            )
-        })?,
-        vendor_id: 0,
-        device_id: 0,
-        class: PciClassCode::Other,
-        subclass: 0,
-        programming_interface: 0,
-        subsystem_device_id: 0,
-        subsystem_vendor_id: 0,
-        revision_id: 0,
-    };
-    for opt in options {
-        match opt.key() {
-            "vendor" => params.vendor_id = opt.parse_numeric::<u16>().map_err(|e| e.to_string())?,
-            "device" => params.device_id = opt.parse_numeric::<u16>().map_err(|e| e.to_string())?,
-            "class" => {
-                let class = opt.parse_numeric::<u32>().map_err(|e| e.to_string())?;
-                params.class = PciClassCode::try_from((class >> 16) as u8)
-                    .map_err(|_| String::from("Unknown class code"))?;
-                params.subclass = (class >> 8) as u8;
-                params.programming_interface = class as u8;
-            }
-            "multifunction" => {} // Ignore but allow the multifunction option for compatibility.
-            "subsystem_vendor" => {
-                params.subsystem_vendor_id =
-                    opt.parse_numeric::<u16>().map_err(|e| e.to_string())?
-            }
-            "subsystem_device" => {
-                params.subsystem_device_id =
-                    opt.parse_numeric::<u16>().map_err(|e| e.to_string())?
-            }
-            "revision" => {
-                params.revision_id = opt.parse_numeric::<u8>().map_err(|e| e.to_string())?
-            }
-            _ => return Err(opt.invalid_key_err().to_string()),
-        }
-    }
-
-    Ok(params)
-}
-
 pub fn parse_pflash_parameters(s: &str) -> Result<PflashParameters, String> {
     let pflash_parameters: PflashParameters = from_key_values(s)?;
 
@@ -1708,6 +1655,8 @@ fn validate_file_backed_mapping(mapping: &mut FileBackedMappingParameters) -> Re
 #[cfg(test)]
 mod tests {
     use argh::FromArgs;
+    use devices::PciClassCode;
+    use devices::StubPciParameters;
 
     use super::*;
 
@@ -2014,18 +1963,18 @@ mod tests {
 
     #[test]
     fn parse_stub_pci() {
-        let params = parse_stub_pci_parameters("0000:01:02.3,vendor=0xfffe,device=0xfffd,class=0xffc1c2,subsystem_vendor=0xfffc,subsystem_device=0xfffb,revision=0xa").unwrap();
+        let params = from_key_values::<StubPciParameters>("0000:01:02.3,vendor=0xfffe,device=0xfffd,class=0xffc1c2,subsystem_vendor=0xfffc,subsystem_device=0xfffb,revision=0xa").unwrap();
         assert_eq!(params.address.bus, 1);
         assert_eq!(params.address.dev, 2);
         assert_eq!(params.address.func, 3);
-        assert_eq!(params.vendor_id, 0xfffe);
-        assert_eq!(params.device_id, 0xfffd);
-        assert_eq!(params.class as u8, PciClassCode::Other as u8);
-        assert_eq!(params.subclass, 0xc1);
-        assert_eq!(params.programming_interface, 0xc2);
-        assert_eq!(params.subsystem_vendor_id, 0xfffc);
-        assert_eq!(params.subsystem_device_id, 0xfffb);
-        assert_eq!(params.revision_id, 0xa);
+        assert_eq!(params.vendor, 0xfffe);
+        assert_eq!(params.device, 0xfffd);
+        assert_eq!(params.class.class as u8, PciClassCode::Other as u8);
+        assert_eq!(params.class.subclass, 0xc1);
+        assert_eq!(params.class.programming_interface, 0xc2);
+        assert_eq!(params.subsystem_vendor, 0xfffc);
+        assert_eq!(params.subsystem_device, 0xfffb);
+        assert_eq!(params.revision, 0xa);
     }
 
     #[cfg(feature = "direct")]

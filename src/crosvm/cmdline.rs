@@ -84,7 +84,6 @@ use crate::crosvm::config::parse_pflash_parameters;
 #[cfg(feature = "plugin")]
 use crate::crosvm::config::parse_plugin_mount_option;
 use crate::crosvm::config::parse_serial_options;
-use crate::crosvm::config::parse_stub_pci_parameters;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::crosvm::config::parse_userspace_msr_options;
 use crate::crosvm::config::BatteryConfig;
@@ -1781,8 +1780,7 @@ pub struct RunCommand {
 
     #[argh(
         option,
-        arg_name = "DOMAIN:BUS:DEVICE.FUNCTION[,vendor=NUM][,device=NUM][,class=NUM][,subsystem_vendor=NUM][,subsystem_device=NUM][,revision=NUM]",
-        from_str_fn(parse_stub_pci_parameters)
+        arg_name = "DOMAIN:BUS:DEVICE.FUNCTION[,vendor=NUM][,device=NUM][,class=NUM][,subsystem_vendor=NUM][,subsystem_device=NUM][,revision=NUM]"
     )]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = append)]
