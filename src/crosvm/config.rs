@@ -59,7 +59,6 @@ use vm_control::BatteryType;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use x86_64::set_enable_pnp_data_msr_config;
 
-use super::argument::parse_hex_or_decimal;
 pub(crate) use super::sys::HypervisorKind;
 
 cfg_if::cfg_if! {
@@ -566,6 +565,18 @@ impl Default for JailConfig {
             seccomp_log_failures: false,
         }
     }
+}
+
+fn parse_hex_or_decimal(maybe_hex_string: &str) -> Result<u64, String> {
+    // Parse string starting with 0x as hex and others as numbers.
+    if let Some(hex_string) = maybe_hex_string.strip_prefix("0x") {
+        u64::from_str_radix(hex_string, 16)
+    } else if let Some(hex_string) = maybe_hex_string.strip_prefix("0X") {
+        u64::from_str_radix(hex_string, 16)
+    } else {
+        u64::from_str(maybe_hex_string)
+    }
+    .map_err(|e| format!("invalid numeric value {}: {}", maybe_hex_string, e))
 }
 
 pub fn parse_mmio_address_range(s: &str) -> Result<Vec<AddressRange>, String> {

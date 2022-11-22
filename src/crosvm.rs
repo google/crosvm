@@ -14,5 +14,3 @@ mod gpu_config;
 #[cfg(feature = "plugin")]
 pub mod plugin;
 pub mod sys;
-
-pub mod argument;
