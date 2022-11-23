@@ -1431,13 +1431,8 @@ pub fn create_vfio_device(
         expose_with_viommu: false,
     });
 
-    let vfio_device_tube_vm = if hotplug {
-        let (vfio_host_tube_vm, device_tube_vm) = Tube::pair().context("failed to create tube")?;
-        control_tubes.push(TaggedControlTube::Vm(vfio_host_tube_vm));
-        Some(device_tube_vm)
-    } else {
-        None
-    };
+    let (vfio_host_tube_vm, vfio_device_tube_vm) = Tube::pair().context("failed to create tube")?;
+    control_tubes.push(TaggedControlTube::Vm(vfio_host_tube_vm));
 
     let vfio_device = VfioDevice::new_passthrough(
         &vfio_path,

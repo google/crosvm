@@ -30,6 +30,7 @@ use sync::Mutex;
 use thiserror::Error;
 use vm_control::GpeNotify;
 use vm_control::PmResource;
+use vm_control::PmeNotify;
 
 use crate::pci::CrosvmDeviceId;
 use crate::serialize_arc_mutex;
@@ -77,6 +78,12 @@ pub(crate) struct GpeResource {
     pub(crate) gpe_notify: BTreeMap<u32, Vec<Arc<Mutex<dyn GpeNotify>>>>,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub(crate) struct PciResource {
+    #[serde(skip_serializing, skip_deserializing)]
+    pub(crate) pme_notify: BTreeMap<u8, Vec<Arc<Mutex<dyn PmeNotify>>>>,
+}
+
 #[cfg(feature = "direct")]
 struct DirectGpe {
     num: u32,
@@ -122,6 +129,8 @@ pub struct ACPIPMResource {
     pm1: Arc<Mutex<Pm1Resource>>,
     #[serde(serialize_with = "serialize_arc_mutex")]
     gpe0: Arc<Mutex<GpeResource>>,
+    #[serde(serialize_with = "serialize_arc_mutex")]
+    pci: Arc<Mutex<PciResource>>,
 }
 
 #[derive(Deserialize)]
@@ -158,6 +167,9 @@ impl ACPIPMResource {
             enable: Default::default(),
             gpe_notify: BTreeMap::new(),
         };
+        let pci = PciResource {
+            pme_notify: BTreeMap::new(),
+        };
 
         #[cfg(feature = "direct")]
         let (sci_direct_evt, direct_gpe, direct_fixed_evts) = if let Some(info) = direct_evt_info {
@@ -186,6 +198,7 @@ impl ACPIPMResource {
             exit_evt_wrtube,
             pm1: Arc::new(Mutex::new(pm1)),
             gpe0: Arc::new(Mutex::new(gpe0)),
+            pci: Arc::new(Mutex::new(pci)),
         }
     }
 
@@ -695,12 +708,32 @@ impl PmResource for ACPIPMResource {
         gpe0.trigger_sci(&self.sci_evt);
     }
 
+    fn pme_evt(&mut self, requester_id: u16) {
+        let bus = ((requester_id >> 8) & 0xFF) as u8;
+        let mut pci = self.pci.lock();
+        if let Some(root_ports) = pci.pme_notify.get_mut(&bus) {
+            for root_port in root_ports {
+                root_port.lock().notify(requester_id);
+            }
+        }
+    }
+
     fn register_gpe_notify_dev(&mut self, gpe: u32, notify_dev: Arc<Mutex<dyn GpeNotify>>) {
         let mut gpe0 = self.gpe0.lock();
         match gpe0.gpe_notify.get_mut(&gpe) {
             Some(v) => v.push(notify_dev),
             None => {
                 gpe0.gpe_notify.insert(gpe, vec![notify_dev]);
+            }
+        }
+    }
+
+    fn register_pme_notify_dev(&mut self, bus: u8, notify_dev: Arc<Mutex<dyn PmeNotify>>) {
+        let mut pci = self.pci.lock();
+        match pci.pme_notify.get_mut(&bus) {
+            Some(v) => v.push(notify_dev),
+            None => {
+                pci.pme_notify.insert(bus, vec![notify_dev]);
             }
         }
     }

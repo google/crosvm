@@ -150,11 +150,18 @@ pub trait GpeNotify: Send {
     fn notify(&mut self) {}
 }
 
+// Trait for devices that get notification on specific PCI PME
+pub trait PmeNotify: Send {
+    fn notify(&mut self, _requester_id: u16) {}
+}
+
 pub trait PmResource {
     fn pwrbtn_evt(&mut self) {}
     fn slpbtn_evt(&mut self) {}
     fn gpe_evt(&mut self, _gpe: u32) {}
+    fn pme_evt(&mut self, _requester_id: u16) {}
     fn register_gpe_notify_dev(&mut self, _gpe: u32, _notify_dev: Arc<Mutex<dyn GpeNotify>>) {}
+    fn register_pme_notify_dev(&mut self, _bus: u8, _notify_dev: Arc<Mutex<dyn PmeNotify>>) {}
 }
 
 /// The maximum number of devices that can be listed in one `UsbControlCommand`.
@@ -984,6 +991,8 @@ pub enum VmRequest {
     Resume,
     /// Inject a general-purpose event.
     Gpe(u32),
+    /// Inject a PCI PME
+    PciPme(u16),
     /// Make the VM's RT VCPU real-time.
     MakeRT,
     /// Command for balloon driver.
@@ -1255,6 +1264,15 @@ impl VmRequest {
             VmRequest::Gpe(gpe) => {
                 if pm.is_some() {
                     pm.as_ref().unwrap().lock().gpe_evt(gpe);
+                    VmResponse::Ok
+                } else {
+                    error!("{:#?} not supported", *self);
+                    VmResponse::Err(SysError::new(ENOTSUP))
+                }
+            }
+            VmRequest::PciPme(requester_id) => {
+                if let Some(pm) = pm.as_ref() {
+                    pm.lock().pme_evt(requester_id);
                     VmResponse::Ok
                 } else {
                     error!("{:#?} not supported", *self);

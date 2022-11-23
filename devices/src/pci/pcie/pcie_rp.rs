@@ -10,6 +10,7 @@ use anyhow::Result;
 use resources::SystemAllocator;
 use sync::Mutex;
 use vm_control::GpeNotify;
+use vm_control::PmeNotify;
 
 use crate::bus::HostHotPlugKey;
 use crate::bus::HotPlugBus;
@@ -222,5 +223,11 @@ impl GpeNotify for PcieRootPort {
             self.pcie_port
                 .inject_pme(self.pcie_port.get_address().unwrap().pme_requester_id());
         }
+    }
+}
+
+impl PmeNotify for PcieRootPort {
+    fn notify(&mut self, requester_id: u16) {
+        self.pcie_port.inject_pme(requester_id);
     }
 }

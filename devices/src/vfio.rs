@@ -894,6 +894,36 @@ impl VfioDevice {
         }
     }
 
+    /// enter the device's low power state with wakeup notification
+    pub fn pm_low_power_enter_with_wakeup(&self, wakeup_evt: Event) -> Result<()> {
+        let payload = vfio_device_low_power_entry_with_wakeup {
+            wakeup_eventfd: wakeup_evt.as_raw_descriptor(),
+            reserved: 0,
+        };
+        let payload_size = mem::size_of::<vfio_device_low_power_entry_with_wakeup>();
+        let mut device_feature = vec_with_array_field::<vfio_device_feature, u8>(payload_size);
+        device_feature[0].argsz = (mem::size_of::<vfio_device_feature>() + payload_size) as u32;
+        device_feature[0].flags =
+            VFIO_DEVICE_FEATURE_SET | VFIO_DEVICE_FEATURE_LOW_POWER_ENTRY_WITH_WAKEUP;
+        unsafe {
+            // Safe as we know vfio_device_low_power_entry_with_wakeup has two 32-bit int fields
+            device_feature[0]
+                .data
+                .as_mut_slice(payload_size)
+                .copy_from_slice(
+                    mem::transmute::<vfio_device_low_power_entry_with_wakeup, [u8; 8]>(payload)
+                        .as_slice(),
+                );
+        }
+        // Safe as we are the owner of self and power_management which are valid value
+        let ret = unsafe { ioctl_with_ref(&self.dev, VFIO_DEVICE_FEATURE(), &device_feature[0]) };
+        if ret < 0 {
+            Err(VfioError::VfioPmLowPowerEnter(get_error()))
+        } else {
+            Ok(())
+        }
+    }
+
     /// exit the device's low power state
     pub fn pm_low_power_exit(&self) -> Result<()> {
         let mut device_feature = vec_with_array_field::<vfio_device_feature, u8>(0);

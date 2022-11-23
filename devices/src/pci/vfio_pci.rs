@@ -73,6 +73,9 @@ use crate::pci::pci_device::BarRange;
 use crate::pci::pci_device::Error as PciDeviceError;
 use crate::pci::pci_device::PciDevice;
 use crate::pci::pci_device::PreferredIrq;
+use crate::pci::pm::PciPmCap;
+use crate::pci::pm::PmConfig;
+use crate::pci::pm::PM_CAP_LENGTH;
 use crate::pci::PciAddress;
 use crate::pci::PciBarConfiguration;
 use crate::pci::PciBarIndex;
@@ -101,6 +104,7 @@ const PCI_INTERRUPT_PIN: u32 = 0x3D;
 const PCI_CAPABILITY_LIST: u32 = 0x34;
 const PCI_CAP_ID_MSI: u8 = 0x05;
 const PCI_CAP_ID_MSIX: u8 = 0x11;
+const PCI_CAP_ID_PM: u8 = 0x01;
 
 // Size of the standard PCI config space
 const PCI_CONFIG_SPACE_SIZE: u32 = 0x100;
@@ -117,6 +121,51 @@ const PCI_EXT_CAP_ID_REBAR: u16 = 0x15;
 const LPSS_MANATEE_OFFSET: u64 = 0x400;
 #[cfg(feature = "direct")]
 const LPSS_MANATEE_SIZE: u64 = 0x400;
+
+struct VfioPmCap {
+    offset: u32,
+    capabilities: u32,
+    config: PmConfig,
+}
+
+impl VfioPmCap {
+    fn new(config: &VfioPciConfig, cap_start: u32) -> Self {
+        let mut capabilities: u32 = config.read_config(cap_start);
+        capabilities |= (PciPmCap::default_cap() as u32) << 16;
+        VfioPmCap {
+            offset: cap_start,
+            capabilities,
+            config: PmConfig::new(),
+        }
+    }
+
+    pub fn should_trigger_pme(&mut self) -> bool {
+        self.config.should_trigger_pme()
+    }
+
+    fn is_pm_reg(&self, offset: u32) -> bool {
+        (offset >= self.offset) && (offset < self.offset + PM_CAP_LENGTH as u32)
+    }
+
+    pub fn read(&self, offset: u32) -> u32 {
+        let offset = offset - self.offset;
+        if offset == 0 {
+            self.capabilities
+        } else {
+            let mut data = 0;
+            self.config.read(&mut data);
+            data
+        }
+    }
+
+    pub fn write(&mut self, offset: u64, data: &[u8]) {
+        let offset = offset - self.offset as u64;
+        if offset >= std::mem::size_of::<u32>() as u64 {
+            let offset = offset - std::mem::size_of::<u32>() as u64;
+            self.config.write(offset, data);
+        }
+    }
+}
 
 enum VfioMsiChange {
     Disable,
@@ -460,23 +509,33 @@ impl VfioResourceAllocator {
 }
 
 struct VfioPciWorker {
+    address: PciAddress,
     sysfs_path: PathBuf,
     vm_socket: Tube,
     name: String,
+    pm_cap: Option<Arc<Mutex<VfioPmCap>>>,
     msix_cap: Option<Arc<Mutex<VfioMsixCap>>>,
 }
 
 impl VfioPciWorker {
-    fn run(&mut self, req_irq_evt: Event, kill_evt: Event, msix_evt: Vec<Event>) {
+    fn run(
+        &mut self,
+        req_irq_evt: Event,
+        wakeup_evt: Event,
+        kill_evt: Event,
+        msix_evt: Vec<Event>,
+    ) {
         #[derive(EventToken)]
         enum Token {
             ReqIrq,
+            WakeUp,
             Kill,
             MsixIrqi { index: usize },
         }
 
         let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
             (&req_irq_evt, Token::ReqIrq),
+            (&wakeup_evt, Token::WakeUp),
             (&kill_evt, Token::Kill),
         ]) {
             Ok(pc) => pc,
@@ -528,6 +587,19 @@ impl VfioPciWorker {
                             }
                         }
                     }
+                    Token::WakeUp => {
+                        let _ = wakeup_evt.wait();
+                        if let Some(pm_cap) = &self.pm_cap {
+                            if pm_cap.lock().should_trigger_pme() {
+                                let request = VmRequest::PciPme(self.address.pme_requester_id());
+                                if self.vm_socket.send(&request).is_ok() {
+                                    if let Err(e) = self.vm_socket.recv::<VmResponse>() {
+                                        error!("{} failed to send PME: {}", self.name.clone(), e);
+                                    }
+                                }
+                            }
+                        }
+                    }
                     Token::Kill => break 'wait,
                 }
             }
@@ -575,11 +647,13 @@ pub struct VfioPciDevice {
     interrupt_evt: Option<IrqLevelEvent>,
     mmio_regions: Vec<PciBarConfiguration>,
     io_regions: Vec<PciBarConfiguration>,
+    pm_cap: Option<Arc<Mutex<VfioPmCap>>>,
     msi_cap: Option<VfioMsiCap>,
     msix_cap: Option<Arc<Mutex<VfioMsixCap>>>,
     irq_type: Option<VfioIrqType>,
     vm_socket_mem: Tube,
     device_data: Option<DeviceData>,
+    pm_evt: Option<Event>,
     kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<VfioPciWorker>>,
     vm_socket_vm: Option<Tube>,
@@ -622,7 +696,7 @@ impl VfioPciDevice {
         vfio_device_socket_msi: Tube,
         vfio_device_socket_msix: Tube,
         vfio_device_socket_mem: Tube,
-        vfio_device_socket_vm: Option<Tube>,
+        vfio_device_socket_vm: Tube,
         #[cfg(feature = "direct")] is_intel_lpss: bool,
     ) -> Result<Self, PciDeviceError> {
         let preferred_address = if let Some(bus_num) = hotplug_bus_number {
@@ -651,6 +725,7 @@ impl VfioPciDevice {
         let mut msix_socket = Some(vfio_device_socket_msix);
         let mut msi_cap: Option<VfioMsiCap> = None;
         let mut msix_cap: Option<Arc<Mutex<VfioMsixCap>>> = None;
+        let mut pm_cap: Option<Arc<Mutex<VfioPmCap>>> = None;
 
         let mut is_pcie = false;
         let mut cap_next: u32 = config.read_config::<u8>(PCI_CAPABILITY_LIST).into();
@@ -661,7 +736,9 @@ impl VfioPciDevice {
 
         while cap_next != 0 {
             let cap_id: u8 = config.read_config(cap_next);
-            if cap_id == PCI_CAP_ID_MSI {
+            if cap_id == PCI_CAP_ID_PM {
+                pm_cap = Some(Arc::new(Mutex::new(VfioPmCap::new(&config, cap_next))));
+            } else if cap_id == PCI_CAP_ID_MSI {
                 if let Some(msi_socket) = msi_socket.take() {
                     msi_cap = Some(VfioMsiCap::new(
                         &config,
@@ -790,14 +867,16 @@ impl VfioPciDevice {
             interrupt_evt: None,
             mmio_regions: Vec::new(),
             io_regions: Vec::new(),
+            pm_cap,
             msi_cap,
             msix_cap,
             irq_type: None,
             vm_socket_mem: vfio_device_socket_mem,
             device_data,
+            pm_evt: None,
             kill_evt: None,
             worker_thread: None,
-            vm_socket_vm: vfio_device_socket_vm,
+            vm_socket_vm: Some(vfio_device_socket_vm),
             sysfs_path: sysfs_path.to_path_buf(),
             #[cfg(feature = "direct")]
             header_type_reg,
@@ -1258,24 +1337,41 @@ impl VfioPciDevice {
         };
         self.kill_evt = Some(self_kill_evt);
 
+        let (self_pm_evt, pm_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
+            Ok(v) => v,
+            Err(e) => {
+                error!(
+                    "{} failed creating PM Event pair: {}",
+                    self.debug_label(),
+                    e
+                );
+                return;
+            }
+        };
+        self.pm_evt = Some(self_pm_evt);
+
         let mut msix_evt = Vec::new();
         if let Some(msix_cap) = &self.msix_cap {
             msix_evt = msix_cap.lock().clone_msix_evt();
         }
 
         let name = self.device.device_name().to_string();
+        let address = self.pci_address.expect("Unassigned PCI Address.");
         let sysfs_path = self.sysfs_path.clone();
+        let pm_cap = self.pm_cap.clone();
         let msix_cap = self.msix_cap.clone();
         let worker_result = thread::Builder::new()
             .name("vfio_pci".to_string())
             .spawn(move || {
                 let mut worker = VfioPciWorker {
+                    address,
                     sysfs_path,
                     vm_socket,
                     name,
+                    pm_cap,
                     msix_cap,
                 };
-                worker.run(req_evt, kill_evt, msix_evt);
+                worker.run(req_evt, pm_evt, kill_evt, msix_evt);
                 worker
             });
 
@@ -1702,6 +1798,9 @@ impl PciDevice for VfioPciDevice {
             rds.extend(interrupt_evt.as_raw_descriptors());
         }
         rds.push(self.vm_socket_mem.as_raw_descriptor());
+        if let Some(vm_socket_vm) = &self.vm_socket_vm {
+            rds.push(vm_socket_vm.as_raw_descriptor());
+        }
         if let Some(msi_cap) = &self.msi_cap {
             rds.push(msi_cap.config.get_msi_socket());
         }
@@ -1894,6 +1993,11 @@ impl PciDevice for VfioPciDevice {
             if msix_cap.is_msix_control_reg(reg, 4) {
                 msix_cap.read_msix_control(&mut config);
             }
+        } else if let Some(pm_cap) = &self.pm_cap {
+            let pm_cap = pm_cap.lock();
+            if pm_cap.is_pm_reg(reg) {
+                config = pm_cap.read(reg);
+            }
         }
 
         // Quirk for intel graphic, set stolen memory size to 0 in pci_cfg[0x51]
@@ -1926,6 +2030,13 @@ impl PciDevice for VfioPciDevice {
         }
 
         let start = (reg_idx * 4) as u64 + offset;
+
+        if let Some(pm_cap) = self.pm_cap.as_mut() {
+            let mut pm_cap = pm_cap.lock();
+            if pm_cap.is_pm_reg(start as u32) {
+                pm_cap.write(start, data);
+            }
+        }
 
         let mut msi_change: Option<VfioMsiChange> = None;
         if let Some(msi_cap) = self.msi_cap.as_mut() {
@@ -2030,7 +2141,13 @@ impl PciDevice for VfioPciDevice {
             0 => {
                 match value {
                     0 => {
-                        let _ = self.device.pm_low_power_enter();
+                        if let Some(pm_evt) =
+                            self.pm_evt.as_ref().map(|evt| evt.try_clone().unwrap())
+                        {
+                            let _ = self.device.pm_low_power_enter_with_wakeup(pm_evt);
+                        } else {
+                            let _ = self.device.pm_low_power_enter();
+                        }
                     }
                     _ => {
                         let _ = self.device.pm_low_power_exit();

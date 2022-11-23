@@ -10,6 +10,7 @@ use crate::pci::PciCapability;
 use crate::pci::PciCapabilityID;
 
 pub const PM_CAP_CONTROL_STATE_OFFSET: usize = 1;
+pub const PM_CAP_LENGTH: usize = 8;
 const PM_CAP_PME_SUPPORT_D0: u16 = 0x0800;
 const PM_CAP_PME_SUPPORT_D3_HOT: u16 = 0x4000;
 const PM_CAP_PME_SUPPORT_D3_COLD: u16 = 0x8000;
@@ -56,17 +57,19 @@ impl PciCapability for PciPmCap {
 
 impl PciPmCap {
     pub fn new() -> Self {
-        let pm_cap: u16 = PM_CAP_PME_SUPPORT_D0
-            | PM_CAP_PME_SUPPORT_D3_HOT
-            | PM_CAP_PME_SUPPORT_D3_COLD
-            | PM_CAP_VERSION;
         PciPmCap {
             _cap_vndr: 0,
             _cap_next: 0,
-            pm_cap,
+            pm_cap: Self::default_cap(),
             pm_control_status: 0,
             padding: 0,
         }
+    }
+    pub fn default_cap() -> u16 {
+        PM_CAP_VERSION
+            | PM_CAP_PME_SUPPORT_D0
+            | PM_CAP_PME_SUPPORT_D3_HOT
+            | PM_CAP_PME_SUPPORT_D3_COLD
     }
 }
 
