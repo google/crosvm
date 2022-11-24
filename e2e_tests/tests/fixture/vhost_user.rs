@@ -12,22 +12,41 @@ use anyhow::Result;
 
 use crate::fixture::utils::find_crosvm_binary;
 
-#[derive(Default)]
-pub struct Config {
-    dev_name: String,
+pub enum CmdType {
+    /// `crosvm device` command
+    Device,
+    /// `crosvm devices` command that is newer and supports sandboxing and multiple device
+    /// processes.
+    Devices,
+}
 
+impl CmdType {
+    fn to_subcommand(&self) -> &str {
+        match self {
+            // `crosvm device`
+            CmdType::Device => "device",
+            // `crosvm devices`
+            CmdType::Devices => "devices",
+        }
+    }
+}
+
+pub struct Config {
+    cmd_type: CmdType,
+    dev_name: String,
     extra_args: Vec<String>,
 }
 
 impl Config {
-    pub fn new(name: &str) -> Self {
+    pub fn new(cmd_type: CmdType, name: &str) -> Self {
         Config {
+            cmd_type,
             dev_name: name.to_string(),
-            ..Default::default()
+            extra_args: Default::default(),
         }
     }
 
-    /// Uses extra arguments for `crosvm devices $dev_name`.
+    /// Uses extra arguments for `crosvm (device|devices)`.
     pub fn extra_args(mut self, args: Vec<String>) -> Self {
         self.extra_args = args;
         self
@@ -43,7 +62,7 @@ pub struct VhostUserBackend {
 impl VhostUserBackend {
     pub fn new(cfg: Config) -> Result<Self> {
         let mut cmd = Command::new(find_crosvm_binary());
-        cmd.args(&["device", &cfg.dev_name]);
+        cmd.args(&[cfg.cmd_type.to_subcommand()]);
         cmd.args(cfg.extra_args);
 
         cmd.stdout(Stdio::piped());
