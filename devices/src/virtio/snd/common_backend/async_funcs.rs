@@ -7,6 +7,7 @@ use std::io;
 use std::io::Read;
 use std::io::Write;
 use std::rc::Rc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use audio_streams::capture::AsyncCaptureBuffer;
@@ -17,6 +18,7 @@ use cros_async::sync::Condvar;
 use cros_async::sync::RwLock as AsyncRwLock;
 use cros_async::EventAsync;
 use cros_async::Executor;
+use cros_async::TimerAsync;
 use futures::channel::mpsc;
 use futures::channel::oneshot;
 use futures::pin_mut;
@@ -327,8 +329,19 @@ pub async fn start_pcm_worker(
     mut desc_receiver: mpsc::UnboundedReceiver<DescriptorChain>,
     status_mutex: Rc<AsyncRwLock<WorkerStatus>>,
     mut sender: mpsc::UnboundedSender<PcmResponse>,
+    period_dur: Duration,
+    release_signal: Rc<(AsyncRwLock<bool>, Condvar)>,
 ) -> Result<(), Error> {
-    let res = pcm_worker_loop(ex, dstream, &mut desc_receiver, &status_mutex, &mut sender).await;
+    let res = pcm_worker_loop(
+        ex,
+        dstream,
+        &mut desc_receiver,
+        &status_mutex,
+        &mut sender,
+        period_dur,
+        release_signal,
+    )
+    .await;
     *status_mutex.lock().await = WorkerStatus::Quit;
     if res.is_err() {
         error!(
@@ -348,14 +361,33 @@ async fn pcm_worker_loop(
     desc_receiver: &mut mpsc::UnboundedReceiver<DescriptorChain>,
     status_mutex: &Rc<AsyncRwLock<WorkerStatus>>,
     sender: &mut mpsc::UnboundedSender<PcmResponse>,
+    period_dur: Duration,
+    release_signal: Rc<(AsyncRwLock<bool>, Condvar)>,
 ) -> Result<(), Error> {
+    let on_release = async {
+        await_reset_signal(Some(&*release_signal)).await;
+        // After receiving release signal, wait for up to 2 periods,
+        // giving it a chance to respond to the last buffer.
+        if let Err(e) = TimerAsync::sleep(&ex, period_dur * 2).await {
+            error!("Error on sleep after receiving reset signal: {}", e)
+        }
+    }
+    .fuse();
+    pin_mut!(on_release);
+
     match dstream {
         #[allow(unused_mut)]
         DirectionalStream::Output(mut stream, mut buffer_writer) => loop {
-            let dst_buf = stream
-                .next_playback_buffer(&ex)
-                .await
-                .map_err(Error::FetchBuffer)?;
+            let next_buf = stream.next_playback_buffer(&ex).fuse();
+            pin_mut!(next_buf);
+
+            let dst_buf = select! {
+                _ = on_release => {
+                    drain_desc_receiver(desc_receiver, sender).await?;
+                    break Ok(());
+                },
+                buf = next_buf => buf.map_err(Error::FetchBuffer)?,
+            };
             let worker_status = status_mutex.lock().await;
             match *worker_status {
                 WorkerStatus::Quit => {
@@ -409,10 +441,16 @@ async fn pcm_worker_loop(
             }
         },
         DirectionalStream::Input(mut stream, period_bytes) => loop {
-            let src_buf = stream
-                .next_capture_buffer(&ex)
-                .await
-                .map_err(Error::FetchBuffer)?;
+            let next_buf = stream.next_capture_buffer(&ex).fuse();
+            pin_mut!(next_buf);
+
+            let src_buf = select! {
+                _ = on_release => {
+                    drain_desc_receiver(desc_receiver, sender).await?;
+                    break Ok(());
+                },
+                buf = next_buf => buf.map_err(Error::FetchBuffer)?,
+            };
 
             let worker_status = status_mutex.lock().await;
             match *worker_status {
