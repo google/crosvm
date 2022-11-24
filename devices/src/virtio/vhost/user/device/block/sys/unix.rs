@@ -51,6 +51,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         direct: false,
         block_size: 512,
         id: None,
+        async_executor: None,
     };
 
     let block = Box::new(BlockAsync::new(
@@ -59,6 +60,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         disk.read_only,
         disk.sparse,
         disk.block_size,
+        None,
         None,
         None,
         None,

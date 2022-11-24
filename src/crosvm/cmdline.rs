@@ -821,6 +821,9 @@ pub struct RunCommand {
     ///         string, up to 20 characters. (default: no ID)
     ///     direct=BOOL - Use O_DIRECT mode to bypass page cache.
     ///         (default: false)
+    ///     async-executor=epoll|uring - set the async executor kind
+    ///         to simulate the block device with. This takes
+    ///         precedence over the global --async-executor option.
     block: Vec<DiskOptionWithId>,
 
     #[cfg(feature = "config-file")]

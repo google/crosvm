@@ -158,7 +158,12 @@ pub enum SetDefaultExecutorKindError {
 impl Executor {
     /// Create a new `Executor`.
     pub fn new() -> AsyncResult<Self> {
-        match ExecutorKind::default() {
+        Executor::with_executor_kind(ExecutorKind::default())
+    }
+
+    /// Create a new `Executor` of the given `ExecutorKind`.
+    pub fn with_executor_kind(kind: ExecutorKind) -> AsyncResult<Self> {
+        match kind {
             ExecutorKind::Handle => Ok(Executor::Handle(HandleExecutor::new())),
         }
     }

@@ -20,6 +20,7 @@ use cros_async::sync::Mutex as AsyncMutex;
 use cros_async::AsyncTube;
 use cros_async::EventAsync;
 use cros_async::Executor;
+use cros_async::ExecutorKind;
 use cros_async::TimerAsync;
 use data_model::DataInit;
 use futures::future::AbortHandle;
@@ -137,6 +138,10 @@ impl VhostUserDevice for BlockAsync {
             flush_timer_armed,
             workers: Default::default(),
         }))
+    }
+
+    fn executor_kind(&self) -> Option<ExecutorKind> {
+        Some(self.executor_kind)
     }
 }
 

@@ -6,6 +6,7 @@
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 
+use cros_async::ExecutorKind;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
@@ -74,6 +75,11 @@ pub struct DiskOption {
         alias = "io_concurrency"
     )]
     pub io_concurrency: NonZeroU32,
+    #[serde(default, alias = "async_executor")]
+    /// The async executor kind to simulate the block device with. This option takes
+    /// precedence over the async executor kind specified by the subcommand's option.
+    /// If None, the default or the specified by the subcommand's option would be used.
+    pub async_executor: Option<ExecutorKind>,
 }
 
 #[cfg(test)]
@@ -112,6 +118,7 @@ mod tests {
                 id: None,
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
+                async_executor: None,
             }
         );
 
@@ -129,6 +136,7 @@ mod tests {
                 id: None,
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
+                async_executor: None,
             }
         );
 
@@ -146,6 +154,7 @@ mod tests {
                 id: None,
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
+                async_executor: None,
             }
         );
 
@@ -163,6 +172,7 @@ mod tests {
                 id: None,
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
+                async_executor: None,
             }
         );
 
@@ -180,6 +190,7 @@ mod tests {
                 id: None,
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
+                async_executor: None,
             }
         );
         let params = from_block_arg("/some/path.img,sparse=false").unwrap();
@@ -195,6 +206,7 @@ mod tests {
                 id: None,
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
+                async_executor: None,
             }
         );
 
@@ -212,6 +224,7 @@ mod tests {
                 id: None,
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
+                async_executor: None,
             }
         );
 
@@ -229,6 +242,7 @@ mod tests {
                 id: None,
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
+                async_executor: None,
             }
         );
 
@@ -246,9 +260,10 @@ mod tests {
                 id: None,
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
+                async_executor: None,
             }
         );
-        //
+
         // block_size (deprecated, kept for backward compatibility)
         let params = from_block_arg("/some/path.img,block_size=128").unwrap();
         assert_eq!(
@@ -261,6 +276,7 @@ mod tests {
                 direct: false,
                 block_size: 128,
                 id: None,
+                async_executor: None,
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
             }
@@ -281,6 +297,7 @@ mod tests {
                     block_size: 512,
                     id: None,
                     io_concurrency: NonZeroU32::new(4).unwrap(),
+                    async_executor: None,
                 }
             );
         }
@@ -299,6 +316,7 @@ mod tests {
                 id: Some(*b"DISK\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"),
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
+                async_executor: None,
             }
         );
         let err = from_block_arg("/some/path.img,id=DISK_ID_IS_WAY_TOO_LONG").unwrap_err();
@@ -310,10 +328,34 @@ mod tests {
             }
         );
 
+        // async-executor
+        #[cfg(windows)]
+        let (ex_kind, ex_kind_opt) = (ExecutorKind::Handle, "handle");
+        #[cfg(unix)]
+        let (ex_kind, ex_kind_opt) = (ExecutorKind::Fd, "epoll");
+        let params =
+            from_block_arg(&format!("/some/path.img,async-executor={ex_kind_opt}")).unwrap();
+        assert_eq!(
+            params,
+            DiskOption {
+                path: "/some/path.img".into(),
+                read_only: false,
+                root: false,
+                sparse: true,
+                direct: false,
+                block_size: 512,
+                id: None,
+                #[cfg(windows)]
+                io_concurrency: NonZeroU32::new(1).unwrap(),
+                async_executor: Some(ex_kind),
+            }
+        );
+
         // All together
-        let params = from_block_arg(
-            "/some/path.img,block_size=256,ro,root,sparse=false,id=DISK_LABEL,direct",
-        )
+        let params = from_block_arg(&format!(
+            "/some/path.img,block_size=256,ro,root,sparse=false,id=DISK_LABEL\
+            ,direct,async-executor={ex_kind_opt}"
+        ))
         .unwrap();
         assert_eq!(
             params,
@@ -327,6 +369,7 @@ mod tests {
                 id: Some(*b"DISK_LABEL\0\0\0\0\0\0\0\0\0\0"),
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
+                async_executor: Some(ex_kind),
             }
         );
     }
