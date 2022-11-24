@@ -215,6 +215,10 @@ fn any_identifier(s: &str) -> IResult<&str, &str> {
     ident(s)
 }
 
+fn is_separator(c: Option<char>) -> bool {
+    matches!(c, Some(',') | Some(']') | None)
+}
+
 /// Serde deserializer for key-values strings.
 pub struct KeyValueDeserializer<'de> {
     /// Full input originally received for parsing.
@@ -316,11 +320,12 @@ impl<'de> KeyValueDeserializer<'de> {
 
         self.input = remainder;
 
-        // The character following a string will be either a comma or EOS. If we have something
-        // else, this means an unquoted string should probably have been quoted.
-        match self.peek_char() {
-            Some(',') | None => Ok(res),
-            Some(_) => Err(self.error_here(ErrorKind::InvalidCharInString)),
+        // The character following a string will be either a comma, a closing bracket, or EOS. If
+        // we have something else, this means an unquoted string should probably have been quoted.
+        if is_separator(self.peek_char()) {
+            Ok(res)
+        } else {
+            Err(self.error_here(ErrorKind::InvalidCharInString))
         }
     }
 
@@ -396,8 +401,8 @@ impl<'de> de::MapAccess<'de> for KeyValueDeserializer<'de> {
                 Ok(val)
             }
             // Ok if we are parsing a boolean where an empty value means true.
-            Some(',') | Some(']') | None => Ok(val),
-            Some(_) => Err(self.error_here(ErrorKind::ExpectedEqual)),
+            c if is_separator(c) => Ok(val),
+            _ => Err(self.error_here(ErrorKind::ExpectedEqual)),
         }
     }
 
@@ -553,7 +558,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut KeyValueDeserializer<'de> {
     {
         match self.peek_char() {
             // If we have no value following, then we are dealing with a boolean flag.
-            Some(',') | None => return self.deserialize_bool(visitor),
+            c if is_separator(c) => return self.deserialize_bool(visitor),
             // Opening bracket means we have a sequence.
             Some('[') => return self.deserialize_seq(visitor),
             _ => (),
@@ -1404,6 +1409,56 @@ mod tests {
             res,
             TestStruct {
                 numbers: vec![1, 2, 4, 8, 16, 32, 64],
+            }
+        );
+    }
+
+    #[test]
+    fn deserialize_vector_of_strings() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct TestStruct {
+            strs: Vec<String>,
+        }
+
+        // Unquoted strings
+        let res: TestStruct =
+            from_key_values(r#"strs=[singleword,camel_cased,kebab-cased]"#).unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                strs: vec![
+                    "singleword".into(),
+                    "camel_cased".into(),
+                    "kebab-cased".into()
+                ],
+            }
+        );
+
+        // All quoted strings
+        let res: TestStruct =
+            from_key_values(r#"strs=["first string","second string","third string"]"#).unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                strs: vec![
+                    "first string".into(),
+                    "second string".into(),
+                    "third string".into()
+                ],
+            }
+        );
+
+        // Mix
+        let res: TestStruct =
+            from_key_values(r#"strs=[unquoted,"quoted string",'quoted with escape "']"#).unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                strs: vec![
+                    "unquoted".into(),
+                    "quoted string".into(),
+                    "quoted with escape \"".into()
+                ],
             }
         );
     }
