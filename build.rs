@@ -36,7 +36,7 @@ fn compile_policies(out_dir: &Path, rewrote_policy_folder: &Path, compile_seccom
                     .file_name()
                     .unwrap(),
             );
-            Command::new(compile_seccomp_policy)
+            let status = Command::new(compile_seccomp_policy)
                 .arg("--arch-json")
                 .arg(rewrote_policy_folder.join("constants.json"))
                 .arg("--default-action")
@@ -46,7 +46,10 @@ fn compile_policies(out_dir: &Path, rewrote_policy_folder: &Path, compile_seccom
                 .spawn()
                 .unwrap()
                 .wait()
-                .expect("Compile bpf failed");
+                .expect("Spawning the bpf compiler failed");
+            if !status.success() {
+                panic!("Compile bpf failed");
+            }
             let s = format!(
                 r#"("{}", include_bytes!("{}").to_vec()),"#,
                 policy_file.path().file_stem().unwrap().to_str().unwrap(),
