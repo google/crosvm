@@ -15,7 +15,7 @@ use crate::crosvm::config::Config;
 
 #[cfg(feature = "gfxstream")]
 fn default_use_vulkan() -> bool {
-    !cfg!(window)
+    !cfg!(windows)
 }
 
 pub(crate) fn fixup_gpu_options(
