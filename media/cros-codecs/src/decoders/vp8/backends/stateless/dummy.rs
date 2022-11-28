@@ -6,7 +6,6 @@
 // run so we can test it in isolation.
 
 use std::cell::RefCell;
-use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
@@ -14,40 +13,6 @@ use crate::decoders::vp8::backends::stateless::StatelessDecoderBackend;
 use crate::decoders::vp8::backends::stateless::Vp8Picture;
 use crate::decoders::VideoDecoderBackend;
 use crate::utils::dummy::*;
-use crate::DecodedFormat;
-use crate::Resolution;
-
-pub struct Backend;
-
-impl VideoDecoderBackend for Backend {
-    fn num_resources_total(&self) -> usize {
-        1
-    }
-
-    fn num_resources_left(&self) -> usize {
-        1
-    }
-
-    fn format(&self) -> Option<DecodedFormat> {
-        None
-    }
-
-    fn try_format(&mut self, _: DecodedFormat) -> crate::decoders::Result<()> {
-        Ok(())
-    }
-
-    fn supported_formats_for_stream(&self) -> crate::decoders::Result<HashSet<DecodedFormat>> {
-        Ok(HashSet::new())
-    }
-
-    fn coded_resolution(&self) -> Option<Resolution> {
-        None
-    }
-
-    fn display_resolution(&self) -> Option<Resolution> {
-        None
-    }
-}
 
 impl StatelessDecoderBackend for Backend {
     type Handle = Handle<Vp8Picture<BackendHandle>>;

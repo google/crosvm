@@ -462,13 +462,13 @@ pub mod tests {
 
     use bytes::Buf;
 
-    use crate::decoders::vp8::backends::stateless::dummy::Backend;
     use crate::decoders::vp8::decoder::Decoder;
     use crate::decoders::vp8::parser::Header;
     use crate::decoders::BlockingMode;
     use crate::decoders::DecodedHandle;
     use crate::decoders::DynDecodedHandle;
     use crate::decoders::VideoDecoder;
+    use crate::utils::dummy::Backend;
 
     /// Read and return the data from the next IVF packet. Returns `None` if there is no more data
     /// to read.

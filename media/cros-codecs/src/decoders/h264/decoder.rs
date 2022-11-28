@@ -2557,7 +2557,6 @@ where
 pub mod tests {
     use std::io::Cursor;
 
-    use crate::decoders::h264::backends::stateless::dummy::Backend;
     use crate::decoders::h264::decoder::Decoder;
     use crate::decoders::h264::nalu_reader::NaluReader;
     use crate::decoders::h264::parser::Nalu;
@@ -2567,6 +2566,7 @@ pub mod tests {
     use crate::decoders::DecodedHandle;
     use crate::decoders::DynDecodedHandle;
     use crate::decoders::VideoDecoder;
+    use crate::utils::dummy::Backend;
 
     pub fn process_ready_frames<Handle>(
         decoder: &mut Decoder<Handle>,
