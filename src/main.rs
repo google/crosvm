@@ -5,7 +5,7 @@
 //! Runs a virtual machine
 //!
 //! ## Feature flags
-#![doc = document_features::document_features!()]
+#![cfg_attr(feature = "document-features", doc = document_features::document_features!())]
 
 #[cfg(any(feature = "composite-disk", feature = "qcow"))]
 use std::fs::OpenOptions;

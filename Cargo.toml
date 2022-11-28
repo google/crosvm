@@ -118,7 +118,7 @@ exclude = [
 
 [features]
 ## Default features of crosvm. This selection is somewhat arbitrary for historical reasons.
-default = ["audio", "balloon", "config-file", "gpu", "qcow", "usb"]
+default = ["audio", "balloon", "config-file", "document-features", "gpu", "qcow", "usb"]
 
 ## Enables cross-platform audio devices
 audio = ["devices/audio"]
@@ -357,7 +357,7 @@ crosvm_plugin = { path = "crosvm_plugin", optional = true }
 data_model = "*"
 devices = { path = "devices" }
 disk = { path = "disk" }
-document-features = "0.2"
+document-features = { version = "0.2", optional = true }
 enumn = "0.1.0"
 gdbstub = { version = "0.6.3", optional = true }
 gdbstub_arch = { version = "0.2.4", optional = true }
