@@ -48,7 +48,6 @@ mod timer;
 pub mod vsock;
 mod write_zeroes;
 
-use std::convert::TryFrom;
 use std::ffi::CStr;
 use std::fs::remove_file;
 use std::fs::File;
@@ -60,7 +59,9 @@ use std::os::unix::io::FromRawFd;
 use std::os::unix::io::RawFd;
 use std::os::unix::net::UnixDatagram;
 use std::os::unix::net::UnixListener;
+use std::os::unix::process::ExitStatusExt;
 use std::path::Path;
+use std::process::ExitStatus;
 use std::ptr;
 use std::time::Duration;
 
@@ -322,39 +323,13 @@ impl AsRawPid for std::process::Child {
     }
 }
 
-/// A logical set of the values *status can take from libc::wait and libc::waitpid.
-pub enum WaitStatus {
-    Continued,
-    Exited(u8),
-    Running,
-    Signaled(Signal),
-    Stopped(Signal),
-}
-
-impl From<c_int> for WaitStatus {
-    fn from(status: c_int) -> WaitStatus {
-        use WaitStatus::*;
-        if libc::WIFEXITED(status) {
-            Exited(libc::WEXITSTATUS(status) as u8)
-        } else if libc::WIFSIGNALED(status) {
-            Signaled(Signal::try_from(libc::WTERMSIG(status)).unwrap())
-        } else if libc::WIFSTOPPED(status) {
-            Stopped(Signal::try_from(libc::WSTOPSIG(status)).unwrap())
-        } else if libc::WIFCONTINUED(status) {
-            Continued
-        } else {
-            Running
-        }
-    }
-}
-
 /// A safe wrapper around waitpid.
 ///
 /// On success if a process was reaped, it will be returned as the first value.
-/// The second returned value is the WaitStatus from the libc::waitpid() call.
+/// The second returned value is the ExitStatus from the libc::waitpid() call.
 ///
 /// Note: this can block if libc::WNOHANG is not set and EINTR is not handled internally.
-pub fn wait_for_pid<A: AsRawPid>(pid: A, options: c_int) -> Result<(Option<Pid>, WaitStatus)> {
+pub fn wait_for_pid<A: AsRawPid>(pid: A, options: c_int) -> Result<(Option<Pid>, ExitStatus)> {
     let pid = pid.as_raw_pid();
     let mut status: c_int = 1;
     // Safe because status is owned and the error is checked.
@@ -364,7 +339,7 @@ pub fn wait_for_pid<A: AsRawPid>(pid: A, options: c_int) -> Result<(Option<Pid>,
     }
     Ok((
         if ret == 0 { None } else { Some(ret) },
-        WaitStatus::from(status),
+        ExitStatus::from_raw(status),
     ))
 }
 

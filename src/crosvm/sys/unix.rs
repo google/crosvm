@@ -26,6 +26,7 @@ use std::iter;
 use std::mem;
 use std::ops::RangeInclusive;
 use std::os::unix::prelude::OpenOptionsExt;
+use std::os::unix::process::ExitStatusExt;
 use std::path::Path;
 use std::process;
 use std::sync::mpsc;
@@ -47,7 +48,6 @@ use arch::VcpuAffinity;
 use arch::VirtioDeviceStub;
 use arch::VmComponents;
 use arch::VmImage;
-use base::sys::WaitStatus;
 #[cfg(feature = "balloon")]
 use base::UnixSeqpacket;
 use base::UnixSeqpacketListener;
@@ -3251,18 +3251,17 @@ pub fn start_devices(opts: DevicesCommand) -> anyhow::Result<()> {
             Err(e) => panic!("error waiting for child process to complete: {:#}", e),
             Ok((Some(pid), wait_status)) => match devices_jails.remove_entry(&pid) {
                 Some((_, info)) => {
-                    match wait_status {
-                        WaitStatus::Exited(status) => info!(
+                    if let Some(status) = wait_status.code() {
+                        info!(
                             "process for device {} (PID {}) exited with code {}",
                             &info.name, pid, status
-                        ),
-                        WaitStatus::Signaled(signal) => warn!(
+                        );
+                    } else if let Some(signal) = wait_status.signal() {
+                        warn!(
                             "process for device {} (PID {}) has been killed by signal {:?}",
                             &info.name, pid, signal,
-                        ),
-                        // We are only interested in processes that actually terminate.
-                        WaitStatus::Stopped(_) | WaitStatus::Continued | WaitStatus::Running => (),
-                    };
+                        );
+                    }
                 }
                 None => error!("pid {} is not one of our device processes", pid),
             },
