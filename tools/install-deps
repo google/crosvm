@@ -32,7 +32,6 @@ sudo apt-get install --yes --no-install-recommends \
     libwayland-dev \
     libxext-dev \
     make \
-    mold \
     nasm \
     ncat \
     ninja-build \
