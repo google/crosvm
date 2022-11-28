@@ -58,6 +58,8 @@ struct Region {
     /// the head page index of the region.
     head_page_idx: usize,
     file: SwapFile,
+    resident_pages: usize,
+    swap_active: bool,
 }
 
 /// PageHandler manages the page states of multiple regions.
@@ -171,6 +173,8 @@ impl PageHandler {
                 self.regions.push(Region {
                     head_page_idx,
                     file,
+                    resident_pages: 0,
+                    swap_active: false,
                 });
                 Ok(())
             }
@@ -211,9 +215,12 @@ impl PageHandler {
         let page_idx = self.addr_to_page_idx(address);
         // the head address of the page.
         let page_addr = self.page_base_addr(address);
+        let page_size = 1 << self.pagesize_shift;
         let Region {
             head_page_idx,
             file,
+            resident_pages,
+            ..
         } = self
             .find_region(page_idx)
             .ok_or(Error::InvalidAddress(address))?;
@@ -223,14 +230,18 @@ impl PageHandler {
             Some(page_slice) => {
                 Self::copy_all(uffd, page_addr, page_slice, true)?;
                 file.clear(idx_in_region)?;
+                *resident_pages += 1;
                 Ok(())
             }
             None => {
                 // Map a zero page since no swap file has been created yet but the fault happened.
                 // safe because the fault page is notified by uffd.
-                let result = uffd.zero(page_addr, 1 << self.pagesize_shift, true);
+                let result = uffd.zero(page_addr, page_size, true);
                 match result {
-                    Ok(_) => Ok(()),
+                    Ok(_) => {
+                        *resident_pages += 1;
+                        Ok(())
+                    }
                     Err(UffdError::ZeropageFailed(errno)) if errno as i32 == libc::EEXIST => {
                         // zeroing fails with EEXIST if the page is already filled. This case can
                         // happen if page faults on the same page happen on different processes.
@@ -282,6 +293,8 @@ impl PageHandler {
     ///
     /// The memory must be protected not to be updated during swapped out.
     ///
+    /// Returns the count of swapped out pages.
+    ///
     /// # Arguments
     ///
     /// * `base_addr` - the head address of the memory region to swap out.
@@ -301,7 +314,7 @@ impl PageHandler {
         base_addr: usize,
         memfd: &T,
         base_offset: u64,
-    ) -> Result<()>
+    ) -> Result<usize>
     where
         T: AsRawDescriptor,
     {
@@ -316,6 +329,7 @@ impl PageHandler {
         let region_size = self.regions[region_position].file.num_pages() << self.pagesize_shift;
         let file_data = FileDataIterator::new(memfd, base_offset, region_size as u64);
 
+        let mut swapped_size = 0;
         for data_range in file_data {
             // assert offset is page aligned
             let offset = (data_range.start - base_offset) as usize;
@@ -328,7 +342,8 @@ impl PageHandler {
             let mem_slice = unsafe { std::slice::from_raw_parts(addr as *const u8, size) };
             self.regions[region_position]
                 .file
-                .write_to_file(page_idx - head_page_idx, mem_slice)?
+                .write_to_file(page_idx - head_page_idx, mem_slice)?;
+            swapped_size += size;
             // TODO(kawasin): periodically MADV_REMOVE the guest memory. if the pages are in zram,
             // it increases the RAM usage during swap_out.
             // TODO(kawasin): free the page cache of the swap file. or direct I/O.
@@ -343,23 +358,56 @@ impl PageHandler {
                 libc::MADV_REMOVE,
             );
         }
+        let swapped_pages = swapped_size >> self.pagesize_shift;
+        let mut region = &mut self.regions[region_position];
+        // Suppress error log on the first swap_out, since regident_pages is not initialized but
+        // zero.
+        if region.swap_active && swapped_pages != region.resident_pages {
+            error!(
+                "swapped pages ({}) does not match with resident pages ({}).",
+                swapped_pages, region.resident_pages
+            );
+        }
+        region.resident_pages = 0;
+        region.swap_active = true;
 
-        Ok(())
+        Ok(swapped_pages)
     }
 
     /// Swap in all the content.
     ///
+    /// Returns the count of swapped out pages.
+    ///
     /// # Arguments
     ///
     /// * `uffd` - the main [Userfaultfd].
-    pub fn swap_in(self, uffd: &Userfaultfd) -> Result<()> {
+    pub fn swap_in(self, uffd: &Userfaultfd) -> Result<usize> {
+        let mut swapped_size = 0;
         for region in self.regions.iter() {
             for pages in region.file.all_present_pages() {
                 let page_idx = region.head_page_idx + pages.base_idx;
                 let page_addr = self.page_idx_to_addr(page_idx);
+                let size = pages.content.size();
                 Self::copy_all(uffd, page_addr, pages.content, false)?;
+                swapped_size += size;
             }
         }
-        Ok(())
+        Ok(swapped_size >> self.pagesize_shift)
+    }
+
+    /// Returns count of pages active on the memory.
+    pub fn compute_resident_pages(&self) -> usize {
+        self.regions.iter().map(|r| r.resident_pages).sum()
+    }
+
+    /// Returns count of pages present in the swap files.
+    pub fn compute_swap_pages(&self) -> usize {
+        let mut swapped_size = 0;
+        for r in self.regions.iter() {
+            for pages in r.file.all_present_pages() {
+                swapped_size += pages.content.size();
+            }
+        }
+        swapped_size >> self.pagesize_shift
     }
 }

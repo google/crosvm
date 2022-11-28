@@ -59,9 +59,13 @@ pub enum Status {
     /// single thread.
     InProgress,
     /// swap out succeeded.
-    Done {
+    Active {
         /// time taken for swap-out.
-        time_took_ms: u128,
+        swap_time_ms: u128,
+        /// count of pages on RAM.
+        resident_pages: usize,
+        /// count of pages in swap files.
+        swap_pages: usize,
     },
     /// swap out failed.
     Failed,
@@ -382,12 +386,13 @@ fn disable_monitoring(
     page_handler: PageHandler,
     uffd_list: &UffdList,
     guest_memory: &GuestMemory,
-) -> anyhow::Result<()> {
-    page_handler
+) -> anyhow::Result<usize> {
+    let num_pages = page_handler
         .swap_in(uffd_list.main_uffd())
         .context("unregister all regions")?;
     let regions = regions_from_guest_memory(guest_memory);
-    unregister_regions(&regions, uffd_list.get_list()).context("unregister regions")
+    unregister_regions(&regions, uffd_list.get_list()).context("unregister regions")?;
+    Ok(num_pages)
 }
 
 /// the main thread of the monitor process.
@@ -409,7 +414,7 @@ fn monitor_process(
     .context("create wait context")?;
 
     let mut uffd_list = UffdList::new(uffd, &wait_ctx);
-    let mut status = Status::Ready;
+    let mut lastest_swap_out_time_ms = None;
     let mut page_handler_opt: Option<PageHandler> = None;
     let mut page_fault_logger: Option<PageFaultEventLogger> = None;
 
@@ -491,40 +496,68 @@ fn monitor_process(
 
                         info!("start swapping out");
                         let t0 = std::time::Instant::now();
+                        let mut num_pages = 0;
                         let result = guest_memory.with_regions::<_, anyhow::Error>(
                             |_, _, _, host_addr, shm, shm_offset| {
                                 // safe because all the regions are registered to all userfaultfd
                                 // and page fault events are handled by PageHandler.
-                                unsafe { page_handler.swap_out(host_addr, shm, shm_offset) }
-                                    .context("swap out")
+                                num_pages +=
+                                    unsafe { page_handler.swap_out(host_addr, shm, shm_offset) }
+                                        .context("swap out")?;
+                                Ok(())
                             },
                         );
                         match result {
                             Ok(()) => {
-                                let time_took_ms = t0.elapsed().as_millis();
-                                info!("swapping out finish in {} ms", time_took_ms);
-                                status = Status::Done { time_took_ms };
+                                let swap_time_ms = t0.elapsed().as_millis();
+                                info!("swap out {} pages in {} ms", num_pages, swap_time_ms);
+                                if page_handler.compute_resident_pages() > 0 {
+                                    error!(
+                                        "active page is not zero just after swap out but {} pages",
+                                        page_handler.compute_resident_pages()
+                                    );
+                                }
+                                lastest_swap_out_time_ms = Some(swap_time_ms);
                             }
                             Err(e) => {
                                 error!("failed to swapping out the state: {}", e);
-                                status = Status::Failed;
+                                lastest_swap_out_time_ms = None;
                             }
                         }
                     }
                     Command::Disable => {
-                        status = Status::Ready;
                         if let Some(page_handler) = page_handler_opt.take() {
-                            disable_monitoring(page_handler, &uffd_list, &guest_memory)?;
-                            info!("swap in all pages. swap disabled.");
+                            let t0 = std::time::Instant::now();
+                            let num_pages =
+                                disable_monitoring(page_handler, &uffd_list, &guest_memory)?;
+                            let time_took_ms = t0.elapsed().as_millis();
+                            info!(
+                                "swap in all {} pages in {} ms. swap disabled.",
+                                num_pages, time_took_ms
+                            );
                         } else {
-                            warn!("swap is disabled.");
+                            warn!("swap is already disabled.");
                         }
                     }
                     Command::Exit => {
                         break 'wait;
                     }
                     Command::Status => {
+                        let status = if let Some(ref page_handler) = page_handler_opt {
+                            if let Some(swap_time_ms) = lastest_swap_out_time_ms {
+                                Status::Active {
+                                    swap_time_ms,
+                                    resident_pages: page_handler.compute_resident_pages(),
+                                    swap_pages: page_handler.compute_swap_pages(),
+                                }
+                            } else {
+                                Status::Failed
+                            }
+                        } else {
+                            Status::Ready
+                        };
                         tube.send(&status).context("send status response")?;
+                        info!("swap status: {:?}.", status);
                     }
                     Command::StartPageFaultLogging => {
                         if page_fault_logger.is_none() {
