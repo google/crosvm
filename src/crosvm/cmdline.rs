@@ -461,6 +461,7 @@ pub struct DeviceCommand {
 /// Cross-platform Devices
 pub enum CrossPlatformDevicesCommands {
     Block(device::BlockOptions),
+    #[cfg(feature = "gpu")]
     Gpu(device::GpuOptions),
     #[cfg(unix)]
     Net(device::NetOptions),
