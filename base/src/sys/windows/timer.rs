@@ -11,7 +11,6 @@ use win_util::LargeInteger;
 use win_util::SecurityAttributes;
 use win_util::SelfRelativeSecurityDescriptor;
 use winapi::shared::minwindef::FALSE;
-use winapi::shared::winerror::WAIT_TIMEOUT;
 use winapi::um::synchapi::CancelWaitableTimer;
 use winapi::um::synchapi::SetWaitableTimer;
 use winapi::um::synchapi::WaitForSingleObject;
@@ -26,7 +25,6 @@ use crate::descriptor::AsRawDescriptor;
 use crate::descriptor::FromRawDescriptor;
 use crate::descriptor::SafeDescriptor;
 use crate::timer::Timer;
-use crate::timer::WaitResult;
 
 impl AsRawHandle for Timer {
     fn as_raw_handle(&self) -> RawHandle {
@@ -121,34 +119,17 @@ impl Timer {
         Ok(())
     }
 
-    /// Waits until the timer expires or an optional wait timeout expires, whichever happens first.
-    ///
-    /// # Returns
-    ///
-    /// - `WaitResult::Expired` if the timer expired.
-    /// - `WaitResult::Timeout` if `timeout` was not `None` and the timer did not expire within the
-    ///   specified timeout period.
-    pub fn wait_for(&mut self, timeout: Option<Duration>) -> Result<WaitResult> {
-        let timeout = match timeout {
-            None => INFINITE,
-            Some(dur) => dur.as_millis() as u32,
-        };
-
+    /// Waits until the timer expires.
+    pub fn wait(&mut self) -> Result<()> {
         // Safe because this doesn't modify any memory and we check the return value.
-        let ret = unsafe { WaitForSingleObject(self.as_raw_descriptor(), timeout) };
+        let ret = unsafe { WaitForSingleObject(self.as_raw_descriptor(), INFINITE) };
 
         // Should return WAIT_OBJECT_0, otherwise it's some sort of error or
         // timeout (which shouldn't happen in this case).
         match ret {
-            WAIT_OBJECT_0 => Ok(WaitResult::Expired),
-            WAIT_TIMEOUT => Ok(WaitResult::Timeout),
+            WAIT_OBJECT_0 => Ok(()),
             _ => errno_result(),
         }
-    }
-
-    /// Waits until the timer expires.
-    pub fn wait(&mut self) -> Result<WaitResult> {
-        self.wait_for(None)
     }
 
     /// After a timer is triggered from an EventContext, mark the timer as having been waited for.
