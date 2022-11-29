@@ -27,6 +27,7 @@ use std::str::FromStr;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
+use arch::CpuSet;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use arch::MsrConfig;
 use arch::Pstore;
@@ -72,7 +73,6 @@ use crate::crosvm::config::parse_ac97_options;
 use crate::crosvm::config::parse_bus_id_addr;
 use crate::crosvm::config::parse_cpu_affinity;
 use crate::crosvm::config::parse_cpu_capacity;
-use crate::crosvm::config::parse_cpu_set;
 #[cfg(feature = "direct")]
 use crate::crosvm::config::parse_direct_io_options;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -887,11 +887,11 @@ pub struct RunCommand {
     /// set the relative capacity of the given CPU (default: no capacity)
     pub cpu_capacity: Option<BTreeMap<usize, u32>>, // CPU index -> capacity
 
-    #[argh(option, arg_name = "CPUSET", from_str_fn(parse_cpu_set))]
+    #[argh(option, arg_name = "CPUSET")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = append)]
     /// group the given CPUs into a cluster (default: no clusters)
-    pub cpu_cluster: Vec<Vec<usize>>,
+    pub cpu_cluster: Vec<CpuSet>,
 
     #[argh(option, short = 'c')]
     #[merge(strategy = overwrite_option)]
@@ -1572,11 +1572,11 @@ pub struct RunCommand {
     ///     o_direct=BOOL - Use O_DIRECT mode to bypass page cache
     root: Option<DiskOptionWithId>,
 
-    #[argh(option, arg_name = "CPUSET", from_str_fn(parse_cpu_set))]
+    #[argh(option, arg_name = "CPUSET")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
     /// comma-separated list of CPUs or CPU ranges to run VCPUs on. (e.g. 0,1-3,5) (default: none)
-    pub rt_cpus: Option<Vec<usize>>,
+    pub rt_cpus: Option<CpuSet>,
 
     #[argh(option, arg_name = "PATH")]
     #[serde(skip)] // TODO(b/255223604)

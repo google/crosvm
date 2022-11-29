@@ -17,7 +17,9 @@ use std::io;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
+use std::ops::Deref;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::mpsc;
 use std::sync::mpsc::SendError;
 use std::sync::Arc;
@@ -123,16 +125,89 @@ pub struct Pstore {
     pub size: u32,
 }
 
+/// Set of CPU cores.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+pub struct CpuSet(Vec<usize>);
+
+impl CpuSet {
+    pub fn new<I: IntoIterator<Item = usize>>(cpus: I) -> Self {
+        CpuSet(cpus.into_iter().collect())
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, usize> {
+        self.0.iter()
+    }
+}
+
+impl FromStr for CpuSet {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut cpuset = Vec::new();
+        for part in s.split(',') {
+            let range: Vec<&str> = part.split('-').collect();
+            if range.is_empty() || range.len() > 2 {
+                return Err(format!("invalid list syntax: {}", part));
+            }
+            let first_cpu: usize = range[0].parse().map_err(|_| {
+                format!(
+                    "invalid CPU index {} - index must be a non-negative integer",
+                    part
+                )
+            })?;
+            let last_cpu: usize = if range.len() == 2 {
+                range[1].parse().map_err(|_| {
+                    format!(
+                        "invalid CPU index {} - index must be a non-negative integer",
+                        part
+                    )
+                })?
+            } else {
+                first_cpu
+            };
+
+            if last_cpu < first_cpu {
+                return Err(format!(
+                    "invalid CPU range {} - ranges must be from low to high",
+                    part
+                ));
+            }
+
+            for cpu in first_cpu..=last_cpu {
+                cpuset.push(cpu);
+            }
+        }
+        Ok(CpuSet::new(cpuset))
+    }
+}
+
+impl Deref for CpuSet {
+    type Target = Vec<usize>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl IntoIterator for CpuSet {
+    type Item = usize;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
 /// Mapping of guest VCPU threads to host CPU cores.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum VcpuAffinity {
     /// All VCPU threads will be pinned to the same set of host CPU cores.
-    Global(Vec<usize>),
+    Global(CpuSet),
     /// Each VCPU may be pinned to a set of host CPU cores.
     /// The map key is a guest VCPU index, and the corresponding value is the set of
     /// host CPU indices that the VCPU thread will be allowed to run on.
     /// If a VCPU index is not present in the map, its affinity will not be set.
-    PerVcpu(BTreeMap<usize, Vec<usize>>),
+    PerVcpu(BTreeMap<usize, CpuSet>),
 }
 
 /// Holds the pieces needed to build a VM. Passed to `build_vm` in the `LinuxArch` trait below to
@@ -142,7 +217,7 @@ pub struct VmComponents {
     pub acpi_sdts: Vec<SDT>,
     pub android_fstab: Option<File>,
     pub cpu_capacity: BTreeMap<usize, u32>,
-    pub cpu_clusters: Vec<Vec<usize>>,
+    pub cpu_clusters: Vec<CpuSet>,
     pub delay_rt: bool,
     #[cfg(feature = "direct")]
     pub direct_fixed_evts: Vec<devices::ACPIPMFixedEvent>,
@@ -175,7 +250,7 @@ pub struct VmComponents {
     /// A file to load as pVM firmware. Must be `Some` iff
     /// `hv_cfg.protection_type == ProtectionType::UnprotectedWithFirmware`.
     pub pvm_fw: Option<File>,
-    pub rt_cpus: Vec<usize>,
+    pub rt_cpus: CpuSet,
     pub swiotlb: Option<u64>,
     pub vcpu_affinity: Option<VcpuAffinity>,
     pub vcpu_count: usize,
@@ -202,7 +277,7 @@ pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch> {
     /// Devices to be notified before the system resumes from the S3 suspended state.
     pub resume_notify_devices: Vec<Arc<Mutex<dyn BusResumeDevice>>>,
     pub root_config: Arc<Mutex<PciRoot>>,
-    pub rt_cpus: Vec<usize>,
+    pub rt_cpus: CpuSet,
     pub suspend_evt: Event,
     pub vcpu_affinity: Option<VcpuAffinity>,
     pub vcpu_count: usize,

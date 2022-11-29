@@ -12,6 +12,7 @@ use acpi_tables::aml;
 use acpi_tables::facs::FACS;
 use acpi_tables::rsdp::RSDP;
 use acpi_tables::sdt::SDT;
+use arch::CpuSet;
 use arch::VcpuAffinity;
 use base::error;
 use base::warn;
@@ -422,7 +423,7 @@ fn next_offset(offset: GuestAddress, len: u64) -> Option<GuestAddress> {
 
 fn sync_acpi_id_from_cpuid(
     madt: &mut SDT,
-    cpus: BTreeMap<usize, Vec<usize>>,
+    cpus: BTreeMap<usize, CpuSet>,
     apic_ids: &mut Vec<usize>,
 ) -> base::Result<()> {
     let cpu_set = match base::get_cpu_affinity() {

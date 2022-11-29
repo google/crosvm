@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use arch::set_default_serial_parameters;
+use arch::CpuSet;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use arch::MsrAction;
 use arch::MsrConfig;
@@ -897,39 +898,6 @@ pub fn parse_cpu_capacity(s: &str) -> Result<BTreeMap<usize, u32>, String> {
     Ok(cpu_capacity)
 }
 
-/// Parse a comma-separated list of CPU numbers and ranges and convert it to a Vec of CPU numbers.
-pub fn parse_cpu_set(s: &str) -> Result<Vec<usize>, String> {
-    let mut cpuset = Vec::new();
-    for part in s.split(',') {
-        let range: Vec<&str> = part.split('-').collect();
-        if range.is_empty() || range.len() > 2 {
-            return Err(invalid_value_err(part, "invalid list syntax"));
-        }
-        let first_cpu: usize = range[0]
-            .parse()
-            .map_err(|_| invalid_value_err(part, "CPU index must be a non-negative integer"))?;
-        let last_cpu: usize = if range.len() == 2 {
-            range[1]
-                .parse()
-                .map_err(|_| invalid_value_err(part, "CPU index must be a non-negative integer"))?
-        } else {
-            first_cpu
-        };
-
-        if last_cpu < first_cpu {
-            return Err(invalid_value_err(
-                part,
-                "CPU ranges must be from low to high",
-            ));
-        }
-
-        for cpu in first_cpu..=last_cpu {
-            cpuset.push(cpu);
-        }
-    }
-    Ok(cpuset)
-}
-
 pub fn from_key_values<'a, T: Deserialize<'a>>(value: &'a str) -> Result<T, String> {
     serde_keyvalue::from_key_values(value).map_err(|e| e.to_string())
 }
@@ -937,7 +905,7 @@ pub fn from_key_values<'a, T: Deserialize<'a>>(value: &'a str) -> Result<T, Stri
 /// Parse a list of guest to host CPU mappings.
 ///
 /// Each mapping consists of a single guest CPU index mapped to one or more host CPUs in the form
-/// accepted by `parse_cpu_set`:
+/// accepted by `CpuSet::from_str`:
 ///
 ///  `<GUEST-CPU>=<HOST-CPU-SET>[:<GUEST-CPU>=<HOST-CPU-SET>[:...]]`
 pub fn parse_cpu_affinity(s: &str) -> Result<VcpuAffinity, String> {
@@ -954,14 +922,14 @@ pub fn parse_cpu_affinity(s: &str) -> Result<VcpuAffinity, String> {
             let guest_cpu = assignment[0].parse().map_err(|_| {
                 invalid_value_err(assignment[0], "CPU index must be a non-negative integer")
             })?;
-            let host_cpu_set = parse_cpu_set(assignment[1])?;
+            let host_cpu_set = CpuSet::from_str(assignment[1])?;
             if affinity_map.insert(guest_cpu, host_cpu_set).is_some() {
                 return Err(invalid_value_err(cpu_pair, "VCPU index must be unique"));
             }
         }
         Ok(VcpuAffinity::PerVcpu(affinity_map))
     } else {
-        Ok(VcpuAffinity::Global(parse_cpu_set(s)?))
+        Ok(VcpuAffinity::Global(CpuSet::from_str(s)?))
     }
 }
 
@@ -1076,7 +1044,7 @@ pub struct Config {
     #[cfg(unix)]
     pub coiommu_param: Option<devices::CoIommuParameters>,
     pub cpu_capacity: BTreeMap<usize, u32>, // CPU index -> capacity
-    pub cpu_clusters: Vec<Vec<usize>>,
+    pub cpu_clusters: Vec<CpuSet>,
     #[cfg(feature = "crash-report")]
     pub crash_pipe_name: Option<String>,
     #[cfg(feature = "crash-report")]
@@ -1187,7 +1155,7 @@ pub struct Config {
     /// Must be `Some` iff `protection_type == ProtectionType::UnprotectedWithFirmware`.
     pub pvm_fw: Option<PathBuf>,
     pub rng: bool,
-    pub rt_cpus: Vec<usize>,
+    pub rt_cpus: CpuSet,
     #[serde(with = "serde_serial_params")]
     pub serial_parameters: BTreeMap<(SerialHardware, u8), SerialParameters>,
     #[cfg(feature = "kiwi")]
@@ -1400,7 +1368,7 @@ impl Default for Config {
             pvclock: false,
             pvm_fw: None,
             rng: true,
-            rt_cpus: Vec::new(),
+            rt_cpus: Default::default(),
             serial_parameters: BTreeMap::new(),
             #[cfg(feature = "kiwi")]
             service_pipe_name: None,
@@ -1520,7 +1488,7 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
             None => {
                 let mut affinity_map = BTreeMap::new();
                 for cpu_id in 0..cfg.vcpu_count.unwrap() {
-                    affinity_map.insert(cpu_id, vec![cpu_id]);
+                    affinity_map.insert(cpu_id, CpuSet::new([cpu_id]));
                 }
                 cfg.vcpu_affinity = Some(VcpuAffinity::PerVcpu(affinity_map));
             }
@@ -1666,76 +1634,82 @@ mod tests {
 
     #[test]
     fn parse_cpu_set_single() {
-        assert_eq!(parse_cpu_set("123").expect("parse failed"), vec![123]);
+        assert_eq!(
+            CpuSet::from_str("123").expect("parse failed"),
+            CpuSet::new([123])
+        );
     }
 
     #[test]
     fn parse_cpu_set_list() {
         assert_eq!(
-            parse_cpu_set("0,1,2,3").expect("parse failed"),
-            vec![0, 1, 2, 3]
+            CpuSet::from_str("0,1,2,3").expect("parse failed"),
+            CpuSet::new([0, 1, 2, 3])
         );
     }
 
     #[test]
     fn parse_cpu_set_range() {
         assert_eq!(
-            parse_cpu_set("0-3").expect("parse failed"),
-            vec![0, 1, 2, 3]
+            CpuSet::from_str("0-3").expect("parse failed"),
+            CpuSet::new([0, 1, 2, 3])
         );
     }
 
     #[test]
     fn parse_cpu_set_list_of_ranges() {
         assert_eq!(
-            parse_cpu_set("3-4,7-9,18").expect("parse failed"),
-            vec![3, 4, 7, 8, 9, 18]
+            CpuSet::from_str("3-4,7-9,18").expect("parse failed"),
+            CpuSet::new([3, 4, 7, 8, 9, 18])
         );
     }
 
     #[test]
     fn parse_cpu_set_repeated() {
         // For now, allow duplicates - they will be handled gracefully by the vec to cpu_set_t conversion.
-        assert_eq!(parse_cpu_set("1,1,1").expect("parse failed"), vec![1, 1, 1]);
+        assert_eq!(
+            CpuSet::from_str("1,1,1").expect("parse failed"),
+            CpuSet::new([1, 1, 1])
+        );
     }
 
     #[test]
     fn parse_cpu_set_negative() {
         // Negative CPU numbers are not allowed.
-        parse_cpu_set("-3").expect_err("parse should have failed");
+        CpuSet::from_str("-3").expect_err("parse should have failed");
     }
 
     #[test]
     fn parse_cpu_set_reverse_range() {
         // Ranges must be from low to high.
-        parse_cpu_set("5-2").expect_err("parse should have failed");
+        CpuSet::from_str("5-2").expect_err("parse should have failed");
     }
 
     #[test]
     fn parse_cpu_set_open_range() {
-        parse_cpu_set("3-").expect_err("parse should have failed");
+        CpuSet::from_str("3-").expect_err("parse should have failed");
     }
 
     #[test]
     fn parse_cpu_set_extra_comma() {
-        parse_cpu_set("0,1,2,").expect_err("parse should have failed");
+        CpuSet::from_str("0,1,2,").expect_err("parse should have failed");
     }
 
     #[test]
     fn parse_cpu_affinity_global() {
         assert_eq!(
             parse_cpu_affinity("0,5-7,9").expect("parse failed"),
-            VcpuAffinity::Global(vec![0, 5, 6, 7, 9]),
+            VcpuAffinity::Global(CpuSet::new([0, 5, 6, 7, 9])),
         );
     }
 
     #[test]
     fn parse_cpu_affinity_per_vcpu_one_to_one() {
         let mut expected_map = BTreeMap::new();
-        expected_map.insert(0, vec![0]);
-        expected_map.insert(1, vec![1]);
-        expected_map.insert(2, vec![2]);
-        expected_map.insert(3, vec![3]);
+        expected_map.insert(0, CpuSet::new([0]));
+        expected_map.insert(1, CpuSet::new([1]));
+        expected_map.insert(2, CpuSet::new([2]));
+        expected_map.insert(3, CpuSet::new([3]));
         assert_eq!(
             parse_cpu_affinity("0=0:1=1:2=2:3=3").expect("parse failed"),
             VcpuAffinity::PerVcpu(expected_map),
@@ -1745,9 +1719,9 @@ mod tests {
     #[test]
     fn parse_cpu_affinity_per_vcpu_sets() {
         let mut expected_map = BTreeMap::new();
-        expected_map.insert(0, vec![0, 1, 2]);
-        expected_map.insert(1, vec![3, 4, 5]);
-        expected_map.insert(2, vec![6, 7, 8]);
+        expected_map.insert(0, CpuSet::new([0, 1, 2]));
+        expected_map.insert(1, CpuSet::new([3, 4, 5]));
+        expected_map.insert(2, CpuSet::new([6, 7, 8]));
         assert_eq!(
             parse_cpu_affinity("0=0,1,2:1=3-5:2=6,7-8").expect("parse failed"),
             VcpuAffinity::PerVcpu(expected_map),

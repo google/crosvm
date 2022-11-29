@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::Read;
 
+use arch::CpuSet;
 use arch::SERIAL_ADDR;
 use cros_fdt::Error;
 use cros_fdt::FdtWriter;
@@ -100,7 +101,7 @@ fn create_resv_memory_node(fdt: &mut FdtWriter, resv_size: Option<u64>) -> Resul
 fn create_cpu_nodes(
     fdt: &mut FdtWriter,
     num_cpus: u32,
-    cpu_clusters: Vec<Vec<usize>>,
+    cpu_clusters: Vec<CpuSet>,
     cpu_capacity: BTreeMap<usize, u32>,
 ) -> Result<()> {
     let cpus_node = fdt.begin_node("cpus")?;
@@ -537,7 +538,7 @@ pub fn create_fdt(
     pci_cfg: PciConfigRegion,
     pci_ranges: &[PciRange],
     num_cpus: u32,
-    cpu_clusters: Vec<Vec<usize>>,
+    cpu_clusters: Vec<CpuSet>,
     cpu_capacity: BTreeMap<usize, u32>,
     fdt_address: GuestAddress,
     cmdline: &str,

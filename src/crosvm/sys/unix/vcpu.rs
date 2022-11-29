@@ -19,6 +19,7 @@ use aarch64::AArch64 as Arch;
 use aarch64::MsrHandlers;
 use anyhow::Context;
 use anyhow::Result;
+use arch::CpuSet;
 use arch::LinuxArch;
 use arch::MsrConfig;
 use base::*;
@@ -116,7 +117,7 @@ fn bus_io_handler(bus: &Bus) -> impl FnMut(IoParams) -> Option<[u8; 8]> + '_ {
 /// Set the VCPU thread affinity and other per-thread scheduler properties.
 /// This function will be called from each VCPU thread at startup.
 pub fn set_vcpu_thread_scheduling(
-    vcpu_affinity: Vec<usize>,
+    vcpu_affinity: CpuSet,
     enable_per_vm_core_scheduling: bool,
     vcpu_cgroup_tasks_file: Option<File>,
     run_rt: bool,
@@ -616,7 +617,7 @@ pub fn run_vcpu<V>(
     mut irq_chip: Box<dyn IrqChipArch + 'static>,
     vcpu_count: usize,
     run_rt: bool,
-    vcpu_affinity: Vec<usize>,
+    vcpu_affinity: CpuSet,
     delay_rt: bool,
     start_barrier: Arc<Barrier>,
     has_bios: bool,
