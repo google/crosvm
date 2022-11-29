@@ -21,6 +21,7 @@ use nom::character::complete::none_of;
 use nom::combinator::map;
 use nom::combinator::map_res;
 use nom::combinator::opt;
+use nom::combinator::peek;
 use nom::combinator::recognize;
 use nom::combinator::value;
 use nom::combinator::verify;
@@ -101,6 +102,30 @@ impl de::Error for ParseError {
 
 type Result<T> = std::result::Result<T, ParseError>;
 
+/// Returns `true` if `c` is a valid separator character.
+fn is_separator(c: Option<char>) -> bool {
+    matches!(c, Some(',') | Some(']') | None)
+}
+
+/// Nom parser for valid separators.
+fn any_separator(s: &str) -> IResult<&str, Option<char>> {
+    let next_char = s.chars().next();
+
+    if is_separator(next_char) {
+        let pos = if let Some(c) = next_char {
+            c.len_utf8()
+        } else {
+            0
+        };
+        Ok((&s[pos..], next_char))
+    } else {
+        Err(nom::Err::Error(nom::error::Error::new(
+            s,
+            nom::error::ErrorKind::Char,
+        )))
+    }
+}
+
 /// Nom parser for valid strings.
 ///
 /// A string can be quoted (using single or double quotes) or not. If it is not quoted, the string
@@ -167,14 +192,17 @@ where
             value(2, tag("0b")),
         ));
 
+        // Recognizes the trailing separator but do not consume it.
+        let separator = peek(any_separator);
+
         // Chain of parsers: sign (optional) and radix (optional), then sequence of alphanumerical
         // characters.
         //
         // Then we take all 3 recognized elements and turn them into the string and radix to pass to
         // `from_str_radix`.
         map(
-            tuple((opt(sign), opt(radix), alphanumeric1)),
-            |(sign, radix, number)| {
+            tuple((opt(sign), opt(radix), alphanumeric1, separator)),
+            |(sign, radix, number, _)| {
                 // If the sign was specified, we need to build a string that contains it for
                 // `from_str_radix` to parse the number accurately. Otherwise, simply borrow the
                 // remainder of the input.
@@ -213,10 +241,6 @@ fn any_identifier(s: &str) -> IResult<&str, &str> {
     ));
 
     ident(s)
-}
-
-fn is_separator(c: Option<char>) -> bool {
-    matches!(c, Some(',') | Some(']') | None)
 }
 
 /// Serde deserializer for key-values strings.
@@ -886,6 +910,25 @@ mod tests {
     #[derive(Deserialize, PartialEq, Debug)]
     struct SingleStruct<T> {
         m: T,
+    }
+
+    #[test]
+    fn nom_any_separator() {
+        let test_str = ",foo";
+        assert_eq!(any_separator(test_str), Ok((&test_str[1..], Some(','))));
+        let test_str = "]bar";
+        assert_eq!(any_separator(test_str), Ok((&test_str[1..], Some(']'))));
+        let test_str = "";
+        assert_eq!(any_separator(test_str), Ok((test_str, None)));
+
+        let test_str = "something,anything";
+        assert_eq!(
+            any_separator(test_str),
+            Err(nom::Err::Error(nom::error::Error::new(
+                test_str,
+                nom::error::ErrorKind::Char
+            )))
+        );
     }
 
     #[test]
