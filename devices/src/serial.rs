@@ -15,7 +15,9 @@ use std::sync::Arc;
 use std::thread;
 
 use anyhow::anyhow;
+use anyhow::Context;
 use base::error;
+use base::warn;
 use base::Event;
 use base::EventToken;
 use base::Result;
@@ -28,6 +30,9 @@ use crate::suspendable::DeviceState;
 use crate::suspendable::Suspendable;
 use crate::BusDevice;
 use crate::DeviceId;
+
+use serde::Deserialize;
+use serde::Serialize;
 
 const LOOP_SIZE: usize = 0x40;
 
@@ -465,7 +470,67 @@ impl BusDevice for Serial {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct SerialSnapshot {
+    interrupt_enable: u8,
+    interrupt_identification: u8,
+    line_control: u8,
+    line_status: u8,
+    modem_control: u8,
+    modem_status: u8,
+    scratch: u8,
+    baud_divisor: u16,
+
+    in_buffer: VecDeque<u8>,
+
+    has_input: bool,
+    has_output: bool,
+    device_state: DeviceState,
+}
+
 impl Suspendable for Serial {
+    fn snapshot(&self) -> anyhow::Result<String> {
+        let snap = SerialSnapshot {
+            interrupt_enable: self.interrupt_enable.load(Ordering::SeqCst),
+            interrupt_identification: self.interrupt_identification,
+            line_control: self.line_control,
+            line_status: self.line_status,
+            modem_control: self.modem_control,
+            modem_status: self.modem_status,
+            scratch: self.scratch,
+            baud_divisor: self.baud_divisor,
+            in_buffer: self.in_buffer.clone(),
+            has_input: self.input.is_some(),
+            has_output: self.out.is_some(),
+            device_state: self.device_state,
+        };
+
+        let serialized = serde_json::to_string(&snap).context("error serializing")?;
+        Ok(serialized)
+    }
+
+    fn restore(&mut self, data: &str) -> anyhow::Result<()> {
+        let serial_snapshot: SerialSnapshot =
+            serde_json::from_str(data).context("error deserializing")?;
+        self.interrupt_enable = Arc::new(AtomicU8::new(serial_snapshot.interrupt_enable));
+        self.interrupt_identification = serial_snapshot.interrupt_identification;
+        self.line_control = serial_snapshot.line_control;
+        self.line_status = serial_snapshot.line_status;
+        self.modem_control = serial_snapshot.modem_control;
+        self.modem_status = serial_snapshot.modem_status;
+        self.scratch = serial_snapshot.scratch;
+        self.baud_divisor = serial_snapshot.baud_divisor;
+        self.in_buffer = serial_snapshot.in_buffer;
+        self.device_state = serial_snapshot.device_state;
+        if serial_snapshot.has_input && self.input.is_none() {
+            warn!("Restore serial input missing when restore expected an input");
+        }
+        if serial_snapshot.has_output && self.out.is_none() {
+            warn!("Restore serial out missing when restore expected an out");
+        }
+        Ok(())
+    }
+
     fn sleep(&mut self) -> anyhow::Result<()> {
         if !matches!(self.device_state, DeviceState::Sleep) {
             self.device_state = DeviceState::Sleep;
@@ -514,6 +579,7 @@ mod tests {
     use std::io;
     use std::sync::Arc;
 
+    use crate::suspendable_tests;
     use hypervisor::ProtectionType;
     use sync::Mutex;
 
@@ -523,6 +589,13 @@ mod tests {
     #[derive(Clone)]
     pub(super) struct SharedBuffer {
         pub(super) buf: Arc<Mutex<Vec<u8>>>,
+    }
+
+    /// Empties the in_buffer.
+    impl Serial {
+        pub fn clear_in_buffer(&mut self) {
+            self.in_buffer.clear()
+        }
     }
 
     impl SharedBuffer {
@@ -598,5 +671,264 @@ mod tests {
         assert_eq!(data[0], b'b');
         serial.read(serial_bus_address(DATA), &mut data[..]);
         assert_eq!(data[0], b'c');
+    }
+
+    #[test]
+    fn serial_input_sleep_snapshot_restore_wake() {
+        let intr_evt = Event::new().unwrap();
+        let serial_out = SharedBuffer::new();
+
+        let mut serial = Serial::new(
+            ProtectionType::Unprotected,
+            intr_evt.try_clone().unwrap(),
+            None,
+            Some(Box::new(serial_out)),
+            None,
+            false,
+            Vec::new(),
+        );
+
+        serial.write(serial_bus_address(IER), &[IER_RECV_BIT]);
+        serial.queue_input_bytes(&[b'a', b'b', b'c']).unwrap();
+
+        assert_eq!(intr_evt.wait(), Ok(()));
+        let mut data = [0u8; 1];
+        serial.read(serial_bus_address(DATA), &mut data[..]);
+        assert_eq!(data[0], b'a');
+        let sleep_res = serial.sleep();
+        match sleep_res {
+            Ok(_res) => (),
+            Err(e) => println!("{}", e),
+        }
+        let snap_res = serial.snapshot();
+        match snap_res {
+            Ok(snap) => {
+                let restore_res = serial.restore(&snap);
+                match restore_res {
+                    Ok(_rest) => (),
+                    Err(e) => println!("{}", e),
+                }
+            }
+            Err(e) => println!("{}", e),
+        }
+        let wake_res = serial.wake();
+        match wake_res {
+            Ok(_res) => (),
+            Err(e) => println!("{}", e),
+        }
+        serial.read(serial_bus_address(DATA), &mut data[..]);
+        assert_eq!(data[0], b'b');
+        serial.read(serial_bus_address(DATA), &mut data[..]);
+        assert_eq!(data[0], b'c');
+    }
+
+    #[test]
+    fn serial_input_snapshot_restore() {
+        let intr_evt = Event::new().unwrap();
+        let serial_out = SharedBuffer::new();
+
+        let mut serial = Serial::new(
+            ProtectionType::Unprotected,
+            intr_evt.try_clone().unwrap(),
+            None,
+            Some(Box::new(serial_out)),
+            None,
+            false,
+            Vec::new(),
+        );
+
+        serial.write(serial_bus_address(IER), &[IER_RECV_BIT]);
+        serial.queue_input_bytes(&[b'a', b'b', b'c']).unwrap();
+
+        assert_eq!(intr_evt.wait(), Ok(()));
+        let mut data = [0u8; 1];
+        serial.read(serial_bus_address(DATA), &mut data[..]);
+        assert_eq!(data[0], b'a');
+        // Take snapshot after reading b'a'. Serial still contains b'b' and b'c'.
+        let snap_res = serial.snapshot();
+        let snap = match snap_res {
+            Ok(res) => res,
+            Err(e) => {
+                println!("Error snapshotting: {}", e);
+                "Error".to_string()
+            }
+        };
+        serial.read(serial_bus_address(DATA), &mut data[..]);
+        assert_eq!(data[0], b'b');
+        // Restore snapshot taken after reading b'a'. New reading should give us b'b' since it was
+        // the saved state at the moment of taking a snapshot.
+        let restore_res = serial.restore(&snap);
+        match restore_res {
+            Ok(()) => (),
+            Err(e) => println!("Error: {}", e),
+        }
+        serial.read(serial_bus_address(DATA), &mut data[..]);
+        assert_eq!(data[0], b'b');
+        serial.read(serial_bus_address(DATA), &mut data[..]);
+        assert_eq!(data[0], b'c');
+    }
+
+    #[test]
+    fn serial_input_snapshot_write_restore() {
+        let intr_evt = Event::new().unwrap();
+        let serial_out = SharedBuffer::new();
+
+        let mut serial = Serial::new(
+            ProtectionType::Unprotected,
+            intr_evt.try_clone().unwrap(),
+            None,
+            Some(Box::new(serial_out)),
+            None,
+            false,
+            Vec::new(),
+        );
+
+        serial.write(serial_bus_address(IER), &[IER_RECV_BIT]);
+        serial.queue_input_bytes(&[b'a', b'b', b'c']).unwrap();
+
+        assert_eq!(intr_evt.wait(), Ok(()));
+        let mut data = [0u8; 1];
+        serial.read(serial_bus_address(DATA), &mut data[..]);
+        assert_eq!(data[0], b'a');
+        // Take snapshot after reading b'a'. Serial still contains b'b' and b'c'.
+        let snap_res = serial.snapshot();
+        let snap = match snap_res {
+            Ok(res) => res,
+            Err(e) => {
+                println!("Error snapshotting: {}", e);
+                "Error".to_string()
+            }
+        };
+        serial.clear_in_buffer();
+        serial.queue_input_bytes(&[b'a', b'b', b'c']).unwrap();
+        serial.read(serial_bus_address(DATA), &mut data[..]);
+        assert_eq!(data[0], b'a');
+        serial.read(serial_bus_address(DATA), &mut data[..]);
+        assert_eq!(data[0], b'b');
+        serial.read(serial_bus_address(DATA), &mut data[..]);
+        assert_eq!(data[0], b'c');
+        // Restore snapshot taken after reading b'a'. New reading should give us b'b' since it was
+        // the saved state at the moment of taking a snapshot.
+        let restore_res = serial.restore(&snap);
+        match restore_res {
+            Ok(()) => (),
+            Err(e) => println!("Error: {}", e),
+        }
+        serial.read(serial_bus_address(DATA), &mut data[..]);
+        assert_eq!(data[0], b'b');
+        serial.read(serial_bus_address(DATA), &mut data[..]);
+        assert_eq!(data[0], b'c');
+    }
+
+    // Test should panic. Sleep, try to read while sleeping.
+    #[test]
+    #[should_panic]
+    fn serial_input_sleep_read_panic() {
+        let intr_evt = Event::new().unwrap();
+        let serial_out = SharedBuffer::new();
+
+        let mut serial = Serial::new(
+            ProtectionType::Unprotected,
+            intr_evt.try_clone().unwrap(),
+            None,
+            Some(Box::new(serial_out)),
+            None,
+            false,
+            Vec::new(),
+        );
+
+        serial.write(serial_bus_address(IER), &[IER_RECV_BIT]);
+        serial.queue_input_bytes(&[b'a', b'b', b'c']).unwrap();
+
+        assert_eq!(intr_evt.wait(), Ok(()));
+        let mut data = [0u8; 1];
+        serial.read(serial_bus_address(DATA), &mut data[..]);
+        assert_eq!(data[0], b'a');
+        serial.read(serial_bus_address(DATA), &mut data[..]);
+        assert_eq!(data[0], b'b');
+        let sleep_res = serial.sleep();
+        match sleep_res {
+            Ok(_res) => (),
+            Err(e) => println!("{}", e),
+        }
+        // Test should panic when trying to read after sleep.
+        serial.read(serial_bus_address(DATA), &mut data[..]);
+        assert_eq!(data[0], b'b');
+    }
+
+    // Test should panic. Sleep, try to read while sleeping.
+    #[test]
+    #[should_panic]
+    fn serial_input_sleep_write_panic() {
+        let intr_evt = Event::new().unwrap();
+        let serial_out = SharedBuffer::new();
+
+        let mut serial = Serial::new(
+            ProtectionType::Unprotected,
+            intr_evt.try_clone().unwrap(),
+            None,
+            Some(Box::new(serial_out)),
+            None,
+            false,
+            Vec::new(),
+        );
+
+        let sleep_res = serial.sleep();
+        match sleep_res {
+            Ok(_res) => (),
+            Err(e) => println!("{}", e),
+        }
+        // Test should panic when trying to read after sleep.
+        serial.write(serial_bus_address(IER), &[IER_RECV_BIT]);
+    }
+
+    #[test]
+    fn serial_input_sleep_wake() {
+        let intr_evt = Event::new().unwrap();
+        let serial_out = SharedBuffer::new();
+
+        let mut serial = Serial::new(
+            ProtectionType::Unprotected,
+            intr_evt.try_clone().unwrap(),
+            None,
+            Some(Box::new(serial_out)),
+            None,
+            false,
+            Vec::new(),
+        );
+
+        serial.write(serial_bus_address(IER), &[IER_RECV_BIT]);
+        serial.queue_input_bytes(&[b'a', b'b', b'c']).unwrap();
+
+        assert_eq!(intr_evt.wait(), Ok(()));
+        let mut data = [0u8; 1];
+        serial.read(serial_bus_address(DATA), &mut data[..]);
+        assert_eq!(data[0], b'a');
+        serial.read(serial_bus_address(DATA), &mut data[..]);
+        assert_eq!(data[0], b'b');
+        let sleep_res = serial.sleep();
+        match sleep_res {
+            Ok(_res) => (),
+            Err(e) => println!("{}", e),
+        }
+        let wake_res = serial.wake();
+        match wake_res {
+            Ok(_res) => (),
+            Err(e) => println!("{}", e),
+        }
+        serial.read(serial_bus_address(DATA), &mut data[..]);
+        assert_eq!(data[0], b'c');
+    }
+
+    suspendable_tests! {
+        serial: Serial::new(
+            ProtectionType::Unprotected,
+            Event::new().unwrap(),
+            None,
+            Some(Box::new(SharedBuffer::new())),
+            None,
+            false,
+            Vec::new(),
+        ),
     }
 }
