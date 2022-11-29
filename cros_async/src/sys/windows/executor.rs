@@ -5,6 +5,7 @@
 use std::future::Future;
 
 use async_task::Task;
+use base::AsRawDescriptors;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
@@ -345,6 +346,14 @@ impl Executor {
     pub fn run_until<F: Future>(&self, f: F) -> AsyncResult<F::Output> {
         match self {
             Executor::Handle(ex) => Ok(ex.run_until(f)?),
+        }
+    }
+}
+
+impl AsRawDescriptors for Executor {
+    fn as_raw_descriptors(&self) -> Vec<base::RawDescriptor> {
+        match self {
+            Executor::Handle(ex) => ex.as_raw_descriptors(),
         }
     }
 }

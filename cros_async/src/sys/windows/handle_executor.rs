@@ -10,6 +10,7 @@ use std::sync::Weak;
 
 use async_task::Runnable;
 use async_task::Task;
+use base::AsRawDescriptors;
 use futures::task::Context;
 use futures::task::Poll;
 use pin_utils::pin_mut;
@@ -76,6 +77,12 @@ impl HandleExecutor {
         let waker = new_waker(Arc::downgrade(&self.raw));
         let mut cx = Context::from_waker(&waker);
         self.raw.run(&mut cx, f)
+    }
+}
+
+impl AsRawDescriptors for HandleExecutor {
+    fn as_raw_descriptors(&self) -> Vec<base::RawDescriptor> {
+        self.raw.as_raw_descriptors()
     }
 }
 
@@ -158,6 +165,12 @@ impl WeakWake for RawExecutor {
         if let Some(arc_self) = weak_self.upgrade() {
             RawExecutor::wake(&arc_self);
         }
+    }
+}
+
+impl AsRawDescriptors for RawExecutor {
+    fn as_raw_descriptors(&self) -> Vec<base::RawDescriptor> {
+        vec![]
     }
 }
 

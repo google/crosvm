@@ -21,6 +21,7 @@ use base::error;
 use base::info;
 use base::warn;
 use base::AsRawDescriptor;
+use base::AsRawDescriptors;
 use base::Error as SysError;
 use base::Event;
 use base::RawDescriptor;
@@ -568,6 +569,7 @@ pub struct BlockAsync {
     pub(crate) executor_kind: ExecutorKind,
     kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<(Box<dyn DiskFile>, Option<Tube>)>>,
+    executor: Option<Executor>,
 }
 
 impl BlockAsync {
@@ -618,6 +620,9 @@ impl BlockAsync {
         let seg_max = get_seg_max(q_size);
         let executor_kind = executor_kind.unwrap_or_default();
 
+        let executor =
+            Executor::with_executor_kind(executor_kind).map_err::<io::Error, _>(|e| e.into())?;
+
         Ok(BlockAsync {
             disk_image: Some(disk_image),
             disk_size: Arc::new(AtomicU64::new(disk_size)),
@@ -632,6 +637,7 @@ impl BlockAsync {
             worker_thread: None,
             control_tube,
             executor_kind,
+            executor: Some(executor),
         })
     }
 
@@ -875,6 +881,10 @@ impl VirtioDevice for BlockAsync {
             keep_rds.push(control_tube.as_raw_descriptor());
         }
 
+        if let Some(executor) = &self.executor {
+            keep_rds.extend(executor.as_raw_descriptors());
+        }
+
         keep_rds
     }
 
@@ -918,15 +928,12 @@ impl VirtioDevice for BlockAsync {
         let sparse = self.sparse;
         let disk_size = self.disk_size.clone();
         let id = self.id.take();
-        let executor_kind = self.executor_kind;
+        let ex = self.executor.take().context("missing executor")?;
         let disk_image = self.disk_image.take().context("missing disk image")?;
         let control_tube = self.control_tube.take();
         let worker_thread = thread::Builder::new()
             .name("virtio_blk".to_string())
             .spawn(move || {
-                let ex = Executor::with_executor_kind(executor_kind)
-                    .expect("Failed to create an executor");
-
                 let async_control = control_tube
                     .map(|c| AsyncTube::new(&ex, c).expect("failed to create async tube"));
                 let async_image = match disk_image.to_async_disk(&ex) {
