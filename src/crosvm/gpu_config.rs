@@ -21,6 +21,13 @@ fn default_use_vulkan() -> bool {
 pub(crate) fn fixup_gpu_options(
     mut gpu_params: GpuParameters,
 ) -> Result<FixedGpuParameters, String> {
+    // Fix up `gpu_params.display_params` parsed from command-line.
+    gpu_params.display_params = gpu_params
+        .display_params
+        .into_iter()
+        .map(|p| fixup_gpu_display_options(p).map(|p| p.0))
+        .collect::<Result<Vec<_>, _>>()?;
+
     match (
         gpu_params.__width_compat.take(),
         gpu_params.__height_compat.take(),
@@ -579,19 +586,37 @@ mod tests {
 
     #[test]
     fn parse_gpu_display_options_default_dpi() {
-        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
-            &[],
-            &["--gpu-display", "mode=windowed[800,600]", "/dev/null"],
-        )
-        .unwrap()
-        .try_into()
-        .unwrap();
+        {
+            let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+                &[],
+                &["--gpu-display", "mode=windowed[800,600]", "/dev/null"],
+            )
+            .unwrap()
+            .try_into()
+            .unwrap();
 
-        let gpu_params = config.gpu_parameters.unwrap();
+            let gpu_params = config.gpu_parameters.unwrap();
 
-        assert_eq!(gpu_params.display_params.len(), 1);
-        assert_eq!(gpu_params.display_params[0].horizontal_dpi(), DEFAULT_DPI);
-        assert_eq!(gpu_params.display_params[0].vertical_dpi(), DEFAULT_DPI);
+            assert_eq!(gpu_params.display_params.len(), 1);
+            assert_eq!(gpu_params.display_params[0].horizontal_dpi(), DEFAULT_DPI);
+            assert_eq!(gpu_params.display_params[0].vertical_dpi(), DEFAULT_DPI);
+        }
+
+        {
+            let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+                &[],
+                &["--gpu", "displays=[[mode=windowed[800,600]]]", "/dev/null"],
+            )
+            .unwrap()
+            .try_into()
+            .unwrap();
+
+            let gpu_params = config.gpu_parameters.unwrap();
+
+            assert_eq!(gpu_params.display_params.len(), 1);
+            assert_eq!(gpu_params.display_params[0].horizontal_dpi(), DEFAULT_DPI);
+            assert_eq!(gpu_params.display_params[0].vertical_dpi(), DEFAULT_DPI);
+        }
     }
 
     #[test]
