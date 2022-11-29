@@ -1,0 +1,8 @@
+# Copyright 2022 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# Policy file for a serial device used as a regular, in-VMM virtio device.
+
+@include /usr/share/policy/crosvm/common_device.policy
+@include /usr/share/policy/crosvm/serial.policy

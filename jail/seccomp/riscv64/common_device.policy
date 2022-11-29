@@ -1,0 +1,60 @@
+# Copyright 2023 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+brk: 1
+clock_gettime: 1
+clone: arg0 & CLONE_THREAD
+clone3: 1
+close: 1
+dup3: 1
+dup: 1
+epoll_create1: 1
+epoll_ctl: 1
+epoll_pwait: 1
+eventfd2: 1
+exit: 1
+exit_group: 1
+ftruncate: 1
+futex: 1
+getcwd: 1
+getpid: 1
+gettid: 1
+gettimeofday: 1
+io_uring_setup: 1
+io_uring_register: 1
+io_uring_enter: 1
+kill: 1
+lseek: 1
+madvise: arg2 == MADV_DONTNEED || arg2 == MADV_DONTDUMP || arg2 == MADV_REMOVE || arg2 == MADV_MERGEABLE || arg2 == MADV_FREE
+membarrier: 1
+memfd_create: 1
+mmap: arg2 in ~PROT_EXEC
+mprotect: arg2 in ~PROT_EXEC
+mremap: 1
+munmap: 1
+nanosleep: 1
+clock_nanosleep: 1
+pipe2: 1
+ppoll: 1
+read: 1
+readlinkat: 1
+readv: 1
+recvfrom: 1
+recvmsg: 1
+restart_syscall: 1
+rseq: 1
+rt_sigaction: 1
+rt_sigprocmask: 1
+rt_sigreturn: 1
+sched_getaffinity: 1
+sched_yield: 1
+sendmsg: 1
+sendto: 1
+set_robust_list: 1
+sigaltstack: 1
+tgkill: arg2 == SIGABRT
+write: 1
+writev: 1
+fcntl: 1
+uname: 1

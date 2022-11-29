@@ -1,0 +1,28 @@
+# Copyright 2019 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+openat: 1
+
+@include /usr/share/policy/crosvm/common_device.policy
+
+pread64: 1
+pwrite64: 1
+statx: 1
+fstat: 1
+ioctl: arg1 == FIOCLEX
+getdents64: 1
+fdatasync: 1
+fsync: 1
+mkdirat: 1
+linkat: 1
+unlinkat: 1
+socket: arg0 == AF_UNIX
+utimensat: 1
+fchmod: 1
+fchmodat: 1
+fchown: 1
+fchownat: 1
+fstatfs: 1
+newfstatat: 1
+prctl: arg0 == PR_SET_NAME

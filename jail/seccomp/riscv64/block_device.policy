@@ -1,0 +1,19 @@
+# Copyright 2019 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+@include /usr/share/policy/crosvm/common_device.policy
+
+fallocate: 1
+fdatasync: 1
+fstat: 1
+fsync: 1
+openat: return ENOENT
+newfstatat: 1
+preadv: 1
+pwritev: 1
+statx: 1
+timerfd_create: 1
+timerfd_gettime: 1
+timerfd_settime: 1
+prctl: arg0 == PR_SET_NAME

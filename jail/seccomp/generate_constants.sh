@@ -22,7 +22,7 @@ cleanup() {
 trap cleanup EXIT
 
 # Create bindings for each platform
-for arch in "x86_64" "arm" "aarch64"; do
+for arch in "x86_64" "arm" "aarch64" "riscv64"; do
     BUILD_DIR="$TMP_DIR/$arch"
     mkdir -p "$BUILD_DIR"
     cd "$BUILD_DIR"
@@ -37,6 +37,9 @@ for arch in "x86_64" "arm" "aarch64"; do
     elif [ "$arch" = "aarch64" ]; then
         export CC="aarch64-linux-gnu-gcc"
         TARGET="aarch64-unknown-linux-gnu"
+    elif [ "$arch" = "riscv64" ]; then
+        export CC="riscv64-unknown-linux-gnu-gcc"
+        TARGET="riscv64-unknown-linux-gnu"
     fi
 
     "$MINIJAIL_DIR/gen_constants.sh" "libconstants.gen.c"

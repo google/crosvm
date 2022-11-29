@@ -1,0 +1,27 @@
+# Copyright 2019 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+@include /usr/share/policy/crosvm/common_device.policy
+
+# Whitelist vhost_vsock ioctls only.
+# arg1 == VHOST_GET_FEATURES ||
+# arg1 == VHOST_SET_FEATURES ||
+# arg1 == VHOST_SET_OWNER ||
+# arg1 == VHOST_RESET_OWNER ||
+# arg1 == VHOST_SET_MEM_TABLE ||
+# arg1 == VHOST_SET_LOG_BASE ||
+# arg1 == VHOST_SET_LOG_FD ||
+# arg1 == VHOST_SET_VRING_NUM ||
+# arg1 == VHOST_SET_VRING_ADDR ||
+# arg1 == VHOST_SET_VRING_BASE ||
+# arg1 == VHOST_GET_VRING_BASE ||
+# arg1 == VHOST_SET_VRING_KICK ||
+# arg1 == VHOST_SET_VRING_CALL ||
+# arg1 == VHOST_SET_VRING_ERR ||
+# arg1 == VHOST_VSOCK_SET_GUEST_CID ||
+# arg1 == VHOST_VSOCK_SET_RUNNING
+ioctl: arg1 == 0x8008af00 || arg1 == 0x4008af00 || arg1 == 0x0000af01 || arg1 == 0x0000af02 || arg1 == 0x4008af03 || arg1 == 0x4008af04 || arg1 == 0x4004af07 || arg1 == 0x4008af10 || arg1 == 0x4028af11 || arg1 == 0x4008af12 || arg1 == 0xc008af12 || arg1 == 0x4008af20 || arg1 == 0x4008af21 || arg1 == 0x4008af22 || arg1 == 0x4008af60 || arg1 == 0x4004af61
+openat: return ENOENT
+
+prctl: arg0 == PR_SET_NAME

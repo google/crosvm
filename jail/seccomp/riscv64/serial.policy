@@ -1,0 +1,11 @@
+# Copyright 2023 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# Syscalls specific to the serial device. This policy file is not meant to be used directly, but
+# rather to be included from another one.
+
+connect: 1
+bind: 1
+openat: return ENOENT
+prctl: arg0 == PR_SET_NAME
