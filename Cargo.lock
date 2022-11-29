@@ -94,6 +94,7 @@ dependencies = [
  "remain",
  "resources",
  "serde",
+ "serde_json",
  "serde_keyvalue",
  "sync",
  "thiserror",

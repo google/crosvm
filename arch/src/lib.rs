@@ -96,6 +96,7 @@ use remain::sorted;
 use resources::AddressRange;
 use resources::SystemAllocator;
 use resources::SystemAllocatorConfig;
+use serde::de::Visitor;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_keyvalue::FromKeyValues;
@@ -126,7 +127,7 @@ pub struct Pstore {
 }
 
 /// Set of CPU cores.
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CpuSet(Vec<usize>);
 
 impl CpuSet {
@@ -139,43 +140,47 @@ impl CpuSet {
     }
 }
 
+fn parse_cpu_range(s: &str, cpuset: &mut Vec<usize>) -> Result<(), String> {
+    fn parse_cpu(s: &str) -> Result<usize, String> {
+        s.parse().map_err(|_| {
+            format!(
+                "invalid CPU index {} - index must be a non-negative integer",
+                s
+            )
+        })
+    }
+
+    let (first_cpu, last_cpu) = match s.split_once('-') {
+        Some((first_cpu, last_cpu)) => {
+            let first_cpu = parse_cpu(first_cpu)?;
+            let last_cpu = parse_cpu(last_cpu)?;
+
+            if last_cpu < first_cpu {
+                return Err(format!(
+                    "invalid CPU range {} - ranges must be from low to high",
+                    s
+                ));
+            }
+            (first_cpu, last_cpu)
+        }
+        None => {
+            let cpu = parse_cpu(s)?;
+            (cpu, cpu)
+        }
+    };
+
+    cpuset.extend(first_cpu..=last_cpu);
+
+    Ok(())
+}
+
 impl FromStr for CpuSet {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut cpuset = Vec::new();
         for part in s.split(',') {
-            let range: Vec<&str> = part.split('-').collect();
-            if range.is_empty() || range.len() > 2 {
-                return Err(format!("invalid list syntax: {}", part));
-            }
-            let first_cpu: usize = range[0].parse().map_err(|_| {
-                format!(
-                    "invalid CPU index {} - index must be a non-negative integer",
-                    part
-                )
-            })?;
-            let last_cpu: usize = if range.len() == 2 {
-                range[1].parse().map_err(|_| {
-                    format!(
-                        "invalid CPU index {} - index must be a non-negative integer",
-                        part
-                    )
-                })?
-            } else {
-                first_cpu
-            };
-
-            if last_cpu < first_cpu {
-                return Err(format!(
-                    "invalid CPU range {} - ranges must be from low to high",
-                    part
-                ));
-            }
-
-            for cpu in first_cpu..=last_cpu {
-                cpuset.push(cpu);
-            }
+            parse_cpu_range(part, &mut cpuset)?;
         }
         Ok(CpuSet::new(cpuset))
     }
@@ -195,6 +200,92 @@ impl IntoIterator for CpuSet {
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
+    }
+}
+
+/// Deserializes a `CpuSet` from a sequence which elements can either be integers, or strings
+/// representing CPU ranges (e.g. `5-8`).
+impl<'de> Deserialize<'de> for CpuSet {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct CpuSetVisitor;
+        impl<'de> Visitor<'de> for CpuSetVisitor {
+            type Value = CpuSet;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("CpuSet")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                #[derive(Deserialize)]
+                #[serde(untagged)]
+                enum CpuSetValue<'a> {
+                    Single(usize),
+                    Range(&'a str),
+                }
+
+                let mut cpus = Vec::new();
+                while let Some(cpuset) = seq.next_element::<CpuSetValue>()? {
+                    match cpuset {
+                        CpuSetValue::Single(cpu) => cpus.push(cpu),
+                        CpuSetValue::Range(range) => {
+                            parse_cpu_range(range, &mut cpus).map_err(serde::de::Error::custom)?;
+                        }
+                    }
+                }
+
+                Ok(CpuSet::new(cpus))
+            }
+        }
+
+        deserializer.deserialize_seq(CpuSetVisitor)
+    }
+}
+
+/// Serializes a `CpuSet` into a sequence of integers and strings representing CPU ranges.
+impl Serialize for CpuSet {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeSeq;
+
+        let mut seq = serializer.serialize_seq(None)?;
+
+        // Factorize ranges into "a-b" strings.
+        let mut serialize_range = |start: usize, end: usize| -> Result<(), S::Error> {
+            if start == end {
+                seq.serialize_element(&start)?;
+            } else {
+                seq.serialize_element(&format!("{}-{}", start, end))?;
+            }
+
+            Ok(())
+        };
+
+        // Current range.
+        let mut range = None;
+        for core in &self.0 {
+            range = match range {
+                None => Some((core, core)),
+                Some((start, end)) if *end == *core - 1 => Some((start, core)),
+                Some((start, end)) => {
+                    serialize_range(*start, *end)?;
+                    Some((core, core))
+                }
+            };
+        }
+
+        if let Some((start, end)) = range {
+            serialize_range(*start, *end)?;
+        }
+
+        seq.end()
     }
 }
 
@@ -1237,5 +1328,38 @@ mod tests {
 
         let res = from_key_values::<Pstore>("");
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn deserialize_cpuset_serde_kv() {
+        let res: CpuSet = from_key_values("[0,4,7]").unwrap();
+        assert_eq!(res, CpuSet::new(vec![0, 4, 7]));
+
+        let res: CpuSet = from_key_values("[9-12]").unwrap();
+        assert_eq!(res, CpuSet::new(vec![9, 10, 11, 12]));
+
+        let res: CpuSet = from_key_values("[0,4,7,9-12,15]").unwrap();
+        assert_eq!(res, CpuSet::new(vec![0, 4, 7, 9, 10, 11, 12, 15]));
+    }
+
+    #[test]
+    fn deserialize_serialize_cpuset_json() {
+        let json_str = "[0,4,7]";
+        let cpuset = CpuSet::new(vec![0, 4, 7]);
+        let res: CpuSet = serde_json::from_str(json_str).unwrap();
+        assert_eq!(res, cpuset);
+        assert_eq!(serde_json::to_string(&cpuset).unwrap(), json_str);
+
+        let json_str = r#"["9-12"]"#;
+        let cpuset = CpuSet::new(vec![9, 10, 11, 12]);
+        let res: CpuSet = serde_json::from_str(json_str).unwrap();
+        assert_eq!(res, cpuset);
+        assert_eq!(serde_json::to_string(&cpuset).unwrap(), json_str);
+
+        let json_str = r#"[0,4,7,"9-12",15]"#;
+        let cpuset = CpuSet::new(vec![0, 4, 7, 9, 10, 11, 12, 15]);
+        let res: CpuSet = serde_json::from_str(json_str).unwrap();
+        assert_eq!(res, cpuset);
+        assert_eq!(serde_json::to_string(&cpuset).unwrap(), json_str);
     }
 }
