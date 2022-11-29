@@ -42,6 +42,11 @@ class TestOption(enum.Enum):
     # This test needs longer than usual to run.
     LARGE = "large"
 
+    # Integration test that requires root privileges to execute.
+    # Note that this does not apply to unit tests, which will never be allowed privileged access
+    # to the system.
+    REQUIRES_ROOT = "requires_root"
+
 
 # Configuration to restrict how and where tests of a certain crate can
 # be build and run.
@@ -95,6 +100,7 @@ CRATE_OPTIONS: Dict[str, List[TestOption]] = {
     ],  # b/181674144
     "libvda": [TestOption.DO_NOT_RUN],  # b/202293971
     "sandbox": [TestOption.DO_NOT_RUN],
+    "net_util": [TestOption.REQUIRES_ROOT],
 }
 
 for name in WIN64_DISABLED_CRATES:

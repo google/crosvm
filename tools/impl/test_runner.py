@@ -16,7 +16,7 @@ from typing import Dict, Iterable, List, NamedTuple, Optional
 
 from . import test_target, testvm
 from .common import all_tracked_files, very_verbose
-from .test_config import BUILD_FEATURES, CRATE_OPTIONS, TestOption
+from .test_config import CRATE_OPTIONS, TestOption
 from .test_target import TestTarget, Triple
 
 USAGE = """\
@@ -119,7 +119,9 @@ def get_workspace_excludes(build_triple: Triple):
             yield crate
 
 
-def should_run_executable(executable: Executable, target: TestTarget, test_names: List[str]):
+def should_run_executable(
+    executable: Executable, target: TestTarget, test_names: List[str], execute_as_root: bool
+):
     arch = target.build_triple.arch
     options = CRATE_OPTIONS.get(executable.crate_name, [])
     if TestOption.DO_NOT_RUN in options:
@@ -131,6 +133,8 @@ def should_run_executable(executable: Executable, target: TestTarget, test_names
     if TestOption.DO_NOT_RUN_ARMHF in options and arch == "armv7":
         return False
     if TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL in options and not target.is_native:
+        return False
+    if TestOption.REQUIRES_ROOT in options and not execute_as_root:
         return False
     if test_names:
         for name in test_names:
@@ -366,6 +370,8 @@ def execute_integration_test(
     """
     args: List[str] = ["--test-threads=1"]
     binary_path = executable.binary_path
+    options = CRATE_OPTIONS.get(executable.crate_name, [])
+    execute_as_root = TestOption.REQUIRES_ROOT in options
 
     previous_attempts: List[ExecutableResults] = []
     for i in range(1, attempts + 1):
@@ -380,6 +386,7 @@ def execute_integration_test(
                 generate_profile=True,
                 stdout=None if VERBOSE else subprocess.PIPE,
                 stderr=subprocess.STDOUT,
+                execute_as_root=execute_as_root,
             )
             profile_files: List[Path] = []
             if collect_coverage:
@@ -528,6 +535,13 @@ def generate_lcov(
         )
 
 
+def sudo_is_passwordless():
+    # Run with --askpass but no askpass set, succeeds only if passwordless sudo
+    # is available.
+    (ret, _) = subprocess.getstatusoutput("SUDO_ASKPASS=false sudo --askpass true")
+    return ret == 0
+
+
 def main():
     parser = argparse.ArgumentParser(usage=USAGE)
     parser.add_argument(
@@ -580,6 +594,11 @@ def main():
     parser.add_argument(
         "--crosvm-direct",
         action="store_true",
+    )
+    parser.add_argument(
+        "--no-root",
+        action="store_true",
+        help="Disables tests that require to be run as root.",
     )
     parser.add_argument(
         "--repeat",
@@ -649,6 +668,7 @@ def main():
             integration_test_target = test_target.TestTarget("vm:aarch64", build_target)
         elif str(build_target) == "x86_64-pc-windows-gnu" and os.name == "nt":
             integration_test_target = unit_test_target
+            args.no_root = True
         else:
             # Do not run integration tests in unrecognized scenarios.
             integration_test_target = None
@@ -660,6 +680,14 @@ def main():
 
     print("Unit Test target:", unit_test_target or "skip")
     print("Integration Test target:", integration_test_target or "skip")
+
+    if not args.no_root and integration_test_target and integration_test_target.is_host:
+        if not sudo_is_passwordless():
+            print()
+            print("Prompting for sudo password to execute privileged tests.")
+            print("If you'd like to prevent this, use the --no-root option.")
+            subprocess.check_call(["sudo", "true"])
+            print()
 
     main_target = integration_test_target or unit_test_target
     if not main_target:
@@ -692,7 +720,7 @@ def main():
     test_executables = [
         e
         for e in executables
-        if e.is_test and should_run_executable(e, main_target, args.test_names)
+        if e.is_test and should_run_executable(e, main_target, args.test_names, not args.no_root)
     ]
 
     all_results: List[ExecutableResults] = []

@@ -11,13 +11,11 @@ use net_util::MacAddress;
 use net_util::TapTCommon;
 
 #[test]
-#[ignore = "Requires root privileges"]
 fn tap_create() {
     Tap::new(true, false).unwrap();
 }
 
 #[test]
-#[ignore = "Requires root privileges"]
 fn tap_configure() {
     let tap = Tap::new(true, false).unwrap();
     let ip_addr: net::Ipv4Addr = "100.115.92.5".parse().unwrap();
@@ -32,7 +30,6 @@ fn tap_configure() {
 }
 
 #[test]
-#[ignore = "Requires root privileges"]
 fn tap_enable() {
     let tap = Tap::new(true, false).unwrap();
 

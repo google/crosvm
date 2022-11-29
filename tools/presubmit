@@ -97,7 +97,7 @@ commands=(
 
 if [ "$ALL" == true ]; then
     commands+=(
-        "./tools/run_tests"
+        "./tools/run_tests --no-root"
         "./tools/run_tests --platform=mingw64"
         "./tools/clippy --platform=mingw64"
         "$(aarch64_wrapper) ./tools/run_tests --platform=aarch64"
@@ -106,7 +106,7 @@ if [ "$ALL" == true ]; then
     )
 elif [ "$QUICK" != true ]; then
     commands+=(
-        "./tools/run_tests"
+        "./tools/run_tests --no-root"
         "$(aarch64_wrapper) ./tools/run_tests --platform=aarch64 --unit-tests"
         "./tools/run_tests --platform=mingw64 --unit-tests"
     )
