@@ -14,13 +14,17 @@ use std::sync::mpsc::TryRecvError;
 use std::sync::Arc;
 use std::thread;
 
+use anyhow::anyhow;
 use base::error;
 use base::Event;
+use base::EventToken;
 use base::Result;
+use base::WaitContext;
 
 use crate::bus::BusAccessInfo;
 use crate::pci::CrosvmDeviceId;
 use crate::serial_device::SerialInput;
+use crate::suspendable::DeviceState;
 use crate::suspendable::Suspendable;
 use crate::BusDevice;
 use crate::DeviceId;
@@ -93,6 +97,8 @@ pub struct Serial {
     out: Option<Box<dyn io::Write + Send>>,
     #[cfg(windows)]
     pub system_params: sys::windows::SystemSerialParams,
+    device_state: DeviceState,
+    worker_and_kill_evt: Option<(thread::JoinHandle<Box<dyn SerialInput>>, Event)>,
 }
 
 impl Serial {
@@ -118,6 +124,8 @@ impl Serial {
             out,
             #[cfg(windows)]
             system_params,
+            device_state: DeviceState::Awake,
+            worker_and_kill_evt: None,
         }
     }
 
@@ -145,6 +153,15 @@ impl Serial {
     }
 
     fn spawn_input_thread(&mut self) {
+        // spawn event kill listener when spawning input_thread.
+        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
+            Ok(v) => v,
+            Err(e) => {
+                error!("failed to create kill Event pair: {}", e);
+                return;
+            }
+        };
+
         let mut rx = match self.input.take() {
             Some(input) => input,
             None => return,
@@ -164,51 +181,88 @@ impl Serial {
             }
         };
 
-        // The input thread runs in detached mode and will exit when channel is disconnected because
-        // the serial device has been dropped. Initial versions of this kept a `JoinHandle` and had
-        // the drop implementation of serial join on this thread, but the input thread can block
-        // indefinitely depending on the `Box<io::Read>` implementation.
         let res = thread::Builder::new()
             .name(format!("{} input thread", self.debug_label()))
             .spawn(move || {
                 let mut rx_buf = [0u8; 1];
+
+                #[derive(EventToken)]
+                enum Token {
+                    Kill,
+                    SerialEvent,
+                }
+
+                let wait_ctx_res: Result<WaitContext<Token>> =
+                    WaitContext::build_with(&[
+                        (&kill_evt, Token::Kill),
+                        (rx.get_read_notifier(), Token::SerialEvent),
+                    ]);
+                let wait_ctx = match wait_ctx_res {
+                    Ok(wait_context) => wait_context,
+                    Err(e) => {
+                        error!("Failed to create wait context. {}", e);
+                        return rx;
+                    }
+                };
                 loop {
-                    match rx.read(&mut rx_buf) {
-                        Ok(0) => break, // Assume the stream of input has ended.
-                        Ok(_) => {
-                            if send_channel.send(rx_buf[0]).is_err() {
-                                // The receiver has disconnected.
-                                break;
-                            }
-                            if (interrupt_enable.load(Ordering::SeqCst) & IER_RECV_BIT) != 0 {
-                                interrupt_evt.signal().unwrap();
-                            }
-                        }
+                    let events = match wait_ctx.wait() {
+                        Ok(events) => events,
                         Err(e) => {
-                            // Being interrupted is not an error, but everything else is.
-                            if e.kind() != io::ErrorKind::Interrupted {
-                                error!(
-                                    "failed to read for bytes to queue into serial device: {}",
-                                    e
-                                );
-                                break;
+                            error!("Failed to wait for events. {}", e);
+                            return rx;
+                        }
+                    };
+                    for event in events.iter() {
+                        match event.token {
+                            Token::Kill => {
+                                return rx;
+                            },
+                            Token::SerialEvent => {
+                                // Matches both is_readable and is_hungup.
+                                // In the case of is_hungup, there might still be data in the
+                                // buffer, and a regular read would occur. When the buffer is
+                                // empty, is_hungup would read EOF.
+                                match rx.read(&mut rx_buf) {
+                                    // Assume the stream of input has ended.
+                                    Ok(0) => {
+                                        return rx;
+                                    }
+                                    Ok(_) => {
+                                        if send_channel.send(rx_buf[0]).is_err() {
+                                            // The receiver has disconnected.
+                                            return rx;
+                                        }
+                                        if (interrupt_enable.load(Ordering::SeqCst) & IER_RECV_BIT) != 0 {
+                                            interrupt_evt.signal().unwrap();
+                                        }
+                                    }
+                                    Err(e) => {
+                                        // Being interrupted is not an error, but everything else is.
+                                        if e.kind() != io::ErrorKind::Interrupted {
+                                            error!(
+                                                "failed to read for bytes to queue into serial device: {}",
+                                                e
+                                            );
+                                            return rx;
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
             });
-        if let Err(e) = res {
-            error!("failed to spawn input thread: {}", e);
-            return;
-        }
+        self.worker_and_kill_evt = match res {
+            Ok(join_handle) => Some((join_handle, self_kill_evt)),
+            Err(e) => {
+                error!("failed to spawn input thread: {}", e);
+                return;
+            }
+        };
         self.in_channel = Some(recv_channel);
     }
 
-    fn handle_input_thread(&mut self) {
-        if self.input.is_some() {
-            self.spawn_input_thread();
-        }
-
+    fn drain_in_channel(&mut self) {
         loop {
             let in_channel = match self.in_channel.as_ref() {
                 Some(v) => v,
@@ -335,6 +389,10 @@ impl BusDevice for Serial {
     }
 
     fn write(&mut self, info: BusAccessInfo, data: &[u8]) {
+        if matches!(self.device_state, DeviceState::Sleep) {
+            panic!("Unexpected action: Attempt to write to serial when device is in sleep mode");
+        }
+
         if data.len() != 1 {
             return;
         }
@@ -348,11 +406,18 @@ impl BusDevice for Serial {
     }
 
     fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {
+        if matches!(self.device_state, DeviceState::Sleep) {
+            panic!("Unexpected action: Attempt to write to serial when device is in sleep mode");
+        }
+
         if data.len() != 1 {
             return;
         }
 
-        self.handle_input_thread();
+        if self.input.is_some() {
+            self.spawn_input_thread();
+        }
+        self.drain_in_channel();
 
         data[0] = match info.offset as u8 {
             DLAB_LOW if self.is_dlab_set() => self.baud_divisor as u8,
@@ -400,7 +465,49 @@ impl BusDevice for Serial {
     }
 }
 
-impl Suspendable for Serial {}
+impl Suspendable for Serial {
+    fn sleep(&mut self) -> anyhow::Result<()> {
+        if !matches!(self.device_state, DeviceState::Sleep) {
+            self.device_state = DeviceState::Sleep;
+            match self.worker_and_kill_evt.take() {
+                None => {
+                    // Nothing to do.
+                }
+                Some((worker_thread, kill_evt)) => {
+                    if let Err(e) = kill_evt.signal() {
+                        // put stuff back so that the sleep attempt doesn't leave things
+                        // half undone.
+                        self.worker_and_kill_evt = Some((worker_thread, kill_evt));
+                        return Err(anyhow!("{}", e));
+                    }
+                    // if join fails, the thread panic'd and there isn't anything we can do to
+                    // recover the input.
+                    // if join succeeds, recover the input, since worker_thread returns the input.
+                    self.input = match worker_thread.join() {
+                        Ok(input) => Some(input),
+                        Err(_) => {
+                            return Err(anyhow!("Failed to stop thread and retrieve input file"))
+                        }
+                    }
+                }
+            }
+
+            self.drain_in_channel();
+            self.in_channel = None;
+        }
+        Ok(())
+    }
+
+    fn wake(&mut self) -> anyhow::Result<()> {
+        if !matches!(self.device_state, DeviceState::Awake) {
+            self.device_state = DeviceState::Awake;
+            if self.input.is_some() {
+                self.spawn_input_thread();
+            }
+        }
+        Ok(())
+    }
+}
 
 #[cfg(test)]
 mod tests {
