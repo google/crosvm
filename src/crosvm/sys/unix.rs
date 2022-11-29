@@ -3110,6 +3110,12 @@ fn jail_and_start_vu_device<T: VirtioDeviceBuilder>(
 
     let tz = std::env::var("TZ").unwrap_or_default();
 
+    // Executor must be created before jail in order to prevent the jailed process from creating
+    // unrestricted io_urings.
+    let ex = Executor::with_executor_kind(device.executor_kind().unwrap_or_default())
+        .context("Failed to create an Executor")?;
+    keep_rds.extend(ex.as_raw_descriptors());
+
     // Deduplicate the FDs since minijail expects them to be unique.
     keep_rds.sort_unstable();
     keep_rds.dedup();
@@ -3140,7 +3146,7 @@ fn jail_and_start_vu_device<T: VirtioDeviceBuilder>(
             std::env::set_var("TZ", tz);
 
             // Run the device loop and terminate the child process once it exits.
-            let res = match listener.run_device(device) {
+            let res = match listener.run_device(ex, device) {
                 Ok(()) => 0,
                 Err(e) => {
                     error!("error while running device {}: {:#}", name, e);

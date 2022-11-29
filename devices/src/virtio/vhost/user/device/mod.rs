@@ -55,10 +55,10 @@ cfg_if::cfg_if! {
 /// Upon being given an [[Executor]], a device can be converted into a [[VhostUserBackend]], which
 /// can then process the requests from the front-end.
 ///
-/// We don't build `VhostUserBackend`s directly because in the case of jailing, the device is built
-/// in the main process but it runs in the jailed child process. Since `Executor`s cannot be passed
-/// to other processes, we cannot access the device's executor at build time and thus need to
-/// perform this 2-step dance before we can run the vhost-user device jailed.
+/// We don't build `VhostUserBackend`s directly to ensure that a `VhostUserBackend` starts to
+/// process queues in the jailed process, not in the main process. `VhostUserDevice` calls
+/// [[VhostUserDevice::into_backend()]] only after jailing, which ensures that any operations by
+/// `VhostUserBackend` is done in the jailed process.
 pub trait VhostUserDevice {
     /// The maximum number of queues that this device can manage.
     fn max_queue_num(&self) -> usize;
