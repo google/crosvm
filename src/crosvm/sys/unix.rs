@@ -2094,7 +2094,6 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
 fn remove_hotplug_bridge<V: VmArch, Vcpu: VcpuArch>(
     linux: &RunnableLinuxVm<V, Vcpu>,
     sys_allocator: &mut SystemAllocator,
-    hp_control_tube: &mpsc::Sender<PciRootCommand>,
     buses_to_remove: &mut Vec<u8>,
     host_key: HostHotPlugKey,
     child_bus: u8,
@@ -2110,7 +2109,6 @@ fn remove_hotplug_bridge<V: VmArch, Vcpu: VcpuArch>(
                     remove_hotplug_bridge(
                         linux,
                         sys_allocator,
-                        hp_control_tube,
                         buses_to_remove,
                         hotplug_key,
                         *bus_num,
@@ -2131,7 +2129,6 @@ fn remove_hotplug_bridge<V: VmArch, Vcpu: VcpuArch>(
 fn remove_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
     linux: &mut RunnableLinuxVm<V, Vcpu>,
     sys_allocator: &mut SystemAllocator,
-    hp_control_tube: &mpsc::Sender<PciRootCommand>,
     iommu_host_tube: &Option<Tube>,
     device: &HotPlugDeviceInfo,
 ) -> Result<()> {
@@ -2201,7 +2198,6 @@ fn remove_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
                     remove_hotplug_bridge(
                         linux,
                         sys_allocator,
-                        hp_control_tube,
                         &mut buses_to_remove,
                         hotplug_key,
                         bus_num,
@@ -2225,7 +2221,6 @@ fn remove_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
                             remove_hotplug_bridge(
                                 linux,
                                 sys_allocator,
-                                hp_control_tube,
                                 &mut buses_to_remove,
                                 hotplug_key.unwrap(),
                                 *simbling_bus_num,
@@ -2314,13 +2309,7 @@ fn handle_hotplug_command<V: VmArch, Vcpu: VcpuArch>(
             device,
         )
     } else {
-        remove_hotplug_device(
-            linux,
-            sys_allocator,
-            hp_control_tube,
-            iommu_host_tube,
-            device,
-        )
+        remove_hotplug_device(linux, sys_allocator, iommu_host_tube, device)
     };
 
     match ret {
