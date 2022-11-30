@@ -203,7 +203,7 @@ impl StreamInfo {
                     self.stream_source
                         .as_mut()
                         .unwrap()
-                        .new_async_playback_stream(
+                        .async_new_async_playback_stream(
                             self.channels as usize,
                             self.format,
                             self.frame_rate,
@@ -211,6 +211,7 @@ impl StreamInfo {
                             self.period_bytes / frame_size,
                             ex,
                         )
+                        .await
                         .map_err(Error::CreateStream)?
                         .1,
                 ),
@@ -222,7 +223,7 @@ impl StreamInfo {
                         self.stream_source
                             .as_mut()
                             .unwrap()
-                            .new_async_capture_stream(
+                            .async_new_async_capture_stream(
                                 self.channels as usize,
                                 self.format,
                                 self.frame_rate,
@@ -231,6 +232,7 @@ impl StreamInfo {
                                 &[],
                                 ex,
                             )
+                            .await
                             .map_err(Error::CreateStream)?
                             .1,
                     ),
