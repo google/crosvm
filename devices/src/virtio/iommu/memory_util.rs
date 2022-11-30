@@ -20,7 +20,7 @@ pub fn read_obj_from_addr_wrapper<T: DataInit>(
     if let Some(exported_region) = exported_region {
         exported_region.read_obj_from_addr::<T>(mem, addr.offset())
     } else {
-        mem.read_obj_from_addr::<T>(addr)
+        mem.read_obj_from_addr_volatile::<T>(addr)
             .context("read_obj_from_addr failed")
     }
 }
@@ -35,7 +35,7 @@ pub fn write_obj_at_addr_wrapper<T: DataInit>(
     if let Some(exported_region) = exported_region {
         exported_region.write_obj_at_addr(mem, val, addr.offset())
     } else {
-        mem.write_obj_at_addr(val, addr)
+        mem.write_obj_at_addr_volatile(val, addr)
             .context("write_obj_at_addr failed")
     }
 }

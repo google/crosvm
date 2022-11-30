@@ -509,15 +509,11 @@ impl GuestMemory {
     }
 
     /// Reads an object from guest memory at the given guest address.
-    /// Reading from a volatile area isn't strictly safe as it could change
-    /// mid-read.  However, as long as the type T is plain old data and can
-    /// handle random initialization, everything will be OK.
     ///
     /// # Examples
     /// * Read a u64 from two areas of guest memory backed by separate mappings.
     ///
     /// ```
-    /// # use base::MemoryMapping;
     /// # use vm_memory::{GuestAddress, GuestMemory};
     /// # fn test_read_u64() -> Result<u64, ()> {
     /// #     let start_addr1 = GuestAddress(0x0);
@@ -536,6 +532,37 @@ impl GuestMemory {
             .map_err(|e| Error::MemoryAccess(guest_addr, e))
     }
 
+    /// Reads an object from guest memory at the given guest address.
+    /// Reading from a volatile area isn't strictly safe as it could change
+    /// mid-read.  However, as long as the type T is plain old data and can
+    /// handle random initialization, everything will be OK.
+    ///
+    /// The read operation will be volatile, i.e. it will not be reordered by
+    /// the compiler and is suitable for I/O, but must be aligned. When reading
+    /// from regular memory, prefer [`GuestMemory::read_obj_from_addr`].
+    ///
+    /// # Examples
+    /// * Read a u64 from two areas of guest memory backed by separate mappings.
+    ///
+    /// ```
+    /// # use vm_memory::{GuestAddress, GuestMemory};
+    /// # fn test_read_u64() -> Result<u64, ()> {
+    /// #     let start_addr1 = GuestAddress(0x0);
+    /// #     let start_addr2 = GuestAddress(0x400);
+    /// #     let mut gm = GuestMemory::new(&vec![(start_addr1, 0x400), (start_addr2, 0x400)])
+    /// #         .map_err(|_| ())?;
+    ///       let num1: u64 = gm.read_obj_from_addr_volatile(GuestAddress(32)).map_err(|_| ())?;
+    ///       let num2: u64 = gm.read_obj_from_addr_volatile(GuestAddress(0x400+32)).map_err(|_| ())?;
+    /// #     Ok(num1 + num2)
+    /// # }
+    /// ```
+    pub fn read_obj_from_addr_volatile<T: DataInit>(&self, guest_addr: GuestAddress) -> Result<T> {
+        let (mapping, offset, _) = self.find_region(guest_addr)?;
+        mapping
+            .read_obj_volatile(offset)
+            .map_err(|e| Error::MemoryAccess(guest_addr, e))
+    }
+
     /// Writes an object to the memory region at the specified guest address.
     /// Returns Ok(()) if the object fits, or Err if it extends past the end.
     ///
@@ -543,7 +570,6 @@ impl GuestMemory {
     /// * Write a u64 at guest address 0x1100.
     ///
     /// ```
-    /// # use base::MemoryMapping;
     /// # use vm_memory::{GuestAddress, GuestMemory};
     /// # fn test_write_u64() -> Result<(), ()> {
     /// #   let start_addr = GuestAddress(0x1000);
@@ -556,6 +582,35 @@ impl GuestMemory {
         let (mapping, offset, _) = self.find_region(guest_addr)?;
         mapping
             .write_obj(val, offset)
+            .map_err(|e| Error::MemoryAccess(guest_addr, e))
+    }
+
+    /// Writes an object to the memory region at the specified guest address.
+    /// Returns Ok(()) if the object fits, or Err if it extends past the end.
+    ///
+    /// The write operation will be volatile, i.e. it will not be reordered by
+    /// the compiler and is suitable for I/O, but must be aligned. When writing
+    /// to regular memory, prefer [`GuestMemory::write_obj_at_addr`].
+    /// # Examples
+    /// * Write a u64 at guest address 0x1100.
+    ///
+    /// ```
+    /// # use vm_memory::{GuestAddress, GuestMemory};
+    /// # fn test_write_u64() -> Result<(), ()> {
+    /// #   let start_addr = GuestAddress(0x1000);
+    /// #   let mut gm = GuestMemory::new(&vec![(start_addr, 0x400)]).map_err(|_| ())?;
+    ///     gm.write_obj_at_addr_volatile(55u64, GuestAddress(0x1100))
+    ///         .map_err(|_| ())
+    /// # }
+    /// ```
+    pub fn write_obj_at_addr_volatile<T: DataInit>(
+        &self,
+        val: T,
+        guest_addr: GuestAddress,
+    ) -> Result<()> {
+        let (mapping, offset, _) = self.find_region(guest_addr)?;
+        mapping
+            .write_obj_volatile(val, offset)
             .map_err(|e| Error::MemoryAccess(guest_addr, e))
     }
 
