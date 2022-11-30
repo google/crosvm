@@ -888,7 +888,7 @@ pub struct RunCommand {
     pub cpu_capacity: Option<BTreeMap<usize, u32>>, // CPU index -> capacity
 
     #[argh(option, arg_name = "CPUSET")]
-    #[serde(skip)] // TODO(b/255223604)
+    #[serde(skip)] // Deprecated - use `cpu clusters=[...]` instead.
     #[merge(strategy = append)]
     /// group the given CPUs into a cluster (default: no clusters)
     pub cpu_cluster: Vec<CpuSet>,
@@ -898,6 +898,18 @@ pub struct RunCommand {
     /// cpu parameters.
     /// Possible key values:
     ///     num-cores=NUM - number of VCPUs. (default: 1)
+    ///     clusters=[[CLUSTER],...] - CPU clusters (default: None)
+    ///       Each CLUSTER is a set containing a list of CPUs
+    ///       that should belong to the same cluster. Individual
+    ///       CPU ids or ranges can be specified, comma-separated.
+    ///       Examples:
+    ///       clusters=[[0],[1],[2],[3]] - creates 4 clusters, one
+    ///         for each specified core.
+    ///       clusters=[[0-3]] - creates a cluster for cores 0 to 3
+    ///         included.
+    ///       clusters=[[0,2],[1,3],[4-7,12]] - creates one cluster
+    ///         for cores 0 and 2, another one for cores 1 and 3,
+    ///         and one last for cores 4, 5, 6, 7 and 12.
     pub cpus: Option<CpuOptions>,
 
     #[cfg(feature = "crash-report")]
@@ -2144,12 +2156,25 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         cfg.per_vm_core_scheduling = cmd.per_vm_core_scheduling;
 
-        let cpus = cmd.cpus.unwrap_or_default();
-        cfg.vcpu_count = cpus.num_cores;
+        // `--cpu` parameters.
+        {
+            let cpus = cmd.cpus.unwrap_or_default();
+            cfg.vcpu_count = cpus.num_cores;
+
+            // Only allow deprecated `--cpu-cluster` option only if `--cpu clusters=[...]` is not
+            // used.
+            cfg.cpu_clusters = match (&cpus.clusters.is_empty(), &cmd.cpu_cluster.is_empty()) {
+                (_, true) => cpus.clusters,
+                (true, false) => cmd.cpu_cluster,
+                (false, false) => {
+                    return Err(
+                        "cannot specify both --cpu clusters=[...] and --cpu_cluster".to_string()
+                    )
+                }
+            };
+        }
 
         cfg.vcpu_affinity = cmd.cpu_affinity;
-
-        cfg.cpu_clusters = cmd.cpu_cluster;
 
         if let Some(capacity) = cmd.cpu_capacity {
             cfg.cpu_capacity = capacity;

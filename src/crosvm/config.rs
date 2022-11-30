@@ -100,12 +100,15 @@ pub enum Executable {
     Plugin(PathBuf),
 }
 
-#[derive(Debug, Default, Deserialize, FromKeyValues)]
+#[derive(Debug, Default, PartialEq, Eq, Deserialize, FromKeyValues)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct CpuOptions {
     /// Number of CPU cores.
     #[serde(default)]
     pub num_cores: Option<usize>,
+    /// Vector of CPU ids to be grouped into the same cluster.
+    #[serde(default)]
+    pub clusters: Vec<CpuSet>,
 }
 
 #[derive(Debug, Default, Deserialize, FromKeyValues)]
@@ -1623,13 +1626,82 @@ mod tests {
     #[test]
     fn parse_cpu_opts() {
         let res: CpuOptions = from_key_values("").unwrap();
-        assert_eq!(res.num_cores, None);
+        assert_eq!(res, CpuOptions::default());
 
+        // num_cores
         let res: CpuOptions = from_key_values("12").unwrap();
-        assert_eq!(res.num_cores, Some(12));
+        assert_eq!(
+            res,
+            CpuOptions {
+                num_cores: Some(12),
+                ..Default::default()
+            }
+        );
 
         let res: CpuOptions = from_key_values("num-cores=16").unwrap();
-        assert_eq!(res.num_cores, Some(16));
+        assert_eq!(
+            res,
+            CpuOptions {
+                num_cores: Some(16),
+                ..Default::default()
+            }
+        );
+
+        // clusters
+        let res: CpuOptions = from_key_values("clusters=[[0],[1],[2],[3]]").unwrap();
+        assert_eq!(
+            res,
+            CpuOptions {
+                clusters: vec![
+                    CpuSet::new([0]),
+                    CpuSet::new([1]),
+                    CpuSet::new([2]),
+                    CpuSet::new([3])
+                ],
+                ..Default::default()
+            }
+        );
+
+        let res: CpuOptions = from_key_values("clusters=[[0-3]]").unwrap();
+        assert_eq!(
+            res,
+            CpuOptions {
+                clusters: vec![CpuSet::new([0, 1, 2, 3])],
+                ..Default::default()
+            }
+        );
+
+        let res: CpuOptions = from_key_values("clusters=[[0,2],[1,3],[4-7,12]]").unwrap();
+        assert_eq!(
+            res,
+            CpuOptions {
+                clusters: vec![
+                    CpuSet::new([0, 2]),
+                    CpuSet::new([1, 3]),
+                    CpuSet::new([4, 5, 6, 7, 12])
+                ],
+                ..Default::default()
+            }
+        );
+
+        // All together
+        let res: CpuOptions = from_key_values("16,clusters=[[0],[4-6],[7]]").unwrap();
+        assert_eq!(
+            res,
+            CpuOptions {
+                num_cores: Some(16),
+                clusters: vec![CpuSet::new([0]), CpuSet::new([4, 5, 6]), CpuSet::new([7])],
+            }
+        );
+
+        let res: CpuOptions = from_key_values("clusters=[[0-7],[30-31]],num-cores=32").unwrap();
+        assert_eq!(
+            res,
+            CpuOptions {
+                num_cores: Some(32),
+                clusters: vec![CpuSet::new([0, 1, 2, 3, 4, 5, 6, 7]), CpuSet::new([30, 31])],
+            }
+        );
     }
 
     #[test]
