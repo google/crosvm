@@ -46,14 +46,8 @@ impl Display {
         let mut major = 0i32;
         let mut minor = 0i32;
         // Safe because we ensure that the display is valid (i.e not NULL) before calling
-        // vaInitialize
-        let result =
-            Status(unsafe { bindings::vaInitialize(display, &mut major, &mut minor) }).check();
-
-        if let Err(error) = result {
-            // The File will close the DRM fd on drop.
-            return Err(error);
-        }
+        // vaInitialize. The File will close the DRM fd on drop.
+        Status(unsafe { bindings::vaInitialize(display, &mut major, &mut minor) }).check()?;
 
         Ok(Rc::new(Self {
             handle: display,
