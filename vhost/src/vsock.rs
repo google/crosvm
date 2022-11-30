@@ -52,7 +52,7 @@ impl Vsock {
     }
 
     fn set_running(&self, running: bool) -> Result<()> {
-        let on: ::std::os::raw::c_int = if running { 1 } else { 0 };
+        let on = ::std::os::raw::c_int::from(running);
         let ret = unsafe { ioctl_with_ref(&self.descriptor, VHOST_VSOCK_SET_RUNNING(), &on) };
 
         if ret < 0 {

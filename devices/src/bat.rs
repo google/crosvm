@@ -207,16 +207,16 @@ fn command_monitor(
                         BatControlCommand::SetStatus(status) => bat_state.set_status(status.into()),
                         BatControlCommand::SetHealth(health) => bat_state.set_health(health.into()),
                         BatControlCommand::SetPresent(present) => {
-                            let v = if present != 0 { 1 } else { 0 };
-                            bat_state.set_present(v)
+                            let v = present != 0;
+                            bat_state.set_present(v.into())
                         }
                         BatControlCommand::SetCapacity(capacity) => {
                             let v = std::cmp::min(capacity, 100);
                             bat_state.set_capacity(v)
                         }
                         BatControlCommand::SetACOnline(ac_online) => {
-                            let v = if ac_online != 0 { 1 } else { 0 };
-                            bat_state.set_ac_online(v)
+                            let v = ac_online != 0;
+                            bat_state.set_ac_online(v.into())
                         }
                     };
 

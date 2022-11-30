@@ -191,7 +191,7 @@ impl virtio_input_event {
         virtio_input_event {
             type_: Le16::from(EV_KEY),
             code: Le16::from(code),
-            value: SLe32::from(if pressed { 1 } else { 0 }),
+            value: SLe32::from(i32::from(pressed)),
         }
     }
 }

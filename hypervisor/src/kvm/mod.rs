@@ -293,7 +293,7 @@ impl KvmVm {
     pub fn set_irq_line(&self, irq: u32, active: bool) -> Result<()> {
         let mut irq_level = kvm_irq_level::default();
         irq_level.__bindgen_anon_1.irq = irq;
-        irq_level.level = if active { 1 } else { 0 };
+        irq_level.level = active.into();
 
         // Safe because we know that our file is a VM fd, we know the kernel will only read the
         // correct amount of memory from our pointer, and we verify the return result.
@@ -817,14 +817,14 @@ impl Vcpu for KvmVcpu {
         // kernel told us how large it was. The pointer is page aligned so casting to a different
         // type is well defined, hence the clippy allow attribute.
         let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
-        run.immediate_exit = if exit { 1 } else { 0 };
+        run.immediate_exit = exit.into();
     }
 
     fn set_local_immediate_exit(exit: bool) {
         VCPU_THREAD.with(|v| {
             if let Some(state) = &(*v.borrow()) {
                 unsafe {
-                    (*state.run).immediate_exit = if exit { 1 } else { 0 };
+                    (*state.run).immediate_exit = exit.into();
                 };
             }
         });

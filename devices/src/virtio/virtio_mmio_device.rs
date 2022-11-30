@@ -223,13 +223,7 @@ impl VirtioMmioDevice {
                 );
                 0
             }
-            VIRTIO_MMIO_QUEUE_READY => {
-                if self.with_queue(|q| q.ready()).unwrap_or(false) {
-                    1
-                } else {
-                    0
-                }
-            }
+            VIRTIO_MMIO_QUEUE_READY => self.with_queue(|q| q.ready()).unwrap_or(false).into(),
             VIRTIO_MMIO_INTERRUPT_STATUS => {
                 if let Some(interrupt) = &self.interrupt {
                     interrupt.read_interrupt_status().into()

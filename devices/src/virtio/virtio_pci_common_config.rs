@@ -124,13 +124,10 @@ impl VirtioPciCommonConfig {
             0x16 => self.queue_select,
             0x18 => self.with_queue(queues, |q| q.size()).unwrap_or(0),
             0x1a => self.with_queue(queues, |q| q.vector()).unwrap_or(0),
-            0x1c => {
-                if self.with_queue(queues, |q| q.ready()).unwrap_or(false) {
-                    1
-                } else {
-                    0
-                }
-            }
+            0x1c => self
+                .with_queue(queues, |q| q.ready())
+                .unwrap_or(false)
+                .into(),
             0x1e => self.queue_select, // notify_off
             _ => 0,
         }

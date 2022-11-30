@@ -62,7 +62,7 @@ pub(crate) fn handle_token_monitor(
     // Each set_* function called below returns true when interrupt bits
     // (*_STATUS_CHANGED) changed. If `inject_irq` is true after we attempt to
     // update each field, inject an interrupt.
-    let mut inject_irq = bat_state.set_ac_online(if data.ac_online { 1 } else { 0 });
+    let mut inject_irq = bat_state.set_ac_online(data.ac_online.into());
 
     match data.battery {
         Some(battery_data) => {

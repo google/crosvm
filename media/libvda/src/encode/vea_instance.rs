@@ -84,17 +84,9 @@ impl Config {
             output_profile: self.output_profile.to_raw_profile(),
             bitrate: self.bitrate.to_raw_bitrate(),
             initial_framerate: self.initial_framerate.unwrap_or(0),
-            has_initial_framerate: if self.initial_framerate.is_some() {
-                1
-            } else {
-                0
-            },
+            has_initial_framerate: self.initial_framerate.is_some().into(),
             h264_output_level: self.h264_output_level.unwrap_or(0),
-            has_h264_output_level: if self.h264_output_level.is_some() {
-                1
-            } else {
-                0
-            },
+            has_h264_output_level: self.h264_output_level.is_some().into(),
         }
     }
 }

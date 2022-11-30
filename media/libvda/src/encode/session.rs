@@ -115,7 +115,7 @@ impl Session {
                 planes.len(),
                 planes.as_mut_ptr(),
                 timestamp,
-                if force_keyframe { 1 } else { 0 },
+                force_keyframe.into(),
             )
         };
         convert_error_code(r)

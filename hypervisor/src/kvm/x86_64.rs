@@ -536,7 +536,7 @@ impl VcpuX86_64 for KvmVcpu {
         // kernel told us how large it was. The pointer is page aligned so casting to a different
         // type is well defined, hence the clippy allow attribute.
         let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
-        run.request_interrupt_window = if requested { 1 } else { 0 };
+        run.request_interrupt_window = requested.into();
     }
 
     #[allow(clippy::cast_ptr_alignment)]
