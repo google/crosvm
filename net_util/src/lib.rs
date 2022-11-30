@@ -67,7 +67,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 impl Error {
     pub fn sys_error(&self) -> SysError {
-        match &*self {
+        match self {
             Error::CreateSocket(e) => *e,
             Error::OpenTun(e) => *e,
             Error::CreateTap(e) => *e,

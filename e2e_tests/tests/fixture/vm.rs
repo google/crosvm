@@ -124,7 +124,7 @@ fn download_file(url: &str, destination: &Path) -> Result<()> {
     let status = Command::new("curl")
         .arg("--fail")
         .arg("--location")
-        .args(&["--output", destination.to_str().unwrap()])
+        .args(["--output", destination.to_str().unwrap()])
         .arg(url)
         .status();
     match status {
@@ -255,7 +255,7 @@ impl TestVm {
         from_guest_pipe: &Path,
         to_guest_pipe: &Path,
     ) {
-        command.args(&["--serial", "type=syslog"]);
+        command.args(["--serial", "type=syslog"]);
 
         // Setup channel for communication with the delegate.
         let serial_params = format!(
@@ -263,7 +263,7 @@ impl TestVm {
             from_guest_pipe.display(),
             to_guest_pipe.display()
         );
-        command.args(&["--serial", &serial_params]);
+        command.args(["--serial", &serial_params]);
     }
 
     /// Configures the VM rootfs to load from the guest_under_test assets.
@@ -274,8 +274,8 @@ impl TestVm {
             if o_direct { ",direct=true" } else { "" }
         );
         command
-            .args(&["--block", &rootfs_and_option])
-            .args(&["--params", "init=/bin/delegate"]);
+            .args(["--block", &rootfs_and_option])
+            .args(["--params", "init=/bin/delegate"]);
     }
 
     /// Instanciate a new crosvm instance. The first call will trigger the download of prebuilt
@@ -299,7 +299,7 @@ impl TestVm {
         let control_socket_path = test_dir.path().join(CONTROL_PIPE);
 
         let mut command = Command::new(find_crosvm_binary());
-        command.args(&["run"]);
+        command.args(["run"]);
 
         f(&mut command, test_dir.path(), &cfg)?;
 
@@ -357,7 +357,7 @@ impl TestVm {
                     &test_dir.join(FROM_GUEST_PIPE),
                     &test_dir.join(TO_GUEST_PIPE),
                 );
-                command.args(&["--socket", test_dir.join(CONTROL_PIPE).to_str().unwrap()]);
+                command.args(["--socket", test_dir.join(CONTROL_PIPE).to_str().unwrap()]);
                 TestVm::configure_rootfs(command, cfg.o_direct);
                 // Set kernel as the last argument.
                 command.arg(kernel_path());
@@ -418,7 +418,7 @@ impl TestVm {
         TestVm::new_generic(
             |command, test_dir, cfg| {
                 let config_file_path = TestVm::generate_json_config_file(test_dir, cfg)?;
-                command.args(&["--cfg", config_file_path.to_str().unwrap()]);
+                command.args(["--cfg", config_file_path.to_str().unwrap()]);
 
                 Ok(())
             },

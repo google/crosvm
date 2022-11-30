@@ -46,7 +46,7 @@ pub fn build_protos_explicit(
             file.to_str().expect("proto path must be UTF-8")
         );
     }
-    fs::create_dir_all(&out_dir).unwrap();
+    fs::create_dir_all(out_dir).unwrap();
     gen_protos(out_dir, proto_paths, includes);
     create_gen_file(out_dir, proto_paths);
 }

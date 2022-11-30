@@ -10,7 +10,7 @@ pub(crate) fn download_command(url: &str, destination: &Path) -> Command {
     cmd.arg("--fail")
         .arg("--location")
         .arg("--silent")
-        .args(&["--output", destination.to_str().unwrap()])
+        .args(["--output", destination.to_str().unwrap()])
         .arg(url);
     cmd
 }

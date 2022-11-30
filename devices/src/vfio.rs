@@ -767,7 +767,7 @@ impl VfioDevice {
         container: Arc<Mutex<VfioContainer>>,
         iommu_enabled: bool,
     ) -> Result<Self> {
-        let group_id = VfioGroup::get_group_id(&sysfspath)?;
+        let group_id = VfioGroup::get_group_id(sysfspath)?;
 
         let group = container
             .lock()
@@ -802,7 +802,7 @@ impl VfioDevice {
         sysfspath: &P,
         container: Arc<Mutex<VfioContainer>>,
     ) -> Result<Self> {
-        let group_id = VfioGroup::get_group_id(&sysfspath)?;
+        let group_id = VfioGroup::get_group_id(sysfspath)?;
         let group = container.lock().get_group(group_id)?;
         let name_osstr = sysfspath
             .as_ref()

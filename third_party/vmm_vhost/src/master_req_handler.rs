@@ -451,7 +451,7 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
             let def_err = libc::EINVAL;
             let val = match res {
                 Ok(n) => *n,
-                Err(e) => match &*e {
+                Err(e) => match e {
                     Error::ReqHandlerError(ioerr) => match ioerr.raw_os_error() {
                         Some(rawerr) => -rawerr as u64,
                         None => -def_err as u64,

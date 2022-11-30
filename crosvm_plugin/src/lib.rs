@@ -308,7 +308,7 @@ impl crosvm {
     }
 
     fn get_id_allocator(&self) -> &IdAllocator {
-        &*self.id_allocator
+        &self.id_allocator
     }
 
     fn main_transaction(

@@ -785,7 +785,7 @@ impl PciDevice for VirtioPciDevice {
             }
         }
 
-        (&mut self.config_regs).write_reg(reg_idx, offset, data)
+        self.config_regs.write_reg(reg_idx, offset, data)
     }
 
     fn read_bar(&mut self, addr: u64, data: &mut [u8]) {

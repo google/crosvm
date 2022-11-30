@@ -199,7 +199,7 @@ impl VhostUserBackend for SndBackend {
                             ex,
                             &mem,
                             &streams,
-                            &*snd_data,
+                            &snd_data,
                             &mut queue,
                             &mut kick_evt,
                             doorbell,
@@ -228,7 +228,7 @@ impl VhostUserBackend for SndBackend {
                 let streams = Rc::clone(&self.streams);
                 ex.spawn_local(Abortable::new(
                     async move {
-                        handle_pcm_queue(&*mem, &streams, send, &queue, &kick_evt, None).await
+                        handle_pcm_queue(&mem, &streams, send, &queue, &kick_evt, None).await
                     },
                     registration,
                 ))
@@ -238,7 +238,7 @@ impl VhostUserBackend for SndBackend {
 
                 ex.spawn_local(Abortable::new(
                     async move {
-                        send_pcm_response_worker(&*mem2, &queue2, doorbell, &mut recv, None).await
+                        send_pcm_response_worker(&mem2, &queue2, doorbell, &mut recv, None).await
                     },
                     registration2,
                 ))

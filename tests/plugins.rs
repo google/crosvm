@@ -68,14 +68,14 @@ fn build_plugin(src: &str) -> RemovePath {
         PLUGIN_NUM.fetch_add(1, Ordering::Relaxed)
     ));
     let mut child = Command::new(var_os("CC").unwrap_or(OsString::from("cc")))
-        .args(&["-Icrosvm_plugin", "-pthread", "-o"]) // crosvm.h location and set output path.
+        .args(["-Icrosvm_plugin", "-pthread", "-o"]) // crosvm.h location and set output path.
         .arg(&out_bin)
         .arg("-L") // Path of shared object to link to.
         .arg(&libcrosvm_plugin_dir)
         .arg("-Wl,-rpath") // Search for shared object in the same path when exec'd.
         .arg(&libcrosvm_plugin_dir)
-        .args(&["-Wl,-rpath", "."]) // Also check current directory in case of sandboxing.
-        .args(&["-xc", "-"]) // Read source code from piped stdin.
+        .args(["-Wl,-rpath", "."]) // Also check current directory in case of sandboxing.
+        .args(["-xc", "-"]) // Read source code from piped stdin.
         .arg("-lcrosvm_plugin")
         .stdin(Stdio::piped())
         .spawn()
@@ -95,7 +95,7 @@ fn run_plugin(bin_path: &Path, with_sandbox: bool) {
     let mut crosvm_path = get_crosvm_path();
     crosvm_path.push("crosvm");
     let mut cmd = Command::new(crosvm_path);
-    cmd.args(&[
+    cmd.args([
         "run",
         "-c",
         "1",
@@ -110,7 +110,7 @@ fn run_plugin(bin_path: &Path, with_sandbox: bool) {
     );
 
     if *TAP_AVAILABLE {
-        cmd.args(&[
+        cmd.args([
             "--host-ip",
             "100.115.92.5",
             "--netmask",
@@ -165,7 +165,7 @@ fn build_assembly(src: &str) -> Vec<u8> {
     // which we have preserved accross exec.
     let status = Command::new("nasm")
         .arg(format!("/proc/self/fd/{}", in_file.as_raw_descriptor()))
-        .args(&["-f", "bin", "-o"])
+        .args(["-f", "bin", "-o"])
         .arg(format!("/proc/self/fd/{}", out_file.as_raw_descriptor()))
         .status()
         .expect("failed to spawn assembler");

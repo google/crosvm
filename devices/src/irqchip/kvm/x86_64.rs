@@ -457,7 +457,7 @@ impl IrqChip for KvmSplitIrqChip {
         let mut msi_routes = routes.clone();
         msi_routes.retain(|r| matches!(r.source, IrqSource::Msi { .. }));
 
-        self.vm.set_gsi_routing(&*msi_routes)
+        self.vm.set_gsi_routing(&msi_routes)
     }
 
     /// Replace all irq routes with the supplied routes
@@ -469,7 +469,7 @@ impl IrqChip for KvmSplitIrqChip {
         let mut msi_routes = routes.to_vec();
         msi_routes.retain(|r| matches!(r.source, IrqSource::Msi { .. }));
 
-        self.vm.set_gsi_routing(&*msi_routes)
+        self.vm.set_gsi_routing(&msi_routes)
     }
 
     /// Return a vector of all registered irq numbers and their associated events and event

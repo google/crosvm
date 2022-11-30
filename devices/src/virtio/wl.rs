@@ -1233,8 +1233,7 @@ impl WlState {
         match self.vfds.entry(id) {
             Entry::Vacant(entry) => {
                 let vfd = entry.insert(WlVfd::connect(
-                    &self
-                        .wayland_paths
+                    self.wayland_paths
                         .get(name)
                         .ok_or_else(|| WlError::UnknownSocketName(name.to_string()))?,
                 )?);

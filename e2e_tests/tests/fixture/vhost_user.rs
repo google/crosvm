@@ -62,7 +62,7 @@ pub struct VhostUserBackend {
 impl VhostUserBackend {
     pub fn new(cfg: Config) -> Result<Self> {
         let mut cmd = Command::new(find_crosvm_binary());
-        cmd.args(&[cfg.cmd_type.to_subcommand()]);
+        cmd.args([cfg.cmd_type.to_subcommand()]);
         cmd.args(cfg.extra_args);
 
         cmd.stdout(Stdio::piped());

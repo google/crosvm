@@ -155,15 +155,13 @@ pub fn build_config(backend: VideoBackendType) -> virtio_video_config {
     let mut device_name = [0u8; 32];
     match backend {
         #[cfg(feature = "libvda")]
-        VideoBackendType::Libvda => (&mut device_name[0..6]).copy_from_slice("libvda".as_bytes()),
+        VideoBackendType::Libvda => device_name[0..6].copy_from_slice("libvda".as_bytes()),
         #[cfg(feature = "libvda")]
-        VideoBackendType::LibvdaVd => {
-            (&mut device_name[0..8]).copy_from_slice("libvdavd".as_bytes())
-        }
+        VideoBackendType::LibvdaVd => device_name[0..8].copy_from_slice("libvdavd".as_bytes()),
         #[cfg(feature = "ffmpeg")]
-        VideoBackendType::Ffmpeg => (&mut device_name[0..6]).copy_from_slice("ffmpeg".as_bytes()),
+        VideoBackendType::Ffmpeg => device_name[0..6].copy_from_slice("ffmpeg".as_bytes()),
         #[cfg(feature = "vaapi")]
-        VideoBackendType::Vaapi => (&mut device_name[0..5]).copy_from_slice("vaapi".as_bytes()),
+        VideoBackendType::Vaapi => device_name[0..5].copy_from_slice("vaapi".as_bytes()),
     };
     virtio_video_config {
         version: Le32::from(0),

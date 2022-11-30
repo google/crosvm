@@ -101,7 +101,8 @@ impl Tube {
 
         let mut msg_descriptors_full = [0; TUBE_MAX_FDS];
 
-        let (msg_json_size, descriptor_size) = (&self.socket)
+        let (msg_json_size, descriptor_size) = self
+            .socket
             .recv_with_fds(IoSliceMut::new(&mut msg_json), &mut msg_descriptors_full)
             .map_err(Error::Send)?;
 

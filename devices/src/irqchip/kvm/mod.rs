@@ -91,7 +91,7 @@ impl IrqChip for KvmKernelIrqChip {
 
         routes.push(route);
 
-        self.vm.set_gsi_routing(&*routes)
+        self.vm.set_gsi_routing(&routes)
     }
 
     /// Replace all irq routes with the supplied routes
@@ -99,7 +99,7 @@ impl IrqChip for KvmKernelIrqChip {
         let mut current_routes = self.routes.lock();
         *current_routes = routes.to_vec();
 
-        self.vm.set_gsi_routing(&*current_routes)
+        self.vm.set_gsi_routing(&current_routes)
     }
 
     /// Return a vector of all registered irq numbers and their associated events and event

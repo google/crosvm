@@ -347,7 +347,7 @@ impl PciDevice for PciBridge {
 
         self.device.lock().write_config(reg_idx, offset, data);
 
-        (&mut self.config).write_reg(reg_idx, offset, data)
+        self.config.write_reg(reg_idx, offset, data)
     }
 
     fn read_bar(&mut self, _addr: u64, _data: &mut [u8]) {}

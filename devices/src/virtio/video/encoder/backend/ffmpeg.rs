@@ -250,7 +250,7 @@ impl EncoderSession for FfmpegEncoderSession {
         let buffer_id = self.next_input_buffer_id;
         self.next_input_buffer_id = buffer_id.wrapping_add(1);
 
-        let mut frame: AvFrame = (&resource)
+        let mut frame: AvFrame = resource
             .try_as_av_frame(|mapping| InputBuffer {
                 mapping,
                 buffer_id,

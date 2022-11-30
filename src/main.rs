@@ -291,7 +291,7 @@ fn create_composite(cmd: cmdline::CreateCompositeCommand) -> std::result::Result
         .read(true)
         .write(true)
         .truncate(true)
-        .open(&composite_image_path)
+        .open(composite_image_path)
         .map_err(|e| {
             error!(
                 "Failed opening composite disk image file at '{}': {}",

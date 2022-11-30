@@ -364,7 +364,7 @@ impl VioSClient {
             sequence: sequence.into(),
         };
         let control_socket_lock = self.control_socket.lock();
-        send_cmd(&*control_socket_lock, msg)
+        send_cmd(&control_socket_lock, msg)
     }
 
     /// Configures a stream with the given parameters.
@@ -374,7 +374,7 @@ impl VioSClient {
             .ok_or(Error::InvalidStreamId(stream_id))?;
         let raw_params: virtio_snd_pcm_set_params = (stream_id, params).into();
         let control_socket_lock = self.control_socket.lock();
-        send_cmd(&*control_socket_lock, raw_params)
+        send_cmd(&control_socket_lock, raw_params)
     }
 
     /// Configures a stream with the given parameters.
@@ -384,7 +384,7 @@ impl VioSClient {
             .get(stream_id as usize)
             .ok_or(Error::InvalidStreamId(stream_id))?;
         let control_socket_lock = self.control_socket.lock();
-        send_cmd(&*control_socket_lock, raw_params)
+        send_cmd(&control_socket_lock, raw_params)
     }
 
     /// Send the PREPARE_STREAM command to the server.
@@ -486,7 +486,7 @@ impl VioSClient {
             stream_id: stream_id.into(),
         };
         let control_socket_lock = self.control_socket.lock();
-        send_cmd(&*control_socket_lock, msg)
+        send_cmd(&control_socket_lock, msg)
     }
 
     fn request_and_cache_info(&mut self) -> Result<()> {
@@ -512,7 +512,7 @@ impl VioSClient {
             size: (std::mem::size_of::<virtio_snd_query_info>() as u32).into(),
         };
         let control_socket_lock = self.control_socket.lock();
-        seq_socket_send(&*control_socket_lock, req)?;
+        seq_socket_send(&control_socket_lock, req)?;
         let reply = control_socket_lock
             .recv_as_vec()
             .map_err(Error::ServerIOError)?;

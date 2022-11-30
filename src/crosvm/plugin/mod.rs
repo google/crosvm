@@ -607,7 +607,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
         // jail.mount_dev() here because crosvm may not be running with CAP_SYS_ADMIN.
         let device_names = ["full", "null", "urandom", "zero"];
         for name in &device_names {
-            let device = Path::new("/dev").join(&name);
+            let device = Path::new("/dev").join(name);
             jail.mount_bind(&device, &device, true)
                 .context("failed to mount dev")?;
         }

@@ -841,7 +841,7 @@ mod test {
                 s1.send(data1).await.expect("failed to send data");
 
                 let recv_data = s2.recv_as_vec().await.expect("failed to recv data");
-                assert_eq!(&recv_data, &*data1);
+                assert_eq!(&recv_data, data1);
             })
             .unwrap();
     }
