@@ -18,7 +18,7 @@ use thiserror::Error;
 /// function that returned an error.
 /// On Windows, retrieved from GetLastError, set by a Windows function
 /// that returned an error
-#[derive(Error, Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[derive(Error, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(transparent)]
 pub struct Error(i32);
 pub type Result<T> = result::Result<T, Error>;

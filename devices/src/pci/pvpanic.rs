@@ -52,7 +52,7 @@ pub const PVPANIC_CRASH_LOADED: u8 = 1 << 1;
 const PVPANIC_CAPABILITIES: u8 = PVPANIC_PANICKED | PVPANIC_CRASH_LOADED;
 
 #[repr(u8)]
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub enum PvPanicCode {
     Panicked = PVPANIC_PANICKED,
     CrashLoaded = PVPANIC_CRASH_LOADED,

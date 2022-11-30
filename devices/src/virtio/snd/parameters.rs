@@ -34,7 +34,7 @@ pub enum Error {
     UnknownParameter(String),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(try_from = "&str")]
 pub enum StreamSourceBackend {
     NULL,

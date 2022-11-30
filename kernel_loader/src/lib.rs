@@ -42,7 +42,7 @@ unsafe impl data_model::DataInit for elf::Elf64_Ehdr {}
 unsafe impl data_model::DataInit for elf::Elf64_Phdr {}
 
 #[sorted]
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, PartialEq, Eq)]
 pub enum Error {
     #[error("trying to load big-endian binary on little-endian machine")]
     BigEndianOnLittle,
@@ -89,7 +89,7 @@ pub enum Error {
 }
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 /// Information about a kernel loaded with the [`load_elf`] function.
 pub struct LoadedKernel {
     /// Address range containg the bounds of the loaded program headers.

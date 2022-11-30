@@ -110,7 +110,7 @@ pub const PCI_VENDOR_ID_INTEL: u16 = 0x8086;
 pub const PCI_VENDOR_ID_REDHAT: u16 = 0x1b36;
 
 #[repr(u16)]
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum CrosvmDeviceId {
     Pit = 1,
     Pic = 2,
@@ -163,7 +163,7 @@ impl TryFrom<u16> for CrosvmDeviceId {
 }
 
 /// A wrapper structure for pci device and vendor id.
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct PciId {
     vendor_id: u16,
     device_id: u16,

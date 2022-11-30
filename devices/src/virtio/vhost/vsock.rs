@@ -36,7 +36,7 @@ const NUM_QUEUES: usize = 3;
 pub const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE; NUM_QUEUES];
 static VHOST_VSOCK_DEFAULT_PATH: &str = "/dev/vhost-vsock";
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct VhostVsockConfig {
     pub device: Option<PathBuf>,

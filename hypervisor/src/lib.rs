@@ -476,7 +476,7 @@ pub enum HypervHypercall {
 }
 
 /// A device type to create with `Vm.create_device`.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DeviceKind {
     /// VFIO device for direct access to devices from userspace
     Vfio,

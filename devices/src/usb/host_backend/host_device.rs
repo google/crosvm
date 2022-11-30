@@ -37,7 +37,7 @@ use crate::usb::xhci::xhci_transfer::XhciTransferType;
 use crate::utils::AsyncJobQueue;
 use crate::utils::FailHandle;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub enum ControlEndpointState {
     /// Control endpoint should receive setup stage next.
     SetupStage,

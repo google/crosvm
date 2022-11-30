@@ -39,13 +39,13 @@ const DEFAULT_8X8_INTER: [u8; 64] = [
 const MAX_PPS_COUNT: usize = 256;
 const MAX_SPS_COUNT: usize = 32;
 
-#[derive(Copy, Clone, Debug, Default, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct Point<T> {
     pub x: T,
     pub y: T,
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct Rect<T> {
     pub min: Point<T>,
     pub max: Point<T>,
@@ -75,7 +75,7 @@ pub enum NaluType {
     SliceDepth = 21,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RefPicListModification {
     modification_of_pic_nums_idc: u8,
     /* if modification_of_pic_nums_idc == 0 || 1 */
@@ -101,7 +101,7 @@ impl RefPicListModification {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PredWeightTable {
     luma_log2_weight_denom: u8,
     chroma_log2_weight_denom: u8,
@@ -155,7 +155,7 @@ impl PredWeightTable {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RefPicMarkingInner {
     /// Specifies a control operation to be applied to affect the reference
     /// picture marking. The `memory_management_control_operation` syntax element
@@ -202,7 +202,7 @@ impl RefPicMarkingInner {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RefPicMarking {
     /// Specifies how the previously-decoded pictures in the decoded picture
     /// buffer are treated after decoding of an IDR picture. See Annex C.
@@ -239,7 +239,7 @@ impl RefPicMarking {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SliceHeader {
     /// Specifies the address of the first macroblock in the slice.
     first_mb_in_slice: u32,
@@ -504,7 +504,7 @@ impl<T> Slice<T> {
     }
 }
 
-#[derive(N, Clone, Copy, Debug, PartialEq)]
+#[derive(N, Clone, Copy, Debug, PartialEq, Eq)]
 /// See table 7-6 in the specification.
 pub enum SliceType {
     P = 0,
@@ -552,7 +552,7 @@ impl Default for SliceType {
 /// content of a seq_parameter_set_id syntax element found in the picture
 /// parameter set referred to by the pic_parameter_set_id syntax element found
 /// in each slice header.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Sps {
     /// Identifies the sequence parameter set that is referred to by the picture
     /// parameter set
@@ -984,7 +984,7 @@ impl Default for Sps {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct HrdParams {
     /// Plus 1 specifies the number of alternative CPB specifications in the
     /// bitstream. The value of `cpb_cnt_minus1` shall be in the range of 0 to 31,
@@ -1057,7 +1057,7 @@ impl HrdParams {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VuiParams {
     /// Specifies whether `aspect_ratio_idc` is present.
     aspect_ratio_info_present_flag: bool,
@@ -1376,7 +1376,7 @@ impl Default for VuiParams {
 /// A H264 Picture Parameter Set. A syntax structure containing syntax elements
 /// that apply to zero or more entire coded pictures as determined by the
 /// `pic_parameter_set_id` syntax element found in each slice header.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Pps {
     /// Identifies the picture parameter set that is referred to in the slice header.
     pic_parameter_set_id: u8,

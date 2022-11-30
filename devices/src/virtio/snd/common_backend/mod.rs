@@ -135,7 +135,7 @@ pub enum DirectionalStream {
     Output(Box<dyn audio_streams::AsyncPlaybackBufferStream>),
 }
 
-#[derive(Copy, Clone, std::cmp::PartialEq)]
+#[derive(Copy, Clone, std::cmp::PartialEq, Eq)]
 pub enum WorkerStatus {
     Pause = 0,
     Running = 1,

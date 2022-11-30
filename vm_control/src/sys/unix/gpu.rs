@@ -7,7 +7,7 @@ use serde::Serialize;
 
 use crate::gpu::DisplayModeTrait;
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UnixDisplayMode {
     Windowed(u32, u32),

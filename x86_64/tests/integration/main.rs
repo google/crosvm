@@ -174,7 +174,7 @@ where
 
     let mut cmdline = X8664arch::get_base_linux_cmdline();
 
-    cmdline.insert_str(&param_args).unwrap();
+    cmdline.insert_str(param_args).unwrap();
 
     let params = bootparam::boot_params::default();
     // write our custom kernel code to start_addr

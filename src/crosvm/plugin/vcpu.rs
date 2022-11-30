@@ -49,7 +49,7 @@ use sync::Mutex;
 use super::*;
 
 /// Identifier for an address space in the VM.
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum IoSpace {
     Ioport,
     Mmio,

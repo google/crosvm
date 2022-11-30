@@ -79,7 +79,7 @@ use super::VirtioDevice;
 use super::Writer;
 use crate::Suspendable;
 
-#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GpuMode {
     #[serde(rename = "2d", alias = "2D")]
     Mode2D,
@@ -770,7 +770,7 @@ impl Frontend {
     }
 }
 
-#[derive(EventToken, PartialEq, Clone, Copy, Debug)]
+#[derive(EventToken, PartialEq, Eq, Clone, Copy, Debug)]
 enum WorkerToken {
     CtrlQueue,
     CursorQueue,

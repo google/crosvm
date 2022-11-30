@@ -139,7 +139,7 @@ pub enum NetError {
     WriteBuffer(io::Error),
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(untagged, deny_unknown_fields)]
 pub enum NetParametersMode {
     #[serde(rename_all = "kebab-case")]
@@ -156,7 +156,7 @@ pub enum NetParametersMode {
     },
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 pub struct NetParameters {
     #[serde(flatten)]
     pub mode: NetParametersMode,

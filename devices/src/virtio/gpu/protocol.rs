@@ -788,7 +788,7 @@ impl GpuCommand {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct GpuResponsePlaneInfo {
     pub stride: u32,
     pub offset: u32,

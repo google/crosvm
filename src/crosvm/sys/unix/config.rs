@@ -15,7 +15,7 @@ use serde::Serialize;
 use crate::crosvm::config::invalid_value_err;
 use crate::crosvm::config::Config;
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HypervisorKind {
     Kvm,
 }

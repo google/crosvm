@@ -16,7 +16,7 @@ use crate::gpu::DisplayModeTrait;
 const DISPLAY_WIDTH_SOFT_MAX: u32 = 1920;
 const DISPLAY_HEIGHT_SOFT_MAX: u32 = 1080;
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WinDisplayMode<T> {
     Windowed(u32, u32),
@@ -45,7 +45,7 @@ trait ProvideDisplayData {
     fn get_host_display_size() -> (u32, u32);
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DisplayDataProvider;
 
 impl ProvideDisplayData for DisplayDataProvider {

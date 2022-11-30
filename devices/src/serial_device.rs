@@ -67,7 +67,7 @@ impl SerialInput for File {}
 impl SerialInput for WinConsole {}
 
 /// Enum for possible type of serial devices
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SerialType {
     File,
@@ -135,7 +135,7 @@ fn serial_parameters_default_debugcon_port() -> u16 {
     0x402
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, FromKeyValues)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, FromKeyValues)]
 #[serde(deny_unknown_fields, default)]
 pub struct SerialParameters {
     #[serde(rename = "type")]

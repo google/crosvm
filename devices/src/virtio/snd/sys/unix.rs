@@ -15,7 +15,7 @@ use crate::virtio::snd::parameters::Parameters;
 
 const AUDIO_THREAD_RTPRIO: u16 = 10; // Matches other cros audio clients.
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StreamSourceBackend {
     #[cfg(feature = "audio_cras")]
     CRAS,

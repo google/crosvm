@@ -62,7 +62,7 @@ pub enum Error {
 type Result<T> = std::result::Result<T, Error>;
 
 /// Type of usb endpoints.
-#[derive(PartialEq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum TransferDirection {
     In,
     Out,

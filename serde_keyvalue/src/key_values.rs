@@ -38,7 +38,7 @@ use serde::Deserialize;
 use serde::Deserializer;
 use thiserror::Error;
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, PartialEq, Eq)]
 #[sorted]
 #[non_exhaustive]
 #[allow(missing_docs)]
@@ -71,7 +71,7 @@ pub enum ErrorKind {
 }
 
 /// Error that may be thown while parsing a key-values string.
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub struct ParseError {
     /// Detailed error that occurred.
     pub kind: ErrorKind,
@@ -450,7 +450,7 @@ impl<'de> de::MapAccess<'de> for KeyValueDeserializer<'de> {
 /// ```
 /// # use serde_keyvalue::from_key_values;
 /// # use serde::Deserialize;
-/// #[derive(Deserialize, PartialEq, Debug)]
+/// #[derive(Deserialize, PartialEq, Eq, Debug)]
 /// #[serde(rename_all = "kebab-case")]
 /// enum FlipMode {
 ///     Active {
@@ -460,7 +460,7 @@ impl<'de> de::MapAccess<'de> for KeyValueDeserializer<'de> {
 ///         switch2: bool,
 ///     },
 /// }
-/// #[derive(Deserialize, PartialEq, Debug)]
+/// #[derive(Deserialize, PartialEq, Eq, Debug)]
 /// struct TestStruct {
 ///     mode: FlipMode,
 /// }

@@ -24,7 +24,7 @@ use crate::pci::PciCapability;
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 use crate::Suspendable;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VirtioTransportType {
     Pci,
     Mmio,

@@ -8,7 +8,7 @@ use crate::virtio::snd::common_backend::SndData;
 use crate::virtio::snd::parameters::Error;
 use crate::virtio::snd::parameters::Parameters;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StreamSourceBackend {}
 
 impl TryFrom<&str> for StreamSourceBackend {

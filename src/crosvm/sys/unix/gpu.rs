@@ -154,7 +154,7 @@ pub fn create_gpu_device(
     })
 }
 
-#[derive(Debug, Deserialize, Serialize, FromKeyValues, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, FromKeyValues, PartialEq, Eq)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct GpuRenderServerParameters {
     pub path: PathBuf,

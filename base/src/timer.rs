@@ -41,7 +41,7 @@ impl Timer {
 // timer will "expire", meaning it has reached it's duration, or the caller will time out
 // waiting for the timer to expire. If no timeout option is provieded to the wait call
 // then it can only return WaitResult::Expired or an error.
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Eq, Debug)]
 pub enum WaitResult {
     Expired,
     Timeout,

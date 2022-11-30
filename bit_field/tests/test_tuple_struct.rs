@@ -6,7 +6,7 @@ use bit_field::*;
 
 #[bitfield]
 #[bits = 5]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct FiveBits(u8);
 
 #[bitfield]

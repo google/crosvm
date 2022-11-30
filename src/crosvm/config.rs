@@ -155,7 +155,7 @@ impl FromStr for VhostUserFsOption {
 }
 
 /// Options for virtio-vhost-user proxy device.
-#[derive(Serialize, Deserialize, Debug, PartialEq, serde_keyvalue::FromKeyValues)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, serde_keyvalue::FromKeyValues)]
 pub struct VvuOption {
     pub socket: PathBuf,
     pub addr: Option<PciAddress>,
@@ -544,7 +544,7 @@ fn jail_config_default_pivot_root() -> PathBuf {
     PathBuf::from(option_env!("DEFAULT_PIVOT_ROOT").unwrap_or("/var/empty"))
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, serde_keyvalue::FromKeyValues)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, serde_keyvalue::FromKeyValues)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct JailConfig {
     #[serde(default = "jail_config_default_pivot_root")]

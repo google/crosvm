@@ -31,7 +31,7 @@ use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
 
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[allow(non_camel_case_types)]
 pub enum CRAS_CLIENT_TYPE {
     CRAS_CLIENT_TYPE_ARCVM,
@@ -40,7 +40,7 @@ pub enum CRAS_CLIENT_TYPE {
 
 pub type CrasClientType = CRAS_CLIENT_TYPE;
 
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CrasSocketType {
     Legacy,

@@ -51,7 +51,7 @@ impl std::fmt::Display for BusAccessInfo {
 
 /// Result of a write to a device's PCI configuration space.
 /// This value represents the state change(s) that occurred due to the write.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ConfigWriteResult {
     /// The BusRange in the vector will be removed from mmio_bus
     pub mmio_remove: Vec<BusRange>,
@@ -70,7 +70,7 @@ pub struct ConfigWriteResult {
     pub removed_pci_devices: Vec<PciAddress>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BusType {
     Mmio,
     Io,
@@ -148,7 +148,7 @@ pub trait BusResumeDevice: Send {
 /// The key to identify hotplug device from host view.
 /// like host sysfs path for vfio pci device, host disk file
 /// path for virtio block device
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum HostHotPlugKey {
     UpstreamPort { host_addr: PciAddress },
     DownstreamPort { host_addr: PciAddress },

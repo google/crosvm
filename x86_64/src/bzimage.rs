@@ -19,7 +19,7 @@ use vm_memory::GuestMemory;
 use crate::bootparam::boot_params;
 
 #[sorted]
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, PartialEq, Eq)]
 pub enum Error {
     #[error("bad kernel header signature")]
     BadSignature,

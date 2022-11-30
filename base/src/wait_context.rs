@@ -98,7 +98,7 @@ pub struct TriggeredEvent<T: EventToken> {
 }
 
 /// Represents types of events to watch for.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum EventType {
     // Used to to temporarily stop waiting for events without
     // removing the associated descriptor from the WaitContext.
@@ -118,7 +118,7 @@ pub enum EventType {
 /// ```
 /// use base::{Event, EventToken, Result, WaitContext};
 ///
-/// #[derive(EventToken, Copy, Clone, Debug, PartialEq)]
+/// #[derive(EventToken, Copy, Clone, Debug, PartialEq, Eq)]
 /// enum ExampleToken {
 ///    SomeEvent(u32),
 ///    AnotherEvent,

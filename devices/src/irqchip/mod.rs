@@ -61,7 +61,7 @@ struct IrqEvent {
     source: IrqEventSource,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum DeviceId {
     /// PCI Device, use its PciId directly.
     PciDeviceId(PciId),
@@ -232,7 +232,7 @@ pub trait IrqChip: Send {
 }
 
 /// A capability the `IrqChip` can possibly expose.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum IrqChipCap {
     /// APIC TSC-deadline timer mode.
     TscDeadlineTimer,
@@ -241,7 +241,7 @@ pub enum IrqChipCap {
 }
 
 /// A capability the `IrqChip` can possibly expose.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VcpuRunState {
     Runnable,
     Interrupted,

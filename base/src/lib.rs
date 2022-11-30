@@ -185,7 +185,7 @@ pub fn generate_uuid() -> String {
 
 use serde::Deserialize;
 use serde::Serialize;
-#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub enum VmEventType {
     Exit,
     Reset,

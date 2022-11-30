@@ -56,7 +56,7 @@ pub enum PciHeaderType {
 
 /// Classes of PCI nodes.
 #[allow(dead_code)]
-#[derive(Copy, Clone, Debug, enumn::N, Serialize, Deserialize, PartialEq)]
+#[derive(Copy, Clone, Debug, enumn::N, Serialize, Deserialize, PartialEq, Eq)]
 pub enum PciClassCode {
     TooOld,
     MassStorage,
@@ -252,14 +252,14 @@ pub struct PciConfiguration {
 }
 
 /// See pci_regs.h in kernel
-#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PciBarRegionType {
     Memory32BitRegion = 0,
     IoRegion = 0x01,
     Memory64BitRegion = 0x04,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PciBarPrefetchable {
     NotPrefetchable = 0,
     Prefetchable = 0x08,
@@ -267,7 +267,7 @@ pub enum PciBarPrefetchable {
 
 pub type PciBarIndex = usize;
 
-#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PciBarConfiguration {
     addr: u64,
     size: u64,
@@ -298,7 +298,7 @@ impl<'a> Iterator for PciBarIter<'a> {
 }
 
 #[sorted]
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, PartialEq, Eq)]
 pub enum Error {
     #[error("address {0} size {1} too big")]
     BarAddressInvalid(u64, u64),

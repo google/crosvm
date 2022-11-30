@@ -114,7 +114,7 @@ pub enum VcpuControl {
 }
 
 /// Mode of execution for the VM.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VmRunMode {
     /// The default run mode indicating the VCPUs are running.
     Running,
@@ -721,7 +721,7 @@ impl Display for BatControlResult {
     }
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum BatteryType {
     Goldfish,

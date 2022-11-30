@@ -47,7 +47,7 @@ fn deserialize_disk_id<'de, D: Deserializer<'de>>(
     Ok(Some(ret))
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, serde_keyvalue::FromKeyValues)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, serde_keyvalue::FromKeyValues)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct DiskOption {
     pub path: PathBuf,

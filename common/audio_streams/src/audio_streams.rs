@@ -64,7 +64,7 @@ use remain::sorted;
 use serde::Serialize;
 use thiserror::Error;
 
-#[derive(Copy, Clone, Debug, PartialEq, Serialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum SampleFormat {
     U8,
     S16LE,
@@ -118,14 +118,14 @@ pub enum SampleFormatError {
 }
 
 /// Valid directions of an audio stream.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum StreamDirection {
     Playback,
     Capture,
 }
 
 /// Valid effects for an audio stream.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum StreamEffect {
     NoEffect,
     EchoCancellation,

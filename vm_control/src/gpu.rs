@@ -42,7 +42,7 @@ impl Default for DisplayMode {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, FromKeyValues)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, FromKeyValues)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct DisplayParameters {
     #[serde(default)]

@@ -80,7 +80,7 @@ impl Error {
 }
 
 #[sorted]
-#[derive(ThisError, Debug, PartialEq)]
+#[derive(ThisError, Debug, PartialEq, Eq)]
 pub enum MacAddressError {
     /// Invalid number of octets.
     #[error("invalid number of octets: {0}")]
@@ -92,7 +92,7 @@ pub enum MacAddressError {
 
 /// An Ethernet mac address. This struct is compatible with the C `struct sockaddr`.
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct MacAddress {
     family: net_sys::sa_family_t,
     addr: [u8; 6usize],

@@ -116,7 +116,7 @@ pub enum VmImage {
     Bios(File),
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, FromKeyValues, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, FromKeyValues, PartialEq, Eq)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct Pstore {
     pub path: PathBuf,
@@ -124,7 +124,7 @@ pub struct Pstore {
 }
 
 /// Mapping of guest VCPU threads to host CPU cores.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum VcpuAffinity {
     /// All VCPU threads will be pinned to the same set of host CPU cores.
     Global(Vec<usize>),
@@ -1064,7 +1064,7 @@ where
 /// Read and write permissions setting
 ///
 /// Wrap read_allow and write_allow to store them in MsrHandlers level.
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum MsrRWType {
     #[serde(rename = "r")]
     ReadOnly,
@@ -1075,7 +1075,7 @@ pub enum MsrRWType {
 }
 
 /// Handler types for userspace-msr
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum MsrAction {
     /// Read and write from host directly, and the control of MSR will
     /// take effect on host.
@@ -1090,7 +1090,7 @@ pub enum MsrAction {
 /// Source CPU of MSR value
 ///
 /// Indicate which CPU that user get/set MSRs from/to.
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum MsrValueFrom {
     /// Read/write MSR value from/into CPU 0.
     /// The MSR source CPU always be CPU 0.
@@ -1103,7 +1103,7 @@ pub enum MsrValueFrom {
 }
 
 /// Whether to force KVM-filtered MSRs.
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub enum MsrFilter {
     /// Leave it to hypervisor (KVM) default.
     #[serde(rename = "no")]

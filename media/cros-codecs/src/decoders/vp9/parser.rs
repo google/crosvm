@@ -45,7 +45,7 @@ pub const MAX_TILE_WIDTH_B64: u32 = 64;
 /// The number of pictures in the DPB
 pub const NUM_REF_FRAMES: usize = 8;
 
-#[derive(Copy, Clone, Debug, PartialEq, N)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, N)]
 pub enum InterpolationFilter {
     EightTap = 0,
     EightTapSmooth = 1,
@@ -60,7 +60,7 @@ impl Default for InterpolationFilter {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, N)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, N)]
 pub enum ReferenceFrameType {
     Intra = 0,
     Last = 1,
@@ -68,7 +68,7 @@ pub enum ReferenceFrameType {
     AltRef = 3,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, N)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, N)]
 
 pub enum FrameType {
     KeyFrame = 0,
@@ -81,7 +81,7 @@ impl Default for FrameType {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, N)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, N)]
 pub enum Profile {
     Profile0 = 0,
     Profile1 = 1,
@@ -95,7 +95,7 @@ impl Default for Profile {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, N)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, N)]
 pub enum BitDepth {
     Depth8 = 8,
     Depth10 = 10,
@@ -108,7 +108,7 @@ impl Default for BitDepth {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, N)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, N)]
 pub enum ColorSpace {
     Unknown = 0,
     Bt601 = 1,
@@ -126,7 +126,7 @@ impl Default for ColorSpace {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, N)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, N)]
 pub enum ColorRange {
     StudioSwing = 0,
     FullSwing = 1,
@@ -138,7 +138,7 @@ impl Default for ColorRange {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LoopFilterParams {
     /// Indicates the loop filter strength.
     level: u8,
@@ -214,7 +214,7 @@ impl LoopFilterParams {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct QuantizationParams {
     /// Indicates the base frame qindex. This is used for Y AC coefficients and
     /// as the base value for the other quantizers.
@@ -249,7 +249,7 @@ impl QuantizationParams {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SegmentationParams {
     ///  If set, indicates that this frame makes use of the segmentation tool.
     ///  If unset, indicates that the frame does not use segmentation.
@@ -330,7 +330,7 @@ impl SegmentationParams {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct FrameSize {
     width: u32,
     height: u32,
@@ -375,7 +375,7 @@ impl<T: AsRef<[u8]>> AsRef<[u8]> for Frame<T> {
 }
 
 /// A VP9 frame header.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Header {
     /// A subset of syntax, semantics and algorithms defined in a part.
     profile: Profile,
@@ -653,7 +653,7 @@ pub struct SuperframeHeader {
     frame_sizes: Vec<usize>,
 }
 /// A VP9 bitstream parser.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Parser {
     bit_depth: BitDepth,
     subsampling_x: bool,

@@ -45,7 +45,7 @@ use crate::Suspendable;
 
 // Bitmask for areas of standard (non-ReadBack) Control Word Format. Constant
 // names are kept the same as Intel PIT data sheet.
-#[derive(Debug, Clone, Copy, PartialEq, enumn::N)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, enumn::N)]
 enum CommandBit {
     CommandBCD = 0x01,  // Binary/BCD input. x86 only uses binary mode.
     CommandMode = 0x0e, // Operating Mode (mode 0-5).
@@ -58,7 +58,7 @@ enum CommandBit {
 // command is a "Read-Back", which can latch count and/or status of the
 // counters selected in the lower bits. See Intel 8254 data sheet for details.
 #[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq, enumn::N)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, enumn::N)]
 enum CommandCounter {
     CommandCounter0 = 0x00, // Select counter 0.
     CommandCounter1 = 0x40, // Select counter 1.
@@ -67,7 +67,7 @@ enum CommandCounter {
 }
 
 // Used for both CommandRW and ReadBackAccess.
-#[derive(Debug, Clone, Copy, PartialEq, enumn::N)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, enumn::N)]
 enum CommandAccess {
     CommandLatch = 0x00,   // Latch specified counter.
     CommandRWLeast = 0x10, // Read/Write least significant byte.
@@ -79,7 +79,7 @@ enum CommandAccess {
 // For mode 2 & 3, bit 3 is don't care bit (does not matter to be 0 or 1) but
 // per 8254 spec, should be 0 to insure compatibility with future Intel
 // products.
-#[derive(Debug, Clone, Copy, PartialEq, enumn::N)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, enumn::N)]
 enum CommandMode {
     // NOTE:  No h/w modes are currently implemented.
     CommandInterrupt = 0x00,     // Mode 0, interrupt on terminal count.
@@ -91,7 +91,7 @@ enum CommandMode {
 }
 
 // Bitmask for the latch portion of the ReadBack command.
-#[derive(Debug, Clone, Copy, PartialEq, enumn::N)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, enumn::N)]
 #[rustfmt::skip]  // rustfmt mangles comment indentation for trailing line comments.
 enum CommandReadBackLatch {
     CommandRBLatchBits = 0x30,   // Mask bits that determine latching.
@@ -103,7 +103,7 @@ enum CommandReadBackLatch {
 }
 
 // Bitmask for the counter portion of the ReadBack command.
-#[derive(Debug, Clone, Copy, PartialEq, enumn::N)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, enumn::N)]
 enum CommandReadBackCounters {
     //CommandRBCounters = 0x0e, // Counters for which to provide ReadBack info.
     CommandRBCounter2 = 0x08,
@@ -112,7 +112,7 @@ enum CommandReadBackCounters {
 }
 
 // Bitmask for the ReadBack status command.
-#[derive(Debug, Clone, Copy, PartialEq, enumn::N)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, enumn::N)]
 #[rustfmt::skip]  // rustfmt mangles comment indentation for last line of this enum.
 enum ReadBackData {
     // Output format for ReadBack command.
@@ -122,7 +122,7 @@ enum ReadBackData {
 }
 
 // I/O Port mappings in I/O bus.
-#[derive(Debug, Clone, Copy, PartialEq, enumn::N)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, enumn::N)]
 enum PortIOSpace {
     PortCounter0Data = 0x40, // Read/write.
     PortCounter1Data = 0x41, // Read/write.
@@ -132,7 +132,7 @@ enum PortIOSpace {
 }
 
 #[bitfield]
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct SpeakerPortFields {
     // This field is documented in the chipset spec as NMI status and control
     // register.  Bits 2, 3, 6, 7 and low level hardware bits that need no

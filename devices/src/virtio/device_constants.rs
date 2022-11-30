@@ -180,7 +180,7 @@ pub mod video {
         Encoder,
     }
 
-    #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+    #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
     #[serde(rename_all = "kebab-case")]
     pub enum VideoBackendType {
         #[cfg(feature = "libvda")]

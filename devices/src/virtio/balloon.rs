@@ -701,7 +701,7 @@ pub struct Balloon {
 }
 
 /// Operation mode of the balloon.
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub enum BalloonMode {
     /// The driver can access pages in the balloon (i.e. F_DEFLATE_ON_OOM)
     Relaxed,

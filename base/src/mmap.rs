@@ -424,7 +424,7 @@ unsafe impl MappedRegion for MemoryMapping {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ExternalMapping {
     pub ptr: u64,
     pub size: usize,

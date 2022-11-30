@@ -1682,7 +1682,7 @@ impl WlState {
     }
 }
 
-#[derive(ThisError, Debug, PartialEq)]
+#[derive(ThisError, Debug, PartialEq, Eq)]
 #[error("no descriptors available in queue")]
 pub struct DescriptorsExhausted;
 

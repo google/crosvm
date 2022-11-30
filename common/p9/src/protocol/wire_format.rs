@@ -133,7 +133,7 @@ impl<T: WireFormat> WireFormat for Vec<T> {
 /// A type that encodes an arbitrary number of bytes of data.  Typically used for Rread
 /// Twrite messages.  This differs from a `Vec<u8>` in that it encodes the number of bytes
 /// using a `u32` instead of a `u16`.
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub struct Data(pub Vec<u8>);
 
 // The maximum length of a data buffer that we support.  In practice the server's max message

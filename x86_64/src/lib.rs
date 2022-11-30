@@ -317,7 +317,7 @@ pub const X86_64_SCI_IRQ: u32 = 5;
 pub const X86_64_IRQ_BASE: u32 = 9;
 const ACPI_HI_RSDP_WINDOW_BASE: u64 = 0x000E_0000;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum CpuManufacturer {
     Intel,
     Amd,

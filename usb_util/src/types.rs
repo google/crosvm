@@ -161,7 +161,7 @@ const ENDPOINT_DESCRIPTOR_NUMBER_MASK: u8 = 0xf;
 const ENDPOINT_DESCRIPTOR_ATTRIBUTES_TYPE_MASK: u8 = 0x3;
 
 /// Endpoint types.
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub enum EndpointType {
     Control,
     Isochronous,
@@ -170,7 +170,7 @@ pub enum EndpointType {
 }
 
 /// Endpoint Directions.
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub enum EndpointDirection {
     HostToDevice = 0,
     DeviceToHost = 1,
@@ -212,7 +212,7 @@ pub const DATA_PHASE_DIRECTION_OFFSET: u8 = 7;
 /// Bit mask of data phase transfer direction.
 pub const DATA_PHASE_DIRECTION: u8 = 1u8 << DATA_PHASE_DIRECTION_OFFSET;
 // Types of data phase transfer directions.
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum ControlRequestDataPhaseTransferDirection {
     HostToDevice = 0,
     DeviceToHost = 1,
@@ -223,7 +223,7 @@ pub const CONTROL_REQUEST_TYPE_OFFSET: u8 = 5;
 /// Bit mask of control request type.
 pub const CONTROL_REQUEST_TYPE: u8 = 0b11 << CONTROL_REQUEST_TYPE_OFFSET;
 /// Request types.
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub enum ControlRequestType {
     Standard = 0,
     Class = 1,
@@ -234,7 +234,7 @@ pub enum ControlRequestType {
 /// Recipient type bits.
 pub const REQUEST_RECIPIENT_TYPE: u8 = 0b1111;
 /// Recipient type of control request.
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub enum ControlRequestRecipient {
     Device = 0,
     Interface = 1,
@@ -244,7 +244,7 @@ pub enum ControlRequestRecipient {
 }
 
 /// Standard request defined in usb spec.
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub enum StandardControlRequest {
     GetStatus = 0x00,
     ClearFeature = 0x01,
