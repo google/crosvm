@@ -40,3 +40,4 @@ path = "examples/simple.rs"
 [[example]]
 name = "simple_open"
 path = "examples/simple_open.rs"
+required-features = ["x"]
