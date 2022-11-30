@@ -175,6 +175,7 @@ pub trait StreamSourceGenerator: Sync + Send {
 }
 
 /// `StreamSource` creates streams for playback or capture of audio.
+#[async_trait(?Send)]
 pub trait StreamSource: Send {
     /// Returns a stream control and buffer generator object. These are separate as the buffer
     /// generator might want to be passed to the audio stream.
@@ -199,6 +200,20 @@ pub trait StreamSource: Send {
         _ex: &dyn AudioStreamsExecutor,
     ) -> Result<(Box<dyn StreamControl>, Box<dyn AsyncPlaybackBufferStream>), BoxError> {
         Err(Box::new(Error::Unimplemented))
+    }
+
+    /// Returns a stream control and async buffer generator object asynchronously.
+    /// Default implementation calls and blocks on `new_async_playback_stream()`.
+    #[allow(clippy::type_complexity)]
+    async fn async_new_async_playback_stream(
+        &mut self,
+        num_channels: usize,
+        format: SampleFormat,
+        frame_rate: u32,
+        buffer_size: usize,
+        ex: &dyn AudioStreamsExecutor,
+    ) -> Result<(Box<dyn StreamControl>, Box<dyn AsyncPlaybackBufferStream>), BoxError> {
+        self.new_async_playback_stream(num_channels, format, frame_rate, buffer_size, ex)
     }
 
     /// Returns a stream control and buffer generator object. These are separate as the buffer
@@ -258,6 +273,27 @@ pub trait StreamSource: Send {
                 buffer_size,
             )),
         ))
+    }
+
+    /// Returns a stream control and async buffer generator object asynchronously.
+    /// Default implementation calls and blocks on `new_async_capture_stream()`.
+    #[allow(clippy::type_complexity)]
+    async fn async_new_async_capture_stream(
+        &mut self,
+        num_channels: usize,
+        format: SampleFormat,
+        frame_rate: u32,
+        buffer_size: usize,
+        effects: &[StreamEffect],
+        ex: &dyn AudioStreamsExecutor,
+    ) -> Result<
+        (
+            Box<dyn StreamControl>,
+            Box<dyn capture::AsyncCaptureBufferStream>,
+        ),
+        BoxError,
+    > {
+        self.new_async_capture_stream(num_channels, format, frame_rate, buffer_size, effects, ex)
     }
 
     /// Returns any open file descriptors needed by the implementor. The FD list helps users of the

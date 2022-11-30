@@ -21,6 +21,10 @@ use audio_streams::async_api::EventAsyncWrapper;
 use audio_streams::async_api::ReadAsync;
 use audio_streams::async_api::ReadWriteAsync;
 use audio_streams::async_api::WriteAsync;
+#[cfg(unix)]
+use base::Descriptor;
+#[cfg(unix)]
+use base::RawDescriptor;
 #[cfg(windows)]
 use base::{Event, FromRawDescriptor};
 
@@ -95,5 +99,13 @@ impl AudioStreamsExecutor for super::Executor {
 
     async fn delay(&self, dur: Duration) -> Result<()> {
         TimerAsync::sleep(self, dur).await.map_err(Into::into)
+    }
+
+    #[cfg(unix)]
+    async fn wait_fd_readable(&self, fd: RawDescriptor) -> Result<()> {
+        self.async_from(AsyncWrapper::new(Descriptor(fd)))?
+            .wait_readable()
+            .await
+            .map_err(Into::into)
     }
 }

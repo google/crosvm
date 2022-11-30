@@ -14,6 +14,8 @@
 
 use std::io::Result;
 #[cfg(unix)]
+use std::os::unix::io::RawFd as RawDescriptor;
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
 #[cfg(windows)]
 use std::os::windows::io::RawHandle;
@@ -76,6 +78,10 @@ pub trait AudioStreamsExecutor {
 
     /// Returns a future that resolves after the specified time.
     async fn delay(&self, dur: Duration) -> Result<()>;
+
+    // Returns a future that resolves after the provided descriptor is readable.
+    #[cfg(unix)]
+    async fn wait_fd_readable(&self, fd: RawDescriptor) -> Result<()>;
 }
 
 #[cfg(test)]
@@ -100,6 +106,11 @@ pub mod test {
         #[cfg(windows)]
         unsafe fn async_event(&self, _event: RawHandle) -> Result<Box<dyn EventAsyncWrapper>> {
             unimplemented!("async_event is not yet implemented on windows");
+        }
+
+        #[cfg(unix)]
+        async fn wait_fd_readable(&self, _fd: RawDescriptor) -> Result<()> {
+            panic!("Not Implemented");
         }
     }
 }
