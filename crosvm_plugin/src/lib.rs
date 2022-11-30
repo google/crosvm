@@ -1427,7 +1427,7 @@ pub unsafe extern "C" fn crosvm_new_connection(self_: *mut crosvm, out: *mut *mu
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_destroy_connection(self_: *mut *mut crosvm) -> c_int {
     let _u = record(Stat::DestroyConnection);
-    Box::from_raw(*self_);
+    drop(Box::from_raw(*self_));
     *self_ = null_mut();
     0
 }
