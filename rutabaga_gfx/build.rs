@@ -38,7 +38,7 @@ fn get_cross_compile_prefix() -> String {
     let arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
     let os = env::var("CARGO_CFG_TARGET_OS").unwrap();
     let env = env::var("CARGO_CFG_TARGET_ENV").unwrap();
-    return format!("{}-{}-{}-", arch, os, env);
+    format!("{}-{}-{}-", arch, os, env)
 }
 
 /// For cross-compilation with meson, we need to pick a cross-file, which

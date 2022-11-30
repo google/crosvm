@@ -143,11 +143,11 @@ impl<T: AsRef<[u8]>> NaluReader<T> {
     pub fn read_ue_max<U: TryFrom<u32>>(&mut self, max: u32) -> Result<U> {
         let ue = self.read_ue()?;
         if ue > max {
-            return Err(anyhow!(
+            Err(anyhow!(
                 "Value out of bounds: expected at most {}, got {}",
                 max,
                 ue
-            ));
+            ))
         } else {
             Ok(U::try_from(ue).map_err(|_| anyhow!("Conversion error"))?)
         }
