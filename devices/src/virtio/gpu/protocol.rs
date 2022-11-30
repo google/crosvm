@@ -805,7 +805,7 @@ pub enum GpuResponse {
         size: u32,
     },
     OkCapset(Vec<u8>),
-    OkEdid(EdidBytes),
+    OkEdid(Box<EdidBytes>),
     OkResourcePlaneInfo {
         format_modifier: u64,
         plane_info: Vec<GpuResponsePlaneInfo>,

@@ -55,7 +55,7 @@ impl EdidBytes {
 
         calculate_checksum(&mut edid);
 
-        Ok(OkEdid(Self { bytes: edid }))
+        Ok(OkEdid(Box::new(Self { bytes: edid })))
     }
 
     pub fn len(&self) -> usize {
