@@ -749,9 +749,24 @@ impl Server {
         Err(io::Error::from_raw_os_error(libc::EOPNOTSUPP))
     }
 
-    fn readlink(&mut self, _readlink: &Treadlink) -> io::Result<Rreadlink> {
-        // symlinks are not allowed
-        Err(io::Error::from_raw_os_error(libc::EACCES))
+    fn readlink(&mut self, readlink: &Treadlink) -> io::Result<Rreadlink> {
+        let fid = self.fids.get(&readlink.fid).ok_or_else(ebadf)?;
+
+        let mut link = vec![0; libc::PATH_MAX as usize];
+
+        // Safe because this will only modify `link` and we check the return value.
+        let len = syscall!(unsafe {
+            libc::readlinkat(
+                fid.path.as_raw_fd(),
+                [0].as_ptr(),
+                link.as_mut_ptr() as *mut libc::c_char,
+                link.len(),
+            )
+        })? as usize;
+        link.truncate(len);
+        let target = String::from_utf8(link)
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+        Ok(Rreadlink { target })
     }
 
     fn get_attr(&mut self, get_attr: &Tgetattr) -> io::Result<Rgetattr> {

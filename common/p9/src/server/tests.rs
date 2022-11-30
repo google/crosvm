@@ -15,6 +15,7 @@ use std::io::Cursor;
 use std::mem;
 use std::ops::Deref;
 use std::os::unix::ffi::OsStringExt;
+use std::os::unix::fs::symlink;
 use std::os::unix::fs::MetadataExt;
 use std::path::Component;
 use std::path::Path;
@@ -113,6 +114,10 @@ enum DirEntry<'a> {
         name: &'a str,
         entries: &'a [DirEntry<'a>],
     },
+    Symlink {
+        name: &'a str,
+        target: &'a str,
+    },
 }
 
 impl<'a> DirEntry<'a> {
@@ -135,6 +140,9 @@ impl<'a> DirEntry<'a> {
 
                 assert!(dir.to_mut().pop());
             }
+            DirEntry::Symlink { name, target } => {
+                symlink(target, dir.join(name)).expect("failed to create symlink");
+            }
         }
     }
 }
@@ -154,6 +162,12 @@ fn create_local_file<P: AsRef<Path>>(dir: P, name: &str) -> Vec<u8> {
     f.create(&mut Cow::from(dir.as_ref()));
 
     content
+}
+
+// Create a symlink named `name` that links to `target`.
+fn create_local_symlink<P: AsRef<Path>>(dir: P, name: &str, target: &str) {
+    let f = DirEntry::Symlink { name, target };
+    f.create(&mut Cow::from(dir.as_ref()));
 }
 
 fn check_qid(qid: &Qid, md: &fs::Metadata) {
@@ -1313,4 +1327,25 @@ fn lcreate_set_len() {
 
     let tclunk = Tclunk { fid };
     server.clunk(&tclunk).expect("Unable to clunk file");
+}
+
+#[test]
+fn readlink() {
+    let (test_dir, mut server) = setup("readlink");
+    create_local_symlink(&test_dir, "symlink", "target/of/symlink");
+
+    let fid = ROOT_FID + 1;
+    walk(
+        &mut server,
+        &*test_dir,
+        ROOT_FID,
+        fid,
+        vec!["symlink".into()],
+    );
+
+    let treadlink = Treadlink { fid };
+
+    let rreadlink = server.readlink(&treadlink).expect("failed to readlink");
+
+    assert_eq!(rreadlink.target, "target/of/symlink");
 }
