@@ -862,7 +862,7 @@ impl PciDevice for VirtioPciDevice {
                     self.device.as_mut(),
                 ),
                 ISR_CONFIG_BAR_OFFSET..=ISR_CONFIG_LAST => {
-                    if let Some(v) = data.get(0) {
+                    if let Some(v) = data.first() {
                         if let Some(interrupt) = &self.interrupt {
                             interrupt.clear_interrupt_status_bits(*v);
                         }

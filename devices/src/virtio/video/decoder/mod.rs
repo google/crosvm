@@ -561,7 +561,7 @@ impl<D: DecoderBackend> Decoder<D> {
             .map_err(|_| VideoError::InvalidArgument)?,
         };
 
-        let offset = plane_offsets.get(0).copied().unwrap_or(0);
+        let offset = plane_offsets.first().copied().unwrap_or(0);
         ctx.register_resource(queue_type, resource_id, resource, offset);
 
         if queue_type == QueueType::Input {

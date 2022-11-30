@@ -811,12 +811,12 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut KeyValueDeserializer<'de> {
                     if fields.contains(&s) {
                         None
                     } else {
-                        fields.get(0).copied()
+                        fields.first().copied()
                     }
                 }
             },
             // Not an identifier, probably means this is a value for the first field then.
-            Err(_) => fields.get(0).copied(),
+            Err(_) => fields.first().copied(),
         };
 
         let ret = visitor.visit_map(&mut *self)?;
