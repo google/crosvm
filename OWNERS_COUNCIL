@@ -1,0 +1,11 @@
+# Crosvm Council Members
+auradkar@google.com
+cblichmann@google.com
+denniskempin@google.com
+fmayle@google.com
+smoreland@google.com
+
+# Bots
+crosvm-bot@crosvm-packages.iam.gserviceaccount.com
+crosvm-luci-ci-builder@crosvm-infra.iam.gserviceaccount.com
+recipe-mega-autoroller@chops-service-accounts.iam.gserviceaccount.com

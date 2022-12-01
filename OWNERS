@@ -17,3 +17,7 @@ rizhang@google.com
 crosvm-bot@crosvm-packages.iam.gserviceaccount.com
 recipe-mega-autoroller@chops-service-accounts.iam.gserviceaccount.com
 crosvm-luci-ci-builder@crosvm-infra.iam.gserviceaccount.com
+
+# Changes to Cargo.lock will require additional reviews by the crosvm council.
+per-file Cargo.lock = set noparent
+per-file Cargo.lock = file:OWNERS_COUNCIL
