@@ -1047,6 +1047,8 @@ mod serde_serial_params {
 #[derive(Serialize, Deserialize)]
 #[remain::sorted]
 pub struct Config {
+    #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
+    pub ac_adapter: bool,
     #[cfg(feature = "audio")]
     pub ac97_parameters: Vec<Ac97Parameters>,
     pub acpi_tables: Vec<PathBuf>,
@@ -1259,6 +1261,8 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Config {
         Config {
+            #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
+            ac_adapter: false,
             #[cfg(feature = "audio")]
             ac97_parameters: Vec::new(),
             acpi_tables: Vec::new(),

@@ -764,6 +764,15 @@ fn overwrite<T>(left: &mut T, right: T) {
 #[argh(subcommand, name = "run", description = "Start a new crosvm instance")]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct RunCommand {
+    #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
+    #[argh(switch)]
+    #[serde(default)]
+    #[merge(strategy = overwrite_false)]
+    /// enable AC adapter device
+    /// It purpose is to emulate ACPI ACPI0003 device, replicate and propagate the
+    /// ac adapter status from the host to the guest.
+    pub ac_adapter: bool,
+
     #[cfg(feature = "audio")]
     #[argh(
         option,
@@ -2738,6 +2747,10 @@ impl TryFrom<RunCommand> for super::config::Config {
         }
 
         cfg.battery_config = cmd.battery;
+        #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
+        {
+            cfg.ac_adapter = cmd.ac_adapter;
+        }
 
         #[cfg(feature = "gdb")]
         {

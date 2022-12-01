@@ -217,6 +217,8 @@ where
         &mut resume_notify_devices,
         #[cfg(feature = "swap")]
         None,
+        #[cfg(unix)]
+        false,
     )
     .unwrap();
 

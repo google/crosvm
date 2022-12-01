@@ -305,6 +305,8 @@ pub enum VcpuAffinity {
 /// create a `RunnableLinuxVm`.
 #[sorted]
 pub struct VmComponents {
+    #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
+    pub ac_adapter: bool,
     pub acpi_sdts: Vec<SDT>,
     pub android_fstab: Option<File>,
     pub cpu_capacity: BTreeMap<usize, u32>,

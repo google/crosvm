@@ -6,6 +6,7 @@
 
 //! Emulates virtual and hardware devices.
 
+pub mod ac_adapter;
 pub mod acpi;
 pub mod bat;
 mod bus;
@@ -153,6 +154,7 @@ cfg_if::cfg_if! {
             VfioPciDevice,
         };
         pub use self::platform::VfioPlatformDevice;
+        pub use self::ac_adapter::AcAdapter;
         pub use self::proxy::Error as ProxyError;
         pub use self::proxy::ProxyDevice;
         #[cfg(feature = "usb")]

@@ -33,6 +33,7 @@ use vm_control::GpeNotify;
 use vm_control::PmResource;
 use vm_control::PmeNotify;
 
+use crate::ac_adapter::AcAdapter;
 use crate::pci::CrosvmDeviceId;
 use crate::BusAccessInfo;
 use crate::BusDevice;
@@ -133,6 +134,8 @@ pub struct ACPIPMResource {
     gpe0: Arc<Mutex<GpeResource>>,
     #[serde(serialize_with = "serialize_arc_mutex")]
     pci: Arc<Mutex<PciResource>>,
+    #[serde(skip_serializing)]
+    acdc: Option<Arc<Mutex<AcAdapter>>>,
 }
 
 #[derive(Deserialize)]
@@ -158,6 +161,7 @@ impl ACPIPMResource {
         )>,
         suspend_evt: Event,
         exit_evt_wrtube: SendTube,
+        acdc: Option<Arc<Mutex<AcAdapter>>>,
     ) -> ACPIPMResource {
         let pm1 = Pm1Resource {
             status: 0,
@@ -201,6 +205,7 @@ impl ACPIPMResource {
             pm1: Arc::new(Mutex::new(pm1)),
             gpe0: Arc::new(Mutex::new(gpe0)),
             pci: Arc::new(Mutex::new(pci)),
+            acdc,
         }
     }
 
@@ -217,6 +222,7 @@ impl ACPIPMResource {
         let sci_evt = self.sci_evt.try_clone().expect("failed to clone event");
         let pm1 = self.pm1.clone();
         let gpe0 = self.gpe0.clone();
+        let acdc = self.acdc.clone();
 
         #[cfg(feature = "direct")]
         let sci_direct_evt = self.sci_direct_evt.take();
@@ -243,6 +249,7 @@ impl ACPIPMResource {
                     acpi_event_ignored_gpe,
                     #[cfg(feature = "direct")]
                     sci_direct_evt,
+                    acdc,
                 ) {
                     error!("{}", e);
                 }
@@ -300,6 +307,7 @@ fn run_worker(
     gpe0: Arc<Mutex<GpeResource>>,
     acpi_event_ignored_gpe: Vec<u32>,
     #[cfg(feature = "direct")] sci_direct_evt: Option<IrqLevelEvent>,
+    arced_ac_adapter: Option<Arc<Mutex<AcAdapter>>>,
 ) -> Result<(), ACPIPMError> {
     let acpi_event_sock = crate::sys::get_acpi_event_sock()?;
     #[derive(EventToken)]
@@ -337,7 +345,13 @@ fn run_worker(
         for event in events.iter().filter(|e| e.is_readable) {
             match event.token {
                 Token::AcpiEvent => {
-                    crate::sys::acpi_event_run(&acpi_event_sock, &gpe0, &acpi_event_ignored_gpe);
+                    crate::sys::acpi_event_run(
+                        &sci_evt,
+                        &acpi_event_sock,
+                        &gpe0,
+                        &acpi_event_ignored_gpe,
+                        &arced_ac_adapter,
+                    );
                 }
                 Token::InterruptResample => {
                     sci_evt.clear_resample();
@@ -401,7 +415,7 @@ impl Pm1Resource {
 }
 
 impl GpeResource {
-    fn trigger_sci(&self, sci_evt: &IrqLevelEvent) {
+    pub fn trigger_sci(&self, sci_evt: &IrqLevelEvent) {
         if (0..self.status.len()).any(|i| self.status[i] & self.enable[i] != 0) {
             if let Err(e) = sci_evt.trigger() {
                 error!("ACPIPM: failed to trigger sci event for gpe: {}", e);
@@ -1106,6 +1120,7 @@ mod tests {
             None,
             Event::new().unwrap(),
             get_evt_tube(),
+            None,
         ),
         modify_device
     );

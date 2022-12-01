@@ -151,6 +151,8 @@ use crate::msr_index::*;
 #[sorted]
 #[derive(Error, Debug)]
 pub enum Error {
+    #[error("error allocating a single gpe")]
+    AllocateGpe,
     #[error("error allocating IO resource: {0}")]
     AllocateIOResouce(resources::Error),
     #[error("error allocating a single irq")]
@@ -874,6 +876,8 @@ impl arch::LinuxArch for X8664arch {
             &mut resume_notify_devices,
             #[cfg(feature = "swap")]
             swap_controller,
+            #[cfg(unix)]
+            components.ac_adapter,
         )?;
 
         // Create customized SSDT table
@@ -1767,6 +1771,7 @@ impl X8664arch {
         max_bus: u8,
         resume_notify_devices: &mut Vec<Arc<Mutex<dyn BusResumeDevice>>>,
         #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
+        #[cfg(unix)] ac_adapter: bool,
     ) -> Result<(acpi::AcpiDevResource, Option<BatControl>)> {
         // The AML data for the acpi devices
         let mut amls = Vec::new();
@@ -1846,12 +1851,45 @@ impl X8664arch {
 
         let pm_sci_evt = devices::IrqLevelEvent::new().map_err(Error::CreateEvent)?;
 
+        #[cfg(unix)]
+        let acdc = if ac_adapter {
+            // Allocate GPE for AC adapter notfication
+            let gpe = resources.allocate_gpe().ok_or(Error::AllocateGpe)?;
+
+            let alloc = resources.get_anon_alloc();
+            let mmio_base = resources
+                .allocate_mmio(
+                    devices::ac_adapter::ACDC_VIRT_MMIO_SIZE,
+                    alloc,
+                    "AcAdapter".to_string(),
+                    resources::AllocOptions::new().align(devices::ac_adapter::ACDC_VIRT_MMIO_SIZE),
+                )
+                .unwrap();
+            let ac_adapter_dev = devices::ac_adapter::AcAdapter::new(mmio_base, gpe);
+            let ac_dev = Arc::new(Mutex::new(ac_adapter_dev));
+            mmio_bus
+                .insert(
+                    ac_dev.clone(),
+                    mmio_base,
+                    devices::ac_adapter::ACDC_VIRT_MMIO_SIZE,
+                )
+                .unwrap();
+
+            ac_dev.lock().to_aml_bytes(&mut amls);
+            Some(ac_dev)
+        } else {
+            None
+        };
+        #[cfg(windows)]
+        let acdc = None;
+
         let mut pmresource = devices::ACPIPMResource::new(
             pm_sci_evt.try_clone().map_err(Error::CloneEvent)?,
             #[cfg(feature = "direct")]
             direct_evt_info,
             suspend_evt,
             vm_evt_wrtube,
+            acdc,
         );
         pmresource.to_aml_bytes(&mut amls);
         irq_chip

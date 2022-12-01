@@ -1154,6 +1154,8 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
     };
 
     Ok(VmComponents {
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        ac_adapter: cfg.ac_adapter,
         memory_size: cfg
             .memory
             .unwrap_or(256)
