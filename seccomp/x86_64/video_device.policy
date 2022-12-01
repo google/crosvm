@@ -23,6 +23,7 @@ getpid: 1
 gettid: 1
 gettimeofday: 1
 io_uring_setup: 1
+io_uring_register: 1
 io_uring_enter: 1
 kill: 1
 lseek: 1

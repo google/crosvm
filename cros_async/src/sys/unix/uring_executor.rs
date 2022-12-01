@@ -78,7 +78,9 @@ use base::AsRawDescriptor;
 use base::EventType;
 use base::RawDescriptor;
 use futures::task::noop_waker;
+use io_uring::URingAllowlist;
 use io_uring::URingContext;
+use io_uring::URingOperation;
 use once_cell::sync::Lazy;
 use pin_utils::pin_mut;
 use remain::sorted;
@@ -103,6 +105,9 @@ pub enum Error {
     /// Failed to copy the FD for the polling context.
     #[error("Failed to copy the FD for the polling context: {0}")]
     DuplicatingFd(base::Error),
+    /// Enabling a context faild.
+    #[error("Error enabling the URing context: {0}")]
+    EnablingContext(io_uring::Error),
     /// The Executor is gone.
     #[error("The URingExecutor is gone")]
     ExecutorGone,
@@ -115,6 +120,9 @@ pub enum Error {
     /// Error doing the IO.
     #[error("Error during IO: {0}")]
     Io(io::Error),
+    /// Registering operation restrictions to a uring failed.
+    #[error("Error registering restrictions to the URing context: {0}")]
+    RegisteringURingRestriction(io_uring::Error),
     /// Failed to remove the waker remove the polling context.
     #[error("Error removing from the URing context: {0}")]
     RemovingWaker(io_uring::Error),
@@ -144,6 +152,8 @@ impl From<Error> for io::Error {
             SubmittingOp(e) => e.into(),
             URingContextError(e) => e.into(),
             URingEnter(e) => e.into(),
+            EnablingContext(e) => e.into(),
+            RegisteringURingRestriction(e) => e.into(),
         }
     }
 }
@@ -172,7 +182,7 @@ static IS_URING_STABLE: Lazy<bool> = Lazy::new(|| {
     match (components.next(), components.next()) {
         (Some(Ok(major)), Some(Ok(minor))) if (major, minor) >= (5, 10) => {
             // The kernel version is new enough so check if we can actually make a uring context.
-            URingContext::new(8).is_ok()
+            URingContext::new(8, None).is_ok()
         }
         _ => false,
     }
@@ -189,7 +199,7 @@ pub(crate) fn is_uring_stable() -> bool {
 // If uring creation succeeds, it returns `Ok(())`. It returns an `URingContextError` otherwise.
 // It fails if the kernel does not support io_uring, but note that the cause is not limited to it.
 pub(crate) fn check_uring_availability() -> Result<()> {
-    URingContext::new(8)
+    URingContext::new(8, None)
         .map(drop)
         .map_err(Error::URingContextError)
 }
@@ -323,8 +333,27 @@ struct RawExecutor {
 
 impl RawExecutor {
     fn new() -> Result<RawExecutor> {
+        // Allow operations only that the RawExecutor really submits to enhance the security.
+        let mut restrictions = URingAllowlist::new();
+        let ops = [
+            URingOperation::Writev,
+            URingOperation::Readv,
+            URingOperation::Nop,
+            URingOperation::Fsync,
+            URingOperation::Fallocate,
+            URingOperation::PollAdd,
+            URingOperation::PollRemove,
+            URingOperation::AsyncCancel,
+        ];
+        for op in ops {
+            restrictions.allow_submit_operation(op);
+        }
+
+        let ctx =
+            URingContext::new(NUM_ENTRIES, Some(&restrictions)).map_err(Error::CreatingContext)?;
+
         Ok(RawExecutor {
-            ctx: URingContext::new(NUM_ENTRIES).map_err(Error::CreatingContext)?,
+            ctx,
             queue: RunnableQueue::new(),
             ring: Mutex::new(Ring {
                 ops: Slab::with_capacity(NUM_ENTRIES),

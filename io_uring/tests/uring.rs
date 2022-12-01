@@ -26,6 +26,8 @@ use std::time::Duration;
 use base::pipe;
 use base::EventType;
 use base::WaitContext;
+use io_uring::URingAllowlist;
+use libc::EACCES;
 use sync::Condvar;
 use sync::Mutex;
 use tempfile::tempfile;
@@ -93,7 +95,7 @@ fn read_parallel() {
     const QUEUE_SIZE: usize = 10;
     const BUF_SIZE: usize = 0x1000;
 
-    let uring = URingContext::new(QUEUE_SIZE).unwrap();
+    let uring = URingContext::new(QUEUE_SIZE, None).unwrap();
     let mut buf = [0u8; BUF_SIZE * QUEUE_SIZE];
     let f = create_test_file((BUF_SIZE * QUEUE_SIZE) as u64);
 
@@ -124,7 +126,7 @@ fn read_parallel() {
 fn read_readv() {
     let queue_size = 128;
 
-    let uring = URingContext::new(queue_size).unwrap();
+    let uring = URingContext::new(queue_size, None).unwrap();
     let mut buf = [0u8; 0x1000];
     let f = create_test_file(0x1000 * 2);
 
@@ -142,7 +144,7 @@ fn readv_vec() {
     let queue_size = 128;
     const BUF_SIZE: usize = 0x2000;
 
-    let uring = URingContext::new(queue_size).unwrap();
+    let uring = URingContext::new(queue_size, None).unwrap();
     let mut buf = [0u8; BUF_SIZE];
     let mut buf2 = [0u8; BUF_SIZE];
     let mut buf3 = [0u8; BUF_SIZE];
@@ -172,7 +174,7 @@ fn readv_vec() {
 
 #[test]
 fn write_one_block() {
-    let uring = URingContext::new(16).unwrap();
+    let uring = URingContext::new(16, None).unwrap();
     let mut buf = [0u8; 4096];
     let mut f = create_test_file(0);
     f.write_all(&buf).unwrap();
@@ -191,7 +193,7 @@ fn write_one_block() {
 
 #[test]
 fn write_one_submit_poll() {
-    let uring = URingContext::new(16).unwrap();
+    let uring = URingContext::new(16, None).unwrap();
     let mut buf = [0u8; 4096];
     let mut f = create_test_file(0);
     f.write_all(&buf).unwrap();
@@ -227,7 +229,7 @@ fn writev_vec() {
     const BUF_SIZE: usize = 0x2000;
     const OFFSET: u64 = 0x2000;
 
-    let uring = URingContext::new(queue_size).unwrap();
+    let uring = URingContext::new(queue_size, None).unwrap();
     let buf = [0xaau8; BUF_SIZE];
     let buf2 = [0xffu8; BUF_SIZE];
     let buf3 = [0x55u8; BUF_SIZE];
@@ -286,7 +288,7 @@ fn fallocate_fsync() {
         .open(&file_path)
         .unwrap();
 
-    let uring = URingContext::new(16).unwrap();
+    let uring = URingContext::new(16, None).unwrap();
     uring
         .add_fallocate(f.as_raw_fd(), 0, set_size as u64, 0, 66)
         .unwrap();
@@ -358,7 +360,7 @@ fn fallocate_fsync() {
 #[test]
 fn dev_zero_readable() {
     let f = File::open(Path::new("/dev/zero")).unwrap();
-    let uring = URingContext::new(16).unwrap();
+    let uring = URingContext::new(16, None).unwrap();
     uring
         .add_poll_fd(f.as_raw_fd(), EventType::Read, 454)
         .unwrap();
@@ -371,7 +373,7 @@ fn dev_zero_readable() {
 fn queue_many_ebusy_retry() {
     let num_entries = 16;
     let f = File::open(Path::new("/dev/zero")).unwrap();
-    let uring = URingContext::new(num_entries).unwrap();
+    let uring = URingContext::new(num_entries, None).unwrap();
     // Fill the sumbit ring.
     for sqe_batch in 0..3 {
         for i in 0..num_entries {
@@ -412,7 +414,7 @@ fn wake_with_nop() {
     const NOP: UserData = 1;
     const BUF_DATA: [u8; 16] = [0xf4; 16];
 
-    let uring = URingContext::new(4).map(Arc::new).unwrap();
+    let uring = URingContext::new(4, None).map(Arc::new).unwrap();
     let (pipe_out, mut pipe_in) = pipe(true).unwrap();
     let (tx, rx) = channel();
 
@@ -468,7 +470,7 @@ fn wake_with_nop() {
 #[test]
 fn complete_from_any_thread() {
     let num_entries = 16;
-    let uring = URingContext::new(num_entries).map(Arc::new).unwrap();
+    let uring = URingContext::new(num_entries, None).map(Arc::new).unwrap();
 
     // Fill the sumbit ring.
     for sqe_batch in 0..3 {
@@ -533,7 +535,7 @@ fn submit_from_any_thread() {
         }
     }
 
-    let uring = URingContext::new(NUM_ENTRIES).map(Arc::new).unwrap();
+    let uring = URingContext::new(NUM_ENTRIES, None).map(Arc::new).unwrap();
     let in_flight = Arc::new(Mutex::new(0));
     let cv = Arc::new(Condvar::new());
 
@@ -618,7 +620,7 @@ fn multi_thread_submit_and_complete() {
         }
     }
 
-    let uring = URingContext::new(NUM_ENTRIES).map(Arc::new).unwrap();
+    let uring = URingContext::new(NUM_ENTRIES, None).map(Arc::new).unwrap();
     let in_flight = Arc::new(Mutex::new(0));
     let cv = Arc::new(Condvar::new());
 
@@ -709,5 +711,60 @@ fn multi_thread_submit_and_complete() {
     assert_eq!(
         uring.stats.total_ops.load(Ordering::Relaxed),
         (NUM_SUBMITTERS * ITERATIONS + NUM_COMPLETERS) as u64
+    );
+}
+
+#[test]
+fn restrict_ops() {
+    const TEST_DATA: &[u8; 4] = b"foo!";
+
+    let queue_size = 128;
+
+    // Allow only Readv operation
+    let mut restriction = URingAllowlist::new();
+    restriction.allow_submit_operation(io_uring::URingOperation::Readv);
+
+    let uring = URingContext::new(queue_size, Some(&restriction)).unwrap();
+
+    let mut buf = [0u8; 4];
+    let mut f = create_test_file(4);
+    f.write_all(TEST_DATA).unwrap();
+
+    // add_read, which submits Readv, should succeed
+
+    unsafe {
+        uring
+            .add_read(buf.as_mut_ptr(), buf.len(), f.as_raw_fd(), Some(0), 0)
+            .unwrap();
+    }
+    let result = uring.wait().unwrap().next().unwrap();
+    assert!(result.1.is_ok(), "uring read should succeed");
+    assert_eq!(&buf, TEST_DATA, "file should be read to buf");
+    drop(f);
+
+    // add_write should be rejected.
+
+    let mut buf: [u8; 4] = TEST_DATA.to_owned(); // fake data, which should not be written
+    let mut f = create_test_file(4);
+
+    unsafe {
+        uring
+            .add_write(buf.as_mut_ptr(), buf.len(), f.as_raw_fd(), Some(0), 0)
+            .unwrap();
+    }
+    let result = uring.wait().unwrap().next().unwrap();
+    assert!(result.1.is_err(), "uring write should fail");
+    assert_eq!(
+        result.1.unwrap_err().raw_os_error(),
+        Some(EACCES),
+        "the error should be permission denied"
+    );
+    let mut result_f = vec![];
+    f.seek(SeekFrom::Start(0)).unwrap(); // rewind to read from the beginning
+    f.read_to_end(&mut result_f).unwrap();
+    assert_eq!(
+        result_f.as_slice(),
+        &[0, 0, 0, 0],
+        "file should not be written and should stay empty"
     );
 }

@@ -13,6 +13,7 @@ use std::os::unix::io::AsRawFd;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::io::RawFd;
 use std::pin::Pin;
+use std::ptr::null;
 use std::sync::atomic::AtomicPtr;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::AtomicU64;
@@ -27,6 +28,7 @@ use base::MemoryMappingBuilder;
 use base::Protection;
 use base::RawDescriptor;
 use data_model::IoBufMut;
+use libc::c_void;
 use remain::sorted;
 use sync::Mutex;
 use thiserror::Error as ThisError;
@@ -56,6 +58,9 @@ pub enum Error {
     /// The call to `io_uring_enter` failed with the given errno.
     #[error("Failed to enter io uring: {0}")]
     RingEnter(libc::c_int),
+    /// The call to `io_uring_register` failed with the given errno.
+    #[error("Failed to register operations for io uring: {0}")]
+    RingRegister(libc::c_int),
     /// The call to `io_uring_setup` failed with the given errno.
     #[error("Failed to setup io uring {0}")]
     Setup(libc::c_int),
@@ -216,6 +221,74 @@ impl SubmitQueue {
     }
 }
 
+/// Enum to represent all io_uring operations
+#[repr(u32)]
+pub enum URingOperation {
+    Nop = IORING_OP_NOP,
+    Readv = IORING_OP_READV,
+    Writev = IORING_OP_WRITEV,
+    Fsync = IORING_OP_FSYNC,
+    ReadFixed = IORING_OP_READ_FIXED,
+    WriteFixed = IORING_OP_WRITE_FIXED,
+    PollAdd = IORING_OP_POLL_ADD,
+    PollRemove = IORING_OP_POLL_REMOVE,
+    SyncFileRange = IORING_OP_SYNC_FILE_RANGE,
+    Sendmsg = IORING_OP_SENDMSG,
+    Recvmsg = IORING_OP_RECVMSG,
+    Timeout = IORING_OP_TIMEOUT,
+    TimeoutRemove = IORING_OP_TIMEOUT_REMOVE,
+    Accept = IORING_OP_ACCEPT,
+    AsyncCancel = IORING_OP_ASYNC_CANCEL,
+    LinkTimeout = IORING_OP_LINK_TIMEOUT,
+    Connect = IORING_OP_CONNECT,
+    Fallocate = IORING_OP_FALLOCATE,
+    Openat = IORING_OP_OPENAT,
+    Close = IORING_OP_CLOSE,
+    FilesUpdate = IORING_OP_FILES_UPDATE,
+    Statx = IORING_OP_STATX,
+    Read = IORING_OP_READ,
+    Write = IORING_OP_WRITE,
+    Fadvise = IORING_OP_FADVISE,
+    Madvise = IORING_OP_MADVISE,
+    Send = IORING_OP_SEND,
+    Recv = IORING_OP_RECV,
+    Openat2 = IORING_OP_OPENAT2,
+    EpollCtl = IORING_OP_EPOLL_CTL,
+    Splice = IORING_OP_SPLICE,
+    ProvideBuffers = IORING_OP_PROVIDE_BUFFERS,
+    RemoveBuffers = IORING_OP_REMOVE_BUFFERS,
+    Tee = IORING_OP_TEE,
+    Shutdown = IORING_OP_SHUTDOWN,
+    Renameat = IORING_OP_RENAMEAT,
+    Unlinkat = IORING_OP_UNLINKAT,
+    Mkdirat = IORING_OP_MKDIRAT,
+    Symlinkat = IORING_OP_SYMLINKAT,
+    Linkat = IORING_OP_LINKAT,
+}
+
+/// Represents an allowlist of the restrictions to be registered to a uring.
+#[derive(Default)]
+pub struct URingAllowlist(Vec<io_uring_restriction>);
+
+impl URingAllowlist {
+    /// Create a new `UringAllowList` which allows no operation.
+    pub fn new() -> Self {
+        URingAllowlist::default()
+    }
+
+    /// Allow `operation` to be submitted to the submit queue of the io_uring.
+    pub fn allow_submit_operation(&mut self, operation: URingOperation) -> &mut Self {
+        self.0.push(io_uring_restriction {
+            opcode: IORING_RESTRICTION_SQE_OP as u16,
+            __bindgen_anon_1: io_uring_restriction__bindgen_ty_1 {
+                sqe_op: operation as u8,
+            },
+            ..Default::default()
+        });
+        self
+    }
+}
+
 /// Unsafe wrapper for the kernel's io_uring interface. Allows for queueing multiple I/O operations
 /// to the kernel and asynchronously handling the completion of these operations.
 /// Use the various `add_*` functions to configure operations, then call `wait` to start
@@ -231,7 +304,7 @@ impl SubmitQueue {
 /// # use base::EventType;
 /// # use io_uring::URingContext;
 /// let f = File::open(Path::new("/dev/zero")).unwrap();
-/// let uring = URingContext::new(16).unwrap();
+/// let uring = URingContext::new(16, None).unwrap();
 /// uring
 ///   .add_poll_fd(f.as_raw_fd(), EventType::Read, 454)
 /// .unwrap();
@@ -250,9 +323,15 @@ pub struct URingContext {
 
 impl URingContext {
     /// Creates a `URingContext` where the underlying uring has a space for `num_entries`
-    /// simultaneous operations.
-    pub fn new(num_entries: usize) -> Result<URingContext> {
-        let ring_params = io_uring_params::default();
+    /// simultaneous operations. If `allowlist` is given, all operations other
+    /// than those explicitly permitted by `allowlist` are prohibited.
+    pub fn new(num_entries: usize, allowlist: Option<&URingAllowlist>) -> Result<URingContext> {
+        let mut ring_params = io_uring_params::default();
+        if allowlist.is_some() {
+            // To register restrictions, a uring must start in a disabled state.
+            ring_params.flags |= IORING_SETUP_R_DISABLED;
+        }
+
         // The below unsafe block isolates the creation of the URingContext. Each step on it's own
         // is unsafe. Using the uring FD for the mapping and the offsets returned by the kernel for
         // base addresses maintains safety guarantees assuming the kernel API guarantees are
@@ -262,6 +341,24 @@ impl URingContext {
             // an FD that it takes complete ownership of.
             let fd = io_uring_setup(num_entries, &ring_params).map_err(Error::Setup)?;
             let ring_file = File::from_raw_fd(fd);
+
+            // Register the restrictions if it's given
+            if let Some(restrictions) = allowlist {
+                // safe because IORING_REGISTER_RESTRICTIONS does not modify the memory and `restrictions`
+                // contains a valid pointer and length.
+                io_uring_register(
+                    fd,
+                    IORING_REGISTER_RESTRICTIONS,
+                    restrictions.0.as_ptr() as *const c_void,
+                    restrictions.0.len() as u32,
+                )
+                .map_err(Error::RingRegister)?;
+
+                // enables the URingContext since it was started in a disabled state.
+                // safe because IORING_REGISTER_RESTRICTIONS does not modify the memory
+                io_uring_register(fd, IORING_REGISTER_ENABLE_RINGS, null::<c_void>(), 0)
+                    .map_err(Error::RingRegister)?;
+            }
 
             // Mmap the submit and completion queues.
             // Safe because we trust the kernel to set valid sizes in `io_uring_setup` and any error
