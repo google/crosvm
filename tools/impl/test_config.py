@@ -98,7 +98,6 @@ CRATE_OPTIONS: Dict[str, List[TestOption]] = {
     "kvm": [
         TestOption.DO_NOT_RUN_AARCH64,
     ],  # b/181674144
-    "libvda": [TestOption.DO_NOT_RUN],  # b/202293971
     "sandbox": [TestOption.DO_NOT_RUN],
     "net_util": [TestOption.REQUIRES_ROOT],
 }
