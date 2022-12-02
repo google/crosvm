@@ -45,6 +45,7 @@ use devices::virtio::vhost::vsock::VhostVsockConfig;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonMode;
 use devices::virtio::VirtioDevice;
+use devices::virtio::VirtioDeviceType;
 use devices::BusDeviceObj;
 use devices::IommuDevType;
 use devices::PciAddress;
@@ -129,31 +130,6 @@ impl IntoUnixStream for UnixStream {
 
 pub type DeviceResult<T = VirtioDeviceStub> = Result<T>;
 
-/// Type of virtio device.
-///
-/// The virtio protocol can be backed by several means, which affects a few things about the device
-/// - for instance, the seccomp policy we need to use when jailing the device.
-pub enum VirtioDeviceType {
-    /// A regular (in-VMM) virtio device.
-    Regular,
-    /// Socket-backed vhost-user device.
-    VhostUser,
-    /// VFIO-backed vhost-user device, aka virtio-vhost-user.
-    Vvu,
-}
-
-impl VirtioDeviceType {
-    /// Returns the seccomp policy file that we will want to load depending on the jail type,
-    /// constructed from `base`.
-    fn seccomp_policy_file(&self, base: &str) -> String {
-        match self {
-            VirtioDeviceType::Regular => format!("{base}_device"),
-            VirtioDeviceType::VhostUser => format!("{base}_device_vhost_user"),
-            VirtioDeviceType::Vvu => format!("{base}_device_vvu"),
-        }
-    }
-}
-
 /// A trait for spawning virtio device instances and jails from their configuration structure.
 ///
 /// Implementors become able to create virtio devices and jails following their own configuration.
@@ -187,9 +163,12 @@ pub trait VirtioDeviceBuilder {
     fn create_jail(
         &self,
         jail_config: &Option<JailConfig>,
-        jail_type: VirtioDeviceType,
+        virtio_transport: VirtioDeviceType,
     ) -> anyhow::Result<Option<Minijail>> {
-        simple_jail(jail_config, &jail_type.seccomp_policy_file(Self::NAME))
+        simple_jail(
+            jail_config,
+            &virtio_transport.seccomp_policy_file(Self::NAME),
+        )
     }
 
     /// Helper method to return a `VirtioDeviceStub` filled using `create_virtio_device` and
@@ -1391,9 +1370,10 @@ impl VirtioDeviceBuilder for SerialParameters {
     fn create_jail(
         &self,
         jail_config: &Option<JailConfig>,
-        jail_type: VirtioDeviceType,
+        virtio_transport: VirtioDeviceType,
     ) -> anyhow::Result<Option<Minijail>> {
-        let jail = match simple_jail(jail_config, &jail_type.seccomp_policy_file("serial"))? {
+        let jail = match simple_jail(jail_config, &virtio_transport.seccomp_policy_file("serial"))?
+        {
             Some(mut jail) => {
                 // Create a tmpfs in the device's root directory so that we can bind mount the
                 // log socket directory into it.

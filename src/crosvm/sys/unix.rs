@@ -75,6 +75,7 @@ use devices::virtio::BalloonMode;
 #[cfg(feature = "gpu")]
 use devices::virtio::EventDevice;
 use devices::virtio::NetParametersMode;
+use devices::virtio::VirtioDeviceType;
 use devices::virtio::VirtioTransportType;
 #[cfg(feature = "audio")]
 use devices::Ac97Dev;

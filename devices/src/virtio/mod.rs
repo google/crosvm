@@ -197,3 +197,28 @@ pub fn base_features(protection_type: ProtectionType) -> u64 {
 
     features
 }
+
+/// Type of virtio transport.
+///
+/// The virtio protocol can be transported by several means, which affects a few things for device
+/// creation - for instance, the seccomp policy we need to use when jailing the device.
+pub enum VirtioDeviceType {
+    /// A regular (in-VMM) virtio device.
+    Regular,
+    /// Socket-backed vhost-user device.
+    VhostUser,
+    /// Virtio-backed vhost-user device, aka virtio-vhost-user.
+    Vvu,
+}
+
+impl VirtioDeviceType {
+    /// Returns the seccomp policy file that we will want to load for device `base`, depending on
+    /// the virtio transport type.
+    pub fn seccomp_policy_file(&self, base: &str) -> String {
+        match self {
+            VirtioDeviceType::Regular => format!("{base}_device"),
+            VirtioDeviceType::VhostUser => format!("{base}_device_vhost_user"),
+            VirtioDeviceType::Vvu => format!("{base}_device_vvu"),
+        }
+    }
+}
