@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::fs::OpenOptions;
@@ -135,13 +134,13 @@ pub type DeviceResult<T = VirtioDeviceStub> = Result<T>;
 /// Implementors become able to create virtio devices and jails following their own configuration.
 /// This trait also provides a few convenience methods for e.g. creating a virtio device and jail
 /// at once.
-pub trait VirtioDeviceBuilder {
+pub trait VirtioDeviceBuilder: Sized {
     /// Base name of the device, as it will appear in logs.
     const NAME: &'static str;
 
     /// Create a regular virtio device from the configuration and `protection_type` setting.
     fn create_virtio_device(
-        &self,
+        self,
         protection_type: ProtectionType,
     ) -> anyhow::Result<Box<dyn VirtioDevice>>;
 
@@ -150,7 +149,7 @@ pub trait VirtioDeviceBuilder {
     /// It is ok to leave this method unimplemented if the device is not intended to be used with
     /// vhost-user.
     fn create_vhost_user_device(
-        &self,
+        self,
         _keep_rds: &mut Vec<RawDescriptor>,
     ) -> anyhow::Result<Box<dyn VhostUserDevice>> {
         unimplemented!()
@@ -176,7 +175,7 @@ pub trait VirtioDeviceBuilder {
     ///
     /// This helper should cover the needs of most devices when run as regular virtio devices.
     fn create_virtio_device_and_jail(
-        &self,
+        self,
         protection_type: ProtectionType,
         jail_config: &Option<JailConfig>,
     ) -> DeviceResult {
@@ -191,17 +190,13 @@ pub trait VirtioDeviceBuilder {
 pub struct DiskConfig<'a> {
     /// Options for disk creation.
     disk: &'a DiskOption,
-    /// Optional control tube for the device. Placed behind a Cell so it can be taken from a
-    /// non-mutable reference.
-    device_tube: Cell<Option<Tube>>,
+    /// Optional control tube for the device.
+    device_tube: Option<Tube>,
 }
 
 impl<'a> DiskConfig<'a> {
     pub fn new(disk: &'a DiskOption, device_tube: Option<Tube>) -> Self {
-        Self {
-            disk,
-            device_tube: Cell::new(device_tube),
-        }
+        Self { disk, device_tube }
     }
 }
 
@@ -209,7 +204,7 @@ impl<'a> VirtioDeviceBuilder for DiskConfig<'a> {
     const NAME: &'static str = "block";
 
     fn create_virtio_device(
-        &self,
+        self,
         protection_type: ProtectionType,
     ) -> anyhow::Result<Box<dyn VirtioDevice>> {
         info!(
@@ -218,7 +213,6 @@ impl<'a> VirtioDeviceBuilder for DiskConfig<'a> {
         );
         let disk_image = self.disk.open()?;
 
-        let disk_device_tube = self.device_tube.take();
         Ok(Box::new(
             virtio::BlockAsync::new(
                 virtio::base_features(protection_type),
@@ -227,7 +221,7 @@ impl<'a> VirtioDeviceBuilder for DiskConfig<'a> {
                 self.disk.sparse,
                 self.disk.block_size,
                 self.disk.id,
-                disk_device_tube,
+                self.device_tube,
                 None,
                 self.disk.async_executor,
                 None,
@@ -237,11 +231,10 @@ impl<'a> VirtioDeviceBuilder for DiskConfig<'a> {
     }
 
     fn create_vhost_user_device(
-        &self,
+        self,
         keep_rds: &mut Vec<RawDescriptor>,
     ) -> anyhow::Result<Box<dyn VhostUserDevice>> {
         let disk = self.disk;
-        let disk_device_tube = self.device_tube.take();
         let disk_image = disk.open()?;
         let block = Box::new(
             virtio::BlockAsync::new(
@@ -251,7 +244,7 @@ impl<'a> VirtioDeviceBuilder for DiskConfig<'a> {
                 disk.sparse,
                 disk.block_size,
                 disk.id,
-                disk_device_tube,
+                self.device_tube,
                 None,
                 disk.async_executor,
                 None,
@@ -1341,11 +1334,11 @@ fn add_bind_mounts(param: &SerialParameters, jail: &mut Minijail) -> Result<(), 
 }
 
 /// For creating console virtio devices.
-impl VirtioDeviceBuilder for SerialParameters {
+impl VirtioDeviceBuilder for &SerialParameters {
     const NAME: &'static str = "serial";
 
     fn create_virtio_device(
-        &self,
+        self,
         protection_type: ProtectionType,
     ) -> anyhow::Result<Box<dyn VirtioDevice>> {
         let mut keep_rds = Vec::new();
@@ -1358,7 +1351,7 @@ impl VirtioDeviceBuilder for SerialParameters {
     }
 
     fn create_vhost_user_device(
-        &self,
+        self,
         keep_rds: &mut Vec<RawDescriptor>,
     ) -> anyhow::Result<Box<dyn VhostUserDevice>> {
         Ok(Box::new(virtio::vhost::user::create_vu_console_device(
