@@ -180,10 +180,9 @@ pub trait VirtioDeviceBuilder {
         protection_type: ProtectionType,
         jail_config: &Option<JailConfig>,
     ) -> DeviceResult {
-        Ok(VirtioDeviceStub {
-            dev: self.create_virtio_device(protection_type)?,
-            jail: self.create_jail(jail_config, VirtioDeviceType::Regular)?,
-        })
+        let jail = self.create_jail(jail_config, VirtioDeviceType::Regular)?;
+        let dev = self.create_virtio_device(protection_type)?;
+        Ok(VirtioDeviceStub { dev, jail })
     }
 }
 
