@@ -434,7 +434,7 @@ def exec_file_on_target(
 
         cmd_line = [*prefix, str(filepath), *args]
         if execute_as_root:
-            cmd_line = ["sudo", *cmd_line]
+            cmd_line = ["sudo", "--preserve-env", *cmd_line]
         return subprocess.run(
             cmd_line,
             env=env,
