@@ -29,3 +29,12 @@ pub use crate::rutabaga_gralloc::ImageMemoryRequirements;
 pub use crate::rutabaga_gralloc::RutabagaGralloc;
 pub use crate::rutabaga_gralloc::RutabagaGrallocFlags;
 pub use crate::rutabaga_utils::*;
+
+cfg_if::cfg_if! {
+    if #[cfg(target_os = "fuchsia")] {
+        pub(crate) mod base;
+        use base as base_internal;
+    } else {
+        use base as base_internal;
+    }
+}

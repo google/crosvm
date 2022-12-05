@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![cfg(not(target_os = "fuchsia"))]
+
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
         pub(crate) mod unix;

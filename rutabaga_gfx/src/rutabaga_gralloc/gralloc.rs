@@ -9,8 +9,9 @@ use std::collections::BTreeMap as Map;
 
 #[cfg(feature = "vulkano")]
 use base::error;
-use base::round_up_to_page_size;
-use base::MappedRegion;
+
+use crate::base_internal::round_up_to_page_size;
+use crate::base_internal::MappedRegion;
 
 use crate::rutabaga_gralloc::formats::*;
 #[cfg(feature = "minigbm")]

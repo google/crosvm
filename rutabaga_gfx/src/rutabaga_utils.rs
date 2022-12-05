@@ -10,8 +10,9 @@ use std::os::raw::c_void;
 use std::path::PathBuf;
 use std::str::Utf8Error;
 
-use base::Error as BaseError;
-use base::SafeDescriptor;
+use crate::base_internal::Error as BaseError;
+use crate::base_internal::SafeDescriptor;
+
 use data_model::VolatileMemoryError;
 use remain::sorted;
 use serde::Deserialize;

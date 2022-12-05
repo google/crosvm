@@ -1,7 +1,7 @@
 [package]
 name = "rutabaga_gfx"
-version = "0.1.0"
-authors = ["The ChromiumOS Authors"]
+version = "0.1.0-alpha.0"
+authors = ["The Chromium OS Authors"]
 edition = "2021"
 
 [features]
@@ -19,10 +19,14 @@ x = []
 cfg-if = "1.0.0"
 data_model = { path = "../common/data_model" }
 libc = "0.2.116"
-base = { path = "../base" }
 remain = "0.2"
 thiserror = "1.0.23"
 serde = { version = "1", features = [ "derive" ] }
+
+[target.'cfg(not(target_os = "fuchsia"))'.dependencies]
+base = { path = "../base" }
+
+
 # To build latest Vulkano, change version to git = "https:/github.com/vulkano-rs/vulkano.git"
 # vulkano = { version = "0.31.0", optional = true }
 
