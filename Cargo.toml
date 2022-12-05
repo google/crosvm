@@ -428,7 +428,6 @@ which = "4"
 
 [dev-dependencies]
 base = "*"
-prebuilts = { path = "prebuilts" }
 
 [patch.crates-io]
 audio_streams = { path = "common/audio_streams" }

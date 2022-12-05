@@ -570,7 +570,6 @@ dependencies = [
  "net_util",
  "once_cell",
  "p9",
- "prebuilts",
  "protobuf",
  "protos",
  "rand",
