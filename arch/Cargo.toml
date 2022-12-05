@@ -8,6 +8,7 @@ edition = "2021"
 power-monitor-powerd = ["power_monitor/powerd"]
 gdb = ["gdbstub", "gdbstub_arch"]
 direct = []
+trace_marker = ["cros_tracing/trace_marker"]
 
 [dependencies]
 acpi_tables = { path = "../acpi_tables" }
@@ -15,6 +16,7 @@ anyhow = "*"
 base = { path = "../base" }
 cfg-if = "1.0.0"
 cros_fdt = { path = "../cros_fdt" }
+cros_tracing = { path = "../cros_tracing" }
 devices = { path = "../devices" }
 gdbstub = { version = "0.6.3", optional = true }
 gdbstub_arch = { version = "0.2.4", optional = true }

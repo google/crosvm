@@ -162,6 +162,7 @@ where
     metrics::setup_metrics_reporting()?;
 
     init_log(log_config, &cfg)?;
+    cros_tracing::init();
     let exit_state = crate::sys::run_config(cfg)?;
     Ok(CommandStatus::from(exit_state))
 }

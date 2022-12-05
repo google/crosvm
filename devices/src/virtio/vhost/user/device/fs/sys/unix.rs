@@ -102,6 +102,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     )?;
 
     base::syslog::push_descriptors(&mut keep_rds);
+    cros_tracing::push_descriptors!(&mut keep_rds);
 
     let pid = jail_and_fork(keep_rds, opts.shared_dir, opts.uid_map, opts.gid_map)?;
 

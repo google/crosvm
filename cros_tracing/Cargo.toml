@@ -6,4 +6,12 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+trace_marker = ["once_cell"]
+
 [dependencies]
+anyhow = "*"
+base = "*"
+cfg-if = "1.0.0"
+once_cell = { version = "1.7", optional = true }
+

@@ -83,6 +83,7 @@ dependencies = [
  "base",
  "cfg-if",
  "cros_fdt",
+ "cros_tracing",
  "devices",
  "gdbstub",
  "gdbstub_arch",
@@ -513,6 +514,12 @@ dependencies = [
 [[package]]
 name = "cros_tracing"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base",
+ "cfg-if",
+ "once_cell",
+]
 
 [[package]]
 name = "crossbeam-utils"
@@ -1999,6 +2006,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base",
+ "cros_tracing",
  "data_model",
  "libc",
  "minijail",

@@ -675,6 +675,7 @@ pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
 
     let mut keep_rds = device.keep_rds();
     syslog::push_descriptors(&mut keep_rds);
+    cros_tracing::push_descriptors!(&mut keep_rds);
 
     device
         .register_device_capabilities()
@@ -756,6 +757,7 @@ pub fn generate_virtio_mmio_bus(
 
         let mut keep_rds = device.keep_rds();
         syslog::push_descriptors(&mut keep_rds);
+        cros_tracing::push_descriptors!(&mut keep_rds);
 
         let irq_num = resources
             .allocate_irq()
@@ -1063,6 +1065,7 @@ pub fn generate_pci_root(
 
         let mut keep_rds = device.keep_rds();
         syslog::push_descriptors(&mut keep_rds);
+        cros_tracing::push_descriptors!(&mut keep_rds);
         keep_rds.append(&mut vm.get_memory().as_raw_descriptors());
 
         let ranges = io_ranges.remove(&dev_idx).unwrap_or_default();

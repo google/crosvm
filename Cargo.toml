@@ -226,6 +226,10 @@ whpx = ["devices/whpx", "hypervisor/whpx"]
 ## Enables a libslirp based network device. Currently only supported on Windows.
 slirp = ["devices/slirp", "net_util/slirp"]
 
+## Enables the Linux trace_marker backend for cros_tracing. This backend is only
+## supported on Linux systems. It sends all cros_tracing tracepoints to the tracefs
+## filesystem if mounted, for easier debugging with tools like trace-cmd.
+trace_marker = ["cros_tracing/trace_marker"]
 
 #! ### Non-additive feature flags
 #!
@@ -305,6 +309,7 @@ all-aarch64 = [
     "power-monitor-powerd",
     "slirp",
     "swap",
+    "trace_marker",
     "tpm",
     "vaapi",
     "video-decoder",
@@ -353,6 +358,7 @@ broker_ipc = { path = "broker_ipc" }
 cfg-if = "1.0.0"
 crash_report = { path = "crash_report", optional = true }
 cros_async = { path = "cros_async" }
+cros_tracing = { path = "cros_tracing" }
 crosvm_cli = { path = "crosvm_cli" }
 crosvm_plugin = { path = "crosvm_plugin", optional = true }
 data_model = "*"

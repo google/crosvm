@@ -115,6 +115,7 @@ impl SwapController {
         keep_rds.push(tube_monitor_process.as_raw_descriptor());
 
         syslog::push_descriptors(&mut keep_rds);
+        cros_tracing::push_descriptors!(&mut keep_rds);
         keep_rds.extend(guest_memory.as_raw_descriptors());
 
         let userfaultfd = Userfaultfd::new().context("create userfaultfd")?;

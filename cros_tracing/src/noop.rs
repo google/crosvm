@@ -20,4 +20,14 @@ macro_rules! trace_event_end {
     ($category:ident) => {};
 }
 
+#[macro_export]
+macro_rules! trace_simple_print {
+    ($($t:tt)*) => {};
+}
+
+#[macro_export]
+macro_rules! push_descriptors {
+    ($fd_vec:expr) => {};
+}
+
 pub fn init() {}

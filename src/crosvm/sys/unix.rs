@@ -3053,6 +3053,7 @@ fn jail_and_start_vu_device<T: VirtioDeviceBuilder>(
     let mut keep_rds = Vec::new();
 
     base::syslog::push_descriptors(&mut keep_rds);
+    cros_tracing::push_descriptors!(&mut keep_rds);
 
     let jail_type = VhostUserListener::get_virtio_transport_type(vhost);
 

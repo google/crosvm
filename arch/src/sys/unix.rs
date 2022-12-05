@@ -104,6 +104,7 @@ pub fn add_goldfish_battery(
         Some(jail) => {
             let mut keep_rds = goldfish_bat.keep_rds();
             syslog::push_descriptors(&mut keep_rds);
+            cros_tracing::push_descriptors!(&mut keep_rds);
             mmio_bus
                 .insert(
                     Arc::new(Mutex::new(
@@ -150,6 +151,7 @@ pub fn generate_platform_bus(
 
         let mut keep_rds = device.keep_rds();
         syslog::push_descriptors(&mut keep_rds);
+        cros_tracing::push_descriptors!(&mut keep_rds);
 
         let irqs = device
             .get_platform_irqs()

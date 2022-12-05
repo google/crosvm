@@ -4,9 +4,13 @@ version = "0.1.0"
 authors = ["The Chromium OS Authors"]
 edition = "2021"
 
+[features]
+trace_marker = ["cros_tracing/trace_marker"]
+
 [dependencies]
 anyhow = "*"
 base = { path = "../base" }
+cros_tracing = { path = "../cros_tracing" }
 data_model = "*"
 libc = "*"
 minijail = "*"
