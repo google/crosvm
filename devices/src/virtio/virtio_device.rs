@@ -119,7 +119,7 @@ pub trait VirtioDevice: Send + Suspendable {
         interrupt: Interrupt,
         queues: Vec<Queue>,
         queue_evts: Vec<Event>,
-    );
+    ) -> Result<()>;
 
     /// Optionally deactivates this device. If the reset method is
     /// not able to reset the virtio device, or the virtio device model doesn't

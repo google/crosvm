@@ -8,6 +8,7 @@ use std::io;
 use std::rc::Rc;
 use std::thread;
 
+use anyhow::anyhow;
 use anyhow::Context;
 use audio_streams::BoxError;
 use base::debug;
@@ -373,28 +374,23 @@ impl VirtioDevice for VirtioSnd {
         interrupt: Interrupt,
         queues: Vec<Queue>,
         queue_evts: Vec<Event>,
-    ) {
+    ) -> anyhow::Result<()> {
         if queues.len() != self.queue_sizes.len() || queue_evts.len() != self.queue_sizes.len() {
-            error!(
+            return Err(anyhow!(
                 "snd: expected {} queues, got {}",
                 self.queue_sizes.len(),
                 queues.len()
-            );
+            ));
         }
 
-        let (self_kill_evt, kill_evt) =
-            match Event::new().and_then(|evt| Ok((evt.try_clone()?, evt))) {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("failed to create kill Event pair: {}", e);
-                    return;
-                }
-            };
+        let (self_kill_evt, kill_evt) = Event::new()
+            .and_then(|evt| Ok((evt.try_clone()?, evt)))
+            .context("failed to create kill Event pair")?;
         self.kill_evt = Some(self_kill_evt);
 
         let snd_data = self.snd_data.clone();
         let stream_source_generators = create_stream_source_generators(&self.params, &snd_data);
-        let worker_result = thread::Builder::new()
+        let join_handle = thread::Builder::new()
             .name("v_snd_common".to_string())
             .spawn(move || {
                 set_audio_thread_priority();
@@ -409,16 +405,10 @@ impl VirtioDevice for VirtioSnd {
                 ) {
                     error!("{}", err_string);
                 }
-            });
-
-        let join_handle = match worker_result {
-            Err(e) => {
-                error!("failed to spawn virtio_snd worker: {}", e);
-                return;
-            }
-            Ok(join_handle) => join_handle,
-        };
+            })
+            .context("failed to spawn virtio_snd worker")?;
         self.worker_threads.push(join_handle);
+        Ok(())
     }
 
     fn reset(&mut self) -> bool {

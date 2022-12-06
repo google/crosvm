@@ -10,6 +10,8 @@ use std::os::raw::c_uint;
 use std::str::FromStr;
 use std::thread;
 
+use anyhow::anyhow;
+use anyhow::Context;
 use base::error;
 #[cfg(windows)]
 use base::named_pipes::OverlappedWrapper;
@@ -720,29 +722,30 @@ where
         interrupt: Interrupt,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<Event>,
-    ) {
+    ) -> anyhow::Result<()> {
         if queues.len() != self.queue_sizes.len() || queue_evts.len() != self.queue_sizes.len() {
-            error!(
+            return Err(anyhow!(
                 "net: expected {} queues, got {} queues and {} evts",
                 self.queue_sizes.len(),
                 queues.len(),
                 queue_evts.len()
-            );
-            return;
+            ));
         }
 
         let vq_pairs = self.queue_sizes.len() / 2;
         if self.taps.len() != vq_pairs {
-            error!("net: expected {} taps, got {}", vq_pairs, self.taps.len());
-            return;
+            return Err(anyhow!(
+                "net: expected {} taps, got {}",
+                vq_pairs,
+                self.taps.len()
+            ));
         }
         if self.workers_kill_evt.len() != vq_pairs {
-            error!(
+            return Err(anyhow!(
                 "net: expected {} worker_kill_evt, got {}",
                 vq_pairs,
                 self.workers_kill_evt.len()
-            );
-            return;
+            ));
         }
         for i in 0..vq_pairs {
             let tap = self.taps.remove(0);
@@ -768,7 +771,7 @@ where
             };
             #[cfg(windows)]
             let overlapped_wrapper = OverlappedWrapper::new(true).unwrap();
-            let worker_result =
+            self.worker_threads.push(
                 thread::Builder::new()
                     .name(format!("v_net:{i}"))
                     .spawn(move || {
@@ -796,16 +799,11 @@ where
                             error!("net worker thread exited with error: {}", e);
                         }
                         worker
-                    });
-
-            match worker_result {
-                Err(e) => {
-                    error!("failed to spawn virtio_net worker: {}", e);
-                    return;
-                }
-                Ok(join_handle) => self.worker_threads.push(join_handle),
-            }
+                    })
+                    .context("failed to spawn virtio_net worker")?,
+            );
         }
+        Ok(())
     }
 
     fn reset(&mut self) -> bool {

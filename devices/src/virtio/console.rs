@@ -18,6 +18,8 @@ use std::result;
 use std::sync::Arc;
 use std::thread;
 
+use anyhow::anyhow;
+use anyhow::Context;
 use base::error;
 use base::AsRawDescriptor;
 use base::Descriptor;
@@ -436,36 +438,25 @@ impl VirtioDevice for Console {
         interrupt: Interrupt,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<Event>,
-    ) {
+    ) -> anyhow::Result<()> {
         if queues.len() < 2 || queue_evts.len() < 2 {
-            return;
+            return Err(anyhow!("expected 2 queues, got {}", queues.len()));
         }
 
-        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("failed creating kill Event pair: {}", e);
-                return;
-            }
-        };
+        let (self_kill_evt, kill_evt) = Event::new()
+            .and_then(|e| Ok((e.try_clone()?, e)))
+            .context("failed creating kill Event pair")?;
         self.kill_evt = Some(self_kill_evt);
 
         if self.in_avail_evt.is_none() {
-            self.in_avail_evt = match Event::new() {
-                Ok(evt) => Some(evt),
-                Err(e) => {
-                    error!("failed creating Event: {}", e);
-                    return;
-                }
-            };
+            self.in_avail_evt = Some(Event::new().context("failed creating Event")?);
         }
-        let in_avail_evt = match self.in_avail_evt.as_ref().unwrap().try_clone() {
-            Ok(v) => v,
-            Err(e) => {
-                error!("failed creating input available Event pair: {}", e);
-                return;
-            }
-        };
+        let in_avail_evt = self
+            .in_avail_evt
+            .as_ref()
+            .unwrap()
+            .try_clone()
+            .context("failed creating input available Event pair")?;
 
         // Spawn a separate thread to poll self.input.
         // A thread is used because io::Read only provides a blocking interface, and there is no
@@ -476,7 +467,7 @@ impl VirtioDevice for Console {
             Some(ConsoleInput::FromRead(read)) => {
                 let buffer = spawn_input_thread(read, self.in_avail_evt.as_ref().unwrap());
                 if buffer.is_none() {
-                    error!("failed creating input thread");
+                    return Err(anyhow!("failed creating input thread"));
                 };
                 buffer
             }
@@ -485,7 +476,7 @@ impl VirtioDevice for Console {
         };
         let output = self.output.take().unwrap_or_else(|| Box::new(io::sink()));
 
-        let worker_result = thread::Builder::new()
+        let worker_thread = thread::Builder::new()
             .name("v_console".to_string())
             .spawn(move || {
                 let mut worker = Worker {
@@ -504,16 +495,10 @@ impl VirtioDevice for Console {
                 };
                 worker.run();
                 worker
-            });
-
-        match worker_result {
-            Err(e) => {
-                error!("failed to spawn virtio_console worker: {}", e);
-            }
-            Ok(join_handle) => {
-                self.worker_thread = Some(join_handle);
-            }
-        }
+            })
+            .context("failed to spawn virtio_console worker")?;
+        self.worker_thread = Some(worker_thread);
+        Ok(())
     }
 
     fn reset(&mut self) -> bool {

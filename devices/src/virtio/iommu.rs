@@ -22,6 +22,7 @@ use std::thread;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use acpi_tables::sdt::SDT;
+use anyhow::anyhow;
 use anyhow::Context;
 use base::debug;
 use base::error;
@@ -838,18 +839,18 @@ impl VirtioDevice for Iommu {
         interrupt: Interrupt,
         queues: Vec<Queue>,
         queue_evts: Vec<Event>,
-    ) {
+    ) -> anyhow::Result<()> {
         if queues.len() != QUEUE_SIZES.len() || queue_evts.len() != QUEUE_SIZES.len() {
-            return;
+            return Err(anyhow!(
+                "expected {} queues, got {}",
+                QUEUE_SIZES.len(),
+                queues.len()
+            ));
         }
 
-        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("failed to create kill Event pair: {}", e);
-                return;
-            }
-        };
+        let (self_kill_evt, kill_evt) = Event::new()
+            .and_then(|e| Ok((e.try_clone()?, e)))
+            .context("failed to create kill Event pair")?;
         self.kill_evt = Some(self_kill_evt);
 
         // The least significant bit of page_size_masks defines the page
@@ -861,45 +862,40 @@ impl VirtioDevice for Iommu {
         let translate_response_senders = self.translate_response_senders.take();
         let translate_request_rx = self.translate_request_rx.take();
 
-        match self.iommu_device_tube.take() {
-            Some(iommu_device_tube) => {
-                let worker_result =
-                    thread::Builder::new()
-                        .name("v_iommu".to_string())
-                        .spawn(move || {
-                            let state = State {
-                                mem,
-                                page_mask,
-                                hp_endpoints_ranges,
-                                endpoint_map: BTreeMap::new(),
-                                domain_map: BTreeMap::new(),
-                                endpoints: eps,
-                                dmabuf_mem: BTreeMap::new(),
-                            };
-                            let result = run(
-                                state,
-                                iommu_device_tube,
-                                queues,
-                                queue_evts,
-                                kill_evt,
-                                interrupt,
-                                translate_response_senders,
-                                translate_request_rx,
-                            );
-                            if let Err(e) = result {
-                                error!("virtio-iommu worker thread exited with error: {}", e);
-                            }
-                        });
+        let iommu_device_tube = self
+            .iommu_device_tube
+            .take()
+            .context("failed to start virtio-iommu worker: No control tube")?;
 
-                match worker_result {
-                    Err(e) => error!("failed to spawn virtio_iommu worker thread: {}", e),
-                    Ok(join_handle) => self.worker_thread = Some(join_handle),
+        let worker_thread = thread::Builder::new()
+            .name("v_iommu".to_string())
+            .spawn(move || {
+                let state = State {
+                    mem,
+                    page_mask,
+                    hp_endpoints_ranges,
+                    endpoint_map: BTreeMap::new(),
+                    domain_map: BTreeMap::new(),
+                    endpoints: eps,
+                    dmabuf_mem: BTreeMap::new(),
+                };
+                let result = run(
+                    state,
+                    iommu_device_tube,
+                    queues,
+                    queue_evts,
+                    kill_evt,
+                    interrupt,
+                    translate_response_senders,
+                    translate_request_rx,
+                );
+                if let Err(e) = result {
+                    error!("virtio-iommu worker thread exited with error: {}", e);
                 }
-            }
-            None => {
-                error!("failed to start virtio-iommu worker: No control tube");
-            }
-        }
+            })
+            .context("failed to spawn virtio_iommu worker thread")?;
+        self.worker_thread = Some(worker_thread);
+        Ok(())
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]

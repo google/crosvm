@@ -6,6 +6,8 @@ use std::io;
 use std::io::Write;
 use std::thread;
 
+use anyhow::anyhow;
+use anyhow::Context;
 use base::error;
 use base::warn;
 use base::Event;
@@ -191,23 +193,19 @@ impl VirtioDevice for Rng {
         interrupt: Interrupt,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<Event>,
-    ) {
+    ) -> anyhow::Result<()> {
         if queues.len() != 1 || queue_evts.len() != 1 {
-            return;
+            return Err(anyhow!("expected 1 queue, got {}", queues.len()));
         }
 
-        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("failed to create kill Event pair: {}", e);
-                return;
-            }
-        };
+        let (self_kill_evt, kill_evt) = Event::new()
+            .and_then(|e| Ok((e.try_clone()?, e)))
+            .context("failed to create kill Event pair")?;
         self.kill_evt = Some(self_kill_evt);
 
         let queue = queues.remove(0);
 
-        let worker_result = thread::Builder::new()
+        let worker_thread = thread::Builder::new()
             .name("v_rng".to_string())
             .spawn(move || {
                 let mut worker = Worker {
@@ -217,16 +215,10 @@ impl VirtioDevice for Rng {
                 };
                 worker.run(queue_evts.remove(0), kill_evt);
                 worker
-            });
-
-        match worker_result {
-            Err(e) => {
-                error!("failed to spawn virtio_rng worker: {}", e);
-            }
-            Ok(join_handle) => {
-                self.worker_thread = Some(join_handle);
-            }
-        }
+            })
+            .context("failed to spawn virtio_rng worker")?;
+        self.worker_thread = Some(worker_thread);
+        Ok(())
     }
 
     fn reset(&mut self) -> bool {

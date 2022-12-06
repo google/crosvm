@@ -18,6 +18,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
 
+use anyhow::anyhow;
 use anyhow::Context;
 use base::debug;
 use base::error;
@@ -1354,44 +1355,35 @@ impl VirtioDevice for Gpu {
         interrupt: Interrupt,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<Event>,
-    ) {
+    ) -> anyhow::Result<()> {
         if queues.len() != QUEUE_SIZES.len() || queue_evts.len() != QUEUE_SIZES.len() {
-            return;
+            return Err(anyhow!(
+                "expected {} queues, got {}",
+                QUEUE_SIZES.len(),
+                queues.len()
+            ));
         }
 
-        let exit_evt_wrtube = match self.exit_evt_wrtube.try_clone() {
-            Ok(e) => e,
-            Err(e) => {
-                error!("error cloning exit tube: {}", e);
-                return;
-            }
-        };
+        let exit_evt_wrtube = self
+            .exit_evt_wrtube
+            .try_clone()
+            .context("error cloning exit tube")?;
 
         #[cfg(unix)]
-        let gpu_control_tube = match self.gpu_control_tube.take() {
-            Some(gpu_control_tube) => gpu_control_tube,
-            None => {
-                error!("gpu_control_tube is none");
-                return;
-            }
-        };
+        let gpu_control_tube = self
+            .gpu_control_tube
+            .take()
+            .context("gpu_control_tube is none")?;
 
-        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("error creating kill Event pair: {}", e);
-                return;
-            }
-        };
+        let (self_kill_evt, kill_evt) = Event::new()
+            .and_then(|e| Ok((e.try_clone()?, e)))
+            .context("error creating kill Event pair")?;
         self.kill_evt = Some(self_kill_evt);
 
-        let resource_bridges = match self.resource_bridges.take() {
-            Some(bridges) => bridges,
-            None => {
-                error!("resource_bridges is none");
-                return;
-            }
-        };
+        let resource_bridges = self
+            .resource_bridges
+            .take()
+            .context("resource_bridges is none")?;
 
         let ctrl_queue = SharedQueueReader::new(queues.remove(0), interrupt.clone());
         let ctrl_evt = queue_evts.remove(0);
@@ -1410,59 +1402,57 @@ impl VirtioDevice for Gpu {
         #[cfg(windows)]
         let mut wndproc_thread = self.wndproc_thread.take();
 
-        if let (Some(mapper), Some(rutabaga_builder)) =
-            (self.mapper.take(), self.rutabaga_builder.take())
-        {
-            let worker_result = thread::Builder::new()
-                .name("v_gpu".to_string())
-                .spawn(move || {
-                    let fence_handler =
-                        create_fence_handler(mem.clone(), ctrl_queue.clone(), fence_state.clone());
+        let mapper = self.mapper.take().context("missing mapper")?;
+        let rutabaga_builder = self
+            .rutabaga_builder
+            .take()
+            .context("missing rutabaga_builder")?;
 
-                    let virtio_gpu = match build(
-                        &display_backends,
-                        display_params,
-                        display_event,
-                        rutabaga_builder,
-                        event_devices,
-                        mapper,
-                        external_blob,
-                        #[cfg(windows)]
-                        &mut wndproc_thread,
-                        udmabuf,
-                        fence_handler,
-                        #[cfg(feature = "virgl_renderer_next")]
-                        render_server_fd,
-                    ) {
-                        Some(backend) => backend,
-                        None => return,
-                    };
+        let worker_thread = thread::Builder::new()
+            .name("v_gpu".to_string())
+            .spawn(move || {
+                let fence_handler =
+                    create_fence_handler(mem.clone(), ctrl_queue.clone(), fence_state.clone());
 
-                    Worker {
-                        interrupt,
-                        exit_evt_wrtube,
-                        #[cfg(unix)]
-                        gpu_control_tube,
-                        mem,
-                        ctrl_queue: ctrl_queue.clone(),
-                        ctrl_evt,
-                        cursor_queue,
-                        cursor_evt,
-                        resource_bridges,
-                        kill_evt,
-                        state: Frontend::new(virtio_gpu, fence_state),
-                    }
-                    .run()
-                });
+                let virtio_gpu = match build(
+                    &display_backends,
+                    display_params,
+                    display_event,
+                    rutabaga_builder,
+                    event_devices,
+                    mapper,
+                    external_blob,
+                    #[cfg(windows)]
+                    &mut wndproc_thread,
+                    udmabuf,
+                    fence_handler,
+                    #[cfg(feature = "virgl_renderer_next")]
+                    render_server_fd,
+                ) {
+                    Some(backend) => backend,
+                    None => return,
+                };
 
-            self.worker_thread = match worker_result {
-                Err(e) => {
-                    error!("failed to spawn virtio_gpu worker: {}", e);
-                    return;
+                Worker {
+                    interrupt,
+                    exit_evt_wrtube,
+                    #[cfg(unix)]
+                    gpu_control_tube,
+                    mem,
+                    ctrl_queue: ctrl_queue.clone(),
+                    ctrl_evt,
+                    cursor_queue,
+                    cursor_evt,
+                    resource_bridges,
+                    kill_evt,
+                    state: Frontend::new(virtio_gpu, fence_state),
                 }
-                Ok(join_handle) => Some(join_handle),
-            }
-        }
+                .run()
+            })
+            .context("failed to spawn virtio_gpu worker")?;
+
+        self.worker_thread = Some(worker_thread);
+        Ok(())
     }
 
     fn get_shared_memory_region(&self) -> Option<SharedMemoryRegion> {

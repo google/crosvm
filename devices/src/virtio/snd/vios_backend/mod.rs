@@ -19,6 +19,8 @@ use std::sync::mpsc::SendError;
 use std::sync::Arc;
 use std::thread;
 
+use anyhow::anyhow;
+use anyhow::Context;
 use base::error;
 use base::Error as BaseError;
 use base::Event;
@@ -117,26 +119,20 @@ impl VirtioDevice for Sound {
         interrupt: Interrupt,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<Event>,
-    ) {
+    ) -> anyhow::Result<()> {
         if self.worker_thread.is_some() {
-            error!("virtio-snd: Device is already active");
-            return;
+            return Err(anyhow!("virtio-snd: Device is already active"));
         }
         if queues.len() != 4 || queue_evts.len() != 4 {
-            error!(
+            return Err(anyhow!(
                 "virtio-snd: device activated with wrong number of queues: {}, {}",
                 queues.len(),
                 queue_evts.len()
-            );
-            return;
+            ));
         }
-        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("virtio-snd: failed to create kill Event pair: {}", e);
-                return;
-            }
-        };
+        let (self_kill_evt, kill_evt) = Event::new()
+            .and_then(|e| Ok((e.try_clone()?, e)))
+            .context("failed to create kill Event pair")?;
         self.kill_evt = Some(self_kill_evt);
         let control_queue = queues.remove(0);
         let control_queue_evt = queue_evts.remove(0);
@@ -148,48 +144,43 @@ impl VirtioDevice for Sound {
         let rx_queue_evt = queue_evts.remove(0);
 
         let vios_client = self.vios_client.clone();
-        if let Err(e) = vios_client.start_bg_thread() {
-            error!("Failed to start vios background thread: {}", e);
-        }
+        vios_client
+            .start_bg_thread()
+            .context("Failed to start vios background thread")?;
 
-        let thread_result =
-            thread::Builder::new()
-                .name("v_snd_vios".to_string())
-                .spawn(move || {
-                    match Worker::try_new(
-                        vios_client,
-                        interrupt,
-                        mem,
-                        Arc::new(Mutex::new(control_queue)),
-                        control_queue_evt,
-                        event_queue,
-                        event_queue_evt,
-                        Arc::new(Mutex::new(tx_queue)),
-                        tx_queue_evt,
-                        Arc::new(Mutex::new(rx_queue)),
-                        rx_queue_evt,
-                    ) {
-                        Ok(mut worker) => match worker.control_loop(kill_evt) {
-                            Ok(_) => true,
-                            Err(e) => {
-                                error!("virtio-snd: Error in worker loop: {}", e);
-                                false
-                            }
-                        },
+        let worker_thread = thread::Builder::new()
+            .name("v_snd_vios".to_string())
+            .spawn(move || {
+                match Worker::try_new(
+                    vios_client,
+                    interrupt,
+                    mem,
+                    Arc::new(Mutex::new(control_queue)),
+                    control_queue_evt,
+                    event_queue,
+                    event_queue_evt,
+                    Arc::new(Mutex::new(tx_queue)),
+                    tx_queue_evt,
+                    Arc::new(Mutex::new(rx_queue)),
+                    rx_queue_evt,
+                ) {
+                    Ok(mut worker) => match worker.control_loop(kill_evt) {
+                        Ok(_) => true,
                         Err(e) => {
-                            error!("virtio-snd: Failed to create worker: {}", e);
+                            error!("virtio-snd: Error in worker loop: {}", e);
                             false
                         }
+                    },
+                    Err(e) => {
+                        error!("virtio-snd: Failed to create worker: {}", e);
+                        false
                     }
-                });
-        match thread_result {
-            Err(e) => {
-                error!("failed to spawn virtio_snd worker thread: {}", e);
-            }
-            Ok(join_handle) => {
-                self.worker_thread = Some(join_handle);
-            }
-        }
+                }
+            })
+            .context("failed to spawn virtio_snd worker thread")?;
+
+        self.worker_thread = Some(worker_thread);
+        Ok(())
     }
 
     fn reset(&mut self) -> bool {

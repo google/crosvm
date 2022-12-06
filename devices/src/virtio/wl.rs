@@ -56,6 +56,7 @@ use std::result;
 use std::thread;
 use std::time::Duration;
 
+use anyhow::anyhow;
 use anyhow::Context;
 use base::error;
 #[cfg(feature = "minigbm")]
@@ -2038,63 +2039,59 @@ impl VirtioDevice for Wl {
         interrupt: Interrupt,
         mut queues: Vec<Queue>,
         queue_evts: Vec<Event>,
-    ) {
+    ) -> anyhow::Result<()> {
         if queues.len() != QUEUE_SIZES.len() || queue_evts.len() != QUEUE_SIZES.len() {
-            return;
+            return Err(anyhow!(
+                "expected {} queues, got {}",
+                QUEUE_SIZES.len(),
+                queues.len()
+            ));
         }
 
-        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("failed creating kill Event pair: {}", e);
-                return;
-            }
-        };
+        let (self_kill_evt, kill_evt) = Event::new()
+            .and_then(|e| Ok((e.try_clone()?, e)))
+            .context("failed creating kill Event pair")?;
         self.kill_evt = Some(self_kill_evt);
 
-        if let Some(mapper) = self.mapper.take() {
-            let wayland_paths = self.wayland_paths.clone();
-            let use_transition_flags = self.use_transition_flags;
-            let use_send_vfd_v2 = self.use_send_vfd_v2;
-            let resource_bridge = self.resource_bridge.take();
-            #[cfg(feature = "minigbm")]
-            let gralloc = self
-                .gralloc
-                .take()
-                .expect("gralloc already passed to worker");
-            let address_offset = if !self.use_shmem {
-                self.address_offset
-            } else {
-                None
-            };
-            let worker_result = thread::Builder::new()
-                .name("v_wl".to_string())
-                .spawn(move || {
-                    Worker::new(
-                        mem,
-                        interrupt,
-                        queues.remove(0),
-                        queues.remove(0),
-                        wayland_paths,
-                        mapper,
-                        use_transition_flags,
-                        use_send_vfd_v2,
-                        resource_bridge,
-                        #[cfg(feature = "minigbm")]
-                        gralloc,
-                        address_offset,
-                    )
-                    .run(queue_evts, kill_evt);
-                });
+        let mapper = self.mapper.take().context("missing mapper")?;
 
-            self.worker_thread = match worker_result {
-                Err(e) => {
-                    error!("failed to spawn virtio_wl worker: {}", e);
-                    return;
-                }
-                Ok(join_handle) => Some(join_handle),
-            }
-        }
+        let wayland_paths = self.wayland_paths.clone();
+        let use_transition_flags = self.use_transition_flags;
+        let use_send_vfd_v2 = self.use_send_vfd_v2;
+        let resource_bridge = self.resource_bridge.take();
+        #[cfg(feature = "minigbm")]
+        let gralloc = self
+            .gralloc
+            .take()
+            .expect("gralloc already passed to worker");
+        let address_offset = if !self.use_shmem {
+            self.address_offset
+        } else {
+            None
+        };
+        let worker_thread = thread::Builder::new()
+            .name("v_wl".to_string())
+            .spawn(move || {
+                Worker::new(
+                    mem,
+                    interrupt,
+                    queues.remove(0),
+                    queues.remove(0),
+                    wayland_paths,
+                    mapper,
+                    use_transition_flags,
+                    use_send_vfd_v2,
+                    resource_bridge,
+                    #[cfg(feature = "minigbm")]
+                    gralloc,
+                    address_offset,
+                )
+                .run(queue_evts, kill_evt);
+            })
+            .context("failed to spawn virtio_wl worker")?;
+
+        self.worker_thread = Some(worker_thread);
+        Ok(())
     }
 
     fn get_shared_memory_region(&self) -> Option<SharedMemoryRegion> {

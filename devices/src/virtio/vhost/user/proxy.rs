@@ -1860,10 +1860,13 @@ impl VirtioDevice for VirtioVhostUser {
         interrupt: Interrupt,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<Event>,
-    ) {
+    ) -> anyhow::Result<()> {
         if queues.len() != NUM_PROXY_DEVICE_QUEUES || queue_evts.len() != NUM_PROXY_DEVICE_QUEUES {
-            error!("bad queue length: {} {}", queues.len(), queue_evts.len());
-            return;
+            return Err(anyhow!(
+                "bad queue length: {} {}",
+                queues.len(),
+                queue_evts.len()
+            ));
         }
 
         let mut state = self.state.lock();
@@ -1889,9 +1892,13 @@ impl VirtioDevice for VirtioVhostUser {
             }
             s => {
                 // If the old state is not `Initialized`, it becomes `Invalid`.
-                error!("activate() is called in an unexpected state: {}", s);
+                return Err(anyhow!(
+                    "activate() is called in an unexpected state: {}",
+                    s
+                ));
             }
         };
+        Ok(())
     }
 
     fn read_bar(&mut self, bar_index: PciBarIndex, offset: u64, data: &mut [u8]) {

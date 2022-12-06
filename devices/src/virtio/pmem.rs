@@ -6,6 +6,8 @@ use std::fs::File;
 use std::io;
 use std::thread;
 
+use anyhow::anyhow;
+use anyhow::Context;
 use base::error;
 use base::AsRawDescriptor;
 use base::Error as SysError;
@@ -319,9 +321,9 @@ impl VirtioDevice for Pmem {
         interrupt: Interrupt,
         mut queues: Vec<Queue>,
         mut queue_events: Vec<Event>,
-    ) {
+    ) -> anyhow::Result<()> {
         if queues.len() != 1 || queue_events.len() != 1 {
-            return;
+            return Err(anyhow!("expected 1 queue, got {}", queues.len()));
         }
 
         let queue = queues.remove(0);
@@ -331,41 +333,33 @@ impl VirtioDevice for Pmem {
         // We checked that this fits in a usize in `Pmem::new`.
         let mapping_size = self.mapping_size as usize;
 
-        if let Some(pmem_device_tube) = self.pmem_device_tube.take() {
-            let (self_kill_event, kill_event) =
-                match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        error!("failed creating kill Event pair: {}", e);
-                        return;
-                    }
-                };
-            self.kill_event = Some(self_kill_event);
+        let pmem_device_tube = self
+            .pmem_device_tube
+            .take()
+            .context("missing pmem device tube")?;
 
-            let worker_result =
-                thread::Builder::new()
-                    .name("v_pmem".to_string())
-                    .spawn(move || {
-                        run_worker(
-                            queue_event,
-                            queue,
-                            pmem_device_tube,
-                            interrupt,
-                            kill_event,
-                            memory,
-                            mapping_arena_slot,
-                            mapping_size,
-                        )
-                    });
+        let (self_kill_event, kill_event) = Event::new()
+            .and_then(|e| Ok((e.try_clone()?, e)))
+            .context("failed creating kill Event pair")?;
+        self.kill_event = Some(self_kill_event);
 
-            self.worker_thread = match worker_result {
-                Err(e) => {
-                    error!("failed to spawn virtio_pmem worker: {}", e);
-                    return;
-                }
-                Ok(join_handle) => Some(join_handle),
-            }
-        }
+        let worker_thread = thread::Builder::new()
+            .name("v_pmem".to_string())
+            .spawn(move || {
+                run_worker(
+                    queue_event,
+                    queue,
+                    pmem_device_tube,
+                    interrupt,
+                    kill_event,
+                    memory,
+                    mapping_arena_slot,
+                    mapping_size,
+                )
+            })
+            .context("failed to spawn virtio_pmem worker")?;
+        self.worker_thread = Some(worker_thread);
+        Ok(())
     }
 }
 

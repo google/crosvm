@@ -8,6 +8,8 @@ use std::io::Write;
 use std::ops::BitOrAssign;
 use std::thread;
 
+use anyhow::anyhow;
+use anyhow::Context;
 use base::error;
 use base::Event;
 use base::EventToken;
@@ -222,28 +224,18 @@ impl VirtioDevice for Tpm {
         interrupt: Interrupt,
         mut queues: Vec<Queue>,
         mut queue_evts: Vec<Event>,
-    ) {
+    ) -> anyhow::Result<()> {
         if queues.len() != 1 || queue_evts.len() != 1 {
-            return;
+            return Err(anyhow!("expected 1 queue, got {}", queues.len()));
         }
         let queue = queues.remove(0);
         let queue_evt = queue_evts.remove(0);
 
-        let backend = match self.backend.take() {
-            Some(backend) => backend,
-            None => {
-                error!("no backend in vtpm");
-                return;
-            }
-        };
+        let backend = self.backend.take().context("no backend in vtpm")?;
 
-        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
-            Ok(v) => v,
-            Err(err) => {
-                error!("vtpm failed to create kill Event pair: {}", err);
-                return;
-            }
-        };
+        let (self_kill_evt, kill_evt) = Event::new()
+            .and_then(|e| Ok((e.try_clone()?, e)))
+            .context("vtpm failed to create kill Event pair")?;
         self.kill_evt = Some(self_kill_evt);
 
         let worker = Worker {
@@ -255,18 +247,12 @@ impl VirtioDevice for Tpm {
             backend,
         };
 
-        let worker_result = thread::Builder::new()
+        let worker_thread = thread::Builder::new()
             .name("v_tpm".to_string())
-            .spawn(|| worker.run());
-
-        match worker_result {
-            Err(e) => {
-                error!("vtpm failed to spawn virtio_tpm worker: {}", e);
-            }
-            Ok(join_handle) => {
-                self.worker_thread = Some(join_handle);
-            }
-        }
+            .spawn(|| worker.run())
+            .context("vtpm failed to spawn virtio_vtpm worker")?;
+        self.worker_thread = Some(worker_thread);
+        Ok(())
     }
 }
 

@@ -27,6 +27,7 @@ use virtio_sys::virtio_config::VIRTIO_CONFIG_S_DRIVER;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_DRIVER_OK;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_FAILED;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_FEATURES_OK;
+use virtio_sys::virtio_config::VIRTIO_CONFIG_S_NEEDS_RESET;
 use virtio_sys::virtio_mmio::*;
 use vm_memory::GuestMemory;
 
@@ -164,8 +165,12 @@ impl VirtioMmioDevice {
                     .filter(|(q, _)| q.ready())
                     .unzip();
 
-                self.device.activate(mem, interrupt, queues, queue_evts);
-                self.device_activated = true;
+                if let Err(e) = self.device.activate(mem, interrupt, queues, queue_evts) {
+                    error!("{} activate failed: {:#}", self.debug_label(), e);
+                    self.driver_status |= VIRTIO_CONFIG_S_NEEDS_RESET as u8;
+                } else {
+                    self.device_activated = true;
+                }
             }
             Err(e) => {
                 bail!(

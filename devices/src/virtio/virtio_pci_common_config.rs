@@ -268,7 +268,8 @@ mod tests {
             _interrupt: Interrupt,
             _queues: Vec<Queue>,
             _queue_evts: Vec<Event>,
-        ) {
+        ) -> anyhow::Result<()> {
+            Ok(())
         }
         fn features(&self) -> u64 {
             DUMMY_FEATURES

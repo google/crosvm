@@ -8,6 +8,8 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use std::thread;
 
+use anyhow::anyhow;
+use anyhow::Context;
 use balloon_control::BalloonStats;
 use balloon_control::BalloonTubeCommand;
 use balloon_control::BalloonTubeResult;
@@ -831,19 +833,19 @@ impl VirtioDevice for Balloon {
         interrupt: Interrupt,
         queues: Vec<Queue>,
         queue_evts: Vec<Event>,
-    ) {
+    ) -> anyhow::Result<()> {
         let expected_queues = Balloon::num_expected_queues(self.acked_features);
         if queues.len() != expected_queues || queue_evts.len() != expected_queues {
-            return;
+            return Err(anyhow!(
+                "expected {} queues, got {}",
+                expected_queues,
+                queues.len()
+            ));
         }
 
-        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("failed to create kill Event pair: {}", e);
-                return;
-            }
-        };
+        let (self_kill_evt, kill_evt) = Event::new()
+            .and_then(|e| Ok((e.try_clone()?, e)))
+            .context("failed to create kill Event pair")?;
         self.kill_evt = Some(self_kill_evt);
 
         let state = self.state.clone();
@@ -851,20 +853,19 @@ impl VirtioDevice for Balloon {
         // TODO(b/222588331): this relies on Tube::try_clone working
         #[cfg(unix)]
         #[allow(deprecated)]
-        let command_tube = match self.command_tube.as_ref().unwrap().try_clone() {
-            Ok(tube) => tube,
-            Err(e) => {
-                error!("failed to clone command tube {:?}", e);
-                return;
-            }
-        };
+        let command_tube = self
+            .command_tube
+            .as_ref()
+            .unwrap()
+            .try_clone()
+            .context("failed to clone command tube")?;
         #[cfg(windows)]
         let command_tube = self.command_tube.take().unwrap();
         #[cfg(windows)]
         let mapping_tube = self.dynamic_mapping_tube.take().unwrap();
         let release_memory_tube = self.release_memory_tube.take();
         let acked_features = self.acked_features;
-        let worker_result = thread::Builder::new()
+        let worker_thread = thread::Builder::new()
             .name("v_balloon".to_string())
             .spawn(move || {
                 run_worker(
@@ -880,16 +881,10 @@ impl VirtioDevice for Balloon {
                     state,
                     acked_features,
                 )
-            });
-
-        match worker_result {
-            Err(e) => {
-                error!("failed to spawn virtio_balloon worker: {}", e);
-            }
-            Ok(join_handle) => {
-                self.worker_thread = Some(join_handle);
-            }
-        }
+            })
+            .context("failed to spawn virtio_balloon worker")?;
+        self.worker_thread = Some(worker_thread);
+        Ok(())
     }
 
     fn reset(&mut self) -> bool {

@@ -7,6 +7,7 @@
 use std::cell::RefCell;
 use std::thread;
 
+use anyhow::Context;
 use base::error;
 use base::Event;
 use base::RawDescriptor;
@@ -162,22 +163,21 @@ impl VirtioDevice for VhostUserVirtioDevice {
         interrupt: Interrupt,
         queues: Vec<Queue>,
         queue_evts: Vec<Event>,
-    ) {
-        match self.handler.borrow_mut().activate(
-            mem,
-            interrupt,
-            queues,
-            queue_evts,
-            &format!("{}", self.device_type),
-        ) {
-            Ok((join_handle, kill_evt)) => {
-                self.worker_thread = Some(join_handle);
-                self.kill_evt = Some(kill_evt);
-            }
-            Err(e) => {
-                error!("failed to activate queues: {}", e);
-            }
-        }
+    ) -> anyhow::Result<()> {
+        let (join_handle, kill_evt) = self
+            .handler
+            .borrow_mut()
+            .activate(
+                mem,
+                interrupt,
+                queues,
+                queue_evts,
+                &format!("{}", self.device_type),
+            )
+            .context("failed to activate queues")?;
+        self.worker_thread = Some(join_handle);
+        self.kill_evt = Some(kill_evt);
+        Ok(())
     }
 
     fn reset(&mut self) -> bool {
