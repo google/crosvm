@@ -3,6 +3,8 @@ name = "rutabaga_gfx"
 version = "0.1.0-alpha.0"
 authors = ["The Chromium OS Authors"]
 edition = "2021"
+description = "[highly unstable] Handling virtio-gpu protocols"
+license-file = "LICENSE"
 
 [features]
 gfxstream = []

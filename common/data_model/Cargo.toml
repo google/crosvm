@@ -4,6 +4,8 @@ version = "0.1.0-alpha.0"
 authors = ["The Chromium OS Authors"]
 edition = "2021"
 include = ["src/**/*", "Cargo.toml"]
+description = "[highly unstable] data model for virtualization"
+license-file = "LICENSE"
 
 [dependencies]
 static_assertions = "1.1"
