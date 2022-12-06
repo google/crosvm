@@ -74,6 +74,7 @@ use devices::virtio::BalloonFeatures;
 use devices::virtio::BalloonMode;
 #[cfg(feature = "gpu")]
 use devices::virtio::EventDevice;
+use devices::virtio::NetParameters;
 use devices::virtio::NetParametersMode;
 use devices::virtio::VirtioTransportType;
 #[cfg(feature = "audio")]
@@ -477,100 +478,65 @@ fn create_virtio_devices(
         )?);
     }
 
-    for opt in &cfg.net {
-        match &opt.mode {
-            NetParametersMode::TapName { tap_name, mac } => {
-                devs.push(create_tap_net_device_from_name(
-                    cfg.protection_type,
-                    &cfg.jail_config,
-                    cfg.net_vq_pairs.unwrap_or(1),
-                    cfg.vcpu_count.unwrap_or(1),
-                    tap_name.as_bytes(),
-                    *mac,
-                )?);
-            }
-            NetParametersMode::TapFd { tap_fd, mac } => {
-                devs.push(create_tap_net_device_from_fd(
-                    cfg.protection_type,
-                    &cfg.jail_config,
-                    cfg.net_vq_pairs.unwrap_or(1),
-                    cfg.vcpu_count.unwrap_or(1),
-                    *tap_fd,
-                    *mac,
-                )?);
-            }
-            NetParametersMode::RawConfig {
-                host_ip,
-                netmask,
-                mac,
-                vhost_net,
-            } => {
-                if !cfg.vhost_user_net.is_empty() {
-                    bail!(
-                        "vhost-user-net cannot be used with any of --host-ip, --netmask or --mac"
-                    );
-                }
-                devs.push(create_net_device_from_config(
-                    cfg.protection_type,
-                    &cfg.jail_config,
-                    cfg.net_vq_pairs.unwrap_or(1),
-                    cfg.vcpu_count.unwrap_or(1),
-                    if *vhost_net {
-                        Some(cfg.vhost_net_device_path.clone())
-                    } else {
-                        None
-                    },
-                    *host_ip,
-                    *netmask,
-                    *mac,
-                )?);
-            }
-        }
-    }
+    let mut net_cfg_extra: Vec<_> = cfg
+        .tap_fd
+        .iter()
+        .map(|fd| NetParameters {
+            vhost_net: cfg.vhost_net,
+            mode: NetParametersMode::TapFd {
+                tap_fd: *fd,
+                mac: None,
+            },
+        })
+        .collect();
 
-    // We checked above that if the IP is defined, then the netmask is, too.
-    for tap_fd in &cfg.tap_fd {
-        devs.push(create_tap_net_device_from_fd(
-            cfg.protection_type,
-            &cfg.jail_config,
-            cfg.net_vq_pairs.unwrap_or(1),
-            cfg.vcpu_count.unwrap_or(1),
-            *tap_fd,
-            None,
-        )?);
-    }
-
-    if let (Some(host_ip), Some(netmask), Some(mac_address)) =
-        (cfg.host_ip, cfg.netmask, cfg.mac_address)
-    {
+    if let (Some(host_ip), Some(netmask), Some(mac)) = (cfg.host_ip, cfg.netmask, cfg.mac_address) {
         if !cfg.vhost_user_net.is_empty() {
             bail!("vhost-user-net cannot be used with any of --host-ip, --netmask or --mac");
         }
-        devs.push(create_net_device_from_config(
-            cfg.protection_type,
-            &cfg.jail_config,
-            cfg.net_vq_pairs.unwrap_or(1),
-            cfg.vcpu_count.unwrap_or(1),
-            if cfg.vhost_net {
-                Some(cfg.vhost_net_device_path.clone())
-            } else {
-                None
+        net_cfg_extra.push(NetParameters {
+            vhost_net: cfg.vhost_net,
+            mode: NetParametersMode::RawConfig {
+                host_ip,
+                netmask,
+                mac,
             },
-            host_ip,
-            netmask,
-            mac_address,
-        )?);
+        });
     }
 
-    for tap_name in &cfg.tap_name {
-        devs.push(create_tap_net_device_from_name(
-            cfg.protection_type,
-            &cfg.jail_config,
-            cfg.net_vq_pairs.unwrap_or(1),
-            cfg.vcpu_count.unwrap_or(1),
-            tap_name.as_bytes(),
-            None,
-        )?);
+    net_cfg_extra.extend(cfg.tap_name.iter().map(|tap_name| NetParameters {
+        vhost_net: cfg.vhost_net,
+        mode: NetParametersMode::TapName {
+            mac: None,
+            tap_name: tap_name.to_owned(),
+        },
+    }));
+
+    for opt in [&cfg.net, &net_cfg_extra].into_iter().flatten() {
+        let vq_pairs = cfg.net_vq_pairs.unwrap_or(1);
+        let vcpu_count = cfg.vcpu_count.unwrap_or(1);
+        let multi_vq = vq_pairs > 1 && !opt.vhost_net;
+        let (tap, mac) = create_tap_for_net_device(&opt.mode, multi_vq)?;
+        let dev = if opt.vhost_net {
+            create_virtio_vhost_net_device_from_tap(
+                cfg.protection_type,
+                &cfg.jail_config,
+                vq_pairs,
+                vcpu_count,
+                cfg.vhost_net_device_path.clone(),
+                tap,
+            )
+        } else {
+            create_virtio_net_device_from_tap(
+                cfg.protection_type,
+                &cfg.jail_config,
+                vq_pairs,
+                vcpu_count,
+                tap,
+                mac,
+            )
+        }?;
+        devs.push(dev);
     }
 
     for net in &cfg.vhost_user_net {

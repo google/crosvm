@@ -5,7 +5,6 @@
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::fs::OpenOptions;
-use std::net::Ipv4Addr;
 use std::ops::RangeInclusive;
 use std::os::unix::net::UnixListener;
 use std::os::unix::net::UnixStream;
@@ -44,6 +43,7 @@ use devices::virtio::vhost::vsock::VhostVsockConfig;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonMode;
 use devices::virtio::NetError;
+use devices::virtio::NetParametersMode;
 use devices::virtio::VirtioDevice;
 use devices::virtio::VirtioDeviceType;
 use devices::BusDeviceObj;
@@ -62,6 +62,7 @@ use hypervisor::Vm;
 use minijail::Minijail;
 use net_util::sys::unix::Tap;
 use net_util::MacAddress;
+use net_util::TapT;
 use net_util::TapTCommon;
 use resources::Alloc;
 use resources::AllocOptions;
@@ -767,97 +768,53 @@ where
     })
 }
 
-/// Returns a network device created from a new TAP interface configured with `host_ip`, `netmask`,
-/// and `mac_address`.
-pub fn create_net_device_from_config(
-    protection_type: ProtectionType,
-    jail_config: &Option<JailConfig>,
-    vq_pairs: u16,
-    vcpu_count: usize,
-    vhost_net: Option<PathBuf>,
-    host_ip: Ipv4Addr,
-    netmask: Ipv4Addr,
-    mac_address: MacAddress,
-) -> DeviceResult {
-    let multi_queue = vhost_net.is_none() && vq_pairs > 1;
-    let tap = Tap::new(true, multi_queue).map_err(NetError::TapOpen)?;
-    tap.set_ip_addr(host_ip).map_err(NetError::TapSetIp)?;
-    tap.set_netmask(netmask).map_err(NetError::TapSetNetmask)?;
-    tap.set_mac_address(mac_address)
-        .map_err(NetError::TapSetMacAddress)?;
-    tap.enable().map_err(NetError::TapEnable)?;
-    if let Some(vhost_net_device_path) = vhost_net {
-        create_net_device(
-            protection_type,
-            jail_config,
-            vq_pairs,
-            vcpu_count,
-            "vhost_net_device",
-            move |features, _vq_pairs| {
-                virtio::vhost::Net::<Tap, vhost::Net<Tap>>::new(
-                    &vhost_net_device_path,
-                    features,
-                    tap,
-                )
-                .context("failed to set up vhost networking")
-            },
-        )
-    } else {
-        create_net_device(
-            protection_type,
-            jail_config,
-            vq_pairs,
-            vcpu_count,
-            "net_device",
-            move |features, vq_pairs| {
-                virtio::Net::<Tap>::new(features, tap, vq_pairs, None)
-                    .context("failed to create virtio network device")
-            },
-        )
-    }
-}
-
-/// Returns a network device from a file descriptor to a configured TAP interface.
-pub fn create_tap_net_device_from_fd(
-    protection_type: ProtectionType,
-    jail_config: &Option<JailConfig>,
-    vq_pairs: u16,
-    vcpu_count: usize,
-    tap_fd: RawDescriptor,
-    mac_addr: Option<MacAddress>,
-) -> DeviceResult {
-    create_net_device(
-        protection_type,
-        jail_config,
-        vq_pairs,
-        vcpu_count,
-        "net_device",
-        |features, vq_pairs| {
+/// Create a new tap interface based on NetParametersMode.
+pub fn create_tap_for_net_device(
+    mode: &NetParametersMode,
+    multi_vq: bool,
+) -> DeviceResult<(Tap, Option<MacAddress>)> {
+    match mode {
+        NetParametersMode::TapName { tap_name, mac } => {
+            let tap = Tap::new_with_name(tap_name.as_bytes(), true, multi_vq)
+                .map_err(NetError::TapOpen)?;
+            Ok((tap, *mac))
+        }
+        NetParametersMode::TapFd { tap_fd, mac } => {
             // Safe because we ensure that we get a unique handle to the fd.
             let tap = unsafe {
                 Tap::from_raw_descriptor(
-                    validate_raw_descriptor(tap_fd).context("failed to validate tap descriptor")?,
+                    validate_raw_descriptor(*tap_fd)
+                        .context("failed to validate tap descriptor")?,
                 )
                 .context("failed to create tap device")?
             };
-
-            virtio::Net::new(features, tap, vq_pairs, mac_addr)
-                .context("failed to create tap net device")
-        },
-    )
+            Ok((tap, *mac))
+        }
+        NetParametersMode::RawConfig {
+            host_ip,
+            netmask,
+            mac,
+        } => {
+            let tap = Tap::new(true, multi_vq).map_err(NetError::TapOpen)?;
+            tap.set_ip_addr(*host_ip).map_err(NetError::TapSetIp)?;
+            tap.set_netmask(*netmask).map_err(NetError::TapSetNetmask)?;
+            tap.set_mac_address(*mac)
+                .map_err(NetError::TapSetMacAddress)?;
+            tap.enable().map_err(NetError::TapEnable)?;
+            Ok((tap, None))
+        }
+    }
 }
 
-/// Returns a network device created by opening the persistent, configured TAP interface `tap_name`.
-pub fn create_tap_net_device_from_name(
+/// Returns a virtio network device created from a new TAP device.
+pub fn create_virtio_net_device_from_tap<T: TapT + ReadNotifier + 'static>(
     protection_type: ProtectionType,
     jail_config: &Option<JailConfig>,
     vq_pairs: u16,
     vcpu_count: usize,
-    tap_name: &[u8],
-    mac_addr: Option<MacAddress>,
+    tap: T,
+    mac: Option<MacAddress>,
 ) -> DeviceResult {
-    let multi_queue = vq_pairs > 1;
-    let tap = Tap::new_with_name(tap_name, true, multi_queue).map_err(NetError::TapOpen)?;
     create_net_device(
         protection_type,
         jail_config,
@@ -865,8 +822,30 @@ pub fn create_tap_net_device_from_name(
         vcpu_count,
         "net_device",
         move |features, vq_pairs| {
-            virtio::Net::<Tap>::new(features, tap, vq_pairs, mac_addr)
-                .context("failed to create configured virtio network device")
+            virtio::Net::new(features, tap, vq_pairs, mac)
+                .context("failed to set up virtio networking")
+        },
+    )
+}
+
+/// Returns a virtio-vhost network device created from a new TAP device.
+pub fn create_virtio_vhost_net_device_from_tap<T: TapT + 'static>(
+    protection_type: ProtectionType,
+    jail_config: &Option<JailConfig>,
+    vq_pairs: u16,
+    vcpu_count: usize,
+    vhost_net_device_path: PathBuf,
+    tap: T,
+) -> DeviceResult {
+    create_net_device(
+        protection_type,
+        jail_config,
+        vq_pairs,
+        vcpu_count,
+        "vhost_net_device",
+        move |features, _vq_pairs| {
+            virtio::vhost::Net::<T, vhost::Net<T>>::new(&vhost_net_device_path, features, tap)
+                .context("failed to set up virtio-vhost networking")
         },
     )
 }

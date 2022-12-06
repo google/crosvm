@@ -156,8 +156,6 @@ pub enum NetParametersMode {
     },
     #[serde(rename_all = "kebab-case")]
     RawConfig {
-        #[serde(default)]
-        vhost_net: bool,
         host_ip: Ipv4Addr,
         netmask: Ipv4Addr,
         mac: MacAddress,
@@ -165,9 +163,12 @@ pub enum NetParametersMode {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "kebab-case")]
 pub struct NetParameters {
     #[serde(flatten)]
     pub mode: NetParametersMode,
+    #[serde(default)]
+    pub vhost_net: bool,
 }
 
 impl FromStr for NetParameters {
@@ -833,6 +834,7 @@ mod tests {
         assert_eq!(
             params,
             NetParameters {
+                vhost_net: false,
                 mode: NetParametersMode::TapName {
                     tap_name: "tap".to_string(),
                     mac: None
@@ -844,6 +846,7 @@ mod tests {
         assert_eq!(
             params,
             NetParameters {
+                vhost_net: false,
                 mode: NetParametersMode::TapName {
                     tap_name: "tap".to_string(),
                     mac: Some(MacAddress::from_str("3d:70:eb:61:1a:91").unwrap())
@@ -855,6 +858,7 @@ mod tests {
         assert_eq!(
             params,
             NetParameters {
+                vhost_net: false,
                 mode: NetParametersMode::TapFd {
                     tap_fd: 12,
                     mac: None
@@ -866,6 +870,7 @@ mod tests {
         assert_eq!(
             params,
             NetParameters {
+                vhost_net: false,
                 mode: NetParametersMode::TapFd {
                     tap_fd: 12,
                     mac: Some(MacAddress::from_str("3d:70:eb:61:1a:91").unwrap())
@@ -880,11 +885,11 @@ mod tests {
         assert_eq!(
             params,
             NetParameters {
+                vhost_net: false,
                 mode: NetParametersMode::RawConfig {
                     host_ip: Ipv4Addr::from_str("192.168.10.1").unwrap(),
                     netmask: Ipv4Addr::from_str("255.255.255.0").unwrap(),
                     mac: MacAddress::from_str("3d:70:eb:61:1a:91").unwrap(),
-                    vhost_net: false
                 }
             }
         );
@@ -899,11 +904,60 @@ mod tests {
         assert_eq!(
             params,
             NetParameters {
+                vhost_net: true,
                 mode: NetParametersMode::RawConfig {
                     host_ip: Ipv4Addr::from_str("192.168.10.1").unwrap(),
                     netmask: Ipv4Addr::from_str("255.255.255.0").unwrap(),
                     mac: MacAddress::from_str("3d:70:eb:61:1a:91").unwrap(),
-                    vhost_net: true
+                }
+            }
+        );
+
+        let params = from_net_arg("tap-fd=3,vhost-net=true").unwrap();
+        assert_eq!(
+            params,
+            NetParameters {
+                vhost_net: true,
+                mode: NetParametersMode::TapFd {
+                    tap_fd: 3,
+                    mac: None
+                }
+            }
+        );
+
+        let params = from_net_arg("tap-fd=4,vhost-net=false,mac=\"3d:70:eb:61:1a:91\"").unwrap();
+        assert_eq!(
+            params,
+            NetParameters {
+                vhost_net: false,
+                mode: NetParametersMode::TapFd {
+                    tap_fd: 4,
+                    mac: Some(MacAddress::from_str("3d:70:eb:61:1a:91").unwrap())
+                }
+            }
+        );
+
+        let params = from_net_arg("vhost-net=true,tap-name=crosvm_tap").unwrap();
+        assert_eq!(
+            params,
+            NetParameters {
+                vhost_net: true,
+                mode: NetParametersMode::TapName {
+                    tap_name: "crosvm_tap".to_owned(),
+                    mac: None
+                }
+            }
+        );
+
+        let params =
+            from_net_arg("vhost-net=true,mac=\"3d:70:eb:61:1a:91\",tap-name=crosvm_tap").unwrap();
+        assert_eq!(
+            params,
+            NetParameters {
+                vhost_net: true,
+                mode: NetParametersMode::TapName {
+                    tap_name: "crosvm_tap".to_owned(),
+                    mac: Some(MacAddress::from_str("3d:70:eb:61:1a:91").unwrap())
                 }
             }
         );
