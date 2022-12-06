@@ -9,7 +9,7 @@ dependencies = [
  "arch",
  "base",
  "cros_fdt",
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "devices",
  "gdbstub",
  "gdbstub_arch",
@@ -33,7 +33,7 @@ dependencies = [
 name = "acpi_tables"
 version = "0.1.0"
 dependencies = [
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "tempfile",
 ]
 
@@ -134,6 +134,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "149f75bbec1827618262e0855a68f0f9a7f2edc13faebf33c4f16d6725edb6a9"
 
 [[package]]
+name = "assertions"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d2db826478dd8333d60f91c74ff8f0b3d01252a32631f004b11fbb18c941036"
+
+[[package]]
 name = "async-task"
 version = "4.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -193,7 +199,7 @@ dependencies = [
  "base_event_token_derive",
  "cfg-if",
  "chrono",
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "env_logger",
  "libc",
  "log",
@@ -451,7 +457,7 @@ dependencies = [
  "audio_streams",
  "base",
  "cfg-if",
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "futures",
  "futures-executor",
  "futures-util",
@@ -480,7 +486,7 @@ dependencies = [
  "anyhow",
  "async-task",
  "base",
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "futures",
  "futures-executor",
  "futures-util",
@@ -557,7 +563,7 @@ dependencies = [
  "crosvm_cli",
  "crosvm_plugin",
  "ctrlc",
- "data_model",
+ "data_model 0.1.0",
  "devices",
  "disk",
  "document-features",
@@ -614,7 +620,7 @@ version = "0.0.1"
 dependencies = [
  "base",
  "cros_fuzz",
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "devices",
  "disk",
  "fuse",
@@ -672,7 +678,7 @@ dependencies = [
 
 [[package]]
 name = "data_model"
-version = "0.1.0"
+version = "0.1.0-alpha.0"
 dependencies = [
  "cfg-if",
  "libc",
@@ -681,6 +687,15 @@ dependencies = [
  "static_assertions",
  "thiserror",
  "winapi",
+]
+
+[[package]]
+name = "data_model"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c0d4dcbc04881739a8916b96a84154517eb4230e1c889d45bcaefad7e66dcd2"
+dependencies = [
+ "assertions",
 ]
 
 [[package]]
@@ -726,7 +741,7 @@ dependencies = [
  "cros_async",
  "cros_tracing",
  "crosvm_cli",
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "dbus",
  "disk",
  "downcast-rs",
@@ -789,7 +804,7 @@ dependencies = [
  "cfg-if",
  "crc32fast",
  "cros_async",
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "futures",
  "libc",
  "protobuf",
@@ -903,7 +918,7 @@ dependencies = [
  "base",
  "bitflags",
  "crossbeam-utils",
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "enumn",
  "libc",
  "remain",
@@ -1049,7 +1064,7 @@ dependencies = [
  "base",
  "cc",
  "cfg-if",
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "euclid",
  "libc",
  "linux_input_sys",
@@ -1099,7 +1114,7 @@ dependencies = [
  "base",
  "bit_field",
  "bitflags",
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "downcast-rs",
  "enumn",
  "fnv",
@@ -1162,7 +1177,7 @@ name = "io_uring"
 version = "0.1.1"
 dependencies = [
  "base",
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "libc",
  "remain",
  "sync",
@@ -1199,7 +1214,7 @@ name = "kernel_loader"
 version = "0.1.0"
 dependencies = [
  "base",
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "libc",
  "remain",
  "resources",
@@ -1213,7 +1228,7 @@ name = "kvm"
 version = "0.1.0"
 dependencies = [
  "base",
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "kvm_sys",
  "libc",
  "sync",
@@ -1225,7 +1240,7 @@ name = "kvm_sys"
 version = "0.1.0"
 dependencies = [
  "base",
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "libc",
 ]
 
@@ -1319,7 +1334,7 @@ name = "linux_input_sys"
 version = "0.1.0"
 dependencies = [
  "base",
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "libc",
 ]
 
@@ -1471,7 +1486,7 @@ dependencies = [
  "base",
  "cfg-if",
  "cros_async",
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "libc",
  "libslirp-sys",
  "metrics",
@@ -1861,7 +1876,7 @@ dependencies = [
  "anyhow",
  "base",
  "cfg-if",
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "libc",
  "pkg-config",
  "remain",
@@ -2012,7 +2027,7 @@ dependencies = [
  "anyhow",
  "base",
  "cros_tracing",
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "libc",
  "minijail",
  "once_cell",
@@ -2158,7 +2173,7 @@ name = "tube_transporter"
 version = "0.1.0"
 dependencies = [
  "base",
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "rand",
  "serde",
  "serde_json",
@@ -2191,7 +2206,7 @@ name = "usb_util"
 version = "0.1.0"
 dependencies = [
  "base",
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "libc",
  "remain",
  "static_assertions",
@@ -2245,7 +2260,7 @@ name = "vfio_sys"
 version = "0.1.0"
 dependencies = [
  "base",
- "data_model",
+ "data_model 0.1.0-alpha.0",
 ]
 
 [[package]]
@@ -2267,7 +2282,7 @@ name = "virtio_sys"
 version = "0.1.0"
 dependencies = [
  "base",
- "data_model",
+ "data_model 0.1.0-alpha.0",
 ]
 
 [[package]]
@@ -2278,7 +2293,7 @@ dependencies = [
  "balloon_control",
  "base",
  "cfg-if",
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "gdbstub",
  "gdbstub_arch",
  "hypervisor",
@@ -2304,7 +2319,7 @@ dependencies = [
  "bitflags",
  "cfg-if",
  "cros_async",
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "libc",
  "remain",
  "serde",
@@ -2319,7 +2334,7 @@ dependencies = [
  "base",
  "bitflags",
  "cfg-if",
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "libc",
  "remain",
  "serde",
@@ -2492,7 +2507,7 @@ dependencies = [
  "cfg-if",
  "chrono",
  "cros_fdt",
- "data_model",
+ "data_model 0.1.0-alpha.0",
  "devices",
  "gdbstub_arch",
  "hypervisor",

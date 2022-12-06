@@ -11,7 +11,7 @@ trace_marker = ["cros_tracing/trace_marker"]
 anyhow = "*"
 base = { path = "../base" }
 cros_tracing = { path = "../cros_tracing" }
-data_model = "*"
+data_model = { path = "../common/data_model" }
 libc = "*"
 minijail = "*"
 once_cell = "*"

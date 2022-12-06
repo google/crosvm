@@ -11,7 +11,7 @@ path = "src/lib.rs"
 base = "*"
 bitflags = "1"
 crossbeam-utils = "0.8"
-data_model = "*"
+data_model = { path = "../common/data_model" }
 enumn = "0.1.0"
 libc = "*"
 remain = "0.2"
