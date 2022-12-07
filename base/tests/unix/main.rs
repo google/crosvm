@@ -15,7 +15,6 @@ use libc::EINVAL;
 
 /// Runs all unix specific integration tests in a single binary.
 mod net;
-mod process;
 mod scoped_signal_handler;
 mod syslog;
 mod tube;

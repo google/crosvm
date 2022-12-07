@@ -2,6 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![cfg(unix)]
+
+use std::env::current_exe;
+use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
@@ -11,8 +15,34 @@ use base::AsRawDescriptor;
 use base::Tube;
 use minijail::Minijail;
 
+/// Tests using fork_process will fail if run inside a multithreaded process. By default, the
+/// cargo test harness will use multiple threads to execute tests.
+/// To make sure these tests work, we will re-execute the test binary in single threaded mode
+/// to execute just the specified test.
+fn call_test_in_child_process(name: &str) {
+    let result = Command::new(current_exe().unwrap())
+        .args(&[
+            "--test-threads=1",
+            "--nocapture",
+            "--ignored",
+            "--exact",
+            name,
+        ])
+        .status()
+        .unwrap();
+    if !result.success() {
+        panic!("Test {name} failed in child process.");
+    }
+}
+
 #[test]
 fn pid_diff() {
+    call_test_in_child_process("pid_diff_impl");
+}
+
+#[test]
+#[ignore = "Only to be called by pid_diff"]
+fn pid_diff_impl() {
     let (tube, fork_tube) = Tube::pair().expect("failed to create tube");
     let jail = Minijail::new().unwrap();
     let keep_rds = vec![fork_tube.as_raw_descriptor()];
@@ -34,6 +64,12 @@ fn pid_diff() {
 
 #[test]
 fn thread_name() {
+    call_test_in_child_process("thread_name_impl");
+}
+
+#[test]
+#[ignore = "Only to be called by thread_name"]
+fn thread_name_impl() {
     let (tube, fork_tube) = Tube::pair().expect("failed to create tube");
     let jail = Minijail::new().unwrap();
     let keep_rds = vec![fork_tube.as_raw_descriptor()];
@@ -58,6 +94,12 @@ fn thread_name() {
 
 #[test]
 fn thread_name_trimmed() {
+    call_test_in_child_process("thread_name_trimmed_impl");
+}
+
+#[test]
+#[ignore = "Only to be called by thread_name_trimmed"]
+fn thread_name_trimmed_impl() {
     let (tube, fork_tube) = Tube::pair().expect("failed to create tube");
     let jail = Minijail::new().unwrap();
     let keep_rds = vec![fork_tube.as_raw_descriptor()];
@@ -82,6 +124,12 @@ fn thread_name_trimmed() {
 
 #[test]
 fn wait_for_success() {
+    call_test_in_child_process("wait_for_success_impl");
+}
+
+#[test]
+#[ignore = "Only to be called by wait_for_success"]
+fn wait_for_success_impl() {
     let jail = Minijail::new().unwrap();
     let child = fork_process(jail, vec![], None, || {
         // exit successfully
@@ -93,6 +141,12 @@ fn wait_for_success() {
 
 #[test]
 fn wait_for_panic() {
+    call_test_in_child_process("wait_for_panic_impl");
+}
+
+#[test]
+#[ignore = "Only to be called by wait_for_panic"]
+fn wait_for_panic_impl() {
     let jail = Minijail::new().unwrap();
     let child = fork_process(jail, vec![], None, || {
         panic!("fails");
