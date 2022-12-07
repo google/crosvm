@@ -23,10 +23,12 @@ use audio_streams::async_api::ReadWriteAsync;
 use audio_streams::async_api::WriteAsync;
 #[cfg(unix)]
 use base::Descriptor;
+#[cfg(windows)]
+use base::Event;
+#[cfg(windows)]
+use base::FromRawDescriptor;
 #[cfg(unix)]
 use base::RawDescriptor;
-#[cfg(windows)]
-use base::{Event, FromRawDescriptor};
 
 #[cfg(unix)]
 use super::AsyncWrapper;

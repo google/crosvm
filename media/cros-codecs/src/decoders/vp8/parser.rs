@@ -5,7 +5,8 @@
 use std::convert::TryFrom;
 use std::io::Cursor;
 
-use anyhow::{anyhow, Result};
+use anyhow::anyhow;
+use anyhow::Result;
 use bytes::Buf;
 use log::debug;
 

@@ -99,9 +99,8 @@ impl<'a> Iterator for FileDataIterator<'a> {
 mod tests {
     use std::os::unix::fs::FileExt;
 
-    use crate::pagesize;
-
     use super::*;
+    use crate::pagesize;
 
     #[test]
     fn file_data_iterator() {

@@ -12,7 +12,8 @@ use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
 use std::mem;
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::io::AsRawFd;
+use std::os::unix::io::RawFd;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicUsize;
@@ -26,14 +27,15 @@ use std::time::Duration;
 use base::pipe;
 use base::EventType;
 use base::WaitContext;
+use io_uring::Error;
 use io_uring::URingAllowlist;
+use io_uring::URingContext;
+use io_uring::UserData;
 use libc::EACCES;
 use sync::Condvar;
 use sync::Mutex;
 use tempfile::tempfile;
 use tempfile::TempDir;
-
-use io_uring::{Error, URingContext, UserData};
 
 fn append_file_name(path: &Path, name: &str) -> PathBuf {
     let mut joined = path.to_path_buf();

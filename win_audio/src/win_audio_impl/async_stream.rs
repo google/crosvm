@@ -195,9 +195,9 @@ impl AsyncBufferCommit for DeviceRenderer {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use cros_async::Executor;
+
+    use super::*;
 
     // This test is meant to run through the normal audio playback procedure in order to make
     // debugging easier. The test needs to be ran with a playback device format of 48KHz,

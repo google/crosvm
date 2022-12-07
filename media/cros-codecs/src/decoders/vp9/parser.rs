@@ -1264,10 +1264,11 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use bytes::Buf;
     use std::io::Cursor;
     use std::io::Read;
     use std::io::Seek;
+
+    use bytes::Buf;
 
     use crate::decoders::vp9::parser::BitDepth;
     use crate::decoders::vp9::parser::ColorSpace;

@@ -5,7 +5,8 @@
 //! Utility file to provide a ratelimit object
 
 use std::cmp;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
 const BUS_LOCK_SLICE_TIME: u32 = 1000000000;
 

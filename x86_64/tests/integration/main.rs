@@ -35,7 +35,6 @@ use resources::SystemAllocator;
 use sync::Mutex;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
-
 use x86_64::acpi;
 use x86_64::arch_memory_regions;
 use x86_64::bootparam;

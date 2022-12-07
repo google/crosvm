@@ -11,10 +11,9 @@ use std::process::Stdio;
 use std::thread;
 use std::time::Duration;
 
-use rand::Rng;
-
 use fixture::vm::Config;
 use fixture::vm::TestVm;
+use rand::Rng;
 
 const HOST_CID: u64 = 2;
 const VSOCK_COM_PORT: u64 = 11111;
