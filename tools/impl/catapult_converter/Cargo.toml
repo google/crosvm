@@ -1,0 +1,12 @@
+[package]
+name = "catapult_converter"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+edition = "2021"
+
+
+[dependencies]
+serde_json = "*"
+serde = { version = "*", features = ["derive"] }
+argh = "*"
+uuid = {version = "*", features = ["v4"]}

@@ -93,6 +93,7 @@ members = [
     "swap",
     "system_api",
     "third_party/vmm_vhost",
+    "tools/impl/catapult_converter",
     "tpm2-sys",
     "tpm2",
     "usb_sys",
