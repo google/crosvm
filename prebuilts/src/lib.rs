@@ -73,7 +73,7 @@ fn get_url(library: &str, filename: &str, version: u32) -> String {
     format!("{BASE_URL}{platform}/{arch}/{toolchain}/{library}/{build_type}/{version}/{filename}",)
 }
 
-fn download_file(url: &str, destination: &Path) -> Result<()> {
+pub fn download_file(url: &str, destination: &Path) -> Result<()> {
     let mut cmd = sys::download_command(url, destination);
     match cmd.status() {
         Ok(exit_code) => {

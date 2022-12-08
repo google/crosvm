@@ -26,6 +26,7 @@ use anyhow::anyhow;
 use anyhow::Result;
 use base::syslog;
 use libc::O_DIRECT;
+use prebuilts::download_file;
 use tempfile::TempDir;
 
 use crate::fixture::utils::find_crosvm_binary;
@@ -118,25 +119,6 @@ where
         panic!("Operation timed out or closure paniced.");
     }
     handle.join().unwrap()
-}
-
-fn download_file(url: &str, destination: &Path) -> Result<()> {
-    let status = Command::new("curl")
-        .arg("--fail")
-        .arg("--location")
-        .args(["--output", destination.to_str().unwrap()])
-        .arg(url)
-        .status();
-    match status {
-        Ok(exit_code) => {
-            if !exit_code.success() {
-                Err(anyhow!("Cannot download {}", url))
-            } else {
-                Ok(())
-            }
-        }
-        Err(error) => Err(anyhow!(error)),
-    }
 }
 
 /// Configuration to start `TestVm`.
