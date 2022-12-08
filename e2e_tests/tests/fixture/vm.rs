@@ -177,6 +177,22 @@ impl TestVm {
     /// Magic line sent by the delegate binary when the guest is ready.
     const MAGIC_LINE: &'static str = "\x05Ready";
 
+    // Check if the test file system is a known compatible one. Needs to support features
+    // like O_DIRECT.
+    fn check_rootfs_file(rootfs_path: &Path) {
+        if let Err(e) = OpenOptions::new()
+            .custom_flags(O_DIRECT)
+            .write(false)
+            .read(true)
+            .open(rootfs_path)
+        {
+            panic!(
+                "File open with O_DIRECT expected to work but did not: {}",
+                e
+            );
+        }
+    }
+
     /// Downloads prebuilts if needed.
     fn initialize_once() {
         if let Err(e) = syslog::init() {
@@ -214,18 +230,7 @@ impl TestVm {
         }
         assert!(rootfs_path.exists(), "{:?} does not exist", rootfs_path);
 
-        // Check if the test file system is a known compatible one. Needs to support features like O_DIRECT.
-        if let Err(e) = OpenOptions::new()
-            .custom_flags(O_DIRECT)
-            .write(false)
-            .read(true)
-            .open(rootfs_path)
-        {
-            panic!(
-                "File open with O_DIRECT expected to work but did not: {}",
-                e
-            );
-        }
+        Self::check_rootfs_file(&rootfs_path);
     }
 
     // Adds 2 serial devices:
@@ -331,23 +336,23 @@ impl TestVm {
         })
     }
 
-    pub fn new(cfg: Config) -> Result<TestVm> {
-        TestVm::new_generic(
-            |command, test_dir, cfg| {
-                TestVm::configure_serial_devices(
-                    command,
-                    &test_dir.join(FROM_GUEST_PIPE),
-                    &test_dir.join(TO_GUEST_PIPE),
-                );
-                command.args(["--socket", test_dir.join(CONTROL_PIPE).to_str().unwrap()]);
-                TestVm::configure_rootfs(command, cfg.o_direct);
-                // Set kernel as the last argument.
-                command.arg(kernel_path());
+    // Generates a config file from cfg and appends the command to use the config file.
+    fn append_config_args(command: &mut Command, test_dir: &Path, cfg: &Config) -> Result<()> {
+        TestVm::configure_serial_devices(
+            command,
+            &test_dir.join(FROM_GUEST_PIPE),
+            &test_dir.join(TO_GUEST_PIPE),
+        );
+        command.args(["--socket", test_dir.join(CONTROL_PIPE).to_str().unwrap()]);
+        TestVm::configure_rootfs(command, cfg.o_direct);
+        // Set kernel as the last argument.
+        command.arg(kernel_path());
 
-                Ok(())
-            },
-            cfg,
-        )
+        Ok(())
+    }
+
+    pub fn new(cfg: Config) -> Result<TestVm> {
+        TestVm::new_generic(Self::append_config_args, cfg)
     }
 
     /// Generate a JSON configuration file for `cfg` and returns its path.
@@ -394,22 +399,27 @@ impl TestVm {
         Ok(config_file_path)
     }
 
+    // Generates a config file from cfg and appends the command to use the config file.
+    fn append_config_file_arg(command: &mut Command, test_dir: &Path, cfg: &Config) -> Result<()> {
+        let config_file_path = TestVm::generate_json_config_file(test_dir, cfg)?;
+        command.args(["--cfg", config_file_path.to_str().unwrap()]);
+
+        Ok(())
+    }
+
     /// Instanciate a new crosvm instance using a configuration file. The first call will trigger
     /// the download of prebuilt files if necessary.
     pub fn new_with_config_file(cfg: Config) -> Result<TestVm> {
-        TestVm::new_generic(
-            |command, test_dir, cfg| {
-                let config_file_path = TestVm::generate_json_config_file(test_dir, cfg)?;
-                command.args(["--cfg", config_file_path.to_str().unwrap()]);
-
-                Ok(())
-            },
-            cfg,
-        )
+        TestVm::new_generic(Self::append_config_file_arg, cfg)
     }
 
     /// Executes the shell command `command` and returns the programs stdout.
     pub fn exec_in_guest(&mut self, command: &str) -> Result<String> {
+        self.exec_command(command)?;
+        self.wait_for_guest()
+    }
+
+    fn exec_command(&mut self, command: &str) -> Result<()> {
         // Write command to serial port.
         writeln!(&mut self.to_guest, "{}", command)?;
 
@@ -417,7 +427,10 @@ impl TestVm {
         let mut echo = String::new();
         self.from_guest_reader.read_line(&mut echo)?;
         assert_eq!(echo.trim(), command);
+        Ok(())
+    }
 
+    fn wait_for_guest(&mut self) -> Result<String> {
         // Return all remaining lines until we receive the MAGIC_LINE
         let mut output = String::new();
         loop {
@@ -465,19 +478,19 @@ impl TestVm {
         }
     }
 
-    pub fn stop(&self) -> Result<()> {
+    pub fn stop(&mut self) -> Result<()> {
         self.crosvm_command("stop", vec![])
     }
 
-    pub fn suspend(&self) -> Result<()> {
+    pub fn suspend(&mut self) -> Result<()> {
         self.crosvm_command("suspend", vec![])
     }
 
-    pub fn resume(&self) -> Result<()> {
+    pub fn resume(&mut self) -> Result<()> {
         self.crosvm_command("resume", vec![])
     }
 
-    pub fn disk(&self, args: Vec<String>) -> Result<()> {
+    pub fn disk(&mut self, args: Vec<String>) -> Result<()> {
         self.crosvm_command("disk", args)
     }
 }
