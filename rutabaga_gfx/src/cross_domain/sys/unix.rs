@@ -135,7 +135,7 @@ impl CrossDomainContext {
 
         for ((identifier, identifier_type), descriptor) in iter {
             if *identifier_type == CROSS_DOMAIN_ID_TYPE_VIRTGPU_BLOB {
-                let context_resources = self.context_resources.lock();
+                let context_resources = self.context_resources.lock().unwrap();
 
                 let context_resource = context_resources
                     .get(identifier)

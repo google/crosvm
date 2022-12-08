@@ -1866,7 +1866,6 @@ dependencies = [
  "pkg-config",
  "remain",
  "serde",
- "sync",
  "thiserror",
 ]
 

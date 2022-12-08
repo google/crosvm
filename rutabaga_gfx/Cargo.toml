@@ -21,7 +21,6 @@ data_model = { path = "../common/data_model" }
 libc = "*"
 base = { path = "../base" }
 remain = "*"
-sync = { path = "../common/sync" }
 thiserror = "*"
 serde = { version = "1", features = [ "derive" ] }
 # To build latest Vulkano, change version to git = "https:/github.com/vulkano-rs/vulkano.git"
