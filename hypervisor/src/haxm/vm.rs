@@ -212,10 +212,6 @@ impl Vm for HaxmVm {
         false
     }
 
-    fn enable_capability(&self, _c: VmCap, _flags: u32) -> Result<bool> {
-        Ok(false)
-    }
-
     fn get_memory(&self) -> &GuestMemory {
         &self.guest_mem
     }
