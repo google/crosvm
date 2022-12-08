@@ -214,7 +214,12 @@ pub mod video {
 
     /// The same set of virtio features is supported by the vda decoder and encoder.
     pub fn vda_supported_virtio_features() -> u64 {
-        1u64 << VIRTIO_VIDEO_F_RESOURCE_NON_CONTIG | 1u64 << VIRTIO_VIDEO_F_RESOURCE_VIRTIO_OBJECT
+        // VDA does not support decoding using guest pages. However this hack
+        // is required for ARCVM.
+        // TODO(b/261818131): remove VIRTIO_VIDEO_F_RESOURCE_GUEST_PAGES.
+        1u64 << VIRTIO_VIDEO_F_RESOURCE_GUEST_PAGES
+            | 1u64 << VIRTIO_VIDEO_F_RESOURCE_NON_CONTIG
+            | 1u64 << VIRTIO_VIDEO_F_RESOURCE_VIRTIO_OBJECT
     }
 
     /// Union of the supported features of all decoder and encoder backends.
