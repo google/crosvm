@@ -81,7 +81,9 @@ pub trait AudioStreamsExecutor {
 
     // Returns a future that resolves after the provided descriptor is readable.
     #[cfg(unix)]
-    async fn wait_fd_readable(&self, fd: RawDescriptor) -> Result<()>;
+    async fn wait_fd_readable(&self, _fd: RawDescriptor) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
