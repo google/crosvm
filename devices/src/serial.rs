@@ -485,7 +485,6 @@ struct SerialSnapshot {
 
     has_input: bool,
     has_output: bool,
-    device_state: DeviceState,
 }
 
 impl Suspendable for Serial {
@@ -502,7 +501,6 @@ impl Suspendable for Serial {
             in_buffer: self.in_buffer.clone(),
             has_input: self.input.is_some(),
             has_output: self.out.is_some(),
-            device_state: self.device_state,
         };
 
         let serialized = serde_json::to_string(&snap).context("error serializing")?;
@@ -521,7 +519,6 @@ impl Suspendable for Serial {
         self.scratch = serial_snapshot.scratch;
         self.baud_divisor = serial_snapshot.baud_divisor;
         self.in_buffer = serial_snapshot.in_buffer;
-        self.device_state = serial_snapshot.device_state;
         if serial_snapshot.has_input && self.input.is_none() {
             warn!("Restore serial input missing when restore expected an input");
         }
