@@ -7,15 +7,8 @@
 use std::env;
 use std::path::PathBuf;
 
-fn binary_name() -> &'static str {
-    cfg_if::cfg_if! {
-        if #[cfg(features="direct")] {
-            "crosvm-direct"
-        } else {
-            "crosvm"
-        }
-    }
-}
+use crate::fixture::sys::binary_name;
+
 /// Returns the path to the crosvm binary to be tested.
 ///
 /// The crosvm binary is expected to be alongside to the integration tests
