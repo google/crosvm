@@ -747,18 +747,26 @@ impl PassthroughFs {
         self.open_fd(inode.as_raw_descriptor(), flags)
     }
 
+    // Increases the inode refcount and returns the inode.
+    fn increase_inode_refcount(&self, inode_data: Arc<InodeData>) -> Inode {
+        // Matches with the release store in `forget`.
+        inode_data.refcount.fetch_add(1, Ordering::Acquire);
+        inode_data.inode
+    }
+
     // Creates a new entry for `f` or increases the refcount of the existing entry for `f`.
+    // The inodes mutex lock must not be already taken by the same thread otherwise this
+    // will deadlock.
     fn add_entry(&self, f: File, st: libc::stat64, open_flags: libc::c_int) -> Entry {
         let altkey = InodeAltKey {
             ino: st.st_ino,
             dev: st.st_dev,
         };
+
         let data = self.inodes.lock().get_alt(&altkey).map(Arc::clone);
 
         let inode = if let Some(data) = data {
-            // Matches with the release store in `forget`.
-            data.refcount.fetch_add(1, Ordering::Acquire);
-            data.inode
+            self.increase_inode_refcount(data)
         } else {
             // There is a possible race here where 2 threads end up adding the same file
             // into the inode list.  However, since each of those will get a unique Inode
@@ -766,10 +774,7 @@ impl PassthroughFs {
             let inode = self.next_inode.fetch_add(1, Ordering::Relaxed);
             self.inodes.lock().insert(
                 inode,
-                InodeAltKey {
-                    ino: st.st_ino,
-                    dev: st.st_dev,
-                },
+                altkey,
                 Arc::new(InodeData {
                     inode,
                     file: Mutex::new((f, open_flags)),
@@ -820,6 +825,23 @@ impl PassthroughFs {
             FileType::Other => flags |= libc::O_PATH,
         }
 
+        let altkey = InodeAltKey {
+            ino: st.st_ino,
+            dev: st.st_dev,
+        };
+
+        // Check if we already have an entry before opening a new file.
+        if let Some(data) = self.inodes.lock().get_alt(&altkey).map(Arc::clone) {
+            // Return the same inode with the reference counter increased.
+            return Ok(Entry {
+                inode: self.increase_inode_refcount(data),
+                generation: 0,
+                attr: st,
+                attr_timeout: self.cfg.attr_timeout,
+                entry_timeout: self.cfg.entry_timeout,
+            });
+        }
+
         // Safe because this doesn't modify any memory and we check the return value.
         let f = unsafe {
             File::from_raw_descriptor(syscall!(libc::openat64(
@@ -828,7 +850,9 @@ impl PassthroughFs {
                 flags
             ))?)
         };
-
+        // We made sure the lock acquired for `self.inodes` is released automatically when
+        // the if block above is exited, so a call to `self.add_entry()` should not cause a deadlock
+        // here. This would not be the case if this were executed in an else block instead.
         Ok(self.add_entry(f, st, flags))
     }
 
