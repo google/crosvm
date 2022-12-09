@@ -39,6 +39,7 @@ const VIRTQ_DESC_F_WRITE: u16 = 0x2;
 #[allow(dead_code)]
 const VIRTQ_DESC_F_INDIRECT: u16 = 0x4;
 
+#[allow(dead_code)]
 const VIRTQ_USED_F_NO_NOTIFY: u16 = 0x1;
 #[allow(dead_code)]
 const VIRTQ_AVAIL_F_NO_INTERRUPT: u16 = 0x1;
@@ -333,11 +334,6 @@ pub struct Queue {
     features: u64,
     last_used: Wrapping<u16>,
 
-    // Count of notification disables. Users of the queue can disable guest notification while
-    // processing requests. This is the count of how many are in flight(could be several contexts
-    // handling requests in parallel). When this count is zero, notifications are re-enabled.
-    notification_disable_count: usize,
-
     iommu: Option<Arc<Mutex<IpcMemoryMapper>>>,
 
     // When |iommu| is present, |desc_table| and the rings are IOVAs rather than real
@@ -380,7 +376,6 @@ impl Queue {
             next_used: Wrapping(0),
             features: 0,
             last_used: Wrapping(0),
-            notification_disable_count: 0,
             iommu: None,
             exported_desc_table: None,
             exported_avail_ring: None,
@@ -612,23 +607,6 @@ impl Queue {
             .unwrap();
     }
 
-    // Set a single-bit flag in the used ring.
-    //
-    // Changes the bit specified by the mask in `flag` to `value`.
-    fn set_used_flag(&mut self, mem: &GuestMemory, flag: u16, value: bool) {
-        fence(Ordering::SeqCst);
-
-        let mut used_flags: u16 =
-            read_obj_from_addr_wrapper(mem, &self.exported_used_ring, self.used_ring).unwrap();
-        if value {
-            used_flags |= flag;
-        } else {
-            used_flags &= !flag;
-        }
-        write_obj_at_addr_wrapper(mem, &self.exported_used_ring, used_flags, self.used_ring)
-            .unwrap();
-    }
-
     /// Get the first available descriptor chain without removing it from the queue.
     /// Call `pop_peeked` to remove the returned descriptor chain from the queue.
     pub fn peek(&mut self, mem: &GuestMemory) -> Option<DescriptorChain> {
@@ -737,26 +715,6 @@ impl Queue {
 
         self.next_used += Wrapping(1);
         self.set_used_index(mem, self.next_used);
-    }
-
-    /// Enable / Disable guest notify device that requests are available on
-    /// the descriptor chain.
-    pub fn set_notify(&mut self, mem: &GuestMemory, enable: bool) {
-        if enable {
-            self.notification_disable_count -= 1;
-        } else {
-            self.notification_disable_count += 1;
-        }
-
-        // We should only set VIRTQ_USED_F_NO_NOTIFY when the VIRTIO_RING_F_EVENT_IDX feature has
-        // not been negotiated.
-        if self.features & ((1u64) << VIRTIO_RING_F_EVENT_IDX) == 0 {
-            self.set_used_flag(
-                mem,
-                VIRTQ_USED_F_NO_NOTIFY,
-                self.notification_disable_count > 0,
-            );
-        }
     }
 
     /// Returns if the queue should have an interrupt sent based on its state.
