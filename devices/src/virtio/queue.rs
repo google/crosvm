@@ -296,14 +296,11 @@ impl<'a, 'b> Iterator for AvailIter<'a, 'b> {
     }
 }
 
-#[derive(Clone)]
 /// A virtio queue's parameters.
-///
-/// WARNING: it is NOT safe to clone and then use n>1 Queue(s) to interact with the same virtqueue.
-/// That will prevent descriptor index tracking from being accurate, which can cause incorrect
-/// interrupt masking.
-/// TODO(b/201119859) drop Clone from this struct.
 pub struct Queue {
+    /// Whether this queue has already been activated.
+    activated: bool,
+
     /// The maximal size in elements offered by the device
     max_size: u16,
 
@@ -365,6 +362,7 @@ impl Queue {
     pub fn new(max_size: u16) -> Queue {
         assert!(max_size.is_power_of_two());
         Queue {
+            activated: false,
             max_size,
             size: max_size,
             ready: false,
@@ -453,6 +451,39 @@ impl Queue {
         self.ready = enable;
     }
 
+    /// Convert the queue configuration into an active queue.
+    pub fn activate(&mut self) -> Result<Queue> {
+        if !self.ready {
+            bail!("attempted to activate a non-ready queue");
+        }
+
+        if self.activated {
+            bail!("queue is already activated");
+        }
+
+        self.activated = true;
+
+        let queue = Queue {
+            activated: self.activated,
+            max_size: self.max_size,
+            size: self.size,
+            ready: self.ready,
+            vector: self.vector,
+            desc_table: self.desc_table,
+            avail_ring: self.avail_ring,
+            used_ring: self.used_ring,
+            next_avail: self.next_avail,
+            next_used: self.next_used,
+            features: self.features,
+            last_used: self.last_used,
+            iommu: self.iommu.as_ref().map(Arc::clone),
+            exported_desc_table: self.exported_desc_table.clone(),
+            exported_avail_ring: self.exported_avail_ring.clone(),
+            exported_used_ring: self.exported_used_ring.clone(),
+        };
+        Ok(queue)
+    }
+
     // Return `index` modulo the currently configured queue size.
     fn wrap_queue_index(&self, index: Wrapping<u16>) -> u16 {
         // We know that `self.size` is a power of two (enforced by `set_size()`), so the modulus can
@@ -463,6 +494,7 @@ impl Queue {
 
     /// Reset queue to a clean state
     pub fn reset(&mut self) {
+        self.activated = false;
         self.ready = false;
         self.size = self.max_size;
         self.vector = VIRTIO_MSI_NO_VECTOR;

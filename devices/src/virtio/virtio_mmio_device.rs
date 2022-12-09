@@ -152,12 +152,12 @@ impl VirtioMmioDevice {
         // Use ready queues and their events.
         let queues = self
             .queues
-            .iter()
+            .iter_mut()
             .zip(self.queue_evts.iter())
             .filter(|(q, _)| q.ready())
             .map(|(queue, evt)| {
                 Ok((
-                    queue.clone(),
+                    queue.activate().context("failed to activate queue")?,
                     evt.try_clone().context("failed to clone queue_evt")?,
                 ))
             })

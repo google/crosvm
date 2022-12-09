@@ -569,7 +569,14 @@ impl<O: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for DeviceRequestHandl
         vring.queue.ack_features(self.backend.acked_features());
         vring.queue.set_ready(true);
 
-        let queue = vring.queue.clone();
+        let queue = match vring.queue.activate() {
+            Ok(queue) => queue,
+            Err(e) => {
+                error!("failed to activate vring: {:#}", e);
+                return Err(VhostError::SlaveInternalError);
+            }
+        };
+
         let doorbell = vring.doorbell.clone().ok_or(VhostError::InvalidOperation)?;
         let mem = self
             .mem

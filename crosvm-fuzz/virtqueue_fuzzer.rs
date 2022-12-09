@@ -73,9 +73,11 @@ fuzz_target!(|data: &[u8]| {
     q.set_ready(true);
 
     GUEST_MEM.with(|mem| {
-        if !q.ready() {
+        let mut q = if let Ok(q) = q.activate() {
+            q
+        } else {
             return;
-        }
+        };
 
         // First zero out all of the memory.
         let vs = mem
