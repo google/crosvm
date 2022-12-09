@@ -1355,10 +1355,9 @@ impl VirtioDevice for Gpu {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: Vec<Queue>,
-        mut queue_evts: Vec<Event>,
+        mut queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
-        if queues.len() != QUEUE_SIZES.len() || queue_evts.len() != QUEUE_SIZES.len() {
+        if queues.len() != QUEUE_SIZES.len() {
             return Err(anyhow!(
                 "expected {} queues, got {}",
                 QUEUE_SIZES.len(),
@@ -1387,10 +1386,10 @@ impl VirtioDevice for Gpu {
             .take()
             .context("resource_bridges is none")?;
 
-        let ctrl_queue = SharedQueueReader::new(queues.remove(0), interrupt.clone());
-        let ctrl_evt = queue_evts.remove(0);
-        let cursor_queue = LocalQueueReader::new(queues.remove(0), interrupt.clone());
-        let cursor_evt = queue_evts.remove(0);
+        let (ctrl_queue, ctrl_evt) = queues.remove(0);
+        let ctrl_queue = SharedQueueReader::new(ctrl_queue, interrupt.clone());
+        let (cursor_queue, cursor_evt) = queues.remove(0);
+        let cursor_queue = LocalQueueReader::new(cursor_queue, interrupt.clone());
         let display_backends = self.display_backends.clone();
         let display_params = self.display_params.clone();
         let display_event = self.display_event.clone();

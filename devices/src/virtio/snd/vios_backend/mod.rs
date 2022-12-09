@@ -117,31 +117,25 @@ impl VirtioDevice for Sound {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: Vec<Queue>,
-        mut queue_evts: Vec<Event>,
+        mut queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
         if self.worker_thread.is_some() {
             return Err(anyhow!("virtio-snd: Device is already active"));
         }
-        if queues.len() != 4 || queue_evts.len() != 4 {
+        if queues.len() != 4 {
             return Err(anyhow!(
-                "virtio-snd: device activated with wrong number of queues: {}, {}",
+                "virtio-snd: device activated with wrong number of queues: {}",
                 queues.len(),
-                queue_evts.len()
             ));
         }
         let (self_kill_evt, kill_evt) = Event::new()
             .and_then(|e| Ok((e.try_clone()?, e)))
             .context("failed to create kill Event pair")?;
         self.kill_evt = Some(self_kill_evt);
-        let control_queue = queues.remove(0);
-        let control_queue_evt = queue_evts.remove(0);
-        let event_queue = queues.remove(0);
-        let event_queue_evt = queue_evts.remove(0);
-        let tx_queue = queues.remove(0);
-        let tx_queue_evt = queue_evts.remove(0);
-        let rx_queue = queues.remove(0);
-        let rx_queue_evt = queue_evts.remove(0);
+        let (control_queue, control_queue_evt) = queues.remove(0);
+        let (event_queue, event_queue_evt) = queues.remove(0);
+        let (tx_queue, tx_queue_evt) = queues.remove(0);
+        let (rx_queue, rx_queue_evt) = queues.remove(0);
 
         let vios_client = self.vios_client.clone();
         vios_client

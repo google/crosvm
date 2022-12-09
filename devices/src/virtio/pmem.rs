@@ -319,15 +319,13 @@ impl VirtioDevice for Pmem {
         &mut self,
         memory: GuestMemory,
         interrupt: Interrupt,
-        mut queues: Vec<Queue>,
-        mut queue_events: Vec<Event>,
+        mut queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
-        if queues.len() != 1 || queue_events.len() != 1 {
+        if queues.len() != 1 {
             return Err(anyhow!("expected 1 queue, got {}", queues.len()));
         }
 
-        let queue = queues.remove(0);
-        let queue_event = queue_events.remove(0);
+        let (queue, queue_event) = queues.remove(0);
 
         let mapping_arena_slot = self.mapping_arena_slot;
         // We checked that this fits in a usize in `Pmem::new`.

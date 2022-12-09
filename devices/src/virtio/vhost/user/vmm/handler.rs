@@ -251,8 +251,7 @@ impl VhostUserHandler {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        queues: Vec<Queue>,
-        queue_evts: Vec<Event>,
+        queues: Vec<(Queue, Event)>,
         label: &str,
     ) -> Result<(thread::JoinHandle<()>, Event)> {
         self.set_mem_table(&mem)?;
@@ -263,8 +262,7 @@ impl VhostUserHandler {
             .ok_or(Error::MsixConfigUnavailable)?;
         let msix_config = msix_config_opt.lock();
 
-        for (queue_index, queue) in queues.iter().enumerate() {
-            let queue_evt = &queue_evts[queue_index];
+        for (queue_index, (queue, queue_evt)) in queues.iter().enumerate() {
             let irqfd = msix_config
                 .get_irqfd(queue.vector() as usize)
                 .unwrap_or_else(|| interrupt.get_interrupt_evt());

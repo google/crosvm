@@ -247,10 +247,9 @@ impl VirtioDevice for Fs {
         &mut self,
         guest_mem: GuestMemory,
         interrupt: Interrupt,
-        queues: Vec<Queue>,
-        queue_evts: Vec<Event>,
+        queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
-        if queues.len() != self.queue_sizes.len() || queue_evts.len() != self.queue_sizes.len() {
+        if queues.len() != self.queue_sizes.len() {
             return Err(anyhow!(
                 "expected {} queues, got {}",
                 self.queue_sizes.len(),
@@ -287,7 +286,7 @@ impl VirtioDevice for Fs {
 
         let socket = Arc::new(Mutex::new(socket));
         let mut watch_resample_event = true;
-        for (idx, (queue, evt)) in queues.into_iter().zip(queue_evts.into_iter()).enumerate() {
+        for (idx, (queue, evt)) in queues.into_iter().enumerate() {
             let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e)))
             {
                 Ok(v) => v,

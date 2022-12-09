@@ -24,7 +24,7 @@ use crate::virtio::VIRTIO_F_ACCESS_PLATFORM;
 /// Worker that takes care of running the vhost device.
 pub struct Worker<T: Vhost> {
     interrupt: Interrupt,
-    queues: Vec<Queue>,
+    queues: Vec<(Queue, Event)>,
     pub vhost_handle: T,
     pub vhost_interrupt: Vec<Event>,
     acked_features: u64,
@@ -35,7 +35,7 @@ pub struct Worker<T: Vhost> {
 
 impl<T: Vhost> Worker<T> {
     pub fn new(
-        queues: Vec<Queue>,
+        queues: Vec<(Queue, Event)>,
         vhost_handle: T,
         vhost_interrupt: Vec<Event>,
         interrupt: Interrupt,
@@ -59,7 +59,6 @@ impl<T: Vhost> Worker<T> {
     pub fn init<F1>(
         &mut self,
         mem: GuestMemory,
-        queue_evts: Vec<Event>,
         queue_sizes: &[u16],
         activate_vqs: F1,
     ) -> Result<()>
@@ -92,7 +91,7 @@ impl<T: Vhost> Worker<T> {
             .set_mem_table(&mem)
             .map_err(Error::VhostSetMemTable)?;
 
-        for (queue_index, queue) in self.queues.iter().enumerate() {
+        for (queue_index, (queue, queue_evt)) in self.queues.iter().enumerate() {
             self.vhost_handle
                 .set_vring_num(queue_index, queue.size())
                 .map_err(Error::VhostSetVringNum)?;
@@ -115,7 +114,7 @@ impl<T: Vhost> Worker<T> {
                 .map_err(Error::VhostSetVringBase)?;
             self.set_vring_call_for_entry(queue_index, queue.vector() as usize)?;
             self.vhost_handle
-                .set_vring_kick(queue_index, &queue_evts[queue_index])
+                .set_vring_kick(queue_index, queue_evt)
                 .map_err(Error::VhostSetVringKick)?;
         }
 
@@ -165,7 +164,7 @@ impl<T: Vhost> Worker<T> {
                             .wait()
                             .map_err(Error::VhostIrqRead)?;
                         self.interrupt
-                            .signal_used_queue(self.queues[index].vector());
+                            .signal_used_queue(self.queues[index].0.vector());
                     }
                     Token::InterruptResample => {
                         self.interrupt.interrupt_resample();
@@ -179,7 +178,9 @@ impl<T: Vhost> Worker<T> {
                             match socket.recv() {
                                 Ok(VhostDevRequest::MsixEntryChanged(index)) => {
                                     let mut qindex = 0;
-                                    for (queue_index, queue) in self.queues.iter().enumerate() {
+                                    for (queue_index, (queue, _evt)) in
+                                        self.queues.iter().enumerate()
+                                    {
                                         if queue.vector() == index as u16 {
                                             qindex = queue_index;
                                             break;
@@ -270,7 +271,7 @@ impl<T: Vhost> Worker<T> {
                         .map_err(Error::VhostSetVringCall)?;
                 }
             } else {
-                for (queue_index, queue) in self.queues.iter().enumerate() {
+                for (queue_index, (queue, _evt)) in self.queues.iter().enumerate() {
                     let vector = queue.vector() as usize;
                     if !msix_config.table_masked(vector) {
                         if let Some(irqfd) = msix_config.get_irqfd(vector) {

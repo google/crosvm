@@ -182,10 +182,9 @@ impl VirtioDevice for Vsock {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        queues: Vec<Queue>,
-        queue_evts: Vec<Event>,
+        mut queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
-        if queues.len() != NUM_QUEUES || queue_evts.len() != NUM_QUEUES {
+        if queues.len() != NUM_QUEUES {
             return Err(anyhow!(
                 "net: expected {} queues, got {}",
                 NUM_QUEUES,
@@ -200,9 +199,9 @@ impl VirtioDevice for Vsock {
         let cid = self.cid;
         // The third vq is an event-only vq that is not handled by the vhost
         // subsystem (but still needs to exist).  Split it off here.
-        let vhost_queues = queues[..2].to_vec();
+        let _event_queue = queues.remove(2);
         let mut worker = Worker::new(
-            vhost_queues,
+            queues,
             vhost_handle,
             interrupts,
             interrupt,
@@ -217,7 +216,7 @@ impl VirtioDevice for Vsock {
             Ok(())
         };
         worker
-            .init(mem, queue_evts, QUEUE_SIZES, activate_vqs)
+            .init(mem, QUEUE_SIZES, activate_vqs)
             .context("vsock worker init exited with error")?;
         thread::Builder::new()
             .name("vhost_vsock".to_string())

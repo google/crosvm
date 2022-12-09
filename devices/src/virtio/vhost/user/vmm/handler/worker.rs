@@ -16,7 +16,7 @@ use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 
 pub struct Worker {
-    pub queues: Vec<Queue>,
+    pub queues: Vec<(Queue, Event)>,
     pub mem: GuestMemory,
     pub kill_evt: Event,
     pub backend_req_handler: Option<BackendReqHandler>,

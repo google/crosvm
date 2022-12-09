@@ -207,19 +207,19 @@ impl VirtioDevice for Vsock {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: Vec<Queue>,
-        mut queue_evts: Vec<Event>,
+        mut queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
-        if queues.len() != QUEUE_SIZES.len() || queue_evts.len() != QUEUE_SIZES.len() {
+        if queues.len() != QUEUE_SIZES.len() {
             return Err(anyhow!(
-                "Failed to activate vsock device. queues.len(): {} != {} or \
-            queue_evts.len(): {} != {}",
+                "Failed to activate vsock device. queues.len(): {} != {}",
                 queues.len(),
                 QUEUE_SIZES.len(),
-                queue_evts.len(),
-                QUEUE_SIZES.len()
             ));
         }
+
+        let (rx_queue, rx_queue_evt) = queues.remove(0);
+        let (tx_queue, tx_queue_evt) = queues.remove(0);
+        let (event_queue, event_queue_evt) = queues.remove(0);
 
         let (self_kill_evt, worker_kill_evt) = Event::new()
             .and_then(|e| Ok((e.try_clone()?, e)))
@@ -232,12 +232,12 @@ impl VirtioDevice for Vsock {
             .spawn(move || {
                 let mut worker = Worker::new(mem, interrupt, host_guid, guest_cid);
                 let result = worker.run(
-                    queues.remove(0),     /* rx_queue */
-                    queues.remove(0),     /* tx_queue */
-                    queues.remove(0),     /* event_queue */
-                    queue_evts.remove(0), /* rx_queue_evt */
-                    queue_evts.remove(0), /* tx_queue_evt */
-                    queue_evts.remove(0), /* event_queue_evt */
+                    rx_queue,
+                    tx_queue,
+                    event_queue,
+                    rx_queue_evt,
+                    tx_queue_evt,
+                    event_queue_evt,
                     worker_kill_evt,
                 );
 

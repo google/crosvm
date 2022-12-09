@@ -477,17 +477,12 @@ pub async fn flush_disk(
 fn run_worker(
     ex: Executor,
     interrupt: Interrupt,
-    queues: Vec<Queue>,
+    queues: Vec<(Queue, Event)>,
     mem: GuestMemory,
     disk_state: &Rc<AsyncMutex<DiskState>>,
     control_tube: &Option<AsyncTube>,
-    queue_evts: Vec<Event>,
     kill_evt: Event,
 ) -> Result<(), String> {
-    if queues.len() != queue_evts.len() {
-        return Err("Number of queues and events must match.".to_string());
-    }
-
     // One flush timer per disk.
     let timer = Timer::new().expect("Failed to create a timer");
     let flush_timer_armed = Rc::new(RefCell::new(false));
@@ -516,19 +511,13 @@ fn run_worker(
 
     let queue_handlers = queues
         .into_iter()
-        .map(|q| Rc::new(RefCell::new(q)))
-        .zip(
-            queue_evts
-                .into_iter()
-                .map(|e| EventAsync::new(e, &ex).expect("Failed to create async event for queue")),
-        )
         .map(|(queue, event)| {
             handle_queue(
                 ex.clone(),
                 mem.clone(),
                 Rc::clone(disk_state),
-                Rc::clone(&queue),
-                event,
+                Rc::new(RefCell::new(queue)),
+                EventAsync::new(event, &ex).expect("Failed to create async event for queue"),
                 interrupt.clone(),
                 Rc::clone(&flush_timer),
                 Rc::clone(&flush_timer_armed),
@@ -918,8 +907,7 @@ impl VirtioDevice for BlockAsync {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        queues: Vec<Queue>,
-        queue_evts: Vec<Event>,
+        queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
         let (self_kill_evt, kill_evt) = Event::new()
             .and_then(|e| Ok((e.try_clone()?, e)))
@@ -959,7 +947,6 @@ impl VirtioDevice for BlockAsync {
                     mem,
                     &disk_state,
                     &async_control,
-                    queue_evts,
                     kill_evt,
                 ) {
                     error!("{}", err_string);

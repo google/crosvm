@@ -372,10 +372,9 @@ impl VirtioDevice for VirtioSnd {
         &mut self,
         guest_mem: GuestMemory,
         interrupt: Interrupt,
-        queues: Vec<Queue>,
-        queue_evts: Vec<Event>,
+        queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
-        if queues.len() != self.queue_sizes.len() || queue_evts.len() != self.queue_sizes.len() {
+        if queues.len() != self.queue_sizes.len() {
             return Err(anyhow!(
                 "snd: expected {} queues, got {}",
                 self.queue_sizes.len(),
@@ -399,7 +398,6 @@ impl VirtioDevice for VirtioSnd {
                     queues,
                     guest_mem,
                     snd_data,
-                    queue_evts,
                     kill_evt,
                     stream_source_generators,
                 ) {
@@ -437,10 +435,9 @@ enum LoopState {
 
 fn run_worker(
     interrupt: Interrupt,
-    mut queues: Vec<Queue>,
+    queues: Vec<(Queue, Event)>,
     mem: GuestMemory,
     snd_data: SndData,
-    queue_evts: Vec<Event>,
     kill_evt: Event,
     stream_source_generators: Vec<SysAudioStreamSourceGenerator>,
 ) -> Result<(), String> {
@@ -459,20 +456,23 @@ fn run_worker(
         .collect();
     let streams = Rc::new(AsyncMutex::new(streams));
 
-    let mut ctrl_queue = queues.remove(0);
-    let _event_queue = queues.remove(0);
-    let tx_queue = Rc::new(AsyncMutex::new(queues.remove(0)));
-    let rx_queue = Rc::new(AsyncMutex::new(queues.remove(0)));
-
-    let mut evts_async: Vec<EventAsync> = queue_evts
+    let mut queues: Vec<(Queue, EventAsync)> = queues
         .into_iter()
-        .map(|e| EventAsync::new(e, &ex).expect("Failed to create async event for queue"))
+        .map(|(q, e)| {
+            (
+                q,
+                EventAsync::new(e, &ex).expect("Failed to create async event for queue"),
+            )
+        })
         .collect();
 
-    let mut ctrl_queue_evt = evts_async.remove(0);
-    let _event_queue_evt = evts_async.remove(0);
-    let tx_queue_evt = evts_async.remove(0);
-    let rx_queue_evt = evts_async.remove(0);
+    let (mut ctrl_queue, mut ctrl_queue_evt) = queues.remove(0);
+    let (_event_queue, _event_queue_evt) = queues.remove(0);
+    let (tx_queue, tx_queue_evt) = queues.remove(0);
+    let (rx_queue, rx_queue_evt) = queues.remove(0);
+
+    let tx_queue = Rc::new(AsyncMutex::new(tx_queue));
+    let rx_queue = Rc::new(AsyncMutex::new(rx_queue));
 
     let (tx_send, mut tx_recv) = mpsc::unbounded();
     let (rx_send, mut rx_recv) = mpsc::unbounded();

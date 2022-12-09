@@ -436,12 +436,14 @@ impl VirtioDevice for Console {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: Vec<Queue>,
-        mut queue_evts: Vec<Event>,
+        mut queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
-        if queues.len() < 2 || queue_evts.len() < 2 {
+        if queues.len() < 2 {
             return Err(anyhow!("expected 2 queues, got {}", queues.len()));
         }
+
+        let (receive_queue, receive_evt) = queues.remove(0);
+        let (transmit_queue, transmit_evt) = queues.remove(0);
 
         let (self_kill_evt, kill_evt) = Event::new()
             .and_then(|e| Ok((e.try_clone()?, e)))
@@ -487,11 +489,11 @@ impl VirtioDevice for Console {
                     in_avail_evt,
                     kill_evt,
                     // Device -> driver
-                    receive_queue: queues.remove(0),
-                    receive_evt: queue_evts.remove(0),
+                    receive_queue,
+                    receive_evt,
                     // Driver -> device
-                    transmit_queue: queues.remove(0),
-                    transmit_evt: queue_evts.remove(0),
+                    transmit_queue,
+                    transmit_evt,
                 };
                 worker.run();
                 worker

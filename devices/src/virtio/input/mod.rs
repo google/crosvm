@@ -605,10 +605,9 @@ where
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: Vec<Queue>,
-        mut queue_evts: Vec<Event>,
+        mut queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
-        if queues.len() != 2 || queue_evts.len() != 2 {
+        if queues.len() != 2 {
             return Err(anyhow!("expected 2 queues, got {}", queues.len()));
         }
 
@@ -618,11 +617,8 @@ where
         self.kill_evt = Some(self_kill_evt);
 
         // Status is queue 1, event is queue 0
-        let status_queue = queues.remove(1);
-        let status_queue_evt = queue_evts.remove(1);
-
-        let event_queue = queues.remove(0);
-        let event_queue_evt = queue_evts.remove(0);
+        let (status_queue, status_queue_evt) = queues.remove(1);
+        let (event_queue, event_queue_evt) = queues.remove(0);
 
         let source = self
             .source

@@ -200,10 +200,9 @@ where
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        queues: Vec<Queue>,
-        queue_evts: Vec<Event>,
+        queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
-        if queues.len() != NUM_QUEUES || queue_evts.len() != NUM_QUEUES {
+        if queues.len() != NUM_QUEUES {
             return Err(anyhow!(
                 "net: expected {} queues, got {}",
                 NUM_QUEUES,
@@ -246,7 +245,7 @@ where
             Ok(())
         };
         worker
-            .init(mem, queue_evts, QUEUE_SIZES, activate_vqs)
+            .init(mem, QUEUE_SIZES, activate_vqs)
             .context("net worker init exited with error")?;
         let worker_thread = thread::Builder::new()
             .name("vhost_net".to_string())
@@ -446,8 +445,10 @@ pub mod tests {
         let _ = net.activate(
             guest_memory,
             Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
-            vec![Queue::new(1), Queue::new(1)],
-            vec![Event::new().unwrap(), Event::new().unwrap()],
+            vec![
+                (Queue::new(1), Event::new().unwrap()),
+                (Queue::new(1), Event::new().unwrap()),
+            ],
         );
     }
 }

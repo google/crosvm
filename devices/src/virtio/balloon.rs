@@ -4,7 +4,6 @@
 
 mod sys;
 
-use std::collections::VecDeque;
 use std::sync::Arc;
 use std::thread;
 
@@ -542,8 +541,11 @@ async fn handle_command_tube(
 // The main worker thread. Initialized the asynchronous worker tasks and passes them to the executor
 // to be processed.
 fn run_worker(
-    queue_evts: Vec<Event>,
-    queues: Vec<Queue>,
+    inflate_queue: (Queue, Event),
+    deflate_queue: (Queue, Event),
+    stats_queue: Option<(Queue, Event)>,
+    reporting_queue: Option<(Queue, Event)>,
+    events_queue: Option<(Queue, Event)>,
     command_tube: Tube,
     #[cfg(windows)] dynamic_mapping_tube: Tube,
     release_memory_tube: Option<Tube>,
@@ -551,24 +553,17 @@ fn run_worker(
     kill_evt: Event,
     mem: GuestMemory,
     state: Arc<AsyncMutex<BalloonState>>,
-    acked_features: u64,
 ) -> Option<Tube> {
     let ex = Executor::new().unwrap();
     let command_tube = AsyncTube::new(&ex, command_tube).unwrap();
-
-    let mut queue_evts: VecDeque<EventAsync> = queue_evts
-        .into_iter()
-        .map(|e| EventAsync::new(e, &ex).expect("failed to create async event"))
-        .collect();
-    let mut queues = VecDeque::from(queues);
 
     // We need a block to release all references to command_tube at the end before returning it.
     {
         // The first queue is used for inflate messages
         let inflate = handle_queue(
             &mem,
-            queues.pop_front().unwrap(),
-            queue_evts.pop_front().unwrap(),
+            inflate_queue.0,
+            EventAsync::new(inflate_queue.1, &ex).expect("failed to create async event"),
             &release_memory_tube,
             interrupt.clone(),
             |guest_address, len| {
@@ -587,8 +582,8 @@ fn run_worker(
         // The second queue is used for deflate messages
         let deflate = handle_queue(
             &mem,
-            queues.pop_front().unwrap(),
-            queue_evts.pop_front().unwrap(),
+            deflate_queue.0,
+            EventAsync::new(deflate_queue.1, &ex).expect("failed to create async event"),
             &None,
             interrupt.clone(),
             |guest_address, len| {
@@ -606,11 +601,11 @@ fn run_worker(
         // The message type is the id of the stats request, so we can detect if there are any stale
         // stats results that were queued during an error condition.
         let (stats_tx, stats_rx) = mpsc::channel::<u64>(1);
-        let stats = if (acked_features & (1 << VIRTIO_BALLOON_F_STATS_VQ)) != 0 {
+        let stats = if let Some((stats_queue, stats_queue_evt)) = stats_queue {
             handle_stats_queue(
                 &mem,
-                queues.pop_front().unwrap(),
-                queue_evts.pop_front().unwrap(),
+                stats_queue,
+                EventAsync::new(stats_queue_evt, &ex).expect("failed to create async event"),
                 stats_rx,
                 &command_tube,
                 state.clone(),
@@ -623,11 +618,11 @@ fn run_worker(
         pin_mut!(stats);
 
         // The next queue is used for reporting messages
-        let reporting = if (acked_features & (1 << VIRTIO_BALLOON_F_PAGE_REPORTING)) != 0 {
+        let reporting = if let Some((reporting_queue, reporting_queue_evt)) = reporting_queue {
             handle_reporting_queue(
                 &mem,
-                queues.pop_front().unwrap(),
-                queue_evts.pop_front().unwrap(),
+                reporting_queue,
+                EventAsync::new(reporting_queue_evt, &ex).expect("failed to create async event"),
                 &release_memory_tube,
                 interrupt.clone(),
                 |guest_address, len| {
@@ -661,11 +656,11 @@ fn run_worker(
         pin_mut!(kill);
 
         // The next queue is used for events if VIRTIO_BALLOON_F_EVENTS_VQ is negotiated.
-        let events = if (acked_features & (1 << VIRTIO_BALLOON_F_EVENTS_VQ)) != 0 {
+        let events = if let Some((events_queue, events_queue_evt)) = events_queue {
             handle_events_queue(
                 &mem,
-                queues.pop_front().unwrap(),
-                queue_evts.pop_front().unwrap(),
+                events_queue,
+                EventAsync::new(events_queue_evt, &ex).expect("failed to create async event"),
                 state,
                 interrupt,
                 &command_tube,
@@ -831,17 +826,34 @@ impl VirtioDevice for Balloon {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        queues: Vec<Queue>,
-        queue_evts: Vec<Event>,
+        mut queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
         let expected_queues = Balloon::num_expected_queues(self.acked_features);
-        if queues.len() != expected_queues || queue_evts.len() != expected_queues {
+        if queues.len() != expected_queues {
             return Err(anyhow!(
                 "expected {} queues, got {}",
                 expected_queues,
                 queues.len()
             ));
         }
+
+        let inflate_queue = queues.remove(0);
+        let deflate_queue = queues.remove(0);
+        let stats_queue = if self.acked_features & (1 << VIRTIO_BALLOON_F_STATS_VQ) != 0 {
+            Some(queues.remove(0))
+        } else {
+            None
+        };
+        let reporting_queue = if self.acked_features & (1 << VIRTIO_BALLOON_F_PAGE_REPORTING) != 0 {
+            Some(queues.remove(0))
+        } else {
+            None
+        };
+        let events_queue = if self.acked_features & (1 << VIRTIO_BALLOON_F_EVENTS_VQ) != 0 {
+            Some(queues.remove(0))
+        } else {
+            None
+        };
 
         let (self_kill_evt, kill_evt) = Event::new()
             .and_then(|e| Ok((e.try_clone()?, e)))
@@ -864,13 +876,15 @@ impl VirtioDevice for Balloon {
         #[cfg(windows)]
         let mapping_tube = self.dynamic_mapping_tube.take().unwrap();
         let release_memory_tube = self.release_memory_tube.take();
-        let acked_features = self.acked_features;
         let worker_thread = thread::Builder::new()
             .name("v_balloon".to_string())
             .spawn(move || {
                 run_worker(
-                    queue_evts,
-                    queues,
+                    inflate_queue,
+                    deflate_queue,
+                    stats_queue,
+                    reporting_queue,
+                    events_queue,
                     command_tube,
                     #[cfg(windows)]
                     mapping_tube,
@@ -879,7 +893,6 @@ impl VirtioDevice for Balloon {
                     kill_evt,
                     mem,
                     state,
-                    acked_features,
                 )
             })
             .context("failed to spawn virtio_balloon worker")?;

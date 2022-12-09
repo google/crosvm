@@ -720,15 +720,13 @@ where
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: Vec<Queue>,
-        mut queue_evts: Vec<Event>,
+        mut queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
-        if queues.len() != self.queue_sizes.len() || queue_evts.len() != self.queue_sizes.len() {
+        if queues.len() != self.queue_sizes.len() {
             return Err(anyhow!(
-                "net: expected {} queues, got {} queues and {} evts",
+                "net: expected {} queues, got {} queues",
                 self.queue_sizes.len(),
                 queues.len(),
-                queue_evts.len()
             ));
         }
 
@@ -754,21 +752,15 @@ where
             let memory = mem.clone();
             let kill_evt = self.workers_kill_evt.remove(0);
             // Queues alternate between rx0, tx0, rx1, tx1, ..., rxN, txN, ctrl.
-            let rx_queue = queues.remove(0);
-            let tx_queue = queues.remove(0);
-            let ctrl_queue = if i == 0 {
-                Some(queues.remove(queues.len() - 1))
+            let (rx_queue, rx_queue_evt) = queues.remove(0);
+            let (tx_queue, tx_queue_evt) = queues.remove(0);
+            let (ctrl_queue, ctrl_queue_evt) = if i == 0 {
+                let (queue, evt) = queues.remove(queues.len() - 1);
+                (Some(queue), Some(evt))
             } else {
-                None
+                (None, None)
             };
             let pairs = vq_pairs as u16;
-            let rx_queue_evt = queue_evts.remove(0);
-            let tx_queue_evt = queue_evts.remove(0);
-            let ctrl_queue_evt = if i == 0 {
-                Some(queue_evts.remove(queue_evts.len() - 1))
-            } else {
-                None
-            };
             #[cfg(windows)]
             let overlapped_wrapper = OverlappedWrapper::new(true).unwrap();
             self.worker_threads.push(

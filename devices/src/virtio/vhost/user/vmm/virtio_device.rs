@@ -161,19 +161,12 @@ impl VirtioDevice for VhostUserVirtioDevice {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        queues: Vec<Queue>,
-        queue_evts: Vec<Event>,
+        queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
         let (join_handle, kill_evt) = self
             .handler
             .borrow_mut()
-            .activate(
-                mem,
-                interrupt,
-                queues,
-                queue_evts,
-                &format!("{}", self.device_type),
-            )
+            .activate(mem, interrupt, queues, &format!("{}", self.device_type))
             .context("failed to activate queues")?;
         self.worker_thread = Some(join_handle);
         self.kill_evt = Some(kill_evt);

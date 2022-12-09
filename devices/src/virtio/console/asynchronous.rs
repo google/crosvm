@@ -298,10 +298,9 @@ impl VirtioDevice for AsyncConsole {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: Vec<Queue>,
-        mut queue_evts: Vec<Event>,
+        mut queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
-        if queues.len() < 2 || queue_evts.len() < 2 {
+        if queues.len() < 2 {
             return Err(anyhow!("expected 2 queues, got {}", queues.len()));
         }
 
@@ -326,10 +325,8 @@ impl VirtioDevice for AsyncConsole {
             .context("failed creating kill Event pair")?;
 
         let ex = Executor::new().expect("failed to create an executor");
-        let receive_queue = queues.remove(0);
-        let receive_evt = queue_evts.remove(0);
-        let transmit_queue = queues.remove(0);
-        let transmit_evt = queue_evts.remove(0);
+        let (receive_queue, receive_evt) = queues.remove(0);
+        let (transmit_queue, transmit_evt) = queues.remove(0);
 
         let worker_thread = thread::Builder::new()
             .name("v_console".to_string())
