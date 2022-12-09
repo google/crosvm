@@ -8,11 +8,14 @@ use std::ops::Bound::Included;
 use std::sync::Arc;
 use std::sync::Weak;
 
+use anyhow::Context;
 use base::error;
 use base::RawDescriptor;
 use base::SendTube;
 use base::VmEventType;
 use resources::SystemAllocator;
+use serde::Deserialize;
+use serde::Serialize;
 use sync::Mutex;
 
 use crate::pci::pci_configuration::PciBarConfiguration;
@@ -28,6 +31,7 @@ use crate::pci::pci_device::PciDevice;
 use crate::pci::PciAddress;
 use crate::pci::PciId;
 use crate::pci::PCI_VENDOR_ID_INTEL;
+use crate::serialize_arc_mutex;
 use crate::Bus;
 use crate::BusAccessInfo;
 use crate::BusDevice;
@@ -36,6 +40,7 @@ use crate::DeviceId;
 use crate::Suspendable;
 
 // A PciDevice that holds the root hub's configuration.
+#[derive(Serialize)]
 struct PciRootConfiguration {
     config: PciConfiguration,
 }
@@ -72,7 +77,33 @@ impl PciDevice for PciRootConfiguration {
     }
 }
 
-impl Suspendable for PciRootConfiguration {}
+impl Suspendable for PciRootConfiguration {
+    // no thread to sleep, no change required.
+    fn sleep(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn wake(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        serde_json::to_value(self)
+            .with_context(|| format!("failed to serialize {}", PciDevice::debug_label(self)))
+    }
+
+    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        #[derive(Deserialize)]
+        struct PciRootConfigurationSerializable {
+            config: serde_json::Value,
+        }
+
+        let deser: PciRootConfigurationSerializable =
+            serde_json::from_value(data).context("failed to deserialize PciRootConfiguration")?;
+        self.config.restore(deser.config)?;
+        Ok(())
+    }
+}
 
 // Command send to pci root worker thread to add/remove device from pci root
 pub enum PciRootCommand {
@@ -84,16 +115,21 @@ pub enum PciRootCommand {
 
 /// Emulates the PCI Root bridge.
 #[allow(dead_code)] // TODO(b/174705596): remove once mmio_bus and io_bus are used
+#[derive(Serialize)]
 pub struct PciRoot {
     /// Memory (MMIO) bus.
+    #[serde(skip_serializing)]
     mmio_bus: Weak<Bus>,
     /// IO bus (x86 only - for non-x86 platforms, this is just an empty Bus).
+    #[serde(skip_serializing)]
     io_bus: Weak<Bus>,
     /// Root pci bus (bus 0)
+    #[serde(skip_serializing)]
     root_bus: Arc<Mutex<PciBus>>,
     /// Bus configuration for the root device.
     root_configuration: PciRootConfiguration,
     /// Devices attached to this bridge.
+    #[serde(skip_serializing)]
     devices: BTreeMap<PciAddress, Arc<Mutex<dyn BusDevice>>>,
     /// pcie enhanced configuration access mmio base
     pcie_cfg_mmio: Option<u64>,
@@ -101,6 +137,13 @@ pub struct PciRoot {
 
 const PCI_DEVICE_ID_INTEL_82441: u16 = 0x1237;
 const PCIE_XBAR_BASE_ADDR: usize = 24;
+
+/// Used to serialize relevant information to PciRoot
+#[derive(Deserialize)]
+struct PciRootSerializable {
+    root_configuration: serde_json::Value,
+    pcie_cfg_mmio: Option<u64>,
+}
 
 impl PciRoot {
     /// Create an empty PCI root bus.
@@ -313,16 +356,37 @@ impl PciRoot {
             }
         }
     }
+
+    pub fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        serde_json::to_value(self).context("failed to serialize PciRoot")
+    }
+
+    pub fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        let deser: PciRootSerializable =
+            serde_json::from_value(data).context("failed to deserialize PciRoot")?;
+        self.root_configuration.restore(deser.root_configuration)?;
+        self.pcie_cfg_mmio = deser.pcie_cfg_mmio;
+        Ok(())
+    }
 }
 
 /// Emulates PCI configuration access mechanism #1 (I/O ports 0xcf8 and 0xcfc).
+#[derive(Serialize)]
 pub struct PciConfigIo {
     /// PCI root bridge.
+    #[serde(serialize_with = "serialize_arc_mutex")]
     pci_root: Arc<Mutex<PciRoot>>,
     /// Current address to read/write from (0xcf8 register, litte endian).
     config_address: u32,
     /// Tube to signal that the guest requested reset via writing to 0xcf9 register.
+    #[serde(skip_serializing)]
     reset_evt_wrtube: SendTube,
+}
+
+#[derive(Deserialize)]
+struct PciConfigIoSerializable {
+    pci_root: serde_json::Value,
+    config_address: u32,
 }
 
 impl PciConfigIo {
@@ -431,13 +495,44 @@ impl BusDevice for PciConfigIo {
     }
 }
 
-impl Suspendable for PciConfigIo {}
+impl Suspendable for PciConfigIo {
+    // no thread to sleep, no change required.
+    fn sleep(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn wake(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        serde_json::to_value(self)
+            .with_context(|| format!("failed to serialize {}", self.debug_label()))
+    }
+
+    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        let mut root = self.pci_root.lock();
+        let deser: PciConfigIoSerializable = serde_json::from_value(data)
+            .context(format!("failed to deserialize {}", self.debug_label()))?;
+        root.restore(deser.pci_root)?;
+        self.config_address = deser.config_address;
+        Ok(())
+    }
+}
 
 /// Emulates PCI memory-mapped configuration access mechanism.
+#[derive(Serialize)]
 pub struct PciConfigMmio {
     /// PCI root bridge.
+    #[serde(serialize_with = "serialize_arc_mutex")]
     pci_root: Arc<Mutex<PciRoot>>,
     /// Register bit number in config address.
+    register_bit_num: usize,
+}
+
+#[derive(Deserialize)]
+struct PciConfigMmioSerializable {
+    pci_root: serde_json::Value,
     register_bit_num: usize,
 }
 
@@ -498,7 +593,30 @@ impl BusDevice for PciConfigMmio {
     }
 }
 
-impl Suspendable for PciConfigMmio {}
+impl Suspendable for PciConfigMmio {
+    // no thread to sleep, no change required.
+    fn sleep(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn wake(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        serde_json::to_value(self)
+            .with_context(|| format!("failed to serialize {}", self.debug_label()))
+    }
+
+    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        let mut root = self.pci_root.lock();
+        let deser: PciConfigMmioSerializable = serde_json::from_value(data)
+            .context(format!("failed to deserialize {}", self.debug_label()))?;
+        root.restore(deser.pci_root)?;
+        self.register_bit_num = deser.register_bit_num;
+        Ok(())
+    }
+}
 
 /// Inspired by PCI configuration space, CrosVM provides 2048 dword virtual registers (8KiB in
 /// total) for each PCI device. The guest can use these registers to exchange device-specific
@@ -511,10 +629,18 @@ impl Suspendable for PciConfigMmio {}
 /// The offset of each register is calculated in the same way as PCIe ECAM;
 /// i.e. offset = (bus << 21) | (device << 16) | (function << 13) | (page_select << 12) |
 /// (register_index << 2)
+#[derive(Serialize)]
 pub struct PciVirtualConfigMmio {
     /// PCI root bridge.
+    #[serde(serialize_with = "serialize_arc_mutex")]
     pci_root: Arc<Mutex<PciRoot>>,
     /// Register bit number in config address.
+    register_bit_num: usize,
+}
+
+#[derive(Deserialize)]
+struct PciVirtualConfigMmioSerializable {
+    pci_root: serde_json::Value,
     register_bit_num: usize,
 }
 
@@ -575,4 +701,88 @@ impl BusDevice for PciVirtualConfigMmio {
     }
 }
 
-impl Suspendable for PciVirtualConfigMmio {}
+impl Suspendable for PciVirtualConfigMmio {
+    // no thread to sleep, no change required.
+    fn sleep(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn wake(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        serde_json::to_value(self)
+            .with_context(|| format!("failed to serialize {}", self.debug_label()))
+    }
+
+    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        let mut root = self.pci_root.lock();
+        let deser: PciVirtualConfigMmioSerializable = serde_json::from_value(data)
+            .context(format!("failed to deserialize {}", self.debug_label()))?;
+        root.restore(deser.pci_root)?;
+        self.register_bit_num = deser.register_bit_num;
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::suspendable_tests;
+
+    use super::*;
+    use base::Tube;
+
+    fn create_pci_root() -> Arc<Mutex<PciRoot>> {
+        let io_bus = Arc::new(Bus::new());
+        let mmio_bus = Arc::new(Bus::new());
+        let root_bus = Arc::new(Mutex::new(PciBus::new(0, 0, false)));
+
+        Arc::new(Mutex::new(PciRoot::new(
+            Arc::downgrade(&mmio_bus),
+            Arc::downgrade(&io_bus),
+            root_bus,
+        )))
+    }
+
+    fn create_pci_io_config(pci_root: Arc<Mutex<PciRoot>>) -> PciConfigIo {
+        let (reset_evt_wrtube, _) = Tube::directional_pair().unwrap();
+        PciConfigIo::new(pci_root, reset_evt_wrtube)
+    }
+
+    fn modify_pci_io_config(pci_config: &mut PciConfigIo) {
+        pci_config.config_address += 1;
+    }
+    fn create_pci_mmio_config(pci_root: Arc<Mutex<PciRoot>>) -> PciConfigMmio {
+        PciConfigMmio::new(pci_root, 0)
+    }
+
+    fn modify_pci_mmio_config(pci_config: &mut PciConfigMmio) {
+        pci_config.register_bit_num += 1;
+    }
+
+    fn create_pci_virtual_config_mmio(pci_root: Arc<Mutex<PciRoot>>) -> PciVirtualConfigMmio {
+        PciVirtualConfigMmio::new(pci_root, 0)
+    }
+
+    fn modify_pci_virtual_config_mmio(pci_config: &mut PciVirtualConfigMmio) {
+        pci_config.register_bit_num += 1;
+    }
+
+    suspendable_tests!(
+        pci_io_config,
+        create_pci_io_config(create_pci_root()),
+        modify_pci_io_config
+    );
+    suspendable_tests!(
+        pcie_mmio_config,
+        create_pci_mmio_config(create_pci_root()),
+        modify_pci_mmio_config
+    );
+    suspendable_tests!(
+        pci_virtual_config_mmio,
+        create_pci_virtual_config_mmio(create_pci_root()),
+        modify_pci_virtual_config_mmio
+    );
+}
