@@ -479,22 +479,24 @@ fn create_virtio_devices(
 
     for opt in &cfg.net {
         match &opt.mode {
-            NetParametersMode::TapName { tap_name } => {
+            NetParametersMode::TapName { tap_name, mac } => {
                 devs.push(create_tap_net_device_from_name(
                     cfg.protection_type,
                     &cfg.jail_config,
                     cfg.net_vq_pairs.unwrap_or(1),
                     cfg.vcpu_count.unwrap_or(1),
                     tap_name.as_bytes(),
+                    *mac,
                 )?);
             }
-            NetParametersMode::TapFd { tap_fd } => {
+            NetParametersMode::TapFd { tap_fd, mac } => {
                 devs.push(create_tap_net_device_from_fd(
                     cfg.protection_type,
                     &cfg.jail_config,
                     cfg.net_vq_pairs.unwrap_or(1),
                     cfg.vcpu_count.unwrap_or(1),
                     *tap_fd,
+                    *mac,
                 )?);
             }
             NetParametersMode::RawConfig {
@@ -534,6 +536,7 @@ fn create_virtio_devices(
             cfg.net_vq_pairs.unwrap_or(1),
             cfg.vcpu_count.unwrap_or(1),
             *tap_fd,
+            None,
         )?);
     }
 
@@ -566,6 +569,7 @@ fn create_virtio_devices(
             cfg.net_vq_pairs.unwrap_or(1),
             cfg.vcpu_count.unwrap_or(1),
             tap_name.as_bytes(),
+            None,
         )?);
     }
 

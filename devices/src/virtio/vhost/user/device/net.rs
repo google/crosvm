@@ -156,7 +156,7 @@ where
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
-        let config_space = build_config(Self::max_vq_pairs() as u16, self.mtu);
+        let config_space = build_config(Self::max_vq_pairs() as u16, self.mtu, None);
         virtio::copy_config(data, 0, config_space.as_slice(), offset);
     }
 

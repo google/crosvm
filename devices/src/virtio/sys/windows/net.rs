@@ -225,6 +225,7 @@ where
         .map_err(NetError::SlirpCreateError)?;
 
         Ok(Net {
+            guest_mac: None,
             workers_kill_evt: vec![kill_evt.try_clone().map_err(NetError::CloneKillEvent)?],
             kill_evts: vec![kill_evt],
             worker_threads: Vec::new(),

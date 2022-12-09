@@ -1348,7 +1348,7 @@ pub struct RunCommand {
     #[cfg(unix)]
     #[argh(
         option,
-        arg_name = "tap_name=TAP_NAME|tap_fd=TAP_FD|host_ip=IP,netmask=NETMASK,mac=MAC_ADDRESS"
+        arg_name = "tap_name=TAP_NAME,mac=MAC_ADDRESS|tap_fd=TAP_FD,mac=MAC_ADDRESS|host_ip=IP,netmask=NETMASK,mac=MAC_ADDRESS"
     )]
     #[serde(default)]
     #[merge(strategy = append)]
@@ -1357,8 +1357,10 @@ pub struct RunCommand {
     /// Possible key values:
     ///     tap-name=STRING - name of a configured persistent TAP
     ///        interface to use for networking.
+    ///     mac=STRING - MAC address for VM. [Optional]
     /// OR
     ///     tap-fd=INT - File descriptor for configured tap device.
+    ///     mac=STRING - MAC address for VM. [Optional]
     /// OR
     ///     host-ip=STRING - IP address to assign to
     ///         host tap interface.

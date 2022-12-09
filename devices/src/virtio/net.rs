@@ -143,9 +143,15 @@ pub enum NetError {
 #[serde(untagged, deny_unknown_fields)]
 pub enum NetParametersMode {
     #[serde(rename_all = "kebab-case")]
-    TapName { tap_name: String },
+    TapName {
+        tap_name: String,
+        mac: Option<MacAddress>,
+    },
     #[serde(rename_all = "kebab-case")]
-    TapFd { tap_fd: i32 },
+    TapFd {
+        tap_fd: i32,
+        mac: Option<MacAddress>,
+    },
     #[serde(rename_all = "kebab-case")]
     RawConfig {
         #[serde(default)]
@@ -443,10 +449,11 @@ where
     }
 }
 
-pub fn build_config(vq_pairs: u16, mtu: u16) -> VirtioNetConfig {
+pub fn build_config(vq_pairs: u16, mtu: u16, mac: Option<[u8; 6]>) -> VirtioNetConfig {
     VirtioNetConfig {
         max_vq_pairs: Le16::from(vq_pairs),
         mtu: Le16::from(mtu),
+        mac: mac.unwrap_or_default(),
         // Other field has meaningful value when the corresponding feature
         // is enabled, but all these features aren't supported now.
         // So set them to default.
@@ -455,6 +462,7 @@ pub fn build_config(vq_pairs: u16, mtu: u16) -> VirtioNetConfig {
 }
 
 pub struct Net<T: TapT + ReadNotifier> {
+    pub(super) guest_mac: Option<[u8; 6]>,
     pub(super) queue_sizes: Box<[u16]>,
     pub(super) workers_kill_evt: Vec<Event>,
     pub(super) kill_evts: Vec<Event>,
@@ -489,7 +497,7 @@ where
 
         tap.enable().map_err(NetError::TapEnable)?;
 
-        Net::from(base_features, tap, vq_pairs)
+        Net::from(base_features, tap, vq_pairs, None)
     }
 
     /// Try to open the already-configured TAP interface `name` and to create a network device from
@@ -498,16 +506,22 @@ where
         base_features: u64,
         name: &[u8],
         vq_pairs: u16,
+        mac: Option<MacAddress>,
     ) -> Result<Net<T>, NetError> {
         let multi_queue = vq_pairs > 1;
         let tap: T = T::new_with_name(name, true, multi_queue).map_err(NetError::TapOpen)?;
 
-        Net::from(base_features, tap, vq_pairs)
+        Net::from(base_features, tap, vq_pairs, mac)
     }
 
     /// Creates a new virtio network device from a tap device that has already been
     /// configured.
-    pub fn from(base_features: u64, tap: T, vq_pairs: u16) -> Result<Net<T>, NetError> {
+    pub fn from(
+        base_features: u64,
+        tap: T,
+        vq_pairs: u16,
+        mac_addr: Option<MacAddress>,
+    ) -> Result<Net<T>, NetError> {
         let taps = tap.into_mq_taps(vq_pairs).map_err(NetError::TapOpen)?;
 
         let mut mtu = u16::MAX;
@@ -540,6 +554,10 @@ where
             avail_features |= 1 << virtio_net::VIRTIO_NET_F_MQ;
         }
 
+        if mac_addr.is_some() {
+            avail_features |= 1 << virtio_net::VIRTIO_NET_F_MAC;
+        }
+
         let mut kill_evts: Vec<Event> = Vec::new();
         let mut workers_kill_evt: Vec<Event> = Vec::new();
         for _ in 0..taps.len() {
@@ -550,6 +568,7 @@ where
         }
 
         Ok(Net {
+            guest_mac: mac_addr.map(|mac| mac.octets()),
             queue_sizes: vec![QUEUE_SIZE; (vq_pairs * 2 + 1) as usize].into_boxed_slice(),
             workers_kill_evt,
             kill_evts,
@@ -691,7 +710,7 @@ where
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
         let vq_pairs = self.queue_sizes.len() / 2;
-        let config_space = build_config(vq_pairs as u16, self.mtu);
+        let config_space = build_config(vq_pairs as u16, self.mtu, self.guest_mac);
         copy_config(data, 0, config_space.as_slice(), offset);
     }
 
@@ -843,7 +862,19 @@ mod tests {
             params,
             NetParameters {
                 mode: NetParametersMode::TapName {
-                    tap_name: "tap".to_string()
+                    tap_name: "tap".to_string(),
+                    mac: None
+                }
+            }
+        );
+
+        let params = from_net_arg("tap-name=tap,mac=\"3d:70:eb:61:1a:91\"").unwrap();
+        assert_eq!(
+            params,
+            NetParameters {
+                mode: NetParametersMode::TapName {
+                    tap_name: "tap".to_string(),
+                    mac: Some(MacAddress::from_str("3d:70:eb:61:1a:91").unwrap())
                 }
             }
         );
@@ -852,7 +883,21 @@ mod tests {
         assert_eq!(
             params,
             NetParameters {
-                mode: NetParametersMode::TapFd { tap_fd: 12 }
+                mode: NetParametersMode::TapFd {
+                    tap_fd: 12,
+                    mac: None
+                }
+            }
+        );
+
+        let params = from_net_arg("tap-fd=12,mac=\"3d:70:eb:61:1a:91\"").unwrap();
+        assert_eq!(
+            params,
+            NetParameters {
+                mode: NetParametersMode::TapFd {
+                    tap_fd: 12,
+                    mac: Some(MacAddress::from_str("3d:70:eb:61:1a:91").unwrap())
+                }
             }
         );
 
