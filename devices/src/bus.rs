@@ -468,7 +468,7 @@ impl Bus {
                                 None => {},
                             }
                         },
-                        None => base::info!("device does not have stored data in the snapshot. Device data will not change."),
+                        None => base::info!("device {} does not have stored data in the snapshot. Device data will not change.", (*device_lock).debug_label()),
                     }
                 }
                 BusDeviceEntry::InnerSync(dev) => {
@@ -481,7 +481,7 @@ impl Bus {
                                 None => {},
                             }
                         },
-                        None => base::info!("device does not have stored data in the snapshot. Device data will not change."),
+                        None => base::info!("device {} does not have stored data in the snapshot. Device data will not change.", dev.debug_label()),
                     }
                 }
             }
