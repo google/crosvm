@@ -57,4 +57,20 @@ impl BusDevice for I8042Device {
     }
 }
 
-impl Suspendable for I8042Device {}
+impl Suspendable for I8042Device {
+    fn snapshot(&self) -> anyhow::Result<String> {
+        Ok("".to_string())
+    }
+
+    fn restore(&mut self, _data: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn sleep(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn wake(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
