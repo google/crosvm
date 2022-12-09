@@ -1087,6 +1087,7 @@ impl Gpu {
         #[cfg(feature = "virgl_renderer_next")] render_server_fd: Option<SafeDescriptor>,
         event_devices: Vec<EventDevice>,
         external_blob: bool,
+        system_blob: bool,
         base_features: u64,
         channels: BTreeMap<String, PathBuf>,
         #[cfg(windows)] wndproc_thread: WindowProcedureThread,
@@ -1138,6 +1139,7 @@ impl Gpu {
             .set_use_vulkan(gpu_parameters.use_vulkan.unwrap_or_default())
             .set_wsi(gpu_parameters.wsi.as_ref())
             .set_use_external_blob(external_blob)
+            .set_use_system_blob(system_blob)
             .set_use_render_server(use_render_server);
 
         #[cfg(feature = "gfxstream")]

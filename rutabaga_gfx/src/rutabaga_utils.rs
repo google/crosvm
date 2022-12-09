@@ -434,6 +434,7 @@ const GFXSTREAM_RENDERER_FLAGS_USE_GLES: u32 = 1 << 4;
 const GFXSTREAM_RENDERER_FLAGS_NO_VK_BIT: u32 = 1 << 5;
 const GFXSTREAM_RENDERER_FLAGS_ENABLE_GLES31_BIT: u32 = 1 << 9;
 const GFXSTREAM_RENDERER_FLAGS_USE_EXTERNAL_BLOB: u32 = 1 << 10;
+const GFXSTREAM_RENDERER_FLAGS_USE_SYSTEM_BLOB: u32 = 1 << 11;
 const GFXSTREAM_RENDERER_FLAGS_GUEST_USES_ANGLE: u32 = 1 << 21;
 const GFXSTREAM_RENDERER_FLAGS_VULKAN_NATIVE_SWAPCHAIN_BIT: u32 = 1 << 22;
 const GFXSTREAM_RENDERER_FLAGS_ASYNC_FENCE_CB: u32 = 1 << 23;
@@ -515,6 +516,11 @@ impl GfxstreamFlags {
     /// Use external blob when creating resources.
     pub fn use_external_blob(self, v: bool) -> GfxstreamFlags {
         self.set_flag(GFXSTREAM_RENDERER_FLAGS_USE_EXTERNAL_BLOB, v)
+    }
+
+    /// Use system blob when creating resources.
+    pub fn use_system_blob(self, v: bool) -> GfxstreamFlags {
+        self.set_flag(GFXSTREAM_RENDERER_FLAGS_USE_SYSTEM_BLOB, v)
     }
 }
 

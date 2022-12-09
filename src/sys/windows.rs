@@ -323,6 +323,7 @@ fn create_gpu_device(
         gpu_parameters,
         event_devices,
         /* external_blob= */ false,
+        /* system_blob= */ false,
         features,
         BTreeMap::new(),
         wndproc_thread,

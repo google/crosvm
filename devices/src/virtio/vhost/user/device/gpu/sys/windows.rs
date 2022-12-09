@@ -180,6 +180,10 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
 
     // Required to share memory across processes.
     let external_blob = true;
+
+    // Fallback for when external_blob is not available on the machine. Currently always off.
+    let system_blob = false;
+
     let base_features = virtio::base_features(ProtectionType::Unprotected);
 
     let gpu = Rc::new(RefCell::new(Gpu::new(
@@ -192,6 +196,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         None,
         config.event_devices,
         external_blob,
+        system_blob,
         base_features,
         /*channels=*/ Default::default(),
         wndproc_thread,
