@@ -10,7 +10,7 @@ GUEST_CID=3
 crosvm run \
   --cid "${GUEST_CID}" \
   <usual crosvm arguments>
-  vmlinux
+  /path/to/bzImage
 ```
 
 Then, the guest and the host can communicate with each other via vsock. Host always has 2 as its

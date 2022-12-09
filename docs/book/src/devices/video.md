@@ -35,7 +35,7 @@ make O=build_crosvm_x86 -j16
 ```
 
 The resulting kernel image that can be passed to `crosvm` will be in
-`build_crosvm_x86/arch/x86/boot/compressed/vmlinux.bin`.
+`build_crosvm_x86/arch/x86/boot/bzImage`.
 
 ## Crosvm requirements
 
@@ -53,14 +53,14 @@ To enable the **decoder** device, start crosvm with the `--video-decoder=ffmpeg`
 argument:
 
 ```sh
-crosvm run --disable-sandbox --video-decoder=ffmpeg -c 4 -m 2048 --block /path/to/disk.img,root --serial type=stdout,hardware=virtio-console,console=true,stdin=true /path/to/vmlinux.bin
+crosvm run --disable-sandbox --video-decoder=ffmpeg -c 4 -m 2048 --block /path/to/disk.img,root --serial type=stdout,hardware=virtio-console,console=true,stdin=true /path/to/bzImage
 ```
 
 Alternatively, to enable the **encoder** device, start crosvm with the `--video-encoder=ffmpeg`
 command-line argument:
 
 ```sh
-crosvm run --disable-sandbox --video-encoder=ffmpeg -c 4 -m 2048 --block /path/to/disk.img,root --serial type=stdout,hardware=virtio-console,console=true,stdin=true /path/to/vmlinux.bin
+crosvm run --disable-sandbox --video-encoder=ffmpeg -c 4 -m 2048 --block /path/to/disk.img,root --serial type=stdout,hardware=virtio-console,console=true,stdin=true /path/to/bzImage
 ```
 
 If the guest kernel includes the virtio-video driver, then the device should be probed and show up.

@@ -12,7 +12,7 @@ When running a VM, specify `VM_SOCKET` with `-s` option. (example: `/run/crosvm.
 crosvm run \
     -s ${CROSVM_SOCKET} \
     # usual crosvm args
-    ./vmlinux
+    /path/to/bzImage
 ```
 
 Then, open another terminal and specify the balloon size in bytes with `crosvm balloon` command.

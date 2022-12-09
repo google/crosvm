@@ -43,20 +43,20 @@ which means only the `path` key must always be specified.
 One example invocation of the `--block` option could be:
 
 ```sh
---block path=/path/to/vmlinux,root=true,block-size=4096
+--block path=/path/to/bzImage,root=true,block-size=4096
 ```
 
 Keys taking a boolean parameters can be enabled by specifying their name witout any value, so the
 previous option can also be written as
 
 ```sh
---block path=/path/to/vmlinux,root,block-size=4096
+--block path=/path/to/bzImage,root,block-size=4096
 ```
 
 Also, the name of the first key can be entirely omitted, which further simplifies our option as:
 
 ```sh
---block /path/to/vmlinux,root,block-size=4096
+--block /path/to/bzImage,root,block-size=4096
 ```
 
 ## Configuration files
@@ -66,7 +66,7 @@ specifying a basic VM with a few devices:
 
 ```json
 {
-    "kernel": "/path/to/vmlinux",
+    "kernel": "/path/to/bzImage",
     "cpus": {
         "num-cores": 8
     },
@@ -98,7 +98,7 @@ specifying a basic VM with a few devices:
 The equivalent command-line options corresponding to this configuration file would be:
 
 ```sh
---kernel path/to/vmlinux \
+--kernel path/to/bzImage \
 --cpus num-cores=8 --mem size=2048 \
 --block path=/path/to/root.img,root \
 --serial type=stdout,hardware=virtio-console,console,stdin \
@@ -108,7 +108,7 @@ The equivalent command-line options corresponding to this configuration file wou
 Or, if we apply the simplification rules discussed in the previous section:
 
 ```sh
---kernel /path/to/vmlinux \
+--kernel /path/to/bzImage \
 --cpus 8 --mem 2048 \
 --block /path/to/root.img,root \
 --serial stdout,hardware=virtio-console,console,stdin \
@@ -131,7 +131,7 @@ configuration file `vm.json`:
 
 ```json
 {
-    "kernel": "/path/to/vmlinux",
+    "kernel": "/path/to/bzImage",
     "block": [
         {
             "path": "/path/to/root.img",
@@ -155,8 +155,8 @@ will take precedence over the one in the configuration file. For instance, with 
 file and the following command-line:
 
 ```sh
-crosvm run --cfg vm.json --kernel /path/to/another/vmlinux
+crosvm run --cfg vm.json --kernel /path/to/another/bzImage
 ```
 
-Then the loaded kernel will be `/path/to/another/vmlinux`, and the `kernel` option in the
+Then the loaded kernel will be `/path/to/another/bzImage`, and the `kernel` option in the
 configuration file will become a no-op.

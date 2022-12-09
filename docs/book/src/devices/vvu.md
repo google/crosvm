@@ -36,7 +36,7 @@ crosvm run \
   -p "vfio_iommu_type1.allow_unsafe_interrupts=1" \
   -m 4096 \ # Make sure that the device kernel has enough memory to be used
   ... # usual crosvm args
-  vmlinux
+  /path/to/bzImage
 ```
 
 Then you can check that the VVU proxy device is allocated at the specified address by running
@@ -89,7 +89,7 @@ crosvm run \
   --vhost-user-blk ${VHOST_USER_SOCK} \
   -m 512 \ # Make sure that the sibling VM does not have same or more memory than the device VM
   ... # usual crosvm args
-  vmlinux
+  /path/to/bzImage
 ```
 
 As a result, `disk.img` in the device VM should be exposed as `/dev/vda` in the guest of the sibling

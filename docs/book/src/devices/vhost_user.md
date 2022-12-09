@@ -36,7 +36,7 @@ Then, open another terminal and start a vmm process with `--vhost-user-blk` flag
 crosvm run \
   --vhost-user-blk "${VHOST_USER_SOCK}" \
   <usual crosvm arguments>
-  vmlinux
+  /path/to/bzImage
 ```
 
 As a result, `disk.img` should be exposed as `/dev/vda` just like with `--block disk.img`.
