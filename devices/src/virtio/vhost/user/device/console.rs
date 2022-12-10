@@ -140,14 +140,11 @@ impl VhostUserBackend for ConsoleBackend {
     fn start_queue(
         &mut self,
         idx: usize,
-        mut queue: virtio::Queue,
+        queue: virtio::Queue,
         mem: GuestMemory,
         doorbell: Doorbell,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
-        // Enable any virtqueue features that were negotiated (like VIRTIO_RING_F_EVENT_IDX).
-        queue.ack_features(self.acked_features);
-
         match idx {
             // ReceiveQueue
             0 => self

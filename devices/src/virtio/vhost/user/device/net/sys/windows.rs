@@ -131,7 +131,7 @@ async fn run_rx_queue<T: TapT>(
 pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + IntoAsync + TapT>(
     backend: &mut NetBackend<T>,
     idx: usize,
-    mut queue: virtio::Queue,
+    queue: virtio::Queue,
     mem: GuestMemory,
     doorbell: Doorbell,
     kick_evt: Event,
@@ -140,9 +140,6 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
         warn!("Starting new queue handler without stopping old handler");
         handle.abort();
     }
-
-    // Enable any virtqueue features that were negotiated (like VIRTIO_RING_F_EVENT_IDX).
-    queue.ack_features(backend.acked_features);
 
     let overlapped_wrapper =
         OverlappedWrapper::new(true).expect("Failed to create overlapped wrapper");

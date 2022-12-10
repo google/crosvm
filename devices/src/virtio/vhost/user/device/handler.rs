@@ -564,7 +564,9 @@ impl<O: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for DeviceRequestHandl
         }
 
         let kick_evt = self.ops.set_vring_kick(index, file)?;
-        let vring = &mut self.vrings[index as usize];
+
+        // Enable any virtqueue features that were negotiated (like VIRTIO_RING_F_EVENT_IDX).
+        vring.queue.ack_features(self.backend.acked_features());
         vring.queue.set_ready(true);
 
         let queue = vring.queue.clone();

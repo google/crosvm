@@ -143,7 +143,7 @@ impl VhostUserBackend for GpuBackend {
     fn start_queue(
         &mut self,
         idx: usize,
-        mut queue: Queue,
+        queue: Queue,
         mem: GuestMemory,
         doorbell: Doorbell,
         kick_evt: Event,
@@ -160,9 +160,6 @@ impl VhostUserBackend for GpuBackend {
             1 => return Ok(()),
             _ => bail!("attempted to start unknown queue: {}", idx),
         }
-
-        // Enable any virtqueue features that were negotiated (like VIRTIO_RING_F_EVENT_IDX).
-        queue.ack_features(self.acked_features());
 
         let kick_evt = EventAsync::new(kick_evt, &self.ex)
             .context("failed to create EventAsync for kick_evt")?;

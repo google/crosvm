@@ -175,9 +175,6 @@ impl VhostUserBackend for SndBackend {
         // Safe because the executor is initialized in main() below.
         let ex = SND_EXECUTOR.get().expect("Executor not initialized");
 
-        // Enable any virtqueue features that were negotiated (like VIRTIO_RING_F_EVENT_IDX).
-        queue.ack_features(self.acked_features);
-
         let mut kick_evt =
             EventAsync::new(kick_evt, ex).context("failed to create EventAsync for kick_evt")?;
         let (handle, registration) = AbortHandle::new_pair();

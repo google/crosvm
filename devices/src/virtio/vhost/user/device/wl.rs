@@ -201,7 +201,7 @@ impl VhostUserBackend for WlBackend {
     fn start_queue(
         &mut self,
         idx: usize,
-        mut queue: Queue,
+        queue: Queue,
         mem: GuestMemory,
         doorbell: Doorbell,
         kick_evt: Event,
@@ -210,9 +210,6 @@ impl VhostUserBackend for WlBackend {
             warn!("Starting new queue handler without stopping old handler");
             handle.abort();
         }
-
-        // Enable any virtqueue features that were negotiated (like VIRTIO_RING_F_EVENT_IDX).
-        queue.ack_features(self.acked_features);
 
         let kick_evt = EventAsync::new(kick_evt, &self.ex)
             .context("failed to create EventAsync for kick_evt")?;
