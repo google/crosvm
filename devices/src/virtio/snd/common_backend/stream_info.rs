@@ -221,7 +221,7 @@ impl StreamInfo {
                     .stream_source
                     .as_mut()
                     .ok_or(Error::EmptyStreamSource)?
-                    .new_async_capture_stream(
+                    .async_new_async_capture_stream(
                         self.channels as usize,
                         self.format,
                         self.frame_rate,
@@ -229,6 +229,7 @@ impl StreamInfo {
                         &[],
                         ex,
                     )
+                    .await
                     .map_err(Error::CreateStream)?
                     .1;
                 SysAsyncStreamObjects {
