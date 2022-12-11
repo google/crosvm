@@ -4,10 +4,15 @@
 
 use std::cmp::min;
 
+use anyhow::anyhow;
+use anyhow::Context;
 use chrono::DateTime;
 use chrono::Datelike;
 use chrono::Timelike;
 use chrono::Utc;
+use serde::Deserialize;
+use serde::Serialize;
+use serde::Serializer;
 
 use crate::pci::CrosvmDeviceId;
 use crate::BusAccessInfo;
@@ -23,10 +28,21 @@ const DATA_LEN: usize = 128;
 pub type CmosNowFn = fn() -> DateTime<Utc>;
 
 /// A CMOS/RTC device commonly seen on x86 I/O port 0x70/0x71.
+#[derive(Serialize)]
 pub struct Cmos {
     index: u8,
+    #[serde(serialize_with = "serialize_arr")]
     data: [u8; DATA_LEN],
+    #[serde(skip_serializing)] // skip serializing time function.
     now_fn: CmosNowFn,
+}
+
+fn serialize_arr<S>(data: &[u8; DATA_LEN], serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let vec = data.to_vec();
+    serde::Serialize::serialize(&vec, serializer)
 }
 
 impl Cmos {
@@ -123,13 +139,44 @@ impl BusDevice for Cmos {
     }
 }
 
-impl Suspendable for Cmos {}
+impl Suspendable for Cmos {
+    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        serde_json::to_value(self).context("failed to serialize Cmos")
+    }
+
+    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        #[derive(Deserialize)]
+        struct CmosIndex {
+            index: u8,
+            data: Vec<u8>,
+        }
+
+        let deser: CmosIndex =
+            serde_json::from_value(data).context("failed to deserialize Cmos")?;
+        self.index = deser.index;
+        self.data = deser
+            .data
+            .try_into()
+            .map_err(|_| anyhow!("invalid cmos data"))?;
+        Ok(())
+    }
+
+    fn sleep(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn wake(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDateTime;
 
     use super::*;
+
+    use crate::suspendable_tests;
 
     fn read_reg(cmos: &mut Cmos, reg: u8) -> u8 {
         // Write register number to INDEX_OFFSET (0).
@@ -143,6 +190,7 @@ mod tests {
         );
 
         // Read register value back from DATA_OFFSET (1).
+
         let mut data = [0u8];
         cmos.read(
             BusAccessInfo {
@@ -173,6 +221,44 @@ mod tests {
     fn test_now_2017_after_leap_second() -> DateTime<Utc> {
         // 2017-01-01T00:00:00+00:00
         DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(1483228800, 0), Utc)
+    }
+
+    #[test]
+    fn cmos_write_index() {
+        let mut cmos = Cmos::new(1024, 0, test_now_party_like_its_1999);
+        // Write index.
+        cmos.write(
+            BusAccessInfo {
+                offset: 0,
+                address: 0x71,
+                id: 0,
+            },
+            &[0x41],
+        );
+        assert_eq!(cmos.index, 0x41);
+    }
+
+    #[test]
+    fn cmos_write_data() {
+        let mut cmos = Cmos::new(1024, 0, test_now_party_like_its_1999);
+        // Write data 0x01 at index 0x41.
+        cmos.write(
+            BusAccessInfo {
+                offset: 0,
+                address: 0x71,
+                id: 0,
+            },
+            &[0x41],
+        );
+        cmos.write(
+            BusAccessInfo {
+                offset: 1,
+                address: 0x71,
+                id: 0,
+            },
+            &[0x01],
+        );
+        assert_eq!(cmos.data[0x41], 0x01);
     }
 
     #[test]
@@ -225,5 +311,49 @@ mod tests {
         assert_eq!(read_reg(&mut cmos, 0x08), 0x01); // month
         assert_eq!(read_reg(&mut cmos, 0x09), 0x17); // year
         assert_eq!(read_reg(&mut cmos, 0x32), 0x20); // century
+    }
+
+    #[test]
+    fn cmos_snapshot_restore() -> anyhow::Result<()> {
+        // time function doesn't matter in this case.
+        let mut cmos = Cmos::new(1024, 0, test_now_party_like_its_1999);
+
+        let info_index = BusAccessInfo {
+            offset: 0,
+            address: 0x71,
+            id: 0,
+        };
+
+        let info_data = BusAccessInfo {
+            offset: 1,
+            address: 0x71,
+            id: 0,
+        };
+
+        // change index to 0x41.
+        cmos.write(info_index, &[0x41]);
+        cmos.write(info_data, &[0x01]);
+
+        let snap = cmos.snapshot().context("failed to snapshot Cmos")?;
+
+        // change index to 0x42.
+        cmos.write(info_index, &[0x42]);
+        cmos.write(info_data, &[0x01]);
+
+        // Restore Cmos.
+        cmos.restore(snap).context("failed to restore Cmos")?;
+
+        // after restore, the index should be 0x41, which was the index before snapshot was taken.
+        assert_eq!(cmos.index, 0x41);
+        assert_eq!(cmos.data[0x41], 0x01);
+        assert_ne!(cmos.data[0x42], 0x01);
+        Ok(())
+    }
+
+    suspendable_tests! {
+        cmos1999: Cmos::new(1024, 0, test_now_party_like_its_1999),
+        cmos2k: Cmos::new(1024, 0, test_now_y2k_compliant),
+        cmos2016: Cmos::new(1024, 0, test_now_2016_before_leap_second),
+        cmos2017: Cmos::new(1024, 0, test_now_2017_after_leap_second),
     }
 }
