@@ -790,11 +790,14 @@ impl DecoderBackend for FfmpegDecoder {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use base::FromRawDescriptor;
     use base::MappedRegion;
     use base::MemoryMappingBuilder;
     use base::SafeDescriptor;
     use base::SharedMemory;
+    use base::WaitContext;
 
     use super::*;
     use crate::virtio::video::format::FramePlane;
@@ -902,8 +905,12 @@ mod tests {
     // Full decoding test of a H.264 video, checking that the flow of events is happening as
     // expected. Input and output buffers are both backed by shared memory mimicking a virtio
     // object.
-    fn decode_generic<I, O>(input_resource_builder: I, output_resource_builder: O)
-    where
+    fn decode_h264_generic<D, I, O>(
+        decoder: &mut D,
+        input_resource_builder: I,
+        output_resource_builder: O,
+    ) where
+        D: DecoderBackend,
         I: Fn(&SharedMemory) -> GuestResourceHandle,
         O: Fn(&SharedMemory) -> GuestResourceHandle,
     {
@@ -911,10 +918,13 @@ mod tests {
         const INPUT_BUF_SIZE: usize = 0x4000;
         const OUTPUT_BUFFER_SIZE: usize =
             (H264_STREAM_WIDTH * (H264_STREAM_HEIGHT + H264_STREAM_HEIGHT / 2)) as usize;
-        let mut decoder = FfmpegDecoder::new();
         let mut session = decoder
             .new_session(Format::H264)
             .expect("failed to create H264 decoding session.");
+        let wait_ctx = WaitContext::new().expect("Failed to create wait context");
+        wait_ctx
+            .add(session.event_pipe(), 0u8)
+            .expect("Failed to add event pipe to wait context");
         // Output buffers suitable for receiving NV12 frames for our stream.
         let output_buffers = (0..NUM_OUTPUT_BUFFERS)
             .into_iter()
@@ -936,7 +946,7 @@ mod tests {
         let mut expected_frames_crcs = H264_STREAM_CRCS.lines();
 
         let mut on_frame_decoded =
-            |session: &mut FfmpegDecoderSession, picture_buffer_id: i32, visible_rect: Rect| {
+            |session: &mut D::Session, picture_buffer_id: i32, visible_rect: Rect| {
                 assert_eq!(
                     visible_rect,
                     Rect {
@@ -997,10 +1007,10 @@ mod tests {
             // After sending the first buffer we should get the initial resolution change event and
             // can provide the frames to decode into.
             if input_id == 0 {
+                let event = session.read_event().unwrap();
                 assert!(matches!(
-                    session.read_event().unwrap(),
+                    event,
                     DecoderEvent::ProvidePictureBuffers {
-                        min_num_buffers: 3,
                         width: H264_STREAM_WIDTH,
                         height: H264_STREAM_HEIGHT,
                         visible_rect: Rect {
@@ -1009,6 +1019,7 @@ mod tests {
                             right: H264_STREAM_WIDTH,
                             bottom: H264_STREAM_HEIGHT,
                         },
+                        ..
                     }
                 ));
 
@@ -1047,7 +1058,7 @@ mod tests {
             }
 
             // If we have remaining events, they must be decoded frames. Get them and recycle them.
-            while session.event_queue.len() > 0 {
+            while wait_ctx.wait_timeout(Duration::ZERO).unwrap().len() > 0 {
                 match session.read_event().unwrap() {
                     DecoderEvent::PictureReady {
                         picture_buffer_id,
@@ -1057,36 +1068,35 @@ mod tests {
                     e => panic!("Unexpected event: {:?}", e),
                 }
             }
-
-            // We should have read all the pending events for that frame.
-            assert_eq!(session.event_queue.len(), 0);
         }
 
         session.flush().unwrap();
 
         // Keep getting frames until the final event, which should be `FlushCompleted`.
-        while session.event_queue.len() > 1 {
+        let mut received_flush_completed = false;
+        while wait_ctx.wait_timeout(Duration::ZERO).unwrap().len() > 0 {
             match session.read_event().unwrap() {
                 DecoderEvent::PictureReady {
                     picture_buffer_id,
                     visible_rect,
                     ..
                 } => on_frame_decoded(&mut session, picture_buffer_id, visible_rect),
+                DecoderEvent::FlushCompleted(Ok(())) => {
+                    received_flush_completed = true;
+                    break;
+                }
                 e => panic!("Unexpected event: {:?}", e),
             }
         }
 
-        // Get the FlushCompleted event.
-        assert!(matches!(
-            session.read_event().unwrap(),
-            DecoderEvent::FlushCompleted(Ok(()))
-        ));
+        // Confirm that we got the FlushCompleted event.
+        assert_eq!(received_flush_completed, true);
+
+        // We should have read all the events for that session.
+        assert_eq!(wait_ctx.wait_timeout(Duration::ZERO).unwrap().len(), 0);
 
         // We should not be expecting any more frame
         assert_eq!(expected_frames_crcs.next(), None);
-
-        // We should have read all the events for that session.
-        assert_eq!(session.event_queue.len(), 0);
 
         // Check that we decoded the expected number of frames.
         assert_eq!(decoded_frames_count, H264_STREAM_NUM_FRAMES);
@@ -1094,25 +1104,41 @@ mod tests {
 
     // Decode using guest memory input and output buffers.
     #[test]
-    fn test_decode_guestmem_to_guestmem() {
-        decode_generic(build_guest_mem_handle, build_guest_mem_handle);
+    fn test_decode_h264_guestmem_to_guestmem() {
+        decode_h264_generic(
+            &mut FfmpegDecoder::new(),
+            build_guest_mem_handle,
+            build_guest_mem_handle,
+        );
     }
 
     // Decode using guest memory input and virtio object output buffers.
     #[test]
-    fn test_decode_guestmem_to_object() {
-        decode_generic(build_guest_mem_handle, build_object_handle);
+    fn test_decode_h264_guestmem_to_object() {
+        decode_h264_generic(
+            &mut FfmpegDecoder::new(),
+            build_guest_mem_handle,
+            build_object_handle,
+        );
     }
 
     // Decode using virtio object input and guest memory output buffers.
     #[test]
-    fn test_decode_object_to_guestmem() {
-        decode_generic(build_object_handle, build_guest_mem_handle);
+    fn test_decode_h264_object_to_guestmem() {
+        decode_h264_generic(
+            &mut FfmpegDecoder::new(),
+            build_object_handle,
+            build_guest_mem_handle,
+        );
     }
 
     // Decode using virtio object input and output buffers.
     #[test]
-    fn test_decode_object_to_object() {
-        decode_generic(build_object_handle, build_object_handle);
+    fn test_decode_h264_object_to_object() {
+        decode_h264_generic(
+            &mut FfmpegDecoder::new(),
+            build_object_handle,
+            build_object_handle,
+        );
     }
 }
