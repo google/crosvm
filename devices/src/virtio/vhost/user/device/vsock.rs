@@ -49,6 +49,8 @@ use vmm_vhost::SlaveReqHandler;
 use vmm_vhost::VhostUserSlaveReqHandlerMut;
 
 use crate::virtio::base_features;
+use crate::virtio::device_constants::vsock::NUM_QUEUES;
+use crate::virtio::device_constants::vsock::QUEUE_SIZE;
 use crate::virtio::vhost::user::device::handler::sys::unix::run_handler;
 // TODO(acourbot) try to remove the system dependencies and make the device usable on all platforms.
 use crate::virtio::vhost::user::device::handler::sys::unix::Doorbell;
@@ -60,12 +62,10 @@ use crate::virtio::vhost::user::device::handler::VhostUserRegularOps;
 use crate::virtio::vhost::user::device::vvu::doorbell::DoorbellRegion;
 use crate::virtio::vhost::user::device::vvu::pci::VvuPciDevice;
 use crate::virtio::vhost::user::device::vvu::VvuDevice;
-use crate::virtio::vhost::vsock;
 use crate::virtio::Queue;
 use crate::virtio::SignalableInterrupt;
 
-const MAX_VRING_LEN: u16 = vsock::QUEUE_SIZE;
-const NUM_QUEUES: usize = vsock::QUEUE_SIZES.len();
+const MAX_VRING_LEN: u16 = QUEUE_SIZE;
 const EVENT_QUEUE: usize = NUM_QUEUES - 1;
 
 struct VsockBackend<H: VhostUserPlatformOps> {
@@ -188,7 +188,7 @@ impl<H: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for VsockBackend<H> {
     }
 
     fn set_vring_num(&mut self, index: u32, num: u32) -> Result<()> {
-        if index >= NUM_QUEUES as u32 || num == 0 || num > vsock::QUEUE_SIZE.into() {
+        if index >= NUM_QUEUES as u32 || num == 0 || num > QUEUE_SIZE.into() {
             return Err(Error::InvalidParam);
         }
 
@@ -255,7 +255,7 @@ impl<H: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for VsockBackend<H> {
     }
 
     fn set_vring_base(&mut self, index: u32, base: u32) -> Result<()> {
-        if index >= NUM_QUEUES as u32 || base >= vsock::QUEUE_SIZE.into() {
+        if index >= NUM_QUEUES as u32 || base >= QUEUE_SIZE.into() {
             return Err(Error::InvalidParam);
         }
 

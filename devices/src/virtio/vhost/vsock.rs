@@ -26,15 +26,14 @@ use super::worker::Worker;
 use super::Error;
 use super::Result;
 use crate::virtio::copy_config;
+use crate::virtio::device_constants::vsock::NUM_QUEUES;
+use crate::virtio::device_constants::vsock::QUEUE_SIZES;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::VirtioDevice;
 use crate::Suspendable;
 
-pub const QUEUE_SIZE: u16 = 256;
-const NUM_QUEUES: usize = 3;
-pub const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE; NUM_QUEUES];
 static VHOST_VSOCK_DEFAULT_PATH: &str = "/dev/vhost-vsock";
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]

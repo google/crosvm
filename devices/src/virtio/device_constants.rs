@@ -253,3 +253,9 @@ pub mod video {
     // Safe because auto-generated structs have no implicit padding.
     unsafe impl DataInit for virtio_video_config {}
 }
+
+pub mod vsock {
+    pub const QUEUE_SIZE: u16 = 256;
+    pub const NUM_QUEUES: usize = 3;
+    pub const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE; NUM_QUEUES];
+}

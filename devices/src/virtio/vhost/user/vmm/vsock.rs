@@ -4,20 +4,21 @@
 
 use vmm_vhost::message::VhostUserProtocolFeatures;
 
+use crate::virtio::device_constants::vsock::QUEUE_SIZE;
+use crate::virtio::device_constants::vsock::QUEUE_SIZES;
 use crate::virtio::vhost::user::vmm::Connection;
 use crate::virtio::vhost::user::vmm::QueueSizes;
 use crate::virtio::vhost::user::vmm::Result;
 use crate::virtio::vhost::user::vmm::VhostUserVirtioDevice;
-use crate::virtio::vhost::vsock;
 use crate::virtio::DeviceType;
 
 impl VhostUserVirtioDevice {
     pub fn new_vsock(base_features: u64, connection: Connection) -> Result<VhostUserVirtioDevice> {
         let queue_sizes = QueueSizes::AskDevice {
-            queue_size: vsock::QUEUE_SIZE,
-            default_queues: vsock::QUEUE_SIZES.len(),
+            queue_size: QUEUE_SIZE,
+            default_queues: QUEUE_SIZES.len(),
         };
-        let max_queues = vsock::QUEUE_SIZES.len();
+        let max_queues = QUEUE_SIZES.len();
 
         let allow_features = 0;
 
