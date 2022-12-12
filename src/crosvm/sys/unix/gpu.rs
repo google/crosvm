@@ -119,6 +119,10 @@ pub fn create_gpu_device(
 
     let jail = match gpu_jail(&cfg.jail_config, "gpu_device")? {
         Some(mut jail) => {
+            // Allow changes made externally take effect immediately to allow
+            // shaders to be dynamically added by external processes.
+            jail.set_remount_mode(libc::MS_SLAVE);
+
             // Prepare GPU shader disk cache directory.
             let (cache_dir, cache_size) = cfg
                 .gpu_parameters
@@ -128,7 +132,9 @@ pub fn create_gpu_device(
             let cache_info = get_gpu_cache_info(cache_dir, cache_size, cfg.jail_config.is_some());
 
             if let Some(dir) = cache_info.directory {
-                jail.mount_bind(dir, dir, true)?;
+                // Manually bind mount recursively to allow DLC shader caches
+                // to be propagated to the GPU process.
+                jail.mount(dir, dir, "", (libc::MS_BIND | libc::MS_REC) as usize)?;
             }
             for (key, val) in cache_info.environment {
                 env::set_var(key, val);
@@ -203,6 +209,10 @@ pub fn start_gpu_render_server(
 
     let (jail, cache_info) = match gpu_jail(&cfg.jail_config, "gpu_render_server")? {
         Some(mut jail) => {
+            // Allow changes made externally take effect immediately to allow
+            // shaders to be dynamically added by external processes.
+            jail.set_remount_mode(libc::MS_SLAVE);
+
             let cache_info = get_gpu_cache_info(
                 render_server_parameters.cache_path.as_ref(),
                 render_server_parameters.cache_size.as_ref(),
@@ -210,7 +220,9 @@ pub fn start_gpu_render_server(
             );
 
             if let Some(dir) = cache_info.directory {
-                jail.mount_bind(dir, dir, true)?;
+                // Manually bind mount recursively to allow DLC shader caches
+                // to be propagated to the GPU process.
+                jail.mount(dir, dir, "", (libc::MS_BIND | libc::MS_REC) as usize)?;
             }
 
             // bind mount /dev/log for syslog
