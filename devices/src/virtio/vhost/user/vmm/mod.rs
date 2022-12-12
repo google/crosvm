@@ -3,9 +3,17 @@
 // found in the LICENSE file.
 
 mod block;
+mod console;
+mod fs;
 mod gpu;
 mod handler;
+mod mac80211_hwsim;
+mod net;
+mod snd;
+mod video;
 mod virtio_device;
+mod vsock;
+mod wl;
 
 use remain::sorted;
 use thiserror::Error as ThisError;
@@ -15,38 +23,12 @@ use vm_memory::GuestMemoryError;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::Error as VhostError;
 
-pub use self::block::*;
-pub use self::gpu::*;
 pub use self::handler::VhostUserHandler;
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
-        mod console;
-        mod fs;
-        mod mac80211_hwsim;
-        mod net;
-        mod snd;
-        mod vsock;
-        mod wl;
-        mod video;
-
-        pub use self::snd::*;
-        pub use self::vsock::*;
-        pub use self::wl::*;
-        pub use self::net::*;
-        pub use self::mac80211_hwsim::*;
-        pub use self::console::*;
-        pub use self::fs::*;
-        pub use self::video::*;
-
         pub type Connection = std::os::unix::net::UnixStream;
     } else if #[cfg(windows)] {
-        #[cfg(feature = "slirp")]
-        pub mod net;
-
-        #[cfg(feature = "slirp")]
-        pub use self::net::*;
-
         pub type Connection = base::Tube;
     }
 }
