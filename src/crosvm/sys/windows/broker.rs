@@ -1139,7 +1139,7 @@ where
         )
         .exit_context(Exit::SandboxError, "sandbox operation failed")?;
     policy
-        .set_job_level(process_policy.job_level, 0)
+        .set_job_level(process_policy.job_level, process_policy.ui_exceptions)
         .exit_context(Exit::SandboxError, "sandbox operation failed")?;
     policy
         .set_integrity_level(process_policy.integrity_level)
