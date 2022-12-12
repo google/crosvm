@@ -1081,6 +1081,7 @@ impl DecoderBackend for VaapiDecoder {
 
 #[cfg(test)]
 mod tests {
+    use super::super::tests::*;
     use super::*;
 
     #[test]
@@ -1091,5 +1092,17 @@ mod tests {
         let caps = decoder.get_capabilities();
         assert!(!caps.input_formats().is_empty());
         assert!(!caps.output_formats().is_empty());
+    }
+
+    // Decode using guest memory input and output buffers.
+    #[test]
+    // Ignore this test by default as it requires libva-compatible hardware.
+    #[ignore]
+    fn test_decode_h264_guestmem_to_guestmem() {
+        decode_h264_generic(
+            &mut VaapiDecoder::new().unwrap(),
+            build_guest_mem_handle,
+            build_guest_mem_handle,
+        );
     }
 }
