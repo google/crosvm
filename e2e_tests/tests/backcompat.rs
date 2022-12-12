@@ -17,7 +17,11 @@ use fixture::vm::TestVm;
 #[test]
 fn backcompat_test_simple_lspci() {
     let mut vm = TestVm::new(Config::new()).unwrap();
-    let expected = include_str!("goldens/backcompat_test_simple_lspci.txt").trim();
+    let expected = if cfg!(windows) {
+        include_str!("goldens/backcompat_test_simple_lspci_win.txt").trim()
+    } else {
+        include_str!("goldens/backcompat_test_simple_lspci.txt").trim()
+    };
     let result = vm
         .exec_in_guest("lspci -n")
         .unwrap()

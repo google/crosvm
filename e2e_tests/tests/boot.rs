@@ -12,18 +12,21 @@ fn boot_test_vm() {
     assert_eq!(vm.exec_in_guest("echo 42").unwrap().trim(), "42");
 }
 
+#[cfg(unix)]
 #[test]
 fn boot_test_vm_odirect() {
     let mut vm = TestVm::new(Config::new().o_direct()).unwrap();
     assert_eq!(vm.exec_in_guest("echo 42").unwrap().trim(), "42");
 }
 
+#[cfg(unix)]
 #[test]
 fn boot_test_vm_config_file() {
     let mut vm = TestVm::new_with_config_file(Config::new()).unwrap();
     assert_eq!(vm.exec_in_guest("echo 42").unwrap().trim(), "42");
 }
 
+#[cfg(unix)]
 #[test]
 fn boot_test_suspend_resume() {
     // There is no easy way for us to check if the VM is actually suspended. But at

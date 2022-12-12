@@ -19,6 +19,7 @@ class TestOption(enum.Enum):
     DO_NOT_RUN_ARMHF = "do_not_run_armhf"
     DO_NOT_RUN_AARCH64 = "do_not_run_aarch64"
     DO_NOT_RUN_X86_64 = "do_not_run_x86_64"
+    DO_NOT_RUN_WIN64 = "do_not_run_win64"
 
     # Do not run on foreign architecture kernel (e.g. running armhf on aarch64
     # or running aarch64 on the host with user-space emulation)
@@ -65,7 +66,6 @@ WIN64_DISABLED_CRATES = [
     "fuse",
     "fuzz",
     "gpu_display",
-    "e2e_tests",
     "io_uring",
     "kvm",
     "libcras_stub",
@@ -93,6 +93,7 @@ CRATE_OPTIONS: Dict[str, List[TestOption]] = {
     "e2e_tests": [  # b/180196508
         TestOption.LARGE,
         TestOption.DO_NOT_RUN_AARCH64,
+        TestOption.DO_NOT_RUN_WIN64,  # b/262270352
     ],
     "io_uring": [TestOption.DO_NOT_RUN],  # b/202294403
     "kvm": [

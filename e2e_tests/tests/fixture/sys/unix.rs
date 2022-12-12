@@ -39,6 +39,8 @@ const VM_JSON_CONFIG_FILE: &str = "vm.json";
 /// do not block the tests.
 const VM_COMMUNICATION_TIMEOUT: Duration = Duration::from_secs(10);
 
+pub(crate) type SerialArgs = Path;
+
 /// Returns the name of crosvm binary.
 pub fn binary_name() -> &'static str {
     cfg_if::cfg_if! {

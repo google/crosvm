@@ -4,6 +4,8 @@
 
 //! Testing virtio-block.
 
+#![cfg(unix)]
+
 pub mod fixture;
 
 use std::env;

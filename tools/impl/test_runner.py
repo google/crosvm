@@ -123,6 +123,7 @@ def should_run_executable(
     executable: Executable, target: TestTarget, test_names: List[str], execute_as_root: bool
 ):
     arch = target.build_triple.arch
+    sys = target.build_triple.sys
     options = CRATE_OPTIONS.get(executable.crate_name, [])
     if TestOption.DO_NOT_RUN in options:
         return False
@@ -131,6 +132,8 @@ def should_run_executable(
     if TestOption.DO_NOT_RUN_AARCH64 in options and arch == "aarch64":
         return False
     if TestOption.DO_NOT_RUN_ARMHF in options and arch == "armv7":
+        return False
+    if TestOption.DO_NOT_RUN_WIN64 in options and sys == "windows":
         return False
     if TestOption.DO_NOT_RUN_ON_FOREIGN_KERNEL in options and not target.is_native:
         return False

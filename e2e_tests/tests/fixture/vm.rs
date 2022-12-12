@@ -5,7 +5,6 @@
 use std::env;
 use std::io::BufRead;
 use std::io::Write;
-use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::str::from_utf8;
@@ -18,6 +17,7 @@ use anyhow::Result;
 use base::syslog;
 use prebuilts::download_file;
 
+use crate::fixture::sys::SerialArgs;
 use crate::fixture::sys::TestVmSys;
 
 const PREBUILT_URL: &str = "https://storage.googleapis.com/crosvm/integration_tests";
@@ -188,7 +188,7 @@ impl TestVm {
     /// with all the relevant options needed to boot the VM.
     pub fn new_generic<F>(f: F, cfg: Config) -> Result<TestVm>
     where
-        F: FnOnce(&mut Command, &Path, &Config) -> Result<()>,
+        F: FnOnce(&mut Command, &SerialArgs, &Config) -> Result<()>,
     {
         PREP_ONCE.call_once(TestVm::initialize_once);
 
