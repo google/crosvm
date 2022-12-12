@@ -34,6 +34,8 @@ use crate::pci::PciBarPrefetchable;
 use crate::pci::PciBarRegionType;
 use crate::pci::PciCapability;
 use crate::virtio::copy_config;
+use crate::virtio::device_constants::fs::FS_MAX_TAG_LEN;
+use crate::virtio::device_constants::fs::QUEUE_SIZE;
 use crate::virtio::DescriptorError;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
@@ -54,15 +56,9 @@ use passthrough::PassthroughFs;
 pub use worker::process_fs_queue;
 use worker::Worker;
 
-// The fs device does not have a fixed number of queues.
-pub const QUEUE_SIZE: u16 = 1024;
-
 const FS_BAR_NUM: u8 = 4;
 const FS_BAR_OFFSET: u64 = 0;
 const FS_BAR_SIZE: u64 = 1 << 33;
-
-/// The maximum allowable length of the tag used to identify a specific virtio-fs device.
-pub const FS_MAX_TAG_LEN: usize = 36;
 
 /// Errors that may occur during the creation or operation of an Fs device.
 #[sorted]

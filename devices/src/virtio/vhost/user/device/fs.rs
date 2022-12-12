@@ -34,9 +34,9 @@ use vmm_vhost::message::VhostUserVirtioFeatures;
 
 use crate::virtio;
 use crate::virtio::copy_config;
+use crate::virtio::device_constants::fs::FS_MAX_TAG_LEN;
 use crate::virtio::fs::passthrough::PassthroughFs;
 use crate::virtio::fs::process_fs_queue;
-use crate::virtio::fs::FS_MAX_TAG_LEN;
 use crate::virtio::vhost::user::device::handler::sys::Doorbell;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 
