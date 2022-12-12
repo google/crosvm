@@ -25,6 +25,7 @@ pub struct GpuCacheInfo<'a> {
 pub fn get_gpu_cache_info<'a>(
     cache_dir: Option<&'a String>,
     cache_size: Option<&'a String>,
+    foz_db_list_path: Option<&'a String>,
     sandbox: bool,
 ) -> GpuCacheInfo<'a> {
     let mut dir = None;
@@ -55,6 +56,12 @@ pub fn get_gpu_cache_info<'a>(
             env.push(("MESA_SHADER_CACHE_DIR", cache_dir.as_str()));
 
             env.push(("MESA_DISK_CACHE_DATABASE", "1"));
+
+            if let Some(_foz_db_list_path) = foz_db_list_path {
+                // TODO(b/260664734): Use foz_db_list_path to set an environment
+                // variable once mesa changes get cherry-picked.
+                warn!("foz-db-list-path not utilized yet");
+            }
 
             if let Some(cache_size) = cache_size {
                 // Deprecated in https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/15390
@@ -129,7 +136,8 @@ pub fn create_gpu_device(
                 .as_ref()
                 .map(|params| (params.cache_path.as_ref(), params.cache_size.as_ref()))
                 .unwrap();
-            let cache_info = get_gpu_cache_info(cache_dir, cache_size, cfg.jail_config.is_some());
+            let cache_info =
+                get_gpu_cache_info(cache_dir, cache_size, None, cfg.jail_config.is_some());
 
             if let Some(dir) = cache_info.directory {
                 // Manually bind mount recursively to allow DLC shader caches
@@ -167,6 +175,7 @@ pub struct GpuRenderServerParameters {
     pub path: PathBuf,
     pub cache_path: Option<String>,
     pub cache_size: Option<String>,
+    pub foz_db_list_path: Option<String>,
 }
 
 #[cfg(feature = "virgl_renderer_next")]
@@ -216,6 +225,7 @@ pub fn start_gpu_render_server(
             let cache_info = get_gpu_cache_info(
                 render_server_parameters.cache_path.as_ref(),
                 render_server_parameters.cache_size.as_ref(),
+                render_server_parameters.foz_db_list_path.as_ref(),
                 true,
             );
 
@@ -284,6 +294,7 @@ mod tests {
                 path: "/some/path".into(),
                 cache_path: None,
                 cache_size: None,
+                foz_db_list_path: None,
             }
         );
 
@@ -294,6 +305,7 @@ mod tests {
                 path: "/some/path".into(),
                 cache_path: None,
                 cache_size: None,
+                foz_db_list_path: None,
             }
         );
 
@@ -305,6 +317,21 @@ mod tests {
                 path: "/some/path".into(),
                 cache_path: Some("/cache/path".into()),
                 cache_size: Some("16M".into()),
+                foz_db_list_path: None,
+            }
+        );
+
+        let res: GpuRenderServerParameters = from_key_values(
+            "path=/some/path,cache-path=/cache/path,cache-size=16M,foz-db-list-path=/db/list/path",
+        )
+        .unwrap();
+        assert_eq!(
+            res,
+            GpuRenderServerParameters {
+                path: "/some/path".into(),
+                cache_path: Some("/cache/path".into()),
+                cache_size: Some("16M".into()),
+                foz_db_list_path: Some("/db/list/path".into()),
             }
         );
 

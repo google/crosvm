@@ -1207,6 +1207,8 @@ pub struct RunCommand {
     ///     cache-path=PATH - The path to the render server shader
     ///         cache.
     ///     cache-size=SIZE - The maximum size of the shader cache
+    ///     foz-db-list-path=PATH - The path to GPU foz db list
+    ///         file for dynamically loading RO caches.
     pub gpu_render_server: Option<GpuRenderServerParameters>,
 
     #[argh(switch)]
