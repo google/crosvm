@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::mem;
-use std::net::Ipv4Addr;
 use std::path::Path;
 use std::thread;
 
@@ -15,7 +14,6 @@ use base::AsRawDescriptor;
 use base::Event;
 use base::RawDescriptor;
 use base::Tube;
-use net_util::MacAddress;
 use net_util::TapT;
 use vhost::NetT as VhostNetT;
 use virtio_sys::virtio_net;
@@ -54,22 +52,10 @@ where
     T: TapT,
     U: VhostNetT<T>,
 {
-    /// Create a new virtio network device with the given IP address and
-    /// netmask.
-    pub fn new(
-        vhost_net_device_path: &Path,
-        base_features: u64,
-        ip_addr: Ipv4Addr,
-        netmask: Ipv4Addr,
-        mac_addr: MacAddress,
-    ) -> Result<Net<T, U>> {
+    /// Creates a new virtio network device from a tap device that has already been
+    /// configured.
+    pub fn new(vhost_net_device_path: &Path, base_features: u64, tap: T) -> Result<Net<T, U>> {
         let kill_evt = Event::new().map_err(Error::CreateKillEvent)?;
-
-        let tap: T = T::new(true, false).map_err(Error::TapOpen)?;
-        tap.set_ip_addr(ip_addr).map_err(Error::TapSetIp)?;
-        tap.set_netmask(netmask).map_err(Error::TapSetNetmask)?;
-        tap.set_mac_address(mac_addr)
-            .map_err(Error::TapSetMacAddress)?;
 
         // Set offload flags to match the virtio features below.
         tap.set_offload(
@@ -82,7 +68,6 @@ where
         tap.set_vnet_hdr_size(vnet_hdr_size)
             .map_err(Error::TapSetVnetHdrSize)?;
 
-        tap.enable().map_err(Error::TapEnable)?;
         let vhost_net_handle = U::new(vhost_net_device_path).map_err(Error::VhostOpen)?;
 
         let avail_features = base_features
@@ -366,6 +351,7 @@ where
 
 #[cfg(test)]
 pub mod tests {
+    use std::net::Ipv4Addr;
     use std::path::PathBuf;
     use std::result;
 
@@ -380,6 +366,7 @@ pub mod tests {
     use crate::virtio::base_features;
     use crate::virtio::VIRTIO_MSI_NO_VECTOR;
     use crate::IrqLevelEvent;
+    use net_util::TapTCommon;
 
     fn create_guest_memory() -> result::Result<GuestMemory, GuestMemoryError> {
         let start_addr1 = GuestAddress(0x0);
@@ -388,15 +375,19 @@ pub mod tests {
     }
 
     fn create_net_common() -> Net<FakeTap, FakeNet<FakeTap>> {
+        let tap = FakeTap::new(true, false).unwrap();
+        tap.set_ip_addr(Ipv4Addr::new(127, 0, 0, 1))
+            .map_err(Error::TapSetIp)
+            .unwrap();
+        tap.set_netmask(Ipv4Addr::new(255, 255, 255, 0))
+            .map_err(Error::TapSetNetmask)
+            .unwrap();
+        tap.set_mac_address("de:21:e8:47:6b:6a".parse().unwrap())
+            .unwrap();
+        tap.enable().unwrap();
+
         let features = base_features(ProtectionType::Unprotected);
-        Net::<FakeTap, FakeNet<FakeTap>>::new(
-            &PathBuf::from(""),
-            features,
-            Ipv4Addr::new(127, 0, 0, 1),
-            Ipv4Addr::new(255, 255, 255, 0),
-            "de:21:e8:47:6b:6a".parse().unwrap(),
-        )
-        .unwrap()
+        Net::<FakeTap, FakeNet<FakeTap>>::new(&PathBuf::from(""), features, tap).unwrap()
     }
 
     #[test]

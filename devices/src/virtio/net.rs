@@ -481,44 +481,9 @@ impl<T> Net<T>
 where
     T: TapT + ReadNotifier,
 {
-    /// Create a new virtio network device with the given IP address and
-    /// netmask.
-    pub fn new(
-        base_features: u64,
-        ip_addr: Ipv4Addr,
-        netmask: Ipv4Addr,
-        mac_addr: MacAddress,
-        vq_pairs: u16,
-    ) -> Result<Net<T>, NetError> {
-        let multi_queue = vq_pairs > 1;
-        let tap: T = T::new(true, multi_queue).map_err(NetError::TapOpen)?;
-        tap.set_ip_addr(ip_addr).map_err(NetError::TapSetIp)?;
-        tap.set_netmask(netmask).map_err(NetError::TapSetNetmask)?;
-        tap.set_mac_address(mac_addr)
-            .map_err(NetError::TapSetMacAddress)?;
-
-        tap.enable().map_err(NetError::TapEnable)?;
-
-        Net::from(base_features, tap, vq_pairs, None)
-    }
-
-    /// Try to open the already-configured TAP interface `name` and to create a network device from
-    /// it.
-    pub fn new_from_name(
-        base_features: u64,
-        name: &[u8],
-        vq_pairs: u16,
-        mac: Option<MacAddress>,
-    ) -> Result<Net<T>, NetError> {
-        let multi_queue = vq_pairs > 1;
-        let tap: T = T::new_with_name(name, true, multi_queue).map_err(NetError::TapOpen)?;
-
-        Net::from(base_features, tap, vq_pairs, mac)
-    }
-
     /// Creates a new virtio network device from a tap device that has already been
     /// configured.
-    pub fn from(
+    pub fn new(
         base_features: u64,
         tap: T,
         vq_pairs: u16,
