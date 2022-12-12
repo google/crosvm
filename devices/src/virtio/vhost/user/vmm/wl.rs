@@ -4,15 +4,15 @@
 
 use vmm_vhost::message::VhostUserProtocolFeatures;
 
+use crate::virtio::device_constants::wl::QUEUE_SIZE;
+use crate::virtio::device_constants::wl::QUEUE_SIZES;
+use crate::virtio::device_constants::wl::VIRTIO_WL_F_SEND_FENCES;
+use crate::virtio::device_constants::wl::VIRTIO_WL_F_TRANS_FLAGS;
+use crate::virtio::device_constants::wl::VIRTIO_WL_F_USE_SHMEM;
 use crate::virtio::vhost::user::vmm::Connection;
 use crate::virtio::vhost::user::vmm::QueueSizes;
 use crate::virtio::vhost::user::vmm::Result;
 use crate::virtio::vhost::user::vmm::VhostUserVirtioDevice;
-use crate::virtio::wl::QUEUE_SIZE;
-use crate::virtio::wl::QUEUE_SIZES;
-use crate::virtio::wl::VIRTIO_WL_F_SEND_FENCES;
-use crate::virtio::wl::VIRTIO_WL_F_TRANS_FLAGS;
-use crate::virtio::wl::VIRTIO_WL_F_USE_SHMEM;
 use crate::virtio::DeviceType;
 
 impl VhostUserVirtioDevice {

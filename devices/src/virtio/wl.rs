@@ -132,6 +132,10 @@ use super::SharedMemoryRegion;
 use super::SignalableInterrupt;
 use super::VirtioDevice;
 use super::Writer;
+use crate::virtio::device_constants::wl::QUEUE_SIZES;
+use crate::virtio::device_constants::wl::VIRTIO_WL_F_SEND_FENCES;
+use crate::virtio::device_constants::wl::VIRTIO_WL_F_TRANS_FLAGS;
+use crate::virtio::device_constants::wl::VIRTIO_WL_F_USE_SHMEM;
 use crate::Suspendable;
 
 const VIRTWL_SEND_MAX_ALLOCS: usize = 28;
@@ -164,12 +168,6 @@ const VIRTIO_WL_VFD_READ: u32 = 0x2;
 const VIRTIO_WL_VFD_MAP: u32 = 0x2;
 const VIRTIO_WL_VFD_CONTROL: u32 = 0x4;
 const VIRTIO_WL_VFD_FENCE: u32 = 0x8;
-pub const VIRTIO_WL_F_TRANS_FLAGS: u32 = 0x01;
-pub const VIRTIO_WL_F_SEND_FENCES: u32 = 0x02;
-pub const VIRTIO_WL_F_USE_SHMEM: u32 = 0x03;
-
-pub const QUEUE_SIZE: u16 = 256;
-pub const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE];
 
 const NEXT_VFD_ID_BASE: u32 = 0x40000000;
 const VFD_ID_HOST_MASK: u32 = NEXT_VFD_ID_BASE;

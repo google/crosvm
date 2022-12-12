@@ -267,3 +267,12 @@ pub mod vsock {
     pub const NUM_QUEUES: usize = 3;
     pub const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE; NUM_QUEUES];
 }
+
+pub mod wl {
+    pub const QUEUE_SIZE: u16 = 256;
+    pub const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE];
+
+    pub const VIRTIO_WL_F_TRANS_FLAGS: u32 = 0x01;
+    pub const VIRTIO_WL_F_SEND_FENCES: u32 = 0x02;
+    pub const VIRTIO_WL_F_USE_SHMEM: u32 = 0x03;
+}
