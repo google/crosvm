@@ -45,6 +45,7 @@ sudo apt-get install --yes --no-install-recommends \
     screen \
     tmux \
     wget \
+    wine \
     wine64 \
     gcc-mingw-w64-x86-64-win32 \
     wayland-protocols
