@@ -35,13 +35,12 @@ impl VhostUserHandler {
     /// connection with features and protocol features initialized.
     pub fn new_from_connection(
         connection: Connection,
-        max_queue_num: u64,
         allow_features: u64,
         init_features: u64,
         allow_protocol_features: VhostUserProtocolFeatures,
     ) -> VhostResult<Self> {
         Self::new(
-            SocketMaster::from_stream(connection, max_queue_num),
+            SocketMaster::from_stream(connection),
             allow_features,
             init_features,
             allow_protocol_features,

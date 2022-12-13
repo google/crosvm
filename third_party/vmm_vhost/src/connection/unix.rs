@@ -29,7 +29,7 @@ pub(crate) mod tests {
         path.push("sock");
         let mut listener = SocketListener::new(&path, true).unwrap();
         listener.set_nonblocking(true).unwrap();
-        let master = Master::connect(path, 2).unwrap();
+        let master = Master::connect(path).unwrap();
         let slave = listener.accept().unwrap().unwrap();
         (master, slave)
     }
@@ -46,7 +46,7 @@ pub(crate) mod tests {
         path.push("sock");
         let listener = SocketListener::new(&path, true).unwrap();
         let mut slave_listener = SlaveListener::new(listener, backend).unwrap();
-        let master = Master::connect(&path, 1).unwrap();
+        let master = Master::connect(&path).unwrap();
         (master, slave_listener.accept().unwrap().unwrap())
     }
 
@@ -59,13 +59,13 @@ pub(crate) mod tests {
         path.push("sock");
         let _ = SocketListener::new(&path, true).unwrap();
         let _ = SocketListener::new(&path, false).is_err();
-        assert!(Master::<SocketEndpoint<_>>::connect(&path, 1).is_err());
+        assert!(Master::<SocketEndpoint<_>>::connect(&path).is_err());
 
         let mut listener = SocketListener::new(&path, true).unwrap();
         assert!(SocketListener::new(&path, false).is_err());
         listener.set_nonblocking(true).unwrap();
 
-        let _master = Master::<SocketEndpoint<_>>::connect(&path, 1).unwrap();
+        let _master = Master::<SocketEndpoint<_>>::connect(&path).unwrap();
         let _slave = listener.accept().unwrap().unwrap();
     }
 }

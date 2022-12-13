@@ -239,7 +239,6 @@ mod tests {
             let connection = UnixStream::connect(&path).unwrap();
             let mut vmm_handler = VhostUserHandler::new_from_connection(
                 connection,
-                QUEUES_NUM as u64,
                 allow_features,
                 init_features,
                 allow_protocol_features,

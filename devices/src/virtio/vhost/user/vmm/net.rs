@@ -20,7 +20,6 @@ impl VhostUserVirtioDevice {
             queue_size: QUEUE_SIZE,
             default_queues: 3,
         };
-        let max_queues = 3;
 
         let allow_features = 1 << virtio_net::VIRTIO_NET_F_CSUM
             | 1 << virtio_net::VIRTIO_NET_F_CTRL_VQ
@@ -41,7 +40,6 @@ impl VhostUserVirtioDevice {
             connection,
             DeviceType::Net,
             queue_sizes,
-            max_queues,
             allow_features,
             allow_protocol_features,
             base_features,

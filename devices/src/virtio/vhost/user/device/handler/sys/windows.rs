@@ -135,7 +135,6 @@ mod tests {
 
             let mut vmm_handler = VhostUserHandler::new_from_connection(
                 main_tube,
-                QUEUES_NUM as u64,
                 allow_features,
                 init_features,
                 allow_protocol_features,

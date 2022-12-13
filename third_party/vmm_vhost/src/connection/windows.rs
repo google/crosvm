@@ -16,7 +16,7 @@ pub(crate) mod tests {
 
     pub(crate) fn create_pair() -> (TestMaster, TestEndpoint) {
         let (master_tube, slave_tube) = SystemStream::pair().unwrap();
-        let master = Master::from_stream(master_tube, 2);
+        let master = Master::from_stream(master_tube);
         (master, TubeEndpoint::from(slave_tube))
     }
 
@@ -28,7 +28,7 @@ pub(crate) mod tests {
         S: VhostUserSlaveReqHandler,
     {
         let (master_tube, slave_tube) = SystemStream::pair().unwrap();
-        let master = Master::from_stream(master_tube, 2);
+        let master = Master::from_stream(master_tube);
         (
             master,
             SlaveReqHandler::<S, TubeEndpoint<MasterReq>>::from_stream(slave_tube, backend),

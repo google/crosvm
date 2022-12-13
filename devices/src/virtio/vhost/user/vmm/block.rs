@@ -4,7 +4,6 @@
 
 use vmm_vhost::message::VhostUserProtocolFeatures;
 
-use crate::virtio::block::asynchronous::DEFAULT_NUM_QUEUES;
 use crate::virtio::device_constants::block::VIRTIO_BLK_F_BLK_SIZE;
 use crate::virtio::device_constants::block::VIRTIO_BLK_F_DISCARD;
 use crate::virtio::device_constants::block::VIRTIO_BLK_F_FLUSH;
@@ -26,7 +25,6 @@ impl VhostUserVirtioDevice {
             queue_size: QUEUE_SIZE,
             default_queues: 1,
         };
-        let max_queues = DEFAULT_NUM_QUEUES.into();
 
         let allow_features = 1 << VIRTIO_BLK_F_SEG_MAX
             | 1 << VIRTIO_BLK_F_RO
@@ -44,7 +42,6 @@ impl VhostUserVirtioDevice {
             connection,
             DeviceType::Block,
             queue_sizes,
-            max_queues,
             allow_features,
             allow_protocol_features,
             base_features,

@@ -21,7 +21,6 @@ impl VhostUserVirtioDevice {
             queue_size: QUEUE_SIZE,
             default_queues: QUEUE_SIZES.len(),
         };
-        let max_queues = QUEUE_SIZES.len();
 
         let allow_features = 1 << VIRTIO_WL_F_TRANS_FLAGS
             | 1 << VIRTIO_WL_F_SEND_FENCES
@@ -36,7 +35,6 @@ impl VhostUserVirtioDevice {
             connection,
             DeviceType::Wl,
             queue_sizes,
-            max_queues,
             allow_features,
             allow_protocol_features,
             base_features,

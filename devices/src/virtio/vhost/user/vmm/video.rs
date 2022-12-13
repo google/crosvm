@@ -20,7 +20,6 @@ impl VhostUserVirtioDevice {
         device_type: VideoDeviceType,
     ) -> Result<VhostUserVirtioDevice> {
         let queue_sizes = QueueSizes::Fixed(QUEUE_SIZES.to_vec());
-        let max_queues = QUEUE_SIZES.len();
 
         let allow_features = all_backend_virtio_features();
 
@@ -33,7 +32,6 @@ impl VhostUserVirtioDevice {
                 VideoDeviceType::Encoder => DeviceType::VideoEnc,
             },
             queue_sizes,
-            max_queues,
             allow_features,
             allow_protocol_features,
             base_features,

@@ -40,7 +40,7 @@ pub trait VhostUserMaster: VhostBackend {
     fn set_protocol_features(&mut self, features: VhostUserProtocolFeatures) -> Result<()>;
 
     /// Query how many queues the backend supports.
-    fn get_queue_num(&mut self) -> Result<u64>;
+    fn get_queue_num(&self) -> Result<u64>;
 
     /// Signal slave to enable or disable corresponding vring.
     ///
@@ -95,14 +95,14 @@ pub struct Master<E: Endpoint<MasterReq>> {
 
 impl<E: Endpoint<MasterReq> + From<SystemStream>> Master<E> {
     /// Create a new instance from a Unix stream socket.
-    pub fn from_stream(sock: SystemStream, max_queue_num: u64) -> Self {
-        Self::new(E::from(sock), max_queue_num)
+    pub fn from_stream(sock: SystemStream) -> Self {
+        Self::new(E::from(sock))
     }
 }
 
 impl<E: Endpoint<MasterReq>> Master<E> {
     /// Create a new instance.
-    fn new(ep: E, max_queue_num: u64) -> Self {
+    fn new(ep: E) -> Self {
         Master {
             node: Arc::new(Mutex::new(MasterInternal {
                 main_sock: ep,
@@ -111,7 +111,6 @@ impl<E: Endpoint<MasterReq>> Master<E> {
                 protocol_features: 0,
                 acked_protocol_features: 0,
                 protocol_features_ready: false,
-                max_queue_num,
                 hdr_flags: VhostUserHeaderFlag::empty(),
             })),
         }
@@ -127,7 +126,7 @@ impl<E: Endpoint<MasterReq>> Master<E> {
     ///
     /// # Arguments
     /// * `path` - path of Unix domain socket listener to connect to
-    pub fn connect<P: AsRef<Path>>(path: P, max_queue_num: u64) -> Result<Self> {
+    pub fn connect<P: AsRef<Path>>(path: P) -> Result<Self> {
         let mut retry_count = 5;
         let endpoint = loop {
             match E::connect(&path) {
@@ -147,7 +146,7 @@ impl<E: Endpoint<MasterReq>> Master<E> {
             }
         }?;
 
-        Ok(Self::new(endpoint, max_queue_num))
+        Ok(Self::new(endpoint))
     }
 
     /// Set the header flags that should be applied to all following messages.
@@ -253,10 +252,6 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
     /// Set the size of the queue.
     fn set_vring_num(&self, queue_index: usize, num: u16) -> Result<()> {
         let mut node = self.node();
-        if queue_index as u64 >= node.max_queue_num {
-            return Err(VhostUserError::InvalidParam);
-        }
-
         let val = VhostUserVringState::new(queue_index as u32, num.into());
         let hdr = node.send_request_with_body(MasterReq::SET_VRING_NUM, &val, None)?;
         node.wait_for_ack(&hdr)
@@ -265,9 +260,7 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
     /// Sets the addresses of the different aspects of the vring.
     fn set_vring_addr(&self, queue_index: usize, config_data: &VringConfigData) -> Result<()> {
         let mut node = self.node();
-        if queue_index as u64 >= node.max_queue_num
-            || config_data.flags & !(VhostUserVringAddrFlags::all().bits()) != 0
-        {
+        if config_data.flags & !(VhostUserVringAddrFlags::all().bits()) != 0 {
             return Err(VhostUserError::InvalidParam);
         }
 
@@ -279,10 +272,6 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
     /// Sets the base offset in the available vring.
     fn set_vring_base(&self, queue_index: usize, base: u16) -> Result<()> {
         let mut node = self.node();
-        if queue_index as u64 >= node.max_queue_num {
-            return Err(VhostUserError::InvalidParam);
-        }
-
         let val = VhostUserVringState::new(queue_index as u32, base.into());
         let hdr = node.send_request_with_body(MasterReq::SET_VRING_BASE, &val, None)?;
         node.wait_for_ack(&hdr)
@@ -290,10 +279,6 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
 
     fn get_vring_base(&self, queue_index: usize) -> Result<u32> {
         let mut node = self.node();
-        if queue_index as u64 >= node.max_queue_num {
-            return Err(VhostUserError::InvalidParam);
-        }
-
         let req = VhostUserVringState::new(queue_index as u32, 0);
         let hdr = node.send_request_with_body(MasterReq::GET_VRING_BASE, &req, None)?;
         let reply = node.recv_reply::<VhostUserVringState>(&hdr)?;
@@ -306,9 +291,6 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
     /// will be used instead of waiting for the call.
     fn set_vring_call(&self, queue_index: usize, event: &Event) -> Result<()> {
         let mut node = self.node();
-        if queue_index as u64 >= node.max_queue_num {
-            return Err(VhostUserError::InvalidParam);
-        }
         let hdr = node.send_fd_for_vring(
             MasterReq::SET_VRING_CALL,
             queue_index,
@@ -323,9 +305,6 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
     /// should be used instead of waiting for a kick.
     fn set_vring_kick(&self, queue_index: usize, event: &Event) -> Result<()> {
         let mut node = self.node();
-        if queue_index as u64 >= node.max_queue_num {
-            return Err(VhostUserError::InvalidParam);
-        }
         let hdr = node.send_fd_for_vring(
             MasterReq::SET_VRING_KICK,
             queue_index,
@@ -339,9 +318,6 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
     /// is set when there is no file descriptor in the ancillary data.
     fn set_vring_err(&self, queue_index: usize, event: &Event) -> Result<()> {
         let mut node = self.node();
-        if queue_index as u64 >= node.max_queue_num {
-            return Err(VhostUserError::InvalidParam);
-        }
         let hdr = node.send_fd_for_vring(
             MasterReq::SET_VRING_ERR,
             queue_index,
@@ -442,7 +418,7 @@ impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {
         node.wait_for_ack(&hdr)
     }
 
-    fn get_queue_num(&mut self) -> Result<u64> {
+    fn get_queue_num(&self) -> Result<u64> {
         let mut node = self.node();
         if !node.is_feature_mq_available() {
             return Err(VhostUserError::InvalidOperation);
@@ -453,8 +429,7 @@ impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {
         if val.value > VHOST_USER_MAX_VRINGS {
             return Err(VhostUserError::InvalidMessage);
         }
-        node.max_queue_num = val.value;
-        Ok(node.max_queue_num)
+        Ok(val.value)
     }
 
     fn set_vring_enable(&mut self, queue_index: usize, enable: bool) -> Result<()> {
@@ -462,8 +437,6 @@ impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {
         // set_vring_enable() is supported only when PROTOCOL_FEATURES has been enabled.
         if node.acked_virtio_features & VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits() == 0 {
             return Err(VhostUserError::InvalidOperation);
-        } else if queue_index as u64 >= node.max_queue_num {
-            return Err(VhostUserError::InvalidParam);
         }
 
         let val = VhostUserVringState::new(queue_index as u32, enable.into());
@@ -698,8 +671,6 @@ struct MasterInternal<E: Endpoint<MasterReq>> {
     acked_protocol_features: u64,
     // Cached vhost-user protocol features are ready to use.
     protocol_features_ready: bool,
-    // Cached maxinum number of queues supported from the slave.
-    max_queue_num: u64,
     // List of header flags.
     hdr_flags: VhostUserHeaderFlag,
 }
@@ -756,9 +727,6 @@ impl<E: Endpoint<MasterReq>> MasterInternal<E> {
         queue_index: usize,
         fd: RawDescriptor,
     ) -> VhostUserResult<VhostUserMsgHeader<MasterReq>> {
-        if queue_index as u64 >= self.max_queue_num {
-            return Err(VhostUserError::InvalidParam);
-        }
         // Bits (0-7) of the payload contain the vring index. Bit 8 is the invalid FD flag.
         // This flag is set when there is no file descriptor in the ancillary data. This signals
         // that polling will be used instead of waiting for the call.

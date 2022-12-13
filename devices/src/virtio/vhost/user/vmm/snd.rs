@@ -21,7 +21,6 @@ impl VhostUserVirtioDevice {
             queue_size: QUEUE_SIZE,
             default_queues: NUM_QUEUES,
         };
-        let max_queues = NUM_QUEUES;
 
         let allow_features = 0;
         let allow_protocol_features =
@@ -31,7 +30,6 @@ impl VhostUserVirtioDevice {
             connection,
             DeviceType::Sound,
             queue_sizes,
-            max_queues,
             allow_features,
             allow_protocol_features,
             base_features,

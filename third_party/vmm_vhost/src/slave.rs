@@ -97,7 +97,7 @@ mod tests {
         assert!(slave_listener.accept().unwrap().is_none());
         assert!(slave_listener.accept().unwrap().is_none());
 
-        let _master = Master::<SocketEndpoint<_>>::connect(path, 1).unwrap();
+        let _master = Master::<SocketEndpoint<_>>::connect(path).unwrap();
         let _slave = slave_listener.accept().unwrap().unwrap();
     }
 }

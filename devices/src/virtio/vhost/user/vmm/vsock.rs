@@ -18,7 +18,6 @@ impl VhostUserVirtioDevice {
             queue_size: QUEUE_SIZE,
             default_queues: QUEUE_SIZES.len(),
         };
-        let max_queues = QUEUE_SIZES.len();
 
         let allow_features = 0;
 
@@ -29,7 +28,6 @@ impl VhostUserVirtioDevice {
             connection,
             DeviceType::Vsock,
             queue_sizes,
-            max_queues,
             allow_features,
             allow_protocol_features,
             base_features,

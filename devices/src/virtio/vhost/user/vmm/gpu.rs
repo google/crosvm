@@ -14,7 +14,6 @@ use crate::virtio::DeviceType;
 impl VhostUserVirtioDevice {
     pub fn new_gpu(base_features: u64, connection: Connection) -> Result<VhostUserVirtioDevice> {
         let queue_sizes = QueueSizes::Fixed(gpu::QUEUE_SIZES.to_vec());
-        let max_queues = gpu::QUEUE_SIZES.len();
 
         let allow_features = 1 << gpu::VIRTIO_GPU_F_VIRGL
             | 1 << gpu::VIRTIO_GPU_F_RESOURCE_UUID
@@ -32,7 +31,6 @@ impl VhostUserVirtioDevice {
             connection,
             DeviceType::Gpu,
             queue_sizes,
-            max_queues,
             allow_features,
             allow_protocol_features,
             base_features,
