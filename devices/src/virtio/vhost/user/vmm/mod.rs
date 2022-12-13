@@ -17,7 +17,6 @@ mod wl;
 
 use remain::sorted;
 use thiserror::Error as ThisError;
-use virtio_device::QueueSizes;
 pub use virtio_device::VhostUserVirtioDevice;
 use vm_memory::GuestMemoryError;
 use vmm_vhost::message::VhostUserProtocolFeatures;

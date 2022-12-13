@@ -94,17 +94,12 @@ pub mod block {
 pub mod fs {
     /// The maximum allowable length of the tag used to identify a specific virtio-fs device.
     pub const FS_MAX_TAG_LEN: usize = 36;
-
-    // The fs device does not have a fixed number of queues.
-    pub const QUEUE_SIZE: u16 = 1024;
 }
 
 pub mod gpu {
     use super::*;
 
-    // First queue is for virtio gpu commands. Second queue is for cursor commands, which we expect
-    // there to be fewer of.
-    pub const QUEUE_SIZES: &[u16] = &[512, 16];
+    pub const NUM_QUEUES: usize = 2;
 
     pub const VIRTIO_GPU_F_VIRGL: u32 = 0;
     pub const VIRTIO_GPU_F_EDID: u32 = 1;
@@ -147,19 +142,9 @@ pub mod video {
     use zerocopy::AsBytes;
     use zerocopy::FromBytes;
 
-    // CMD_QUEUE_SIZE = max number of command descriptors for input and output queues
-    // Experimentally, it appears a stream allocates 16 input and 26 output buffers = 42 total
-    // For 8 simultaneous streams, 2 descs per buffer * 42 buffers * 8 streams = 672 descs
-    // Allocate 1024 to give some headroom in case of extra streams/buffers
-    //
-    // TODO(b/204055006): Make cmd queue size dependent of
-    // (max buf cnt for input + max buf cnt for output) * max descs per buffer * max nb of streams
-    const CMD_QUEUE_SIZE: u16 = 1024;
     pub const CMD_QUEUE_INDEX: usize = 0;
-    // EVENT_QUEUE_SIZE = max number of event descriptors for stream events like resolution changes
-    const EVENT_QUEUE_SIZE: u16 = 256;
     pub const EVENT_QUEUE_INDEX: usize = 1;
-    pub const QUEUE_SIZES: &[u16] = &[CMD_QUEUE_SIZE, EVENT_QUEUE_SIZE];
+    pub const NUM_QUEUES: usize = 2;
 
     pub const VIRTIO_VIDEO_F_RESOURCE_GUEST_PAGES: u32 = 0;
     pub const VIRTIO_VIDEO_F_RESOURCE_NON_CONTIG: u32 = 1;
@@ -239,14 +224,11 @@ pub mod video {
 }
 
 pub mod vsock {
-    pub const QUEUE_SIZE: u16 = 256;
     pub const NUM_QUEUES: usize = 3;
-    pub const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE; NUM_QUEUES];
 }
 
 pub mod wl {
-    pub const QUEUE_SIZE: u16 = 256;
-    pub const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE, QUEUE_SIZE];
+    pub const NUM_QUEUES: usize = 2;
 
     pub const VIRTIO_WL_F_TRANS_FLAGS: u32 = 0x01;
     pub const VIRTIO_WL_F_SEND_FENCES: u32 = 0x02;

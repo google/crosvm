@@ -6,20 +6,14 @@ use virtio_sys::virtio_net;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 
 use crate::virtio::vhost::user::vmm::Connection;
-use crate::virtio::vhost::user::vmm::QueueSizes;
 use crate::virtio::vhost::user::vmm::Result;
 use crate::virtio::vhost::user::vmm::VhostUserVirtioDevice;
 use crate::virtio::DeviceType;
 
-const QUEUE_SIZE: u16 = 1024;
-
 impl VhostUserVirtioDevice {
     pub fn new_net(base_features: u64, connection: Connection) -> Result<VhostUserVirtioDevice> {
         // 3 = rx, tx, ctrl
-        let queue_sizes = QueueSizes::AskDevice {
-            queue_size: QUEUE_SIZE,
-            default_queues: 3,
-        };
+        let default_queues = 3;
 
         let allow_features = 1 << virtio_net::VIRTIO_NET_F_CSUM
             | 1 << virtio_net::VIRTIO_NET_F_CTRL_VQ
@@ -39,7 +33,7 @@ impl VhostUserVirtioDevice {
         VhostUserVirtioDevice::new(
             connection,
             DeviceType::Net,
-            queue_sizes,
+            default_queues,
             allow_features,
             allow_protocol_features,
             base_features,

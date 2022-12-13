@@ -6,14 +6,13 @@ use vmm_vhost::message::VhostUserProtocolFeatures;
 
 use crate::virtio::device_constants::gpu;
 use crate::virtio::vhost::user::vmm::Connection;
-use crate::virtio::vhost::user::vmm::QueueSizes;
 use crate::virtio::vhost::user::vmm::Result;
 use crate::virtio::vhost::user::vmm::VhostUserVirtioDevice;
 use crate::virtio::DeviceType;
 
 impl VhostUserVirtioDevice {
     pub fn new_gpu(base_features: u64, connection: Connection) -> Result<VhostUserVirtioDevice> {
-        let queue_sizes = QueueSizes::Fixed(gpu::QUEUE_SIZES.to_vec());
+        let default_queues = gpu::NUM_QUEUES;
 
         let allow_features = 1 << gpu::VIRTIO_GPU_F_VIRGL
             | 1 << gpu::VIRTIO_GPU_F_RESOURCE_UUID
@@ -30,7 +29,7 @@ impl VhostUserVirtioDevice {
         VhostUserVirtioDevice::new(
             connection,
             DeviceType::Gpu,
-            queue_sizes,
+            default_queues,
             allow_features,
             allow_protocol_features,
             base_features,

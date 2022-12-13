@@ -33,7 +33,6 @@ use crate::pci::PciBarRegionType;
 use crate::pci::PciCapability;
 use crate::virtio::copy_config;
 use crate::virtio::device_constants::fs::FS_MAX_TAG_LEN;
-use crate::virtio::device_constants::fs::QUEUE_SIZE;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::PciCapabilityType;
@@ -55,6 +54,8 @@ use fuse::Server;
 use passthrough::PassthroughFs;
 pub use worker::process_fs_queue;
 use worker::Worker;
+
+const QUEUE_SIZE: u16 = 1024;
 
 const FS_BAR_NUM: u8 = 4;
 const FS_BAR_OFFSET: u64 = 0;

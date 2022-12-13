@@ -77,7 +77,20 @@ use super::device_constants::video::backend_supported_virtio_features;
 use super::device_constants::video::virtio_video_config;
 use super::device_constants::video::VideoBackendType;
 use super::device_constants::video::VideoDeviceType;
-use super::device_constants::video::QUEUE_SIZES;
+
+// CMD_QUEUE_SIZE = max number of command descriptors for input and output queues
+// Experimentally, it appears a stream allocates 16 input and 26 output buffers = 42 total
+// For 8 simultaneous streams, 2 descs per buffer * 42 buffers * 8 streams = 672 descs
+// Allocate 1024 to give some headroom in case of extra streams/buffers
+//
+// TODO(b/204055006): Make cmd queue size dependent of
+// (max buf cnt for input + max buf cnt for output) * max descs per buffer * max nb of streams
+const CMD_QUEUE_SIZE: u16 = 1024;
+
+// EVENT_QUEUE_SIZE = max number of event descriptors for stream events like resolution changes
+const EVENT_QUEUE_SIZE: u16 = 256;
+
+const QUEUE_SIZES: &[u16] = &[CMD_QUEUE_SIZE, EVENT_QUEUE_SIZE];
 
 /// An error indicating something went wrong in virtio-video's worker.
 #[sorted]

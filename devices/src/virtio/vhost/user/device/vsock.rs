@@ -42,16 +42,15 @@ use vmm_vhost::VhostUserSlaveReqHandlerMut;
 use zerocopy::AsBytes;
 
 use crate::virtio::device_constants::vsock::NUM_QUEUES;
-use crate::virtio::device_constants::vsock::QUEUE_SIZE;
 use crate::virtio::vhost::user::device::handler::vmm_va_to_gpa;
 use crate::virtio::vhost::user::device::handler::MappingInfo;
 use crate::virtio::vhost::user::device::handler::VhostUserPlatformOps;
 use crate::virtio::vhost::user::VhostUserDevice;
 use crate::virtio::vhost::user::VhostUserListener;
 use crate::virtio::vhost::user::VhostUserListenerTrait;
+use crate::virtio::Queue;
 use crate::virtio::QueueConfig;
 
-const MAX_VRING_LEN: u16 = QUEUE_SIZE;
 const EVENT_QUEUE: usize = NUM_QUEUES - 1;
 
 struct VsockBackend {
@@ -110,9 +109,9 @@ impl VhostUserDevice for VhostUserVsockDevice {
     ) -> anyhow::Result<Box<dyn vmm_vhost::VhostUserSlaveReqHandler>> {
         let backend = VsockBackend {
             queues: [
-                QueueConfig::new(MAX_VRING_LEN, 0),
-                QueueConfig::new(MAX_VRING_LEN, 0),
-                QueueConfig::new(MAX_VRING_LEN, 0),
+                QueueConfig::new(Queue::MAX_SIZE, 0),
+                QueueConfig::new(Queue::MAX_SIZE, 0),
+                QueueConfig::new(Queue::MAX_SIZE, 0),
             ],
             vmm_maps: None,
             mem: None,
@@ -199,7 +198,7 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
     }
 
     fn set_vring_num(&mut self, index: u32, num: u32) -> Result<()> {
-        if index >= NUM_QUEUES as u32 || num == 0 || num > QUEUE_SIZE.into() {
+        if index >= NUM_QUEUES as u32 || num == 0 || num > Queue::MAX_SIZE.into() {
             return Err(Error::InvalidParam);
         }
 
@@ -266,7 +265,7 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
     }
 
     fn set_vring_base(&mut self, index: u32, base: u32) -> Result<()> {
-        if index >= NUM_QUEUES as u32 || base >= QUEUE_SIZE.into() {
+        if index >= NUM_QUEUES as u32 || base >= Queue::MAX_SIZE.into() {
             return Err(Error::InvalidParam);
         }
 

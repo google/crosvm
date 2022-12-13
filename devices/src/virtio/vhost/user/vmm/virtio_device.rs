@@ -41,32 +41,6 @@ pub struct VhostUserVirtioDevice {
     expose_shmem_descriptors_with_viommu: bool,
 }
 
-/// Method for determining the number of queues and the size of each queue.
-///
-/// For device types that have a fixed number of queues defined in the specification, use
-/// `QueueSizes::Fixed` to specify a vector containing queue sizes with one element per queue.
-///
-/// Otherwise, use `QueueSizes::AskDevice`, which will query the backend using the vhost-user
-/// `VHOST_USER_GET_QUEUE_NUM` message if `VHOST_USER_PROTOCOL_F_MQ` has been negotiated. If the
-/// MQ feature is supported, the `queue_size` field will be used as the size of each queue up to
-/// the number indicated by the backend's `GET_QUEUE_NUM` response. If the MQ feature is not
-/// supported, `default_queues` will be used as the number of queues instead, and again
-/// `queue_size` will be used as the size of each of these queues.
-pub enum QueueSizes {
-    /// Use a fixed number of queues. Each element in the `Vec` represents the size of the
-    /// corresponding queue with the same index. The number of queues is determined by the length
-    /// of the `Vec`.
-    Fixed(Vec<u16>),
-    /// Query the backend device to determine how many queues it supports.
-    AskDevice {
-        /// Size of each queue (number of elements in each ring).
-        queue_size: u16,
-        /// Default number of queues to use if the backend does not support the
-        /// `VHOST_USER_PROTOCOL_F_MQ` feature.
-        default_queues: usize,
-    },
-}
-
 impl VhostUserVirtioDevice {
     /// Create a new VirtioDevice for a vhost-user device frontend.
     ///
@@ -74,7 +48,7 @@ impl VhostUserVirtioDevice {
     ///
     /// - `connection`: connection to the device backend
     /// - `device_type`: virtio device type
-    /// - `queue_sizes`: per-device queue size configuration
+    /// - `default_queues`: number of queues if the backend does not support the MQ feature
     /// - `allow_features`: allowed virtio device features
     /// - `allow_protocol_features`: allowed vhost-user protocol features
     /// - `base_features`: base virtio device features (e.g. `VIRTIO_F_VERSION_1`)
@@ -83,7 +57,7 @@ impl VhostUserVirtioDevice {
     pub fn new(
         connection: Connection,
         device_type: DeviceType,
-        queue_sizes: QueueSizes,
+        default_queues: usize,
         allow_features: u64,
         allow_protocol_features: VhostUserProtocolFeatures,
         base_features: u64,
@@ -94,20 +68,19 @@ impl VhostUserVirtioDevice {
             allow_features | base_features | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         let init_features = base_features | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
 
-        let mut handler = VhostUserHandler::new_from_connection(
+        let handler = VhostUserHandler::new_from_connection(
             connection,
             allow_features,
             init_features,
             allow_protocol_features,
         )?;
 
-        let queue_sizes = match queue_sizes {
-            QueueSizes::Fixed(v) => v,
-            QueueSizes::AskDevice {
-                queue_size,
-                default_queues,
-            } => handler.queue_sizes(queue_size, default_queues)?,
-        };
+        // If the device supports VHOST_USER_PROTOCOL_F_MQ, use VHOST_USER_GET_QUEUE_NUM to
+        // determine the number of queues supported. Otherwise, use the `default_queues` value
+        // provided by the frontend.
+        let num_queues = handler.num_queues()?.unwrap_or(default_queues);
+
+        let queue_sizes = vec![Queue::MAX_SIZE; num_queues];
 
         Ok(VhostUserVirtioDevice {
             device_type,

@@ -69,7 +69,6 @@ use self::virtio_gpu::to_rutabaga_descriptor;
 pub use self::virtio_gpu::ProcessDisplayResult;
 use self::virtio_gpu::VirtioGpu;
 use super::copy_config;
-pub use super::device_constants::gpu::QUEUE_SIZES;
 use super::resource_bridge::ResourceRequest;
 use super::resource_bridge::ResourceResponse;
 use super::DescriptorChain;
@@ -81,6 +80,10 @@ use super::SharedMemoryMapper;
 use super::SharedMemoryRegion;
 use super::VirtioDevice;
 use super::Writer;
+
+// First queue is for virtio gpu commands. Second queue is for cursor commands, which we expect
+// there to be fewer of.
+const QUEUE_SIZES: &[u16] = &[512, 16];
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GpuMode {

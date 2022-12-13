@@ -134,12 +134,6 @@ impl VhostUserHandler {
         }
     }
 
-    /// Returns a vector of sizes of each queue.
-    pub fn queue_sizes(&mut self, queue_size: u16, default_queues_num: usize) -> Result<Vec<u16>> {
-        let queues_num = self.num_queues()?.unwrap_or(default_queues_num);
-        Ok(vec![queue_size; queues_num])
-    }
-
     /// Enables a set of features.
     pub fn ack_features(&mut self, ack_features: u64) -> Result<()> {
         let features = set_features(

@@ -24,6 +24,7 @@ use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
 
+use crate::virtio::device_constants::gpu::NUM_QUEUES;
 use crate::virtio::gpu;
 use crate::virtio::gpu::QueueReader;
 use crate::virtio::vhost::user::device::handler::Error as DeviceError;
@@ -38,7 +39,7 @@ use crate::virtio::SharedMemoryMapper;
 use crate::virtio::SharedMemoryRegion;
 use crate::virtio::VirtioDevice;
 
-const MAX_QUEUE_NUM: usize = gpu::QUEUE_SIZES.len();
+const MAX_QUEUE_NUM: usize = NUM_QUEUES;
 
 #[derive(Clone)]
 struct SharedReader {

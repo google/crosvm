@@ -102,9 +102,6 @@ use crate::virtio::QueueConfig;
 use crate::virtio::SharedMemoryMapper;
 use crate::virtio::SharedMemoryRegion;
 
-/// Largest valid number of entries in a virtqueue.
-const MAX_VRING_LEN: u16 = 32768;
-
 /// Keeps a mapping from the vmm's virtual addresses to guest addresses.
 /// used to translate messages from the vmm to guest offsets.
 #[derive(Default)]
@@ -413,7 +410,7 @@ impl DeviceRequestHandler {
     ) -> Self {
         let mut vrings = Vec::with_capacity(backend.max_queue_num());
         for _ in 0..backend.max_queue_num() {
-            vrings.push(Vring::new(MAX_VRING_LEN, backend.features()));
+            vrings.push(Vring::new(Queue::MAX_SIZE, backend.features()));
         }
 
         DeviceRequestHandler {
@@ -509,7 +506,7 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
     }
 
     fn set_vring_num(&mut self, index: u32, num: u32) -> VhostResult<()> {
-        if index as usize >= self.vrings.len() || num == 0 || num > MAX_VRING_LEN.into() {
+        if index as usize >= self.vrings.len() || num == 0 || num > Queue::MAX_SIZE.into() {
             return Err(VhostError::InvalidParam);
         }
         self.vrings[index as usize].queue.set_size(num as u16);
@@ -544,7 +541,7 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
     }
 
     fn set_vring_base(&mut self, index: u32, base: u32) -> VhostResult<()> {
-        if index as usize >= self.vrings.len() || base >= MAX_VRING_LEN.into() {
+        if index as usize >= self.vrings.len() || base >= Queue::MAX_SIZE.into() {
             return Err(VhostError::InvalidParam);
         }
 

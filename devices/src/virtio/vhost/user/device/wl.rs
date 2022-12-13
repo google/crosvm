@@ -33,7 +33,7 @@ use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
 
 use crate::virtio::base_features;
-use crate::virtio::device_constants::wl::QUEUE_SIZES;
+use crate::virtio::device_constants::wl::NUM_QUEUES;
 use crate::virtio::device_constants::wl::VIRTIO_WL_F_SEND_FENCES;
 use crate::virtio::device_constants::wl::VIRTIO_WL_F_TRANS_FLAGS;
 use crate::virtio::device_constants::wl::VIRTIO_WL_F_USE_SHMEM;
@@ -48,8 +48,6 @@ use crate::virtio::wl;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::SharedMemoryRegion;
-
-const MAX_QUEUE_NUM: usize = QUEUE_SIZES.len();
 
 async fn run_out_queue(
     queue: Rc<RefCell<Queue>>,
@@ -111,7 +109,7 @@ struct WlBackend {
     features: u64,
     acked_features: u64,
     wlstate: Option<Rc<RefCell<wl::WlState>>>,
-    workers: [Option<WorkerState<Rc<RefCell<Queue>>, ()>>; MAX_QUEUE_NUM],
+    workers: [Option<WorkerState<Rc<RefCell<Queue>>, ()>>; NUM_QUEUES],
     backend_req_conn: VhostBackendReqConnectionState,
 }
 
@@ -144,7 +142,7 @@ impl WlBackend {
 
 impl VhostUserBackend for WlBackend {
     fn max_queue_num(&self) -> usize {
-        MAX_QUEUE_NUM
+        NUM_QUEUES
     }
 
     fn features(&self) -> u64 {
@@ -409,8 +407,7 @@ pub fn run_wl_device(opts: Options) -> anyhow::Result<()> {
 
     let ex = Executor::new().context("failed to create executor")?;
 
-    let listener =
-        VhostUserListener::new_from_socket_or_vfio(&socket, &vfio, QUEUE_SIZES.len(), None)?;
+    let listener = VhostUserListener::new_from_socket_or_vfio(&socket, &vfio, NUM_QUEUES, None)?;
 
     let backend = Box::new(WlBackend::new(&ex, wayland_paths, resource_bridge));
     // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.

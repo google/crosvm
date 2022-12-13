@@ -106,7 +106,7 @@ impl QueueConfig {
     /// Constructs a virtio queue configuration with the given `max_size`.
     pub fn new(max_size: u16, features: u64) -> Self {
         assert!(max_size > 0);
-        assert!(max_size <= 32768);
+        assert!(max_size <= Queue::MAX_SIZE);
         QueueConfig {
             activated: false,
             max_size,
@@ -394,6 +394,9 @@ pub enum Queue {
 }
 
 impl Queue {
+    /// Largest valid number of entries in a virtqueue.
+    pub const MAX_SIZE: u16 = 32768;
+
     /// Asynchronously read the next descriptor chain from the queue.
     /// Returns a `DescriptorChain` when it is `await`ed.
     pub async fn next_async(

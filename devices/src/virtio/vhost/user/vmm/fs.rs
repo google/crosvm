@@ -8,10 +8,8 @@ use vmm_vhost::message::VhostUserProtocolFeatures;
 use zerocopy::AsBytes;
 
 use crate::virtio::device_constants::fs::FS_MAX_TAG_LEN;
-use crate::virtio::device_constants::fs::QUEUE_SIZE;
 use crate::virtio::vhost::user::vmm::Connection;
 use crate::virtio::vhost::user::vmm::Error;
-use crate::virtio::vhost::user::vmm::QueueSizes;
 use crate::virtio::vhost::user::vmm::Result;
 use crate::virtio::vhost::user::vmm::VhostUserVirtioDevice;
 use crate::virtio::DeviceType;
@@ -38,12 +36,7 @@ impl VhostUserVirtioDevice {
         let cfg = virtio_fs_config {
             tag: cfg_tag,
             // Only count the worker queues, exclude the high prio queue
-            num_request_queues: Le32::from(default_queues - 1),
-        };
-
-        let queue_sizes = QueueSizes::AskDevice {
-            queue_size: QUEUE_SIZE,
-            default_queues: default_queues as usize,
+            num_request_queues: Le32::from(default_queues as u32 - 1),
         };
 
         let allow_features = 0;
@@ -54,7 +47,7 @@ impl VhostUserVirtioDevice {
         VhostUserVirtioDevice::new(
             connection,
             DeviceType::Fs,
-            queue_sizes,
+            default_queues,
             allow_features,
             allow_protocol_features,
             base_features,

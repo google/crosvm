@@ -5,22 +5,16 @@
 use vmm_vhost::message::VhostUserProtocolFeatures;
 
 use crate::virtio::vhost::user::vmm::Connection;
-use crate::virtio::vhost::user::vmm::QueueSizes;
 use crate::virtio::vhost::user::vmm::Result;
 use crate::virtio::vhost::user::vmm::VhostUserVirtioDevice;
 use crate::virtio::DeviceType;
-
-const QUEUE_SIZE: u16 = 1024;
 
 // control, event, tx, and rx queues
 const NUM_QUEUES: usize = 4;
 
 impl VhostUserVirtioDevice {
     pub fn new_snd(base_features: u64, connection: Connection) -> Result<VhostUserVirtioDevice> {
-        let queue_sizes = QueueSizes::AskDevice {
-            queue_size: QUEUE_SIZE,
-            default_queues: NUM_QUEUES,
-        };
+        let default_queues = NUM_QUEUES;
 
         let allow_features = 0;
         let allow_protocol_features =
@@ -29,7 +23,7 @@ impl VhostUserVirtioDevice {
         VhostUserVirtioDevice::new(
             connection,
             DeviceType::Sound,
-            queue_sizes,
+            default_queues,
             allow_features,
             allow_protocol_features,
             base_features,

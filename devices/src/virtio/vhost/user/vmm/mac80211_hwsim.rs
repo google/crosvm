@@ -5,12 +5,10 @@
 use vmm_vhost::message::VhostUserProtocolFeatures;
 
 use crate::virtio::vhost::user::vmm::Connection;
-use crate::virtio::vhost::user::vmm::QueueSizes;
 use crate::virtio::vhost::user::vmm::Result;
 use crate::virtio::vhost::user::vmm::VhostUserVirtioDevice;
 use crate::virtio::DeviceType;
 
-const QUEUE_SIZE: u16 = 256;
 const QUEUE_COUNT: usize = 2;
 
 impl VhostUserVirtioDevice {
@@ -18,10 +16,8 @@ impl VhostUserVirtioDevice {
         base_features: u64,
         connection: Connection,
     ) -> Result<VhostUserVirtioDevice> {
-        let queue_sizes = QueueSizes::AskDevice {
-            queue_size: QUEUE_SIZE,
-            default_queues: QUEUE_COUNT,
-        };
+        let default_queues = QUEUE_COUNT;
+
         let allow_features = 0;
 
         let allow_protocol_features = VhostUserProtocolFeatures::empty();
@@ -29,7 +25,7 @@ impl VhostUserVirtioDevice {
         VhostUserVirtioDevice::new(
             connection,
             DeviceType::Mac80211HwSim,
-            queue_sizes,
+            default_queues,
             allow_features,
             allow_protocol_features,
             base_features,
