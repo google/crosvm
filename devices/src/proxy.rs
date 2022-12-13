@@ -7,6 +7,7 @@
 use std::ffi::CString;
 use std::time::Duration;
 
+use anyhow::anyhow;
 use base::error;
 use base::AsRawDescriptor;
 use base::RawDescriptor;
@@ -68,6 +69,12 @@ enum Command {
     },
     Shutdown,
     GetRanges,
+    Snapshot,
+    Restore {
+        data: serde_json::Value,
+    },
+    Sleep,
+    Wake,
 }
 #[derive(Debug, Serialize, Deserialize)]
 enum CommandResult {
@@ -83,6 +90,10 @@ enum CommandResult {
     },
     ReadVirtualConfigResult(u32),
     GetRangesResult(Vec<(BusRange, BusType)>),
+    SnapshotResult(std::result::Result<serde_json::Value, String>),
+    RestoreResult(std::result::Result<(), String>),
+    SleepResult(std::result::Result<(), String>),
+    WakeResult(std::result::Result<(), String>),
 }
 
 fn child_proc<D: BusDevice>(tube: Tube, device: &mut D) {
@@ -146,6 +157,26 @@ fn child_proc<D: BusDevice>(tube: Tube, device: &mut D) {
             Command::GetRanges => {
                 let ranges = device.get_ranges();
                 tube.send(&CommandResult::GetRangesResult(ranges))
+            }
+            Command::Snapshot => {
+                let res = device.snapshot();
+                tube.send(&CommandResult::SnapshotResult(
+                    res.map_err(|e| e.to_string()),
+                ))
+            }
+            Command::Restore { data } => {
+                let res = device.restore(data);
+                tube.send(&CommandResult::RestoreResult(
+                    res.map_err(|e| e.to_string()),
+                ))
+            }
+            Command::Sleep => {
+                let res = device.sleep();
+                tube.send(&CommandResult::SleepResult(res.map_err(|e| e.to_string())))
+            }
+            Command::Wake => {
+                let res = device.wake();
+                tube.send(&CommandResult::WakeResult(res.map_err(|e| e.to_string())))
             }
         };
         if let Err(e) = res {
@@ -366,7 +397,53 @@ impl BusDevice for ProxyDevice {
     }
 }
 
-impl Suspendable for ProxyDevice {}
+impl Suspendable for ProxyDevice {
+    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        let res = self.sync_send(&Command::Snapshot);
+        match res {
+            Some(CommandResult::SnapshotResult(Ok(snap))) => Ok(snap),
+            Some(CommandResult::SnapshotResult(Err(e))) => Err(anyhow!(
+                "failed to snapshot {}: {:#}",
+                self.debug_label(),
+                e
+            )),
+            _ => Err(anyhow!("unexpected snapshot result {:?}", res)),
+        }
+    }
+
+    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        let res = self.sync_send(&Command::Restore { data });
+        match res {
+            Some(CommandResult::RestoreResult(Ok(()))) => Ok(()),
+            Some(CommandResult::RestoreResult(Err(e))) => {
+                Err(anyhow!("failed to restore {}: {:#}", self.debug_label(), e))
+            }
+            _ => Err(anyhow!("unexpected restore result {:?}", res)),
+        }
+    }
+
+    fn sleep(&mut self) -> anyhow::Result<()> {
+        let res = self.sync_send(&Command::Sleep);
+        match res {
+            Some(CommandResult::SleepResult(Ok(()))) => Ok(()),
+            Some(CommandResult::SleepResult(Err(e))) => {
+                Err(anyhow!("failed to sleep {}: {:#}", self.debug_label(), e))
+            }
+            _ => Err(anyhow!("unexpected sleep result {:?}", res)),
+        }
+    }
+
+    fn wake(&mut self) -> anyhow::Result<()> {
+        let res = self.sync_send(&Command::Wake);
+        match res {
+            Some(CommandResult::WakeResult(Ok(()))) => Ok(()),
+            Some(CommandResult::WakeResult(Err(e))) => {
+                Err(anyhow!("failed to wake {}: {:#}", self.debug_label(), e))
+            }
+            _ => Err(anyhow!("unexpected wake result {:?}", res)),
+        }
+    }
+}
 
 impl Drop for ProxyDevice {
     fn drop(&mut self) {
