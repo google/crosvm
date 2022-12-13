@@ -35,6 +35,24 @@ bindgen_generate \
     | replace_linux_int_types \
     > virtio_sys/src/virtio_config.rs
 
+VIRTIO_FS_EXTRA="// Added by virtio_sys/bindgen.sh
+use data_model::DataInit;
+use data_model::Le32;
+
+// Safe because all members are plain old data and any value is valid.
+unsafe impl DataInit for virtio_fs_config {}"
+
+bindgen_generate \
+    --raw-line "${VIRTIO_FS_EXTRA}" \
+    --allowlist-var='VIRTIO_FS_.*' \
+    --allowlist-type='virtio_fs_.*' \
+    "${BINDGEN_LINUX_X86_HEADERS}/include/linux/virtio_fs.h" \
+    -- \
+    -isystem "${BINDGEN_LINUX_X86_HEADERS}/include" \
+    | replace_linux_int_types \
+    | replace_linux_endian_types \
+    > virtio_sys/src/virtio_fs.rs
+
 VIRTIO_IDS_EXTRAS="
 //! This file defines virtio device IDs. IDs with large values (counting down
 //! from 63) are nonstandard and not defined by the virtio specification.

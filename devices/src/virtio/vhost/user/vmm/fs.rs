@@ -4,9 +4,9 @@
 
 use data_model::DataInit;
 use data_model::Le32;
+use virtio_sys::virtio_fs::virtio_fs_config;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 
-use crate::virtio::fs::virtio_fs_config;
 use crate::virtio::fs::FS_MAX_TAG_LEN;
 use crate::virtio::fs::QUEUE_SIZE;
 use crate::virtio::vhost::user::vmm::Connection;
