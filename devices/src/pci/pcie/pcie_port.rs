@@ -14,9 +14,11 @@ use sync::Mutex;
 
 use crate::pci::pci_configuration::PciCapabilityID;
 use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
-use crate::pci::pcie::pcie_device::PmcConfig;
 use crate::pci::pcie::pcie_host::PcieHostPort;
 use crate::pci::pcie::*;
+use crate::pci::pm::PciDevicePower;
+use crate::pci::pm::PmcConfig;
+use crate::pci::pm::PMC_CAP_CONTROL_STATE_OFFSET;
 use crate::pci::MsiConfig;
 use crate::pci::PciAddress;
 use crate::pci::PciDeviceError;

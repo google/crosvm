@@ -23,6 +23,7 @@ mod pci_device;
 mod pci_root;
 #[cfg(unix)]
 mod pcie;
+mod pm;
 mod pvpanic;
 mod stub;
 #[cfg(unix)]
