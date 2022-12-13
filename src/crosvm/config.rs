@@ -1043,7 +1043,7 @@ pub struct Config {
     pub block_vhost_user_tube: Vec<Tube>,
     #[cfg(windows)]
     pub broker_shutdown_event: Option<Event>,
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
     pub bus_lock_ratelimit: u64,
     pub cid: Option<u64>,
     #[cfg(unix)]
@@ -1256,7 +1256,7 @@ impl Default for Config {
             block_vhost_user_tube: Vec::new(),
             #[cfg(windows)]
             broker_shutdown_event: None,
-            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
             bus_lock_ratelimit: 0,
             cid: None,
             #[cfg(unix)]

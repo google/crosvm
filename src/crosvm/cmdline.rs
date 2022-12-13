@@ -859,7 +859,7 @@ pub struct RunCommand {
     /// ratelimit enforced on detected bus locks in guest.
     /// The default value of the bus_lock_ratelimit is 0 per second,
     /// which means no limitation on the guest's bus locks.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
     #[argh(option)]
     pub bus_lock_ratelimit: Option<u64>,
 
@@ -2200,7 +2200,7 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         cfg.async_executor = cmd.async_executor;
 
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
         if let Some(p) = cmd.bus_lock_ratelimit {
             cfg.bus_lock_ratelimit = p;
         }
