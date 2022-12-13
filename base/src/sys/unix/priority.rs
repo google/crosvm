@@ -10,8 +10,8 @@ use super::Result;
 /// Enables real time thread priorities in the current thread up to `limit`.
 pub fn set_rt_prio_limit(limit: u64) -> Result<()> {
     let rt_limit_arg = libc::rlimit64 {
-        rlim_cur: limit as libc::rlim64_t,
-        rlim_max: limit as libc::rlim64_t,
+        rlim_cur: limit,
+        rlim_max: limit,
     };
     // Safe because the kernel doesn't modify memory that is accessible to the process here.
     let res = unsafe { libc::setrlimit64(libc::RLIMIT_RTPRIO, &rt_limit_arg) };

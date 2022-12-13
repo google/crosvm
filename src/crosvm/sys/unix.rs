@@ -804,14 +804,12 @@ fn create_devices(
             let res = unsafe { libc::getrlimit64(libc::RLIMIT_MEMLOCK, buf.as_mut_ptr()) };
             if res == 0 {
                 let limit = unsafe { buf.assume_init() };
-                let rlim_new = limit
-                    .rlim_cur
-                    .saturating_add(vm.get_memory().memory_size() as libc::rlim64_t);
+                let rlim_new = limit.rlim_cur.saturating_add(vm.get_memory().memory_size());
                 let rlim_max = max(limit.rlim_max, rlim_new);
                 if limit.rlim_cur < rlim_new {
                     let limit_arg = libc::rlimit64 {
-                        rlim_cur: rlim_new as libc::rlim64_t,
-                        rlim_max: rlim_max as libc::rlim64_t,
+                        rlim_cur: rlim_new,
+                        rlim_max,
                     };
                     let res = unsafe { libc::setrlimit64(libc::RLIMIT_MEMLOCK, &limit_arg) };
                     if res != 0 {
