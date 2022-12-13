@@ -22,3 +22,4 @@ sudo chmod +x winetricks
 ./winetricks --force vcrun2015 || true
 ln -fs ~/.wine/drive_c/windows/system32/ucrtbase.dll ~/.wine/drive_c/windows/system32/ucrtbased.dll
 ln -fs ~/.wine/drive_c/windows/system32/vcruntime140.dll ~/.wine/drive_c/windows/system32/vcruntime140d.dll
+sudo rm winetricks
