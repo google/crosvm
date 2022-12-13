@@ -41,7 +41,6 @@ use crate::virtio::vhost::user::device::handler::sys::Doorbell;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 
 const MAX_QUEUE_NUM: usize = 2; /* worker queue and high priority queue */
-const MAX_VRING_LEN: u16 = 1024;
 
 async fn handle_fs_queue(
     mut queue: virtio::Queue,
@@ -119,10 +118,6 @@ impl FsBackend {
 impl VhostUserBackend for FsBackend {
     fn max_queue_num(&self) -> usize {
         MAX_QUEUE_NUM
-    }
-
-    fn max_vring_len(&self) -> u16 {
-        MAX_VRING_LEN
     }
 
     fn features(&self) -> u64 {

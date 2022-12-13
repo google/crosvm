@@ -99,6 +99,9 @@ use crate::virtio::SharedMemoryMapper;
 use crate::virtio::SharedMemoryRegion;
 use crate::virtio::SignalableInterrupt;
 
+/// Largest valid number of entries in a virtqueue.
+const MAX_VRING_LEN: u16 = 32768;
+
 /// An event to deliver an interrupt to the guest.
 ///
 /// Unlike `devices::Interrupt`, this doesn't support interrupt status and signal resampling.
@@ -160,9 +163,6 @@ pub fn vmm_va_to_gpa(maps: &[MappingInfo], vmm_va: u64) -> VhostResult<GuestAddr
 pub trait VhostUserBackend {
     /// The maximum number of queues that this backend can manage.
     fn max_queue_num(&self) -> usize;
-
-    /// The maximum length that virtqueues can take with this backend.
-    fn max_vring_len(&self) -> u16;
 
     /// The set of feature bits that this backend supports.
     fn features(&self) -> u64;
@@ -389,7 +389,7 @@ where
     pub(crate) fn new_with_ops(backend: Box<dyn VhostUserBackend>, ops: O) -> Self {
         let mut vrings = Vec::with_capacity(backend.max_queue_num());
         for _ in 0..backend.max_queue_num() {
-            vrings.push(Vring::new(backend.max_vring_len() as u16));
+            vrings.push(Vring::new(MAX_VRING_LEN));
         }
 
         DeviceRequestHandler {
@@ -485,10 +485,7 @@ impl<O: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for DeviceRequestHandl
     }
 
     fn set_vring_num(&mut self, index: u32, num: u32) -> VhostResult<()> {
-        if index as usize >= self.vrings.len()
-            || num == 0
-            || num > self.backend.max_vring_len().into()
-        {
+        if index as usize >= self.vrings.len() || num == 0 || num > MAX_VRING_LEN.into() {
             return Err(VhostError::InvalidParam);
         }
         self.vrings[index as usize].queue.set_size(num as u16);
@@ -523,7 +520,7 @@ impl<O: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for DeviceRequestHandl
     }
 
     fn set_vring_base(&mut self, index: u32, base: u32) -> VhostResult<()> {
-        if index as usize >= self.vrings.len() || base >= self.backend.max_vring_len().into() {
+        if index as usize >= self.vrings.len() || base >= MAX_VRING_LEN.into() {
             return Err(VhostError::InvalidParam);
         }
 
@@ -866,7 +863,6 @@ mod tests {
 
     impl FakeBackend {
         const MAX_QUEUE_NUM: usize = 16;
-        const MAX_VRING_LEN: u16 = 256;
 
         pub(super) fn new() -> Self {
             Self {
@@ -880,10 +876,6 @@ mod tests {
     impl VhostUserBackend for FakeBackend {
         fn max_queue_num(&self) -> usize {
             Self::MAX_QUEUE_NUM
-        }
-
-        fn max_vring_len(&self) -> u16 {
-            Self::MAX_VRING_LEN
         }
 
         fn features(&self) -> u64 {

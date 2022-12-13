@@ -44,7 +44,6 @@ use crate::virtio::vhost::user::device::handler::VhostBackendReqConnectionState;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 use crate::virtio::vhost::user::device::VhostUserDevice;
 
-const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: u16 = 16;
 
 struct BlockBackend {
@@ -148,10 +147,6 @@ impl VhostUserDevice for BlockAsync {
 impl VhostUserBackend for BlockBackend {
     fn max_queue_num(&self) -> usize {
         NUM_QUEUES as usize
-    }
-
-    fn max_vring_len(&self) -> u16 {
-        QUEUE_SIZE
     }
 
     fn features(&self) -> u64 {

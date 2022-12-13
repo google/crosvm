@@ -33,7 +33,6 @@ use crate::SerialParameters;
 use crate::SerialType;
 
 const MAX_QUEUE_NUM: usize = 2 /* transmit and receive queues */;
-const MAX_VRING_LEN: u16 = 256;
 
 /// Console device for use with vhost-user. Will set stdin back to canon mode if we are getting
 /// input from it.
@@ -87,10 +86,6 @@ struct ConsoleBackend {
 impl VhostUserBackend for ConsoleBackend {
     fn max_queue_num(&self) -> usize {
         self.device.max_queue_num()
-    }
-
-    fn max_vring_len(&self) -> u16 {
-        MAX_VRING_LEN
     }
 
     fn features(&self) -> u64 {
