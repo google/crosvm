@@ -219,7 +219,8 @@ impl GpeNotify for PcieRootPort {
         }
 
         if self.pcie_port.should_trigger_pme() {
-            self.pcie_port.inject_pme();
+            self.pcie_port
+                .inject_pme(self.pcie_port.get_address().unwrap().pme_requester_id());
         }
     }
 }

@@ -43,7 +43,7 @@ struct PcieRootCap {
 
     control: u16,
     status: u32,
-    pme_pending_request_id: Option<PciAddress>,
+    pme_pending_requester_id: Option<u16>,
 
     msi_config: Option<Arc<Mutex<MsiConfig>>>,
 }
@@ -55,7 +55,7 @@ impl PcieRootCap {
             subordinate_bus_num,
             control: 0,
             status: 0,
-            pme_pending_request_id: None,
+            pme_pending_requester_id: None,
             msi_config: None,
         }
     }
@@ -224,6 +224,10 @@ impl PciePort {
         self.device_id
     }
 
+    pub fn get_address(&self) -> Option<PciAddress> {
+        self.pci_address
+    }
+
     pub fn debug_label(&self) -> String {
         self.debug_label.clone()
     }
@@ -368,15 +372,12 @@ impl PciePort {
                     if self.is_root_port {
                         if *v & PCIE_ROOTSTA_PME_STATUS != 0 {
                             let mut r = self.root_cap.lock();
-                            if let Some(request_id) = r.pme_pending_request_id {
+                            if let Some(requester_id) = r.pme_pending_requester_id {
                                 r.status &= !PCIE_ROOTSTA_PME_PENDING;
-                                let req_id = ((request_id.bus as u32) << 8)
-                                    | ((request_id.dev as u32) << 3)
-                                    | (request_id.func as u32);
                                 r.status &= !PCIE_ROOTSTA_PME_REQ_ID_MASK;
-                                r.status |= req_id;
+                                r.status |= requester_id as u32;
                                 r.status |= PCIE_ROOTSTA_PME_STATUS;
-                                r.pme_pending_request_id = None;
+                                r.pme_pending_requester_id = None;
                                 r.trigger_pme_interrupt();
                             } else {
                                 r.status &= !PCIE_ROOTSTA_PME_STATUS;
@@ -493,19 +494,15 @@ impl PciePort {
         }
     }
 
-    pub fn inject_pme(&mut self) {
+    pub fn inject_pme(&mut self, requester_id: u16) {
         let mut r = self.root_cap.lock();
         if (r.status & PCIE_ROOTSTA_PME_STATUS) != 0 {
             r.status |= PCIE_ROOTSTA_PME_PENDING;
-            r.pme_pending_request_id = self.pci_address;
+            r.pme_pending_requester_id = Some(requester_id);
         } else {
-            let request_id = self.pci_address.unwrap();
-            let req_id = ((request_id.bus as u32) << 8)
-                | ((request_id.dev as u32) << 3)
-                | (request_id.func as u32);
             r.status &= !PCIE_ROOTSTA_PME_REQ_ID_MASK;
-            r.status |= req_id;
-            r.pme_pending_request_id = None;
+            r.status |= requester_id as u32;
+            r.pme_pending_requester_id = None;
             r.status |= PCIE_ROOTSTA_PME_STATUS;
             r.trigger_pme_interrupt();
         }
@@ -514,7 +511,7 @@ impl PciePort {
     pub fn trigger_hp_or_pme_interrupt(&mut self) {
         if self.pm_config.should_trigger_pme() {
             self.hp_interrupt_pending = true;
-            self.inject_pme();
+            self.inject_pme(self.pci_address.unwrap().pme_requester_id());
         } else {
             self.trigger_hp_interrupt();
         }

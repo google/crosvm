@@ -322,6 +322,13 @@ impl PciAddress {
         ((Self::DEVICE_MASK & self.dev as u32) << 16) | (Self::FUNCTION_MASK & self.func as u32)
     }
 
+    /// Convert B:D:F PCI address to a PCI PME Requester ID.
+    ///
+    /// The output is identical to `to_u32()` except that only the lower 16 bits are needed
+    pub fn pme_requester_id(&self) -> u16 {
+        self.to_u32() as u16
+    }
+
     /// Returns true if the address points to PCI root host-bridge.
     ///
     /// This is true if and only if this is the all-zero address (`00:0.0`).
