@@ -29,9 +29,6 @@ use super::super::super::Queue;
 use super::super::super::Reader;
 use super::super::super::SignalableInterrupt;
 use super::super::super::Writer;
-use super::super::super::QUEUE_SIZE;
-
-const NUM_SLIRP_QUEUES: usize = 3;
 
 // Copies a single frame from `self.rx_buf` into the guest. Returns true
 // if a buffer was used, and false if the frame must be deferred until a buffer
@@ -213,7 +210,6 @@ where
     ) -> Result<Net<net_util::Slirp>, NetError> {
         let avail_features =
             base_features(ProtectionType::Unprotected) | 1 << virtio_net::VIRTIO_NET_F_CTRL_VQ;
-        let kill_evt = Event::new().map_err(NetError::CreateKillEvent)?;
         let slirp_kill_evt = Event::new().map_err(NetError::CreateKillEvent)?;
         let slirp = net_util::Slirp::new(
             slirp_kill_evt
@@ -224,18 +220,13 @@ where
         )
         .map_err(NetError::SlirpCreateError)?;
 
-        Ok(Net {
-            guest_mac: None,
-            workers_kill_evt: vec![kill_evt.try_clone().map_err(NetError::CloneKillEvent)?],
-            kill_evts: vec![kill_evt],
-            worker_threads: Vec::new(),
-            taps: vec![slirp],
-            queue_sizes: vec![QUEUE_SIZE; NUM_SLIRP_QUEUES].into_boxed_slice(),
+        Net::new_internal(
+            vec![slirp],
             avail_features,
-            acked_features: 0u64,
-            mtu: 1500,
-            slirp_kill_evt: Some(slirp_kill_evt),
-        })
+            1500,
+            None,
+            Some(slirp_kill_evt),
+        )
     }
 }
 

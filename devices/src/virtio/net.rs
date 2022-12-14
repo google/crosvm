@@ -464,17 +464,17 @@ pub fn build_config(vq_pairs: u16, mtu: u16, mac: Option<[u8; 6]>) -> VirtioNetC
 }
 
 pub struct Net<T: TapT + ReadNotifier> {
-    pub(super) guest_mac: Option<[u8; 6]>,
-    pub(super) queue_sizes: Box<[u16]>,
-    pub(super) workers_kill_evt: Vec<Event>,
-    pub(super) kill_evts: Vec<Event>,
-    pub(super) worker_threads: Vec<thread::JoinHandle<Worker<T>>>,
-    pub(super) taps: Vec<T>,
-    pub(super) avail_features: u64,
-    pub(super) acked_features: u64,
-    pub(super) mtu: u16,
+    guest_mac: Option<[u8; 6]>,
+    queue_sizes: Box<[u16]>,
+    workers_kill_evt: Vec<Event>,
+    kill_evts: Vec<Event>,
+    worker_threads: Vec<thread::JoinHandle<Worker<T>>>,
+    taps: Vec<T>,
+    avail_features: u64,
+    acked_features: u64,
+    mtu: u16,
     #[cfg(windows)]
-    pub(super) slirp_kill_evt: Option<Event>,
+    slirp_kill_evt: Option<Event>,
 }
 
 impl<T> Net<T>
@@ -525,6 +525,23 @@ where
             avail_features |= 1 << virtio_net::VIRTIO_NET_F_MAC;
         }
 
+        Self::new_internal(
+            taps,
+            avail_features,
+            mtu,
+            mac_addr,
+            #[cfg(windows)]
+            None,
+        )
+    }
+
+    pub(crate) fn new_internal(
+        taps: Vec<T>,
+        avail_features: u64,
+        mtu: u16,
+        mac_addr: Option<MacAddress>,
+        #[cfg(windows)] slirp_kill_evt: Option<Event>,
+    ) -> Result<Self, NetError> {
         let mut kill_evts: Vec<Event> = Vec::new();
         let mut workers_kill_evt: Vec<Event> = Vec::new();
         for _ in 0..taps.len() {
@@ -534,9 +551,9 @@ where
             workers_kill_evt.push(worker_kill_evt);
         }
 
-        Ok(Net {
+        Ok(Self {
             guest_mac: mac_addr.map(|mac| mac.octets()),
-            queue_sizes: vec![QUEUE_SIZE; (vq_pairs * 2 + 1) as usize].into_boxed_slice(),
+            queue_sizes: vec![QUEUE_SIZE; (taps.len() * 2 + 1) as usize].into_boxed_slice(),
             workers_kill_evt,
             kill_evts,
             worker_threads: Vec::new(),
