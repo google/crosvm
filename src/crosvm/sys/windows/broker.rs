@@ -43,7 +43,9 @@ use base::EventToken;
 use base::FramingMode;
 use base::RawDescriptor;
 use base::ReadNotifier;
+use base::RecvTube;
 use base::SafeDescriptor;
+use base::SendTube;
 #[cfg(feature = "gpu")]
 use base::StreamChannel;
 use base::Timer;
@@ -81,6 +83,8 @@ use metrics::MetricEventType;
 use net_util::slirp::sys::windows::SlirpStartupConfig;
 #[cfg(feature = "slirp")]
 use net_util::slirp::sys::windows::SLIRP_BUFFER_SIZE;
+use serde::Deserialize;
+use serde::Serialize;
 use tube_transporter::TubeToken;
 use tube_transporter::TubeTransferData;
 use tube_transporter::TubeTransporter;
@@ -93,6 +97,13 @@ use crate::sys::windows::get_gpu_product_configs;
 use crate::Config;
 
 const KILL_CHILD_EXIT_CODE: u32 = 1;
+
+/// Tubes created by the broker and sent to child processes via the bootstrap tube.
+#[derive(Serialize, Deserialize)]
+pub struct BrokerTubes {
+    pub vm_evt_wrtube: SendTube,
+    pub vm_evt_rdtube: RecvTube,
+}
 
 /// This struct represents a configured "disk" device as returned by the platform's API. There will
 /// be two instances of it for each disk device, with the Tubes connected appropriately. The broker
@@ -566,11 +577,16 @@ fn run_internal(mut cfg: Config) -> Result<()> {
 
     let (vm_evt_wrtube, vm_evt_rdtube) =
         Tube::directional_pair().context("failed to create vm event tube")?;
-    cfg.vm_evt_wrtube = Some(vm_evt_wrtube);
-    cfg.vm_evt_rdtube = Some(vm_evt_rdtube);
 
     #[cfg(feature = "gpu")]
-    let gpu_cfg = platform_create_gpu(&cfg, &mut main_child, &mut exit_events)?;
+    let gpu_cfg = platform_create_gpu(
+        &cfg,
+        &mut main_child,
+        &mut exit_events,
+        vm_evt_wrtube
+            .try_clone()
+            .exit_context(Exit::CloneEvent, "failed to clone event")?,
+    )?;
 
     #[cfg(feature = "gpu")]
     let _gpu_child = if cfg.vhost_user_gpu.is_empty() {
@@ -612,6 +628,12 @@ fn run_internal(mut cfg: Config) -> Result<()> {
     let exit_event = Event::new().exit_context(Exit::CreateEvent, "failed to create event")?;
     main_child.bootstrap_tube.send(&exit_event).unwrap();
     exit_events.push(exit_event);
+
+    let broker_tubes = BrokerTubes {
+        vm_evt_wrtube,
+        vm_evt_rdtube,
+    };
+    main_child.bootstrap_tube.send(&broker_tubes).unwrap();
 
     // Setup our own metrics agent
     {
@@ -1394,6 +1416,7 @@ fn platform_create_gpu(
     cfg: &Config,
     #[allow(unused_variables)] main_child: &mut ChildProcess,
     exit_events: &mut Vec<Event>,
+    exit_evt_wrtube: SendTube,
 ) -> Result<(GpuBackendConfig, GpuVmmConfig)> {
     let exit_event = Event::new().exit_context(Exit::CreateEvent, "failed to create exit event")?;
     exit_events.push(
@@ -1429,13 +1452,6 @@ fn platform_create_gpu(
             .exit_context(Exit::EventDeviceSetup, "failed to set up EventDevice")?;
     event_devices.push(EventDevice::keyboard(event_device_pipe));
     input_event_keyboard_pipes.push(virtio_input_pipe);
-
-    let exit_evt_wrtube = cfg
-        .vm_evt_wrtube
-        .as_ref()
-        .expect("vm_evt_wrtube should be set")
-        .try_clone()
-        .exit_context(Exit::CloneEvent, "failed to clone event")?;
 
     let (backend_config_product, vmm_config_product) =
         get_gpu_product_configs(cfg, main_child.alias_pid)?;

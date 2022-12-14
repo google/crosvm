@@ -189,6 +189,7 @@ use crate::crosvm::config::TouchDeviceOption;
 use crate::crosvm::sys::config::HypervisorKind;
 #[cfg(any(feature = "gvm", feature = "whpx"))]
 use crate::crosvm::sys::config::IrqChipKind;
+use crate::crosvm::sys::windows::broker::BrokerTubes;
 #[cfg(feature = "stats")]
 use crate::crosvm::sys::windows::stats::StatisticsCollector;
 pub(crate) use crate::sys::windows::product::get_gpu_product_configs;
@@ -1550,23 +1551,25 @@ pub fn run_config_for_broker(raw_tube_transporter: RawDescriptor) -> Result<Exit
     #[cfg(feature = "crash-report")]
     crash_report::set_crash_tube_map(crash_tube_map);
 
-    run_config_inner(cfg)
+    let BrokerTubes {
+        vm_evt_wrtube,
+        vm_evt_rdtube,
+    } = bootstrap_tube
+        .recv::<BrokerTubes>()
+        .exit_context(Exit::TubeFailure, "failed to read bootstrap tube")?;
+
+    run_config_inner(cfg, vm_evt_wrtube, vm_evt_rdtube)
 }
 
-pub fn run_config(mut cfg: Config) -> Result<ExitState> {
+pub fn run_config(cfg: Config) -> Result<ExitState> {
     let _raise_timer_resolution = enable_high_res_timers()
         .exit_context(Exit::EnableHighResTimer, "failed to enable high res timer")?;
 
-    assert_eq!(cfg.vm_evt_wrtube.is_some(), cfg.vm_evt_rdtube.is_some());
-    if cfg.vm_evt_wrtube.is_none() {
-        // There is no broker when using run_config(), so the vm_evt tubes need to be created.
-        let (vm_evt_wrtube, vm_evt_rdtube) =
-            Tube::directional_pair().context("failed to create vm event tube")?;
-        cfg.vm_evt_wrtube = Some(vm_evt_wrtube);
-        cfg.vm_evt_rdtube = Some(vm_evt_rdtube);
-    }
+    // There is no broker when using run_config(), so the vm_evt tubes need to be created.
+    let (vm_evt_wrtube, vm_evt_rdtube) =
+        Tube::directional_pair().context("failed to create vm event tube")?;
 
-    run_config_inner(cfg)
+    run_config_inner(cfg, vm_evt_wrtube, vm_evt_rdtube)
 }
 
 fn create_guest_memory(
@@ -1581,7 +1584,11 @@ fn create_guest_memory(
         .exit_context(Exit::CreateGuestMemory, "failed to create guest memory")
 }
 
-fn run_config_inner(cfg: Config) -> Result<ExitState> {
+fn run_config_inner(
+    cfg: Config,
+    vm_evt_wrtube: SendTube,
+    vm_evt_rdtube: RecvTube,
+) -> Result<ExitState> {
     product::setup_common_metric_invariants(&cfg);
 
     #[cfg(feature = "perfetto")]
@@ -1622,6 +1629,8 @@ fn run_config_inner(cfg: Config) -> Result<ExitState> {
                 vm,
                 WindowsIrqChip::Userspace(irq_chip).as_mut(),
                 Some(ioapic_host_tube),
+                vm_evt_wrtube,
+                vm_evt_rdtube,
             )
         }
         #[cfg(feature = "whpx")]
@@ -1684,6 +1693,8 @@ fn run_config_inner(cfg: Config) -> Result<ExitState> {
                 vm,
                 irq_chip.as_mut(),
                 Some(ioapic_host_tube),
+                vm_evt_wrtube,
+                vm_evt_rdtube,
             )
         }
         #[cfg(feature = "gvm")]
@@ -1709,7 +1720,15 @@ fn run_config_inner(cfg: Config) -> Result<ExitState> {
                     )?)
                 }
             };
-            run_vm::<GvmVcpu, GvmVm>(cfg, components, vm, irq_chip.as_mut(), ioapic_host_tube)
+            run_vm::<GvmVcpu, GvmVm>(
+                cfg,
+                components,
+                vm,
+                irq_chip.as_mut(),
+                ioapic_host_tube,
+                vm_evt_wrtube,
+                vm_evt_rdtube,
+            )
         }
     }
 }
@@ -1721,6 +1740,8 @@ fn run_vm<Vcpu, V>(
     mut vm: V,
     irq_chip: &mut dyn IrqChipArch,
     ioapic_host_tube: Option<Tube>,
+    vm_evt_wrtube: SendTube,
+    vm_evt_rdtube: RecvTube,
 ) -> Result<ExitState>
 where
     Vcpu: VcpuArch + 'static,
@@ -1774,15 +1795,6 @@ where
 
     let gralloc =
         RutabagaGralloc::new().exit_context(Exit::CreateGralloc, "failed to create gralloc")?;
-
-    let (vm_evt_wrtube, vm_evt_rdtube) = (
-        cfg.vm_evt_wrtube
-            .take()
-            .expect("vm_evt_wrtube should be set"),
-        cfg.vm_evt_rdtube
-            .take()
-            .expect("vm_evt_rdtube should be set"),
-    );
 
     let pstore_size = components.pstore.as_ref().map(|pstore| pstore.size as u64);
     let mut sys_allocator = SystemAllocator::new(

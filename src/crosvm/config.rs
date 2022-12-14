@@ -26,10 +26,6 @@ use arch::Pstore;
 use arch::VcpuAffinity;
 use base::debug;
 use base::pagesize;
-#[cfg(windows)]
-use base::RecvTube;
-#[cfg(windows)]
-use base::SendTube;
 use cros_async::ExecutorKind;
 use devices::serial_device::SerialHardware;
 use devices::serial_device::SerialParameters;
@@ -1253,10 +1249,6 @@ pub struct Config {
     pub virtio_snds: Vec<SndParameters>,
     pub virtio_switches: Vec<PathBuf>,
     pub virtio_trackpad: Vec<TouchDeviceOption>,
-    #[cfg(windows)]
-    pub vm_evt_rdtube: Option<RecvTube>,
-    #[cfg(windows)]
-    pub vm_evt_wrtube: Option<SendTube>,
     #[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
     pub vtpm_proxy: bool,
     pub vvu_proxy: Vec<VvuOption>,
@@ -1469,10 +1461,6 @@ impl Default for Config {
             virtio_snds: Vec::new(),
             virtio_switches: Vec::new(),
             virtio_trackpad: Vec::new(),
-            #[cfg(windows)]
-            vm_evt_rdtube: None,
-            #[cfg(windows)]
-            vm_evt_wrtube: None,
             #[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
             vtpm_proxy: false,
             vvu_proxy: Vec::new(),
