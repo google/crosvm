@@ -559,12 +559,7 @@ fn create_virtio_devices(
     devs.push(create_vsock_device(cfg)?);
 
     #[cfg(feature = "gpu")]
-    {
-        let gpu_vmm_config = cfg
-            .gpu_vmm_config
-            .take()
-            .expect("GPU VMM config should be set");
-
+    if let Some(gpu_vmm_config) = cfg.gpu_vmm_config.take() {
         devs.extend(create_virtio_gpu_and_input_devices(cfg, gpu_vmm_config)?);
     }
 
