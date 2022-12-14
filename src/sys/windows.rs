@@ -560,72 +560,83 @@ fn create_virtio_devices(
 
     #[cfg(feature = "gpu")]
     {
-        let resource_bridges = Vec::<Tube>::new();
-
-        if !cfg.virtio_single_touch.is_empty() {
-            unimplemented!("--single-touch is no longer supported. Use --multi-touch instead.");
-        }
-
-        let mut gpu_vmm_config = cfg
+        let gpu_vmm_config = cfg
             .gpu_vmm_config
             .take()
             .expect("GPU VMM config should be set");
 
-        // Iterate event devices, create the VMM end.
-        for (idx, pipe) in gpu_vmm_config
-            .input_event_multi_touch_pipes
-            .drain(..)
-            .enumerate()
-        {
-            devs.push(create_multi_touch_device(
-                cfg,
-                &cfg.virtio_multi_touch[idx],
-                pipe,
-                idx as u32,
+        devs.extend(create_virtio_gpu_and_input_devices(cfg, gpu_vmm_config)?);
+    }
+
+    Ok(devs)
+}
+
+#[cfg(feature = "gpu")]
+fn create_virtio_gpu_and_input_devices(
+    cfg: &mut Config,
+    mut gpu_vmm_config: GpuVmmConfig,
+) -> DeviceResult<Vec<VirtioDeviceStub>> {
+    let mut devs = Vec::new();
+    let resource_bridges = Vec::<Tube>::new();
+
+    if !cfg.virtio_single_touch.is_empty() {
+        unimplemented!("--single-touch is no longer supported. Use --multi-touch instead.");
+    }
+
+    // Iterate event devices, create the VMM end.
+    for (idx, pipe) in gpu_vmm_config
+        .input_event_multi_touch_pipes
+        .drain(..)
+        .enumerate()
+    {
+        devs.push(create_multi_touch_device(
+            cfg,
+            &cfg.virtio_multi_touch[idx],
+            pipe,
+            idx as u32,
+        )?);
+    }
+
+    for (idx, pipe) in gpu_vmm_config.input_event_mouse_pipes.drain(..).enumerate() {
+        devs.push(create_mouse_device(cfg, pipe, idx as u32)?);
+    }
+
+    let keyboard_pipe = gpu_vmm_config
+        .input_event_keyboard_pipes
+        .pop()
+        .expect("at least one keyboard should be in GPU VMM config");
+    let dev = virtio::new_keyboard(
+        /* idx= */ 0,
+        keyboard_pipe,
+        virtio::base_features(cfg.protection_type),
+    )
+    .exit_context(Exit::InputDeviceNew, "failed to set up input device")?;
+
+    devs.push(VirtioDeviceStub {
+        dev: Box::new(dev),
+        jail: None,
+    });
+
+    match cfg.gpu_backend_config.take() {
+        None => {
+            // No backend config present means the backend is running in another process.
+            devs.push(create_vhost_user_gpu_device(
+                virtio::base_features(cfg.protection_type),
+                gpu_vmm_config
+                    .main_vhost_user_tube
+                    .take()
+                    .expect("GPU VMM vhost-user tube should be set"),
             )?);
         }
-
-        for (idx, pipe) in gpu_vmm_config.input_event_mouse_pipes.drain(..).enumerate() {
-            devs.push(create_mouse_device(cfg, pipe, idx as u32)?);
-        }
-
-        let keyboard_pipe = gpu_vmm_config
-            .input_event_keyboard_pipes
-            .pop()
-            .expect("at least one keyboard should be in GPU VMM config");
-        let dev = virtio::new_keyboard(
-            /* idx= */ 0,
-            keyboard_pipe,
-            virtio::base_features(cfg.protection_type),
-        )
-        .exit_context(Exit::InputDeviceNew, "failed to set up input device")?;
-
-        devs.push(VirtioDeviceStub {
-            dev: Box::new(dev),
-            jail: None,
-        });
-
-        match cfg.gpu_backend_config.take() {
-            None => {
-                // No backend config present means the backend is running in another process.
-                devs.push(create_vhost_user_gpu_device(
-                    virtio::base_features(cfg.protection_type),
-                    gpu_vmm_config
-                        .main_vhost_user_tube
-                        .take()
-                        .expect("GPU VMM vhost-user tube should be set"),
-                )?);
-            }
-            Some(backend_config) => {
-                // Backend config present, so initialize GPU in this process.
-                devs.push(create_gpu_device(
-                    cfg,
-                    &backend_config.params,
-                    &backend_config.exit_evt_wrtube,
-                    resource_bridges,
-                    backend_config.event_devices,
-                )?);
-            }
+        Some(backend_config) => {
+            // Backend config present, so initialize GPU in this process.
+            devs.push(create_gpu_device(
+                cfg,
+                &backend_config.params,
+                &backend_config.exit_evt_wrtube,
+                resource_bridges,
+                backend_config.event_devices,
+            )?);
         }
     }
 
