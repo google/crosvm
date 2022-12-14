@@ -2682,6 +2682,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                         do_exit = true;
                     }
                     if do_exit {
+                        exit_state = ExitState::Crash;
                         break 'wait;
                     }
                 }
