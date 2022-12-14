@@ -20,7 +20,7 @@ use crate::pci::pcie::pcie_device::PcieDevice;
 use crate::pci::pcie::pcie_host::PcieHostPort;
 use crate::pci::pcie::pcie_port::PciePort;
 use crate::pci::pcie::*;
-use crate::pci::pm::PciPmcCap;
+use crate::pci::pm::PciPmCap;
 use crate::pci::MsiConfig;
 use crate::pci::PciAddress;
 use crate::pci::PciCapability;
@@ -95,7 +95,7 @@ impl PcieDevice for PcieRootPort {
                 self.pcie_port.hotplug_implemented(),
                 0,
             )),
-            Box::new(PciPmcCap::new()),
+            Box::new(PciPmCap::new()),
         ]
     }
 

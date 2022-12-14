@@ -17,8 +17,8 @@ use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
 use crate::pci::pcie::pcie_host::PcieHostPort;
 use crate::pci::pcie::*;
 use crate::pci::pm::PciDevicePower;
-use crate::pci::pm::PmcConfig;
-use crate::pci::pm::PMC_CAP_CONTROL_STATE_OFFSET;
+use crate::pci::pm::PmConfig;
+use crate::pci::pm::PM_CAP_CONTROL_STATE_OFFSET;
 use crate::pci::MsiConfig;
 use crate::pci::PciAddress;
 use crate::pci::PciDeviceError;
@@ -101,9 +101,9 @@ pub struct PciePort {
     bus_range: PciBridgeBusRange,
     pcie_host: Option<PcieHostPort>,
     pcie_cap_reg_idx: Option<usize>,
-    pmc_cap_reg_idx: Option<usize>,
+    pm_cap_reg_idx: Option<usize>,
     msi_config: Option<Arc<Mutex<MsiConfig>>>,
-    pmc_config: PmcConfig,
+    pm_config: PmConfig,
 
     slot_control: Option<u16>,
     slot_status: u16,
@@ -153,9 +153,9 @@ impl PciePort {
             bus_range,
             pcie_host: None,
             pcie_cap_reg_idx: None,
-            pmc_cap_reg_idx: None,
+            pm_cap_reg_idx: None,
             msi_config: None,
-            pmc_config: PmcConfig::new(),
+            pm_config: PmConfig::new(),
 
             slot_control: if slot_implemented {
                 Some(PCIE_SLTCTL_PIC_OFF | PCIE_SLTCTL_AIC_OFF)
@@ -200,9 +200,9 @@ impl PciePort {
             bus_range,
             pcie_host: Some(pcie_host),
             pcie_cap_reg_idx: None,
-            pmc_cap_reg_idx: None,
+            pm_cap_reg_idx: None,
             msi_config: None,
-            pmc_config: PmcConfig::new(),
+            pm_config: PmConfig::new(),
 
             slot_control: if slot_implemented {
                 Some(PCIE_SLTCTL_PIC_OFF | PCIE_SLTCTL_AIC_OFF)
@@ -399,9 +399,9 @@ impl PciePort {
                 self.read_pcie_cap(offset, data);
             }
         }
-        if let Some(pmc_cap_reg_idx) = self.pmc_cap_reg_idx {
-            if reg_idx == pmc_cap_reg_idx + PMC_CAP_CONTROL_STATE_OFFSET {
-                self.pmc_config.read(data);
+        if let Some(pm_cap_reg_idx) = self.pm_cap_reg_idx {
+            if reg_idx == pm_cap_reg_idx + PM_CAP_CONTROL_STATE_OFFSET {
+                self.pm_config.read(data);
             }
         }
         if let Some(host) = &self.pcie_host {
@@ -416,11 +416,11 @@ impl PciePort {
                 self.write_pcie_cap(delta, data);
             }
         }
-        if let Some(pmc_cap_reg_idx) = self.pmc_cap_reg_idx {
-            if reg_idx == pmc_cap_reg_idx + PMC_CAP_CONTROL_STATE_OFFSET {
-                let old_status = self.pmc_config.get_power_status();
-                self.pmc_config.write(offset, data);
-                let new_status = self.pmc_config.get_power_status();
+        if let Some(pm_cap_reg_idx) = self.pm_cap_reg_idx {
+            if reg_idx == pm_cap_reg_idx + PM_CAP_CONTROL_STATE_OFFSET {
+                let old_status = self.pm_config.get_power_status();
+                self.pm_config.write(offset, data);
+                let new_status = self.pm_config.get_power_status();
                 if old_status == PciDevicePower::D3
                     && new_status == PciDevicePower::D0
                     && self.prepare_hotplug
@@ -440,7 +440,7 @@ impl PciePort {
     pub fn set_capability_reg_idx(&mut self, id: PciCapabilityID, reg_idx: usize) {
         match id {
             PciCapabilityID::PciExpress => self.pcie_cap_reg_idx = Some(reg_idx),
-            PciCapabilityID::PowerManagement => self.pmc_cap_reg_idx = Some(reg_idx),
+            PciCapabilityID::PowerManagement => self.pm_cap_reg_idx = Some(reg_idx),
             _ => (),
         }
     }
@@ -512,7 +512,7 @@ impl PciePort {
     }
 
     pub fn trigger_hp_or_pme_interrupt(&mut self) {
-        if self.pmc_config.should_trigger_pme() {
+        if self.pm_config.should_trigger_pme() {
             self.hp_interrupt_pending = true;
             self.inject_pme();
         } else {
@@ -547,7 +547,7 @@ impl PciePort {
     }
 
     pub fn should_trigger_pme(&mut self) -> bool {
-        self.pmc_config.should_trigger_pme()
+        self.pm_config.should_trigger_pme()
     }
 
     pub fn prepare_hotplug(&mut self) {
