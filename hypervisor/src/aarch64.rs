@@ -8,6 +8,7 @@ use std::convert::TryFrom;
 use anyhow::anyhow;
 use base::Error;
 use base::Result;
+use cros_fdt::FdtWriter;
 use downcast_rs::impl_downcast;
 #[cfg(feature = "gdb")]
 use gdbstub::arch::Arch;
@@ -74,6 +75,15 @@ pub trait VmAArch64: Vm {
 
     /// Create a Vcpu with the specified Vcpu ID.
     fn create_vcpu(&self, id: usize) -> Result<Box<dyn VcpuAArch64>>;
+
+    /// Create DT configuration node for the hypervisor.
+    /// `fdt` - FdtWriter initialized at the root node.
+    /// `phandles` - Map of strings to a phandle.
+    fn create_fdt(
+        &self,
+        fdt: &mut FdtWriter,
+        phandles: &BTreeMap<&str, u32>,
+    ) -> cros_fdt::Result<()>;
 }
 
 /// A wrapper around creating and using a VCPU on aarch64.

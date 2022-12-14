@@ -680,6 +680,7 @@ impl arch::LinuxArch for AArch64 {
             bat_mmio_base_and_irq,
             vmwdt_cfg,
             dump_device_tree_blob,
+            &|writer, phandles| vm.create_fdt(writer, phandles),
         )
         .map_err(Error::CreateFdt)?;
 

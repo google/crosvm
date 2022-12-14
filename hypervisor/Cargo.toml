@@ -14,6 +14,7 @@ geniezone = []
 anyhow = "*"
 bit_field = { path = "../bit_field" }
 bitflags = "1"
+cros_fdt = { path = "../cros_fdt" }
 data_model = { path = "../common/data_model" }
 downcast-rs = "1.2.0"
 enumn = "0.1.0"
