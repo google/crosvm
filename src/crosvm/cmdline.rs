@@ -717,8 +717,6 @@ fn overwrite<T>(left: &mut T, right: T) {
     let _ = std::mem::replace(left, right);
 }
 
-/// Start a new crosvm instance
-///
 /// Each field of this structure has a dual use:
 ///
 /// 1) As a command-line parameter, controlled by the `#[argh]` helper attribute.
@@ -754,7 +752,7 @@ fn overwrite<T>(left: &mut T, right: T) {
 #[remain::sorted]
 #[argh_helpers::pad_description_for_argh]
 #[derive(FromArgs, Deserialize, merge::Merge)]
-#[argh(subcommand, name = "run")]
+#[argh(subcommand, name = "run", description = "Start a new crosvm instance")]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct RunCommand {
     #[cfg(feature = "audio")]
