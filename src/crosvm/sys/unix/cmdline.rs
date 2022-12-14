@@ -4,6 +4,7 @@
 
 use std::path::PathBuf;
 
+use argh::FromArgValue;
 use argh::FromArgs;
 use cros_async::ExecutorKind;
 use devices::virtio::block::block::DiskOption;
@@ -11,7 +12,6 @@ use devices::virtio::vhost::user::device;
 use devices::virtio::vhost::user::VhostUserParams;
 use devices::SerialParameters;
 
-use crate::crosvm::config::from_key_values;
 use crate::crosvm::config::validate_serial_parameters;
 use crate::crosvm::config::JailConfig;
 
@@ -28,7 +28,7 @@ pub enum DeviceSubcommand {
 }
 
 fn parse_vu_serial_options(s: &str) -> Result<VhostUserParams<SerialParameters>, String> {
-    let params: VhostUserParams<SerialParameters> = from_key_values(s)?;
+    let params = VhostUserParams::<SerialParameters>::from_arg_value(s)?;
 
     validate_serial_parameters(&params.device)?;
 

@@ -27,6 +27,11 @@ use serde_keyvalue::KeyValueDeserializer;
 /// The `vhost` argument must come first, followed by all the arguments required by `device`.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+// TODO(b/262345003): This requires a custom `Deserialize` implementation to support configuration
+// files properly. Right now the pseudo-flattening is done by the `FromArgValue` implementation,
+// which is only used with command-line arguments. A good `Deserialize` implementation would allow
+// the same behavior with any deserializer, but requires some serde-fu that is above my current
+// skills.
 pub struct VhostUserParams<T: Debug> {
     pub vhost: String,
     pub device: T,
