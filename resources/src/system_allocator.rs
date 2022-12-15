@@ -116,6 +116,7 @@ pub struct SystemAllocator {
     // Each bus number has a AddressAllocator
     pci_allocator: BTreeMap<u8, AddressAllocator>,
     irq_allocator: AddressAllocator,
+    gpe_allocator: AddressAllocator,
     next_anon_id: usize,
 }
 
@@ -215,6 +216,17 @@ impl SystemAllocator {
                 Some(1),
                 None,
             )?,
+
+            // GPE range depends on ACPIPM_RESOURCE_GPE0_BLK_LEN, which is used to determine
+            // ACPIPM_GPE_MAX. The AddressRange should be in sync with ACPIPM_GPE_MAX. The
+            // hard-coded value is used since devices lib (where ACPIPM_* consts are defined)
+            // depends on resource lib. Therefore using ACPI_* const from device lib will not be
+            // possible because it will require introducing cyclic dependencies.
+            gpe_allocator: AddressAllocator::new(
+                AddressRange { start: 0, end: 255 },
+                Some(1),
+                None,
+            )?,
             next_anon_id: 0,
         })
     }
@@ -246,6 +258,15 @@ impl SystemAllocator {
                 "irq-fixed".to_string(),
             )
             .is_ok()
+    }
+
+    /// Reserve the next available system GPE number
+    pub fn allocate_gpe(&mut self) -> Option<u32> {
+        let id = self.get_anon_alloc();
+        self.gpe_allocator
+            .allocate(1, id, "gpe-auto".to_string())
+            .map(|v| v as u32)
+            .ok()
     }
 
     fn get_pci_allocator_mut(&mut self, bus: u8) -> Option<&mut AddressAllocator> {
@@ -480,6 +501,8 @@ mod tests {
 
         assert_eq!(a.allocate_irq(), Some(5));
         assert_eq!(a.allocate_irq(), Some(6));
+        assert_eq!(a.allocate_gpe(), Some(0));
+        assert_eq!(a.allocate_gpe(), Some(1));
         assert_eq!(
             a.mmio_allocator(MmioType::High).allocate(
                 0x100,
