@@ -10,6 +10,7 @@ use std::sync::Mutex;
 
 use base::error;
 use base::info;
+use base::trace;
 use base::AsRawDescriptor;
 use base::Event;
 use base::Protection;
@@ -116,16 +117,26 @@ impl VhostUserHandler {
         })
     }
 
-    /// Returns a vector of sizes of each queue.
-    pub fn queue_sizes(&mut self, queue_size: u16, default_queues_num: usize) -> Result<Vec<u16>> {
-        let queues_num = if self
+    /// Returns the maximum number of queues supported by the backend, or `None` if the MQ protocol
+    /// feature was not negotiated.
+    pub fn num_queues(&self) -> Result<Option<usize>> {
+        if self
             .protocol_features
             .contains(VhostUserProtocolFeatures::MQ)
         {
-            self.vu.get_queue_num().map_err(Error::GetQueueNum)? as usize
+            trace!("backend supports VHOST_USER_PROTOCOL_F_MQ");
+            let num_queues = self.vu.get_queue_num().map_err(Error::GetQueueNum)?;
+            trace!("VHOST_USER_GET_QUEUE_NUM returned {num_queues}");
+            Ok(Some(num_queues as usize))
         } else {
-            default_queues_num
-        };
+            trace!("backend does not support VHOST_USER_PROTOCOL_F_MQ");
+            Ok(None)
+        }
+    }
+
+    /// Returns a vector of sizes of each queue.
+    pub fn queue_sizes(&mut self, queue_size: u16, default_queues_num: usize) -> Result<Vec<u16>> {
+        let queues_num = self.num_queues()?.unwrap_or(default_queues_num);
         Ok(vec![queue_size; queues_num])
     }
 
