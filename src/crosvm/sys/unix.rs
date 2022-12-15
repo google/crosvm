@@ -3110,6 +3110,10 @@ fn jail_and_start_vu_device<T: VirtioDeviceBuilder>(
 
     let tz = std::env::var("TZ").unwrap_or_default();
 
+    // Deduplicate the FDs since minijail expects them to be unique.
+    keep_rds.sort_unstable();
+    keep_rds.dedup();
+
     // Safe because we are keeping all the descriptors needed for the child to function.
     match unsafe { jail.fork(Some(&keep_rds)).context("error while forking")? } {
         0 => {
