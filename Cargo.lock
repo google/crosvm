@@ -998,6 +998,7 @@ version = "0.1.0"
 dependencies = [
  "base",
  "bitflags",
+ "cros_tracing",
  "crossbeam-utils",
  "data_model 0.1.1-alpha.1",
  "enumn",

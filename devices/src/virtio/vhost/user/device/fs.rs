@@ -93,7 +93,7 @@ impl FsBackend {
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
 
         // Use default passthroughfs config
-        let fs = PassthroughFs::new(cfg.unwrap_or_default())?;
+        let fs = PassthroughFs::new(tag, cfg.unwrap_or_default())?;
 
         let mut keep_rds: Vec<RawDescriptor> = [0, 1, 2].to_vec();
         keep_rds.append(&mut fs.keep_rds());

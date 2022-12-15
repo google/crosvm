@@ -63,7 +63,7 @@ fn test_lookup() {
     create_test_data(&temp_dir, &["dir"], &["a.txt", "dir/b.txt"]);
 
     let cfg = Default::default();
-    let fs = PassthroughFs::new(cfg).unwrap();
+    let fs = PassthroughFs::new("tag", cfg).unwrap();
 
     let capable = FsOptions::empty();
     fs.init(capable).unwrap();
@@ -86,7 +86,7 @@ fn test_lookup_ascii_casefold() {
         ascii_casefold: true,
         ..Default::default()
     };
-    let fs = PassthroughFs::new(cfg).unwrap();
+    let fs = PassthroughFs::new("tag", cfg).unwrap();
 
     let capable = FsOptions::empty();
     fs.init(capable).unwrap();

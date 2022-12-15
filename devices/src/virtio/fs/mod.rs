@@ -143,7 +143,7 @@ impl Fs {
             num_request_queues: Le32::from(num_workers as u32),
         };
 
-        let fs = PassthroughFs::new(fs_cfg).map_err(Error::CreateFs)?;
+        let fs = PassthroughFs::new(tag, fs_cfg).map_err(Error::CreateFs)?;
 
         // There is always a high priority queue in addition to the request queues.
         let num_queues = num_workers + 1;

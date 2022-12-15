@@ -188,13 +188,13 @@ ioctl_iowr_nr!(FS_IOC_MEASURE_VERITY, 'f' as u32, 134, fsverity_digest);
 pub type Inode = u64;
 type Handle = u64;
 
-#[derive(Clone, Copy, PartialOrd, Ord, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq)]
 struct InodeAltKey {
     ino: libc::ino64_t,
     dev: libc::dev_t,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 enum FileType {
     Regular,
     Directory,
@@ -211,6 +211,7 @@ impl From<libc::mode_t> for FileType {
     }
 }
 
+#[derive(Debug)]
 struct InodeData {
     inode: Inode,
     // (File, open_flags)
@@ -225,6 +226,7 @@ impl AsRawDescriptor for InodeData {
     }
 }
 
+#[derive(Debug)]
 struct HandleData {
     inode: Inode,
     file: Mutex<File>,
@@ -629,6 +631,10 @@ impl FromStr for Config {
 pub struct PassthroughFs {
     // Mutex that must be acquired before executing a process-wide operation such as fchdir.
     process_lock: Mutex<()>,
+    // virtio-fs tag that the guest uses when mounting. This is only used for debugging
+    // when tracing is enabled.
+    #[cfg_attr(not(feature = "trace_marker"), allow(dead_code))]
+    tag: String,
 
     // File descriptors for various points in the file system tree.
     inodes: Mutex<MultikeyBTreeMap<Inode, InodeAltKey, Arc<InodeData>>>,
@@ -664,8 +670,23 @@ pub struct PassthroughFs {
     cfg: Config,
 }
 
+impl std::fmt::Debug for PassthroughFs {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_struct("PassthroughFs")
+            .field("tag", &self.tag)
+            .field("next_inode", &self.next_inode)
+            .field("next_handle", &self.next_handle)
+            .field("proc", &self.proc)
+            .field("writeback", &self.writeback)
+            .field("zero_message_open", &self.zero_message_open)
+            .field("zero_message_opendir", &self.zero_message_opendir)
+            .field("cfg", &self.cfg)
+            .finish()
+    }
+}
+
 impl PassthroughFs {
-    pub fn new(cfg: Config) -> io::Result<PassthroughFs> {
+    pub fn new(tag: &str, cfg: Config) -> io::Result<PassthroughFs> {
         // Safe because this is a constant value and a valid C string.
         let proc_cstr = unsafe { CStr::from_bytes_with_nul_unchecked(PROC_CSTR) };
 
@@ -697,8 +718,9 @@ impl PassthroughFs {
         // Safe because we just opened this descriptor.
         let proc = unsafe { File::from_raw_descriptor(raw_descriptor) };
 
-        Ok(PassthroughFs {
+        let passthroughfs = PassthroughFs {
             process_lock: Mutex::new(()),
+            tag: tag.to_string(),
             inodes: Mutex::new(MultikeyBTreeMap::new()),
             next_inode: AtomicU64::new(ROOT_ID + 1),
 
@@ -717,7 +739,10 @@ impl PassthroughFs {
             dbus_fd,
 
             cfg,
-        })
+        };
+
+        cros_tracing::trace_simple_print!("New PassthroughFS initialized: {:?}", passthroughfs);
+        Ok(passthroughfs)
     }
 
     pub fn cfg(&self) -> &Config {
@@ -1613,11 +1638,13 @@ impl FileSystem for PassthroughFs {
     }
 
     fn destroy(&self) {
+        cros_tracing::trace_simple_print!("{:?}: destroy", self);
         self.handles.lock().clear();
         self.inodes.lock().clear();
     }
 
     fn statfs(&self, _ctx: Context, inode: Inode) -> io::Result<libc::statvfs64> {
+        cros_tracing::trace_simple_print!("{}: statfs: inode={inode}", self.tag);
         let data = self.find_inode(inode)?;
 
         let mut out = MaybeUninit::<libc::statvfs64>::zeroed();
@@ -1630,6 +1657,12 @@ impl FileSystem for PassthroughFs {
     }
 
     fn lookup(&self, _ctx: Context, parent: Inode, name: &CStr) -> io::Result<Entry> {
+        cros_tracing::trace_simple_print!(
+            "{}: lookup: inode={}, name={:?}",
+            self.tag,
+            parent,
+            name
+        );
         let data = self.find_inode(parent)?;
         self.do_lookup(&data, name).or_else(|e| {
             if self.cfg.ascii_casefold {
@@ -1641,6 +1674,7 @@ impl FileSystem for PassthroughFs {
     }
 
     fn forget(&self, _ctx: Context, inode: Inode, count: u64) {
+        cros_tracing::trace_simple_print!("{}: forget: inode={inode}, count={count}", self.tag);
         let mut inodes = self.inodes.lock();
 
         forget_one(&mut inodes, inode, count)
@@ -1660,6 +1694,7 @@ impl FileSystem for PassthroughFs {
         inode: Inode,
         flags: u32,
     ) -> io::Result<(Option<Handle>, OpenOptions)> {
+        cros_tracing::trace_simple_print!("{}: opendir: inode={inode}, flags={flags}", self.tag);
         if self.zero_message_opendir.load(Ordering::Relaxed) {
             Err(io::Error::from_raw_os_error(libc::ENOSYS))
         } else {
@@ -1674,6 +1709,10 @@ impl FileSystem for PassthroughFs {
         _flags: u32,
         handle: Handle,
     ) -> io::Result<()> {
+        cros_tracing::trace_simple_print!(
+            "{}: releasedir: inode={inode}, handle={handle}",
+            self.tag
+        );
         if self.zero_message_opendir.load(Ordering::Relaxed) {
             Ok(())
         } else {
@@ -1689,6 +1728,11 @@ impl FileSystem for PassthroughFs {
         mode: u32,
         umask: u32,
     ) -> io::Result<Entry> {
+        cros_tracing::trace_simple_print!(
+            "{}: mkdir: inode={parent}, name={:?}, mode={mode}, umask={umask}",
+            self.tag,
+            name
+        );
         let data = self.find_inode(parent)?;
 
         let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
@@ -1703,6 +1747,7 @@ impl FileSystem for PassthroughFs {
     }
 
     fn rmdir(&self, _ctx: Context, parent: Inode, name: &CStr) -> io::Result<()> {
+        cros_tracing::trace_simple_print!("{}: rmdir: inode={parent}, name={:?}", self.tag, name);
         let data = self.find_inode(parent)?;
         self.do_unlink(&data, name, libc::AT_REMOVEDIR)
     }
@@ -1715,6 +1760,10 @@ impl FileSystem for PassthroughFs {
         size: u32,
         offset: u64,
     ) -> io::Result<Self::DirIter> {
+        cros_tracing::trace_simple_print!(
+            "{}: readdir: inode={inode}, handle={handle}, size={size}, offset={offset}",
+            self.tag
+        );
         let buf = vec![0; size as usize].into_boxed_slice();
 
         if self.zero_message_opendir.load(Ordering::Relaxed) {
@@ -1736,8 +1785,13 @@ impl FileSystem for PassthroughFs {
         flags: u32,
     ) -> io::Result<(Option<Handle>, OpenOptions)> {
         if self.zero_message_open.load(Ordering::Relaxed) {
+            cros_tracing::trace_simple_print!(
+                "{}: open (zero-message): inode={inode}, flags={flags}",
+                self.tag
+            );
             Err(io::Error::from_raw_os_error(libc::ENOSYS))
         } else {
+            cros_tracing::trace_simple_print!("{}: open: inode={inode}, flags={flags}", self.tag);
             self.do_open(inode, flags)
         }
     }
@@ -1753,8 +1807,16 @@ impl FileSystem for PassthroughFs {
         _lock_owner: Option<u64>,
     ) -> io::Result<()> {
         if self.zero_message_open.load(Ordering::Relaxed) {
+            cros_tracing::trace_simple_print!(
+                "{}: release (zero-message): inode={inode}, handle={handle}",
+                self.tag
+            );
             Ok(())
         } else {
+            cros_tracing::trace_simple_print!(
+                "{}: release: inode={inode}, handle={handle}",
+                self.tag
+            );
             self.do_release(inode, handle)
         }
     }
@@ -1766,6 +1828,10 @@ impl FileSystem for PassthroughFs {
         mode: u32,
         umask: u32,
     ) -> io::Result<Entry> {
+        cros_tracing::trace_simple_print!(
+            "{}: chromeos_tempfile: inode={parent}, mode={mode}, umask={umask}",
+            self.tag
+        );
         let data = self.find_inode(parent)?;
 
         let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
@@ -1805,6 +1871,11 @@ impl FileSystem for PassthroughFs {
         flags: u32,
         umask: u32,
     ) -> io::Result<(Entry, Option<Handle>, OpenOptions)> {
+        cros_tracing::trace_simple_print!(
+            "{}: create: inode={parent}, name={:?}, mode={mode}, flags={flags}, umask={umask}",
+            self.tag,
+            name
+        );
         let data = self.find_inode(parent)?;
 
         let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
@@ -1847,6 +1918,7 @@ impl FileSystem for PassthroughFs {
     }
 
     fn unlink(&self, _ctx: Context, parent: Inode, name: &CStr) -> io::Result<()> {
+        cros_tracing::trace_simple_print!("{}: unlink: inode={parent}, name={:?}", self.tag, name);
         let data = self.find_inode(parent)?;
         self.do_unlink(&data, name, 0)
     }
@@ -1863,6 +1935,7 @@ impl FileSystem for PassthroughFs {
         _flags: u32,
     ) -> io::Result<usize> {
         if self.zero_message_open.load(Ordering::Relaxed) {
+            cros_tracing::trace_simple_print!("{}: read (zero-message): inode={inode}, handle={handle}, size={size}, offset={offset}", self.tag);
             let data = self.find_inode(inode)?;
 
             let mut file = data.file.lock();
@@ -1882,6 +1955,10 @@ impl FileSystem for PassthroughFs {
 
             w.write_from(&mut file.0, size as usize, offset)
         } else {
+            cros_tracing::trace_simple_print!(
+                "{}: read: inode={inode}, handle={handle}, size={size}, offset={offset}",
+                self.tag
+            );
             let data = self.find_handle(handle, inode)?;
 
             let mut f = data.file.lock();
@@ -1910,6 +1987,11 @@ impl FileSystem for PassthroughFs {
         };
 
         if self.zero_message_open.load(Ordering::Relaxed) {
+            cros_tracing::trace_simple_print!(
+                "{}: write (zero-message): inode={inode}, handle={handle}, size={size}, offset={offset}",
+                self.tag
+            );
+
             let data = self.find_inode(inode)?;
 
             let mut file = data.file.lock();
@@ -1929,6 +2011,11 @@ impl FileSystem for PassthroughFs {
 
             r.read_to(&mut file.0, size as usize, offset)
         } else {
+            cros_tracing::trace_simple_print!(
+                "{}: write: inode={inode}, handle={handle}, size={size}, offset={offset}",
+                self.tag
+            );
+
             let data = self.find_handle(handle, inode)?;
 
             let mut f = data.file.lock();
@@ -1942,6 +2029,8 @@ impl FileSystem for PassthroughFs {
         inode: Inode,
         _handle: Option<Handle>,
     ) -> io::Result<(libc::stat64, Duration)> {
+        cros_tracing::trace_simple_print!("{}: getattr: inode={inode}", self.tag);
+
         let data = self.find_inode(inode)?;
         self.do_getattr(&data)
     }
@@ -1954,6 +2043,11 @@ impl FileSystem for PassthroughFs {
         handle: Option<Handle>,
         valid: SetattrValid,
     ) -> io::Result<(libc::stat64, Duration)> {
+        cros_tracing::trace_simple_print!(
+            "{}: setattr: inode={inode}, handle={:?}",
+            self.tag,
+            handle
+        );
         let inode_data = self.find_inode(inode)?;
 
         enum Data {
@@ -2075,6 +2169,13 @@ impl FileSystem for PassthroughFs {
         newname: &CStr,
         flags: u32,
     ) -> io::Result<()> {
+        cros_tracing::trace_simple_print!(
+            "{}: rename: olddir={olddir}, oldname={:?}, newdir={newdir}, newname={:?}, flags={flags}",
+            self.tag,
+            oldname,
+            newname
+        );
+
         let old_inode = self.find_inode(olddir)?;
         let new_inode = self.find_inode(newdir)?;
 
@@ -2103,6 +2204,11 @@ impl FileSystem for PassthroughFs {
         rdev: u32,
         umask: u32,
     ) -> io::Result<Entry> {
+        cros_tracing::trace_simple_print!(
+            "{}: mknod: inode={parent}, name={:?}, mode={mode}, rdev={rdev}, umask={umask}",
+            self.tag,
+            name
+        );
         let data = self.find_inode(parent)?;
 
         let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
@@ -2131,6 +2237,11 @@ impl FileSystem for PassthroughFs {
         newparent: Inode,
         newname: &CStr,
     ) -> io::Result<Entry> {
+        cros_tracing::trace_simple_print!(
+            "{}: link: inode={inode}, newparent={newparent}, newmname={:?}",
+            self.tag,
+            newname
+        );
         let data = self.find_inode(inode)?;
         let new_inode = self.find_inode(newparent)?;
 
@@ -2158,6 +2269,12 @@ impl FileSystem for PassthroughFs {
         parent: Inode,
         name: &CStr,
     ) -> io::Result<Entry> {
+        cros_tracing::trace_simple_print!(
+            "{}: symlink: inode={parent}, linkname={:?}, name={:?}",
+            self.tag,
+            linkname,
+            name
+        );
         let data = self.find_inode(parent)?;
 
         let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
@@ -2171,6 +2288,7 @@ impl FileSystem for PassthroughFs {
     }
 
     fn readlink(&self, _ctx: Context, inode: Inode) -> io::Result<Vec<u8>> {
+        cros_tracing::trace_simple_print!("{}: readlink: inode={inode}", self.tag);
         let data = self.find_inode(inode)?;
 
         let mut buf = vec![0; libc::PATH_MAX as usize];
@@ -2199,6 +2317,7 @@ impl FileSystem for PassthroughFs {
         handle: Handle,
         _lock_owner: u64,
     ) -> io::Result<()> {
+        cros_tracing::trace_simple_print!("{}: flush: inode={inode}, handle={handle}", self.tag);
         let data: Arc<dyn AsRawDescriptor> = if self.zero_message_open.load(Ordering::Relaxed) {
             self.find_inode(inode)?
         } else {
@@ -2222,9 +2341,17 @@ impl FileSystem for PassthroughFs {
 
     fn fsync(&self, _ctx: Context, inode: Inode, datasync: bool, handle: Handle) -> io::Result<()> {
         if self.zero_message_open.load(Ordering::Relaxed) {
+            cros_tracing::trace_simple_print!(
+                "{}: fsync (zero-message): inode={inode}, datasync={datasync}, handle={handle}",
+                self.tag
+            );
             let data = self.find_inode(inode)?;
             self.do_fsync(&*data, datasync)
         } else {
+            cros_tracing::trace_simple_print!(
+                "{}: fsync: inode={inode}, datasync={datasync}, handle={handle}",
+                self.tag
+            );
             let data = self.find_handle(handle, inode)?;
 
             let file = data.file.lock();
@@ -2240,9 +2367,17 @@ impl FileSystem for PassthroughFs {
         handle: Handle,
     ) -> io::Result<()> {
         if self.zero_message_opendir.load(Ordering::Relaxed) {
+            cros_tracing::trace_simple_print!(
+                "{}: fsyncdir (zero-message): inode={inode}, datasync={datasync}, handle={handle}",
+                self.tag
+            );
             let data = self.find_inode(inode)?;
             self.do_fsync(&*data, datasync)
         } else {
+            cros_tracing::trace_simple_print!(
+                "{}: fsyncdir: inode={inode}, datasync={datasync}, handle={handle}",
+                self.tag
+            );
             let data = self.find_handle(handle, inode)?;
 
             let file = data.file.lock();
@@ -2251,6 +2386,7 @@ impl FileSystem for PassthroughFs {
     }
 
     fn access(&self, ctx: Context, inode: Inode, mask: u32) -> io::Result<()> {
+        cros_tracing::trace_simple_print!("{}: access: inode={inode}, mask={mask}", self.tag);
         let data = self.find_inode(inode)?;
 
         let st = stat(&*data)?;
@@ -2304,6 +2440,11 @@ impl FileSystem for PassthroughFs {
         value: &[u8],
         flags: u32,
     ) -> io::Result<()> {
+        cros_tracing::trace_simple_print!(
+            "{}: setxattr: inode={inode}, name={:?}, flags={flags}",
+            self.tag,
+            name
+        );
         // We can't allow the VM to set this xattr because an unprivileged process may use it to set
         // a privileged xattr.
         if self.cfg.rewrite_security_xattrs && name.to_bytes().starts_with(USER_VIRTIOFS_XATTR) {
@@ -2357,6 +2498,11 @@ impl FileSystem for PassthroughFs {
         name: &CStr,
         size: u32,
     ) -> io::Result<GetxattrReply> {
+        cros_tracing::trace_simple_print!(
+            "{}: getxattr: inode={inode}, name={:?}, size={size}",
+            self.tag,
+            name
+        );
         // We don't allow the VM to set this xattr so we also pretend there is no value associated
         // with it.
         if self.cfg.rewrite_security_xattrs && name.to_bytes().starts_with(USER_VIRTIOFS_XATTR) {
@@ -2378,6 +2524,7 @@ impl FileSystem for PassthroughFs {
     }
 
     fn listxattr(&self, _ctx: Context, inode: Inode, size: u32) -> io::Result<ListxattrReply> {
+        cros_tracing::trace_simple_print!("{}: listxattr: inode={inode}, size={size}", self.tag);
         let data = self.find_inode(inode)?;
 
         let mut buf = vec![0u8; size as usize];
@@ -2424,6 +2571,11 @@ impl FileSystem for PassthroughFs {
     }
 
     fn removexattr(&self, _ctx: Context, inode: Inode, name: &CStr) -> io::Result<()> {
+        cros_tracing::trace_simple_print!(
+            "{}: removexattr: inode={inode}, name={:?}",
+            self.tag,
+            name
+        );
         // We don't allow the VM to set this xattr so we also pretend there is no value associated
         // with it.
         if self.cfg.rewrite_security_xattrs && name.to_bytes().starts_with(USER_VIRTIOFS_XATTR) {
@@ -2464,6 +2616,11 @@ impl FileSystem for PassthroughFs {
         offset: u64,
         length: u64,
     ) -> io::Result<()> {
+        cros_tracing::trace_simple_print!(
+            "{}: fallocate: inode={inode}, handle={handle}, mode={mode}, offset={offset}, lenght={length}",
+            self.tag
+        );
+
         let data: Arc<dyn AsRawDescriptor> = if self.zero_message_open.load(Ordering::Relaxed) {
             let data = self.find_inode(inode)?;
 
@@ -2516,6 +2673,11 @@ impl FileSystem for PassthroughFs {
         out_size: u32,
         r: R,
     ) -> io::Result<IoctlReply> {
+        cros_tracing::trace_simple_print!(
+            "{}: ioctl: inode={inode}, handle={handle}, cmd={cmd}, in_size={in_size}, out_size={out_size}",
+            self.tag
+        );
+
         const GET_ENCRYPTION_POLICY_EX: u32 = FS_IOC_GET_ENCRYPTION_POLICY_EX() as u32;
         const GET_FSXATTR: u32 = FS_IOC_FSGETXATTR() as u32;
         const SET_FSXATTR: u32 = FS_IOC_FSSETXATTR() as u32;
@@ -2588,6 +2750,10 @@ impl FileSystem for PassthroughFs {
         length: u64,
         flags: u64,
     ) -> io::Result<usize> {
+        cros_tracing::trace_simple_print!(
+            "{}: copy_file_range: src=({inode_src}, {handle_src}, {offset_src}), dst=({inode_dst}, {handle_dst}, {offset_dst}), length={length}, flags={flags}",
+            self.tag
+        );
         // We need to change credentials during a write so that the kernel will remove setuid or
         // setgid bits from the file if it was written to by someone other than the owner.
         let (_uid, _gid) = set_creds(ctx.uid, ctx.gid)?;
@@ -2628,6 +2794,10 @@ impl FileSystem for PassthroughFs {
         prot: u32,
         mapper: M,
     ) -> io::Result<()> {
+        cros_tracing::trace_simple_print!(
+            "{}: set_up_mapping: inode={inode}, file_offset={file_offset}, mem_offset={mem_offset}, size={size}, prot={prot}",
+            self.tag
+        );
         if !self.cfg.use_dax {
             return Err(io::Error::from_raw_os_error(libc::ENOSYS));
         }
@@ -2673,6 +2843,7 @@ impl FileSystem for PassthroughFs {
     }
 
     fn remove_mapping<M: Mapper>(&self, msgs: &[RemoveMappingOne], mapper: M) -> io::Result<()> {
+        cros_tracing::trace_simple_print!("{}: remove_mapping: msgs={:?}", self.tag, msgs);
         if !self.cfg.use_dax {
             return Err(io::Error::from_raw_os_error(libc::ENOSYS));
         }
@@ -2695,7 +2866,7 @@ mod tests {
             ..Default::default()
         };
 
-        let p = PassthroughFs::new(cfg).expect("Failed to create PassthroughFs");
+        let p = PassthroughFs::new("tag", cfg).expect("Failed to create PassthroughFs");
 
         // Selinux shouldn't get overwritten.
         let selinux = unsafe { CStr::from_bytes_with_nul_unchecked(b"security.selinux\0") };
