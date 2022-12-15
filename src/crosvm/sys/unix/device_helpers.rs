@@ -970,9 +970,18 @@ pub fn create_video_device(
                 "size=67108864",
             )?;
 
-            #[cfg(feature = "libvda")]
-            // Render node for libvda.
-            if backend == VideoBackendType::Libvda || backend == VideoBackendType::LibvdaVd {
+            let need_drm_device = match backend {
+                #[cfg(any(feature = "libvda", feature = "libvda-stub"))]
+                VideoBackendType::Libvda => true,
+                #[cfg(any(feature = "libvda", feature = "libvda-stub"))]
+                VideoBackendType::LibvdaVd => true,
+                #[cfg(feature = "vaapi")]
+                VideoBackendType::Vaapi => true,
+                #[cfg(feature = "ffmpeg")]
+                VideoBackendType::Ffmpeg => false,
+            };
+
+            if need_drm_device {
                 // follow the implementation at:
                 // https://chromium.googlesource.com/chromiumos/platform/minigbm/+/c06cc9cccb3cf3c7f9d2aec706c27c34cd6162a0/cros_gralloc/cros_gralloc_driver.cc#90
                 const DRM_NUM_NODES: u32 = 63;
