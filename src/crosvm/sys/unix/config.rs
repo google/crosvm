@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -11,8 +10,8 @@ use devices::PciAddress;
 use devices::SerialParameters;
 use serde::Deserialize;
 use serde::Serialize;
+use serde_keyvalue::FromKeyValues;
 
-use crate::crosvm::config::invalid_value_err;
 use crate::crosvm::config::Config;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,106 +70,25 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
     Ok(())
 }
 
-#[derive(Serialize, Deserialize)]
 /// VFIO device structure for creating a new instance based on command line options.
-pub struct VfioCommand {
-    pub vfio_path: PathBuf,
-    pub params: BTreeMap<String, String>,
-}
+#[derive(Serialize, Deserialize, FromKeyValues)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct VfioOption {
+    /// Path to the VFIO device.
+    pub path: PathBuf,
 
-pub fn parse_vfio(s: &str) -> Result<VfioCommand, String> {
-    VfioCommand::new(s)
-}
+    /// IOMMU type to use for this VFIO device.
+    #[serde(default)]
+    pub iommu: IommuDevType,
 
-impl VfioCommand {
-    pub fn new(path: &str) -> Result<VfioCommand, String> {
-        let mut param = path.split(',');
-        let vfio_path = PathBuf::from(
-            param
-                .next()
-                .ok_or_else(|| invalid_value_err(path, "missing vfio path"))?,
-        );
+    /// PCI address to use for the VFIO device in the guest.
+    /// If not specified, defaults to mirroring the host PCI address.
+    pub guest_address: Option<PciAddress>,
 
-        if !vfio_path.exists() {
-            return Err(invalid_value_err(path, "the vfio path does not exist"));
-        }
-        if !vfio_path.is_dir() {
-            return Err(invalid_value_err(path, "the vfio path should be directory"));
-        }
-
-        let mut params = BTreeMap::new();
-        for p in param {
-            let mut kv = p.splitn(2, '=');
-            if let (Some(kind), Some(value)) = (kv.next(), kv.next()) {
-                Self::validate_params(kind, value)?;
-                params.insert(kind.to_owned(), value.to_owned());
-            };
-        }
-        Ok(VfioCommand { vfio_path, params })
-    }
-
-    fn validate_params(kind: &str, value: &str) -> Result<(), String> {
-        match kind {
-            "guest-address" => {
-                if value.eq_ignore_ascii_case("auto") || PciAddress::from_str(value).is_ok() {
-                    Ok(())
-                } else {
-                    Err(invalid_value_err(
-                        format!("{}={}", kind, value),
-                        "option must be `guest-address=auto|<BUS:DEVICE.FUNCTION>`",
-                    ))
-                }
-            }
-            "iommu" => {
-                if IommuDevType::from_str(value).is_ok() {
-                    Ok(())
-                } else {
-                    Err(invalid_value_err(
-                        format!("{}={}", kind, value),
-                        "option must be `iommu=viommu|coiommu|off`",
-                    ))
-                }
-            }
-            #[cfg(feature = "direct")]
-            "intel-lpss" => {
-                if value.parse::<bool>().is_ok() {
-                    Ok(())
-                } else {
-                    Err(invalid_value_err(
-                        format!("{}={}", kind, value),
-                        "option must be `intel-lpss=true|false`",
-                    ))
-                }
-            }
-            _ => Err(invalid_value_err(
-                format!("{}={}", kind, value),
-                "option must be `guest-address=<val>` and/or `iommu=<val>`",
-            )),
-        }
-    }
-
-    pub fn guest_address(&self) -> Option<PciAddress> {
-        self.params
-            .get("guest-address")
-            .and_then(|addr| PciAddress::from_str(addr).ok())
-    }
-
-    pub fn iommu_dev_type(&self) -> IommuDevType {
-        if let Some(iommu) = self.params.get("iommu") {
-            if let Ok(v) = IommuDevType::from_str(iommu) {
-                return v;
-            }
-        }
-        IommuDevType::NoIommu
-    }
-
+    /// Apply special handling for Intel LPSS devices.
     #[cfg(feature = "direct")]
-    pub fn is_intel_lpss(&self) -> bool {
-        if let Some(lpss) = self.params.get("intel-lpss") {
-            return lpss.parse::<bool>().unwrap_or(false);
-        }
-        false
-    }
+    #[serde(default)]
+    pub intel_lpss: bool,
 }
 
 #[cfg(test)]
@@ -425,5 +343,94 @@ mod tests {
             config.virtio_switches.pop().unwrap(),
             PathBuf::from("/dev/switches-test")
         );
+    }
+
+    #[test]
+    fn vfio_pci_path() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &["--vfio", "/path/to/dev", "/dev/null"],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        let vfio = config.vfio.first().unwrap();
+
+        assert_eq!(vfio.path, PathBuf::from("/path/to/dev"));
+        assert_eq!(vfio.iommu, IommuDevType::NoIommu);
+        assert_eq!(vfio.guest_address, None);
+    }
+
+    #[test]
+    fn vfio_pci_path_coiommu() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &["--vfio", "/path/to/dev,iommu=coiommu", "/dev/null"],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        let vfio = config.vfio.first().unwrap();
+
+        assert_eq!(vfio.path, PathBuf::from("/path/to/dev"));
+        assert_eq!(vfio.iommu, IommuDevType::CoIommu);
+        assert_eq!(vfio.guest_address, None);
+    }
+
+    #[test]
+    fn vfio_pci_path_viommu_guest_address() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &[
+                "--vfio",
+                "/path/to/dev,iommu=viommu,guest-address=42:15.4",
+                "/dev/null",
+            ],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        let vfio = config.vfio.first().unwrap();
+
+        assert_eq!(vfio.path, PathBuf::from("/path/to/dev"));
+        assert_eq!(vfio.iommu, IommuDevType::VirtioIommu);
+        assert_eq!(
+            vfio.guest_address,
+            Some(PciAddress::new(0, 0x42, 0x15, 4).unwrap())
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "direct")]
+    fn vfio_pci_intel_lpss() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &["--vfio", "/path/to/dev,intel-lpss=true", "/dev/null"],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        let vfio = config.vfio.first().unwrap();
+
+        assert_eq!(vfio.intel_lpss, true);
+    }
+
+    #[test]
+    fn vfio_platform() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &["--vfio-platform", "/path/to/dev", "/dev/null"],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        let vfio = config.vfio.first().unwrap();
+
+        assert_eq!(vfio.path, PathBuf::from("/path/to/dev"));
     }
 }

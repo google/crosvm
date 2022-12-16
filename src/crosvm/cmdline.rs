@@ -9,8 +9,7 @@ cfg_if::cfg_if! {
         use base::RawDescriptor;
         use devices::virtio::vhost::user::device::parse_wayland_sock;
 
-        use super::sys::config::VfioCommand;
-        use super::sys::config::parse_vfio;
+        use super::sys::config::VfioOption;
         use super::config::SharedDir;
     } else if #[cfg(windows)] {
         use crate::crosvm::sys::config::IrqChipKind;
@@ -1950,20 +1949,19 @@ pub struct RunCommand {
     #[cfg(unix)]
     #[argh(
         option,
-        arg_name = "PATH[,guest-address=auto|<BUS:DEVICE.FUNCTION>][,iommu=on|off]",
-        from_str_fn(parse_vfio)
+        arg_name = "PATH[,guest-address=<BUS:DEVICE.FUNCTION>][,iommu=viommu|coiommu|off]"
     )]
-    #[serde(skip)] // TODO(b/255223604)
+    #[serde(default)]
     #[merge(strategy = append)]
     /// path to sysfs of VFIO device.
-    ///     guest-address=auto|<BUS:DEVICE.FUNCTION> - PCI address
-    ///        that the device will be assigned in the guest
-    ///        (default: auto).  When set to "auto", the device will
-    ///        be assigned an address that mirrors its address in
-    ///        the host. Only valid for PCI devices.
-    ///     iommu=on|off - indicates whether to enable virtio IOMMU
-    ///        for this device
-    pub vfio: Vec<VfioCommand>,
+    ///     guest-address=<BUS:DEVICE.FUNCTION> - PCI address
+    ///        that the device will be assigned in the guest.
+    ///        If not specified, the device will be assigned an
+    ///        address that mirrors its address in the host.
+    ///        Only valid for PCI devices.
+    ///     iommu=viommu|coiommu|off - indicates which type of IOMMU
+    ///        to use for this device.
+    pub vfio: Vec<VfioOption>,
 
     #[cfg(unix)]
     #[argh(switch)]
@@ -1973,11 +1971,11 @@ pub struct RunCommand {
     pub vfio_isolate_hotplug: bool,
 
     #[cfg(unix)]
-    #[argh(option, arg_name = "PATH", from_str_fn(parse_vfio))]
+    #[argh(option, arg_name = "PATH")]
     #[serde(skip)] // Deprecated - use `vfio` instead.
     #[merge(strategy = append)]
     /// path to sysfs of platform pass through
-    pub vfio_platform: Vec<VfioCommand>,
+    pub vfio_platform: Vec<VfioOption>,
 
     #[argh(switch)]
     #[serde(skip)] // TODO(b/255223604)

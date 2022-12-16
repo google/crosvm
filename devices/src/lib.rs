@@ -192,29 +192,19 @@ pub enum UnpinResponse {
     Failed,
 }
 
-#[derive(Debug)]
-pub enum ParseIommuDevTypeResult {
-    NoSuchType,
-}
-
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub enum IommuDevType {
+    #[serde(rename = "off")]
     NoIommu,
+    #[serde(rename = "viommu")]
     VirtioIommu,
+    #[serde(rename = "coiommu")]
     CoIommu,
 }
 
-use std::str::FromStr;
-impl FromStr for IommuDevType {
-    type Err = ParseIommuDevTypeResult;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "off" => Ok(IommuDevType::NoIommu),
-            "viommu" => Ok(IommuDevType::VirtioIommu),
-            "coiommu" => Ok(IommuDevType::CoIommu),
-            _ => Err(ParseIommuDevTypeResult::NoSuchType),
-        }
+impl Default for IommuDevType {
+    fn default() -> Self {
+        IommuDevType::NoIommu
     }
 }
 

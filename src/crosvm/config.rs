@@ -1194,7 +1194,7 @@ pub struct Config {
     pub vcpu_cgroup_path: Option<PathBuf>,
     pub vcpu_count: Option<usize>,
     #[cfg(unix)]
-    pub vfio: Vec<super::sys::config::VfioCommand>,
+    pub vfio: Vec<super::sys::config::VfioOption>,
     #[cfg(unix)]
     pub vfio_isolate_hotplug: bool,
     pub vhost_net: bool,

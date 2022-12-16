@@ -712,14 +712,14 @@ fn create_devices(
                 vm,
                 resources,
                 control_tubes,
-                &vfio_dev.vfio_path,
+                &vfio_dev.path,
                 false,
                 None,
-                vfio_dev.guest_address(),
+                vfio_dev.guest_address,
                 Some(&mut coiommu_attached_endpoints),
-                vfio_dev.iommu_dev_type(),
+                vfio_dev.iommu,
                 #[cfg(feature = "direct")]
-                vfio_dev.is_intel_lpss(),
+                vfio_dev.intel_lpss,
             )?;
             match dev {
                 VfioDeviceVariant::Pci(vfio_pci_device) => {
