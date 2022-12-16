@@ -464,8 +464,10 @@ impl Bus {
                     match device_data {
                         Some(dev_dq) => {
                             match dev_dq.pop_front() {
-                                Some(dev_data) => (*device_lock).restore(&dev_data).context("device failed to restore snapshot")?,
-                                None => {},
+                                Some(dev_data) => {
+                                    (*device_lock).restore(&dev_data).context("device failed to restore snapshot")?;
+                                }
+                                None => base::info!("no data found in snapshot for {}", (&device_lock).debug_label()),
                             }
                         },
                         None => base::info!("device {} does not have stored data in the snapshot. Device data will not change.", (*device_lock).debug_label()),
@@ -477,8 +479,10 @@ impl Bus {
                     match device_data {
                         Some(dev_dq) => {
                             match dev_dq.pop_front() {
-                                Some(dev_data) => (**dev).restore_sync(&dev_data).context("device failed to restore snapshot")?,
-                                None => {},
+                                Some(dev_data) => {
+                                    (**dev).restore_sync(&dev_data).context("device failed to restore snapshot")?;
+                                }
+                                None => base::info!("no data found in snapshot for {}", (**dev).debug_label()),
                             }
                         },
                         None => base::info!("device {} does not have stored data in the snapshot. Device data will not change.", dev.debug_label()),
