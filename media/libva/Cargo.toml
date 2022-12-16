@@ -8,7 +8,6 @@ edition = "2021"
 anyhow = "*"
 bitflags = "1"
 base = { path = "../../base" }
-libudev = "0.2.0"
 crc32fast = "1.2.1"
 
 [build-dependencies]

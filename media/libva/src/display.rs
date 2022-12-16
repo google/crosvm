@@ -4,6 +4,8 @@
 
 use std::ffi::CStr;
 use std::fs::File;
+use std::path::Path;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use anyhow::anyhow;
@@ -17,6 +19,46 @@ use crate::context::Context;
 use crate::status::Status;
 use crate::surface::Surface;
 use crate::UsageHint;
+
+/// Iterates over existing DRM devices.
+///
+/// DRM devices can be passed to [`Display::open_drm_display`] in order to create a `Display` on
+/// that device.
+pub struct DrmDeviceIterator {
+    cur_idx: usize,
+}
+
+const DRM_NODE_DEFAULT_PREFIX: &str = "/dev/dri/renderD";
+const DRM_NUM_NODES: usize = 64;
+const DRM_RENDER_NODE_START: usize = 128;
+
+impl DrmDeviceIterator {
+    /// Create a new iterator over DRM render nodes on the system.
+    pub fn new() -> Self {
+        Self {
+            cur_idx: DRM_RENDER_NODE_START,
+        }
+    }
+}
+
+impl Iterator for DrmDeviceIterator {
+    type Item = PathBuf;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.cur_idx {
+            idx if idx >= DRM_RENDER_NODE_START + DRM_NUM_NODES => None,
+            idx => {
+                let path = PathBuf::from(format!("{}{}", DRM_NODE_DEFAULT_PREFIX, idx));
+                if !path.exists() {
+                    None
+                } else {
+                    self.cur_idx += 1;
+                    Some(path)
+                }
+            }
+        }
+    }
+}
 
 /// A VADisplay opened over DRM.
 ///
@@ -36,12 +78,26 @@ pub struct Display {
 }
 
 impl Display {
-    /// Opens and initializes a `Display`.
-    pub fn open() -> Result<Rc<Self>> {
-        let (display, drm_file) = match Display::drm_open()? {
-            Some(x) => x,
-            None => return Err(anyhow!("Couldn't open a suitable DRM file descriptor")),
-        };
+    /// Opens and initializes a specific DRM `Display`.
+    ///
+    /// `path` is the path to a DRM device that supports VAAPI, e.g. `/dev/dri/renderD128`.
+    pub fn open_drm_display<P: AsRef<Path>>(path: P) -> Result<Rc<Self>> {
+        let file = std::fs::File::options()
+            .read(true)
+            .write(true)
+            .open(path.as_ref())
+            .context(format!("failed to open {}", path.as_ref().display()))?;
+
+        // Safe because fd represents a valid file descriptor and the pointer is checked for
+        // NULL afterwards.
+        let display = unsafe { bindings::vaGetDisplayDRM(file.as_raw_descriptor()) };
+        if display.is_null() {
+            // The File will close the DRM fd on drop.
+            return Err(anyhow!(
+                "failed to obtain VA display from DRM device {}",
+                path.as_ref().display()
+            ));
+        }
 
         let mut major = 0i32;
         let mut minor = 0i32;
@@ -51,57 +107,25 @@ impl Display {
 
         Ok(Rc::new(Self {
             handle: display,
-            drm_file,
+            drm_file: file,
         }))
     }
 
-    /// Tries to open a display using DRM and return the opened `VADisplay` and opened file of the
-    /// DRM device node.
+    /// Opens the first device that succeeds and returns its `Display`.
     ///
-    /// Returns an error if a DRM device was found but could not be opened. `Ok(None)` is returned
-    /// if no DRM device could be found.
-    fn drm_open() -> Result<Option<(bindings::VADisplay, File)>> {
-        let udev_context = libudev::Context::new()?;
-        let mut enumerator = libudev::Enumerator::new(&udev_context)?;
+    /// If an error occurs on a given device, it is ignored and the next one is tried until one
+    /// succeeds or we reach the end of the iterator.
+    pub fn open() -> Option<Rc<Self>> {
+        let devices = DrmDeviceIterator::new();
 
-        enumerator
-            .match_subsystem("drm")
-            .context("udev error when matching DRM devices")?;
-
-        for device in enumerator.scan_devices()? {
-            let path = device
-                .devnode()
-                .and_then(|f| f.file_name())
-                .and_then(|f| f.to_str());
-
-            match path {
-                Some(name) => {
-                    if !name.contains("renderD") {
-                        continue;
-                    }
-                }
-                None => continue,
+        // Try all the DRM devices until one succeeds.
+        for device in devices {
+            if let Ok(display) = Self::open_drm_display(device) {
+                return Some(display);
             }
-
-            let file = std::fs::File::options()
-                .read(true)
-                .write(true)
-                .open(device.devnode().unwrap())?;
-            let fd = file.as_raw_descriptor();
-
-            // Safe because fd represents a valid file descriptor and the pointer is checked for
-            // NULL afterwards.
-            let display = unsafe { bindings::vaGetDisplayDRM(fd) };
-
-            if display.is_null() {
-                // The File will close the DRM fd on drop.
-                return Err(anyhow!("va_open_display() failed"));
-            }
-
-            return Ok(Some((display, file)));
         }
 
-        Ok(None)
+        None
     }
 
     /// Returns the handle of this display.
