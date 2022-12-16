@@ -58,11 +58,11 @@ impl BusDevice for I8042Device {
 }
 
 impl Suspendable for I8042Device {
-    fn snapshot(&self) -> anyhow::Result<String> {
-        Ok("".to_string())
+    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        Ok(serde_json::Value::Object(serde_json::Map::new()))
     }
 
-    fn restore(&mut self, _data: &str) -> anyhow::Result<()> {
+    fn restore(&mut self, _data: serde_json::Value) -> anyhow::Result<()> {
         Ok(())
     }
 

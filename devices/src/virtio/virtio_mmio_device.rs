@@ -502,11 +502,11 @@ impl Suspendable for VirtioMmioDevice {
         self.device.wake()
     }
 
-    fn snapshot(&self) -> anyhow::Result<String> {
+    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
         self.device.snapshot()
     }
 
-    fn restore(&mut self, data: &str) -> anyhow::Result<()> {
+    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
         self.device.restore(data)
     }
 }

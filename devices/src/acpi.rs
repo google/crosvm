@@ -243,15 +243,15 @@ impl ACPIPMResource {
 }
 
 impl Suspendable for ACPIPMResource {
-    fn snapshot(&self) -> anyhow::Result<String> {
+    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
         let snap_ready_acpi = ACPIPMResrourceSnapshot::new(self.pm1.clone(), self.gpe0.clone());
-        let serialized = serde_json::to_string(&snap_ready_acpi).context("error serializing")?;
+        let serialized = serde_json::to_value(&snap_ready_acpi).context("error serializing")?;
         Ok(serialized)
     }
 
-    fn restore(&mut self, data: &str) -> anyhow::Result<()> {
+    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
         let acpi_snapshot: ACPIPMResrourceSnapshot =
-            serde_json::from_str(data).context("error deserializing")?;
+            serde_json::from_value(data).context("error deserializing")?;
         self.pm1 = Arc::new(Mutex::new(acpi_snapshot.pm1));
         self.gpe0 = Arc::new(Mutex::new(acpi_snapshot.gpe0));
         Ok(())

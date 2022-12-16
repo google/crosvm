@@ -488,7 +488,7 @@ struct SerialSnapshot {
 }
 
 impl Suspendable for Serial {
-    fn snapshot(&self) -> anyhow::Result<String> {
+    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
         let snap = SerialSnapshot {
             interrupt_enable: self.interrupt_enable.load(Ordering::SeqCst),
             interrupt_identification: self.interrupt_identification,
@@ -503,13 +503,13 @@ impl Suspendable for Serial {
             has_output: self.out.is_some(),
         };
 
-        let serialized = serde_json::to_string(&snap).context("error serializing")?;
+        let serialized = serde_json::to_value(&snap).context("error serializing")?;
         Ok(serialized)
     }
 
-    fn restore(&mut self, data: &str) -> anyhow::Result<()> {
+    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
         let serial_snapshot: SerialSnapshot =
-            serde_json::from_str(data).context("error deserializing")?;
+            serde_json::from_value(data).context("error deserializing")?;
         self.interrupt_enable = Arc::new(AtomicU8::new(serial_snapshot.interrupt_enable));
         self.interrupt_identification = serial_snapshot.interrupt_identification;
         self.line_control = serial_snapshot.line_control;
@@ -700,7 +700,7 @@ mod tests {
         let snap_res = serial.snapshot();
         match snap_res {
             Ok(snap) => {
-                let restore_res = serial.restore(&snap);
+                let restore_res = serial.restore(snap);
                 match restore_res {
                     Ok(_rest) => (),
                     Err(e) => println!("{}", e),
@@ -742,19 +742,12 @@ mod tests {
         serial.read(serial_bus_address(DATA), &mut data[..]);
         assert_eq!(data[0], b'a');
         // Take snapshot after reading b'a'. Serial still contains b'b' and b'c'.
-        let snap_res = serial.snapshot();
-        let snap = match snap_res {
-            Ok(res) => res,
-            Err(e) => {
-                println!("Error snapshotting: {}", e);
-                "Error".to_string()
-            }
-        };
+        let snap = serial.snapshot().expect("failed to snapshot serial");
         serial.read(serial_bus_address(DATA), &mut data[..]);
         assert_eq!(data[0], b'b');
         // Restore snapshot taken after reading b'a'. New reading should give us b'b' since it was
         // the saved state at the moment of taking a snapshot.
-        let restore_res = serial.restore(&snap);
+        let restore_res = serial.restore(snap);
         match restore_res {
             Ok(()) => (),
             Err(e) => println!("Error: {}", e),
@@ -788,14 +781,7 @@ mod tests {
         serial.read(serial_bus_address(DATA), &mut data[..]);
         assert_eq!(data[0], b'a');
         // Take snapshot after reading b'a'. Serial still contains b'b' and b'c'.
-        let snap_res = serial.snapshot();
-        let snap = match snap_res {
-            Ok(res) => res,
-            Err(e) => {
-                println!("Error snapshotting: {}", e);
-                "Error".to_string()
-            }
-        };
+        let snap = serial.snapshot().expect("failed to snapshot serial");
         serial.clear_in_buffer();
         serial.queue_input_bytes(&[b'a', b'b', b'c']).unwrap();
         serial.read(serial_bus_address(DATA), &mut data[..]);
@@ -806,7 +792,7 @@ mod tests {
         assert_eq!(data[0], b'c');
         // Restore snapshot taken after reading b'a'. New reading should give us b'b' since it was
         // the saved state at the moment of taking a snapshot.
-        let restore_res = serial.restore(&snap);
+        let restore_res = serial.restore(snap);
         match restore_res {
             Ok(()) => (),
             Err(e) => println!("Error: {}", e),

@@ -73,7 +73,6 @@ pub use self::bus::BusType;
 pub use self::bus::Error as BusError;
 pub use self::bus::HostHotPlugKey;
 pub use self::bus::HotPlugBus;
-use self::bus::SerializedDevice;
 #[cfg(feature = "stats")]
 pub use self::bus_stats::BusStatistics;
 pub use self::cmos::Cmos;
@@ -270,7 +269,7 @@ fn wake_devices(bus: &Bus) {
     }
 }
 
-fn snapshot_devices(bus: &Bus, devices_vec: &mut Vec<SerializedDevice>) -> anyhow::Result<()> {
+fn snapshot_devices(bus: &Bus, devices_vec: &mut Vec<serde_json::Value>) -> anyhow::Result<()> {
     match bus.snapshot_devices(devices_vec) {
         Ok(_) => {
             info!("Devices snapshot successfully");
@@ -286,7 +285,7 @@ fn snapshot_devices(bus: &Bus, devices_vec: &mut Vec<SerializedDevice>) -> anyho
 
 fn restore_devices(
     bus: &Bus,
-    devices_map: &mut HashMap<u32, VecDeque<String>>,
+    devices_map: &mut HashMap<u32, VecDeque<serde_json::Value>>,
 ) -> anyhow::Result<()> {
     match bus.restore_devices(devices_map) {
         Ok(_) => {
@@ -313,7 +312,7 @@ async fn handle_command_tube(
                     DeviceControlCommand::SnapshotDevices {
                         snapshot_path: path,
                     } => {
-                        let mut devices_vec: Vec<SerializedDevice> = Vec::new();
+                        let mut devices_vec: Vec<serde_json::Value> = Vec::new();
                         let file_res = OpenOptions::new()
                             .create(true)
                             .write(true)
@@ -412,19 +411,21 @@ async fn handle_command_tube(
                                 continue;
                             }
                         };
-                        let mut devices_map: HashMap<u32, VecDeque<String>> = HashMap::new();
+                        let mut devices_map: HashMap<u32, VecDeque<serde_json::Value>> =
+                            HashMap::new();
                         let res = serde_json::from_reader(file);
-                        let deserialized_list: Vec<SerializedDevice> = match res {
+                        let deserialized_list: Vec<serde_json::Value> = match res {
                             Err(e) => {
                                 error!("failed to deserialize devices list: {}", e);
                                 continue;
                             }
                             Ok(list) => list,
                         };
-                        for deserialized_device in deserialized_list {
-                            let device_id = deserialized_device.device_id;
-                            let device = deserialized_device.serialized_device;
-                            devices_map.entry(device_id).or_default().push_back(device);
+                        for map in deserialized_list.iter().filter_map(|d| d.as_object()) {
+                            map.iter().for_each(|(id, device)| {
+                                let id: u32 = id.parse::<u32>().expect("failed to reach device id");
+                                devices_map.entry(id).or_default().push_back(device.clone())
+                            });
                         }
                         let buses = [&io_bus, &mmio_bus];
                         for bus in &buses {
