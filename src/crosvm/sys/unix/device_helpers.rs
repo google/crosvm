@@ -53,6 +53,7 @@ use devices::PciDevice;
 #[cfg(feature = "tpm")]
 use devices::SoftwareTpm;
 use devices::VfioDevice;
+use devices::VfioDeviceType;
 use devices::VfioPciDevice;
 use devices::VfioPlatformDevice;
 #[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
@@ -1401,6 +1402,11 @@ pub fn create_sound_device(
     })
 }
 
+pub enum VfioDeviceVariant {
+    Pci(VfioPciDevice),
+    Platform(VfioPlatformDevice),
+}
+
 pub fn create_vfio_device(
     jail_config: &Option<JailConfig>,
     vm: &impl Vm,
@@ -1413,18 +1419,9 @@ pub fn create_vfio_device(
     coiommu_endpoints: Option<&mut Vec<u16>>,
     iommu_dev: IommuDevType,
     #[cfg(feature = "direct")] is_intel_lpss: bool,
-) -> DeviceResult<(Box<VfioPciDevice>, Option<Minijail>, Option<VfioWrapper>)> {
+) -> DeviceResult<(VfioDeviceVariant, Option<Minijail>, Option<VfioWrapper>)> {
     let vfio_container = VfioCommonSetup::vfio_get_container(iommu_dev, Some(vfio_path))
         .context("failed to get vfio container")?;
-
-    // create MSI, MSI-X, and Mem request sockets for each vfio device
-    let (vfio_host_tube_msi, vfio_device_tube_msi) =
-        Tube::pair().context("failed to create tube")?;
-    control_tubes.push(TaggedControlTube::VmIrq(vfio_host_tube_msi));
-
-    let (vfio_host_tube_msix, vfio_device_tube_msix) =
-        Tube::pair().context("failed to create tube")?;
-    control_tubes.push(TaggedControlTube::VmIrq(vfio_host_tube_msix));
 
     let (vfio_host_tube_mem, vfio_device_tube_mem) =
         Tube::pair().context("failed to create tube")?;
@@ -1448,83 +1445,79 @@ pub fn create_vfio_device(
         iommu_dev != IommuDevType::NoIommu,
     )
     .context("failed to create vfio device")?;
-    let mut vfio_pci_device = Box::new(VfioPciDevice::new(
-        #[cfg(feature = "direct")]
-        vfio_path,
-        vfio_device,
-        hotplug,
-        hotplug_bus,
-        guest_address,
-        vfio_device_tube_msi,
-        vfio_device_tube_msix,
-        vfio_device_tube_mem,
-        vfio_device_tube_vm,
-        #[cfg(feature = "direct")]
-        is_intel_lpss,
-    )?);
-    // early reservation for pass-through PCI devices.
-    let endpoint_addr = vfio_pci_device
-        .allocate_address(resources)
-        .context("failed to allocate resources early for vfio pci dev")?;
 
-    let viommu_mapper = match iommu_dev {
-        IommuDevType::NoIommu => None,
-        IommuDevType::VirtioIommu => {
-            Some(VfioWrapper::new(vfio_container, vm.get_memory().clone()))
-        }
-        IommuDevType::CoIommu => {
-            if let Some(endpoints) = coiommu_endpoints {
-                endpoints.push(endpoint_addr.to_u32() as u16);
+    match vfio_device.device_type() {
+        VfioDeviceType::Pci => {
+            let (vfio_host_tube_msi, vfio_device_tube_msi) =
+                Tube::pair().context("failed to create tube")?;
+            control_tubes.push(TaggedControlTube::VmIrq(vfio_host_tube_msi));
+
+            let (vfio_host_tube_msix, vfio_device_tube_msix) =
+                Tube::pair().context("failed to create tube")?;
+            control_tubes.push(TaggedControlTube::VmIrq(vfio_host_tube_msix));
+
+            let mut vfio_pci_device = VfioPciDevice::new(
+                #[cfg(feature = "direct")]
+                vfio_path,
+                vfio_device,
+                hotplug,
+                hotplug_bus,
+                guest_address,
+                vfio_device_tube_msi,
+                vfio_device_tube_msix,
+                vfio_device_tube_mem,
+                vfio_device_tube_vm,
+                #[cfg(feature = "direct")]
+                is_intel_lpss,
+            )?;
+            // early reservation for pass-through PCI devices.
+            let endpoint_addr = vfio_pci_device
+                .allocate_address(resources)
+                .context("failed to allocate resources early for vfio pci dev")?;
+
+            let viommu_mapper = match iommu_dev {
+                IommuDevType::NoIommu => None,
+                IommuDevType::VirtioIommu => {
+                    Some(VfioWrapper::new(vfio_container, vm.get_memory().clone()))
+                }
+                IommuDevType::CoIommu => {
+                    if let Some(endpoints) = coiommu_endpoints {
+                        endpoints.push(endpoint_addr.to_u32() as u16);
+                    } else {
+                        bail!("Missed coiommu_endpoints vector to store the endpoint addr");
+                    }
+                    None
+                }
+            };
+
+            if hotplug {
+                Ok((VfioDeviceVariant::Pci(vfio_pci_device), None, viommu_mapper))
             } else {
-                bail!("Missed coiommu_endpoints vector to store the endpoint addr");
+                Ok((
+                    VfioDeviceVariant::Pci(vfio_pci_device),
+                    simple_jail(jail_config, "vfio_device")?,
+                    viommu_mapper,
+                ))
             }
-            None
         }
-    };
+        VfioDeviceType::Platform => {
+            if guest_address.is_some() {
+                bail!("guest-address is not supported for VFIO platform devices");
+            }
 
-    if hotplug {
-        Ok((vfio_pci_device, None, viommu_mapper))
-    } else {
-        Ok((
-            vfio_pci_device,
-            simple_jail(jail_config, "vfio_device")?,
-            viommu_mapper,
-        ))
+            if hotplug {
+                bail!("hotplug is not supported for VFIO platform devices");
+            }
+
+            let vfio_plat_dev = VfioPlatformDevice::new(vfio_device, vfio_device_tube_mem);
+
+            Ok((
+                VfioDeviceVariant::Platform(vfio_plat_dev),
+                simple_jail(jail_config, "vfio_platform_device")?,
+                None,
+            ))
+        }
     }
-}
-
-pub fn create_vfio_platform_device(
-    jail_config: &Option<JailConfig>,
-    vm: &impl Vm,
-    _resources: &mut SystemAllocator,
-    control_tubes: &mut Vec<TaggedControlTube>,
-    vfio_path: &Path,
-    _endpoints: &mut BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
-    iommu_dev: IommuDevType,
-) -> DeviceResult<(VfioPlatformDevice, Option<Minijail>)> {
-    let vfio_container = VfioCommonSetup::vfio_get_container(iommu_dev, Some(vfio_path))
-        .context("Failed to create vfio device")?;
-
-    let (vfio_host_tube_mem, vfio_device_tube_mem) =
-        Tube::pair().context("failed to create tube")?;
-    control_tubes.push(TaggedControlTube::VmMemory {
-        tube: vfio_host_tube_mem,
-        expose_with_viommu: false,
-    });
-
-    let vfio_device = VfioDevice::new_passthrough(
-        &vfio_path,
-        vm,
-        vfio_container,
-        iommu_dev != IommuDevType::NoIommu,
-    )
-    .context("Failed to create vfio device")?;
-    let vfio_plat_dev = VfioPlatformDevice::new(vfio_device, vfio_device_tube_mem);
-
-    Ok((
-        vfio_plat_dev,
-        simple_jail(jail_config, "vfio_platform_device")?,
-    ))
 }
 
 /// Setup for devices with virtio-iommu

@@ -159,7 +159,9 @@ cfg_if::cfg_if! {
         pub use self::usb::host_backend::host_backend_device_provider::HostBackendDeviceProvider;
         #[cfg(feature = "usb")]
         pub use self::usb::xhci::xhci_controller::XhciController;
-        pub use self::vfio::{VfioContainer, VfioDevice};
+        pub use self::vfio::VfioContainer;
+        pub use self::vfio::VfioDevice;
+        pub use self::vfio::VfioDeviceType;
         pub use self::virtio::vfio_wrapper;
 
     } else if #[cfg(windows)] {

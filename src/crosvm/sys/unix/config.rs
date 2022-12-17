@@ -71,44 +71,19 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
     Ok(())
 }
 
-/// Vfio device type, recognized based on command line option.
-#[derive(Eq, PartialEq, Clone, Copy, Serialize, Deserialize)]
-pub enum VfioType {
-    Pci,
-    Platform,
-}
-
-impl FromStr for VfioType {
-    type Err = &'static str;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        use VfioType::*;
-        match s {
-            "vfio" => Ok(Pci),
-            "vfio-platform" => Ok(Platform),
-            _ => Err("invalid vfio device type, must be 'vfio|vfio-platform'"),
-        }
-    }
-}
-
 #[derive(Serialize, Deserialize)]
 /// VFIO device structure for creating a new instance based on command line options.
 pub struct VfioCommand {
     pub vfio_path: PathBuf,
-    pub dev_type: VfioType,
     pub params: BTreeMap<String, String>,
 }
 
 pub fn parse_vfio(s: &str) -> Result<VfioCommand, String> {
-    VfioCommand::new(VfioType::Pci, s)
-}
-
-pub fn parse_vfio_platform(s: &str) -> Result<VfioCommand, String> {
-    VfioCommand::new(VfioType::Platform, s)
+    VfioCommand::new(s)
 }
 
 impl VfioCommand {
-    pub fn new(dev_type: VfioType, path: &str) -> Result<VfioCommand, String> {
+    pub fn new(path: &str) -> Result<VfioCommand, String> {
         let mut param = path.split(',');
         let vfio_path = PathBuf::from(
             param
@@ -131,11 +106,7 @@ impl VfioCommand {
                 params.insert(kind.to_owned(), value.to_owned());
             };
         }
-        Ok(VfioCommand {
-            vfio_path,
-            params,
-            dev_type,
-        })
+        Ok(VfioCommand { vfio_path, params })
     }
 
     fn validate_params(kind: &str, value: &str) -> Result<(), String> {
@@ -176,10 +147,6 @@ impl VfioCommand {
                 "option must be `guest-address=<val>` and/or `iommu=<val>`",
             )),
         }
-    }
-
-    pub fn get_type(&self) -> VfioType {
-        self.dev_type
     }
 
     pub fn guest_address(&self) -> Option<PciAddress> {

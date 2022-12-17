@@ -178,7 +178,6 @@ use crate::crosvm::gdb::GdbStub;
 #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
 use crate::crosvm::ratelimit::Ratelimit;
 use crate::crosvm::sys::cmdline::DevicesCommand;
-use crate::crosvm::sys::config::VfioType;
 
 fn create_virtio_devices(
     cfg: &Config,
@@ -707,18 +706,13 @@ fn create_devices(
     if !cfg.vfio.is_empty() {
         let mut coiommu_attached_endpoints = Vec::new();
 
-        for vfio_dev in cfg
-            .vfio
-            .iter()
-            .filter(|dev| dev.get_type() == VfioType::Pci)
-        {
-            let vfio_path = &vfio_dev.vfio_path;
-            let (vfio_pci_device, jail, viommu_mapper) = create_vfio_device(
+        for vfio_dev in &cfg.vfio {
+            let (dev, jail, viommu_mapper) = create_vfio_device(
                 &cfg.jail_config,
                 vm,
                 resources,
                 control_tubes,
-                vfio_path.as_path(),
+                &vfio_dev.vfio_path,
                 false,
                 None,
                 vfio_dev.guest_address(),
@@ -727,42 +721,29 @@ fn create_devices(
                 #[cfg(feature = "direct")]
                 vfio_dev.is_intel_lpss(),
             )?;
+            match dev {
+                VfioDeviceVariant::Pci(vfio_pci_device) => {
+                    *iova_max_addr = Some(max(
+                        vfio_pci_device.get_max_iova(),
+                        iova_max_addr.unwrap_or(0),
+                    ));
 
-            *iova_max_addr = Some(max(
-                vfio_pci_device.get_max_iova(),
-                iova_max_addr.unwrap_or(0),
-            ));
+                    if let Some(viommu_mapper) = viommu_mapper {
+                        iommu_attached_endpoints.insert(
+                            vfio_pci_device
+                                .pci_address()
+                                .context("not initialized")?
+                                .to_u32(),
+                            Arc::new(Mutex::new(Box::new(viommu_mapper))),
+                        );
+                    }
 
-            if let Some(viommu_mapper) = viommu_mapper {
-                iommu_attached_endpoints.insert(
-                    vfio_pci_device
-                        .pci_address()
-                        .context("not initialized")?
-                        .to_u32(),
-                    Arc::new(Mutex::new(Box::new(viommu_mapper))),
-                );
+                    devices.push((Box::new(vfio_pci_device), jail));
+                }
+                VfioDeviceVariant::Platform(vfio_plat_dev) => {
+                    devices.push((Box::new(vfio_plat_dev), jail));
+                }
             }
-
-            devices.push((vfio_pci_device, jail));
-        }
-
-        for vfio_dev in cfg
-            .vfio
-            .iter()
-            .filter(|dev| dev.get_type() == VfioType::Platform)
-        {
-            let vfio_path = &vfio_dev.vfio_path;
-            let (vfio_plat_dev, jail) = create_vfio_platform_device(
-                &cfg.jail_config,
-                vm,
-                resources,
-                control_tubes,
-                vfio_path.as_path(),
-                iommu_attached_endpoints,
-                IommuDevType::NoIommu, // Virtio IOMMU is not supported yet
-            )?;
-
-            devices.push((Box::new(vfio_plat_dev), jail));
         }
 
         if !coiommu_attached_endpoints.is_empty() || !iommu_attached_endpoints.is_empty() {
@@ -2006,7 +1987,7 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
         }
         HotPlugDeviceType::EndPoint => {
             let host_key = HostHotPlugKey::Vfio { host_addr };
-            let (vfio_pci_device, jail, viommu_mapper) = create_vfio_device(
+            let (vfio_device, jail, viommu_mapper) = create_vfio_device(
                 &cfg.jail_config,
                 &linux.vm,
                 sys_allocator,
@@ -2024,6 +2005,10 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
                 #[cfg(feature = "direct")]
                 false,
             )?;
+            let vfio_pci_device = match vfio_device {
+                VfioDeviceVariant::Pci(pci) => Box::new(pci),
+                VfioDeviceVariant::Platform(_) => bail!("vfio platform hotplug not supported"),
+            };
             let pci_address = Arch::register_pci_device(
                 linux,
                 vfio_pci_device,

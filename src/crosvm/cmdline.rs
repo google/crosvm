@@ -9,9 +9,8 @@ cfg_if::cfg_if! {
         use base::RawDescriptor;
         use devices::virtio::vhost::user::device::parse_wayland_sock;
 
-        use super::sys::config::{
-            VfioCommand, parse_vfio, parse_vfio_platform,
-        };
+        use super::sys::config::VfioCommand;
+        use super::sys::config::parse_vfio;
         use super::config::SharedDir;
     } else if #[cfg(windows)] {
         use crate::crosvm::sys::config::IrqChipKind;
@@ -1956,12 +1955,12 @@ pub struct RunCommand {
     )]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = append)]
-    /// path to sysfs of PCI pass through or mdev device.
+    /// path to sysfs of VFIO device.
     ///     guest-address=auto|<BUS:DEVICE.FUNCTION> - PCI address
     ///        that the device will be assigned in the guest
     ///        (default: auto).  When set to "auto", the device will
     ///        be assigned an address that mirrors its address in
-    ///        the host.
+    ///        the host. Only valid for PCI devices.
     ///     iommu=on|off - indicates whether to enable virtio IOMMU
     ///        for this device
     pub vfio: Vec<VfioCommand>,
@@ -1974,8 +1973,8 @@ pub struct RunCommand {
     pub vfio_isolate_hotplug: bool,
 
     #[cfg(unix)]
-    #[argh(option, arg_name = "PATH", from_str_fn(parse_vfio_platform))]
-    #[serde(skip)] // TODO(b/255223604)
+    #[argh(option, arg_name = "PATH", from_str_fn(parse_vfio))]
+    #[serde(skip)] // Deprecated - use `vfio` instead.
     #[merge(strategy = append)]
     /// path to sysfs of platform pass through
     pub vfio_platform: Vec<VfioCommand>,
