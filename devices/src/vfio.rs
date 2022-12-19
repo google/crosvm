@@ -122,6 +122,12 @@ fn get_error() -> Error {
 
 static KVM_VFIO_FILE: OnceCell<SafeDescriptor> = OnceCell::new();
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum VfioDeviceType {
+    Pci,
+    Platform,
+}
+
 enum KvmVfioGroupOps {
     Add,
     Delete,
@@ -751,6 +757,7 @@ pub struct VfioDevice {
     dev: File,
     name: String,
     container: Arc<Mutex<VfioContainer>>,
+    dev_type: VfioDeviceType,
     group_descriptor: RawDescriptor,
     group_id: u32,
     // vec for vfio device's regions
@@ -782,7 +789,7 @@ impl VfioDevice {
         let name_str = name_osstr.to_str().ok_or(VfioError::InvalidPath)?;
         let name = String::from(name_str);
         let dev = group.lock().get_device(&name)?;
-        let dev_info = Self::get_device_info(&dev)?;
+        let (dev_info, dev_type) = Self::get_device_info(&dev)?;
         let regions = Self::get_regions(&dev, dev_info.num_regions)?;
         group.lock().add_device_num();
         let group_descriptor = group.lock().as_raw_descriptor();
@@ -795,6 +802,7 @@ impl VfioDevice {
             dev,
             name,
             container,
+            dev_type,
             group_descriptor,
             group_id,
             regions,
@@ -823,7 +831,7 @@ impl VfioDevice {
                 return Err(e);
             }
         };
-        let dev_info = match Self::get_device_info(&dev) {
+        let (dev_info, dev_type) = match Self::get_device_info(&dev) {
             Ok(dev_info) => dev_info,
             Err(e) => {
                 container.lock().remove_group(group_id, false);
@@ -848,6 +856,7 @@ impl VfioDevice {
             dev,
             name,
             container,
+            dev_type,
             group_descriptor,
             group_id,
             regions,
@@ -864,6 +873,11 @@ impl VfioDevice {
     /// Returns PCI device name, formatted as BUS:DEVICE.FUNCTION string.
     pub fn device_name(&self) -> &String {
         &self.name
+    }
+
+    /// Returns the type of this VFIO device.
+    pub fn device_type(&self) -> VfioDeviceType {
+        self.dev_type
     }
 
     /// enter the device's low power state
@@ -1029,7 +1043,7 @@ impl VfioDevice {
     }
 
     /// Get and validate VFIO device information.
-    fn get_device_info(device_file: &File) -> Result<vfio_device_info> {
+    fn get_device_info(device_file: &File) -> Result<(vfio_device_info, VfioDeviceType)> {
         let mut dev_info = vfio_device_info {
             argsz: mem::size_of::<vfio_device_info>() as u32,
             flags: 0,
@@ -1045,19 +1059,21 @@ impl VfioDevice {
             return Err(VfioError::VfioDeviceGetInfo(get_error()));
         }
 
-        if (dev_info.flags & VFIO_DEVICE_FLAGS_PCI) != 0 {
+        let dev_type = if (dev_info.flags & VFIO_DEVICE_FLAGS_PCI) != 0 {
             if dev_info.num_regions < VFIO_PCI_CONFIG_REGION_INDEX + 1
                 || dev_info.num_irqs < VFIO_PCI_MSIX_IRQ_INDEX + 1
             {
                 return Err(VfioError::VfioDeviceGetInfo(get_error()));
             }
+
+            VfioDeviceType::Pci
         } else if (dev_info.flags & VFIO_DEVICE_FLAGS_PLATFORM) != 0 {
-            // OK
+            VfioDeviceType::Platform
         } else {
             return Err(VfioError::UnknownDeviceType(dev_info.flags));
-        }
+        };
 
-        Ok(dev_info)
+        Ok((dev_info, dev_type))
     }
 
     /// Query interrupt information
