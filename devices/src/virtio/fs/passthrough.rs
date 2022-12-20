@@ -748,7 +748,7 @@ impl PassthroughFs {
     }
 
     // Increases the inode refcount and returns the inode.
-    fn increase_inode_refcount(&self, inode_data: Arc<InodeData>) -> Inode {
+    fn increase_inode_refcount(&self, inode_data: &InodeData) -> Inode {
         // Matches with the release store in `forget`.
         inode_data.refcount.fetch_add(1, Ordering::Acquire);
         inode_data.inode
@@ -765,7 +765,7 @@ impl PassthroughFs {
             dev: st.st_dev,
         };
 
-        let inode = if let Some(data) = inodes.get_alt(&altkey).map(Arc::clone) {
+        let inode = if let Some(data) = inodes.get_alt(&altkey) {
             self.increase_inode_refcount(data)
         } else {
             let inode = self.next_inode.fetch_add(1, Ordering::Relaxed);
@@ -828,7 +828,7 @@ impl PassthroughFs {
         };
 
         // Check if we already have an entry before opening a new file.
-        if let Some(data) = self.inodes.lock().get_alt(&altkey).map(Arc::clone) {
+        if let Some(data) = self.inodes.lock().get_alt(&altkey) {
             // Return the same inode with the reference counter increased.
             return Ok(Entry {
                 inode: self.increase_inode_refcount(data),
