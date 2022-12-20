@@ -7,6 +7,8 @@
 
 use std::collections::BTreeMap as Map;
 
+#[cfg(feature = "vulkano")]
+use base::error;
 use base::round_up_to_page_size;
 use base::MappedRegion;
 
@@ -237,8 +239,14 @@ impl RutabagaGralloc {
 
         #[cfg(feature = "vulkano")]
         {
-            let vulkano = VulkanoGralloc::init()?;
-            grallocs.insert(GrallocBackend::Vulkano, vulkano);
+            match VulkanoGralloc::init() {
+                Ok(vulkano) => {
+                    grallocs.insert(GrallocBackend::Vulkano, vulkano);
+                }
+                Err(e) => {
+                    error!("failed to init Vulkano gralloc: {:?}", e);
+                }
+            }
         }
 
         Ok(RutabagaGralloc { grallocs })
