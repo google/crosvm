@@ -758,21 +758,18 @@ impl PassthroughFs {
     // The inodes mutex lock must not be already taken by the same thread otherwise this
     // will deadlock.
     fn add_entry(&self, f: File, st: libc::stat64, open_flags: libc::c_int) -> Entry {
+        let mut inodes = self.inodes.lock();
+
         let altkey = InodeAltKey {
             ino: st.st_ino,
             dev: st.st_dev,
         };
 
-        let data = self.inodes.lock().get_alt(&altkey).map(Arc::clone);
-
-        let inode = if let Some(data) = data {
+        let inode = if let Some(data) = inodes.get_alt(&altkey).map(Arc::clone) {
             self.increase_inode_refcount(data)
         } else {
-            // There is a possible race here where 2 threads end up adding the same file
-            // into the inode list.  However, since each of those will get a unique Inode
-            // value and unique file descriptors this shouldn't be that much of a problem.
             let inode = self.next_inode.fetch_add(1, Ordering::Relaxed);
-            self.inodes.lock().insert(
+            inodes.insert(
                 inode,
                 altkey,
                 Arc::new(InodeData {
