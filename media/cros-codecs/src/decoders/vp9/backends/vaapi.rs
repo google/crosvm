@@ -115,8 +115,6 @@ struct Backend {
     metadata_state: StreamMetadataState,
     /// The FIFO for all pending pictures, in the order they were submitted.
     pending_jobs: VecDeque<PendingJob<GenericBackendHandle>>,
-    /// The image formats we can decode into.
-    image_formats: Rc<Vec<libva::VAImageFormat>>,
     /// The number of allocated surfaces.
     num_allocated_surfaces: usize,
     /// The negotiation status
@@ -133,11 +131,8 @@ struct Backend {
 impl Backend {
     /// Create a new codec backend for VP8.
     fn new(display: Rc<libva::Display>) -> Result<Self> {
-        let image_formats = Rc::new(display.query_image_formats()?);
-
         Ok(Self {
             metadata_state: StreamMetadataState::Unparsed { display },
-            image_formats,
             pending_jobs: Default::default(),
             num_allocated_surfaces: Default::default(),
             negotiation_status: Default::default(),
@@ -268,8 +263,8 @@ impl Backend {
                 .ok_or(anyhow!("Unsupported format {}", rt_format))?
         };
 
-        let map_format = self
-            .image_formats
+        let map_format = display
+            .query_image_formats()?
             .iter()
             .find(|f| f.fourcc == format_map.va_fourcc)
             .cloned()
@@ -812,8 +807,8 @@ impl VideoDecoderBackend for Backend {
         &self,
     ) -> DecoderResult<std::collections::HashSet<crate::DecodedFormat>> {
         let rt_format = self.metadata_state.rt_format()?;
-        let image_formats = &self.image_formats;
         let display = self.metadata_state.display();
+        let image_formats = display.query_image_formats()?;
         let profile = self.metadata_state.profile()?;
 
         let formats = utils::vaapi::supported_formats_for_rt_format(
@@ -821,7 +816,7 @@ impl VideoDecoderBackend for Backend {
             rt_format,
             profile,
             libva::VAEntrypoint::VAEntrypointVLD,
-            image_formats,
+            &image_formats,
         )?;
 
         Ok(formats.into_iter().map(|f| f.decoded_format).collect())
