@@ -45,6 +45,7 @@ use crate::utils;
 use crate::utils::vaapi::DecodedHandle as VADecodedHandle;
 use crate::utils::vaapi::FormatMap;
 use crate::utils::vaapi::GenericBackendHandle;
+use crate::utils::vaapi::NegotiationStatus;
 use crate::utils::vaapi::StreamMetadataState;
 use crate::utils::vaapi::SurfacePoolHandle;
 use crate::DecodedFormat;
@@ -52,20 +53,6 @@ use crate::Resolution;
 
 /// Resolves to the type used as Handle by the backend.
 type AssociatedHandle = <Backend as StatelessDecoderBackend>::Handle;
-
-/// Keeps track of where the backend is in the negotiation process.
-#[derive(Clone, Debug)]
-enum NegotiationStatus {
-    NonNegotiated,
-    Possible { sps: Box<Sps>, dpb_size: usize },
-    Negotiated,
-}
-
-impl Default for NegotiationStatus {
-    fn default() -> Self {
-        NegotiationStatus::NonNegotiated
-    }
-}
 
 #[cfg(test)]
 #[derive(Default)]
@@ -120,8 +107,8 @@ struct Backend {
     image_formats: Rc<Vec<libva::VAImageFormat>>,
     /// The number of allocated surfaces.
     num_allocated_surfaces: usize,
-    /// The negotiation status
-    negotiation_status: NegotiationStatus,
+    /// The negotiation status. First member is the Sps, second is the size of the DPB.
+    negotiation_status: NegotiationStatus<Box<(Sps, usize)>>,
 
     #[cfg(test)]
     /// Test params. Saves the metadata sent to VA-API for the purposes of
@@ -662,7 +649,7 @@ impl VideoDecoderBackend for Backend {
 
     fn try_format(&mut self, format: DecodedFormat) -> DecoderResult<()> {
         let (sps, dpb_size) = match &self.negotiation_status {
-            NegotiationStatus::Possible { sps, dpb_size } => (sps, dpb_size),
+            NegotiationStatus::Possible(b) => (&b.0, b.1),
             _ => {
                 return Err(DecoderError::StatelessBackendError(
                     StatelessBackendError::NegotiationFailed(anyhow!(
@@ -682,7 +669,6 @@ impl VideoDecoderBackend for Backend {
                 .unwrap();
 
             let sps = sps.clone();
-            let dpb_size = *dpb_size;
             self.open(&sps, dpb_size, Some(map_format))?;
 
             Ok(())
@@ -726,10 +712,7 @@ impl StatelessDecoderBackend for Backend {
     type Handle = VADecodedHandle<H264Picture<GenericBackendHandle>>;
 
     fn new_sequence(&mut self, sps: &Sps, dpb_size: usize) -> StatelessBackendResult<()> {
-        self.negotiation_status = NegotiationStatus::Possible {
-            sps: Box::new(sps.clone()),
-            dpb_size,
-        };
+        self.negotiation_status = NegotiationStatus::Possible(Box::new((sps.clone(), dpb_size)));
 
         self.open(sps, dpb_size, None)
             .map_err(StatelessBackendError::Other)

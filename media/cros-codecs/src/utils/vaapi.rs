@@ -529,3 +529,24 @@ impl TryFrom<&libva::VAImageFormat> for DecodedFormat {
         }
     }
 }
+
+/// Keeps track of where the backend is in the negotiation process.
+///
+/// The generic parameter is the data that the decoder wishes to pass from the `Possible` to the
+/// `Negotiated` state - typically, the properties of the stream like its resolution as they have
+/// been parsed.
+#[derive(Clone, Debug)]
+pub(crate) enum NegotiationStatus<T> {
+    /// No property about the stream has been parsed yet.
+    NonNegotiated,
+    /// Properties of the stream have been parsed and the client may query and change them.
+    Possible(T),
+    /// Stream is actively decoding and its properties cannot be changed by the client.
+    Negotiated,
+}
+
+impl<T> Default for NegotiationStatus<T> {
+    fn default() -> Self {
+        NegotiationStatus::NonNegotiated
+    }
+}

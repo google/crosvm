@@ -40,6 +40,7 @@ use crate::utils;
 use crate::utils::vaapi::DecodedHandle as VADecodedHandle;
 use crate::utils::vaapi::FormatMap;
 use crate::utils::vaapi::GenericBackendHandle;
+use crate::utils::vaapi::NegotiationStatus;
 use crate::utils::vaapi::StreamMetadataState;
 use crate::utils::vaapi::SurfacePoolHandle;
 use crate::DecodedFormat;
@@ -50,20 +51,6 @@ type AssociatedHandle = <Backend as StatelessDecoderBackend>::Handle;
 
 /// The number of surfaces to allocate for this codec. Same as GStreamer's vavp8dec.
 const NUM_SURFACES: usize = 7;
-
-/// Keeps track of where the backend is in the negotiation process.
-#[derive(Clone, Debug)]
-enum NegotiationStatus {
-    NonNegotiated,
-    Possible { header: Box<Header> },
-    Negotiated,
-}
-
-impl Default for NegotiationStatus {
-    fn default() -> Self {
-        NegotiationStatus::NonNegotiated
-    }
-}
 
 #[cfg(test)]
 struct TestParams {
@@ -100,7 +87,7 @@ struct Backend {
     /// The number of allocated surfaces.
     num_allocated_surfaces: usize,
     /// The negotiation status
-    negotiation_status: NegotiationStatus,
+    negotiation_status: NegotiationStatus<Box<Header>>,
 
     #[cfg(test)]
     /// Test params. Saves the metadata sent to VA-API for the purposes of
@@ -413,9 +400,7 @@ impl StatelessDecoderBackend for Backend {
             .map_err(|e| StatelessBackendError::Other(anyhow!(e)));
 
         if open.is_ok() {
-            self.negotiation_status = NegotiationStatus::Possible {
-                header: Box::new(header.clone()),
-            };
+            self.negotiation_status = NegotiationStatus::Possible(Box::new(header.clone()));
         }
 
         open
@@ -657,7 +642,7 @@ impl VideoDecoderBackend for Backend {
 
     fn try_format(&mut self, format: crate::DecodedFormat) -> DecoderResult<()> {
         let header = match &self.negotiation_status {
-            NegotiationStatus::Possible { header } => header.clone(),
+            NegotiationStatus::Possible(header) => header.clone(),
             _ => {
                 return Err(DecoderError::StatelessBackendError(
                     StatelessBackendError::NegotiationFailed(anyhow!(
