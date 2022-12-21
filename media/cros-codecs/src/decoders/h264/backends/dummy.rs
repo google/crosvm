@@ -14,12 +14,12 @@ use crate::decoders::h264::backends::BlockingMode;
 use crate::decoders::h264::backends::ContainedPicture;
 use crate::decoders::h264::backends::Result as StatelessBackendResult;
 use crate::decoders::h264::backends::StatelessDecoderBackend;
+use crate::decoders::h264::decoder::Decoder;
 use crate::decoders::h264::dpb::Dpb;
 use crate::decoders::h264::parser::Pps;
 use crate::decoders::h264::parser::Slice;
 use crate::decoders::h264::parser::Sps;
 use crate::decoders::h264::picture::H264Picture;
-use crate::decoders::VideoDecoderBackend;
 use crate::utils::dummy::*;
 
 impl StatelessDecoderBackend for Backend {
@@ -103,15 +103,14 @@ impl StatelessDecoderBackend for Backend {
         true
     }
 
-    fn as_video_decoder_backend_mut(&mut self) -> &mut dyn VideoDecoderBackend {
-        self
-    }
-
-    fn as_video_decoder_backend(&self) -> &dyn VideoDecoderBackend {
-        self
-    }
-
     fn block_on_handle(&mut self, _: &Self::Handle) -> StatelessBackendResult<()> {
         Ok(())
+    }
+}
+
+impl Decoder<Handle<H264Picture<BackendHandle>>> {
+    // Creates a new instance of the decoder using the dummy backend.
+    pub fn new_dummy(blocking_mode: BlockingMode) -> anyhow::Result<Self> {
+        Self::new(Box::new(Backend), blocking_mode)
     }
 }

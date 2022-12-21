@@ -10,6 +10,7 @@ use std::rc::Rc;
 use anyhow::anyhow;
 use anyhow::Result;
 use libva::BufferType;
+use libva::Display;
 use libva::IQMatrix;
 use libva::IQMatrixBufferVP8;
 use libva::Picture as VaPicture;
@@ -24,6 +25,7 @@ use crate::decoders::vp8::backends::ContainedPicture;
 use crate::decoders::vp8::backends::DecodedHandle;
 use crate::decoders::vp8::backends::StatelessDecoderBackend;
 use crate::decoders::vp8::backends::Vp8Picture;
+use crate::decoders::vp8::decoder::Decoder;
 use crate::decoders::vp8::parser::Header;
 use crate::decoders::vp8::parser::MbLfAdjustments;
 use crate::decoders::vp8::parser::Parser;
@@ -86,7 +88,7 @@ struct PendingJob<BackendHandle> {
     vp8_picture: ContainedPicture<BackendHandle>,
 }
 
-pub struct Backend {
+struct Backend {
     /// The metadata state. Updated whenever the decoder reads new data from the stream.
     metadata_state: StreamMetadataState,
     /// The FIFO for all pending pictures, in the order they were submitted.
@@ -106,7 +108,7 @@ pub struct Backend {
 
 impl Backend {
     /// Create a new codec backend for VP8.
-    pub fn new(display: Rc<libva::Display>) -> Result<Self> {
+    fn new(display: Rc<libva::Display>) -> Result<Self> {
         let image_formats = Rc::new(display.query_image_formats()?);
 
         Ok(Self {
@@ -600,14 +602,6 @@ impl StatelessDecoderBackend for Backend {
             "Asked to block on a pending job that doesn't exist"
         )))
     }
-
-    fn as_video_decoder_backend_mut(&mut self) -> &mut dyn crate::decoders::VideoDecoderBackend {
-        self
-    }
-
-    fn as_video_decoder_backend(&self) -> &dyn crate::decoders::VideoDecoderBackend {
-        self
-    }
 }
 
 impl VideoDecoderBackend for Backend {
@@ -689,10 +683,16 @@ impl VideoDecoderBackend for Backend {
     }
 }
 
+impl Decoder<VADecodedHandle<Vp8Picture<GenericBackendHandle>>> {
+    // Creates a new instance of the decoder using the VAAPI backend.
+    pub fn new_vaapi(display: Rc<Display>, blocking_mode: BlockingMode) -> Result<Self> {
+        Self::new(Box::new(Backend::new(display)?), blocking_mode)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
-    use std::rc::Rc;
 
     use libva::BufferType;
     use libva::Display;
@@ -702,7 +702,6 @@ mod tests {
 
     use crate::decoders::vp8::backends;
     use crate::decoders::vp8::backends::vaapi::AssociatedHandle;
-    use crate::decoders::vp8::backends::vaapi::Backend;
     use crate::decoders::vp8::backends::BlockingMode;
     use crate::decoders::vp8::backends::DecodedHandle;
     use crate::decoders::vp8::backends::StatelessDecoderBackend;
@@ -775,10 +774,9 @@ mod tests {
             let mut expected_crcs = STREAM_CRCS.lines().collect::<HashSet<_>>();
 
             let mut frame_num = 0;
-            let display = Rc::new(Display::open().unwrap());
-            let backend = Box::new(Backend::new(Rc::clone(&display)).unwrap());
+            let display = Display::open().unwrap();
 
-            let mut decoder = Decoder::new(backend, blocking_mode).unwrap();
+            let mut decoder = Decoder::new_vaapi(display, blocking_mode).unwrap();
 
             run_decoding_loop(&mut decoder, TEST_STREAM, |decoder| {
                 process_ready_frames(decoder, &mut |decoder, handle| {

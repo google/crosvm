@@ -105,7 +105,8 @@ pub struct Decoder<T: DecodedHandle<CodecData = Header>> {
 
 impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> Decoder<T> {
     /// Create a new codec backend for VP8.
-    pub fn new(
+    #[cfg(any(feature = "vaapi", test))]
+    pub(crate) fn new(
         backend: Box<dyn StatelessDecoderBackend<Handle = T>>,
         blocking_mode: BlockingMode,
     ) -> Result<Self> {
@@ -249,7 +250,8 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> Decoder<
     }
 
     #[cfg(test)]
-    pub fn backend(&self) -> &dyn StatelessDecoderBackend<Handle = T> {
+    #[allow(dead_code)]
+    pub(crate) fn backend(&self) -> &dyn StatelessDecoderBackend<Handle = T> {
         self.backend.as_ref()
     }
 }
@@ -393,14 +395,6 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> VideoDec
             .collect())
     }
 
-    fn backend(&self) -> &dyn crate::decoders::VideoDecoderBackend {
-        self.backend.as_video_decoder_backend()
-    }
-
-    fn backend_mut(&mut self) -> &mut dyn crate::decoders::VideoDecoderBackend {
-        self.backend.as_video_decoder_backend_mut()
-    }
-
     fn negotiation_possible(&self) -> bool {
         matches!(self.negotiation_status, NegotiationStatus::Possible { .. })
     }
@@ -417,6 +411,14 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> VideoDec
         } else {
             Some(left_in_the_backend)
         }
+    }
+
+    fn num_resources_total(&self) -> usize {
+        self.backend.num_resources_total()
+    }
+
+    fn coded_resolution(&self) -> Option<Resolution> {
+        self.backend.coded_resolution()
     }
 
     fn poll(
@@ -446,7 +448,6 @@ pub mod tests {
     use crate::decoders::DecodedHandle;
     use crate::decoders::DynDecodedHandle;
     use crate::decoders::VideoDecoder;
-    use crate::utils::dummy::Backend;
 
     /// Read and return the data from the next IVF packet. Returns `None` if there is no more data
     /// to read.
@@ -514,8 +515,7 @@ pub mod tests {
 
         for blocking_mode in blocking_modes {
             let mut frame_num = 0;
-            let backend = Box::new(Backend {});
-            let mut decoder = Decoder::new(backend, blocking_mode).unwrap();
+            let mut decoder = Decoder::new_dummy(blocking_mode).unwrap();
 
             run_decoding_loop(&mut decoder, TEST_STREAM, |decoder| {
                 process_ready_frames(decoder, &mut |_, _| frame_num += 1);
@@ -533,8 +533,7 @@ pub mod tests {
 
         for blocking_mode in blocking_modes {
             let mut frame_num = 0;
-            let backend = Box::new(Backend {});
-            let mut decoder = Decoder::new(backend, blocking_mode).unwrap();
+            let mut decoder = Decoder::new_dummy(blocking_mode).unwrap();
 
             run_decoding_loop(&mut decoder, TEST_STREAM, |decoder| {
                 process_ready_frames(decoder, &mut |_, _| frame_num += 1);
@@ -552,8 +551,7 @@ pub mod tests {
 
         for blocking_mode in blocking_modes {
             let mut frame_num = 0;
-            let backend = Box::new(Backend {});
-            let mut decoder = Decoder::new(backend, blocking_mode).unwrap();
+            let mut decoder = Decoder::new_dummy(blocking_mode).unwrap();
 
             run_decoding_loop(&mut decoder, TEST_STREAM, |decoder| {
                 process_ready_frames(decoder, &mut |_, _| frame_num += 1);
@@ -570,8 +568,7 @@ pub mod tests {
 
         for blocking_mode in blocking_modes {
             let mut frame_num = 0;
-            let backend = Box::new(Backend {});
-            let mut decoder = Decoder::new(backend, blocking_mode).unwrap();
+            let mut decoder = Decoder::new_dummy(blocking_mode).unwrap();
 
             run_decoding_loop(&mut decoder, TEST_STREAM, |decoder| {
                 process_ready_frames(decoder, &mut |_, _| frame_num += 1);

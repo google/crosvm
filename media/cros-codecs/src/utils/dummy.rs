@@ -69,7 +69,7 @@ impl<T: FrameInfo> DecodedHandle for Handle<Picture<T, BackendHandle>> {
 }
 
 /// Dummy backend that can be used for any codec.
-pub struct Backend;
+pub(crate) struct Backend;
 
 impl VideoDecoderBackend for Backend {
     fn num_resources_total(&self) -> usize {

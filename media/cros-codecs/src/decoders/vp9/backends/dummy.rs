@@ -11,8 +11,9 @@ use std::rc::Rc;
 
 use crate::decoders::vp9::backends::StatelessDecoderBackend;
 use crate::decoders::vp9::backends::Vp9Picture;
+use crate::decoders::vp9::decoder::Decoder;
 use crate::decoders::vp9::parser::NUM_REF_FRAMES;
-use crate::decoders::VideoDecoderBackend;
+use crate::decoders::BlockingMode;
 use crate::utils::dummy::*;
 
 impl StatelessDecoderBackend for Backend {
@@ -46,12 +47,11 @@ impl StatelessDecoderBackend for Backend {
     fn block_on_handle(&mut self, _: &Self::Handle) -> super::Result<()> {
         Ok(())
     }
+}
 
-    fn as_video_decoder_backend_mut(&mut self) -> &mut dyn VideoDecoderBackend {
-        self
-    }
-
-    fn as_video_decoder_backend(&self) -> &dyn VideoDecoderBackend {
-        self
+impl Decoder<Handle<Vp9Picture<BackendHandle>>> {
+    // Creates a new instance of the decoder using the dummy backend.
+    pub fn new_dummy(blocking_mode: BlockingMode) -> anyhow::Result<Self> {
+        Self::new(Box::new(Backend), blocking_mode)
     }
 }

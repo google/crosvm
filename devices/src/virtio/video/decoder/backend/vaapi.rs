@@ -669,10 +669,10 @@ impl VaapiDecoderSession {
         match frames {
             Ok(frames) => {
                 if self.codec.negotiation_possible() {
-                    let resolution = self.codec.backend().coded_resolution().unwrap();
+                    let resolution = self.codec.coded_resolution().unwrap();
 
                     let drc_params = DrcParams {
-                        min_num_buffers: self.codec.backend().num_resources_total(),
+                        min_num_buffers: self.codec.num_resources_total(),
                         width: resolution.width,
                         height: resolution.height,
                         visible_rect: Rect {
@@ -1017,49 +1017,27 @@ impl DecoderBackend for VaapiDecoder {
         )))?;
 
         let codec: Box<dyn VideoDecoder> = match format {
-            Format::VP8 => {
-                let backend = Box::new(
-                    cros_codecs::decoders::vp8::backends::vaapi::Backend::new(Rc::clone(&display))
-                        .unwrap(),
-                );
-
-                Box::new(
-                    cros_codecs::decoders::vp8::decoder::Decoder::new(
-                        backend,
-                        cros_codecs::decoders::BlockingMode::NonBlocking,
-                    )
-                    .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
+            Format::VP8 => Box::new(
+                cros_codecs::decoders::vp8::decoder::Decoder::new_vaapi(
+                    display,
+                    cros_codecs::decoders::BlockingMode::NonBlocking,
                 )
-            }
-
-            Format::VP9 => {
-                let backend = Box::new(
-                    cros_codecs::decoders::vp9::backends::vaapi::Backend::new(Rc::clone(&display))
-                        .unwrap(),
-                );
-
-                Box::new(
-                    cros_codecs::decoders::vp9::decoder::Decoder::new(
-                        backend,
-                        cros_codecs::decoders::BlockingMode::NonBlocking,
-                    )
-                    .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
+                .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
+            ),
+            Format::VP9 => Box::new(
+                cros_codecs::decoders::vp9::decoder::Decoder::new_vaapi(
+                    display,
+                    cros_codecs::decoders::BlockingMode::NonBlocking,
                 )
-            }
-
-            Format::H264 => {
-                let backend = Box::new(
-                    cros_codecs::decoders::h264::backends::vaapi::Backend::new(Rc::clone(&display))
-                        .unwrap(),
-                );
-                Box::new(
-                    cros_codecs::decoders::h264::decoder::Decoder::new(
-                        backend,
-                        cros_codecs::decoders::BlockingMode::NonBlocking,
-                    )
-                    .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
+                .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
+            ),
+            Format::H264 => Box::new(
+                cros_codecs::decoders::h264::decoder::Decoder::new_vaapi(
+                    display,
+                    cros_codecs::decoders::BlockingMode::NonBlocking,
                 )
-            }
+                .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
+            ),
             _ => return Err(VideoError::InvalidFormat),
         };
 

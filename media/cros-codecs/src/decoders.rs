@@ -41,7 +41,7 @@ pub enum StatelessBackendError {
     Other(#[from] anyhow::Error),
 }
 
-pub trait VideoDecoderBackend {
+pub(crate) trait VideoDecoderBackend {
     /// Returns the current coded resolution of the bitstream being processed.
     /// This may be None if we have not read the stream parameters yet.
     fn coded_resolution(&self) -> Option<Resolution>;
@@ -88,12 +88,6 @@ pub trait VideoDecoder {
     /// emit frames for them.
     fn flush(&mut self) -> Result<Vec<Box<dyn DynDecodedHandle>>>;
 
-    /// Gets a shared handle to the backend in use.
-    fn backend(&self) -> &dyn VideoDecoderBackend;
-
-    /// Gets a mutable handle to the backend in use.
-    fn backend_mut(&mut self) -> &mut dyn VideoDecoderBackend;
-
     /// Whether negotiation of the decoded format is possible. In particular, a
     /// decoder will indicate that negotiation is possible after enough metadata
     /// is collected from parsing the bitstream through calls to the `decode()`
@@ -128,6 +122,13 @@ pub trait VideoDecoder {
     /// Gets the number of output resources left in the backend after accounting
     /// for any buffers that might be queued in the decoder.
     fn num_resources_left(&self) -> Option<usize>;
+
+    /// Gets the number of output resources allocated by the backend.
+    fn num_resources_total(&self) -> usize;
+    ///
+    /// Returns the current coded resolution of the bitstream being processed.
+    /// This may be None if we have not read the stream parameters yet.
+    fn coded_resolution(&self) -> Option<Resolution>;
 
     /// Polls the decoder, emitting frames for all queued decode requests. This
     /// is similar to flush, but it does not change the state of the decoded
