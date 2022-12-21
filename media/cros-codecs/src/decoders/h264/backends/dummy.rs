@@ -9,11 +9,11 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
-use crate::decoders::h264::backends::stateless::AsBackendHandle;
-use crate::decoders::h264::backends::stateless::BlockingMode;
-use crate::decoders::h264::backends::stateless::ContainedPicture;
-use crate::decoders::h264::backends::stateless::Result as StatelessBackendResult;
-use crate::decoders::h264::backends::stateless::StatelessDecoderBackend;
+use crate::decoders::h264::backends::AsBackendHandle;
+use crate::decoders::h264::backends::BlockingMode;
+use crate::decoders::h264::backends::ContainedPicture;
+use crate::decoders::h264::backends::Result as StatelessBackendResult;
+use crate::decoders::h264::backends::StatelessDecoderBackend;
 use crate::decoders::h264::dpb::Dpb;
 use crate::decoders::h264::parser::Pps;
 use crate::decoders::h264::parser::Slice;

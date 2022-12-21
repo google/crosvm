@@ -17,13 +17,13 @@ use libva::PictureEnd;
 use libva::ProbabilityDataBufferVP8;
 use libva::UsageHint;
 
-use crate::decoders::h264::backends::stateless::Result as StatelessBackendResult;
-use crate::decoders::vp8::backends::stateless::AsBackendHandle;
-use crate::decoders::vp8::backends::stateless::BlockingMode;
-use crate::decoders::vp8::backends::stateless::ContainedPicture;
-use crate::decoders::vp8::backends::stateless::DecodedHandle;
-use crate::decoders::vp8::backends::stateless::StatelessDecoderBackend;
-use crate::decoders::vp8::backends::stateless::Vp8Picture;
+use crate::decoders::h264::backends::Result as StatelessBackendResult;
+use crate::decoders::vp8::backends::AsBackendHandle;
+use crate::decoders::vp8::backends::BlockingMode;
+use crate::decoders::vp8::backends::ContainedPicture;
+use crate::decoders::vp8::backends::DecodedHandle;
+use crate::decoders::vp8::backends::StatelessDecoderBackend;
+use crate::decoders::vp8::backends::Vp8Picture;
 use crate::decoders::vp8::parser::Header;
 use crate::decoders::vp8::parser::MbLfAdjustments;
 use crate::decoders::vp8::parser::Parser;
@@ -701,11 +701,11 @@ mod tests {
     use libva::SliceParameter;
 
     use crate::decoders::vp8::backends;
-    use crate::decoders::vp8::backends::stateless::vaapi::AssociatedHandle;
-    use crate::decoders::vp8::backends::stateless::vaapi::Backend;
-    use crate::decoders::vp8::backends::stateless::BlockingMode;
-    use crate::decoders::vp8::backends::stateless::DecodedHandle;
-    use crate::decoders::vp8::backends::stateless::StatelessDecoderBackend;
+    use crate::decoders::vp8::backends::vaapi::AssociatedHandle;
+    use crate::decoders::vp8::backends::vaapi::Backend;
+    use crate::decoders::vp8::backends::BlockingMode;
+    use crate::decoders::vp8::backends::DecodedHandle;
+    use crate::decoders::vp8::backends::StatelessDecoderBackend;
     use crate::decoders::vp8::decoder::tests::process_ready_frames;
     use crate::decoders::vp8::decoder::tests::run_decoding_loop;
     use crate::decoders::vp8::decoder::Decoder;
@@ -713,10 +713,8 @@ mod tests {
 
     fn as_vaapi_backend(
         backend: &dyn StatelessDecoderBackend<Handle = AssociatedHandle>,
-    ) -> &backends::stateless::vaapi::Backend {
-        backend
-            .downcast_ref::<backends::stateless::vaapi::Backend>()
-            .unwrap()
+    ) -> &backends::vaapi::Backend {
+        backend.downcast_ref::<backends::vaapi::Backend>().unwrap()
     }
 
     fn process_handle(
@@ -754,22 +752,22 @@ mod tests {
     // Ignore this test by default as it requires libva-compatible hardware.
     #[ignore]
     fn test_25fps_vp8() {
-        const TEST_STREAM: &[u8] = include_bytes!("../../test_data/test-25fps.vp8");
-        const STREAM_CRCS: &str = include_str!("../../test_data/test-25fps.vp8.crc");
+        const TEST_STREAM: &[u8] = include_bytes!("../test_data/test-25fps.vp8");
+        const STREAM_CRCS: &str = include_str!("../test_data/test-25fps.vp8.crc");
 
         const TEST_25_FPS_VP8_STREAM_SLICE_DATA_0: &[u8] =
-            include_bytes!("../../test_data/test-25fps-vp8-slice-data-0.bin");
+            include_bytes!("../test_data/test-25fps-vp8-slice-data-0.bin");
         const TEST_25_FPS_VP8_STREAM_SLICE_DATA_1: &[u8] =
-            include_bytes!("../../test_data/test-25fps-vp8-slice-data-1.bin");
+            include_bytes!("../test_data/test-25fps-vp8-slice-data-1.bin");
         const TEST_25_FPS_VP8_STREAM_SLICE_DATA_2: &[u8] =
-            include_bytes!("../../test_data/test-25fps-vp8-slice-data-2.bin");
+            include_bytes!("../test_data/test-25fps-vp8-slice-data-2.bin");
 
         const TEST_25_FPS_VP8_STREAM_PROBABILITY_TABLE_0: &[u8] =
-            include_bytes!("../../test_data/test-25fps-vp8-probability-table-0.bin");
+            include_bytes!("../test_data/test-25fps-vp8-probability-table-0.bin");
         const TEST_25_FPS_VP8_STREAM_PROBABILITY_TABLE_1: &[u8] =
-            include_bytes!("../../test_data/test-25fps-vp8-probability-table-1.bin");
+            include_bytes!("../test_data/test-25fps-vp8-probability-table-1.bin");
         const TEST_25_FPS_VP8_STREAM_PROBABILITY_TABLE_2: &[u8] =
-            include_bytes!("../../test_data/test-25fps-vp8-probability-table-2.bin");
+            include_bytes!("../test_data/test-25fps-vp8-probability-table-2.bin");
 
         let blocking_modes = [BlockingMode::Blocking, BlockingMode::NonBlocking];
 

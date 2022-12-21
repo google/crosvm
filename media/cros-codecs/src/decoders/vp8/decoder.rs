@@ -5,7 +5,7 @@
 use anyhow::anyhow;
 use anyhow::Result;
 
-use crate::decoders::vp8::backends::stateless::StatelessDecoderBackend;
+use crate::decoders::vp8::backends::StatelessDecoderBackend;
 use crate::decoders::vp8::parser::Frame;
 use crate::decoders::vp8::parser::Header;
 use crate::decoders::vp8::parser::Parser;

@@ -15,13 +15,13 @@ use libva::PictureEnd;
 use libva::SegmentParameterVP9;
 use libva::UsageHint;
 
-use crate::decoders::vp9::backends::stateless::AsBackendHandle;
-use crate::decoders::vp9::backends::stateless::BlockingMode;
-use crate::decoders::vp9::backends::stateless::ContainedPicture;
-use crate::decoders::vp9::backends::stateless::DecodedHandle;
-use crate::decoders::vp9::backends::stateless::Result as StatelessBackendResult;
-use crate::decoders::vp9::backends::stateless::StatelessDecoderBackend;
-use crate::decoders::vp9::backends::stateless::Vp9Picture;
+use crate::decoders::vp9::backends::AsBackendHandle;
+use crate::decoders::vp9::backends::BlockingMode;
+use crate::decoders::vp9::backends::ContainedPicture;
+use crate::decoders::vp9::backends::DecodedHandle;
+use crate::decoders::vp9::backends::Result as StatelessBackendResult;
+use crate::decoders::vp9::backends::StatelessDecoderBackend;
+use crate::decoders::vp9::backends::Vp9Picture;
 use crate::decoders::vp9::lookups::AC_QLOOKUP;
 use crate::decoders::vp9::lookups::AC_QLOOKUP_10;
 use crate::decoders::vp9::lookups::AC_QLOOKUP_12;
@@ -888,11 +888,11 @@ mod tests {
     use libva::SliceParameter;
 
     use crate::decoders::vp9::backends;
-    use crate::decoders::vp9::backends::stateless::vaapi::AssociatedHandle;
-    use crate::decoders::vp9::backends::stateless::vaapi::Backend;
-    use crate::decoders::vp9::backends::stateless::BlockingMode;
-    use crate::decoders::vp9::backends::stateless::DecodedHandle;
-    use crate::decoders::vp9::backends::stateless::StatelessDecoderBackend;
+    use crate::decoders::vp9::backends::vaapi::AssociatedHandle;
+    use crate::decoders::vp9::backends::vaapi::Backend;
+    use crate::decoders::vp9::backends::BlockingMode;
+    use crate::decoders::vp9::backends::DecodedHandle;
+    use crate::decoders::vp9::backends::StatelessDecoderBackend;
     use crate::decoders::vp9::decoder::tests::process_ready_frames;
     use crate::decoders::vp9::decoder::tests::run_decoding_loop;
     use crate::decoders::vp9::decoder::Decoder;
@@ -901,10 +901,8 @@ mod tests {
 
     fn as_vaapi_backend(
         backend: &dyn StatelessDecoderBackend<Handle = AssociatedHandle>,
-    ) -> &backends::stateless::vaapi::Backend {
-        backend
-            .downcast_ref::<backends::stateless::vaapi::Backend>()
-            .unwrap()
+    ) -> &backends::vaapi::Backend {
+        backend.downcast_ref::<backends::vaapi::Backend>().unwrap()
     }
 
     fn process_handle(
@@ -940,15 +938,15 @@ mod tests {
     // Ignore this test by default as it requires libva-compatible hardware.
     #[ignore]
     fn test_25fps_vp9() {
-        const TEST_STREAM: &[u8] = include_bytes!("../../test_data/test-25fps.vp9");
-        const STREAM_CRCS: &str = include_str!("../../test_data/test-25fps.vp9.crc");
+        const TEST_STREAM: &[u8] = include_bytes!("../test_data/test-25fps.vp9");
+        const STREAM_CRCS: &str = include_str!("../test_data/test-25fps.vp9.crc");
 
         const TEST_25_FPS_VP9_STREAM_SLICE_DATA_0: &[u8] =
-            include_bytes!("../../test_data/test-25fps-vp9-slice-data-0.bin");
+            include_bytes!("../test_data/test-25fps-vp9-slice-data-0.bin");
         const TEST_25_FPS_VP9_STREAM_SLICE_DATA_1: &[u8] =
-            include_bytes!("../../test_data/test-25fps-vp9-slice-data-1.bin");
+            include_bytes!("../test_data/test-25fps-vp9-slice-data-1.bin");
         const TEST_25_FPS_VP9_STREAM_SLICE_DATA_2: &[u8] =
-            include_bytes!("../../test_data/test-25fps-vp9-slice-data-2.bin");
+            include_bytes!("../test_data/test-25fps-vp9-slice-data-2.bin");
 
         let blocking_modes = [BlockingMode::Blocking, BlockingMode::NonBlocking];
 
@@ -1139,19 +1137,16 @@ mod tests {
     #[ignore]
     fn test_vp90_2_10_show_existing_frame2_vp9() {
         const TEST_STREAM: &[u8] =
-            include_bytes!("../../test_data/vp90_2_10_show_existing_frame2.vp9.ivf");
+            include_bytes!("../test_data/vp90_2_10_show_existing_frame2.vp9.ivf");
         const STREAM_CRCS: &str =
-            include_str!("../../test_data/vp90_2_10_show_existing_frame2.vp9.ivf.crc");
+            include_str!("../test_data/vp90_2_10_show_existing_frame2.vp9.ivf.crc");
 
-        const TEST_VP90_2_10_SHOW_EXISTING_FRAME2_STREAM_SLICE_DATA_0: &[u8] = include_bytes!(
-            "../../test_data/vp90_2_10_show_existing_frame2-vp9-ivf-slice-data-0.bin"
-        );
-        const TEST_VP90_2_10_SHOW_EXISTING_FRAME2_STREAM_SLICE_DATA_1: &[u8] = include_bytes!(
-            "../../test_data/vp90_2_10_show_existing_frame2-vp9-ivf-slice-data-1.bin"
-        );
-        const TEST_VP90_2_10_SHOW_EXISTING_FRAME2_STREAM_SLICE_DATA_2: &[u8] = include_bytes!(
-            "../../test_data/vp90_2_10_show_existing_frame2-vp9-ivf-slice-data-2.bin"
-        );
+        const TEST_VP90_2_10_SHOW_EXISTING_FRAME2_STREAM_SLICE_DATA_0: &[u8] =
+            include_bytes!("../test_data/vp90_2_10_show_existing_frame2-vp9-ivf-slice-data-0.bin");
+        const TEST_VP90_2_10_SHOW_EXISTING_FRAME2_STREAM_SLICE_DATA_1: &[u8] =
+            include_bytes!("../test_data/vp90_2_10_show_existing_frame2-vp9-ivf-slice-data-1.bin");
+        const TEST_VP90_2_10_SHOW_EXISTING_FRAME2_STREAM_SLICE_DATA_2: &[u8] =
+            include_bytes!("../test_data/vp90_2_10_show_existing_frame2-vp9-ivf-slice-data-2.bin");
 
         let blocking_modes = [BlockingMode::Blocking, BlockingMode::NonBlocking];
 
@@ -1366,9 +1361,9 @@ mod tests {
         // Remuxed from the original matroska source in libvpx using ffmpeg:
         // ffmpeg -i vp90-2-10-show-existing-frame.webm/vp90-2-10-show-existing-frame.webm -c:v copy /tmp/vp90-2-10-show-existing-frame.vp9.ivf
         const TEST_STREAM: &[u8] =
-            include_bytes!("../../test_data/vp90-2-10-show-existing-frame.vp9.ivf");
+            include_bytes!("../test_data/vp90-2-10-show-existing-frame.vp9.ivf");
         const STREAM_CRCS: &str =
-            include_str!("../../test_data/vp90-2-10-show-existing-frame.vp9.ivf.crc");
+            include_str!("../test_data/vp90-2-10-show-existing-frame.vp9.ivf.crc");
 
         let blocking_modes = [BlockingMode::Blocking, BlockingMode::NonBlocking];
 
@@ -1410,16 +1405,16 @@ mod tests {
         // resolutions that are not multiple of 4, so we're ignoring CRCs for
         // this one.
         const TEST_STREAM: &[u8] =
-            include_bytes!("../../test_data/resolution_change_500frames-vp9.ivf");
+            include_bytes!("../test_data/resolution_change_500frames-vp9.ivf");
         const STREAM_CRCS: &str =
-            include_str!("../../test_data/resolution_change_500frames-vp9.ivf.crc");
+            include_str!("../test_data/resolution_change_500frames-vp9.ivf.crc");
 
         const TEST_RESOLUTION_CHANGE_500FRAMES_STREAM_SLICE_DATA_0: &[u8] =
-            include_bytes!("../../test_data/resolution_change_500frames-vp9-ivf-slice-data-0.bin");
+            include_bytes!("../test_data/resolution_change_500frames-vp9-ivf-slice-data-0.bin");
         const TEST_RESOLUTION_CHANGE_500FRAMES_STREAM_SLICE_DATA_1: &[u8] =
-            include_bytes!("../../test_data/resolution_change_500frames-vp9-ivf-slice-data-1.bin");
+            include_bytes!("../test_data/resolution_change_500frames-vp9-ivf-slice-data-1.bin");
         const TEST_RESOLUTION_CHANGE_500FRAMES_STREAM_SLICE_DATA_54: &[u8] =
-            include_bytes!("../../test_data/resolution_change_500frames-vp9-ivf-slice-data-54.bin");
+            include_bytes!("../test_data/resolution_change_500frames-vp9-ivf-slice-data-54.bin");
 
         let blocking_modes = [BlockingMode::Blocking, BlockingMode::NonBlocking];
 

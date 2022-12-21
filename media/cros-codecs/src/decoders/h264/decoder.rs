@@ -12,7 +12,7 @@ use anyhow::Result;
 use enumn::N;
 use log::debug;
 
-use crate::decoders::h264::backends::stateless::StatelessDecoderBackend;
+use crate::decoders::h264::backends::StatelessDecoderBackend;
 use crate::decoders::h264::dpb::Dpb;
 use crate::decoders::h264::parser::Nalu;
 use crate::decoders::h264::parser::NaluType;

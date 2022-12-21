@@ -10,7 +10,7 @@ use anyhow::anyhow;
 use anyhow::Result;
 use log::debug;
 
-use crate::decoders::h264::backends::stateless::ContainedPicture;
+use crate::decoders::h264::backends::ContainedPicture;
 use crate::decoders::h264::picture::Field;
 use crate::decoders::h264::picture::H264Picture;
 use crate::decoders::h264::picture::IsIdr;

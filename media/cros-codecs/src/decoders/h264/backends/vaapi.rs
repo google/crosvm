@@ -22,11 +22,11 @@ use libva::SliceParameter;
 use libva::UsageHint;
 use log::debug;
 
-use crate::decoders::h264::backends::stateless::BlockingMode;
-use crate::decoders::h264::backends::stateless::ContainedPicture;
-use crate::decoders::h264::backends::stateless::DecodedHandle;
-use crate::decoders::h264::backends::stateless::Result as StatelessBackendResult;
-use crate::decoders::h264::backends::stateless::StatelessDecoderBackend;
+use crate::decoders::h264::backends::BlockingMode;
+use crate::decoders::h264::backends::ContainedPicture;
+use crate::decoders::h264::backends::DecodedHandle;
+use crate::decoders::h264::backends::Result as StatelessBackendResult;
+use crate::decoders::h264::backends::StatelessDecoderBackend;
 use crate::decoders::h264::decoder::Decoder;
 use crate::decoders::h264::decoder::Profile;
 use crate::decoders::h264::dpb::Dpb;
@@ -1014,11 +1014,11 @@ mod tests {
     use libva::Display;
 
     use crate::decoders::h264::backends;
-    use crate::decoders::h264::backends::stateless::vaapi::AssociatedHandle;
-    use crate::decoders::h264::backends::stateless::vaapi::Backend;
-    use crate::decoders::h264::backends::stateless::BlockingMode;
-    use crate::decoders::h264::backends::stateless::DecodedHandle;
-    use crate::decoders::h264::backends::stateless::StatelessDecoderBackend;
+    use crate::decoders::h264::backends::vaapi::AssociatedHandle;
+    use crate::decoders::h264::backends::vaapi::Backend;
+    use crate::decoders::h264::backends::BlockingMode;
+    use crate::decoders::h264::backends::DecodedHandle;
+    use crate::decoders::h264::backends::StatelessDecoderBackend;
     use crate::decoders::h264::decoder::tests::process_ready_frames;
     use crate::decoders::h264::decoder::tests::run_decoding_loop;
     use crate::decoders::h264::decoder::Decoder;
@@ -1026,10 +1026,8 @@ mod tests {
 
     fn as_vaapi_backend(
         backend: &dyn StatelessDecoderBackend<Handle = AssociatedHandle>,
-    ) -> &backends::stateless::vaapi::Backend {
-        backend
-            .downcast_ref::<backends::stateless::vaapi::Backend>()
-            .unwrap()
+    ) -> &backends::vaapi::Backend {
+        backend.downcast_ref::<backends::vaapi::Backend>().unwrap()
     }
 
     fn process_handle(
@@ -1071,7 +1069,7 @@ mod tests {
         /// h264::decoders::tests::test_16x16_progressive_i, but with an actual
         /// backend to test whether the backend specific logic works and the
         /// produced CRCs match their expected values.
-        const TEST_STREAM: &[u8] = include_bytes!("../../test_data/16x16-I.h264");
+        const TEST_STREAM: &[u8] = include_bytes!("../test_data/16x16-I.h264");
         let blocking_modes = [BlockingMode::Blocking, BlockingMode::NonBlocking];
 
         for blocking_mode in blocking_modes {
@@ -1112,7 +1110,7 @@ mod tests {
         /// h264::decoders::tests::test_16x16_progressive_i_and_p, but with an
         /// actual backend to test whether the backend specific logic works and
         /// the produced CRCs match their expected values.
-        const TEST_STREAM: &[u8] = include_bytes!("../../test_data/16x16-I-P.h264");
+        const TEST_STREAM: &[u8] = include_bytes!("../test_data/16x16-I-P.h264");
         let blocking_modes = [BlockingMode::Blocking, BlockingMode::NonBlocking];
 
         for blocking_mode in blocking_modes {
@@ -1151,8 +1149,8 @@ mod tests {
         /// h264::decoders::tests::test_16x16_progressive_i_p_b_p, but with an
         /// actual backend to test whether the backend specific logic works and
         /// the produced CRCs match their expected values.
-        const TEST_STREAM: &[u8] = include_bytes!("../../test_data/16x16-I-P-B-P.h264");
-        const STREAM_CRCS: &str = include_str!("../../test_data/16x16-I-P-B-P.h264.crc");
+        const TEST_STREAM: &[u8] = include_bytes!("../test_data/16x16-I-P-B-P.h264");
+        const STREAM_CRCS: &str = include_str!("../test_data/16x16-I-P-B-P.h264.crc");
         let blocking_modes = [BlockingMode::Blocking, BlockingMode::NonBlocking];
 
         for blocking_mode in blocking_modes {
@@ -1192,8 +1190,8 @@ mod tests {
         /// h264::decoders::tests::test_16x16_progressive_i_p_b_p_high, but with
         /// an actual backend to test whether the backend specific logic works
         /// and the produced CRCs match their expected values.
-        const TEST_STREAM: &[u8] = include_bytes!("../../test_data/16x16-I-P-B-P-high.h264");
-        const STREAM_CRCS: &str = include_str!("../../test_data/16x16-I-P-B-P-high.h264.crc");
+        const TEST_STREAM: &[u8] = include_bytes!("../test_data/16x16-I-P-B-P-high.h264");
+        const STREAM_CRCS: &str = include_str!("../test_data/16x16-I-P-B-P-high.h264.crc");
         let blocking_modes = [BlockingMode::Blocking, BlockingMode::NonBlocking];
 
         for blocking_mode in blocking_modes {
@@ -1233,8 +1231,8 @@ mod tests {
         /// h264::decoders::tests::test_interlaced_kodi_1080i, but with an
         /// actual backend to test whether the backend specific logic works and
         /// the produced CRCs match their expected values.
-        const TEST_STREAM: &[u8] = include_bytes!("../../test_data/test-kodi-1080i-25-H264.h264");
-        const STREAM_CRCS: &str = include_str!("../../test_data/test-kodi-1080i-25-H264.h264.crc");
+        const TEST_STREAM: &[u8] = include_bytes!("../test_data/test-kodi-1080i-25-H264.h264");
+        const STREAM_CRCS: &str = include_str!("../test_data/test-kodi-1080i-25-H264.h264.crc");
         let blocking_modes = [BlockingMode::Blocking, BlockingMode::NonBlocking];
 
         for blocking_mode in blocking_modes {
@@ -1275,8 +1273,8 @@ mod tests {
         /// h264::decoders::tests::test_interlaced_kodi_1080p, but with an
         /// actual backend to test whether the backend specific logic works and
         /// the produced CRCs match their expected values.
-        const TEST_STREAM: &[u8] = include_bytes!("../../test_data/FPS_test_1080p24_l4_1.h264");
-        const STREAM_CRCS: &str = include_str!("../../test_data/FPS_test_1080p24_l4_1.h264.crc");
+        const TEST_STREAM: &[u8] = include_bytes!("../test_data/FPS_test_1080p24_l4_1.h264");
+        const STREAM_CRCS: &str = include_str!("../test_data/FPS_test_1080p24_l4_1.h264.crc");
         let blocking_modes = [BlockingMode::Blocking, BlockingMode::NonBlocking];
 
         for blocking_mode in blocking_modes {
@@ -1316,8 +1314,8 @@ mod tests {
         /// h264::decoders::tests::test_25fps_interlaced_h264, but with an
         /// actual backend to test whether the backend specific logic works and
         /// the produced CRCs match their expected values.
-        const TEST_STREAM: &[u8] = include_bytes!("../../test_data/test-25fps-interlaced.h264");
-        const STREAM_CRCS: &str = include_str!("../../test_data/test-25fps-interlaced.h264.crc");
+        const TEST_STREAM: &[u8] = include_bytes!("../test_data/test-25fps-interlaced.h264");
+        const STREAM_CRCS: &str = include_str!("../test_data/test-25fps-interlaced.h264.crc");
         let blocking_modes = [BlockingMode::Blocking, BlockingMode::NonBlocking];
 
         for blocking_mode in blocking_modes {
@@ -1356,8 +1354,8 @@ mod tests {
         /// This test is the same as h264::decoders::tests::test_25fps_h264, but
         /// with an actual backend to test whether the backend specific logic
         /// works and the produced CRCs match their expected values.
-        const TEST_STREAM: &[u8] = include_bytes!("../../test_data/test-25fps.h264");
-        const STREAM_CRCS: &str = include_str!("../../test_data/test-25fps.h264.crc");
+        const TEST_STREAM: &[u8] = include_bytes!("../test_data/test-25fps.h264");
+        const STREAM_CRCS: &str = include_str!("../test_data/test-25fps.h264.crc");
         let blocking_modes = [BlockingMode::Blocking, BlockingMode::NonBlocking];
 
         for blocking_mode in blocking_modes {

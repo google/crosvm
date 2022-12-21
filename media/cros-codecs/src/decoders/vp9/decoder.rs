@@ -6,7 +6,7 @@ use anyhow::anyhow;
 use anyhow::Result;
 use log::debug;
 
-use crate::decoders::vp9::backends::stateless::StatelessDecoderBackend;
+use crate::decoders::vp9::backends::StatelessDecoderBackend;
 use crate::decoders::vp9::parser::BitDepth;
 use crate::decoders::vp9::parser::Frame;
 use crate::decoders::vp9::parser::FrameType;

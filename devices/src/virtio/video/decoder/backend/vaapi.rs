@@ -1019,10 +1019,8 @@ impl DecoderBackend for VaapiDecoder {
         let codec: Box<dyn VideoDecoder> = match format {
             Format::VP8 => {
                 let backend = Box::new(
-                    cros_codecs::decoders::vp8::backends::stateless::vaapi::Backend::new(
-                        Rc::clone(&display),
-                    )
-                    .unwrap(),
+                    cros_codecs::decoders::vp8::backends::vaapi::Backend::new(Rc::clone(&display))
+                        .unwrap(),
                 );
 
                 Box::new(
@@ -1036,10 +1034,8 @@ impl DecoderBackend for VaapiDecoder {
 
             Format::VP9 => {
                 let backend = Box::new(
-                    cros_codecs::decoders::vp9::backends::stateless::vaapi::Backend::new(
-                        Rc::clone(&display),
-                    )
-                    .unwrap(),
+                    cros_codecs::decoders::vp9::backends::vaapi::Backend::new(Rc::clone(&display))
+                        .unwrap(),
                 );
 
                 Box::new(
@@ -1053,10 +1049,8 @@ impl DecoderBackend for VaapiDecoder {
 
             Format::H264 => {
                 let backend = Box::new(
-                    cros_codecs::decoders::h264::backends::stateless::vaapi::Backend::new(
-                        Rc::clone(&display),
-                    )
-                    .unwrap(),
+                    cros_codecs::decoders::h264::backends::vaapi::Backend::new(Rc::clone(&display))
+                        .unwrap(),
                 );
                 Box::new(
                     cros_codecs::decoders::h264::decoder::Decoder::new(
