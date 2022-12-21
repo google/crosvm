@@ -815,13 +815,6 @@ impl PassthroughFs {
     fn do_lookup(&self, parent: &InodeData, name: &CStr) -> io::Result<Entry> {
         let st = statat(parent, name)?;
 
-        let mut flags = libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC;
-        match FileType::from(st.st_mode) {
-            FileType::Regular => {}
-            FileType::Directory => flags |= libc::O_DIRECTORY,
-            FileType::Other => flags |= libc::O_PATH,
-        }
-
         let altkey = InodeAltKey {
             ino: st.st_ino,
             dev: st.st_dev,
@@ -839,14 +832,44 @@ impl PassthroughFs {
             });
         }
 
+        // Open a regular file with O_RDONLY to store in `InodeData` so explicit open requests can
+        // be skipped later if the ZERO_MESSAGE_{OPEN,OPENDIR} features are enabled.
+        // If the crosvm process doesn't have a read permission, fall back to O_PATH below.
+        let mut flags = libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC;
+        match FileType::from(st.st_mode) {
+            FileType::Regular => {}
+            FileType::Directory => flags |= libc::O_DIRECTORY,
+            FileType::Other => flags |= libc::O_PATH,
+        };
+
         // Safe because this doesn't modify any memory and we check the return value.
-        let f = unsafe {
-            File::from_raw_descriptor(syscall!(libc::openat64(
+        let fd = match unsafe {
+            syscall!(libc::openat64(
                 parent.as_raw_descriptor(),
                 name.as_ptr(),
                 flags
-            ))?)
+            ))
+        } {
+            Ok(fd) => fd,
+            Err(e) if e.errno() == libc::EACCES => {
+                // fallback to O_PATH for the unreadable file.
+                flags |= libc::O_PATH;
+                // Safe because this doesn't modify any memory and we check the return value.
+                unsafe {
+                    syscall!(libc::openat64(
+                        parent.as_raw_descriptor(),
+                        name.as_ptr(),
+                        flags
+                    ))
+                }?
+            }
+            Err(e) => {
+                return Err(e.into());
+            }
         };
+
+        // Safe because we own the fd.
+        let f = unsafe { File::from_raw_descriptor(fd) };
         // We made sure the lock acquired for `self.inodes` is released automatically when
         // the if block above is exited, so a call to `self.add_entry()` should not cause a deadlock
         // here. This would not be the case if this were executed in an else block instead.
