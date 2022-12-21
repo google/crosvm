@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::cell::RefCell;
-use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
@@ -655,7 +654,7 @@ impl VideoDecoderBackend for Backend {
             }
         };
 
-        let supported_formats_for_stream = self.supported_formats_for_stream()?;
+        let supported_formats_for_stream = &self.metadata_state.supported_formats_for_stream()?;
 
         if supported_formats_for_stream.contains(&format) {
             let map_format = utils::vaapi::FORMAT_MAP
@@ -675,23 +674,6 @@ impl VideoDecoderBackend for Backend {
                 )),
             ))
         }
-    }
-
-    fn supported_formats_for_stream(&self) -> DecoderResult<HashSet<DecodedFormat>> {
-        let rt_format = self.metadata_state.rt_format()?;
-        let display = self.metadata_state.display();
-        let image_formats = display.query_image_formats()?;
-        let profile = self.metadata_state.profile()?;
-
-        let formats = utils::vaapi::supported_formats_for_rt_format(
-            display,
-            rt_format,
-            profile,
-            libva::VAEntrypoint::VAEntrypointVLD,
-            &image_formats,
-        )?;
-
-        Ok(formats.into_iter().map(|f| f.decoded_format).collect())
     }
 
     fn coded_resolution(&self) -> Option<Resolution> {

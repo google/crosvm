@@ -54,7 +54,7 @@ pub const FORMAT_MAP: [FormatMap; 2] = [
 ];
 
 /// Returns a set of supported decoded formats given `rt_format`
-pub fn supported_formats_for_rt_format(
+fn supported_formats_for_rt_format(
     display: Rc<Display>,
     rt_format: u32,
     profile: i32,
@@ -345,6 +345,28 @@ impl StreamMetadataState {
     pub(crate) fn get_surface(&mut self) -> Result<Option<Surface>> {
         let mut surface_pool = self.surface_pool()?;
         Ok(surface_pool.get_surface())
+    }
+
+    /// Gets a set of supported formats for the particular stream being
+    /// processed. This requires that some buffers be processed before this call
+    /// is made. Only formats that are compatible with the current color space,
+    /// bit depth, and chroma format are returned such that no conversion is
+    /// needed.
+    pub(crate) fn supported_formats_for_stream(&self) -> Result<HashSet<DecodedFormat>> {
+        let rt_format = self.rt_format()?;
+        let display = self.display();
+        let image_formats = display.query_image_formats()?;
+        let profile = self.profile()?;
+
+        let formats = supported_formats_for_rt_format(
+            display,
+            rt_format,
+            profile,
+            libva::VAEntrypoint::VAEntrypointVLD,
+            &image_formats,
+        )?;
+
+        Ok(formats.into_iter().map(|f| f.decoded_format).collect())
     }
 }
 

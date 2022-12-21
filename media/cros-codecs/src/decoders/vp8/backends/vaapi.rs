@@ -616,25 +616,6 @@ impl VideoDecoderBackend for Backend {
         DecodedFormat::try_from(map_format.as_ref()).ok()
     }
 
-    fn supported_formats_for_stream(
-        &self,
-    ) -> DecoderResult<std::collections::HashSet<crate::DecodedFormat>> {
-        let rt_format = self.metadata_state.rt_format()?;
-        let display = self.metadata_state.display();
-        let image_formats = display.query_image_formats()?;
-        let profile = self.metadata_state.profile()?;
-
-        let formats = utils::vaapi::supported_formats_for_rt_format(
-            display,
-            rt_format,
-            profile,
-            libva::VAEntrypoint::VAEntrypointVLD,
-            &image_formats,
-        )?;
-
-        Ok(formats.into_iter().map(|f| f.decoded_format).collect())
-    }
-
     fn try_format(&mut self, format: crate::DecodedFormat) -> DecoderResult<()> {
         let header = match &self.negotiation_status {
             NegotiationStatus::Possible(header) => header.clone(),
@@ -648,7 +629,7 @@ impl VideoDecoderBackend for Backend {
             }
         };
 
-        let supported_formats_for_stream = self.supported_formats_for_stream()?;
+        let supported_formats_for_stream = self.metadata_state.supported_formats_for_stream()?;
 
         if supported_formats_for_stream.contains(&format) {
             let map_format = utils::vaapi::FORMAT_MAP

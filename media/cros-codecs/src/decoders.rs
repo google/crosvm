@@ -5,7 +5,6 @@
 use std::cell::Ref;
 use std::cell::RefCell;
 use std::cell::RefMut;
-use std::collections::HashSet;
 use std::rc::Rc;
 
 use thiserror::Error;
@@ -60,16 +59,6 @@ pub(crate) trait VideoDecoderBackend {
     /// enough stream metadata from the bitstream. Some buffers need to be
     /// processed first before the default format can be set.
     fn format(&self) -> Option<DecodedFormat>;
-
-    /// Gets a set of supported formats for the particular stream being
-    /// processed. This required that some buffers be processed before this call
-    /// is made. Only formats that are compatible with the current color space,
-    /// bit depth, and chroma format are returned such that no conversion is
-    /// needed.
-    ///
-    /// The format can be altered by calling `try_format` if the new format is
-    /// supported by the implementation.
-    fn supported_formats_for_stream(&self) -> Result<HashSet<DecodedFormat>>;
 
     /// Try altering the decoded format.
     fn try_format(&mut self, format: DecodedFormat) -> Result<()>;
