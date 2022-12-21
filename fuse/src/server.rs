@@ -1070,7 +1070,7 @@ impl<F: FileSystem + Sync> Server<F> {
                     let mut total_written = 0;
                     while let Some(dirent) = entries.next() {
                         let remaining = (size as usize).saturating_sub(total_written);
-                        match add_dirent(cursor, remaining, dirent, None) {
+                        match add_dirent(cursor, remaining, &dirent, None) {
                             // No more space left in the buffer.
                             Ok(0) => break,
                             Ok(bytes_written) => {
@@ -1091,11 +1091,11 @@ impl<F: FileSystem + Sync> Server<F> {
         }
     }
 
-    fn handle_dirent<'d>(
+    fn lookup_dirent_attribute<'d>(
         &self,
         in_header: &InHeader,
-        dir_entry: DirEntry<'d>,
-    ) -> io::Result<(DirEntry<'d>, Entry)> {
+        dir_entry: &DirEntry<'d>,
+    ) -> io::Result<Entry> {
         let parent = in_header.nodeid.into();
         let name = dir_entry.name.to_bytes();
         let entry = if name == b"." || name == b".." {
@@ -1118,7 +1118,7 @@ impl<F: FileSystem + Sync> Server<F> {
                 .lookup(Context::from(*in_header), parent, dir_entry.name)?
         };
 
-        Ok((dir_entry, entry))
+        Ok(entry)
     }
 
     fn readdirplus<R: Reader, W: Writer>(
@@ -1161,11 +1161,13 @@ impl<F: FileSystem + Sync> Server<F> {
                     let mut total_written = 0;
                     while let Some(dirent) = entries.next() {
                         let mut entry_inode = None;
-                        match self.handle_dirent(&in_header, dirent).and_then(|(d, e)| {
-                            entry_inode = Some(e.inode);
-                            let remaining = (size as usize).saturating_sub(total_written);
-                            add_dirent(cursor, remaining, d, Some(e))
-                        }) {
+                        match self
+                            .lookup_dirent_attribute(&in_header, &dirent)
+                            .and_then(|e| {
+                                entry_inode = Some(e.inode);
+                                let remaining = (size as usize).saturating_sub(total_written);
+                                add_dirent(cursor, remaining, &dirent, Some(e))
+                            }) {
                             Ok(0) => {
                                 // No more space left in the buffer but we need to undo the lookup
                                 // that created the Entry or we will end up with mismatched lookup
@@ -1763,7 +1765,7 @@ fn bytes_to_cstr(buf: &[u8]) -> Result<&CStr> {
 fn add_dirent<W: Writer>(
     cursor: &mut W,
     max: usize,
-    d: DirEntry,
+    d: &DirEntry,
     entry: Option<Entry>,
 ) -> io::Result<usize> {
     // Strip the trailing '\0'.
