@@ -25,11 +25,11 @@ impl VhostUserListenerTrait for VhostUserListener {
         todo!()
     }
 
-    fn run_backend(
+    fn run_backend<'e>(
         self,
         _backend: Box<dyn VhostUserBackend>,
-        _ex: &Executor,
-    ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>>>> {
+        _ex: &'e Executor,
+    ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>> {
         todo!()
     }
 }

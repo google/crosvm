@@ -129,7 +129,7 @@ impl VhostUserListener {
 
 /// Attaches to an already bound socket via `listener` and handles incoming messages from the
 /// VMM, which are dispatched to the device backend via the `VhostUserBackend` trait methods.
-async fn run_with_handler<L, H>(listener: L, handler: H, ex: Executor) -> anyhow::Result<()>
+async fn run_with_handler<L, H>(listener: L, handler: H, ex: &Executor) -> anyhow::Result<()>
 where
     L::Endpoint: Endpoint<MasterReq> + AsRawDescriptor,
     L: Listener + AsRawDescriptor,
@@ -146,7 +146,7 @@ where
             .accept()
             .context("failed to accept an incoming connection")?
         {
-            Some(req_handler) => return run_handler(req_handler, &ex).await,
+            Some(req_handler) => return run_handler(req_handler, ex).await,
             None => {
                 // Nobody is on the other end yet, wait until we get a connection.
                 let async_waiter = ex
@@ -179,13 +179,11 @@ impl VhostUserListenerTrait for VhostUserListener {
         })
     }
 
-    fn run_backend(
+    fn run_backend<'e>(
         self,
         backend: Box<dyn VhostUserBackend>,
-        ex: &Executor,
-    ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>>>> {
-        let ex = ex.clone();
-
+        ex: &'e Executor,
+    ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>> {
         match self {
             VhostUserListener::Socket(listener) => {
                 let handler = DeviceRequestHandler::new(backend);

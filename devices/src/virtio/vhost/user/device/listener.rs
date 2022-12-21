@@ -49,11 +49,11 @@ pub trait VhostUserListenerTrait {
 
     /// Returns a `Future` that will process requests from `backend` when polled. The future exits
     /// when the front-end side disconnects or an error occurs.
-    fn run_backend(
+    fn run_backend<'e>(
         self,
         backend: Box<dyn VhostUserBackend>,
-        ex: &Executor,
-    ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>>>>;
+        ex: &'e Executor,
+    ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>>;
 
     /// Start processing requests for a `VhostUserDevice` on `listener`. Returns when the front-end
     /// side disconnects or an error occurs.
