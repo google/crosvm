@@ -7,8 +7,8 @@ edition = "2021"
 [dependencies]
 anyhow = "*"
 bitflags = "1"
-base = { path = "../../base" }
 crc32fast = "1.2.1"
+log = { version = "0", features = ["release_max_level_debug"] }
 
 [build-dependencies]
 pkg-config = "*"

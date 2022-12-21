@@ -5,7 +5,7 @@
 use std::rc::Rc;
 
 use anyhow::Result;
-use base::error;
+use log::error;
 
 use crate::bindings;
 use crate::display::Display;
