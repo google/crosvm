@@ -4,6 +4,7 @@
 
 use std::ffi::CStr;
 use std::fs::File;
+use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -11,7 +12,6 @@ use std::rc::Rc;
 use anyhow::anyhow;
 use anyhow::Context as AnyhowContext;
 use anyhow::Result;
-use base::AsRawDescriptor;
 
 use crate::bindings;
 use crate::config::Config;
@@ -90,7 +90,7 @@ impl Display {
 
         // Safe because fd represents a valid file descriptor and the pointer is checked for
         // NULL afterwards.
-        let display = unsafe { bindings::vaGetDisplayDRM(file.as_raw_descriptor()) };
+        let display = unsafe { bindings::vaGetDisplayDRM(file.as_raw_fd()) };
         if display.is_null() {
             // The File will close the DRM fd on drop.
             return Err(anyhow!(
