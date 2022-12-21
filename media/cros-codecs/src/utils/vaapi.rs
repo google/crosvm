@@ -572,3 +572,21 @@ impl<T> Default for NegotiationStatus<T> {
         NegotiationStatus::NonNegotiated
     }
 }
+
+/// A type that keeps track of a pending decoding operation. The backend can
+/// complete the job by either querying its status with VA-API or by blocking on
+/// it at some point in the future.
+///
+/// Once the backend is sure that the operation went through, it can assign the
+/// handle to `codec_picture` and dequeue this object from the pending queue.
+///
+/// The generic parameter `P` should be a `Picture` backed by `GenericBackendHandle`.
+pub(crate) struct PendingJob<P> {
+    /// A picture that was already sent to VA-API. It is unclear whether it has
+    /// been decoded yet because we have been asked not to block on it.
+    pub va_picture: libva::Picture<libva::PictureEnd>,
+    /// A handle to the picture passed in by the decoder. It has no handle
+    /// backing it yet, as we cannot be sure that the decoding operation went
+    /// through.
+    pub codec_picture: Rc<RefCell<P>>,
+}

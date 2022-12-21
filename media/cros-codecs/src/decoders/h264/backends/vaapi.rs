@@ -14,7 +14,6 @@ use libva::Display;
 use libva::IQMatrix;
 use libva::IQMatrixBufferH264;
 use libva::Picture as VaPicture;
-use libva::PictureEnd;
 use libva::PictureNew;
 use libva::PictureParameter;
 use libva::PictureParameterBufferH264;
@@ -45,6 +44,7 @@ use crate::utils::vaapi::DecodedHandle as VADecodedHandle;
 use crate::utils::vaapi::FormatMap;
 use crate::utils::vaapi::GenericBackendHandle;
 use crate::utils::vaapi::NegotiationStatus;
+use crate::utils::vaapi::PendingJob;
 use crate::utils::vaapi::StreamMetadataState;
 use crate::utils::vaapi::SurfacePoolHandle;
 use crate::DecodedFormat;
@@ -78,22 +78,6 @@ impl TestParams {
     }
 }
 
-/// A type that keeps track of a pending decoding operation. The backend can
-/// complete the job by either querying its status with VA-API or by blocking on
-/// it at some point in the future.
-///
-/// Once the backend is sure that the operation went through, it can assign the
-/// handle to `h264_picture` and dequeue this object from the pending queue.
-struct PendingJob<BackendHandle> {
-    /// A picture that was already sent to VA-API. It is unclear whether it has
-    /// been decoded yet because we have been asked not to block on it.
-    va_picture: VaPicture<PictureEnd>,
-    /// A handle to the picture passed in by the H264 decoder. It has no handle
-    /// backing it yet, as we cannot be sure that the decoding operation went
-    /// through.
-    h264_picture: ContainedPicture<BackendHandle>,
-}
-
 /// H.264 stateless decoder backend for VA-API.
 struct Backend {
     /// The metadata state. Updated whenever the decoder reads new data from the stream.
@@ -101,7 +85,7 @@ struct Backend {
     /// The current picture being worked on.
     current_picture: Option<VaPicture<PictureNew>>,
     /// The FIFO for all pending pictures, in the order they were submitted.
-    pending_jobs: VecDeque<PendingJob<GenericBackendHandle>>,
+    pending_jobs: VecDeque<PendingJob<H264Picture<GenericBackendHandle>>>,
     /// The number of allocated surfaces.
     num_allocated_surfaces: usize,
     /// The negotiation status. First member is the Sps, second is the size of the DPB.
@@ -805,7 +789,7 @@ impl StatelessDecoderBackend for Backend {
             // Append to our queue of pending jobs
             let pending_job = PendingJob {
                 va_picture: current_picture,
-                h264_picture: Rc::clone(&picture),
+                codec_picture: Rc::clone(&picture),
             };
 
             self.pending_jobs.push_back(pending_job);
@@ -844,9 +828,9 @@ impl StatelessDecoderBackend for Backend {
                 self.metadata_state.display_resolution()?,
             );
 
-            job.h264_picture.borrow_mut().backend_handle = Some(backend_handle);
+            job.codec_picture.borrow_mut().backend_handle = Some(backend_handle);
 
-            completed.push_back(job.h264_picture);
+            completed.push_back(job.codec_picture);
         }
 
         let completed = completed.into_iter().map(|picture| {
@@ -934,7 +918,7 @@ impl StatelessDecoderBackend for Backend {
             // Remove from the queue in order.
             let job = &self.pending_jobs[i];
 
-            if H264Picture::same(&job.h264_picture, handle.picture_container()) {
+            if H264Picture::same(&job.codec_picture, handle.picture_container()) {
                 let job = self.pending_jobs.remove(i).unwrap();
 
                 let current_picture = job.va_picture.sync()?;
@@ -947,7 +931,7 @@ impl StatelessDecoderBackend for Backend {
                     self.metadata_state.display_resolution()?,
                 );
 
-                job.h264_picture.borrow_mut().backend_handle = Some(backend_handle);
+                job.codec_picture.borrow_mut().backend_handle = Some(backend_handle);
 
                 return Ok(());
             }
