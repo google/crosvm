@@ -18,7 +18,6 @@ use libva::PictureNew;
 use libva::PictureParameter;
 use libva::PictureParameterBufferH264;
 use libva::SliceParameter;
-use libva::UsageHint;
 use log::debug;
 
 use crate::decoders::h264::backends::ContainedPicture;
@@ -42,12 +41,11 @@ use crate::decoders::StatelessBackendError;
 use crate::decoders::VideoDecoderBackend;
 use crate::utils;
 use crate::utils::vaapi::DecodedHandle as VADecodedHandle;
-use crate::utils::vaapi::FormatMap;
 use crate::utils::vaapi::GenericBackendHandle;
 use crate::utils::vaapi::NegotiationStatus;
 use crate::utils::vaapi::PendingJob;
+use crate::utils::vaapi::StreamInfo;
 use crate::utils::vaapi::StreamMetadataState;
-use crate::utils::vaapi::SurfacePoolHandle;
 use crate::DecodedFormat;
 use crate::Resolution;
 
@@ -76,6 +74,58 @@ impl TestParams {
 
     fn save_slice_data(&mut self, slice_data: BufferType) {
         self.slice_data = Some(slice_data);
+    }
+}
+
+impl StreamInfo for &Sps {
+    fn va_profile(&self) -> anyhow::Result<i32> {
+        let profile_idc = self.profile_idc();
+        let profile = Profile::n(profile_idc)
+            .with_context(|| format!("Invalid profile_idc {:?}", profile_idc))?;
+
+        match profile {
+            Profile::Baseline => {
+                if self.constraint_set0_flag() {
+                    Ok(libva::VAProfile::VAProfileH264ConstrainedBaseline)
+                } else {
+                    Err(anyhow!(
+                        "Unsupported stream: profile_idc=66, but constraint_set0_flag is unset"
+                    ))
+                }
+            }
+            Profile::Main => Ok(libva::VAProfile::VAProfileH264Main),
+            Profile::High => Ok(libva::VAProfile::VAProfileH264High),
+        }
+    }
+
+    fn rt_format(&self) -> anyhow::Result<u32> {
+        let bit_depth_luma = self.bit_depth_chroma_minus8() + 8;
+        let chroma_format_idc = self.chroma_format_idc();
+
+        match bit_depth_luma {
+            8 => match chroma_format_idc {
+                0 | 1 => Ok(libva::constants::VA_RT_FORMAT_YUV420),
+                _ => Err(anyhow!(
+                    "Unsupported chroma_format_idc: {}",
+                    chroma_format_idc
+                )),
+            },
+            _ => Err(anyhow!("Unsupported bit depth: {}", bit_depth_luma)),
+        }
+    }
+
+    fn min_num_surfaces(&self) -> usize {
+        self.max_dpb_frames().unwrap() + 4
+    }
+
+    fn coded_size(&self) -> (u32, u32) {
+        (self.width(), self.height())
+    }
+
+    fn visible_rect(&self) -> ((u32, u32), (u32, u32)) {
+        let rect = self.visible_rectangle();
+
+        ((rect.min.x, rect.min.y), (rect.max.x, rect.max.y))
     }
 }
 
@@ -108,124 +158,6 @@ impl Backend {
             #[cfg(test)]
             test_params: Default::default(),
         })
-    }
-
-    /// Initializes or reinitializes the codec state.
-    fn open(&mut self, sps: &Sps, format_map: Option<&FormatMap>) -> Result<()> {
-        let display = self.metadata_state.display();
-
-        let profile_idc = sps.profile_idc();
-        let profile = Profile::n(profile_idc)
-            .with_context(|| format!("Invalid profile_idc {:?}", profile_idc))?;
-        let va_profile = Backend::get_profile(profile, sps.constraint_set0_flag())?;
-
-        let rt_format =
-            Backend::get_rt_fmt(sps.bit_depth_chroma_minus8() + 8, sps.chroma_format_idc())?;
-
-        let frame_w = sps.width();
-        let frame_h = sps.height();
-
-        let attrs = vec![libva::VAConfigAttrib {
-            type_: libva::VAConfigAttribType::VAConfigAttribRTFormat,
-            value: rt_format,
-        }];
-
-        let config =
-            display.create_config(attrs, va_profile, libva::VAEntrypoint::VAEntrypointVLD)?;
-
-        let format_map = if let Some(format_map) = format_map {
-            format_map
-        } else {
-            // Pick the first one that fits
-            utils::vaapi::FORMAT_MAP
-                .iter()
-                .find(|&map| map.rt_format == rt_format)
-                .ok_or(anyhow!("Unsupported format {}", rt_format))?
-        };
-
-        let map_format = display
-            .query_image_formats()?
-            .iter()
-            .find(|f| f.fourcc == format_map.va_fourcc)
-            .cloned()
-            .unwrap();
-
-        let num_surfaces = sps.max_dpb_frames()? + 4;
-
-        let surfaces = display.create_surfaces(
-            rt_format,
-            Some(map_format.fourcc),
-            frame_w,
-            frame_h,
-            Some(UsageHint::USAGE_HINT_DECODER),
-            num_surfaces as u32,
-        )?;
-
-        let context = display.create_context(
-            &config,
-            i32::try_from(frame_w)?,
-            i32::try_from(frame_h)?,
-            Some(&surfaces),
-            true,
-        )?;
-
-        let coded_resolution = Resolution {
-            width: frame_w,
-            height: frame_h,
-        };
-
-        let visible_rect = sps.visible_rectangle();
-
-        let display_resolution = Resolution {
-            width: visible_rect.max.x - visible_rect.min.x,
-            height: visible_rect.max.y - visible_rect.min.y,
-        };
-
-        let surface_pool = SurfacePoolHandle::new(surfaces, coded_resolution);
-
-        self.metadata_state = StreamMetadataState::Parsed {
-            context,
-            config,
-            surface_pool,
-            min_num_surfaces: num_surfaces,
-            coded_resolution,
-            display_resolution,
-            map_format: Rc::new(map_format),
-            rt_format,
-            profile: va_profile,
-        };
-
-        Ok(())
-    }
-
-    fn get_profile(profile: Profile, constraint_set0_flag: bool) -> Result<libva::VAProfile::Type> {
-        match profile {
-            Profile::Baseline => {
-                if constraint_set0_flag {
-                    Ok(libva::VAProfile::VAProfileH264ConstrainedBaseline)
-                } else {
-                    Err(anyhow!(
-                        "Unsupported stream: profile_idc=66, but constraint_set0_flag is unset"
-                    ))
-                }
-            }
-            Profile::Main => Ok(libva::VAProfile::VAProfileH264Main),
-            Profile::High => Ok(libva::VAProfile::VAProfileH264High),
-        }
-    }
-
-    fn get_rt_fmt(bit_depth_luma: u8, chroma_format_idc: u8) -> Result<u32> {
-        match bit_depth_luma {
-            8 => match chroma_format_idc {
-                0 | 1 => Ok(libva::constants::VA_RT_FORMAT_YUV420),
-                _ => Err(anyhow!(
-                    "Unsupported chroma_format_idc: {}",
-                    chroma_format_idc
-                )),
-            },
-
-            _ => Err(anyhow!("Unsupported bit depth: {}", bit_depth_luma)),
-        }
     }
 
     /// Gets the VASurfaceID for the given `picture`.
@@ -642,7 +574,7 @@ impl VideoDecoderBackend for Backend {
                 .unwrap();
 
             let sps = sps.clone();
-            self.open(&sps, Some(map_format))?;
+            self.metadata_state.open(sps.as_ref(), Some(map_format))?;
 
             Ok(())
         } else {
@@ -738,7 +670,7 @@ impl VideoDecoderBackend for Backend {
 
 impl StatelessDecoderBackend for Backend {
     fn new_sequence(&mut self, sps: &Sps) -> StatelessBackendResult<()> {
-        self.open(sps, None)?;
+        self.metadata_state.open(sps, None)?;
         self.negotiation_status = NegotiationStatus::Possible(Box::new(sps.clone()));
 
         Ok(())

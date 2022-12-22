@@ -13,7 +13,6 @@ use libva::BufferType;
 use libva::Display;
 use libva::Picture as VaPicture;
 use libva::SegmentParameterVP9;
-use libva::UsageHint;
 
 use crate::decoders::vp9::backends::AsBackendHandle;
 use crate::decoders::vp9::backends::ContainedPicture;
@@ -50,12 +49,11 @@ use crate::decoders::StatelessBackendError;
 use crate::decoders::VideoDecoderBackend;
 use crate::utils;
 use crate::utils::vaapi::DecodedHandle as VADecodedHandle;
-use crate::utils::vaapi::FormatMap;
 use crate::utils::vaapi::GenericBackendHandle;
 use crate::utils::vaapi::NegotiationStatus;
 use crate::utils::vaapi::PendingJob;
+use crate::utils::vaapi::StreamInfo;
 use crate::utils::vaapi::StreamMetadataState;
-use crate::utils::vaapi::SurfacePoolHandle;
 use crate::DecodedFormat;
 use crate::Resolution;
 
@@ -70,6 +68,38 @@ struct TestParams {
     pic_param: BufferType,
     slice_param: BufferType,
     slice_data: BufferType,
+}
+
+impl StreamInfo for &Header {
+    fn va_profile(&self) -> anyhow::Result<i32> {
+        Ok(match self.profile() {
+            Profile::Profile0 => libva::VAProfile::VAProfileVP9Profile0,
+            Profile::Profile1 => libva::VAProfile::VAProfileVP9Profile1,
+            Profile::Profile2 => libva::VAProfile::VAProfileVP9Profile2,
+            Profile::Profile3 => libva::VAProfile::VAProfileVP9Profile3,
+        })
+    }
+
+    fn rt_format(&self) -> anyhow::Result<u32> {
+        Backend::get_rt_format(
+            self.profile(),
+            self.bit_depth(),
+            self.subsampling_x(),
+            self.subsampling_y(),
+        )
+    }
+
+    fn min_num_surfaces(&self) -> usize {
+        NUM_SURFACES
+    }
+
+    fn coded_size(&self) -> (u32, u32) {
+        (self.width() as u32, self.height() as u32)
+    }
+
+    fn visible_rect(&self) -> ((u32, u32), (u32, u32)) {
+        ((0, 0), self.coded_size())
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -135,15 +165,6 @@ impl Backend {
         }
     }
 
-    fn get_profile(profile: Profile) -> libva::VAProfile::Type {
-        match profile {
-            Profile::Profile0 => libva::VAProfile::VAProfileVP9Profile0,
-            Profile::Profile1 => libva::VAProfile::VAProfileVP9Profile1,
-            Profile::Profile2 => libva::VAProfile::VAProfileVP9Profile2,
-            Profile::Profile3 => libva::VAProfile::VAProfileVP9Profile3,
-        }
-    }
-
     fn get_rt_format(
         profile: Profile,
         bit_depth: BitDepth,
@@ -206,88 +227,6 @@ impl Backend {
                 }
             }
         }
-    }
-
-    /// Initialize the codec state by reading some metadata from the current
-    /// frame.
-    fn open(&mut self, hdr: &Header, format_map: Option<&FormatMap>) -> Result<()> {
-        let display = self.metadata_state.display();
-
-        let hdr_profile = hdr.profile();
-
-        let va_profile = Self::get_profile(hdr_profile);
-        let rt_format = Self::get_rt_format(
-            hdr_profile,
-            hdr.bit_depth(),
-            hdr.subsampling_x(),
-            hdr.subsampling_y(),
-        )?;
-
-        let frame_w = hdr.width();
-        let frame_h = hdr.height();
-
-        let attrs = vec![libva::VAConfigAttrib {
-            type_: libva::VAConfigAttribType::VAConfigAttribRTFormat,
-            value: rt_format,
-        }];
-
-        let config =
-            display.create_config(attrs, va_profile, libva::VAEntrypoint::VAEntrypointVLD)?;
-
-        let format_map = if let Some(format_map) = format_map {
-            format_map
-        } else {
-            // Pick the first one that fits
-            utils::vaapi::FORMAT_MAP
-                .iter()
-                .find(|&map| map.rt_format == rt_format)
-                .ok_or(anyhow!("Unsupported format {}", rt_format))?
-        };
-
-        let map_format = display
-            .query_image_formats()?
-            .iter()
-            .find(|f| f.fourcc == format_map.va_fourcc)
-            .cloned()
-            .unwrap();
-
-        let surfaces = display.create_surfaces(
-            rt_format,
-            Some(map_format.fourcc),
-            frame_w,
-            frame_h,
-            Some(UsageHint::USAGE_HINT_DECODER),
-            NUM_SURFACES as u32,
-        )?;
-
-        let context = display.create_context(
-            &config,
-            i32::try_from(frame_w)?,
-            i32::try_from(frame_h)?,
-            Some(&surfaces),
-            true,
-        )?;
-
-        let coded_resolution = Resolution {
-            width: frame_w,
-            height: frame_h,
-        };
-
-        let surface_pool = SurfacePoolHandle::new(surfaces, coded_resolution);
-
-        self.metadata_state = StreamMetadataState::Parsed {
-            context,
-            config,
-            surface_pool,
-            min_num_surfaces: NUM_SURFACES,
-            coded_resolution,
-            display_resolution: coded_resolution, // TODO(dwlsalmeida)
-            map_format: Rc::new(map_format),
-            rt_format,
-            profile: va_profile,
-        };
-
-        Ok(())
     }
 
     /// Gets the VASurfaceID for the given `picture`.
@@ -579,7 +518,7 @@ impl Backend {
 
 impl StatelessDecoderBackend for Backend {
     fn new_sequence(&mut self, header: &Header) -> StatelessBackendResult<()> {
-        self.open(header, None)?;
+        self.metadata_state.open(header, None)?;
         self.negotiation_status = NegotiationStatus::Possible(Box::new(header.clone()));
 
         Ok(())
@@ -722,7 +661,8 @@ impl VideoDecoderBackend for Backend {
                 .find(|&map| map.decoded_format == format)
                 .unwrap();
 
-            self.open(&header, Some(map_format))?;
+            self.metadata_state
+                .open(header.as_ref(), Some(map_format))?;
 
             Ok(())
         } else {

@@ -17,7 +17,6 @@ use libva::IQMatrix;
 use libva::IQMatrixBufferVP8;
 use libva::Picture as VaPicture;
 use libva::ProbabilityDataBufferVP8;
-use libva::UsageHint;
 
 use crate::decoders::h264::backends::Result as StatelessBackendResult;
 use crate::decoders::vp8::backends::AsBackendHandle;
@@ -37,12 +36,11 @@ use crate::decoders::StatelessBackendError;
 use crate::decoders::VideoDecoderBackend;
 use crate::utils;
 use crate::utils::vaapi::DecodedHandle as VADecodedHandle;
-use crate::utils::vaapi::FormatMap;
 use crate::utils::vaapi::GenericBackendHandle;
 use crate::utils::vaapi::NegotiationStatus;
 use crate::utils::vaapi::PendingJob;
+use crate::utils::vaapi::StreamInfo;
 use crate::utils::vaapi::StreamMetadataState;
-use crate::utils::vaapi::SurfacePoolHandle;
 use crate::DecodedFormat;
 use crate::Resolution;
 
@@ -59,6 +57,28 @@ struct TestParams {
     slice_data: BufferType,
     iq_matrix: BufferType,
     probability_table: BufferType,
+}
+
+impl StreamInfo for &Header {
+    fn va_profile(&self) -> anyhow::Result<i32> {
+        Ok(libva::VAProfile::VAProfileVP8Version0_3)
+    }
+
+    fn rt_format(&self) -> anyhow::Result<u32> {
+        Ok(libva::constants::VA_RT_FORMAT_YUV420)
+    }
+
+    fn min_num_surfaces(&self) -> usize {
+        NUM_SURFACES
+    }
+
+    fn coded_size(&self) -> (u32, u32) {
+        (self.width() as u32, self.height() as u32)
+    }
+
+    fn visible_rect(&self) -> ((u32, u32), (u32, u32)) {
+        ((0, 0), self.coded_size())
+    }
 }
 
 struct Backend {
@@ -97,81 +117,6 @@ impl Backend {
         } else {
             x
         }
-    }
-
-    /// Initialize the codec state by reading some metadata from the current
-    /// frame.
-    fn open(&mut self, frame_hdr: &Header, format_map: Option<&FormatMap>) -> Result<()> {
-        let display = self.metadata_state.display();
-
-        let va_profile = libva::VAProfile::VAProfileVP8Version0_3;
-        let rt_format = libva::constants::VA_RT_FORMAT_YUV420;
-
-        let frame_w = u32::from(frame_hdr.width());
-        let frame_h = u32::from(frame_hdr.height());
-
-        let attrs = vec![libva::VAConfigAttrib {
-            type_: libva::VAConfigAttribType::VAConfigAttribRTFormat,
-            value: rt_format,
-        }];
-
-        let config =
-            display.create_config(attrs, va_profile, libva::VAEntrypoint::VAEntrypointVLD)?;
-
-        let format_map = if let Some(format_map) = format_map {
-            format_map
-        } else {
-            // Pick the first one that fits
-            utils::vaapi::FORMAT_MAP
-                .iter()
-                .find(|&map| map.rt_format == rt_format)
-                .ok_or(anyhow!("Unsupported format {}", rt_format))?
-        };
-
-        let map_format = display
-            .query_image_formats()?
-            .iter()
-            .find(|f| f.fourcc == format_map.va_fourcc)
-            .cloned()
-            .unwrap();
-
-        let surfaces = display.create_surfaces(
-            rt_format,
-            Some(map_format.fourcc),
-            frame_w,
-            frame_h,
-            Some(UsageHint::USAGE_HINT_DECODER),
-            NUM_SURFACES as u32,
-        )?;
-
-        let context = display.create_context(
-            &config,
-            i32::try_from(frame_w)?,
-            i32::try_from(frame_h)?,
-            Some(&surfaces),
-            true,
-        )?;
-
-        let coded_resolution = Resolution {
-            width: frame_w,
-            height: frame_h,
-        };
-
-        let surface_pool = SurfacePoolHandle::new(surfaces, coded_resolution);
-
-        self.metadata_state = StreamMetadataState::Parsed {
-            context,
-            config,
-            surface_pool,
-            min_num_surfaces: NUM_SURFACES,
-            coded_resolution,
-            display_resolution: coded_resolution, // TODO(dwlsalmeida)
-            map_format: Rc::new(map_format),
-            rt_format,
-            profile: va_profile,
-        };
-
-        Ok(())
     }
 
     /// Gets the VASurfaceID for the given `picture`.
@@ -368,7 +313,7 @@ impl Backend {
 
 impl StatelessDecoderBackend for Backend {
     fn new_sequence(&mut self, header: &Header) -> StatelessBackendResult<()> {
-        self.open(header, None)?;
+        self.metadata_state.open(header, None)?;
         self.negotiation_status = NegotiationStatus::Possible(Box::new(header.clone()));
 
         Ok(())
@@ -535,7 +480,8 @@ impl VideoDecoderBackend for Backend {
                 .find(|&map| map.decoded_format == format)
                 .unwrap();
 
-            self.open(&header, Some(map_format))?;
+            self.metadata_state
+                .open(header.as_ref(), Some(map_format))?;
 
             Ok(())
         } else {

@@ -248,6 +248,20 @@ impl SurfacePoolHandle {
     }
 }
 
+/// A trait for providing the basic information needed to setup libva for decoding.
+pub(crate) trait StreamInfo {
+    /// Returns the VA profile of the stream.
+    fn va_profile(&self) -> anyhow::Result<i32>;
+    /// Returns the RT format of the stream.
+    fn rt_format(&self) -> anyhow::Result<u32>;
+    /// Returns the minimum number of surfaces required to decode the stream.
+    fn min_num_surfaces(&self) -> usize;
+    /// Returns the coded size of the surfaces required to decode the stream.
+    fn coded_size(&self) -> (u32, u32);
+    /// Returns the visible rectangle within the coded size for the stream.
+    fn visible_rect(&self) -> ((u32, u32), (u32, u32));
+}
+
 /// State of the input stream, which can be either unparsed (we don't know the stream properties
 /// yet) or parsed (we know the stream properties and are ready to decode).
 pub(crate) enum StreamMetadataState {
@@ -378,6 +392,90 @@ impl StreamMetadataState {
         )?;
 
         Ok(formats.into_iter().map(|f| f.decoded_format).collect())
+    }
+
+    /// Initializes or reinitializes the codec state.
+    pub(crate) fn open<S: StreamInfo>(
+        &mut self,
+        hdr: S,
+        format_map: Option<&FormatMap>,
+    ) -> Result<()> {
+        let display = self.display();
+        let va_profile = hdr.va_profile()?;
+        let rt_format = hdr.rt_format()?;
+        let (frame_w, frame_h) = hdr.coded_size();
+
+        let attrs = vec![libva::VAConfigAttrib {
+            type_: libva::VAConfigAttribType::VAConfigAttribRTFormat,
+            value: rt_format,
+        }];
+
+        let config =
+            display.create_config(attrs, va_profile, libva::VAEntrypoint::VAEntrypointVLD)?;
+
+        let format_map = if let Some(format_map) = format_map {
+            format_map
+        } else {
+            // Pick the first one that fits
+            FORMAT_MAP
+                .iter()
+                .find(|&map| map.rt_format == rt_format)
+                .ok_or(anyhow!("Unsupported format {}", rt_format))?
+        };
+
+        let map_format = display
+            .query_image_formats()?
+            .iter()
+            .find(|f| f.fourcc == format_map.va_fourcc)
+            .cloned()
+            .unwrap();
+
+        let min_num_surfaces = hdr.min_num_surfaces();
+
+        let surfaces = display.create_surfaces(
+            rt_format,
+            Some(map_format.fourcc),
+            frame_w,
+            frame_h,
+            Some(libva::UsageHint::USAGE_HINT_DECODER),
+            min_num_surfaces as u32,
+        )?;
+
+        let context = display.create_context(
+            &config,
+            i32::try_from(frame_w)?,
+            i32::try_from(frame_h)?,
+            Some(&surfaces),
+            true,
+        )?;
+
+        let coded_resolution = Resolution {
+            width: frame_w,
+            height: frame_h,
+        };
+
+        let visible_rect = hdr.visible_rect();
+
+        let display_resolution = Resolution {
+            width: visible_rect.1 .0 - visible_rect.0 .0,
+            height: visible_rect.1 .1 - visible_rect.0 .1,
+        };
+
+        let surface_pool = SurfacePoolHandle::new(surfaces, coded_resolution);
+
+        *self = StreamMetadataState::Parsed {
+            context,
+            config,
+            surface_pool,
+            min_num_surfaces,
+            coded_resolution,
+            display_resolution,
+            map_format: Rc::new(map_format),
+            rt_format,
+            profile: va_profile,
+        };
+
+        Ok(())
     }
 }
 
