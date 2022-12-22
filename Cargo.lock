@@ -1622,8 +1622,8 @@ version = "0.1.0"
 dependencies = [
  "base",
  "dbus",
+ "proto_build_tools",
  "protobuf",
- "protoc-rust",
  "remain",
  "thiserror",
 ]

@@ -7,7 +7,6 @@ use crate::BatteryStatus;
 use crate::PowerData;
 use crate::PowerMonitor;
 
-mod proto;
 use std::error::Error;
 use std::os::unix::io::RawFd;
 
@@ -15,13 +14,14 @@ use dbus::ffidisp::BusType;
 use dbus::ffidisp::Connection;
 use dbus::ffidisp::ConnectionItem;
 use dbus::ffidisp::WatchEvent;
-use proto::system_api::power_supply_properties::PowerSupplyProperties;
-use proto::system_api::power_supply_properties::PowerSupplyProperties_BatteryState;
-use proto::system_api::power_supply_properties::PowerSupplyProperties_ExternalPower;
 use protobuf::error::ProtobufError;
 use protobuf::Message;
 use remain::sorted;
 use thiserror::Error;
+
+use crate::protos::power_supply_properties::PowerSupplyProperties;
+use crate::protos::power_supply_properties::PowerSupplyProperties_BatteryState;
+use crate::protos::power_supply_properties::PowerSupplyProperties_ExternalPower;
 
 // Interface name from power_manager/dbus_bindings/org.chromium.PowerManager.xml.
 const POWER_INTERFACE_NAME: &str = "org.chromium.PowerManager";

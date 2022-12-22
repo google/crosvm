@@ -52,3 +52,7 @@ impl<T> CreatePowerMonitorFn for T where
 
 #[cfg(feature = "powerd")]
 pub mod powerd;
+
+mod protos {
+    include!(concat!(env!("OUT_DIR"), "/protos/generated.rs"));
+}
