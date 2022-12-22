@@ -5,7 +5,6 @@
 use std::sync::Arc;
 
 use base::error;
-use base::Descriptor;
 use base::WaitContext;
 use power_monitor::BatteryStatus;
 use power_monitor::CreatePowerMonitorFn;
@@ -26,7 +25,7 @@ pub(crate) fn create_power_monitor(
 ) -> Option<Box<dyn PowerMonitor>> {
     match monitor_fn {
         Some(f) => match f() {
-            Ok(p) => match wait_ctx.add(&Descriptor(p.poll_fd()), Token::Monitor) {
+            Ok(p) => match wait_ctx.add(p.get_read_notifier(), Token::Monitor) {
                 Ok(()) => Some(p),
                 Err(e) => {
                     error!("failed to add power monitor to poll context: {}", e);

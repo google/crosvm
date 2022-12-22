@@ -2,6 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+//! Bindings for the ChromeOS `powerd` D-Bus API.
+//!
+//! <https://chromium.googlesource.com/chromiumos/platform2/+/HEAD/power_manager/README.md>
+
 use crate::BatteryData;
 use crate::BatteryStatus;
 use crate::PowerData;
@@ -10,6 +14,9 @@ use crate::PowerMonitor;
 use std::error::Error;
 use std::os::unix::io::RawFd;
 
+use base::AsRawDescriptor;
+use base::RawDescriptor;
+use base::ReadNotifier;
 use dbus::ffidisp::BusType;
 use dbus::ffidisp::Connection;
 use dbus::ffidisp::ConnectionItem;
@@ -180,8 +187,16 @@ impl PowerMonitor for DBusMonitor {
             None => Ok(None),
         }
     }
+}
 
-    fn poll_fd(&self) -> RawFd {
+impl AsRawDescriptor for DBusMonitor {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
         self.connection_fd
+    }
+}
+
+impl ReadNotifier for DBusMonitor {
+    fn get_read_notifier(&self) -> &dyn AsRawDescriptor {
+        self
     }
 }
