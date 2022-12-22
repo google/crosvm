@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 mod acpi;
-pub(crate) mod bat;
 pub(crate) mod serial_device;
 
 pub(crate) use acpi::acpi_event_run;

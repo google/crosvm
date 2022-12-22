@@ -63,6 +63,7 @@ net_sys = { path = "../net_sys" }
 net_util = { path = "../net_util" }
 num-traits = "0.2"
 once_cell = "1.7.2"
+power_monitor = { path = "../power_monitor" }
 protobuf = { version = "2.3", optional = true }
 protos = { path = "../protos", optional = true }
 rand = "0.8"
@@ -89,7 +90,6 @@ fuse = {path = "../fuse" }
 libcras = { version = "*", optional = true }
 minijail = "*"
 p9 = "*"
-power_monitor = { path = "../power_monitor" }
 usb_util = { path = "../usb_util" }
 vfio_sys = { path = "../vfio_sys" }
 
