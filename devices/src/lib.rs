@@ -339,12 +339,48 @@ async fn snapshot_handler(path: &std::path::Path, buses: &[&Bus]) -> anyhow::Res
     Ok(())
 }
 
+async fn restore_handler(path: &std::path::Path, buses: &[&Bus]) -> anyhow::Result<()> {
+    let file = OpenOptions::new()
+        .read(true)
+        .write(false)
+        .open(&path)
+        .with_context(|| format!("failed to open {}", path.display()))?;
+
+    let mut devices_map: HashMap<u32, VecDeque<serde_json::Value>> = HashMap::new();
+    let deserialized_list: Vec<serde_json::Value> = serde_json::from_reader(file)?;
+    for map in deserialized_list.iter().filter_map(|d| d.as_object()) {
+        map.iter().for_each(|(id, device)| {
+            let id: u32 = id.parse::<u32>().expect("failed to reach device id");
+            devices_map.entry(id).or_default().push_back(device.clone())
+        });
+    }
+    for bus in buses {
+        sleep_devices(bus)?;
+    }
+    for bus in buses {
+        if let Err(e) = restore_devices(bus, &mut devices_map) {
+            for bus in buses {
+                wake_devices(bus);
+            }
+            return Err(e);
+        }
+    }
+    for bus in buses {
+        wake_devices(bus);
+    }
+    for (key, _) in devices_map.iter().filter(|(_, v)| !v.is_empty()) {
+        info!("Device with device_id: {} did was not restored due to an error or the device might be missing.", key);
+    }
+
+    Ok(())
+}
+
 async fn handle_command_tube(
     command_tube: AsyncTube,
     io_bus: Arc<Bus>,
     mmio_bus: Arc<Bus>,
 ) -> anyhow::Result<()> {
-    'listener: loop {
+    loop {
         match command_tube.next().await {
             Ok(command) => {
                 match command {
@@ -367,80 +403,20 @@ async fn handle_command_tube(
                             .context("Failed to send response")?;
                     }
                     DeviceControlCommand::RestoreDevices { restore_path: path } => {
-                        let file_res = OpenOptions::new().read(true).write(false).open(&path);
-
-                        let file = match file_res {
-                            Ok(file) => file,
-                            Err(e) => {
-                                error!(
-                                    "failed to open {} for writing snapshot: {}",
-                                    path.as_path().display(),
-                                    e
-                                );
-                                if let Err(e) = command_tube
-                                    .send(SnapshotControlResult::Failed(e.to_string()))
-                                    .await
-                                {
-                                    return Err(anyhow!("Failed to send response: {}", e));
-                                }
-                                continue;
-                            }
-                        };
-                        let mut devices_map: HashMap<u32, VecDeque<serde_json::Value>> =
-                            HashMap::new();
-                        let res = serde_json::from_reader(file);
-                        let deserialized_list: Vec<serde_json::Value> = match res {
-                            Err(e) => {
-                                error!("failed to deserialize devices list: {}", e);
-                                continue;
-                            }
-                            Ok(list) => list,
-                        };
-                        for map in deserialized_list.iter().filter_map(|d| d.as_object()) {
-                            map.iter().for_each(|(id, device)| {
-                                let id: u32 = id.parse::<u32>().expect("failed to reach device id");
-                                devices_map.entry(id).or_default().push_back(device.clone())
-                            });
+                        if let Err(e) =
+                            restore_handler(path.as_path(), &[&*io_bus, &*mmio_bus]).await
+                        {
+                            error!("failed to restore: {}", e);
+                            command_tube
+                                .send(RestoreControlResult::Failed(e.to_string()))
+                                .await
+                                .context("Failed to send response")?;
+                            continue;
                         }
-                        let buses = [&io_bus, &mmio_bus];
-                        for bus in &buses {
-                            if let Err(e) = sleep_devices(bus) {
-                                if let Err(e) = command_tube
-                                    .send(SnapshotControlResult::Failed(e.to_string()))
-                                    .await
-                                {
-                                    return Err(anyhow!("Failed to send response: {}", e));
-                                }
-                                // After sending the error, continue to the initial loop and wait
-                                // for a new event
-                                continue 'listener;
-                            }
-                        }
-                        for bus in &buses {
-                            if let Err(e) = restore_devices(bus, &mut devices_map) {
-                                for bus in &buses {
-                                    wake_devices(bus);
-                                }
-                                if let Err(e) = command_tube
-                                    .send(RestoreControlResult::Failed(e.to_string()))
-                                    .await
-                                {
-                                    return Err(anyhow!("Failed to send response: {}", e));
-                                }
-                                // After sending the error, continue to the initial loop and wait
-                                // for a new event
-                                continue 'listener;
-                            }
-                        }
-                        for bus in buses {
-                            wake_devices(bus);
-                        }
-                        for (key, _) in devices_map.iter().filter(|(_, v)| !v.is_empty()) {
-                            info!("Device with device_id: {} did was not restored due to an error or the device might be missing.", key);
-                        }
-                        if let Err(e) = command_tube.send(RestoreControlResult::Ok).await {
-                            return Err(anyhow!("Failed to send response: {}", e));
-                        }
+                        command_tube
+                            .send(RestoreControlResult::Ok)
+                            .await
+                            .context("Failed to send response")?;
                     }
                 };
             }
