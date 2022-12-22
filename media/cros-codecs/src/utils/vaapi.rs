@@ -5,6 +5,7 @@
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::fmt::Debug;
 use std::rc::Rc;
 
 use anyhow::anyhow;
@@ -18,6 +19,7 @@ use libva::Surface;
 use libva::VAConfigAttrib;
 use libva::VAConfigAttribType;
 
+use crate::decoders::BlockingMode;
 use crate::decoders::DecodedHandle as DecodedHandleTrait;
 use crate::decoders::DynPicture;
 use crate::decoders::Error as VideoDecoderError;
@@ -26,6 +28,8 @@ use crate::decoders::MappableHandle;
 use crate::decoders::Picture;
 use crate::decoders::Result as VideoDecoderResult;
 use crate::decoders::StatelessBackendError;
+use crate::decoders::StatelessBackendResult;
+use crate::decoders::VideoDecoderBackend;
 use crate::i420_copy;
 use crate::nv12_copy;
 use crate::DecodedFormat;
@@ -666,7 +670,7 @@ impl TryFrom<&libva::VAImageFormat> for DecodedFormat {
 /// The generic parameter is the data that the decoder wishes to pass from the `Possible` to the
 /// `Negotiated` state - typically, the properties of the stream like its resolution as they have
 /// been parsed.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(crate) enum NegotiationStatus<T> {
     /// No property about the stream has been parsed yet.
     NonNegotiated,
@@ -679,6 +683,16 @@ pub(crate) enum NegotiationStatus<T> {
 impl<T> Default for NegotiationStatus<T> {
     fn default() -> Self {
         NegotiationStatus::NonNegotiated
+    }
+}
+
+impl<T> Debug for NegotiationStatus<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NegotiationStatus::NonNegotiated => write!(f, "NonNegotiated"),
+            NegotiationStatus::Possible(_) => write!(f, "Possible"),
+            NegotiationStatus::Negotiated => write!(f, "Negotiated"),
+        }
     }
 }
 
@@ -698,4 +712,175 @@ pub(crate) struct PendingJob<P> {
     /// backing it yet, as we cannot be sure that the decoding operation went
     /// through.
     pub codec_picture: Rc<RefCell<P>>,
+}
+
+pub(crate) struct VaapiBackend<CodecData, StreamData>
+where
+    CodecData: FrameInfo,
+    for<'a> &'a StreamData: StreamInfo,
+{
+    /// The metadata state. Updated whenever the decoder reads new data from the stream.
+    pub(crate) metadata_state: StreamMetadataState,
+    /// The negotiation status
+    pub(crate) negotiation_status: NegotiationStatus<Box<StreamData>>,
+    /// The FIFO for all pending pictures, in the order they were submitted.
+    pub(crate) pending_jobs: VecDeque<PendingJob<Picture<CodecData, GenericBackendHandle>>>,
+}
+
+impl<CodecData, StreamData> VaapiBackend<CodecData, StreamData>
+where
+    CodecData: FrameInfo,
+    for<'a> &'a StreamData: StreamInfo,
+{
+    pub(crate) fn new(display: Rc<libva::Display>) -> Self {
+        Self {
+            metadata_state: StreamMetadataState::Unparsed { display },
+            pending_jobs: Default::default(),
+            negotiation_status: Default::default(),
+        }
+    }
+
+    pub(crate) fn build_va_decoded_handle(
+        &self,
+        picture: &Rc<RefCell<Picture<CodecData, GenericBackendHandle>>>,
+    ) -> Result<<Self as VideoDecoderBackend>::Handle> {
+        Ok(DecodedHandle::new(
+            Rc::clone(picture),
+            self.metadata_state.coded_resolution()?,
+            self.metadata_state.surface_pool()?,
+        ))
+    }
+}
+
+impl<CodecData, StreamData> VideoDecoderBackend for VaapiBackend<CodecData, StreamData>
+where
+    CodecData: FrameInfo,
+    for<'a> &'a StreamData: StreamInfo,
+{
+    type Handle = DecodedHandle<Picture<CodecData, GenericBackendHandle>>;
+
+    fn coded_resolution(&self) -> Option<Resolution> {
+        self.metadata_state.coded_resolution().ok()
+    }
+
+    fn display_resolution(&self) -> Option<Resolution> {
+        self.metadata_state.display_resolution().ok()
+    }
+
+    fn num_resources_total(&self) -> usize {
+        self.metadata_state.min_num_surfaces().unwrap_or(0)
+    }
+
+    fn num_resources_left(&self) -> usize {
+        match self.metadata_state.surface_pool() {
+            Ok(pool) => pool.num_surfaces_left(),
+            Err(_) => 0,
+        }
+    }
+
+    fn format(&self) -> Option<crate::DecodedFormat> {
+        let map_format = self.metadata_state.map_format().ok()?;
+        DecodedFormat::try_from(map_format.as_ref()).ok()
+    }
+
+    fn try_format(&mut self, format: crate::DecodedFormat) -> VideoDecoderResult<()> {
+        let header = match &self.negotiation_status {
+            NegotiationStatus::Possible(header) => header,
+            _ => {
+                return Err(VideoDecoderError::StatelessBackendError(
+                    StatelessBackendError::NegotiationFailed(anyhow!(
+                        "Negotiation is not possible at this stage {:?}",
+                        self.negotiation_status
+                    )),
+                ))
+            }
+        };
+
+        let supported_formats_for_stream = self.metadata_state.supported_formats_for_stream()?;
+
+        if supported_formats_for_stream.contains(&format) {
+            let map_format = FORMAT_MAP
+                .iter()
+                .find(|&map| map.decoded_format == format)
+                .unwrap();
+
+            self.metadata_state
+                .open(header.as_ref(), Some(map_format))?;
+
+            Ok(())
+        } else {
+            Err(VideoDecoderError::StatelessBackendError(
+                StatelessBackendError::NegotiationFailed(anyhow!(
+                    "Format {:?} is unsupported.",
+                    format
+                )),
+            ))
+        }
+    }
+
+    fn poll(&mut self, blocking_mode: BlockingMode) -> VideoDecoderResult<VecDeque<Self::Handle>> {
+        let mut completed = VecDeque::new();
+        let candidates = self.pending_jobs.drain(..).collect::<VecDeque<_>>();
+
+        for job in candidates {
+            if matches!(blocking_mode, BlockingMode::NonBlocking) {
+                let status = job.va_picture.query_status()?;
+                if status != libva::VASurfaceStatus::VASurfaceReady {
+                    self.pending_jobs.push_back(job);
+                    continue;
+                }
+            }
+
+            let current_picture = job.va_picture.sync()?;
+            let map_format = self.metadata_state.map_format()?;
+            let backend_handle = GenericBackendHandle::new_ready(
+                current_picture,
+                Rc::clone(map_format),
+                self.metadata_state.display_resolution()?,
+            );
+
+            job.codec_picture.borrow_mut().backend_handle = Some(backend_handle);
+            completed.push_back(job.codec_picture);
+        }
+
+        let completed = completed.into_iter().map(|picture| {
+            self.build_va_decoded_handle(&picture)
+                .map_err(|e| VideoDecoderError::from(StatelessBackendError::Other(anyhow!(e))))
+        });
+
+        completed.collect::<Result<VecDeque<_>, _>>()
+    }
+
+    fn handle_is_ready(&self, handle: &Self::Handle) -> bool {
+        match &handle.picture().backend_handle {
+            Some(backend_handle) => backend_handle.is_ready(),
+            None => true,
+        }
+    }
+
+    fn block_on_handle(&mut self, handle: &Self::Handle) -> StatelessBackendResult<()> {
+        for i in 0..self.pending_jobs.len() {
+            // Remove from the queue in order.
+            let job = &self.pending_jobs[i];
+
+            if Picture::same(&job.codec_picture, handle.picture_container()) {
+                let job = self.pending_jobs.remove(i).unwrap();
+                let current_picture = job.va_picture.sync()?;
+                let map_format = self.metadata_state.map_format()?;
+                let backend_handle = GenericBackendHandle::new_ready(
+                    current_picture,
+                    Rc::clone(map_format),
+                    self.metadata_state.display_resolution()?,
+                );
+
+                job.codec_picture.borrow_mut().backend_handle = Some(backend_handle);
+
+                return Ok(());
+            }
+        }
+
+        Err(StatelessBackendError::Other(anyhow!(
+            "Asked to block on a pending job that doesn't exist"
+        )))
+    }
 }

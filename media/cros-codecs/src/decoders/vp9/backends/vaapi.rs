@@ -15,7 +15,6 @@ use libva::Picture as VaPicture;
 use libva::SegmentParameterVP9;
 
 use crate::decoders::vp9::backends::AsBackendHandle;
-use crate::decoders::vp9::backends::ContainedPicture;
 use crate::decoders::vp9::backends::Result as StatelessBackendResult;
 use crate::decoders::vp9::backends::StatelessDecoderBackend;
 use crate::decoders::vp9::backends::Vp9Picture;
@@ -43,18 +42,15 @@ use crate::decoders::vp9::parser::SEG_LVL_REF_FRAME;
 use crate::decoders::vp9::parser::SEG_LVL_SKIP;
 use crate::decoders::BlockingMode;
 use crate::decoders::DecodedHandle;
-use crate::decoders::Error as DecoderError;
 use crate::decoders::Result as DecoderResult;
 use crate::decoders::StatelessBackendError;
 use crate::decoders::VideoDecoderBackend;
-use crate::utils;
 use crate::utils::vaapi::DecodedHandle as VADecodedHandle;
 use crate::utils::vaapi::GenericBackendHandle;
 use crate::utils::vaapi::NegotiationStatus;
 use crate::utils::vaapi::PendingJob;
 use crate::utils::vaapi::StreamInfo;
-use crate::utils::vaapi::StreamMetadataState;
-use crate::DecodedFormat;
+use crate::utils::vaapi::VaapiBackend;
 use crate::Resolution;
 
 /// Resolves to the type used as Handle by the backend.
@@ -125,12 +121,8 @@ struct Segmentation {
 }
 
 struct Backend {
-    /// The metadata state. Updated whenever the decoder reads new data from the stream.
-    metadata_state: StreamMetadataState,
-    /// The FIFO for all pending pictures, in the order they were submitted.
-    pending_jobs: VecDeque<PendingJob<Vp9Picture<GenericBackendHandle>>>,
-    /// The negotiation status
-    negotiation_status: NegotiationStatus<Box<Header>>,
+    backend: VaapiBackend<Header, Header>,
+
     /// Per-segment data.
     segmentation: [Segmentation; MAX_SEGMENTS],
 
@@ -144,9 +136,7 @@ impl Backend {
     /// Create a new codec backend for VP8.
     fn new(display: Rc<libva::Display>) -> Result<Self> {
         Ok(Self {
-            metadata_state: StreamMetadataState::Unparsed { display },
-            pending_jobs: Default::default(),
-            negotiation_status: Default::default(),
+            backend: VaapiBackend::new(display),
             segmentation: Default::default(),
 
             #[cfg(test)]
@@ -503,23 +493,12 @@ impl Backend {
 
         self.test_params.push(test_params);
     }
-
-    fn build_va_decoded_handle(
-        &self,
-        picture: &ContainedPicture<GenericBackendHandle>,
-    ) -> Result<AssociatedHandle> {
-        Ok(VADecodedHandle::new(
-            Rc::clone(picture),
-            self.metadata_state.coded_resolution()?,
-            self.metadata_state.surface_pool()?,
-        ))
-    }
 }
 
 impl StatelessDecoderBackend for Backend {
     fn new_sequence(&mut self, header: &Header) -> StatelessBackendResult<()> {
-        self.metadata_state.open(header, None)?;
-        self.negotiation_status = NegotiationStatus::Possible(Box::new(header.clone()));
+        self.backend.metadata_state.open(header, None)?;
+        self.backend.negotiation_status = NegotiationStatus::Possible(Box::new(header.clone()));
 
         Ok(())
     }
@@ -532,9 +511,9 @@ impl StatelessDecoderBackend for Backend {
         timestamp: u64,
         block: bool,
     ) -> StatelessBackendResult<Self::Handle> {
-        self.negotiation_status = NegotiationStatus::Negotiated;
+        self.backend.negotiation_status = NegotiationStatus::Negotiated;
 
-        let context = self.metadata_state.context()?;
+        let context = self.backend.metadata_state.context()?;
 
         let pic_param =
             context.create_buffer(Backend::build_pic_param(&picture.data, reference_frames)?)?;
@@ -558,9 +537,10 @@ impl StatelessDecoderBackend for Backend {
         let slice_data =
             context.create_buffer(libva::BufferType::SliceData(Vec::from(bitstream.as_ref())))?;
 
-        let context = self.metadata_state.context()?;
+        let context = self.backend.metadata_state.context()?;
 
         let surface = self
+            .backend
             .metadata_state
             .get_surface()?
             .ok_or(StatelessBackendError::OutOfResources)?;
@@ -581,12 +561,12 @@ impl StatelessDecoderBackend for Backend {
         if block {
             let va_picture = va_picture.sync()?;
 
-            let map_format = self.metadata_state.map_format()?;
+            let map_format = self.backend.metadata_state.map_format()?;
 
             let backend_handle = GenericBackendHandle::new_ready(
                 va_picture,
                 Rc::clone(map_format),
-                self.metadata_state.display_resolution()?,
+                self.backend.metadata_state.display_resolution()?,
             );
 
             picture.borrow_mut().backend_handle = Some(backend_handle);
@@ -597,13 +577,14 @@ impl StatelessDecoderBackend for Backend {
                 codec_picture: Rc::clone(&picture),
             };
 
-            self.pending_jobs.push_back(pending_job);
+            self.backend.pending_jobs.push_back(pending_job);
 
             picture.borrow_mut().backend_handle =
                 Some(GenericBackendHandle::new_pending(surface_id));
         }
 
-        self.build_va_decoded_handle(&picture)
+        self.backend
+            .build_va_decoded_handle(&picture)
             .map_err(|e| StatelessBackendError::Other(anyhow!(e)))
     }
 
@@ -617,134 +598,39 @@ impl VideoDecoderBackend for Backend {
     type Handle = VADecodedHandle<Vp9Picture<GenericBackendHandle>>;
 
     fn coded_resolution(&self) -> Option<Resolution> {
-        self.metadata_state.coded_resolution().ok()
+        self.backend.coded_resolution()
     }
 
     fn display_resolution(&self) -> Option<Resolution> {
-        self.metadata_state.display_resolution().ok()
+        self.backend.display_resolution()
     }
 
     fn num_resources_total(&self) -> usize {
-        self.metadata_state.min_num_surfaces().unwrap_or(0)
+        self.backend.num_resources_total()
     }
 
     fn num_resources_left(&self) -> usize {
-        match self.metadata_state.surface_pool() {
-            Ok(pool) => pool.num_surfaces_left(),
-            Err(_) => 0,
-        }
+        self.backend.num_resources_left()
     }
 
     fn format(&self) -> Option<crate::DecodedFormat> {
-        let map_format = self.metadata_state.map_format().ok()?;
-        DecodedFormat::try_from(map_format.as_ref()).ok()
+        self.backend.format()
     }
 
     fn try_format(&mut self, format: crate::DecodedFormat) -> DecoderResult<()> {
-        let header = match &self.negotiation_status {
-            NegotiationStatus::Possible(header) => header.clone(),
-            _ => {
-                return Err(DecoderError::StatelessBackendError(
-                    StatelessBackendError::NegotiationFailed(anyhow!(
-                        "Negotiation is not possible at this stage {:?}",
-                        self.negotiation_status
-                    )),
-                ))
-            }
-        };
-
-        let supported_formats_for_stream = self.metadata_state.supported_formats_for_stream()?;
-
-        if supported_formats_for_stream.contains(&format) {
-            let map_format = utils::vaapi::FORMAT_MAP
-                .iter()
-                .find(|&map| map.decoded_format == format)
-                .unwrap();
-
-            self.metadata_state
-                .open(header.as_ref(), Some(map_format))?;
-
-            Ok(())
-        } else {
-            Err(DecoderError::StatelessBackendError(
-                StatelessBackendError::NegotiationFailed(anyhow!(
-                    "Format {:?} is unsupported.",
-                    format
-                )),
-            ))
-        }
+        self.backend.try_format(format)
     }
 
     fn poll(&mut self, blocking_mode: BlockingMode) -> DecoderResult<VecDeque<Self::Handle>> {
-        let mut completed = VecDeque::new();
-        let candidates = self.pending_jobs.drain(..).collect::<VecDeque<_>>();
-
-        for job in candidates {
-            if matches!(blocking_mode, BlockingMode::NonBlocking) {
-                let status = job.va_picture.query_status()?;
-                if status != libva::VASurfaceStatus::VASurfaceReady {
-                    self.pending_jobs.push_back(job);
-                    continue;
-                }
-            }
-
-            let current_picture = job.va_picture.sync()?;
-
-            let map_format = self.metadata_state.map_format()?;
-
-            let backend_handle = GenericBackendHandle::new_ready(
-                current_picture,
-                Rc::clone(map_format),
-                self.metadata_state.display_resolution()?,
-            );
-
-            job.codec_picture.borrow_mut().backend_handle = Some(backend_handle);
-
-            completed.push_back(job.codec_picture);
-        }
-
-        let completed = completed.into_iter().map(|picture| {
-            self.build_va_decoded_handle(&picture)
-                .map_err(|e| DecoderError::from(StatelessBackendError::Other(anyhow!(e))))
-        });
-
-        completed.collect::<Result<VecDeque<_>, _>>()
+        self.backend.poll(blocking_mode)
     }
 
     fn handle_is_ready(&self, handle: &Self::Handle) -> bool {
-        match &handle.picture().backend_handle {
-            Some(backend_handle) => backend_handle.is_ready(),
-            None => true,
-        }
+        self.backend.handle_is_ready(handle)
     }
 
     fn block_on_handle(&mut self, handle: &Self::Handle) -> StatelessBackendResult<()> {
-        for i in 0..self.pending_jobs.len() {
-            // Remove from the queue in order.
-            let job = &self.pending_jobs[i];
-
-            if Vp9Picture::same(&job.codec_picture, handle.picture_container()) {
-                let job = self.pending_jobs.remove(i).unwrap();
-
-                let current_picture = job.va_picture.sync()?;
-
-                let map_format = self.metadata_state.map_format()?;
-
-                let backend_handle = GenericBackendHandle::new_ready(
-                    current_picture,
-                    Rc::clone(map_format),
-                    self.metadata_state.display_resolution()?,
-                );
-
-                job.codec_picture.borrow_mut().backend_handle = Some(backend_handle);
-
-                return Ok(());
-            }
-        }
-
-        Err(StatelessBackendError::Other(anyhow!(
-            "Asked to block on a pending job that doesn't exist"
-        )))
+        self.backend.block_on_handle(handle)
     }
 }
 
