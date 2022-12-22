@@ -6,7 +6,6 @@
 // run so we can test it in isolation.
 
 use std::cell::RefCell;
-use std::collections::VecDeque;
 use std::rc::Rc;
 
 use crate::decoders::vp8::backends::StatelessDecoderBackend;
@@ -15,9 +14,7 @@ use crate::decoders::vp8::decoder::Decoder;
 use crate::decoders::BlockingMode;
 use crate::utils::dummy::*;
 
-impl StatelessDecoderBackend for Backend {
-    type Handle = Handle<Vp8Picture<BackendHandle>>;
-
+impl StatelessDecoderBackend for Backend<Vp8Picture<BackendHandle>> {
     fn new_sequence(&mut self, _: &crate::decoders::vp8::parser::Header) -> super::Result<()> {
         Ok(())
     }
@@ -38,18 +35,6 @@ impl StatelessDecoderBackend for Backend {
         })
     }
 
-    fn poll(&mut self, _: super::BlockingMode) -> super::Result<VecDeque<Self::Handle>> {
-        Ok(VecDeque::new())
-    }
-
-    fn handle_is_ready(&self, _: &Self::Handle) -> bool {
-        true
-    }
-
-    fn block_on_handle(&mut self, _: &Self::Handle) -> super::Result<()> {
-        Ok(())
-    }
-
     #[cfg(test)]
     fn get_test_params(&self) -> &dyn std::any::Any {
         // There are no test parameters for the dummy backend.
@@ -60,6 +45,6 @@ impl StatelessDecoderBackend for Backend {
 impl Decoder<Handle<Vp8Picture<BackendHandle>>> {
     // Creates a new instance of the decoder using the dummy backend.
     pub fn new_dummy(blocking_mode: BlockingMode) -> anyhow::Result<Self> {
-        Self::new(Box::new(Backend), blocking_mode)
+        Self::new(Box::new(Backend::new()), blocking_mode)
     }
 }

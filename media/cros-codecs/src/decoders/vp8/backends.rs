@@ -3,13 +3,11 @@
 // found in the LICENSE file.
 
 use std::cell::RefCell;
-use std::collections::VecDeque;
 use std::rc::Rc;
 
 use crate::decoders::vp8::parser::Header;
 use crate::decoders::vp8::parser::Parser;
 use crate::decoders::vp8::picture::Vp8Picture;
-use crate::decoders::BlockingMode;
 use crate::decoders::DecodedHandle;
 use crate::decoders::VideoDecoderBackend;
 
@@ -18,7 +16,7 @@ pub mod dummy;
 #[cfg(feature = "vaapi")]
 pub mod vaapi;
 
-pub type Result<T> = std::result::Result<T, crate::decoders::StatelessBackendError>;
+pub type Result<T> = crate::decoders::StatelessBackendResult<T>;
 
 /// The container type for the picture. Pictures must offer interior mutability
 /// as they may be shared.
@@ -35,12 +33,6 @@ pub type AsBackendHandle<Handle> = <Handle as DecodedHandle>::BackendHandle;
 /// mode, where it should return immediately with any previously decoded frames
 /// that happen to be ready.
 pub(crate) trait StatelessDecoderBackend: VideoDecoderBackend {
-    /// The type that the backend returns as a result of a decode operation.
-    /// This will usually be some backend-specific type with a resource and a
-    /// resource pool so that said buffer can be reused for another decode
-    /// operation when it goes out of scope.
-    type Handle: DecodedHandle;
-
     /// Called when new stream parameters are found.
     fn new_sequence(&mut self, header: &Header) -> Result<()>;
 
@@ -62,17 +54,6 @@ pub(crate) trait StatelessDecoderBackend: VideoDecoderBackend {
         timestamp: u64,
         block: bool,
     ) -> Result<Self::Handle>;
-
-    /// Poll for any ready pictures. `block` dictates whether this call should
-    /// block on the operation or return immediately.
-    fn poll(&mut self, blocking_mode: BlockingMode) -> Result<VecDeque<Self::Handle>>;
-
-    /// Whether the handle is ready for presentation. The decoder will check
-    /// this before returning the handle to clients.
-    fn handle_is_ready(&self, handle: &Self::Handle) -> bool;
-
-    /// Block on handle `handle`.
-    fn block_on_handle(&mut self, handle: &Self::Handle) -> Result<()>;
 
     /// Get the test parameters for the backend. The caller is reponsible for
     /// downcasting them to the correct type, which is backend-dependent.

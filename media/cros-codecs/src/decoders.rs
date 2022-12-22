@@ -5,6 +5,7 @@
 use std::cell::Ref;
 use std::cell::RefCell;
 use std::cell::RefMut;
+use std::collections::VecDeque;
 use std::rc::Rc;
 
 use thiserror::Error;
@@ -40,7 +41,15 @@ pub enum StatelessBackendError {
     Other(#[from] anyhow::Error),
 }
 
+pub type StatelessBackendResult<T> = std::result::Result<T, StatelessBackendError>;
+
 pub(crate) trait VideoDecoderBackend {
+    /// The type that the backend returns as a result of a decode operation.
+    /// This will usually be some backend-specific type with a resource and a
+    /// resource pool so that said buffer can be reused for another decode
+    /// operation when it goes out of scope.
+    type Handle: DecodedHandle;
+
     /// Returns the current coded resolution of the bitstream being processed.
     /// This may be None if we have not read the stream parameters yet.
     fn coded_resolution(&self) -> Option<Resolution>;
@@ -62,6 +71,17 @@ pub(crate) trait VideoDecoderBackend {
 
     /// Try altering the decoded format.
     fn try_format(&mut self, format: DecodedFormat) -> Result<()>;
+
+    /// Poll for any ready pictures. `block` dictates whether this call should
+    /// block on the operation or return immediately.
+    fn poll(&mut self, blocking_mode: BlockingMode) -> Result<VecDeque<Self::Handle>>;
+
+    /// Whether the handle is ready for presentation. The decoder will check
+    /// this before returning the handle to clients.
+    fn handle_is_ready(&self, handle: &Self::Handle) -> bool;
+
+    /// Block on handle `handle`.
+    fn block_on_handle(&mut self, handle: &Self::Handle) -> StatelessBackendResult<()>;
 }
 
 pub trait VideoDecoder {

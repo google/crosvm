@@ -16,9 +16,7 @@ use libva::SegmentParameterVP9;
 use libva::UsageHint;
 
 use crate::decoders::vp9::backends::AsBackendHandle;
-use crate::decoders::vp9::backends::BlockingMode;
 use crate::decoders::vp9::backends::ContainedPicture;
-use crate::decoders::vp9::backends::DecodedHandle;
 use crate::decoders::vp9::backends::Result as StatelessBackendResult;
 use crate::decoders::vp9::backends::StatelessDecoderBackend;
 use crate::decoders::vp9::backends::Vp9Picture;
@@ -44,6 +42,8 @@ use crate::decoders::vp9::parser::NUM_REF_FRAMES;
 use crate::decoders::vp9::parser::SEG_LVL_ALT_L;
 use crate::decoders::vp9::parser::SEG_LVL_REF_FRAME;
 use crate::decoders::vp9::parser::SEG_LVL_SKIP;
+use crate::decoders::BlockingMode;
+use crate::decoders::DecodedHandle;
 use crate::decoders::Error as DecoderError;
 use crate::decoders::Result as DecoderResult;
 use crate::decoders::StatelessBackendError;
@@ -60,7 +60,7 @@ use crate::DecodedFormat;
 use crate::Resolution;
 
 /// Resolves to the type used as Handle by the backend.
-type AssociatedHandle = <Backend as StatelessDecoderBackend>::Handle;
+type AssociatedHandle = <Backend as VideoDecoderBackend>::Handle;
 
 /// The number of surfaces to allocate for this codec.
 const NUM_SURFACES: usize = 12;
@@ -582,8 +582,6 @@ impl Backend {
 }
 
 impl StatelessDecoderBackend for Backend {
-    type Handle = VADecodedHandle<Vp9Picture<GenericBackendHandle>>;
-
     fn new_sequence(&mut self, header: &Header) -> StatelessBackendResult<()> {
         self.open(header, None)?;
         self.negotiation_status = NegotiationStatus::Possible(Box::new(header.clone()));
@@ -674,81 +672,6 @@ impl StatelessDecoderBackend for Backend {
             .map_err(|e| StatelessBackendError::Other(anyhow!(e)))
     }
 
-    fn poll(
-        &mut self,
-        blocking_mode: super::BlockingMode,
-    ) -> StatelessBackendResult<VecDeque<Self::Handle>> {
-        let mut completed = VecDeque::new();
-        let candidates = self.pending_jobs.drain(..).collect::<VecDeque<_>>();
-
-        for job in candidates {
-            if matches!(blocking_mode, BlockingMode::NonBlocking) {
-                let status = job.va_picture.query_status()?;
-                if status != libva::VASurfaceStatus::VASurfaceReady {
-                    self.pending_jobs.push_back(job);
-                    continue;
-                }
-            }
-
-            let current_picture = job.va_picture.sync()?;
-
-            let map_format = self.metadata_state.map_format()?;
-
-            let backend_handle = GenericBackendHandle::new_ready(
-                current_picture,
-                Rc::clone(map_format),
-                self.metadata_state.display_resolution()?,
-            );
-
-            job.codec_picture.borrow_mut().backend_handle = Some(backend_handle);
-
-            completed.push_back(job.codec_picture);
-        }
-
-        let completed = completed.into_iter().map(|picture| {
-            self.build_va_decoded_handle(&picture)
-                .map_err(|e| StatelessBackendError::Other(anyhow!(e)))
-        });
-
-        completed.collect::<Result<VecDeque<_>, StatelessBackendError>>()
-    }
-
-    fn handle_is_ready(&self, handle: &Self::Handle) -> bool {
-        match &handle.picture().backend_handle {
-            Some(backend_handle) => backend_handle.is_ready(),
-            None => true,
-        }
-    }
-
-    fn block_on_handle(&mut self, handle: &Self::Handle) -> StatelessBackendResult<()> {
-        for i in 0..self.pending_jobs.len() {
-            // Remove from the queue in order.
-            let job = &self.pending_jobs[i];
-
-            if Vp9Picture::same(&job.codec_picture, handle.picture_container()) {
-                let job = self.pending_jobs.remove(i).unwrap();
-
-                let current_picture = job.va_picture.sync()?;
-
-                let map_format = self.metadata_state.map_format()?;
-
-                let backend_handle = GenericBackendHandle::new_ready(
-                    current_picture,
-                    Rc::clone(map_format),
-                    self.metadata_state.display_resolution()?,
-                );
-
-                job.codec_picture.borrow_mut().backend_handle = Some(backend_handle);
-
-                return Ok(());
-            }
-        }
-
-        Err(StatelessBackendError::Other(anyhow!(
-            "Asked to block on a pending job that doesn't exist"
-        )))
-    }
-
     #[cfg(test)]
     fn get_test_params(&self) -> &dyn std::any::Any {
         &self.test_params
@@ -756,6 +679,8 @@ impl StatelessDecoderBackend for Backend {
 }
 
 impl VideoDecoderBackend for Backend {
+    type Handle = VADecodedHandle<Vp9Picture<GenericBackendHandle>>;
+
     fn coded_resolution(&self) -> Option<Resolution> {
         self.metadata_state.coded_resolution().ok()
     }
@@ -813,6 +738,78 @@ impl VideoDecoderBackend for Backend {
             ))
         }
     }
+
+    fn poll(&mut self, blocking_mode: BlockingMode) -> DecoderResult<VecDeque<Self::Handle>> {
+        let mut completed = VecDeque::new();
+        let candidates = self.pending_jobs.drain(..).collect::<VecDeque<_>>();
+
+        for job in candidates {
+            if matches!(blocking_mode, BlockingMode::NonBlocking) {
+                let status = job.va_picture.query_status()?;
+                if status != libva::VASurfaceStatus::VASurfaceReady {
+                    self.pending_jobs.push_back(job);
+                    continue;
+                }
+            }
+
+            let current_picture = job.va_picture.sync()?;
+
+            let map_format = self.metadata_state.map_format()?;
+
+            let backend_handle = GenericBackendHandle::new_ready(
+                current_picture,
+                Rc::clone(map_format),
+                self.metadata_state.display_resolution()?,
+            );
+
+            job.codec_picture.borrow_mut().backend_handle = Some(backend_handle);
+
+            completed.push_back(job.codec_picture);
+        }
+
+        let completed = completed.into_iter().map(|picture| {
+            self.build_va_decoded_handle(&picture)
+                .map_err(|e| DecoderError::from(StatelessBackendError::Other(anyhow!(e))))
+        });
+
+        completed.collect::<Result<VecDeque<_>, _>>()
+    }
+
+    fn handle_is_ready(&self, handle: &Self::Handle) -> bool {
+        match &handle.picture().backend_handle {
+            Some(backend_handle) => backend_handle.is_ready(),
+            None => true,
+        }
+    }
+
+    fn block_on_handle(&mut self, handle: &Self::Handle) -> StatelessBackendResult<()> {
+        for i in 0..self.pending_jobs.len() {
+            // Remove from the queue in order.
+            let job = &self.pending_jobs[i];
+
+            if Vp9Picture::same(&job.codec_picture, handle.picture_container()) {
+                let job = self.pending_jobs.remove(i).unwrap();
+
+                let current_picture = job.va_picture.sync()?;
+
+                let map_format = self.metadata_state.map_format()?;
+
+                let backend_handle = GenericBackendHandle::new_ready(
+                    current_picture,
+                    Rc::clone(map_format),
+                    self.metadata_state.display_resolution()?,
+                );
+
+                job.codec_picture.borrow_mut().backend_handle = Some(backend_handle);
+
+                return Ok(());
+            }
+        }
+
+        Err(StatelessBackendError::Other(anyhow!(
+            "Asked to block on a pending job that doesn't exist"
+        )))
+    }
 }
 
 impl Decoder<VADecodedHandle<Vp9Picture<GenericBackendHandle>>> {
@@ -832,13 +829,13 @@ mod tests {
 
     use crate::decoders::vp9::backends::vaapi::AssociatedHandle;
     use crate::decoders::vp9::backends::vaapi::TestParams;
-    use crate::decoders::vp9::backends::BlockingMode;
-    use crate::decoders::vp9::backends::DecodedHandle;
     use crate::decoders::vp9::backends::StatelessDecoderBackend;
     use crate::decoders::vp9::decoder::tests::process_ready_frames;
     use crate::decoders::vp9::decoder::tests::run_decoding_loop;
     use crate::decoders::vp9::decoder::Decoder;
     use crate::decoders::vp9::parser::NUM_REF_FRAMES;
+    use crate::decoders::BlockingMode;
+    use crate::decoders::DecodedHandle;
     use crate::decoders::DynPicture;
 
     fn get_test_params(

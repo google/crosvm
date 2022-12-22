@@ -6,11 +6,9 @@
 //! run so we can test it in isolation.
 
 use std::cell::RefCell;
-use std::collections::VecDeque;
 use std::rc::Rc;
 
 use crate::decoders::h264::backends::AsBackendHandle;
-use crate::decoders::h264::backends::BlockingMode;
 use crate::decoders::h264::backends::ContainedPicture;
 use crate::decoders::h264::backends::Result as StatelessBackendResult;
 use crate::decoders::h264::backends::StatelessDecoderBackend;
@@ -20,11 +18,10 @@ use crate::decoders::h264::parser::Pps;
 use crate::decoders::h264::parser::Slice;
 use crate::decoders::h264::parser::Sps;
 use crate::decoders::h264::picture::H264Picture;
+use crate::decoders::BlockingMode;
 use crate::utils::dummy::*;
 
-impl StatelessDecoderBackend for Backend {
-    type Handle = Handle<H264Picture<BackendHandle>>;
-
+impl StatelessDecoderBackend for Backend<H264Picture<BackendHandle>> {
     fn new_sequence(&mut self, _: &Sps, _: usize) -> StatelessBackendResult<()> {
         Ok(())
     }
@@ -72,10 +69,6 @@ impl StatelessDecoderBackend for Backend {
         })
     }
 
-    fn poll(&mut self, _: BlockingMode) -> StatelessBackendResult<VecDeque<Self::Handle>> {
-        Ok(VecDeque::new())
-    }
-
     fn new_handle(
         &mut self,
         picture: ContainedPicture<AsBackendHandle<Self::Handle>>,
@@ -99,14 +92,6 @@ impl StatelessDecoderBackend for Backend {
         Ok(())
     }
 
-    fn handle_is_ready(&self, _: &Self::Handle) -> bool {
-        true
-    }
-
-    fn block_on_handle(&mut self, _: &Self::Handle) -> StatelessBackendResult<()> {
-        Ok(())
-    }
-
     #[cfg(test)]
     fn get_test_params(&self) -> &dyn std::any::Any {
         // There are no test parameters for the dummy backend.
@@ -117,6 +102,6 @@ impl StatelessDecoderBackend for Backend {
 impl Decoder<Handle<H264Picture<BackendHandle>>> {
     // Creates a new instance of the decoder using the dummy backend.
     pub fn new_dummy(blocking_mode: BlockingMode) -> anyhow::Result<Self> {
-        Self::new(Box::new(Backend), blocking_mode)
+        Self::new(Box::new(Backend::new()), blocking_mode)
     }
 }

@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::cell::RefCell;
-use std::collections::VecDeque;
 use std::rc::Rc;
 
 use crate::decoders::h264::dpb::Dpb;
@@ -11,11 +10,10 @@ use crate::decoders::h264::parser::Pps;
 use crate::decoders::h264::parser::Slice;
 use crate::decoders::h264::parser::Sps;
 use crate::decoders::h264::picture::H264Picture;
-use crate::decoders::BlockingMode;
 use crate::decoders::DecodedHandle;
 use crate::decoders::VideoDecoderBackend;
 
-pub type Result<T> = std::result::Result<T, crate::decoders::StatelessBackendError>;
+pub type Result<T> = crate::decoders::StatelessBackendResult<T>;
 
 #[cfg(test)]
 pub mod dummy;
@@ -38,12 +36,6 @@ pub type AsBackendHandle<Handle> = <Handle as DecodedHandle>::BackendHandle;
 /// mode, where it should return immediately with any previously decoded frames
 /// that happen to be ready.
 pub(crate) trait StatelessDecoderBackend: VideoDecoderBackend {
-    /// The type that the backend returns as a result of a decode operation.
-    /// This will usually be some backend-specific type with a resource and a
-    /// resource pool so that said buffer can be reused for another decode
-    /// operation when it goes out of scope.
-    type Handle: DecodedHandle;
-
     /// Called when a new SPS is parsed.
     fn new_sequence(&mut self, sps: &Sps, dpb_size: usize) -> Result<()>;
 
@@ -109,23 +101,12 @@ pub(crate) trait StatelessDecoderBackend: VideoDecoderBackend {
         block: bool,
     ) -> Result<Self::Handle>;
 
-    /// Poll for any ready pictures. `block` dictates whether this call should
-    /// block on the operation or return immediately.
-    fn poll(&mut self, blocking_mode: BlockingMode) -> Result<VecDeque<Self::Handle>>;
-
     /// Indicates that the decoder has split a picture and that a new Handle
     /// must be obtained.
     fn new_handle(
         &mut self,
         picture: ContainedPicture<AsBackendHandle<Self::Handle>>,
     ) -> Result<Self::Handle>;
-
-    /// Whether the handle is ready for presentation. The decoder will check
-    /// this before returning the handle to clients.
-    fn handle_is_ready(&self, handle: &Self::Handle) -> bool;
-
-    /// Block on handle `handle`.
-    fn block_on_handle(&mut self, handle: &Self::Handle) -> Result<()>;
 
     /// Get the test parameters for the backend. The caller is reponsible for
     /// downcasting them to the correct type, which is backend-dependent.

@@ -6,14 +6,18 @@
 //! run so we can test it in isolation.
 
 use std::cell::RefCell;
+use std::collections::VecDeque;
+use std::marker::PhantomData;
 use std::rc::Rc;
 
+use crate::decoders::BlockingMode;
 use crate::decoders::DecodedHandle;
 use crate::decoders::DynPicture;
 use crate::decoders::FrameInfo;
 use crate::decoders::MappableHandle;
 use crate::decoders::Picture;
 use crate::decoders::Result;
+use crate::decoders::StatelessBackendResult;
 use crate::decoders::VideoDecoderBackend;
 use crate::DecodedFormat;
 use crate::Resolution;
@@ -68,9 +72,20 @@ impl<T: FrameInfo> DecodedHandle for Handle<Picture<T, BackendHandle>> {
 }
 
 /// Dummy backend that can be used for any codec.
-pub(crate) struct Backend;
+pub(crate) struct Backend<H>(PhantomData<H>);
 
-impl VideoDecoderBackend for Backend {
+impl<H> Backend<H> {
+    pub(crate) fn new() -> Self {
+        Self(Default::default())
+    }
+}
+
+impl<H> VideoDecoderBackend for Backend<H>
+where
+    Handle<H>: DecodedHandle,
+{
+    type Handle = Handle<H>;
+
     fn num_resources_total(&self) -> usize {
         1
     }
@@ -93,5 +108,17 @@ impl VideoDecoderBackend for Backend {
 
     fn display_resolution(&self) -> Option<Resolution> {
         None
+    }
+
+    fn poll(&mut self, _: BlockingMode) -> crate::decoders::Result<VecDeque<Self::Handle>> {
+        Ok(VecDeque::new())
+    }
+
+    fn handle_is_ready(&self, _: &Self::Handle) -> bool {
+        true
+    }
+
+    fn block_on_handle(&mut self, _: &Self::Handle) -> StatelessBackendResult<()> {
+        Ok(())
     }
 }
