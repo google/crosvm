@@ -5,19 +5,19 @@
 // Empty macros for when the tracing feature isn't used.
 #[macro_export]
 macro_rules! trace_event {
-    ($category:ident, $name:expr) => {
+    ($($t:tt)*) => {
         None as Option<bool>
     };
 }
 
 #[macro_export]
 macro_rules! trace_event_begin {
-    ($category:ident, $name:expr) => {};
+    ($($t:tt)*) => {};
 }
 
 #[macro_export]
 macro_rules! trace_event_end {
-    ($category:ident) => {};
+    ($($t:tt)*) => {};
 }
 
 #[macro_export]
