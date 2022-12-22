@@ -48,6 +48,7 @@ use std::fs::OpenOptions;
 use std::sync::Arc;
 
 use anyhow::anyhow;
+use anyhow::Context;
 use base::error;
 use base::info;
 use base::Tube;
@@ -300,6 +301,44 @@ fn restore_devices(
     }
 }
 
+async fn snapshot_handler(path: &std::path::Path, buses: &[&Bus]) -> anyhow::Result<()> {
+    let mut devices_vec: Vec<serde_json::Value> = Vec::new();
+    let mut file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&path)
+        .with_context(|| format!("failed to open {}", path.display()))?;
+
+    for bus in buses {
+        if let Err(e) = sleep_devices(bus) {
+            // Failing to sleep could mean a single device failing to sleep.
+            // Wake up devices to resume functionality of the VM.
+            for bus in buses {
+                wake_devices(bus);
+            }
+            return Err(e);
+        }
+    }
+    for bus in buses {
+        if let Err(e) = snapshot_devices(bus, &mut devices_vec) {
+            // If snapshot fails, wake devices and return error.
+            error!("failed to snapshot devices: {}", e);
+            for bus in buses {
+                wake_devices(bus);
+            }
+            return Err(e);
+        }
+    }
+    for bus in buses {
+        wake_devices(bus);
+    }
+
+    serde_json::to_writer(&mut file, &devices_vec)?;
+
+    Ok(())
+}
+
 async fn handle_command_tube(
     command_tube: AsyncTube,
     io_bus: Arc<Bus>,
@@ -312,84 +351,20 @@ async fn handle_command_tube(
                     DeviceControlCommand::SnapshotDevices {
                         snapshot_path: path,
                     } => {
-                        let mut devices_vec: Vec<serde_json::Value> = Vec::new();
-                        let file_res = OpenOptions::new()
-                            .create(true)
-                            .write(true)
-                            .truncate(true)
-                            .open(&path);
-
-                        let mut file = match file_res {
-                            Ok(file) => file,
-                            Err(e) => {
-                                error!(
-                                    "failed to open {} for writing snapshot: {}",
-                                    path.as_path().display(),
-                                    e
-                                );
-                                if let Err(e) = command_tube
-                                    .send(SnapshotControlResult::Failed(e.to_string()))
-                                    .await
-                                {
-                                    return Err(anyhow!("Failed to send response: {}", e));
-                                }
-                                continue;
-                            }
-                        };
-
-                        let buses = [&io_bus, &mmio_bus];
-                        for bus in &buses {
-                            if let Err(e) = sleep_devices(bus) {
-                                // Failing to sleep could mean a single device failing to sleep.
-                                // Wake up devices to resume functionality of the VM.
-                                for bus in &buses {
-                                    wake_devices(bus);
-                                }
-                                if let Err(e) = command_tube
-                                    .send(SnapshotControlResult::Failed(e.to_string()))
-                                    .await
-                                {
-                                    return Err(anyhow!("Failed to send response: {}", e));
-                                }
-                                // After sending the error, continue to the initial loop and wait
-                                // for a new event
-                                continue 'listener;
-                            }
-                        }
-                        for bus in &buses {
-                            if let Err(e) = snapshot_devices(bus, &mut devices_vec) {
-                                // If snapshot fails, wake devices and return error
-                                error!("failed to snapshot devices: {}", e);
-                                for bus in &buses {
-                                    wake_devices(bus);
-                                }
-                                if let Err(e) = command_tube
-                                    .send(SnapshotControlResult::Failed(e.to_string()))
-                                    .await
-                                {
-                                    return Err(anyhow!("Failed to send response: {}", e));
-                                }
-                                // After sending the error, continue to the initial loop and wait
-                                // for a new event
-                                continue 'listener;
-                            }
-                        }
-                        for bus in buses {
-                            wake_devices(bus);
-                        }
-
-                        if let Err(e) = serde_json::to_writer(&mut file, &devices_vec) {
-                            error!("failed to write serialized device to snapshot");
-                            if let Err(e) = command_tube
+                        if let Err(e) =
+                            snapshot_handler(path.as_path(), &[&*io_bus, &*mmio_bus]).await
+                        {
+                            error!("failed to snapshot: {}", e);
+                            command_tube
                                 .send(SnapshotControlResult::Failed(e.to_string()))
                                 .await
-                            {
-                                return Err(anyhow!("Failed to send response: {}", e));
-                            }
+                                .context("Failed to send response")?;
+                            continue;
                         }
-                        if let Err(e) = command_tube.send(SnapshotControlResult::Ok).await {
-                            return Err(anyhow!("Failed to send response: {}", e));
-                        }
+                        command_tube
+                            .send(SnapshotControlResult::Ok)
+                            .await
+                            .context("Failed to send response")?;
                     }
                     DeviceControlCommand::RestoreDevices { restore_path: path } => {
                         let file_res = OpenOptions::new().read(true).write(false).open(&path);
