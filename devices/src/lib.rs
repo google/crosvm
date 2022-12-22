@@ -355,7 +355,14 @@ async fn restore_handler(path: &std::path::Path, buses: &[&Bus]) -> anyhow::Resu
         });
     }
     for bus in buses {
-        sleep_devices(bus)?;
+        if let Err(e) = sleep_devices(bus) {
+            // Failing to sleep could mean a single device failing to sleep.
+            // Wake up devices to resume functionality of the VM.
+            for bus in buses {
+                wake_devices(bus);
+            }
+            return Err(e);
+        }
     }
     for bus in buses {
         if let Err(e) = restore_devices(bus, &mut devices_map) {
