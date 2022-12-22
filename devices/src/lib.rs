@@ -347,12 +347,9 @@ async fn restore_handler(path: &std::path::Path, buses: &[&Bus]) -> anyhow::Resu
         .with_context(|| format!("failed to open {}", path.display()))?;
 
     let mut devices_map: HashMap<u32, VecDeque<serde_json::Value>> = HashMap::new();
-    let deserialized_list: Vec<serde_json::Value> = serde_json::from_reader(file)?;
-    for map in deserialized_list.iter().filter_map(|d| d.as_object()) {
-        map.iter().for_each(|(id, device)| {
-            let id: u32 = id.parse::<u32>().expect("failed to reach device id");
-            devices_map.entry(id).or_default().push_back(device.clone())
-        });
+    let deserialized_list: Vec<HashMap<u32, serde_json::Value>> = serde_json::from_reader(file)?;
+    for (id, device) in deserialized_list.into_iter().flatten() {
+        devices_map.entry(id).or_default().push_back(device)
     }
     for bus in buses {
         if let Err(e) = sleep_devices(bus) {
