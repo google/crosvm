@@ -431,7 +431,6 @@ dependencies = [
  "bitreader",
  "bytes",
  "crc32fast",
- "downcast-rs",
  "enumn",
  "libva",
  "log",

@@ -997,6 +997,11 @@ impl StatelessDecoderBackend for Backend {
             "Asked to block on a pending job that doesn't exist"
         )))
     }
+
+    #[cfg(test)]
+    fn get_test_params(&self) -> &dyn std::any::Any {
+        &self.test_params
+    }
 }
 
 impl Decoder<VADecodedHandle<H264Picture<GenericBackendHandle>>> {
@@ -1012,8 +1017,8 @@ mod tests {
 
     use libva::Display;
 
-    use crate::decoders::h264::backends;
     use crate::decoders::h264::backends::vaapi::AssociatedHandle;
+    use crate::decoders::h264::backends::vaapi::TestParams;
     use crate::decoders::h264::backends::BlockingMode;
     use crate::decoders::h264::backends::DecodedHandle;
     use crate::decoders::h264::backends::StatelessDecoderBackend;
@@ -1022,10 +1027,13 @@ mod tests {
     use crate::decoders::h264::decoder::Decoder;
     use crate::decoders::DynPicture;
 
-    fn as_vaapi_backend(
+    fn get_test_params(
         backend: &dyn StatelessDecoderBackend<Handle = AssociatedHandle>,
-    ) -> &backends::vaapi::Backend {
-        backend.downcast_ref::<backends::vaapi::Backend>().unwrap()
+    ) -> &TestParams {
+        backend
+            .get_test_params()
+            .downcast_ref::<TestParams>()
+            .unwrap()
     }
 
     fn process_handle(
@@ -1082,7 +1090,7 @@ mod tests {
                 process_ready_frames(decoder, &mut |decoder, handle| {
                     // Contains the params used to decode the picture. Useful if we want to
                     // write assertions against any particular value used therein.
-                    let _params = &as_vaapi_backend(decoder.backend()).test_params;
+                    let _params = get_test_params(decoder.backend());
 
                     process_handle(handle, false, Some(&mut expected_crcs), frame_num);
 
@@ -1121,7 +1129,7 @@ mod tests {
                 // if we want to write assertions against any particular value
                 // used therein.
                 process_ready_frames(decoder, &mut |decoder, handle| {
-                    let _params = &as_vaapi_backend(decoder.backend()).test_params;
+                    let _params = get_test_params(decoder.backend());
                     process_handle(handle, false, Some(&mut expected_crcs), frame_num);
 
                     frame_num += 1;
@@ -1159,7 +1167,7 @@ mod tests {
                     // Contains the VA-API params used to decode the picture.
                     // Useful if we want to write assertions against any
                     // particular value used therein.
-                    let _params = &as_vaapi_backend(decoder.backend()).test_params;
+                    let _params = get_test_params(decoder.backend());
 
                     process_handle(handle, false, Some(&mut expected_crcs), frame_num);
 
@@ -1198,7 +1206,7 @@ mod tests {
                     // Contains the VA-API params used to decode the picture.
                     // Useful if we want to write assertions against any
                     // particular value used therein.
-                    let _params = &as_vaapi_backend(decoder.backend()).test_params;
+                    let _params = get_test_params(decoder.backend());
 
                     process_handle(handle, false, Some(&mut expected_crcs), frame_num);
 
@@ -1237,7 +1245,7 @@ mod tests {
                     // Contains the VA-API params used to decode the picture.
                     // Useful if we want to write assertions against any
                     // particular value used therein.
-                    let _params = &as_vaapi_backend(decoder.backend()).test_params;
+                    let _params = get_test_params(decoder.backend());
 
                     process_handle(handle, false, Some(&mut expected_crcs), frame_num);
 
@@ -1276,7 +1284,7 @@ mod tests {
                     // Contains the VA-API params used to decode the picture.
                     // Useful if we want to write assertions against any
                     // particular value used therein.
-                    let _params = &as_vaapi_backend(decoder.backend()).test_params;
+                    let _params = get_test_params(decoder.backend());
 
                     process_handle(handle, false, Some(&mut expected_crcs), frame_num);
 
@@ -1315,7 +1323,7 @@ mod tests {
                     // Contains the VA-API params used to decode the picture.
                     // Useful if we want to write assertions against any
                     // particular value used therein.
-                    let _params = &as_vaapi_backend(decoder.backend()).test_params;
+                    let _params = get_test_params(decoder.backend());
 
                     process_handle(handle, false, Some(&mut expected_crcs), frame_num);
 
@@ -1353,7 +1361,7 @@ mod tests {
                     // Contains the VA-API params used to decode the picture.
                     // Useful if we want to write assertions against any
                     // particular value used therein.
-                    let _params = &as_vaapi_backend(decoder.backend()).test_params;
+                    let _params = get_test_params(decoder.backend());
 
                     process_handle(handle, false, Some(&mut expected_crcs), frame_num);
 

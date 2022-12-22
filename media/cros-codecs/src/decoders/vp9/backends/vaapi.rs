@@ -791,6 +791,11 @@ impl StatelessDecoderBackend for Backend {
             "Asked to block on a pending job that doesn't exist"
         )))
     }
+
+    #[cfg(test)]
+    fn get_test_params(&self) -> &dyn std::any::Any {
+        &self.test_params
+    }
 }
 
 impl VideoDecoderBackend for Backend {
@@ -887,8 +892,8 @@ mod tests {
     use libva::PictureParameter;
     use libva::SliceParameter;
 
-    use crate::decoders::vp9::backends;
     use crate::decoders::vp9::backends::vaapi::AssociatedHandle;
+    use crate::decoders::vp9::backends::vaapi::TestParams;
     use crate::decoders::vp9::backends::BlockingMode;
     use crate::decoders::vp9::backends::DecodedHandle;
     use crate::decoders::vp9::backends::StatelessDecoderBackend;
@@ -898,10 +903,10 @@ mod tests {
     use crate::decoders::vp9::parser::NUM_REF_FRAMES;
     use crate::decoders::DynPicture;
 
-    fn as_vaapi_backend(
+    fn get_test_params(
         backend: &dyn StatelessDecoderBackend<Handle = AssociatedHandle>,
-    ) -> &backends::vaapi::Backend {
-        backend.downcast_ref::<backends::vaapi::Backend>().unwrap()
+    ) -> &Vec<TestParams> {
+        backend.get_test_params().downcast_ref::<_>().unwrap()
     }
 
     fn process_handle(
@@ -959,8 +964,7 @@ mod tests {
                 process_ready_frames(decoder, &mut |decoder, handle| {
                     // Contains the params used to decode the picture. Useful if we want to
                     // write assertions against any particular value used therein.
-                    let params =
-                        &as_vaapi_backend(decoder.backend()).test_params[frame_num as usize];
+                    let params = &get_test_params(decoder.backend())[frame_num as usize];
 
                     process_handle(handle, false, Some(&mut expected_crcs), frame_num);
 
@@ -1160,9 +1164,7 @@ mod tests {
                     // Notice that the VP9 codec can choose to redisplay frames,
                     // in which case, no test parameters are recorded, because
                     // no decode operation is made.
-                    let params = &as_vaapi_backend(decoder.backend())
-                        .test_params
-                        .get(frame_num as usize);
+                    let params = get_test_params(decoder.backend()).get(frame_num as usize);
 
                     process_handle(handle, false, Some(&mut expected_crcs), frame_num);
 
@@ -1375,9 +1377,7 @@ mod tests {
                     // Notice that the VP9 codec can choose to redisplay frames,
                     // in which case, no test parameters are recorded, because
                     // no decode operation is made.
-                    let _params = &as_vaapi_backend(decoder.backend())
-                        .test_params
-                        .get(frame_num as usize);
+                    let _params = get_test_params(decoder.backend()).get(frame_num as usize);
 
                     process_handle(handle, false, Some(&mut expected_crcs), frame_num);
 
@@ -1423,9 +1423,7 @@ mod tests {
                     // Notice that the VP9 codec can choose to redisplay frames,
                     // in which case, no test parameters are recorded, because
                     // no decode operation is made.
-                    let params = &as_vaapi_backend(decoder.backend())
-                        .test_params
-                        .get(frame_num as usize);
+                    let params = get_test_params(decoder.backend()).get(frame_num as usize);
 
                     // GStreamer adds padding otherwise, so we introduce this
                     // check so as to not fail because of that, as some of the

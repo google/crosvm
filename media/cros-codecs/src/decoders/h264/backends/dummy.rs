@@ -106,6 +106,12 @@ impl StatelessDecoderBackend for Backend {
     fn block_on_handle(&mut self, _: &Self::Handle) -> StatelessBackendResult<()> {
         Ok(())
     }
+
+    #[cfg(test)]
+    fn get_test_params(&self) -> &dyn std::any::Any {
+        // There are no test parameters for the dummy backend.
+        unimplemented!()
+    }
 }
 
 impl Decoder<Handle<H264Picture<BackendHandle>>> {

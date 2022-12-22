@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#[cfg(test)]
+use std::any::Any;
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::convert::TryFrom;
@@ -602,6 +604,11 @@ impl StatelessDecoderBackend for Backend {
             "Asked to block on a pending job that doesn't exist"
         )))
     }
+
+    #[cfg(test)]
+    fn get_test_params(&self) -> &dyn Any {
+        &self.test_params
+    }
 }
 
 impl VideoDecoderBackend for Backend {
@@ -700,8 +707,8 @@ mod tests {
     use libva::PictureParameter;
     use libva::SliceParameter;
 
-    use crate::decoders::vp8::backends;
     use crate::decoders::vp8::backends::vaapi::AssociatedHandle;
+    use crate::decoders::vp8::backends::vaapi::TestParams;
     use crate::decoders::vp8::backends::BlockingMode;
     use crate::decoders::vp8::backends::DecodedHandle;
     use crate::decoders::vp8::backends::StatelessDecoderBackend;
@@ -710,10 +717,10 @@ mod tests {
     use crate::decoders::vp8::decoder::Decoder;
     use crate::decoders::DynPicture;
 
-    fn as_vaapi_backend(
+    fn get_test_params(
         backend: &dyn StatelessDecoderBackend<Handle = AssociatedHandle>,
-    ) -> &backends::vaapi::Backend {
-        backend.downcast_ref::<backends::vaapi::Backend>().unwrap()
+    ) -> &Vec<TestParams> {
+        backend.get_test_params().downcast_ref::<_>().unwrap()
     }
 
     fn process_handle(
@@ -782,8 +789,7 @@ mod tests {
                 process_ready_frames(decoder, &mut |decoder, handle| {
                     // Contains the params used to decode the picture. Useful if we want to
                     // write assertions against any particular value used therein.
-                    let params =
-                        &as_vaapi_backend(decoder.backend()).test_params[frame_num as usize];
+                    let params = &get_test_params(decoder.backend())[frame_num as usize];
 
                     process_handle(handle, false, Some(&mut expected_crcs), frame_num);
 
