@@ -37,7 +37,7 @@ pub type AsBackendHandle<Handle> = <Handle as DecodedHandle>::BackendHandle;
 /// that happen to be ready.
 pub(crate) trait StatelessDecoderBackend: VideoDecoderBackend {
     /// Called when a new SPS is parsed.
-    fn new_sequence(&mut self, sps: &Sps, dpb_size: usize) -> Result<()>;
+    fn new_sequence(&mut self, sps: &Sps) -> Result<()>;
 
     /// Called when the decoder determines that a frame or field was found.
     fn new_picture(

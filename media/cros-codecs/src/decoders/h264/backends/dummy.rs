@@ -22,7 +22,7 @@ use crate::decoders::BlockingMode;
 use crate::utils::dummy::*;
 
 impl StatelessDecoderBackend for Backend<H264Picture<BackendHandle>> {
-    fn new_sequence(&mut self, _: &Sps, _: usize) -> StatelessBackendResult<()> {
+    fn new_sequence(&mut self, _: &Sps) -> StatelessBackendResult<()> {
         Ok(())
     }
 

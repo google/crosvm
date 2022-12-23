@@ -87,8 +87,8 @@ struct Backend {
     current_picture: Option<VaPicture<PictureNew>>,
     /// The FIFO for all pending pictures, in the order they were submitted.
     pending_jobs: VecDeque<PendingJob<H264Picture<GenericBackendHandle>>>,
-    /// The negotiation status. First member is the Sps, second is the size of the DPB.
-    negotiation_status: NegotiationStatus<Box<(Sps, usize)>>,
+    /// The negotiation status.
+    negotiation_status: NegotiationStatus<Box<Sps>>,
 
     #[cfg(test)]
     /// Test params. Saves the metadata sent to VA-API for the purposes of
@@ -111,12 +111,7 @@ impl Backend {
     }
 
     /// Initializes or reinitializes the codec state.
-    fn open(
-        &mut self,
-        sps: &Sps,
-        max_dpb_frames: usize,
-        format_map: Option<&FormatMap>,
-    ) -> Result<()> {
+    fn open(&mut self, sps: &Sps, format_map: Option<&FormatMap>) -> Result<()> {
         let display = self.metadata_state.display();
 
         let profile_idc = sps.profile_idc();
@@ -155,7 +150,7 @@ impl Backend {
             .cloned()
             .unwrap();
 
-        let num_surfaces = max_dpb_frames + 4;
+        let num_surfaces = sps.max_dpb_frames()? + 4;
 
         let surfaces = display.create_surfaces(
             rt_format,
@@ -626,8 +621,8 @@ impl VideoDecoderBackend for Backend {
     }
 
     fn try_format(&mut self, format: DecodedFormat) -> DecoderResult<()> {
-        let (sps, dpb_size) = match &self.negotiation_status {
-            NegotiationStatus::Possible(b) => (&b.0, b.1),
+        let sps = match &self.negotiation_status {
+            NegotiationStatus::Possible(b) => b,
             _ => {
                 return Err(DecoderError::StatelessBackendError(
                     StatelessBackendError::NegotiationFailed(anyhow!(
@@ -647,7 +642,7 @@ impl VideoDecoderBackend for Backend {
                 .unwrap();
 
             let sps = sps.clone();
-            self.open(&sps, dpb_size, Some(map_format))?;
+            self.open(&sps, Some(map_format))?;
 
             Ok(())
         } else {
@@ -742,9 +737,9 @@ impl VideoDecoderBackend for Backend {
 }
 
 impl StatelessDecoderBackend for Backend {
-    fn new_sequence(&mut self, sps: &Sps, dpb_size: usize) -> StatelessBackendResult<()> {
-        self.open(sps, dpb_size, None)?;
-        self.negotiation_status = NegotiationStatus::Possible(Box::new((sps.clone(), dpb_size)));
+    fn new_sequence(&mut self, sps: &Sps) -> StatelessBackendResult<()> {
+        self.open(sps, None)?;
+        self.negotiation_status = NegotiationStatus::Possible(Box::new(sps.clone()));
 
         Ok(())
     }

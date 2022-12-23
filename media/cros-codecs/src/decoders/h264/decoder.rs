@@ -2337,10 +2337,8 @@ where
                 queued_buffers.push((timestamp, buffer));
 
                 if let Some(sps) = &sps {
-                    let max_dpb_frames = sps.max_dpb_frames()?;
-
                     self.backend.poll(BlockingMode::Blocking)?;
-                    self.backend.new_sequence(sps, max_dpb_frames)?;
+                    self.backend.new_sequence(sps)?;
 
                     self.negotiation_status = NegotiationStatus::Possible {
                         queued_buffers: queued_buffers.clone(),
