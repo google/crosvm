@@ -86,8 +86,6 @@ struct Backend {
     current_picture: Option<VaPicture<PictureNew>>,
     /// The FIFO for all pending pictures, in the order they were submitted.
     pending_jobs: VecDeque<PendingJob<H264Picture<GenericBackendHandle>>>,
-    /// The number of allocated surfaces.
-    num_allocated_surfaces: usize,
     /// The negotiation status. First member is the Sps, second is the size of the DPB.
     negotiation_status: NegotiationStatus<Box<(Sps, usize)>>,
 
@@ -104,7 +102,6 @@ impl Backend {
             metadata_state: StreamMetadataState::Unparsed { display },
             current_picture: Default::default(),
             pending_jobs: Default::default(),
-            num_allocated_surfaces: Default::default(),
             negotiation_status: Default::default(),
 
             #[cfg(test)]
@@ -167,7 +164,6 @@ impl Backend {
             Some(UsageHint::USAGE_HINT_DECODER),
             num_surfaces as u32,
         )?;
-        self.num_allocated_surfaces = num_surfaces;
 
         let context = display.create_context(
             &config,
@@ -195,6 +191,7 @@ impl Backend {
             context,
             config,
             surface_pool,
+            min_num_surfaces: num_surfaces,
             coded_resolution,
             display_resolution,
             map_format: Rc::new(map_format),
@@ -612,7 +609,7 @@ impl VideoDecoderBackend for Backend {
     type Handle = VADecodedHandle<H264Picture<GenericBackendHandle>>;
 
     fn num_resources_total(&self) -> usize {
-        self.num_allocated_surfaces
+        self.metadata_state.min_num_surfaces().unwrap_or(0)
     }
 
     fn num_resources_left(&self) -> usize {

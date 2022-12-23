@@ -99,8 +99,6 @@ struct Backend {
     metadata_state: StreamMetadataState,
     /// The FIFO for all pending pictures, in the order they were submitted.
     pending_jobs: VecDeque<PendingJob<Vp9Picture<GenericBackendHandle>>>,
-    /// The number of allocated surfaces.
-    num_allocated_surfaces: usize,
     /// The negotiation status
     negotiation_status: NegotiationStatus<Box<Header>>,
     /// Per-segment data.
@@ -118,7 +116,6 @@ impl Backend {
         Ok(Self {
             metadata_state: StreamMetadataState::Unparsed { display },
             pending_jobs: Default::default(),
-            num_allocated_surfaces: Default::default(),
             negotiation_status: Default::default(),
             segmentation: Default::default(),
 
@@ -263,8 +260,6 @@ impl Backend {
             NUM_SURFACES as u32,
         )?;
 
-        self.num_allocated_surfaces = NUM_SURFACES;
-
         let context = display.create_context(
             &config,
             i32::try_from(frame_w)?,
@@ -284,6 +279,7 @@ impl Backend {
             context,
             config,
             surface_pool,
+            min_num_surfaces: NUM_SURFACES,
             coded_resolution,
             display_resolution: coded_resolution, // TODO(dwlsalmeida)
             map_format: Rc::new(map_format),
@@ -690,7 +686,7 @@ impl VideoDecoderBackend for Backend {
     }
 
     fn num_resources_total(&self) -> usize {
-        self.num_allocated_surfaces
+        self.metadata_state.min_num_surfaces().unwrap_or(0)
     }
 
     fn num_resources_left(&self) -> usize {

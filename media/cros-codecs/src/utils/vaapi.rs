@@ -265,6 +265,8 @@ pub(crate) enum StreamMetadataState {
         config: Config,
         /// A pool of surfaces. We reuse surfaces as they are expensive to allocate.
         surface_pool: SurfacePoolHandle,
+        /// The number of surfaces required to parse the stream.
+        min_num_surfaces: usize,
         /// The decoder current coded resolution.
         coded_resolution: Resolution,
         /// The decoder current display resolution.
@@ -339,6 +341,15 @@ impl StreamMetadataState {
         match self {
             StreamMetadataState::Unparsed { .. } => Err(anyhow!("Invalid state")),
             StreamMetadataState::Parsed { surface_pool, .. } => Ok(surface_pool.clone()),
+        }
+    }
+
+    pub(crate) fn min_num_surfaces(&self) -> Result<usize> {
+        match self {
+            StreamMetadataState::Unparsed { .. } => Err(anyhow!("Stream metadata not parsed yet")),
+            StreamMetadataState::Parsed {
+                min_num_surfaces, ..
+            } => Ok(*min_num_surfaces),
         }
     }
 
