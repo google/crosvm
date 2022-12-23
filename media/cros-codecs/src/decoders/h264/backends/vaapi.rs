@@ -673,10 +673,10 @@ impl StatelessDecoderBackend for Backend {
     type Handle = VADecodedHandle<H264Picture<GenericBackendHandle>>;
 
     fn new_sequence(&mut self, sps: &Sps, dpb_size: usize) -> StatelessBackendResult<()> {
+        self.open(sps, dpb_size, None)?;
         self.negotiation_status = NegotiationStatus::Possible(Box::new((sps.clone(), dpb_size)));
 
-        self.open(sps, dpb_size, None)
-            .map_err(StatelessBackendError::Other)
+        Ok(())
     }
 
     fn handle_picture(

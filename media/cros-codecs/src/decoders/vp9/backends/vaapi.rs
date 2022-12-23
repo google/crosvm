@@ -585,15 +585,10 @@ impl StatelessDecoderBackend for Backend {
     type Handle = VADecodedHandle<Vp9Picture<GenericBackendHandle>>;
 
     fn new_sequence(&mut self, header: &Header) -> StatelessBackendResult<()> {
-        let open = self
-            .open(header, None)
-            .map_err(|e| StatelessBackendError::Other(anyhow!(e)));
+        self.open(header, None)?;
+        self.negotiation_status = NegotiationStatus::Possible(Box::new(header.clone()));
 
-        if open.is_ok() {
-            self.negotiation_status = NegotiationStatus::Possible(Box::new(header.clone()))
-        }
-
-        open
+        Ok(())
     }
 
     fn submit_picture(
