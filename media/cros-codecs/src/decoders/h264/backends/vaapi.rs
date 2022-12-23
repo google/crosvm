@@ -25,9 +25,10 @@ use crate::decoders::h264::backends::ContainedPicture;
 use crate::decoders::h264::backends::Result as StatelessBackendResult;
 use crate::decoders::h264::backends::StatelessDecoderBackend;
 use crate::decoders::h264::decoder::Decoder;
-use crate::decoders::h264::decoder::Profile;
 use crate::decoders::h264::dpb::Dpb;
+use crate::decoders::h264::parser::Level;
 use crate::decoders::h264::parser::Pps;
+use crate::decoders::h264::parser::Profile;
 use crate::decoders::h264::parser::Slice;
 use crate::decoders::h264::parser::Sps;
 use crate::decoders::h264::picture::Field;
@@ -394,7 +395,7 @@ impl Backend {
             sps.frame_mbs_only_flag() as u32,
             sps.mb_adaptive_frame_field_flag() as u32,
             sps.direct_8x8_inference_flag() as u32,
-            (sps.level_idc() > 31) as u32, /* see A.3.3.2 */
+            (sps.level_idc() > Level::L3_1) as u32, /* see A.3.3.2 */
             sps.log2_max_frame_num_minus4() as u32,
             sps.pic_order_cnt_type() as u32,
             sps.log2_max_pic_order_cnt_lsb_minus4() as u32,

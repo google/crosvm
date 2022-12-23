@@ -9,7 +9,6 @@ use std::rc::Rc;
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
-use enumn::N;
 use log::debug;
 
 use crate::decoders::h264::backends::StatelessDecoderBackend;
@@ -35,9 +34,6 @@ use crate::decoders::StatelessBackendError;
 use crate::decoders::VideoDecoder;
 use crate::Resolution;
 
-/// The maximum number of pictures in the DPB, as per A.3.1, clause h)
-const DPB_MAX_SIZE: usize = 16;
-
 const ZIGZAG_8X8: [usize; 64] = [
     0, 1, 8, 16, 9, 2, 3, 10, 17, 24, 32, 25, 18, 11, 4, 5, 12, 19, 26, 33, 40, 48, 41, 34, 27, 20,
     13, 6, 7, 14, 21, 28, 35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23, 30, 37, 44, 51, 58, 59,
@@ -45,37 +41,6 @@ const ZIGZAG_8X8: [usize; 64] = [
 ];
 
 const ZIGZAG_4X4: [usize; 16] = [0, 1, 4, 8, 5, 2, 3, 6, 9, 12, 13, 10, 7, 11, 14, 15];
-
-#[derive(N)]
-pub enum Profile {
-    Baseline = 66,
-    Main = 77,
-    High = 100,
-}
-
-#[derive(N)]
-enum Level {
-    L1 = 10,
-    L1B = 9,
-    L1_1 = 11,
-    L1_2 = 12,
-    L1_3 = 13,
-    L2_0 = 20,
-    L2_1 = 21,
-    L2_2 = 22,
-    L3 = 30,
-    L3_1 = 31,
-    L3_2 = 32,
-    L4 = 40,
-    L4_1 = 41,
-    L4_2 = 42,
-    L5 = 50,
-    L5_1 = 51,
-    L5_2 = 52,
-    L6 = 60,
-    L6_1 = 61,
-    L6_2 = 62,
-}
 
 #[derive(Copy, Clone, Debug)]
 enum RefPicList {
@@ -314,72 +279,12 @@ where
         })
     }
 
-    pub fn max_dpb_frames(sps: &Sps) -> Result<usize> {
-        let mut level = Level::n(sps.level_idc())
-            .with_context(|| format!("Unsupported level {}", sps.level_idc()))?;
-        let profile = Profile::n(sps.profile_idc())
-            .with_context(|| format!("Unsupported profile {}", sps.profile_idc()))?;
-
-        // A.3.1 and A.3.2: Level 1b for Baseline, Constrained Baseline and Main
-        // profile if level_idc == 11 and constraint_set3_flag == 1
-        if matches!(level, Level::L1_1)
-            && (matches!(profile, Profile::Baseline) || matches!(profile, Profile::Main))
-            && sps.constraint_set3_flag()
-        {
-            level = Level::L1B;
-        };
-
-        // Table A.1
-        let max_dpb_mbs = match level {
-            Level::L1 => 396,
-            Level::L1B => 396,
-            Level::L1_1 => 900,
-            Level::L1_2 => 2376,
-            Level::L1_3 => 2376,
-            Level::L2_0 => 2376,
-            Level::L2_1 => 4752,
-            Level::L2_2 => 8100,
-            Level::L3 => 8100,
-            Level::L3_1 => 18000,
-            Level::L3_2 => 20480,
-            Level::L4 => 32768,
-            Level::L4_1 => 32768,
-            Level::L4_2 => 34816,
-            Level::L5 => 110400,
-            Level::L5_1 => 184320,
-            Level::L5_2 => 184320,
-            Level::L6 => 696320,
-            Level::L6_1 => 696320,
-            Level::L6_2 => 696320,
-        };
-
-        let width_mb = sps.width() / 16;
-        let height_mb = sps.height() / 16;
-
-        let max_dpb_frames =
-            std::cmp::min(max_dpb_mbs / (width_mb * height_mb), DPB_MAX_SIZE as u32) as usize;
-
-        let mut max_dpb_frames = std::cmp::max(max_dpb_frames, sps.max_num_ref_frames() as usize);
-
-        if sps.vui_parameters_present_flag() && sps.vui_parameters().bitstream_restriction_flag() {
-            max_dpb_frames = std::cmp::max(
-                1,
-                sps.vui_parameters()
-                    .max_dec_frame_buffering()
-                    .try_into()
-                    .unwrap(),
-            );
-        }
-
-        Ok(max_dpb_frames)
-    }
-
     fn negotiation_possible(
         sps: &Sps,
         dpb: &Dpb<T>,
         current_resolution: Resolution,
     ) -> Result<bool> {
-        let max_dpb_frames = Self::max_dpb_frames(sps)?;
+        let max_dpb_frames = sps.max_dpb_frames()?;
 
         let prev_max_dpb_frames = dpb.max_num_pics();
         let prev_interlaced = dpb.interlaced();
@@ -426,7 +331,7 @@ where
             Self::negotiation_possible(sps, &self.dpb, self.coded_resolution)?;
 
         if negotiation_possible {
-            let max_dpb_frames = Self::max_dpb_frames(sps)?;
+            let max_dpb_frames = sps.max_dpb_frames()?;
             let interlaced = !sps.frame_mbs_only_flag();
             let resolution = Resolution {
                 width: sps.width(),
@@ -2432,7 +2337,7 @@ where
                 queued_buffers.push((timestamp, buffer));
 
                 if let Some(sps) = &sps {
-                    let max_dpb_frames = Self::max_dpb_frames(sps)?;
+                    let max_dpb_frames = sps.max_dpb_frames()?;
 
                     self.backend.poll(BlockingMode::Blocking)?;
                     self.backend.new_sequence(sps, max_dpb_frames)?;
