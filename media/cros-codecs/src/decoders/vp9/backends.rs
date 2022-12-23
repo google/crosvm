@@ -47,7 +47,7 @@ pub(crate) trait StatelessDecoderBackend: VideoDecoderBackend {
         &mut self,
         picture: Vp9Picture<AsBackendHandle<Self::Handle>>,
         reference_frames: &[Option<Self::Handle>; NUM_REF_FRAMES],
-        bitstream: &dyn AsRef<[u8]>,
+        bitstream: &[u8],
         timestamp: u64,
         block: bool,
     ) -> Result<Self::Handle>;

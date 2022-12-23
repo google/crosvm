@@ -182,7 +182,7 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> Decoder<
     }
 
     /// Handle a single frame.
-    fn handle_frame(&mut self, frame: Frame<&dyn AsRef<[u8]>>, timestamp: u64) -> Result<T> {
+    fn handle_frame(&mut self, frame: Frame<&[u8]>, timestamp: u64) -> Result<T> {
         if frame.header.show_existing_frame() {
             // Frame to be shown. Unwrapping must produce a Picture, because the
             // spec mandates frame_to_show_map_idx references a valid entry in
@@ -207,17 +207,11 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> Decoder<
                     NegotiationStatus::DrainingQueuedBuffers
                 );
 
-            let bitstream = &frame.bitstream.as_ref()[offset..offset + size];
+            let bitstream = &frame.bitstream[offset..offset + size];
 
             let decoded_handle = self
                 .backend
-                .submit_picture(
-                    picture,
-                    &self.reference_frames,
-                    &bitstream,
-                    timestamp,
-                    block,
-                )
+                .submit_picture(picture, &self.reference_frames, bitstream, timestamp, block)
                 .map_err(|e| anyhow!(e))?;
 
             // Do DPB management
@@ -262,7 +256,7 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> VideoDec
     fn decode(
         &mut self,
         timestamp: u64,
-        bitstream: &dyn AsRef<[u8]>,
+        bitstream: &[u8],
     ) -> VideoDecoderResult<Vec<Box<dyn DynDecodedHandle>>> {
         let frames = self
             .parser
@@ -287,7 +281,7 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> VideoDec
 
                         let offset = frame.offset();
                         let size = frame.size();
-                        let bitstream = frame.bitstream.as_ref()[offset..offset + size].to_vec();
+                        let bitstream = frame.bitstream[offset..offset + size].to_vec();
 
                         self.coded_resolution = Resolution {
                             width: frame.header.width(),
@@ -318,9 +312,7 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> VideoDec
                 let (timestamp, header, bitstream) = queued_key_frame;
                 let sz = bitstream.len();
 
-                let bitstream = &bitstream as &dyn AsRef<[u8]>;
-
-                let key_frame = Frame::new(bitstream, *header, 0, sz);
+                let key_frame = Frame::new(bitstream.as_ref(), *header, 0, sz);
 
                 let show_existing_frame = frame.header.show_existing_frame();
                 let mut handle = self.handle_frame(key_frame, timestamp)?;
@@ -371,12 +363,12 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> VideoDec
         if let NegotiationStatus::Possible { key_frame } = &self.negotiation_status {
             let (timestamp, header, bitstream) = key_frame;
 
-            let bitstream = &bitstream.clone() as &dyn AsRef<[u8]>;
-            let sz = bitstream.as_ref().len();
+            let bitstream = bitstream.clone();
+            let sz = bitstream.len();
 
             let header = header.as_ref().clone();
 
-            let key_frame = Frame::new(bitstream, header, 0, sz);
+            let key_frame = Frame::new(bitstream.as_ref(), header, 0, sz);
             let timestamp = *timestamp;
 
             self.handle_frame(key_frame, timestamp)?;
@@ -482,7 +474,7 @@ pub mod tests {
 
         while let Some(packet) = read_ivf_packet(&mut cursor) {
             let bitstream = packet.as_ref();
-            decoder.decode(frame_num, &bitstream).unwrap();
+            decoder.decode(frame_num, bitstream).unwrap();
 
             on_new_iteration(decoder);
             frame_num += 1;

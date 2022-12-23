@@ -90,7 +90,7 @@ pub trait VideoDecoder {
     fn decode(
         &mut self,
         timestamp: u64,
-        bitstream: &dyn AsRef<[u8]>,
+        bitstream: &[u8],
     ) -> Result<Vec<Box<dyn DynDecodedHandle>>>;
 
     /// Flush the decoder i.e. finish processing all queued decode requests and

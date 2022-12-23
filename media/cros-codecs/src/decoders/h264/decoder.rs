@@ -1630,7 +1630,7 @@ where
     /// Init the current picture being decoded.
     fn init_current_pic(
         &mut self,
-        slice: &Slice<&dyn AsRef<[u8]>>,
+        slice: &Slice<&[u8]>,
         first_field: Option<T>,
         timestamp: u64,
     ) -> Result<()> {
@@ -1788,7 +1788,7 @@ where
 
     /// Handle a picture. Called only once. Uses an heuristic to determine when
     /// a new picture starts in the slice NALUs.
-    fn handle_picture(&mut self, timestamp: u64, slice: &Slice<&dyn AsRef<[u8]>>) -> Result<()> {
+    fn handle_picture(&mut self, timestamp: u64, slice: &Slice<&[u8]>) -> Result<()> {
         let nalu_hdr = slice.nalu().header();
 
         if nalu_hdr.idr_pic_flag() {
@@ -2142,7 +2142,7 @@ where
     }
 
     /// Handle a slice. Called once per slice NALU.
-    fn handle_slice(&mut self, timestamp: u64, slice: &Slice<&dyn AsRef<[u8]>>) -> Result<()> {
+    fn handle_slice(&mut self, timestamp: u64, slice: &Slice<&[u8]>) -> Result<()> {
         let cur_pic = self.cur_pic.as_ref().unwrap();
         if self.dpb.interlaced()
             && matches!(cur_pic.field, Field::Frame)
@@ -2245,11 +2245,7 @@ where
         self.backend.as_ref()
     }
 
-    fn decode_access_unit(
-        &mut self,
-        timestamp: u64,
-        bitstream: &dyn AsRef<[u8]>,
-    ) -> VideoDecoderResult<()> {
+    fn decode_access_unit(&mut self, timestamp: u64, bitstream: &[u8]) -> VideoDecoderResult<()> {
         if self.backend.num_resources_left() == 0 {
             return Err(VideoDecoderError::StatelessBackendError(
                 StatelessBackendError::OutOfResources,
@@ -2258,7 +2254,7 @@ where
 
         let mut cursor = Cursor::new(bitstream);
 
-        while let Ok(Some(nalu)) = Nalu::next(&mut cursor, &bitstream) {
+        while let Ok(Some(nalu)) = Nalu::next(&mut cursor, bitstream) {
             match nalu.header().nalu_type() {
                 NaluType::Sps => {
                     self.process_sps(&nalu)?;
@@ -2317,9 +2313,9 @@ where
     fn decode(
         &mut self,
         timestamp: u64,
-        bitstream: &dyn AsRef<[u8]>,
+        bitstream: &[u8],
     ) -> VideoDecoderResult<Vec<Box<dyn DynDecodedHandle>>> {
-        let sps = Self::peek_sps(&mut self.parser, bitstream.as_ref());
+        let sps = Self::peek_sps(&mut self.parser, bitstream);
 
         if let Some(sps) = &sps {
             if Self::negotiation_possible(sps, &self.dpb, self.coded_resolution)? {
@@ -2333,7 +2329,7 @@ where
 
         let queued_buffers = match &mut self.negotiation_status {
             NegotiationStatus::NonNegotiated { queued_buffers } => {
-                let buffer = Vec::from(bitstream.as_ref());
+                let buffer = Vec::from(bitstream);
                 queued_buffers.push((timestamp, buffer));
 
                 if let Some(sps) = &sps {
@@ -2505,7 +2501,7 @@ pub mod tests {
 
                 let data = &test_stream[start_offset..end_offset];
 
-                decoder.decode(frame_num, &data).unwrap();
+                decoder.decode(frame_num, data).unwrap();
 
                 on_new_iteration(decoder);
                 frame_num += 1;
@@ -2523,7 +2519,7 @@ pub mod tests {
 
             let data = &test_stream[start_offset..end_offset];
 
-            decoder.decode(frame_num, &data).unwrap();
+            decoder.decode(frame_num, data).unwrap();
 
             on_new_iteration(decoder);
             frame_num += 1;

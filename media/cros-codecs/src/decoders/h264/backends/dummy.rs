@@ -33,7 +33,7 @@ impl StatelessDecoderBackend for Backend<H264Picture<BackendHandle>> {
         _: &Sps,
         _: &Pps,
         _: &Dpb<Self::Handle>,
-        _: &Slice<&dyn AsRef<[u8]>>,
+        _: &Slice<&[u8]>,
     ) -> StatelessBackendResult<()> {
         Ok(())
     }
@@ -49,7 +49,7 @@ impl StatelessDecoderBackend for Backend<H264Picture<BackendHandle>> {
 
     fn decode_slice(
         &mut self,
-        _: &Slice<&dyn AsRef<[u8]>>,
+        _: &Slice<&[u8]>,
         _: &Sps,
         _: &Pps,
         _: &Dpb<Self::Handle>,

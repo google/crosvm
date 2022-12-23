@@ -25,7 +25,7 @@ impl StatelessDecoderBackend for Backend<Vp8Picture<BackendHandle>> {
         _: Option<&Self::Handle>,
         _: Option<&Self::Handle>,
         _: Option<&Self::Handle>,
-        _: &dyn AsRef<[u8]>,
+        _: &[u8],
         _: &crate::decoders::vp8::parser::Parser,
         _: u64,
         _: bool,

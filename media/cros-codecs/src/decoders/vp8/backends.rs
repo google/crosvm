@@ -49,7 +49,7 @@ pub(crate) trait StatelessDecoderBackend: VideoDecoderBackend {
         last_ref: Option<&Self::Handle>,
         golden_ref: Option<&Self::Handle>,
         alt_ref: Option<&Self::Handle>,
-        bitstream: &dyn AsRef<[u8]>,
+        bitstream: &[u8],
         parser: &Parser,
         timestamp: u64,
         block: bool,

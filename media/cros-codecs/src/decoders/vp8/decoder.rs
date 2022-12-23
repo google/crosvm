@@ -226,7 +226,7 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> Decoder<
     /// Handle a single frame.
     fn handle_frame(
         &mut self,
-        frame: Frame<&dyn AsRef<[u8]>>,
+        frame: Frame<&[u8]>,
         timestamp: u64,
         queued_parser_state: Option<Parser>,
     ) -> Result<T> {
@@ -291,7 +291,7 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> VideoDec
     fn decode(
         &mut self,
         timestamp: u64,
-        bitstream: &dyn AsRef<[u8]>,
+        bitstream: &[u8],
     ) -> VideoDecoderResult<Vec<Box<dyn DynDecodedHandle>>> {
         let frame = self.parser.parse_frame(bitstream).map_err(|e| anyhow!(e))?;
 
@@ -319,7 +319,7 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> VideoDec
                         key_frame: (
                             timestamp,
                             Box::new(frame.header),
-                            Vec::from(frame.bitstream.as_ref()),
+                            Vec::from(frame.bitstream),
                             Box::new(self.parser.clone()),
                         ),
                     }
@@ -340,10 +340,8 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> VideoDec
         if let Some(queued_key_frame) = queued_key_frame {
             let (timestamp, header, bitstream, parser) = queued_key_frame;
 
-            let bitstream = &bitstream as &dyn AsRef<[u8]>;
-
             let key_frame = Frame {
-                bitstream,
+                bitstream: bitstream.as_ref(),
                 header: *header,
             };
 
@@ -395,10 +393,13 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> VideoDec
         if let NegotiationStatus::Possible { key_frame } = &self.negotiation_status {
             let (timestamp, header, bitstream, parser) = key_frame;
 
-            let bitstream = &bitstream.clone() as &dyn AsRef<[u8]>;
+            let bitstream = bitstream.clone();
             let header = header.as_ref().clone();
 
-            let key_frame = Frame { bitstream, header };
+            let key_frame = Frame {
+                bitstream: bitstream.as_ref(),
+                header,
+            };
             let timestamp = *timestamp;
             let parser = *parser.clone();
 
@@ -503,8 +504,7 @@ pub mod tests {
         cursor.seek(std::io::SeekFrom::Start(32)).unwrap();
 
         while let Some(packet) = read_ivf_packet(&mut cursor) {
-            let bitstream = packet.as_ref();
-            decoder.decode(frame_num, &bitstream).unwrap();
+            decoder.decode(frame_num, packet.as_ref()).unwrap();
 
             on_new_iteration(decoder);
             frame_num += 1;

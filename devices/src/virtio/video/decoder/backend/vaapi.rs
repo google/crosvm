@@ -654,7 +654,7 @@ impl VaapiDecoderSession {
         )
         .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?;
 
-        let frames = self.codec.decode(timestamp, &bitstream_map);
+        let frames = self.codec.decode(timestamp, bitstream_map.as_ref());
 
         // We are always done with the input buffer after `self.codec.decode()`.
         self.event_queue

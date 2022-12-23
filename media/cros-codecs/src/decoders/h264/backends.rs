@@ -65,13 +65,13 @@ pub(crate) trait StatelessDecoderBackend: VideoDecoderBackend {
         sps: &Sps,
         pps: &Pps,
         dpb: &Dpb<Self::Handle>,
-        slice: &Slice<&dyn AsRef<[u8]>>,
+        slice: &Slice<&[u8]>,
     ) -> Result<()>;
 
     /// Called to dispatch a decode operation to the backend.
     fn decode_slice(
         &mut self,
-        slice: &Slice<&dyn AsRef<[u8]>>,
+        slice: &Slice<&[u8]>,
         sps: &Sps,
         pps: &Pps,
         dpb: &Dpb<Self::Handle>,

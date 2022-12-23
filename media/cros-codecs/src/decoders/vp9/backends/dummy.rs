@@ -24,7 +24,7 @@ impl StatelessDecoderBackend for Backend<Vp9Picture<BackendHandle>> {
         &mut self,
         picture: Vp9Picture<super::AsBackendHandle<Self::Handle>>,
         _: &[Option<Self::Handle>; NUM_REF_FRAMES],
-        _: &dyn AsRef<[u8]>,
+        _: &[u8],
         _: u64,
         _: bool,
     ) -> super::Result<Self::Handle> {

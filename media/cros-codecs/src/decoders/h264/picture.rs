@@ -158,7 +158,7 @@ impl<BackendHandle> H264Picture<BackendHandle> {
         }
     }
 
-    pub fn new_from_slice(slice: &Slice<&dyn AsRef<[u8]>>, sps: &Sps, timestamp: u64) -> Self {
+    pub fn new_from_slice(slice: &Slice<&[u8]>, sps: &Sps, timestamp: u64) -> Self {
         let hdr = slice.header();
         let nalu_hdr = slice.nalu().header();
 

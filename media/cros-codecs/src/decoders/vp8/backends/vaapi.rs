@@ -302,7 +302,7 @@ impl StatelessDecoderBackend for Backend {
         last_ref: Option<&Self::Handle>,
         golden_ref: Option<&Self::Handle>,
         alt_ref: Option<&Self::Handle>,
-        bitstream: &dyn AsRef<[u8]>,
+        bitstream: &[u8],
         parser: &Parser,
         timestamp: u64,
         block: bool,
@@ -327,13 +327,11 @@ impl StatelessDecoderBackend for Backend {
             alt_ref,
         )?)?;
 
-        let slice_param = context.create_buffer(Backend::build_slice_param(
-            &picture.data,
-            bitstream.as_ref().len(),
-        )?)?;
+        let slice_param =
+            context.create_buffer(Backend::build_slice_param(&picture.data, bitstream.len())?)?;
 
         let slice_data =
-            context.create_buffer(libva::BufferType::SliceData(Vec::from(bitstream.as_ref())))?;
+            context.create_buffer(libva::BufferType::SliceData(Vec::from(bitstream)))?;
 
         let context = self.backend.metadata_state.context()?;
 
@@ -367,8 +365,8 @@ impl StatelessDecoderBackend for Backend {
                 golden_ref,
                 alt_ref,
             )?,
-            Backend::build_slice_param(&picture.data, bitstream.as_ref().len())?,
-            libva::BufferType::SliceData(Vec::from(bitstream.as_ref())),
+            Backend::build_slice_param(&picture.data, bitstream.len())?,
+            libva::BufferType::SliceData(Vec::from(bitstream)),
             Backend::build_iq_matrix(&picture.data, parser)?,
             Backend::build_probability_table(&picture.data),
         );

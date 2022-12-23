@@ -507,7 +507,7 @@ impl StatelessDecoderBackend for Backend {
         &mut self,
         picture: Vp9Picture<AsBackendHandle<Self::Handle>>,
         reference_frames: &[Option<Self::Handle>; NUM_REF_FRAMES],
-        bitstream: &dyn AsRef<[u8]>,
+        bitstream: &[u8],
         timestamp: u64,
         block: bool,
     ) -> StatelessBackendResult<Self::Handle> {
@@ -523,19 +523,19 @@ impl StatelessDecoderBackend for Backend {
             let mut seg = self.segmentation.clone();
             self.save_params(
                 Backend::build_pic_param(&picture.data, reference_frames)?,
-                Backend::build_slice_param(&picture.data, &mut seg, bitstream.as_ref().len())?,
-                libva::BufferType::SliceData(Vec::from(bitstream.as_ref())),
+                Backend::build_slice_param(&picture.data, &mut seg, bitstream.len())?,
+                libva::BufferType::SliceData(Vec::from(bitstream)),
             );
         }
 
         let slice_param = context.create_buffer(Backend::build_slice_param(
             &picture.data,
             &mut self.segmentation,
-            bitstream.as_ref().len(),
+            bitstream.len(),
         )?)?;
 
         let slice_data =
-            context.create_buffer(libva::BufferType::SliceData(Vec::from(bitstream.as_ref())))?;
+            context.create_buffer(libva::BufferType::SliceData(Vec::from(bitstream)))?;
 
         let context = self.backend.metadata_state.context()?;
 

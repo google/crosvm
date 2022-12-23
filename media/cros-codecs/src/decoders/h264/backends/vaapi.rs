@@ -570,7 +570,7 @@ impl StatelessDecoderBackend for Backend {
         sps: &Sps,
         pps: &Pps,
         dpb: &Dpb<Self::Handle>,
-        slice: &Slice<&dyn AsRef<[u8]>>,
+        slice: &Slice<&[u8]>,
     ) -> StatelessBackendResult<()> {
         debug!(
             "Va-API backend: handle_picture for timestamp {:?}",
@@ -604,7 +604,7 @@ impl StatelessDecoderBackend for Backend {
 
     fn decode_slice(
         &mut self,
-        slice: &Slice<&dyn AsRef<[u8]>>,
+        slice: &Slice<&[u8]>,
         sps: &Sps,
         pps: &Pps,
         _: &Dpb<Self::Handle>,
