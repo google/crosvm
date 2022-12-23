@@ -604,9 +604,7 @@ impl StatelessDecoderBackend for Backend {
         timestamp: u64,
         block: bool,
     ) -> StatelessBackendResult<Self::Handle> {
-        if !matches!(self.negotiation_status, NegotiationStatus::Negotiated) {
-            self.negotiation_status = NegotiationStatus::Negotiated;
-        }
+        self.negotiation_status = NegotiationStatus::Negotiated;
 
         let context = self.metadata_state.context()?;
 
