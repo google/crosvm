@@ -15,6 +15,7 @@ use std::collections::HashMap as Map;
 use std::convert::TryInto;
 use std::sync::Arc;
 
+use base::warn;
 use base::MappedRegion;
 use vulkano::device::physical::PhysicalDeviceType;
 use vulkano::device::Device;
@@ -132,16 +133,19 @@ impl VulkanoGralloc {
         let mut has_integrated_gpu = false;
 
         for physical in instance.enumerate_physical_devices()? {
-            let queue_family_index = physical
-                .queue_family_properties()
-                .iter()
-                .position(|q| {
-                    // We take the first queue family that supports graphics.
-                    q.queue_flags.graphics
-                })
-                .ok_or(RutabagaError::SpecViolation(
-                    "need graphics queue family to proceed",
-                ))?;
+            let queue_family_index = match physical.queue_family_properties().iter().position(|q| {
+                // We take the first queue family that supports graphics.
+                q.queue_flags.graphics
+            }) {
+                Some(family) => family,
+                None => {
+                    warn!(
+                        "Skipping Vulkano for {} due to no graphics queue",
+                        physical.properties().device_name
+                    );
+                    continue;
+                }
+            };
 
             let supported_extensions = physical.supported_extensions();
 
