@@ -21,6 +21,8 @@ use std::io::stdout;
 use std::ops::Range;
 use std::path::Path;
 use std::path::PathBuf;
+use std::time::Duration;
+use std::time::Instant;
 
 use anyhow::bail;
 use anyhow::Context;
@@ -58,29 +60,120 @@ const MAX_SWAP_OUT_CHUNK_SIZE: usize = 1024 * 1024; // = 1MB
 /// Current status of vmm-swap.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Status {
-    /// vmm-swap is ready. userfaultfd is disabled until swap out.
+    /// vmm-swap is ready. userfaultfd is disabled until vmm-swap is enabled.
     Ready,
+    /// Pages in guest memory are moved to the staging memory.
+    Pending {
+        /// take taken for moving memory to staging.
+        move_staging_time_ms: u128,
+        /// metrics
+        metrics: Metrics,
+    },
     /// swap-out is in progress. this is not used for now because the monitor process runs in a
     /// single thread.
-    InProgress,
+    InProgress {
+        /// take taken for moving memory to staging.
+        move_staging_time_ms: u128,
+        /// metrics
+        metrics: Metrics,
+    },
     /// swap out succeeded.
     Active {
+        /// take taken for moving memory to staging.
+        move_staging_time_ms: u128,
         /// time taken for swap-out.
         swap_time_ms: u128,
-        /// count of pages on RAM.
-        resident_pages: usize,
-        /// count of pages copied from the vmm-swap file.
-        copied_pages: usize,
-        /// count of pages initialized with zero.
-        zeroed_pages: usize,
-        /// count of pages which were already initialized on page faults. This can happen when
-        /// several threads/processes access the uninitialized/removed page at the same time.
-        redundant_pages: usize,
-        /// count of pages in swap files.
-        swap_pages: usize,
+        /// metrics
+        metrics: Metrics,
     },
     /// swap out failed.
-    Failed,
+    Failed {
+        /// metrics
+        metrics: Metrics,
+    },
+}
+
+impl Status {
+    fn generate(swap_out_state: &Option<SwapOutState>, page_handler: &Option<PageHandler>) -> Self {
+        if let Some(page_handler) = page_handler.as_ref() {
+            let metrics = Metrics::new(page_handler);
+            match *swap_out_state {
+                Some(SwapOutState::Pending {
+                    move_staging_time_ms,
+                }) => Self::Pending {
+                    move_staging_time_ms,
+                    metrics,
+                },
+                Some(SwapOutState::InProgress {
+                    move_staging_time_ms,
+                    ..
+                }) => Self::InProgress {
+                    move_staging_time_ms,
+                    metrics,
+                },
+                Some(SwapOutState::Completed {
+                    move_staging_time_ms,
+                    swap_time_ms,
+                }) => Self::Active {
+                    move_staging_time_ms,
+                    swap_time_ms,
+                    metrics,
+                },
+                None => Self::Failed { metrics },
+            }
+        } else {
+            Self::Ready
+        }
+    }
+}
+
+/// Current metrics of vmm-swap.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Metrics {
+    /// count of pages on RAM.
+    resident_pages: usize,
+    /// count of pages copied from the vmm-swap file.
+    copied_from_file_pages: usize,
+    /// count of pages copied from the staging memory.
+    copied_from_staging_pages: usize,
+    /// count of pages initialized with zero.
+    zeroed_pages: usize,
+    /// count of pages which were already initialized on page faults. This can happen when several
+    /// threads/processes access the uninitialized/removed page at the same time.
+    redundant_pages: usize,
+    /// count of pages in staging memory.
+    staging_pages: usize,
+    /// count of pages in swap files.
+    swap_pages: usize,
+}
+
+impl Metrics {
+    fn new(page_handler: &PageHandler) -> Self {
+        Self {
+            resident_pages: page_handler.compute_resident_pages(),
+            copied_from_file_pages: page_handler.compute_copied_from_file_pages(),
+            copied_from_staging_pages: page_handler.compute_copied_from_staging_pages(),
+            zeroed_pages: page_handler.compute_zeroed_pages(),
+            redundant_pages: page_handler.compute_redundant_pages(),
+            staging_pages: page_handler.compute_staging_pages(),
+            swap_pages: page_handler.compute_swap_pages(),
+        }
+    }
+}
+
+enum SwapOutState {
+    Pending {
+        move_staging_time_ms: u128,
+    },
+    InProgress {
+        move_staging_time_ms: u128,
+        started_time: Instant,
+        swapped_pages: usize,
+    },
+    Completed {
+        move_staging_time_ms: u128,
+        swap_time_ms: u128,
+    },
 }
 
 /// commands used in vmm-swap feature internally between [SwapController] and [monitor_process].
@@ -452,12 +545,49 @@ fn monitor_process(
     .context("create wait context")?;
 
     let mut uffd_list = UffdList::new(uffd, &wait_ctx);
-    let mut lastest_swap_out_time_ms = None;
+    let mut swap_out_state: Option<SwapOutState> = None;
     let mut page_handler_opt: Option<PageHandler> = None;
     let mut page_fault_logger: Option<PageFaultEventLogger> = None;
 
     'wait: loop {
-        let events = wait_ctx.wait().context("wait poll events")?;
+        let events = match swap_out_state {
+            Some(SwapOutState::InProgress {
+                ref move_staging_time_ms,
+                ref mut swapped_pages,
+                ref started_time,
+            }) => {
+                let events = wait_ctx
+                    .wait_timeout(Duration::ZERO)
+                    .context("wait poll events")?;
+
+                // proceed swap out only when there is no page fault (or other) events.
+                if events.is_empty() {
+                    // page_handler must be present when state is InProgress.
+                    let num_pages = page_handler_opt
+                        .as_mut()
+                        .unwrap()
+                        .swap_out(MAX_SWAP_OUT_CHUNK_SIZE)
+                        .context("swap out")?;
+                    if num_pages == 0 {
+                        let swap_time_ms = started_time.elapsed().as_millis();
+                        info!(
+                            "swap out {} pages to file in {} ms",
+                            swapped_pages, swap_time_ms
+                        );
+                        swap_out_state = Some(SwapOutState::Completed {
+                            move_staging_time_ms: *move_staging_time_ms,
+                            swap_time_ms,
+                        });
+                    } else {
+                        *swapped_pages += num_pages;
+                    }
+                    continue;
+                }
+
+                events
+            }
+            _ => wait_ctx.wait().context("wait poll events")?,
+        };
 
         for event in events.iter() {
             match event.token {
@@ -561,29 +691,37 @@ fn monitor_process(
                                         page_handler.compute_resident_pages()
                                     );
                                 }
-                                lastest_swap_out_time_ms = Some(move_time_ms);
+                                swap_out_state = Some(SwapOutState::Pending {
+                                    move_staging_time_ms: move_time_ms,
+                                });
                             }
                             Err(e) => {
-                                error!("failed to swapping out the state: {}", e);
-                                lastest_swap_out_time_ms = None;
+                                error!("failed to move memory to staging: {}", e);
+                                swap_out_state = None;
                             }
                         }
                     }
                     Command::SwapOut => {
-                        if let Some(ref mut page_handler) = page_handler_opt {
-                            // TODO(kawasin): Count the swapped out pages in later CL.
-                            while page_handler
-                                .swap_out(MAX_SWAP_OUT_CHUNK_SIZE)
-                                .context("swap out")?
-                                != 0
-                            {}
-                            info!("swapped out.");
+                        if let Some(SwapOutState::Pending {
+                            move_staging_time_ms,
+                        }) = swap_out_state
+                        {
+                            swap_out_state = Some(SwapOutState::InProgress {
+                                move_staging_time_ms,
+                                started_time: std::time::Instant::now(),
+                                swapped_pages: 0,
+                            });
+                            info!("start swapping out.");
                         } else {
-                            warn!("swap is disabled.");
+                            warn!("swap is not enabled.");
                         }
                     }
                     Command::Disable => {
                         if let Some(page_handler) = page_handler_opt.take() {
+                            // clear swap_out_state.
+                            if let Some(SwapOutState::InProgress { .. }) = swap_out_state.take() {
+                                info!("swap out is aborted.");
+                            }
                             let t0 = std::time::Instant::now();
                             let num_pages =
                                 disable_monitoring(page_handler, &uffd_list, &guest_memory)?;
@@ -600,25 +738,7 @@ fn monitor_process(
                         break 'wait;
                     }
                     Command::Status => {
-                        let status = if let Some(ref page_handler) = page_handler_opt {
-                            if let Some(swap_time_ms) = lastest_swap_out_time_ms {
-                                Status::Active {
-                                    swap_time_ms,
-                                    resident_pages: page_handler.compute_resident_pages(),
-                                    // TODO(kawasin): metrics for compute_copied_from_staging_pages
-                                    // and compute_copied_from_file_pages in later CL.
-                                    copied_pages: page_handler.compute_copied_from_staging_pages()
-                                        + page_handler.compute_copied_from_file_pages(),
-                                    zeroed_pages: page_handler.compute_zeroed_pages(),
-                                    redundant_pages: page_handler.compute_redundant_pages(),
-                                    swap_pages: page_handler.compute_swap_pages(),
-                                }
-                            } else {
-                                Status::Failed
-                            }
-                        } else {
-                            Status::Ready
-                        };
+                        let status = Status::generate(&swap_out_state, &page_handler_opt);
                         tube.send(&status).context("send status response")?;
                         info!("swap status: {:?}.", status);
                     }

@@ -167,6 +167,13 @@ impl StagingMemory {
             )
             .map_err(|e| e.into())
     }
+
+    /// Returns the count of present pages in the staging memory.
+    pub fn present_pages(&self) -> usize {
+        self.state_list
+            .iter()
+            .fold(0, |acc, v| if *v { acc + 1 } else { acc })
+    }
 }
 
 #[cfg(test)]
@@ -298,5 +305,15 @@ mod tests {
         assert_eq!(staging_memory.next_data_range(0).unwrap(), 100..200);
         assert_eq!(staging_memory.next_data_range(100).unwrap(), 100..200);
         assert!(staging_memory.next_data_range(200).is_none());
+    }
+
+    #[test]
+    fn present_pages() {
+        let mut staging_memory = StagingMemory::new(200).unwrap();
+
+        staging_memory.mark_as_present(1..5);
+        staging_memory.mark_as_present(12..13);
+
+        assert_eq!(staging_memory.present_pages(), 5);
     }
 }

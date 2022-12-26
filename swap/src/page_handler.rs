@@ -503,6 +503,14 @@ impl PageHandler {
         self.regions.iter().map(|r| r.redundant_pages).sum()
     }
 
+    /// Returns count of pages present in the staging memory.
+    pub fn compute_staging_pages(&self) -> usize {
+        self.regions
+            .iter()
+            .map(|r| r.staging_memory.as_ref().map_or(0, |sm| sm.present_pages()))
+            .sum()
+    }
+
     /// Returns count of pages present in the swap files.
     pub fn compute_swap_pages(&self) -> usize {
         let mut swapped_size = 0;
