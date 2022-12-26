@@ -178,6 +178,7 @@ fn swap_vms(cmd: cmdline::SwapCommand) -> std::result::Result<(), ()> {
     use cmdline::SwapSubcommands::*;
     let (req, path) = match &cmd.nested {
         Enable(params) => (VmRequest::Swap(SwapCommand::Enable), &params.socket_path),
+        SwapOut(params) => (VmRequest::Swap(SwapCommand::SwapOut), &params.socket_path),
         Disable(params) => (VmRequest::Swap(SwapCommand::Disable), &params.socket_path),
         Status(params) => (VmRequest::Swap(SwapCommand::Status), &params.socket_path),
         LogPageFault(params) => (

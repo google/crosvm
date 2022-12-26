@@ -948,6 +948,7 @@ pub enum PvClockCommandResponse {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum SwapCommand {
     Enable,
+    SwapOut,
     Disable,
     Status,
     StartPageFaultLogging,
@@ -1103,6 +1104,19 @@ impl VmRequest {
                         Ok(()) => VmResponse::Ok,
                         Err(e) => {
                             error!("swap enable failed: {}", e);
+                            VmResponse::Err(SysError::new(EINVAL))
+                        }
+                    };
+                }
+                VmResponse::Err(SysError::new(ENOTSUP))
+            }
+            VmRequest::Swap(SwapCommand::SwapOut) => {
+                #[cfg(feature = "swap")]
+                if let Some(swap_controller) = swap_controller {
+                    return match swap_controller.swap_out() {
+                        Ok(()) => VmResponse::Ok,
+                        Err(e) => {
+                            error!("swap out failed: {}", e);
                             VmResponse::Err(SysError::new(EINVAL))
                         }
                     };

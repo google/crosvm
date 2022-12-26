@@ -8,6 +8,7 @@
 
 use std::ops::Range;
 use std::path::Path;
+use std::ptr::copy_nonoverlapping;
 
 use base::error;
 use base::unix::FileDataIterator;
@@ -23,6 +24,8 @@ use crate::pagesize::is_page_aligned;
 use crate::pagesize::page_base_addr;
 use crate::pagesize::page_idx_to_addr;
 use crate::pagesize::pages_to_bytes;
+use crate::staging::Error as StagingError;
+use crate::staging::StagingMemory;
 use crate::userfaultfd::UffdError;
 use crate::userfaultfd::Userfaultfd;
 
@@ -41,6 +44,9 @@ pub enum Error {
     #[error("file operation failed : {0:?}")]
     /// file operation failed
     File(FileError),
+    #[error("staging operation failed : {0:?}")]
+    /// staging operation failed
+    Staging(StagingError),
     #[error("userfaultfd failed : {0:?}")]
     /// userfaultfd operation failed
     Userfaultfd(UffdError),
@@ -58,12 +64,23 @@ impl From<FileError> for Error {
     }
 }
 
+impl From<StagingError> for Error {
+    fn from(e: StagingError) -> Self {
+        Self::Staging(e)
+    }
+}
+
 /// [Region] represents a memory region and corresponding [SwapFile].
 struct Region {
     /// the head page index of the region.
     head_page_idx: usize,
     file: SwapFile,
-    copied_pages: usize,
+    staging_memory: Option<StagingMemory>,
+    /// Cursor used when iterating over pages present in staging memory. All pages with indices less
+    /// than the cursor are known to be empty.
+    staging_cursor: usize,
+    copied_from_file_pages: usize,
+    copied_from_staging_pages: usize,
     zeroed_pages: usize,
     /// the amount of pages which were already initialized on page faults.
     redundant_pages: usize,
@@ -122,7 +139,10 @@ impl PageHandler {
                     regions.push(Region {
                         head_page_idx,
                         file,
-                        copied_pages: 0,
+                        staging_memory: None,
+                        staging_cursor: 0,
+                        copied_from_file_pages: 0,
+                        copied_from_staging_pages: 0,
                         zeroed_pages: 0,
                         redundant_pages: 0,
                         swap_active: false,
@@ -183,43 +203,52 @@ impl PageHandler {
         // the head address of the page.
         let page_addr = page_base_addr(address);
         let page_size = pages_to_bytes(1);
-        let Region {
-            head_page_idx,
-            file,
-            copied_pages,
-            zeroed_pages,
-            redundant_pages,
-            ..
-        } = self
-            .find_region(page_idx)
+        let region = self
+            .find_region_position(page_idx)
+            .map(|i| &mut self.regions[i])
             .ok_or(Error::InvalidAddress(address))?;
 
-        let idx_in_region = page_idx - *head_page_idx;
-        match file.page_content(idx_in_region)? {
-            Some(page_slice) => {
-                Self::copy_all(uffd, page_addr, page_slice, true)?;
-                file.clear(idx_in_region)?;
-                *copied_pages += 1;
-                Ok(())
-            }
-            None => {
-                // Map a zero page since no swap file has been created yet but the fault happened.
-                // safe because the fault page is notified by uffd.
-                let result = uffd.zero(page_addr, page_size, true);
-                match result {
-                    Ok(_) => {
-                        *zeroed_pages += 1;
-                        Ok(())
-                    }
-                    Err(UffdError::ZeropageFailed(errno)) if errno as i32 == libc::EEXIST => {
-                        // zeroing fails with EEXIST if the page is already filled. This case can
-                        // happen if page faults on the same page happen on different processes.
-                        uffd.wake(page_addr, page_size)?;
-                        *redundant_pages += 1;
-                        Ok(())
-                    }
-                    Err(e) => Err(e.into()),
+        let idx_in_region = page_idx - region.head_page_idx;
+        if let Some(page_slice) = region
+            .staging_memory
+            .as_ref()
+            .map(|sm| sm.page_content(idx_in_region))
+            .transpose()?
+            .flatten()
+        {
+            Self::copy_all(uffd, page_addr, page_slice, true)?;
+            // staging_memory must present when page_slice is present.
+            region
+                .staging_memory
+                .as_mut()
+                .unwrap()
+                .clear_range(idx_in_region..idx_in_region + 1)?;
+            region.copied_from_staging_pages += 1;
+            Ok(())
+        } else if let Some(page_slice) = region.file.page_content(idx_in_region)? {
+            Self::copy_all(uffd, page_addr, page_slice, true)?;
+            region.file.clear(idx_in_region)?;
+            region.copied_from_file_pages += 1;
+            Ok(())
+        } else {
+            // Map a zero page since no swap file has been created yet but the fault
+            // happened.
+            // safe because the fault page is notified by uffd.
+            let result = uffd.zero(page_addr, page_size, true);
+            match result {
+                Ok(_) => {
+                    region.zeroed_pages += 1;
+                    Ok(())
                 }
+                Err(UffdError::ZeropageFailed(errno)) if errno as i32 == libc::EEXIST => {
+                    // zeroing fails with EEXIST if the page is already filled. This case
+                    // can happen if page faults on the same page happen on different
+                    // processes.
+                    uffd.wake(page_addr, page_size)?;
+                    region.redundant_pages += 1;
+                    Ok(())
+                }
+                Err(e) => Err(e.into()),
             }
         }
     }
@@ -257,18 +286,16 @@ impl PageHandler {
         Ok(())
     }
 
-    /// Write active pages in the memory region to the swap file.
+    /// Move active pages in the memory region to the staging memory.
     ///
-    /// It only writes active contents in the guest memory to the swap file and skips empty
-    /// pages (e.g. pages not touched, freed by balloon) using `lseek(2)` + `SEEK_HOLE/DATA`.
+    /// It only moves active contents in the guest memory to the swap file and skips empty pages
+    /// (e.g. pages not touched, freed by balloon) using `lseek(2)` + `SEEK_HOLE/DATA`.
     ///
-    /// The memory must be protected not to be updated during swapped out.
-    ///
-    /// Returns the count of swapped out pages.
+    /// Returns the count of moved out pages.
     ///
     /// # Arguments
     ///
-    /// * `base_addr` - the head address of the memory region to swap out.
+    /// * `base_addr` - the head address of the memory region.
     /// * `memfd` - the file descriptor of the memfd backing the guest memory region.
     /// * `base_offset` - the offset of the memory region in the memfd.
     ///
@@ -277,10 +304,12 @@ impl PageHandler {
     /// The region must have been registered to all userfaultfd of processes which may touch the
     /// region.
     ///
+    /// The memory must be protected not to be updated while moving.
+    ///
     /// The page fault events for the region from the userfaultfd must be handled by
-    /// [PageHandler::handle_page_fault].
+    /// [Self::handle_page_fault()].
     #[deny(unsafe_op_in_unsafe_fn)]
-    pub unsafe fn swap_out<T>(
+    pub unsafe fn move_to_staging<T>(
         &mut self,
         base_addr: usize,
         memfd: &T,
@@ -289,62 +318,120 @@ impl PageHandler {
     where
         T: AsRawDescriptor,
     {
-        let head_page_idx = addr_to_page_idx(base_addr);
-        // use find_region_position instead of find_region() due to borrow checker.
-        let region_position = self
-            .find_region_position(head_page_idx)
+        let region = self
+            .find_region(addr_to_page_idx(base_addr))
             .ok_or(Error::InvalidAddress(base_addr))?;
-        if self.regions[region_position].head_page_idx != head_page_idx {
+
+        if page_idx_to_addr(region.head_page_idx) != base_addr {
             return Err(Error::InvalidAddress(base_addr));
         }
-        let region_size = pages_to_bytes(self.regions[region_position].file.num_pages());
+        if region.staging_memory.is_none() {
+            region.staging_memory = Some(StagingMemory::new(region.file.num_pages())?);
+        }
+        let staging_memory = region.staging_memory.as_mut().unwrap();
+        let region_size = pages_to_bytes(region.file.num_pages());
         let file_data = FileDataIterator::new(memfd, base_offset, region_size as u64);
 
-        let mut swapped_size = 0;
+        let mut moved_size = 0;
         for data_range in file_data {
             // assert offset is page aligned
             let offset = (data_range.start - base_offset) as usize;
             assert!(is_page_aligned(offset));
-            let addr = base_addr + offset;
-            let page_idx = addr_to_page_idx(addr);
             let size = (data_range.end - data_range.start) as usize;
             assert!(is_page_aligned(size));
-            // safe because the page is within the range of the guest memory.
-            let mem_slice = unsafe { std::slice::from_raw_parts(addr as *const u8, size) };
-            self.regions[region_position]
-                .file
-                .write_to_file(page_idx - head_page_idx, mem_slice)?;
-            swapped_size += size;
-            // TODO(kawasin): periodically MADV_REMOVE the guest memory. if the pages are in zram,
-            // it increases the RAM usage during swap_out.
-            // TODO(kawasin): free the page cache of the swap file. or direct I/O.
+            let src_addr = base_addr + offset;
+            let head_idx = bytes_to_pages(offset);
+            let dst_addr = staging_memory
+                .get_slice(head_idx..head_idx + bytes_to_pages(size))?
+                .as_mut_ptr();
+
+            // TODO(kawasin): split the data if it is too big to reduce a memory usage spike.
+            // TODO(kawasin): multi thread for performance optimization.
+            // Safe because:
+            // * the source memory is in guest memory and no processes access it.
+            // * src_addr and dst_addr are aligned with the page size.
+            // * src and dst does not overlap since src_addr is from the guest memory and dst_addr
+            //   is from the staging memory.
+            unsafe {
+                copy_nonoverlapping(src_addr as *const u8, dst_addr, size);
+            }
+            let head_idx = bytes_to_pages(offset);
+            staging_memory.mark_as_present(head_idx..head_idx + bytes_to_pages(size));
+
+            // TODO(kawasin): reduce the call count of MADV_REMOVE by removing several data at once.
+            // Safe because the region is already backed by the file and the content will be swapped
+            // in on a page fault.
+            unsafe {
+                libc::madvise(src_addr as *mut libc::c_void, size, libc::MADV_REMOVE);
+            }
+
+            moved_size += size;
         }
 
-        // safe because the region is already backed by the file and the content will be swapped in
-        // on a page fault.
-        unsafe {
-            libc::madvise(
-                base_addr as *mut libc::c_void,
-                region_size,
-                libc::MADV_REMOVE,
-            );
-        }
-        let swapped_pages = bytes_to_pages(swapped_size);
-        let mut region = &mut self.regions[region_position];
-        // Suppress error log on the first swap_out, since page counts are not initialized but
-        // zero.
-        if region.swap_active && swapped_pages != (region.copied_pages + region.zeroed_pages) {
+        let moved_pages = bytes_to_pages(moved_size);
+        // Suppress error log on the first swap_out, since page counts are not initialized but zero.
+        if region.swap_active
+            && moved_pages
+                != (region.copied_from_file_pages
+                    + region.copied_from_staging_pages
+                    + region.zeroed_pages)
+        {
             error!(
-                "swapped pages ({}) does not match with resident pages (copied: {}, zeroed: {}).",
-                swapped_pages, region.copied_pages, region.zeroed_pages
+                "moved pages ({}) does not match with resident pages (copied(file): {}, copied(staging): {}, zeroed: {}).",
+                moved_pages, region.copied_from_file_pages, region.copied_from_staging_pages, region.zeroed_pages
             );
         }
-        region.copied_pages = 0;
+        region.staging_cursor = 0;
+        region.copied_from_file_pages = 0;
+        region.copied_from_staging_pages = 0;
         region.zeroed_pages = 0;
         region.redundant_pages = 0;
         region.swap_active = true;
 
-        Ok(swapped_pages)
+        Ok(moved_pages)
+    }
+
+    /// Write a chunk of consecutive pages in the staging memory to the swap file.
+    ///
+    /// If there is no active pages in the staging memory, this returns `Ok(0)`.
+    ///
+    /// The pages in guest memory have been moved to staging memory by [Self::move_to_staging()].
+    ///
+    /// Returns the count of swapped out pages.
+    ///
+    /// # Arguments
+    ///
+    /// * `max_size` - the upper limit of the chunk size to write into the swap file at once. The
+    ///   chunk is splitted if it is bigger than `max_size`.
+    pub fn swap_out(&mut self, max_size: usize) -> Result<usize> {
+        let max_pages = bytes_to_pages(max_size);
+        for region in self
+            .regions
+            .iter_mut()
+            .filter(|r| r.staging_memory.is_some())
+        {
+            let staging_memory = region.staging_memory.as_mut().unwrap();
+
+            if let Some(idx_range) = staging_memory.next_data_range(region.staging_cursor) {
+                let pages = std::cmp::min(idx_range.end - idx_range.start, max_pages);
+                let idx_range = idx_range.start..idx_range.start + pages;
+                let slice = staging_memory.get_slice(idx_range.clone())?;
+                // Convert VolatileSlice to &[u8]
+                // Safe because the range of volatile slice is already validated.
+                let slice = unsafe { std::slice::from_raw_parts(slice.as_ptr(), slice.size()) };
+                region.file.write_to_file(idx_range.start, slice)?;
+                region.staging_cursor = idx_range.end;
+                // TODO(kawasin): clear state_list on each write and MADV_REMOVE several chunk at
+                // once.
+                staging_memory.clear_range(idx_range)?;
+                // TODO(kawasin): free the page cache of the swap file.
+                // TODO(kawasin): use writev() to swap_out several small chunks at once.
+                return Ok(pages);
+            } else {
+                region.staging_memory = None;
+            }
+        }
+        Ok(0)
     }
 
     /// Swap in all the content.
@@ -354,9 +441,26 @@ impl PageHandler {
     /// # Arguments
     ///
     /// * `uffd` - the main [Userfaultfd].
-    pub fn swap_in(self, uffd: &Userfaultfd) -> Result<usize> {
+    pub fn swap_in(mut self, uffd: &Userfaultfd) -> Result<usize> {
         let mut swapped_size = 0;
-        for region in self.regions.iter() {
+        for region in self.regions.iter_mut() {
+            let base_addr = page_idx_to_addr(region.head_page_idx);
+
+            if let Some(mut staging_memory) = region.staging_memory.take() {
+                while let Some(idx_range) = staging_memory.next_data_range(region.staging_cursor) {
+                    let page_addr = base_addr + pages_to_bytes(idx_range.start);
+                    let slice = staging_memory.get_slice(idx_range.clone())?;
+                    let size = slice.size();
+                    Self::copy_all(uffd, page_addr, slice, false)?;
+                    region.staging_cursor = idx_range.end;
+                    // Clear the staging memory to avoid memory spike.
+                    // TODO(kawasin): reduce the call count of MADV_REMOVE by removing several data
+                    // at once.
+                    staging_memory.clear_range(idx_range)?;
+                    swapped_size += size;
+                }
+            }
+
             for pages in region.file.all_present_pages() {
                 let page_idx = region.head_page_idx + pages.base_idx;
                 let page_addr = page_idx_to_addr(page_idx);
@@ -372,13 +476,21 @@ impl PageHandler {
     pub fn compute_resident_pages(&self) -> usize {
         self.regions
             .iter()
-            .map(|r| r.copied_pages + r.zeroed_pages)
+            .map(|r| r.copied_from_file_pages + r.copied_from_staging_pages + r.zeroed_pages)
             .sum()
     }
 
-    /// Returns count of pages copied from vmm-swap file on the memory.
-    pub fn compute_copied_pages(&self) -> usize {
-        self.regions.iter().map(|r| r.copied_pages).sum()
+    /// Returns count of pages copied from vmm-swap file to the guest memory.
+    pub fn compute_copied_from_file_pages(&self) -> usize {
+        self.regions.iter().map(|r| r.copied_from_file_pages).sum()
+    }
+
+    /// Returns count of pages copied from staging memory to the guest memory.
+    pub fn compute_copied_from_staging_pages(&self) -> usize {
+        self.regions
+            .iter()
+            .map(|r| r.copied_from_staging_pages)
+            .sum()
     }
 
     /// Returns count of pages initialized with zero.
