@@ -81,21 +81,57 @@ pub struct PageHandler {
 impl PageHandler {
     /// Creates [PageHandler] for the given region.
     ///
+    /// If any of regions overlaps, this returns [Error::RegionOverlap].
+    ///
     /// # Arguments
     ///
     /// * `swap_dir` - path to the directory to create a swap file from.
-    /// * `regions` - the list of the region. the start address must align with page. the size must
-    ///   be multiple of pagesize.
-    pub fn create(swap_dir: &Path, regions: &[Range<usize>]) -> Result<Self> {
-        let mut handler = Self {
-            regions: Vec::new(),
-        };
+    /// * `address_ranges` - the list of address range of the regions. the start address must align
+    ///   with page. the size must be multiple of pagesize.
+    pub fn create(swap_dir: &Path, address_ranges: &[Range<usize>]) -> Result<Self> {
+        let mut regions: Vec<Region> = Vec::new();
 
-        for address_range in regions {
-            handler.add_region(swap_dir, address_range)?;
+        for address_range in address_ranges {
+            let head_page_idx = addr_to_page_idx(address_range.start);
+            let region_size = address_range.end - address_range.start;
+            let num_of_pages = bytes_to_pages(region_size);
+
+            // find an overlaping region
+            match regions.iter().position(|region| {
+                if region.head_page_idx < head_page_idx {
+                    region.head_page_idx + region.file.num_pages() > head_page_idx
+                } else {
+                    region.head_page_idx < head_page_idx + num_of_pages
+                }
+            }) {
+                Some(i) => {
+                    let region = &regions[i];
+
+                    return Err(Error::RegionOverlap(
+                        address_range.clone(),
+                        page_idx_to_addr(region.head_page_idx)
+                            ..(page_idx_to_addr(region.head_page_idx + region.file.num_pages())),
+                    ));
+                }
+                None => {
+                    let base_addr = address_range.start;
+                    assert!(is_page_aligned(base_addr));
+                    assert!(is_page_aligned(region_size));
+
+                    let file = SwapFile::new(swap_dir, num_of_pages)?;
+                    regions.push(Region {
+                        head_page_idx,
+                        file,
+                        copied_pages: 0,
+                        zeroed_pages: 0,
+                        redundant_pages: 0,
+                        swap_active: false,
+                    });
+                }
+            }
         }
 
-        Ok(handler)
+        Ok(Self { regions })
     }
 
     fn find_region_position(&self, page_idx: usize) -> Option<usize> {
@@ -110,56 +146,6 @@ impl PageHandler {
     fn find_region(&mut self, page_idx: usize) -> Option<&mut Region> {
         self.find_region_position(page_idx)
             .map(|i| &mut self.regions[i])
-    }
-
-    /// Create a new internal context to handle userfaultfd events and swap in/out request.
-    ///
-    /// If the regions overlaps an existing region, it returns [Error::RegionOverlap].
-    ///
-    /// # Arguments
-    ///
-    /// * `swap_dir` - path to the directory to create a swap file from.
-    /// * `address_range` - the range of the region. the start address must align with page. the
-    ///   size must be multiple of pagesize.
-    fn add_region(&mut self, swap_dir: &Path, address_range: &Range<usize>) -> Result<()> {
-        let head_page_idx = addr_to_page_idx(address_range.start);
-        let region_size = address_range.end - address_range.start;
-        let num_of_pages = bytes_to_pages(region_size);
-
-        // find an overlaping region
-        match self.regions.iter().position(|region| {
-            if region.head_page_idx < head_page_idx {
-                region.head_page_idx + region.file.num_pages() > head_page_idx
-            } else {
-                region.head_page_idx < head_page_idx + num_of_pages
-            }
-        }) {
-            Some(i) => {
-                let region = &self.regions[i];
-
-                Err(Error::RegionOverlap(
-                    address_range.clone(),
-                    page_idx_to_addr(region.head_page_idx)
-                        ..(page_idx_to_addr(region.head_page_idx + region.file.num_pages())),
-                ))
-            }
-            None => {
-                let base_addr = address_range.start;
-                assert!(is_page_aligned(base_addr));
-                assert!(is_page_aligned(region_size));
-
-                let file = SwapFile::new(swap_dir, num_of_pages)?;
-                self.regions.push(Region {
-                    head_page_idx,
-                    file,
-                    copied_pages: 0,
-                    zeroed_pages: 0,
-                    redundant_pages: 0,
-                    swap_active: false,
-                });
-                Ok(())
-            }
-        }
     }
 
     fn copy_all(
