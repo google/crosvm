@@ -129,6 +129,18 @@ impl Userfaultfd {
         }
     }
 
+    /// Wake the faulting thread blocked by the page(s).
+    ///
+    /// If the page is not initialized, the thread causes a page fault again.
+    ///
+    /// # Arguments
+    ///
+    /// * `addr` - the starting address of the page(s).
+    /// * `len` - the length in bytes of the page(s).
+    pub fn wake(&self, addr: usize, len: usize) -> Result<()> {
+        self.uffd.wake(addr as *mut libc::c_void, len)
+    }
+
     /// Read an event from the userfaultfd.
     ///
     /// Return `None` immediately if no events is ready to read.

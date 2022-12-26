@@ -245,6 +245,7 @@ impl PageHandler {
                     Err(UffdError::ZeropageFailed(errno)) if errno as i32 == libc::EEXIST => {
                         // zeroing fails with EEXIST if the page is already filled. This case can
                         // happen if page faults on the same page happen on different processes.
+                        uffd.wake(page_addr, page_size)?;
                         Ok(())
                     }
                     Err(e) => Err(e.into()),

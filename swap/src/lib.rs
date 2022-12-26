@@ -448,7 +448,7 @@ fn monitor_process(
                                         .handle_page_fault(uffd, addr as usize)
                                         .context("handle fault")?;
                                 } else {
-                                    warn!("page fault event while handler is none");
+                                    bail!("page fault event while handler is none");
                                 }
                             }
                             UffdEvent::Fork { uffd } => {
