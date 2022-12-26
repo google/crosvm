@@ -11,7 +11,6 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
 use base::error;
-use base::pagesize;
 use base::MemoryMapping;
 use base::MemoryMappingBuilder;
 use base::MmapError;
@@ -20,6 +19,10 @@ use data_model::VolatileMemory;
 use data_model::VolatileMemoryError;
 use data_model::VolatileSlice;
 use thiserror::Error as ThisError;
+
+use crate::pagesize::bytes_to_pages;
+use crate::pagesize::is_page_aligned;
+use crate::pagesize::pages_to_bytes;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -92,7 +95,7 @@ impl SwapFile {
             .custom_flags(libc::O_TMPFILE | libc::O_EXCL)
             .mode(0o000) // other processes with the same uid can't open the file
             .open(dir_path)?;
-        let file_mmap = MemoryMappingBuilder::new(num_of_pages * pagesize())
+        let file_mmap = MemoryMappingBuilder::new(pages_to_bytes(num_of_pages))
             .from_file(&file)
             .protection(Protection::read())
             .build()?;
@@ -121,7 +124,9 @@ impl SwapFile {
         match self.state_list.get(idx) {
             Some(is_present) => {
                 if *is_present {
-                    let slice = self.file_mmap.get_slice(idx * pagesize(), pagesize())?;
+                    let slice = self
+                        .file_mmap
+                        .get_slice(pages_to_bytes(idx), pages_to_bytes(1))?;
                     Ok(Some(slice))
                 } else {
                     Ok(None)
@@ -159,16 +164,16 @@ impl SwapFile {
     ///   the pagesize.
     pub fn write_to_file(&mut self, idx: usize, mem_slice: &[u8]) -> Result<()> {
         // validate
-        if mem_slice.len() % pagesize() != 0 {
+        if !is_page_aligned(mem_slice.len()) {
             // mem_slice size must align with page size.
             return Err(Error::InvalidSize);
         }
-        let num_pages = mem_slice.len() / pagesize();
+        let num_pages = bytes_to_pages(mem_slice.len());
         if idx + num_pages > self.state_list.len() {
             return Err(Error::OutOfRange);
         }
 
-        let byte_offset = (idx * pagesize()) as u64;
+        let byte_offset = (pages_to_bytes(idx)) as u64;
         self.file.write_all_at(mem_slice, byte_offset)?;
         for i in idx..(idx + num_pages) {
             self.state_list[i] = true;
@@ -217,12 +222,12 @@ impl<'a> Iterator for PresentPagesIterator<'a> {
             idx += 1;
         }
         self.idx = idx;
-        let num_of_page = idx - head_idx;
+        let num_of_pages = idx - head_idx;
         // The offset and count must be correct and never cause [VolatileMemoryError].
         let slice = self
             .swap_file
             .file_mmap
-            .get_slice(head_idx * pagesize(), num_of_page * pagesize())
+            .get_slice(pages_to_bytes(head_idx), pages_to_bytes(num_of_pages))
             .unwrap();
         Some(Pages {
             base_idx: head_idx,
@@ -235,6 +240,8 @@ impl<'a> Iterator for PresentPagesIterator<'a> {
 mod tests {
     use std::path::PathBuf;
     use std::slice;
+
+    use base::pagesize;
 
     use super::*;
 

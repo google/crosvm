@@ -2009,6 +2009,7 @@ dependencies = [
  "data_model",
  "libc",
  "minijail",
+ "once_cell",
  "remain",
  "serde",
  "serde_json",

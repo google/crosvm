@@ -8,6 +8,7 @@
 
 mod file;
 mod logger;
+mod pagesize;
 // this is public only for integration tests.
 pub mod page_handler;
 mod processes;
