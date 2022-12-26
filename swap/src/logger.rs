@@ -52,8 +52,10 @@ impl PageFaultEventLogger {
             },
         )
         .context("log initial event")?;
+        let mut logger = Self { file, base_time };
+        logger.line_break();
         info!("start logging page faults at {:?}", file_path);
-        Ok(Self { file, base_time })
+        Ok(logger)
     }
 
     /// Logs a page fault event.
@@ -61,16 +63,21 @@ impl PageFaultEventLogger {
     /// # Arguments
     ///
     /// * `address` - the address page fault occured.
-    pub fn log_page_fault(&mut self, address: usize) {
+    pub fn log_page_fault(&mut self, address: usize, id_uffd: u32) {
         // it is not optimized (e.g. buffered io). but it is fine because this logger is for debug
         // purpose only.
         let _ = serde_json::to_writer(
             &self.file,
             &PageFaultEventLog {
-                elapsed_millis: self.base_time.elapsed().as_millis(),
+                elapsed_nanos: self.base_time.elapsed().as_nanos(),
                 address,
+                id_uffd,
             },
         );
+        self.line_break();
+    }
+
+    fn line_break(&mut self) {
         const LINE_BREAK: &[u8] = &[b'\n'];
         let _ = self.file.write(LINE_BREAK);
     }
@@ -85,7 +92,7 @@ struct PageFaultInitialLog {
 fn regions_from_guest_memory(guest_memory: &GuestMemory) -> Vec<MemoryRegion> {
     let mut regions = Vec::new();
     guest_memory
-        .with_regions::<_, ()>(|_, _, base_address, len, _, _| {
+        .with_regions::<_, ()>(|_, _, len, base_address, _, _| {
             regions.push(MemoryRegion { base_address, len });
             Ok(())
         })
@@ -101,6 +108,7 @@ struct MemoryRegion {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct PageFaultEventLog {
-    elapsed_millis: u128,
+    elapsed_nanos: u128,
     address: usize,
+    id_uffd: u32,
 }

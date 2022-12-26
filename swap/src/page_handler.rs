@@ -58,7 +58,10 @@ struct Region {
     /// the head page index of the region.
     head_page_idx: usize,
     file: SwapFile,
-    resident_pages: usize,
+    copied_pages: usize,
+    zeroed_pages: usize,
+    /// the amount of pages which were already initialized on page faults.
+    redundant_pages: usize,
     swap_active: bool,
 }
 
@@ -173,7 +176,9 @@ impl PageHandler {
                 self.regions.push(Region {
                     head_page_idx,
                     file,
-                    resident_pages: 0,
+                    copied_pages: 0,
+                    zeroed_pages: 0,
+                    redundant_pages: 0,
                     swap_active: false,
                 });
                 Ok(())
@@ -219,7 +224,9 @@ impl PageHandler {
         let Region {
             head_page_idx,
             file,
-            resident_pages,
+            copied_pages,
+            zeroed_pages,
+            redundant_pages,
             ..
         } = self
             .find_region(page_idx)
@@ -230,7 +237,7 @@ impl PageHandler {
             Some(page_slice) => {
                 Self::copy_all(uffd, page_addr, page_slice, true)?;
                 file.clear(idx_in_region)?;
-                *resident_pages += 1;
+                *copied_pages += 1;
                 Ok(())
             }
             None => {
@@ -239,13 +246,14 @@ impl PageHandler {
                 let result = uffd.zero(page_addr, page_size, true);
                 match result {
                     Ok(_) => {
-                        *resident_pages += 1;
+                        *zeroed_pages += 1;
                         Ok(())
                     }
                     Err(UffdError::ZeropageFailed(errno)) if errno as i32 == libc::EEXIST => {
                         // zeroing fails with EEXIST if the page is already filled. This case can
                         // happen if page faults on the same page happen on different processes.
                         uffd.wake(page_addr, page_size)?;
+                        *redundant_pages += 1;
                         Ok(())
                     }
                     Err(e) => Err(e.into()),
@@ -361,15 +369,17 @@ impl PageHandler {
         }
         let swapped_pages = swapped_size >> self.pagesize_shift;
         let mut region = &mut self.regions[region_position];
-        // Suppress error log on the first swap_out, since regident_pages is not initialized but
+        // Suppress error log on the first swap_out, since page counts are not initialized but
         // zero.
-        if region.swap_active && swapped_pages != region.resident_pages {
+        if region.swap_active && swapped_pages != (region.copied_pages + region.zeroed_pages) {
             error!(
-                "swapped pages ({}) does not match with resident pages ({}).",
-                swapped_pages, region.resident_pages
+                "swapped pages ({}) does not match with resident pages (copied: {}, zeroed: {}).",
+                swapped_pages, region.copied_pages, region.zeroed_pages
             );
         }
-        region.resident_pages = 0;
+        region.copied_pages = 0;
+        region.zeroed_pages = 0;
+        region.redundant_pages = 0;
         region.swap_active = true;
 
         Ok(swapped_pages)
@@ -398,7 +408,25 @@ impl PageHandler {
 
     /// Returns count of pages active on the memory.
     pub fn compute_resident_pages(&self) -> usize {
-        self.regions.iter().map(|r| r.resident_pages).sum()
+        self.regions
+            .iter()
+            .map(|r| r.copied_pages + r.zeroed_pages)
+            .sum()
+    }
+
+    /// Returns count of pages copied from vmm-swap file on the memory.
+    pub fn compute_copied_pages(&self) -> usize {
+        self.regions.iter().map(|r| r.copied_pages).sum()
+    }
+
+    /// Returns count of pages initialized with zero.
+    pub fn compute_zeroed_pages(&self) -> usize {
+        self.regions.iter().map(|r| r.zeroed_pages).sum()
+    }
+
+    /// Returns count of pages which were already initialized on page faults.
+    pub fn compute_redundant_pages(&self) -> usize {
+        self.regions.iter().map(|r| r.redundant_pages).sum()
     }
 
     /// Returns count of pages present in the swap files.

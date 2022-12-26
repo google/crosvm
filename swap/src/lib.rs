@@ -64,6 +64,13 @@ pub enum Status {
         swap_time_ms: u128,
         /// count of pages on RAM.
         resident_pages: usize,
+        /// count of pages copied from the vmm-swap file.
+        copied_pages: usize,
+        /// count of pages initialized with zero.
+        zeroed_pages: usize,
+        /// count of pages which were already initialized on page faults. This can happen when
+        /// several threads/processes access the uninitialized/removed page at the same time.
+        redundant_pages: usize,
         /// count of pages in swap files.
         swap_pages: usize,
     },
@@ -441,7 +448,7 @@ fn monitor_process(
                         match event {
                             UffdEvent::Pagefault { addr, .. } => {
                                 if let Some(ref mut page_fault_logger) = page_fault_logger {
-                                    page_fault_logger.log_page_fault(addr as usize);
+                                    page_fault_logger.log_page_fault(addr as usize, id_uffd);
                                 }
                                 if let Some(ref mut page_handler) = page_handler_opt {
                                     page_handler
@@ -549,6 +556,9 @@ fn monitor_process(
                                 Status::Active {
                                     swap_time_ms,
                                     resident_pages: page_handler.compute_resident_pages(),
+                                    copied_pages: page_handler.compute_copied_pages(),
+                                    zeroed_pages: page_handler.compute_zeroed_pages(),
+                                    redundant_pages: page_handler.compute_redundant_pages(),
                                     swap_pages: page_handler.compute_swap_pages(),
                                 }
                             } else {
