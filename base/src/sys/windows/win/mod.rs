@@ -19,7 +19,6 @@ use std::ptr::null_mut;
 pub use file_util::*;
 use serde::Deserialize;
 use serde::Serialize;
-use winapi::shared::minwindef::DWORD;
 use winapi::shared::winerror::WAIT_TIMEOUT;
 use winapi::um::handleapi::INVALID_HANDLE_VALUE;
 use winapi::um::synchapi::CreateMutexA;
@@ -28,9 +27,7 @@ use winapi::um::synchapi::WaitForSingleObject;
 use winapi::um::winbase::INFINITE;
 use winapi::um::winbase::WAIT_ABANDONED;
 use winapi::um::winbase::WAIT_OBJECT_0;
-use winapi::um::winuser::AllowSetForegroundWindow;
 
-use super::errno_result;
 use super::Error;
 use super::Result;
 use crate::descriptor::AsRawDescriptor;
@@ -122,16 +119,4 @@ impl<'a> Drop for MultiProcessMutexGuard<'a> {
 /// simplify cross platform code.
 pub fn open_file<P: AsRef<Path>>(path: P, options: &OpenOptions) -> Result<File> {
     Ok(options.open(path)?)
-}
-
-/// Grants the given process id temporary permission to foreground another window. This succeeds
-/// only when the emulator is in the foreground, and will persist only until the next user
-/// interaction with the window
-pub fn give_foregrounding_permission(process_id: DWORD) -> Result<()> {
-    // Safe because this API does not modify memory, and process_id remains in scope for
-    // the duration of the call.
-    match unsafe { AllowSetForegroundWindow(process_id) } {
-        0 => errno_result(),
-        _ => Ok(()),
-    }
 }
