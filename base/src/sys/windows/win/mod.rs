@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// Defines Windows-specific submodules of sys_util
-
-mod platform_timer_utils;
-pub use platform_timer_utils::*;
-
 use std::ptr::null_mut;
 
 use serde::Deserialize;

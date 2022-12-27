@@ -4,11 +4,11 @@
 
 use std::time::Duration;
 
+use super::platform_timer_utils::measure_timer_resolution;
+use super::platform_timer_utils::nt_query_timer_resolution;
+use super::platform_timer_utils::nt_set_timer_resolution;
+use super::platform_timer_utils::set_time_period;
 use crate::info;
-use crate::measure_timer_resolution;
-use crate::nt_query_timer_resolution;
-use crate::nt_set_timer_resolution;
-use crate::set_time_period;
 use crate::warn;
 use crate::EnabledHighResTimer;
 use crate::Result;

@@ -24,9 +24,9 @@ use winapi::um::timeapi::timeBeginPeriod;
 use winapi::um::timeapi::timeEndPeriod;
 use winapi::um::winnt::BOOLEAN;
 
-use super::super::Error;
-use super::super::Result;
 use crate::warn;
+use crate::Error;
+use crate::Result;
 
 static NT_INIT: Once = Once::new();
 static mut NT_LIBRARY: MaybeUninit<HMODULE> = MaybeUninit::uninit();

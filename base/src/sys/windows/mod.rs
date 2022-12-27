@@ -24,6 +24,7 @@ mod mmap;
 mod mmap_platform;
 pub mod named_pipes;
 pub mod platform_timer_resolution;
+mod platform_timer_utils;
 mod priority;
 // Add conditional compile?
 mod punch_hole;

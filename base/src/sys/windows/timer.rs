@@ -19,7 +19,7 @@ use winapi::um::winbase::INFINITE;
 use winapi::um::winbase::WAIT_OBJECT_0;
 
 use super::errno_result;
-use super::win::nt_query_timer_resolution;
+use super::platform_timer_utils::nt_query_timer_resolution;
 use super::Result;
 use crate::descriptor::AsRawDescriptor;
 use crate::descriptor::FromRawDescriptor;
