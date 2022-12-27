@@ -6,7 +6,6 @@
 
 #![cfg(windows)]
 
-#[macro_use]
 pub mod win;
 
 #[macro_use]
