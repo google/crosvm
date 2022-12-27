@@ -12,7 +12,6 @@ use std::slice::from_raw_parts_mut;
 use libc::c_int;
 use libc::c_uint;
 use libc::c_void;
-use win_util::allocation_granularity;
 use win_util::get_high_order;
 use win_util::get_low_order;
 use winapi::um::memoryapi::FlushViewOfFile;
@@ -22,6 +21,7 @@ use winapi::um::memoryapi::UnmapViewOfFile;
 use winapi::um::memoryapi::FILE_MAP_READ;
 use winapi::um::memoryapi::FILE_MAP_WRITE;
 
+use super::allocation_granularity;
 use super::mmap::Error;
 use super::mmap::MemoryMapping;
 use super::mmap::Result;

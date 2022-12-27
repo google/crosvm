@@ -22,13 +22,11 @@ use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::io;
 use std::iter::once;
-use std::mem::MaybeUninit;
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::ffi::OsStringExt;
 use std::os::windows::io::RawHandle;
 use std::ptr;
 use std::slice;
-use std::sync::Once;
 
 use libc::c_ulong;
 use serde::Deserialize;
@@ -46,8 +44,6 @@ use winapi::um::processthreadsapi::GetCurrentProcess;
 use winapi::um::processthreadsapi::GetExitCodeProcess;
 use winapi::um::processthreadsapi::OpenProcess;
 use winapi::um::processthreadsapi::ResumeThread;
-use winapi::um::sysinfoapi::GetNativeSystemInfo;
-use winapi::um::sysinfoapi::SYSTEM_INFO;
 use winapi::um::winbase::CreateFileMappingA;
 use winapi::um::winbase::HANDLE_FLAG_INHERIT;
 use winapi::um::winnt::DUPLICATE_SAME_ACCESS;
@@ -85,30 +81,6 @@ pub fn get_low_order(number: u64) -> c_ulong {
 /// Returns the upper 32 bits of a u64 as a u32 (c_ulong/DWORD)
 pub fn get_high_order(number: u64) -> c_ulong {
     (number >> 32) as c_ulong
-}
-
-static INIT_NATIVE_SYSTEM_INFO: Once = Once::new();
-static mut NATIVE_SYSTEM_INFO: MaybeUninit<SYSTEM_INFO> = MaybeUninit::uninit();
-
-pub fn pagesize() -> usize {
-    get_native_system_info().dwPageSize as usize
-}
-
-pub fn allocation_granularity() -> u64 {
-    get_native_system_info().dwAllocationGranularity as u64
-}
-
-pub fn number_of_processors() -> usize {
-    get_native_system_info().dwNumberOfProcessors as usize
-}
-
-fn get_native_system_info() -> SYSTEM_INFO {
-    INIT_NATIVE_SYSTEM_INFO.call_once(|| unsafe {
-        // Safe because this is a universally available call on modern Windows systems.
-        GetNativeSystemInfo(NATIVE_SYSTEM_INFO.as_mut_ptr());
-    });
-    // Safe because it is guaranteed to be initialized by GetNativeSystemInfo above.
-    unsafe { NATIVE_SYSTEM_INFO.assume_init() }
 }
 
 pub fn win32_string(value: &str) -> CString {

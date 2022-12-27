@@ -22,7 +22,6 @@ use serde::Serialize;
 use winapi::shared::minwindef::DWORD;
 use winapi::shared::winerror::WAIT_TIMEOUT;
 use winapi::um::handleapi::INVALID_HANDLE_VALUE;
-use winapi::um::processthreadsapi::GetCurrentProcessId;
 use winapi::um::synchapi::CreateMutexA;
 use winapi::um::synchapi::ReleaseMutex;
 use winapi::um::synchapi::WaitForSingleObject;
@@ -32,24 +31,11 @@ use winapi::um::winbase::WAIT_OBJECT_0;
 use winapi::um::winuser::AllowSetForegroundWindow;
 
 use super::errno_result;
-use super::pid_t;
 use super::Error;
 use super::Result;
 use crate::descriptor::AsRawDescriptor;
 use crate::descriptor::FromRawDescriptor;
 use crate::descriptor::SafeDescriptor;
-
-#[inline(always)]
-pub fn pagesize() -> usize {
-    win_util::pagesize()
-}
-
-/// Cross-platform wrapper around getting the current process id.
-#[inline(always)]
-pub fn getpid() -> pid_t {
-    // Safe because we only use the return value. ProcessId can safely be converted from DWORD to i32.
-    unsafe { GetCurrentProcessId() as pid_t }
-}
 
 /// A Mutex (no data) that works across processes on Windows.
 #[derive(Serialize, Deserialize, Debug)]
