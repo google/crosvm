@@ -6,8 +6,6 @@
 
 #![cfg(windows)]
 
-pub mod win;
-
 #[macro_use]
 pub mod ioctl;
 #[macro_use]
@@ -22,6 +20,7 @@ mod foreground_window;
 mod get_filesystem_type;
 mod mmap;
 mod mmap_platform;
+mod multi_process_mutex;
 pub mod named_pipes;
 pub mod platform_timer_resolution;
 mod platform_timer_utils;
@@ -56,6 +55,7 @@ pub use mmap::Error as MmapError;
 pub use mmap::*;
 pub(crate) use mmap_platform::PROT_READ;
 pub(crate) use mmap_platform::PROT_WRITE;
+pub(crate) use multi_process_mutex::MultiProcessMutex;
 pub use priority::*;
 pub(crate) use punch_hole::file_punch_hole;
 pub use read_write_wrappers::*;
@@ -70,7 +70,6 @@ pub use system_info::pagesize;
 pub use system_info::round_up_to_page_size;
 pub use terminal::*;
 pub use timer::*;
-pub use win::*;
 pub(crate) use write_zeroes::file_write_zeroes_at;
 
 pub use crate::descriptor_reflection::deserialize_with_descriptors;
