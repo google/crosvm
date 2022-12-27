@@ -4,9 +4,6 @@
 
 // Defines Windows-specific submodules of sys_util
 
-// Modules ported to windows
-pub mod syslog;
-
 mod platform_timer_utils;
 pub use platform_timer_utils::*;
 
