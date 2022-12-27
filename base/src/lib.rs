@@ -120,9 +120,10 @@ cfg_if::cfg_if! {
         pub use platform::{give_foregrounding_permission, Console};
         pub use platform::{named_pipes, named_pipes::PipeConnection};
         pub use platform::{SafeMultimediaHandle, MAXIMUM_WAIT_OBJECTS};
+        pub use platform::set_sparse_file;
         pub use crate::platform::win::{
             measure_timer_resolution, nt_query_timer_resolution, nt_set_timer_resolution,
-            set_sparse_file, set_time_period,
+            set_time_period,
         };
         pub use platform::ioctl::ioctl_with_ptr_sized;
 

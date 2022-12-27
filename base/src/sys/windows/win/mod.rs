@@ -7,13 +7,8 @@
 mod platform_timer_utils;
 pub use platform_timer_utils::*;
 
-mod file_util;
-use std::fs::File;
-use std::fs::OpenOptions;
-use std::path::Path;
 use std::ptr::null_mut;
 
-pub use file_util::*;
 use serde::Deserialize;
 use serde::Serialize;
 use winapi::shared::winerror::WAIT_TIMEOUT;
@@ -107,13 +102,4 @@ impl<'a> Drop for MultiProcessMutexGuard<'a> {
             panic!("Failed to unlock mutex: {:?}.", Error::last())
         }
     }
-}
-
-/// Open the file with the given path.
-///
-/// Note that on POSIX< this wrapper handles opening existing FDs via /proc/self/fd/N. On Windows,
-/// this functionality doesn't exist, but we preserve this seemingly not very useful function to
-/// simplify cross platform code.
-pub fn open_file<P: AsRef<Path>>(path: P, options: &OpenOptions) -> Result<File> {
-    Ok(options.open(path)?)
 }
