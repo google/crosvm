@@ -25,7 +25,6 @@ use crate::decoders::vp8::backends::Vp8Picture;
 use crate::decoders::vp8::decoder::Decoder;
 use crate::decoders::vp8::parser::Header;
 use crate::decoders::vp8::parser::MbLfAdjustments;
-use crate::decoders::vp8::parser::Parser;
 use crate::decoders::vp8::parser::Segmentation;
 use crate::decoders::BlockingMode;
 use crate::decoders::DecodedHandle;
@@ -112,16 +111,18 @@ impl Backend {
         picture.backend_handle.as_ref().unwrap().surface_id()
     }
 
-    fn build_iq_matrix(frame_hdr: &Header, parser: &Parser) -> Result<libva::BufferType> {
+    fn build_iq_matrix(
+        frame_hdr: &Header,
+        segmentation: &Segmentation,
+    ) -> Result<libva::BufferType> {
         let mut quantization_index: [[u16; 6]; 4] = Default::default();
-        let seg = parser.segmentation();
 
         for (i, quantization_index) in quantization_index.iter_mut().enumerate() {
             let mut qi_base: i16;
 
-            if seg.segmentation_enabled {
-                qi_base = i16::from(seg.quantizer_update_value[i]);
-                if !seg.segment_feature_mode {
+            if segmentation.segmentation_enabled {
+                qi_base = i16::from(segmentation.quantizer_update_value[i]);
+                if !segmentation.segment_feature_mode {
                     qi_base += i16::from(frame_hdr.quant_indices().y_ac_qi);
                 }
             } else {
@@ -303,7 +304,8 @@ impl StatelessDecoderBackend for Backend {
         golden_ref: Option<&Self::Handle>,
         alt_ref: Option<&Self::Handle>,
         bitstream: &[u8],
-        parser: &Parser,
+        segmentation: &Segmentation,
+        mb_lf_adjust: &MbLfAdjustments,
         timestamp: u64,
         block: bool,
     ) -> StatelessBackendResult<Self::Handle> {
@@ -311,7 +313,8 @@ impl StatelessDecoderBackend for Backend {
 
         let context = self.backend.metadata_state.context()?;
 
-        let iq_buffer = context.create_buffer(Backend::build_iq_matrix(&picture.data, parser)?)?;
+        let iq_buffer =
+            context.create_buffer(Backend::build_iq_matrix(&picture.data, segmentation)?)?;
 
         let probs = context.create_buffer(Backend::build_probability_table(&picture.data))?;
 
@@ -320,8 +323,8 @@ impl StatelessDecoderBackend for Backend {
         let pic_param = context.create_buffer(Backend::build_pic_param(
             &picture.data,
             &coded_resolution,
-            parser.segmentation(),
-            parser.mb_lf_adjust(),
+            segmentation,
+            mb_lf_adjust,
             last_ref,
             golden_ref,
             alt_ref,
@@ -359,15 +362,15 @@ impl StatelessDecoderBackend for Backend {
             Backend::build_pic_param(
                 &picture.data,
                 &coded_resolution,
-                parser.segmentation(),
-                parser.mb_lf_adjust(),
+                segmentation,
+                mb_lf_adjust,
                 last_ref,
                 golden_ref,
                 alt_ref,
             )?,
             Backend::build_slice_param(&picture.data, bitstream.len())?,
             libva::BufferType::SliceData(Vec::from(bitstream)),
-            Backend::build_iq_matrix(&picture.data, parser)?,
+            Backend::build_iq_matrix(&picture.data, segmentation)?,
             Backend::build_probability_table(&picture.data),
         );
 

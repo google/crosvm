@@ -251,7 +251,8 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> Decoder<
                 self.golden_ref_picture.as_ref(),
                 self.alt_ref_picture.as_ref(),
                 frame.bitstream,
-                parser,
+                parser.segmentation(),
+                parser.mb_lf_adjust(),
                 timestamp,
                 block,
             )

@@ -6,7 +6,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::decoders::vp8::parser::Header;
-use crate::decoders::vp8::parser::Parser;
+use crate::decoders::vp8::parser::MbLfAdjustments;
+use crate::decoders::vp8::parser::Segmentation;
 use crate::decoders::vp8::picture::Vp8Picture;
 use crate::decoders::DecodedHandle;
 use crate::decoders::VideoDecoderBackend;
@@ -50,7 +51,8 @@ pub(crate) trait StatelessDecoderBackend: VideoDecoderBackend {
         golden_ref: Option<&Self::Handle>,
         alt_ref: Option<&Self::Handle>,
         bitstream: &[u8],
-        parser: &Parser,
+        segmentation: &Segmentation,
+        mb_lf_adjust: &MbLfAdjustments,
         timestamp: u64,
         block: bool,
     ) -> Result<Self::Handle>;

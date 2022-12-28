@@ -11,6 +11,8 @@ use std::rc::Rc;
 use crate::decoders::vp8::backends::StatelessDecoderBackend;
 use crate::decoders::vp8::backends::Vp8Picture;
 use crate::decoders::vp8::decoder::Decoder;
+use crate::decoders::vp8::parser::MbLfAdjustments;
+use crate::decoders::vp8::parser::Segmentation;
 use crate::decoders::BlockingMode;
 use crate::utils::dummy::*;
 
@@ -26,7 +28,8 @@ impl StatelessDecoderBackend for Backend<Vp8Picture<BackendHandle>> {
         _: Option<&Self::Handle>,
         _: Option<&Self::Handle>,
         _: &[u8],
-        _: &crate::decoders::vp8::parser::Parser,
+        _: &Segmentation,
+        _: &MbLfAdjustments,
         _: u64,
         _: bool,
     ) -> super::Result<Self::Handle> {
