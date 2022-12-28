@@ -108,7 +108,6 @@ pub use poll::EventContext;
 pub use priority::*;
 pub use sched::*;
 pub use scoped_signal_handler::*;
-pub use shm::kernel_has_memfd;
 pub use shm::MemfdSeals;
 pub use shm::SharedMemory;
 pub use shm::Unix as SharedMemoryUnix;

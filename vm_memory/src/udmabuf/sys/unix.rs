@@ -131,17 +131,11 @@ impl UdmabufDriverTrait for UnixUdmabufDriver {
 
 #[cfg(test)]
 mod tests {
-    use base::kernel_has_memfd;
-
     use super::*;
     use crate::GuestAddress;
 
     #[test]
     fn test_memory_offsets() {
-        if !kernel_has_memfd() {
-            return;
-        }
-
         let start_addr1 = GuestAddress(0x100);
         let start_addr2 = GuestAddress(0x1100);
         let start_addr3 = GuestAddress(0x2100);
@@ -167,10 +161,6 @@ mod tests {
 
     #[test]
     fn test_udmabuf_create() {
-        if !kernel_has_memfd() {
-            return;
-        }
-
         let driver_result = UnixUdmabufDriver::new();
 
         // Most kernels will not have udmabuf support.

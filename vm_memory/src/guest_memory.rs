@@ -853,9 +853,6 @@ unsafe impl BackingMemory for GuestMemory {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(unix)]
-    use base::kernel_has_memfd;
-
     use super::*;
 
     #[test]
@@ -1042,15 +1039,6 @@ mod tests {
 
     #[test]
     fn shm_offset() {
-        #[cfg(unix)]
-        {
-            // This is simply a sanity check on linux platforms to ensure the tests
-            // won't run on old kernels that don't support memfd_create.
-            if !kernel_has_memfd() {
-                return;
-            }
-        }
-
         let start_region1 = GuestAddress(0x0);
         let size_region1 = 0x10000;
         let start_region2 = GuestAddress(0x10000);

@@ -15,7 +15,6 @@ use libc::c_char;
 use libc::c_int;
 use libc::c_long;
 use libc::c_uint;
-use libc::close;
 use libc::fcntl;
 use libc::ftruncate64;
 use libc::off64_t;
@@ -310,23 +309,6 @@ impl From<SharedMemory> for File {
     }
 }
 
-/// Checks if the kernel we are running on has memfd_create. It was introduced in 3.17.
-/// Only to be used from tests to prevent running on ancient kernels that won't
-/// support the functionality anyways.
-pub fn kernel_has_memfd() -> bool {
-    unsafe {
-        let fd = memfd_create(b"/test_memfd_create\0".as_ptr() as *const c_char, 0);
-        if fd < 0 {
-            if Error::last().errno() == libc::ENOSYS {
-                return false;
-            }
-            return true;
-        }
-        close(fd);
-    }
-    true
-}
-
 pub trait Unix {
     fn from_file(file: File) -> Result<CrateSharedMemory> {
         SharedMemory::from_file(file).map(CrateSharedMemory)
@@ -353,7 +335,6 @@ mod tests {
 
     use data_model::VolatileMemory;
 
-    use super::kernel_has_memfd;
     use super::SharedMemory;
     use crate::MemoryMappingBuilder;
 
@@ -364,9 +345,6 @@ mod tests {
 
     #[test]
     fn new() {
-        if !kernel_has_memfd() {
-            return;
-        }
         const TEST_NAME: &str = "Name McCool Person";
         let name = CString::new(TEST_NAME).expect("failed to create cstr name");
         let shm = SharedMemory::new(&name, 0).expect("failed to create shared memory");
@@ -375,9 +353,6 @@ mod tests {
 
     #[test]
     fn new_sized() {
-        if !kernel_has_memfd() {
-            return;
-        }
         let mut shm = create_test_shmem();
         shm.set_size(1024)
             .expect("failed to set shared memory size");
@@ -386,9 +361,6 @@ mod tests {
 
     #[test]
     fn new_huge() {
-        if !kernel_has_memfd() {
-            return;
-        }
         let mut shm = create_test_shmem();
         shm.set_size(0x7fff_ffff_ffff_ffff)
             .expect("failed to set shared memory size");
@@ -397,9 +369,6 @@ mod tests {
 
     #[test]
     fn new_too_huge() {
-        if !kernel_has_memfd() {
-            return;
-        }
         let mut shm = create_test_shmem();
         shm.set_size(0x8000_0000_0000_0000).unwrap_err();
         assert_eq!(shm.size(), 0);
@@ -407,9 +376,6 @@ mod tests {
 
     #[test]
     fn new_sealed() {
-        if !kernel_has_memfd() {
-            return;
-        }
         let mut shm = create_test_shmem();
         let mut seals = shm.get_seals().expect("failed to get seals");
         assert_eq!(seals.bitmask(), 0);
@@ -423,9 +389,6 @@ mod tests {
 
     #[test]
     fn mmap_page() {
-        if !kernel_has_memfd() {
-            return;
-        }
         let mut shm = create_test_shmem();
         shm.set_size(4096)
             .expect("failed to set shared memory size");
@@ -457,9 +420,6 @@ mod tests {
 
     #[test]
     fn mmap_page_offset() {
-        if !kernel_has_memfd() {
-            return;
-        }
         let mut shm = create_test_shmem();
         shm.set_size(8092)
             .expect("failed to set shared memory size");
