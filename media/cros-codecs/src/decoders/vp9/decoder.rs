@@ -7,13 +7,28 @@ use anyhow::Result;
 use log::debug;
 
 use crate::decoders::vp9::backends::StatelessDecoderBackend;
+use crate::decoders::vp9::lookups::AC_QLOOKUP;
+use crate::decoders::vp9::lookups::AC_QLOOKUP_10;
+use crate::decoders::vp9::lookups::AC_QLOOKUP_12;
+use crate::decoders::vp9::lookups::DC_QLOOKUP;
+use crate::decoders::vp9::lookups::DC_QLOOKUP_10;
+use crate::decoders::vp9::lookups::DC_QLOOKUP_12;
 use crate::decoders::vp9::parser::BitDepth;
 use crate::decoders::vp9::parser::Frame;
 use crate::decoders::vp9::parser::FrameType;
 use crate::decoders::vp9::parser::Header;
 use crate::decoders::vp9::parser::Parser;
 use crate::decoders::vp9::parser::Profile;
+use crate::decoders::vp9::parser::INTRA_FRAME;
+use crate::decoders::vp9::parser::LAST_FRAME;
+use crate::decoders::vp9::parser::MAX_LOOP_FILTER;
+use crate::decoders::vp9::parser::MAX_MODE_LF_DELTAS;
+use crate::decoders::vp9::parser::MAX_REF_FRAMES;
+use crate::decoders::vp9::parser::MAX_SEGMENTS;
 use crate::decoders::vp9::parser::NUM_REF_FRAMES;
+use crate::decoders::vp9::parser::SEG_LVL_ALT_L;
+use crate::decoders::vp9::parser::SEG_LVL_REF_FRAME;
+use crate::decoders::vp9::parser::SEG_LVL_SKIP;
 use crate::decoders::vp9::picture::Vp9Picture;
 use crate::decoders::BlockingMode;
 use crate::decoders::DecodedHandle;
@@ -67,6 +82,28 @@ impl Default for NegotiationStatus {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Segmentation {
+    /// Loop filter level
+    pub lvl_lookup: [[u8; MAX_MODE_LF_DELTAS]; MAX_REF_FRAMES],
+
+    /// AC quant scale for luma component
+    pub luma_ac_quant_scale: i16,
+    /// DC quant scale for luma component
+    pub luma_dc_quant_scale: i16,
+    /// AC quant scale for chroma component
+    pub chroma_ac_quant_scale: i16,
+    /// DC quant scale for chroma component
+    pub chroma_dc_quant_scale: i16,
+
+    /// Whether the alternate reference frame segment feature is enabled (SEG_LVL_REF_FRAME)
+    pub reference_frame_enabled: bool,
+    /// The feature data for the reference frame featire
+    pub reference_frame: i16,
+    /// Whether the skip segment feature is enabled (SEG_LVL_SKIP)
+    pub reference_skip_enabled: bool,
+}
+
 pub struct Decoder<T: DecodedHandle<CodecData = Header>> {
     /// A parser to extract bitstream data and build frame data in turn
     parser: Parser,
@@ -89,6 +126,9 @@ pub struct Decoder<T: DecodedHandle<CodecData = Header>> {
 
     /// A queue with the pictures that are ready to be sent to the client.
     ready_queue: Vec<T>,
+
+    /// Per-segment data.
+    segmentation: [Segmentation; MAX_SEGMENTS],
 
     /// Cached value for bit depth
     bit_depth: BitDepth,
@@ -116,6 +156,7 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> Decoder<
             parser: Default::default(),
             negotiation_status: Default::default(),
             reference_frames: Default::default(),
+            segmentation: Default::default(),
             coded_resolution: Default::default(),
             ready_queue: Default::default(),
             bit_depth: Default::default(),
@@ -209,9 +250,17 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> Decoder<
 
             let bitstream = &frame.bitstream[offset..offset + size];
 
+            Self::update_segmentation(&picture.data, &mut self.segmentation)?;
             let decoded_handle = self
                 .backend
-                .submit_picture(picture, &self.reference_frames, bitstream, timestamp, block)
+                .submit_picture(
+                    picture,
+                    &self.reference_frames,
+                    bitstream,
+                    timestamp,
+                    &self.segmentation,
+                    block,
+                )
                 .map_err(|e| anyhow!(e))?;
 
             // Do DPB management
@@ -241,6 +290,152 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> Decoder<
             || height != coded_resolution.height
             || bit_depth != self.bit_depth
             || profile != self.profile
+    }
+
+    /// A clamp such that min <= x <= max
+    fn clamp<U: PartialOrd>(x: U, low: U, high: U) -> U {
+        if x > high {
+            high
+        } else if x < low {
+            low
+        } else {
+            x
+        }
+    }
+
+    /// An implementation of seg_feature_active as per "6.4.9 Segmentation feature active syntax"
+    fn seg_feature_active(hdr: &Header, segment_id: u8, feature: u8) -> bool {
+        let seg = hdr.seg();
+        let feature_enabled = seg.feature_enabled();
+        seg.enabled() && feature_enabled[usize::from(segment_id)][usize::from(feature)]
+    }
+
+    /// An implementation of get_qindex as per "8.6.1 Dequantization functions"
+    fn get_qindex(hdr: &Header, segment_id: u8) -> i32 {
+        let q = hdr.quant();
+        let base_q_idx = q.base_q_idx();
+        let seg = hdr.seg();
+
+        if Self::seg_feature_active(hdr, segment_id, 0) {
+            let mut data = seg.feature_data()[usize::from(segment_id)][0] as i32;
+
+            if !seg.abs_or_delta_update() {
+                data += i32::from(base_q_idx);
+            }
+
+            Self::clamp(data, 0, 255)
+        } else {
+            i32::from(base_q_idx)
+        }
+    }
+
+    /// An implementation of get_dc_quant as per "8.6.1 Dequantization functions"
+    fn get_dc_quant(hdr: &Header, segment_id: u8, luma: bool) -> Result<i32> {
+        let quant = hdr.quant();
+
+        let delta_q_dc = if luma {
+            quant.delta_q_y_dc()
+        } else {
+            quant.delta_q_uv_dc()
+        };
+        let qindex = Self::get_qindex(hdr, segment_id);
+        let q_table_idx = Self::clamp(qindex + i32::from(delta_q_dc), 0, 255) as usize;
+        match hdr.bit_depth() {
+            BitDepth::Depth8 => Ok(i32::from(DC_QLOOKUP[q_table_idx])),
+            BitDepth::Depth10 => Ok(i32::from(DC_QLOOKUP_10[q_table_idx])),
+            BitDepth::Depth12 => Ok(i32::from(DC_QLOOKUP_12[q_table_idx])),
+        }
+    }
+
+    /// An implementation of get_ac_quant as per "8.6.1 Dequantization functions"
+    fn get_ac_quant(hdr: &Header, segment_id: u8, luma: bool) -> Result<i32> {
+        let quant = hdr.quant();
+
+        let delta_q_ac = if luma { 0 } else { quant.delta_q_uv_ac() };
+        let qindex = Self::get_qindex(hdr, segment_id);
+        let q_table_idx = usize::try_from(Self::clamp(qindex + i32::from(delta_q_ac), 0, 255))?;
+
+        match hdr.bit_depth() {
+            BitDepth::Depth8 => Ok(i32::from(AC_QLOOKUP[q_table_idx])),
+            BitDepth::Depth10 => Ok(i32::from(AC_QLOOKUP_10[q_table_idx])),
+            BitDepth::Depth12 => Ok(i32::from(AC_QLOOKUP_12[q_table_idx])),
+        }
+    }
+
+    /// Update the state of the segmentation parameters after seeing a frame
+    fn update_segmentation(hdr: &Header, segmentation: &mut [Segmentation; 8]) -> Result<()> {
+        let lf = hdr.lf();
+        let seg = hdr.seg();
+
+        let n_shift = lf.level() >> 5;
+
+        for segment_id in 0..MAX_SEGMENTS as u8 {
+            let luma_dc_quant_scale = i16::try_from(Self::get_dc_quant(hdr, segment_id, true)?)?;
+            let luma_ac_quant_scale = i16::try_from(Self::get_ac_quant(hdr, segment_id, true)?)?;
+            let chroma_dc_quant_scale = i16::try_from(Self::get_dc_quant(hdr, segment_id, false)?)?;
+            let chroma_ac_quant_scale = i16::try_from(Self::get_ac_quant(hdr, segment_id, false)?)?;
+
+            let mut lvl_seg = i32::from(lf.level());
+            let mut lvl_lookup: [[u8; MAX_MODE_LF_DELTAS]; MAX_REF_FRAMES];
+
+            if lvl_seg == 0 {
+                lvl_lookup = Default::default()
+            } else {
+                // 8.8.1 Loop filter frame init process
+                if Self::seg_feature_active(hdr, segment_id, SEG_LVL_ALT_L as u8) {
+                    if seg.abs_or_delta_update() {
+                        lvl_seg =
+                            i32::from(seg.feature_data()[usize::from(segment_id)][SEG_LVL_ALT_L]);
+                    } else {
+                        lvl_seg +=
+                            i32::from(seg.feature_data()[usize::from(segment_id)][SEG_LVL_ALT_L]);
+                    }
+
+                    lvl_seg = Self::clamp(lvl_seg, 0, MAX_LOOP_FILTER as i32);
+                }
+
+                if !lf.delta_enabled() {
+                    lvl_lookup = [[u8::try_from(lvl_seg)?; MAX_MODE_LF_DELTAS]; MAX_REF_FRAMES]
+                } else {
+                    let intra_delta = i32::from(lf.ref_deltas()[INTRA_FRAME]);
+                    let mut intra_lvl = lvl_seg + (intra_delta << n_shift);
+
+                    lvl_lookup = segmentation[usize::from(segment_id)].lvl_lookup;
+                    lvl_lookup[INTRA_FRAME][0] =
+                        u8::try_from(Self::clamp(intra_lvl, 0, MAX_LOOP_FILTER as i32))?;
+
+                    // Note, this array has the [0] element unspecified/unused in
+                    // VP9. Confusing, but we do start to index from 1.
+                    #[allow(clippy::needless_range_loop)]
+                    for ref_ in LAST_FRAME..MAX_REF_FRAMES {
+                        for mode in 0..MAX_MODE_LF_DELTAS {
+                            let ref_delta = i32::from(lf.ref_deltas()[ref_]);
+                            let mode_delta = i32::from(lf.mode_deltas()[mode]);
+
+                            intra_lvl = lvl_seg + (ref_delta << n_shift) + (mode_delta << n_shift);
+
+                            lvl_lookup[ref_][mode] =
+                                u8::try_from(Self::clamp(intra_lvl, 0, MAX_LOOP_FILTER as i32))?;
+                        }
+                    }
+                }
+            }
+
+            segmentation[usize::from(segment_id)] = Segmentation {
+                lvl_lookup,
+                luma_ac_quant_scale,
+                luma_dc_quant_scale,
+                chroma_ac_quant_scale,
+                chroma_dc_quant_scale,
+                reference_frame_enabled: seg.feature_enabled()[usize::from(segment_id)]
+                    [SEG_LVL_REF_FRAME],
+                reference_frame: seg.feature_data()[usize::from(segment_id)][SEG_LVL_REF_FRAME],
+                reference_skip_enabled: seg.feature_enabled()[usize::from(segment_id)]
+                    [SEG_LVL_SKIP],
+            }
+        }
+
+        Ok(())
     }
 
     #[cfg(test)]

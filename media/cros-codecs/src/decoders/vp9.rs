@@ -4,7 +4,6 @@
 
 pub mod backends;
 pub mod decoder;
-#[cfg(feature = "vaapi")]
 mod lookups;
 pub mod parser;
 pub mod picture;

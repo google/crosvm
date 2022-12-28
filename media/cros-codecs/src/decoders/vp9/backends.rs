@@ -5,7 +5,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::decoders::vp9::decoder::Segmentation;
 use crate::decoders::vp9::parser::Header;
+use crate::decoders::vp9::parser::MAX_SEGMENTS;
 use crate::decoders::vp9::parser::NUM_REF_FRAMES;
 use crate::decoders::vp9::picture::Vp9Picture;
 use crate::decoders::DecodedHandle;
@@ -49,6 +51,7 @@ pub(crate) trait StatelessDecoderBackend: VideoDecoderBackend {
         reference_frames: &[Option<Self::Handle>; NUM_REF_FRAMES],
         bitstream: &[u8],
         timestamp: u64,
+        segmentation: &[Segmentation; MAX_SEGMENTS],
         block: bool,
     ) -> Result<Self::Handle>;
 

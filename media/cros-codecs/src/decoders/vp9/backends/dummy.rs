@@ -11,6 +11,8 @@ use std::rc::Rc;
 use crate::decoders::vp9::backends::StatelessDecoderBackend;
 use crate::decoders::vp9::backends::Vp9Picture;
 use crate::decoders::vp9::decoder::Decoder;
+use crate::decoders::vp9::decoder::Segmentation;
+use crate::decoders::vp9::parser::MAX_SEGMENTS;
 use crate::decoders::vp9::parser::NUM_REF_FRAMES;
 use crate::decoders::BlockingMode;
 use crate::utils::dummy::*;
@@ -26,6 +28,7 @@ impl StatelessDecoderBackend for Backend<Vp9Picture<BackendHandle>> {
         _: &[Option<Self::Handle>; NUM_REF_FRAMES],
         _: &[u8],
         _: u64,
+        _: &[Segmentation; MAX_SEGMENTS],
         _: bool,
     ) -> super::Result<Self::Handle> {
         Ok(Handle {
