@@ -1164,7 +1164,7 @@ pub struct Config {
     pub rt_cpus: CpuSet,
     #[serde(with = "serde_serial_params")]
     pub serial_parameters: BTreeMap<(SerialHardware, u8), SerialParameters>,
-    #[cfg(feature = "kiwi")]
+    #[cfg(windows)]
     pub service_pipe_name: Option<String>,
     #[cfg(unix)]
     #[serde(skip)]
@@ -1379,7 +1379,7 @@ impl Default for Config {
             rng: true,
             rt_cpus: Default::default(),
             serial_parameters: BTreeMap::new(),
-            #[cfg(feature = "kiwi")]
+            #[cfg(windows)]
             service_pipe_name: None,
             #[cfg(unix)]
             shared_dirs: Vec::new(),

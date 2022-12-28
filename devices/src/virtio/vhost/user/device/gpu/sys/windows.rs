@@ -46,6 +46,9 @@ use crate::virtio::Gpu;
 use crate::virtio::GpuDisplayParameters;
 use crate::virtio::GpuParameters;
 
+pub mod generic;
+pub use generic as product;
+
 async fn run_display(
     display: EventAsync,
     state: Rc<RefCell<gpu::Frontend>>,
@@ -126,6 +129,7 @@ pub struct GpuVmmConfig {
     pub input_event_multi_touch_pipes: Vec<StreamChannel>,
     pub input_event_mouse_pipes: Vec<StreamChannel>,
     pub input_event_keyboard_pipes: Vec<StreamChannel>,
+    pub product_config: product::GpuVmmConfig,
 }
 
 /// Config arguments passed through the bootstrap Tube from the broker to the Gpu backend
@@ -142,6 +146,8 @@ pub struct GpuBackendConfig {
     pub event_devices: Vec<EventDevice>,
     // GPU parameters.
     pub params: GpuParameters,
+    // Product related configurations.
+    pub product_config: product::GpuBackendConfig,
 }
 
 pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {

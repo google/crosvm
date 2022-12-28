@@ -143,7 +143,6 @@ impl Tube {
         })
     }
 
-    #[cfg(feature = "kiwi")]
     fn send_proto<M: protobuf::Message>(&self, msg: &M) -> Result<()> {
         let bytes = msg.write_to_bytes().map_err(Error::Proto)?;
         let size_header = bytes.len();
@@ -161,7 +160,6 @@ impl Tube {
         Ok(())
     }
 
-    #[cfg(feature = "kiwi")]
     fn recv_proto<M: protobuf::Message>(&self) -> Result<M> {
         let mut header_bytes = [0u8; mem::size_of::<usize>()];
         perform_read(&|buf| (&self.socket).read(buf), &mut header_bytes).map_err(Error::Recv)?;
@@ -443,10 +441,8 @@ impl DuplicateHandleTube {
 
 /// Wrapper for Tube used for sending and recving protos. The main usecase is to send a message
 /// without serialization bloat caused from `serde-json`.
-#[cfg(feature = "kiwi")]
 pub struct ProtoTube(Tube);
 
-#[cfg(feature = "kiwi")]
 impl ProtoTube {
     pub fn pair_with_buffer_size(size: usize) -> Result<(ProtoTube, ProtoTube)> {
         Tube::pair_with_buffer_size(size).map(|(t1, t2)| (ProtoTube(t1), ProtoTube(t2)))
@@ -461,7 +457,6 @@ impl ProtoTube {
     }
 }
 
-#[cfg(feature = "kiwi")]
 impl ReadNotifier for ProtoTube {
     fn get_read_notifier(&self) -> &dyn AsRawDescriptor {
         self.0.get_read_notifier()

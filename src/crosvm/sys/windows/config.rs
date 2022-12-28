@@ -4,7 +4,7 @@
 
 use std::str::FromStr;
 
-#[cfg(all(feature = "prod-build", feature = "kiwi"))]
+#[cfg(feature = "prod-build")]
 use devices::serial_device::SerialType;
 #[cfg(feature = "audio")]
 use devices::Ac97Parameters;
@@ -26,7 +26,7 @@ pub fn parse_ac97_options(
 pub fn check_serial_params(
     #[allow(unused_variables)] serial_params: &SerialParameters,
 ) -> Result<(), String> {
-    #[cfg(all(feature = "prod-build", feature = "kiwi"))]
+    #[cfg(feature = "prod-build")]
     {
         if matches!(serial_params.type_, SerialType::SystemSerialType) {
             return Err(format!(

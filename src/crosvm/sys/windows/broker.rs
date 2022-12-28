@@ -89,6 +89,7 @@ use win_util::ProcessType;
 use winapi::shared::winerror::ERROR_ACCESS_DENIED;
 use winapi::um::processthreadsapi::TerminateProcess;
 
+use crate::sys::windows::get_gpu_product_configs;
 use crate::Config;
 
 const KILL_CHILD_EXIT_CODE: u32 = 1;
@@ -1442,6 +1443,9 @@ fn platform_create_gpu(
         .try_clone()
         .exit_context(Exit::CloneEvent, "failed to clone event")?;
 
+    let (backend_config_product, vmm_config_product) =
+        get_gpu_product_configs(cfg, main_child.alias_pid)?;
+
     let backend_config = GpuBackendConfig {
         device_vhost_user_tube: None,
         exit_event,
@@ -1452,12 +1456,15 @@ fn platform_create_gpu(
             .as_ref()
             .expect("missing GpuParameters in config")
             .clone(),
+        product_config: backend_config_product,
     };
+
     let vmm_config = GpuVmmConfig {
         main_vhost_user_tube: None,
         input_event_multi_touch_pipes,
         input_event_mouse_pipes,
         input_event_keyboard_pipes,
+        product_config: vmm_config_product,
     };
 
     Ok((backend_config, vmm_config))

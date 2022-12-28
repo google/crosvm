@@ -11,6 +11,9 @@ pub(crate) mod main;
 pub(crate) mod metrics;
 #[cfg(not(feature = "crash-report"))]
 mod panic_hook;
+
+mod generic;
+use generic as product;
 pub(crate) mod run_vcpu;
 
 #[cfg(feature = "whpx")]
@@ -19,14 +22,11 @@ use std::arch::x86_64::__cpuid;
 use std::arch::x86_64::__cpuid_count;
 #[cfg(feature = "gpu")]
 use std::collections::BTreeMap;
-#[cfg(feature = "kiwi")]
-use std::convert::TryInto;
+use std::collections::HashMap;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::iter;
 use std::mem;
-#[cfg(feature = "gpu")]
-use std::num::NonZeroU8;
 use std::os::windows::fs::OpenOptionsExt;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -34,12 +34,8 @@ use std::sync::Arc;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use aarch64::AArch64 as Arch;
 use acpi_tables::sdt::SDT;
-#[cfg(all(feature = "kiwi", feature = "anti-tamper",))]
-use anti_tamper::spawn_dedicated_anti_tamper_thread;
 use anyhow::anyhow;
 use anyhow::bail;
-#[cfg(feature = "kiwi")]
-use anyhow::ensure;
 use anyhow::Context;
 use anyhow::Result;
 use arch::LinuxArch;
@@ -49,8 +45,6 @@ use arch::VmComponents;
 use arch::VmImage;
 use base::enable_high_res_timers;
 use base::error;
-#[cfg(feature = "kiwi")]
-use base::give_foregrounding_permission;
 use base::info;
 use base::open_file;
 use base::warn;
@@ -61,12 +55,14 @@ use base::EventToken;
 #[cfg(feature = "gpu")]
 use base::FramingMode;
 use base::FromRawDescriptor;
+use base::ProtoTube;
 use base::RawDescriptor;
 use base::ReadNotifier;
 use base::RecvTube;
 use base::SendTube;
 #[cfg(feature = "gpu")]
 use base::StreamChannel;
+use base::TriggeredEvent;
 use base::Tube;
 use base::TubeError;
 use base::VmEventType;
@@ -86,17 +82,17 @@ use devices::virtio;
 use devices::virtio::block::block::DiskOption;
 use devices::virtio::snd::common_backend::VirtioSnd;
 use devices::virtio::snd::parameters::Parameters as SndParameters;
+use devices::virtio::snd::parameters::StreamSourceBackend;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost::user::device::gpu::sys::windows::GpuVmmConfig;
+use devices::virtio::vhost::user::gpu::sys::windows::product::GpuBackendConfig as GpuBackendConfigProduct;
+use devices::virtio::vhost::user::gpu::sys::windows::GpuBackendConfig;
+use devices::virtio::BalloonFeatures;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonMode;
 use devices::virtio::Console;
 #[cfg(feature = "gpu")]
 use devices::virtio::GpuParameters;
-#[cfg(feature = "slirp")]
-use devices::virtio::NetExt;
-#[cfg(feature = "pvclock")]
-use devices::virtio::PvClock;
 #[cfg(feature = "audio")]
 use devices::Ac97Dev;
 use devices::BusDeviceObj;
@@ -167,39 +163,16 @@ use resources::SystemAllocator;
 use run_vcpu::run_all_vcpus;
 use run_vcpu::VcpuRunMode;
 use rutabaga_gfx::RutabagaGralloc;
-#[cfg(feature = "kiwi")]
-use service_ipc::get_balloon_size;
-#[cfg(feature = "kiwi")]
-use service_ipc::request_utilities::prod::MessageFromService;
-#[cfg(all(feature = "kiwi", feature = "anti-tamper"))]
-use service_ipc::request_utilities::prod::MessageToService;
-#[cfg(feature = "kiwi")]
-use service_ipc::service_vm_state::ServiceVmState;
-#[cfg(feature = "kiwi")]
-use service_ipc::ServiceIpc;
 use sync::Mutex;
 use tube_transporter::TubeToken;
 use tube_transporter::TubeTransporterReader;
-#[cfg(feature = "kiwi")]
-use vm_control::Ac97Control;
-#[cfg(feature = "kiwi")]
 use vm_control::BalloonControlCommand;
 use vm_control::DeviceControlCommand;
-#[cfg(feature = "kiwi")]
-use vm_control::GpuSendToMain;
-#[cfg(feature = "kiwi")]
-use vm_control::GpuSendToMain::MuteAc97;
-#[cfg(feature = "kiwi")]
-use vm_control::GpuSendToMain::SendToService;
-#[cfg(feature = "kiwi")]
-use vm_control::PvClockCommand;
-#[cfg(feature = "kiwi")]
-use vm_control::PvClockCommandResponse;
-#[cfg(feature = "kiwi")]
-use vm_control::ServiceSendToGpu;
 use vm_control::VmMemoryRequest;
 use vm_control::VmRunMode;
+use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
+use win_util::ProcessType;
 #[cfg(feature = "whpx")]
 use x86_64::cpuid::adjust_cpuid;
 #[cfg(feature = "whpx")]
@@ -222,18 +195,27 @@ use crate::crosvm::sys::config::IrqChipKind;
 use crate::crosvm::sys::windows::stats::StatisticsCollector;
 use crate::sys::windows::metrics::log_descriptor;
 use crate::sys::windows::metrics::MetricEventType;
+pub(crate) use crate::sys::windows::product::get_gpu_product_configs;
+use crate::sys::windows::product::spawn_anti_tamper_thread;
+use product::create_snd_mute_tube_pair;
+#[cfg(any(feature = "haxm", feature = "gvm", feature = "whpx"))]
+use product::create_snd_state_tube;
+use product::handle_pvclock_request;
+use product::merge_session_invariants;
+use product::run_ime_thread;
+use product::set_package_name;
+use product::start_service_ipc_listener;
+use product::RunControlArgs;
+use product::ServiceVmState;
+use product::Token;
 
 const DEFAULT_GUEST_CID: u64 = 3;
 
 enum TaggedControlTube {
-    // TODO: handle vm_control messages as they get added.
     #[allow(dead_code)]
     Vm(Tube),
     VmMemory(Tube),
-    #[cfg(feature = "kiwi")]
-    GpuServiceComm(Tube),
-    #[cfg(feature = "kiwi")]
-    GpuDeviceServiceComm(Tube),
+    Product(product::TaggedControlTube),
 }
 
 pub enum ExitState {
@@ -306,28 +288,21 @@ fn create_gpu_device(
     vm_evt_wrtube: &SendTube,
     resource_bridges: Vec<Tube>,
     event_devices: Vec<EventDevice>,
+    product_args: GpuBackendConfigProduct,
 ) -> DeviceResult {
     let display_backends = vec![virtio::DisplayBackend::WinApi(
         (&gpu_parameters.display_params[0]).into(),
     )];
-    let wndproc_thread =
-        virtio::gpu::start_wndproc_thread(None).expect("Failed to start wndproc_thread!");
-
     let features = virtio::base_features(cfg.protection_type);
-    let dev = virtio::Gpu::new(
-        vm_evt_wrtube
-            .try_clone()
-            .exit_context(Exit::CloneTube, "failed to clone tube")?,
+    let dev = product::create_gpu(
+        vm_evt_wrtube,
         resource_bridges,
         display_backends,
         gpu_parameters,
         event_devices,
-        /* external_blob= */ false,
-        /* system_blob= */ false,
         features,
-        BTreeMap::new(),
-        wndproc_thread,
-    );
+        product_args,
+    )?;
 
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -361,22 +336,6 @@ fn create_multi_touch_device(
 fn create_mouse_device(cfg: &Config, event_pipe: StreamChannel, idx: u32) -> DeviceResult {
     let dev = virtio::new_mouse(idx, event_pipe, virtio::base_features(cfg.protection_type))
         .exit_context(Exit::InputDeviceNew, "failed to set up input device")?;
-    Ok(VirtioDeviceStub {
-        dev: Box::new(dev),
-        jail: None,
-    })
-}
-
-#[cfg(feature = "slirp")]
-fn create_net_device(
-    #[cfg(feature = "slirp-ring-capture")] slirp_capture_file: &Option<String>,
-) -> DeviceResult {
-    let dev = virtio::Net::<net_util::Slirp>::new_slirp(
-        #[cfg(feature = "slirp-ring-capture")]
-        slirp_capture_file,
-    )
-    .exit_context(Exit::NetDeviceNew, "failed to set up virtio networking")?;
-
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
         jail: None,
@@ -421,7 +380,6 @@ fn create_console_device(cfg: &Config, param: &SerialParameters) -> DeviceResult
     })
 }
 
-#[allow(dead_code)] // TODO(b/234031017): balloon device startup gets stuck on Windows
 #[cfg(feature = "balloon")]
 fn create_balloon_device(
     cfg: &Config,
@@ -430,6 +388,8 @@ fn create_balloon_device(
     inflate_tube: Option<Tube>,
     init_balloon_size: u64,
 ) -> DeviceResult {
+    let balloon_features =
+        (cfg.balloon_page_reporting as u64) << BalloonFeatures::PageReporting as u64;
     let dev = virtio::Balloon::new(
         virtio::base_features(cfg.protection_type),
         balloon_device_tube,
@@ -441,7 +401,7 @@ fn create_balloon_device(
         } else {
             BalloonMode::Relaxed
         },
-        0,
+        balloon_features,
     )
     .exit_context(Exit::BalloonDeviceNew, "failed to create balloon")?;
 
@@ -470,18 +430,19 @@ fn create_vsock_device(cfg: &Config) -> DeviceResult {
     })
 }
 
-#[cfg_attr(not(feature = "gpu"), allow(unused_variables))]
 fn create_virtio_devices(
     cfg: &mut Config,
     vm_evt_wrtube: &SendTube,
     #[allow(clippy::ptr_arg)] control_tubes: &mut Vec<TaggedControlTube>,
     disk_device_tubes: &mut Vec<Tube>,
-    _balloon_device_tube: Option<Tube>,
+    balloon_device_tube: Option<Tube>,
     pvclock_device_tube: Option<Tube>,
-    _dynamic_mapping_device_tube: Option<Tube>,
-    _inflate_tube: Option<Tube>,
-    _init_balloon_size: u64,
+    dynamic_mapping_device_tube: Option<Tube>,
+    inflate_tube: Option<Tube>,
+    init_balloon_size: u64,
     tsc_frequency: u64,
+    virtio_snd_state_device_tube: Option<Tube>,
+    virtio_snd_control_device_tube: Option<Tube>,
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
     let mut devs = Vec::new();
 
@@ -509,26 +470,23 @@ fn create_virtio_devices(
         devs.push(dev);
     }
 
-    let features = virtio::base_features(cfg.protection_type);
-    let snd_params = SndParameters {
-        backend: ExitContext::exit_context(
-            "winaudio".try_into(),
-            Exit::VirtioSoundDeviceNew,
-            "failed to set up virtio sound device",
-        )?,
-        ..Default::default()
-    };
-    devs.push(VirtioDeviceStub {
-        dev: Box::new(VirtioSnd::new(features, snd_params)?),
-        jail: None,
-    });
-
-    if let Some(tube) = pvclock_device_tube {
-        #[cfg(feature = "pvclock")]
+    #[cfg(feature = "audio")]
+    if product::virtio_sound_enabled() {
+        let features = virtio::base_features(cfg.protection_type);
+        let snd_params = SndParameters {
+            backend: "winaudio".try_into().unwrap(),
+            num_input_devices: product::num_input_sound_devices(cfg),
+            num_input_streams: product::num_input_sound_streams(cfg),
+            ..Default::default()
+        };
         devs.push(VirtioDeviceStub {
-            dev: Box::new(PvClock::new(tsc_frequency, tube)),
+            dev: Box::new(VirtioSnd::new(features, snd_params)?),
             jail: None,
         });
+    }
+
+    if let Some(tube) = pvclock_device_tube {
+        product::push_pvclock_device(&mut devs, tsc_frequency, tube);
     }
 
     devs.push(create_rng_device(cfg)?);
@@ -536,31 +494,29 @@ fn create_virtio_devices(
     #[cfg(feature = "slirp")]
     if let Some(net_vhost_user_tube) = cfg.net_vhost_user_tube.take() {
         devs.push(create_vhost_user_net_device(cfg, net_vhost_user_tube)?);
-    } else {
-        devs.push(create_net_device(
-            #[cfg(feature = "slirp-ring-capture")]
-            &cfg.slirp_capture_file,
-        )?);
     }
 
-    // TODO(b/234031017): balloon device startup gets stuck on Windows
-    //if let (Some(balloon_device_tube), Some(dynamic_mapping_device_tube)) =
-    //    (balloon_device_tube, dynamic_mapping_device_tube)
-    //{
-    //    devs.push(create_balloon_device(
-    //        &cfg,
-    //        balloon_device_tube,
-    //        dynamic_mapping_device_tube,
-    //        inflate_tube,
-    //        init_balloon_size,
-    //    )?);
-    //}
+    if let (Some(balloon_device_tube), Some(dynamic_mapping_device_tube)) =
+        (balloon_device_tube, dynamic_mapping_device_tube)
+    {
+        devs.push(create_balloon_device(
+            cfg,
+            balloon_device_tube,
+            dynamic_mapping_device_tube,
+            inflate_tube,
+            init_balloon_size,
+        )?);
+    }
 
     devs.push(create_vsock_device(cfg)?);
 
     #[cfg(feature = "gpu")]
     if let Some(gpu_vmm_config) = cfg.gpu_vmm_config.take() {
-        devs.extend(create_virtio_gpu_and_input_devices(cfg, gpu_vmm_config)?);
+        devs.extend(create_virtio_gpu_and_input_devices(
+            cfg,
+            gpu_vmm_config,
+            control_tubes,
+        )?);
     }
 
     Ok(devs)
@@ -570,6 +526,7 @@ fn create_virtio_devices(
 fn create_virtio_gpu_and_input_devices(
     cfg: &mut Config,
     mut gpu_vmm_config: GpuVmmConfig,
+    control_tubes: &mut [TaggedControlTube],
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
     let mut devs = Vec::new();
     let resource_bridges = Vec::<Tube>::new();
@@ -577,6 +534,8 @@ fn create_virtio_gpu_and_input_devices(
     if !cfg.virtio_single_touch.is_empty() {
         unimplemented!("--single-touch is no longer supported. Use --multi-touch instead.");
     }
+
+    product::push_gpu_control_tubes(control_tubes, &mut gpu_vmm_config);
 
     // Iterate event devices, create the VMM end.
     for (idx, pipe) in gpu_vmm_config
@@ -591,6 +550,8 @@ fn create_virtio_gpu_and_input_devices(
             idx as u32,
         )?);
     }
+
+    product::push_mouse_device(cfg, &gpu_vmm_config, &mut devs)?;
 
     for (idx, pipe) in gpu_vmm_config.input_event_mouse_pipes.drain(..).enumerate() {
         devs.push(create_mouse_device(cfg, pipe, idx as u32)?);
@@ -631,6 +592,7 @@ fn create_virtio_gpu_and_input_devices(
                 &backend_config.exit_evt_wrtube,
                 resource_bridges,
                 backend_config.event_devices,
+                backend_config.product_config,
             )?);
         }
     }
@@ -652,6 +614,8 @@ fn create_devices(
     init_balloon_size: u64,
     #[allow(unused)] ac97_device_tubes: Vec<Tube>,
     tsc_frequency: u64,
+    virtio_snd_state_device_tube: Option<Tube>,
+    virtio_snd_control_device_tube: Option<Tube>,
 ) -> DeviceResult<Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>> {
     let stubs = create_virtio_devices(
         cfg,
@@ -664,6 +628,8 @@ fn create_devices(
         inflate_tube,
         init_balloon_size,
         tsc_frequency,
+        virtio_snd_state_device_tube,
+        virtio_snd_control_device_tube,
     )?;
 
     let mut pci_devices = Vec::new();
@@ -696,90 +662,172 @@ fn create_devices(
     }
 
     #[cfg(feature = "audio")]
-    if cfg.ac97_parameters.len() != ac97_device_tubes.len() {
-        panic!(
-            "{} Ac97 device(s) will be made, but only {} Ac97 device tubes are present.",
-            cfg.ac97_parameters.len(),
-            ac97_device_tubes.len()
-        );
-    }
+    if !product::virtio_sound_enabled() {
+        if cfg.ac97_parameters.len() != ac97_device_tubes.len() {
+            panic!(
+                "{} Ac97 device(s) will be made, but only {} Ac97 device tubes are present.",
+                cfg.ac97_parameters.len(),
+                ac97_device_tubes.len()
+            );
+        }
 
-    #[cfg(feature = "audio")]
-    for (ac97_param, ac97_device_tube) in cfg
-        .ac97_parameters
-        .iter()
-        .zip(ac97_device_tubes.into_iter())
-    {
-        let dev = Ac97Dev::try_new(mem.clone(), ac97_param.clone(), ac97_device_tube)
-            .exit_context(Exit::CreateAc97, "failed to create ac97 device")?;
-        pci_devices.push((Box::new(dev), None));
+        for (ac97_param, ac97_device_tube) in cfg
+            .ac97_parameters
+            .iter()
+            .zip(ac97_device_tubes.into_iter())
+        {
+            let dev = Ac97Dev::try_new(mem.clone(), ac97_param.clone(), ac97_device_tube)
+                .exit_context(Exit::CreateAc97, "failed to create ac97 device")?;
+            pci_devices.push((Box::new(dev), None));
+        }
     }
 
     Ok(pci_devices)
 }
 
-#[cfg(feature = "kiwi")]
-fn set_package_name(msg: &MessageFromService) {
-    match msg {
-        MessageFromService::HideWindow => {
-            #[cfg(feature = "crash-report")]
-            crash_report::set_package_name("");
-
-            metrics::set_package_name("");
-        }
-        MessageFromService::ShowWindow(ref show) => {
-            #[cfg(feature = "crash-report")]
-            crash_report::set_package_name(&show.package_name);
-
-            metrics::set_package_name(&show.package_name);
-        }
-        _ => {}
-    }
-}
-
-#[cfg(feature = "kiwi")]
-fn merge_session_invariants(serialized_session_invariants: &[u8]) {
-    metrics::merge_session_invariants(serialized_session_invariants);
-}
-
 #[derive(Debug)]
 struct PvClockError(String);
 
-/// Sending a pvclock command to the pvclock device can be tricky because we need to wait for a
-/// response from the pvclock device if it's running. But, it's possible that the device is not
-/// setup yet (or never will be, because the guest doesn't support it). In that case, we want to
-/// timeout on recv-ing a response, and to do that we need to do a wait_timeout on the Tube's
-/// read_notifier.
-#[cfg(feature = "pvclock")]
-fn handle_pvclock_request(tube: &Option<Tube>, command: PvClockCommand) -> Result<()> {
-    if let Some(ref tube) = tube {
-        tube.send(&command)
-            .with_context(|| format!("failed to send pvclock command {:?}", command))?;
-
-        #[derive(EventToken)]
-        enum Token {
-            RecvReady,
+fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
+    event: &TriggeredEvent<Token>,
+    vm_control_indices_to_remove: &mut Vec<usize>,
+    service_vm_state: &mut ServiceVmState,
+    ac97_host_tubes: &[Tube],
+    ipc_main_loop_tube: &Tube,
+    vm_evt_rdtube: &RecvTube,
+    control_tubes: &[TaggedControlTube],
+    guest_os: &mut RunnableLinuxVm<V, Vcpu>,
+    sys_allocator_mutex: &Arc<Mutex<SystemAllocator>>,
+    gralloc: &mut RutabagaGralloc,
+    virtio_snd_host_mute_tube: &mut Option<Tube>,
+    proto_main_loop_tube: &ProtoTube,
+    anti_tamper_main_thread_tube: &Option<ProtoTube>,
+    balloon_host_tube: &Option<Tube>,
+    memory_size_mb: u64,
+    vcpu_boxes: &Mutex<Vec<Box<dyn VcpuArch>>>,
+    pvclock_host_tube: &Option<Tube>,
+    run_mode_arc: &VcpuRunMode,
+) -> Result<(bool, Option<ExitState>)> {
+    match event.token {
+        Token::VmEvent => match vm_evt_rdtube.recv::<VmEventType>() {
+            Ok(vm_event) => {
+                let exit_state = match vm_event {
+                    VmEventType::Exit => {
+                        info!("vcpu requested shutdown");
+                        Some(ExitState::Stop)
+                    }
+                    VmEventType::Reset => {
+                        info!("vcpu requested reset");
+                        Some(ExitState::Reset)
+                    }
+                    VmEventType::Crash => {
+                        info!("vcpu crashed");
+                        Some(ExitState::Crash)
+                    }
+                    VmEventType::Panic(_) => {
+                        error!("got pvpanic event. this event is not expected on Windows.");
+                        None
+                    }
+                    VmEventType::WatchdogReset => {
+                        info!("vcpu stall detected");
+                        Some(ExitState::WatchdogReset)
+                    }
+                };
+                return Ok((exit_state.is_some(), exit_state));
+            }
+            Err(e) => {
+                warn!("failed to recv VmEvent: {}", e);
+            }
+        },
+        Token::BrokerShutdown => {
+            info!("main loop got broker shutdown event");
+            return Ok((true, None));
         }
-
-        let wait_ctx = WaitContext::build_with(&[(tube.get_read_notifier(), Token::RecvReady)])
-            .context("failed to build pvclock wait context")?;
-
-        let evts = wait_ctx
-            .wait_timeout(std::time::Duration::from_millis(100))
-            .context("failed to wait on pvclock wait context")?;
-
-        ensure!(evts.len() > 0, "timed out waiting for pvclock response");
-
-        let resp = tube
-            .recv::<PvClockCommandResponse>()
-            .context("failed to receive pvclock command response")?;
-
-        if let PvClockCommandResponse::Err(e) = resp {
-            bail!("pvclock encountered error on {:?}: {}", command, e);
+        #[allow(clippy::collapsible_match)]
+        Token::VmControl { index } => {
+            if let Some(tube) = control_tubes.get(index) {
+                #[allow(clippy::single_match)]
+                match tube {
+                    TaggedControlTube::VmMemory(tube) => match tube.recv::<VmMemoryRequest>() {
+                        Ok(request) => {
+                            let response = request.execute(
+                                &mut guest_os.vm,
+                                &mut sys_allocator_mutex.lock(),
+                                gralloc,
+                                None,
+                            );
+                            if let Err(e) = tube.send(&response) {
+                                error!("failed to send VmMemoryControlResponse: {}", e);
+                            }
+                        }
+                        Err(e) => {
+                            if let TubeError::Disconnected = e {
+                                vm_control_indices_to_remove.push(index);
+                            } else {
+                                error!("failed to recv VmMemoryControlRequest: {}", e);
+                            }
+                        }
+                    },
+                    TaggedControlTube::Product(product_tube) => {
+                        product::handle_tagged_control_tube_event(
+                            product_tube,
+                            virtio_snd_host_mute_tube,
+                            service_vm_state,
+                            ipc_main_loop_tube,
+                            ac97_host_tubes,
+                        )
+                    }
+                    _ => (),
+                    // TODO: handle vm_control messages.
+                    /* TaggedControlTube::Vm(tube) => match tube.recv::<VmRequest>() {
+                        Ok(request) => {
+                            let mut run_mode_opt = None;
+                            let response = request.execute(
+                                &mut run_mode_opt,
+                                disk_host_tubes,
+                            );
+                            if let Err(e) = tube.send(&response) {
+                                error!("failed to send VmResponse: {}", e);
+                            }
+                            if let Some(run_mode) = run_mode_opt {
+                                info!("control tube changed run mode to {}", run_mode);
+                                match run_mode {
+                                    VmRunMode::Exiting => {
+                                        break 'poll;
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            if let TubeError::Disconnected = e {
+                                vm_control_indices_to_remove.push(index);
+                            } else {
+                                error!("failed to recv VmRequest: {}", e);
+                            }
+                        }
+                    }, */
+                }
+            }
         }
-    }
-
-    Ok(())
+        #[allow(unreachable_patterns)]
+        _ => product::handle_received_token(
+            &event.token,
+            ac97_host_tubes,
+            anti_tamper_main_thread_tube,
+            balloon_host_tube,
+            control_tubes,
+            guest_os,
+            ipc_main_loop_tube,
+            memory_size_mb,
+            proto_main_loop_tube,
+            pvclock_host_tube,
+            run_mode_arc,
+            service_vm_state,
+            vcpu_boxes,
+            virtio_snd_host_mute_tube,
+        ),
+    };
+    Ok((false, None))
 }
 
 fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
@@ -794,61 +842,20 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     pvclock_host_tube: Option<Tube>,
     mut gralloc: RutabagaGralloc,
     #[cfg(feature = "stats")] stats: Option<Arc<Mutex<StatisticsCollector>>>,
-    #[cfg(feature = "kiwi")] service_pipe_name: Option<String>,
+    service_pipe_name: Option<String>,
     ac97_host_tubes: Vec<Tube>,
     memory_size_mb: u64,
     host_cpu_topology: bool,
     tsc_sync_mitigations: TscSyncMitigations,
     force_calibrated_tsc_leaf: bool,
+    product_args: RunControlArgs,
+    mut virtio_snd_host_mute_tube: Option<Tube>,
     restore_path: Option<PathBuf>,
 ) -> Result<ExitState> {
-    #[cfg(not(feature = "kiwi"))]
-    {
-        // These variable are not used in other configurations. Suppress warnings.
-        let _ = balloon_host_tube;
-        let _ = pvclock_host_tube;
-        let _ = ac97_host_tubes;
-        let _ = memory_size_mb;
-    }
+    let (ipc_main_loop_tube, proto_main_loop_tube, _service_ipc) =
+        start_service_ipc_listener(service_pipe_name)?;
 
-    #[derive(EventToken)]
-    enum Token {
-        VmEvent,
-        BrokerShutdown,
-        VmControl {
-            index: usize,
-        },
-        #[cfg(feature = "kiwi")]
-        ServiceIpc,
-        #[cfg(feature = "kiwi")]
-        ProtoIpc,
-        #[cfg(all(feature = "kiwi", feature = "anti-tamper"))]
-        AntiTamper,
-    }
-
-    #[cfg(feature = "kiwi")]
-    // Note: We use anti_tamper::MAX_CHALLENGE_SIZE because it's the
-    // largest message passed through the tube. Note the Tube buffer has
-    // to accomodate the largest message because of b/223807352.
-    let (ipc_main_loop_tube, ipc_service_ipc_tube) =
-        Tube::pair_with_buffer_size(anti_tamper::MAX_CHALLENGE_SIZE)
-            .expect("Could not create Tube::pair()!");
-
-    #[cfg(feature = "kiwi")]
-    let (proto_main_loop_tube, proto_service_ipc_tube) =
-        base::ProtoTube::pair_with_buffer_size(anti_tamper::MAX_CHALLENGE_SIZE)
-            .expect("Could not create Tube::pair()!");
-
-    #[cfg(feature = "kiwi")]
-    let _service_ipc = ServiceIpc::start_ipc_listening_loops(
-        service_pipe_name,
-        ipc_service_ipc_tube,
-        #[cfg(feature = "kiwi")]
-        proto_service_ipc_tube,
-    );
-
-    #[cfg(feature = "kiwi")]
-    let mut service_vm_state = ServiceVmState::new();
+    let mut service_vm_state = product::create_service_vm_state(memory_size_mb);
 
     let sys_allocator_mutex = Arc::new(Mutex::new(sys_allocator));
 
@@ -869,17 +876,15 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         sys_allocator_mutex.clone(),
     );
 
-    let wait_ctx = WaitContext::build_with(&[
-        (vm_evt_rdtube.get_read_notifier(), Token::VmEvent),
-        #[cfg(feature = "kiwi")]
-        (ipc_main_loop_tube.get_read_notifier(), Token::ServiceIpc),
-        #[cfg(feature = "kiwi")]
-        (proto_main_loop_tube.get_read_notifier(), Token::ProtoIpc),
-    ])
-    .exit_context(
+    let mut triggers = vec![(vm_evt_rdtube.get_read_notifier(), Token::VmEvent)];
+    product::push_triggers(&mut triggers, &ipc_main_loop_tube, &proto_main_loop_tube);
+    let wait_ctx = WaitContext::build_with(&triggers).exit_context(
         Exit::WaitContextAdd,
         "failed to add trigger to wait context",
     )?;
+    let ipc_main_loop_tube = ipc_main_loop_tube.expect("Failed to get main ipc tube");
+    let proto_main_loop_tube = proto_main_loop_tube.expect("Failed to get main proto tube");
+
     if let Some(evt) = broker_shutdown_evt.as_ref() {
         wait_ctx.add(evt, Token::BrokerShutdown).exit_context(
             Exit::WaitContextAdd,
@@ -898,25 +903,12 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                         "failed to add trigger to wait context",
                     )?;
             }
-            #[cfg(feature = "kiwi")]
-            TaggedControlTube::GpuServiceComm(tube) => {
-                wait_ctx
-                    .add(tube.get_read_notifier(), Token::VmControl { index })
-                    .exit_context(
-                        Exit::WaitContextAdd,
-                        "failed to add trigger to wait context",
-                    )?;
-            }
-            #[cfg(feature = "kiwi")]
-            TaggedControlTube::GpuDeviceServiceComm(tube) => {
-                wait_ctx
-                    .add(tube.get_read_notifier(), Token::VmControl { index })
-                    .exit_context(
-                        Exit::WaitContextAdd,
-                        "failed to add trigger to wait context",
-                    )?;
-            }
-            // TODO(nkgold): as new control tubes are added, we'll need to add support for them
+            TaggedControlTube::Product(product_tube) => wait_ctx
+                .add(product_tube.get_read_notifier(), Token::VmControl { index })
+                .exit_context(
+                    Exit::WaitContextAdd,
+                    "failed to add trigger to wait context",
+                )?,
             _ => (),
         }
     }
@@ -947,27 +939,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             .collect(),
     };
 
-    #[cfg(all(feature = "kiwi", feature = "anti-tamper", not(feature = "kiwi")))]
-    let (anti_tamper_main_thread_tube, anti_tamper_dedicated_thread_tube) =
-        Tube::pair_with_buffer_size(anti_tamper::MAX_CHALLENGE_SIZE)
-            .expect("Could not create Tube::pair()!");
-
-    #[cfg(all(feature = "anti-tamper", feature = "kiwi"))]
-    let (anti_tamper_main_thread_tube, anti_tamper_dedicated_thread_tube) =
-        base::ProtoTube::pair_with_buffer_size(anti_tamper::MAX_CHALLENGE_SIZE)
-            .expect("Could not create Tube::pair()!");
-
-    #[cfg(all(feature = "kiwi", feature = "anti-tamper",))]
-    if let Err(_e) = wait_ctx.add(
-        anti_tamper_main_thread_tube.get_read_notifier(),
-        Token::AntiTamper,
-    ) {
-        #[cfg(debug_assertions)]
-        error!("Failed to add anti-tamper tube to wait_ctx: {}", _e);
-    }
-
-    #[cfg(all(feature = "kiwi", feature = "anti-tamper",))]
-    spawn_dedicated_anti_tamper_thread(anti_tamper_dedicated_thread_tube);
+    let anti_tamper_main_thread_tube = spawn_anti_tamper_thread(&wait_ctx);
 
     #[cfg(feature = "sandbox")]
     if sandbox::is_sandbox_target() {
@@ -976,6 +948,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             .expect("Could not create sandbox!")
             .lower_token();
     }
+
+    let ime_thread = run_ime_thread(product_args, &exit_evt)?;
 
     let vcpu_boxes: Arc<Mutex<Vec<Box<dyn VcpuArch>>>> = Arc::new(Mutex::new(Vec::new()));
     let run_mode_arc = Arc::new(VcpuRunMode::default());
@@ -995,8 +969,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     )?;
     let mut exit_state = ExitState::Stop;
 
-    // TODO: udam b/142733266 (sandboxing) registerwaitforsingleobject to wait on
-    // child processes when they exit
     'poll: loop {
         let events = {
             match wait_ctx.wait() {
@@ -1010,324 +982,31 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
         let mut vm_control_indices_to_remove = Vec::new();
         for event in events.iter().filter(|e| e.is_readable) {
-            match event.token {
-                Token::VmEvent => match vm_evt_rdtube.recv::<VmEventType>() {
-                    Ok(vm_event) => {
-                        match vm_event {
-                            VmEventType::Exit => {
-                                info!("vcpu requested shutdown");
-                                exit_state = ExitState::Stop;
-                            }
-                            VmEventType::Reset => {
-                                info!("vcpu requested reset");
-                                exit_state = ExitState::Reset;
-                            }
-                            VmEventType::Crash => {
-                                info!("vcpu crashed");
-                                exit_state = ExitState::Crash;
-                            }
-                            VmEventType::Panic(_) => {
-                                error!("got pvpanic event. this event is not expected on Windows.");
-                            }
-                            VmEventType::WatchdogReset => {
-                                info!("vcpu stall detected");
-                                exit_state = ExitState::WatchdogReset;
-                            }
-                        }
-                        break 'poll;
-                    }
-                    Err(e) => {
-                        warn!("failed to recv VmEvent: {}", e);
-                    }
-                },
-                Token::BrokerShutdown => {
-                    info!("main loop got broker shutdown event");
-                    break 'poll;
-                }
-                #[allow(clippy::collapsible_match)]
-                Token::VmControl { index } => {
-                    if let Some(tube) = control_tubes.get(index) {
-                        #[allow(clippy::single_match)]
-                        match tube {
-                            TaggedControlTube::VmMemory(tube) => {
-                                match tube.recv::<VmMemoryRequest>() {
-                                    Ok(request) => {
-                                        let response = request.execute(
-                                            &mut guest_os.vm,
-                                            &mut sys_allocator_mutex.lock(),
-                                            &mut gralloc,
-                                            None,
-                                        );
-                                        if let Err(e) = tube.send(&response) {
-                                            error!("failed to send VmMemoryControlResponse: {}", e);
-                                        }
-                                    }
-                                    Err(e) => {
-                                        if let TubeError::Disconnected = e {
-                                            vm_control_indices_to_remove.push(index);
-                                        } else {
-                                            error!("failed to recv VmMemoryControlRequest: {}", e);
-                                        }
-                                    }
-                                }
-                            }
-                            #[cfg(feature = "kiwi")]
-                            TaggedControlTube::GpuServiceComm(tube)
-                            | TaggedControlTube::GpuDeviceServiceComm(tube) => {
-                                match tube.recv::<GpuSendToMain>() {
-                                    Ok(request) => {
-                                        #[cfg(feature = "kiwi")]
-                                        {
-                                            match request {
-                                                SendToService(service_request) => {
-                                                    if let Err(e) = ipc_main_loop_tube.send(
-                                                        &service_vm_state
-                                                            .update_gpu_state_and_generate_message_to_service(&service_request),
-                                                    ) {
-                                                        error!(
-                                                            "Failed to send message to ServiceIpc: {}",
-                                                            e
-                                                        );
-                                                    }
-                                                }
-                                                MuteAc97(mute) => {
-                                                    for ac97_host_tube in &ac97_host_tubes {
-                                                        ac97_host_tube
-                                                            .send(&Ac97Control::Mute(mute))
-                                                            .expect("Could not send mute message!");
-                                                    }
-                                                    service_vm_state.update_audio_state(mute);
-                                                    if let Err(e) = ipc_main_loop_tube.send(
-                                                        &service_vm_state
-                                                            .generate_send_state_message(),
-                                                    ) {
-                                                        error!(
-                                                            "Failed to send message to ServiceIpc: {}",
-                                                            e
-                                                        );
-                                                    }
-
-                                                }
-                                            }
-                                        }
-                                        #[cfg(not(feature = "kiwi"))]
-                                        {
-                                            info!("Dropping message: {:?}", request);
-                                        }
-                                    }
-                                    Err(e) => {
-                                        error!(
-                                            "Error when receiving message from GpuServiceComm or GpuDeviceServiceComm tube: {}",
-                                            e
-                                        );
-                                    }
-                                }
-                            }
-                            _ => (),
-                            // TODO: handle vm_control messages.
-                            /* TaggedControlTube::Vm(tube) => match tube.recv::<VmRequest>() {
-                                Ok(request) => {
-                                    let mut run_mode_opt = None;
-                                    let response = request.execute(
-                                        &mut run_mode_opt,
-                                        disk_host_tubes,
-                                    );
-                                    if let Err(e) = tube.send(&response) {
-                                        error!("failed to send VmResponse: {}", e);
-                                    }
-                                    if let Some(run_mode) = run_mode_opt {
-                                        info!("control tube changed run mode to {}", run_mode);
-                                        match run_mode {
-                                            VmRunMode::Exiting => {
-                                                break 'poll;
-                                            }
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    if let TubeError::Disconnected = e {
-                                        vm_control_indices_to_remove.push(index);
-                                    } else {
-                                        error!("failed to recv VmRequest: {}", e);
-                                    }
-                                }
-                            }, */
-                        }
-                    }
-                }
-                #[cfg(feature = "kiwi")]
-                Token::ProtoIpc => {
-                    anti_tamper::forward_security_challenge(
-                        &proto_main_loop_tube,
-                        &anti_tamper_main_thread_tube,
-                    );
-                }
-                // For handling service to crosvm messages. At this point, it is up to the dev how
-                // they want to get the datagram to their component. It's recommended to use
-                // Tubes if it can't be sent directly.
-                #[cfg(feature = "kiwi")]
-                Token::ServiceIpc => match ipc_main_loop_tube.recv::<MessageFromService>() {
-                    Ok(request) => match request {
-                        MessageFromService::ShowWindow(_)
-                        | MessageFromService::HideWindow
-                        | MessageFromService::Shutdown
-                        | MessageFromService::MouseInputMode(_) => {
-                            set_package_name(&request);
-                            for control_tube in &control_tubes {
-                                if let TaggedControlTube::GpuServiceComm(tube) = &control_tube {
-                                    if let Err(e) =
-                                        tube.send::<ServiceSendToGpu>(&request.try_into().expect(
-                                            "Could not convert to ServiceSendToGpu request!",
-                                        ))
-                                    {
-                                        error!("Failed to send message to GPU display: {}", e);
-                                    }
-                                    break;
-                                }
-                            }
-                        }
-                        MessageFromService::SetVmMemorySize(balloon_request) => {
-                            info!(
-                                "Service requested balloon adjustment, requested vm size: {}mb",
-                                balloon_request.get_vm_memory_size_mb()
-                            );
-                            if let Some(ref balloon_host_tube) = balloon_host_tube {
-                                if let Err(e) =
-                                    balloon_host_tube.send(&BalloonControlCommand::Adjust {
-                                        num_bytes: get_balloon_size(
-                                            memory_size_mb,
-                                            &balloon_request,
-                                        ),
-                                    })
-                                {
-                                    error!("Failed to modify balloon size - tube closed: {}", e);
-                                }
-                            } else {
-                                error!("Failed to modify balloon size - balloon disabled");
-                            }
-                        }
-                        MessageFromService::Suspend => {
-                            info!("Received suspend request from the service");
-                            // VCPU threads MUST see the VmRunMode flag, otherwise they may re-enter the VM.
-                            run_mode_arc.set_and_notify(VmRunMode::Suspending);
-
-                            // Force all vcpus to exit from the hypervisor
-                            for vcpu in vcpu_boxes.lock().iter() {
-                                vcpu.set_immediate_exit(true);
-                            }
-                            guest_os.irq_chip.kick_halted_vcpus();
-
-                            #[cfg(feature = "pvclock")]
-                            handle_pvclock_request(&pvclock_host_tube, PvClockCommand::Suspend)
-                                .unwrap_or_else(|e| {
-                                    error!("Error handling pvclock suspend: {:?}", e)
-                                });
-                        }
-                        MessageFromService::Resume => {
-                            info!("Received resume request from the service");
-                            #[cfg(feature = "pvclock")]
-                            handle_pvclock_request(&pvclock_host_tube, PvClockCommand::Resume)
-                                .unwrap_or_else(|e| {
-                                    error!("Error handling pvclock resume: {:?}", e)
-                                });
-
-                            // Make sure any immediate exit bits are disabled
-                            for vcpu in vcpu_boxes.lock().iter() {
-                                vcpu.set_immediate_exit(false);
-                            }
-
-                            run_mode_arc.set_and_notify(VmRunMode::Running);
-                        }
-                        #[cfg(any(not(feature = "anti-tamper"), feature = "kiwi"))]
-                        MessageFromService::ReceiveSecurityChallenge(_) => {}
-                        #[cfg(all(feature = "anti-tamper", not(feature = "kiwi")))]
-                        MessageFromService::ReceiveSecurityChallenge(security_challenge) => {
-                            if let Err(_e) = anti_tamper_main_thread_tube.send(&security_challenge)
-                            {
-                                #[cfg(debug_assertions)]
-                                error!(
-                                    "Failed to send challenge program to anti-tamper thread: {}",
-                                    _e
-                                );
-                            }
-                        }
-                        // Receive a mute request when the service receives lock/unlock screen event. The
-                        // mute request should only be received if the window is NOT hidden (the service
-                        // is responsible for that).
-                        MessageFromService::AudioState(set_audio_state_request) => {
-                            for ac97_host_tube in &ac97_host_tubes {
-                                ac97_host_tube
-                                    .send(&Ac97Control::Mute(set_audio_state_request.get_is_mute()))
-                                    .expect("Could not send mute message!");
-                            }
-                            service_vm_state
-                                .update_audio_state(set_audio_state_request.get_is_mute());
-
-                            if let Err(e) = ipc_main_loop_tube
-                                .send(&service_vm_state.generate_send_state_message())
-                            {
-                                error!("Failed to send message to ServiceIpc: {}", e);
-                            }
-                        }
-                        MessageFromService::GetForegroundingPermission(
-                            foregrounding_permission_request,
-                        ) => {
-                            // Perform best-effort, but do not block on failure
-                            // TODO(b/205917759): Move this to gpu process
-                            let mut result = false;
-                            if let Err(e) = give_foregrounding_permission(
-                                foregrounding_permission_request.get_process_id(),
-                            ) {
-                                error!("Failed to give foregrounding permission: {}", e);
-                            } else {
-                                result = true;
-                            }
-
-                            if let Err(e) = ipc_main_loop_tube.send(
-                                &MessageToService::SendForegroundingPermissionResult(result.into()),
-                            ) {
-                                // Log, but otherwise ignore failures to send as they are
-                                // handleable and non-fatal.
-                                error!(
-                                    "Failed to send foregrounding permission result to the service: {}",
-                                    e
-                                );
-                            }
-                        }
-                        MessageFromService::MergeSessionInvariants(session_invariants_request) => {
-                            let serialized_session_invariants =
-                                session_invariants_request.get_serialized_session_invariants();
-                            merge_session_invariants(serialized_session_invariants);
-                        }
-
-                        MessageFromService::SetAuthToken(set_auth_token_request) => {
-                            metrics::set_auth_token(set_auth_token_request.get_auth_token());
-                        }
-                        MessageFromService::UploadCrashReport => {
-                            #[cfg(feature = "crash-report")]
-                            crash_report::upload_crash_report("anr");
-
-                            #[cfg(not(feature = "crash-report"))]
-                            info!("Dropping UploadCrashReport message");
-                        }
-                        MessageFromService::SystemHealthRequest => {
-                            // Reply back with an empty report as there are no system health metrics
-                            // to report yet.
-                            if let Err(e) =
-                                ipc_main_loop_tube.send(&MessageToService::SendSystemHealthReport())
-                            {
-                                #[cfg(debug_assertions)]
-                                error!("Failed to send system health report to the service: {}", e);
-                            }
-                        }
-                    },
-                    Err(_e) => {}
-                },
-                #[cfg(all(feature = "kiwi", feature = "anti-tamper"))]
-                Token::AntiTamper => anti_tamper::forward_security_signal(
-                    &anti_tamper_main_thread_tube,
-                    &ipc_main_loop_tube,
-                ),
+            let (break_poll, state) = handle_readable_event(
+                event,
+                &mut vm_control_indices_to_remove,
+                &mut service_vm_state,
+                &ac97_host_tubes,
+                &ipc_main_loop_tube,
+                &vm_evt_rdtube,
+                &control_tubes,
+                &mut guest_os,
+                &sys_allocator_mutex,
+                &mut gralloc,
+                &mut virtio_snd_host_mute_tube,
+                &proto_main_loop_tube,
+                &anti_tamper_main_thread_tube,
+                &balloon_host_tube,
+                memory_size_mb,
+                vcpu_boxes.as_ref(),
+                &pvclock_host_tube,
+                run_mode_arc.as_ref(),
+            )?;
+            if let Some(state) = state {
+                exit_state = state;
+            }
+            if break_poll {
+                break 'poll;
             }
         }
         for event in events.iter().filter(|e| e.is_hungup) {
@@ -1348,12 +1027,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                         _ => {}
                     }*/
                 }
-                #[cfg(feature = "kiwi")]
-                Token::ProtoIpc => {}
-                #[cfg(feature = "kiwi")]
-                Token::ServiceIpc => {}
-                #[cfg(all(feature = "kiwi", feature = "anti-tamper"))]
-                Token::AntiTamper => {}
+                #[allow(unreachable_patterns)]
+                _ => product::handle_hungup_event(&event.token),
             }
         }
 
@@ -1373,6 +1048,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             }*/
         }
     }
+
+    info!("run_control poll loop completed, forcing vCPUs to exit...");
 
     // VCPU threads MUST see the VmRunMode flag, otherwise they may re-enter the VM.
     run_mode_arc.set_and_notify(VmRunMode::Exiting);
@@ -1401,6 +1078,24 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         }
     }
 
+    info!("vCPU threads have exited.");
+
+    if let Some(ime) = ime_thread {
+        match ime.join() {
+            Ok(Err(e)) => {
+                error!("ime thread exited with an error: {}", e);
+                if res.is_ok() {
+                    // Prioritize past errors, but return this error if it is unique, otherwise just
+                    // log it.
+                    res = Err(e)
+                }
+            }
+            Ok(_) => {}
+            Err(e) => error!("ime thread panicked: {:?}", e),
+        }
+    }
+    info!("IME thread has exited.");
+
     // This cancels all the outstanding and any future blocking operations.
     // TODO(b/196911556): Shutdown executor for cleaner shutdown. Given we are using global, for a
     // cleaner shutdown we have to call disarm so that all the incoming requests are run and are
@@ -1408,8 +1103,10 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     // won't be scheduled to run and will be dropped leading to panic. I think ideal place to call
     // shutdown is when we drop non-global executor.
     cros_async::unblock_disarm();
+    info!("blocking async pool has shut down.");
 
     let _ = irq_join_handle.join();
+    info!("IrqWaitWorker has shut down.");
 
     #[cfg(feature = "stats")]
     if let Some(stats) = stats {
@@ -1420,6 +1117,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     // Explicitly drop the VM structure here to allow the devices to clean up before the
     // control tubes are closed when this function exits.
     mem::drop(guest_os);
+
+    info!("guest_os dropped, run_control is done.");
 
     res
 }
@@ -1493,6 +1192,7 @@ fn create_whpx(
     no_smt: bool,
     apic_emulation: bool,
     force_calibrated_tsc_leaf: bool,
+    vm_evt_wrtube: SendTube,
 ) -> Result<WhpxVm> {
     info!("Creating Whpx");
     let whpx = Whpx::new()?;
@@ -1525,8 +1225,15 @@ fn create_whpx(
         adjust_cpuid(entry, &ctx);
     }
 
-    let vm = WhpxVm::new(&whpx, cpu_count, mem, cpuid, apic_emulation)
-        .exit_context(Exit::WhpxSetupError, "failed to create WHPX vm")?;
+    let vm = WhpxVm::new(
+        &whpx,
+        cpu_count,
+        mem,
+        cpuid,
+        apic_emulation,
+        Some(vm_evt_wrtube),
+    )
+    .exit_context(Exit::WhpxSetupError, "failed to create WHPX vm")?;
 
     Ok(vm)
 }
@@ -1760,12 +1467,10 @@ pub fn save_vcpu_tsc_offset(offset: u64, vcpu_id: usize) {
 }
 
 /// Get the TSC offset of any vcpu. It will pick the first non-None offset it finds in TSC_OFFSETS.
-#[cfg(feature = "cperfetto")]
+#[cfg(feature = "perfetto")]
 pub fn get_vcpu_tsc_offset() -> u64 {
-    for offset in TSC_OFFSETS.lock().iter() {
-        if let Some(offset) = offset {
-            return *offset;
-        }
+    if let Some(offset) = TSC_OFFSETS.lock().iter().flatten().next() {
+        return *offset;
     }
     0
 }
@@ -1774,9 +1479,9 @@ pub fn get_vcpu_tsc_offset() -> u64 {
 /// tracing is enabled or disabled. Regardless of whether tracing is being enabled or disabled for
 /// a given category or instance, we just emit a clock snapshot that maps the guest TSC to the
 /// host TSC. Redundant snapshots should not be a problem for perfetto.
-#[cfg(feature = "cperfetto")]
+#[cfg(feature = "perfetto")]
 fn set_tsc_clock_snapshot() {
-    let freq = match devices::tsc_frequency() {
+    let freq = match devices::tsc::tsc_frequency() {
         Err(e) => {
             error!(
                 "Could not determine tsc frequency, unable to snapshot tsc offset: {}",
@@ -1843,6 +1548,11 @@ pub fn run_config_for_broker(raw_tube_transporter: RawDescriptor) -> Result<Exit
             .recv::<Event>()
             .exit_context(Exit::TubeFailure, "failed to read bootstrap tube")?,
     );
+    let crash_tube_map = bootstrap_tube
+        .recv::<HashMap<ProcessType, Vec<SendTube>>>()
+        .exit_context(Exit::TubeFailure, "failed to read bootstrap tube")?;
+    #[cfg(feature = "crash-report")]
+    crash_report::set_crash_tube_map(crash_tube_map);
 
     run_config_inner(cfg)
 }
@@ -1854,35 +1564,12 @@ pub fn run_config(cfg: Config) -> Result<ExitState> {
 }
 
 fn run_config_inner(cfg: Config) -> Result<ExitState> {
-    #[cfg(feature = "kiwi")]
-    {
-        let use_vulkan = if cfg!(feature = "gpu") {
-            match &cfg.gpu_parameters {
-                Some(params) => Some(params.use_vulkan),
-                None => None,
-            }
-        } else {
-            None
-        };
-        anti_tamper::setup_common_metric_invariants(
-            &&cfg.product_version,
-            &cfg.product_channel,
-            &use_vulkan,
-        );
-    }
+    product::setup_common_metric_invariants(&cfg);
 
-    cros_tracing::init();
-    #[cfg(feature = "cperfetto")]
+    #[cfg(feature = "perfetto")]
     cros_tracing::add_per_trace_callback(set_tsc_clock_snapshot);
 
     let components: VmComponents = setup_vm_components(&cfg)?;
-
-    let guest_mem_layout = Arch::guest_memory_layout(&components).exit_context(
-        Exit::GuestMemoryLayout,
-        "failed to create guest memory layout",
-    )?;
-    let guest_mem = GuestMemory::new(&guest_mem_layout)
-        .exit_context(Exit::CreateGuestMemory, "failed to create guest memory")?;
 
     let default_hypervisor = get_default_hypervisor()
         .exit_context(Exit::NoDefaultHypervisor, "no enabled hypervisor")?;
@@ -1894,6 +1581,13 @@ fn run_config_inner(cfg: Config) -> Result<ExitState> {
         // If WHPX is enabled, no other hypervisor can be used, so just override it
         hypervisor = HypervisorKind::Whpx;
     }
+
+    let guest_mem_layout = Arch::guest_memory_layout(&components).exit_context(
+        Exit::GuestMemoryLayout,
+        "failed to create guest memory layout",
+    )?;
+    let guest_mem = GuestMemory::new(&guest_mem_layout)
+        .exit_context(Exit::CreateGuestMemory, "failed to create guest memory")?;
 
     match hypervisor {
         #[cfg(feature = "haxm")]
@@ -1941,6 +1635,11 @@ fn run_config_inner(cfg: Config) -> Result<ExitState> {
                 no_smt,
                 apic_emulation_supported && irq_chip == IrqChipKind::Split,
                 cfg.force_calibrated_tsc_leaf,
+                cfg.vm_evt_wrtube
+                    .as_ref()
+                    .expect("vm_evt_wrtube must be set")
+                    .try_clone()
+                    .expect("could not clone vm_evt_wrtube"),
             )?;
 
             let mut irq_chip = match irq_chip {
@@ -2092,7 +1791,10 @@ where
                 sys_allocator.reserved_region().unwrap(),
                 pstore,
             )
-            .exit_context(Exit::Pstore, "failed to allocate pstore region")?,
+            .exit_context(
+                Exit::Pstore,
+                format!("failed to allocate pstore region {:?}", &components.pstore),
+            )?,
         ),
         None => None,
     };
@@ -2120,6 +1822,12 @@ where
         );
     }
 
+    let product_args = product::get_run_control_args(&mut cfg);
+
+    let virtio_snd_state_device_tube = create_snd_state_tube(&mut control_tubes)?;
+
+    let (virtio_snd_host_mute_tube, virtio_snd_device_mute_tube) = create_snd_mute_tube_pair()?;
+
     let pci_devices = create_devices(
         &mut cfg,
         vm.get_memory(),
@@ -2134,6 +1842,8 @@ where
         init_balloon_size,
         ac97_host_tubes,
         tsc_state.frequency,
+        virtio_snd_state_device_tube,
+        virtio_snd_device_mute_tube,
     )?;
 
     let mut vcpu_ids = Vec::new();
@@ -2175,13 +1885,14 @@ where
         gralloc,
         #[cfg(feature = "stats")]
         stats,
-        #[cfg(feature = "kiwi")]
-        cfg.service_pipe_name,
+        None,
         ac97_device_tubes,
         vm_memory_size_mb,
         cfg.host_cpu_topology,
         tsc_sync_mitigations,
         cfg.force_calibrated_tsc_leaf,
+        product_args,
+        virtio_snd_host_mute_tube,
         cfg.restore_path,
     )
 }

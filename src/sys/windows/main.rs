@@ -97,7 +97,7 @@ pub fn initialize_sandbox() -> Result<()> {
     Ok(())
 }
 
-#[cfg(feature = "kiwi")]
+#[cfg(feature = "sandbox")]
 pub fn sandbox_lower_token() -> Result<()> {
     if let Some(mut target) = sandbox::TargetServices::get()
         .exit_context(Exit::SandboxError, "sandbox operation failed")?

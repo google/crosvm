@@ -6,7 +6,6 @@ edition = "2021"
 
 [features]
 chromeos = []
-kiwi = []
 
 [dependencies]
 audio_streams = { path = "../common/audio_streams" } # provided by ebuild

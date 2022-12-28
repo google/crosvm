@@ -22,7 +22,7 @@ pub(crate) use platform::main::error_to_exit_code;
 pub(crate) use platform::main::get_library_watcher;
 pub(crate) use platform::main::init_log;
 pub(crate) use platform::main::run_command;
-#[cfg(feature = "kiwi")]
+#[cfg(feature = "sandbox")]
 pub(crate) use platform::main::sandbox_lower_token;
 pub(crate) use platform::main::start_device;
 #[cfg(not(feature = "crash-report"))]

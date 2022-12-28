@@ -156,12 +156,10 @@ mod tests {
         if cfg!(feature = "audio") {
             args.extend(["--ac97", "backend=win_audio"]);
         }
-        if cfg!(feature = "kiwi") {
-            args.extend([
-                "--service-pipe-name",
-                "service-ipc-8244a83a-ae3f-486f-9c50-3fc47b309d27",
-            ]);
-        }
+        args.extend([
+            "--service-pipe-name",
+            "service-ipc-8244a83a-ae3f-486f-9c50-3fc47b309d27",
+        ]);
         args
     }
 
