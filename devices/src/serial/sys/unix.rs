@@ -7,7 +7,6 @@ use std::io;
 use base::Event;
 use base::FileSync;
 use base::RawDescriptor;
-use base::Result;
 use hypervisor::ProtectionType;
 
 use crate::serial_device::SerialInput;
@@ -28,19 +27,9 @@ impl SerialDevice for Serial {
         input: Option<Box<dyn SerialInput>>,
         out: Option<Box<dyn io::Write + Send>>,
         _sync: Option<Box<dyn FileSync + Send>>,
-        _out_timestamp: bool,
+        out_timestamp: bool,
         _keep_rds: Vec<RawDescriptor>,
     ) -> Serial {
-        Serial::new_common(interrupt_evt, input, out)
-    }
-}
-
-impl Serial {
-    pub(in crate::serial) fn system_handle_write(&mut self, v: u8) -> Result<()> {
-        if let Some(out) = self.out.as_mut() {
-            out.write_all(&[v])?;
-            out.flush()?;
-        }
-        Ok(())
+        Serial::new_common(interrupt_evt, input, out, out_timestamp)
     }
 }

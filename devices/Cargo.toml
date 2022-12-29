@@ -106,9 +106,6 @@ version = "*"
 features = ["async-await", "std"]
 default-features = false
 
-[target.'cfg(windows)'.dev-dependencies]
-regex = "*"
-
 [dev-dependencies]
 bytes = "1.1.0"
 tempfile = "3"

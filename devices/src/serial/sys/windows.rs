@@ -27,18 +27,8 @@ use crate::Serial;
 // PipeConnection.
 pub(crate) type InStreamType = Box<PipeConnection>;
 
-const TIMESTAMP_PREFIX_FMT: &str = "[ %F %T%.9f ]: ";
-
-pub enum LineState {
-    NeverWritten,
-    Midline,
-    Newline,
-}
-
 /// Windows specific paramters for the serial device.
 pub struct SystemSerialParams {
-    pub out_timestamp: bool,
-    pub out_line_state: LineState,
     pub in_stream: Option<InStreamType>,
     pub sync: Option<Box<dyn FileSync + Send>>,
     pub sync_thread: Option<JoinHandle<SyncWorker>>,
@@ -81,33 +71,6 @@ impl Serial {
             };
         }
     }
-
-    pub(in crate::serial) fn system_handle_write(&mut self, v: u8) -> Result<()> {
-        if let Some(out) = self.out.as_mut() {
-            if self.system_params.out_timestamp {
-                match self.system_params.out_line_state {
-                    LineState::NeverWritten | LineState::Newline => {
-                        out.write_all(
-                            chrono::Local::now()
-                                .format(TIMESTAMP_PREFIX_FMT)
-                                .to_string()
-                                .as_bytes(),
-                        )
-                        .expect("Failed to write");
-                        self.system_params.out_line_state = LineState::Midline;
-                    }
-                    LineState::Midline if v == b'\n' => {
-                        self.system_params.out_line_state = LineState::Newline;
-                    }
-                    _ => {}
-                }
-            }
-
-            out.write_all(&[v])?;
-            out.flush()?;
-        }
-        Ok(())
-    }
 }
 
 impl SerialDevice for Serial {
@@ -124,14 +87,12 @@ impl SerialDevice for Serial {
         _keep_rds: Vec<RawDescriptor>,
     ) -> Serial {
         let system_params = SystemSerialParams {
-            out_timestamp,
-            out_line_state: LineState::NeverWritten,
             in_stream: None,
             sync,
             sync_thread: None,
             kill_evt: None,
         };
-        Serial::new_common(interrupt_evt, input, out, system_params)
+        Serial::new_common(interrupt_evt, input, out, out_timestamp, system_params)
     }
 
     /// Constructs a Serial device connected to a named pipe for I/O
@@ -146,14 +107,19 @@ impl SerialDevice for Serial {
         _keep_rds: Vec<RawDescriptor>,
     ) -> Serial {
         let system_params = SystemSerialParams {
-            out_timestamp: false,
-            out_line_state: LineState::NeverWritten,
             in_stream: Some(Box::new(pipe_in)),
             sync: None,
             sync_thread: None,
             kill_evt: None,
         };
-        Serial::new_common(interrupt_evt, None, Some(Box::new(pipe_out)), system_params)
+        let out_timestamp = false;
+        Serial::new_common(
+            interrupt_evt,
+            None,
+            Some(Box::new(pipe_out)),
+            out_timestamp,
+            system_params,
+        )
     }
 }
 
@@ -239,50 +205,9 @@ impl SyncWorker {
 
 #[cfg(test)]
 mod tests {
-    use regex::Regex;
-
     use super::*;
     use crate::serial::tests::*;
     use crate::serial::*;
-
-    #[cfg(windows)]
-    fn assert_timestamp_is_present(data: &[u8], serial_message: &str) {
-        let data_str = String::from_utf8(data.to_vec()).unwrap();
-        let re = Regex::new(&format!(r"\[.+\]: {}", serial_message)).unwrap();
-        assert!(re.is_match(&data_str));
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn serial_output_timestamp() {
-        let intr_evt = Event::new().unwrap();
-        let serial_out = SharedBuffer::new();
-
-        let mut serial = Serial::new(
-            ProtectionType::Unprotected,
-            intr_evt,
-            None,
-            Some(Box::new(serial_out.clone())),
-            None,
-            true,
-            Vec::new(),
-        );
-
-        serial.write(serial_bus_address(DATA), &[b'a']);
-        serial.write(serial_bus_address(DATA), &[b'\n']);
-        assert_timestamp_is_present(serial_out.buf.lock().as_slice(), "a");
-        serial_out.buf.lock().clear();
-
-        serial.write(serial_bus_address(DATA), &[b'b']);
-        serial.write(serial_bus_address(DATA), &[b'\n']);
-        assert_timestamp_is_present(serial_out.buf.lock().as_slice(), "b");
-        serial_out.buf.lock().clear();
-
-        serial.write(serial_bus_address(DATA), &[b'c']);
-        serial.write(serial_bus_address(DATA), &[b'\n']);
-        assert_timestamp_is_present(serial_out.buf.lock().as_slice(), "c");
-        serial_out.buf.lock().clear();
-    }
 
     #[cfg(windows)]
     #[test]

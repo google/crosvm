@@ -752,7 +752,6 @@ dependencies = [
  "protobuf",
  "protos",
  "rand",
- "regex",
  "remain",
  "resources",
  "rutabaga_gfx",
