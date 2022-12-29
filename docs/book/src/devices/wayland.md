@@ -29,7 +29,7 @@ compositor running on the host through the guest GPU device. As it is not a stan
 have to build it by ourselves. It is recommended to do this from the guest
 [with networking enabled](../running_crosvm/example_usage.md#add-networking-support).
 
-Clone Chrome OS' `platform2` repository, which contains the source for sommelier:
+Clone ChromeOS' `platform2` repository, which contains the source for sommelier:
 
 ```sh
 git clone https://chromium.googlesource.com/chromiumos/platform2

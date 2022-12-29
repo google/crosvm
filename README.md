@@ -1,12 +1,12 @@
-# crosvm - The Chrome OS Virtual Machine Monitor
+# crosvm - The ChromeOS Virtual Machine Monitor
 
 crosvm is a virtual machine monitor (VMM) based on Linux’s KVM hypervisor, with a focus on
 simplicity, security, and speed. crosvm is intended to run Linux guests, originally as a security
-boundary for running native applications on the Chrome OS platform. Compared to QEMU, crosvm doesn’t
+boundary for running native applications on the ChromeOS platform. Compared to QEMU, crosvm doesn’t
 emulate architectures or real hardware, instead concentrating on paravirtualized devices, such as
 the virtio standard.
 
-crosvm is currently used to run Linux/Android guests on Chrome OS devices.
+crosvm is currently used to run Linux/Android guests on ChromeOS devices.
 
 - [Documentation](https://crosvm.dev/book/)
 - [Announcements](https://groups.google.com/a/chromium.org/g/crosvm-announce)

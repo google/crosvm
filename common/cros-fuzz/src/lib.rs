@@ -2,13 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-//! Support crate for writing fuzzers in Chrome OS.
+//! Support crate for writing fuzzers in ChromeOS.
 //!
 //! The major features provided by this crate are:
 //!
 //! * The [`fuzz_target`] macro which wraps the body of the fuzzing code with
 //!   all with all the boilerplate needed to build and run it as a fuzzer on
-//!   Chrome OS infrastructure.
+//!   ChromeOS infrastructure.
 //! * The [`FuzzRng`] type that provides a random number generator using fuzzer
 //!   input as the source of its randomness.  Fuzzers that need to generate
 //!   structured data can use this type in conjunction with the [`rand`] crate

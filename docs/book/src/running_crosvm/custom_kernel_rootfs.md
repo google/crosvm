@@ -11,7 +11,7 @@ The linux kernel in chromiumos comes preconfigured for running in a crosvm guest
 to build. You can use any mainline kernel though as long as it's configured for para-virtualized
 (virtio) devices
 
-If you are using the chroot for Chromium OS development, you already have the kernel source.
+If you are using the chroot for ChromiumOS development, you already have the kernel source.
 Otherwise, you can clone it:
 
 ```bash

@@ -19,7 +19,7 @@ The following is high level guidance for producing contributions to crosvm.
 - Prefer mechanism to policy.
 - Use existing protocols when they are adequate, such as virtio.
 - Prefer security over code re-use and speed of development.
-- Only the version of Rust in use by the Chrome OS toolchain is supported. This is ordinarily the
+- Only the version of Rust in use by the ChromeOS toolchain is supported. This is ordinarily the
   stable version of Rust, but can be behind a version for a few weeks.
 - Avoid distribution specific code.
 

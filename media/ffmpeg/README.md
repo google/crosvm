@@ -7,11 +7,11 @@ situations where no supported video acceleration is available on the host.
 Although several FFmpeg binding crates exist, most of them are not able to link against the system
 FFmpeg, and [the only one that does](https://crates.io/crates/ffmpeg-sys) is released under a
 software license that makes our lawyers nervous. Also they all run bindgen at build time, which is
-not possible to do under the Chrome OS build system and would require to patch the crate with fully
+not possible to do under the ChromeOS build system and would require to patch the crate with fully
 generated bindings.
 
 So taking this in consideration, as well as the extra work that it is to depend on external Rust
-crates in Chrome OS, it is preferable to add our own simple bindings here that cover just the parts
+crates in ChromeOS, it is preferable to add our own simple bindings here that cover just the parts
 of FFmpeg that we need.
 
 This crate has minimal dependencies ; on the FFmpeg side, it just uses `libavcodec`, `libavutil` and

@@ -5,19 +5,19 @@ file to see which features are enabled by default.
 
 ## `audio`
 
-Enables experimental audio input/ouput to the host. Requires some Chrome OS specific dependencies
-and daemons currently.
+Enables experimental audio input/ouput to the host. Requires some ChromeOS specific dependencies and
+daemons currently.
 
 ## `chromeos`
 
-This option enables features specific to a Chrome OS environment. Examples of that are usage of
-non-upstream kernel security features in the Chrome OS kernel, which should be temporary until
-upstream catches up. Another example would be code to use Chrome OS system daemons like the low
+This option enables features specific to a ChromeOS environment. Examples of that are usage of
+non-upstream kernel security features in the ChromeOS kernel, which should be temporary until
+upstream catches up. Another example would be code to use ChromeOS system daemons like the low
 memory notifier.
 
-These features exist because crosvm was historically a Chrome OS only project, but crosvm is
-intended to be OS agnostic now. If Chrome OS specific code is identified, it should be conditionally
-compiled in using this feature.
+These features exist because crosvm was historically a ChromeOS only project, but crosvm is intended
+to be OS agnostic now. If ChromeOS specific code is identified, it should be conditionally compiled
+in using this feature.
 
 ## `composite-disk`
 

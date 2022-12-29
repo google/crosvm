@@ -216,7 +216,7 @@ Source code is organized into crates, each with their own unit tests.
 - `kernel_loader` - Loads elf64 kernel files to a slice of memory.
 - `kvm_sys` - Low-level (mostly) auto-generated structures and constants for using KVM.
 - `kvm` - Unsafe, low-level wrapper code for using `kvm_sys`.
-- `media/libvda` - Safe wrapper of [libvda], a Chrome OS HW-accelerated video decoding/encoding
+- `media/libvda` - Safe wrapper of [libvda], a ChromeOS HW-accelerated video decoding/encoding
   library.
 - `net_sys` - Low-level (mostly) auto-generated structures and constants for creating TUN/TAP
   devices.
@@ -225,7 +225,7 @@ Source code is organized into crates, each with their own unit tests.
 - `seccomp` - Contains minijail seccomp policy files for each sandboxed device. Because some
   syscalls vary by architecture, the seccomp policies are split by architecture.
 - `sync` - Our version of `std::sync::Mutex` and `std::sync::Condvar`.
-- `third_party` - Third-party libraries which we are maintaining on the Chrome OS tree or the AOSP
+- `third_party` - Third-party libraries which we are maintaining on the ChromeOS tree or the AOSP
   tree.
 - `vfio_sys` - Low-level (mostly) auto-generated structures, constants and ioctls for [VFIO].
 - `vhost` - Wrappers for creating vhost based devices.

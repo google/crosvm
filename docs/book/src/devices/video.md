@@ -9,8 +9,7 @@ The virtio-video host device uses backends to perform the actual decoding. The c
 backends are:
 
 - `libvda`, a hardware-accelerated backend that supports both decoding and encoding by delegating
-  the work to a running instance of Chrome. It can only be built and used in a Chrome OS
-  environment.
+  the work to a running instance of Chrome. It can only be built and used in a ChromeOS environment.
 - `ffmpeg`, a software-based backend that supports encoding and decoding. It exists to make testing
   and development of virtio-video easier, as it does not require any particular hardware and is
   based on a reliable codec library.

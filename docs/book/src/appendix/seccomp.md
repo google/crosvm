@@ -4,7 +4,7 @@ The seccomp system is used to filter the syscalls that sandboxed processes can u
 seccomp used by crosvm (`SECCOMP_SET_MODE_FILTER`) allows for a BPF program to be used. To generate
 the BPF programs, crosvm uses minijail's policy file format. A policy file is written for each
 device per architecture. Each device requires a unique set of syscalls to accomplish their function
-and each architecture has slightly different naming for similar syscalls. The Chrome OS docs have a
+and each architecture has slightly different naming for similar syscalls. The ChromeOS docs have a
 useful
 [listing of syscalls](https://chromium.googlesource.com/chromiumos/docs/+/master/constants/syscalls.md).
 

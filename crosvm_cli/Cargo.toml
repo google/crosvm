@@ -1,6 +1,6 @@
 [package]
 name = "crosvm_cli"
-authors = ["The Chromium OS Authors"]
+authors = ["The ChromiumOS Authors"]
 version = "0.1.0"
 edition = "2021"
 

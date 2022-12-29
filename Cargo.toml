@@ -1,7 +1,7 @@
 [package]
 name = "crosvm"
 version = "0.1.0"
-authors = ["The Chromium OS Authors"]
+authors = ["The ChromiumOS Authors"]
 edition = "2021"
 default-run = "crosvm"
 # b:223855233
@@ -24,7 +24,7 @@ overflow-checks = true
 inherits = 'release'
 panic = 'unwind'
 
-# Reproduces the options used when building crosvm for Chrome OS.
+# Reproduces the options used when building crosvm for ChromeOS.
 [profile.chromeos]
 inherits = "release"
 opt-level = "s"

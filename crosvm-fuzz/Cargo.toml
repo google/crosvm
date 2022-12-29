@@ -1,7 +1,7 @@
 [package]
 name = "crosvm-fuzz"
 version = "0.0.1"
-authors = ["The Chromium OS Authors"]
+authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [package.metadata]

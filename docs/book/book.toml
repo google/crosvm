@@ -1,5 +1,5 @@
 [book]
-authors = ["The Chromium OS Authors"]
+authors = ["The ChromiumOS Authors"]
 language = "en"
 multilingual = false
 src = "src"
