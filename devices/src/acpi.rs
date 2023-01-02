@@ -53,6 +53,8 @@ pub enum ACPIPMError {
     AcpiMcGroupError,
     #[error("Failed to create and bind NETLINK_GENERIC socket for acpi_mc_group: {0}")]
     AcpiEventSockError(base::Error),
+    #[error("GPE {0} is out of bound")]
+    GpeOutOfBound(u32),
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
@@ -406,6 +408,15 @@ impl GpeResource {
             }
         }
     }
+
+    pub fn set_active(&mut self, gpe: u32) -> Result<(), ACPIPMError> {
+        if let Some(status_byte) = self.status.get_mut(gpe as usize / 8) {
+            *status_byte |= 1 << (gpe % 8);
+        } else {
+            return Err(ACPIPMError::GpeOutOfBound(gpe));
+        }
+        Ok(())
+    }
 }
 
 #[cfg(feature = "direct")]
@@ -699,13 +710,10 @@ impl PmResource for ACPIPMResource {
     fn gpe_evt(&mut self, gpe: u32) {
         let mut gpe0 = self.gpe0.lock();
 
-        let byte = gpe as usize / 8;
-        if byte >= gpe0.status.len() {
-            error!("gpe_evt: GPE register {} does not exist", byte);
-            return;
+        match gpe0.set_active(gpe) {
+            Ok(_) => gpe0.trigger_sci(&self.sci_evt),
+            Err(e) => error!("{}", e),
         }
-        gpe0.status[byte] |= 1 << (gpe % 8);
-        gpe0.trigger_sci(&self.sci_evt);
     }
 
     fn pme_evt(&mut self, requester_id: u16) {
