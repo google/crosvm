@@ -373,7 +373,10 @@ async fn restore_handler(path: &std::path::Path, buses: &[&Bus]) -> anyhow::Resu
         wake_devices(bus);
     }
     for (key, _) in devices_map.iter().filter(|(_, v)| !v.is_empty()) {
-        info!("Device with device_id: {} did was not restored due to an error or the device might be missing.", key);
+        info!(
+            "Unused restore data for device_id {}, device might be missing.",
+            key
+        );
     }
 
     Ok(())
