@@ -13,12 +13,6 @@ pub fn setup_common_metric_invariants(
 ) {
 }
 
-#[cfg(feature = "kiwi")]
-pub fn forward_security_challenge(_recv: &Tube, _sender: &Tube) {}
-
-#[cfg(feature = "kiwi")]
-pub fn forward_security_signal(_recv: &Tube, _sender: &Tube) {}
-
 pub fn enable_vcpu_monitoring() -> bool {
     false
 }

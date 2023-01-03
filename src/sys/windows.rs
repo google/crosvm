@@ -8,7 +8,6 @@
 
 pub(crate) mod irq_wait;
 pub(crate) mod main;
-pub(crate) mod metrics;
 #[cfg(not(feature = "crash-report"))]
 mod panic_hook;
 
@@ -193,10 +192,10 @@ use crate::crosvm::sys::config::HypervisorKind;
 use crate::crosvm::sys::config::IrqChipKind;
 #[cfg(feature = "stats")]
 use crate::crosvm::sys::windows::stats::StatisticsCollector;
-use crate::sys::windows::metrics::log_descriptor;
-use crate::sys::windows::metrics::MetricEventType;
 pub(crate) use crate::sys::windows::product::get_gpu_product_configs;
+use crate::sys::windows::product::log_descriptor;
 use crate::sys::windows::product::spawn_anti_tamper_thread;
+use crate::sys::windows::product::MetricEventType;
 use product::create_snd_mute_tube_pair;
 #[cfg(any(feature = "haxm", feature = "gvm", feature = "whpx"))]
 use product::create_snd_state_tube;
@@ -204,6 +203,7 @@ use product::handle_pvclock_request;
 use product::merge_session_invariants;
 use product::run_ime_thread;
 use product::set_package_name;
+pub(crate) use product::setup_metrics_reporting;
 use product::start_service_ipc_listener;
 use product::RunControlArgs;
 use product::ServiceVmState;
@@ -526,7 +526,7 @@ fn create_virtio_devices(
 fn create_virtio_gpu_and_input_devices(
     cfg: &mut Config,
     mut gpu_vmm_config: GpuVmmConfig,
-    control_tubes: &mut [TaggedControlTube],
+    #[allow(clippy::ptr_arg)] control_tubes: &mut Vec<TaggedControlTube>,
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
     let mut devs = Vec::new();
     let resource_bridges = Vec::<Tube>::new();
@@ -551,7 +551,7 @@ fn create_virtio_gpu_and_input_devices(
         )?);
     }
 
-    product::push_mouse_device(cfg, &gpu_vmm_config, &mut devs)?;
+    product::push_mouse_device(cfg, &mut gpu_vmm_config, &mut devs)?;
 
     for (idx, pipe) in gpu_vmm_config.input_event_mouse_pipes.drain(..).enumerate() {
         devs.push(create_mouse_device(cfg, pipe, idx as u32)?);
@@ -1885,7 +1885,7 @@ where
         gralloc,
         #[cfg(feature = "stats")]
         stats,
-        None,
+        cfg.service_pipe_name,
         ac97_device_tubes,
         vm_memory_size_mb,
         cfg.host_cpu_topology,

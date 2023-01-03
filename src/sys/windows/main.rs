@@ -37,7 +37,7 @@ use crate::crosvm::sys::cmdline::DeviceSubcommand;
 use crate::crosvm::sys::cmdline::RunMainCommand;
 #[cfg(all(feature = "slirp"))]
 use crate::crosvm::sys::cmdline::RunSlirpCommand;
-use crate::metrics::run_metrics;
+use crate::sys::windows::product::run_metrics;
 use crate::CommandStatus;
 use crate::Config;
 

@@ -6,7 +6,7 @@ Original library: https://github.com/avaneev/r8brain-free-src
 To generate bindings:
 1. go to the r8brain-free-src location. In my case it'll be:
 
-    cd C:\src\kiwivm\third_party\r8brain\
+    cd C:\src\crosvm\third_party\r8brain\
 
 2. Run bindgen and put the binding file in the win_audio r8brain_sys directory"
 

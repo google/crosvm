@@ -28,11 +28,14 @@ use devices::virtio::Gpu;
 use devices::virtio::GpuParameters;
 use hypervisor::VcpuX86_64 as VcpuArch;
 use hypervisor::VmX86_64 as VmArch;
+pub(crate) use metrics::log_descriptor;
+pub(crate) use metrics::MetricEventType;
 use sync::Mutex;
 use vm_control::PvClockCommand;
 
 use super::run_vcpu::VcpuRunMode;
 use crate::crosvm::config::Config;
+use crate::crosvm::sys::cmdline::RunMetricsCommand;
 use crate::sys::platform::TaggedControlTube as SharedTaggedControlTube;
 
 pub struct MessageFromService {}
@@ -222,9 +225,17 @@ pub(super) fn virtio_sound_enabled() -> bool {
     false
 }
 
+pub(crate) fn run_metrics(_args: RunMetricsCommand) -> Result<()> {
+    Ok(())
+}
+
+pub(crate) fn setup_metrics_reporting() -> Result<()> {
+    Ok(())
+}
+
 pub(super) fn push_mouse_device(
     cfg: &Config,
-    _gpu_vmm_config: &GpuVmmConfig,
+    _gpu_vmm_config: &mut GpuVmmConfig,
     _devs: &mut [VirtioDeviceStub],
 ) -> Result<()> {
     Ok(())

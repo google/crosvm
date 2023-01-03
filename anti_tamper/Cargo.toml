@@ -8,7 +8,6 @@ edition = "2021"
 
 [features]
 anti-tamper = []
-kiwi = []
 
 [dependencies]
 base = { path = "../base" }

@@ -617,25 +617,22 @@ fn run_internal(mut cfg: Config) -> Result<()> {
     {
         let broker_metrics = metrics_tube_pair(&mut metric_tubes)?;
         metrics::initialize(broker_metrics);
-        #[cfg(feature = "kiwi")]
-        {
-            let use_vulkan = if cfg!(feature = "gpu") {
-                match &cfg.gpu_parameters {
-                    Some(params) => Some(params.use_vulkan),
-                    None => {
-                        warn!("No GPU parameters set on crosvm config.");
-                        None
-                    }
+        let use_vulkan = if cfg!(feature = "gpu") {
+            match &cfg.gpu_parameters {
+                Some(params) => Some(params.use_vulkan),
+                None => {
+                    warn!("No GPU parameters set on crosvm config.");
+                    None
                 }
-            } else {
-                None
-            };
-            anti_tamper::setup_common_metric_invariants(
-                &cfg.product_version,
-                &cfg.product_channel,
-                &use_vulkan,
-            );
-        }
+            }
+        } else {
+            None
+        };
+        anti_tamper::setup_common_metric_invariants(
+            &cfg.product_version,
+            &cfg.product_channel,
+            &use_vulkan.unwrap_or_default(),
+        );
     }
 
     // We have all the metrics tubes from other children, so give them to the metrics controller
@@ -809,10 +806,7 @@ impl Supervisor {
     }
 
     fn all_non_metrics_processes_exited(&self) -> bool {
-        #[cfg(not(feature = "kiwi"))]
-        return self.children.len() == 0;
-        #[cfg(feature = "kiwi")]
-        return self.children.len() == 0 || self.is_only_metrics_process_running();
+        self.children.len() == 0 || self.is_only_metrics_process_running()
     }
 
     fn start_exit_timer(&mut self, timeout_token: Token) -> Result<()> {

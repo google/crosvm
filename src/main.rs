@@ -29,7 +29,6 @@ use crosvm::config::Config;
 use devices::virtio::vhost::user::device::run_block_device;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost::user::device::run_gpu_device;
-#[cfg(unix)]
 use devices::virtio::vhost::user::device::run_net_device;
 #[cfg(feature = "composite-disk")]
 use disk::create_composite_disk;
@@ -48,7 +47,7 @@ use crosvm::cmdline::Command;
 use crosvm::cmdline::CrossPlatformCommands;
 use crosvm::cmdline::CrossPlatformDevicesCommands;
 #[cfg(windows)]
-use sys::windows::metrics;
+use sys::windows::setup_metrics_reporting;
 #[cfg(feature = "gpu")]
 use vm_control::client::do_gpu_display_add;
 #[cfg(feature = "gpu")]
@@ -159,7 +158,7 @@ where
     crosvm::sys::setup_emulator_crash_reporting(&cfg)?;
 
     #[cfg(windows)]
-    metrics::setup_metrics_reporting()?;
+    setup_metrics_reporting()?;
 
     init_log(log_config, &cfg)?;
     cros_tracing::init();
@@ -433,7 +432,6 @@ fn start_device(opts: cmdline::DeviceCommand) -> std::result::Result<(), ()> {
             CrossPlatformDevicesCommands::Block(cfg) => run_block_device(cfg),
             #[cfg(feature = "gpu")]
             CrossPlatformDevicesCommands::Gpu(cfg) => run_gpu_device(cfg),
-            #[cfg(unix)]
             CrossPlatformDevicesCommands::Net(cfg) => run_net_device(cfg),
         },
         cmdline::DeviceSubcommand::Sys(command) => sys::start_device(command),
