@@ -26,7 +26,17 @@
 
 import argparse
 from argh import arg  # type: ignore
-from impl.common import CROSVM_ROOT, cmd, chdir, cros_repo_root, is_cros_repo, quoted, run_main
+from impl.common import (
+    chdir,
+    cmd,
+    cros_repo_root,
+    CROSVM_ROOT,
+    is_cros_repo,
+    is_kiwi_repo,
+    kiwi_repo_root,
+    quoted,
+    run_main,
+)
 from typing import Optional, Tuple, List
 import getpass
 import shutil
@@ -126,6 +136,14 @@ def workspace_mount_args(cros: bool):
         return [
             f"--volume {quoted(cros_repo_root())}:/workspace:rw",
             "--workdir /workspace/src/platform/crosvm",
+        ]
+    elif is_kiwi_repo():
+        return [
+            f"--volume {quoted(kiwi_repo_root())}:/workspace:rw",
+            # We override /scratch because we run out of memory if we use memory to back the
+            # `/scratch` mount point.
+            f"--volume {quoted(kiwi_repo_root())}/scratch:/scratch/cargo_target:rw",
+            "--workdir /workspace/platform/crosvm",
         ]
     else:
         return [

@@ -54,9 +54,6 @@ import re
 import shutil
 import traceback
 
-# File where to store http headers for gcloud authentication
-AUTH_HEADERS_FILE = Path(gettempdir()) / f"crosvm_gcloud_auth_headers_{getpass.getuser()}"
-
 PathLike = Union[Path, str]
 
 
@@ -758,6 +755,9 @@ def curl_with_git_auth():
         token = get_gcloud_access_token()
         if not token:
             raise Exception("Cannot get gcloud access token.")
+        # File where to store http headers for gcloud authentication
+        AUTH_HEADERS_FILE = Path(gettempdir()) / f"crosvm_gcloud_auth_headers_{getpass.getuser()}"
+
         # Write token to a header file so it will not appear in logs or error messages.
         AUTH_HEADERS_FILE.write_text(f"Authorization: Bearer {token}")
         return cmd(f"curl -H @{AUTH_HEADERS_FILE}")
@@ -866,6 +866,17 @@ def is_cros_repo():
 def cros_repo_root():
     "Root directory of the CrOS repo checkout."
     return (CROSVM_ROOT / "../../..").resolve()
+
+
+def is_kiwi_repo():
+    "Returns true if the crosvm repo contains .kiwi_repo file."
+    dot_kiwi_repo = CROSVM_ROOT / ".kiwi_repo"
+    return dot_kiwi_repo.exists()
+
+
+def kiwi_repo_root():
+    "Root directory of the kiwi repo checkout."
+    return (CROSVM_ROOT / "../..").resolve()
 
 
 if __name__ == "__main__":
