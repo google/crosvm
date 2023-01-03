@@ -1557,9 +1557,19 @@ pub fn run_config_for_broker(raw_tube_transporter: RawDescriptor) -> Result<Exit
     run_config_inner(cfg)
 }
 
-pub fn run_config(cfg: Config) -> Result<ExitState> {
+pub fn run_config(mut cfg: Config) -> Result<ExitState> {
     let _raise_timer_resolution = enable_high_res_timers()
         .exit_context(Exit::EnableHighResTimer, "failed to enable high res timer")?;
+
+    assert_eq!(cfg.vm_evt_wrtube.is_some(), cfg.vm_evt_rdtube.is_some());
+    if cfg.vm_evt_wrtube.is_none() {
+        // There is no broker when using run_config(), so the vm_evt tubes need to be created.
+        let (vm_evt_wrtube, vm_evt_rdtube) =
+            Tube::directional_pair().context("failed to create vm event tube")?;
+        cfg.vm_evt_wrtube = Some(vm_evt_wrtube);
+        cfg.vm_evt_rdtube = Some(vm_evt_rdtube);
+    }
+
     run_config_inner(cfg)
 }
 
