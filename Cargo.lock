@@ -232,14 +232,18 @@ dependencies = [
  "bitflags",
  "cexpr",
  "clang-sys",
+ "clap",
+ "env_logger",
  "lazy_static",
  "lazycell",
+ "log",
  "peeking_take_while",
  "proc-macro2",
  "quote 1.0.21",
  "regex",
  "rustc-hash",
  "shlex",
+ "which",
 ]
 
 [[package]]
@@ -1415,8 +1419,9 @@ dependencies = [
 
 [[package]]
 name = "minijail-sys"
-version = "0.0.13"
+version = "0.0.14"
 dependencies = [
+ "bindgen",
  "libc",
  "pkg-config",
  "which",
