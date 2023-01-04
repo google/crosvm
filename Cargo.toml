@@ -218,6 +218,13 @@ ffmpeg = ["devices/ffmpeg"]
 # Enables the VAAPI backend of video devices.
 vaapi = ["devices/vaapi"]
 
+#! ### Linux-specific feature flags
+
+## Enables the Linux trace_marker backend for cros_tracing. This backend is only
+## supported on Linux systems. It sends all cros_tracing tracepoints to the tracefs
+## filesystem if mounted, for easier debugging with tools like trace-cmd.
+trace_marker = ["cros_tracing/trace_marker"]
+
 #! ### Windows-specific feature flags
 #!
 #! These feature flags are only available on Windows builds of crosvm.
@@ -230,11 +237,6 @@ whpx = ["devices/whpx", "hypervisor/whpx"]
 
 ## Enables a libslirp based network device. Currently only supported on Windows.
 slirp = ["devices/slirp", "net_util/slirp"]
-
-## Enables the Linux trace_marker backend for cros_tracing. This backend is only
-## supported on Linux systems. It sends all cros_tracing tracepoints to the tracefs
-## filesystem if mounted, for easier debugging with tools like trace-cmd.
-trace_marker = ["cros_tracing/trace_marker"]
 
 #! ### Non-additive feature flags
 #!
