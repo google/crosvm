@@ -693,14 +693,14 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     vm_control_indices_to_remove: &mut Vec<usize>,
     service_vm_state: &mut ServiceVmState,
     ac97_host_tubes: &[Tube],
-    ipc_main_loop_tube: &Tube,
+    ipc_main_loop_tube: Option<&Tube>,
     vm_evt_rdtube: &RecvTube,
     control_tubes: &[TaggedControlTube],
     guest_os: &mut RunnableLinuxVm<V, Vcpu>,
     sys_allocator_mutex: &Arc<Mutex<SystemAllocator>>,
     gralloc: &mut RutabagaGralloc,
     virtio_snd_host_mute_tube: &mut Option<Tube>,
-    proto_main_loop_tube: &ProtoTube,
+    proto_main_loop_tube: Option<&ProtoTube>,
     anti_tamper_main_thread_tube: &Option<ProtoTube>,
     balloon_host_tube: &Option<Tube>,
     memory_size_mb: u64,
@@ -882,8 +882,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         Exit::WaitContextAdd,
         "failed to add trigger to wait context",
     )?;
-    let ipc_main_loop_tube = ipc_main_loop_tube.expect("Failed to get main ipc tube");
-    let proto_main_loop_tube = proto_main_loop_tube.expect("Failed to get main proto tube");
 
     if let Some(evt) = broker_shutdown_evt.as_ref() {
         wait_ctx.add(evt, Token::BrokerShutdown).exit_context(
@@ -987,14 +985,14 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 &mut vm_control_indices_to_remove,
                 &mut service_vm_state,
                 &ac97_host_tubes,
-                &ipc_main_loop_tube,
+                ipc_main_loop_tube.as_ref(),
                 &vm_evt_rdtube,
                 &control_tubes,
                 &mut guest_os,
                 &sys_allocator_mutex,
                 &mut gralloc,
                 &mut virtio_snd_host_mute_tube,
-                &proto_main_loop_tube,
+                proto_main_loop_tube.as_ref(),
                 &anti_tamper_main_thread_tube,
                 &balloon_host_tube,
                 memory_size_mb,

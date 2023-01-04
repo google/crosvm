@@ -123,7 +123,7 @@ pub(super) fn handle_tagged_control_tube_event(
     product_tube: &TaggedControlTube,
     virtio_snd_host_mute_tube: &mut Option<Tube>,
     service_vm_state: &mut ServiceVmState,
-    ipc_main_loop_tube: &Tube,
+    ipc_main_loop_tube: Option<&Tube>,
     ac97_host_tubes: &[Tube],
 ) {
 }
@@ -148,9 +148,9 @@ pub(super) fn handle_received_token<V: VmArch + 'static, Vcpu: VcpuArch + 'stati
     _balloon_host_tube: &Option<Tube>,
     _control_tubes: &[SharedTaggedControlTube],
     _guest_os: &mut RunnableLinuxVm<V, Vcpu>,
-    _ipc_main_loop_tube: &Tube,
+    _ipc_main_loop_tube: Option<&Tube>,
     _memory_size_mb: u64,
-    _proto_main_loop_tube: &ProtoTube,
+    _proto_main_loop_tube: Option<&ProtoTube>,
     _pvclock_host_tube: &Option<Tube>,
     _run_mode_arc: &VcpuRunMode,
     _service_vm_state: &mut ServiceVmState,
