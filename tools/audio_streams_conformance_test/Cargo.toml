@@ -24,6 +24,10 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "*"
 thiserror = "1.0.20"
 
+[target.'cfg(unix)'.dependencies]
+minijail = "*" # provided by ebuild
+
 [patch.crates-io]
 audio_streams = { path = "../../common/audio_streams"}  # ignored by ebuild
 libcras = { path = "../../libcras_stub" } # ignored by ebuild
+minijail = { path = "../../third_party/minijail/rust/minijail" } # ignored by ebuild
