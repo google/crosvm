@@ -27,15 +27,22 @@ The following is high level guidance for producing contributions to crosvm.
 
 ### Formatting
 
-To format all code, crosvm defers to rustfmt. In addition, the code adheres to the following rules:
+To format all code, crosvm defers to `rustfmt`. In addition, the code adheres to the following
+rules:
 
-The `use` statements for each module should be grouped in this order
+Each `use` statement should import a single item, as produced by `rustfmt` with
+[`imports_granularity=item`]. Do not use braces to import multiple items.
+
+The `use` statements for each module should be grouped into blocks separated by whitespace in the
+order produced by `rustfmt` with [`group_imports=StdExternalCrate`] and sorted alphabetically:
 
 1. `std`
-1. third-party crates
-1. chrome os crates
-1. crosvm crates
-1. `crate`
+1. third-party + crosvm crates
+1. `crate` + `super`
+
+The import formatting options of `rustfmt` are currently unstable, so these are not enforced
+automatically. If a nightly Rust toolchain is present, it is possible to automatically reformat the
+code to match these guidelines by running `tools/fmt --nightly`.
 
 crosvm uses the [remain](https://github.com/dtolnay/remain) crate to keep error enums sorted, along
 with the `#[sorted]` attribute to keep their corresponding match statements in the same order.
@@ -203,3 +210,5 @@ Output is found at `docs/book/book/html/`.
 [mdbook]: https://rust-lang.github.io/mdBook/
 [mdbook-mermaid]: https://github.com/badboy/mdbook-mermaid
 [the book of crosvm]: https://crosvm.dev/book/
+[`group_imports=stdexternalcrate`]: https://rust-lang.github.io/rustfmt/?version=v1.5.1&search=#group_imports
+[`imports_granularity=item`]: https://rust-lang.github.io/rustfmt/?version=v1.5.1&search=#imports_granularity
