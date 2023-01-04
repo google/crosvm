@@ -124,8 +124,9 @@ default = ["audio", "balloon", "config-file", "document-features", "gpu", "qcow"
 ## Enables cross-platform audio devices
 audio = ["devices/audio"]
 
-## Enables the virtio-balloon device which allows dynamic scaling of memory via vm_control commands.
-## See [Balloon Device](https://crosvm.dev/book/devices/balloon.html) for more information.
+## Enables the virtio-balloon device which allows dynamic scaling of memory via `vm_control`
+## commands. See [Balloon Device](https://crosvm.dev/book/devices/balloon.html) for more
+## information.
 balloon = ["devices/balloon", "vm_control/balloon"]
 
 ## Enables the composite-disk format, which adds protobufs as a dependency of the build. This format
@@ -133,10 +134,14 @@ balloon = ["devices/balloon", "vm_control/balloon"]
 ## concatenate large file system images into a single disk image.
 composite-disk = ["protos/composite-disk", "protobuf", "disk/composite-disk"]
 
-## Enables support for JSON configuration files that can be specified using `--cfg`.
+## Enables support for JSON configuration files that can be specified using `--cfg`. See
+## [Configuration Files](https://crosvm.dev/book/running_crosvm/options.html#configuration-files)
+## for more information.
 config-file = []
 
-## Enables using gdb to debug the guest kernel.
+## Enables using gdb to debug the guest kernel. See
+## [GDB Support](https://crosvm.dev/book/running_crosvm/advanced_usage.html#gdb-support) for more
+## information.
 gdb = [
     "aarch64/gdb",
     "arch/gdb",
@@ -146,7 +151,7 @@ gdb = [
     "x86_64/gdb",
 ]
 
-## Enables a panic handler that writes panic info to the RUST_PANIC_SIG memfd.
+## Enables a panic handler that writes panic info to the `RUST_PANIC_SIG` memfd.
 panic-memfd = []
 
 ## Enables the use of the qcow format for block devices.
@@ -236,7 +241,7 @@ trace_marker = ["cros_tracing/trace_marker"]
 #! These feature flags change the behavior of crosvm instead of adding functionality.
 #! This is deprecated and will be phased out.
 
-## Run crosvm with --disable-sandbox by default.
+## Run crosvm with `--disable-sandbox` by default.
 default-no-sandbox = []
 
 ## Special build of crosvm for ChromeOS that only supports direct device passthrough.
@@ -273,10 +278,10 @@ libvda-stub = ["devices/libvda-stub"]
 plugin = ["protos/plugin", "crosvm_plugin", "kvm", "kvm_sys", "protobuf"]
 
 ## Enables battery reporting via the ChromeOS powerd. Requires access to the
-## org.chromium.PowerManager dbus service.
+## `org.chromium.PowerManager` dbus service.
 power-monitor-powerd = ["arch/power-monitor-powerd"]
 
-## Enables a virtualized TPM device that uses the org.chromium.Vtpm dbus service.
+## Enables a virtualized TPM device that uses the `org.chromium.Vtpm` dbus service.
 vtpm = ["devices/vtpm"]
 
 #! #### Windows-future
