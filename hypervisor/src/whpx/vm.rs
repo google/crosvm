@@ -21,6 +21,7 @@ use base::Protection;
 use base::RawDescriptor;
 use base::Result;
 use base::SafeDescriptor;
+use base::SendTube;
 use fnv::FnvHashMap;
 use libc::EEXIST;
 use libc::EFAULT;
@@ -76,6 +77,8 @@ pub struct WhpxVm {
     //      will make this faster.
     //   3. We only ever register one eventfd to each address. This simplifies our data structure.
     ioevents: FnvHashMap<IoEventAddress, Event>,
+    // Tube to send events to control.
+    vm_evt_wrtube: Option<SendTube>,
 }
 
 impl WhpxVm {
@@ -85,6 +88,7 @@ impl WhpxVm {
         guest_mem: GuestMemory,
         cpuid: CpuId,
         apic_emulation: bool,
+        vm_evt_wrtube: Option<SendTube>,
     ) -> WhpxResult<WhpxVm> {
         let partition = SafePartition::new()?;
         // setup partition defaults.
@@ -236,6 +240,7 @@ impl WhpxVm {
             mem_regions: Arc::new(Mutex::new(BTreeMap::new())),
             mem_slot_gaps: Arc::new(Mutex::new(BinaryHeap::new())),
             ioevents: FnvHashMap::default(),
+            vm_evt_wrtube,
         })
     }
 
@@ -387,6 +392,10 @@ impl Vm for WhpxVm {
             mem_regions: self.mem_regions.clone(),
             mem_slot_gaps: self.mem_slot_gaps.clone(),
             ioevents,
+            vm_evt_wrtube: self
+                .vm_evt_wrtube
+                .as_ref()
+                .map(|t| t.try_clone().expect("could not clone vm_evt_wrtube")),
         })
     }
 
