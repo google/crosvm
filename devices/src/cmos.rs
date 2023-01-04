@@ -261,6 +261,23 @@ mod tests {
         assert_eq!(cmos.data[0x41], 0x01);
     }
 
+    fn modify_device(cmos: &mut Cmos) {
+        let info_index = BusAccessInfo {
+            offset: 0,
+            address: 0x71,
+            id: 0,
+        };
+
+        let info_data = BusAccessInfo {
+            offset: 1,
+            address: 0x71,
+            id: 0,
+        };
+        // change index to 0x42.
+        cmos.write(info_index, &[0x42]);
+        cmos.write(info_data, &[0x01]);
+    }
+
     #[test]
     fn cmos_date_time_1999() {
         let mut cmos = Cmos::new(1024, 0, test_now_party_like_its_1999);
@@ -350,10 +367,24 @@ mod tests {
         Ok(())
     }
 
-    suspendable_tests! {
-        cmos1999: Cmos::new(1024, 0, test_now_party_like_its_1999),
-        cmos2k: Cmos::new(1024, 0, test_now_y2k_compliant),
-        cmos2016: Cmos::new(1024, 0, test_now_2016_before_leap_second),
-        cmos2017: Cmos::new(1024, 0, test_now_2017_after_leap_second),
-    }
+    suspendable_tests!(
+        cmos1999,
+        Cmos::new(1024, 0, test_now_party_like_its_1999),
+        modify_device
+    );
+    suspendable_tests!(
+        cmos2k,
+        Cmos::new(1024, 0, test_now_y2k_compliant),
+        modify_device
+    );
+    suspendable_tests!(
+        cmos2016,
+        Cmos::new(1024, 0, test_now_2016_before_leap_second),
+        modify_device
+    );
+    suspendable_tests!(
+        cmos2017,
+        Cmos::new(1024, 0, test_now_2017_after_leap_second),
+        modify_device
+    );
 }

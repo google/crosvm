@@ -796,6 +796,10 @@ mod tests {
         }
     }
 
+    fn modify_constant_device(constant: &mut ConstantDevice) {
+        constant.uses_full_addr = !constant.uses_full_addr;
+    }
+
     #[test]
     fn bus_insert() {
         let bus = Bus::new();
@@ -881,15 +885,21 @@ mod tests {
         assert!(bus.write(0x15, &values));
     }
 
-    suspendable_tests! {
-        dummy_device: DummyDevice,
-        constant_device_true: ConstantDevice {
+    suspendable_tests!(
+        constant_device_true,
+        ConstantDevice {
             uses_full_addr: true,
         },
-        constant_device_false: ConstantDevice {
+        modify_constant_device
+    );
+
+    suspendable_tests!(
+        constant_device_false,
+        ConstantDevice {
             uses_full_addr: false,
         },
-    }
+        modify_constant_device
+    );
 
     #[test]
     fn bus_range_contains() {

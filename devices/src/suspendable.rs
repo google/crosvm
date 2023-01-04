@@ -53,115 +53,141 @@ pub trait Suspendable {
 // Do implement device-specific tests to validate the functionality of the device.
 // Those tests are not a replacement for regular tests. Only an extension specific to the trait's
 // basic functionality.
+/// `dev` is the device.
+/// `modfun` is the function name of the function that would modify the device. The function call
+/// should modify the device so that a snapshot taken after the function call would be different
+/// from a snapshot taken before the function call.
 #[macro_export]
 macro_rules! suspendable_tests {
-    ($($name:ident: $expr:expr,)*) => {
-        $(
-            mod $name {
-                use super::*;
+    ($name:ident, $dev:expr, $modfun:ident) => {
+        mod $name {
+            use super::*;
 
-                #[test]
-                fn test_sleep_idempotent() {
-                    let unit = &mut $expr;
-                    let res = unit.sleep();
-                    let res2 = unit.sleep();
-                    match res {
-                        Ok(()) => (),
-                        Err(e) => println!("{}", e),
-                    }
-                    match res2 {
-                        Ok(()) => (),
-                        Err(e) => println!("idempotent: {}", e),
-                    }
+            #[test]
+            fn test_sleep_idempotent() {
+                let unit = &mut $dev;
+                let res = unit.sleep();
+                let res2 = unit.sleep();
+                match res {
+                    Ok(()) => (),
+                    Err(e) => println!("{}", e),
                 }
-
-                #[test]
-                fn test_snapshot_restore() {
-                    let unit = &mut $expr;
-                    let snap = unit.snapshot();
-                    match snap {
-                        Ok(snap_res) => {
-                            let res = unit.restore(snap_res);
-                            match res {
-                                Ok(()) => (),
-                                Err(e) => println!("{}", e),
-                            }
-                        },
-                        Err(e) => println!("{}", e),
-                    }
-                }
-
-                #[test]
-                fn test_sleep_snapshot() {
-                    let unit = &mut $expr;
-                    let sleep_result = unit.sleep();
-                    let snap_result = unit.snapshot();
-                    match sleep_result {
-                        Ok(()) => (),
-                        Err(e) => println!("{}", e),
-                    }
-                    match snap_result {
-                        Ok(_res) => (),
-                        Err(e) => println!("{}", e),
-                    }
-                }
-
-                #[test]
-                fn test_sleep_snapshot_restore_wake() {
-                    let unit = &mut $expr;
-                    let sleep_result = unit.sleep();
-                    let snap_result = unit.snapshot();
-                    match sleep_result {
-                        Ok(()) => (),
-                        Err(e) => println!("{}", e),
-                    }
-                    match snap_result {
-                        Ok(snap_res) => {
-                            let res = unit.restore(snap_res);
-                            match res {
-                                Ok(()) => (),
-                                Err(e) => println!("{}", e),
-                            }
-                        },
-                        Err(e) => println!("{}", e),
-                    }
-                    let wake_res = unit.wake();
-                    match wake_res {
-                        Ok(()) => (),
-                        Err(e) => println!("{}", e),
-                    }
-                }
-
-                #[test]
-                fn test_sleep_snapshot_wake() {
-                    let unit = &mut $expr;
-                    let sleep_result = unit.sleep();
-                    let snap_result = unit.snapshot();
-                    match sleep_result {
-                        Ok(()) => (),
-                        Err(e) => println!("{}", e),
-                    }
-                    match snap_result {
-                        Ok(_snap_res) => (),
-                        Err(e) => println!("{}", e),
-                    }
-                    let wake_res = unit.wake();
-                    match wake_res {
-                        Ok(()) => (),
-                        Err(e) => println!("{}", e),
-                    }
-                }
-
-                #[test]
-                fn test_snapshot() {
-                    let unit = &mut $expr;
-                    let snap_result = unit.snapshot();
-                    match snap_result {
-                        Ok(_snap_res) => (),
-                        Err(e) => println!("{}", e),
-                    }
+                match res2 {
+                    Ok(()) => (),
+                    Err(e) => println!("idempotent: {}", e),
                 }
             }
-        )*
-    }
+
+            #[test]
+            fn test_snapshot_restore() {
+                let unit = &mut $dev;
+                let snap = unit.snapshot();
+                match snap {
+                    Ok(snap_res) => {
+                        let res = unit.restore(snap_res);
+                        match res {
+                            Ok(()) => (),
+                            Err(e) => println!("{}", e),
+                        }
+                    }
+                    Err(e) => println!("{}", e),
+                }
+            }
+
+            #[test]
+            fn test_sleep_snapshot() {
+                let unit = &mut $dev;
+                let sleep_result = unit.sleep();
+                let snap_result = unit.snapshot();
+                match sleep_result {
+                    Ok(()) => (),
+                    Err(e) => println!("{}", e),
+                }
+                match snap_result {
+                    Ok(_res) => (),
+                    Err(e) => println!("{}", e),
+                }
+            }
+
+            #[test]
+            fn test_sleep_snapshot_restore_wake() {
+                let unit = &mut $dev;
+                let sleep_result = unit.sleep();
+                let snap_result = unit.snapshot();
+                match sleep_result {
+                    Ok(()) => (),
+                    Err(e) => println!("{}", e),
+                }
+                match snap_result {
+                    Ok(snap_res) => {
+                        let res = unit.restore(snap_res);
+                        match res {
+                            Ok(()) => (),
+                            Err(e) => println!("{}", e),
+                        }
+                    }
+                    Err(e) => println!("{}", e),
+                }
+                let wake_res = unit.wake();
+                match wake_res {
+                    Ok(()) => (),
+                    Err(e) => println!("{}", e),
+                }
+            }
+
+            #[test]
+            fn test_sleep_snapshot_wake() {
+                let unit = &mut $dev;
+                let sleep_result = unit.sleep();
+                let snap_result = unit.snapshot();
+                match sleep_result {
+                    Ok(()) => (),
+                    Err(e) => println!("{}", e),
+                }
+                match snap_result {
+                    Ok(_snap_res) => (),
+                    Err(e) => println!("{}", e),
+                }
+                let wake_res = unit.wake();
+                match wake_res {
+                    Ok(()) => (),
+                    Err(e) => println!("{}", e),
+                }
+            }
+
+            #[test]
+            fn test_snapshot() {
+                let unit = &mut $dev;
+                let snap_result = unit.snapshot();
+                match snap_result {
+                    Ok(_snap_res) => (),
+                    Err(e) => println!("{}", e),
+                }
+            }
+
+            #[test]
+            fn test_suspend_mod_restore() {
+                let unit = &mut $dev;
+                let snap_result = unit.snapshot().expect("failed to take initial snapshot");
+                $modfun(unit);
+                unit.restore(snap_result.clone())
+                    .expect("failed to restore snapshot");
+                let snap2_result = unit
+                    .snapshot()
+                    .expect("failed to take snapshot after modification");
+                assert_eq!(snap_result, snap2_result);
+            }
+
+            #[test]
+            fn test_suspend_mod() {
+                let unit = &mut $dev;
+                let snap_result = unit.snapshot().expect("failed to take initial snapshot");
+                $modfun(unit);
+                let snap2_result = unit
+                    .snapshot()
+                    .expect("failed to take snapshot after modification");
+                assert_ne!(snap_result, snap2_result)
+            }
+        }
+    };
 }

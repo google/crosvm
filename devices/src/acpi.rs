@@ -1048,13 +1048,22 @@ mod tests {
         evt
     }
 
-    suspendable_tests! {
-        acpi: ACPIPMResource::new(
+    fn modify_device(acpi: &mut ACPIPMResource) {
+        {
+            let mut pm1 = acpi.pm1.lock();
+            pm1.enable += 1;
+        }
+    }
+
+    suspendable_tests!(
+        acpi,
+        ACPIPMResource::new(
             get_irq_evt(),
             #[cfg(feature = "direct")]
             None,
             Event::new().unwrap(),
             get_evt_tube(),
         ),
-    }
+        modify_device
+    );
 }

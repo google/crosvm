@@ -932,8 +932,14 @@ mod tests {
         assert_eq!(data[0], b'c');
     }
 
-    suspendable_tests! {
-        serial: Serial::new(
+    fn modify_device(serial: &mut Serial) {
+        serial.clear_in_buffer();
+        serial.queue_input_bytes(&[b'a', b'b', b'c']).unwrap();
+    }
+
+    suspendable_tests!(
+        serial,
+        Serial::new(
             ProtectionType::Unprotected,
             Event::new().unwrap(),
             None,
@@ -942,7 +948,8 @@ mod tests {
             false,
             Vec::new(),
         ),
-    }
+        modify_device
+    );
 
     fn assert_timestamp_is_present(data: &[u8], serial_message: &str) {
         const TIMESTAMP_START: &str = "[";
