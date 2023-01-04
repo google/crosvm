@@ -218,6 +218,8 @@ pub enum Error {
     CreateSocket(io::Error),
     #[error("failed to create VCPU: {0}")]
     CreateVcpu(base::Error),
+    #[error("custom pVM firmware could not be loaded: {0}")]
+    CustomPvmFwLoadFailure(arch::LoadImageError),
     #[error("vm created wrong kind of vcpu")]
     DowncastVcpu,
     #[error("failed to enable singlestep execution: {0}")]
@@ -240,10 +242,8 @@ pub enum Error {
     LoadElfKernel(kernel_loader::Error),
     #[error("failed to map arm pvtime memory: {0}")]
     MapPvtimeError(base::Error),
-    #[error("failed to protect vm: {0}")]
-    ProtectVm(base::Error),
     #[error("pVM firmware could not be loaded: {0}")]
-    PvmFwLoadFailure(arch::LoadImageError),
+    PvmFwLoadFailure(base::Error),
     #[error("ramoops address is different from high_mmio_base: {0} vs {1}")]
     RamoopsAddress(u64, u64),
     #[error("error reading guest memory: {0}")]
@@ -454,14 +454,14 @@ impl arch::LinuxArch for AArch64 {
                 GuestAddress(AARCH64_PROTECTED_VM_FW_START),
                 AARCH64_PROTECTED_VM_FW_MAX_SIZE,
             )
-            .map_err(Error::PvmFwLoadFailure)?;
+            .map_err(Error::CustomPvmFwLoadFailure)?;
         } else if components.hv_cfg.protection_type.runs_firmware() {
             // Tell the hypervisor to load the pVM firmware.
             vm.load_protected_vm_firmware(
                 GuestAddress(AARCH64_PROTECTED_VM_FW_START),
                 AARCH64_PROTECTED_VM_FW_MAX_SIZE,
             )
-            .map_err(Error::ProtectVm)?;
+            .map_err(Error::PvmFwLoadFailure)?;
         }
 
         for (vcpu_id, vcpu) in vcpus.iter().enumerate() {
