@@ -260,12 +260,10 @@ fn sleep_devices(bus: &Bus) -> anyhow::Result<()> {
             info!("Devices slept successfully");
             Ok(())
         }
-        Err(e) => {
-            return Err(anyhow!(
-                "Failed to sleep all devices: {}. Waking up sleeping devices.",
-                e
-            ));
-        }
+        Err(e) => Err(anyhow!(
+            "Failed to sleep all devices: {}. Waking up sleeping devices.",
+            e
+        )),
     }
 }
 
@@ -323,7 +321,7 @@ async fn snapshot_handler(path: &std::path::Path, buses: &[&Bus]) -> anyhow::Res
         .create(true)
         .write(true)
         .truncate(true)
-        .open(&path)
+        .open(path)
         .with_context(|| format!("failed to open {}", path.display()))?;
 
     for bus in buses {
@@ -359,7 +357,7 @@ async fn restore_handler(path: &std::path::Path, buses: &[&Bus]) -> anyhow::Resu
     let file = OpenOptions::new()
         .read(true)
         .write(false)
-        .open(&path)
+        .open(path)
         .with_context(|| format!("failed to open {}", path.display()))?;
 
     let mut devices_map: HashMap<u32, VecDeque<serde_json::Value>> = HashMap::new();

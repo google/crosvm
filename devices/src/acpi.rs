@@ -1038,14 +1038,13 @@ mod tests {
     }
 
     fn get_irq_evt() -> IrqLevelEvent {
-        let evt = match crate::IrqLevelEvent::new() {
+        match crate::IrqLevelEvent::new() {
             Ok(evt) => evt,
             Err(e) => panic!(
                 "failed to create irqlevelevt: {} - panic. Can't test ACPI",
                 e
             ),
-        };
-        evt
+        }
     }
 
     fn modify_device(acpi: &mut ACPIPMResource) {

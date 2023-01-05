@@ -21,7 +21,7 @@ use minijail::Minijail;
 /// to execute just the specified test.
 fn call_test_in_child_process(name: &str) {
     let result = Command::new(current_exe().unwrap())
-        .args(&[
+        .args([
             "--test-threads=1",
             "--nocapture",
             "--ignored",

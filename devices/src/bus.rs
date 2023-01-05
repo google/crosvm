@@ -416,15 +416,15 @@ impl Bus {
                 BusDeviceEntry::OuterSync(dev) => {
                     let device_lock = (*dev).lock();
                     (
-                        u32::from((&device_lock).device_id()),
+                        u32::from(device_lock.device_id()),
                         (*device_lock).snapshot(),
                         (*device_lock).debug_label(),
                     )
                 }
                 BusDeviceEntry::InnerSync(dev) => (
                     u32::from((dev).device_id()),
-                    (&**dev).snapshot_sync(),
-                    (&**dev).debug_label(),
+                    (**dev).snapshot_sync(),
+                    (**dev).debug_label(),
                 ),
             };
             match serialized_device {
@@ -453,7 +453,7 @@ impl Bus {
             match &(device_entry.device) {
                 BusDeviceEntry::OuterSync(dev) => {
                     let mut device_lock = (*dev).lock();
-                    let device_id = u32::from((&device_lock).device_id());
+                    let device_id = u32::from(device_lock.device_id());
                     let device_data = devices_map.get_mut(&device_id);
                     match device_data {
                         Some(dev_dq) => {
@@ -461,7 +461,7 @@ impl Bus {
                                 Some(dev_data) => {
                                     (*device_lock).restore(dev_data).context("device failed to restore snapshot")?;
                                 }
-                                None => base::info!("no data found in snapshot for {}", (&device_lock).debug_label()),
+                                None => base::info!("no data found in snapshot for {}", device_lock.debug_label()),
                             }
                         },
                         None => base::info!("device {} does not have stored data in the snapshot. Device data will not change.", (*device_lock).debug_label()),
@@ -723,7 +723,7 @@ mod tests {
 
     impl Suspendable for DummyDevice {
         fn snapshot(&self) -> AnyhowResult<serde_json::Value> {
-            serde_json::to_value(&self).context("error serializing")
+            serde_json::to_value(self).context("error serializing")
         }
 
         fn restore(&mut self, data: serde_json::Value) -> AnyhowResult<()> {
@@ -779,7 +779,7 @@ mod tests {
 
     impl Suspendable for ConstantDevice {
         fn snapshot(&self) -> AnyhowResult<serde_json::Value> {
-            serde_json::to_value(&self).context("error serializing")
+            serde_json::to_value(self).context("error serializing")
         }
 
         fn restore(&mut self, data: serde_json::Value) -> AnyhowResult<()> {

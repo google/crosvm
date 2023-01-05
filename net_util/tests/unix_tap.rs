@@ -20,7 +20,7 @@ fn call_test_with_sudo(name: &str) {
     // Note: The combination of SUDO_ASKPASS and --askpass will fail if sudo has to ask for a
     // password.
     let can_sudo = Command::new("sudo")
-        .args(&["--askpass", "true"])
+        .args(["--askpass", "true"])
         .env("SUDO_ASKPASS", "false")
         .output()
         .unwrap();
@@ -29,7 +29,7 @@ fn call_test_with_sudo(name: &str) {
     }
 
     let result = Command::new("sudo")
-        .args(&[
+        .args([
             "--preserve-env",
             current_exe().unwrap().to_str().unwrap(),
             "--nocapture",
