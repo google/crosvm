@@ -64,12 +64,6 @@ impl StatelessDecoderBackend for Backend<BackendHandle> {
         })
     }
 
-    fn new_handle(&mut self, _: &Self::Handle) -> StatelessBackendResult<Self::Handle> {
-        Ok(Handle {
-            handle: Rc::new(RefCell::new(BackendHandle)),
-        })
-    }
-
     fn new_picture(&mut self, _: &PictureData, _: u64) -> StatelessBackendResult<()> {
         Ok(())
     }

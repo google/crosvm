@@ -72,10 +72,6 @@ pub(crate) trait StatelessDecoderBackend: VideoDecoderBackend {
     /// and then assign the ownership of the Picture to the Handle.
     fn submit_picture(&mut self, picture: &PictureData, block: bool) -> Result<Self::Handle>;
 
-    /// Indicates that the decoder has split a picture and that a new Handle
-    /// must be obtained.
-    fn new_handle(&mut self, handle: &Self::Handle) -> Result<Self::Handle>;
-
     /// Get the test parameters for the backend. The caller is reponsible for
     /// downcasting them to the correct type, which is backend-dependent.
     #[cfg(test)]

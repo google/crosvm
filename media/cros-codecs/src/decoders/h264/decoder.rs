@@ -1607,7 +1607,7 @@ where
                 // Split the Frame into two complementary fields so reference
                 // marking is easier. This is inspired by the GStreamer implementation.
                 let other_field = PictureData::split_frame(&pic_rc);
-                let other_field_handle = self.backend.new_handle(&handle)?;
+                let other_field_handle = handle.clone();
 
                 self.add_to_dpb(pic_rc, Some(handle))?;
                 self.add_to_dpb(other_field, Some(other_field_handle))?;

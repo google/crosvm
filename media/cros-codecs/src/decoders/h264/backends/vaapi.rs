@@ -677,12 +677,6 @@ impl StatelessDecoderBackend for Backend {
             .map_err(|e| StatelessBackendError::Other(anyhow!(e)))
     }
 
-    fn new_handle(&mut self, handle: &Self::Handle) -> StatelessBackendResult<Self::Handle> {
-        self.backend
-            .build_va_decoded_handle(handle.inner(), handle.timestamp())
-            .map_err(|e| StatelessBackendError::Other(anyhow!(e)))
-    }
-
     fn new_picture(&mut self, _: &PictureData, timestamp: u64) -> StatelessBackendResult<()> {
         let context = self.backend.metadata_state.context()?;
 
