@@ -14,4 +14,4 @@ libc = "0.2.65"
 
 [build-dependencies]
 anyhow = "*"
-cbindgen = "0.20.0"
+cbindgen = "0.24"
