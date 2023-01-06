@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Generator, List, cast
 
-from impl.check_code_hygiene import has_crlf_line_endings
+from impl.check_code_hygiene import has_crlf_line_endings, has_lf_line_endings
 from impl.common import (
     CROSVM_ROOT,
     TOOLS_ROOT,
@@ -51,11 +51,20 @@ def check_python_format(context: CheckContext):
     )
 
 
-def check_crlf_line_endings(_: CheckContext):
+def check_crlf_line_endings(context: CheckContext):
     "Checks for crlf line endingings."
-    crlf_endings = has_crlf_line_endings()
+    crlf_endings = has_crlf_line_endings(context.all_files)
     if crlf_endings:
         print("Error: Following files have crlf(dos) line encodings")
+        print(*crlf_endings)
+        raise Exception("Files with crlf line endings.")
+
+
+def check_lf_line_endings(context: CheckContext):
+    "Checks for crlf line endingings."
+    crlf_endings = has_lf_line_endings(context.all_files)
+    if crlf_endings:
+        print("Error: Following files have lf(unix) line encodings")
         print(*crlf_endings)
         raise Exception("Files with crlf line endings.")
 
@@ -322,7 +331,8 @@ CHECKS: List[Check] = [
             "**.json",
         ],
     ),
-    Check(check_crlf_line_endings),
+    Check(check_crlf_line_endings, exclude=["**.bat"]),
+    Check(check_lf_line_endings, files=["**.bat"]),
 ]
 
 CHECKS_DICT = dict((c.name, c) for c in CHECKS)

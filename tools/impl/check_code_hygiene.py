@@ -4,6 +4,7 @@
 
 import argparse
 from pathlib import Path
+from typing import List
 import re
 import subprocess
 import sys
@@ -86,13 +87,13 @@ def is_sys_util_independent():
     return not crates, crates
 
 
-def has_crlf_line_endings():
+def has_line_endings(file_pattern: str, line_ending_pattern: str):
     """Searches for files with crlf(dos) line endings in a git repo. Returns
     a list of files having crlf line endings.
 
     """
     process = subprocess.Popen(
-        "git ls-files --eol",
+        f"git ls-files --eol {file_pattern}",
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -105,7 +106,7 @@ def has_crlf_line_endings():
     if process.returncode != 0:
         return dos_files
 
-    crlf_re = re.compile("crlf|mixed")
+    crlf_re = re.compile(line_ending_pattern)
     assert process.stdout
     for line in iter(stdout.splitlines()):
         # A typical output of git ls-files --eol looks like below
@@ -115,6 +116,16 @@ def has_crlf_line_endings():
             dos_files.append(fields[3] + "\n")
 
     return dos_files
+
+
+def has_crlf_line_endings(files: List[Path]):
+    f = " ".join([str(file) for file in files])
+    return has_line_endings(f, "crlf|mixed")
+
+
+def has_lf_line_endings(files: List[Path]):
+    f = " ".join([str(file) for file in files])
+    return has_line_endings(f, "\blf|mixed")
 
 
 def main():
