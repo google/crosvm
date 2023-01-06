@@ -23,6 +23,7 @@ preserve_hostname: true
 # Runtime dependencies of crosvm binaries.
 # Note: Keep in sync with ./install-[aarch64-]deps.sh
 packages:
+    - gcc
     - libavcodec59
     - libavutil57
     - libcap2
@@ -35,6 +36,8 @@ packages:
     - libwayland-client0
     - libx11-6
     - libxext6
+    - nasm
+    - ncat
     - rsync
 
 # Commands to run once during setup
@@ -42,6 +45,8 @@ runcmd:
     # Append arch to hostname to make the VM easier to identify.
     - echo "testvm-$(arch)" > /etc/hostname
     - echo 127.0.0.1 testvm-$(arch) >> /etc/hosts
+
+    - mkdir /var/empty
 
     # Enable core dumps for debugging crashes
     - echo "* soft core unlimited" > /etc/security/limits.conf

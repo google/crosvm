@@ -130,7 +130,7 @@ ARCH_TO_QEMU: Dict[Arch, Tuple[str, List[Iterable[str]]]] = {
     "x86_64": (
         "qemu-system-x86_64",
         [
-            ("-cpu", "kvm64,vmx=on"),
+            ("-cpu", "host"),
             ("-netdev", f"user,id=net0,hostfwd=tcp::{SSH_PORTS['x86_64']}-:22"),
             *([("-enable-kvm",)] if KVM_SUPPORT else []),
             *SHARED_ARGS,

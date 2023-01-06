@@ -22,13 +22,13 @@
 
 CARGO_TARGET=$(shell cargo metadata --no-deps --format-version 1 | \
 	jq -r ".target_directory")
-TARGET=$(CARGO_TARGET)/crosvm_tools/$(ARCH)
+TARGET=/tmp/crosvm_tools/$(ARCH)
 $(shell mkdir -p $(TARGET))
 
 ifeq ($(ARCH), x86_64)
   DEBIAN_ARCH=amd64
   QEMU_CMD=qemu-system-x86_64 \
-		-cpu Broadwell \
+		-cpu host \
 		-enable-kvm
 else ifeq ($(ARCH), aarch64)
   DEBIAN_ARCH=arm64
@@ -60,6 +60,7 @@ upload: $(LOCAL_IMAGE)
 # Download debian bullseye as base image for the testvm.
 $(TARGET)/debian.qcow2:
 	wget $(DEBIAN_URL)/debian-12-generic-$(DEBIAN_ARCH)-daily-20220912-1136.qcow2 -O $@
+	qemu-img resize $@ 4G
 
 # The cloud init file contains instructions for how to set up the VM when it's
 # first booted.
@@ -75,7 +76,7 @@ $(LOCAL_IMAGE): $(TARGET)/clould_init.img $(TARGET)/debian.qcow2
 		-m 4G -smp 8 \
 		-display none \
 		-serial stdio \
-		-hda $@ \
+		-drive file=$@,format=qcow2,index=0,media=disk \
 		-drive file=$(TARGET)/clould_init.img,format=raw,index=1,media=disk
 	qemu-img convert -O qcow2 -c $@ $@-compressed
 	mv -f $@-compressed $@
