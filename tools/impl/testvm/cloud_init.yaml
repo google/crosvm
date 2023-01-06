@@ -48,6 +48,15 @@ runcmd:
 
     - mkdir /var/empty
 
+    # Install cargo-nextest using prebuilt binaries and validate checksum.
+{% if v1.machine == 'aarch64' %}
+    - curl -LsSf https://get.nexte.st/0.9.43/linux-arm | tar zxf - -C /usr/bin
+    - echo "59374b208807b5002f96c815a04f6bcc80d16707c2e8046471bb41043324363e /usr/bin/cargo-nextest" | sha256sum -c -
+{% else %}
+    - curl -LsSf https://get.nexte.st/0.9.43/linux | tar zxf - -C /usr/bin
+    - echo "0b100bd45bbae6e7a4fa05f8f2cee0ca231997875ec43f984cd5ffaa2e6e9a98 /usr/bin/cargo-nextest" | sha256sum -c -
+{% endif %}
+
     # Enable core dumps for debugging crashes
     - echo "* soft core unlimited" > /etc/security/limits.conf
 

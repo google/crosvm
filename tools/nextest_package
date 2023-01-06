@@ -5,6 +5,7 @@
 
 import argparse
 import json
+from multiprocessing.pool import ThreadPool
 import shlex
 import shutil
 from fnmatch import fnmatch
@@ -17,6 +18,9 @@ from impl.common import (
     cmd,
     cwd_context,
     parallel,
+    print_timing_info,
+    quoted,
+    record_time,
 )
 
 # List of globs matching files in the source tree required by tests at runtime.
@@ -52,7 +56,7 @@ def collect_rust_libs():
 
 def collect_test_binaries(metadata: Any, strip: bool):
     "Collect all test binaries that are needed to run the tests."
-    target_dir = metadata["rust-build-meta"]["target-directory"]
+    target_dir = Path(metadata["rust-build-meta"]["target-directory"])
     test_binaries = [
         Path(suite["binary-path"]).relative_to(target_dir)
         for suite in metadata["rust-binaries"].values()
@@ -64,15 +68,23 @@ def collect_test_binaries(metadata: Any, strip: bool):
         for binary in crate
     ]
 
-    for binary_path in test_binaries + non_test_binaries:
+    def process_binary(binary_path: Path):
         source_path = target_dir / binary_path
         destination_path = binary_path
         if strip:
             stripped_path = source_path.with_suffix(".stripped")
-            rust_strip(f"--strip-all {source_path} -o {stripped_path}").fg()
-            yield (stripped_path, destination_path)
+            if (
+                not stripped_path.exists()
+                or source_path.stat().st_ctime > stripped_path.stat().st_ctime
+            ):
+                rust_strip(f"--strip-all {source_path} -o {stripped_path}").fg()
+            return (stripped_path, destination_path)
         else:
-            yield (source_path, destination_path)
+            return (source_path, destination_path)
+
+    # Parallelize rust_strip calls.
+    pool = ThreadPool()
+    return pool.map(process_binary, test_binaries + non_test_binaries)
 
 
 def collect_test_data_files():
@@ -186,6 +198,7 @@ def main():
     parser.add_argument("--output-directory", "-d")
     parser.add_argument("--output-archive", "-o")
     parser.add_argument("--clean", action="store_true")
+    parser.add_argument("--timing-info", action="store_true")
     (args, nextest_list_args) = parser.parse_known_args()
     chdir(CROSVM_ROOT)
 
@@ -201,16 +214,27 @@ def main():
     if args.clean and output_directory.exists():
         shutil.rmtree(output_directory)
 
-    metadata = cargo(
-        "nextest list --list-type binaries-only --message-format json",
-        *nextest_list_args,
-    ).json()
+    with record_time("Listing tests"):
+        cargo(
+            "nextest list",
+            *(quoted(a) for a in nextest_list_args),
+        ).fg()
+    with record_time("Listing tests metadata"):
+        metadata = cargo(
+            "nextest list --list-type binaries-only --message-format json",
+            *(quoted(a) for a in nextest_list_args),
+        ).json()
 
-    collect_files(metadata, output_directory, strip_binaries=not args.no_strip)
-    generate_run_script(metadata, output_directory)
+    with record_time("Collecting files"):
+        collect_files(metadata, output_directory, strip_binaries=not args.no_strip)
+        generate_run_script(metadata, output_directory)
 
     if output_archive:
-        generate_archive(output_directory, output_archive)
+        with record_time("Generating archive"):
+            generate_archive(output_directory, output_archive)
+
+    if args.timing_info:
+        print_timing_info()
 
 
 if __name__ == "__main__":

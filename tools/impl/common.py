@@ -12,8 +12,10 @@ our command line tools.
 
 Refer to the scripts in ./tools for example usage.
 """
+import datetime
 import functools
 import json
+import shlex
 import sys
 import subprocess
 
@@ -62,7 +64,20 @@ from multiprocessing.pool import ThreadPool
 from pathlib import Path
 from subprocess import DEVNULL, PIPE, STDOUT  # type: ignore
 from tempfile import gettempdir
-from typing import Any, Callable, Dict, Iterable, List, NamedTuple, Optional, TypeVar, Union, cast
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    NamedTuple,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+    cast,
+)
+from rich.console import Console
 import argh  # type: ignore
 import argparse
 import contextlib
@@ -72,6 +87,13 @@ import os
 import re
 import shutil
 import traceback
+from rich.console import Group
+from rich.text import Text
+from rich.live import Live
+from rich.spinner import Spinner
+
+# File where to store http headers for gcloud authentication
+AUTH_HEADERS_FILE = Path(gettempdir()) / f"crosvm_gcloud_auth_headers_{getpass.getuser()}"
 
 PathLike = Union[Path, str]
 
@@ -110,6 +132,9 @@ GERRIT_URL = "https://chromium-review.googlesource.com"
 
 # Ensure that we really found the crosvm root directory
 assert 'name = "crosvm"' in CROSVM_TOML.read_text()
+
+# List of times recorded by `record_time` which will be printed if --timing-info is provided.
+global_time_records: List[Tuple[str, datetime.timedelta]] = []
 
 
 class CommandResult(NamedTuple):
@@ -315,7 +340,13 @@ class Command(object):
 
     ### Executing programs in the foreground
 
-    def run_foreground(self, quiet: bool = False, check: bool = True, dry_run: bool = False):
+    def run_foreground(
+        self,
+        quiet: bool = False,
+        check: bool = True,
+        dry_run: bool = False,
+        style: Optional[Callable[["subprocess.Popen[str]"], None]] = None,
+    ):
         """
         Runs a program in the foreground with output streamed to the user.
 
@@ -341,9 +372,17 @@ class Command(object):
 
         This will hide the programs stdout and stderr unless the program fails.
 
+        More sophisticated means of outputting stdout/err are available via `Styles`:
+
+        >>> Command("echo foo").fg(style=Styles.live_truncated())
+
+        Will output the results of the command but truncate output after a few lines. See `Styles`
+        for more options.
+
         Arguments:
             quiet: Do not show stdout/stderr unless the program failed.
             check: Raise an exception if the program returned an error code.
+            style: A function to present the output of the program. See `Styles`
 
         Returns: The return code of the program.
         """
@@ -351,28 +390,34 @@ class Command(object):
             print(f"Not running: {self}")
             return 0
 
+        if quiet:
+            style = Styles.quiet
+
         if verbose():
             print(f"$ {self}")
-        if quiet:
-            result = self.__run(stdout=PIPE, stderr=STDOUT, check=False)
+
+        if style is None or verbose():
+            return self.__run(stdout=None, stderr=None, check=False).returncode
         else:
-            result = self.__run(stdout=None, stderr=None, check=False)
+            process = self.__popen(stderr=STDOUT)
+            style(process)
+            returncode = process.wait()
+            if returncode != 0 and check:
+                assert process.stdout
+                raise subprocess.CalledProcessError(returncode, process.args)
+            return returncode
 
-        # If stdout was capured, print it if the program failed (or verbose is enabled).
-        # Skip this if very_verbose is enabled since __run will print captured output already.
-        if result.stdout and (verbose() or result.returncode != 0) and not very_verbose():
-            print(result.stdout)
-
-        if result.returncode != 0:
-            if check:
-                raise subprocess.CalledProcessError(result.returncode, str(self), result.stdout)
-        return result.returncode
-
-    def fg(self, quiet: bool = False, check: bool = True, dry_run: bool = False):
+    def fg(
+        self,
+        quiet: bool = False,
+        check: bool = True,
+        dry_run: bool = False,
+        style: Optional[Callable[["subprocess.Popen[str]"], None]] = None,
+    ):
         """
         Shorthand for Command.run_foreground()
         """
-        return self.run_foreground(quiet, check, dry_run)
+        return self.run_foreground(quiet, check, dry_run, style)
 
     def write_to(self, filename: Path):
         """
@@ -414,6 +459,18 @@ class Command(object):
             print(f"$ {self}")
         return self.__run(stdout=PIPE, stderr=PIPE, check=check).stdout.strip()
 
+    def json(self, check: bool = True) -> Any:
+        """
+        Runs a program and returns stdout parsed as json.
+
+        The program will not be visible to the user unless --very-verbose is specified.
+        """
+        stdout = self.stdout(check=check)
+        if stdout:
+            return json.loads(stdout)
+        else:
+            return None
+
     def lines(self, check: bool = True):
         """
         Runs a program and returns stdout line by line.
@@ -425,16 +482,10 @@ class Command(object):
     ### Utilities
 
     def __str__(self):
-        def fmt_arg(arg: str):
-            # Quote arguments containing spaces.
-            if re.search(r"\s", arg):
-                return f'"{arg}"'
-            return arg
-
         stdin = ""
         if self.stdin_cmd:
             stdin = str(self.stdin_cmd) + " | "
-        return stdin + " ".join(fmt_arg(a) for a in self.args)
+        return stdin + shlex.join(self.args)
 
     def __repr__(self):
         stdin = ""
@@ -495,15 +546,6 @@ class Command(object):
         )
 
     @staticmethod
-    def __shell_like_split(value: str):
-        """Splits a string by spaces, accounting for escape characters and quoting."""
-        # Re-use csv parses to split by spaces and new lines, while accounting for quoting.
-        for line in csv.reader(StringIO(value), delimiter=" ", quotechar='"'):
-            for arg in line:
-                if arg:
-                    yield arg
-
-    @staticmethod
     def __parse_cmd(args: Iterable[Any]) -> List[str]:
         """Parses command line arguments for Command."""
         res = [parsed for arg in args for parsed in Command.__parse_cmd_args(arg)]
@@ -517,11 +559,64 @@ class Command(object):
         elif isinstance(arg, QuotedString):
             return [arg.value]
         elif isinstance(arg, Command):
-            return [*Command.__shell_like_split(arg.stdout())]
+            return [*shlex.split(arg.stdout())]
         elif arg is None or arg is False:
             return []
         else:
-            return [*Command.__shell_like_split(str(arg))]
+            return [*shlex.split(str(arg))]
+
+
+class Styles(object):
+    "A collection of methods that can be passed to `Command.fg(style=)`"
+
+    @staticmethod
+    def quiet(process: "subprocess.Popen[str]"):
+        "Won't print anything unless the command failed."
+        assert process.stdout
+        stdout = process.stdout.read()
+        if process.wait() != 0:
+            print(stdout, end="")
+
+    @staticmethod
+    def live_truncated(num_lines: int = 8):
+        "Prints only the last `num_lines` of output while the program is running and succeessful."
+
+        def output(process: "subprocess.Popen[str]"):
+            assert process.stdout
+            spinner = Spinner("dots")
+            lines: List[Text] = []
+            stdout: List[str] = []
+            with Live(refresh_per_second=30, transient=True) as live:
+                for line in iter(process.stdout.readline, ""):
+                    stdout.append(line.strip())
+                    lines.append(Text.from_ansi(line.strip(), no_wrap=True))
+                    while len(lines) > num_lines:
+                        lines.pop(0)
+                    live.update(Group(Text("…"), *lines, spinner))
+            if process.wait() == 0:
+                console.print(Group(Text("…"), *lines))
+            else:
+                for line in stdout:
+                    print(line)
+
+        return output
+
+    @staticmethod
+    def quiet_with_progress(title: str):
+        "Prints only the last `num_lines` of output while the program is running and succeessful."
+
+        def output(process: "subprocess.Popen[str]"):
+            assert process.stdout
+            with Live(Spinner("dots", title), refresh_per_second=30, transient=True):
+                stdout = process.stdout.read()
+
+            if process.wait() == 0:
+                console.print(f"[green]OK[/green] {title}")
+            else:
+                print(stdout)
+                console.print(f"[red]ERR[/red] {title}")
+
+        return output
 
 
 class ParallelCommands(object):
@@ -549,6 +644,52 @@ class ParallelCommands(object):
     def success(self):
         results = self.fg(check=False, quiet=True)
         return all(result == 0 for result in results)
+
+
+class Remote(object):
+    """ "
+    Wrapper around the cmd() API and allow execution of commands via SSH.
+
+    >>> remote = Remote("foobar", {"opt": "value"})
+    >>> remote.cmd('printf "(%s)"', quoted("a b c"))
+    Command('ssh', 'foobar', '-T', '-oopt=value', 'bash -O huponexit -c \\'printf (%s) "a b c"\\'')
+
+    A remote working directory can be set:
+    >>> remote.cmd('printf "(%s)"', quoted("a b c")).with_cwd(Path("target_dir"))
+    Command('ssh', 'foobar', '-T', '-oopt=value', 'cd target_dir && bash -O huponexit -c \\'printf (%s) "a b c"\\'')
+    """
+
+    def __init__(self, host: str, opts: Dict[str, str]):
+        self.host = host
+        ssh_opts = [f"-o{k}={v}" for k, v in opts.items()]
+        self.ssh_cmd = cmd("ssh", host, "-T", *ssh_opts)
+        self.scp_cmd = cmd("scp", *ssh_opts)
+
+    def ssh(self, cmd: Command, remote_cwd: Optional[Path] = None):
+        # Use huponexit to ensure the process is killed if the connection is lost.
+        # Use shlex to properly quote the command.
+        wrapped_cmd = f"bash -O huponexit -c {shlex.quote(str(cmd))}"
+        if remote_cwd is not None:
+            wrapped_cmd = f"cd {remote_cwd} && {wrapped_cmd}"
+        # The whole command to pass it to SSH for remote execution.
+        return self.ssh_cmd.with_args(quoted(wrapped_cmd))
+
+    def scp(self, sources: List[Path], target: str, quiet: bool = False):
+        return self.scp_cmd.with_args(*sources, f"{self.host}:{target}").fg(quiet=quiet)
+
+
+@contextlib.contextmanager
+def record_time(title: str):
+    """
+    Records wall-time of how long this context lasts.
+
+    The results will be printed at the end of script executation if --timing-info is specified.
+    """
+    start_time = datetime.datetime.now()
+    try:
+        yield
+    finally:
+        global_time_records.append((title, datetime.datetime.now() - start_time))
 
 
 @contextlib.contextmanager
@@ -629,8 +770,15 @@ def run_commands(
     Allow the user to call the provided functions with command line arguments translated to
     function arguments via argh: https://pythonhosted.org/argh
     """
+    exit_code = 0
     try:
-        parser = argparse.ArgumentParser(usage=usage)
+        parser = argparse.ArgumentParser(
+            description=usage,
+            # Docstrings are used as the description in argparse, preserve their formatting.
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            # Do not allow implied abbreviations. Abbreviations should be manually specified.
+            allow_abbrev=False,
+        )
         add_common_args(parser)
 
         # Add provided commands to parser. Do not use sub-commands if we just got one function.
@@ -639,14 +787,29 @@ def run_commands(
         if default_fn:
             argh.set_default_command(parser, default_fn)  # type: ignore
 
-        # Call main method
-        argh.dispatch(parser)  # type: ignore
+        with record_time("Total Time"):
+            # Call main method
+            argh.dispatch(parser)  # type: ignore
+
     except Exception as e:
         if verbose():
             traceback.print_exc()
         else:
             print(e)
-        sys.exit(1)
+        exit_code = 1
+
+    if parse_common_args().timing_info:
+        print_timing_info()
+
+    sys.exit(exit_code)
+
+
+def print_timing_info():
+    console.print()
+    console.print("Timing info:")
+    console.print()
+    for title, delta in global_time_records:
+        console.print(f"  {title:20} {delta.total_seconds():.2f}s")
 
 
 @functools.lru_cache(None)
@@ -683,6 +846,12 @@ def add_common_args(parser: argparse.ArgumentParser):
         action="store_true",
         default=False,
         help="Print more debug output",
+    )
+    parser.add_argument(
+        "--timing-info",
+        action="store_true",
+        default=False,
+        help="Print info on how long which parts of the command take",
     )
 
 
@@ -897,6 +1066,15 @@ def kiwi_repo_root():
     "Root directory of the kiwi repo checkout."
     return (CROSVM_ROOT / "../..").resolve()
 
+
+def sudo_is_passwordless():
+    # Run with --askpass but no askpass set, succeeds only if passwordless sudo
+    # is available.
+    (ret, _) = subprocess.getstatusoutput("SUDO_ASKPASS=false sudo --askpass true")
+    return ret == 0
+
+
+console = Console()
 
 if __name__ == "__main__":
     import doctest
