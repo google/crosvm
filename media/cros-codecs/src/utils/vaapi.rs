@@ -105,9 +105,9 @@ impl TryInto<Option<Surface>> for GenericBackendHandle {
     type Error = anyhow::Error;
 
     fn try_into(self) -> Result<Option<Surface>, Self::Error> {
-        match self.0 {
-            GenericBackendHandleInner::Ready { picture, .. } => picture.take_surface().map(Some),
-            GenericBackendHandleInner::Pending(id) => Err(anyhow!(
+        match self.state {
+            PictureState::Ready { picture, .. } => picture.take_surface().map(Some),
+            PictureState::Pending(id) => Err(anyhow!(
                 "Attempting to retrieve a surface (id: {:?}) that might have operations pending.",
                 id
             )),
@@ -480,16 +480,20 @@ impl StreamMetadataState {
     }
 }
 
-/// The VA-API backend handle.
+/// VA-API backend handle.
 ///
-/// This is just a wrapper around the `GenericBackendHandleInner` enum in order to make its variants
-/// private.
-pub struct GenericBackendHandle(GenericBackendHandleInner);
+/// This includes the VA picture which can be pending rendering or complete, as well as useful
+/// meta-information.
+pub struct GenericBackendHandle {
+    state: PictureState,
+}
 
 impl GenericBackendHandle {
     /// Creates a new pending handle on `surface_id`.
     pub(crate) fn new_pending(surface_id: u32) -> Self {
-        Self(GenericBackendHandleInner::Pending(surface_id))
+        Self {
+            state: PictureState::Pending(surface_id),
+        }
     }
 
     /// Creates a new ready handle on a completed `picture`.
@@ -498,11 +502,13 @@ impl GenericBackendHandle {
         map_format: Rc<libva::VAImageFormat>,
         display_resolution: Resolution,
     ) -> Self {
-        Self(GenericBackendHandleInner::Ready {
-            map_format,
-            picture,
-            display_resolution,
-        })
+        Self {
+            state: PictureState::Ready {
+                map_format,
+                picture,
+                display_resolution,
+            },
+        }
     }
 
     /// Returns a mapped VAImage. this maps the VASurface onto our address space.
@@ -511,8 +517,8 @@ impl GenericBackendHandle {
     ///
     /// Note that DynMappableHandle is downcastable.
     pub fn image(&mut self) -> Result<Image> {
-        match &mut self.0 {
-            GenericBackendHandleInner::Ready {
+        match &mut self.state {
+            PictureState::Ready {
                 map_format,
                 picture,
                 display_resolution,
@@ -530,35 +536,34 @@ impl GenericBackendHandle {
 
                 Ok(image)
             }
-            GenericBackendHandleInner::Pending(_) => Err(anyhow!("Mapping failed")),
+            PictureState::Pending(_) => Err(anyhow!("Mapping failed")),
         }
     }
 
     /// Returns the picture of this handle.
     pub fn picture(&self) -> Option<&libva::Picture<PictureSync>> {
-        match &self.0 {
-            GenericBackendHandleInner::Ready { picture, .. } => Some(picture),
-            GenericBackendHandleInner::Pending(_) => None,
+        match &self.state {
+            PictureState::Ready { picture, .. } => Some(picture),
+            PictureState::Pending(_) => None,
         }
     }
 
     /// Returns the id of the VA surface backing this handle.
     pub fn surface_id(&self) -> libva::VASurfaceID {
-        match &self.0 {
-            GenericBackendHandleInner::Ready { picture, .. } => picture.surface().id(),
-            GenericBackendHandleInner::Pending(id) => *id,
+        match &self.state {
+            PictureState::Ready { picture, .. } => picture.surface().id(),
+            PictureState::Pending(id) => *id,
         }
     }
 
     /// Returns `true` if this handle is ready.
     pub fn is_ready(&self) -> bool {
-        matches!(self.0, GenericBackendHandleInner::Ready { .. })
+        matches!(self.state, PictureState::Ready { .. })
     }
 }
 
-/// A type so we do not expose the enum in the public interface, as enum members
-/// are inherently public.
-enum GenericBackendHandleInner {
+/// Rendering state of a VA picture.
+enum PictureState {
     Ready {
         map_format: Rc<libva::VAImageFormat>,
         picture: libva::Picture<PictureSync>,
