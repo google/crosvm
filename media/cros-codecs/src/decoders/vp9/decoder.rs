@@ -118,14 +118,18 @@ pub struct Decoder<T: DecodedHandle<CodecData = Header>> {
     /// backend.
     negotiation_status: NegotiationStatus,
 
-    /// The reference frames in use.
-    reference_frames: [Option<T>; NUM_REF_FRAMES],
-
     /// The current resolution
     coded_resolution: Resolution,
 
     /// A queue with the pictures that are ready to be sent to the client.
     ready_queue: Vec<T>,
+
+    /// A monotonically increasing counter used to tag pictures in display
+    /// order
+    current_display_order: u64,
+
+    /// The reference frames in use.
+    reference_frames: [Option<T>; NUM_REF_FRAMES],
 
     /// Per-segment data.
     segmentation: [Segmentation; MAX_SEGMENTS],
@@ -134,10 +138,6 @@ pub struct Decoder<T: DecodedHandle<CodecData = Header>> {
     bit_depth: BitDepth,
     /// Cached value for profile
     profile: Profile,
-
-    /// A monotonically increasing counter used to tag pictures in display
-    /// order
-    current_display_order: u64,
 
     #[cfg(test)]
     test_params: TestParams<T>,

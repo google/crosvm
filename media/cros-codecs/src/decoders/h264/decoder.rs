@@ -149,9 +149,6 @@ where
     /// A parser to extract bitstream metadata
     parser: Parser,
 
-    /// The current coded resolution
-    coded_resolution: Resolution,
-
     /// Whether the decoder should block on decode operations.
     blocking_mode: BlockingMode,
 
@@ -161,6 +158,16 @@ where
     /// Keeps track of whether the decoded format has been negotiated with the
     /// backend.
     negotiation_status: NegotiationStatus,
+
+    /// The current coded resolution
+    coded_resolution: Resolution,
+
+    /// A queue with the pictures that are ready to be sent to the DecoderSession.
+    ready_queue: Vec<T>,
+
+    /// A monotonically increasing counter used to tag pictures in display
+    /// order
+    current_display_order: u64,
 
     /// The decoded picture buffer
     dpb: Dpb<T>,
@@ -175,10 +182,6 @@ where
     /// than or equal to max_num_reorder_frames.
     max_num_reorder_frames: u32,
 
-    /// A monotonically increasing counter used to tag pictures in display
-    /// order
-    current_display_order: u64,
-
     /// The current active SPS id.
     cur_sps_id: u8,
     /// The current active PPS id.
@@ -192,8 +195,6 @@ where
     curr_info: CurrentPicInfo,
     /// The current picture being worked on.
     cur_pic: Option<H264Picture<T::BackendHandle>>,
-    /// A queue with the pictures that are ready to be sent to the DecoderSession.
-    ready_queue: Vec<T>,
 
     /// A cached, non-reference first field that did not make it into the DPB
     /// because it was full even after bumping the smaller POC. This field will

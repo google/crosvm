@@ -76,13 +76,6 @@ pub struct Decoder<T: DecodedHandle<CodecData = Header>> {
     /// backend.
     negotiation_status: NegotiationStatus,
 
-    /// The picture used as the last reference picture.
-    last_picture: Option<T>,
-    /// The picture used as the golden reference picture.
-    golden_ref_picture: Option<T>,
-    /// The picture used as the alternate reference picture.
-    alt_ref_picture: Option<T>,
-
     /// The current resolution
     coded_resolution: Resolution,
 
@@ -92,6 +85,13 @@ pub struct Decoder<T: DecodedHandle<CodecData = Header>> {
     /// A monotonically increasing counter used to tag pictures in display
     /// order
     current_display_order: u64,
+
+    /// The picture used as the last reference picture.
+    last_picture: Option<T>,
+    /// The picture used as the golden reference picture.
+    golden_ref_picture: Option<T>,
+    /// The picture used as the alternate reference picture.
+    alt_ref_picture: Option<T>,
 
     #[cfg(test)]
     test_params: TestParams<T>,
