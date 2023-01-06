@@ -29,7 +29,6 @@ use crate::decoders::vp9::parser::NUM_REF_FRAMES;
 use crate::decoders::vp9::parser::SEG_LVL_ALT_L;
 use crate::decoders::vp9::parser::SEG_LVL_REF_FRAME;
 use crate::decoders::vp9::parser::SEG_LVL_SKIP;
-use crate::decoders::vp9::picture::Vp9Picture;
 use crate::decoders::BlockingMode;
 use crate::decoders::DecodedHandle;
 use crate::decoders::DynDecodedHandle;
@@ -104,7 +103,7 @@ pub struct Segmentation {
     pub reference_skip_enabled: bool,
 }
 
-pub struct Decoder<T: DecodedHandle<CodecData = Header>> {
+pub struct Decoder<T: DecodedHandle> {
     /// A parser to extract bitstream data and build frame data in turn
     parser: Parser,
 
@@ -143,7 +142,7 @@ pub struct Decoder<T: DecodedHandle<CodecData = Header>> {
     test_params: TestParams<T>,
 }
 
-impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> Decoder<T> {
+impl<T: DecodedHandle + DynDecodedHandle + 'static> Decoder<T> {
     /// Create a new codec backend for VP8.
     #[cfg(any(feature = "vaapi", test))]
     pub(crate) fn new(
@@ -223,7 +222,7 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> Decoder<
     }
 
     /// Handle a single frame.
-    fn handle_frame(&mut self, frame: Frame<&[u8]>, timestamp: u64) -> Result<T> {
+    fn handle_frame(&mut self, frame: &Frame<&[u8]>, timestamp: u64) -> Result<T> {
         if frame.header.show_existing_frame() {
             // Frame to be shown. Unwrapping must produce a Picture, because the
             // spec mandates frame_to_show_map_idx references a valid entry in
@@ -240,8 +239,6 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> Decoder<
             let offset = frame.offset();
             let size = frame.size();
 
-            let picture = Vp9Picture::new_vp9(frame.header, None, timestamp);
-
             let block = matches!(self.blocking_mode, BlockingMode::Blocking)
                 || matches!(
                     self.negotiation_status,
@@ -250,11 +247,11 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> Decoder<
 
             let bitstream = &frame.bitstream[offset..offset + size];
 
-            Self::update_segmentation(&picture.data, &mut self.segmentation)?;
+            Self::update_segmentation(&frame.header, &mut self.segmentation)?;
             let decoded_handle = self
                 .backend
                 .submit_picture(
-                    picture,
+                    &frame.header,
                     &self.reference_frames,
                     bitstream,
                     timestamp,
@@ -445,9 +442,7 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> Decoder<
     }
 }
 
-impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> VideoDecoder
-    for Decoder<T>
-{
+impl<T: DecodedHandle + DynDecodedHandle + 'static> VideoDecoder for Decoder<T> {
     fn decode(
         &mut self,
         timestamp: u64,
@@ -510,9 +505,9 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> VideoDec
                 let key_frame = Frame::new(bitstream.as_ref(), *header, 0, sz);
 
                 let show_existing_frame = frame.header.show_existing_frame();
-                let mut handle = self.handle_frame(key_frame, timestamp)?;
+                let mut handle = self.handle_frame(&key_frame, timestamp)?;
 
-                if handle.picture().data.show_frame() || show_existing_frame {
+                if key_frame.header.show_frame() || show_existing_frame {
                     let order = self.current_display_order;
                     handle.set_display_order(order);
                     self.current_display_order += 1;
@@ -524,7 +519,7 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> VideoDec
             }
 
             let show_existing_frame = frame.header.show_existing_frame();
-            let mut handle = self.handle_frame(frame, timestamp)?;
+            let mut handle = self.handle_frame(&frame, timestamp)?;
 
             if self.backend.num_resources_left() == 0 {
                 self.block_on_one()?;
@@ -532,7 +527,7 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> VideoDec
 
             self.backend.poll(self.blocking_mode)?;
 
-            if handle.picture().data.show_frame() || show_existing_frame {
+            if frame.header.show_frame() || show_existing_frame {
                 let order = self.current_display_order;
                 handle.set_display_order(order);
                 self.current_display_order += 1;
@@ -566,7 +561,7 @@ impl<T: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static> VideoDec
             let key_frame = Frame::new(bitstream.as_ref(), header, 0, sz);
             let timestamp = *timestamp;
 
-            self.handle_frame(key_frame, timestamp)?;
+            self.handle_frame(&key_frame, timestamp)?;
         }
 
         self.backend.poll(BlockingMode::Blocking)?;
@@ -630,7 +625,6 @@ pub mod tests {
     use bytes::Buf;
 
     use crate::decoders::vp9::decoder::Decoder;
-    use crate::decoders::vp9::parser::Header;
     use crate::decoders::BlockingMode;
     use crate::decoders::DecodedHandle;
     use crate::decoders::DynDecodedHandle;
@@ -654,7 +648,7 @@ pub mod tests {
     }
 
     pub fn run_decoding_loop<
-        Handle: DecodedHandle<CodecData = Header> + DynDecodedHandle + 'static,
+        Handle: DecodedHandle + DynDecodedHandle + 'static,
         F: FnMut(&mut Decoder<Handle>),
     >(
         decoder: &mut Decoder<Handle>,
@@ -684,7 +678,7 @@ pub mod tests {
         }
     }
 
-    pub fn process_ready_frames<Handle: DecodedHandle<CodecData = Header> + DynDecodedHandle>(
+    pub fn process_ready_frames<Handle: DecodedHandle + DynDecodedHandle>(
         decoder: &mut Decoder<Handle>,
         action: &mut dyn FnMut(&mut Decoder<Handle>, &Handle),
     ) {

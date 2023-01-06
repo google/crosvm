@@ -9,22 +9,22 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::decoders::vp9::backends::StatelessDecoderBackend;
-use crate::decoders::vp9::backends::Vp9Picture;
 use crate::decoders::vp9::decoder::Decoder;
 use crate::decoders::vp9::decoder::Segmentation;
+use crate::decoders::vp9::parser::Header;
 use crate::decoders::vp9::parser::MAX_SEGMENTS;
 use crate::decoders::vp9::parser::NUM_REF_FRAMES;
 use crate::decoders::BlockingMode;
 use crate::utils::dummy::*;
 
-impl StatelessDecoderBackend for Backend<Vp9Picture<BackendHandle>> {
+impl StatelessDecoderBackend for Backend<BackendHandle> {
     fn new_sequence(&mut self, _: &crate::decoders::vp9::parser::Header) -> super::Result<()> {
         Ok(())
     }
 
     fn submit_picture(
         &mut self,
-        picture: Vp9Picture<super::AsBackendHandle<Self::Handle>>,
+        _: &Header,
         _: &[Option<Self::Handle>; NUM_REF_FRAMES],
         _: &[u8],
         _: u64,
@@ -32,7 +32,7 @@ impl StatelessDecoderBackend for Backend<Vp9Picture<BackendHandle>> {
         _: bool,
     ) -> super::Result<Self::Handle> {
         Ok(Handle {
-            handle: Rc::new(RefCell::new(picture)),
+            handle: Rc::new(RefCell::new(BackendHandle)),
         })
     }
 
@@ -43,7 +43,7 @@ impl StatelessDecoderBackend for Backend<Vp9Picture<BackendHandle>> {
     }
 }
 
-impl Decoder<Handle<Vp9Picture<BackendHandle>>> {
+impl Decoder<Handle<BackendHandle>> {
     // Creates a new instance of the decoder using the dummy backend.
     pub fn new_dummy(blocking_mode: BlockingMode) -> anyhow::Result<Self> {
         Self::new(Box::new(Backend::new()), blocking_mode)

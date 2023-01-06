@@ -12,10 +12,8 @@ use std::rc::Rc;
 
 use crate::decoders::BlockingMode;
 use crate::decoders::DecodedHandle;
-use crate::decoders::DynPicture;
-use crate::decoders::FrameInfo;
+use crate::decoders::DynHandle;
 use crate::decoders::MappableHandle;
-use crate::decoders::Picture;
 use crate::decoders::Result;
 use crate::decoders::StatelessBackendResult;
 use crate::decoders::VideoDecoderBackend;
@@ -34,7 +32,7 @@ impl MappableHandle for BackendHandle {
     }
 }
 
-impl<CodecData: FrameInfo> DynPicture for Picture<CodecData, BackendHandle> {
+impl DynHandle for BackendHandle {
     fn dyn_mappable_handle_mut<'a>(&'a mut self) -> Box<dyn MappableHandle + 'a> {
         Box::new(BackendHandle)
     }
@@ -52,16 +50,15 @@ impl<T> Clone for Handle<T> {
     }
 }
 
-impl<T: FrameInfo> DecodedHandle for Handle<Picture<T, BackendHandle>> {
-    type CodecData = T;
+impl DecodedHandle for Handle<BackendHandle> {
     type BackendHandle = BackendHandle;
 
-    fn picture_container(&self) -> &Rc<RefCell<Picture<Self::CodecData, Self::BackendHandle>>> {
+    fn handle_rc(&self) -> &Rc<RefCell<Self::BackendHandle>> {
         &self.handle
     }
 
     fn display_resolution(&self) -> Resolution {
-        self.picture().data.display_resolution()
+        Default::default()
     }
 
     fn display_order(&self) -> Option<u64> {
@@ -69,6 +66,10 @@ impl<T: FrameInfo> DecodedHandle for Handle<Picture<T, BackendHandle>> {
     }
 
     fn set_display_order(&mut self, _: u64) {}
+
+    fn timestamp(&self) -> u64 {
+        0
+    }
 }
 
 /// Dummy backend that can be used for any codec.

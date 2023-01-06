@@ -18,10 +18,8 @@ use libva::IQMatrixBufferVP8;
 use libva::Picture as VaPicture;
 use libva::ProbabilityDataBufferVP8;
 
-use crate::decoders::vp8::backends::AsBackendHandle;
 use crate::decoders::vp8::backends::Result as StatelessBackendResult;
 use crate::decoders::vp8::backends::StatelessDecoderBackend;
-use crate::decoders::vp8::backends::Vp8Picture;
 use crate::decoders::vp8::decoder::Decoder;
 use crate::decoders::vp8::parser::Header;
 use crate::decoders::vp8::parser::MbLfAdjustments;
@@ -77,7 +75,7 @@ impl StreamInfo for &Header {
 }
 
 struct Backend {
-    backend: VaapiBackend<Header, Header>,
+    backend: VaapiBackend<Header>,
 
     #[cfg(test)]
     /// Test params. Saves the metadata sent to VA-API for the purposes of
@@ -107,8 +105,8 @@ impl Backend {
     }
 
     /// Gets the VASurfaceID for the given `picture`.
-    fn surface_id(picture: &Vp8Picture<GenericBackendHandle>) -> libva::VASurfaceID {
-        picture.backend_handle.as_ref().unwrap().surface_id()
+    fn surface_id(picture: &GenericBackendHandle) -> libva::VASurfaceID {
+        picture.surface_id()
     }
 
     fn build_iq_matrix(
@@ -182,19 +180,19 @@ impl Backend {
         }
 
         let last_surface = if let Some(last_ref) = last {
-            Self::surface_id(&last_ref.picture())
+            Self::surface_id(&last_ref.handle())
         } else {
             libva::constants::VA_INVALID_SURFACE
         };
 
         let golden_surface = if let Some(golden_ref) = golden {
-            Self::surface_id(&golden_ref.picture())
+            Self::surface_id(&golden_ref.handle())
         } else {
             libva::constants::VA_INVALID_SURFACE
         };
 
         let alt_surface = if let Some(alt_ref) = alt {
-            Self::surface_id(&alt_ref.picture())
+            Self::surface_id(&alt_ref.handle())
         } else {
             libva::constants::VA_INVALID_SURFACE
         };
@@ -299,7 +297,7 @@ impl StatelessDecoderBackend for Backend {
 
     fn submit_picture(
         &mut self,
-        picture: Vp8Picture<AsBackendHandle<Self::Handle>>,
+        picture: &Header,
         last_ref: Option<&Self::Handle>,
         golden_ref: Option<&Self::Handle>,
         alt_ref: Option<&Self::Handle>,
@@ -313,15 +311,14 @@ impl StatelessDecoderBackend for Backend {
 
         let context = self.backend.metadata_state.context()?;
 
-        let iq_buffer =
-            context.create_buffer(Backend::build_iq_matrix(&picture.data, segmentation)?)?;
+        let iq_buffer = context.create_buffer(Backend::build_iq_matrix(picture, segmentation)?)?;
 
-        let probs = context.create_buffer(Backend::build_probability_table(&picture.data))?;
+        let probs = context.create_buffer(Backend::build_probability_table(picture))?;
 
         let coded_resolution = self.backend.metadata_state.coded_resolution()?;
 
         let pic_param = context.create_buffer(Backend::build_pic_param(
-            &picture.data,
+            picture,
             &coded_resolution,
             segmentation,
             mb_lf_adjust,
@@ -331,7 +328,7 @@ impl StatelessDecoderBackend for Backend {
         )?)?;
 
         let slice_param =
-            context.create_buffer(Backend::build_slice_param(&picture.data, bitstream.len())?)?;
+            context.create_buffer(Backend::build_slice_param(picture, bitstream.len())?)?;
 
         let slice_data =
             context.create_buffer(libva::BufferType::SliceData(Vec::from(bitstream)))?;
@@ -360,7 +357,7 @@ impl StatelessDecoderBackend for Backend {
         #[cfg(test)]
         self.save_params(
             Backend::build_pic_param(
-                &picture.data,
+                picture,
                 &coded_resolution,
                 segmentation,
                 mb_lf_adjust,
@@ -368,41 +365,35 @@ impl StatelessDecoderBackend for Backend {
                 golden_ref,
                 alt_ref,
             )?,
-            Backend::build_slice_param(&picture.data, bitstream.len())?,
+            Backend::build_slice_param(picture, bitstream.len())?,
             libva::BufferType::SliceData(Vec::from(bitstream)),
-            Backend::build_iq_matrix(&picture.data, segmentation)?,
-            Backend::build_probability_table(&picture.data),
+            Backend::build_iq_matrix(picture, segmentation)?,
+            Backend::build_probability_table(picture),
         );
 
-        let picture = Rc::new(RefCell::new(picture));
-
-        if block {
+        let backend_handle = if block {
             let va_picture = va_picture.sync()?;
-
             let map_format = self.backend.metadata_state.map_format()?;
 
-            let backend_handle = GenericBackendHandle::new_ready(
+            Rc::new(RefCell::new(GenericBackendHandle::new_ready(
                 va_picture,
                 Rc::clone(map_format),
                 self.backend.metadata_state.display_resolution()?,
-            );
-
-            picture.borrow_mut().backend_handle = Some(backend_handle);
+            )))
         } else {
-            // Append to our queue of pending jobs
-            let pending_job = PendingJob {
+            let backend_handle =
+                Rc::new(RefCell::new(GenericBackendHandle::new_pending(surface_id)));
+
+            self.backend.pending_jobs.push_back(PendingJob {
                 va_picture,
-                codec_picture: Rc::clone(&picture),
-            };
+                codec_picture: Rc::clone(&backend_handle),
+            });
 
-            self.backend.pending_jobs.push_back(pending_job);
-
-            picture.borrow_mut().backend_handle =
-                Some(GenericBackendHandle::new_pending(surface_id));
-        }
+            backend_handle
+        };
 
         self.backend
-            .build_va_decoded_handle(&picture)
+            .build_va_decoded_handle(&backend_handle, timestamp)
             .map_err(|e| StatelessBackendError::Other(anyhow!(e)))
     }
 
@@ -413,7 +404,7 @@ impl StatelessDecoderBackend for Backend {
 }
 
 impl VideoDecoderBackend for Backend {
-    type Handle = VADecodedHandle<Vp8Picture<GenericBackendHandle>>;
+    type Handle = VADecodedHandle;
 
     fn coded_resolution(&self) -> Option<Resolution> {
         self.backend.coded_resolution()
@@ -452,7 +443,7 @@ impl VideoDecoderBackend for Backend {
     }
 }
 
-impl Decoder<VADecodedHandle<Vp8Picture<GenericBackendHandle>>> {
+impl Decoder<VADecodedHandle> {
     // Creates a new instance of the decoder using the VAAPI backend.
     pub fn new_vaapi(display: Rc<Display>, blocking_mode: BlockingMode) -> Result<Self> {
         Self::new(Box::new(Backend::new(display)?), blocking_mode)
@@ -477,7 +468,7 @@ mod tests {
     use crate::decoders::vp8::decoder::Decoder;
     use crate::decoders::BlockingMode;
     use crate::decoders::DecodedHandle;
-    use crate::decoders::DynPicture;
+    use crate::decoders::DynHandle;
 
     fn get_test_params(
         backend: &dyn StatelessDecoderBackend<Handle = AssociatedHandle>,
@@ -491,7 +482,7 @@ mod tests {
         expected_crcs: Option<&mut HashSet<&str>>,
         frame_num: i32,
     ) {
-        let mut picture = handle.picture_mut();
+        let mut picture = handle.handle_mut();
         let mut backend_handle = picture.dyn_mappable_handle_mut();
 
         let buffer_size = backend_handle.image_size();

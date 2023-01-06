@@ -2,15 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use crate::decoders::h264::dpb::Dpb;
+use crate::decoders::h264::dpb::DpbEntry;
 use crate::decoders::h264::parser::Pps;
 use crate::decoders::h264::parser::Slice;
 use crate::decoders::h264::parser::Sps;
-use crate::decoders::h264::picture::H264Picture;
-use crate::decoders::DecodedHandle;
+use crate::decoders::h264::picture::PictureData;
 use crate::decoders::VideoDecoderBackend;
 
 pub type Result<T> = crate::decoders::StatelessBackendResult<T>;
@@ -19,16 +16,6 @@ pub type Result<T> = crate::decoders::StatelessBackendResult<T>;
 pub mod dummy;
 #[cfg(feature = "vaapi")]
 pub mod vaapi;
-
-/// The container type for the picture. Pictures must offer interior mutability
-/// as they may be shared. This is notably the case when two fields reference
-/// each other.
-///
-/// Pictures are contained as soon as they are submitted to the accelerator.
-pub type ContainedPicture<T> = Rc<RefCell<H264Picture<T>>>;
-
-/// A convenience type that casts using fully-qualified syntax.
-pub type AsBackendHandle<Handle> = <Handle as DecodedHandle>::BackendHandle;
 
 /// Trait for stateless decoder backends. The decoder will call into the backend
 /// to request decode operations. The backend can operate in blocking mode,
@@ -40,11 +27,7 @@ pub(crate) trait StatelessDecoderBackend: VideoDecoderBackend {
     fn new_sequence(&mut self, sps: &Sps) -> Result<()>;
 
     /// Called when the decoder determines that a frame or field was found.
-    fn new_picture(
-        &mut self,
-        picture: &H264Picture<AsBackendHandle<Self::Handle>>,
-        timestamp: u64,
-    ) -> Result<()>;
+    fn new_picture(&mut self, picture: &PictureData, timestamp: u64) -> Result<()>;
 
     /// Called when the decoder determines that a second field was found.
     /// Indicates that the underlying BackendHandle is to be shared between the
@@ -52,7 +35,7 @@ pub(crate) trait StatelessDecoderBackend: VideoDecoderBackend {
     /// resource and can thus be presented together as a single frame.
     fn new_field_picture(
         &mut self,
-        picture: &H264Picture<AsBackendHandle<Self::Handle>>,
+        picture: &PictureData,
         timestamp: u64,
         first_field: &Self::Handle,
     ) -> Result<()>;
@@ -60,7 +43,7 @@ pub(crate) trait StatelessDecoderBackend: VideoDecoderBackend {
     /// Called by the decoder for every frame or field found.
     fn handle_picture(
         &mut self,
-        picture: &H264Picture<AsBackendHandle<Self::Handle>>,
+        picture: &PictureData,
         timestamp: u64,
         sps: &Sps,
         pps: &Pps,
@@ -75,16 +58,8 @@ pub(crate) trait StatelessDecoderBackend: VideoDecoderBackend {
         sps: &Sps,
         pps: &Pps,
         dpb: &Dpb<Self::Handle>,
-        ref_pic_list0: &[Self::Handle],
-        ref_pic_list1: &[Self::Handle],
-    ) -> Result<()>;
-
-    /// Called when the decoder has decided to split a frame into its
-    /// constituent fields. `new_picture` represents the newly-created field.
-    fn new_split_picture(
-        &mut self,
-        split_picture: ContainedPicture<AsBackendHandle<Self::Handle>>,
-        new_picture: ContainedPicture<AsBackendHandle<Self::Handle>>,
+        ref_pic_list0: &[DpbEntry<Self::Handle>],
+        ref_pic_list1: &[DpbEntry<Self::Handle>],
     ) -> Result<()>;
 
     /// Called when the decoder wants the backend to finish the decoding
@@ -95,18 +70,11 @@ pub(crate) trait StatelessDecoderBackend: VideoDecoderBackend {
     ///
     /// This call will assign the ownership of the BackendHandle to the Picture
     /// and then assign the ownership of the Picture to the Handle.
-    fn submit_picture(
-        &mut self,
-        picture: H264Picture<AsBackendHandle<Self::Handle>>,
-        block: bool,
-    ) -> Result<Self::Handle>;
+    fn submit_picture(&mut self, picture: &PictureData, block: bool) -> Result<Self::Handle>;
 
     /// Indicates that the decoder has split a picture and that a new Handle
     /// must be obtained.
-    fn new_handle(
-        &mut self,
-        picture: ContainedPicture<AsBackendHandle<Self::Handle>>,
-    ) -> Result<Self::Handle>;
+    fn new_handle(&mut self, handle: &Self::Handle) -> Result<Self::Handle>;
 
     /// Get the test parameters for the backend. The caller is reponsible for
     /// downcasting them to the correct type, which is backend-dependent.

@@ -6,5 +6,4 @@ pub mod backends;
 mod bool_decoder;
 pub mod decoder;
 pub mod parser;
-pub mod picture;
 mod probs;

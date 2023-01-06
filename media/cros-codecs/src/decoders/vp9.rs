@@ -6,4 +6,3 @@ pub mod backends;
 pub mod decoder;
 mod lookups;
 pub mod parser;
-pub mod picture;

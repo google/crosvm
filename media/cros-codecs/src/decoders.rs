@@ -146,7 +146,7 @@ pub trait VideoDecoder {
 }
 
 pub trait DynDecodedHandle {
-    fn dyn_picture_mut(&self) -> RefMut<dyn DynPicture>;
+    fn dyn_picture_mut(&self) -> RefMut<dyn DynHandle>;
     fn timestamp(&self) -> u64;
     fn display_resolution(&self) -> Resolution;
     fn display_order(&self) -> Option<u64>;
@@ -155,10 +155,10 @@ pub trait DynDecodedHandle {
 impl<T> DynDecodedHandle for T
 where
     T: DecodedHandle,
-    Picture<T::CodecData, T::BackendHandle>: DynPicture,
+    T::BackendHandle: DynHandle,
 {
-    fn dyn_picture_mut(&self) -> RefMut<dyn DynPicture> {
-        DecodedHandle::picture_mut(self)
+    fn dyn_picture_mut(&self) -> RefMut<dyn DynHandle> {
+        DecodedHandle::handle_mut(self)
     }
 
     fn timestamp(&self) -> u64 {
@@ -174,7 +174,7 @@ where
     }
 }
 
-pub trait DynPicture {
+pub trait DynHandle {
     /// Gets an exclusive reference to the backend handle of this picture.
     /// Assumes that this picture is backed by a handle and panics if not the case.
     fn dyn_mappable_handle_mut<'a>(&'a mut self) -> Box<dyn MappableHandle + 'a>;
@@ -211,62 +211,32 @@ pub trait FrameInfo {
     fn display_resolution(&self) -> Resolution;
 }
 
-/// Type for a picture being decoded by a stateless codec.
-///
-/// This contains the codec-specific state of the picture, as well as the backend-specific handle
-/// representing the memory into which the frame will be decoded.
-pub struct Picture<CodecData: FrameInfo, BackendHandle> {
-    /// Codec-specific data for this picture.
-    pub data: CodecData,
-    /// Backend-specific handle with the memory needed by the backend to back this picture.
-    pub backend_handle: Option<BackendHandle>,
-    /// A number that identifies the picture.
-    timestamp: u64,
-}
-
-impl<CodecData: FrameInfo, BackendHandle> Picture<CodecData, BackendHandle> {
-    /// Whether two pictures are the same.
-    pub fn same(lhs: &Rc<RefCell<Self>>, rhs: &Rc<RefCell<Self>>) -> bool {
-        Rc::ptr_eq(lhs, rhs)
-    }
-
-    /// Get a reference to the picture's timestamp.
-    pub fn timestamp(&self) -> u64 {
-        self.timestamp
-    }
-}
-
 /// The handle type used by the stateless decoder backend. The only requirement
-/// from implementors is that they give access to the underlying Picture and
+/// from implementors is that they give access to the underlying handle and
 /// that they can be (cheaply) cloned.
 pub trait DecodedHandle: Clone {
-    /// Codec-specific data for the handle.
-    type CodecData: FrameInfo;
     /// The type of the handle used by the backend.
     type BackendHandle;
 
-    /// Returns the actual container of the inner `Picture`.
-    fn picture_container(&self) -> &Rc<RefCell<Picture<Self::CodecData, Self::BackendHandle>>>;
-    /// Returns the display order for this picture, if set by the decoder.
+    /// Returns a reference to the container of the backend handle.
+    fn handle_rc(&self) -> &Rc<RefCell<Self::BackendHandle>>;
+    /// Returns a shared reference to the backend handle.
+    fn handle(&self) -> Ref<Self::BackendHandle> {
+        self.handle_rc().borrow()
+    }
+    /// Returns a mutable reference to the backend handle.
+    fn handle_mut(&self) -> RefMut<Self::BackendHandle> {
+        self.handle_rc().borrow_mut()
+    }
+
+    /// Returns the display order for the picture backed by this handle, if set by the decoder.
     fn display_order(&self) -> Option<u64>;
-    /// Sets the display order for this picture.
+    /// Sets the display order for the picture backend by this handle
     fn set_display_order(&mut self, display_order: u64);
 
-    /// Returns a shared reference to the inner `Picture`.
-    fn picture(&self) -> Ref<Picture<Self::CodecData, Self::BackendHandle>> {
-        self.picture_container().borrow()
-    }
-    /// Returns a mutable reference to the inner `Picture`.
-    fn picture_mut(&self) -> RefMut<Picture<Self::CodecData, Self::BackendHandle>> {
-        self.picture_container().borrow_mut()
-    }
-    /// Returns the timestamp for the picture.
-    fn timestamp(&self) -> u64 {
-        self.picture().timestamp()
-    }
+    /// Returns the timestamp of the picture.
+    fn timestamp(&self) -> u64;
 
     /// Returns the display resolution at the time this handle was decoded.
-    fn display_resolution(&self) -> Resolution {
-        self.picture().data.display_resolution()
-    }
+    fn display_resolution(&self) -> Resolution;
 }

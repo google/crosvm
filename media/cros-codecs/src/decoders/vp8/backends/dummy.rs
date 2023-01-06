@@ -9,21 +9,21 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::decoders::vp8::backends::StatelessDecoderBackend;
-use crate::decoders::vp8::backends::Vp8Picture;
 use crate::decoders::vp8::decoder::Decoder;
+use crate::decoders::vp8::parser::Header;
 use crate::decoders::vp8::parser::MbLfAdjustments;
 use crate::decoders::vp8::parser::Segmentation;
 use crate::decoders::BlockingMode;
 use crate::utils::dummy::*;
 
-impl StatelessDecoderBackend for Backend<Vp8Picture<BackendHandle>> {
+impl StatelessDecoderBackend for Backend<BackendHandle> {
     fn new_sequence(&mut self, _: &crate::decoders::vp8::parser::Header) -> super::Result<()> {
         Ok(())
     }
 
     fn submit_picture(
         &mut self,
-        picture: Vp8Picture<super::AsBackendHandle<Self::Handle>>,
+        _: &Header,
         _: Option<&Self::Handle>,
         _: Option<&Self::Handle>,
         _: Option<&Self::Handle>,
@@ -34,7 +34,7 @@ impl StatelessDecoderBackend for Backend<Vp8Picture<BackendHandle>> {
         _: bool,
     ) -> super::Result<Self::Handle> {
         Ok(Handle {
-            handle: Rc::new(RefCell::new(picture)),
+            handle: Rc::new(RefCell::new(BackendHandle)),
         })
     }
 
@@ -45,7 +45,7 @@ impl StatelessDecoderBackend for Backend<Vp8Picture<BackendHandle>> {
     }
 }
 
-impl Decoder<Handle<Vp8Picture<BackendHandle>>> {
+impl Decoder<Handle<BackendHandle>> {
     // Creates a new instance of the decoder using the dummy backend.
     pub fn new_dummy(blocking_mode: BlockingMode) -> anyhow::Result<Self> {
         Self::new(Box::new(Backend::new()), blocking_mode)
