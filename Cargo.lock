@@ -2030,6 +2030,7 @@ dependencies = [
  "data_model 0.1.0-alpha.0",
  "libc",
  "minijail",
+ "num_cpus",
  "once_cell",
  "remain",
  "serde",

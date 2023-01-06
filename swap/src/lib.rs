@@ -17,12 +17,15 @@ mod processes;
 mod staging;
 // this is public only for integration tests.
 pub mod userfaultfd;
+// this is public only for integration tests.
+pub mod worker;
 
 use std::io::stderr;
 use std::io::stdout;
 use std::ops::Range;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -50,11 +53,14 @@ use serde::Serialize;
 use vm_memory::GuestMemory;
 
 use crate::logger::PageFaultEventLogger;
+use crate::page_handler::MoveToStaging;
 use crate::page_handler::PageHandler;
 use crate::processes::freeze_all_processes;
 use crate::userfaultfd::UffdError;
 use crate::userfaultfd::UffdEvent;
 use crate::userfaultfd::Userfaultfd;
+use crate::worker::Channel;
+use crate::worker::Worker;
 
 /// The max size of chunks to swap out/in at once.
 const MAX_SWAP_CHUNK_SIZE: usize = 2 * 1024 * 1024; // = 2MB
@@ -488,6 +494,7 @@ fn start_monitoring(
     uffd_list: &mut UffdList,
     guest_memory: &GuestMemory,
     swap_dir: &Path,
+    channel: Arc<Channel<MoveToStaging>>,
 ) -> anyhow::Result<PageHandler> {
     // Drain the event queue to ensure that the uffds for all forked processes are being monitored.
     let mut new_uffds = Vec::new();
@@ -506,7 +513,7 @@ fn start_monitoring(
 
     let regions = regions_from_guest_memory(guest_memory);
 
-    let page_hander = PageHandler::create(swap_dir, &regions).context("enable swap")?;
+    let page_hander = PageHandler::create(swap_dir, &regions, channel).context("enable swap")?;
 
     // safe because the regions are from guest memory and uffd_list contains all the processes of
     // crosvm.
@@ -552,6 +559,11 @@ fn monitor_process(
         (&uffd, Token::UffdEvents(UffdList::ID_MAIN_UFFD)),
     ])
     .context("create wait context")?;
+
+    let n_worker = num_cpus::get();
+    info!("start {} workers for staging memory move", n_worker);
+    // The worker threads are killed when the main thread of the monitor process dies.
+    let worker = Worker::new(n_worker, n_worker);
 
     let mut uffd_list = UffdList::new(uffd, &wait_ctx);
     let mut swap_out_state: Option<SwapOutState> = None;
@@ -663,8 +675,12 @@ fn monitor_process(
                     Command::Enable => {
                         if page_handler_opt.is_none() {
                             info!("enable monitoring page faults");
-                            page_handler_opt =
-                                Some(start_monitoring(&mut uffd_list, &guest_memory, &swap_dir)?);
+                            page_handler_opt = Some(start_monitoring(
+                                &mut uffd_list,
+                                &guest_memory,
+                                &swap_dir,
+                                worker.channel.clone(),
+                            )?);
                         }
                         let page_handler = page_handler_opt.as_mut().unwrap();
 
@@ -675,19 +691,22 @@ fn monitor_process(
                         let result = {
                             let _processes_guard =
                                 freeze_all_processes().context("freeze processes")?;
-                            guest_memory.with_regions::<_, anyhow::Error>(
+                            let result = guest_memory.with_regions::<_, anyhow::Error>(
                                 |_, _, _, host_addr, shm, shm_offset| {
                                     // safe because:
                                     // * all the regions are registered to all userfaultfd
                                     // * no process access the guest memory (freeze_all_processes())
                                     // * page fault events are handled by PageHandler.
+                                    // * wait for all the copy completed within _processes_guard.
                                     num_pages += unsafe {
                                         page_handler.move_to_staging(host_addr, shm, shm_offset)
                                     }
                                     .context("move to staging")?;
                                     Ok(())
                                 },
-                            )
+                            );
+                            worker.channel.wait_complete();
+                            result
                         };
 
                         match result {

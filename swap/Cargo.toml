@@ -14,6 +14,7 @@ cros_tracing = { path = "../cros_tracing" }
 data_model = { path = "../common/data_model" }
 libc = "*"
 minijail = "*"
+num_cpus = "*"
 once_cell = "*"
 remain = "*"
 serde = { version = "1", features = [ "derive" ] }

@@ -24,11 +24,13 @@ use swap::page_handler::Error;
 use swap::page_handler::PageHandler;
 use swap::register_regions;
 use swap::unregister_regions;
+use swap::worker::Worker;
 
 const HUGEPAGE_SIZE: usize = 2 * 1024 * 1024; // 2MB
 
 #[test]
 fn create_success() {
+    let worker = Worker::new(2, 2);
     let dir_path = tempfile::tempdir().unwrap();
     let shm = create_shared_memory("shm", 6 * pagesize());
     let base_addr = shm.base_addr();
@@ -39,13 +41,16 @@ fn create_success() {
             base_addr..(base_addr + 3 * pagesize()),
             (base_addr + 3 * pagesize())..(base_addr + 6 * pagesize()),
         ],
+        worker.channel.clone(),
     );
 
     assert_eq!(result.is_ok(), true);
+    worker.close();
 }
 
 #[test]
 fn create_partially_overlap() {
+    let worker = Worker::new(2, 2);
     let dir_path = tempfile::tempdir().unwrap();
     let shm = create_shared_memory("shm", 3 * pagesize());
     let base_addr = shm.base_addr();
@@ -65,6 +70,7 @@ fn create_partially_overlap() {
         let result = PageHandler::create(
             dir_path.path(),
             &[base_addr..(base_addr + 3 * pagesize()), range],
+            worker.channel.clone(),
         );
         assert_eq!(result.is_err(), true);
         match result {
@@ -74,6 +80,7 @@ fn create_partially_overlap() {
             }
         }
     }
+    worker.close();
 }
 
 fn wait_thread_with_timeout<T>(join_handle: thread::JoinHandle<T>, timeout_millis: u64) -> T {
@@ -88,12 +95,14 @@ fn wait_thread_with_timeout<T>(join_handle: thread::JoinHandle<T>, timeout_milli
 
 #[test]
 fn handle_page_fault_zero_success() {
+    let worker = Worker::new(2, 2);
     let dir_path = tempfile::tempdir().unwrap();
     let uffd = create_uffd_for_test();
     let shm = create_shared_memory("shm", 3 * pagesize());
     let base_addr = shm.base_addr();
     let regions = [base_addr..(base_addr + 3 * pagesize())];
-    let mut page_handler = PageHandler::create(dir_path.path(), &regions).unwrap();
+    let mut page_handler =
+        PageHandler::create(dir_path.path(), &regions, worker.channel.clone()).unwrap();
     unsafe { register_regions(&regions, array::from_ref(&uffd)) }.unwrap();
 
     page_handler.handle_page_fault(&uffd, base_addr).unwrap();
@@ -119,16 +128,19 @@ fn handle_page_fault_zero_success() {
     let result = wait_thread_with_timeout(join_handle, 100);
 
     assert_eq!(result, vec![0; 3 * pagesize()]);
+    worker.close();
 }
 
 #[test]
 fn handle_page_fault_invalid_address() {
+    let worker = Worker::new(2, 2);
     let dir_path = tempfile::tempdir().unwrap();
     let uffd = create_uffd_for_test();
     let shm = create_shared_memory("shm", 3 * pagesize());
     let base_addr = shm.base_addr();
     let regions = [base_addr..(base_addr + 3 * pagesize())];
-    let mut page_handler = PageHandler::create(dir_path.path(), &regions).unwrap();
+    let mut page_handler =
+        PageHandler::create(dir_path.path(), &regions, worker.channel.clone()).unwrap();
     unsafe { register_regions(&regions, array::from_ref(&uffd)) }.unwrap();
 
     assert_eq!(
@@ -143,16 +155,19 @@ fn handle_page_fault_invalid_address() {
             .is_err(),
         true
     );
+    worker.close();
 }
 
 #[test]
 fn handle_page_fault_duplicated_page_fault() {
+    let worker = Worker::new(2, 2);
     let dir_path = tempfile::tempdir().unwrap();
     let uffd = create_uffd_for_test();
     let shm = create_shared_memory("shm", 3 * pagesize());
     let base_addr = shm.base_addr();
     let regions = [base_addr..(base_addr + 3 * pagesize())];
-    let mut page_handler = PageHandler::create(dir_path.path(), &regions).unwrap();
+    let mut page_handler =
+        PageHandler::create(dir_path.path(), &regions, worker.channel.clone()).unwrap();
     unsafe { register_regions(&regions, array::from_ref(&uffd)) }.unwrap();
 
     assert_eq!(
@@ -163,16 +178,19 @@ fn handle_page_fault_duplicated_page_fault() {
         page_handler.handle_page_fault(&uffd, base_addr + 1).is_ok(),
         true
     );
+    worker.close();
 }
 
 #[test]
 fn handle_page_remove_success() {
+    let worker = Worker::new(2, 2);
     let dir_path = tempfile::tempdir().unwrap();
     let uffd = create_uffd_for_test();
     let shm = create_shared_memory("shm", 3 * pagesize());
     let base_addr = shm.base_addr();
     let regions = [base_addr..(base_addr + 3 * pagesize())];
-    let mut page_handler = PageHandler::create(dir_path.path(), &regions).unwrap();
+    let mut page_handler =
+        PageHandler::create(dir_path.path(), &regions, worker.channel.clone()).unwrap();
     unsafe { register_regions(&regions, array::from_ref(&uffd)) }.unwrap();
 
     // fill the first page with zero
@@ -205,16 +223,19 @@ fn handle_page_remove_success() {
     });
 
     assert_eq!(wait_thread_with_timeout(join_handle, 100), 0);
+    worker.close();
 }
 
 #[test]
 fn handle_page_remove_invalid_address() {
+    let worker = Worker::new(2, 2);
     let dir_path = tempfile::tempdir().unwrap();
     let uffd = create_uffd_for_test();
     let shm = create_shared_memory("shm", 3 * pagesize());
     let base_addr = shm.base_addr();
     let regions = [base_addr..(base_addr + 3 * pagesize())];
-    let mut page_handler = PageHandler::create(dir_path.path(), &regions).unwrap();
+    let mut page_handler =
+        PageHandler::create(dir_path.path(), &regions, worker.channel.clone()).unwrap();
     unsafe { register_regions(&regions, array::from_ref(&uffd)) }.unwrap();
 
     page_handler.handle_page_fault(&uffd, base_addr).unwrap();
@@ -243,10 +264,12 @@ fn handle_page_remove_invalid_address() {
             .is_ok(),
         true
     );
+    worker.close();
 }
 
 #[test]
 fn move_to_staging_data_written_before_enabling() {
+    let worker = Worker::new(2, 2);
     let uffd = create_uffd_for_test();
     let dir_path = tempfile::tempdir().unwrap();
     let shm = SharedMemory::new("shm", 6 * pagesize() as u64).unwrap();
@@ -266,7 +289,8 @@ fn move_to_staging_data_written_before_enabling() {
         base_addr1..(base_addr1 + 3 * pagesize()),
         base_addr2..(base_addr2 + 3 * pagesize()),
     ];
-    let mut page_handler = PageHandler::create(dir_path.path(), &regions).unwrap();
+    let mut page_handler =
+        PageHandler::create(dir_path.path(), &regions, worker.channel.clone()).unwrap();
     // write data before registering to userfaultfd
     unsafe {
         for i in base_addr1 + pagesize()..base_addr1 + 2 * pagesize() {
@@ -287,6 +311,7 @@ fn move_to_staging_data_written_before_enabling() {
             .move_to_staging(base_addr2, &shm, 3 * pagesize() as u64)
             .unwrap();
     }
+    worker.channel.wait_complete();
     // page faults on all pages.
     for i in 0..3 {
         page_handler
@@ -325,6 +350,7 @@ fn move_to_staging_data_written_before_enabling() {
             assert_eq!(&result[i * pagesize() + j], v);
         }
     }
+    worker.close();
 }
 
 fn page_idx_range(start_addr: usize, end_addr: usize) -> Range<usize> {
@@ -337,6 +363,7 @@ fn page_idx_to_addr(page_idx: usize) -> usize {
 
 #[test]
 fn move_to_staging_hugepage_chunks() {
+    let worker = Worker::new(2, 2);
     let uffd = create_uffd_for_test();
     let dir_path = tempfile::tempdir().unwrap();
     let shm = SharedMemory::new("shm", 10 * HUGEPAGE_SIZE as u64).unwrap();
@@ -356,7 +383,8 @@ fn move_to_staging_hugepage_chunks() {
         base_addr1..(base_addr1 + 5 * HUGEPAGE_SIZE),
         base_addr2..(base_addr2 + 5 * HUGEPAGE_SIZE),
     ];
-    let mut page_handler = PageHandler::create(dir_path.path(), &regions).unwrap();
+    let mut page_handler =
+        PageHandler::create(dir_path.path(), &regions, worker.channel.clone()).unwrap();
     // write data before registering to userfaultfd
     unsafe {
         for i in page_idx_range(base_addr1 + pagesize(), base_addr1 + 3 * pagesize()) {
@@ -392,6 +420,7 @@ fn move_to_staging_hugepage_chunks() {
             .move_to_staging(base_addr2, &shm, 5 * HUGEPAGE_SIZE as u64)
             .unwrap();
     }
+    worker.channel.wait_complete();
     // page faults on all pages.
     for i in 0..5 * HUGEPAGE_SIZE / pagesize() {
         page_handler
@@ -456,16 +485,19 @@ fn move_to_staging_hugepage_chunks() {
     for i in page_idx_range(10 * HUGEPAGE_SIZE - pagesize(), 10 * HUGEPAGE_SIZE) {
         assert_eq!(result[i], 0);
     }
+    worker.close();
 }
 
 #[test]
 fn move_to_staging_invalid_base_addr() {
+    let worker = Worker::new(2, 2);
     let uffd = create_uffd_for_test();
     let dir_path = tempfile::tempdir().unwrap();
     let shm = create_shared_memory("shm1", 3 * pagesize());
     let base_addr = shm.base_addr();
     let regions = [base_addr..(base_addr + 3 * pagesize())];
-    let mut page_handler = PageHandler::create(dir_path.path(), &regions).unwrap();
+    let mut page_handler =
+        PageHandler::create(dir_path.path(), &regions, worker.channel.clone()).unwrap();
     unsafe { register_regions(&regions, array::from_ref(&uffd)) }.unwrap();
 
     // the base_addr is within the region
@@ -478,6 +510,7 @@ fn move_to_staging_invalid_base_addr() {
         unsafe { page_handler.move_to_staging(base_addr - pagesize(), &shm.shm, 0,) }.is_err(),
         true
     );
+    worker.close();
 }
 
 fn swap_out_all(page_handler: &mut PageHandler) {
@@ -486,6 +519,7 @@ fn swap_out_all(page_handler: &mut PageHandler) {
 
 #[test]
 fn swap_out_success() {
+    let worker = Worker::new(2, 2);
     let uffd = create_uffd_for_test();
     let dir_path = tempfile::tempdir().unwrap();
     let shm = SharedMemory::new("shm", 6 * pagesize() as u64).unwrap();
@@ -504,7 +538,8 @@ fn swap_out_success() {
         base_addr1..(base_addr1 + 3 * pagesize()),
         base_addr2..(base_addr2 + 3 * pagesize()),
     ];
-    let mut page_handler = PageHandler::create(dir_path.path(), &regions).unwrap();
+    let mut page_handler =
+        PageHandler::create(dir_path.path(), &regions, worker.channel.clone()).unwrap();
     // write data before registering to userfaultfd
     unsafe {
         for i in base_addr1 + pagesize()..base_addr1 + 2 * pagesize() {
@@ -522,6 +557,7 @@ fn swap_out_success() {
             .move_to_staging(base_addr2, &shm, 3 * pagesize() as u64)
             .unwrap();
     }
+    worker.channel.wait_complete();
     swap_out_all(&mut page_handler);
     // page faults on all pages. page 0 and page 2 will be swapped in from the file. page 1 will
     // be filled with zero.
@@ -562,10 +598,12 @@ fn swap_out_success() {
             assert_eq!(&result[i * pagesize() + j], v);
         }
     }
+    worker.close();
 }
 
 #[test]
 fn swap_out_handled_page() {
+    let worker = Worker::new(2, 2);
     let uffd = create_uffd_for_test();
     let dir_path = tempfile::tempdir().unwrap();
     let shm = SharedMemory::new("shm", 6 * pagesize() as u64).unwrap();
@@ -576,7 +614,8 @@ fn swap_out_handled_page() {
     let base_addr1 = mmap1.as_ptr() as usize;
 
     let regions = [base_addr1..(base_addr1 + 3 * pagesize())];
-    let mut page_handler = PageHandler::create(dir_path.path(), &regions).unwrap();
+    let mut page_handler =
+        PageHandler::create(dir_path.path(), &regions, worker.channel.clone()).unwrap();
     // write data before registering to userfaultfd
     unsafe {
         for i in base_addr1 + pagesize()..base_addr1 + 2 * pagesize() {
@@ -588,6 +627,7 @@ fn swap_out_handled_page() {
     unsafe {
         page_handler.move_to_staging(base_addr1, &shm, 0).unwrap();
     }
+    worker.channel.wait_complete();
     // page in before swap_out()
     page_handler
         .handle_page_fault(&uffd, base_addr1 + pagesize())
@@ -610,10 +650,12 @@ fn swap_out_handled_page() {
     for v in result {
         assert_eq!(v, 1);
     }
+    worker.close();
 }
 
 #[test]
 fn swap_out_twice() {
+    let worker = Worker::new(2, 2);
     let uffd = create_uffd_for_test();
     let dir_path = tempfile::tempdir().unwrap();
     let shm = SharedMemory::new("shm", 6 * pagesize() as u64).unwrap();
@@ -632,7 +674,8 @@ fn swap_out_twice() {
         base_addr1..(base_addr1 + 3 * pagesize()),
         base_addr2..(base_addr2 + 3 * pagesize()),
     ];
-    let mut page_handler = PageHandler::create(dir_path.path(), &regions).unwrap();
+    let mut page_handler =
+        PageHandler::create(dir_path.path(), &regions, worker.channel.clone()).unwrap();
     unsafe {
         for i in 0..pagesize() {
             *((base_addr1 + i) as *mut u8) = 1;
@@ -649,6 +692,7 @@ fn swap_out_twice() {
             .move_to_staging(base_addr2, &shm, 3 * pagesize() as u64)
             .unwrap();
     }
+    worker.channel.wait_complete();
     swap_out_all(&mut page_handler);
     // page faults on all pages in mmap1.
     for i in 0..3 {
@@ -678,6 +722,7 @@ fn swap_out_twice() {
             .move_to_staging(base_addr2, &shm, 3 * pagesize() as u64)
             .unwrap();
     }
+    worker.channel.wait_complete();
     swap_out_all(&mut page_handler);
 
     // page faults on all pages.
@@ -717,10 +762,12 @@ fn swap_out_twice() {
             assert_eq!(&result[i * pagesize() + j], v);
         }
     }
+    worker.close();
 }
 
 #[test]
 fn swap_in_success() {
+    let worker = Worker::new(2, 2);
     let uffd = create_uffd_for_test();
     let dir_path = tempfile::tempdir().unwrap();
     let shm = SharedMemory::new("shm", 6 * pagesize() as u64).unwrap();
@@ -739,7 +786,8 @@ fn swap_in_success() {
         base_addr1..(base_addr1 + 3 * pagesize()),
         base_addr2..(base_addr2 + 3 * pagesize()),
     ];
-    let mut page_handler = PageHandler::create(dir_path.path(), &regions).unwrap();
+    let mut page_handler =
+        PageHandler::create(dir_path.path(), &regions, worker.channel.clone()).unwrap();
     unsafe {
         for i in base_addr1 + pagesize()..base_addr1 + 2 * pagesize() {
             *(i as *mut u8) = 1;
@@ -759,6 +807,7 @@ fn swap_in_success() {
             .move_to_staging(base_addr2, &shm, 3 * pagesize() as u64)
             .unwrap();
     }
+    worker.channel.wait_complete();
     swap_out_all(&mut page_handler);
     page_handler
         .handle_page_fault(&uffd, base_addr1 + pagesize())
@@ -777,6 +826,7 @@ fn swap_in_success() {
             .move_to_staging(base_addr2, &shm, 3 * pagesize() as u64)
             .unwrap();
     }
+    worker.channel.wait_complete();
     while page_handler.swap_in(&uffd, 1024 * 1024).unwrap() != 0 {}
     unregister_regions(&regions, array::from_ref(&uffd)).unwrap();
 
@@ -808,4 +858,5 @@ fn swap_in_success() {
             assert_eq!(&result[i * pagesize() + j], v);
         }
     }
+    worker.close();
 }

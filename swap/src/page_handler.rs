@@ -6,8 +6,10 @@
 
 #![deny(missing_docs)]
 
+use std::mem;
 use std::ops::Range;
 use std::path::Path;
+use std::sync::Arc;
 
 use base::error;
 use base::unix::FileDataIterator;
@@ -26,10 +28,13 @@ use crate::pagesize::page_idx_to_addr;
 use crate::pagesize::pages_to_bytes;
 use crate::pagesize::round_up_hugepage_size;
 use crate::pagesize::THP_SIZE;
+use crate::staging::CopyOp;
 use crate::staging::Error as StagingError;
 use crate::staging::StagingMemory;
 use crate::userfaultfd::UffdError;
 use crate::userfaultfd::Userfaultfd;
+use crate::worker::Channel;
+use crate::worker::Task;
 
 /// Result for PageHandler
 pub type Result<T> = std::result::Result<T, Error>;
@@ -52,9 +57,6 @@ pub enum Error {
     #[error("userfaultfd failed : {0:?}")]
     /// userfaultfd operation failed
     Userfaultfd(UffdError),
-    #[error("move guest memory to staging memory failed : {0:?}")]
-    /// move guest memory to staging memory failed
-    MoveToStagingFailed(base::Error),
 }
 
 impl From<UffdError> for Error {
@@ -109,12 +111,40 @@ struct Region {
     swap_active: bool,
 }
 
+/// MoveToStaging copies chunks of consecutive pages next to each other on the guest memory to the
+/// staging memory and removes the chunks on the guest memory.
+pub struct MoveToStaging {
+    remove_area: Range<usize>,
+    copies: Vec<CopyOp>,
+}
+
+impl Task for MoveToStaging {
+    fn execute(self) {
+        for copy_op in self.copies {
+            copy_op.execute();
+        }
+        // Remove chunks of pages at once to reduce madvise(2) syscall.
+        // Safe because the region is already backed by the file and the content will be
+        // swapped in on a page fault.
+        let result = unsafe {
+            remove_memory(
+                self.remove_area.start,
+                self.remove_area.end - self.remove_area.start,
+            )
+        };
+        if let Err(e) = result {
+            panic!("failed to remove memory: {:?}", e);
+        }
+    }
+}
+
 /// PageHandler manages the page states of multiple regions.
 ///
 /// Handles multiple events derived from userfaultfd and swap out requests.
 /// All the addresses and sizes in bytes are converted to page id internally.
 pub struct PageHandler {
     regions: Vec<Region>,
+    channel: Arc<Channel<MoveToStaging>>,
 }
 
 impl PageHandler {
@@ -127,7 +157,11 @@ impl PageHandler {
     /// * `swap_dir` - path to the directory to create a swap file from.
     /// * `address_ranges` - the list of address range of the regions. the start address must align
     ///   with page. the size must be multiple of pagesize.
-    pub fn create(swap_dir: &Path, address_ranges: &[Range<usize>]) -> Result<Self> {
+    pub fn create(
+        swap_dir: &Path,
+        address_ranges: &[Range<usize>],
+        stating_move_context: Arc<Channel<MoveToStaging>>,
+    ) -> Result<Self> {
         let mut regions: Vec<Region> = Vec::new();
 
         for address_range in address_ranges {
@@ -172,7 +206,10 @@ impl PageHandler {
             }
         }
 
-        Ok(Self { regions })
+        Ok(Self {
+            regions,
+            channel: stating_move_context,
+        })
     }
 
     fn find_region_position(&self, page_idx: usize) -> Option<usize> {
@@ -182,11 +219,6 @@ impl PageHandler {
             region.head_page_idx <= page_idx
                 && page_idx < region.head_page_idx + region.file.num_pages()
         })
-    }
-
-    fn find_region(&mut self, page_idx: usize) -> Option<&mut Region> {
-        self.find_region_position(page_idx)
-            .map(|i| &mut self.regions[i])
     }
 
     fn copy_all(
@@ -299,8 +331,10 @@ impl PageHandler {
         let last_page_idx = addr_to_page_idx(end_addr);
         for page_idx in start_page_idx..(last_page_idx) {
             let page_addr = page_idx_to_addr(page_idx);
+            // TODO(kawasin): Cache the position if the range does not span multiple regions.
             let region = self
-                .find_region(page_idx)
+                .find_region_position(page_idx)
+                .map(|i| &mut self.regions[i])
                 .ok_or(Error::InvalidAddress(page_addr))?;
             let idx_in_region = page_idx - region.head_page_idx;
             if let Err(e) = region.file.clear_range(idx_in_region..idx_in_region + 1) {
@@ -332,6 +366,9 @@ impl PageHandler {
     ///
     /// The page fault events for the region from the userfaultfd must be handled by
     /// [Self::handle_page_fault()].
+    ///
+    /// Must call [Channel::wait_complete()] to wait all the copy operation complete within the
+    /// memory protection period.
     #[deny(unsafe_op_in_unsafe_fn)]
     pub unsafe fn move_to_staging<T>(
         &mut self,
@@ -344,7 +381,8 @@ impl PageHandler {
     {
         let hugepage_size = *THP_SIZE;
         let region = self
-            .find_region(addr_to_page_idx(base_addr))
+            .find_region_position(addr_to_page_idx(base_addr))
+            .map(|i| &mut self.regions[i])
             .ok_or(Error::InvalidAddress(base_addr))?;
 
         if page_idx_to_addr(region.head_page_idx) != base_addr {
@@ -357,6 +395,7 @@ impl PageHandler {
         let region_size = pages_to_bytes(region.file.num_pages());
         let mut file_data = FileDataIterator::new(memfd, base_offset, region_size as u64);
         let mut moved_size = 0;
+        let mut copies = Vec::new();
         let mut remaining_batch_size = hugepage_size;
         let mut batch_head_offset = 0;
         let mut cur_data = None;
@@ -384,15 +423,10 @@ impl PageHandler {
                     } else {
                         if remaining_batch_size < hugepage_size {
                             // Remove the batch since it does not have enough room for a huge page.
-                            // Safe because the region is already backed by the file and the content
-                            // will be swapped in on a page fault.
-                            unsafe {
-                                remove_memory(
-                                    base_addr + batch_head_offset,
-                                    offset - batch_head_offset,
-                                )
-                                .map_err(Error::MoveToStagingFailed)?;
-                            }
+                            self.channel.push(MoveToStaging {
+                                remove_area: base_addr + batch_head_offset..base_addr + offset,
+                                copies: mem::take(&mut copies),
+                            });
                             remaining_batch_size = hugepage_size;
                             batch_head_offset = offset;
                         }
@@ -411,17 +445,17 @@ impl PageHandler {
             let size = (data_range.end - data_range.start) as usize;
             assert!(is_page_aligned(size));
 
-            // TODO(kawasin): multi thread for performance optimization.
             // Safe because:
             // * src_addr is aligned with page size
             // * the data_range starting from src_addr is on the guest memory.
-            unsafe {
+            let copy_op = unsafe {
                 staging_memory.copy(
                     (base_addr + offset) as *const u8,
                     bytes_to_pages(offset),
                     bytes_to_pages(size),
-                )?;
-            }
+                )?
+            };
+            copies.push(copy_op);
 
             moved_size += size;
             // The size must be smaller than or equals to remaining_batch_size.
@@ -429,29 +463,19 @@ impl PageHandler {
 
             if remaining_batch_size == 0 {
                 // Remove the batch of pages at once to reduce madvise(2) syscall.
-                // Safe because the region is already backed by the file and the content will be
-                // swapped in on a page fault.
-                unsafe {
-                    remove_memory(
-                        base_addr + batch_head_offset,
-                        offset + size - batch_head_offset,
-                    )
-                    .map_err(Error::MoveToStagingFailed)?;
-                }
+                self.channel.push(MoveToStaging {
+                    remove_area: base_addr + batch_head_offset..base_addr + offset + size,
+                    copies: mem::take(&mut copies),
+                });
                 remaining_batch_size = hugepage_size;
                 batch_head_offset = offset + size;
             }
         }
         // Remove the final batch of pages.
-        // Safe because the region is already backed by the file and the content will be swapped in
-        // on a page fault.
-        unsafe {
-            remove_memory(
-                base_addr + batch_head_offset,
-                region_size - batch_head_offset,
-            )
-            .map_err(Error::MoveToStagingFailed)?;
-        }
+        self.channel.push(MoveToStaging {
+            remove_area: base_addr + batch_head_offset..base_addr + region_size,
+            copies,
+        });
 
         let moved_pages = bytes_to_pages(moved_size);
         // Suppress error log on the first swap_out, since page counts are not initialized but zero.

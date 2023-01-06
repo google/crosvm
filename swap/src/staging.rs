@@ -44,6 +44,33 @@ impl From<VolatileMemoryError> for Error {
     }
 }
 
+/// Copy operation from the guest memory to the staging memory.
+pub struct CopyOp {
+    src_addr: *const u8,
+    dst_addr: *mut u8,
+    size: usize,
+}
+
+/// CopyOp is safe to be sent to other threads because:
+///   * The source memory region (guest memory) is alive for the monitor process lifetime.
+///   * The destination memory region (staging memory) is alive until all the [CopyOp] are executed.
+///   * [CopyOp] accesses both src/dst memory region exclusively.
+unsafe impl Send for CopyOp {}
+
+impl CopyOp {
+    /// Copies the specified the guest memory to the staging memory.
+    pub fn execute(self) {
+        // Safe because:
+        // * the source memory is in guest memory and no processes access it.
+        // * src_addr and dst_addr are aligned with the page size.
+        // * src and dst does not overlap since src_addr is from the guest memory and dst_addr
+        //   is from the staging memory.
+        unsafe {
+            copy_nonoverlapping(self.src_addr, self.dst_addr, self.size);
+        }
+    }
+}
+
 /// [StagingMemory] stores active pages from the guest memory in anonymous private memory.
 ///
 /// [StagingMemory] is created per memory region.
@@ -93,21 +120,19 @@ impl StagingMemory {
     /// * `src_addr` must be aligned with the page size.
     /// * The pages indicated by `src_addr` + `pages` must be within the guest memory.
     #[deny(unsafe_op_in_unsafe_fn)]
-    pub unsafe fn copy(&mut self, src_addr: *const u8, idx: usize, pages: usize) -> Result<()> {
+    pub unsafe fn copy(&mut self, src_addr: *const u8, idx: usize, pages: usize) -> Result<CopyOp> {
         let idx_range = idx..idx + pages;
         let dst_slice = self.get_slice(idx_range.clone())?;
-        // Safe because:
-        // * the source memory is in guest memory and no processes access it.
-        // * src_addr and dst_addr are aligned with the page size.
-        // * src and dst does not overlap since src_addr is from the guest memory and dst_addr
-        //   is from the staging memory.
-        unsafe {
-            copy_nonoverlapping(src_addr, dst_slice.as_mut_ptr(), dst_slice.size());
-        }
+
+        let copy_op = CopyOp {
+            src_addr,
+            dst_addr: dst_slice.as_mut_ptr(),
+            size: dst_slice.size(),
+        };
         if !self.present_list.mark_as_present(idx_range) {
             unreachable!("idx_range is already validated by get_slice().");
         }
-        Ok(())
+        Ok(copy_op)
     }
 
     /// Returns a content of the page corresponding to the index.
@@ -246,7 +271,8 @@ mod tests {
         unsafe {
             staging_memory
                 .copy(mmap.get_ref(0).unwrap().as_mut_ptr(), 0, 1)
-                .unwrap();
+                .unwrap()
+                .execute();
         }
 
         let page = staging_memory.page_content(0).unwrap().unwrap();
@@ -323,8 +349,8 @@ mod tests {
         let src_addr1 = mmap1.get_ref(0).unwrap().as_mut_ptr();
         let src_addr2 = mmap2.get_ref(0).unwrap().as_mut_ptr();
         unsafe {
-            staging_memory.copy(src_addr1, 1, 1).unwrap();
-            staging_memory.copy(src_addr2, 2, 1).unwrap();
+            staging_memory.copy(src_addr1, 1, 1).unwrap().execute();
+            staging_memory.copy(src_addr2, 2, 1).unwrap().execute();
         }
 
         let slice = staging_memory.get_slice(1..3).unwrap();
