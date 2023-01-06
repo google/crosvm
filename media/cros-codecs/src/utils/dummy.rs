@@ -7,7 +7,6 @@
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::marker::PhantomData;
 use std::rc::Rc;
 
 use crate::decoders::BlockingMode;
@@ -38,11 +37,11 @@ impl DynHandle for BackendHandle {
     }
 }
 
-pub struct Handle<T> {
-    pub handle: Rc<RefCell<T>>,
+pub struct Handle {
+    pub handle: Rc<RefCell<BackendHandle>>,
 }
 
-impl<T> Clone for Handle<T> {
+impl Clone for Handle {
     fn clone(&self) -> Self {
         Self {
             handle: Rc::clone(&self.handle),
@@ -50,7 +49,7 @@ impl<T> Clone for Handle<T> {
     }
 }
 
-impl DecodedHandle for Handle<BackendHandle> {
+impl DecodedHandle for Handle {
     type BackendHandle = BackendHandle;
 
     fn handle_rc(&self) -> &Rc<RefCell<Self::BackendHandle>> {
@@ -73,19 +72,19 @@ impl DecodedHandle for Handle<BackendHandle> {
 }
 
 /// Dummy backend that can be used for any codec.
-pub(crate) struct Backend<H>(PhantomData<H>);
+pub(crate) struct Backend;
 
-impl<H> Backend<H> {
+impl Backend {
     pub(crate) fn new() -> Self {
-        Self(Default::default())
+        Self
     }
 }
 
-impl<H> VideoDecoderBackend for Backend<H>
+impl VideoDecoderBackend for Backend
 where
-    Handle<H>: DecodedHandle,
+    Handle: DecodedHandle,
 {
-    type Handle = Handle<H>;
+    type Handle = Handle;
 
     fn num_resources_total(&self) -> usize {
         1

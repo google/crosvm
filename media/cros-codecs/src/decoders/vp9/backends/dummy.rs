@@ -17,7 +17,7 @@ use crate::decoders::vp9::parser::NUM_REF_FRAMES;
 use crate::decoders::BlockingMode;
 use crate::utils::dummy::*;
 
-impl StatelessDecoderBackend for Backend<BackendHandle> {
+impl StatelessDecoderBackend for Backend {
     fn new_sequence(&mut self, _: &crate::decoders::vp9::parser::Header) -> super::Result<()> {
         Ok(())
     }
@@ -43,7 +43,7 @@ impl StatelessDecoderBackend for Backend<BackendHandle> {
     }
 }
 
-impl Decoder<Handle<BackendHandle>> {
+impl Decoder<Handle> {
     // Creates a new instance of the decoder using the dummy backend.
     pub fn new_dummy(blocking_mode: BlockingMode) -> anyhow::Result<Self> {
         Self::new(Box::new(Backend::new()), blocking_mode)
