@@ -57,10 +57,12 @@ pub fn get_gpu_cache_info<'a>(
 
             env.push(("MESA_DISK_CACHE_DATABASE", "1"));
 
-            if let Some(_foz_db_list_path) = foz_db_list_path {
-                // TODO(b/260664734): Use foz_db_list_path to set an environment
-                // variable once mesa changes get cherry-picked.
-                warn!("foz-db-list-path not utilized yet");
+            if let Some(foz_db_list_path) = foz_db_list_path {
+                env.push(("MESA_DISK_CACHE_COMBINE_RW_WITH_RO_FOZ", "1"));
+                env.push((
+                    "MESA_DISK_CACHE_READ_ONLY_FOZ_DBS_DYNAMIC_LIST",
+                    foz_db_list_path,
+                ));
             }
 
             if let Some(cache_size) = cache_size {
