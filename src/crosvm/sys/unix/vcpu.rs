@@ -285,6 +285,7 @@ fn vcpu_loop<V>(
     guest_suspended_cvar: Arc<(Mutex<bool>, Condvar)>,
     #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
     bus_lock_ratelimit_ctrl: Arc<Mutex<Ratelimit>>,
+    to_vm_control: mpsc::Sender<VmRunMode>,
 ) -> ExitState
 where
     V: VcpuArch + 'static,
@@ -378,6 +379,11 @@ where
                                     warn!("Failed to set vcpu to real time: {}", e);
                                 }
                             }
+                        }
+                        VcpuControl::GetStates => {
+                            if let Err(e) = to_vm_control.send(run_mode) {
+                                error!("Failed to send GetState: {}", e);
+                            };
                         }
                     }
                 }
@@ -535,6 +541,7 @@ pub fn run_vcpu<V>(
     guest_suspended_cvar: Arc<(Mutex<bool>, Condvar)>,
     #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
     bus_lock_ratelimit_ctrl: Arc<Mutex<Ratelimit>>,
+    to_vm_control: mpsc::Sender<VmRunMode>,
 ) -> Result<JoinHandle<()>>
 where
     V: VcpuArch + 'static,
@@ -633,6 +640,7 @@ where
                     guest_suspended_cvar,
                     #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
                     bus_lock_ratelimit_ctrl,
+                    to_vm_control,
                 )
             };
 

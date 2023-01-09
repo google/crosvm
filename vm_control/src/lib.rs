@@ -32,6 +32,7 @@ use std::fs::File;
 use std::path::PathBuf;
 use std::result::Result as StdResult;
 use std::str::FromStr;
+use std::sync::mpsc;
 use std::sync::Arc;
 
 pub use balloon_control::BalloonStats;
@@ -53,6 +54,7 @@ use base::Result;
 use base::SafeDescriptor;
 use base::SharedMemory;
 use base::Tube;
+use base::TubeError;
 use hypervisor::Datamatch;
 use hypervisor::IoEventAddress;
 use hypervisor::IrqRoute;
@@ -108,10 +110,11 @@ pub enum VcpuControl {
     Debug(VcpuDebug),
     RunState(VmRunMode),
     MakeRT,
+    GetStates,
 }
 
 /// Mode of execution for the VM.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum VmRunMode {
     /// The default run mode indicating the VCPUs are running.
     Running,
@@ -1047,6 +1050,77 @@ fn map_descriptor(
     }
 }
 
+// Get vCPU state. vCPUs are expected to all hold the same state.
+// In this function, there may be a time where vCPUs are not
+fn get_vcpu_state(
+    kick_vcpus: impl Fn(VcpuControl),
+    state_from_vcpu_channel: &mpsc::Receiver<VmRunMode>,
+    vcpu_num: usize,
+) -> std::result::Result<VmRunMode, SysError> {
+    kick_vcpus(VcpuControl::GetStates);
+    let mut current_mode_vec: Vec<VmRunMode> = Vec::new();
+    for _ in 0..vcpu_num {
+        match state_from_vcpu_channel.recv() {
+            Ok(state) => current_mode_vec.push(state),
+            Err(e) => {
+                error!("Failed to get vCPU state: {}", e);
+                return Err(SysError::new(EIO));
+            }
+        };
+    }
+    if current_mode_vec.is_empty() {
+        return Err(SysError::new(EIO));
+    }
+    let first_state = current_mode_vec[0];
+    if first_state == VmRunMode::Exiting {
+        panic!("Attempt to snapshot while exiting.");
+    }
+    if current_mode_vec.iter().any(|x| *x != first_state) {
+        // We do not panic here. It could be that vCPUs are transitioning from one mode to another.
+        error!("Unknown VM state: vCPUs hold different states.");
+        return Err(SysError::new(EIO));
+    }
+    Ok(first_state)
+}
+
+fn do_while_vcpus_suspended<T: for<'de> serde::Deserialize<'de>>(
+    kick_vcpus: impl Fn(VcpuControl),
+    state_from_vcpu_channel: &mpsc::Receiver<VmRunMode>,
+    vcpu_num: usize,
+    run_action: impl Fn() -> std::result::Result<(), TubeError>,
+    device_control_tube: &Tube,
+) -> std::result::Result<T, SysError> {
+    // get initial vcpu state
+    let current_mode = get_vcpu_state(&kick_vcpus, state_from_vcpu_channel, vcpu_num)?;
+    let saved_run_mode = current_mode;
+    if current_mode != VmRunMode::Suspending {
+        kick_vcpus(VcpuControl::RunState(VmRunMode::Suspending));
+    }
+    // Blocking call, waiting for response to ensure vCPU state was updated.
+    // In case of failure, where a vCPU still has the state running, start up vcpus and abort
+    // operation.
+    let current_mode = get_vcpu_state(&kick_vcpus, state_from_vcpu_channel, vcpu_num)?;
+    if current_mode != VmRunMode::Suspending {
+        error!("vCPUs failed to all suspend. Kicking back all vCPUs to their previous state: {saved_run_mode}");
+        kick_vcpus(VcpuControl::RunState(saved_run_mode));
+        return Err(SysError::new(EIO));
+    }
+    if let Err(e) = run_action() {
+        error!("fail to send command to devices control socket: {}", e);
+        kick_vcpus(VcpuControl::RunState(saved_run_mode));
+        return Err(SysError::new(EIO));
+    };
+    let response: T = match device_control_tube.recv() {
+        Ok(response) => response,
+        Err(e) => {
+            error!("fail to recv command from device control socket: {}", e);
+            return Err(SysError::new(EIO));
+        }
+    };
+    kick_vcpus(VcpuControl::RunState(saved_run_mode));
+    Ok(response)
+}
+
 impl VmRequest {
     /// Executes this request on the given Vm and other mutable state.
     ///
@@ -1067,6 +1141,8 @@ impl VmRequest {
         force_s2idle: bool,
         #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
         device_control_tube: &Tube,
+        state_from_vcpu_channel: &mpsc::Receiver<VmRunMode>,
+        vcpu_size: usize,
     ) -> VmResponse {
         match *self {
             VmRequest::Exit => {
@@ -1325,38 +1401,38 @@ impl VmRequest {
             }
             VmRequest::HotPlugCommand { device: _, add: _ } => VmResponse::Ok,
             VmRequest::Snapshot(SnapshotCommand::Take { ref snapshot_path }) => {
-                let res = device_control_tube.send(&DeviceControlCommand::SnapshotDevices {
-                    snapshot_path: snapshot_path.clone(),
-                });
-                if let Err(e) = res {
-                    error!("fail to send command to devices control socket: {}", e);
-                    return VmResponse::Err(SysError::new(EIO));
+                let response: SnapshotControlResult = match do_while_vcpus_suspended(
+                    &kick_vcpus,
+                    state_from_vcpu_channel,
+                    vcpu_size,
+                    || {
+                        device_control_tube.send(&DeviceControlCommand::SnapshotDevices {
+                            snapshot_path: snapshot_path.clone(),
+                        })
+                    },
+                    device_control_tube,
+                ) {
+                    Ok(res) => res,
+                    Err(e) => return VmResponse::Err(e),
                 };
-
-                match device_control_tube.recv() {
-                    Ok(response) => VmResponse::SnapshotResponse(response),
-                    Err(e) => {
-                        error!("fail to recv command from device control socket: {}", e);
-                        VmResponse::Err(SysError::new(EIO))
-                    }
-                }
+                VmResponse::SnapshotResponse(response)
             }
             VmRequest::Restore(RestoreCommand::Apply { ref restore_path }) => {
-                let res = device_control_tube.send(&DeviceControlCommand::RestoreDevices {
-                    restore_path: restore_path.clone(),
-                });
-                if let Err(e) = res {
-                    error!("fail to send command to devices control socket: {}", e);
-                    return VmResponse::Err(SysError::new(EIO));
+                let response: RestoreControlResult = match do_while_vcpus_suspended(
+                    &kick_vcpus,
+                    state_from_vcpu_channel,
+                    vcpu_size,
+                    || {
+                        device_control_tube.send(&DeviceControlCommand::RestoreDevices {
+                            restore_path: restore_path.clone(),
+                        })
+                    },
+                    device_control_tube,
+                ) {
+                    Ok(res) => res,
+                    Err(e) => return VmResponse::Err(e),
                 };
-
-                match device_control_tube.recv() {
-                    Ok(response) => VmResponse::RestoreResponse(response),
-                    Err(e) => {
-                        error!("fail to recv command from device control socket: {}", e);
-                        VmResponse::Err(SysError::new(EIO))
-                    }
-                }
+                VmResponse::RestoreResponse(response)
             }
         }
     }
