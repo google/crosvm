@@ -16,16 +16,16 @@ vulkano = []
 x = []
 
 [dependencies]
-cfg-if = "*"
+cfg-if = "1.0.0"
 data_model = { path = "../common/data_model" }
-libc = "*"
+libc = "0.2.116"
 base = { path = "../base" }
-remain = "*"
-thiserror = "*"
+remain = "0.2"
+thiserror = "1.0.23"
 serde = { version = "1", features = [ "derive" ] }
 # To build latest Vulkano, change version to git = "https:/github.com/vulkano-rs/vulkano.git"
 # vulkano = { version = "0.31.0", optional = true }
 
 [build-dependencies]
-pkg-config = "*"
-anyhow = "*"
+pkg-config = "0.3"
+anyhow = "1.0.57"
