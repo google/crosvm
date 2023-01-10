@@ -8,7 +8,6 @@
 
 use std::ops::Range;
 use std::path::Path;
-use std::ptr::copy_nonoverlapping;
 
 use base::error;
 use base::unix::FileDataIterator;
@@ -298,6 +297,8 @@ impl PageHandler {
     /// * `base_addr` - the head address of the memory region.
     /// * `memfd` - the file descriptor of the memfd backing the guest memory region.
     /// * `base_offset` - the offset of the memory region in the memfd.
+    /// * `max_batch_size` - The maximum number of bytes which are simultaneously present in both
+    ///   guest memory and staging memory.
     ///
     /// # Safety
     ///
@@ -314,10 +315,12 @@ impl PageHandler {
         base_addr: usize,
         memfd: &T,
         base_offset: u64,
+        max_batch_size: usize,
     ) -> Result<usize>
     where
         T: AsRawDescriptor,
     {
+        assert!(is_page_aligned(max_batch_size));
         let region = self
             .find_region(addr_to_page_idx(base_addr))
             .ok_or(Error::InvalidAddress(base_addr))?;
@@ -330,42 +333,67 @@ impl PageHandler {
         }
         let staging_memory = region.staging_memory.as_mut().unwrap();
         let region_size = pages_to_bytes(region.file.num_pages());
-        let file_data = FileDataIterator::new(memfd, base_offset, region_size as u64);
-
+        let mut file_data = FileDataIterator::new(memfd, base_offset, region_size as u64);
         let mut moved_size = 0;
-        for data_range in file_data {
-            // assert offset is page aligned
+        let mut remaining_batch_size = max_batch_size;
+        let mut batch_head_offset = 0;
+        let mut cur_data = None;
+        while let Some(data_range) = cur_data.take().or_else(|| file_data.next()) {
+            // Chops the chunk if it is bigger than remaining_batch_size.
+            let data_range = if data_range.end - data_range.start > remaining_batch_size as u64 {
+                // Cache the rest of splitted chunk to avoid useless lseek(2) syscall.
+                cur_data = Some(data_range.start + remaining_batch_size as u64..data_range.end);
+                data_range.start..data_range.start + remaining_batch_size as u64
+            } else {
+                data_range
+            };
+
+            // Assert offset is page aligned
             let offset = (data_range.start - base_offset) as usize;
             assert!(is_page_aligned(offset));
             let size = (data_range.end - data_range.start) as usize;
             assert!(is_page_aligned(size));
-            let src_addr = base_addr + offset;
-            let head_idx = bytes_to_pages(offset);
-            let dst_addr = staging_memory
-                .get_slice(head_idx..head_idx + bytes_to_pages(size))?
-                .as_mut_ptr();
 
-            // TODO(kawasin): split the data if it is too big to reduce a memory usage spike.
             // TODO(kawasin): multi thread for performance optimization.
             // Safe because:
-            // * the source memory is in guest memory and no processes access it.
-            // * src_addr and dst_addr are aligned with the page size.
-            // * src and dst does not overlap since src_addr is from the guest memory and dst_addr
-            //   is from the staging memory.
+            // * src_addr is aligned with page size
+            // * the data_range starting from src_addr is on the guest memory.
             unsafe {
-                copy_nonoverlapping(src_addr as *const u8, dst_addr, size);
-            }
-            let head_idx = bytes_to_pages(offset);
-            staging_memory.mark_as_present(head_idx..head_idx + bytes_to_pages(size));
-
-            // TODO(kawasin): reduce the call count of MADV_REMOVE by removing several data at once.
-            // Safe because the region is already backed by the file and the content will be swapped
-            // in on a page fault.
-            unsafe {
-                libc::madvise(src_addr as *mut libc::c_void, size, libc::MADV_REMOVE);
+                staging_memory.copy(
+                    (base_addr + offset) as *const u8,
+                    bytes_to_pages(offset),
+                    bytes_to_pages(size),
+                )?;
             }
 
             moved_size += size;
+            // The size must be smaller than or equals to remaining_batch_size.
+            remaining_batch_size -= size;
+
+            if remaining_batch_size == 0 {
+                // Remove the batch of pages at once to reduce madvise(2) syscall.
+                // Safe because the region is already backed by the file and the content will be
+                // swapped in on a page fault.
+                unsafe {
+                    libc::madvise(
+                        (base_addr + batch_head_offset) as *mut libc::c_void,
+                        offset + size - batch_head_offset,
+                        libc::MADV_REMOVE,
+                    );
+                }
+                remaining_batch_size = max_batch_size;
+                batch_head_offset = offset + size;
+            }
+        }
+        // Remove the final batch of pages.
+        // Safe because the region is already backed by the file and the content will be swapped in
+        // on a page fault.
+        unsafe {
+            libc::madvise(
+                (base_addr + batch_head_offset) as *mut libc::c_void,
+                region_size - batch_head_offset,
+                libc::MADV_REMOVE,
+            );
         }
 
         let moved_pages = bytes_to_pages(moved_size);

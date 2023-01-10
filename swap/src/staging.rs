@@ -5,6 +5,7 @@
 #![deny(missing_docs)]
 
 use std::ops::Range;
+use std::ptr::copy_nonoverlapping;
 
 use base::error;
 use base::MemoryMapping;
@@ -76,15 +77,36 @@ impl StagingMemory {
         })
     }
 
-    /// Marks that the pages are present in the staging memory.
+    /// Copy the guest memory pages into the staging memory.
     ///
     /// # Arguments
     ///
-    /// * `idx_range` - the indices of consecutive pages to be marked as present.
-    pub fn mark_as_present(&mut self, idx_range: Range<usize>) {
+    /// * `src_addr` - the head address of the pages on the guest memory.
+    /// * `idx` - the index of the head of the pages.
+    /// * `pages` - the number of pages to copy.
+    ///
+    /// # Safety
+    ///
+    /// * `src_addr` must be aligned with the page size.
+    /// * The pages indicated by `src_addr` + `pages` must be within the guest memory.
+    #[deny(unsafe_op_in_unsafe_fn)]
+    pub unsafe fn copy(&mut self, src_addr: *const u8, idx: usize, pages: usize) -> Result<()> {
+        let idx_range = idx..idx + pages;
+        // get_slice() also validates idx_range.
+        let dst_slice = self.get_slice(idx_range.clone())?;
+
+        // Safe because:
+        // * the source memory is in guest memory and no processes access it.
+        // * src_addr and dst_addr are aligned with the page size.
+        // * src and dst does not overlap since src_addr is from the guest memory and dst_addr
+        //   is from the staging memory.
+        unsafe {
+            copy_nonoverlapping(src_addr, dst_slice.as_mut_ptr(), dst_slice.size());
+        }
         for idx in idx_range {
             self.state_list[idx] = true;
         }
+        Ok(())
     }
 
     /// Returns a content of the page corresponding to the index.
@@ -187,15 +209,30 @@ mod tests {
         assert!(StagingMemory::new(200).is_ok());
     }
 
+    fn create_mmap(value: u8, pages: usize) -> MemoryMapping {
+        let size = pages_to_bytes(pages);
+        let mmap = MemoryMappingBuilder::new(size).build().unwrap();
+        for i in 0..size {
+            unsafe {
+                *mmap.get_ref(i).unwrap().as_mut_ptr() = value;
+            }
+        }
+        mmap
+    }
+
     #[test]
-    fn mark_as_present() {
+    fn copy_marks_as_present() {
+        let mmap = create_mmap(1, 4);
         let mut staging_memory = StagingMemory::new(200).unwrap();
 
-        staging_memory.mark_as_present(1..5);
-        // empty
-        staging_memory.mark_as_present(10..10);
-        // single
-        staging_memory.mark_as_present(12..13);
+        let src_addr = mmap.get_ref(0).unwrap().as_mut_ptr();
+        unsafe {
+            staging_memory.copy(src_addr, 1, 4).unwrap();
+            // empty
+            staging_memory.copy(src_addr, 10, 0).unwrap();
+            // single
+            staging_memory.copy(src_addr, 12, 1).unwrap();
+        }
 
         assert!(staging_memory.page_content(0).unwrap().is_none());
         for i in 1..5 {
@@ -219,18 +256,13 @@ mod tests {
 
     #[test]
     fn page_content_returns_content() {
+        let mmap = create_mmap(1, 1);
         let mut staging_memory = StagingMemory::new(200).unwrap();
 
-        staging_memory.mark_as_present(0..1);
-
-        let slice = unsafe {
-            std::slice::from_raw_parts_mut(
-                staging_memory.get_slice(0..1).unwrap().as_mut_ptr(),
-                pagesize(),
-            )
-        };
-        for v in slice.iter_mut() {
-            *v = 1;
+        unsafe {
+            staging_memory
+                .copy(mmap.get_ref(0).unwrap().as_mut_ptr(), 0, 1)
+                .unwrap();
         }
 
         let page = staging_memory.page_content(0).unwrap().unwrap();
@@ -251,9 +283,14 @@ mod tests {
 
     #[test]
     fn clear_range() {
+        let mmap = create_mmap(1, 5);
         let mut staging_memory = StagingMemory::new(200).unwrap();
 
-        staging_memory.mark_as_present(0..5);
+        unsafe {
+            staging_memory
+                .copy(mmap.get_ref(0).unwrap().as_mut_ptr(), 0, 5)
+                .unwrap();
+        }
         staging_memory.clear_range(1..3).unwrap();
 
         assert!(staging_memory.page_content(0).unwrap().is_some());
@@ -276,13 +313,17 @@ mod tests {
 
     #[test]
     fn next_data_range() {
+        let mmap = create_mmap(1, 10);
         let mut staging_memory = StagingMemory::new(200).unwrap();
 
-        staging_memory.mark_as_present(1..3);
-        staging_memory.mark_as_present(12..13);
-        staging_memory.mark_as_present(20..22);
-        staging_memory.mark_as_present(22..23);
-        staging_memory.mark_as_present(23..30);
+        let src_addr = mmap.get_ref(0).unwrap().as_mut_ptr();
+        unsafe {
+            staging_memory.copy(src_addr, 1, 2).unwrap();
+            staging_memory.copy(src_addr, 12, 1).unwrap();
+            staging_memory.copy(src_addr, 20, 2).unwrap();
+            staging_memory.copy(src_addr, 22, 1).unwrap();
+            staging_memory.copy(src_addr, 23, 7).unwrap();
+        }
 
         assert_eq!(staging_memory.next_data_range(0).unwrap(), 1..3);
         assert_eq!(staging_memory.next_data_range(1).unwrap(), 1..3);
@@ -298,21 +339,30 @@ mod tests {
 
     #[test]
     fn next_data_range_end_is_full() {
-        let mut staging_memory = StagingMemory::new(200).unwrap();
+        let mmap = create_mmap(1, 10);
+        let mut staging_memory = StagingMemory::new(20).unwrap();
 
-        staging_memory.mark_as_present(100..200);
+        unsafe {
+            staging_memory
+                .copy(mmap.get_ref(0).unwrap().as_mut_ptr(), 10, 10)
+                .unwrap();
+        }
 
-        assert_eq!(staging_memory.next_data_range(0).unwrap(), 100..200);
-        assert_eq!(staging_memory.next_data_range(100).unwrap(), 100..200);
-        assert!(staging_memory.next_data_range(200).is_none());
+        assert_eq!(staging_memory.next_data_range(0).unwrap(), 10..20);
+        assert_eq!(staging_memory.next_data_range(10).unwrap(), 10..20);
+        assert!(staging_memory.next_data_range(20).is_none());
     }
 
     #[test]
     fn present_pages() {
+        let mmap = create_mmap(1, 5);
         let mut staging_memory = StagingMemory::new(200).unwrap();
 
-        staging_memory.mark_as_present(1..5);
-        staging_memory.mark_as_present(12..13);
+        let src_addr = mmap.get_ref(0).unwrap().as_mut_ptr();
+        unsafe {
+            staging_memory.copy(src_addr, 1, 4).unwrap();
+            staging_memory.copy(src_addr, 12, 1).unwrap();
+        }
 
         assert_eq!(staging_memory.present_pages(), 5);
     }

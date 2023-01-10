@@ -22,6 +22,8 @@ use swap::page_handler::PageHandler;
 use swap::register_regions;
 use swap::unregister_regions;
 
+const MAX_SWAP_OUT_CHUNK_SIZE: usize = 1024 * 1024; // = 1MB
+
 #[test]
 fn create_success() {
     let dir_path = tempfile::tempdir().unwrap();
@@ -244,22 +246,22 @@ fn handle_page_remove_invalid_address() {
 fn move_to_staging_data_written_before_enabling() {
     let uffd = create_uffd_for_test();
     let dir_path = tempfile::tempdir().unwrap();
-    let shm = SharedMemory::new("shm", 6 * pagesize() as u64).unwrap();
-    let mmap1 = MemoryMappingBuilder::new(3 * pagesize())
+    let shm = SharedMemory::new("shm", 10 * pagesize() as u64).unwrap();
+    let mmap1 = MemoryMappingBuilder::new(5 * pagesize())
         .from_shared_memory(&shm)
         .build()
         .unwrap();
-    let mmap2 = MemoryMappingBuilder::new(3 * pagesize())
+    let mmap2 = MemoryMappingBuilder::new(5 * pagesize())
         .from_shared_memory(&shm)
-        .offset(3 * pagesize() as u64)
+        .offset(5 * pagesize() as u64)
         .build()
         .unwrap();
     let base_addr1 = mmap1.as_ptr() as usize;
     let base_addr2 = mmap2.as_ptr() as usize;
 
     let regions = [
-        base_addr1..(base_addr1 + 3 * pagesize()),
-        base_addr2..(base_addr2 + 3 * pagesize()),
+        base_addr1..(base_addr1 + 5 * pagesize()),
+        base_addr2..(base_addr2 + 5 * pagesize()),
     ];
     let mut page_handler = PageHandler::create(dir_path.path(), &regions).unwrap();
     // write data before registering to userfaultfd
@@ -267,21 +269,38 @@ fn move_to_staging_data_written_before_enabling() {
         for i in base_addr1 + pagesize()..base_addr1 + 2 * pagesize() {
             *(i as *mut u8) = 1;
         }
-        for i in base_addr2 + pagesize()..base_addr2 + 2 * pagesize() {
+        for i in base_addr1 + 2 * pagesize()..base_addr1 + 3 * pagesize() {
             *(i as *mut u8) = 2;
+        }
+        for i in base_addr1 + 3 * pagesize()..base_addr1 + 4 * pagesize() {
+            *(i as *mut u8) = 3;
+        }
+        for i in base_addr2 + pagesize()..base_addr2 + 2 * pagesize() {
+            *(i as *mut u8) = 4;
+        }
+        for i in base_addr2 + 2 * pagesize()..base_addr2 + 3 * pagesize() {
+            *(i as *mut u8) = 5;
+        }
+        for i in base_addr2 + 3 * pagesize()..base_addr2 + 4 * pagesize() {
+            *(i as *mut u8) = 6;
+        }
+        for i in base_addr2 + 4 * pagesize()..base_addr2 + 5 * pagesize() {
+            *(i as *mut u8) = 7;
         }
     }
     unsafe { register_regions(&regions, array::from_ref(&uffd)) }.unwrap();
 
     unsafe {
-        page_handler.move_to_staging(base_addr1, &shm, 0).unwrap();
         page_handler
-            .move_to_staging(base_addr2, &shm, 3 * pagesize() as u64)
+            .move_to_staging(base_addr1, &shm, 0, 2 * pagesize())
+            .unwrap();
+        page_handler
+            .move_to_staging(base_addr2, &shm, 5 * pagesize() as u64, 2 * pagesize())
             .unwrap();
     }
     // page faults on all pages. page 0 and page 2 will be swapped in from the file. page 1 will
     // be filled with zero.
-    for i in 0..3 {
+    for i in 0..5 {
         page_handler
             .handle_page_fault(&uffd, base_addr1 + i * pagesize())
             .unwrap();
@@ -293,7 +312,7 @@ fn move_to_staging_data_written_before_enabling() {
     // read values on another thread to avoid blocking forever
     let join_handle = thread::spawn(move || {
         let mut result = Vec::new();
-        for i in 0..3 {
+        for i in 0..5 {
             for j in 0..pagesize() {
                 let ptr = (base_addr1 + i * pagesize() + j) as *mut u8;
                 unsafe {
@@ -301,7 +320,7 @@ fn move_to_staging_data_written_before_enabling() {
                 }
             }
         }
-        for i in 0..3 {
+        for i in 0..5 {
             for j in 0..pagesize() {
                 let ptr = (base_addr2 + i * pagesize() + j) as *mut u8;
                 unsafe {
@@ -312,7 +331,7 @@ fn move_to_staging_data_written_before_enabling() {
         result
     });
     let result = wait_thread_with_timeout(join_handle, 100);
-    let values: Vec<u8> = vec![0, 1, 0, 0, 2, 0];
+    let values: Vec<u8> = vec![0, 1, 2, 3, 0, 0, 4, 5, 6, 7];
     for (i, v) in values.iter().enumerate() {
         for j in 0..pagesize() {
             assert_eq!(&result[i * pagesize() + j], v);
@@ -332,12 +351,28 @@ fn move_to_staging_invalid_base_addr() {
 
     // the base_addr is within the region
     assert_eq!(
-        unsafe { page_handler.move_to_staging(base_addr + pagesize(), &shm.shm, 0) }.is_err(),
+        unsafe {
+            page_handler.move_to_staging(
+                base_addr + pagesize(),
+                &shm.shm,
+                0,
+                MAX_SWAP_OUT_CHUNK_SIZE,
+            )
+        }
+        .is_err(),
         true
     );
     // the base_addr is outside of the region
     assert_eq!(
-        unsafe { page_handler.move_to_staging(base_addr - pagesize(), &shm.shm, 0) }.is_err(),
+        unsafe {
+            page_handler.move_to_staging(
+                base_addr - pagesize(),
+                &shm.shm,
+                0,
+                MAX_SWAP_OUT_CHUNK_SIZE,
+            )
+        }
+        .is_err(),
         true
     );
 }
@@ -379,9 +414,16 @@ fn swap_out_success() {
     unsafe { register_regions(&regions, array::from_ref(&uffd)) }.unwrap();
 
     unsafe {
-        page_handler.move_to_staging(base_addr1, &shm, 0).unwrap();
         page_handler
-            .move_to_staging(base_addr2, &shm, 3 * pagesize() as u64)
+            .move_to_staging(base_addr1, &shm, 0, MAX_SWAP_OUT_CHUNK_SIZE)
+            .unwrap();
+        page_handler
+            .move_to_staging(
+                base_addr2,
+                &shm,
+                3 * pagesize() as u64,
+                MAX_SWAP_OUT_CHUNK_SIZE,
+            )
             .unwrap();
     }
     swap_out_all(&mut page_handler);
@@ -448,7 +490,9 @@ fn swap_out_handled_page() {
     unsafe { register_regions(&regions, array::from_ref(&uffd)) }.unwrap();
 
     unsafe {
-        page_handler.move_to_staging(base_addr1, &shm, 0).unwrap();
+        page_handler
+            .move_to_staging(base_addr1, &shm, 0, MAX_SWAP_OUT_CHUNK_SIZE)
+            .unwrap();
     }
     // page in before swap_out()
     page_handler
@@ -506,9 +550,16 @@ fn swap_out_twice() {
     unsafe { register_regions(&regions, array::from_ref(&uffd)) }.unwrap();
 
     unsafe {
-        page_handler.move_to_staging(base_addr1, &shm, 0).unwrap();
         page_handler
-            .move_to_staging(base_addr2, &shm, 3 * pagesize() as u64)
+            .move_to_staging(base_addr1, &shm, 0, MAX_SWAP_OUT_CHUNK_SIZE)
+            .unwrap();
+        page_handler
+            .move_to_staging(
+                base_addr2,
+                &shm,
+                3 * pagesize() as u64,
+                MAX_SWAP_OUT_CHUNK_SIZE,
+            )
             .unwrap();
     }
     swap_out_all(&mut page_handler);
@@ -535,9 +586,16 @@ fn swap_out_twice() {
     });
     wait_thread_with_timeout(join_handle, 100);
     unsafe {
-        page_handler.move_to_staging(base_addr1, &shm, 0).unwrap();
         page_handler
-            .move_to_staging(base_addr2, &shm, 3 * pagesize() as u64)
+            .move_to_staging(base_addr1, &shm, 0, MAX_SWAP_OUT_CHUNK_SIZE)
+            .unwrap();
+        page_handler
+            .move_to_staging(
+                base_addr2,
+                &shm,
+                3 * pagesize() as u64,
+                MAX_SWAP_OUT_CHUNK_SIZE,
+            )
             .unwrap();
     }
     swap_out_all(&mut page_handler);
@@ -616,9 +674,16 @@ fn swap_in_success() {
     unsafe { register_regions(&regions, array::from_ref(&uffd)) }.unwrap();
 
     unsafe {
-        page_handler.move_to_staging(base_addr1, &shm, 0).unwrap();
         page_handler
-            .move_to_staging(base_addr2, &shm, 3 * pagesize() as u64)
+            .move_to_staging(base_addr1, &shm, 0, MAX_SWAP_OUT_CHUNK_SIZE)
+            .unwrap();
+        page_handler
+            .move_to_staging(
+                base_addr2,
+                &shm,
+                3 * pagesize() as u64,
+                MAX_SWAP_OUT_CHUNK_SIZE,
+            )
             .unwrap();
     }
     swap_out_all(&mut page_handler);
@@ -639,7 +704,12 @@ fn swap_in_success() {
     // move to staging memory.
     unsafe {
         page_handler
-            .move_to_staging(base_addr2, &shm, 3 * pagesize() as u64)
+            .move_to_staging(
+                base_addr2,
+                &shm,
+                3 * pagesize() as u64,
+                MAX_SWAP_OUT_CHUNK_SIZE,
+            )
             .unwrap();
     }
     assert_eq!(page_handler.swap_in(&uffd).is_ok(), true);

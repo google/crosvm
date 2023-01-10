@@ -673,7 +673,12 @@ fn monitor_process(
                                     // * no process access the guest memory (freeze_all_processes())
                                     // * page fault events are handled by PageHandler.
                                     num_pages += unsafe {
-                                        page_handler.move_to_staging(host_addr, shm, shm_offset)
+                                        page_handler.move_to_staging(
+                                            host_addr,
+                                            shm,
+                                            shm_offset,
+                                            MAX_SWAP_OUT_CHUNK_SIZE,
+                                        )
                                     }
                                     .context("move to staging")?;
                                     Ok(())
