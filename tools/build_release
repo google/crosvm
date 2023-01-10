@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+# Copyright 2023 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import argparse
+import json
+import os
+
+from impl.common import CROSVM_ROOT
+from impl.test_runner import get_workspace_excludes, cargo
+from impl.test_target import Triple, BUILD_ENV
+
+USAGE = """\
+Build crosvm with release (optimized) profile.
+
+To target local machine:
+
+    $ ./tools/build_release
+
+To cross-compile for aarch64, armhf or windows you can use:
+
+    $ ./tools/build_release --platform=aarch64
+    $ ./tools/build_release --platform=armhf
+    $ ./tools/build_release --platform=mingw64
+"""
+
+
+def main():
+    parser = argparse.ArgumentParser(usage=USAGE)
+    parser.add_argument(
+        "--build-target",
+        "--platform",
+        "-p",
+        help=(
+            "Override the cargo triple to build. Shorthands are available: (x86_64, armhf, "
+            + "aarch64, mingw64, msvc64)."
+        ),
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output in JSON instead of human readable format.",
+    )
+    args = parser.parse_args()
+    build_target = Triple.from_shorthand(args.build_target) if args.build_target else None
+    build_target = build_target or Triple.host_default()
+
+    features = build_target.feature_flag
+    cargo_args = [
+        "--release",
+        "--features=" + features,
+        f"--target={build_target}",
+        "--workspace",
+        *[f"--exclude={crate}" for crate in get_workspace_excludes(build_target)],
+    ]
+
+    build_env = os.environ.copy()
+    build_env.update(BUILD_ENV.copy())
+    build_env.update(build_target.get_cargo_env())
+    build_env.setdefault("RUSTFLAGS", "")
+    build_env["RUSTFLAGS"] += " -D warnings"
+
+    executables = list(cargo("build", CROSVM_ROOT, cargo_args, build_env))
+
+    if args.json:
+        result = {}
+        for exe in executables:
+            assert exe.cargo_target not in result
+            result[exe.cargo_target] = str(exe.binary_path)
+        print(json.dumps(result))
+    else:
+        print("Release binaries:")
+        for exe in executables:
+            print(f"Name: {exe.cargo_target}")
+            print(f"Path: {str(exe.binary_path)}")
+            print()
+
+
+if __name__ == "__main__":
+    main()
