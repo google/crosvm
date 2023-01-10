@@ -210,7 +210,7 @@ class Triple(NamedTuple):
         cargo_target = str(self)
         env["CARGO_BUILD_TARGET"] = cargo_target
         env["CARGO_TARGET_DIR"] = str(self.target_dir)
-        env["CROSVM_TARGET_DIR"] = str(crosvm_target_dir)
+        env["CROSVM_TARGET_DIR"] = str(crosvm_target_dir())
         return env
 
     def __str__(self):
