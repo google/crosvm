@@ -145,7 +145,7 @@ class CrosvmApi(recipe_api.RecipeApi):
         """
         Runs a luci step inside the crosvm dev container.
         """
-        self.m.step(
+        return self.m.step(
             step_name,
             [
                 "vpython3",

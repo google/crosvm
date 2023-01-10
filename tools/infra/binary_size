@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+# Copyright 2023 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import argparse
+import json
+import os
+
+
+# TODO(zihanchen): upload binary size to catapult
+# TODO(zihanchen): upload binary size to db for backup
+# TODO(zihanchen): Add usage
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--base-dir",
+        help="Base dir of cargo target, used to convert target path to shorter relative path, must "
+        "be absolute",
+    )
+    parser.add_argument(
+        "--target-name",
+        help="Target name of binary",
+    )
+    parser.add_argument(
+        "--target-path",
+        help="Path to binary, must be absolute if base dir is provided",
+        required=True,
+    )
+    parser.add_argument(
+        "--builder-name",
+        help="Name of builder generating binaries",
+    )
+    args = parser.parse_args()
+    if args.base_dir:
+        if not os.path.isabs(args.base_dir):
+            raise AssertionError("Base dir mush be and absolute path")
+        if not os.path.isabs(args.target_path):
+            raise AssertionError("When base dir is provided, target path must be an absolute path")
+        if not os.path.commonpath([args.base_dir, args.target_path]) == os.path.normpath(
+            args.base_dir
+        ):
+            raise AssertionError("Base dir must be a parent directory of target path")
+    target_path_for_output = (
+        os.path.relpath(args.target_path, start=args.base_dir)
+        if args.base_dir
+        else os.path.normpath(args.target_path)
+    )
+
+    size = {target_path_for_output: os.path.getsize(args.target_path)}
+    print(json.dumps(size))
+
+
+if __name__ == "__main__":
+    main()
