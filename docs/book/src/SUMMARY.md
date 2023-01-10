@@ -2,6 +2,7 @@
 
 - [Introduction](./introduction.md)
 - [Building Crosvm](./building_crosvm.md)
+  - [Building Crosvm on Windows](./building_crosvm/windows.md)
 - [Testing](./testing.md)
 - [Running Crosvm](./running_crosvm/index.md)
   - [Example Usage](./running_crosvm/example_usage.md)
