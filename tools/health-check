@@ -244,6 +244,13 @@ def check_file_ends_with_newline(context: CheckContext):
                     raise Exception(f"File does not end with a newline {file_path}")
 
 
+# List of files have crlf line endings.
+CRLF_LINE_ENDING_FILES: List[str] = [
+    "**.bat",
+    "**.ps1",
+    "e2e_tests/tests/goldens/backcompat_test_simple_lspci_win.txt",
+]
+
 # List of all checks and on which files they should run.
 CHECKS: List[Check] = [
     Check(
@@ -331,8 +338,8 @@ CHECKS: List[Check] = [
             "**.json",
         ],
     ),
-    Check(check_crlf_line_endings, exclude=["**.bat"]),
-    Check(check_lf_line_endings, files=["**.bat"]),
+    Check(check_crlf_line_endings, exclude=CRLF_LINE_ENDING_FILES),
+    Check(check_lf_line_endings, files=CRLF_LINE_ENDING_FILES),
 ]
 
 CHECKS_DICT = dict((c.name, c) for c in CHECKS)
