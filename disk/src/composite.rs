@@ -158,9 +158,6 @@ const COMPOSITE_DISK_VERSION: u64 = 2;
 
 /// A magic string placed at the beginning of a composite disk file to identify it.
 pub const CDISK_MAGIC: &str = "composite_disk\x1d";
-/// The length of the CDISK_MAGIC string. Created explicitly as a static constant so that it is
-/// possible to create a character array of the same length.
-pub const CDISK_MAGIC_LEN: usize = CDISK_MAGIC.len();
 
 impl CompositeDiskFile {
     fn new(mut disks: Vec<ComponentDiskPart>) -> Result<CompositeDiskFile> {
@@ -195,7 +192,7 @@ impl CompositeDiskFile {
     ) -> Result<CompositeDiskFile> {
         file.seek(SeekFrom::Start(0))
             .map_err(Error::ReadSpecificationError)?;
-        let mut magic_space = [0u8; CDISK_MAGIC_LEN];
+        let mut magic_space = [0u8; CDISK_MAGIC.len()];
         file.read_exact(&mut magic_space[..])
             .map_err(Error::ReadSpecificationError)?;
         if magic_space != CDISK_MAGIC.as_bytes() {

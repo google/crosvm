@@ -48,8 +48,6 @@ use composite::CompositeDiskFile;
 #[cfg(feature = "composite-disk")]
 use composite::CDISK_MAGIC;
 #[cfg(feature = "composite-disk")]
-use composite::CDISK_MAGIC_LEN;
-#[cfg(feature = "composite-disk")]
 mod gpt;
 #[cfg(feature = "composite-disk")]
 pub use composite::create_composite_disk;
@@ -241,7 +239,7 @@ pub fn detect_image_type(file: &File) -> Result<ImageType> {
         .map_err(Error::SeekingFile)?;
 
     #[cfg(feature = "composite-disk")]
-    if let Some(cdisk_magic) = magic.data.get(0..CDISK_MAGIC_LEN) {
+    if let Some(cdisk_magic) = magic.data.get(0..CDISK_MAGIC.len()) {
         if cdisk_magic == CDISK_MAGIC.as_bytes() {
             return Ok(ImageType::CompositeDisk);
         }
