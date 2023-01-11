@@ -141,15 +141,18 @@ pub struct CompositeDiskFile {
 }
 
 fn ranges_overlap(a: &Range<u64>, b: &Range<u64>) -> bool {
-    // essentially !range_intersection(a, b).is_empty(), but that's experimental
-    let intersection = range_intersection(a, b);
-    intersection.start < intersection.end
+    range_intersection(a, b).is_some()
 }
 
-fn range_intersection(a: &Range<u64>, b: &Range<u64>) -> Range<u64> {
-    Range {
+fn range_intersection(a: &Range<u64>, b: &Range<u64>) -> Option<Range<u64>> {
+    let r = Range {
         start: max(a.start, b.start),
         end: min(a.end, b.end),
+    };
+    if r.is_empty() {
+        None
+    } else {
+        Some(r)
     }
 }
 
@@ -162,19 +165,13 @@ pub const CDISK_MAGIC: &str = "composite_disk\x1d";
 impl CompositeDiskFile {
     fn new(mut disks: Vec<ComponentDiskPart>) -> Result<CompositeDiskFile> {
         disks.sort_by(|d1, d2| d1.offset.cmp(&d2.offset));
-        let contiguous_err = disks
-            .windows(2)
-            .map(|s| {
-                if s[0].offset == s[1].offset {
-                    let text = format!("Two disks at offset {}", s[0].offset);
-                    Err(Error::InvalidSpecification(text))
-                } else {
-                    Ok(())
-                }
-            })
-            .find(|r| r.is_err());
-        if let Some(Err(e)) = contiguous_err {
-            return Err(e);
+        for s in disks.windows(2) {
+            if s[0].offset == s[1].offset {
+                return Err(Error::InvalidSpecification(format!(
+                    "Two disks at offset {}",
+                    s[0].offset
+                )));
+            }
         }
         Ok(CompositeDiskFile {
             component_disks: disks,
@@ -258,8 +255,7 @@ impl CompositeDiskFile {
                 return Err(Error::InvalidSpecification(text));
             }
         }
-        let num_disks = disks.len();
-        if let Some(last_disk) = disks.get_mut(num_disks - 1) {
+        if let Some(last_disk) = disks.last_mut() {
             if proto.get_length() <= last_disk.offset {
                 let text = format!(
                     "Full size of disk doesn't match last offset. {} <= {}",
@@ -347,7 +343,7 @@ impl FileReadWriteAtVolatile for CompositeDiskFile {
             let new_size = disk.offset + disk.length - cursor_location;
             slice
                 .sub_slice(0, new_size as usize)
-                .map_err(|e| io::Error::new(ErrorKind::InvalidData, format!("{:?}", e)))?
+                .map_err(|e| io::Error::new(ErrorKind::InvalidData, e.to_string()))?
         } else {
             slice
         };
@@ -361,7 +357,7 @@ impl FileReadWriteAtVolatile for CompositeDiskFile {
             let new_size = disk.offset + disk.length - cursor_location;
             slice
                 .sub_slice(0, new_size as usize)
-                .map_err(|e| io::Error::new(ErrorKind::InvalidData, format!("{:?}", e)))?
+                .map_err(|e| io::Error::new(ErrorKind::InvalidData, e.to_string()))?
         } else {
             slice
         };
@@ -379,15 +375,13 @@ impl PunchHole for CompositeDiskFile {
         let range = offset..(offset + length);
         let disks = self.disks_in_range(&range);
         for disk in disks {
-            let intersection = range_intersection(&range, &disk.range());
-            if intersection.start >= intersection.end {
-                continue;
+            if let Some(intersection) = range_intersection(&range, &disk.range()) {
+                disk.file.punch_hole(
+                    intersection.start - disk.offset,
+                    intersection.end - intersection.start,
+                )?;
+                disk.needs_fsync = true;
             }
-            disk.file.punch_hole(
-                intersection.start - disk.offset,
-                intersection.end - intersection.start,
-            )?;
-            disk.needs_fsync = true;
         }
         Ok(())
     }
@@ -398,15 +392,13 @@ impl FileAllocate for CompositeDiskFile {
         let range = offset..(offset + length);
         let disks = self.disks_in_range(&range);
         for disk in disks {
-            let intersection = range_intersection(&range, &disk.range());
-            if intersection.start >= intersection.end {
-                continue;
+            if let Some(intersection) = range_intersection(&range, &disk.range()) {
+                disk.file.allocate(
+                    intersection.start - disk.offset,
+                    intersection.end - intersection.start,
+                )?;
+                disk.needs_fsync = true;
             }
-            disk.file.allocate(
-                intersection.start - disk.offset,
-                intersection.end - intersection.start,
-            )?;
-            disk.needs_fsync = true;
         }
         Ok(())
     }
