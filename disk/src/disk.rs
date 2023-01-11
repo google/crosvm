@@ -320,7 +320,7 @@ pub trait AsyncDisk: DiskGetLen + FileSetLen + FileAllocate {
     /// Asynchronously fsyncs any completed operations to the disk.
     async fn fsync(&self) -> Result<()>;
 
-    /// Reads from the file at 'file_offset' in to memory `mem` at `mem_offsets`.
+    /// Reads from the file at 'file_offset' into memory `mem` at `mem_offsets`.
     /// `mem_offsets` is similar to an iovec except relative to the start of `mem`.
     async fn read_to_mem<'a>(
         &'a self,
@@ -342,6 +342,40 @@ pub trait AsyncDisk: DiskGetLen + FileSetLen + FileAllocate {
 
     /// Writes up to `length` bytes of zeroes to the stream, returning how many bytes were written.
     async fn write_zeroes_at(&self, file_offset: u64, length: u64) -> Result<()>;
+
+    /// Reads from the file at 'file_offset' into `buf`.
+    ///
+    /// Less efficient than `read_to_mem` because of extra copies and allocations.
+    async fn read_double_buffered(&self, file_offset: u64, buf: &mut [u8]) -> Result<usize> {
+        let backing_mem = Arc::new(cros_async::VecIoWrapper::from(vec![0u8; buf.len()]));
+        let region = cros_async::MemRegion {
+            offset: 0,
+            len: buf.len(),
+        };
+        let n = self
+            .read_to_mem(file_offset, backing_mem.clone(), &[region])
+            .await?;
+        backing_mem
+            .get_volatile_slice(region)
+            .expect("BUG: the VecIoWrapper shrank?")
+            .sub_slice(0, n)
+            .expect("BUG: read_to_mem return value too large?")
+            .copy_to(buf);
+        Ok(n)
+    }
+
+    /// Writes to the file at 'file_offset' from `buf`.
+    ///
+    /// Less efficient than `write_from_mem` because of extra copies and allocations.
+    async fn write_double_buffered(&self, file_offset: u64, buf: &[u8]) -> Result<usize> {
+        let backing_mem = Arc::new(cros_async::VecIoWrapper::from(buf.to_vec()));
+        let region = cros_async::MemRegion {
+            offset: 0,
+            len: buf.len(),
+        };
+        self.write_from_mem(file_offset, backing_mem, &[region])
+            .await
+    }
 }
 
 /// A disk backed by a single file that implements `AsyncDisk` for access.

@@ -102,6 +102,7 @@ pub use io_ext::Result as AsyncResult;
 pub use io_ext::WriteAsync;
 pub use mem::BackingMemory;
 pub use mem::MemRegion;
+pub use mem::VecIoWrapper;
 use remain::sorted;
 pub use select::SelectResult;
 pub use sys::run_one;

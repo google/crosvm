@@ -46,7 +46,7 @@ pub unsafe trait BackingMemory {
 /// starting at the time that `VecIoWrapper` is constructed until the time it is turned back in to a
 /// `Vec` using `to_inner`. The returned `Vec` is guaranteed to be valid as any combination of bits
 /// in a `Vec` of `u8` is valid.
-pub(crate) struct VecIoWrapper {
+pub struct VecIoWrapper {
     inner: Box<[u8]>,
 }
 
