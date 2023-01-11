@@ -16,7 +16,7 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Used to index subslices of backing memory. Like an iovec, but relative to the start of the
-/// memory region instead of an absolute pointer.
+/// backing memory instead of an absolute pointer.
 /// The backing memory referenced by the region can be an array, an mmapped file, or guest memory.
 /// The offset is a u64 to allow having file or guest offsets >4GB when run on a 32bit host.
 #[derive(Copy, Clone, Debug)]
