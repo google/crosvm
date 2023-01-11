@@ -19,6 +19,7 @@ use base::warn;
 use euclid::point2;
 use euclid::size2;
 use euclid::Box2D;
+use euclid::Point2D;
 use euclid::Size2D;
 use win_util::syscall_bail;
 use win_util::win32_wide_string;
@@ -408,6 +409,24 @@ impl Window {
             }
         }
         Ok(point.to_point())
+    }
+
+    /// Calls `ScreenToClient()` internally. Converts the screen coordinates to window client area
+    /// coordinates.
+    pub fn screen_to_client(&self, point: Point) -> Result<Point> {
+        let mut point = point.to_sys_point();
+
+        // Safe because:
+        // 1. point is stack allocated & lives as long as the function call.
+        // 2. the window handle is guaranteed valid by self.
+        // 3. we check the error before using the output data.
+        unsafe {
+            let res = ScreenToClient(self.hwnd, point.as_mut_ptr());
+            if res == 0 {
+                syscall_bail!("failed to convert cursor position to client coordinates");
+            }
+        }
+        Ok(Point2D::new(point.x, point.y))
     }
 
     /// Calls `MonitorFromWindow()` internally. If the window is not on any active display monitor,

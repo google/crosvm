@@ -109,7 +109,7 @@ pub trait HandleWindowMessage {
     fn on_mouse_button_right(&mut self, _is_down: bool) {}
 
     /// Called when processing `WM_MOUSEWHEEL`.
-    fn on_mouse_wheel(&mut self, _w_param: WPARAM) {}
+    fn on_mouse_wheel(&mut self, _window: &Window, _w_param: WPARAM, _l_param: LPARAM) {}
 
     /// Called when processing `WM_SETCURSOR`. It should return true if the cursor has been handled
     /// and the default processing should be skipped.
@@ -276,7 +276,7 @@ impl<T: HandleWindowMessage> WindowMessageProcessor<T> {
                 0
             }
             WM_MOUSEWHEEL => {
-                handler.on_mouse_wheel(w_param);
+                handler.on_mouse_wheel(&self.window, w_param, l_param);
                 0
             }
             WM_SETCURSOR => {

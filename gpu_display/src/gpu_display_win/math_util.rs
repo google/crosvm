@@ -9,6 +9,7 @@ use euclid::point2;
 use euclid::size2;
 use euclid::Size2D;
 use num_traits::NumCast;
+use winapi::shared::windef::LPPOINT;
 use winapi::shared::windef::POINT;
 use winapi::shared::windef::RECT;
 
@@ -136,12 +137,18 @@ impl PointExtension for Point {
 
 pub trait SysPointExtension {
     fn to_point(&self) -> Point;
+    fn as_mut_ptr(&mut self) -> LPPOINT;
 }
 
 impl SysPointExtension for POINT {
     #[inline]
     fn to_point(&self) -> Point {
         point2(self.x, self.y)
+    }
+
+    #[inline]
+    fn as_mut_ptr(&mut self) -> LPPOINT {
+        self as LPPOINT
     }
 }
 
