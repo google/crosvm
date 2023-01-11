@@ -121,6 +121,8 @@ pub enum Error {
     WriteZeroes(io::Error),
     #[error("failed to write data: {0}")]
     WritingData(io::Error),
+    #[error("failed to convert to async: {0}")]
+    ToAsync(io::Error),
     #[cfg(windows)]
     #[error("failed to set disk file sparse: {0}")]
     SetSparseFailure(io::Error),

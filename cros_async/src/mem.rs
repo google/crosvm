@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::borrow::Cow;
+
 use data_model::VolatileSlice;
 use remain::sorted;
 use thiserror::Error as ThisError;
@@ -23,6 +25,29 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct MemRegion {
     pub offset: u64,
     pub len: usize,
+}
+
+impl MemRegion {
+    /// Truncates `regions` such that their sum is less than or equal to `max`.
+    pub fn truncate(max: usize, regions: &[MemRegion]) -> Cow<[MemRegion]> {
+        if regions.iter().map(|x| x.len).sum::<usize>() <= max {
+            return Cow::Borrowed(regions);
+        }
+        Cow::Owned(
+            regions
+                .iter()
+                .copied()
+                .scan(max, |left, mut region| {
+                    if *left == 0 {
+                        return None;
+                    }
+                    region.len = std::cmp::min(region.len, *left);
+                    *left -= region.len;
+                    Some(region)
+                })
+                .collect(),
+        )
+    }
 }
 
 /// Trait for memory that can yield both iovecs in to the backing memory.
