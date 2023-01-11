@@ -6,7 +6,6 @@
 pub(crate) mod gpu;
 
 use std::path::Path;
-use std::thread::JoinHandle;
 
 use crate::client::HandleRequestResult;
 use crate::VmRequest;
@@ -18,5 +17,3 @@ pub fn handle_request<T: AsRef<Path> + std::fmt::Debug>(
 ) -> HandleRequestResult {
     Err(())
 }
-
-pub(crate) fn kill_handle(_handle: &JoinHandle<()>) {}

@@ -32,9 +32,7 @@ use std::fs::File;
 use std::path::PathBuf;
 use std::result::Result as StdResult;
 use std::str::FromStr;
-use std::sync::mpsc;
 use std::sync::Arc;
-use std::thread::JoinHandle;
 
 pub use balloon_control::BalloonStats;
 #[cfg(feature = "balloon")]
@@ -76,7 +74,6 @@ use rutabaga_gfx::VulkanInfo;
 use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
-use sys::kill_handle;
 #[cfg(unix)]
 pub use sys::FsMappingRequest;
 #[cfg(unix)]
@@ -1065,7 +1062,7 @@ impl VmRequest {
         #[cfg(feature = "gpu")] gpu_control_tube: &Tube,
         usb_control_tube: Option<&Tube>,
         bat_control: &mut Option<BatControl>,
-        vcpu_handles: &[(JoinHandle<()>, mpsc::Sender<VcpuControl>)],
+        kick_vcpus: impl Fn(VcpuControl),
         force_s2idle: bool,
         #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
         device_control_tube: &Tube,
@@ -1188,13 +1185,7 @@ impl VmRequest {
                 }
             }
             VmRequest::MakeRT => {
-                #[allow(unused_variables)] // `handle` is unused on Windows.
-                for (handle, channel) in vcpu_handles {
-                    if let Err(e) = channel.send(VcpuControl::MakeRT) {
-                        error!("failed to send MakeRT: {}", e);
-                    }
-                    kill_handle(handle);
-                }
+                kick_vcpus(VcpuControl::MakeRT);
                 VmResponse::Ok
             }
             #[cfg(feature = "balloon")]
