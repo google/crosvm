@@ -567,104 +567,54 @@ where
         .as_ref()
         .context("VcpuControl::Debug received while debugger not connected")?;
 
-    match d {
-        VcpuDebug::ReadRegs => {
-            let msg = VcpuDebugStatusMessage {
-                cpu: cpu_id,
-                msg: VcpuDebugStatus::RegValues(
-                    <CrosvmArch as arch::GdbOps<V>>::read_registers(vcpu as &V)
-                        .context("failed to handle a gdb ReadRegs command")?,
-                ),
-            };
-            reply_tube
-                .send(msg)
-                .context("failed to send a debug status to GDB thread")
-        }
+    let debug_status = match d {
+        VcpuDebug::ReadRegs => VcpuDebugStatus::RegValues(
+            <CrosvmArch as arch::GdbOps<V>>::read_registers(vcpu as &V)
+                .context("failed to handle a gdb ReadRegs command")?,
+        ),
         VcpuDebug::WriteRegs(regs) => {
             <CrosvmArch as arch::GdbOps<V>>::write_registers(vcpu as &V, &regs)
                 .context("failed to handle a gdb WriteRegs command")?;
-            reply_tube
-                .send(VcpuDebugStatusMessage {
-                    cpu: cpu_id,
-                    msg: VcpuDebugStatus::CommandComplete,
-                })
-                .context("failed to send a debug status to GDB thread")
+            VcpuDebugStatus::CommandComplete
         }
-        VcpuDebug::ReadReg(reg) => {
-            let msg = VcpuDebugStatusMessage {
-                cpu: cpu_id as usize,
-                msg: VcpuDebugStatus::RegValue(
-                    <CrosvmArch as arch::GdbOps<V>>::read_register(vcpu as &V, reg)
-                        .context("failed to handle a gdb ReadReg command")?,
-                ),
-            };
-            reply_tube
-                .send(msg)
-                .context("failed to send a debug status to GDB thread")
-        }
+        VcpuDebug::ReadReg(reg) => VcpuDebugStatus::RegValue(
+            <CrosvmArch as arch::GdbOps<V>>::read_register(vcpu as &V, reg)
+                .context("failed to handle a gdb ReadReg command")?,
+        ),
         VcpuDebug::WriteReg(reg, buf) => {
             <CrosvmArch as arch::GdbOps<V>>::write_register(vcpu as &V, reg, &buf)
                 .context("failed to handle a gdb WriteReg command")?;
-            reply_tube
-                .send(VcpuDebugStatusMessage {
-                    cpu: cpu_id,
-                    msg: VcpuDebugStatus::CommandComplete,
-                })
-                .context("failed to send a debug status to GDB thread")
+            VcpuDebugStatus::CommandComplete
         }
-        VcpuDebug::ReadMem(vaddr, len) => {
-            let msg = VcpuDebugStatusMessage {
-                cpu: cpu_id,
-                msg: VcpuDebugStatus::MemoryRegion(
-                    <CrosvmArch as arch::GdbOps<V>>::read_memory(vcpu as &V, guest_mem, vaddr, len)
-                        .unwrap_or(Vec::new()),
-                ),
-            };
-            reply_tube
-                .send(msg)
-                .context("failed to send a debug status to GDB thread")
-        }
+        VcpuDebug::ReadMem(vaddr, len) => VcpuDebugStatus::MemoryRegion(
+            <CrosvmArch as arch::GdbOps<V>>::read_memory(vcpu as &V, guest_mem, vaddr, len)
+                .unwrap_or(Vec::new()),
+        ),
         VcpuDebug::WriteMem(vaddr, buf) => {
             <CrosvmArch as arch::GdbOps<V>>::write_memory(vcpu as &V, guest_mem, vaddr, &buf)
                 .context("failed to handle a gdb WriteMem command")?;
-            reply_tube
-                .send(VcpuDebugStatusMessage {
-                    cpu: cpu_id,
-                    msg: VcpuDebugStatus::CommandComplete,
-                })
-                .context("failed to send a debug status to GDB thread")
+            VcpuDebugStatus::CommandComplete
         }
         VcpuDebug::EnableSinglestep => {
             <CrosvmArch as arch::GdbOps<V>>::enable_singlestep(vcpu as &V)
                 .context("failed to handle a gdb EnableSingleStep command")?;
-            reply_tube
-                .send(VcpuDebugStatusMessage {
-                    cpu: cpu_id,
-                    msg: VcpuDebugStatus::CommandComplete,
-                })
-                .context("failed to send a debug status to GDB thread")
+            VcpuDebugStatus::CommandComplete
         }
-        VcpuDebug::GetHwBreakPointCount => {
-            let msg = VcpuDebugStatusMessage {
-                cpu: cpu_id,
-                msg: VcpuDebugStatus::HwBreakPointCount(
-                    <CrosvmArch as arch::GdbOps<V>>::get_max_hw_breakpoints(vcpu as &V)
-                        .context("failed to get max number of HW breakpoints")?,
-                ),
-            };
-            reply_tube
-                .send(msg)
-                .context("failed to send a debug status to GDB thread")
-        }
+        VcpuDebug::GetHwBreakPointCount => VcpuDebugStatus::HwBreakPointCount(
+            <CrosvmArch as arch::GdbOps<V>>::get_max_hw_breakpoints(vcpu as &V)
+                .context("failed to get max number of HW breakpoints")?,
+        ),
         VcpuDebug::SetHwBreakPoint(addrs) => {
             <CrosvmArch as arch::GdbOps<V>>::set_hw_breakpoints(vcpu as &V, &addrs)
                 .context("failed to handle a gdb SetHwBreakPoint command")?;
-            reply_tube
-                .send(VcpuDebugStatusMessage {
-                    cpu: cpu_id,
-                    msg: VcpuDebugStatus::CommandComplete,
-                })
-                .context("failed to send a debug status to GDB thread")
+            VcpuDebugStatus::CommandComplete
         }
-    }
+    };
+
+    reply_tube
+        .send(VcpuDebugStatusMessage {
+            cpu: cpu_id,
+            msg: debug_status,
+        })
+        .context("failed to send a debug status to GDB thread")
 }
