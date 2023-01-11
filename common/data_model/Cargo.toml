@@ -8,15 +8,10 @@ include = ["src/**/*", "Cargo.toml"]
 [dependencies]
 static_assertions = "1.1"
 cfg-if = "1.0.0"
-libc = "*"
+libc = "0.2.116"
 remain = "0.2"
 serde = { version = "1", features = ["derive"] }
 thiserror = "1.0.20"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "*", features = ["everything", "std", "impl-default"] }
-
-[target.'cfg(unix)'.dependencies]
-libc = "*"
-
-
+winapi = { version = "0.3.9", features = ["everything", "std", "impl-default"] }
