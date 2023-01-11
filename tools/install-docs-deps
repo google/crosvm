@@ -10,11 +10,9 @@ set -ex
 
 # Install packages to run build.rs in some crate:
 # * libcap-dev: Used by minijail-sys/build.rs
-# * libudev-dev: Used by libudev-sys's build.rs, pulled by libva
 # * protobuf-compiler: Generates Rust files in protos
 sudo apt install --yes --no-install-recommends \
      libcap-dev \
-     libudev-dev \
      protobuf-compiler
 
 # The mdbook and mdbook-mermaid tools are used to build the crosvm book.
