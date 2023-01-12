@@ -109,11 +109,8 @@ pub struct AndroidSparse {
     chunks: BTreeMap<u64, ChunkWithSize>,
 }
 
-fn parse_chunk<T: Read + Seek>(
-    mut input: &mut T,
-    chunk_hdr_size: u64,
-    blk_sz: u64,
-) -> Result<Option<ChunkWithSize>> {
+fn parse_chunk<T: Read + Seek>(mut input: &mut T, blk_sz: u64) -> Result<Option<ChunkWithSize>> {
+    const HEADER_SIZE: usize = mem::size_of::<ChunkHeader>();
     let current_offset = input
         .seek(SeekFrom::Current(0))
         .map_err(Error::ReadSpecificationError)?;
@@ -123,18 +120,18 @@ fn parse_chunk<T: Read + Seek>(
         CHUNK_TYPE_RAW => {
             input
                 .seek(SeekFrom::Current(
-                    chunk_header.total_sz.to_native() as i64 - chunk_hdr_size as i64,
+                    chunk_header.total_sz.to_native() as i64 - HEADER_SIZE as i64,
                 ))
                 .map_err(Error::ReadSpecificationError)?;
-            Chunk::Raw(current_offset + chunk_hdr_size as u64)
+            Chunk::Raw(current_offset + HEADER_SIZE as u64)
         }
         CHUNK_TYPE_FILL => {
-            if chunk_header.total_sz == chunk_hdr_size as u32 {
+            if chunk_header.total_sz == HEADER_SIZE as u32 {
                 return Err(Error::InvalidSpecification(
                     "Fill chunk did not have any data to fill".to_string(),
                 ));
             }
-            let fill_size = chunk_header.total_sz.to_native() as u64 - chunk_hdr_size as u64;
+            let fill_size = chunk_header.total_sz.to_native() as u64 - HEADER_SIZE as u64;
             let mut fill_bytes = vec![0u8; fill_size as usize];
             input
                 .read_exact(&mut fill_bytes)
@@ -175,19 +172,19 @@ impl AndroidSparse {
                 MAJOR_VERSION,
                 sparse_header.major_version.to_native(),
             )));
-        } else if (sparse_header.chunk_hdr_size.to_native() as usize)
-            < mem::size_of::<ChunkHeader>()
+        } else if sparse_header.chunk_hdr_size.to_native() as usize != mem::size_of::<ChunkHeader>()
         {
+            // The canonical parser for this format allows `chunk_hdr_size >= sizeof(ChunkHeader)`,
+            // but we've chosen to be stricter for simplicity.
             return Err(Error::InvalidSpecification(format!(
-                "Chunk header size does not fit chunk header struct, expected >={}, was {}",
+                "Chunk header size does not match chunk header struct, expected {}, was {}",
                 sparse_header.chunk_hdr_size.to_native(),
                 mem::size_of::<ChunkHeader>()
             )));
         }
-        let header_size = sparse_header.chunk_hdr_size.to_native() as u64;
         let block_size = sparse_header.blk_sz.to_native() as u64;
         let chunks = (0..sparse_header.total_chunks.to_native())
-            .filter_map(|_| parse_chunk(&mut file, header_size, block_size).transpose())
+            .filter_map(|_| parse_chunk(&mut file, block_size).transpose())
             .collect::<Result<Vec<ChunkWithSize>>>()?;
         let total_size =
             sparse_header.total_blks.to_native() as u64 * sparse_header.blk_sz.to_native() as u64;
@@ -363,7 +360,7 @@ mod tests {
         chunk_bytes.extend_from_slice(header_bytes);
         chunk_bytes.extend_from_slice(&[0u8; 123]);
         let mut chunk_cursor = Cursor::new(chunk_bytes);
-        let chunk = parse_chunk(&mut chunk_cursor, CHUNK_SIZE as u64, 123)
+        let chunk = parse_chunk(&mut chunk_cursor, 123)
             .expect("Failed to parse")
             .expect("Failed to determine chunk type");
         let expected_chunk = ChunkWithSize {
@@ -383,7 +380,7 @@ mod tests {
         };
         let header_bytes = chunk_raw.as_slice();
         let mut chunk_cursor = Cursor::new(header_bytes);
-        let chunk = parse_chunk(&mut chunk_cursor, CHUNK_SIZE as u64, 123)
+        let chunk = parse_chunk(&mut chunk_cursor, 123)
             .expect("Failed to parse")
             .expect("Failed to determine chunk type");
         let expected_chunk = ChunkWithSize {
@@ -406,7 +403,7 @@ mod tests {
         chunk_bytes.extend_from_slice(header_bytes);
         chunk_bytes.extend_from_slice(&[123u8; 4]);
         let mut chunk_cursor = Cursor::new(chunk_bytes);
-        let chunk = parse_chunk(&mut chunk_cursor, CHUNK_SIZE as u64, 123)
+        let chunk = parse_chunk(&mut chunk_cursor, 123)
             .expect("Failed to parse")
             .expect("Failed to determine chunk type");
         let expected_chunk = ChunkWithSize {
@@ -429,8 +426,7 @@ mod tests {
         chunk_bytes.extend_from_slice(header_bytes);
         chunk_bytes.extend_from_slice(&[123u8; 4]);
         let mut chunk_cursor = Cursor::new(chunk_bytes);
-        let chunk =
-            parse_chunk(&mut chunk_cursor, CHUNK_SIZE as u64, 123).expect("Failed to parse");
+        let chunk = parse_chunk(&mut chunk_cursor, 123).expect("Failed to parse");
         assert_eq!(None, chunk);
     }
 
