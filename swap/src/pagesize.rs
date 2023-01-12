@@ -9,8 +9,14 @@
 //! * Avoiding calling `sysconf(_SC_PAGESIZE)` multiple times by caching the shift bit.
 //! * Using the (faster) shift instruction instead of (slower) multiply/divide instruction.
 
+use std::fs;
+use std::str;
+
 use base::pagesize;
+use base::warn;
 use once_cell::sync::Lazy;
+
+const TRANSPARENT_HUGEPAGE_SIZE_PATH: &str = "/sys/kernel/mm/transparent_hugepage/hpage_pmd_size";
 
 static PAGESIZE_SHIFT: Lazy<u8> = Lazy::new(|| {
     let pagesize_shift = pagesize().trailing_zeros();
@@ -22,6 +28,29 @@ static PAGESIZE_SHIFT: Lazy<u8> = Lazy::new(|| {
     // pagesize_shift must be less than 64 since usize has at most 64 bits.
     pagesize_shift as u8
 });
+
+/// The transparent hugepage size loaded from /sys/kernel/mm/transparent_hugepage/hpage_pmd_size.
+///
+/// If it fails to load the hugepage size, it fallbacks to use 2MB.
+pub static THP_SIZE: Lazy<usize> = Lazy::new(|| {
+    match load_transparent_hugepage_size() {
+        Ok(transparent_hugepage_size) => transparent_hugepage_size,
+        Err(e) => {
+            warn!(
+                "failed to load huge page size: {:?}. fallback to 2MB as hugepage size.",
+                e
+            );
+            2 * 1024 * 1024 // = 2MB
+        }
+    }
+});
+
+fn load_transparent_hugepage_size() -> anyhow::Result<usize> {
+    let buf = fs::read(TRANSPARENT_HUGEPAGE_SIZE_PATH)?;
+    let text = str::from_utf8(&buf)?;
+    let hugepage_size = text.parse::<usize>()?;
+    Ok(hugepage_size)
+}
 
 /// Helper methods to calculate values derived from page size.
 ///
@@ -51,14 +80,14 @@ pub fn page_base_addr(addr: usize) -> usize {
     (addr >> pagesize_shift) << pagesize_shift
 }
 
-/// Whether the address is aligned with page.
+/// Returns whether the address/size is aligned with page.
 #[inline]
-pub fn is_page_aligned(addr: usize) -> bool {
+pub fn is_page_aligned(v: usize) -> bool {
     let mask = (1 << *PAGESIZE_SHIFT) - 1;
-    addr & mask == 0
+    v & mask == 0
 }
 
-/// Convert the bytes to number of pages.
+/// Converts the bytes to number of pages.
 ///
 /// This rounds down if the `size_in_bytes` is not multiple of page size.
 #[inline]
@@ -66,10 +95,23 @@ pub fn bytes_to_pages(size_in_bytes: usize) -> usize {
     size_in_bytes >> *PAGESIZE_SHIFT
 }
 
-/// Convert number of pages to byte size.
+/// Converts number of pages to byte size.
 #[inline]
 pub fn pages_to_bytes(num_of_pages: usize) -> usize {
     num_of_pages << *PAGESIZE_SHIFT
+}
+
+/// Returns whether the address/size is aligned with hugepage.
+#[inline]
+pub fn is_hugepage_aligned(v: usize) -> bool {
+    v & (*THP_SIZE - 1) == 0
+}
+
+/// Rounds up the address/size with the hugepage size.
+#[inline]
+pub fn round_up_hugepage_size(v: usize) -> usize {
+    let hugepage_size = *THP_SIZE;
+    (v + hugepage_size - 1) & !(hugepage_size - 1)
 }
 
 #[cfg(test)]
@@ -116,5 +158,25 @@ mod tests {
     fn test_pages_to_bytes() {
         assert_eq!(pages_to_bytes(1), pagesize());
         assert_eq!(pages_to_bytes(10), 10 * pagesize());
+    }
+
+    #[test]
+    fn test_is_hugepage_aligned() {
+        let addr = 10 * *THP_SIZE;
+        assert!(!is_hugepage_aligned(addr - 1));
+        assert!(is_hugepage_aligned(addr));
+        assert!(!is_hugepage_aligned(addr - 1));
+        assert!(!is_hugepage_aligned(pagesize()));
+    }
+
+    #[test]
+    fn test_round_up_hugepage_size() {
+        let addr = 10 * *THP_SIZE;
+
+        assert_eq!(round_up_hugepage_size(0), 0);
+        assert_eq!(round_up_hugepage_size(addr - 1), addr);
+        assert_eq!(round_up_hugepage_size(addr), addr);
+        assert_eq!(round_up_hugepage_size(addr + 1), addr + *THP_SIZE);
+        assert_eq!(round_up_hugepage_size(pagesize()), *THP_SIZE);
     }
 }

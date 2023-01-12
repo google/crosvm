@@ -55,7 +55,7 @@ use crate::userfaultfd::UffdEvent;
 use crate::userfaultfd::Userfaultfd;
 
 /// The max size to write into the swap file at once.
-const MAX_SWAP_OUT_CHUNK_SIZE: usize = 1024 * 1024; // = 1MB
+const MAX_SWAP_OUT_CHUNK_SIZE: usize = 2 * 1024 * 1024; // = 2MB
 
 /// Current status of vmm-swap.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -673,12 +673,7 @@ fn monitor_process(
                                     // * no process access the guest memory (freeze_all_processes())
                                     // * page fault events are handled by PageHandler.
                                     num_pages += unsafe {
-                                        page_handler.move_to_staging(
-                                            host_addr,
-                                            shm,
-                                            shm_offset,
-                                            MAX_SWAP_OUT_CHUNK_SIZE,
-                                        )
+                                        page_handler.move_to_staging(host_addr, shm, shm_offset)
                                     }
                                     .context("move to staging")?;
                                     Ok(())

@@ -19,10 +19,13 @@ use crate::file::Error as FileError;
 use crate::file::SwapFile;
 use crate::pagesize::addr_to_page_idx;
 use crate::pagesize::bytes_to_pages;
+use crate::pagesize::is_hugepage_aligned;
 use crate::pagesize::is_page_aligned;
 use crate::pagesize::page_base_addr;
 use crate::pagesize::page_idx_to_addr;
 use crate::pagesize::pages_to_bytes;
+use crate::pagesize::round_up_hugepage_size;
+use crate::pagesize::THP_SIZE;
 use crate::staging::Error as StagingError;
 use crate::staging::StagingMemory;
 use crate::userfaultfd::UffdError;
@@ -320,8 +323,6 @@ impl PageHandler {
     /// * `base_addr` - the head address of the memory region.
     /// * `memfd` - the file descriptor of the memfd backing the guest memory region.
     /// * `base_offset` - the offset of the memory region in the memfd.
-    /// * `max_batch_size` - The maximum number of bytes which are simultaneously present in both
-    ///   guest memory and staging memory.
     ///
     /// # Safety
     ///
@@ -338,12 +339,11 @@ impl PageHandler {
         base_addr: usize,
         memfd: &T,
         base_offset: u64,
-        max_batch_size: usize,
     ) -> Result<usize>
     where
         T: AsRawDescriptor,
     {
-        assert!(is_page_aligned(max_batch_size));
+        let hugepage_size = *THP_SIZE;
         let region = self
             .find_region(addr_to_page_idx(base_addr))
             .ok_or(Error::InvalidAddress(base_addr))?;
@@ -358,22 +358,57 @@ impl PageHandler {
         let region_size = pages_to_bytes(region.file.num_pages());
         let mut file_data = FileDataIterator::new(memfd, base_offset, region_size as u64);
         let mut moved_size = 0;
-        let mut remaining_batch_size = max_batch_size;
+        let mut remaining_batch_size = hugepage_size;
         let mut batch_head_offset = 0;
         let mut cur_data = None;
         while let Some(data_range) = cur_data.take().or_else(|| file_data.next()) {
-            // Chops the chunk if it is bigger than remaining_batch_size.
-            let data_range = if data_range.end - data_range.start > remaining_batch_size as u64 {
+            // Assert offset is page aligned
+            let offset = (data_range.start - base_offset) as usize;
+            assert!(is_page_aligned(offset));
+
+            // The chunk size must be within usize since the chunk is within the guest memory.
+            let chunk_size = (data_range.end - data_range.start) as usize;
+            let data_range = if chunk_size > remaining_batch_size {
+                // Split the chunk if it is bigger than remaining_batch_size.
+
+                let split_size = if chunk_size >= hugepage_size {
+                    // If the chunk size is bigger than or equals to huge page size, the chunk may
+                    // contains a huge page. If we MADV_REMOVE a huge page partially, it can cause
+                    // inconsistency between the actual page table and vmm-swap internal state.
+                    let chunk_addr = base_addr + offset;
+                    if !is_hugepage_aligned(chunk_addr) {
+                        // Split the chunk before the where a huge page could start.
+                        std::cmp::min(
+                            round_up_hugepage_size(chunk_addr) - chunk_addr,
+                            remaining_batch_size,
+                        )
+                    } else {
+                        if remaining_batch_size < hugepage_size {
+                            // Remove the batch since it does not have enough room for a huge page.
+                            // Safe because the region is already backed by the file and the content
+                            // will be swapped in on a page fault.
+                            unsafe {
+                                remove_memory(
+                                    base_addr + batch_head_offset,
+                                    offset - batch_head_offset,
+                                )
+                                .map_err(Error::MoveToStagingFailed)?;
+                            }
+                            remaining_batch_size = hugepage_size;
+                            batch_head_offset = offset;
+                        }
+                        hugepage_size
+                    }
+                } else {
+                    remaining_batch_size
+                };
                 // Cache the rest of splitted chunk to avoid useless lseek(2) syscall.
-                cur_data = Some(data_range.start + remaining_batch_size as u64..data_range.end);
-                data_range.start..data_range.start + remaining_batch_size as u64
+                cur_data = Some(data_range.start + split_size as u64..data_range.end);
+                data_range.start..data_range.start + split_size as u64
             } else {
                 data_range
             };
 
-            // Assert offset is page aligned
-            let offset = (data_range.start - base_offset) as usize;
-            assert!(is_page_aligned(offset));
             let size = (data_range.end - data_range.start) as usize;
             assert!(is_page_aligned(size));
 
@@ -404,7 +439,7 @@ impl PageHandler {
                     )
                     .map_err(Error::MoveToStagingFailed)?;
                 }
-                remaining_batch_size = max_batch_size;
+                remaining_batch_size = hugepage_size;
                 batch_head_offset = offset + size;
             }
         }
