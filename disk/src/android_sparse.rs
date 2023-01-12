@@ -218,7 +218,7 @@ impl AndroidSparse {
             total_size: size,
             chunks: chunks_map,
         };
-        let calculated_len = image.get_len().map_err(Error::ReadSpecificationError)?;
+        let calculated_len: u64 = image.chunks.iter().map(|x| x.1.expanded_size).sum();
         if calculated_len != size {
             return Err(Error::InvalidSpecification(format!(
                 "Header promised size {}, chunks added up to {}",
