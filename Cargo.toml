@@ -121,6 +121,10 @@ exclude = [
 ## Default features of crosvm. This selection is somewhat arbitrary for historical reasons.
 default = ["audio", "balloon", "config-file", "document-features", "gpu", "qcow", "usb"]
 
+## Enables support for the Android [sparse image format](https://android.googlesource.com/platform/system/core/+/HEAD/libsparse/sparse_format.h)
+## in the block device.
+android-sparse = ["disk/android-sparse"]
+
 ## Enables cross-platform audio devices
 audio = ["devices/audio"]
 
@@ -301,6 +305,7 @@ crash-report = ["broker_ipc/crash-report", "crash_report"]
 
 ## All features that are compiled and tested for aarch64
 all-aarch64 = [
+    "android-sparse",
     "arc_quota",
     "audio_cras",
     "chromeos",
@@ -334,15 +339,25 @@ all-x86_64 = ["all-aarch64", "plugin", "scudo"]
 ## All features that are compiled and tested for armhf
 ## Note: This platform is deprecated and will be phased out.
 all-armhf = [
+    "android-sparse",
     "composite-disk",
     "default",
     "gdb", # no effect because gdb is not supported for armhf
     "libvda-stub",
     "tpm",
-    ]
+]
 
 ## All features that are compiled and tested for mingw64
-all-mingw64 = [ "audio", "balloon", "crash_report", "gpu", "haxm", "slirp", "stats" ]
+all-mingw64 = [
+    "android-sparse",
+    "audio",
+    "balloon",
+    "crash_report",
+    "gpu",
+    "haxm",
+    "slirp",
+    "stats",
+]
 
 ## All features that are compiled and tested for msvc64
 all-msvc64 = [ "all-mingw64" ]
