@@ -17,11 +17,8 @@ gdbstub_arch = { version = "0.2.4", optional = true }
 hypervisor = { path = "../hypervisor" }
 kernel_cmdline = { path = "../kernel_cmdline" }
 kernel_loader = { path = "../kernel_loader" }
-kvm = { path = "../kvm" }
-kvm_sys = { path = "../kvm_sys" }
 libc = "*"
 memoffset = "0.6"
-minijail = "*"
 remain = "*"
 resources = { path = "../resources" }
 sync = { path = "../common/sync" }
@@ -29,3 +26,6 @@ base = { path = "../base" }
 thiserror = "*"
 vm_control = { path = "../vm_control" }
 vm_memory = { path = "../vm_memory" }
+
+[target.'cfg(unix)'.dependencies]
+minijail = "*"

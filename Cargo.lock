@@ -16,8 +16,6 @@ dependencies = [
  "hypervisor",
  "kernel_cmdline",
  "kernel_loader",
- "kvm",
- "kvm_sys",
  "libc",
  "memoffset 0.6.5",
  "minijail",

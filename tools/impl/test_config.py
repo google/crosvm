@@ -56,7 +56,6 @@ class TestOption(enum.Enum):
 
 # This is just too big to keep in main list for now
 WIN64_DISABLED_CRATES = [
-    "aarch64",
     "cros_asyncv2",
     "cros-fuzz",
     "crosvm_plugin",
