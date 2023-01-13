@@ -239,11 +239,15 @@ impl<T: DecodedHandle + DynDecodedHandle + 'static> Decoder<T> {
             let offset = frame.offset();
             let size = frame.size();
 
-            let block = matches!(self.blocking_mode, BlockingMode::Blocking)
+            let block = if matches!(self.blocking_mode, BlockingMode::Blocking)
                 || matches!(
                     self.negotiation_status,
                     NegotiationStatus::DrainingQueuedBuffers
-                );
+                ) {
+                BlockingMode::Blocking
+            } else {
+                BlockingMode::NonBlocking
+            };
 
             let bitstream = &frame.bitstream[offset..offset + size];
 

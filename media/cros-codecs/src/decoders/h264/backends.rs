@@ -8,6 +8,7 @@ use crate::decoders::h264::parser::Pps;
 use crate::decoders::h264::parser::Slice;
 use crate::decoders::h264::parser::Sps;
 use crate::decoders::h264::picture::PictureData;
+use crate::decoders::BlockingMode;
 use crate::decoders::VideoDecoderBackend;
 
 pub type Result<T> = crate::decoders::StatelessBackendResult<T>;
@@ -70,7 +71,11 @@ pub(crate) trait StatelessDecoderBackend: VideoDecoderBackend {
     ///
     /// This call will assign the ownership of the BackendHandle to the Picture
     /// and then assign the ownership of the Picture to the Handle.
-    fn submit_picture(&mut self, picture: &PictureData, block: bool) -> Result<Self::Handle>;
+    fn submit_picture(
+        &mut self,
+        picture: &PictureData,
+        block: BlockingMode,
+    ) -> Result<Self::Handle>;
 
     /// Get the test parameters for the backend. The caller is reponsible for
     /// downcasting them to the correct type, which is backend-dependent.

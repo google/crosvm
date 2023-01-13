@@ -304,7 +304,7 @@ impl StatelessDecoderBackend for Backend {
         segmentation: &Segmentation,
         mb_lf_adjust: &MbLfAdjustments,
         timestamp: u64,
-        block: bool,
+        block: BlockingMode,
     ) -> StatelessBackendResult<Self::Handle> {
         self.backend.negotiation_status = NegotiationStatus::Negotiated;
 
@@ -370,12 +370,12 @@ impl StatelessDecoderBackend for Backend {
             metadata.surface_pool.clone(),
         )?));
 
-        if block {
-            backend_handle.borrow_mut().sync(metadata)?;
-        } else {
-            self.backend
+        match block {
+            BlockingMode::Blocking => backend_handle.borrow_mut().sync(metadata)?,
+            BlockingMode::NonBlocking => self
+                .backend
                 .pending_jobs
-                .push_back(Rc::clone(&backend_handle));
+                .push_back(Rc::clone(&backend_handle)),
         }
 
         self.backend

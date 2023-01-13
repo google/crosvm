@@ -5,6 +5,7 @@
 use crate::decoders::vp8::parser::Header;
 use crate::decoders::vp8::parser::MbLfAdjustments;
 use crate::decoders::vp8::parser::Segmentation;
+use crate::decoders::BlockingMode;
 use crate::decoders::VideoDecoderBackend;
 
 #[cfg(test)]
@@ -40,7 +41,7 @@ pub(crate) trait StatelessDecoderBackend: VideoDecoderBackend {
         segmentation: &Segmentation,
         mb_lf_adjust: &MbLfAdjustments,
         timestamp: u64,
-        block: bool,
+        block: BlockingMode,
     ) -> Result<Self::Handle>;
 
     /// Get the test parameters for the backend. The caller is reponsible for

@@ -6,6 +6,7 @@ use crate::decoders::vp9::decoder::Segmentation;
 use crate::decoders::vp9::parser::Header;
 use crate::decoders::vp9::parser::MAX_SEGMENTS;
 use crate::decoders::vp9::parser::NUM_REF_FRAMES;
+use crate::decoders::BlockingMode;
 use crate::decoders::VideoDecoderBackend;
 
 #[cfg(test)]
@@ -38,7 +39,7 @@ pub(crate) trait StatelessDecoderBackend: VideoDecoderBackend {
         bitstream: &[u8],
         timestamp: u64,
         segmentation: &[Segmentation; MAX_SEGMENTS],
-        block: bool,
+        block: BlockingMode,
     ) -> Result<Self::Handle>;
 
     /// Get the test parameters for the backend. The caller is reponsible for

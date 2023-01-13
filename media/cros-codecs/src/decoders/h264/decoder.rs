@@ -2245,11 +2245,15 @@ where
     fn submit_picture(&mut self) -> VideoDecoderResult<(PictureData, T)> {
         let picture = self.cur_pic.take().unwrap();
 
-        let block = matches!(self.blocking_mode, BlockingMode::Blocking)
+        let block = if matches!(self.blocking_mode, BlockingMode::Blocking)
             || matches!(
                 self.negotiation_status,
                 NegotiationStatus::DrainingQueuedBuffers
-            );
+            ) {
+            BlockingMode::Blocking
+        } else {
+            BlockingMode::NonBlocking
+        };
 
         let handle = self
             .backend
