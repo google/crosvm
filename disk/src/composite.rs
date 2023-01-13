@@ -27,10 +27,7 @@ use base::AsRawDescriptors;
 use base::FileAllocate;
 use base::FileReadWriteAtVolatile;
 use base::FileSetLen;
-use base::FileSync;
-use base::PunchHole;
 use base::RawDescriptor;
-use base::WriteZeroesAt;
 use crc32fast::Hasher;
 use cros_async::BackingMemory;
 use cros_async::Executor;
@@ -298,13 +295,6 @@ impl CompositeDiskFile {
                 format!("no disk at offset {}", offset),
             ))
     }
-
-    fn disks_in_range<'a>(&'a mut self, range: &Range<u64>) -> Vec<&'a mut ComponentDiskPart> {
-        self.component_disks
-            .iter_mut()
-            .filter(|disk| ranges_overlap(&disk.range(), range))
-            .collect()
-    }
 }
 
 impl DiskGetLen for CompositeDiskFile {
@@ -316,18 +306,6 @@ impl DiskGetLen for CompositeDiskFile {
 impl FileSetLen for CompositeDiskFile {
     fn set_len(&self, _len: u64) -> io::Result<()> {
         Err(io::Error::new(ErrorKind::Other, "unsupported operation"))
-    }
-}
-
-impl FileSync for CompositeDiskFile {
-    fn fsync(&mut self) -> io::Result<()> {
-        for disk in self.component_disks.iter_mut() {
-            if disk.needs_fsync {
-                disk.file.fsync()?;
-                disk.needs_fsync = false;
-            }
-        }
-        Ok(())
     }
 }
 
@@ -370,56 +348,6 @@ impl FileReadWriteAtVolatile for CompositeDiskFile {
         let bytes = disk
             .file
             .write_at_volatile(subslice, cursor_location - disk.offset)?;
-        disk.needs_fsync = true;
-        Ok(bytes)
-    }
-}
-
-impl PunchHole for CompositeDiskFile {
-    fn punch_hole(&mut self, offset: u64, length: u64) -> io::Result<()> {
-        let range = offset..(offset + length);
-        let disks = self.disks_in_range(&range);
-        for disk in disks {
-            if let Some(intersection) = range_intersection(&range, &disk.range()) {
-                disk.file.punch_hole(
-                    intersection.start - disk.offset,
-                    intersection.end - intersection.start,
-                )?;
-                disk.needs_fsync = true;
-            }
-        }
-        Ok(())
-    }
-}
-
-impl FileAllocate for CompositeDiskFile {
-    fn allocate(&mut self, offset: u64, length: u64) -> io::Result<()> {
-        let range = offset..(offset + length);
-        let disks = self.disks_in_range(&range);
-        for disk in disks {
-            if let Some(intersection) = range_intersection(&range, &disk.range()) {
-                disk.file.allocate(
-                    intersection.start - disk.offset,
-                    intersection.end - intersection.start,
-                )?;
-                disk.needs_fsync = true;
-            }
-        }
-        Ok(())
-    }
-}
-
-impl WriteZeroesAt for CompositeDiskFile {
-    fn write_zeroes_at(&mut self, offset: u64, length: usize) -> io::Result<usize> {
-        let cursor_location = offset;
-        let disk = self.disk_at_offset(cursor_location)?;
-        let offset_within_disk = cursor_location - disk.offset;
-        let new_length = if cursor_location + length as u64 > disk.offset + disk.length {
-            (disk.offset + disk.length - cursor_location) as usize
-        } else {
-            length
-        };
-        let bytes = disk.file.write_zeroes_at(offset_within_disk, new_length)?;
         disk.needs_fsync = true;
         Ok(bytes)
     }
@@ -1169,47 +1097,6 @@ mod tests {
     }
 
     #[test]
-    fn triple_file_punch_hole() {
-        let file1 = tempfile().unwrap();
-        let file2 = tempfile().unwrap();
-        let file3 = tempfile().unwrap();
-        let disk_part1 = ComponentDiskPart {
-            file: Box::new(file1),
-            offset: 0,
-            length: 100,
-            needs_fsync: false,
-        };
-        let disk_part2 = ComponentDiskPart {
-            file: Box::new(file2),
-            offset: 100,
-            length: 100,
-            needs_fsync: false,
-        };
-        let disk_part3 = ComponentDiskPart {
-            file: Box::new(file3),
-            offset: 200,
-            length: 100,
-            needs_fsync: false,
-        };
-        let mut composite =
-            CompositeDiskFile::new(vec![disk_part1, disk_part2, disk_part3]).unwrap();
-        let mut input_memory = [55u8; 300];
-        let input_volatile_memory = VolatileSlice::new(&mut input_memory[..]);
-        composite
-            .write_all_at_volatile(input_volatile_memory, 0)
-            .unwrap();
-        composite.punch_hole(50, 200).unwrap();
-        let mut output_memory = [0u8; 300];
-        let output_volatile_memory = VolatileSlice::new(&mut output_memory[..]);
-        composite
-            .read_exact_at_volatile(output_volatile_memory, 0)
-            .unwrap();
-
-        input_memory[50..250].iter_mut().for_each(|x| *x = 0);
-        assert!(input_memory.iter().eq(output_memory.iter()));
-    }
-
-    #[test]
     fn async_triple_file_punch_hole() {
         let file1 = tempfile().unwrap();
         let file2 = tempfile().unwrap();
@@ -1290,58 +1177,6 @@ mod tests {
     }
 
     #[test]
-    fn triple_file_write_zeroes() {
-        let file1 = tempfile().unwrap();
-        let file2 = tempfile().unwrap();
-        let file3 = tempfile().unwrap();
-        let disk_part1 = ComponentDiskPart {
-            file: Box::new(file1),
-            offset: 0,
-            length: 100,
-            needs_fsync: false,
-        };
-        let disk_part2 = ComponentDiskPart {
-            file: Box::new(file2),
-            offset: 100,
-            length: 100,
-            needs_fsync: false,
-        };
-        let disk_part3 = ComponentDiskPart {
-            file: Box::new(file3),
-            offset: 200,
-            length: 100,
-            needs_fsync: false,
-        };
-        let mut composite =
-            CompositeDiskFile::new(vec![disk_part1, disk_part2, disk_part3]).unwrap();
-        let mut input_memory = [55u8; 300];
-        let input_volatile_memory = VolatileSlice::new(&mut input_memory[..]);
-        composite
-            .write_all_at_volatile(input_volatile_memory, 0)
-            .unwrap();
-        let mut zeroes_written = 0;
-        while zeroes_written < 200 {
-            zeroes_written += composite
-                .write_zeroes_at(50 + zeroes_written as u64, 200 - zeroes_written)
-                .unwrap();
-        }
-        let mut output_memory = [0u8; 300];
-        let output_volatile_memory = VolatileSlice::new(&mut output_memory[..]);
-        composite
-            .read_exact_at_volatile(output_volatile_memory, 0)
-            .unwrap();
-
-        input_memory[50..250].iter_mut().for_each(|x| *x = 0);
-        for i in 0..300 {
-            println!(
-                "input[{0}] = {1}, output[{0}] = {2}",
-                i, input_memory[i], output_memory[i]
-            );
-        }
-        assert!(input_memory.iter().eq(output_memory.iter()));
-    }
-
-    #[test]
     fn async_triple_file_write_zeroes() {
         let file1 = tempfile().unwrap();
         let file2 = tempfile().unwrap();
@@ -1419,45 +1254,6 @@ mod tests {
             assert_eq!(buf, expected);
         })
         .unwrap();
-    }
-
-    // TODO: fsync on a RO file is legal, this test doesn't work as expected. Consider using a mock
-    // DiskFile to detect the fsync calls.
-    #[test]
-    fn fsync_skips_unchanged_parts() {
-        let mut rw_file = tempfile().unwrap();
-        rw_file.write_all(&[0u8; 100]).unwrap();
-        rw_file.seek(SeekFrom::Start(0)).unwrap();
-        let mut ro_disk_image = tempfile::NamedTempFile::new().unwrap();
-        ro_disk_image.write_all(&[0u8; 100]).unwrap();
-        let ro_file = OpenOptions::new()
-            .read(true)
-            .open(ro_disk_image.path())
-            .unwrap();
-
-        let rw_part = ComponentDiskPart {
-            file: Box::new(rw_file),
-            offset: 0,
-            length: 100,
-            needs_fsync: false,
-        };
-        let ro_part = ComponentDiskPart {
-            file: Box::new(ro_file),
-            offset: 100,
-            length: 100,
-            needs_fsync: true,
-        };
-        let mut composite = CompositeDiskFile::new(vec![rw_part, ro_part]).unwrap();
-
-        // Write to the RW part so that some fsync operation will occur.
-        composite.write_zeroes_at(0, 20).unwrap();
-
-        // This is the test's assert. fsyncing should NOT touch a read-only disk part. On Windows,
-        // this would be an error.
-        composite.fsync().expect(
-            "Failed to fsync composite disk. \
-                 This can happen if the disk writable state is wrong.",
-        );
     }
 
     // TODO: fsync on a RO file is legal, this test doesn't work as expected. Consider using a mock

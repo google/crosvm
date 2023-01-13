@@ -12,7 +12,10 @@ use async_trait::async_trait;
 use base::AsRawDescriptors;
 use base::FileAllocate;
 use base::FileSetLen;
+use base::FileSync;
+use base::PunchHole;
 use base::RawDescriptor;
+use base::WriteZeroesAt;
 use cros_async::BackingMemory;
 use cros_async::BlockingPool;
 use cros_async::Executor;
@@ -49,13 +52,13 @@ impl<T: DiskFile + Send> DiskGetLen for AsyncDiskFileWrapper<T> {
     }
 }
 
-impl<T: DiskFile + Send> FileSetLen for AsyncDiskFileWrapper<T> {
+impl<T: DiskFile + Send + FileSetLen> FileSetLen for AsyncDiskFileWrapper<T> {
     fn set_len(&self, len: u64) -> io::Result<()> {
         self.inner.lock().set_len(len)
     }
 }
 
-impl<T: DiskFile + Send> FileAllocate for AsyncDiskFileWrapper<T> {
+impl<T: DiskFile + Send + FileAllocate> FileAllocate for AsyncDiskFileWrapper<T> {
     fn allocate(&mut self, offset: u64, len: u64) -> io::Result<()> {
         self.inner.lock().allocate(offset, len)
     }
@@ -68,7 +71,17 @@ impl<T: DiskFile + Send> AsRawDescriptors for AsyncDiskFileWrapper<T> {
 }
 
 #[async_trait(?Send)]
-impl<T: 'static + DiskFile + Send> AsyncDisk for AsyncDiskFileWrapper<T> {
+impl<
+        T: 'static
+            + DiskFile
+            + Send
+            + FileAllocate
+            + FileSetLen
+            + FileSync
+            + PunchHole
+            + WriteZeroesAt,
+    > AsyncDisk for AsyncDiskFileWrapper<T>
+{
     fn into_inner(self: Box<Self>) -> Box<dyn DiskFile> {
         self.blocking_pool
             .shutdown(None)
