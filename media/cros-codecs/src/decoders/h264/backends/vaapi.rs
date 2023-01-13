@@ -574,7 +574,8 @@ impl StatelessDecoderBackend for Backend {
 
         self.backend.negotiation_status = NegotiationStatus::Negotiated;
 
-        let context = self.backend.metadata_state.context()?;
+        let metadata = self.backend.metadata_state.get_parsed()?;
+        let context = &metadata.context;
 
         let va_pic = &mut self.current_picture.as_mut().unwrap();
         let surface_id = va_pic.surface().id();
@@ -606,7 +607,8 @@ impl StatelessDecoderBackend for Backend {
         ref_pic_list0: &[DpbEntry<Self::Handle>],
         ref_pic_list1: &[DpbEntry<Self::Handle>],
     ) -> StatelessBackendResult<()> {
-        let context = self.backend.metadata_state.context()?;
+        let metadata = self.backend.metadata_state.get_parsed()?;
+        let context = &metadata.context;
 
         let slice_param = context.create_buffer(Backend::build_slice_param(
             slice,
@@ -651,14 +653,15 @@ impl StatelessDecoderBackend for Backend {
         let surface_id = current_picture.surface().id();
         let current_picture = current_picture.begin()?.render()?.end()?;
 
+        let metadata = self.backend.metadata_state.get_parsed()?;
+
         let backend_handle = if block {
             let current_picture = current_picture.sync()?;
-            let map_format = self.backend.metadata_state.map_format()?;
 
             Rc::new(RefCell::new(GenericBackendHandle::new_ready(
                 current_picture,
-                Rc::clone(map_format),
-                self.backend.metadata_state.display_resolution()?,
+                Rc::clone(&metadata.map_format),
+                metadata.display_resolution,
             )))
         } else {
             let backend_handle =
@@ -678,15 +681,14 @@ impl StatelessDecoderBackend for Backend {
     }
 
     fn new_picture(&mut self, _: &PictureData, timestamp: u64) -> StatelessBackendResult<()> {
-        let context = self.backend.metadata_state.context()?;
+        let metadata = self.backend.metadata_state.get_parsed_mut()?;
 
-        let surface = self
-            .backend
-            .metadata_state
-            .get_surface()?
+        let surface = metadata
+            .surface_pool
+            .get_surface()
             .ok_or(StatelessBackendError::OutOfResources)?;
 
-        let va_pic = VaPicture::new(timestamp, Rc::clone(&context), surface);
+        let va_pic = VaPicture::new(timestamp, Rc::clone(&metadata.context), surface);
 
         self.current_picture = Some(va_pic);
 

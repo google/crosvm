@@ -325,11 +325,6 @@ impl StatelessDecoderBackend for Backend {
     ) -> StatelessBackendResult<Self::Handle> {
         self.backend.negotiation_status = NegotiationStatus::Negotiated;
 
-        let context = self.backend.metadata_state.context()?;
-
-        let pic_param =
-            context.create_buffer(Backend::build_pic_param(picture, reference_frames)?)?;
-
         #[cfg(test)]
         {
             let seg = segmentation.clone();
@@ -340,23 +335,26 @@ impl StatelessDecoderBackend for Backend {
             );
         }
 
+        let metadata = self.backend.metadata_state.get_parsed_mut()?;
+        let context = &metadata.context;
+
+        let pic_param =
+            context.create_buffer(Backend::build_pic_param(picture, reference_frames)?)?;
+
         let slice_param =
             context.create_buffer(Backend::build_slice_param(segmentation, bitstream.len())?)?;
 
         let slice_data =
             context.create_buffer(libva::BufferType::SliceData(Vec::from(bitstream)))?;
 
-        let context = self.backend.metadata_state.context()?;
-
-        let surface = self
-            .backend
-            .metadata_state
-            .get_surface()?
+        let surface = metadata
+            .surface_pool
+            .get_surface()
             .ok_or(StatelessBackendError::OutOfResources)?;
 
         let surface_id = surface.id();
 
-        let mut va_picture = VaPicture::new(timestamp, Rc::clone(&context), surface);
+        let mut va_picture = VaPicture::new(timestamp, Rc::clone(context), surface);
 
         // Add buffers with the parsed data.
         va_picture.add_buffer(pic_param);
@@ -367,12 +365,11 @@ impl StatelessDecoderBackend for Backend {
 
         let backend_handle = if block {
             let va_picture = va_picture.sync()?;
-            let map_format = self.backend.metadata_state.map_format()?;
 
             Rc::new(RefCell::new(GenericBackendHandle::new_ready(
                 va_picture,
-                Rc::clone(map_format),
-                self.backend.metadata_state.display_resolution()?,
+                Rc::clone(&metadata.map_format),
+                metadata.display_resolution,
             )))
         } else {
             let backend_handle =
