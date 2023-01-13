@@ -34,7 +34,6 @@ use crate::decoders::VideoDecoderBackend;
 use crate::utils::vaapi::DecodedHandle as VADecodedHandle;
 use crate::utils::vaapi::GenericBackendHandle;
 use crate::utils::vaapi::NegotiationStatus;
-use crate::utils::vaapi::PendingJob;
 use crate::utils::vaapi::StreamInfo;
 use crate::utils::vaapi::VaapiBackend;
 use crate::Resolution;
@@ -352,8 +351,6 @@ impl StatelessDecoderBackend for Backend {
             .get_surface()
             .ok_or(StatelessBackendError::OutOfResources)?;
 
-        let surface_id = surface.id();
-
         let mut va_picture = VaPicture::new(timestamp, Rc::clone(context), surface);
 
         // Add buffers with the parsed data.
@@ -361,30 +358,18 @@ impl StatelessDecoderBackend for Backend {
         va_picture.add_buffer(slice_param);
         va_picture.add_buffer(slice_data);
 
-        let va_picture = va_picture.begin()?.render()?.end()?;
+        let backend_handle = Rc::new(RefCell::new(GenericBackendHandle::new_pending(
+            va_picture,
+            metadata.surface_pool.clone(),
+        )?));
 
-        let backend_handle = if block {
-            let va_picture = va_picture.sync()?;
-
-            Rc::new(RefCell::new(GenericBackendHandle::new_ready(
-                va_picture,
-                Rc::clone(&metadata.map_format),
-                metadata.display_resolution,
-                metadata.surface_pool.clone(),
-            )))
+        if block {
+            backend_handle.borrow_mut().sync(metadata)?;
         } else {
-            let backend_handle = Rc::new(RefCell::new(GenericBackendHandle::new_pending(
-                surface_id,
-                metadata.surface_pool.clone(),
-            )));
-
-            self.backend.pending_jobs.push_back(PendingJob {
-                va_picture,
-                codec_picture: Rc::clone(&backend_handle),
-            });
-
-            backend_handle
-        };
+            self.backend
+                .pending_jobs
+                .push_back(Rc::clone(&backend_handle));
+        }
 
         self.backend
             .build_va_decoded_handle(&backend_handle, timestamp)

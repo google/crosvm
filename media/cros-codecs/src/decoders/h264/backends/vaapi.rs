@@ -41,7 +41,6 @@ use crate::decoders::VideoDecoderBackend;
 use crate::utils::vaapi::DecodedHandle as VADecodedHandle;
 use crate::utils::vaapi::GenericBackendHandle;
 use crate::utils::vaapi::NegotiationStatus;
-use crate::utils::vaapi::PendingJob;
 use crate::utils::vaapi::StreamInfo;
 use crate::utils::vaapi::VaapiBackend;
 use crate::DecodedFormat;
@@ -650,33 +649,20 @@ impl StatelessDecoderBackend for Backend {
     ) -> StatelessBackendResult<Self::Handle> {
         let current_picture = self.current_picture.take().unwrap();
         let timestamp = current_picture.timestamp();
-        let surface_id = current_picture.surface().id();
-        let current_picture = current_picture.begin()?.render()?.end()?;
-
         let metadata = self.backend.metadata_state.get_parsed()?;
 
-        let backend_handle = if block {
-            let current_picture = current_picture.sync()?;
+        let backend_handle = Rc::new(RefCell::new(GenericBackendHandle::new_pending(
+            current_picture,
+            metadata.surface_pool.clone(),
+        )?));
 
-            Rc::new(RefCell::new(GenericBackendHandle::new_ready(
-                current_picture,
-                Rc::clone(&metadata.map_format),
-                metadata.display_resolution,
-                metadata.surface_pool.clone(),
-            )))
+        if block {
+            backend_handle.borrow_mut().sync(metadata)?;
         } else {
-            let backend_handle = Rc::new(RefCell::new(GenericBackendHandle::new_pending(
-                surface_id,
-                metadata.surface_pool.clone(),
-            )));
-
-            self.backend.pending_jobs.push_back(PendingJob {
-                va_picture: current_picture,
-                codec_picture: Rc::clone(&backend_handle),
-            });
-
-            backend_handle
-        };
+            self.backend
+                .pending_jobs
+                .push_back(Rc::clone(&backend_handle));
+        }
 
         self.backend
             .build_va_decoded_handle(&backend_handle, timestamp)

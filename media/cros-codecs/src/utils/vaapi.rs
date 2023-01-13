@@ -14,6 +14,8 @@ use libva::Config;
 use libva::Context;
 use libva::Display;
 use libva::Image;
+use libva::PictureEnd;
+use libva::PictureNew;
 use libva::PictureSync;
 use libva::Surface;
 use libva::VAConfigAttrib;
@@ -107,10 +109,11 @@ impl TryInto<Option<Surface>> for PictureState {
     fn try_into(self) -> Result<Option<Surface>, Self::Error> {
         match self {
             PictureState::Ready { picture, .. } => picture.take_surface().map(Some),
-            PictureState::Pending(id) => Err(anyhow!(
+            PictureState::Pending { surface_id, .. } => Err(anyhow!(
                 "Attempting to retrieve a surface (id: {:?}) that might have operations pending.",
-                id
+                surface_id
             )),
+            PictureState::Invalid => unreachable!(),
         }
     }
 }
@@ -408,10 +411,7 @@ pub struct GenericBackendHandle {
 impl Drop for GenericBackendHandle {
     fn drop(&mut self) {
         // Take ownership of the internal state.
-        let state = std::mem::replace(
-            &mut self.state,
-            PictureState::Pending(libva::constants::VA_INVALID_SURFACE),
-        );
+        let state = std::mem::replace(&mut self.state, PictureState::Invalid);
         if self.surface_pool.coded_resolution() == self.resolution {
             if let Ok(Some(surface)) = state.try_into() {
                 self.surface_pool.add_surface(surface);
@@ -422,30 +422,37 @@ impl Drop for GenericBackendHandle {
 
 impl GenericBackendHandle {
     /// Creates a new pending handle on `surface_id`.
-    pub(crate) fn new_pending(surface_id: u32, surface_pool: SurfacePoolHandle) -> Self {
-        Self {
-            state: PictureState::Pending(surface_id),
-            resolution: surface_pool.coded_resolution(),
-            surface_pool,
-        }
-    }
-
-    /// Creates a new ready handle on a completed `picture`.
-    pub(crate) fn new_ready(
-        picture: libva::Picture<PictureSync>,
-        map_format: Rc<libva::VAImageFormat>,
-        display_resolution: Resolution,
+    pub(crate) fn new_pending(
+        picture: libva::Picture<PictureNew>,
         surface_pool: SurfacePoolHandle,
-    ) -> Self {
-        Self {
-            state: PictureState::Ready {
-                map_format,
+    ) -> Result<Self> {
+        let surface_id = picture.surface().id();
+        let picture = picture.begin()?.render()?.end()?;
+        Ok(Self {
+            state: PictureState::Pending {
                 picture,
-                display_resolution,
+                surface_id,
             },
             resolution: surface_pool.coded_resolution(),
             surface_pool,
+        })
+    }
+
+    pub(crate) fn sync(&mut self, metadata: &ParsedStreamMetadata) -> Result<()> {
+        match std::mem::replace(&mut self.state, PictureState::Invalid) {
+            state @ PictureState::Ready { .. } => self.state = state,
+            PictureState::Pending { picture, .. } => {
+                let picture = picture.sync()?;
+                self.state = PictureState::Ready {
+                    map_format: Rc::clone(&metadata.map_format),
+                    picture,
+                    display_resolution: metadata.display_resolution,
+                };
+            }
+            PictureState::Invalid => unreachable!(),
         }
+
+        Ok(())
     }
 
     /// Returns a mapped VAImage. this maps the VASurface onto our address space.
@@ -473,7 +480,8 @@ impl GenericBackendHandle {
 
                 Ok(image)
             }
-            PictureState::Pending(_) => Err(anyhow!("Mapping failed")),
+            PictureState::Pending { .. } => Err(anyhow!("Mapping failed")),
+            PictureState::Invalid => unreachable!(),
         }
     }
 
@@ -481,7 +489,8 @@ impl GenericBackendHandle {
     pub fn picture(&self) -> Option<&libva::Picture<PictureSync>> {
         match &self.state {
             PictureState::Ready { picture, .. } => Some(picture),
-            PictureState::Pending(_) => None,
+            PictureState::Pending { .. } => None,
+            PictureState::Invalid => unreachable!(),
         }
     }
 
@@ -489,13 +498,24 @@ impl GenericBackendHandle {
     pub fn surface_id(&self) -> libva::VASurfaceID {
         match &self.state {
             PictureState::Ready { picture, .. } => picture.surface().id(),
-            PictureState::Pending(id) => *id,
+            PictureState::Pending { surface_id, .. } => *surface_id,
+            PictureState::Invalid => unreachable!(),
         }
     }
 
     /// Returns `true` if this handle is ready.
     pub fn is_ready(&self) -> bool {
         matches!(self.state, PictureState::Ready { .. })
+    }
+
+    pub fn is_va_ready(&self) -> Result<bool> {
+        match &self.state {
+            PictureState::Ready { .. } => Ok(true),
+            PictureState::Pending { picture, .. } => picture
+                .query_status()
+                .map(|s| s == libva::VASurfaceStatus::VASurfaceReady),
+            PictureState::Invalid => unreachable!(),
+        }
     }
 }
 
@@ -506,7 +526,14 @@ enum PictureState {
         picture: libva::Picture<PictureSync>,
         display_resolution: Resolution,
     },
-    Pending(libva::VASurfaceID),
+    Pending {
+        /// Submitted VA picture pending completion.
+        picture: libva::Picture<PictureEnd>,
+        /// VA surface ID for `picture`.
+        surface_id: u32,
+    },
+    // Only set in the destructor when we take ownership of the VA picture.
+    Invalid,
 }
 
 impl<'a> MappableHandle for Image<'a> {
@@ -618,22 +645,6 @@ impl<T> Debug for NegotiationStatus<T> {
     }
 }
 
-/// A type that keeps track of a pending decoding operation. The backend can
-/// complete the job by either querying its status with VA-API or by blocking on
-/// it at some point in the future.
-///
-/// Once the backend is sure that the operation went through, it can assign the
-/// handle to `codec_picture` and dequeue this object from the pending queue.
-pub(crate) struct PendingJob {
-    /// A picture that was already sent to VA-API. It is unclear whether it has
-    /// been decoded yet because we have been asked not to block on it.
-    pub va_picture: libva::Picture<libva::PictureEnd>,
-    /// A handle to the picture passed in by the decoder. It has no handle
-    /// backing it yet, as we cannot be sure that the decoding operation went
-    /// through.
-    pub codec_picture: Rc<RefCell<GenericBackendHandle>>,
-}
-
 pub(crate) struct VaapiBackend<StreamData>
 where
     for<'a> &'a StreamData: StreamInfo,
@@ -643,7 +654,7 @@ where
     /// The negotiation status
     pub(crate) negotiation_status: NegotiationStatus<Box<StreamData>>,
     /// The FIFO for all pending pictures, in the order they were submitted.
-    pub(crate) pending_jobs: VecDeque<PendingJob>,
+    pub(crate) pending_jobs: VecDeque<Rc<RefCell<GenericBackendHandle>>>,
 }
 
 impl<StreamData> VaapiBackend<StreamData>
@@ -750,26 +761,17 @@ where
         let candidates = self.pending_jobs.drain(..).collect::<VecDeque<_>>();
 
         for job in candidates {
-            let metadata = self.metadata_state.get_parsed()?;
-
             if matches!(blocking_mode, BlockingMode::NonBlocking) {
-                let status = job.va_picture.query_status()?;
-                if status != libva::VASurfaceStatus::VASurfaceReady {
+                if !job.borrow().is_va_ready()? {
                     self.pending_jobs.push_back(job);
                     continue;
                 }
             }
 
-            let current_picture = job.va_picture.sync()?;
-            let backend_handle = GenericBackendHandle::new_ready(
-                current_picture,
-                Rc::clone(&metadata.map_format),
-                metadata.display_resolution,
-                metadata.surface_pool.clone(),
-            );
+            let metadata = self.metadata_state.get_parsed()?;
 
-            *job.codec_picture.borrow_mut() = backend_handle;
-            completed.push_back(job.codec_picture);
+            job.borrow_mut().sync(metadata)?;
+            completed.push_back(job);
         }
 
         let completed = completed.into_iter().map(|picture| {
@@ -789,23 +791,14 @@ where
 
     fn block_on_handle(&mut self, handle: &Self::Handle) -> StatelessBackendResult<()> {
         for i in 0..self.pending_jobs.len() {
-            let metadata = self.metadata_state.get_parsed()?;
-
             // Remove from the queue in order.
             let job = &self.pending_jobs[i];
 
-            if Rc::ptr_eq(&job.codec_picture, handle.handle_rc()) {
+            if Rc::ptr_eq(job, handle.handle_rc()) {
                 let job = self.pending_jobs.remove(i).unwrap();
-                let current_picture = job.va_picture.sync()?;
-                let backend_handle = GenericBackendHandle::new_ready(
-                    current_picture,
-                    Rc::clone(&metadata.map_format),
-                    metadata.display_resolution,
-                    metadata.surface_pool.clone(),
-                );
+                let metadata = self.metadata_state.get_parsed()?;
 
-                *job.codec_picture.borrow_mut() = backend_handle;
-
+                job.borrow_mut().sync(metadata)?;
                 return Ok(());
             }
         }
