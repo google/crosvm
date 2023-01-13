@@ -9,6 +9,7 @@
 mod file;
 mod logger;
 mod pagesize;
+mod present_list;
 // this is public only for integration tests.
 pub mod page_handler;
 mod processes;
@@ -54,8 +55,8 @@ use crate::userfaultfd::UffdError;
 use crate::userfaultfd::UffdEvent;
 use crate::userfaultfd::Userfaultfd;
 
-/// The max size to write into the swap file at once.
-const MAX_SWAP_OUT_CHUNK_SIZE: usize = 2 * 1024 * 1024; // = 2MB
+/// The max size of chunks to swap out/in at once.
+const MAX_SWAP_CHUNK_SIZE: usize = 2 * 1024 * 1024; // = 2MB
 
 /// Current status of vmm-swap.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -514,13 +515,20 @@ fn start_monitoring(
 }
 
 fn disable_monitoring(
-    page_handler: PageHandler,
+    mut page_handler: PageHandler,
     uffd_list: &UffdList,
     guest_memory: &GuestMemory,
 ) -> anyhow::Result<usize> {
-    let num_pages = page_handler
-        .swap_in(uffd_list.main_uffd())
-        .context("unregister all regions")?;
+    let mut num_pages = 0;
+    loop {
+        let pages = page_handler
+            .swap_in(uffd_list.main_uffd(), MAX_SWAP_CHUNK_SIZE)
+            .context("unregister all regions")?;
+        if pages == 0 {
+            break;
+        }
+        num_pages += pages;
+    }
     let regions = regions_from_guest_memory(guest_memory);
     unregister_regions(&regions, uffd_list.get_list()).context("unregister regions")?;
     Ok(num_pages)
@@ -566,7 +574,7 @@ fn monitor_process(
                     let num_pages = page_handler_opt
                         .as_mut()
                         .unwrap()
-                        .swap_out(MAX_SWAP_OUT_CHUNK_SIZE)
+                        .swap_out(MAX_SWAP_CHUNK_SIZE)
                         .context("swap out")?;
                     if num_pages == 0 {
                         let swap_time_ms = started_time.elapsed().as_millis();

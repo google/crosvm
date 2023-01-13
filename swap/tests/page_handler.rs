@@ -764,9 +764,6 @@ fn swap_in_success() {
     page_handler
         .handle_page_fault(&uffd, base_addr2 + pagesize())
         .unwrap();
-    page_handler
-        .handle_page_fault(&uffd, base_addr2 + 2 * pagesize())
-        .unwrap();
     unsafe {
         for i in base_addr2 + pagesize()..base_addr2 + 2 * pagesize() {
             *(i as *mut u8) = 4;
@@ -778,7 +775,7 @@ fn swap_in_success() {
             .move_to_staging(base_addr2, &shm, 3 * pagesize() as u64)
             .unwrap();
     }
-    assert_eq!(page_handler.swap_in(&uffd).is_ok(), true);
+    while page_handler.swap_in(&uffd, 1024 * 1024).unwrap() != 0 {}
     unregister_regions(&regions, array::from_ref(&uffd)).unwrap();
 
     // read values on another thread to avoid blocking forever

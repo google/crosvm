@@ -6,6 +6,7 @@
 
 use std::fs::File;
 use std::fs::OpenOptions;
+use std::ops::Range;
 use std::os::unix::fs::FileExt;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
@@ -23,6 +24,7 @@ use thiserror::Error as ThisError;
 use crate::pagesize::bytes_to_pages;
 use crate::pagesize::is_page_aligned;
 use crate::pagesize::pages_to_bytes;
+use crate::present_list::PresentList;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -73,8 +75,8 @@ impl From<VolatileMemoryError> for Error {
 pub struct SwapFile {
     file: File,
     file_mmap: MemoryMapping,
-    // TODO(kawasin): convert vec with a bit vector.
-    state_list: Vec<bool>,
+    // Tracks which pages are present, indexed by page index within the memory region.
+    present_list: PresentList,
 }
 
 impl SwapFile {
@@ -102,13 +104,13 @@ impl SwapFile {
         Ok(Self {
             file,
             file_mmap,
-            state_list: vec![false; num_of_pages],
+            present_list: PresentList::new(num_of_pages),
         })
     }
 
     /// Returns the total count of managed pages.
     pub fn num_pages(&self) -> usize {
-        self.state_list.len()
+        self.present_list.len()
     }
 
     /// Returns a content of the page corresponding to the index.
@@ -121,13 +123,10 @@ impl SwapFile {
     ///
     /// * `idx` - the index of the page from the head of the pages.
     pub fn page_content(&self, idx: usize) -> Result<Option<VolatileSlice>> {
-        match self.state_list.get(idx) {
+        match self.present_list.get(idx) {
             Some(is_present) => {
                 if *is_present {
-                    let slice = self
-                        .file_mmap
-                        .get_slice(pages_to_bytes(idx), pages_to_bytes(1))?;
-                    Ok(Some(slice))
+                    Ok(Some(self.get_slice(idx..idx + 1)?))
                 } else {
                     Ok(None)
                 }
@@ -136,22 +135,18 @@ impl SwapFile {
         }
     }
 
-    /// Clears the page in the file corresponding to the index.
+    /// Clears the pages in the file corresponding to the index.
     ///
     /// # Arguments
     ///
-    /// * `idx` - the index of the page from the head of the pages.
-    pub fn clear(&mut self, idx: usize) -> Result<()> {
-        match self.state_list.get_mut(idx) {
-            Some(is_present) => {
-                if *is_present {
-                    *is_present = false;
-                    // TODO(kawasin): punch a hole to the cleared page in the file.
-                    // TODO(kawasin): free the page cache for the page.
-                }
-                Ok(())
-            }
-            None => Err(Error::OutOfRange),
+    /// * `idx_range` - the indices of consecutive pages to be cleared.
+    pub fn clear_range(&mut self, idx_range: Range<usize>) -> Result<()> {
+        if self.present_list.clear_range(idx_range) {
+            // TODO(kawasin): punch a hole to the cleared page in the file.
+            // TODO(kawasin): free the page cache for the page.
+            Ok(())
+        } else {
+            Err(Error::OutOfRange)
         }
     }
 
@@ -169,70 +164,52 @@ impl SwapFile {
             return Err(Error::InvalidSize);
         }
         let num_pages = bytes_to_pages(mem_slice.len());
-        if idx + num_pages > self.state_list.len() {
+        if idx + num_pages > self.present_list.len() {
             return Err(Error::OutOfRange);
         }
 
         let byte_offset = (pages_to_bytes(idx)) as u64;
         self.file.write_all_at(mem_slice, byte_offset)?;
-        for i in idx..(idx + num_pages) {
-            self.state_list[i] = true;
+
+        if !self.present_list.mark_as_present(idx..idx + num_pages) {
+            // the range is already validated before writing.
+            unreachable!("idx range is out of range");
         }
+
         Ok(())
     }
 
-    /// Returns all present pages in the swap file.
-    pub fn all_present_pages(&self) -> PresentPagesIterator {
-        PresentPagesIterator {
-            swap_file: self,
-            idx: 0,
+    /// Returns the first range of indices of consecutive pages present in the swap file.
+    ///
+    /// # Arguments
+    ///
+    /// * `max_pages` - the max size of the returned chunk even if the chunk of consecutive present
+    ///   pages is longer than this.
+    pub fn first_data_range(&mut self, max_pages: usize) -> Option<Range<usize>> {
+        self.present_list.first_data_range(max_pages)
+    }
+
+    /// Returns the [VolatileSlice] corresponding to the indices.
+    ///
+    /// If the range is out of the region, this returns [Error::OutOfRange].
+    ///
+    /// # Arguments
+    ///
+    /// * `idx_range` - the indices of the pages.
+    pub fn get_slice(&self, idx_range: Range<usize>) -> Result<VolatileSlice> {
+        match self.file_mmap.get_slice(
+            pages_to_bytes(idx_range.start),
+            pages_to_bytes(idx_range.end - idx_range.start),
+        ) {
+            Ok(slice) => Ok(slice),
+            Err(VolatileMemoryError::OutOfBounds { .. }) => Err(Error::OutOfRange),
+            Err(e) => Err(e.into()),
         }
     }
-}
 
-/// [Iterator] traversing all present pages in the swap file.
-pub struct PresentPagesIterator<'a> {
-    swap_file: &'a SwapFile,
-    idx: usize,
-}
-
-/// Subsequent pages present in a swap file.
-pub struct Pages<'a> {
-    pub base_idx: usize,
-    pub content: VolatileSlice<'a>,
-}
-
-impl<'a> Iterator for PresentPagesIterator<'a> {
-    type Item = Pages<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut head_idx = self.idx;
-        loop {
-            if head_idx >= self.swap_file.state_list.len() {
-                self.idx = head_idx;
-                return None;
-            } else if self.swap_file.state_list[head_idx] {
-                break;
-            } else {
-                head_idx += 1;
-            }
-        }
-        let mut idx = head_idx + 1;
-        while idx < self.swap_file.state_list.len() && self.swap_file.state_list[idx] {
-            idx += 1;
-        }
-        self.idx = idx;
-        let num_of_pages = idx - head_idx;
-        // The offset and count must be correct and never cause [VolatileMemoryError].
-        let slice = self
-            .swap_file
-            .file_mmap
-            .get_slice(pages_to_bytes(head_idx), pages_to_bytes(num_of_pages))
-            .unwrap();
-        Some(Pages {
-            base_idx: head_idx,
-            content: slice,
-        })
+    /// Returns the count of present pages in the swap file.
+    pub fn present_pages(&self) -> usize {
+        self.present_list.present_pages()
     }
 }
 
@@ -357,7 +334,7 @@ mod tests {
 
         let data = &vec![1; pagesize()];
         swap_file.write_to_file(0, data).unwrap();
-        swap_file.clear(0).unwrap();
+        swap_file.clear_range(0..1).unwrap();
 
         assert_eq!(swap_file.page_content(0).unwrap().is_none(), true);
     }
@@ -367,80 +344,70 @@ mod tests {
         let dir_path = tempfile::tempdir().unwrap();
         let mut swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
 
-        assert_eq!(swap_file.clear(199).is_ok(), true);
-        match swap_file.clear(200) {
+        assert_eq!(swap_file.clear_range(199..200).is_ok(), true);
+        match swap_file.clear_range(200..201) {
             Err(Error::OutOfRange) => {}
             _ => unreachable!("not out of range"),
         };
     }
 
     #[test]
-    fn all_present_pages_empty() {
-        let dir_path = tempfile::tempdir().unwrap();
-        let swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
-
-        let mut iter = swap_file.all_present_pages();
-
-        assert_eq!(iter.next().is_none(), true);
-    }
-
-    #[test]
-    fn all_present_pages_return_pages() {
+    fn first_data_range() {
         let dir_path = tempfile::tempdir().unwrap();
         let mut swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
 
         swap_file
-            .write_to_file(1, &vec![1_u8; 2 * pagesize()])
+            .write_to_file(1, &vec![1; 2 * pagesize()])
             .unwrap();
-        // whole pages are cleared
-        swap_file
-            .write_to_file(10, &vec![2_u8; 2 * pagesize()])
-            .unwrap();
-        swap_file.clear(10).unwrap();
-        swap_file.clear(11).unwrap();
-        // pages are partially cleared.
-        swap_file
-            .write_to_file(13, &vec![3_u8; 3 * pagesize()])
-            .unwrap();
-        swap_file.clear(13).unwrap();
-        // pages are splitted
-        swap_file
-            .write_to_file(17, &vec![4_u8; 3 * pagesize()])
-            .unwrap();
-        swap_file.clear(18).unwrap();
-        // pages are combined
-        swap_file
-            .write_to_file(30, &vec![5_u8; pagesize()])
-            .unwrap();
-        swap_file
-            .write_to_file(31, &vec![6_u8; pagesize()])
-            .unwrap();
+        swap_file.write_to_file(3, &vec![2; pagesize()]).unwrap();
 
-        let mut iter = swap_file.all_present_pages();
+        assert_eq!(swap_file.first_data_range(200).unwrap(), 1..4);
+        assert_eq!(swap_file.first_data_range(2).unwrap(), 1..3);
+        swap_file.clear_range(1..3).unwrap();
+        assert_eq!(swap_file.first_data_range(2).unwrap(), 3..4);
+        swap_file.clear_range(3..4).unwrap();
+        assert!(swap_file.first_data_range(2).is_none());
+    }
 
-        let pages = iter.next().unwrap();
-        assert_eq!(pages.base_idx, 1);
-        assert_eq!(pages.content.size(), 2 * pagesize());
-        assert_eq!(unsafe { *pages.content.as_ptr() }, 1_u8);
-        let pages = iter.next().unwrap();
-        assert_eq!(pages.base_idx, 14);
-        assert_eq!(pages.content.size(), 2 * pagesize());
-        assert_eq!(unsafe { *pages.content.as_ptr() }, 3_u8);
-        let pages = iter.next().unwrap();
-        assert_eq!(pages.base_idx, 17);
-        assert_eq!(pages.content.size(), pagesize());
-        assert_eq!(unsafe { *pages.content.as_ptr() }, 4_u8);
-        let pages = iter.next().unwrap();
-        assert_eq!(pages.base_idx, 19);
-        assert_eq!(pages.content.size(), pagesize());
-        assert_eq!(unsafe { *pages.content.as_ptr() }, 4_u8);
-        let pages = iter.next().unwrap();
-        assert_eq!(pages.base_idx, 30);
-        assert_eq!(pages.content.size(), 2 * pagesize());
-        assert_eq!(unsafe { *pages.content.as_ptr() }, 5_u8);
-        assert_eq!(
-            unsafe { *pages.content.offset(pagesize()).unwrap().as_ptr() },
-            6_u8
-        );
+    #[test]
+    fn get_slice() {
+        let dir_path = tempfile::tempdir().unwrap();
+        let mut swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
+
+        swap_file.write_to_file(1, &vec![1; pagesize()]).unwrap();
+        swap_file.write_to_file(2, &vec![2; pagesize()]).unwrap();
+
+        let slice = swap_file.get_slice(1..3).unwrap();
+        assert_eq!(slice.size(), 2 * pagesize());
+        for i in 0..pagesize() {
+            assert_eq!(slice.get_ref::<u8>(i).unwrap().load(), 1);
+        }
+        for i in pagesize()..2 * pagesize() {
+            assert_eq!(slice.get_ref::<u8>(i).unwrap().load(), 2);
+        }
+    }
+
+    #[test]
+    fn get_slice_out_of_range() {
+        let dir_path = tempfile::tempdir().unwrap();
+        let swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
+
+        match swap_file.get_slice(200..201) {
+            Err(Error::OutOfRange) => {}
+            other => {
+                unreachable!("unexpected result {:?}", other);
+            }
+        }
+    }
+
+    #[test]
+    fn present_pages() {
+        let dir_path = tempfile::tempdir().unwrap();
+        let mut swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
+
+        swap_file.write_to_file(1, &vec![1; pagesize()]).unwrap();
+        swap_file.write_to_file(2, &vec![2; pagesize()]).unwrap();
+
+        assert_eq!(swap_file.present_pages(), 2);
     }
 }
