@@ -101,11 +101,11 @@ fn supported_formats_for_rt_format(
     Ok(supported_formats)
 }
 
-impl TryInto<Option<Surface>> for GenericBackendHandle {
+impl TryInto<Option<Surface>> for PictureState {
     type Error = anyhow::Error;
 
     fn try_into(self) -> Result<Option<Surface>, Self::Error> {
-        match self.state {
+        match self {
             PictureState::Ready { picture, .. } => picture.take_surface().map(Some),
             PictureState::Pending(id) => Err(anyhow!(
                 "Attempting to retrieve a surface (id: {:?}) that might have operations pending.",
@@ -118,14 +118,9 @@ impl TryInto<Option<Surface>> for GenericBackendHandle {
 /// A decoded frame handle.
 pub struct DecodedHandle {
     /// The actual object backing the handle.
-    inner: Option<Rc<RefCell<GenericBackendHandle>>>,
-    /// The decoder resolution when this frame was processed. Not all codecs
-    /// send resolution data in every frame header.
-    resolution: Resolution,
+    inner: Rc<RefCell<GenericBackendHandle>>,
     /// The timestamp of the input buffer that produced this frame.
     timestamp: u64,
-    /// A handle to the surface pool.
-    surface_pool: SurfacePoolHandle,
     /// A monotonically increasing counter that denotes the display order of
     /// this handle in comparison with other handles.
     pub display_order: Option<u64>,
@@ -138,9 +133,7 @@ impl Clone for DecodedHandle {
     fn clone(&self) -> Self {
         DecodedHandle {
             inner: self.inner.clone(),
-            resolution: self.resolution,
             timestamp: self.timestamp,
-            surface_pool: self.surface_pool.clone(),
             display_order: self.display_order,
         }
     }
@@ -148,40 +141,11 @@ impl Clone for DecodedHandle {
 
 impl DecodedHandle {
     /// Creates a new handle
-    pub fn new(
-        inner: Rc<RefCell<GenericBackendHandle>>,
-        timestamp: u64,
-        surface_pool: SurfacePoolHandle,
-    ) -> Self {
+    pub fn new(inner: Rc<RefCell<GenericBackendHandle>>, timestamp: u64) -> Self {
         Self {
-            inner: Some(inner),
-            resolution: surface_pool.coded_resolution(),
+            inner,
             timestamp,
-            surface_pool,
             display_order: None,
-        }
-    }
-
-    pub fn inner(&self) -> &Rc<RefCell<GenericBackendHandle>> {
-        // The Option is used as a well known strategy to move out of a field
-        // when dropping. This is needed for the surface pool to be able to
-        // retrieve the surface from the handle.
-        self.inner.as_ref().unwrap()
-    }
-}
-
-impl Drop for DecodedHandle {
-    fn drop(&mut self) {
-        if let Ok(inner) = Rc::try_unwrap(self.inner.take().unwrap()).map(|i| i.into_inner()) {
-            let pool = &mut self.surface_pool;
-
-            // Only retrieve if the resolutions match, otherwise let the stale Surface drop.
-            if pool.coded_resolution() == self.resolution {
-                // Retrieve if not currently used by another field.
-                if let Ok(Some(surface)) = inner.try_into() {
-                    pool.add_surface(surface);
-                }
-            }
         }
     }
 }
@@ -190,7 +154,7 @@ impl DecodedHandleTrait for DecodedHandle {
     type BackendHandle = GenericBackendHandle;
 
     fn handle_rc(&self) -> &Rc<RefCell<Self::BackendHandle>> {
-        self.inner()
+        &self.inner
     }
 
     fn display_order(&self) -> Option<u64> {
@@ -202,7 +166,7 @@ impl DecodedHandleTrait for DecodedHandle {
     }
 
     fn display_resolution(&self) -> Resolution {
-        self.resolution
+        self.handle().resolution
     }
 
     fn timestamp(&self) -> u64 {
@@ -434,13 +398,35 @@ impl StreamMetadataState {
 /// meta-information.
 pub struct GenericBackendHandle {
     state: PictureState,
+    /// The decoder resolution when this frame was processed. Not all codecs
+    /// send resolution data in every frame header.
+    resolution: Resolution,
+    /// A handle to the surface pool from which the backing surface originates.
+    surface_pool: SurfacePoolHandle,
+}
+
+impl Drop for GenericBackendHandle {
+    fn drop(&mut self) {
+        // Take ownership of the internal state.
+        let state = std::mem::replace(
+            &mut self.state,
+            PictureState::Pending(libva::constants::VA_INVALID_SURFACE),
+        );
+        if self.surface_pool.coded_resolution() == self.resolution {
+            if let Ok(Some(surface)) = state.try_into() {
+                self.surface_pool.add_surface(surface);
+            }
+        }
+    }
 }
 
 impl GenericBackendHandle {
     /// Creates a new pending handle on `surface_id`.
-    pub(crate) fn new_pending(surface_id: u32) -> Self {
+    pub(crate) fn new_pending(surface_id: u32, surface_pool: SurfacePoolHandle) -> Self {
         Self {
             state: PictureState::Pending(surface_id),
+            resolution: surface_pool.coded_resolution(),
+            surface_pool,
         }
     }
 
@@ -449,6 +435,7 @@ impl GenericBackendHandle {
         picture: libva::Picture<PictureSync>,
         map_format: Rc<libva::VAImageFormat>,
         display_resolution: Resolution,
+        surface_pool: SurfacePoolHandle,
     ) -> Self {
         Self {
             state: PictureState::Ready {
@@ -456,6 +443,8 @@ impl GenericBackendHandle {
                 picture,
                 display_resolution,
             },
+            resolution: surface_pool.coded_resolution(),
+            surface_pool,
         }
     }
 
@@ -674,13 +663,7 @@ where
         picture: &Rc<RefCell<GenericBackendHandle>>,
         timestamp: u64,
     ) -> Result<<Self as VideoDecoderBackend>::Handle> {
-        let metadata = self.metadata_state.get_parsed()?;
-
-        Ok(DecodedHandle::new(
-            Rc::clone(picture),
-            timestamp,
-            metadata.surface_pool.clone(),
-        ))
+        Ok(DecodedHandle::new(Rc::clone(picture), timestamp))
     }
 }
 
@@ -782,6 +765,7 @@ where
                 current_picture,
                 Rc::clone(&metadata.map_format),
                 metadata.display_resolution,
+                metadata.surface_pool.clone(),
             );
 
             *job.codec_picture.borrow_mut() = backend_handle;
@@ -817,6 +801,7 @@ where
                     current_picture,
                     Rc::clone(&metadata.map_format),
                     metadata.display_resolution,
+                    metadata.surface_pool.clone(),
                 );
 
                 *job.codec_picture.borrow_mut() = backend_handle;

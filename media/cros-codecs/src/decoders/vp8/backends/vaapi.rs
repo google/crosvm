@@ -377,10 +377,13 @@ impl StatelessDecoderBackend for Backend {
                 va_picture,
                 Rc::clone(&metadata.map_format),
                 metadata.display_resolution,
+                metadata.surface_pool.clone(),
             )))
         } else {
-            let backend_handle =
-                Rc::new(RefCell::new(GenericBackendHandle::new_pending(surface_id)));
+            let backend_handle = Rc::new(RefCell::new(GenericBackendHandle::new_pending(
+                surface_id,
+                metadata.surface_pool.clone(),
+            )));
 
             self.backend.pending_jobs.push_back(PendingJob {
                 va_picture,
