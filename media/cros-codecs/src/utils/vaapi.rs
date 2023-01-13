@@ -150,13 +150,12 @@ impl DecodedHandle {
     /// Creates a new handle
     pub fn new(
         inner: Rc<RefCell<GenericBackendHandle>>,
-        resolution: Resolution,
         timestamp: u64,
         surface_pool: SurfacePoolHandle,
     ) -> Self {
         Self {
             inner: Some(inner),
-            resolution,
+            resolution: surface_pool.coded_resolution(),
             timestamp,
             surface_pool,
             display_order: None,
@@ -177,7 +176,7 @@ impl Drop for DecodedHandle {
             let pool = &mut self.surface_pool;
 
             // Only retrieve if the resolutions match, otherwise let the stale Surface drop.
-            if *pool.current_resolution() == self.resolution {
+            if pool.coded_resolution() == self.resolution {
                 // Retrieve if not currently used by another field.
                 if let Ok(Some(surface)) = inner.try_into() {
                     pool.add_surface(surface);
@@ -215,7 +214,7 @@ impl DecodedHandleTrait for DecodedHandle {
 #[derive(Clone)]
 pub struct SurfacePoolHandle {
     surfaces: Rc<RefCell<VecDeque<Surface>>>,
-    current_resolution: Resolution,
+    coded_resolution: Resolution,
 }
 
 impl SurfacePoolHandle {
@@ -223,13 +222,13 @@ impl SurfacePoolHandle {
     pub fn new(surfaces: Vec<Surface>, resolution: Resolution) -> Self {
         Self {
             surfaces: Rc::new(RefCell::new(VecDeque::from(surfaces))),
-            current_resolution: resolution,
+            coded_resolution: resolution,
         }
     }
 
-    /// Retrieve the current resolution for the pool
-    pub fn current_resolution(&self) -> &Resolution {
-        &self.current_resolution
+    /// Retrieve the current coded resolution of the pool
+    pub fn coded_resolution(&self) -> Resolution {
+        self.coded_resolution
     }
 
     /// Adds a new surface to the pool
@@ -274,8 +273,6 @@ pub(crate) struct ParsedStreamMetadata {
     pub(crate) surface_pool: SurfacePoolHandle,
     /// The number of surfaces required to parse the stream.
     pub(crate) min_num_surfaces: usize,
-    /// The decoder current coded resolution.
-    pub(crate) coded_resolution: Resolution,
     /// The decoder current display resolution.
     pub(crate) display_resolution: Resolution,
     /// The image format we will use to map the surfaces. This is usually the
@@ -421,7 +418,6 @@ impl StreamMetadataState {
             config,
             surface_pool,
             min_num_surfaces,
-            coded_resolution,
             display_resolution,
             map_format: Rc::new(map_format),
             rt_format,
@@ -682,7 +678,6 @@ where
 
         Ok(DecodedHandle::new(
             Rc::clone(picture),
-            metadata.coded_resolution,
             timestamp,
             metadata.surface_pool.clone(),
         ))
@@ -698,7 +693,7 @@ where
     fn coded_resolution(&self) -> Option<Resolution> {
         self.metadata_state
             .get_parsed()
-            .map(|m| m.coded_resolution)
+            .map(|m| m.surface_pool.coded_resolution)
             .ok()
     }
 

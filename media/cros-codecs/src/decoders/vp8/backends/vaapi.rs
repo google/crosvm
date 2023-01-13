@@ -311,7 +311,7 @@ impl StatelessDecoderBackend for Backend {
 
         let metadata = self.backend.metadata_state.get_parsed_mut()?;
         let context = &metadata.context;
-        let coded_resolution = metadata.coded_resolution;
+        let coded_resolution = metadata.surface_pool.coded_resolution();
 
         let iq_buffer = context.create_buffer(Backend::build_iq_matrix(picture, segmentation)?)?;
 
