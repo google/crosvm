@@ -87,7 +87,7 @@ unsafe impl DataInit for ChunkHeader {}
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Chunk {
     Raw(u64), // Offset into the file
-    Fill(Vec<u8>),
+    Fill([u8; 4]),
     DontCare,
 }
 
@@ -116,23 +116,29 @@ fn parse_chunk<T: Read + Seek>(mut input: &mut T, blk_sz: u64) -> Result<Option<
         .map_err(Error::ReadSpecificationError)?;
     let chunk_header =
         ChunkHeader::from_reader(&mut input).map_err(Error::ReadSpecificationError)?;
+    let chunk_body_size = (chunk_header.total_sz.to_native() as usize)
+        .checked_sub(HEADER_SIZE)
+        .ok_or(Error::InvalidSpecification(format!(
+            "chunk total_sz {} smaller than header size {}",
+            chunk_header.total_sz.to_native(),
+            HEADER_SIZE
+        )))?;
     let chunk = match chunk_header.chunk_type.to_native() {
         CHUNK_TYPE_RAW => {
             input
-                .seek(SeekFrom::Current(
-                    chunk_header.total_sz.to_native() as i64 - HEADER_SIZE as i64,
-                ))
+                .seek(SeekFrom::Current(chunk_body_size as i64))
                 .map_err(Error::ReadSpecificationError)?;
             Chunk::Raw(current_offset + HEADER_SIZE as u64)
         }
         CHUNK_TYPE_FILL => {
-            if chunk_header.total_sz == HEADER_SIZE as u32 {
-                return Err(Error::InvalidSpecification(
-                    "Fill chunk did not have any data to fill".to_string(),
-                ));
+            let mut fill_bytes = [0u8; 4];
+            if chunk_body_size != fill_bytes.len() {
+                return Err(Error::InvalidSpecification(format!(
+                    "Fill chunk had bad size. Expected {}, was {}",
+                    fill_bytes.len(),
+                    chunk_body_size
+                )));
             }
-            let fill_size = chunk_header.total_sz.to_native() as u64 - HEADER_SIZE as u64;
-            let mut fill_bytes = vec![0u8; fill_size as usize];
             input
                 .read_exact(&mut fill_bytes)
                 .map_err(Error::ReadSpecificationError)?;
@@ -407,7 +413,7 @@ mod tests {
             .expect("Failed to parse")
             .expect("Failed to determine chunk type");
         let expected_chunk = ChunkWithSize {
-            chunk: Chunk::Fill(vec![123, 123, 123, 123]),
+            chunk: Chunk::Fill([123, 123, 123, 123]),
             expanded_size: 12300,
         };
         assert_eq!(expected_chunk, chunk);
@@ -454,7 +460,7 @@ mod tests {
     #[test]
     fn read_fill_simple() {
         let chunks = vec![ChunkWithSize {
-            chunk: Chunk::Fill(vec![10, 20]),
+            chunk: Chunk::Fill([10, 20, 10, 20]),
             expanded_size: 8,
         }];
         let mut image = test_image(chunks);
@@ -469,7 +475,7 @@ mod tests {
     #[test]
     fn read_fill_edges() {
         let chunks = vec![ChunkWithSize {
-            chunk: Chunk::Fill(vec![10, 20, 30]),
+            chunk: Chunk::Fill([10, 20, 30, 40]),
             expanded_size: 8,
         }];
         let mut image = test_image(chunks);
@@ -477,7 +483,7 @@ mod tests {
         image
             .read_exact_at_volatile(VolatileSlice::new(&mut input_memory[..]), 1)
             .expect("Could not read");
-        let expected = [20, 30, 10, 20, 30, 10];
+        let expected = [20, 30, 40, 10, 20, 30];
         assert_eq!(&expected[..], &input_memory[..]);
     }
 
@@ -489,7 +495,7 @@ mod tests {
                 expanded_size: 20,
             },
             ChunkWithSize {
-                chunk: Chunk::Fill(vec![10, 20, 30]),
+                chunk: Chunk::Fill([10, 20, 30, 40]),
                 expanded_size: 100,
             },
         ];
@@ -498,7 +504,7 @@ mod tests {
         image
             .read_exact_at_volatile(VolatileSlice::new(&mut input_memory[..]), 39)
             .expect("Could not read");
-        let expected = [20, 30, 10, 20, 30, 10, 20];
+        let expected = [40, 10, 20, 30, 40, 10, 20];
         assert_eq!(&expected[..], &input_memory[..]);
     }
 
@@ -522,11 +528,11 @@ mod tests {
     fn read_two_fills() {
         let chunks = vec![
             ChunkWithSize {
-                chunk: Chunk::Fill(vec![10, 20]),
+                chunk: Chunk::Fill([10, 20, 10, 20]),
                 expanded_size: 4,
             },
             ChunkWithSize {
-                chunk: Chunk::Fill(vec![30, 40]),
+                chunk: Chunk::Fill([30, 40, 30, 40]),
                 expanded_size: 4,
             },
         ];
