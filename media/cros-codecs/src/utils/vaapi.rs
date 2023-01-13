@@ -669,12 +669,33 @@ where
         }
     }
 
-    pub(crate) fn build_va_decoded_handle(
+    pub(crate) fn process_picture(
+        &mut self,
+        picture: libva::Picture<PictureNew>,
+        block: BlockingMode,
+    ) -> StatelessBackendResult<<Self as VideoDecoderBackend>::Handle> {
+        let metadata = self.metadata_state.get_parsed()?;
+        let timestamp = picture.timestamp();
+
+        let handle = Rc::new(RefCell::new(GenericBackendHandle::new_pending(
+            picture,
+            metadata.surface_pool.clone(),
+        )?));
+
+        match block {
+            BlockingMode::Blocking => handle.borrow_mut().sync(metadata)?,
+            BlockingMode::NonBlocking => self.pending_jobs.push_back(Rc::clone(&handle)),
+        }
+
+        Ok(self.build_va_decoded_handle(handle, timestamp))
+    }
+
+    fn build_va_decoded_handle(
         &self,
-        picture: &Rc<RefCell<GenericBackendHandle>>,
+        picture: Rc<RefCell<GenericBackendHandle>>,
         timestamp: u64,
-    ) -> Result<<Self as VideoDecoderBackend>::Handle> {
-        Ok(DecodedHandle::new(Rc::clone(picture), timestamp))
+    ) -> <Self as VideoDecoderBackend>::Handle {
+        DecodedHandle::new(picture, timestamp)
     }
 }
 
@@ -775,11 +796,9 @@ where
         }
 
         let completed = completed.into_iter().map(|picture| {
-            let pic = picture.borrow();
             // Safe because the backend handle has been turned into a ready one.
-            let timestamp = pic.picture().unwrap().timestamp();
-            self.build_va_decoded_handle(&picture, timestamp)
-                .map_err(|e| VideoDecoderError::from(StatelessBackendError::Other(anyhow!(e))))
+            let timestamp = picture.borrow().picture().unwrap().timestamp();
+            Ok(self.build_va_decoded_handle(picture, timestamp))
         });
 
         completed.collect::<Result<VecDeque<_>, _>>()

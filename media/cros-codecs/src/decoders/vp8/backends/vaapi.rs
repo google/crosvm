@@ -4,12 +4,10 @@
 
 #[cfg(test)]
 use std::any::Any;
-use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::convert::TryFrom;
 use std::rc::Rc;
 
-use anyhow::anyhow;
 use anyhow::Result;
 use libva::BufferType;
 use libva::Display;
@@ -363,24 +361,7 @@ impl StatelessDecoderBackend for Backend {
             Backend::build_probability_table(picture),
         );
 
-        let metadata = self.backend.metadata_state.get_parsed()?;
-
-        let backend_handle = Rc::new(RefCell::new(GenericBackendHandle::new_pending(
-            va_picture,
-            metadata.surface_pool.clone(),
-        )?));
-
-        match block {
-            BlockingMode::Blocking => backend_handle.borrow_mut().sync(metadata)?,
-            BlockingMode::NonBlocking => self
-                .backend
-                .pending_jobs
-                .push_back(Rc::clone(&backend_handle)),
-        }
-
-        self.backend
-            .build_va_decoded_handle(&backend_handle, timestamp)
-            .map_err(|e| StatelessBackendError::Other(anyhow!(e)))
+        self.backend.process_picture(va_picture, block)
     }
 
     #[cfg(test)]
