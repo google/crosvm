@@ -92,6 +92,9 @@ extern "C" {
         num_params: u64,
     ) -> c_int;
 
+    // Shutdown entry point for the renderer.
+    fn gfxstream_backend_teardown();
+
     // virtio-gpu-3d ioctl functions (begin)
 
     // In gfxstream, the resource create/transfer ioctls correspond to creating buffers for API
@@ -344,6 +347,15 @@ impl Gfxstream {
             os_handle: handle,
             handle_type: stream_handle.handle_type,
         }))
+    }
+}
+
+impl Drop for Gfxstream {
+    fn drop(&mut self) {
+        // SAFETY: Safe because Gfxstream was succesfully initialized.
+        unsafe {
+            gfxstream_backend_teardown();
+        }
     }
 }
 

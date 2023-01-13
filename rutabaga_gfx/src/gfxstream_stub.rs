@@ -33,6 +33,11 @@ extern "C" fn stream_renderer_init(
 }
 
 #[no_mangle]
+extern "C" fn gfxstream_backend_teardown() {
+    unimplemented!();
+}
+
+#[no_mangle]
 extern "C" fn pipe_virgl_renderer_resource_create(
     _args: *mut virgl_renderer_resource_create_args,
     _iov: *mut iovec,
