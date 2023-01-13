@@ -83,9 +83,6 @@ WIN64_DISABLED_CRATES = [
 ]
 
 CRATE_OPTIONS: Dict[str, List[TestOption]] = {
-    "crosvm-fuzz": [TestOption.DO_NOT_BUILD],  # b/194499769
-    "cros-fuzz": [TestOption.DO_NOT_BUILD],
-    "fuzz": [TestOption.DO_NOT_BUILD],
     "hypervisor": [
         TestOption.DO_NOT_RUN_AARCH64,
     ],  # b/181672912

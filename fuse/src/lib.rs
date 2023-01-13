@@ -12,7 +12,6 @@ use remain::sorted;
 use thiserror::Error as ThisError;
 
 pub mod filesystem;
-#[cfg(fuzzing)]
 pub mod fuzzing;
 pub mod mount;
 mod server;

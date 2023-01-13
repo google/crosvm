@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![cfg(not(test))]
 #![no_main]
 
 use std::io::Cursor;
@@ -99,15 +100,17 @@ fuzz_target!(|bytes| {
     )
     .unwrap();
 
-    block.activate(
-        mem,
-        Interrupt::new(
-            IrqLevelEvent::new().unwrap(),
-            None,   // msix_config
-            0xFFFF, // VIRTIO_MSI_NO_VECTOR
-        ),
-        vec![(q, queue_evt.try_clone().unwrap())],
-    );
+    block
+        .activate(
+            mem,
+            Interrupt::new(
+                IrqLevelEvent::new().unwrap(),
+                None,   // msix_config
+                0xFFFF, // VIRTIO_MSI_NO_VECTOR
+            ),
+            vec![(q, queue_evt.try_clone().unwrap())],
+        )
+        .unwrap();
 
     queue_evt.signal().unwrap(); // Rings the doorbell
 });
