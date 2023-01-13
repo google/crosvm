@@ -49,6 +49,9 @@ pub enum Error {
     #[error("userfaultfd failed : {0:?}")]
     /// userfaultfd operation failed
     Userfaultfd(UffdError),
+    #[error("move guest memory to staging memory failed : {0:?}")]
+    /// move guest memory to staging memory failed
+    MoveToStagingFailed(base::Error),
 }
 
 impl From<UffdError> for Error {
@@ -66,6 +69,26 @@ impl From<FileError> for Error {
 impl From<StagingError> for Error {
     fn from(e: StagingError) -> Self {
         Self::Staging(e)
+    }
+}
+
+/// Remove the memory range on the guest memory.
+///
+/// This is an alternative to [vm_memory::GuestMemory::remove_range()] when working with host
+/// addresses instead of guest addresses.
+///
+/// # Safety
+///
+/// The memory range must be on the guest memory.
+#[deny(unsafe_op_in_unsafe_fn)]
+unsafe fn remove_memory(addr: usize, len: usize) -> std::result::Result<(), base::Error> {
+    // Safe because the caller guarantees addr is in guest memory, so this does not affect any rust
+    // managed memory.
+    let ret = unsafe { libc::madvise(addr as *mut libc::c_void, len, libc::MADV_REMOVE) };
+    if ret < 0 {
+        base::errno_result()
+    } else {
+        Ok(())
     }
 }
 
@@ -375,11 +398,11 @@ impl PageHandler {
                 // Safe because the region is already backed by the file and the content will be
                 // swapped in on a page fault.
                 unsafe {
-                    libc::madvise(
-                        (base_addr + batch_head_offset) as *mut libc::c_void,
+                    remove_memory(
+                        base_addr + batch_head_offset,
                         offset + size - batch_head_offset,
-                        libc::MADV_REMOVE,
-                    );
+                    )
+                    .map_err(Error::MoveToStagingFailed)?;
                 }
                 remaining_batch_size = max_batch_size;
                 batch_head_offset = offset + size;
@@ -389,11 +412,11 @@ impl PageHandler {
         // Safe because the region is already backed by the file and the content will be swapped in
         // on a page fault.
         unsafe {
-            libc::madvise(
-                (base_addr + batch_head_offset) as *mut libc::c_void,
+            remove_memory(
+                base_addr + batch_head_offset,
                 region_size - batch_head_offset,
-                libc::MADV_REMOVE,
-            );
+            )
+            .map_err(Error::MoveToStagingFailed)?;
         }
 
         let moved_pages = bytes_to_pages(moved_size);

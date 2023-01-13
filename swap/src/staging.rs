@@ -10,6 +10,7 @@ use std::ptr::copy_nonoverlapping;
 use base::error;
 use base::MemoryMapping;
 use base::MemoryMappingBuilder;
+use base::MemoryMappingUnix;
 use base::MmapError;
 use data_model::VolatileMemory;
 use data_model::VolatileMemoryError;
@@ -146,15 +147,10 @@ impl StagingMemory {
         for is_present in &mut self.state_list[idx_range.clone()] {
             *is_present = false;
         }
-        let addr = self.mmap.get_ref::<u8>(pages_to_bytes(idx_range.start))?;
-        // Safe because the memory range is within staging memory.
-        unsafe {
-            libc::madvise(
-                addr.as_mut_ptr() as *mut libc::c_void,
-                pages_to_bytes(idx_range.end - idx_range.start),
-                libc::MADV_REMOVE,
-            );
-        }
+        self.mmap.remove_range(
+            pages_to_bytes(idx_range.start),
+            pages_to_bytes(idx_range.end - idx_range.start),
+        )?;
         Ok(())
     }
 
