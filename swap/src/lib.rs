@@ -64,78 +64,65 @@ use crate::worker::Worker;
 /// The max size of chunks to swap out/in at once.
 const MAX_SWAP_CHUNK_SIZE: usize = 2 * 1024 * 1024; // = 2MB
 
-/// Current status of vmm-swap.
+/// Current state of vmm-swap.
+///
+/// This should not contain fields but be a plain enum because this will be displayed to user using
+/// `serde_json` crate.
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum Status {
+pub enum State {
     /// vmm-swap is ready. userfaultfd is disabled until vmm-swap is enabled.
     Ready,
     /// Pages in guest memory are moved to the staging memory.
-    Pending {
-        /// take taken for moving memory to staging.
-        move_staging_time_ms: u128,
-        /// metrics
-        metrics: Metrics,
-    },
-    /// swap-out is in progress. this is not used for now because the monitor process runs in a
-    /// single thread.
-    InProgress {
-        /// take taken for moving memory to staging.
-        move_staging_time_ms: u128,
-        /// metrics
-        metrics: Metrics,
-    },
+    Pending,
+    /// swap-out is in progress.
+    SwapOutInProgress,
     /// swap out succeeded.
-    Active {
-        /// take taken for moving memory to staging.
-        move_staging_time_ms: u128,
-        /// time taken for swap-out.
-        swap_time_ms: u128,
-        /// metrics
-        metrics: Metrics,
-    },
+    Active,
+    /// swap-in is in progress.
+    SwapInInProgress,
     /// swap out failed.
-    Failed {
-        /// metrics
-        metrics: Metrics,
-    },
+    Failed,
 }
 
-impl Status {
-    fn generate(swap_out_state: &Option<SwapOutState>, page_handler: &Option<PageHandler>) -> Self {
-        if let Some(page_handler) = page_handler.as_ref() {
-            let metrics = Metrics::new(page_handler);
-            match *swap_out_state {
-                Some(SwapOutState::Pending {
-                    move_staging_time_ms,
-                }) => Self::Pending {
-                    move_staging_time_ms,
-                    metrics,
-                },
-                Some(SwapOutState::InProgress {
-                    move_staging_time_ms,
-                    ..
-                }) => Self::InProgress {
-                    move_staging_time_ms,
-                    metrics,
-                },
-                Some(SwapOutState::Completed {
-                    move_staging_time_ms,
-                    swap_time_ms,
-                }) => Self::Active {
-                    move_staging_time_ms,
-                    swap_time_ms,
-                    metrics,
-                },
-                None => Self::Failed { metrics },
-            }
-        } else {
-            Self::Ready
+impl From<&SwapState> for State {
+    fn from(state: &SwapState) -> Self {
+        match state {
+            SwapState::Disabled => State::Ready,
+            SwapState::SwapOutPending => State::Pending,
+            SwapState::InProgress {
+                direction: SwapDirection::Out,
+                ..
+            } => State::SwapOutInProgress,
+            SwapState::SwapOutCompleted => State::Active,
+            SwapState::Failed => State::Failed,
         }
     }
 }
 
+/// Latency and number of pages of swap operations (move to staging, swap out, swap in).
+///
+/// The meaning of `StateTransition` depends on `State`.
+///
+/// | `State`             | `StateTransition`                            |
+/// |---------------------|----------------------------------------------|
+/// | `Ready`             | empty or transition record of `swap disable` |
+/// | `Pending`           | transition record of `swap enable`           |
+/// | `SwapOutInProgress` | transition record of `swap out`              |
+/// | `Active`            | transition record of `swap out`              |
+/// | `SwapInInProgress`  | transition record of `swap disable`          |
+/// | `Failed`            | empty                                        |
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct StateTransition {
+    /// The number of pages moved for the state transition.
+    pages: usize,
+    /// Time taken for the state transition.
+    time_ms: u128,
+}
+
 /// Current metrics of vmm-swap.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+///
+/// This is only available while vmm-swap is enabled.
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Metrics {
     /// count of pages on RAM.
     resident_pages: usize,
@@ -168,22 +155,32 @@ impl Metrics {
     }
 }
 
-enum SwapOutState {
-    Pending {
-        move_staging_time_ms: u128,
-    },
-    InProgress {
-        move_staging_time_ms: u128,
-        started_time: Instant,
-        swapped_pages: usize,
-    },
-    Completed {
-        move_staging_time_ms: u128,
-        swap_time_ms: u128,
-    },
+/// The response to `crosvm swap status` command.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Status {
+    state: State,
+    metrics: Metrics,
+    state_transition: StateTransition,
 }
 
-/// commands used in vmm-swap feature internally between [SwapController] and [monitor_process].
+impl Status {
+    fn new(
+        state: &SwapState,
+        state_transition: &StateTransition,
+        page_handler: &Option<PageHandler>,
+    ) -> Self {
+        Status {
+            state: state.into(),
+            metrics: page_handler
+                .as_ref()
+                .map(Metrics::new)
+                .unwrap_or_else(Metrics::default),
+            state_transition: state_transition.clone(),
+        }
+    }
+}
+
+/// Commands used in vmm-swap feature internally between [SwapController] and [monitor_process].
 #[derive(Serialize, Deserialize, Debug)]
 enum Command {
     Enable,
@@ -245,8 +242,12 @@ impl SwapController {
         // send first status request to the monitor process and wait for the response until setup on
         // the monitor process completes.
         tube_main_process.send(&Command::Status)?;
-        match tube_main_process.recv().context("recv initial status")? {
-            Status::Ready => {
+        match tube_main_process
+            .recv::<Status>()
+            .context("recv initial status")?
+            .state
+        {
+            State::Ready => {
                 // The initial state of swap status is Ready and this is a signal that the
                 // monitoring process completes setup and is running.
             }
@@ -477,6 +478,22 @@ fn disable_monitoring(
     Ok(num_pages)
 }
 
+enum SwapDirection {
+    Out,
+    // TODO(b/265606668): Add `In` to swap-in concurrently.
+}
+
+enum SwapState {
+    Disabled,
+    SwapOutPending,
+    InProgress {
+        direction: SwapDirection,
+        started_time: Instant,
+    },
+    SwapOutCompleted,
+    Failed,
+}
+
 /// the main thread of the monitor process.
 fn monitor_process(
     tube: Tube,
@@ -501,17 +518,17 @@ fn monitor_process(
     let worker = Worker::new(n_worker, n_worker);
 
     let mut uffd_list = UffdList::new(uffd, &wait_ctx);
-    let mut swap_out_state: Option<SwapOutState> = None;
+    let mut state: SwapState = SwapState::Disabled;
+    let mut state_transition = StateTransition::default();
     let mut page_handler_opt: Option<PageHandler> = None;
     let mut page_fault_logger: Option<PageFaultEventLogger> = None;
 
     'wait: loop {
-        let events = match swap_out_state {
-            Some(SwapOutState::InProgress {
-                ref move_staging_time_ms,
-                ref mut swapped_pages,
-                ref started_time,
-            }) => {
+        let events = match &state {
+            SwapState::InProgress {
+                direction,
+                started_time,
+            } => {
                 let events = wait_ctx
                     .wait_timeout(Duration::ZERO)
                     .context("wait poll events")?;
@@ -519,23 +536,22 @@ fn monitor_process(
                 // proceed swap out only when there is no page fault (or other) events.
                 if events.is_empty() {
                     // page_handler must be present when state is InProgress.
-                    let num_pages = page_handler_opt
-                        .as_mut()
-                        .unwrap()
-                        .swap_out(MAX_SWAP_CHUNK_SIZE)
-                        .context("swap out")?;
-                    if num_pages == 0 {
-                        let swap_time_ms = started_time.elapsed().as_millis();
-                        info!(
-                            "swap out {} pages to file in {} ms",
-                            swapped_pages, swap_time_ms
-                        );
-                        swap_out_state = Some(SwapOutState::Completed {
-                            move_staging_time_ms: *move_staging_time_ms,
-                            swap_time_ms,
-                        });
-                    } else {
-                        *swapped_pages += num_pages;
+                    let page_handler = page_handler_opt.as_mut().unwrap();
+                    match direction {
+                        SwapDirection::Out => {
+                            let num_pages = page_handler
+                                .swap_out(MAX_SWAP_CHUNK_SIZE)
+                                .context("swap out")?;
+                            state_transition.pages += num_pages;
+                            state_transition.time_ms = started_time.elapsed().as_millis();
+                            if num_pages == 0 {
+                                info!(
+                                    "swap out {} pages to file in {} ms",
+                                    state_transition.pages, state_transition.time_ms
+                                );
+                                state = SwapState::SwapOutCompleted;
+                            }
+                        }
                     }
                     continue;
                 }
@@ -619,7 +635,7 @@ fn monitor_process(
 
                         info!("start moving memory to staging");
                         let t0 = std::time::Instant::now();
-                        let mut num_pages = 0;
+                        state_transition = StateTransition::default();
 
                         let result = {
                             let _processes_guard =
@@ -631,7 +647,7 @@ fn monitor_process(
                                     // * no process access the guest memory (freeze_all_processes())
                                     // * page fault events are handled by PageHandler.
                                     // * wait for all the copy completed within _processes_guard.
-                                    num_pages += unsafe {
+                                    state_transition.pages += unsafe {
                                         page_handler.move_to_staging(host_addr, shm, shm_offset)
                                     }
                                     .context("move to staging")?;
@@ -641,65 +657,75 @@ fn monitor_process(
                             worker.channel.wait_complete();
                             result
                         };
+                        state_transition.time_ms = t0.elapsed().as_millis();
 
                         match result {
                             Ok(()) => {
-                                let move_time_ms = t0.elapsed().as_millis();
-                                info!("move {} pages to staging in {} ms", num_pages, move_time_ms);
+                                info!(
+                                    "move {} pages to staging in {} ms",
+                                    state_transition.pages, state_transition.time_ms
+                                );
                                 if page_handler.compute_resident_pages() > 0 {
                                     error!(
                                         "active page is not zero just after swap out but {} pages",
                                         page_handler.compute_resident_pages()
                                     );
                                 }
-                                swap_out_state = Some(SwapOutState::Pending {
-                                    move_staging_time_ms: move_time_ms,
-                                });
+                                state = SwapState::SwapOutPending;
                             }
                             Err(e) => {
                                 error!("failed to move memory to staging: {}", e);
-                                swap_out_state = None;
+                                state = SwapState::Failed;
+                                state_transition = StateTransition::default();
                             }
                         }
                     }
-                    Command::SwapOut => {
-                        if let Some(SwapOutState::Pending {
-                            move_staging_time_ms,
-                        }) = swap_out_state
-                        {
-                            swap_out_state = Some(SwapOutState::InProgress {
-                                move_staging_time_ms,
+                    Command::SwapOut => match &state {
+                        SwapState::SwapOutPending => {
+                            state = SwapState::InProgress {
+                                direction: SwapDirection::Out,
                                 started_time: std::time::Instant::now(),
-                                swapped_pages: 0,
-                            });
+                            };
+                            state_transition = StateTransition::default();
                             info!("start swapping out.");
-                        } else {
-                            warn!("swap is not enabled.");
                         }
-                    }
+                        state => {
+                            warn!("swap out is not ready. state: {:?}", State::from(state));
+                        }
+                    },
                     Command::Disable => {
-                        if let Some(page_handler) = page_handler_opt.take() {
-                            // clear swap_out_state.
-                            if let Some(SwapOutState::InProgress { .. }) = swap_out_state.take() {
+                        match &state {
+                            SwapState::Disabled => {
+                                warn!("swap is already disabled.");
+                                continue;
+                            }
+                            SwapState::InProgress {
+                                direction: SwapDirection::Out,
+                                ..
+                            } => {
                                 info!("swap out is aborted.");
                             }
+                            _ => {}
+                        }
+                        if let Some(page_handler) = page_handler_opt.take() {
                             let t0 = std::time::Instant::now();
-                            let num_pages =
+                            state_transition.pages =
                                 disable_monitoring(page_handler, &uffd_list, &guest_memory)?;
-                            let time_took_ms = t0.elapsed().as_millis();
+                            state_transition.time_ms = t0.elapsed().as_millis();
                             info!(
                                 "swap in all {} pages in {} ms. swap disabled.",
-                                num_pages, time_took_ms
+                                state_transition.pages, state_transition.time_ms
                             );
+                            state = SwapState::Disabled;
                         } else {
-                            warn!("swap is already disabled.");
+                            error!("swap is already disabled.");
                         }
                     }
                     Command::Exit => {
                         break 'wait;
                     }
                     Command::Status => {
-                        let status = Status::generate(&swap_out_state, &page_handler_opt);
+                        let status = Status::new(&state, &state_transition, &page_handler_opt);
                         tube.send(&status).context("send status response")?;
                         info!("swap status: {:?}.", status);
                     }
