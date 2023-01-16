@@ -9,7 +9,6 @@ use std::collections::BTreeSet;
 #[cfg(feature = "direct")]
 use std::collections::HashMap;
 use std::fs;
-#[cfg(feature = "direct")]
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -461,6 +460,7 @@ impl VfioResourceAllocator {
 }
 
 struct VfioPciWorker {
+    sysfs_path: PathBuf,
     vm_socket: Tube,
     name: String,
     msix_cap: Option<Arc<Mutex<VfioMsixCap>>>,
@@ -513,12 +513,9 @@ impl VfioPciWorker {
                         }
                     }
                     Token::ReqIrq => {
-                        let mut sysfs_path = PathBuf::new();
-                        sysfs_path.push("/sys/bus/pci/devices/");
-                        sysfs_path.push(self.name.clone());
                         let device = HotPlugDeviceInfo {
                             device_type: HotPlugDeviceType::EndPoint,
-                            path: sysfs_path,
+                            path: self.sysfs_path.clone(),
                             hp_interrupt: false,
                         };
 
@@ -586,14 +583,15 @@ pub struct VfioPciDevice {
     kill_evt: Option<Event>,
     worker_thread: Option<thread::JoinHandle<VfioPciWorker>>,
     vm_socket_vm: Option<Tube>,
-    #[cfg(feature = "direct")]
-    sysfs_path: Option<PathBuf>,
+    sysfs_path: PathBuf,
     #[cfg(feature = "direct")]
     header_type_reg: Option<u32>,
     // PCI Express Extended Capabilities
     ext_caps: Vec<ExtCap>,
     #[cfg(feature = "direct")]
     is_intel_lpss: bool,
+    #[cfg(feature = "direct")]
+    supports_coordinated_pm: bool,
     #[cfg(feature = "direct")]
     i2c_devs: HashMap<u16, PathBuf>,
     vcfg_shm_mmap: Option<MemoryMapping>,
@@ -616,7 +614,7 @@ fn iter_dir_starts_with(
 impl VfioPciDevice {
     /// Constructs a new Vfio Pci device for the give Vfio device
     pub fn new(
-        #[cfg(feature = "direct")] sysfs_path: &Path,
+        sysfs_path: &Path,
         device: VfioDevice,
         hotplug: bool,
         hotplug_bus_number: Option<u8>,
@@ -752,33 +750,35 @@ impl VfioPciDevice {
         let mut i2c_devs: HashMap<u16, PathBuf> = HashMap::new();
 
         #[cfg(feature = "direct")]
-        let (sysfs_path, header_type_reg) = match VfioPciDevice::coordinated_pm(sysfs_path, true) {
-            Ok(_) => {
-                if is_intel_lpss {
-                    if let Err(e) = VfioPciDevice::coordinated_pm_i2c(sysfs_path, &mut i2c_devs) {
-                        warn!("coordinated_pm_i2c not supported: {}", e);
-                        for (_, i2c_path) in i2c_devs.iter() {
-                            let _ = VfioPciDevice::coordinated_pm(i2c_path, false);
+        let (supports_coordinated_pm, header_type_reg) =
+            match VfioPciDevice::coordinated_pm(sysfs_path, true) {
+                Ok(_) => {
+                    if is_intel_lpss {
+                        if let Err(e) = VfioPciDevice::coordinated_pm_i2c(sysfs_path, &mut i2c_devs)
+                        {
+                            warn!("coordinated_pm_i2c not supported: {}", e);
+                            for (_, i2c_path) in i2c_devs.iter() {
+                                let _ = VfioPciDevice::coordinated_pm(i2c_path, false);
+                            }
+                            i2c_devs.clear();
                         }
-                        i2c_devs.clear();
                     }
-                }
 
-                // Cache the dword at offset 0x0c (cacheline size, latency timer,
-                // header type, BIST).
-                // When using the "direct" feature, this dword can be accessed for
-                // device power state. Directly accessing a device's physical PCI
-                // config space in D3cold state causes a hang. We treat the cacheline
-                // size, latency timer and header type field as immutable in the
-                // guest.
-                let reg: u32 = config.read_config((HEADER_TYPE_REG as u32) * 4);
-                (Some(sysfs_path.to_path_buf()), Some(reg))
-            }
-            Err(e) => {
-                warn!("coordinated_pm not supported: {}", e);
-                (None, None)
-            }
-        };
+                    // Cache the dword at offset 0x0c (cacheline size, latency timer,
+                    // header type, BIST).
+                    // When using the "direct" feature, this dword can be accessed for
+                    // device power state. Directly accessing a device's physical PCI
+                    // config space in D3cold state causes a hang. We treat the cacheline
+                    // size, latency timer and header type field as immutable in the
+                    // guest.
+                    let reg: u32 = config.read_config((HEADER_TYPE_REG as u32) * 4);
+                    (true, Some(reg))
+                }
+                Err(e) => {
+                    warn!("coordinated_pm not supported: {}", e);
+                    (false, None)
+                }
+            };
 
         Ok(VfioPciDevice {
             device: dev,
@@ -798,13 +798,14 @@ impl VfioPciDevice {
             kill_evt: None,
             worker_thread: None,
             vm_socket_vm: vfio_device_socket_vm,
-            #[cfg(feature = "direct")]
-            sysfs_path,
+            sysfs_path: sysfs_path.to_path_buf(),
             #[cfg(feature = "direct")]
             header_type_reg,
             ext_caps,
             #[cfg(feature = "direct")]
             is_intel_lpss,
+            #[cfg(feature = "direct")]
+            supports_coordinated_pm,
             #[cfg(feature = "direct")]
             i2c_devs,
             vcfg_shm_mmap: None,
@@ -1263,11 +1264,13 @@ impl VfioPciDevice {
         }
 
         let name = self.device.device_name().to_string();
+        let sysfs_path = self.sysfs_path.clone();
         let msix_cap = self.msix_cap.clone();
         let worker_result = thread::Builder::new()
             .name("vfio_pci".to_string())
             .spawn(move || {
                 let mut worker = VfioPciWorker {
+                    sysfs_path,
                     vm_socket,
                     name,
                     msix_cap,
@@ -1614,7 +1617,7 @@ impl VfioPciDevice {
 
     #[cfg(feature = "direct")]
     fn power_state(&self) -> anyhow::Result<u8> {
-        let path = Path::new(&self.sysfs_path.as_ref().unwrap()).join("power_state");
+        let path = self.sysfs_path.join("power_state");
         let state = fs::read_to_string(&path)
             .with_context(|| format!("Failed to read from {}", path.to_string_lossy()))?;
         match state.as_str() {
@@ -1720,9 +1723,7 @@ impl PciDevice for VfioPciDevice {
 
         // TODO: replace sysfs/irq value parsing with vfio interface
         //       reporting host allocated interrupt number and type.
-        let mut path = PathBuf::from("/sys/bus/pci/devices");
-        path.push(self.device.device_name());
-        path.push("irq");
+        let path = self.sysfs_path.join("irq");
         let gsi = fs::read_to_string(path)
             .map(|v| v.trim().parse::<u32>().unwrap_or(0))
             .unwrap_or(0);
@@ -1910,7 +1911,7 @@ impl PciDevice for VfioPciDevice {
         };
 
         #[cfg(feature = "direct")]
-        if self.sysfs_path.is_some()
+        if self.supports_coordinated_pm
             && reg_idx == CLASS_REG
             && offset == CLASS_REG_REVISION_ID_OFFSET as u64
             && data.len() == 1
@@ -1918,7 +1919,7 @@ impl PciDevice for VfioPciDevice {
             // HACK
             // Byte writes to the "Revision ID" register are interpreted as PM
             // op calls
-            if let Err(e) = VfioPciDevice::op_call(self.sysfs_path.as_ref().unwrap(), data[0]) {
+            if let Err(e) = VfioPciDevice::op_call(&self.sysfs_path, data[0]) {
                 error!("Failed to perform op call: {}", e);
             }
             return;
@@ -2172,11 +2173,11 @@ impl PciDevice for VfioPciDevice {
 impl Drop for VfioPciDevice {
     fn drop(&mut self) {
         #[cfg(feature = "direct")]
-        if self.sysfs_path.is_some() {
+        if self.supports_coordinated_pm {
             for (_, i2c_path) in self.i2c_devs.iter() {
                 let _ = VfioPciDevice::coordinated_pm(i2c_path, false);
             }
-            let _ = VfioPciDevice::coordinated_pm(self.sysfs_path.as_ref().unwrap(), false);
+            let _ = VfioPciDevice::coordinated_pm(&self.sysfs_path, false);
         }
 
         if let Some(kill_evt) = self.kill_evt.take() {

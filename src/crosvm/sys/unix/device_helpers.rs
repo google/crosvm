@@ -1402,6 +1402,7 @@ pub fn create_sound_device(
     })
 }
 
+#[allow(clippy::large_enum_variant)]
 pub enum VfioDeviceVariant {
     Pci(VfioPciDevice),
     Platform(VfioPlatformDevice),
@@ -1457,7 +1458,6 @@ pub fn create_vfio_device(
             control_tubes.push(TaggedControlTube::VmIrq(vfio_host_tube_msix));
 
             let mut vfio_pci_device = VfioPciDevice::new(
-                #[cfg(feature = "direct")]
                 vfio_path,
                 vfio_device,
                 hotplug,
