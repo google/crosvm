@@ -34,9 +34,20 @@ fn generate_guest_cid() -> u32 {
 }
 
 #[test]
-fn host_to_guest_connection() {
+fn host_to_guest() {
+    let config = Config::new();
+    host_to_guest_connection(config);
+}
+
+#[test]
+fn host_to_guest_disable_sandbox() {
+    let config = Config::new().disable_sandbox();
+    host_to_guest_connection(config);
+}
+
+fn host_to_guest_connection(config: Config) {
     let guest_cid = generate_guest_cid();
-    let config = Config::new().extra_args(vec!["--cid".to_string(), guest_cid.to_string()]);
+    let config = config.extra_args(vec!["--cid".to_string(), guest_cid.to_string()]);
     let mut vm = TestVm::new(config).unwrap();
 
     let handle_guest = thread::spawn(move || {
@@ -66,9 +77,20 @@ fn host_to_guest_connection() {
 }
 
 #[test]
-fn guest_to_host_connection() {
+fn guest_to_host() {
+    let config = Config::new();
+    guest_to_host_connection(config);
+}
+
+#[test]
+fn guest_to_host_disable_sandbox() {
+    let config = Config::new().disable_sandbox();
+    guest_to_host_connection(config);
+}
+
+fn guest_to_host_connection(config: Config) {
     let guest_cid = generate_guest_cid();
-    let config = Config::new().extra_args(vec!["--cid".to_string(), guest_cid.to_string()]);
+    let config = config.extra_args(vec!["--cid".to_string(), guest_cid.to_string()]);
     let mut vm = TestVm::new(config).unwrap();
 
     let echo = Command::new("echo")

@@ -115,13 +115,20 @@ impl Config {
     /// Uses extra arguments for `crosvm run`.
     #[allow(dead_code)]
     pub fn extra_args(mut self, args: Vec<String>) -> Self {
-        self.extra_args = args;
+        let mut args = args;
+        self.extra_args.append(&mut args);
         self
     }
 
     /// Uses `O_DIRECT` for the rootfs.
     pub fn o_direct(mut self) -> Self {
         self.o_direct = true;
+        self
+    }
+
+    /// Uses `disable-sandbox` argument for `crosvm run`.
+    pub fn disable_sandbox(mut self) -> Self {
+        self.extra_args.push("--disable-sandbox".to_string());
         self
     }
 }

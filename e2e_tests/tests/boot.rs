@@ -36,3 +36,35 @@ fn boot_test_suspend_resume() {
     vm.resume().unwrap();
     assert_eq!(vm.exec_in_guest("echo 42").unwrap().trim(), "42");
 }
+
+#[cfg(unix)]
+#[test]
+fn boot_test_vm_disable_sandbox() {
+    let mut vm = TestVm::new(Config::new().disable_sandbox()).unwrap();
+    assert_eq!(vm.exec_in_guest("echo 42").unwrap().trim(), "42");
+}
+
+#[cfg(unix)]
+#[test]
+fn boot_test_vm_disable_sandbox_odirect() {
+    let mut vm = TestVm::new(Config::new().disable_sandbox().o_direct()).unwrap();
+    assert_eq!(vm.exec_in_guest("echo 42").unwrap().trim(), "42");
+}
+
+#[cfg(unix)]
+#[test]
+fn boot_test_vm_disable_sandbox_config_file() {
+    let mut vm = TestVm::new_with_config_file(Config::new().disable_sandbox()).unwrap();
+    assert_eq!(vm.exec_in_guest("echo 42").unwrap().trim(), "42");
+}
+
+#[cfg(unix)]
+#[test]
+fn boot_test_disable_sandbox_suspend_resume() {
+    // There is no easy way for us to check if the VM is actually suspended. But at
+    // least exercise the code-path.
+    let mut vm = TestVm::new(Config::new().disable_sandbox()).unwrap();
+    vm.suspend().unwrap();
+    vm.resume().unwrap();
+    assert_eq!(vm.exec_in_guest("echo 42").unwrap().trim(), "42");
+}
