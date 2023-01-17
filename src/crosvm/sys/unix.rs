@@ -79,6 +79,7 @@ use devices::virtio::NetParametersMode;
 use devices::virtio::VirtioTransportType;
 #[cfg(feature = "audio")]
 use devices::Ac97Dev;
+use devices::Bus;
 use devices::BusDeviceObj;
 use devices::CoIommuDev;
 #[cfg(feature = "usb")]
@@ -3060,6 +3061,19 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 error!("failed to exit devices thread: {:?}", e);
             }
         }
+    }
+
+    // At this point, the only remaining `Arc` references to the `Bus` objects should be the ones
+    // inside `linux`. If the checks below fail, then some other thread is probably still running
+    // and needs to be explicitly stopped before dropping `linux` to ensure devices actually get
+    // cleaned up.
+    match Arc::try_unwrap(std::mem::replace(&mut linux.mmio_bus, Arc::new(Bus::new()))) {
+        Ok(_) => {}
+        Err(_) => panic!("internal error: mmio_bus had more than one reference at shutdown"),
+    }
+    match Arc::try_unwrap(std::mem::replace(&mut linux.io_bus, Arc::new(Bus::new()))) {
+        Ok(_) => {}
+        Err(_) => panic!("internal error: io_bus had more than one reference at shutdown"),
     }
 
     // Explicitly drop the VM structure here to allow the devices to clean up before the
