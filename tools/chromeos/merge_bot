@@ -46,6 +46,9 @@ else:
 # This is the email of the account that posts CQ messages.
 LUCI_EMAIL = "chromeos-scoped@luci-project-accounts.iam.gserviceaccount.com"
 
+# Do not create more dry runs than this within a 24h timespan
+MAX_DRY_RUNS_PER_DAY = 2
+
 
 def list_active_merges():
     return GerritChange.query(
@@ -61,6 +64,15 @@ def list_active_dry_runs():
         "project:chromiumos/platform/crosvm",
         "branch:chromeos",
         "status:open",
+        f"hashtag:{DRY_RUN_TAG}",
+    )
+
+
+def list_recent_dry_runs(age: str):
+    return GerritChange.query(
+        "project:chromiumos/platform/crosvm",
+        "branch:chromeos",
+        f"-age:{age}",
         f"hashtag:{DRY_RUN_TAG}",
     )
 
@@ -240,7 +252,8 @@ def update_dry_runs(
     # Close active dry runs if they are done.
     print("Checking active dry runs")
     for dry_run in list_active_dry_runs():
-        if max(dry_run.get_votes("Commit-Queue")) > 0:
+        cq_votes = dry_run.get_votes("Commit-Queue")
+        if not cq_votes or max(cq_votes) > 0:
             print(dry_run, "CQ is still running.")
             continue
 
@@ -272,7 +285,7 @@ def update_dry_runs(
                 },
             )
 
-        dry_run.abandon("I am creating a new dry run.")
+        dry_run.abandon("Dry completed.")
 
     active_dry_runs = list_active_dry_runs()
     if active_dry_runs:
@@ -280,6 +293,11 @@ def update_dry_runs(
         print("Active dry runs:")
         for dry_run in active_dry_runs:
             print(dry_run.pretty_info())
+        return
+
+    num_dry_runs = len(list_recent_dry_runs("1d"))
+    if num_dry_runs >= MAX_DRY_RUNS_PER_DAY:
+        print(f"Already created {num_dry_runs} in the past 24h. Not creating another one.")
         return
 
     print(f"Creating dry run merge of {parsed_revision} into cros/{target_branch}")
@@ -299,4 +317,10 @@ def update_dry_runs(
                 print("Nothing to upload.")
 
 
-run_commands(create_merge_commits, status, update_merges, update_dry_runs, gerrit_prerequisites)
+run_commands(
+    create_merge_commits,
+    status,
+    update_merges,
+    update_dry_runs,
+    gerrit_prerequisites,
+)
