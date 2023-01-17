@@ -19,10 +19,7 @@ use base::AsRawDescriptor;
 use base::FileAllocate;
 use base::FileReadWriteAtVolatile;
 use base::FileSetLen;
-use base::FileSync;
-use base::PunchHole;
 use base::RawDescriptor;
-use base::WriteZeroesAt;
 use cros_async::BackingMemory;
 use cros_async::Executor;
 use cros_async::IoSourceExt;
@@ -250,42 +247,9 @@ impl FileSetLen for AndroidSparse {
     }
 }
 
-impl FileSync for AndroidSparse {
-    fn fsync(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
-impl PunchHole for AndroidSparse {
-    fn punch_hole(&mut self, _offset: u64, _length: u64) -> io::Result<()> {
-        Err(io::Error::new(
-            ErrorKind::PermissionDenied,
-            "unsupported operation",
-        ))
-    }
-}
-
-impl WriteZeroesAt for AndroidSparse {
-    fn write_zeroes_at(&mut self, _offset: u64, _length: usize) -> io::Result<usize> {
-        Err(io::Error::new(
-            ErrorKind::PermissionDenied,
-            "unsupported operation",
-        ))
-    }
-}
-
 impl AsRawDescriptor for AndroidSparse {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.file.as_raw_descriptor()
-    }
-}
-
-impl FileAllocate for AndroidSparse {
-    fn allocate(&mut self, _offset: u64, _length: u64) -> io::Result<()> {
-        Err(io::Error::new(
-            ErrorKind::PermissionDenied,
-            "unsupported operation",
-        ))
     }
 }
 
