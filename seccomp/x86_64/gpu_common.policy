@@ -94,6 +94,9 @@ shutdown: 1
 
 # Rules for Mesa's shader binary cache.
 flock: 1
+inotify_add_watch: 1
+inotify_init1: 1
+inotify_rm_watch: 1
 mkdir: 1
 newfstatat: 1
 rename: 1
