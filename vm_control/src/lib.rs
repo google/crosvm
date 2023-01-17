@@ -298,6 +298,7 @@ pub enum RestoreControlResult {
 pub enum DeviceControlCommand {
     SnapshotDevices { snapshot_path: PathBuf },
     RestoreDevices { restore_path: PathBuf },
+    Exit,
 }
 
 /// Source of a `VmMemoryRequest::RegisterMemory` mapping.

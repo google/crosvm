@@ -3026,6 +3026,17 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     let _ = hp_control_tube.send(PciRootCommand::Kill);
 
+    if linux.devices_thread.is_some() {
+        if let Err(e) = device_ctrl_tube.send(&DeviceControlCommand::Exit) {
+            error!("failed to stop device control loop: {}", e);
+        };
+        if let Some(thread) = linux.devices_thread.take() {
+            if let Err(e) = thread.join() {
+                error!("failed to exit devices thread: {:?}", e);
+            }
+        }
+    }
+
     // Explicitly drop the VM structure here to allow the devices to clean up before the
     // control sockets are closed when this function exits.
     mem::drop(linux);

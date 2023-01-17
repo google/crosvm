@@ -429,6 +429,9 @@ async fn handle_command_tube(
                             .await
                             .context("Failed to send response")?;
                     }
+                    DeviceControlCommand::Exit => {
+                        return Ok(());
+                    }
                 };
             }
             Err(e) => {
