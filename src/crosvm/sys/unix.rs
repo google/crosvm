@@ -1819,7 +1819,7 @@ where
     let (hp_control_tube, hp_worker_tube) = mpsc::channel();
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    {
+    let hp_thread = {
         for (bus_num, hp_bus) in hotplug_buses {
             linux.hotplug_bus.insert(bus_num, hp_bus);
         }
@@ -1836,8 +1836,8 @@ where
         let pci_root = linux.root_config.clone();
         std::thread::Builder::new()
             .name("pci_root".to_string())
-            .spawn(move || start_pci_root_worker(pci_root, hp_worker_tube))?;
-    }
+            .spawn(move || start_pci_root_worker(pci_root, hp_worker_tube))?
+    };
 
     #[cfg(feature = "direct")]
     if let Some(pmio) = &cfg.direct_pmio {
@@ -1890,6 +1890,8 @@ where
         iommu_host_tube,
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         hp_control_tube,
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        hp_thread,
         #[cfg(feature = "swap")]
         swap_controller,
     )
@@ -2311,6 +2313,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] hp_control_tube: mpsc::Sender<
         PciRootCommand,
     >,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] hp_thread: std::thread::JoinHandle<()>,
     #[cfg(feature = "swap")] swap_controller: Option<SwapController>,
 ) -> Result<ExitState> {
     #[derive(EventToken)]
@@ -3041,7 +3044,12 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
     // Stop pci root worker thread
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    let _ = hp_control_tube.send(PciRootCommand::Kill);
+    {
+        let _ = hp_control_tube.send(PciRootCommand::Kill);
+        if let Err(e) = hp_thread.join() {
+            error!("failed to join hotplug thread: {:?}", e);
+        }
+    }
 
     if linux.devices_thread.is_some() {
         if let Err(e) = device_ctrl_tube.send(&DeviceControlCommand::Exit) {
