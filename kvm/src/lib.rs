@@ -6,6 +6,8 @@
 //!
 //! New code should use the `hypervisor` crate instead.
 
+#![cfg(unix)]
+
 mod cap;
 
 use std::cell::RefCell;

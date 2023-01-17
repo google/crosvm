@@ -7,6 +7,7 @@
 //! The starting point to using this crate is to open a [`Display`], from which a [`Context`] and
 //! [`Surface`]s can be allocated and used for doing actual work.
 
+#![cfg(unix)]
 #![deny(missing_docs)]
 
 mod bindings;

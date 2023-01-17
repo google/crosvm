@@ -54,34 +54,6 @@ class TestOption(enum.Enum):
 #
 # Please add a bug number when restricting a tests.
 
-# This is just too big to keep in main list for now
-WIN64_DISABLED_CRATES = [
-    "cros_asyncv2",
-    "cros-fuzz",
-    "crosvm_plugin",
-    "crosvm-fuzz",
-    "ffi",
-    "ffmpeg",
-    "fuse",
-    "fuzz",
-    "gpu_display",
-    "io_uring",
-    "kvm",
-    "libcras_stub",
-    "libva",
-    "libvda",
-    "minijail-sys",
-    "minijail",
-    "p9",
-    "qcow_utils",
-    "rutabaga_gralloc",
-    "swap",
-    "system_api_stub",
-    "tpm2-sys",
-    "tpm2",
-    "usb_util",
-]
-
 CRATE_OPTIONS: Dict[str, List[TestOption]] = {
     "hypervisor": [
         TestOption.DO_NOT_RUN_AARCH64,
@@ -98,9 +70,6 @@ CRATE_OPTIONS: Dict[str, List[TestOption]] = {
     "sandbox": [TestOption.DO_NOT_RUN],
     "net_util": [TestOption.REQUIRES_ROOT],
 }
-
-for name in WIN64_DISABLED_CRATES:
-    CRATE_OPTIONS[name] = CRATE_OPTIONS.get(name, []) + [TestOption.DO_NOT_BUILD_WIN64]
 
 BUILD_FEATURES: Dict[str, str] = {
     "x86_64-unknown-linux-gnu": "linux-x86_64",

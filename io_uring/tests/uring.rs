@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![cfg(unix)]
+
 use std::collections::BTreeSet;
 use std::fs::File;
 use std::fs::OpenOptions;

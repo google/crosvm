@@ -5,6 +5,8 @@
 //! Integration tests for [PageHandler]. these are more than unit tests since [PageHandler] rely on
 //! the userfaultfd(2) kernel feature.
 
+#![cfg(unix)]
+
 mod common;
 
 use std::array;

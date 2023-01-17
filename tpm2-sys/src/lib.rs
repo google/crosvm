@@ -4,6 +4,8 @@
 
 //! Bindings for the TPM2 simulator library.
 
+#![cfg(unix)]
+
 use std::os::raw::c_int;
 use std::os::raw::c_uchar;
 use std::os::raw::c_uint;

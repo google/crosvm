@@ -4,6 +4,8 @@
 
 //! Exported interface to basic qcow functionality to be used from C.
 
+#![cfg(unix)]
+
 use std::ffi::CStr;
 use std::fs::OpenOptions;
 use std::os::raw::c_char;

@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![cfg(unix)]
+
 pub use crate::generated::plugin::*;
 
 /// Converts protobuf representation of CpuId data into KVM format.

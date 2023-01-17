@@ -65,6 +65,11 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
+    // libtpm2 is unix only
+    if std::env::var("CARGO_CFG_UNIX").is_err() {
+        return Ok(());
+    }
+
     // Use tpm2 package from the standard system location if available.
     if pkg_config::Config::new()
         .statik(true)

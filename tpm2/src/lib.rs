@@ -4,6 +4,8 @@
 
 //! TPM2 (Trusted Platform Module 2.0) simulator.
 
+#![cfg(unix)]
+
 use std::os::raw::c_int;
 use std::os::raw::c_uint;
 use std::ptr;

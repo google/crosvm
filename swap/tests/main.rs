@@ -4,6 +4,8 @@
 
 //! Integration tests for vmm-swap feature
 
+#![cfg(unix)]
+
 mod common;
 
 use base::pagesize;

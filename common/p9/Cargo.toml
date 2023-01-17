@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
-[dependencies]
+[target.'cfg(unix)'.dependencies]
 libc = "*"
 serde = { version = "*", features = [ "derive" ] }
 wire_format_derive = { path = "wire_format_derive", version = "*" }

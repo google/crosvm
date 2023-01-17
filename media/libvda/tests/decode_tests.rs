@@ -4,6 +4,8 @@
 
 //! Integration tests using LibVDA fake decode implemenation.
 
+#![cfg(unix)]
+
 use libvda::decode::*;
 use libvda::*;
 

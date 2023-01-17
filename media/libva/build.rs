@@ -8,6 +8,11 @@ fn main() {
         return;
     }
 
+    // libva is unix only
+    if std::env::var("CARGO_CFG_UNIX").is_err() {
+        return;
+    }
+
     match pkg_config::probe_library("libva") {
         Ok(_) => (),
         Err(e) => panic!("Libva not found: {}", e),

@@ -4,6 +4,8 @@
 
 //! Integration tests using LibVDA fake encode implementation.
 
+#![cfg(unix)]
+
 use libvda::encode::*;
 use libvda::*;
 

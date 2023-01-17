@@ -4,6 +4,7 @@
 
 //! crate for the vmm-swap feature.
 
+#![cfg(unix)]
 #![deny(missing_docs)]
 
 mod file;

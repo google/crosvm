@@ -86,6 +86,8 @@
 //! [`abortable`](futures::future::abortable). However keep in mind that on backends like io_uring,
 //! cancelling the future may not cancel the underlying IO operation.
 
+#![cfg(unix)]
+
 mod blocking;
 mod enter;
 mod event;

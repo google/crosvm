@@ -4,6 +4,8 @@
 
 //! Bindings for the `libvda` video decoder and encoder libraries.
 
+#![cfg(unix)]
+
 pub mod decode;
 pub mod encode;
 

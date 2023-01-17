@@ -4,6 +4,8 @@
 
 //! FUSE (Filesystem in Userspace) server and filesystem mounting support.
 
+#![cfg(unix)]
+
 use std::ffi::FromBytesWithNulError;
 use std::fs::File;
 use std::io;

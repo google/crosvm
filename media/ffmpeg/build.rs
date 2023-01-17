@@ -10,6 +10,11 @@ fn main() {
         return;
     }
 
+    // ffmpeg is currently only supported on unix
+    if std::env::var("CARGO_CFG_UNIX").is_err() {
+        return;
+    }
+
     // Match all ffmpeg 5.0 versions with which our generated bindings are compatible.
     Config::new()
         .range_version("59".."60")

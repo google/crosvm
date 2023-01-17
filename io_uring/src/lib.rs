@@ -4,6 +4,8 @@
 
 //! Safe wrapper over the Linux `io_uring` system calls.
 
+#![cfg(unix)]
+
 mod bindings;
 mod syscalls;
 mod uring;
