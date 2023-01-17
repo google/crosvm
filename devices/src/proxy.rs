@@ -96,10 +96,8 @@ enum CommandResult {
     WakeResult(std::result::Result<(), String>),
 }
 
-fn child_proc<D: BusDevice>(tube: Tube, device: &mut D) {
-    let mut running = true;
-
-    while running {
+fn child_proc<D: BusDevice>(tube: Tube, mut device: D) {
+    loop {
         let cmd = match tube.recv() {
             Ok(cmd) => cmd,
             Err(err) => {
@@ -151,8 +149,12 @@ fn child_proc<D: BusDevice>(tube: Tube, device: &mut D) {
                 Ok(())
             }
             Command::Shutdown => {
-                running = false;
-                tube.send(&CommandResult::Ok)
+                // Explicitly drop the device so that its Drop implementation has a chance to run
+                // before sending the `Command::Shutdown` response.
+                drop(device);
+
+                let _ = tube.send(&CommandResult::Ok);
+                return;
             }
             Command::GetRanges => {
                 let ranges = device.get_ranges();
@@ -237,11 +239,7 @@ impl ProxyDevice {
                 std::env::set_var("TZ", tz);
 
                 device.on_sandboxed();
-                child_proc(child_tube, &mut device);
-
-                // Explicitly drop the device so that its Drop implementation has a chance to run
-                // before the call to `libc::exit()`.
-                std::mem::drop(device);
+                child_proc(child_tube, device);
 
                 // We're explicitly not using std::process::exit here to avoid the cleanup of
                 // stdout/stderr globals. This can cause cascading panics and SIGILL if a worker
