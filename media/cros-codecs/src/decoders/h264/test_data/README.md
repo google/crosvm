@@ -2,9 +2,6 @@
 
 This document lists the test data used by the H.264 decoder.
 
-Note that fair use is claimed on all non-copyleft clips, as their purpose is only for testing,
-technical evaluation, and documentation.
-
 Unless otherwise noted, the CRCs were computed using GStreamer's VA-API decoder in
 `gst-plugins-bad`.
 
@@ -53,25 +50,15 @@ x264enc b-adapt=false bframes=1 ! video/x-h264,profile=high,stream-format=byte-s
 filesink location="/tmp/16x16-I-B-P-high.h264"
 ```
 
-## FPS_test_1080p24_l4_1.h264
+## test-25fps.h264
 
-A 1080p example from the [Kodi samples](https://kodi.wiki/view/Samples), available
-[here.](https:drive.google.com/file/d/0BwxFVkl63-lEdzlZZ2lCLTVLa2c/view?resourcekey=0-iCq6zrc9whsrif4-Zvu0DQ)
-
-The clip was demuxed on GStreamer and only the first 30 buffers were kept.
-
-The pipeline used was:
-
-```
-gst-launch-1.0 filesrc location="/tmp/FPS_test_1080p24_L4.1.mkv" ! \
-matroskademux ! h264parse ! video/x-h264,stream-format=byte-stream ! \
-identity eos-after=31 ! filesink location = "/tmp/FPS_test_1080p24_l4_1.h264"
-```
+Same as Chromium's `test-25fps.h264`. The slice data in `test-25fps-h264-slice-data-*.bin` was
+manually extracted from GStreamer using GDB.
 
 ## test-25fps-interlaced.h264
 
-Adapted from Chromium's `test-25fps.h264`. Same file, but encoded as interlaced instead using the
-following ffmpeg command:
+Adapted from Chromium's `test-25fps.h264`. Same file as above, but encoded as interlaced instead
+using the following ffmpeg command:
 
 ```
 ffmpeg -i \
@@ -81,25 +68,3 @@ src/third_party/blink/web_tests/media/content/test-25fps.mp4 \
 
 This test makes sure that the interlaced logic in the decoder actually works, specially that "frame
 splitting" works, as the fields here were encoded as frames.
-
-## test-25fps.h264
-
-Same as Chromium's `test-25fps.h264`. The slice data in `test-25fps-h264-slice-data-*.bin` was
-manually extracted from GStreamer using GDB.
-
-# test-kodi-1080i-25-H264.h264
-
-A 1080i example from the [Kodi samples](https://kodi.wiki/view/Samples), available
-[here.](https:drive.google.com/file/d/0BwxFVkl63-lEdzlZZ2lCLTVLa2c/view?resourcekey=0-iCq6zrc9whsrif4-Zvu0DQ).
-It tests the interlaced logic in the decoder.
-
-The clip was demuxed on GStreamer and only the first 32 buffers were kept.
-
-The pipeline used was:
-
-```
-gst-launch-1.0 filesrc location="/tmp/1080i-25-H264.mkv" ! \
-matroskademux ! h264parse ! video/x-h264,stream-format=byte-stream ! \
-identity eos-after=33 ! filesink location = "/tmp/1080i-25-H264.h264"
-
-```
