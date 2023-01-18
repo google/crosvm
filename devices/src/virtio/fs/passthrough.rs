@@ -856,7 +856,13 @@ impl PassthroughFs {
         } {
             Ok(fd) => fd,
             Err(e) if e.errno() == libc::EACCES => {
-                // fallback to O_PATH for the unreadable file.
+                // If O_RDONLY is unavailable, fall back to O_PATH to get an FD to store in
+                // `InodeData`.
+                // Note that some operations which should be allowed without read permissions
+                // require syscalls that don't support O_PATH fds. For those syscalls, we will
+                // need to fall back to their path-based equivalents with /self/fd/${FD}.
+                // e.g. `fgetxattr()` for an O_PATH FD fails while `getxaattr()` for /self/fd/${FD}
+                // works.
                 flags |= libc::O_PATH;
                 // Safe because this doesn't modify any memory and we check the return value.
                 unsafe {
