@@ -991,11 +991,13 @@ impl PassthroughFs {
     }
 
     fn do_getxattr(&self, inode: &InodeData, name: &CStr, value: &mut [u8]) -> io::Result<usize> {
-        let res = if inode.filetype == FileType::Other {
-            // For non-regular files and directories, we cannot open the fd normally. Instead we
+        let file = inode.file.lock();
+        let o_path_file = (file.1 & libc::O_PATH) != 0;
+        let res = if o_path_file {
+            // For FDs opened with `O_PATH`, we cannot call `fgetxattr` normally. Instead we
             // emulate an _at syscall by changing the CWD to /proc, running the path based syscall,
-            // and then setting the CWD back to the root directory.
-            let path = CString::new(format!("self/fd/{}", inode.as_raw_descriptor()))
+            //  and then setting the CWD back to the root directory.
+            let path = CString::new(format!("self/fd/{}", file.0.as_raw_descriptor()))
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
             // Safe because this will only modify `value` and we check the return value.
@@ -1012,7 +1014,7 @@ impl PassthroughFs {
             // only write to `value` and we check the return value.
             unsafe {
                 libc::fgetxattr(
-                    inode.as_raw_descriptor(),
+                    file.0.as_raw_descriptor(),
                     name.as_ptr(),
                     value.as_mut_ptr() as *mut libc::c_void,
                     value.len() as libc::size_t,
@@ -2242,12 +2244,13 @@ impl FileSystem for PassthroughFs {
 
         let data = self.find_inode(inode)?;
         let name = self.rewrite_xattr_name(name);
-
-        if data.filetype == FileType::Other {
-            // For non-regular files and directories, we cannot open the fd normally. Instead we
-            // emulate an _at syscall by changing the CWD to /proc, running the path based syscall,
-            // and then setting the CWD back to the root directory.
-            let path = CString::new(format!("self/fd/{}", data.as_raw_descriptor()))
+        let file = data.file.lock();
+        let o_path_file = (file.1 & libc::O_PATH) != 0;
+        if o_path_file {
+            // For FDs opened with `O_PATH`, we cannot call `fsetxattr` normally. Instead we emulate
+            // an _at syscall by changing the CWD to /proc, running the path based syscall, and then
+            // setting the CWD back to the root directory.
+            let path = CString::new(format!("self/fd/{}", file.0.as_raw_descriptor()))
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
             // Safe because this doesn't modify any memory and we check the return value.
@@ -2267,7 +2270,7 @@ impl FileSystem for PassthroughFs {
             // doesn't modify any memory and we check the return value.
             syscall!(unsafe {
                 libc::fsetxattr(
-                    data.as_raw_descriptor(),
+                    file.0.as_raw_descriptor(),
                     name.as_ptr(),
                     value.as_ptr() as *const libc::c_void,
                     value.len() as libc::size_t,
@@ -2311,11 +2314,13 @@ impl FileSystem for PassthroughFs {
 
         let mut buf = vec![0u8; size as usize];
 
-        let res = if data.filetype == FileType::Other {
-            // For non-regular files and directories, we cannot open the fd normally. Instead we
+        let file = data.file.lock();
+        let o_path_file = (file.1 & libc::O_PATH) != 0;
+        let res = if o_path_file {
+            // For FDs opened with `O_PATH`, we cannot call `flistxattr` normally. Instead we
             // emulate an _at syscall by changing the CWD to /proc, running the path based syscall,
             // and then setting the CWD back to the root directory.
-            let path = CString::new(format!("self/fd/{}", data.as_raw_descriptor()))
+            let path = CString::new(format!("self/fd/{}", file.0.as_raw_descriptor()))
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
             // Safe because this will only modify `buf` and we check the return value.
@@ -2331,7 +2336,7 @@ impl FileSystem for PassthroughFs {
             // write to `buf` and we check the return value.
             syscall!(unsafe {
                 libc::flistxattr(
-                    data.as_raw_descriptor(),
+                    file.0.as_raw_descriptor(),
                     buf.as_mut_ptr() as *mut libc::c_char,
                     buf.len() as libc::size_t,
                 )
@@ -2360,11 +2365,13 @@ impl FileSystem for PassthroughFs {
         let data = self.find_inode(inode)?;
         let name = self.rewrite_xattr_name(name);
 
-        if data.filetype == FileType::Other {
-            // For non-regular files and directories, we cannot open the fd normally. Instead we
+        let file = data.file.lock();
+        let o_path_file = (file.1 & libc::O_PATH) != 0;
+        if o_path_file {
+            // For files opened with `O_PATH`, we cannot call `fremovexattr` normally. Instead we
             // emulate an _at syscall by changing the CWD to /proc, running the path based syscall,
             // and then setting the CWD back to the root directory.
-            let path = CString::new(format!("self/fd/{}", data.as_raw_descriptor()))
+            let path = CString::new(format!("self/fd/{}", file.0.as_raw_descriptor()))
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
             // Safe because this doesn't modify any memory and we check the return value.
@@ -2374,7 +2381,7 @@ impl FileSystem for PassthroughFs {
         } else {
             // For regular files and directories, we can just use fremovexattr. Safe because this
             // doesn't modify any memory and we check the return value.
-            syscall!(unsafe { libc::fremovexattr(data.as_raw_descriptor(), name.as_ptr()) })?;
+            syscall!(unsafe { libc::fremovexattr(file.0.as_raw_descriptor(), name.as_ptr()) })?;
         }
 
         Ok(())
