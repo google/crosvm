@@ -43,6 +43,7 @@ pub use self::ac97::Ac97Dev;
 pub use self::ac97::Ac97Parameters;
 pub use self::acpi::DeviceVcfgRegister;
 pub use self::acpi::DsmMethod;
+pub use self::acpi::GpeScope;
 pub use self::acpi::PowerResourceMethod;
 #[cfg(unix)]
 pub use self::coiommu::CoIommuDev;
@@ -124,6 +125,7 @@ impl PciInterruptPin {
 // VCFG
 pub const PCI_VCFG_PM: usize = 0x0;
 pub const PCI_VCFG_DSM: usize = 0x1;
+pub const PCI_VCFG_NOTY: usize = 0x2;
 
 pub const PCI_VENDOR_ID_INTEL: u16 = 0x8086;
 pub const PCI_VENDOR_ID_REDHAT: u16 = 0x1b36;

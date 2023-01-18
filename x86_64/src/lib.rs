@@ -746,19 +746,20 @@ impl arch::LinuxArch for X8664arch {
             .map(|(dev, jail_orig)| (dev.into_pci_device().unwrap(), jail_orig))
             .collect();
 
-        let (pci, pci_irqs, mut pid_debug_label_map, amls) = arch::generate_pci_root(
-            pci_devices,
-            irq_chip.as_irq_chip_mut(),
-            mmio_bus.clone(),
-            io_bus.clone(),
-            system_allocator,
-            &mut vm,
-            4, // Share the four pin interrupts (INTx#)
-            Some(pcie_vcfg_range.start),
-            #[cfg(feature = "swap")]
-            swap_controller,
-        )
-        .map_err(Error::CreatePciRoot)?;
+        let (pci, pci_irqs, mut pid_debug_label_map, amls, gpe_scope_amls) =
+            arch::generate_pci_root(
+                pci_devices,
+                irq_chip.as_irq_chip_mut(),
+                mmio_bus.clone(),
+                io_bus.clone(),
+                system_allocator,
+                &mut vm,
+                4, // Share the four pin interrupts (INTx#)
+                Some(pcie_vcfg_range.start),
+                #[cfg(feature = "swap")]
+                swap_controller,
+            )
+            .map_err(Error::CreatePciRoot)?;
 
         let pci = Arc::new(Mutex::new(pci));
         pci.lock().enable_pcie_cfg_mmio(pcie_cfg_mmio_range.start);
@@ -896,7 +897,7 @@ impl arch::LinuxArch for X8664arch {
         )?;
 
         // Create customized SSDT table
-        let sdt = acpi::create_customize_ssdt(pci.clone(), amls);
+        let sdt = acpi::create_customize_ssdt(pci.clone(), amls, gpe_scope_amls);
         if let Some(sdt) = sdt {
             acpi_dev_resource.sdts.push(sdt);
         }

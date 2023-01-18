@@ -178,6 +178,7 @@ const SSDT_REVISION: u8 = 2;
 pub fn create_customize_ssdt(
     pci_root: Arc<Mutex<PciRoot>>,
     amls: BTreeMap<PciAddress, Vec<u8>>,
+    gpe_scope_amls: BTreeMap<PciAddress, Vec<u8>>,
 ) -> Option<SDT> {
     if amls.is_empty() {
         return None;
@@ -196,6 +197,10 @@ pub fn create_customize_ssdt(
         if let Some(path) = pci_root.lock().acpi_path(&address) {
             ssdt.append_slice(&aml::Scope::raw((*path).into(), children));
         }
+    }
+
+    for children in gpe_scope_amls.values() {
+        ssdt.append_slice(children);
     }
 
     Some(ssdt)

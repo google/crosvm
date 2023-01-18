@@ -53,6 +53,7 @@ impl Aml for DeviceVcfgRegister {
             vec![
                 aml::FieldEntry::Named(*b"PFPM", 32),
                 aml::FieldEntry::Named(*b"PDSM", 32),
+                aml::FieldEntry::Named(*b"NOTY", 32),
             ],
         )
         .to_aml_bytes(bytes);
@@ -527,6 +528,29 @@ impl Aml for PowerResourceMethod {
         aml::Name::new(
             "_PR3".into(),
             &aml::Package::new(vec![&aml::Name::new_field_name("PRIC")]),
+        )
+        .to_aml_bytes(aml);
+    }
+}
+
+pub struct GpeScope {}
+
+impl GpeScope {
+    pub fn cast_to_aml_bytes(&self, aml: &mut Vec<u8>, gpe_nr: u32, notification_path: &str) {
+        aml::Scope::new(
+            "_GPE".into(),
+            vec![&aml::Method::new(
+                format!("_E{:02X}", gpe_nr).as_str().into(),
+                0,
+                false,
+                vec![
+                    &aml::Store::new(
+                        &aml::Local(0),
+                        &aml::Path::new(format!("{}.NOTY", notification_path).as_str()),
+                    ),
+                    &aml::Notify::new(&aml::Path::new(notification_path), &aml::Local(0)),
+                ],
+            )],
         )
         .to_aml_bytes(aml);
     }

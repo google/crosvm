@@ -97,6 +97,7 @@ pub use self::pci::Ac97Dev;
 pub use self::pci::Ac97Parameters;
 pub use self::pci::BarRange;
 pub use self::pci::CrosvmDeviceId;
+pub use self::pci::GpeScope;
 #[cfg(feature = "pci-hotplug")]
 pub use self::pci::HotPluggable;
 #[cfg(feature = "pci-hotplug")]

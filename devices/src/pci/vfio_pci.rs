@@ -34,6 +34,7 @@ use resources::AllocOptions;
 use resources::MmioType;
 use resources::SystemAllocator;
 use sync::Mutex;
+use vfio_sys::vfio::VFIO_PCI_ACPI_NTFY_IRQ_INDEX;
 use vfio_sys::*;
 use vm_control::api::VmMemoryClient;
 use vm_control::HotPlugDeviceInfo;
@@ -76,6 +77,7 @@ use crate::pci::PciClassCode;
 use crate::pci::PciId;
 use crate::pci::PciInterruptPin;
 use crate::pci::PCI_VCFG_DSM;
+use crate::pci::PCI_VCFG_NOTY;
 use crate::pci::PCI_VCFG_PM;
 use crate::pci::PCI_VENDOR_ID_INTEL;
 use crate::vfio::VfioDevice;
@@ -509,14 +511,18 @@ impl VfioPciWorker {
         &mut self,
         req_irq_evt: Event,
         wakeup_evt: Event,
+        acpi_notify_evt: Event,
         kill_evt: Event,
         msix_evt: Vec<Event>,
         is_in_low_power: Arc<Mutex<bool>>,
+        gpe: Option<u32>,
+        notification_val: Arc<Mutex<Vec<u32>>>,
     ) {
-        #[derive(EventToken)]
+        #[derive(EventToken, Debug)]
         enum Token {
             ReqIrq,
             WakeUp,
+            AcpiNotifyEvent,
             Kill,
             MsixIrqi { index: usize },
         }
@@ -524,6 +530,7 @@ impl VfioPciWorker {
         let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
             (&req_irq_evt, Token::ReqIrq),
             (&wakeup_evt, Token::WakeUp),
+            (&acpi_notify_evt, Token::AcpiNotifyEvent),
             (&kill_evt, Token::Kill),
         ]) {
             Ok(pc) => pc,
@@ -596,6 +603,21 @@ impl VfioPciWorker {
                             }
                         }
                     }
+                    Token::AcpiNotifyEvent => {
+                        if let Some(gpe) = gpe {
+                            if let Ok(val) = base::EventExt::read_count(&acpi_notify_evt) {
+                                notification_val.lock().push(val as u32);
+                                let request = VmRequest::Gpe(gpe);
+                                if self.vm_socket.send(&request).is_ok() {
+                                    if let Err(e) = self.vm_socket.recv::<VmResponse>() {
+                                        error!("{} failed to send GPE: {}", self.name.clone(), e);
+                                    }
+                                }
+                            } else {
+                                error!("{} failed to read acpi_notify_evt", self.name.clone());
+                            }
+                        }
+                    }
                     Token::Kill => break 'wait,
                 }
             }
@@ -641,6 +663,7 @@ pub struct VfioPciDevice {
     preferred_address: PciAddress,
     pci_address: Option<PciAddress>,
     interrupt_evt: Option<IrqLevelEvent>,
+    acpi_notification_evt: Option<Event>,
     mmio_regions: Vec<PciBarConfiguration>,
     io_regions: Vec<PciBarConfiguration>,
     pm_cap: Option<Arc<Mutex<VfioPmCap>>>,
@@ -659,6 +682,8 @@ pub struct VfioPciDevice {
     vcfg_shm_mmap: Option<MemoryMapping>,
     mapped_mmio_bars: BTreeMap<PciBarIndex, (u64, Vec<VmMemoryRegionId>)>,
     activated: bool,
+    acpi_notifier_val: Arc<Mutex<Vec<u32>>>,
+    gpe: Option<u32>,
 }
 
 impl VfioPciDevice {
@@ -806,6 +831,7 @@ impl VfioPciDevice {
             preferred_address,
             pci_address: None,
             interrupt_evt: None,
+            acpi_notification_evt: None,
             mmio_regions: Vec::new(),
             io_regions: Vec::new(),
             pm_cap,
@@ -823,6 +849,8 @@ impl VfioPciDevice {
             vcfg_shm_mmap: None,
             mapped_mmio_bars: BTreeMap::new(),
             activated: false,
+            acpi_notifier_val: Arc::new(Mutex::new(Vec::new())),
+            gpe: None,
         })
     }
 
@@ -841,6 +869,38 @@ impl VfioPciDevice {
         }
 
         ret
+    }
+
+    fn enable_acpi_notification(&mut self) -> Result<(), PciDeviceError> {
+        if let Some(ref acpi_notification_evt) = self.acpi_notification_evt {
+            return self
+                .device
+                .acpi_notification_evt_enable(acpi_notification_evt, VFIO_PCI_ACPI_NTFY_IRQ_INDEX)
+                .map_err(|_| PciDeviceError::AcpiNotifySetupFailed);
+        }
+        Err(PciDeviceError::AcpiNotifySetupFailed)
+    }
+
+    #[allow(dead_code)]
+    fn disable_acpi_notification(&mut self) -> Result<(), PciDeviceError> {
+        if let Some(ref _acpi_notification_evt) = self.acpi_notification_evt {
+            return self
+                .device
+                .acpi_notification_disable(VFIO_PCI_ACPI_NTFY_IRQ_INDEX)
+                .map_err(|_| PciDeviceError::AcpiNotifyDeactivationFailed);
+        }
+        Err(PciDeviceError::AcpiNotifyDeactivationFailed)
+    }
+
+    #[allow(dead_code)]
+    fn test_acpi_notification(&mut self, val: u32) -> Result<(), PciDeviceError> {
+        if let Some(ref _acpi_notification_evt) = self.acpi_notification_evt {
+            return self
+                .device
+                .acpi_notification_test(VFIO_PCI_ACPI_NTFY_IRQ_INDEX, val)
+                .map_err(|_| PciDeviceError::AcpiNotifyTestFailed);
+        }
+        Err(PciDeviceError::AcpiNotifyTestFailed)
     }
 
     fn enable_intx(&mut self) {
@@ -1223,6 +1283,24 @@ impl VfioPciDevice {
         };
         self.pm_evt = Some(self_pm_evt);
 
+        let (self_acpi_notify_evt, acpi_notify_evt) =
+            match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
+                Ok(v) => v,
+                Err(e) => {
+                    error!(
+                        "{} failed creating ACPI Event pair: {}",
+                        self.debug_label(),
+                        e
+                    );
+                    return;
+                }
+            };
+        self.acpi_notification_evt = Some(self_acpi_notify_evt);
+
+        if let Err(e) = self.enable_acpi_notification() {
+            error!("{}: {}", self.debug_label(), e);
+        }
+
         let mut msix_evt = Vec::new();
         if let Some(msix_cap) = &self.msix_cap {
             msix_evt = msix_cap.lock().clone_msix_evt();
@@ -1234,6 +1312,8 @@ impl VfioPciDevice {
         let pm_cap = self.pm_cap.clone();
         let msix_cap = self.msix_cap.clone();
         let is_in_low_power = self.is_in_low_power.clone();
+        let gpe_nr = self.gpe;
+        let notification_val = self.acpi_notifier_val.clone();
         self.worker_thread = Some(WorkerThread::start("vfio_pci", move |kill_evt| {
             let mut worker = VfioPciWorker {
                 address,
@@ -1243,7 +1323,16 @@ impl VfioPciDevice {
                 pm_cap,
                 msix_cap,
             };
-            worker.run(req_evt, pm_evt, kill_evt, msix_evt, is_in_low_power);
+            worker.run(
+                req_evt,
+                pm_evt,
+                acpi_notify_evt,
+                kill_evt,
+                msix_evt,
+                is_in_low_power,
+                gpe_nr,
+                notification_val,
+            );
             worker
         }));
         self.activated = true;
@@ -1865,6 +1954,16 @@ impl PciDevice for VfioPciDevice {
     }
 
     fn read_virtual_config_register(&self, reg_idx: usize) -> u32 {
+        if reg_idx == PCI_VCFG_NOTY {
+            let mut q = self.acpi_notifier_val.lock();
+            let mut val = 0;
+            if !q.is_empty() {
+                val = q.remove(0);
+            }
+            drop(q);
+            return val;
+        }
+
         warn!(
             "{} read unsupported vcfg register {}",
             self.debug_label(),
@@ -2001,6 +2100,14 @@ impl PciDevice for VfioPciDevice {
         }
 
         (amls, shm)
+    }
+
+    fn set_gpe(&mut self, resources: &mut SystemAllocator) -> Option<u32> {
+        if let Some(gpe_nr) = resources.allocate_gpe() {
+            base::debug!("set_gpe: gpe-nr {} addr {:?}", gpe_nr, self.pci_address);
+            self.gpe = Some(gpe_nr);
+        }
+        self.gpe
     }
 }
 

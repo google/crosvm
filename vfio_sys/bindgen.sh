@@ -29,6 +29,13 @@ pub struct vfio_acpi_dsm {
 }
 
 #[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct vfio_acpi_notify_eventfd {
+    pub notify_eventfd: i32,
+    pub reserved: u32,
+}
+
+#[repr(C)]
 #[derive(Debug, Default)]
 pub struct vfio_region_info_with_cap {
     pub region_info: vfio_region_info,
