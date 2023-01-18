@@ -1,0 +1,26 @@
+# Copyright 2023 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+FROM docker.io/ubuntu:kinetic-20221130
+
+# Allow APT to cache packages between docker image builds
+RUN rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
+
+# Install dependencies (APT and cargo packages are cached between image builds for faster iterative builds).
+COPY --chmod=555 tools/install-deps rust-toolchain /tools/
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private \
+    --mount=type=cache,target=/var/lib/apt,sharing=private \
+    --mount=type=cache,target=/scratch/cargo_target,sharing=private \
+    apt-get update \
+    # sudo is installed here since it's required by install-deps.
+    # tzdata is installed here so it won't later prompt for configuration.
+    && DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install --yes sudo tzdata \
+    # Run crosvm's install-deps
+    && cd tools \
+    && ./install-deps
+
+ENV PATH=$PATH:~/.cargo/bin
+
+VOLUME /workspace
+WORKDIR /workspace

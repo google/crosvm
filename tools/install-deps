@@ -4,7 +4,6 @@
 # found in the LICENSE file.
 set -ex
 
-sudo apt-get update
 sudo apt-get install --yes --no-install-recommends \
     ca-certificates \
     clang \
@@ -18,6 +17,7 @@ sudo apt-get install --yes --no-install-recommends \
     libasound2-dev \
     libavcodec-dev \
     libavutil-dev \
+    libcap-dev \
     libclang-dev \
     libdbus-1-dev \
     libdrm-dev \
@@ -36,6 +36,7 @@ sudo apt-get install --yes --no-install-recommends \
     ninja-build \
     openssh-client \
     pkg-config \
+    protobuf-compiler \
     python3 \
     python3-pip \
     python3-setuptools \
@@ -43,26 +44,26 @@ sudo apt-get install --yes --no-install-recommends \
     rsync \
     screen \
     tmux \
-    wget \
-    wine \
-    wine64 \
-    gcc-mingw-w64-x86-64-win32 \
-    wayland-protocols
+    wayland-protocols \
+    wget
 
 pip3 install \
-    meson \
-    mdformat \
-    mdformat-gfm \
-    mdformat-footnote \
     argh \
+    black \
+    mdformat \
+    mdformat-footnote \
+    mdformat-gfm \
+    meson \
     mypy \
-    black
+    rich
 
+# Install rustup if not available yet
 if ! command -v rustup &>/dev/null; then
     wget "https://static.rust-lang.org/rustup/archive/1.25.1/x86_64-unknown-linux-gnu/rustup-init"
     echo "5cc9ffd1026e82e7fb2eec2121ad71f4b0f044e88bca39207b3f6b769aaa799c *rustup-init" | sha256sum -c -
     chmod +x rustup-init
     ./rustup-init -y --no-modify-path --profile minimal --default-toolchain none
+    source ${CARGO_HOME:-~/.cargo}/env
     rm rustup-init
 fi
 
@@ -76,16 +77,19 @@ rustup component add llvm-tools-preview
 # Allow cross-compilation via mingw64
 rustup target add x86_64-pc-windows-gnu
 
+# Cargo extension to install binary packages from github
+curl -L https://github.com/cargo-bins/cargo-binstall/releases/download/v0.19.3/cargo-binstall-x86_64-unknown-linux-gnu.tgz | tar -xzvvf - -C ${CARGO_HOME:-~/.cargo}/bin
+
 # The bindgen tool is required to build a crosvm dependency.
-cargo install -f bindgen --version=0.60.1
+cargo binstall --no-confirm bindgen --version "0.60.1"
 
 # binutils are wrappers to call the rustup bundled versions of llvm tools.
-cargo install -f cargo-binutils
+cargo binstall --no-confirm cargo-binutils
 
-# Install dependencies used to generate mdbook documentation.
-$(dirname "$0")/install-docs-deps
+# The mdbook and mdbook-mermaid tools are used to build the crosvm book.
+cargo binstall --no-confirm mdbook --version "0.4.25"
+cargo binstall --no-confirm mdbook-mermaid --version "0.12.6"
+cargo binstall --no-confirm mdbook-linkcheck --version "0.7.7"
 
-# Install wine related dependencies if this is a local install and not a docker build
-if [[ -z "${DOCKER_WINE_SETUP}" ]]; then
-    $(dirname "$0")/install-wine-deps
-fi
+# Nextest is an improved test runner for cargo
+cargo binstall --no-confirm cargo-nextest --version "0.9.49"

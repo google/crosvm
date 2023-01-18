@@ -27,8 +27,8 @@ git config submodule.recurse true
 git config push.recurseSubmodules no
 ```
 
-Crosvm development best works on Debian derivatives. First install rust via <https://rustup.rs/>.
-Then for the rest, we provide a script to install the necessary packages on Debian:
+Crosvm development best works on Debian derivatives. We provide a script to install the necessary
+packages on Debian, Ubuntu or gLinux:
 
 ```sh
 ./tools/install-deps
@@ -36,33 +36,6 @@ Then for the rest, we provide a script to install the necessary packages on Debi
 
 For other systems, please see below for instructions on
 [Using the development container](#using-the-development-container).
-
-### Setting up for cross-compilation
-
-Crosvm is built and tested on x86, aarch64 and armhf. Your host needs to be set up to allow
-installation of foreign architecture packages.
-
-On Debian this is as easy as:
-
-```sh
-sudo dpkg --add-architecture arm64
-sudo dpkg --add-architecture armhf
-sudo apt update
-```
-
-On ubuntu this is a little harder and needs some
-[manual modifications](https://askubuntu.com/questions/430705/how-to-use-apt-get-to-download-multi-arch-library)
-of APT sources.
-
-For other systems (**including gLinux**), please see below for instructions on
-[Using the development container](#using-the-development-container).
-
-With that enabled, the following scripts will install the needed packages:
-
-```sh
-./tools/install-aarch64-deps
-./tools/install-armhf-deps
-```
 
 ### Using the development container
 
@@ -112,6 +85,8 @@ The script will start a VM for testing and write environment variables for cargo
 those `cargo build` will build for aarch64 and `cargo test` will run tests inside the VM.
 
 The aarch64 VM can be managed with the `./tools/aarch64vm` script.
+
+Note: See [Cross-compilation](#cross-compilation) for notes on cross-compilation.
 
 ### Running all tests
 
@@ -168,6 +143,55 @@ The `--quick` variant will skip some slower checks, like building for other plat
 
 ```sh
 ./tools/presubmit --quick
+```
+
+## Cross-compilation
+
+Crosvm is built and tested on x86, aarch64 and armhf. Your system needs some setup work to be able
+to cross-comple for other architectures, hence it is recommended to use the
+[development container](#using-the-development-container), which will have everything configured.
+
+Note: Cross-compilation is **not supported on gLinux**. Please use the development container.
+
+### Enable foreign architectures
+
+Your host needs to be set up to allow installation of foreign architecture packages.
+
+On Debian this is as easy as:
+
+```sh
+sudo dpkg --add-architecture arm64
+sudo dpkg --add-architecture armhf
+sudo apt update
+```
+
+On ubuntu this is a little harder and needs some
+[manual modifications](https://askubuntu.com/questions/430705/how-to-use-apt-get-to-download-multi-arch-library)
+of APT sources.
+
+With that enabled, the following scripts will install the needed packages:
+
+```sh
+./tools/install-aarch64-deps
+./tools/install-armhf-deps
+```
+
+### Configuring wine and mingw64
+
+Crosvm is also compiled and tested on windows. Some limited testing can be done with mingw64 and
+wine on linux machines. Use the provided setup script to install the needed dependencies.
+
+```sh
+./tools/install-mingw64-deps
+```
+
+### Configure cargo for cross-compilation
+
+Cargo requries additional configuration to support cross-compilation. You can copy the provided
+example config to your cargo configuration:
+
+```sh
+cat .cargo/config.debian.toml >> ${CARGO_HOME:-~/.cargo}/config.toml
 ```
 
 ## Known issues

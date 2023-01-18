@@ -1,0 +1,20 @@
+# Configure path to linker and emulators to use when running unit tests
+[target.armv7-unknown-linux-gnueabihf]
+linker = "arm-linux-gnueabihf-gcc"
+runner = "qemu-arm-static"
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
+runner = "qemu-aarch64-static"
+[target.x86_64-pc-windows-gnu]
+runner = "wine64-stable"
+
+# Provide path to the pkg-config wrapper for each supported platform
+[env]
+PKG_CONFIG_x86_64-unknown-linux-gnu = "x86_64-linux-gnu-pkg-config"
+PKG_CONFIG_aarch64-unknown-linux-gnu = "aarch64-linux-gnu-pkg-config"
+PKG_CONFIG_armv7_unknown_linux_gnueabihf = "arm-linux-gnueabihf-pkg-config"
+
+# libslirp is currently not properly configured via pkg-config and cannot use the wrapper like
+# other architextures do.
+# TODO(b/266100489): Add a libslirp.pc file and use the pkg-config wrapper
+PKG_CONFIG_SYSROOT_DIR_x86_64-pc-windows-gnu = "/usr/x86_64-w64-mingw32"

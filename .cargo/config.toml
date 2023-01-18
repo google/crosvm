@@ -2,7 +2,7 @@
 # This allows ./tools/clippy and IDE integrations to use the same configuration.
 # This should be replaced with a proper clippy config once available:
 # https://github.com/rust-lang/cargo/issues/5034
-[target.'cfg(all())']
+[build]
 rustflags = [
     # TODO(crbug/908640): To be resolved.
     "-Aclippy::missing_safety_doc", # 26 errors
@@ -33,17 +33,3 @@ rustflags = [
     "-Aclippy::useless_let_if_seq",
     "-Aclippy::useless_transmute",
 ]
-
-[target.armv7-unknown-linux-gnueabihf]
-linker = "arm-linux-gnueabihf-gcc"
-
-[target.aarch64-unknown-linux-gnu]
-linker = "aarch64-linux-gnu-gcc"
-
-[target.x86_64-pc-windows-gnu]
-runner = "wine64-stable"
-
-[env]
-PKG_CONFIG_SYSROOT_DIR_armv7-unknown-linux-gnueabihf = "/usr/arm-linux-gnueabihf"
-PKG_CONFIG_SYSROOT_DIR_aarch64-unknown-linux-gnu = "/usr/aarch64_linux_gnu"
-PKG_CONFIG_SYSROOT_DIR_x86_64-pc-windows-gnu = "/usr/x86_64-w64-mingw32"

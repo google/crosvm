@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Copyright 2022 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+set -ex
+
+WINETRICKS_COMMIT_HASH="b666e05a0bf28fd940e5c258ccdfc0a2799d1948"
+WINETRICKS_URL="https://raw.githubusercontent.com/Winetricks/winetricks/"$WINETRICKS_COMMIT_HASH"/src/winetricks"
+WINESTRICKS_SCRIPT_SHA="40fdf1f89f3636187201858e3591e86752172814"
+
+# Install mingw64 toolchain and wine
+sudo apt-get install --yes --no-install-recommends \
+    gcc-mingw-w64-x86-64-win32 \
+    wine \
+    wine64
