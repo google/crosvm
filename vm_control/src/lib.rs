@@ -1262,8 +1262,8 @@ impl VmRequest {
                 VmResponse::Ok
             }
             VmRequest::Gpe(gpe) => {
-                if pm.is_some() {
-                    pm.as_ref().unwrap().lock().gpe_evt(gpe);
+                if let Some(pm) = pm.as_ref() {
+                    pm.lock().gpe_evt(gpe);
                     VmResponse::Ok
                 } else {
                     error!("{:#?} not supported", *self);
