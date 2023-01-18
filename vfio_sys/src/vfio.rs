@@ -13,6 +13,14 @@ use zerocopy::FromBytes;
 
 #[repr(C)]
 #[derive(Debug, Default)]
+pub struct vfio_acpi_dsm {
+    pub argsz: u32,
+    pub padding: u32,
+    pub args: __IncompleteArrayField<u8>,
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
 pub struct vfio_region_info_with_cap {
     pub region_info: vfio_region_info,
     pub cap_info: __IncompleteArrayField<u8>,
@@ -612,11 +620,4 @@ pub struct vfio_iommu_spapr_tce_remove {
     pub argsz: u32,
     pub flags: u32,
     pub start_addr: u64,
-}
-#[repr(C)]
-#[derive(Debug, Default)]
-pub struct vfio_acpi_dsm {
-    pub argsz: u32,
-    pub padding: u32,
-    pub args: __IncompleteArrayField<u8>,
 }

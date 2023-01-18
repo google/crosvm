@@ -100,6 +100,24 @@ impl Aml for DeviceVcfgRegister {
 
 pub struct DsmMethod {}
 
+const ACPI_TYPE_INT: &dyn Aml = &1_usize;
+const ACPI_TYPE_STRING: &dyn Aml = &2_usize;
+const ACPI_TYPE_BUFFER: &dyn Aml = &3_usize;
+const ACPI_TYPE_PACKAGE: &dyn Aml = &4_usize;
+
+// The ACPI _DSM methods are described under:
+// https://uefi.org/htmlspecs/ACPI_Spec_6_4_html/09_ACPI-Defined_Devices_and_Device-Specific_Objects/ACPIdefined_Devices_and_DeviceSpecificObjects.html?highlight=_dsm#dsm-device-specific-method
+//
+// Since the guest does not have access to native ACPI tables, whenever native driver for the
+// pass-through device, which resides in guest, evaluates _DSM methods, such evaluation needs to be
+// propagated to the host which can do the actual job.
+//
+// Below snippet generates AML code, which implements virtual _DSM method in guest ACPI tables.
+// Its role is to collect and pass guest _DSM arguments into host (through shared memory). When all
+// arguments are saved in shared memory, access to PDSM is issued which causes a trap to VMM. As a
+// consequence VMM can read passed _DSM arguments and pass them further (through dedicated IOCTL)
+// to the host kernel, which can actually evaluate the ACPI _DSM method using native tables. The
+// results are passed back from ioctl to VMM and further to the guest through shared memory.
 impl Aml for DsmMethod {
     fn to_aml_bytes(&self, aml: &mut Vec<u8>) {
         aml::Method::new(
@@ -114,7 +132,7 @@ impl Aml for DsmMethod {
                 &aml::Store::new(&aml::Local(1), &aml::SizeOf::new(&aml::Arg(3))),
                 &aml::Store::new(&aml::Local(0), &aml::BufferTerm::new(&16384_usize)),
                 &aml::If::new(
-                    &aml::Equal::new(&aml::Local(2), &3_usize),
+                    &aml::Equal::new(&aml::Local(2), ACPI_TYPE_BUFFER),
                     vec![
                         &aml::CreateDWordField::new(
                             &aml::Name::new_field_name("BFTP"),
@@ -132,14 +150,14 @@ impl Aml for DsmMethod {
                             &(8_usize * 8_usize),
                             &aml::Multiply::new(&aml::ZERO, &aml::Local(1), &8_usize),
                         ),
-                        &aml::Store::new(&aml::Name::new_field_name("BFTP"), &0x3_usize),
+                        &aml::Store::new(&aml::Name::new_field_name("BFTP"), ACPI_TYPE_BUFFER),
                         &aml::Store::new(&aml::Name::new_field_name("BFSZ"), &aml::Local(1)),
                         &aml::Store::new(&aml::Name::new_field_name("BFDT"), &aml::Arg(3)),
                     ],
                 ),
                 &aml::Else::new(vec![
                     &aml::If::new(
-                        &aml::Equal::new(&aml::Local(2), &4_usize),
+                        &aml::Equal::new(&aml::Local(2), ACPI_TYPE_PACKAGE),
                         vec![
                             &aml::Store::new(&aml::Local(5), &aml::ZERO),
                             &aml::CreateDWordField::new(
@@ -147,7 +165,7 @@ impl Aml for DsmMethod {
                                 &aml::Local(0),
                                 &aml::Local(5),
                             ),
-                            &aml::Store::new(&aml::Name::new_field_name("PKTP"), &0x4_usize),
+                            &aml::Store::new(&aml::Name::new_field_name("PKTP"), ACPI_TYPE_PACKAGE),
                             &aml::Add::new(&aml::Local(5), &aml::Local(5), &4_usize),
                             &aml::CreateDWordField::new(
                                 &aml::Name::new_field_name("PKSZ"),
@@ -197,7 +215,7 @@ impl Aml for DsmMethod {
                                     ),
                                     &aml::Add::new(&aml::Local(5), &aml::Local(5), &4_usize),
                                     &aml::If::new(
-                                        &aml::Equal::new(&aml::Local(4), &1_usize),
+                                        &aml::Equal::new(&aml::Local(4), ACPI_TYPE_INT),
                                         vec![
                                             &aml::CreateQWordField::new(
                                                 &aml::Name::new_field_name("OUDT"),
@@ -217,7 +235,7 @@ impl Aml for DsmMethod {
                                     ),
                                     &aml::Else::new(vec![
                                         &aml::If::new(
-                                            &aml::Equal::new(&aml::Local(4), &2_usize),
+                                            &aml::Equal::new(&aml::Local(4), ACPI_TYPE_STRING),
                                             vec![
                                                 &aml::CreateField::new(
                                                     &aml::Name::new_field_name("OSDT"),
@@ -263,7 +281,7 @@ impl Aml for DsmMethod {
                                             ],
                                         ),
                                         &aml::Else::new(vec![&aml::If::new(
-                                            &aml::Equal::new(&aml::Local(4), &3_usize),
+                                            &aml::Equal::new(&aml::Local(4), ACPI_TYPE_BUFFER),
                                             vec![
                                                 &aml::CreateField::new(
                                                     &aml::Name::new_field_name("OBDT"),
@@ -317,13 +335,17 @@ impl Aml for DsmMethod {
                     &aml::Else::new(vec![&aml::Return::new(&aml::ZERO)]),
                 ]),
                 &aml::Store::new(&aml::Name::new_field_name("DSM3"), &aml::Local(0)),
+                // All DSM arguments are written to shared memory, lets access PDSM which will trap
+                // to VMM which can process it further. The result will be stored in shared memory.
                 &aml::Store::new(&aml::Name::new_field_name("PDSM"), &aml::ZERO),
+                // Lets start converting the _DSM result stored in shared memory into proper format
+                // which will allow to return result in desired format to the guest caller.
                 &aml::Store::new(
                     &aml::Local(0),
                     &aml::ToInteger::new(&aml::ZERO, &aml::Name::new_field_name("RTTP")),
                 ),
                 &aml::If::new(
-                    &aml::Equal::new(&aml::Local(0), &1_usize),
+                    &aml::Equal::new(&aml::Local(0), ACPI_TYPE_INT),
                     vec![&aml::Return::new(&aml::ToInteger::new(
                         &aml::ZERO,
                         &aml::Name::new_field_name("RTDT"),
@@ -331,7 +353,7 @@ impl Aml for DsmMethod {
                 ),
                 &aml::Else::new(vec![
                     &aml::If::new(
-                        &aml::Equal::new(&aml::Local(0), &2_usize),
+                        &aml::Equal::new(&aml::Local(0), ACPI_TYPE_STRING),
                         vec![&aml::Return::new(&aml::ToString::new(
                             &aml::ZERO,
                             &aml::Name::new_field_name("RTDT"),
@@ -340,7 +362,7 @@ impl Aml for DsmMethod {
                     ),
                     &aml::Else::new(vec![
                         &aml::If::new(
-                            &aml::Equal::new(&aml::Local(0), &3_usize),
+                            &aml::Equal::new(&aml::Local(0), ACPI_TYPE_BUFFER),
                             vec![&aml::Return::new(&aml::Mid::new(
                                 &aml::Name::new_field_name("RTDT"),
                                 &0_usize,
@@ -353,7 +375,7 @@ impl Aml for DsmMethod {
                         ),
                         &aml::Else::new(vec![
                             &aml::If::new(
-                                &aml::Equal::new(&aml::Local(0), &4_usize),
+                                &aml::Equal::new(&aml::Local(0), ACPI_TYPE_PACKAGE),
                                 vec![
                                     &aml::Store::new(&aml::Local(0), &aml::ZERO),
                                     &aml::Store::new(
@@ -420,7 +442,7 @@ impl Aml for DsmMethod {
                                                 &aml::Local(5),
                                             ),
                                             &aml::If::new(
-                                                &aml::Equal::new(&aml::Local(4), &1_usize),
+                                                &aml::Equal::new(&aml::Local(4), ACPI_TYPE_INT),
                                                 vec![&aml::Store::new(
                                                     &aml::Local(6),
                                                     &aml::ToInteger::new(
@@ -430,7 +452,7 @@ impl Aml for DsmMethod {
                                                 )],
                                             ),
                                             &aml::Else::new(vec![&aml::If::new(
-                                                &aml::Equal::new(&aml::Local(4), &2_usize),
+                                                &aml::Equal::new(&aml::Local(4), ACPI_TYPE_STRING),
                                                 vec![&aml::Store::new(
                                                     &aml::Local(6),
                                                     &aml::ToString::new(

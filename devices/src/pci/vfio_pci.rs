@@ -85,6 +85,8 @@ use crate::pci::PciCapabilityID;
 use crate::pci::PciClassCode;
 use crate::pci::PciId;
 use crate::pci::PciInterruptPin;
+use crate::pci::PCI_VCFG_DSM;
+use crate::pci::PCI_VCFG_PM;
 use crate::pci::PCI_VENDOR_ID_INTEL;
 use crate::vfio::VfioDevice;
 use crate::vfio::VfioError;
@@ -2108,7 +2110,7 @@ impl PciDevice for VfioPciDevice {
 
     fn write_virtual_config_register(&mut self, reg_idx: usize, value: u32) {
         match reg_idx {
-            0 => {
+            PCI_VCFG_PM => {
                 match value {
                     0 => {
                         if let Some(pm_evt) =
@@ -2126,18 +2128,27 @@ impl PciDevice for VfioPciDevice {
                     }
                 };
             }
-            1 => {
+            PCI_VCFG_DSM => {
                 if let Some(shm) = &self.vcfg_shm_mmap {
                     let mut args = [0u8; 4096];
-                    shm.read_slice(&mut args, 0)
-                        .expect("failed to read DSM Args.");
-                    let res = self
-                        .device
-                        .acpi_dsm(args.to_vec())
-                        .expect("failed to call DSM.");
-                    shm.write_slice(&res, 0)
-                        .expect("failed to write DSM result.");
-                    shm.msync().expect("failed to msync.");
+                    if let Err(e) = shm.read_slice(&mut args, 0) {
+                        error!("failed to read DSM Args: {}", e);
+                        return;
+                    }
+                    let res = match self.device.acpi_dsm(&args) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            error!("failed to call DSM: {}", e);
+                            return;
+                        }
+                    };
+                    if let Err(e) = shm.write_slice(&res, 0) {
+                        error!("failed to write DSM result: {}", e);
+                        return;
+                    }
+                    if let Err(e) = shm.msync() {
+                        error!("failed to msync: {}", e)
+                    }
                 }
             }
             _ => warn!(

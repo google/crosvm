@@ -111,6 +111,10 @@ impl PciInterruptPin {
     }
 }
 
+// VCFG
+pub const PCI_VCFG_PM: usize = 0x0;
+pub const PCI_VCFG_DSM: usize = 0x1;
+
 pub const PCI_VENDOR_ID_INTEL: u16 = 0x8086;
 pub const PCI_VENDOR_ID_REDHAT: u16 = 0x1b36;
 
