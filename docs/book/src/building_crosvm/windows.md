@@ -46,6 +46,7 @@ installing the scripts, the script also sets up environment variables.
 The below script may prompt you to install msvc toolchain via Visual Studio community edition.
 
 ```ps1
+Set-ExecutionPolicy Unrestricted -Scope CurrentUser
 ./tools/install-deps.ps1
 ```
 
