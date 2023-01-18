@@ -1646,7 +1646,7 @@ impl VfioPciDevice {
 
     #[cfg(feature = "direct")]
     fn coordinated_pm(sysfs_path: &Path, enter: bool) -> anyhow::Result<()> {
-        let path = Path::new(sysfs_path).join("power/coordinated");
+        let path = sysfs_path.join("power/coordinated");
         fs::write(&path, if enter { "enter\n" } else { "exit\n" })
             .with_context(|| format!("Failed to write to {}", path.to_string_lossy()))
     }
@@ -1657,7 +1657,7 @@ impl VfioPciDevice {
         i2c_devs: &mut HashMap<u16, PathBuf>,
     ) -> anyhow::Result<()> {
         for entry in iter_dir_starts_with(adap_path, "i2c-")? {
-            let path = Path::new(adap_path).join(entry.file_name());
+            let path = adap_path.join(entry.file_name());
 
             VfioPciDevice::coordinated_pm(&path, true)?;
 
@@ -1693,7 +1693,7 @@ impl VfioPciDevice {
         i2c_devs: &mut HashMap<u16, PathBuf>,
     ) -> anyhow::Result<()> {
         for entry in iter_dir_starts_with(plat_path, "i2c-")? {
-            let path = Path::new(plat_path).join(entry.file_name());
+            let path = plat_path.join(entry.file_name());
             VfioPciDevice::coordinated_pm_i2c_adap(&path, i2c_devs)?;
         }
         Ok(())
@@ -1705,7 +1705,7 @@ impl VfioPciDevice {
         i2c_devs: &mut HashMap<u16, PathBuf>,
     ) -> anyhow::Result<()> {
         for entry in iter_dir_starts_with(sysfs_path, "i2c_designware")? {
-            let path = Path::new(sysfs_path).join(entry.file_name());
+            let path = sysfs_path.join(entry.file_name());
             VfioPciDevice::coordinated_pm_i2c_platdev(&path, i2c_devs)?;
         }
         Ok(())
