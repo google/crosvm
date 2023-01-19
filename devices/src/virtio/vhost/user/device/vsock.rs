@@ -59,7 +59,6 @@ use crate::virtio::vhost::user::device::handler::vmm_va_to_gpa;
 use crate::virtio::vhost::user::device::handler::MappingInfo;
 use crate::virtio::vhost::user::device::handler::VhostUserPlatformOps;
 use crate::virtio::vhost::user::device::handler::VhostUserRegularOps;
-use crate::virtio::vhost::user::device::vvu::doorbell::DoorbellRegion;
 use crate::virtio::vhost::user::device::vvu::pci::VvuPciDevice;
 use crate::virtio::vhost::user::device::vvu::VvuDevice;
 use crate::virtio::Queue;
@@ -78,8 +77,6 @@ struct VsockBackend<H: VhostUserPlatformOps> {
     mem: Option<GuestMemory>,
     vmm_maps: Option<Vec<MappingInfo>>,
     queues: [Queue; NUM_QUEUES],
-    // Only used for vvu device mode.
-    call_evts: [Option<DoorbellRegion>; NUM_QUEUES],
 }
 
 impl<H: VhostUserPlatformOps> VsockBackend<H> {
@@ -114,7 +111,6 @@ impl<H: VhostUserPlatformOps> VsockBackend<H> {
                 Queue::new(MAX_VRING_LEN),
                 Queue::new(MAX_VRING_LEN),
             ],
-            call_evts: Default::default(),
         })
     }
 }
@@ -318,8 +314,6 @@ impl<H: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for VsockBackend<H> {
         let event = match doorbell {
             Doorbell::Call(call_event) => call_event.into_inner(),
             Doorbell::Vfio(doorbell_region) => {
-                self.call_evts[index] = Some(doorbell_region.clone());
-
                 let kernel_evt = Event::new().map_err(|_| Error::SlaveInternalError)?;
                 let task_evt = EventAsync::new(
                     kernel_evt.try_clone().expect("failed to clone event"),
