@@ -25,7 +25,6 @@ use cros_async::EventAsync;
 use cros_async::Executor;
 use data_model::DataInit;
 use data_model::Le64;
-use hypervisor::ProtectionType;
 use vhost::Vhost;
 use vhost::Vsock;
 use vm_memory::GuestMemory;
@@ -48,7 +47,6 @@ use vmm_vhost::SlaveListener;
 use vmm_vhost::SlaveReqHandler;
 use vmm_vhost::VhostUserSlaveReqHandlerMut;
 
-use crate::virtio::base_features;
 use crate::virtio::device_constants::vsock::NUM_QUEUES;
 use crate::virtio::device_constants::vsock::QUEUE_SIZE;
 use crate::virtio::vhost::user::device::handler::sys::unix::run_handler;
@@ -71,7 +69,6 @@ struct VsockBackend<H: VhostUserPlatformOps> {
     ex: Executor,
     handle: Vsock,
     cid: u64,
-    features: u64,
     handler: H,
     protocol_features: VhostUserProtocolFeatures,
     mem: Option<GuestMemory>,
@@ -95,13 +92,11 @@ impl<H: VhostUserPlatformOps> VsockBackend<H> {
                 .context("failed to open `Vsock` socket")?,
         );
 
-        let features = handle.get_features().context("failed to get features")?;
         let protocol_features = VhostUserProtocolFeatures::MQ | VhostUserProtocolFeatures::CONFIG;
         Ok(VsockBackend {
             ex: ex.clone(),
             handle,
             cid,
-            features,
             handler,
             protocol_features,
             mem: None,
@@ -137,15 +132,18 @@ impl<H: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for VsockBackend<H> {
     }
 
     fn get_features(&mut self) -> Result<u64> {
-        let features = base_features(ProtectionType::Unprotected)
-            | self.features
+        // Add the vhost-user features that we support.
+        let features = self.handle.get_features().map_err(convert_vhost_error)?
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         Ok(features)
     }
 
     fn set_features(&mut self, features: u64) -> Result<()> {
+        // Unset the vhost-user feature flags as they are not supported by the underlying vhost
+        // device.
+        let features = features & !VhostUserVirtioFeatures::all().bits();
         self.handle
-            .set_features(features & self.features)
+            .set_features(features)
             .map_err(convert_vhost_error)
     }
 
