@@ -28,8 +28,6 @@ use std::ptr::copy_nonoverlapping;
 use std::sync::Arc;
 
 #[allow(unused_imports)]
-use base::block_signal;
-#[allow(unused_imports)]
 use base::ioctl;
 #[allow(unused_imports)]
 use base::ioctl_with_mut_ptr;
@@ -45,6 +43,7 @@ use base::ioctl_with_val;
 use base::pagesize;
 #[allow(unused_imports)]
 use base::signal;
+use base::sys::BlockedSignal;
 #[allow(unused_imports)]
 use base::unblock_signal;
 #[allow(unused_imports)]
@@ -1742,25 +1741,3 @@ impl Drop for RunnableVcpu {
 /// Hides the zero length array behind a bounds check.
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub type CpuId = FlexibleArrayWrapper<kvm_cpuid2, kvm_cpuid_entry2>;
-
-// Represents a temporarily blocked signal. It will unblock the signal when dropped.
-struct BlockedSignal {
-    signal_num: c_int,
-}
-
-impl BlockedSignal {
-    // Returns a `BlockedSignal` if the specified signal can be blocked, otherwise None.
-    fn new(signal_num: c_int) -> Option<BlockedSignal> {
-        if block_signal(signal_num).is_ok() {
-            Some(BlockedSignal { signal_num })
-        } else {
-            None
-        }
-    }
-}
-
-impl Drop for BlockedSignal {
-    fn drop(&mut self) {
-        unblock_signal(self.signal_num).expect("failed to restore signal mask");
-    }
-}
