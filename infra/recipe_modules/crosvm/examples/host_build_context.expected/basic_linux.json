@@ -119,8 +119,7 @@
       "--output_json",
       "/path/to/tmp/json",
       "--revision",
-      "crosvm@HEAD",
-      "--gerrit_no_reset"
+      "crosvm@HEAD"
     ],
     "cwd": "[CACHE]/builder",
     "env": {
