@@ -129,11 +129,14 @@ impl VhostUserListener {
 
 /// Attaches to an already bound socket via `listener` and handles incoming messages from the
 /// VMM, which are dispatched to the device backend via the `VhostUserBackend` trait methods.
-async fn run_with_handler<L, H>(listener: L, handler: H, ex: &Executor) -> anyhow::Result<()>
+async fn run_with_handler<L>(
+    listener: L,
+    handler: Box<dyn VhostUserSlaveReqHandler>,
+    ex: &Executor,
+) -> anyhow::Result<()>
 where
     L::Endpoint: Endpoint<MasterReq> + AsRawDescriptor,
     L: Listener + AsRawDescriptor,
-    H: VhostUserSlaveReqHandler,
 {
     let mut listener = SlaveListener::<L, _>::new(listener, handler)?;
     listener.set_nonblocking(true)?;
@@ -187,11 +190,13 @@ impl VhostUserListenerTrait for VhostUserListener {
         match self {
             VhostUserListener::Socket(listener) => {
                 let handler = DeviceRequestHandler::new(backend);
-                run_with_handler(listener, Mutex::new(handler), ex).boxed_local()
+                let handler = Box::new(Mutex::new(handler));
+                run_with_handler(listener, handler, ex).boxed_local()
             }
             VhostUserListener::Vvu(listener, ops) => {
                 let handler = DeviceRequestHandler::new_with_ops(backend, Box::new(ops));
-                run_with_handler(*listener, Mutex::new(handler), ex).boxed_local()
+                let handler = Box::new(Mutex::new(handler));
+                run_with_handler(*listener, handler, ex).boxed_local()
             }
         }
     }
