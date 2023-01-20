@@ -255,15 +255,13 @@ pub fn run_console_device(opts: Options) -> anyhow::Result<()> {
     // We won't jail the device and can simply ignore `keep_rds`.
     let device = Box::new(create_vu_console_device(&params, &mut Vec::new())?);
     let ex = Executor::new().context("Failed to create executor")?;
-    let backend = device.into_backend(&ex)?;
 
     let listener = VhostUserListener::new_from_socket_or_vfio(
         &opts.socket,
         &opts.vfio,
-        backend.max_queue_num(),
+        device.max_queue_num(),
         None,
     )?;
 
-    // run_until() returns an Result<Result<..>> which the ? operator lets us flatten.
-    ex.run_until(listener.run_backend(backend, &ex))?
+    listener.run_device(ex, device)
 }
