@@ -442,38 +442,50 @@ impl Server {
         let Tframe { tag, msg } = WireFormat::decode(&mut reader.take(self.cfg.msize as u64))?;
 
         let rmsg = match msg {
-            Tmessage::Version(ref version) => self.version(version).map(Rmessage::Version),
-            Tmessage::Flush(ref flush) => self.flush(flush).and(Ok(Rmessage::Flush)),
-            Tmessage::Walk(walk) => self.walk(walk).map(Rmessage::Walk),
-            Tmessage::Read(ref read) => self.read(read).map(Rmessage::Read),
-            Tmessage::Write(ref write) => self.write(write).map(Rmessage::Write),
-            Tmessage::Clunk(ref clunk) => self.clunk(clunk).and(Ok(Rmessage::Clunk)),
-            Tmessage::Remove(ref remove) => self.remove(remove).and(Ok(Rmessage::Remove)),
-            Tmessage::Attach(ref attach) => self.attach(attach).map(Rmessage::Attach),
-            Tmessage::Auth(ref auth) => self.auth(auth).map(Rmessage::Auth),
-            Tmessage::Statfs(ref statfs) => self.statfs(statfs).map(Rmessage::Statfs),
-            Tmessage::Lopen(ref lopen) => self.lopen(lopen).map(Rmessage::Lopen),
-            Tmessage::Lcreate(lcreate) => self.lcreate(lcreate).map(Rmessage::Lcreate),
-            Tmessage::Symlink(ref symlink) => self.symlink(symlink).map(Rmessage::Symlink),
-            Tmessage::Mknod(ref mknod) => self.mknod(mknod).map(Rmessage::Mknod),
-            Tmessage::Rename(ref rename) => self.rename(rename).and(Ok(Rmessage::Rename)),
-            Tmessage::Readlink(ref readlink) => self.readlink(readlink).map(Rmessage::Readlink),
-            Tmessage::GetAttr(ref get_attr) => self.get_attr(get_attr).map(Rmessage::GetAttr),
-            Tmessage::SetAttr(ref set_attr) => self.set_attr(set_attr).and(Ok(Rmessage::SetAttr)),
-            Tmessage::XattrWalk(ref xattr_walk) => {
+            Ok(Tmessage::Version(ref version)) => self.version(version).map(Rmessage::Version),
+            Ok(Tmessage::Flush(ref flush)) => self.flush(flush).and(Ok(Rmessage::Flush)),
+            Ok(Tmessage::Walk(walk)) => self.walk(walk).map(Rmessage::Walk),
+            Ok(Tmessage::Read(ref read)) => self.read(read).map(Rmessage::Read),
+            Ok(Tmessage::Write(ref write)) => self.write(write).map(Rmessage::Write),
+            Ok(Tmessage::Clunk(ref clunk)) => self.clunk(clunk).and(Ok(Rmessage::Clunk)),
+            Ok(Tmessage::Remove(ref remove)) => self.remove(remove).and(Ok(Rmessage::Remove)),
+            Ok(Tmessage::Attach(ref attach)) => self.attach(attach).map(Rmessage::Attach),
+            Ok(Tmessage::Auth(ref auth)) => self.auth(auth).map(Rmessage::Auth),
+            Ok(Tmessage::Statfs(ref statfs)) => self.statfs(statfs).map(Rmessage::Statfs),
+            Ok(Tmessage::Lopen(ref lopen)) => self.lopen(lopen).map(Rmessage::Lopen),
+            Ok(Tmessage::Lcreate(lcreate)) => self.lcreate(lcreate).map(Rmessage::Lcreate),
+            Ok(Tmessage::Symlink(ref symlink)) => self.symlink(symlink).map(Rmessage::Symlink),
+            Ok(Tmessage::Mknod(ref mknod)) => self.mknod(mknod).map(Rmessage::Mknod),
+            Ok(Tmessage::Rename(ref rename)) => self.rename(rename).and(Ok(Rmessage::Rename)),
+            Ok(Tmessage::Readlink(ref readlink)) => self.readlink(readlink).map(Rmessage::Readlink),
+            Ok(Tmessage::GetAttr(ref get_attr)) => self.get_attr(get_attr).map(Rmessage::GetAttr),
+            Ok(Tmessage::SetAttr(ref set_attr)) => {
+                self.set_attr(set_attr).and(Ok(Rmessage::SetAttr))
+            }
+            Ok(Tmessage::XattrWalk(ref xattr_walk)) => {
                 self.xattr_walk(xattr_walk).map(Rmessage::XattrWalk)
             }
-            Tmessage::XattrCreate(ref xattr_create) => self
+            Ok(Tmessage::XattrCreate(ref xattr_create)) => self
                 .xattr_create(xattr_create)
                 .and(Ok(Rmessage::XattrCreate)),
-            Tmessage::Readdir(ref readdir) => self.readdir(readdir).map(Rmessage::Readdir),
-            Tmessage::Fsync(ref fsync) => self.fsync(fsync).and(Ok(Rmessage::Fsync)),
-            Tmessage::Lock(ref lock) => self.lock(lock).map(Rmessage::Lock),
-            Tmessage::GetLock(ref get_lock) => self.get_lock(get_lock).map(Rmessage::GetLock),
-            Tmessage::Link(link) => self.link(link).and(Ok(Rmessage::Link)),
-            Tmessage::Mkdir(mkdir) => self.mkdir(mkdir).map(Rmessage::Mkdir),
-            Tmessage::RenameAt(rename_at) => self.rename_at(rename_at).and(Ok(Rmessage::RenameAt)),
-            Tmessage::UnlinkAt(unlink_at) => self.unlink_at(unlink_at).and(Ok(Rmessage::UnlinkAt)),
+            Ok(Tmessage::Readdir(ref readdir)) => self.readdir(readdir).map(Rmessage::Readdir),
+            Ok(Tmessage::Fsync(ref fsync)) => self.fsync(fsync).and(Ok(Rmessage::Fsync)),
+            Ok(Tmessage::Lock(ref lock)) => self.lock(lock).map(Rmessage::Lock),
+            Ok(Tmessage::GetLock(ref get_lock)) => self.get_lock(get_lock).map(Rmessage::GetLock),
+            Ok(Tmessage::Link(link)) => self.link(link).and(Ok(Rmessage::Link)),
+            Ok(Tmessage::Mkdir(mkdir)) => self.mkdir(mkdir).map(Rmessage::Mkdir),
+            Ok(Tmessage::RenameAt(rename_at)) => {
+                self.rename_at(rename_at).and(Ok(Rmessage::RenameAt))
+            }
+            Ok(Tmessage::UnlinkAt(unlink_at)) => {
+                self.unlink_at(unlink_at).and(Ok(Rmessage::UnlinkAt))
+            }
+            Err(e) => {
+                // The header was successfully decoded, but the body failed to decode - send an
+                // error response for this tag.
+                let error = format!("Tframe message decode failed: {}", e);
+                Err(io::Error::new(io::ErrorKind::InvalidData, error))
+            }
         };
 
         // Errors while handling requests are never fatal.

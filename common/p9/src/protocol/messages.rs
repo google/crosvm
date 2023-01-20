@@ -121,12 +121,16 @@ pub enum Tmessage {
 #[derive(Debug)]
 pub struct Tframe {
     pub tag: u16,
-    pub msg: Tmessage,
+    pub msg: io::Result<Tmessage>,
 }
 
 impl WireFormat for Tframe {
     fn byte_size(&self) -> u32 {
-        let msg_size = match self.msg {
+        let msg = self
+            .msg
+            .as_ref()
+            .expect("tried to encode Tframe with invalid msg");
+        let msg_size = match msg {
             Tmessage::Version(ref version) => version.byte_size(),
             Tmessage::Flush(ref flush) => flush.byte_size(),
             Tmessage::Walk(ref walk) => walk.byte_size(),
@@ -162,9 +166,19 @@ impl WireFormat for Tframe {
     }
 
     fn encode<W: Write>(&self, writer: &mut W) -> io::Result<()> {
+        let msg = match self.msg.as_ref() {
+            Ok(msg) => msg,
+            Err(_) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "tried to encode Tframe with invalid msg",
+                ))
+            }
+        };
+
         self.byte_size().encode(writer)?;
 
-        let ty = match self.msg {
+        let ty = match msg {
             Tmessage::Version(_) => TVERSION,
             Tmessage::Flush(_) => TFLUSH,
             Tmessage::Walk(_) => TWALK,
@@ -198,7 +212,7 @@ impl WireFormat for Tframe {
         ty.encode(writer)?;
         self.tag.encode(writer)?;
 
-        match self.msg {
+        match msg {
             Tmessage::Version(ref version) => version.encode(writer),
             Tmessage::Flush(ref flush) => flush.encode(writer),
             Tmessage::Walk(ref walk) => walk.encode(writer),
@@ -249,8 +263,15 @@ impl WireFormat for Tframe {
         reader.read_exact(&mut ty)?;
 
         let tag: u16 = WireFormat::decode(reader)?;
+        let msg = Self::decode_message(reader, ty[0]);
 
-        let msg = match ty[0] {
+        Ok(Tframe { tag, msg })
+    }
+}
+
+impl Tframe {
+    fn decode_message<R: Read>(reader: &mut R, ty: u8) -> io::Result<Tmessage> {
+        match ty {
             TVERSION => Ok(Tmessage::Version(WireFormat::decode(reader)?)),
             TFLUSH => Ok(Tmessage::Flush(WireFormat::decode(reader)?)),
             TWALK => Ok(Tmessage::Walk(WireFormat::decode(reader)?)),
@@ -283,9 +304,7 @@ impl WireFormat for Tframe {
                 ErrorKind::InvalidData,
                 format!("unknown message type {}", err),
             )),
-        }?;
-
-        Ok(Tframe { tag, msg })
+        }
     }
 }
 
