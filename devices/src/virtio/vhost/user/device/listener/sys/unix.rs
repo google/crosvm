@@ -4,17 +4,26 @@
 
 use std::pin::Pin;
 use std::str::FromStr;
+use std::sync::Mutex;
 
 use anyhow::bail;
+use anyhow::Context;
 use base::AsRawDescriptor;
 use base::RawDescriptor;
+use cros_async::AsyncWrapper;
 use cros_async::Executor;
 use futures::Future;
 use futures::FutureExt;
 use vmm_vhost::connection::socket::Listener as SocketListener;
 use vmm_vhost::connection::vfio::Device;
 use vmm_vhost::connection::vfio::Listener as VfioListener;
+use vmm_vhost::connection::Endpoint;
+use vmm_vhost::connection::Listener;
+use vmm_vhost::message::MasterReq;
+use vmm_vhost::SlaveListener;
+use vmm_vhost::VhostUserSlaveReqHandler;
 
+use crate::virtio::vhost::user::device::handler::sys::unix::run_handler;
 use crate::virtio::vhost::user::device::handler::sys::unix::VvuOps;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
@@ -118,6 +127,39 @@ impl VhostUserListener {
     }
 }
 
+/// Attaches to an already bound socket via `listener` and handles incoming messages from the
+/// VMM, which are dispatched to the device backend via the `VhostUserBackend` trait methods.
+async fn run_with_handler<L, H>(listener: L, handler: H, ex: Executor) -> anyhow::Result<()>
+where
+    L::Endpoint: Endpoint<MasterReq> + AsRawDescriptor,
+    L: Listener + AsRawDescriptor,
+    H: VhostUserSlaveReqHandler,
+{
+    let mut listener = SlaveListener::<L, _>::new(listener, handler)?;
+    listener.set_nonblocking(true)?;
+
+    loop {
+        // If the listener is not ready on the first call to `accept` and returns `None`, we
+        // temporarily convert it into an async I/O source and yield until it signals there is
+        // input data awaiting, before trying again.
+        match listener
+            .accept()
+            .context("failed to accept an incoming connection")?
+        {
+            Some(req_handler) => return run_handler(req_handler, &ex).await,
+            None => {
+                // Nobody is on the other end yet, wait until we get a connection.
+                let async_waiter = ex
+                    .async_from_local(AsyncWrapper::new(listener))
+                    .context("failed to create async waiter")?;
+                async_waiter.wait_readable().await?;
+
+                // Retrieve the listener back so we can use it again.
+                listener = async_waiter.into_source().into_inner();
+            }
+        }
+    }
+}
 impl VhostUserListenerTrait for VhostUserListener {
     /// Infers whether `path` is a PCI address or a socket path, and create the appropriate type
     /// of listener.
@@ -147,15 +189,11 @@ impl VhostUserListenerTrait for VhostUserListener {
         match self {
             VhostUserListener::Socket(listener) => {
                 let handler = DeviceRequestHandler::new(backend);
-                handler
-                    .run_with_listener::<SocketListener>(listener, ex)
-                    .boxed_local()
+                run_with_handler(listener, Mutex::new(handler), ex).boxed_local()
             }
             VhostUserListener::Vvu(listener, ops) => {
                 let handler = DeviceRequestHandler::new_with_ops(backend, Box::new(ops));
-                handler
-                    .run_with_listener::<VfioListener<_>>(*listener, ex)
-                    .boxed_local()
+                run_with_handler(*listener, Mutex::new(handler), ex).boxed_local()
             }
         }
     }

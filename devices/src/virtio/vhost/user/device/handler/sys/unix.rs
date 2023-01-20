@@ -16,19 +16,16 @@ use cros_async::AsyncWrapper;
 use cros_async::Executor;
 use vm_memory::GuestMemory;
 use vmm_vhost::connection::Endpoint;
-use vmm_vhost::connection::Listener;
 use vmm_vhost::message::MasterReq;
 use vmm_vhost::message::VhostUserMemoryRegion;
 use vmm_vhost::Error as VhostError;
 use vmm_vhost::Protocol;
 use vmm_vhost::Result as VhostResult;
-use vmm_vhost::SlaveListener;
 use vmm_vhost::SlaveReqHandler;
 use vmm_vhost::VhostUserSlaveReqHandler;
 
 use crate::vfio::VfioDevice;
 use crate::virtio::vhost::user::device::handler::CallEvent;
-use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::GuestAddress;
 use crate::virtio::vhost::user::device::handler::MappingInfo;
 use crate::virtio::vhost::user::device::handler::MemoryRegion;
@@ -217,41 +214,6 @@ where
                 .context("failed to wait for the handler to become readable")?;
         }
         req_handler.process_message(hdr, files)?;
-    }
-}
-
-impl DeviceRequestHandler {
-    /// Attaches to an already bound socket via `listener` and handles incoming messages from the
-    /// VMM, which are dispatched to the device backend via the `VhostUserBackend` trait methods.
-    pub async fn run_with_listener<L>(self, listener: L, ex: Executor) -> Result<()>
-    where
-        L::Endpoint: Endpoint<MasterReq> + AsRawDescriptor,
-        L: Listener + AsRawDescriptor,
-    {
-        let mut listener = SlaveListener::<L, _>::new(listener, std::sync::Mutex::new(self))?;
-        listener.set_nonblocking(true)?;
-
-        loop {
-            // If the listener is not ready on the first call to `accept` and returns `None`, we
-            // temporarily convert it into an async I/O source and yield until it signals there is
-            // input data awaiting, before trying again.
-            match listener
-                .accept()
-                .context("failed to accept an incoming connection")?
-            {
-                Some(req_handler) => return run_handler(req_handler, &ex).await,
-                None => {
-                    // Nobody is on the other end yet, wait until we get a connection.
-                    let async_waiter = ex
-                        .async_from_local(AsyncWrapper::new(listener))
-                        .context("failed to create async waiter")?;
-                    async_waiter.wait_readable().await?;
-
-                    // Retrieve the listener back so we can use it again.
-                    listener = async_waiter.into_source().into_inner();
-                }
-            }
-        }
     }
 }
 
