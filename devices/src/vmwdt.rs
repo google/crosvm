@@ -14,6 +14,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+use anyhow::anyhow;
 use base::debug;
 use base::error;
 use base::gettid;
@@ -97,6 +98,7 @@ pub struct Vmwdt {
     // TODO: @sebastianene add separate reset event for the watchdog
     // Reset source if the device is not responding
     reset_evt_wrtube: SendTube,
+    activated: bool,
 }
 
 impl Vmwdt {
@@ -122,6 +124,7 @@ impl Vmwdt {
             worker_thread: None,
             kill_evt,
             reset_evt_wrtube,
+            activated: false,
         })
     }
 
@@ -193,6 +196,7 @@ impl Vmwdt {
         let kill_evt = self.kill_evt.try_clone().unwrap();
         let reset_evt_wrtube = self.reset_evt_wrtube.try_clone().unwrap();
 
+        self.activated = true;
         self.worker_thread = Some(
             thread::Builder::new()
                 .name("vmwdt worker".into())
@@ -236,21 +240,9 @@ impl Vmwdt {
 
 impl Drop for Vmwdt {
     fn drop(&mut self) {
-        if let Err(e) = self.kill_evt.signal() {
-            error!("Failed to stop the bg thread: {}", e);
-            return;
-        }
-
-        if let Some(thread) = self.worker_thread.take() {
-            match thread.join() {
-                Ok(_) => {
-                    debug!("Stopped the bg thread\n");
-                }
-                Err(_) => {
-                    error!("Failed to stop the bg thread");
-                }
-            }
-        }
+        if let Err(e) = self.sleep() {
+            error!("{}", e);
+        };
     }
 }
 
@@ -341,7 +333,32 @@ impl BusDevice for Vmwdt {
     }
 }
 
-impl Suspendable for Vmwdt {}
+impl Suspendable for Vmwdt {
+    fn sleep(&mut self) -> anyhow::Result<()> {
+        if let Err(e) = self.kill_evt.signal() {
+            return Err(anyhow!("Failed to stop the bg thread: {}", e));
+        }
+
+        if let Some(thread) = self.worker_thread.take() {
+            match thread.join() {
+                Ok(_) => {
+                    debug!("Stopped the bg thread\n");
+                }
+                Err(e) => {
+                    return Err(anyhow!("Failed to stop the bg thread: {:?}", e));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn wake(&mut self) -> anyhow::Result<()> {
+        if self.activated {
+            self.start();
+        }
+        Ok(())
+    }
+}
 
 #[cfg(test)]
 mod tests {

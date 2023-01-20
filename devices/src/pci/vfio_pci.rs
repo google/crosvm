@@ -17,7 +17,7 @@ use std::thread;
 use std::u32;
 
 use acpi_tables::aml::Aml;
-#[cfg(feature = "direct")]
+use anyhow::anyhow;
 use anyhow::Context;
 use base::debug;
 use base::error;
@@ -670,6 +670,7 @@ pub struct VfioPciDevice {
     i2c_devs: HashMap<u16, PathBuf>,
     vcfg_shm_mmap: Option<MemoryMapping>,
     mapped_mmio_bars: BTreeMap<PciBarIndex, (u64, Vec<MemSlot>)>,
+    activated: bool,
 }
 
 #[cfg(feature = "direct")]
@@ -889,6 +890,7 @@ impl VfioPciDevice {
             i2c_devs,
             vcfg_shm_mmap: None,
             mapped_mmio_bars: BTreeMap::new(),
+            activated: false,
         })
     }
 
@@ -1384,6 +1386,7 @@ impl VfioPciDevice {
                 );
             }
             Ok(join_handle) => {
+                self.activated = true;
                 self.worker_thread = Some(join_handle);
             }
         }
@@ -2289,6 +2292,14 @@ impl PciDevice for VfioPciDevice {
 
 impl Drop for VfioPciDevice {
     fn drop(&mut self) {
+        if let Err(e) = self.sleep() {
+            error!("{}", e);
+        }
+    }
+}
+
+impl Suspendable for VfioPciDevice {
+    fn sleep(&mut self) -> anyhow::Result<()> {
         #[cfg(feature = "direct")]
         if self.supports_coordinated_pm {
             for (_, i2c_path) in self.i2c_devs.iter() {
@@ -2298,16 +2309,39 @@ impl Drop for VfioPciDevice {
         }
 
         if let Some(kill_evt) = self.kill_evt.take() {
-            let _ = kill_evt.signal();
+            kill_evt.signal().context(format!(
+                "failed to kill {} worker thread",
+                self.debug_label()
+            ))?;
         }
 
         if let Some(worker_thread) = self.worker_thread.take() {
-            let _ = worker_thread.join();
+            let res = match worker_thread.join() {
+                Ok(r) => r,
+                Err(e) => {
+                    return Err(anyhow!(
+                        "{} worker thread panicked: {:?}",
+                        self.debug_label(),
+                        e
+                    ))
+                }
+            };
+            self.pci_address = Some(res.address);
+            self.sysfs_path = res.sysfs_path;
+            self.pm_cap = res.pm_cap;
+            self.msix_cap = res.msix_cap;
+            self.vm_socket_vm = Some(res.vm_socket);
         }
+        Ok(())
+    }
+
+    fn wake(&mut self) -> anyhow::Result<()> {
+        if self.activated {
+            self.start_work_thread();
+        }
+        Ok(())
     }
 }
-
-impl Suspendable for VfioPciDevice {}
 
 #[cfg(test)]
 mod tests {

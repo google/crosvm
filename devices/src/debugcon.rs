@@ -89,7 +89,15 @@ impl Debugcon {
     }
 }
 
-impl Suspendable for Debugcon {}
+impl Suspendable for Debugcon {
+    fn sleep(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn wake(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
 
 #[cfg(test)]
 mod tests {

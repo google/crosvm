@@ -7,6 +7,8 @@ use std::thread;
 
 use acpi_tables::aml;
 use acpi_tables::aml::Aml;
+use anyhow::anyhow;
+use anyhow::Context;
 use base::error;
 use base::warn;
 use base::AsRawDescriptor;
@@ -404,13 +406,9 @@ impl GoldfishBattery {
 
 impl Drop for GoldfishBattery {
     fn drop(&mut self) {
-        if let Some(kill_evt) = self.kill_evt.take() {
-            // Ignore the result because there is nothing we can do with a failure.
-            let _ = kill_evt.signal();
-        }
-        if let Some(thread) = self.monitor_thread.take() {
-            let _ = thread.join();
-        }
+        if let Err(e) = self.sleep() {
+            error!("{}", e);
+        };
     }
 }
 
@@ -510,4 +508,27 @@ impl Aml for GoldfishBattery {
     }
 }
 
-impl Suspendable for GoldfishBattery {}
+impl Suspendable for GoldfishBattery {
+    fn sleep(&mut self) -> anyhow::Result<()> {
+        if let Some(kill_evt) = self.kill_evt.take() {
+            kill_evt
+                .signal()
+                .context("failed to kill GoldfishBattery thread")?;
+        }
+        if let Some(thread) = self.monitor_thread.take() {
+            if let Err(e) = thread.join() {
+                return Err(anyhow!("GoldfishBattery thread panicked: {:?}", e));
+            }
+        }
+        Ok(())
+    }
+
+    fn wake(&mut self) -> anyhow::Result<()> {
+        if self.activated {
+            // Set activated to false for start_monitor to start monitoring again.
+            self.activated = false;
+            self.start_monitor();
+        }
+        Ok(())
+    }
+}

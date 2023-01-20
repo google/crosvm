@@ -17,6 +17,7 @@ cfg_if::cfg_if! {
         use base::{Clock, Timer};
     }
 }
+use anyhow::anyhow;
 use base::error;
 use base::info;
 use base::warn;
@@ -116,6 +117,7 @@ pub struct UserspaceIrqChip<V: VcpuX86_64> {
     // Array of Events that devices will use to assert ioapic pins.
     irq_events: Arc<Mutex<Vec<Option<IrqEvent>>>>,
     dropper: Arc<Mutex<Dropper>>,
+    activated: bool,
 }
 
 /// Helper that implements `Drop` on behalf of `UserspaceIrqChip`.  The many cloned copies of an irq
@@ -200,6 +202,7 @@ impl<V: VcpuX86_64 + 'static> UserspaceIrqChip<V> {
             delayed_ioapic_irq_events: Arc::new(Mutex::new(DelayedIoApicIrqEvents::new()?)),
             irq_events: Arc::new(Mutex::new(Vec::new())),
             dropper: Arc::new(Mutex::new(dropper)),
+            activated: false,
         };
 
         // Setup standard x86 irq routes
@@ -337,23 +340,37 @@ impl<V: VcpuX86_64 + 'static> UserspaceIrqChip<V> {
     }
 }
 
-impl Drop for Dropper {
-    fn drop(&mut self) {
+impl Dropper {
+    fn sleep(&mut self) -> anyhow::Result<()> {
         for evt in self.kill_evts.split_off(0).into_iter() {
             if let Err(e) = evt.signal() {
-                error!("Failed to kill UserspaceIrqChip worker thread: {}", e);
-                return;
+                return Err(anyhow!(
+                    "Failed to kill UserspaceIrqChip worker thread: {}",
+                    e
+                ));
             }
         }
         for thread in self.workers.split_off(0).into_iter() {
             match thread.join() {
                 Ok(r) => {
                     if let Err(e) = r {
-                        error!("UserspaceIrqChip worker thread exited with error: {}", e);
+                        return Err(anyhow!(
+                            "UserspaceIrqChip worker thread exited with error: {}",
+                            e
+                        ));
                     }
                 }
-                Err(e) => error!("UserspaceIrqChip worker thread panicked: {:?}", e),
+                Err(e) => return Err(anyhow!("UserspaceIrqChip worker thread panicked: {:?}", e)),
             }
+        }
+        Ok(())
+    }
+}
+
+impl Drop for Dropper {
+    fn drop(&mut self) {
+        if let Err(e) = self.sleep() {
+            error!("{}", e);
         }
     }
 }
@@ -713,6 +730,7 @@ impl<V: VcpuX86_64 + 'static> IrqChip for UserspaceIrqChip<V> {
             delayed_ioapic_irq_events: self.delayed_ioapic_irq_events.clone(),
             irq_events: self.irq_events.clone(),
             dropper: self.dropper.clone(),
+            activated: self.activated,
         })
     }
 
@@ -783,22 +801,8 @@ impl<V: VcpuX86_64 + 'static> IrqChip for UserspaceIrqChip<V> {
         }
 
         // Spawn timer threads here instead of in new(), in case crosvm is in sandbox mode.
-        let mut dropper = self.dropper.lock();
-        for (i, descriptor) in self.timer_descriptors.iter().enumerate() {
-            let mut worker = TimerWorker {
-                id: i,
-                apic: self.apics[i].clone(),
-                descriptor: *descriptor,
-                vcpus: self.vcpus.clone(),
-                waiter: self.waiters[i].clone(),
-            };
-            dropper.kill_evts.push(Event::new()?);
-            let evt = dropper.kill_evts[i].try_clone()?;
-            let worker_thread = thread::Builder::new()
-                .name(format!("UserspaceIrqChip timer worker {}", i))
-                .spawn(move || worker.run(evt))?;
-            dropper.workers.push(worker_thread);
-        }
+        self.activated = true;
+        let _ = self.wake();
 
         Ok(())
     }
@@ -861,7 +865,35 @@ impl<V: VcpuX86_64 + 'static> BusDevice for UserspaceIrqChip<V> {
     }
 }
 
-impl<V: VcpuX86_64 + 'static> Suspendable for UserspaceIrqChip<V> {}
+impl<V: VcpuX86_64 + 'static> Suspendable for UserspaceIrqChip<V> {
+    fn sleep(&mut self) -> anyhow::Result<()> {
+        let mut dropper = self.dropper.lock();
+        dropper.sleep()
+    }
+
+    fn wake(&mut self) -> anyhow::Result<()> {
+        if self.activated {
+            // create workers and run them.
+            let mut dropper = self.dropper.lock();
+            for (i, descriptor) in self.timer_descriptors.iter().enumerate() {
+                let mut worker = TimerWorker {
+                    id: i,
+                    apic: self.apics[i].clone(),
+                    descriptor: *descriptor,
+                    vcpus: self.vcpus.clone(),
+                    waiter: self.waiters[i].clone(),
+                };
+                dropper.kill_evts.push(Event::new()?);
+                let evt = dropper.kill_evts[i].try_clone()?;
+                let worker_thread = thread::Builder::new()
+                    .name(format!("UserspaceIrqChip timer worker {}", i))
+                    .spawn(move || worker.run(evt))?;
+                dropper.workers.push(worker_thread);
+            }
+        }
+        Ok(())
+    }
+}
 
 impl<V: VcpuX86_64 + 'static> BusDeviceSync for UserspaceIrqChip<V> {
     fn read(&self, info: BusAccessInfo, data: &mut [u8]) {

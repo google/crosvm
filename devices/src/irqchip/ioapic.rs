@@ -499,7 +499,15 @@ impl Ioapic {
     }
 }
 
-impl Suspendable for Ioapic {}
+impl Suspendable for Ioapic {
+    fn sleep(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn wake(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
 
 #[sorted]
 #[derive(Error, Debug)]

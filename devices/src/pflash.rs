@@ -231,7 +231,15 @@ impl BusDevice for Pflash {
     }
 }
 
-impl Suspendable for Pflash {}
+impl Suspendable for Pflash {
+    fn sleep(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn wake(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
 
 #[cfg(test)]
 mod tests {

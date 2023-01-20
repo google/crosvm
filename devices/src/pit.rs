@@ -10,6 +10,7 @@ use std::thread;
 use std::time::Duration;
 use std::time::Instant;
 
+use anyhow::anyhow;
 use base::error;
 use base::warn;
 use base::Error as SysError;
@@ -201,24 +202,14 @@ pub struct Pit {
     // when queried directly by the guest.
     worker_thread: Option<thread::JoinHandle<PitResult<()>>>,
     kill_evt: Event,
+    activated: bool,
 }
 
 impl Drop for Pit {
     fn drop(&mut self) {
-        if let Err(e) = self.kill_evt.signal() {
-            error!("failed to kill PIT worker threads: {}", e);
-            return;
-        }
-        if let Some(thread) = self.worker_thread.take() {
-            match thread.join() {
-                Ok(r) => {
-                    if let Err(e) = r {
-                        error!("pit worker thread exited with error: {}", e)
-                    }
-                }
-                Err(e) => error!("pit worker thread panicked: {:?}", e),
-            }
-        }
+        if let Err(e) = self.sleep() {
+            error!("{}", e);
+        };
     }
 }
 
@@ -298,6 +289,7 @@ impl Pit {
             counters,
             worker_thread: None,
             kill_evt,
+            activated: false,
         })
     }
 
@@ -328,7 +320,7 @@ impl Pit {
                 .spawn(move || worker.run())
                 .map_err(PitError::SpawnThread)?,
         );
-
+        self.activated = true;
         Ok(())
     }
 
@@ -381,7 +373,33 @@ impl Pit {
     }
 }
 
-impl Suspendable for Pit {}
+impl Suspendable for Pit {
+    fn sleep(&mut self) -> anyhow::Result<()> {
+        if let Err(e) = self.kill_evt.signal() {
+            return Err(anyhow!("failed to kill PIT worker threads: {}", e));
+        }
+        if let Some(thread) = self.worker_thread.take() {
+            match thread.join() {
+                Ok(r) => {
+                    if let Err(e) = r {
+                        return Err(anyhow!("pit worker thread exited with error: {}", e));
+                    }
+                }
+                Err(e) => return Err(anyhow!("pit worker thread panicked: {:?}", e)),
+            }
+        }
+        Ok(())
+    }
+
+    fn wake(&mut self) -> anyhow::Result<()> {
+        if self.activated {
+            if let Err(e) = self.start() {
+                error!("failed to start PIT: {}", e);
+            }
+        }
+        Ok(())
+    }
+}
 
 // Each instance of this represents one of the PIT counters. They are used to
 // implement one-shot and repeating timer alarms. An 8254 has three counters.

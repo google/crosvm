@@ -539,7 +539,15 @@ impl Pic {
     }
 }
 
-impl Suspendable for Pic {}
+impl Suspendable for Pic {
+    fn sleep(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn wake(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
 
 #[cfg(test)]
 mod tests {
