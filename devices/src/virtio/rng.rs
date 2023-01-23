@@ -25,6 +25,8 @@ use super::Interrupt;
 use super::Queue;
 use super::SignalableInterrupt;
 use super::VirtioDevice;
+use super::VirtioDeviceSaved;
+use crate::virtio::virtio_device::Error as VirtioError;
 use crate::virtio::Writer;
 use crate::Suspendable;
 
@@ -80,7 +82,7 @@ impl Worker {
         needs_interrupt
     }
 
-    fn run(&mut self, kill_evt: Event) {
+    fn run(mut self, kill_evt: Event) -> anyhow::Result<VirtioDeviceSaved> {
         #[derive(EventToken)]
         enum Token {
             QueueAvailable,
@@ -94,8 +96,7 @@ impl Worker {
         ]) {
             Ok(pc) => pc,
             Err(e) => {
-                error!("failed creating WaitContext: {}", e);
-                return;
+                return Err(anyhow!("failed creating WaitContext: {}", e));
             }
         };
         if let Some(resample_evt) = self.interrupt.get_resample_evt() {
@@ -103,8 +104,7 @@ impl Worker {
                 .add(resample_evt, Token::InterruptResample)
                 .is_err()
             {
-                error!("failed adding resample event to WaitContext.");
-                return;
+                return Err(anyhow!("failed adding resample event to WaitContext."));
             }
         }
 
@@ -137,13 +137,17 @@ impl Worker {
                 self.queue.trigger_interrupt(&self.mem, &self.interrupt);
             }
         }
+        Ok(VirtioDeviceSaved {
+            mem: self.mem,
+            queues: vec![self.queue],
+        })
     }
 }
 
 /// Virtio device for exposing entropy to the guest OS through virtio.
 pub struct Rng {
     kill_evt: Option<Event>,
-    worker_thread: Option<thread::JoinHandle<Worker>>,
+    worker_thread: Option<thread::JoinHandle<anyhow::Result<VirtioDeviceSaved>>>,
     virtio_features: u64,
 }
 
@@ -160,14 +164,9 @@ impl Rng {
 
 impl Drop for Rng {
     fn drop(&mut self) {
-        if let Some(kill_evt) = self.kill_evt.take() {
-            // Ignore the result because there is nothing we can do about it.
-            let _ = kill_evt.signal();
-        }
-
-        if let Some(worker_thread) = self.worker_thread.take() {
-            let _ = worker_thread.join();
-        }
+        if let Err(e) = self.stop() {
+            error!("{}", e);
+        };
     }
 }
 
@@ -208,14 +207,13 @@ impl VirtioDevice for Rng {
         let worker_thread = thread::Builder::new()
             .name("v_rng".to_string())
             .spawn(move || {
-                let mut worker = Worker {
+                let worker = Worker {
                     interrupt,
                     queue,
                     queue_evt,
                     mem,
                 };
-                worker.run(kill_evt);
-                worker
+                worker.run(kill_evt)
             })
             .context("failed to spawn virtio_rng worker")?;
         self.worker_thread = Some(worker_thread);
@@ -240,6 +238,21 @@ impl VirtioDevice for Rng {
             }
         }
         false
+    }
+
+    fn stop(&mut self) -> std::result::Result<Option<VirtioDeviceSaved>, VirtioError> {
+        if let Some(kill_evt) = self.kill_evt.take() {
+            kill_evt.signal().map_err(VirtioError::KillEventFailure)?;
+        }
+
+        if let Some(worker_thread) = self.worker_thread.take() {
+            let state = (worker_thread
+                .join()
+                .map_err(|e| VirtioError::ThreadJoinFailure(format!("{:?}", e)))?)
+            .map_err(VirtioError::InThreadFailure)?;
+            return Ok(Some(state));
+        }
+        Ok(None)
     }
 }
 
