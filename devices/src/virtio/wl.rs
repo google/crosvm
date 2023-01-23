@@ -136,6 +136,8 @@ use crate::virtio::device_constants::wl::QUEUE_SIZES;
 use crate::virtio::device_constants::wl::VIRTIO_WL_F_SEND_FENCES;
 use crate::virtio::device_constants::wl::VIRTIO_WL_F_TRANS_FLAGS;
 use crate::virtio::device_constants::wl::VIRTIO_WL_F_USE_SHMEM;
+use crate::virtio::virtio_device::Error as VirtioError;
+use crate::virtio::VirtioDeviceSaved;
 use crate::Suspendable;
 
 const VIRTWL_SEND_MAX_ALLOCS: usize = 28;
@@ -1834,7 +1836,7 @@ impl Worker {
         }
     }
 
-    fn run(&mut self, kill_evt: Event) {
+    fn run(mut self, kill_evt: Event) -> anyhow::Result<VirtioDeviceSaved> {
         #[derive(EventToken)]
         enum Token {
             InQueue,
@@ -1844,26 +1846,18 @@ impl Worker {
             InterruptResample,
         }
 
-        let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
+        let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
             (&self.in_queue_evt, Token::InQueue),
             (&self.out_queue_evt, Token::OutQueue),
             (&kill_evt, Token::Kill),
             (&self.state.wait_ctx, Token::State),
-        ]) {
-            Ok(pc) => pc,
-            Err(e) => {
-                error!("failed creating WaitContext: {}", e);
-                return;
-            }
-        };
+        ])
+        .context("failed creating WaitContext")?;
+
         if let Some(resample_evt) = self.interrupt.get_resample_evt() {
-            if wait_ctx
+            wait_ctx
                 .add(resample_evt, Token::InterruptResample)
-                .is_err()
-            {
-                error!("failed adding resample event to WaitContext.");
-                return;
-            }
+                .context("failed adding resample event to WaitContext.")?;
         }
 
         let mut watching_state_ctx = true;
@@ -1925,12 +1919,17 @@ impl Worker {
                 }
             }
         }
+
+        Ok(VirtioDeviceSaved {
+            mem: self.mem,
+            queues: vec![self.in_queue, self.out_queue],
+        })
     }
 }
 
 pub struct Wl {
     kill_evt: Option<Event>,
-    worker_thread: Option<thread::JoinHandle<()>>,
+    worker_thread: Option<thread::JoinHandle<anyhow::Result<VirtioDeviceSaved>>>,
     wayland_paths: Map<String, PathBuf>,
     mapper: Option<Box<dyn SharedMemoryMapper>>,
     resource_bridge: Option<Tube>,
@@ -1968,13 +1967,8 @@ impl Wl {
 
 impl Drop for Wl {
     fn drop(&mut self) {
-        if let Some(kill_evt) = self.kill_evt.take() {
-            // Ignore the result because there is nothing we can do about it.
-            let _ = kill_evt.signal();
-        }
-
-        if let Some(worker_thread) = self.worker_thread.take() {
-            let _ = worker_thread.join();
+        if let Err(e) = self.stop() {
+            error!("{}", e);
         }
     }
 }
@@ -2085,7 +2079,7 @@ impl VirtioDevice for Wl {
                     gralloc,
                     address_offset,
                 )
-                .run(kill_evt);
+                .run(kill_evt)
             })
             .context("failed to spawn virtio_wl worker")?;
 
@@ -2106,6 +2100,23 @@ impl VirtioDevice for Wl {
 
     fn set_shared_memory_mapper(&mut self, mapper: Box<dyn SharedMemoryMapper>) {
         self.mapper = Some(mapper);
+    }
+
+    fn stop(&mut self) -> std::result::Result<Option<VirtioDeviceSaved>, VirtioError> {
+        if let Some(kill_evt) = self.kill_evt.take() {
+            if let Err(e) = kill_evt.signal() {
+                return Err(VirtioError::KillEventFailure(e));
+            }
+        }
+
+        if let Some(worker_thread) = self.worker_thread.take() {
+            let state = (worker_thread
+                .join()
+                .map_err(|e| VirtioError::ThreadJoinFailure(format!("{:?}", e)))?)
+            .map_err(VirtioError::InThreadFailure)?;
+            return Ok(Some(state));
+        }
+        Ok(None)
     }
 }
 

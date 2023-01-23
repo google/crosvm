@@ -921,11 +921,18 @@ impl PciDevice for VirtioPciDevice {
 
 impl Suspendable for VirtioPciDevice {
     fn sleep(&mut self) -> anyhow::Result<()> {
-        self.device.sleep()
+        if let Some(state) = self.device.stop()? {
+            self.queues = state.queues;
+            self.mem = state.mem;
+        }
+        Ok(())
     }
 
     fn wake(&mut self) -> anyhow::Result<()> {
-        self.device.wake()
+        if self.device_activated {
+            self.activate()?;
+        }
+        Ok(())
     }
 
     fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
