@@ -8,6 +8,7 @@ use std::ffi::CString;
 use std::io;
 use std::mem;
 use std::panic;
+use std::process::abort;
 
 use super::SharedMemory;
 
@@ -30,6 +31,10 @@ pub fn install_memfd_handler() {
             // Intentionally leak panic_memfd so it is picked up by the crash handler.
             mem::forget(panic_memfd);
         }
-        hook(p)
+        hook(p);
+
+        // If this is a multithreaded program, a panic in one thread will not kill the whole
+        // process. Abort so the entire process gets killed and produces a core dump.
+        abort();
     }));
 }
