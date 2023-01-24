@@ -33,20 +33,6 @@ const VIRTQ_USED_F_NO_NOTIFY: u16 = 0x1;
 #[allow(dead_code)]
 const VIRTQ_AVAIL_F_NO_INTERRUPT: u16 = 0x1;
 
-/// Consuming iterator over all available descriptor chain heads in the queue.
-pub struct AvailIter<'a, 'b> {
-    mem: &'a GuestMemory,
-    queue: &'b mut Queue,
-}
-
-impl<'a, 'b> Iterator for AvailIter<'a, 'b> {
-    type Item = DescriptorChain;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.queue.pop(self.mem)
-    }
-}
-
 /// A virtio queue's parameters.
 pub struct Queue {
     /// Whether this queue has already been activated.
@@ -456,11 +442,6 @@ impl Queue {
             self.pop_peeked(mem);
         }
         descriptor_chain
-    }
-
-    /// A consuming iterator over all available descriptor chain heads offered by the driver.
-    pub fn iter<'a, 'b>(&'b mut self, mem: &'a GuestMemory) -> AvailIter<'a, 'b> {
-        AvailIter { mem, queue: self }
     }
 
     /// Asynchronously read the next descriptor chain from the queue.
