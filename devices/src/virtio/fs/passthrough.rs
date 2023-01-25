@@ -565,6 +565,9 @@ impl Default for Config {
 /// directory ends up as the root of the file system process. One way to accomplish this is via a
 /// combination of mount namespaces and the pivot_root system call.
 pub struct PassthroughFs {
+    // Mutex that must be acquired before executing a process-wide operation such as fchdir.
+    process_lock: Mutex<()>,
+
     // File descriptors for various points in the file system tree.
     inodes: Mutex<MultikeyBTreeMap<Inode, InodeAltKey, Arc<InodeData>>>,
     next_inode: AtomicU64,
@@ -633,6 +636,7 @@ impl PassthroughFs {
         let proc = unsafe { File::from_raw_descriptor(raw_descriptor) };
 
         Ok(PassthroughFs {
+            process_lock: Mutex::new(()),
             inodes: Mutex::new(MultikeyBTreeMap::new()),
             next_inode: AtomicU64::new(ROOT_ID + 1),
 
@@ -950,12 +954,17 @@ impl PassthroughFs {
     // directory. This effectively emulates an *at syscall starting at /proc, which is useful when
     // there is no *at syscall available. Panics if any of the fchdir calls fail or if there is no
     // root inode.
+    //
+    // NOTE: this method acquires an `self`-wide lock. If any locks are acquired in `f`, care must
+    // be taken to avoid the risk of deadlocks.
     fn with_proc_chdir<F, T>(&self, f: F) -> T
     where
         F: FnOnce() -> T,
     {
         let root = self.find_inode(ROOT_ID).expect("failed to find root inode");
 
+        // Acquire a lock for `fchdir`.
+        let _proc_lock = self.process_lock.lock();
         // Safe because this doesn't modify any memory and we check the return value. Since the
         // fchdir should never fail we just use debug_asserts.
         let proc_cwd = unsafe { libc::fchdir(self.proc.as_raw_descriptor()) };
