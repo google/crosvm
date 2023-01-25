@@ -14,8 +14,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -23,6 +21,7 @@ use base::ioctl;
 use base::AsRawDescriptor;
 use net_util::TapTCommon;
 use once_cell::sync::Lazy;
+use rand::random;
 use tempfile::tempfile;
 
 static TAP_AVAILABLE: Lazy<bool> = Lazy::new(|| net_util::sys::unix::Tap::new(true, false).is_ok());
@@ -60,13 +59,9 @@ fn get_crosvm_path() -> PathBuf {
 }
 
 fn build_plugin(src: &str) -> RemovePath {
-    static PLUGIN_NUM: AtomicUsize = AtomicUsize::new(0);
     let libcrosvm_plugin_dir = get_target_path();
     let mut out_bin = libcrosvm_plugin_dir.clone();
-    out_bin.push(format!(
-        "plugin-test{}",
-        PLUGIN_NUM.fetch_add(1, Ordering::Relaxed)
-    ));
+    out_bin.push(format!("plugin-test-{:08X}", random::<u32>()));
     let mut child = Command::new(var_os("CC").unwrap_or(OsString::from("cc")))
         .args(["-Icrosvm_plugin", "-pthread", "-o"]) // crosvm.h location and set output path.
         .arg(&out_bin)

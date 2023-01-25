@@ -455,6 +455,7 @@ which = "4"
 
 [dev-dependencies]
 base = "*"
+rand = "0.8"
 
 [patch.crates-io]
 audio_streams = { path = "common/audio_streams" }

@@ -7,3 +7,4 @@ edition = "2021"
 [dependencies]
 anyhow = "*"
 cfg-if = "*"
+named-lock = "0.3"
