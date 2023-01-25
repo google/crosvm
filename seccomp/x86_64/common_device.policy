@@ -59,3 +59,8 @@ write: 1
 writev: 1
 fcntl: 1
 uname: 1
+
+## Rules for vmm-swap
+userfaultfd: 1
+# 0xc018aa3f == UFFDIO_API
+ioctl: arg1 == 0xc018aa3f

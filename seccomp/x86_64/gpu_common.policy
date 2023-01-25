@@ -112,3 +112,8 @@ kcmp: 1
 access: 1
 getgid: 1
 getegid: 1
+
+## Rules for vmm-swap
+userfaultfd: 1
+# 0xc018aa3f == UFFDIO_API
+ioctl: arg1 == 0xc018aa3f

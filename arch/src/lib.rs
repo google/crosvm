@@ -446,6 +446,7 @@ pub trait LinuxArch {
         dump_device_tree_blob: Option<PathBuf>,
         debugcon_jail: Option<Minijail>,
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] pflash_jail: Option<Minijail>,
+        #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmArch,
@@ -483,6 +484,7 @@ pub trait LinuxArch {
         #[cfg(unix)] minijail: Option<Minijail>,
         resources: &mut SystemAllocator,
         hp_control_tube: &mpsc::Sender<PciRootCommand>,
+        #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
     ) -> Result<PciAddress, Self::Error>;
 }
 
@@ -627,6 +629,7 @@ pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
     #[cfg(unix)] jail: Option<Minijail>,
     resources: &mut SystemAllocator,
     hp_control_tube: &mpsc::Sender<PciRootCommand>,
+    #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
 ) -> Result<PciAddress, DeviceRegistrationError> {
     // Allocate PCI device address before allocating BARs.
     let pci_address = device
@@ -693,8 +696,14 @@ pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
 
     #[cfg(unix)]
     let arced_dev: Arc<Mutex<dyn BusDevice>> = if let Some(jail) = jail {
-        let proxy = ProxyDevice::new(device, jail, keep_rds)
-            .map_err(DeviceRegistrationError::ProxyDeviceCreation)?;
+        let proxy = ProxyDevice::new(
+            device,
+            jail,
+            keep_rds,
+            #[cfg(feature = "swap")]
+            swap_controller,
+        )
+        .map_err(DeviceRegistrationError::ProxyDeviceCreation)?;
         linux
             .pid_debug_label_map
             .insert(proxy.pid() as u32, proxy.debug_label());
@@ -740,6 +749,7 @@ pub fn generate_virtio_mmio_bus(
     resources: &mut SystemAllocator,
     vm: &mut impl Vm,
     sdts: Vec<SDT>,
+    #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
 ) -> Result<(BTreeMap<u32, String>, Vec<SDT>), DeviceRegistrationError> {
     #[cfg_attr(windows, allow(unused_mut))]
     let mut pid_labels = BTreeMap::new();
@@ -787,8 +797,14 @@ pub fn generate_virtio_mmio_bus(
 
         #[cfg(unix)]
         let arced_dev: Arc<Mutex<dyn BusDevice>> = if let Some(jail) = jail {
-            let proxy = ProxyDevice::new(device, jail, keep_rds)
-                .map_err(DeviceRegistrationError::ProxyDeviceCreation)?;
+            let proxy = ProxyDevice::new(
+                device,
+                jail,
+                keep_rds,
+                #[cfg(feature = "swap")]
+                swap_controller,
+            )
+            .map_err(DeviceRegistrationError::ProxyDeviceCreation)?;
             pid_labels.insert(proxy.pid() as u32, proxy.debug_label());
             Arc::new(Mutex::new(proxy))
         } else {
@@ -928,6 +944,7 @@ pub fn generate_pci_root(
     vm: &mut impl Vm,
     max_irqs: usize,
     vcfg_base: Option<u64>,
+    #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
 ) -> Result<
     (
         PciRoot,
@@ -1099,8 +1116,14 @@ pub fn generate_pci_root(
 
         #[cfg(unix)]
         let arced_dev: Arc<Mutex<dyn BusDevice>> = if let Some(jail) = jail {
-            let proxy = ProxyDevice::new(device, jail, keep_rds)
-                .map_err(DeviceRegistrationError::ProxyDeviceCreation)?;
+            let proxy = ProxyDevice::new(
+                device,
+                jail,
+                keep_rds,
+                #[cfg(feature = "swap")]
+                swap_controller,
+            )
+            .map_err(DeviceRegistrationError::ProxyDeviceCreation)?;
             pid_labels.insert(proxy.pid() as u32, proxy.debug_label());
             Arc::new(Mutex::new(proxy))
         } else {

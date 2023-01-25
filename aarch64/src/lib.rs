@@ -368,6 +368,7 @@ impl arch::LinuxArch for AArch64 {
         vcpu_ids: &mut Vec<usize>,
         dump_device_tree_blob: Option<PathBuf>,
         _debugcon_jail: Option<Minijail>,
+        #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmAArch64,
@@ -523,6 +524,8 @@ impl arch::LinuxArch for AArch64 {
             &mut vm,
             (devices::AARCH64_GIC_NR_SPIS - AARCH64_IRQ_BASE) as usize,
             None,
+            #[cfg(feature = "swap")]
+            swap_controller,
         )
         .map_err(Error::CreatePciRoot)?;
 
@@ -542,6 +545,8 @@ impl arch::LinuxArch for AArch64 {
                 irq_chip.as_irq_chip_mut(),
                 &mmio_bus,
                 system_allocator,
+                #[cfg(feature = "swap")]
+                swap_controller,
             )
             .map_err(Error::CreatePlatformBus)?;
         pid_debug_label_map.append(&mut platform_pid_debug_label_map);
@@ -562,6 +567,8 @@ impl arch::LinuxArch for AArch64 {
             com_evt_2_4.get_trigger(),
             serial_parameters,
             serial_jail,
+            #[cfg(feature = "swap")]
+            swap_controller,
         )
         .map_err(Error::CreateSerialDevices)?;
 
@@ -625,6 +632,8 @@ impl arch::LinuxArch for AArch64 {
                     irq_chip.as_irq_chip_mut(),
                     bat_irq,
                     system_allocator,
+                    #[cfg(feature = "swap")]
+                    swap_controller,
                 )
                 .map_err(Error::CreateBatDevices)?;
                 (
@@ -724,6 +733,7 @@ impl arch::LinuxArch for AArch64 {
         _minijail: Option<Minijail>,
         _resources: &mut SystemAllocator,
         _tube: &mpsc::Sender<PciRootCommand>,
+        #[cfg(feature = "swap")] _swap_controller: Option<&swap::SwapController>,
     ) -> std::result::Result<PciAddress, Self::Error> {
         // hotplug function isn't verified on AArch64, so set it unsupported here.
         Err(Error::Unsupported)

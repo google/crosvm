@@ -36,6 +36,9 @@ vm_memory = { path = "../vm_memory" }
 minijail = "*" # provided by ebuild
 power_monitor = { path = "../power_monitor" }
 
+[target.'cfg(target_os="linux")'.dependencies]
+swap = { path = "../swap", optional = true }
+
 [target.'cfg(windows)'.dependencies]
 winapi = "*"
 

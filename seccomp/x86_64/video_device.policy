@@ -96,3 +96,8 @@ sched_setscheduler: arg1 == SCHED_IDLE || arg1 == SCHED_BATCH
 sysinfo: 1
 
 prctl: arg0 == PR_SET_NAME
+
+## Rules for vmm-swap
+userfaultfd: 1
+# 0xc018aa3f == UFFDIO_API
+ioctl: arg1 == 0xc018aa3f

@@ -23,11 +23,18 @@ pub fn add_serial_device(
     serial_jail: Option<Minijail>,
     preserved_descriptors: Vec<RawDescriptor>,
     io_bus: &Bus,
+    #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
 ) -> std::result::Result<(), DeviceRegistrationError> {
     let com: Arc<Mutex<dyn BusDevice>> = if let Some(serial_jail) = serial_jail {
         Arc::new(Mutex::new(
-            ProxyDevice::new(com, serial_jail, preserved_descriptors)
-                .map_err(DeviceRegistrationError::ProxyDeviceCreation)?,
+            ProxyDevice::new(
+                com,
+                serial_jail,
+                preserved_descriptors,
+                #[cfg(feature = "swap")]
+                swap_controller,
+            )
+            .map_err(DeviceRegistrationError::ProxyDeviceCreation)?,
         ))
     } else {
         Arc::new(Mutex::new(com))

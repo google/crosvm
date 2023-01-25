@@ -162,7 +162,7 @@ panic-memfd = []
 qcow = ["disk/qcow"]
 
 ## Enables vmm-swap of guest memory. This is only available on Linux.
-swap = ["vm_control/swap", "dep:swap"]
+swap = ["aarch64/swap", "arch/swap", "devices/swap", "vm_control/swap", "x86_64/swap", "dep:swap"]
 
 ## Enables collection of VM statistics.
 stats = ["devices/stats"]

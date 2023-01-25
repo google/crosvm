@@ -93,6 +93,9 @@ p9 = "*"
 usb_util = { path = "../usb_util" }
 vfio_sys = { path = "../vfio_sys" }
 
+[target.'cfg(target_os="linux")'.dependencies]
+swap = { path = "../swap", optional = true }
+
 [target.'cfg(windows)'.dependencies]
 broker_ipc = { path = "../broker_ipc" }
 metrics = { path = "../metrics" }

@@ -1828,6 +1828,8 @@ where
         simple_jail(&cfg.jail_config, "serial_device")?,
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         simple_jail(&cfg.jail_config, "block_device")?,
+        #[cfg(feature = "swap")]
+        swap_controller.as_ref(),
     )
     .context("the architecture failed to build the vm")?;
 
@@ -1968,6 +1970,7 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
     hp_control_tube: &mpsc::Sender<PciRootCommand>,
     iommu_host_tube: &Option<Tube>,
     device: &HotPlugDeviceInfo,
+    #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
 ) -> Result<()> {
     let host_addr = PciAddress::from_path(&device.path)
         .context("failed to parse hotplug device's PCI address")?;
@@ -2011,8 +2014,15 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
                     bail!("Impossible to reach here")
                 }
             };
-            let pci_address =
-                Arch::register_pci_device(linux, pci_bridge, None, sys_allocator, hp_control_tube)?;
+            let pci_address = Arch::register_pci_device(
+                linux,
+                pci_bridge,
+                None,
+                sys_allocator,
+                hp_control_tube,
+                #[cfg(feature = "swap")]
+                swap_controller,
+            )?;
 
             (host_key, pci_address)
         }
@@ -2046,6 +2056,8 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
                 jail,
                 sys_allocator,
                 hp_control_tube,
+                #[cfg(feature = "swap")]
+                swap_controller,
             )?;
             if let Some(iommu_host_tube) = iommu_host_tube {
                 let endpoint_addr = pci_address.to_u32();
@@ -2280,6 +2292,7 @@ fn handle_hotplug_command<V: VmArch, Vcpu: VcpuArch>(
     iommu_host_tube: &Option<Tube>,
     device: &HotPlugDeviceInfo,
     add: bool,
+    #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
 ) -> VmResponse {
     let iommu_host_tube = if cfg.vfio_isolate_hotplug {
         iommu_host_tube
@@ -2295,6 +2308,8 @@ fn handle_hotplug_command<V: VmArch, Vcpu: VcpuArch>(
             hp_control_tube,
             iommu_host_tube,
             device,
+            #[cfg(feature = "swap")]
+            swap_controller,
         )
     } else {
         remove_hotplug_device(linux, sys_allocator, iommu_host_tube, device)
@@ -2734,6 +2749,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                     &iommu_host_tube,
                                                     &device,
                                                     add,
+                                                    #[cfg(feature = "swap")]
+                                                    swap_controller.as_ref(),
                                                 )
                                             }
 

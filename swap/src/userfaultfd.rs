@@ -58,9 +58,7 @@ impl Userfaultfd {
             .close_on_exec(true)
             .non_blocking(true)
             .user_mode_only(false)
-            .require_features(
-                FeatureFlags::EVENT_FORK | FeatureFlags::MISSING_SHMEM | FeatureFlags::EVENT_REMOVE,
-            )
+            .require_features(FeatureFlags::MISSING_SHMEM | FeatureFlags::EVENT_REMOVE)
             .create()?;
         Ok(Self { uffd })
     }

@@ -55,6 +55,7 @@ pub fn add_goldfish_battery(
     irq_chip: &mut dyn IrqChip,
     irq_num: u32,
     resources: &mut SystemAllocator,
+    #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
 ) -> Result<(Tube, u64), DeviceRegistrationError> {
     let alloc = resources.get_anon_alloc();
     let mmio_base = resources
@@ -107,8 +108,14 @@ pub fn add_goldfish_battery(
             mmio_bus
                 .insert(
                     Arc::new(Mutex::new(
-                        ProxyDevice::new(goldfish_bat, jail, keep_rds)
-                            .map_err(DeviceRegistrationError::ProxyDeviceCreation)?,
+                        ProxyDevice::new(
+                            goldfish_bat,
+                            jail,
+                            keep_rds,
+                            #[cfg(feature = "swap")]
+                            swap_controller,
+                        )
+                        .map_err(DeviceRegistrationError::ProxyDeviceCreation)?,
                     )),
                     mmio_base,
                     devices::bat::GOLDFISHBAT_MMIO_LEN,
@@ -138,6 +145,7 @@ pub fn generate_platform_bus(
     irq_chip: &mut dyn IrqChip,
     mmio_bus: &Bus,
     resources: &mut SystemAllocator,
+    #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
 ) -> Result<(Vec<Arc<Mutex<dyn BusDevice>>>, BTreeMap<u32, String>), DeviceRegistrationError> {
     let mut platform_devices = Vec::new();
     let mut pid_labels = BTreeMap::new();
@@ -192,8 +200,14 @@ pub fn generate_platform_bus(
         }
 
         let arced_dev: Arc<Mutex<dyn BusDevice>> = if let Some(jail) = jail {
-            let proxy = ProxyDevice::new(device, jail, keep_rds)
-                .map_err(DeviceRegistrationError::ProxyDeviceCreation)?;
+            let proxy = ProxyDevice::new(
+                device,
+                jail,
+                keep_rds,
+                #[cfg(feature = "swap")]
+                swap_controller,
+            )
+            .map_err(DeviceRegistrationError::ProxyDeviceCreation)?;
             pid_labels.insert(proxy.pid() as u32, proxy.debug_label());
             Arc::new(Mutex::new(proxy))
         } else {
