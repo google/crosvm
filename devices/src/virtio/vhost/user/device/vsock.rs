@@ -65,24 +65,25 @@ use crate::virtio::SignalableInterrupt;
 const MAX_VRING_LEN: u16 = QUEUE_SIZE;
 const EVENT_QUEUE: usize = NUM_QUEUES - 1;
 
-struct VsockBackend<H: VhostUserPlatformOps> {
+struct VsockBackend<O: VhostUserPlatformOps> {
+    queues: [Queue; NUM_QUEUES],
+    vmm_maps: Option<Vec<MappingInfo>>,
+    mem: Option<GuestMemory>,
+    ops: O,
+
     ex: Executor,
     handle: Vsock,
     cid: u64,
-    handler: H,
     protocol_features: VhostUserProtocolFeatures,
-    mem: Option<GuestMemory>,
-    vmm_maps: Option<Vec<MappingInfo>>,
-    queues: [Queue; NUM_QUEUES],
 }
 
-impl<H: VhostUserPlatformOps> VsockBackend<H> {
+impl<O: VhostUserPlatformOps> VsockBackend<O> {
     fn new<P: AsRef<Path>>(
         ex: &Executor,
         cid: u64,
         vhost_socket: P,
-        handler: H,
-    ) -> anyhow::Result<VsockBackend<H>> {
+        ops: O,
+    ) -> anyhow::Result<VsockBackend<O>> {
         let handle = Vsock::new(
             OpenOptions::new()
                 .read(true)
@@ -94,18 +95,18 @@ impl<H: VhostUserPlatformOps> VsockBackend<H> {
 
         let protocol_features = VhostUserProtocolFeatures::MQ | VhostUserProtocolFeatures::CONFIG;
         Ok(VsockBackend {
-            ex: ex.clone(),
-            handle,
-            cid,
-            handler,
-            protocol_features,
-            mem: None,
-            vmm_maps: None,
             queues: [
                 Queue::new(MAX_VRING_LEN),
                 Queue::new(MAX_VRING_LEN),
                 Queue::new(MAX_VRING_LEN),
             ],
+            vmm_maps: None,
+            mem: None,
+            ops,
+            ex: ex.clone(),
+            handle,
+            cid,
+            protocol_features,
         })
     }
 }
@@ -118,9 +119,9 @@ fn convert_vhost_error(err: vhost::Error) -> Error {
     }
 }
 
-impl<H: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for VsockBackend<H> {
+impl<O: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for VsockBackend<O> {
     fn protocol(&self) -> Protocol {
-        self.handler.protocol()
+        self.ops.protocol()
     }
 
     fn set_owner(&mut self) -> Result<()> {
@@ -165,7 +166,7 @@ impl<H: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for VsockBackend<H> {
         contexts: &[VhostUserMemoryRegion],
         files: Vec<File>,
     ) -> Result<()> {
-        let (guest_mem, vmm_maps) = self.handler.set_mem_table(contexts, files)?;
+        let (guest_mem, vmm_maps) = self.ops.set_mem_table(contexts, files)?;
 
         self.handle
             .set_mem_table(&guest_mem)
@@ -291,7 +292,7 @@ impl<H: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for VsockBackend<H> {
             return Err(Error::InvalidParam);
         }
 
-        let event = self.handler.set_vring_kick(index, fd)?;
+        let event = self.ops.set_vring_kick(index, fd)?;
         let index = usize::from(index);
         if index != EVENT_QUEUE {
             self.handle
@@ -307,7 +308,7 @@ impl<H: VhostUserPlatformOps> VhostUserSlaveReqHandlerMut for VsockBackend<H> {
             return Err(Error::InvalidParam);
         }
 
-        let doorbell = self.handler.set_vring_call(index, fd)?;
+        let doorbell = self.ops.set_vring_call(index, fd)?;
         let index = usize::from(index);
         let event = match doorbell {
             Doorbell::Call(call_event) => call_event.into_inner(),
