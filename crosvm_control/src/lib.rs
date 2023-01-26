@@ -118,6 +118,52 @@ pub extern "C" fn crosvm_client_balloon_vms(socket_path: *const c_char, num_byte
     .unwrap_or(false)
 }
 
+/// Enable vmm swap for crosvm instance whose control socket is listening on `socket_path`.
+///
+/// The function returns true on success or false if an error occured.
+#[no_mangle]
+pub extern "C" fn crosvm_client_swap_enable_vm(socket_path: *const c_char) -> bool {
+    catch_unwind(|| {
+        if let Some(socket_path) = validate_socket_path(socket_path) {
+            vms_request(&VmRequest::Swap(SwapCommand::Enable), &socket_path).is_ok()
+        } else {
+            false
+        }
+    })
+    .unwrap_or(false)
+}
+
+/// Swap out staging memory for crosvm instance whose control socket is listening
+/// on `socket_path`.
+///
+/// The function returns true on success or false if an error occured.
+#[no_mangle]
+pub extern "C" fn crosvm_client_swap_swapout_vm(socket_path: *const c_char) -> bool {
+    catch_unwind(|| {
+        if let Some(socket_path) = validate_socket_path(socket_path) {
+            vms_request(&VmRequest::Swap(SwapCommand::SwapOut), &socket_path).is_ok()
+        } else {
+            false
+        }
+    })
+    .unwrap_or(false)
+}
+
+/// Disable vmm swap for crosvm instance whose control socket is listening on `socket_path`.
+///
+/// The function returns true on success or false if an error occured.
+#[no_mangle]
+pub extern "C" fn crosvm_client_swap_disable_vm(socket_path: *const c_char) -> bool {
+    catch_unwind(|| {
+        if let Some(socket_path) = validate_socket_path(socket_path) {
+            vms_request(&VmRequest::Swap(SwapCommand::Disable), &socket_path).is_ok()
+        } else {
+            false
+        }
+    })
+    .unwrap_or(false)
+}
+
 /// Represents an individual attached USB device.
 #[repr(C)]
 pub struct UsbDeviceEntry {
