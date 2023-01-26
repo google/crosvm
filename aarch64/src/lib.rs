@@ -312,6 +312,7 @@ impl arch::LinuxArch for AArch64 {
     /// These should be used to configure the GuestMemory structure for the platform.
     fn guest_memory_layout(
         components: &VmComponents,
+        _hypervisor: &impl Hypervisor,
     ) -> std::result::Result<Vec<(GuestAddress, u64)>, Self::Error> {
         let mut memory_regions =
             vec![(GuestAddress(AARCH64_PHYS_MEM_START), components.memory_size)];

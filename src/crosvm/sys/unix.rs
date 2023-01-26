@@ -129,6 +129,7 @@ use hypervisor::kvm::KvmVcpu;
 use hypervisor::kvm::KvmVm;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use hypervisor::CpuConfigX86_64;
+use hypervisor::Hypervisor;
 use hypervisor::HypervisorCap;
 use hypervisor::ProtectionType;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
@@ -1268,18 +1269,64 @@ fn punch_holes_in_guest_mem_layout_for_mappings(
         .collect()
 }
 
-fn run_kvm(
-    cfg: Config,
-    components: VmComponents,
+struct CreateGuestMemoryResult {
     guest_mem: GuestMemory,
-    #[cfg(feature = "swap")] swap_controller: Option<SwapController>,
-) -> Result<ExitState> {
+    #[cfg(feature = "swap")]
+    swap_controller: Option<SwapController>,
+}
+
+fn create_guest_memory(
+    cfg: &Config,
+    components: &VmComponents,
+    hypervisor: &impl Hypervisor,
+) -> Result<CreateGuestMemoryResult> {
+    let guest_mem_layout = Arch::guest_memory_layout(components, hypervisor)
+        .context("failed to create guest memory layout")?;
+
+    let guest_mem_layout =
+        punch_holes_in_guest_mem_layout_for_mappings(guest_mem_layout, &cfg.file_backed_mappings);
+
+    let guest_mem = GuestMemory::new(&guest_mem_layout).context("failed to create guest memory")?;
+    let mut mem_policy = MemoryPolicy::empty();
+    if components.hugepages {
+        mem_policy |= MemoryPolicy::USE_HUGEPAGES;
+    }
+
+    if cfg.lock_guest_memory {
+        mem_policy |= MemoryPolicy::LOCK_GUEST_MEMORY;
+    }
+    guest_mem.set_memory_policy(mem_policy);
+
+    // Setup page fault handlers for vmm-swap.
+    // This should be called before device processes are forked.
+    #[cfg(feature = "swap")]
+    let swap_controller = cfg
+        .swap_dir
+        .as_ref()
+        .map(|swap_dir| SwapController::launch(guest_mem.clone(), swap_dir.clone()))
+        .transpose()?;
+
+    Ok(CreateGuestMemoryResult {
+        guest_mem,
+        #[cfg(feature = "swap")]
+        swap_controller,
+    })
+}
+
+fn run_kvm(cfg: Config, components: VmComponents) -> Result<ExitState> {
     let kvm = Kvm::new_with_path(&cfg.kvm_device_path).with_context(|| {
         format!(
             "failed to open KVM device {}",
             cfg.kvm_device_path.display(),
         )
     })?;
+
+    let CreateGuestMemoryResult {
+        guest_mem,
+        #[cfg(feature = "swap")]
+        swap_controller,
+    } = create_guest_memory(&cfg, &components, &kvm)?;
+
     let vm = KvmVm::new(&kvm, guest_mem, components.hv_cfg).context("failed to create vm")?;
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -1370,45 +1417,13 @@ pub fn run_config(cfg: Config) -> Result<ExitState> {
 
     let components = setup_vm_components(&cfg)?;
 
-    let guest_mem_layout =
-        Arch::guest_memory_layout(&components).context("failed to create guest memory layout")?;
-
-    let guest_mem_layout =
-        punch_holes_in_guest_mem_layout_for_mappings(guest_mem_layout, &cfg.file_backed_mappings);
-
-    let guest_mem = GuestMemory::new(&guest_mem_layout).context("failed to create guest memory")?;
-    let mut mem_policy = MemoryPolicy::empty();
-    if components.hugepages {
-        mem_policy |= MemoryPolicy::USE_HUGEPAGES;
-    }
-
-    if cfg.lock_guest_memory {
-        mem_policy |= MemoryPolicy::LOCK_GUEST_MEMORY;
-    }
-    guest_mem.set_memory_policy(mem_policy);
-
-    // Setup page fault handlers for vmm-swap.
-    // This should be called before device processes are forked.
-    #[cfg(feature = "swap")]
-    let swap_controller = cfg
-        .swap_dir
-        .as_ref()
-        .map(|swap_dir| SwapController::launch(guest_mem.clone(), swap_dir.clone()))
-        .transpose()?;
-
     let default_hypervisor = get_default_hypervisor().context("no enabled hypervisor")?;
     let hypervisor = cfg.hypervisor.unwrap_or(default_hypervisor);
 
     debug!("creating {:?} hypervisor", hypervisor);
 
     match hypervisor {
-        HypervisorKind::Kvm => run_kvm(
-            cfg,
-            components,
-            guest_mem,
-            #[cfg(feature = "swap")]
-            swap_controller,
-        ),
+        HypervisorKind::Kvm => run_kvm(cfg, components),
     }
 }
 

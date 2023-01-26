@@ -120,6 +120,7 @@ use hypervisor::x86_64::Regs;
 #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
 use hypervisor::x86_64::Sregs;
 use hypervisor::CpuConfigX86_64;
+use hypervisor::Hypervisor;
 use hypervisor::HypervisorX86_64;
 use hypervisor::ProtectionType;
 use hypervisor::VcpuInitX86_64;
@@ -643,6 +644,7 @@ impl arch::LinuxArch for X8664arch {
 
     fn guest_memory_layout(
         components: &VmComponents,
+        _hypervisor: &impl Hypervisor,
     ) -> std::result::Result<Vec<(GuestAddress, u64)>, Self::Error> {
         init_low_memory_layout(components.pcie_ecam, components.pci_low_start);
 
