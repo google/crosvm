@@ -20,12 +20,14 @@ pub use gpu::run_gpu_device;
 pub use gpu::Options as GpuOptions;
 pub use handler::VhostBackendReqConnectionState;
 pub use handler::VhostUserBackend;
+use handler::VhostUserPlatformOps;
 pub use listener::sys::VhostUserListener;
 pub use listener::VhostUserListenerTrait;
 #[cfg(feature = "audio")]
 pub use snd::run_snd_device;
 #[cfg(feature = "audio")]
 pub use snd::Options as SndOptions;
+use vmm_vhost::VhostUserSlaveReqHandler;
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
@@ -54,24 +56,28 @@ cfg_if::cfg_if! {
 
 /// A trait for vhost-user devices.
 ///
-/// Upon being given an [[Executor]], a device can be converted into a [[VhostUserBackend]], which
-/// can then process the requests from the front-end.
+/// Upon being given an [[Executor]], a device can be converted into a
+/// [[VhostUserSlaveReqHandler]], which can then process the requests from the front-end.
 ///
-/// We don't build `VhostUserBackend`s directly to ensure that a `VhostUserBackend` starts to
-/// process queues in the jailed process, not in the main process. `VhostUserDevice` calls
-/// [[VhostUserDevice::into_backend()]] only after jailing, which ensures that any operations by
-/// `VhostUserBackend` is done in the jailed process.
+/// We don't build request handlers directly to ensure that the device starts to process queues in
+/// the jailed process, not in the main process. [[VhostUserDevice::into_req_handler()]] is called
+/// only after jailing, which ensures that any operations by the request handler is done in the
+/// jailed process.
 pub trait VhostUserDevice {
     /// The maximum number of queues that this device can manage.
     fn max_queue_num(&self) -> usize;
 
-    /// Turn this device into a `VhostUserBackend`, ready to process requests.
+    /// Turn this device into a vhost-user request handler that will run the device.
     ///
-    /// If the device needs to perform something after being jailed, this is also the right place
-    /// to do it.
-    fn into_backend(self: Box<Self>, ex: &Executor) -> anyhow::Result<Box<dyn VhostUserBackend>>;
+    /// `ops` is the vhost-user platform ops (i.e. transport) that will be used. `ex` is an
+    /// executor the device can use to schedule its tasks.
+    fn into_req_handler(
+        self: Box<Self>,
+        ops: Box<dyn VhostUserPlatformOps>,
+        ex: &Executor,
+    ) -> anyhow::Result<Box<dyn VhostUserSlaveReqHandler>>;
 
-    /// The preferred ExecutorKind of an Executor to accept by [`VhostUserDevice::into_backend()`].
+    /// The preferred ExecutorKind of an Executor to accept by [`VhostUserDevice::into_req_handler()`].
     fn executor_kind(&self) -> Option<ExecutorKind> {
         None
     }

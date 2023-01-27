@@ -7,8 +7,10 @@ use std::pin::Pin;
 use base::RawDescriptor;
 use cros_async::Executor;
 use futures::Future;
+use vmm_vhost::VhostUserSlaveReqHandler;
 
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::device::handler::VhostUserPlatformOps;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 
 /// TODO implement this. On Windows the `vhost_user_tube` can be provided through the `path`
@@ -25,11 +27,14 @@ impl VhostUserListenerTrait for VhostUserListener {
         todo!()
     }
 
-    fn run_backend<'e>(
+    fn run_req_handler<'e, F>(
         self,
-        _backend: Box<dyn VhostUserBackend>,
+        _handler_builder: F,
         _ex: &'e Executor,
-    ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>> {
+    ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>>
+    where
+        F: FnOnce(Box<dyn VhostUserPlatformOps>) -> Box<dyn VhostUserSlaveReqHandler> + 'e,
+    {
         todo!()
     }
 }

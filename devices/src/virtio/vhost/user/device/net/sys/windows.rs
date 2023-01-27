@@ -44,8 +44,10 @@ use crate::virtio::net::NetError;
 #[cfg(feature = "slirp")]
 use crate::virtio::net::MAX_BUFFER_SIZE;
 use crate::virtio::vhost::user::device::handler::sys::windows::read_from_tube_transporter;
+use crate::virtio::vhost::user::device::handler::sys::windows::run_handler;
 use crate::virtio::vhost::user::device::handler::sys::Doorbell;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
+use crate::virtio::vhost::user::device::handler::VhostUserRegularOps;
 use crate::virtio::vhost::user::device::net::run_ctrl_queue;
 use crate::virtio::vhost::user::device::net::run_tx_queue;
 use crate::virtio::vhost::user::device::net::NetBackend;
@@ -279,7 +281,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         .unwrap(),
     );
 
-    let handler = DeviceRequestHandler::new(dev);
+    let handler = DeviceRequestHandler::new(dev, Box::new(VhostUserRegularOps));
 
     let ex = Executor::new().context("failed to create executor")?;
 
@@ -296,7 +298,12 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     // }
 
     info!("vhost-user net device ready, starting run loop...");
-    if let Err(e) = ex.run_until(handler.run(vhost_user_tube, exit_event, &ex)) {
+    if let Err(e) = ex.run_until(run_handler(
+        Box::new(std::sync::Mutex::new(handler)),
+        vhost_user_tube,
+        exit_event,
+        &ex,
+    )) {
         bail!("error occurred: {}", e);
     }
 

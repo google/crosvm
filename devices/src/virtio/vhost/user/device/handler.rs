@@ -361,7 +361,7 @@ impl VhostUserPlatformOps for VhostUserRegularOps {
     }
 }
 
-/// Structure to have an event loop for interaction between a VMM and `VhostUserBackend`.
+/// A request handler for devices implementing `VhostUserBackend`.
 pub struct DeviceRequestHandler {
     vrings: Vec<Vring>,
     owned: bool,
@@ -372,13 +372,9 @@ pub struct DeviceRequestHandler {
 }
 
 impl DeviceRequestHandler {
-    pub fn new(backend: Box<dyn VhostUserBackend>) -> Self {
-        Self::new_with_ops(backend, Box::new(VhostUserRegularOps))
-    }
-
     /// Creates a vhost-user handler instance for `backend` with a different set of platform ops
     /// than the regular vhost-user ones.
-    pub(crate) fn new_with_ops(
+    pub(crate) fn new(
         backend: Box<dyn VhostUserBackend>,
         ops: Box<dyn VhostUserPlatformOps>,
     ) -> Self {
@@ -1011,7 +1007,7 @@ mod tests {
         });
 
         // Device side
-        let handler = std::sync::Mutex::new(DeviceRequestHandler::new_with_ops(
+        let handler = std::sync::Mutex::new(DeviceRequestHandler::new(
             Box::new(FakeBackend::new()),
             Box::new(VhostUserRegularOps),
         ));

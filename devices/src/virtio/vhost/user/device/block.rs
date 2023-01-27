@@ -29,6 +29,7 @@ pub use sys::start_device as run_block_device;
 pub use sys::Options;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::*;
+use vmm_vhost::VhostUserSlaveReqHandler;
 use zerocopy::AsBytes;
 
 use crate::virtio;
@@ -39,9 +40,11 @@ use crate::virtio::block::asynchronous::BlockAsync;
 use crate::virtio::block::DiskState;
 use crate::virtio::copy_config;
 use crate::virtio::vhost::user::device::handler::sys::Doorbell;
+use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::VhostBackendReqConnection;
 use crate::virtio::vhost::user::device::handler::VhostBackendReqConnectionState;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::device::handler::VhostUserPlatformOps;
 use crate::virtio::vhost::user::device::VhostUserDevice;
 
 const NUM_QUEUES: u16 = 16;
@@ -66,10 +69,11 @@ impl VhostUserDevice for BlockAsync {
         NUM_QUEUES as usize
     }
 
-    fn into_backend(
+    fn into_req_handler(
         mut self: Box<Self>,
+        ops: Box<dyn VhostUserPlatformOps>,
         ex: &Executor,
-    ) -> anyhow::Result<Box<dyn VhostUserBackend>> {
+    ) -> anyhow::Result<Box<dyn VhostUserSlaveReqHandler>> {
         let avail_features =
             self.avail_features | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
 
@@ -123,7 +127,7 @@ impl VhostUserDevice for BlockAsync {
             .detach();
         }
 
-        Ok(Box::new(BlockBackend {
+        let backend = BlockBackend {
             ex: ex.clone(),
             disk_state,
             disk_size: Arc::clone(&self.disk_size),
@@ -136,7 +140,10 @@ impl VhostUserDevice for BlockAsync {
             backend_req_conn: Arc::clone(&backend_req_conn),
             flush_timer_armed,
             workers: Default::default(),
-        }))
+        };
+
+        let handler = DeviceRequestHandler::new(Box::new(backend), ops);
+        Ok(Box::new(std::sync::Mutex::new(handler)))
     }
 
     fn executor_kind(&self) -> Option<ExecutorKind> {

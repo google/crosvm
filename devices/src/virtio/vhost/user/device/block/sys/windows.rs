@@ -26,7 +26,8 @@ use crate::virtio::base_features;
 use crate::virtio::block::block::DiskOption;
 use crate::virtio::vhost::user::device::block::BlockBackend;
 use crate::virtio::vhost::user::device::handler::sys::windows::read_from_tube_transporter;
-use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
+use crate::virtio::vhost::user::device::handler::sys::windows::run_handler;
+use crate::virtio::vhost::user::device::handler::VhostUserRegularOps;
 use crate::virtio::vhost::user::device::VhostUserDevice;
 use crate::virtio::vhost::user::VhostUserBackend;
 use crate::virtio::BlockAsync;
@@ -82,8 +83,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         None,
         None,
         None,
-    )?)
-    .into_backend(&ex)?;
+    )?);
 
     // TODO(b/213170185): Uncomment once sandbox is upstreamed.
     //     if sandbox::is_sandbox_target() {
@@ -94,10 +94,10 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     //     }
 
     // This is basically the event loop.
-    let handler = DeviceRequestHandler::new(block);
+    let handler = block.into_req_handler(Box::new(VhostUserRegularOps), &ex)?;
 
     info!("vhost-user disk device ready, starting run loop...");
-    if let Err(e) = ex.run_until(handler.run(vhost_user_tube, exit_event, &ex)) {
+    if let Err(e) = ex.run_until(run_handler(handler, vhost_user_tube, exit_event, &ex)) {
         bail!("error occurred: {}", e);
     }
 

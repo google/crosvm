@@ -4,7 +4,6 @@
 
 use std::pin::Pin;
 use std::str::FromStr;
-use std::sync::Mutex;
 
 use anyhow::bail;
 use anyhow::Context;
@@ -25,8 +24,8 @@ use vmm_vhost::VhostUserSlaveReqHandler;
 
 use crate::virtio::vhost::user::device::handler::sys::unix::run_handler;
 use crate::virtio::vhost::user::device::handler::sys::unix::VvuOps;
-use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
-use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::device::handler::VhostUserPlatformOps;
+use crate::virtio::vhost::user::device::handler::VhostUserRegularOps;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 use crate::virtio::vhost::user::device::vvu::pci::VvuPciDevice;
 use crate::virtio::vhost::user::device::vvu::VvuDevice;
@@ -182,23 +181,32 @@ impl VhostUserListenerTrait for VhostUserListener {
         })
     }
 
-    fn run_backend<'e>(
+    /// Returns a future that runs a `VhostUserSlaveReqHandler` using this listener.
+    ///
+    /// The request handler is built from the `handler_builder` closure, which is passed the
+    /// `VhostUserPlatformOps` used by this listener. `ex` is the executor on which the request
+    /// handler can schedule its own tasks.
+    fn run_req_handler<'e, F>(
         self,
-        backend: Box<dyn VhostUserBackend>,
+        handler_builder: F,
         ex: &'e Executor,
-    ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>> {
-        match self {
-            VhostUserListener::Socket(listener) => {
-                let handler = DeviceRequestHandler::new(backend);
-                let handler = Box::new(Mutex::new(handler));
-                run_with_handler(listener, handler, ex).boxed_local()
-            }
-            VhostUserListener::Vvu(listener, ops) => {
-                let handler = DeviceRequestHandler::new_with_ops(backend, Box::new(ops));
-                let handler = Box::new(Mutex::new(handler));
-                run_with_handler(*listener, handler, ex).boxed_local()
+    ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'e>>
+    where
+        F: FnOnce(Box<dyn VhostUserPlatformOps>) -> Box<dyn VhostUserSlaveReqHandler> + 'e,
+    {
+        async {
+            match self {
+                VhostUserListener::Socket(listener) => {
+                    let handler = handler_builder(Box::new(VhostUserRegularOps));
+                    run_with_handler(listener, handler, ex).await
+                }
+                VhostUserListener::Vvu(listener, ops) => {
+                    let handler = handler_builder(Box::new(ops));
+                    run_with_handler(*listener, handler, ex).await
+                }
             }
         }
+        .boxed_local()
     }
 
     fn take_parent_process_resources(&mut self) -> Option<Box<dyn std::any::Any>> {

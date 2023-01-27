@@ -43,7 +43,9 @@ use crate::virtio::snd::common_backend::SndData;
 use crate::virtio::snd::common_backend::MAX_QUEUE_NUM;
 use crate::virtio::snd::parameters::Parameters;
 use crate::virtio::vhost::user::device::handler::sys::Doorbell;
+use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::VhostUserDevice;
 
 static SND_EXECUTOR: OnceCell<Executor> = OnceCell::new();
 
@@ -110,6 +112,21 @@ impl SndBackend {
             tx_recv: Some(tx_recv),
             rx_recv: Some(rx_recv),
         })
+    }
+}
+
+impl VhostUserDevice for SndBackend {
+    fn max_queue_num(&self) -> usize {
+        MAX_QUEUE_NUM
+    }
+
+    fn into_req_handler(
+        self: Box<Self>,
+        ops: Box<dyn super::handler::VhostUserPlatformOps>,
+        _ex: &Executor,
+    ) -> anyhow::Result<Box<dyn vmm_vhost::VhostUserSlaveReqHandler>> {
+        let handler = DeviceRequestHandler::new(self, ops);
+        Ok(Box::new(std::sync::Mutex::new(handler)))
     }
 }
 

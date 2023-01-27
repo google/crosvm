@@ -279,7 +279,7 @@ mod tests {
         });
 
         // Device side
-        let handler = std::sync::Mutex::new(DeviceRequestHandler::new_with_ops(
+        let handler = std::sync::Mutex::new(DeviceRequestHandler::new(
             Box::new(FakeBackend::new()),
             Box::new(VhostUserRegularOps),
         ));

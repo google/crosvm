@@ -40,7 +40,9 @@ use crate::virtio::gpu;
 use crate::virtio::gpu::ProcessDisplayResult;
 use crate::virtio::vhost::user::device::gpu::GpuBackend;
 use crate::virtio::vhost::user::device::handler::sys::windows::read_from_tube_transporter;
+use crate::virtio::vhost::user::device::handler::sys::windows::run_handler;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
+use crate::virtio::vhost::user::device::handler::VhostUserRegularOps;
 use crate::virtio::vhost::user::VhostBackendReqConnectionState;
 use crate::virtio::Gpu;
 use crate::virtio::GpuDisplayParameters;
@@ -222,7 +224,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         backend_req_conn: VhostBackendReqConnectionState::NoConnection,
     });
 
-    let handler = DeviceRequestHandler::new(backend);
+    let handler = DeviceRequestHandler::new(backend, Box::new(VhostUserRegularOps));
 
     // TODO(b/213170185): Uncomment once sandbox is upstreamed.
     // if sandbox::is_sandbox_target() {
@@ -235,7 +237,12 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
     info!("vhost-user gpu device ready, starting run loop...");
 
     // Run until the backend is finished.
-    if let Err(e) = ex.run_until(handler.run(vhost_user_tube, config.exit_event, &ex)) {
+    if let Err(e) = ex.run_until(run_handler(
+        Box::new(std::sync::Mutex::new(handler)),
+        vhost_user_tube,
+        config.exit_event,
+        &ex,
+    )) {
         bail!("error occurred: {}", e);
     }
 

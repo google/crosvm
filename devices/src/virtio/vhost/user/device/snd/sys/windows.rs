@@ -18,9 +18,11 @@ use tube_transporter::TubeToken;
 
 use crate::virtio::snd::parameters::Parameters;
 use crate::virtio::vhost::user::device::handler::sys::windows::read_from_tube_transporter;
-use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
+use crate::virtio::vhost::user::device::handler::sys::windows::run_handler;
+use crate::virtio::vhost::user::device::handler::VhostUserRegularOps;
 use crate::virtio::vhost::user::device::snd::SndBackend;
 use crate::virtio::vhost::user::device::snd::SND_EXECUTOR;
+use crate::virtio::vhost::user::device::VhostUserDevice;
 
 pub mod generic;
 pub use generic as product;
@@ -102,10 +104,15 @@ pub fn run_snd_device(opts: Options) -> anyhow::Result<()> {
     //         .lower_token();
     // }
 
-    let handler = DeviceRequestHandler::new(snd_device);
+    let handler = snd_device.into_req_handler(Box::new(VhostUserRegularOps), &ex)?;
 
     info!("vhost-user snd device ready, starting run loop...");
-    if let Err(e) = ex.run_until(handler.run(vhost_user_tube, config.exit_event, &ex)) {
+    if let Err(e) = ex.run_until(run_handler(
+        handler,
+        vhost_user_tube,
+        config.exit_event,
+        &ex,
+    )) {
         bail!("error occurred: {}", e);
     }
 
