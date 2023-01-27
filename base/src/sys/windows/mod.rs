@@ -30,6 +30,7 @@ mod sched;
 mod shm;
 mod shm_platform;
 mod stream_channel;
+mod terminal;
 mod timer;
 mod wait;
 
@@ -53,6 +54,7 @@ pub use sched::*;
 pub use shm::*;
 pub use shm_platform::*;
 pub use stream_channel::*;
+pub use terminal::*;
 pub use timer::*;
 pub use win::*;
 pub(crate) use write_zeroes::file_write_zeroes_at;
