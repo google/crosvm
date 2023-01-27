@@ -24,6 +24,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fs::File;
 use std::fs::OpenOptions;
+use std::io::stdin;
 use std::iter;
 use std::mem;
 use std::os::windows::fs::OpenOptionsExt;
@@ -61,6 +62,7 @@ use base::RecvTube;
 use base::SendTube;
 #[cfg(feature = "gpu")]
 use base::StreamChannel;
+use base::Terminal;
 use base::TriggeredEvent;
 use base::Tube;
 use base::TubeError;
@@ -950,6 +952,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
     let ime_thread = run_ime_thread(product_args, &exit_evt)?;
 
+    let original_terminal_mode = stdin().set_raw_mode().ok();
+
     let vcpu_boxes: Arc<Mutex<Vec<Box<dyn VcpuArch>>>> = Arc::new(Mutex::new(Vec::new()));
     let run_mode_arc = Arc::new(VcpuRunMode::default());
     let vcpu_threads = run_all_vcpus(
@@ -1111,6 +1115,12 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     if let Some(stats) = stats {
         println!("Statistics Collected:\n{}", stats.lock());
         println!("Statistics JSON:\n{}", stats.lock().json());
+    }
+
+    if let Some(mode) = original_terminal_mode {
+        if let Err(e) = stdin().restore_mode(mode) {
+            warn!("failed to restore terminal mode: {}", e);
+        }
     }
 
     // Explicitly drop the VM structure here to allow the devices to clean up before the
