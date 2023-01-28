@@ -518,16 +518,16 @@ fn create_vmwdt_node(fdt: &mut FdtWriter, vmwdt_cfg: VmWdtConfig) -> Result<()> 
 /// * `pci_cfg` - Location of the memory-mapped PCI configuration space.
 /// * `pci_ranges` - Memory ranges accessible via the PCI host controller.
 /// * `num_cpus` - Number of virtual CPUs the guest will have
-/// * `fdt_load_offset` - The offset into physical memory for the device tree
+/// * `fdt_address` - The offset into physical memory for the device tree
 /// * `cmdline` - The kernel commandline
 /// * `initrd` - An optional tuple of initrd guest physical address and size
 /// * `android_fstab` - An optional file holding Android fstab entries
 /// * `is_gicv3` - True if gicv3, false if v2
 /// * `psci_version` - the current PSCI version
-/// * `bat_mmio_base` - The battery base address
-/// * `bat_irq` - The battery irq number
 /// * `swiotlb` - Reserve a memory pool for DMA
+/// * `bat_mmio_base_and_irq` - The battery base address and irq number
 /// * `vmwdt_cfg` - The virtual watchdog configuration
+/// * `dump_device_tree_blob` - Option path to write DTB to
 pub fn create_fdt(
     fdt_max_size: usize,
     guest_mem: &GuestMemory,
