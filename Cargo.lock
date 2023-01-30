@@ -2101,6 +2101,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "userfaultfd",
+ "userfaultfd-sys",
  "vm_memory",
 ]
 

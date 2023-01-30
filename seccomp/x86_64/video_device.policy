@@ -99,5 +99,5 @@ prctl: arg0 == PR_SET_NAME
 
 ## Rules for vmm-swap
 userfaultfd: 1
-# 0xc018aa3f == UFFDIO_API
-ioctl: arg1 == 0xc018aa3f
+# 0xc018aa3f == UFFDIO_API, 0xaa00 == USERFAULTFD_IOC_NEW
+ioctl: arg1 == 0xc018aa3f || arg1 == 0xaa00

@@ -31,12 +31,14 @@ macro_rules! ioctl_expr {
 macro_rules! ioctl_ioc_nr {
     ($name:ident, $dir:expr, $ty:expr, $nr:expr, $size:expr) => {
         #[allow(non_snake_case)]
+        /// Generates ioctl request number.
         pub const fn $name() -> $crate::platform::IoctlNr {
             $crate::ioctl_expr!($dir, $ty, $nr, $size)
         }
     };
     ($name:ident, $dir:expr, $ty:expr, $nr:expr, $size:expr, $($v:ident),+) => {
         #[allow(non_snake_case)]
+        /// Generates ioctl request number.
         pub const fn $name($($v: ::std::os::raw::c_uint),+) -> $crate::platform::IoctlNr {
             $crate::ioctl_expr!($dir, $ty, $nr, $size)
         }

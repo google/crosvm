@@ -22,5 +22,6 @@ serde_json = "*"
 sync = { path = "../common/sync" } # provided by ebuild
 tempfile = "*"
 thiserror = "*"
+userfaultfd-sys = "0.4.2"
 userfaultfd = "0.5.0"
 vm_memory = { path = "../vm_memory"}

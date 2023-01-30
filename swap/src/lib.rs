@@ -56,6 +56,7 @@ use crate::page_handler::PageHandler;
 use crate::processes::freeze_all_processes;
 use crate::userfaultfd::register_regions;
 use crate::userfaultfd::unregister_regions;
+use crate::userfaultfd::Factory as UffdFactory;
 use crate::userfaultfd::UffdEvent;
 use crate::userfaultfd::Userfaultfd;
 use crate::worker::Channel;
@@ -196,6 +197,7 @@ enum Command {
 /// [SwapController] provides APIs to control vmm-swap.
 pub struct SwapController {
     child_process: Child,
+    uffd_factory: UffdFactory,
     tube: Tube,
 }
 
@@ -212,6 +214,9 @@ impl SwapController {
     pub fn launch(guest_memory: GuestMemory, swap_dir: PathBuf) -> anyhow::Result<Self> {
         info!("vmm-swap is enabled. launch monitor process.");
 
+        let uffd_factory = UffdFactory::new();
+        let uffd = uffd_factory.create().context("create userfaultfd")?;
+
         let mut keep_rds = vec![stdout().as_raw_descriptor(), stderr().as_raw_descriptor()];
 
         let (tube_main_process, tube_monitor_process) = Tube::pair().context("create swap tube")?;
@@ -221,8 +226,8 @@ impl SwapController {
         cros_tracing::push_descriptors!(&mut keep_rds);
         keep_rds.extend(guest_memory.as_raw_descriptors());
 
-        let userfaultfd = Userfaultfd::new().context("create userfaultfd")?;
-        keep_rds.push(userfaultfd.as_raw_descriptor());
+        keep_rds.extend(uffd_factory.as_raw_descriptors());
+        keep_rds.push(uffd.as_raw_descriptor());
 
         // TODO(b/258351526): setup minijail details
         let jail = Minijail::new().context("create minijail")?;
@@ -231,8 +236,7 @@ impl SwapController {
         // current process)
         let child_process =
             fork_process(jail, keep_rds, Some(String::from("swap monitor")), || {
-                if let Err(e) =
-                    monitor_process(tube_monitor_process, guest_memory, userfaultfd, swap_dir)
+                if let Err(e) = monitor_process(tube_monitor_process, guest_memory, uffd, swap_dir)
                 {
                     panic!("page_fault_handler_thread exited with error: {:?}", e)
                 }
@@ -258,6 +262,7 @@ impl SwapController {
 
         Ok(Self {
             child_process,
+            uffd_factory,
             tube: tube_main_process,
         })
     }
@@ -350,7 +355,7 @@ impl SwapController {
     /// Userfaultfd(2) originally has `UFFD_FEATURE_EVENT_FORK`. But it is not applicable to crosvm
     /// since it does not support non-root user namespace.
     pub fn on_process_forked(&self) -> anyhow::Result<()> {
-        let uffd = Userfaultfd::new().context("create userfaultfd")?;
+        let uffd = self.uffd_factory.create().context("create userfaultfd")?;
         self.tube
             .send(&Command::ProcessForked(uffd.as_raw_descriptor()))
             .context("send forked event")?;
@@ -362,7 +367,9 @@ impl SwapController {
 
 impl AsRawDescriptors for SwapController {
     fn as_raw_descriptors(&self) -> Vec<RawDescriptor> {
-        self.tube.as_raw_descriptors()
+        let mut rds = self.uffd_factory.as_raw_descriptors();
+        rds.push(self.tube.as_raw_descriptor());
+        rds
     }
 }
 

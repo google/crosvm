@@ -7,11 +7,22 @@
 #![deny(missing_docs)]
 
 use std::convert::From;
+use std::fs::File;
+use std::fs::OpenOptions;
 use std::ops::Range;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::prelude::FromRawFd;
+use std::os::unix::prelude::OpenOptionsExt;
 
+use anyhow::Context;
+use base::errno_result;
+use base::info;
+use base::ioctl_io_nr;
+use base::ioctl_iowr_nr;
+use base::ioctl_with_mut_ref;
+use base::ioctl_with_val;
 use base::AsRawDescriptor;
+use base::AsRawDescriptors;
 use base::FromRawDescriptor;
 use base::RawDescriptor;
 use thiserror::Error as ThisError;
@@ -21,6 +32,16 @@ use userfaultfd::FeatureFlags;
 use userfaultfd::IoctlFlags;
 use userfaultfd::Uffd;
 use userfaultfd::UffdBuilder;
+
+const DEV_USERFAULTFD_PATH: &str = "/dev/userfaultfd";
+const USERFAULTFD_IOC: u32 = 0xAA;
+ioctl_io_nr!(USERFAULTFD_IOC_NEW, USERFAULTFD_IOC, 0x00);
+ioctl_iowr_nr!(
+    UFFDIO_API,
+    userfaultfd_sys::UFFDIO,
+    userfaultfd_sys::_UFFDIO_API,
+    userfaultfd_sys::uffdio_api
+);
 
 /// Result for Userfaultfd
 pub type Result<T> = std::result::Result<T, Error>;
@@ -115,6 +136,84 @@ pub fn unregister_regions(regions: &[Range<usize>], uffds: &[Userfaultfd]) -> Re
     Ok(())
 }
 
+/// Factory for [Userfaultfd].
+///
+/// If `/dev/userfaultfd` (introduced from Linux 6.1) exists, creates userfaultfd from the dev file.
+/// Otherwise use `userfaultfd(2)` to create a userfaultfd.
+pub struct Factory {
+    dev_file: Option<File>,
+}
+
+impl Factory {
+    /// Create [Factory] and try open `/dev/userfaultfd`.
+    ///
+    /// If it fails to open `/dev/userfaultfd`, userfaultfd creation fallback to `userfaultfd(2)`
+    /// syscall.
+    pub fn new() -> Self {
+        let dev_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .custom_flags(libc::O_CLOEXEC | libc::O_NONBLOCK)
+            .open(DEV_USERFAULTFD_PATH);
+        match dev_file {
+            Ok(dev_file) => Self {
+                dev_file: Some(dev_file),
+            },
+            Err(e) => {
+                info!(
+                    "Failed to open /dev/userfaultfd ({:?}), will fall back to userfaultfd(2)",
+                    e
+                );
+                Self { dev_file: None }
+            }
+        }
+    }
+
+    /// Creates a new [Userfaultfd] for this process.
+    pub fn create(&self) -> anyhow::Result<Userfaultfd> {
+        if let Some(dev_file) = &self.dev_file {
+            // Safe because ioctl(2) USERFAULTFD_IOC_NEW with does not change Rust memory safety.
+            let res = unsafe {
+                ioctl_with_val(
+                    dev_file,
+                    USERFAULTFD_IOC_NEW(),
+                    (libc::O_CLOEXEC | libc::O_NONBLOCK) as libc::c_ulong,
+                )
+            };
+            let uffd = if res < 0 {
+                return errno_result().context("USERFAULTFD_IOC_NEW");
+            } else {
+                // Safe because the uffd is not owned by anyone in this process.
+                unsafe { Userfaultfd::from_raw_descriptor(res) }
+            };
+            let mut api = userfaultfd_sys::uffdio_api {
+                api: userfaultfd_sys::UFFD_API,
+                features: (FeatureFlags::MISSING_SHMEM | FeatureFlags::EVENT_REMOVE).bits(),
+                ioctls: 0,
+            };
+            // Safe because ioctl(2) UFFDIO_API with does not change Rust memory safety.
+            let res = unsafe { ioctl_with_mut_ref(&uffd, UFFDIO_API(), &mut api) };
+            if res < 0 {
+                errno_result().context("UFFDIO_API")
+            } else {
+                Ok(uffd)
+            }
+        } else {
+            Userfaultfd::new().context("create userfaultfd")
+        }
+    }
+}
+
+impl AsRawDescriptors for Factory {
+    fn as_raw_descriptors(&self) -> Vec<RawDescriptor> {
+        if let Some(dev_file) = &self.dev_file {
+            vec![dev_file.as_raw_descriptor()]
+        } else {
+            Vec::new()
+        }
+    }
+}
+
 /// Wrapper for [`userfaultfd::Uffd`] to be used in the vmm-swap feature.
 ///
 /// # Safety
@@ -146,7 +245,9 @@ pub struct Userfaultfd {
 }
 
 impl Userfaultfd {
-    /// Creates a new userfaultfd.
+    /// Creates a new userfaultfd using userfaultfd(2) syscall.
+    ///
+    /// This is public for tests.
     pub fn new() -> Result<Self> {
         let uffd = UffdBuilder::new()
             .close_on_exec(true)
