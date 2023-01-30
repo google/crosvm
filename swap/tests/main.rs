@@ -16,8 +16,8 @@ use base::IntoRawDescriptor;
 use base::SafeDescriptor;
 use base::Tube;
 use common::*;
-use swap::register_regions;
-use swap::unregister_regions;
+use swap::userfaultfd::register_regions;
+use swap::userfaultfd::unregister_regions;
 use swap::userfaultfd::Userfaultfd;
 
 #[test]

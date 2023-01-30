@@ -54,7 +54,8 @@ use crate::logger::PageFaultEventLogger;
 use crate::page_handler::MoveToStaging;
 use crate::page_handler::PageHandler;
 use crate::processes::freeze_all_processes;
-use crate::userfaultfd::UffdError;
+use crate::userfaultfd::register_regions;
+use crate::userfaultfd::unregister_regions;
 use crate::userfaultfd::UffdEvent;
 use crate::userfaultfd::Userfaultfd;
 use crate::worker::Channel;
@@ -411,75 +412,6 @@ impl<'a> UffdList<'a> {
     fn get_list(&self) -> &[Userfaultfd] {
         &self.list
     }
-}
-
-/// Register all the regions to all the userfaultfd
-///
-/// This is public only for integration tests.
-///
-/// # Arguments
-///
-/// * `regions` - the list of address range of regions.
-/// * `uffds` - the reference to the list of [Userfaultfd] for all the processes which may touch
-///   the `address_range` to be registered.
-///
-/// # Safety
-///
-/// Each address range in `regions` must be from guest memory.
-///
-/// The `uffds` must cover all the processes which may touch the `address_range`. otherwise some
-/// pages are zeroed by kernel on the unregistered process instead of swapping in from the swap
-/// file.
-#[deny(unsafe_op_in_unsafe_fn)]
-pub unsafe fn register_regions(
-    regions: &[Range<usize>],
-    uffds: &[Userfaultfd],
-) -> anyhow::Result<()> {
-    for address_range in regions {
-        for uffd in uffds {
-            // safe because the range is from the guest memory region. Even after the memory
-            // is removed by `MADV_REMOVE` at [PageHandler::swap_out()], the content will be
-            // swapped in from the swap file safely on a page fault.
-            let result = unsafe {
-                uffd.register(address_range.start, address_range.end - address_range.start)
-            };
-            match result {
-                Ok(_) => Ok(()),
-                // Userfaultfd returns `ENOMEM` if the corresponding process dies or run as
-                // another program by `exec` system call. crosvm just skip the userfaultfd.
-                Err(UffdError::SystemError(errno)) if errno as i32 == libc::ENOMEM => Ok(()),
-                Err(e) => Err(e),
-            }?;
-        }
-    }
-    Ok(())
-}
-
-/// Unregister all the regions from all the userfaultfd.
-///
-/// This is public only for integration tests.
-///
-/// # Arguments
-///
-/// * `regions` - the list of address range of regions.
-/// * `uffds` - the reference to the list of registered [Userfaultfd].
-pub fn unregister_regions(regions: &[Range<usize>], uffds: &[Userfaultfd]) -> anyhow::Result<()> {
-    for address_range in regions {
-        for uffd in uffds {
-            // `UFFDIO_UNREGISTER` unblocks any threads currently waiting on the region and
-            // remove page fault events on the region from the userfaultfd event queue.
-            let result =
-                uffd.unregister(address_range.start, address_range.end - address_range.start);
-            match result {
-                Ok(_) => Ok(()),
-                // Userfaultfd returns `ENOMEM` if the corresponding process dies or run as
-                // another program by `exec` system call. crosvm just skip the userfaultfd.
-                Err(UffdError::SystemError(errno)) if errno as i32 == libc::ENOMEM => Ok(()),
-                Err(e) => Err(e),
-            }?;
-        }
-    }
-    Ok(())
 }
 
 fn regions_from_guest_memory(guest_memory: &GuestMemory) -> Vec<Range<usize>> {

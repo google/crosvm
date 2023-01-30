@@ -22,8 +22,8 @@ use common::*;
 use data_model::VolatileMemory;
 use swap::page_handler::Error;
 use swap::page_handler::PageHandler;
-use swap::register_regions;
-use swap::unregister_regions;
+use swap::userfaultfd::register_regions;
+use swap::userfaultfd::unregister_regions;
 use swap::worker::Worker;
 
 const HUGEPAGE_SIZE: usize = 2 * 1024 * 1024; // 2MB

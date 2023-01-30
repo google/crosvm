@@ -7,19 +7,113 @@
 #![deny(missing_docs)]
 
 use std::convert::From;
+use std::ops::Range;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::prelude::FromRawFd;
 
 use base::AsRawDescriptor;
 use base::FromRawDescriptor;
 use base::RawDescriptor;
-pub use userfaultfd::Error as UffdError;
+use thiserror::Error as ThisError;
+use userfaultfd::Error as UffdError;
 pub use userfaultfd::Event as UffdEvent;
 use userfaultfd::FeatureFlags;
 use userfaultfd::IoctlFlags;
-use userfaultfd::Result;
 use userfaultfd::Uffd;
 use userfaultfd::UffdBuilder;
+
+/// Result for Userfaultfd
+pub type Result<T> = std::result::Result<T, Error>;
+
+/// Errors for Userfaultfd
+#[derive(ThisError, Debug)]
+pub enum Error {
+    #[error("userfaultfd error: {0:?}")]
+    /// unrecoverable userfaultfd error.
+    Userfaultfd(UffdError),
+    #[error("copy partially succeeded: {0:?} bytes copied")]
+    /// UFFDIO_COPY partillay succeed.
+    PartiallyCopied(usize),
+    #[error("the page is already filled")]
+    /// The page is already filled.
+    PageExist,
+    #[error("the uffd in the corresponding process is already closed")]
+    /// The corresponding process is already dead or has run exec(2).
+    UffdClosed,
+}
+
+impl From<UffdError> for Error {
+    fn from(e: UffdError) -> Self {
+        match e {
+            UffdError::PartiallyCopied(copied) => Self::PartiallyCopied(copied),
+            UffdError::ZeropageFailed(errno) if errno as i32 == libc::EEXIST => Self::PageExist,
+            other => Self::Userfaultfd(other),
+        }
+    }
+}
+
+/// Register all the regions to all the userfaultfd
+///
+/// # Arguments
+///
+/// * `regions` - the list of address range of regions.
+/// * `uffds` - the reference to the list of [Userfaultfd] for all the processes which may touch the
+///   `address_range` to be registered.
+///
+/// # Safety
+///
+/// Each address range in `regions` must be from guest memory.
+///
+/// The `uffds` must cover all the processes which may touch the `address_range`. otherwise some
+/// pages are zeroed by kernel on the unregistered process instead of swapping in from the swap
+/// file.
+#[deny(unsafe_op_in_unsafe_fn)]
+pub unsafe fn register_regions(regions: &[Range<usize>], uffds: &[Userfaultfd]) -> Result<()> {
+    for address_range in regions {
+        for uffd in uffds {
+            // Safe because the range is from the guest memory region.
+            let result = unsafe {
+                uffd.register(address_range.start, address_range.end - address_range.start)
+            };
+            match result {
+                Ok(_) => {}
+                // Skip the userfaultfd for dead processes.
+                Err(Error::UffdClosed) => {}
+                Err(e) => {
+                    return Err(e);
+                }
+            };
+        }
+    }
+    Ok(())
+}
+
+/// Unregister all the regions from all the userfaultfd.
+///
+/// `UFFDIO_UNREGISTER` unblocks any threads currently waiting on the region and remove page fault
+/// events on the region from the userfaultfd event queue.
+///
+/// # Arguments
+///
+/// * `regions` - the list of address range of regions.
+/// * `uffds` - the reference to the list of registered [Userfaultfd].
+pub fn unregister_regions(regions: &[Range<usize>], uffds: &[Userfaultfd]) -> Result<()> {
+    for address_range in regions {
+        for uffd in uffds {
+            let result =
+                uffd.unregister(address_range.start, address_range.end - address_range.start);
+            match result {
+                Ok(_) => {}
+                // Skip the userfaultfd for dead processes.
+                Err(Error::UffdClosed) => {}
+                Err(e) => {
+                    return Err(e);
+                }
+            };
+        }
+    }
+    Ok(())
+}
 
 /// Wrapper for [`userfaultfd::Uffd`] to be used in the vmm-swap feature.
 ///
@@ -78,7 +172,17 @@ impl Userfaultfd {
     /// must live for the lifespan of the userfaultfd kernel object (which may be distinct from the
     /// `Userfaultfd` rust object in this process).
     pub unsafe fn register(&self, addr: usize, len: usize) -> Result<IoctlFlags> {
-        self.uffd.register(addr as *mut libc::c_void, len)
+        match self.uffd.register(addr as *mut libc::c_void, len) {
+            Ok(flags) => Ok(flags),
+            Err(UffdError::SystemError(errno)) if errno as i32 == libc::ENOMEM => {
+                // Userfaultfd returns `ENOMEM` if the corresponding process dies or run as another
+                // program by `exec` system call.
+                // TODO(b/267124393): Verify UFFDIO_ZEROPAGE + ESRCH as well since ENOMEM may be for
+                // other reasons.
+                Err(Error::UffdClosed)
+            }
+            Err(e) => Err(e.into()),
+        }
     }
 
     /// Unregister a range of memory from the userfaultfd.
@@ -88,7 +192,17 @@ impl Userfaultfd {
     /// * `addr` - the starting address of the range of memory.
     /// * `len` - the length in bytes of the range of memory.
     pub fn unregister(&self, addr: usize, len: usize) -> Result<()> {
-        self.uffd.unregister(addr as *mut libc::c_void, len)
+        match self.uffd.unregister(addr as *mut libc::c_void, len) {
+            Ok(_) => Ok(()),
+            Err(UffdError::SystemError(errno)) if errno as i32 == libc::ENOMEM => {
+                // Userfaultfd returns `ENOMEM` if the corresponding process dies or run as another
+                // program by `exec` system call.
+                // TODO(b/267124393): Verify UFFDIO_ZEROPAGE + ESRCH as well since ENOMEM may be for
+                // other reasons.
+                Err(Error::UffdClosed)
+            }
+            Err(e) => Err(e.into()),
+        }
     }
 
     /// Initialize page(s) and fill it with zero.
@@ -102,7 +216,7 @@ impl Userfaultfd {
         // safe because zeroing untouched pages does not break the Rust memory safety since "All
         // runtime-allocated memory in a Rust program begins its life as uninitialized."
         // https://doc.rust-lang.org/nomicon/uninitialized.html
-        unsafe { self.uffd.zeropage(addr as *mut libc::c_void, len, wake) }
+        Ok(unsafe { self.uffd.zeropage(addr as *mut libc::c_void, len, wake) }?)
     }
 
     /// Copy the `data` to the page(s) starting from `addr`.
@@ -117,14 +231,14 @@ impl Userfaultfd {
         // safe because filling untouched pages with data does not break the Rust memory safety
         // since "All runtime-allocated memory in a Rust program begins its life as uninitialized."
         // https://doc.rust-lang.org/nomicon/uninitialized.html
-        unsafe {
+        Ok(unsafe {
             self.uffd.copy(
                 data as *const libc::c_void,
                 addr as *mut libc::c_void,
                 len,
                 wake,
             )
-        }
+        }?)
     }
 
     /// Wake the faulting thread blocked by the page(s).
@@ -136,14 +250,14 @@ impl Userfaultfd {
     /// * `addr` - the starting address of the page(s).
     /// * `len` - the length in bytes of the page(s).
     pub fn wake(&self, addr: usize, len: usize) -> Result<()> {
-        self.uffd.wake(addr as *mut libc::c_void, len)
+        Ok(self.uffd.wake(addr as *mut libc::c_void, len)?)
     }
 
     /// Read an event from the userfaultfd.
     ///
     /// Return `None` immediately if no events is ready to read.
     pub fn read_event(&self) -> Result<Option<UffdEvent>> {
-        self.uffd.read_event()
+        Ok(self.uffd.read_event()?)
     }
 }
 

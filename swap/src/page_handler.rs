@@ -31,7 +31,7 @@ use crate::pagesize::THP_SIZE;
 use crate::staging::CopyOp;
 use crate::staging::Error as StagingError;
 use crate::staging::StagingMemory;
-use crate::userfaultfd::UffdError;
+use crate::userfaultfd::Error as UffdError;
 use crate::userfaultfd::Userfaultfd;
 use crate::worker::Channel;
 use crate::worker::Task;
@@ -295,9 +295,8 @@ impl PageHandler {
                     region.zeroed_pages += 1;
                     Ok(())
                 }
-                Err(UffdError::ZeropageFailed(errno)) if errno as i32 == libc::EEXIST => {
-                    // zeroing fails with EEXIST if the page is already filled. This case
-                    // can happen if page faults on the same page happen on different
+                Err(UffdError::PageExist) => {
+                    // This case can happen if page faults on the same page happen on different
                     // processes.
                     uffd.wake(page_addr, page_size)?;
                     region.redundant_pages += 1;
