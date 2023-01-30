@@ -56,7 +56,7 @@ means tests must be clear both now and in the future to a developer with low fam
 under test. They should be understandable by reading from top to bottom without referencing any
 other code. Towards these goals, tests should:
 
-- To the extent reasonable, be structured as Arrange-Act-Assert.
+- To a reasonable extent, be structured as Arrange-Act-Assert.
 - Test the minimum number of behaviors in a single test. Make separate tests for separate behavior.
 - Avoid helper methods that send critical inputs or assert outputs within the helper itself. It
   should be easy to read a test and determine the critical inputs/outputs without digging through
@@ -117,22 +117,22 @@ Change-Id: I47651060c2ce3a7e9f850b7ed9af8bd035f82de6
 ```
 
 - The first line is a subject that starts with a tag that represents which components your commit
-  relates to. Tags are usually a name of the crate you modified such as `devices:` or `base:`. If
+  relates to. Tags are usually the name of the crate you modified such as `devices:` or `base:`. If
   you only modified a specific component in a crate, you can specify the path to the component as a
-  tag like `devices: vhost: user:`. If your commit modified multiple crates, specify the crate your
-  main change exists. The subject should be no more than 50 characters, including any tags.
+  tag like `devices: vhost: user:`. If your commit modified multiple crates, specify the crate where
+  your main change exists. The subject should be no more than 50 characters, including any tags.
 - The body should consist of a motivation followed by an impact/action. The body text should be
   wrapped to 72 characters.
 - `BUG` lines are used to specify an associated issue number. If the issue is filed at
-  [the Google's issue tracker](https://issuetracker.google.com/), write `BUG=b:<bug number>`. If no
+  [Google's issue tracker](https://issuetracker.google.com/), write `BUG=b:<bug number>`. If no
   issue is associated, write `BUG=None`. You can have multiple `BUG` lines.
 - `TEST` lines are used to describe how you tested your commit in a free form. You can have multiple
   `TEST` lines.
 - `Change-Id` is used to identify your change on Gerrit. It's inserted by the gerrit commit message
   hook as explained in
   [the previous section](https://crosvm.dev/book/contributing/index.html#prerequisites). If a new
-  commit is uploaded with the same `Change-Id` with an existing CL's one, the gerrit will recognize
-  the new commit as a new patchset of the existing CL.
+  commit is uploaded with the same `Change-Id` as an existing CL's `Change-Id`, gerrit will
+  recognize the new commit as a new patchset of the existing CL.
 
 ### Uploading changes
 
@@ -185,11 +185,11 @@ When all tests pass, your change is merged into `origin/main`.
 
 ## Contributing to the documentation
 
-[The book of crosvm] is build with [mdBook]. Each markdown files must follow
+[The book of crosvm] is built with [mdBook]. Each markdown file must follow
 [Google Markdown style guide].
 
 To render the book locally, you need to install mdbook and [mdbook-mermaid], which should be
-installed when you run `./tools/install-deps`script. Or you can use the `tools/dev_container`
+installed when you run `./tools/install-deps` script. Or you can use the `tools/dev_container`
 environment.
 
 ```sh
