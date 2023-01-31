@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::sync::Weak;
 
 use anyhow::Context;
+use base::custom_serde::serialize_arc_mutex;
 use base::error;
 use base::RawDescriptor;
 use base::SendTube;
@@ -31,7 +32,6 @@ use crate::pci::pci_device::PciDevice;
 use crate::pci::PciAddress;
 use crate::pci::PciId;
 use crate::pci::PCI_VENDOR_ID_INTEL;
-use crate::serialize_arc_mutex;
 use crate::Bus;
 use crate::BusAccessInfo;
 use crate::BusDevice;

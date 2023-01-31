@@ -6,6 +6,7 @@
 
 mod alloc;
 mod clock;
+pub mod custom_serde;
 pub mod descriptor;
 pub mod descriptor_reflection;
 mod errno;

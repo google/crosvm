@@ -7,11 +7,11 @@ use std::convert::TryInto;
 
 use anyhow::anyhow;
 use anyhow::Context;
+use base::custom_serde::serialize_arr;
 use base::warn;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
-use serde::Serializer;
 use thiserror::Error;
 
 use crate::pci::PciInterruptPin;
@@ -255,16 +255,6 @@ pub struct PciConfiguration {
     bar_configs: [Option<PciBarConfiguration>; NUM_BAR_REGS],
     // Contains the byte offset and size of the last capability.
     last_capability: Option<(usize, usize)>,
-}
-
-fn serialize_arr<S>(
-    data: &[u32; NUM_CONFIGURATION_REGISTERS],
-    serializer: S,
-) -> std::result::Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    serde::Serialize::serialize(&data[..], serializer)
 }
 
 /// See pci_regs.h in kernel

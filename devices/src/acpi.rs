@@ -16,6 +16,7 @@ use std::thread;
 use acpi_tables::aml;
 use acpi_tables::aml::Aml;
 use anyhow::Context;
+use base::custom_serde::serialize_arc_mutex;
 use base::error;
 use base::warn;
 use base::Error as SysError;
@@ -33,7 +34,6 @@ use vm_control::PmResource;
 use vm_control::PmeNotify;
 
 use crate::pci::CrosvmDeviceId;
-use crate::serialize_arc_mutex;
 use crate::BusAccessInfo;
 use crate::BusDevice;
 use crate::BusResumeDevice;
