@@ -460,6 +460,14 @@ impl arch::LinuxArch for Riscv64 {
     fn get_host_cpu_frequencies_khz() -> Result<BTreeMap<usize, Vec<u32>>> {
         Ok(BTreeMap::new())
     }
+
+    fn get_host_cpu_capacity() -> Result<BTreeMap<usize, u32>> {
+        Ok(BTreeMap::new())
+    }
+
+    fn get_host_cpu_clusters() -> Result<Vec<CpuSet>> {
+        Ok(Vec::new())
+    }
 }
 
 #[cfg(feature = "gdb")]

@@ -108,6 +108,8 @@ cfg_if::cfg_if! {
         pub use linux::{flock, FlockOperation};
         pub use linux::{getegid, geteuid};
         pub use linux::{gettid, kill_process_group, reap_child};
+        pub use linux::logical_core_capacity;
+        pub use linux::logical_core_cluster_id;
         pub use linux::logical_core_frequencies_khz;
         pub use linux::sched_attr;
         pub use linux::sched_setattr;

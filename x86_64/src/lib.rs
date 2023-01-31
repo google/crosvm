@@ -52,6 +52,7 @@ use acpi_tables::aml::Aml;
 use acpi_tables::sdt::SDT;
 use anyhow::Context;
 use arch::get_serial_cmdline;
+use arch::CpuSet;
 use arch::DtbOverlay;
 use arch::GetSerialCmdlineError;
 use arch::RunnableLinuxVm;
@@ -1124,6 +1125,14 @@ impl arch::LinuxArch for X8664arch {
 
     fn get_host_cpu_frequencies_khz() -> Result<BTreeMap<usize, Vec<u32>>> {
         Ok(BTreeMap::new())
+    }
+
+    fn get_host_cpu_capacity() -> Result<BTreeMap<usize, u32>> {
+        Ok(BTreeMap::new())
+    }
+
+    fn get_host_cpu_clusters() -> Result<Vec<CpuSet>> {
+        Ok(Vec::new())
     }
 }
 

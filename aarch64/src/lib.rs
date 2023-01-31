@@ -13,6 +13,7 @@ use std::sync::mpsc;
 use std::sync::Arc;
 
 use arch::get_serial_cmdline;
+use arch::CpuSet;
 use arch::DtbOverlay;
 use arch::GetSerialCmdlineError;
 use arch::RunnableLinuxVm;
@@ -231,6 +232,8 @@ pub enum Error {
     Cmdline(kernel_cmdline::Error),
     #[error("failed to configure CPU Frequencies: {0}")]
     CpuFrequencies(base::Error),
+    #[error("failed to configure CPU topology: {0}")]
+    CpuTopology(base::Error),
     #[error("unable to create battery devices: {0}")]
     CreateBatDevices(arch::DeviceRegistrationError),
     #[error("unable to make an Event: {0}")]
@@ -831,6 +834,33 @@ impl arch::LinuxArch for AArch64 {
                 .enumerate()
                 .collect(),
         )
+    }
+
+    // Returns a (cpu_id -> value) map of the DMIPS/MHz capacities of logical cores
+    // in the host system.
+    fn get_host_cpu_capacity() -> std::result::Result<BTreeMap<usize, u32>, Self::Error> {
+        Ok(Self::collect_for_each_cpu(base::logical_core_capacity)
+            .map_err(Error::CpuTopology)?
+            .into_iter()
+            .enumerate()
+            .collect())
+    }
+
+    // Creates CPU cluster mask for each CPU in the host system.
+    fn get_host_cpu_clusters() -> std::result::Result<Vec<CpuSet>, Self::Error> {
+        let cluster_ids = Self::collect_for_each_cpu(base::logical_core_cluster_id)
+            .map_err(Error::CpuTopology)?;
+        Ok(cluster_ids
+            .iter()
+            .map(|&vcpu_cluster_id| {
+                cluster_ids
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, &cpu_cluster_id)| vcpu_cluster_id == cpu_cluster_id)
+                    .map(|(cpu_id, _)| cpu_id)
+                    .collect()
+            })
+            .collect())
     }
 }
 

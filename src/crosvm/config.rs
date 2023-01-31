@@ -1075,7 +1075,22 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
                 );
             }
         }
+
+        if !cfg.cpu_capacity.is_empty() {
+            return Err(
+                "`host-cpu-topology` requires not to set `cpu-capacity` at the same time"
+                    .to_string(),
+            );
+        }
+
+        if !cfg.cpu_clusters.is_empty() {
+            return Err(
+                "`host-cpu-topology` requires not to set `cpu clusters` at the same time"
+                    .to_string(),
+            );
+        }
     }
+
     #[cfg(all(
         any(target_arch = "arm", target_arch = "aarch64"),
         any(target_os = "android", target_os = "linux")

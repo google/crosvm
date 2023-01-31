@@ -1090,6 +1090,14 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
 
     // if --enable-fw-cfg or --fw-cfg was given, we want to enable fw_cfg
     let fw_cfg_enable = cfg.enable_fw_cfg || !cfg.fw_cfg_parameters.is_empty();
+    let (cpu_clusters, cpu_capacity) = if cfg.host_cpu_topology {
+        (
+            Arch::get_host_cpu_clusters()?,
+            Arch::get_host_cpu_capacity()?,
+        )
+    } else {
+        (cfg.cpu_clusters.clone(), cfg.cpu_capacity.clone())
+    };
 
     Ok(VmComponents {
         #[cfg(target_arch = "x86_64")]
@@ -1106,11 +1114,11 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         bootorder_fw_cfg_blob: Vec::new(),
         vcpu_count: cfg.vcpu_count.unwrap_or(1),
         vcpu_affinity: cfg.vcpu_affinity.clone(),
-        cpu_clusters: cfg.cpu_clusters.clone(),
-        cpu_capacity: cfg.cpu_capacity.clone(),
         #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
         cpu_frequencies,
         fw_cfg_parameters: cfg.fw_cfg_parameters.clone(),
+        cpu_clusters,
+        cpu_capacity,
         no_smt: cfg.no_smt,
         hugepages: cfg.hugepages,
         hv_cfg: hypervisor::Config {

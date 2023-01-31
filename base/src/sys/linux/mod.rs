@@ -89,6 +89,7 @@ pub(in crate::sys) use net::sockaddr_un;
 pub(in crate::sys) use net::sockaddrv4_to_lib_c;
 pub(in crate::sys) use net::sockaddrv6_to_lib_c;
 pub use netlink::*;
+use once_cell::sync::OnceCell;
 pub use poll::EventContext;
 pub use priority::*;
 pub use sched::*;
@@ -107,6 +108,7 @@ use crate::descriptor::SafeDescriptor;
 pub use crate::errno::Error;
 pub use crate::errno::Result;
 pub use crate::errno::*;
+use crate::number_of_logical_cores;
 use crate::round_up_to_page_size;
 pub use crate::sys::unix::descriptor::*;
 use crate::syscall;
@@ -605,6 +607,51 @@ fn parse_sysfs_cpu_info_vec(cpu_id: usize, property: &str) -> Result<Vec<u32>> {
 /// Returns a list of supported frequencies in kHz for a given logical core.
 pub fn logical_core_frequencies_khz(cpu_id: usize) -> Result<Vec<u32>> {
     parse_sysfs_cpu_info_vec(cpu_id, "cpufreq/scaling_available_frequencies")
+}
+
+fn parse_sysfs_cpu_info(cpu_id: usize, property: &str) -> Result<u32> {
+    let path = format!("/sys/devices/system/cpu/cpu{cpu_id}/{property}");
+    std::fs::read_to_string(path)?
+        .trim()
+        .parse()
+        .map_err(|_| Error::new(libc::EINVAL))
+}
+
+/// Returns the capacity (measure of performance) of a given logical core.
+pub fn logical_core_capacity(cpu_id: usize) -> Result<u32> {
+    static CPU_MAX_FREQS: OnceCell<Vec<u32>> = OnceCell::new();
+
+    let cpu_capacity = parse_sysfs_cpu_info(cpu_id, "cpu_capacity")?;
+
+    // Collect and cache the maximum frequencies of all cores. We need to know
+    // the largest maximum frequency between all cores to reverse normalization,
+    // so collect all the values once on the first call to this function.
+    let cpu_max_freqs = CPU_MAX_FREQS.get_or_try_init(|| {
+        (0..number_of_logical_cores()?)
+            .map(logical_core_max_freq_khz)
+            .collect()
+    });
+
+    if let Ok(cpu_max_freqs) = cpu_max_freqs {
+        let largest_max_freq = cpu_max_freqs.iter().max().ok_or(Error::new(EINVAL))?;
+        let cpu_max_freq = cpu_max_freqs.get(cpu_id).ok_or(Error::new(EINVAL))?;
+        (cpu_capacity * largest_max_freq)
+            .checked_div(*cpu_max_freq)
+            .ok_or(Error::new(EINVAL))
+    } else {
+        // cpu-freq is not enabled. Fall back to using the normalized capacity.
+        Ok(cpu_capacity)
+    }
+}
+
+/// Returns the cluster ID of a given logical core.
+pub fn logical_core_cluster_id(cpu_id: usize) -> Result<u32> {
+    parse_sysfs_cpu_info(cpu_id, "topology/physical_package_id")
+}
+
+/// Returns the maximum frequency (in kHz) of a given logical core.
+fn logical_core_max_freq_khz(cpu_id: usize) -> Result<u32> {
+    parse_sysfs_cpu_info(cpu_id, "cpufreq/cpuinfo_max_freq")
 }
 
 #[repr(C)]

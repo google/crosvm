@@ -152,6 +152,15 @@ impl CpuSet {
     }
 }
 
+impl FromIterator<usize> for CpuSet {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = usize>,
+    {
+        CpuSet::new(iter)
+    }
+}
+
 fn parse_cpu_range(s: &str, cpuset: &mut Vec<usize>) -> Result<(), String> {
     fn parse_cpu(s: &str) -> Result<usize, String> {
         s.parse().map_err(|_| {
@@ -514,6 +523,12 @@ pub trait LinuxArch {
 
     /// Returns frequency map for each of the host's logical cores.
     fn get_host_cpu_frequencies_khz() -> Result<BTreeMap<usize, Vec<u32>>, Self::Error>;
+
+    /// Returns capacity map of the host's logical cores.
+    fn get_host_cpu_capacity() -> Result<BTreeMap<usize, u32>, Self::Error>;
+
+    /// Returns cluster masks for each of the host's logical cores.
+    fn get_host_cpu_clusters() -> Result<Vec<CpuSet>, Self::Error>;
 }
 
 #[cfg(feature = "gdb")]
