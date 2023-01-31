@@ -10,6 +10,7 @@ use data_model::DataInit;
 use data_model::Le16;
 use data_model::Le32;
 use data_model::Le64;
+use zerocopy::FromBytes;
 
 pub mod block {
     use super::*;
@@ -80,7 +81,7 @@ pub mod block {
     // Safe because it only has data and has no implicit padding.
     unsafe impl DataInit for virtio_blk_config {}
 
-    #[derive(Copy, Clone, Debug, Default)]
+    #[derive(Copy, Clone, Debug, Default, FromBytes)]
     #[repr(C)]
     pub(crate) struct virtio_blk_req_header {
         pub req_type: Le32,

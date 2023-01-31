@@ -11,6 +11,8 @@ use data_model::DataInit;
 use remain::sorted;
 use thiserror::Error;
 use vm_memory::GuestAddress;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -112,7 +114,7 @@ impl DequeuePtr {
 
 // Generic TRB struct containing only fields common to all types.
 #[bitfield]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, FromBytes, AsBytes)]
 pub struct Trb {
     parameter: B64,
     status: B32,
@@ -289,7 +291,7 @@ impl Trb {
 }
 
 #[bitfield]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, AsBytes, FromBytes)]
 pub struct NormalTrb {
     data_buffer: B64,
     trb_transfer_length: B17,
@@ -389,7 +391,7 @@ pub struct IsochTrb {
 }
 
 #[bitfield]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, AsBytes, FromBytes)]
 pub struct LinkTrb {
     ring_segment_pointer: B64,
     reserved0: B22,
@@ -762,7 +764,7 @@ unsafe impl TrbCast for CommandCompletionEventTrb {}
 unsafe impl TrbCast for PortStatusChangeEventTrb {}
 
 #[bitfield]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, AsBytes, FromBytes)]
 pub struct EventRingSegmentTableEntry {
     ring_segment_base_address: B64,
     ring_segment_size: B16,
@@ -802,7 +804,7 @@ impl InputControlContext {
 pub const DEVICE_CONTEXT_ENTRY_SIZE: usize = 32usize;
 
 #[bitfield]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, FromBytes)]
 pub struct SlotContext {
     route_string: B20,
     speed: B4,
@@ -828,7 +830,7 @@ pub struct SlotContext {
 }
 
 #[bitfield]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, AsBytes, FromBytes)]
 pub struct EndpointContext {
     endpoint_state: EndpointState,
     reserved1: B5,
@@ -855,7 +857,7 @@ pub struct EndpointContext {
 }
 
 /// Device context.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, FromBytes)]
 pub struct DeviceContext {
     pub slot_context: SlotContext,
     pub endpoint_context: [EndpointContext; 31],

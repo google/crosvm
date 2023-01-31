@@ -25,6 +25,7 @@ use sync::Mutex;
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
+use zerocopy::FromBytes;
 
 use super::SignalableInterrupt;
 use super::VIRTIO_MSI_NO_VECTOR;
@@ -115,7 +116,7 @@ pub struct DescriptorChain {
     exported_region: Option<ExportedRegion>,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, FromBytes)]
 #[repr(C)]
 pub struct Desc {
     pub addr: Le64,
@@ -924,7 +925,7 @@ mod tests {
     const BUFFER_OFFSET: u64 = 0x8000;
     const BUFFER_LEN: u32 = 0x400;
 
-    #[derive(Copy, Clone, Debug)]
+    #[derive(Copy, Clone, Debug, FromBytes)]
     #[repr(C)]
     struct Avail {
         flags: Le16,
@@ -945,7 +946,7 @@ mod tests {
         }
     }
 
-    #[derive(Copy, Clone, Debug)]
+    #[derive(Copy, Clone, Debug, FromBytes)]
     #[repr(C)]
     struct UsedElem {
         id: Le32,
@@ -962,7 +963,7 @@ mod tests {
         }
     }
 
-    #[derive(Copy, Clone, Debug)]
+    #[derive(Copy, Clone, Debug, FromBytes)]
     #[repr(C)]
     struct Used {
         flags: Le16,

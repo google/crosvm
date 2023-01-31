@@ -10,7 +10,7 @@ use std::io::Seek;
 use std::io::SeekFrom;
 
 use base::AsRawDescriptor;
-use data_model::DataInit;
+use data_model::zerocopy_from_reader;
 use remain::sorted;
 use thiserror::Error;
 use vm_memory::GuestAddress;
@@ -57,7 +57,8 @@ where
     kernel_image
         .seek(SeekFrom::Start(0))
         .map_err(|_| Error::SeekBootParams)?;
-    let params = boot_params::from_reader(&mut kernel_image).map_err(|_| Error::ReadBootParams)?;
+    let params: boot_params =
+        zerocopy_from_reader(&mut kernel_image).map_err(|_| Error::ReadBootParams)?;
 
     // bzImage header signature "HdrS"
     if params.hdr.header != 0x53726448 {

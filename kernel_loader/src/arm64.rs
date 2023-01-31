@@ -10,18 +10,19 @@ use std::io::Seek;
 use std::io::SeekFrom;
 
 use base::AsRawDescriptor;
-use data_model::DataInit;
+use data_model::zerocopy_from_reader;
 use data_model::Le32;
 use data_model::Le64;
 use resources::AddressRange;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
+use zerocopy::FromBytes;
 
 use crate::Error;
 use crate::LoadedKernel;
 use crate::Result;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, FromBytes)]
 #[allow(unused)]
 #[repr(C)]
 struct Arm64ImageHeader {
@@ -36,9 +37,6 @@ struct Arm64ImageHeader {
     magic: Le32,
     res5: Le32,
 }
-
-// Arm64ImageHeader is plain old data with no implicit padding.
-unsafe impl data_model::DataInit for Arm64ImageHeader {}
 
 const ARM64_IMAGE_MAGIC: u32 = 0x644d5241; // "ARM\x64"
 
@@ -58,7 +56,8 @@ where
         .seek(SeekFrom::Start(0))
         .map_err(|_| Error::SeekKernelStart)?;
 
-    let header = Arm64ImageHeader::from_reader(&mut kernel_image).map_err(|_| Error::ReadHeader)?;
+    let header: Arm64ImageHeader =
+        zerocopy_from_reader(&mut kernel_image).map_err(|_| Error::ReadHeader)?;
 
     let magic: u32 = header.magic.into();
     if magic != ARM64_IMAGE_MAGIC {

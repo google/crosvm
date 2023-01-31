@@ -9,6 +9,7 @@ use std::sync::Mutex;
 use base::AsRawDescriptor;
 use base::RawDescriptor;
 use data_model::DataInit;
+use zerocopy::AsBytes;
 
 use crate::connection::Endpoint;
 use crate::connection::EndpointExt;
@@ -801,7 +802,7 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
                 let mut buf = Vec::new();
                 let msg = VhostUserU64::new(regions.len() as u64);
                 for r in regions {
-                    buf.extend_from_slice(r.as_slice())
+                    buf.extend_from_slice(r.as_bytes())
                 }
                 self.slave_req_helper
                     .send_reply_with_payload(&hdr, &msg, buf.as_slice())?;

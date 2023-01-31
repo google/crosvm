@@ -41,6 +41,7 @@ use vm_control::PvClockCommandResponse;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
+use zerocopy::FromBytes;
 
 use super::copy_config;
 use super::DeviceType;
@@ -82,7 +83,7 @@ struct virtio_pvclock_config {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_pvclock_config {}
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, FromBytes)]
 #[repr(C)]
 struct virtio_pvclock_set_pvclock_page_req {
     // Physical address of pvclock page.

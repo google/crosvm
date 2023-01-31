@@ -35,6 +35,7 @@ use base::AsRawDescriptor;
 use base::FileFlags;
 use base::FromRawDescriptor;
 use base::RawDescriptor;
+use data_model::zerocopy_from_reader;
 use data_model::DataInit;
 use fuse::filesystem::Context;
 use fuse::filesystem::DirectoryIterator;
@@ -68,6 +69,8 @@ use system_api::UserDataAuth::SetMediaRWDataFileProjectIdRequest;
 use system_api::UserDataAuth::SetMediaRWDataFileProjectInheritanceFlagReply;
 #[cfg(feature = "arc_quota")]
 use system_api::UserDataAuth::SetMediaRWDataFileProjectInheritanceFlagRequest;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 use crate::virtio::fs::caps::Capability;
 use crate::virtio::fs::caps::Caps;
@@ -95,7 +98,7 @@ const FS_PROJINHERIT_FL: c_int = 0x20000000;
 const DEFAULT_DBUS_TIMEOUT: Duration = Duration::from_secs(25);
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, AsBytes, FromBytes)]
 struct fscrypt_policy_v1 {
     _version: u8,
     _contents_encryption_mode: u8,
@@ -103,10 +106,9 @@ struct fscrypt_policy_v1 {
     _flags: u8,
     _master_key_descriptor: [u8; FSCRYPT_KEY_DESCRIPTOR_SIZE],
 }
-unsafe impl DataInit for fscrypt_policy_v1 {}
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, AsBytes, FromBytes)]
 struct fscrypt_policy_v2 {
     _version: u8,
     _contents_encryption_mode: u8,
@@ -115,29 +117,28 @@ struct fscrypt_policy_v2 {
     __reserved: [u8; 4],
     master_key_identifier: [u8; FSCRYPT_KEY_IDENTIFIER_SIZE],
 }
-unsafe impl DataInit for fscrypt_policy_v2 {}
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, FromBytes)]
 union fscrypt_policy {
     _version: u8,
     _v1: fscrypt_policy_v1,
     _v2: fscrypt_policy_v2,
 }
-unsafe impl DataInit for fscrypt_policy {}
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, FromBytes)]
 struct fscrypt_get_policy_ex_arg {
     policy_size: u64,       /* input/output */
     policy: fscrypt_policy, /* output */
 }
+
 unsafe impl DataInit for fscrypt_get_policy_ex_arg {}
 
 ioctl_iowr_nr!(FS_IOC_GET_ENCRYPTION_POLICY_EX, 'f' as u32, 22, [u8; 9]);
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, AsBytes, FromBytes)]
 struct fsxattr {
     fsx_xflags: u32,     /* xflags field value (get/set) */
     fsx_extsize: u32,    /* extsize field value (get/set)*/
@@ -146,7 +147,6 @@ struct fsxattr {
     fsx_cowextsize: u32, /* CoW extsize field value (get/set)*/
     fsx_pad: [u8; 8],
 }
-unsafe impl DataInit for fsxattr {}
 
 ioctl_ior_nr!(FS_IOC_FSGETXATTR, 'X' as u32, 31, fsxattr);
 ioctl_iow_nr!(FS_IOC_FSSETXATTR, 'X' as u32, 32, fsxattr);
@@ -161,7 +161,7 @@ ioctl_ior_nr!(FS_IOC64_GETFLAGS, 'f' as u32, 1, u64);
 ioctl_iow_nr!(FS_IOC64_SETFLAGS, 'f' as u32, 2, u64);
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, AsBytes, FromBytes)]
 struct fsverity_enable_arg {
     _version: u32,
     _hash_algorithm: u32,
@@ -173,16 +173,14 @@ struct fsverity_enable_arg {
     sig_ptr: u64,
     __reserved2: [u64; 11],
 }
-unsafe impl DataInit for fsverity_enable_arg {}
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, AsBytes, FromBytes)]
 struct fsverity_digest {
     _digest_algorithm: u16,
     digest_size: u16,
     // __u8 digest[];
 }
-unsafe impl DataInit for fsverity_digest {}
 
 ioctl_iow_nr!(FS_IOC_ENABLE_VERITY, 'f' as u32, 133, fsverity_enable_arg);
 ioctl_iowr_nr!(FS_IOC_MEASURE_VERITY, 'f' as u32, 134, fsverity_digest);
@@ -1049,7 +1047,7 @@ impl PassthroughFs {
 
         // Safe because this only has integer fields.
         let mut arg = unsafe { MaybeUninit::<fscrypt_get_policy_ex_arg>::zeroed().assume_init() };
-        r.read_exact(arg.policy_size.as_mut_slice())?;
+        r.read_exact(arg.policy_size.as_bytes_mut())?;
 
         let policy_size = cmp::min(arg.policy_size, size_of::<fscrypt_policy>() as u64);
         arg.policy_size = policy_size;
@@ -1081,7 +1079,7 @@ impl PassthroughFs {
         } else {
             // Safe because the kernel guarantees that the policy is now initialized.
             let xattr = unsafe { buf.assume_init() };
-            Ok(IoctlReply::Done(Ok(xattr.as_slice().to_vec())))
+            Ok(IoctlReply::Done(Ok(xattr.as_bytes().to_vec())))
         }
     }
 
@@ -1098,7 +1096,7 @@ impl PassthroughFs {
             self.find_handle(handle, inode)?
         };
 
-        let in_attr = fsxattr::from_reader(r)?;
+        let in_attr: fsxattr = zerocopy_from_reader(r)?;
 
         #[cfg(feature = "arc_quota")]
         let st = stat(&*data)?;
@@ -1189,7 +1187,7 @@ impl PassthroughFs {
         };
 
         // The ioctl encoding is a long but the parameter is actually an int.
-        let in_flags = c_int::from_reader(r)?;
+        let in_flags: c_int = zerocopy_from_reader(r)?;
 
         #[cfg(feature = "arc_quota")]
         let st = stat(&*data)?;
@@ -1307,7 +1305,7 @@ impl PassthroughFs {
             data
         };
 
-        let mut arg = fsverity_enable_arg::from_reader(&mut r)?;
+        let mut arg: fsverity_enable_arg = zerocopy_from_reader(&mut r)?;
 
         let mut salt;
         if arg.salt_size > 0 {
@@ -1359,7 +1357,7 @@ impl PassthroughFs {
             self.find_handle(handle, inode)?
         };
 
-        let digest = fsverity_digest::from_reader(r)?;
+        let digest: fsverity_digest = zerocopy_from_reader(r)?;
 
         // Taken from fs/verity/fsverity_private.h.
         const FS_VERITY_MAX_DIGEST_SIZE: u16 = 64;

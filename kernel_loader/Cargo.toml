@@ -11,6 +11,7 @@ remain = "*"
 resources = { path = "../resources" }
 thiserror = "*"
 vm_memory = { path = "../vm_memory" }
+zerocopy = "*"
 
 [dev-dependencies]
 tempfile = "3"

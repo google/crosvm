@@ -30,6 +30,7 @@ use data_model::volatile_memory::*;
 use data_model::DataInit;
 use remain::sorted;
 use thiserror::Error;
+use zerocopy::FromBytes;
 
 use crate::guest_address::GuestAddress;
 
@@ -577,7 +578,7 @@ impl GuestMemory {
     ///         .map_err(|_| ())
     /// # }
     /// ```
-    pub fn write_obj_at_addr<T: DataInit>(&self, val: T, guest_addr: GuestAddress) -> Result<()> {
+    pub fn write_obj_at_addr<T: FromBytes>(&self, val: T, guest_addr: GuestAddress) -> Result<()> {
         let (mapping, offset, _) = self.find_region(guest_addr)?;
         mapping
             .write_obj(val, offset)

@@ -18,9 +18,6 @@ const X86_64_FDT_MAX_SIZE: u64 = 0x20_0000;
 #[allow(non_snake_case)]
 pub mod bootparam;
 
-// boot_params is just a series of ints, it is safe to initialize it.
-unsafe impl data_model::DataInit for bootparam::boot_params {}
-
 #[allow(dead_code)]
 #[allow(non_upper_case_globals)]
 mod msr_index;
@@ -144,6 +141,8 @@ use vm_control::BatteryType;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 use crate::bootparam::boot_params;
 use crate::cpuid::EDX_HYBRID_CPU_SHIFT;
@@ -298,7 +297,7 @@ pub struct X8664arch;
 // Like `bootparam::setup_data` without the incomplete array field at the end, which allows us to
 // safely implement Copy, Clone, and DataInit.
 #[repr(C)]
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, FromBytes, AsBytes)]
 struct setup_data_hdr {
     pub next: u64,
     pub type_: u32,

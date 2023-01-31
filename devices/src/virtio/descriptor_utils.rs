@@ -31,6 +31,7 @@ use smallvec::SmallVec;
 use thiserror::Error;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
+use zerocopy::FromBytes;
 
 use super::DescriptorChain;
 use crate::virtio::ipc_memory_mapper::ExportedRegion;
@@ -792,7 +793,7 @@ pub enum DescriptorType {
     Writable,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, FromBytes)]
 #[repr(C)]
 struct virtq_desc {
     addr: Le64,

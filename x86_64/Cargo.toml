@@ -31,6 +31,7 @@ thiserror = "*"
 base = { path = "../base" }
 vm_control = { path = "../vm_control" }
 vm_memory = { path = "../vm_memory" }
+zerocopy = "*"
 
 [target.'cfg(unix)'.dependencies]
 minijail = "*"

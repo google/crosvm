@@ -9,19 +9,19 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 
 use base::AsRawDescriptor;
-use data_model::DataInit;
 use fuse::filesystem::DirEntry;
 use fuse::filesystem::DirectoryIterator;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 #[repr(C, packed)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, AsBytes, FromBytes)]
 struct LinuxDirent64 {
     d_ino: libc::ino64_t,
     d_off: libc::off64_t,
     d_reclen: libc::c_ushort,
     d_ty: libc::c_uchar,
 }
-unsafe impl DataInit for LinuxDirent64 {}
 
 pub struct ReadDir<P> {
     buf: P,
@@ -83,7 +83,7 @@ impl<P: Deref<Target = [u8]>> DirectoryIterator for ReadDir<P> {
         let (front, back) = rem.split_at(size_of::<LinuxDirent64>());
 
         let dirent64 =
-            LinuxDirent64::from_slice(front).expect("unable to get LinuxDirent64 from slice");
+            LinuxDirent64::read_from(front).expect("unable to get LinuxDirent64 from slice");
 
         let namelen = dirent64.d_reclen as usize - size_of::<LinuxDirent64>();
         debug_assert!(namelen <= back.len(), "back is smaller than `namelen`");

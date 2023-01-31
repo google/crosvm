@@ -18,6 +18,7 @@ use data_model::DataInit;
 use libc::c_int;
 use serde::Deserialize;
 use serde::Serialize;
+use zerocopy::FromBytes;
 
 use crate::descriptor::AsRawDescriptor;
 use crate::descriptor::SafeDescriptor;
@@ -147,7 +148,7 @@ impl MemoryMapping {
     ///     let res = mem_map.write_obj(55u64, 16);
     ///     assert!(res.is_ok());
     /// ```
-    pub fn write_obj<T: DataInit>(&self, val: T, offset: usize) -> Result<()> {
+    pub fn write_obj<T: FromBytes>(&self, val: T, offset: usize) -> Result<()> {
         self.mapping.range_end(offset, size_of::<T>())?;
         // This is safe because we checked the bounds above.
         unsafe {
