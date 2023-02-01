@@ -1662,9 +1662,7 @@ fn run_config_inner(
                 no_smt,
                 apic_emulation_supported && irq_chip == IrqChipKind::Split,
                 cfg.force_calibrated_tsc_leaf,
-                cfg.vm_evt_wrtube
-                    .as_ref()
-                    .expect("vm_evt_wrtube must be set")
+                vm_evt_wrtube
                     .try_clone()
                     .expect("could not clone vm_evt_wrtube"),
             )?;
