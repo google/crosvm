@@ -126,43 +126,43 @@ pub fn create_gpu_device(
         cfg.wayland_socket_paths.clone(),
     );
 
-    let jail = match gpu_jail(&cfg.jail_config, "gpu_device")? {
-        Some(mut jail) => {
-            // Allow changes made externally take effect immediately to allow
-            // shaders to be dynamically added by external processes.
-            jail.set_remount_mode(libc::MS_SLAVE);
+    let jail = if let Some(jail_config) = &cfg.jail_config {
+        let mut config = SandboxConfig::new(jail_config, "gpu_device");
+        // Allow changes made externally take effect immediately to allow shaders to be dynamically
+        // added by external processes.
+        config.remount_mode = Some(libc::MS_SLAVE);
+        let mut jail = create_gpu_minijail(&jail_config.pivot_root, &config)?;
 
-            // Prepare GPU shader disk cache directory.
-            let (cache_dir, cache_size) = cfg
-                .gpu_parameters
-                .as_ref()
-                .map(|params| (params.cache_path.as_ref(), params.cache_size.as_ref()))
-                .unwrap();
-            let cache_info =
-                get_gpu_cache_info(cache_dir, cache_size, None, cfg.jail_config.is_some());
+        // Prepare GPU shader disk cache directory.
+        let (cache_dir, cache_size) = cfg
+            .gpu_parameters
+            .as_ref()
+            .map(|params| (params.cache_path.as_ref(), params.cache_size.as_ref()))
+            .unwrap();
+        let cache_info = get_gpu_cache_info(cache_dir, cache_size, None, cfg.jail_config.is_some());
 
-            if let Some(dir) = cache_info.directory {
-                // Manually bind mount recursively to allow DLC shader caches
-                // to be propagated to the GPU process.
-                jail.mount(dir, dir, "", (libc::MS_BIND | libc::MS_REC) as usize)?;
-            }
-            for (key, val) in cache_info.environment {
-                env::set_var(key, val);
-            }
-
-            // Bind mount the wayland socket's directory into jail's root. This is necessary since
-            // each new wayland context must open() the socket. If the wayland socket is ever
-            // destroyed and remade in the same host directory, new connections will be possible
-            // without restarting the wayland device.
-            for dir in &wayland_socket_dirs {
-                jail.mount_bind(dir, dir, true)?;
-            }
-
-            add_current_user_to_jail(&mut jail)?;
-
-            Some(jail)
+        if let Some(dir) = cache_info.directory {
+            // Manually bind mount recursively to allow DLC shader caches
+            // to be propagated to the GPU process.
+            jail.mount(dir, dir, "", (libc::MS_BIND | libc::MS_REC) as usize)?;
         }
-        None => None,
+        for (key, val) in cache_info.environment {
+            env::set_var(key, val);
+        }
+
+        // Bind mount the wayland socket's directory into jail's root. This is necessary since
+        // each new wayland context must open() the socket. If the wayland socket is ever
+        // destroyed and remade in the same host directory, new connections will be possible
+        // without restarting the wayland device.
+        for dir in &wayland_socket_dirs {
+            jail.mount_bind(dir, dir, true)?;
+        }
+
+        add_current_user_to_jail(&mut jail)?;
+
+        Some(jail)
+    } else {
+        None
     };
 
     Ok(VirtioDeviceStub {
@@ -218,38 +218,39 @@ pub fn start_gpu_render_server(
     let (server_socket, client_socket) =
         UnixSeqpacket::pair().context("failed to create render server socket")?;
 
-    let (jail, cache_info) = match gpu_jail(&cfg.jail_config, "gpu_render_server")? {
-        Some(mut jail) => {
-            // Allow changes made externally take effect immediately to allow
-            // shaders to be dynamically added by external processes.
-            jail.set_remount_mode(libc::MS_SLAVE);
+    let (jail, cache_info) = if let Some(jail_config) = &cfg.jail_config {
+        let mut config = SandboxConfig::new(jail_config, "gpu_render_server");
+        // Allow changes made externally take effect immediately to allow shaders to be dynamically
+        // added by external processes.
+        config.remount_mode = Some(libc::MS_SLAVE);
+        let mut jail = create_gpu_minijail(&jail_config.pivot_root, &config)?;
 
-            let cache_info = get_gpu_cache_info(
-                render_server_parameters.cache_path.as_ref(),
-                render_server_parameters.cache_size.as_ref(),
-                render_server_parameters.foz_db_list_path.as_ref(),
-                true,
-            );
+        let cache_info = get_gpu_cache_info(
+            render_server_parameters.cache_path.as_ref(),
+            render_server_parameters.cache_size.as_ref(),
+            render_server_parameters.foz_db_list_path.as_ref(),
+            true,
+        );
 
-            if let Some(dir) = cache_info.directory {
-                // Manually bind mount recursively to allow DLC shader caches
-                // to be propagated to the GPU process.
-                jail.mount(dir, dir, "", (libc::MS_BIND | libc::MS_REC) as usize)?;
-            }
-
-            // bind mount /dev/log for syslog
-            let log_path = Path::new("/dev/log");
-            if log_path.exists() {
-                jail.mount_bind(log_path, log_path, true)?;
-            }
-
-            // Run as root in the jail to keep capabilities after execve, which is needed for
-            // mounting to work.  All capabilities will be dropped afterwards.
-            add_current_user_as_root_to_jail(&mut jail)?;
-
-            (jail, Some(cache_info))
+        if let Some(dir) = cache_info.directory {
+            // Manually bind mount recursively to allow DLC shader caches
+            // to be propagated to the GPU process.
+            jail.mount(dir, dir, "", (libc::MS_BIND | libc::MS_REC) as usize)?;
         }
-        None => (Minijail::new().context("failed to create jail")?, None),
+
+        // bind mount /dev/log for syslog
+        let log_path = Path::new("/dev/log");
+        if log_path.exists() {
+            jail.mount_bind(log_path, log_path, true)?;
+        }
+
+        // Run as root in the jail to keep capabilities after execve, which is needed for
+        // mounting to work.  All capabilities will be dropped afterwards.
+        add_current_user_as_root_to_jail(&mut jail)?;
+
+        (jail, Some(cache_info))
+    } else {
+        (Minijail::new().context("failed to create jail")?, None)
     };
 
     let inheritable_fds = [

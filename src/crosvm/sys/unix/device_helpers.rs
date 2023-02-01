@@ -920,20 +920,21 @@ pub fn create_wayland_device(
     let dev = virtio::Wl::new(features, wayland_socket_paths.clone(), resource_bridge)
         .context("failed to create wayland device")?;
 
-    let jail = match gpu_jail(jail_config, "wl_device")? {
-        Some(mut jail) => {
-            // Bind mount the wayland socket's directory into jail's root. This is necessary since
-            // each new wayland context must open() the socket. If the wayland socket is ever
-            // destroyed and remade in the same host directory, new connections will be possible
-            // without restarting the wayland device.
-            for dir in &wayland_socket_dirs {
-                jail.mount_bind(dir, dir, true)?;
-            }
-            add_current_user_to_jail(&mut jail)?;
-
-            Some(jail)
+    let jail = if let Some(jail_config) = jail_config {
+        let config = SandboxConfig::new(jail_config, "wl_device");
+        let mut jail = create_gpu_minijail(&jail_config.pivot_root, &config)?;
+        // Bind mount the wayland socket's directory into jail's root. This is necessary since
+        // each new wayland context must open() the socket. If the wayland socket is ever
+        // destroyed and remade in the same host directory, new connections will be possible
+        // without restarting the wayland device.
+        for dir in &wayland_socket_dirs {
+            jail.mount_bind(dir, dir, true)?;
         }
-        None => None,
+        add_current_user_to_jail(&mut jail)?;
+
+        Some(jail)
+    } else {
+        None
     };
 
     Ok(VirtioDeviceStub {
@@ -1098,24 +1099,15 @@ pub fn create_fs_device(
     let max_open_files =
         base::get_max_open_files().context("failed to get max number of open files")?;
     let j = if let Some(jail_config) = jail_config {
-        let policy_path = jail_config
-            .seccomp_policy_dir
-            .as_ref()
-            .map(|dir| dir.join("fs_device"));
-        let config = SandboxConfig {
-            limit_caps: false,
-            uid_map: Some(uid_map),
-            gid_map: Some(gid_map),
-            log_failures: jail_config.seccomp_log_failures,
-            seccomp_policy_path: policy_path.as_deref(),
-            seccomp_policy_name: "fs_device",
-            // We want bind mounts from the parent namespaces to propagate into the fs device's
-            // namespace.
-            remount_mode: Some(libc::MS_SLAVE),
-        };
-        create_base_minijail(src, Some(max_open_files), Some(&config))?
+        let mut config = SandboxConfig::new(jail_config, "fs_device");
+        config.limit_caps = false;
+        config.ugid_map = Some((uid_map, gid_map));
+        // We want bind mounts from the parent namespaces to propagate into the fs device's
+        // namespace.
+        config.remount_mode = Some(libc::MS_SLAVE);
+        create_sandbox_minijail(src, max_open_files, &config)?
     } else {
-        create_base_minijail(src, Some(max_open_files), None)?
+        create_base_minijail(src, max_open_files)?
     };
 
     let features = virtio::base_features(protection_type);
@@ -1142,23 +1134,13 @@ pub fn create_9p_device(
     let max_open_files =
         base::get_max_open_files().context("failed to get max number of open files")?;
     let (jail, root) = if let Some(jail_config) = jail_config {
-        let policy_path = jail_config
-            .seccomp_policy_dir
-            .as_ref()
-            .map(|dir| dir.join("9p_device"));
-        let config = SandboxConfig {
-            limit_caps: false,
-            uid_map: Some(uid_map),
-            gid_map: Some(gid_map),
-            log_failures: jail_config.seccomp_log_failures,
-            seccomp_policy_path: policy_path.as_deref(),
-            seccomp_policy_name: "9p_device",
-            // We want bind mounts from the parent namespaces to propagate into the 9p server's
-            // namespace.
-            remount_mode: Some(libc::MS_SLAVE),
-        };
-
-        let jail = create_base_minijail(src, Some(max_open_files), Some(&config))?;
+        let mut config = SandboxConfig::new(jail_config, "9p_device");
+        config.limit_caps = false;
+        config.ugid_map = Some((uid_map, gid_map));
+        // We want bind mounts from the parent namespaces to propagate into the 9p server's
+        // namespace.
+        config.remount_mode = Some(libc::MS_SLAVE);
+        let jail = create_sandbox_minijail(src, max_open_files, &config)?;
 
         //  The shared directory becomes the root of the device's file system.
         let root = Path::new("/");

@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::path::Path;
+use std::path::PathBuf;
 use std::str;
 
 use anyhow::bail;
@@ -17,19 +18,44 @@ use once_cell::sync::Lazy;
 
 use crate::crosvm::config::JailConfig;
 
-pub static EMBEDDED_BPFS: Lazy<std::collections::HashMap<&str, Vec<u8>>> =
+static EMBEDDED_BPFS: Lazy<std::collections::HashMap<&str, Vec<u8>>> =
     Lazy::new(|| include!(concat!(env!("OUT_DIR"), "/bpf_includes.in")));
 
+/// The max open files for gpu processes.
+const MAX_OPEN_FILES_FOR_GPU: u64 = 32768;
+
+/// Config for the sandbox to be created by [Minijail].
 pub(super) struct SandboxConfig<'a> {
+    /// Whether or not to drop all capabilities in the sandbox.
     pub(super) limit_caps: bool,
-    pub(super) log_failures: bool,
-    pub(super) seccomp_policy_path: Option<&'a Path>,
-    pub(super) seccomp_policy_name: &'a str,
-    pub(super) uid_map: Option<&'a str>,
-    pub(super) gid_map: Option<&'a str>,
+    log_failures: bool,
+    seccomp_policy_path: Option<PathBuf>,
+    seccomp_policy_name: &'a str,
+    /// The pair of `uid_map` and `gid_map`.
+    pub(super) ugid_map: Option<(&'a str, &'a str)>,
+    /// The remount mode instead of default MS_PRIVATE.
     pub(super) remount_mode: Option<c_ulong>,
 }
 
+impl<'a> SandboxConfig<'a> {
+    /// Creates [SandboxConfig].
+    pub(super) fn new(jail_config: &JailConfig, policy: &'a str) -> Self {
+        let policy_path = jail_config
+            .seccomp_policy_dir
+            .as_ref()
+            .map(|dir| dir.join(policy));
+        Self {
+            limit_caps: true,
+            log_failures: jail_config.seccomp_log_failures,
+            seccomp_policy_path: policy_path,
+            seccomp_policy_name: policy,
+            ugid_map: None,
+            remount_mode: None,
+        }
+    }
+}
+
+/// Wrapper that cleans up a [Minijail] when it is dropped
 pub(crate) struct ScopedMinijail(pub Minijail);
 
 impl Drop for ScopedMinijail {
@@ -38,231 +64,225 @@ impl Drop for ScopedMinijail {
     }
 }
 
-pub(super) fn create_base_minijail(
+/// Creates a [Minijail] instance which just changes the root using pivot_root(2) path and
+/// `max_open_files` using `RLIMIT_NOFILE`.
+///
+/// If `root` path is "/", the minijail don't change the root.
+///
+/// # Arguments
+///
+/// * `root` - The root path to be changed to by minijail.
+/// * `max_open_files` - The maximum number of file descriptors to allow a jailed process to open.
+pub(super) fn create_base_minijail(root: &Path, max_open_files: u64) -> Result<Minijail> {
+    // Validate new root directory. Path::is_dir() also checks the existence.
+    if !root.is_dir() {
+        bail!("{:?} is not a directory, cannot create jail", root);
+    }
+
+    // All child jails run in a new user namespace without any users mapped, they run as nobody
+    // unless otherwise configured.
+    let mut jail = Minijail::new().context("failed to jail device")?;
+
+    // Only pivot_root if we are not re-using the current root directory.
+    if root != Path::new("/") {
+        // It's safe to call `namespace_vfs` multiple times.
+        jail.namespace_vfs();
+        jail.enter_pivot_root(root)
+            .context("failed to pivot root device")?;
+    }
+
+    jail.set_rlimit(libc::RLIMIT_NOFILE as i32, max_open_files, max_open_files)
+        .context("error setting max open files")?;
+
+    Ok(jail)
+}
+
+/// Creates a [Minijail] instance which creates a sandbox.
+///
+/// # Arguments
+///
+/// * `root` - The root path to be changed to by minijail.
+/// * `max_open_files` - The maximum number of file descriptors to allow a jailed process to open.
+/// * `config` - The [SandboxConfig] to control details of the sandbox.
+pub(super) fn create_sandbox_minijail(
     root: &Path,
-    r_limit: Option<u64>,
-    config: Option<&SandboxConfig>,
+    max_open_files: u64,
+    config: &SandboxConfig,
 ) -> Result<Minijail> {
-    // All child jails run in a new user namespace without any users mapped,
-    // they run as nobody unless otherwise configured.
-    let mut j = Minijail::new().context("failed to jail device")?;
+    let mut jail = create_base_minijail(root, max_open_files)?;
 
-    if let Some(config) = config {
-        j.namespace_pids();
-        j.namespace_user();
-        j.namespace_user_disable_setgroups();
-        if config.limit_caps {
-            // Don't need any capabilities.
-            j.use_caps(0);
-        }
-        if let Some(uid_map) = config.uid_map {
-            j.uidmap(uid_map).context("error setting UID map")?;
-        }
-        if let Some(gid_map) = config.gid_map {
-            j.gidmap(gid_map).context("error setting GID map")?;
-        }
-        // Run in a new mount namespace.
-        j.namespace_vfs();
+    jail.namespace_pids();
+    jail.namespace_user();
+    jail.namespace_user_disable_setgroups();
+    if config.limit_caps {
+        // Don't need any capabilities.
+        jail.use_caps(0);
+    }
+    if let Some((uid_map, gid_map)) = config.ugid_map {
+        jail.uidmap(uid_map).context("error setting UID map")?;
+        jail.gidmap(gid_map).context("error setting GID map")?;
+    }
+    // Run in a new mount namespace.
+    jail.namespace_vfs();
 
-        // Run in an empty network namespace.
-        j.namespace_net();
+    // Run in an empty network namespace.
+    jail.namespace_net();
 
-        // Don't allow the device to gain new privileges.
-        j.no_new_privs();
+    // Don't allow the device to gain new privileges.
+    jail.no_new_privs();
 
-        if let Some(seccomp_policy_path) = config.seccomp_policy_path {
-            // By default we'll prioritize using the pre-compiled .bpf over the
-            // .policy file (the .bpf is expected to be compiled using "trap" as the
-            // failure behavior instead of the default "kill" behavior) when a policy
-            // path is supplied in the command line arugments. Otherwise the built-in
-            // pre-compiled policies will be used.
-            // Refer to the code comment for the "seccomp-log-failures"
-            // command-line parameter for an explanation about why the |log_failures|
-            // flag forces the use of .policy files (and the build-time alternative to
-            // this run-time flag).
-            let bpf_policy_file = seccomp_policy_path.with_extension("bpf");
-            if bpf_policy_file.exists() && !config.log_failures {
-                j.parse_seccomp_program(&bpf_policy_file).with_context(|| {
+    if let Some(seccomp_policy_path) = &config.seccomp_policy_path {
+        // By default we'll prioritize using the pre-compiled .bpf over the .policy file (the .bpf
+        // is expected to be compiled using "trap" as the failure behavior instead of the default
+        // "kill" behavior) when a policy path is supplied in the command line arugments. Otherwise
+        // the built-in pre-compiled policies will be used.
+        // Refer to the code comment for the "seccomp-log-failures" command-line parameter for an
+        // explanation about why the |log_failures| flag forces the use of .policy files (and the
+        // build-time alternative to this run-time flag).
+        let bpf_policy_file = seccomp_policy_path.with_extension("bpf");
+        if bpf_policy_file.exists() && !config.log_failures {
+            jail.parse_seccomp_program(&bpf_policy_file)
+                .with_context(|| {
                     format!(
                         "failed to parse precompiled seccomp policy: {}",
                         bpf_policy_file.display()
                     )
                 })?;
-            } else {
-                // Use TSYNC only for the side effect of it using SECCOMP_RET_TRAP,
-                // which will correctly kill the entire device process if a worker
-                // thread commits a seccomp violation.
-                j.set_seccomp_filter_tsync();
-                if config.log_failures {
-                    j.log_seccomp_filter_failures();
-                }
-                let bpf_policy_file = seccomp_policy_path.with_extension("policy");
-                j.parse_seccomp_filters(&bpf_policy_file).with_context(|| {
+        } else {
+            // Use TSYNC only for the side effect of it using SECCOMP_RET_TRAP, which will correctly
+            // kill the entire device process if a worker thread commits a seccomp violation.
+            jail.set_seccomp_filter_tsync();
+            if config.log_failures {
+                jail.log_seccomp_filter_failures();
+            }
+            let bpf_policy_file = seccomp_policy_path.with_extension("policy");
+            jail.parse_seccomp_filters(&bpf_policy_file)
+                .with_context(|| {
                     format!(
                         "failed to parse seccomp policy: {}",
                         bpf_policy_file.display()
                     )
                 })?;
-            }
-        } else {
-            let bpf_program = EMBEDDED_BPFS
-                .get(&config.seccomp_policy_name)
-                .with_context(|| {
-                    format!(
-                        "failed to find embedded seccomp policy: {}",
-                        &config.seccomp_policy_name
-                    )
-                })?;
-            j.parse_seccomp_bytes(bpf_program).with_context(|| {
+        }
+    } else {
+        let bpf_program = EMBEDDED_BPFS
+            .get(&config.seccomp_policy_name)
+            .with_context(|| {
                 format!(
-                    "failed to parse embedded seccomp policy: {}",
+                    "failed to find embedded seccomp policy: {}",
                     &config.seccomp_policy_name
                 )
             })?;
-        }
-        j.use_seccomp_filter();
-        // Don't do init setup.
-        j.run_as_init();
-        // Set up requested remount mode instead of default MS_PRIVATE.
-        if let Some(mode) = config.remount_mode {
-            j.set_remount_mode(mode);
-        }
+        jail.parse_seccomp_bytes(bpf_program).with_context(|| {
+            format!(
+                "failed to parse embedded seccomp policy: {}",
+                &config.seccomp_policy_name
+            )
+        })?;
+    }
+    jail.use_seccomp_filter();
+    // Don't do init setup.
+    jail.run_as_init();
+    // Set up requested remount mode instead of default MS_PRIVATE.
+    if let Some(mode) = config.remount_mode {
+        jail.set_remount_mode(mode);
     }
 
-    // Only pivot_root if we are not re-using the current root directory.
-    if root != Path::new("/") {
-        // It's safe to call `namespace_vfs` multiple times.
-        j.namespace_vfs();
-        j.enter_pivot_root(root)
-            .context("failed to pivot root device")?;
-    }
-
-    // Most devices don't need to open many fds.
-    let limit = if let Some(r) = r_limit { r } else { 1024u64 };
-    j.set_rlimit(libc::RLIMIT_NOFILE as i32, limit, limit)
-        .context("error setting max open files")?;
-
-    Ok(j)
+    Ok(jail)
 }
 
-pub(super) fn simple_jail_ext(
+/// Creates a basic [Minijail] if `jail_config` is present.
+///
+/// Returns `None` if `jail_config` is none.
+pub(super) fn simple_jail(
     jail_config: &Option<JailConfig>,
     policy: &str,
-    r_limit: Option<u64>,
 ) -> Result<Option<Minijail>> {
     if let Some(jail_config) = jail_config {
-        // A directory for a jailed device's pivot root.
-        if !jail_config.pivot_root.exists() {
-            bail!(
-                "{:?} doesn't exist, can't jail devices",
-                jail_config.pivot_root
-            );
-        }
-        let policy_path = jail_config
-            .seccomp_policy_dir
-            .as_ref()
-            .map(|dir| dir.join(policy));
-        let config = SandboxConfig {
-            limit_caps: true,
-            log_failures: jail_config.seccomp_log_failures,
-            seccomp_policy_path: policy_path.as_deref(),
-            seccomp_policy_name: policy,
-            uid_map: None,
-            gid_map: None,
-            remount_mode: None,
-        };
-        Ok(Some(create_base_minijail(
+        let config = SandboxConfig::new(jail_config, policy);
+        Ok(Some(create_sandbox_minijail(
             &jail_config.pivot_root,
-            r_limit,
-            Some(&config),
+            1024, // Most devices don't need to open many fds.
+            &config,
         )?))
     } else {
         Ok(None)
     }
 }
 
-pub(super) fn simple_jail(
-    jail_config: &Option<JailConfig>,
-    policy: &str,
-) -> Result<Option<Minijail>> {
-    simple_jail_ext(jail_config, policy, None)
-}
+/// Creates [Minijail] for gpu processes.
+pub(super) fn create_gpu_minijail(root: &Path, config: &SandboxConfig) -> Result<Minijail> {
+    let mut jail = create_sandbox_minijail(root, MAX_OPEN_FILES_FOR_GPU, config)?;
 
-pub(super) fn gpu_jail(jail_config: &Option<JailConfig>, policy: &str) -> Result<Option<Minijail>> {
-    match simple_jail_ext(jail_config, policy, Some(32768))? {
-        Some(mut jail) => {
-            // Create a tmpfs in the device's root directory so that we can bind mount the
-            // dri directory into it.  The size=67108864 is size=64*1024*1024 or size=64MB.
-            jail.mount_with_data(
-                Path::new("none"),
-                Path::new("/"),
-                "tmpfs",
-                (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
-                "size=67108864",
-            )?;
+    // Create a tmpfs in the device's root directory so that we can bind mount the dri directory
+    // into it.  The size=67108864 is size=64*1024*1024 or size=64MB.
+    jail.mount_with_data(
+        Path::new("none"),
+        Path::new("/"),
+        "tmpfs",
+        (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
+        "size=67108864",
+    )?;
 
-            // Device nodes required for DRM.
-            let sys_dev_char_path = Path::new("/sys/dev/char");
-            jail.mount_bind(sys_dev_char_path, sys_dev_char_path, false)?;
-            let sys_devices_path = Path::new("/sys/devices");
-            jail.mount_bind(sys_devices_path, sys_devices_path, false)?;
+    // Device nodes required for DRM.
+    let sys_dev_char_path = Path::new("/sys/dev/char");
+    jail.mount_bind(sys_dev_char_path, sys_dev_char_path, false)?;
+    let sys_devices_path = Path::new("/sys/devices");
+    jail.mount_bind(sys_devices_path, sys_devices_path, false)?;
 
-            let drm_dri_path = Path::new("/dev/dri");
-            if drm_dri_path.exists() {
-                jail.mount_bind(drm_dri_path, drm_dri_path, false)?;
-            }
-
-            // If the ARM specific devices exist on the host, bind mount them in.
-            let mali0_path = Path::new("/dev/mali0");
-            if mali0_path.exists() {
-                jail.mount_bind(mali0_path, mali0_path, true)?;
-            }
-
-            let pvr_sync_path = Path::new("/dev/pvr_sync");
-            if pvr_sync_path.exists() {
-                jail.mount_bind(pvr_sync_path, pvr_sync_path, true)?;
-            }
-
-            // If the udmabuf driver exists on the host, bind mount it in.
-            let udmabuf_path = Path::new("/dev/udmabuf");
-            if udmabuf_path.exists() {
-                jail.mount_bind(udmabuf_path, udmabuf_path, true)?;
-            }
-
-            // Libraries that are required when mesa drivers are dynamically loaded.
-            jail_mount_bind_if_exists(
-                &mut jail,
-                &[
-                    "/usr/lib",
-                    "/usr/lib64",
-                    "/lib",
-                    "/lib64",
-                    "/usr/share/drirc.d",
-                    "/usr/share/glvnd",
-                    "/usr/share/vulkan",
-                ],
-            )?;
-
-            // pvr driver requires read access to /proc/self/task/*/comm.
-            let proc_path = Path::new("/proc");
-            jail.mount(
-                proc_path,
-                proc_path,
-                "proc",
-                (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC | libc::MS_RDONLY) as usize,
-            )?;
-
-            // To enable perfetto tracing, we need to give access to the perfetto service IPC
-            // endpoints.
-            let perfetto_path = Path::new("/run/perfetto");
-            if perfetto_path.exists() {
-                jail.mount_bind(perfetto_path, perfetto_path, true)?;
-            }
-
-            Ok(Some(jail))
-        }
-        None => Ok(None),
+    let drm_dri_path = Path::new("/dev/dri");
+    if drm_dri_path.exists() {
+        jail.mount_bind(drm_dri_path, drm_dri_path, false)?;
     }
+
+    // If the ARM specific devices exist on the host, bind mount them in.
+    let mali0_path = Path::new("/dev/mali0");
+    if mali0_path.exists() {
+        jail.mount_bind(mali0_path, mali0_path, true)?;
+    }
+
+    let pvr_sync_path = Path::new("/dev/pvr_sync");
+    if pvr_sync_path.exists() {
+        jail.mount_bind(pvr_sync_path, pvr_sync_path, true)?;
+    }
+
+    // If the udmabuf driver exists on the host, bind mount it in.
+    let udmabuf_path = Path::new("/dev/udmabuf");
+    if udmabuf_path.exists() {
+        jail.mount_bind(udmabuf_path, udmabuf_path, true)?;
+    }
+
+    // Libraries that are required when mesa drivers are dynamically loaded.
+    jail_mount_bind_if_exists(
+        &mut jail,
+        &[
+            "/usr/lib",
+            "/usr/lib64",
+            "/lib",
+            "/lib64",
+            "/usr/share/drirc.d",
+            "/usr/share/glvnd",
+            "/usr/share/vulkan",
+        ],
+    )?;
+
+    // pvr driver requires read access to /proc/self/task/*/comm.
+    let proc_path = Path::new("/proc");
+    jail.mount(
+        proc_path,
+        proc_path,
+        "proc",
+        (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC | libc::MS_RDONLY) as usize,
+    )?;
+
+    // To enable perfetto tracing, we need to give access to the perfetto service IPC
+    // endpoints.
+    let perfetto_path = Path::new("/run/perfetto");
+    if perfetto_path.exists() {
+        jail.mount_bind(perfetto_path, perfetto_path, true)?;
+    }
+
+    Ok(jail)
 }
 
 /// Mirror-mount all the directories in `dirs` into `jail` on a best-effort basis.
