@@ -913,6 +913,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
     let (device_ctrl_tube, device_ctrl_resp) = Tube::pair().context("failed to create tube")?;
     guest_os.devices_thread = match create_devices_worker_thread(
+        guest_os.vm.get_memory().clone(),
         guest_os.io_bus.clone(),
         guest_os.mmio_bus.clone(),
         device_ctrl_resp,

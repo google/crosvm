@@ -4,6 +4,7 @@
 
 //! Track memory regions that are mapped to the guest VM.
 
+use anyhow::bail;
 use std::convert::AsRef;
 use std::convert::TryFrom;
 use std::fs::File;
@@ -868,6 +869,74 @@ impl GuestMemory {
             .ok_or(Error::InvalidGuestAddress(guest_addr))
             .map(|region| region.obj_offset + guest_addr.offset_from(region.start()))
     }
+
+    /// Copy all guest memory into `w`.
+    ///
+    /// Assumes exclusive access to the guest memory for the duration of the call (e.g. all vCPUs
+    /// and devices must be stopped).
+    ///
+    /// Returns a JSON object that contains metadata about the underlying memory regions to allow
+    /// validation checks at restore time.
+    pub fn snapshot(&self, w: &mut std::fs::File) -> anyhow::Result<serde_json::Value> {
+        let mut metadata = MemorySnapshotMetadata {
+            regions: Vec::new(),
+        };
+
+        for region in self.regions.iter() {
+            metadata
+                .regions
+                .push((region.guest_base.0, region.mapping.size()));
+            self.write_from_memory(region.guest_base, w, region.mapping.size())?;
+        }
+
+        Ok(serde_json::to_value(metadata)?)
+    }
+
+    /// Restore the guest memory using the bytes from `r`.
+    ///
+    /// Assumes exclusive access to the guest memory for the duration of the call (e.g. all vCPUs
+    /// and devices must be stopped).
+    ///
+    /// Returns an error if `metadata` doesn't match the configuration of the `GuestMemory` or if
+    /// `r` doesn't produce exactly as many bytes as needed.
+    pub fn restore(
+        &self,
+        metadata: serde_json::Value,
+        r: &mut std::fs::File,
+    ) -> anyhow::Result<()> {
+        let metadata: MemorySnapshotMetadata = serde_json::from_value(metadata)?;
+        if self.regions.len() != metadata.regions.len() {
+            bail!(
+                "snapshot expected {} memory regions but VM has {}",
+                metadata.regions.len(),
+                self.regions.len()
+            );
+        }
+        for (region, (guest_base, size)) in self.regions.iter().zip(metadata.regions.iter()) {
+            if region.guest_base.0 != *guest_base || region.mapping.size() != *size {
+                bail!("snapshot memory regions don't match VM memory regions");
+            }
+        }
+
+        for region in self.regions.iter() {
+            self.read_to_memory(region.guest_base, r, region.mapping.size())?;
+        }
+
+        // Should always be at EOF at this point.
+        let mut buf = [0];
+        if r.read(&mut buf)? != 0 {
+            bail!("too many bytes");
+        }
+
+        Ok(())
+    }
+}
+
+// TODO: Consider storing a hash of memory contents and validating it on restore.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct MemorySnapshotMetadata {
+    // Guest base and size for each memory region.
+    regions: Vec<(u64, usize)>,
 }
 
 // It is safe to implement BackingMemory because GuestMemory can be mutated any time already.

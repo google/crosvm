@@ -26,11 +26,26 @@ fn suspend_snapshot_restore_resume_disable_sandbox() -> anyhow::Result<()> {
 }
 
 fn suspend_resume_system(vm: &mut TestVm) -> anyhow::Result<()> {
+    // WARNING: Suspend/resume is only partially implemented, some aspects of these tests only work
+    // by chance. Still, the tests are useful to avoid backslide. If a seemingly unrelated change
+    // breaks this test, it is probably reasonable to disable the test.
+
+    // Verify RAM is saved and restored by interacting with a filesystem pinned in RAM (i.e. tmpfs
+    // with swap disabled).
+    vm.exec_in_guest("swapoff -a").unwrap();
+    vm.exec_in_guest("mount -t tmpfs none /tmp").unwrap();
+
+    vm.exec_in_guest("echo foo > /tmp/foo").unwrap();
+    assert_eq!("foo", vm.exec_in_guest("cat /tmp/foo").unwrap().trim());
+
     // Take snapshot of original VM state
     println!("snapshotting VM - clean state");
     let dir = tempdir().unwrap();
     let snap1_path = dir.path().join("snapshot.bkp");
     vm.snapshot(&snap1_path).unwrap();
+
+    vm.exec_in_guest("echo bar > /tmp/foo").unwrap();
+    assert_eq!("bar", vm.exec_in_guest("cat /tmp/foo").unwrap().trim());
 
     // suspend VM
     vm.suspend().unwrap();
@@ -61,6 +76,8 @@ fn suspend_resume_system(vm: &mut TestVm) -> anyhow::Result<()> {
     let snap3_path = dir.path().join("snapshot3.bkp");
     vm.snapshot(&snap3_path).unwrap();
     vm.resume().unwrap();
+
+    assert_eq!("foo", vm.exec_in_guest("cat /tmp/foo").unwrap().trim());
 
     let snap1 = std::fs::read_to_string(&snap1_path).unwrap();
     let snap2 = std::fs::read_to_string(&snap2_path).unwrap();

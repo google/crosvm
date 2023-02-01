@@ -2378,6 +2378,7 @@ dependencies = [
 name = "vm_memory"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "base",
  "bitflags",
  "cfg-if",
@@ -2386,6 +2387,7 @@ dependencies = [
  "libc",
  "remain",
  "serde",
+ "serde_json",
  "thiserror",
  "zerocopy",
 ]

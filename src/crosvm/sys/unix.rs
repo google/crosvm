@@ -2413,6 +2413,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     let (device_ctrl_tube, device_ctrl_resp) = Tube::pair().context("failed to create tube")?;
     // Create devices thread, and restore if a restore file exists.
     linux.devices_thread = match create_devices_worker_thread(
+        linux.vm.get_memory().clone(),
         linux.io_bus.clone(),
         linux.mmio_bus.clone(),
         device_ctrl_resp,
