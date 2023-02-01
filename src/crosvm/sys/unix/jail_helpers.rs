@@ -11,8 +11,6 @@ use anyhow::Context;
 use anyhow::Result;
 use base::*;
 use libc::c_ulong;
-use libc::gid_t;
-use libc::uid_t;
 use minijail::Minijail;
 use once_cell::sync::Lazy;
 
@@ -21,8 +19,21 @@ use crate::crosvm::config::JailConfig;
 static EMBEDDED_BPFS: Lazy<std::collections::HashMap<&str, Vec<u8>>> =
     Lazy::new(|| include!(concat!(env!("OUT_DIR"), "/bpf_includes.in")));
 
+/// Most devices don't need to open many fds.
+pub const MAX_OPEN_FILES_DEFAULT: u64 = 1024;
 /// The max open files for gpu processes.
 const MAX_OPEN_FILES_FOR_GPU: u64 = 32768;
+
+/// The user in the jail to run as.
+pub(super) enum RunAsUser {
+    // Do not specify the user
+    Unspecified,
+    // Runs as the same user in the jail as the current user.
+    CurrentUser,
+    // Runs as the root user in the jail.
+    #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
+    Root,
+}
 
 /// Config for the sandbox to be created by [Minijail].
 pub(super) struct SandboxConfig<'a> {
@@ -35,6 +46,10 @@ pub(super) struct SandboxConfig<'a> {
     pub(super) ugid_map: Option<(&'a str, &'a str)>,
     /// The remount mode instead of default MS_PRIVATE.
     pub(super) remount_mode: Option<c_ulong>,
+    /// Whether or not to configure the jail to support bind-mounts.
+    pub(super) bind_mounts: bool,
+    /// Specify the user in the jail to run as.
+    pub(super) run_as: RunAsUser,
 }
 
 impl<'a> SandboxConfig<'a> {
@@ -51,6 +66,8 @@ impl<'a> SandboxConfig<'a> {
             seccomp_policy_name: policy,
             ugid_map: None,
             remount_mode: None,
+            bind_mounts: false,
+            run_as: RunAsUser::Unspecified,
         }
     }
 }
@@ -117,6 +134,39 @@ pub(super) fn create_sandbox_minijail(
     if config.limit_caps {
         // Don't need any capabilities.
         jail.use_caps(0);
+    }
+    match config.run_as {
+        RunAsUser::Unspecified => {
+            if config.bind_mounts {
+                // Minijail requires to set user/group map to mount extra directories.
+                add_current_user_to_jail(&mut jail)?;
+            }
+        }
+        RunAsUser::CurrentUser => {
+            add_current_user_to_jail(&mut jail)?;
+        }
+        #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
+        RunAsUser::Root => {
+            // Add the current user as root in the jail.
+            let crosvm_uid = geteuid();
+            let crosvm_gid = getegid();
+            jail.uidmap(&format!("0 {0} 1", crosvm_uid))
+                .context("error setting UID map")?;
+            jail.gidmap(&format!("0 {0} 1", crosvm_gid))
+                .context("error setting GID map")?;
+        }
+    }
+    if config.bind_mounts {
+        // Create a tmpfs in the device's root directory so that we can bind mount files.
+        // The size=67108864 is size=64*1024*1024 or size=64MB.
+        // TODO(b/267581374): Use appropriate size for tmpfs.
+        jail.mount_with_data(
+            Path::new("none"),
+            Path::new("/"),
+            "tmpfs",
+            (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
+            "size=67108864",
+        )?;
     }
     if let Some((uid_map, gid_map)) = config.ugid_map {
         jail.uidmap(uid_map).context("error setting UID map")?;
@@ -202,7 +252,7 @@ pub(super) fn simple_jail(
         let config = SandboxConfig::new(jail_config, policy);
         Ok(Some(create_sandbox_minijail(
             &jail_config.pivot_root,
-            1024, // Most devices don't need to open many fds.
+            MAX_OPEN_FILES_DEFAULT,
             &config,
         )?))
     } else {
@@ -213,16 +263,6 @@ pub(super) fn simple_jail(
 /// Creates [Minijail] for gpu processes.
 pub(super) fn create_gpu_minijail(root: &Path, config: &SandboxConfig) -> Result<Minijail> {
     let mut jail = create_sandbox_minijail(root, MAX_OPEN_FILES_FOR_GPU, config)?;
-
-    // Create a tmpfs in the device's root directory so that we can bind mount the dri directory
-    // into it.  The size=67108864 is size=64*1024*1024 or size=64MB.
-    jail.mount_with_data(
-        Path::new("none"),
-        Path::new("/"),
-        "tmpfs",
-        (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
-        "size=67108864",
-    )?;
 
     // Device nodes required for DRM.
     let sys_dev_char_path = Path::new("/sys/dev/char");
@@ -302,31 +342,9 @@ pub(super) fn jail_mount_bind_if_exists<P: AsRef<std::ffi::OsStr>>(
     Ok(())
 }
 
-#[derive(Copy, Clone)]
-#[cfg_attr(not(feature = "tpm"), allow(dead_code))]
-pub(super) struct Ids {
-    pub(super) uid: uid_t,
-    pub(super) gid: gid_t,
-}
-
-#[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
-pub(super) fn add_current_user_as_root_to_jail(jail: &mut Minijail) -> Result<Ids> {
-    let crosvm_uid = geteuid();
-    let crosvm_gid = getegid();
-    jail.uidmap(&format!("0 {0} 1", crosvm_uid))
-        .context("error setting UID map")?;
-    jail.gidmap(&format!("0 {0} 1", crosvm_gid))
-        .context("error setting GID map")?;
-
-    Ok(Ids {
-        uid: crosvm_uid,
-        gid: crosvm_gid,
-    })
-}
-
 /// Set the uid/gid for the jailed process and give a basic id map. This is
 /// required for bind mounts to work.
-pub(super) fn add_current_user_to_jail(jail: &mut Minijail) -> Result<Ids> {
+fn add_current_user_to_jail(jail: &mut Minijail) -> Result<()> {
     let crosvm_uid = geteuid();
     let crosvm_gid = getegid();
 
@@ -341,9 +359,5 @@ pub(super) fn add_current_user_to_jail(jail: &mut Minijail) -> Result<Ids> {
     if crosvm_gid != 0 {
         jail.change_gid(crosvm_gid);
     }
-
-    Ok(Ids {
-        uid: crosvm_uid,
-        gid: crosvm_gid,
-    })
+    Ok(())
 }

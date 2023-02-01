@@ -1529,31 +1529,26 @@ where
     let battery = if cfg.battery_config.is_some() {
         #[cfg_attr(
             not(feature = "power-monitor-powerd"),
-            allow(clippy::manual_map, clippy::needless_match)
+            allow(clippy::manual_map, clippy::needless_match, unused_mut)
         )]
-        let jail = match simple_jail(&cfg.jail_config, "battery")? {
-            #[cfg_attr(not(feature = "power-monitor-powerd"), allow(unused_mut))]
-            Some(mut jail) => {
-                // Setup a bind mount to the system D-Bus socket if the powerd monitor is used.
-                #[cfg(feature = "power-monitor-powerd")]
-                {
-                    add_current_user_to_jail(&mut jail)?;
-
-                    // Create a tmpfs in the device's root directory so that we can bind mount files.
-                    jail.mount_with_data(
-                        Path::new("none"),
-                        Path::new("/"),
-                        "tmpfs",
-                        (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC) as usize,
-                        "size=67108864",
-                    )?;
-
-                    let system_bus_socket_path = Path::new("/run/dbus/system_bus_socket");
-                    jail.mount_bind(system_bus_socket_path, system_bus_socket_path, true)?;
-                }
-                Some(jail)
+        let jail = if let Some(jail_config) = &cfg.jail_config {
+            let mut config = SandboxConfig::new(jail_config, "battery");
+            #[cfg(feature = "power-monitor-powerd")]
+            {
+                config.bind_mounts = true;
             }
-            None => None,
+            let mut jail =
+                create_sandbox_minijail(&jail_config.pivot_root, MAX_OPEN_FILES_DEFAULT, &config)?;
+
+            // Setup a bind mount to the system D-Bus socket if the powerd monitor is used.
+            #[cfg(feature = "power-monitor-powerd")]
+            {
+                let system_bus_socket_path = Path::new("/run/dbus/system_bus_socket");
+                jail.mount_bind(system_bus_socket_path, system_bus_socket_path, true)?;
+            }
+            Some(jail)
+        } else {
+            None
         };
         (cfg.battery_config.as_ref().map(|c| c.type_), jail)
     } else {

@@ -128,6 +128,7 @@ pub fn create_gpu_device(
 
     let jail = if let Some(jail_config) = &cfg.jail_config {
         let mut config = SandboxConfig::new(jail_config, "gpu_device");
+        config.bind_mounts = true;
         // Allow changes made externally take effect immediately to allow shaders to be dynamically
         // added by external processes.
         config.remount_mode = Some(libc::MS_SLAVE);
@@ -157,8 +158,6 @@ pub fn create_gpu_device(
         for dir in &wayland_socket_dirs {
             jail.mount_bind(dir, dir, true)?;
         }
-
-        add_current_user_to_jail(&mut jail)?;
 
         Some(jail)
     } else {
@@ -223,6 +222,10 @@ pub fn start_gpu_render_server(
         // Allow changes made externally take effect immediately to allow shaders to be dynamically
         // added by external processes.
         config.remount_mode = Some(libc::MS_SLAVE);
+        config.bind_mounts = true;
+        // Run as root in the jail to keep capabilities after execve, which is needed for
+        // mounting to work.  All capabilities will be dropped afterwards.
+        config.run_as = RunAsUser::Root;
         let mut jail = create_gpu_minijail(&jail_config.pivot_root, &config)?;
 
         let cache_info = get_gpu_cache_info(
@@ -243,10 +246,6 @@ pub fn start_gpu_render_server(
         if log_path.exists() {
             jail.mount_bind(log_path, log_path, true)?;
         }
-
-        // Run as root in the jail to keep capabilities after execve, which is needed for
-        // mounting to work.  All capabilities will be dropped afterwards.
-        add_current_user_as_root_to_jail(&mut jail)?;
 
         (jail, Some(cache_info))
     } else {
