@@ -49,8 +49,8 @@ fn split_supported() -> bool {
 fn get_chip(num_vcpus: usize) -> WhpxSplitIrqChip {
     let whpx = Whpx::new().expect("failed to instantiate Whpx");
     let mem = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-    let vm =
-        WhpxVm::new(&whpx, num_vcpus, mem, CpuId::new(0), true).expect("failed tso instantiate vm");
+    let vm = WhpxVm::new(&whpx, num_vcpus, mem, CpuId::new(0), true, None)
+        .expect("failed to instantiate vm");
 
     let (_, irq_tube) = Tube::pair().expect("failed to create irq tube");
 

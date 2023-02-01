@@ -782,8 +782,15 @@ mod tests {
         let whpx = Whpx::new().expect("failed to instantiate whpx");
         let local_apic_supported = Whpx::check_whpx_feature(WhpxFeature::LocalApicEmulation)
             .expect("failed to get whpx features");
-        WhpxVm::new(&whpx, cpu_count, mem, CpuId::new(0), local_apic_supported)
-            .expect("failed to create whpx vm")
+        WhpxVm::new(
+            &whpx,
+            cpu_count,
+            mem,
+            CpuId::new(0),
+            local_apic_supported,
+            None,
+        )
+        .expect("failed to create whpx vm")
     }
 
     #[test]
