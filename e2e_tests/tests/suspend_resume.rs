@@ -48,6 +48,7 @@ fn suspend_resume_system(vm: &mut TestVm) -> anyhow::Result<()> {
         vm.resume().unwrap();
     })
     .unwrap();
+    assert_eq!("42", vm.wait_for_guest().unwrap());
 
     // suspend VM
     vm.suspend().unwrap();
