@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::Context;
+use base::error;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
@@ -378,7 +379,7 @@ impl Bus {
                     if let Err(e) = device_lock.sleep() {
                         //TODO: Enable this line when b/232437513 is done
                         // return Err(anyhow!("Failed to sleep {}.", (*device_lock).debug_label()));
-                        eprintln!("Failed to sleep {}: {}", (*device_lock).debug_label(), e);
+                        error!("Failed to sleep {}: {}", (*device_lock).debug_label(), e);
                     }
                 }
                 BusDeviceEntry::InnerSync(dev) => {
@@ -398,7 +399,7 @@ impl Bus {
                     if let Err(e) = device_lock.wake() {
                         //TODO: Enable this line when b/232437513 is done
                         // return Err(anyhow!("Failed to wake {}.", (*device_lock).debug_label()));
-                        eprintln!("Failed to wake {}: {}", (*device_lock).debug_label(), e);
+                        error!("Failed to wake {}: {}", (*device_lock).debug_label(), e);
                     };
                 }
                 BusDeviceEntry::InnerSync(dev) => {
@@ -437,7 +438,7 @@ impl Bus {
                 Err(e) => {
                     //TODO: Enable this line when b/232437513 is done
                     // return Err(anyhow!("Failed to snapshot {}.", (*device_lock).debug_label()));
-                    eprintln!("Failed to snapshot {}: {}.", device_label, e);
+                    error!("Failed to snapshot {}: {}.", device_label, e);
                 }
             }
         }
