@@ -5,5 +5,5 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [dependencies]
-data_model = { path = "../common/data_model" }
 tempfile = "3"
+zerocopy = "*"

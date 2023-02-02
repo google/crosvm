@@ -54,6 +54,8 @@ use thiserror::Error;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::pci::PciAddress;
@@ -86,7 +88,7 @@ const VIRTIO_IOMMU_VIOT_NODE_PCI_RANGE: u8 = 1;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 const VIRTIO_IOMMU_VIOT_NODE_VIRTIO_IOMMU_PCI: u8 = 3;
 
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, FromBytes, AsBytes)]
 #[repr(C, packed)]
 struct VirtioIommuViotHeader {
     node_count: u16,
@@ -97,7 +99,7 @@ struct VirtioIommuViotHeader {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for VirtioIommuViotHeader {}
 
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, FromBytes, AsBytes)]
 #[repr(C, packed)]
 struct VirtioIommuViotVirtioPciNode {
     type_: u8,
@@ -111,7 +113,7 @@ struct VirtioIommuViotVirtioPciNode {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for VirtioIommuViotVirtioPciNode {}
 
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, FromBytes, AsBytes)]
 #[repr(C, packed)]
 struct VirtioIommuViotPciRangeNode {
     type_: u8,

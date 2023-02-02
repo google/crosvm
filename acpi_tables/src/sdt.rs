@@ -8,7 +8,8 @@ use std::io::Read;
 use std::io::Result;
 use std::path::Path;
 
-use data_model::DataInit;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 /// SDT represents for System Description Table. The structure SDT is a
 /// generic format for creating various ACPI tables like DSDT/FADT/MADT.
@@ -88,8 +89,8 @@ impl SDT {
         self.data.as_slice()
     }
 
-    pub fn append<T: DataInit>(&mut self, value: T) {
-        self.data.extend_from_slice(value.as_slice());
+    pub fn append<T: AsBytes>(&mut self, value: T) {
+        self.data.extend_from_slice(value.as_bytes());
         self.write(LENGTH_OFFSET, self.data.len() as u32);
     }
 
@@ -99,23 +100,23 @@ impl SDT {
     }
 
     /// Read a value at the given offset
-    pub fn read<T: DataInit + Default>(&self, offset: usize) -> T {
+    pub fn read<T: FromBytes + AsBytes + Default>(&self, offset: usize) -> T {
         let value_len = std::mem::size_of::<T>();
-        *T::from_slice(
+        T::read_from(
             self.as_slice()
                 .get(offset..offset + value_len)
-                .unwrap_or(T::default().as_slice()),
+                .unwrap_or(T::default().as_bytes()),
         )
         .unwrap()
     }
 
     /// Write a value at the given offset
-    pub fn write<T: DataInit>(&mut self, offset: usize, value: T) {
+    pub fn write<T: AsBytes>(&mut self, offset: usize, value: T) {
         let value_len = std::mem::size_of::<T>();
         if (offset + value_len) > self.data.len() {
             return;
         }
-        self.data[offset..offset + value_len].copy_from_slice(value.as_slice());
+        self.data[offset..offset + value_len].copy_from_slice(value.as_bytes());
         self.update_checksum();
     }
 

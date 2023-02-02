@@ -33,8 +33,8 @@ dependencies = [
 name = "acpi_tables"
 version = "0.1.0"
 dependencies = [
- "data_model 0.1.1-alpha.1",
  "tempfile",
+ "zerocopy",
 ]
 
 [[package]]
@@ -2275,6 +2275,7 @@ dependencies = [
  "static_assertions",
  "thiserror",
  "usb_sys",
+ "zerocopy",
 ]
 
 [[package]]

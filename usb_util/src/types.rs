@@ -4,8 +4,9 @@
 
 use std::mem::size_of;
 
-use data_model::DataInit;
 use static_assertions::const_assert;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 /// Standard USB descriptor types.
 pub enum DescriptorType {
@@ -23,15 +24,12 @@ pub trait Descriptor {
 
 /// Standard USB descriptor header common to all descriptor types.
 #[allow(non_snake_case)]
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, FromBytes, AsBytes)]
 #[repr(C, packed)]
 pub struct DescriptorHeader {
     pub bLength: u8,
     pub bDescriptorType: u8,
 }
-
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for DescriptorHeader {}
 
 fn _assert_descriptor_header() {
     const_assert!(size_of::<DescriptorHeader>() == 2);
@@ -40,7 +38,7 @@ fn _assert_descriptor_header() {
 /// Standard USB device descriptor as defined in USB 2.0 chapter 9,
 /// not including the standard header.
 #[allow(non_snake_case)]
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, FromBytes, AsBytes)]
 #[repr(C, packed)]
 pub struct DeviceDescriptor {
     pub bcdUSB: u16,
@@ -63,9 +61,6 @@ impl Descriptor for DeviceDescriptor {
     }
 }
 
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for DeviceDescriptor {}
-
 fn _assert_device_descriptor() {
     const_assert!(size_of::<DeviceDescriptor>() == 18 - 2);
 }
@@ -73,7 +68,7 @@ fn _assert_device_descriptor() {
 /// Standard USB configuration descriptor as defined in USB 2.0 chapter 9,
 /// not including the standard header.
 #[allow(non_snake_case)]
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, FromBytes, AsBytes)]
 #[repr(C, packed)]
 pub struct ConfigDescriptor {
     pub wTotalLength: u16,
@@ -90,9 +85,6 @@ impl Descriptor for ConfigDescriptor {
     }
 }
 
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for ConfigDescriptor {}
-
 fn _assert_config_descriptor() {
     const_assert!(size_of::<ConfigDescriptor>() == 9 - 2);
 }
@@ -106,7 +98,7 @@ impl ConfigDescriptor {
 /// Standard USB interface descriptor as defined in USB 2.0 chapter 9,
 /// not including the standard header.
 #[allow(non_snake_case)]
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, FromBytes, AsBytes)]
 #[repr(C, packed)]
 pub struct InterfaceDescriptor {
     pub bInterfaceNumber: u8,
@@ -124,9 +116,6 @@ impl Descriptor for InterfaceDescriptor {
     }
 }
 
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for InterfaceDescriptor {}
-
 fn _assert_interface_descriptor() {
     const_assert!(size_of::<InterfaceDescriptor>() == 9 - 2);
 }
@@ -134,7 +123,7 @@ fn _assert_interface_descriptor() {
 /// Standard USB endpoint descriptor as defined in USB 2.0 chapter 9,
 /// not including the standard header.
 #[allow(non_snake_case)]
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, FromBytes, AsBytes)]
 #[repr(C, packed)]
 pub struct EndpointDescriptor {
     pub bEndpointAddress: u8,
@@ -148,9 +137,6 @@ impl Descriptor for EndpointDescriptor {
         DescriptorType::Endpoint
     }
 }
-
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for EndpointDescriptor {}
 
 fn _assert_endpoint_descriptor() {
     const_assert!(size_of::<EndpointDescriptor>() == 7 - 2);
@@ -261,7 +247,7 @@ pub enum StandardControlRequest {
 
 /// RequestSetup is first part of control transfer buffer.
 #[repr(C, packed)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, FromBytes, AsBytes)]
 pub struct UsbRequestSetup {
     // USB Device Request. USB spec. rev. 2.0 9.3
     pub request_type: u8, // bmRequestType
@@ -274,8 +260,6 @@ pub struct UsbRequestSetup {
 fn _assert_usb_request_setup() {
     const_assert!(size_of::<UsbRequestSetup>() == 8);
 }
-
-unsafe impl DataInit for UsbRequestSetup {}
 
 impl UsbRequestSetup {
     pub fn new(

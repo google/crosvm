@@ -7,7 +7,7 @@ use std::mem::size_of;
 use std::ops::Deref;
 
 use base::warn;
-use data_model::DataInit;
+use zerocopy::FromBytes;
 
 use crate::types;
 use crate::types::Descriptor;
@@ -125,13 +125,13 @@ pub fn parse_usbfs_descriptors(data: &[u8]) -> Result<DeviceDescriptorTree> {
     // Any other descriptors encountered while searching for the expected type are skipped.
     // The `offset` parameter will be advanced to point to the next byte after the returned
     // descriptor.
-    fn next_descriptor<T: Descriptor + DataInit>(
+    fn next_descriptor<T: Descriptor + FromBytes>(
         data: &[u8],
         offset: &mut usize,
     ) -> Result<(T, usize)> {
         let desc_type = T::descriptor_type() as u8;
         loop {
-            let hdr = DescriptorHeader::from_slice(
+            let hdr = DescriptorHeader::read_from(
                 data.get(*offset..*offset + size_of::<DescriptorHeader>())
                     .ok_or(Error::DescriptorParse)?,
             )
@@ -144,13 +144,13 @@ pub fn parse_usbfs_descriptors(data: &[u8]) -> Result<DeviceDescriptorTree> {
                 let desc_offset = *offset;
 
                 *offset += size_of::<DescriptorHeader>();
-                let desc = T::from_slice(
+                let desc = T::read_from(
                     data.get(*offset..*offset + size_of::<T>())
                         .ok_or(Error::DescriptorParse)?,
                 )
                 .ok_or(Error::DescriptorParse)?;
                 *offset += hdr.bLength as usize - size_of::<DescriptorHeader>();
-                return Ok((*desc, desc_offset));
+                return Ok((desc, desc_offset));
             } else {
                 // Finding a ConfigDescriptor while looking for InterfaceDescriptor means
                 // that we should advance to the next device configuration.

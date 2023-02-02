@@ -2,10 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use data_model::DataInit;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 #[repr(packed)]
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, FromBytes, AsBytes)]
 pub struct RSDP {
     pub signature: [u8; 8],
     pub checksum: u8,
@@ -17,9 +18,6 @@ pub struct RSDP {
     pub extended_checksum: u8,
     _reserved: [u8; 3],
 }
-
-// Safe as RSDP structure only contains raw data
-unsafe impl DataInit for RSDP {}
 
 impl RSDP {
     pub fn new(oem_id: [u8; 6], xsdt_addr: u64) -> Self {
@@ -35,8 +33,8 @@ impl RSDP {
             _reserved: [0; 3],
         };
 
-        rsdp.checksum = super::generate_checksum(&rsdp.as_slice()[0..19]);
-        rsdp.extended_checksum = super::generate_checksum(rsdp.as_slice());
+        rsdp.checksum = super::generate_checksum(&rsdp.as_bytes()[0..19]);
+        rsdp.extended_checksum = super::generate_checksum(rsdp.as_bytes());
         rsdp
     }
 
@@ -47,7 +45,7 @@ impl RSDP {
 
 #[cfg(test)]
 mod tests {
-    use data_model::DataInit;
+    use zerocopy::AsBytes;
 
     use super::RSDP;
 
@@ -55,12 +53,12 @@ mod tests {
     fn test_rsdp() {
         let rsdp = RSDP::new(*b"CHYPER", 0xdead_beef);
         let sum = rsdp
-            .as_slice()
+            .as_bytes()
             .iter()
             .fold(0u8, |acc, x| acc.wrapping_add(*x));
         assert_eq!(sum, 0);
         let sum: u8 = rsdp
-            .as_slice()
+            .as_bytes()
             .iter()
             .fold(0u8, |acc, x| acc.wrapping_add(*x));
         assert_eq!(sum, 0);

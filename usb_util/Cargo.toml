@@ -12,3 +12,4 @@ remain = "*"
 thiserror = "*"
 base = { path = "../base" }
 usb_sys = { path = "../usb_sys" }
+zerocopy = "*"
