@@ -260,8 +260,11 @@ fn wake_devices(bus: &Bus) {
     }
 }
 
-fn snapshot_devices(bus: &Bus, devices_vec: &mut Vec<serde_json::Value>) -> anyhow::Result<()> {
-    match bus.snapshot_devices(devices_vec) {
+fn snapshot_devices(
+    bus: &Bus,
+    add_snapshot: impl FnMut(u32, serde_json::Value),
+) -> anyhow::Result<()> {
+    match bus.snapshot_devices(add_snapshot) {
         Ok(_) => {
             info!("Devices snapshot successfully");
             Ok(())
@@ -291,8 +294,16 @@ fn restore_devices(
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SnapshotRoot {
+    devices: Vec<HashMap<u32, serde_json::Value>>,
+}
+
 async fn snapshot_handler(path: &std::path::Path, buses: &[&Bus]) -> anyhow::Result<()> {
-    let mut devices_vec: Vec<serde_json::Value> = Vec::new();
+    let mut snapshot_root = SnapshotRoot {
+        devices: Vec::new(),
+    };
+
     let mut file = OpenOptions::new()
         .create(true)
         .write(true)
@@ -311,7 +322,9 @@ async fn snapshot_handler(path: &std::path::Path, buses: &[&Bus]) -> anyhow::Res
         }
     }
     for bus in buses {
-        if let Err(e) = snapshot_devices(bus, &mut devices_vec) {
+        if let Err(e) = snapshot_devices(bus, |id, snapshot| {
+            snapshot_root.devices.push([(id, snapshot)].into())
+        }) {
             // If snapshot fails, wake devices and return error.
             error!("failed to snapshot devices: {}", e);
             for bus in buses {
@@ -324,7 +337,7 @@ async fn snapshot_handler(path: &std::path::Path, buses: &[&Bus]) -> anyhow::Res
         wake_devices(bus);
     }
 
-    serde_json::to_writer(&mut file, &devices_vec)?;
+    serde_json::to_writer(&mut file, &snapshot_root)?;
 
     Ok(())
 }
@@ -336,9 +349,10 @@ async fn restore_handler(path: &std::path::Path, buses: &[&Bus]) -> anyhow::Resu
         .open(path)
         .with_context(|| format!("failed to open {}", path.display()))?;
 
+    let snapshot_root: SnapshotRoot = serde_json::from_reader(file)?;
+
     let mut devices_map: HashMap<u32, VecDeque<serde_json::Value>> = HashMap::new();
-    let deserialized_list: Vec<HashMap<u32, serde_json::Value>> = serde_json::from_reader(file)?;
-    for (id, device) in deserialized_list.into_iter().flatten() {
+    for (id, device) in snapshot_root.devices.into_iter().flatten() {
         devices_map.entry(id).or_default().push_back(device)
     }
     for bus in buses {

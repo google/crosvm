@@ -21,7 +21,6 @@ use base::error;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
-use serde_json::json;
 use sync::Mutex;
 use thiserror::Error;
 
@@ -410,7 +409,10 @@ impl Bus {
         Ok(())
     }
 
-    pub fn snapshot_devices(&self, devices_vec: &mut Vec<serde_json::Value>) -> anyhow::Result<()> {
+    pub fn snapshot_devices(
+        &self,
+        mut add_snapshot: impl FnMut(u32, serde_json::Value),
+    ) -> anyhow::Result<()> {
         let devices_lock = &(self.devices).lock();
         for (_, device_entry) in devices_lock.iter() {
             let (device_id, serialized_device, device_label) = match &(device_entry.device) {
@@ -430,10 +432,7 @@ impl Bus {
             };
             match serialized_device {
                 Ok(snapshot) => {
-                    let serialized_dev = json! ({
-                        device_id.to_string(): snapshot,
-                    });
-                    devices_vec.push(serialized_dev);
+                    add_snapshot(device_id, snapshot);
                 }
                 Err(e) => {
                     //TODO: Enable this line when b/232437513 is done
