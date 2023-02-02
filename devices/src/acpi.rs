@@ -602,6 +602,9 @@ pub const ACPIPM_RESOURCE_CONTROLBLK_LEN: u8 = 2;
 pub const ACPIPM_RESOURCE_GPE0_BLK_LEN: u8 = 64;
 pub const ACPIPM_RESOURCE_LEN: u8 = ACPIPM_RESOURCE_EVENTBLK_LEN + 4 + ACPIPM_RESOURCE_GPE0_BLK_LEN;
 
+// Should be in sync with gpe_allocator range
+pub const ACPIPM_GPE_MAX: u16 = ACPIPM_RESOURCE_GPE0_BLK_LEN as u16 / 2 * 8 - 1;
+
 /// ACPI PM register value definitions
 
 /// 4.8.4.1.1 PM1 Status Registers, ACPI Spec Version 6.4

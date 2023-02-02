@@ -13,6 +13,7 @@ use sync::Mutex;
 
 use crate::acpi::ACPIPMError;
 use crate::acpi::GpeResource;
+use crate::acpi::ACPIPM_GPE_MAX;
 
 pub(crate) fn get_acpi_event_sock() -> Result<Option<NetlinkGenericSocket>, ACPIPMError> {
     // Get group id corresponding to acpi_mc_group of acpi_event family
@@ -87,7 +88,7 @@ fn acpi_event_handle_gpe(
     ignored_gpe: &[u32],
 ) {
     // If gpe event fired in the host, notify registered GpeNotify listeners
-    if _type == 0 && gpe_number < 256 && !ignored_gpe.contains(&gpe_number) {
+    if _type == 0 && gpe_number <= ACPIPM_GPE_MAX as u32 && !ignored_gpe.contains(&gpe_number) {
         if let Some(notify_devs) = gpe0.lock().gpe_notify.get(&gpe_number) {
             for notify_dev in notify_devs.iter() {
                 notify_dev.lock().notify();
