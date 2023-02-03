@@ -19,6 +19,7 @@ from impl.common import (
     chdir,
     cmd,
     cwd_context,
+    is_kiwi_repo,
     parallel,
     run_main,
 )
@@ -130,6 +131,12 @@ KNOWN_DISABLED_FEATURES = [
     "direct",
     "libvda",
     "whpx",
+]
+
+
+# List of python files and globs on which we run checks.
+PYTHON_FILES = [
+    "tools/**.py",
 ]
 
 
@@ -289,12 +296,12 @@ CHECKS: List[Check] = [
     ),
     Check(
         check_python_tests,
-        files=["tools/**.py"],
+        files=PYTHON_FILES,
         python_tools=True,
     ),
     Check(
         check_python_types,
-        files=["tools/**.py"],
+        files=PYTHON_FILES,
         exclude=["tools/windows/*"],
         python_tools=True,
     ),
@@ -303,16 +310,6 @@ CHECKS: List[Check] = [
         files=["**.py"],
         python_tools=True,
         exclude=["infra/recipes.py"],
-        can_fix=True,
-    ),
-    Check(
-        check_infra_configs,
-        files=["infra/config/**.star"],
-        can_fix=True,
-    ),
-    Check(
-        check_infra_tests,
-        files=["infra/**.py"],
         can_fix=True,
     ),
     Check(
@@ -341,6 +338,24 @@ CHECKS: List[Check] = [
     Check(check_crlf_line_endings, exclude=CRLF_LINE_ENDING_FILES),
     Check(check_lf_line_endings, files=CRLF_LINE_ENDING_FILES),
 ]
+
+# We disable LUCI infra related tests because kokoro doesn't have internet connectivity that
+# the tests rely on.
+if not is_kiwi_repo():
+    CHECKS.extend(
+        [
+            Check(
+                check_infra_configs,
+                files=["infra/config/**.star"],
+                can_fix=True,
+            ),
+            Check(
+                check_infra_tests,
+                files=["infra/**.py"],
+                can_fix=True,
+            ),
+        ]
+    )
 
 CHECKS_DICT = dict((c.name, c) for c in CHECKS)
 
