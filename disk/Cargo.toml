@@ -27,7 +27,7 @@ serde = { version = "1", features = [ "derive" ] }
 sync = { path = "../common/sync" }
 thiserror = "*"
 tempfile = "3"
-uuid = { version = "0.8.2", features = ["v4"], optional = true }
+uuid = { version = "1", features = ["v4"], optional = true }
 vm_memory = { path = "../vm_memory" }
 zerocopy = "*"
 

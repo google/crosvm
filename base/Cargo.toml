@@ -33,7 +33,7 @@ serde_json = "*"
 smallvec = "1.6.1"
 tempfile = "3"
 thiserror = "1.0.20"
-uuid = { version = "0.8.2", features = ["v4"] }
+uuid = { version = "1", features = ["v4"] }
 zerocopy = "*"
 
 [dev-dependencies]

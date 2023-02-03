@@ -426,7 +426,7 @@ static_assertions = "1.1"
 sync = { path = "common/sync" }
 tempfile = "3"
 thiserror = { version = "1.0.20" }
-uuid = { version = "0.8.2", features = [ "serde" ] }
+uuid = { version = "1", features = [ "serde" ] }
 vhost = { path = "vhost" }
 vm_control = { path = "vm_control" }
 acpi_tables = { path = "acpi_tables" }

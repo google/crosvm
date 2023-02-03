@@ -89,7 +89,7 @@ system_api = { path = "../system_api", optional = true }
 thiserror = "1.0.20"
 tpm2 = { path = "../tpm2", optional = true }
 cros_tracing = { path = "../cros_tracing" }
-uuid = { version = "0.8.2", features = [ "serde" ] }
+uuid = { version = "1", features = [ "serde" ] }
 vhost = { path = "../vhost" }
 vmm_vhost = { path = "../third_party/vmm_vhost", features = ["vmm", "device", "vfio-device"] }
 virtio_sys = { path = "../virtio_sys" }

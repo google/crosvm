@@ -9,4 +9,4 @@ edition = "2021"
 serde_json = "*"
 serde = { version = "*", features = ["derive"] }
 argh = "*"
-uuid = {version = "*", features = ["v4"]}
+uuid = {version = "1", features = ["v4"]}

@@ -180,7 +180,7 @@ pub trait EnabledHighResTimer {}
 pub fn generate_uuid() -> String {
     let mut buf = Uuid::encode_buffer();
     Uuid::new_v4()
-        .to_hyphenated()
+        .as_hyphenated()
         .encode_lower(&mut buf)
         .to_owned()
 }
