@@ -144,7 +144,9 @@ impl MemoryMapping {
     ///
     /// ```
     /// #   use base::MemoryMappingBuilder;
-    /// #   let mut mem_map = MemoryMappingBuilder::new(1024).build().unwrap();
+    /// #   use base::SharedMemory;
+    /// #   let shm = SharedMemory::new("test", 1024).unwrap();
+    /// #   let mut mem_map = MemoryMappingBuilder::new(1024).from_shared_memory(&shm).build().unwrap();
     ///     let res = mem_map.write_obj(55u64, 16);
     ///     assert!(res.is_ok());
     /// ```
