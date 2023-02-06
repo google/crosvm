@@ -264,6 +264,41 @@ fn wake_devices(bus: &Bus) {
     }
 }
 
+/// `SleepGuard` sends the devices on all of the provided buses to sleep when it is created and
+/// wakes them all up when it is dropped.
+///
+/// This allows snapshot and restore operations to be executed while the `BusDevice`s attached to
+/// the buses are stopped so that the VM state will not change during the snapshot process.
+struct SleepGuard<'a> {
+    buses: &'a [&'a Bus],
+}
+
+impl<'a> SleepGuard<'a> {
+    pub fn new(buses: &'a [&'a Bus]) -> anyhow::Result<Self> {
+        for bus in buses {
+            if let Err(e) = sleep_devices(bus) {
+                // Failing to sleep could mean a single device failing to sleep.
+                // Wake up devices to resume functionality of the VM.
+                for bus in buses {
+                    wake_devices(bus);
+                }
+
+                return Err(e);
+            }
+        }
+
+        Ok(SleepGuard { buses })
+    }
+}
+
+impl<'a> Drop for SleepGuard<'a> {
+    fn drop(&mut self) {
+        for bus in self.buses {
+            wake_devices(bus);
+        }
+    }
+}
+
 fn snapshot_devices(
     bus: &Bus,
     add_snapshot: impl FnMut(u32, serde_json::Value),
@@ -333,41 +368,19 @@ async fn snapshot_handler(
         .open(&mem_path)
         .with_context(|| format!("failed to open {}", mem_path.display()))?;
 
-    for bus in buses {
-        if let Err(e) = sleep_devices(bus) {
-            // Failing to sleep could mean a single device failing to sleep.
-            // Wake up devices to resume functionality of the VM.
-            for bus in buses {
-                wake_devices(bus);
-            }
-            return Err(e);
+    {
+        let _sleep_guard = SleepGuard::new(buses)?;
+
+        snapshot_root.guest_memory_metadata = guest_memory
+            .snapshot(&mut mem_file)
+            .context("failed to snapshot memory")?;
+
+        for bus in buses {
+            snapshot_devices(bus, |id, snapshot| {
+                snapshot_root.devices.push([(id, snapshot)].into())
+            })
+            .context("failed to snapshot devices")?;
         }
-    }
-    snapshot_root.guest_memory_metadata = match guest_memory.snapshot(&mut mem_file) {
-        Ok(x) => x,
-        Err(e) => {
-            // If snapshot fails, wake devices and return error.
-            error!("failed to snapshot memory: {}", e);
-            for bus in buses {
-                wake_devices(bus);
-            }
-            return Err(e);
-        }
-    };
-    for bus in buses {
-        if let Err(e) = snapshot_devices(bus, |id, snapshot| {
-            snapshot_root.devices.push([(id, snapshot)].into())
-        }) {
-            // If snapshot fails, wake devices and return error.
-            error!("failed to snapshot devices: {}", e);
-            for bus in buses {
-                wake_devices(bus);
-            }
-            return Err(e);
-        }
-    }
-    for bus in buses {
-        wake_devices(bus);
     }
 
     serde_json::to_writer(&mut json_file, &snapshot_root)?;
@@ -399,33 +412,17 @@ async fn restore_handler(
     for (id, device) in snapshot_root.devices.into_iter().flatten() {
         devices_map.entry(id).or_default().push_back(device)
     }
-    for bus in buses {
-        if let Err(e) = sleep_devices(bus) {
-            // Failing to sleep could mean a single device failing to sleep.
-            // Wake up devices to resume functionality of the VM.
-            for bus in buses {
-                wake_devices(bus);
-            }
-            return Err(e);
-        }
-    }
-    if let Err(e) = guest_memory.restore(snapshot_root.guest_memory_metadata, &mut mem_file) {
+
+    {
+        let _sleep_guard = SleepGuard::new(buses)?;
+
+        guest_memory.restore(snapshot_root.guest_memory_metadata, &mut mem_file)?;
+
         for bus in buses {
-            wake_devices(bus);
-        }
-        return Err(e);
-    }
-    for bus in buses {
-        if let Err(e) = restore_devices(bus, &mut devices_map) {
-            for bus in buses {
-                wake_devices(bus);
-            }
-            return Err(e);
+            restore_devices(bus, &mut devices_map)?;
         }
     }
-    for bus in buses {
-        wake_devices(bus);
-    }
+
     for (key, _) in devices_map.iter().filter(|(_, v)| !v.is_empty()) {
         info!(
             "Unused restore data for device_id {}, device might be missing.",
