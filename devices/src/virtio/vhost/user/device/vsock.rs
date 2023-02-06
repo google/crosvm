@@ -2,32 +2,28 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::convert;
 use std::convert::TryInto;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::mem::size_of;
 use std::num::Wrapping;
 use std::os::unix::fs::OpenOptionsExt;
-use std::os::unix::net::UnixListener;
 use std::path::Path;
 use std::str;
 use std::sync::Mutex as StdMutex;
 
-use anyhow::bail;
 use anyhow::Context;
 use argh::FromArgs;
+use base::AsRawDescriptor;
 use base::Event;
 use base::FromRawDescriptor;
 use base::IntoRawDescriptor;
-use base::UnlinkUnixListener;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use data_model::Le64;
 use vhost::Vhost;
 use vhost::Vsock;
 use vm_memory::GuestMemory;
-use vmm_vhost::connection::vfio::Listener as VfioListener;
 use vmm_vhost::connection::Endpoint;
 use vmm_vhost::message::SlaveReq;
 use vmm_vhost::message::VhostSharedMemoryRegion;
@@ -42,23 +38,19 @@ use vmm_vhost::message::VhostUserVringState;
 use vmm_vhost::Error;
 use vmm_vhost::Protocol;
 use vmm_vhost::Result;
-use vmm_vhost::SlaveListener;
-use vmm_vhost::SlaveReqHandler;
 use vmm_vhost::VhostUserSlaveReqHandlerMut;
 use zerocopy::AsBytes;
 
 use crate::virtio::device_constants::vsock::NUM_QUEUES;
 use crate::virtio::device_constants::vsock::QUEUE_SIZE;
-use crate::virtio::vhost::user::device::handler::sys::unix::run_handler;
+use crate::virtio::vhost::user::VhostUserDevice;
+use crate::virtio::vhost::user::VhostUserListener;
+use crate::virtio::vhost::user::VhostUserListenerTrait;
 // TODO(acourbot) try to remove the system dependencies and make the device usable on all platforms.
 use crate::virtio::vhost::user::device::handler::sys::unix::Doorbell;
-use crate::virtio::vhost::user::device::handler::sys::unix::VvuOps;
 use crate::virtio::vhost::user::device::handler::vmm_va_to_gpa;
 use crate::virtio::vhost::user::device::handler::MappingInfo;
 use crate::virtio::vhost::user::device::handler::VhostUserPlatformOps;
-use crate::virtio::vhost::user::device::handler::VhostUserRegularOps;
-use crate::virtio::vhost::user::device::vvu::pci::VvuPciDevice;
-use crate::virtio::vhost::user::device::vvu::VvuDevice;
 use crate::virtio::Queue;
 use crate::virtio::SignalableInterrupt;
 
@@ -77,24 +69,49 @@ struct VsockBackend {
     protocol_features: VhostUserProtocolFeatures,
 }
 
-impl VsockBackend {
-    fn new<P: AsRef<Path>>(
-        ex: &Executor,
-        cid: u64,
-        vhost_socket: P,
-        ops: Box<dyn VhostUserPlatformOps>,
-    ) -> anyhow::Result<VsockBackend> {
+/// A vhost-vsock device which handle is already opened. This allows the parent process to open the
+/// vhost-vsock device, create this structure, and pass it to the child process so it doesn't need
+/// the rights to open the vhost-vsock device itself.
+pub struct VhostUserVsockDevice {
+    cid: u64,
+    handle: Vsock,
+}
+
+impl VhostUserVsockDevice {
+    pub fn new<P: AsRef<Path>>(cid: u64, vhost_device: P) -> anyhow::Result<Self> {
         let handle = Vsock::new(
             OpenOptions::new()
                 .read(true)
                 .write(true)
                 .custom_flags(libc::O_CLOEXEC | libc::O_NONBLOCK)
-                .open(vhost_socket)
-                .context("failed to open `Vsock` socket")?,
+                .open(vhost_device.as_ref())
+                .context(format!(
+                    "failed to open vhost-vsock device {}",
+                    vhost_device.as_ref().display()
+                ))?,
         );
 
-        let protocol_features = VhostUserProtocolFeatures::MQ | VhostUserProtocolFeatures::CONFIG;
-        Ok(VsockBackend {
+        Ok(Self { cid, handle })
+    }
+}
+
+impl AsRawDescriptor for VhostUserVsockDevice {
+    fn as_raw_descriptor(&self) -> base::RawDescriptor {
+        self.handle.as_raw_descriptor()
+    }
+}
+
+impl VhostUserDevice for VhostUserVsockDevice {
+    fn max_queue_num(&self) -> usize {
+        NUM_QUEUES
+    }
+
+    fn into_req_handler(
+        self: Box<Self>,
+        ops: Box<dyn VhostUserPlatformOps>,
+        ex: &Executor,
+    ) -> anyhow::Result<Box<dyn vmm_vhost::VhostUserSlaveReqHandler>> {
+        let backend = VsockBackend {
             queues: [
                 Queue::new(MAX_VRING_LEN),
                 Queue::new(MAX_VRING_LEN),
@@ -104,10 +121,12 @@ impl VsockBackend {
             mem: None,
             ops,
             ex: ex.clone(),
-            handle,
-            cid,
-            protocol_features,
-        })
+            handle: self.handle,
+            cid: self.cid,
+            protocol_features: VhostUserProtocolFeatures::MQ | VhostUserProtocolFeatures::CONFIG,
+        };
+
+        Ok(Box::new(StdMutex::new(backend)))
     }
 }
 
@@ -446,24 +465,6 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
     }
 }
 
-async fn run_device<P: AsRef<Path>>(
-    ex: &Executor,
-    socket: P,
-    backend: StdMutex<VsockBackend>,
-) -> anyhow::Result<()> {
-    let listener = UnixListener::bind(socket)
-        .map(UnlinkUnixListener)
-        .context("failed to bind socket")?;
-    let (socket, _) = ex
-        .spawn_blocking(move || listener.accept())
-        .await
-        .context("failed to accept socket connection")?;
-
-    let req_handler = SlaveReqHandler::from_stream(socket, backend);
-
-    ex.run_until(run_handler(req_handler, ex))?
-}
-
 #[derive(FromArgs)]
 #[argh(subcommand, name = "vsock")]
 /// Vsock device
@@ -486,57 +487,14 @@ pub struct Options {
     vhost_socket: String,
 }
 
-fn run_vvu_device<P: AsRef<Path>>(
-    ex: &Executor,
-    cid: u64,
-    vhost_socket: P,
-    device_name: &str,
-) -> anyhow::Result<()> {
-    let mut device =
-        VvuPciDevice::new(device_name, NUM_QUEUES).context("failed to create `VvuPciDevice`")?;
-    let backend = VsockBackend::new(ex, cid, vhost_socket, Box::new(VvuOps::new(&mut device)))
-        .map(StdMutex::new)
-        .context("failed to create `VsockBackend`")?;
-    let driver = VvuDevice::new(device);
-
-    let mut listener = VfioListener::new(driver)
-        .context("failed to create `VfioListener`")
-        .and_then(|l| {
-            SlaveListener::<VfioListener<_>, _>::new(l, backend)
-                .context("failed to create `SlaveListener`")
-        })?;
-    let req_handler = listener
-        .accept()
-        .context("failed to accept vfio connection")?
-        .expect("no incoming connection detected");
-
-    match ex.run_until(run_handler(req_handler, ex)) {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(e)) => Err(e),
-        Err(e) => Err(e).context("executor error"),
-    }
-}
-
 /// Returns an error if the given `args` is invalid or the device fails to run.
 pub fn run_vsock_device(opts: Options) -> anyhow::Result<()> {
     let ex = Executor::new().context("failed to create executor")?;
 
-    match (opts.socket, opts.vfio) {
-        (Some(socket), None) => {
-            let backend = VsockBackend::new(
-                &ex,
-                opts.cid,
-                opts.vhost_socket,
-                Box::new(VhostUserRegularOps),
-            )
-            .map(StdMutex::new)?;
+    let listener =
+        VhostUserListener::new_from_socket_or_vfio(&opts.socket, &opts.vfio, NUM_QUEUES, None)?;
 
-            // TODO: Replace the `and_then` with `Result::flatten` once it is stabilized.
-            ex.run_until(run_device(&ex, socket, backend))
-                .context("failed to run vsock device")
-                .and_then(convert::identity)
-        }
-        (None, Some(device_name)) => run_vvu_device(&ex, opts.cid, opts.vhost_socket, &device_name),
-        _ => bail!("Exactly one of `--socket` or `--vfio` is required"),
-    }
+    let vsock_device = Box::new(VhostUserVsockDevice::new(opts.cid, opts.vhost_socket)?);
+
+    listener.run_device(ex, vsock_device)
 }

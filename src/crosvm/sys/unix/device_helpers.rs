@@ -40,6 +40,7 @@ use devices::virtio::vfio_wrapper::VfioWrapper;
 use devices::virtio::vhost::user::proxy::VirtioVhostUser;
 use devices::virtio::vhost::user::vmm::VhostUserVirtioDevice;
 use devices::virtio::vhost::user::VhostUserDevice;
+use devices::virtio::vhost::user::VhostUserVsockDevice;
 use devices::virtio::vsock::VsockConfig;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonMode;
@@ -1054,20 +1055,31 @@ pub fn create_vhost_user_video_device(
     })
 }
 
-pub fn create_vhost_vsock_device(
-    protection_type: ProtectionType,
-    jail_config: &Option<JailConfig>,
-    vsock_config: &VsockConfig,
-) -> DeviceResult {
-    let features = virtio::base_features(protection_type);
+impl VirtioDeviceBuilder for &VsockConfig {
+    const NAME: &'static str = "vhost_vsock";
 
-    let dev = virtio::vhost::Vsock::new(features, vsock_config)
-        .context("failed to set up virtual socket device")?;
+    fn create_virtio_device(
+        self,
+        protection_type: ProtectionType,
+    ) -> anyhow::Result<Box<dyn VirtioDevice>> {
+        let features = virtio::base_features(protection_type);
 
-    Ok(VirtioDeviceStub {
-        dev: Box::new(dev),
-        jail: simple_jail(jail_config, "vhost_vsock_device")?,
-    })
+        let dev = virtio::vhost::Vsock::new(features, self)
+            .context("failed to set up virtual socket device")?;
+
+        Ok(Box::new(dev))
+    }
+
+    fn create_vhost_user_device(
+        self,
+        keep_rds: &mut Vec<RawDescriptor>,
+    ) -> anyhow::Result<Box<dyn VhostUserDevice>> {
+        let vsock_device = VhostUserVsockDevice::new(self.cid, &self.vhost_device)?;
+
+        keep_rds.push(vsock_device.as_raw_descriptor());
+
+        Ok(Box::new(vsock_device))
+    }
 }
 
 pub fn create_fs_device(

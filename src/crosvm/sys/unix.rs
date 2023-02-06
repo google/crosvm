@@ -612,12 +612,10 @@ fn create_virtio_devices(
         }
     }
 
-    if let Some(vhost_config) = &cfg.vsock {
-        devs.push(create_vhost_vsock_device(
-            cfg.protection_type,
-            &cfg.jail_config,
-            vhost_config,
-        )?);
+    if let Some(vsock_config) = &cfg.vsock {
+        devs.push(
+            vsock_config.create_virtio_device_and_jail(cfg.protection_type, &cfg.jail_config)?,
+        );
     }
 
     for vhost_user_fs in &cfg.vhost_user_fs {
