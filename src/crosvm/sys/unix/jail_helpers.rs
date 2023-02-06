@@ -137,7 +137,7 @@ pub(super) fn create_sandbox_minijail(
     }
     match config.run_as {
         RunAsUser::Unspecified => {
-            if config.bind_mounts {
+            if config.bind_mounts && config.ugid_map.is_none() {
                 // Minijail requires to set user/group map to mount extra directories.
                 add_current_user_to_jail(&mut jail)?;
             }
