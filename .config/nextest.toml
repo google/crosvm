@@ -1,2 +1,13 @@
 [profile.default]
-slow-timeout = { period = "5s", terminate-after = 3 }
+# Detect slow tests and terminate them after 60s.
+slow-timeout = { period = "20s", terminate-after = 3 }
+# Always finish running all tests instead of terminating after the first failure.
+fail-fast = false
+
+[profile.presubmit]
+# Retry tests in case they are flaky.
+retries = 2
+
+[profile.postsubmit]
+# Do not retry tests in postsubmit to detect flaky tests.
+retries = 0

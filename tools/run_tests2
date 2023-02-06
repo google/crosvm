@@ -337,6 +337,7 @@ def main(
         if dut == "host":
             target = HostTarget(package_dir)
         elif dut == "vm":
+            testvm.wait(get_vm_arch(triple))
             remote = Remote("localhost", testvm.ssh_opts(get_vm_arch(triple)))
             target = SshTarget(package_archive, remote)
 
