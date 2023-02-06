@@ -36,6 +36,7 @@ fn call_test_in_child_process(name: &str) {
 }
 
 #[test]
+#[ignore = "Disabled pending a fix to b/268496046"]
 fn pid_diff() {
     call_test_in_child_process("pid_diff_impl");
 }
@@ -63,6 +64,7 @@ fn pid_diff_impl() {
 }
 
 #[test]
+#[ignore = "Disabled pending a fix to b/268496046"]
 fn thread_name() {
     call_test_in_child_process("thread_name_impl");
 }
@@ -93,6 +95,7 @@ fn thread_name_impl() {
 }
 
 #[test]
+#[ignore = "Disabled pending a fix to b/268496046"]
 fn thread_name_trimmed() {
     call_test_in_child_process("thread_name_trimmed_impl");
 }
@@ -123,6 +126,7 @@ fn thread_name_trimmed_impl() {
 }
 
 #[test]
+#[ignore = "Disabled pending a fix to b/268496046"]
 fn wait_for_success() {
     call_test_in_child_process("wait_for_success_impl");
 }
@@ -140,6 +144,7 @@ fn wait_for_success_impl() {
 }
 
 #[test]
+#[ignore = "Disabled pending a fix to b/268496046"]
 fn wait_for_panic() {
     call_test_in_child_process("wait_for_panic_impl");
 }
