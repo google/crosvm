@@ -69,12 +69,12 @@ class TestFilter(object):
         yield quoted(self.expression)
 
 
-def configure_cargo(cmd: Command, triple: Triple):
+def configure_cargo(cmd: Command, triple: Triple, features: str):
     "Configures the provided cmd with cargo arguments and environment needed to build for triple."
     return (
         cmd.with_args(
             "--workspace",
-            f"--features={triple.feature_flag}",
+            f"--features={features}",
         )
         .with_color_flag()
         .with_envs(triple.get_cargo_env())
@@ -137,6 +137,10 @@ def get_vm_arch(triple: Triple):
 @argh.arg("--no-integration-tests", help="Do not run integration tests.")
 @argh.arg("--no-strip", help="Do not strip test binaries of debug info.")
 @argh.arg("--run-root-tests", help="Enables integration tests that require root privileges.")
+@argh.arg(
+    "--features",
+    help=f"List of comma separated features to be passed to cargo. Defaults to {Triple.host_default().feature_flag}",
+)
 def main(
     filter_expr: List[str] = [],
     platform: Optional[str] = None,
@@ -146,6 +150,7 @@ def main(
     no_integration_tests: bool = False,
     no_strip: bool = False,
     run_root_tests: bool = False,
+    features: Optional[str] = None,
 ):
     """
     Runs all crosvm tests
@@ -223,11 +228,12 @@ def main(
             f"--dut={dut} is not supported. Options are --dut=host or --dut=vm (linux only)"
         )
 
+    features = features if features else triple.feature_flag
     skip_str = "[yellow]skip[/yellow]"
     unit_test_str = "Run on host" if not no_unit_tests else skip_str
     integration_test_str = dut_str if dut else skip_str
     console.print(f"Running tests for [green]{triple}[/green]")
-    console.print(f"With features: [green]{triple.feature_flag}[/green]")
+    console.print(f"With features: [green]{features}[/green]")
     console.print()
     console.print(f"  Unit tests:        [bold]{unit_test_str}[/bold]")
     console.print(f"  Integration tests: [bold]{integration_test_str}[/bold]")
@@ -258,7 +264,7 @@ def main(
 
     console.print()
     console.rule("Building tests")
-    nextest_run = configure_cargo(cmd("cargo nextest run"), triple)
+    nextest_run = configure_cargo(cmd("cargo nextest run"), triple, features)
     with record_time("Build"):
         nextest_run.with_args("--no-run").fg(style=Styles.live_truncated())
 
@@ -276,7 +282,7 @@ def main(
     if dut:
         package_dir = triple.target_dir / PACKAGE_NAME
         package_archive = package_dir.with_suffix(".tar.zst")
-        nextest_package = configure_cargo(cmd(TOOLS_ROOT / "nextest_package"), triple)
+        nextest_package = configure_cargo(cmd(TOOLS_ROOT / "nextest_package"), triple, features)
 
         test_exclusions = [*DO_NOT_RUN]
         if not run_root_tests:
