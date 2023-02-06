@@ -185,7 +185,7 @@ struct fsverity_digest {
 ioctl_iow_nr!(FS_IOC_ENABLE_VERITY, 'f' as u32, 133, fsverity_enable_arg);
 ioctl_iowr_nr!(FS_IOC_MEASURE_VERITY, 'f' as u32, 134, fsverity_digest);
 
-type Inode = u64;
+pub type Inode = u64;
 type Handle = u64;
 
 #[derive(Clone, Copy, PartialOrd, Ord, PartialEq, Eq)]
