@@ -25,6 +25,9 @@ $RUSTUP_INIT_SHA256 = "2220DDB49FEA0E0945B1B5913E33D66BD223A67F19FD1C116BE0318DE
 $RUSTUP_INIT_URL = "https://static.rust-lang.org/rustup/archive/$RUSTUP_INIT_VERSION/x86_64-pc-windows-msvc/rustup-init.exe"
 $RUSTUP_INIT = $BASE_DIR + 'rustup-init.exe'
 
+$CARGO_BINSTALL_VERSION = 'v0.19.3'
+$CARGO_BINSTALL_URL = "https://github.com/cargo-bins/cargo-binstall/releases/download/$CARGO_BINSTALL_VERSION/cargo-binstall-x86_64-pc-windows-msvc.zip"
+
 Write-Host "Installing in $BASE_DIR"
 
 if (!(Test-Path $BASE_DIR -PathType Container)) {
@@ -59,3 +62,16 @@ if ((Get-FileHash $RUSTUP_INIT -Algorithm SHA256).Hash -ne $RUSTUP_INIT_SHA256)
 
 # Install rustup and rust toolchain
 & $RUSTUP_INIT
+
+# Update PATH to to contain cargo home directory.
+[Environment]::SetEnvironmentVariable("Path", $Env:PATH, [System.EnvironmentVariableTarget]::User)
+
+# Cargo extension to install binary packages from github
+$BINSTALL_ZIP = New-TemporaryFile
+Invoke-WebRequest $CARGO_BINSTALL_URL -Out $BINSTALL_ZIP
+$BINSTALL_DEST=((Get-Command cargo) | Get-Item).DirectoryName
+Expand-Archive -Path $BINSTALL_ZIP -DestinationPath $BINSTALL_DEST
+
+# Nextest is an improved test runner for cargo
+cargo binstall --no-confirm cargo-nextest --version "0.9.49"
+

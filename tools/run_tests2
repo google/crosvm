@@ -190,8 +190,10 @@ def main(
     """
     chdir(CROSVM_ROOT)
 
-    if not cmd("which cargo-nextest").success():
+    if os.name == "posix" and not cmd("which cargo-nextest").success():
         raise Exception("Cannot find cargo-nextest. Please re-run `./tools/install-deps`")
+    elif os.name == "nt" and not cmd("where.exe cargo-nextest.exe").success():
+        raise Exception("Cannot find cargo-nextest. Please re-run `./tools/install-deps.ps1`")
 
     triple = Triple.from_shorthand(platform) if platform else Triple.host_default()
 
