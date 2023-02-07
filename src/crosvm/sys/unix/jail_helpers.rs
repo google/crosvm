@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![deny(missing_docs)]
+
 use std::path::Path;
 use std::path::PathBuf;
 use std::str;
@@ -47,6 +49,10 @@ pub(super) struct SandboxConfig<'a> {
     /// The remount mode instead of default MS_PRIVATE.
     pub(super) remount_mode: Option<c_ulong>,
     /// Whether or not to configure the jail to support bind-mounts.
+    ///
+    /// Note that most device processes deny `open(2)` and `openat(2)` by seccomp policy and just
+    /// returns `ENOENT`. Passing opened file descriptors is recommended over opening files in the
+    /// sandbox.
     pub(super) bind_mounts: bool,
     /// Specify the user in the jail to run as.
     pub(super) run_as: RunAsUser,
