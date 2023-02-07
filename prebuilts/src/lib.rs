@@ -80,9 +80,11 @@ pub fn download_file(url: &str, destination: &Path) -> Result<()> {
 
     // Another process may have already downloaded this since we last checked.
     if destination.exists() {
+        println!("Prebuilt {destination:?} has already been downloaded by another process.");
         return Ok(());
     }
 
+    println!("Downloading prebuilt {url} to {destination:?}");
     let mut cmd = sys::download_command(url, destination);
     match cmd.status() {
         Ok(exit_code) => {

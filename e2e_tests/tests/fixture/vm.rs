@@ -170,7 +170,6 @@ impl TestVm {
         let kernel_path = kernel_path();
         if env::var("CROSVM_CARGO_TEST_KERNEL_BINARY").is_err() {
             if !kernel_path.exists() {
-                println!("Downloading kernel prebuilt:");
                 download_file(&kernel_prebuilt_url(), &kernel_path).unwrap();
             }
         }
@@ -179,7 +178,6 @@ impl TestVm {
         let rootfs_path = rootfs_path();
         if env::var("CROSVM_CARGO_TEST_ROOTFS_IMAGE").is_err() {
             if !rootfs_path.exists() {
-                println!("Downloading rootfs prebuilt:");
                 download_file(&rootfs_prebuilt_url(), &rootfs_path).unwrap();
             }
         }
