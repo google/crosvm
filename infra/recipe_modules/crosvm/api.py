@@ -236,6 +236,7 @@ class CrosvmApi(recipe_api.RecipeApi):
 
             ensure_file = self.m.cipd.EnsureFile()
             ensure_file.add_package("crosvm/protoc/${platform}", "latest")
+            ensure_file.add_package("crosvm/cargo-nextest/${platform}", "latest")
             self.m.cipd.ensure(self.local_bin, ensure_file)
 
     def __sync_submodules(self):
