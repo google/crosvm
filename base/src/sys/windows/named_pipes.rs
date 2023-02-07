@@ -187,7 +187,7 @@ pub trait ReadOverlapped {
     fn try_read_result(&mut self, overlapped_wrapper: &mut OverlappedWrapper) -> io::Result<usize>;
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq)]
 pub enum FramingMode {
     Byte,
     Message,
@@ -209,7 +209,7 @@ impl FramingMode {
     }
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Copy, Clone, PartialEq, Debug, Eq)]
 pub enum BlockingMode {
     /// Calls to read() block until data is received
     Wait,

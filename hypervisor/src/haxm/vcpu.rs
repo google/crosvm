@@ -381,7 +381,7 @@ impl VcpuX86_64 for HaxmVcpu {
         // Safe because we know we mapped enough memory to hold the hax_tunnel struct because the
         // kernel told us how large it was.
         unsafe {
-            (*self.tunnel).request_interrupt_window = if requested { 1 } else { 0 };
+            (*self.tunnel).request_interrupt_window = i32::from(requested);
         }
     }
 

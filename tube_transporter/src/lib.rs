@@ -51,7 +51,7 @@ pub enum TubeTransportError {
 }
 
 /// The target child process will use this decide what a Tube's purpose is.
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub enum TubeToken {
     Bootstrap,
     Control,

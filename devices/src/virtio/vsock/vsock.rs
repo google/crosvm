@@ -649,7 +649,7 @@ impl Worker {
                 // by allocating the buffer and overlapped struct
                 // on the heap.
                 unsafe {
-                    match pipe_connection.read_overlapped(&mut buffer[..], &mut *overlapped_wrapper)
+                    match pipe_connection.read_overlapped(&mut buffer[..], &mut overlapped_wrapper)
                     {
                         Ok(()) => {}
                         Err(e) => {

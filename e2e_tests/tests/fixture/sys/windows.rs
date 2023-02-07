@@ -151,14 +151,14 @@ impl TestVmSys {
         let earlycon_path = Path::new(logs_dir).join(GUEST_EARLYCON);
         let earlycon_str = earlycon_path.to_str().unwrap();
 
-        command.args(&[
+        command.args([
             r"--serial",
             &format!("hardware=serial,num=1,type=file,path={earlycon_str},earlycon=true"),
         ]);
 
         let console_path = Path::new(logs_dir).join(GUEST_CONSOLE);
         let console_str = console_path.to_str().unwrap();
-        command.args(&[
+        command.args([
             r"--serial",
             &format!("hardware=virtio-console,num=1,type=file,path={console_str},console=true"),
         ]);
@@ -168,14 +168,14 @@ impl TestVmSys {
             "hardware=serial,type=namedpipe,path={},num=2",
             from_guest_pipe.display(),
         );
-        command.args(&["--serial", &serial_params]);
+        command.args(["--serial", &serial_params]);
     }
 
     /// Configures the VM rootfs to load from the guest_under_test assets.
     fn configure_rootfs(command: &mut Command, _o_direct: bool) {
         let rootfs_and_option =
             format!("{},ro,root,sparse=false", rootfs_path().to_str().unwrap(),);
-        command.args(&["--root", &rootfs_and_option]).args(&[
+        command.args(["--root", &rootfs_and_option]).args([
             "--params",
             "init=/bin/delegate noxsaves noxsave nopat nopti tsc=reliable",
         ]);
@@ -194,7 +194,7 @@ impl TestVmSys {
         let from_guest_pipe = Path::new(&from_guest_path);
 
         let mut command = Command::new(find_crosvm_binary());
-        command.args(&["--log-level", "INFO", "run-mp"]);
+        command.args(["--log-level", "INFO", "run-mp"]);
 
         f(
             &mut command,
@@ -207,7 +207,7 @@ impl TestVmSys {
 
         let hypervisor_log_path = Path::new(logs_dir).join(HYPERVISOR_LOG);
         let hypervisor_log_str = hypervisor_log_path.to_str().unwrap();
-        command.args(&[
+        command.args([
             "--logs-directory",
             logs_dir,
             "--kernel-log-file",

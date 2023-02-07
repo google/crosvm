@@ -41,7 +41,7 @@ def replace_in_file(file_path: Path, search: SearchPattern, replace: Replacement
 
 def replace_in_files(glob: str, replacements: List[Tuple[SearchPattern, Replacement]]):
     for file in Path().glob(glob):
-        for (search, replace) in replacements:
+        for search, replace in replacements:
             replace_in_file(file, search, replace)
 
 

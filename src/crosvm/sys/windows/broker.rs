@@ -515,7 +515,7 @@ fn run_internal(mut cfg: Config) -> Result<()> {
     let mut metric_tubes = Vec::new();
     let metrics_controller = spawn_child(
         current_exe().unwrap().to_str().unwrap(),
-        &["run-metrics"],
+        ["run-metrics"],
         get_log_path(&cfg, "metrics_stdout.log"),
         get_log_path(&cfg, "metrics_stderr.log"),
         ProcessType::Metrics,
@@ -536,7 +536,7 @@ fn run_internal(mut cfg: Config) -> Result<()> {
 
     let mut main_child = spawn_child(
         current_exe().unwrap().to_str().unwrap(),
-        &["run-main"],
+        ["run-main"],
         get_log_path(&cfg, "main_stdout.log"),
         get_log_path(&cfg, "main_stderr.log"),
         ProcessType::Main,
@@ -1095,7 +1095,7 @@ fn spawn_block_backend(
     vhost_user_device_tube.set_target_pid(main_child.alias_pid);
     let block_child = spawn_child(
         current_exe().unwrap().to_str().unwrap(),
-        &["device", "block"],
+        ["device", "block"],
         get_log_path(cfg, &format!("disk_{}_stdout.log", log_index)),
         get_log_path(cfg, &format!("disk_{}_stderr.log", log_index)),
         ProcessType::Block,
@@ -1347,7 +1347,7 @@ fn spawn_slirp(
 ) -> Result<ChildProcess> {
     let slirp_child = spawn_child(
         current_exe().unwrap().to_str().unwrap(),
-        &["run-slirp"],
+        ["run-slirp"],
         get_log_path(cfg, "slirp_stdout.log"),
         get_log_path(cfg, "slirp_stderr.log"),
         ProcessType::Slirp,
@@ -1382,7 +1382,7 @@ fn spawn_net_backend(
 
     let net_child = spawn_child(
         current_exe().unwrap().to_str().unwrap(),
-        &["device", "net"],
+        ["device", "net"],
         get_log_path(cfg, "net_stdout.log"),
         get_log_path(cfg, "net_stderr.log"),
         ProcessType::Net,
@@ -1498,7 +1498,7 @@ fn start_up_gpu(
 
     let gpu_child = spawn_child(
         current_exe().unwrap().to_str().unwrap(),
-        &["device", "gpu"],
+        ["device", "gpu"],
         get_log_path(cfg, "gpu_stdout.log"),
         get_log_path(cfg, "gpu_stderr.log"),
         ProcessType::Gpu,
@@ -1728,7 +1728,7 @@ mod tests {
             let exit_events = vec![Event::new().unwrap()];
             let _child_main = spawn_child(
                 "ping",
-                &["127.0.0.1", "-n", "2"],
+                ["127.0.0.1", "-n", "2"],
                 None,
                 None,
                 ProcessType::Main,
@@ -1756,7 +1756,7 @@ mod tests {
             let exit_events = vec![Event::new().unwrap()];
             let _child_main = spawn_child(
                 "ping",
-                &["127.0.0.1", "-n", "4"],
+                ["127.0.0.1", "-n", "4"],
                 None,
                 None,
                 ProcessType::Main,
@@ -1769,7 +1769,7 @@ mod tests {
             );
             let _child_device = spawn_child(
                 "ping",
-                &["127.0.0.1", "-n", "2"],
+                ["127.0.0.1", "-n", "2"],
                 None,
                 None,
                 ProcessType::Block,
@@ -1796,7 +1796,7 @@ mod tests {
             let exit_events = vec![Event::new().unwrap()];
             let _child_main = spawn_child(
                 "ping",
-                &["127.0.0.1", "-n", "2"],
+                ["127.0.0.1", "-n", "2"],
                 None,
                 None,
                 ProcessType::Main,
@@ -1809,7 +1809,7 @@ mod tests {
             );
             let _child_device = spawn_child(
                 "ping",
-                &["127.0.0.1", "-n", "11"],
+                ["127.0.0.1", "-n", "11"],
                 None,
                 None,
                 ProcessType::Block,
@@ -1841,7 +1841,7 @@ mod tests {
             let exit_events = vec![Event::new().unwrap()];
             let _child_main = spawn_child(
                 "ping",
-                &["127.0.0.1", "-n", "11"],
+                ["127.0.0.1", "-n", "11"],
                 None,
                 None,
                 ProcessType::Main,
@@ -1854,7 +1854,7 @@ mod tests {
             );
             let _child_device = spawn_child(
                 "ping",
-                &["127.0.0.1", "-n", "2"],
+                ["127.0.0.1", "-n", "2"],
                 None,
                 None,
                 ProcessType::Block,
@@ -1886,7 +1886,7 @@ mod tests {
             let exit_events = vec![Event::new().unwrap()];
             let _child_main = spawn_child(
                 "ping",
-                &["127.0.0.1", "-n", "2"],
+                ["127.0.0.1", "-n", "2"],
                 None,
                 None,
                 ProcessType::Main,
@@ -1899,7 +1899,7 @@ mod tests {
             );
             let _child_device = spawn_child(
                 "cmd",
-                &["/c", "exit -1"],
+                ["/c", "exit -1"],
                 None,
                 None,
                 ProcessType::Block,
@@ -1934,7 +1934,7 @@ mod tests {
             let mut children: HashMap<u32, ChildCleanup> = HashMap::new();
             let _child_main = spawn_child(
                 "ping",
-                &["127.0.0.1", "-n", "3"],
+                ["127.0.0.1", "-n", "3"],
                 None,
                 None,
                 ProcessType::Main,

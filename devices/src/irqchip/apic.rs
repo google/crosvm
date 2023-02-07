@@ -884,7 +884,7 @@ impl Reg {
 /// interrupt vector.  The flags are spread across the first 32 bits of each of eight 16-byte APIC
 /// register slots.
 #[repr(usize)]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum VectorReg {
     /// In-service register.  A bit is set for each interrupt vector currently being serviced by the
     /// processor.

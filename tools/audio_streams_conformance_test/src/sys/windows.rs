@@ -7,7 +7,7 @@ use audio_streams::StreamSourceGenerator;
 use crate::args::*;
 use crate::error::Error;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StreamSource {}
 
 #[derive(Copy, Clone, Debug, FromArgs, Serialize)]

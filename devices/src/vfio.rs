@@ -146,7 +146,7 @@ enum IommuType {
 
 // Hint as to whether IOMMU mappings will tend to be large and static or
 // small and dynamic.
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 enum IommuMappingHint {
     Static,
     Dynamic,

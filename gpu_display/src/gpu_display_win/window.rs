@@ -117,7 +117,7 @@ impl From<MSG> for MessagePacket {
 /// (2) NotInLoop -> WillResizeOrMove -> IsMoving -> NotInLoop. This is for moving modal loops.
 /// (3) NotInLoop -> WillResizeOrMove -> NotInLoop. This may occur if the user long presses the
 ///     window title bar, window borders or corners, but doesn't actually resize or move the window.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum SizeMoveLoopState {
     /// The window is not in the moving or sizing modal loop.
     NotInLoop,

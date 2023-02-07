@@ -43,7 +43,7 @@ pub fn validate_config(_cfg: &mut Config) -> std::result::Result<(), String> {
     Ok(())
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IrqChipKind {
     /// All interrupt controllers are emulated in the kernel.
     Kernel,
@@ -67,7 +67,7 @@ impl FromStr for IrqChipKind {
 }
 
 /// Hypervisor backend.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, Eq)]
 pub enum HypervisorKind {
     #[cfg(feature = "gvm")]
     Gvm,

@@ -270,7 +270,7 @@ pub unsafe fn create_file_mapping(
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub enum ThreadState {
     // The specified thread was not suspended.
     NotSuspended,

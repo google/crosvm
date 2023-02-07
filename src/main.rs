@@ -85,7 +85,7 @@ use crate::sys::init_log;
 static ALLOCATOR: scudo::GlobalScudoAllocator = scudo::GlobalScudoAllocator;
 
 #[repr(i32)]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 /// Exit code from crosvm,
 enum CommandStatus {
     /// Exit with success. Also used to mean VM stopped successfully.

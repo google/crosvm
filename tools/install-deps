@@ -81,7 +81,7 @@ rustup target add x86_64-pc-windows-gnu
 curl -L https://github.com/cargo-bins/cargo-binstall/releases/download/v0.19.3/cargo-binstall-x86_64-unknown-linux-gnu.tgz | tar -xzvvf - -C ${CARGO_HOME:-~/.cargo}/bin
 
 # The bindgen tool is required to build a crosvm dependency.
-cargo binstall --no-confirm bindgen --version "0.60.1"
+cargo install bindgen-cli --version "0.64.0"
 
 # binutils are wrappers to call the rustup bundled versions of llvm tools.
 cargo binstall --no-confirm cargo-binutils

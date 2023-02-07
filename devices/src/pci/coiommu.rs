@@ -210,7 +210,7 @@ struct CoIommuReg {
     dtt_level: u64,
 }
 
-#[derive(Default, Debug, Copy, Clone, PartialEq)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
 struct PinnedPageInfo {
     gfn: u64,
     unpin_busy_cnt: u64,
@@ -225,7 +225,7 @@ impl PinnedPageInfo {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Eq)]
 enum UnpinThreadState {
     Unparked,
     Parked,
@@ -432,7 +432,7 @@ fn pin_page(
     Ok(())
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Eq)]
 enum UnpinResult {
     UnpinlistEmpty,
     Unpinned,

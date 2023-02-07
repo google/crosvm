@@ -47,7 +47,7 @@ pub enum SlirpError {
 #[cfg(windows)]
 impl SlirpError {
     pub fn sys_error(&self) -> SysError {
-        match &*self {
+        match self {
             SlirpError::BrokenPipe(e) => SysError::new(e.raw_os_error().unwrap_or_default()),
             SlirpError::CloneFailed(e) => SysError::new(e.raw_os_error().unwrap_or_default()),
             SlirpError::OverlappedError(e) => SysError::new(e.raw_os_error().unwrap_or_default()),

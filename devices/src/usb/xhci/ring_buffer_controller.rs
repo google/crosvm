@@ -36,7 +36,7 @@ pub enum Error {
 
 type Result<T> = std::result::Result<T, Error>;
 
-#[derive(PartialEq, Copy, Clone)]
+#[derive(PartialEq, Copy, Clone, Eq)]
 enum RingBufferState {
     /// Running: RingBuffer is running, consuming transfer descriptor.
     Running,

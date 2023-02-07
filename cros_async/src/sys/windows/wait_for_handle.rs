@@ -49,7 +49,7 @@ impl WaitForHandleInner {
 }
 
 /// Future's state.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum WaitState {
     New,
     Sleeping,

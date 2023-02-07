@@ -256,7 +256,7 @@ impl VirtioDevice for Tpm {
 
 impl Suspendable for Tpm {}
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 enum NeedsInterrupt {
     Yes,
     No,

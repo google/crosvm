@@ -193,7 +193,7 @@ macro_rules! ensure_exit_code {
 }
 
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Exit {
     // Windows process exit codes triggered by the kernel tend to be NTSTATUS, so we treat
     // our error codes as NTSTATUS to avoid clashing. This means we set the vendor bit. We also

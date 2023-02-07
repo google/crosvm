@@ -22,7 +22,7 @@ pub enum CrashReportReason {
     Unknown,
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq)]
 enum CrashTubeCommand {
     UploadCrashReport(CrashReportReason),
 }

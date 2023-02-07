@@ -295,7 +295,7 @@ struct Worker {
     pending_unmap: Option<u64 /* shmem_offset */>,
 }
 
-#[derive(EventToken, Debug, Clone, PartialEq)]
+#[derive(EventToken, Debug, Clone, PartialEq, Eq)]
 enum Token {
     // Data is available on the Vhost-user sibling socket.
     SiblingSocket,

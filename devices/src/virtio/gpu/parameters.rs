@@ -111,7 +111,7 @@ mod tests {
 
     #[test]
     fn context_mask_serialize_deserialize() {
-        #[derive(Debug, Serialize, Deserialize, PartialEq)]
+        #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
         struct ContextMask {
             #[serde(rename = "context-types", with = "serde_context_mask")]
             pub value: u64,

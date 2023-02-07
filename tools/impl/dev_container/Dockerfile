@@ -9,6 +9,13 @@
 #
 # Note, if you are using docker, you will probably be using "Dockerfile.user".
 
+# Build catapult dashboard upload tool in a builder container
+FROM docker.io/golang:bullseye AS gobuilder
+WORKDIR /root/
+RUN git clone https://fuchsia.googlesource.com/infra/infra
+WORKDIR /root/infra/cmd/catapult
+RUN go build
+
 FROM docker.io/debian:testing-slim
 
 ENV RUSTUP_HOME=/usr/local/rustup \
@@ -64,6 +71,9 @@ RUN /tools/setup-wine64
 
 # Install global config.toml for cross-compilation
 COPY --chmod=555 .cargo/config.debian.toml /.cargo/config.toml
+
+# Install catapult dashboard upload tool
+COPY --from=gobuilder /root/infra/cmd/catapult/catapult /tools/
 
 # Prebuild aarch64 VM image for faster startup.
 COPY tools/aarch64vm /tools/

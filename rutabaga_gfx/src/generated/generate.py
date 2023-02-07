@@ -85,7 +85,6 @@ def download_virgl(src, dst, branch):
     if subprocess.Popen(args).wait() == 0:
         return True
     else:
-
         return False
 
 

@@ -9,7 +9,7 @@ use crate::EventToken;
 
 /// Represents descriptor-token pairs which represent an event which can be triggered in the
 /// EventContext
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub struct EventTrigger<T: EventToken> {
     pub(crate) token: T,
     pub(crate) event: RawDescriptor,
