@@ -397,7 +397,7 @@ class Command(object):
             print(f"$ {self}")
 
         if style is None or verbose():
-            return self.__run(stdout=None, stderr=None, check=False).returncode
+            return self.__run(stdout=None, stderr=None, check=check).returncode
         else:
             process = self.__popen(stderr=STDOUT)
             style(process)

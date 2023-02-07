@@ -86,7 +86,7 @@ class HostTarget(object):
         self.run_cmd = cmd(package_dir / "run.sh").with_color_flag()
 
     def run_tests(self, extra_args: List[Any]):
-        self.run_cmd.with_args(*extra_args).fg(style=Styles.live_truncated())
+        return self.run_cmd.with_args(*extra_args).fg(style=Styles.live_truncated(), check=False)
 
 
 class SshTarget(object):
@@ -100,8 +100,9 @@ class SshTarget(object):
         self.remote = remote
 
     def run_tests(self, extra_args: List[Any]):
-        self.remote.ssh(self.remote_run_cmd.with_args(*extra_args)).fg(
-            style=Styles.live_truncated()
+        return self.remote.ssh(self.remote_run_cmd.with_args(*extra_args)).fg(
+            style=Styles.live_truncated(),
+            check=False,
         )
 
 
@@ -139,8 +140,11 @@ def get_vm_arch(triple: Triple):
 @argh.arg("--run-root-tests", help="Enables integration tests that require root privileges.")
 @argh.arg(
     "--features",
-    help=f"List of comma separated features to be passed to cargo. Defaults to {Triple.host_default().feature_flag}",
+    help=f"List of comma separated features to be passed to cargo. Defaults to `all-$platform`",
 )
+@argh.arg("--profile", help="Select nextest profile.")
+@argh.arg("--no-parallel", help="Do not parallelize integration tests. Slower but more stable.")
+@argh.arg("--repetitions", help="Repeat all tests, useful for checking test stability.")
 def main(
     filter_expr: List[str] = [],
     platform: Optional[str] = None,
@@ -151,6 +155,9 @@ def main(
     no_strip: bool = False,
     run_root_tests: bool = False,
     features: Optional[str] = None,
+    profile: Optional[str] = None,
+    no_parallel: bool = False,
+    repetitions: int = 1,
 ):
     """
     Runs all crosvm tests
@@ -203,6 +210,13 @@ def main(
     triple = Triple.from_shorthand(platform) if platform else Triple.host_default()
 
     test_filter = TestFilter(join_filters(filter_expr, "|"))
+
+    if not features:
+        features = triple.feature_flag
+
+    if no_run:
+        no_integration_tests = True
+        no_unit_tests = True
 
     # Disable the DUT if integration tests are not run.
     if no_integration_tests:
@@ -262,22 +276,36 @@ def main(
         testvm.build_if_needed(get_vm_arch(triple))
         testvm.up(get_vm_arch(triple))
 
+    nextest_args = [
+        f"--profile={profile}" if profile else None,
+        "--verbose" if verbose() else None,
+    ]
+
     console.print()
     console.rule("Building tests")
-    nextest_run = configure_cargo(cmd("cargo nextest run"), triple, features)
+    nextest_run = configure_cargo(cmd("cargo nextest run"), triple, features).with_args(
+        *nextest_args
+    )
     with record_time("Build"):
-        nextest_run.with_args("--no-run").fg(style=Styles.live_truncated())
-
-    if no_run:
-        return
+        returncode = nextest_run.with_args("--no-run").fg(
+            style=Styles.live_truncated(), check=False
+        )
+        if returncode != 0:
+            sys.exit(returncode)
 
     if not no_unit_tests:
         console.print()
         console.rule("Running unit tests")
         with record_time("Unit Tests"):
-            nextest_run.with_args("--lib --bins --benches", *test_filter.to_args()).fg(
-                style=Styles.live_truncated()
-            )
+            for i in range(repetitions):
+                if repetitions > 1:
+                    console.rule(f"Round {i}", style="grey")
+
+                returncode = nextest_run.with_args(
+                    "--lib --bins --benches", *test_filter.to_args()
+                ).fg(style=Styles.live_truncated(), check=False)
+                if returncode != 0:
+                    sys.exit(returncode)
 
     if dut:
         package_dir = triple.target_dir / PACKAGE_NAME
@@ -315,7 +343,23 @@ def main(
         console.print()
         console.rule("Running integration tests")
         with record_time("Integration tests"):
-            target.run_tests([*test_filter.to_args()])
+            for i in range(repetitions):
+                if repetitions > 1:
+                    console.rule(f"Round {i}", style="grey")
+                returncode = target.run_tests(
+                    [
+                        *test_filter.to_args(),
+                        *nextest_args,
+                        "--test-threads=1" if no_parallel else None,
+                    ]
+                )
+                if returncode != 0:
+                    if not no_parallel:
+                        console.print(
+                            "[green]Tip:[/green] Tests may fail when run in parallel on some platforms. "
+                            + "Try re-running with `--no-parallel`"
+                        )
+                    sys.exit(returncode)
 
 
 if __name__ == "__main__":
