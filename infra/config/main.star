@@ -238,7 +238,7 @@ def verify_builder(
             cq_group = "main",
         )
 
-def verify_linux_builder(arch, crosvm_direct = False, coverage = True, **kwargs):
+def verify_linux_builder(arch, crosvm_direct = False, coverage = False, **kwargs):
     """Creates a verify builder that builds crosvm on linux
 
     Args:
