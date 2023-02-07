@@ -536,20 +536,11 @@ fn snapshot_vm(cmd: cmdline::SnapshotCommand) -> std::result::Result<(), ()> {
             });
             (path.socket_path, req)
         }
-    };
-    let socket_path = Path::new(&socket_path);
-    vms_request(&request, socket_path)
-}
-
-fn restore_vm(cmd: cmdline::RestoreCommand) -> std::result::Result<(), ()> {
-    use cmdline::RestoreSubCommands::*;
-    let (socket_path, request) = match cmd.restore_command {
-        Apply(cmd) => {
-            let file_path = cmd.restore_path;
+        Restore(path) => {
             let req = VmRequest::Restore(RestoreCommand::Apply {
-                restore_path: file_path,
+                restore_path: path.snapshot_path,
             });
-            (cmd.socket_path, req)
+            (path.socket_path, req)
         }
     };
     let socket_path = Path::new(&socket_path);
@@ -733,9 +724,6 @@ fn crosvm_main<I: IntoIterator<Item = String>>(args: I) -> Result<CommandStatus>
                     }
                     CrossPlatformCommands::Snapshot(cmd) => {
                         snapshot_vm(cmd).map_err(|_| anyhow!("snapshot subcommand failed"))
-                    }
-                    CrossPlatformCommands::Restore(cmd) => {
-                        restore_vm(cmd).map_err(|_| anyhow!("restore subcommand failed"))
                     }
                 }
                 .map(|_| CommandStatus::SuccessOrVmStop)

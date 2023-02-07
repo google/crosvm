@@ -284,9 +284,9 @@ impl TestVm {
     // No argument is passed in restore as we will always restore snapshot.bkp for testing.
     pub fn restore(&mut self, filename: &std::path::Path) -> Result<()> {
         self.sys.crosvm_command(
-            "restore",
+            "snapshot",
             vec![
-                "apply".to_string(),
+                "restore".to_string(),
                 String::from(filename.to_str().unwrap()),
             ],
         )
