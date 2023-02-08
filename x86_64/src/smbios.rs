@@ -82,7 +82,7 @@ fn compute_checksum<T: Copy>(v: &T) -> u8 {
     (!checksum).wrapping_add(1)
 }
 
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Default, Clone, Copy, FromBytes, AsBytes)]
 pub struct Smbios23Intermediate {
     pub signature: [u8; 5usize],
@@ -95,7 +95,7 @@ pub struct Smbios23Intermediate {
 
 unsafe impl data_model::DataInit for Smbios23Intermediate {}
 
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Default, Clone, Copy, FromBytes, AsBytes)]
 pub struct Smbios23Entrypoint {
     pub signature: [u8; 4usize],
@@ -111,7 +111,7 @@ pub struct Smbios23Entrypoint {
 
 unsafe impl data_model::DataInit for Smbios23Entrypoint {}
 
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Default, Clone, Copy, FromBytes, AsBytes)]
 pub struct Smbios30Entrypoint {
     pub signature: [u8; 5usize],
@@ -128,7 +128,7 @@ pub struct Smbios30Entrypoint {
 
 unsafe impl data_model::DataInit for Smbios30Entrypoint {}
 
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Default, Clone, Copy, FromBytes, AsBytes)]
 pub struct SmbiosBiosInfo {
     pub typ: u8,
@@ -146,7 +146,7 @@ pub struct SmbiosBiosInfo {
 
 unsafe impl data_model::DataInit for SmbiosBiosInfo {}
 
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Default, Clone, Copy, FromBytes, AsBytes)]
 pub struct SmbiosSysInfo {
     pub typ: u8,
@@ -164,7 +164,7 @@ pub struct SmbiosSysInfo {
 
 unsafe impl data_model::DataInit for SmbiosSysInfo {}
 
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Default, Clone, Copy, FromBytes, AsBytes)]
 pub struct SmbiosOemStrings {
     pub typ: u8,
