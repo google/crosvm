@@ -96,6 +96,14 @@ def RunSteps(api, properties):
             ]
             + get_test_args(api, properties),
         )
+        api.crosvm.step_in_container(
+            "Clippy",
+            [
+                "./tools/clippy",
+                "--verbose",
+                "--platform=" + properties.test_arch,
+            ],
+        )
 
         with api.step.nest("Collect binary sizes"):
             collect_binary_sizes(api, properties)
@@ -106,7 +114,10 @@ def RunSteps(api, properties):
 
 def GenTests(api):
     filter_steps = Filter(
-        "Collect binary sizes.Build crosvm releases", "Build crosvm tests", "Run crosvm tests"
+        "Build crosvm tests",
+        "Run crosvm tests",
+        "Clippy",
+        "Collect binary sizes.Build crosvm releases",
     )
     yield (
         api.test(
