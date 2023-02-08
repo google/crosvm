@@ -571,6 +571,7 @@ impl UnixSeqpacket {
         Ok((buf, fd_buf))
     }
 
+    #[allow(clippy::useless_conversion)]
     fn set_timeout(&self, timeout: Option<Duration>, kind: libc::c_int) -> io::Result<()> {
         let timeval = match timeout {
             Some(t) => {

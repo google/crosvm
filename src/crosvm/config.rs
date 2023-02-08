@@ -1660,6 +1660,7 @@ fn validate_file_backed_mapping(mapping: &mut FileBackedMappingParameters) -> Re
 }
 
 #[cfg(test)]
+#[allow(clippy::needless_update)]
 mod tests {
     use argh::FromArgs;
     use devices::PciClassCode;

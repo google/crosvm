@@ -383,7 +383,7 @@ fn create_pci_nodes(
     // and "PCI Bus Binding to IEEE Std 1275-1994".
     let ranges: Vec<u32> = ranges
         .iter()
-        .map(|r| {
+        .flat_map(|r| {
             let ss = r.space as u32;
             let p = r.prefetchable as u32;
             [
@@ -399,7 +399,6 @@ fn create_pci_nodes(
                 r.size as u32,
             ]
         })
-        .flatten()
         .collect();
 
     let bus_range = [0, 0]; // Only bus 0

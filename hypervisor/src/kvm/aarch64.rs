@@ -2,6 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// We have u32 constants from bindings that are passed into archiitecture-dependent functions
+// taking u32/64 parameters. So on 32 bit platforms we may have needless casts.
+#![allow(clippy::useless_conversion)]
+
 use std::convert::TryFrom;
 
 use base::errno_result;
@@ -449,10 +453,7 @@ impl From<KvmVcpuRegister> for u64 {
 #[cfg(feature = "gdb")]
 /// Returns whether KVM matches more than one KVM_GET_ONE_REG target to the given arch register.
 const fn kvm_multiplexes(reg: &<GdbArch as Arch>::RegId) -> bool {
-    match *reg {
-        AArch64RegId::CCSIDR_EL1 => true,
-        _ => false,
-    }
+    matches!(*reg, AArch64RegId::CCSIDR_EL1)
 }
 
 #[cfg(feature = "gdb")]
@@ -615,11 +616,7 @@ impl VcpuAArch64 for KvmVcpu {
         // Safe because we allocated the struct and we know the kernel will read exactly the size of
         // the struct.
         let ret = unsafe { ioctl_with_ref(self, kvm_sys::KVM_HAS_DEVICE_ATTR(), &pvtime_attr) };
-        if ret < 0 {
-            return false;
-        }
-
-        return true;
+        ret >= 0
     }
 
     fn init_pvtime(&self, pvtime_ipa: u64) -> Result<()> {
@@ -689,10 +686,13 @@ impl VcpuAArch64 for KvmVcpu {
     }
 
     #[cfg(feature = "gdb")]
+    #[allow(clippy::unusual_byte_groupings)]
     fn set_guest_debug(&self, addrs: &[GuestAddress], enable_singlestep: bool) -> Result<()> {
-        let mut dbg: kvm_guest_debug = Default::default();
+        let mut dbg = kvm_guest_debug {
+            control: KVM_GUESTDBG_ENABLE,
+            ..Default::default()
+        };
 
-        dbg.control = KVM_GUESTDBG_ENABLE;
         if enable_singlestep {
             dbg.control |= KVM_GUESTDBG_SINGLESTEP;
         }

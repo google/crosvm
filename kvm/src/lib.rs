@@ -257,6 +257,7 @@ impl Kvm {
     // Ideally, this would take a description of the memory map and return
     // the closest machine type for this VM. Here, we just return the maximum
     // the kernel support.
+    #[allow(clippy::useless_conversion)]
     pub fn get_vm_type(&self) -> c_ulong {
         // Safe because we know self is a real kvm fd
         match unsafe { ioctl_with_val(self, KVM_CHECK_EXTENSION(), KVM_CAP_ARM_VM_IPA_SIZE.into()) }

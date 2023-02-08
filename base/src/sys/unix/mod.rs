@@ -559,6 +559,7 @@ pub fn clear_fd_flags(fd: RawFd, clear_flags: c_int) -> Result<()> {
 }
 
 /// Return a timespec filed with the specified Duration `duration`.
+#[allow(clippy::useless_conversion)]
 pub fn duration_to_timespec(duration: Duration) -> libc::timespec {
     // nsec always fits in i32 because subsec_nanos is defined to be less than one billion.
     let nsec = duration.subsec_nanos() as i32;
