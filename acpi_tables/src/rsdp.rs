@@ -5,7 +5,7 @@
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Clone, Copy, Default, FromBytes, AsBytes)]
 pub struct RSDP {
     pub signature: [u8; 8],

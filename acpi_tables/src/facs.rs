@@ -5,7 +5,7 @@
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
-#[repr(packed)]
+#[repr(C, packed)]
 #[derive(Clone, Copy, Default, FromBytes, AsBytes)]
 pub struct FACS {
     pub signature: [u8; 4],
