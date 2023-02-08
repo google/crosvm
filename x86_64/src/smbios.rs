@@ -10,7 +10,6 @@ use std::path::PathBuf;
 use std::result;
 use std::slice;
 
-use data_model::DataInit;
 use remain::sorted;
 use thiserror::Error;
 use vm_memory::GuestAddress;
@@ -93,8 +92,6 @@ pub struct Smbios23Intermediate {
     pub revision: u8,
 }
 
-unsafe impl data_model::DataInit for Smbios23Intermediate {}
-
 #[repr(C, packed)]
 #[derive(Default, Clone, Copy, FromBytes, AsBytes)]
 pub struct Smbios23Entrypoint {
@@ -108,8 +105,6 @@ pub struct Smbios23Entrypoint {
     pub reserved: [u8; 5usize],
     pub dmi: Smbios23Intermediate,
 }
-
-unsafe impl data_model::DataInit for Smbios23Entrypoint {}
 
 #[repr(C, packed)]
 #[derive(Default, Clone, Copy, FromBytes, AsBytes)]
@@ -125,8 +120,6 @@ pub struct Smbios30Entrypoint {
     pub max_size: u32,
     pub physptr: u64,
 }
-
-unsafe impl data_model::DataInit for Smbios30Entrypoint {}
 
 #[repr(C, packed)]
 #[derive(Default, Clone, Copy, FromBytes, AsBytes)]
@@ -144,8 +137,6 @@ pub struct SmbiosBiosInfo {
     pub characteristics_ext2: u8,
 }
 
-unsafe impl data_model::DataInit for SmbiosBiosInfo {}
-
 #[repr(C, packed)]
 #[derive(Default, Clone, Copy, FromBytes, AsBytes)]
 pub struct SmbiosSysInfo {
@@ -162,8 +153,6 @@ pub struct SmbiosSysInfo {
     pub family: u8,
 }
 
-unsafe impl data_model::DataInit for SmbiosSysInfo {}
-
 #[repr(C, packed)]
 #[derive(Default, Clone, Copy, FromBytes, AsBytes)]
 pub struct SmbiosOemStrings {
@@ -172,8 +161,6 @@ pub struct SmbiosOemStrings {
     pub handle: u16,
     pub count: u8,
 }
-
-unsafe impl data_model::DataInit for SmbiosOemStrings {}
 
 fn write_and_incr<T: FromBytes>(
     mem: &GuestMemory,
@@ -220,7 +207,7 @@ fn setup_smbios_from_file(mem: &GuestMemory, path: &Path) -> Result<()> {
     // Try SMBIOS 3.0 format.
     if sme.len() == mem::size_of::<Smbios30Entrypoint>() && sme.starts_with(SM3_MAGIC_IDENT) {
         let mut smbios_ep = Smbios30Entrypoint::default();
-        smbios_ep.as_mut_slice().copy_from_slice(&sme);
+        smbios_ep.as_bytes_mut().copy_from_slice(&sme);
 
         let physptr = GuestAddress(SMBIOS_START)
             .checked_add(mem::size_of::<Smbios30Entrypoint>() as u64)
@@ -243,7 +230,7 @@ fn setup_smbios_from_file(mem: &GuestMemory, path: &Path) -> Result<()> {
     // Try SMBIOS 2.3 format.
     if sme.len() == mem::size_of::<Smbios23Entrypoint>() && sme.starts_with(SM2_MAGIC_IDENT) {
         let mut smbios_ep = Smbios23Entrypoint::default();
-        smbios_ep.as_mut_slice().copy_from_slice(&sme);
+        smbios_ep.as_bytes_mut().copy_from_slice(&sme);
 
         let physptr = GuestAddress(SMBIOS_START)
             .checked_add(mem::size_of::<Smbios23Entrypoint>() as u64)

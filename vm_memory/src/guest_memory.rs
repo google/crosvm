@@ -526,7 +526,7 @@ impl GuestMemory {
     /// #     Ok(num1 + num2)
     /// # }
     /// ```
-    pub fn read_obj_from_addr<T: DataInit>(&self, guest_addr: GuestAddress) -> Result<T> {
+    pub fn read_obj_from_addr<T: FromBytes>(&self, guest_addr: GuestAddress) -> Result<T> {
         let (mapping, offset, _) = self.find_region(guest_addr)?;
         mapping
             .read_obj(offset)

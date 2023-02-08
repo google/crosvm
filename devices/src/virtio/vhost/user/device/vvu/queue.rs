@@ -22,10 +22,11 @@ use data_model::VolatileSlice;
 use virtio_sys::virtio_ring::VRING_DESC_F_WRITE;
 use vm_memory::GuestAddress as IOVA;
 use vm_memory::GuestMemory as QueueMemory;
+use zerocopy::FromBytes;
 
 use crate::virtio::Desc;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, FromBytes)]
 #[repr(C)]
 struct UsedElem {
     id: Le32,

@@ -16,7 +16,6 @@ use arch::CpuSet;
 use arch::VcpuAffinity;
 use base::error;
 use base::warn;
-use data_model::DataInit;
 use devices::ACPIPMResource;
 use devices::PciAddress;
 use devices::PciInterruptPin;
@@ -45,9 +44,6 @@ struct GenericAddress {
     _address: u64,
 }
 
-// Safe as GenericAddress structure only contains raw data
-unsafe impl DataInit for GenericAddress {}
-
 #[repr(C)]
 #[derive(Clone, Copy, Default, AsBytes)]
 struct LocalApic {
@@ -57,9 +53,6 @@ struct LocalApic {
     _apic_id: u8,
     _flags: u32,
 }
-
-// Safe as LocalAPIC structure only contains raw data
-unsafe impl DataInit for LocalApic {}
 
 #[repr(C)]
 #[derive(Clone, Copy, Default, FromBytes, AsBytes)]
@@ -72,9 +65,6 @@ struct Ioapic {
     _gsi_base: u32,
 }
 
-// Safe as IOAPIC structure only contains raw data
-unsafe impl DataInit for Ioapic {}
-
 #[repr(C, packed)]
 #[derive(Clone, Copy, Default, FromBytes, AsBytes)]
 struct IoapicInterruptSourceOverride {
@@ -86,9 +76,6 @@ struct IoapicInterruptSourceOverride {
     _flags: u16,
 }
 
-// Safe as IoapicInterruptSourceOverride structure only contains raw data
-unsafe impl DataInit for IoapicInterruptSourceOverride {}
-
 #[repr(C)]
 #[derive(Clone, Copy, Default, FromBytes, AsBytes)]
 struct Localx2Apic {
@@ -99,9 +86,6 @@ struct Localx2Apic {
     _flags: u32,
     _processor_id: u32,
 }
-
-// Safe as LocalAPIC structure only contains raw data
-unsafe impl DataInit for Localx2Apic {}
 
 // Space ID for GenericAddress
 const ADR_SPACE_SYSTEM_IO: u8 = 1;

@@ -178,7 +178,7 @@ impl MemoryMapping {
     ///     let num: u64 = mem_map.read_obj(32).unwrap();
     ///     assert_eq!(55, num);
     /// ```
-    pub fn read_obj<T: DataInit>(&self, offset: usize) -> Result<T> {
+    pub fn read_obj<T: FromBytes>(&self, offset: usize) -> Result<T> {
         self.mapping.range_end(offset, size_of::<T>())?;
         // This is safe because by definition Copy types can have their bits set arbitrarily and
         // still be valid.

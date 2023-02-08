@@ -772,7 +772,7 @@ pub struct EventRingSegmentTableEntry {
 }
 
 #[bitfield]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, AsBytes, FromBytes)]
 pub struct InputControlContext {
     // Xhci spec 6.2.5.1.
     drop_context_flags: B32,

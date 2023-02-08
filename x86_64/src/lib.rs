@@ -27,14 +27,6 @@ mod msr_index;
 #[allow(non_camel_case_types)]
 #[allow(clippy::all)]
 mod mpspec;
-// These mpspec types are only data, reading them from data is a safe initialization.
-unsafe impl data_model::DataInit for mpspec::mpc_bus {}
-unsafe impl data_model::DataInit for mpspec::mpc_cpu {}
-unsafe impl data_model::DataInit for mpspec::mpc_intsrc {}
-unsafe impl data_model::DataInit for mpspec::mpc_ioapic {}
-unsafe impl data_model::DataInit for mpspec::mpc_table {}
-unsafe impl data_model::DataInit for mpspec::mpc_lintsrc {}
-unsafe impl data_model::DataInit for mpspec::mpf_intel {}
 
 #[cfg(unix)]
 pub mod msr;
@@ -297,7 +289,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct X8664arch;
 
 // Like `bootparam::setup_data` without the incomplete array field at the end, which allows us to
-// safely implement Copy, Clone, and DataInit.
+// safely implement Copy, Clone
 #[repr(C)]
 #[derive(Copy, Clone, Default, FromBytes, AsBytes)]
 struct setup_data_hdr {
@@ -305,8 +297,6 @@ struct setup_data_hdr {
     pub type_: u32,
     pub len: u32,
 }
-
-unsafe impl data_model::DataInit for setup_data_hdr {}
 
 #[repr(u32)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
