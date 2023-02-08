@@ -27,7 +27,6 @@ use base::RawDescriptor;
 use base::Timer;
 use base::WaitContext;
 use base::WaitContextExt;
-use data_model::DataInit;
 use metrics::MetricEventType;
 use metrics::PeriodicLogger;
 #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
@@ -55,6 +54,7 @@ use winapi::um::winsock2::SOCKET;
 use winapi::um::winsock2::SOCKET_ERROR;
 use winapi::um::winsock2::WSADATA;
 use winapi::um::winsock2::WSAPOLLFD;
+use zerocopy::AsBytes;
 
 use crate::slirp::context::CallbackHandler;
 use crate::slirp::context::Context;
@@ -118,7 +118,7 @@ impl CallbackHandler for Handler {
             },
             num_buffers: 1,
         };
-        let send_buf = [vnet_hdr.as_slice(), buf].concat();
+        let send_buf = [vnet_hdr.as_bytes(), buf].concat();
 
         #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
         let d = self.start.elapsed();

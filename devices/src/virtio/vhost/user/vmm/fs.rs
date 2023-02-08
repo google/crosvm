@@ -2,10 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use data_model::DataInit;
 use data_model::Le32;
 use virtio_sys::virtio_fs::virtio_fs_config;
 use vmm_vhost::message::VhostUserProtocolFeatures;
+use zerocopy::AsBytes;
 
 use crate::virtio::device_constants::fs::FS_MAX_TAG_LEN;
 use crate::virtio::device_constants::fs::QUEUE_SIZE;
@@ -60,7 +60,7 @@ impl VhostUserVirtioDevice {
             allow_features,
             allow_protocol_features,
             base_features,
-            Some(cfg.as_slice()),
+            Some(cfg.as_bytes()),
             false,
         )
     }

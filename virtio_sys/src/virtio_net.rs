@@ -8,10 +8,8 @@
 #![allow(dead_code)]
 
 // Added by virtio_sys/bindgen.sh
-use data_model::DataInit;
-
-// Safe because virtio_net_hdr_mrg_rxbuf has no implicit padding.
-unsafe impl DataInit for virtio_net_hdr_mrg_rxbuf {}
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 #[repr(C)]
 #[derive(Default)]
@@ -213,7 +211,7 @@ impl Default for virtio_net_hdr_v1_hash {
     }
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
 pub struct virtio_net_hdr {
     pub flags: u8,
     pub gso_type: u8,
@@ -223,7 +221,7 @@ pub struct virtio_net_hdr {
     pub csum_offset: __virtio16,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
 pub struct virtio_net_hdr_mrg_rxbuf {
     pub hdr: virtio_net_hdr,
     pub num_buffers: __virtio16,

@@ -16,7 +16,6 @@ use base::Error as SysError;
 use base::Event;
 use base::RawDescriptor;
 use base::Tube;
-use data_model::DataInit;
 use data_model::Le32;
 use remain::sorted;
 use resources::Alloc;
@@ -27,6 +26,7 @@ use virtio_sys::virtio_fs::VIRTIO_FS_SHMCAP_ID_CACHE;
 use vm_control::FsMappingRequest;
 use vm_control::VmResponse;
 use vm_memory::GuestMemory;
+use zerocopy::AsBytes;
 
 use crate::pci::PciAddress;
 use crate::pci::PciBarConfiguration;
@@ -222,7 +222,7 @@ impl VirtioDevice for Fs {
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
-        copy_config(data, 0, self.cfg.as_slice(), offset)
+        copy_config(data, 0, self.cfg.as_bytes(), offset)
     }
 
     fn activate(

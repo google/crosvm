@@ -8,15 +8,13 @@
 #![allow(dead_code)]
 
 // Added by virtio_sys/bindgen.sh
-use data_model::DataInit;
 use data_model::Le32;
-
-// Safe because all members are plain old data and any value is valid.
-unsafe impl DataInit for virtio_fs_config {}
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 pub const VIRTIO_FS_SHMCAP_ID_CACHE: u32 = 0;
 #[repr(C, packed)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, FromBytes, AsBytes)]
 pub struct virtio_fs_config {
     pub tag: [u8; 36usize],
     pub num_request_queues: Le32,

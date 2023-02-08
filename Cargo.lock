@@ -1518,7 +1518,6 @@ dependencies = [
  "base",
  "cfg-if",
  "cros_async",
- "data_model 0.1.1-alpha.1",
  "libc",
  "libslirp-sys",
  "metrics",
@@ -1532,6 +1531,7 @@ dependencies = [
  "thiserror",
  "virtio_sys",
  "winapi",
+ "zerocopy",
 ]
 
 [[package]]
@@ -2348,6 +2348,7 @@ version = "0.1.0"
 dependencies = [
  "base",
  "data_model 0.1.1-alpha.1",
+ "zerocopy",
 ]
 
 [[package]]

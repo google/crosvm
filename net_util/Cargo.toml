@@ -15,8 +15,8 @@ slirp-ring-capture = ["slirp"]
 base = { path = "../base" }
 cfg-if = "1.0.0"
 cros_async = { path = "../cros_async" }
-data_model = { path = "../common/data_model" }
 libc = "*"
+zerocopy = "*"
 
 net_sys = { path = "../net_sys" }
 pcap-file = { version = "1.1.0", optional = true }
