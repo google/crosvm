@@ -238,7 +238,7 @@ def verify_builder(
             cq_group = "main",
         )
 
-def verify_linux_builder(arch, crosvm_direct = False, coverage = False, **kwargs):
+def verify_linux_builder(arch, crosvm_direct = False, **kwargs):
     """Creates a verify builder that builds crosvm on linux
 
     Args:
@@ -264,11 +264,10 @@ def verify_linux_builder(arch, crosvm_direct = False, coverage = False, **kwargs
             "crosvm_direct": crosvm_direct,
         },
         postsubmit_properties = {
-            "repeat_tests": 3,
-            "coverage": coverage,
+            "profile": "postsubmit",
         },
         presubmit_properties = {
-            "retry_tests": 2,
+            "profile": "presubmit",
         },
         caches = [
             swarming.cache("builder", name = "linux_builder_cache"),
@@ -314,8 +313,8 @@ def infra_builder(name, postsubmit, **args):
 verify_linux_builder("x86_64")
 verify_linux_builder("x86_64", crosvm_direct = True)
 verify_linux_builder("aarch64")
-verify_linux_builder("armhf", coverage = False)
-verify_linux_builder("mingw64", coverage = False)
+verify_linux_builder("armhf")
+verify_linux_builder("mingw64")
 
 verify_builder(
     name = "chromeos_hatch",
