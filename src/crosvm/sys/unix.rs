@@ -614,10 +614,8 @@ fn create_virtio_devices(
     }
 
     if let Some(cid) = cfg.cid {
-        let vhost_config = VhostVsockConfig {
-            device: cfg.vhost_vsock_device.clone(),
-            cid,
-        };
+        let vhost_config = VhostVsockConfig::new(cid, cfg.vhost_vsock_device.clone());
+
         devs.push(create_vhost_vsock_device(
             cfg.protection_type,
             &cfg.jail_config,

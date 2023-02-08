@@ -4,6 +4,7 @@
 
 use std::fs::OpenOptions;
 use std::os::unix::prelude::OpenOptionsExt;
+use std::path::Path;
 use std::path::PathBuf;
 
 use anyhow::anyhow;
@@ -36,11 +37,29 @@ use base::WorkerThread;
 
 static VHOST_VSOCK_DEFAULT_PATH: &str = "/dev/vhost-vsock";
 
+fn default_vsock_path() -> PathBuf {
+    PathBuf::from(VHOST_VSOCK_DEFAULT_PATH)
+}
+
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct VhostVsockConfig {
-    pub device: Option<PathBuf>,
+    #[serde(default = "default_vsock_path")]
+    pub device: PathBuf,
     pub cid: u64,
+}
+
+impl VhostVsockConfig {
+    /// Create a new configuration. If `vhost_device` is `None`, the default vhost-vsock device
+    /// path will be used.
+    pub fn new<P: AsRef<Path>>(cid: u64, vhost_device: Option<P>) -> Self {
+        Self {
+            cid,
+            device: vhost_device
+                .map(|p| PathBuf::from(p.as_ref()))
+                .unwrap_or_else(|| PathBuf::from(VHOST_VSOCK_DEFAULT_PATH)),
+        }
+    }
 }
 
 pub struct Vsock {
@@ -55,13 +74,8 @@ pub struct Vsock {
 impl Vsock {
     /// Create a new virtio-vsock device with the given VM cid.
     pub fn new(base_features: u64, vhost_config: &VhostVsockConfig) -> anyhow::Result<Vsock> {
-        let vhost_vsock_device_default = PathBuf::from(VHOST_VSOCK_DEFAULT_PATH);
-        let vhost_vsock_device = vhost_config
-            .device
-            .as_ref()
-            .unwrap_or(&vhost_vsock_device_default);
         let device_file = open_file(
-            vhost_vsock_device,
+            &vhost_config.device,
             OpenOptions::new()
                 .read(true)
                 .write(true)
@@ -70,7 +84,7 @@ impl Vsock {
         .with_context(|| {
             format!(
                 "failed to open virtual socket device {}",
-                vhost_vsock_device.display(),
+                vhost_config.device.display(),
             )
         })?;
 
@@ -314,7 +328,7 @@ mod tests {
         assert_eq!(
             params,
             VhostVsockConfig {
-                device: Some("/some/path".into()),
+                device: "/some/path".into(),
                 cid: 56,
             }
         );
@@ -323,7 +337,7 @@ mod tests {
         assert_eq!(
             params,
             VhostVsockConfig {
-                device: Some("/some/path".into()),
+                device: "/some/path".into(),
                 cid: 56,
             }
         );
@@ -332,7 +346,7 @@ mod tests {
         assert_eq!(
             params,
             VhostVsockConfig {
-                device: None,
+                device: VHOST_VSOCK_DEFAULT_PATH.into(),
                 cid: 56,
             }
         );
