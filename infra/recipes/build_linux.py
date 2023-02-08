@@ -22,18 +22,20 @@ DEPS = [
 
 PROPERTIES = BuildLinuxProperties
 
-COVERAGE_FILE = "coverage.lcov"
-
 
 def get_test_args(api, properties):
     "Returns architecture specific arguments for ./tools/run_tests"
-    # TODO(denniskempin): Move this logic into ./tools/presubmit
     test_arch = properties.test_arch
     args = ["--platform=" + test_arch]
+    if test_arch == "x86_64":
+        args += ["--dut=host"]
+    if test_arch == "aarch64":
+        args += ["--dut=vm"]
     if properties.crosvm_direct:
-        args += ["--crosvm-direct"]
-    if properties.coverage:
-        args += ["--generate-lcov", COVERAGE_FILE]
+        args += ["--features=direct"]
+
+    profile = properties.profile or "presubmit"
+    args += ["--profile=" + profile]
     return args
 
 
@@ -80,19 +82,17 @@ def RunSteps(api, properties):
         api.crosvm.step_in_container(
             "Build crosvm tests",
             [
-                "./tools/run_tests",
+                "./tools/run_tests2",
                 "--verbose",
-                "--build-only",
+                "--no-run",
             ]
             + get_test_args(api, properties),
         )
         api.crosvm.step_in_container(
             "Run crosvm tests",
             [
-                "./tools/run_tests",
+                "./tools/run_tests2",
                 "--verbose",
-                "--retry=" + str(properties.retry_tests or 0),
-                "--repeat=" + str(properties.repeat_tests or 1),
             ]
             + get_test_args(api, properties),
         )
@@ -107,9 +107,6 @@ def RunSteps(api, properties):
 
         with api.step.nest("Collect binary sizes"):
             collect_binary_sizes(api, properties)
-
-        if properties.coverage:
-            api.crosvm.upload_coverage(COVERAGE_FILE)
 
 
 def GenTests(api):
@@ -141,13 +138,6 @@ $ docker exec 82e9d24cd4f0 /tools/entrypoint.sh ./tools/build_release --json --p
             ),
         )
         + api.post_process(filter_steps)
-    )
-    yield (
-        api.test(
-            "build_x86_64_coverage",
-            api.buildbucket.ci_build(project="crosvm/crosvm"),
-        )
-        + api.properties(BuildLinuxProperties(test_arch="x86_64", coverage=True))
     )
     yield (
         api.test(

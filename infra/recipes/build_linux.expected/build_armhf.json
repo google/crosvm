@@ -4,10 +4,11 @@
       "vpython3",
       "[CACHE]/builder/crosvm/tools/dev_container",
       "--verbose",
-      "./tools/run_tests",
+      "./tools/run_tests2",
       "--verbose",
-      "--build-only",
-      "--platform=armhf"
+      "--no-run",
+      "--platform=armhf",
+      "--profile=presubmit"
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
@@ -32,11 +33,10 @@
       "vpython3",
       "[CACHE]/builder/crosvm/tools/dev_container",
       "--verbose",
-      "./tools/run_tests",
+      "./tools/run_tests2",
       "--verbose",
-      "--retry=0",
-      "--repeat=1",
-      "--platform=armhf"
+      "--platform=armhf",
+      "--profile=presubmit"
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {

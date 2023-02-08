@@ -9,12 +9,15 @@ package recipes.crosvm.build_linux;
 message BuildLinuxProperties {
   // Architecture to test. See `crosvm/tools/run_tests`
   optional string test_arch = 1;
+  // Test profile to use. See `crosvm/tools/run_tests`.
+  optional string profile = 6;
   // Whether or not to test the crosvm-direct feature.
   optional bool crosvm_direct = 2;
-  // Repeat the the tests multiple times.
+
+  // [deprecated]  Repeat the the tests multiple times.
   optional uint32 repeat_tests = 3;
-  // Retry tests if they failed.
+  // [deprecated] Retry tests if they failed.
   optional uint32 retry_tests = 4;
-  // Whether or not to generate and upload test coverage.
+  // [deprecated] Whether or not to generate and upload test coverage.
   optional bool coverage = 5;
 }

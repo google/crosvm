@@ -126,11 +126,11 @@ This recipe requires ambient luci authentication. To test locally run:
 
 PYTHON_VERSION_COMPATIBILITY: PY3
 
-&mdash; **def [RunSteps](/infra/recipes/build_linux.py#78)(api, properties):**
+&mdash; **def [RunSteps](/infra/recipes/build_linux.py#80)(api, properties):**
 
-&mdash; **def [collect\_binary\_sizes](/infra/recipes/build_linux.py#40)(api, properties):**
+&mdash; **def [collect\_binary\_sizes](/infra/recipes/build_linux.py#42)(api, properties):**
 
-&mdash; **def [get\_test\_args](/infra/recipes/build_linux.py#28)(api, properties):**
+&mdash; **def [get\_test\_args](/infra/recipes/build_linux.py#26)(api, properties):**
 
 Returns architecture specific arguments for ./tools/run_tests
 ### *recipes* / [build\_windows](/infra/recipes/build_windows.py)
