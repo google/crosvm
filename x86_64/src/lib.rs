@@ -330,7 +330,7 @@ const TSS_ADDR: u64 = 0xfffb_d000;
 
 pub const KERNEL_START_OFFSET: u64 = 0x20_0000;
 const CMDLINE_OFFSET: u64 = 0x2_0000;
-const CMDLINE_MAX_SIZE: u64 = KERNEL_START_OFFSET - CMDLINE_OFFSET;
+const CMDLINE_MAX_SIZE: u64 = 0x800; // including terminating zero
 const X86_64_SERIAL_1_3_IRQ: u32 = 4;
 const X86_64_SERIAL_2_4_IRQ: u32 = 3;
 // X86_64_SCI_IRQ is used to fill the ACPI FACP table.

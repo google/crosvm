@@ -12,8 +12,8 @@ This is a survey of the existing memory layout for crosvm on x86-64 when booting
 | [`boot_pml4_addr`]           | `9000`        |                 |           | Boot page table                                                                          |
 | [`boot_pdpte_addr`]          | `A000`        |                 |           | Boot page table                                                                          |
 | [`boot_pde_addr`]            | `B000`        |                 |           | Boot page table                                                                          |
-| [`CMDLINE_OFFSET`]           | `2_0000`      | `20_0000`       | ~1.87 MiB | Linux kernel command line                                                                |
-| [`ACPI_HI_RSDP_WINDOW_BASE`] | `E_0000`      |                 |           | ACPI RSDP table (TODO: technically overlaps command line buffer; check CMDLINE_MAX_SIZE) |
+| [`CMDLINE_OFFSET`]           | `2_0000`      | `2_0800`        | 2 KiB     | Linux kernel command line                                                                |
+| [`ACPI_HI_RSDP_WINDOW_BASE`] | `E_0000`      |                 |           | ACPI tables                                                                              |
 | [`KERNEL_START_OFFSET`]      | `20_0000`     |                 |           | Linux kernel image load address                                                          |
 | [`END_ADDR_BEFORE_32BITS`]   | `20_0000`     | `D000_0000`     | ~3.24 GiB | RAM (\<4G)                                                                               |
 | [`END_ADDR_BEFORE_32BITS`]   | `D000_0000`   | `F400_0000`     | 576 MiB   | Low (\<4G) MMIO allocation area                                                          |
