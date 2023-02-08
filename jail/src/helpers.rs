@@ -5,18 +5,18 @@
 #![deny(missing_docs)]
 
 use std::path::Path;
-use std::path::PathBuf;
 use std::str;
 
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
-use base::*;
+use base::getegid;
+use base::geteuid;
 use libc::c_ulong;
 use minijail::Minijail;
 use once_cell::sync::Lazy;
 
-use crate::crosvm::config::JailConfig;
+use crate::config::JailConfig;
 
 static EMBEDDED_BPFS: Lazy<std::collections::HashMap<&str, Vec<u8>>> =
     Lazy::new(|| include!(concat!(env!("OUT_DIR"), "/bpf_includes.in")));
@@ -27,48 +27,43 @@ pub const MAX_OPEN_FILES_DEFAULT: u64 = 1024;
 const MAX_OPEN_FILES_FOR_GPU: u64 = 32768;
 
 /// The user in the jail to run as.
-pub(super) enum RunAsUser {
-    // Do not specify the user
+pub enum RunAsUser {
+    /// Do not specify the user
     Unspecified,
-    // Runs as the same user in the jail as the current user.
+    /// Runs as the same user in the jail as the current user.
     CurrentUser,
-    // Runs as the root user in the jail.
-    #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
+    /// Runs as the root user in the jail.
     Root,
 }
 
 /// Config for the sandbox to be created by [Minijail].
-pub(super) struct SandboxConfig<'a> {
+pub struct SandboxConfig<'a> {
     /// Whether or not to drop all capabilities in the sandbox.
-    pub(super) limit_caps: bool,
+    pub limit_caps: bool,
     log_failures: bool,
-    seccomp_policy_path: Option<PathBuf>,
+    seccomp_policy_dir: Option<&'a Path>,
     seccomp_policy_name: &'a str,
     /// The pair of `uid_map` and `gid_map`.
-    pub(super) ugid_map: Option<(&'a str, &'a str)>,
+    pub ugid_map: Option<(&'a str, &'a str)>,
     /// The remount mode instead of default MS_PRIVATE.
-    pub(super) remount_mode: Option<c_ulong>,
+    pub remount_mode: Option<c_ulong>,
     /// Whether or not to configure the jail to support bind-mounts.
     ///
     /// Note that most device processes deny `open(2)` and `openat(2)` by seccomp policy and just
     /// returns `ENOENT`. Passing opened file descriptors is recommended over opening files in the
     /// sandbox.
-    pub(super) bind_mounts: bool,
+    pub bind_mounts: bool,
     /// Specify the user in the jail to run as.
-    pub(super) run_as: RunAsUser,
+    pub run_as: RunAsUser,
 }
 
 impl<'a> SandboxConfig<'a> {
     /// Creates [SandboxConfig].
-    pub(super) fn new(jail_config: &JailConfig, policy: &'a str) -> Self {
-        let policy_path = jail_config
-            .seccomp_policy_dir
-            .as_ref()
-            .map(|dir| dir.join(policy));
+    pub fn new(jail_config: &'a JailConfig, policy: &'a str) -> Self {
         Self {
             limit_caps: true,
             log_failures: jail_config.seccomp_log_failures,
-            seccomp_policy_path: policy_path,
+            seccomp_policy_dir: jail_config.seccomp_policy_dir.as_ref().map(Path::new),
             seccomp_policy_name: policy,
             ugid_map: None,
             remount_mode: None,
@@ -79,7 +74,7 @@ impl<'a> SandboxConfig<'a> {
 }
 
 /// Wrapper that cleans up a [Minijail] when it is dropped
-pub(crate) struct ScopedMinijail(pub Minijail);
+pub struct ScopedMinijail(pub Minijail);
 
 impl Drop for ScopedMinijail {
     fn drop(&mut self) {
@@ -96,7 +91,7 @@ impl Drop for ScopedMinijail {
 ///
 /// * `root` - The root path to be changed to by minijail.
 /// * `max_open_files` - The maximum number of file descriptors to allow a jailed process to open.
-pub(super) fn create_base_minijail(root: &Path, max_open_files: u64) -> Result<Minijail> {
+pub fn create_base_minijail(root: &Path, max_open_files: u64) -> Result<Minijail> {
     // Validate new root directory. Path::is_dir() also checks the existence.
     if !root.is_dir() {
         bail!("{:?} is not a directory, cannot create jail", root);
@@ -127,7 +122,7 @@ pub(super) fn create_base_minijail(root: &Path, max_open_files: u64) -> Result<M
 /// * `root` - The root path to be changed to by minijail.
 /// * `max_open_files` - The maximum number of file descriptors to allow a jailed process to open.
 /// * `config` - The [SandboxConfig] to control details of the sandbox.
-pub(super) fn create_sandbox_minijail(
+pub fn create_sandbox_minijail(
     root: &Path,
     max_open_files: u64,
     config: &SandboxConfig,
@@ -151,7 +146,6 @@ pub(super) fn create_sandbox_minijail(
         RunAsUser::CurrentUser => {
             add_current_user_to_jail(&mut jail)?;
         }
-        #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
         RunAsUser::Root => {
             // Add the current user as root in the jail.
             let crosvm_uid = geteuid();
@@ -187,7 +181,8 @@ pub(super) fn create_sandbox_minijail(
     // Don't allow the device to gain new privileges.
     jail.no_new_privs();
 
-    if let Some(seccomp_policy_path) = &config.seccomp_policy_path {
+    if let Some(seccomp_policy_dir) = config.seccomp_policy_dir {
+        let seccomp_policy_path = seccomp_policy_dir.join(config.seccomp_policy_name);
         // By default we'll prioritize using the pre-compiled .bpf over the .policy file (the .bpf
         // is expected to be compiled using "trap" as the failure behavior instead of the default
         // "kill" behavior) when a policy path is supplied in the command line arugments. Otherwise
@@ -250,10 +245,7 @@ pub(super) fn create_sandbox_minijail(
 /// Creates a basic [Minijail] if `jail_config` is present.
 ///
 /// Returns `None` if `jail_config` is none.
-pub(super) fn simple_jail(
-    jail_config: &Option<JailConfig>,
-    policy: &str,
-) -> Result<Option<Minijail>> {
+pub fn simple_jail(jail_config: &Option<JailConfig>, policy: &str) -> Result<Option<Minijail>> {
     if let Some(jail_config) = jail_config {
         let config = SandboxConfig::new(jail_config, policy);
         Ok(Some(create_sandbox_minijail(
@@ -267,7 +259,7 @@ pub(super) fn simple_jail(
 }
 
 /// Creates [Minijail] for gpu processes.
-pub(super) fn create_gpu_minijail(root: &Path, config: &SandboxConfig) -> Result<Minijail> {
+pub fn create_gpu_minijail(root: &Path, config: &SandboxConfig) -> Result<Minijail> {
     let mut jail = create_sandbox_minijail(root, MAX_OPEN_FILES_FOR_GPU, config)?;
 
     // Device nodes required for DRM.
@@ -334,7 +326,7 @@ pub(super) fn create_gpu_minijail(root: &Path, config: &SandboxConfig) -> Result
 /// Mirror-mount all the directories in `dirs` into `jail` on a best-effort basis.
 ///
 /// This function will not return an error if any of the directories in `dirs` is missing.
-pub(super) fn jail_mount_bind_if_exists<P: AsRef<std::ffi::OsStr>>(
+pub fn jail_mount_bind_if_exists<P: AsRef<std::ffi::OsStr>>(
     jail: &mut Minijail,
     dirs: &[P],
 ) -> Result<()> {

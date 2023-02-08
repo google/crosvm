@@ -9,7 +9,6 @@ pub mod config;
 mod device_helpers;
 #[cfg(feature = "gpu")]
 pub(crate) mod gpu;
-pub(crate) mod jail_helpers;
 mod vcpu;
 
 use std::cmp::max;
@@ -142,7 +141,7 @@ use hypervisor::VmAArch64 as VmArch;
 use hypervisor::VmCap;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use hypervisor::VmX86_64 as VmArch;
-use jail_helpers::*;
+use jail::*;
 use libc;
 use minijail::Minijail;
 use resources::AddressRange;
@@ -170,7 +169,6 @@ use crate::crosvm::config::FileBackedMappingParameters;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::crosvm::config::HostPcieRootPortParameters;
 use crate::crosvm::config::HypervisorKind;
-use crate::crosvm::config::JailConfig;
 use crate::crosvm::config::SharedDir;
 use crate::crosvm::config::SharedDirKind;
 #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]

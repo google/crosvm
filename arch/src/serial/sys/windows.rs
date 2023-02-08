@@ -14,8 +14,8 @@ use base::Result;
 use devices::serial_device::SerialParameters;
 use devices::serial_device::SerialType;
 use devices::Bus;
-use devices::Minijail;
 use devices::Serial;
+use jail::FakeMinijailStub as Minijail;
 use sync::Mutex;
 
 use crate::serial::SERIAL_ADDR;

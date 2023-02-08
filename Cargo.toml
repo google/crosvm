@@ -392,6 +392,7 @@ gdbstub = { version = "0.6.3", optional = true }
 gdbstub_arch = { version = "0.2.4", optional = true }
 rutabaga_gfx = { path = "rutabaga_gfx"}
 hypervisor = { path = "hypervisor" }
+jail = { path = "jail" }
 kernel_cmdline = { path = "kernel_cmdline" }
 kernel_loader = { path = "kernel_loader" }
 kvm = { path = "kvm", optional = true }
@@ -448,10 +449,6 @@ tube_transporter = { path = "tube_transporter" }
 winapi = "*"
 win_audio = { path = "win_audio"}
 win_util = { path = "win_util"}
-
-[build-dependencies]
-cc = "*"
-which = "4"
 
 [dev-dependencies]
 base = "*"

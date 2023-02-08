@@ -37,12 +37,12 @@ invalid.
 
 ## Sandboxing Policy
 
-Every sandbox is made with [minijail] and starts with `create_base_minijail` in
-`linux/jail_helpers.rs` which set some very restrictive settings. Linux namespaces and seccomp
-filters are used extensively. Each seccomp policy can be found under
-`seccomp/{arch}/{device}.policy` and should start by `@include`-ing the `common_device.policy`. With
-the exception of architecture specific devices (such as `Pl030` on ARM or `I8042` on x86_64), every
-device will need a different policy for each supported architecture.
+Every sandbox is made with [minijail] and starts with `create_sandbox_minijail` in `jail` crate
+which set some very restrictive settings. Linux namespaces and seccomp filters are used for
+sandboxing. Each seccomp policy can be found under `jail/seccomp/{arch}/{device}.policy` and should
+start by `@include`-ing the `common_device.policy`. With the exception of architecture specific
+devices (such as `Pl030` on ARM or `I8042` on x86_64), every device will need a different policy for
+each supported architecture.
 
 ## The VM Control Sockets
 

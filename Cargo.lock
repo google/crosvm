@@ -14,6 +14,7 @@ dependencies = [
  "gdbstub",
  "gdbstub_arch",
  "hypervisor",
+ "jail",
  "kernel_cmdline",
  "kernel_loader",
  "libc",
@@ -79,6 +80,7 @@ dependencies = [
  "gdbstub",
  "gdbstub_arch",
  "hypervisor",
+ "jail",
  "kernel_cmdline",
  "libc",
  "minijail",
@@ -558,7 +560,6 @@ dependencies = [
  "base",
  "bit_field",
  "broker_ipc",
- "cc",
  "cfg-if",
  "crash_report",
  "cros_async",
@@ -576,6 +577,7 @@ dependencies = [
  "gdbstub_arch",
  "gpu_display",
  "hypervisor",
+ "jail",
  "kernel_cmdline",
  "kernel_loader",
  "kvm",
@@ -610,7 +612,6 @@ dependencies = [
  "vhost",
  "vm_control",
  "vm_memory",
- "which",
  "win_audio",
  "win_util",
  "winapi",
@@ -1199,6 +1200,21 @@ name = "itoa"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "112c678d4050afce233f4f2852bb2eb519230b3cf12f33585275537d7e41578d"
+
+[[package]]
+name = "jail"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base",
+ "cfg-if",
+ "libc",
+ "minijail",
+ "once_cell",
+ "serde",
+ "serde_keyvalue",
+ "which",
+]
 
 [[package]]
 name = "jobserver"
@@ -2648,6 +2664,7 @@ dependencies = [
  "devices",
  "gdbstub_arch",
  "hypervisor",
+ "jail",
  "kernel_cmdline",
  "kernel_loader",
  "libc",

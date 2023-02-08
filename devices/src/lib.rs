@@ -167,11 +167,6 @@ cfg_if::cfg_if! {
         pub use self::virtio::vfio_wrapper;
 
     } else if #[cfg(windows)] {
-        // We define Minijail as an empty struct on Windows because the concept
-        // of jailing is baked into a bunch of places where it isn't easy
-        // to compile it out. In the long term, this should go away.
-        #[cfg(windows)]
-        pub struct Minijail {}
     } else {
         compile_error!("Unsupported platform");
     }

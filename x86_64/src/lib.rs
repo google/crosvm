@@ -81,8 +81,6 @@ use devices::Debugcon;
 use devices::IrqChip;
 use devices::IrqChipX86_64;
 use devices::IrqEventSource;
-#[cfg(windows)]
-use devices::Minijail;
 use devices::PciAddress;
 use devices::PciConfigIo;
 use devices::PciConfigMmio;
@@ -117,6 +115,8 @@ use hypervisor::VcpuX86_64;
 use hypervisor::Vm;
 use hypervisor::VmCap;
 use hypervisor::VmX86_64;
+#[cfg(windows)]
+use jail::FakeMinijailStub as Minijail;
 #[cfg(unix)]
 use minijail::Minijail;
 use once_cell::sync::OnceCell;

@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
+use jail::*;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_keyvalue::FromKeyValues;

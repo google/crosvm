@@ -9,10 +9,10 @@ use devices::serial_device::SerialHardware;
 use devices::serial_device::SerialParameters;
 use devices::serial_device::SerialType;
 use devices::Bus;
-#[cfg(windows)]
-use devices::Minijail;
 use devices::Serial;
 use hypervisor::ProtectionType;
+#[cfg(windows)]
+use jail::FakeMinijailStub as Minijail;
 #[cfg(unix)]
 use minijail::Minijail;
 use remain::sorted;

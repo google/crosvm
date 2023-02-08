@@ -1,0 +1,22 @@
+[package]
+name = "jail"
+version = "0.1.0"
+authors = ["The ChromiumOS Authors"]
+edition = "2021"
+
+[dependencies]
+anyhow = "*"
+base = { path = "../base" }
+libc = "*"
+once_cell = "*"
+serde = "*"
+serde_keyvalue = { path = "../serde_keyvalue", features = ["argh_derive"] }
+
+[target.'cfg(unix)'.dependencies]
+minijail = "*"
+
+[build-dependencies]
+which = "4"
+
+[dev-dependencies]
+cfg-if = "*"

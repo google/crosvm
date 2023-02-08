@@ -32,8 +32,6 @@ use devices::BusError;
 use devices::IrqChip;
 use devices::IrqChipAArch64;
 use devices::IrqEventSource;
-#[cfg(windows)]
-use devices::Minijail;
 use devices::PciAddress;
 use devices::PciConfigMmio;
 use devices::PciDevice;
@@ -54,6 +52,8 @@ use hypervisor::VcpuInitAArch64;
 use hypervisor::VcpuRegAArch64;
 use hypervisor::Vm;
 use hypervisor::VmAArch64;
+#[cfg(windows)]
+use jail::FakeMinijailStub as Minijail;
 use kernel_loader::LoadedKernel;
 #[cfg(unix)]
 use minijail::Minijail;

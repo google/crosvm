@@ -81,12 +81,12 @@ fn main() {
         let minijail_dir = if let Ok(minijail_dir_env) = env::var("MINIJAIL_DIR") {
             PathBuf::from(minijail_dir_env)
         } else {
-            src_dir.join("third_party/minijail")
+            src_dir.join("../third_party/minijail")
         };
         minijail_dir.join("tools/compile_seccomp_policy.py")
     };
 
-    // check policies exist for target architecuture
+    // check policies exist for target architecture
     let seccomp_arch_name = match env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str() {
         "armv7" => "arm".to_owned(),
         x => x.to_owned(),
