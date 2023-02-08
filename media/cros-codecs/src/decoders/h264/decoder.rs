@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::cell::RefCell;
+use std::collections::BinaryHeap;
 use std::io::Cursor;
 use std::rc::Rc;
 
@@ -141,6 +142,45 @@ impl Default for NegotiationStatus {
     }
 }
 
+/// A picture ready to be sent to the DecoderSession, with an ordering on its picture order so it
+/// can be placed into a `BinaryHeap`.
+struct ReadyPicture<T> {
+    /// Handle to the picture.
+    handle: T,
+    /// pic_order_cnt of the picture as per the H.264 spec.
+    pic_order: i32,
+}
+
+impl<T> ReadyPicture<T> {
+    fn new(handle: T, pic_order: i32) -> Self {
+        Self { handle, pic_order }
+    }
+}
+
+impl<T> PartialEq for ReadyPicture<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.pic_order.eq(&other.pic_order)
+    }
+}
+
+impl<T> Eq for ReadyPicture<T> {}
+
+impl<T> PartialOrd for ReadyPicture<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        // We reverse the order because we want the picture with the lowest order to be at the top
+        // of the `BinaryHeap`.
+        other.pic_order.partial_cmp(&self.pic_order)
+    }
+}
+
+impl<T> Ord for ReadyPicture<T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // We reverse the order because we want the picture with the lowest order to be at the top
+        // of the `BinaryHeap`.
+        other.pic_order.cmp(&self.pic_order)
+    }
+}
+
 pub struct Decoder<T>
 where
     T: DecodedHandle + DynDecodedHandle,
@@ -162,11 +202,8 @@ where
     coded_resolution: Resolution,
 
     /// A queue with the handles of pictures that are ready to be sent to the
-    /// DecoderSession.
-    ///
-    /// The second member of the tuple is the pic_order_cnt, and is used to
-    /// sort the queue.
-    ready_queue: Vec<(T, i32)>,
+    /// DecoderSession, with the lowest order at the top.
+    ready_queue: BinaryHeap<ReadyPicture<T>>,
 
     /// A monotonically increasing counter used to tag pictures in display
     /// order
@@ -1480,7 +1517,8 @@ where
         if matches!(pic.field, Field::Frame) {
             assert!(self.last_field.is_none());
 
-            self.ready_queue.push((handle, pic.pic_order_cnt));
+            self.ready_queue
+                .push(ReadyPicture::new(handle, pic.pic_order_cnt));
         } else if self.last_field.is_none() {
             assert!(!pic.is_second_field());
             drop(pic);
@@ -1501,11 +1539,11 @@ where
 
             field_pic.borrow_mut().set_second_field_to(&pic_rc);
 
-            self.ready_queue
-                .push((field_handle, field_pic.borrow().pic_order_cnt));
+            self.ready_queue.push(ReadyPicture::new(
+                field_handle,
+                field_pic.borrow().pic_order_cnt,
+            ));
         }
-
-        self.ready_queue.sort_by_key(|h| h.1);
     }
 
     fn finish_picture(&mut self, mut pic: PictureData, handle: T) -> Result<()> {
@@ -1536,7 +1574,7 @@ where
             .into_iter()
             .filter_map(|p| {
                 if let Some(handle) = p.1 {
-                    Some((handle, p.0.borrow().pic_order_cnt))
+                    Some(ReadyPicture::new(handle, p.0.borrow().pic_order_cnt))
                 } else {
                     None
                 }
@@ -1685,27 +1723,29 @@ where
         self.ref_pic_list1.clear();
     }
 
-    /// Get the DecodedFrameHandle s for the pictures in the ready queue.
+    /// Get the DecodedFrameHandles for the pictures in the ready queue, in display order.
     fn get_ready_frames(&mut self) -> Vec<T> {
-        for (h, _) in &mut self.ready_queue {
-            if DecodedHandle::display_order(h).is_none() {
-                let order = self.current_display_order;
-                h.set_display_order(order);
-                self.current_display_order += 1;
-            }
-        }
+        let (ready, retained): (Vec<_>, Vec<_>) = std::mem::take(&mut self.ready_queue)
+            // Unfortunately `BinaryHeap`'s `iter()` does not guarantee the order, so we
+            // need to convert into a vector first.
+            .into_sorted_vec()
+            .into_iter()
+            .rev()
+            // Assign display order to frames that don't have one yet.
+            .map(|mut picture| {
+                if DecodedHandle::display_order(&picture.handle).is_none() {
+                    let order = self.current_display_order;
+                    picture.handle.set_display_order(order);
+                    self.current_display_order += 1;
+                }
+                picture
+            })
+            .partition(|picture| self.backend.handle_is_ready(&picture.handle));
 
-        let ready = self
-            .ready_queue
-            .iter()
-            .filter(|handle| self.backend.handle_is_ready(&handle.0))
-            .map(|handle| handle.0.clone())
-            .collect::<Vec<_>>();
+        // Keep non-ready frames in the ready queue.
+        self.ready_queue = BinaryHeap::from(retained);
 
-        self.ready_queue
-            .retain(|handle| !self.backend.handle_is_ready(&handle.0));
-
-        ready
+        ready.into_iter().map(|picture| picture.handle).collect()
     }
 
     /// Drain the decoder, processing all pending frames.
@@ -1718,7 +1758,7 @@ where
             .into_iter()
             .filter_map(|h| match h.1 {
                 None => None,
-                Some(handle) => Some((handle, h.0.borrow().pic_order_cnt)),
+                Some(handle) => Some(ReadyPicture::new(handle, h.0.borrow().pic_order_cnt)),
             })
             .collect::<Vec<_>>();
 
@@ -2302,11 +2342,11 @@ where
     }
 
     fn block_on_one(&mut self) -> VideoDecoderResult<()> {
-        for handle in &self.ready_queue {
-            if !self.backend.handle_is_ready(&handle.0) {
+        for ReadyPicture { handle, .. } in &self.ready_queue {
+            if !self.backend.handle_is_ready(handle) {
                 return self
                     .backend
-                    .block_on_handle(&handle.0)
+                    .block_on_handle(handle)
                     .map_err(VideoDecoderError::StatelessBackendError);
             }
         }
@@ -2506,6 +2546,7 @@ pub mod tests {
 
                 let data = &test_stream[start_offset..end_offset];
 
+                // TODO: check that the frames are returned in the right order.
                 decoder.decode(frame_num, data).unwrap();
 
                 on_new_iteration(decoder);
