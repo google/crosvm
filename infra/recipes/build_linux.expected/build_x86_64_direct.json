@@ -9,7 +9,7 @@
       "--no-run",
       "--platform=x86_64",
       "--dut=host",
-      "--features=direct",
+      "--features=direct,all-x86_64",
       "--profile=presubmit"
     ],
     "cwd": "[CACHE]/builder/crosvm",
@@ -39,7 +39,7 @@
       "--verbose",
       "--platform=x86_64",
       "--dut=host",
-      "--features=direct",
+      "--features=direct,all-x86_64",
       "--profile=presubmit"
     ],
     "cwd": "[CACHE]/builder/crosvm",

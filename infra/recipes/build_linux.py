@@ -32,7 +32,7 @@ def get_test_args(api, properties):
     if test_arch == "aarch64":
         args += ["--dut=vm"]
     if properties.crosvm_direct:
-        args += ["--features=direct"]
+        args += ["--features=direct,all-x86_64"]
 
     profile = properties.profile or "presubmit"
     args += ["--profile=" + profile]
