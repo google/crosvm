@@ -31,6 +31,8 @@ use data_model::DataInit;
 use data_model::Le16;
 use data_model::Le32;
 use data_model::Le64;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 pub const VIRTIO_IOMMU_F_INPUT_RANGE: u32 = 0;
 pub const VIRTIO_IOMMU_F_DOMAIN_RANGE: u32 = 1;
@@ -93,7 +95,7 @@ pub struct virtio_iommu_config {
 }
 unsafe impl DataInit for virtio_iommu_config {}
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_iommu_req_head {
     pub type_: u8,
     pub reserved: [u8; 3usize],
@@ -107,7 +109,7 @@ pub struct virtio_iommu_req_tail {
 }
 unsafe impl DataInit for virtio_iommu_req_tail {}
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_iommu_req_attach {
     pub domain: Le32,
     pub endpoint: Le32,
@@ -115,7 +117,7 @@ pub struct virtio_iommu_req_attach {
 }
 unsafe impl DataInit for virtio_iommu_req_attach {}
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_iommu_req_detach {
     pub domain: Le32,
     pub endpoint: Le32,
@@ -123,7 +125,7 @@ pub struct virtio_iommu_req_detach {
 }
 unsafe impl DataInit for virtio_iommu_req_detach {}
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_iommu_req_map {
     pub domain: Le32,
     pub virt_start: Le64,
@@ -133,7 +135,7 @@ pub struct virtio_iommu_req_map {
 }
 unsafe impl DataInit for virtio_iommu_req_map {}
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_iommu_req_unmap {
     pub domain: Le32,
     pub virt_start: Le64,
@@ -159,7 +161,7 @@ pub struct virtio_iommu_probe_resv_mem {
 }
 unsafe impl DataInit for virtio_iommu_probe_resv_mem {}
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_iommu_req_probe {
     pub endpoint: Le32,
     pub reserved: [u64; 8usize],

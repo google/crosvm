@@ -36,6 +36,8 @@ use remain::sorted;
 use thiserror::Error as ThisError;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 use super::async_utils;
 use super::copy_config;
@@ -135,7 +137,7 @@ const VIRTIO_BALLOON_S_NONSTANDARD_SHMEM: u16 = 65534;
 const VIRTIO_BALLOON_S_NONSTANDARD_UNEVICTABLE: u16 = 65535;
 
 // BalloonStat is used to deserialize stats from the stats_queue.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, FromBytes, AsBytes)]
 #[repr(C, packed)]
 struct BalloonStat {
     tag: Le16,
@@ -169,7 +171,7 @@ const VIRTIO_BALLOON_EVENT_PRESSURE: u32 = 1;
 const VIRTIO_BALLOON_EVENT_PUFF_FAILURE: u32 = 2;
 
 #[repr(C)]
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 struct virtio_balloon_event_header {
     evt_type: Le32,
 }

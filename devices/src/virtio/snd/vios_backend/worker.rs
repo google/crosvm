@@ -16,6 +16,7 @@ use data_model::DataInit;
 use data_model::Le32;
 use sync::Mutex;
 use vm_memory::GuestMemory;
+use zerocopy::AsBytes;
 
 use super::super::constants::*;
 use super::super::layout::*;
@@ -226,7 +227,7 @@ impl Worker {
                 .map_err(SoundError::QueueIO)?;
             let mut code: Le32 = Default::default();
             // need to copy because the buffer may not be properly aligned
-            code.as_mut_slice()
+            code.as_bytes_mut()
                 .copy_from_slice(&read_buf[..std::mem::size_of::<Le32>()]);
             let request_type = code.to_native();
             match request_type {
@@ -501,7 +502,7 @@ impl Worker {
         }
     }
 
-    fn send_info_reply<T: DataInit>(
+    fn send_info_reply<T: AsBytes>(
         &mut self,
         desc: DescriptorChain,
         code: u32,

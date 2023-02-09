@@ -42,6 +42,8 @@ use virtio_sys::virtio_net::VIRTIO_NET_CTRL_MQ_VQ_PAIRS_SET;
 use virtio_sys::virtio_net::VIRTIO_NET_ERR;
 use virtio_sys::virtio_net::VIRTIO_NET_OK;
 use vm_memory::GuestMemory;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 use super::copy_config;
 use super::DescriptorError;
@@ -179,7 +181,7 @@ impl FromStr for NetParameters {
 }
 
 #[repr(C, packed)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, AsBytes, FromBytes)]
 pub struct virtio_net_ctrl_hdr {
     pub class: u8,
     pub cmd: u8,

@@ -19,7 +19,7 @@ use anyhow::Context;
 use base::FileReadWriteAtVolatile;
 use base::FileReadWriteVolatile;
 use cros_async::MemRegion;
-use data_model::DataInit;
+use data_model::zerocopy_from_reader;
 use data_model::Le16;
 use data_model::Le32;
 use data_model::Le64;
@@ -31,6 +31,7 @@ use smallvec::SmallVec;
 use thiserror::Error;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
+use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
 use super::DescriptorChain;
@@ -214,13 +215,13 @@ pub struct Reader {
     regions: DescriptorChainRegions,
 }
 
-/// An iterator over `DataInit` objects on readable descriptors in the descriptor chain.
-pub struct ReaderIterator<'a, T: DataInit> {
+/// An iterator over `FromBytes` objects on readable descriptors in the descriptor chain.
+pub struct ReaderIterator<'a, T: FromBytes> {
     reader: &'a mut Reader,
     phantom: PhantomData<T>,
 }
 
-impl<'a, T: DataInit> Iterator for ReaderIterator<'a, T> {
+impl<'a, T: FromBytes> Iterator for ReaderIterator<'a, T> {
     type Item = io::Result<T>;
 
     fn next(&mut self) -> Option<io::Result<T>> {
@@ -301,21 +302,21 @@ impl Reader {
     }
 
     /// Reads an object from the descriptor chain buffer.
-    pub fn read_obj<T: DataInit>(&mut self) -> io::Result<T> {
-        T::from_reader(self)
+    pub fn read_obj<T: FromBytes>(&mut self) -> io::Result<T> {
+        zerocopy_from_reader(self)
     }
 
     /// Reads objects by consuming all the remaining data in the descriptor chain buffer and returns
     /// them as a collection. Returns an error if the size of the remaining data is indivisible by
     /// the size of an object of type `T`.
-    pub fn collect<C: FromIterator<io::Result<T>>, T: DataInit>(&mut self) -> C {
+    pub fn collect<C: FromIterator<io::Result<T>>, T: FromBytes>(&mut self) -> C {
         self.iter().collect()
     }
 
-    /// Creates an iterator for sequentially reading `DataInit` objects from the `Reader`.
+    /// Creates an iterator for sequentially reading `FromBytes` objects from the `Reader`.
     /// Unlike `collect`, this doesn't consume all the remaining data in the `Reader` and
     /// doesn't require the objects to be stored in a separate collection.
-    pub fn iter<T: DataInit>(&mut self) -> ReaderIterator<T> {
+    pub fn iter<T: FromBytes>(&mut self) -> ReaderIterator<T> {
         ReaderIterator {
             reader: self,
             phantom: PhantomData,
@@ -565,23 +566,20 @@ impl Writer {
     }
 
     /// Writes an object to the descriptor chain buffer.
-    pub fn write_obj<T: DataInit>(&mut self, val: T) -> io::Result<()> {
-        self.write_all(val.as_slice())
+    pub fn write_obj<T: AsBytes>(&mut self, val: T) -> io::Result<()> {
+        self.write_all(val.as_bytes())
     }
 
     /// Writes all objects produced by `iter` into the descriptor chain buffer. Unlike `consume`,
     /// this doesn't require the values to be stored in an intermediate collection first. It also
     /// allows callers to choose which elements in a collection to write, for example by using the
     /// `filter` or `take` methods of the `Iterator` trait.
-    pub fn write_iter<T: DataInit, I: Iterator<Item = T>>(
-        &mut self,
-        mut iter: I,
-    ) -> io::Result<()> {
+    pub fn write_iter<T: AsBytes, I: Iterator<Item = T>>(&mut self, mut iter: I) -> io::Result<()> {
         iter.try_for_each(|v| self.write_obj(v))
     }
 
     /// Writes a collection of objects into the descriptor chain buffer.
-    pub fn consume<T: DataInit, C: IntoIterator<Item = T>>(&mut self, vals: C) -> io::Result<()> {
+    pub fn consume<T: AsBytes, C: IntoIterator<Item = T>>(&mut self, vals: C) -> io::Result<()> {
         self.write_iter(vals.into_iter())
     }
 
@@ -793,7 +791,7 @@ pub enum DescriptorType {
     Writable,
 }
 
-#[derive(Copy, Clone, Debug, FromBytes)]
+#[derive(Copy, Clone, Debug, FromBytes, AsBytes)]
 #[repr(C)]
 struct virtq_desc {
     addr: Le64,
@@ -801,9 +799,6 @@ struct virtq_desc {
     flags: Le16,
     next: Le16,
 }
-
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtq_desc {}
 
 /// Test utility function to create a descriptor chain in guest memory.
 pub fn create_descriptor_chain(

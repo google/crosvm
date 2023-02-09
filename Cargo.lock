@@ -822,6 +822,7 @@ dependencies = [
  "thiserror",
  "uuid",
  "vm_memory",
+ "zerocopy",
 ]
 
 [[package]]
@@ -1085,6 +1086,7 @@ dependencies = [
  "vm_control",
  "win_util",
  "winapi",
+ "zerocopy",
 ]
 
 [[package]]
@@ -1344,6 +1346,7 @@ dependencies = [
  "base",
  "data_model 0.1.1-alpha.1",
  "libc",
+ "zerocopy",
 ]
 
 [[package]]
@@ -1938,6 +1941,7 @@ dependencies = [
  "remain",
  "serde",
  "thiserror",
+ "zerocopy",
 ]
 
 [[package]]

@@ -112,6 +112,8 @@ use vm_control::VmMemorySource;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 #[cfg(feature = "gpu")]
 use super::resource_bridge::get_resource_info;
@@ -254,6 +256,7 @@ fn encode_vfd_new(
         flags: Le32::from(flags),
         pfn: Le64::from(pfn),
         size: Le32::from(size),
+        padding: Default::default(),
     };
 
     writer
@@ -561,26 +564,27 @@ impl VmRequester {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 struct CtrlHeader {
     type_: Le32,
     flags: Le32,
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, FromBytes, AsBytes)]
 struct CtrlVfdNew {
     hdr: CtrlHeader,
     id: Le32,
     flags: Le32,
     pfn: Le64,
     size: Le32,
+    padding: Le32,
 }
 
 unsafe impl DataInit for CtrlVfdNew {}
 
 #[repr(C)]
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, FromBytes)]
 struct CtrlVfdNewCtxNamed {
     hdr: CtrlHeader,
     id: Le32,
@@ -593,7 +597,7 @@ struct CtrlVfdNewCtxNamed {
 unsafe impl DataInit for CtrlVfdNewCtxNamed {}
 
 #[repr(C)]
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 #[cfg(feature = "minigbm")]
 struct CtrlVfdNewDmabuf {
     hdr: CtrlHeader,
@@ -616,7 +620,7 @@ struct CtrlVfdNewDmabuf {
 unsafe impl DataInit for CtrlVfdNewDmabuf {}
 
 #[repr(C)]
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 #[cfg(feature = "minigbm")]
 struct CtrlVfdDmabufSync {
     hdr: CtrlHeader,
@@ -628,7 +632,7 @@ struct CtrlVfdDmabufSync {
 unsafe impl DataInit for CtrlVfdDmabufSync {}
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, AsBytes, FromBytes)]
 struct CtrlVfdRecv {
     hdr: CtrlHeader,
     id: Le32,
@@ -638,7 +642,7 @@ struct CtrlVfdRecv {
 unsafe impl DataInit for CtrlVfdRecv {}
 
 #[repr(C)]
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 struct CtrlVfd {
     hdr: CtrlHeader,
     id: Le32,
@@ -647,7 +651,7 @@ struct CtrlVfd {
 unsafe impl DataInit for CtrlVfd {}
 
 #[repr(C)]
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 struct CtrlVfdSend {
     hdr: CtrlHeader,
     id: Le32,
@@ -658,7 +662,7 @@ struct CtrlVfdSend {
 unsafe impl DataInit for CtrlVfdSend {}
 
 #[repr(C)]
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 struct CtrlVfdSendVfd {
     kind: Le32,
     id: Le32,
@@ -667,7 +671,7 @@ struct CtrlVfdSendVfd {
 unsafe impl DataInit for CtrlVfdSendVfd {}
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, FromBytes)]
 union CtrlVfdSendVfdV2Payload {
     id: Le32,
     seqno: Le64,
@@ -676,7 +680,7 @@ union CtrlVfdSendVfdV2Payload {
 unsafe impl DataInit for CtrlVfdSendVfdV2Payload {}
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, FromBytes)]
 struct CtrlVfdSendVfdV2 {
     kind: Le32,
     payload: CtrlVfdSendVfdV2Payload,

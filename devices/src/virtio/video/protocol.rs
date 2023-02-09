@@ -29,6 +29,8 @@
 use data_model::DataInit;
 use data_model::Le32;
 use data_model::Le64;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 pub use crate::virtio::device_constants::video::virtio_video_config;
 pub use crate::virtio::device_constants::video::VIRTIO_VIDEO_F_RESOURCE_GUEST_PAGES;
@@ -134,7 +136,7 @@ pub const VIRTIO_VIDEO_RESP_ERR_INVALID_PARAMETER: virtio_video_cmd_type = 772;
 pub const VIRTIO_VIDEO_RESP_ERR_UNSUPPORTED_CONTROL: virtio_video_cmd_type = 773;
 pub type virtio_video_cmd_type = u32;
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_cmd_hdr {
     pub type_: Le32,
     pub stream_id: Le32,
@@ -146,7 +148,7 @@ pub const VIRTIO_VIDEO_QUEUE_TYPE_INPUT: virtio_video_queue_type = 256;
 pub const VIRTIO_VIDEO_QUEUE_TYPE_OUTPUT: virtio_video_queue_type = 257;
 pub type virtio_video_queue_type = u32;
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_query_capability {
     pub queue_type: Le32,
     pub padding: [u8; 4usize],
@@ -158,7 +160,7 @@ pub const VIRTIO_VIDEO_PLANES_LAYOUT_SINGLE_BUFFER: virtio_video_planes_layout_f
 pub const VIRTIO_VIDEO_PLANES_LAYOUT_PER_PLANE: virtio_video_planes_layout_flag = 2;
 pub type virtio_video_planes_layout_flag = u32;
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_format_range {
     pub min: Le32,
     pub max: Le32,
@@ -169,7 +171,7 @@ pub struct virtio_video_format_range {
 unsafe impl DataInit for virtio_video_format_range {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_format_frame {
     pub width: virtio_video_format_range,
     pub height: virtio_video_format_range,
@@ -180,7 +182,7 @@ pub struct virtio_video_format_frame {
 unsafe impl DataInit for virtio_video_format_frame {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_format_desc {
     pub mask: Le64,
     pub format: Le32,
@@ -192,7 +194,7 @@ pub struct virtio_video_format_desc {
 unsafe impl DataInit for virtio_video_format_desc {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_query_capability_resp {
     pub hdr: virtio_video_cmd_hdr,
     pub num_descs: Le32,
@@ -205,7 +207,7 @@ pub const VIRTIO_VIDEO_MEM_TYPE_GUEST_PAGES: virtio_video_mem_type = 0;
 pub const VIRTIO_VIDEO_MEM_TYPE_VIRTIO_OBJECT: virtio_video_mem_type = 1;
 pub type virtio_video_mem_type = u32;
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_stream_create {
     pub in_mem_type: Le32,
     pub out_mem_type: Le32,
@@ -222,32 +224,32 @@ impl Default for virtio_video_stream_create {
 unsafe impl DataInit for virtio_video_stream_create {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_stream_destroy {}
 // Safe because auto-generated structs have no implicit padding.
 unsafe impl DataInit for virtio_video_stream_destroy {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_stream_drain {}
 // Safe because auto-generated structs have no implicit padding.
 unsafe impl DataInit for virtio_video_stream_drain {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_mem_entry {
     pub addr: Le64,
     pub length: Le32,
     pub padding: [u8; 4usize],
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_object_entry {
     pub uuid: [u8; 16usize],
 }
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_resource_create {
     pub queue_type: Le32,
     pub resource_id: Le32,
@@ -260,7 +262,7 @@ pub struct virtio_video_resource_create {
 unsafe impl DataInit for virtio_video_resource_create {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_resource_queue {
     pub queue_type: Le32,
     pub resource_id: Le32,
@@ -279,7 +281,7 @@ pub const VIRTIO_VIDEO_BUFFER_FLAG_PFRAME: virtio_video_buffer_flag = 8;
 pub const VIRTIO_VIDEO_BUFFER_FLAG_BFRAME: virtio_video_buffer_flag = 16;
 pub type virtio_video_buffer_flag = u32;
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_resource_queue_resp {
     pub hdr: virtio_video_cmd_hdr,
     pub timestamp: Le64,
@@ -290,7 +292,7 @@ pub struct virtio_video_resource_queue_resp {
 unsafe impl DataInit for virtio_video_resource_queue_resp {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_resource_destroy_all {
     pub queue_type: Le32,
     pub padding: [u8; 4usize],
@@ -299,7 +301,7 @@ pub struct virtio_video_resource_destroy_all {
 unsafe impl DataInit for virtio_video_resource_destroy_all {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_queue_clear {
     pub queue_type: Le32,
     pub padding: [u8; 4usize],
@@ -308,13 +310,13 @@ pub struct virtio_video_queue_clear {
 unsafe impl DataInit for virtio_video_queue_clear {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_plane_format {
     pub plane_size: Le32,
     pub stride: Le32,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_crop {
     pub left: Le32,
     pub top: Le32,
@@ -322,7 +324,7 @@ pub struct virtio_video_crop {
     pub height: Le32,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_params {
     pub queue_type: Le32,
     pub format: Le32,
@@ -336,7 +338,7 @@ pub struct virtio_video_params {
     pub plane_formats: [virtio_video_plane_format; 8usize],
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_get_params {
     pub queue_type: Le32,
     pub padding: [u8; 4usize],
@@ -345,7 +347,7 @@ pub struct virtio_video_get_params {
 unsafe impl DataInit for virtio_video_get_params {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_get_params_resp {
     pub hdr: virtio_video_cmd_hdr,
     pub params: virtio_video_params,
@@ -354,7 +356,7 @@ pub struct virtio_video_get_params_resp {
 unsafe impl DataInit for virtio_video_get_params_resp {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_set_params {
     pub params: virtio_video_params,
 }
@@ -365,14 +367,14 @@ unsafe impl DataInit for virtio_video_set_params {}
 /// was an oversight and the {GET,SET}_PARAMS_EXT commands use this structure to fix it, while
 /// the older {GET,SET}_PARAMS commands are kept for backward compatibility.
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_params_ext {
     pub base: virtio_video_params,
     pub resource_type: Le32,
     pub padding: [u8; 4usize],
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_get_params_ext {
     pub queue_type: Le32,
     pub padding: [u8; 4usize],
@@ -381,7 +383,7 @@ pub struct virtio_video_get_params_ext {
 unsafe impl DataInit for virtio_video_get_params_ext {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_get_params_ext_resp {
     pub hdr: virtio_video_cmd_hdr,
     pub params: virtio_video_params_ext,
@@ -390,7 +392,7 @@ pub struct virtio_video_get_params_ext_resp {
 unsafe impl DataInit for virtio_video_get_params_ext_resp {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_set_params_ext {
     pub params: virtio_video_params_ext,
 }
@@ -406,7 +408,7 @@ pub const VIRTIO_VIDEO_CONTROL_BITRATE_PEAK: virtio_video_control_type = 6;
 pub const VIRTIO_VIDEO_CONTROL_PREPEND_SPSPPS_TO_IDR: virtio_video_control_type = 7;
 pub type virtio_video_control_type = u32;
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_query_control_profile {
     pub format: Le32,
     pub padding: [u8; 4usize],
@@ -415,7 +417,7 @@ pub struct virtio_video_query_control_profile {
 unsafe impl DataInit for virtio_video_query_control_profile {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_query_control_level {
     pub format: Le32,
     pub padding: [u8; 4usize],
@@ -424,7 +426,7 @@ pub struct virtio_video_query_control_level {
 unsafe impl DataInit for virtio_video_query_control_level {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_query_control {
     pub control: Le32,
     pub padding: [u8; 4usize],
@@ -433,7 +435,7 @@ pub struct virtio_video_query_control {
 unsafe impl DataInit for virtio_video_query_control {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_query_control_resp_profile {
     pub num: Le32,
     pub padding: [u8; 4usize],
@@ -442,7 +444,7 @@ pub struct virtio_video_query_control_resp_profile {
 unsafe impl DataInit for virtio_video_query_control_resp_profile {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_query_control_resp_level {
     pub num: Le32,
     pub padding: [u8; 4usize],
@@ -451,7 +453,7 @@ pub struct virtio_video_query_control_resp_level {
 unsafe impl DataInit for virtio_video_query_control_resp_level {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_query_control_resp {
     pub hdr: virtio_video_cmd_hdr,
 }
@@ -459,7 +461,7 @@ pub struct virtio_video_query_control_resp {
 unsafe impl DataInit for virtio_video_query_control_resp {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_get_control {
     pub control: Le32,
     pub padding: [u8; 4usize],
@@ -468,7 +470,7 @@ pub struct virtio_video_get_control {
 unsafe impl DataInit for virtio_video_get_control {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_control_val_bitrate {
     pub bitrate: Le32,
     pub padding: [u8; 4usize],
@@ -477,7 +479,7 @@ pub struct virtio_video_control_val_bitrate {
 unsafe impl DataInit for virtio_video_control_val_bitrate {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_control_val_bitrate_peak {
     pub bitrate_peak: Le32,
     pub padding: [u8; 4usize],
@@ -486,7 +488,7 @@ pub struct virtio_video_control_val_bitrate_peak {
 unsafe impl DataInit for virtio_video_control_val_bitrate_peak {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_control_val_bitrate_mode {
     pub bitrate_mode: Le32,
     pub padding: [u8; 4usize],
@@ -495,7 +497,7 @@ pub struct virtio_video_control_val_bitrate_mode {
 unsafe impl DataInit for virtio_video_control_val_bitrate_mode {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_control_val_profile {
     pub profile: Le32,
     pub padding: [u8; 4usize],
@@ -504,7 +506,7 @@ pub struct virtio_video_control_val_profile {
 unsafe impl DataInit for virtio_video_control_val_profile {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_control_val_level {
     pub level: Le32,
     pub padding: [u8; 4usize],
@@ -513,7 +515,7 @@ pub struct virtio_video_control_val_level {
 unsafe impl DataInit for virtio_video_control_val_level {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_control_val_prepend_spspps_to_idr {
     pub prepend_spspps_to_idr: Le32,
     pub padding: [u8; 4usize],
@@ -522,7 +524,7 @@ pub struct virtio_video_control_val_prepend_spspps_to_idr {
 unsafe impl DataInit for virtio_video_control_val_prepend_spspps_to_idr {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_get_control_resp {
     pub hdr: virtio_video_cmd_hdr,
 }
@@ -530,7 +532,7 @@ pub struct virtio_video_get_control_resp {
 unsafe impl DataInit for virtio_video_get_control_resp {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_set_control {
     pub control: Le32,
     pub padding: [u8; 4usize],
@@ -539,7 +541,7 @@ pub struct virtio_video_set_control {
 unsafe impl DataInit for virtio_video_set_control {}
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_set_control_resp {
     pub hdr: virtio_video_cmd_hdr,
 }
@@ -550,7 +552,7 @@ pub const VIRTIO_VIDEO_EVENT_ERROR: virtio_video_event_type = 256;
 pub const VIRTIO_VIDEO_EVENT_DECODER_RESOLUTION_CHANGED: virtio_video_event_type = 512;
 pub type virtio_video_event_type = u32;
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_video_event {
     pub event_type: Le32,
     pub stream_id: Le32,

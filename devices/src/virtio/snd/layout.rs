@@ -5,10 +5,12 @@
 use data_model::DataInit;
 use data_model::Le32;
 use data_model::Le64;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 use crate::virtio::snd::constants::VIRTIO_SND_CHMAP_MAX_SIZE;
 
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 #[repr(C)]
 pub struct virtio_snd_hdr {
     pub code: Le32,
@@ -25,7 +27,7 @@ pub struct virtio_snd_jack_hdr {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_snd_jack_hdr {}
 
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 #[repr(C)]
 pub struct virtio_snd_event {
     pub hdr: virtio_snd_hdr,
@@ -34,7 +36,7 @@ pub struct virtio_snd_event {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_snd_event {}
 
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 #[repr(C)]
 pub struct virtio_snd_query_info {
     pub hdr: virtio_snd_hdr,
@@ -45,7 +47,7 @@ pub struct virtio_snd_query_info {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_snd_query_info {}
 
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 #[repr(C)]
 pub struct virtio_snd_info {
     pub hda_fn_nid: Le32,
@@ -53,7 +55,7 @@ pub struct virtio_snd_info {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_snd_info {}
 
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 #[repr(C)]
 pub struct virtio_snd_pcm_info {
     pub hdr: virtio_snd_info,
@@ -69,7 +71,7 @@ pub struct virtio_snd_pcm_info {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_snd_pcm_info {}
 
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 #[repr(C)]
 pub struct virtio_snd_pcm_hdr {
     pub hdr: virtio_snd_hdr,
@@ -78,7 +80,7 @@ pub struct virtio_snd_pcm_hdr {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_snd_pcm_hdr {}
 
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 #[repr(C)]
 pub struct virtio_snd_pcm_set_params {
     pub hdr: virtio_snd_pcm_hdr,
@@ -93,7 +95,7 @@ pub struct virtio_snd_pcm_set_params {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_snd_pcm_set_params {}
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, AsBytes, FromBytes)]
 #[repr(C)]
 pub struct virtio_snd_pcm_xfer {
     pub stream_id: Le32,
@@ -101,7 +103,7 @@ pub struct virtio_snd_pcm_xfer {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_snd_pcm_xfer {}
 
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 #[repr(C)]
 pub struct virtio_snd_pcm_status {
     pub status: Le32,
@@ -110,7 +112,7 @@ pub struct virtio_snd_pcm_status {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_snd_pcm_status {}
 
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 #[repr(C)]
 pub struct virtio_snd_jack_info {
     pub hdr: virtio_snd_info,
@@ -133,7 +135,7 @@ pub struct virtio_snd_jack_remap {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_snd_jack_remap {}
 
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 #[repr(C)]
 pub struct virtio_snd_chmap_info {
     pub hdr: virtio_snd_info,

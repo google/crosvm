@@ -29,6 +29,8 @@ use vm_control::VmMsyncRequest;
 use vm_control::VmMsyncResponse;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 use super::async_utils;
 use super::copy_config;
@@ -59,7 +61,7 @@ struct virtio_pmem_config {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_pmem_config {}
 
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes)]
 #[repr(C)]
 struct virtio_pmem_resp {
     status_code: Le32,
@@ -68,7 +70,7 @@ struct virtio_pmem_resp {
 // Safe because it only has data and has no implicit padding.
 unsafe impl DataInit for virtio_pmem_resp {}
 
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes)]
 #[repr(C)]
 struct virtio_pmem_req {
     type_: Le32,

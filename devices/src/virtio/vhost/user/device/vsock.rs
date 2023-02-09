@@ -23,7 +23,6 @@ use base::IntoRawDescriptor;
 use base::UnlinkUnixListener;
 use cros_async::EventAsync;
 use cros_async::Executor;
-use data_model::DataInit;
 use data_model::Le64;
 use vhost::Vhost;
 use vhost::Vsock;
@@ -46,6 +45,7 @@ use vmm_vhost::Result;
 use vmm_vhost::SlaveListener;
 use vmm_vhost::SlaveReqHandler;
 use vmm_vhost::VhostUserSlaveReqHandlerMut;
+use zerocopy::AsBytes;
 
 use crate::virtio::device_constants::vsock::NUM_QUEUES;
 use crate::virtio::device_constants::vsock::QUEUE_SIZE;
@@ -401,7 +401,7 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
             return Err(Error::InvalidParam);
         }
 
-        Ok(Le64::from(self.cid).as_slice()[start..end].to_vec())
+        Ok(Le64::from(self.cid).as_bytes()[start..end].to_vec())
     }
 
     fn set_config(

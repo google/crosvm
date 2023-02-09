@@ -9,6 +9,8 @@ use std::mem::size_of;
 use data_model::DataInit;
 use data_model::Le16;
 use data_model::SLe32;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 pub const EV_SYN: u16 = 0x00;
 pub const EV_KEY: u16 = 0x01;
@@ -86,7 +88,7 @@ impl InputEventDecoder for input_event {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, AsBytes, FromBytes)]
 #[repr(C)]
 pub struct virtio_input_event {
     pub type_: Le16,

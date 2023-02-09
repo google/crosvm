@@ -15,12 +15,12 @@ use base::warn;
 use base::AsRawDescriptor;
 use base::Event;
 use base::RawDescriptor;
-use data_model::DataInit;
 use data_model::Le64;
 use serde::Deserialize;
 use vhost::Vhost;
 use vhost::Vsock as VhostVsockHandle;
 use vm_memory::GuestMemory;
+use zerocopy::AsBytes;
 
 use super::worker::Worker;
 use super::Error;
@@ -160,7 +160,7 @@ impl VirtioDevice for Vsock {
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
         let cid = Le64::from(self.cid);
-        copy_config(data, 0, DataInit::as_slice(&cid), offset);
+        copy_config(data, 0, cid.as_bytes(), offset);
     }
 
     fn ack_features(&mut self, value: u64) {
