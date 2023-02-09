@@ -16,7 +16,7 @@ runner = "wine64"
 PKG_CONFIG_x86_64-unknown-linux-gnu = "x86_64-linux-gnu-pkg-config"
 PKG_CONFIG_aarch64-unknown-linux-gnu = "aarch64-linux-gnu-pkg-config"
 PKG_CONFIG_armv7_unknown_linux_gnueabihf = "arm-linux-gnueabihf-pkg-config"
-PKG_CONFIG_riscv64-unknown-linux-gnu = "riscv64-linux-gnu-pkg-config"
+PKG_CONFIG_riscv64gc_unknown_linux_gnu = "riscv64-linux-gnu-pkg-config"
 
 # libslirp is currently not properly configured via pkg-config and cannot use the wrapper like
 # other architextures do.

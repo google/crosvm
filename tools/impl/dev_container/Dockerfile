@@ -42,17 +42,18 @@ RUN dpkg --add-architecture arm64 \
 RUN rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
 
 # Install dependencies (APT and cargo packages are cached between image builds for faster iterative builds).
-COPY --chmod=555 tools/install-deps tools/install-aarch64-deps tools/install-armhf-deps tools/install-mingw64-deps tools/setup-wine64 rust-toolchain /tools/
+COPY --chmod=555 tools/install-deps tools/install-aarch64-deps tools/install-armhf-deps tools/install-mingw64-deps tools/install-riscv64-deps tools/setup-wine64 rust-toolchain /tools/
 RUN --mount=type=cache,target=/var/cache/apt,sharing=private \
     --mount=type=cache,target=/var/lib/apt,sharing=private \
     --mount=type=cache,target=/scratch/cargo_target,sharing=private \
     cd /tools \
     && apt-get update \
-    && apt-get install --yes sudo \
+    && apt-get install --yes sudo curl \
     && ./install-deps \
     && ./install-aarch64-deps \
     && ./install-armhf-deps \
-    && ./install-mingw64-deps
+    && ./install-mingw64-deps \
+    && ./install-riscv64-deps
 
 # Add wine64 to PATH, as debian removed alternative entry to wine64
 ENV PATH=/usr/lib/wine:$PATH
