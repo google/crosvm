@@ -2743,10 +2743,11 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.gdb = cmd.gdb;
         }
 
+        cfg.host_cpu_topology = cmd.host_cpu_topology;
+
         #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
         {
             cfg.enable_hwp = cmd.enable_hwp;
-            cfg.host_cpu_topology = cmd.host_cpu_topology;
             cfg.force_s2idle = cmd.s2idle;
             cfg.pcie_ecam = cmd.pcie_ecam;
             cfg.pci_low_start = cmd.pci_start;
