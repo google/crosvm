@@ -73,7 +73,7 @@ impl BufferConsumptionRecord {
     }
 }
 
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, PartialEq)]
 pub struct EstimatedRate {
     /// linear coefficients of LINEST(frames,timestamps).
     rate: f64,
