@@ -8,7 +8,8 @@
 #![allow(dead_code)]
 
 // Added by vfio_sys/bindgen.sh
-use data_model::DataInit;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 #[repr(C)]
 #[derive(Debug, Default)]
@@ -20,21 +21,12 @@ pub struct vfio_region_info_with_cap {
 // vfio_iommu_type1_info_cap_iova_range minus the incomplete iova_ranges
 // array, so that Copy/DataInit can be implemented.
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct vfio_iommu_type1_info_cap_iova_range_header {
     pub header: vfio_info_cap_header,
     pub nr_iovas: u32,
     pub reserved: u32,
 }
-
-// Safe because it only has data and no implicit padding.
-unsafe impl DataInit for vfio_info_cap_header {}
-
-// Safe because it only has data and no implicit padding.
-unsafe impl DataInit for vfio_iommu_type1_info_cap_iova_range_header {}
-
-// Safe because it only has data and no implicit padding.
-unsafe impl DataInit for vfio_iova_range {}
 
 #[repr(C)]
 #[derive(Default)]
@@ -183,7 +175,7 @@ pub const VFIO_EEH_PE_RESET_FUNDAMENTAL: u32 = 7;
 pub const VFIO_EEH_PE_CONFIGURE: u32 = 8;
 pub const VFIO_EEH_PE_INJECT_ERR: u32 = 9;
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
 pub struct vfio_info_cap_header {
     pub id: u16,
     pub version: u16,
@@ -285,31 +277,31 @@ pub struct vfio_irq_set {
     pub count: u32,
     pub data: __IncompleteArrayField<u8>,
 }
-pub const VFIO_PCI_BAR0_REGION_INDEX: ::std::os::raw::c_uint = 0;
-pub const VFIO_PCI_BAR1_REGION_INDEX: ::std::os::raw::c_uint = 1;
-pub const VFIO_PCI_BAR2_REGION_INDEX: ::std::os::raw::c_uint = 2;
-pub const VFIO_PCI_BAR3_REGION_INDEX: ::std::os::raw::c_uint = 3;
-pub const VFIO_PCI_BAR4_REGION_INDEX: ::std::os::raw::c_uint = 4;
-pub const VFIO_PCI_BAR5_REGION_INDEX: ::std::os::raw::c_uint = 5;
-pub const VFIO_PCI_ROM_REGION_INDEX: ::std::os::raw::c_uint = 6;
-pub const VFIO_PCI_CONFIG_REGION_INDEX: ::std::os::raw::c_uint = 7;
-pub const VFIO_PCI_VGA_REGION_INDEX: ::std::os::raw::c_uint = 8;
-pub const VFIO_PCI_NUM_REGIONS: ::std::os::raw::c_uint = 9;
+pub const VFIO_PCI_BAR0_REGION_INDEX: _bindgen_ty_1 = 0;
+pub const VFIO_PCI_BAR1_REGION_INDEX: _bindgen_ty_1 = 1;
+pub const VFIO_PCI_BAR2_REGION_INDEX: _bindgen_ty_1 = 2;
+pub const VFIO_PCI_BAR3_REGION_INDEX: _bindgen_ty_1 = 3;
+pub const VFIO_PCI_BAR4_REGION_INDEX: _bindgen_ty_1 = 4;
+pub const VFIO_PCI_BAR5_REGION_INDEX: _bindgen_ty_1 = 5;
+pub const VFIO_PCI_ROM_REGION_INDEX: _bindgen_ty_1 = 6;
+pub const VFIO_PCI_CONFIG_REGION_INDEX: _bindgen_ty_1 = 7;
+pub const VFIO_PCI_VGA_REGION_INDEX: _bindgen_ty_1 = 8;
+pub const VFIO_PCI_NUM_REGIONS: _bindgen_ty_1 = 9;
 pub type _bindgen_ty_1 = ::std::os::raw::c_uint;
-pub const VFIO_PCI_INTX_IRQ_INDEX: ::std::os::raw::c_uint = 0;
-pub const VFIO_PCI_MSI_IRQ_INDEX: ::std::os::raw::c_uint = 1;
-pub const VFIO_PCI_MSIX_IRQ_INDEX: ::std::os::raw::c_uint = 2;
-pub const VFIO_PCI_ERR_IRQ_INDEX: ::std::os::raw::c_uint = 3;
-pub const VFIO_PCI_REQ_IRQ_INDEX: ::std::os::raw::c_uint = 4;
-pub const VFIO_PCI_NUM_IRQS: ::std::os::raw::c_uint = 5;
+pub const VFIO_PCI_INTX_IRQ_INDEX: _bindgen_ty_2 = 0;
+pub const VFIO_PCI_MSI_IRQ_INDEX: _bindgen_ty_2 = 1;
+pub const VFIO_PCI_MSIX_IRQ_INDEX: _bindgen_ty_2 = 2;
+pub const VFIO_PCI_ERR_IRQ_INDEX: _bindgen_ty_2 = 3;
+pub const VFIO_PCI_REQ_IRQ_INDEX: _bindgen_ty_2 = 4;
+pub const VFIO_PCI_NUM_IRQS: _bindgen_ty_2 = 5;
 pub type _bindgen_ty_2 = ::std::os::raw::c_uint;
-pub const VFIO_CCW_CONFIG_REGION_INDEX: ::std::os::raw::c_uint = 0;
-pub const VFIO_CCW_NUM_REGIONS: ::std::os::raw::c_uint = 1;
+pub const VFIO_CCW_CONFIG_REGION_INDEX: _bindgen_ty_3 = 0;
+pub const VFIO_CCW_NUM_REGIONS: _bindgen_ty_3 = 1;
 pub type _bindgen_ty_3 = ::std::os::raw::c_uint;
-pub const VFIO_CCW_IO_IRQ_INDEX: ::std::os::raw::c_uint = 0;
-pub const VFIO_CCW_CRW_IRQ_INDEX: ::std::os::raw::c_uint = 1;
-pub const VFIO_CCW_REQ_IRQ_INDEX: ::std::os::raw::c_uint = 2;
-pub const VFIO_CCW_NUM_IRQS: ::std::os::raw::c_uint = 3;
+pub const VFIO_CCW_IO_IRQ_INDEX: _bindgen_ty_4 = 0;
+pub const VFIO_CCW_CRW_IRQ_INDEX: _bindgen_ty_4 = 1;
+pub const VFIO_CCW_REQ_IRQ_INDEX: _bindgen_ty_4 = 2;
+pub const VFIO_CCW_NUM_IRQS: _bindgen_ty_4 = 3;
 pub type _bindgen_ty_4 = ::std::os::raw::c_uint;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -408,7 +400,7 @@ pub struct vfio_iommu_type1_info {
     pub cap_offset: u32,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, FromBytes, AsBytes)]
 pub struct vfio_iova_range {
     pub start: u64,
     pub end: u64,

@@ -2325,7 +2325,7 @@ name = "vfio_sys"
 version = "0.1.0"
 dependencies = [
  "base",
- "data_model 0.1.1-alpha.1",
+ "zerocopy",
 ]
 
 [[package]]

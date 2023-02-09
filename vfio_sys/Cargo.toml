@@ -6,4 +6,4 @@ edition = "2021"
 
 [dependencies]
 base = { path = "../base" }
-data_model = { path = "../common/data_model" }
+zerocopy = "*"

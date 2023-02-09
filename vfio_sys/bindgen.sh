@@ -17,7 +17,8 @@ fix_vfio_type() {
 }
 
 VFIO_EXTRA="// Added by vfio_sys/bindgen.sh
-use data_model::DataInit;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 #[repr(C)]
 #[derive(Debug, Default)]
@@ -29,27 +30,20 @@ pub struct vfio_region_info_with_cap {
 // vfio_iommu_type1_info_cap_iova_range minus the incomplete iova_ranges
 // array, so that Copy/DataInit can be implemented.
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct vfio_iommu_type1_info_cap_iova_range_header {
     pub header: vfio_info_cap_header,
     pub nr_iovas: u32,
     pub reserved: u32,
-}
-
-// Safe because it only has data and no implicit padding.
-unsafe impl DataInit for vfio_info_cap_header {}
-
-// Safe because it only has data and no implicit padding.
-unsafe impl DataInit for vfio_iommu_type1_info_cap_iova_range_header {}
-
-// Safe because it only has data and no implicit padding.
-unsafe impl DataInit for vfio_iova_range {}"
+}"
 
 bindgen_generate \
     --raw-line "${VFIO_EXTRA}" \
     --allowlist-var='VFIO_.*' \
     --blocklist-item='VFIO_DEVICE_API_.*_STRING' \
     --allowlist-type='vfio_.*' \
+    --with-derive-custom "vfio_info_cap_header=FromBytes,AsBytes" \
+    --with-derive-custom "vfio_iova_range=FromBytes,AsBytes" \
     "${BINDGEN_LINUX}/include/uapi/linux/vfio.h" \
     -- \
     -D__user= \

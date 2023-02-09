@@ -32,6 +32,7 @@ use base::FromRawDescriptor;
 use base::RawDescriptor;
 use base::SafeDescriptor;
 use data_model::vec_with_array_field;
+use data_model::zerocopy_from_reader;
 use data_model::DataInit;
 use hypervisor::DeviceKind;
 use hypervisor::Vm;
@@ -44,6 +45,7 @@ use resources::Error as ResourcesError;
 use sync::Mutex;
 use thiserror::Error;
 use vfio_sys::*;
+use zerocopy::FromBytes;
 
 use crate::IommuDevType;
 
@@ -160,9 +162,10 @@ pub struct VfioContainer {
 
 fn extract_vfio_struct<T>(bytes: &[u8], offset: usize) -> T
 where
-    T: DataInit,
+    T: FromBytes,
 {
-    T::from_reader(&bytes[offset..(offset + mem::size_of::<T>())]).expect("malformed kernel data")
+    zerocopy_from_reader(&bytes[offset..(offset + mem::size_of::<T>())])
+        .expect("malformed kernel data")
 }
 
 const VFIO_API_VERSION: u8 = 0;
