@@ -152,7 +152,6 @@ impl Factory {
     pub fn new() -> Self {
         let dev_file = OpenOptions::new()
             .read(true)
-            .write(true)
             .custom_flags(libc::O_CLOEXEC | libc::O_NONBLOCK)
             .open(DEV_USERFAULTFD_PATH);
         match dev_file {
