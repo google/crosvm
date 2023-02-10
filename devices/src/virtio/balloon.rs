@@ -6,7 +6,6 @@ mod sys;
 
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::thread;
 
 use anyhow::anyhow;
 use anyhow::Context;
@@ -19,6 +18,7 @@ use base::AsRawDescriptor;
 use base::Event;
 use base::RawDescriptor;
 use base::Tube;
+use base::WorkerThread;
 use cros_async::block_on;
 use cros_async::select9;
 use cros_async::sync::Mutex as AsyncMutex;
@@ -737,8 +737,7 @@ pub struct Balloon {
     state: Arc<AsyncMutex<BalloonState>>,
     features: u64,
     acked_features: u64,
-    kill_evt: Option<Event>,
-    worker_thread: Option<thread::JoinHandle<(Option<Tube>, Tube)>>,
+    worker_thread: Option<WorkerThread<(Option<Tube>, Tube)>>,
 }
 
 /// Operation mode of the balloon.
@@ -788,7 +787,6 @@ impl Balloon {
                 failable_update: false,
                 pending_adjusted_responses: VecDeque::new(),
             })),
-            kill_evt: None,
             worker_thread: None,
             features,
             acked_features: 0,
@@ -809,19 +807,6 @@ impl Balloon {
             | (1 << VIRTIO_BALLOON_F_EVENTS_VQ)
             | (1 << VIRTIO_BALLOON_F_PAGE_REPORTING);
         2 + (acked_features & queue_bits as u64).count_ones() as usize
-    }
-}
-
-impl Drop for Balloon {
-    fn drop(&mut self) {
-        if let Some(kill_evt) = self.kill_evt.take() {
-            // Ignore the result because there is nothing we can do with a failure.
-            let _ = kill_evt.signal();
-        }
-
-        if let Some(worker_thread) = self.worker_thread.take() {
-            let _ = worker_thread.join();
-        }
     }
 }
 
@@ -908,11 +893,6 @@ impl VirtioDevice for Balloon {
             None
         };
 
-        let (self_kill_evt, kill_evt) = Event::new()
-            .and_then(|e| Ok((e.try_clone()?, e)))
-            .context("failed to create kill Event pair")?;
-        self.kill_evt = Some(self_kill_evt);
-
         let state = self.state.clone();
 
         let command_tube = self.command_tube.take().unwrap();
@@ -923,51 +903,35 @@ impl VirtioDevice for Balloon {
             .pending_adjusted_response_event
             .try_clone()
             .context("failed to clone Event")?;
-        let worker_thread = thread::Builder::new()
-            .name("v_balloon".to_string())
-            .spawn(move || {
-                run_worker(
-                    inflate_queue,
-                    deflate_queue,
-                    stats_queue,
-                    reporting_queue,
-                    events_queue,
-                    command_tube,
-                    #[cfg(windows)]
-                    mapping_tube,
-                    release_memory_tube,
-                    interrupt,
-                    kill_evt,
-                    pending_adjusted_response_event,
-                    mem,
-                    state,
-                )
-            })
-            .context("failed to spawn virtio_balloon worker")?;
-        self.worker_thread = Some(worker_thread);
+
+        self.worker_thread = Some(WorkerThread::start("v_balloon", move |kill_evt| {
+            run_worker(
+                inflate_queue,
+                deflate_queue,
+                stats_queue,
+                reporting_queue,
+                events_queue,
+                command_tube,
+                #[cfg(windows)]
+                mapping_tube,
+                release_memory_tube,
+                interrupt,
+                kill_evt,
+                pending_adjusted_response_event,
+                mem,
+                state,
+            )
+        }));
+
         Ok(())
     }
 
     fn reset(&mut self) -> bool {
-        if let Some(kill_evt) = self.kill_evt.take() {
-            if kill_evt.signal().is_err() {
-                error!("{}: failed to notify the kill event", self.debug_label());
-                return false;
-            }
-        }
-
         if let Some(worker_thread) = self.worker_thread.take() {
-            match worker_thread.join() {
-                Err(_) => {
-                    error!("{}: failed to get back resources", self.debug_label());
-                    return false;
-                }
-                Ok((release_memory_tube, command_tube)) => {
-                    self.release_memory_tube = release_memory_tube;
-                    self.command_tube = Some(command_tube);
-                    return true;
-                }
-            }
+            let (release_memory_tube, command_tube) = worker_thread.stop();
+            self.release_memory_tube = release_memory_tube;
+            self.command_tube = Some(command_tube);
+            return true;
         }
         false
     }

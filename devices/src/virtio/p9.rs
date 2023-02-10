@@ -6,7 +6,6 @@ use std::io;
 use std::io::Write;
 use std::mem;
 use std::result;
-use std::thread;
 
 use anyhow::anyhow;
 use anyhow::Context;
@@ -17,6 +16,7 @@ use base::Event;
 use base::EventToken;
 use base::RawDescriptor;
 use base::WaitContext;
+use base::WorkerThread;
 use remain::sorted;
 use thiserror::Error;
 use vm_memory::GuestMemory;
@@ -148,10 +148,9 @@ impl Worker {
 pub struct P9 {
     config: Vec<u8>,
     server: Option<p9::Server>,
-    kill_evt: Option<Event>,
     avail_features: u64,
     acked_features: u64,
-    worker: Option<thread::JoinHandle<P9Result<()>>>,
+    worker: Option<WorkerThread<P9Result<()>>>,
 }
 
 impl P9 {
@@ -171,7 +170,6 @@ impl P9 {
         Ok(P9 {
             config: cfg,
             server: Some(server),
-            kill_evt: None,
             avail_features: base_features | 1 << VIRTIO_9P_MOUNT_TAG,
             acked_features: 0,
             worker: None,
@@ -229,53 +227,22 @@ impl VirtioDevice for P9 {
 
         let (queue, queue_evt) = queues.remove(0);
 
-        let (self_kill_evt, kill_evt) = Event::new()
-            .and_then(|e| Ok((e.try_clone()?, e)))
-            .context("failed creating kill Event pair")?;
-        self.kill_evt = Some(self_kill_evt);
-
         let server = self.server.take().context("missing server")?;
 
-        let worker_thread = thread::Builder::new()
-            .name("v_9p".to_string())
-            .spawn(move || {
-                let mut worker = Worker {
-                    interrupt,
-                    mem: guest_mem,
-                    queue,
-                    queue_evt,
-                    server,
-                };
+        self.worker = Some(WorkerThread::start("v_9p", move |kill_evt| {
+            let mut worker = Worker {
+                interrupt,
+                mem: guest_mem,
+                queue,
+                queue_evt,
+                server,
+            };
 
-                worker.run(kill_evt)
-            })
-            .context("failed to spawn virtio_9p worker")?;
-        self.worker = Some(worker_thread);
+            worker.run(kill_evt)
+        }));
+
         Ok(())
     }
 }
 
 impl Suspendable for P9 {}
-
-impl Drop for P9 {
-    fn drop(&mut self) {
-        if let Some(kill_evt) = self.kill_evt.take() {
-            if let Err(e) = kill_evt.signal() {
-                error!("failed to kill virtio_9p worker thread: {}", e);
-                return;
-            }
-
-            // Only wait on the child thread if we were able to send it a kill event.
-            if let Some(worker) = self.worker.take() {
-                match worker.join() {
-                    Ok(r) => {
-                        if let Err(e) = r {
-                            error!("virtio_9p worker thread exited with error: {}", e)
-                        }
-                    }
-                    Err(e) => error!("virtio_9p worker thread panicked: {:?}", e),
-                }
-            }
-        }
-    }
-}

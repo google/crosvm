@@ -19,7 +19,6 @@ use std::io::Write;
 use std::os::unix::net::UnixListener;
 use std::os::unix::net::UnixStream;
 use std::sync::Arc;
-use std::thread;
 
 use anyhow::anyhow;
 use anyhow::bail;
@@ -98,6 +97,7 @@ use crate::virtio::VIRTIO_F_ACCESS_PLATFORM;
 use crate::virtio::VIRTIO_MSI_NO_VECTOR;
 use crate::PciAddress;
 use crate::Suspendable;
+use base::WorkerThread;
 
 // Note: There are two sets of queues that will be mentioned here. 1st set is
 // for this Virtio PCI device itself. 2nd set is the actual device backends
@@ -1314,10 +1314,7 @@ enum State {
         iommu: Arc<Mutex<IpcMemoryMapper>>,
     },
     /// The worker thread is running.
-    Running {
-        kill_evt: Event,
-        worker_thread: thread::JoinHandle<Result<()>>,
-    },
+    Running(WorkerThread<Result<()>>),
     /// Something wrong happened and the device is unusable.
     Invalid,
 }
@@ -1555,14 +1552,6 @@ impl VirtioVhostUser {
             }
         };
 
-        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("failed creating kill Event pair: {}", e);
-                return;
-            }
-        };
-
         // Safe because a PCI bar is guaranteed to be allocated at this point.
         let io_pci_bar = self.io_pci_bar.expect("PCI bar unallocated");
         let shmem_pci_bar = self.shmem_pci_bar.expect("PCI bar unallocated");
@@ -1579,137 +1568,104 @@ impl VirtioVhostUser {
 
         // This thread will wait for the sibling to connect and the continuously parse messages from
         // the sibling as well as the device (over Virtio).
-        let worker_result = thread::Builder::new()
-            .name("v_vhost_user".to_string())
-            .spawn(move || {
-                // Block until the connection with the sibling is established. We do this in a
-                // thread to avoid blocking the main thread.
-                let (socket, _) = listener
-                    .accept()
-                    .context("failed to accept sibling connection")?;
+        *state = State::Running(WorkerThread::start("v_vhost_user", move |kill_evt| {
+            // Block until the connection with the sibling is established. We do this in a
+            // thread to avoid blocking the main thread.
+            let (socket, _) = listener
+                .accept()
+                .context("failed to accept sibling connection")?;
 
-                // Although this device is relates to Virtio Vhost User but it uses
-                // `slave_req_helper` to parse messages from  a Vhost-user sibling.
-                // Thus, we need `slave_req_helper` in `Protocol::Regular` mode and not
-                // in `Protocol::Virtio' mode.
-                let slave_req_helper: SlaveReqHelper<SocketEndpoint<MasterReq>> =
-                    SlaveReqHelper::new(SocketEndpoint::from(socket), Protocol::Regular);
+            // Although this device is relates to Virtio Vhost User but it uses
+            // `slave_req_helper` to parse messages from  a Vhost-user sibling.
+            // Thus, we need `slave_req_helper` in `Protocol::Regular` mode and not
+            // in `Protocol::Virtio' mode.
+            let slave_req_helper: SlaveReqHelper<SocketEndpoint<MasterReq>> =
+                SlaveReqHelper::new(SocketEndpoint::from(socket), Protocol::Regular);
 
-                let mut worker = Worker {
-                    mem,
-                    interrupt,
-                    rx_queue,
-                    tx_queue,
-                    main_process_tube,
-                    io_pci_bar,
-                    shmem_pci_bar,
-                    shmem_pci_bar_mem_offset: 0,
-                    vrings,
-                    slave_req_helper,
-                    registered_memory: Vec::new(),
-                    slave_req_fd: None,
-                    udmabuf_driver: None,
-                    iommu: iommu.clone(),
-                    exported_regions: BTreeMap::new(),
-                    pending_unmap: None,
-                };
+            let mut worker = Worker {
+                mem,
+                interrupt,
+                rx_queue,
+                tx_queue,
+                main_process_tube,
+                io_pci_bar,
+                shmem_pci_bar,
+                shmem_pci_bar_mem_offset: 0,
+                vrings,
+                slave_req_helper,
+                registered_memory: Vec::new(),
+                slave_req_fd: None,
+                udmabuf_driver: None,
+                iommu: iommu.clone(),
+                exported_regions: BTreeMap::new(),
+                pending_unmap: None,
+            };
 
-                let run_result = worker.run(
-                    rx_queue_evt.try_clone().unwrap(),
-                    tx_queue_evt.try_clone().unwrap(),
-                    kill_evt,
-                );
+            let run_result = worker.run(
+                rx_queue_evt.try_clone().unwrap(),
+                tx_queue_evt.try_clone().unwrap(),
+                kill_evt,
+            );
 
-                if let Err(e) = worker.release_exported_regions() {
-                    error!("failed to release exported memory: {:?}", e);
-                    *state_cloned.lock() = State::Invalid;
-                    return Ok(());
-                }
-
-                // Unregister any vring_call eventfds in case we need to
-                // reuse the proxy device later.
-                if let Err(e) = worker.unregister_vring_call_eventfds() {
-                    error!("error unmapping ioevent: {:#}", e);
-                    *state_cloned.lock() = State::Invalid;
-                    return Ok(());
-                }
-
-                match run_result {
-                    Ok(ExitReason::IommuFault) => {
-                        info!("worker thread exited due to IOMMU fault");
-                        Ok(())
-                    }
-
-                    Ok(ExitReason::Killed) => {
-                        info!("worker thread exited successfully");
-                        Ok(())
-                    }
-                    Ok(ExitReason::Disconnected) => {
-                        info!("worker thread exited: sibling disconnected");
-
-                        worker.cleanup_registered_memory();
-
-                        let mut state = state_cloned.lock();
-                        let Worker {
-                            mem,
-                            interrupt,
-                            rx_queue,
-                            tx_queue,
-                            main_process_tube,
-                            ..
-                        } = worker;
-
-                        *state = State::Activated {
-                            main_process_tube,
-                            listener,
-                            mem,
-                            interrupt,
-                            rx_queue,
-                            tx_queue,
-                            rx_queue_evt,
-                            tx_queue_evt,
-                            iommu,
-                        };
-
-                        Ok(())
-                    }
-                    Err(e) => {
-                        error!("worker thread exited with an error: {:?}", e);
-                        Ok(())
-                    }
-                }
-            });
-
-        *state = match worker_result {
-            Err(e) => {
-                error!("failed to spawn virtio_vhost_user worker: {}", e);
-                return;
+            if let Err(e) = worker.release_exported_regions() {
+                error!("failed to release exported memory: {:?}", e);
+                *state_cloned.lock() = State::Invalid;
+                return Ok(());
             }
-            Ok(worker_thread) => State::Running {
-                kill_evt: self_kill_evt,
-                worker_thread,
-            },
-        }
-    }
-}
 
-impl Drop for VirtioVhostUser {
-    fn drop(&mut self) {
-        let mut state = self.state.lock();
-        if let State::Running {
-            kill_evt,
-            worker_thread,
-            ..
-        } = std::mem::replace(&mut *state, State::Invalid)
-        {
-            match kill_evt.signal() {
-                Ok(()) => {
-                    // Ignore the result because there is nothing we can do about it.
-                    let _ = worker_thread.join();
-                }
-                Err(e) => error!("failed to write kill event: {}", e),
+            // Unregister any vring_call eventfds in case we need to
+            // reuse the proxy device later.
+            if let Err(e) = worker.unregister_vring_call_eventfds() {
+                error!("error unmapping ioevent: {:#}", e);
+                *state_cloned.lock() = State::Invalid;
+                return Ok(());
             }
-        }
+
+            match run_result {
+                Ok(ExitReason::IommuFault) => {
+                    info!("worker thread exited due to IOMMU fault");
+                    Ok(())
+                }
+
+                Ok(ExitReason::Killed) => {
+                    info!("worker thread exited successfully");
+                    Ok(())
+                }
+                Ok(ExitReason::Disconnected) => {
+                    info!("worker thread exited: sibling disconnected");
+
+                    worker.cleanup_registered_memory();
+
+                    let mut state = state_cloned.lock();
+                    let Worker {
+                        mem,
+                        interrupt,
+                        rx_queue,
+                        tx_queue,
+                        main_process_tube,
+                        ..
+                    } = worker;
+
+                    *state = State::Activated {
+                        main_process_tube,
+                        listener,
+                        mem,
+                        interrupt,
+                        rx_queue,
+                        tx_queue,
+                        rx_queue_evt,
+                        tx_queue_evt,
+                        iommu,
+                    };
+
+                    Ok(())
+                }
+                Err(e) => {
+                    error!("worker thread exited with an error: {:?}", e);
+                    Ok(())
+                }
+            }
+        }));
     }
 }
 
@@ -1956,11 +1912,7 @@ impl VirtioDevice for VirtioVhostUser {
                     main_process_tube,
                 };
             }
-            State::Running {
-                kill_evt,
-                worker_thread,
-                ..
-            } => {
+            State::Running(worker_thread) => {
                 // TODO(b/216407443): The current implementation doesn't support the case where
                 // vvu-proxy is reset while running.
                 // So, the state is changed to `Invalid` in this case below.
@@ -1968,13 +1920,9 @@ impl VirtioDevice for VirtioVhostUser {
                 // e.g. The VVU device backend in the guest is killed unexpectedly.
                 // To support this case, we might need to reset iommu's state as well.
 
-                if let Err(e) = kill_evt.signal() {
-                    error!("failed to notify the kill event: {}", e);
-                }
-
                 // Drop the lock, as the worker thread might change the state.
                 drop(state);
-                if let Err(e) = worker_thread.join() {
+                if let Err(e) = worker_thread.stop() {
                     error!("failed to get back resources: {:?}", e);
                 }
 

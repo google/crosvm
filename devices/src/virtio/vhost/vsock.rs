@@ -5,7 +5,6 @@
 use std::fs::OpenOptions;
 use std::os::unix::prelude::OpenOptionsExt;
 use std::path::PathBuf;
-use std::thread;
 
 use anyhow::anyhow;
 use anyhow::Context;
@@ -33,6 +32,7 @@ use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::VirtioDevice;
 use crate::Suspendable;
+use base::WorkerThread;
 
 static VHOST_VSOCK_DEFAULT_PATH: &str = "/dev/vhost-vsock";
 
@@ -44,8 +44,7 @@ pub struct VhostVsockConfig {
 }
 
 pub struct Vsock {
-    worker_kill_evt: Option<Event>,
-    kill_evt: Option<Event>,
+    worker_thread: Option<WorkerThread<()>>,
     vhost_handle: Option<VhostVsockHandle>,
     cid: u64,
     interrupts: Option<Vec<Event>>,
@@ -75,7 +74,6 @@ impl Vsock {
             )
         })?;
 
-        let kill_evt = Event::new().map_err(Error::CreateKillEvent)?;
         let handle = VhostVsockHandle::new(device_file);
 
         let avail_features = base_features;
@@ -86,8 +84,7 @@ impl Vsock {
         }
 
         Ok(Vsock {
-            worker_kill_evt: Some(kill_evt.try_clone().map_err(Error::CloneKillEvent)?),
-            kill_evt: Some(kill_evt),
+            worker_thread: None,
             vhost_handle: Some(handle),
             cid: vhost_config.cid,
             interrupts: Some(interrupts),
@@ -98,8 +95,7 @@ impl Vsock {
 
     pub fn new_for_testing(cid: u64, features: u64) -> Vsock {
         Vsock {
-            worker_kill_evt: None,
-            kill_evt: None,
+            worker_thread: None,
             vhost_handle: None,
             cid,
             interrupts: None,
@@ -110,18 +106,6 @@ impl Vsock {
 
     pub fn acked_features(&self) -> u64 {
         self.acked_features
-    }
-}
-
-impl Drop for Vsock {
-    fn drop(&mut self) {
-        // Only kill the child if it claimed its event.
-        if self.worker_kill_evt.is_none() {
-            if let Some(kill_evt) = &self.kill_evt {
-                // Ignore the result because there is nothing we can do about it.
-                let _ = kill_evt.signal();
-            }
-        }
     }
 }
 
@@ -137,10 +121,6 @@ impl VirtioDevice for Vsock {
             for vhost_int in interrupt.iter() {
                 keep_rds.push(vhost_int.as_raw_descriptor());
             }
-        }
-
-        if let Some(worker_kill_evt) = &self.worker_kill_evt {
-            keep_rds.push(worker_kill_evt.as_raw_descriptor());
         }
 
         keep_rds
@@ -193,7 +173,6 @@ impl VirtioDevice for Vsock {
 
         let vhost_handle = self.vhost_handle.take().context("missing vhost_handle")?;
         let interrupts = self.interrupts.take().context("missing interrupts")?;
-        let kill_evt = self.worker_kill_evt.take().context("missing kill_evt")?;
         let acked_features = self.acked_features;
         let cid = self.cid;
         // The third vq is an event-only vq that is not handled by the vhost
@@ -205,7 +184,6 @@ impl VirtioDevice for Vsock {
             interrupts,
             interrupt,
             acked_features,
-            kill_evt,
             None,
             self.supports_iommu(),
         );
@@ -217,16 +195,15 @@ impl VirtioDevice for Vsock {
         worker
             .init(mem, QUEUE_SIZES, activate_vqs)
             .context("vsock worker init exited with error")?;
-        thread::Builder::new()
-            .name("vhost_vsock".to_string())
-            .spawn(move || {
-                let cleanup_vqs = |_handle: &VhostVsockHandle| -> Result<()> { Ok(()) };
-                let result = worker.run(cleanup_vqs);
-                if let Err(e) = result {
-                    error!("vsock worker thread exited with error: {:?}", e);
-                }
-            })
-            .context("failed to spawn vhost_vsock worker")?;
+
+        self.worker_thread = Some(WorkerThread::start("vhost_vsock", move |kill_evt| {
+            let cleanup_vqs = |_handle: &VhostVsockHandle| -> Result<()> { Ok(()) };
+            let result = worker.run(cleanup_vqs, kill_evt);
+            if let Err(e) = result {
+                error!("vsock worker thread exited with error: {:?}", e);
+            }
+        }));
+
         Ok(())
     }
 

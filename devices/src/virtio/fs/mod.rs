@@ -3,12 +3,9 @@
 // found in the LICENSE file.
 
 use std::io;
-use std::mem;
 use std::sync::Arc;
-use std::thread;
 
 use anyhow::anyhow;
-use anyhow::Context;
 use base::error;
 use base::warn;
 use base::AsRawDescriptor;
@@ -16,6 +13,7 @@ use base::Error as SysError;
 use base::Event;
 use base::RawDescriptor;
 use base::Tube;
+use base::WorkerThread;
 use data_model::Le32;
 use remain::sorted;
 use resources::Alloc;
@@ -122,7 +120,7 @@ pub struct Fs {
     acked_features: u64,
     pci_bar: Option<Alloc>,
     tube: Option<Tube>,
-    workers: Vec<(Event, thread::JoinHandle<Result<()>>)>,
+    workers: Vec<WorkerThread<Result<()>>>,
 }
 
 impl Fs {
@@ -161,25 +159,6 @@ impl Fs {
             tube: Some(tube),
             workers: Vec::with_capacity(num_workers + 1),
         })
-    }
-
-    fn stop_workers(&mut self) {
-        for (kill_evt, handle) in mem::take(&mut self.workers) {
-            if let Err(e) = kill_evt.signal() {
-                error!("failed to kill virtio-fs worker thread: {}", e);
-                continue;
-            }
-
-            // Only wait on the child thread if we were able to send it a kill event.
-            match handle.join() {
-                Ok(r) => {
-                    if let Err(e) = r {
-                        error!("virtio-fs worker thread exited with error: {}", e)
-                    }
-                }
-                Err(e) => error!("virtio-fs worker thread panicked: {:?}", e),
-            }
-        }
     }
 }
 
@@ -268,40 +247,29 @@ impl VirtioDevice for Fs {
 
         let socket = Arc::new(Mutex::new(socket));
         let mut watch_resample_event = true;
-        for (idx, (queue, evt)) in queues.into_iter().enumerate() {
-            let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e)))
-            {
-                Ok(v) => v,
-                Err(e) => {
-                    self.stop_workers();
-                    return Err(e).context("failed creating kill Event pair");
+
+        self.workers = queues
+            .into_iter()
+            .enumerate()
+            .map(|(idx, (queue, evt))| {
+                let mem = guest_mem.clone();
+                let server = server.clone();
+                let irq = interrupt.clone();
+                let socket = Arc::clone(&socket);
+
+                let worker =
+                    WorkerThread::start(format!("v_fs:{}:{}", self.tag, idx), move |kill_evt| {
+                        let mut worker = Worker::new(mem, queue, server, irq, socket, slot);
+                        worker.run(evt, kill_evt, watch_resample_event)
+                    });
+
+                if watch_resample_event {
+                    watch_resample_event = false;
                 }
-            };
 
-            let mem = guest_mem.clone();
-            let server = server.clone();
-            let irq = interrupt.clone();
-            let socket = Arc::clone(&socket);
-
-            let worker_result = thread::Builder::new()
-                .name(format!("v_fs:{}:{}", self.tag, idx))
-                .spawn(move || {
-                    let mut worker = Worker::new(mem, queue, server, irq, socket, slot);
-                    worker.run(evt, kill_evt, watch_resample_event)
-                });
-
-            if watch_resample_event {
-                watch_resample_event = false;
-            }
-
-            match worker_result {
-                Ok(worker) => self.workers.push((self_kill_evt, worker)),
-                Err(e) => {
-                    self.stop_workers();
-                    return Err(e).context("failed to spawn virtio_fs worker");
-                }
-            }
-        }
+                worker
+            })
+            .collect();
         Ok(())
     }
 
@@ -341,9 +309,3 @@ impl VirtioDevice for Fs {
 }
 
 impl Suspendable for Fs {}
-
-impl Drop for Fs {
-    fn drop(&mut self) {
-        self.stop_workers()
-    }
-}

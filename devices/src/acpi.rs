@@ -11,7 +11,6 @@ use std::io::Error as IoError;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::thread;
 
 use acpi_tables::aml;
 use acpi_tables::aml::Aml;
@@ -25,6 +24,7 @@ use base::EventToken;
 use base::SendTube;
 use base::VmEventType;
 use base::WaitContext;
+use base::WorkerThread;
 use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
@@ -121,9 +121,7 @@ pub struct ACPIPMResource {
     #[serde(skip_serializing)]
     direct_fixed_evts: Vec<DirectFixedEvent>,
     #[serde(skip_serializing)]
-    kill_evt: Option<Event>,
-    #[serde(skip_serializing)]
-    worker_thread: Option<thread::JoinHandle<()>>,
+    worker_thread: Option<WorkerThread<()>>,
     #[serde(skip_serializing)]
     suspend_evt: Event,
     #[serde(skip_serializing)]
@@ -198,7 +196,6 @@ impl ACPIPMResource {
             direct_gpe,
             #[cfg(feature = "direct")]
             direct_fixed_evts,
-            kill_evt: None,
             worker_thread: None,
             suspend_evt,
             exit_evt_wrtube,
@@ -210,15 +207,6 @@ impl ACPIPMResource {
     }
 
     pub fn start(&mut self) {
-        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("failed to create kill Event pair: {}", e);
-                return;
-            }
-        };
-        self.kill_evt = Some(self_kill_evt);
-
         let sci_evt = self.sci_evt.try_clone().expect("failed to clone event");
         let pm1 = self.pm1.clone();
         let gpe0 = self.gpe0.clone();
@@ -238,27 +226,20 @@ impl ACPIPMResource {
         #[cfg(not(feature = "direct"))]
         let acpi_event_ignored_gpe = Vec::new();
 
-        let worker_result = thread::Builder::new()
-            .name("ACPI PM worker".to_string())
-            .spawn(move || {
-                if let Err(e) = run_worker(
-                    sci_evt,
-                    kill_evt,
-                    pm1,
-                    gpe0,
-                    acpi_event_ignored_gpe,
-                    #[cfg(feature = "direct")]
-                    sci_direct_evt,
-                    acdc,
-                ) {
-                    error!("{}", e);
-                }
-            });
-
-        match worker_result {
-            Err(e) => error!("failed to spawn ACPI PM worker thread: {}", e),
-            Ok(join_handle) => self.worker_thread = Some(join_handle),
-        }
+        self.worker_thread = Some(WorkerThread::start("ACPI PM worker", move |kill_evt| {
+            if let Err(e) = run_worker(
+                sci_evt,
+                kill_evt,
+                pm1,
+                gpe0,
+                acpi_event_ignored_gpe,
+                #[cfg(feature = "direct")]
+                sci_direct_evt,
+                acdc,
+            ) {
+                error!("{}", e);
+            }
+        }));
     }
 }
 
@@ -284,12 +265,8 @@ impl Suspendable for ACPIPMResource {
     }
 
     fn sleep(&mut self) -> anyhow::Result<()> {
-        if let Some(kill_evt) = self.kill_evt.take() {
-            let _ = kill_evt.signal();
-        }
-
         if let Some(worker_thread) = self.worker_thread.take() {
-            let _ = worker_thread.join();
+            worker_thread.stop();
         }
         Ok(())
     }
@@ -388,18 +365,6 @@ fn run_worker(
                 }
                 Token::Kill => return Ok(()),
             }
-        }
-    }
-}
-
-impl Drop for ACPIPMResource {
-    fn drop(&mut self) {
-        if let Some(kill_evt) = self.kill_evt.take() {
-            let _ = kill_evt.signal();
-        }
-
-        if let Some(worker_thread) = self.worker_thread.take() {
-            let _ = worker_thread.join();
         }
     }
 }
@@ -1085,10 +1050,11 @@ impl Aml for ACPIPMResource {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::suspendable_tests;
     use base::SendTube;
     use base::Tube;
+
+    use super::*;
+    use crate::suspendable_tests;
 
     fn get_evt_tube() -> SendTube {
         let (vm_evt_wrtube, _) = Tube::directional_pair().unwrap();

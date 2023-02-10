@@ -18,7 +18,6 @@ use std::sync::mpsc::Receiver;
 use std::sync::mpsc::RecvError;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
-use std::thread::JoinHandle;
 
 use base::error;
 use base::AsRawDescriptor;
@@ -35,6 +34,7 @@ use base::SafeDescriptor;
 use base::ScmSocket;
 use base::UnixSeqpacket;
 use base::WaitContext;
+use base::WorkerThread;
 use data_model::VolatileMemory;
 use data_model::VolatileMemoryError;
 use data_model::VolatileSlice;
@@ -145,8 +145,7 @@ pub struct VioSClient {
     tx_subscribers: Arc<Mutex<HashMap<usize, Sender<BufferReleaseMsg>>>>,
     rx_subscribers: Arc<Mutex<HashMap<usize, Sender<BufferReleaseMsg>>>>,
     recv_thread_state: Arc<Mutex<ThreadFlags>>,
-    recv_event: Event,
-    recv_thread: Mutex<Option<JoinHandle<Result<()>>>>,
+    recv_thread: Mutex<Option<WorkerThread<Result<()>>>>,
 }
 
 impl VioSClient {
@@ -224,7 +223,6 @@ impl VioSClient {
         let recv_thread_state = Arc::new(Mutex::new(ThreadFlags {
             reporting_events: false,
         }));
-        let recv_event = Event::new().map_err(Error::EventCreateError)?;
 
         let mut client = VioSClient {
             config,
@@ -240,7 +238,6 @@ impl VioSClient {
             tx_subscribers,
             rx_subscribers,
             recv_thread_state,
-            recv_event,
             recv_thread: Mutex::new(None),
         };
         client.request_and_cache_info()?;
@@ -285,7 +282,6 @@ impl VioSClient {
         if self.recv_thread.lock().is_some() {
             return Ok(());
         }
-        let recv_event = self.recv_event.try_clone().map_err(Error::EventDupError)?;
         let tx_socket = self.tx.try_clone_socket()?;
         let rx_socket = self.rx.try_clone_socket()?;
         let event_socket = self
@@ -303,7 +299,6 @@ impl VioSClient {
                     .try_clone()
                     .map_err(Error::EventDupError)?,
                 self.events.clone(),
-                recv_event,
                 self.recv_thread_state.clone(),
                 tx_socket,
                 rx_socket,
@@ -315,18 +310,8 @@ impl VioSClient {
 
     /// Stops the background thread.
     pub fn stop_bg_thread(&self) -> Result<()> {
-        if self.recv_thread.lock().is_none() {
-            return Ok(());
-        }
-        self.recv_event.signal().map_err(Error::EventWriteError)?;
-        if let Some(handle) = self.recv_thread.lock().take() {
-            return match handle.join() {
-                Ok(r) => r,
-                Err(e) => {
-                    error!("Recv thread panicked: {:?}", e);
-                    Ok(())
-                }
-            };
+        if let Some(recv_thread) = self.recv_thread.lock().take() {
+            recv_thread.stop()?;
         }
         Ok(())
     }
@@ -468,9 +453,8 @@ impl VioSClient {
     pub fn keep_rds(&self) -> Vec<RawDescriptor> {
         let control_desc = self.control_socket.lock().as_raw_descriptor();
         let event_desc = self.event_socket.as_raw_descriptor();
-        let recv_event = self.recv_event.as_raw_descriptor();
         let event_notifier = self.event_notifier.as_raw_descriptor();
-        let mut ret = vec![control_desc, event_desc, recv_event, event_notifier];
+        let mut ret = vec![control_desc, event_desc, event_notifier];
         ret.append(&mut self.tx.keep_rds());
         ret.append(&mut self.rx.keep_rds());
         ret
@@ -567,14 +551,6 @@ impl VioSClient {
     }
 }
 
-impl Drop for VioSClient {
-    fn drop(&mut self) {
-        if let Err(e) = self.stop_bg_thread() {
-            error!("Error stopping Recv thread: {}", e);
-        }
-    }
-}
-
 #[derive(Clone, Copy)]
 struct ThreadFlags {
     reporting_events: bool,
@@ -647,13 +623,12 @@ fn spawn_recv_thread(
     rx_subscribers: Arc<Mutex<HashMap<usize, Sender<BufferReleaseMsg>>>>,
     event_notifier: Event,
     event_queue: Arc<Mutex<VecDeque<virtio_snd_event>>>,
-    event: Event,
     state: Arc<Mutex<ThreadFlags>>,
     tx_socket: UnixSeqpacket,
     rx_socket: UnixSeqpacket,
     event_socket: UnixSeqpacket,
-) -> JoinHandle<Result<()>> {
-    std::thread::spawn(move || {
+) -> WorkerThread<Result<()>> {
+    WorkerThread::start("shm_vios", move |event| {
         let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
             (&tx_socket, Token::TxBufferMsg),
             (&rx_socket, Token::RxBufferMsg),

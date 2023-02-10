@@ -28,7 +28,6 @@ pub struct Worker<T: Vhost> {
     pub vhost_handle: T,
     pub vhost_interrupt: Vec<Event>,
     acked_features: u64,
-    pub kill_evt: Event,
     pub response_tube: Option<Tube>,
     uses_viommu: bool,
 }
@@ -40,7 +39,6 @@ impl<T: Vhost> Worker<T> {
         vhost_interrupt: Vec<Event>,
         interrupt: Interrupt,
         acked_features: u64,
-        kill_evt: Event,
         response_tube: Option<Tube>,
         uses_viommu: bool,
     ) -> Worker<T> {
@@ -50,7 +48,6 @@ impl<T: Vhost> Worker<T> {
             vhost_handle,
             vhost_interrupt,
             acked_features,
-            kill_evt,
             response_tube,
             uses_viommu,
         }
@@ -122,7 +119,7 @@ impl<T: Vhost> Worker<T> {
         Ok(())
     }
 
-    pub fn run<F1>(&mut self, cleanup_vqs: F1) -> Result<()>
+    pub fn run<F1>(&mut self, cleanup_vqs: F1, kill_evt: Event) -> Result<()>
     where
         F1: FnOnce(&T) -> Result<()>,
     {
@@ -134,9 +131,8 @@ impl<T: Vhost> Worker<T> {
             ControlNotify,
         }
 
-        let wait_ctx: WaitContext<Token> =
-            WaitContext::build_with(&[(&self.kill_evt, Token::Kill)])
-                .map_err(Error::CreateWaitContext)?;
+        let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[(&kill_evt, Token::Kill)])
+            .map_err(Error::CreateWaitContext)?;
 
         for (index, vhost_int) in self.vhost_interrupt.iter().enumerate() {
             wait_ctx
@@ -170,7 +166,7 @@ impl<T: Vhost> Worker<T> {
                         self.interrupt.interrupt_resample();
                     }
                     Token::Kill => {
-                        let _ = self.kill_evt.wait();
+                        let _ = kill_evt.wait();
                         break 'wait;
                     }
                     Token::ControlNotify => {

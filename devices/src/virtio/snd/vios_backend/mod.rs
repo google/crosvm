@@ -17,7 +17,6 @@ use std::path::Path;
 use std::sync::mpsc::RecvError;
 use std::sync::mpsc::SendError;
 use std::sync::Arc;
-use std::thread;
 
 use anyhow::anyhow;
 use anyhow::Context;
@@ -25,6 +24,7 @@ use base::error;
 use base::Error as BaseError;
 use base::Event;
 use base::RawDescriptor;
+use base::WorkerThread;
 use data_model::Le32;
 use remain::sorted;
 use streams::StreamMsg;
@@ -83,8 +83,7 @@ pub type Result<T> = std::result::Result<T, SoundError>;
 pub struct Sound {
     config: virtio_snd_config,
     virtio_features: u64,
-    worker_thread: Option<thread::JoinHandle<bool>>,
-    kill_evt: Option<Event>,
+    worker_thread: Option<WorkerThread<bool>>,
     vios_client: Arc<VioSClient>,
 }
 
@@ -128,10 +127,6 @@ impl VirtioDevice for Sound {
                 queues.len(),
             ));
         }
-        let (self_kill_evt, kill_evt) = Event::new()
-            .and_then(|e| Ok((e.try_clone()?, e)))
-            .context("failed to create kill Event pair")?;
-        self.kill_evt = Some(self_kill_evt);
         let (control_queue, control_queue_evt) = queues.remove(0);
         let (event_queue, event_queue_evt) = queues.remove(0);
         let (tx_queue, tx_queue_evt) = queues.remove(0);
@@ -142,10 +137,10 @@ impl VirtioDevice for Sound {
             .start_bg_thread()
             .context("Failed to start vios background thread")?;
 
-        let worker_thread = thread::Builder::new()
-            .name("v_snd_vios".to_string())
-            .spawn(move || {
-                match Worker::try_new(
+        self.worker_thread =
+            Some(WorkerThread::start(
+                "v_snd_vios",
+                move |kill_evt| match Worker::try_new(
                     vios_client,
                     interrupt,
                     mem,
@@ -169,31 +164,18 @@ impl VirtioDevice for Sound {
                         error!("virtio-snd: Failed to create worker: {}", e);
                         false
                     }
-                }
-            })
-            .context("failed to spawn virtio_snd worker thread")?;
+                },
+            ));
 
-        self.worker_thread = Some(worker_thread);
         Ok(())
     }
 
     fn reset(&mut self) -> bool {
         let mut ret = true;
-        if let Some(kill_evt) = self.kill_evt.take() {
-            if let Err(e) = kill_evt.signal() {
-                error!("virtio-snd: failed to notify the kill event: {}", e);
-                ret = false;
-            }
-        } else if let Some(worker_thread) = self.worker_thread.take() {
-            match worker_thread.join() {
-                Err(e) => {
-                    error!("virtio-snd: Worker thread panicked: {:?}", e);
-                    ret = false;
-                }
-                Ok(worker_status) => {
-                    ret = worker_status;
-                }
-            }
+
+        if let Some(worker_thread) = self.worker_thread.take() {
+            let worker_status = worker_thread.stop();
+            ret = worker_status;
         }
         if let Err(e) = self.vios_client.stop_bg_thread() {
             error!("virtio-snd: Failed to stop vios background thread: {}", e);
@@ -216,7 +198,6 @@ pub fn new_sound<P: AsRef<Path>>(path: P, virtio_features: u64) -> Result<Sound>
         },
         virtio_features,
         worker_thread: None,
-        kill_evt: None,
         vios_client,
     })
 }

@@ -6,15 +6,13 @@
 
 use std::io::Error as IoError;
 use std::sync::Arc;
-use std::thread;
 use std::time::Duration;
 use std::time::Instant;
 
-use anyhow::anyhow;
+use anyhow::Context;
 use base::error;
 use base::warn;
 use base::Error as SysError;
-use base::Event;
 use base::EventToken;
 use base::WaitContext;
 use bit_field::BitField1;
@@ -36,6 +34,8 @@ cfg_if::cfg_if! {
         use base::Timer;
     }
 }
+
+use base::WorkerThread;
 
 use crate::bus::BusAccessInfo;
 use crate::pci::CrosvmDeviceId;
@@ -200,17 +200,8 @@ pub struct Pit {
     // Worker thread to update counter 0's state asynchronously. Counter 0 needs to send interrupts
     // when timers expire, so it needs asynchronous updates. All other counters need only update
     // when queried directly by the guest.
-    worker_thread: Option<thread::JoinHandle<PitResult<()>>>,
-    kill_evt: Event,
+    worker_thread: Option<WorkerThread<PitResult<()>>>,
     activated: bool,
-}
-
-impl Drop for Pit {
-    fn drop(&mut self) {
-        if let Err(e) = self.sleep() {
-            error!("{}", e);
-        };
-    }
 }
 
 impl BusDevice for Pit {
@@ -283,12 +274,9 @@ impl Pit {
         // may not make sense to continue operation.
         assert_eq!(counters.len(), NUM_OF_COUNTERS);
 
-        let kill_evt = Event::new().map_err(PitError::CreateEvent)?;
-
         Ok(Pit {
             counters,
             worker_thread: None,
-            kill_evt,
             activated: false,
         })
     }
@@ -303,23 +291,21 @@ impl Pit {
     }
 
     fn start(&mut self) -> PitResult<()> {
-        let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
-            (&self.counters[0].lock().timer, Token::TimerExpire),
-            (&self.kill_evt, Token::Kill),
-        ])
-        .map_err(PitError::CreateWaitContext)?;
+        let pit_counter = self.counters[0].clone();
+        self.worker_thread = Some(WorkerThread::start("pit counter worker", move |kill_evt| {
+            let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
+                (&pit_counter.lock().timer, Token::TimerExpire),
+                (&kill_evt, Token::Kill),
+            ])
+            .map_err(PitError::CreateWaitContext)?;
 
-        let mut worker = Worker {
-            pit_counter: self.counters[0].clone(),
-            wait_ctx,
-        };
+            let mut worker = Worker {
+                pit_counter,
+                wait_ctx,
+            };
 
-        self.worker_thread = Some(
-            thread::Builder::new()
-                .name("pit counter worker".to_string())
-                .spawn(move || worker.run())
-                .map_err(PitError::SpawnThread)?,
-        );
+            worker.run()
+        }));
         self.activated = true;
         Ok(())
     }
@@ -375,18 +361,10 @@ impl Pit {
 
 impl Suspendable for Pit {
     fn sleep(&mut self) -> anyhow::Result<()> {
-        if let Err(e) = self.kill_evt.signal() {
-            return Err(anyhow!("failed to kill PIT worker threads: {}", e));
-        }
         if let Some(thread) = self.worker_thread.take() {
-            match thread.join() {
-                Ok(r) => {
-                    if let Err(e) = r {
-                        return Err(anyhow!("pit worker thread exited with error: {}", e));
-                    }
-                }
-                Err(e) => return Err(anyhow!("pit worker thread panicked: {:?}", e)),
-            }
+            thread
+                .stop()
+                .context("pit worker thread exited with error")?;
         }
         Ok(())
     }
@@ -924,7 +902,10 @@ impl Worker {
 
 #[cfg(test)]
 mod tests {
+    use base::Event;
+
     use super::*;
+
     struct TestData {
         pit: Pit,
         irqfd: Event,

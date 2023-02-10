@@ -6,7 +6,6 @@ use std::io;
 use std::io::Read;
 use std::io::Write;
 use std::ops::BitOrAssign;
-use std::thread;
 
 use anyhow::anyhow;
 use anyhow::Context;
@@ -15,6 +14,7 @@ use base::Event;
 use base::EventToken;
 use base::RawDescriptor;
 use base::WaitContext;
+use base::WorkerThread;
 use remain::sorted;
 use thiserror::Error;
 use vm_memory::GuestMemory;
@@ -46,7 +46,6 @@ struct Worker {
     queue: Queue,
     mem: GuestMemory,
     queue_evt: Event,
-    kill_evt: Event,
     backend: Box<dyn TpmBackend>,
 }
 
@@ -110,7 +109,7 @@ impl Worker {
         needs_interrupt
     }
 
-    fn run(mut self) {
+    fn run(mut self, kill_evt: Event) {
         #[derive(EventToken, Debug)]
         enum Token {
             // A request is ready on the queue.
@@ -123,7 +122,7 @@ impl Worker {
 
         let wait_ctx = match WaitContext::build_with(&[
             (&self.queue_evt, Token::QueueAvailable),
-            (&self.kill_evt, Token::Kill),
+            (&kill_evt, Token::Kill),
         ])
         .and_then(|wc| {
             if let Some(resample_evt) = self.interrupt.get_resample_evt() {
@@ -173,8 +172,7 @@ impl Worker {
 /// Virtio vTPM device.
 pub struct Tpm {
     backend: Option<Box<dyn TpmBackend>>,
-    kill_evt: Option<Event>,
-    worker_thread: Option<thread::JoinHandle<()>>,
+    worker_thread: Option<WorkerThread<()>>,
     features: u64,
 }
 
@@ -182,21 +180,8 @@ impl Tpm {
     pub fn new(backend: Box<dyn TpmBackend>, base_features: u64) -> Tpm {
         Tpm {
             backend: Some(backend),
-            kill_evt: None,
             worker_thread: None,
             features: base_features,
-        }
-    }
-}
-
-impl Drop for Tpm {
-    fn drop(&mut self) {
-        if let Some(kill_evt) = self.kill_evt.take() {
-            let _ = kill_evt.signal();
-        }
-
-        if let Some(worker_thread) = self.worker_thread.take() {
-            let _ = worker_thread.join();
         }
     }
 }
@@ -231,25 +216,18 @@ impl VirtioDevice for Tpm {
 
         let backend = self.backend.take().context("no backend in vtpm")?;
 
-        let (self_kill_evt, kill_evt) = Event::new()
-            .and_then(|e| Ok((e.try_clone()?, e)))
-            .context("vtpm failed to create kill Event pair")?;
-        self.kill_evt = Some(self_kill_evt);
-
         let worker = Worker {
             interrupt,
             queue,
             mem,
             queue_evt,
-            kill_evt,
             backend,
         };
 
-        let worker_thread = thread::Builder::new()
-            .name("v_tpm".to_string())
-            .spawn(|| worker.run())
-            .context("vtpm failed to spawn virtio_vtpm worker")?;
-        self.worker_thread = Some(worker_thread);
+        self.worker_thread = Some(WorkerThread::start("v_tpm", |kill_evt| {
+            worker.run(kill_evt)
+        }));
+
         Ok(())
     }
 }

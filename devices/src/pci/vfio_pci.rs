@@ -13,11 +13,10 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::thread;
 use std::u32;
 
 use acpi_tables::aml::Aml;
-use anyhow::anyhow;
+#[cfg(feature = "direct")]
 use anyhow::Context;
 use base::debug;
 use base::error;
@@ -32,6 +31,7 @@ use base::Protection;
 use base::RawDescriptor;
 use base::Tube;
 use base::WaitContext;
+use base::WorkerThread;
 use hypervisor::MemSlot;
 use resources::AddressRange;
 use resources::Alloc;
@@ -654,8 +654,7 @@ pub struct VfioPciDevice {
     vm_socket_mem: Tube,
     device_data: Option<DeviceData>,
     pm_evt: Option<Event>,
-    kill_evt: Option<Event>,
-    worker_thread: Option<thread::JoinHandle<VfioPciWorker>>,
+    worker_thread: Option<WorkerThread<VfioPciWorker>>,
     vm_socket_vm: Option<Tube>,
     sysfs_path: PathBuf,
     #[cfg(feature = "direct")]
@@ -875,7 +874,6 @@ impl VfioPciDevice {
             vm_socket_mem: vfio_device_socket_mem,
             device_data,
             pm_evt: None,
-            kill_evt: None,
             worker_thread: None,
             vm_socket_vm: Some(vfio_device_socket_vm),
             sysfs_path: sysfs_path.to_path_buf(),
@@ -1326,19 +1324,6 @@ impl VfioPciDevice {
             Err(_) => return,
         };
 
-        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
-            Ok(v) => v,
-            Err(e) => {
-                error!(
-                    "{} failed creating kill Event pair: {}",
-                    self.debug_label(),
-                    e
-                );
-                return;
-            }
-        };
-        self.kill_evt = Some(self_kill_evt);
-
         let (self_pm_evt, pm_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
             Ok(v) => v,
             Err(e) => {
@@ -1362,34 +1347,19 @@ impl VfioPciDevice {
         let sysfs_path = self.sysfs_path.clone();
         let pm_cap = self.pm_cap.clone();
         let msix_cap = self.msix_cap.clone();
-        let worker_result = thread::Builder::new()
-            .name("vfio_pci".to_string())
-            .spawn(move || {
-                let mut worker = VfioPciWorker {
-                    address,
-                    sysfs_path,
-                    vm_socket,
-                    name,
-                    pm_cap,
-                    msix_cap,
-                };
-                worker.run(req_evt, pm_evt, kill_evt, msix_evt);
-                worker
-            });
-
-        match worker_result {
-            Err(e) => {
-                error!(
-                    "{} failed to spawn vfio_pci worker: {}",
-                    self.debug_label(),
-                    e
-                );
-            }
-            Ok(join_handle) => {
-                self.activated = true;
-                self.worker_thread = Some(join_handle);
-            }
-        }
+        self.worker_thread = Some(WorkerThread::start("vfio_pci", move |kill_evt| {
+            let mut worker = VfioPciWorker {
+                address,
+                sysfs_path,
+                vm_socket,
+                name,
+                pm_cap,
+                msix_cap,
+            };
+            worker.run(req_evt, pm_evt, kill_evt, msix_evt);
+            worker
+        }));
+        self.activated = true;
     }
 
     fn collect_bars(&mut self) -> Vec<PciBarConfiguration> {
@@ -2290,14 +2260,6 @@ impl PciDevice for VfioPciDevice {
     }
 }
 
-impl Drop for VfioPciDevice {
-    fn drop(&mut self) {
-        if let Err(e) = self.sleep() {
-            error!("{}", e);
-        }
-    }
-}
-
 impl Suspendable for VfioPciDevice {
     fn sleep(&mut self) -> anyhow::Result<()> {
         #[cfg(feature = "direct")]
@@ -2308,24 +2270,8 @@ impl Suspendable for VfioPciDevice {
             let _ = VfioPciDevice::coordinated_pm(&self.sysfs_path, false);
         }
 
-        if let Some(kill_evt) = self.kill_evt.take() {
-            kill_evt.signal().context(format!(
-                "failed to kill {} worker thread",
-                self.debug_label()
-            ))?;
-        }
-
         if let Some(worker_thread) = self.worker_thread.take() {
-            let res = match worker_thread.join() {
-                Ok(r) => r,
-                Err(e) => {
-                    return Err(anyhow!(
-                        "{} worker thread panicked: {:?}",
-                        self.debug_label(),
-                        e
-                    ))
-                }
-            };
+            let res = worker_thread.stop();
             self.pci_address = Some(res.address);
             self.sysfs_path = res.sysfs_path;
             self.pm_cap = res.pm_cap;

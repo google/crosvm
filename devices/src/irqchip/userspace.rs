@@ -8,7 +8,6 @@ use std::fmt;
 use std::fmt::Display;
 use std::iter;
 use std::sync::Arc;
-use std::thread;
 
 cfg_if::cfg_if! {
     if #[cfg(test)] {
@@ -17,7 +16,7 @@ cfg_if::cfg_if! {
         use base::{Clock, Timer};
     }
 }
-use anyhow::anyhow;
+use anyhow::Context;
 use base::error;
 use base::info;
 use base::warn;
@@ -29,6 +28,7 @@ use base::EventToken;
 use base::Result;
 use base::Tube;
 use base::WaitContext;
+use base::WorkerThread;
 use hypervisor::DeliveryMode;
 use hypervisor::IoapicState;
 use hypervisor::IrqRoute;
@@ -125,9 +125,7 @@ pub struct UserspaceIrqChip<V: VcpuX86_64> {
 /// dropped.
 struct Dropper {
     /// Worker threads that deliver timer events to the APICs.
-    workers: Vec<thread::JoinHandle<TimerWorkerResult<()>>>,
-    /// Events for telling timer workers to exit.
-    kill_evts: Vec<Event>,
+    workers: Vec<WorkerThread<TimerWorkerResult<()>>>,
 }
 
 impl<V: VcpuX86_64 + 'static> UserspaceIrqChip<V> {
@@ -182,7 +180,6 @@ impl<V: VcpuX86_64 + 'static> UserspaceIrqChip<V> {
         }
         let dropper = Dropper {
             workers: Vec::new(),
-            kill_evts: Vec::new(),
         };
 
         let mut chip = UserspaceIrqChip {
@@ -342,36 +339,12 @@ impl<V: VcpuX86_64 + 'static> UserspaceIrqChip<V> {
 
 impl Dropper {
     fn sleep(&mut self) -> anyhow::Result<()> {
-        for evt in self.kill_evts.split_off(0).into_iter() {
-            if let Err(e) = evt.signal() {
-                return Err(anyhow!(
-                    "Failed to kill UserspaceIrqChip worker thread: {}",
-                    e
-                ));
-            }
-        }
         for thread in self.workers.split_off(0).into_iter() {
-            match thread.join() {
-                Ok(r) => {
-                    if let Err(e) = r {
-                        return Err(anyhow!(
-                            "UserspaceIrqChip worker thread exited with error: {}",
-                            e
-                        ));
-                    }
-                }
-                Err(e) => return Err(anyhow!("UserspaceIrqChip worker thread panicked: {:?}", e)),
-            }
+            thread
+                .stop()
+                .context("UserspaceIrqChip worker thread exited with error")?;
         }
         Ok(())
-    }
-}
-
-impl Drop for Dropper {
-    fn drop(&mut self) {
-        if let Err(e) = self.sleep() {
-            error!("{}", e);
-        }
     }
 }
 
@@ -883,11 +856,10 @@ impl<V: VcpuX86_64 + 'static> Suspendable for UserspaceIrqChip<V> {
                     vcpus: self.vcpus.clone(),
                     waiter: self.waiters[i].clone(),
                 };
-                dropper.kill_evts.push(Event::new()?);
-                let evt = dropper.kill_evts[i].try_clone()?;
-                let worker_thread = thread::Builder::new()
-                    .name(format!("UserspaceIrqChip timer worker {}", i))
-                    .spawn(move || worker.run(evt))?;
+                let worker_thread = WorkerThread::start(
+                    format!("UserspaceIrqChip timer worker {}", i),
+                    move |evt| worker.run(evt),
+                );
                 dropper.workers.push(worker_thread);
             }
         }

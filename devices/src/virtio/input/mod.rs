@@ -11,7 +11,6 @@ mod event_source;
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::io::Write;
-use std::thread;
 
 use anyhow::anyhow;
 use anyhow::Context;
@@ -22,6 +21,7 @@ use base::Event;
 use base::EventToken;
 use base::RawDescriptor;
 use base::WaitContext;
+use base::WorkerThread;
 use data_model::DataInit;
 use data_model::Le16;
 use data_model::Le32;
@@ -554,25 +554,11 @@ impl<T: EventSource> Worker<T> {
 
 /// Virtio input device
 
-pub struct Input<T: EventSource> {
-    kill_evt: Option<Event>,
-    worker_thread: Option<thread::JoinHandle<Worker<T>>>,
+pub struct Input<T: EventSource + Send + 'static> {
+    worker_thread: Option<WorkerThread<Worker<T>>>,
     config: VirtioInputConfig,
     source: Option<T>,
     virtio_features: u64,
-}
-
-impl<T: EventSource> Drop for Input<T> {
-    fn drop(&mut self) {
-        if let Some(kill_evt) = self.kill_evt.take() {
-            // Ignore the result because there is nothing we can do about it.
-            let _ = kill_evt.signal();
-        }
-
-        if let Some(worker_thread) = self.worker_thread.take() {
-            let _ = worker_thread.join();
-        }
-    }
 }
 
 impl<T> VirtioDevice for Input<T>
@@ -616,11 +602,6 @@ where
             return Err(anyhow!("expected 2 queues, got {}", queues.len()));
         }
 
-        let (self_kill_evt, kill_evt) = Event::new()
-            .and_then(|e| Ok((e.try_clone()?, e)))
-            .context("failed to create kill Event pair")?;
-        self.kill_evt = Some(self_kill_evt);
-
         // Status is queue 1, event is queue 0
         let (status_queue, status_queue_evt) = queues.remove(1);
         let (event_queue, event_queue_evt) = queues.remove(0);
@@ -629,45 +610,26 @@ where
             .source
             .take()
             .context("tried to activate device without a source for events")?;
-        let worker_thread = thread::Builder::new()
-            .name("v_input".to_string())
-            .spawn(move || {
-                let mut worker = Worker {
-                    interrupt,
-                    event_source: source,
-                    event_queue,
-                    status_queue,
-                    guest_memory: mem,
-                };
-                worker.run(event_queue_evt, status_queue_evt, kill_evt);
-                worker
-            })
-            .context("failed to spawn virtio_input worker")?;
-
-        self.worker_thread = Some(worker_thread);
+        self.worker_thread = Some(WorkerThread::start("v_input", move |kill_evt| {
+            let mut worker = Worker {
+                interrupt,
+                event_source: source,
+                event_queue,
+                status_queue,
+                guest_memory: mem,
+            };
+            worker.run(event_queue_evt, status_queue_evt, kill_evt);
+            worker
+        }));
 
         Ok(())
     }
 
     fn reset(&mut self) -> bool {
-        if let Some(kill_evt) = self.kill_evt.take() {
-            if kill_evt.signal().is_err() {
-                error!("{}: failed to notify the kill event", self.debug_label());
-                return false;
-            }
-        }
-
         if let Some(worker_thread) = self.worker_thread.take() {
-            match worker_thread.join() {
-                Err(_) => {
-                    error!("{}: failed to get back resources", self.debug_label());
-                    return false;
-                }
-                Ok(worker) => {
-                    self.source = Some(worker.event_source);
-                    return true;
-                }
-            }
+            let worker = worker_thread.stop();
+            self.source = Some(worker.event_source);
+            return true;
         }
         false
     }
@@ -678,10 +640,9 @@ impl<T> Suspendable for Input<T> where T: 'static + EventSource + Send {}
 /// Creates a new virtio input device from an event device node
 pub fn new_evdev<T>(source: T, virtio_features: u64) -> Result<Input<EvdevEventSource<T>>>
 where
-    T: Read + Write + AsRawDescriptor,
+    T: Read + Write + AsRawDescriptor + Send + 'static,
 {
     Ok(Input {
-        kill_evt: None,
         worker_thread: None,
         config: VirtioInputConfig::from_evdev(&source)?,
         source: Some(EvdevEventSource::new(source)),
@@ -698,10 +659,9 @@ pub fn new_single_touch<T>(
     virtio_features: u64,
 ) -> Result<Input<SocketEventSource<T>>>
 where
-    T: Read + Write + AsRawDescriptor,
+    T: Read + Write + AsRawDescriptor + Send + 'static,
 {
     Ok(Input {
-        kill_evt: None,
         worker_thread: None,
         config: defaults::new_single_touch_config(idx, width, height),
         source: Some(SocketEventSource::new(source)),
@@ -718,10 +678,9 @@ pub fn new_multi_touch<T>(
     virtio_features: u64,
 ) -> Result<Input<SocketEventSource<T>>>
 where
-    T: Read + Write + AsRawDescriptor,
+    T: Read + Write + AsRawDescriptor + Send + 'static,
 {
     Ok(Input {
-        kill_evt: None,
         worker_thread: None,
         config: defaults::new_multi_touch_config(idx, width, height),
         source: Some(SocketEventSource::new(source)),
@@ -739,10 +698,9 @@ pub fn new_trackpad<T>(
     virtio_features: u64,
 ) -> Result<Input<SocketEventSource<T>>>
 where
-    T: Read + Write + AsRawDescriptor,
+    T: Read + Write + AsRawDescriptor + Send + 'static,
 {
     Ok(Input {
-        kill_evt: None,
         worker_thread: None,
         config: defaults::new_trackpad_config(idx, width, height),
         source: Some(SocketEventSource::new(source)),
@@ -757,10 +715,9 @@ pub fn new_mouse<T>(
     virtio_features: u64,
 ) -> Result<Input<SocketEventSource<T>>>
 where
-    T: Read + Write + AsRawDescriptor,
+    T: Read + Write + AsRawDescriptor + Send + 'static,
 {
     Ok(Input {
-        kill_evt: None,
         worker_thread: None,
         config: defaults::new_mouse_config(idx),
         source: Some(SocketEventSource::new(source)),
@@ -775,10 +732,9 @@ pub fn new_keyboard<T>(
     virtio_features: u64,
 ) -> Result<Input<SocketEventSource<T>>>
 where
-    T: Read + Write + AsRawDescriptor,
+    T: Read + Write + AsRawDescriptor + Send + 'static,
 {
     Ok(Input {
-        kill_evt: None,
         worker_thread: None,
         config: defaults::new_keyboard_config(idx),
         source: Some(SocketEventSource::new(source)),
@@ -793,10 +749,9 @@ pub fn new_switches<T>(
     virtio_features: u64,
 ) -> Result<Input<SocketEventSource<T>>>
 where
-    T: Read + Write + AsRawDescriptor,
+    T: Read + Write + AsRawDescriptor + Send + 'static,
 {
     Ok(Input {
-        kill_evt: None,
         worker_thread: None,
         config: defaults::new_switches_config(idx),
         source: Some(SocketEventSource::new(source)),

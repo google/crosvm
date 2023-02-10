@@ -5,7 +5,6 @@
 //! VirtioDevice implementation for the VMM side of a vhost-user connection.
 
 use std::cell::RefCell;
-use std::thread;
 
 use anyhow::Context;
 use base::error;
@@ -26,11 +25,11 @@ use crate::virtio::SharedMemoryMapper;
 use crate::virtio::SharedMemoryRegion;
 use crate::virtio::VirtioDevice;
 use crate::Suspendable;
+use base::WorkerThread;
 
 pub struct VhostUserVirtioDevice {
     device_type: DeviceType,
-    kill_evt: Option<Event>,
-    worker_thread: Option<thread::JoinHandle<()>>,
+    worker_thread: Option<WorkerThread<()>>,
     handler: RefCell<VhostUserHandler>,
     queue_sizes: Vec<u16>,
     cfg: Option<Vec<u8>>,
@@ -110,7 +109,6 @@ impl VhostUserVirtioDevice {
 
         Ok(VhostUserVirtioDevice {
             device_type,
-            kill_evt: None,
             worker_thread: None,
             handler: RefCell::new(handler),
             queue_sizes,
@@ -163,13 +161,12 @@ impl VirtioDevice for VhostUserVirtioDevice {
         interrupt: Interrupt,
         queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
-        let (join_handle, kill_evt) = self
+        let worker_thread = self
             .handler
             .borrow_mut()
             .activate(mem, interrupt, queues, &format!("{}", self.device_type))
             .context("failed to activate queues")?;
-        self.worker_thread = Some(join_handle);
-        self.kill_evt = Some(kill_evt);
+        self.worker_thread = Some(worker_thread);
         Ok(())
     }
 
@@ -204,17 +201,3 @@ impl VirtioDevice for VhostUserVirtioDevice {
 }
 
 impl Suspendable for VhostUserVirtioDevice {}
-
-impl Drop for VhostUserVirtioDevice {
-    fn drop(&mut self) {
-        if let Some(kill_evt) = self.kill_evt.take() {
-            if let Some(worker_thread) = self.worker_thread.take() {
-                if let Err(e) = kill_evt.signal() {
-                    error!("failed to write to kill_evt: {}", e);
-                    return;
-                }
-                let _ = worker_thread.join();
-            }
-        }
-    }
-}

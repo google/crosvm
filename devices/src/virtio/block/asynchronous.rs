@@ -12,7 +12,6 @@ use std::result;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::thread;
 use std::time::Duration;
 use std::u32;
 
@@ -28,6 +27,7 @@ use base::Result as SysResult;
 use base::Timer;
 use base::Tube;
 use base::TubeError;
+use base::WorkerThread;
 use cros_async::select5;
 use cros_async::sync::Mutex as AsyncMutex;
 use cros_async::AsyncError;
@@ -566,8 +566,7 @@ pub struct BlockAsync {
     pub(crate) control_tube: Option<Tube>,
     pub(crate) queue_sizes: Vec<u16>,
     pub(crate) executor_kind: ExecutorKind,
-    kill_evt: Option<Event>,
-    worker_thread: Option<thread::JoinHandle<(Box<dyn DiskFile>, Option<Tube>)>>,
+    worker_thread: Option<WorkerThread<(Box<dyn DiskFile>, Option<Tube>)>>,
 }
 
 impl BlockAsync {
@@ -628,7 +627,6 @@ impl BlockAsync {
             block_size,
             id,
             queue_sizes,
-            kill_evt: None,
             worker_thread: None,
             control_tube,
             executor_kind,
@@ -850,19 +848,6 @@ impl BlockAsync {
     }
 }
 
-impl Drop for BlockAsync {
-    fn drop(&mut self) {
-        if let Some(kill_evt) = self.kill_evt.take() {
-            // Ignore the result because there is nothing we can do about it.
-            let _ = kill_evt.signal();
-        }
-
-        if let Some(worker_thread) = self.worker_thread.take() {
-            let _ = worker_thread.join();
-        }
-    }
-}
-
 impl VirtioDevice for BlockAsync {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         let mut keep_rds = Vec::new();
@@ -909,11 +894,6 @@ impl VirtioDevice for BlockAsync {
         interrupt: Interrupt,
         queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
-        let (self_kill_evt, kill_evt) = Event::new()
-            .and_then(|e| Ok((e.try_clone()?, e)))
-            .context("failed creating kill Event pair")?;
-        self.kill_evt = Some(self_kill_evt);
-
         let read_only = self.read_only;
         let sparse = self.sparse;
         let disk_size = self.disk_size.clone();
@@ -921,72 +901,55 @@ impl VirtioDevice for BlockAsync {
         let executor_kind = self.executor_kind;
         let disk_image = self.disk_image.take().context("missing disk image")?;
         let control_tube = self.control_tube.take();
-        let worker_thread = thread::Builder::new()
-            .name("virtio_blk".to_string())
-            .spawn(move || {
-                let ex = Executor::with_executor_kind(executor_kind)
-                    .expect("Failed to create an executor");
 
-                let async_control = control_tube
-                    .map(|c| AsyncTube::new(&ex, c).expect("failed to create async tube"));
-                let async_image = match disk_image.to_async_disk(&ex) {
-                    Ok(d) => d,
-                    Err(e) => panic!("Failed to create async disk {}", e),
-                };
-                let disk_state = Rc::new(AsyncMutex::new(DiskState {
-                    disk_image: async_image,
-                    disk_size,
-                    read_only,
-                    sparse,
-                    id,
-                }));
-                if let Err(err_string) = run_worker(
-                    ex,
-                    interrupt,
-                    queues,
-                    mem,
-                    &disk_state,
-                    &async_control,
-                    kill_evt,
-                ) {
-                    error!("{}", err_string);
-                }
+        self.worker_thread = Some(WorkerThread::start("virtio_blk", move |kill_evt| {
+            let ex =
+                Executor::with_executor_kind(executor_kind).expect("Failed to create an executor");
 
-                let disk_state = match Rc::try_unwrap(disk_state) {
-                    Ok(d) => d.into_inner(),
-                    Err(_) => panic!("too many refs to the disk"),
-                };
-                (
-                    disk_state.disk_image.into_inner(),
-                    async_control.map(|c| c.into()),
-                )
-            })
-            .context("failed to spawn virtio_blk worker")?;
+            let async_control =
+                control_tube.map(|c| AsyncTube::new(&ex, c).expect("failed to create async tube"));
+            let async_image = match disk_image.to_async_disk(&ex) {
+                Ok(d) => d,
+                Err(e) => panic!("Failed to create async disk {}", e),
+            };
+            let disk_state = Rc::new(AsyncMutex::new(DiskState {
+                disk_image: async_image,
+                disk_size,
+                read_only,
+                sparse,
+                id,
+            }));
+            if let Err(err_string) = run_worker(
+                ex,
+                interrupt,
+                queues,
+                mem,
+                &disk_state,
+                &async_control,
+                kill_evt,
+            ) {
+                error!("{}", err_string);
+            }
 
-        self.worker_thread = Some(worker_thread);
+            let disk_state = match Rc::try_unwrap(disk_state) {
+                Ok(d) => d.into_inner(),
+                Err(_) => panic!("too many refs to the disk"),
+            };
+            (
+                disk_state.disk_image.into_inner(),
+                async_control.map(|c| c.into()),
+            )
+        }));
+
         Ok(())
     }
 
     fn reset(&mut self) -> bool {
-        if let Some(kill_evt) = self.kill_evt.take() {
-            if kill_evt.signal().is_err() {
-                error!("{}: failed to notify the kill event", self.debug_label());
-                return false;
-            }
-        }
-
         if let Some(worker_thread) = self.worker_thread.take() {
-            match worker_thread.join() {
-                Err(_) => {
-                    error!("{}: failed to get back resources", self.debug_label());
-                    return false;
-                }
-                Ok((disk_image, control_tube)) => {
-                    self.disk_image = Some(disk_image);
-                    self.control_tube = control_tube;
-                    return true;
-                }
-            }
+            let (disk_image, control_tube) = worker_thread.stop();
+            self.disk_image = Some(disk_image);
+            self.control_tube = control_tube;
+            return true;
         }
         false
     }

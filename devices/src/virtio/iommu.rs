@@ -18,7 +18,6 @@ use std::ops::RangeInclusive;
 use std::rc::Rc;
 use std::result;
 use std::sync::Arc;
-use std::thread;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use acpi_tables::sdt::SDT;
@@ -39,6 +38,7 @@ use base::RawDescriptor;
 use base::Result as SysResult;
 use base::Tube;
 use base::TubeError;
+use base::WorkerThread;
 use cros_async::AsyncError;
 use cros_async::AsyncTube;
 use cros_async::EventAsync;
@@ -692,8 +692,7 @@ fn run(
 
 /// Virtio device for IOMMU memory management.
 pub struct Iommu {
-    kill_evt: Option<Event>,
-    worker_thread: Option<thread::JoinHandle<()>>,
+    worker_thread: Option<WorkerThread<()>>,
     config: virtio_iommu_config,
     avail_features: u64,
     // Attached endpoints
@@ -754,7 +753,6 @@ impl Iommu {
         }
 
         Ok(Iommu {
-            kill_evt: None,
             worker_thread: None,
             config,
             avail_features,
@@ -764,18 +762,6 @@ impl Iommu {
             translate_request_rx,
             iommu_device_tube,
         })
-    }
-}
-
-impl Drop for Iommu {
-    fn drop(&mut self) {
-        if let Some(kill_evt) = self.kill_evt.take() {
-            let _ = kill_evt.signal();
-        }
-
-        if let Some(worker_thread) = self.worker_thread.take() {
-            let _ = worker_thread.join();
-        }
     }
 }
 
@@ -834,11 +820,6 @@ impl VirtioDevice for Iommu {
             ));
         }
 
-        let (self_kill_evt, kill_evt) = Event::new()
-            .and_then(|e| Ok((e.try_clone()?, e)))
-            .context("failed to create kill Event pair")?;
-        self.kill_evt = Some(self_kill_evt);
-
         // The least significant bit of page_size_masks defines the page
         // granularity of IOMMU mappings
         let page_mask = (1u64 << u64::from(self.config.page_size_mask).trailing_zeros()) - 1;
@@ -853,33 +834,29 @@ impl VirtioDevice for Iommu {
             .take()
             .context("failed to start virtio-iommu worker: No control tube")?;
 
-        let worker_thread = thread::Builder::new()
-            .name("v_iommu".to_string())
-            .spawn(move || {
-                let state = State {
-                    mem,
-                    page_mask,
-                    hp_endpoints_ranges,
-                    endpoint_map: BTreeMap::new(),
-                    domain_map: BTreeMap::new(),
-                    endpoints: eps,
-                    dmabuf_mem: BTreeMap::new(),
-                };
-                let result = run(
-                    state,
-                    iommu_device_tube,
-                    queues,
-                    kill_evt,
-                    interrupt,
-                    translate_response_senders,
-                    translate_request_rx,
-                );
-                if let Err(e) = result {
-                    error!("virtio-iommu worker thread exited with error: {}", e);
-                }
-            })
-            .context("failed to spawn virtio_iommu worker thread")?;
-        self.worker_thread = Some(worker_thread);
+        self.worker_thread = Some(WorkerThread::start("v_iommu", move |kill_evt| {
+            let state = State {
+                mem,
+                page_mask,
+                hp_endpoints_ranges,
+                endpoint_map: BTreeMap::new(),
+                domain_map: BTreeMap::new(),
+                endpoints: eps,
+                dmabuf_mem: BTreeMap::new(),
+            };
+            let result = run(
+                state,
+                iommu_device_tube,
+                queues,
+                kill_evt,
+                interrupt,
+                translate_response_senders,
+                translate_request_rx,
+            );
+            if let Err(e) = result {
+                error!("virtio-iommu worker thread exited with error: {}", e);
+            }
+        }));
         Ok(())
     }
 

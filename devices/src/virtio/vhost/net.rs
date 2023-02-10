@@ -4,7 +4,6 @@
 
 use std::mem;
 use std::path::Path;
-use std::thread;
 
 use anyhow::anyhow;
 use anyhow::Context;
@@ -14,6 +13,7 @@ use base::AsRawDescriptor;
 use base::Event;
 use base::RawDescriptor;
 use base::Tube;
+use base::WorkerThread;
 use net_util::TapT;
 use vhost::NetT as VhostNetT;
 use virtio_sys::virtio_net;
@@ -38,10 +38,8 @@ const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 2;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE; NUM_QUEUES];
 
-pub struct Net<T: TapT, U: VhostNetT<T>> {
-    workers_kill_evt: Option<Event>,
-    kill_evt: Event,
-    worker_thread: Option<thread::JoinHandle<(Worker<U>, T)>>,
+pub struct Net<T: TapT + 'static, U: VhostNetT<T> + 'static> {
+    worker_thread: Option<WorkerThread<(Worker<U>, T)>>,
     tap: Option<T>,
     guest_mac: Option<[u8; 6]>,
     vhost_net_handle: Option<U>,
@@ -65,8 +63,6 @@ where
         tap: T,
         mac_addr: Option<MacAddress>,
     ) -> Result<Net<T, U>> {
-        let kill_evt = Event::new().map_err(Error::CreateKillEvent)?;
-
         // Set offload flags to match the virtio features below.
         tap.set_offload(
             net_sys::TUN_F_CSUM | net_sys::TUN_F_UFO | net_sys::TUN_F_TSO4 | net_sys::TUN_F_TSO6,
@@ -101,8 +97,6 @@ where
         let (request_tube, response_tube) = Tube::pair().map_err(Error::CreateTube)?;
 
         Ok(Net {
-            workers_kill_evt: Some(kill_evt.try_clone().map_err(Error::CloneKillEvent)?),
-            kill_evt,
             worker_thread: None,
             tap: Some(tap),
             guest_mac: mac_addr.map(|mac| mac.octets()),
@@ -113,24 +107,6 @@ where
             request_tube,
             response_tube: Some(response_tube),
         })
-    }
-}
-
-impl<T, U> Drop for Net<T, U>
-where
-    T: TapT,
-    U: VhostNetT<T>,
-{
-    fn drop(&mut self) {
-        // Only kill the child if it claimed its event.
-        if self.workers_kill_evt.is_none() {
-            // Ignore the result because there is nothing we can do about it.
-            let _ = self.kill_evt.signal();
-        }
-
-        if let Some(worker_thread) = self.worker_thread.take() {
-            let _ = worker_thread.join();
-        }
     }
 }
 
@@ -155,11 +131,6 @@ where
                 keep_rds.push(vhost_int.as_raw_descriptor());
             }
         }
-
-        if let Some(workers_kill_evt) = &self.workers_kill_evt {
-            keep_rds.push(workers_kill_evt.as_raw_descriptor());
-        }
-        keep_rds.push(self.kill_evt.as_raw_descriptor());
 
         keep_rds.push(self.request_tube.as_raw_descriptor());
 
@@ -226,7 +197,6 @@ where
             .vhost_interrupt
             .take()
             .context("missing vhost_interrupt")?;
-        let kill_evt = self.workers_kill_evt.take().context("missing kill_evt")?;
         let acked_features = self.acked_features;
         let socket = if self.response_tube.is_some() {
             self.response_tube.take()
@@ -239,7 +209,6 @@ where
             vhost_interrupt,
             interrupt,
             acked_features,
-            kill_evt,
             socket,
             self.supports_iommu(),
         );
@@ -254,26 +223,22 @@ where
         worker
             .init(mem, QUEUE_SIZES, activate_vqs)
             .context("net worker init exited with error")?;
-        let worker_thread = thread::Builder::new()
-            .name("vhost_net".to_string())
-            .spawn(move || {
-                let cleanup_vqs = |handle: &U| -> Result<()> {
-                    for idx in 0..NUM_QUEUES {
-                        handle
-                            .set_backend(idx, None)
-                            .map_err(Error::VhostNetSetBackend)?;
-                    }
-                    Ok(())
-                };
-                let result = worker.run(cleanup_vqs);
-                if let Err(e) = result {
-                    error!("net worker thread exited with error: {}", e);
+        self.worker_thread = Some(WorkerThread::start("vhost_net", move |kill_evt| {
+            let cleanup_vqs = |handle: &U| -> Result<()> {
+                for idx in 0..NUM_QUEUES {
+                    handle
+                        .set_backend(idx, None)
+                        .map_err(Error::VhostNetSetBackend)?;
                 }
-                (worker, tap)
-            })
-            .context("failed to spawn vhost_net worker")?;
+                Ok(())
+            };
+            let result = worker.run(cleanup_vqs, kill_evt);
+            if let Err(e) = result {
+                error!("net worker thread exited with error: {}", e);
+            }
+            (worker, tap)
+        }));
 
-        self.worker_thread = Some(worker_thread);
         Ok(())
     }
 
@@ -338,27 +303,13 @@ where
     }
 
     fn reset(&mut self) -> bool {
-        // Only kill the child if it claimed its event.
-        if self.workers_kill_evt.is_none() && self.kill_evt.signal().is_err() {
-            error!("{}: failed to notify the kill event", self.debug_label());
-            return false;
-        }
-
         if let Some(worker_thread) = self.worker_thread.take() {
-            match worker_thread.join() {
-                Err(_) => {
-                    error!("{}: failed to get back resources", self.debug_label());
-                    return false;
-                }
-                Ok((worker, tap)) => {
-                    self.vhost_net_handle = Some(worker.vhost_handle);
-                    self.tap = Some(tap);
-                    self.vhost_interrupt = Some(worker.vhost_interrupt);
-                    self.workers_kill_evt = Some(worker.kill_evt);
-                    self.response_tube = worker.response_tube;
-                    return true;
-                }
-            }
+            let (worker, tap) = worker_thread.stop();
+            self.vhost_net_handle = Some(worker.vhost_handle);
+            self.tap = Some(tap);
+            self.vhost_interrupt = Some(worker.vhost_interrupt);
+            self.response_tube = worker.response_tube;
+            return true;
         }
         false
     }

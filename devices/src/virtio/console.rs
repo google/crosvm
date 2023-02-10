@@ -27,6 +27,7 @@ use base::Event;
 use base::EventToken;
 use base::RawDescriptor;
 use base::WaitContext;
+use base::WorkerThread;
 use data_model::Le16;
 use data_model::Le32;
 use hypervisor::ProtectionType;
@@ -361,9 +362,8 @@ enum ConsoleInput {
 /// Virtio console device.
 pub struct Console {
     base_features: u64,
-    kill_evt: Option<Event>,
     in_avail_evt: Option<Event>,
-    worker_thread: Option<thread::JoinHandle<Worker>>,
+    worker_thread: Option<WorkerThread<Worker>>,
     input: Option<ConsoleInput>,
     output: Option<Box<dyn io::Write + Send>>,
     keep_descriptors: Vec<Descriptor>,
@@ -379,24 +379,10 @@ impl Console {
         Console {
             base_features: base_features(protection_type),
             in_avail_evt: None,
-            kill_evt: None,
             worker_thread: None,
             input,
             output,
             keep_descriptors: keep_rds.iter().map(|rd| Descriptor(*rd)).collect(),
-        }
-    }
-}
-
-impl Drop for Console {
-    fn drop(&mut self) {
-        if let Some(kill_evt) = self.kill_evt.take() {
-            // Ignore the result because there is nothing we can do about it.
-            let _ = kill_evt.signal();
-        }
-
-        if let Some(worker_thread) = self.worker_thread.take() {
-            let _ = worker_thread.join();
         }
     }
 }
@@ -443,11 +429,6 @@ impl VirtioDevice for Console {
         let (receive_queue, receive_evt) = queues.remove(0);
         let (transmit_queue, transmit_evt) = queues.remove(0);
 
-        let (self_kill_evt, kill_evt) = Event::new()
-            .and_then(|e| Ok((e.try_clone()?, e)))
-            .context("failed creating kill Event pair")?;
-        self.kill_evt = Some(self_kill_evt);
-
         if self.in_avail_evt.is_none() {
             self.in_avail_evt = Some(Event::new().context("failed creating Event")?);
         }
@@ -476,51 +457,33 @@ impl VirtioDevice for Console {
         };
         let output = self.output.take().unwrap_or_else(|| Box::new(io::sink()));
 
-        let worker_thread = thread::Builder::new()
-            .name("v_console".to_string())
-            .spawn(move || {
-                let mut worker = Worker {
-                    mem,
-                    interrupt,
-                    input,
-                    output,
-                    in_avail_evt,
-                    kill_evt,
-                    // Device -> driver
-                    receive_queue,
-                    receive_evt,
-                    // Driver -> device
-                    transmit_queue,
-                    transmit_evt,
-                };
-                worker.run();
-                worker
-            })
-            .context("failed to spawn virtio_console worker")?;
-        self.worker_thread = Some(worker_thread);
+        self.worker_thread = Some(WorkerThread::start("v_console", move |kill_evt| {
+            let mut worker = Worker {
+                mem,
+                interrupt,
+                input,
+                output,
+                in_avail_evt,
+                kill_evt,
+                // Device -> driver
+                receive_queue,
+                receive_evt,
+                // Driver -> device
+                transmit_queue,
+                transmit_evt,
+            };
+            worker.run();
+            worker
+        }));
         Ok(())
     }
 
     fn reset(&mut self) -> bool {
-        if let Some(kill_evt) = self.kill_evt.take() {
-            if kill_evt.signal().is_err() {
-                error!("{}: failed to notify the kill event", self.debug_label());
-                return false;
-            }
-        }
-
         if let Some(worker_thread) = self.worker_thread.take() {
-            match worker_thread.join() {
-                Err(_) => {
-                    error!("{}: failed to get back resources", self.debug_label());
-                    return false;
-                }
-                Ok(worker) => {
-                    self.input = worker.input.map(ConsoleInput::FromThread);
-                    self.output = Some(worker.output);
-                    return true;
-                }
-            }
+            let worker = worker_thread.stop();
+            self.input = worker.input.map(ConsoleInput::FromThread);
+            self.output = Some(worker.output);
+            return true;
         }
         false
     }

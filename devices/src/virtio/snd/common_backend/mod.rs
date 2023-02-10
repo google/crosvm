@@ -6,7 +6,6 @@
 
 use std::io;
 use std::rc::Rc;
-use std::thread;
 
 use anyhow::anyhow;
 use anyhow::Context;
@@ -17,6 +16,7 @@ use base::warn;
 use base::Error as SysError;
 use base::Event;
 use base::RawDescriptor;
+use base::WorkerThread;
 use cros_async::block_on;
 use cros_async::sync::Condvar;
 use cros_async::sync::Mutex as AsyncMutex;
@@ -194,8 +194,7 @@ pub struct VirtioSnd {
     avail_features: u64,
     acked_features: u64,
     queue_sizes: Box<[u16]>,
-    worker_threads: Vec<thread::JoinHandle<()>>,
-    kill_evt: Option<Event>,
+    worker_thread: Option<WorkerThread<()>>,
     params: Parameters,
 }
 
@@ -211,8 +210,7 @@ impl VirtioSnd {
             avail_features,
             acked_features: 0,
             queue_sizes: vec![MAX_VRING_LEN; MAX_QUEUE_NUM].into_boxed_slice(),
-            worker_threads: Vec::new(),
-            kill_evt: None,
+            worker_thread: None,
             params,
         })
     }
@@ -382,37 +380,29 @@ impl VirtioDevice for VirtioSnd {
             ));
         }
 
-        let (self_kill_evt, kill_evt) = Event::new()
-            .and_then(|evt| Ok((evt.try_clone()?, evt)))
-            .context("failed to create kill Event pair")?;
-        self.kill_evt = Some(self_kill_evt);
-
         let snd_data = self.snd_data.clone();
         let stream_source_generators = create_stream_source_generators(&self.params, &snd_data);
-        let join_handle = thread::Builder::new()
-            .name("v_snd_common".to_string())
-            .spawn(move || {
-                set_audio_thread_priority();
-                if let Err(err_string) = run_worker(
-                    interrupt,
-                    queues,
-                    guest_mem,
-                    snd_data,
-                    kill_evt,
-                    stream_source_generators,
-                ) {
-                    error!("{}", err_string);
-                }
-            })
-            .context("failed to spawn virtio_snd worker")?;
-        self.worker_threads.push(join_handle);
+
+        self.worker_thread = Some(WorkerThread::start("v_snd_common", move |kill_evt| {
+            set_audio_thread_priority();
+            if let Err(err_string) = run_worker(
+                interrupt,
+                queues,
+                guest_mem,
+                snd_data,
+                kill_evt,
+                stream_source_generators,
+            ) {
+                error!("{}", err_string);
+            }
+        }));
+
         Ok(())
     }
 
     fn reset(&mut self) -> bool {
-        if let Some(kill_evt) = self.kill_evt.take() {
-            // Ignore the result because there is nothing we can do about it.
-            let _ = kill_evt.signal();
+        if let Some(worker_thread) = self.worker_thread.take() {
+            worker_thread.stop();
         }
 
         true
@@ -420,12 +410,6 @@ impl VirtioDevice for VirtioSnd {
 }
 
 impl Suspendable for VirtioSnd {}
-
-impl Drop for VirtioSnd {
-    fn drop(&mut self) {
-        self.reset();
-    }
-}
 
 #[derive(PartialEq)]
 enum LoopState {

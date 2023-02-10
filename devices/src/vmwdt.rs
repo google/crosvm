@@ -11,10 +11,8 @@ use std::fs;
 use std::io::Error as IoError;
 use std::process;
 use std::sync::Arc;
-use std::thread;
 use std::time::Duration;
 
-use anyhow::anyhow;
 use base::debug;
 use base::error;
 use base::gettid;
@@ -37,6 +35,7 @@ use crate::BusAccessInfo;
 use crate::BusDevice;
 use crate::DeviceId;
 use crate::Suspendable;
+use base::WorkerThread;
 
 // Registers offsets
 const VMWDT_REG_STATUS: u32 = 0x00;
@@ -92,9 +91,7 @@ pub struct VmwdtPerCpu {
 pub struct Vmwdt {
     vm_wdts: Arc<Mutex<Vec<VmwdtPerCpu>>>,
     // The worker thread that waits on the timer fd
-    worker_thread: Option<thread::JoinHandle<()>>,
-    // An event used to signal background thread cancellation
-    kill_evt: Event,
+    worker_thread: Option<WorkerThread<()>>,
     // TODO: @sebastianene add separate reset event for the watchdog
     // Reset source if the device is not responding
     reset_evt_wrtube: SendTube,
@@ -117,12 +114,9 @@ impl Vmwdt {
         }
         let vm_wdts = Arc::new(Mutex::new(vec));
 
-        // Create a new event that will be used to notify the bg thread for exit
-        let kill_evt = Event::new().unwrap();
         Ok(Vmwdt {
             vm_wdts,
             worker_thread: None,
-            kill_evt,
             reset_evt_wrtube,
             activated: false,
         })
@@ -193,17 +187,12 @@ impl Vmwdt {
 
     fn start(&mut self) {
         let vm_wdts = self.vm_wdts.clone();
-        let kill_evt = self.kill_evt.try_clone().unwrap();
         let reset_evt_wrtube = self.reset_evt_wrtube.try_clone().unwrap();
 
         self.activated = true;
-        self.worker_thread = Some(
-            thread::Builder::new()
-                .name("vmwdt worker".into())
-                .spawn(|| Vmwdt::vmwdt_worker_thread(vm_wdts, kill_evt, reset_evt_wrtube))
-                .map_err(VmwdtError::SpawnThread)
-                .unwrap(),
-        );
+        self.worker_thread = Some(WorkerThread::start("vmwdt worker", |kill_evt| {
+            Vmwdt::vmwdt_worker_thread(vm_wdts, kill_evt, reset_evt_wrtube)
+        }));
     }
 
     fn ensure_started(&mut self) {
@@ -235,14 +224,6 @@ impl Vmwdt {
     #[cfg(not(any(target_os = "linux", target_os = "android")))]
     pub fn get_guest_time_ms(ppid: u32, pid: u32) -> i64 {
         0
-    }
-}
-
-impl Drop for Vmwdt {
-    fn drop(&mut self) {
-        if let Err(e) = self.sleep() {
-            error!("{}", e);
-        };
     }
 }
 
@@ -335,19 +316,8 @@ impl BusDevice for Vmwdt {
 
 impl Suspendable for Vmwdt {
     fn sleep(&mut self) -> anyhow::Result<()> {
-        if let Err(e) = self.kill_evt.signal() {
-            return Err(anyhow!("Failed to stop the bg thread: {}", e));
-        }
-
-        if let Some(thread) = self.worker_thread.take() {
-            match thread.join() {
-                Ok(_) => {
-                    debug!("Stopped the bg thread\n");
-                }
-                Err(e) => {
-                    return Err(anyhow!("Failed to stop the bg thread: {:?}", e));
-                }
-            }
+        if let Some(worker) = self.worker_thread.take() {
+            worker.stop();
         }
         Ok(())
     }

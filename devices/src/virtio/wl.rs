@@ -53,7 +53,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::result;
-use std::thread;
 use std::time::Duration;
 
 use anyhow::anyhow;
@@ -141,6 +140,7 @@ use crate::virtio::device_constants::wl::VIRTIO_WL_F_USE_SHMEM;
 use crate::virtio::virtio_device::Error as VirtioError;
 use crate::virtio::VirtioDeviceSaved;
 use crate::Suspendable;
+use base::WorkerThread;
 
 const VIRTWL_SEND_MAX_ALLOCS: usize = 28;
 const VIRTIO_WL_CMD_VFD_NEW: u32 = 256;
@@ -1910,8 +1910,7 @@ impl Worker {
 }
 
 pub struct Wl {
-    kill_evt: Option<Event>,
-    worker_thread: Option<thread::JoinHandle<anyhow::Result<VirtioDeviceSaved>>>,
+    worker_thread: Option<WorkerThread<anyhow::Result<VirtioDeviceSaved>>>,
     wayland_paths: Map<String, PathBuf>,
     mapper: Option<Box<dyn SharedMemoryMapper>>,
     resource_bridge: Option<Tube>,
@@ -1931,7 +1930,6 @@ impl Wl {
         resource_bridge: Option<Tube>,
     ) -> Result<Wl> {
         Ok(Wl {
-            kill_evt: None,
             worker_thread: None,
             wayland_paths,
             mapper: None,
@@ -1944,14 +1942,6 @@ impl Wl {
             gralloc: None,
             address_offset: None,
         })
-    }
-}
-
-impl Drop for Wl {
-    fn drop(&mut self) {
-        if let Err(e) = self.stop() {
-            error!("{}", e);
-        }
     }
 }
 
@@ -2023,11 +2013,6 @@ impl VirtioDevice for Wl {
             ));
         }
 
-        let (self_kill_evt, kill_evt) = Event::new()
-            .and_then(|e| Ok((e.try_clone()?, e)))
-            .context("failed creating kill Event pair")?;
-        self.kill_evt = Some(self_kill_evt);
-
         let mapper = self.mapper.take().context("missing mapper")?;
 
         let wayland_paths = self.wayland_paths.clone();
@@ -2044,28 +2029,25 @@ impl VirtioDevice for Wl {
         } else {
             None
         };
-        let worker_thread = thread::Builder::new()
-            .name("v_wl".to_string())
-            .spawn(move || {
-                Worker::new(
-                    mem,
-                    interrupt,
-                    queues.remove(0),
-                    queues.remove(0),
-                    wayland_paths,
-                    mapper,
-                    use_transition_flags,
-                    use_send_vfd_v2,
-                    resource_bridge,
-                    #[cfg(feature = "minigbm")]
-                    gralloc,
-                    address_offset,
-                )
-                .run(kill_evt)
-            })
-            .context("failed to spawn virtio_wl worker")?;
 
-        self.worker_thread = Some(worker_thread);
+        self.worker_thread = Some(WorkerThread::start("v_wl", move |kill_evt| {
+            Worker::new(
+                mem,
+                interrupt,
+                queues.remove(0),
+                queues.remove(0),
+                wayland_paths,
+                mapper,
+                use_transition_flags,
+                use_send_vfd_v2,
+                resource_bridge,
+                #[cfg(feature = "minigbm")]
+                gralloc,
+                address_offset,
+            )
+            .run(kill_evt)
+        }));
+
         Ok(())
     }
 
@@ -2085,17 +2067,8 @@ impl VirtioDevice for Wl {
     }
 
     fn stop(&mut self) -> std::result::Result<Option<VirtioDeviceSaved>, VirtioError> {
-        if let Some(kill_evt) = self.kill_evt.take() {
-            if let Err(e) = kill_evt.signal() {
-                return Err(VirtioError::KillEventFailure(e));
-            }
-        }
-
         if let Some(worker_thread) = self.worker_thread.take() {
-            let state = (worker_thread
-                .join()
-                .map_err(|e| VirtioError::ThreadJoinFailure(format!("{:?}", e)))?)
-            .map_err(VirtioError::InThreadFailure)?;
+            let state = worker_thread.stop().map_err(VirtioError::InThreadFailure)?;
             return Ok(Some(state));
         }
         Ok(None)

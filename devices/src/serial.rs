@@ -12,9 +12,7 @@ use std::sync::mpsc::channel;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::TryRecvError;
 use std::sync::Arc;
-use std::thread;
 
-use anyhow::anyhow;
 use anyhow::Context;
 use base::error;
 use base::warn;
@@ -30,6 +28,7 @@ use crate::suspendable::DeviceState;
 use crate::suspendable::Suspendable;
 use crate::BusDevice;
 use crate::DeviceId;
+use base::WorkerThread;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -107,7 +106,7 @@ pub struct Serial {
     #[cfg(windows)]
     pub system_params: sys::windows::SystemSerialParams,
     device_state: DeviceState,
-    worker_and_kill_evt: Option<(thread::JoinHandle<Box<dyn SerialInput>>, Event)>,
+    worker: Option<WorkerThread<Box<dyn SerialInput>>>,
 }
 
 impl Serial {
@@ -137,7 +136,7 @@ impl Serial {
             #[cfg(windows)]
             system_params,
             device_state: DeviceState::Awake,
-            worker_and_kill_evt: None,
+            worker: None,
         }
     }
 
@@ -165,15 +164,6 @@ impl Serial {
     }
 
     fn spawn_input_thread(&mut self) {
-        // spawn event kill listener when spawning input_thread.
-        let (self_kill_evt, kill_evt) = match Event::new().and_then(|e| Ok((e.try_clone()?, e))) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("failed to create kill Event pair: {}", e);
-                return;
-            }
-        };
-
         let mut rx = match self.input.take() {
             Some(input) => input,
             None => return,
@@ -193,9 +183,9 @@ impl Serial {
             }
         };
 
-        let res = thread::Builder::new()
-            .name(format!("{} input thread", self.debug_label()))
-            .spawn(move || {
+        self.worker = Some(WorkerThread::start(
+            format!("{} input thread", self.debug_label()),
+            move |kill_evt| {
                 let mut rx_buf = [0u8; 1];
 
                 #[derive(EventToken)]
@@ -204,11 +194,10 @@ impl Serial {
                     SerialEvent,
                 }
 
-                let wait_ctx_res: Result<WaitContext<Token>> =
-                    WaitContext::build_with(&[
-                        (&kill_evt, Token::Kill),
-                        (rx.get_read_notifier(), Token::SerialEvent),
-                    ]);
+                let wait_ctx_res: Result<WaitContext<Token>> = WaitContext::build_with(&[
+                    (&kill_evt, Token::Kill),
+                    (rx.get_read_notifier(), Token::SerialEvent),
+                ]);
                 let wait_ctx = match wait_ctx_res {
                     Ok(wait_context) => wait_context,
                     Err(e) => {
@@ -228,7 +217,7 @@ impl Serial {
                         match event.token {
                             Token::Kill => {
                                 return rx;
-                            },
+                            }
                             Token::SerialEvent => {
                                 // Matches both is_readable and is_hungup.
                                 // In the case of is_hungup, there might still be data in the
@@ -244,7 +233,9 @@ impl Serial {
                                             // The receiver has disconnected.
                                             return rx;
                                         }
-                                        if (interrupt_enable.load(Ordering::SeqCst) & IER_RECV_BIT) != 0 {
+                                        if (interrupt_enable.load(Ordering::SeqCst) & IER_RECV_BIT)
+                                            != 0
+                                        {
                                             interrupt_evt.signal().unwrap();
                                         }
                                     }
@@ -263,14 +254,8 @@ impl Serial {
                         }
                     }
                 }
-            });
-        self.worker_and_kill_evt = match res {
-            Ok(join_handle) => Some((join_handle, self_kill_evt)),
-            Err(e) => {
-                error!("failed to spawn input thread: {}", e);
-                return;
-            }
-        };
+            },
+        ));
         self.in_channel = Some(recv_channel);
     }
 
@@ -560,27 +545,8 @@ impl Suspendable for Serial {
     fn sleep(&mut self) -> anyhow::Result<()> {
         if !matches!(self.device_state, DeviceState::Sleep) {
             self.device_state = DeviceState::Sleep;
-            match self.worker_and_kill_evt.take() {
-                None => {
-                    // Nothing to do.
-                }
-                Some((worker_thread, kill_evt)) => {
-                    if let Err(e) = kill_evt.signal() {
-                        // put stuff back so that the sleep attempt doesn't leave things
-                        // half undone.
-                        self.worker_and_kill_evt = Some((worker_thread, kill_evt));
-                        return Err(anyhow!("{}", e));
-                    }
-                    // if join fails, the thread panic'd and there isn't anything we can do to
-                    // recover the input.
-                    // if join succeeds, recover the input, since worker_thread returns the input.
-                    self.input = match worker_thread.join() {
-                        Ok(input) => Some(input),
-                        Err(_) => {
-                            return Err(anyhow!("Failed to stop thread and retrieve input file"))
-                        }
-                    }
-                }
+            if let Some(worker) = self.worker.take() {
+                self.input = Some(worker.stop());
             }
 
             self.drain_in_channel();

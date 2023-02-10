@@ -6,7 +6,6 @@ mod sys;
 mod worker;
 
 use std::sync::Mutex;
-use std::thread;
 
 use base::error;
 use base::info;
@@ -40,6 +39,7 @@ use crate::virtio::Queue;
 use crate::virtio::SharedMemoryMapper;
 use crate::virtio::SharedMemoryRegion;
 use crate::virtio::SignalableInterrupt;
+use base::WorkerThread;
 
 type BackendReqHandler = MasterReqHandler<Mutex<BackendReqHandlerImpl>>;
 
@@ -253,7 +253,7 @@ impl VhostUserHandler {
         interrupt: Interrupt,
         queues: Vec<(Queue, Event)>,
         label: &str,
-    ) -> Result<(thread::JoinHandle<()>, Event)> {
+    ) -> Result<WorkerThread<()>> {
         self.set_mem_table(&mem)?;
 
         let msix_config_opt = interrupt
@@ -273,8 +273,6 @@ impl VhostUserHandler {
         drop(msix_config);
 
         let label = format!("vhost_user_virtio_{}", label);
-        let kill_evt = Event::new().map_err(Error::CreateEvent)?;
-        let self_kill_evt = kill_evt.try_clone().map_err(Error::CreateEvent)?;
 
         let backend_req_handler = self.backend_req_handler.take();
         if let Some(handler) = &backend_req_handler {
@@ -286,23 +284,19 @@ impl VhostUserHandler {
                 .set_interrupt(interrupt.clone());
         }
 
-        thread::Builder::new()
-            .name(label.clone())
-            .spawn(move || {
-                let mut worker = worker::Worker {
-                    queues,
-                    mem,
-                    kill_evt,
-                    non_msix_evt,
-                    backend_req_handler,
-                };
+        Ok(WorkerThread::start(label.clone(), move |kill_evt| {
+            let mut worker = worker::Worker {
+                queues,
+                mem,
+                kill_evt,
+                non_msix_evt,
+                backend_req_handler,
+            };
 
-                if let Err(e) = worker.run(interrupt) {
-                    error!("failed to start {} worker: {}", label, e);
-                }
-            })
-            .map(|worker_result| (worker_result, self_kill_evt))
-            .map_err(Error::SpawnWorker)
+            if let Err(e) = worker.run(interrupt) {
+                error!("failed to start {} worker: {}", label, e);
+            }
+        }))
     }
 
     /// Deactivates all vrings.

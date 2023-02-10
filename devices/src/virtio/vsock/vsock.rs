@@ -67,6 +67,7 @@ use crate::virtio::VirtioDevice;
 use crate::virtio::Writer;
 use crate::virtio::TYPE_STREAM_SOCKET;
 use crate::Suspendable;
+use base::WorkerThread;
 
 #[sorted]
 #[derive(ThisError, Debug)]
@@ -141,8 +142,7 @@ pub struct Vsock {
     guest_cid: u64,
     host_guid: Option<String>,
     features: u64,
-    kill_evt: Option<Event>,
-    worker_thread: Option<thread::JoinHandle<()>>,
+    worker_thread: Option<WorkerThread<()>>,
 }
 
 impl Vsock {
@@ -151,7 +151,6 @@ impl Vsock {
             guest_cid,
             host_guid,
             features: base_features,
-            kill_evt: None,
             worker_thread: None,
         })
     }
@@ -163,26 +162,9 @@ impl Vsock {
     }
 }
 
-impl Drop for Vsock {
-    fn drop(&mut self) {
-        if let Some(kill_evt) = self.kill_evt.take() {
-            // Ignore the result because there is nothing we can do about it.
-            let _ = kill_evt.signal();
-        }
-
-        if let Some(worker_thread) = self.worker_thread.take() {
-            let _ = worker_thread.join();
-        }
-    }
-}
-
 impl VirtioDevice for Vsock {
     fn keep_rds(&self) -> Vec<RawHandle> {
-        let mut keep_rds = Vec::new();
-        if let Some(kill_evt) = &self.kill_evt {
-            keep_rds.push(kill_evt.as_raw_descriptor());
-        }
-        keep_rds
+        Vec::new()
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
@@ -223,15 +205,11 @@ impl VirtioDevice for Vsock {
         let (tx_queue, tx_queue_evt) = queues.remove(0);
         let (event_queue, event_queue_evt) = queues.remove(0);
 
-        let (self_kill_evt, worker_kill_evt) = Event::new()
-            .and_then(|e| Ok((e.try_clone()?, e)))
-            .context("failed to create kill Event pair")?;
-        self.kill_evt = Some(self_kill_evt);
         let host_guid = self.host_guid.clone();
         let guest_cid = self.guest_cid;
-        let worker_thread = thread::Builder::new()
-            .name("userspace_virtio_vsock".to_string())
-            .spawn(move || {
+        self.worker_thread = Some(WorkerThread::start(
+            "userspace_virtio_vsock",
+            move |kill_evt| {
                 let mut worker = Worker::new(mem, interrupt, host_guid, guest_cid);
                 let result = worker.run(
                     rx_queue,
@@ -240,15 +218,15 @@ impl VirtioDevice for Vsock {
                     rx_queue_evt,
                     tx_queue_evt,
                     event_queue_evt,
-                    worker_kill_evt,
+                    kill_evt,
                 );
 
                 if let Err(e) = result {
                     error!("userspace vsock worker thread exited with error: {:?}", e);
                 }
-            })
-            .context("failed to spawn virtio-vsock worker")?;
-        self.worker_thread = Some(worker_thread);
+            },
+        ));
+
         Ok(())
     }
 }
