@@ -26,17 +26,6 @@ def RunSteps(api):
                 "origin/main",
             ],
         )
-        api.step(
-            "Update Dry Runs",
-            [
-                "vpython3",
-                "./tools/chromeos/merge_bot",
-                "--verbose",
-                "update-dry-runs",
-                "--is-bot",
-                "origin/main",
-            ],
-        )
 
 
 def GenTests(api):

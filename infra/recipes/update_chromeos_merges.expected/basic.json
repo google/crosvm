@@ -10,17 +10,5 @@
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "name": "Update Merges"
-  },
-  {
-    "cmd": [
-      "vpython3",
-      "./tools/chromeos/merge_bot",
-      "--verbose",
-      "update-dry-runs",
-      "--is-bot",
-      "origin/main"
-    ],
-    "cwd": "[CACHE]/builder/crosvm",
-    "name": "Update Dry Runs"
   }
 ]
