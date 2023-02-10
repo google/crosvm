@@ -1394,14 +1394,13 @@ impl VfioDevice {
     }
 
     /// Reads a value from the specified `VfioRegionAddr.addr` + `offset`.
-    pub fn region_read_from_addr<T: DataInit>(&self, addr: &VfioRegionAddr, offset: u64) -> T {
+    pub fn region_read_from_addr<T: FromBytes>(&self, addr: &VfioRegionAddr, offset: u64) -> T {
         let mut val = mem::MaybeUninit::zeroed();
         // Safe because we have zero-initialized `size_of::<T>()` bytes.
         let buf =
             unsafe { slice::from_raw_parts_mut(val.as_mut_ptr() as *mut u8, mem::size_of::<T>()) };
         self.region_read(addr.index, buf, addr.addr + offset);
-        // Safe because any bit pattern is valid for a type that implements
-        // DataInit.
+        // Safe because any bit pattern is valid for a type that implements FromBytes.
         unsafe { val.assume_init() }
     }
 

@@ -12,7 +12,6 @@ use base::warn;
 use base::Event;
 use base::EventToken;
 use base::WaitContext;
-use data_model::DataInit;
 use data_model::Le32;
 use sync::Mutex;
 use vm_memory::GuestMemory;
@@ -267,7 +266,7 @@ impl Worker {
                         VIRTIO_SND_S_BAD_MSG
                     } else {
                         let mut request: virtio_snd_jack_remap = Default::default();
-                        request.as_mut_slice().copy_from_slice(&read_buf);
+                        request.as_bytes_mut().copy_from_slice(&read_buf);
                         let jack_id = request.hdr.jack_id.to_native();
                         let association = request.association.to_native();
                         let sequence = request.sequence.to_native();
@@ -414,7 +413,7 @@ impl Worker {
             return None;
         }
         let mut query: virtio_snd_query_info = Default::default();
-        query.as_mut_slice().copy_from_slice(read_buf);
+        query.as_bytes_mut().copy_from_slice(read_buf);
         let start_id = query.start_id.to_native();
         let count = query.count.to_native();
         Some((start_id, count))
@@ -436,7 +435,7 @@ impl Worker {
             );
         }
         let mut params: virtio_snd_pcm_set_params = Default::default();
-        params.as_mut_slice().copy_from_slice(read_buf);
+        params.as_bytes_mut().copy_from_slice(read_buf);
         let stream_id = params.hdr.stream_id.to_native();
         if stream_id < self.vios_client.num_streams() {
             self.streams[stream_id as usize].send(StreamMsg::SetParams(desc, params))
@@ -477,7 +476,7 @@ impl Worker {
             );
         }
         let mut pcm_hdr: virtio_snd_pcm_hdr = Default::default();
-        pcm_hdr.as_mut_slice().copy_from_slice(read_buf);
+        pcm_hdr.as_bytes_mut().copy_from_slice(read_buf);
         let stream_id = pcm_hdr.stream_id.to_native();
         if stream_id < self.vios_client.num_streams() {
             self.streams[stream_id as usize].send(msg)

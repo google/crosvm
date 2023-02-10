@@ -24,7 +24,6 @@ use cros_async::sync::Mutex as AsyncMutex;
 use cros_async::AsyncTube;
 use cros_async::EventAsync;
 use cros_async::Executor;
-use data_model::DataInit;
 use data_model::Le16;
 use data_model::Le32;
 use data_model::Le64;
@@ -101,15 +100,12 @@ const VIRTIO_BALLOON_F_RESPONSIVE_DEVICE: u32 = 6; // Device actively watching g
 const VIRTIO_BALLOON_F_EVENTS_VQ: u32 = 7; // Event vq is enabled
 
 // virtio_balloon_config is the balloon device configuration space defined by the virtio spec.
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes)]
 #[repr(C)]
 struct virtio_balloon_config {
     num_pages: Le32,
     actual: Le32,
 }
-
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtio_balloon_config {}
 
 // BalloonState is shared by the worker and device thread.
 #[derive(Default)]
@@ -143,8 +139,6 @@ struct BalloonStat {
     tag: Le16,
     val: Le64,
 }
-// Safe because it only has data.
-unsafe impl DataInit for BalloonStat {}
 
 impl BalloonStat {
     fn update_stats(&self, stats: &mut BalloonStats) {
@@ -175,9 +169,6 @@ const VIRTIO_BALLOON_EVENT_PUFF_FAILURE: u32 = 2;
 struct virtio_balloon_event_header {
     evt_type: Le32,
 }
-
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtio_balloon_event_header {}
 
 fn invoke_desc_handler<F>(ranges: Vec<(u64, u64)>, desc_handler: &mut F)
 where
@@ -802,12 +793,12 @@ impl VirtioDevice for Balloon {
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
-        copy_config(data, 0, self.get_config().as_slice(), offset);
+        copy_config(data, 0, self.get_config().as_bytes(), offset);
     }
 
     fn write_config(&mut self, offset: u64, data: &[u8]) {
         let mut config = self.get_config();
-        copy_config(config.as_mut_slice(), offset, data, 0);
+        copy_config(config.as_bytes_mut(), offset, data, 0);
 
         sys::send_adjusted_response_if_needed(&self.state, &self.command_tube, config);
     }

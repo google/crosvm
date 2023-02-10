@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use data_model::DataInit;
 use data_model::Le16;
 use data_model::Le32;
 use data_model::Le64;
@@ -12,7 +11,7 @@ use zerocopy::FromBytes;
 pub const TYPE_STREAM_SOCKET: u16 = 1;
 
 /// virtio_vsock_config is the vsock device configuration space defined by the virtio spec.
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes)]
 #[repr(C)]
 pub struct virtio_vsock_config {
     pub guest_cid: Le64,
@@ -42,11 +41,6 @@ pub struct virtio_vsock_event {
     // ID from the virtio_vsock_event_id struct in the virtio spec
     pub id: Le32,
 }
-
-// Safe because all only contain data and have no implicit padding.
-unsafe impl DataInit for virtio_vsock_config {}
-unsafe impl DataInit for virtio_vsock_hdr {}
-unsafe impl DataInit for virtio_vsock_event {}
 
 pub mod vsock_op {
     pub const VIRTIO_VSOCK_OP_INVALID: u16 = 0;

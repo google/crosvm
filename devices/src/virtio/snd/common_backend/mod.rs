@@ -23,7 +23,6 @@ use cros_async::sync::Mutex as AsyncMutex;
 use cros_async::AsyncError;
 use cros_async::EventAsync;
 use cros_async::Executor;
-use data_model::DataInit;
 use futures::channel::mpsc;
 use futures::channel::oneshot;
 use futures::channel::oneshot::Canceled;
@@ -35,6 +34,7 @@ use futures::Future;
 use futures::FutureExt;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
+use zerocopy::AsBytes;
 
 use crate::virtio::async_utils;
 use crate::virtio::copy_config;
@@ -365,7 +365,7 @@ impl VirtioDevice for VirtioSnd {
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
-        copy_config(data, 0, self.cfg.as_slice(), offset)
+        copy_config(data, 0, self.cfg.as_bytes(), offset)
     }
 
     fn activate(

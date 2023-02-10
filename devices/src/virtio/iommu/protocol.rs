@@ -17,7 +17,7 @@
 //! The main points of the manual modifications are as follows:
 //! * Removed `head` and `tail` from each command struct. Instead, we process
 //!   them as separate payloads.
-//! * Added implementations of DataInit for each struct.
+//! * Derive implementations of zerocopy::{AsBytes, FromBytes} as needed.
 //! * Use of `packed` because removing `head` and `tail` introduces paddings
 //! * Remove `IncompleteArrayField`
 //! * Convert padding of [u8; 64usize] to [u64; 8usize]. According to the rust
@@ -27,7 +27,6 @@
 #![cfg_attr(windows, allow(dead_code))]
 #![allow(non_camel_case_types)]
 
-use data_model::DataInit;
 use data_model::Le16;
 use data_model::Le32;
 use data_model::Le64;
@@ -72,42 +71,42 @@ pub const VIRTIO_IOMMU_FAULT_F_EXEC: u32 = 4;
 pub const VIRTIO_IOMMU_FAULT_F_ADDRESS: u32 = 256;
 
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_iommu_range_64 {
     pub start: Le64,
     pub end: Le64,
 }
-unsafe impl DataInit for virtio_iommu_range_64 {}
+
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_iommu_range_32 {
     pub start: Le32,
     pub end: Le32,
 }
-unsafe impl DataInit for virtio_iommu_range_32 {}
+
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_iommu_config {
     pub page_size_mask: Le64,
     pub input_range: virtio_iommu_range_64,
     pub domain_range: virtio_iommu_range_32,
     pub probe_size: Le32,
 }
-unsafe impl DataInit for virtio_iommu_config {}
+
 #[repr(C, packed)]
 #[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_iommu_req_head {
     pub type_: u8,
     pub reserved: [u8; 3usize],
 }
-unsafe impl DataInit for virtio_iommu_req_head {}
+
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_iommu_req_tail {
     pub status: u8,
     pub reserved: [u8; 3usize],
 }
-unsafe impl DataInit for virtio_iommu_req_tail {}
+
 #[repr(C, packed)]
 #[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_iommu_req_attach {
@@ -115,7 +114,7 @@ pub struct virtio_iommu_req_attach {
     pub endpoint: Le32,
     pub reserved: [u8; 8usize],
 }
-unsafe impl DataInit for virtio_iommu_req_attach {}
+
 #[repr(C, packed)]
 #[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_iommu_req_detach {
@@ -123,7 +122,7 @@ pub struct virtio_iommu_req_detach {
     pub endpoint: Le32,
     pub reserved: [u8; 8usize],
 }
-unsafe impl DataInit for virtio_iommu_req_detach {}
+
 #[repr(C, packed)]
 #[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_iommu_req_map {
@@ -133,7 +132,7 @@ pub struct virtio_iommu_req_map {
     pub phys_start: Le64,
     pub flags: Le32,
 }
-unsafe impl DataInit for virtio_iommu_req_map {}
+
 #[repr(C, packed)]
 #[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_iommu_req_unmap {
@@ -142,16 +141,16 @@ pub struct virtio_iommu_req_unmap {
     pub virt_end: Le64,
     pub reserved: [u8; 4usize],
 }
-unsafe impl DataInit for virtio_iommu_req_unmap {}
+
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_iommu_probe_property {
     pub type_: Le16,
     pub length: Le16,
 }
-unsafe impl DataInit for virtio_iommu_probe_property {}
+
 #[repr(C, packed)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_iommu_probe_resv_mem {
     pub head: virtio_iommu_probe_property,
     pub subtype: u8,
@@ -159,14 +158,14 @@ pub struct virtio_iommu_probe_resv_mem {
     pub start: Le64,
     pub end: Le64,
 }
-unsafe impl DataInit for virtio_iommu_probe_resv_mem {}
+
 #[repr(C, packed)]
 #[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct virtio_iommu_req_probe {
     pub endpoint: Le32,
     pub reserved: [u64; 8usize],
 }
-unsafe impl DataInit for virtio_iommu_req_probe {}
+
 #[repr(C, packed)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct virtio_iommu_fault {
@@ -177,4 +176,3 @@ pub struct virtio_iommu_fault {
     pub reserved2: [u8; 4usize],
     pub address: Le64,
 }
-unsafe impl DataInit for virtio_iommu_fault {}

@@ -13,11 +13,11 @@ use base::Event;
 use base::RawDescriptor;
 use base::Terminal;
 use cros_async::Executor;
-use data_model::DataInit;
 use hypervisor::ProtectionType;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
+use zerocopy::AsBytes;
 
 use crate::virtio;
 use crate::virtio::console::asynchronous::ConsoleDevice;
@@ -128,7 +128,7 @@ impl VhostUserBackend for ConsoleBackend {
             max_nr_ports: 1.into(),
             ..Default::default()
         };
-        copy_config(data, 0, config.as_slice(), offset);
+        copy_config(data, 0, config.as_bytes(), offset);
     }
 
     fn reset(&mut self) {

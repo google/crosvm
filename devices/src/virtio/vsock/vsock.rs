@@ -48,6 +48,8 @@ use futures::StreamExt;
 use remain::sorted;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 use crate::virtio::async_utils;
 use crate::virtio::copy_config;
@@ -184,7 +186,7 @@ impl VirtioDevice for Vsock {
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
-        copy_config(data, 0, self.get_config().as_slice(), offset);
+        copy_config(data, 0, self.get_config().as_bytes(), offset);
     }
 
     fn device_type(&self) -> DeviceType {
@@ -501,7 +503,7 @@ impl Worker {
                 const HEADER_SIZE: usize = std::mem::size_of::<virtio_vsock_hdr>();
                 let data_read = &buffer[..data_size];
                 let mut header_and_data = vec![0u8; HEADER_SIZE + data_size];
-                header_and_data[..HEADER_SIZE].copy_from_slice(response_header.as_slice());
+                header_and_data[..HEADER_SIZE].copy_from_slice(response_header.as_bytes());
                 header_and_data[HEADER_SIZE..].copy_from_slice(data_read);
                 self.write_bytes_to_queue(
                     &mut *recv_queue.lock().await,
@@ -936,7 +938,7 @@ impl Worker {
                 self.write_bytes_to_queue(
                     &mut *send_queue.lock().await,
                     rx_queue_evt,
-                    response_header.as_slice(),
+                    response_header.as_bytes(),
                 )
                 .await
                 .expect("vsock: failed to write to queue");
@@ -973,7 +975,7 @@ impl Worker {
                     self.write_bytes_to_queue(
                         &mut *send_queue.lock().await,
                         rx_queue_evt,
-                        response.as_mut_slice(),
+                        response.as_bytes_mut(),
                     )
                     .await
                     .expect("vsock: failed to write to queue");
@@ -1080,7 +1082,7 @@ impl Worker {
             self.write_bytes_to_queue(
                 &mut *send_queue.lock().await,
                 rx_queue_evt,
-                response.as_mut_slice(),
+                response.as_bytes_mut(),
             )
             .await
             .expect("vsock: failed to write to queue");
@@ -1119,7 +1121,7 @@ impl Worker {
             self.write_bytes_to_queue(
                 &mut *send_queue.lock().await,
                 rx_queue_evt,
-                response.as_mut_slice(),
+                response.as_bytes_mut(),
             )
             .await
             .expect("failed to write to queue");

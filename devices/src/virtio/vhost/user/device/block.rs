@@ -22,7 +22,6 @@ use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::ExecutorKind;
 use cros_async::TimerAsync;
-use data_model::DataInit;
 use futures::future::AbortHandle;
 use futures::future::Abortable;
 use sync::Mutex;
@@ -30,6 +29,7 @@ pub use sys::start_device as run_block_device;
 pub use sys::Options;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::*;
+use zerocopy::AsBytes;
 
 use crate::virtio;
 use crate::virtio::block::asynchronous::flush_disk;
@@ -191,7 +191,7 @@ impl VhostUserBackend for BlockBackend {
             let disk_size = self.disk_size.load(Ordering::Relaxed);
             BlockAsync::build_config_space(disk_size, self.seg_max, self.block_size, NUM_QUEUES)
         };
-        copy_config(data, 0, config_space.as_slice(), offset);
+        copy_config(data, 0, config_space.as_bytes(), offset);
     }
 
     fn reset(&mut self) {

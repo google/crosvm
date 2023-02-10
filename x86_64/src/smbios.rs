@@ -162,7 +162,7 @@ pub struct SmbiosOemStrings {
     pub count: u8,
 }
 
-fn write_and_incr<T: FromBytes>(
+fn write_and_incr<T: AsBytes + FromBytes>(
     mem: &GuestMemory,
     val: T,
     mut curptr: GuestAddress,

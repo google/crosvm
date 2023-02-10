@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use data_model::DataInit;
 use data_model::Le32;
 use data_model::Le64;
 use zerocopy::AsBytes;
@@ -15,17 +14,13 @@ use crate::virtio::snd::constants::VIRTIO_SND_CHMAP_MAX_SIZE;
 pub struct virtio_snd_hdr {
     pub code: Le32,
 }
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtio_snd_hdr {}
 
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 #[repr(C)]
 pub struct virtio_snd_jack_hdr {
     pub hdr: virtio_snd_hdr,
     pub jack_id: Le32,
 }
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtio_snd_jack_hdr {}
 
 #[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 #[repr(C)]
@@ -33,8 +28,6 @@ pub struct virtio_snd_event {
     pub hdr: virtio_snd_hdr,
     pub data: Le32,
 }
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtio_snd_event {}
 
 #[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 #[repr(C)]
@@ -44,16 +37,12 @@ pub struct virtio_snd_query_info {
     pub count: Le32,
     pub size: Le32,
 }
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtio_snd_query_info {}
 
 #[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 #[repr(C)]
 pub struct virtio_snd_info {
     pub hda_fn_nid: Le32,
 }
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtio_snd_info {}
 
 #[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 #[repr(C)]
@@ -68,8 +57,6 @@ pub struct virtio_snd_pcm_info {
 
     pub padding: [u8; 5],
 }
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtio_snd_pcm_info {}
 
 #[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 #[repr(C)]
@@ -77,8 +64,6 @@ pub struct virtio_snd_pcm_hdr {
     pub hdr: virtio_snd_hdr,
     pub stream_id: Le32,
 }
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtio_snd_pcm_hdr {}
 
 #[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 #[repr(C)]
@@ -92,16 +77,12 @@ pub struct virtio_snd_pcm_set_params {
     pub rate: u8,
     pub padding: u8,
 }
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtio_snd_pcm_set_params {}
 
 #[derive(Copy, Clone, AsBytes, FromBytes)]
 #[repr(C)]
 pub struct virtio_snd_pcm_xfer {
     pub stream_id: Le32,
 }
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtio_snd_pcm_xfer {}
 
 #[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 #[repr(C)]
@@ -109,8 +90,6 @@ pub struct virtio_snd_pcm_status {
     pub status: Le32,
     pub latency_bytes: Le32,
 }
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtio_snd_pcm_status {}
 
 #[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 #[repr(C)]
@@ -122,18 +101,14 @@ pub struct virtio_snd_jack_info {
     pub connected: u8,
     pub padding: [u8; 7],
 }
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtio_snd_jack_info {}
 
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 #[repr(C)]
 pub struct virtio_snd_jack_remap {
     pub hdr: virtio_snd_jack_hdr, /* .code = VIRTIO_SND_R_JACK_REMAP */
     pub association: Le32,
     pub sequence: Le32,
 }
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtio_snd_jack_remap {}
 
 #[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 #[repr(C)]
@@ -143,5 +118,3 @@ pub struct virtio_snd_chmap_info {
     pub channels: u8,
     pub positions: [u8; VIRTIO_SND_CHMAP_MAX_SIZE],
 }
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtio_snd_chmap_info {}

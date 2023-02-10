@@ -53,7 +53,6 @@ pub union UnresolvedResourceEntry {
     pub object: virtio_video_object_entry,
     pub guest_mem: virtio_video_mem_entry,
 }
-unsafe impl data_model::DataInit for UnresolvedResourceEntry {}
 
 impl fmt::Debug for UnresolvedResourceEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

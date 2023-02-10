@@ -43,7 +43,6 @@ use cros_async::AsyncError;
 use cros_async::AsyncTube;
 use cros_async::EventAsync;
 use cros_async::Executor;
-use data_model::DataInit;
 use data_model::Le64;
 use futures::select;
 use futures::FutureExt;
@@ -96,9 +95,6 @@ struct VirtioIommuViotHeader {
     reserved: [u8; 8],
 }
 
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for VirtioIommuViotHeader {}
-
 #[derive(Copy, Clone, Debug, Default, FromBytes, AsBytes)]
 #[repr(C, packed)]
 struct VirtioIommuViotVirtioPciNode {
@@ -109,9 +105,6 @@ struct VirtioIommuViotVirtioPciNode {
     bdf: u16,
     reserved2: [u8; 8],
 }
-
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for VirtioIommuViotVirtioPciNode {}
 
 #[derive(Copy, Clone, Debug, Default, FromBytes, AsBytes)]
 #[repr(C, packed)]
@@ -128,9 +121,6 @@ struct VirtioIommuViotPciRangeNode {
     reserved2: [u8; 2],
     reserved3: [u8; 4],
 }
-
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for VirtioIommuViotPciRangeNode {}
 
 type Result<T> = result::Result<T, IommuError>;
 
@@ -539,7 +529,7 @@ impl State {
                 ..Default::default()
             };
             writer
-                .write_all(properties.as_slice())
+                .write_all(properties.as_bytes())
                 .map_err(IommuError::GuestMemoryWrite)?;
         }
 
@@ -593,7 +583,7 @@ impl State {
         };
 
         writer
-            .write_all(tail.as_slice())
+            .write_all(tail.as_bytes())
             .map_err(IommuError::GuestMemoryWrite)?;
         Ok((
             (reply_len as usize) + size_of::<virtio_iommu_req_tail>(),
@@ -826,7 +816,7 @@ impl VirtioDevice for Iommu {
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
         let mut config: Vec<u8> = Vec::new();
-        config.extend_from_slice(self.config.as_slice());
+        config.extend_from_slice(self.config.as_bytes());
         copy_config(data, 0, config.as_slice(), offset);
     }
 

@@ -25,7 +25,6 @@ use base::error;
 use base::Error as BaseError;
 use base::Event;
 use base::RawDescriptor;
-use data_model::DataInit;
 use data_model::Le32;
 use remain::sorted;
 use streams::StreamMsg;
@@ -33,6 +32,7 @@ use sync::Mutex;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 use worker::*;
+use zerocopy::AsBytes;
 
 use crate::virtio::copy_config;
 use crate::virtio::device_constants::snd::virtio_snd_config;
@@ -102,7 +102,7 @@ impl VirtioDevice for Sound {
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
-        copy_config(data, 0, self.config.as_slice(), offset);
+        copy_config(data, 0, self.config.as_bytes(), offset);
     }
 
     fn write_config(&mut self, _offset: u64, _data: &[u8]) {

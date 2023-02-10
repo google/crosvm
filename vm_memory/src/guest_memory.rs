@@ -14,6 +14,7 @@ use std::marker::Send;
 use std::marker::Sync;
 use std::result;
 use std::sync::Arc;
+use zerocopy::AsBytes;
 
 use base::pagesize;
 use base::AsRawDescriptor;
@@ -28,7 +29,6 @@ use base::SharedMemory;
 use cros_async::mem;
 use cros_async::BackingMemory;
 use data_model::volatile_memory::*;
-use data_model::DataInit;
 use remain::sorted;
 use thiserror::Error;
 use zerocopy::FromBytes;
@@ -557,7 +557,7 @@ impl GuestMemory {
     /// #     Ok(num1 + num2)
     /// # }
     /// ```
-    pub fn read_obj_from_addr_volatile<T: DataInit>(&self, guest_addr: GuestAddress) -> Result<T> {
+    pub fn read_obj_from_addr_volatile<T: FromBytes>(&self, guest_addr: GuestAddress) -> Result<T> {
         let (mapping, offset, _) = self.find_region(guest_addr)?;
         mapping
             .read_obj_volatile(offset)
@@ -579,7 +579,7 @@ impl GuestMemory {
     ///         .map_err(|_| ())
     /// # }
     /// ```
-    pub fn write_obj_at_addr<T: FromBytes>(&self, val: T, guest_addr: GuestAddress) -> Result<()> {
+    pub fn write_obj_at_addr<T: AsBytes>(&self, val: T, guest_addr: GuestAddress) -> Result<()> {
         let (mapping, offset, _) = self.find_region(guest_addr)?;
         mapping
             .write_obj(val, offset)
@@ -604,7 +604,7 @@ impl GuestMemory {
     ///         .map_err(|_| ())
     /// # }
     /// ```
-    pub fn write_obj_at_addr_volatile<T: DataInit>(
+    pub fn write_obj_at_addr_volatile<T: AsBytes>(
         &self,
         val: T,
         guest_addr: GuestAddress,

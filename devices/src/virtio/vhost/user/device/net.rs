@@ -12,7 +12,6 @@ use base::Event;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::IntoAsync;
-use data_model::DataInit;
 use futures::future::AbortHandle;
 use net_util::TapT;
 use once_cell::sync::OnceCell;
@@ -20,6 +19,7 @@ pub use sys::start_device as run_net_device;
 pub use sys::Options;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
+use zerocopy::AsBytes;
 
 use crate::virtio;
 use crate::virtio::net::build_config;
@@ -152,7 +152,7 @@ where
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
         let config_space = build_config(Self::max_vq_pairs() as u16, self.mtu, None);
-        virtio::copy_config(data, 0, config_space.as_slice(), offset);
+        virtio::copy_config(data, 0, config_space.as_bytes(), offset);
     }
 
     fn reset(&mut self) {}

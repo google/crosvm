@@ -15,7 +15,6 @@ use base::warn;
 use base::Protection;
 use cros_async::AsyncError;
 use cros_async::EventAsync;
-use data_model::DataInit;
 use data_model::Le16;
 use data_model::Le32;
 use data_model::Le64;
@@ -25,6 +24,7 @@ use sync::Mutex;
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
+use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
 use super::SignalableInterrupt;
@@ -116,7 +116,7 @@ pub struct DescriptorChain {
     exported_region: Option<ExportedRegion>,
 }
 
-#[derive(Copy, Clone, Debug, FromBytes)]
+#[derive(Copy, Clone, Debug, FromBytes, AsBytes)]
 #[repr(C)]
 pub struct Desc {
     pub addr: Le64,
@@ -124,8 +124,6 @@ pub struct Desc {
     pub flags: Le16,
     pub next: Le16,
 }
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for Desc {}
 
 impl DescriptorChain {
     pub(crate) fn checked_new(
@@ -925,7 +923,7 @@ mod tests {
     const BUFFER_OFFSET: u64 = 0x8000;
     const BUFFER_LEN: u32 = 0x400;
 
-    #[derive(Copy, Clone, Debug, FromBytes)]
+    #[derive(Copy, Clone, Debug, FromBytes, AsBytes)]
     #[repr(C)]
     struct Avail {
         flags: Le16,
@@ -933,8 +931,7 @@ mod tests {
         ring: [Le16; QUEUE_SIZE],
         used_event: Le16,
     }
-    // Safe as this only runs in test
-    unsafe impl DataInit for Avail {}
+
     impl Default for Avail {
         fn default() -> Self {
             Avail {
@@ -946,14 +943,13 @@ mod tests {
         }
     }
 
-    #[derive(Copy, Clone, Debug, FromBytes)]
+    #[derive(Copy, Clone, Debug, FromBytes, AsBytes)]
     #[repr(C)]
     struct UsedElem {
         id: Le32,
         len: Le32,
     }
-    // Safe as this only runs in test
-    unsafe impl DataInit for UsedElem {}
+
     impl Default for UsedElem {
         fn default() -> Self {
             UsedElem {
@@ -963,16 +959,15 @@ mod tests {
         }
     }
 
-    #[derive(Copy, Clone, Debug, FromBytes)]
-    #[repr(C)]
+    #[derive(Copy, Clone, Debug, FromBytes, AsBytes)]
+    #[repr(C, packed)]
     struct Used {
         flags: Le16,
         idx: Le16,
         used_elem_ring: [UsedElem; QUEUE_SIZE],
         avail_event: Le16,
     }
-    // Safe as this only runs in test
-    unsafe impl DataInit for Used {}
+
     impl Default for Used {
         fn default() -> Self {
             Used {

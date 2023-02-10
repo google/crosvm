@@ -17,7 +17,6 @@ use cros_async::sync::Condvar;
 use cros_async::sync::Mutex as AsyncMutex;
 use cros_async::EventAsync;
 use cros_async::Executor;
-use data_model::DataInit;
 use data_model::Le32;
 use futures::channel::mpsc;
 use futures::channel::oneshot;
@@ -30,6 +29,7 @@ use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
 #[cfg(windows)]
 use win_audio::AudioSharedFormat;
+use zerocopy::AsBytes;
 
 use super::Error;
 use super::SndData;
@@ -751,7 +751,7 @@ pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
                         .map_err(Error::WriteResponse)?;
                     for i in start_id..(start_id + count) {
                         writer
-                            .write_all(snd_data.jack_info[i].as_slice())
+                            .write_all(snd_data.jack_info[i].as_bytes())
                             .map_err(Error::WriteResponse)?;
                     }
                     Ok(())
@@ -781,7 +781,7 @@ pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
                         .map_err(Error::WriteResponse)?;
                     for i in start_id..(start_id + count) {
                         writer
-                            .write_all(snd_data.pcm_info[i].as_slice())
+                            .write_all(snd_data.pcm_info[i].as_bytes())
                             .map_err(Error::WriteResponse)?;
                     }
                     Ok(())
@@ -811,7 +811,7 @@ pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
                         .map_err(Error::WriteResponse)?;
                     for i in start_id..(start_id + count) {
                         writer
-                            .write_all(snd_data.chmap_info[i].as_slice())
+                            .write_all(snd_data.chmap_info[i].as_bytes())
                             .map_err(Error::WriteResponse)?;
                     }
                     Ok(())

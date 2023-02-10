@@ -581,8 +581,6 @@ struct CtrlVfdNew {
     padding: Le32,
 }
 
-unsafe impl DataInit for CtrlVfdNew {}
-
 #[repr(C)]
 #[derive(Copy, Clone, Default, FromBytes)]
 struct CtrlVfdNewCtxNamed {
@@ -593,8 +591,6 @@ struct CtrlVfdNewCtxNamed {
     size: Le32,  // Ignored.
     name: [u8; 32],
 }
-
-unsafe impl DataInit for CtrlVfdNewCtxNamed {}
 
 #[repr(C)]
 #[derive(Copy, Clone, Default, AsBytes, FromBytes)]
@@ -617,8 +613,6 @@ struct CtrlVfdNewDmabuf {
 }
 
 #[cfg(feature = "minigbm")]
-unsafe impl DataInit for CtrlVfdNewDmabuf {}
-
 #[repr(C)]
 #[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 #[cfg(feature = "minigbm")]
@@ -628,9 +622,6 @@ struct CtrlVfdDmabufSync {
     flags: Le32,
 }
 
-#[cfg(feature = "minigbm")]
-unsafe impl DataInit for CtrlVfdDmabufSync {}
-
 #[repr(C)]
 #[derive(Copy, Clone, AsBytes, FromBytes)]
 struct CtrlVfdRecv {
@@ -639,16 +630,12 @@ struct CtrlVfdRecv {
     vfd_count: Le32,
 }
 
-unsafe impl DataInit for CtrlVfdRecv {}
-
 #[repr(C)]
 #[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 struct CtrlVfd {
     hdr: CtrlHeader,
     id: Le32,
 }
-
-unsafe impl DataInit for CtrlVfd {}
 
 #[repr(C)]
 #[derive(Copy, Clone, Default, AsBytes, FromBytes)]
@@ -659,16 +646,12 @@ struct CtrlVfdSend {
     // Remainder is an array of vfd_count IDs followed by data.
 }
 
-unsafe impl DataInit for CtrlVfdSend {}
-
 #[repr(C)]
 #[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 struct CtrlVfdSendVfd {
     kind: Le32,
     id: Le32,
 }
-
-unsafe impl DataInit for CtrlVfdSendVfd {}
 
 #[repr(C)]
 #[derive(Copy, Clone, FromBytes)]
@@ -677,16 +660,12 @@ union CtrlVfdSendVfdV2Payload {
     seqno: Le64,
 }
 
-unsafe impl DataInit for CtrlVfdSendVfdV2Payload {}
-
 #[repr(C)]
 #[derive(Copy, Clone, FromBytes)]
 struct CtrlVfdSendVfdV2 {
     kind: Le32,
     payload: CtrlVfdSendVfdV2Payload,
 }
-
-unsafe impl DataInit for CtrlVfdSendVfdV2 {}
 
 impl CtrlVfdSendVfdV2 {
     fn id(&self) -> Le32 {

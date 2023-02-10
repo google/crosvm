@@ -14,10 +14,10 @@ use std::sync::atomic::fence;
 use std::sync::atomic::Ordering;
 
 use data_model::volatile_memory::*;
-use data_model::DataInit;
 use libc::c_int;
 use serde::Deserialize;
 use serde::Serialize;
+use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
 use crate::descriptor::AsRawDescriptor;
@@ -150,7 +150,7 @@ impl MemoryMapping {
     ///     let res = mem_map.write_obj(55u64, 16);
     ///     assert!(res.is_ok());
     /// ```
-    pub fn write_obj<T: FromBytes>(&self, val: T, offset: usize) -> Result<()> {
+    pub fn write_obj<T: AsBytes>(&self, val: T, offset: usize) -> Result<()> {
         self.mapping.range_end(offset, size_of::<T>())?;
         // This is safe because we checked the bounds above.
         unsafe {
@@ -205,7 +205,7 @@ impl MemoryMapping {
     ///     let res = mem_map.write_obj_volatile(0xf00u32, 16);
     ///     assert!(res.is_ok());
     /// ```
-    pub fn write_obj_volatile<T: DataInit>(&self, val: T, offset: usize) -> Result<()> {
+    pub fn write_obj_volatile<T: AsBytes>(&self, val: T, offset: usize) -> Result<()> {
         self.mapping.range_end(offset, size_of::<T>())?;
         // Make sure writes to memory have been committed before performing I/O that could
         // potentially depend on them.
@@ -237,7 +237,7 @@ impl MemoryMapping {
     ///     let num: u32 = mem_map.read_obj(16).unwrap();
     ///     assert_eq!(0xf00, num);
     /// ```
-    pub fn read_obj_volatile<T: DataInit>(&self, offset: usize) -> Result<T> {
+    pub fn read_obj_volatile<T: FromBytes>(&self, offset: usize) -> Result<T> {
         self.mapping.range_end(offset, size_of::<T>())?;
         // This is safe because by definition Copy types can have their bits set arbitrarily and
         // still be valid.

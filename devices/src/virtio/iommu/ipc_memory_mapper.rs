@@ -17,13 +17,14 @@ use base::Event;
 use base::Protection;
 use base::RawDescriptor;
 use base::Tube;
-use data_model::DataInit;
 use serde::Deserialize;
 use serde::Serialize;
 use smallvec::SmallVec;
 use sync::Mutex;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 use crate::virtio::memory_mapper::MemRegion;
 
@@ -268,7 +269,7 @@ impl ExportedRegion {
 
     /// Reads an object from the given iova. Fails if the specified iova range does
     /// not lie within this region, or if part of the region isn't readable.
-    pub fn read_obj_from_addr<T: DataInit>(
+    pub fn read_obj_from_addr<T: FromBytes>(
         &self,
         mem: &GuestMemory,
         iova: u64,
@@ -278,18 +279,18 @@ impl ExportedRegion {
             mem.read_at_addr(&mut buf[offset..(offset + len)], gpa)
                 .context("failed to read from gpa")
         })?;
-        Ok(*T::from_slice(&buf).context("failed to construct obj")?)
+        T::read_from(buf.as_bytes()).context("failed to construct obj")
     }
 
     /// Writes an object at a given iova. Fails if the specified iova range does
     /// not lie within this region, or if part of the region isn't writable.
-    pub fn write_obj_at_addr<T: DataInit>(
+    pub fn write_obj_at_addr<T: AsBytes>(
         &self,
         mem: &GuestMemory,
         val: T,
         iova: u64,
     ) -> anyhow::Result<()> {
-        let buf = val.as_slice();
+        let buf = val.as_bytes();
         self.do_copy(iova, buf.len(), Protection::write(), |offset, gpa, len| {
             mem.write_at_addr(&buf[offset..(offset + len)], gpa)
                 .context("failed to write from gpa")

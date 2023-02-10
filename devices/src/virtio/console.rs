@@ -27,7 +27,6 @@ use base::Event;
 use base::EventToken;
 use base::RawDescriptor;
 use base::WaitContext;
-use data_model::DataInit;
 use data_model::Le16;
 use data_model::Le32;
 use hypervisor::ProtectionType;
@@ -35,6 +34,8 @@ use remain::sorted;
 use sync::Mutex;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 use crate::virtio::base_features;
 use crate::virtio::copy_config;
@@ -61,7 +62,7 @@ pub enum ConsoleError {
     RxDescriptorsExhausted,
 }
 
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes)]
 #[repr(C)]
 pub struct virtio_console_config {
     pub cols: Le16,
@@ -69,9 +70,6 @@ pub struct virtio_console_config {
     pub max_nr_ports: Le32,
     pub emerg_wr: Le32,
 }
-
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtio_console_config {}
 
 /// Checks for input from `buffer` and transfers it to the receive queue, if any.
 ///
@@ -429,7 +427,7 @@ impl VirtioDevice for Console {
             max_nr_ports: 1.into(),
             ..Default::default()
         };
-        copy_config(data, 0, config.as_slice(), offset);
+        copy_config(data, 0, config.as_bytes(), offset);
     }
 
     fn activate(
