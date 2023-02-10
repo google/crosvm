@@ -501,7 +501,8 @@ impl<T: EventSource> Worker<T> {
                 }
             };
 
-            let mut needs_interrupt = false;
+            let mut eventq_needs_interrupt = false;
+            let mut statusq_needs_interrupt = false;
             for wait_event in wait_events.iter().filter(|e| e.is_readable) {
                 match wait_event.token {
                     Token::EventQAvailable => {
@@ -509,7 +510,7 @@ impl<T: EventSource> Worker<T> {
                             error!("failed reading event queue Event: {}", e);
                             break 'wait;
                         }
-                        needs_interrupt |= self.send_events();
+                        eventq_needs_interrupt |= self.send_events();
                     }
                     Token::StatusQAvailable => {
                         if let Err(e) = status_queue_evt.wait() {
@@ -517,13 +518,13 @@ impl<T: EventSource> Worker<T> {
                             break 'wait;
                         }
                         match self.process_status_queue() {
-                            Ok(b) => needs_interrupt |= b,
+                            Ok(b) => statusq_needs_interrupt |= b,
                             Err(e) => error!("failed processing status events: {}", e),
                         }
                     }
                     Token::InputEventsAvailable => match self.event_source.receive_events() {
                         Err(e) => error!("error receiving events: {}", e),
-                        Ok(_cnt) => needs_interrupt |= self.send_events(),
+                        Ok(_cnt) => eventq_needs_interrupt |= self.send_events(),
                     },
                     Token::InterruptResample => {
                         self.interrupt.interrupt_resample();
@@ -534,8 +535,12 @@ impl<T: EventSource> Worker<T> {
                     }
                 }
             }
-            if needs_interrupt {
+            if eventq_needs_interrupt {
                 self.event_queue
+                    .trigger_interrupt(&self.guest_memory, &self.interrupt);
+            }
+            if statusq_needs_interrupt {
+                self.status_queue
                     .trigger_interrupt(&self.guest_memory, &self.interrupt);
             }
         }
