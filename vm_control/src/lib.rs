@@ -172,6 +172,7 @@ pub trait PmeNotify: Send {
 pub trait PmResource {
     fn pwrbtn_evt(&mut self) {}
     fn slpbtn_evt(&mut self) {}
+    fn rtc_evt(&mut self) {}
     fn gpe_evt(&mut self, _gpe: u32) {}
     fn pme_evt(&mut self, _requester_id: u16) {}
     fn register_gpe_notify_dev(&mut self, _gpe: u32, _notify_dev: Arc<Mutex<dyn GpeNotify>>) {}
@@ -1057,6 +1058,8 @@ pub enum VmRequest {
     Powerbtn,
     /// Trigger a sleep button event in the guest.
     Sleepbtn,
+    /// Trigger a RTC interrupt in the guest.
+    Rtc,
     /// Suspend the VM's VCPUs until resume.
     Suspend,
     /// Swap the memory content into files on a disk
@@ -1319,6 +1322,15 @@ impl VmRequest {
             VmRequest::Sleepbtn => {
                 if let Some(pm) = pm {
                     pm.lock().slpbtn_evt();
+                    VmResponse::Ok
+                } else {
+                    error!("{:#?} not supported", *self);
+                    VmResponse::Err(SysError::new(ENOTSUP))
+                }
+            }
+            VmRequest::Rtc => {
+                if let Some(pm) = pm {
+                    pm.lock().rtc_evt();
                     VmResponse::Ok
                 } else {
                     error!("{:#?} not supported", *self);

@@ -689,6 +689,13 @@ impl PmResource for ACPIPMResource {
         pm1.trigger_sci(&self.sci_evt);
     }
 
+    fn rtc_evt(&mut self) {
+        let mut pm1 = self.pm1.lock();
+
+        pm1.status |= ACPIPMFixedEvent::RTC.bitmask();
+        pm1.trigger_sci(&self.sci_evt);
+    }
+
     fn gpe_evt(&mut self, gpe: u32) {
         let mut gpe0 = self.gpe0.lock();
 
