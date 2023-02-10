@@ -19,6 +19,7 @@ pub mod syslog;
 mod timer;
 mod tube;
 mod wait_context;
+mod worker_thread;
 mod write_zeroes;
 
 pub mod sys;
@@ -63,6 +64,7 @@ pub use wait_context::EventToken;
 pub use wait_context::EventType;
 pub use wait_context::TriggeredEvent;
 pub use wait_context::WaitContext;
+pub use worker_thread::WorkerThread;
 pub use write_zeroes::PunchHole;
 pub use write_zeroes::WriteZeroesAt;
 
