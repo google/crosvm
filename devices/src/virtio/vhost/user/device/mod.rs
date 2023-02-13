@@ -7,6 +7,8 @@ mod block;
 pub mod gpu;
 mod handler;
 mod listener;
+#[cfg(feature = "audio")]
+mod snd;
 
 pub use block::run_block_device;
 pub use block::Options as BlockOptions;
@@ -20,12 +22,14 @@ pub use handler::VhostBackendReqConnectionState;
 pub use handler::VhostUserBackend;
 pub use listener::sys::VhostUserListener;
 pub use listener::VhostUserListenerTrait;
+#[cfg(feature = "audio")]
+pub use snd::run_snd_device;
+#[cfg(feature = "audio")]
+pub use snd::Options as SndOptions;
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
         mod console;
-        #[cfg(feature = "audio")]
-        mod snd;
         mod fs;
         mod net;
         mod vsock;
@@ -35,8 +39,6 @@ cfg_if::cfg_if! {
         pub use vsock::{run_vsock_device, Options as VsockOptions};
         pub use wl::{run_wl_device, parse_wayland_sock, Options as WlOptions};
         pub use console::{create_vu_console_device, run_console_device, Options as ConsoleOptions};
-        #[cfg(feature = "audio")]
-        pub use snd::{run_snd_device, Options as SndOptions};
         pub use fs::{run_fs_device, Options as FsOptions};
         pub use net::{run_net_device, Options as NetOptions};
     } else if #[cfg(windows)] {
