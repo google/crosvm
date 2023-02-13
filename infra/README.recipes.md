@@ -103,18 +103,18 @@ Runs a luci step inside the crosvm dev container.
 
 ### *recipes* / [build\_chromeos\_hatch](/infra/recipes/build_chromeos_hatch.py)
 
-[DEPS](/infra/recipes/build_chromeos_hatch.py#9): [crosvm](#recipe_modules-crosvm), [depot\_tools/depot\_tools][depot_tools/recipe_modules/depot_tools], [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/properties][recipe_engine/recipe_modules/properties], [recipe\_engine/step][recipe_engine/recipe_modules/step]
+[DEPS](/infra/recipes/build_chromeos_hatch.py#7): [crosvm](#recipe_modules-crosvm), [depot\_tools/depot\_tools][depot_tools/recipe_modules/depot_tools], [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/properties][recipe_engine/recipe_modules/properties], [recipe\_engine/step][recipe_engine/recipe_modules/step]
 
 PYTHON_VERSION_COMPATIBILITY: PY3
 
-&mdash; **def [RunSteps](/infra/recipes/build_chromeos_hatch.py#19)(api):**
+&mdash; **def [RunSteps](/infra/recipes/build_chromeos_hatch.py#17)(api):**
 ### *recipes* / [build\_docs](/infra/recipes/build_docs.py)
 
-[DEPS](/infra/recipes/build_docs.py#9): [crosvm](#recipe_modules-crosvm), [depot\_tools/gsutil][depot_tools/recipe_modules/gsutil], [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/file][recipe_engine/recipe_modules/file], [recipe\_engine/step][recipe_engine/recipe_modules/step]
+[DEPS](/infra/recipes/build_docs.py#7): [crosvm](#recipe_modules-crosvm), [depot\_tools/gsutil][depot_tools/recipe_modules/gsutil], [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/file][recipe_engine/recipe_modules/file], [recipe\_engine/step][recipe_engine/recipe_modules/step]
 
 PYTHON_VERSION_COMPATIBILITY: PY3
 
-&mdash; **def [RunSteps](/infra/recipes/build_docs.py#22)(api):**
+&mdash; **def [RunSteps](/infra/recipes/build_docs.py#20)(api):**
 
 Builds crosvm mdbook and api docs, then uploads them to GCS.
 
@@ -122,24 +122,24 @@ This recipe requires ambient luci authentication. To test locally run:
    $ luci-auth context ./infra/recipes.py run build_docs
 ### *recipes* / [build\_linux](/infra/recipes/build_linux.py)
 
-[DEPS](/infra/recipes/build_linux.py#13): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/json][recipe_engine/recipe_modules/json], [recipe\_engine/properties][recipe_engine/recipe_modules/properties], [recipe\_engine/raw\_io][recipe_engine/recipe_modules/raw_io], [recipe\_engine/step][recipe_engine/recipe_modules/step]
+[DEPS](/infra/recipes/build_linux.py#11): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/json][recipe_engine/recipe_modules/json], [recipe\_engine/properties][recipe_engine/recipe_modules/properties], [recipe\_engine/raw\_io][recipe_engine/recipe_modules/raw_io], [recipe\_engine/step][recipe_engine/recipe_modules/step]
 
 PYTHON_VERSION_COMPATIBILITY: PY3
 
-&mdash; **def [RunSteps](/infra/recipes/build_linux.py#80)(api, properties):**
+&mdash; **def [RunSteps](/infra/recipes/build_linux.py#78)(api, properties):**
 
-&mdash; **def [collect\_binary\_sizes](/infra/recipes/build_linux.py#42)(api, properties):**
+&mdash; **def [collect\_binary\_sizes](/infra/recipes/build_linux.py#40)(api, properties):**
 
-&mdash; **def [get\_test\_args](/infra/recipes/build_linux.py#26)(api, properties):**
+&mdash; **def [get\_test\_args](/infra/recipes/build_linux.py#24)(api, properties):**
 
 Returns architecture specific arguments for ./tools/run_tests
 ### *recipes* / [build\_windows](/infra/recipes/build_windows.py)
 
-[DEPS](/infra/recipes/build_windows.py#9): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/properties][recipe_engine/recipe_modules/properties], [recipe\_engine/step][recipe_engine/recipe_modules/step]
+[DEPS](/infra/recipes/build_windows.py#7): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/properties][recipe_engine/recipe_modules/properties], [recipe\_engine/step][recipe_engine/recipe_modules/step]
 
 PYTHON_VERSION_COMPATIBILITY: PY3
 
-&mdash; **def [RunSteps](/infra/recipes/build_windows.py#18)(api):**
+&mdash; **def [RunSteps](/infra/recipes/build_windows.py#16)(api):**
 ### *recipes* / [crosvm:examples/container\_build\_context](/infra/recipe_modules/crosvm/examples/container_build_context.py)
 
 [DEPS](/infra/recipe_modules/crosvm/examples/container_build_context.py#7): [crosvm](#recipe_modules-crosvm)
@@ -170,25 +170,25 @@ PYTHON_VERSION_COMPATIBILITY: PY3
 &mdash; **def [RunSteps](/infra/recipe_modules/crosvm/examples/source_context.py#13)(api):**
 ### *recipes* / [health\_check](/infra/recipes/health_check.py)
 
-[DEPS](/infra/recipes/health_check.py#9): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/properties][recipe_engine/recipe_modules/properties], [recipe\_engine/raw\_io][recipe_engine/recipe_modules/raw_io], [recipe\_engine/step][recipe_engine/recipe_modules/step]
+[DEPS](/infra/recipes/health_check.py#7): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/properties][recipe_engine/recipe_modules/properties], [recipe\_engine/raw\_io][recipe_engine/recipe_modules/raw_io], [recipe\_engine/step][recipe_engine/recipe_modules/step]
 
 PYTHON_VERSION_COMPATIBILITY: PY3
 
-&mdash; **def [RunSteps](/infra/recipes/health_check.py#19)(api):**
+&mdash; **def [RunSteps](/infra/recipes/health_check.py#17)(api):**
 ### *recipes* / [push\_to\_github](/infra/recipes/push_to_github.py)
 
-[DEPS](/infra/recipes/push_to_github.py#9): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/file][recipe_engine/recipe_modules/file], [recipe\_engine/path][recipe_engine/recipe_modules/path], [recipe\_engine/raw\_io][recipe_engine/recipe_modules/raw_io], [recipe\_engine/step][recipe_engine/recipe_modules/step]
+[DEPS](/infra/recipes/push_to_github.py#7): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/file][recipe_engine/recipe_modules/file], [recipe\_engine/path][recipe_engine/recipe_modules/path], [recipe\_engine/raw\_io][recipe_engine/recipe_modules/raw_io], [recipe\_engine/step][recipe_engine/recipe_modules/step]
 
 PYTHON_VERSION_COMPATIBILITY: PY3
 
-&mdash; **def [RunSteps](/infra/recipes/push_to_github.py#20)(api):**
+&mdash; **def [RunSteps](/infra/recipes/push_to_github.py#18)(api):**
 ### *recipes* / [update\_chromeos\_merges](/infra/recipes/update_chromeos_merges.py)
 
-[DEPS](/infra/recipes/update_chromeos_merges.py#9): [crosvm](#recipe_modules-crosvm), [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/step][recipe_engine/recipe_modules/step]
+[DEPS](/infra/recipes/update_chromeos_merges.py#7): [crosvm](#recipe_modules-crosvm), [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/step][recipe_engine/recipe_modules/step]
 
 PYTHON_VERSION_COMPATIBILITY: PY3
 
-&mdash; **def [RunSteps](/infra/recipes/update_chromeos_merges.py#16)(api):**
+&mdash; **def [RunSteps](/infra/recipes/update_chromeos_merges.py#14)(api):**
 
 [depot_tools/recipe_modules/bot_update]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/10369890bb0452c44ab2bfc1240aeb61db3b345c/recipes/README.recipes.md#recipe_modules-bot_update
 [depot_tools/recipe_modules/depot_tools]: https://chromium.googlesource.com/chromium/tools/depot_tools.git/+/10369890bb0452c44ab2bfc1240aeb61db3b345c/recipes/README.recipes.md#recipe_modules-depot_tools

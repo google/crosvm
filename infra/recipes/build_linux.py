@@ -8,8 +8,6 @@ from recipe_engine.recipe_api import Property
 from recipe_engine.post_process import DropExpectation, StatusFailure, Filter
 from PB.recipes.crosvm.build_linux import BuildLinuxProperties
 
-PYTHON_VERSION_COMPATIBILITY = "PY3"
-
 DEPS = [
     "crosvm",
     "recipe_engine/buildbucket",

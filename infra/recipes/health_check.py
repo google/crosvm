@@ -4,8 +4,6 @@
 
 from recipe_engine.post_process import Filter
 
-PYTHON_VERSION_COMPATIBILITY = "PY3"
-
 DEPS = [
     "crosvm",
     "recipe_engine/raw_io",

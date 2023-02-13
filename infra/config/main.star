@@ -81,7 +81,6 @@ luci.realm(name = "pools/try")
 # Global recipe defaults
 luci.recipe.defaults.cipd_version.set("refs/heads/main")
 luci.recipe.defaults.cipd_package.set("infra/recipe_bundles/chromium.googlesource.com/crosvm/crosvm")
-luci.recipe.defaults.use_python3.set(True)
 
 # The try bucket will include builders which work on pre-commit or pre-review
 # code.
