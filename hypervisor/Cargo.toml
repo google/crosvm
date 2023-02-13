@@ -8,6 +8,7 @@ edition = "2021"
 haxm = []
 whpx = []
 gdb = ["gdbstub", "gdbstub_arch"]
+geniezone = []
 
 [dependencies]
 bit_field = { path = "../bit_field" }

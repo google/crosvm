@@ -1130,6 +1130,12 @@ pub struct RunCommand {
     /// (EXPERIMENTAL) gdb on the given port
     pub gdb: Option<u32>,
 
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(all(unix, feature = "geniezone"))]
+    #[argh(option, long = "geniezone-device", arg_name = "PATH")]
+    /// path to the GZVM device. (default /dev/gzvm)
+    pub geniezone_device_path: Option<PathBuf>,
+
     #[cfg(feature = "gpu")]
     #[argh(option)]
     // Although `gpu` is a vector, we are currently limited to a single GPU device due to the
@@ -2251,6 +2257,12 @@ impl TryFrom<RunCommand> for super::config::Config {
         #[cfg(unix)]
         if let Some(p) = cmd.kvm_device {
             cfg.kvm_device_path = p;
+        }
+
+        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+        #[cfg(all(unix, feature = "geniezone"))]
+        if let Some(p) = cmd.geniezone_device_path {
+            cfg.geniezone_device_path = p;
         }
 
         #[cfg(unix)]
