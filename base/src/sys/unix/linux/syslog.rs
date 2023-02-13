@@ -5,7 +5,6 @@
 //! Implementation of the Syslog trait for Linux.
 
 use std::fs::File;
-use std::io::ErrorKind;
 use std::io::Write;
 use std::mem;
 use std::os::unix::io::AsRawFd;
@@ -34,8 +33,6 @@ use crate::syslog::Priority;
 use crate::syslog::Syslog;
 use crate::RawDescriptor;
 
-const SYSLOG_PATH: &str = "/dev/log";
-
 /// Global syslog socket derived from the fd opened by `openlog()`.
 /// This is initialized in `PlatformSyslog::new()`.
 static SYSLOG_SOCKET: OnceCell<UnixDatagram> = OnceCell::new();
@@ -46,27 +43,11 @@ struct SyslogSocket {}
 
 impl Write for SyslogSocket {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        const SEND_RETRY: usize = 2;
-
         if let Some(socket) = SYSLOG_SOCKET.get() {
-            for _ in 0..SEND_RETRY {
-                match socket.send(buf) {
-                    Ok(l) => return Ok(l),
-                    Err(e) => match e.kind() {
-                        ErrorKind::ConnectionRefused
-                        | ErrorKind::ConnectionReset
-                        | ErrorKind::ConnectionAborted
-                        | ErrorKind::NotConnected => {
-                            let res = socket.connect(SYSLOG_PATH);
-                            if res.is_err() {
-                                break;
-                            }
-                        }
-                        _ => {}
-                    },
-                }
-            }
+            // If `send()` fails, there is nothing we can do about it, so just ignore the result.
+            let _ = socket.send(buf);
         }
+
         // Abandon all hope but this is fine
         Ok(buf.len())
     }
