@@ -11,6 +11,7 @@ gdb = ["gdbstub", "gdbstub_arch"]
 geniezone = []
 
 [dependencies]
+anyhow = "*"
 bit_field = { path = "../bit_field" }
 bitflags = "1"
 data_model = { path = "../common/data_model" }
@@ -23,6 +24,7 @@ libc = "*"
 memoffset = "0.6"
 once_cell = "1.7"
 serde = { version = "1", features = [ "derive" ] }
+serde_json = { version = "1" }
 sync = { path = "../common/sync" }
 base = { path = "../base" }
 vm_memory = { path = "../vm_memory" }

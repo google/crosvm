@@ -11,7 +11,7 @@ use serde::Serialize;
 use serde::Serializer;
 use sync::Mutex;
 
-/// Serialize data T inside an Arc<Mutex<T>>
+/// Serialize data T inside an Arc<Mutex<T>>. T must be serializable.
 ///
 /// NOTE: This does not validate already serialized Mutexes and data. If multiple structs contain a
 /// clone of the Arc, and they are all being serialized, this will result in the same data being
@@ -28,7 +28,7 @@ where
     serde::Serialize::serialize(&*lock, serializer)
 }
 
-/// Serialize data T inside arrays as a seq instead of a tuple.
+/// Serialize data T inside arrays as a seq instead of a tuple. T must be serializable.
 /// When deserializing, an array size validation is required to transform the slice to an array.
 ///
 /// This approach is used to go around serde's limitation of serializable array sizes.

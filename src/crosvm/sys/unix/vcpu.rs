@@ -19,6 +19,8 @@ use std::time::Duration;
 use aarch64::AArch64 as Arch;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use aarch64::MsrHandlers;
+
+use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
 use arch::CpuSet;
@@ -383,6 +385,20 @@ where
                             if let Err(e) = response_chan.send(run_mode) {
                                 error!("Failed to send GetState: {}", e);
                             };
+                        }
+                        VcpuControl::Snapshot(_response_chan) => {
+                            let snap = match vcpu.snapshot() {
+                                Err(e) => {
+                                    Err(anyhow!("Failed to snapshot Vcpu #{}: {}", vcpu.id(), e))
+                                }
+                                Ok(snap) => Ok(VcpuSnapshot {
+                                    vcpu: snap,
+                                    vcpu_id: cpu_id,
+                                }),
+                            };
+                            if let Err(e) = _response_chan.send(snap) {
+                                error!("Failed to send snapshot complete: {}", e);
+                            }
                         }
                     }
                 }

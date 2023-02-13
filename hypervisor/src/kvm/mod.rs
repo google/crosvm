@@ -284,6 +284,7 @@ impl KvmVm {
             .map_err(|_| Error::new(ENOSPC))?;
 
         Ok(KvmVcpu {
+            kvm: self.kvm.try_clone()?,
             vm: self.vm.try_clone()?,
             vcpu,
             id,
@@ -756,6 +757,7 @@ impl AsRawDescriptor for KvmVm {
 
 /// A wrapper around using a KVM Vcpu.
 pub struct KvmVcpu {
+    kvm: Kvm,
     vm: SafeDescriptor,
     vcpu: SafeDescriptor,
     id: usize,
@@ -781,6 +783,7 @@ impl Vcpu for KvmVcpu {
         let vcpu_run_handle_fingerprint = self.vcpu_run_handle_fingerprint.clone();
 
         Ok(KvmVcpu {
+            kvm: self.kvm.try_clone()?,
             vm,
             vcpu,
             id: self.id,

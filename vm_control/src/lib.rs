@@ -29,6 +29,7 @@ use std::convert::TryInto;
 use std::fmt;
 use std::fmt::Display;
 use std::fs::File;
+use std::fs::OpenOptions;
 use std::path::PathBuf;
 use std::result::Result as StdResult;
 use std::str::FromStr;
@@ -63,6 +64,7 @@ use hypervisor::IoEventAddress;
 use hypervisor::IrqRoute;
 use hypervisor::IrqSource;
 pub use hypervisor::MemSlot;
+use hypervisor::VcpuInnerSnapshot;
 use hypervisor::Vm;
 use libc::EINVAL;
 use libc::EIO;
@@ -115,6 +117,13 @@ pub enum VcpuControl {
     MakeRT,
     // Request the current state of the vCPU. The result is sent back over the included channel.
     GetStates(mpsc::Sender<VmRunMode>),
+    Snapshot(mpsc::Sender<anyhow::Result<VcpuSnapshot>>),
+}
+
+#[derive(Serialize)]
+pub struct VcpuSnapshot {
+    pub vcpu: VcpuInnerSnapshot,
+    pub vcpu_id: usize,
 }
 
 /// Mode of execution for the VM.
@@ -1589,7 +1598,29 @@ impl VmRequest {
                         }
                     }
                     info!("flushed IRQs in {} iterations", flush_attempts);
-
+                    let vcpu_path = snapshot_path.with_extension("vcpu");
+                    let cpu_file = OpenOptions::new()
+                        .create(true)
+                        .write(true)
+                        .truncate(true)
+                        .open(&vcpu_path)
+                        .with_context(|| format!("failed to open path {}", vcpu_path.display()))?;
+                    let (send_chan, recv_chan) = mpsc::channel();
+                    kick_vcpus(VcpuControl::Snapshot(send_chan));
+                    // Validate all Vcpus snapshot successfully
+                    let mut cpu_vec = Vec::with_capacity(vcpu_size);
+                    for _ in 0..vcpu_size {
+                        match recv_chan
+                            .recv()
+                            .context("Failed to snapshot Vcpu, aborting snapshot")?
+                        {
+                            Ok(snap) => {
+                                cpu_vec.push(snap);
+                            }
+                            Err(e) => bail!("Failed to snapshot Vcpu, aborting snapshot: {}", e),
+                        }
+                    }
+                    serde_json::to_writer(cpu_file, &cpu_vec).expect("Failed to write Vcpu state");
                     device_control_tube
                         .send(&DeviceControlCommand::SnapshotDevices {
                             snapshot_path: snapshot_path.clone(),

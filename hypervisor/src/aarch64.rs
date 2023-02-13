@@ -5,6 +5,7 @@
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 
+use anyhow::anyhow;
 use base::Error;
 use base::Result;
 use downcast_rs::impl_downcast;
@@ -13,6 +14,7 @@ use gdbstub::arch::Arch;
 #[cfg(feature = "gdb")]
 use gdbstub_arch::aarch64::AArch64 as GdbArch;
 use libc::EINVAL;
+use serde::Serialize;
 use vm_memory::GuestAddress;
 
 use crate::Hypervisor;
@@ -123,7 +125,15 @@ pub trait VcpuAArch64: Vcpu {
     #[cfg(feature = "gdb")]
     /// Gets the value of a single register on this VCPU.
     fn get_gdb_register(&self, reg: <GdbArch as Arch>::RegId, data: &mut [u8]) -> Result<usize>;
+
+    /// Snapshot VCPU
+    fn snapshot(&self) -> anyhow::Result<VcpuInnerSnapshot> {
+        Err(anyhow!("not yet implemented"))
+    }
 }
+
+#[derive(Serialize)]
+pub struct VcpuInnerSnapshot {}
 
 impl_downcast!(VcpuAArch64);
 

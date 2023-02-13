@@ -1184,6 +1184,11 @@ impl VcpuX86_64 for WhpxVcpu {
         Ok(())
     }
 
+    // TODO: b/270734340 implement
+    fn get_all_msrs(&self) -> Result<Vec<Register>> {
+        Err(Error::new(EOPNOTSUPP))
+    }
+
     /// Sets the model-specific registers.
     fn set_msrs(&self, msrs: &[Register]) -> Result<()> {
         let msr_names = get_msr_names(msrs);

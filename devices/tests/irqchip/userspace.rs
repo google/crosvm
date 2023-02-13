@@ -768,6 +768,9 @@ impl VcpuX86_64 for FakeVcpu {
     fn get_msrs(&self, _msrs: &mut Vec<Register>) -> Result<()> {
         unimplemented!()
     }
+    fn get_all_msrs(&self) -> Result<Vec<Register>> {
+        unimplemented!()
+    }
     fn set_msrs(&self, _msrs: &[Register]) -> Result<()> {
         unimplemented!()
     }

@@ -834,6 +834,17 @@ impl VcpuX86_64 for KvmVcpu {
         Ok(())
     }
 
+    fn get_all_msrs(&self) -> Result<Vec<Register>> {
+        let mut msrs = self
+            .kvm
+            .get_msr_index_list()?
+            .into_iter()
+            .map(|i| Register { id: i, value: 0 })
+            .collect();
+        self.get_msrs(&mut msrs)?;
+        Ok(msrs)
+    }
+
     fn set_msrs(&self, vec: &[Register]) -> Result<()> {
         let msrs = to_kvm_msrs(vec);
         let ret = unsafe {

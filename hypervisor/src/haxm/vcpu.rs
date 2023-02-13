@@ -538,6 +538,10 @@ impl VcpuX86_64 for HaxmVcpu {
         Ok(())
     }
 
+    fn get_all_msrs(&self) -> Result<Vec<Register>> {
+        Err(Error::new(EOPNOTSUPP))
+    }
+
     /// Sets the model-specific registers.
     fn set_msrs(&self, msrs: &[Register]) -> Result<()> {
         // HAX_VCPU_IOCTL_GET_MSRS only allows you to set HAX_MAX_MSR_ARRAY-1 msrs at a time
