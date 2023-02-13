@@ -97,22 +97,22 @@ commands=(
 
 if [ "$ALL" == true ]; then
     commands+=(
-        "./tools/run_tests --no-root"
+        "./tools/run_tests --dut=host"
         "./tools/run_tests --platform=mingw64"
         "./tools/clippy --platform=mingw64"
-        "$(aarch64_wrapper) ./tools/run_tests --platform=aarch64"
+        "$(aarch64_wrapper) ./tools/run_tests --platform=aarch64 --dut=vm"
         "$(aarch64_wrapper) ./tools/run_tests --platform=armhf"
         "cargo build --verbose --no-default-features"
     )
 elif [ "$QUICK" != true ]; then
     commands+=(
-        "./tools/run_tests --no-root"
-        "$(aarch64_wrapper) ./tools/run_tests --platform=aarch64 --unit-tests"
-        "./tools/run_tests --platform=mingw64 --unit-tests"
+        "./tools/run_tests --dut=host"
+        "$(aarch64_wrapper) ./tools/run_tests --platform=aarch64"
+        "./tools/run_tests --platform=mingw64"
     )
 else
     commands+=(
-        "./tools/run_tests --unit-tests"
+        "./tools/run_tests"
     )
 fi
 

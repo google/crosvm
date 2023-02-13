@@ -1,9 +1,367 @@
 #!/usr/bin/env python3
-# Copyright 2022 The ChromiumOS Authors
+# Copyright 2023 The ChromiumOS Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-from impl.test_runner import main
+import os
+from pathlib import Path
+import sys
+from typing import Any, Iterable, List, Optional, Union
+from impl.common import (
+    CROSVM_ROOT,
+    TOOLS_ROOT,
+    Command,
+    Remote,
+    quoted,
+    Styles,
+    argh,
+    console,
+    chdir,
+    cmd,
+    record_time,
+    run_main,
+    sudo_is_passwordless,
+    verbose,
+)
+from impl.test_target import Triple
+from impl.test_config import (
+    ROOT_TESTS,
+    DO_NOT_RUN,
+    DO_NOT_RUN_AARCH64,
+    DO_NOT_RUN_WIN64,
+)
+from impl import testvm
+
+rsync = cmd("rsync")
+cargo = cmd("cargo")
+
+# Name of the directory used to package all test files.
+PACKAGE_NAME = "integration_tests_package"
+
+
+def join_filters(items: Iterable[str], op: str):
+    return op.join(f"({i})" for i in items)
+
+
+class TestFilter(object):
+    """
+    Utility structure to join user-provided filter expressions with additional filters
+
+    See https://nexte.st/book/filter-expressions.html
+    """
+
+    def __init__(self, expression: str):
+        self.expression = expression
+
+    def exclude(self, *exclude_exprs: str):
+        return self.subset(f"not ({join_filters(exclude_exprs, '|')})")
+
+    def subset(self, *subset_exprs: str):
+        subset_expr = join_filters(subset_exprs, "|")
+        if not self.expression:
+            return TestFilter(subset_expr)
+        return TestFilter(f"({self.expression}) & ({subset_expr})")
+
+    def to_args(self):
+        if not self.expression:
+            return
+        yield "--filter-expr"
+        yield quoted(self.expression)
+
+
+def configure_cargo(cmd: Command, triple: Triple, features: str):
+    "Configures the provided cmd with cargo arguments and environment needed to build for triple."
+    return (
+        cmd.with_args(
+            "--workspace",
+            f"--features={features}",
+        )
+        .with_color_flag()
+        .with_envs(triple.get_cargo_env())
+    )
+
+
+class HostTarget(object):
+    def __init__(self, package_dir: Path):
+        self.run_cmd = cmd(package_dir / "run.sh").with_color_flag()
+
+    def run_tests(self, extra_args: List[Any]):
+        return self.run_cmd.with_args(*extra_args).fg(style=Styles.live_truncated(), check=False)
+
+
+class SshTarget(object):
+    def __init__(self, package_archive: Path, remote: Remote):
+        console.print("Transfering integration tests package...")
+        with record_time("Transfering"):
+            remote.scp([package_archive], "")
+        with record_time("Unpacking"):
+            remote.ssh(cmd("tar xaf", package_archive.name)).fg(style=Styles.live_truncated())
+        self.remote_run_cmd = cmd(f"{PACKAGE_NAME}/run.sh").with_color_flag()
+        self.remote = remote
+
+    def run_tests(self, extra_args: List[Any]):
+        return self.remote.ssh(self.remote_run_cmd.with_args(*extra_args)).fg(
+            style=Styles.live_truncated(),
+            check=False,
+        )
+
+
+def check_host_prerequisites(run_root_tests: bool):
+    "Check various prerequisites for executing test binaries."
+    if os.name == "nt":
+        return
+
+    if run_root_tests:
+        console.print("Running tests that require root privileges. Refreshing sudo now.")
+        cmd("sudo true").fg()
+
+    for device in ["/dev/kvm", "/dev/vhost-vsock"]:
+        if not os.access(device, os.R_OK | os.W_OK):
+            console.print(f"{device} access is required", style="red")
+            sys.exit(1)
+
+
+def get_vm_arch(triple: Triple):
+    if str(triple) == "x86_64-unknown-linux-gnu":
+        return "x86_64"
+    elif str(triple) == "aarch64-unknown-linux-gnu":
+        return "aarch64"
+    else:
+        raise Exception(f"{triple} is not supported for running tests in a VM.")
+
+
+@argh.arg("--filter-expr", "-E", type=str, action="append", help="Nextest filter expression.")
+@argh.arg("--platform", "-p", help="Which platform to test. (x86_64, aarch64, armhw, mingw64)")
+@argh.arg("--dut", help="Which device to test on. (vm or host)")
+@argh.arg("--no-run", "--build-only", help="Build only, do not run any tests.")
+@argh.arg("--no-unit-tests", help="Do not run unit tests.")
+@argh.arg("--no-integration-tests", help="Do not run integration tests.")
+@argh.arg("--no-strip", help="Do not strip test binaries of debug info.")
+@argh.arg("--run-root-tests", help="Enables integration tests that require root privileges.")
+@argh.arg(
+    "--features",
+    help=f"List of comma separated features to be passed to cargo. Defaults to `all-$platform`",
+)
+@argh.arg("--profile", help="Select nextest profile.")
+@argh.arg("--no-parallel", help="Do not parallelize integration tests. Slower but more stable.")
+@argh.arg("--repetitions", help="Repeat all tests, useful for checking test stability.")
+def main(
+    filter_expr: List[str] = [],
+    platform: Optional[str] = None,
+    dut: Optional[str] = None,
+    no_run: bool = False,
+    no_unit_tests: bool = False,
+    no_integration_tests: bool = False,
+    no_strip: bool = False,
+    run_root_tests: bool = False,
+    features: Optional[str] = None,
+    profile: Optional[str] = None,
+    no_parallel: bool = False,
+    repetitions: int = 1,
+):
+    """
+    Runs all crosvm tests
+
+    For details on how crosvm tests are organized, see https://crosvm.dev/book/testing.html
+
+    # Basic Usage
+
+    To run all unit tests for the hosts native architecture:
+
+    $ ./tools/run_tests2
+
+    To run all unit tests for another supported architecture using an emulator (e.g. wine64,
+    qemu user space emulation).
+
+    $ ./tools/run_tests2 -p aarch64
+    $ ./tools/run_tests2 -p armhw
+    $ ./tools/run_tests2 -p mingw64
+
+    # Integration Tests
+
+    Integration tests can be run on a built-in virtual machine:
+
+    $ ./tools/run_tests2 --dut=vm
+    $ ./tools/run_tests2 --dut=vm -p aarch64
+
+    The virtual machine is automatically started for the test process and can be managed via the
+    `./tools/x86vm` or `./tools/aarch64vm` tools.
+
+    Integration tests can be run on the host machine as well, but cannot be guaranteed to work on
+    all configurations.
+
+    $ ./tools/run_tests2 --dut=host
+
+    # Test Filtering
+
+    This script supports nextest filter expressions: https://nexte.st/book/filter-expressions.html
+
+    For example to run all tests in `my-crate` and all crates that depend on it:
+
+    $ ./tools/run_tests2 [--dut=] -E 'rdeps(my-crate)'
+    """
+    chdir(CROSVM_ROOT)
+
+    if os.name == "posix" and not cmd("which cargo-nextest").success():
+        raise Exception("Cannot find cargo-nextest. Please re-run `./tools/install-deps`")
+    elif os.name == "nt" and not cmd("where.exe cargo-nextest.exe").success():
+        raise Exception("Cannot find cargo-nextest. Please re-run `./tools/install-deps.ps1`")
+
+    triple = Triple.from_shorthand(platform) if platform else Triple.host_default()
+
+    test_filter = TestFilter(join_filters(filter_expr, "|"))
+
+    if not features:
+        features = triple.feature_flag
+
+    if no_run:
+        no_integration_tests = True
+        no_unit_tests = True
+
+    # Disable the DUT if integration tests are not run.
+    if no_integration_tests:
+        dut = None
+
+    # Automatically enable tests that require root if sudo is passwordless
+    if not run_root_tests:
+        if dut == "host":
+            run_root_tests = sudo_is_passwordless()
+        elif dut == "vm":
+            # The test VMs have passwordless sudo configured.
+            run_root_tests = True
+
+    # Print summary of tests and where they will be executed.
+    if dut == "host":
+        dut_str = "Run on host"
+    elif dut == "vm" and os.name == "posix":
+        dut_str = f"Run on built-in {get_vm_arch(triple)} vm"
+    elif dut == None:
+        dut_str = "[yellow]Skip[/yellow]"
+    else:
+        raise Exception(
+            f"--dut={dut} is not supported. Options are --dut=host or --dut=vm (linux only)"
+        )
+
+    features = features if features else triple.feature_flag
+    skip_str = "[yellow]skip[/yellow]"
+    unit_test_str = "Run on host" if not no_unit_tests else skip_str
+    integration_test_str = dut_str if dut else skip_str
+    console.print(f"Running tests for [green]{triple}[/green]")
+    console.print(f"With features: [green]{features}[/green]")
+    console.print()
+    console.print(f"  Unit tests:        [bold]{unit_test_str}[/bold]")
+    console.print(f"  Integration tests: [bold]{integration_test_str}[/bold]")
+    console.print()
+
+    # Print tips in certain configurations.
+    if dut and not run_root_tests:
+        console.print(
+            "[green]Tip:[/green] Skipping tests that require root privileges. "
+            + "Use [bold]--run-root-tests[/bold] to enable them."
+        )
+    if not dut:
+        console.print(
+            "[green]Tip:[/green] To run integration tests on a built-in VM: "
+            + "Use [bold]--dut=vm[/bold]"
+        )
+        console.print(
+            "[green]Tip:[/green] To run integration tests on the host: Use "
+            + "[bold]--dut=host[/bold]"
+        )
+
+    # Prepare the dut for test execution
+    if dut == "host":
+        check_host_prerequisites(run_root_tests)
+    if dut == "vm":
+        testvm.build_if_needed(get_vm_arch(triple))
+        testvm.up(get_vm_arch(triple))
+
+    nextest_args = [
+        f"--profile={profile}" if profile else None,
+        "--verbose" if verbose() else None,
+    ]
+
+    console.print()
+    console.rule("Building tests")
+    nextest_run = configure_cargo(cmd("cargo nextest run"), triple, features).with_args(
+        *nextest_args
+    )
+    with record_time("Build"):
+        returncode = nextest_run.with_args("--no-run").fg(
+            style=Styles.live_truncated(), check=False
+        )
+        if returncode != 0:
+            sys.exit(returncode)
+
+    if not no_unit_tests:
+        console.print()
+        console.rule("Running unit tests")
+        with record_time("Unit Tests"):
+            for i in range(repetitions):
+                if repetitions > 1:
+                    console.rule(f"Round {i}", style="grey")
+
+                returncode = nextest_run.with_args(
+                    "--lib --bins --benches", *test_filter.to_args()
+                ).fg(style=Styles.live_truncated(), check=False)
+                if returncode != 0:
+                    sys.exit(returncode)
+
+    if dut:
+        package_dir = triple.target_dir / PACKAGE_NAME
+        package_archive = package_dir.with_suffix(".tar.zst")
+        nextest_package = configure_cargo(cmd(TOOLS_ROOT / "nextest_package"), triple, features)
+
+        test_exclusions = [*DO_NOT_RUN]
+        if not run_root_tests:
+            test_exclusions += ROOT_TESTS
+        if triple == Triple.from_shorthand("mingw64"):
+            test_exclusions += DO_NOT_RUN_WIN64
+        if triple == Triple.from_shorthand("aarch64"):
+            test_exclusions += DO_NOT_RUN_AARCH64
+        test_filter = test_filter.exclude(*test_exclusions)
+
+        console.print()
+        console.rule("Packaging integration tests")
+        with record_time("Packing"):
+            nextest_package(
+                "--test *",
+                f"-d {package_dir}",
+                f"-o {package_archive}" if dut != "host" else None,
+                "--no-strip" if no_strip else None,
+                *test_filter.to_args(),
+                "--verbose" if verbose() else None,
+            ).fg(style=Styles.live_truncated())
+
+        target: Union[HostTarget, SshTarget]
+        if dut == "host":
+            target = HostTarget(package_dir)
+        elif dut == "vm":
+            testvm.wait(get_vm_arch(triple))
+            remote = Remote("localhost", testvm.ssh_opts(get_vm_arch(triple)))
+            target = SshTarget(package_archive, remote)
+
+        console.print()
+        console.rule("Running integration tests")
+        with record_time("Integration tests"):
+            for i in range(repetitions):
+                if repetitions > 1:
+                    console.rule(f"Round {i}", style="grey")
+                returncode = target.run_tests(
+                    [
+                        *test_filter.to_args(),
+                        *nextest_args,
+                        "--test-threads=1" if no_parallel else None,
+                    ]
+                )
+                if returncode != 0:
+                    if not no_parallel:
+                        console.print(
+                            "[green]Tip:[/green] Tests may fail when run in parallel on some platforms. "
+                            + "Try re-running with `--no-parallel`"
+                        )
+                    sys.exit(returncode)
+
 
 if __name__ == "__main__":
-    main()
+    run_main(main)
