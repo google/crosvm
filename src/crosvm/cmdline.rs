@@ -464,6 +464,8 @@ pub enum CrossPlatformDevicesCommands {
     #[cfg(feature = "gpu")]
     Gpu(device::GpuOptions),
     Net(device::NetOptions),
+    #[cfg(feature = "audio")]
+    Snd(device::SndOptions),
 }
 
 #[derive(argh_helpers::FlattenSubcommand)]

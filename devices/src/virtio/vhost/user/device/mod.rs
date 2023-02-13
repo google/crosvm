@@ -8,7 +8,7 @@ pub mod gpu;
 mod handler;
 mod listener;
 #[cfg(feature = "audio")]
-mod snd;
+pub mod snd;
 
 pub use block::run_block_device;
 pub use block::Options as BlockOptions;

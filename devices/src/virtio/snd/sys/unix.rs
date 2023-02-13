@@ -13,6 +13,8 @@ use cros_async::Executor;
 use futures::channel::mpsc::UnboundedSender;
 #[cfg(feature = "audio_cras")]
 use libcras::CrasStreamSourceGenerator;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::virtio::common_backend::PcmResponse;
 use crate::virtio::snd::common_backend::async_funcs::PlaybackBufferWriter;
@@ -38,10 +40,20 @@ pub(crate) struct SysAsyncStreamObjects {
     pub(crate) pcm_sender: UnboundedSender<PcmResponse>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum StreamSourceBackend {
     #[cfg(feature = "audio_cras")]
     CRAS,
+}
+
+// Implemented to make backend serialization possible, since we deserialize from str.
+impl From<StreamSourceBackend> for String {
+    fn from(backend: StreamSourceBackend) -> Self {
+        match backend {
+            #[cfg(feature = "audio_cras")]
+            StreamSourceBackend::CRAS => "cras".to_owned(),
+        }
+    }
 }
 
 impl TryFrom<&str> for StreamSourceBackend {

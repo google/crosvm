@@ -10,6 +10,7 @@ use libcras::CrasClientType;
 #[cfg(all(unix, feature = "audio_cras"))]
 use libcras::CrasSocketType;
 use serde::Deserialize;
+use serde::Serialize;
 use serde_keyvalue::FromKeyValues;
 use thiserror::Error as ThisError;
 
@@ -34,11 +35,21 @@ pub enum Error {
     UnknownParameter(String),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(try_from = "&str")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(into = "String", try_from = "&str")]
 pub enum StreamSourceBackend {
     NULL,
     Sys(SysStreamSourceBackend),
+}
+
+// Implemented to make backend serialization possible, since we deserialize from str.
+impl From<StreamSourceBackend> for String {
+    fn from(backend: StreamSourceBackend) -> Self {
+        match backend {
+            StreamSourceBackend::NULL => "null".to_owned(),
+            StreamSourceBackend::Sys(sys_backend) => sys_backend.into(),
+        }
+    }
 }
 
 impl TryFrom<&str> for StreamSourceBackend {
@@ -53,7 +64,7 @@ impl TryFrom<&str> for StreamSourceBackend {
 }
 
 /// Holds the parameters for a cras sound device
-#[derive(Debug, Clone, Deserialize, FromKeyValues)]
+#[derive(Debug, Clone, Deserialize, Serialize, FromKeyValues)]
 #[serde(deny_unknown_fields, default)]
 pub struct Parameters {
     pub capture: bool,

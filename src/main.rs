@@ -30,6 +30,8 @@ use devices::virtio::vhost::user::device::run_block_device;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost::user::device::run_gpu_device;
 use devices::virtio::vhost::user::device::run_net_device;
+#[cfg(feature = "audio")]
+use devices::virtio::vhost::user::device::run_snd_device;
 #[cfg(feature = "composite-disk")]
 use disk::create_composite_disk;
 #[cfg(feature = "composite-disk")]
@@ -430,6 +432,8 @@ fn start_device(opts: cmdline::DeviceCommand) -> std::result::Result<(), ()> {
             #[cfg(feature = "gpu")]
             CrossPlatformDevicesCommands::Gpu(cfg) => run_gpu_device(cfg),
             CrossPlatformDevicesCommands::Net(cfg) => run_net_device(cfg),
+            #[cfg(feature = "audio")]
+            CrossPlatformDevicesCommands::Snd(cfg) => run_snd_device(cfg),
         },
         cmdline::DeviceSubcommand::Sys(command) => sys::start_device(command),
     };

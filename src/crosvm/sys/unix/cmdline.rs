@@ -20,8 +20,6 @@ use crate::crosvm::config::validate_serial_parameters;
 /// Unix Devices
 pub enum DeviceSubcommand {
     Console(device::ConsoleOptions),
-    #[cfg(feature = "audio")]
-    Snd(device::SndOptions),
     Fs(device::FsOptions),
     Vsock(device::VsockOptions),
     Wl(device::WlOptions),

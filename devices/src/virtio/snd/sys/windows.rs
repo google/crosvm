@@ -7,8 +7,6 @@ use std::io::Read;
 use std::slice;
 use std::sync::Arc;
 
-use crate::virtio::DescriptorChain;
-use crate::virtio::Reader;
 use async_trait::async_trait;
 use audio_streams::AsyncPlaybackBuffer;
 use audio_streams::AsyncPlaybackBufferStream;
@@ -19,6 +17,8 @@ use cros_async::Executor;
 use futures::channel::mpsc::UnboundedReceiver;
 use futures::channel::mpsc::UnboundedSender;
 use futures::SinkExt;
+use serde::Deserialize;
+use serde::Serialize;
 use sync::Mutex;
 use vm_memory::GuestMemory;
 use win_audio::async_stream::WinAudioStreamSourceGenerator;
@@ -36,6 +36,8 @@ use crate::virtio::snd::common_backend::PcmResponse;
 use crate::virtio::snd::common_backend::SndData;
 use crate::virtio::snd::parameters::Error as ParametersError;
 use crate::virtio::snd::parameters::Parameters;
+use crate::virtio::DescriptorChain;
+use crate::virtio::Reader;
 
 pub(crate) type SysAudioStreamSourceGenerator = Box<dyn WinStreamSourceGenerator>;
 pub(crate) type SysAudioStreamSource = Box<dyn WinAudioServer>;
@@ -51,9 +53,18 @@ pub(crate) struct SysAsyncStreamObjects {
     pub(crate) pcm_sender: UnboundedSender<PcmResponse>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub enum StreamSourceBackend {
     WINAUDIO,
+}
+
+// Implemented to make backend serialization possible, since we deserialize from str.
+impl From<StreamSourceBackend> for String {
+    fn from(backend: StreamSourceBackend) -> Self {
+        match backend {
+            StreamSourceBackend::WINAUDIO => "winaudio".to_owned(),
+        }
+    }
 }
 
 impl TryFrom<&str> for StreamSourceBackend {

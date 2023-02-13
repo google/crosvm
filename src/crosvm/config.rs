@@ -40,6 +40,8 @@ use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vhost::user::device::gpu::sys::windows::GpuBackendConfig;
 #[cfg(all(windows, feature = "gpu"))]
 use devices::virtio::vhost::user::device::gpu::sys::windows::GpuVmmConfig;
+#[cfg(all(windows, feature = "audio"))]
+use devices::virtio::vhost::user::device::snd::sys::windows::SndSplitConfig;
 use devices::virtio::NetParameters;
 #[cfg(feature = "audio")]
 use devices::Ac97Backend;
@@ -1168,6 +1170,8 @@ pub struct Config {
     pub shared_dirs: Vec<SharedDir>,
     #[cfg(feature = "slirp-ring-capture")]
     pub slirp_capture_file: Option<String>,
+    #[cfg(all(windows, feature = "audio"))]
+    pub snd_split_config: Option<SndSplitConfig>,
     pub socket_path: Option<PathBuf>,
     #[cfg(feature = "tpm")]
     pub software_tpm: bool,
@@ -1385,6 +1389,8 @@ impl Default for Config {
             shared_dirs: Vec::new(),
             #[cfg(feature = "slirp-ring-capture")]
             slirp_capture_file: None,
+            #[cfg(all(windows, feature = "audio"))]
+            snd_split_config: None,
             swap_dir: None,
             socket_path: None,
             #[cfg(feature = "tpm")]
