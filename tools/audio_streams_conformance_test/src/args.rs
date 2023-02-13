@@ -96,6 +96,9 @@ pub struct Args {
     /// whether or not to print in json format
     #[argh(switch)]
     pub json: bool,
+    /// whether or not to print the debug messages
+    #[argh(switch)]
+    pub debug: bool,
 }
 
 impl fmt::Display for Args {

@@ -71,6 +71,9 @@ fn main() -> Result<()> {
     match ex.run_until(done) {
         Ok(Ok(data)) => {
             let report = data.gen_report(args)?;
+            if args.debug {
+                data.print_records();
+            }
             if args.json {
                 println!("{}", serde_json::to_string(&report)?);
             } else {

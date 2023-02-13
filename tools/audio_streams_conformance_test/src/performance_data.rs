@@ -141,6 +141,19 @@ fn linear_regression(x: &[f64], y: &[f64]) -> Result<EstimatedRate> {
 }
 
 impl PerformanceData {
+    pub fn print_records(&self) {
+        println!("TS\t\tTS_DIFF\t\tPLAYED");
+        let mut previous_ts = 0.0;
+        for record in &self.records {
+            println!(
+                "{:.6}\t{:.6}\t{}",
+                record.ts.as_secs_f64(),
+                record.ts.as_secs_f64() - previous_ts,
+                record.frames
+            );
+            previous_ts = record.ts.as_secs_f64();
+        }
+    }
     pub fn gen_report(&self, args: Args) -> Result<PerformanceReport> {
         let time_records: Vec<f64> = self
             .records
