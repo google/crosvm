@@ -42,6 +42,7 @@ def main():
         action="store_true",
         help="Output in JSON instead of human readable format.",
     )
+    parser.add_argument("--strip", action="store_true", help="Strip output binaries.")
     args = parser.parse_args()
     build_target = Triple.from_shorthand(args.build_target) if args.build_target else None
     build_target = build_target or Triple.host_default()
@@ -60,6 +61,8 @@ def main():
     build_env.update(build_target.get_cargo_env())
     build_env.setdefault("RUSTFLAGS", "")
     build_env["RUSTFLAGS"] += " -D warnings"
+    if args.strip:
+        build_env["RUSTFLAGS"] += " -C strip=symbols"
 
     executables = list(cargo("build", CROSVM_ROOT, cargo_args, build_env))
 

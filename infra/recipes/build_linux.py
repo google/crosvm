@@ -67,6 +67,7 @@ def collect_binary_sizes(api, properties):
                     binary_path,
                     "--base-dir",
                     "/scratch/cargo_target/crosvm",
+                    "--strip",
                 ],
                 infra_step=True,
                 stdout=api.raw_io.output_text(),
