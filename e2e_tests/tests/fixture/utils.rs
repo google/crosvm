@@ -6,6 +6,13 @@
 
 use std::env;
 use std::path::PathBuf;
+use std::sync::mpsc::sync_channel;
+use std::sync::mpsc::RecvTimeoutError;
+use std::thread;
+use std::time::Duration;
+
+use anyhow::anyhow;
+use anyhow::Result;
 
 use crate::fixture::sys::binary_name;
 
@@ -29,4 +36,28 @@ pub fn find_crosvm_binary() -> PathBuf {
         "Cannot find {} in ./ or ../ alongside test binary.",
         binary_name
     );
+}
+
+/// Run the provided closure in a separate thread and return it's result. If the closure does not
+/// finish before the timeout is reached, an Error is returned instead.
+///
+/// WARNING: It is not possible to kill the closure if a timeout occurs. It is advised to panic
+/// when an error is returned.
+pub(super) fn run_with_timeout<F, U>(closure: F, timeout: Duration) -> Result<U>
+where
+    F: FnOnce() -> U + Send + 'static,
+    U: Send + 'static,
+{
+    let (tx, rx) = sync_channel::<()>(1);
+    let handle = thread::spawn(move || {
+        let result = closure();
+        // Notify main thread the closure is done. Fail silently if it's not listening anymore.
+        let _ = tx.send(());
+        result
+    });
+    match rx.recv_timeout(timeout) {
+        Ok(_) => Ok(handle.join().unwrap()),
+        Err(RecvTimeoutError::Timeout) => Err(anyhow!("closure timed out after {timeout:?}")),
+        Err(RecvTimeoutError::Disconnected) => Err(anyhow!("closure paniced")),
+    }
 }

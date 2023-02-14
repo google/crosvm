@@ -8,17 +8,19 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
 use std::str::from_utf8;
-use std::sync::mpsc::sync_channel;
 use std::sync::Once;
-use std::thread;
 use std::time::Duration;
 
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::Context;
 use anyhow::Result;
 use base::syslog;
 use prebuilts::download_file;
 
 use crate::fixture::sys::SerialArgs;
 use crate::fixture::sys::TestVmSys;
+use crate::fixture::utils::run_with_timeout;
 
 const PREBUILT_URL: &str = "https://storage.googleapis.com/crosvm/integration_tests";
 
@@ -28,6 +30,15 @@ const ARCH: &str = "x86_64";
 const ARCH: &str = "arm";
 #[cfg(target_arch = "aarch64")]
 const ARCH: &str = "aarch64";
+
+/// Timeout when waiting for pipes that are expected to be ready.
+const COMMUNICATION_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Timeout for the VM to boot and the delegate to report that it's ready.
+const BOOT_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Default timeout when waiting for guest commands to execute
+const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 
 fn prebuilt_version() -> &'static str {
     include_str!("../../guest_under_test/PREBUILT_VERSION").trim()
@@ -73,26 +84,73 @@ pub(super) fn rootfs_path() -> PathBuf {
     }
 }
 
-/// Run the provided closure, but panic if it does not complete until the timeout has passed.
-/// We should panic here, as we cannot gracefully stop the closure from running.
-/// `on_timeout` will be called before panic to allow printing debug information.
-pub(super) fn run_with_timeout<F, G, U>(closure: F, timeout: Duration, on_timeout: G) -> U
-where
-    F: FnOnce() -> U + Send + 'static,
-    G: FnOnce(),
-    U: Send + 'static,
-{
-    let (tx, rx) = sync_channel::<()>(1);
-    let handle = thread::spawn(move || {
-        let result = closure();
-        tx.send(()).unwrap();
-        result
-    });
-    if rx.recv_timeout(timeout).is_err() {
-        on_timeout();
-        panic!("Operation timed out or closure paniced.");
+/// Represents a command running in the guest. See `TestVm::exec_in_guest_async()`
+#[must_use]
+pub struct GuestProcess {
+    command: String,
+    timeout: Duration,
+}
+
+impl GuestProcess {
+    pub fn with_timeout(self, duration: Duration) -> Self {
+        Self {
+            timeout: duration,
+            ..self
+        }
     }
-    handle.join().unwrap()
+
+    /// Waits for the process to finish execution and return the produced stdout.
+    /// Will fail on a non-zero exit code.
+    pub fn wait(self, vm: &mut TestVm) -> Result<String> {
+        let command = self.command.clone();
+        let (exit_code, output) = self.wait_unchecked(vm)?;
+        if exit_code != 0 {
+            bail!(
+                "Command `{}` terminated with exit code {}",
+                command,
+                exit_code
+            );
+        }
+        Ok(output)
+    }
+
+    /// Same as `wait` but will return a tuple of (exit code, output) instead of failing
+    /// on a non-zero exit code.
+    pub fn wait_unchecked(self, vm: &mut TestVm) -> Result<(i32, String)> {
+        // First read echo of command
+        let echo = vm
+            .read_line_from_guest(COMMUNICATION_TIMEOUT)
+            .with_context(|| {
+                format!(
+                    "Command `{}`: Failed to read echo from guest pipe",
+                    self.command
+                )
+            })?;
+        assert_eq!(echo.trim(), self.command.trim());
+
+        // Then read stdout and exit code
+        let mut output = Vec::<String>::new();
+        let exit_code = loop {
+            let line = vm.read_line_from_guest(self.timeout).with_context(|| {
+                format!(
+                    "Command `{}`: Failed to read response from guest",
+                    self.command
+                )
+            })?;
+            let trimmed = line.trim();
+            if trimmed.starts_with(TestVm::EXIT_CODE_LINE) {
+                let exit_code_str = &trimmed[(TestVm::EXIT_CODE_LINE.len() + 1)..];
+                break exit_code_str.parse::<i32>().unwrap();
+            }
+            output.push(trimmed.to_owned());
+        };
+
+        // Finally get the VM in a ready state again.
+        vm.wait_for_guest(COMMUNICATION_TIMEOUT)
+            .with_context(|| format!("Command `{}`: Failed to wait for guest", self.command))?;
+
+        Ok((exit_code, output.join("\n")))
+    }
 }
 
 /// Configuration to start `TestVm`.
@@ -141,12 +199,17 @@ static PREP_ONCE: Once = Once::new();
 /// when this instance is dropped.
 #[cfg(test)]
 pub struct TestVm {
+    // Platform-dependent bits
     sys: TestVmSys,
+    // The guest is ready to receive a command.
+    ready: bool,
 }
 
 impl TestVm {
-    /// Magic line sent by the delegate binary when the guest is ready.
-    pub(super) const MAGIC_LINE: &'static str = "\x05Ready";
+    /// Line sent by the delegate binary when the guest is ready.
+    const READY_LINE: &'static str = "\x05READY";
+    /// Line sent by the delegate binary to terminate the stdout and send the exit code.
+    const EXIT_CODE_LINE: &'static str = "\x05EXIT_CODE";
 
     /// Downloads prebuilts if needed.
     fn initialize_once() {
@@ -196,10 +259,13 @@ impl TestVm {
         F: FnOnce(&mut Command, &SerialArgs, &Config) -> Result<()>,
     {
         PREP_ONCE.call_once(TestVm::initialize_once);
-
-        Ok(TestVm {
-            sys: TestVmSys::new_generic(f, cfg)?,
-        })
+        let mut vm = TestVm {
+            sys: TestVmSys::new_generic(f, cfg).with_context(|| "Could not start crosvm")?,
+            ready: false,
+        };
+        vm.wait_for_guest(BOOT_TIMEOUT)
+            .with_context(|| "Guest did not become ready after boot")?;
+        Ok(vm)
     }
 
     pub fn new(cfg: Config) -> Result<TestVm> {
@@ -212,50 +278,77 @@ impl TestVm {
         TestVm::new_generic(TestVmSys::append_config_file_arg, cfg)
     }
 
-    /// Executes the shell command `command` and returns the programs stdout.
+    /// Executes the provided command in the guest.
+    /// Returns the stdout that was produced by the command, or a GuestProcessError::ExitCode if
+    /// the program did not exit with 0.
     pub fn exec_in_guest(&mut self, command: &str) -> Result<String> {
-        self.exec_command(command)?;
-        self.wait_for_guest()
+        self.exec_in_guest_async(command)?.wait(self)
     }
 
-    pub fn exec_command(&mut self, command: &str) -> Result<()> {
-        // Write command to serial port.
-        writeln!(&mut self.sys.to_guest, "{}", command)?;
-
-        // We will receive an echo of what we have written on the pipe.
-        let mut echo = String::new();
-        self.sys.from_guest_reader.read_line(&mut echo)?;
-        assert_eq!(echo.trim(), command);
-        Ok(())
+    /// Same as `exec_in_guest` but will return a tuple of (exit code, output) instead of failing
+    /// on a non-zero exit code.
+    pub fn exec_in_guest_unchecked(&mut self, command: &str) -> Result<(i32, String)> {
+        self.exec_in_guest_async(command)?.wait_unchecked(self)
     }
 
-    /// Executes the shell command `command` async, allowing for calls other actions between the
-    /// command call and the result, and returns the programs stdout.
-    pub fn exec_command_async(&mut self, command: &str, block: impl Fn(&mut Self)) -> Result<()> {
-        // Write command to serial port.
-        writeln!(&mut self.sys.to_guest, "{}", command)?;
-        block(self);
-        let mut echo = String::new();
-        self.sys.from_guest_reader.read_line(&mut echo)?;
-        assert_eq!(echo.trim(), command);
-        Ok(())
+    /// Executes the provided command in the guest asynchronously.
+    /// The command will be run in the guest, but output will not be read until GuestProcess::wait
+    /// is called.
+    pub fn exec_in_guest_async(&mut self, command: &str) -> Result<GuestProcess> {
+        assert!(self.ready);
+        self.ready = false;
+
+        // Send command and read echo from the pipe
+        self.write_line_to_guest(command, COMMUNICATION_TIMEOUT)
+            .with_context(|| format!("Command `{}`: Failed to write to guest pipe", command))?;
+
+        Ok(GuestProcess {
+            command: command.to_owned(),
+            timeout: DEFAULT_COMMAND_TIMEOUT,
+        })
     }
 
-    pub fn wait_for_guest(&mut self) -> Result<String> {
-        // Return all remaining lines until we receive the MAGIC_LINE
-        let mut output = String::new();
-        loop {
-            let mut line = String::new();
-            self.sys.from_guest_reader.read_line(&mut line)?;
-            if line.trim() == TestVm::MAGIC_LINE {
-                break;
-            }
-            output.push_str(&line);
+    // Waits for the guest to be ready to receive commands
+    fn wait_for_guest(&mut self, timeout: Duration) -> Result<()> {
+        assert!(!self.ready);
+        let line = self.read_line_from_guest(timeout)?;
+        if line.trim() == TestVm::READY_LINE {
+            self.ready = true;
+            Ok(())
+        } else {
+            Err(anyhow!(
+                "Expected READY line from delegate, but got: {:?}",
+                line.trim()
+            ))
         }
-        let trimmed = output.trim();
-        println!("<- {:?}", trimmed);
+    }
 
-        Ok(trimmed.to_string())
+    /// Reads one line via the `from_guest` pipe from the guest delegate.
+    fn read_line_from_guest(&mut self, timeout: Duration) -> Result<String> {
+        let reader = self.sys.from_guest_reader.clone();
+        run_with_timeout(
+            move || {
+                let mut data = String::new();
+                reader.lock().unwrap().read_line(&mut data)?;
+                println!("<- {:?}", data);
+                Ok(data)
+            },
+            timeout,
+        )?
+    }
+
+    /// Send one line via the `to_guest` pipe to the guest delegate.
+    fn write_line_to_guest(&mut self, data: &str, timeout: Duration) -> Result<()> {
+        let writer = self.sys.to_guest.clone();
+        let data = data.to_owned();
+        run_with_timeout(
+            move || -> Result<()> {
+                println!("-> {:?}", data);
+                writeln!(writer.lock().unwrap(), "{}", data)?;
+                Ok(())
+            },
+            timeout,
+        )?
     }
 
     pub fn stop(&mut self) -> Result<()> {

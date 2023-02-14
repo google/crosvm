@@ -13,10 +13,9 @@ use std::process::Stdio;
 use std::thread;
 use std::time::Duration;
 
-use rand::Rng;
-
 use fixture::vm::Config;
 use fixture::vm::TestVm;
+use rand::Rng;
 
 const HOST_CID: u64 = 2;
 const VSOCK_COM_PORT: u64 = 11111;
@@ -50,12 +49,11 @@ fn host_to_guest_connection(config: Config) {
     let config = config.extra_args(vec!["--cid".to_string(), guest_cid.to_string()]);
     let mut vm = TestVm::new(config).unwrap();
 
-    let handle_guest = thread::spawn(move || {
-        let cmd = format!(
-            "echo {MESSAGE_TO_HOST} | timeout {SERVER_TIMEOUT_IN_SEC}s ncat -l --vsock {VSOCK_COM_PORT}",
-        );
-        vm.exec_in_guest(&cmd).unwrap();
-    });
+    let guest_cmd = vm
+        .exec_in_guest_async(&format!(
+            "echo {MESSAGE_TO_HOST} | ncat -l --vsock {VSOCK_COM_PORT}"
+        ))
+        .unwrap();
 
     // wait until the server is ready
     thread::sleep(CLIENT_WAIT_DURATION);
@@ -69,11 +67,11 @@ fn host_to_guest_connection(config: Config) {
         ])
         .output()
         .expect("failed to execute process");
+
     let host_stdout = std::str::from_utf8(&output.stdout).unwrap();
-
-    handle_guest.join().unwrap();
-
     assert_eq!(host_stdout.trim(), MESSAGE_TO_HOST);
+
+    guest_cmd.wait(&mut vm).unwrap();
 }
 
 #[test]
@@ -111,7 +109,14 @@ fn guest_to_host_connection(config: Config) {
     thread::sleep(CLIENT_WAIT_DURATION);
 
     let cmd = format!("ncat --idle-timeout 1 --vsock {HOST_CID} {VSOCK_COM_PORT}");
-    let guest_stdout = vm.exec_in_guest(&cmd).unwrap();
+    let (exit_code, guest_stdout) = vm
+        .exec_in_guest_async(&cmd)
+        .unwrap()
+        .with_timeout(Duration::from_secs(2))
+        .wait_unchecked(&mut vm)
+        .unwrap();
+    // We expect to hit the idle-timeout, which will exit with code 1.
+    assert_eq!(exit_code, 1);
 
     handle_host.wait().unwrap();
 

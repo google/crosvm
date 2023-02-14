@@ -8,13 +8,14 @@
 use std::env;
 use std::fs::File;
 use std::fs::OpenOptions;
-use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Child;
 use std::process::Command;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -25,9 +26,7 @@ use rand::Rng;
 use crate::fixture::utils::find_crosvm_binary;
 use crate::fixture::vm::kernel_path;
 use crate::fixture::vm::rootfs_path;
-use crate::fixture::vm::run_with_timeout;
 use crate::fixture::vm::Config;
-use crate::fixture::vm::TestVm;
 
 const GUEST_EARLYCON: &str = "guest_earlycon.log";
 const GUEST_CONSOLE: &str = "guest_latecon.log";
@@ -39,10 +38,6 @@ const SLEEP_TIMEOUT: Duration = Duration::from_millis(500);
 // RETRY_COUNT is somewhat arbitrarily chosen by looking at a few downstream
 // presubmit runs.
 const RETRY_COUNT: u16 = 600;
-
-/// Timeout for communicating with the VM. If we do not hear back, panic so we
-/// do not block the tests.
-const VM_COMMUNICATION_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub struct SerialArgs {
     // This pipe is used to communicate to/from guest.
@@ -129,8 +124,8 @@ fn create_client_pipe_helper(from_guest_pipe: &str, logs_dir: &str) -> PipeConne
 
 #[cfg(test)]
 pub struct TestVmSys {
-    pub(crate) from_guest_reader: BufReader<PipeConnection>,
-    pub(crate) to_guest: PipeConnection,
+    pub(crate) from_guest_reader: Arc<Mutex<BufReader<PipeConnection>>>,
+    pub(crate) to_guest: Arc<Mutex<PipeConnection>>,
     pub(crate) process: Option<Child>, // Use `Option` to allow taking the ownership in `Drop::drop()`.
 }
 
@@ -221,29 +216,11 @@ impl TestVmSys {
         let process = Some(command.spawn().unwrap());
 
         let to_guest = create_client_pipe_helper(&from_guest_path, logs_dir);
-
-        // Wait for magic line to be received, indicating the delegate is ready.
-        let mut from_guest_reader = BufReader::new(to_guest.try_clone().unwrap());
-        let from_guest_reader = run_with_timeout(
-            move || {
-                let mut magic_line = String::new();
-                if from_guest_reader.read_line(&mut magic_line).is_err() {
-                    dump_logs(logs_dir);
-                    panic!("failed to read from pipe");
-                }
-                assert_eq!(magic_line.trim(), TestVm::MAGIC_LINE);
-                from_guest_reader
-            },
-            VM_COMMUNICATION_TIMEOUT,
-            || {
-                dump_logs(logs_dir);
-                panic!("Timeout while waiting to read magic line");
-            },
-        );
+        let from_guest_reader = BufReader::new(to_guest.try_clone().unwrap());
 
         Ok(TestVmSys {
-            from_guest_reader,
-            to_guest,
+            from_guest_reader: Arc::new(Mutex::new(from_guest_reader)),
+            to_guest: Arc::new(Mutex::new(to_guest)),
             process,
         })
     }
@@ -350,13 +327,7 @@ impl TestVmSys {
         Ok(())
     }
 
-    pub fn crosvm_command(&mut self, command: &str, mut _args: Vec<String>) -> Result<()> {
-        writeln!(&mut self.to_guest, "{}", command)?;
-
-        // We will receive an echo of what we have written on the pipe.
-        let mut echo = String::new();
-        self.from_guest_reader.read_line(&mut echo)?;
-        assert_eq!(echo.trim(), command);
-        Ok(())
+    pub fn crosvm_command(&mut self, _command: &str, mut _args: Vec<String>) -> Result<()> {
+        unimplemented!()
     }
 }

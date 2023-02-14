@@ -6,7 +6,6 @@ use std::ffi::CString;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io;
-use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
@@ -16,19 +15,21 @@ use std::process::Child;
 use std::process::Command;
 use std::process::Stdio;
 use std::str::from_utf8;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use anyhow::anyhow;
+use anyhow::Context;
 use anyhow::Result;
 use libc::O_DIRECT;
 use tempfile::TempDir;
 
 use crate::fixture::utils::find_crosvm_binary;
+use crate::fixture::utils::run_with_timeout;
 use crate::fixture::vm::kernel_path;
 use crate::fixture::vm::rootfs_path;
-use crate::fixture::vm::run_with_timeout;
 use crate::fixture::vm::Config;
-use crate::fixture::vm::TestVm;
 
 const FROM_GUEST_PIPE: &str = "from_guest";
 const TO_GUEST_PIPE: &str = "to_guest";
@@ -66,8 +67,8 @@ pub struct TestVmSys {
     /// Maintain ownership of test_dir until the vm is destroyed.
     #[allow(dead_code)]
     pub test_dir: TempDir,
-    pub from_guest_reader: BufReader<File>,
-    pub to_guest: File,
+    pub from_guest_reader: Arc<Mutex<BufReader<File>>>,
+    pub to_guest: Arc<Mutex<File>>,
     pub control_socket_path: PathBuf,
     pub process: Option<Child>, // Use `Option` to allow taking the ownership in `Drop::drop()`.
 }
@@ -148,11 +149,15 @@ impl TestVmSys {
 
         let mut process = Some(command.spawn()?);
 
-        // Open pipes. Panic if we cannot connect after a timeout.
-        let (to_guest, from_guest) = run_with_timeout(
-            move || (File::create(to_guest_pipe), File::open(from_guest_pipe)),
+        // Open pipes. Apply timeout to `from_guest` since it will block until crosvm opens the
+        // other end.
+        let to_guest = File::create(to_guest_pipe)?;
+        let from_guest = match run_with_timeout(
+            move || File::open(from_guest_pipe),
             VM_COMMUNICATION_TIMEOUT,
-            || {
+        ) {
+            Ok(from_guest) => from_guest.with_context(|| "Cannot open from_guest pipe")?,
+            Err(error) => {
                 let mut process = process.take().unwrap();
                 process.kill().unwrap();
                 let output = process.wait_with_output().unwrap();
@@ -167,19 +172,14 @@ impl TestVmSys {
                     "TestVm stderr:\n{}",
                     std::str::from_utf8(&output.stderr).unwrap()
                 );
-            },
-        );
-
-        // Wait for magic line to be received, indicating the delegate is ready.
-        let mut from_guest_reader = BufReader::new(from_guest?);
-        let mut magic_line = String::new();
-        from_guest_reader.read_line(&mut magic_line)?;
-        assert_eq!(magic_line.trim(), TestVm::MAGIC_LINE);
+                panic!("Cannot connect to VM: {}", error);
+            }
+        };
 
         Ok(TestVmSys {
             test_dir,
-            from_guest_reader,
-            to_guest: to_guest?,
+            from_guest_reader: Arc::new(Mutex::new(BufReader::new(from_guest))),
+            to_guest: Arc::new(Mutex::new(to_guest)),
             control_socket_path,
             process,
         })

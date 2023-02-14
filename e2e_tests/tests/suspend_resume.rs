@@ -3,10 +3,11 @@
 // found in the LICENSE file.
 
 pub mod fixture;
-use crate::fixture::vm::Config;
-use crate::fixture::vm::TestVm;
 
 use tempfile::tempdir;
+
+use crate::fixture::vm::Config;
+use crate::fixture::vm::TestVm;
 
 // Tests for suspend/resume.
 //
@@ -57,15 +58,13 @@ fn suspend_resume_system(vm: &mut TestVm) -> anyhow::Result<()> {
     // This command will get queued and not run while the VM is suspended. The command is saved in
     // the serial device. After the snapshot is taken, the VM is resumed. At that point, the
     // command runs and is validated.
-    vm.exec_command_async("echo 42", |vm| {
-        // Take snapshot of modified VM
-        println!("snapshotting VM - mod state");
-        vm.snapshot(&snap2_path).unwrap();
+    let echo_cmd = vm.exec_in_guest_async("echo 42").unwrap();
+    // Take snapshot of modified VM
+    println!("snapshotting VM - mod state");
+    vm.snapshot(&snap2_path).unwrap();
 
-        vm.resume().unwrap();
-    })
-    .unwrap();
-    assert_eq!("42", vm.wait_for_guest().unwrap());
+    vm.resume().unwrap();
+    assert_eq!("42", echo_cmd.wait(vm).unwrap());
 
     // suspend VM
     vm.suspend().unwrap();
