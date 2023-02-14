@@ -88,6 +88,8 @@ enum EmulatorProcessType {
   PROCESS_TYPE_SLIRP = 5;
   PROCESS_TYPE_GPU = 6;
   PROCESS_TYPE_SOUND = 7;
+  PROCESS_TYPE_BROKER = 8;
+  PROCESS_TYPE_SPU = 9;
 }
 
 message EmulatorChildProcessExitDetails {

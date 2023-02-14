@@ -35,6 +35,9 @@ impl From<ProcessType> for EmulatorProcessType {
             ProcessType::Net => EmulatorProcessType::PROCESS_TYPE_NET,
             ProcessType::Slirp => EmulatorProcessType::PROCESS_TYPE_SLIRP,
             ProcessType::Gpu => EmulatorProcessType::PROCESS_TYPE_GPU,
+            ProcessType::Snd => EmulatorProcessType::PROCESS_TYPE_SOUND,
+            ProcessType::Broker => EmulatorProcessType::PROCESS_TYPE_BROKER,
+            ProcessType::Spu => EmulatorProcessType::PROCESS_TYPE_SPU,
         }
     }
 }

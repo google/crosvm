@@ -35,6 +35,8 @@ pub mod product_type {
     pub const SLIRP: &str = "KiwiEmulator_slirp";
     pub const METRICS: &str = "KiwiEmulator_metrics";
     pub const GPU: &str = "KiwiEmulator_gpu";
+    pub const SND: &str = "KiwiEmulator_snd";
+    pub const SPU: &str = "KiwiEmulator_spu";
 }
 
 /// Attributes about a process that are required to set up annotations for crash reports.

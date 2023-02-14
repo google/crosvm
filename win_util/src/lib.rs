@@ -334,6 +334,9 @@ pub enum ProcessType {
     Net = 4,
     Slirp = 5,
     Gpu = 6,
+    Snd = 7,
+    Broker = 8,
+    Spu = 9,
 }
 
 #[cfg(test)]

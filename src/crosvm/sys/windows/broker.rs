@@ -135,6 +135,9 @@ fn process_policy(process_type: ProcessType, cfg: &Config) -> sandbox::policy::P
         ProcessType::Net => sandbox::policy::NET,
         ProcessType::Slirp => sandbox::policy::SLIRP,
         ProcessType::Gpu => sandbox::policy::GPU,
+        ProcessType::Snd => unimplemented!("No SND policy"),
+        ProcessType::Broker => unimplemented!("No broker policy"),
+        ProcessType::Spu => unimplemented!("No SPU policy"),
     };
     #[cfg(feature = "asan")]
     adjust_asan_policy(&mut policy);
