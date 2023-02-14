@@ -339,6 +339,9 @@ pub enum Exit {
     CreateImeThread = 0xE0000099,
     OpenDiskImage = 0xE000009A,
     VirtioSoundDeviceNew = 0xE000009B,
+    StartSpu = 0xE000009C,
+    SandboxCreateProcessAccessDenied = 0xE000009D,
+    SandboxCreateProcessElevationRequired = 0xE000009E,
 }
 
 impl From<Exit> for ExitCode {
