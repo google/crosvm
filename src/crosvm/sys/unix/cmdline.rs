@@ -10,6 +10,7 @@ use cros_async::ExecutorKind;
 use devices::virtio::block::block::DiskOption;
 use devices::virtio::vhost::user::device;
 use devices::virtio::vhost::user::VhostUserParams;
+use devices::virtio::vsock::VsockConfig;
 use devices::SerialParameters;
 use jail::JailConfig;
 
@@ -100,6 +101,15 @@ pub struct DevicesCommand {
     ///     block options:
     ///        See help from `crosvm run` command.
     pub block: Vec<VhostUserParams<DiskOption>>,
+
+    #[argh(option, arg_name = "cid=CID[,device=VHOST_DEVICE]")]
+    /// start a vsock device.
+    ///     vhost=PATH - Path to a vhost-user endpoint to listen to.
+    ///        This parameter must be given in first position.
+    ///     cid=CID - CID to use for the device.
+    ///     device=VHOST_DEVICE - path to the vhost-vsock device to
+    ///         use (Linux only). Defaults to /dev/vhost-vsock.
+    pub vsock: Vec<VhostUserParams<VsockConfig>>,
 
     #[argh(option, short = 's', arg_name = "PATH")]
     /// path to put the control socket.

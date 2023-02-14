@@ -3766,6 +3766,11 @@ pub fn start_devices(opts: DevicesCommand) -> anyhow::Result<()> {
         add_device(i, disk_config, &params.vhost, &jail, &mut devices_jails)?;
     }
 
+    // Create vsock devices.
+    for (i, params) in opts.vsock.iter().enumerate() {
+        add_device(i, &params.device, &params.vhost, &jail, &mut devices_jails)?;
+    }
+
     let ex = Executor::new()?;
     if let Some(control_server_socket) = control_server_socket {
         // Start the control server in the parent process.
