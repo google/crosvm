@@ -42,6 +42,7 @@ use devices::virtio::vhost::user::device::gpu::sys::windows::GpuBackendConfig;
 use devices::virtio::vhost::user::device::gpu::sys::windows::GpuVmmConfig;
 #[cfg(all(windows, feature = "audio"))]
 use devices::virtio::vhost::user::device::snd::sys::windows::SndSplitConfig;
+use devices::virtio::vsock::VsockConfig;
 use devices::virtio::NetParameters;
 #[cfg(feature = "audio")]
 use devices::Ac97Backend;
@@ -1007,7 +1008,6 @@ pub struct Config {
     pub broker_shutdown_event: Option<Event>,
     #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
     pub bus_lock_ratelimit: u64,
-    pub cid: Option<u64>,
     #[cfg(unix)]
     pub coiommu_param: Option<devices::CoIommuParameters>,
     pub cpu_capacity: BTreeMap<usize, u32>, // CPU index -> capacity
@@ -1183,8 +1183,6 @@ pub struct Config {
     pub vhost_user_video_dec: Vec<VhostUserOption>,
     pub vhost_user_vsock: Vec<VhostUserOption>,
     pub vhost_user_wl: Option<VhostUserOption>,
-    #[cfg(unix)]
-    pub vhost_vsock_device: Option<PathBuf>,
     #[cfg(feature = "video-decoder")]
     pub video_dec: Vec<VideoDeviceConfig>,
     #[cfg(feature = "video-encoder")]
@@ -1199,6 +1197,7 @@ pub struct Config {
     pub virtio_snds: Vec<SndParameters>,
     pub virtio_switches: Vec<PathBuf>,
     pub virtio_trackpad: Vec<TouchDeviceOption>,
+    pub vsock: Option<VsockConfig>,
     #[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
     pub vtpm_proxy: bool,
     pub vvu_proxy: Vec<VvuOption>,
@@ -1229,7 +1228,6 @@ impl Default for Config {
             broker_shutdown_event: None,
             #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
             bus_lock_ratelimit: 0,
-            cid: None,
             #[cfg(unix)]
             coiommu_param: None,
             #[cfg(feature = "crash-report")]
@@ -1406,8 +1404,7 @@ impl Default for Config {
             vhost_user_snd: Vec::new(),
             vhost_user_vsock: Vec::new(),
             vhost_user_wl: None,
-            #[cfg(unix)]
-            vhost_vsock_device: None,
+            vsock: None,
             #[cfg(feature = "video-decoder")]
             video_dec: Vec::new(),
             #[cfg(feature = "video-encoder")]

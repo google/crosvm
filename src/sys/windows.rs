@@ -460,7 +460,10 @@ fn create_vsock_device(cfg: &Config) -> DeviceResult {
     // We only support a single guest, so we can confidently assign a default
     // CID if one isn't provided. We choose the lowest non-reserved value.
     let dev = virtio::Vsock::new(
-        cfg.cid.unwrap_or(DEFAULT_GUEST_CID),
+        cfg.vsock
+            .as_ref()
+            .map(|cfg| cfg.cid)
+            .unwrap_or(DEFAULT_GUEST_CID),
         cfg.host_guid.clone(),
         virtio::base_features(cfg.protection_type),
     )

@@ -39,6 +39,7 @@ use devices::virtio::device_constants::video::VideoDeviceConfig;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vhost::user::device;
+use devices::virtio::vsock::VsockConfig;
 #[cfg(feature = "gpu")]
 use devices::virtio::GpuDisplayParameters;
 #[cfg(feature = "gpu")]
@@ -2534,7 +2535,25 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         cfg.balloon_control = cmd.balloon_control;
 
-        cfg.cid = cmd.cid;
+        if let Some(cid) = cmd.cid {
+            let legacy_vsock_config = VsockConfig::new(
+                cid,
+                #[cfg(unix)]
+                match (cmd.vhost_vsock_device, cmd.vhost_vsock_fd) {
+                    (Some(_), Some(_)) => {
+                        return Err(
+                            "Only one of vhost-vsock-device vhost-vsock-fd has to be specified"
+                                .to_string(),
+                        )
+                    }
+                    (Some(path), None) => Some(path),
+                    (None, Some(fd)) => Some(PathBuf::from(format!("/proc/self/fd/{}", fd))),
+                    (None, None) => None,
+                },
+            );
+
+            cfg.vsock = Some(legacy_vsock_config);
+        }
 
         #[cfg(feature = "plugin")]
         {
@@ -2677,18 +2696,6 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         #[cfg(unix)]
         {
-            if cmd.vhost_vsock_device.is_some() && cmd.vhost_vsock_fd.is_some() {
-                return Err(
-                    "Only one of vhost-vsock-device vhost-vsock-fd has to be specified".to_string(),
-                );
-            }
-
-            cfg.vhost_vsock_device = cmd.vhost_vsock_device;
-
-            if let Some(fd) = cmd.vhost_vsock_fd {
-                cfg.vhost_vsock_device = Some(PathBuf::from(format!("/proc/self/fd/{}", fd)));
-            }
-
             cfg.shared_dirs = cmd.shared_dir;
 
             cfg.net = cmd.net;

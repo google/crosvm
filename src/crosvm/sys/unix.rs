@@ -70,7 +70,6 @@ use devices::virtio::memory_mapper::MemoryMapper;
 use devices::virtio::memory_mapper::MemoryMapperTrait;
 use devices::virtio::vhost::user::VhostUserListener;
 use devices::virtio::vhost::user::VhostUserListenerTrait;
-use devices::virtio::vsock::VsockConfig;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonFeatures;
 #[cfg(feature = "balloon")]
@@ -613,13 +612,11 @@ fn create_virtio_devices(
         }
     }
 
-    if let Some(cid) = cfg.cid {
-        let vhost_config = VsockConfig::new(cid, cfg.vhost_vsock_device.clone());
-
+    if let Some(vhost_config) = &cfg.vsock {
         devs.push(create_vhost_vsock_device(
             cfg.protection_type,
             &cfg.jail_config,
-            &vhost_config,
+            vhost_config,
         )?);
     }
 
