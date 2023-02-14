@@ -8,11 +8,5 @@
 //! For Linux, please use the vhost-vsock device, which delegates the vsock
 //! implementation to the kernel.
 
-#![cfg(windows)]
-
-pub mod protocol;
-pub mod vsock;
-
-pub(crate) use protocol::*;
-pub use vsock::Vsock;
-pub use vsock::VsockError;
+mod sys;
+pub use sys::VsockConfig;
