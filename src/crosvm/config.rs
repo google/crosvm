@@ -2243,4 +2243,34 @@ mod tests {
             }
         );
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn parse_shared_dir() {
+        let s = "/usr/local/bin:usr_local_bin:type=fs:cache=always:uidmap=0 655360 5000,5000 600 50,5050 660410 1994950:gidmap=0 655360 1065,1065 20119 1,1066 656426 3934,5000 600 50,5050 660410 1994950:timeout=3600:rewrite-security-xattrs=true:ascii_casefold=false:writeback=true:posix_acl=true";
+
+        let shared_dir: SharedDir = s.parse().unwrap();
+        assert_eq!(shared_dir.src, Path::new("/usr/local/bin").to_path_buf());
+        assert_eq!(shared_dir.tag, "usr_local_bin");
+        assert!(shared_dir.kind == SharedDirKind::FS);
+        assert_eq!(
+            shared_dir.uid_map,
+            "0 655360 5000,5000 600 50,5050 660410 1994950"
+        );
+        assert_eq!(
+            shared_dir.gid_map,
+            "0 655360 1065,1065 20119 1,1066 656426 3934,5000 600 50,5050 660410 1994950"
+        );
+        assert_eq!(shared_dir.fs_cfg.ascii_casefold, false);
+        assert_eq!(shared_dir.fs_cfg.attr_timeout, Duration::from_secs(3600));
+        assert_eq!(shared_dir.fs_cfg.entry_timeout, Duration::from_secs(3600));
+        assert_eq!(shared_dir.fs_cfg.writeback, true);
+        assert_eq!(
+            shared_dir.fs_cfg.cache_policy,
+            passthrough::CachePolicy::Always
+        );
+        assert_eq!(shared_dir.fs_cfg.rewrite_security_xattrs, true);
+        assert_eq!(shared_dir.fs_cfg.use_dax, false);
+        assert_eq!(shared_dir.fs_cfg.posix_acl, true);
+    }
 }
