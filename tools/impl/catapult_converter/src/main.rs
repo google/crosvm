@@ -33,7 +33,7 @@ struct ConverterArgs {
 
     /// release version in the format 0.yyyymmdd.a.b if applicable. e.g. 0.20200101.1.2
     #[argh(option, arg_name = "STRING")]
-    product_version: Option<String>,
+    product_versions: Option<String>,
 
     /// copied into output file as pointId, used to order results from different builds in a graph
     #[argh(option, arg_name = "NUMBER")]
@@ -266,7 +266,7 @@ fn build_shared_diagnostic_map(
     diag_set.insert(diag.clone());
     diag_map.insert("masters", diag.guid);
 
-    if let Some(version) = &args.product_version {
+    if let Some(version) = &args.product_versions {
         let diag = Diagnostic {
             values: vec![json!(version)],
             ..Default::default()
