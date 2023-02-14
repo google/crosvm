@@ -11,8 +11,9 @@ pub use vsock::VsockError;
 
 use serde::Deserialize;
 use serde::Serialize;
+use serde_keyvalue::FromKeyValues;
 
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Eq, FromKeyValues)]
 #[serde(deny_unknown_fields)]
 // Configuration for a Vsock device.
 pub struct VsockConfig {

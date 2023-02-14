@@ -885,7 +885,7 @@ pub struct RunCommand {
     cfg: Option<Box<Self>>,
 
     #[argh(option, arg_name = "CID")]
-    #[serde(skip)] // TODO(b/255223604)
+    #[serde(skip)] // Deprecated - use `vsock` instead.
     #[merge(strategy = overwrite_option)]
     /// context ID for virtual sockets.
     pub cid: Option<u64>,
@@ -2098,14 +2098,14 @@ pub struct RunCommand {
 
     #[cfg(unix)]
     #[argh(option, arg_name = "SOCKET_PATH")]
-    #[serde(skip)] // TODO(b/255223604)
+    #[serde(skip)] // Deprecated - use `vsock` instead.
     #[merge(strategy = overwrite_option)]
     /// path to the vhost-vsock device. (default /dev/vhost-vsock)
     pub vhost_vsock_device: Option<PathBuf>,
 
     #[cfg(unix)]
     #[argh(option, arg_name = "FD")]
-    #[serde(skip)] // TODO(b/255223604)
+    #[serde(skip)] // Deprecated - use `vsock` instead.
     #[merge(strategy = overwrite_option)]
     /// open FD to the vhost-vsock device, mutually exclusive with vhost-vsock-device
     pub vhost_vsock_fd: Option<RawDescriptor>,
@@ -2157,6 +2157,16 @@ pub struct RunCommand {
     ///     num_input_streams=INT - Set number of input PCM streams
     ///         per device.
     pub virtio_snd: Vec<SndParameters>,
+
+    #[argh(option, arg_name = "cid=CID[,device=VHOST_DEVICE]")]
+    #[serde(default)]
+    #[merge(strategy = overwrite_option)]
+    /// add a vsock device. Since a guest can only have one CID,
+    /// this option can only be specified once.
+    ///     cid=CID - CID to use for the device.
+    ///     device=VHOST_DEVICE - path to the vhost-vsock device to
+    ///         use (Linux only). Defaults to /dev/vhost-vsock.
+    pub vsock: Option<VsockConfig>,
 
     #[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
     #[argh(switch)]
@@ -2535,7 +2545,16 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         cfg.balloon_control = cmd.balloon_control;
 
+        cfg.vsock = cmd.vsock;
+
+        // Legacy vsock options.
         if let Some(cid) = cmd.cid {
+            if cfg.vsock.is_some() {
+                return Err(
+                    "`cid` and `vsock` cannot be specified together. Use `vsock` only.".to_string(),
+                );
+            }
+
             let legacy_vsock_config = VsockConfig::new(
                 cid,
                 #[cfg(unix)]
