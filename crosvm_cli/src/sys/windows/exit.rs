@@ -342,6 +342,8 @@ pub enum Exit {
     StartSpu = 0xE000009C,
     SandboxCreateProcessAccessDenied = 0xE000009D,
     SandboxCreateProcessElevationRequired = 0xE000009E,
+    BalloonSizeInvalid = 0xE000009F,
+    VhostUserSndDeviceNew = 0xE00000A0,
 }
 
 impl From<Exit> for ExitCode {

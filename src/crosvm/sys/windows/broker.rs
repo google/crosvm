@@ -68,10 +68,18 @@ use crosvm_cli::sys::windows::exit::ExitCode;
 use crosvm_cli::sys::windows::exit::ExitCodeWrapper;
 use crosvm_cli::sys::windows::exit::ExitContext;
 use crosvm_cli::sys::windows::exit::ExitContextAnyhow;
+#[cfg(feature = "audio")]
+use devices::virtio::snd::parameters::Parameters as SndParameters;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost::user::device::gpu::sys::windows::GpuBackendConfig;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost::user::device::gpu::sys::windows::GpuVmmConfig;
+#[cfg(feature = "audio")]
+use devices::virtio::vhost::user::device::snd::sys::windows::SndBackendConfig;
+#[cfg(feature = "audio")]
+use devices::virtio::vhost::user::device::snd::sys::windows::SndSplitConfig;
+#[cfg(feature = "audio")]
+use devices::virtio::vhost::user::device::snd::sys::windows::SndVmmConfig;
 #[cfg(feature = "slirp")]
 use devices::virtio::vhost::user::device::NetBackendConfig;
 #[cfg(feature = "gpu")]
@@ -93,7 +101,14 @@ use win_util::ProcessType;
 use winapi::shared::winerror::ERROR_ACCESS_DENIED;
 use winapi::um::processthreadsapi::TerminateProcess;
 
+#[cfg(feature = "gpu")]
 use crate::sys::windows::get_gpu_product_configs;
+#[cfg(feature = "audio")]
+use crate::sys::windows::get_snd_product_configs;
+#[cfg(feature = "audio")]
+use crate::sys::windows::num_input_sound_devices;
+#[cfg(feature = "audio")]
+use crate::sys::windows::num_input_sound_streams;
 use crate::Config;
 
 const KILL_CHILD_EXIT_CODE: u32 = 1;
@@ -135,7 +150,7 @@ fn process_policy(process_type: ProcessType, cfg: &Config) -> sandbox::policy::P
         ProcessType::Net => sandbox::policy::NET,
         ProcessType::Slirp => sandbox::policy::SLIRP,
         ProcessType::Gpu => sandbox::policy::GPU,
-        ProcessType::Snd => unimplemented!("No SND policy"),
+        ProcessType::Snd => sandbox::policy::SND,
         ProcessType::Broker => unimplemented!("No broker policy"),
         ProcessType::Spu => unimplemented!("No SPU policy"),
     };
@@ -577,6 +592,27 @@ fn run_internal(mut cfg: Config) -> Result<()> {
         #[cfg(feature = "process-invariants")]
         &process_invariants,
     )?;
+
+    #[cfg(feature = "audio")]
+    let snd_cfg = platform_create_snd(&cfg, &mut main_child, &mut exit_events)?;
+
+    #[cfg(feature = "audio")]
+    let _snd_child = if cfg.vhost_user_snd.is_empty() {
+        // Pass both backend and frontend configs to main process.
+        cfg.snd_split_config = Some(snd_cfg);
+        None
+    } else {
+        Some(start_up_snd(
+            &mut cfg,
+            snd_cfg,
+            &mut main_child,
+            &mut children,
+            &mut wait_ctx,
+            &mut metric_tubes,
+            #[cfg(feature = "process-invariants")]
+            &process_invariants,
+        )?)
+    };
 
     let (vm_evt_wrtube, vm_evt_rdtube) =
         Tube::directional_pair().context("failed to create vm event tube")?;
@@ -1411,6 +1447,119 @@ fn spawn_net_backend(
     cfg.net_vhost_user_tube = Some(vhost_user_main_tube);
 
     Ok(net_child)
+}
+
+/// Create backend and VMM configurations for the sound device.
+#[cfg(feature = "audio")]
+fn platform_create_snd(
+    cfg: &Config,
+    main_child: &mut ChildProcess,
+    exit_events: &mut Vec<Event>,
+) -> Result<SndSplitConfig> {
+    let exit_event = Event::new().exit_context(Exit::CreateEvent, "failed to create exit event")?;
+    exit_events.push(
+        exit_event
+            .try_clone()
+            .exit_context(Exit::CloneEvent, "failed to clone event")?,
+    );
+
+    let (backend_config_product, vmm_config_product) =
+        get_snd_product_configs(cfg, main_child.alias_pid)?;
+
+    let parameters = SndParameters {
+        backend: "winaudio".try_into().unwrap(),
+        num_input_devices: num_input_sound_devices(cfg),
+        num_input_streams: num_input_sound_streams(cfg),
+        ..Default::default()
+    };
+
+    let backend_config = Some(SndBackendConfig {
+        device_vhost_user_tube: None,
+        exit_event,
+        parameters,
+        product_config: backend_config_product,
+    });
+
+    let vmm_config = Some(SndVmmConfig {
+        main_vhost_user_tube: None,
+        product_config: vmm_config_product,
+    });
+
+    Ok(SndSplitConfig {
+        backend_config,
+        vmm_config,
+    })
+}
+
+/// Returns a snd child process for vhost-user sound.
+#[cfg(feature = "audio")]
+fn start_up_snd(
+    cfg: &mut Config,
+    mut snd_cfg: SndSplitConfig,
+    main_child: &mut ChildProcess,
+    children: &mut HashMap<u32, ChildCleanup>,
+    wait_ctx: &mut WaitContext<Token>,
+    metric_tubes: &mut Vec<Tube>,
+    #[cfg(feature = "process-invariants")] process_invariants: &EmulatorProcessInvariants,
+) -> Result<ChildProcess> {
+    // Extract the backend config from the sound config, so it can run elsewhere.
+    let mut backend_cfg = snd_cfg
+        .backend_config
+        .take()
+        .expect("snd backend config must be set");
+
+    let (mut main_vhost_user_tube, mut device_host_user_tube) =
+        Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
+
+    let snd_child = spawn_child(
+        current_exe().unwrap().to_str().unwrap(),
+        ["device", "snd"],
+        get_log_path(cfg, "snd_stdout.log"),
+        get_log_path(cfg, "snd_stderr.log"),
+        ProcessType::Snd,
+        children,
+        wait_ctx,
+        /* skip_bootstrap= */
+        #[cfg(test)]
+        false,
+        /* use_sandbox= */
+        cfg.jail_config.is_some(),
+        vec![],
+        cfg,
+    )?;
+
+    snd_child
+        .tube_transporter
+        .serialize_and_transport(snd_child.process_id)
+        .exit_context(Exit::TubeTransporterInit, "failed to initialize tube")?;
+
+    // Update target PIDs to new child.
+    device_host_user_tube.set_target_pid(main_child.alias_pid);
+    main_vhost_user_tube.set_target_pid(snd_child.alias_pid);
+
+    // Insert vhost-user tube to backend / frontend configs.
+    backend_cfg.device_vhost_user_tube = Some(device_host_user_tube);
+    if let Some(vmm_config) = snd_cfg.vmm_config.as_mut() {
+        vmm_config.main_vhost_user_tube = Some(main_vhost_user_tube);
+    }
+
+    // Send VMM config to main process.
+    cfg.snd_split_config = Some(snd_cfg);
+
+    let startup_args = CommonChildStartupArgs::new(
+        get_log_path(cfg, "snd_syslog.log"),
+        #[cfg(feature = "crash-report")]
+        create_crash_report_attrs(cfg, product_type::SND),
+        #[cfg(feature = "process-invariants")]
+        process_invariants.clone(),
+        Some(metrics_tube_pair(metric_tubes)?),
+    )?;
+    snd_child.bootstrap_tube.send(&startup_args).unwrap();
+
+    // Send backend config to Snd child.
+    snd_child.bootstrap_tube.send(&backend_cfg).unwrap();
+
+    Ok(snd_child)
 }
 
 #[cfg(feature = "gpu")]

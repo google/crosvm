@@ -129,3 +129,20 @@ pub const GPU: Policy = Policy {
     exceptions: vec![],
     dll_blocklist: vec![],
 };
+
+/// Policy for the sound process.
+pub const SND: Policy = Policy {
+    // Needed for CoInitializeEx.
+    initial_token_level: TokenLevel::USER_RESTRICTED_SAME_ACCESS,
+    // Needed for subsequent CoCreateInstance requests.
+    lockdown_token_level: TokenLevel::USER_RESTRICTED_NON_ADMIN,
+    // Needed for access to audio APIs.
+    integrity_level: IntegrityLevel::INTEGRITY_LEVEL_LOW,
+    delayed_integrity_level: IntegrityLevel::INTEGRITY_LEVEL_LOW,
+    job_level: JobLevel::JOB_LOCKDOWN,
+    ui_exceptions: 0,
+    alternate_desktop: true,
+    alternate_winstation: true,
+    exceptions: vec![],
+    dll_blocklist: vec![],
+};
