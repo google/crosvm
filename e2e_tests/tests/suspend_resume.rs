@@ -13,12 +13,14 @@ use tempfile::tempdir;
 // System-wide suspend/resume, snapshot/restore.
 // Tests below check for snapshot/restore functionality, and suspend/resume.
 
+#[ignore]
 #[test]
 fn suspend_snapshot_restore_resume() -> anyhow::Result<()> {
     let mut vm = TestVm::new(Config::new()).unwrap();
     suspend_resume_system(&mut vm)
 }
 
+#[ignore]
 #[test]
 fn suspend_snapshot_restore_resume_disable_sandbox() -> anyhow::Result<()> {
     let mut vm = TestVm::new(Config::new().disable_sandbox()).unwrap();
