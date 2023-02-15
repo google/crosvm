@@ -6,6 +6,7 @@ edition = "2021"
 
 [features]
 trace_marker = ["cros_tracing/trace_marker"]
+log_page_fault = []
 
 [target.'cfg(unix)'.dependencies]
 anyhow = "*"

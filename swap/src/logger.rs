@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![cfg(feature = "log_page_fault")]
 #![deny(missing_docs)]
 
 use std::fs::File;
@@ -14,6 +15,8 @@ use std::time::UNIX_EPOCH;
 
 use anyhow::Context;
 use base::info;
+use base::AsRawDescriptor;
+use base::RawDescriptor;
 use serde::Deserialize;
 use serde::Serialize;
 use vm_memory::GuestMemory;
@@ -80,6 +83,12 @@ impl PageFaultEventLogger {
     fn line_break(&mut self) {
         const LINE_BREAK: &[u8] = &[b'\n'];
         let _ = self.file.write(LINE_BREAK);
+    }
+}
+
+impl AsRawDescriptor for PageFaultEventLogger {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.file.as_raw_descriptor()
     }
 }
 

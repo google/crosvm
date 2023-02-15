@@ -181,10 +181,6 @@ fn swap_vms(cmd: cmdline::SwapCommand) -> std::result::Result<(), ()> {
         SwapOut(params) => (VmRequest::Swap(SwapCommand::SwapOut), &params.socket_path),
         Disable(params) => (VmRequest::Swap(SwapCommand::Disable), &params.socket_path),
         Status(params) => (VmRequest::Swap(SwapCommand::Status), &params.socket_path),
-        LogPageFault(params) => (
-            VmRequest::Swap(SwapCommand::StartPageFaultLogging),
-            &params.socket_path,
-        ),
     };
     if let VmRequest::Swap(SwapCommand::Status) = req {
         do_swap_status(path)
