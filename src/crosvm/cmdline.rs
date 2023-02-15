@@ -1927,6 +1927,19 @@ pub struct RunCommand {
     /// path to a socket from where to read trackpad input events and write status updates to, optionally followed by screen width and height (defaults to 800x1280)
     pub trackpad: Vec<TouchDeviceOption>,
 
+    #[cfg(unix)]
+    #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
+    #[merge(strategy = overwrite_false)]
+    /// set MADV_DONTFORK on guest memory
+    ///
+    /// Intended for use in combination with --protected-vm, where the guest memory can be
+    /// dangerous to access. Some systems, e.g. Android, have tools that fork processes and examine
+    /// their memory. This flag effectively hides the guest memory from those tools.
+    ///
+    /// Not compatible with sandboxing or vvu devices.
+    pub unmap_guest_memory_on_fork: bool,
+
     // Must be `Some` iff `protection_type == ProtectionType::UnprotectedWithFirmware`.
     #[argh(option, arg_name = "PATH")]
     #[serde(skip)] // TODO(b/255223604)
@@ -2820,6 +2833,14 @@ impl TryFrom<RunCommand> for super::config::Config {
         #[cfg(target_os = "android")]
         {
             cfg.task_profiles = cmd.task_profiles;
+        }
+
+        #[cfg(unix)]
+        {
+            if cmd.unmap_guest_memory_on_fork && !cmd.disable_sandbox {
+                return Err("--unmap-guest-memory-on-fork requires --disable-sandbox".to_string());
+            }
+            cfg.unmap_guest_memory_on_fork = cmd.unmap_guest_memory_on_fork;
         }
 
         #[cfg(unix)]

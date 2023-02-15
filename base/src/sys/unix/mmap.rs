@@ -315,6 +315,24 @@ impl MemoryMapping {
         })
     }
 
+    /// Madvise the kernel to unmap on fork.
+    pub fn use_dontfork(&self) -> Result<()> {
+        // This is safe because we call madvise with a valid address and size, and we check the
+        // return value.
+        let ret = unsafe {
+            libc::madvise(
+                self.as_ptr() as *mut libc::c_void,
+                self.size(),
+                libc::MADV_DONTFORK,
+            )
+        };
+        if ret == -1 {
+            Err(Error::SystemCallFailed(ErrnoError::last()))
+        } else {
+            Ok(())
+        }
+    }
+
     /// Madvise the kernel to use Huge Pages for this mapping.
     pub fn use_hugepages(&self) -> Result<()> {
         const SZ_2M: usize = 2 * 1024 * 1024;
@@ -759,6 +777,10 @@ impl Drop for MemoryMappingArena {
 }
 
 impl CrateMemoryMapping {
+    pub fn use_dontfork(&self) -> Result<()> {
+        self.mapping.use_dontfork()
+    }
+
     pub fn use_hugepages(&self) -> Result<()> {
         self.mapping.use_hugepages()
     }

@@ -1185,6 +1185,8 @@ pub struct Config {
     pub tap_name: Vec<String>,
     #[cfg(target_os = "android")]
     pub task_profiles: Vec<String>,
+    #[cfg(unix)]
+    pub unmap_guest_memory_on_fork: bool,
     pub usb: bool,
     pub userspace_msr: BTreeMap<u32, MsrConfig>,
     pub vcpu_affinity: Option<VcpuAffinity>,
@@ -1400,6 +1402,8 @@ impl Default for Config {
             tap_name: Vec::new(),
             #[cfg(target_os = "android")]
             task_profiles: Vec::new(),
+            #[cfg(unix)]
+            unmap_guest_memory_on_fork: false,
             usb: true,
             userspace_msr: BTreeMap::new(),
             vcpu_affinity: None,

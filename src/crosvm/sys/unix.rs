@@ -1297,6 +1297,16 @@ fn create_guest_memory(
     }
     guest_mem.set_memory_policy(mem_policy);
 
+    if cfg.unmap_guest_memory_on_fork {
+        // Note that this isn't compatible with sandboxing. We could potentially fix that by
+        // delaying the call until after the sandboxed devices are forked. However, the main use
+        // for this is in conjunction with protected VMs, where most of the guest memory has been
+        // unshared with the host. We'd need to be confident that the guest memory is unshared with
+        // the host only after the `use_dontfork` call and those details will vary by hypervisor.
+        // So, for now we keep things simple to be safe.
+        guest_mem.use_dontfork().context("use_dontfork failed")?;
+    }
+
     // Setup page fault handlers for vmm-swap.
     // This should be called before device processes are forked.
     #[cfg(feature = "swap")]

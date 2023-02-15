@@ -73,4 +73,11 @@ impl GuestMemory {
             }
         }
     }
+
+    pub fn use_dontfork(&self) -> anyhow::Result<()> {
+        for region in self.regions.iter() {
+            region.mapping.use_dontfork()?;
+        }
+        Ok(())
+    }
 }
