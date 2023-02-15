@@ -69,7 +69,7 @@ def collect_binary_sizes(api, properties):
                     "--base-dir",
                     "/scratch/cargo_target/crosvm",
                     # Only upload binary size in postsubmit
-                    "--upload" if properties.profile == "postsubmit" else "",
+                    *(("--upload",) if properties.profile == "postsubmit" else tuple()),
                     "--builder-name",
                     api.buildbucket.builder_name,
                     "--log-url",
