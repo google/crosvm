@@ -222,7 +222,6 @@ impl VioSClient {
         let rx_subscribers: Arc<Mutex<HashMap<usize, Sender<BufferReleaseMsg>>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let recv_thread_state = Arc::new(Mutex::new(ThreadFlags {
-            running: true,
             reporting_events: false,
         }));
         let recv_event = Event::new().map_err(Error::EventCreateError)?;
@@ -319,7 +318,6 @@ impl VioSClient {
         if self.recv_thread.lock().is_none() {
             return Ok(());
         }
-        self.recv_thread_state.lock().running = false;
         self.recv_event.signal().map_err(Error::EventWriteError)?;
         if let Some(handle) = self.recv_thread.lock().take() {
             return match handle.join() {
@@ -579,7 +577,6 @@ impl Drop for VioSClient {
 
 #[derive(Clone, Copy)]
 struct ThreadFlags {
-    running: bool,
     reporting_events: bool,
 }
 
@@ -664,11 +661,8 @@ fn spawn_recv_thread(
             (&event, Token::Notification),
         ])
         .map_err(Error::WaitContextCreateError)?;
-        loop {
-            let state_cpy = *state.lock();
-            if !state_cpy.running {
-                break;
-            }
+        let mut running = true;
+        while running {
             let events = wait_ctx.wait().map_err(Error::WaitError)?;
             for evt in events {
                 match evt.token {
@@ -688,6 +682,7 @@ fn spawn_recv_thread(
                         if let Err(e) = event.wait() {
                             error!("Failed to consume notification from recv thread: {:?}", e);
                         }
+                        running = false;
                     }
                 }
             }
