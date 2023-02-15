@@ -92,7 +92,8 @@
       "--verbose",
       "./tools/build_release",
       "--json",
-      "--platform=x86_64"
+      "--platform=x86_64",
+      "--strip"
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {

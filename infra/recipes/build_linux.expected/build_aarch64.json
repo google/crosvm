@@ -92,7 +92,8 @@
       "--verbose",
       "./tools/build_release",
       "--json",
-      "--platform=aarch64"
+      "--platform=aarch64",
+      "--strip"
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
