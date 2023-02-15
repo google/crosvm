@@ -33,6 +33,9 @@ use std::usize;
 
 use remain::sorted;
 use thiserror::Error;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
+use zerocopy::LayoutVerified;
 
 use crate::sys::IoBufMut;
 use crate::DataInit;
@@ -296,12 +299,15 @@ impl<'a> VolatileSlice<'a> {
     /// ```
     pub fn copy_from<T>(&self, buf: &[T])
     where
-        T: DataInit,
+        T: FromBytes + AsBytes,
     {
         let mut addr = self.as_mut_ptr();
-        for &v in buf.iter().take(self.size() / size_of::<T>()) {
+        for v in buf.iter().take(self.size() / size_of::<T>()) {
             unsafe {
-                write_volatile(addr as *mut T, v);
+                write_volatile(
+                    addr as *mut T,
+                    LayoutVerified::<_, T>::new(v.as_bytes()).unwrap().read(),
+                );
                 addr = addr.add(size_of::<T>());
             }
         }

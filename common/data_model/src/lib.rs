@@ -7,7 +7,9 @@ use std::mem::size_of;
 use std::mem::MaybeUninit;
 use std::slice::from_raw_parts;
 use std::slice::from_raw_parts_mut;
+use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::LayoutVerified;
 
 pub fn zerocopy_from_reader<R: io::Read, T: FromBytes>(mut read: R) -> io::Result<T> {
     // Allocate on the stack via `MaybeUninit` to ensure proper alignment.
@@ -20,6 +22,16 @@ pub fn zerocopy_from_reader<R: io::Read, T: FromBytes>(mut read: R) -> io::Resul
 
     // Safe because any bit pattern is considered a valid value for `T`.
     Ok(unsafe { out.assume_init() })
+}
+
+pub fn zerocopy_from_mut_slice<T: FromBytes + AsBytes>(data: &mut [u8]) -> Option<&mut T> {
+    let lv: LayoutVerified<&mut [u8], T> = LayoutVerified::new(data)?;
+    Some(lv.into_mut())
+}
+
+pub fn zerocopy_from_slice<T: FromBytes>(data: &[u8]) -> Option<&T> {
+    let lv: LayoutVerified<&[u8], T> = LayoutVerified::new(data)?;
+    Some(lv.into_ref())
 }
 
 /// Types for which it is safe to initialize from raw data.

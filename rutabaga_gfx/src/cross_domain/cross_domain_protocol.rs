@@ -7,7 +7,8 @@
 
 #![allow(dead_code)]
 
-use data_model::DataInit;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 /// Cross-domain commands (only a maximum of 255 supported)
 pub const CROSS_DOMAIN_CMD_INIT: u8 = 1;
@@ -44,7 +45,7 @@ pub const CROSS_DOMAIN_QUERY_RING: u32 = 0;
 pub const CROSS_DOMAIN_CHANNEL_RING: u32 = 1;
 
 #[repr(C)]
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 pub struct CrossDomainCapabilities {
     pub version: u32,
     pub supported_channels: u32,
@@ -52,10 +53,8 @@ pub struct CrossDomainCapabilities {
     pub supports_external_gpu_memory: u32,
 }
 
-unsafe impl DataInit for CrossDomainCapabilities {}
-
 #[repr(C)]
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 pub struct CrossDomainImageRequirements {
     pub strides: [u32; 4],
     pub offsets: [u32; 4],
@@ -67,10 +66,8 @@ pub struct CrossDomainImageRequirements {
     pub physical_device_idx: i32,
 }
 
-unsafe impl DataInit for CrossDomainImageRequirements {}
-
 #[repr(C)]
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 pub struct CrossDomainHeader {
     pub cmd: u8,
     pub ring_idx: u8,
@@ -78,20 +75,16 @@ pub struct CrossDomainHeader {
     pub pad: u32,
 }
 
-unsafe impl DataInit for CrossDomainHeader {}
-
 #[repr(C)]
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 pub struct CrossDomainInit {
     pub hdr: CrossDomainHeader,
     pub ring_id: u32,
     pub channel_type: u32,
 }
 
-unsafe impl DataInit for CrossDomainInit {}
-
 #[repr(C)]
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 pub struct CrossDomainGetImageRequirements {
     pub hdr: CrossDomainHeader,
     pub width: u32,
@@ -100,10 +93,8 @@ pub struct CrossDomainGetImageRequirements {
     pub flags: u32,
 }
 
-unsafe impl DataInit for CrossDomainGetImageRequirements {}
-
 #[repr(C)]
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 pub struct CrossDomainSendReceive {
     pub hdr: CrossDomainHeader,
     pub num_identifiers: u32,
@@ -114,10 +105,8 @@ pub struct CrossDomainSendReceive {
     // Data of size "opaque data size follows"
 }
 
-unsafe impl DataInit for CrossDomainSendReceive {}
-
 #[repr(C)]
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 pub struct CrossDomainReadWrite {
     pub hdr: CrossDomainHeader,
     pub identifier: u32,
@@ -126,5 +115,3 @@ pub struct CrossDomainReadWrite {
     pub pad: u32,
     // Data of size "opaque data size follows"
 }
-
-unsafe impl DataInit for CrossDomainReadWrite {}

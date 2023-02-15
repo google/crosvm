@@ -24,8 +24,9 @@ use base::EventToken;
 use base::FileReadWriteVolatile;
 use base::SafeDescriptor;
 use base::WaitContext;
-use data_model::DataInit;
 use data_model::VolatileSlice;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 use super::sys::descriptor_analysis;
 use super::sys::SystemStream;
@@ -198,7 +199,7 @@ impl CrossDomainState {
 
     fn write_to_ring<T>(&self, mut ring_write: RingWrite<T>) -> RutabagaResult<usize>
     where
-        T: DataInit,
+        T: FromBytes + AsBytes,
     {
         let mut context_resources = self.context_resources.lock().unwrap();
         let mut bytes_read: usize = 0;
@@ -705,25 +706,26 @@ impl RutabagaContext for CrossDomainContext {
 
     fn submit_cmd(&mut self, mut commands: &mut [u8]) -> RutabagaResult<()> {
         while !commands.is_empty() {
-            let hdr = CrossDomainHeader::read_from_prefix(commands)
+            let hdr = CrossDomainHeader::read_from_prefix(commands.as_bytes())
                 .ok_or(RutabagaError::InvalidCommandBuffer)?;
 
             match hdr.cmd {
                 CROSS_DOMAIN_CMD_INIT => {
-                    let cmd_init = CrossDomainInit::read_from_prefix(commands)
+                    let cmd_init = CrossDomainInit::read_from_prefix(commands.as_bytes())
                         .ok_or(RutabagaError::InvalidCommandBuffer)?;
 
                     self.initialize(&cmd_init)?;
                 }
                 CROSS_DOMAIN_CMD_GET_IMAGE_REQUIREMENTS => {
-                    let cmd_get_reqs = CrossDomainGetImageRequirements::read_from_prefix(commands)
-                        .ok_or(RutabagaError::InvalidCommandBuffer)?;
+                    let cmd_get_reqs =
+                        CrossDomainGetImageRequirements::read_from_prefix(commands.as_bytes())
+                            .ok_or(RutabagaError::InvalidCommandBuffer)?;
 
                     self.get_image_requirements(&cmd_get_reqs)?;
                 }
                 CROSS_DOMAIN_CMD_SEND => {
                     let opaque_data_offset = size_of::<CrossDomainSendReceive>();
-                    let cmd_send = CrossDomainSendReceive::read_from_prefix(commands)
+                    let cmd_send = CrossDomainSendReceive::read_from_prefix(commands.as_bytes())
                         .ok_or(RutabagaError::InvalidCommandBuffer)?;
 
                     let opaque_data = VolatileSlice::new(
@@ -744,7 +746,7 @@ impl RutabagaContext for CrossDomainContext {
                 }
                 CROSS_DOMAIN_CMD_WRITE => {
                     let opaque_data_offset = size_of::<CrossDomainReadWrite>();
-                    let cmd_write = CrossDomainReadWrite::read_from_prefix(commands)
+                    let cmd_write = CrossDomainReadWrite::read_from_prefix(commands.as_bytes())
                         .ok_or(RutabagaError::InvalidCommandBuffer)?;
 
                     let opaque_data = VolatileSlice::new(
@@ -840,7 +842,7 @@ impl RutabagaComponent for CrossDomain {
 
         // Version 1 supports all commands up to and including CROSS_DOMAIN_CMD_WRITE.
         caps.version = 1;
-        caps.as_slice().to_vec()
+        caps.as_bytes().to_vec()
     }
 
     fn create_blob(

@@ -6,12 +6,12 @@ use std::mem::size_of;
 use std::sync::atomic::fence;
 use std::sync::atomic::Ordering;
 
-use data_model::DataInit;
 use remain::sorted;
 use thiserror::Error;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
+use zerocopy::AsBytes;
 
 use super::xhci_abi::*;
 
@@ -88,7 +88,7 @@ impl EventRing {
 
         // Offset of cycle state byte.
         const CYCLE_STATE_OFFSET: usize = 12usize;
-        let data = trb.as_slice();
+        let data = trb.as_bytes();
         // Trb contains 4 dwords, the last one contains cycle bit.
         let cycle_bit_dword = &data[CYCLE_STATE_OFFSET..];
         let address = self.enqueue_pointer;
