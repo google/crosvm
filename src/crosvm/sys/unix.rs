@@ -1313,7 +1313,7 @@ fn create_guest_memory(
     let swap_controller = cfg
         .swap_dir
         .as_ref()
-        .map(|swap_dir| SwapController::launch(guest_mem.clone(), swap_dir.clone()))
+        .map(|swap_dir| SwapController::launch(guest_mem.clone(), swap_dir))
         .transpose()?;
 
     Ok(CreateGuestMemoryResult {

@@ -20,11 +20,13 @@ pub mod userfaultfd;
 // this is public only for integration tests.
 pub mod worker;
 
+use std::fs::File;
+use std::fs::OpenOptions;
 use std::io::stderr;
 use std::io::stdout;
 use std::ops::Range;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -211,11 +213,26 @@ impl SwapController {
     /// * `guest_memory` - fresh new [GuestMemory]. Any pages on the [GuestMemory] must not be
     ///   touched.
     /// * `swap_dir` - directory to store swap files.
-    pub fn launch(guest_memory: GuestMemory, swap_dir: PathBuf) -> anyhow::Result<Self> {
+    pub fn launch(guest_memory: GuestMemory, swap_dir: &Path) -> anyhow::Result<Self> {
         info!("vmm-swap is enabled. launch monitor process.");
 
         let uffd_factory = UffdFactory::new();
         let uffd = uffd_factory.create().context("create userfaultfd")?;
+
+        // The swap file is created as `O_TMPFILE` from the specified directory. As benefits:
+        //
+        // * it has no chance to conflict.
+        // * it has a security benefit that no one (except root) can access the swap file.
+        // * it will be automatically deleted by the kernel when crosvm exits/dies or on reboot if
+        //   the device panics/hard-resets while crosvm is running.
+        let swap_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .custom_flags(libc::O_TMPFILE | libc::O_EXCL)
+            .mode(0o000) // other processes with the same uid can't open the file
+            .open(swap_dir)?;
+
+        let (tube_main_process, tube_monitor_process) = Tube::pair().context("create swap tube")?;
 
         #[cfg(feature = "log_page_fault")]
         let page_fault_logger = PageFaultEventLogger::create(&swap_dir, &guest_memory)
@@ -224,19 +241,18 @@ impl SwapController {
         let mut keep_rds = vec![
             stdout().as_raw_descriptor(),
             stderr().as_raw_descriptor(),
+            uffd.as_raw_descriptor(),
+            swap_file.as_raw_descriptor(),
+            tube_monitor_process.as_raw_descriptor(),
             #[cfg(feature = "log_page_fault")]
             page_fault_logger.as_raw_descriptor(),
         ];
-
-        let (tube_main_process, tube_monitor_process) = Tube::pair().context("create swap tube")?;
-        keep_rds.push(tube_monitor_process.as_raw_descriptor());
 
         syslog::push_descriptors(&mut keep_rds);
         cros_tracing::push_descriptors!(&mut keep_rds);
         keep_rds.extend(guest_memory.as_raw_descriptors());
 
         keep_rds.extend(uffd_factory.as_raw_descriptors());
-        keep_rds.push(uffd.as_raw_descriptor());
 
         // TODO(b/258351526): setup minijail details
         let jail = Minijail::new().context("create minijail")?;
@@ -249,7 +265,7 @@ impl SwapController {
                     tube_monitor_process,
                     guest_memory,
                     uffd,
-                    swap_dir,
+                    swap_file,
                     #[cfg(feature = "log_page_fault")]
                     page_fault_logger,
                 ) {
@@ -437,12 +453,12 @@ fn regions_from_guest_memory(guest_memory: &GuestMemory) -> Vec<Range<usize>> {
     regions
 }
 
-fn start_monitoring(
+fn start_monitoring<'a>(
     uffd_list: &mut UffdList,
     guest_memory: &GuestMemory,
-    swap_dir: &Path,
+    swap_file: &'a File,
     channel: Arc<Channel<MoveToStaging>>,
-) -> anyhow::Result<PageHandler> {
+) -> anyhow::Result<PageHandler<'a>> {
     // Drain the event queue to ensure that the uffds for all forked processes are being monitored.
     let mut new_uffds = Vec::new();
     for uffd in uffd_list.get_list() {
@@ -460,7 +476,7 @@ fn start_monitoring(
 
     let regions = regions_from_guest_memory(guest_memory);
 
-    let page_hander = PageHandler::create(swap_dir, &regions, channel).context("enable swap")?;
+    let page_hander = PageHandler::create(swap_file, &regions, channel).context("enable swap")?;
 
     // safe because the regions are from guest memory and uffd_list contains all the processes of
     // crosvm.
@@ -510,7 +526,7 @@ fn monitor_process(
     tube: Tube,
     guest_memory: GuestMemory,
     uffd: Userfaultfd,
-    swap_dir: PathBuf,
+    swap_file: File,
     #[cfg(feature = "log_page_fault")] mut page_fault_logger: PageFaultEventLogger,
 ) -> anyhow::Result<()> {
     info!("monitor_process started");
@@ -637,7 +653,7 @@ fn monitor_process(
                             page_handler_opt = Some(start_monitoring(
                                 &mut uffd_list,
                                 &guest_memory,
-                                &swap_dir,
+                                &swap_file,
                                 worker.channel.clone(),
                             )?);
                         }
@@ -726,6 +742,8 @@ fn monitor_process(
                                 "swap in all {} pages in {} ms. swap disabled.",
                                 state_transition.pages, state_transition.time_ms
                             );
+                            // Truncate the swap file to hold minimum resources while disabled.
+                            swap_file.set_len(0).context("clear swap file")?;
                             state = SwapState::Disabled;
                         } else {
                             error!("swap is already disabled.");

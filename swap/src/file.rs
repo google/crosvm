@@ -5,11 +5,8 @@
 #![deny(missing_docs)]
 
 use std::fs::File;
-use std::fs::OpenOptions;
 use std::ops::Range;
 use std::os::unix::fs::FileExt;
-use std::os::unix::fs::OpenOptionsExt;
-use std::path::Path;
 
 use base::error;
 use base::MemoryMapping;
@@ -31,78 +28,52 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(ThisError, Debug)]
 pub enum Error {
     #[error("failed to io: {0}")]
-    Io(std::io::Error),
+    Io(#[from] std::io::Error),
     #[error("failed to mmap operation: {0}")]
-    Mmap(MmapError),
+    Mmap(#[from] MmapError),
     #[error("failed to volatile memory operation: {0}")]
-    VolatileMemory(VolatileMemoryError),
+    VolatileMemory(#[from] VolatileMemoryError),
     #[error("index is out of range")]
     OutOfRange,
     #[error("data size is invalid")]
     InvalidSize,
 }
 
-impl From<std::io::Error> for Error {
-    fn from(e: std::io::Error) -> Self {
-        Self::Io(e)
-    }
-}
-
-impl From<MmapError> for Error {
-    fn from(e: MmapError) -> Self {
-        Self::Mmap(e)
-    }
-}
-
-impl From<VolatileMemoryError> for Error {
-    fn from(e: VolatileMemoryError) -> Self {
-        Self::VolatileMemory(e)
-    }
-}
-
-/// SwapFile stores active pages in a memory region.
+/// [SwapFile] stores active pages in a memory region.
+///
+/// This shares the swap file with other regions and creates mmap corresponding range in the file.
 ///
 /// TODO(kawasin): The file structure is straightforward and is not optimized yet.
 /// Each page in the file corresponds to the page in the memory region.
-///
-/// The swap file is created as `O_TMPFILE` from the specified directory. As benefits:
-///
-/// * it has no chance to conflict and,
-/// * it has a security benefit that no one (except root) can access the swap file.
-/// * it will be automatically deleted by the kernel when crosvm exits/dies or on reboot if the
-///   device panics/hard-resets while crosvm is running.
 #[derive(Debug)]
-pub struct SwapFile {
-    file: File,
+pub struct SwapFile<'a> {
+    file: &'a File,
+    offset: u64,
     file_mmap: MemoryMapping,
     // Tracks which pages are present, indexed by page index within the memory region.
     present_list: PresentList,
 }
 
-impl SwapFile {
+impl<'a> SwapFile<'a> {
     /// Creates an initialized [SwapFile] for a memory region.
-    ///
-    /// This creates the swapping file. If the file exists, it is truncated.
     ///
     /// The all pages are marked as empty at first time.
     ///
     /// # Arguments
     ///
-    /// * `dir_path` - path to the directory to create a swap file from.
-    /// * `num_of_pages` - the number of pages in the region.
-    pub fn new(dir_path: &Path, num_of_pages: usize) -> Result<Self> {
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .custom_flags(libc::O_TMPFILE | libc::O_EXCL)
-            .mode(0o000) // other processes with the same uid can't open the file
-            .open(dir_path)?;
+    /// * `file` - The swap file.
+    /// * `offset_pages` - The starting offset in pages of the region in the swap file.
+    /// * `num_of_pages` - The number of pages in the region.
+    pub fn new(file: &'a File, offset_pages: usize, num_of_pages: usize) -> Result<Self> {
+        let offset = pages_to_bytes(offset_pages) as u64;
         let file_mmap = MemoryMappingBuilder::new(pages_to_bytes(num_of_pages))
-            .from_file(&file)
+            .from_file(file)
+            .offset(offset)
             .protection(Protection::read())
             .build()?;
         Ok(Self {
             file,
+            offset,
             file_mmap,
             present_list: PresentList::new(num_of_pages),
         })
@@ -168,8 +139,11 @@ impl SwapFile {
             return Err(Error::OutOfRange);
         }
 
-        let byte_offset = (pages_to_bytes(idx)) as u64;
-        self.file.write_all_at(mem_slice, byte_offset)?;
+        // Write with pwrite(2) syscall instead of copying contents to mmap because write syscall is
+        // more explicit for kernel how many pages are going to be written while mmap only knows
+        // each page to be written on a page fault basis.
+        self.file
+            .write_all_at(mem_slice, self.offset + pages_to_bytes(idx) as u64)?;
 
         if !self.present_list.mark_as_present(idx..idx + num_pages) {
             // the range is already validated before writing.
@@ -215,7 +189,6 @@ impl SwapFile {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
     use std::slice;
 
     use base::pagesize;
@@ -224,37 +197,31 @@ mod tests {
 
     #[test]
     fn new_success() {
-        let dir_path = tempfile::tempdir().unwrap();
+        let file = tempfile::tempfile().unwrap();
 
-        assert_eq!(SwapFile::new(dir_path.path(), 200).is_ok(), true);
-    }
-
-    #[test]
-    fn new_fails_to_open_file() {
-        let dir_path = PathBuf::from("/invalid/invalid/invalid");
-        assert_eq!(SwapFile::new(&dir_path, 200).is_err(), true);
+        assert_eq!(SwapFile::new(&file, 0, 200).is_ok(), true);
     }
 
     #[test]
     fn len() {
-        let dir_path = tempfile::tempdir().unwrap();
-        let swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
+        let file = tempfile::tempfile().unwrap();
+        let swap_file = SwapFile::new(&file, 0, 200).unwrap();
 
         assert_eq!(swap_file.num_pages(), 200);
     }
 
     #[test]
     fn page_content_default_is_none() {
-        let dir_path = tempfile::tempdir().unwrap();
-        let swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
+        let file = tempfile::tempfile().unwrap();
+        let swap_file = SwapFile::new(&file, 0, 200).unwrap();
 
         assert_eq!(swap_file.page_content(0).unwrap().is_none(), true);
     }
 
     #[test]
     fn page_content_returns_content() {
-        let dir_path = tempfile::tempdir().unwrap();
-        let mut swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
+        let file = tempfile::tempfile().unwrap();
+        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
 
         let data = &vec![1; pagesize()];
         swap_file.write_to_file(0, data).unwrap();
@@ -266,8 +233,8 @@ mod tests {
 
     #[test]
     fn page_content_out_of_range() {
-        let dir_path = tempfile::tempdir().unwrap();
-        let swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
+        let file = tempfile::tempfile().unwrap();
+        let swap_file = SwapFile::new(&file, 0, 200).unwrap();
 
         assert_eq!(swap_file.page_content(199).is_ok(), true);
         match swap_file.page_content(200) {
@@ -284,8 +251,8 @@ mod tests {
 
     #[test]
     fn write_to_file_swap_file() {
-        let dir_path = tempfile::tempdir().unwrap();
-        let mut swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
+        let file = tempfile::tempfile().unwrap();
+        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
 
         let buf1 = &vec![1; pagesize()];
         let buf2 = &vec![2; 2 * pagesize()];
@@ -299,9 +266,30 @@ mod tests {
     }
 
     #[test]
+    fn write_to_file_no_conflict() {
+        let file = tempfile::tempfile().unwrap();
+        let mut swap_file1 = SwapFile::new(&file, 0, 2).unwrap();
+        let mut swap_file2 = SwapFile::new(&file, 2, 2).unwrap();
+
+        let buf1 = &vec![1; pagesize()];
+        let buf2 = &vec![2; pagesize()];
+        let buf3 = &vec![3; pagesize()];
+        let buf4 = &vec![4; pagesize()];
+        swap_file1.write_to_file(0, buf1).unwrap();
+        swap_file1.write_to_file(1, buf2).unwrap();
+        swap_file2.write_to_file(0, buf3).unwrap();
+        swap_file2.write_to_file(1, buf4).unwrap();
+
+        assert_page_content(&swap_file1, 0, buf1);
+        assert_page_content(&swap_file1, 1, buf2);
+        assert_page_content(&swap_file2, 0, buf3);
+        assert_page_content(&swap_file2, 1, buf4);
+    }
+
+    #[test]
     fn write_to_file_invalid_size() {
-        let dir_path = tempfile::tempdir().unwrap();
-        let mut swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
+        let file = tempfile::tempfile().unwrap();
+        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
 
         let buf = &vec![1; pagesize() + 1];
         match swap_file.write_to_file(0, buf) {
@@ -312,8 +300,8 @@ mod tests {
 
     #[test]
     fn write_to_file_out_of_range() {
-        let dir_path = tempfile::tempdir().unwrap();
-        let mut swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
+        let file = tempfile::tempfile().unwrap();
+        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
 
         let buf1 = &vec![1; pagesize()];
         let buf2 = &vec![2; 2 * pagesize()];
@@ -329,8 +317,8 @@ mod tests {
 
     #[test]
     fn clear() {
-        let dir_path = tempfile::tempdir().unwrap();
-        let mut swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
+        let file = tempfile::tempfile().unwrap();
+        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
 
         let data = &vec![1; pagesize()];
         swap_file.write_to_file(0, data).unwrap();
@@ -341,8 +329,8 @@ mod tests {
 
     #[test]
     fn clear_out_of_range() {
-        let dir_path = tempfile::tempdir().unwrap();
-        let mut swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
+        let file = tempfile::tempfile().unwrap();
+        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
 
         assert_eq!(swap_file.clear_range(199..200).is_ok(), true);
         match swap_file.clear_range(200..201) {
@@ -353,8 +341,8 @@ mod tests {
 
     #[test]
     fn first_data_range() {
-        let dir_path = tempfile::tempdir().unwrap();
-        let mut swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
+        let file = tempfile::tempfile().unwrap();
+        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
 
         swap_file
             .write_to_file(1, &vec![1; 2 * pagesize()])
@@ -371,8 +359,8 @@ mod tests {
 
     #[test]
     fn get_slice() {
-        let dir_path = tempfile::tempdir().unwrap();
-        let mut swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
+        let file = tempfile::tempfile().unwrap();
+        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
 
         swap_file.write_to_file(1, &vec![1; pagesize()]).unwrap();
         swap_file.write_to_file(2, &vec![2; pagesize()]).unwrap();
@@ -393,8 +381,8 @@ mod tests {
 
     #[test]
     fn get_slice_out_of_range() {
-        let dir_path = tempfile::tempdir().unwrap();
-        let swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
+        let file = tempfile::tempfile().unwrap();
+        let swap_file = SwapFile::new(&file, 0, 200).unwrap();
 
         match swap_file.get_slice(200..201) {
             Err(Error::OutOfRange) => {}
@@ -406,8 +394,8 @@ mod tests {
 
     #[test]
     fn present_pages() {
-        let dir_path = tempfile::tempdir().unwrap();
-        let mut swap_file = SwapFile::new(dir_path.path(), 200).unwrap();
+        let file = tempfile::tempfile().unwrap();
+        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
 
         swap_file.write_to_file(1, &vec![1; pagesize()]).unwrap();
         swap_file.write_to_file(2, &vec![2; pagesize()]).unwrap();

@@ -6,11 +6,12 @@
 
 #![deny(missing_docs)]
 
+use std::fs::File;
 use std::mem;
 use std::ops::Range;
-use std::path::Path;
 use std::sync::Arc;
 
+use anyhow::Context;
 use base::error;
 use base::unix::FileDataIterator;
 use base::AsRawDescriptor;
@@ -48,33 +49,18 @@ pub enum Error {
     #[error("the regions {0:?} and {1:?} overlap")]
     /// regions are overlaps on registering
     RegionOverlap(Range<usize>, Range<usize>),
+    #[error("failed to create page handler {0:?}")]
+    /// failed to create page handler
+    CreateFailed(anyhow::Error),
     #[error("file operation failed : {0:?}")]
     /// file operation failed
-    File(FileError),
+    File(#[from] FileError),
     #[error("staging operation failed : {0:?}")]
     /// staging operation failed
-    Staging(StagingError),
+    Staging(#[from] StagingError),
     #[error("userfaultfd failed : {0:?}")]
     /// userfaultfd operation failed
-    Userfaultfd(UffdError),
-}
-
-impl From<UffdError> for Error {
-    fn from(e: UffdError) -> Self {
-        Self::Userfaultfd(e)
-    }
-}
-
-impl From<FileError> for Error {
-    fn from(e: FileError) -> Self {
-        Self::File(e)
-    }
-}
-
-impl From<StagingError> for Error {
-    fn from(e: StagingError) -> Self {
-        Self::Staging(e)
-    }
+    Userfaultfd(#[from] UffdError),
 }
 
 /// Remove the memory range on the guest memory.
@@ -98,10 +84,10 @@ unsafe fn remove_memory(addr: usize, len: usize) -> std::result::Result<(), base
 }
 
 /// [Region] represents a memory region and corresponding [SwapFile].
-struct Region {
+struct Region<'a> {
     /// the head page index of the region.
     head_page_idx: usize,
-    file: SwapFile,
+    file: SwapFile<'a>,
     staging_memory: Option<StagingMemory>,
     copied_from_file_pages: usize,
     copied_from_staging_pages: usize,
@@ -142,34 +128,51 @@ impl Task for MoveToStaging {
 ///
 /// Handles multiple events derived from userfaultfd and swap out requests.
 /// All the addresses and sizes in bytes are converted to page id internally.
-pub struct PageHandler {
-    regions: Vec<Region>,
+pub struct PageHandler<'a> {
+    regions: Vec<Region<'a>>,
     channel: Arc<Channel<MoveToStaging>>,
 }
 
-impl PageHandler {
+impl<'a> PageHandler<'a> {
     /// Creates [PageHandler] for the given region.
     ///
     /// If any of regions overlaps, this returns [Error::RegionOverlap].
     ///
     /// # Arguments
     ///
-    /// * `swap_dir` - path to the directory to create a swap file from.
-    /// * `address_ranges` - the list of address range of the regions. the start address must align
+    /// * `swap_file` - The swap file.
+    /// * `address_ranges` - The list of address range of the regions. the start address must align
     ///   with page. the size must be multiple of pagesize.
     pub fn create(
-        swap_dir: &Path,
+        swap_file: &'a File,
         address_ranges: &[Range<usize>],
         stating_move_context: Arc<Channel<MoveToStaging>>,
     ) -> Result<Self> {
-        let mut regions: Vec<Region> = Vec::new();
+        // Truncate the file into the size to hold all regions, otherwise access beyond the end of
+        // file may cause SIGBUS.
+        swap_file
+            .set_len(
+                address_ranges
+                    .iter()
+                    .map(|r| (r.end.saturating_sub(r.start)) as u64)
+                    .sum(),
+            )
+            .context("truncate swap file")
+            .map_err(Error::CreateFailed)?;
 
+        let mut regions: Vec<Region> = Vec::new();
+        let mut offset_pages = 0;
         for address_range in address_ranges {
             let head_page_idx = addr_to_page_idx(address_range.start);
+            if address_range.end < address_range.start {
+                return Err(Error::CreateFailed(anyhow::anyhow!(
+                    "invalid region end < start"
+                )));
+            }
             let region_size = address_range.end - address_range.start;
             let num_of_pages = bytes_to_pages(region_size);
 
-            // find an overlaping region
+            // Find an overlapping region
             match regions.iter().position(|region| {
                 if region.head_page_idx < head_page_idx {
                     region.head_page_idx + region.file.num_pages() > head_page_idx
@@ -191,7 +194,7 @@ impl PageHandler {
                     assert!(is_page_aligned(base_addr));
                     assert!(is_page_aligned(region_size));
 
-                    let file = SwapFile::new(swap_dir, num_of_pages)?;
+                    let file = SwapFile::new(swap_file, offset_pages, num_of_pages)?;
                     regions.push(Region {
                         head_page_idx,
                         file,
@@ -202,6 +205,7 @@ impl PageHandler {
                         redundant_pages: 0,
                         swap_active: false,
                     });
+                    offset_pages += num_of_pages;
                 }
             }
         }
