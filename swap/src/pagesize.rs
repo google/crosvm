@@ -12,6 +12,7 @@
 use std::fs;
 use std::str;
 
+use anyhow::Context;
 use base::pagesize;
 use base::warn;
 use once_cell::sync::Lazy;
@@ -46,9 +47,9 @@ pub static THP_SIZE: Lazy<usize> = Lazy::new(|| {
 });
 
 fn load_transparent_hugepage_size() -> anyhow::Result<usize> {
-    let buf = fs::read(TRANSPARENT_HUGEPAGE_SIZE_PATH)?;
-    let text = str::from_utf8(&buf)?;
-    let hugepage_size = text.parse::<usize>()?;
+    let buf = fs::read(TRANSPARENT_HUGEPAGE_SIZE_PATH).context("read thp size file")?;
+    let text = str::from_utf8(&buf).context("utf8")?;
+    let hugepage_size = text.trim().parse::<usize>().context("parse usize")?;
     Ok(hugepage_size)
 }
 
