@@ -1327,7 +1327,7 @@ fn run_kvm(cfg: Config, components: VmComponents) -> Result<ExitState> {
     #[cfg(feature = "swap")]
     let swap_controller = if let Some(swap_dir) = cfg.swap_dir.as_ref() {
         Some(
-            SwapController::launch(guest_mem.clone(), swap_dir)
+            SwapController::launch(guest_mem.clone(), swap_dir, &cfg.jail_config)
                 .context("launch vmm-swap monitor process")?,
         )
     } else {

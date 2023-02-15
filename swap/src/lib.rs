@@ -47,7 +47,11 @@ use base::FromRawDescriptor;
 use base::RawDescriptor;
 use base::Tube;
 use base::WaitContext;
-use minijail::Minijail;
+use jail::create_base_minijail;
+use jail::create_sandbox_minijail;
+use jail::JailConfig;
+use jail::SandboxConfig;
+use jail::MAX_OPEN_FILES_DEFAULT;
 use serde::Deserialize;
 use serde::Serialize;
 use vm_memory::GuestMemory;
@@ -56,6 +60,7 @@ use vm_memory::GuestMemory;
 use crate::logger::PageFaultEventLogger;
 use crate::page_handler::MoveToStaging;
 use crate::page_handler::PageHandler;
+use crate::pagesize::THP_SIZE;
 use crate::processes::freeze_child_processes;
 use crate::processes::ProcessesGuard;
 use crate::userfaultfd::register_regions;
@@ -235,7 +240,11 @@ impl SwapController {
     /// * `guest_memory` - fresh new [GuestMemory]. Any pages on the [GuestMemory] must not be
     ///   touched.
     /// * `swap_dir` - directory to store swap files.
-    pub fn launch(guest_memory: GuestMemory, swap_dir: &Path) -> anyhow::Result<(Self, Tube)> {
+    pub fn launch(
+        guest_memory: GuestMemory,
+        swap_dir: &Path,
+        jail_config: &Option<JailConfig>,
+    ) -> anyhow::Result<(Self, Tube)> {
         info!("vmm-swap is enabled. launch monitor process.");
 
         let uffd_factory = UffdFactory::new();
@@ -284,8 +293,17 @@ impl SwapController {
 
         keep_rds.extend(uffd_factory.as_raw_descriptors());
 
-        // TODO(b/258351526): setup minijail details
-        let jail = Minijail::new().context("create minijail")?;
+        // Load and cache transparent hugepage size from sysfs before jumping into sandbox.
+        let _ = *THP_SIZE;
+
+        let jail = if let Some(jail_config) = jail_config {
+            let config = SandboxConfig::new(jail_config, "swap_monitor");
+            create_sandbox_minijail(&jail_config.pivot_root, MAX_OPEN_FILES_DEFAULT, &config)
+                .context("create sandbox jail")?
+        } else {
+            create_base_minijail(Path::new("/"), MAX_OPEN_FILES_DEFAULT)
+                .context("create minijail")?
+        };
 
         // Start a page fault monitoring process (this will be the first child process of the
         // current process)

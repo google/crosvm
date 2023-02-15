@@ -21,8 +21,8 @@ anyhow = "*"
 base = { path = "../base" }
 cros_tracing = { path = "../cros_tracing" }
 data_model = { path = "../common/data_model" }
+jail = { path = "../jail"}
 libc = "*"
-minijail = "*"
 num_cpus = "*"
 once_cell = "*"
 remain = "*"
