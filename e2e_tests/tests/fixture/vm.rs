@@ -7,7 +7,6 @@ use std::io::BufRead;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
-use std::str::from_utf8;
 use std::sync::Once;
 use std::time::Duration;
 
@@ -317,7 +316,7 @@ impl TestVm {
             Ok(())
         } else {
             Err(anyhow!(
-                "Expected READY line from delegate, but got: {:?}",
+                "Recevied unexpected data from delegate: {:?}",
                 line.trim()
             ))
         }
@@ -389,15 +388,9 @@ impl TestVm {
 impl Drop for TestVm {
     fn drop(&mut self) {
         self.stop().unwrap();
-        let output = self.sys.process.take().unwrap().wait_with_output().unwrap();
-
-        // Print both the crosvm's stdout/stderr to stdout so that they'll be shown when the test
-        // failed.
-        println!("TestVm stdout:\n{}", from_utf8(&output.stdout).unwrap());
-        println!("TestVm stderr:\n{}", from_utf8(&output.stderr).unwrap());
-
-        if !output.status.success() {
-            panic!("VM exited illegally: {}", output.status);
+        let status = self.sys.process.take().unwrap().wait().unwrap();
+        if !status.success() {
+            panic!("VM exited illegally: {}", status);
         }
     }
 }

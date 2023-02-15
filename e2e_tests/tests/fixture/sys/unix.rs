@@ -13,8 +13,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Child;
 use std::process::Command;
-use std::process::Stdio;
-use std::str::from_utf8;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -99,7 +97,7 @@ impl TestVmSys {
         from_guest_pipe: &Path,
         to_guest_pipe: &Path,
     ) {
-        command.args(["--serial", "type=syslog"]);
+        command.args(["--serial", "type=stdout"]);
 
         // Setup channel for communication with the delegate.
         let serial_params = format!(
@@ -141,12 +139,8 @@ impl TestVmSys {
         f(&mut command, test_dir.path(), &cfg)?;
 
         command.args(&cfg.extra_args);
-        // Set `Stdio::piped` so we can forward the outputs to stdout later.
-        command.stdout(Stdio::piped());
-        command.stderr(Stdio::piped());
 
         println!("$ {:?}", command);
-
         let mut process = Some(command.spawn()?);
 
         // Open pipes. Apply timeout to `from_guest` since it will block until crosvm opens the
@@ -158,20 +152,10 @@ impl TestVmSys {
         ) {
             Ok(from_guest) => from_guest.with_context(|| "Cannot open from_guest pipe")?,
             Err(error) => {
+                // Kill the crosvm process if we cannot connect in time.
                 let mut process = process.take().unwrap();
                 process.kill().unwrap();
-                let output = process.wait_with_output().unwrap();
-
-                // Print both the crosvm's stdout/stderr to stdout so that they'll be shown when
-                // the test failed.
-                println!(
-                    "TestVm stdout:\n{}",
-                    std::str::from_utf8(&output.stdout).unwrap()
-                );
-                println!(
-                    "TestVm stderr:\n{}",
-                    std::str::from_utf8(&output.stderr).unwrap()
-                );
+                process.wait().unwrap();
                 panic!("Cannot connect to VM: {}", error);
             }
         };
@@ -214,7 +198,7 @@ impl TestVmSys {
               "params": [ "init=/bin/delegate" ],
               "serial": [
                 {{
-                  "type": "syslog"
+                  "type": "stdout"
                 }},
                 {{
                   "type": "file",
@@ -263,23 +247,8 @@ impl TestVmSys {
 
         let mut cmd = Command::new(find_crosvm_binary());
         cmd.arg(command).args(args);
-        cmd.stdout(Stdio::piped());
-        cmd.stderr(Stdio::piped());
 
         let output = cmd.output()?;
-        // Print both the crosvm's stdout/stderr to stdout so that they'll be shown when the test
-        // is failed.
-        println!(
-            "`crosvm {}` stdout:\n{}",
-            command,
-            from_utf8(&output.stdout).unwrap()
-        );
-        println!(
-            "`crosvm {}` stderr:\n{}",
-            command,
-            from_utf8(&output.stderr).unwrap()
-        );
-
         if !output.status.success() {
             Err(anyhow!("Command failed with exit code {}", output.status))
         } else {
