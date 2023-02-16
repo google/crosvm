@@ -20,7 +20,7 @@ pub fn create_iobuf(addr: *mut u8, len: usize) -> IoBuf {
     }
 }
 
-/// This type is essentialy `std::io::IoBufMut`, and guaranteed to be ABI-compatible with
+/// This type is essentialy `std::io::IoSliceMut`, and guaranteed to be ABI-compatible with
 /// `WSABUF`; however, it does NOT automatically deref to `&mut [u8]`, which is critical
 /// because it can point to guest memory. (Guest memory is implicitly mutably borrowed by the
 /// guest, so another mutable borrow would violate Rust assumptions about references.)

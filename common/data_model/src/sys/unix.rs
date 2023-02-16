@@ -21,7 +21,7 @@ pub fn create_iobuf(addr: *mut u8, len: usize) -> IoBuf {
     }
 }
 
-/// This type is essentialy `std::io::IoBufMut`, and guaranteed to be ABI-compatible with
+/// This type is essentialy `std::io::IoSliceMut`, and guaranteed to be ABI-compatible with
 /// `libc::iovec`; however, it does NOT automatically deref to `&mut [u8]`, which is critical
 /// because it can point to guest memory. (Guest memory is implicitly mutably borrowed by the
 /// guest, so another mutable borrow would violate Rust assumptions about references.)
@@ -132,7 +132,7 @@ impl<'a> AsMut<libc::iovec> for IoBufMut<'a> {
     }
 }
 
-// It's safe to implement Send + Sync for this type for the same reason that `std::io::IoBufMut`
+// It's safe to implement Send + Sync for this type for the same reason that `std::io::IoSliceMut`
 // is Send + Sync. Internally, it contains a pointer and a length. The integer length is safely Send
 // + Sync.  There's nothing wrong with sending a pointer between threads and de-referencing the
 // pointer requires an unsafe block anyway. See also https://github.com/rust-lang/rust/pull/70342.

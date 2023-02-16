@@ -86,8 +86,8 @@ pub trait VolatileMemory {
     fn get_slice(&self, offset: usize, count: usize) -> Result<VolatileSlice>;
 }
 
-/// A slice of raw memory that supports volatile access. Like `std::io::IoBufMut`, this type is
-/// guaranteed to be ABI-compatible with `libc::iovec` but unlike `IoBufMut`, it doesn't
+/// A slice of raw memory that supports volatile access. Like `std::io::IoSliceMut`, this type is
+/// guaranteed to be ABI-compatible with `libc::iovec` but unlike `IoSliceMut`, it doesn't
 /// automatically deref to `&mut [u8]`.
 #[derive(Copy, Clone, Debug)]
 #[repr(transparent)]
