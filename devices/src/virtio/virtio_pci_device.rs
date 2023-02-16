@@ -923,7 +923,6 @@ impl Suspendable for VirtioPciDevice {
     fn sleep(&mut self) -> anyhow::Result<()> {
         if let Some(state) = self.device.stop()? {
             self.queues = state.queues;
-            self.mem = state.mem;
         }
         Ok(())
     }

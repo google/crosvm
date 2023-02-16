@@ -226,6 +226,5 @@ pub enum Error {
 }
 
 pub struct VirtioDeviceSaved {
-    pub mem: GuestMemory,
     pub queues: Vec<Queue>,
 }

@@ -138,7 +138,6 @@ impl Worker {
             }
         }
         Ok(VirtioDeviceSaved {
-            mem: self.mem,
             queues: vec![self.queue],
         })
     }
