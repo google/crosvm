@@ -66,15 +66,10 @@ macro_rules! push_descriptors {
 ///
 /// * `keep_rds` - List of file descriptors that will be accessible after jailing
 pub fn push_descriptors(keep_rds: &mut Vec<RawDescriptor>) {
-    match TRACE_MARKER_FILE.get() {
-        Some(file) => {
-            let fd = file.lock().unwrap().as_raw_fd();
-            if !keep_rds.contains(&fd) {
-                keep_rds.push(fd);
-            }
-        }
-        None => {
-            error!("Unable to obtain trace_marker descriptor. Was None.");
+    if let Some(file) = TRACE_MARKER_FILE.get() {
+        let fd = file.lock().unwrap().as_raw_fd();
+        if !keep_rds.contains(&fd) {
+            keep_rds.push(fd);
         }
     }
 }
