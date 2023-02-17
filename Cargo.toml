@@ -413,6 +413,7 @@ scudo = { version = "0.1", optional = true }
 serde = "*"
 serde_json = "*"
 serde_keyvalue = { path = "serde_keyvalue", features = ["argh_derive"] }
+smallvec = "1.6.1"
 static_assertions = "1.1"
 sync = { path = "common/sync" }
 tempfile = "3"

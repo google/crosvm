@@ -47,6 +47,7 @@ use arch::VcpuAffinity;
 use arch::VirtioDeviceStub;
 use arch::VmComponents;
 use arch::VmImage;
+use base::ReadNotifier;
 #[cfg(feature = "balloon")]
 use base::UnixSeqpacket;
 use base::UnixSeqpacketListener;
@@ -150,6 +151,9 @@ use resources::Alloc;
 use resources::Error as ResourceError;
 use resources::SystemAllocator;
 use rutabaga_gfx::RutabagaGralloc;
+use serde::Deserialize;
+use serde::Serialize;
+use smallvec::SmallVec;
 #[cfg(feature = "swap")]
 use swap::SwapController;
 use sync::Condvar;
@@ -686,6 +690,7 @@ fn create_devices(
     resources: &mut SystemAllocator,
     vm_evt_wrtube: &SendTube,
     iommu_attached_endpoints: &mut BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>>,
+    irq_control_tubes: &mut Vec<Tube>,
     control_tubes: &mut Vec<TaggedControlTube>,
     #[cfg(feature = "balloon")] balloon_device_tube: Option<Tube>,
     #[cfg(feature = "balloon")] init_balloon_size: u64,
@@ -712,6 +717,7 @@ fn create_devices(
                 &cfg.jail_config,
                 vm,
                 resources,
+                irq_control_tubes,
                 control_tubes,
                 &vfio_dev.path,
                 false,
@@ -836,7 +842,7 @@ fn create_devices(
             VirtioTransportType::Pci => {
                 let (msi_host_tube, msi_device_tube) =
                     Tube::pair().context("failed to create tube")?;
-                control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
+                irq_control_tubes.push(msi_host_tube);
 
                 let shared_memory_tube = if stub.dev.get_shared_memory_region().is_some() {
                     let (host_tube, device_tube) =
@@ -959,6 +965,7 @@ fn create_file_backed_mappings(
 fn create_pcie_root_port(
     host_pcie_rp: Vec<HostPcieRootPortParameters>,
     sys_allocator: &mut SystemAllocator,
+    irq_control_tubes: &mut Vec<Tube>,
     control_tubes: &mut Vec<TaggedControlTube>,
     devices: &mut Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
     hp_vec: &mut Vec<(u8, Arc<Mutex<dyn HotPlugBus>>)>,
@@ -984,7 +991,7 @@ fn create_pcie_root_port(
             let pcie_root_port = Arc::new(Mutex::new(PcieRootPort::new(i, false)));
             pme_notify_devs.push((i, pcie_root_port.clone() as Arc<Mutex<dyn PmeNotify>>));
             let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
-            control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
+            irq_control_tubes.push(msi_host_tube);
             let pci_bridge = Box::new(PciBridge::new(pcie_root_port.clone(), msi_device_tube));
             // no ipc is used if the root port disables hotplug
             devices.push((pci_bridge, None));
@@ -1000,7 +1007,7 @@ fn create_pcie_root_port(
             pcie_root_port.clone() as Arc<Mutex<dyn PmeNotify>>,
         ));
         let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
-        control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
+        irq_control_tubes.push(msi_host_tube);
         let pci_bridge = Box::new(PciBridge::new(pcie_root_port.clone(), msi_device_tube));
 
         hp_endpoints_ranges.push(RangeInclusive::new(
@@ -1046,7 +1053,7 @@ fn create_pcie_root_port(
             control_tubes.push(TaggedControlTube::Vm(vm_host_tube));
 
             let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
-            control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
+            irq_control_tubes.push(msi_host_tube);
             let mut pci_bridge = Box::new(PciBridge::new(pcie_root_port.clone(), msi_device_tube));
             // early reservation for host pcie root port devices.
             let rootport_addr = pci_bridge.allocate_address(sys_allocator);
@@ -1478,6 +1485,7 @@ where
     };
 
     let mut control_tubes = Vec::new();
+    let mut irq_control_tubes = Vec::new();
 
     #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
     if let Some(port) = cfg.gdb {
@@ -1534,7 +1542,7 @@ where
     }
 
     if let Some(ioapic_host_tube) = ioapic_host_tube {
-        control_tubes.push(TaggedControlTube::VmIrq(ioapic_host_tube));
+        irq_control_tubes.push(ioapic_host_tube);
     }
 
     let battery = if cfg.battery_config.is_some() {
@@ -1707,6 +1715,7 @@ where
         &mut sys_allocator,
         &vm_evt_wrtube,
         &mut iommu_attached_endpoints,
+        &mut irq_control_tubes,
         &mut control_tubes,
         #[cfg(feature = "balloon")]
         balloon_device_tube,
@@ -1747,6 +1756,7 @@ where
         create_pcie_root_port(
             rp_host,
             &mut sys_allocator,
+            &mut irq_control_tubes,
             &mut control_tubes,
             &mut devices,
             &mut hotplug_buses,
@@ -1780,7 +1790,7 @@ where
         )?;
 
         let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
-        control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
+        irq_control_tubes.push(msi_host_tube);
         let mut dev = VirtioPciDevice::new(
             vm.get_memory().clone(),
             iommu_dev.dev,
@@ -1898,6 +1908,7 @@ where
         sys_allocator,
         cfg,
         control_server_socket,
+        irq_control_tubes,
         control_tubes,
         #[cfg(feature = "balloon")]
         balloon_host_tube,
@@ -1972,6 +1983,7 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
     linux: &mut RunnableLinuxVm<V, Vcpu>,
     sys_allocator: &mut SystemAllocator,
     cfg: &Config,
+    irq_control_tubes: &mut Vec<Tube>,
     control_tubes: &mut Vec<TaggedControlTube>,
     hp_control_tube: &mpsc::Sender<PciRootCommand>,
     iommu_host_tube: &Option<Tube>,
@@ -1987,7 +1999,7 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
             let (vm_host_tube, vm_device_tube) = Tube::pair().context("failed to create tube")?;
             control_tubes.push(TaggedControlTube::Vm(vm_host_tube));
             let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
-            control_tubes.push(TaggedControlTube::VmIrq(msi_host_tube));
+            irq_control_tubes.push(msi_host_tube);
             let pcie_host = PcieHostPort::new(device.path.as_path(), vm_device_tube)?;
             let (host_key, pci_bridge) = match device.device_type {
                 HotPlugDeviceType::UpstreamPort => {
@@ -2038,6 +2050,7 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
                 &cfg.jail_config,
                 &linux.vm,
                 sys_allocator,
+                irq_control_tubes,
                 control_tubes,
                 &device.path,
                 true,
@@ -2293,6 +2306,7 @@ fn handle_hotplug_command<V: VmArch, Vcpu: VcpuArch>(
     linux: &mut RunnableLinuxVm<V, Vcpu>,
     sys_allocator: &mut SystemAllocator,
     cfg: &Config,
+    add_irq_control_tubes: &mut Vec<Tube>,
     add_tubes: &mut Vec<TaggedControlTube>,
     hp_control_tube: &mpsc::Sender<PciRootCommand>,
     iommu_host_tube: &Option<Tube>,
@@ -2305,11 +2319,13 @@ fn handle_hotplug_command<V: VmArch, Vcpu: VcpuArch>(
     } else {
         &None
     };
+
     let ret = if add {
         add_hotplug_device(
             linux,
             sys_allocator,
             cfg,
+            add_irq_control_tubes,
             add_tubes,
             hp_control_tube,
             iommu_host_tube,
@@ -2333,9 +2349,10 @@ fn handle_hotplug_command<V: VmArch, Vcpu: VcpuArch>(
 
 fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     mut linux: RunnableLinuxVm<V, Vcpu>,
-    mut sys_allocator: SystemAllocator,
+    sys_allocator: SystemAllocator,
     cfg: Config,
     control_server_socket: Option<UnlinkUnixSeqpacketListener>,
+    irq_control_tubes: Vec<Tube>,
     mut control_tubes: Vec<TaggedControlTube>,
     #[cfg(feature = "balloon")] balloon_host_tube: Option<Tube>,
     disk_host_tubes: &[Tube],
@@ -2358,10 +2375,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         VmEvent,
         Suspend,
         ChildSignal,
-        IrqFd { index: IrqEventIndex },
         VmControlServer,
         VmControl { index: usize },
-        DelayedIrqFd,
     }
 
     let mut iommu_client = iommu_host_tube
@@ -2372,12 +2387,14 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         .set_raw_mode()
         .expect("failed to set terminal raw mode");
 
+    let sys_allocator_mutex = Arc::new(Mutex::new(sys_allocator));
+
     let wait_ctx = WaitContext::build_with(&[
         (&linux.suspend_evt, Token::Suspend),
         (&sigchld_fd, Token::ChildSignal),
         (&vm_evt_rdtube, Token::VmEvent),
     ])
-    .context("failed to add descriptor to wait context")?;
+    .context("failed to build wait context")?;
 
     if let Some(socket_server) = &control_server_socket {
         wait_ctx
@@ -2387,23 +2404,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     for (index, socket) in control_tubes.iter().enumerate() {
         wait_ctx
             .add(socket.as_ref(), Token::VmControl { index })
-            .context("failed to add descriptor to wait context")?;
-    }
-
-    let events = linux
-        .irq_chip
-        .irq_event_tokens()
-        .context("failed to add descriptor to wait context")?;
-
-    for (index, _gsi, evt) in events {
-        wait_ctx
-            .add(&evt, Token::IrqFd { index })
-            .context("failed to add descriptor to wait context")?;
-    }
-
-    if let Some(delayed_ioapic_irq_trigger) = linux.irq_chip.irq_delayed_event_token()? {
-        wait_ctx
-            .add(&delayed_ioapic_irq_trigger, Token::DelayedIrqFd)
             .context("failed to add descriptor to wait context")?;
     }
 
@@ -2601,6 +2601,21 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             .context("failed to spawn GDB thread")?;
     };
 
+    let (irq_handler_control, irq_handler_control_for_thread) = Tube::pair()?;
+    let sys_allocator_for_thread = sys_allocator_mutex.clone();
+    let irq_chip_for_thread = linux.irq_chip.try_box_clone()?;
+    let irq_handler_thread = std::thread::Builder::new()
+        .name("irq_handler_thread".into())
+        .spawn(move || {
+            irq_handler_thread(
+                irq_control_tubes,
+                irq_chip_for_thread,
+                sys_allocator_for_thread,
+                irq_handler_control_for_thread,
+            )
+        })
+        .unwrap();
+
     vcpu_thread_barrier.wait();
 
     let mut exit_state = ExitState::Stop;
@@ -2701,16 +2716,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                         break 'wait;
                     }
                 }
-                Token::IrqFd { index } => {
-                    if let Err(e) = linux.irq_chip.service_irq_event(index) {
-                        error!("failed to signal irq {}: {}", index, e);
-                    }
-                }
-                Token::DelayedIrqFd => {
-                    if let Err(e) = linux.irq_chip.process_delayed_irq_events() {
-                        warn!("can't deliver delayed irqs: {}", e);
-                    }
-                }
                 Token::VmControlServer => {
                     if let Some(socket_server) = &control_server_socket {
                         match socket_server.accept() {
@@ -2734,6 +2739,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 Token::VmControl { index } => {
                     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
                     let mut add_tubes = Vec::new();
+                    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                    let mut add_irq_control_tubes = Vec::new();
                     if let Some(socket) = control_tubes.get(index) {
                         match socket {
                             TaggedControlTube::Vm(tube) => match tube.recv::<VmRequest>() {
@@ -2749,8 +2756,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                             {
                                                 handle_hotplug_command(
                                                     &mut linux,
-                                                    &mut sys_allocator,
+                                                    &mut sys_allocator_mutex.lock(),
                                                     &cfg,
+                                                    &mut add_irq_control_tubes,
                                                     &mut add_tubes,
                                                     &hp_control_tube,
                                                     &iommu_host_tube,
@@ -2887,7 +2895,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                 Ok(request) => {
                                     let response = request.execute(
                                         &mut linux.vm,
-                                        &mut sys_allocator,
+                                        &mut sys_allocator_mutex.lock(),
                                         &mut gralloc,
                                         if *expose_with_viommu {
                                             iommu_client.as_mut()
@@ -2904,61 +2912,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                         vm_control_indices_to_remove.push(index);
                                     } else {
                                         error!("failed to recv VmMemoryControlRequest: {}", e);
-                                    }
-                                }
-                            },
-                            TaggedControlTube::VmIrq(tube) => match tube.recv::<VmIrqRequest>() {
-                                Ok(request) => {
-                                    let response = {
-                                        let irq_chip = &mut linux.irq_chip;
-                                        request.execute(
-                                            |setup| match setup {
-                                                IrqSetup::Event(irq, ev, device_id, queue_id, device_name) => {
-                                                    let irq_evt = devices::IrqEdgeEvent::from_event(ev.try_clone()?);
-                                                    let source = IrqEventSource{
-                                                        device_id: device_id.try_into().expect("Invalid device_id"),
-                                                        queue_id,
-                                                        device_name,
-                                                    };
-                                                    if let Some(event_index) = irq_chip
-                                                        .register_edge_irq_event(irq, &irq_evt, source)?
-                                                    {
-                                                        match wait_ctx.add(
-                                                            ev,
-                                                            Token::IrqFd {
-                                                                index: event_index
-                                                            },
-                                                        ) {
-                                                            Err(e) => {
-                                                                warn!("failed to add IrqFd to poll context: {}", e);
-                                                                Err(e)
-                                                            },
-                                                            Ok(_) => {
-                                                                Ok(())
-                                                            }
-                                                        }
-                                                    } else {
-                                                        Ok(())
-                                                    }
-                                                }
-                                                IrqSetup::Route(route) => irq_chip.route_irq(route),
-                                                IrqSetup::UnRegister(irq, ev) => {
-                                                    let irq_evt = devices::IrqEdgeEvent::from_event(ev.try_clone()?);
-                                                    irq_chip.unregister_edge_irq_event(irq, &irq_evt)
-                                                }
-                                            },
-                                            &mut sys_allocator,
-                                        )
-                                    };
-                                    if let Err(e) = tube.send(&response) {
-                                        error!("failed to send VmIrqResponse: {}", e);
-                                    }
-                                }
-                                Err(e) => {
-                                    if let TubeError::Disconnected = e {
-                                        vm_control_indices_to_remove.push(index);
-                                    } else {
-                                        error!("failed to recv VmIrqRequest: {}", e);
                                     }
                                 }
                             },
@@ -2981,8 +2934,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                             }
                             TaggedControlTube::Fs(tube) => match tube.recv::<FsMappingRequest>() {
                                 Ok(request) => {
-                                    let response =
-                                        request.execute(&mut linux.vm, &mut sys_allocator);
+                                    let response = request
+                                        .execute(&mut linux.vm, &mut sys_allocator_mutex.lock());
                                     if let Err(e) = tube.send(&response) {
                                         error!("failed to send VmResponse: {}", e);
                                     }
@@ -3013,54 +2966,29 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                         }
                         control_tubes.append(&mut add_tubes);
                     }
+                    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                    if !add_irq_control_tubes.is_empty() {
+                        irq_handler_control.send(&IrqHandlerRequest::AddIrqControlTubes(
+                            add_irq_control_tubes,
+                        ))?;
+                    }
                 }
             }
         }
 
-        // It's possible more data is readable and buffered while the socket is hungup,
-        // so don't delete the tube from the poll context until we're sure all the
-        // data is read.
-        // Below case covers a condition where we have received a hungup event and the tube is not
-        // readable.
-        // In case of readable tube, once all data is read, any attempt to read more data on hungup
-        // tube should fail. On such failure, we get Disconnected error and index gets added to
-        // vm_control_indices_to_remove by the time we reach here.
-        for event in events.iter().filter(|e| e.is_hungup && !e.is_readable) {
-            if let Token::VmControl { index } = event.token {
-                vm_control_indices_to_remove.push(index);
-            }
-        }
-
-        // Sort in reverse so the highest indexes are removed first. This removal algorithm
-        // preserves correct indexes as each element is removed.
-        vm_control_indices_to_remove.sort_unstable_by_key(|&k| Reverse(k));
-        vm_control_indices_to_remove.dedup();
-        for index in vm_control_indices_to_remove {
-            // Delete the socket from the `wait_ctx` synchronously. Otherwise, the kernel will do
-            // this automatically when the FD inserted into the `wait_ctx` is closed after this
-            // if-block, but this removal can be deferred unpredictably. In some instances where the
-            // system is under heavy load, we can even get events returned by `wait_ctx` for an FD
-            // that has already been closed. Because the token associated with that spurious event
-            // now belongs to a different socket, the control loop will start to interact with
-            // sockets that might not be ready to use. This can cause incorrect hangup detection or
-            // blocking on a socket that will never be ready. See also: crbug.com/1019986
-            if let Some(socket) = control_tubes.get(index) {
-                wait_ctx
-                    .delete(socket)
-                    .context("failed to remove descriptor from wait context")?;
-            }
-
-            // This line implicitly drops the socket at `index` when it gets returned by
-            // `swap_remove`. After this line, the socket at `index` is not the one from
-            // `vm_control_indices_to_remove`. Because of this socket's change in index, we need to
-            // use `wait_ctx.modify` to change the associated index in its `Token::VmControl`.
-            control_tubes.swap_remove(index);
-            if let Some(tube) = control_tubes.get(index) {
-                wait_ctx
-                    .modify(tube, EventType::Read, Token::VmControl { index })
-                    .context("failed to add descriptor to wait context")?;
-            }
-        }
+        remove_hungup_and_drained_tubes(
+            &events,
+            &wait_ctx,
+            &mut control_tubes,
+            vm_control_indices_to_remove,
+            |token: &Token| {
+                if let Token::VmControl { index } = token {
+                    return Some(*index);
+                }
+                None
+            },
+            |index: usize| Token::VmControl { index },
+        )?;
     }
 
     vcpu::kick_all_vcpus(
@@ -3102,6 +3030,14 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         }
     }
 
+    // Shut down the IRQ handler thread.
+    if let Err(e) = irq_handler_control.send(&IrqHandlerRequest::Exit) {
+        error!("failed to request exit from IRQ handler thread: {}", e);
+    }
+    if let Err(e) = irq_handler_thread.join() {
+        error!("failed to exit irq handler thread: {:?}", e);
+    }
+
     // At this point, the only remaining `Arc` references to the `Bus` objects should be the ones
     // inside `linux`. If the checks below fail, then some other thread is probably still running
     // and needs to be explicitly stopped before dropping `linux` to ensure devices actually get
@@ -3124,6 +3060,269 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         .expect("failed to restore canonical mode for terminal");
 
     Ok(exit_state)
+}
+
+#[derive(EventToken)]
+enum IrqHandlerToken {
+    IrqFd { index: IrqEventIndex },
+    VmIrq { index: usize },
+    DelayedIrqFd,
+    HandlerControl,
+}
+
+#[derive(Serialize, Deserialize)]
+enum IrqHandlerRequest {
+    AddIrqControlTubes(Vec<Tube>),
+    Exit,
+}
+
+/// Handles IRQs and requests from devices to add additional IRQ lines.
+fn irq_handler_thread(
+    mut irq_control_tubes: Vec<Tube>,
+    mut irq_chip: Box<dyn IrqChipArch + 'static>,
+    sys_allocator_mutex: Arc<Mutex<SystemAllocator>>,
+    handler_control: Tube,
+) -> anyhow::Result<()> {
+    let wait_ctx = WaitContext::build_with(&[(
+        handler_control.get_read_notifier(),
+        IrqHandlerToken::HandlerControl,
+    )])
+    .context("failed to build wait context")?;
+
+    if let Some(delayed_ioapic_irq_trigger) = irq_chip.irq_delayed_event_token()? {
+        wait_ctx
+            .add(&delayed_ioapic_irq_trigger, IrqHandlerToken::DelayedIrqFd)
+            .context("failed to add descriptor to wait context")?;
+    }
+
+    let events = irq_chip
+        .irq_event_tokens()
+        .context("failed get event tokens from irqchip")?;
+
+    for (index, _gsi, evt) in events {
+        wait_ctx
+            .add(&evt, IrqHandlerToken::IrqFd { index })
+            .context("failed to add irq chip event tokens to wait context")?;
+    }
+
+    for (index, socket) in irq_control_tubes.iter().enumerate() {
+        wait_ctx
+            .add(socket.get_read_notifier(), IrqHandlerToken::VmIrq { index })
+            .context("irq control tubes to wait context")?;
+    }
+
+    'wait: loop {
+        let events = {
+            match wait_ctx.wait() {
+                Ok(v) => v,
+                Err(e) => {
+                    error!("failed to poll: {}", e);
+                    break 'wait;
+                }
+            }
+        };
+        let mut vm_irq_tubes_to_remove = Vec::new();
+
+        for event in events.iter().filter(|e| e.is_readable) {
+            match event.token {
+                IrqHandlerToken::HandlerControl => {
+                    match handler_control.recv::<IrqHandlerRequest>() {
+                        Ok(request) => {
+                            match request {
+                                IrqHandlerRequest::Exit => break 'wait,
+                                IrqHandlerRequest::AddIrqControlTubes(mut tubes) => {
+                                    for (index, socket) in tubes.iter().enumerate() {
+                                        wait_ctx
+                                        .add(
+                                            socket.get_read_notifier(),
+                                            IrqHandlerToken::VmIrq {
+                                                index: irq_control_tubes.len() + index,
+                                            },
+                                        )
+                                        .context("failed to add new IRQ control Tube to wait context")?;
+                                    }
+                                    irq_control_tubes.append(&mut tubes);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            if let TubeError::Disconnected = e {
+                                panic!("irq handler control tube disconnected.");
+                            } else {
+                                error!("failed to recv IrqHandlerRequest: {}", e);
+                            }
+                        }
+                    }
+                }
+                IrqHandlerToken::VmIrq { index } => {
+                    if let Some(tube) = irq_control_tubes.get(index) {
+                        handle_irq_tube_request(
+                            &sys_allocator_mutex,
+                            &mut irq_chip,
+                            &mut vm_irq_tubes_to_remove,
+                            &wait_ctx,
+                            tube,
+                            index,
+                        );
+                    }
+                }
+                IrqHandlerToken::IrqFd { index } => {
+                    if let Err(e) = irq_chip.service_irq_event(index) {
+                        error!("failed to signal irq {}: {}", index, e);
+                    }
+                }
+                IrqHandlerToken::DelayedIrqFd => {
+                    if let Err(e) = irq_chip.process_delayed_irq_events() {
+                        warn!("can't deliver delayed irqs: {}", e);
+                    }
+                }
+            }
+        }
+        remove_hungup_and_drained_tubes(
+            &events,
+            &wait_ctx,
+            &mut irq_control_tubes,
+            vm_irq_tubes_to_remove,
+            |token: &IrqHandlerToken| {
+                if let IrqHandlerToken::VmIrq { index } = token {
+                    return Some(*index);
+                }
+                None
+            },
+            |index: usize| IrqHandlerToken::VmIrq { index },
+        )?;
+        if events.iter().any(|e| {
+            e.is_hungup && !e.is_readable && matches!(e.token, IrqHandlerToken::HandlerControl)
+        }) {
+            error!("IRQ handler control hung up but did not request an exit.");
+            break 'wait;
+        }
+    }
+    Ok(())
+}
+
+fn handle_irq_tube_request(
+    sys_allocator_mutex: &Arc<Mutex<SystemAllocator>>,
+    irq_chip: &mut Box<dyn IrqChipArch + 'static>,
+    vm_irq_tubes_to_remove: &mut Vec<usize>,
+    wait_ctx: &WaitContext<IrqHandlerToken>,
+    tube: &Tube,
+    tube_index: usize,
+) {
+    match tube.recv::<VmIrqRequest>() {
+        Ok(request) => {
+            let response = {
+                request.execute(
+                    |setup| match setup {
+                        IrqSetup::Event(irq, ev, device_id, queue_id, device_name) => {
+                            let irq_evt = devices::IrqEdgeEvent::from_event(ev.try_clone()?);
+                            let source = IrqEventSource {
+                                device_id: device_id.try_into().expect("Invalid device_id"),
+                                queue_id,
+                                device_name,
+                            };
+                            if let Some(event_index) =
+                                irq_chip.register_edge_irq_event(irq, &irq_evt, source)?
+                            {
+                                if let Err(e) =
+                                    wait_ctx.add(ev, IrqHandlerToken::IrqFd { index: event_index })
+                                {
+                                    warn!("failed to add IrqFd to poll context: {}", e);
+                                    return Err(e);
+                                }
+                            }
+                            Ok(())
+                        }
+                        IrqSetup::Route(route) => irq_chip.route_irq(route),
+                        IrqSetup::UnRegister(irq, ev) => {
+                            let irq_evt = devices::IrqEdgeEvent::from_event(ev.try_clone()?);
+                            irq_chip.unregister_edge_irq_event(irq, &irq_evt)
+                        }
+                    },
+                    &mut sys_allocator_mutex.lock(),
+                )
+            };
+            if let Err(e) = tube.send(&response) {
+                error!("failed to send VmIrqResponse: {}", e);
+            }
+        }
+        Err(e) => {
+            if let TubeError::Disconnected = e {
+                vm_irq_tubes_to_remove.push(tube_index);
+            } else {
+                error!("failed to recv VmIrqRequest: {}", e);
+            }
+        }
+    }
+}
+
+/// When control tubes hang up, we want to make sure that we've fully drained
+/// the underlying socket before removing it. This function also handles
+/// removing closed sockets in such a way that avoids phantom events.
+///
+/// `tube_indices_to_remove` is the set of indices that we already know should
+/// be removed (e.g. from getting a disconnect error on read).
+fn remove_hungup_and_drained_tubes<T, U>(
+    events: &SmallVec<[TriggeredEvent<T>; 16]>,
+    wait_ctx: &WaitContext<T>,
+    tubes: &mut Vec<U>,
+    mut tube_indices_to_remove: Vec<usize>,
+    get_tube_index: fn(token: &T) -> Option<usize>,
+    make_token_for_tube: fn(usize) -> T,
+) -> anyhow::Result<()>
+where
+    T: EventToken,
+    U: ReadNotifier,
+{
+    // It's possible more data is readable and buffered while the socket is hungup,
+    // so don't delete the tube from the poll context until we're sure all the
+    // data is read.
+    // Below case covers a condition where we have received a hungup event and the tube is not
+    // readable.
+    // In case of readable tube, once all data is read, any attempt to read more data on hungup
+    // tube should fail. On such failure, we get Disconnected error and index gets added to
+    // vm_control_indices_to_remove by the time we reach here.
+    for event in events.iter().filter(|e| e.is_hungup && !e.is_readable) {
+        if let Some(index) = get_tube_index(&event.token) {
+            tube_indices_to_remove.push(index);
+        }
+    }
+
+    // Sort in reverse so the highest indexes are removed first. This removal algorithm
+    // preserves correct indexes as each element is removed.
+    tube_indices_to_remove.sort_unstable_by_key(|&k| Reverse(k));
+    tube_indices_to_remove.dedup();
+    for index in tube_indices_to_remove {
+        // Delete the socket from the `wait_ctx` synchronously. Otherwise, the kernel will do
+        // this automatically when the FD inserted into the `wait_ctx` is closed after this
+        // if-block, but this removal can be deferred unpredictably. In some instances where the
+        // system is under heavy load, we can even get events returned by `wait_ctx` for an FD
+        // that has already been closed. Because the token associated with that spurious event
+        // now belongs to a different socket, the control loop will start to interact with
+        // sockets that might not be ready to use. This can cause incorrect hangup detection or
+        // blocking on a socket that will never be ready. See also: crbug.com/1019986
+        if let Some(socket) = tubes.get(index) {
+            wait_ctx
+                .delete(socket.get_read_notifier())
+                .context("failed to remove descriptor from wait context")?;
+        }
+
+        // This line implicitly drops the socket at `index` when it gets returned by
+        // `swap_remove`. After this line, the socket at `index` is not the one from
+        // `tube_indices_to_remove`. Because of this socket's change in index, we need to
+        // use `wait_ctx.modify` to change the associated index in its `Token::VmControl`.
+        tubes.swap_remove(index);
+        if let Some(tube) = tubes.get(index) {
+            wait_ctx
+                .modify(
+                    tube.get_read_notifier(),
+                    EventType::Read,
+                    make_token_for_tube(index),
+                )
+                .context("failed to add descriptor to wait context")?;
+        }
+    }
+    Ok(())
 }
 
 /// Start and jail a vhost-user device according to its configuration and a vhost listener string.
