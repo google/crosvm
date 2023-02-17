@@ -96,6 +96,10 @@ pub fn create_base_minijail(root: &Path, max_open_files: u64) -> Result<Minijail
     if !root.is_dir() {
         bail!("{:?} is not a directory, cannot create jail", root);
     }
+    // chroot accepts absolute path only.
+    if !root.is_absolute() {
+        bail!("{:?} is not absolute path", root);
+    }
 
     // All child jails run in a new user namespace without any users mapped, they run as nobody
     // unless otherwise configured.
@@ -150,9 +154,9 @@ pub fn create_sandbox_minijail(
             // Add the current user as root in the jail.
             let crosvm_uid = geteuid();
             let crosvm_gid = getegid();
-            jail.uidmap(&format!("0 {0} 1", crosvm_uid))
+            jail.uidmap(&format!("0 {} 1", crosvm_uid))
                 .context("error setting UID map")?;
-            jail.gidmap(&format!("0 {0} 1", crosvm_gid))
+            jail.gidmap(&format!("0 {} 1", crosvm_gid))
                 .context("error setting GID map")?;
         }
     }
@@ -305,13 +309,7 @@ pub fn create_gpu_minijail(root: &Path, config: &SandboxConfig) -> Result<Minija
     )?;
 
     // pvr driver requires read access to /proc/self/task/*/comm.
-    let proc_path = Path::new("/proc");
-    jail.mount(
-        proc_path,
-        proc_path,
-        "proc",
-        (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC | libc::MS_RDONLY) as usize,
-    )?;
+    mount_proc(&mut jail)?;
 
     // To enable perfetto tracing, we need to give access to the perfetto service IPC
     // endpoints.
@@ -337,6 +335,17 @@ pub fn jail_mount_bind_if_exists<P: AsRef<std::ffi::OsStr>>(
         }
     }
 
+    Ok(())
+}
+
+/// Mount proc in the sandbox.
+pub fn mount_proc(jail: &mut Minijail) -> Result<()> {
+    jail.mount(
+        Path::new("proc"),
+        Path::new("/proc"),
+        "proc",
+        (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC | libc::MS_RDONLY) as usize,
+    )?;
     Ok(())
 }
 

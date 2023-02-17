@@ -48,6 +48,9 @@ use base::Result as SysResult;
 use base::SignalFd;
 use base::WaitContext;
 use base::SIGRTMIN;
+use jail::create_sandbox_minijail;
+use jail::mount_proc;
+use jail::SandboxConfig;
 use kvm::Cap;
 use kvm::Datamatch;
 use kvm::IoeventAddress;
@@ -72,15 +75,9 @@ use libc::EOVERFLOW;
 use libc::EPERM;
 use libc::FIOCLEX;
 use libc::F_SETPIPE_SZ;
-use libc::MS_NODEV;
-use libc::MS_NOEXEC;
-use libc::MS_NOSUID;
-use libc::MS_RDONLY;
 use libc::O_NONBLOCK;
 use libc::SIGCHLD;
 use libc::SOCK_SEQPACKET;
-use minijail;
-use minijail::Minijail;
 use net_util::sys::unix::Tap;
 use net_util::TapTCommon;
 use protobuf::ProtobufError;
@@ -96,6 +93,7 @@ use crate::Config;
 
 const MAX_DATAGRAM_SIZE: usize = 4096;
 const MAX_VCPU_DATAGRAM_SIZE: usize = 0x40000;
+const MAX_OPEN_FILES: u64 = 32768;
 
 /// An error that occurs when communicating with the plugin process.
 #[sorted]
@@ -194,80 +192,6 @@ fn mmap_to_sys_err(e: MmapError) -> SysError {
         MmapError::SystemCallFailed(e) => e,
         _ => SysError::new(EINVAL),
     }
-}
-
-fn create_plugin_jail(
-    root: &Path,
-    log_failures: bool,
-    seccomp_policy: Option<&Path>,
-) -> Result<Minijail> {
-    // All child jails run in a new user namespace without any users mapped,
-    // they run as nobody unless otherwise configured.
-    let mut j = Minijail::new().context("failed to create jail")?;
-    j.namespace_pids();
-    j.namespace_user();
-    j.uidmap(&format!("0 {0} 1", geteuid()))
-        .context("failed to set uidmap for jail")?;
-    j.gidmap(&format!("0 {0} 1", getegid()))
-        .context("failed to set gidmap for jail")?;
-    j.namespace_user_disable_setgroups();
-    // Don't need any capabilities.
-    j.use_caps(0);
-    // Create a new mount namespace with an empty root FS.
-    j.namespace_vfs();
-    j.enter_pivot_root(root)
-        .context("failed to set jail pivot root")?;
-    // Run in an empty network namespace.
-    j.namespace_net();
-    j.no_new_privs();
-    // By default we'll prioritize using the pre-compiled .bpf over the .policy
-    // file (the .bpf is expected to be compiled using "trap" as the failure
-    // behavior instead of the default "kill" behavior).
-    // Refer to the code comment for the "seccomp-log-failures"
-    // command-line parameter for an explanation about why the |log_failures|
-    // flag forces the use of .policy files (and the build-time alternative to
-    // this run-time flag).
-    let bpf_policy_file = seccomp_policy.unwrap().with_extension("bpf");
-    if bpf_policy_file.exists() && !log_failures {
-        j.parse_seccomp_program(&bpf_policy_file)
-            .context("failed to parse jail seccomp BPF program")?;
-    } else {
-        // Use TSYNC only for the side effect of it using SECCOMP_RET_TRAP,
-        // which will correctly kill the entire device process if a worker
-        // thread commits a seccomp violation.
-        j.set_seccomp_filter_tsync();
-        if log_failures {
-            j.log_seccomp_filter_failures();
-        }
-        j.parse_seccomp_filters(&seccomp_policy.unwrap().with_extension("policy"))
-            .context("failed to parse jail seccomp filter")?;
-    }
-    j.use_seccomp_filter();
-    // Don't do init setup.
-    j.run_as_init();
-
-    // Create a tmpfs in the plugin's root directory so that we can bind mount it's executable
-    // file into it.  The size=67108864 is size=64*1024*1024 or size=64MB.
-    j.mount_with_data(
-        Path::new("none"),
-        Path::new("/"),
-        "tmpfs",
-        (MS_NOSUID | MS_NODEV | MS_NOEXEC) as usize,
-        "size=67108864",
-    )
-    .context("failed to mount root")?;
-
-    // Because we requested to "run as init", minijail will not mount /proc for us even though
-    // plugin will be running in its own PID namespace, so we have to mount it ourselves.
-    j.mount(
-        Path::new("proc"),
-        Path::new("/proc"),
-        "proc",
-        (MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RDONLY) as usize,
-    )
-    .context("failed to mount proc")?;
-
-    Ok(j)
 }
 
 /// Each `PluginObject` represents one object that was instantiated by the guest using the `Create`
@@ -564,44 +488,33 @@ pub fn run_config(cfg: Config) -> Result<()> {
         .context("error marking stderr nonblocking")?;
 
     let jail = if let Some(jail_config) = &cfg.jail_config {
-        // An empty directory for jailed plugin pivot root.
-        let root_path = match &cfg.plugin_root {
-            Some(dir) => dir,
-            None => Path::new(option_env!("DEFAULT_PIVOT_ROOT").unwrap_or("/var/empty")),
-        };
-
-        if root_path.is_relative() {
-            bail!("path to the root directory must be absolute");
+        if jail_config.seccomp_policy_dir.is_none() {
+            bail!("plugin requires seccomp policy file specified.");
         }
 
-        if !root_path.exists() {
-            bail!("no root directory for jailed process to pivot root into");
-        }
-
-        if !root_path.is_dir() {
-            bail!("specified root directory is not a directory");
-        }
-
-        let policy_path = jail_config
-            .seccomp_policy_dir
-            .as_ref()
-            .map(|dir| dir.join("plugin"));
-        let mut jail = create_plugin_jail(
-            root_path,
-            jail_config.seccomp_log_failures,
-            policy_path.as_deref(),
-        )?;
-
-        // Update gid map of the jail if caller provided supplemental groups.
-        if !cfg.plugin_gid_maps.is_empty() {
-            let map = format!("0 {} 1", getegid())
+        let mut config = SandboxConfig::new(jail_config, "plugin");
+        config.bind_mounts = true;
+        let uid_map = format!("0 {} 1", geteuid());
+        let gid_map = format!("0 {} 1", getegid());
+        let gid_map = if cfg.plugin_gid_maps.len() > 0 {
+            gid_map
                 + &cfg
                     .plugin_gid_maps
                     .into_iter()
                     .map(|m| format!(",{} {} {}", m.inner, m.outer, m.count))
-                    .collect::<String>();
-            jail.gidmap(&map).context("failed to set gidmap for jail")?;
-        }
+                    .collect::<String>()
+        } else {
+            gid_map
+        };
+        config.ugid_map = Some((&uid_map, &gid_map));
+
+        let root_path = cfg.plugin_root.as_ref().unwrap_or(&jail_config.pivot_root);
+        let mut jail = create_sandbox_minijail(root_path, MAX_OPEN_FILES, &config)
+            .context("create plugin sandbox")?;
+
+        // Because we requested to "run as init", minijail will not mount /proc for us even though
+        // plugin will be running in its own PID namespace, so we have to mount it ourselves.
+        mount_proc(&mut jail).context("mount proc")?;
 
         // Mount minimal set of devices (full, zero, urandom, etc). We can not use
         // jail.mount_dev() here because crosvm may not be running with CAP_SYS_ADMIN.
