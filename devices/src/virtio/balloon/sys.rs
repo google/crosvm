@@ -14,6 +14,3 @@ cfg_if::cfg_if! {
 
 pub(in crate::virtio::balloon) use platform::free_memory;
 pub(in crate::virtio::balloon) use platform::reclaim_memory;
-pub(in crate::virtio::balloon) use platform::send_adjusted_response;
-pub(in crate::virtio::balloon) use platform::send_adjusted_response_async;
-pub(in crate::virtio::balloon) use platform::send_adjusted_response_if_needed;
