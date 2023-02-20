@@ -981,6 +981,8 @@ mod tests {
     use crate::virtio::base_features;
     use crate::virtio::descriptor_utils::create_descriptor_chain;
     use crate::virtio::descriptor_utils::DescriptorType;
+    use crate::virtio::VIRTIO_MSI_NO_VECTOR;
+    use crate::IrqLevelEvent;
 
     #[test]
     fn read_size() {
@@ -1348,5 +1350,178 @@ mod tests {
         let id_offset = GuestAddress(0x1000 + size_of_val(&req_hdr) as u64);
         let returned_id = mem.read_obj_from_addr::<[u8; 20]>(id_offset).unwrap();
         assert_eq!(returned_id, *id);
+    }
+
+    // TODO(b/270225199): enable this test on Windows once IoSourceExt::into_source is implemented
+    #[cfg(unix)]
+    #[test]
+    fn reset_and_reactivate() {
+        // Create an empty disk image
+        let f = tempfile().unwrap();
+        f.set_len(0x1000).unwrap();
+
+        // Create an empty guest memory
+        let mem = GuestMemory::new(&[(GuestAddress(0u64), 4 * 1024 * 1024)])
+            .expect("Creating guest memory failed.");
+
+        // Create a BlockAsync to test
+        let features = base_features(ProtectionType::Unprotected);
+        let mut b = BlockAsync::new(
+            features,
+            Box::new(f),
+            true,
+            false,
+            512,
+            None,
+            Some(Tube::pair().unwrap().0),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+        // activate with queues of an arbitrary size.
+        b.activate(
+            mem.clone(),
+            Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
+            vec![
+                (Queue::new(DEFAULT_QUEUE_SIZE), Event::new().unwrap()),
+                (Queue::new(DEFAULT_QUEUE_SIZE), Event::new().unwrap()),
+            ],
+        )
+        .expect("activate should succeed");
+        // assert resources are consumed
+        assert!(
+            b.disk_image.is_none(),
+            "BlockAsync should not have a disk image"
+        );
+        assert!(
+            b.control_tube.is_none(),
+            "BlockAsync should not have a control tube"
+        );
+
+        // reset and assert resources are got back
+        assert!(b.reset(), "reset should succeed");
+        assert!(
+            b.disk_image.is_some(),
+            "BlockAsync should have a disk image"
+        );
+        assert!(
+            b.control_tube.is_some(),
+            "BlockAsync should have a control tube"
+        );
+
+        // re-activate should succeed
+        b.activate(
+            mem,
+            Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
+            vec![
+                (Queue::new(DEFAULT_QUEUE_SIZE), Event::new().unwrap()),
+                (Queue::new(DEFAULT_QUEUE_SIZE), Event::new().unwrap()),
+            ],
+        )
+        .expect("re-activate should succeed");
+    }
+
+    // TODO(b/270225199): enable this test on Windows once IoSourceExt::into_source is implemented,
+    // or after finding a good way to prevent BlockAsync::drop() from panicking due to that.
+    #[cfg(unix)]
+    #[test]
+    fn resize() {
+        // disk image size constants
+        let original_size = 0x1000;
+        let resized_size = 0x2000;
+
+        // Create an empty disk image
+        let f = tempfile().unwrap();
+        f.set_len(original_size).unwrap();
+
+        // Create an empty guest memory
+        let mem = GuestMemory::new(&[(GuestAddress(0u64), 4 * 1024 * 1024)])
+            .expect("Creating guest memory failed.");
+
+        // Create a control tube
+        let (control_tube, control_tube_device) = Tube::pair().unwrap();
+
+        // Create a BlockAsync to test
+        let features = base_features(ProtectionType::Unprotected);
+        let mut b = BlockAsync::new(
+            features,
+            Box::new(f),
+            false,
+            false,
+            512,
+            None,
+            Some(control_tube_device),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+        // activate with queues of an arbitrary size.
+        let interrupt = Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR);
+        b.activate(
+            mem,
+            interrupt.clone(),
+            vec![
+                (Queue::new(DEFAULT_QUEUE_SIZE), Event::new().unwrap()),
+                (Queue::new(DEFAULT_QUEUE_SIZE), Event::new().unwrap()),
+            ],
+        )
+        .expect("activate should succeed");
+
+        // assert the original size first
+        assert_eq!(
+            b.disk_size.load(Ordering::Acquire),
+            original_size,
+            "disk_size should be the original size first"
+        );
+        let mut capacity = [0u8; 8];
+        b.read_config(0, &mut capacity);
+        assert_eq!(
+            capacity,
+            // original_size (0x1000) >> SECTOR_SHIFT (9) = 0x8
+            [0x8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+            "read_config should read the original capacity first"
+        );
+
+        // assert resize works
+        control_tube
+            .send(&DiskControlCommand::Resize {
+                new_size: resized_size,
+            })
+            .unwrap();
+        assert_eq!(
+            control_tube.recv::<DiskControlResult>().unwrap(),
+            DiskControlResult::Ok,
+            "resize command should succeed"
+        );
+        assert_eq!(
+            b.disk_size.load(Ordering::Acquire),
+            resized_size,
+            "disk_size should be resized to the new size"
+        );
+        let mut capacity = [0u8; 8];
+        b.read_config(0, &mut capacity);
+        assert_eq!(
+            capacity,
+            // resized_size (0x2000) >> SECTOR_SHIFT (9) = 0x10
+            [0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+            "read_config should read the resized capacity"
+        );
+        assert_eq!(
+            interrupt
+                .get_interrupt_evt()
+                // Wait a bit until the blk signals the interrupt
+                .wait_timeout(Duration::from_millis(300)),
+            Ok(base::EventWaitResult::Signaled),
+            "interrupt should be signaled"
+        );
+        assert_eq!(
+            interrupt.read_interrupt_status(),
+            crate::virtio::INTERRUPT_STATUS_CONFIG_CHANGED as u8,
+            "INTERRUPT_STATUS_CONFIG_CHANGED should be signaled"
+        );
     }
 }
