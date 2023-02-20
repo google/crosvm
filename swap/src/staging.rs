@@ -12,6 +12,7 @@ use base::MemoryMapping;
 use base::MemoryMappingBuilder;
 use base::MemoryMappingUnix;
 use base::MmapError;
+use base::SharedMemory;
 use data_model::VolatileMemory;
 use data_model::VolatileMemoryError;
 use data_model::VolatileSlice;
@@ -87,6 +88,9 @@ impl CopyOp {
 ///   * The faulting pages between `crosvm swap enable` and `crosvm swap out` are swapped in from
 ///   * this [StagingMemory] directly without written into the swap file. This saves disk resouces
 ///   * and latency of page fault handling.
+///
+/// NB: Staging memory is a memfd instead of private anonymous memory to match GuestMemory. This is
+/// done to make accounting easier when calculating total guest memory consumption.
 pub struct StagingMemory {
     mmap: MemoryMapping,
     // Tracks which pages are present, indexed by page index within the memory region.
@@ -94,13 +98,18 @@ pub struct StagingMemory {
 }
 
 impl StagingMemory {
-    /// Creates [StagingMemory] and anonymous private memory.
+    /// Creates [StagingMemory].
     ///
     /// # Arguments
     ///
-    /// * `num_of_pages` - the number of pages in the region.
-    pub fn new(num_of_pages: usize) -> Result<Self> {
-        let mmap = MemoryMappingBuilder::new(pages_to_bytes(num_of_pages)).build()?;
+    /// * `shmem` - [SharedMemory] to mmap from.
+    /// * `offset_bytes` - The offset in bytes from the head of the `shmem`.
+    /// * `num_of_pages` - The number of pages in the region.
+    pub fn new(shmem: &SharedMemory, offset_bytes: u64, num_of_pages: usize) -> Result<Self> {
+        let mmap = MemoryMappingBuilder::new(pages_to_bytes(num_of_pages))
+            .from_shared_memory(shmem)
+            .offset(offset_bytes)
+            .build()?;
         Ok(Self {
             mmap,
             present_list: PresentList::new(num_of_pages),
@@ -216,7 +225,8 @@ mod tests {
 
     #[test]
     fn new_success() {
-        assert!(StagingMemory::new(200).is_ok());
+        let shmem = SharedMemory::new("test staging memory", 200 * pagesize() as u64).unwrap();
+        assert!(StagingMemory::new(&shmem, 0, 200).is_ok());
     }
 
     fn create_mmap(value: u8, pages: usize) -> MemoryMapping {
@@ -230,8 +240,9 @@ mod tests {
 
     #[test]
     fn copy_marks_as_present() {
+        let shmem = SharedMemory::new("test staging memory", 200 * pagesize() as u64).unwrap();
         let mmap = create_mmap(1, 4);
-        let mut staging_memory = StagingMemory::new(200).unwrap();
+        let mut staging_memory = StagingMemory::new(&shmem, 0, 200).unwrap();
 
         let src_addr = mmap.as_ptr();
         unsafe {
@@ -257,15 +268,17 @@ mod tests {
 
     #[test]
     fn page_content_default_is_none() {
-        let staging_memory = StagingMemory::new(200).unwrap();
+        let shmem = SharedMemory::new("test staging memory", 200 * pagesize() as u64).unwrap();
+        let staging_memory = StagingMemory::new(&shmem, 0, 200).unwrap();
 
         assert!(staging_memory.page_content(0).unwrap().is_none());
     }
 
     #[test]
     fn page_content_returns_content() {
+        let shmem = SharedMemory::new("test staging memory", 200 * pagesize() as u64).unwrap();
         let mmap = create_mmap(1, 1);
-        let mut staging_memory = StagingMemory::new(200).unwrap();
+        let mut staging_memory = StagingMemory::new(&shmem, 0, 200).unwrap();
 
         unsafe {
             staging_memory.copy(mmap.as_ptr(), 0, 1).unwrap().execute();
@@ -278,7 +291,8 @@ mod tests {
 
     #[test]
     fn page_content_out_of_range() {
-        let staging_memory = StagingMemory::new(200).unwrap();
+        let shmem = SharedMemory::new("test staging memory", 200 * pagesize() as u64).unwrap();
+        let staging_memory = StagingMemory::new(&shmem, 0, 200).unwrap();
 
         assert!(staging_memory.page_content(199).is_ok());
         match staging_memory.page_content(200) {
@@ -289,8 +303,9 @@ mod tests {
 
     #[test]
     fn clear_range() {
+        let shmem = SharedMemory::new("test staging memory", 200 * pagesize() as u64).unwrap();
         let mmap = create_mmap(1, 5);
-        let mut staging_memory = StagingMemory::new(200).unwrap();
+        let mut staging_memory = StagingMemory::new(&shmem, 0, 200).unwrap();
 
         unsafe {
             staging_memory.copy(mmap.as_ptr(), 0, 5).unwrap();
@@ -306,7 +321,8 @@ mod tests {
 
     #[test]
     fn clear_range_out_of_range() {
-        let mut staging_memory = StagingMemory::new(200).unwrap();
+        let shmem = SharedMemory::new("test staging memory", 200 * pagesize() as u64).unwrap();
+        let mut staging_memory = StagingMemory::new(&shmem, 0, 200).unwrap();
 
         assert!(staging_memory.clear_range(199..200).is_ok());
         match staging_memory.clear_range(199..201) {
@@ -317,8 +333,9 @@ mod tests {
 
     #[test]
     fn first_data_range() {
+        let shmem = SharedMemory::new("test staging memory", 200 * pagesize() as u64).unwrap();
         let mmap = create_mmap(1, 2);
-        let mut staging_memory = StagingMemory::new(200).unwrap();
+        let mut staging_memory = StagingMemory::new(&shmem, 0, 200).unwrap();
 
         let src_addr = mmap.as_ptr();
         unsafe {
@@ -336,9 +353,10 @@ mod tests {
 
     #[test]
     fn get_slice() {
+        let shmem = SharedMemory::new("test staging memory", 200 * pagesize() as u64).unwrap();
         let mmap1 = create_mmap(1, 1);
         let mmap2 = create_mmap(2, 1);
-        let mut staging_memory = StagingMemory::new(200).unwrap();
+        let mut staging_memory = StagingMemory::new(&shmem, 0, 200).unwrap();
 
         let src_addr1 = mmap1.as_ptr();
         let src_addr2 = mmap2.as_ptr();
@@ -363,7 +381,8 @@ mod tests {
 
     #[test]
     fn get_slice_out_of_range() {
-        let staging_memory = StagingMemory::new(200).unwrap();
+        let shmem = SharedMemory::new("test staging memory", 200 * pagesize() as u64).unwrap();
+        let staging_memory = StagingMemory::new(&shmem, 0, 200).unwrap();
 
         match staging_memory.get_slice(200..201) {
             Err(Error::OutOfRange) => {}
@@ -375,8 +394,9 @@ mod tests {
 
     #[test]
     fn present_pages() {
+        let shmem = SharedMemory::new("test staging memory", 200 * pagesize() as u64).unwrap();
         let mmap = create_mmap(1, 5);
-        let mut staging_memory = StagingMemory::new(200).unwrap();
+        let mut staging_memory = StagingMemory::new(&shmem, 0, 200).unwrap();
 
         let src_addr = mmap.as_ptr();
         unsafe {

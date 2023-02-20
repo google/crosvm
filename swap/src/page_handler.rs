@@ -15,6 +15,7 @@ use anyhow::Context;
 use base::error;
 use base::unix::FileDataIterator;
 use base::AsRawDescriptor;
+use base::SharedMemory;
 use data_model::VolatileSlice;
 use sync::Mutex;
 use thiserror::Error as ThisError;
@@ -115,7 +116,7 @@ struct Region<'a> {
     /// the head page index of the region.
     head_page_idx: usize,
     file: SwapFile<'a>,
-    staging_memory: Option<StagingMemory>,
+    staging_memory: StagingMemory,
     copied_from_file_pages: usize,
     copied_from_staging_pages: usize,
     zeroed_pages: usize,
@@ -174,10 +175,13 @@ impl<'a> PageHandler<'a> {
     /// # Arguments
     ///
     /// * `swap_file` - The swap file.
+    /// * `staging_shmem` - The staging memory. It must have enough size to hold guest memory.
+    ///   Otherwise monitor process crashes on creating a mmap.
     /// * `address_ranges` - The list of address range of the regions. the start address must align
     ///   with page. the size must be multiple of pagesize.
     pub fn create(
         swap_file: &'a File,
+        staging_shmem: &'a SharedMemory,
         address_ranges: &[Range<usize>],
         stating_move_context: Arc<Channel<MoveToStaging>>,
     ) -> Result<Self> {
@@ -228,10 +232,15 @@ impl<'a> PageHandler<'a> {
                     assert!(is_page_aligned(region_size));
 
                     let file = SwapFile::new(swap_file, offset_pages, num_of_pages)?;
+                    let staging_memory = StagingMemory::new(
+                        staging_shmem,
+                        pages_to_bytes(offset_pages) as u64,
+                        num_of_pages,
+                    )?;
                     regions.push(Region {
                         head_page_idx,
                         file,
-                        staging_memory: None,
+                        staging_memory,
                         copied_from_file_pages: 0,
                         copied_from_staging_pages: 0,
                         zeroed_pages: 0,
@@ -282,20 +291,11 @@ impl<'a> PageHandler<'a> {
             Self::find_region(&mut ctx.regions, page_idx).ok_or(Error::InvalidAddress(address))?;
 
         let idx_in_region = page_idx - region.head_page_idx;
-        if let Some(page_slice) = region
-            .staging_memory
-            .as_ref()
-            .map(|sm| sm.page_content(idx_in_region))
-            .transpose()?
-            .flatten()
-        {
+        if let Some(page_slice) = region.staging_memory.page_content(idx_in_region)? {
             uffd_copy_all(uffd, page_addr, page_slice, true)?;
             // TODO(b/265758094): optimize clear operation.
-            // staging_memory must present when page_slice is present.
             region
                 .staging_memory
-                .as_mut()
-                .unwrap()
                 .clear_range(idx_in_region..idx_in_region + 1)?;
             region.copied_from_staging_pages += 1;
             Ok(())
@@ -360,10 +360,8 @@ impl<'a> PageHandler<'a> {
                 .ok_or(Error::InvalidAddress(page_addr))?;
             let idx_in_region = page_idx - region.head_page_idx;
             let idx_range = idx_in_region..idx_in_region + 1;
-            if let Some(staging_memory) = region.staging_memory.as_mut() {
-                if let Err(e) = staging_memory.clear_range(idx_range.clone()) {
-                    error!("failed to clear removed page from staging: {:?}", e);
-                }
+            if let Err(e) = region.staging_memory.clear_range(idx_range.clone()) {
+                error!("failed to clear removed page from staging: {:?}", e);
             }
             // Erase the pages from the disk because the pages are removed from the guest memory.
             let munlocked_pages = region.file.erase_from_disk(idx_range)?;
@@ -415,10 +413,6 @@ impl<'a> PageHandler<'a> {
         if page_idx_to_addr(region.head_page_idx) != base_addr {
             return Err(Error::InvalidAddress(base_addr));
         }
-        if region.staging_memory.is_none() {
-            region.staging_memory = Some(StagingMemory::new(region.file.num_pages())?);
-        }
-        let staging_memory = region.staging_memory.as_mut().unwrap();
         let region_size = pages_to_bytes(region.file.num_pages());
         let mut file_data = FileDataIterator::new(memfd, base_offset, region_size as u64);
         let mut moved_size = 0;
@@ -476,7 +470,7 @@ impl<'a> PageHandler<'a> {
             // * src_addr is aligned with page size
             // * the data_range starting from src_addr is on the guest memory.
             let copy_op = unsafe {
-                staging_memory.copy(
+                region.staging_memory.copy(
                     (base_addr + offset) as *const u8,
                     bytes_to_pages(offset),
                     bytes_to_pages(size),
@@ -548,28 +542,20 @@ impl<'a> PageHandler<'a> {
     pub fn swap_out(&self, max_size: usize) -> Result<usize> {
         let max_pages = bytes_to_pages(max_size);
         let mut ctx = self.ctx.lock();
-        for region in ctx
-            .regions
-            .iter_mut()
-            .filter(|r| r.staging_memory.is_some())
-        {
-            let staging_memory = region.staging_memory.as_mut().unwrap();
-
-            if let Some(idx_range) = staging_memory.first_data_range(max_pages) {
+        for region in ctx.regions.iter_mut() {
+            if let Some(idx_range) = region.staging_memory.first_data_range(max_pages) {
                 let pages = idx_range.end - idx_range.start;
-                let slice = staging_memory.get_slice(idx_range.clone())?;
+                let slice = region.staging_memory.get_slice(idx_range.clone())?;
                 // Convert VolatileSlice to &[u8]
                 // Safe because the range of volatile slice is already validated.
                 let slice = unsafe { std::slice::from_raw_parts(slice.as_ptr(), slice.size()) };
                 region.file.write_to_file(idx_range.start, slice)?;
                 // TODO(kawasin): clear state_list on each write and MADV_REMOVE several chunk at
                 // once.
-                staging_memory.clear_range(idx_range)?;
+                region.staging_memory.clear_range(idx_range)?;
                 // TODO(kawasin): free the page cache of the swap file.
                 // TODO(kawasin): use writev() to swap_out several small chunks at once.
                 return Ok(pages);
-            } else {
-                region.staging_memory = None;
             }
         }
         Ok(0)
@@ -636,7 +622,7 @@ impl<'a> PageHandler<'a> {
             .lock()
             .regions
             .iter()
-            .map(|r| r.staging_memory.as_ref().map_or(0, |sm| sm.present_pages()))
+            .map(|r| r.staging_memory.present_pages())
             .sum()
     }
 
@@ -703,22 +689,18 @@ impl SwapInContext<'_> {
 
         let max_pages = bytes_to_pages(max_size);
         for region in ctx.regions[self.cur_staging..].iter_mut() {
-            if let Some(staging_memory) = region.staging_memory.as_mut() {
-                // TODO(kawasin): swap_in multiple chunks less than max_size at once.
-                if let Some(idx_range) = staging_memory.first_data_range(max_pages) {
-                    let pages = idx_range.end - idx_range.start;
-                    let page_addr = page_idx_to_addr(region.head_page_idx + idx_range.start);
-                    let slice = staging_memory.get_slice(idx_range.clone())?;
-                    uffd_copy_all(uffd, page_addr, slice, false)?;
-                    // Clear the staging memory to avoid memory spike.
-                    // TODO(kawasin): reduce the call count of MADV_REMOVE by removing several data
-                    // at once.
-                    staging_memory.clear_range(idx_range)?;
-                    region.swap_in_pages += pages;
-                    return Ok(pages);
-                } else {
-                    region.staging_memory = None;
-                }
+            // TODO(kawasin): swap_in multiple chunks less than max_size at once.
+            if let Some(idx_range) = region.staging_memory.first_data_range(max_pages) {
+                let pages = idx_range.end - idx_range.start;
+                let page_addr = page_idx_to_addr(region.head_page_idx + idx_range.start);
+                let slice = region.staging_memory.get_slice(idx_range.clone())?;
+                uffd_copy_all(uffd, page_addr, slice, false)?;
+                // Clear the staging memory to avoid memory spike.
+                // TODO(kawasin): reduce the call count of MADV_REMOVE by removing several data
+                // at once.
+                region.staging_memory.clear_range(idx_range)?;
+                region.swap_in_pages += pages;
+                return Ok(pages);
             }
             self.cur_staging += 1;
         }

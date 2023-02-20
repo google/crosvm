@@ -50,6 +50,7 @@ use base::EventToken;
 use base::EventWaitResult;
 use base::FromRawDescriptor;
 use base::RawDescriptor;
+use base::SharedMemory;
 use base::Tube;
 use base::WaitContext;
 use jail::create_base_minijail;
@@ -271,7 +272,6 @@ impl SwapController {
             .custom_flags(libc::O_TMPFILE | libc::O_EXCL)
             .mode(0o000) // other processes with the same uid can't open the file
             .open(swap_dir)?;
-
         // The internal tube in which [Command]s sent from other processes than the monitor process
         // to the monitor process. The response is `Status` only.
         let (command_tube_main, command_tube_monitor) =
@@ -603,17 +603,25 @@ fn monitor_process(
                     }
                     Command::Enable => {
                         info!("enabling vmm-swap");
+
+                        let staging_shmem =
+                            SharedMemory::new("swap staging memory", guest_memory.memory_size())
+                                .context("create staging shmem")?;
+
                         let regions = regions_from_guest_memory(&guest_memory);
 
-                        let page_handler =
-                            match PageHandler::create(&swap_file, &regions, worker.channel.clone())
-                            {
-                                Ok(page_handler) => page_handler,
-                                Err(e) => {
-                                    error!("failed to create swap handler: {:?}", e);
-                                    continue;
-                                }
-                            };
+                        let page_handler = match PageHandler::create(
+                            &swap_file,
+                            &staging_shmem,
+                            &regions,
+                            worker.channel.clone(),
+                        ) {
+                            Ok(page_handler) => page_handler,
+                            Err(e) => {
+                                error!("failed to create swap handler: {:?}", e);
+                                continue;
+                            }
+                        };
 
                         // TODO(b/272634283): Should just disable vmm-swap without crash.
                         // Safe because the regions are from guest memory and uffd_list contains all
@@ -657,10 +665,12 @@ fn monitor_process(
 
                         unregister_regions(&regions, uffd_list.get_list())
                             .context("unregister regions")?;
+
                         // Truncate the swap file to hold minimum resources while disabled.
                         if let Err(e) = swap_file.set_len(0) {
                             error!("failed to clear swap file: {:?}", e);
                         };
+
                         info!("vmm-swap is disabled");
                         // events are obsolete. Run `WaitContext::wait()` again
                         break;
