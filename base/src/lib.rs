@@ -142,8 +142,6 @@ pub use log::trace;
 pub use log::warn;
 pub use mmap::Protection;
 pub use platform::deserialize_with_descriptors;
-pub(crate) use platform::file_punch_hole;
-pub(crate) use platform::file_write_zeroes_at;
 pub use platform::get_cpu_affinity;
 pub use platform::get_filesystem_type;
 pub use platform::getpid;

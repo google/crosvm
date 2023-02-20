@@ -10,12 +10,12 @@ use std::io::ErrorKind;
 /// A trait for deallocating space in a file.
 pub trait PunchHole {
     /// Replace a range of bytes with a hole.
-    fn punch_hole(&mut self, offset: u64, length: u64) -> io::Result<()>;
+    fn punch_hole(&self, offset: u64, length: u64) -> io::Result<()>;
 }
 
 impl PunchHole for File {
-    fn punch_hole(&mut self, offset: u64, length: u64) -> io::Result<()> {
-        crate::file_punch_hole(self, offset, length)
+    fn punch_hole(&self, offset: u64, length: u64) -> io::Result<()> {
+        crate::platform::file_punch_hole(self, offset, length)
     }
 }
 
@@ -54,7 +54,7 @@ pub trait WriteZeroesAt {
 
 impl WriteZeroesAt for File {
     fn write_zeroes_at(&mut self, offset: u64, length: usize) -> io::Result<usize> {
-        crate::file_write_zeroes_at(self, offset, length)
+        crate::platform::file_write_zeroes_at(self, offset, length)
     }
 }
 

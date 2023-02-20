@@ -27,7 +27,6 @@ use base::FileAllocate;
 use base::FileReadWriteAtVolatile;
 use base::FileSetLen;
 use base::FileSync;
-use base::PunchHole;
 use base::RawDescriptor;
 use base::WriteZeroesAt;
 use cros_async::Executor;
@@ -49,6 +48,7 @@ use crate::AsyncDisk;
 use crate::AsyncDiskFileWrapper;
 use crate::DiskFile;
 use crate::DiskGetLen;
+use crate::PunchHoleMut;
 use crate::ToAsyncDisk;
 
 #[sorted]
@@ -1224,7 +1224,7 @@ impl QcowFile {
             let _ = self
                 .raw_file
                 .file_mut()
-                .punch_hole(cluster_addr, cluster_size);
+                .punch_hole_mut(cluster_addr, cluster_size);
             self.unref_clusters.push(cluster_addr);
         }
         Ok(())
@@ -1579,8 +1579,8 @@ impl FileAllocate for QcowFile {
     }
 }
 
-impl PunchHole for QcowFile {
-    fn punch_hole(&mut self, offset: u64, length: u64) -> std::io::Result<()> {
+impl PunchHoleMut for QcowFile {
+    fn punch_hole_mut(&mut self, offset: u64, length: u64) -> std::io::Result<()> {
         let mut remaining = length;
         let mut offset = offset;
         while remaining > 0 {
@@ -1595,7 +1595,7 @@ impl PunchHole for QcowFile {
 
 impl WriteZeroesAt for QcowFile {
     fn write_zeroes_at(&mut self, offset: u64, length: usize) -> io::Result<usize> {
-        self.punch_hole(offset, length as u64)?;
+        self.punch_hole_mut(offset, length as u64)?;
         Ok(length)
     }
 }

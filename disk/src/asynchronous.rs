@@ -13,7 +13,6 @@ use base::AsRawDescriptors;
 use base::FileAllocate;
 use base::FileSetLen;
 use base::FileSync;
-use base::PunchHole;
 use base::RawDescriptor;
 use base::WriteZeroesAt;
 use cros_async::BackingMemory;
@@ -25,6 +24,7 @@ use crate::AsyncDisk;
 use crate::DiskFile;
 use crate::DiskGetLen;
 use crate::Error;
+use crate::PunchHoleMut;
 use crate::Result;
 
 /// Async wrapper around a non-async `DiskFile` using a `BlockingPool`.
@@ -78,7 +78,7 @@ impl<
             + FileAllocate
             + FileSetLen
             + FileSync
-            + PunchHole
+            + PunchHoleMut
             + WriteZeroesAt,
     > AsyncDisk for AsyncDiskFileWrapper<T>
 {
@@ -162,7 +162,7 @@ impl<
             .spawn(move || {
                 let mut disk_file = inner_clone.lock();
                 disk_file
-                    .punch_hole(file_offset, length)
+                    .punch_hole_mut(file_offset, length)
                     .map_err(Error::PunchHole)
             })
             .await
