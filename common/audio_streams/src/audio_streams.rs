@@ -61,6 +61,7 @@ pub use async_api::AsyncStream;
 pub use async_api::AudioStreamsExecutor;
 use async_trait::async_trait;
 use remain::sorted;
+use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
 
@@ -125,9 +126,10 @@ pub enum StreamDirection {
 }
 
 /// Valid effects for an audio stream.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum StreamEffect {
     NoEffect,
+    #[serde(alias = "aec")]
     EchoCancellation,
 }
 
