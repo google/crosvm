@@ -7,6 +7,7 @@ use data_model::Le64;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
+use crate::virtio::snd::constants::StatusCode;
 use crate::virtio::snd::constants::VIRTIO_SND_CHMAP_MAX_SIZE;
 
 #[derive(Copy, Clone, Default, AsBytes, FromBytes)]
@@ -89,6 +90,15 @@ pub struct virtio_snd_pcm_xfer {
 pub struct virtio_snd_pcm_status {
     pub status: Le32,
     pub latency_bytes: Le32,
+}
+
+impl virtio_snd_pcm_status {
+    pub fn new(status: StatusCode, latency_bytes: u32) -> Self {
+        Self {
+            status: Le32::from(status as u32),
+            latency_bytes: Le32::from(latency_bytes),
+        }
+    }
 }
 
 #[derive(Copy, Clone, Default, AsBytes, FromBytes)]

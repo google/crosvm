@@ -151,6 +151,10 @@ impl<'a> CaptureBuffer<'a> {
         self.drop.commit(self.frame_capacity());
     }
 
+    pub fn latency_bytes(&self) -> u32 {
+        self.drop.latency_bytes()
+    }
+
     /// Reads up to `size` bytes directly from this buffer inside of the given callback function.
     pub fn copy_cb<F: FnOnce(&[u8])>(&mut self, size: usize, cb: F) -> io::Result<usize> {
         self.buffer.read_copy_cb(size, cb)
@@ -199,6 +203,10 @@ impl<'a> AsyncCaptureBuffer<'a> {
     /// Always sends `frame_capacity`.
     pub async fn commit(&mut self) {
         self.trigger.commit(self.frame_capacity()).await;
+    }
+
+    pub fn latency_bytes(&self) -> u32 {
+        self.trigger.latency_bytes()
     }
 
     /// Reads up to `size` bytes directly from this buffer inside of the given callback function.

@@ -17,7 +17,6 @@ use cros_async::sync::Condvar;
 use cros_async::sync::Mutex as AsyncMutex;
 use cros_async::EventAsync;
 use cros_async::Executor;
-use data_model::Le32;
 use futures::channel::mpsc;
 use futures::channel::oneshot;
 use futures::pin_mut;
@@ -228,7 +227,7 @@ async fn write_data(
     mut dst_buf: AsyncPlaybackBuffer<'_>,
     reader: Option<Reader>,
     buffer_writer: &mut Box<dyn PlaybackBufferWriter>,
-) -> Result<(), Error> {
+) -> Result<u32, Error> {
     let transferred = match reader {
         Some(mut reader) => buffer_writer.copy_to_buffer(&mut dst_buf, &mut reader)?,
         None => dst_buf
@@ -245,7 +244,7 @@ async fn write_data(
         Err(Error::InvalidBufferSize)
     } else {
         dst_buf.commit().await;
-        Ok(())
+        Ok(dst_buf.latency_bytes())
     }
 }
 
@@ -253,7 +252,7 @@ async fn read_data<'a>(
     mut src_buf: AsyncCaptureBuffer<'a>,
     writer: Option<&mut Writer>,
     period_bytes: usize,
-) -> Result<(), Error> {
+) -> Result<u32, Error> {
     let transferred = match writer {
         Some(writer) => src_buf.copy_to(writer),
         None => src_buf.copy_to(&mut io::sink()),
@@ -267,25 +266,18 @@ async fn read_data<'a>(
         Err(Error::InvalidBufferSize)
     } else {
         src_buf.commit().await;
-        Ok(())
+        Ok(src_buf.latency_bytes())
     }
 }
 
-impl From<Result<(), Error>> for virtio_snd_pcm_status {
-    fn from(res: Result<(), Error>) -> Self {
-        let status = match res {
-            Ok(()) => VIRTIO_SND_S_OK,
+impl From<Result<u32, Error>> for virtio_snd_pcm_status {
+    fn from(res: Result<u32, Error>) -> Self {
+        match res {
+            Ok(latency_bytes) => virtio_snd_pcm_status::new(StatusCode::OK, latency_bytes),
             Err(e) => {
                 error!("PCM I/O message failed: {}", e);
-                VIRTIO_SND_S_IO_ERR
+                virtio_snd_pcm_status::new(StatusCode::IoErr, 0)
             }
-        };
-
-        // TODO(woodychow): Extend audio_streams API, and fetch latency_bytes from
-        // `next_playback_buffer` or `next_capture_buffer`"
-        Self {
-            status: Le32::from(status),
-            latency_bytes: Le32::from(0),
         }
     }
 }
@@ -302,10 +294,7 @@ async fn drain_desc_receiver(
         // The device MUST complete all pending I/O messages for the specified stream ID.
         let desc_index = desc_chain.index;
         let writer = Writer::new(mem.clone(), desc_chain).map_err(Error::DescriptorChain)?;
-        let status = virtio_snd_pcm_status {
-            status: Le32::from(VIRTIO_SND_S_OK),
-            latency_bytes: Le32::from(0),
-        };
+        let status = virtio_snd_pcm_status::new(StatusCode::OK, 0);
         // Fetch next DescriptorChain to see if the current one is the last one.
         o_desc_chain = desc_receiver.next().await;
         let (done, future) = if o_desc_chain.is_none() {
@@ -430,7 +419,6 @@ async fn pcm_worker_loop(
                         Ok(Some(desc_chain)) => {
                             let (desc_index, reader, writer) =
                                 get_index_with_reader_and_writer(mem, desc_chain)?;
-
                             sender
                                 .send(PcmResponse {
                                     desc_index,
@@ -640,10 +628,7 @@ pub async fn handle_pcm_queue(
                 defer_pcm_response_to_worker(
                     desc_chain,
                     mem,
-                    virtio_snd_pcm_status {
-                        status: Le32::from(VIRTIO_SND_S_IO_ERR),
-                        latency_bytes: Le32::from(0),
-                    },
+                    virtio_snd_pcm_status::new(StatusCode::IoErr, 0),
                     &mut response_sender,
                 )
                 .await?;
@@ -671,10 +656,7 @@ pub async fn handle_pcm_queue(
                 defer_pcm_response_to_worker(
                     desc_chain,
                     mem,
-                    virtio_snd_pcm_status {
-                        status: Le32::from(VIRTIO_SND_S_IO_ERR),
-                        latency_bytes: Le32::from(0),
-                    },
+                    virtio_snd_pcm_status::new(StatusCode::IoErr, 0),
                     &mut response_sender,
                 )
                 .await?;

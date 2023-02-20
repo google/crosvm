@@ -14,6 +14,7 @@ use base::error;
 use base::set_audio_thread_priorities;
 use base::warn;
 use cros_async::Executor;
+use data_model::Le32;
 use futures::channel::mpsc::UnboundedReceiver;
 use futures::channel::mpsc::UnboundedSender;
 use futures::SinkExt;
@@ -34,6 +35,8 @@ use crate::virtio::snd::common_backend::DirectionalStream;
 use crate::virtio::snd::common_backend::Error;
 use crate::virtio::snd::common_backend::PcmResponse;
 use crate::virtio::snd::common_backend::SndData;
+use crate::virtio::snd::constants::StatusCode;
+use crate::virtio::snd::layout::virtio_snd_pcm_status;
 use crate::virtio::snd::parameters::Error as ParametersError;
 use crate::virtio::snd::parameters::Parameters;
 use crate::virtio::DescriptorChain;
@@ -248,7 +251,7 @@ impl PlaybackBufferWriter for WinBufferWriter {
                 sender
                     .send(PcmResponse {
                         desc_index,
-                        status: Ok(()).into(),
+                        status: Ok(0).into(),
                         writer,
                         done: None,
                     })

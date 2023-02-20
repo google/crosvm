@@ -30,6 +30,11 @@ pub const VIRTIO_SND_S_BAD_MSG: u32 = 0x8001;
 pub const VIRTIO_SND_S_NOT_SUPP: u32 = 0x8002;
 pub const VIRTIO_SND_S_IO_ERR: u32 = 0x8003;
 
+pub enum StatusCode {
+    OK = VIRTIO_SND_S_OK as isize,
+    IoErr = VIRTIO_SND_S_IO_ERR as isize,
+}
+
 /* stream direction */
 pub const VIRTIO_SND_D_OUTPUT: u8 = 0;
 pub const VIRTIO_SND_D_INPUT: u8 = 1;
