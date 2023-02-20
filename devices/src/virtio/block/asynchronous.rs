@@ -997,7 +997,6 @@ impl Suspendable for BlockAsync {}
 #[cfg(test)]
 mod tests {
     use std::fs::File;
-    use std::fs::OpenOptions;
     use std::mem::size_of_val;
     use std::sync::atomic::AtomicU64;
 
@@ -1005,6 +1004,7 @@ mod tests {
     use data_model::Le64;
     use disk::SingleFileDisk;
     use hypervisor::ProtectionType;
+    use tempfile::tempfile;
     use tempfile::TempDir;
     use vm_memory::GuestAddress;
 
@@ -1015,10 +1015,7 @@ mod tests {
 
     #[test]
     fn read_size() {
-        let tempdir = TempDir::new().unwrap();
-        let mut path = tempdir.path().to_owned();
-        path.push("disk_image");
-        let f = File::create(&path).unwrap();
+        let f = tempfile().unwrap();
         f.set_len(0x1000).unwrap();
 
         let features = base_features(ProtectionType::Unprotected);
@@ -1047,10 +1044,7 @@ mod tests {
 
     #[test]
     fn read_block_size() {
-        let tempdir = TempDir::new().unwrap();
-        let mut path = tempdir.path().to_owned();
-        path.push("disk_image");
-        let f = File::create(&path).unwrap();
+        let f = tempfile().unwrap();
         f.set_len(0x1000).unwrap();
 
         let features = base_features(ProtectionType::Unprotected);
@@ -1200,15 +1194,7 @@ mod tests {
     fn read_last_sector() {
         let ex = Executor::new().expect("creating an executor failed");
 
-        let tempdir = TempDir::new().unwrap();
-        let mut path = tempdir.path().to_owned();
-        path.push("disk_image");
-        let f = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(&path)
-            .unwrap();
+        let f = tempfile().unwrap();
         let disk_size = 0x1000;
         f.set_len(disk_size).unwrap();
         let af = SingleFileDisk::new(f, &ex).expect("Failed to create SFD");
@@ -1269,15 +1255,7 @@ mod tests {
 
     #[test]
     fn read_beyond_last_sector() {
-        let tempdir = TempDir::new().unwrap();
-        let mut path = tempdir.path().to_owned();
-        path.push("disk_image");
-        let f = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(&path)
-            .unwrap();
+        let f = tempfile().unwrap();
         let disk_size = 0x1000;
         f.set_len(disk_size).unwrap();
         let mem = Rc::new(
@@ -1340,15 +1318,7 @@ mod tests {
     fn get_id() {
         let ex = Executor::new().expect("creating an executor failed");
 
-        let tempdir = TempDir::new().unwrap();
-        let mut path = tempdir.path().to_owned();
-        path.push("disk_image");
-        let f = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(&path)
-            .unwrap();
+        let f = tempfile().unwrap();
         let disk_size = 0x1000;
         f.set_len(disk_size).unwrap();
 
