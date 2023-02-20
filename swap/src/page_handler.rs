@@ -286,7 +286,10 @@ impl<'a> PageHandler<'a> {
         } else if let Some(page_slice) = region.file.page_content(idx_in_region)? {
             Self::copy_all(uffd, page_addr, page_slice, true)?;
             // TODO(b/265758094): optimize clear operation.
-            region.file.clear_range(idx_in_region..idx_in_region + 1)?;
+            // Do not erace the page from the disk for trimming optimization on next swap out.
+            region
+                .file
+                .clear_range(idx_in_region..idx_in_region + 1, false)?;
             region.copied_from_file_pages += 1;
             Ok(())
         } else {
@@ -332,6 +335,7 @@ impl<'a> PageHandler<'a> {
         }
         let start_page_idx = addr_to_page_idx(start_addr);
         let last_page_idx = addr_to_page_idx(end_addr);
+        // TODO(b/269983521): Clear multiple pages in the same region at once.
         for page_idx in start_page_idx..(last_page_idx) {
             let page_addr = page_idx_to_addr(page_idx);
             // TODO(kawasin): Cache the position if the range does not span multiple regions.
@@ -340,7 +344,14 @@ impl<'a> PageHandler<'a> {
                 .map(|i| &mut self.regions[i])
                 .ok_or(Error::InvalidAddress(page_addr))?;
             let idx_in_region = page_idx - region.head_page_idx;
-            if let Err(e) = region.file.clear_range(idx_in_region..idx_in_region + 1) {
+            let idx_range = idx_in_region..idx_in_region + 1;
+            if let Some(staging_memory) = region.staging_memory.as_mut() {
+                if let Err(e) = staging_memory.clear_range(idx_range.clone()) {
+                    error!("failed to clear removed page from staging: {:?}", e);
+                }
+            }
+            // Erace the pages from the disk because the pages are removed from the guest memory.
+            if let Err(e) = region.file.clear_range(idx_range, true) {
                 error!("failed to clear removed page: {:?}", e);
             }
         }
@@ -579,7 +590,10 @@ impl<'a> PageHandler<'a> {
                 let page_addr = page_idx_to_addr(region.head_page_idx + idx_range.start);
                 let slice = region.file.get_slice(idx_range.clone())?;
                 Self::copy_all(uffd, page_addr, slice, false)?;
-                region.file.clear_range(idx_range)?;
+                // Do not erace each chunk of pages from disk on swap_in. The whole file will be
+                // truncated when swap_in is completed. Even if swap_in is aborted, the remaining
+                // disk contents help the trimming optimization on swap_out.
+                region.file.clear_range(idx_range, false)?;
                 return Ok(pages);
             }
         }

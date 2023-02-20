@@ -13,6 +13,7 @@ use base::MemoryMapping;
 use base::MemoryMappingBuilder;
 use base::MmapError;
 use base::Protection;
+use base::PunchHole;
 use data_model::VolatileMemory;
 use data_model::VolatileMemoryError;
 use data_model::VolatileSlice;
@@ -111,10 +112,14 @@ impl<'a> SwapFile<'a> {
     /// # Arguments
     ///
     /// * `idx_range` - the indices of consecutive pages to be cleared.
-    pub fn clear_range(&mut self, idx_range: Range<usize>) -> Result<()> {
-        if self.present_list.clear_range(idx_range) {
-            // TODO(kawasin): punch a hole to the cleared page in the file.
-            // TODO(kawasin): free the page cache for the page.
+    /// * `erase_from_disk` - Whether or not to erase the pages from the file.
+    pub fn clear_range(&mut self, idx_range: Range<usize>, erase_from_disk: bool) -> Result<()> {
+        if self.present_list.clear_range(idx_range.clone()) {
+            if erase_from_disk {
+                let offset = self.offset + pages_to_bytes(idx_range.start) as u64;
+                let size = pages_to_bytes(idx_range.end - idx_range.start) as u64;
+                self.file.punch_hole(offset, size)?;
+            }
             Ok(())
         } else {
             Err(Error::OutOfRange)
@@ -322,9 +327,37 @@ mod tests {
 
         let data = &vec![1; pagesize()];
         swap_file.write_to_file(0, data).unwrap();
-        swap_file.clear_range(0..1).unwrap();
+        swap_file.clear_range(0..1, false).unwrap();
 
         assert_eq!(swap_file.page_content(0).unwrap().is_none(), true);
+    }
+
+    #[test]
+    fn clear_erase_from_disk() {
+        let file = tempfile::tempfile().unwrap();
+        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
+
+        let data = &vec![1; pagesize()];
+        swap_file.write_to_file(0, data).unwrap();
+        swap_file.clear_range(0..1, true).unwrap();
+
+        let slice = swap_file.get_slice(0..1).unwrap();
+        let slice = unsafe { slice::from_raw_parts(slice.as_ptr(), slice.size()) };
+        assert_eq!(slice, &vec![0; pagesize()]);
+    }
+
+    #[test]
+    fn clear_keep_on_disk() {
+        let file = tempfile::tempfile().unwrap();
+        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
+
+        let data = &vec![1; pagesize()];
+        swap_file.write_to_file(0, data).unwrap();
+        swap_file.clear_range(0..1, false).unwrap();
+
+        let slice = swap_file.get_slice(0..1).unwrap();
+        let slice = unsafe { slice::from_raw_parts(slice.as_ptr(), slice.size()) };
+        assert_eq!(slice, data);
     }
 
     #[test]
@@ -332,8 +365,8 @@ mod tests {
         let file = tempfile::tempfile().unwrap();
         let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
 
-        assert_eq!(swap_file.clear_range(199..200).is_ok(), true);
-        match swap_file.clear_range(200..201) {
+        assert_eq!(swap_file.clear_range(199..200, false).is_ok(), true);
+        match swap_file.clear_range(200..201, false) {
             Err(Error::OutOfRange) => {}
             _ => unreachable!("not out of range"),
         };
@@ -351,9 +384,9 @@ mod tests {
 
         assert_eq!(swap_file.first_data_range(200).unwrap(), 1..4);
         assert_eq!(swap_file.first_data_range(2).unwrap(), 1..3);
-        swap_file.clear_range(1..3).unwrap();
+        swap_file.clear_range(1..3, false).unwrap();
         assert_eq!(swap_file.first_data_range(2).unwrap(), 3..4);
-        swap_file.clear_range(3..4).unwrap();
+        swap_file.clear_range(3..4, false).unwrap();
         assert!(swap_file.first_data_range(2).is_none());
     }
 
