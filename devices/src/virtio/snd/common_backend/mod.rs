@@ -166,6 +166,10 @@ impl SndData {
     pub fn pcm_info_len(&self) -> usize {
         self.pcm_info.len()
     }
+
+    pub fn pcm_info_iter(&self) -> std::slice::Iter<'_, virtio_snd_pcm_info> {
+        self.pcm_info.iter()
+    }
 }
 
 const SUPPORTED_FORMATS: u64 = 1 << VIRTIO_SND_PCM_FMT_U8
@@ -200,6 +204,7 @@ pub struct VirtioSnd {
 
 impl VirtioSnd {
     pub fn new(base_features: u64, params: Parameters) -> Result<VirtioSnd, Error> {
+        let params = resize_parameters_pcm_device_config(params);
         let cfg = hardcoded_virtio_snd_config(&params);
         let snd_data = hardcoded_snd_data(&params);
         let avail_features = base_features;
@@ -331,6 +336,24 @@ pub fn hardcoded_snd_data(params: &Parameters) -> SndData {
         pcm_info,
         chmap_info,
     }
+}
+
+fn resize_parameters_pcm_device_config(mut params: Parameters) -> Parameters {
+    if params.output_device_config.len() > params.num_output_devices as usize {
+        warn!("Truncating output device config due to length > number of output devices");
+    }
+    params
+        .output_device_config
+        .resize_with(params.num_output_devices as usize, Default::default);
+
+    if params.input_device_config.len() > params.num_input_devices as usize {
+        warn!("Truncating input device config due to length > number of input devices");
+    }
+    params
+        .input_device_config
+        .resize_with(params.num_input_devices as usize, Default::default);
+
+    params
 }
 
 impl VirtioDevice for VirtioSnd {
@@ -722,4 +745,128 @@ fn reset_streams(
     };
 
     ex.run_until(reset)
+}
+
+#[cfg(test)]
+#[allow(clippy::needless_update)]
+mod tests {
+    use audio_streams::StreamEffect;
+
+    use super::*;
+    use crate::virtio::snd::parameters::PCMDeviceParameters;
+
+    #[test]
+    fn test_virtio_snd_new() {
+        let params = Parameters {
+            num_output_devices: 3,
+            num_input_devices: 2,
+            num_output_streams: 3,
+            num_input_streams: 2,
+            output_device_config: vec![PCMDeviceParameters {
+                effects: Some(vec![StreamEffect::EchoCancellation]),
+                ..PCMDeviceParameters::default()
+            }],
+            input_device_config: vec![PCMDeviceParameters {
+                effects: Some(vec![StreamEffect::EchoCancellation]),
+                ..PCMDeviceParameters::default()
+            }],
+            ..Default::default()
+        };
+
+        let res = VirtioSnd::new(123, params).unwrap();
+
+        // Default values
+        assert_eq!(res.snd_data.jack_info.len(), 0);
+        assert_eq!(res.acked_features, 0);
+        assert_eq!(res.worker_thread.is_none(), true);
+
+        assert_eq!(res.avail_features, 123); // avail_features must be equal to the input
+        assert_eq!(res.cfg.jacks.to_native(), 0);
+        assert_eq!(res.cfg.streams.to_native(), 13); // (Output = 3*3) + (Input = 2*2)
+        assert_eq!(res.cfg.chmaps.to_native(), 11); // (Output = 3*3) + (Input = 2*1)
+
+        // Check snd_data.pcm_info
+        assert_eq!(res.snd_data.pcm_info.len(), 13);
+        // Check hda_fn_nid (PCM Device number)
+        let expected_hda_fn_nid = vec![0, 0, 0, 1, 1, 1, 2, 2, 2, 0, 0, 1, 1];
+        for (i, pcm_info) in res.snd_data.pcm_info.iter().enumerate() {
+            assert_eq!(
+                pcm_info.hdr.hda_fn_nid.to_native(),
+                expected_hda_fn_nid[i],
+                "pcm_info index {} incorrect hda_fn_nid",
+                i
+            );
+        }
+        // First 9 devices must be OUTPUT
+        for i in 0..9 {
+            assert_eq!(
+                res.snd_data.pcm_info[i].direction, VIRTIO_SND_D_OUTPUT,
+                "pcm_info index {} incorrect direction",
+                i
+            );
+        }
+        // Next 4 devices must be INPUT
+        for i in 9..13 {
+            assert_eq!(
+                res.snd_data.pcm_info[i].direction, VIRTIO_SND_D_INPUT,
+                "pcm_info index {} incorrect direction",
+                i
+            );
+        }
+
+        // Check snd_data.chmap_info
+        assert_eq!(res.snd_data.chmap_info.len(), 11);
+        let expected_hda_fn_nid = vec![0, 1, 2, 0, 1, 0, 1, 2, 0, 1, 2];
+        // Check hda_fn_nid (PCM Device number)
+        for (i, chmap_info) in res.snd_data.chmap_info.iter().enumerate() {
+            assert_eq!(
+                chmap_info.hdr.hda_fn_nid.to_native(),
+                expected_hda_fn_nid[i],
+                "chmap_info index {} incorrect hda_fn_nid",
+                i
+            );
+        }
+
+        // Check output_device_config correctly extended
+        assert_eq!(
+            res.params.output_device_config,
+            vec![
+                PCMDeviceParameters {
+                    // Keep from the parameters
+                    effects: Some(vec![StreamEffect::EchoCancellation]),
+                    ..PCMDeviceParameters::default()
+                },
+                PCMDeviceParameters::default(), // Extended with default
+                PCMDeviceParameters::default(), // Extended with default
+            ]
+        );
+
+        // Check input_device_config correctly extended
+        assert_eq!(
+            res.params.input_device_config,
+            vec![
+                PCMDeviceParameters {
+                    // Keep from the parameters
+                    effects: Some(vec![StreamEffect::EchoCancellation]),
+                    ..PCMDeviceParameters::default()
+                },
+                PCMDeviceParameters::default(), // Extended with default
+            ]
+        );
+    }
+
+    #[test]
+    fn test_resize_parameters_pcm_device_config_truncate() {
+        // If pcm_device_config is larger than number of devices, it will be truncated
+        let params = Parameters {
+            num_output_devices: 1,
+            num_input_devices: 1,
+            output_device_config: vec![PCMDeviceParameters::default(); 3],
+            input_device_config: vec![PCMDeviceParameters::default(); 3],
+            ..Parameters::default()
+        };
+        let params = resize_parameters_pcm_device_config(params);
+        assert_eq!(params.output_device_config.len(), 1);
+        assert_eq!(params.input_device_config.len(), 1);
+    }
 }

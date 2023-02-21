@@ -17,9 +17,11 @@ use serde::Serialize;
 use serde_keyvalue::FromKeyValues;
 use thiserror::Error as ThisError;
 
+use crate::virtio::snd::constants::*;
+use crate::virtio::snd::layout::*;
 use crate::virtio::snd::sys::StreamSourceBackend as SysStreamSourceBackend;
 
-#[derive(ThisError, Debug)]
+#[derive(ThisError, Debug, PartialEq, Eq)]
 pub enum Error {
     /// Unknown snd parameter value.
     #[error("Invalid snd parameter value ({0}): {1}")]
@@ -36,6 +38,12 @@ pub enum Error {
     /// Failed to parse parameters.
     #[error("Invalid snd parameter: {0}")]
     UnknownParameter(String),
+    /// Invalid PCM device config index. Happens when the length of PCM device config is less than the number of PCM devices.
+    #[error("Invalid PCM device config index: {0}")]
+    InvalidPCMDeviceConfigIndex(usize),
+    /// Invalid PCM info direction (VIRTIO_SND_D_OUTPUT = 0, VIRTIO_SND_D_INPUT = 1)
+    #[error("Invalid PCM Info direction: {0}")]
+    InvalidPCMInfoDirection(u8),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -126,6 +134,23 @@ impl Parameters {
 
     pub(crate) fn get_total_streams(&self) -> u32 {
         self.get_total_output_streams() + self.get_total_input_streams()
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn get_device_params(
+        &self,
+        pcm_info: &virtio_snd_pcm_info,
+    ) -> Result<PCMDeviceParameters, Error> {
+        let device_config = match pcm_info.direction {
+            VIRTIO_SND_D_OUTPUT => &self.output_device_config,
+            VIRTIO_SND_D_INPUT => &self.input_device_config,
+            _ => return Err(Error::InvalidPCMInfoDirection(pcm_info.direction)),
+        };
+        let device_idx = u32::from(pcm_info.hdr.hda_fn_nid) as usize;
+        device_config
+            .get(device_idx)
+            .cloned()
+            .ok_or(Error::InvalidPCMDeviceConfigIndex(device_idx))
     }
 }
 
@@ -372,5 +397,136 @@ mod tests {
 
         // Invalid stream type in device config
         check_failure("output_device_config=[[stream_type=none]]");
+    }
+
+    #[test]
+    fn get_device_params_output() {
+        let params = Parameters {
+            output_device_config: vec![
+                PCMDeviceParameters {
+                    effects: Some(vec![StreamEffect::EchoCancellation]),
+                    ..Default::default()
+                },
+                PCMDeviceParameters {
+                    effects: Some(vec![
+                        StreamEffect::EchoCancellation,
+                        StreamEffect::EchoCancellation,
+                    ]),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let default_pcm_info = virtio_snd_pcm_info {
+            hdr: virtio_snd_info {
+                hda_fn_nid: 0.into(),
+            },
+            features: 0.into(),
+            formats: 0.into(),
+            rates: 0.into(),
+            direction: VIRTIO_SND_D_OUTPUT, // Direction is OUTPUT
+            channels_min: 1,
+            channels_max: 6,
+            padding: [0; 5],
+        };
+
+        let mut pcm_info = default_pcm_info;
+        pcm_info.hdr.hda_fn_nid = 0.into();
+        assert_eq!(
+            params.get_device_params(&pcm_info),
+            Ok(params.output_device_config[0].clone())
+        );
+
+        let mut pcm_info = default_pcm_info;
+        pcm_info.hdr.hda_fn_nid = 1.into();
+        assert_eq!(
+            params.get_device_params(&pcm_info),
+            Ok(params.output_device_config[1].clone())
+        );
+
+        let mut pcm_info = default_pcm_info;
+        pcm_info.hdr.hda_fn_nid = 2.into();
+        assert_eq!(
+            params.get_device_params(&pcm_info),
+            Err(Error::InvalidPCMDeviceConfigIndex(2))
+        );
+    }
+
+    #[test]
+    fn get_device_params_input() {
+        let params = Parameters {
+            input_device_config: vec![
+                PCMDeviceParameters {
+                    effects: Some(vec![
+                        StreamEffect::EchoCancellation,
+                        StreamEffect::EchoCancellation,
+                    ]),
+                    ..Default::default()
+                },
+                PCMDeviceParameters {
+                    effects: Some(vec![StreamEffect::EchoCancellation]),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let default_pcm_info = virtio_snd_pcm_info {
+            hdr: virtio_snd_info {
+                hda_fn_nid: 0.into(),
+            },
+            features: 0.into(),
+            formats: 0.into(),
+            rates: 0.into(),
+            direction: VIRTIO_SND_D_INPUT, // Direction is INPUT
+            channels_min: 1,
+            channels_max: 6,
+            padding: [0; 5],
+        };
+
+        let mut pcm_info = default_pcm_info;
+        pcm_info.hdr.hda_fn_nid = 0.into();
+        assert_eq!(
+            params.get_device_params(&pcm_info),
+            Ok(params.input_device_config[0].clone())
+        );
+
+        let mut pcm_info = default_pcm_info;
+        pcm_info.hdr.hda_fn_nid = 1.into();
+        assert_eq!(
+            params.get_device_params(&pcm_info),
+            Ok(params.input_device_config[1].clone())
+        );
+
+        let mut pcm_info = default_pcm_info;
+        pcm_info.hdr.hda_fn_nid = 2.into();
+        assert_eq!(
+            params.get_device_params(&pcm_info),
+            Err(Error::InvalidPCMDeviceConfigIndex(2))
+        );
+    }
+
+    #[test]
+    fn get_device_params_invalid_direction() {
+        let params = Parameters::default();
+
+        let pcm_info = virtio_snd_pcm_info {
+            hdr: virtio_snd_info {
+                hda_fn_nid: 0.into(),
+            },
+            features: 0.into(),
+            formats: 0.into(),
+            rates: 0.into(),
+            direction: 2, // Invalid direction
+            channels_min: 1,
+            channels_max: 6,
+            padding: [0; 5],
+        };
+
+        assert_eq!(
+            params.get_device_params(&pcm_info),
+            Err(Error::InvalidPCMInfoDirection(2))
+        );
     }
 }

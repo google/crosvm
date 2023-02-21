@@ -103,6 +103,15 @@ impl CrasStreamSourceGenerator {
     pub fn new(_capture: bool, _client_type: CrasClientType, _socket_type: CrasSocketType) -> Self {
         panic!("Cannot create cras audio device on non-chromeos crosvm builds.")
     }
+
+    pub fn with_stream_type(
+        _capture: bool,
+        _client_type: CrasClientType,
+        _socket_type: CrasSocketType,
+        _stream_type: CrasStreamType,
+    ) -> Self {
+        panic!("Cannot create cras audio device on non-chromeos crosvm builds.")
+    }
 }
 
 impl StreamSourceGenerator for CrasStreamSourceGenerator {
