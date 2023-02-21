@@ -15,6 +15,8 @@ use std::cmp::max;
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::convert::TryInto;
 use std::ffi::CString;
 use std::fs::File;
@@ -202,6 +204,7 @@ fn create_virtio_devices(
     >,
     vvu_proxy_device_tubes: &mut Vec<Tube>,
     vvu_proxy_max_sibling_mem_size: u64,
+    registered_evt_q: &SendTube,
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
     let mut devs = Vec::new();
 
@@ -480,6 +483,11 @@ fn create_virtio_devices(
             balloon_inflate_tube,
             init_balloon_size,
             balloon_features,
+            Some(
+                registered_evt_q
+                    .try_clone()
+                    .context("failed to clone registered_evt_q tube")?,
+            ),
         )?);
     }
 
@@ -707,6 +715,7 @@ fn create_devices(
     vvu_proxy_device_tubes: &mut Vec<Tube>,
     vvu_proxy_max_sibling_mem_size: u64,
     iova_max_addr: &mut Option<u64>,
+    registered_evt_q: &SendTube,
 ) -> DeviceResult<Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>> {
     let mut devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)> = Vec::new();
     #[cfg(feature = "balloon")]
@@ -837,6 +846,7 @@ fn create_devices(
         render_server_fd,
         vvu_proxy_device_tubes,
         vvu_proxy_max_sibling_mem_size,
+        registered_evt_q,
     )?;
 
     for stub in stubs {
@@ -1706,6 +1716,10 @@ where
     let mut iommu_attached_endpoints: BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>> =
         BTreeMap::new();
     let mut iova_max_addr: Option<u64> = None;
+
+    let (reg_evt_wrtube, reg_evt_rdtube) =
+        Tube::directional_pair().context("failed to create registered event tube")?;
+
     let mut devices = create_devices(
         &cfg,
         &mut vm,
@@ -1730,6 +1744,7 @@ where
         &mut vvu_proxy_device_tubes,
         components.memory_size,
         &mut iova_max_addr,
+        &reg_evt_wrtube,
     )?;
 
     #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
@@ -1926,6 +1941,7 @@ where
         hp_thread,
         #[cfg(feature = "swap")]
         swap_controller,
+        reg_evt_rdtube,
     )
 }
 
@@ -2397,6 +2413,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     >,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] hp_thread: std::thread::JoinHandle<()>,
     #[cfg(feature = "swap")] swap_controller: Option<SwapController>,
+    reg_evt_rdtube: RecvTube,
 ) -> Result<ExitState> {
     #[derive(EventToken)]
     enum Token {
@@ -2405,6 +2422,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         ChildSignal,
         VmControlServer,
         VmControl { index: usize },
+        RegisteredEvent,
     }
 
     let mut iommu_client = iommu_host_tube
@@ -2421,6 +2439,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         (&linux.suspend_evt, Token::Suspend),
         (&sigchld_fd, Token::ChildSignal),
         (&vm_evt_rdtube, Token::VmEvent),
+        (&reg_evt_rdtube, Token::RegisteredEvent),
     ])
     .context("failed to build wait context")?;
 
@@ -2650,6 +2669,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     let mut pvpanic_code = PvPanicCode::Unknown;
     #[cfg(feature = "balloon")]
     let mut balloon_stats_id: u64 = 0;
+    let mut registered_evt_sockets: HashMap<RegisteredEvent, HashSet<UnixSeqpacket>> =
+        HashMap::new();
 
     'wait: loop {
         let events = {
@@ -2665,6 +2686,22 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         let mut vm_control_indices_to_remove = Vec::new();
         for event in events.iter().filter(|e| e.is_readable) {
             match event.token {
+                Token::RegisteredEvent => match reg_evt_rdtube.recv::<RegisteredEvent>() {
+                    Ok(reg_evt) => {
+                        if let Some(sockets) = registered_evt_sockets.get_mut(&reg_evt) {
+                            for socket in sockets.iter() {
+                                let tube =
+                                    Tube::new_from_unix_seqpacket(socket.try_clone().unwrap());
+                                if let Err(e) = tube.send(&reg_evt) {
+                                    warn!("failed to send registered event: {}", e);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("failed to recv RegisteredEvent: {}", e);
+                    }
+                },
                 Token::VmEvent => {
                     let mut break_to_wait: bool = true;
                     match vm_evt_rdtube.recv::<VmEventType>() {
@@ -2806,6 +2843,44 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                 let _ = (device, add);
                                                 VmResponse::Ok
                                             }
+                                        }
+                                        VmRequest::RegisterListener { socket_addr, event } => {
+                                            if let Ok(socket) = UnixSeqpacket::connect(socket_addr)
+                                            {
+                                                if let Some(sockets) =
+                                                    registered_evt_sockets.get_mut(&event)
+                                                {
+                                                    sockets.insert(socket);
+                                                } else {
+                                                    registered_evt_sockets.insert(
+                                                        event,
+                                                        vec![socket].into_iter().collect(),
+                                                    );
+                                                }
+                                            }
+                                            VmResponse::Ok
+                                        }
+                                        VmRequest::UnregisterListener { socket_addr, event } => {
+                                            if let Ok(socket) = UnixSeqpacket::connect(socket_addr)
+                                            {
+                                                if let Some(sockets) =
+                                                    registered_evt_sockets.get_mut(&event)
+                                                {
+                                                    sockets.remove(&socket);
+                                                }
+                                            }
+                                            VmResponse::Ok
+                                        }
+                                        VmRequest::Unregister { socket_addr } => {
+                                            if let Ok(socket) = UnixSeqpacket::connect(socket_addr)
+                                            {
+                                                for (_, sockets) in
+                                                    registered_evt_sockets.iter_mut()
+                                                {
+                                                    sockets.remove(&socket);
+                                                }
+                                            }
+                                            VmResponse::Ok
                                         }
                                         _ => {
                                             let response = request.execute(
