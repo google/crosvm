@@ -593,6 +593,11 @@ pub fn create_fdt(
 
     let fdt_final = fdt.finish()?;
 
+    if let Some(file_path) = dump_device_tree_blob {
+        std::fs::write(&file_path, &fdt_final)
+            .map_err(|e| Error::FdtDumpIoError(e, file_path.clone()))?;
+    }
+
     if fdt_final.len() > fdt_max_size {
         return Err(Error::TotalSizeTooLarge);
     }
@@ -602,11 +607,6 @@ pub fn create_fdt(
         .map_err(|_| Error::FdtGuestMemoryWriteError)?;
     if written < fdt_final.len() {
         return Err(Error::FdtGuestMemoryWriteError);
-    }
-
-    if let Some(file_path) = dump_device_tree_blob {
-        std::fs::write(&file_path, &fdt_final)
-            .map_err(|e| Error::FdtDumpIoError(e, file_path.clone()))?;
     }
 
     Ok(())
