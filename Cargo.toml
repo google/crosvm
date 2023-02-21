@@ -60,6 +60,7 @@ members = [
     "cros_tracing",
     "crosvm_cli",
     "crosvm_control",
+    "crosvm_control/crosvm_control_rust",
     "crosvm_plugin",
     "crosvm-fuzz",
     "devices",
