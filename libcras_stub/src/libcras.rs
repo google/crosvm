@@ -34,11 +34,24 @@ use serde::Serialize;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[allow(non_camel_case_types)]
 pub enum CRAS_CLIENT_TYPE {
+    #[serde(rename = "arcvm")]
     CRAS_CLIENT_TYPE_ARCVM,
+    #[serde(rename = "crosvm")]
     CRAS_CLIENT_TYPE_CROSVM,
 }
 
 pub type CrasClientType = CRAS_CLIENT_TYPE;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[allow(non_camel_case_types)]
+pub enum CRAS_STREAM_TYPE {
+    #[serde(rename = "default")]
+    CRAS_STREAM_TYPE_DEFAULT,
+    #[serde(rename = "pro_audio")]
+    CRAS_STREAM_TYPE_PRO_AUDIO,
+}
+
+pub type CrasStreamType = CRAS_STREAM_TYPE;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
