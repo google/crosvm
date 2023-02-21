@@ -25,20 +25,20 @@ This is a survey of the existing memory layout for crosvm on x86-64 when booting
 |                              | `1_0000_0000` |                 |           | RAM (>4G)                                                                                |
 |                              | (end of RAM)  |                 |           | High (>4G) MMIO allocation area                                                          |
 
-[`zero_page_offset`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=338?q=ZERO_PAGE_OFFSET
-[`boot_stack_pointer`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=332?q=BOOT_STACK_POINTER
-[`boot_pml4_addr`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/regs.rs;l=299?q=boot_pml4_addr
-[`boot_pdpte_addr`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/regs.rs;l=300?q=boot_pdpte_addr
-[`boot_pde_addr`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/regs.rs;l=301?q=boot_pde_addr
-[`cmdline_offset`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=342?q=CMDLINE_OFFSET
-[`setup_data_start`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=344?q=SETUP_DATA_START
-[`acpi_hi_rsdp_window_base`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=357?q=ACPI_HI_RSDP_WINDOW_BASE
-[`kernel_start_offset`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=341?q=KERNEL_START_OFFSET
-[`initrd_start`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=1633?q=initrd_start
-[`end_addr_before_32bits`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=230?q=END_ADDR_BEFORE_32BITS
-[`pcie_cfg_mmio_start`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=400?q=PCIE_CFG_MMIO_START
-[`reserved_mem_size`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=395?q=RESERVED_MEM_SIZE
-[`tss_addr`]: https://crsrc.org/o/src/platform/crosvm/x86_64/src/lib.rs;l=339?q=TSS_ADDR
+[`zero_page_offset`]: https://crsrc.org/o/src/platform/crosvm-upstream/x86_64/src/lib.rs;l=235?q=ZERO_PAGE_OFFSET
+[`boot_stack_pointer`]: https://crsrc.org/o/src/platform/crosvm-upstream/x86_64/src/lib.rs;l=208?q=BOOT_STACK_POINTER
+[`boot_pml4_addr`]: https://crsrc.org/o/src/platform/crosvm-upstream/x86_64/src/regs.rs;l=310?q=boot_pml4_addr
+[`boot_pdpte_addr`]: https://crsrc.org/o/src/platform/crosvm-upstream/x86_64/src/regs.rs;l=311?q=boot_pdpte_addr
+[`boot_pde_addr`]: https://crsrc.org/o/src/platform/crosvm-upstream/x86_64/src/regs.rs;l=312?q=boot_pde_addr
+[`cmdline_offset`]: https://crsrc.org/o/src/platform/crosvm-upstream/x86_64/src/lib.rs;l=239?q=CMDLINE_OFFSET
+[`setup_data_start`]: https://crsrc.org/o/src/platform/crosvm-upstream/x86_64/src/lib.rs;l=344?q=SETUP_DATA_START
+[`acpi_hi_rsdp_window_base`]: https://crsrc.org/o/src/platform/crosvm-upstream/x86_64/src/lib.rs;l=252?q=ACPI_HI_RSDP_WINDOW_BASE
+[`kernel_start_offset`]: https://crsrc.org/o/src/platform/crosvm-upstream/x86_64/src/lib.rs;l=238?q=KERNEL_START_OFFSET
+[`initrd_start`]: https://crsrc.org/o/src/platform/crosvm-upstream/x86_64/src/lib.rs;l=1633?q=initrd_start
+[`end_addr_before_32bits`]: https://crsrc.org/o/src/platform/crosvm-upstream/x86_64/src/lib.rs;l=230?q=END_ADDR_BEFORE_32BITS
+[`pcie_cfg_mmio_start`]: https://crsrc.org/o/src/platform/crosvm-upstream/x86_64/src/lib.rs;l=227?q=PCIE_CFG_MMIO_START
+[`reserved_mem_size`]: https://crsrc.org/o/src/platform/crosvm-upstream/x86_64/src/lib.rs;l=224?q=RESERVED_MEM_SIZE
+[`tss_addr`]: https://crsrc.org/o/src/platform/crosvm-upstream/x86_64/src/lib.rs;l=236?q=TSS_ADDR
 
 ## aarch64 guest physical memory map
 
@@ -87,22 +87,22 @@ These apply when a bootloader is passed with `--bios`.
 | [`AARCH64_FDT_OFFSET_IN_BIOS_MODE`] | `8000_0000` | `8020_0000`     | 2 MiB | Flattened device tree in RAM |
 | [`AARCH64_BIOS_OFFSET`]             | `8020_0000` |                 |       | Bootloader image in RAM      |
 
-[serial_addr]: https://crsrc.org/o/src/platform/crosvm/arch/src/serial.rs;l=78?q=SERIAL_ADDR
-[`aarch64_rtc_addr`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=177?q=AARCH64_RTC_ADDR
-[`aarch64_vmwdt_addr`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=187?q=AARCH64_VMWDT_ADDR
-[`aarch64_pci_cfg_base`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=192?q=AARCH64_PCI_CFG_BASE
-[`aarch64_mmio_base`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=196?q=AARCH64_MMIO_BASE
-[`aarch64_gic_cpui_base`]: https://crsrc.org/o/src/platform/crosvm/devices/src/irqchip/kvm/aarch64.rs;l=106?q=AARCH64_GIC_CPUI_BASE
-[`aarch64_gic_dist_base`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=105?q=AARCH64_GIC_DIST_BASE
-[`aarch64_axi_base`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=86?q=AARCH64_AXI_BASE
-[`aarch64_pvtime_ipa_start`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=100?q=AARCH64_PVTIME_IPA_START
-[`aarch64_protected_vm_fw_start`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=96?q=AARCH64_PROTECTED_VM_FW_START
-[`aarch64_phys_mem_start`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=85?q=AARCH64_PHYS_MEM_START
-[`get_swiotlb_addr`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs?q=get_swiotlb_addr
-[`plat_mmio_base`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=835?q=plat_mmio_base
-[`high_mmio_base`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=838?q=high_mmio_base
-[`aarch64_kernel_offset`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=76?q=AARCH64_KERNEL_OFFSET
-[`initrd_addr`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=409?q=initrd_addr
-[`fdt_address`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=301?q=fdt_address
-[`aarch64_fdt_offset_in_bios_mode`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=90?q=AARCH64_FDT_OFFSET_IN_BIOS_MODE
-[`aarch64_bios_offset`]: https://crsrc.org/o/src/platform/crosvm/aarch64/src/lib.rs;l=92?q=AARCH64_BIOS_OFFSET
+[serial_addr]: https://crsrc.org/o/src/platform/crosvm-upstream/arch/src/serial.rs;l=70?q=SERIAL_ADDR
+[`aarch64_rtc_addr`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=93?q=AARCH64_RTC_ADDR
+[`aarch64_vmwdt_addr`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=93?q=AARCH64_VMWDT_ADDR
+[`aarch64_pci_cfg_base`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=100?q=AARCH64_PCI_CFG_BASE
+[`aarch64_mmio_base`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=104?q=AARCH64_MMIO_BASE
+[`aarch64_gic_cpui_base`]: https://crsrc.org/o/src/platform/crosvm-upstream/devices/src/irqchip/kvm/aarch64.rs;l=44?q=AARCH64_GIC_CPUI_BASE
+[`aarch64_gic_dist_base`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=64?q=AARCH64_GIC_DIST_BASE
+[`aarch64_axi_base`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=45?q=AARCH64_AXI_BASE
+[`aarch64_pvtime_ipa_start`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=59?q=AARCH64_PVTIME_IPA_START
+[`aarch64_protected_vm_fw_start`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=55?q=AARCH64_PROTECTED_VM_FW_START
+[`aarch64_phys_mem_start`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=44?q=AARCH64_PHYS_MEM_START
+[`get_swiotlb_addr`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs?q=get_swiotlb_addr
+[`plat_mmio_base`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=551?q=plat_mmio_base
+[`high_mmio_base`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=554?q=high_mmio_base
+[`aarch64_kernel_offset`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=35?q=AARCH64_KERNEL_OFFSET
+[`initrd_addr`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=270?q=initrd_addr
+[`fdt_address`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=184?q=fdt_address
+[`aarch64_fdt_offset_in_bios_mode`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=49?q=AARCH64_FDT_OFFSET_IN_BIOS_MODE
+[`aarch64_bios_offset`]: https://crsrc.org/o/src/platform/crosvm-upstream/aarch64/src/lib.rs;l=51?q=AARCH64_BIOS_OFFSET
