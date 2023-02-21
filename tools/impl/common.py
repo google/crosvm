@@ -30,6 +30,7 @@ import shutil
 import subprocess
 import sys
 import traceback
+from copy import deepcopy
 from io import StringIO
 from math import ceil
 from multiprocessing.pool import ThreadPool
@@ -51,11 +52,12 @@ from typing import (
 )
 
 import argh  # type: ignore
+import rich
+import rich.console
+import rich.live
+import rich.spinner
+import rich.text
 
-from rich.console import Console, Group
-from rich.live import Live
-from rich.spinner import Spinner
-from rich.text import Text
 
 # File where to store http headers for gcloud authentication
 AUTH_HEADERS_FILE = Path(gettempdir()) / f"crosvm_gcloud_auth_headers_{getpass.getuser()}"
@@ -159,7 +161,7 @@ class Command(object):
 
     In contrast to bash, globs are *not* evaluated, but can easily be provided using Path:
 
-    >>> Command('ls -l', *Path('.').glob('*.toml'))
+    >>> Command('ls -l', *Path(CROSVM_ROOT).glob('*.toml'))
     Command('ls', '-l', ...)
 
     None or False are ignored to make it easy to include conditional arguments:
@@ -203,10 +205,12 @@ class Command(object):
         *args: Any,
         stdin_cmd: Optional["Command"] = None,
         env_vars: Dict[str, str] = {},
+        cwd: Optional[Path] = None,
     ):
         self.args = Command.__parse_cmd(args)
         self.stdin_cmd = stdin_cmd
         self.env_vars = env_vars
+        self.cwd = cwd
 
     ### Builder API to construct commands
 
@@ -217,9 +221,19 @@ class Command(object):
         >>> cargo.with_args('clippy')
         Command('cargo', 'clippy')
         """
-        cmd = Command()
+        cmd = deepcopy(self)
         cmd.args = [*self.args, *Command.__parse_cmd(args)]
-        cmd.env_vars = self.env_vars
+        return cmd
+
+    def with_cwd(self, cwd: Optional[Path]):
+        """Changes the working directory the command is executed in.
+
+        >>> cargo = Command('pwd')
+        >>> cargo.with_cwd('/tmp').stdout()
+        '/tmp'
+        """
+        cmd = deepcopy(self)
+        cmd.cwd = cwd
         return cmd
 
     def __call__(self, *args: Any):
@@ -240,9 +254,7 @@ class Command(object):
 
         The variable is removed if value is None.
         """
-        cmd = Command()
-        cmd.args = self.args
-        cmd.env_vars = self.env_vars
+        cmd = deepcopy(self)
         for key, value in envs.items():
             if value is not None:
                 cmd.env_vars[key] = value
@@ -254,10 +266,7 @@ class Command(object):
     def with_path_env(self, new_path: str):
         """Returns a command with a path added to the PATH variable."""
         path_var = self.env_vars.get("PATH", os.environ.get("PATH", ""))
-        cmd = Command()
-        cmd.args = self.args
-        cmd.env_vars = {**self.env_vars, "PATH": f"{path_var}:{new_path}"}
-        return cmd
+        return self.with_env("PATH", f"{path_var}:{new_path}")
 
     def with_color_arg(
         self,
@@ -337,7 +346,7 @@ class Command(object):
         >>> Command('false').fg()
         Traceback (most recent call last):
         ...
-        subprocess.CalledProcessError: Command 'false' returned non-zero exit status 1.
+        subprocess.CalledProcessError...
 
         But can be disabled:
 
@@ -354,6 +363,9 @@ class Command(object):
         More sophisticated means of outputting stdout/err are available via `Styles`:
 
         >>> Command("echo foo").fg(style=Styles.live_truncated())
+        …
+        foo
+        0
 
         Will output the results of the command but truncate output after a few lines. See `Styles`
         for more options.
@@ -378,7 +390,7 @@ class Command(object):
         if style is None or verbose():
             return self.__run(stdout=None, stderr=None, check=check).returncode
         else:
-            process = self.__popen(stderr=STDOUT)
+            process = self.popen(stderr=STDOUT)
             style(process)
             returncode = process.wait()
             if returncode != 0 and check:
@@ -428,7 +440,7 @@ class Command(object):
             print(f"$ {self}")
         return self.__run(stdout=PIPE, stderr=PIPE, check=False).returncode == 0
 
-    def stdout(self, check: bool = True):
+    def stdout(self, check: bool = True, stderr: int = PIPE):
         """
         Runs a program and returns stdout.
 
@@ -436,7 +448,7 @@ class Command(object):
         """
         if very_verbose():
             print(f"$ {self}")
-        return self.__run(stdout=PIPE, stderr=PIPE, check=check).stdout.strip()
+        return self.__run(stdout=PIPE, stderr=stderr, check=check).stdout.strip()
 
     def json(self, check: bool = True) -> Any:
         """
@@ -450,13 +462,13 @@ class Command(object):
         else:
             return None
 
-    def lines(self, check: bool = True):
+    def lines(self, check: bool = True, stderr: int = PIPE):
         """
         Runs a program and returns stdout line by line.
 
         The program will not be visible to the user unless --very-verbose is specified.
         """
-        return self.stdout(check=check).splitlines()
+        return self.stdout(check=check, stderr=stderr).splitlines()
 
     ### Utilities
 
@@ -487,6 +499,7 @@ class Command(object):
                 print(f"env: {k}={v}")
         result = subprocess.run(
             self.args,
+            cwd=self.cwd,
             stdout=stdout,
             stderr=stderr,
             stdin=self.__stdin_stream(),
@@ -508,15 +521,16 @@ class Command(object):
 
     def __stdin_stream(self):
         if self.stdin_cmd:
-            return self.stdin_cmd.__popen().stdout
+            return self.stdin_cmd.popen().stdout
         return None
 
-    def __popen(self, stderr: Optional[int] = PIPE) -> "subprocess.Popen[str]":
+    def popen(self, stderr: Optional[int] = PIPE) -> "subprocess.Popen[str]":
         """
         Runs a program and returns the Popen object of the running process.
         """
         return subprocess.Popen(
             self.args,
+            cwd=self.cwd,
             stdout=subprocess.PIPE,
             stderr=stderr,
             stdin=self.__stdin_stream(),
@@ -562,18 +576,18 @@ class Styles(object):
 
         def output(process: "subprocess.Popen[str]"):
             assert process.stdout
-            spinner = Spinner("dots")
-            lines: List[Text] = []
+            spinner = rich.spinner.Spinner("dots")
+            lines: List[rich.text.Text] = []
             stdout: List[str] = []
-            with Live(refresh_per_second=30, transient=True) as live:
+            with rich.live.Live(refresh_per_second=30, transient=True) as live:
                 for line in iter(process.stdout.readline, ""):
                     stdout.append(line.strip())
-                    lines.append(Text.from_ansi(line.strip(), no_wrap=True))
+                    lines.append(rich.text.Text.from_ansi(line.strip(), no_wrap=True))
                     while len(lines) > num_lines:
                         lines.pop(0)
-                    live.update(Group(Text("…"), *lines, spinner))
+                    live.update(rich.console.Group(rich.text.Text("…"), *lines, spinner))
             if process.wait() == 0:
-                console.print(Group(Text("…"), *lines))
+                console.print(rich.console.Group(rich.text.Text("…"), *lines))
             else:
                 for line in stdout:
                     print(line)
@@ -586,7 +600,9 @@ class Styles(object):
 
         def output(process: "subprocess.Popen[str]"):
             assert process.stdout
-            with Live(Spinner("dots", title), refresh_per_second=30, transient=True):
+            with rich.live.Live(
+                rich.spinner.Spinner("dots", title), refresh_per_second=30, transient=True
+            ):
                 stdout = process.stdout.read()
 
             if process.wait() == 0:
@@ -626,16 +642,8 @@ class ParallelCommands(object):
 
 
 class Remote(object):
-    """ "
-    Wrapper around the cmd() API and allow execution of commands via SSH.
-
-    >>> remote = Remote("foobar", {"opt": "value"})
-    >>> remote.cmd('printf "(%s)"', quoted("a b c"))
-    Command('ssh', 'foobar', '-T', '-oopt=value', 'bash -O huponexit -c \\'printf (%s) "a b c"\\'')
-
-    A remote working directory can be set:
-    >>> remote.cmd('printf "(%s)"', quoted("a b c")).with_cwd(Path("target_dir"))
-    Command('ssh', 'foobar', '-T', '-oopt=value', 'cd target_dir && bash -O huponexit -c \\'printf (%s) "a b c"\\'')
+    """
+    Wrapper around the cmd() API and allow execution of commands via SSH."
     """
 
     def __init__(self, host: str, opts: Dict[str, str]):
@@ -736,8 +744,8 @@ cwd = cwd_context
 parallel = ParallelCommands
 
 
-def run_main(main_fn: Callable[..., Any]):
-    run_commands(default_fn=main_fn)
+def run_main(main_fn: Callable[..., Any], usage: Optional[str] = None):
+    run_commands(default_fn=main_fn, usage=usage)
 
 
 def run_commands(
@@ -799,7 +807,7 @@ def parse_common_args():
     These args are parsed separately of the run_main/run_commands method so we can access
     verbose/etc before the commands arguments are parsed.
     """
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(add_help=False)
     add_common_args(parser)
     return parser.parse_known_args()[0]
 
@@ -1140,9 +1148,10 @@ class Triple(NamedTuple):
         return f"{self.arch}-{self.vendor}-{self.sys}-{self.abi}"
 
 
-console = Console()
+console = rich.console.Console()
 
 if __name__ == "__main__":
     import doctest
 
-    doctest.testmod(optionflags=doctest.ELLIPSIS)
+    (failures, num_tests) = doctest.testmod(optionflags=doctest.ELLIPSIS)
+    sys.exit(1 if failures > 0 else 0)

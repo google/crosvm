@@ -72,6 +72,7 @@ if sys.platform == "linux":
         [
             f"--env OUTSIDE_UID={os.getuid()}",
             f"--env OUTSIDE_GID={os.getgid()}",
+            f"--env TERM={os.environ.get('TERM', 'xterm-256color')}",
         ]
     )
 

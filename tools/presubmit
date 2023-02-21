@@ -1,123 +1,507 @@
-#!/bin/bash
-# Copyright 2021 The ChromiumOS Authors
+#!/usr/bin/env python3
+# Copyright 2022 The ChromiumOS Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
-set -e
 
-cd "$(dirname $0)/.."
+import sys
+import typing
+from typing import List, Literal, Set, Tuple
 
-HELP="This will run presubmit checks for crosvm.
+from impl.common import (
+    CROSVM_ROOT,
+    TOOLS_ROOT,
+    argh,
+    chdir,
+    cmd,
+    cwd_context,
+    is_kiwi_repo,
+    run_main,
+)
+from impl.presubmit import Check, CheckContext, run_checks, Group
 
-To run all checks just run
+python = cmd("python3")
+mypy = cmd("mypy").with_color_env("MYPY_FORCE_COLOR")
+black = cmd("black").with_color_arg(always="--color", never="--no-color")
+mdformat = cmd("mdformat")
+lucicfg = cmd("third_party/depot_tools/lucicfg")
 
-    $ ./tools/presubmit
+# All supported platforms as a type and a list.
+Platform = Literal["x86_64", "aarch64", "mingw64", "armhf"]
+PLATFORMS: Tuple[Platform, ...] = typing.get_args(Platform)
 
-The checks can be run in parallel for faster execution:
 
-    $ ./tools/presubmit --tmux
+####################################################################################################
+# Check methods
+#
+# Each check returns a Command (or list of Commands) to be run to execute the check. They are
+# registered and configured in the CHECKS list below.
+#
+# Some check functions are factory functions that return a check command for all supported
+# platforms.
 
-This will open a tmux session to run all presubmit builds in parallel. It will
-create a nested tmux session if you are already using it.
 
-All tests are executed in the local development environment. If your host is not
-set up for aarch64 builds, it will use './tools/dev_container' to build run
-those.
+def check_python_tests(_: CheckContext):
+    "Runs unit tests for python dev tooling."
+    PYTHON_TESTS = [
+        "tests.cl_tests",
+        "impl.common",
+    ]
+    return [python.with_cwd(TOOLS_ROOT).with_args("-m", file) for file in PYTHON_TESTS]
 
-There are three levels of presubmit tests that can be run:
 
-    $ ./tools/presubmit --quick
-    $ ./tools/presubmit
-    $ ./tools/presubmit --all
+def check_python_types(context: CheckContext):
+    "Run mypy type checks on python dev tooling."
+    return [mypy("--pretty", file) for file in context.all_files]
 
-The quick mode will only cover x86 and does not require a dev_container. The
-default mode will add aarch64 tests, and the all mode will test everything that
-is also tested on Kokoro.
-"
 
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-    -q | --quick)
-        QUICK=true
-        shift
-        ;;
-    -a | --all)
-        ALL=true
-        shift
-        ;;
-    --tmux)
-        RUN_IN_TMUX=true
-        shift
-        ;;
-    -h | --help)
-        echo "$HELP"
-        exit 0
-        shift
-        ;;
-    *)
-        echo "unknown argument $1"
-        exit 1
-        ;;
-    esac
-done
-
-run_commands_in_tmux() {
-    local tmux_commands=(
-        set-option -g default-shell /bin/bash \;
-        new-session "$1; read -p 'Press enter to close.'" \;
+def check_python_format(context: CheckContext):
+    "Runs the black formatter on python dev tooling."
+    return black.with_args(
+        "--check" if not context.fix else None,
+        *context.modified_files,
     )
-    for cmd in "${@:2}"; do
-        tmux_commands+=(
-            split-window -h "$cmd; read -p 'Press enter to close.'" \;
+
+
+def check_markdown_format(context: CheckContext):
+    "Runs mdformat on all markdown files."
+    if "blaze" in mdformat("--version").stdout():
+        raise Exception(
+            "You are using google's mdformat. "
+            + "Please update your PATH to ensure the pip installed mdformat is available."
         )
-    done
-    tmux_commands+=(
-        select-layout even-horizontal \;
+    return mdformat.with_args(
+        "--wrap 100",
+        "--check" if not context.fix else "",
+        *context.modified_files,
     )
-    TMUX="" tmux "${tmux_commands[@]}"
-}
 
-run_commands() {
-    for cmd in "$@"; do
-        echo "$ ${cmd}"
-        bash -c "$cmd"
-        echo
-    done
-}
 
-aarch64_wrapper() {
-    if ! (rustup target list --installed | grep -q aarch64 &&
-        dpkg --print-foreign-architectures | grep -q arm64); then
-        echo "./tools/dev_container"
-    fi
-}
+def check_rust_format(context: CheckContext):
+    "Runs rustfmt on all modified files."
+    if context.nightly_fmt:
+        rustfmt = cmd(
+            cmd("rustup +nightly which rustfmt"),
+            "--config imports_granularity=item,group_imports=StdExternalCrate",
+        )
+    else:
+        rustfmt = cmd(cmd("rustup which rustfmt"))
+    return rustfmt.with_color_flag().with_args(
+        "--check" if not context.fix else "",
+        *context.modified_files,
+    )
 
-commands=(
-    "./tools/health-check"
+
+def check_cargo_doc(_: CheckContext):
+    "Runs cargo-doc and verifies that no warnings are emitted."
+    return cmd("./tools/cargo-doc").with_env("RUSTDOCFLAGS", "-D warnings").with_color_flag()
+
+
+def check_crosvm_tests(platform: Platform):
+    def check(_: CheckContext):
+        dut = None
+        if platform == "x86_64":
+            dut = "--dut=host"
+        elif platform == "aarch64":
+            dut = "--dut=vm"
+        return cmd("./tools/run_tests --platform", platform, dut).with_color_flag()
+
+    check.__doc__ = f"Runs all crosvm tests for {platform}."
+
+    return check
+
+
+def check_crosvm_unit_tests(platform: Platform):
+    def check(_: CheckContext):
+        return cmd("./tools/run_tests --platform", platform).with_color_flag()
+
+    check.__doc__ = f"Runs crosvm unit tests for {platform}."
+
+    return check
+
+
+def check_clippy(platform: Platform):
+    def check(context: CheckContext):
+        return cmd(
+            "./tools/clippy --platform",
+            platform,
+            "--fix" if context.fix else None,
+        ).with_color_flag()
+
+    check.__doc__ = f"Runs clippy for {platform}."
+
+    return check
+
+
+def check_infra_configs(context: CheckContext):
+    "Validate luci configs by sending them to luci-config."
+    # TODO: Validate config files. Requires authentication with luci inside docker.
+    return [lucicfg("fmt --dry-run", file) for file in context.modified_files]
+
+
+def check_infra_tests(_: CheckContext):
+    "Run recipe.py tests, all of them, regardless of which files were modified."
+    recipes = cmd("infra/recipes.py").with_path_env("third_party/depot_tools")
+    return recipes("test run")
+
+
+def custom_check(name: str, can_fix: bool = False):
+    "Custom checks are written in python in tools/custom_checks. This is a wrapper to call them."
+
+    def check(context: CheckContext):
+        return cmd(
+            TOOLS_ROOT / "custom_checks",
+            name,
+            *context.modified_files,
+            "--fix" if can_fix and context.fix else None,
+        )
+
+    check.__name__ = name.replace("-", "_")
+    check.__doc__ = f"Runs tools/custom_check {name}"
+    return check
+
+
+####################################################################################################
+# Checks configuration
+#
+# Configures which checks are available and on which files they are run.
+# Check names default to the function name minus the check_ prefix
+
+CHECKS: List[Check] = [
+    Check(
+        check_rust_format,
+        files=["**.rs"],
+        exclude=["system_api/src/bindings/*"],
+        can_fix=True,
+    ),
+    Check(
+        check_cargo_doc,
+        files=["**.rs", "**Cargo.toml"],
+        priority=True,
+    ),
+    Check(
+        check_python_tests,
+        files=["tools/**.py"],
+        python_tools=True,
+        priority=True,
+    ),
+    Check(
+        check_python_types,
+        files=["tools/**.py"],
+        exclude=["tools/windows/*"],
+        python_tools=True,
+    ),
+    Check(
+        check_python_format,
+        files=["**.py"],
+        python_tools=True,
+        exclude=["infra/recipes.py"],
+        can_fix=True,
+    ),
+    Check(
+        check_markdown_format,
+        files=["**.md"],
+        exclude=[
+            "infra/README.recipes.md",
+            "docs/book/src/appendix/memory_layout.md",
+        ],
+        can_fix=True,
+    ),
+    *(
+        Check(
+            check_crosvm_tests(platform),
+            custom_name=f"crosvm_tests_{platform}",
+            files=["**.rs"],
+            priority=True,
+        )
+        for platform in PLATFORMS
+    ),
+    *(
+        Check(
+            check_crosvm_unit_tests(platform),
+            custom_name=f"crosvm_unit_tests_{platform}",
+            files=["**.rs"],
+            priority=True,
+        )
+        for platform in PLATFORMS
+    ),
+    *(
+        Check(
+            check_clippy(platform),
+            custom_name=f"clippy_{platform}",
+            files=["**.rs"],
+            can_fix=True,
+            priority=True,
+        )
+        for platform in PLATFORMS
+    ),
+    Check(
+        custom_check("check-copyright-header"),
+        files=["**.rs", "**.py", "**.c", "**.h", "**.policy", "**.sh"],
+        exclude=[
+            "infra/recipes.py",
+            "hypervisor/src/whpx/whpx_sys/*.h",
+            "third_party/vmm_vhost/*",
+            "net_sys/src/lib.rs",
+            "system_api/src/bindings/*",
+        ],
+        python_tools=True,
+        can_fix=True,
+    ),
+    Check(
+        custom_check("check-rust-features"),
+        files=["**Cargo.toml"],
+    ),
+    Check(
+        custom_check("check-rust-lockfiles"),
+        files=["**Cargo.toml"],
+    ),
+    Check(
+        custom_check("check-line-endings"),
+    ),
+    Check(
+        custom_check("check-file-ends-with-newline"),
+        exclude=[
+            "**.h264",
+            "**.vp8",
+            "**.vp9",
+            "**.ivf",
+            "**.bin",
+            "**.png",
+            "**.min.js",
+            "**.drawio",
+            "**.json",
+        ],
+    ),
+]
+
+# We disable LUCI infra related tests because kokoro doesn't have internet connectivity that
+# the tests rely on.
+if not is_kiwi_repo():
+    CHECKS.extend(
+        [
+            Check(
+                check_infra_configs,
+                files=["infra/config/**.star"],
+                can_fix=True,
+            ),
+            Check(
+                check_infra_tests,
+                files=["infra/**.py"],
+                can_fix=True,
+            ),
+        ]
+    )
+
+####################################################################################################
+# Group configuration
+#
+# Configures pre-defined groups of checks. Some are configured for CI builders and others
+# are configured for convenience during local development.
+
+HEALTH_CHECKS = [
+    "rust_format",
+    "cargo_doc",
+    "infra_configs",
+    "infra_tests",
+    "python_format",
+    "python_tests",
+    "python_types",
+    "markdown_format",
+    "copyright_header",
+    "rust_features",
+    "rust_lockfiles",
+    "file_ends_with_newline",
+    "line_endings",
+]
+
+PLATFORM_CHECKS = dict(
+    (
+        platform,
+        set(
+            [
+                f"crosvm_tests_{platform}",
+                f"clippy_{platform}",
+            ]
+        ),
+    )
+    for platform in PLATFORMS
 )
 
-if [ "$ALL" == true ]; then
-    commands+=(
-        "./tools/run_tests --dut=host"
-        "./tools/run_tests --platform=mingw64"
-        "./tools/clippy --platform=mingw64"
-        "$(aarch64_wrapper) ./tools/run_tests --platform=aarch64 --dut=vm"
-        "$(aarch64_wrapper) ./tools/run_tests --platform=armhf"
-        "cargo build --verbose --no-default-features"
-    )
-elif [ "$QUICK" != true ]; then
-    commands+=(
-        "./tools/run_tests --dut=host"
-        "$(aarch64_wrapper) ./tools/run_tests --platform=aarch64"
-        "./tools/run_tests --platform=mingw64"
-    )
-else
-    commands+=(
-        "./tools/run_tests"
-    )
-fi
+GROUPS: List[Group] = [
+    # The default group is run if no check or group is explicitly set
+    Group(
+        name="default",
+        doc="Checks run by default",
+        checks=set(
+            [
+                *HEALTH_CHECKS,
+                # Run only one task per platform to prevent blocking on the build cache.
+                "crosvm_tests_x86_64",
+                "crosvm_unit_tests_aarch64",
+                "crosvm_unit_tests_mingw64",
+                "clippy_armhf",
+            ]
+        ),
+    ),
+    Group(
+        name="quick",
+        doc="Runs a quick subset of presubmit checks.",
+        checks=set(
+            [
+                *HEALTH_CHECKS,
+                "crosvm_unit_tests_x86_64",
+                "clippy_aarch64",
+            ]
+        ),
+    ),
+    Group(
+        name="unit_tests",
+        doc="Runs unit tests for all platforms",
+        checks=set(f"crosvm_unit_tests_{platform}" for platform in PLATFORMS),
+    ),
+    Group(
+        name="health_checks",
+        doc="Checks run on the health_check builder",
+        checks=set(HEALTH_CHECKS),
+    ),
+    Group(
+        name="format",
+        doc="Runs all formatting checks (or fixes)",
+        checks=set(
+            [
+                "rust_format",
+                "markdown_format",
+                "python_format",
+            ]
+        ),
+    ),
+    *(
+        Group(
+            name=f"linux_{platform}",
+            doc=f"Checks run on the linux-{platform} builder",
+            checks=PLATFORM_CHECKS[platform],
+        )
+        for platform in PLATFORMS
+    ),
+    Group(
+        name="all",
+        doc="Run checks of all builders.",
+        checks=set(
+            [
+                *(check for checks in PLATFORM_CHECKS.values() for check in checks),
+                *HEALTH_CHECKS,
+            ]
+        ),
+    ),
+]
 
-if [ "$RUN_IN_TMUX" = true ]; then
-    run_commands_in_tmux "${commands[@]}"
-else
-    run_commands "${commands[@]}"
-fi
+# Turn both lists into dicts for convenience
+CHECKS_DICT = dict((c.name, c) for c in CHECKS)
+GROUPS_DICT = dict((c.name, c) for c in GROUPS)
+
+
+def validate_config():
+    "Validates the CHECKS and GROUPS configuration."
+    for group in GROUPS:
+        for check in group.checks:
+            if not check in CHECKS_DICT:
+                raise Exception(f"Group {group.name} includes non-existing check {check}.")
+
+    def find_in_group(check: Check):
+        for group in GROUPS:
+            if check.name in group.checks:
+                return True
+        return False
+
+    for check in CHECKS:
+        if not find_in_group(check):
+            raise Exception(f"Check {check.name} is not included in any group.")
+
+    all_names = [c.name for c in CHECKS] + [g.name for g in GROUPS]
+    for name in all_names:
+        if all_names.count(name) > 1:
+            raise Exception(f"Check or group {name} is defined multiple times.")
+
+
+@argh.arg("--list-checks", default=False, help="List names of available checks and exit.")
+@argh.arg("--fix", default=False, help="Asks checks to fix problems where possible.")
+@argh.arg("--no-delta", default=False, help="Run on all files instead of just modified files.")
+@argh.arg("--no-parallel", default=False, help="Do not run checks in parallel.")
+@argh.arg("--nightly-fmt", default=False, help="Use nightly rust for rustfmt")
+@argh.arg(
+    "checks_or_groups",
+    help="List of checks or groups to run. Defaults to run the `default` group.",
+)
+def main(
+    list_checks: bool = False,
+    fix: bool = False,
+    no_delta: bool = False,
+    no_parallel: bool = False,
+    nightly_fmt: bool = False,
+    *checks_or_groups: str,
+):
+    chdir(CROSVM_ROOT)
+    validate_config()
+
+    if not checks_or_groups:
+        checks_or_groups = ("default",)
+
+    # Resolve and validate the groups and checks provided
+    check_names: Set[str] = set()
+    for check_or_group in checks_or_groups:
+        if check_or_group in CHECKS_DICT:
+            check_names.add(check_or_group)
+        elif check_or_group in GROUPS_DICT:
+            check_names = check_names.union(GROUPS_DICT[check_or_group].checks)
+        else:
+            raise Exception(f"No such check or group: {check_or_group}")
+
+    if list_checks:
+        for check in check_names:
+            print(check)
+        return
+
+    check_list = [CHECKS_DICT[name] for name in check_names]
+
+    run_checks(
+        check_list,
+        fix=fix,
+        run_on_all_files=no_delta,
+        nightly_fmt=nightly_fmt,
+        parallel=not no_parallel,
+    )
+
+
+def usage():
+    groups = "\n".join(f"  {group.name}: {group.doc}" for group in GROUPS)
+    checks = "\n".join(f"  {check.name}: {check.doc}" for check in CHECKS)
+    return f"""\
+Runs checks on the crosvm codebase.
+
+Basic usage, to run a default selection of checks:
+
+    ./tools/presubmit
+
+Some checkers can fix issues they find (e.g. formatters, clippy, etc):
+
+    ./tools/presubmit --fix
+
+
+Various groups of presubmit checks can be run via:
+
+    ./tools/presubmit group_name
+
+Available groups are:
+{groups}
+
+You can also provide the names of specific checks to run:
+
+    ./tools/presubmit check1 check2
+
+Available checks are:
+{checks}
+"""
+
+
+if __name__ == "__main__":
+    run_main(main, usage=usage())

@@ -30,13 +30,19 @@ def main(
 
     # Note: Clippy checks are configured in .cargo/config.toml
     common_args = [
-        "--fix" if fix else None,
         "--message-format=json" if json else None,
         "--locked" if locked else None,
         "--all-targets",
         "--",
         "-Dwarnings",
     ]
+    if fix:
+        common_args = [
+            "--fix",
+            "--allow-dirty",
+            "--allow-staged",
+            *common_args,
+        ]
     print("Clippy crosvm workspace")
     clippy(
         "--workspace",
