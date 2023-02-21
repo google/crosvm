@@ -70,7 +70,7 @@ pub(super) fn kernel_path() -> PathBuf {
             .unwrap()
             .parent()
             .unwrap()
-            .join("bzImage"),
+            .join(format!("bzImage-{}", prebuilt_version())),
     }
 }
 
@@ -79,7 +79,11 @@ pub(super) fn kernel_path() -> PathBuf {
 pub(super) fn rootfs_path() -> PathBuf {
     match env::var("CROSVM_CARGO_TEST_ROOTFS_IMAGE") {
         Ok(value) => PathBuf::from(value),
-        Err(_) => env::current_exe().unwrap().parent().unwrap().join("rootfs"),
+        Err(_) => env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join(format!("rootfs-{}", prebuilt_version())),
     }
 }
 
