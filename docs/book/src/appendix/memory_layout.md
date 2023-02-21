@@ -13,11 +13,9 @@ This is a survey of the existing memory layout for crosvm on x86-64 when booting
 | [`boot_pdpte_addr`]          | `A000`        |                 |           | Boot page table                                                                          |
 | [`boot_pde_addr`]            | `B000`        |                 |           | Boot page table                                                                          |
 | [`CMDLINE_OFFSET`]           | `2_0000`      | `2_0800`        | 2 KiB     | Linux kernel command line                                                                |
-| [`SETUP_DATA_START`]         | `2_0800`      | `E_0000`        | 766 KiB   | Linux kernel `setup_data` linked list                                                    |
 | [`ACPI_HI_RSDP_WINDOW_BASE`] | `E_0000`      |                 |           | ACPI tables                                                                              |
 | [`KERNEL_START_OFFSET`]      | `20_0000`     |                 |           | Linux kernel image load address                                                          |
-| [`initrd_start`]             | after kernel  |                 |           | Initial RAM disk for Linux kernel (optional)                                             |
-| [`END_ADDR_BEFORE_32BITS`]   | after initrd  | `D000_0000`     | ~3.24 GiB | RAM (\<4G)                                                                               |
+| [`END_ADDR_BEFORE_32BITS`]   | `20_0000`     | `D000_0000`     | ~3.24 GiB | RAM (\<4G)                                                                               |
 | [`END_ADDR_BEFORE_32BITS`]   | `D000_0000`   | `F400_0000`     | 576 MiB   | Low (\<4G) MMIO allocation area                                                          |
 | [`PCIE_CFG_MMIO_START`]      | `F400_0000`   | `F800_0000`     | 64 MiB    | PCIe enhanced config (ECAM)                                                              |
 | [`RESERVED_MEM_SIZE`]        | `F800_0000`   | `1_0000_0000`   | 128 MiB   | LAPIC/IOAPIC/HPET/…                                                                      |
@@ -31,10 +29,8 @@ This is a survey of the existing memory layout for crosvm on x86-64 when booting
 [`boot_pdpte_addr`]: https://crsrc.org/o/src/platform/crosvm-upstream/x86_64/src/regs.rs;l=311?q=boot_pdpte_addr
 [`boot_pde_addr`]: https://crsrc.org/o/src/platform/crosvm-upstream/x86_64/src/regs.rs;l=312?q=boot_pde_addr
 [`cmdline_offset`]: https://crsrc.org/o/src/platform/crosvm-upstream/x86_64/src/lib.rs;l=239?q=CMDLINE_OFFSET
-[`setup_data_start`]: https://crsrc.org/o/src/platform/crosvm-upstream/x86_64/src/lib.rs;l=344?q=SETUP_DATA_START
 [`acpi_hi_rsdp_window_base`]: https://crsrc.org/o/src/platform/crosvm-upstream/x86_64/src/lib.rs;l=252?q=ACPI_HI_RSDP_WINDOW_BASE
 [`kernel_start_offset`]: https://crsrc.org/o/src/platform/crosvm-upstream/x86_64/src/lib.rs;l=238?q=KERNEL_START_OFFSET
-[`initrd_start`]: https://crsrc.org/o/src/platform/crosvm-upstream/x86_64/src/lib.rs;l=1633?q=initrd_start
 [`end_addr_before_32bits`]: https://crsrc.org/o/src/platform/crosvm-upstream/x86_64/src/lib.rs;l=230?q=END_ADDR_BEFORE_32BITS
 [`pcie_cfg_mmio_start`]: https://crsrc.org/o/src/platform/crosvm-upstream/x86_64/src/lib.rs;l=227?q=PCIE_CFG_MMIO_START
 [`reserved_mem_size`]: https://crsrc.org/o/src/platform/crosvm-upstream/x86_64/src/lib.rs;l=224?q=RESERVED_MEM_SIZE

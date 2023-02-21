@@ -331,8 +331,6 @@ const TSS_ADDR: u64 = 0xfffb_d000;
 pub const KERNEL_START_OFFSET: u64 = 0x20_0000;
 const CMDLINE_OFFSET: u64 = 0x2_0000;
 const CMDLINE_MAX_SIZE: u64 = 0x800; // including terminating zero
-const SETUP_DATA_START: u64 = CMDLINE_OFFSET + CMDLINE_MAX_SIZE;
-const SETUP_DATA_END: u64 = ACPI_HI_RSDP_WINDOW_BASE;
 const X86_64_SERIAL_1_3_IRQ: u32 = 4;
 const X86_64_SERIAL_2_4_IRQ: u32 = 3;
 // X86_64_SCI_IRQ is used to fill the ACPI FACP table.
@@ -512,14 +510,15 @@ fn configure_system(
 /// Returns the guest address of the first entry in the setup_data list, if any.
 fn write_setup_data(
     guest_mem: &GuestMemory,
-    setup_data_start: GuestAddress,
-    setup_data_end: GuestAddress,
+    free_addr: &mut u64,
     setup_data: &[SetupData],
 ) -> Result<Option<GuestAddress>> {
     let mut setup_data_list_head = None;
 
-    // Place the first setup_data at the first 64-bit aligned offset following setup_data_start.
-    let mut setup_data_addr = setup_data_start.align(8).ok_or(Error::SetupDataTooLarge)?;
+    // Place the first setup_data at the first 64-bit aligned offset following free_addr.
+    let mut setup_data_addr = GuestAddress(*free_addr)
+        .align(8)
+        .ok_or(Error::SetupDataTooLarge)?;
 
     let mut entry_iter = setup_data.iter().peekable();
     while let Some(entry) = entry_iter.next() {
@@ -529,13 +528,9 @@ fn write_setup_data(
 
         // Ensure the entry (header plus data) fits into guest memory.
         let entry_size = (mem::size_of::<setup_data_hdr>() + entry.data.len()) as u64;
-        let entry_end = setup_data_addr
+        setup_data_addr
             .checked_add(entry_size)
             .ok_or(Error::SetupDataTooLarge)?;
-
-        if entry_end >= setup_data_end {
-            return Err(Error::SetupDataTooLarge);
-        }
 
         let next_setup_data_addr = if entry_iter.peek().is_some() {
             // Place the next setup_data at a 64-bit aligned address.
@@ -568,6 +563,7 @@ fn write_setup_data(
             )
             .map_err(Error::WritingSetupData)?;
 
+        *free_addr = setup_data_addr.offset() + entry_size;
         setup_data_addr = next_setup_data_addr;
     }
 
@@ -1593,6 +1589,10 @@ impl X8664arch {
         kernel_loader::load_cmdline(mem, GuestAddress(CMDLINE_OFFSET), cmdline)
             .map_err(Error::LoadCmdline)?;
 
+        // Track the first free address after the kernel - this is where extra
+        // data like the device tree blob and initrd will be loaded.
+        let mut free_addr = kernel_end;
+
         let mut setup_data = Vec::<SetupData>::new();
         if let Some(android_fstab) = android_fstab {
             setup_data.push(
@@ -1601,12 +1601,7 @@ impl X8664arch {
         }
         setup_data.push(setup_data_rng_seed());
 
-        let setup_data = write_setup_data(
-            mem,
-            GuestAddress(SETUP_DATA_START),
-            GuestAddress(SETUP_DATA_END),
-            &setup_data,
-        )?;
+        let setup_data = write_setup_data(mem, &mut free_addr, &setup_data)?;
 
         let initrd = match initrd_file {
             Some(mut initrd_file) => {
@@ -1624,7 +1619,7 @@ impl X8664arch {
                 let (initrd_start, initrd_size) = arch::load_image_high(
                     mem,
                     &mut initrd_file,
-                    GuestAddress(kernel_end),
+                    GuestAddress(free_addr),
                     GuestAddress(initrd_addr_max),
                     base::pagesize() as u64,
                 )
@@ -2320,19 +2315,18 @@ mod tests {
     fn write_setup_data_empty() {
         let mem = GuestMemory::new(&[(GuestAddress(0), 0x2_0000)]).unwrap();
         let setup_data = [];
-        let setup_data_addr = write_setup_data(
-            &mem,
-            GuestAddress(0x1000),
-            GuestAddress(0x2000),
-            &setup_data,
-        )
-        .expect("write_setup_data");
+        let mut free_addr = 0x1000;
+        let setup_data_addr =
+            write_setup_data(&mem, &mut free_addr, &setup_data).expect("write_setup_data");
         assert_eq!(setup_data_addr, None);
+        assert_eq!(free_addr, 0x1000);
     }
 
     #[test]
     fn write_setup_data_two_of_them() {
         let mem = GuestMemory::new(&[(GuestAddress(0), 0x2_0000)]).unwrap();
+
+        let mut free_addr = 0x1000;
 
         let entry1_addr = GuestAddress(0x1000);
         let entry1_next_addr = entry1_addr;
@@ -2347,6 +2341,9 @@ mod tests {
         let entry2_len_addr = entry2_addr.checked_add(12).unwrap();
         let entry2_data_addr = entry2_addr.checked_add(16).unwrap();
         let entry2_data = [0xAAu8; 9];
+        let entry2_size = (size_of::<setup_data_hdr>() + entry2_data.len()) as u64;
+
+        let next_free_addr = entry2_addr.checked_add(entry2_size).unwrap();
 
         let setup_data = [
             SetupData {
@@ -2359,14 +2356,10 @@ mod tests {
             },
         ];
 
-        let setup_data_head_addr = write_setup_data(
-            &mem,
-            GuestAddress(0x1000),
-            GuestAddress(0x2000),
-            &setup_data,
-        )
-        .expect("write_setup_data");
+        let setup_data_head_addr =
+            write_setup_data(&mem, &mut free_addr, &setup_data).expect("write_setup_data");
         assert_eq!(setup_data_head_addr, Some(entry1_addr));
+        assert_eq!(free_addr, next_free_addr.offset());
 
         assert_eq!(
             mem.read_obj_from_addr::<u64>(entry1_next_addr).unwrap(),
