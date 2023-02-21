@@ -10,7 +10,6 @@ mod fdt;
 
 const SETUP_DTB: u32 = 2;
 const SETUP_RNG_SEED: u32 = 9;
-const X86_64_FDT_MAX_SIZE: u64 = 0x20_0000;
 
 #[allow(dead_code)]
 #[allow(non_upper_case_globals)]

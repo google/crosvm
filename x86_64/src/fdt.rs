@@ -11,7 +11,6 @@ use cros_fdt::FdtWriter;
 
 use crate::SetupData;
 use crate::SetupDataType;
-use crate::X86_64_FDT_MAX_SIZE;
 
 /// Creates a flattened device tree containing all of the parameters for the
 /// kernel and returns it as `SetupData`.
@@ -30,7 +29,7 @@ pub fn create_fdt(
     create_android_fdt(&mut fdt, android_fstab)?;
     fdt.end_node(root_node)?;
 
-    let fdt_final = fdt.finish(X86_64_FDT_MAX_SIZE as usize)?;
+    let fdt_final = fdt.finish()?;
 
     if let Some(file_path) = dump_device_tree_blob {
         std::fs::write(&file_path, &fdt_final)

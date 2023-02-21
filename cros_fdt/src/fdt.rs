@@ -70,7 +70,7 @@ const FDT_END: u32 = 0x00000009;
 /// fdt.property_string("bootargs", "panic=-1 console=hvc0 root=/dev/vda")?;
 /// fdt.end_node(chosen_node)?;
 /// fdt.end_node(root_node)?;
-/// let dtb = fdt.finish(0x1000)?;
+/// let dtb = fdt.finish()?;
 /// # Ok(())
 /// # }
 /// ```
@@ -308,7 +308,7 @@ impl FdtWriter {
     /// # Arguments
     ///
     /// `max_size` - Maximum size of the finished DTB in bytes.
-    pub fn finish(mut self, max_size: usize) -> Result<Vec<u8>> {
+    pub fn finish(mut self) -> Result<Vec<u8>> {
         if self.node_depth > 0 {
             return Err(Error::UnclosedNode);
         }
@@ -344,14 +344,7 @@ impl FdtWriter {
 
         // Add the strings block.
         self.data.append(&mut self.strings);
-
-        if self.data.len() > max_size {
-            Err(Error::TotalSizeTooLarge)
-        } else {
-            // Fill remaining data up to `max_size` with zeroes.
-            self.pad(max_size - self.data.len());
-            Ok(self.data)
-        }
+        Ok(self.data)
     }
 }
 
@@ -365,7 +358,7 @@ mod tests {
         let root_node = fdt.begin_node("").unwrap();
         fdt.end_node(root_node).unwrap();
         assert_eq!(
-            fdt.finish(0x48).unwrap(),
+            fdt.finish().unwrap(),
             [
                 0xd0, 0x0d, 0xfe, 0xed, // 0000: magic (0xd00dfeed)
                 0x00, 0x00, 0x00, 0x48, // 0004: totalsize (0x48)
@@ -404,7 +397,7 @@ mod tests {
         let root_node = fdt.begin_node("").unwrap();
         fdt.end_node(root_node).unwrap();
         assert_eq!(
-            fdt.finish(0x68).unwrap(),
+            fdt.finish().unwrap(),
             [
                 0xd0, 0x0d, 0xfe, 0xed, // 0000: magic (0xd00dfeed)
                 0x00, 0x00, 0x00, 0x68, // 0004: totalsize (0x68)
@@ -443,7 +436,7 @@ mod tests {
         fdt.property_null("null").unwrap();
         fdt.end_node(root_node).unwrap();
         assert_eq!(
-            fdt.finish(0x59).unwrap(),
+            fdt.finish().unwrap(),
             [
                 0xd0, 0x0d, 0xfe, 0xed, // 0000: magic (0xd00dfeed)
                 0x00, 0x00, 0x00, 0x59, // 0004: totalsize (0x59)
@@ -478,7 +471,7 @@ mod tests {
         fdt.property_u32("u32", 0x12345678).unwrap();
         fdt.end_node(root_node).unwrap();
         assert_eq!(
-            fdt.finish(0x5C).unwrap(),
+            fdt.finish().unwrap(),
             [
                 0xd0, 0x0d, 0xfe, 0xed, // 0000: magic (0xd00dfeed)
                 0x00, 0x00, 0x00, 0x5c, // 0004: totalsize (0x5C)
@@ -522,7 +515,7 @@ mod tests {
             .unwrap();
         fdt.end_node(root_node).unwrap();
         assert_eq!(
-            fdt.finish(0xEE).unwrap(),
+            fdt.finish().unwrap(),
             [
                 0xd0, 0x0d, 0xfe, 0xed, // 0000: magic (0xd00dfeed)
                 0x00, 0x00, 0x00, 0xee, // 0004: totalsize (0xEE)
@@ -595,7 +588,7 @@ mod tests {
         fdt.end_node(nested_node).unwrap();
         fdt.end_node(root_node).unwrap();
         assert_eq!(
-            fdt.finish(0x80).unwrap(),
+            fdt.finish().unwrap(),
             [
                 0xd0, 0x0d, 0xfe, 0xed, // 0000: magic (0xd00dfeed)
                 0x00, 0x00, 0x00, 0x80, // 0004: totalsize (0x80)
@@ -644,7 +637,7 @@ mod tests {
         fdt.end_node(nested_node).unwrap();
         fdt.end_node(root_node).unwrap();
         assert_eq!(
-            fdt.finish(0x90).unwrap(),
+            fdt.finish().unwrap(),
             [
                 0xd0, 0x0d, 0xfe, 0xed, // 0000: magic (0xd00dfeed)
                 0x00, 0x00, 0x00, 0x90, // 0004: totalsize (0x90)
@@ -744,7 +737,6 @@ mod tests {
         fdt.property_u32("ok_prop", 1234).unwrap();
         let _nested_node = fdt.begin_node("mynode").unwrap();
         fdt.property_u32("ok_nested_prop", 5678).unwrap();
-        fdt.finish(0x100)
-            .expect_err("finish without ending all nodes");
+        fdt.finish().expect_err("finish without ending all nodes");
     }
 }
