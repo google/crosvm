@@ -812,6 +812,7 @@ pub fn create_virtio_vhost_net_device_from_tap<T: TapT + 'static>(
     vcpu_count: usize,
     vhost_net_device_path: PathBuf,
     tap: T,
+    mac: Option<MacAddress>,
 ) -> DeviceResult {
     create_net_device(
         protection_type,
@@ -820,7 +821,7 @@ pub fn create_virtio_vhost_net_device_from_tap<T: TapT + 'static>(
         vcpu_count,
         "vhost_net_device",
         move |features, _vq_pairs| {
-            virtio::vhost::Net::<T, vhost::Net<T>>::new(&vhost_net_device_path, features, tap)
+            virtio::vhost::Net::<T, vhost::Net<T>>::new(&vhost_net_device_path, features, tap, mac)
                 .context("failed to set up virtio-vhost networking")
         },
     )

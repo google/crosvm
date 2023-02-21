@@ -524,6 +524,7 @@ fn create_virtio_devices(
                 vcpu_count,
                 cfg.vhost_net_device_path.clone(),
                 tap,
+                mac,
             )
         } else {
             create_virtio_net_device_from_tap(
