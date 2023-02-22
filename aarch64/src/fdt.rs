@@ -338,6 +338,15 @@ fn create_config_node(fdt: &mut FdtWriter, (addr, size): (GuestAddress, usize)) 
     Ok(())
 }
 
+fn create_kvm_cpufreq_node(fdt: &mut FdtWriter) -> Result<()> {
+    let vcf_node = fdt.begin_node("cpufreq")?;
+
+    fdt.property_string("compatible", "virtual,kvm-cpufreq")?;
+    fdt.end_node(vcf_node)?;
+
+    Ok(())
+}
+
 /// PCI host controller address range.
 ///
 /// This represents a single entry in the "ranges" property for a PCI host controller.
@@ -622,6 +631,7 @@ pub fn create_fdt(
         create_battery_node(&mut fdt, bat_mmio_base, bat_irq)?;
     }
     create_vmwdt_node(&mut fdt, vmwdt_cfg)?;
+    create_kvm_cpufreq_node(&mut fdt)?;
     vm_generator(&mut fdt, &phandles)?;
     // End giant node
     fdt.end_node(root_node)?;
