@@ -14,7 +14,7 @@ use std::time::Duration;
 use anyhow::anyhow;
 use anyhow::Result;
 
-use crate::fixture::sys::binary_name;
+use crate::sys::binary_name;
 
 /// Returns the path to the crosvm binary to be tested.
 ///

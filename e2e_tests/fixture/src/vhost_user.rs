@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 
-use crate::fixture::utils::find_crosvm_binary;
+use crate::utils::find_crosvm_binary;
 
 pub enum CmdType {
     /// `crosvm device` command

@@ -1,0 +1,23 @@
+#!/usr/bin/env python3
+# Copyright 2023 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import os
+
+from impl.common import CROSVM_ROOT, run_main, cmd, chdir
+from impl.test_target import Triple
+
+bench = cmd("cargo test").with_color_flag()
+
+
+def main(target_name: str):
+    chdir(CROSVM_ROOT / "e2e_tests")
+
+    build_env = os.environ.copy()
+    build_env.update(Triple.host_default().get_cargo_env())
+    bench("--release", "--bench", target_name).with_envs(build_env).fg()
+
+
+if __name__ == "__main__":
+    run_main(main)

@@ -2,12 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-pub mod fixture;
-
 use tempfile::tempdir;
 
-use crate::fixture::vm::Config;
-use crate::fixture::vm::TestVm;
+use fixture::vm::Config;
+use fixture::vm::TestVm;
 
 // Tests for suspend/resume.
 //

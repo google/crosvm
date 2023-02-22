@@ -6,8 +6,6 @@
 
 #![cfg(unix)]
 
-pub mod fixture;
-
 use std::process::Command;
 use std::process::Stdio;
 use std::thread;

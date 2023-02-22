@@ -6,13 +6,10 @@ edition = "2021"
 
 [dev-dependencies]
 anyhow = "*"
-arch = { path = "../arch" }
-base = "*"
-cfg-if = "*"
-libc = "0.2.65"
-prebuilts = { path = "../prebuilts" }
+fixture = { path = "fixture" }
 rand = "0.8"
 tempfile = "3"
+prebuilts = { path = "../prebuilts" }
 
 [features]
 direct = []

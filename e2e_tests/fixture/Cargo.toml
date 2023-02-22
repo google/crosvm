@@ -1,0 +1,18 @@
+[package]
+name = "fixture"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+edition = "2021"
+
+[dependencies]
+anyhow = "*"
+arch = { path = "../../arch" }
+base = "*"
+cfg-if = "*"
+libc = "0.2.65"
+rand = "0.8"
+tempfile = "3"
+prebuilts = { path = "../../prebuilts" }
+
+[features]
+direct = []

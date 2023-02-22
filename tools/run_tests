@@ -3,6 +3,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import copy
 import os
 from pathlib import Path
 import sys
@@ -24,12 +25,7 @@ from impl.common import (
     verbose,
 )
 from impl.test_target import Triple
-from impl.test_config import (
-    ROOT_TESTS,
-    DO_NOT_RUN,
-    DO_NOT_RUN_AARCH64,
-    DO_NOT_RUN_WIN64,
-)
+from impl.test_config import ROOT_TESTS, DO_NOT_RUN, DO_NOT_RUN_AARCH64, DO_NOT_RUN_WIN64, E2E_TESTS
 from impl import testvm
 
 rsync = cmd("rsync")
@@ -55,6 +51,10 @@ class TestFilter(object):
 
     def exclude(self, *exclude_exprs: str):
         return self.subset(f"not ({join_filters(exclude_exprs, '|')})")
+
+    def include(self, *include_exprs: str):
+        include_expr = join_filters(include_exprs, "|")
+        return TestFilter(f"({self.expression}) | ({include_expr})")
 
     def subset(self, *subset_exprs: str):
         subset_expr = join_filters(subset_exprs, "|")
@@ -294,6 +294,9 @@ def main(
             sys.exit(returncode)
 
     if not no_unit_tests:
+        unit_test_filter = copy.deepcopy(test_filter)
+        unit_test_filter.include("kind(bench)")
+        unit_test_filter.exclude(*E2E_TESTS)
         console.print()
         console.rule("Running unit tests")
         with record_time("Unit Tests"):
@@ -301,9 +304,9 @@ def main(
                 if repetitions > 1:
                     console.rule(f"Round {i}", style="grey")
 
-                returncode = nextest_run.with_args(
-                    "--lib --bins --benches", *test_filter.to_args()
-                ).fg(style=Styles.live_truncated(), check=False)
+                returncode = nextest_run.with_args("--lib --bins", *unit_test_filter.to_args()).fg(
+                    style=Styles.live_truncated(), check=False
+                )
                 if returncode != 0:
                     sys.exit(returncode)
 

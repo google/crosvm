@@ -23,11 +23,11 @@ use anyhow::Result;
 use libc::O_DIRECT;
 use tempfile::TempDir;
 
-use crate::fixture::utils::find_crosvm_binary;
-use crate::fixture::utils::run_with_timeout;
-use crate::fixture::vm::kernel_path;
-use crate::fixture::vm::rootfs_path;
-use crate::fixture::vm::Config;
+use crate::utils::find_crosvm_binary;
+use crate::utils::run_with_timeout;
+use crate::vm::kernel_path;
+use crate::vm::rootfs_path;
+use crate::vm::Config;
 
 const FROM_GUEST_PIPE: &str = "from_guest";
 const TO_GUEST_PIPE: &str = "to_guest";
@@ -60,7 +60,6 @@ pub(crate) fn mkfifo(path: &Path) -> io::Result<()> {
     }
 }
 
-#[cfg(test)]
 pub struct TestVmSys {
     /// Maintain ownership of test_dir until the vm is destroyed.
     #[allow(dead_code)]

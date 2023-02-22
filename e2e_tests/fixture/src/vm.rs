@@ -17,9 +17,9 @@ use anyhow::Result;
 use base::syslog;
 use prebuilts::download_file;
 
-use crate::fixture::sys::SerialArgs;
-use crate::fixture::sys::TestVmSys;
-use crate::fixture::utils::run_with_timeout;
+use crate::sys::SerialArgs;
+use crate::sys::TestVmSys;
+use crate::utils::run_with_timeout;
 
 const PREBUILT_URL: &str = "https://storage.googleapis.com/crosvm/integration_tests";
 
@@ -166,7 +166,6 @@ pub struct Config {
     pub(super) o_direct: bool,
 }
 
-#[cfg(test)]
 impl Config {
     /// Creates a new `run` command with `extra_args`.
     pub fn new() -> Self {
@@ -200,7 +199,6 @@ static PREP_ONCE: Once = Once::new();
 ///
 /// After creation, commands can be sent via exec_in_guest. The VM is stopped
 /// when this instance is dropped.
-#[cfg(test)]
 pub struct TestVm {
     // Platform-dependent bits
     sys: TestVmSys,

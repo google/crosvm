@@ -23,10 +23,10 @@ use base::named_pipes;
 use base::PipeConnection;
 use rand::Rng;
 
-use crate::fixture::utils::find_crosvm_binary;
-use crate::fixture::vm::kernel_path;
-use crate::fixture::vm::rootfs_path;
-use crate::fixture::vm::Config;
+use crate::utils::find_crosvm_binary;
+use crate::vm::kernel_path;
+use crate::vm::rootfs_path;
+use crate::vm::Config;
 
 const GUEST_EARLYCON: &str = "guest_earlycon.log";
 const GUEST_CONSOLE: &str = "guest_latecon.log";
@@ -122,7 +122,6 @@ fn create_client_pipe_helper(from_guest_pipe: &str, logs_dir: &str) -> PipeConne
     panic!("Failed to open pipe from guest");
 }
 
-#[cfg(test)]
 pub struct TestVmSys {
     pub(crate) from_guest_reader: Arc<Mutex<BufReader<PipeConnection>>>,
     pub(crate) to_guest: Arc<Mutex<PipeConnection>>,

@@ -4,8 +4,6 @@
 
 //! Testing virtio-fs.
 
-pub mod fixture;
-
 use fixture::vm::Config;
 use fixture::vm::TestVm;
 

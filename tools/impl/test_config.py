@@ -42,6 +42,11 @@ DO_NOT_RUN_WIN64 = [
     "package(e2e_tests)",
 ]
 
+# Avoid e2e tests and benchmarks to be automatically included as unit tests
+E2E_TESTS = [
+    "package(e2e_tests)",
+]
+
 # Deprecated test configuration for tools/run_tests
 #
 # This will eventually be fully replaced the above configuration
