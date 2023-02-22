@@ -154,6 +154,10 @@ use rutabaga_gfx::RutabagaGralloc;
 use smallvec::SmallVec;
 #[cfg(feature = "swap")]
 use swap::SwapController;
+#[cfg(feature = "swap")]
+use swap::VmSwapCommand;
+#[cfg(feature = "swap")]
+use swap::VmSwapResponse;
 use sync::Condvar;
 use sync::Mutex;
 use vm_control::*;
@@ -1275,17 +1279,11 @@ fn punch_holes_in_guest_mem_layout_for_mappings(
         .collect()
 }
 
-struct CreateGuestMemoryResult {
-    guest_mem: GuestMemory,
-    #[cfg(feature = "swap")]
-    swap_controller: Option<SwapController>,
-}
-
 fn create_guest_memory(
     cfg: &Config,
     components: &VmComponents,
     hypervisor: &impl Hypervisor,
-) -> Result<CreateGuestMemoryResult> {
+) -> Result<GuestMemory> {
     let guest_mem_layout = Arch::guest_memory_layout(components, hypervisor)
         .context("failed to create guest memory layout")?;
 
@@ -1313,20 +1311,7 @@ fn create_guest_memory(
         guest_mem.use_dontfork().context("use_dontfork failed")?;
     }
 
-    // Setup page fault handlers for vmm-swap.
-    // This should be called before device processes are forked.
-    #[cfg(feature = "swap")]
-    let swap_controller = cfg
-        .swap_dir
-        .as_ref()
-        .map(|swap_dir| SwapController::launch(guest_mem.clone(), swap_dir))
-        .transpose()?;
-
-    Ok(CreateGuestMemoryResult {
-        guest_mem,
-        #[cfg(feature = "swap")]
-        swap_controller,
-    })
+    Ok(guest_mem)
 }
 
 fn run_kvm(cfg: Config, components: VmComponents) -> Result<ExitState> {
@@ -1337,11 +1322,17 @@ fn run_kvm(cfg: Config, components: VmComponents) -> Result<ExitState> {
         )
     })?;
 
-    let CreateGuestMemoryResult {
-        guest_mem,
-        #[cfg(feature = "swap")]
-        swap_controller,
-    } = create_guest_memory(&cfg, &components, &kvm)?;
+    let guest_mem = create_guest_memory(&cfg, &components, &kvm)?;
+
+    #[cfg(feature = "swap")]
+    let swap_controller = if let Some(swap_dir) = cfg.swap_dir.as_ref() {
+        Some(
+            SwapController::launch(guest_mem.clone(), swap_dir)
+                .context("launch vmm-swap monitor process")?,
+        )
+    } else {
+        None
+    };
 
     let vm = KvmVm::new(&kvm, guest_mem, components.hv_cfg).context("failed to create vm")?;
 
@@ -1449,7 +1440,7 @@ fn run_vm<Vcpu, V>(
     mut vm: V,
     irq_chip: &mut dyn IrqChipArch,
     ioapic_host_tube: Option<Tube>,
-    #[cfg(feature = "swap")] swap_controller: Option<SwapController>,
+    #[cfg(feature = "swap")] swap_controller: Option<(SwapController, Tube)>,
 ) -> Result<ExitState>
 where
     Vcpu: VcpuArch + 'static,
@@ -1484,6 +1475,14 @@ where
 
     let mut control_tubes = Vec::new();
     let mut irq_control_tubes = Vec::new();
+
+    #[cfg(feature = "swap")]
+    let swap_controller = if let Some((swap_controller, tube)) = swap_controller {
+        control_tubes.push(TaggedControlTube::SwapMonitor(tube));
+        Some(swap_controller)
+    } else {
+        None
+    };
 
     #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
     if let Some(port) = cfg.gdb {
@@ -1986,7 +1985,7 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
     hp_control_tube: &mpsc::Sender<PciRootCommand>,
     iommu_host_tube: &Option<Tube>,
     device: &HotPlugDeviceInfo,
-    #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
+    #[cfg(feature = "swap")] swap_controller: Option<&SwapController>,
 ) -> Result<()> {
     let host_addr = PciAddress::from_path(&device.path)
         .context("failed to parse hotplug device's PCI address")?;
@@ -2310,7 +2309,7 @@ fn handle_hotplug_command<V: VmArch, Vcpu: VcpuArch>(
     iommu_host_tube: &Option<Tube>,
     device: &HotPlugDeviceInfo,
     add: bool,
-    #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
+    #[cfg(feature = "swap")] swap_controller: Option<&SwapController>,
 ) -> VmResponse {
     let iommu_host_tube = if cfg.vfio_isolate_hotplug {
         iommu_host_tube
@@ -2343,6 +2342,37 @@ fn handle_hotplug_command<V: VmArch, Vcpu: VcpuArch>(
             VmResponse::Err(base::Error::new(libc::EINVAL))
         }
     }
+}
+
+#[cfg(feature = "swap")]
+fn handle_swap_suspend_command(
+    tube: &Tube,
+    swap_controller: &SwapController,
+    kick_vcpus: impl Fn(VcpuControl),
+    state_from_vcpu_channel: &mpsc::Receiver<VmRunMode>,
+    vcpu_num: usize,
+) -> anyhow::Result<()> {
+    info!("suspending vcpus");
+    let _vcpu_guard = VcpuSuspendGuard::new(&kick_vcpus, state_from_vcpu_channel, vcpu_num)
+        .context("suspend vcpus")?;
+    info!("suspending devices");
+    // TODO(b/253386409): Use `devices::Suspendable::sleep()` instead of sending `SIGSTOP` signal.
+    let _devices_guard = swap_controller
+        .suspend_devices()
+        .context("suspend devices")?;
+
+    tube.send(&VmSwapResponse::SuspendCompleted)
+        .context("send completed")?;
+
+    // Wait for a resume command.
+    if !matches!(
+        tube.recv().context("wait for VmSwapCommand::Resume")?,
+        VmSwapCommand::Resume
+    ) {
+        anyhow::bail!("the vmm-swap command is not resume.");
+    }
+    info!("resuming vm");
+    Ok(())
 }
 
 fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
@@ -2947,6 +2977,44 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                     }
                                 }
                             },
+                            #[cfg(feature = "swap")]
+                            TaggedControlTube::SwapMonitor(tube) => {
+                                match tube.recv::<VmSwapCommand>() {
+                                    Ok(VmSwapCommand::Suspend) => {
+                                        if let Err(e) = handle_swap_suspend_command(
+                                            tube,
+                                            // swap_controller must be present if the tube exists.
+                                            swap_controller.as_ref().unwrap(),
+                                            |msg| {
+                                                vcpu::kick_all_vcpus(
+                                                    &vcpu_handles,
+                                                    linux.irq_chip.as_irq_chip(),
+                                                    msg,
+                                                )
+                                            },
+                                            &state_from_vcpu_channel,
+                                            vcpu_handles.len(),
+                                        ) {
+                                            error!("failed to suspend vm: {:?}", e);
+                                            if let Err(e) =
+                                                tube.send(&VmSwapResponse::SuspendFailed)
+                                            {
+                                                error!("failed to send SuspendFailed: {:?}", e);
+                                            }
+                                        }
+                                    }
+                                    Ok(VmSwapCommand::Resume) => {
+                                        // Ignore resume command.
+                                    }
+                                    Err(e) => {
+                                        if let TubeError::Disconnected = e {
+                                            vm_control_indices_to_remove.push(index);
+                                        } else {
+                                            error!("failed to recv VmSwapCommand: {}", e);
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]

@@ -13,17 +13,15 @@ use std::time::Duration;
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
-use base::info;
-use base::unix::getppid;
+use base::unix::getpid;
 use base::unix::kill;
 use base::unix::Pid;
 use base::unix::Signal;
 
-/// Stops all the crosvm processes to take a snapshot.
+/// Stops all the crosvm device processes during moving the guest memory to the staging memory.
 ///
-/// While taking a snapshot, we must guarantee that no one changes the guest memory contents. This
-/// supports devices in sandbox/non-sandbox mode (running in independent processes/threads in the
-/// main process).
+/// While moving, we must guarantee that no one changes the guest memory contents. This supports
+/// devices in sandbox mode only.
 ///
 /// We stop all the crosvm processes instead of the alternatives.
 ///
@@ -31,16 +29,20 @@ use base::unix::Signal;
 ///   * devices still may works in the child process and write something to the guest memory.
 /// * Use write protection of userfaultfd
 ///   * UFFDIO_REGISTER_MODE_WP for shmem is WIP and not supported yet.
+/// * `devices::Suspendable::sleep()`
+///   * `Suspendable` is not supported by all devices yet.
 pub struct ProcessesGuard {
     pids: Vec<Pid>,
 }
 
-/// Stops all crosvm processes except this monitor process using signals.
+/// Stops all crosvm child processes except this monitor process using signals.
 ///
 /// The stopped processes are resumed when the freezer object is freed.
-pub fn freeze_all_processes() -> Result<ProcessesGuard> {
+///
+/// This must be called from the main process.
+pub fn freeze_child_processes(monitor_pid: Pid) -> Result<ProcessesGuard> {
     let guard = ProcessesGuard {
-        pids: load_parent_and_children()?,
+        pids: load_children(monitor_pid)?,
     };
 
     guard.stop_the_world().context("stop the world")?;
@@ -51,7 +53,6 @@ pub fn freeze_all_processes() -> Result<ProcessesGuard> {
 impl ProcessesGuard {
     /// Stops all the crosvm processes by sending SIGSTOP signal.
     fn stop_the_world(&self) -> Result<()> {
-        info!("stop the world");
         for pid in &self.pids {
             // safe because pid in pids are crosvm processes except this monitor process.
             unsafe { kill(*pid, Signal::Stop as i32) }.context("failed to stop process")?;
@@ -64,7 +65,6 @@ impl ProcessesGuard {
 
     /// Resumes all the crosvm processes by sending SIGCONT signal.
     fn continue_the_world(&self) {
-        info!("continue the world");
         for pid in &self.pids {
             // safe because pid in pids are crosvm processes except this monitor process and
             // continue signal does not have side effects.
@@ -80,11 +80,10 @@ impl Drop for ProcessesGuard {
     }
 }
 
-/// Loads Pids of crosvm processes except this monitor procesess.
-fn load_parent_and_children() -> Result<Vec<Pid>> {
-    let monitor_pid = base::getpid();
-    // children of the main (parent) process.
-    let children = read_to_string(format!("/proc/{0}/task/{0}/children", getppid()))
+/// Loads Pids of crosvm child processes except the monitor procesess.
+fn load_children(monitor_pid: Pid) -> Result<Vec<Pid>> {
+    // children of the main process.
+    let children = read_to_string(format!("/proc/self/task/{}/children", getpid()))
         .context("read children")?;
     let pids: std::result::Result<Vec<i32>, ParseIntError> = children
         .trim()
@@ -96,10 +95,7 @@ fn load_parent_and_children() -> Result<Vec<Pid>> {
             _ => true,
         })
         .collect();
-    let mut pids = pids.context("parse pids")?;
-    // add the main (parent) process.
-    pids.push(getppid());
-    Ok(pids)
+    pids.context("parse pids")
 }
 
 /// Extract process state from /proc/pid/stat.

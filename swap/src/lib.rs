@@ -56,7 +56,8 @@ use vm_memory::GuestMemory;
 use crate::logger::PageFaultEventLogger;
 use crate::page_handler::MoveToStaging;
 use crate::page_handler::PageHandler;
-use crate::processes::freeze_all_processes;
+use crate::processes::freeze_child_processes;
+use crate::processes::ProcessesGuard;
 use crate::userfaultfd::register_regions;
 use crate::userfaultfd::unregister_regions;
 use crate::userfaultfd::Factory as UffdFactory;
@@ -184,7 +185,10 @@ impl Status {
     }
 }
 
-/// Commands used in vmm-swap feature internally between [SwapController] and [monitor_process].
+/// Commands used in vmm-swap feature internally sent to the monitor process from the main and other
+/// processes.
+///
+/// This is mainly originated from the `crosvm swap <command>` command line.
 #[derive(Serialize, Deserialize, Debug)]
 enum Command {
     Enable,
@@ -196,11 +200,29 @@ enum Command {
     ProcessForked(RawDescriptor),
 }
 
+/// Commands sent from the monitor process to the main process.
+#[derive(Serialize, Deserialize, Debug)]
+pub enum VmSwapCommand {
+    /// Suspend vCPUs and devices.
+    Suspend,
+    /// Resume vCPUs and devices.
+    Resume,
+}
+
+/// Response from the main process to the monitor process.
+#[derive(Serialize, Deserialize, Debug)]
+pub enum VmSwapResponse {
+    /// Suspend completes.
+    SuspendCompleted,
+    /// Failed to suspend vCPUs and devices.
+    SuspendFailed,
+}
+
 /// [SwapController] provides APIs to control vmm-swap.
 pub struct SwapController {
     child_process: Child,
     uffd_factory: UffdFactory,
-    tube: Tube,
+    command_tube: Tube,
 }
 
 impl SwapController {
@@ -213,7 +235,7 @@ impl SwapController {
     /// * `guest_memory` - fresh new [GuestMemory]. Any pages on the [GuestMemory] must not be
     ///   touched.
     /// * `swap_dir` - directory to store swap files.
-    pub fn launch(guest_memory: GuestMemory, swap_dir: &Path) -> anyhow::Result<Self> {
+    pub fn launch(guest_memory: GuestMemory, swap_dir: &Path) -> anyhow::Result<(Self, Tube)> {
         info!("vmm-swap is enabled. launch monitor process.");
 
         let uffd_factory = UffdFactory::new();
@@ -232,7 +254,14 @@ impl SwapController {
             .mode(0o000) // other processes with the same uid can't open the file
             .open(swap_dir)?;
 
-        let (tube_main_process, tube_monitor_process) = Tube::pair().context("create swap tube")?;
+        // The internal tube in which [Command]s sent from other processes than the monitor process
+        // to the monitor process. The response is `Status` only.
+        let (command_tube_main, command_tube_monitor) =
+            Tube::pair().context("create swap command tube")?;
+        // The tube in which `VmSwapCommand` is sent from the monitor process to the main process.
+        // The response is `VmSwapResponse`.
+        let (vm_tube_main, vm_tube_monitor) =
+            Tube::pair().context("create swap vm-request tube")?;
 
         #[cfg(feature = "log_page_fault")]
         let page_fault_logger = PageFaultEventLogger::create(&swap_dir, &guest_memory)
@@ -243,7 +272,8 @@ impl SwapController {
             stderr().as_raw_descriptor(),
             uffd.as_raw_descriptor(),
             swap_file.as_raw_descriptor(),
-            tube_monitor_process.as_raw_descriptor(),
+            command_tube_monitor.as_raw_descriptor(),
+            vm_tube_monitor.as_raw_descriptor(),
             #[cfg(feature = "log_page_fault")]
             page_fault_logger.as_raw_descriptor(),
         ];
@@ -262,7 +292,8 @@ impl SwapController {
         let child_process =
             fork_process(jail, keep_rds, Some(String::from("swap monitor")), || {
                 if let Err(e) = monitor_process(
-                    tube_monitor_process,
+                    command_tube_monitor,
+                    vm_tube_monitor,
                     guest_memory,
                     uffd,
                     swap_file,
@@ -276,8 +307,8 @@ impl SwapController {
 
         // send first status request to the monitor process and wait for the response until setup on
         // the monitor process completes.
-        tube_main_process.send(&Command::Status)?;
-        match tube_main_process
+        command_tube_main.send(&Command::Status)?;
+        match command_tube_main
             .recv::<Status>()
             .context("recv initial status")?
             .state
@@ -291,11 +322,14 @@ impl SwapController {
             }
         };
 
-        Ok(Self {
-            child_process,
-            uffd_factory,
-            tube: tube_main_process,
-        })
+        Ok((
+            Self {
+                child_process,
+                uffd_factory,
+                command_tube: command_tube_main,
+            },
+            vm_tube_main,
+        ))
     }
 
     /// Enable monitoring page faults and move guest memory to staging memory.
@@ -314,7 +348,7 @@ impl SwapController {
     /// By splitting the enable/swap_out operation and by delaying write to the swap file operation,
     /// it has a benefit of reducing file I/O for hot pages.
     pub fn enable(&self) -> anyhow::Result<()> {
-        self.tube
+        self.command_tube
             .send(&Command::Enable)
             .context("send swap enable request")?;
         Ok(())
@@ -326,7 +360,7 @@ impl SwapController {
     ///
     /// Users should call [Self::enable()] before this. See the comment of [Self::enable()] as well.
     pub fn swap_out(&self) -> anyhow::Result<()> {
-        self.tube
+        self.command_tube
             .send(&Command::SwapOut)
             .context("send swap out request")?;
         Ok(())
@@ -336,7 +370,7 @@ impl SwapController {
     ///
     /// This returns as soon as it succeeds to send request to the monitor process.
     pub fn disable(&self) -> anyhow::Result<()> {
-        self.tube
+        self.command_tube
             .send(&Command::Disable)
             .context("send swap disable request")?;
         Ok(())
@@ -346,10 +380,10 @@ impl SwapController {
     ///
     /// This blocks until response from the monitor process arrives to the main process.
     pub fn status(&self) -> anyhow::Result<Status> {
-        self.tube
+        self.command_tube
             .send(&Command::Status)
             .context("send swap status request")?;
-        let status = self.tube.recv().context("receive swap status")?;
+        let status = self.command_tube.recv().context("receive swap status")?;
         Ok(status)
     }
 
@@ -359,7 +393,7 @@ impl SwapController {
     ///
     /// This should be called once.
     pub fn exit(self) -> anyhow::Result<()> {
-        self.tube
+        self.command_tube
             .send(&Command::Exit)
             .context("send exit command")?;
         self.child_process
@@ -376,19 +410,28 @@ impl SwapController {
     /// since it does not support non-root user namespace.
     pub fn on_process_forked(&self) -> anyhow::Result<()> {
         let uffd = self.uffd_factory.create().context("create userfaultfd")?;
-        self.tube
+        self.command_tube
             .send(&Command::ProcessForked(uffd.as_raw_descriptor()))
             .context("send forked event")?;
         // The fd for Userfaultfd in this process is droped when this method exits, but the
         // userfaultfd keeps alive in the monitor process which it is sent to.
         Ok(())
     }
+
+    /// Suspend device processes using `SIGSTOP` signal.
+    ///
+    /// When the returned `ProcessesGuard` is dropped, the devices resume.
+    ///
+    /// This must be called from the main process.
+    pub fn suspend_devices(&self) -> anyhow::Result<ProcessesGuard> {
+        freeze_child_processes(self.child_process.pid)
+    }
 }
 
 impl AsRawDescriptors for SwapController {
     fn as_raw_descriptors(&self) -> Vec<RawDescriptor> {
         let mut rds = self.uffd_factory.as_raw_descriptors();
-        rds.push(self.tube.as_raw_descriptor());
+        rds.push(self.command_tube.as_raw_descriptor());
         rds
     }
 }
@@ -523,7 +566,8 @@ enum SwapState {
 
 /// the main thread of the monitor process.
 fn monitor_process(
-    tube: Tube,
+    command_tube: Tube,
+    vm_tube: Tube,
     guest_memory: GuestMemory,
     uffd: Userfaultfd,
     swap_file: File,
@@ -532,7 +576,7 @@ fn monitor_process(
     info!("monitor_process started");
 
     let wait_ctx = WaitContext::build_with(&[
-        (&tube, Token::Command),
+        (&command_tube, Token::Command),
         // Even though swap isn't enabled until the enable command is received, it's necessary to
         // start waiting on the main uffd here so that uffd fork events can be processed, because
         // child processes will block until their corresponding uffd fork event is read.
@@ -631,7 +675,10 @@ fn monitor_process(
                         }
                     }
                 }
-                Token::Command => match tube.recv::<Command>().context("recv swap command")? {
+                Token::Command => match command_tube
+                    .recv::<Command>()
+                    .context("recv swap command")?
+                {
                     Command::ProcessForked(raw_descriptor) => {
                         debug!("new fork uffd: {:?}", raw_descriptor);
                         // Safe because the raw_descriptor is sent from another process via Tube and
@@ -663,26 +710,40 @@ fn monitor_process(
                         let t0 = std::time::Instant::now();
                         state_transition = StateTransition::default();
 
-                        let result = {
-                            let _processes_guard =
-                                freeze_all_processes().context("freeze processes")?;
-                            let result = guest_memory.with_regions::<_, anyhow::Error>(
-                                |_, _, _, host_addr, shm, shm_offset| {
-                                    // safe because:
-                                    // * all the regions are registered to all userfaultfd
-                                    // * no process access the guest memory (freeze_all_processes())
-                                    // * page fault events are handled by PageHandler.
-                                    // * wait for all the copy completed within _processes_guard.
-                                    state_transition.pages += unsafe {
-                                        page_handler.move_to_staging(host_addr, shm, shm_offset)
-                                    }
-                                    .context("move to staging")?;
-                                    Ok(())
-                                },
-                            );
-                            worker.channel.wait_complete();
-                            result
+                        // Suspend vCPUs and devices from the main process.
+                        vm_tube
+                            .send(&VmSwapCommand::Suspend)
+                            .context("request suspend")?;
+
+                        let result = match vm_tube.recv().context("recv suspend completed")? {
+                            VmSwapResponse::SuspendCompleted => {
+                                let result = guest_memory.with_regions::<_, anyhow::Error>(
+                                    |_, _, _, host_addr, shm, shm_offset| {
+                                        // safe because:
+                                        // * all the regions are registered to all userfaultfd
+                                        // * no process access the guest memory
+                                        // * page fault events are handled by PageHandler
+                                        // * wait for all the copy completed within _processes_guard
+                                        state_transition.pages += unsafe {
+                                            page_handler.move_to_staging(host_addr, shm, shm_offset)
+                                        }
+                                        .context("move to staging")?;
+                                        Ok(())
+                                    },
+                                );
+                                worker.channel.wait_complete();
+                                result
+                            }
+                            VmSwapResponse::SuspendFailed => {
+                                Err(anyhow::anyhow!("failed to suspend vm"))
+                            }
                         };
+
+                        // Resume vCPUs and devices from the main process.
+                        vm_tube
+                            .send(&VmSwapCommand::Resume)
+                            .context("request resume")?;
+
                         state_transition.time_ms = t0.elapsed().as_millis();
 
                         match result {
@@ -754,7 +815,7 @@ fn monitor_process(
                     }
                     Command::Status => {
                         let status = Status::new(&state, &state_transition, &page_handler_opt);
-                        tube.send(&status).context("send status response")?;
+                        command_tube.send(&status).context("send status response")?;
                         info!("swap status: {:?}.", status);
                     }
                 },

@@ -87,6 +87,8 @@ pub enum TaggedControlTube {
         expose_with_viommu: bool,
     },
     VmMsync(Tube),
+    #[cfg(feature = "swap")]
+    SwapMonitor(Tube),
 }
 
 impl AsRef<Tube> for TaggedControlTube {
@@ -94,6 +96,8 @@ impl AsRef<Tube> for TaggedControlTube {
         use self::TaggedControlTube::*;
         match &self {
             Fs(tube) | Vm(tube) | VmMemory { tube, .. } | VmMsync(tube) => tube,
+            #[cfg(feature = "swap")]
+            SwapMonitor(tube) => tube,
         }
     }
 }

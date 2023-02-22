@@ -1576,6 +1576,13 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
         return Err("'lock-guest-memory' and 'disable-sandbox' are mutually exclusive".to_string());
     }
 
+    // TODO(b/253386409): Vmm-swap only support sandboxed devices until vmm-swap use
+    // `devices::Suspendable` to suspend devices.
+    #[cfg(feature = "swap")]
+    if cfg.swap_dir.is_some() && cfg.jail_config.is_none() {
+        return Err("'swap' and 'disable-sandbox' are mutually exclusive".to_string());
+    }
+
     set_default_serial_parameters(
         &mut cfg.serial_parameters,
         !cfg.vhost_user_console.is_empty(),

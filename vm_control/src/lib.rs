@@ -1112,30 +1112,51 @@ fn get_vcpu_state(
     Ok(first_state)
 }
 
-struct VcpuSuspendGuard<'a> {
+/// A guard to guarantee that all the vCPUs are suspended during the scope.
+///
+/// When this guard is dropped, it rolls back the state of CPUs.
+pub struct VcpuSuspendGuard<'a> {
     saved_run_mode: VmRunMode,
     kick_vcpus: &'a dyn Fn(VcpuControl),
 }
 
 impl<'a> VcpuSuspendGuard<'a> {
-    fn new(
+    /// Check the all vCPU state and suspend the vCPUs if they are running.
+    ///
+    /// This returns [VcpuSuspendGuard] to rollback the vcpu state.
+    ///
+    /// # Arguments
+    ///
+    /// * `kick_vcpus` - A funtion to send [VcpuControl] message to all the vCPUs and interrupt
+    ///   them.
+    /// * `state_from_vcpu_channel` - A channel to collect each vCPU state.
+    /// * `vcpu_num` - The number of vCPUs.
+    pub fn new(
         kick_vcpus: &'a impl Fn(VcpuControl),
         state_from_vcpu_channel: &mpsc::Receiver<VmRunMode>,
         vcpu_num: usize,
     ) -> anyhow::Result<Self> {
         // get initial vcpu state
         let saved_run_mode = get_vcpu_state(kick_vcpus, state_from_vcpu_channel, vcpu_num)?;
-        if saved_run_mode != VmRunMode::Suspending {
-            kick_vcpus(VcpuControl::RunState(VmRunMode::Suspending));
-            // Blocking call, waiting for response to ensure vCPU state was updated.
-            // In case of failure, where a vCPU still has the state running, start up vcpus and
-            // abort operation.
-            let current_mode = get_vcpu_state(kick_vcpus, state_from_vcpu_channel, vcpu_num)?;
-            if current_mode != VmRunMode::Suspending {
-                kick_vcpus(VcpuControl::RunState(saved_run_mode));
-                bail!("vCPUs failed to all suspend. Kicking back all vCPUs to their previous state: {saved_run_mode}");
+        match saved_run_mode {
+            VmRunMode::Running => {
+                kick_vcpus(VcpuControl::RunState(VmRunMode::Suspending));
+                // Blocking call, waiting for response to ensure vCPU state was updated.
+                // In case of failure, where a vCPU still has the state running, start up vcpus and
+                // abort operation.
+                let current_mode = get_vcpu_state(kick_vcpus, state_from_vcpu_channel, vcpu_num)?;
+                if current_mode != VmRunMode::Suspending {
+                    kick_vcpus(VcpuControl::RunState(saved_run_mode));
+                    bail!("vCPUs failed to all suspend. Kicking back all vCPUs to their previous state: {saved_run_mode}");
+                }
             }
-        }
+            VmRunMode::Suspending => {
+                // do nothing. keep the state suspending.
+            }
+            other => {
+                bail!("vcpus are not in running/suspending state, but {}", other);
+            }
+        };
         Ok(Self {
             saved_run_mode,
             kick_vcpus,
