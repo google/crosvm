@@ -68,59 +68,44 @@ If you want to enable [additional features](running_crosvm/features.md), use the
 
 ## Development
 
-### Iterative development
-
-You can use cargo as usual for crosvm development to `cargo build` and `cargo test` single crates
-that you are working on.
-
-If you are working on aarch64 specific code, you can use the `test_target` tool to instruct cargo to
-build for aarch64 and run tests on a VM:
-
-```sh
-./tools/test_target set vm:aarch64 && source .envrc
-cd mycrate && cargo test
-```
-
-The script will start a VM for testing and write environment variables for cargo to `.envrc`. With
-those `cargo build` will build for aarch64 and `cargo test` will run tests inside the VM.
-
-The aarch64 VM can be managed with the `./tools/aarch64vm` script.
-
-Note: See [Cross-compilation](#cross-compilation) for notes on cross-compilation.
-
 ### Running all tests
 
-Crosvm cannot use `cargo test --workspace` because of various restrictions of cargo. So we have our
-own test runner:
+Crosvm's integration tests have special requirements for execution (see [Testing](./testing.md)), so
+we use a special test runner. By default it will only execute unit tests:
 
 ```sh
 ./tools/run_tests
 ```
 
-Which will run all tests locally. Since we have some architecture-dependent code, we also have the
-option of running tests within an aarch64 VM:
+To execute integration tests as well, you need to specify a device-under-test (DUT). The most
+reliable option is to use the built-in VM for testing:
 
 ```sh
-./tools/run_tests --target=vm:aarch64
+./tools/run_tests --dut=vm
+```
+
+However, you can also use your local host directly. Your mileage may vary depending on your host
+kernel version and permissions.
+
+```sh
+./tools/run_tests --dut=host
+```
+
+Since we have some architecture-dependent code, we also have the option running unit tests for
+aarch64, armh4 or windows (mingw64). These will use an emulator to execute (QEMU or wine):
+
+```sh
+./tools/run_tests --platform=aarch64
+./tools/run_tests --platform=armhf
+./tools/run_tests --platform=mingw64
 ```
 
 When working on a machine that does not support cross-compilation (e.g. gLinux), you can use the dev
 container to build and run the tests.
 
 ```sh
-./tools/dev_container ./tools/run_tests --target=vm:aarch64
+./tools/dev_container ./tools/run_tests --platform=aarch64
 ```
-
-It is also possible to run tests on a remote machine via ssh. The target architecture is
-automatically detected:
-
-```sh
-./tools/run_tests --target=ssh:hostname
-```
-
-However, it is your responsibility to make sure the required libraries for crosvm are installed and
-password-less authentication is set up. See `./tools/impl/testvm/cloud_init.yaml` for hints on what
-the VM has installed.
 
 ### Presubmit checks
 
@@ -130,20 +115,14 @@ To verify changes before submitting, use the `presubmit` script:
 ./tools/presubmit
 ```
 
-This will run clippy, formatters and runs all tests. The presubmits will use the dev container to
-build for other platforms if your host is not set up to do so.
+Note: You probably want to run this in `./tools/dev_container` to ensure the toolchains for all
+platforms are available.
 
-To run checks faster, they can be run in parallel in multiple tmux panes:
+This will run clippy, formatters and runs all tests for all platforms. The same checks will also be
+run by our CI system before changes are merged into `main`.
 
-```sh
-./tools/presubmit --tmux
-```
-
-The `--quick` variant will skip some slower checks, like building for other platforms altogether:
-
-```sh
-./tools/presubmit --quick
-```
+See `tools/presumit -h` for details on various options for selecting which checks should be run to
+trade off speed and accuracy.
 
 ## Cross-compilation
 
