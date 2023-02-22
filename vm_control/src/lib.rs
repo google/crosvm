@@ -35,6 +35,8 @@ use std::str::FromStr;
 use std::sync::mpsc;
 use std::sync::Arc;
 
+use anyhow::bail;
+use anyhow::Context;
 pub use balloon_control::BalloonStats;
 #[cfg(feature = "balloon")]
 use balloon_control::BalloonTubeCommand;
@@ -54,7 +56,6 @@ use base::Result;
 use base::SafeDescriptor;
 use base::SharedMemory;
 use base::Tube;
-use base::TubeError;
 use hypervisor::Datamatch;
 use hypervisor::IoEventAddress;
 use hypervisor::IrqRoute;
@@ -1064,20 +1065,19 @@ fn get_vcpu_state(
     kick_vcpus: impl Fn(VcpuControl),
     state_from_vcpu_channel: &mpsc::Receiver<VmRunMode>,
     vcpu_num: usize,
-) -> std::result::Result<VmRunMode, SysError> {
+) -> anyhow::Result<VmRunMode> {
     kick_vcpus(VcpuControl::GetStates);
+    if vcpu_num == 0 {
+        bail!("vcpu_num is zero");
+    }
     let mut current_mode_vec: Vec<VmRunMode> = Vec::new();
     for _ in 0..vcpu_num {
         match state_from_vcpu_channel.recv() {
             Ok(state) => current_mode_vec.push(state),
             Err(e) => {
-                error!("Failed to get vCPU state: {}", e);
-                return Err(SysError::new(EIO));
+                bail!("Failed to get vCPU state: {}", e);
             }
         };
-    }
-    if current_mode_vec.is_empty() {
-        return Err(SysError::new(EIO));
     }
     let first_state = current_mode_vec[0];
     if first_state == VmRunMode::Exiting {
@@ -1085,48 +1085,48 @@ fn get_vcpu_state(
     }
     if current_mode_vec.iter().any(|x| *x != first_state) {
         // We do not panic here. It could be that vCPUs are transitioning from one mode to another.
-        error!("Unknown VM state: vCPUs hold different states.");
-        return Err(SysError::new(EIO));
+        bail!("Unknown VM state: vCPUs hold different states.");
     }
     Ok(first_state)
 }
 
-fn do_while_vcpus_suspended<T: for<'de> serde::Deserialize<'de>>(
-    kick_vcpus: impl Fn(VcpuControl),
-    state_from_vcpu_channel: &mpsc::Receiver<VmRunMode>,
-    vcpu_num: usize,
-    run_action: impl Fn() -> std::result::Result<(), TubeError>,
-    device_control_tube: &Tube,
-) -> std::result::Result<T, SysError> {
-    // get initial vcpu state
-    let current_mode = get_vcpu_state(&kick_vcpus, state_from_vcpu_channel, vcpu_num)?;
-    let saved_run_mode = current_mode;
-    if current_mode != VmRunMode::Suspending {
-        kick_vcpus(VcpuControl::RunState(VmRunMode::Suspending));
-    }
-    // Blocking call, waiting for response to ensure vCPU state was updated.
-    // In case of failure, where a vCPU still has the state running, start up vcpus and abort
-    // operation.
-    let current_mode = get_vcpu_state(&kick_vcpus, state_from_vcpu_channel, vcpu_num)?;
-    if current_mode != VmRunMode::Suspending {
-        error!("vCPUs failed to all suspend. Kicking back all vCPUs to their previous state: {saved_run_mode}");
-        kick_vcpus(VcpuControl::RunState(saved_run_mode));
-        return Err(SysError::new(EIO));
-    }
-    if let Err(e) = run_action() {
-        error!("fail to send command to devices control socket: {}", e);
-        kick_vcpus(VcpuControl::RunState(saved_run_mode));
-        return Err(SysError::new(EIO));
-    };
-    let response: T = match device_control_tube.recv() {
-        Ok(response) => response,
-        Err(e) => {
-            error!("fail to recv command from device control socket: {}", e);
-            return Err(SysError::new(EIO));
+struct VcpuSuspendGuard<'a> {
+    saved_run_mode: VmRunMode,
+    kick_vcpus: &'a dyn Fn(VcpuControl),
+}
+
+impl<'a> VcpuSuspendGuard<'a> {
+    fn new(
+        kick_vcpus: &'a impl Fn(VcpuControl),
+        state_from_vcpu_channel: &mpsc::Receiver<VmRunMode>,
+        vcpu_num: usize,
+    ) -> anyhow::Result<Self> {
+        // get initial vcpu state
+        let saved_run_mode = get_vcpu_state(kick_vcpus, state_from_vcpu_channel, vcpu_num)?;
+        if saved_run_mode != VmRunMode::Suspending {
+            kick_vcpus(VcpuControl::RunState(VmRunMode::Suspending));
+            // Blocking call, waiting for response to ensure vCPU state was updated.
+            // In case of failure, where a vCPU still has the state running, start up vcpus and
+            // abort operation.
+            let current_mode = get_vcpu_state(kick_vcpus, state_from_vcpu_channel, vcpu_num)?;
+            if current_mode != VmRunMode::Suspending {
+                kick_vcpus(VcpuControl::RunState(saved_run_mode));
+                bail!("vCPUs failed to all suspend. Kicking back all vCPUs to their previous state: {saved_run_mode}");
+            }
         }
-    };
-    kick_vcpus(VcpuControl::RunState(saved_run_mode));
-    Ok(response)
+        Ok(Self {
+            saved_run_mode,
+            kick_vcpus,
+        })
+    }
+}
+
+impl Drop for VcpuSuspendGuard<'_> {
+    fn drop(&mut self) {
+        if self.saved_run_mode != VmRunMode::Suspending {
+            (self.kick_vcpus)(VcpuControl::RunState(self.saved_run_mode));
+        }
+    }
 }
 
 impl VmRequest {
@@ -1405,38 +1405,46 @@ impl VmRequest {
             }
             VmRequest::HotPlugCommand { device: _, add: _ } => VmResponse::Ok,
             VmRequest::Snapshot(SnapshotCommand::Take { ref snapshot_path }) => {
-                let response: SnapshotControlResult = match do_while_vcpus_suspended(
-                    &kick_vcpus,
-                    state_from_vcpu_channel,
-                    vcpu_size,
-                    || {
-                        device_control_tube.send(&DeviceControlCommand::SnapshotDevices {
+                let f = || {
+                    let _guard =
+                        VcpuSuspendGuard::new(&kick_vcpus, state_from_vcpu_channel, vcpu_size)?;
+                    device_control_tube
+                        .send(&DeviceControlCommand::SnapshotDevices {
                             snapshot_path: snapshot_path.clone(),
                         })
-                    },
-                    device_control_tube,
-                ) {
-                    Ok(res) => res,
-                    Err(e) => return VmResponse::Err(e),
+                        .context("send command to devices control socket")?;
+                    device_control_tube
+                        .recv()
+                        .context("receive from devices control socket")
                 };
-                VmResponse::SnapshotResponse(response)
+                match f() {
+                    Ok(res) => VmResponse::SnapshotResponse(res),
+                    Err(e) => {
+                        error!("failed to handle snapshot: {:?}", e);
+                        VmResponse::Err(SysError::new(EIO))
+                    }
+                }
             }
             VmRequest::Restore(RestoreCommand::Apply { ref restore_path }) => {
-                let response: RestoreControlResult = match do_while_vcpus_suspended(
-                    &kick_vcpus,
-                    state_from_vcpu_channel,
-                    vcpu_size,
-                    || {
-                        device_control_tube.send(&DeviceControlCommand::RestoreDevices {
+                let f = || {
+                    let _guard =
+                        VcpuSuspendGuard::new(&kick_vcpus, state_from_vcpu_channel, vcpu_size)?;
+                    device_control_tube
+                        .send(&DeviceControlCommand::RestoreDevices {
                             restore_path: restore_path.clone(),
                         })
-                    },
-                    device_control_tube,
-                ) {
-                    Ok(res) => res,
-                    Err(e) => return VmResponse::Err(e),
+                        .context("send command to devices control socket")?;
+                    device_control_tube
+                        .recv()
+                        .context("receive from devices control socket")
                 };
-                VmResponse::RestoreResponse(response)
+                match f() {
+                    Ok(res) => VmResponse::RestoreResponse(res),
+                    Err(e) => {
+                        error!("failed to handle snapshot: {:?}", e);
+                        VmResponse::Err(SysError::new(EIO))
+                    }
+                }
             }
         }
     }
