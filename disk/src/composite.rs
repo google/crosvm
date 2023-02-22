@@ -142,6 +142,9 @@ pub struct CompositeDiskFile {
     component_disks: Vec<ComponentDiskPart>,
 }
 
+// TODO(b/271381851): implement `try_clone`. It allows virtio-blk to run multiple workers.
+impl DiskFile for CompositeDiskFile {}
+
 fn ranges_overlap(a: &Range<u64>, b: &Range<u64>) -> bool {
     range_intersection(a, b).is_some()
 }

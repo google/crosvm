@@ -163,17 +163,18 @@ impl<T: PunchHole> PunchHoleMut for T {
 pub trait DiskFile:
     FileSetLen + DiskGetLen + FileReadWriteAtVolatile + ToAsyncDisk + Send + AsRawDescriptors + Debug
 {
-}
-impl<
-        D: FileSetLen
-            + DiskGetLen
-            + FileReadWriteAtVolatile
-            + ToAsyncDisk
-            + Send
-            + AsRawDescriptors
-            + Debug,
-    > DiskFile for D
-{
+    /// Creates a new DiskFile instance that shares the same underlying disk file image. IO
+    /// operations to a DiskFile should affect all DiskFile instances with the same underlying disk
+    /// file image.
+    ///
+    /// `try_clone()` returns [`io::ErrorKind::Unsupported`] Error if a DiskFile does not support
+    /// creating an instance with the same underlying disk file image.
+    fn try_clone(&self) -> io::Result<Box<dyn DiskFile>> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "unsupported operation",
+        ))
+    }
 }
 
 /// A `DiskFile` that can be converted for asychronous access.
@@ -258,6 +259,12 @@ pub fn detect_image_type(file: &File) -> Result<ImageType> {
     }
 
     Ok(ImageType::Raw)
+}
+
+impl DiskFile for File {
+    fn try_clone(&self) -> io::Result<Box<dyn DiskFile>> {
+        Ok(Box::new(self.try_clone()?))
+    }
 }
 
 /// Inspect the image file type and create an appropriate disk file to match it.

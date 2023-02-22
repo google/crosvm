@@ -308,6 +308,9 @@ impl FileReadWriteAtVolatile for AndroidSparse {
     }
 }
 
+// TODO(b/271381851): implement `try_clone`. It allows virtio-blk to run multiple workers.
+impl DiskFile for AndroidSparse {}
+
 /// An Android Sparse disk that implements `AsyncDisk` for access.
 pub struct AsyncAndroidSparse {
     inner: Box<dyn IoSourceExt<File>>,

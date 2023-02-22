@@ -426,6 +426,8 @@ pub struct QcowFile {
     backing_file: Option<Box<dyn DiskFile>>,
 }
 
+impl DiskFile for QcowFile {}
+
 impl QcowFile {
     /// Creates a QcowFile from `file`. File must be a valid qcow2 image.
     pub fn from(mut file: File, max_nesting_depth: u32) -> Result<QcowFile> {
