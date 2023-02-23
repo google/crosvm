@@ -9,10 +9,8 @@
 # To fix violations where possible:
 # $ ./tools/clippy --fix
 
-from typing import List, Optional
-from impl.common import CROSVM_ROOT, run_main, cmd, chdir
-from impl.test_runner import get_workspace_excludes
-from impl.test_target import Triple, SHORTHANDS
+from typing import Optional
+from impl.common import CROSVM_ROOT, run_main, cmd, chdir, Triple, SHORTHANDS
 
 clippy = cmd("cargo clippy").with_color_flag()
 
@@ -27,7 +25,6 @@ def main(
         triple: Triple = Triple.from_shorthand(platform) if platform else Triple.host_default()
     except Exception as e:
         raise type(e)(str(e) + f"\nValid platforms are {', '.join(SHORTHANDS.keys())}")
-    excluded_crates: List[str] = list(get_workspace_excludes(triple))
 
     chdir(CROSVM_ROOT)
 
@@ -44,7 +41,6 @@ def main(
     clippy(
         "--workspace",
         f"--features={triple.feature_flag}",
-        *[f"--exclude={crate}" for crate in excluded_crates],
         *common_args,
     ).with_envs(triple.get_cargo_env()).fg()
 

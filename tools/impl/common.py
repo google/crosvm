@@ -105,6 +105,17 @@ assert 'name = "crosvm"' in CROSVM_TOML.read_text()
 global_time_records: List[Tuple[str, datetime.timedelta]] = []
 
 
+def crosvm_target_dir():
+    crosvm_target = os.environ.get("CROSVM_TARGET_DIR")
+    cargo_target = os.environ.get("CARGO_TARGET_DIR")
+    if crosvm_target:
+        return Path(crosvm_target)
+    elif cargo_target:
+        return Path(cargo_target) / "crosvm"
+    else:
+        return CROSVM_ROOT / "target/crosvm"
+
+
 class CommandResult(NamedTuple):
     """Results of a command execution as returned by Command.run()"""
 
@@ -1040,6 +1051,93 @@ def sudo_is_passwordless():
     # is available.
     (ret, _) = subprocess.getstatusoutput("SUDO_ASKPASS=false sudo --askpass true")
     return ret == 0
+
+
+SHORTHANDS = {
+    "mingw64": "x86_64-pc-windows-gnu",
+    "msvc64": "x86_64-pc-windows-msvc",
+    "armhf": "armv7-unknown-linux-gnueabihf",
+    "aarch64": "aarch64-unknown-linux-gnu",
+    "x86_64": "x86_64-unknown-linux-gnu",
+}
+
+
+class Triple(NamedTuple):
+    """
+    Build triple in cargo format.
+
+    The format is: <arch><sub>-<vendor>-<sys>-<abi>, However, we will treat <arch><sub> as a single
+    arch to simplify things.
+    """
+
+    arch: str
+    vendor: str
+    sys: Optional[str]
+    abi: Optional[str]
+
+    @classmethod
+    def from_shorthand(cls, shorthand: str):
+        "These shorthands make it easier to specify triples on the command line."
+        if "-" in shorthand:
+            triple = shorthand
+        elif shorthand in SHORTHANDS:
+            triple = SHORTHANDS[shorthand]
+        else:
+            raise Exception(f"Not a valid build triple shorthand: {shorthand}")
+        return cls.from_str(triple)
+
+    @classmethod
+    def from_str(cls, triple: str):
+        parts = triple.split("-")
+        if len(parts) < 2:
+            raise Exception(f"Unsupported triple {triple}")
+        return cls(
+            parts[0],
+            parts[1],
+            parts[2] if len(parts) > 2 else None,
+            parts[3] if len(parts) > 3 else None,
+        )
+
+    @classmethod
+    def from_linux_arch(cls, arch: str):
+        "Rough logic to convert the output of `arch` into a corresponding linux build triple."
+        if arch == "armhf":
+            return cls.from_str("armv7-unknown-linux-gnueabihf")
+        else:
+            return cls.from_str(f"{arch}-unknown-linux-gnu")
+
+    @classmethod
+    def host_default(cls):
+        "Returns the default build triple of the host."
+        rustc_info = subprocess.check_output(["rustc", "-vV"], text=True)
+        match = re.search(r"host: (\S+)", rustc_info)
+        if not match:
+            raise Exception(f"Cannot parse rustc info: {rustc_info}")
+        return cls.from_str(match.group(1))
+
+    @property
+    def feature_flag(self):
+        triple_to_shorthand = {v: k for k, v in SHORTHANDS.items()}
+        shorthand = triple_to_shorthand.get(str(self))
+        if not shorthand:
+            raise Exception(f"No feature set for triple {self}")
+        return f"all-{shorthand}"
+
+    @property
+    def target_dir(self):
+        return crosvm_target_dir() / str(self)
+
+    def get_cargo_env(self):
+        """Environment variables to make cargo use the test target."""
+        env: Dict[str, str] = {}
+        cargo_target = str(self)
+        env["CARGO_BUILD_TARGET"] = cargo_target
+        env["CARGO_TARGET_DIR"] = str(self.target_dir)
+        env["CROSVM_TARGET_DIR"] = str(crosvm_target_dir())
+        return env
+
+    def __str__(self):
+        return f"{self.arch}-{self.vendor}-{self.sys}-{self.abi}"
 
 
 console = Console()

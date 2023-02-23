@@ -23,8 +23,8 @@ from impl.common import (
     run_main,
     sudo_is_passwordless,
     verbose,
+    Triple,
 )
-from impl.test_target import Triple
 from impl.test_config import ROOT_TESTS, DO_NOT_RUN, DO_NOT_RUN_AARCH64, DO_NOT_RUN_WIN64, E2E_TESTS
 from impl import testvm
 
