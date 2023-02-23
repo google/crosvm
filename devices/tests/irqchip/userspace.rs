@@ -54,6 +54,7 @@ use hypervisor::Vcpu;
 use hypervisor::VcpuExit;
 use hypervisor::VcpuRunHandle;
 use hypervisor::VcpuX86_64;
+use hypervisor::Xsave;
 use resources::AddressRange;
 use resources::SystemAllocator;
 use resources::SystemAllocatorConfig;
@@ -737,6 +738,12 @@ impl VcpuX86_64 for FakeVcpu {
         unimplemented!()
     }
     fn set_fpu(&self, _fpu: &Fpu) -> Result<()> {
+        unimplemented!()
+    }
+    fn get_xsave(&self) -> Result<Xsave> {
+        unimplemented!()
+    }
+    fn set_xsave(&self, _xsave: &Xsave) -> Result<()> {
         unimplemented!()
     }
     fn get_debugregs(&self) -> Result<DebugRegs> {

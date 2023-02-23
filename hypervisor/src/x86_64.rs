@@ -95,6 +95,12 @@ pub trait VcpuX86_64: Vcpu {
     /// Sets the VCPU extended control registers.
     fn set_xcrs(&self, xcrs: &[Register]) -> Result<()>;
 
+    /// Gets the VCPU x87 FPU, MMX, XMM, YMM and MXCSR registers.
+    fn get_xsave(&self) -> Result<Xsave>;
+
+    /// Sets the VCPU x87 FPU, MMX, XMM, YMM and MXCSR registers.
+    fn set_xsave(&self, xsave: &Xsave) -> Result<()>;
+
     /// Gets the model-specific registers.  `msrs` specifies the MSR indexes to be queried, and
     /// on success contains their indexes and values.
     fn get_msrs(&self, msrs: &mut Vec<Register>) -> Result<()>;
@@ -858,3 +864,7 @@ pub enum CpuHybridType {
     /// Intel Core.
     Core,
 }
+
+/// State of the VCPU's x87 FPU, MMX, XMM, YMM registers.
+/// May contain more state depending on enabled extensions.
+pub struct Xsave(pub Vec<u32>);

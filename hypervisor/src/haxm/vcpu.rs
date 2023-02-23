@@ -26,6 +26,7 @@ use data_model::vec_with_array_field;
 use libc::EINVAL;
 use libc::ENOENT;
 use libc::ENXIO;
+use libc::EOPNOTSUPP;
 use vm_memory::GuestAddress;
 
 use super::*;
@@ -47,6 +48,7 @@ use crate::Vcpu;
 use crate::VcpuExit;
 use crate::VcpuRunHandle;
 use crate::VcpuX86_64;
+use crate::Xsave;
 
 // HAXM exit reasons
 // IO port request
@@ -467,6 +469,14 @@ impl VcpuX86_64 for HaxmVcpu {
         }
 
         Ok(())
+    }
+
+    fn get_xsave(&self) -> Result<Xsave> {
+        Err(Error::new(EOPNOTSUPP))
+    }
+
+    fn set_xsave(&self, _xsave: &Xsave) -> Result<()> {
+        Err(Error::new(EOPNOTSUPP))
     }
 
     /// Gets the VCPU debug registers.
