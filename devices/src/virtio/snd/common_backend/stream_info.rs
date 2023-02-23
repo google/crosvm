@@ -7,6 +7,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use audio_streams::SampleFormat;
+use audio_streams::StreamEffect;
 use base::error;
 use cros_async::sync::Mutex as AsyncMutex;
 use cros_async::Executor;
@@ -39,7 +40,43 @@ pub struct SetParams {
     pub dir: u8,
 }
 
+/// StreamInfoBuilder builds a [`StreamInfo`]. It is used when we want to store the parameters to
+/// create a [`StreamInfo`] beforehand and actually create it later. (as is the case with VirtioSnd)
+///
+/// To create a new StreamInfoBuilder, see [`StreamInfo::builder()`].
+#[derive(Clone)]
+pub struct StreamInfoBuilder {
+    stream_source_generator: Arc<SysAudioStreamSourceGenerator>,
+    effects: Vec<StreamEffect>,
+}
+
+impl StreamInfoBuilder {
+    /// Creates a StreamInfoBuilder with minimal required fields:
+    ///
+    /// * `stream_source_generator`: Generator which generates stream source in [`StreamInfo::prepare()`].
+    pub fn new(stream_source_generator: Arc<SysAudioStreamSourceGenerator>) -> Self {
+        StreamInfoBuilder {
+            stream_source_generator,
+            effects: vec![],
+        }
+    }
+
+    /// Set the [`StreamEffect`]s to use when creating a stream from the stream source in [`StreamInfo::prepare()`].
+    /// The default value is no effects.
+    pub fn effects(mut self, effects: Vec<StreamEffect>) -> Self {
+        self.effects = effects;
+        self
+    }
+
+    /// Builds a [`StreamInfo`].
+    pub fn build(self) -> StreamInfo {
+        self.into()
+    }
+}
+
 /// StreamInfo represents a virtio snd stream.
+///
+/// To create a StreamInfo, see [`StreamInfo::builder()`] and [`StreamInfoBuilder::build()`].
 pub struct StreamInfo {
     pub(crate) stream_source: Option<SysAudioStreamSource>,
     stream_source_generator: Arc<SysAudioStreamSourceGenerator>,
@@ -50,6 +87,8 @@ pub struct StreamInfo {
     pub(crate) period_bytes: usize,
     direction: u8,  // VIRTIO_SND_D_*
     pub state: u32, // VIRTIO_SND_R_PCM_SET_PARAMS -> VIRTIO_SND_R_PCM_STOP, or 0 (uninitialized)
+    // Stream effects to use when creating a new stream on [`prepare()`].
+    effects: Vec<StreamEffect>,
 
     // just_reset set to true after reset. Make invalid state transition return Ok. Set to false
     // after a valid state transition to SET_PARAMS or PREPARE.
@@ -72,6 +111,7 @@ impl fmt::Debug for StreamInfo {
             .field("period_bytes", &self.period_bytes)
             .field("direction", &get_virtio_direction_name(self.direction))
             .field("state", &get_virtio_snd_r_pcm_cmd_name(self.state))
+            .field("effects", &self.effects)
             .finish()
     }
 }
@@ -97,14 +137,11 @@ impl Drop for StreamInfo {
     }
 }
 
-impl StreamInfo {
-    /// Creates a new [`StreamInfo`].
-    ///
-    /// * `stream_source_generator`: Generator which generates stream source in [`StreamInfo::prepare()`].
-    pub fn new(stream_source_generator: Arc<SysAudioStreamSourceGenerator>) -> Self {
+impl From<StreamInfoBuilder> for StreamInfo {
+    fn from(builder: StreamInfoBuilder) -> Self {
         StreamInfo {
             stream_source: None,
-            stream_source_generator,
+            stream_source_generator: builder.stream_source_generator,
             channels: 0,
             format: SampleFormat::U8,
             frame_rate: 0,
@@ -112,12 +149,23 @@ impl StreamInfo {
             period_bytes: 0,
             direction: 0,
             state: 0,
+            effects: builder.effects,
             just_reset: false,
             status_mutex: Rc::new(AsyncMutex::new(WorkerStatus::Pause)),
             sender: None,
             worker_future: None,
             ex: None,
         }
+    }
+}
+
+impl StreamInfo {
+    /// Creates a minimal [`StreamInfoBuilder`]. See [`StreamInfoBuilder::new()`] for
+    /// the description of each parameter.
+    pub fn builder(
+        stream_source_generator: Arc<SysAudioStreamSourceGenerator>,
+    ) -> StreamInfoBuilder {
+        StreamInfoBuilder::new(stream_source_generator)
     }
 
     /// Sets parameters of the stream, putting it into [`VIRTIO_SND_R_PCM_SET_PARAMS`] state.
@@ -227,7 +275,7 @@ impl StreamInfo {
                         self.format,
                         self.frame_rate,
                         self.period_bytes / frame_size,
-                        &[],
+                        &self.effects[..],
                         ex,
                     )
                     .await
@@ -343,7 +391,7 @@ mod tests {
     use super::*;
 
     fn new_stream() -> StreamInfo {
-        StreamInfo::new(Arc::new(Box::new(NoopStreamSourceGenerator::new())))
+        StreamInfo::builder(Arc::new(Box::new(NoopStreamSourceGenerator::new()))).build()
     }
 
     fn stream_set_params(
@@ -642,5 +690,14 @@ mod tests {
         stream_start(new_stream_release(), &ex, true, VIRTIO_SND_R_PCM_RELEASE);
         stream_stop(new_stream_release(), &ex, true, VIRTIO_SND_R_PCM_RELEASE);
         stream_release(new_stream_release(), &ex, true, VIRTIO_SND_R_PCM_RELEASE);
+    }
+
+    #[test]
+    fn test_stream_info_builder() {
+        let builder = StreamInfo::builder(Arc::new(Box::new(NoopStreamSourceGenerator::new())))
+            .effects(vec![StreamEffect::EchoCancellation]);
+
+        let stream = builder.build();
+        assert_eq!(stream.effects, vec![StreamEffect::EchoCancellation]);
     }
 }

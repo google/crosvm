@@ -5,7 +5,6 @@
 pub mod sys;
 
 use std::rc::Rc;
-use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::bail;
@@ -34,10 +33,11 @@ use crate::virtio::device_constants::snd::virtio_snd_config;
 use crate::virtio::snd::common_backend::async_funcs::handle_ctrl_queue;
 use crate::virtio::snd::common_backend::async_funcs::handle_pcm_queue;
 use crate::virtio::snd::common_backend::async_funcs::send_pcm_response_worker;
-use crate::virtio::snd::common_backend::create_stream_source_generators;
+use crate::virtio::snd::common_backend::create_stream_info_builders;
 use crate::virtio::snd::common_backend::hardcoded_snd_data;
 use crate::virtio::snd::common_backend::hardcoded_virtio_snd_config;
 use crate::virtio::snd::common_backend::stream_info::StreamInfo;
+use crate::virtio::snd::common_backend::stream_info::StreamInfoBuilder;
 use crate::virtio::snd::common_backend::PcmResponse;
 use crate::virtio::snd::common_backend::SndData;
 use crate::virtio::snd::common_backend::MAX_QUEUE_NUM;
@@ -78,20 +78,19 @@ impl SndBackend {
 
         let snd_data = hardcoded_snd_data(&params);
         let mut keep_rds = Vec::new();
-        let generators = create_stream_source_generators(&params, &snd_data, &mut keep_rds)?;
+        let builders = create_stream_info_builders(&params, &snd_data, &mut keep_rds)?;
 
-        if snd_data.pcm_info_len() != generators.len() {
+        if snd_data.pcm_info_len() != builders.len() {
             error!(
-                "snd: expected {} stream source generators, got {}",
+                "snd: expected {} stream info builders, got {}",
                 snd_data.pcm_info_len(),
-                generators.len(),
+                builders.len(),
             )
         }
 
-        let streams = generators
+        let streams = builders
             .into_iter()
-            .map(Arc::new)
-            .map(StreamInfo::new)
+            .map(StreamInfoBuilder::build)
             .map(AsyncMutex::new)
             .collect();
         let streams = Rc::new(AsyncMutex::new(streams));
