@@ -983,7 +983,8 @@ impl Vcpu for KvmVcpu {
                 // Safe because we know the exit reason told us this union
                 // field is valid
                 let event_type = unsafe { run.__bindgen_anon_1.system_event.type_ };
-                let event_flags = unsafe { run.__bindgen_anon_1.system_event.flags };
+                let event_flags =
+                    unsafe { run.__bindgen_anon_1.system_event.__bindgen_anon_1.flags };
                 match event_type {
                     KVM_SYSTEM_EVENT_SHUTDOWN => Ok(VcpuExit::SystemEventShutdown),
                     KVM_SYSTEM_EVENT_RESET => self.system_event_reset(event_flags),

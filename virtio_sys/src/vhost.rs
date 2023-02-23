@@ -53,12 +53,14 @@ pub const VHOST_PAGE_SIZE: u32 = 4096;
 pub const VHOST_SCSI_ABI_VERSION: u32 = 1;
 pub const VHOST_F_LOG_ALL: u32 = 26;
 pub const VHOST_NET_F_VIRTIO_NET_HDR: u32 = 27;
+pub const VHOST_BACKEND_F_IOTLB_MSG_V2: u32 = 1;
+pub const VHOST_BACKEND_F_IOTLB_BATCH: u32 = 2;
+pub const VHOST_BACKEND_F_IOTLB_ASID: u32 = 3;
+pub const VHOST_BACKEND_F_SUSPEND: u32 = 4;
 pub const VHOST_FILE_UNBIND: i32 = -1;
 pub const VHOST_VIRTIO: u32 = 175;
 pub const VHOST_VRING_LITTLE_ENDIAN: u32 = 0;
 pub const VHOST_VRING_BIG_ENDIAN: u32 = 1;
-pub const VHOST_BACKEND_F_IOTLB_MSG_V2: u32 = 1;
-pub const VHOST_BACKEND_F_IOTLB_BATCH: u32 = 2;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct vhost_vring_state {
@@ -124,7 +126,7 @@ impl Default for vhost_msg {
 #[derive(Copy, Clone)]
 pub struct vhost_msg_v2 {
     pub type_: u32,
-    pub reserved: u32,
+    pub asid: u32,
     pub __bindgen_anon_1: vhost_msg_v2__bindgen_ty_1,
 }
 #[repr(C)]

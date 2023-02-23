@@ -63,6 +63,7 @@ pub const VIRTIO_NET_F_CTRL_RX_EXTRA: u32 = 20;
 pub const VIRTIO_NET_F_GUEST_ANNOUNCE: u32 = 21;
 pub const VIRTIO_NET_F_MQ: u32 = 22;
 pub const VIRTIO_NET_F_CTRL_MAC_ADDR: u32 = 23;
+pub const VIRTIO_NET_F_NOTF_COAL: u32 = 53;
 pub const VIRTIO_NET_F_HASH_REPORT: u32 = 57;
 pub const VIRTIO_NET_F_RSS: u32 = 60;
 pub const VIRTIO_NET_F_RSC_EXT: u32 = 61;
@@ -123,6 +124,9 @@ pub const VIRTIO_NET_CTRL_MQ_RSS_CONFIG: u32 = 1;
 pub const VIRTIO_NET_CTRL_MQ_HASH_CONFIG: u32 = 2;
 pub const VIRTIO_NET_CTRL_GUEST_OFFLOADS: u32 = 5;
 pub const VIRTIO_NET_CTRL_GUEST_OFFLOADS_SET: u32 = 0;
+pub const VIRTIO_NET_CTRL_NOTF_COAL: u32 = 6;
+pub const VIRTIO_NET_CTRL_NOTF_COAL_TX_SET: u32 = 0;
+pub const VIRTIO_NET_CTRL_NOTF_COAL_RX_SET: u32 = 1;
 pub type __le16 = u16;
 pub type __le32 = u32;
 pub type __virtio16 = u16;
@@ -256,4 +260,16 @@ pub struct virtio_net_hash_config {
     pub reserved: [__le16; 4usize],
     pub hash_key_length: u8,
     pub hash_key_data: __IncompleteArrayField<u8>,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct virtio_net_ctrl_coal_tx {
+    pub tx_max_packets: __le32,
+    pub tx_usecs: __le32,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct virtio_net_ctrl_coal_rx {
+    pub rx_max_packets: __le32,
+    pub rx_usecs: __le32,
 }

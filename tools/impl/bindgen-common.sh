@@ -4,7 +4,7 @@
 
 # Helper functions for bindgen scripts sourced by tools/bindgen-all-the-things.
 
-export BINDGEN_LINUX="${PWD}/../../third_party/kernel/v5.15"
+export BINDGEN_LINUX="${PWD}/../../third_party/kernel/v6.1"
 
 export BINDGEN_PLATFORM2="${PWD}/../../platform2"
 

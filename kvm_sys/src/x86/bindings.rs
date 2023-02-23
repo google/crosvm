@@ -9,7 +9,6 @@
 
 // Added by kvm_sys/bindgen.sh
 pub const KVM_SYSTEM_EVENT_S2IDLE: u32 = 4;
-pub const KVM_SYSTEM_EVENT_RESET_FLAG_PSCI_RESET2: u64 = 0x1;
 // TODO(tjeznach): Remove this when reporting KVM_IOAPIC_NUM_PINS is no longer required.
 pub const KVM_CAP_IOAPIC_NUM_PINS: u32 = 8191;
 // TODO(qwandor): Update this once the pKVM patches are merged upstream with a stable capability ID.
@@ -217,11 +216,13 @@ pub const KVM_GUESTDBG_INJECT_DB: u32 = 262144;
 pub const KVM_GUESTDBG_INJECT_BP: u32 = 524288;
 pub const KVM_GUESTDBG_BLOCKIRQ: u32 = 1048576;
 pub const KVM_PIT_FLAGS_HPET_LEGACY: u32 = 1;
+pub const KVM_PIT_FLAGS_SPEAKER_DATA_ON: u32 = 2;
 pub const KVM_VCPUEVENT_VALID_NMI_PENDING: u32 = 1;
 pub const KVM_VCPUEVENT_VALID_SIPI_VECTOR: u32 = 2;
 pub const KVM_VCPUEVENT_VALID_SHADOW: u32 = 4;
 pub const KVM_VCPUEVENT_VALID_SMM: u32 = 8;
 pub const KVM_VCPUEVENT_VALID_PAYLOAD: u32 = 16;
+pub const KVM_VCPUEVENT_VALID_TRIPLE_FAULT: u32 = 32;
 pub const KVM_X86_SHADOW_INT_MOV_SS: u32 = 1;
 pub const KVM_X86_SHADOW_INT_STI: u32 = 2;
 pub const KVM_MAX_XCRS: u32 = 16;
@@ -234,6 +235,8 @@ pub const KVM_X86_QUIRK_CD_NW_CLEARED: u32 = 2;
 pub const KVM_X86_QUIRK_LAPIC_MMIO_HOLE: u32 = 4;
 pub const KVM_X86_QUIRK_OUT_7E_INC_RIP: u32 = 8;
 pub const KVM_X86_QUIRK_MISC_ENABLE_NO_MWAIT: u32 = 16;
+pub const KVM_X86_QUIRK_FIX_HYPERCALL_INSN: u32 = 32;
+pub const KVM_X86_QUIRK_MWAIT_NEVER_UD_FAULTS: u32 = 64;
 pub const KVM_STATE_NESTED_FORMAT_VMX: u32 = 0;
 pub const KVM_STATE_NESTED_FORMAT_SVM: u32 = 1;
 pub const KVM_STATE_NESTED_GUEST_MODE: u32 = 1;
@@ -246,8 +249,11 @@ pub const KVM_STATE_NESTED_SMM_VMXON: u32 = 2;
 pub const KVM_STATE_NESTED_VMX_VMCS_SIZE: u32 = 4096;
 pub const KVM_STATE_NESTED_SVM_VMCB_SIZE: u32 = 4096;
 pub const KVM_STATE_VMX_PREEMPTION_TIMER_DEADLINE: u32 = 1;
+pub const KVM_X86_XCOMP_GUEST_SUPP: u32 = 0;
 pub const KVM_PMU_EVENT_ALLOW: u32 = 0;
 pub const KVM_PMU_EVENT_DENY: u32 = 1;
+pub const KVM_VCPU_TSC_CTRL: u32 = 0;
+pub const KVM_VCPU_TSC_OFFSET: u32 = 0;
 pub const KVM_API_VERSION: u32 = 12;
 pub const KVM_TRC_SHIFT: u32 = 16;
 pub const KVM_TRC_ENTRYEXIT: u32 = 65536;
@@ -327,6 +333,9 @@ pub const KVM_EXIT_DIRTY_RING_FULL: u32 = 31;
 pub const KVM_EXIT_AP_RESET_HOLD: u32 = 32;
 pub const KVM_EXIT_X86_BUS_LOCK: u32 = 33;
 pub const KVM_EXIT_XEN: u32 = 34;
+pub const KVM_EXIT_RISCV_SBI: u32 = 35;
+pub const KVM_EXIT_RISCV_CSR: u32 = 36;
+pub const KVM_EXIT_NOTIFY: u32 = 37;
 pub const KVM_INTERNAL_ERROR_EMULATION: u32 = 1;
 pub const KVM_INTERNAL_ERROR_SIMUL_EX: u32 = 2;
 pub const KVM_INTERNAL_ERROR_DELIVERY_EV: u32 = 3;
@@ -342,16 +351,23 @@ pub const KVM_S390_RESET_IPL: u32 = 16;
 pub const KVM_SYSTEM_EVENT_SHUTDOWN: u32 = 1;
 pub const KVM_SYSTEM_EVENT_RESET: u32 = 2;
 pub const KVM_SYSTEM_EVENT_CRASH: u32 = 3;
+pub const KVM_SYSTEM_EVENT_WAKEUP: u32 = 4;
+pub const KVM_SYSTEM_EVENT_SUSPEND: u32 = 5;
+pub const KVM_SYSTEM_EVENT_SEV_TERM: u32 = 6;
 pub const KVM_MSR_EXIT_REASON_INVAL: u32 = 1;
 pub const KVM_MSR_EXIT_REASON_UNKNOWN: u32 = 2;
 pub const KVM_MSR_EXIT_REASON_FILTER: u32 = 4;
+pub const KVM_NOTIFY_CONTEXT_INVALID: u32 = 1;
 pub const SYNC_REGS_SIZE_BYTES: u32 = 2048;
 pub const KVM_S390_MEMOP_LOGICAL_READ: u32 = 0;
 pub const KVM_S390_MEMOP_LOGICAL_WRITE: u32 = 1;
 pub const KVM_S390_MEMOP_SIDA_READ: u32 = 2;
 pub const KVM_S390_MEMOP_SIDA_WRITE: u32 = 3;
+pub const KVM_S390_MEMOP_ABSOLUTE_READ: u32 = 4;
+pub const KVM_S390_MEMOP_ABSOLUTE_WRITE: u32 = 5;
 pub const KVM_S390_MEMOP_F_CHECK_ONLY: u32 = 1;
 pub const KVM_S390_MEMOP_F_INJECT_EXCEPTION: u32 = 2;
+pub const KVM_S390_MEMOP_F_SKEY_PROTECTION: u32 = 4;
 pub const KVM_MP_STATE_RUNNABLE: u32 = 0;
 pub const KVM_MP_STATE_UNINITIALIZED: u32 = 1;
 pub const KVM_MP_STATE_INIT_RECEIVED: u32 = 2;
@@ -362,6 +378,7 @@ pub const KVM_MP_STATE_CHECK_STOP: u32 = 6;
 pub const KVM_MP_STATE_OPERATING: u32 = 7;
 pub const KVM_MP_STATE_LOAD: u32 = 8;
 pub const KVM_MP_STATE_AP_RESET_HOLD: u32 = 9;
+pub const KVM_MP_STATE_SUSPENDED: u32 = 10;
 pub const KVM_S390_SIGP_STOP: u32 = 4294836224;
 pub const KVM_S390_PROGRAM_INT: u32 = 4294836225;
 pub const KVM_S390_SIGP_SET_PREFIX: u32 = 4294836226;
@@ -605,17 +622,41 @@ pub const KVM_CAP_PPC_RPT_INVALIDATE: u32 = 202;
 pub const KVM_CAP_BINARY_STATS_FD: u32 = 203;
 pub const KVM_CAP_EXIT_ON_EMULATION_FAILURE: u32 = 204;
 pub const KVM_CAP_ARM_MTE: u32 = 205;
+pub const KVM_CAP_VM_MOVE_ENC_CONTEXT_FROM: u32 = 206;
+pub const KVM_CAP_VM_GPA_BITS: u32 = 207;
+pub const KVM_CAP_XSAVE2: u32 = 208;
+pub const KVM_CAP_SYS_ATTRIBUTES: u32 = 209;
+pub const KVM_CAP_PPC_AIL_MODE_3: u32 = 210;
+pub const KVM_CAP_S390_MEM_OP_EXTENSION: u32 = 211;
+pub const KVM_CAP_PMU_CAPABILITY: u32 = 212;
+pub const KVM_CAP_DISABLE_QUIRKS2: u32 = 213;
+pub const KVM_CAP_VM_TSC_CONTROL: u32 = 214;
+pub const KVM_CAP_SYSTEM_EVENT_DATA: u32 = 215;
+pub const KVM_CAP_ARM_SYSTEM_SUSPEND: u32 = 216;
+pub const KVM_CAP_S390_PROTECTED_DUMP: u32 = 217;
+pub const KVM_CAP_X86_TRIPLE_FAULT_EVENT: u32 = 218;
+pub const KVM_CAP_X86_NOTIFY_VMEXIT: u32 = 219;
+pub const KVM_CAP_VM_DISABLE_NX_HUGE_PAGES: u32 = 220;
+pub const KVM_CAP_S390_ZPCI_OP: u32 = 221;
+pub const KVM_CAP_S390_CPU_TOPOLOGY: u32 = 222;
+pub const KVM_CAP_DIRTY_LOG_RING_ACQ_REL: u32 = 223;
+pub const KVM_CAP_UCLAMP_SYNC: u32 = 1024;
 pub const KVM_IRQ_ROUTING_IRQCHIP: u32 = 1;
 pub const KVM_IRQ_ROUTING_MSI: u32 = 2;
 pub const KVM_IRQ_ROUTING_S390_ADAPTER: u32 = 3;
 pub const KVM_IRQ_ROUTING_HV_SINT: u32 = 4;
+pub const KVM_IRQ_ROUTING_XEN_EVTCHN: u32 = 5;
 pub const KVM_XEN_HVM_CONFIG_HYPERCALL_MSR: u32 = 1;
 pub const KVM_XEN_HVM_CONFIG_INTERCEPT_HCALL: u32 = 2;
 pub const KVM_XEN_HVM_CONFIG_SHARED_INFO: u32 = 4;
 pub const KVM_XEN_HVM_CONFIG_RUNSTATE: u32 = 8;
+pub const KVM_XEN_HVM_CONFIG_EVTCHN_2LEVEL: u32 = 16;
+pub const KVM_XEN_HVM_CONFIG_EVTCHN_SEND: u32 = 32;
 pub const KVM_IRQFD_FLAG_DEASSIGN: u32 = 1;
 pub const KVM_IRQFD_FLAG_RESAMPLE: u32 = 2;
 pub const KVM_CLOCK_TSC_STABLE: u32 = 2;
+pub const KVM_CLOCK_REALTIME: u32 = 4;
+pub const KVM_CLOCK_HOST_TSC: u32 = 8;
 pub const KVM_MMU_FSL_BOOKE_NOHV: u32 = 0;
 pub const KVM_MMU_FSL_BOOKE_HV: u32 = 1;
 pub const KVM_REG_ARCH_MASK: i64 = -72057594037927936;
@@ -647,15 +688,23 @@ pub const KVM_DEV_VFIO_GROUP_DEL: u32 = 2;
 pub const KVM_DEV_VFIO_GROUP_SET_SPAPR_TCE: u32 = 3;
 pub const KVM_S390_STORE_STATUS_NOADDR: i32 = -1;
 pub const KVM_S390_STORE_STATUS_PREFIXED: i32 = -2;
+pub const KVM_XEN_EVTCHN_DEASSIGN: u32 = 1;
+pub const KVM_XEN_EVTCHN_UPDATE: u32 = 2;
+pub const KVM_XEN_EVTCHN_RESET: u32 = 4;
 pub const KVM_XEN_ATTR_TYPE_LONG_MODE: u32 = 0;
 pub const KVM_XEN_ATTR_TYPE_SHARED_INFO: u32 = 1;
 pub const KVM_XEN_ATTR_TYPE_UPCALL_VECTOR: u32 = 2;
+pub const KVM_XEN_ATTR_TYPE_EVTCHN: u32 = 3;
+pub const KVM_XEN_ATTR_TYPE_XEN_VERSION: u32 = 4;
 pub const KVM_XEN_VCPU_ATTR_TYPE_VCPU_INFO: u32 = 0;
 pub const KVM_XEN_VCPU_ATTR_TYPE_VCPU_TIME_INFO: u32 = 1;
 pub const KVM_XEN_VCPU_ATTR_TYPE_RUNSTATE_ADDR: u32 = 2;
 pub const KVM_XEN_VCPU_ATTR_TYPE_RUNSTATE_CURRENT: u32 = 3;
 pub const KVM_XEN_VCPU_ATTR_TYPE_RUNSTATE_DATA: u32 = 4;
 pub const KVM_XEN_VCPU_ATTR_TYPE_RUNSTATE_ADJUST: u32 = 5;
+pub const KVM_XEN_VCPU_ATTR_TYPE_VCPU_ID: u32 = 6;
+pub const KVM_XEN_VCPU_ATTR_TYPE_TIMER: u32 = 7;
+pub const KVM_XEN_VCPU_ATTR_TYPE_UPCALL_VECTOR: u32 = 8;
 pub const KVM_DEV_ASSIGN_ENABLE_IOMMU: u32 = 1;
 pub const KVM_DEV_ASSIGN_PCI_2_3: u32 = 2;
 pub const KVM_DEV_ASSIGN_MASK_INTX: u32 = 4;
@@ -680,6 +729,7 @@ pub const KVM_DIRTY_LOG_INITIALLY_SET: u32 = 2;
 pub const KVM_DIRTY_GFN_F_MASK: u32 = 3;
 pub const KVM_BUS_LOCK_DETECTION_OFF: u32 = 1;
 pub const KVM_BUS_LOCK_DETECTION_EXIT: u32 = 2;
+pub const KVM_PMU_CAP_DISABLE: u32 = 1;
 pub const KVM_STATS_TYPE_SHIFT: u32 = 0;
 pub const KVM_STATS_TYPE_MASK: u32 = 15;
 pub const KVM_STATS_TYPE_CUMULATIVE: u32 = 0;
@@ -694,12 +744,18 @@ pub const KVM_STATS_UNIT_NONE: u32 = 0;
 pub const KVM_STATS_UNIT_BYTES: u32 = 16;
 pub const KVM_STATS_UNIT_SECONDS: u32 = 32;
 pub const KVM_STATS_UNIT_CYCLES: u32 = 48;
-pub const KVM_STATS_UNIT_MAX: u32 = 48;
+pub const KVM_STATS_UNIT_BOOLEAN: u32 = 64;
+pub const KVM_STATS_UNIT_MAX: u32 = 64;
 pub const KVM_STATS_BASE_SHIFT: u32 = 8;
 pub const KVM_STATS_BASE_MASK: u32 = 3840;
 pub const KVM_STATS_BASE_POW10: u32 = 0;
 pub const KVM_STATS_BASE_POW2: u32 = 256;
 pub const KVM_STATS_BASE_MAX: u32 = 256;
+pub const KVM_X86_NOTIFY_VMEXIT_ENABLED: u32 = 1;
+pub const KVM_X86_NOTIFY_VMEXIT_USER: u32 = 2;
+pub const KVM_S390_ZPCIOP_REG_AEN: u32 = 0;
+pub const KVM_S390_ZPCIOP_DEREG_AEN: u32 = 1;
+pub const KVM_S390_ZPCIOP_REGAEN_HOST: u32 = 1;
 pub type __le16 = u16;
 pub type __be16 = u16;
 pub type __le32 = u32;
@@ -1183,7 +1239,8 @@ pub struct kvm_vcpu_events {
     pub sipi_vector: u32,
     pub flags: u32,
     pub smi: kvm_vcpu_events__bindgen_ty_4,
-    pub reserved: [u8; 27usize],
+    pub triple_fault: kvm_vcpu_events__bindgen_ty_5,
+    pub reserved: [u8; 26usize],
     pub exception_has_payload: u8,
     pub exception_payload: u64,
 }
@@ -1222,6 +1279,11 @@ pub struct kvm_vcpu_events__bindgen_ty_4 {
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
+pub struct kvm_vcpu_events__bindgen_ty_5 {
+    pub pending: u8,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
 pub struct kvm_debugregs {
     pub db: [u64; 4usize],
     pub dr6: u64,
@@ -1230,9 +1292,10 @@ pub struct kvm_debugregs {
     pub reserved: [u64; 9usize],
 }
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug)]
 pub struct kvm_xsave {
     pub region: [u32; 1024usize],
+    pub extra: __IncompleteArrayField<u32>,
 }
 impl Default for kvm_xsave {
     fn default() -> Self {
@@ -1662,6 +1725,9 @@ pub union kvm_run__bindgen_ty_1 {
     pub arm_nisv: kvm_run__bindgen_ty_1__bindgen_ty_21,
     pub msr: kvm_run__bindgen_ty_1__bindgen_ty_22,
     pub xen: kvm_xen_exit,
+    pub riscv_sbi: kvm_run__bindgen_ty_1__bindgen_ty_23,
+    pub riscv_csr: kvm_run__bindgen_ty_1__bindgen_ty_24,
+    pub notify: kvm_run__bindgen_ty_1__bindgen_ty_25,
     pub padding: [::std::os::raw::c_char; 256usize],
 }
 #[repr(C)]
@@ -1747,13 +1813,41 @@ pub struct kvm_run__bindgen_ty_1__bindgen_ty_12 {
     pub data: [u64; 16usize],
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct kvm_run__bindgen_ty_1__bindgen_ty_13 {
     pub suberror: u32,
     pub ndata: u32,
     pub flags: u64,
+    pub __bindgen_anon_1: kvm_run__bindgen_ty_1__bindgen_ty_13__bindgen_ty_1,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union kvm_run__bindgen_ty_1__bindgen_ty_13__bindgen_ty_1 {
+    pub __bindgen_anon_1: kvm_run__bindgen_ty_1__bindgen_ty_13__bindgen_ty_1__bindgen_ty_1,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct kvm_run__bindgen_ty_1__bindgen_ty_13__bindgen_ty_1__bindgen_ty_1 {
     pub insn_size: u8,
     pub insn_bytes: [u8; 15usize],
+}
+impl Default for kvm_run__bindgen_ty_1__bindgen_ty_13__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl Default for kvm_run__bindgen_ty_1__bindgen_ty_13 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -1783,10 +1877,35 @@ pub struct kvm_run__bindgen_ty_1__bindgen_ty_17 {
     pub epr: u32,
 }
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct kvm_run__bindgen_ty_1__bindgen_ty_18 {
     pub type_: u32,
+    pub ndata: u32,
+    pub __bindgen_anon_1: kvm_run__bindgen_ty_1__bindgen_ty_18__bindgen_ty_1,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union kvm_run__bindgen_ty_1__bindgen_ty_18__bindgen_ty_1 {
     pub flags: u64,
+    pub data: [u64; 16usize],
+}
+impl Default for kvm_run__bindgen_ty_1__bindgen_ty_18__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl Default for kvm_run__bindgen_ty_1__bindgen_ty_18 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -1817,6 +1936,27 @@ pub struct kvm_run__bindgen_ty_1__bindgen_ty_22 {
     pub reason: u32,
     pub index: u32,
     pub data: u64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct kvm_run__bindgen_ty_1__bindgen_ty_23 {
+    pub extension_id: ::std::os::raw::c_ulong,
+    pub function_id: ::std::os::raw::c_ulong,
+    pub args: [::std::os::raw::c_ulong; 6usize],
+    pub ret: [::std::os::raw::c_ulong; 2usize],
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct kvm_run__bindgen_ty_1__bindgen_ty_24 {
+    pub csr_num: ::std::os::raw::c_ulong,
+    pub new_value: ::std::os::raw::c_ulong,
+    pub write_mask: ::std::os::raw::c_ulong,
+    pub ret_value: ::std::os::raw::c_ulong,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct kvm_run__bindgen_ty_1__bindgen_ty_25 {
+    pub flags: u32,
 }
 impl Default for kvm_run__bindgen_ty_1 {
     fn default() -> Self {
@@ -1952,9 +2092,15 @@ pub struct kvm_s390_mem_op {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union kvm_s390_mem_op__bindgen_ty_1 {
-    pub ar: u8,
+    pub __bindgen_anon_1: kvm_s390_mem_op__bindgen_ty_1__bindgen_ty_1,
     pub sida_offset: u32,
     pub reserved: [u8; 32usize],
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct kvm_s390_mem_op__bindgen_ty_1__bindgen_ty_1 {
+    pub ar: u8,
+    pub key: u8,
 }
 impl Default for kvm_s390_mem_op__bindgen_ty_1 {
     fn default() -> Self {
@@ -2192,12 +2338,12 @@ pub struct kvm_guest_debug {
     pub pad: u32,
     pub arch: kvm_guest_debug_arch,
 }
-pub const kvm_ioeventfd_flag_nr_datamatch: ::std::os::raw::c_uint = 0;
-pub const kvm_ioeventfd_flag_nr_pio: ::std::os::raw::c_uint = 1;
-pub const kvm_ioeventfd_flag_nr_deassign: ::std::os::raw::c_uint = 2;
-pub const kvm_ioeventfd_flag_nr_virtio_ccw_notify: ::std::os::raw::c_uint = 3;
-pub const kvm_ioeventfd_flag_nr_fast_mmio: ::std::os::raw::c_uint = 4;
-pub const kvm_ioeventfd_flag_nr_max: ::std::os::raw::c_uint = 5;
+pub const kvm_ioeventfd_flag_nr_datamatch: _bindgen_ty_1 = 0;
+pub const kvm_ioeventfd_flag_nr_pio: _bindgen_ty_1 = 1;
+pub const kvm_ioeventfd_flag_nr_deassign: _bindgen_ty_1 = 2;
+pub const kvm_ioeventfd_flag_nr_virtio_ccw_notify: _bindgen_ty_1 = 3;
+pub const kvm_ioeventfd_flag_nr_fast_mmio: _bindgen_ty_1 = 4;
+pub const kvm_ioeventfd_flag_nr_max: _bindgen_ty_1 = 5;
 pub type _bindgen_ty_1 = ::std::os::raw::c_uint;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -2334,6 +2480,13 @@ pub struct kvm_irq_routing_hv_sint {
     pub sint: u32,
 }
 #[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct kvm_irq_routing_xen_evtchn {
+    pub port: u32,
+    pub vcpu: u32,
+    pub priority: u32,
+}
+#[repr(C)]
 #[derive(Copy, Clone)]
 pub struct kvm_irq_routing_entry {
     pub gsi: u32,
@@ -2349,6 +2502,7 @@ pub union kvm_irq_routing_entry__bindgen_ty_1 {
     pub msi: kvm_irq_routing_msi,
     pub adapter: kvm_irq_routing_s390_adapter,
     pub hv_sint: kvm_irq_routing_hv_sint,
+    pub xen_evtchn: kvm_irq_routing_xen_evtchn,
     pub pad: [u32; 8usize],
 }
 impl Default for kvm_irq_routing_entry__bindgen_ty_1 {
@@ -2420,7 +2574,10 @@ pub struct kvm_irqfd {
 pub struct kvm_clock_data {
     pub clock: u64,
     pub flags: u32,
-    pub pad: [u32; 9usize],
+    pub pad0: u32,
+    pub realtime: u64,
+    pub host_tsc: u64,
+    pub pad: [u32; 4usize],
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -2523,6 +2680,77 @@ pub struct kvm_s390_pv_unp {
     pub size: u64,
     pub tweak: u64,
 }
+pub const pv_cmd_dmp_id_KVM_PV_DUMP_INIT: pv_cmd_dmp_id = 0;
+pub const pv_cmd_dmp_id_KVM_PV_DUMP_CONFIG_STOR_STATE: pv_cmd_dmp_id = 1;
+pub const pv_cmd_dmp_id_KVM_PV_DUMP_COMPLETE: pv_cmd_dmp_id = 2;
+pub const pv_cmd_dmp_id_KVM_PV_DUMP_CPU: pv_cmd_dmp_id = 3;
+pub type pv_cmd_dmp_id = ::std::os::raw::c_uint;
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct kvm_s390_pv_dmp {
+    pub subcmd: u64,
+    pub buff_addr: u64,
+    pub buff_len: u64,
+    pub gaddr: u64,
+    pub reserved: [u64; 4usize],
+}
+pub const pv_cmd_info_id_KVM_PV_INFO_VM: pv_cmd_info_id = 0;
+pub const pv_cmd_info_id_KVM_PV_INFO_DUMP: pv_cmd_info_id = 1;
+pub type pv_cmd_info_id = ::std::os::raw::c_uint;
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct kvm_s390_pv_info_dump {
+    pub dump_cpu_buffer_len: u64,
+    pub dump_config_mem_buffer_per_1m: u64,
+    pub dump_config_finalize_len: u64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct kvm_s390_pv_info_vm {
+    pub inst_calls_list: [u64; 4usize],
+    pub max_cpus: u64,
+    pub max_guests: u64,
+    pub max_guest_addr: u64,
+    pub feature_indication: u64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct kvm_s390_pv_info_header {
+    pub id: u32,
+    pub len_max: u32,
+    pub len_written: u32,
+    pub reserved: u32,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct kvm_s390_pv_info {
+    pub header: kvm_s390_pv_info_header,
+    pub __bindgen_anon_1: kvm_s390_pv_info__bindgen_ty_1,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union kvm_s390_pv_info__bindgen_ty_1 {
+    pub dump: kvm_s390_pv_info_dump,
+    pub vm: kvm_s390_pv_info_vm,
+}
+impl Default for kvm_s390_pv_info__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl Default for kvm_s390_pv_info {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
 pub const pv_cmd_id_KVM_PV_ENABLE: pv_cmd_id = 0;
 pub const pv_cmd_id_KVM_PV_DISABLE: pv_cmd_id = 1;
 pub const pv_cmd_id_KVM_PV_SET_SEC_PARMS: pv_cmd_id = 2;
@@ -2530,6 +2758,8 @@ pub const pv_cmd_id_KVM_PV_UNPACK: pv_cmd_id = 3;
 pub const pv_cmd_id_KVM_PV_VERIFY: pv_cmd_id = 4;
 pub const pv_cmd_id_KVM_PV_PREP_RESET: pv_cmd_id = 5;
 pub const pv_cmd_id_KVM_PV_UNSHARE_ALL: pv_cmd_id = 6;
+pub const pv_cmd_id_KVM_PV_INFO: pv_cmd_id = 7;
+pub const pv_cmd_id_KVM_PV_DUMP: pv_cmd_id = 8;
 pub type pv_cmd_id = ::std::os::raw::c_uint;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -2554,12 +2784,60 @@ pub union kvm_xen_hvm_attr__bindgen_ty_1 {
     pub long_mode: u8,
     pub vector: u8,
     pub shared_info: kvm_xen_hvm_attr__bindgen_ty_1__bindgen_ty_1,
+    pub evtchn: kvm_xen_hvm_attr__bindgen_ty_1__bindgen_ty_2,
+    pub xen_version: u32,
     pub pad: [u64; 8usize],
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct kvm_xen_hvm_attr__bindgen_ty_1__bindgen_ty_1 {
     pub gfn: u64,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct kvm_xen_hvm_attr__bindgen_ty_1__bindgen_ty_2 {
+    pub send_port: u32,
+    pub type_: u32,
+    pub flags: u32,
+    pub deliver: kvm_xen_hvm_attr__bindgen_ty_1__bindgen_ty_2__bindgen_ty_1,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union kvm_xen_hvm_attr__bindgen_ty_1__bindgen_ty_2__bindgen_ty_1 {
+    pub port: kvm_xen_hvm_attr__bindgen_ty_1__bindgen_ty_2__bindgen_ty_1__bindgen_ty_1,
+    pub eventfd: kvm_xen_hvm_attr__bindgen_ty_1__bindgen_ty_2__bindgen_ty_1__bindgen_ty_2,
+    pub padding: [u32; 4usize],
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct kvm_xen_hvm_attr__bindgen_ty_1__bindgen_ty_2__bindgen_ty_1__bindgen_ty_1 {
+    pub port: u32,
+    pub vcpu: u32,
+    pub priority: u32,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct kvm_xen_hvm_attr__bindgen_ty_1__bindgen_ty_2__bindgen_ty_1__bindgen_ty_2 {
+    pub port: u32,
+    pub fd: i32,
+}
+impl Default for kvm_xen_hvm_attr__bindgen_ty_1__bindgen_ty_2__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl Default for kvm_xen_hvm_attr__bindgen_ty_1__bindgen_ty_2 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
 }
 impl Default for kvm_xen_hvm_attr__bindgen_ty_1 {
     fn default() -> Self {
@@ -2592,6 +2870,9 @@ pub union kvm_xen_vcpu_attr__bindgen_ty_1 {
     pub gpa: u64,
     pub pad: [u64; 8usize],
     pub runstate: kvm_xen_vcpu_attr__bindgen_ty_1__bindgen_ty_1,
+    pub vcpu_id: u32,
+    pub timer: kvm_xen_vcpu_attr__bindgen_ty_1__bindgen_ty_2,
+    pub vector: u8,
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -2602,6 +2883,13 @@ pub struct kvm_xen_vcpu_attr__bindgen_ty_1__bindgen_ty_1 {
     pub time_runnable: u64,
     pub time_blocked: u64,
     pub time_offline: u64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct kvm_xen_vcpu_attr__bindgen_ty_1__bindgen_ty_2 {
+    pub port: u32,
+    pub priority: u32,
+    pub expires_ns: u64,
 }
 impl Default for kvm_xen_vcpu_attr__bindgen_ty_1 {
     fn default() -> Self {
@@ -2863,4 +3151,47 @@ pub struct kvm_stats_desc {
     pub offset: u32,
     pub bucket_size: u32,
     pub name: __IncompleteArrayField<::std::os::raw::c_char>,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct kvm_s390_zpci_op {
+    pub fh: u32,
+    pub op: u8,
+    pub pad: [u8; 3usize],
+    pub u: kvm_s390_zpci_op__bindgen_ty_1,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union kvm_s390_zpci_op__bindgen_ty_1 {
+    pub reg_aen: kvm_s390_zpci_op__bindgen_ty_1__bindgen_ty_1,
+    pub reserved: [u64; 8usize],
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct kvm_s390_zpci_op__bindgen_ty_1__bindgen_ty_1 {
+    pub ibv: u64,
+    pub sb: u64,
+    pub flags: u32,
+    pub noi: u32,
+    pub isc: u8,
+    pub sbo: u8,
+    pub pad: u16,
+}
+impl Default for kvm_s390_zpci_op__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl Default for kvm_s390_zpci_op {
+    fn default() -> Self {
+        let mut s = ::std::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::std::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
 }

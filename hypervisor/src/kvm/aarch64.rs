@@ -220,7 +220,7 @@ impl KvmVcpu {
     /// `event_flags` should be one or more of the `KVM_SYSTEM_EVENT_RESET_FLAG_*` values defined by
     /// KVM.
     pub fn system_event_reset(&self, event_flags: u64) -> Result<VcpuExit> {
-        if event_flags & KVM_SYSTEM_EVENT_RESET_FLAG_PSCI_RESET2 != 0 {
+        if event_flags & u64::from(KVM_SYSTEM_EVENT_RESET_FLAG_PSCI_RESET2) != 0 {
             // Read reset_type and cookie from x1 and x2.
             let reset_type = self.get_one_reg(VcpuRegAArch64::X(1))?;
             let cookie = self.get_one_reg(VcpuRegAArch64::X(2))?;

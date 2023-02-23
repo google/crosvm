@@ -95,7 +95,7 @@ pub const VFIO_REGION_TYPE_PCI_VENDOR_TYPE: u32 = 2147483648;
 pub const VFIO_REGION_TYPE_PCI_VENDOR_MASK: u32 = 65535;
 pub const VFIO_REGION_TYPE_GFX: u32 = 1;
 pub const VFIO_REGION_TYPE_CCW: u32 = 2;
-pub const VFIO_REGION_TYPE_MIGRATION: u32 = 3;
+pub const VFIO_REGION_TYPE_MIGRATION_DEPRECATED: u32 = 3;
 pub const VFIO_REGION_SUBTYPE_INTEL_IGD_OPREGION: u32 = 1;
 pub const VFIO_REGION_SUBTYPE_INTEL_IGD_HOST_CFG: u32 = 2;
 pub const VFIO_REGION_SUBTYPE_INTEL_IGD_LPC_CFG: u32 = 3;
@@ -107,11 +107,11 @@ pub const VFIO_DEVICE_GFX_LINK_STATE_DOWN: u32 = 2;
 pub const VFIO_REGION_SUBTYPE_CCW_ASYNC_CMD: u32 = 1;
 pub const VFIO_REGION_SUBTYPE_CCW_SCHIB: u32 = 2;
 pub const VFIO_REGION_SUBTYPE_CCW_CRW: u32 = 3;
-pub const VFIO_REGION_SUBTYPE_MIGRATION: u32 = 1;
-pub const VFIO_DEVICE_STATE_STOP: u32 = 0;
-pub const VFIO_DEVICE_STATE_RUNNING: u32 = 1;
-pub const VFIO_DEVICE_STATE_SAVING: u32 = 2;
-pub const VFIO_DEVICE_STATE_RESUMING: u32 = 4;
+pub const VFIO_REGION_SUBTYPE_MIGRATION_DEPRECATED: u32 = 1;
+pub const VFIO_DEVICE_STATE_V1_STOP: u32 = 0;
+pub const VFIO_DEVICE_STATE_V1_RUNNING: u32 = 1;
+pub const VFIO_DEVICE_STATE_V1_SAVING: u32 = 2;
+pub const VFIO_DEVICE_STATE_V1_RESUMING: u32 = 4;
 pub const VFIO_DEVICE_STATE_MASK: u32 = 7;
 pub const VFIO_REGION_INFO_CAP_MSIX_MAPPABLE: u32 = 3;
 pub const VFIO_REGION_INFO_CAP_NVLINK2_SSATGT: u32 = 4;
@@ -141,9 +141,16 @@ pub const VFIO_DEVICE_FEATURE_GET: u32 = 65536;
 pub const VFIO_DEVICE_FEATURE_SET: u32 = 131072;
 pub const VFIO_DEVICE_FEATURE_PROBE: u32 = 262144;
 pub const VFIO_DEVICE_FEATURE_PCI_VF_TOKEN: u32 = 0;
+pub const VFIO_MIGRATION_STOP_COPY: u32 = 1;
+pub const VFIO_MIGRATION_P2P: u32 = 2;
+pub const VFIO_DEVICE_FEATURE_MIGRATION: u32 = 1;
+pub const VFIO_DEVICE_FEATURE_MIG_DEVICE_STATE: u32 = 2;
 pub const VFIO_DEVICE_FEATURE_LOW_POWER_ENTRY: u32 = 3;
 pub const VFIO_DEVICE_FEATURE_LOW_POWER_ENTRY_WITH_WAKEUP: u32 = 4;
 pub const VFIO_DEVICE_FEATURE_LOW_POWER_EXIT: u32 = 5;
+pub const VFIO_DEVICE_FEATURE_DMA_LOGGING_START: u32 = 6;
+pub const VFIO_DEVICE_FEATURE_DMA_LOGGING_STOP: u32 = 7;
+pub const VFIO_DEVICE_FEATURE_DMA_LOGGING_REPORT: u32 = 8;
 pub const VFIO_IOMMU_INFO_PGSIZES: u32 = 1;
 pub const VFIO_IOMMU_INFO_CAPS: u32 = 2;
 pub const VFIO_IOMMU_TYPE1_INFO_CAP_IOVA_RANGE: u32 = 1;
@@ -387,9 +394,49 @@ pub struct vfio_device_feature {
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
+pub struct vfio_device_feature_migration {
+    pub flags: u64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct vfio_device_feature_mig_state {
+    pub device_state: u32,
+    pub data_fd: i32,
+}
+pub const vfio_device_mig_state_VFIO_DEVICE_STATE_ERROR: vfio_device_mig_state = 0;
+pub const vfio_device_mig_state_VFIO_DEVICE_STATE_STOP: vfio_device_mig_state = 1;
+pub const vfio_device_mig_state_VFIO_DEVICE_STATE_RUNNING: vfio_device_mig_state = 2;
+pub const vfio_device_mig_state_VFIO_DEVICE_STATE_STOP_COPY: vfio_device_mig_state = 3;
+pub const vfio_device_mig_state_VFIO_DEVICE_STATE_RESUMING: vfio_device_mig_state = 4;
+pub const vfio_device_mig_state_VFIO_DEVICE_STATE_RUNNING_P2P: vfio_device_mig_state = 5;
+pub type vfio_device_mig_state = ::std::os::raw::c_uint;
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
 pub struct vfio_device_low_power_entry_with_wakeup {
     pub wakeup_eventfd: i32,
     pub reserved: u32,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct vfio_device_feature_dma_logging_control {
+    pub page_size: u64,
+    pub num_ranges: u32,
+    pub __reserved: u32,
+    pub ranges: u64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct vfio_device_feature_dma_logging_range {
+    pub iova: u64,
+    pub length: u64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct vfio_device_feature_dma_logging_report {
+    pub iova: u64,
+    pub length: u64,
+    pub page_size: u64,
+    pub bitmap: u64,
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]

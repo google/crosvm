@@ -224,46 +224,46 @@ impl SubmitQueue {
 /// Enum to represent all io_uring operations
 #[repr(u32)]
 pub enum URingOperation {
-    Nop = IORING_OP_NOP,
-    Readv = IORING_OP_READV,
-    Writev = IORING_OP_WRITEV,
-    Fsync = IORING_OP_FSYNC,
-    ReadFixed = IORING_OP_READ_FIXED,
-    WriteFixed = IORING_OP_WRITE_FIXED,
-    PollAdd = IORING_OP_POLL_ADD,
-    PollRemove = IORING_OP_POLL_REMOVE,
-    SyncFileRange = IORING_OP_SYNC_FILE_RANGE,
-    Sendmsg = IORING_OP_SENDMSG,
-    Recvmsg = IORING_OP_RECVMSG,
-    Timeout = IORING_OP_TIMEOUT,
-    TimeoutRemove = IORING_OP_TIMEOUT_REMOVE,
-    Accept = IORING_OP_ACCEPT,
-    AsyncCancel = IORING_OP_ASYNC_CANCEL,
-    LinkTimeout = IORING_OP_LINK_TIMEOUT,
-    Connect = IORING_OP_CONNECT,
-    Fallocate = IORING_OP_FALLOCATE,
-    Openat = IORING_OP_OPENAT,
-    Close = IORING_OP_CLOSE,
-    FilesUpdate = IORING_OP_FILES_UPDATE,
-    Statx = IORING_OP_STATX,
-    Read = IORING_OP_READ,
-    Write = IORING_OP_WRITE,
-    Fadvise = IORING_OP_FADVISE,
-    Madvise = IORING_OP_MADVISE,
-    Send = IORING_OP_SEND,
-    Recv = IORING_OP_RECV,
-    Openat2 = IORING_OP_OPENAT2,
-    EpollCtl = IORING_OP_EPOLL_CTL,
-    Splice = IORING_OP_SPLICE,
-    ProvideBuffers = IORING_OP_PROVIDE_BUFFERS,
-    RemoveBuffers = IORING_OP_REMOVE_BUFFERS,
-    Tee = IORING_OP_TEE,
-    Shutdown = IORING_OP_SHUTDOWN,
-    Renameat = IORING_OP_RENAMEAT,
-    Unlinkat = IORING_OP_UNLINKAT,
-    Mkdirat = IORING_OP_MKDIRAT,
-    Symlinkat = IORING_OP_SYMLINKAT,
-    Linkat = IORING_OP_LINKAT,
+    Nop = io_uring_op_IORING_OP_NOP,
+    Readv = io_uring_op_IORING_OP_READV,
+    Writev = io_uring_op_IORING_OP_WRITEV,
+    Fsync = io_uring_op_IORING_OP_FSYNC,
+    ReadFixed = io_uring_op_IORING_OP_READ_FIXED,
+    WriteFixed = io_uring_op_IORING_OP_WRITE_FIXED,
+    PollAdd = io_uring_op_IORING_OP_POLL_ADD,
+    PollRemove = io_uring_op_IORING_OP_POLL_REMOVE,
+    SyncFileRange = io_uring_op_IORING_OP_SYNC_FILE_RANGE,
+    Sendmsg = io_uring_op_IORING_OP_SENDMSG,
+    Recvmsg = io_uring_op_IORING_OP_RECVMSG,
+    Timeout = io_uring_op_IORING_OP_TIMEOUT,
+    TimeoutRemove = io_uring_op_IORING_OP_TIMEOUT_REMOVE,
+    Accept = io_uring_op_IORING_OP_ACCEPT,
+    AsyncCancel = io_uring_op_IORING_OP_ASYNC_CANCEL,
+    LinkTimeout = io_uring_op_IORING_OP_LINK_TIMEOUT,
+    Connect = io_uring_op_IORING_OP_CONNECT,
+    Fallocate = io_uring_op_IORING_OP_FALLOCATE,
+    Openat = io_uring_op_IORING_OP_OPENAT,
+    Close = io_uring_op_IORING_OP_CLOSE,
+    FilesUpdate = io_uring_op_IORING_OP_FILES_UPDATE,
+    Statx = io_uring_op_IORING_OP_STATX,
+    Read = io_uring_op_IORING_OP_READ,
+    Write = io_uring_op_IORING_OP_WRITE,
+    Fadvise = io_uring_op_IORING_OP_FADVISE,
+    Madvise = io_uring_op_IORING_OP_MADVISE,
+    Send = io_uring_op_IORING_OP_SEND,
+    Recv = io_uring_op_IORING_OP_RECV,
+    Openat2 = io_uring_op_IORING_OP_OPENAT2,
+    EpollCtl = io_uring_op_IORING_OP_EPOLL_CTL,
+    Splice = io_uring_op_IORING_OP_SPLICE,
+    ProvideBuffers = io_uring_op_IORING_OP_PROVIDE_BUFFERS,
+    RemoveBuffers = io_uring_op_IORING_OP_REMOVE_BUFFERS,
+    Tee = io_uring_op_IORING_OP_TEE,
+    Shutdown = io_uring_op_IORING_OP_SHUTDOWN,
+    Renameat = io_uring_op_IORING_OP_RENAMEAT,
+    Unlinkat = io_uring_op_IORING_OP_UNLINKAT,
+    Mkdirat = io_uring_op_IORING_OP_MKDIRAT,
+    Symlinkat = io_uring_op_IORING_OP_SYMLINKAT,
+    Linkat = io_uring_op_IORING_OP_LINKAT,
 }
 
 /// Represents an allowlist of the restrictions to be registered to a uring.
@@ -437,9 +437,14 @@ impl URingContext {
         offset: Option<u64>,
         user_data: UserData,
     ) -> Result<()> {
-        self.submit_ring
-            .lock()
-            .add_rw_op(ptr, len, fd, offset, user_data, IORING_OP_WRITEV as u8)
+        self.submit_ring.lock().add_rw_op(
+            ptr,
+            len,
+            fd,
+            offset,
+            user_data,
+            io_uring_op_IORING_OP_WRITEV as u8,
+        )
     }
 
     /// Asynchronously reads from `fd` to the address given in `ptr`.
@@ -458,9 +463,14 @@ impl URingContext {
         offset: Option<u64>,
         user_data: UserData,
     ) -> Result<()> {
-        self.submit_ring
-            .lock()
-            .add_rw_op(ptr, len, fd, offset, user_data, IORING_OP_READV as u8)
+        self.submit_ring.lock().add_rw_op(
+            ptr,
+            len,
+            fd,
+            offset,
+            user_data,
+            io_uring_op_IORING_OP_READV as u8,
+        )
     }
 
     /// # Safety
@@ -508,7 +518,7 @@ impl URingContext {
         user_data: UserData,
     ) -> Result<()> {
         self.submit_ring.lock().prep_next_sqe(|sqe, _iovec| {
-            sqe.opcode = IORING_OP_WRITEV as u8;
+            sqe.opcode = io_uring_op_IORING_OP_WRITEV as u8;
             sqe.set_addr(iovecs.as_ptr() as *const _ as *const libc::c_void as u64);
             sqe.len = iovecs.len() as u32;
             sqe.set_off(file_offset_to_raw_offset(offset));
@@ -567,7 +577,7 @@ impl URingContext {
         user_data: UserData,
     ) -> Result<()> {
         self.submit_ring.lock().prep_next_sqe(|sqe, _iovec| {
-            sqe.opcode = IORING_OP_READV as u8;
+            sqe.opcode = io_uring_op_IORING_OP_READV as u8;
             sqe.set_addr(iovecs.as_ptr() as *const _ as *const libc::c_void as u64);
             sqe.len = iovecs.len() as u32;
             sqe.set_off(file_offset_to_raw_offset(offset));
@@ -585,7 +595,7 @@ impl URingContext {
     /// io_uring itself and for waking up a thread that's blocked inside a wait() call.
     pub fn add_nop(&self, user_data: UserData) -> Result<()> {
         self.submit_ring.lock().prep_next_sqe(|sqe, _iovec| {
-            sqe.opcode = IORING_OP_NOP as u8;
+            sqe.opcode = io_uring_op_IORING_OP_NOP as u8;
             sqe.fd = -1;
             sqe.user_data = user_data;
 
@@ -603,7 +613,7 @@ impl URingContext {
     /// defined.
     pub fn add_fsync(&self, fd: RawFd, user_data: UserData) -> Result<()> {
         self.submit_ring.lock().prep_next_sqe(|sqe, _iovec| {
-            sqe.opcode = IORING_OP_FSYNC as u8;
+            sqe.opcode = io_uring_op_IORING_OP_FSYNC as u8;
             sqe.fd = fd;
             sqe.user_data = user_data;
 
@@ -629,7 +639,7 @@ impl URingContext {
         // Note that len for fallocate in passed in the addr field of the sqe and the mode uses the
         // len field.
         self.submit_ring.lock().prep_next_sqe(|sqe, _iovec| {
-            sqe.opcode = IORING_OP_FALLOCATE as u8;
+            sqe.opcode = io_uring_op_IORING_OP_FALLOCATE as u8;
 
             sqe.fd = fd;
             sqe.set_addr(len);
@@ -651,7 +661,7 @@ impl URingContext {
     /// to get future events.
     pub fn add_poll_fd(&self, fd: RawFd, events: EventType, user_data: UserData) -> Result<()> {
         self.submit_ring.lock().prep_next_sqe(|sqe, _iovec| {
-            sqe.opcode = IORING_OP_POLL_ADD as u8;
+            sqe.opcode = io_uring_op_IORING_OP_POLL_ADD as u8;
             sqe.fd = fd;
             sqe.user_data = user_data;
             sqe.set_poll_events(events.into());
@@ -668,7 +678,7 @@ impl URingContext {
     /// Removes an FD that was previously added with `add_poll_fd`.
     pub fn remove_poll_fd(&self, fd: RawFd, events: EventType, user_data: UserData) -> Result<()> {
         self.submit_ring.lock().prep_next_sqe(|sqe, _iovec| {
-            sqe.opcode = IORING_OP_POLL_REMOVE as u8;
+            sqe.opcode = io_uring_op_IORING_OP_POLL_REMOVE as u8;
             sqe.fd = fd;
             sqe.user_data = user_data;
             sqe.set_poll_events(events.into());
@@ -691,7 +701,7 @@ impl URingContext {
     /// cancelled if already started.
     pub fn async_cancel(&self, addr: UserData, user_data: UserData) -> Result<()> {
         self.submit_ring.lock().prep_next_sqe(|sqe, _iovec| {
-            sqe.opcode = IORING_OP_ASYNC_CANCEL as u8;
+            sqe.opcode = io_uring_op_IORING_OP_ASYNC_CANCEL as u8;
             sqe.user_data = user_data;
             sqe.set_addr(addr);
 
