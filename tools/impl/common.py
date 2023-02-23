@@ -92,6 +92,9 @@ to this file.
 """
 TOOLS_ROOT = Path(__file__).parent.parent.resolve()
 
+"Cache directory that is preserved between builds in CI."
+CACHE_DIR = Path(os.environ.get("CROSVM_CACHE_DIR", os.environ.get("TMPDIR", "/tmp")))
+
 "Url of crosvm's gerrit review host"
 GERRIT_URL = "https://chromium-review.googlesource.com"
 

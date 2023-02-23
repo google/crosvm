@@ -10,12 +10,13 @@ import shutil
 import socket
 import subprocess
 import sys
-import tempfile
 import time
 import urllib.request as request
 from contextlib import closing
 from pathlib import Path
 from typing import Dict, Iterable, List, Literal, Optional, Tuple
+
+from .common import CACHE_DIR
 
 USAGE = """%(prog)s {command} [options]
 
@@ -87,7 +88,7 @@ def cargo_target_dir():
 
 
 def data_dir(arch: Arch):
-    return Path(tempfile.gettempdir()).joinpath("crosvm_tools").joinpath(arch)
+    return CACHE_DIR.joinpath("crosvm_tools").joinpath(arch)
 
 
 def pid_path(arch: Arch):
