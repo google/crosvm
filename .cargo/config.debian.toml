@@ -6,7 +6,7 @@ runner = "qemu-arm-static"
 linker = "aarch64-linux-gnu-gcc"
 runner = "qemu-aarch64-static"
 [target.x86_64-pc-windows-gnu]
-runner = "wine64-stable"
+runner = "wine64"
 
 # Provide path to the pkg-config wrapper for each supported platform
 [env]

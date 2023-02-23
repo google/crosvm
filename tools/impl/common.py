@@ -12,52 +12,24 @@ our command line tools.
 
 Refer to the scripts in ./tools for example usage.
 """
+
+# Import preamble before anything else
+from . import preamble  # type: ignore
+
+import argparse
+import contextlib
+import csv
 import datetime
 import functools
+import getpass
 import json
+import os
+import re
 import shlex
-import sys
+import shutil
 import subprocess
-
-
-def ensure_packages_exist(*packages: str):
-    """Installs the specified packages via pip if it does not exist."""
-    missing_packages: List[str] = []
-
-    for package in packages:
-        try:
-            __import__(package)
-        except ImportError:
-            missing_packages.append(package)
-
-    if missing_packages:
-        try:
-            __import__("pip")
-        except ImportError:
-            print(f"Missing the 'pip' package. Please install 'python3-pip'.")
-            sys.exit(1)
-
-        package_list = ", ".join(missing_packages)
-        print(
-            f"Missing python dependencies. Do you want to install {package_list}? [y/N] ",
-            end="",
-            flush=True,
-        )
-        response = sys.stdin.readline()
-        if response[:1].lower() == "y":
-            subprocess.check_call(
-                [sys.executable, "-m", "pip", "install", "--user", *missing_packages]
-            )
-            print("Success. Please re-run the command.")
-            sys.exit(0)
-        else:
-            sys.exit(1)
-
-
-# Note: These packages can be installed automatically on developer machines, but need to be
-# provided as CIPD packages for vpython in Luci CI. See tools/.vpython3 for how to add them.
-ensure_packages_exist("argh", "rich")
-
+import sys
+import traceback
 from io import StringIO
 from math import ceil
 from multiprocessing.pool import ThreadPool
@@ -77,20 +49,13 @@ from typing import (
     Union,
     cast,
 )
-from rich.console import Console
+
 import argh  # type: ignore
-import argparse
-import contextlib
-import csv
-import getpass
-import os
-import re
-import shutil
-import traceback
-from rich.console import Group
-from rich.text import Text
+
+from rich.console import Console, Group
 from rich.live import Live
 from rich.spinner import Spinner
+from rich.text import Text
 
 # File where to store http headers for gcloud authentication
 AUTH_HEADERS_FILE = Path(gettempdir()) / f"crosvm_gcloud_auth_headers_{getpass.getuser()}"

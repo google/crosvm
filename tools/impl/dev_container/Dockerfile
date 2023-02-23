@@ -22,6 +22,10 @@ ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH
 
+# Install pipx applications globally in /usr/local/bin
+ENV PIPX_HOME=/usr/local/pipx \
+    PIPX_BIN_DIR=/usr/local/bin
+
 # Use a dedicated target directory so we do not write into the source directory.
 RUN mkdir -p /scratch/cargo_target \
     && mkdir /cache
@@ -55,16 +59,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=private \
 RUN wget https://snapshot.debian.org/archive/debian/20230101T091029Z/pool/main/b/binutils-mingw-w64/binutils-mingw-w64-x86-64_2.38.90.20220713-2%2B9%2Bb1_amd64.deb \
     && dpkg -i binutils-mingw-w64-x86-64_2.38.90.20220713-2+9+b1_amd64.deb \
     && rm binutils-mingw-w64-x86-64_2.38.90.20220713-2+9+b1_amd64.deb
-
-# Install an older version of wine64. The latest version is crashing during wineboot.
-# See b/265995780
-RUN --mount=type=cache,target=/var/cache/apt,sharing=private \
-    --mount=type=cache,target=/var/lib/apt,sharing=private \
-    apt-get install --yes libopenal1 libvkd3d1 \
-    && wget https://snapshot.debian.org/archive/debian/20230101T091029Z/pool/main/w/wine/wine64_7.0.1~repack-1_amd64.deb \
-    && wget https://snapshot.debian.org/archive/debian/20230101T091029Z/pool/main/w/wine/libwine_7.0.1~repack-1_amd64.deb \
-    && dpkg -i libwine_7.0.1~repack-1_amd64.deb wine64_7.0.1~repack-1_amd64.deb \
-    && rm wine64_7.0.1~repack-1_amd64.deb libwine_7.0.1~repack-1_amd64.deb
 
 # Setup wine for root user
 RUN /tools/setup-wine64

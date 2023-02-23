@@ -4,7 +4,7 @@
 # found in the LICENSE file.
 set -ex
 
-wine64-stable wineboot
+wine64 wineboot
 
 WINETRICKS_COMMIT_HASH="b666e05a0bf28fd940e5c258ccdfc0a2799d1948"
 WINETRICKS_URL="https://raw.githubusercontent.com/Winetricks/winetricks/"$WINETRICKS_COMMIT_HASH"/src/winetricks"

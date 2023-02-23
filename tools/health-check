@@ -35,10 +35,11 @@ lucicfg = cmd("third_party/depot_tools/lucicfg")
 def check_python_tests(_: CheckContext):
     "No matter which python files have changed, run all available python tests."
     PYTHON_TESTS = [
-        *TOOLS_ROOT.glob("tests/*.py"),
-        TOOLS_ROOT / "impl/common.py",
+        "tests.cl_tests",
+        "impl.common",
     ]
-    parallel(*cmd("python3").foreach(PYTHON_TESTS)).fg(quiet=True)
+    with cwd_context(TOOLS_ROOT):
+        parallel(*cmd("python3 -m").foreach(PYTHON_TESTS)).fg(quiet=True)
 
 
 def check_python_types(context: CheckContext):
