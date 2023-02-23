@@ -229,6 +229,9 @@ vaapi = ["devices/vaapi"]
 ## filesystem if mounted, for easier debugging with tools like trace-cmd.
 trace_marker = ["cros_tracing/trace_marker"]
 
+## Facilitate tracing all syscalls by sandboxed processes.
+seccomp_trace = ["jail/seccomp_trace","base/seccomp_trace","devices/seccomp_trace"]
+
 #! ### Windows-specific feature flags
 #!
 #! These feature flags are only available on Windows builds of crosvm.

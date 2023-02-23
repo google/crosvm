@@ -26,6 +26,7 @@ vtpm = ["system_api", "protobuf", "dbus"]
 gfxstream = ["gpu", "rutabaga_gfx/gfxstream"]
 slirp = ["net_util/slirp"]
 stats = []
+seccomp_trace = []
 whpx = []
 
 [dependencies]

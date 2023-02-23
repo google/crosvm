@@ -6,13 +6,14 @@
 
 #![deny(missing_docs)]
 
+#[cfg(feature = "seccomp_trace")]
+use log::debug;
+use log::warn;
+use minijail::Minijail;
 use std::ffi::CString;
 use std::mem::ManuallyDrop;
 use std::os::unix::process::ExitStatusExt;
 use std::process;
-
-use log::warn;
-use minijail::Minijail;
 
 use crate::error;
 use crate::unix::wait_for_pid;
@@ -138,5 +139,15 @@ where
         }
         pid => pid,
     };
+    #[cfg(feature = "seccomp_trace")]
+    debug!(
+        // Proxy and swap (WIP) devices fork here
+        "seccomp_trace {{'PID':{}, 'name': '{}'}}",
+        pid,
+        match debug_label {
+            Some(debug_label) => debug_label,
+            None => "process.rs: no debug label".to_owned(),
+        }
+    );
     Ok(Child { pid })
 }

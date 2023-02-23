@@ -93,6 +93,7 @@ KNOWN_DISABLED_FEATURES = [
     "default-no-sandbox",
     "direct",
     "libvda",
+    "seccomp_trace",
     "whpx",
 ]
 

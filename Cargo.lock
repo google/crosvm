@@ -1227,6 +1227,7 @@ dependencies = [
  "serde",
  "serde_keyvalue",
  "which",
+ "zerocopy",
 ]
 
 [[package]]

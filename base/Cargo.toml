@@ -6,6 +6,7 @@ edition = "2021"
 
 [features]
 chromeos = []
+seccomp_trace = []
 
 [dependencies]
 audio_streams = { path = "../common/audio_streams" } # provided by ebuild

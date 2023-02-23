@@ -130,6 +130,8 @@ def main():
         help="Output in JSON instead of human readable format.",
     )
     parser.add_argument("--strip", action="store_true", help="Strip output binaries.")
+    parser.add_argument("cargo_arguments", nargs="*", help="Extra arguments pass to cargo")
+
     args = parser.parse_args()
     build_target = Triple.from_shorthand(args.build_target) if args.build_target else None
     build_target = build_target or Triple.host_default()
@@ -140,6 +142,7 @@ def main():
         "--features=" + features,
         f"--target={build_target}",
         "--workspace",
+        *args.cargo_arguments,
     ]
 
     build_env = os.environ.copy()

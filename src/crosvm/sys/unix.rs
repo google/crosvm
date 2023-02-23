@@ -3416,6 +3416,8 @@ fn jail_and_start_vu_device<T: VirtioDeviceBuilder>(
             // to clean up ourselves.
 
             info!("process for device {} (PID {}) started", &name, pid);
+            #[cfg(feature = "seccomp_trace")]
+            debug!("seccomp_trace {{'PID':{}, 'name': '{}'}}", pid, &name);
             Ok((pid, parent_resources))
         }
     }

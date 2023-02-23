@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #![deny(missing_docs)]
+#![allow(dead_code)]
 
 use std::path::Path;
 use std::str;
@@ -12,12 +13,20 @@ use anyhow::Context;
 use anyhow::Result;
 use base::getegid;
 use base::geteuid;
+#[cfg(feature = "seccomp_trace")]
+use base::warn;
 use libc::c_ulong;
 use minijail::Minijail;
+#[cfg(not(feature = "seccomp_trace"))]
 use once_cell::sync::Lazy;
+#[cfg(feature = "seccomp_trace")]
+use zerocopy::AsBytes;
+#[cfg(feature = "seccomp_trace")]
+use zerocopy::FromBytes;
 
 use crate::config::JailConfig;
 
+#[cfg(not(feature = "seccomp_trace"))]
 static EMBEDDED_BPFS: Lazy<std::collections::HashMap<&str, Vec<u8>>> =
     Lazy::new(|| include!(concat!(env!("OUT_DIR"), "/bpf_includes.in")));
 
@@ -185,6 +194,38 @@ pub fn create_sandbox_minijail(
     // Don't allow the device to gain new privileges.
     jail.no_new_privs();
 
+    #[cfg(feature = "seccomp_trace")]
+    {
+        #[repr(C)]
+        #[derive(AsBytes, FromBytes)]
+        struct sock_filter {
+            /* Filter block */
+            code: u16, /* Actual filter code */
+            jt: u8,    /* Jump true */
+            jf: u8,    /* Jump false */
+            k: u32,    /* Generic multiuse field */
+        }
+
+        // BPF constant is defined in https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/bpf_common.h
+        // BPF parser/assembler is defined in https://elixir.bootlin.com/linux/v4.9/source/tools/net/bpf_exp.y
+        const SECCOMP_RET_TRACE: u32 = 0x7ff00000;
+        const SECCOMP_RET_LOG: u32 = 0x7ffc0000;
+        const BPF_RET: u16 = 0x06;
+        const BPF_K: u16 = 0x00;
+
+        // return SECCOMP_RET_LOG for all syscalls
+        const FILTER_RET_TRACE: sock_filter = sock_filter {
+            code: BPF_RET | BPF_K,
+            jt: 0,
+            jf: 0,
+            k: SECCOMP_RET_LOG,
+        };
+        warn!("The running crosvm is compiled with seccomp_trace feature, and is striclty used for debugging purpose only. DO NOT USE IN PRODUCTION!!!");
+        jail.parse_seccomp_bytes(FILTER_RET_TRACE.as_bytes())
+            .unwrap();
+    }
+
+    #[cfg(not(feature = "seccomp_trace"))]
     if let Some(seccomp_policy_dir) = config.seccomp_policy_dir {
         let seccomp_policy_path = seccomp_policy_dir.join(config.seccomp_policy_name);
         // By default we'll prioritize using the pre-compiled .bpf over the .policy file (the .bpf
@@ -235,6 +276,7 @@ pub fn create_sandbox_minijail(
             )
         })?;
     }
+
     jail.use_seccomp_filter();
     // Don't do init setup.
     jail.run_as_init();

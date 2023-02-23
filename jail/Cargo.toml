@@ -4,6 +4,9 @@ version = "0.1.0"
 authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
+[features]
+seccomp_trace = []
+
 [dependencies]
 anyhow = "*"
 base = { path = "../base" }
@@ -11,6 +14,7 @@ libc = "*"
 once_cell = "*"
 serde = "*"
 serde_keyvalue = { path = "../serde_keyvalue", features = ["argh_derive"] }
+zerocopy = "*"
 
 [target.'cfg(unix)'.dependencies]
 minijail = "*"
