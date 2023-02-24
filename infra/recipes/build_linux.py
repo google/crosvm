@@ -91,7 +91,7 @@ def RunSteps(api, properties):
         api.crosvm.step_in_container(
             "Build crosvm tests",
             [
-                "./tools/run_tests2",
+                "./tools/run_tests",
                 "--verbose",
                 "--no-run",
             ]
@@ -100,7 +100,7 @@ def RunSteps(api, properties):
         api.crosvm.step_in_container(
             "Run crosvm tests",
             [
-                "./tools/run_tests2",
+                "./tools/run_tests",
                 "--verbose",
             ]
             + get_test_args(api, properties),

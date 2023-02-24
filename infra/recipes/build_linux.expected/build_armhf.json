@@ -4,7 +4,7 @@
       "vpython3",
       "[CACHE]/builder/crosvm/tools/dev_container",
       "--verbose",
-      "./tools/run_tests2",
+      "./tools/run_tests",
       "--verbose",
       "--no-run",
       "--platform=armhf",
@@ -33,7 +33,7 @@
       "vpython3",
       "[CACHE]/builder/crosvm/tools/dev_container",
       "--verbose",
-      "./tools/run_tests2",
+      "./tools/run_tests",
       "--verbose",
       "--platform=armhf",
       "--profile=presubmit"
