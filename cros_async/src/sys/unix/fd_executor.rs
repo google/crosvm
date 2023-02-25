@@ -369,11 +369,7 @@ impl RawExecutor {
         F: FnOnce() -> R + Send + 'static,
         R: Send + 'static,
     {
-        let task = self.blocking_pool.spawn(f);
-        FdExecutorTaskHandle {
-            task,
-            raw: Arc::downgrade(self),
-        }
+        self.spawn(self.blocking_pool.spawn(f))
     }
 
     fn run<F: Future>(&self, cx: &mut Context, done: F) -> Result<F::Output> {

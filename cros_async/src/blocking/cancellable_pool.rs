@@ -5,11 +5,11 @@
 //! Provides an async blocking pool whose tasks can be cancelled.
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
-use async_task::Task;
 use once_cell::sync::Lazy;
 use sync::Condvar;
 use sync::Mutex;
@@ -83,7 +83,7 @@ struct Inner {
 }
 
 impl Inner {
-    pub fn spawn<F, R>(self: &Arc<Self>, f: F) -> Task<R>
+    pub fn spawn<F, R>(self: &Arc<Self>, f: F) -> impl Future<Output = R>
     where
         F: FnOnce() -> R + Send + 'static,
         R: Send + 'static,
@@ -169,6 +169,7 @@ impl CancellableBlockingPool {
     /// Spawn a task to run in the `CancellableBlockingPool`.
     ///
     /// Callers may `await` the returned `Task` to be notified when the work is completed.
+    /// Dropping the future will not cancel the task.
     ///
     /// `cancel` helps to cancel a queued or in-flight operation `f`.
     /// `cancel` may be called more than once if `f` doesn't respond to `cancel`.
@@ -207,7 +208,7 @@ impl CancellableBlockingPool {
     ///    assert_eq!(*shared3.0.lock().unwrap(), cancelled);
     /// # }
     /// ```
-    pub fn spawn<F, R, G>(&self, f: F, cancel: G) -> Task<R>
+    pub fn spawn<F, R, G>(&self, f: F, cancel: G) -> impl Future<Output = R>
     where
         F: FnOnce() -> R + Send + 'static,
         R: Send + 'static,
@@ -335,7 +336,7 @@ impl Drop for CancellableBlockingPool {
 /// Callers may `await` the returned `Task` to be notified when the work is completed.
 ///
 /// See also: `spawn`.
-pub fn unblock<F, R, G>(f: F, cancel: G) -> Task<R>
+pub fn unblock<F, R, G>(f: F, cancel: G) -> impl Future<Output = R>
 where
     F: FnOnce() -> R + Send + 'static,
     R: Send + 'static,
@@ -380,7 +381,7 @@ mod test {
         let task_mu = mu.clone();
         let task_cv = cv.clone();
         let task_blocker_is_running = blocker_is_running.clone();
-        pool.spawn(
+        let _ = pool.spawn(
             move || {
                 task_blocker_is_running.wait();
                 let mut ready = task_mu.lock();
@@ -389,8 +390,7 @@ mod test {
                 }
             },
             move || {},
-        )
-        .detach();
+        );
 
         // Wait for the worker to start running the blocking thread.
         blocker_is_running.wait();
@@ -419,15 +419,14 @@ mod test {
 
         let running = Arc::new((Mutex::new(false), Condvar::new()));
         let running1 = running.clone();
-        pool.spawn(
+        let _ = pool.spawn(
             move || {
                 *running1.0.lock() = true;
                 running1.1.notify_one();
                 thread::sleep(Duration::from_secs(10000));
             },
             move || {},
-        )
-        .detach();
+        );
 
         let mut is_running = running.0.lock();
         while !*is_running {
@@ -456,15 +455,14 @@ mod test {
 
         let running = Arc::new((Mutex::new(false), Condvar::new()));
         let running1 = running.clone();
-        pool.spawn(
+        let _ = pool.spawn(
             move || {
                 *running1.0.lock() = true;
                 running1.1.notify_one();
                 thread::sleep(Duration::from_secs(10000));
             },
             move || {},
-        )
-        .detach();
+        );
 
         let mut is_running = running.0.lock();
         while !*is_running {

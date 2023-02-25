@@ -435,11 +435,7 @@ impl RawExecutor {
         F: FnOnce() -> R + Send + 'static,
         R: Send + 'static,
     {
-        let task = self.blocking_pool.spawn(f);
-        UringExecutorTaskHandle {
-            task,
-            raw: Arc::downgrade(self),
-        }
+        self.spawn(self.blocking_pool.spawn(f))
     }
 
     fn runs_tasks_on_current_thread(&self) -> bool {
