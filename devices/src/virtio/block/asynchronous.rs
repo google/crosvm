@@ -45,6 +45,7 @@ use disk::DiskFile;
 use futures::pin_mut;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
+use futures::FutureExt;
 use remain::sorted;
 use sync::Mutex;
 use thiserror::Error as ThisError;
@@ -310,11 +311,18 @@ pub async fn handle_queue<I: SignalableInterrupt + 'static>(
     flush_timer: Rc<RefCell<TimerAsync>>,
     flush_timer_armed: Rc<RefCell<bool>>,
 ) {
+    let mut background_tasks = FuturesUnordered::new();
     loop {
-        if let Err(e) = evt.next_val().await {
-            error!("Failed to read the next queue event: {}", e);
-            continue;
-        }
+        // Wait for the next signal from `evt` and process `background_tasks` in the meantime.
+        futures::select! {
+            _ = background_tasks.next() => continue,
+            res = evt.next_val().fuse() => {
+                if let Err(e) = res {
+                    error!("Failed to read the next queue event: {}", e);
+                    continue;
+                }
+            }
+        };
         while let Some(descriptor_chain) = queue.borrow_mut().pop(&mem) {
             let queue = Rc::clone(&queue);
             let disk_state = Rc::clone(&disk_state);
@@ -322,8 +330,7 @@ pub async fn handle_queue<I: SignalableInterrupt + 'static>(
             let interrupt = interrupt.clone();
             let flush_timer = Rc::clone(&flush_timer);
             let flush_timer_armed = Rc::clone(&flush_timer_armed);
-
-            ex.spawn_local(async move {
+            background_tasks.push(ex.spawn_local(async move {
                 process_one_chain(
                     queue,
                     descriptor_chain,
@@ -334,8 +341,7 @@ pub async fn handle_queue<I: SignalableInterrupt + 'static>(
                     flush_timer_armed,
                 )
                 .await
-            })
-            .detach();
+            }));
         }
     }
 }
