@@ -43,6 +43,8 @@ use balloon_control::BalloonTubeCommand;
 #[cfg(feature = "balloon")]
 use balloon_control::BalloonTubeResult;
 use base::error;
+use base::info;
+use base::warn;
 use base::with_as_descriptor;
 use base::AsRawDescriptor;
 use base::Error as SysError;
@@ -310,6 +312,26 @@ pub enum DeviceControlCommand {
     SnapshotDevices { snapshot_path: PathBuf },
     RestoreDevices { restore_path: PathBuf },
     Exit,
+}
+
+/// Commands to control the IRQ handler thread.
+#[derive(Serialize, Deserialize)]
+pub enum IrqHandlerRequest {
+    /// No response is sent for this command.
+    AddIrqControlTubes(Vec<Tube>),
+    WakeAndNotifyIteration,
+    /// No response is sent for this command.
+    Exit,
+}
+
+const EXPECTED_IRQ_FLUSH_ITERATIONS: usize = 100;
+
+/// Response for [IrqHandlerRequest].
+#[derive(Serialize, Deserialize, Debug)]
+pub enum IrqHandlerResponse {
+    /// Specifies the number of tokens serviced in the requested iteration
+    /// (less the token for the `WakeAndNotifyIteration` request).
+    HandlerIterationComplete(usize),
 }
 
 /// Source of a `VmMemoryRequest::RegisterMemory` mapping.
@@ -1151,6 +1173,7 @@ impl VmRequest {
         device_control_tube: &Tube,
         state_from_vcpu_channel: &mpsc::Receiver<VmRunMode>,
         vcpu_size: usize,
+        irq_handler_control: &Tube,
     ) -> VmResponse {
         match *self {
             VmRequest::Exit => {
@@ -1405,7 +1428,7 @@ impl VmRequest {
             }
             VmRequest::HotPlugCommand { device: _, add: _ } => VmResponse::Ok,
             VmRequest::Snapshot(SnapshotCommand::Take { ref snapshot_path }) => {
-                let f = || {
+                let f = || -> anyhow::Result<SnapshotControlResult> {
                     let _guard =
                         VcpuSuspendGuard::new(&kick_vcpus, state_from_vcpu_channel, vcpu_size)?;
                     device_control_tube
@@ -1415,7 +1438,51 @@ impl VmRequest {
                         .context("send command to devices control socket")?;
                     device_control_tube
                         .recv()
-                        .context("receive from devices control socket")
+                        .context("receive from devices control socket")?;
+
+                    // We want to flush all pending IRQs to the LAPICs. There are two cases:
+                    //
+                    // MSIs: these are directly delivered to the LAPIC. We must verify the handler
+                    // thread cycles once to deliver these interrupts.
+                    //
+                    // Legacy interrupts: in the case of a split IRQ chip, these interrupts may
+                    // flow through the userspace IOAPIC. If the hypervisor does not support
+                    // irqfds (e.g. WHPX), a single iteration will only flush the IRQ to the
+                    // IOAPIC. The underlying MSI will be asserted at this point, but if the
+                    // IRQ handler doesn't run another iteration, it won't be delivered to the
+                    // LAPIC. This is why we cycle the handler thread twice (doing so ensures we
+                    // process the underlying MSI).
+                    //
+                    // We can handle both of these cases by iterating until there are no tokens
+                    // serviced on the requested iteration. Note that in the legacy case, this
+                    // ensures at least two iterations.
+                    //
+                    // Note: within CrosVM, *all* interrupts are eventually converted into the
+                    // same mechanicism that MSIs use. This is why we say "underlying" MSI for
+                    // a legacy IRQ.
+                    let mut flush_attempts = 0;
+                    loop {
+                        irq_handler_control
+                            .send(&IrqHandlerRequest::WakeAndNotifyIteration)
+                            .context("failed to send flush command to IRQ handler thread")?;
+                        let resp = irq_handler_control
+                            .recv()
+                            .context("failed to recv flush response from IRQ handler thread")?;
+                        match resp {
+                            IrqHandlerResponse::HandlerIterationComplete(tokens_serviced) => {
+                                if tokens_serviced == 0 {
+                                    break;
+                                }
+                            }
+                        }
+                        flush_attempts += 1;
+                        if flush_attempts > EXPECTED_IRQ_FLUSH_ITERATIONS {
+                            warn!("flushing IRQs for snapshot may be stalled after iteration {}, expected <= {} iterations", flush_attempts, EXPECTED_IRQ_FLUSH_ITERATIONS);
+                        }
+                    }
+                    info!("flushed IRQs in {} iterations", flush_attempts);
+
+                    Ok(SnapshotControlResult::Ok)
                 };
                 match f() {
                     Ok(res) => VmResponse::SnapshotResponse(res),

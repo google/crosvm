@@ -151,8 +151,6 @@ use resources::Alloc;
 use resources::Error as ResourceError;
 use resources::SystemAllocator;
 use rutabaga_gfx::RutabagaGralloc;
-use serde::Deserialize;
-use serde::Serialize;
 use smallvec::SmallVec;
 #[cfg(feature = "swap")]
 use swap::SwapController;
@@ -2808,6 +2806,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                 &device_ctrl_tube,
                                                 &state_from_vcpu_channel,
                                                 vcpu_handles.len(),
+                                                &irq_handler_control,
                                             );
 
                                             // For non s2idle guest suspension we are done
@@ -3070,12 +3069,6 @@ enum IrqHandlerToken {
     HandlerControl,
 }
 
-#[derive(Serialize, Deserialize)]
-enum IrqHandlerRequest {
-    AddIrqControlTubes(Vec<Tube>),
-    Exit,
-}
-
 /// Handles IRQs and requests from devices to add additional IRQ lines.
 fn irq_handler_thread(
     mut irq_control_tubes: Vec<Tube>,
@@ -3121,7 +3114,9 @@ fn irq_handler_thread(
                 }
             }
         };
+        let token_count = events.len();
         let mut vm_irq_tubes_to_remove = Vec::new();
+        let mut notify_control_on_iteration_end = false;
 
         for event in events.iter().filter(|e| e.is_readable) {
             match event.token {
@@ -3142,6 +3137,9 @@ fn irq_handler_thread(
                                         .context("failed to add new IRQ control Tube to wait context")?;
                                     }
                                     irq_control_tubes.append(&mut tubes);
+                                }
+                                IrqHandlerRequest::WakeAndNotifyIteration => {
+                                    notify_control_on_iteration_end = true;
                                 }
                             }
                         }
@@ -3178,6 +3176,18 @@ fn irq_handler_thread(
                 }
             }
         }
+
+        if notify_control_on_iteration_end {
+            if let Err(e) = handler_control.send(&IrqHandlerResponse::HandlerIterationComplete(
+                token_count - 1,
+            )) {
+                error!(
+                    "failed to notify on iteration completion (snapshotting may fail): {}",
+                    e
+                );
+            }
+        }
+
         remove_hungup_and_drained_tubes(
             &events,
             &wait_ctx,
