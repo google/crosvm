@@ -585,6 +585,28 @@ impl RutabagaComponent for VirglRenderer {
                 num_iovecs = iovecs.len();
             }
 
+            if resource_create_blob.blob_mem == RUTABAGA_BLOB_MEM_PRIME {
+                let handle = match _handle_opt {
+                    Some(handle) => Some(Arc::new(handle)),
+                    None => {
+                        return Err(RutabagaError::InvalidRutabagaHandle);
+                    }
+                };
+                return Ok(RutabagaResource{
+                    resource_id,
+                    handle: handle,
+                    blob: true,
+                    blob_mem: resource_create_blob.blob_mem,
+                    blob_flags: resource_create_blob.blob_flags,
+                    map_info: None,
+                    info_2d: None,
+                    info_3d: None,
+                    vulkan_info: None,
+                    backing_iovecs: iovec_opt,
+                    import_mask: 1 << (RutabagaComponentType::VirglRenderer as u32),
+                });
+            }
+
             let resource_create_args = virgl_renderer_resource_create_blob_args {
                 res_handle: resource_id,
                 ctx_id,
@@ -598,6 +620,7 @@ impl RutabagaComponent for VirglRenderer {
 
             let ret = unsafe { virgl_renderer_resource_create_blob(&resource_create_args) };
             ret_to_res(ret)?;
+
 
             // TODO(b/244591751): assign vulkan_info to support opaque_fd mapping via Vulkano when
             // sandboxing (hence external_blob) is enabled.

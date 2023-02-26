@@ -729,6 +729,7 @@ impl Rutabaga {
             .get_mut(&resource_id)
             .ok_or(RutabagaError::InvalidResourceId)?;
 
+        println!("attach resource, component_type = {:?}", ctx.component_type());
         ctx.attach(resource);
         Ok(())
     }

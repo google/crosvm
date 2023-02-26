@@ -113,6 +113,7 @@ fn build_virglrenderer(out_dir: &Path) -> Result<()> {
         .env("PKG_CONFIG_PATH", &minigbm_src_abs)
         .arg("setup")
         .arg(format!("-Dplatforms={}", platforms.join(",")))
+        .arg("-Dminigbm_allocation=true")
         .arg("-Ddefault_library=static")
         .args(get_meson_cross_args())
         .arg(out_dir.as_os_str())
@@ -147,10 +148,10 @@ fn virglrenderer_deps() -> Result<()> {
 #[cfg(feature = "virgl_renderer")]
 fn virglrenderer() -> Result<()> {
     // Use virglrenderer package from the standard system location if available.
-    if pkg_config::Config::new().probe("virglrenderer").is_ok() {
-        virglrenderer_deps()?;
-        return Ok(());
-    }
+    // if pkg_config::Config::new().probe("virglrenderer").is_ok() {
+    //     virglrenderer_deps()?;
+    //     return Ok(());
+    // }
 
     // Otherwise build from source.
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
