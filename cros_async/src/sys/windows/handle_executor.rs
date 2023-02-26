@@ -4,6 +4,7 @@
 
 use std::future::Future;
 use std::io;
+use std::pin::Pin;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Weak;
@@ -20,6 +21,7 @@ use thiserror::Error as ThisError;
 use crate::queue::RunnableQueue;
 use crate::waker::new_waker;
 use crate::waker::WeakWake;
+use crate::DetachedTasks;
 
 #[derive(Debug, ThisError)]
 pub enum Error {
@@ -38,6 +40,30 @@ impl From<Error> for io::Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+pub struct HandleExecutorTaskHandle<R> {
+    task: Task<R>,
+    raw: Weak<RawExecutor>,
+}
+
+impl<R: Send + 'static> HandleExecutorTaskHandle<R> {
+    pub fn detach(self) {
+        if let Some(raw) = self.raw.upgrade() {
+            raw.detached_tasks.lock().push(self.task);
+        }
+    }
+}
+
+impl<R: 'static> Future for HandleExecutorTaskHandle<R> {
+    type Output = R;
+
+    fn poll(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context,
+    ) -> std::task::Poll<Self::Output> {
+        Pin::new(&mut self.task).poll(cx)
+    }
+}
+
 #[derive(Clone)]
 pub struct HandleExecutor {
     raw: Arc<RawExecutor>,
@@ -50,7 +76,7 @@ impl HandleExecutor {
         }
     }
 
-    pub fn spawn<F>(&self, f: F) -> Task<F::Output>
+    pub fn spawn<F>(&self, f: F) -> HandleExecutorTaskHandle<F::Output>
     where
         F: Future + Send + 'static,
         F::Output: Send + 'static,
@@ -58,7 +84,7 @@ impl HandleExecutor {
         self.raw.spawn(f)
     }
 
-    pub fn spawn_local<F>(&self, f: F) -> Task<F::Output>
+    pub fn spawn_local<F>(&self, f: F) -> HandleExecutorTaskHandle<F::Output>
     where
         F: Future + 'static,
         F::Output: 'static,
@@ -77,6 +103,7 @@ struct RawExecutor {
     queue: RunnableQueue,
     woken: Mutex<bool>,
     wakeup: Condvar,
+    detached_tasks: Mutex<DetachedTasks>,
 }
 
 impl RawExecutor {
@@ -85,6 +112,7 @@ impl RawExecutor {
             queue: RunnableQueue::new(),
             woken: Mutex::new(false),
             wakeup: Condvar::new(),
+            detached_tasks: Mutex::new(DetachedTasks::new()),
         }
     }
 
@@ -98,24 +126,30 @@ impl RawExecutor {
         }
     }
 
-    fn spawn<F>(self: &Arc<Self>, f: F) -> Task<F::Output>
+    fn spawn<F>(self: &Arc<Self>, f: F) -> HandleExecutorTaskHandle<F::Output>
     where
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
         let (runnable, task) = async_task::spawn(f, self.make_schedule_fn());
         runnable.schedule();
-        task
+        HandleExecutorTaskHandle {
+            task,
+            raw: Arc::downgrade(self),
+        }
     }
 
-    fn spawn_local<F>(self: &Arc<Self>, f: F) -> Task<F::Output>
+    fn spawn_local<F>(self: &Arc<Self>, f: F) -> HandleExecutorTaskHandle<F::Output>
     where
         F: Future + 'static,
         F::Output: 'static,
     {
         let (runnable, task) = async_task::spawn_local(f, self.make_schedule_fn());
         runnable.schedule();
-        task
+        HandleExecutorTaskHandle {
+            task,
+            raw: Arc::downgrade(self),
+        }
     }
 
     fn run<F: Future>(&self, cx: &mut Context, done: F) -> Result<F::Output> {
@@ -124,6 +158,9 @@ impl RawExecutor {
         loop {
             for runnable in self.queue.iter() {
                 runnable.run();
+            }
+            if let Ok(mut tasks) = self.detached_tasks.try_lock() {
+                tasks.poll(cx);
             }
             if let Poll::Ready(val) = done.as_mut().poll(cx) {
                 return Ok(val);
@@ -159,9 +196,11 @@ impl WeakWake for RawExecutor {
 mod test {
     use super::*;
     const FUT_MSG: i32 = 5;
+    use crate::BlockingPool;
     use futures::channel::mpsc as fut_mpsc;
     use futures::SinkExt;
     use futures::StreamExt;
+    use std::rc::Rc;
 
     #[test]
     fn run_future() {
@@ -194,5 +233,28 @@ mod test {
         ex.run_until(message_receiver(recv, send_done_signal))
             .unwrap();
         assert_eq!(receive_done_signal.recv().unwrap(), true);
+    }
+
+    // Dropping a task that owns a BlockingPool shouldn't leak the pool.
+    #[test]
+    fn drop_detached_blocking_pool() {
+        let rc = Rc::new(std::cell::Cell::new(0));
+        {
+            let ex = HandleExecutor::new();
+            let rc_clone = rc.clone();
+            ex.spawn_local(async move {
+                rc_clone.set(1);
+                let pool = BlockingPool::new(1, std::time::Duration::new(60, 0));
+                pool.spawn(|| loop {
+                    std::thread::park()
+                })
+                .await;
+                rc_clone.set(2);
+            })
+            .detach();
+            ex.run_until(async {}).unwrap();
+        }
+        assert_eq!(rc.get(), 1);
+        Rc::try_unwrap(rc).expect("Rc had too many refs");
     }
 }

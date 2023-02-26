@@ -71,10 +71,14 @@ pub mod sync;
 pub mod sys;
 pub use sys::Executor;
 pub use sys::ExecutorKind;
+pub use sys::TaskHandle;
 mod timer;
 mod waker;
 
+use futures::stream::FuturesUnordered;
 use std::future::Future;
+use std::pin::Pin;
+use std::task::Poll;
 
 pub use async_types::*;
 pub use base::Event;
@@ -131,6 +135,31 @@ pub enum Error {
     URingExecutor(sys::unix::uring_executor::Error),
 }
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// Heterogeneous collection of `async_task:Task` that are running in a "detached" state.
+///
+/// We keep them around to ensure they are dropped before the executor they are running on.
+pub(crate) struct DetachedTasks(FuturesUnordered<Pin<Box<dyn Future<Output = ()> + Send>>>);
+
+impl DetachedTasks {
+    pub(crate) fn new() -> Self {
+        DetachedTasks(FuturesUnordered::new())
+    }
+
+    pub(crate) fn push<R: Send + 'static>(&self, task: async_task::Task<R>) {
+        // Convert to fallible, otherwise poll could panic if the `Runnable` is dropped early.
+        let task = task.fallible();
+        self.0.push(Box::pin(async {
+            let _ = task.await;
+        }));
+    }
+
+    /// Polls all the tasks, dropping any that complete.
+    pub(crate) fn poll(&mut self, cx: &mut std::task::Context) {
+        use futures::Stream;
+        while let Poll::Ready(Some(_)) = Pin::new(&mut self.0).poll_next(cx) {}
+    }
+}
 
 // Select helpers to run until any future completes.
 

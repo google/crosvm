@@ -12,6 +12,7 @@ pub mod wait_for_handle;
 use std::future::Future;
 
 pub use handle_executor::HandleExecutor;
+pub use handle_executor::HandleExecutorTaskHandle;
 pub use handle_source::HandleSource;
 pub use handle_source::HandleWrapper;
 pub(crate) use wait_for_handle::WaitForHandle;

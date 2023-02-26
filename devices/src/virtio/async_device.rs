@@ -8,10 +8,10 @@
 
 use anyhow::bail;
 use anyhow::Context;
-use async_task::Task;
 use base::warn;
 use cros_async::AsyncResult;
 use cros_async::Executor;
+use cros_async::TaskHandle;
 use futures::future::AbortHandle;
 use futures::future::Abortable;
 use futures::future::Pending;
@@ -26,7 +26,7 @@ pub enum AsyncQueueState<T: 'static> {
     Stopped(T),
     /// Queue is being processed as a `Task` on an `Executor`, and can be stopped by aborting the
     /// `AbortHandle`.
-    Running((Task<T>, Executor, AbortHandle)),
+    Running((TaskHandle<T>, Executor, AbortHandle)),
     /// Something terrible happened and this queue is in a non-recoverable state.
     Broken,
 }

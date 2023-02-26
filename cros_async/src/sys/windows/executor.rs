@@ -3,8 +3,8 @@
 // found in the LICENSE file.
 
 use std::future::Future;
+use std::pin::Pin;
 
-use async_task::Task;
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
@@ -155,6 +155,28 @@ pub enum SetDefaultExecutorKindError {
     SetMoreThanOnce(ExecutorKind),
 }
 
+pub enum TaskHandle<R> {
+    Handle(super::HandleExecutorTaskHandle<R>),
+}
+
+impl<R: Send + 'static> TaskHandle<R> {
+    pub fn detach(self) {
+        match self {
+            TaskHandle::Handle(x) => x.detach(),
+        }
+    }
+}
+
+impl<R: 'static> Future for TaskHandle<R> {
+    type Output = R;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context) -> std::task::Poll<Self::Output> {
+        match self.get_mut() {
+            TaskHandle::Handle(x) => Pin::new(x).poll(cx),
+        }
+    }
+}
+
 impl Executor {
     /// Create a new `Executor`.
     pub fn new() -> AsyncResult<Self> {
@@ -197,10 +219,9 @@ impl Executor {
     }
 
     /// Spawn a new future for this executor to run to completion. Callers may use the returned
-    /// `Task` to await on the result of `f`. Dropping the returned `Task` will cancel `f`,
-    /// preventing it from being polled again. To drop a `Task` without canceling the future
-    /// associated with it use `Task::detach`. To cancel a task gracefully and wait until it is
-    /// fully destroyed, use `Task::cancel`.
+    /// `TaskHandle` to await on the result of `f`. Dropping the returned `TaskHandle` will cancel
+    /// `f`, preventing it from being polled again. To drop a `TaskHandle` without canceling the
+    /// future associated with it use `TaskHandle::detach`.
     ///
     /// # Examples
     ///
@@ -227,13 +248,13 @@ impl Executor {
     ///
     /// # example_spawn().unwrap();
     /// ```
-    pub fn spawn<F>(&self, f: F) -> Task<F::Output>
+    pub fn spawn<F>(&self, f: F) -> TaskHandle<F::Output>
     where
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
         match self {
-            Executor::Handle(ex) => ex.spawn(f),
+            Executor::Handle(ex) => TaskHandle::Handle(ex.spawn(f)),
         }
     }
 
@@ -264,13 +285,13 @@ impl Executor {
     ///
     /// # example_spawn_local().unwrap();
     /// ```
-    pub fn spawn_local<F>(&self, f: F) -> Task<F::Output>
+    pub fn spawn_local<F>(&self, f: F) -> TaskHandle<F::Output>
     where
         F: Future + 'static,
         F::Output: 'static,
     {
         match self {
-            Executor::Handle(ex) => ex.spawn_local(f),
+            Executor::Handle(ex) => TaskHandle::Handle(ex.spawn_local(f)),
         }
     }
 

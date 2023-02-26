@@ -3,8 +3,8 @@
 // found in the LICENSE file.
 
 use std::future::Future;
+use std::pin::Pin;
 
-use async_task::Task;
 use base::debug;
 use base::warn;
 use base::AsRawDescriptors;
@@ -198,6 +198,31 @@ pub enum SetDefaultExecutorKindError {
     UringUnavailable(UringError),
 }
 
+pub enum TaskHandle<R> {
+    Uring(super::UringExecutorTaskHandle<R>),
+    Fd(super::FdExecutorTaskHandle<R>),
+}
+
+impl<R: Send + 'static> TaskHandle<R> {
+    pub fn detach(self) {
+        match self {
+            TaskHandle::Uring(x) => x.detach(),
+            TaskHandle::Fd(x) => x.detach(),
+        }
+    }
+}
+
+impl<R: 'static> Future for TaskHandle<R> {
+    type Output = R;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context) -> std::task::Poll<Self::Output> {
+        match self.get_mut() {
+            TaskHandle::Uring(x) => Pin::new(x).poll(cx),
+            TaskHandle::Fd(x) => Pin::new(x).poll(cx),
+        }
+    }
+}
+
 impl Executor {
     /// Create a new `Executor`.
     pub fn new() -> AsyncResult<Self> {
@@ -266,10 +291,9 @@ impl Executor {
     }
 
     /// Spawn a new future for this executor to run to completion. Callers may use the returned
-    /// `Task` to await on the result of `f`. Dropping the returned `Task` will cancel `f`,
-    /// preventing it from being polled again. To drop a `Task` without canceling the future
-    /// associated with it use `Task::detach`. To cancel a task gracefully and wait until it is
-    /// fully destroyed, use `Task::cancel`.
+    /// `TaskHandle` to await on the result of `f`. Dropping the returned `TaskHandle` will cancel
+    /// `f`, preventing it from being polled again. To drop a `TaskHandle` without canceling the
+    /// future associated with it use `TaskHandle::detach`.
     ///
     /// # Examples
     ///
@@ -296,14 +320,14 @@ impl Executor {
     ///
     /// # example_spawn().unwrap();
     /// ```
-    pub fn spawn<F>(&self, f: F) -> Task<F::Output>
+    pub fn spawn<F>(&self, f: F) -> TaskHandle<F::Output>
     where
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
         match self {
-            Executor::Uring(ex) => ex.spawn(f),
-            Executor::Fd(ex) => ex.spawn(f),
+            Executor::Uring(ex) => TaskHandle::Uring(ex.spawn(f)),
+            Executor::Fd(ex) => TaskHandle::Fd(ex.spawn(f)),
         }
     }
 
@@ -334,27 +358,27 @@ impl Executor {
     ///
     /// # example_spawn_local().unwrap();
     /// ```
-    pub fn spawn_local<F>(&self, f: F) -> Task<F::Output>
+    pub fn spawn_local<F>(&self, f: F) -> TaskHandle<F::Output>
     where
         F: Future + 'static,
         F::Output: 'static,
     {
         match self {
-            Executor::Uring(ex) => ex.spawn_local(f),
-            Executor::Fd(ex) => ex.spawn_local(f),
+            Executor::Uring(ex) => TaskHandle::Uring(ex.spawn_local(f)),
+            Executor::Fd(ex) => TaskHandle::Fd(ex.spawn_local(f)),
         }
     }
 
     /// Run the provided closure on a dedicated thread where blocking is allowed.
     ///
-    /// Callers may `await` on the returned `Task` to wait for the result of `f`. Dropping or
-    /// canceling the returned `Task` may not cancel the operation if it was already started on a
+    /// Callers may `await` on the returned `TaskHandle` to wait for the result of `f`. Dropping
+    /// the returned `TaskHandle` may not cancel the operation if it was already started on a
     /// worker thread.
     ///
     /// # Panics
     ///
-    /// `await`ing the `Task` after the `Executor` is dropped will panic if the work was not already
-    /// completed.
+    /// `await`ing the `TaskHandle` after the `Executor` is dropped will panic if the work was not
+    /// already completed.
     ///
     /// # Examples
     ///
@@ -374,14 +398,14 @@ impl Executor {
     /// # let ex = Executor::new().unwrap();
     /// # ex.run_until(do_it(&ex)).unwrap();
     /// ```
-    pub fn spawn_blocking<F, R>(&self, f: F) -> Task<R>
+    pub fn spawn_blocking<F, R>(&self, f: F) -> TaskHandle<R>
     where
         F: FnOnce() -> R + Send + 'static,
         R: Send + 'static,
     {
         match self {
-            Executor::Uring(ex) => ex.spawn_blocking(f),
-            Executor::Fd(ex) => ex.spawn_blocking(f),
+            Executor::Uring(ex) => TaskHandle::Uring(ex.spawn_blocking(f)),
+            Executor::Fd(ex) => TaskHandle::Fd(ex.spawn_blocking(f)),
         }
     }
 

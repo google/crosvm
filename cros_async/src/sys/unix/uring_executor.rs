@@ -95,6 +95,7 @@ use crate::waker::new_waker;
 use crate::waker::WakerToken;
 use crate::waker::WeakWake;
 use crate::BlockingPool;
+use crate::DetachedTasks;
 
 #[sorted]
 #[derive(Debug, ThisError)]
@@ -329,6 +330,7 @@ struct RawExecutor {
     blocking_pool: BlockingPool,
     thread_id: Mutex<Option<ThreadId>>,
     state: AtomicI32,
+    detached_tasks: Mutex<DetachedTasks>,
 }
 
 impl RawExecutor {
@@ -362,6 +364,7 @@ impl RawExecutor {
             blocking_pool: Default::default(),
             thread_id: Mutex::new(None),
             state: AtomicI32::new(PROCESSING),
+            detached_tasks: Mutex::new(DetachedTasks::new()),
         })
     }
 
@@ -387,7 +390,7 @@ impl RawExecutor {
         }
     }
 
-    fn spawn<F>(self: &Arc<Self>, f: F) -> Task<F::Output>
+    fn spawn<F>(self: &Arc<Self>, f: F) -> UringExecutorTaskHandle<F::Output>
     where
         F: Future + Send + 'static,
         F::Output: Send + 'static,
@@ -401,10 +404,13 @@ impl RawExecutor {
         };
         let (runnable, task) = async_task::spawn(f, schedule);
         runnable.schedule();
-        task
+        UringExecutorTaskHandle {
+            task,
+            raw: Arc::downgrade(self),
+        }
     }
 
-    fn spawn_local<F>(self: &Arc<Self>, f: F) -> Task<F::Output>
+    fn spawn_local<F>(self: &Arc<Self>, f: F) -> UringExecutorTaskHandle<F::Output>
     where
         F: Future + 'static,
         F::Output: 'static,
@@ -418,15 +424,22 @@ impl RawExecutor {
         };
         let (runnable, task) = async_task::spawn_local(f, schedule);
         runnable.schedule();
-        task
+        UringExecutorTaskHandle {
+            task,
+            raw: Arc::downgrade(self),
+        }
     }
 
-    fn spawn_blocking<F, R>(self: &Arc<Self>, f: F) -> Task<R>
+    fn spawn_blocking<F, R>(self: &Arc<Self>, f: F) -> UringExecutorTaskHandle<R>
     where
         F: FnOnce() -> R + Send + 'static,
         R: Send + 'static,
     {
-        self.blocking_pool.spawn(f)
+        let task = self.blocking_pool.spawn(f);
+        UringExecutorTaskHandle {
+            task,
+            raw: Arc::downgrade(self),
+        }
     }
 
     fn runs_tasks_on_current_thread(&self) -> bool {
@@ -451,6 +464,10 @@ impl RawExecutor {
             self.state.store(PROCESSING, Ordering::Release);
             for runnable in self.queue.iter() {
                 runnable.run();
+            }
+
+            if let Ok(mut tasks) = self.detached_tasks.try_lock() {
+                tasks.poll(cx);
             }
 
             if let Poll::Ready(val) = done.as_mut().poll(cx) {
@@ -855,6 +872,30 @@ impl Drop for RawExecutor {
     }
 }
 
+pub struct UringExecutorTaskHandle<R> {
+    task: Task<R>,
+    raw: Weak<RawExecutor>,
+}
+
+impl<R: Send + 'static> UringExecutorTaskHandle<R> {
+    pub fn detach(self) {
+        if let Some(raw) = self.raw.upgrade() {
+            raw.detached_tasks.lock().push(self.task);
+        }
+    }
+}
+
+impl<R: 'static> Future for UringExecutorTaskHandle<R> {
+    type Output = R;
+
+    fn poll(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context,
+    ) -> std::task::Poll<Self::Output> {
+        Pin::new(&mut self.task).poll(cx)
+    }
+}
+
 /// An executor that uses io_uring for its asynchronous I/O operations. See the documentation of
 /// `Executor` for more details about the methods.
 #[derive(Clone)]
@@ -869,7 +910,7 @@ impl URingExecutor {
         Ok(URingExecutor { raw })
     }
 
-    pub fn spawn<F>(&self, f: F) -> Task<F::Output>
+    pub fn spawn<F>(&self, f: F) -> UringExecutorTaskHandle<F::Output>
     where
         F: Future + Send + 'static,
         F::Output: Send + 'static,
@@ -877,7 +918,7 @@ impl URingExecutor {
         self.raw.spawn(f)
     }
 
-    pub fn spawn_local<F>(&self, f: F) -> Task<F::Output>
+    pub fn spawn_local<F>(&self, f: F) -> UringExecutorTaskHandle<F::Output>
     where
         F: Future + 'static,
         F::Output: 'static,
@@ -885,7 +926,7 @@ impl URingExecutor {
         self.raw.spawn_local(f)
     }
 
-    pub fn spawn_blocking<F, R>(&self, f: F) -> Task<R>
+    pub fn spawn_blocking<F, R>(&self, f: F) -> UringExecutorTaskHandle<R>
     where
         F: FnOnce() -> R + Send + 'static,
         R: Send + 'static,
@@ -994,6 +1035,7 @@ mod tests {
     use std::io::Write;
     use std::mem;
     use std::pin::Pin;
+    use std::rc::Rc;
     use std::task::Context;
     use std::task::Poll;
 
@@ -1201,6 +1243,33 @@ mod tests {
             .expect("Failed to read from pipe");
 
         assert_eq!(buf, new_val);
+    }
+
+    // Dropping a task that owns a BlockingPool shouldn't leak the pool.
+    #[test]
+    fn drop_detached_blocking_pool() {
+        if !is_uring_stable() {
+            return;
+        }
+
+        let rc = Rc::new(std::cell::Cell::new(0));
+        {
+            let ex = URingExecutor::new().unwrap();
+            let rc_clone = rc.clone();
+            ex.spawn_local(async move {
+                rc_clone.set(1);
+                let pool = BlockingPool::new(1, std::time::Duration::new(60, 0));
+                pool.spawn(|| loop {
+                    std::thread::park()
+                })
+                .await;
+                rc_clone.set(2);
+            })
+            .detach();
+            ex.run_until(async {}).unwrap();
+        }
+        assert_eq!(rc.get(), 1);
+        Rc::try_unwrap(rc).expect("Rc had too many refs");
     }
 
     #[test]
