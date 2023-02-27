@@ -2258,4 +2258,26 @@ mod tests {
         assert_eq!(shared_dir.fs_cfg.use_dax, false);
         assert_eq!(shared_dir.fs_cfg.posix_acl, true);
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn parse_shared_dir_oem() {
+        let shared_dir: SharedDir = "/:oem_etc:type=fs:cache=always:uidmap=0 299 1, 5000 600 50:gidmap=0 300 1, 5000 600 50:timeout=3600:rewrite-security-xattrs=true".parse().unwrap();
+        assert_eq!(shared_dir.src, Path::new("/").to_path_buf());
+        assert_eq!(shared_dir.tag, "oem_etc");
+        assert!(shared_dir.kind == SharedDirKind::FS);
+        assert_eq!(shared_dir.uid_map, "0 299 1, 5000 600 50");
+        assert_eq!(shared_dir.gid_map, "0 300 1, 5000 600 50");
+        assert_eq!(shared_dir.fs_cfg.ascii_casefold, false);
+        assert_eq!(shared_dir.fs_cfg.attr_timeout, Duration::from_secs(3600));
+        assert_eq!(shared_dir.fs_cfg.entry_timeout, Duration::from_secs(3600));
+        assert_eq!(shared_dir.fs_cfg.writeback, false);
+        assert_eq!(
+            shared_dir.fs_cfg.cache_policy,
+            passthrough::CachePolicy::Always
+        );
+        assert_eq!(shared_dir.fs_cfg.rewrite_security_xattrs, true);
+        assert_eq!(shared_dir.fs_cfg.use_dax, false);
+        assert_eq!(shared_dir.fs_cfg.posix_acl, true);
+    }
 }
