@@ -58,13 +58,17 @@ fn compile_protocol<P: AsRef<Path>>(name: &str, out: P) -> PathBuf {
     let out_code = out.as_ref().join(format!("{}.c", name));
     let out_header = out.as_ref().join(format!("{}.h", name));
     eprintln!("building protocol: {}", name);
-    Command::new("wayland-scanner")
+
+    let wayland_scanner = which::which("wayland-scanner")
+        .expect("missing wayland-scanner - please install libwayland-dev");
+
+    Command::new(&wayland_scanner)
         .arg("code")
         .arg(&in_protocol)
         .arg(&out_code)
         .output()
         .expect("wayland-scanner code failed");
-    Command::new("wayland-scanner")
+    Command::new(&wayland_scanner)
         .arg("client-header")
         .arg(&in_protocol)
         .arg(&out_header)

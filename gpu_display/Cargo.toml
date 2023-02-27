@@ -33,6 +33,7 @@ vm_control = { path = "../vm_control" }
 cc = "1.0.25"
 pkg-config = "0.3.11"
 cfg-if = "1.0.0"
+which = "4"
 
 [[example]]
 name = "simple"
