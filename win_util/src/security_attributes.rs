@@ -34,11 +34,14 @@ use winapi::um::handleapi::CloseHandle;
 use winapi::um::minwinbase::SECURITY_ATTRIBUTES;
 use winapi::um::processthreadsapi::GetCurrentProcess;
 use winapi::um::processthreadsapi::OpenProcessToken;
+use winapi::um::processthreadsapi::OpenThreadToken;
 use winapi::um::securitybaseapi::GetTokenInformation;
 use winapi::um::securitybaseapi::InitializeSecurityDescriptor;
 use winapi::um::securitybaseapi::MakeSelfRelativeSD;
 use winapi::um::securitybaseapi::SetSecurityDescriptorDacl;
 use winapi::um::winbase::LocalFree;
+use winapi::um::winnt::TokenIntegrityLevel;
+use winapi::um::winnt::TokenStatistics;
 use winapi::um::winnt::TokenUser;
 use winapi::um::winnt::ACL;
 use winapi::um::winnt::GENERIC_ALL;
@@ -48,6 +51,8 @@ use winapi::um::winnt::SECURITY_DESCRIPTOR;
 use winapi::um::winnt::SECURITY_DESCRIPTOR_REVISION;
 use winapi::um::winnt::TOKEN_ALL_ACCESS;
 use winapi::um::winnt::TOKEN_INFORMATION_CLASS;
+use winapi::um::winnt::TOKEN_MANDATORY_LABEL;
+use winapi::um::winnt::TOKEN_STATISTICS;
 use winapi::um::winnt::TOKEN_USER;
 
 /// Struct for wrapping `SECURITY_ATTRIBUTES` and `SECURITY_DESCRIPTOR`.
@@ -101,8 +106,20 @@ impl<T: SecurityDescriptor> AsMut<SECURITY_ATTRIBUTES> for SecurityAttributes<T>
     }
 }
 
-trait TokenClass {
+pub trait TokenClass {
     fn class() -> TOKEN_INFORMATION_CLASS;
+}
+
+impl TokenClass for TOKEN_MANDATORY_LABEL {
+    fn class() -> TOKEN_INFORMATION_CLASS {
+        TokenIntegrityLevel
+    }
+}
+
+impl TokenClass for TOKEN_STATISTICS {
+    fn class() -> TOKEN_INFORMATION_CLASS {
+        TokenStatistics
+    }
 }
 
 impl TokenClass for TOKEN_USER {
@@ -111,13 +128,13 @@ impl TokenClass for TOKEN_USER {
     }
 }
 
-struct TokenInformation<T> {
+pub struct TokenInformation<T> {
     token_info: *mut T,
     layout: Layout,
 }
 
 impl<T: TokenClass> TokenInformation<T> {
-    fn new(mut token: ProcessToken) -> io::Result<Self> {
+    pub fn new(mut token: Token) -> io::Result<Self> {
         let token_handle = token.get();
         // Retrieve the size of the struct.
         let mut size: u32 = 0;
@@ -210,25 +227,51 @@ impl<T> Drop for TokenInformation<T> {
     }
 }
 
-struct ProcessToken {
+pub struct Token {
     token: RawHandle,
 }
 
-impl ProcessToken {
-    fn new() -> io::Result<Self> {
+impl Token {
+    /// Open the current process's token.
+    pub fn new_for_process() -> io::Result<Self> {
+        // Safe because GetCurrentProcess is an alias for -1.
+        Self::from_process(unsafe { GetCurrentProcess() })
+    }
+
+    /// Open the token of a process.
+    pub fn from_process(proc_handle: RawHandle) -> io::Result<Self> {
         let mut token: RawHandle = ptr::null_mut();
 
         // Safe because token is valid.
         if unsafe {
             OpenProcessToken(
-                /* ProcessHandle= */ GetCurrentProcess(),
+                /* ProcessHandle= */ proc_handle,
                 /* DesiredAccess= */ TOKEN_ALL_ACCESS,
                 /* TokenHandle= */ &mut token,
             ) == 0
         } {
             return Err(io::Error::last_os_error());
         }
-        Ok(ProcessToken { token })
+        Ok(Token { token })
+    }
+
+    /// Open the token of a thread.
+    pub fn from_thread(thread_handle: RawHandle) -> io::Result<Self> {
+        let mut token: RawHandle = ptr::null_mut();
+
+        // Safe because token is valid. We use OpenAsSelf to ensure the token access is measured
+        // using the caller's non-impersonated identity.
+        if unsafe {
+            OpenThreadToken(
+                thread_handle,
+                TOKEN_ALL_ACCESS,
+                /*OpenAsSelf=*/ TRUE,
+                &mut token,
+            ) == 0
+        } {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(Token { token })
     }
 
     fn get(&mut self) -> RawHandle {
@@ -236,7 +279,7 @@ impl ProcessToken {
     }
 }
 
-impl Drop for ProcessToken {
+impl Drop for Token {
     fn drop(&mut self) {
         // Safe as token is valid, but the call should be safe regardless.
         unsafe {
@@ -258,7 +301,7 @@ impl AbsoluteSecurityDescriptor {
     /// Creates a `SECURITY_DESCRIPTOR` struct which gives full access rights
     /// (`GENERIC_ALL`) to only the current user.
     fn new() -> io::Result<AbsoluteSecurityDescriptor> {
-        let token = ProcessToken::new()?;
+        let token = Token::new_for_process()?;
         let token_user = TokenInformation::<TOKEN_USER>::new(token)?;
         let sid = token_user.as_ref().User.Sid;
 
