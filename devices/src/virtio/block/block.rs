@@ -75,6 +75,10 @@ pub struct DiskOption {
         alias = "io_concurrency"
     )]
     pub io_concurrency: NonZeroU32,
+    #[serde(default)]
+    /// Experimental option to run multiple worker threads in parallel. If false, only single thread
+    /// runs by default. Note this option is not effective for vhost-user blk device.
+    pub multiple_workers: bool,
     #[serde(default, alias = "async_executor")]
     /// The async executor kind to simulate the block device with. This option takes
     /// precedence over the async executor kind specified by the subcommand's option.
@@ -118,6 +122,7 @@ mod tests {
                 id: None,
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
+                multiple_workers: false,
                 async_executor: None,
             }
         );
@@ -136,6 +141,7 @@ mod tests {
                 id: None,
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
+                multiple_workers: false,
                 async_executor: None,
             }
         );
@@ -154,6 +160,7 @@ mod tests {
                 id: None,
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
+                multiple_workers: false,
                 async_executor: None,
             }
         );
@@ -172,6 +179,7 @@ mod tests {
                 id: None,
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
+                multiple_workers: false,
                 async_executor: None,
             }
         );
@@ -190,6 +198,7 @@ mod tests {
                 id: None,
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
+                multiple_workers: false,
                 async_executor: None,
             }
         );
@@ -206,6 +215,7 @@ mod tests {
                 id: None,
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
+                multiple_workers: false,
                 async_executor: None,
             }
         );
@@ -224,6 +234,7 @@ mod tests {
                 id: None,
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
+                multiple_workers: false,
                 async_executor: None,
             }
         );
@@ -242,6 +253,7 @@ mod tests {
                 id: None,
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
+                multiple_workers: false,
                 async_executor: None,
             }
         );
@@ -260,6 +272,7 @@ mod tests {
                 id: None,
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
+                multiple_workers: false,
                 async_executor: None,
             }
         );
@@ -279,6 +292,7 @@ mod tests {
                 async_executor: None,
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
+                multiple_workers: false,
             }
         );
 
@@ -297,6 +311,7 @@ mod tests {
                     block_size: 512,
                     id: None,
                     io_concurrency: NonZeroU32::new(4).unwrap(),
+                    multiple_workers: false,
                     async_executor: None,
                 }
             );
@@ -316,6 +331,7 @@ mod tests {
                 id: Some(*b"DISK\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"),
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
+                multiple_workers: false,
                 async_executor: None,
             }
         );
@@ -347,6 +363,7 @@ mod tests {
                 id: None,
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
+                multiple_workers: false,
                 async_executor: Some(ex_kind),
             }
         );
@@ -369,6 +386,7 @@ mod tests {
                 id: Some(*b"DISK_LABEL\0\0\0\0\0\0\0\0\0\0"),
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
+                multiple_workers: false,
                 async_executor: Some(ex_kind),
             }
         );

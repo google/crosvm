@@ -848,6 +848,10 @@ pub struct RunCommand {
     ///     async-executor=epoll|uring - set the async executor kind
     ///         to simulate the block device with. This takes
     ///         precedence over the global --async-executor option.
+    ///     multiple-workers=BOOL - (Experimental) run multiple
+    ///         worker threads in parallel. this option is not
+    ///         effective for vhost-user blk device.
+    ///         (default: false)
     block: Vec<DiskOptionWithId>,
 
     /// ratelimit enforced on detected bus locks in guest.

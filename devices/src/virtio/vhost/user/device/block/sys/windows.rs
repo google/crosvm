@@ -76,6 +76,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         disk_option.read_only,
         disk_option.sparse,
         disk_option.block_size,
+        false,
         None,
         None,
         None,

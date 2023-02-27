@@ -51,6 +51,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         direct: false,
         block_size: 512,
         id: None,
+        multiple_workers: false,
         async_executor: None,
     };
 
@@ -60,6 +61,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         disk.read_only,
         disk.sparse,
         disk.block_size,
+        false,
         None,
         None,
         None,

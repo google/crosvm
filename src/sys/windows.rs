@@ -264,6 +264,7 @@ fn create_block_device(cfg: &Config, disk: &DiskOption, disk_device_tube: Tube) 
         disk.read_only,
         disk.sparse,
         disk.block_size,
+        false,
         disk.id,
         Some(disk_device_tube),
         None,

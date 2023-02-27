@@ -92,6 +92,7 @@ fuzz_target!(|bytes| {
         false,
         true,
         512,
+        false,
         None,
         None,
         None,
