@@ -893,13 +893,6 @@ impl URingExecutor {
         self.raw.spawn_blocking(f)
     }
 
-    pub fn run(&self) -> Result<()> {
-        let waker = new_waker(Arc::downgrade(&self.raw));
-        let mut cx = Context::from_waker(&waker);
-
-        self.raw.run(&mut cx, crate::empty::<()>())
-    }
-
     pub fn run_until<F: Future>(&self, f: F) -> Result<F::Output> {
         let waker = new_waker(Arc::downgrade(&self.raw));
         let mut ctx = Context::from_waker(&waker);

@@ -308,11 +308,7 @@ impl Executor {
     /// # example_run().unwrap();
     /// ```
     pub fn run(&self) -> AsyncResult<()> {
-        match self {
-            Executor::Handle(ex) => ex.run()?,
-        }
-
-        Ok(())
+        self.run_until(std::future::pending())
     }
 
     /// Drive all futures spawned in this executor until `f` completes. This method will block the

@@ -75,10 +75,6 @@ mod timer;
 mod waker;
 
 use std::future::Future;
-use std::marker::PhantomData;
-use std::pin::Pin;
-use std::task::Context;
-use std::task::Poll;
 
 pub use async_types::*;
 pub use base::Event;
@@ -135,25 +131,6 @@ pub enum Error {
     URingExecutor(sys::unix::uring_executor::Error),
 }
 pub type Result<T> = std::result::Result<T, Error>;
-
-// A Future that never completes.
-pub struct Empty<T> {
-    phantom: PhantomData<T>,
-}
-
-impl<T> Future for Empty<T> {
-    type Output = T;
-
-    fn poll(self: Pin<&mut Self>, _: &mut Context) -> Poll<T> {
-        Poll::Pending
-    }
-}
-
-pub fn empty<T>() -> Empty<T> {
-    Empty {
-        phantom: PhantomData,
-    }
-}
 
 // Select helpers to run until any future completes.
 
