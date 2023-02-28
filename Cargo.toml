@@ -50,7 +50,6 @@ members = [
     "broker_ipc",
     "common/audio_streams",
     "common/balloon_control",
-    "common/cros_asyncv2",
     "common/cros-fuzz",
     "common/data_model",
     "common/p9",
