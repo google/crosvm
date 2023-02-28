@@ -121,6 +121,18 @@ def check_host_prerequisites(run_root_tests: bool):
             sys.exit(1)
 
 
+def check_build_prerequisites(triple: Triple):
+    installed_toolchains = cmd("rustup target list --installed").lines()
+    if str(triple) not in installed_toolchains:
+        console.print(f"Your host is not configured to build for [green]{triple}[/green]")
+        console.print(f"[green]Tip:[/green] Run tests in the dev container with:")
+        console.print()
+        console.print(
+            f"  [blue]$ tools/dev_container tools/run_tests {' '.join(sys.argv[1:])}[/blue]"
+        )
+        sys.exit(1)
+
+
 def get_vm_arch(triple: Triple):
     if str(triple) == "x86_64-unknown-linux-gnu":
         return "x86_64"
@@ -252,6 +264,8 @@ def main(
     console.print(f"  Unit tests:        [bold]{unit_test_str}[/bold]")
     console.print(f"  Integration tests: [bold]{integration_test_str}[/bold]")
     console.print()
+
+    check_build_prerequisites(triple)
 
     # Print tips in certain configurations.
     if dut and not run_root_tests:

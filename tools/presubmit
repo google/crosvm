@@ -10,12 +10,14 @@ from typing import List, Literal, Set, Tuple
 from impl.common import (
     CROSVM_ROOT,
     TOOLS_ROOT,
+    Triple,
     argh,
     chdir,
     cmd,
     cwd_context,
     is_kiwi_repo,
     run_main,
+    console,
 )
 from impl.presubmit import Check, CheckContext, run_checks, Group
 
@@ -96,8 +98,16 @@ def check_cargo_doc(_: CheckContext):
     return cmd("./tools/cargo-doc").with_env("RUSTDOCFLAGS", "-D warnings").with_color_flag()
 
 
+def platform_is_supported(platform: Platform):
+    triple = Triple.from_shorthand(platform)
+    installed_toolchains = cmd("rustup target list --installed").lines()
+    return str(triple) in installed_toolchains
+
+
 def check_crosvm_tests(platform: Platform):
     def check(_: CheckContext):
+        if not platform_is_supported(platform):
+            return None
         dut = None
         if platform == "x86_64":
             dut = "--dut=host"
@@ -112,6 +122,8 @@ def check_crosvm_tests(platform: Platform):
 
 def check_crosvm_unit_tests(platform: Platform):
     def check(_: CheckContext):
+        if not platform_is_supported(platform):
+            return None
         return cmd("./tools/run_tests --platform", platform).with_color_flag()
 
     check.__doc__ = f"Runs crosvm unit tests for {platform}."
@@ -121,6 +133,8 @@ def check_crosvm_unit_tests(platform: Platform):
 
 def check_clippy(platform: Platform):
     def check(context: CheckContext):
+        if not platform_is_supported(platform):
+            return None
         return cmd(
             "./tools/clippy --platform",
             platform,

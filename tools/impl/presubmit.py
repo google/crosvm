@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path
+import sys
 from time import sleep
 from typing import Callable, List, NamedTuple, Optional, Set, Union
 from datetime import datetime, timedelta
@@ -51,7 +52,7 @@ class Check(NamedTuple):
     "Metadata for each check, definining on which files it should run."
 
     # Function to call for this check
-    check_function: Callable[[CheckContext], Union[Command, List[Command]]]
+    check_function: Callable[[CheckContext], Union[Command, None, List[Command]]]
 
     custom_name: Optional[str] = None
 
@@ -324,6 +325,7 @@ def generate_plan(
         modified_files = [f for (s, f) in file_diff if s in ("M", "A")]
 
     tasks: List[Task] = []
+    unsupported_checks: List[str] = []
     for check in checks_list:
         if fix and not check.can_fix:
             continue
@@ -336,10 +338,25 @@ def generate_plan(
         )
         if context.modified_files:
             commands = check.check_function(context)
+            if commands is None:
+                unsupported_checks.append(check.name)
+                continue
             if not isinstance(commands, list):
                 commands = [commands]
             title = f"fixing {check.name}" if fix else check.name
             tasks.append(Task(title, commands, check.priority))
+
+    if unsupported_checks:
+        console.print("[yellow]Warning:[/yellow] The following checks cannot be run:")
+        for unsupported_check in unsupported_checks:
+            console.print(f" - {unsupported_check}")
+        console.print()
+        console.print("[green]Tip:[/green] Use the dev container to run presubmits:")
+        console.print()
+        console.print(
+            f"  [blue] $ tools/dev_container tools/presubmit {' '.join(sys.argv[1:])}[/blue]"
+        )
+        console.print()
 
     # Sort so that priority tasks are launched (and rendered) first
     tasks.sort(key=lambda t: (t.priority, t.title), reverse=True)
