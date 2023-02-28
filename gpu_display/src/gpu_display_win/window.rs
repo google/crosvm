@@ -489,6 +489,14 @@ impl Window {
         }
     }
 
+    /// Calls `ShowWindow()` internally to restore a minimized window.
+    pub fn restore(&self) {
+        // Safe because `Window` object won't outlive the HWND.
+        unsafe {
+            ShowWindow(self.hwnd, SW_RESTORE);
+        }
+    }
+
     /// Calls `IsZoomed()` internally. Note that the window may carry the WS_MAXIMIZE flag until it
     /// is restored. For example, if we have switched from maximized to fullscreen, this function
     /// would still return true.
