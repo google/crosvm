@@ -139,7 +139,7 @@ def check_crosvm_build(platform: Platform, features: Optional[str]):
         return cmd(
             "./tools/run_tests --no-run --platform",
             platform,
-            f"--features={features}" if features else None,
+            f"--features={features}" if features is not None else None,
         ).with_color_flag()
 
     check.__doc__ = f"Builds crosvm for {platform} with features {features}."
@@ -245,6 +245,15 @@ CHECKS: List[Check] = [
         custom_name=f"crosvm_build_direct",
         files=["**.rs"],
         priority=True,
+    ),
+    *(
+        Check(
+            check_crosvm_build(platform, features="default"),
+            custom_name=f"crosvm_build_default_{platform}",
+            files=["**.rs"],
+            priority=True,
+        )
+        for platform in PLATFORMS
     ),
     *(
         Check(
@@ -418,6 +427,7 @@ GROUPS: List[Group] = [
             checks=[
                 f"crosvm_tests_{platform}",
                 f"clippy_{platform}",
+                f"crosvm_build_default_{platform}",
             ],
         )
         for platform in PLATFORMS
