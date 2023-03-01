@@ -15,6 +15,7 @@ use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
 use base::syslog;
+use log::Level;
 use prebuilts::download_file;
 
 use crate::sys::SerialArgs;
@@ -157,13 +158,33 @@ impl GuestProcess {
 }
 
 /// Configuration to start `TestVm`.
-#[derive(Default)]
 pub struct Config {
     /// Extra arguments for the `run` subcommand.
     pub(super) extra_args: Vec<String>,
 
     /// Use `O_DIRECT` for the rootfs.
     pub(super) o_direct: bool,
+
+    /// Log level of `TestVm`
+    pub(super) log_level: Level,
+
+    /// File to save crosvm log to
+    pub(super) log_file: Option<String>,
+
+    /// Wrapper command line for executing `TestVM`
+    pub(super) wrapper_cmd: Option<String>,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            log_level: Level::Info,
+            extra_args: Default::default(),
+            o_direct: Default::default(),
+            log_file: None,
+            wrapper_cmd: None,
+        }
+    }
 }
 
 impl Config {
@@ -190,6 +211,14 @@ impl Config {
     pub fn disable_sandbox(mut self) -> Self {
         self.extra_args.push("--disable-sandbox".to_string());
         self
+    }
+
+    pub fn from_env() -> Self {
+        let mut cfg: Config = Default::default();
+        env::var("CROSVM_CARGO_TEST_E2E_WRAPPER_CMD").map_or((), |x| cfg.wrapper_cmd = Some(x));
+        env::var("CROSVM_CARGO_TEST_LOG_FILE").map_or((), |x| cfg.log_file = Some(x));
+        env::var("CROSVM_CARGO_TEST_LOG_LEVEL_DEBUG").map_or((), |_| cfg.log_level = Level::Debug);
+        cfg
     }
 }
 

@@ -13,6 +13,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Child;
 use std::process::Command;
+use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -132,7 +133,26 @@ impl TestVmSys {
 
         let control_socket_path = test_dir.path().join(CONTROL_PIPE);
 
-        let mut command = Command::new(find_crosvm_binary());
+        let mut command = match &cfg.wrapper_cmd {
+            Some(cmd) => {
+                let wrapper_splitted =
+                    shlex::split(cmd).context("Failed to parse wrapper command")?;
+                let mut command_tmp = Command::new(&wrapper_splitted[0]);
+                command_tmp.args(&wrapper_splitted[1..]);
+                command_tmp.arg(find_crosvm_binary());
+                command_tmp
+            }
+            None => Command::new(find_crosvm_binary()),
+        };
+
+        if let Some(log_file_name) = &cfg.log_file {
+            let log_file_stdout = File::create(log_file_name)?;
+            let log_file_stderr = log_file_stdout.try_clone()?;
+            command.stdout(Stdio::from(log_file_stdout));
+            command.stderr(Stdio::from(log_file_stderr));
+        }
+
+        command.args(["--log-level", cfg.log_level.as_str()]);
         command.args(["run"]);
 
         f(&mut command, test_dir.path(), &cfg)?;

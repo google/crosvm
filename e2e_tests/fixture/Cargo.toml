@@ -13,6 +13,8 @@ libc = "0.2.65"
 rand = "0.8"
 tempfile = "3"
 prebuilts = { path = "../../prebuilts" }
+log = "*"
+shlex = "*"
 
 [features]
 direct = []

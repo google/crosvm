@@ -988,8 +988,10 @@ dependencies = [
  "base",
  "cfg-if",
  "libc",
+ "log",
  "prebuilts",
  "rand",
+ "shlex",
  "tempfile",
 ]
 

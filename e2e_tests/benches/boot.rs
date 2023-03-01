@@ -7,7 +7,7 @@ use fixture::vm::TestVm;
 
 #[test]
 fn boot_test_vm() -> anyhow::Result<()> {
-    let mut vm = TestVm::new(Config::new()).unwrap();
+    let mut vm = TestVm::new(Config::from_env()).unwrap();
     assert_eq!(vm.exec_in_guest("echo 42")?.trim(), "42");
     Ok(())
 }
