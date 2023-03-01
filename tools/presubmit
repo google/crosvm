@@ -369,6 +369,11 @@ GROUPS: List[Group] = [
         ),
     ),
     Group(
+        name="clippy",
+        doc="Runs clippy for all platforms",
+        checks=set(f"clippy_{platform}" for platform in PLATFORMS),
+    ),
+    Group(
         name="unit_tests",
         doc="Runs unit tests for all platforms",
         checks=set(f"crosvm_unit_tests_{platform}" for platform in PLATFORMS),
