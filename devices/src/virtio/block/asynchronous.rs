@@ -308,7 +308,6 @@ pub async fn process_one_chain<I: SignalableInterrupt>(
 // Receives messages from the guest and queues a task to complete the operations with the async
 // executor.
 pub async fn handle_queue<I: SignalableInterrupt + 'static>(
-    ex: Executor,
     mem: GuestMemory,
     disk_state: Rc<AsyncMutex<DiskState>>,
     queue: Rc<RefCell<Queue>>,
@@ -336,7 +335,7 @@ pub async fn handle_queue<I: SignalableInterrupt + 'static>(
             let interrupt = interrupt.clone();
             let flush_timer = Rc::clone(&flush_timer);
             let flush_timer_armed = Rc::clone(&flush_timer_armed);
-            background_tasks.push(ex.spawn_local(async move {
+            background_tasks.push(async move {
                 process_one_chain(
                     queue,
                     descriptor_chain,
@@ -347,7 +346,7 @@ pub async fn handle_queue<I: SignalableInterrupt + 'static>(
                     flush_timer_armed,
                 )
                 .await
-            }));
+            });
         }
     }
 }
@@ -530,7 +529,6 @@ fn run_worker(
         .into_iter()
         .map(|(queue, event)| {
             handle_queue(
-                ex.clone(),
                 mem.clone(),
                 Rc::clone(disk_state),
                 Rc::new(RefCell::new(queue)),

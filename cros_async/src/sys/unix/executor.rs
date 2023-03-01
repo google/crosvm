@@ -337,7 +337,7 @@ impl Executor {
     ///
     /// # Panics
     ///
-    /// `Executor::run` and `Executor::run_util` will panic if they try to poll a future that was
+    /// `Executor::run` and `Executor::run_until` will panic if they try to poll a future that was
     /// added by calling `spawn_local` from a different thread.
     ///
     /// # Examples

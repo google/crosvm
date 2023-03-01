@@ -217,9 +217,9 @@ pub fn create_devices_worker_thread(
             let ex = Executor::new().expect("Failed to create an executor");
 
             let async_control = AsyncTube::new(&ex, device_ctrl_resp).unwrap();
-            match ex.run_until(ex.spawn_local(async move {
+            match ex.run_until(async move {
                 handle_command_tube(async_control, guest_memory, io_bus, mmio_bus).await
-            })) {
+            }) {
                 Ok(_) => {}
                 Err(e) => {
                     error!("Device control thread exited with error: {}", e);

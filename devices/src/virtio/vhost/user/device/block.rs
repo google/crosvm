@@ -221,7 +221,6 @@ impl VhostUserBackend for BlockBackend {
         self.ex
             .spawn_local(Abortable::new(
                 handle_queue(
-                    self.ex.clone(),
                     mem,
                     disk_state,
                     Rc::new(RefCell::new(queue)),
