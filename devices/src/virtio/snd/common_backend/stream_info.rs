@@ -4,6 +4,7 @@
 
 use std::fmt;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use audio_streams::SampleFormat;
 use base::error;
@@ -41,7 +42,7 @@ pub struct SetParams {
 /// StreamInfo represents a virtio snd stream.
 pub struct StreamInfo {
     pub(crate) stream_source: Option<SysAudioStreamSource>,
-    stream_source_generator: SysAudioStreamSourceGenerator,
+    stream_source_generator: Arc<SysAudioStreamSourceGenerator>,
     pub(crate) channels: u8,
     pub(crate) format: SampleFormat,
     pub(crate) frame_rate: u32,
@@ -100,7 +101,7 @@ impl StreamInfo {
     /// Creates a new [`StreamInfo`].
     ///
     /// * `stream_source_generator`: Generator which generates stream source in [`StreamInfo::prepare()`].
-    pub fn new(stream_source_generator: SysAudioStreamSourceGenerator) -> Self {
+    pub fn new(stream_source_generator: Arc<SysAudioStreamSourceGenerator>) -> Self {
         StreamInfo {
             stream_source: None,
             stream_source_generator,
@@ -342,7 +343,7 @@ mod tests {
     use super::*;
 
     fn new_stream() -> StreamInfo {
-        StreamInfo::new(Box::new(NoopStreamSourceGenerator::new()))
+        StreamInfo::new(Arc::new(Box::new(NoopStreamSourceGenerator::new())))
     }
 
     fn stream_set_params(

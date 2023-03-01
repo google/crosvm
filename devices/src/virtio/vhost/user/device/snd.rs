@@ -5,6 +5,7 @@
 pub mod sys;
 
 use std::rc::Rc;
+use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::bail;
@@ -86,7 +87,9 @@ impl SndBackend {
 
         let streams = generators
             .into_iter()
-            .map(|generator| AsyncMutex::new(StreamInfo::new(generator)))
+            .map(Arc::new)
+            .map(StreamInfo::new)
+            .map(AsyncMutex::new)
             .collect();
         let streams = Rc::new(AsyncMutex::new(streams));
 

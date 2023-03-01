@@ -6,6 +6,7 @@
 
 use std::io;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::Context;
@@ -195,11 +196,11 @@ pub struct PcmResponse {
 pub struct VirtioSnd {
     cfg: virtio_snd_config,
     snd_data: SndData,
+    stream_source_generators: Vec<Arc<SysAudioStreamSourceGenerator>>,
     avail_features: u64,
     acked_features: u64,
     queue_sizes: Box<[u16]>,
     worker_thread: Option<WorkerThread<()>>,
-    params: Parameters,
 }
 
 impl VirtioSnd {
@@ -208,15 +209,19 @@ impl VirtioSnd {
         let cfg = hardcoded_virtio_snd_config(&params);
         let snd_data = hardcoded_snd_data(&params);
         let avail_features = base_features;
+        let stream_source_generators = create_stream_source_generators(&params, &snd_data)
+            .into_iter()
+            .map(Arc::new)
+            .collect();
 
         Ok(VirtioSnd {
             cfg,
             snd_data,
+            stream_source_generators,
             avail_features,
             acked_features: 0,
             queue_sizes: vec![MAX_VRING_LEN; MAX_QUEUE_NUM].into_boxed_slice(),
             worker_thread: None,
-            params,
         })
     }
 }
@@ -404,7 +409,7 @@ impl VirtioDevice for VirtioSnd {
         }
 
         let snd_data = self.snd_data.clone();
-        let stream_source_generators = create_stream_source_generators(&self.params, &snd_data);
+        let stream_source_generators = self.stream_source_generators.to_vec();
 
         self.worker_thread = Some(WorkerThread::start("v_snd_common", move |kill_evt| {
             set_audio_thread_priority();
@@ -446,7 +451,7 @@ fn run_worker(
     mem: GuestMemory,
     snd_data: SndData,
     kill_evt: Event,
-    stream_source_generators: Vec<SysAudioStreamSourceGenerator>,
+    stream_source_generators: Vec<Arc<SysAudioStreamSourceGenerator>>,
 ) -> Result<(), String> {
     let ex = Executor::new().expect("Failed to create an executor");
 
@@ -459,7 +464,8 @@ fn run_worker(
     }
     let streams = stream_source_generators
         .into_iter()
-        .map(|generator| AsyncMutex::new(StreamInfo::new(generator)))
+        .map(StreamInfo::new)
+        .map(AsyncMutex::new)
         .collect();
     let streams = Rc::new(AsyncMutex::new(streams));
 
@@ -826,33 +832,6 @@ mod tests {
                 i
             );
         }
-
-        // Check output_device_config correctly extended
-        assert_eq!(
-            res.params.output_device_config,
-            vec![
-                PCMDeviceParameters {
-                    // Keep from the parameters
-                    effects: Some(vec![StreamEffect::EchoCancellation]),
-                    ..PCMDeviceParameters::default()
-                },
-                PCMDeviceParameters::default(), // Extended with default
-                PCMDeviceParameters::default(), // Extended with default
-            ]
-        );
-
-        // Check input_device_config correctly extended
-        assert_eq!(
-            res.params.input_device_config,
-            vec![
-                PCMDeviceParameters {
-                    // Keep from the parameters
-                    effects: Some(vec![StreamEffect::EchoCancellation]),
-                    ..PCMDeviceParameters::default()
-                },
-                PCMDeviceParameters::default(), // Extended with default
-            ]
-        );
     }
 
     #[test]
@@ -868,5 +847,53 @@ mod tests {
         let params = resize_parameters_pcm_device_config(params);
         assert_eq!(params.output_device_config.len(), 1);
         assert_eq!(params.input_device_config.len(), 1);
+    }
+
+    #[test]
+    fn test_resize_parameters_pcm_device_config_extend() {
+        let params = Parameters {
+            num_output_devices: 3,
+            num_input_devices: 2,
+            num_output_streams: 3,
+            num_input_streams: 2,
+            output_device_config: vec![PCMDeviceParameters {
+                effects: Some(vec![StreamEffect::EchoCancellation]),
+                ..PCMDeviceParameters::default()
+            }],
+            input_device_config: vec![PCMDeviceParameters {
+                effects: Some(vec![StreamEffect::EchoCancellation]),
+                ..PCMDeviceParameters::default()
+            }],
+            ..Default::default()
+        };
+
+        let params = resize_parameters_pcm_device_config(params);
+
+        // Check output_device_config correctly extended
+        assert_eq!(
+            params.output_device_config,
+            vec![
+                PCMDeviceParameters {
+                    // Keep from the parameters
+                    effects: Some(vec![StreamEffect::EchoCancellation]),
+                    ..PCMDeviceParameters::default()
+                },
+                PCMDeviceParameters::default(), // Extended with default
+                PCMDeviceParameters::default(), // Extended with default
+            ]
+        );
+
+        // Check input_device_config correctly extended
+        assert_eq!(
+            params.input_device_config,
+            vec![
+                PCMDeviceParameters {
+                    // Keep from the parameters
+                    effects: Some(vec![StreamEffect::EchoCancellation]),
+                    ..PCMDeviceParameters::default()
+                },
+                PCMDeviceParameters::default(), // Extended with default
+            ]
+        );
     }
 }
