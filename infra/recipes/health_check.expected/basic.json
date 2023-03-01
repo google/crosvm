@@ -2,11 +2,9 @@
   {
     "cmd": [
       "vpython3",
-      "[CACHE]/builder/crosvm/tools/dev_container",
-      "--verbose",
-      "./tools/health-check",
-      "--all",
-      "a"
+      "[CACHE]/builder/crosvm/tools/presubmit",
+      "--list-checks",
+      "health_checks"
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
@@ -24,16 +22,16 @@
         "hostname": "rdbhost"
       }
     },
-    "name": "Checking a"
+    "name": "List checks to run"
   },
   {
     "cmd": [
       "vpython3",
       "[CACHE]/builder/crosvm/tools/dev_container",
       "--verbose",
-      "./tools/health-check",
-      "--all",
-      "b"
+      "tools/presubmit",
+      "--no-delta",
+      "check_a"
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
@@ -51,16 +49,16 @@
         "hostname": "rdbhost"
       }
     },
-    "name": "Checking b"
+    "name": "tools/presubmit check_a"
   },
   {
     "cmd": [
       "vpython3",
       "[CACHE]/builder/crosvm/tools/dev_container",
       "--verbose",
-      "mdbook",
-      "build",
-      "docs/book/"
+      "tools/presubmit",
+      "--no-delta",
+      "check_b"
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
@@ -78,31 +76,6 @@
         "hostname": "rdbhost"
       }
     },
-    "name": "Checking mdbook"
-  },
-  {
-    "cmd": [
-      "vpython3",
-      "[CACHE]/builder/crosvm/tools/dev_container",
-      "--verbose",
-      "./tools/cargo-doc"
-    ],
-    "cwd": "[CACHE]/builder/crosvm",
-    "env": {
-      "CROSVM_CONTAINER_CACHE": "[CACHE]/builder/dev_container"
-    },
-    "luci_context": {
-      "realm": {
-        "name": "crosvm/crosvm:ci"
-      },
-      "resultdb": {
-        "current_invocation": {
-          "name": "invocations/build:8945511751514863184",
-          "update_token": "token"
-        },
-        "hostname": "rdbhost"
-      }
-    },
-    "name": "Checking cargo docs"
+    "name": "tools/presubmit check_b"
   }
 ]

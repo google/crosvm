@@ -126,13 +126,9 @@ This recipe requires ambient luci authentication. To test locally run:
 
 PYTHON_VERSION_COMPATIBILITY: PY3
 
-&mdash; **def [RunSteps](/infra/recipes/build_linux.py#89)(api, properties):**
+&mdash; **def [RunSteps](/infra/recipes/build_linux.py#73)(api, properties):**
 
-&mdash; **def [collect\_binary\_sizes](/infra/recipes/build_linux.py#40)(api, properties):**
-
-&mdash; **def [get\_test\_args](/infra/recipes/build_linux.py#24)(api, properties):**
-
-Returns architecture specific arguments for ./tools/run_tests
+&mdash; **def [collect\_binary\_sizes](/infra/recipes/build_linux.py#24)(api, properties):**
 ### *recipes* / [build\_windows](/infra/recipes/build_windows.py)
 
 [DEPS](/infra/recipes/build_windows.py#7): [crosvm](#recipe_modules-crosvm), [recipe\_engine/buildbucket][recipe_engine/recipe_modules/buildbucket], [recipe\_engine/context][recipe_engine/recipe_modules/context], [recipe\_engine/properties][recipe_engine/recipe_modules/properties], [recipe\_engine/step][recipe_engine/recipe_modules/step]

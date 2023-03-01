@@ -21,22 +21,6 @@ DEPS = [
 PROPERTIES = BuildLinuxProperties
 
 
-def get_test_args(api, properties):
-    "Returns architecture specific arguments for ./tools/run_tests"
-    test_arch = properties.test_arch
-    args = ["--platform=" + test_arch]
-    if test_arch == "x86_64":
-        args += ["--dut=host"]
-    if test_arch == "aarch64":
-        args += ["--dut=vm"]
-    if properties.crosvm_direct:
-        args += ["--features=direct,all-x86_64"]
-
-    profile = properties.profile or "presubmit"
-    args += ["--profile=" + profile]
-    return args
-
-
 def collect_binary_sizes(api, properties):
     release_build_result = api.crosvm.step_in_container(
         "Build crosvm releases",
@@ -88,42 +72,32 @@ def collect_binary_sizes(api, properties):
 
 def RunSteps(api, properties):
     with api.crosvm.container_build_context():
-        api.crosvm.step_in_container(
-            "Build crosvm tests",
-            [
-                "./tools/run_tests",
-                "--verbose",
-                "--no-run",
-            ]
-            + get_test_args(api, properties),
+        presubmit_group = (
+            f"linux_{properties.test_arch}_direct"
+            if properties.crosvm_direct
+            else f"linux_{properties.test_arch}"
         )
-        api.crosvm.step_in_container(
-            "Run crosvm tests",
+        result = api.step(
+            "List checks to run",
             [
-                "./tools/run_tests",
-                "--verbose",
-            ]
-            + get_test_args(api, properties),
-        )
-        api.crosvm.step_in_container(
-            "Clippy",
-            [
-                "./tools/clippy",
-                "--verbose",
-                "--platform=" + properties.test_arch,
+                "vpython3",
+                api.crosvm.source_dir.join("tools/presubmit"),
+                "--list-checks",
+                presubmit_group,
             ],
+            stdout=api.raw_io.output_text(),
         )
+        check_list = result.stdout.strip().split("\n")
+        for check in check_list:
+            api.crosvm.step_in_container(
+                "tools/presubmit %s" % check, ["tools/presubmit", "--no-delta", check]
+            )
+
         with api.step.nest("Collect binary sizes"):
             collect_binary_sizes(api, properties)
 
 
 def GenTests(api):
-    filter_steps = Filter(
-        "Build crosvm tests",
-        "Run crosvm tests",
-        "Clippy",
-        "Collect binary sizes.Build crosvm releases",
-    )
     yield (
         api.test(
             "build_x86_64",
@@ -145,37 +119,13 @@ $ docker exec 82e9d24cd4f0 /tools/entrypoint.sh ./tools/build_release --json --p
 {"/scratch/cargo_target/crosvm/x86_64-unknown-linux-gnu/x86_64-unknown-linux-gnu/release/crosvm": 22783488}"""
             ),
         )
-        + api.post_process(filter_steps)
-    )
-    yield (
-        api.test(
-            "build_x86_64_direct",
-            api.buildbucket.ci_build(project="crosvm/crosvm"),
+        + api.step_data(
+            "List checks to run",
+            stdout=api.raw_io.output_text("check_a\ncheck_b"),
         )
-        + api.properties(BuildLinuxProperties(test_arch="x86_64", crosvm_direct=True))
-        + api.post_process(filter_steps)
-    )
-    yield (
-        api.test(
-            "build_aarch64",
-            api.buildbucket.ci_build(project="crosvm/crosvm"),
+        + api.post_process(
+            Filter("List checks to run")
+            .include_re(r"tools/presubmit .*")
+            .include_re(r"Collect binary sizes.*")
         )
-        + api.properties(BuildLinuxProperties(test_arch="aarch64"))
-        + api.post_process(filter_steps)
-    )
-    yield (
-        api.test(
-            "build_armhf",
-            api.buildbucket.ci_build(project="crosvm/crosvm"),
-        )
-        + api.properties(BuildLinuxProperties(test_arch="armhf"))
-        + api.post_process(filter_steps)
-    )
-    yield (
-        api.test(
-            "build_mingw64",
-            api.buildbucket.ci_build(project="crosvm/crosvm"),
-        )
-        + api.properties(BuildLinuxProperties(test_arch="mingw_64"))
-        + api.post_process(filter_steps)
     )

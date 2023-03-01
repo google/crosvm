@@ -5,7 +5,7 @@
 
 import sys
 import typing
-from typing import List, Literal, Set, Tuple
+from typing import List, Literal, Optional, Set, Tuple
 
 from impl.common import (
     CROSVM_ROOT,
@@ -98,6 +98,11 @@ def check_cargo_doc(_: CheckContext):
     return cmd("./tools/cargo-doc").with_env("RUSTDOCFLAGS", "-D warnings").with_color_flag()
 
 
+def check_mdbook(_: CheckContext):
+    "Runs cargo-doc and verifies that no warnings are emitted."
+    return cmd("mdbook build docs/book/")
+
+
 def platform_is_supported(platform: Platform):
     triple = Triple.from_shorthand(platform)
     installed_toolchains = cmd("rustup target list --installed").lines()
@@ -127,6 +132,19 @@ def check_crosvm_unit_tests(platform: Platform):
         return cmd("./tools/run_tests --platform", platform).with_color_flag()
 
     check.__doc__ = f"Runs crosvm unit tests for {platform}."
+
+    return check
+
+
+def check_crosvm_build(platform: Platform, features: Optional[str]):
+    def check(_: CheckContext):
+        return cmd(
+            "./tools/run_tests --no-run --platform",
+            platform,
+            f"--features={features}" if features else None,
+        ).with_color_flag()
+
+    check.__doc__ = f"Builds crosvm for {platform} with features {features}."
 
     return check
 
@@ -188,6 +206,10 @@ CHECKS: List[Check] = [
         can_fix=True,
     ),
     Check(
+        check_mdbook,
+        files=["docs/**/*"],
+    ),
+    Check(
         check_cargo_doc,
         files=["**.rs", "**Cargo.toml"],
         priority=True,
@@ -219,6 +241,12 @@ CHECKS: List[Check] = [
             "docs/book/src/appendix/memory_layout.md",
         ],
         can_fix=True,
+    ),
+    Check(
+        check_crosvm_build("x86_64", features="direct"),
+        custom_name=f"crosvm_build_direct",
+        files=["**.rs"],
+        priority=True,
     ),
     *(
         Check(
@@ -315,6 +343,7 @@ if not is_kiwi_repo():
 HEALTH_CHECKS = [
     "rust_format",
     "cargo_doc",
+    "mdbook",
     "infra_configs",
     "infra_tests",
     "python_format",
@@ -401,6 +430,15 @@ GROUPS: List[Group] = [
             checks=PLATFORM_CHECKS[platform],
         )
         for platform in PLATFORMS
+    ),
+    Group(
+        name=f"linux_x86_64_direct",
+        doc=f"Checks run on the linux_x86_64_direct builder",
+        checks=set(
+            [
+                "crosvm_build_direct",
+            ]
+        ),
     ),
     Group(
         name="all",

@@ -380,6 +380,8 @@ def run_checks(
         parallel: Run tasks in parallel.
     """
     tasks = generate_plan(checks_list, fix, run_on_all_files, nightly_fmt)
+    if len(tasks) == 1:
+        parallel = False
 
     if parallel:
         execute_tasks_parallel(list(tasks))

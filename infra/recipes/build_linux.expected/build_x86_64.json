@@ -2,14 +2,9 @@
   {
     "cmd": [
       "vpython3",
-      "[CACHE]/builder/crosvm/tools/dev_container",
-      "--verbose",
-      "./tools/run_tests",
-      "--verbose",
-      "--no-run",
-      "--platform=x86_64",
-      "--dut=host",
-      "--profile=presubmit"
+      "[CACHE]/builder/crosvm/tools/presubmit",
+      "--list-checks",
+      "linux_x86_64"
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
@@ -27,18 +22,16 @@
         "hostname": "rdbhost"
       }
     },
-    "name": "Build crosvm tests"
+    "name": "List checks to run"
   },
   {
     "cmd": [
       "vpython3",
       "[CACHE]/builder/crosvm/tools/dev_container",
       "--verbose",
-      "./tools/run_tests",
-      "--verbose",
-      "--platform=x86_64",
-      "--dut=host",
-      "--profile=presubmit"
+      "tools/presubmit",
+      "--no-delta",
+      "check_a"
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
@@ -56,16 +49,16 @@
         "hostname": "rdbhost"
       }
     },
-    "name": "Run crosvm tests"
+    "name": "tools/presubmit check_a"
   },
   {
     "cmd": [
       "vpython3",
       "[CACHE]/builder/crosvm/tools/dev_container",
       "--verbose",
-      "./tools/clippy",
-      "--verbose",
-      "--platform=x86_64"
+      "tools/presubmit",
+      "--no-delta",
+      "check_b"
     ],
     "cwd": "[CACHE]/builder/crosvm",
     "env": {
@@ -83,7 +76,11 @@
         "hostname": "rdbhost"
       }
     },
-    "name": "Clippy"
+    "name": "tools/presubmit check_b"
+  },
+  {
+    "cmd": [],
+    "name": "Collect binary sizes"
   },
   {
     "cmd": [
@@ -118,6 +115,57 @@
       "@@@STEP_LOG_LINE@raw_io.output_text[Obtain release build output]@$ docker exec 82e9d24cd4f0 /tools/entrypoint.sh ./tools/build_release --json --platform=x86_64@@@",
       "@@@STEP_LOG_LINE@raw_io.output_text[Obtain release build output]@{\"crosvm\": \"/scratch/cargo_target/crosvm/x86_64-unknown-linux-gnu/x86_64-unknown-linux-gnu/release/crosvm\"}@@@",
       "@@@STEP_LOG_END@raw_io.output_text[Obtain release build output]@@@"
+    ]
+  },
+  {
+    "cmd": [
+      "vpython3",
+      "[CACHE]/builder/crosvm/tools/dev_container",
+      "--verbose",
+      "./tools/infra/binary_size",
+      "--builder-name",
+      "builder",
+      "--target-name",
+      "crosvm",
+      "--target-path",
+      "/scratch/cargo_target/crosvm/x86_64-unknown-linux-gnu/x86_64-unknown-linux-gnu/release/crosvm",
+      "--base-dir",
+      "/scratch/cargo_target/crosvm",
+      "--builder-name",
+      "builder",
+      "--log-url",
+      "https://cr-buildbucket.appspot.com/build/8945511751514863184",
+      "--build-version",
+      "2d72510e447ab60a9728aeea2362d8be2cbd7789"
+    ],
+    "cwd": "[CACHE]/builder/crosvm",
+    "env": {
+      "CROSVM_CONTAINER_CACHE": "[CACHE]/builder/dev_container"
+    },
+    "infra_step": true,
+    "luci_context": {
+      "realm": {
+        "name": "crosvm/crosvm:ci"
+      },
+      "resultdb": {
+        "current_invocation": {
+          "name": "invocations/build:8945511751514863184",
+          "update_token": "token"
+        },
+        "hostname": "rdbhost"
+      }
+    },
+    "name": "Collect binary sizes.Get binary size for crosvm",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@1@@@"
+    ]
+  },
+  {
+    "cmd": [],
+    "name": "Collect binary sizes.Write binary sizes into output",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@1@@@",
+      "@@@SET_BUILD_PROPERTY@binary_sizes@{\"/scratch/cargo_target/crosvm/x86_64-unknown-linux-gnu/x86_64-unknown-linux-gnu/release/crosvm\": 22783488}@@@"
     ]
   }
 ]
