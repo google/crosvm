@@ -36,6 +36,7 @@ acpi_tables = {path = "../acpi_tables" }
 anyhow = "*"
 async-trait = "0.1.36"
 audio_streams = "*"
+audio_util = { path = "../audio_util" }
 balloon_control = { path = "../common/balloon_control" }
 base = { path = "../base" }
 bit_field = { path = "../bit_field" }

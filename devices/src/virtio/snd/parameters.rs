@@ -50,6 +50,7 @@ pub enum Error {
 #[serde(into = "String", try_from = "&str")]
 pub enum StreamSourceBackend {
     NULL,
+    FILE,
     Sys(SysStreamSourceBackend),
 }
 
@@ -58,6 +59,7 @@ impl From<StreamSourceBackend> for String {
     fn from(backend: StreamSourceBackend) -> Self {
         match backend {
             StreamSourceBackend::NULL => "null".to_owned(),
+            StreamSourceBackend::FILE => "file".to_owned(),
             StreamSourceBackend::Sys(sys_backend) => sys_backend.into(),
         }
     }
@@ -69,6 +71,7 @@ impl TryFrom<&str> for StreamSourceBackend {
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         match s {
             "null" => Ok(StreamSourceBackend::NULL),
+            "file" => Ok(StreamSourceBackend::FILE),
             _ => SysStreamSourceBackend::try_from(s).map(StreamSourceBackend::Sys),
         }
     }
@@ -95,6 +98,8 @@ pub struct Parameters {
     pub backend: StreamSourceBackend,
     pub num_output_streams: u32,
     pub num_input_streams: u32,
+    pub playback_path: String,
+    pub playback_size: usize,
     #[cfg(all(unix, feature = "audio_cras"))]
     #[serde(deserialize_with = "libcras::deserialize_cras_client_type")]
     pub client_type: CrasClientType,
@@ -113,6 +118,8 @@ impl Default for Parameters {
             backend: StreamSourceBackend::NULL,
             num_output_streams: 1,
             num_input_streams: 1,
+            playback_path: "".to_string(),
+            playback_size: 0,
             #[cfg(all(unix, feature = "audio_cras"))]
             client_type: CrasClientType::CRAS_CLIENT_TYPE_CROSVM,
             #[cfg(all(unix, feature = "audio_cras"))]

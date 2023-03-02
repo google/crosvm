@@ -77,7 +77,8 @@ impl SndBackend {
             | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
 
         let snd_data = hardcoded_snd_data(&params);
-        let generators = create_stream_source_generators(&params, &snd_data);
+        let mut keep_rds = Vec::new();
+        let generators = create_stream_source_generators(&params, &snd_data, &mut keep_rds)?;
 
         if snd_data.pcm_info_len() != generators.len() {
             error!(

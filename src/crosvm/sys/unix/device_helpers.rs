@@ -441,7 +441,7 @@ pub fn create_virtio_snd_device(
     use virtio::snd::parameters::StreamSourceBackend as Backend;
 
     let policy = match backend {
-        Backend::NULL => "snd_null_device",
+        Backend::NULL | Backend::FILE => "snd_null_device",
         #[cfg(feature = "audio_cras")]
         Backend::Sys(virtio::snd::sys::StreamSourceBackend::CRAS) => "snd_cras_device",
         #[cfg(not(feature = "audio_cras"))]

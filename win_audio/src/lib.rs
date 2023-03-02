@@ -31,6 +31,7 @@ use audio_streams::NoopStreamSourceGenerator;
 use audio_streams::PlaybackBufferStream;
 use audio_streams::SampleFormat;
 use audio_streams::StreamSource;
+use audio_util::FileStreamSourceGenerator;
 use base::info;
 use base::warn;
 use sync::Mutex;
@@ -52,6 +53,12 @@ impl WinStreamSourceGenerator for WinAudioStreamSourceGenerator {
 impl WinStreamSourceGenerator for NoopStreamSourceGenerator {
     fn generate(&self) -> Result<Box<dyn WinAudioServer>, BoxError> {
         Ok(Box::new(NoopStreamSource))
+    }
+}
+
+impl WinStreamSourceGenerator for FileStreamSourceGenerator {
+    fn generate(&self) -> Result<Box<dyn WinAudioServer>, BoxError> {
+        unimplemented!();
     }
 }
 

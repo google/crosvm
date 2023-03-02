@@ -2138,12 +2138,16 @@ pub struct RunCommand {
     /// Possible key values:
     ///     capture=(false,true) - Disable/enable audio capture.
     ///         Default is false.
-    ///     backend=(null,[cras]) - Which backend to use for
+    ///     backend=(null,file,[cras]) - Which backend to use for
     ///         virtio-snd.
     ///     client_type=(crosvm,arcvm,borealis) - Set specific
     ///         client type for cras backend. Default is crosvm.
     ///     socket_type=(legacy,unified) Set specific socket type
     ///         for cras backend. Default is unified.
+    ///     playback_path=STR - Set directory of output streams
+    ///         for file backend.
+    ///     playback_size=INT - Set size of the output streams
+    ///         from file backend.
     ///     num_output_devices=INT - Set number of output PCM
     ///         devices.
     ///     num_input_devices=INT - Set number of input PCM devices.
