@@ -3,19 +3,124 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import json
 import os
+import pathlib
+import re
+import tempfile
+from collections import Counter
+from typing import Dict, List, Tuple
 
-from impl.common import CROSVM_ROOT, run_main, cmd, chdir, Triple
+from impl.common import CROSVM_ROOT, Triple, chdir, cmd, run_main
+
+# Capture syscall name as group 1 from strace log
+# E.g. 'access("/etc/ld.so.preload", R_OK)      = -1 ENOENT (No such file or directory)' will have 'access' as group 1
+syscall_re = re.compile(r"^(\w+)\(.+?= .+$", re.IGNORECASE | re.MULTILINE)
+
+# Capture seccomp_trace json as group 1 from crosvm log
+# E.g. ' DEBUG jail::helpers] seccomp_trace {"event": "minijail_create", "name": "balloon_device", "jail_addr": "0x55623bea1df0"}'
+# will have the entire json string as group 1
+seccomp_trace_log_re = re.compile(r"DEBUG.*? seccomp_trace .*?(\{.*\}).*?$", re.MULTILINE)
+
+
+def parse_strace_file_str_to_freq_dict(strace_content: str) -> Counter[str]:
+    # TODO: start from after seccomp
+    # TODO: throw exception when seccomp isn't detected
+    return Counter(map(lambda m: m.group(1), syscall_re.finditer(strace_content)))
+
+
+def freq_dict_to_freq_file_str(freq_dict: Dict[str, int]) -> str:
+    return "\n".join(map(lambda k: f"{k}: {str(freq_dict[k])}", sorted(freq_dict.keys())))
+
+
+def parse_crosvm_log(crosvm_log: str) -> List[Dict[str, str]]:
+    # Load each seccomp_trace event json as dict
+    seccomp_trace_events = []
+    for match in seccomp_trace_log_re.finditer(crosvm_log):
+        seccomp_trace_events.append(json.loads(match.group(1)))
+    return seccomp_trace_events
+
+
+def parse_seccomp_trace_events_to_pid_table(
+    seccomp_trace_events: List[Dict[str, str]]
+) -> List[Tuple[int, str]]:
+    # There are 3 types of minijail events: create, clone, form
+    # Create is when a jail is created and a policy file is loaded into the new jail. "name" field in this type of event will contain the policy file name used in this jail.
+    # Clone is when a jail's policy is duplicated into a new jail. Cloned jail can be used to contain different processes with the same policy.
+    # Fork is when a jail is enabled and a process is forked to be executed inside the jail.
+    addr_to_name: Dict[str, str] = dict()
+    result = []
+    for event in seccomp_trace_events:
+        if event["event"] == "minijail_create":
+            addr_to_name[event["jail_addr"]] = event["name"]
+        elif event["event"] == "minijail_clone":
+            addr_to_name[event["dst_jail_addr"]] = addr_to_name[event["src_jail_addr"]]
+        elif event["event"] == "minijail_fork":
+            result.append((int(event["pid"]), addr_to_name[event["jail_addr"]]))
+        else:
+            raise ValueError("Unrecognized event type: {}".format(event["event"]))
+    return result
+
 
 bench = cmd("cargo test").with_color_flag()
 
 
-def main(target_name: str):
+def main(target_name: str, log_seccomp: bool = False, log_seccomp_output_dir: str = ""):
+    """Run an end-to-end benchmark target.
+
+    target-name -- name of target
+    log-seccomp -- record minijail seccomp filter with the run
+
+    """
+
+    if log_seccomp and not os.path.isdir(log_seccomp_output_dir):
+        raise ValueError("invalid log_seccomp_output_dir set")
+
+    if log_seccomp:
+        abs_seccomp_output_dir = pathlib.Path(log_seccomp_output_dir).absolute()
+
     chdir(CROSVM_ROOT / "e2e_tests")
 
     build_env = os.environ.copy()
     build_env.update(Triple.host_default().get_cargo_env())
-    bench("--release", "--bench", target_name).with_envs(build_env).fg()
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        if log_seccomp:
+            strace_out_path = pathlib.Path(tempdir) / "strace_out"
+            build_env.update(
+                {
+                    "CROSVM_CARGO_TEST_LOG_LEVEL_DEBUG": "1",
+                    "CROSVM_CARGO_TEST_E2E_WRAPPER_CMD": "strace -ff --output={}".format(
+                        os.path.abspath(strace_out_path)
+                    ),
+                    "CROSVM_CARGO_TEST_LOG_FILE": os.path.abspath(
+                        pathlib.Path(tempdir) / "crosvm.log"
+                    ),
+                }
+            )
+
+        bench("--release", "--bench", target_name).with_envs(build_env).fg()
+
+        if log_seccomp:
+            with open(pathlib.Path(tempdir) / "crosvm.log", "r") as f:
+                pid_table = parse_seccomp_trace_events_to_pid_table(parse_crosvm_log(f.read()))
+
+            # Map each policy name to its frequency
+            policy_freq_dict: Dict[str, Counter[str]] = {}
+            for pid, policy_name in pid_table:
+                strace_log = pathlib.Path(
+                    os.path.normpath(strace_out_path) + f".{str(pid)}"
+                ).read_text()
+                freq_counter = parse_strace_file_str_to_freq_dict(strace_log)
+                if policy_name in policy_freq_dict:
+                    policy_freq_dict[policy_name] += freq_counter
+                else:
+                    policy_freq_dict[policy_name] = freq_counter
+
+            for policy_name, freq_counter in policy_freq_dict.items():
+                (abs_seccomp_output_dir / f"{policy_name}.frequency").write_text(
+                    freq_dict_to_freq_file_str(freq_counter)
+                )
 
 
 if __name__ == "__main__":
