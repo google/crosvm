@@ -1549,7 +1549,7 @@ impl VmRequest {
                 match f() {
                     Ok(res) => VmResponse::RestoreResponse(res),
                     Err(e) => {
-                        error!("failed to handle snapshot: {:?}", e);
+                        error!("failed to handle restore: {:?}", e);
                         VmResponse::Err(SysError::new(EIO))
                     }
                 }

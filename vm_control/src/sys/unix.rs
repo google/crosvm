@@ -49,7 +49,7 @@ pub fn handle_request<T: AsRef<Path> + std::fmt::Debug>(
                 Ok(response) => Ok(response),
                 Err(e) => {
                     error!(
-                        "failed to send request to socket at '{:?}': {}",
+                        "failed to recv response from socket at '{:?}': {}",
                         socket_path, e
                     );
                     Err(())
