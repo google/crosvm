@@ -691,15 +691,6 @@ name = "crosvm_control"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cbindgen",
- "crosvm_control_rust",
-]
-
-[[package]]
-name = "crosvm_control_rust"
-version = "0.1.0"
-dependencies = [
- "anyhow",
  "base",
  "cbindgen",
  "libc",

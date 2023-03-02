@@ -8,7 +8,9 @@ edition = "2021"
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
-crosvm_control_rust = { path = "crosvm_control_rust" }
+base = { path = "../base" }
+vm_control = { path = "../vm_control" }
+libc = "0.2.65"
 
 [build-dependencies]
 anyhow = "*"
