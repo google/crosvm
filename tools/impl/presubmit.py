@@ -97,7 +97,7 @@ class Group(NamedTuple):
 
     doc: str
 
-    checks: Set[str]
+    checks: List[str]
 
 
 def list_file_diff():

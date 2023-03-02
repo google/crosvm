@@ -3,9 +3,8 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import sys
 import typing
-from typing import List, Literal, Optional, Set, Tuple
+from typing import Generator, List, Literal, Optional, Tuple
 
 from impl.common import (
     CROSVM_ROOT,
@@ -14,10 +13,8 @@ from impl.common import (
     argh,
     chdir,
     cmd,
-    cwd_context,
     is_kiwi_repo,
     run_main,
-    console,
 )
 from impl.presubmit import Check, CheckContext, run_checks, Group
 
@@ -30,6 +27,13 @@ lucicfg = cmd("third_party/depot_tools/lucicfg")
 # All supported platforms as a type and a list.
 Platform = Literal["x86_64", "aarch64", "mingw64", "armhf"]
 PLATFORMS: Tuple[Platform, ...] = typing.get_args(Platform)
+
+
+def platform_is_supported(platform: Platform):
+    "Returns true if the platform is available as a target in rustup."
+    triple = Triple.from_shorthand(platform)
+    installed_toolchains = cmd("rustup target list --installed").lines()
+    return str(triple) in installed_toolchains
 
 
 ####################################################################################################
@@ -101,12 +105,6 @@ def check_cargo_doc(_: CheckContext):
 def check_mdbook(_: CheckContext):
     "Runs cargo-doc and verifies that no warnings are emitted."
     return cmd("mdbook build docs/book/")
-
-
-def platform_is_supported(platform: Platform):
-    triple = Triple.from_shorthand(platform)
-    installed_toolchains = cmd("rustup target list --installed").lines()
-    return str(triple) in installed_toolchains
 
 
 def check_crosvm_tests(platform: Platform):
@@ -340,115 +338,96 @@ if not is_kiwi_repo():
 # Configures pre-defined groups of checks. Some are configured for CI builders and others
 # are configured for convenience during local development.
 
-HEALTH_CHECKS = [
-    "rust_format",
-    "cargo_doc",
-    "mdbook",
-    "infra_configs",
-    "infra_tests",
-    "python_format",
-    "python_tests",
-    "python_types",
-    "markdown_format",
-    "copyright_header",
-    "rust_features",
-    "rust_lockfiles",
-    "file_ends_with_newline",
-    "line_endings",
-]
-
-PLATFORM_CHECKS = dict(
-    (
-        platform,
-        set(
-            [
-                f"crosvm_tests_{platform}",
-                f"clippy_{platform}",
-            ]
-        ),
-    )
-    for platform in PLATFORMS
-)
-
 GROUPS: List[Group] = [
     # The default group is run if no check or group is explicitly set
     Group(
         name="default",
         doc="Checks run by default",
-        checks=set(
-            [
-                *HEALTH_CHECKS,
-                # Run only one task per platform to prevent blocking on the build cache.
-                "crosvm_tests_x86_64",
-                "crosvm_unit_tests_aarch64",
-                "crosvm_unit_tests_mingw64",
-                "clippy_armhf",
-            ]
-        ),
+        checks=[
+            "health_checks",
+            # Run only one task per platform to prevent blocking on the build cache.
+            "crosvm_tests_x86_64",
+            "crosvm_unit_tests_aarch64",
+            "crosvm_unit_tests_mingw64",
+            "clippy_armhf",
+        ],
     ),
     Group(
         name="quick",
         doc="Runs a quick subset of presubmit checks.",
-        checks=set(
-            [
-                *HEALTH_CHECKS,
-                "crosvm_unit_tests_x86_64",
-                "clippy_aarch64",
-            ]
-        ),
+        checks=[
+            "health_checks",
+            "crosvm_unit_tests_x86_64",
+            "clippy_aarch64",
+        ],
     ),
+    Group(
+        name="all",
+        doc="Run checks of all builders.",
+        checks=[
+            "health_checks",
+            *(f"linux_{platform}" for platform in PLATFORMS),
+            "linux_x86_64_direct",
+        ],
+    ),
+    # Convenience groups for local usage:
     Group(
         name="clippy",
         doc="Runs clippy for all platforms",
-        checks=set(f"clippy_{platform}" for platform in PLATFORMS),
+        checks=[f"clippy_{platform}" for platform in PLATFORMS],
     ),
     Group(
         name="unit_tests",
         doc="Runs unit tests for all platforms",
-        checks=set(f"crosvm_unit_tests_{platform}" for platform in PLATFORMS),
-    ),
-    Group(
-        name="health_checks",
-        doc="Checks run on the health_check builder",
-        checks=set(HEALTH_CHECKS),
+        checks=[f"crosvm_unit_tests_{platform}" for platform in PLATFORMS],
     ),
     Group(
         name="format",
         doc="Runs all formatting checks (or fixes)",
-        checks=set(
-            [
-                "rust_format",
-                "markdown_format",
-                "python_format",
-            ]
-        ),
+        checks=[
+            "rust_format",
+            "markdown_format",
+            "python_format",
+        ],
+    ),
+    # The groups below are used by builders in CI:
+    Group(
+        name="health_checks",
+        doc="Checks run on the health_check builder",
+        checks=[
+            "copyright_header",
+            "file_ends_with_newline",
+            "infra_configs",
+            "infra_tests",
+            "line_endings",
+            "markdown_format",
+            "mdbook",
+            "cargo_doc",
+            "python_format",
+            "python_tests",
+            "python_types",
+            "rust_features",
+            "rust_format",
+            "rust_lockfiles",
+        ],
     ),
     *(
         Group(
             name=f"linux_{platform}",
             doc=f"Checks run on the linux-{platform} builder",
-            checks=PLATFORM_CHECKS[platform],
+            checks=[
+                f"crosvm_tests_{platform}",
+                f"clippy_{platform}",
+            ],
         )
         for platform in PLATFORMS
     ),
     Group(
         name=f"linux_x86_64_direct",
         doc=f"Checks run on the linux_x86_64_direct builder",
-        checks=set(
-            [
-                "crosvm_build_direct",
-            ]
-        ),
-    ),
-    Group(
-        name="all",
-        doc="Run checks of all builders.",
-        checks=set(
-            [
-                *(check for checks in PLATFORM_CHECKS.values() for check in checks),
-                *HEALTH_CHECKS,
-            ]
-        ),
+        checks=[
+            "crosvm_build_direct",
+        ],
     ),
 ]
 
@@ -461,8 +440,8 @@ def validate_config():
     "Validates the CHECKS and GROUPS configuration."
     for group in GROUPS:
         for check in group.checks:
-            if not check in CHECKS_DICT:
-                raise Exception(f"Group {group.name} includes non-existing check {check}.")
+            if check not in CHECKS_DICT and check not in GROUPS_DICT:
+                raise Exception(f"Group {group.name} includes non-existing item {check}.")
 
     def find_in_group(check: Check):
         for group in GROUPS:
@@ -478,6 +457,14 @@ def validate_config():
     for name in all_names:
         if all_names.count(name) > 1:
             raise Exception(f"Check or group {name} is defined multiple times.")
+
+
+def get_check_names_in_group(group: Group) -> Generator[str, None, None]:
+    for name in group.checks:
+        if name in GROUPS_DICT:
+            yield from get_check_names_in_group(GROUPS_DICT[name])
+        else:
+            yield name
 
 
 @argh.arg("--list-checks", default=False, help="List names of available checks and exit.")
@@ -504,14 +491,17 @@ def main(
         checks_or_groups = ("default",)
 
     # Resolve and validate the groups and checks provided
-    check_names: Set[str] = set()
+    check_names: List[str] = []
     for check_or_group in checks_or_groups:
         if check_or_group in CHECKS_DICT:
-            check_names.add(check_or_group)
+            check_names.append(check_or_group)
         elif check_or_group in GROUPS_DICT:
-            check_names = check_names.union(GROUPS_DICT[check_or_group].checks)
+            check_names += list(get_check_names_in_group(GROUPS_DICT[check_or_group]))
         else:
             raise Exception(f"No such check or group: {check_or_group}")
+
+    # Remove duplicates while preserving order
+    check_names = list(dict.fromkeys(check_names))
 
     if list_checks:
         for check in check_names:
