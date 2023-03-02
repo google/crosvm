@@ -324,7 +324,7 @@ pub enum IrqHandlerRequest {
     Exit,
 }
 
-const EXPECTED_IRQ_FLUSH_ITERATIONS: usize = 100;
+const EXPECTED_MAX_IRQ_FLUSH_ITERATIONS: usize = 100;
 
 /// Response for [IrqHandlerRequest].
 #[derive(Serialize, Deserialize, Debug)]
@@ -1476,8 +1476,8 @@ impl VmRequest {
                             }
                         }
                         flush_attempts += 1;
-                        if flush_attempts > EXPECTED_IRQ_FLUSH_ITERATIONS {
-                            warn!("flushing IRQs for snapshot may be stalled after iteration {}, expected <= {} iterations", flush_attempts, EXPECTED_IRQ_FLUSH_ITERATIONS);
+                        if flush_attempts > EXPECTED_MAX_IRQ_FLUSH_ITERATIONS {
+                            warn!("flushing IRQs for snapshot may be stalled after iteration {}, expected <= {} iterations", flush_attempts, EXPECTED_MAX_IRQ_FLUSH_ITERATIONS);
                         }
                     }
                     info!("flushed IRQs in {} iterations", flush_attempts);
