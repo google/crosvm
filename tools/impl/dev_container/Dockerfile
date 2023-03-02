@@ -20,7 +20,7 @@ FROM docker.io/debian:testing-slim
 
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
-    PATH=/usr/local/cargo/bin:$PATH
+    PATH=/workspace/tools:/usr/local/cargo/bin:$PATH
 
 # Install pipx applications globally in /usr/local/bin
 ENV PIPX_HOME=/usr/local/pipx \

@@ -6,6 +6,5 @@ target/
 **/*.pyc
 lcov.info
 .idea
-.envrc
 .vscode/*
 !.vscode/settings.json
