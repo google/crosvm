@@ -44,6 +44,7 @@ members = [
     "anti_tamper",
     "arch",
     "argh_helpers",
+    "audio_util",
     "base",
     "bit_field",
     "broker_ipc",

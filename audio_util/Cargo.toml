@@ -1,0 +1,11 @@
+[package]
+name = "audio_util"
+version = "0.1.0"
+authors = ["The ChromiumOS Authors"]
+edition = "2021"
+
+[dependencies]
+audio_streams = "*"
+async-trait = "0.1.36"
+base = { path = "../base" }
+thiserror = "1.0.20"
