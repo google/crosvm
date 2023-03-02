@@ -272,7 +272,7 @@ fn modify_vfio(cmd: cmdline::VfioCrosvmCommand) -> std::result::Result<(), ()> {
         return Err(());
     }
 
-    handle_request(&request, socket_path)?;
+    vms_request(&request, socket_path)?;
     Ok(())
 }
 

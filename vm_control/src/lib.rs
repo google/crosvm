@@ -1571,6 +1571,7 @@ impl VmRequest {
 ///
 /// Success is usually indicated `VmResponse::Ok` unless there is data associated with the response.
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[must_use]
 pub enum VmResponse {
     /// Indicates the request was executed successfully.
     Ok,

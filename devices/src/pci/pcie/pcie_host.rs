@@ -289,9 +289,13 @@ impl HotplugWorker {
             vm_socket
                 .send(&request)
                 .with_context(|| format!("failed to send hotplug request for {:?}", child))?;
-            vm_socket
+            let response = vm_socket
                 .recv::<VmResponse>()
                 .with_context(|| format!("failed to receive hotplug response for {:?}", child))?;
+            match response {
+                VmResponse::Ok => {}
+                _ => bail!("unexpected hotplug response: {response}"),
+            };
             if !*child_exist {
                 *child_exist = true;
             }

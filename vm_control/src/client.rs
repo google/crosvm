@@ -39,12 +39,18 @@ pub type ModifyUsbResult<T> = std::result::Result<T, ModifyUsbError>;
 
 pub type VmsRequestResult = std::result::Result<(), ()>;
 
+/// Send a `VmRequest` that expects a `VmResponse::Ok` reply.
 pub fn vms_request<T: AsRef<Path> + std::fmt::Debug>(
     request: &VmRequest,
     socket_path: T,
 ) -> VmsRequestResult {
-    handle_request(request, socket_path)?;
-    Ok(())
+    match handle_request(request, socket_path)? {
+        VmResponse::Ok => Ok(()),
+        r => {
+            println!("unexpected response: {r}");
+            Err(())
+        }
+    }
 }
 
 pub fn do_usb_attach<T: AsRef<Path> + std::fmt::Debug>(
@@ -125,8 +131,16 @@ pub fn do_modify_battery<T: AsRef<Path> + std::fmt::Debug>(
 
 pub fn do_swap_status<T: AsRef<Path> + std::fmt::Debug>(socket_path: T) -> VmsRequestResult {
     let response = handle_request(&VmRequest::Swap(SwapCommand::Status), socket_path)?;
-    println!("{}", response);
-    Ok(())
+    match &response {
+        VmResponse::SwapStatus(_) => {
+            println!("{}", response);
+            Ok(())
+        }
+        r => {
+            println!("unexpected response: {r:?}");
+            Err(())
+        }
+    }
 }
 
 pub type HandleRequestResult = std::result::Result<VmResponse, ()>;
