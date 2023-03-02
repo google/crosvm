@@ -1193,6 +1193,13 @@ pub struct RunCommand {
     ///        Deprecated - use `dpi` instead.
     pub gpu: Vec<FixedGpuParameters>,
 
+    #[cfg(all(unix, feature = "gpu"))]
+    #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
+    #[merge(strategy = overwrite_option)]
+    /// move all vGPU threads to this Cgroup (default: nothing moves)
+    pub gpu_cgroup_path: Option<PathBuf>,
+
     #[cfg(feature = "gpu")]
     #[argh(option)]
     #[serde(skip)] // TODO(b/255223604). Deprecated - use `gpu` instead.
@@ -1216,6 +1223,13 @@ pub struct RunCommand {
     ///     foz-db-list-path=PATH - The path to GPU foz db list
     ///         file for dynamically loading RO caches.
     pub gpu_render_server: Option<GpuRenderServerParameters>,
+
+    #[cfg(all(unix, feature = "gpu"))]
+    #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
+    #[merge(strategy = overwrite_option)]
+    /// move all vGPU server threads to this Cgroup (default: nothing moves)
+    pub gpu_server_cgroup_path: Option<PathBuf>,
 
     #[argh(switch)]
     #[serde(skip)] // TODO(b/255223604)
@@ -2648,6 +2662,12 @@ impl TryFrom<RunCommand> for super::config::Config {
                         num_displays
                     ));
                 }
+            }
+
+            #[cfg(unix)]
+            {
+                cfg.gpu_cgroup_path = cmd.gpu_cgroup_path;
+                cfg.gpu_server_cgroup_path = cmd.gpu_server_cgroup_path;
             }
         }
 

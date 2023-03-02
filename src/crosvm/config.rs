@@ -1047,10 +1047,14 @@ pub struct Config {
     pub gdb: Option<u32>,
     #[cfg(all(windows, feature = "gpu"))]
     pub gpu_backend_config: Option<GpuBackendConfig>,
+    #[cfg(all(unix, feature = "gpu"))]
+    pub gpu_cgroup_path: Option<PathBuf>,
     #[cfg(feature = "gpu")]
     pub gpu_parameters: Option<GpuParameters>,
     #[cfg(all(unix, feature = "gpu"))]
     pub gpu_render_server_parameters: Option<GpuRenderServerParameters>,
+    #[cfg(all(unix, feature = "gpu"))]
+    pub gpu_server_cgroup_path: Option<PathBuf>,
     #[cfg(all(windows, feature = "gpu"))]
     pub gpu_vmm_config: Option<GpuVmmConfig>,
     pub host_cpu_topology: bool,
@@ -1269,6 +1273,10 @@ impl Default for Config {
             gpu_parameters: None,
             #[cfg(all(unix, feature = "gpu"))]
             gpu_render_server_parameters: None,
+            #[cfg(all(unix, feature = "gpu"))]
+            gpu_cgroup_path: None,
+            #[cfg(all(unix, feature = "gpu"))]
+            gpu_server_cgroup_path: None,
             #[cfg(all(windows, feature = "gpu"))]
             gpu_vmm_config: None,
             host_cpu_topology: false,

@@ -18,6 +18,9 @@ use serde_keyvalue::FromKeyValues;
 use super::*;
 use crate::crosvm::config::Config;
 
+#[cfg(feature = "virgl_renderer_next")]
+use base::platform::move_proc_to_cgroup;
+
 pub struct GpuCacheInfo<'a> {
     directory: Option<&'a str>,
     environment: Vec<(&'a str, &'a str)>,
@@ -125,6 +128,7 @@ pub fn create_gpu_device(
         /*system_blob=*/ false,
         virtio::base_features(cfg.protection_type),
         cfg.wayland_socket_paths.clone(),
+        cfg.gpu_cgroup_path.as_ref(),
     );
 
     let jail = if let Some(jail_config) = &cfg.jail_config {
@@ -272,13 +276,18 @@ pub fn start_gpu_render_server(
         envp = Some(env.iter().map(AsRef::as_ref).collect());
     }
 
-    jail.run_command(minijail::Command::new_for_path(
-        cmd,
-        &inheritable_fds,
-        &args,
-        envp.as_deref(),
-    )?)
-    .context("failed to start gpu render server")?;
+    let render_server_pid = jail
+        .run_command(minijail::Command::new_for_path(
+            cmd,
+            &inheritable_fds,
+            &args,
+            envp.as_deref(),
+        )?)
+        .context("failed to start gpu render server")?;
+
+    if let Some(gpu_server_cgroup_path) = &cfg.gpu_server_cgroup_path {
+        move_proc_to_cgroup(gpu_server_cgroup_path.to_path_buf(), render_server_pid)?;
+    }
 
     Ok((jail, SafeDescriptor::from(client_socket)))
 }

@@ -319,6 +319,11 @@ pub fn create_gpu_minijail(root: &Path, config: &SandboxConfig) -> Result<Minija
     // Device nodes required for DRM.
     let sys_dev_char_path = Path::new("/sys/dev/char");
     jail.mount_bind(sys_dev_char_path, sys_dev_char_path, false)?;
+
+    // Necessary for CGROUP control of the vGPU threads
+    let sys_cpuset_path = Path::new("/sys/fs/cgroup/cpuset");
+    jail.mount_bind(sys_cpuset_path, sys_cpuset_path, true)?;
+
     let sys_devices_path = Path::new("/sys/devices");
     jail.mount_bind(sys_devices_path, sys_devices_path, false)?;
 

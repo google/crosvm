@@ -21,6 +21,8 @@ use anyhow::anyhow;
 use anyhow::Context;
 use base::debug;
 use base::error;
+#[cfg(unix)]
+use base::platform::move_task_to_cgroup;
 use base::warn;
 use base::AsRawDescriptor;
 use base::Event;
@@ -1075,6 +1077,8 @@ pub struct Gpu {
     #[cfg(feature = "virgl_renderer_next")]
     render_server_fd: Option<SafeDescriptor>,
     context_mask: u64,
+    #[cfg(unix)]
+    gpu_cgroup_path: Option<PathBuf>,
 }
 
 impl Gpu {
@@ -1091,6 +1095,7 @@ impl Gpu {
         base_features: u64,
         channels: BTreeMap<String, PathBuf>,
         #[cfg(windows)] wndproc_thread: WindowProcedureThread,
+        #[cfg(unix)] gpu_cgroup_path: Option<&PathBuf>,
     ) -> Gpu {
         let mut display_params = gpu_parameters.display_params.clone();
         if display_params.is_empty() {
@@ -1169,6 +1174,8 @@ impl Gpu {
             #[cfg(feature = "virgl_renderer_next")]
             render_server_fd,
             context_mask: gpu_parameters.context_mask,
+            #[cfg(unix)]
+            gpu_cgroup_path: gpu_cgroup_path.cloned(),
         }
     }
 
@@ -1392,6 +1399,9 @@ impl VirtioDevice for Gpu {
         #[cfg(windows)]
         let mut wndproc_thread = self.wndproc_thread.take();
 
+        #[cfg(unix)]
+        let gpu_cgroup_path = self.gpu_cgroup_path.clone();
+
         let mapper = self.mapper.take().context("missing mapper")?;
         let rutabaga_builder = self
             .rutabaga_builder
@@ -1399,6 +1409,12 @@ impl VirtioDevice for Gpu {
             .context("missing rutabaga_builder")?;
 
         self.worker_thread = Some(WorkerThread::start("v_gpu", move |kill_evt| {
+            #[cfg(unix)]
+            if let Some(cgroup_path) = gpu_cgroup_path {
+                move_task_to_cgroup(cgroup_path, base::gettid())
+                    .expect("Failed to move v_gpu into requested cgroup");
+            }
+
             let fence_handler =
                 create_fence_handler(mem.clone(), ctrl_queue.clone(), fence_state.clone());
 

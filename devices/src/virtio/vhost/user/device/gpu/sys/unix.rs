@@ -262,6 +262,8 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         system_blob,
         base_features,
         channels,
+        /* gpu_cgroup_path */
+        None,
     )));
 
     let backend = Box::new(GpuBackend {
