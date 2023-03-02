@@ -1,16 +1,121 @@
 # Contributing
 
-## Intro
-
-This article goes into detail about multiple areas of interest to contributors, which includes
-reviewers, developers, and integrators who each share an interest in guiding crosvm's direction.
-
-## Bug Reports
+## How to report bugs
 
 We use Google issue tracker. Please use
 [the public crosvm component](https://issuetracker.google.com/issues?q=status:open%20componentid:1161302).
 
 **For Googlers**: See [go/crosvm#filing-bugs](https://goto.google.com/crosvm#filing-bugs).
+
+## Contributing code
+
+### Gerrit Account
+
+You need to set up a user account with [gerrit](https://chromium-review.googlesource.com/). Once
+logged in, you can obtain
+[HTTP Credentials](https://chromium-review.googlesource.com/settings/#HTTPCredentials) to set up git
+to upload changes.
+
+Once set up, run `./tools/cl` to install the gerrit commit message hook. This will insert a unique
+"Change-Id" into all commit messages so gerrit can identify changes.
+
+### Contributor License Agreement
+
+Contributions to this project must be accompanied by a Contributor License Agreement (CLA). You (or
+your employer) retain the copyright to your contribution; this simply gives us permission to use and
+redistribute your contributions as part of the project. Head over to
+<https://cla.developers.google.com/> to see your current agreements on file or to sign a new one.
+
+You generally only need to submit a CLA once, so if you've already submitted one (even if it was for
+a different project), you probably don't need to do it again.
+
+### Commit Messages
+
+As for commit messages, we follow
+[ChromeOS's guideline](https://chromium.googlesource.com/chromiumos/docs/+/HEAD/contributing.md#commit-messages)
+in general.
+
+Here is an example of a good commit message:
+
+```
+devices: vhost: user: vmm: Add Connection type
+
+This abstracts away the cross-platform differences: cfg(unix) uses a
+Unix domain stream socket to connect to the vhost-user backend, and
+cfg(windows) uses a Tube.
+
+BUG=b:249361790
+TEST=tools/presubmit --all
+
+Change-Id: I47651060c2ce3a7e9f850b7ed9af8bd035f82de6
+```
+
+- The first line is a subject that starts with a tag that represents which components your commit
+  relates to. Tags are usually the name of the crate you modified such as `devices:` or `base:`. If
+  you only modified a specific component in a crate, you can specify the path to the component as a
+  tag like `devices: vhost: user:`. If your commit modified multiple crates, specify the crate where
+  your main change exists. The subject should be no more than 50 characters, including any tags.
+- The body should consist of a motivation followed by an impact/action. The body text should be
+  wrapped to 72 characters.
+- `BUG` lines are used to specify an associated issue number. If the issue is filed at
+  [Google's issue tracker](https://issuetracker.google.com/), write `BUG=b:<bug number>`. If no
+  issue is associated, write `BUG=None`. You can have multiple `BUG` lines.
+- `TEST` lines are used to describe how you tested your commit in a free form. You can have multiple
+  `TEST` lines.
+- `Change-Id` is used to identify your change on Gerrit. It's inserted by the gerrit commit message
+  hook as explained in
+  [the previous section](https://crosvm.dev/book/contributing/index.html#gerrit-account). If a new
+  commit is uploaded with the same `Change-Id` as an existing CL's `Change-Id`, gerrit will
+  recognize the new commit as a new patchset of the existing CL.
+
+### Uploading changes
+
+To make changes to crosvm, start your work on a new branch tracking `origin/main`.
+
+```bash
+git checkout --branch myfeature --track origin/main
+```
+
+After making the necessary changes, and testing them via
+[Presubmit Checks](https://crosvm.dev/book/building_crosvm.html#presubmit-checks), you can commit
+and upload them:
+
+```bash
+git commit
+./tools/cl upload
+```
+
+If you need to revise your change, you can amend the existing commit and upload again:
+
+```bash
+git commit --amend
+./tools/cl upload
+```
+
+This will create a new version of the same change in gerrit.
+
+> Note: We don't accept any pull requests on the [GitHub mirror].
+
+### Getting Reviews
+
+All submissions needs to be reviewed by one of the [crosvm owners]. Use the gerrit UI to request a
+review. If you are uncertain about the correct person to review, reach out to the team via
+[chat](https://matrix.to/#/#crosvm:matrix.org) or
+[email list](https://groups.google.com/a/chromium.org/g/crosvm-dev).
+
+### Submitting code
+
+Crosvm uses a Commit Queue, which will run pre-submit testing on all changes before merging them
+into crosvm.
+
+Once one of the [crosvm owners] has voted "Code-Review+2" on your change, you can use the "Submit to
+CQ" button, which will trigger the test process.
+
+Gerrit will show any test failures. Refer to
+[Building Crosvm](https://crosvm.dev/book/building_crosvm.html) for information on how to run the
+same tests locally.
+
+When all tests pass, your change is merged into `origin/main`.
 
 ## Philosophy
 
@@ -73,116 +178,6 @@ Less-specific tests, such as most integration tests and system tests, are more l
 obfuscating work behind helper methods. It is still good to strive for clarity and ease of debugging
 in those tests, but they do not need to follow these guidelines.
 
-## Contributing Code
-
-### Prerequisites
-
-You need to set up a user account with [gerrit](https://chromium-review.googlesource.com/). Once
-logged in, you can obtain
-[HTTP Credentials](https://chromium-review.googlesource.com/settings/#HTTPCredentials) to set up git
-to upload changes.
-
-Once set up, run `./tools/cl` to install the gerrit commit message hook. This will insert a unique
-"Change-Id" into all commit messages so gerrit can identify changes.
-
-### Contributor License Agreement
-
-Contributions to this project must be accompanied by a Contributor License Agreement (CLA). You (or
-your employer) retain the copyright to your contribution; this simply gives us permission to use and
-redistribute your contributions as part of the project. Head over to
-<https://cla.developers.google.com/> to see your current agreements on file or to sign a new one.
-
-You generally only need to submit a CLA once, so if you've already submitted one (even if it was for
-a different project), you probably don't need to do it again.
-
-### Commit Messages
-
-As for commit messages, we follow
-[ChromeOS's guideline](https://chromium.googlesource.com/chromiumos/docs/+/HEAD/contributing.md#commit-messages)
-in general.
-
-Here is an example of a good commit message:
-
-```
-devices: vhost: user: vmm: Add Connection type
-
-This abstracts away the cross-platform differences: cfg(unix) uses a
-Unix domain stream socket to connect to the vhost-user backend, and
-cfg(windows) uses a Tube.
-
-BUG=b:249361790
-TEST=tools/presubmit --all
-
-Change-Id: I47651060c2ce3a7e9f850b7ed9af8bd035f82de6
-```
-
-- The first line is a subject that starts with a tag that represents which components your commit
-  relates to. Tags are usually the name of the crate you modified such as `devices:` or `base:`. If
-  you only modified a specific component in a crate, you can specify the path to the component as a
-  tag like `devices: vhost: user:`. If your commit modified multiple crates, specify the crate where
-  your main change exists. The subject should be no more than 50 characters, including any tags.
-- The body should consist of a motivation followed by an impact/action. The body text should be
-  wrapped to 72 characters.
-- `BUG` lines are used to specify an associated issue number. If the issue is filed at
-  [Google's issue tracker](https://issuetracker.google.com/), write `BUG=b:<bug number>`. If no
-  issue is associated, write `BUG=None`. You can have multiple `BUG` lines.
-- `TEST` lines are used to describe how you tested your commit in a free form. You can have multiple
-  `TEST` lines.
-- `Change-Id` is used to identify your change on Gerrit. It's inserted by the gerrit commit message
-  hook as explained in
-  [the previous section](https://crosvm.dev/book/contributing/index.html#prerequisites). If a new
-  commit is uploaded with the same `Change-Id` as an existing CL's `Change-Id`, gerrit will
-  recognize the new commit as a new patchset of the existing CL.
-
-### Uploading changes
-
-To make changes to crosvm, start your work on a new branch tracking `origin/main`.
-
-```bash
-git checkout --branch myfeature --track origin/main
-```
-
-After making the necessary changes, and testing them via
-[Presubmit Checks](https://crosvm.dev/book/building_crosvm.html#presubmit-checks), you can commit
-and upload them:
-
-```bash
-git commit
-./tools/cl upload
-```
-
-If you need to revise your change, you can amend the existing commit and upload again:
-
-```bash
-git commit --amend
-./tools/cl upload
-```
-
-This will create a new version of the same change in gerrit.
-
-> Note: We don't accept any pull requests on the [GitHub mirror].
-
-### Getting Reviews
-
-All submissions needs to be reviewed by one of the [crosvm owners]. Use the gerrit UI to request a
-review. If you are uncertain about the correct person to review, reach out to the team via
-[chat](https://matrix.to/#/#crosvm:matrix.org) or
-[email list](https://groups.google.com/a/chromium.org/g/crosvm-dev).
-
-### Submitting code
-
-Crosvm uses a Commit Queue, which will run pre-submit testing on all changes before merging them
-into crosvm.
-
-Once one of the [crosvm owners] has voted "Code-Review+2" on your change, you can use the "Submit to
-CQ" button, which will trigger the test process.
-
-Gerrit will show any test failures. Refer to
-[Building Crosvm](https://crosvm.dev/book/building_crosvm.html) for information on how to run the
-same tests locally.
-
-When all tests pass, your change is merged into `origin/main`.
-
 ## Contributing to the documentation
 
 [The book of crosvm] is built with [mdBook]. Each markdown file must follow
@@ -198,11 +193,6 @@ mdbook build
 ```
 
 Output is found at `docs/book/book/html/`.
-
-> Note: If you make a certain size of changes, it's recommended to reinstall mdbook manually with
-> `cargo install mdbook`, as `./tools/install-deps` only installs a binary with some convenient
-> features disabled. For example, the full version of mdbook allows you to edit files while checking
-> rendered results.
 
 [crosvm owners]: https://chromium.googlesource.com/crosvm/crosvm/+/HEAD/OWNERS
 [github mirror]: https://github.com/google/crosvm
