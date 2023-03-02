@@ -21,6 +21,7 @@ use std::convert::TryInto;
 use std::ffi::CString;
 use std::fs::File;
 use std::fs::OpenOptions;
+use std::hash::Hash;
 use std::io::prelude::*;
 use std::io::stdin;
 use std::iter;
@@ -153,6 +154,7 @@ use resources::Alloc;
 use resources::Error as ResourceError;
 use resources::SystemAllocator;
 use rutabaga_gfx::RutabagaGralloc;
+use serde::Serialize;
 use smallvec::SmallVec;
 #[cfg(feature = "swap")]
 use swap::SwapController;
@@ -2423,6 +2425,32 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         RegisteredEvent,
     }
 
+    // Tube keyed on the socket path used to create it.
+    struct AddressedTube {
+        tube: Tube,
+        socket_addr: String,
+    }
+
+    impl PartialEq for AddressedTube {
+        fn eq(&self, other: &Self) -> bool {
+            self.socket_addr == other.socket_addr
+        }
+    }
+
+    impl Eq for AddressedTube {}
+
+    impl Hash for AddressedTube {
+        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+            self.socket_addr.hash(state);
+        }
+    }
+
+    impl AddressedTube {
+        pub fn send<T: Serialize>(&self, msg: &T) -> Result<(), base::TubeError> {
+            self.tube.send(msg)
+        }
+    }
+
     let mut iommu_client = iommu_host_tube
         .as_ref()
         .map(VmMemoryRequestIommuClient::new);
@@ -2665,8 +2693,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     let mut pvpanic_code = PvPanicCode::Unknown;
     #[cfg(feature = "balloon")]
     let mut balloon_stats_id: u64 = 0;
-    let mut registered_evt_sockets: HashMap<RegisteredEvent, HashSet<UnixSeqpacket>> =
-        HashMap::new();
+    let mut registered_evt_tubes: HashMap<RegisteredEvent, HashSet<AddressedTube>> = HashMap::new();
 
     'wait: loop {
         let events = {
@@ -2684,10 +2711,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             match event.token {
                 Token::RegisteredEvent => match reg_evt_rdtube.recv::<RegisteredEvent>() {
                     Ok(reg_evt) => {
-                        if let Some(sockets) = registered_evt_sockets.get_mut(&reg_evt) {
-                            for socket in sockets.iter() {
-                                let tube =
-                                    Tube::new_from_unix_seqpacket(socket.try_clone().unwrap());
+                        if let Some(tubes) = registered_evt_tubes.get_mut(&reg_evt) {
+                            for tube in tubes.iter() {
                                 if let Err(e) = tube.send(&reg_evt) {
                                     warn!("failed to send registered event: {}", e);
                                 }
@@ -2841,40 +2866,50 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                             }
                                         }
                                         VmRequest::RegisterListener { socket_addr, event } => {
-                                            if let Ok(socket) = UnixSeqpacket::connect(socket_addr)
-                                            {
-                                                if let Some(sockets) =
-                                                    registered_evt_sockets.get_mut(&event)
+                                            let mut already_registered = false;
+
+                                            if let Some(tubes) = registered_evt_tubes.get(&event) {
+                                                for addr_tube in tubes {
+                                                    if addr_tube.socket_addr == socket_addr {
+                                                        already_registered = true;
+                                                        break;
+                                                    }
+                                                }
+                                            }
+
+                                            if !already_registered {
+                                                if let Ok(socket) =
+                                                    UnixSeqpacket::connect(socket_addr.clone())
                                                 {
-                                                    sockets.insert(socket);
-                                                } else {
-                                                    registered_evt_sockets.insert(
-                                                        event,
-                                                        vec![socket].into_iter().collect(),
-                                                    );
+                                                    let addr_tube = AddressedTube {
+                                                        tube: Tube::new_from_unix_seqpacket(socket),
+                                                        socket_addr,
+                                                    };
+                                                    if let Some(tubes) =
+                                                        registered_evt_tubes.get_mut(&event)
+                                                    {
+                                                        tubes.insert(addr_tube);
+                                                    } else {
+                                                        registered_evt_tubes.insert(
+                                                            event,
+                                                            vec![addr_tube].into_iter().collect(),
+                                                        );
+                                                    }
                                                 }
                                             }
                                             VmResponse::Ok
                                         }
                                         VmRequest::UnregisterListener { socket_addr, event } => {
-                                            if let Ok(socket) = UnixSeqpacket::connect(socket_addr)
+                                            if let Some(tubes) =
+                                                registered_evt_tubes.get_mut(&event)
                                             {
-                                                if let Some(sockets) =
-                                                    registered_evt_sockets.get_mut(&event)
-                                                {
-                                                    sockets.remove(&socket);
-                                                }
+                                                tubes.retain(|t| t.socket_addr != socket_addr);
                                             }
                                             VmResponse::Ok
                                         }
                                         VmRequest::Unregister { socket_addr } => {
-                                            if let Ok(socket) = UnixSeqpacket::connect(socket_addr)
-                                            {
-                                                for (_, sockets) in
-                                                    registered_evt_sockets.iter_mut()
-                                                {
-                                                    sockets.remove(&socket);
-                                                }
+                                            for (_, tubes) in registered_evt_tubes.iter_mut() {
+                                                tubes.retain(|t| t.socket_addr != socket_addr)
                                             }
                                             VmResponse::Ok
                                         }
