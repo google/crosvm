@@ -57,8 +57,7 @@ use base::TubeError;
 use cros_async::AsyncTube;
 use cros_async::Executor;
 use vm_control::DeviceControlCommand;
-use vm_control::RestoreControlResult;
-use vm_control::SnapshotControlResult;
+use vm_control::VmResponse;
 use vm_memory::GuestMemory;
 
 pub use self::acpi::ACPIPMFixedEvent;
@@ -447,13 +446,13 @@ async fn handle_command_tube(
                         {
                             error!("failed to snapshot: {}", e);
                             command_tube
-                                .send(SnapshotControlResult::Failed(e.to_string()))
+                                .send(VmResponse::ErrString(e.to_string()))
                                 .await
                                 .context("Failed to send response")?;
                             continue;
                         }
                         command_tube
-                            .send(SnapshotControlResult::Ok)
+                            .send(VmResponse::Ok)
                             .await
                             .context("Failed to send response")?;
                     }
@@ -464,13 +463,13 @@ async fn handle_command_tube(
                         {
                             error!("failed to restore: {}", e);
                             command_tube
-                                .send(RestoreControlResult::Failed(e.to_string()))
+                                .send(VmResponse::ErrString(e.to_string()))
                                 .await
                                 .context("Failed to send response")?;
                             continue;
                         }
                         command_tube
-                            .send(RestoreControlResult::Ok)
+                            .send(VmResponse::Ok)
                             .await
                             .context("Failed to send response")?;
                     }

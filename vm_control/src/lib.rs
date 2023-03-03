@@ -281,29 +281,10 @@ pub enum SnapshotCommand {
     Take { snapshot_path: PathBuf },
 }
 
-/// Response for [SnapshotCommand]
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum SnapshotControlResult {
-    /// The request is accepted successfully.
-    Ok,
-    /// The command fails.
-    Failed(String),
-    /// Request VM shut down in case of major failures.
-    Shutdown,
-}
 /// Commands for restore feature
 #[derive(Serialize, Deserialize, Debug)]
 pub enum RestoreCommand {
     Apply { restore_path: PathBuf },
-}
-
-/// Response for [RestoreCommand]
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum RestoreControlResult {
-    /// The request is accepted successfully.
-    Ok,
-    /// The command fails.
-    Failed(String),
 }
 
 /// Commands for actions on devices and the devices control thread.
@@ -1469,7 +1450,7 @@ impl VmRequest {
             }
             VmRequest::HotPlugCommand { device: _, add: _ } => VmResponse::Ok,
             VmRequest::Snapshot(SnapshotCommand::Take { ref snapshot_path }) => {
-                let f = || -> anyhow::Result<SnapshotControlResult> {
+                let f = || -> anyhow::Result<VmResponse> {
                     let _guard =
                         VcpuSuspendGuard::new(&kick_vcpus, state_from_vcpu_channel, vcpu_size)?;
 
@@ -1525,7 +1506,7 @@ impl VmRequest {
                         .context("receive from devices control socket")
                 };
                 match f() {
-                    Ok(res) => VmResponse::SnapshotResponse(res),
+                    Ok(r) => r,
                     Err(e) => {
                         error!("failed to handle snapshot: {:?}", e);
                         VmResponse::Err(SysError::new(EIO))
@@ -1546,7 +1527,7 @@ impl VmRequest {
                         .context("receive from devices control socket")
                 };
                 match f() {
-                    Ok(res) => VmResponse::RestoreResponse(res),
+                    Ok(r) => r,
                     Err(e) => {
                         error!("failed to handle restore: {:?}", e);
                         VmResponse::Err(SysError::new(EIO))
@@ -1576,6 +1557,8 @@ pub enum VmResponse {
     Ok,
     /// Indicates the request encountered some error during execution.
     Err(SysError),
+    /// Indicates the request encountered some error during execution.
+    ErrString(String),
     /// The request to register memory into guest address space was successfully done at page frame
     /// number `pfn` and memory slot number `slot`.
     RegisterMemory { pfn: u64, slot: u32 },
@@ -1593,10 +1576,6 @@ pub enum VmResponse {
     BatResponse(BatControlResult),
     /// Results of swap status command.
     SwapStatus(SwapStatus),
-    /// Results of snapshot commands.
-    SnapshotResponse(SnapshotControlResult),
-    /// Results of restore commands.
-    RestoreResponse(RestoreControlResult),
 }
 
 impl Display for VmResponse {
@@ -1606,6 +1585,7 @@ impl Display for VmResponse {
         match self {
             Ok => write!(f, "ok"),
             Err(e) => write!(f, "error: {}", e),
+            ErrString(e) => write!(f, "error: {}", e),
             RegisterMemory { pfn, slot } => write!(
                 f,
                 "memory registered to page frame number {:#x} and memory slot {}",
@@ -1635,8 +1615,6 @@ impl Display for VmResponse {
                         .unwrap_or_else(|_| "invalid_response".to_string()),
                 )
             }
-            SnapshotResponse(result) => write!(f, "snapshot control request result {:?}", result),
-            RestoreResponse(result) => write!(f, "restore control request result {:?}", result),
         }
     }
 }
