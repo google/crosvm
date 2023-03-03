@@ -1472,14 +1472,6 @@ impl VmRequest {
                 let f = || -> anyhow::Result<SnapshotControlResult> {
                     let _guard =
                         VcpuSuspendGuard::new(&kick_vcpus, state_from_vcpu_channel, vcpu_size)?;
-                    device_control_tube
-                        .send(&DeviceControlCommand::SnapshotDevices {
-                            snapshot_path: snapshot_path.clone(),
-                        })
-                        .context("send command to devices control socket")?;
-                    device_control_tube
-                        .recv()
-                        .context("receive from devices control socket")?;
 
                     // We want to flush all pending IRQs to the LAPICs. There are two cases:
                     //
@@ -1523,7 +1515,14 @@ impl VmRequest {
                     }
                     info!("flushed IRQs in {} iterations", flush_attempts);
 
-                    Ok(SnapshotControlResult::Ok)
+                    device_control_tube
+                        .send(&DeviceControlCommand::SnapshotDevices {
+                            snapshot_path: snapshot_path.clone(),
+                        })
+                        .context("send command to devices control socket")?;
+                    device_control_tube
+                        .recv()
+                        .context("receive from devices control socket")
                 };
                 match f() {
                     Ok(res) => VmResponse::SnapshotResponse(res),
