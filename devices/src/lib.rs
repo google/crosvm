@@ -362,19 +362,15 @@ async fn snapshot_handler(
         .open(&mem_path)
         .with_context(|| format!("failed to open {}", mem_path.display()))?;
 
-    {
-        let _sleep_guard = SleepGuard::new(buses)?;
+    snapshot_root.guest_memory_metadata = guest_memory
+        .snapshot(&mut mem_file)
+        .context("failed to snapshot memory")?;
 
-        snapshot_root.guest_memory_metadata = guest_memory
-            .snapshot(&mut mem_file)
-            .context("failed to snapshot memory")?;
-
-        for bus in buses {
-            snapshot_devices(bus, |id, snapshot| {
-                snapshot_root.devices.push([(id, snapshot)].into())
-            })
-            .context("failed to snapshot devices")?;
-        }
+    for bus in buses {
+        snapshot_devices(bus, |id, snapshot| {
+            snapshot_root.devices.push([(id, snapshot)].into())
+        })
+        .context("failed to snapshot devices")?;
     }
 
     serde_json::to_writer(&mut json_file, &snapshot_root)?;
@@ -433,16 +429,42 @@ async fn handle_command_tube(
     io_bus: Arc<Bus>,
     mmio_bus: Arc<Bus>,
 ) -> anyhow::Result<()> {
+    let buses = &[&*io_bus, &*mmio_bus];
+    let mut _sleep_guard = None;
     loop {
         match command_tube.next().await {
             Ok(command) => {
                 match command {
+                    DeviceControlCommand::SleepDevices => match SleepGuard::new(buses) {
+                        Ok(guard) => {
+                            _sleep_guard = Some(guard);
+                            command_tube
+                                .send(VmResponse::Ok)
+                                .await
+                                .context("failed to reply to sleep command")?;
+                        }
+                        Err(e) => {
+                            command_tube
+                                .send(VmResponse::ErrString(e.to_string()))
+                                .await
+                                .context("failed to send response.")?;
+                        }
+                    },
+                    DeviceControlCommand::WakeDevices => {
+                        _sleep_guard = None;
+                        command_tube
+                            .send(VmResponse::Ok)
+                            .await
+                            .context("failed to reply to wake devices request")?;
+                    }
                     DeviceControlCommand::SnapshotDevices {
                         snapshot_path: path,
                     } => {
-                        if let Err(e) =
-                            snapshot_handler(path.as_path(), &guest_memory, &[&*io_bus, &*mmio_bus])
-                                .await
+                        assert!(
+                            _sleep_guard.is_some(),
+                            "devices must be sleeping to snapshot"
+                        );
+                        if let Err(e) = snapshot_handler(path.as_path(), &guest_memory, buses).await
                         {
                             error!("failed to snapshot: {}", e);
                             command_tube

@@ -290,6 +290,8 @@ pub enum RestoreCommand {
 /// Commands for actions on devices and the devices control thread.
 #[derive(Serialize, Deserialize, Debug)]
 pub enum DeviceControlCommand {
+    SleepDevices,
+    WakeDevices,
     SnapshotDevices { snapshot_path: PathBuf },
     RestoreDevices { restore_path: PathBuf },
     Exit,
@@ -1173,6 +1175,47 @@ impl Drop for VcpuSuspendGuard<'_> {
     }
 }
 
+/// A guard to guarantee that all devices are sleeping during its scope.
+///
+/// When this guard is dropped, it wakes the devices.
+pub struct DeviceSleepGuard<'a> {
+    device_control_tube: &'a Tube,
+}
+
+impl<'a> DeviceSleepGuard<'a> {
+    fn new(device_control_tube: &'a Tube) -> anyhow::Result<Self> {
+        device_control_tube
+            .send(&DeviceControlCommand::SleepDevices)
+            .context("send command to devices control socket")?;
+        match device_control_tube
+            .recv()
+            .context("receive from devices control socket")?
+        {
+            VmResponse::Ok => (),
+            resp => bail!("device sleep failed: {}", resp),
+        }
+        Ok(Self {
+            device_control_tube,
+        })
+    }
+}
+
+impl Drop for DeviceSleepGuard<'_> {
+    fn drop(&mut self) {
+        if let Err(e) = self
+            .device_control_tube
+            .send(&DeviceControlCommand::WakeDevices)
+        {
+            panic!("failed to request device wake after snapshot: {}", e);
+        }
+        match self.device_control_tube.recv() {
+            Ok(VmResponse::Ok) => (),
+            Ok(resp) => panic!("unexpected response to device wake request: {}", resp),
+            Err(e) => panic!("failed to get reply for device wake request: {}", e),
+        }
+    }
+}
+
 impl VmRequest {
     /// Executes this request on the given Vm and other mutable state.
     ///
@@ -1451,8 +1494,9 @@ impl VmRequest {
             VmRequest::HotPlugCommand { device: _, add: _ } => VmResponse::Ok,
             VmRequest::Snapshot(SnapshotCommand::Take { ref snapshot_path }) => {
                 let f = || -> anyhow::Result<VmResponse> {
-                    let _guard =
+                    let _vcpu_guard =
                         VcpuSuspendGuard::new(&kick_vcpus, state_from_vcpu_channel, vcpu_size)?;
+                    let _device_guard = DeviceSleepGuard::new(device_control_tube)?;
 
                     // We want to flush all pending IRQs to the LAPICs. There are two cases:
                     //
