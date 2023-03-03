@@ -2711,13 +2711,25 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             match event.token {
                 Token::RegisteredEvent => match reg_evt_rdtube.recv::<RegisteredEvent>() {
                     Ok(reg_evt) => {
+                        let mut tubes_to_remove: Vec<String> = Vec::new();
                         if let Some(tubes) = registered_evt_tubes.get_mut(&reg_evt) {
                             for tube in tubes.iter() {
                                 if let Err(e) = tube.send(&reg_evt) {
-                                    warn!("failed to send registered event: {}", e);
+                                    warn!(
+                                        "failed to send registered event {:?} to {}, removing from \
+                                         registrations: {}",
+                                        reg_evt, tube.socket_addr, e
+                                    );
+                                    tubes_to_remove.push(tube.socket_addr.clone());
                                 }
                             }
                         }
+                        for tube_addr in tubes_to_remove {
+                            for tubes in registered_evt_tubes.values_mut() {
+                                tubes.retain(|t| t.socket_addr != tube_addr);
+                            }
+                        }
+                        registered_evt_tubes.retain(|_, tubes| !tubes.is_empty());
                     }
                     Err(e) => {
                         warn!("failed to recv RegisteredEvent: {}", e);
@@ -2905,12 +2917,16 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                             {
                                                 tubes.retain(|t| t.socket_addr != socket_addr);
                                             }
+                                            registered_evt_tubes
+                                                .retain(|_, tubes| !tubes.is_empty());
                                             VmResponse::Ok
                                         }
                                         VmRequest::Unregister { socket_addr } => {
                                             for (_, tubes) in registered_evt_tubes.iter_mut() {
-                                                tubes.retain(|t| t.socket_addr != socket_addr)
+                                                tubes.retain(|t| t.socket_addr != socket_addr);
                                             }
+                                            registered_evt_tubes
+                                                .retain(|_, tubes| !tubes.is_empty());
                                             VmResponse::Ok
                                         }
                                         _ => {
