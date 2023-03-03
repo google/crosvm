@@ -200,7 +200,17 @@ impl PciDevice for StubPciDevice {
     fn write_bar(&mut self, _addr: u64, _data: &[u8]) {}
 }
 
-impl Suspendable for StubPciDevice {}
+impl Suspendable for StubPciDevice {
+    fn sleep(&mut self) -> anyhow::Result<()> {
+        // There are no workers to sleep/wake.
+        Ok(())
+    }
+
+    fn wake(&mut self) -> anyhow::Result<()> {
+        // There are no workers to sleep/wake.
+        Ok(())
+    }
+}
 
 #[cfg(test)]
 mod test {
