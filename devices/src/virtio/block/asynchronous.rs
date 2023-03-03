@@ -221,6 +221,7 @@ pub type BlockId = [u8; ID_LEN];
 pub struct DiskState {
     pub disk_image: Box<dyn AsyncDisk>,
     pub read_only: bool,
+    pub sparse: bool,
     pub id: Option<BlockId>,
     /// A DiskState is owned by each worker's executor and cannot be shared by workers, thus
     /// `worker_shared_state` holds the state shared by workers in Arc.
@@ -230,7 +231,6 @@ pub struct DiskState {
 /// Disk state which can be modified by other worker threads
 struct WorkerSharedState {
     disk_size: Arc<AtomicU64>,
-    sparse: bool,
 }
 
 impl DiskState {
@@ -245,11 +245,9 @@ impl DiskState {
         DiskState {
             disk_image,
             read_only,
+            sparse,
             id,
-            worker_shared_state: Arc::new(AsyncRwLock::new(WorkerSharedState {
-                disk_size,
-                sparse,
-            })),
+            worker_shared_state: Arc::new(AsyncRwLock::new(WorkerSharedState { disk_size })),
         }
     }
 }
@@ -432,7 +430,7 @@ async fn resize(disk_state: &AsyncRwLock<DiskState>, new_size: u64) -> DiskContr
     let mut disk_state = disk_state.lock().await;
     // Prevent any other worker threads won't be able to do IO.
     let worker_shared_state = Arc::clone(&disk_state.worker_shared_state);
-    let mut worker_shared_state = worker_shared_state.lock().await;
+    let worker_shared_state = worker_shared_state.lock().await;
 
     if disk_state.read_only {
         error!("Attempted to resize read-only block device");
@@ -447,12 +445,12 @@ async fn resize(disk_state: &AsyncRwLock<DiskState>, new_size: u64) -> DiskContr
     }
 
     // Allocate new space if the disk image is not sparse.
-    if let Err(e) = disk_state.disk_image.allocate(0, new_size) {
-        error!("Allocating disk space after resize failed! {}", e);
-        return DiskControlResult::Err(SysError::new(libc::EIO));
+    if !disk_state.sparse {
+        if let Err(e) = disk_state.disk_image.allocate(0, new_size) {
+            error!("Allocating disk space after resize failed! {}", e);
+            return DiskControlResult::Err(SysError::new(libc::EIO));
+        }
     }
-
-    worker_shared_state.sparse = false;
 
     if let Ok(new_disk_size) = disk_state.disk_image.get_len() {
         worker_shared_state
@@ -843,7 +841,7 @@ impl BlockAsync {
                 }
             }
             VIRTIO_BLK_T_DISCARD | VIRTIO_BLK_T_WRITE_ZEROES => {
-                if req_type == VIRTIO_BLK_T_DISCARD && !worker_shared_state.sparse {
+                if req_type == VIRTIO_BLK_T_DISCARD && !disk_state.sparse {
                     // Discard is a hint; if this is a non-sparse disk, just ignore it.
                     return Ok(());
                 }
@@ -1026,7 +1024,6 @@ impl VirtioDevice for BlockAsync {
 
         let shared_state = Arc::new(AsyncRwLock::new(WorkerSharedState {
             disk_size: self.disk_size.clone(),
-            sparse,
         }));
 
         let mut worker_threads = vec![];
@@ -1060,6 +1057,7 @@ impl VirtioDevice for BlockAsync {
                 let disk_state = Rc::new(AsyncRwLock::new(DiskState {
                     disk_image: async_image,
                     read_only,
+                    sparse,
                     id,
                     worker_shared_state: shared_state,
                 }));
@@ -1443,10 +1441,10 @@ mod tests {
         let disk_state = Rc::new(AsyncRwLock::new(DiskState {
             disk_image: Box::new(af),
             read_only: false,
+            sparse: true,
             id: None,
             worker_shared_state: Arc::new(AsyncRwLock::new(WorkerSharedState {
                 disk_size: Arc::new(AtomicU64::new(disk_size)),
-                sparse: true,
             })),
         }));
 
@@ -1511,10 +1509,10 @@ mod tests {
         let disk_state = Rc::new(AsyncRwLock::new(DiskState {
             disk_image: Box::new(af),
             read_only: false,
+            sparse: true,
             id: None,
             worker_shared_state: Arc::new(AsyncRwLock::new(WorkerSharedState {
                 disk_size: Arc::new(AtomicU64::new(disk_size)),
-                sparse: true,
             })),
         }));
 
@@ -1581,10 +1579,10 @@ mod tests {
         let disk_state = Rc::new(AsyncRwLock::new(DiskState {
             disk_image: Box::new(af),
             read_only: false,
+            sparse: true,
             id: Some(*id),
             worker_shared_state: Arc::new(AsyncRwLock::new(WorkerSharedState {
                 disk_size: Arc::new(AtomicU64::new(disk_size)),
-                sparse: true,
             })),
         }));
 
