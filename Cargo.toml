@@ -248,6 +248,9 @@ ffmpeg = ["devices/ffmpeg"]
 # Enables the VAAPI backend of video devices.
 vaapi = ["devices/vaapi"]
 
+## Enables the virtio-media device.
+media = ["devices/media"]
+
 #! ### Linux-specific feature flags
 
 ## Enables the use of the GenieZone hypervisor
@@ -381,6 +384,7 @@ all-default = [
     "gfxstream",
     "gfxstream_stub",
     "libvda-stub",
+    "media",
     "net",
     "noncoherent-dma",
     "pci-hotplug",

@@ -32,6 +32,8 @@ pub mod block;
 pub mod console;
 #[cfg(feature = "gpu")]
 pub mod gpu;
+#[cfg(all(unix, feature = "media"))]
+pub mod media;
 pub mod resource_bridge;
 pub mod scsi;
 #[cfg(feature = "audio")]

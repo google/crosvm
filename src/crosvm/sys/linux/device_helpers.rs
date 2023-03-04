@@ -1097,6 +1097,30 @@ pub fn register_video_device(
     Ok(())
 }
 
+#[cfg(feature = "media")]
+pub fn create_simple_media_device(protection_type: ProtectionType) -> DeviceResult {
+    use devices::virtio::media::create_virtio_media_simple_capture_device;
+
+    let features = virtio::base_features(protection_type);
+    let dev = create_virtio_media_simple_capture_device(features);
+
+    Ok(VirtioDeviceStub { dev, jail: None })
+}
+
+#[cfg(any(target_os = "android", target_os = "linux"))]
+#[cfg(feature = "media")]
+pub fn create_v4l2_device<P: AsRef<Path>>(
+    protection_type: ProtectionType,
+    path: P,
+) -> DeviceResult {
+    use devices::virtio::media::create_virtio_media_v4l2_proxy_device;
+
+    let features = virtio::base_features(protection_type);
+    let dev = create_virtio_media_v4l2_proxy_device(features, path)?;
+
+    Ok(VirtioDeviceStub { dev, jail: None })
+}
+
 impl VirtioDeviceBuilder for &VsockConfig {
     const NAME: &'static str = "vhost_vsock";
 
