@@ -20,7 +20,6 @@ use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::IntoAsync;
 use cros_async::IoSource;
-use cros_async::IoSourceExt;
 use futures::future::AbortHandle;
 use futures::future::Abortable;
 use hypervisor::ProtectionType;

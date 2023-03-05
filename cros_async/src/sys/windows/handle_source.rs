@@ -30,9 +30,9 @@ use thiserror::Error as ThisError;
 use winapi::um::ioapiset::CancelIoEx;
 use winapi::um::processthreadsapi::GetCurrentThreadId;
 
-use crate::io_ext::AllocateMode;
 use crate::mem::BackingMemory;
 use crate::mem::MemRegion;
+use crate::AllocateMode;
 use crate::AsyncError;
 use crate::AsyncResult;
 use crate::CancellableBlockingPool;

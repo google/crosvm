@@ -23,7 +23,7 @@ use thiserror::Error as ThisError;
 use winapi::shared::minwindef::DWORD;
 use winapi::um::minwinbase::OVERLAPPED;
 
-use crate::io_ext::AllocateMode;
+use crate::io_source::AllocateMode;
 use crate::mem::BackingMemory;
 use crate::mem::MemRegion;
 use crate::sys::windows::handle_executor::RegisteredOverlappedSource;

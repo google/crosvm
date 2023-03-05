@@ -25,7 +25,6 @@ use broker_ipc::CommonChildStartupArgs;
 use cros_async::AsyncWrapper;
 use cros_async::EventAsync;
 use cros_async::Executor;
-use cros_async::IoSourceExt;
 use futures::future::AbortHandle;
 use futures::future::Abortable;
 use gpu_display::EventDevice;
