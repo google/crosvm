@@ -13,12 +13,15 @@ use base::error;
 use base::Event;
 use base::MemoryMapping;
 use base::RawDescriptor;
+use base::Tube;
 use hypervisor::Datamatch;
 use remain::sorted;
 use resources::Error as SystemAllocatorFaliure;
 use resources::SystemAllocator;
 use sync::Mutex;
 use thiserror::Error;
+use vm_control::IoEventRegisterRequest;
+use vm_control::VmMemoryResponse;
 
 use super::PciId;
 use crate::bus::BusDeviceObj;
@@ -81,6 +84,9 @@ pub enum Error {
     /// Allocating space for an IO BAR failed.
     #[error("failed to allocate space for an IO BAR, size={0}: {1}")]
     IoAllocationFailed(u64, SystemAllocatorFaliure),
+    /// ioevent registration failed.
+    #[error("IoEvent registration failed: {0}")]
+    IoEventRegisterFailed(IoEventError),
     /// supports_iommu is false.
     #[error("Iommu is not supported")]
     IommuNotSupported,
@@ -111,6 +117,23 @@ pub enum Error {
     /// Size of zero encountered
     #[error("Size of zero detected")]
     SizeZero,
+}
+
+/// Errors when io event registration fails:
+#[derive(Clone, Debug, Error)]
+pub enum IoEventError {
+    /// Event clone failed.
+    #[error("Event clone failed: {0}")]
+    CloneFail(base::Error),
+    /// Failed due to system error.
+    #[error("System error: {0}")]
+    SystemError(base::Error),
+    /// Tube for ioevent register failed.
+    #[error("IoEvent register Tube failed")]
+    TubeFail,
+    /// ioevent_register_request not implemented for PciDevice emitting it.
+    #[error("ioevent register not implemented")]
+    Unsupported,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -367,6 +390,12 @@ pub trait PciDevice: Send + Suspendable {
         Vec::new()
     }
 
+    /// Gets a reference to a tube for sending VmMemoryRequest. Any devices that uses ioevents shall
+    /// provide a tube.
+    fn get_vm_memory_request_tube(&self) -> Option<&Tube> {
+        None
+    }
+
     /// Reads from a PCI configuration register.
     /// * `reg_idx` - PCI register index (in units of 4 bytes).
     fn read_config_register(&self, reg_idx: usize) -> u32;
@@ -554,6 +583,53 @@ impl<T: PciDevice> BusDevice for T {
                     }
                 }
             }
+            // Handles ioevent changes:
+            if !(result.io_add.is_empty()
+                || result.io_remove.is_empty()
+                || result.mmio_add.is_empty()
+                || result.mmio_remove.is_empty())
+            {
+                let (ioevent_unregister_requests, ioevent_register_requests) =
+                    match get_ioevent_requests(self.ioevents(), old_ranges, new_ranges) {
+                        Ok(a) => a,
+                        Err(e) => {
+                            error!("Failed to get ioevent requests: {:?}", e);
+                            return result;
+                        }
+                    };
+                if let Some(tube) = self.get_vm_memory_request_tube() {
+                    for request in ioevent_unregister_requests {
+                        if let Err(e) = send_ioevent_register_request(tube, request) {
+                            match &e {
+                                IoEventError::SystemError(_) => {
+                                    // Do nothing, as unregister may fail due to placeholder value
+                                }
+                                _ => {
+                                    error!(
+                                        "IoEvent unregister failed for {}: {:?}",
+                                        self.debug_label(),
+                                        &e
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    for request in ioevent_register_requests {
+                        if let Err(e) = send_ioevent_register_request(tube, request) {
+                            error!(
+                                "IoEvent unregister failed for {}: {:?}",
+                                self.debug_label(),
+                                &e
+                            );
+                        }
+                    }
+                } else {
+                    error!(
+                        "get_vm_memory_request_tube not implemented for {}, device may malfunction",
+                        self.debug_label()
+                    );
+                }
+            }
         } else {
             self.write_config_register(reg_idx, offset, data);
             let children_pci_addr = self.get_removed_children_devices();
@@ -726,6 +802,86 @@ impl<T: 'static + PciDevice> BusDeviceObj for T {
     fn into_pci_device(self: Box<Self>) -> Option<Box<dyn PciDevice>> {
         Some(self)
     }
+}
+
+/// Gets the ioevent requests based on new ioevents and changes to the BAR.
+///
+/// Assumes the number of ioevents are unchanged after bar remapping, and corresponds to the same
+/// BAR regions.
+/// Returns pair (ioevent_unregister_requests, ioevent_register_requests) to be handled by device.
+fn get_ioevent_requests(
+    mut ioevents: Vec<(&Event, u64, Datamatch)>,
+    old_range: Vec<(BusRange, BusType)>,
+    new_range: Vec<(BusRange, BusType)>,
+) -> Result<(Vec<IoEventRegisterRequest>, Vec<IoEventRegisterRequest>)> {
+    // Finds all ioevents with addr within new_range. Updates ioevents whose range are within the
+    // changed windows. Bus ranges are disjoint since they are memory addresses. sort both ioevents
+    // and range to get asymptotic optimal solution.
+    ioevents.sort_by_key(|ioevent| ioevent.1);
+    // Old and new ranges are paired to be sorted together to keep the correspondence.
+    let mut range_pair: Vec<((BusRange, BusType), (BusRange, BusType))> =
+        new_range.into_iter().zip(old_range.into_iter()).collect();
+    range_pair.sort_by_key(|(new, _old)| new.0.base);
+    let mut range_pair_iter = range_pair.iter();
+    let mut cur_range_pair = range_pair_iter.next();
+    let mut ioevent_iter = ioevents.into_iter();
+    let mut cur_ioevent = ioevent_iter.next();
+    let mut ioevent_unregister_requests = Vec::new();
+    let mut ioevent_register_requests = Vec::new();
+    while let Some((event, addr, datamatch)) = cur_ioevent {
+        if let Some(((new_bus_range, _), (old_bus_range, _))) = cur_range_pair {
+            if new_bus_range.contains(addr) {
+                let offset = addr - new_bus_range.base;
+                ioevent_unregister_requests.push(IoEventRegisterRequest {
+                    event: event
+                        .try_clone()
+                        .map_err(|e| Error::IoEventRegisterFailed(IoEventError::CloneFail(e)))?,
+                    addr: offset + old_bus_range.base,
+                    datamatch,
+                    register: false,
+                });
+                ioevent_register_requests.push(IoEventRegisterRequest {
+                    event: event
+                        .try_clone()
+                        .map_err(|e| Error::IoEventRegisterFailed(IoEventError::CloneFail(e)))?,
+                    addr,
+                    datamatch,
+                    register: true,
+                });
+                cur_ioevent = ioevent_iter.next();
+                continue;
+            }
+            // Advance range if range upper bound is too small.
+            else if new_bus_range.base + new_bus_range.len <= addr {
+                cur_range_pair = range_pair_iter.next();
+                cur_ioevent = Some((event, addr, datamatch));
+                continue;
+            }
+            // Advance ioevent if ioevent is lower than range lower bound.
+            else {
+                cur_ioevent = ioevent_iter.next();
+                continue;
+            }
+        }
+        // Stop if range is depleted.
+        break;
+    }
+    Ok((ioevent_unregister_requests, ioevent_register_requests))
+}
+
+/// Sends ioevents through the tube, and returns result.
+fn send_ioevent_register_request(
+    tube: &Tube,
+    request: IoEventRegisterRequest,
+) -> std::result::Result<(), IoEventError> {
+    tube.send(&request).map_err(|_| IoEventError::TubeFail)?;
+    if let VmMemoryResponse::Err(e) = tube
+        .recv::<VmMemoryResponse>()
+        .map_err(|_| IoEventError::TubeFail)?
+    {
+        return Err(IoEventError::SystemError(e));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -914,5 +1070,45 @@ mod tests {
                 removed_pci_devices: Vec::new(),
             }
         );
+    }
+
+    #[test]
+    fn test_get_ioevent_request() {
+        // Of the ioevents, only 108, 112, 116 are within the changed windows.
+        // Corresponding old addresses are 208, 212, and 16.
+        let events = vec![
+            Event::new().unwrap(),
+            Event::new().unwrap(),
+            Event::new().unwrap(),
+            Event::new().unwrap(),
+            Event::new().unwrap(),
+        ];
+        let ioevents = vec![
+            (&events[0], 100, Datamatch::AnyLength),
+            (&events[1], 108, Datamatch::AnyLength),
+            (&events[2], 112, Datamatch::AnyLength),
+            (&events[3], 116, Datamatch::AnyLength),
+            (&events[4], 120, Datamatch::AnyLength),
+        ];
+        let old_range = vec![
+            (BusRange { base: 208, len: 8 }, BusType::Mmio),
+            (BusRange { base: 16, len: 4 }, BusType::Mmio),
+        ];
+        let new_range = vec![
+            (BusRange { base: 108, len: 8 }, BusType::Mmio),
+            (BusRange { base: 116, len: 4 }, BusType::Mmio),
+        ];
+        let (mut unregister_requests, mut register_requests) =
+            get_ioevent_requests(ioevents, old_range, new_range).unwrap();
+        unregister_requests.sort_by_key(|request| request.addr);
+        assert_eq!(unregister_requests.len(), 3);
+        assert_eq!(unregister_requests[0].addr, 16);
+        assert_eq!(unregister_requests[1].addr, 208);
+        assert_eq!(unregister_requests[2].addr, 212);
+        register_requests.sort_by_key(|request| request.addr);
+        assert_eq!(register_requests.len(), 3);
+        assert_eq!(register_requests[0].addr, 108);
+        assert_eq!(register_requests[1].addr, 112);
+        assert_eq!(register_requests[2].addr, 116);
     }
 }

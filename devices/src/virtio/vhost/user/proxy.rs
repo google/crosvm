@@ -892,7 +892,7 @@ impl Worker {
         // Safe because we own the file.
         let evt = unsafe { Event::from_raw_descriptor(file.into_raw_descriptor()) };
 
-        self.send_memory_request(&VmMemoryRequest::IoEvent {
+        self.send_memory_request(&VmMemoryRequest::IoEventWithAlloc {
             evt: evt.try_clone().context("failed to dup event")?,
             allocation: self.io_pci_bar,
             offset: DOORBELL_OFFSET + DOORBELL_OFFSET_MULTIPLIER as u64 * index as u64,
@@ -1235,7 +1235,7 @@ impl Worker {
             .filter_map(|(idx, v)| v.call_evt.take().map(|e| (idx, e)))
             .collect();
         for (idx, evt) in vring_call_evts {
-            if let Err(e) = self.send_memory_request(&VmMemoryRequest::IoEvent {
+            if let Err(e) = self.send_memory_request(&VmMemoryRequest::IoEventWithAlloc {
                 evt,
                 allocation: self.io_pci_bar,
                 offset: DOORBELL_OFFSET + DOORBELL_OFFSET_MULTIPLIER as u64 * idx as u64,

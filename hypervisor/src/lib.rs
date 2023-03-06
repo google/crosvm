@@ -385,7 +385,7 @@ pub enum IoEventAddress {
 }
 
 /// Used in `Vm::register_ioevent` to indicate a size and optionally value to match.
-#[derive(PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Datamatch {
     AnyLength,
     U8(Option<u8>),
