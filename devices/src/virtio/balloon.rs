@@ -844,9 +844,6 @@ impl VirtioDevice for Balloon {
         if let Some(release_memory_tube) = &self.release_memory_tube {
             rds.push(release_memory_tube.as_raw_descriptor());
         }
-        if let Some(registered_evt_q) = &self.registered_evt_q {
-            rds.push(registered_evt_q.as_raw_descriptor());
-        }
         rds.push(self.pending_adjusted_response_event.as_raw_descriptor());
         rds
     }
