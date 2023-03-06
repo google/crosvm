@@ -872,12 +872,17 @@ fn create_devices(
                     None
                 };
 
+                let (ioevent_host_tube, ioevent_device_tube) =
+                    Tube::pair().context("failed to create ioevent tube")?;
+                irq_control_tubes.push(ioevent_host_tube);
+
                 let dev = VirtioPciDevice::new(
                     vm.get_memory().clone(),
                     stub.dev,
                     msi_device_tube,
                     cfg.disable_virtio_intx,
                     shared_memory_tube,
+                    ioevent_device_tube,
                 )
                 .context("failed to create virtio pci dev")?;
 
@@ -1873,12 +1878,16 @@ where
 
         let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
         irq_control_tubes.push(msi_host_tube);
+        let (ioevent_host_tube, ioevent_device_tube) =
+            Tube::pair().context("failed to create ioevent tube")?;
+        irq_control_tubes.push(ioevent_host_tube);
         let mut dev = VirtioPciDevice::new(
             vm.get_memory().clone(),
             iommu_dev.dev,
             msi_device_tube,
             cfg.disable_virtio_intx,
             None,
+            ioevent_device_tube,
         )
         .context("failed to create virtio pci dev")?;
         // early reservation for viommu.

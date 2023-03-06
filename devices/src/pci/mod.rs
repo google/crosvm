@@ -67,6 +67,7 @@ pub use self::pci_configuration::PciSubclass;
 pub use self::pci_configuration::CAPABILITY_LIST_HEAD_OFFSET;
 pub use self::pci_device::BarRange;
 pub use self::pci_device::Error as PciDeviceError;
+pub use self::pci_device::IoEventError as PciIoEventError;
 pub use self::pci_device::PciBus;
 pub use self::pci_device::PciDevice;
 pub use self::pci_device::PreferredIrq;

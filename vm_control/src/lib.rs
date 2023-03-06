@@ -503,7 +503,7 @@ pub enum VmMemoryRequest {
     },
     /// Unregister the given memory slot that was previously registered with `RegisterMemory`.
     UnregisterMemory(MemSlot),
-    /// Register an ioeventfd
+    /// Register an ioeventfd by looking up using Alloc info.
     IoEventWithAlloc {
         evt: Event,
         allocation: Alloc,
@@ -511,6 +511,7 @@ pub enum VmMemoryRequest {
         datamatch: Datamatch,
         register: bool,
     },
+    /// Register an eventfd with raw guest memory address.
     IoEventRaw(IoEventUpdateRequest),
 }
 

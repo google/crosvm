@@ -293,6 +293,9 @@ pub struct VirtioPciDevice {
     // A tube that is present if the device has shared memory regions, and
     // is used to map/unmap files into the shared memory region.
     shared_memory_tube: Option<Tube>,
+
+    // Tube for request registeration of ioevents when PCI BAR reprogramming is detected.
+    ioevent_tube: Tube,
 }
 
 impl VirtioPciDevice {
@@ -303,6 +306,7 @@ impl VirtioPciDevice {
         msi_device_tube: Tube,
         disable_intx: bool,
         shared_memory_tube: Option<Tube>,
+        ioevent_tube: Tube,
     ) -> Result<Self> {
         // shared_memory_tube is required if there are shared memory regions.
         assert_eq!(
@@ -381,6 +385,7 @@ impl VirtioPciDevice {
             },
             iommu: None,
             shared_memory_tube,
+            ioevent_tube,
         })
     }
 
@@ -571,6 +576,7 @@ impl PciDevice for VirtioPciDevice {
         if let Some(iommu) = &self.iommu {
             rds.append(&mut iommu.lock().as_raw_descriptors());
         }
+        rds.push(self.ioevent_tube.as_raw_descriptor());
         rds
     }
 
@@ -749,6 +755,10 @@ impl PciDevice for VirtioPciDevice {
                 )
             })
             .collect()
+    }
+
+    fn get_vm_memory_request_tube(&self) -> Option<&Tube> {
+        Some(&self.ioevent_tube)
     }
 
     fn read_config_register(&self, reg_idx: usize) -> u32 {
