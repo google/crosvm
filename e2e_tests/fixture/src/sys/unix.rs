@@ -97,7 +97,7 @@ impl TestVmSys {
         from_guest_pipe: &Path,
         to_guest_pipe: &Path,
     ) {
-        command.args(["--serial", "type=stdout"]);
+        command.args(["--serial", "type=stdout,hardware=virtio-console,console"]);
 
         // Setup channel for communication with the delegate.
         let serial_params = format!(
