@@ -1024,26 +1024,6 @@ pub enum VmRequest {
     Snapshot(SnapshotCommand),
     /// Command to Restore devices
     Restore(RestoreCommand),
-    /// Register for event notification
-    RegisterListener {
-        socket_addr: String,
-        event: RegisteredEvent,
-    },
-    /// Unregister for notifications for event
-    UnregisterListener {
-        socket_addr: String,
-        event: RegisteredEvent,
-    },
-    /// Unregister for all event notification
-    Unregister { socket_addr: String },
-}
-
-#[repr(C)]
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub enum RegisteredEvent {
-    VirtioBalloonWssReport,
-    VirtioBalloonResize,
-    VirtioBalloonOOMDeflation,
 }
 
 pub fn handle_disk_command(command: &DiskControlCommand, disk_host_tube: &Tube) -> VmResponse {
@@ -1578,15 +1558,6 @@ impl VmRequest {
                     }
                 }
             }
-            VmRequest::RegisterListener {
-                socket_addr: _,
-                event: _,
-            } => VmResponse::Ok,
-            VmRequest::UnregisterListener {
-                socket_addr: _,
-                event: _,
-            } => VmResponse::Ok,
-            VmRequest::Unregister { socket_addr: _ } => VmResponse::Ok,
         }
     }
 }

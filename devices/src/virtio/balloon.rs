@@ -17,7 +17,6 @@ use base::warn;
 use base::AsRawDescriptor;
 use base::Event;
 use base::RawDescriptor;
-use base::SendTube;
 use base::Tube;
 use base::WorkerThread;
 use cros_async::block_on;
@@ -26,7 +25,6 @@ use cros_async::sync::Mutex as AsyncMutex;
 use cros_async::AsyncTube;
 use cros_async::EventAsync;
 use cros_async::Executor;
-use cros_async::SendTubeAsync;
 use data_model::Le16;
 use data_model::Le32;
 use data_model::Le64;
@@ -36,7 +34,6 @@ use futures::FutureExt;
 use futures::StreamExt;
 use remain::sorted;
 use thiserror::Error as ThisError;
-use vm_control::RegisteredEvent;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use zerocopy::AsBytes;
@@ -512,7 +509,6 @@ async fn handle_command_tube(
     interrupt: Interrupt,
     state: Arc<AsyncMutex<BalloonState>>,
     mut stats_tx: mpsc::Sender<u64>,
-    registered_evt_q: Option<SendTubeAsync>,
 ) -> Result<()> {
     loop {
         match command_tube.next().await {
@@ -534,15 +530,6 @@ async fn handle_command_tube(
                                 .map_err(BalloonError::SendResponse)?;
                         } else {
                             state.failable_update = true;
-                        }
-                    }
-
-                    if let Some(registered_evt_q) = &registered_evt_q {
-                        if let Err(e) = registered_evt_q
-                            .send(&RegisteredEvent::VirtioBalloonResize)
-                            .await
-                        {
-                            error!("failed to send VirtioBalloonResize event: {}", e);
                         }
                     }
                 }
@@ -593,13 +580,9 @@ fn run_worker(
     pending_adjusted_response_event: Event,
     mem: GuestMemory,
     state: Arc<AsyncMutex<BalloonState>>,
-    registered_evt_q: Option<SendTube>,
-) -> (Option<Tube>, Tube, Option<SendTube>) {
+) -> (Option<Tube>, Tube) {
     let ex = Executor::new().unwrap();
     let command_tube = AsyncTube::new(&ex, command_tube).unwrap();
-    let registered_evt_q_async = registered_evt_q
-        .as_ref()
-        .map(|q| SendTubeAsync::new(q.try_clone().unwrap(), &ex).unwrap());
 
     // We need a block to release all references to command_tube at the end before returning it.
     {
@@ -687,13 +670,8 @@ fn run_worker(
         pin_mut!(reporting);
 
         // Future to handle command messages that resize the balloon.
-        let command = handle_command_tube(
-            &command_tube,
-            interrupt.clone(),
-            state.clone(),
-            stats_tx,
-            registered_evt_q_async,
-        );
+        let command =
+            handle_command_tube(&command_tube, interrupt.clone(), state.clone(), stats_tx);
         pin_mut!(command);
 
         // Process any requests to resample the irq value.
@@ -746,7 +724,7 @@ fn run_worker(
         }
     }
 
-    (release_memory_tube, command_tube.into(), registered_evt_q)
+    (release_memory_tube, command_tube.into())
 }
 
 /// Virtio device for memory balloon inflation/deflation.
@@ -759,8 +737,7 @@ pub struct Balloon {
     state: Arc<AsyncMutex<BalloonState>>,
     features: u64,
     acked_features: u64,
-    worker_thread: Option<WorkerThread<(Option<Tube>, Tube, Option<SendTube>)>>,
-    registered_evt_q: Option<SendTube>,
+    worker_thread: Option<WorkerThread<(Option<Tube>, Tube)>>,
 }
 
 /// Operation mode of the balloon.
@@ -786,7 +763,6 @@ impl Balloon {
         init_balloon_size: u64,
         mode: BalloonMode,
         enabled_features: u64,
-        registered_evt_q: Option<SendTube>,
     ) -> Result<Balloon> {
         let features = base_features
             | 1 << VIRTIO_BALLOON_F_MUST_TELL_HOST
@@ -814,7 +790,6 @@ impl Balloon {
             worker_thread: None,
             features,
             acked_features: 0,
-            registered_evt_q,
         })
     }
 
@@ -924,7 +899,6 @@ impl VirtioDevice for Balloon {
         #[cfg(windows)]
         let mapping_tube = self.dynamic_mapping_tube.take().unwrap();
         let release_memory_tube = self.release_memory_tube.take();
-        let registered_evt_q = self.registered_evt_q.take();
         let pending_adjusted_response_event = self
             .pending_adjusted_response_event
             .try_clone()
@@ -946,7 +920,6 @@ impl VirtioDevice for Balloon {
                 pending_adjusted_response_event,
                 mem,
                 state,
-                registered_evt_q,
             )
         }));
 
@@ -955,10 +928,9 @@ impl VirtioDevice for Balloon {
 
     fn reset(&mut self) -> bool {
         if let Some(worker_thread) = self.worker_thread.take() {
-            let (release_memory_tube, command_tube, registered_evt_q) = worker_thread.stop();
+            let (release_memory_tube, command_tube) = worker_thread.stop();
             self.release_memory_tube = release_memory_tube;
             self.command_tube = Some(command_tube);
-            self.registered_evt_q = registered_evt_q;
             return true;
         }
         false

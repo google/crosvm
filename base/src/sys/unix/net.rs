@@ -361,7 +361,7 @@ fn sockaddr_un<P: AsRef<Path>>(path: P) -> io::Result<(libc::sockaddr_un, libc::
 }
 
 /// A Unix `SOCK_SEQPACKET` socket point to given `path`
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct UnixSeqpacket {
     #[serde(with = "super::with_raw_descriptor")]
     fd: RawFd,
