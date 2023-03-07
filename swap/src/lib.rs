@@ -104,6 +104,10 @@ impl From<&SwapState> for State {
                 direction: SwapDirection::Out,
                 ..
             } => State::SwapOutInProgress,
+            SwapState::InProgress {
+                direction: SwapDirection::In,
+                ..
+            } => State::SwapInInProgress,
             SwapState::SwapOutCompleted => State::Active,
             SwapState::Failed => State::Failed,
         }
@@ -547,29 +551,9 @@ fn start_monitoring<'a>(
     Ok(page_hander)
 }
 
-fn disable_monitoring(
-    mut page_handler: PageHandler,
-    uffd_list: &UffdList,
-    guest_memory: &GuestMemory,
-) -> anyhow::Result<usize> {
-    let mut num_pages = 0;
-    loop {
-        let pages = page_handler
-            .swap_in(uffd_list.main_uffd(), MAX_SWAP_CHUNK_SIZE)
-            .context("unregister all regions")?;
-        if pages == 0 {
-            break;
-        }
-        num_pages += pages;
-    }
-    let regions = regions_from_guest_memory(guest_memory);
-    unregister_regions(&regions, uffd_list.get_list()).context("unregister regions")?;
-    Ok(num_pages)
-}
-
 enum SwapDirection {
     Out,
-    // TODO(b/265606668): Add `In` to swap-in concurrently.
+    In,
 }
 
 enum SwapState {
@@ -640,6 +624,28 @@ fn monitor_process(
                                     state_transition.pages, state_transition.time_ms
                                 );
                                 state = SwapState::SwapOutCompleted;
+                            }
+                        }
+                        // TODO(b/265606668): execute swap-in on a background thread.
+                        SwapDirection::In => {
+                            let num_pages = page_handler
+                                .swap_in(uffd_list.main_uffd(), MAX_SWAP_CHUNK_SIZE)
+                                .context("swap in")?;
+                            state_transition.pages += num_pages;
+                            state_transition.time_ms = started_time.elapsed().as_millis();
+                            if num_pages == 0 {
+                                info!(
+                                    "swap in all {} pages in {} ms.",
+                                    state_transition.pages, state_transition.time_ms
+                                );
+                                page_handler_opt = None;
+                                let regions = regions_from_guest_memory(&guest_memory);
+                                unregister_regions(&regions, uffd_list.get_list())
+                                    .context("unregister regions")?;
+                                // Truncate the swap file to hold minimum resources while disabled.
+                                swap_file.set_len(0).context("clear swap file")?;
+                                info!("vmm-swap is disabled.");
+                                state = SwapState::Disabled;
                             }
                         }
                     }
@@ -811,23 +817,21 @@ fn monitor_process(
                             } => {
                                 info!("swap out is aborted.");
                             }
+                            SwapState::InProgress {
+                                direction: SwapDirection::In,
+                                ..
+                            } => {
+                                info!("swap in is in progress.");
+                                continue;
+                            }
                             _ => {}
                         }
-                        if let Some(page_handler) = page_handler_opt.take() {
-                            let t0 = std::time::Instant::now();
-                            state_transition.pages =
-                                disable_monitoring(page_handler, &uffd_list, &guest_memory)?;
-                            state_transition.time_ms = t0.elapsed().as_millis();
-                            info!(
-                                "swap in all {} pages in {} ms. swap disabled.",
-                                state_transition.pages, state_transition.time_ms
-                            );
-                            // Truncate the swap file to hold minimum resources while disabled.
-                            swap_file.set_len(0).context("clear swap file")?;
-                            state = SwapState::Disabled;
-                        } else {
-                            error!("swap is already disabled.");
-                        }
+                        state = SwapState::InProgress {
+                            direction: SwapDirection::In,
+                            started_time: std::time::Instant::now(),
+                        };
+                        state_transition = StateTransition::default();
+                        info!("start swapping in.");
                     }
                     Command::Exit => {
                         break 'wait;
