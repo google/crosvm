@@ -516,29 +516,121 @@ impl MemoryMapping {
         }
     }
 
-    /// Disable host swap for this mapping.
-    pub fn lock_all(&self) -> Result<()> {
+    /// Tell the kernel to readahead the range.
+    ///
+    /// This does not block the thread by I/O wait from reading the backed file. This does not
+    /// guarantee that the pages are surely present unless the pages are mlock(2)ed by
+    /// `lock_on_fault_unchecked()`.
+    ///
+    /// The `mem_offset` and `count` must be validated by caller.
+    ///
+    /// # Arguments
+    ///
+    /// * `mem_offset` - The offset of the head of the range.
+    /// * `count` - The size in bytes of the range.
+    pub fn async_prefetch(&self, mem_offset: usize, count: usize) -> Result<()> {
+        // Validation
+        self.range_end(mem_offset, count)
+            .map_err(|_| Error::InvalidRange(mem_offset, count, self.size()))?;
+        // Safe because populating the pages from the backed file does not affect the Rust memory
+        // safety.
         let ret = unsafe {
-            // Safe because MLOCK_ONFAULT only affects the swap behavior of the kernel, so it
-            // has no impact on rust semantics.
-            // TODO(raging): use the explicit declaration of mlock2, which was being merged
-            // as of when the call below was being worked on.
-            libc::syscall(
-                libc::SYS_mlock2,
-                (self.addr as usize) as *const libc::c_void,
-                self.size(),
-                libc::MLOCK_ONFAULT,
+            libc::madvise(
+                (self.addr as usize + mem_offset) as *mut _,
+                count,
+                libc::MADV_WILLNEED,
             )
         };
+        if ret < 0 {
+            Err(Error::SystemCallFailed(super::Error::last()))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Tell the kernel to drop the page cache.
+    ///
+    /// This cannot be applied to locked pages.
+    ///
+    /// The `mem_offset` and `count` must be validated by caller.
+    ///
+    /// NOTE: This function has destructive semantics. It throws away data in the page cache without
+    /// writing it to the backing file. If the data is important, the caller should ensure it is
+    /// written to disk before calling this function or should use MADV_PAGEOUT instead.
+    ///
+    /// # Arguments
+    ///
+    /// * `mem_offset` - The offset of the head of the range.
+    /// * `count` - The size in bytes of the range.
+    pub fn drop_page_cache(&self, mem_offset: usize, count: usize) -> Result<()> {
+        // Validation
+        self.range_end(mem_offset, count)
+            .map_err(|_| Error::InvalidRange(mem_offset, count, self.size()))?;
+        // Safe because dropping the page cache does not affect the Rust memory safety.
+        let ret = unsafe {
+            libc::madvise(
+                (self.addr as usize + mem_offset) as *mut _,
+                count,
+                libc::MADV_DONTNEED,
+            )
+        };
+        if ret < 0 {
+            Err(Error::SystemCallFailed(super::Error::last()))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Lock the resident pages in the range not to be swapped out.
+    ///
+    /// The remaining nonresident page are locked when they are populated.
+    ///
+    /// The `mem_offset` and `count` must be validated by caller.
+    ///
+    /// # Arguments
+    ///
+    /// * `mem_offset` - The offset of the head of the range.
+    /// * `count` - The size in bytes of the range.
+    pub fn lock_on_fault(&self, mem_offset: usize, count: usize) -> Result<()> {
+        // Validation
+        self.range_end(mem_offset, count)
+            .map_err(|_| Error::InvalidRange(mem_offset, count, self.size()))?;
+        let addr = self.addr as usize + mem_offset;
+        // Safe because MLOCK_ONFAULT only affects the swap behavior of the kernel, so it has no
+        // impact on rust semantics.
+        let ret = unsafe { libc::mlock2(addr as *mut _, count, libc::MLOCK_ONFAULT) };
         if ret < 0 {
             let errno = super::Error::last();
             warn!(
                 "failed to mlock at {:#x} with length {}: {}",
-                (self.addr as usize) as u64,
+                addr as u64,
                 self.size(),
                 errno,
             );
             Err(Error::SystemCallFailed(errno))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Unlock the range of pages.
+    ///
+    /// Unlocking non-locked pages does not fail.
+    ///
+    /// The `mem_offset` and `count` must be validated by caller.
+    ///
+    /// # Arguments
+    ///
+    /// * `mem_offset` - The offset of the head of the range.
+    /// * `count` - The size in bytes of the range.
+    pub fn unlock(&self, mem_offset: usize, count: usize) -> Result<()> {
+        // Validation
+        self.range_end(mem_offset, count)
+            .map_err(|_| Error::InvalidRange(mem_offset, count, self.size()))?;
+        // Safe because munlock(2) does not affect the Rust memory safety.
+        let ret = unsafe { libc::munlock((self.addr as usize + mem_offset) as *mut _, count) };
+        if ret < 0 {
+            Err(Error::SystemCallFailed(super::Error::last()))
         } else {
             Ok(())
         }
@@ -816,6 +908,14 @@ impl CrateMemoryMapping {
 pub trait Unix {
     /// Remove the specified range from the mapping.
     fn remove_range(&self, mem_offset: usize, count: usize) -> Result<()>;
+    /// Tell the kernel to readahead the range.
+    fn async_prefetch(&self, mem_offset: usize, count: usize) -> Result<()>;
+    /// Tell the kernel to drop the page cache.
+    fn drop_page_cache(&self, mem_offset: usize, count: usize) -> Result<()>;
+    /// Lock the resident pages in the range not to be swapped out.
+    fn lock_on_fault(&self, mem_offset: usize, count: usize) -> Result<()>;
+    /// Unlock the range of pages.
+    fn unlock(&self, mem_offset: usize, count: usize) -> Result<()>;
     /// Disable host swap for this mapping.
     fn lock_all(&self) -> Result<()>;
 }
@@ -824,8 +924,20 @@ impl Unix for CrateMemoryMapping {
     fn remove_range(&self, mem_offset: usize, count: usize) -> Result<()> {
         self.mapping.remove_range(mem_offset, count)
     }
+    fn async_prefetch(&self, mem_offset: usize, count: usize) -> Result<()> {
+        self.mapping.async_prefetch(mem_offset, count)
+    }
+    fn drop_page_cache(&self, mem_offset: usize, count: usize) -> Result<()> {
+        self.mapping.drop_page_cache(mem_offset, count)
+    }
+    fn lock_on_fault(&self, mem_offset: usize, count: usize) -> Result<()> {
+        self.mapping.lock_on_fault(mem_offset, count)
+    }
+    fn unlock(&self, mem_offset: usize, count: usize) -> Result<()> {
+        self.mapping.unlock(mem_offset, count)
+    }
     fn lock_all(&self) -> Result<()> {
-        self.mapping.lock_all()
+        self.mapping.lock_on_fault(0, self.mapping.size())
     }
 }
 

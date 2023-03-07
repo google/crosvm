@@ -96,17 +96,28 @@ impl PresentList {
     /// * `max_pages` - the max size of the returned chunk even if the chunk of consecutive present
     ///   pages is longer than this.
     pub fn first_data_range(&mut self, max_pages: usize) -> Option<Range<usize>> {
-        let head_idx =
-            if let Some(offset) = self.list[self.min_possible_idx..].iter().position(|v| *v) {
-                // Update min_possible_idx otherwise min_possible_idx will not be updated on next
-                // clear_range().
-                self.min_possible_idx += offset;
-                self.min_possible_idx
-            } else {
-                // Update min_possible_idx to skip traversing on next calls.
-                self.min_possible_idx = self.list.len();
-                return None;
-            };
+        if let Some(idx_range) = self.find_data_range(self.min_possible_idx, max_pages) {
+            // Update min_possible_idx otherwise min_possible_idx will not be updated on next
+            // clear_range().
+            self.min_possible_idx = idx_range.start;
+            Some(idx_range)
+        } else {
+            // Update min_possible_idx to skip traversing on next calls.
+            self.min_possible_idx = self.list.len();
+            None
+        }
+    }
+
+    /// Returns the first range of indices of consecutive pages present in the list after
+    /// `head_idx`.
+    ///
+    /// # Arguments
+    ///
+    /// * `head_idx` - The index to start seeking data with.
+    /// * `max_pages` - The max size of the returned chunk even if the chunk of consecutive present
+    ///   pages is longer than this.
+    pub fn find_data_range(&self, head_idx: usize, max_pages: usize) -> Option<Range<usize>> {
+        let head_idx = head_idx + self.list[head_idx..].iter().position(|v| *v)?;
         let tail_idx = std::cmp::min(self.list.len() - head_idx, max_pages) + head_idx;
         let tail_idx = self.list[head_idx + 1..tail_idx]
             .iter()
@@ -116,10 +127,24 @@ impl PresentList {
     }
 
     /// Returns the count of present pages in the list.
-    pub fn present_pages(&self) -> usize {
+    pub fn all_present_pages(&self) -> usize {
         self.list[self.min_possible_idx..]
             .iter()
-            .fold(0, |acc, v| if *v { acc + 1 } else { acc })
+            .map(|v| usize::from(*v))
+            .sum()
+    }
+
+    /// Returns the count of present pages in the range.
+    ///
+    /// Returns `None` if the `idx_range` is out of range.
+    ///
+    /// # Arguments
+    ///
+    /// * `idx_range` - the indices of pages to count.
+    pub fn present_pages(&self, idx_range: Range<usize>) -> Option<usize> {
+        self.list
+            .get(idx_range)
+            .map(|list| list.iter().map(|v| usize::from(*v)).sum())
     }
 }
 
@@ -289,12 +314,99 @@ mod tests {
     }
 
     #[test]
+    fn find_data_range() {
+        let mut list = PresentList::new(200);
+
+        list.mark_as_present(1..3);
+        list.mark_as_present(12..13);
+        list.mark_as_present(20..22);
+        list.mark_as_present(22..23);
+        list.mark_as_present(23..30);
+
+        assert_eq!(list.find_data_range(0, 200).unwrap(), 1..3);
+        assert_eq!(list.find_data_range(3, 200).unwrap(), 12..13);
+        assert_eq!(list.find_data_range(13, 200).unwrap(), 20..30);
+        assert_eq!(list.find_data_range(22, 5).unwrap(), 22..27);
+        assert!(list.find_data_range(30, 200).is_none());
+        assert!(list.find_data_range(200, 200).is_none());
+    }
+
+    #[test]
+    fn find_data_range_clear_partially() {
+        let mut list = PresentList::new(200);
+
+        list.mark_as_present(10..20);
+
+        list.clear_range(5..10);
+        assert_eq!(list.find_data_range(0, 200).unwrap(), 10..20);
+        list.clear_range(5..12);
+        assert_eq!(list.find_data_range(0, 200).unwrap(), 12..20);
+        list.clear_range(19..21);
+        assert_eq!(list.find_data_range(0, 200).unwrap(), 12..19);
+        list.clear_range(16..17);
+        assert_eq!(list.find_data_range(0, 200).unwrap(), 12..16);
+    }
+
+    #[test]
+    fn find_data_range_mark_after_clear() {
+        let mut list = PresentList::new(200);
+
+        list.mark_as_present(10..20);
+
+        list.clear_range(10..15);
+        assert_eq!(list.find_data_range(0, 200).unwrap(), 15..20);
+        list.mark_as_present(5..15);
+        assert_eq!(list.find_data_range(0, 200).unwrap(), 5..20);
+    }
+
+    #[test]
+    fn find_data_range_end_is_full() {
+        let mut list = PresentList::new(20);
+
+        list.mark_as_present(10..20);
+
+        assert_eq!(list.find_data_range(0, 20).unwrap(), 10..20);
+    }
+
+    #[test]
+    fn find_data_range_max_pages() {
+        let mut list = PresentList::new(20);
+
+        list.mark_as_present(10..13);
+
+        assert_eq!(list.find_data_range(0, 1).unwrap(), 10..11);
+        assert_eq!(list.find_data_range(0, 2).unwrap(), 10..12);
+        assert_eq!(list.find_data_range(0, 3).unwrap(), 10..13);
+        assert_eq!(list.find_data_range(0, 4).unwrap(), 10..13);
+    }
+
+    #[test]
+    fn all_present_pages() {
+        let mut list = PresentList::new(20);
+
+        list.mark_as_present(1..5);
+        list.mark_as_present(12..13);
+
+        assert_eq!(list.all_present_pages(), 5);
+    }
+
+    #[test]
     fn present_pages() {
         let mut list = PresentList::new(20);
 
         list.mark_as_present(1..5);
         list.mark_as_present(12..13);
 
-        assert_eq!(list.present_pages(), 5);
+        assert_eq!(list.present_pages(3..15).unwrap(), 3);
+    }
+
+    #[test]
+    fn present_pages_out_of_range() {
+        let mut list = PresentList::new(20);
+
+        list.mark_as_present(1..5);
+        list.mark_as_present(12..13);
+
+        assert!(list.present_pages(3..21).is_none());
     }
 }

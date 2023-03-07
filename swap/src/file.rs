@@ -11,6 +11,7 @@ use std::os::unix::fs::FileExt;
 use base::error;
 use base::MemoryMapping;
 use base::MemoryMappingBuilder;
+use base::MemoryMappingUnix;
 use base::MmapError;
 use base::Protection;
 use base::PunchHole;
@@ -30,8 +31,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     #[error("failed to io: {0}")]
     Io(#[from] std::io::Error),
-    #[error("failed to mmap operation: {0}")]
-    Mmap(#[from] MmapError),
+    #[error("failed to mmap operation ({0}): {1}")]
+    Mmap(&'static str, MmapError),
     #[error("failed to volatile memory operation: {0}")]
     VolatileMemory(#[from] VolatileMemoryError),
     #[error("index is out of range")]
@@ -53,6 +54,8 @@ pub struct SwapFile<'a> {
     file_mmap: MemoryMapping,
     // Tracks which pages are present, indexed by page index within the memory region.
     present_list: PresentList,
+    // All the data pages before this index are mlock(2)ed.
+    cursor_mlock: usize,
 }
 
 impl<'a> SwapFile<'a> {
@@ -71,12 +74,14 @@ impl<'a> SwapFile<'a> {
             .from_file(file)
             .offset(offset)
             .protection(Protection::read())
-            .build()?;
+            .build()
+            .map_err(|e| Error::Mmap("create", e))?;
         Ok(Self {
             file,
             offset,
             file_mmap,
             present_list: PresentList::new(num_of_pages),
+            cursor_mlock: 0,
         })
     }
 
@@ -107,23 +112,141 @@ impl<'a> SwapFile<'a> {
         }
     }
 
-    /// Clears the pages in the file corresponding to the index.
+    /// Start readahead the swap file into the page cache from the head.
+    ///
+    /// This also `mlock2(2)` the pages not to be dropped again after populated. This does not block
+    /// the caller thread by I/O wait because:
+    ///
+    /// * `mlock2(2)` is executed with `MLOCK_ONFAULT`.
+    /// * `MADV_WILLNEED` is the same as `readahead(2)` which triggers the readahead background.
+    ///   * However Linux has a bug that `readahead(2)` (and also `MADV_WILLNEED`) may block due to
+    ///     reading the filesystem metadata.
+    ///
+    /// This returns the number of consecutive pages which are newly mlock(2)ed. Returning `0` means
+    /// that there is no more data to be mlock(2)ed in this file.
+    ///
+    /// The caller must track the number of pages mlock(2)ed not to mlock(2) more pages than
+    /// `RLIMIT_MEMLOCK` if it does not have `CAP_IPC_LOCK`.
     ///
     /// # Arguments
     ///
-    /// * `idx_range` - the indices of consecutive pages to be cleared.
-    /// * `erase_from_disk` - Whether or not to erase the pages from the file.
-    pub fn clear_range(&mut self, idx_range: Range<usize>, erase_from_disk: bool) -> Result<()> {
-        if self.present_list.clear_range(idx_range.clone()) {
-            if erase_from_disk {
-                let offset = self.offset + pages_to_bytes(idx_range.start) as u64;
-                let size = pages_to_bytes(idx_range.end - idx_range.start) as u64;
-                self.file.punch_hole(offset, size)?;
+    /// * `max_pages` - The maximum number of pages to be mlock(2)ed at once.
+    pub fn lock_and_async_prefetch(&mut self, max_pages: usize) -> Result<usize> {
+        match self
+            .present_list
+            .find_data_range(self.cursor_mlock, max_pages)
+        {
+            Some(idx_range) => {
+                let pages = idx_range.end - idx_range.start;
+                let mem_offset = pages_to_bytes(idx_range.start);
+                let size_in_bytes = pages_to_bytes(pages);
+                self.file_mmap
+                    .lock_on_fault(mem_offset, size_in_bytes)
+                    .map_err(|e| Error::Mmap("mlock", e))?;
+                self.file_mmap
+                    .async_prefetch(mem_offset, size_in_bytes)
+                    .map_err(|e| Error::Mmap("madvise willneed", e))?;
+                self.cursor_mlock = idx_range.end;
+                Ok(pages)
             }
-            Ok(())
+            None => {
+                self.cursor_mlock = self.present_list.len();
+                Ok(0)
+            }
+        }
+    }
+
+    /// Clears the pages in the file corresponding to the index.
+    ///
+    /// If the pages are mlock(2)ed, unlock them before MADV_DONTNEED. This returns the number of
+    /// pages munlock(2)ed.
+    ///
+    /// # Arguments
+    ///
+    /// * `idx_range` - The indices of consecutive pages to be cleared. All the pages must be
+    ///   present.
+    pub fn clear_range(&mut self, idx_range: Range<usize>) -> Result<usize> {
+        if self.present_list.clear_range(idx_range.clone()) {
+            let offset = pages_to_bytes(idx_range.start);
+            let munlocked_size = if idx_range.start < self.cursor_mlock {
+                // idx_range is validated at clear_range() and self.cursor_mlock is within the mmap.
+                let pages = idx_range.end.min(self.cursor_mlock) - idx_range.start;
+                // munlock(2) first because MADV_DONTNEED fails for mlock(2)ed pages.
+                self.file_mmap
+                    .unlock(offset, pages_to_bytes(pages))
+                    .map_err(|e| Error::Mmap("munlock", e))?;
+                pages
+            } else {
+                0
+            };
+            // offset and size are validated at clear_range().
+            let size = pages_to_bytes(idx_range.end - idx_range.start);
+            // The page cache is cleared without writing pages back to file even if they are dirty.
+            // The disk contents which may not be the latest are kept for later trim optimization.
+            self.file_mmap
+                .drop_page_cache(offset, size)
+                .map_err(|e| Error::Mmap("madvise dontneed", e))?;
+            Ok(munlocked_size)
         } else {
             Err(Error::OutOfRange)
         }
+    }
+
+    /// Erase the pages corresponding to the given range from the file and underlying disk.
+    ///
+    /// If the pages are mlock(2)ed, unlock them before punching a hole. This returns the number of
+    /// pages munlock(2)ed.
+    ///
+    /// # Arguments
+    ///
+    /// * `idx_range` - The indices of consecutive pages to be erased. This may contains non-present
+    ///   pages.
+    pub fn erase_from_disk(&mut self, idx_range: Range<usize>) -> Result<usize> {
+        let (mlock_range, mlocked_pages) = if idx_range.start < self.cursor_mlock {
+            let mlock_range = idx_range.start..idx_range.end.min(self.cursor_mlock);
+            let mlocked_pages = self
+                .present_list
+                .present_pages(mlock_range.clone())
+                .ok_or(Error::OutOfRange)?;
+            (Some(mlock_range), mlocked_pages)
+        } else {
+            (None, 0)
+        };
+        if self.present_list.clear_range(idx_range.clone()) {
+            if let Some(mlock_range) = mlock_range {
+                // mlock_range is validated at present_pages().
+                // mlock_range may contains non-locked pages. munlock(2) succeeds even on that case.
+                self.file_mmap
+                    .unlock(
+                        pages_to_bytes(mlock_range.start),
+                        pages_to_bytes(mlock_range.end - mlock_range.start),
+                    )
+                    .map_err(|e| Error::Mmap("munlock", e))?;
+            }
+            let file_offset = self.offset + pages_to_bytes(idx_range.start) as u64;
+            self.file.punch_hole(
+                file_offset,
+                pages_to_bytes(idx_range.end - idx_range.start) as u64,
+            )?;
+            Ok(mlocked_pages)
+        } else {
+            Err(Error::OutOfRange)
+        }
+    }
+
+    /// munlock(2) pages if there are mlock(2)ed pages in the mmap and reset the internal cursor for
+    /// mlock(2) tracking.
+    pub fn clear_mlock(&mut self) -> Result<()> {
+        if self.cursor_mlock > 0 {
+            // cursor_mlock is not `0` only when disabling vmm-swap is aborted by overriding
+            // vmm-swap enable. munlock(2)ing the whole possible pages is not a problem because this
+            // is not a hot path.
+            self.file_mmap
+                .unlock(0, pages_to_bytes(self.cursor_mlock))
+                .map_err(|e| Error::Mmap("munlock", e))?;
+        }
+        self.cursor_mlock = 0;
+        Ok(())
     }
 
     /// Writes the contents to the swap file.
@@ -188,7 +311,7 @@ impl<'a> SwapFile<'a> {
 
     /// Returns the count of present pages in the swap file.
     pub fn present_pages(&self) -> usize {
-        self.present_list.present_pages()
+        self.present_list.all_present_pages()
     }
 }
 
@@ -321,39 +444,69 @@ mod tests {
     }
 
     #[test]
-    fn clear() {
+    #[cfg(target_arch = "x86_64")] // TODO(b/272612118): unit test infra (qemu-user) support
+    fn lock_and_start_populate() {
+        let file = tempfile::tempfile().unwrap();
+        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
+
+        swap_file.write_to_file(1, &vec![1; pagesize()]).unwrap();
+        swap_file
+            .write_to_file(3, &vec![1; 5 * pagesize()])
+            .unwrap();
+        swap_file.write_to_file(10, &vec![1; pagesize()]).unwrap();
+
+        let mut locked_pages = 0;
+        loop {
+            let pages = swap_file.lock_and_async_prefetch(2).unwrap();
+            if pages == 0 {
+                break;
+            }
+            assert!(pages <= 2);
+            locked_pages += pages;
+        }
+        assert_eq!(locked_pages, 7);
+    }
+
+    #[test]
+    fn clear_range() {
         let file = tempfile::tempfile().unwrap();
         let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
 
         let data = &vec![1; pagesize()];
         swap_file.write_to_file(0, data).unwrap();
-        swap_file.clear_range(0..1, false).unwrap();
+        swap_file.clear_range(0..1).unwrap();
 
         assert_eq!(swap_file.page_content(0).unwrap().is_none(), true);
     }
 
     #[test]
-    fn clear_erase_from_disk() {
+    #[cfg(target_arch = "x86_64")] // TODO(b/272612118): unit test infra (qemu-user) support
+    fn clear_range_unlocked_pages() {
         let file = tempfile::tempfile().unwrap();
         let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
 
-        let data = &vec![1; pagesize()];
-        swap_file.write_to_file(0, data).unwrap();
-        swap_file.clear_range(0..1, true).unwrap();
+        swap_file
+            .write_to_file(1, &vec![1; 10 * pagesize()])
+            .unwrap();
+        // 1..6 is locked, 6..11 is not locked.
+        assert_eq!(swap_file.lock_and_async_prefetch(5).unwrap(), 5);
 
-        let slice = swap_file.get_slice(0..1).unwrap();
-        let slice = unsafe { slice::from_raw_parts(slice.as_ptr(), slice.size()) };
-        assert_eq!(slice, &vec![0; pagesize()]);
+        // locked pages only
+        assert_eq!(swap_file.clear_range(1..4).unwrap(), 3);
+        // locked pages + non-locked pages
+        assert_eq!(swap_file.clear_range(4..7).unwrap(), 2);
+        // non-locked pages
+        assert_eq!(swap_file.clear_range(10..11).unwrap(), 0);
     }
 
     #[test]
-    fn clear_keep_on_disk() {
+    fn clear_range_keep_on_disk() {
         let file = tempfile::tempfile().unwrap();
         let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
 
         let data = &vec![1; pagesize()];
         swap_file.write_to_file(0, data).unwrap();
-        swap_file.clear_range(0..1, false).unwrap();
+        swap_file.clear_range(0..1).unwrap();
 
         let slice = swap_file.get_slice(0..1).unwrap();
         let slice = unsafe { slice::from_raw_parts(slice.as_ptr(), slice.size()) };
@@ -361,15 +514,94 @@ mod tests {
     }
 
     #[test]
-    fn clear_out_of_range() {
+    fn clear_range_out_of_range() {
         let file = tempfile::tempfile().unwrap();
         let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
 
-        assert_eq!(swap_file.clear_range(199..200, false).is_ok(), true);
-        match swap_file.clear_range(200..201, false) {
+        assert_eq!(swap_file.clear_range(199..200).is_ok(), true);
+        match swap_file.clear_range(200..201) {
             Err(Error::OutOfRange) => {}
             _ => unreachable!("not out of range"),
         };
+        match swap_file.clear_range(199..201) {
+            Err(Error::OutOfRange) => {}
+            _ => unreachable!("not out of range"),
+        };
+    }
+
+    #[test]
+    fn erase_from_disk() {
+        let file = tempfile::tempfile().unwrap();
+        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
+
+        let data = &vec![1; pagesize()];
+        swap_file.write_to_file(0, data).unwrap();
+        swap_file.erase_from_disk(0..1).unwrap();
+
+        assert_eq!(swap_file.page_content(0).unwrap().is_none(), true);
+        let slice = swap_file.get_slice(0..1).unwrap();
+        let slice = unsafe { slice::from_raw_parts(slice.as_ptr(), slice.size()) };
+        assert_eq!(slice, &vec![0; pagesize()]);
+    }
+
+    #[test]
+    #[cfg(target_arch = "x86_64")] // TODO(b/272612118): unit test infra (qemu-user) support
+    fn erase_from_disk_unlocked_pages() {
+        let file = tempfile::tempfile().unwrap();
+        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
+
+        swap_file
+            .write_to_file(1, &vec![1; 10 * pagesize()])
+            .unwrap();
+        // 1..6 is locked, 6..11 is not locked.
+        assert_eq!(swap_file.lock_and_async_prefetch(5).unwrap(), 5);
+
+        // empty pages
+        assert_eq!(swap_file.erase_from_disk(0..1).unwrap(), 0);
+        // empty pages + locked pages
+        assert_eq!(swap_file.erase_from_disk(0..2).unwrap(), 1);
+        // locked pages only
+        assert_eq!(swap_file.erase_from_disk(2..4).unwrap(), 2);
+        // empty pages + locked pages + non-locked pages
+        assert_eq!(swap_file.erase_from_disk(3..7).unwrap(), 2);
+        // non-locked pages
+        assert_eq!(swap_file.erase_from_disk(10..11).unwrap(), 0);
+    }
+
+    #[test]
+    fn erase_from_disk_out_of_range() {
+        let file = tempfile::tempfile().unwrap();
+        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
+
+        assert_eq!(swap_file.erase_from_disk(199..200).is_ok(), true);
+        match swap_file.erase_from_disk(200..201) {
+            Err(Error::OutOfRange) => {}
+            _ => unreachable!("not out of range"),
+        };
+        match swap_file.erase_from_disk(199..201) {
+            Err(Error::OutOfRange) => {}
+            _ => unreachable!("not out of range"),
+        };
+    }
+
+    #[test]
+    #[cfg(target_arch = "x86_64")] // TODO(b/272612118): unit test infra (qemu-user) support
+    fn clear_mlock() {
+        let file = tempfile::tempfile().unwrap();
+        let mut swap_file = SwapFile::new(&file, 0, 200).unwrap();
+
+        swap_file
+            .write_to_file(1, &vec![1; 10 * pagesize()])
+            .unwrap();
+        // success if there is no mlock.
+        assert!(swap_file.clear_mlock().is_ok());
+
+        assert_eq!(swap_file.lock_and_async_prefetch(11).unwrap(), 10);
+        // success if there is mlocked area.
+        assert!(swap_file.clear_mlock().is_ok());
+
+        // mlock area is cleared.
+        assert_eq!(swap_file.lock_and_async_prefetch(11).unwrap(), 10);
     }
 
     #[test]
@@ -384,9 +616,9 @@ mod tests {
 
         assert_eq!(swap_file.first_data_range(200).unwrap(), 1..4);
         assert_eq!(swap_file.first_data_range(2).unwrap(), 1..3);
-        swap_file.clear_range(1..3, false).unwrap();
+        swap_file.clear_range(1..3).unwrap();
         assert_eq!(swap_file.first_data_range(2).unwrap(), 3..4);
-        swap_file.clear_range(3..4, false).unwrap();
+        swap_file.clear_range(3..4).unwrap();
         assert!(swap_file.first_data_range(2).is_none());
     }
 

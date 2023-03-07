@@ -26,10 +26,12 @@ gettid: 1
 # 0xc020aa00 = UFFDIO_REGISTER, 0x8010aa01 == UFFDIO_UNREGISTER, 0x8010aa02 == UFFDIO_WAKE, 0xc028aa03 == UFFDIO_COPY, 0xc020aa04 == UFFDIO_ZEROPAGE
 ioctl: arg1 == 0xc020aa00 || arg1 == 0x8010aa01 || arg1 == 0x8010aa02 || arg1 == 0xc028aa03 || arg1 == 0xc020aa04
 lseek: 1
-madvise: arg2 == MADV_DONTNEED || arg2 == MADV_DONTDUMP || arg2 == MADV_MERGEABLE || arg2 == MADV_REMOVE
+madvise: arg2 == MADV_DONTNEED || arg2 == MADV_WILLNEED || arg2 == MADV_DONTDUMP || arg2 == MADV_MERGEABLE || arg2 == MADV_REMOVE
 memfd_create: 1
+mlock2: 1
 mmap: arg2 in ~PROT_EXEC
 mprotect: arg2 in ~PROT_EXEC
+munlock: 1
 munmap: 1
 newfstatat: 1
 openat: return ENOENT

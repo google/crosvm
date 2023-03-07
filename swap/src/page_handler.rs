@@ -37,6 +37,9 @@ use crate::userfaultfd::Userfaultfd;
 use crate::worker::Channel;
 use crate::worker::Task;
 
+pub(crate) const MLOCK_BUDGET: usize = 16 * 1024 * 1024; // = 16MB
+const PREFETCH_THRESHOLD: usize = 4 * 1024 * 1024; // = 4MB
+
 /// Result for PageHandler
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -131,6 +134,7 @@ impl Task for MoveToStaging {
 pub struct PageHandler<'a> {
     regions: Vec<Region<'a>>,
     channel: Arc<Channel<MoveToStaging>>,
+    mlock_budget_pages: usize,
 }
 
 impl<'a> PageHandler<'a> {
@@ -213,6 +217,7 @@ impl<'a> PageHandler<'a> {
         Ok(Self {
             regions,
             channel: stating_move_context,
+            mlock_budget_pages: bytes_to_pages(MLOCK_BUDGET),
         })
     }
 
@@ -286,10 +291,9 @@ impl<'a> PageHandler<'a> {
         } else if let Some(page_slice) = region.file.page_content(idx_in_region)? {
             Self::copy_all(uffd, page_addr, page_slice, true)?;
             // TODO(b/265758094): optimize clear operation.
-            // Do not erace the page from the disk for trimming optimization on next swap out.
-            region
-                .file
-                .clear_range(idx_in_region..idx_in_region + 1, false)?;
+            // Do not erase the page from the disk for trimming optimization on next swap out.
+            let munlocked_pages = region.file.clear_range(idx_in_region..idx_in_region + 1)?;
+            self.mlock_budget_pages += munlocked_pages;
             region.copied_from_file_pages += 1;
             Ok(())
         } else {
@@ -350,10 +354,9 @@ impl<'a> PageHandler<'a> {
                     error!("failed to clear removed page from staging: {:?}", e);
                 }
             }
-            // Erace the pages from the disk because the pages are removed from the guest memory.
-            if let Err(e) = region.file.clear_range(idx_range, true) {
-                error!("failed to clear removed page: {:?}", e);
-            }
+            // Erase the pages from the disk because the pages are removed from the guest memory.
+            let munlocked_pages = region.file.erase_from_disk(idx_range)?;
+            self.mlock_budget_pages += munlocked_pages;
         }
         Ok(())
     }
@@ -509,6 +512,10 @@ impl<'a> PageHandler<'a> {
         region.zeroed_pages = 0;
         region.redundant_pages = 0;
         region.swap_active = true;
+        region.file.clear_mlock()?;
+        // TODO(b/265606668): This is safe because move_to_staging() is called for each region and
+        // munlock for all regions. However this is improved on multi-thread implementation.
+        self.mlock_budget_pages = bytes_to_pages(MLOCK_BUDGET);
 
         Ok(moved_pages)
     }
@@ -566,6 +573,29 @@ impl<'a> PageHandler<'a> {
     /// * `max_size` - the upper limit of the chunk size to swap into the guest memory at once. The
     ///   chunk is splitted if it is bigger than `max_size`.
     pub fn swap_in(&mut self, uffd: &Userfaultfd, max_size: usize) -> Result<usize> {
+        // Request the kernel to pre-populate the present pages in the swap file to page cache
+        // background. At most 16MB of pages will be populated.
+        // The threshold is to apply MADV_WILLNEED to bigger chunk of pages. The kernel populates
+        // consective pages at once on MADV_WILLNEED.
+        if self.mlock_budget_pages > bytes_to_pages(PREFETCH_THRESHOLD) {
+            'prefetch_loop: for region in self.regions.iter_mut() {
+                loop {
+                    let locked_pages = region
+                        .file
+                        .lock_and_async_prefetch(self.mlock_budget_pages)?;
+                    if locked_pages > 0 {
+                        self.mlock_budget_pages -= locked_pages;
+                        if self.mlock_budget_pages == 0 {
+                            break 'prefetch_loop;
+                        }
+                    } else {
+                        // next region.
+                        break;
+                    }
+                }
+            }
+        }
+
         let max_pages = bytes_to_pages(max_size);
         for region in self.regions.iter_mut() {
             if let Some(staging_memory) = region.staging_memory.as_mut() {
@@ -584,16 +614,18 @@ impl<'a> PageHandler<'a> {
                     region.staging_memory = None;
                 }
             }
-
+        }
+        for region in self.regions.iter_mut() {
             if let Some(idx_range) = region.file.first_data_range(max_pages) {
                 let pages = idx_range.end - idx_range.start;
                 let page_addr = page_idx_to_addr(region.head_page_idx + idx_range.start);
                 let slice = region.file.get_slice(idx_range.clone())?;
                 Self::copy_all(uffd, page_addr, slice, false)?;
-                // Do not erace each chunk of pages from disk on swap_in. The whole file will be
+                // Do not erase each chunk of pages from disk on swap_in. The whole file will be
                 // truncated when swap_in is completed. Even if swap_in is aborted, the remaining
                 // disk contents help the trimming optimization on swap_out.
-                region.file.clear_range(idx_range, false)?;
+                let munlocked_pages = region.file.clear_range(idx_range)?;
+                self.mlock_budget_pages += munlocked_pages;
                 return Ok(pages);
             }
         }

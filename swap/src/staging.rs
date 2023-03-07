@@ -203,7 +203,7 @@ impl StagingMemory {
 
     /// Returns the count of present pages in the staging memory.
     pub fn present_pages(&self) -> usize {
-        self.present_list.present_pages()
+        self.present_list.all_present_pages()
     }
 }
 

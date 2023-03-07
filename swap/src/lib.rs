@@ -61,6 +61,7 @@ use vm_memory::GuestMemory;
 use crate::logger::PageFaultEventLogger;
 use crate::page_handler::MoveToStaging;
 use crate::page_handler::PageHandler;
+use crate::page_handler::MLOCK_BUDGET;
 use crate::pagesize::THP_SIZE;
 use crate::processes::freeze_child_processes;
 use crate::processes::ProcessesGuard;
@@ -301,7 +302,7 @@ impl SwapController {
         // Load and cache transparent hugepage size from sysfs before jumping into sandbox.
         Lazy::force(&THP_SIZE);
 
-        let jail = if let Some(jail_config) = jail_config {
+        let mut jail = if let Some(jail_config) = jail_config {
             let config = SandboxConfig::new(jail_config, "swap_monitor");
             create_sandbox_minijail(&jail_config.pivot_root, MAX_OPEN_FILES_DEFAULT, &config)
                 .context("create sandbox jail")?
@@ -309,6 +310,12 @@ impl SwapController {
             create_base_minijail(Path::new("/"), MAX_OPEN_FILES_DEFAULT)
                 .context("create minijail")?
         };
+        jail.set_rlimit(
+            libc::RLIMIT_MEMLOCK as libc::c_int,
+            MLOCK_BUDGET as u64,
+            MLOCK_BUDGET as u64,
+        )
+        .context("error setting RLIMIT_MEMLOCK")?;
 
         // Start a page fault monitoring process (this will be the first child process of the
         // current process)
