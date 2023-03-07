@@ -50,6 +50,11 @@ impl TimerAsync {
     pub fn reset(&mut self, dur: Duration, interval: Option<Duration>) -> SysResult<()> {
         self.io_source.as_source_mut().reset(dur, interval)
     }
+
+    /// Disarms the timer.
+    pub fn clear(&mut self) -> SysResult<()> {
+        self.io_source.as_source_mut().clear()
+    }
 }
 
 impl IntoAsync for Timer {}

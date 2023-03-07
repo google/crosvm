@@ -832,6 +832,14 @@ impl BlockAsync {
                     .fsync()
                     .await
                     .map_err(ExecuteError::Flush)?;
+
+                if *flush_timer_armed.borrow() {
+                    flush_timer
+                        .borrow_mut()
+                        .clear()
+                        .map_err(ExecuteError::TimerReset)?;
+                    *flush_timer_armed.borrow_mut() = false;
+                }
             }
             VIRTIO_BLK_T_GET_ID => {
                 if let Some(id) = disk_state.id {
