@@ -141,13 +141,16 @@ where
     };
     #[cfg(feature = "seccomp_trace")]
     debug!(
-        // Proxy and swap (WIP) devices fork here
-        "seccomp_trace {{'PID':{}, 'name': '{}'}}",
-        pid,
-        match debug_label {
-            Some(debug_label) => debug_label,
-            None => "process.rs: no debug label".to_owned(),
-        }
-    );
+            // Proxy and swap devices fork here
+            "seccomp_trace {{\"event\": \"minijail_fork\", \"pid\": \"{}\", \"name\": \"{}\", \"jail_addr\": \"0x{:x}\"}}",
+            pid,
+            match debug_label {
+                Some(debug_label) => debug_label,
+                None => "process.rs: no debug label".to_owned(),
+            },
+            // Can't use safe wrapper because jail crate depends on base
+            // Safe because it's only doing a read within bound checked by static assert
+            unsafe {*(&jail as *const Minijail as *const usize)}
+        );
     Ok(Child { pid })
 }

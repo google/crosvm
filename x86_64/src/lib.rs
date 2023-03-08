@@ -64,6 +64,8 @@ use arch::MsrValueFrom;
 use arch::RunnableLinuxVm;
 use arch::VmComponents;
 use arch::VmImage;
+#[cfg(feature = "seccomp_trace")]
+use base::debug;
 use base::warn;
 #[cfg(unix)]
 use base::AsRawDescriptors;
@@ -114,6 +116,8 @@ use hypervisor::VcpuX86_64;
 use hypervisor::Vm;
 use hypervisor::VmCap;
 use hypervisor::VmX86_64;
+#[cfg(feature = "seccomp_trace")]
+use jail::read_jail_addr;
 #[cfg(windows)]
 use jail::FakeMinijailStub as Minijail;
 #[cfg(unix)]
@@ -2039,16 +2043,25 @@ impl X8664arch {
 
             let con: Arc<Mutex<dyn BusDevice>> = match debugcon_jail.as_ref() {
                 #[cfg(unix)]
-                Some(jail) => Arc::new(Mutex::new(
-                    ProxyDevice::new(
-                        con,
-                        jail.try_clone().map_err(Error::CloneJail)?,
-                        preserved_fds,
-                        #[cfg(feature = "swap")]
-                        swap_controller,
-                    )
-                    .map_err(Error::CreateProxyDevice)?,
-                )),
+                Some(jail) => {
+                    let jail_clone = jail.try_clone().map_err(Error::CloneJail)?;
+                    #[cfg(feature = "seccomp_trace")]
+                    debug!(
+                        "seccomp_trace {{\"event\": \"minijail_clone\", \"src_jail_addr\": \"0x{:x}\", \"dst_jail_addr\": \"0x{:x}\"}}",
+                        read_jail_addr(jail),
+                        read_jail_addr(&jail_clone)
+                    );
+                    Arc::new(Mutex::new(
+                        ProxyDevice::new(
+                            con,
+                            jail_clone,
+                            preserved_fds,
+                            #[cfg(feature = "swap")]
+                            swap_controller,
+                        )
+                        .map_err(Error::CreateProxyDevice)?,
+                    ))
+                }
                 #[cfg(windows)]
                 Some(_) => unreachable!(),
                 None => Arc::new(Mutex::new(con)),

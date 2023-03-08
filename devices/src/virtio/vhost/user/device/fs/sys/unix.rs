@@ -8,8 +8,6 @@ use std::path::PathBuf;
 
 use anyhow::bail;
 use anyhow::Context;
-#[cfg(feature = "seccomp_trace")]
-use base::debug;
 use base::get_max_open_files;
 use base::RawDescriptor;
 use cros_async::Executor;
@@ -74,6 +72,8 @@ fn jail_and_fork(
     let pid = unsafe { j.fork(Some(&keep_rds))? };
 
     if pid > 0 {
+        // Current FS driver jail does not use seccomp and jail_and_fork() does not have other
+        // users, so we do nothing here for seccomp_trace
         unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) };
     }
 
@@ -110,9 +110,6 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
 
     // Parent, nothing to do but wait and then exit
     if pid != 0 {
-        // Current FS driver jail does not use seccomp and jail_and_fork() does not have other users
-        #[cfg(feature = "seccomp_trace")]
-        debug!("seccomp_trace {{'PID':{}, 'name': 'filesystem'}}", pid);
         unsafe { libc::waitpid(pid, std::ptr::null_mut(), 0) };
         return Ok(());
     }

@@ -4,6 +4,8 @@
 
 use std::collections::BTreeMap;
 
+#[cfg(feature = "seccomp_trace")]
+use base::debug;
 use base::Event;
 use devices::serial_device::SerialHardware;
 use devices::serial_device::SerialParameters;
@@ -11,6 +13,8 @@ use devices::serial_device::SerialType;
 use devices::Bus;
 use devices::Serial;
 use hypervisor::ProtectionType;
+#[cfg(feature = "seccomp_trace")]
+use jail::read_jail_addr;
 #[cfg(windows)]
 use jail::FakeMinijailStub as Minijail;
 #[cfg(unix)]
@@ -121,11 +125,16 @@ pub fn add_serial_devices(
 
         #[cfg(unix)]
         let serial_jail = if let Some(serial_jail) = serial_jail.as_ref() {
-            Some(
-                serial_jail
-                    .try_clone()
-                    .map_err(DeviceRegistrationError::CloneJail)?,
-            )
+            let jail_clone = serial_jail
+                .try_clone()
+                .map_err(DeviceRegistrationError::CloneJail)?;
+            #[cfg(feature = "seccomp_trace")]
+            debug!(
+                    "seccomp_trace {{\"event\": \"minijail_clone\", \"src_jail_addr\": \"0x{:x}\", \"dst_jail_addr\": \"0x{:x}\"}}",
+                    read_jail_addr(serial_jail),
+                    read_jail_addr(&jail_clone)
+                );
+            Some(jail_clone)
         } else {
             None
         };

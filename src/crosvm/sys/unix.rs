@@ -3615,7 +3615,12 @@ fn jail_and_start_vu_device<T: VirtioDeviceBuilder>(
 
             info!("process for device {} (PID {}) started", &name, pid);
             #[cfg(feature = "seccomp_trace")]
-            debug!("seccomp_trace {{'PID':{}, 'name': '{}'}}", pid, &name);
+            debug!(
+                    "seccomp_trace {{\"event\": \"minijail_fork\", \"pid\": {}, \"name\": \"{}\", \"jail_addr\": \"0x{:x}\"}}",
+                    pid,
+                    &name,
+                    read_jail_addr(&jail)
+                );
             Ok((pid, parent_resources))
         }
     }

@@ -15,6 +15,7 @@ once_cell = "*"
 serde = "*"
 serde_keyvalue = { path = "../serde_keyvalue", features = ["argh_derive"] }
 zerocopy = "*"
+static_assertions = "*"
 
 [target.'cfg(unix)'.dependencies]
 minijail = "*"

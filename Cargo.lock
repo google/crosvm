@@ -1316,6 +1316,7 @@ dependencies = [
  "once_cell",
  "serde",
  "serde_keyvalue",
+ "static_assertions",
  "which",
  "zerocopy",
 ]

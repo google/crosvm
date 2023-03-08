@@ -11,6 +11,8 @@ use std::str;
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
+#[cfg(feature = "seccomp_trace")]
+use base::debug;
 use base::getegid;
 use base::geteuid;
 #[cfg(feature = "seccomp_trace")]
@@ -20,9 +22,9 @@ use minijail::Minijail;
 #[cfg(not(feature = "seccomp_trace"))]
 use once_cell::sync::Lazy;
 #[cfg(feature = "seccomp_trace")]
-use zerocopy::AsBytes;
+use static_assertions::assert_eq_size;
 #[cfg(feature = "seccomp_trace")]
-use zerocopy::FromBytes;
+use zerocopy::AsBytes;
 
 use crate::config::JailConfig;
 
@@ -197,7 +199,7 @@ pub fn create_sandbox_minijail(
     #[cfg(feature = "seccomp_trace")]
     {
         #[repr(C)]
-        #[derive(AsBytes, FromBytes)]
+        #[derive(AsBytes)]
         struct sock_filter {
             /* Filter block */
             code: u16, /* Actual filter code */
@@ -214,14 +216,20 @@ pub fn create_sandbox_minijail(
         const BPF_K: u16 = 0x00;
 
         // return SECCOMP_RET_LOG for all syscalls
-        const FILTER_RET_TRACE: sock_filter = sock_filter {
+        const FILTER_RET_LOG_BLOCK: sock_filter = sock_filter {
             code: BPF_RET | BPF_K,
             jt: 0,
             jf: 0,
             k: SECCOMP_RET_LOG,
         };
+
         warn!("The running crosvm is compiled with seccomp_trace feature, and is striclty used for debugging purpose only. DO NOT USE IN PRODUCTION!!!");
-        jail.parse_seccomp_bytes(FILTER_RET_TRACE.as_bytes())
+        debug!(
+            "seccomp_trace {{\"event\": \"minijail_create\", \"name\": \"{}\", \"jail_addr\": \"0x{:x}\"}}",
+            config.seccomp_policy_name,
+            read_jail_addr(&jail),
+        );
+        jail.parse_seccomp_bytes(FILTER_RET_LOG_BLOCK.as_bytes())
             .unwrap();
     }
 
@@ -389,6 +397,15 @@ pub fn mount_proc(jail: &mut Minijail) -> Result<()> {
         (libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC | libc::MS_RDONLY) as usize,
     )?;
     Ok(())
+}
+
+/// Read minijail internal struct address for uniquely identifying and tracking jail's lifetime
+#[cfg(feature = "seccomp_trace")]
+pub fn read_jail_addr(jail: &Minijail) -> usize {
+    // We can only hope minijail's rust object will always only contain a pointer to C jail struct
+    assert_eq_size!(Minijail, usize);
+    // Safe because it's only doing a read within bound checked by static assert
+    unsafe { *(jail as *const Minijail as *const usize) }
 }
 
 /// Set the uid/gid for the jailed process and give a basic id map. This is

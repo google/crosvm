@@ -9,6 +9,7 @@ power-monitor-powerd = ["power_monitor/powerd"]
 gdb = ["gdbstub", "gdbstub_arch"]
 direct = []
 trace_marker = ["cros_tracing/trace_marker"]
+seccomp_trace = []
 
 [dependencies]
 acpi_tables = { path = "../acpi_tables" }
