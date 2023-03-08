@@ -30,6 +30,9 @@ import shutil
 import subprocess
 import sys
 import traceback
+import urllib
+import urllib.request
+import urllib.error
 from copy import deepcopy
 from io import StringIO
 from math import ceil
@@ -1146,6 +1149,20 @@ class Triple(NamedTuple):
 
     def __str__(self):
         return f"{self.arch}-{self.vendor}-{self.sys}-{self.abi}"
+
+
+def download_file(url: str, filename: Path, attempts: int = 3):
+    assert attempts > 0
+    while True:
+        attempts -= 1
+        try:
+            urllib.request.urlretrieve(url, filename)
+            return
+        except Exception as e:
+            if attempts == 0:
+                raise e
+            else:
+                console.print("Download failed:", e)
 
 
 console = rich.console.Console()

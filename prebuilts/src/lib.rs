@@ -13,6 +13,7 @@ use named_lock::NamedLock;
 mod sys;
 
 static BASE_URL: &str = "https://storage.googleapis.com/chromeos-localmirror/distfiles/prebuilts/";
+static DOWNLOAD_RETRIES: usize = 3;
 
 // Returns `deps` directory for the current build.
 fn get_deps_directory() -> Result<PathBuf> {
@@ -85,16 +86,30 @@ pub fn download_file(url: &str, destination: &Path) -> Result<()> {
     }
 
     println!("Downloading prebuilt {url} to {destination:?}");
-    let mut cmd = sys::download_command(url, destination);
-    match cmd.status() {
-        Ok(exit_code) => {
-            if !exit_code.success() {
-                Err(anyhow!("Cannot download {}", url))
-            } else {
-                Ok(())
+    let mut attempts_left = DOWNLOAD_RETRIES + 1;
+    loop {
+        attempts_left -= 1;
+        let mut cmd = sys::download_command(url, destination);
+        match cmd.status() {
+            Ok(exit_code) => {
+                if !exit_code.success() {
+                    if attempts_left == 0 {
+                        return Err(anyhow!("Cannot download {}", url));
+                    } else {
+                        println!("Failed to download {url}. Retrying.");
+                    }
+                } else {
+                    return Ok(());
+                }
+            }
+            Err(error) => {
+                if attempts_left == 0 {
+                    return Err(anyhow!(error));
+                } else {
+                    println!("Failed to download {url}: {error:?}");
+                }
             }
         }
-        Err(error) => Err(anyhow!(error)),
     }
 }
 
