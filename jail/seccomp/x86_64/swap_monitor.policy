@@ -19,17 +19,21 @@ fchdir: 1
 fcntl: 1
 ftruncate: 1
 futex: 1
+getcwd: 1
 getdents64: 1
 getpid: 1
+gettid: 1
 # 0xc020aa00 = UFFDIO_REGISTER, 0x8010aa01 == UFFDIO_UNREGISTER, 0x8010aa02 == UFFDIO_WAKE, 0xc028aa03 == UFFDIO_COPY, 0xc020aa04 == UFFDIO_ZEROPAGE
 ioctl: arg1 == 0xc020aa00 || arg1 == 0x8010aa01 || arg1 == 0x8010aa02 || arg1 == 0xc028aa03 || arg1 == 0xc020aa04
 lseek: 1
 madvise: arg2 == MADV_DONTNEED || arg2 == MADV_DONTDUMP || arg2 == MADV_MERGEABLE || arg2 == MADV_REMOVE
+memfd_create: 1
 mmap: arg2 in ~PROT_EXEC
 mprotect: arg2 in ~PROT_EXEC
 munmap: 1
 newfstatat: 1
 openat: return ENOENT
+pipe2: 1
 prctl: arg0 == PR_SET_NAME
 pwrite64: 1
 read: 1
@@ -48,4 +52,5 @@ set_robust_list: 1
 sigaltstack: 1
 socket: 1
 statx: 1
+tgkill: arg2 == SIGABRT
 write: 1

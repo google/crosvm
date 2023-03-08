@@ -22,7 +22,6 @@ rmdir: 1
 fsync: 1
 fdatasync: 1
 utimensat: 1
-ftruncate: 1
 fchmod: 1
 fchmodat: 1
 fchown: 1

@@ -7,7 +7,6 @@
 chdir: 1
 fstat: 1
 fsync: 1
-ftruncate: 1
 getrandom: 1
 getuid: 1
 mkdirat: 1

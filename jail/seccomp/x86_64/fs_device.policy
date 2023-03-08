@@ -22,7 +22,6 @@ fremovexattr: 1
 removexattr: 1
 fstatfs: 1
 fsync: 1
-ftruncate: 1
 getdents64: 1
 getegid: 1
 geteuid: 1

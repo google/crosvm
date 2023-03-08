@@ -24,7 +24,6 @@ fstatat64: 1
 fstatfs: 1
 fstatfs64: 1
 fsync: 1
-ftruncate64: 1
 getdents64: 1
 getegid32: 1
 geteuid32: 1

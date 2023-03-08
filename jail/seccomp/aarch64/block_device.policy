@@ -8,7 +8,6 @@ fallocate: 1
 fdatasync: 1
 fstat: 1
 fsync: 1
-ftruncate: 1
 openat: return ENOENT
 newfstatat: 1
 preadv: 1

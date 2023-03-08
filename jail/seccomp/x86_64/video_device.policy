@@ -18,6 +18,7 @@ epoll_wait: 1
 eventfd2: 1
 exit: 1
 exit_group: 1
+ftruncate: 1
 futex: 1
 getcwd: 1
 getpid: 1

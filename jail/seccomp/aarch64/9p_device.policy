@@ -20,7 +20,6 @@ linkat: 1
 unlinkat: 1
 socket: arg0 == AF_UNIX
 utimensat: 1
-ftruncate: 1
 fchmod: 1
 fchmodat: 1
 fchown: 1

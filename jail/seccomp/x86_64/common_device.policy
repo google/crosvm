@@ -17,6 +17,7 @@ epoll_wait: 1
 eventfd2: 1
 exit: 1
 exit_group: 1
+ftruncate: 1
 futex: 1
 getcwd: 1
 getpid: 1
@@ -29,6 +30,7 @@ kill: 1
 lseek: 1
 madvise: arg2 == MADV_DONTNEED || arg2 == MADV_DONTDUMP || arg2 == MADV_REMOVE || arg2 == MADV_MERGEABLE || arg2 == MADV_FREE
 membarrier: 1
+memfd_create: 1
 mmap: arg2 in ~PROT_EXEC
 mprotect: arg2 in ~PROT_EXEC
 mremap: 1
@@ -55,6 +57,7 @@ sendmsg: 1
 sendto: 1
 set_robust_list: 1
 sigaltstack: 1
+tgkill: arg2 == SIGABRT
 write: 1
 writev: 1
 fcntl: 1

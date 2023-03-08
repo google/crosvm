@@ -68,6 +68,7 @@ shutdown: 1
 connect: 1
 getrandom: 1
 _llseek: 1
+ftruncate: 1
 ftruncate64: 1
 stat64: 1
 statx: 1
