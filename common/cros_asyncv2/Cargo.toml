@@ -22,7 +22,7 @@ thiserror = "1"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
-mio = { version = "0.7", features = ["os-ext"] }
+mio = { version = "0.8", features = ["os-ext"] }
 base = { path = "../../base" } # provided by ebuild
 
 [dev-dependencies]
