@@ -27,6 +27,10 @@ use std::io::stdout;
 use std::ops::Range;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::thread::Scope;
+use std::thread::ScopedJoinHandle;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -41,7 +45,9 @@ use base::unix::process::Child;
 use base::warn;
 use base::AsRawDescriptor;
 use base::AsRawDescriptors;
+use base::Event;
 use base::EventToken;
+use base::EventWaitResult;
 use base::FromRawDescriptor;
 use base::RawDescriptor;
 use base::Tube;
@@ -54,6 +60,7 @@ use jail::MAX_OPEN_FILES_DEFAULT;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
+use sync::Mutex;
 use vm_memory::GuestMemory;
 
 #[cfg(feature = "log_page_fault")]
@@ -94,19 +101,13 @@ pub enum State {
     Failed,
 }
 
-impl From<&SwapState> for State {
-    fn from(state: &SwapState) -> Self {
+impl From<&SwapState<'_>> for State {
+    fn from(state: &SwapState<'_>) -> Self {
         match state {
             SwapState::SwapOutPending => State::Pending,
-            SwapState::InProgress {
-                direction: SwapDirection::Out,
-                ..
-            } => State::SwapOutInProgress,
-            SwapState::InProgress {
-                direction: SwapDirection::In,
-                ..
-            } => State::SwapInInProgress,
+            SwapState::SwapOutInProgress { .. } => State::SwapOutInProgress,
             SwapState::SwapOutCompleted => State::Active,
+            SwapState::SwapInInProgress(_) => State::SwapInInProgress,
             SwapState::Failed => State::Failed,
         }
     }
@@ -179,13 +180,13 @@ pub struct Status {
 impl Status {
     fn new(
         state: &SwapState,
-        state_transition: &StateTransition,
+        state_transition: StateTransition,
         page_handler: &PageHandler,
     ) -> Self {
         Status {
             state: state.into(),
             metrics: Metrics::new(page_handler),
-            state_transition: *state_transition,
+            state_transition,
         }
     }
 
@@ -280,6 +281,9 @@ impl SwapController {
         let (vm_tube_main, vm_tube_monitor) =
             Tube::pair().context("create swap vm-request tube")?;
 
+        // Allocate eventfd before creating sandbox.
+        let swap_in_event = Event::new().context("create event")?;
+
         #[cfg(feature = "log_page_fault")]
         let page_fault_logger = PageFaultEventLogger::create(&swap_dir, &guest_memory)
             .context("create page fault logger")?;
@@ -291,6 +295,7 @@ impl SwapController {
             swap_file.as_raw_descriptor(),
             command_tube_monitor.as_raw_descriptor(),
             vm_tube_monitor.as_raw_descriptor(),
+            swap_in_event.as_raw_descriptor(),
             #[cfg(feature = "log_page_fault")]
             page_fault_logger.as_raw_descriptor(),
         ];
@@ -329,6 +334,7 @@ impl SwapController {
                     guest_memory,
                     uffd,
                     swap_file,
+                    swap_in_event,
                     #[cfg(feature = "log_page_fault")]
                     page_fault_logger,
                 ) {
@@ -472,6 +478,7 @@ impl AsRawDescriptors for SwapController {
 enum Token {
     UffdEvents(u32),
     Command,
+    SwapInCompleted,
 }
 
 struct UffdList<'a> {
@@ -535,6 +542,7 @@ fn monitor_process(
     guest_memory: GuestMemory,
     uffd: Userfaultfd,
     swap_file: File,
+    swap_in_event: Event,
     #[cfg(feature = "log_page_fault")] mut page_fault_logger: PageFaultEventLogger,
 ) -> anyhow::Result<()> {
     info!("monitor_process started");
@@ -545,6 +553,7 @@ fn monitor_process(
         // start waiting on the main uffd here so that uffd fork events can be processed, because
         // child processes will block until their corresponding uffd fork event is read.
         (&uffd, Token::UffdEvents(UffdList::ID_MAIN_UFFD)),
+        (&swap_in_event, Token::SwapInCompleted),
     ])
     .context("create wait context")?;
 
@@ -596,7 +605,7 @@ fn monitor_process(
                         info!("enabling vmm-swap");
                         let regions = regions_from_guest_memory(&guest_memory);
 
-                        let mut page_handler =
+                        let page_handler =
                             match PageHandler::create(&swap_file, &regions, worker.channel.clone())
                             {
                                 Ok(page_handler) => page_handler,
@@ -617,21 +626,34 @@ fn monitor_process(
                         // WaitContext is level triggered.
                         drop(events);
 
-                        let (exit, swap_in_transition) = handle_vmm_swap(
-                            &wait_ctx,
-                            &mut page_handler,
-                            &uffd_list,
-                            &guest_memory,
-                            &command_tube,
-                            &vm_tube,
-                            &worker,
-                            #[cfg(feature = "log_page_fault")]
-                            &mut page_fault_logger,
-                        )?;
+                        let mutex_transition = Mutex::new(state_transition);
+                        let abort_flag = AbortFlag::new();
+
+                        let exit = std::thread::scope(|scope| {
+                            let exit = handle_vmm_swap(
+                                scope,
+                                &wait_ctx,
+                                &page_handler,
+                                &uffd_list,
+                                &guest_memory,
+                                &command_tube,
+                                &vm_tube,
+                                &worker,
+                                &mutex_transition,
+                                &abort_flag,
+                                &swap_in_event,
+                                #[cfg(feature = "log_page_fault")]
+                                &mut page_fault_logger,
+                            );
+                            // Abort background jobs to unblock ScopedJoinHandle eariler on a
+                            // failure.
+                            abort_flag.abort();
+                            exit
+                        })?;
                         if exit {
                             return Ok(());
                         }
-                        state_transition = swap_in_transition;
+                        state_transition = mutex_transition.into_inner();
 
                         unregister_regions(&regions, uffd_list.get_list())
                             .context("unregister regions")?;
@@ -658,28 +680,49 @@ fn monitor_process(
                         info!("swap status: {:?}", status);
                     }
                 },
+                Token::SwapInCompleted => {
+                    error!("unexpected swap in completed event while swap is disabled");
+                    swap_in_event.reset()?;
+                }
             };
         }
     }
 }
 
-enum SwapDirection {
-    Out,
-    In,
-}
-
-enum SwapState {
+enum SwapState<'scope> {
     SwapOutPending,
-    InProgress {
-        direction: SwapDirection,
-        started_time: Instant,
-    },
+    SwapOutInProgress { started_time: Instant },
     SwapOutCompleted,
+    SwapInInProgress(ScopedJoinHandle<'scope, anyhow::Result<()>>),
     Failed,
 }
 
+struct AbortFlag {
+    flag: AtomicBool,
+}
+
+impl AbortFlag {
+    fn new() -> Self {
+        Self {
+            flag: AtomicBool::new(false),
+        }
+    }
+
+    fn abort(&self) {
+        self.flag.store(true, Ordering::Relaxed);
+    }
+
+    fn reset(&self) {
+        self.flag.store(false, Ordering::Relaxed);
+    }
+
+    fn is_aborted(&self) -> bool {
+        self.flag.load(Ordering::Relaxed)
+    }
+}
+
 fn move_guest_to_staging(
-    page_handler: &mut PageHandler,
+    page_handler: &PageHandler,
     guest_memory: &GuestMemory,
     vm_tube: &Tube,
     worker: &Worker<MoveToStaging>,
@@ -741,76 +784,63 @@ fn move_guest_to_staging(
     }
 }
 
-fn handle_vmm_swap(
+fn handle_vmm_swap<'scope, 'env>(
+    scope: &'scope Scope<'scope, 'env>,
     wait_ctx: &WaitContext<Token>,
-    page_handler: &mut PageHandler,
-    uffd_list: &UffdList,
+    page_handler: &'env PageHandler<'env>,
+    uffd_list: &'env UffdList,
     guest_memory: &GuestMemory,
     command_tube: &Tube,
     vm_tube: &Tube,
     worker: &Worker<MoveToStaging>,
+    state_transition: &'env Mutex<StateTransition>,
+    abort_flag: &'env AbortFlag,
+    swap_in_event: &'env Event,
     #[cfg(feature = "log_page_fault")] page_fault_logger: &mut PageFaultEventLogger,
-) -> anyhow::Result<(bool, StateTransition)> {
-    let (mut state, mut state_transition) =
-        match move_guest_to_staging(page_handler, guest_memory, vm_tube, worker) {
-            Ok(state_transition) => {
-                info!(
-                    "move {} pages to staging in {} ms",
-                    state_transition.pages, state_transition.time_ms
-                );
-                (SwapState::SwapOutPending, state_transition)
-            }
-            Err(e) => {
-                error!("failed to move memory to staging: {}", e);
-                (SwapState::Failed, StateTransition::default())
-            }
-        };
+) -> anyhow::Result<bool> {
+    let mut state = match move_guest_to_staging(page_handler, guest_memory, vm_tube, worker) {
+        Ok(transition) => {
+            info!(
+                "move {} pages to staging in {} ms",
+                transition.pages, transition.time_ms
+            );
+            *state_transition.lock() = transition;
+            SwapState::SwapOutPending
+        }
+        Err(e) => {
+            error!("failed to move memory to staging: {}", e);
+            *state_transition.lock() = StateTransition::default();
+            SwapState::Failed
+        }
+    };
 
     loop {
         let events = match &state {
-            SwapState::InProgress {
-                direction,
-                started_time,
-            } => {
+            SwapState::SwapOutInProgress { started_time } => {
                 let events = wait_ctx
                     .wait_timeout(Duration::ZERO)
                     .context("wait poll events")?;
 
+                // TODO(b/273129441): swap out on a background thread.
                 // Proceed swap out only when there is no page fault (or other) events.
                 if events.is_empty() {
-                    match direction {
-                        SwapDirection::Out => match page_handler.swap_out(MAX_SWAP_CHUNK_SIZE) {
-                            Ok(num_pages) => {
-                                state_transition.pages += num_pages;
-                                state_transition.time_ms = started_time.elapsed().as_millis();
-                                if num_pages == 0 {
-                                    info!(
-                                        "swap out {} pages to file in {} ms",
-                                        state_transition.pages, state_transition.time_ms
-                                    );
-                                    state = SwapState::SwapOutCompleted;
-                                }
-                            }
-                            Err(e) => {
-                                error!("failed to swap out: {:?}", e);
-                                state = SwapState::Failed;
-                                state_transition = StateTransition::default();
-                            }
-                        },
-                        // TODO(b/265606668): execute swap-in on a background thread.
-                        SwapDirection::In => {
-                            let num_pages = page_handler
-                                .swap_in(uffd_list.main_uffd(), MAX_SWAP_CHUNK_SIZE)
-                                .context("swap in")?;
+                    match page_handler.swap_out(MAX_SWAP_CHUNK_SIZE) {
+                        Ok(num_pages) => {
+                            let mut state_transition = state_transition.lock();
                             state_transition.pages += num_pages;
                             state_transition.time_ms = started_time.elapsed().as_millis();
                             if num_pages == 0 {
                                 info!(
-                                    "swap in all {} pages in {} ms",
+                                    "swap out all {} pages to file in {} ms",
                                     state_transition.pages, state_transition.time_ms
                                 );
-                                return Ok((false, state_transition));
+                                state = SwapState::SwapOutCompleted;
                             }
+                        }
+                        Err(e) => {
+                            error!("failed to swap out: {:?}", e);
+                            state = SwapState::Failed;
+                            *state_transition.lock() = StateTransition::default();
                         }
                     }
                     continue;
@@ -863,6 +893,17 @@ fn handle_vmm_swap(
                         bail!("child process is forked while swap is enabled");
                     }
                     Command::Enable => {
+                        if let SwapState::SwapInInProgress(join_handle) = state {
+                            info!("abort swap-in");
+                            abort_flag.abort();
+                            // Wait until swap-in is aborted and the swap-in thread finishes.
+                            if let Err(e) = join_handle.join() {
+                                bail!("failed to join swap in thread: {:?}", e);
+                            }
+                            swap_in_event.reset().context("reset swap_in_event")?;
+                            abort_flag.reset();
+                        };
+
                         info!("start moving memory to staging");
                         match move_guest_to_staging(page_handler, guest_memory, vm_tube, worker) {
                             Ok(new_state_transition) => {
@@ -871,22 +912,21 @@ fn handle_vmm_swap(
                                     new_state_transition.pages, new_state_transition.time_ms
                                 );
                                 state = SwapState::SwapOutPending;
-                                state_transition = new_state_transition;
+                                *state_transition.lock() = new_state_transition;
                             }
                             Err(e) => {
                                 error!("failed to move memory to staging: {}", e);
                                 state = SwapState::Failed;
-                                state_transition = StateTransition::default();
+                                *state_transition.lock() = StateTransition::default();
                             }
                         }
                     }
                     Command::SwapOut => match &state {
                         SwapState::SwapOutPending => {
-                            state = SwapState::InProgress {
-                                direction: SwapDirection::Out,
+                            state = SwapState::SwapOutInProgress {
                                 started_time: std::time::Instant::now(),
                             };
-                            state_transition = StateTransition::default();
+                            *state_transition.lock() = StateTransition::default();
                             info!("start swapping out");
                         }
                         state => {
@@ -895,43 +935,109 @@ fn handle_vmm_swap(
                     },
                     Command::Disable => {
                         match &state {
-                            SwapState::InProgress {
-                                direction: SwapDirection::Out,
-                                ..
-                            } => {
+                            SwapState::SwapOutInProgress { .. } => {
                                 info!("swap out is aborted");
                             }
-                            SwapState::InProgress {
-                                direction: SwapDirection::In,
-                                ..
-                            } => {
+                            SwapState::SwapInInProgress(_) => {
                                 info!("swap in is in progress");
                                 continue;
                             }
                             _ => {}
                         }
-                        state = SwapState::InProgress {
-                            direction: SwapDirection::In,
-                            started_time: std::time::Instant::now(),
-                        };
-                        state_transition = StateTransition::default();
+                        *state_transition.lock() = StateTransition::default();
+
+                        let join_handle = scope.spawn(|| {
+                            let mut ctx = page_handler.start_swap_in();
+                            let uffd = uffd_list.main_uffd();
+                            let start_time = std::time::Instant::now();
+                            let success = loop {
+                                if abort_flag.is_aborted() {
+                                    info!("swap in aborted on the background thread");
+                                    break Ok(());
+                                }
+                                match ctx.swap_in(uffd, MAX_SWAP_CHUNK_SIZE) {
+                                    Ok(num_pages) => {
+                                        if num_pages == 0 {
+                                            break Ok(());
+                                        }
+                                        let mut state_transition = state_transition.lock();
+                                        state_transition.pages += num_pages;
+                                        state_transition.time_ms = start_time.elapsed().as_millis();
+                                    }
+                                    Err(e) => {
+                                        break Err(anyhow::anyhow!("failed to swap in: {:?}", e));
+                                    }
+                                }
+                            };
+                            swap_in_event.signal().expect("sending signal");
+                            success
+                        });
+                        state = SwapState::SwapInInProgress(join_handle);
+
                         info!("start swapping in");
                     }
                     Command::Exit => {
-                        // Swap-in all before exit.
-                        while page_handler
-                            .swap_in(uffd_list.main_uffd(), MAX_SWAP_CHUNK_SIZE)
-                            .context("swap in")?
-                            > 0
-                        {}
-                        return Ok((true, StateTransition::default()));
+                        match state {
+                            SwapState::SwapInInProgress(join_handle) => {
+                                // Wait until swap-in finishes.
+                                if let Err(e) = join_handle.join() {
+                                    bail!("failed to join swap in thread: {:?}", e);
+                                }
+                            }
+                            _ => {
+                                let mut ctx = page_handler.start_swap_in();
+                                let uffd = uffd_list.main_uffd();
+                                // Swap-in all before exit.
+                                while ctx.swap_in(uffd, MAX_SWAP_CHUNK_SIZE).context("swap in")? > 0
+                                {
+                                }
+                            }
+                        }
+                        return Ok(true);
                     }
                     Command::Status => {
-                        let status = Status::new(&state, &state_transition, page_handler);
+                        let status = Status::new(&state, *state_transition.lock(), page_handler);
                         command_tube.send(&status).context("send status response")?;
                         info!("swap status: {:?}", status);
                     }
                 },
+                Token::SwapInCompleted => {
+                    // Reset the swap in complete event.
+                    if matches!(
+                        swap_in_event
+                            .wait_timeout(Duration::ZERO)
+                            .context("failed to get swapin complete event")?,
+                        EventWaitResult::TimedOut
+                    ) {
+                        // On `Command::Enable`, it resets the event but the token
+                        // `Token::SwapInCompleted` may remain in the `events`. Just ignore the
+                        // obsolete token here.
+                        continue;
+                    }
+                    if let SwapState::SwapInInProgress(join_handle) = state {
+                        match join_handle.join() {
+                            Ok(Ok(_)) => {
+                                let state_transition = state_transition.lock();
+                                info!(
+                                    "swap in all {} pages in {} ms.",
+                                    state_transition.pages, state_transition.time_ms
+                                );
+                                return Ok(false);
+                            }
+                            Ok(Err(e)) => {
+                                bail!("swap in failed: {:?}", e)
+                            }
+                            Err(e) => {
+                                bail!("failed to wait for the swap in thread: {:?}", e);
+                            }
+                        }
+                    } else {
+                        bail!(
+                            "swap in completed but the actual state is {:?}",
+                            State::from(&state)
+                        );
+                    }
+                }
             };
         }
     }

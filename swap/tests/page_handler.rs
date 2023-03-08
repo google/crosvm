@@ -117,7 +117,7 @@ fn handle_page_fault_zero_success() {
     let shm = create_shared_memory("shm", 3 * pagesize());
     let base_addr = shm.base_addr();
     let regions = [base_addr..(base_addr + 3 * pagesize())];
-    let mut page_handler = PageHandler::create(&file, &regions, worker.channel.clone()).unwrap();
+    let page_handler = PageHandler::create(&file, &regions, worker.channel.clone()).unwrap();
     unsafe { register_regions(&regions, array::from_ref(&uffd)) }.unwrap();
 
     page_handler.handle_page_fault(&uffd, base_addr).unwrap();
@@ -154,7 +154,7 @@ fn handle_page_fault_invalid_address() {
     let shm = create_shared_memory("shm", 3 * pagesize());
     let base_addr = shm.base_addr();
     let regions = [base_addr..(base_addr + 3 * pagesize())];
-    let mut page_handler = PageHandler::create(&file, &regions, worker.channel.clone()).unwrap();
+    let page_handler = PageHandler::create(&file, &regions, worker.channel.clone()).unwrap();
     unsafe { register_regions(&regions, array::from_ref(&uffd)) }.unwrap();
 
     assert_eq!(
@@ -180,7 +180,7 @@ fn handle_page_fault_duplicated_page_fault() {
     let shm = create_shared_memory("shm", 3 * pagesize());
     let base_addr = shm.base_addr();
     let regions = [base_addr..(base_addr + 3 * pagesize())];
-    let mut page_handler = PageHandler::create(&file, &regions, worker.channel.clone()).unwrap();
+    let page_handler = PageHandler::create(&file, &regions, worker.channel.clone()).unwrap();
     unsafe { register_regions(&regions, array::from_ref(&uffd)) }.unwrap();
 
     assert_eq!(
@@ -202,7 +202,7 @@ fn handle_page_remove_success() {
     let shm = create_shared_memory("shm", 3 * pagesize());
     let base_addr = shm.base_addr();
     let regions = [base_addr..(base_addr + 3 * pagesize())];
-    let mut page_handler = PageHandler::create(&file, &regions, worker.channel.clone()).unwrap();
+    let page_handler = PageHandler::create(&file, &regions, worker.channel.clone()).unwrap();
     unsafe { register_regions(&regions, array::from_ref(&uffd)) }.unwrap();
 
     // fill the first page with zero
@@ -246,7 +246,7 @@ fn handle_page_remove_invalid_address() {
     let shm = create_shared_memory("shm", 3 * pagesize());
     let base_addr = shm.base_addr();
     let regions = [base_addr..(base_addr + 3 * pagesize())];
-    let mut page_handler = PageHandler::create(&file, &regions, worker.channel.clone()).unwrap();
+    let page_handler = PageHandler::create(&file, &regions, worker.channel.clone()).unwrap();
     unsafe { register_regions(&regions, array::from_ref(&uffd)) }.unwrap();
 
     page_handler.handle_page_fault(&uffd, base_addr).unwrap();
@@ -300,7 +300,7 @@ fn move_to_staging_data_written_before_enabling() {
         base_addr1..(base_addr1 + 3 * pagesize()),
         base_addr2..(base_addr2 + 3 * pagesize()),
     ];
-    let mut page_handler = PageHandler::create(&file, &regions, worker.channel.clone()).unwrap();
+    let page_handler = PageHandler::create(&file, &regions, worker.channel.clone()).unwrap();
     // write data before registering to userfaultfd
     unsafe {
         for i in base_addr1 + pagesize()..base_addr1 + 2 * pagesize() {
@@ -393,7 +393,7 @@ fn move_to_staging_hugepage_chunks() {
         base_addr1..(base_addr1 + 5 * HUGEPAGE_SIZE),
         base_addr2..(base_addr2 + 5 * HUGEPAGE_SIZE),
     ];
-    let mut page_handler = PageHandler::create(&file, &regions, worker.channel.clone()).unwrap();
+    let page_handler = PageHandler::create(&file, &regions, worker.channel.clone()).unwrap();
     // write data before registering to userfaultfd
     unsafe {
         for i in page_idx_range(base_addr1 + pagesize(), base_addr1 + 3 * pagesize()) {
@@ -505,7 +505,7 @@ fn move_to_staging_invalid_base_addr() {
     let shm = create_shared_memory("shm1", 3 * pagesize());
     let base_addr = shm.base_addr();
     let regions = [base_addr..(base_addr + 3 * pagesize())];
-    let mut page_handler = PageHandler::create(&file, &regions, worker.channel.clone()).unwrap();
+    let page_handler = PageHandler::create(&file, &regions, worker.channel.clone()).unwrap();
     unsafe { register_regions(&regions, array::from_ref(&uffd)) }.unwrap();
 
     // the base_addr is within the region
@@ -831,7 +831,8 @@ fn swap_in_success() {
             .unwrap();
     }
     worker.channel.wait_complete();
-    while page_handler.swap_in(&uffd, 1024 * 1024).unwrap() != 0 {}
+    let mut swap_in_ctx = page_handler.start_swap_in();
+    while swap_in_ctx.swap_in(&uffd, 1024 * 1024).unwrap() != 0 {}
     unregister_regions(&regions, array::from_ref(&uffd)).unwrap();
 
     // read values on another thread to avoid blocking forever

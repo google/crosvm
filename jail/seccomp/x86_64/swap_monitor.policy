@@ -36,6 +36,7 @@ munmap: 1
 newfstatat: 1
 openat: return ENOENT
 pipe2: 1
+ppoll: 1
 prctl: arg0 == PR_SET_NAME
 pwrite64: 1
 read: 1
