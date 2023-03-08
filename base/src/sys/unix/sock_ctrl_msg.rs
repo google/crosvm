@@ -37,6 +37,7 @@ use super::net::UnixSeqpacket;
 use super::Error;
 use super::Result;
 use super::StreamChannel;
+use crate::AsRawDescriptor;
 
 // Each of the following macros performs the same function as their C counterparts. They are each
 // macros because they are used to size statically allocated arrays.
@@ -361,7 +362,7 @@ impl ScmSocket for UnixStream {
 
 impl ScmSocket for UnixSeqpacket {
     fn socket_fd(&self) -> RawFd {
-        self.as_raw_fd()
+        self.as_raw_descriptor()
     }
 }
 

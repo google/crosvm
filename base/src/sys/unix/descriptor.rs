@@ -7,6 +7,8 @@ use std::fs::File;
 use std::io::Stderr;
 use std::io::Stdin;
 use std::io::Stdout;
+use std::net::TcpListener;
+use std::net::TcpStream;
 use std::net::UdpSocket;
 use std::ops::Drop;
 use std::os::unix::io::AsRawFd;
@@ -18,8 +20,6 @@ use std::os::unix::net::UnixListener;
 use std::os::unix::net::UnixStream;
 
 use super::errno_result;
-use super::net::UnixSeqpacket;
-use super::net::UnlinkUnixSeqpacketListener;
 use super::Result;
 use crate::descriptor::AsRawDescriptor;
 use crate::descriptor::Descriptor;
@@ -144,17 +144,24 @@ impl From<SafeDescriptor> for File {
     }
 }
 
-impl From<SafeDescriptor> for UnixStream {
+impl From<SafeDescriptor> for TcpListener {
     fn from(s: SafeDescriptor) -> Self {
         // Safe because we own the SafeDescriptor at this point.
         unsafe { Self::from_raw_fd(s.into_raw_descriptor()) }
     }
 }
 
-impl From<UnixSeqpacket> for SafeDescriptor {
-    fn from(s: UnixSeqpacket) -> Self {
-        // Safe because we own the UnixSeqpacket at this point.
-        unsafe { SafeDescriptor::from_raw_descriptor(s.into_raw_descriptor()) }
+impl From<SafeDescriptor> for TcpStream {
+    fn from(s: SafeDescriptor) -> Self {
+        // Safe because we own the SafeDescriptor at this point.
+        unsafe { Self::from_raw_fd(s.into_raw_descriptor()) }
+    }
+}
+
+impl From<SafeDescriptor> for UnixStream {
+    fn from(s: SafeDescriptor) -> Self {
+        // Safe because we own the SafeDescriptor at this point.
+        unsafe { Self::from_raw_fd(s.into_raw_descriptor()) }
     }
 }
 
@@ -201,7 +208,8 @@ macro_rules! IntoRawDescriptor {
 // descriptor container. That should go to either SafeDescriptor or another more
 // relevant container type.
 AsRawDescriptor!(File);
-AsRawDescriptor!(UnlinkUnixSeqpacketListener);
+AsRawDescriptor!(TcpListener);
+AsRawDescriptor!(TcpStream);
 AsRawDescriptor!(UdpSocket);
 AsRawDescriptor!(UnixDatagram);
 AsRawDescriptor!(UnixListener);

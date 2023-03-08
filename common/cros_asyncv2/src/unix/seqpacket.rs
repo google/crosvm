@@ -22,7 +22,6 @@ use anyhow::Context;
 use base::warn;
 use base::AsRawDescriptor;
 use base::FromRawDescriptor;
-use base::IntoRawDescriptor;
 use base::SafeDescriptor;
 use memoffset::offset_of;
 use thiserror::Error as ThisError;
@@ -269,9 +268,7 @@ impl TryFrom<base::net::UnixSeqpacket> for SeqPacket {
     type Error = anyhow::Error;
 
     fn try_from(value: base::net::UnixSeqpacket) -> anyhow::Result<Self> {
-        // Safe because `value` owns the fd.
-        let fd =
-            Arc::new(unsafe { SafeDescriptor::from_raw_descriptor(value.into_raw_descriptor()) });
+        let fd = Arc::new(SafeDescriptor::from(value));
         io_driver::prepare(&*fd)?;
         Ok(Self { fd })
     }
@@ -282,9 +279,7 @@ impl TryFrom<SeqPacket> for base::net::UnixSeqpacket {
 
     fn try_from(value: SeqPacket) -> Result<Self, Self::Error> {
         Arc::try_unwrap(value.fd)
-            .map(|fd| unsafe {
-                base::net::UnixSeqpacket::from_raw_descriptor(fd.into_raw_descriptor())
-            })
+            .map(base::net::UnixSeqpacket::from)
             .map_err(|fd| SeqPacket { fd })
     }
 }

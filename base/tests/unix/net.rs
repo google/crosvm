@@ -4,10 +4,10 @@
 
 use std::env;
 use std::io::ErrorKind;
-use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use base::AsRawDescriptor;
 use base::UnixSeqpacket;
 use base::UnixSeqpacketListener;
 use base::UnlinkUnixSeqpacketListener;
@@ -42,7 +42,7 @@ fn unix_seqpacket_listener_from_fd() {
     );
     // UnixSeqpacketListener should succeed on a valid listening descriptor.
     let good_dup = UnixSeqpacketListener::bind(&format!("/proc/self/fd/{}", unsafe {
-        libc::dup(listener.as_raw_fd())
+        libc::dup(listener.as_raw_descriptor())
     }));
     let good_dup_path = good_dup
         .expect("failed to create dup UnixSeqpacketListener")
@@ -52,7 +52,7 @@ fn unix_seqpacket_listener_from_fd() {
     // UnixSeqpacketListener must fail on an existing non-listener socket.
     let s1 = UnixSeqpacket::connect(socket_path.as_path()).expect("UnixSeqpacket::connect failed");
     let bad_dup = UnixSeqpacketListener::bind(&format!("/proc/self/fd/{}", unsafe {
-        libc::dup(s1.as_raw_fd())
+        libc::dup(s1.as_raw_descriptor())
     }));
     assert!(bad_dup.is_err());
 }

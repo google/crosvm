@@ -217,8 +217,6 @@ pub trait IntoAsync: AsRawDescriptor {}
 impl IntoAsync for File {}
 #[cfg(unix)]
 impl IntoAsync for UnixSeqpacket {}
-#[cfg(unix)]
-impl IntoAsync for &UnixSeqpacket {}
 
 /// Simple wrapper struct to implement IntoAsync on foreign types.
 pub struct AsyncWrapper<T>(T);
