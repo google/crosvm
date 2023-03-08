@@ -158,18 +158,6 @@ impl ReadNotifier for Tube {
     }
 }
 
-impl FromRawDescriptor for Tube {
-    /// # Safety:
-    /// Requirements:
-    /// (1) The caller owns rd.
-    /// (2) When the call completes, ownership of rd has transferred to the returned value.
-    unsafe fn from_raw_descriptor(rd: RawDescriptor) -> Self {
-        Self {
-            socket: StreamChannel::from_unix_seqpacket(UnixSeqpacket::from_raw_descriptor(rd)),
-        }
-    }
-}
-
 impl AsRawDescriptor for SendTube {
     fn as_raw_descriptor(&self) -> RawDescriptor {
         self.0.as_raw_descriptor()
