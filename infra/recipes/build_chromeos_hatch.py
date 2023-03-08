@@ -66,7 +66,8 @@ def RunSteps(api):
             "Build crosvm",
             [
                 "cros_sdk",
-                "emerge-hatch",
+                "build_packages",
+                "--board=hatch",
                 "crosvm",
             ],
             cros=True,

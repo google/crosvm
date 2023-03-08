@@ -6,7 +6,8 @@
       "--verbose",
       "--cros",
       "cros_sdk",
-      "emerge-hatch",
+      "build_packages",
+      "--board=hatch",
       "crosvm"
     ],
     "cwd": "[CACHE]/builder/crosvm",
