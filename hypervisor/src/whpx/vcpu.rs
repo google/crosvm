@@ -36,6 +36,7 @@ use crate::Register;
 use crate::Regs;
 use crate::Sregs;
 use crate::Vcpu;
+use crate::VcpuEvents;
 use crate::VcpuExit;
 use crate::VcpuRunHandle;
 use crate::VcpuX86_64;
@@ -1058,6 +1059,18 @@ impl VcpuX86_64 for WhpxVcpu {
     /// Sets the VCPU XSAVE.
     // TODO: b/270734340 implement
     fn set_xsave(&self, _xsave: &Xsave) -> Result<()> {
+        Err(Error::new(EOPNOTSUPP))
+    }
+
+    /// Gets the VCPU EVENTS.
+    // TODO: b/270734340 implement
+    fn get_vcpu_events(&self) -> Result<VcpuEvents> {
+        Err(Error::new(EOPNOTSUPP))
+    }
+
+    /// Sets the VCPU EVENTS.
+    // TODO: b/270734340 implement
+    fn set_vcpu_events(&self, _vcpu_events: &VcpuEvents) -> Result<()> {
         Err(Error::new(EOPNOTSUPP))
     }
 

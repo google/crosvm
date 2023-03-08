@@ -45,6 +45,7 @@ use crate::Regs;
 use crate::Segment;
 use crate::Sregs;
 use crate::Vcpu;
+use crate::VcpuEvents;
 use crate::VcpuExit;
 use crate::VcpuRunHandle;
 use crate::VcpuX86_64;
@@ -469,6 +470,14 @@ impl VcpuX86_64 for HaxmVcpu {
     }
 
     fn set_xsave(&self, _xsave: &Xsave) -> Result<()> {
+        Err(Error::new(EOPNOTSUPP))
+    }
+
+    fn get_vcpu_events(&self) -> Result<VcpuEvents> {
+        Err(Error::new(EOPNOTSUPP))
+    }
+
+    fn set_vcpu_events(&self, _vcpu_events: &VcpuEvents) -> Result<()> {
         Err(Error::new(EOPNOTSUPP))
     }
 

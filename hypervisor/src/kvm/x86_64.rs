@@ -53,7 +53,13 @@ use crate::Register;
 use crate::Regs;
 use crate::Segment;
 use crate::Sregs;
+use crate::VcpuEvents;
+use crate::VcpuExceptionState;
 use crate::VcpuExit;
+use crate::VcpuInterruptState;
+use crate::VcpuNmiState;
+use crate::VcpuSmiState;
+use crate::VcpuTripleFaultState;
 use crate::VcpuX86_64;
 use crate::VmCap;
 use crate::VmX86_64;
@@ -734,6 +740,26 @@ impl VcpuX86_64 for KvmVcpu {
         }
     }
 
+    fn get_vcpu_events(&self) -> Result<VcpuEvents> {
+        let mut vcpu_evts: kvm_vcpu_events = Default::default();
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_VCPU_EVENTS(), &mut vcpu_evts) };
+        if ret == 0 {
+            Ok(VcpuEvents::from(&vcpu_evts))
+        } else {
+            errno_result()
+        }
+    }
+
+    fn set_vcpu_events(&self, vcpu_evts: &VcpuEvents) -> Result<()> {
+        let vcpu_events = kvm_vcpu_events::from(vcpu_evts);
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_VCPU_EVENTS(), &vcpu_events) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
+    }
+
     fn get_debugregs(&self) -> Result<DebugRegs> {
         // Safe because we know that our file is a VCPU fd, we know the kernel will only write the
         // correct amount of memory to our pointer, and we verify the return result.
@@ -1261,6 +1287,139 @@ impl From<&Regs> for kvm_regs {
     }
 }
 
+impl From<&VcpuEvents> for kvm_vcpu_events {
+    fn from(ve: &VcpuEvents) -> Self {
+        let mut kvm_ve: kvm_vcpu_events = Default::default();
+
+        kvm_ve.exception.injected = ve.exception.injected as u8;
+        kvm_ve.exception.nr = ve.exception.nr;
+        kvm_ve.exception.has_error_code = ve.exception.has_error_code as u8;
+        if let Some(pending) = ve.exception.pending {
+            kvm_ve.exception.pending = pending as u8;
+            if ve.exception_payload.is_some() {
+                kvm_ve.exception_has_payload = true as u8;
+            }
+            kvm_ve.exception_payload = ve.exception_payload.unwrap_or(0);
+            kvm_ve.flags |= KVM_VCPUEVENT_VALID_PAYLOAD;
+        }
+        kvm_ve.exception.error_code = ve.exception.error_code;
+
+        kvm_ve.interrupt.injected = ve.interrupt.injected as u8;
+        kvm_ve.interrupt.nr = ve.interrupt.nr;
+        kvm_ve.interrupt.soft = ve.interrupt.soft as u8;
+        if let Some(shadow) = ve.interrupt.shadow {
+            kvm_ve.interrupt.shadow = shadow;
+            kvm_ve.flags |= KVM_VCPUEVENT_VALID_SHADOW;
+        }
+
+        kvm_ve.nmi.injected = ve.nmi.injected as u8;
+        if let Some(pending) = ve.nmi.pending {
+            kvm_ve.nmi.pending = pending as u8;
+            kvm_ve.flags |= KVM_VCPUEVENT_VALID_NMI_PENDING;
+        }
+        kvm_ve.nmi.masked = ve.nmi.masked as u8;
+        kvm_ve.nmi.pad = ve.nmi.pad;
+
+        if let Some(sipi_vector) = ve.sipi_vector {
+            kvm_ve.sipi_vector = sipi_vector;
+            kvm_ve.flags |= KVM_VCPUEVENT_VALID_SIPI_VECTOR;
+        }
+
+        if let Some(smm) = ve.smi.smm {
+            kvm_ve.smi.smm = smm as u8;
+            kvm_ve.flags |= KVM_VCPUEVENT_VALID_SMM;
+        }
+        kvm_ve.smi.pending = ve.smi.pending as u8;
+        kvm_ve.smi.smm_inside_nmi = ve.smi.smm_inside_nmi as u8;
+        kvm_ve.smi.latched_init = ve.smi.latched_init;
+
+        if let Some(pending) = ve.triple_fault.pending {
+            kvm_ve.triple_fault.pending = pending as u8;
+            kvm_ve.flags |= KVM_VCPUEVENT_VALID_TRIPLE_FAULT;
+        }
+        kvm_ve
+    }
+}
+
+impl From<&kvm_vcpu_events> for VcpuEvents {
+    fn from(ve: &kvm_vcpu_events) -> Self {
+        let exception = VcpuExceptionState {
+            injected: ve.exception.injected != 0,
+            nr: ve.exception.nr,
+            has_error_code: ve.exception.has_error_code != 0,
+            pending: if ve.flags & KVM_VCPUEVENT_VALID_PAYLOAD != 0 {
+                Some(ve.exception.pending != 0)
+            } else {
+                None
+            },
+            error_code: ve.exception.error_code,
+        };
+
+        let interrupt = VcpuInterruptState {
+            injected: ve.interrupt.injected != 0,
+            nr: ve.interrupt.nr,
+            soft: ve.interrupt.soft != 0,
+            shadow: if ve.flags & KVM_VCPUEVENT_VALID_SHADOW != 0 {
+                Some(ve.interrupt.shadow)
+            } else {
+                None
+            },
+        };
+
+        let nmi = VcpuNmiState {
+            injected: ve.interrupt.injected != 0,
+            pending: if ve.flags & KVM_VCPUEVENT_VALID_NMI_PENDING != 0 {
+                Some(ve.nmi.pending != 0)
+            } else {
+                None
+            },
+            masked: ve.nmi.masked != 0,
+            pad: ve.nmi.pad,
+        };
+
+        let sipi_vector = if ve.flags & KVM_VCPUEVENT_VALID_SIPI_VECTOR != 0 {
+            Some(ve.sipi_vector)
+        } else {
+            None
+        };
+
+        let smi = VcpuSmiState {
+            smm: if ve.flags & KVM_VCPUEVENT_VALID_SMM != 0 {
+                Some(ve.smi.smm != 0)
+            } else {
+                None
+            },
+            pending: ve.smi.pending != 0,
+            smm_inside_nmi: ve.smi.smm_inside_nmi != 0,
+            latched_init: ve.smi.latched_init,
+        };
+
+        let triple_fault = VcpuTripleFaultState {
+            pending: if ve.flags & KVM_VCPUEVENT_VALID_TRIPLE_FAULT != 0 {
+                Some(ve.triple_fault.pending != 0)
+            } else {
+                None
+            },
+        };
+
+        let exception_payload = if ve.flags & KVM_VCPUEVENT_VALID_PAYLOAD != 0 {
+            Some(ve.exception_payload)
+        } else {
+            None
+        };
+
+        VcpuEvents {
+            exception,
+            interrupt,
+            nmi,
+            sipi_vector,
+            smi,
+            triple_fault,
+            exception_payload,
+        }
+    }
+}
+
 impl From<&kvm_segment> for Segment {
     fn from(s: &kvm_segment) -> Self {
         Segment {
@@ -1448,4 +1607,106 @@ fn to_kvm_msrs(vec: &[Register]) -> Vec<kvm_msrs> {
     }
     msrs[0].nmsrs = vec.len() as u32;
     msrs
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vcpu_event_to_from() {
+        // All data is random.
+        let mut kvm_ve: kvm_vcpu_events = Default::default();
+        kvm_ve.exception.injected = 1;
+        kvm_ve.exception.nr = 65;
+        kvm_ve.exception.has_error_code = 1;
+        kvm_ve.exception.error_code = 110;
+        kvm_ve.exception.pending = 1;
+
+        kvm_ve.interrupt.injected = 1;
+        kvm_ve.interrupt.nr = 100;
+        kvm_ve.interrupt.soft = 1;
+        kvm_ve.interrupt.shadow = 114;
+
+        kvm_ve.nmi.injected = 1;
+        kvm_ve.nmi.pending = 1;
+        kvm_ve.nmi.masked = 0;
+        kvm_ve.nmi.pad = 111;
+
+        kvm_ve.sipi_vector = 105;
+
+        kvm_ve.smi.smm = 1;
+        kvm_ve.smi.pending = 1;
+        kvm_ve.smi.smm_inside_nmi = 1;
+        kvm_ve.smi.latched_init = 100;
+
+        kvm_ve.triple_fault.pending = 0;
+
+        kvm_ve.exception_payload = 33;
+        kvm_ve.exception_has_payload = 1;
+
+        kvm_ve.flags = 0
+            | KVM_VCPUEVENT_VALID_PAYLOAD
+            | KVM_VCPUEVENT_VALID_SMM
+            | KVM_VCPUEVENT_VALID_NMI_PENDING
+            | KVM_VCPUEVENT_VALID_SIPI_VECTOR
+            | KVM_VCPUEVENT_VALID_SHADOW;
+
+        let ve: VcpuEvents = VcpuEvents::from(&kvm_ve);
+        assert_eq!(ve.exception.injected, true);
+        assert_eq!(ve.exception.nr, 65);
+        assert_eq!(ve.exception.has_error_code, true);
+        assert_eq!(ve.exception.error_code, 110);
+        assert_eq!(ve.exception.pending.unwrap(), true);
+
+        assert_eq!(ve.interrupt.injected, true);
+        assert_eq!(ve.interrupt.nr, 100);
+        assert_eq!(ve.interrupt.soft, true);
+        assert_eq!(ve.interrupt.shadow.unwrap(), 114);
+
+        assert_eq!(ve.nmi.injected, true);
+        assert_eq!(ve.nmi.pending.unwrap(), true);
+        assert_eq!(ve.nmi.masked, false);
+        assert_eq!(ve.nmi.pad, 111);
+
+        assert_eq!(ve.sipi_vector.unwrap(), 105);
+
+        assert_eq!(ve.smi.smm.unwrap(), true);
+        assert_eq!(ve.smi.pending, true);
+        assert_eq!(ve.smi.smm_inside_nmi, true);
+        assert_eq!(ve.smi.latched_init, 100);
+
+        assert_eq!(ve.triple_fault.pending, None);
+
+        assert_eq!(ve.exception_payload.unwrap(), 33);
+
+        let kvm_ve_restored: kvm_vcpu_events = kvm_vcpu_events::from(&ve);
+        assert_eq!(kvm_ve_restored.exception.injected, 1);
+        assert_eq!(kvm_ve_restored.exception.nr, 65);
+        assert_eq!(kvm_ve_restored.exception.has_error_code, 1);
+        assert_eq!(kvm_ve_restored.exception.error_code, 110);
+        assert_eq!(kvm_ve_restored.exception.pending, 1);
+
+        assert_eq!(kvm_ve_restored.interrupt.injected, 1);
+        assert_eq!(kvm_ve_restored.interrupt.nr, 100);
+        assert_eq!(kvm_ve_restored.interrupt.soft, 1);
+        assert_eq!(kvm_ve_restored.interrupt.shadow, 114);
+
+        assert_eq!(kvm_ve_restored.nmi.injected, 1);
+        assert_eq!(kvm_ve_restored.nmi.pending, 1);
+        assert_eq!(kvm_ve_restored.nmi.masked, 0);
+        assert_eq!(kvm_ve_restored.nmi.pad, 111);
+
+        assert_eq!(kvm_ve_restored.sipi_vector, 105);
+
+        assert_eq!(kvm_ve_restored.smi.smm, 1);
+        assert_eq!(kvm_ve_restored.smi.pending, 1);
+        assert_eq!(kvm_ve_restored.smi.smm_inside_nmi, 1);
+        assert_eq!(kvm_ve_restored.smi.latched_init, 100);
+
+        assert_eq!(kvm_ve_restored.triple_fault.pending, 0);
+
+        assert_eq!(kvm_ve_restored.exception_payload, 33);
+        assert_eq!(kvm_ve_restored.exception_has_payload, 1);
+    }
 }

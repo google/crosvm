@@ -101,6 +101,12 @@ pub trait VcpuX86_64: Vcpu {
     /// Sets the VCPU x87 FPU, MMX, XMM, YMM and MXCSR registers.
     fn set_xsave(&self, xsave: &Xsave) -> Result<()>;
 
+    /// Gets the VCPU Events states.
+    fn get_vcpu_events(&self) -> Result<VcpuEvents>;
+
+    /// Sets the VCPU Events states.
+    fn set_vcpu_events(&self, vcpu_evts: &VcpuEvents) -> Result<()>;
+
     /// Gets the model-specific registers.  `msrs` specifies the MSR indexes to be queried, and
     /// on success contains their indexes and values.
     fn get_msrs(&self, msrs: &mut Vec<Register>) -> Result<()>;
@@ -838,6 +844,55 @@ impl Default for Fpu {
             mxcsr: 0x1f80, // Intel SDM Vol. 1, 11.6.4
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VcpuEvents {
+    pub exception: VcpuExceptionState,
+    pub interrupt: VcpuInterruptState,
+    pub nmi: VcpuNmiState,
+    pub sipi_vector: Option<u32>,
+    pub smi: VcpuSmiState,
+    pub triple_fault: VcpuTripleFaultState,
+    pub exception_payload: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VcpuExceptionState {
+    pub injected: bool,
+    pub nr: u8,
+    pub has_error_code: bool,
+    pub pending: Option<bool>,
+    pub error_code: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VcpuInterruptState {
+    pub injected: bool,
+    pub nr: u8,
+    pub soft: bool,
+    pub shadow: Option<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VcpuNmiState {
+    pub injected: bool,
+    pub pending: Option<bool>,
+    pub masked: bool,
+    pub pad: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VcpuSmiState {
+    pub smm: Option<bool>,
+    pub pending: bool,
+    pub smm_inside_nmi: bool,
+    pub latched_init: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VcpuTripleFaultState {
+    pub pending: Option<bool>,
 }
 
 /// State of a VCPU's debug registers.
