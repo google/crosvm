@@ -233,18 +233,11 @@ impl Vcpu for HaxmVcpu {
                     operation: IoOperation::Read,
                 }) {
                     // Safe because we know this is an mmio read, so we need to put data into the
-                    // "value" field of the hax_fastmmio. The "value" field is a u64, so casting
-                    // as a &mut [u8] of len 8 is safe.
-                    // TODO(b/250085118): remove this clippy allow as it's allowing potentially
-                    // problematic behavior.
-                    #[allow(unaligned_references)]
-                    let buffer = unsafe {
-                        std::slice::from_raw_parts_mut(
-                            &mut (*mmio).__bindgen_anon_1.value as *mut u64 as *mut u8,
-                            8,
-                        )
-                    };
-                    buffer[..size].copy_from_slice(&data[..size]);
+                    // "value" field of the hax_fastmmio.
+                    let data = u64::from_ne_bytes(data);
+                    unsafe {
+                        (*mmio).__bindgen_anon_1.value = data;
+                    }
                 }
                 Ok(())
             }
