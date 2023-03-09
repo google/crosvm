@@ -25,6 +25,7 @@
 - [Integration](./integration/index.md)
   - [ChromeOS](./integration/chromeos.md)
 - [Architecture](./architecture.md)
+- [Hypervisors](./hypervisors.md)
 - [Contributing](./contributing/index.md)
   - [Style Guide for Platform-Specific Code](./contributing/style_guide_platform_specific_code.md)
 
