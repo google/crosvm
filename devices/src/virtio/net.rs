@@ -360,6 +360,7 @@ where
         rx_queue_evt: Event,
         tx_queue_evt: Event,
         ctrl_queue_evt: Option<Event>,
+        handle_interrupt_resample: bool,
     ) -> Result<(), NetError> {
         let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
             // This doesn't use get_read_notifier() because of overlapped io; we
@@ -383,7 +384,9 @@ where
             wait_ctx
                 .add(ctrl_evt, Token::CtrlQueue)
                 .map_err(NetError::CreateWaitContext)?;
-            // Let CtrlQueue's thread handle InterruptResample also.
+        }
+
+        if handle_interrupt_resample {
             if let Some(resample_evt) = self.interrupt.get_resample_evt() {
                 wait_ctx
                     .add(resample_evt, Token::InterruptResample)
@@ -546,6 +549,12 @@ where
             slirp_kill_evt: None,
         })
     }
+
+    /// Returns the maximum number of receive/transmit queue pairs for this device.
+    /// Only relevant when multi-queue support is negotiated.
+    fn max_virtqueue_pairs(&self) -> usize {
+        self.taps.len()
+    }
 }
 
 // Ensure that the tap interface has the correct flags and sets the offload and VNET header size
@@ -663,7 +672,21 @@ where
         interrupt: Interrupt,
         mut queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
-        if queues.len() != self.queue_sizes.len() {
+        let ctrl_vq_enabled = self.acked_features & (1 << virtio_net::VIRTIO_NET_F_CTRL_VQ) != 0;
+        let mq_enabled = self.acked_features & (1 << virtio_net::VIRTIO_NET_F_MQ) != 0;
+
+        let vq_pairs = if mq_enabled {
+            self.max_virtqueue_pairs()
+        } else {
+            1
+        };
+
+        let mut num_queues_expected = vq_pairs * 2;
+        if ctrl_vq_enabled {
+            num_queues_expected += 1;
+        }
+
+        if queues.len() != num_queues_expected {
             return Err(anyhow!(
                 "net: expected {} queues, got {} queues",
                 self.queue_sizes.len(),
@@ -671,8 +694,7 @@ where
             ));
         }
 
-        let vq_pairs = self.queue_sizes.len() / 2;
-        if self.taps.len() != vq_pairs {
+        if self.taps.len() < vq_pairs {
             return Err(anyhow!(
                 "net: expected {} taps, got {}",
                 vq_pairs,
@@ -685,15 +707,18 @@ where
             let acked_features = self.acked_features;
             let interrupt = interrupt.clone();
             let memory = mem.clone();
+            let first_queue = i == 0;
             // Queues alternate between rx0, tx0, rx1, tx1, ..., rxN, txN, ctrl.
             let (rx_queue, rx_queue_evt) = queues.remove(0);
             let (tx_queue, tx_queue_evt) = queues.remove(0);
-            let (ctrl_queue, ctrl_queue_evt) = if i == 0 {
+            let (ctrl_queue, ctrl_queue_evt) = if first_queue && ctrl_vq_enabled {
                 let (queue, evt) = queues.remove(queues.len() - 1);
                 (Some(queue), Some(evt))
             } else {
                 (None, None)
             };
+            // Handle interrupt resampling on the first queue's thread.
+            let handle_interrupt_resample = first_queue;
             let pairs = vq_pairs as u16;
             #[cfg(windows)]
             let overlapped_wrapper = OverlappedWrapper::new(true).unwrap();
@@ -718,7 +743,12 @@ where
                         deferred_rx: false,
                         kill_evt,
                     };
-                    let result = worker.run(rx_queue_evt, tx_queue_evt, ctrl_queue_evt);
+                    let result = worker.run(
+                        rx_queue_evt,
+                        tx_queue_evt,
+                        ctrl_queue_evt,
+                        handle_interrupt_resample,
+                    );
                     if let Err(e) = result {
                         error!("net worker thread exited with error: {}", e);
                     }
