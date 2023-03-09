@@ -15,4 +15,5 @@ sudo apt install \
     flex \
     bison \
     bc \
+    dwarves \
     binfmt-support

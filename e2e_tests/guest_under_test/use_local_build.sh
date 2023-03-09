@@ -15,7 +15,5 @@ CARGO_TARGET=$(cargo metadata --no-deps --format-version 1 |
 LOCAL_BZIMAGE=${CARGO_TARGET}/guest_under_test/${ARCH}/bzImage
 LOCAL_ROOTFS=${CARGO_TARGET}/guest_under_test/${ARCH}/rootfs
 
-(cd "${0%/*}" && make "${LOCAL_BZIMAGE}" "${LOCAL_ROOTFS}")
-
 export CROSVM_CARGO_TEST_KERNEL_BINARY="${LOCAL_BZIMAGE}"
 export CROSVM_CARGO_TEST_ROOTFS_IMAGE="${LOCAL_ROOTFS}"

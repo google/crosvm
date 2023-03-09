@@ -2,9 +2,12 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 ARG ARCH
-FROM ${ARCH}/alpine:3.16
+FROM ${ARCH}/debian:bookworm
 
-RUN apk add --no-cache pciutils nmap-ncat
+RUN --mount=type=cache,target=/var/cache/apt,sharing=private \
+    --mount=type=cache,target=/var/lib/apt,sharing=private \
+    apt-get update \
+    && apt-get install --yes pciutils ncat alsa-utils sox
 
 # Note: This docker file is run from the $(target)/rootfs directory specified in
 #       the Makefile.

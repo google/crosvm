@@ -6,6 +6,5 @@
 # We require the crosvm binary to build before running the integration tests.
 # There is an RFC for cargo to allow for this kind of dependency:
 # https://github.com/rust-lang/cargo/issues/9096
-cd $(dirname $0)
-(cd .. && cargo build $@ && cargo build --features=direct --bin crosvm-direct)
-cargo test $@
+cargo build -p crosvm
+cargo nextest run
