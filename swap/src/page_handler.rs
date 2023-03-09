@@ -528,6 +528,10 @@ impl<'a> PageHandler<'a> {
     ///
     /// Returns the count of swapped out pages.
     ///
+    /// Even if swap_out fails on any internal steps, it does not break the page state management
+    /// and `PageHandler` can continue working with a little pages leaking in staging memory or swap
+    /// file. The leaked pages are removed when vmm-swap is disabled and `PageHandler` is dropped.
+    ///
     /// # Arguments
     ///
     /// * `max_size` - the upper limit of the chunk size to write into the swap file at once. The
