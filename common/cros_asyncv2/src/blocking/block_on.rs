@@ -26,12 +26,6 @@ thread_local!(static PER_THREAD_WAKER: Arc<Waker> = Arc::new(Waker(AtomicI32::ne
 #[repr(transparent)]
 struct Waker(AtomicI32);
 
-extern "C" {
-    #[cfg_attr(target_os = "android", link_name = "__errno")]
-    #[cfg_attr(target_os = "linux", link_name = "__errno_location")]
-    fn errno_location() -> *mut libc::c_int;
-}
-
 impl ArcWake for Waker {
     fn wake_by_ref(arc_self: &Arc<Self>) {
         let state = arc_self.0.swap(WOKEN, Ordering::Release);
@@ -50,9 +44,10 @@ impl ArcWake for Waker {
                 )
             };
             if res < 0 {
-                panic!("unexpected error from FUTEX_WAKE_PRIVATE: {}", unsafe {
-                    *errno_location()
-                });
+                panic!(
+                    "unexpected error from FUTEX_WAKE_PRIVATE: {}",
+                    std::io::Error::last_os_error()
+                );
             }
         }
     }
@@ -91,10 +86,10 @@ pub fn block_on<F: Future>(f: F) -> F::Output {
                 };
 
                 if res < 0 {
-                    // Safe because libc guarantees that this is a valid pointer.
-                    match unsafe { *errno_location() } {
-                        libc::EAGAIN | libc::EINTR => {}
-                        e => panic!("unexpected error from FUTEX_WAIT_PRIVATE: {}", e),
+                    let e = std::io::Error::last_os_error();
+                    match e.raw_os_error() {
+                        Some(libc::EAGAIN) | Some(libc::EINTR) => {}
+                        _ => panic!("unexpected error from FUTEX_WAIT_PRIVATE: {}", e),
                     }
                 }
 
