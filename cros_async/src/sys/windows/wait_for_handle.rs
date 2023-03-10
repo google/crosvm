@@ -29,7 +29,6 @@ use winapi::um::winnt::WT_EXECUTEONLYONCE;
 
 use crate::sys::windows::handle_source::Error;
 use crate::sys::windows::handle_source::Result;
-use crate::sys::windows::HandleSource;
 use crate::IoSourceExt;
 
 /// Inner state shared between the future struct & the kernel invoked waiter callback.
@@ -63,7 +62,7 @@ enum WaitState {
 pub struct WaitForHandle<'a, T: AsRawDescriptor> {
     handle: Descriptor,
     inner: Mutex<WaitForHandleInner>,
-    _marker: PhantomData<&'a HandleSource<T>>,
+    _marker: PhantomData<&'a dyn IoSourceExt<T>>,
     _pinned_marker: PhantomPinned,
 }
 
@@ -71,7 +70,7 @@ impl<'a, T> WaitForHandle<'a, T>
 where
     T: AsRawDescriptor,
 {
-    pub fn new(handle_source: &'a HandleSource<T>) -> WaitForHandle<'a, T> {
+    pub fn new(handle_source: &'a dyn IoSourceExt<T>) -> WaitForHandle<'a, T> {
         WaitForHandle {
             handle: Descriptor(handle_source.as_source().as_raw_descriptor()),
             inner: Mutex::new(WaitForHandleInner::new()),

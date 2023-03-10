@@ -4,8 +4,6 @@
 
 //! IO completion port wrapper.
 
-#![allow(dead_code)]
-
 use std::io;
 use std::ptr::null_mut;
 

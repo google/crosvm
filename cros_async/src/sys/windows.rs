@@ -8,6 +8,7 @@ pub mod executor;
 pub mod handle_executor;
 pub mod handle_source;
 mod io_completion_port;
+pub mod overlapped_source;
 mod timer;
 pub mod wait_for_handle;
 use std::future::Future;

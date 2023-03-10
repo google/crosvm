@@ -57,6 +57,8 @@ pub enum Error {
     HandleExecutor(crate::sys::windows::handle_executor::Error),
     #[error("An error with a handle source: {0}")]
     HandleSource(crate::sys::windows::handle_source::Error),
+    #[error("An error with a handle source: {0}")]
+    OverlappedSource(crate::sys::windows::overlapped_source::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -95,6 +97,7 @@ impl From<Error> for io::Error {
             EventAsync(e) => e.into(),
             HandleExecutor(e) => e.into(),
             HandleSource(e) => e.into(),
+            OverlappedSource(e) => e.into(),
         }
     }
 }
