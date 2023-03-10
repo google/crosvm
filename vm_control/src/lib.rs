@@ -113,7 +113,8 @@ pub enum VcpuControl {
     Debug(VcpuDebug),
     RunState(VmRunMode),
     MakeRT,
-    GetStates,
+    // Request the current state of the vCPU. The result is sent back over the included channel.
+    GetStates(mpsc::Sender<VmRunMode>),
 }
 
 /// Mode of execution for the VM.
@@ -1116,18 +1117,15 @@ fn map_descriptor(
 
 // Get vCPU state. vCPUs are expected to all hold the same state.
 // In this function, there may be a time where vCPUs are not
-fn get_vcpu_state(
-    kick_vcpus: impl Fn(VcpuControl),
-    state_from_vcpu_channel: &mpsc::Receiver<VmRunMode>,
-    vcpu_num: usize,
-) -> anyhow::Result<VmRunMode> {
-    kick_vcpus(VcpuControl::GetStates);
+fn get_vcpu_state(kick_vcpus: impl Fn(VcpuControl), vcpu_num: usize) -> anyhow::Result<VmRunMode> {
+    let (send_chan, recv_chan) = mpsc::channel();
+    kick_vcpus(VcpuControl::GetStates(send_chan));
     if vcpu_num == 0 {
         bail!("vcpu_num is zero");
     }
     let mut current_mode_vec: Vec<VmRunMode> = Vec::new();
     for _ in 0..vcpu_num {
-        match state_from_vcpu_channel.recv() {
+        match recv_chan.recv() {
             Ok(state) => current_mode_vec.push(state),
             Err(e) => {
                 bail!("Failed to get vCPU state: {}", e);
@@ -1162,22 +1160,17 @@ impl<'a> VcpuSuspendGuard<'a> {
     ///
     /// * `kick_vcpus` - A funtion to send [VcpuControl] message to all the vCPUs and interrupt
     ///   them.
-    /// * `state_from_vcpu_channel` - A channel to collect each vCPU state.
     /// * `vcpu_num` - The number of vCPUs.
-    pub fn new(
-        kick_vcpus: &'a impl Fn(VcpuControl),
-        state_from_vcpu_channel: &mpsc::Receiver<VmRunMode>,
-        vcpu_num: usize,
-    ) -> anyhow::Result<Self> {
+    pub fn new(kick_vcpus: &'a impl Fn(VcpuControl), vcpu_num: usize) -> anyhow::Result<Self> {
         // get initial vcpu state
-        let saved_run_mode = get_vcpu_state(kick_vcpus, state_from_vcpu_channel, vcpu_num)?;
+        let saved_run_mode = get_vcpu_state(kick_vcpus, vcpu_num)?;
         match saved_run_mode {
             VmRunMode::Running => {
                 kick_vcpus(VcpuControl::RunState(VmRunMode::Suspending));
                 // Blocking call, waiting for response to ensure vCPU state was updated.
                 // In case of failure, where a vCPU still has the state running, start up vcpus and
                 // abort operation.
-                let current_mode = get_vcpu_state(kick_vcpus, state_from_vcpu_channel, vcpu_num)?;
+                let current_mode = get_vcpu_state(kick_vcpus, vcpu_num)?;
                 if current_mode != VmRunMode::Suspending {
                     kick_vcpus(VcpuControl::RunState(saved_run_mode));
                     bail!("vCPUs failed to all suspend. Kicking back all vCPUs to their previous state: {saved_run_mode}");
@@ -1266,7 +1259,6 @@ impl VmRequest {
         force_s2idle: bool,
         #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
         device_control_tube: &Tube,
-        state_from_vcpu_channel: &mpsc::Receiver<VmRunMode>,
         vcpu_size: usize,
         irq_handler_control: &Tube,
     ) -> VmResponse {
@@ -1524,8 +1516,7 @@ impl VmRequest {
             VmRequest::HotPlugCommand { device: _, add: _ } => VmResponse::Ok,
             VmRequest::Snapshot(SnapshotCommand::Take { ref snapshot_path }) => {
                 let f = || -> anyhow::Result<VmResponse> {
-                    let _vcpu_guard =
-                        VcpuSuspendGuard::new(&kick_vcpus, state_from_vcpu_channel, vcpu_size)?;
+                    let _vcpu_guard = VcpuSuspendGuard::new(&kick_vcpus, vcpu_size)?;
                     let _device_guard = DeviceSleepGuard::new(device_control_tube)?;
 
                     // We want to flush all pending IRQs to the LAPICs. There are two cases:
@@ -1589,8 +1580,7 @@ impl VmRequest {
             }
             VmRequest::Restore(RestoreCommand::Apply { ref restore_path }) => {
                 let f = || {
-                    let _guard =
-                        VcpuSuspendGuard::new(&kick_vcpus, state_from_vcpu_channel, vcpu_size)?;
+                    let _guard = VcpuSuspendGuard::new(&kick_vcpus, vcpu_size)?;
                     device_control_tube
                         .send(&DeviceControlCommand::RestoreDevices {
                             restore_path: restore_path.clone(),

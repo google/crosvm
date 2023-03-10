@@ -2365,12 +2365,10 @@ fn handle_swap_suspend_command(
     tube: &Tube,
     swap_controller: &SwapController,
     kick_vcpus: impl Fn(VcpuControl),
-    state_from_vcpu_channel: &mpsc::Receiver<VmRunMode>,
     vcpu_num: usize,
 ) -> anyhow::Result<()> {
     info!("suspending vcpus");
-    let _vcpu_guard = VcpuSuspendGuard::new(&kick_vcpus, state_from_vcpu_channel, vcpu_num)
-        .context("suspend vcpus")?;
+    let _vcpu_guard = VcpuSuspendGuard::new(&kick_vcpus, vcpu_num).context("suspend vcpus")?;
     info!("suspending devices");
     // TODO(b/253386409): Use `devices::Suspendable::sleep()` instead of sending `SIGSTOP` signal.
     let _devices_guard = swap_controller
@@ -2552,7 +2550,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     // Architecture-specific code must supply a vcpu_init element for each VCPU.
     assert_eq!(vcpus.len(), linux.vcpu_init.len());
 
-    let (to_vm_control, state_from_vcpu_channel) = mpsc::channel();
     for ((cpu_id, vcpu), vcpu_init) in vcpus.into_iter().enumerate().zip(linux.vcpu_init.drain(..))
     {
         let (to_vcpu_channel, from_main_channel) = mpsc::channel();
@@ -2625,7 +2622,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             guest_suspended_cvar.clone(),
             #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
             bus_lock_ratelimit_ctrl,
-            to_vm_control.clone(),
         )?;
         vcpu_handles.push((handle, to_vcpu_channel));
     }
@@ -2909,7 +2905,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                 #[cfg(feature = "swap")]
                                                 swap_controller.as_ref(),
                                                 &device_ctrl_tube,
-                                                &state_from_vcpu_channel,
                                                 vcpu_handles.len(),
                                                 &irq_handler_control,
                                             );
@@ -3067,7 +3062,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                     msg,
                                                 )
                                             },
-                                            &state_from_vcpu_channel,
                                             vcpu_handles.len(),
                                         ) {
                                             error!("failed to suspend vm: {:?}", e);
