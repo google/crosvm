@@ -103,7 +103,7 @@ impl CpuIdContext {
                 chip.check_capability(IrqChipCap::TscDeadlineTimer)
             }),
             apic_frequency: irq_chip.map_or(Apic::frequency(), |chip| chip.lapic_frequency()),
-            tsc_frequency: if calibrated_tsc_leaf_required {
+            tsc_frequency: if calibrated_tsc_leaf_required || cpu_config.force_calibrated_tsc_leaf {
                 devices::tsc::tsc_frequency().ok()
             } else {
                 None
