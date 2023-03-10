@@ -58,6 +58,8 @@ use crate::descriptor::FromRawDescriptor;
 use crate::descriptor::IntoRawDescriptor;
 use crate::descriptor::SafeDescriptor;
 use crate::Event;
+use crate::EventToken;
+use crate::WaitContext;
 
 /// The default buffer size for all named pipes in the system. If this size is too small, writers
 /// on named pipes that expect not to block *can* block until the reading side empties the buffer.
@@ -607,6 +609,90 @@ impl PipeConnection {
         }
     }
 
+    /// Blockingly reads a `buf` bytes from the pipe. The blocking read can be interrupted
+    /// by an event on `exit_event`.
+    pub fn read_overlapped_blocking<T: PipeSendable>(
+        &mut self,
+        buf: &mut [T],
+        overlapped_wrapper: &mut OverlappedWrapper,
+        exit_event: &Event,
+    ) -> Result<()> {
+        // Safe because we are providing a valid buffer slice and also providing a valid
+        // overlapped struct.
+        unsafe {
+            self.read_overlapped(buf, overlapped_wrapper)?;
+        };
+
+        #[derive(EventToken)]
+        enum Token {
+            ReadOverlapped,
+            Exit,
+        }
+
+        let wait_ctx = WaitContext::build_with(&[
+            (
+                overlapped_wrapper.get_h_event_ref().unwrap(),
+                Token::ReadOverlapped,
+            ),
+            (exit_event, Token::Exit),
+        ])?;
+
+        let events = wait_ctx.wait()?;
+        for event in events {
+            match event.token {
+                Token::ReadOverlapped => {
+                    let size_read_in_bytes =
+                        self.get_overlapped_result(overlapped_wrapper)? as usize;
+
+                    // If this error shows, most likely the overlapped named pipe was set up
+                    // incorrectly.
+                    if size_read_in_bytes != buf.len() {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::UnexpectedEof,
+                            "Short read",
+                        ));
+                    }
+                }
+                Token::Exit => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Interrupted,
+                        "IO canceled on exit request",
+                    ));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Reads a variable size message and returns the message on success.
+    /// The size of the message is expected to proceed the message in
+    /// the form of `header_size` message.
+    ///
+    /// `parse_message_size` lets caller parse the header to extract
+    /// message size.
+    ///
+    /// Event on `exit_event` is used to interrupt the blocked read.
+    pub fn read_overlapped_blocking_message<F: FnOnce(&[u8]) -> usize>(
+        &mut self,
+        header_size: usize,
+        parse_message_size: F,
+        overlapped_wrapper: &mut OverlappedWrapper,
+        exit_event: &Event,
+    ) -> Result<Vec<u8>> {
+        let mut header = vec![0; header_size];
+        header.resize_with(header_size, Default::default);
+        self.read_overlapped_blocking(&mut header, overlapped_wrapper, exit_event)?;
+        let message_size = parse_message_size(&header);
+        if message_size == 0 {
+            return Ok(vec![]);
+        }
+        let mut buf = vec![];
+        buf.resize_with(message_size, Default::default);
+        self.read_overlapped_blocking(&mut buf, overlapped_wrapper, exit_event)?;
+        Ok(buf)
+    }
+
     /// Gets the size in bytes of data in the pipe.
     ///
     /// Note that PeekNamedPipes (the underlying win32 API) will return zero if the packets have
@@ -638,6 +724,30 @@ impl PipeConnection {
     /// callers should check to ensure that it was the number expected.
     pub fn write<T: PipeSendable>(&self, buf: &[T]) -> Result<usize> {
         PipeConnection::write_internal(&self.handle, buf, None)
+    }
+
+    /// Sends, blockingly,`buf` over the pipe in its entirety. Partial write is considered
+    /// as a failure.
+    pub fn write_overlapped_blocking_message<T: PipeSendable>(
+        &mut self,
+        buf: &[T],
+        overlapped_wrapper: &mut OverlappedWrapper,
+    ) -> Result<()> {
+        self.write_overlapped(buf, overlapped_wrapper)?;
+
+        let size_written_in_bytes = self.get_overlapped_result(overlapped_wrapper)?;
+
+        if size_written_in_bytes as usize != buf.len() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                format!(
+                    "Short write expected:{} found:{}",
+                    size_written_in_bytes,
+                    buf.len(),
+                ),
+            ));
+        }
+        Ok(())
     }
 
     /// Similar to `PipeConnection::write` except it also allows:
@@ -926,6 +1036,8 @@ pub struct NamedPipeInfo {
 
 #[cfg(test)]
 mod tests {
+    use std::mem::size_of;
+
     use super::*;
 
     #[test]
@@ -1140,5 +1252,48 @@ mod tests {
             r"\\.\pipe\test-ipc-pipe-name.rand{}",
             rand::thread_rng().gen::<u64>(),
         )
+    }
+
+    #[test]
+    fn read_write_overlapped_message() {
+        let pipe_name = generate_pipe_name();
+
+        let mut p1 = create_server_pipe(
+            &pipe_name,
+            &FramingMode::Message,
+            &BlockingMode::Wait,
+            /* timeout= */ 0,
+            /* buffer_size= */ 1000,
+            /* overlapped= */ true,
+        )
+        .unwrap();
+
+        let mut p2 = create_client_pipe(
+            &pipe_name,
+            &FramingMode::Message,
+            &BlockingMode::Wait,
+            /* overlapped= */ true,
+        )
+        .unwrap();
+
+        // Safe because `read_overlapped` can be called since overlapped struct is created.
+        let mut p1_overlapped_wrapper = OverlappedWrapper::new(/* include_event= */ true).unwrap();
+        const MSG: [u8; 6] = [75, 77, 54, 82, 76, 65];
+        p1.write_overlapped_blocking_message(&MSG.len().to_be_bytes(), &mut p1_overlapped_wrapper)
+            .unwrap();
+        p1.write_overlapped_blocking_message(&MSG, &mut p1_overlapped_wrapper)
+            .unwrap();
+
+        let mut p2_overlapped_wrapper = OverlappedWrapper::new(/* include_event= */ true).unwrap();
+        let exit_event = Event::new().unwrap();
+        let recv_buffer = p2
+            .read_overlapped_blocking_message(
+                size_of::<usize>(),
+                |buf| usize::from_be_bytes(buf.try_into().expect("failed to get array from slice")),
+                &mut p2_overlapped_wrapper,
+                &exit_event,
+            )
+            .unwrap();
+        assert_eq!(recv_buffer, MSG);
     }
 }
