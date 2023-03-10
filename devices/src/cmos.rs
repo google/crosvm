@@ -63,6 +63,9 @@ const RTC_REG_C: usize = 0x0c;
 const RTC_REG_C_IRQF: u8 = 0x80;
 const RTC_REG_C_AF: u8 = 0x20;
 
+const RTC_REG_D: usize = 0x0d;
+const RTC_REG_D_VRT: u8 = 0x80; // RAM and time valid
+
 pub type CmosNowFn = fn() -> DateTime<Utc>;
 
 /// A CMOS/RTC device commonly seen on x86 I/O port 0x70/0x71.
@@ -362,6 +365,7 @@ impl BusDevice for Cmos {
                             0
                         }
                     }
+                    RTC_REG_D => RTC_REG_D_VRT,
                     _ => {
                         // self.index is always guaranteed to be in range via INDEX_MASK.
                         self.data[(self.index & INDEX_MASK) as usize]
@@ -642,6 +646,12 @@ mod tests {
         write_reg(&mut cmos, 0x01, 0xa0); // seconds
         write_reg(&mut cmos, 0x0b, 0x20); // RTC_REG_B_ALARM_ENABLE
         assert_eq!(cmos.alarm_time, None);
+    }
+
+    #[test]
+    fn cmos_reg_d() {
+        let mut cmos = Cmos::new_inner(1024, 0, test_now_party_like_its_1999, None).unwrap();
+        assert_eq!(read_reg(&mut cmos, 0x0d), 0x80) // RAM and time are valid
     }
 
     #[test]
