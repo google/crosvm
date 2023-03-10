@@ -231,7 +231,7 @@ pub fn setup_mptable(
     }
     let sci_irq = super::X86_64_SCI_IRQ as u8;
     // Per kvm_setup_default_irq_routing() in kernel
-    for i in (0..sci_irq).chain(std::iter::once(devices::cmos::RTC_IRQ)) {
+    for i in 0..sci_irq {
         let size = mem::size_of::<mpc_intsrc>();
         let mpc_intsrc = mpc_intsrc {
             type_: MP_INTSRC as u8,

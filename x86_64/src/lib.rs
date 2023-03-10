@@ -54,7 +54,6 @@ use std::sync::Arc;
 use acpi_tables::aml;
 use acpi_tables::aml::Aml;
 use acpi_tables::sdt::SDT;
-use anyhow::Context;
 use arch::get_serial_cmdline;
 use arch::GetSerialCmdlineError;
 use arch::MsrAction;
@@ -70,7 +69,6 @@ use base::warn;
 use base::AsRawDescriptors;
 use base::Event;
 use base::SendTube;
-use base::Tube;
 use base::TubeError;
 use chrono::Utc;
 pub use cpuid::adjust_cpuid;
@@ -245,8 +243,6 @@ pub enum Error {
     SetLint(interrupts::Error),
     #[error("failed to set tss addr: {0}")]
     SetTssAddr(base::Error),
-    #[error("failed to set up cmos: {0}")]
-    SetupCmos(anyhow::Error),
     #[error("failed to set up cpuid: {0}")]
     SetupCpuid(cpuid::Error),
     #[error("setup data too large")]
@@ -808,14 +804,9 @@ impl arch::LinuxArch for X8664arch {
                 vm_evt_wrtube.try_clone().map_err(Error::CloneTube)?,
             )?;
         }
-        let vm_request_tube = if !components.no_rtc {
-            let (host_tube, device_tube) = Tube::pair().unwrap();
-            Self::setup_legacy_cmos_device(&io_bus, irq_chip, device_tube, components.memory_size)
-                .map_err(Error::SetupCmos)?;
-            Some(host_tube)
-        } else {
-            None
-        };
+        if !components.no_rtc {
+            Self::setup_legacy_cmos_device(&io_bus, components.memory_size)?;
+        }
         Self::setup_serial_devices(
             components.hv_cfg.protection_type,
             irq_chip.as_irq_chip_mut(),
@@ -1028,7 +1019,6 @@ impl arch::LinuxArch for X8664arch {
             platform_devices: Vec::new(),
             hotplug_bus: BTreeMap::new(),
             devices_thread: None,
-            vm_request_tube,
         })
     }
 
@@ -1716,12 +1706,7 @@ impl X8664arch {
     ///
     /// * - `io_bus` - the IO bus object
     /// * - `mem_size` - the size in bytes of physical ram for the guest
-    pub fn setup_legacy_cmos_device(
-        io_bus: &devices::Bus,
-        irq_chip: &mut dyn IrqChipX86_64,
-        vm_control: Tube,
-        mem_size: u64,
-    ) -> anyhow::Result<()> {
+    pub fn setup_legacy_cmos_device(io_bus: &devices::Bus, mem_size: u64) -> Result<()> {
         let mem_regions = arch_memory_regions(mem_size, None);
 
         let mem_below_4g = mem_regions
@@ -1736,26 +1721,17 @@ impl X8664arch {
             .map(|r| r.1)
             .sum();
 
-        let irq_evt = devices::IrqEdgeEvent::new().context("cmos irq")?;
-        let cmos = devices::cmos::Cmos::new(
-            mem_below_4g,
-            mem_above_4g,
-            Utc::now,
-            vm_control,
-            irq_evt.try_clone().context("cmos irq clone")?,
-        )
-        .context("create cmos")?;
-
-        irq_chip
-            .register_edge_irq_event(
-                devices::cmos::RTC_IRQ as u32,
-                &irq_evt,
-                IrqEventSource::from_device(&cmos),
-            )
-            .context("cmos register irq")?;
         io_bus
-            .insert(Arc::new(Mutex::new(cmos)), 0x70, 0x2)
-            .context("cmos insert irq")?;
+            .insert(
+                Arc::new(Mutex::new(devices::Cmos::new(
+                    mem_below_4g,
+                    mem_above_4g,
+                    Utc::now,
+                ))),
+                0x70,
+                0x2,
+            )
+            .unwrap();
 
         Ok(())
     }
@@ -1799,15 +1775,12 @@ impl X8664arch {
             match battery_type {
                 #[cfg(unix)]
                 BatteryType::Goldfish => {
-                    let irq_num = resources.allocate_irq().ok_or(Error::CreateBatDevices(
-                        arch::DeviceRegistrationError::AllocateIrq,
-                    ))?;
                     let (control_tube, _mmio_base) = arch::sys::unix::add_goldfish_battery(
                         &mut amls,
                         battery.1,
                         mmio_bus,
                         irq_chip,
-                        irq_num,
+                        sci_irq,
                         resources,
                         #[cfg(feature = "swap")]
                         swap_controller,

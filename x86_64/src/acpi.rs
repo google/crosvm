@@ -122,9 +122,6 @@ const FADT_FIELD_PM_TMR_LEN: usize = 91;
 const FADT_FIELD_GPE0_BLK_LEN: usize = 92;
 const FADT_FIELD_GPE1_BLK_LEN: usize = 93;
 const FADT_FIELD_GPE1_BASE: usize = 94;
-const FADT_FIELD_RTC_DAY_ALARM: usize = 106;
-const FADT_FIELD_RTC_MONTH_ALARM: usize = 107;
-const FADT_FIELD_RTC_CENTURY: usize = 108;
 const FADT_FIELD_FLAGS: usize = 112;
 const FADT_FIELD_RESET_REGISTER: usize = 116;
 const FADT_FIELD_RESET_VALUE: usize = 128;
@@ -241,13 +238,6 @@ fn create_facp_table(sci_irq: u16, force_s2idle: bool) -> SDT {
 
     facp.write(FADT_FIELD_MINOR_REVISION, FADT_MINOR_REVISION); // FADT minor version
     facp.write(FADT_FIELD_HYPERVISOR_ID, *b"CROSVM"); // Hypervisor Vendor Identity
-
-    facp.write(FADT_FIELD_RTC_CENTURY, devices::cmos::RTC_REG_CENTURY);
-    facp.write(FADT_FIELD_RTC_DAY_ALARM, devices::cmos::RTC_REG_ALARM_DAY);
-    facp.write(
-        FADT_FIELD_RTC_MONTH_ALARM,
-        devices::cmos::RTC_REG_ALARM_MONTH,
-    );
 
     facp
 }

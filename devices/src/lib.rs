@@ -12,7 +12,7 @@ pub mod bat;
 mod bus;
 #[cfg(feature = "stats")]
 mod bus_stats;
-pub mod cmos;
+mod cmos;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod debugcon;
 #[cfg(feature = "direct")]
@@ -77,6 +77,7 @@ pub use self::bus::HostHotPlugKey;
 pub use self::bus::HotPlugBus;
 #[cfg(feature = "stats")]
 pub use self::bus_stats::BusStatistics;
+pub use self::cmos::Cmos;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use self::debugcon::Debugcon;
 #[cfg(feature = "direct")]

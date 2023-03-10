@@ -30,6 +30,7 @@ use base::AsRawDescriptor;
 use base::AsRawDescriptors;
 use base::Event;
 use base::SendTube;
+#[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
 use base::Tube;
 use devices::virtio::VirtioDevice;
 use devices::BarRange;
@@ -379,7 +380,6 @@ pub struct RunnableLinuxVm<V: VmArch, Vcpu: VcpuArch> {
     /// If it's Some, then `build_vm` already created the vcpus.
     pub vcpus: Option<Vec<Vcpu>>,
     pub vm: V,
-    pub vm_request_tube: Option<Tube>,
 }
 
 /// The device and optional jail.

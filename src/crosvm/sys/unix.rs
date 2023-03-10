@@ -1846,8 +1846,6 @@ where
     )
     .context("the architecture failed to build the vm")?;
 
-    control_tubes.push(TaggedControlTube::Vm(linux.vm_request_tube.take().unwrap()));
-
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     let (hp_control_tube, hp_worker_tube) = mpsc::channel();
 
