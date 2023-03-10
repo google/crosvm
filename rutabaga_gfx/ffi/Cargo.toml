@@ -21,6 +21,9 @@ virgl_renderer = ["rutabaga_gfx/virgl_renderer"]
 virgl_renderer_next = ["rutabaga_gfx/virgl_renderer_next"]
 vulkano = ["rutabaga_gfx/vulkano"]
 
+[patch.crates-io]
+minijail = { path = "../../third_party/minijail/rust/minijail" } # ignored by ebuild
+
 [profile.dev]
 lto = true
 incremental = false
