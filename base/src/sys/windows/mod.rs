@@ -26,6 +26,7 @@ pub mod platform_timer_resolution;
 mod priority;
 // Add conditional compile?
 mod punch_hole;
+mod read_write_wrappers;
 mod sched;
 mod shm;
 mod shm_platform;
@@ -50,6 +51,7 @@ pub(crate) use mmap_platform::PROT_READ;
 pub(crate) use mmap_platform::PROT_WRITE;
 pub use priority::*;
 pub(crate) use punch_hole::file_punch_hole;
+pub use read_write_wrappers::*;
 pub use sched::*;
 pub use shm::*;
 pub use shm_platform::*;
