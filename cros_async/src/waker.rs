@@ -10,7 +10,7 @@ use std::task::RawWakerVTable;
 use std::task::Waker;
 
 /// Wrapper around a usize used as a token to uniquely identify a pending waker.
-#[derive(Debug)]
+#[derive(Debug, Hash, PartialEq, Eq, Copy, Clone)]
 pub(crate) struct WakerToken(pub(crate) usize);
 
 /// Like `futures::task::ArcWake` but uses `Weak<T>` instead of `Arc<T>`.

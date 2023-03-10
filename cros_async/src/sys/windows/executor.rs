@@ -186,7 +186,9 @@ impl Executor {
     /// Create a new `Executor` of the given `ExecutorKind`.
     pub fn with_executor_kind(kind: ExecutorKind) -> AsyncResult<Self> {
         match kind {
-            ExecutorKind::Handle => Ok(Executor::Handle(HandleExecutor::new())),
+            ExecutorKind::Handle => Ok(Executor::Handle(
+                HandleExecutor::new().map_err(crate::io_ext::Error::HandleExecutor)?,
+            )),
         }
     }
 

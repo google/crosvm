@@ -449,7 +449,7 @@ mod tests {
             assert_eq!(std::str::from_utf8(buf.as_slice()).unwrap(), "data");
         }
 
-        let ex = HandleExecutor::new();
+        let ex = HandleExecutor::new().unwrap();
         let handle_src = HandleSource::new(vec![f].into_boxed_slice()).unwrap();
         ex.run_until(read_data(&handle_src)).unwrap();
     }
@@ -482,7 +482,7 @@ mod tests {
             assert_eq!(std::str::from_utf8(vec.as_slice()).unwrap(), "data");
         }
 
-        let ex = HandleExecutor::new();
+        let ex = HandleExecutor::new().unwrap();
         let handle_src = HandleSource::new(vec![f].into_boxed_slice()).unwrap();
         ex.run_until(read_data(&handle_src)).unwrap();
     }
@@ -499,7 +499,7 @@ mod tests {
             assert_eq!(bytes_written, 4);
         }
 
-        let ex = HandleExecutor::new();
+        let ex = HandleExecutor::new().unwrap();
         let f = fs::OpenOptions::new()
             .write(true)
             .open(temp_file.path())
@@ -538,7 +538,7 @@ mod tests {
             };
         }
 
-        let ex = HandleExecutor::new();
+        let ex = HandleExecutor::new().unwrap();
         let f = fs::OpenOptions::new()
             .write(true)
             .open(temp_file.path())
@@ -568,7 +568,7 @@ mod tests {
                 .unwrap();
         }
 
-        let ex = HandleExecutor::new();
+        let ex = HandleExecutor::new().unwrap();
         let f = fs::OpenOptions::new()
             .write(true)
             .open(temp_file.path())
@@ -602,7 +602,7 @@ mod tests {
                 .unwrap();
         }
 
-        let ex = HandleExecutor::new();
+        let ex = HandleExecutor::new().unwrap();
         let f = fs::OpenOptions::new()
             .write(true)
             .open(temp_file.path())
