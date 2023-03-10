@@ -79,7 +79,8 @@ pub struct CrossDomainHeader {
 #[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 pub struct CrossDomainInit {
     pub hdr: CrossDomainHeader,
-    pub ring_id: u32,
+    pub query_ring_id: u32,
+    pub channel_ring_id: u32,
     pub channel_type: u32,
 }
 
