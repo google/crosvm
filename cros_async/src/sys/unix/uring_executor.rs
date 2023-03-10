@@ -1248,21 +1248,49 @@ mod tests {
             return;
         }
 
+        struct Cleanup(BlockingPool);
+
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                // Make sure we shutdown cleanly (BlockingPool::drop just prints a warning).
+                self.0
+                    .shutdown(Some(
+                        std::time::Instant::now() + std::time::Duration::from_secs(1),
+                    ))
+                    .unwrap();
+            }
+        }
+
         let rc = Rc::new(std::cell::Cell::new(0));
         {
             let ex = URingExecutor::new().unwrap();
             let rc_clone = rc.clone();
             ex.spawn_local(async move {
                 rc_clone.set(1);
-                let pool = BlockingPool::new(1, std::time::Duration::new(60, 0));
-                pool.spawn(|| loop {
-                    std::thread::park()
-                })
-                .await;
+                let pool = Cleanup(BlockingPool::new(1, std::time::Duration::new(60, 0)));
+                let (send, recv) = std::sync::mpsc::sync_channel::<()>(0);
+                // Spawn a blocking task.
+                let blocking_task = pool.0.spawn(move || {
+                    // Rendezvous.
+                    assert_eq!(recv.recv(), Ok(()));
+                    // Wait for drop.
+                    assert_eq!(recv.recv(), Err(std::sync::mpsc::RecvError));
+                });
+                // Make sure it has actually started (using a "rendezvous channel" send).
+                //
+                // Without this step, we'll have a race where we can shutdown the blocking pool
+                // before the worker thread pops off the task.
+                send.send(()).unwrap();
+                // Wait for it to finish
+                blocking_task.await;
                 rc_clone.set(2);
             })
             .detach();
             ex.run_until(async {}).unwrap();
+            // `ex` is dropped here. If everything is working as expected, it should drop all of
+            // its tasks, including `send` and `pool` (in that order, which is important). `pool`'s
+            // `Drop` impl will try to join all the worker threads, which should work because send
+            // half of the channel closed.
         }
         assert_eq!(rc.get(), 1);
         Rc::try_unwrap(rc).expect("Rc had too many refs");
