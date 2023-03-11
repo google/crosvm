@@ -12,10 +12,10 @@ use std::path::Path;
 use base::error;
 use base::named_pipes::BlockingMode;
 use base::named_pipes::FramingMode;
+use base::named_pipes::MultiPartMessagePipe;
 use base::named_pipes::OverlappedWrapper;
 use base::Error;
 use base::Event;
-use base::PipeConnection;
 use base::PipeTube;
 use hypervisor::MemSlot;
 use hypervisor::Vm;
@@ -71,16 +71,16 @@ pub fn handle_request<T: AsRef<Path> + std::fmt::Debug>(
 ///
 /// A helper function to keep communication with service consistent across crosvm code.
 pub fn send_service_message(
-    connection: &mut PipeConnection,
+    connection: &MultiPartMessagePipe,
     message: &[u8],
     overlapped_wrapper: &mut OverlappedWrapper,
 ) -> Result<()> {
     let size_in_bytes = message.len() as u32;
-
-    connection
-        .write_overlapped_blocking_message(&size_in_bytes.to_be_bytes(), overlapped_wrapper)?;
-    connection.write_overlapped_blocking_message(message, overlapped_wrapper)?;
-    Ok(())
+    connection.write_overlapped_blocking_message(
+        &size_in_bytes.to_be_bytes(),
+        message,
+        overlapped_wrapper,
+    )
 }
 
 /// Read and wait for the header to arrive in the named pipe. Once header is available, use the
@@ -88,7 +88,7 @@ pub fn send_service_message(
 ///
 /// A helper function to keep communication with service consistent across crosvm code.
 pub fn recv_service_message(
-    connection: &mut PipeConnection,
+    connection: &MultiPartMessagePipe,
     overlapped_wrapper: &mut OverlappedWrapper,
     exit_event: &Event,
 ) -> Result<Vec<u8>> {
