@@ -1314,7 +1314,7 @@ enum State {
         iommu: Arc<Mutex<IpcMemoryMapper>>,
     },
     /// The worker thread is running.
-    Running(WorkerThread<Result<()>>),
+    Running,
     /// Something wrong happened and the device is unusable.
     Invalid,
 }
@@ -1371,6 +1371,9 @@ pub struct VirtioVhostUser {
     // as well as the main device thread.
     state: Arc<Mutex<State>>,
 
+    // The worker thread for this proxy device, if it has been started.
+    worker_thread: Option<WorkerThread<Result<()>>>,
+
     iommu: Option<Arc<Mutex<IpcMemoryMapper>>>,
 }
 
@@ -1404,6 +1407,7 @@ impl VirtioVhostUser {
                 listener,
             })),
             pci_address,
+            worker_thread: None,
             iommu: None,
         })
     }
@@ -1491,6 +1495,11 @@ impl VirtioVhostUser {
     // Checks the device's state and starts a worker thread if it's ready.
     // The thread will process all messages to this device and send out messages in response.
     fn try_starting_worker(&mut self) {
+        // If a thread is already running, do nothing here.
+        if self.worker_thread.is_some() {
+            return;
+        }
+
         let mut state = self.state.lock();
 
         // Check the device state to decide whether start a new worker thread.
@@ -1499,7 +1508,7 @@ impl VirtioVhostUser {
         match *state {
             State::Activated { .. } => (),
             _ => {
-                // If the device is not ready or a thread is already running, do nothing here.
+                // If the device is not ready, do nothing here.
                 return;
             }
         };
@@ -1568,7 +1577,7 @@ impl VirtioVhostUser {
 
         // This thread will wait for the sibling to connect and the continuously parse messages from
         // the sibling as well as the device (over Virtio).
-        *state = State::Running(WorkerThread::start("v_vhost_user", move |kill_evt| {
+        self.worker_thread = Some(WorkerThread::start("v_vhost_user", move |kill_evt| {
             // Block until the connection with the sibling is established. We do this in a
             // thread to avoid blocking the main thread.
             let (socket, _) = listener
@@ -1666,6 +1675,7 @@ impl VirtioVhostUser {
                 }
             }
         }));
+        *state = State::Running;
     }
 }
 
@@ -1912,7 +1922,7 @@ impl VirtioDevice for VirtioVhostUser {
                     main_process_tube,
                 };
             }
-            State::Running(worker_thread) => {
+            State::Running => {
                 // TODO(b/216407443): The current implementation doesn't support the case where
                 // vvu-proxy is reset while running.
                 // So, the state is changed to `Invalid` in this case below.
@@ -1922,8 +1932,11 @@ impl VirtioDevice for VirtioVhostUser {
 
                 // Drop the lock, as the worker thread might change the state.
                 drop(state);
-                if let Err(e) = worker_thread.stop() {
-                    error!("failed to get back resources: {:?}", e);
+
+                if let Some(worker_thread) = self.worker_thread.take() {
+                    if let Err(e) = worker_thread.stop() {
+                        error!("failed to get back resources: {:?}", e);
+                    }
                 }
 
                 let mut state = self.state.lock();
