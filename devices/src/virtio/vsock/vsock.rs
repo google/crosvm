@@ -692,7 +692,10 @@ impl Worker {
 
                 let pipe = &mut connection.pipe;
                 // We have to provide a OVERLAPPED struct to write to the pipe.
-                if let Err(e) = pipe.write_overlapped(data, &mut overlapped_wrapper) {
+                //
+                // SAFETY: safe because data & overlapped_wrapper live until the
+                // overlapped operation completes (we wait on completion below).
+                if let Err(e) = unsafe { pipe.write_overlapped(data, &mut overlapped_wrapper) } {
                     return Err(VsockError::WriteFailed(port, e));
                 }
             } else {

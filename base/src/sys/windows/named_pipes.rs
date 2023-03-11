@@ -141,10 +141,11 @@ pub trait WriteOverlapped {
     /// If successful, the write operation will complete asynchronously, and
     /// `write_result()` should be called to get the result.
     ///
-    /// NOTE: `buf` and `overlapped_wrapper` will be in use for the duration of
-    /// the overlapped operation. These should not be reused until
-    /// `write_result()` is called.
-    fn write_overlapped(
+    /// # Safety
+    /// `buf` and `overlapped_wrapper` will be in use for the duration of
+    /// the overlapped operation. These must not be reused and must live until
+    /// after `write_result()` has been called.
+    unsafe fn write_overlapped(
         &mut self,
         buf: &mut [u8],
         overlapped_wrapper: &mut OverlappedWrapper,
@@ -170,10 +171,11 @@ pub trait ReadOverlapped {
     /// If successful, the read operation will complete asynchronously, and
     /// `read_result()` should be called to get the result.
     ///
-    /// NOTE: `buf` and `overlapped_wrapper` will be in use for the duration of
-    /// the overlapped operation. These should not be reused until
-    /// `read_result()` is called.
-    fn read_overlapped(
+    /// # Safety
+    /// `buf` and `overlapped_wrapper` will be in use for the duration of
+    /// the overlapped operation. These must not be reused and must live until
+    /// after `read_result()` has been called.
+    unsafe fn read_overlapped(
         &mut self,
         buf: &mut [u8],
         overlapped_wrapper: &mut OverlappedWrapper,
@@ -700,7 +702,8 @@ impl PipeConnection {
     /// Writes the bytes from a slice into the pipe. Returns the number of bytes written, which
     /// callers should check to ensure that it was the number expected.
     pub fn write<T: PipeSendable>(&self, buf: &[T]) -> Result<usize> {
-        PipeConnection::write_internal(&self.handle, buf, None)
+        // SAFETY: overlapped is None so this is safe.
+        unsafe { PipeConnection::write_internal(&self.handle, buf, None) }
     }
 
     /// Sends, blockingly,`buf` over the pipe in its entirety. Partial write is considered
@@ -710,7 +713,9 @@ impl PipeConnection {
         buf: &[T],
         overlapped_wrapper: &mut OverlappedWrapper,
     ) -> Result<()> {
-        self.write_overlapped(buf, overlapped_wrapper)?;
+        // SAFETY: buf & overlapped_wrapper live until the overlapped operation is
+        // complete, so this is safe.
+        unsafe { self.write_overlapped(buf, overlapped_wrapper)? };
 
         let size_written_in_bytes = self.get_overlapped_result(overlapped_wrapper)?;
 
@@ -740,8 +745,9 @@ impl PipeConnection {
     /// also help with waiting until the write operation is complete. The pipe must be opened in
     /// overlapped otherwise there may be unexpected behavior.
     ///
-    /// WARNING: this function is unsafe. TODO(b/272812234): mark unsafe.
-    pub fn write_overlapped<T: PipeSendable>(
+    /// # Safety
+    /// * buf & overlapped_wrapper MUST live until the overlapped operation is complete.
+    pub unsafe fn write_overlapped<T: PipeSendable>(
         &mut self,
         buf: &[T],
         overlapped_wrapper: &mut OverlappedWrapper,
@@ -763,8 +769,13 @@ impl PipeConnection {
     }
 
     /// Helper for `write_overlapped` and `write`.
-    /// WARNING: this function is unsafe for overlapped IO. TODO(b/272812234): mark unsafe.
-    fn write_internal<T: PipeSendable>(
+    ///
+    /// # Safety
+    /// * Safe if overlapped is None.
+    /// * Safe if overlapped is Some and:
+    ///   + buf lives until the overlapped operation is complete.
+    ///   + overlapped lives until the overlapped operation is complete.
+    unsafe fn write_internal<T: PipeSendable>(
         handle: &SafeDescriptor,
         buf: &[T],
         overlapped: Option<&mut OVERLAPPED>,
@@ -1224,13 +1235,21 @@ mod tests {
         let res = p1.get_overlapped_result(&mut overlapped_wrapper);
         assert!(res.is_err());
 
-        let res = p1.write_overlapped(&[75, 77, 54, 82, 76, 65], &mut overlapped_wrapper);
+        let data = vec![75, 77, 54, 82, 76, 65];
+        // SAFETY: safe because: data & overlapped wrapper live until the
+        // operation is verified completed below.
+        let res = unsafe { p1.write_overlapped(&data, &mut overlapped_wrapper) };
         assert!(res.is_ok());
 
-        let res = p2.write_overlapped(&[75, 77, 54, 82, 76, 65], &mut overlapped_wrapper);
+        // SAFETY: safe because we know the unsafe re-use of overlapped wrapper
+        // will error out.
+        let res =
+            unsafe { p2.write_overlapped(&[75, 77, 54, 82, 76, 65], &mut overlapped_wrapper) };
         assert!(res.is_err());
 
         let mut recv_buffer: [u8; 6] = [0; 6];
+        // SAFETY: safe because we know the unsafe re-use of overlapped wrapper
+        // will error out.
         let res = unsafe { p2.read_overlapped(&mut recv_buffer, &mut overlapped_wrapper) };
         assert!(res.is_err());
 
@@ -1238,7 +1257,11 @@ mod tests {
         assert!(res.is_ok());
 
         let mut recv_buffer: [u8; 6] = [0; 6];
+        // SAFETY: safe because recv_buffer & overlapped_wrapper live until the
+        // operation is verified completed below.
         let res = unsafe { p2.read_overlapped(&mut recv_buffer, &mut overlapped_wrapper) };
+        assert!(res.is_ok());
+        let res = p2.get_overlapped_result(&mut overlapped_wrapper);
         assert!(res.is_ok());
     }
 

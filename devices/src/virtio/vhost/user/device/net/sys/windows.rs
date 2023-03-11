@@ -90,9 +90,15 @@ async fn run_rx_queue<T: TapT>(
     let mut rx_buf = [0u8; MAX_BUFFER_SIZE];
     let mut rx_count = 0;
     let mut deferred_rx = false;
-    tap.as_source_mut()
-        .read_overlapped(&mut rx_buf, &mut overlapped_wrapper)
-        .expect("read_overlapped failed");
+
+    // SAFETY: safe because rx_buf & overlapped_wrapper live until the
+    // overlapped operation completes and are not used in any other operations
+    // until that time.
+    unsafe {
+        tap.as_source_mut()
+            .read_overlapped(&mut rx_buf, &mut overlapped_wrapper)
+            .expect("read_overlapped failed")
+    };
     loop {
         // If we already have a packet from deferred RX, we don't need to wait for the slirp device.
         if !deferred_rx {

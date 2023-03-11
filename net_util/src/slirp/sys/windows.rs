@@ -263,13 +263,14 @@ impl Read for Slirp {
 }
 
 impl ReadOverlapped for Slirp {
-    fn read_overlapped(
+    /// # Safety
+    /// See requirements on [ReadOverlapped].
+    unsafe fn read_overlapped(
         &mut self,
         buf: &mut [u8],
         overlapped_wrapper: &mut OverlappedWrapper,
     ) -> IoResult<()> {
-        // Safe because we are reading simple bytes.
-        unsafe { self.guest_pipe.read_overlapped(buf, overlapped_wrapper) }
+        self.guest_pipe.read_overlapped(buf, overlapped_wrapper)
     }
 
     fn read_result(&mut self, overlapped_wrapper: &mut OverlappedWrapper) -> IoResult<usize> {
@@ -287,8 +288,12 @@ impl ReadOverlapped for Slirp {
 
 impl Write for Slirp {
     fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
-        self.guest_pipe
-            .write_overlapped(buf, &mut self.overlapped_wrapper)?;
+        // SAFETY: safe because the operation ends with buf & overlapped_wrapper
+        // still in scope.
+        unsafe {
+            self.guest_pipe
+                .write_overlapped(buf, &mut self.overlapped_wrapper)?
+        };
         self.guest_pipe
             .get_overlapped_result(&mut self.overlapped_wrapper)
             .map(|x| x as usize)
@@ -300,7 +305,9 @@ impl Write for Slirp {
 }
 
 impl WriteOverlapped for Slirp {
-    fn write_overlapped(
+    /// # Safety
+    /// See requirements on [WriteOverlapped].
+    unsafe fn write_overlapped(
         &mut self,
         buf: &mut [u8],
         overlapped_wrapper: &mut OverlappedWrapper,

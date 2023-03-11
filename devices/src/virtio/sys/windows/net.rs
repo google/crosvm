@@ -107,7 +107,10 @@ pub fn process_rx<I: SignalableInterrupt, T: TapT>(
                     needs_interrupt = true;
                 }
 
-                match tap.read_overlapped(rx_buf, overlapped_wrapper) {
+                // SAFETY: safe because rx_buf & overlapped_wrapper live until
+                // the overlapped operation completes and are not used in any
+                // other operations until that time.
+                match unsafe { tap.read_overlapped(rx_buf, overlapped_wrapper) } {
                     Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
                         warn!("net: rx: read_overlapped failed: {}", e);
                         break;
@@ -128,7 +131,10 @@ pub fn process_rx<I: SignalableInterrupt, T: TapT>(
                 // overlapped operation.
                 if e.kind() != std::io::ErrorKind::WouldBlock {
                     warn!("net: rx: failed to read tap: {}", e);
-                    match tap.read_overlapped(rx_buf, overlapped_wrapper) {
+                    // SAFETY: safe because rx_buf & overlapped_wrapper live until
+                    // the overlapped operation completes and are not used in any
+                    // other operations until that time.
+                    match unsafe { tap.read_overlapped(rx_buf, overlapped_wrapper) } {
                         Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
                             warn!("net: rx: read_overlapped failed: {}", e);
                             break;
