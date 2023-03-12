@@ -2,17 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-//! `URingExecutor`
-//!
-//! The executor runs all given futures to completion. Futures register wakers associated with
-//! io_uring operations. A waker is called when the set of uring ops the waker is waiting on
-//! completes.
-//!
-//! `URingExecutor` is meant to be used with the `futures-rs` crate that provides combinators and
-//! utility functions to combine futures. In general, the interface provided by `URingExecutor`
-//! shouldn't be used directly. Instead, use them by interacting with implementors of `IoSource`,
-//! and the high-level future functions.
-//!
+// TODO: Move this doc to one of the public APIs, it isn't io_uring specific.
+
+//! `UringReactor`
 //!
 //! ## Read/Write buffer management.
 //!
@@ -61,8 +53,6 @@ use std::mem::MaybeUninit;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::io::RawFd;
 use std::pin::Pin;
-use std::sync::atomic::AtomicI32;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Weak;
 use std::task::Context;
@@ -71,31 +61,28 @@ use std::task::Waker;
 use std::thread;
 use std::thread::ThreadId;
 
-use async_task::Task;
 use base::trace;
 use base::warn;
 use base::AsRawDescriptor;
 use base::EventType;
 use base::RawDescriptor;
-use futures::task::noop_waker;
 use io_uring::URingAllowlist;
 use io_uring::URingContext;
 use io_uring::URingOperation;
 use once_cell::sync::Lazy;
-use pin_utils::pin_mut;
 use remain::sorted;
 use slab::Slab;
 use sync::Mutex;
 use thiserror::Error as ThisError;
 
+use crate::common_executor::RawExecutor;
+use crate::common_executor::Reactor;
 use crate::mem::BackingMemory;
 use crate::mem::MemRegion;
-use crate::queue::RunnableQueue;
-use crate::waker::new_waker;
 use crate::waker::WakerToken;
 use crate::waker::WeakWake;
-use crate::BlockingPool;
-use crate::DetachedTasks;
+use crate::AsyncResult;
+use crate::IoSource;
 
 #[sorted]
 #[derive(Debug, ThisError)]
@@ -110,7 +97,7 @@ pub enum Error {
     #[error("Error enabling the URing context: {0}")]
     EnablingContext(io_uring::Error),
     /// The Executor is gone.
-    #[error("The URingExecutor is gone")]
+    #[error("The executor is gone")]
     ExecutorGone,
     /// Invalid offset or length given for an iovec in backing memory.
     #[error("Invalid offset/len for getting an iovec")]
@@ -207,7 +194,7 @@ pub(crate) fn check_uring_availability() -> Result<()> {
 
 pub struct RegisteredSource {
     tag: usize,
-    ex: Weak<RawExecutor>,
+    ex: Weak<RawExecutor<UringReactor>>,
 }
 
 impl RegisteredSource {
@@ -218,7 +205,9 @@ impl RegisteredSource {
         addrs: &[MemRegion],
     ) -> Result<PendingOperation> {
         let ex = self.ex.upgrade().ok_or(Error::ExecutorGone)?;
-        let token = ex.submit_read_to_vectored(self, mem, file_offset, addrs)?;
+        let token = ex
+            .reactor
+            .submit_read_to_vectored(self, mem, file_offset, addrs)?;
 
         Ok(PendingOperation {
             waker_token: Some(token),
@@ -234,7 +223,9 @@ impl RegisteredSource {
         addrs: &[MemRegion],
     ) -> Result<PendingOperation> {
         let ex = self.ex.upgrade().ok_or(Error::ExecutorGone)?;
-        let token = ex.submit_write_from_vectored(self, mem, file_offset, addrs)?;
+        let token = ex
+            .reactor
+            .submit_write_from_vectored(self, mem, file_offset, addrs)?;
 
         Ok(PendingOperation {
             waker_token: Some(token),
@@ -245,7 +236,7 @@ impl RegisteredSource {
 
     pub fn start_fallocate(&self, offset: u64, len: u64, mode: u32) -> Result<PendingOperation> {
         let ex = self.ex.upgrade().ok_or(Error::ExecutorGone)?;
-        let token = ex.submit_fallocate(self, offset, len, mode)?;
+        let token = ex.reactor.submit_fallocate(self, offset, len, mode)?;
 
         Ok(PendingOperation {
             waker_token: Some(token),
@@ -256,7 +247,7 @@ impl RegisteredSource {
 
     pub fn start_fsync(&self) -> Result<PendingOperation> {
         let ex = self.ex.upgrade().ok_or(Error::ExecutorGone)?;
-        let token = ex.submit_fsync(self)?;
+        let token = ex.reactor.submit_fsync(self)?;
 
         Ok(PendingOperation {
             waker_token: Some(token),
@@ -269,7 +260,7 @@ impl RegisteredSource {
         let events = EventType::Read;
 
         let ex = self.ex.upgrade().ok_or(Error::ExecutorGone)?;
-        let token = ex.submit_poll(self, events)?;
+        let token = ex.reactor.submit_poll(self, events)?;
 
         Ok(PendingOperation {
             waker_token: Some(token),
@@ -282,21 +273,10 @@ impl RegisteredSource {
 impl Drop for RegisteredSource {
     fn drop(&mut self) {
         if let Some(ex) = self.ex.upgrade() {
-            ex.deregister_source(self);
+            ex.reactor.deregister_source(self);
         }
     }
 }
-
-// Indicates that the executor is either within or about to make an io_uring_enter syscall. When a
-// waker sees this value, it will add and submit a NOP to the uring, which will wake up the thread
-// blocked on the io_uring_enter syscall.
-const WAITING: i32 = 0xb80d_21b5u32 as i32;
-
-// Indicates that the executor is processing any futures that are ready to run.
-const PROCESSING: i32 = 0xdb31_83a3u32 as i32;
-
-// Indicates that one or more futures may be ready to make progress.
-const WOKEN: i32 = 0x0fc7_8f7eu32 as i32;
 
 // Number of entries in the ring.
 const NUM_ENTRIES: usize = 256;
@@ -321,21 +301,18 @@ struct Ring {
     registered_sources: Slab<Arc<File>>,
 }
 
-struct RawExecutor {
+/// `Reactor` that manages async IO work using io_uring.
+pub struct UringReactor {
     // The URingContext needs to be first so that it is dropped first, closing the uring fd, and
     // releasing the resources borrowed by the kernel before we free them.
     ctx: URingContext,
-    queue: RunnableQueue,
     ring: Mutex<Ring>,
-    blocking_pool: BlockingPool,
     thread_id: Mutex<Option<ThreadId>>,
-    state: AtomicI32,
-    detached_tasks: Mutex<DetachedTasks>,
 }
 
-impl RawExecutor {
-    fn new() -> Result<RawExecutor> {
-        // Allow operations only that the RawExecutor really submits to enhance the security.
+impl UringReactor {
+    fn new() -> Result<UringReactor> {
+        // Allow operations only that the UringReactor really submits to enhance the security.
         let mut restrictions = URingAllowlist::new();
         let ops = [
             URingOperation::Writev,
@@ -354,88 +331,14 @@ impl RawExecutor {
         let ctx =
             URingContext::new(NUM_ENTRIES, Some(&restrictions)).map_err(Error::CreatingContext)?;
 
-        Ok(RawExecutor {
+        Ok(UringReactor {
             ctx,
-            queue: RunnableQueue::new(),
             ring: Mutex::new(Ring {
                 ops: Slab::with_capacity(NUM_ENTRIES),
                 registered_sources: Slab::with_capacity(NUM_ENTRIES),
             }),
-            blocking_pool: Default::default(),
             thread_id: Mutex::new(None),
-            state: AtomicI32::new(PROCESSING),
-            detached_tasks: Mutex::new(DetachedTasks::new()),
         })
-    }
-
-    fn wake(&self) {
-        let oldstate = self.state.swap(WOKEN, Ordering::Release);
-        if oldstate == WAITING {
-            let mut ring = self.ring.lock();
-            let entry = ring.ops.vacant_entry();
-            let next_op_token = entry.key();
-            if let Err(e) = self.ctx.add_nop(usize_to_u64(next_op_token)) {
-                warn!("Failed to add NOP for waking up executor: {}", e);
-            }
-            entry.insert(OpStatus::Nop);
-            mem::drop(ring);
-
-            match self.ctx.submit() {
-                Ok(()) => {}
-                // If the kernel's submit ring is full then we know we won't block when calling
-                // io_uring_enter, which is all we really care about.
-                Err(io_uring::Error::RingEnter(libc::EBUSY)) => {}
-                Err(e) => warn!("Failed to submit NOP for waking up executor: {}", e),
-            }
-        }
-    }
-
-    fn spawn<F>(self: &Arc<Self>, f: F) -> UringExecutorTaskHandle<F::Output>
-    where
-        F: Future + Send + 'static,
-        F::Output: Send + 'static,
-    {
-        let raw = Arc::downgrade(self);
-        let schedule = move |runnable| {
-            if let Some(r) = raw.upgrade() {
-                r.queue.push_back(runnable);
-                r.wake();
-            }
-        };
-        let (runnable, task) = async_task::spawn(f, schedule);
-        runnable.schedule();
-        UringExecutorTaskHandle {
-            task,
-            raw: Arc::downgrade(self),
-        }
-    }
-
-    fn spawn_local<F>(self: &Arc<Self>, f: F) -> UringExecutorTaskHandle<F::Output>
-    where
-        F: Future + 'static,
-        F::Output: 'static,
-    {
-        let raw = Arc::downgrade(self);
-        let schedule = move |runnable| {
-            if let Some(r) = raw.upgrade() {
-                r.queue.push_back(runnable);
-                r.wake();
-            }
-        };
-        let (runnable, task) = async_task::spawn_local(f, schedule);
-        runnable.schedule();
-        UringExecutorTaskHandle {
-            task,
-            raw: Arc::downgrade(self),
-        }
-    }
-
-    fn spawn_blocking<F, R>(self: &Arc<Self>, f: F) -> UringExecutorTaskHandle<R>
-    where
-        F: FnOnce() -> R + Send + 'static,
-        R: Send + 'static,
-    {
-        self.spawn(self.blocking_pool.spawn(f))
     }
 
     fn runs_tasks_on_current_thread(&self) -> bool {
@@ -443,85 +346,6 @@ impl RawExecutor {
         executor_thread
             .map(|id| id == thread::current().id())
             .unwrap_or(false)
-    }
-
-    fn run<F: Future>(&self, cx: &mut Context, done: F) -> Result<F::Output> {
-        let current_thread = thread::current().id();
-        let mut thread_id = self.thread_id.lock();
-        assert_eq!(
-            *thread_id.get_or_insert(current_thread),
-            current_thread,
-            "`URingExecutor::run` cannot be called from more than one thread"
-        );
-        mem::drop(thread_id);
-
-        pin_mut!(done);
-        loop {
-            self.state.store(PROCESSING, Ordering::Release);
-            for runnable in self.queue.iter() {
-                runnable.run();
-            }
-
-            if let Ok(mut tasks) = self.detached_tasks.try_lock() {
-                tasks.poll(cx);
-            }
-
-            if let Poll::Ready(val) = done.as_mut().poll(cx) {
-                return Ok(val);
-            }
-
-            let oldstate = self.state.compare_exchange(
-                PROCESSING,
-                WAITING,
-                Ordering::Acquire,
-                Ordering::Acquire,
-            );
-            if let Err(oldstate) = oldstate {
-                debug_assert_eq!(oldstate, WOKEN);
-                // One or more futures have become runnable.
-                continue;
-            }
-
-            trace!(
-                "Waiting on events, {} pending ops",
-                self.ring.lock().ops.len()
-            );
-            let events = self.ctx.wait().map_err(Error::URingEnter)?;
-
-            // Set the state back to PROCESSING to prevent any tasks woken up by the loop below from
-            // writing to the eventfd.
-            self.state.store(PROCESSING, Ordering::Release);
-
-            let mut ring = self.ring.lock();
-            for (raw_token, result) in events {
-                // While the `expect()` might fail on arbitrary `u64`s, the `raw_token` was
-                // something that we originally gave to the kernel and that was created from a
-                // `usize` so we should always be able to convert it back into a `usize`.
-                let token = raw_token
-                    .try_into()
-                    .expect("`u64` doesn't fit inside a `usize`");
-
-                let op = ring
-                    .ops
-                    .get_mut(token)
-                    .expect("Received completion token for unexpected operation");
-                match mem::replace(op, OpStatus::Completed(Some(result))) {
-                    // No one is waiting on a Nop.
-                    OpStatus::Nop => mem::drop(ring.ops.remove(token)),
-                    OpStatus::Pending(data) => {
-                        if data.canceled {
-                            // No one is waiting for this operation and the uring is done with
-                            // it so it's safe to remove.
-                            ring.ops.remove(token);
-                        }
-                        if let Some(waker) = data.waker {
-                            waker.wake();
-                        }
-                    }
-                    OpStatus::Completed(_) => panic!("uring operation completed more than once"),
-                }
-            }
-        }
     }
 
     fn get_result(&self, token: &WakerToken, cx: &mut Context) -> Option<io::Result<u32>> {
@@ -585,8 +409,25 @@ impl RawExecutor {
         }
     }
 
-    fn register_source(&self, f: Arc<File>) -> usize {
-        self.ring.lock().registered_sources.insert(f)
+    pub(crate) fn register_source<F: AsRawDescriptor>(
+        &self,
+        raw: &Arc<RawExecutor<UringReactor>>,
+        fd: &F,
+    ) -> Result<RegisteredSource> {
+        let duped_fd = unsafe {
+            // Safe because duplicating an FD doesn't affect memory safety, and the dup'd FD
+            // will only be added to the poll loop.
+            File::from_raw_fd(dup_fd(fd.as_raw_descriptor())?)
+        };
+
+        Ok(RegisteredSource {
+            tag: self
+                .ring
+                .lock()
+                .registered_sources
+                .insert(Arc::new(duped_fd)),
+            ex: Arc::downgrade(raw),
+        })
     }
 
     fn deregister_source(&self, source: &RegisteredSource) {
@@ -809,27 +650,40 @@ impl RawExecutor {
     }
 }
 
-impl AsRawDescriptor for RawExecutor {
-    fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.ctx.as_raw_descriptor()
+impl Reactor for UringReactor {
+    fn new() -> std::io::Result<Self> {
+        Ok(UringReactor::new()?)
     }
-}
 
-impl WeakWake for RawExecutor {
-    fn wake_by_ref(weak_self: &Weak<Self>) {
-        if let Some(arc_self) = weak_self.upgrade() {
-            RawExecutor::wake(&arc_self);
+    fn wake(&self) {
+        let mut ring = self.ring.lock();
+        let entry = ring.ops.vacant_entry();
+        let next_op_token = entry.key();
+        if let Err(e) = self.ctx.add_nop(usize_to_u64(next_op_token)) {
+            warn!("Failed to add NOP for waking up executor: {}", e);
+        }
+        entry.insert(OpStatus::Nop);
+        mem::drop(ring);
+
+        match self.ctx.submit() {
+            Ok(()) => {}
+            // If the kernel's submit ring is full then we know we won't block when calling
+            // io_uring_enter, which is all we really care about.
+            Err(io_uring::Error::RingEnter(libc::EBUSY)) => {}
+            Err(e) => warn!("Failed to submit NOP for waking up executor: {}", e),
         }
     }
-}
 
-impl Drop for RawExecutor {
-    fn drop(&mut self) {
+    fn on_executor_drop<'a>(&'a self) -> Pin<Box<dyn Future<Output = ()> + 'a>> {
+        // At this point, there are no strong references to the executor (see `on_executor_drop`
+        // docs). That means all the `RegisteredSource::ex` will fail to upgrade and so no more IO
+        // work can be submitted.
+
         // Submit cancellations for all operations
         #[allow(clippy::needless_collect)]
         let ops: Vec<_> = self
             .ring
-            .get_mut()
+            .lock()
             .ops
             .iter_mut()
             .filter_map(|op| match op.1 {
@@ -841,119 +695,107 @@ impl Drop for RawExecutor {
             self.cancel_operation(WakerToken(token));
         }
 
-        // Since the RawExecutor is wrapped in an Arc it may end up being dropped from a different
+        // Since the UringReactor is wrapped in an Arc it may end up being dropped from a different
         // thread than the one that called `run` or `run_until`. Since we know there are no other
         // references, just clear the thread id so that we don't panic.
         *self.thread_id.lock() = None;
 
-        // Now run the executor loop once more to poll any futures we just woke up.
-        let waker = noop_waker();
-        let mut cx = Context::from_waker(&waker);
-        let res = self.run(
-            &mut cx,
-            // make sure all pending uring operations are completed as kernel may
-            // try to write to memory that we may drop
-            futures::future::poll_fn(|_cx| {
-                if self.ring.lock().ops.is_empty() {
-                    Poll::Ready(())
-                } else {
-                    Poll::Pending
-                }
-            }),
+        // Make sure all pending uring operations are completed as kernel may try to write to
+        // memory that we may drop.
+        //
+        // This future doesn't use the waker, it assumes the future will always be polled after
+        // processing other woken futures.
+        // TODO: Find a more robust solution.
+        Box::pin(futures::future::poll_fn(|_cx| {
+            if self.ring.lock().ops.is_empty() {
+                Poll::Ready(())
+            } else {
+                Poll::Pending
+            }
+        }))
+    }
+
+    fn on_thread_start(&self) {
+        let current_thread = thread::current().id();
+        let mut thread_id = self.thread_id.lock();
+        assert_eq!(
+            *thread_id.get_or_insert(current_thread),
+            current_thread,
+            "`UringReactor::wait_for_work` cannot be called from more than one thread"
         );
+    }
 
-        if let Err(e) = res {
-            warn!("Failed to drive uring to completion: {}", e);
+    fn wait_for_work(&self, set_processing: impl Fn()) -> std::io::Result<()> {
+        trace!(
+            "Waiting on events, {} pending ops",
+            self.ring.lock().ops.len()
+        );
+        let events = self.ctx.wait().map_err(Error::URingEnter)?;
+
+        // Set the state back to PROCESSING to prevent any tasks woken up by the loop below from
+        // writing to the eventfd.
+        set_processing();
+
+        let mut ring = self.ring.lock();
+        for (raw_token, result) in events {
+            // While the `expect()` might fail on arbitrary `u64`s, the `raw_token` was
+            // something that we originally gave to the kernel and that was created from a
+            // `usize` so we should always be able to convert it back into a `usize`.
+            let token = raw_token
+                .try_into()
+                .expect("`u64` doesn't fit inside a `usize`");
+
+            let op = ring
+                .ops
+                .get_mut(token)
+                .expect("Received completion token for unexpected operation");
+            match mem::replace(op, OpStatus::Completed(Some(result))) {
+                // No one is waiting on a Nop.
+                OpStatus::Nop => mem::drop(ring.ops.remove(token)),
+                OpStatus::Pending(data) => {
+                    if data.canceled {
+                        // No one is waiting for this operation and the uring is done with
+                        // it so it's safe to remove.
+                        ring.ops.remove(token);
+                    }
+                    if let Some(waker) = data.waker {
+                        waker.wake();
+                    }
+                }
+                OpStatus::Completed(_) => panic!("uring operation completed more than once"),
+            }
         }
+
+        Ok(())
+    }
+
+    fn new_source<F: AsRawDescriptor>(
+        &self,
+        ex: &Arc<RawExecutor<Self>>,
+        f: F,
+    ) -> AsyncResult<IoSource<F>> {
+        Ok(IoSource::Uring(super::UringSource::new(f, ex)?))
     }
 }
 
-pub struct UringExecutorTaskHandle<R> {
-    task: Task<R>,
-    raw: Weak<RawExecutor>,
-}
-
-impl<R: Send + 'static> UringExecutorTaskHandle<R> {
-    pub fn detach(self) {
-        if let Some(raw) = self.raw.upgrade() {
-            raw.detached_tasks.lock().push(self.task);
-        }
-    }
-}
-
-impl<R: 'static> Future for UringExecutorTaskHandle<R> {
-    type Output = R;
-
-    fn poll(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context,
-    ) -> std::task::Poll<Self::Output> {
-        Pin::new(&mut self.task).poll(cx)
-    }
-}
-
-/// An executor that uses io_uring for its asynchronous I/O operations. See the documentation of
-/// `Executor` for more details about the methods.
-#[derive(Clone)]
-pub struct URingExecutor {
-    raw: Arc<RawExecutor>,
-}
-
-impl URingExecutor {
-    pub fn new() -> Result<URingExecutor> {
-        let raw = RawExecutor::new().map(Arc::new)?;
-
-        Ok(URingExecutor { raw })
-    }
-
-    pub fn spawn<F>(&self, f: F) -> UringExecutorTaskHandle<F::Output>
-    where
-        F: Future + Send + 'static,
-        F::Output: Send + 'static,
-    {
-        self.raw.spawn(f)
-    }
-
-    pub fn spawn_local<F>(&self, f: F) -> UringExecutorTaskHandle<F::Output>
-    where
-        F: Future + 'static,
-        F::Output: 'static,
-    {
-        self.raw.spawn_local(f)
-    }
-
-    pub fn spawn_blocking<F, R>(&self, f: F) -> UringExecutorTaskHandle<R>
-    where
-        F: FnOnce() -> R + Send + 'static,
-        R: Send + 'static,
-    {
-        self.raw.spawn_blocking(f)
-    }
-
-    pub fn run_until<F: Future>(&self, f: F) -> Result<F::Output> {
-        let waker = new_waker(Arc::downgrade(&self.raw));
-        let mut ctx = Context::from_waker(&waker);
-        self.raw.run(&mut ctx, f)
-    }
-
-    /// Register a file and memory pair for buffered asynchronous operation.
-    pub(crate) fn register_source<F: AsRawDescriptor>(&self, fd: &F) -> Result<RegisteredSource> {
-        let duped_fd = unsafe {
-            // Safe because duplicating an FD doesn't affect memory safety, and the dup'd FD
-            // will only be added to the poll loop.
-            File::from_raw_fd(dup_fd(fd.as_raw_descriptor())?)
-        };
-
-        Ok(RegisteredSource {
-            tag: self.raw.register_source(Arc::new(duped_fd)),
-            ex: Arc::downgrade(&self.raw),
-        })
-    }
-}
-
-impl AsRawDescriptor for URingExecutor {
+impl AsRawDescriptor for UringReactor {
     fn as_raw_descriptor(&self) -> RawDescriptor {
-        self.raw.as_raw_descriptor()
+        self.ctx.as_raw_descriptor()
+    }
+}
+
+impl WeakWake for UringReactor {
+    fn wake_by_ref(weak_self: &Weak<Self>) {
+        if let Some(arc_self) = weak_self.upgrade() {
+            Reactor::wake(&*arc_self);
+        }
+    }
+}
+
+impl Drop for UringReactor {
+    fn drop(&mut self) {
+        // The ring should have been drained when the executor's Drop ran.
+        assert!(self.ring.lock().ops.is_empty());
     }
 }
 
@@ -976,7 +818,7 @@ fn usize_to_u64(val: usize) -> u64 {
 
 pub struct PendingOperation {
     waker_token: Option<WakerToken>,
-    ex: Weak<RawExecutor>,
+    ex: Weak<RawExecutor<UringReactor>>,
     submitted: bool,
 }
 
@@ -989,15 +831,15 @@ impl Future for PendingOperation {
             .as_ref()
             .expect("PendingOperation polled after returning Poll::Ready");
         if let Some(ex) = self.ex.upgrade() {
-            if let Some(result) = ex.get_result(token, cx) {
+            if let Some(result) = ex.reactor.get_result(token, cx) {
                 self.waker_token = None;
                 Poll::Ready(result.map_err(Error::Io))
             } else {
                 // If we haven't submitted the operation yet, and the executor runs on a different
                 // thread then submit it now. Otherwise the executor will submit it automatically
                 // the next time it calls UringContext::wait.
-                if !self.submitted && !ex.runs_tasks_on_current_thread() {
-                    match ex.ctx.submit() {
+                if !self.submitted && !ex.reactor.runs_tasks_on_current_thread() {
+                    match ex.reactor.ctx.submit() {
                         Ok(()) => self.submitted = true,
                         // If the kernel ring is full then wait until some ops are removed from the
                         // completion queue. This op should get submitted the next time the executor
@@ -1018,7 +860,7 @@ impl Drop for PendingOperation {
     fn drop(&mut self) {
         if let Some(waker_token) = self.waker_token.take() {
             if let Some(ex) = self.ex.upgrade() {
-                ex.cancel_operation(waker_token);
+                ex.reactor.cancel_operation(waker_token);
             }
         }
     }
@@ -1041,17 +883,18 @@ mod tests {
     use crate::mem::BackingMemory;
     use crate::mem::MemRegion;
     use crate::mem::VecIoWrapper;
+    use crate::BlockingPool;
 
     // A future that returns ready when the uring queue is empty.
     struct UringQueueEmpty<'a> {
-        ex: &'a URingExecutor,
+        ex: &'a Arc<RawExecutor<UringReactor>>,
     }
 
     impl<'a> Future for UringQueueEmpty<'a> {
         type Output = ();
 
         fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
-            if self.ex.raw.ring.lock().ops.is_empty() {
+            if self.ex.reactor.ring.lock().ops.is_empty() {
                 Poll::Ready(())
             } else {
                 Poll::Pending
@@ -1074,10 +917,13 @@ mod tests {
         let (rx, mut tx) = base::pipe(true).unwrap();
 
         // Set up the TLS for the uring_executor by creating one.
-        let ex = URingExecutor::new().unwrap();
+        let ex = RawExecutor::<UringReactor>::new().unwrap();
 
         // Register the receive side of the pipe with the executor.
-        let registered_source = ex.register_source(&rx).expect("register source failed");
+        let registered_source = ex
+            .reactor
+            .register_source(&ex, &rx)
+            .expect("register source failed");
 
         // Submit the op to the kernel. Next, test that the source keeps its Arc open for the duration
         // of the op.
@@ -1118,10 +964,13 @@ mod tests {
         let (mut rx, tx) = base::new_pipe_full().expect("Pipe failed");
 
         // Set up the TLS for the uring_executor by creating one.
-        let ex = URingExecutor::new().unwrap();
+        let ex = RawExecutor::<UringReactor>::new().unwrap();
 
         // Register the receive side of the pipe with the executor.
-        let registered_source = ex.register_source(&tx).expect("register source failed");
+        let registered_source = ex
+            .reactor
+            .register_source(&ex, &tx)
+            .expect("register source failed");
 
         // Submit the op to the kernel. Next, test that the source keeps its Arc open for the duration
         // of the op.
@@ -1168,10 +1017,16 @@ mod tests {
 
         let (rx, tx) = base::pipe(true).expect("Pipe failed");
 
-        let ex = URingExecutor::new().unwrap();
+        let ex = RawExecutor::<UringReactor>::new().unwrap();
 
-        let rx_source = ex.register_source(&rx).expect("register source failed");
-        let tx_source = ex.register_source(&tx).expect("register source failed");
+        let rx_source = ex
+            .reactor
+            .register_source(&ex, &rx)
+            .expect("register source failed");
+        let tx_source = ex
+            .reactor
+            .register_source(&ex, &tx)
+            .expect("register source failed");
 
         let read_task = rx_source
             .start_read_to_mem(None, Arc::clone(&bm), &[MemRegion { offset: 0, len: 8 }])
@@ -1210,9 +1065,12 @@ mod tests {
 
         let (mut rx, mut tx) = base::pipe(true).expect("Pipe failed");
 
-        let ex = URingExecutor::new().unwrap();
+        let ex = RawExecutor::<UringReactor>::new().unwrap();
 
-        let tx_source = ex.register_source(&tx).expect("Failed to register source");
+        let tx_source = ex
+            .reactor
+            .register_source(&ex, &tx)
+            .expect("Failed to register source");
         let bm = Arc::new(VecIoWrapper::from(VALUE.to_ne_bytes().to_vec()));
         let op = tx_source
             .start_write_from_mem(
@@ -1263,7 +1121,7 @@ mod tests {
 
         let rc = Rc::new(std::cell::Cell::new(0));
         {
-            let ex = URingExecutor::new().unwrap();
+            let ex = RawExecutor::<UringReactor>::new().unwrap();
             let rc_clone = rc.clone();
             ex.spawn_local(async move {
                 rc_clone.set(1);
@@ -1302,7 +1160,7 @@ mod tests {
             return;
         }
 
-        let ex = URingExecutor::new().unwrap();
+        let ex = RawExecutor::<UringReactor>::new().unwrap();
 
         let ex2 = ex.clone();
         let t = thread::spawn(move || ex2.run_until(async {}));
@@ -1312,7 +1170,10 @@ mod tests {
         // Leave an uncompleted operation in the queue so that the drop impl will try to drive it to
         // completion.
         let (_rx, tx) = base::pipe(true).expect("Pipe failed");
-        let tx = ex.register_source(&tx).expect("Failed to register source");
+        let tx = ex
+            .reactor
+            .register_source(&ex, &tx)
+            .expect("Failed to register source");
         let bm = Arc::new(VecIoWrapper::from(0xf2e96u64.to_ne_bytes().to_vec()));
         let op = tx
             .start_write_from_mem(

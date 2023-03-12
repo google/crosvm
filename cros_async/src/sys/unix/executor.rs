@@ -4,6 +4,7 @@
 
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 
 use base::debug;
 use base::warn;
@@ -14,32 +15,16 @@ use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error as ThisError;
 
-use super::poll_source::Error as PollError;
+use super::fd_executor::EpollReactor;
 use super::uring_executor::check_uring_availability;
 use super::uring_executor::is_uring_stable;
 use super::uring_executor::Error as UringError;
-use super::FdExecutor;
-use super::PollSource;
-use super::URingExecutor;
-use super::UringSource;
+use super::uring_executor::UringReactor;
+use crate::common_executor;
+use crate::common_executor::RawExecutor;
 use crate::AsyncResult;
 use crate::IntoAsync;
 use crate::IoSource;
-
-pub(crate) fn async_uring_from<'a, F: IntoAsync + 'a>(
-    f: F,
-    ex: &URingExecutor,
-) -> AsyncResult<IoSource<F>> {
-    Ok(IoSource::Uring(UringSource::new(f, ex)?))
-}
-
-/// Creates an `IoSource` using the fd_executor.
-pub(crate) fn async_poll_from<'a, F: IntoAsync + 'a>(
-    f: F,
-    ex: &FdExecutor,
-) -> AsyncResult<IoSource<F>> {
-    Ok(IoSource::Epoll(PollSource::new(f, ex)?))
-}
 
 /// An executor for scheduling tasks that poll futures to completion.
 ///
@@ -140,8 +125,8 @@ pub(crate) fn async_poll_from<'a, F: IntoAsync + 'a>(
 
 #[derive(Clone)]
 pub enum Executor {
-    Uring(URingExecutor),
-    Fd(FdExecutor),
+    Uring(Arc<RawExecutor<UringReactor>>),
+    Fd(Arc<RawExecutor<EpollReactor>>),
 }
 
 /// An enum to express the kind of the backend of `Executor`
@@ -181,8 +166,8 @@ pub enum SetDefaultExecutorKindError {
 }
 
 pub enum TaskHandle<R> {
-    Uring(super::UringExecutorTaskHandle<R>),
-    Fd(super::FdExecutorTaskHandle<R>),
+    Uring(common_executor::TaskHandle<UringReactor, R>),
+    Fd(common_executor::TaskHandle<EpollReactor, R>),
 }
 
 impl<R: Send + 'static> TaskHandle<R> {
@@ -214,10 +199,8 @@ impl Executor {
     /// Create a new `Executor` of the given `ExecutorKind`.
     pub fn with_executor_kind(kind: ExecutorKind) -> AsyncResult<Self> {
         match kind {
-            ExecutorKind::Uring => Ok(URingExecutor::new().map(Executor::Uring)?),
-            ExecutorKind::Fd => Ok(FdExecutor::new()
-                .map(Executor::Fd)
-                .map_err(PollError::Executor)?),
+            ExecutorKind::Uring => RawExecutor::new().map(Executor::Uring),
+            ExecutorKind::Fd => RawExecutor::new().map(Executor::Fd),
         }
     }
 
@@ -252,8 +235,8 @@ impl Executor {
     /// executor.
     pub fn async_from<'a, F: IntoAsync + 'a>(&self, f: F) -> AsyncResult<IoSource<F>> {
         match self {
-            Executor::Uring(ex) => async_uring_from(f, ex),
-            Executor::Fd(ex) => async_poll_from(f, ex),
+            Executor::Uring(ex) => ex.new_source(f),
+            Executor::Fd(ex) => ex.new_source(f),
         }
     }
 
@@ -443,7 +426,7 @@ impl Executor {
     pub fn run_until<F: Future>(&self, f: F) -> AsyncResult<F::Output> {
         match self {
             Executor::Uring(ex) => Ok(ex.run_until(f)?),
-            Executor::Fd(ex) => Ok(ex.run_until(f).map_err(PollError::Executor)?),
+            Executor::Fd(ex) => Ok(ex.run_until(f)?),
         }
     }
 }

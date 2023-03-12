@@ -2,13 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-//! The executor runs all given futures to completion. Futures register wakers associated with file
-//! descriptors. The wakers will be called when the FD becomes readable or writable depending on
-//! the situation.
-//!
-//! `FdExecutor` is meant to be used with the `futures-rs` crate that provides combinators and
-//! utility functions to combine futures.
-
 use std::fs::File;
 use std::future::Future;
 use std::io;
@@ -16,15 +9,12 @@ use std::mem;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::io::RawFd;
 use std::pin::Pin;
-use std::sync::atomic::AtomicI32;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Weak;
 use std::task::Context;
 use std::task::Poll;
 use std::task::Waker;
 
-use async_task::Task;
 use base::add_fd_flags;
 use base::warn;
 use base::AsRawDescriptor;
@@ -33,19 +23,16 @@ use base::Event;
 use base::EventType;
 use base::RawDescriptor;
 use base::WaitContext;
-use futures::task::noop_waker;
-use pin_utils::pin_mut;
 use remain::sorted;
 use slab::Slab;
 use sync::Mutex;
 use thiserror::Error as ThisError;
 
-use crate::queue::RunnableQueue;
-use crate::waker::new_waker;
+use crate::common_executor::RawExecutor;
+use crate::common_executor::Reactor;
 use crate::waker::WakerToken;
-use crate::waker::WeakWake;
-use crate::BlockingPool;
-use crate::DetachedTasks;
+use crate::AsyncResult;
+use crate::IoSource;
 
 #[sorted]
 #[derive(Debug, ThisError)]
@@ -64,6 +51,8 @@ pub enum Error {
     /// Failed to copy the FD for the polling context.
     #[error("Failed to copy the FD for the polling context: {0}")]
     DuplicatingFd(base::Error),
+    #[error("Executor failed")]
+    ExecutorError(anyhow::Error),
     /// The Executor is gone.
     #[error("The FDExecutor is gone")]
     ExecutorGone,
@@ -90,6 +79,7 @@ impl From<Error> for io::Error {
             CloneEvent(e) => e.into(),
             CreateEvent(e) => e.into(),
             DuplicatingFd(e) => e.into(),
+            ExecutorError(e) => io::Error::new(io::ErrorKind::Other, e),
             ExecutorGone => io::Error::new(io::ErrorKind::Other, e),
             CreatingContext(e) => e.into(),
             SettingNonBlocking(e) => e.into(),
@@ -114,20 +104,30 @@ enum OpStatus {
     WakeEvent,
 }
 
-// An IO source previously registered with an FdExecutor. Used to initiate asynchronous IO with the
+// An IO source previously registered with an EpollReactor. Used to initiate asynchronous IO with the
 // associated executor.
 pub struct RegisteredSource<F> {
     source: F,
-    ex: Weak<RawExecutor>,
+    ex: Weak<RawExecutor<EpollReactor>>,
 }
 
 impl<F: AsRawDescriptor> RegisteredSource<F> {
+    pub(crate) fn new(raw: &Arc<RawExecutor<EpollReactor>>, f: F) -> Result<Self> {
+        add_fd_flags(f.as_raw_descriptor(), libc::O_NONBLOCK).map_err(Error::SettingNonBlocking)?;
+        Ok(RegisteredSource {
+            source: f,
+            ex: Arc::downgrade(raw),
+        })
+    }
+
     // Start an asynchronous operation to wait for this source to become readable. The returned
     // future will not be ready until the source is readable.
     pub fn wait_readable(&self) -> Result<PendingOperation> {
         let ex = self.ex.upgrade().ok_or(Error::ExecutorGone)?;
 
-        let token = ex.add_operation(self.source.as_raw_descriptor(), EventType::Read)?;
+        let token = ex
+            .reactor
+            .add_operation(self.source.as_raw_descriptor(), EventType::Read)?;
 
         Ok(PendingOperation {
             token: Some(token),
@@ -140,7 +140,9 @@ impl<F: AsRawDescriptor> RegisteredSource<F> {
     pub fn wait_writable(&self) -> Result<PendingOperation> {
         let ex = self.ex.upgrade().ok_or(Error::ExecutorGone)?;
 
-        let token = ex.add_operation(self.source.as_raw_descriptor(), EventType::Write)?;
+        let token = ex
+            .reactor
+            .add_operation(self.source.as_raw_descriptor(), EventType::Write)?;
 
         Ok(PendingOperation {
             token: Some(token),
@@ -173,7 +175,7 @@ impl<F> AsMut<F> for RegisteredSource<F> {
 /// Dropping a `PendingOperation` will get the result from the executor.
 pub struct PendingOperation {
     token: Option<WakerToken>,
-    ex: Weak<RawExecutor>,
+    ex: Weak<RawExecutor<EpollReactor>>,
 }
 
 impl Future for PendingOperation {
@@ -185,7 +187,7 @@ impl Future for PendingOperation {
             .as_ref()
             .expect("PendingOperation polled after returning Poll::Ready");
         if let Some(ex) = self.ex.upgrade() {
-            if ex.is_ready(token, cx) {
+            if ex.reactor.is_ready(token, cx) {
                 self.token = None;
                 Poll::Ready(Ok(()))
             } else {
@@ -201,65 +203,48 @@ impl Drop for PendingOperation {
     fn drop(&mut self) {
         if let Some(token) = self.token.take() {
             if let Some(ex) = self.ex.upgrade() {
-                let _ = ex.cancel_operation(token);
+                let _ = ex.reactor.cancel_operation(token);
             }
         }
     }
 }
 
-// Indicates that the executor is either within or about to make a WaitContext::wait() call. When a
-// waker sees this value, it will write to the wake Event, which will cause the
-// WaitContext::wait() call to return.
-const WAITING: i32 = 0x1d5b_c019u32 as i32;
-
-// Indicates that the executor is processing any futures that are ready to run.
-const PROCESSING: i32 = 0xd474_77bcu32 as i32;
-
-// Indicates that one or more futures may be ready to make progress.
-const WOKEN: i32 = 0x3e4d_3276u32 as i32;
-
-struct RawExecutor {
-    queue: RunnableQueue,
+/// `Reactor` that manages async IO work using epoll.
+pub struct EpollReactor {
     poll_ctx: WaitContext<usize>,
     ops: Mutex<Slab<OpStatus>>,
-    blocking_pool: BlockingPool,
-    state: AtomicI32,
-    detached_tasks: Mutex<DetachedTasks>,
     // This event is always present in `poll_ctx` with the special op status `WakeEvent`. It is
     // used by `RawExecutor::wake` to break other threads out of `poll_ctx.wait()` calls (usually
     // to notify them that `queue` has new work).
     wake_event: Event,
 }
 
-impl RawExecutor {
+impl EpollReactor {
     fn new() -> Result<Self> {
-        let raw = RawExecutor {
-            queue: RunnableQueue::new(),
+        let reactor = EpollReactor {
             poll_ctx: WaitContext::new().map_err(Error::CreatingContext)?,
             ops: Mutex::new(Slab::with_capacity(64)),
-            blocking_pool: Default::default(),
-            state: AtomicI32::new(PROCESSING),
             wake_event: {
                 let wake_event = Event::new().map_err(Error::CreateEvent)?;
                 add_fd_flags(wake_event.as_raw_descriptor(), libc::O_NONBLOCK)
                     .map_err(Error::SettingNonBlocking)?;
                 wake_event
             },
-            detached_tasks: Mutex::new(DetachedTasks::new()),
         };
 
         // Add the special "wake up" op.
         {
-            let mut ops = raw.ops.lock();
+            let mut ops = reactor.ops.lock();
             let entry = ops.vacant_entry();
             let next_token = entry.key();
-            raw.poll_ctx
-                .add_for_event(&raw.wake_event, EventType::Read, next_token)
+            reactor
+                .poll_ctx
+                .add_for_event(&reactor.wake_event, EventType::Read, next_token)
                 .map_err(Error::SubmittingWaker)?;
             entry.insert(OpStatus::WakeEvent);
         }
 
-        Ok(raw)
+        Ok(reactor)
     }
 
     fn add_operation(&self, fd: RawFd, event_type: EventType) -> Result<WakerToken> {
@@ -279,133 +264,6 @@ impl RawExecutor {
             waker: None,
         }));
         Ok(WakerToken(next_token))
-    }
-
-    fn wake(&self) {
-        let oldstate = self.state.swap(WOKEN, Ordering::Release);
-        if oldstate == WAITING {
-            if let Err(e) = self.wake_event.signal() {
-                warn!("Failed to notify executor that a future is ready: {}", e);
-            }
-        }
-    }
-
-    fn spawn<F>(self: &Arc<Self>, f: F) -> FdExecutorTaskHandle<F::Output>
-    where
-        F: Future + Send + 'static,
-        F::Output: Send + 'static,
-    {
-        let raw = Arc::downgrade(self);
-        let schedule = move |runnable| {
-            if let Some(r) = raw.upgrade() {
-                r.queue.push_back(runnable);
-                r.wake();
-            }
-        };
-        let (runnable, task) = async_task::spawn(f, schedule);
-        runnable.schedule();
-        FdExecutorTaskHandle {
-            task,
-            raw: Arc::downgrade(self),
-        }
-    }
-
-    fn spawn_local<F>(self: &Arc<Self>, f: F) -> FdExecutorTaskHandle<F::Output>
-    where
-        F: Future + 'static,
-        F::Output: 'static,
-    {
-        let raw = Arc::downgrade(self);
-        let schedule = move |runnable| {
-            if let Some(r) = raw.upgrade() {
-                r.queue.push_back(runnable);
-                r.wake();
-            }
-        };
-        let (runnable, task) = async_task::spawn_local(f, schedule);
-        runnable.schedule();
-        FdExecutorTaskHandle {
-            task,
-            raw: Arc::downgrade(self),
-        }
-    }
-
-    fn spawn_blocking<F, R>(self: &Arc<Self>, f: F) -> FdExecutorTaskHandle<R>
-    where
-        F: FnOnce() -> R + Send + 'static,
-        R: Send + 'static,
-    {
-        self.spawn(self.blocking_pool.spawn(f))
-    }
-
-    fn run<F: Future>(&self, cx: &mut Context, done: F) -> Result<F::Output> {
-        pin_mut!(done);
-
-        loop {
-            self.state.store(PROCESSING, Ordering::Release);
-            for runnable in self.queue.iter() {
-                runnable.run();
-            }
-
-            if let Ok(mut tasks) = self.detached_tasks.try_lock() {
-                tasks.poll(cx);
-            }
-
-            if let Poll::Ready(val) = done.as_mut().poll(cx) {
-                return Ok(val);
-            }
-
-            let oldstate = self.state.compare_exchange(
-                PROCESSING,
-                WAITING,
-                Ordering::Acquire,
-                Ordering::Acquire,
-            );
-            if let Err(oldstate) = oldstate {
-                debug_assert_eq!(oldstate, WOKEN);
-                // One or more futures have become runnable.
-                continue;
-            }
-
-            let events = self.poll_ctx.wait().map_err(Error::WaitContextError)?;
-
-            // Set the state back to PROCESSING to prevent any tasks woken up by the loop below from
-            // writing to the eventfd.
-            self.state.store(PROCESSING, Ordering::Release);
-            for e in events.iter() {
-                let token = e.token;
-                let mut ops = self.ops.lock();
-
-                // The op could have been canceled and removed by another thread so ignore it if it
-                // doesn't exist.
-                if let Some(op) = ops.get_mut(token) {
-                    let (file, waker) = match mem::replace(op, OpStatus::Completed) {
-                        OpStatus::Pending(OpData { file, waker }) => (file, waker),
-                        OpStatus::Completed => panic!("poll operation completed more than once"),
-                        OpStatus::WakeEvent => {
-                            *op = OpStatus::WakeEvent;
-                            // NOTE: We set O_NONBLOCK, so there is no risk of this getting stuck.
-                            match self.wake_event.wait() {
-                                Ok(_) => {}
-                                Err(e) if e.errno() == libc::EWOULDBLOCK => {}
-                                Err(e) => return Err(Error::CantClearWakeEvent(e)),
-                            }
-                            continue;
-                        }
-                    };
-
-                    mem::drop(ops);
-
-                    self.poll_ctx
-                        .delete(&file)
-                        .map_err(Error::WaitContextError)?;
-
-                    if let Some(waker) = waker {
-                        waker.wake();
-                    }
-                }
-            }
-        }
     }
 
     fn is_ready(&self, token: &WakerToken, cx: &mut Context) -> bool {
@@ -442,32 +300,25 @@ impl RawExecutor {
     }
 }
 
-impl AsRawDescriptors for RawExecutor {
-    fn as_raw_descriptors(&self) -> Vec<RawDescriptor> {
-        vec![
-            self.poll_ctx.as_raw_descriptor(),
-            self.wake_event.as_raw_descriptor(),
-        ]
+impl Reactor for EpollReactor {
+    fn new() -> std::io::Result<Self> {
+        Ok(EpollReactor::new()?)
     }
-}
 
-impl WeakWake for RawExecutor {
-    fn wake_by_ref(weak_self: &Weak<Self>) {
-        if let Some(arc_self) = weak_self.upgrade() {
-            RawExecutor::wake(&arc_self);
+    fn wake(&self) {
+        if let Err(e) = self.wake_event.signal() {
+            warn!("Failed to notify executor that a future is ready: {}", e);
         }
     }
-}
 
-impl Drop for RawExecutor {
-    fn drop(&mut self) {
-        // At this point we have exclusive access to the `RawExecutor`, so no `Arc<RawExecutor>`
-        // exists and all the `Weak<RawExecutor>` will fail to upgrade (i.e. no more IO can be
-        // submitted).
+    fn on_executor_drop<'a>(&'a self) -> Pin<Box<dyn Future<Output = ()> + 'a>> {
+        // At this point, there are no strong references to the executor (see `on_executor_drop`
+        // docs). That means all the `RegisteredSource::ex` will fail to upgrade and so no more IO
+        // work can be submitted.
 
         // Wake up any futures still waiting on poll operations as they are just going to get an
         // ExecutorGone error now.
-        for op in self.ops.get_mut().drain() {
+        for op in self.ops.lock().drain() {
             match op {
                 OpStatus::Pending(mut data) => {
                     if let Some(waker) = data.waker.take() {
@@ -484,93 +335,65 @@ impl Drop for RawExecutor {
         }
 
         // Now run the executor one more time to drive any remaining futures to completion.
-        let waker = noop_waker();
-        let mut cx = Context::from_waker(&waker);
-        if let Err(e) = self.run(&mut cx, async {}) {
-            warn!("Failed to drive FdExecutor to completion: {}", e);
+        Box::pin(async {})
+    }
+
+    fn wait_for_work(&self, set_processing: impl Fn()) -> std::io::Result<()> {
+        let events = self.poll_ctx.wait().map_err(Error::WaitContextError)?;
+
+        // Set the state back to PROCESSING to prevent any tasks woken up by the loop below from
+        // writing to the eventfd.
+        set_processing();
+        for e in events.iter() {
+            let token = e.token;
+            let mut ops = self.ops.lock();
+
+            // The op could have been canceled and removed by another thread so ignore it if it
+            // doesn't exist.
+            if let Some(op) = ops.get_mut(token) {
+                let (file, waker) = match mem::replace(op, OpStatus::Completed) {
+                    OpStatus::Pending(OpData { file, waker }) => (file, waker),
+                    OpStatus::Completed => panic!("poll operation completed more than once"),
+                    OpStatus::WakeEvent => {
+                        *op = OpStatus::WakeEvent;
+                        match self.wake_event.wait() {
+                            Ok(_) => {}
+                            Err(e) if e.errno() == libc::EWOULDBLOCK => {}
+                            Err(e) => return Err(e.into()),
+                        }
+                        continue;
+                    }
+                };
+
+                mem::drop(ops);
+
+                self.poll_ctx
+                    .delete(&file)
+                    .map_err(Error::WaitContextError)?;
+
+                if let Some(waker) = waker {
+                    waker.wake();
+                }
+            }
         }
+        Ok(())
+    }
+
+    fn new_source<F: AsRawDescriptor>(
+        &self,
+        ex: &Arc<RawExecutor<Self>>,
+        f: F,
+    ) -> AsyncResult<IoSource<F>> {
+        Ok(IoSource::Epoll(super::PollSource::new(f, ex)?))
     }
 }
 
-pub struct FdExecutorTaskHandle<R> {
-    task: Task<R>,
-    raw: Weak<RawExecutor>,
-}
-
-impl<R: Send + 'static> FdExecutorTaskHandle<R> {
-    pub fn detach(self) {
-        if let Some(raw) = self.raw.upgrade() {
-            raw.detached_tasks.lock().push(self.task);
-        }
-    }
-}
-
-impl<R: 'static> Future for FdExecutorTaskHandle<R> {
-    type Output = R;
-
-    fn poll(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context,
-    ) -> std::task::Poll<Self::Output> {
-        Pin::new(&mut self.task).poll(cx)
-    }
-}
-
-#[derive(Clone)]
-pub struct FdExecutor {
-    raw: Arc<RawExecutor>,
-}
-
-impl FdExecutor {
-    pub fn new() -> Result<FdExecutor> {
-        Ok(FdExecutor {
-            raw: Arc::new(RawExecutor::new()?),
-        })
-    }
-
-    pub fn spawn<F>(&self, f: F) -> FdExecutorTaskHandle<F::Output>
-    where
-        F: Future + Send + 'static,
-        F::Output: Send + 'static,
-    {
-        self.raw.spawn(f)
-    }
-
-    pub fn spawn_local<F>(&self, f: F) -> FdExecutorTaskHandle<F::Output>
-    where
-        F: Future + 'static,
-        F::Output: 'static,
-    {
-        self.raw.spawn_local(f)
-    }
-
-    pub fn spawn_blocking<F, R>(&self, f: F) -> FdExecutorTaskHandle<R>
-    where
-        F: FnOnce() -> R + Send + 'static,
-        R: Send + 'static,
-    {
-        self.raw.spawn_blocking(f)
-    }
-
-    pub fn run_until<F: Future>(&self, f: F) -> Result<F::Output> {
-        let waker = new_waker(Arc::downgrade(&self.raw));
-        let mut ctx = Context::from_waker(&waker);
-
-        self.raw.run(&mut ctx, f)
-    }
-
-    pub(crate) fn register_source<F: AsRawDescriptor>(&self, f: F) -> Result<RegisteredSource<F>> {
-        add_fd_flags(f.as_raw_descriptor(), libc::O_NONBLOCK).map_err(Error::SettingNonBlocking)?;
-        Ok(RegisteredSource {
-            source: f,
-            ex: Arc::downgrade(&self.raw),
-        })
-    }
-}
-
-impl AsRawDescriptors for FdExecutor {
+impl AsRawDescriptors for EpollReactor {
     fn as_raw_descriptors(&self) -> Vec<RawDescriptor> {
-        self.raw.as_raw_descriptors()
+        vec![
+            self.poll_ctx.as_raw_descriptor(),
+            self.wake_event.as_raw_descriptor(),
+        ]
     }
 }
 
@@ -594,14 +417,16 @@ mod test {
 
     use futures::future::Either;
 
+    use crate::BlockingPool;
+
     use super::*;
 
     #[test]
     fn test_it() {
-        async fn do_test(ex: &FdExecutor) {
+        async fn do_test(ex: &Arc<RawExecutor<EpollReactor>>) {
             let (r, _w) = base::pipe(true).unwrap();
             let done = Box::pin(async { 5usize });
-            let source = ex.register_source(r).unwrap();
+            let source = RegisteredSource::new(ex, r).unwrap();
             let pending = source.wait_readable().unwrap();
             match futures::future::select(pending, done).await {
                 Either::Right((5, pending)) => std::mem::drop(pending),
@@ -609,7 +434,7 @@ mod test {
             }
         }
 
-        let ex = FdExecutor::new().unwrap();
+        let ex = RawExecutor::<EpollReactor>::new().unwrap();
         ex.run_until(do_test(&ex)).unwrap();
 
         // Example of starting the framework and running a future:
@@ -619,7 +444,7 @@ mod test {
 
         let x = Rc::new(RefCell::new(0));
         {
-            let ex = FdExecutor::new().unwrap();
+            let ex = RawExecutor::<EpollReactor>::new().unwrap();
             ex.run_until(my_async(x.clone())).unwrap();
         }
         assert_eq!(*x.borrow(), 4);
@@ -644,9 +469,9 @@ mod test {
 
         let (mut rx, tx) = base::pipe(true).expect("Pipe failed");
 
-        let ex = FdExecutor::new().unwrap();
+        let ex = RawExecutor::<EpollReactor>::new().unwrap();
 
-        let source = ex.register_source(tx.try_clone().unwrap()).unwrap();
+        let source = RegisteredSource::new(&ex, tx.try_clone().unwrap()).unwrap();
         let op = source.wait_writable().unwrap();
 
         ex.spawn_local(write_value(tx)).detach();
@@ -680,7 +505,7 @@ mod test {
 
         let rc = Rc::new(std::cell::Cell::new(0));
         {
-            let ex = FdExecutor::new().unwrap();
+            let ex = RawExecutor::<EpollReactor>::new().unwrap();
             let rc_clone = rc.clone();
             ex.spawn_local(async move {
                 rc_clone.set(1);
@@ -738,7 +563,7 @@ mod test {
             }
         }
 
-        let ex = FdExecutor::new().unwrap();
+        let ex = RawExecutor::<EpollReactor>::new().unwrap();
         ex.run_until(async move {
             // Test twice because there was once a bug where the second time panic'd.
             Sleep(Some(1)).await;

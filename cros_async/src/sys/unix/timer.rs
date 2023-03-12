@@ -26,20 +26,29 @@ mod tests {
 
     use base::Timer;
 
-    use super::super::FdExecutor;
-    use super::super::URingExecutor;
+    use super::super::fd_executor::EpollReactor;
+    use super::super::uring_executor::UringReactor;
     use super::*;
-    use crate::sys::unix::executor;
+    use crate::common_executor::RawExecutor;
     use crate::sys::unix::uring_executor::is_uring_stable;
     use crate::Executor;
+    use std::sync::Arc;
 
     impl TimerAsync {
-        pub(crate) fn new_poll(timer: Timer, ex: &FdExecutor) -> AsyncResult<TimerAsync> {
-            executor::async_poll_from(timer, ex).map(|io_source| TimerAsync { io_source })
+        pub(crate) fn new_poll(
+            timer: Timer,
+            ex: &Arc<RawExecutor<EpollReactor>>,
+        ) -> AsyncResult<TimerAsync> {
+            ex.new_source(timer)
+                .map(|io_source| TimerAsync { io_source })
         }
 
-        pub(crate) fn new_uring(timer: Timer, ex: &URingExecutor) -> AsyncResult<TimerAsync> {
-            executor::async_uring_from(timer, ex).map(|io_source| TimerAsync { io_source })
+        pub(crate) fn new_uring(
+            timer: Timer,
+            ex: &Arc<RawExecutor<UringReactor>>,
+        ) -> AsyncResult<TimerAsync> {
+            ex.new_source(timer)
+                .map(|io_source| TimerAsync { io_source })
         }
     }
 
@@ -62,7 +71,7 @@ mod tests {
             return;
         }
 
-        async fn this_test(ex: &URingExecutor) {
+        async fn this_test(ex: &Arc<RawExecutor<UringReactor>>) {
             let mut tfd = Timer::new().expect("failed to create timerfd");
 
             let dur = Duration::from_millis(200);
@@ -75,13 +84,13 @@ mod tests {
             assert!(now.elapsed() >= dur);
         }
 
-        let ex = URingExecutor::new().unwrap();
+        let ex = RawExecutor::<UringReactor>::new().unwrap();
         ex.run_until(this_test(&ex)).unwrap();
     }
 
     #[test]
     fn one_shot_fd() {
-        async fn this_test(ex: &FdExecutor) {
+        async fn this_test(ex: &Arc<RawExecutor<EpollReactor>>) {
             let mut tfd = Timer::new().expect("failed to create timerfd");
 
             let dur = Duration::from_millis(200);
@@ -94,7 +103,7 @@ mod tests {
             assert!(now.elapsed() >= dur);
         }
 
-        let ex = FdExecutor::new().unwrap();
+        let ex = RawExecutor::<EpollReactor>::new().unwrap();
         ex.run_until(this_test(&ex)).unwrap();
     }
 }

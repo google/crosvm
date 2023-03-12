@@ -4,24 +4,19 @@
 
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 
 use once_cell::sync::OnceCell;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error as ThisError;
 
-use super::HandleExecutor;
-use super::HandleSource;
+use super::HandleReactor;
+use crate::common_executor;
+use crate::common_executor::RawExecutor;
 use crate::AsyncResult;
 use crate::IntoAsync;
 use crate::IoSource;
-
-/// Creates a concrete `IoSource` using the handle_executor.
-pub(crate) fn async_handle_from<'a, F: IntoAsync + 'a>(f: F) -> AsyncResult<IoSource<F>> {
-    Ok(IoSource::Handle(HandleSource::new(
-        vec![f].into_boxed_slice(),
-    )?))
-}
 
 /// An executor for scheduling tasks that poll futures to completion.
 ///
@@ -122,7 +117,7 @@ pub(crate) fn async_handle_from<'a, F: IntoAsync + 'a>(f: F) -> AsyncResult<IoSo
 
 #[derive(Clone)]
 pub enum Executor {
-    Handle(HandleExecutor),
+    Handle(Arc<RawExecutor<HandleReactor>>),
 }
 
 /// An enum to express the kind of the backend of `Executor`
@@ -155,7 +150,7 @@ pub enum SetDefaultExecutorKindError {
 }
 
 pub enum TaskHandle<R> {
-    Handle(super::HandleExecutorTaskHandle<R>),
+    Handle(common_executor::TaskHandle<HandleReactor, R>),
 }
 
 impl<R: Send + 'static> TaskHandle<R> {
@@ -185,9 +180,7 @@ impl Executor {
     /// Create a new `Executor` of the given `ExecutorKind`.
     pub fn with_executor_kind(kind: ExecutorKind) -> AsyncResult<Self> {
         match kind {
-            ExecutorKind::Handle => Ok(Executor::Handle(
-                HandleExecutor::new().map_err(crate::io_ext::Error::HandleExecutor)?,
-            )),
+            ExecutorKind::Handle => Ok(Executor::Handle(RawExecutor::<HandleReactor>::new()?)),
         }
     }
 
@@ -196,7 +189,7 @@ impl Executor {
     /// executor.
     pub fn async_from<'a, F: IntoAsync + 'a>(&self, f: F) -> AsyncResult<IoSource<F>> {
         match self {
-            Executor::Handle(_) => async_handle_from(f),
+            Executor::Handle(ex) => ex.new_source(f),
         }
     }
 

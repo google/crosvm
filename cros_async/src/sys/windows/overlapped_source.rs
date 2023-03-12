@@ -23,11 +23,12 @@ use thiserror::Error as ThisError;
 use winapi::shared::minwindef::DWORD;
 use winapi::um::minwinbase::OVERLAPPED;
 
+use crate::common_executor::RawExecutor;
 use crate::io_source::AllocateMode;
 use crate::mem::BackingMemory;
 use crate::mem::MemRegion;
+use crate::sys::windows::handle_executor::HandleReactor;
 use crate::sys::windows::handle_executor::RegisteredOverlappedSource;
-use crate::sys::windows::HandleExecutor;
 use crate::AsyncError;
 use crate::AsyncResult;
 use crate::BlockingPool;
@@ -91,11 +92,16 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
     /// overlapped mode or undefined behavior will result.
     ///
     /// seek_forbidden should be set for non seekable types like named pipes.
-    pub fn new(source: F, ex: &HandleExecutor, seek_forbidden: bool) -> AsyncResult<Self> {
+    pub fn new(
+        source: F,
+        ex: &Arc<RawExecutor<HandleReactor>>,
+        seek_forbidden: bool,
+    ) -> AsyncResult<Self> {
         Ok(Self {
             blocking_pool: BlockingPool::default(),
             reg_source: ex
-                .register_overlapped_source(&source)
+                .reactor
+                .register_overlapped_source(ex, &source)
                 .map_err(AsyncError::HandleExecutor)?,
             source,
             seek_forbidden,
@@ -415,7 +421,6 @@ mod tests {
     use tempfile::TempDir;
     use winapi::um::winbase::FILE_FLAG_OVERLAPPED;
 
-    use super::super::HandleExecutor;
     use super::*;
     use crate::mem::VecIoWrapper;
 
@@ -460,7 +465,7 @@ mod tests {
             assert_eq!(std::str::from_utf8(buf.as_slice()).unwrap(), "data");
         }
 
-        let ex = HandleExecutor::new().unwrap();
+        let ex = RawExecutor::<HandleReactor>::new().unwrap();
         let src = OverlappedSource::new(open_overlapped(&file_path), &ex, false).unwrap();
         ex.run_until(read_data(&src)).unwrap();
     }
@@ -494,7 +499,7 @@ mod tests {
             assert_eq!(std::str::from_utf8(vec.as_slice()).unwrap(), "data");
         }
 
-        let ex = HandleExecutor::new().unwrap();
+        let ex = RawExecutor::<HandleReactor>::new().unwrap();
         let src = OverlappedSource::new(open_overlapped(&file_path), &ex, false).unwrap();
         ex.run_until(read_data(&src)).unwrap();
     }
@@ -511,7 +516,7 @@ mod tests {
             assert_eq!(bytes_written, 4);
         }
 
-        let ex = HandleExecutor::new().unwrap();
+        let ex = RawExecutor::<HandleReactor>::new().unwrap();
         let f = open_overlapped(&file_path);
         let src = OverlappedSource::new(f, &ex, false).unwrap();
         ex.run_until(write_data(&src)).unwrap();
@@ -549,7 +554,7 @@ mod tests {
             };
         }
 
-        let ex = HandleExecutor::new().unwrap();
+        let ex = RawExecutor::<HandleReactor>::new().unwrap();
         let f = open_overlapped(&file_path);
         let src = OverlappedSource::new(f, &ex, false).unwrap();
         ex.run_until(write_data(&src)).unwrap();
@@ -578,7 +583,7 @@ mod tests {
                 .unwrap();
         }
 
-        let ex = HandleExecutor::new().unwrap();
+        let ex = RawExecutor::<HandleReactor>::new().unwrap();
         let f = open_overlapped(&file_path);
         let src = OverlappedSource::new(f, &ex, false).unwrap();
         ex.run_until(punch_hole(&src)).unwrap();
@@ -611,7 +616,7 @@ mod tests {
                 .unwrap();
         }
 
-        let ex = HandleExecutor::new().unwrap();
+        let ex = RawExecutor::<HandleReactor>::new().unwrap();
         let f = open_overlapped(&file_path);
         let src = OverlappedSource::new(f, &ex, false).unwrap();
         ex.run_until(punch_hole(&src)).unwrap();
@@ -641,7 +646,7 @@ mod tests {
     //             .unwrap();
     //     }
 
-    //     let ex = HandleExecutor::new();
+    //     let ex = RawExecutor::<HandleReactor>::new();
     //     let f = fs::OpenOptions::new()
     //         .write(true)
     //         .open(temp_file.path())

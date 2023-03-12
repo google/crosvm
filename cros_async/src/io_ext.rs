@@ -21,6 +21,8 @@ pub enum Error {
     /// An error with EventAsync.
     #[error("An error with an EventAsync: {0}")]
     EventAsync(base::Error),
+    #[error("IO error: {0}")]
+    Io(std::io::Error),
     /// An error with a polled(FD) source.
     #[error("An error with a poll source: {0}")]
     Poll(crate::sys::unix::poll_source::Error),
@@ -39,6 +41,8 @@ pub enum Error {
     HandleExecutor(crate::sys::windows::handle_executor::Error),
     #[error("An error with a handle source: {0}")]
     HandleSource(crate::sys::windows::handle_source::Error),
+    #[error("IO error: {0}")]
+    Io(std::io::Error),
     #[error("An error with a handle source: {0}")]
     OverlappedSource(crate::sys::windows::overlapped_source::Error),
 }
@@ -65,6 +69,7 @@ impl From<Error> for io::Error {
         use Error::*;
         match e {
             EventAsync(e) => e.into(),
+            Io(e) => e,
             Poll(e) => e.into(),
             Uring(e) => e.into(),
         }
@@ -79,6 +84,7 @@ impl From<Error> for io::Error {
             EventAsync(e) => e.into(),
             HandleExecutor(e) => e.into(),
             HandleSource(e) => e.into(),
+            Io(e) => e,
             OverlappedSource(e) => e.into(),
         }
     }

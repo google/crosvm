@@ -12,27 +12,25 @@ use std::sync::Arc;
 use std::sync::Weak;
 use std::task::Waker;
 
-use async_task::Runnable;
-use async_task::Task;
 use base::warn;
 use base::AsRawDescriptor;
 use base::Error as SysError;
 use base::RawDescriptor;
 use futures::task::Context;
 use futures::task::Poll;
-use pin_utils::pin_mut;
 use sync::Mutex;
 use thiserror::Error as ThisError;
 use winapi::um::handleapi::INVALID_HANDLE_VALUE;
 use winapi::um::minwinbase::OVERLAPPED;
 
-use crate::queue::RunnableQueue;
+use crate::common_executor;
+use crate::common_executor::RawExecutor;
 use crate::sys::windows::io_completion_port::CompletionPacket;
 use crate::sys::windows::io_completion_port::IoCompletionPort;
-use crate::waker::new_waker;
 use crate::waker::WakerToken;
 use crate::waker::WeakWake;
-use crate::DetachedTasks;
+use crate::AsyncResult;
+use crate::IoSource;
 
 #[derive(Debug, ThisError)]
 pub enum Error {
@@ -60,190 +58,29 @@ impl From<Error> for io::Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub struct HandleExecutorTaskHandle<R> {
-    task: Task<R>,
-    raw: Weak<RawExecutor>,
-}
-
-impl<R: Send + 'static> HandleExecutorTaskHandle<R> {
-    pub fn detach(self) {
-        if let Some(raw) = self.raw.upgrade() {
-            raw.detached_tasks.lock().push(self.task);
-        }
-    }
-}
-
-impl<R: 'static> Future for HandleExecutorTaskHandle<R> {
-    type Output = R;
-
-    fn poll(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context,
-    ) -> std::task::Poll<Self::Output> {
-        Pin::new(&mut self.task).poll(cx)
-    }
-}
-
-#[derive(Clone)]
-pub struct HandleExecutor {
-    raw: Arc<RawExecutor>,
-}
-
-impl HandleExecutor {
-    pub fn new() -> Result<Self> {
-        Ok(Self {
-            raw: Arc::new(RawExecutor::new()?),
-        })
-    }
-
-    pub fn spawn<F>(&self, f: F) -> HandleExecutorTaskHandle<F::Output>
-    where
-        F: Future + Send + 'static,
-        F::Output: Send + 'static,
-    {
-        self.raw.spawn(f)
-    }
-
-    pub fn spawn_local<F>(&self, f: F) -> HandleExecutorTaskHandle<F::Output>
-    where
-        F: Future + 'static,
-        F::Output: 'static,
-    {
-        self.raw.spawn_local(f)
-    }
-
-    pub fn run_until<F: Future>(&self, f: F) -> Result<F::Output> {
-        let waker = new_waker(Arc::downgrade(&self.raw));
-        let mut cx = Context::from_waker(&waker);
-        self.raw.run(&mut cx, f)
-    }
-
-    /// Called to register an overlapped IO source with the executor. From here, the source can
-    /// register overlapped operations that will be managed by the executor.
-    #[allow(dead_code)]
-    pub(crate) fn register_overlapped_source(
-        &self,
-        rd: &dyn AsRawDescriptor,
-    ) -> Result<RegisteredOverlappedSource> {
-        RegisteredOverlappedSource::new(rd, &self.raw)
-    }
-}
-
 /// Represents an overlapped operation that running (or has completed but not yet woken).
 struct OpData {
     waker: Option<Waker>,
 }
 
-/// The current status of a future that is running or has completed on RawExecutor.
+/// The current status of a future that is running or has completed on HandleReactor.
 enum OpStatus {
     Pending(OpData),
     Completed(CompletionPacket),
 }
 
-struct RawExecutor {
-    queue: RunnableQueue,
+pub struct HandleReactor {
     iocp: IoCompletionPort,
     overlapped_ops: Mutex<HashMap<WakerToken, OpStatus>>,
-    detached_tasks: Mutex<DetachedTasks>,
 }
 
-impl RawExecutor {
+impl HandleReactor {
     fn new() -> Result<Self> {
         let iocp = IoCompletionPort::new()?;
         Ok(Self {
             iocp,
-            queue: RunnableQueue::new(),
             overlapped_ops: Mutex::new(HashMap::with_capacity(64)),
-            detached_tasks: Mutex::new(DetachedTasks::new()),
         })
-    }
-
-    fn make_schedule_fn(self: &Arc<Self>) -> impl Fn(Runnable) {
-        let raw = Arc::downgrade(self);
-        move |runnable| {
-            if let Some(r) = raw.upgrade() {
-                r.queue.push_back(runnable);
-                r.wake();
-            }
-        }
-    }
-
-    fn spawn<F>(self: &Arc<Self>, f: F) -> HandleExecutorTaskHandle<F::Output>
-    where
-        F: Future + Send + 'static,
-        F::Output: Send + 'static,
-    {
-        let (runnable, task) = async_task::spawn(f, self.make_schedule_fn());
-        runnable.schedule();
-        HandleExecutorTaskHandle {
-            task,
-            raw: Arc::downgrade(self),
-        }
-    }
-
-    fn spawn_local<F>(self: &Arc<Self>, f: F) -> HandleExecutorTaskHandle<F::Output>
-    where
-        F: Future + 'static,
-        F::Output: 'static,
-    {
-        let (runnable, task) = async_task::spawn_local(f, self.make_schedule_fn());
-        runnable.schedule();
-        HandleExecutorTaskHandle {
-            task,
-            raw: Arc::downgrade(self),
-        }
-    }
-
-    fn run<F: Future>(&self, cx: &mut Context, done: F) -> Result<F::Output> {
-        pin_mut!(done);
-
-        loop {
-            for runnable in self.queue.iter() {
-                runnable.run();
-            }
-            if let Ok(mut tasks) = self.detached_tasks.try_lock() {
-                tasks.poll(cx);
-            }
-            if let Poll::Ready(val) = done.as_mut().poll(cx) {
-                return Ok(val);
-            }
-
-            let completion_packets = self.iocp.poll()?;
-            for pkt in completion_packets {
-                if pkt.completion_key as RawDescriptor == INVALID_HANDLE_VALUE {
-                    // These completion packets aren't from overlapped operations. They're from
-                    // something calling HandleExecutor::wake, so they've already enqueued whatever
-                    // they think is runnable into the queue. All the packet does is wake up the
-                    // executor loop.
-                    continue;
-                }
-
-                let mut overlapped_ops = self.overlapped_ops.lock();
-                if let Some(op) = overlapped_ops.get_mut(&WakerToken(pkt.overlapped_ptr)) {
-                    let waker = match mem::replace(op, OpStatus::Completed(pkt)) {
-                        OpStatus::Pending(OpData { waker }) => waker,
-                        OpStatus::Completed(_) => panic!("operation completed more than once"),
-                    };
-                    drop(overlapped_ops);
-                    if let Some(waker) = waker {
-                        waker.wake();
-                    } else {
-                        // We shouldn't ever get a completion packet for an IO operation that hasn't
-                        // registered its waker.
-                        warn!(
-                            "got a completion packet for an IO operation that had no waker.\
-                             future may be stalled."
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    fn wake(self: &Arc<Self>) {
-        self.iocp
-            .post_status(0, INVALID_HANDLE_VALUE as usize)
-            .expect("wakeup failed on HandleExecutor.");
     }
 
     /// All descriptors must be first registered with IOCP before any completion packets can be
@@ -260,6 +97,17 @@ impl RawExecutor {
     pub(crate) fn register_overlapped_op(&self, token: &WakerToken) {
         let mut ops = self.overlapped_ops.lock();
         ops.insert(*token, OpStatus::Pending(OpData { waker: None }));
+    }
+
+    /// Called to register an overlapped IO source with the executor. From here, the source can
+    /// register overlapped operations that will be managed by the executor.
+    #[allow(dead_code)]
+    pub(crate) fn register_overlapped_source(
+        &self,
+        raw: &Arc<RawExecutor<HandleReactor>>,
+        rd: &dyn AsRawDescriptor,
+    ) -> Result<RegisteredOverlappedSource> {
+        RegisteredOverlappedSource::new(rd, raw)
     }
 
     /// Every time an `OverlappedOperation` is polled, this method will be called. It's a trick to
@@ -290,20 +138,87 @@ impl RawExecutor {
     fn remove_overlapped_op(&self, token: &WakerToken) {
         let mut ops = self.overlapped_ops.lock();
         if ops.remove(token).is_none() {
-            warn!("Tried to remove non-existent overlapped operation from HandleExecutor.");
+            warn!("Tried to remove non-existent overlapped operation from HandleReactor.");
         }
+    }
+}
+
+impl common_executor::Reactor for HandleReactor {
+    fn new() -> std::io::Result<Self> {
+        Ok(HandleReactor::new()?)
+    }
+
+    fn wake(&self) {
+        self.iocp
+            .post_status(0, INVALID_HANDLE_VALUE as usize)
+            .expect("wakeup failed on HandleReactor.");
+    }
+
+    fn on_executor_drop<'a>(&'a self) -> Pin<Box<dyn Future<Output = ()> + 'a>> {
+        // TODO: Cancel overlapped ops and/or wait for everything to complete like the linux
+        // reactors?
+        Box::pin(async {})
+    }
+
+    fn wait_for_work(&self, set_processing: impl Fn()) -> std::io::Result<()> {
+        let completion_packets = self.iocp.poll()?;
+
+        set_processing();
+
+        for pkt in completion_packets {
+            if pkt.completion_key as RawDescriptor == INVALID_HANDLE_VALUE {
+                // These completion packets aren't from overlapped operations. They're from
+                // something calling HandleReactor::wake, so they've already enqueued whatever
+                // they think is runnable into the queue. All the packet does is wake up the
+                // executor loop.
+                continue;
+            }
+
+            let mut overlapped_ops = self.overlapped_ops.lock();
+            if let Some(op) = overlapped_ops.get_mut(&WakerToken(pkt.overlapped_ptr)) {
+                let waker = match mem::replace(op, OpStatus::Completed(pkt)) {
+                    OpStatus::Pending(OpData { waker }) => waker,
+                    OpStatus::Completed(_) => panic!("operation completed more than once"),
+                };
+                drop(overlapped_ops);
+                if let Some(waker) = waker {
+                    waker.wake();
+                } else {
+                    // We shouldn't ever get a completion packet for an IO operation that hasn't
+                    // registered its waker.
+                    warn!(
+                        "got a completion packet for an IO operation that had no waker.\
+                             future may be stalled."
+                    )
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn new_source<F: AsRawDescriptor>(
+        &self,
+        _ex: &Arc<RawExecutor<Self>>,
+        f: F,
+    ) -> AsyncResult<IoSource<F>> {
+        Ok(IoSource::Handle(super::HandleSource::new(
+            vec![f].into_boxed_slice(),
+        )?))
     }
 }
 
 /// Represents a handle that has been registered for overlapped operations with a specific executor.
 /// From here, the OverlappedSource can register overlapped operations with the executor.
 pub(crate) struct RegisteredOverlappedSource {
-    ex: Weak<RawExecutor>,
+    ex: Weak<RawExecutor<HandleReactor>>,
 }
 
 impl RegisteredOverlappedSource {
-    fn new(rd: &dyn AsRawDescriptor, ex: &Arc<RawExecutor>) -> Result<RegisteredOverlappedSource> {
-        ex.register_descriptor(rd)?;
+    fn new(
+        rd: &dyn AsRawDescriptor,
+        ex: &Arc<RawExecutor<HandleReactor>>,
+    ) -> Result<RegisteredOverlappedSource> {
+        ex.reactor.register_descriptor(rd)?;
         Ok(Self {
             ex: Arc::downgrade(ex),
         })
@@ -322,29 +237,29 @@ impl RegisteredOverlappedSource {
     }
 }
 
-impl WeakWake for RawExecutor {
+impl WeakWake for HandleReactor {
     fn wake_by_ref(weak_self: &Weak<Self>) {
         if let Some(arc_self) = weak_self.upgrade() {
-            RawExecutor::wake(&arc_self);
+            common_executor::Reactor::wake(&*arc_self);
         }
     }
 }
 
 /// Represents a pending overlapped IO operation. This must be used in the following manner or
 /// undefined behavior will result:
-///     1. The executor in use is a HandleExecutor.
+///     1. The reactor in use is a HandleReactor.
 ///     2. Immediately after the IO syscall, this future MUST be awaited. We rely on the fact that
 ///        the executor cannot poll the IOCP before this future is polled for the first time to
 ///        ensure the waker has been registered. (If the executor polls the IOCP before the waker
 ///        is registered, the future will stall.)
 pub(crate) struct OverlappedOperation {
     overlapped: Pin<Box<OVERLAPPED>>,
-    ex: Weak<RawExecutor>,
+    ex: Weak<RawExecutor<HandleReactor>>,
     completed: bool,
 }
 
 impl OverlappedOperation {
-    fn new(overlapped: OVERLAPPED, ex: Weak<RawExecutor>) -> Result<Self> {
+    fn new(overlapped: OVERLAPPED, ex: Weak<RawExecutor<HandleReactor>>) -> Result<Self> {
         let ret = Self {
             overlapped: Box::pin(overlapped),
             ex,
@@ -358,6 +273,7 @@ impl OverlappedOperation {
         self.ex
             .upgrade()
             .ok_or(Error::ExecutorGone)?
+            .reactor
             .register_overlapped_op(&self.get_token());
         Ok(())
     }
@@ -383,7 +299,9 @@ impl Future for OverlappedOperation {
             panic!("OverlappedOperation polled after returning Poll::Ready");
         }
         if let Some(ex) = self.ex.upgrade() {
-            if let Some(completion_pkt) = ex.get_overlapped_op_if_ready(&self.get_token(), cx) {
+            if let Some(completion_pkt) =
+                ex.reactor.get_overlapped_op_if_ready(&self.get_token(), cx)
+            {
                 self.completed = true;
                 Poll::Ready(Ok(completion_pkt))
             } else {
@@ -399,7 +317,7 @@ impl Drop for OverlappedOperation {
     fn drop(&mut self) {
         if !self.completed {
             if let Some(ex) = self.ex.upgrade() {
-                ex.remove_overlapped_op(&self.get_token());
+                ex.reactor.remove_overlapped_op(&self.get_token());
             }
         }
     }
@@ -424,7 +342,7 @@ mod test {
             send.send(FUT_MSG).unwrap();
         }
 
-        let ex = HandleExecutor::new().unwrap();
+        let ex = RawExecutor::<HandleReactor>::new().unwrap();
         ex.run_until(this_test(send)).unwrap();
         assert_eq!(recv.recv().unwrap(), FUT_MSG);
     }
@@ -443,7 +361,7 @@ mod test {
             done.send(true).unwrap();
         }
 
-        let ex = HandleExecutor::new().unwrap();
+        let ex = RawExecutor::<HandleReactor>::new().unwrap();
         ex.spawn(message_sender(send)).detach();
         ex.run_until(message_receiver(recv, send_done_signal))
             .unwrap();
@@ -468,7 +386,7 @@ mod test {
 
         let rc = Rc::new(std::cell::Cell::new(0));
         {
-            let ex = HandleExecutor::new().unwrap();
+            let ex = RawExecutor::<HandleReactor>::new().unwrap();
             let rc_clone = rc.clone();
             ex.spawn_local(async move {
                 rc_clone.set(1);

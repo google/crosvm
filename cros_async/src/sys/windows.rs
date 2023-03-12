@@ -12,8 +12,7 @@ pub mod overlapped_source;
 mod timer;
 pub mod wait_for_handle;
 
-pub use handle_executor::HandleExecutor;
-pub use handle_executor::HandleExecutorTaskHandle;
+pub use handle_executor::HandleReactor;
 pub use handle_source::HandleSource;
 pub use handle_source::HandleWrapper;
 pub use overlapped_source::OverlappedSource;
@@ -27,6 +26,7 @@ impl From<Error> for std::io::Error {
         match e {
             EventAsync(e) => e.into(),
             HandleExecutor(e) => e.into(),
+            Io(e) => e,
             Timer(e) => e.into(),
             TimerAsync(e) => e.into(),
         }

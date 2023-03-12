@@ -69,6 +69,7 @@ pub mod sys;
 pub use sys::Executor;
 pub use sys::ExecutorKind;
 pub use sys::TaskHandle;
+mod common_executor;
 mod timer;
 mod waker;
 
@@ -113,6 +114,8 @@ pub enum Error {
     #[cfg(windows)]
     #[error("Failure in the handle executor: {0}")]
     HandleExecutor(sys::windows::handle_executor::Error),
+    #[error("IO error: {0}")]
+    Io(std::io::Error),
     /// Error from the polled(FD) source, which includes error from the FD executor.
     #[cfg(unix)]
     #[error("An error with a poll source: {0}")]

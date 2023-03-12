@@ -13,8 +13,9 @@ use remain::sorted;
 use thiserror::Error as ThisError;
 
 use super::fd_executor;
-use super::fd_executor::FdExecutor;
+use super::fd_executor::EpollReactor;
 use super::fd_executor::RegisteredSource;
+use crate::common_executor::RawExecutor;
 use crate::mem::BackingMemory;
 use crate::mem::MemRegion;
 use crate::AllocateMode;
@@ -72,8 +73,8 @@ pub struct PollSource<F>(RegisteredSource<F>);
 
 impl<F: AsRawDescriptor> PollSource<F> {
     /// Create a new `PollSource` from the given IO source.
-    pub fn new(f: F, ex: &FdExecutor) -> Result<Self> {
-        ex.register_source(f)
+    pub fn new(f: F, ex: &Arc<RawExecutor<EpollReactor>>) -> Result<Self> {
+        RegisteredSource::new(ex, f)
             .map(PollSource)
             .map_err(Error::Executor)
     }
@@ -351,7 +352,7 @@ mod tests {
 
     #[test]
     fn fallocate() {
-        async fn go(ex: &FdExecutor) {
+        async fn go(ex: &Arc<RawExecutor<EpollReactor>>) {
             let dir = tempfile::TempDir::new().unwrap();
             let mut file_path = PathBuf::from(dir.path());
             file_path.push("test");
@@ -371,7 +372,7 @@ mod tests {
             assert_eq!(meta_data.len(), 4096);
         }
 
-        let ex = FdExecutor::new().unwrap();
+        let ex = RawExecutor::<EpollReactor>::new().unwrap();
         ex.run_until(go(&ex)).unwrap();
     }
 
@@ -384,7 +385,7 @@ mod tests {
         }
 
         let (rx, _tx) = base::pipe(true).unwrap();
-        let ex = FdExecutor::new().unwrap();
+        let ex = RawExecutor::<EpollReactor>::new().unwrap();
         let source = PollSource::new(rx, &ex).unwrap();
         ex.spawn_local(owns_poll_source(source)).detach();
 

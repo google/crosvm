@@ -429,8 +429,9 @@ mod tests {
 
     use tempfile::NamedTempFile;
 
-    use super::super::HandleExecutor;
+    use super::super::HandleReactor;
     use super::*;
+    use crate::common_executor::RawExecutor;
 
     #[cfg_attr(all(target_os = "windows", target_env = "gnu"), ignore)]
     #[test]
@@ -449,7 +450,7 @@ mod tests {
                 .unwrap();
         }
 
-        let ex = HandleExecutor::new().unwrap();
+        let ex = RawExecutor::<HandleReactor>::new().unwrap();
         let f = fs::OpenOptions::new()
             .write(true)
             .open(temp_file.path())
@@ -483,7 +484,7 @@ mod tests {
                 .unwrap();
         }
 
-        let ex = HandleExecutor::new().unwrap();
+        let ex = RawExecutor::<HandleReactor>::new().unwrap();
         let f = fs::OpenOptions::new()
             .write(true)
             .open(temp_file.path())
@@ -513,7 +514,7 @@ mod tests {
     //             .unwrap();
     //     }
 
-    //     let ex = HandleExecutor::new();
+    //     let ex = RawExecutor::<HandleReactor>::new();
     //     let f = fs::OpenOptions::new()
     //         .write(true)
     //         .open(temp_file.path())

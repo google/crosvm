@@ -9,12 +9,8 @@ pub mod fd_executor;
 pub mod poll_source;
 pub mod uring_executor;
 pub mod uring_source;
-pub use fd_executor::FdExecutor;
-pub use fd_executor::FdExecutorTaskHandle;
 pub use poll_source::Error as PollSourceError;
 pub use poll_source::PollSource;
-pub use uring_executor::URingExecutor;
-pub use uring_executor::UringExecutorTaskHandle;
 pub use uring_source::UringSource;
 mod timer;
 
@@ -25,6 +21,7 @@ impl From<Error> for std::io::Error {
         use Error::*;
         match e {
             EventAsync(e) => e.into(),
+            Io(e) => e,
             URingExecutor(e) => e.into(),
             PollSource(e) => e.into(),
             Timer(e) => e.into(),
