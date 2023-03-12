@@ -50,6 +50,8 @@ use crate::DetachedTasks;
 #[sorted]
 #[derive(Debug, ThisError)]
 pub enum Error {
+    #[error("Couldn't clear the wake eventfd")]
+    CantClearWakeEvent(base::Error),
     /// Failed to clone the Event for waking the executor.
     #[error("Failed to clone the Event for waking the executor: {0}")]
     CloneEvent(base::Error),
@@ -84,6 +86,7 @@ impl From<Error> for io::Error {
     fn from(e: Error) -> Self {
         use Error::*;
         match e {
+            CantClearWakeEvent(e) => e.into(),
             CloneEvent(e) => e.into(),
             CreateEvent(e) => e.into(),
             DuplicatingFd(e) => e.into(),
@@ -107,6 +110,8 @@ struct OpData {
 enum OpStatus {
     Pending(OpData),
     Completed,
+    // Special status that identifies the "wake up" eventfd, which is essentially always pending.
+    WakeEvent,
 }
 
 // An IO source previously registered with an FdExecutor. Used to initiate asynchronous IO with the
@@ -202,60 +207,8 @@ impl Drop for PendingOperation {
     }
 }
 
-// This function exists to guarantee that non-epoll futures will not starve until an epoll future is
-// ready to be polled again. The mechanism is very similar to the self-pipe trick used by C programs
-// to reliably mix select / poll with signal handling. This is how it works:
-//
-// * RawExecutor::new creates an eventfd, dupes it, and spawns this async function with the duped fd.
-// * The first time notify_task is polled it tries to read from the eventfd and if that fails, waits
-//   for the fd to become readable.
-// * Meanwhile the RawExecutor keeps the original fd for the eventfd.
-// * Whenever RawExecutor::wake is called it will write to the eventfd if it determines that the
-//   executor thread is currently blocked inside an io_epoll_enter call. This can happen when a
-//   non-epoll future becomes ready to poll.
-// * The write to the eventfd causes the fd to become readable, which then allows the epoll() call
-//   to return with at least one readable fd.
-// * The executor then polls the non-epoll future that became ready, any epoll futures that
-//   completed, and the notify_task function, which then queues up another read on the eventfd and
-//   the process can repeat.
-async fn notify_task(notify: Event, raw: Weak<RawExecutor>) {
-    add_fd_flags(notify.as_raw_descriptor(), libc::O_NONBLOCK)
-        .expect("Failed to set notify Event as non-blocking");
-
-    loop {
-        match notify.wait() {
-            Ok(_) => {}
-            Err(e) if e.errno() == libc::EWOULDBLOCK => {}
-            Err(e) => panic!("Unexpected error while reading notify Event: {}", e),
-        }
-
-        if let Some(ex) = raw.upgrade() {
-            let token = ex
-                .add_operation(notify.as_raw_descriptor(), EventType::Read)
-                .expect("Failed to add notify Event to PollCtx");
-
-            // We don't want to hold an active reference to the executor in the .await below.
-            mem::drop(ex);
-
-            let op = PendingOperation {
-                token: Some(token),
-                ex: raw.clone(),
-            };
-
-            match op.await {
-                Ok(()) => {}
-                Err(Error::ExecutorGone) => break,
-                Err(e) => panic!("Unexpected error while waiting for notify Event: {}", e),
-            }
-        } else {
-            // The executor is gone so we should also exit.
-            break;
-        }
-    }
-}
-
 // Indicates that the executor is either within or about to make a WaitContext::wait() call. When a
-// waker sees this value, it will write to the notify Event, which will cause the
+// waker sees this value, it will write to the wake Event, which will cause the
 // WaitContext::wait() call to return.
 const WAITING: i32 = 0x1d5b_c019u32 as i32;
 
@@ -271,29 +224,42 @@ struct RawExecutor {
     ops: Mutex<Slab<OpStatus>>,
     blocking_pool: BlockingPool,
     state: AtomicI32,
-    notify: Event,
-    // Descriptor of the original event that was cloned to create notify.
-    // This is only needed for the AsRawDescriptors implementation.
-    notify_dup: RawDescriptor,
     detached_tasks: Mutex<DetachedTasks>,
+    // This event is always present in `poll_ctx` with the special op status `WakeEvent`. It is
+    // used by `RawExecutor::wake` to break other threads out of `poll_ctx.wait()` calls (usually
+    // to notify them that `queue` has new work).
+    wake_event: Event,
 }
 
 impl RawExecutor {
-    fn new(notify: &Event) -> Result<Self> {
-        // Save the original descriptor before cloning. This descriptor will be used when creating
-        // the notify task, so we need to preserve it for AsRawDescriptors.
-        let notify_dup = notify.as_raw_descriptor();
-        let notify = notify.try_clone().map_err(Error::CloneEvent)?;
-        Ok(RawExecutor {
+    fn new() -> Result<Self> {
+        let raw = RawExecutor {
             queue: RunnableQueue::new(),
             poll_ctx: WaitContext::new().map_err(Error::CreatingContext)?,
             ops: Mutex::new(Slab::with_capacity(64)),
             blocking_pool: Default::default(),
             state: AtomicI32::new(PROCESSING),
-            notify,
-            notify_dup,
+            wake_event: {
+                let wake_event = Event::new().map_err(Error::CreateEvent)?;
+                add_fd_flags(wake_event.as_raw_descriptor(), libc::O_NONBLOCK)
+                    .map_err(Error::SettingNonBlocking)?;
+                wake_event
+            },
             detached_tasks: Mutex::new(DetachedTasks::new()),
-        })
+        };
+
+        // Add the special "wake up" op.
+        {
+            let mut ops = raw.ops.lock();
+            let entry = ops.vacant_entry();
+            let next_token = entry.key();
+            raw.poll_ctx
+                .add_for_event(&raw.wake_event, EventType::Read, next_token)
+                .map_err(Error::SubmittingWaker)?;
+            entry.insert(OpStatus::WakeEvent);
+        }
+
+        Ok(raw)
     }
 
     fn add_operation(&self, fd: RawFd, event_type: EventType) -> Result<WakerToken> {
@@ -318,7 +284,7 @@ impl RawExecutor {
     fn wake(&self) {
         let oldstate = self.state.swap(WOKEN, Ordering::Release);
         if oldstate == WAITING {
-            if let Err(e) = self.notify.signal() {
+            if let Err(e) = self.wake_event.signal() {
                 warn!("Failed to notify executor that a future is ready: {}", e);
             }
         }
@@ -416,6 +382,15 @@ impl RawExecutor {
                     let (file, waker) = match mem::replace(op, OpStatus::Completed) {
                         OpStatus::Pending(OpData { file, waker }) => (file, waker),
                         OpStatus::Completed => panic!("poll operation completed more than once"),
+                        OpStatus::WakeEvent => {
+                            // NOTE: We set O_NONBLOCK, so there is no risk of this getting stuck.
+                            match self.wake_event.wait() {
+                                Ok(_) => {}
+                                Err(e) if e.errno() == libc::EWOULDBLOCK => {}
+                                Err(e) => return Err(Error::CantClearWakeEvent(e)),
+                            }
+                            continue;
+                        }
                     };
 
                     mem::drop(ops);
@@ -447,6 +422,8 @@ impl RawExecutor {
                 ops.remove(token.0);
                 true
             }
+            // unreachable because we never create a WakerToken for `wake_event`.
+            OpStatus::WakeEvent => unreachable!(),
         }
     }
 
@@ -458,6 +435,8 @@ impl RawExecutor {
                 .delete(&data.file)
                 .map_err(Error::WaitContextError),
             OpStatus::Completed => Ok(()),
+            // unreachable because we never create a WakerToken for `wake_event`.
+            OpStatus::WakeEvent => unreachable!(),
         }
     }
 }
@@ -466,8 +445,7 @@ impl AsRawDescriptors for RawExecutor {
     fn as_raw_descriptors(&self) -> Vec<RawDescriptor> {
         vec![
             self.poll_ctx.as_raw_descriptor(),
-            self.notify.as_raw_descriptor(),
-            self.notify_dup,
+            self.wake_event.as_raw_descriptor(),
         ]
     }
 }
@@ -482,10 +460,9 @@ impl WeakWake for RawExecutor {
 
 impl Drop for RawExecutor {
     fn drop(&mut self) {
-        // Wake up the notify_task. We set the state to WAITING here so that wake() will write to
-        // the eventfd.
-        self.state.store(WAITING, Ordering::Release);
-        self.wake();
+        // At this point we have exclusive access to the `RawExecutor`, so no `Arc<RawExecutor>`
+        // exists and all the `Weak<RawExecutor>` will fail to upgrade (i.e. no more IO can be
+        // submitted).
 
         // Wake up any futures still waiting on poll operations as they are just going to get an
         // ExecutorGone error now.
@@ -501,6 +478,7 @@ impl Drop for RawExecutor {
                     }
                 }
                 OpStatus::Completed => {}
+                OpStatus::WakeEvent => {}
             }
         }
 
@@ -544,13 +522,9 @@ pub struct FdExecutor {
 
 impl FdExecutor {
     pub fn new() -> Result<FdExecutor> {
-        let notify = Event::new().map_err(Error::CreateEvent)?;
-        let raw = RawExecutor::new(&notify).map(Arc::new)?;
-
-        raw.spawn(notify_task(notify, Arc::downgrade(&raw)))
-            .detach();
-
-        Ok(FdExecutor { raw })
+        Ok(FdExecutor {
+            raw: Arc::new(RawExecutor::new()?),
+        })
     }
 
     pub fn spawn<F>(&self, f: F) -> FdExecutorTaskHandle<F::Output>
