@@ -126,5 +126,16 @@ Crosvm will exit with a non-zero exit code on failure.
 See [CommandStatus](https://crosvm.dev/doc/crosvm/enum.CommandStatus.html) for meaning of the major
 exit codes.
 
+## Hypervisor
+
+The default hypervisor back can be overriden using `--hypervisor=<backend>`.
+
+The available backends are:
+
+- On Linux: "kvm"
+- On Windows: "whpx", "haxm", "ghaxm", "gvm"
+
+See the ["Hypervisors" chapter](../hypervisors.md) for more information.
+
 [gdb remote serial protocol]: https://sourceware.org/gdb/onlinedocs/gdb/Remote-Protocol.html
 [kernel documentation]: https://www.kernel.org/doc/html/latest/dev-tools/gdb-kernel-debugging.html
