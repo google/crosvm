@@ -20,7 +20,7 @@ use resources::Error as SystemAllocatorFaliure;
 use resources::SystemAllocator;
 use sync::Mutex;
 use thiserror::Error;
-use vm_control::IoEventRegisterRequest;
+use vm_control::IoEventUpdateRequest;
 use vm_control::VmMemoryResponse;
 
 use super::PciId;
@@ -390,8 +390,8 @@ pub trait PciDevice: Send + Suspendable {
         Vec::new()
     }
 
-    /// Gets a reference to a tube for sending VmMemoryRequest. Any devices that uses ioevents shall
-    /// provide a tube.
+    /// Gets a reference to the Tube for sending VmMemoryRequest. Any devices that uses ioevents
+    /// shall provide Tube.
     fn get_vm_memory_request_tube(&self) -> Option<&Tube> {
         None
     }
@@ -599,7 +599,7 @@ impl<T: PciDevice> BusDevice for T {
                     };
                 if let Some(tube) = self.get_vm_memory_request_tube() {
                     for request in ioevent_unregister_requests {
-                        if let Err(e) = send_ioevent_register_request(tube, request) {
+                        if let Err(e) = send_ioevent_update_request(tube, request) {
                             match &e {
                                 IoEventError::SystemError(_) => {
                                     // Do nothing, as unregister may fail due to placeholder value
@@ -615,9 +615,9 @@ impl<T: PciDevice> BusDevice for T {
                         }
                     }
                     for request in ioevent_register_requests {
-                        if let Err(e) = send_ioevent_register_request(tube, request) {
+                        if let Err(e) = send_ioevent_update_request(tube, request) {
                             error!(
-                                "IoEvent unregister failed for {}: {:?}",
+                                "IoEvent register failed for {}: {:?}",
                                 self.debug_label(),
                                 &e
                             );
@@ -813,7 +813,7 @@ fn get_ioevent_requests(
     mut ioevents: Vec<(&Event, u64, Datamatch)>,
     old_range: Vec<(BusRange, BusType)>,
     new_range: Vec<(BusRange, BusType)>,
-) -> Result<(Vec<IoEventRegisterRequest>, Vec<IoEventRegisterRequest>)> {
+) -> Result<(Vec<IoEventUpdateRequest>, Vec<IoEventUpdateRequest>)> {
     // Finds all ioevents with addr within new_range. Updates ioevents whose range are within the
     // changed windows. Bus ranges are disjoint since they are memory addresses. sort both ioevents
     // and range to get asymptotic optimal solution.
@@ -832,7 +832,7 @@ fn get_ioevent_requests(
         if let Some(((new_bus_range, _), (old_bus_range, _))) = cur_range_pair {
             if new_bus_range.contains(addr) {
                 let offset = addr - new_bus_range.base;
-                ioevent_unregister_requests.push(IoEventRegisterRequest {
+                ioevent_unregister_requests.push(IoEventUpdateRequest {
                     event: event
                         .try_clone()
                         .map_err(|e| Error::IoEventRegisterFailed(IoEventError::CloneFail(e)))?,
@@ -840,7 +840,7 @@ fn get_ioevent_requests(
                     datamatch,
                     register: false,
                 });
-                ioevent_register_requests.push(IoEventRegisterRequest {
+                ioevent_register_requests.push(IoEventUpdateRequest {
                     event: event
                         .try_clone()
                         .map_err(|e| Error::IoEventRegisterFailed(IoEventError::CloneFail(e)))?,
@@ -870,9 +870,9 @@ fn get_ioevent_requests(
 }
 
 /// Sends ioevents through the tube, and returns result.
-fn send_ioevent_register_request(
+fn send_ioevent_update_request(
     tube: &Tube,
-    request: IoEventRegisterRequest,
+    request: IoEventUpdateRequest,
 ) -> std::result::Result<(), IoEventError> {
     tube.send(&request).map_err(|_| IoEventError::TubeFail)?;
     if let VmMemoryResponse::Err(e) = tube

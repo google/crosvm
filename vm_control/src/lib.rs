@@ -429,7 +429,7 @@ impl VmMemoryDestination {
 
 /// Request to register or unregister an ioevent.
 #[derive(Serialize, Deserialize)]
-pub struct IoEventRegisterRequest {
+pub struct IoEventUpdateRequest {
     pub event: Event,
     pub addr: u64,
     pub datamatch: Datamatch,
@@ -466,7 +466,7 @@ pub enum VmMemoryRequest {
         datamatch: Datamatch,
         register: bool,
     },
-    IoEventRaw(IoEventRegisterRequest),
+    IoEventRaw(IoEventUpdateRequest),
 }
 
 /// Struct for managing `VmMemoryRequest`s IOMMU related state.
