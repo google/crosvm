@@ -52,6 +52,7 @@ use jail::create_sandbox_minijail;
 use jail::JailConfig;
 use jail::SandboxConfig;
 use jail::MAX_OPEN_FILES_DEFAULT;
+use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
 use vm_memory::GuestMemory;
@@ -294,7 +295,7 @@ impl SwapController {
         keep_rds.extend(uffd_factory.as_raw_descriptors());
 
         // Load and cache transparent hugepage size from sysfs before jumping into sandbox.
-        let _ = *THP_SIZE;
+        Lazy::force(&THP_SIZE);
 
         let jail = if let Some(jail_config) = jail_config {
             let config = SandboxConfig::new(jail_config, "swap_monitor");
