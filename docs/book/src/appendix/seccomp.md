@@ -23,7 +23,7 @@ directive near the top:
 The common device policy for `x86_64` is:
 
 ```
-{{#include ../../../../seccomp/x86_64/common_device.policy:5:}}
+{{#include ../../../../jail/seccomp/x86_64/common_device.policy:5:}}
 ```
 
 The syntax is simple: one syscall per line, followed by a colon `:`, followed by a boolean
