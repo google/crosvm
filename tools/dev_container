@@ -35,6 +35,8 @@ from impl.util import (
     is_cros_repo,
     is_kiwi_repo,
     kiwi_repo_root,
+    is_aosp_repo,
+    aosp_repo_root,
 )
 from impl.command import (
     chdir,
@@ -139,6 +141,11 @@ def workspace_mount_args(cros: bool):
             # `/scratch` mount point.
             f"--volume {quoted(kiwi_repo_root())}/scratch:/scratch/cargo_target:rw",
             "--workdir /workspace/platform/crosvm",
+        ]
+    elif is_aosp_repo():
+        return [
+            f"--volume {quoted(aosp_repo_root())}:/workspace:rw",
+            "--workdir /workspace/external/crosvm",
         ]
     else:
         return [

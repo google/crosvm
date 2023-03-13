@@ -185,6 +185,17 @@ def kiwi_repo_root():
     return (CROSVM_ROOT / "../..").resolve()
 
 
+def is_aosp_repo():
+    "Returns true if the crosvm repo is an AOSP repo checkout."
+    android_bp = CROSVM_ROOT / "Android.bp"
+    return android_bp.exists()
+
+
+def aosp_repo_root():
+    "Root directory of AOSP repo checkout."
+    return (CROSVM_ROOT / "../..").resolve()
+
+
 def sudo_is_passwordless():
     # Run with --askpass but no askpass set, succeeds only if passwordless sudo
     # is available.
