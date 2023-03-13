@@ -15,3 +15,5 @@ libc = "0.2.65"
 [build-dependencies]
 anyhow = "*"
 cbindgen = "0.24"
+cc = "*"
+tempfile = "*"

@@ -693,7 +693,9 @@ dependencies = [
  "anyhow",
  "base",
  "cbindgen",
+ "cc",
  "libc",
+ "tempfile",
  "vm_control",
 ]
 
