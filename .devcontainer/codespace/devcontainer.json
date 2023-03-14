@@ -1,12 +1,17 @@
 {
-    "image": "gcr.io/crosvm-infra/crosvm_dev:r0032",
-    "extensions": [
+  // TODO(b/273529589): Automatically use latest version
+  "image": "gcr.io/crosvm-infra/crosvm_dev:r0037",
+  "customizations": {
+    "vscode": {
+      "extensions": [
         "rust-lang.rust-analyzer",
         "bungcip.better-toml",
         "esbenp.prettier-vscode",
         "ms-python.vscode-pylance",
         "foxundermoon.shell-format",
         "timonwong.shellcheck"
-    ],
-    "updateContentCommand": "git submodule update --init"
+      ]
+    }
+  },
+  "updateContentCommand": "git submodule update --init"
 }
