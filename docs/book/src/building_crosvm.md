@@ -56,7 +56,7 @@ Instead of using the interactive shell, commands to execute can be provided dire
 ```
 
 Note: The container and build artifacts are preserved between calls to `./tools/dev_container`. If
-you wish to start fresh, use the `--reset` flag.
+you wish to start fresh, use the `--clean` flag.
 
 ## Building a binary
 
