@@ -255,6 +255,8 @@ pub enum Error {
     InitPvtimeError(base::Error),
     #[error("initrd could not be loaded: {0}")]
     InitrdLoadFailure(arch::LoadImageError),
+    #[error("failed to initialize virtual machine {0}")]
+    InitVmError(base::Error),
     #[error("kernel could not be loaded: {0}")]
     KernelLoadFailure(kernel_loader::Error),
     #[error("error loading Kernel from Elf image: {0}")]
@@ -701,6 +703,13 @@ impl arch::LinuxArch for AArch64 {
             &|writer, phandles| vm.create_fdt(writer, phandles),
         )
         .map_err(Error::CreateFdt)?;
+
+        vm.init_arch(
+            payload.entry(),
+            fdt_offset,
+            AARCH64_FDT_MAX_SIZE.try_into().unwrap(),
+        )
+        .map_err(Error::InitVmError)?;
 
         Ok(RunnableLinuxVm {
             vm,

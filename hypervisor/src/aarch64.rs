@@ -84,6 +84,14 @@ pub trait VmAArch64: Vm {
         fdt: &mut FdtWriter,
         phandles: &BTreeMap<&str, u32>,
     ) -> cros_fdt::Result<()>;
+
+    // Initialize a VM. Called after building the VM. Presently called before vCPUs are initialized.
+    fn init_arch(
+        &self,
+        payload_entry_address: GuestAddress,
+        fdt_address: GuestAddress,
+        fdt_size: usize,
+    ) -> Result<()>;
 }
 
 /// A wrapper around creating and using a VCPU on aarch64.

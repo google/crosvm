@@ -216,6 +216,15 @@ impl VmAArch64 for KvmVm {
     ) -> cros_fdt::Result<()> {
         Ok(())
     }
+
+    fn init_arch(
+        &self,
+        _payload_entry_address: GuestAddress,
+        _fdt_address: GuestAddress,
+        _fdt_size: usize,
+    ) -> Result<()> {
+        Ok(())
+    }
 }
 
 impl KvmVcpu {
