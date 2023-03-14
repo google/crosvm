@@ -24,7 +24,7 @@ RUN useradd -ms /bin/bash crosvmdev \
 USER crosvmdev
 
 # Prepare path to rust toolchain for crosvmdev
-RUN echo 'export PATH=/cache/cargo_home/bin:/usr/local/cargo/bin:$PATH' >> /home/crosvmdev/.profile
+RUN echo 'export PATH=/workspace/tools:/cache/cargo_home/bin:/usr/local/cargo/bin:$PATH' >> /home/crosvmdev/.profile
 
 # Re-run wine setup for this user
 RUN /tools/setup-wine64
