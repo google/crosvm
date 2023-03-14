@@ -7,6 +7,7 @@
 #![cfg(unix)]
 
 use std::io::Write;
+use std::path::Path;
 use std::process::Command;
 use std::process::Stdio;
 use std::time::Duration;
@@ -14,9 +15,13 @@ use std::time::Duration;
 use fixture::utils::retry;
 use fixture::utils::ChildExt;
 use fixture::utils::CommandExt;
+use fixture::vhost_user::CmdType;
+use fixture::vhost_user::Config as VuConfig;
+use fixture::vhost_user::VhostUserBackend;
 use fixture::vm::Config;
 use fixture::vm::TestVm;
 use rand::Rng;
+use tempfile::NamedTempFile;
 
 const HOST_CID: u64 = 2;
 
@@ -38,20 +43,22 @@ fn generate_vhost_port() -> u32 {
 
 #[test]
 fn host_to_guest() {
-    let config = Config::new();
-    host_to_guest_connection(config);
+    let guest_cid = generate_guest_cid();
+    let config = Config::new().extra_args(vec!["--cid".to_string(), guest_cid.to_string()]);
+    host_to_guest_connection(config, guest_cid);
 }
 
 #[test]
 fn host_to_guest_disable_sandbox() {
-    let config = Config::new().disable_sandbox();
-    host_to_guest_connection(config);
+    let guest_cid = generate_guest_cid();
+    let config = Config::new()
+        .extra_args(vec!["--cid".to_string(), guest_cid.to_string()])
+        .disable_sandbox();
+    host_to_guest_connection(config, guest_cid);
 }
 
-fn host_to_guest_connection(config: Config) {
-    let guest_cid = generate_guest_cid();
+fn host_to_guest_connection(config: Config, guest_cid: u32) {
     let guest_port = generate_vhost_port();
-    let config = config.extra_args(vec!["--cid".to_string(), guest_cid.to_string()]);
     let mut vm = TestVm::new(config).unwrap();
 
     let guest_cmd = vm
@@ -85,20 +92,22 @@ fn host_to_guest_connection(config: Config) {
 
 #[test]
 fn guest_to_host() {
-    let config = Config::new();
+    let guest_cid = generate_guest_cid();
+    let config = Config::new().extra_args(vec!["--cid".to_string(), guest_cid.to_string()]);
     guest_to_host_connection(config);
 }
 
 #[test]
 fn guest_to_host_disable_sandbox() {
-    let config = Config::new().disable_sandbox();
+    let guest_cid = generate_guest_cid();
+    let config = Config::new()
+        .extra_args(vec!["--cid".to_string(), guest_cid.to_string()])
+        .disable_sandbox();
     guest_to_host_connection(config);
 }
 
 fn guest_to_host_connection(config: Config) {
-    let guest_cid = generate_guest_cid();
     let host_port = generate_vhost_port();
-    let config = config.extra_args(vec!["--cid".to_string(), guest_cid.to_string()]);
     let mut vm = TestVm::new(config).unwrap();
 
     let mut host_ncat = Command::new("ncat")
@@ -122,4 +131,50 @@ fn guest_to_host_connection(config: Config) {
     assert_eq!(guest_stdout.trim(), MESSAGE_TO_GUEST);
 
     host_ncat.wait_with_timeout(SERVER_TIMEOUT).unwrap();
+}
+
+fn create_vu_config(socket: &Path, cid: u32) -> VuConfig {
+    let socket_path = socket.to_str().unwrap();
+    println!("cid={cid}, socket={socket_path}");
+    VuConfig::new(CmdType::Device, "vsock").extra_args(vec![
+        "vsock".to_string(),
+        "--socket".to_string(),
+        socket_path.to_string(),
+        "--cid".to_string(),
+        cid.to_string(),
+    ])
+}
+
+#[test]
+fn vhost_user_host_to_guest() {
+    let guest_cid = generate_guest_cid();
+    // make sure the socket file is deleted as the vsock device won't start if it exists.
+    let socket = NamedTempFile::new().unwrap().path().to_owned();
+
+    let vu_config = create_vu_config(&socket, guest_cid);
+    let _vu_device = VhostUserBackend::new(vu_config).unwrap();
+
+    let config = Config::new().extra_args(vec![
+        "--vhost-user-vsock".to_string(),
+        socket.to_str().unwrap().to_string(),
+    ]);
+
+    host_to_guest_connection(config, guest_cid);
+}
+
+#[test]
+fn vhost_user_guest_to_host() {
+    let guest_cid = generate_guest_cid();
+    // make sure the socket file is deleted as the vsock device won't start if it exists.
+    let socket = NamedTempFile::new().unwrap().path().to_owned();
+
+    let vu_config = create_vu_config(&socket, guest_cid);
+    let _vu_device = VhostUserBackend::new(vu_config).unwrap();
+
+    let config = Config::new().extra_args(vec![
+        "--vhost-user-vsock".to_string(),
+        socket.to_str().unwrap().to_string(),
+    ]);
+
+    guest_to_host_connection(config);
 }
