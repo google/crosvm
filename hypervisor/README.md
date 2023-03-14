@@ -24,11 +24,13 @@ KVM is crosvm's preferred hypervisor for Linux.
 
 - Platforms: Windows
 - Tested upstream: no
+- Contacts: vnagarnaik@google.com
 
 ## HAXM
 
 - Platforms: Windows
 - Tested upstream: no
+- Contacts: vnagarnaik@google.com
 
 ## Android Specific
 
