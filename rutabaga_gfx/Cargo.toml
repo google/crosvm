@@ -24,12 +24,14 @@ libc = "0.2.116"
 remain = "0.2"
 thiserror = "1.0.23"
 serde = { version = "1", features = [ "derive" ] }
-zerocopy = "*"
+zerocopy = "0.6"
 log = "0.4"
 
-[target.'cfg(not(target_os = "fuchsia"))'.dependencies]
-base = { path = "../base" }
+[target.'cfg(unix)'.dependencies]
+nix = "0.26.1"
 
+[target.'cfg(windows)'.dependencies]
+winapi = "0.3"
 
 # To build latest Vulkano, change version to git = "https:/github.com/vulkano-rs/vulkano.git"
 # vulkano = { version = "0.31.0", optional = true }

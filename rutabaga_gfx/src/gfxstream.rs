@@ -8,7 +8,6 @@
 
 #![cfg(feature = "gfxstream")]
 
-use std::convert::TryInto;
 use std::mem::size_of;
 use std::os::raw::c_char;
 use std::os::raw::c_int;
@@ -19,9 +18,10 @@ use std::ptr::null;
 use std::ptr::null_mut;
 use std::sync::Arc;
 
-use base::FromRawDescriptor;
-use base::IntoRawDescriptor;
-use base::SafeDescriptor;
+use crate::rutabaga_os::FromRawDescriptor;
+use crate::rutabaga_os::IntoRawDescriptor;
+use crate::rutabaga_os::RawDescriptor;
+use crate::rutabaga_os::SafeDescriptor;
 use data_model::VolatileSlice;
 
 use crate::generated::virgl_renderer_bindings::iovec;
@@ -340,7 +340,7 @@ impl Gfxstream {
 
         // Safe because the handle was just returned by a successful gfxstream call so it must be
         // valid and owned by us.
-        let raw_descriptor = stream_handle.os_handle.try_into()?;
+        let raw_descriptor = stream_handle.os_handle as RawDescriptor;
         let handle = unsafe { SafeDescriptor::from_raw_descriptor(raw_descriptor) };
 
         Ok(Arc::new(RutabagaHandle {

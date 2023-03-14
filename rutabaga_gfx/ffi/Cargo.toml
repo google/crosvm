@@ -11,7 +11,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 rutabaga_gfx = { path = "../" }
-base = {path = "../../base" }
 data_model = {path = "../../common/data_model" }
 libc = "0.2.93"
 log = "0.4"
@@ -22,9 +21,6 @@ gfxstream = ["rutabaga_gfx/gfxstream"]
 virgl_renderer = ["rutabaga_gfx/virgl_renderer"]
 virgl_renderer_next = ["rutabaga_gfx/virgl_renderer_next"]
 vulkano = ["rutabaga_gfx/vulkano"]
-
-[patch.crates-io]
-minijail = { path = "../../third_party/minijail/rust/minijail" } # ignored by ebuild
 
 [profile.dev]
 lto = true

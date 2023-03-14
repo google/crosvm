@@ -10,14 +10,14 @@
 
 use std::ffi::CStr;
 use std::fs::File;
+use std::io::Error;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::os::raw::c_char;
 use std::sync::Arc;
 
-use base::AsRawDescriptor;
-use base::Error as BaseError;
-use base::FromRawDescriptor;
+use crate::rutabaga_os::AsRawDescriptor;
+use crate::rutabaga_os::FromRawDescriptor;
 
 use crate::rutabaga_gralloc::formats::DrmFormat;
 use crate::rutabaga_gralloc::gralloc::Gralloc;
@@ -64,7 +64,7 @@ impl MinigbmDevice {
         // returned.  If the fd does not refer to a DRM device, gbm_create_device will reject it.
         let gbm = unsafe { gbm_create_device(fd.as_raw_descriptor()) };
         if gbm.is_null() {
-            return Err(RutabagaError::BaseError(BaseError::last()));
+            return Err(RutabagaError::IoError(Error::last_os_error()));
         }
 
         // Safe because a valid minigbm device has a statically allocated string associated with
@@ -104,7 +104,7 @@ impl Gralloc for MinigbmDevice {
             )
         };
         if bo.is_null() {
-            return Err(RutabagaError::BaseError(BaseError::last()));
+            return Err(RutabagaError::IoError(Error::last_os_error()));
         }
 
         let mut reqs: ImageMemoryRequirements = Default::default();
@@ -170,7 +170,7 @@ impl Gralloc for MinigbmDevice {
         };
 
         if bo.is_null() {
-            return Err(RutabagaError::BaseError(BaseError::last()));
+            return Err(RutabagaError::IoError(Error::last_os_error()));
         }
 
         let gbm_buffer = MinigbmBuffer(bo, self.clone());

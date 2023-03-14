@@ -51,6 +51,7 @@ use base::AsRawDescriptor;
 use base::Error as SysError;
 use base::Event;
 use base::ExternalMapping;
+use base::IntoRawDescriptor;
 use base::MappedRegion;
 use base::MemoryMappingBuilder;
 use base::MmapError;
@@ -75,8 +76,11 @@ use remain::sorted;
 use resources::Alloc;
 use resources::SystemAllocator;
 use rutabaga_gfx::DeviceId;
+use rutabaga_gfx::RutabagaDescriptor;
+use rutabaga_gfx::RutabagaFromRawDescriptor;
 use rutabaga_gfx::RutabagaGralloc;
 use rutabaga_gfx::RutabagaHandle;
+use rutabaga_gfx::RutabagaMappedRegion;
 use rutabaga_gfx::VulkanInfo;
 use serde::Deserialize;
 use serde::Serialize;
@@ -356,6 +360,32 @@ pub enum VmMemorySource {
     ExternalMapping { ptr: u64, size: u64 },
 }
 
+// The following are wrappers to avoid base dependencies in the rutabaga crate
+fn to_rutabaga_desciptor(s: SafeDescriptor) -> RutabagaDescriptor {
+    // Safe because we own the SafeDescriptor at this point.
+    unsafe { RutabagaDescriptor::from_raw_descriptor(s.into_raw_descriptor()) }
+}
+
+struct RutabagaMemoryRegion {
+    region: Box<dyn RutabagaMappedRegion>,
+}
+
+impl RutabagaMemoryRegion {
+    pub fn new(region: Box<dyn RutabagaMappedRegion>) -> RutabagaMemoryRegion {
+        RutabagaMemoryRegion { region }
+    }
+}
+
+unsafe impl MappedRegion for RutabagaMemoryRegion {
+    fn as_ptr(&self) -> *mut u8 {
+        self.region.as_ptr()
+    }
+
+    fn size(&self) -> usize {
+        self.region.size()
+    }
+}
+
 impl VmMemorySource {
     /// Map the resource and return its mapping and size in bytes.
     pub fn map(
@@ -386,7 +416,7 @@ impl VmMemorySource {
             } => {
                 let mapped_region = match gralloc.import_and_map(
                     RutabagaHandle {
-                        os_handle: descriptor,
+                        os_handle: to_rutabaga_desciptor(descriptor),
                         handle_type,
                     },
                     VulkanInfo {
@@ -395,7 +425,11 @@ impl VmMemorySource {
                     },
                     size,
                 ) {
-                    Ok(mapped_region) => mapped_region,
+                    Ok(mapped_region) => {
+                        let mapped_region: Box<dyn MappedRegion> =
+                            Box::new(RutabagaMemoryRegion::new(mapped_region));
+                        mapped_region
+                    }
                     Err(e) => {
                         error!("gralloc failed to import and map: {}", e);
                         return Err(SysError::new(EINVAL));

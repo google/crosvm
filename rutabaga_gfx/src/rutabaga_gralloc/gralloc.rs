@@ -10,8 +10,8 @@ use std::collections::BTreeMap as Map;
 #[cfg(feature = "vulkano")]
 use log::error;
 
-use crate::base_internal::round_up_to_page_size;
-use crate::base_internal::MappedRegion;
+use crate::rutabaga_os::round_up_to_page_size;
+use crate::rutabaga_os::MappedRegion;
 
 use crate::rutabaga_gralloc::formats::*;
 #[cfg(feature = "minigbm")]
@@ -315,7 +315,7 @@ impl RutabagaGralloc {
             .ok_or(RutabagaError::InvalidGrallocBackend)?;
 
         let mut reqs = gralloc.get_image_memory_requirements(info)?;
-        reqs.size = round_up_to_page_size(reqs.size as usize) as u64;
+        reqs.size = round_up_to_page_size(reqs.size)?;
         Ok(reqs)
     }
 
@@ -356,6 +356,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(target_os = "windows", ignore)]
     fn create_render_target() {
         let gralloc_result = RutabagaGralloc::new();
         if gralloc_result.is_err() {
@@ -384,6 +385,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(target_os = "windows", ignore)]
     fn create_video_buffer() {
         let gralloc_result = RutabagaGralloc::new();
         if gralloc_result.is_err() {
@@ -421,6 +423,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(target_os = "windows", ignore)]
     fn export_and_map() {
         let gralloc_result = RutabagaGralloc::new();
         if gralloc_result.is_err() {

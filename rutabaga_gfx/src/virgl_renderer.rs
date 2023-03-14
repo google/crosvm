@@ -9,6 +9,7 @@
 
 use std::cmp::min;
 use std::convert::TryFrom;
+use std::io::Error as SysError;
 use std::mem::size_of;
 use std::mem::transmute;
 use std::os::raw::c_char;
@@ -21,11 +22,13 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use base::Error as SysError;
-use base::FromRawDescriptor;
-use base::SafeDescriptor;
+use crate::rutabaga_os::FromRawDescriptor;
+use crate::rutabaga_os::IntoRawDescriptor;
+use crate::rutabaga_os::SafeDescriptor;
+
 use data_model::VolatileSlice;
 use log::debug;
+use log::error;
 use log::warn;
 
 use crate::generated::virgl_debug_callback_bindings::*;
@@ -45,41 +48,42 @@ struct VirglRendererContext {
     ctx_id: u32,
 }
 
-fn import_resource(resource: &mut RutabagaResource) {
+fn import_resource(resource: &mut RutabagaResource) -> RutabagaResult<()> {
     if (resource.import_mask & (1 << (RutabagaComponentType::VirglRenderer as u32))) != 0 {
-        return;
+        return Ok(());
     }
 
     if let Some(handle) = &resource.handle {
         if handle.handle_type == RUTABAGA_MEM_HANDLE_TYPE_DMABUF {
-            if let Ok(dmabuf_fd) = base::clone_descriptor(&handle.os_handle) {
-                // Safe because we are being passed a valid fd
-                unsafe {
-                    let dmabuf_size = libc::lseek64(dmabuf_fd, 0, libc::SEEK_END);
-                    libc::lseek64(dmabuf_fd, 0, libc::SEEK_SET);
-                    let args = virgl_renderer_resource_import_blob_args {
-                        res_handle: resource.resource_id,
-                        blob_mem: resource.blob_mem,
-                        fd_type: VIRGL_RENDERER_BLOB_FD_TYPE_DMABUF,
-                        fd: dmabuf_fd,
-                        size: dmabuf_size as u64,
-                    };
-                    let ret = virgl_renderer_resource_import_blob(&args);
-                    if ret != 0 {
-                        // import_blob can fail if we've previously imported this resource,
-                        // but in any case virglrenderer does not take ownership of the fd
-                        // in error paths
-                        //
-                        // Because of the re-import case we must still fall through to the
-                        // virgl_renderer_ctx_attach_resource() call.
-                        libc::close(dmabuf_fd);
-                        return;
-                    }
-                    resource.import_mask |= 1 << (RutabagaComponentType::VirglRenderer as u32);
+            let dmabuf_fd = handle.os_handle.try_clone()?.into_raw_descriptor();
+            // Safe because we are being passed a valid fd
+            unsafe {
+                let dmabuf_size = libc::lseek64(dmabuf_fd, 0, libc::SEEK_END);
+                libc::lseek64(dmabuf_fd, 0, libc::SEEK_SET);
+                let args = virgl_renderer_resource_import_blob_args {
+                    res_handle: resource.resource_id,
+                    blob_mem: resource.blob_mem,
+                    fd_type: VIRGL_RENDERER_BLOB_FD_TYPE_DMABUF,
+                    fd: dmabuf_fd,
+                    size: dmabuf_size as u64,
+                };
+                let ret = virgl_renderer_resource_import_blob(&args);
+                if ret != 0 {
+                    // import_blob can fail if we've previously imported this resource,
+                    // but in any case virglrenderer does not take ownership of the fd
+                    // in error paths
+                    //
+                    // Because of the re-import case we must still fall through to the
+                    // virgl_renderer_ctx_attach_resource() call.
+                    libc::close(dmabuf_fd);
+                    return Ok(());
                 }
+                resource.import_mask |= 1 << (RutabagaComponentType::VirglRenderer as u32);
             }
         }
     }
+
+    Ok(())
 }
 
 impl RutabagaContext for VirglRendererContext {
@@ -101,7 +105,10 @@ impl RutabagaContext for VirglRendererContext {
     }
 
     fn attach(&mut self, resource: &mut RutabagaResource) {
-        import_resource(resource);
+        match import_resource(resource) {
+            Ok(()) => (),
+            Err(e) => error!("importing resource failing with {}", e),
+        }
 
         // The context id and resource id must be valid because the respective instances ensure
         // their lifetime.
@@ -244,7 +251,10 @@ impl VirglRenderer {
         if cfg!(debug_assertions) {
             let ret = unsafe { libc::dup2(libc::STDOUT_FILENO, libc::STDERR_FILENO) };
             if ret == -1 {
-                warn!("unable to dup2 stdout to stderr: {}", SysError::last());
+                warn!(
+                    "unable to dup2 stdout to stderr: {}",
+                    SysError::last_os_error()
+                );
             }
         }
 

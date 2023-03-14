@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use base::AsRawDescriptor;
+use crate::rutabaga_os::AsRawDescriptor;
 use vulkano::device::Device;
 use vulkano::device::DeviceExtensions;
 use vulkano::memory::DeviceMemory;

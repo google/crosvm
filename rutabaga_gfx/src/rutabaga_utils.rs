@@ -4,20 +4,24 @@
 
 //! rutabaga_utils: Utility enums, structs, and implementations needed by the rest of the crate.
 
+use std::ffi::NulError;
 use std::io::Error as IoError;
 use std::num::TryFromIntError;
 use std::os::raw::c_void;
 use std::path::PathBuf;
 use std::str::Utf8Error;
 
-use crate::base_internal::Error as BaseError;
-use crate::base_internal::SafeDescriptor;
+use crate::rutabaga_os::SafeDescriptor;
 
 use data_model::VolatileMemoryError;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
+
+#[cfg(unix)]
+use nix::Error as NixError;
+
 #[cfg(feature = "vulkano")]
 use vulkano::device::DeviceCreationError;
 #[cfg(feature = "vulkano")]
@@ -154,9 +158,6 @@ pub enum RutabagaError {
     /// is allowed.
     #[error("attempted to use a rutabaga asset already in use")]
     AlreadyInUse,
-    /// Base error returned as a result of rutabaga library operation.
-    #[error("rutabaga received a base error: {0}")]
-    BaseError(BaseError),
     /// Checked Arithmetic error
     #[error("arithmetic failed: {}({}) {op} {}({})", .field1.0, .field1.1, .field2.0, .field2.1)]
     CheckedArithmetic {
@@ -239,6 +240,12 @@ pub enum RutabagaError {
     /// The mapping failed.
     #[error("The mapping failed with library error: {0}")]
     MappingFailed(i32),
+    /// Nix crate error.
+    #[cfg(unix)]
+    #[error("The errno is {0}")]
+    NixError(NixError),
+    #[error("Nul Error occured {0}")]
+    NulError(NulError),
     /// Violation of the Rutabaga spec occured.
     #[error("violation of the rutabaga spec: {0}")]
     SpecViolation(&'static str),
@@ -284,15 +291,22 @@ pub enum RutabagaError {
     VolatileMemoryError(VolatileMemoryError),
 }
 
-impl From<IoError> for RutabagaError {
-    fn from(e: IoError) -> RutabagaError {
-        RutabagaError::IoError(e)
+#[cfg(unix)]
+impl From<NixError> for RutabagaError {
+    fn from(e: NixError) -> RutabagaError {
+        RutabagaError::NixError(e)
     }
 }
 
-impl From<BaseError> for RutabagaError {
-    fn from(e: BaseError) -> RutabagaError {
-        RutabagaError::BaseError(e)
+impl From<NulError> for RutabagaError {
+    fn from(e: NulError) -> RutabagaError {
+        RutabagaError::NulError(e)
+    }
+}
+
+impl From<IoError> for RutabagaError {
+    fn from(e: IoError) -> RutabagaError {
+        RutabagaError::IoError(e)
     }
 }
 

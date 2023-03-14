@@ -16,6 +16,7 @@ mod renderer_utils;
 mod rutabaga_2d;
 mod rutabaga_core;
 mod rutabaga_gralloc;
+mod rutabaga_os;
 mod rutabaga_utils;
 mod virgl_renderer;
 
@@ -30,11 +31,8 @@ pub use crate::rutabaga_gralloc::RutabagaGralloc;
 pub use crate::rutabaga_gralloc::RutabagaGrallocFlags;
 pub use crate::rutabaga_utils::*;
 
-cfg_if::cfg_if! {
-    if #[cfg(target_os = "fuchsia")] {
-        pub(crate) mod base;
-        use base as base_internal;
-    } else {
-        use base as base_internal;
-    }
-}
+pub use crate::rutabaga_os::AsRawDescriptor;
+pub use crate::rutabaga_os::FromRawDescriptor as RutabagaFromRawDescriptor;
+pub use crate::rutabaga_os::IntoRawDescriptor as RutabagaIntoRawDescriptor;
+pub use crate::rutabaga_os::MappedRegion as RutabagaMappedRegion;
+pub use crate::rutabaga_os::SafeDescriptor as RutabagaDescriptor;

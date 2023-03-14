@@ -7,15 +7,14 @@
 use std::collections::BTreeMap as Map;
 use std::sync::Arc;
 
-use crate::base_internal::SafeDescriptor;
 use data_model::VolatileSlice;
 
-#[cfg(not(target_os = "fuchsia"))]
 use crate::cross_domain::CrossDomain;
 
 #[cfg(feature = "gfxstream")]
 use crate::gfxstream::Gfxstream;
 use crate::rutabaga_2d::Rutabaga2D;
+use crate::rutabaga_os::SafeDescriptor;
 use crate::rutabaga_utils::*;
 #[cfg(feature = "virgl_renderer")]
 use crate::virgl_renderer::VirglRenderer;
@@ -998,13 +997,9 @@ impl RutabagaBuilder {
                 push_capset(RUTABAGA_CAPSET_GFXSTREAM);
             }
 
-            cfg_if::cfg_if! {
-                   if #[cfg(not(target_os = "fuchsia"))] {
-                      let cross_domain = CrossDomain::init(self.channels)?;
-                      rutabaga_components.insert(RutabagaComponentType::CrossDomain, cross_domain);
-                      push_capset(RUTABAGA_CAPSET_CROSS_DOMAIN);
-                   }
-            }
+            let cross_domain = CrossDomain::init(self.channels)?;
+            rutabaga_components.insert(RutabagaComponentType::CrossDomain, cross_domain);
+            push_capset(RUTABAGA_CAPSET_CROSS_DOMAIN);
         }
 
         Ok(Rutabaga {

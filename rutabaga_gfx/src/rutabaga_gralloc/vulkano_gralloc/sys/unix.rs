@@ -5,8 +5,8 @@
 use std::fs::File;
 use std::sync::Arc;
 
-use base::FromRawDescriptor;
-use base::IntoRawDescriptor;
+use crate::rutabaga_os::FromRawDescriptor;
+use crate::rutabaga_os::IntoRawDescriptor;
 use vulkano::device::Device;
 use vulkano::device::DeviceExtensions;
 use vulkano::memory::DeviceMemory;

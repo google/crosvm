@@ -11,8 +11,8 @@ use std::panic::catch_unwind;
 use std::process::abort;
 
 #[cfg(feature = "virgl_renderer_next")]
-use base::IntoRawDescriptor;
-use base::SafeDescriptor;
+use crate::rutabaga_os::IntoRawDescriptor;
+use crate::rutabaga_os::SafeDescriptor;
 
 use crate::rutabaga_utils::RutabagaError;
 use crate::rutabaga_utils::RutabagaFence;

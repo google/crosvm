@@ -14,6 +14,8 @@ use std::sync::Arc;
 
 use base::error;
 use base::info;
+use base::FromRawDescriptor;
+use base::IntoRawDescriptor;
 use base::Protection;
 use base::SafeDescriptor;
 use data_model::VolatileSlice;
@@ -23,11 +25,14 @@ use rutabaga_gfx::ResourceCreate3D;
 use rutabaga_gfx::ResourceCreateBlob;
 use rutabaga_gfx::Rutabaga;
 use rutabaga_gfx::RutabagaBuilder;
+use rutabaga_gfx::RutabagaDescriptor;
 #[cfg(windows)]
 use rutabaga_gfx::RutabagaError;
 use rutabaga_gfx::RutabagaFence;
 use rutabaga_gfx::RutabagaFenceHandler;
+use rutabaga_gfx::RutabagaFromRawDescriptor;
 use rutabaga_gfx::RutabagaHandle;
+use rutabaga_gfx::RutabagaIntoRawDescriptor;
 use rutabaga_gfx::RutabagaIovec;
 use rutabaga_gfx::Transfer3D;
 use rutabaga_gfx::RUTABAGA_MEM_HANDLE_TYPE_DMABUF;
@@ -57,6 +62,16 @@ use crate::virtio::resource_bridge::PlaneInfo;
 use crate::virtio::resource_bridge::ResourceInfo;
 use crate::virtio::resource_bridge::ResourceResponse;
 use crate::virtio::SharedMemoryMapper;
+
+fn to_rutabaga_descriptor(s: SafeDescriptor) -> RutabagaDescriptor {
+    // Safe because we own the SafeDescriptor at this point.
+    unsafe { RutabagaDescriptor::from_raw_descriptor(s.into_raw_descriptor()) }
+}
+
+fn to_safe_descriptor(r: RutabagaDescriptor) -> SafeDescriptor {
+    // Safe because we own the SafeDescriptor at this point.
+    unsafe { SafeDescriptor::from_raw_descriptor(r.into_raw_descriptor()) }
+}
 
 struct VirtioGpuResource {
     resource_id: u32,
@@ -244,7 +259,7 @@ impl VirtioGpuScanout {
             return Some(import_id);
         }
 
-        let dmabuf = rutabaga.export_blob(resource.resource_id).ok()?;
+        let dmabuf = to_safe_descriptor(rutabaga.export_blob(resource.resource_id).ok()?.os_handle);
         let query = rutabaga.query(resource.resource_id).ok()?;
 
         let (width, height, format, stride, offset) = match resource.scanout_data {
@@ -267,7 +282,7 @@ impl VirtioGpuScanout {
         let import_id = display
             .borrow_mut()
             .import_memory(
-                &dmabuf.os_handle,
+                &dmabuf,
                 offset,
                 stride,
                 query.modifier,
@@ -338,8 +353,10 @@ impl VirtioGpu {
         fence_handler: RutabagaFenceHandler,
         rutabaga_server_descriptor: Option<SafeDescriptor>,
     ) -> Option<VirtioGpu> {
+        let server_descriptor = rutabaga_server_descriptor.map(to_rutabaga_descriptor);
+
         let rutabaga = rutabaga_builder
-            .build(fence_handler, rutabaga_server_descriptor)
+            .build(fence_handler, server_descriptor)
             .map_err(|e| error!("failed to build rutabaga {}", e))
             .ok()?;
 
@@ -615,7 +632,7 @@ impl VirtioGpu {
     /// If supported, export the resource with the given `resource_id` to a file.
     pub fn export_resource(&mut self, resource_id: u32) -> ResourceResponse {
         let handle = match self.rutabaga.export_blob(resource_id) {
-            Ok(handle) => handle.os_handle,
+            Ok(handle) => to_safe_descriptor(handle.os_handle),
             Err(_) => return ResourceResponse::Invalid,
         };
 
@@ -652,7 +669,7 @@ impl VirtioGpu {
     pub fn export_fence(&self, fence_id: u32) -> ResourceResponse {
         match self.rutabaga.export_fence(fence_id) {
             Ok(handle) => ResourceResponse::Resource(ResourceInfo::Fence {
-                handle: handle.os_handle,
+                handle: to_safe_descriptor(handle.os_handle),
             }),
             Err(_) => ResourceResponse::Invalid,
         }
@@ -696,7 +713,7 @@ impl VirtioGpu {
     /// Gets a pollable eventfd that signals the device to wakeup and poll the
     /// Rutabaga backend.
     pub fn poll_descriptor(&self) -> Option<SafeDescriptor> {
-        self.rutabaga.poll_descriptor()
+        self.rutabaga.poll_descriptor().map(to_safe_descriptor)
     }
 
     /// Creates a 3D resource with the given properties and resource_id.
@@ -812,7 +829,7 @@ impl VirtioGpu {
             resource_create_blob,
             rutabaga_iovecs,
             descriptor.map(|descriptor| RutabagaHandle {
-                os_handle: descriptor,
+                os_handle: to_rutabaga_descriptor(descriptor),
                 handle_type: RUTABAGA_MEM_HANDLE_TYPE_DMABUF,
             }),
         )?;
@@ -842,7 +859,7 @@ impl VirtioGpu {
         if let Ok(export) = self.rutabaga.export_blob(resource_id) {
             if let Ok(vulkan_info) = self.rutabaga.vulkan_info(resource_id) {
                 source = Some(VmMemorySource::Vulkan {
-                    descriptor: export.os_handle,
+                    descriptor: to_safe_descriptor(export.os_handle),
                     handle_type: export.handle_type,
                     memory_idx: vulkan_info.memory_idx,
                     device_id: vulkan_info.device_id,
@@ -850,7 +867,7 @@ impl VirtioGpu {
                 });
             } else if export.handle_type != RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_FD {
                 source = Some(VmMemorySource::Descriptor {
-                    descriptor: export.os_handle,
+                    descriptor: to_safe_descriptor(export.os_handle),
                     offset: 0,
                     size: resource.size,
                 });

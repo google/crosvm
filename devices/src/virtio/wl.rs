@@ -101,11 +101,15 @@ use rutabaga_gfx::ImageAllocationInfo;
 #[cfg(feature = "minigbm")]
 use rutabaga_gfx::ImageMemoryRequirements;
 #[cfg(feature = "minigbm")]
+use rutabaga_gfx::RutabagaDescriptor;
+#[cfg(feature = "minigbm")]
 use rutabaga_gfx::RutabagaError;
 #[cfg(feature = "minigbm")]
 use rutabaga_gfx::RutabagaGralloc;
 #[cfg(feature = "minigbm")]
 use rutabaga_gfx::RutabagaGrallocFlags;
+#[cfg(feature = "minigbm")]
+use rutabaga_gfx::RutabagaIntoRawDescriptor;
 use thiserror::Error as ThisError;
 use vm_control::VmMemorySource;
 use vm_memory::GuestAddress;
@@ -435,6 +439,13 @@ struct VmRequester {
     state: Rc<RefCell<VmRequesterState>>,
 }
 
+// The following are wrappers to avoid base dependencies in the rutabaga crate
+#[cfg(feature = "minigbm")]
+fn to_safe_descriptor(r: RutabagaDescriptor) -> SafeDescriptor {
+    // Safe because we own the SafeDescriptor at this point.
+    unsafe { SafeDescriptor::from_raw_descriptor(r.into_raw_descriptor()) }
+}
+
 impl VmRequester {
     fn new(
         mapper: Box<dyn SharedMemoryMapper>,
@@ -507,15 +518,15 @@ impl VmRequester {
             .map_err(WlError::GrallocError)?;
         drop(state);
 
+        let safe_descriptor = to_safe_descriptor(handle.os_handle);
         self.register_memory(
-            handle
-                .os_handle
+            safe_descriptor
                 .try_clone()
                 .context("failed to dup gfx handle")
                 .map_err(WlError::ShmemMapperError)?,
             reqs.size,
         )
-        .map(|info| (info, handle.os_handle, reqs))
+        .map(|info| (info, safe_descriptor, reqs))
     }
 
     fn register_shmem(&self, shm: &SharedMemory) -> WlResult<u64> {
