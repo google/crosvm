@@ -1656,7 +1656,7 @@ fn create_guest_memory(
         Exit::GuestMemoryLayout,
         "failed to create guest memory layout",
     )?;
-    GuestMemory::new(&guest_mem_layout)
+    GuestMemory::new_with_options(&guest_mem_layout)
         .exit_context(Exit::CreateGuestMemory, "failed to create guest memory")
 }
 

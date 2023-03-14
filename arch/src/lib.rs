@@ -112,6 +112,7 @@ use vm_control::PmResource;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
+use vm_memory::MemoryRegionOptions;
 
 pub enum VmImage {
     Kernel(File),
@@ -402,7 +403,7 @@ pub trait LinuxArch {
     fn guest_memory_layout(
         components: &VmComponents,
         hypervisor: &impl hypervisor::Hypervisor,
-    ) -> std::result::Result<Vec<(GuestAddress, u64)>, Self::Error>;
+    ) -> std::result::Result<Vec<(GuestAddress, u64, MemoryRegionOptions)>, Self::Error>;
 
     /// Gets the configuration for a new `SystemAllocator` that fits the given `Vm`'s memory layout.
     ///

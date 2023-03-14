@@ -99,7 +99,7 @@ where
     );
     // guest mem is 400 pages
     let arch_mem_regions = arch_memory_regions(memory_size, None);
-    let guest_mem = GuestMemory::new(&arch_mem_regions).unwrap();
+    let guest_mem = GuestMemory::new_with_options(&arch_mem_regions).unwrap();
 
     let (hyp, mut vm) = create_vm(guest_mem.clone());
     let mut resources =

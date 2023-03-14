@@ -69,6 +69,8 @@ use vm_memory::GuestAddress;
 #[cfg(all(target_arch = "aarch64", feature = "gdb"))]
 use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
+use vm_memory::MemoryRegionOptions;
+use vm_memory::MemoryRegionPurpose;
 
 mod fdt;
 
@@ -326,21 +328,29 @@ impl arch::LinuxArch for AArch64 {
     fn guest_memory_layout(
         components: &VmComponents,
         hypervisor: &impl Hypervisor,
-    ) -> std::result::Result<Vec<(GuestAddress, u64)>, Self::Error> {
-        let mut memory_regions =
-            vec![(GuestAddress(AARCH64_PHYS_MEM_START), components.memory_size)];
+    ) -> std::result::Result<Vec<(GuestAddress, u64, MemoryRegionOptions)>, Self::Error> {
+        let mut memory_regions = vec![(
+            GuestAddress(AARCH64_PHYS_MEM_START),
+            components.memory_size,
+            Default::default(),
+        )];
 
         // Allocate memory for the pVM firmware.
         if components.hv_cfg.protection_type.runs_firmware() {
             memory_regions.push((
                 GuestAddress(AARCH64_PROTECTED_VM_FW_START),
                 AARCH64_PROTECTED_VM_FW_MAX_SIZE,
+                MemoryRegionOptions::new().purpose(MemoryRegionPurpose::ProtectedFirmwareRegion),
             ));
         }
 
         if let Some(size) = components.swiotlb {
             if let Some(addr) = get_swiotlb_addr(components.memory_size, hypervisor) {
-                memory_regions.push((addr, size));
+                memory_regions.push((
+                    addr,
+                    size,
+                    MemoryRegionOptions::new().purpose(MemoryRegionPurpose::StaticSwiotlbRegion),
+                ));
             }
         }
 

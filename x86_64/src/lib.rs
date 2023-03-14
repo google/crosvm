@@ -138,6 +138,7 @@ use vm_control::BatteryType;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
+use vm_memory::MemoryRegionOptions;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
@@ -612,7 +613,10 @@ fn add_e820_entry(params: &mut boot_params, range: AddressRange, mem_type: E820T
 /// These should be used to configure the GuestMemory structure for the platform.
 /// For x86_64 all addresses are valid from the start of the kernel except a
 /// carve out at the end of 32bit address space.
-pub fn arch_memory_regions(size: u64, bios_size: Option<u64>) -> Vec<(GuestAddress, u64)> {
+pub fn arch_memory_regions(
+    size: u64,
+    bios_size: Option<u64>,
+) -> Vec<(GuestAddress, u64, MemoryRegionOptions)> {
     let mem_start = START_OF_RAM_32BITS;
     let mem_end = GuestAddress(size + mem_start);
 
@@ -621,21 +625,23 @@ pub fn arch_memory_regions(size: u64, bios_size: Option<u64>) -> Vec<(GuestAddre
 
     let mut regions = Vec::new();
     if mem_end <= end_32bit_gap_start {
-        regions.push((GuestAddress(mem_start), size));
+        regions.push((GuestAddress(mem_start), size, Default::default()));
         if let Some(bios_size) = bios_size {
-            regions.push((bios_start(bios_size), bios_size));
+            regions.push((bios_start(bios_size), bios_size, Default::default()));
         }
     } else {
         regions.push((
             GuestAddress(mem_start),
             end_32bit_gap_start.offset() - mem_start,
+            Default::default(),
         ));
         if let Some(bios_size) = bios_size {
-            regions.push((bios_start(bios_size), bios_size));
+            regions.push((bios_start(bios_size), bios_size, Default::default()));
         }
         regions.push((
             first_addr_past_32bits,
             mem_end.offset_from(end_32bit_gap_start),
+            Default::default(),
         ));
     }
 
@@ -648,7 +654,7 @@ impl arch::LinuxArch for X8664arch {
     fn guest_memory_layout(
         components: &VmComponents,
         _hypervisor: &impl Hypervisor,
-    ) -> std::result::Result<Vec<(GuestAddress, u64)>, Self::Error> {
+    ) -> std::result::Result<Vec<(GuestAddress, u64, MemoryRegionOptions)>, Self::Error> {
         init_low_memory_layout(components.pcie_ecam, components.pci_low_start);
 
         let bios_size = match &components.vm_image {
