@@ -43,7 +43,14 @@ pub(crate) struct CompletionPacket {
     pub result: std::result::Result<usize, SysError>,
 }
 
-/// Wraps an IO Completion Port. Note that completion ports can only be subscribed to a handle, they
+/// Wraps an IO Completion Port (iocp). These ports are very similar to an epoll
+/// context on unix. Handles (equivalent to FDs) we want to wait on for
+/// readiness are added to the port, and then the port can be waited on using a
+/// syscall (GetQueuedCompletionStatus). IOCP is a little more flexible than
+/// epoll because custom messages can be enqueued and received from the port
+/// just like if a handle became ready (see [IoCompletionPort::post_status]).
+///
+/// Note that completion ports can only be subscribed to a handle, they
 /// can never be unsubscribed. Handles are removed from the port automatically when they are closed.
 ///
 /// Registered handles have their completion key set to their handle number.
