@@ -2306,9 +2306,13 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         #[cfg(target_arch = "aarch64")]
         {
-            if cmd.mte && !(cmd.pmem_device.is_empty() && cmd.rw_pmem_device.is_empty()) {
+            if cmd.mte
+                && !(cmd.pmem_device.is_empty()
+                    && cmd.pstore.is_none()
+                    && cmd.rw_pmem_device.is_empty())
+            {
                 return Err(
-                    "--mte cannot be specified together with --pmem-device or --rw-pmem-device"
+                    "--mte cannot be specified together with --pmem-device, --pstore or --rw-pmem-device"
                         .to_string(),
                 );
             }
