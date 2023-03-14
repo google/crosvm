@@ -133,30 +133,51 @@ fn guest_to_host_connection(config: Config) {
     host_ncat.wait_with_timeout(SERVER_TIMEOUT).unwrap();
 }
 
-fn create_vu_config(socket: &Path, cid: u32) -> VuConfig {
+fn create_vu_config(cmd_type: CmdType, socket: &Path, cid: u32) -> VuConfig {
     let socket_path = socket.to_str().unwrap();
     println!("cid={cid}, socket={socket_path}");
-    VuConfig::new(CmdType::Device, "vsock").extra_args(vec![
-        "vsock".to_string(),
-        "--socket".to_string(),
-        socket_path.to_string(),
-        "--cid".to_string(),
-        cid.to_string(),
-    ])
+    match cmd_type {
+        CmdType::Device => VuConfig::new(cmd_type, "vsock").extra_args(vec![
+            "vsock".to_string(),
+            "--socket".to_string(),
+            socket_path.to_string(),
+            "--cid".to_string(),
+            cid.to_string(),
+        ]),
+        CmdType::Devices => VuConfig::new(cmd_type, "vsock").extra_args(vec![
+            "--vsock".to_string(),
+            format!("vhost={},cid={}", socket_path, cid),
+        ]),
+    }
 }
 
 #[test]
 fn vhost_user_host_to_guest() {
     let guest_cid = generate_guest_cid();
-    // make sure the socket file is deleted as the vsock device won't start if it exists.
-    let socket = NamedTempFile::new().unwrap().path().to_owned();
+    let socket = NamedTempFile::new().unwrap();
 
-    let vu_config = create_vu_config(&socket, guest_cid);
+    let vu_config = create_vu_config(CmdType::Device, socket.path(), guest_cid);
     let _vu_device = VhostUserBackend::new(vu_config).unwrap();
 
     let config = Config::new().extra_args(vec![
         "--vhost-user-vsock".to_string(),
-        socket.to_str().unwrap().to_string(),
+        socket.path().to_str().unwrap().to_string(),
+    ]);
+
+    host_to_guest_connection(config, guest_cid);
+}
+
+#[test]
+fn vhost_user_host_to_guest_with_devices() {
+    let guest_cid = generate_guest_cid();
+    let socket = NamedTempFile::new().unwrap();
+
+    let vu_config = create_vu_config(CmdType::Devices, socket.path(), guest_cid);
+    let _vu_device = VhostUserBackend::new(vu_config).unwrap();
+
+    let config = Config::new().extra_args(vec![
+        "--vhost-user-vsock".to_string(),
+        socket.path().to_str().unwrap().to_string(),
     ]);
 
     host_to_guest_connection(config, guest_cid);
@@ -165,15 +186,30 @@ fn vhost_user_host_to_guest() {
 #[test]
 fn vhost_user_guest_to_host() {
     let guest_cid = generate_guest_cid();
-    // make sure the socket file is deleted as the vsock device won't start if it exists.
-    let socket = NamedTempFile::new().unwrap().path().to_owned();
+    let socket = NamedTempFile::new().unwrap();
 
-    let vu_config = create_vu_config(&socket, guest_cid);
+    let vu_config = create_vu_config(CmdType::Device, socket.path(), guest_cid);
     let _vu_device = VhostUserBackend::new(vu_config).unwrap();
 
     let config = Config::new().extra_args(vec![
         "--vhost-user-vsock".to_string(),
-        socket.to_str().unwrap().to_string(),
+        socket.path().to_str().unwrap().to_string(),
+    ]);
+
+    guest_to_host_connection(config);
+}
+
+#[test]
+fn vhost_user_guest_to_host_with_devices() {
+    let guest_cid = generate_guest_cid();
+    let socket = NamedTempFile::new().unwrap();
+
+    let vu_config = create_vu_config(CmdType::Devices, socket.path(), guest_cid);
+    let _vu_device = VhostUserBackend::new(vu_config).unwrap();
+
+    let config = Config::new().extra_args(vec![
+        "--vhost-user-vsock".to_string(),
+        socket.path().to_str().unwrap().to_string(),
     ]);
 
     guest_to_host_connection(config);
