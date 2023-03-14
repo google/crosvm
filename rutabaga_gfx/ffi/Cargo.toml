@@ -1,8 +1,9 @@
 [package]
 name = "rutabaga_gfx_ffi"
-version = "0.1.0"
+version = "0.1.1-alpha.1"
 authors = ["The ChromiumOS Authors + Android Open Source Project"]
 edition = "2021"
+license-file = "LICENSE"
 
 [lib]
 name = "rutabaga_gfx_ffi"
