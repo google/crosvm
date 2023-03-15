@@ -678,7 +678,7 @@ impl arch::LinuxArch for X8664arch {
         ramoops_region: Option<arch::pstore::RamoopsRegion>,
         devs: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipX86_64,
-        vcpu_ids: &mut Vec<usize>,
+        kvm_vcpu_ids: &mut Vec<usize>,
         debugcon_jail: Option<Minijail>,
         pflash_jail: Option<Minijail>,
         #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
@@ -917,7 +917,7 @@ impl arch::LinuxArch for X8664arch {
             6, // RST_CPU|SYS_RST
             &acpi_dev_resource,
             host_cpus,
-            vcpu_ids,
+            kvm_vcpu_ids,
             &pci_irqs,
             pcie_cfg_mmio_range.start,
             max_bus,

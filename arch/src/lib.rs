@@ -444,7 +444,7 @@ pub trait LinuxArch {
         ramoops_region: Option<pstore::RamoopsRegion>,
         devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipArch,
-        vcpu_ids: &mut Vec<usize>,
+        kvm_vcpu_ids: &mut Vec<usize>,
         debugcon_jail: Option<Minijail>,
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] pflash_jail: Option<Minijail>,
         #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,

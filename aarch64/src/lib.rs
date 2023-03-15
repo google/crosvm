@@ -328,7 +328,7 @@ impl arch::LinuxArch for AArch64 {
         ramoops_region: Option<arch::pstore::RamoopsRegion>,
         devs: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipAArch64,
-        vcpu_ids: &mut Vec<usize>,
+        kvm_vcpu_ids: &mut Vec<usize>,
         _debugcon_jail: Option<Minijail>,
         #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
@@ -400,7 +400,7 @@ impl arch::LinuxArch for AArch64 {
             );
             has_pvtime &= vcpu.has_pvtime_support();
             vcpus.push(vcpu);
-            vcpu_ids.push(vcpu_id);
+            kvm_vcpu_ids.push(vcpu_id);
             vcpu_init.push(per_vcpu_init);
         }
 
