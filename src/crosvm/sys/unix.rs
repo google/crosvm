@@ -2507,13 +2507,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             return Err(anyhow!("Failed to start devices thread: {}", e));
         }
     };
-    if let Some(path) = cfg.restore_path.clone() {
-        if let Err(e) =
-            device_ctrl_tube.send(&DeviceControlCommand::RestoreDevices { restore_path: path })
-        {
-            error!("fail to send command to devices control socket: {}", e);
-        };
-    }
 
     let mut vcpu_handles = Vec::with_capacity(linux.vcpu_count);
     let vcpu_thread_barrier = Arc::new(Barrier::new(linux.vcpu_count + 1));
@@ -2574,6 +2567,20 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     android::set_process_profiles(&cfg.task_profiles)?;
 
     let guest_suspended_cvar = Arc::new((Mutex::new(false), Condvar::new()));
+
+    #[allow(unused_mut)]
+    let mut run_mode = VmRunMode::Running;
+    #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
+    if to_gdb_channel.is_some() {
+        // Wait until a GDB client attaches
+        run_mode = VmRunMode::Breakpoint;
+    }
+    // If we are restoring from a snapshot, then start suspended.
+    let (run_mode, post_restore_run_mode) = if cfg.restore_path.is_some() {
+        (VmRunMode::Suspending, run_mode)
+    } else {
+        (run_mode, run_mode)
+    };
 
     // Architecture-specific code must supply a vcpu_init element for each VCPU.
     assert_eq!(vcpus.len(), linux.vcpu_init.len());
@@ -2650,6 +2657,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             guest_suspended_cvar.clone(),
             #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
             bus_lock_ratelimit_ctrl,
+            run_mode,
         )?;
         vcpu_handles.push((handle, to_vcpu_channel));
     }
@@ -2688,6 +2696,29 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         .unwrap();
 
     vcpu_thread_barrier.wait();
+
+    // Restore VM (if applicable).
+    // Must happen after the vCPU barrier to avoid deadlock.
+    if let Some(path) = &cfg.restore_path {
+        device_ctrl_tube
+            .send(&DeviceControlCommand::RestoreDevices {
+                restore_path: path.clone(),
+            })
+            .context("send command to devices control socket")?;
+        let response = device_ctrl_tube
+            .recv()
+            .context("receive from devices control socket")?;
+        match response {
+            vm_control::VmResponse::Ok => {}
+            _ => bail!("unexpected restore response: {response:?}"),
+        };
+        // Allow the vCPUs to start for real.
+        vcpu::kick_all_vcpus(
+            &vcpu_handles,
+            linux.irq_chip.as_irq_chip(),
+            VcpuControl::RunState(post_restore_run_mode),
+        )
+    }
 
     let mut exit_state = ExitState::Stop;
     let mut pvpanic_code = PvPanicCode::Unknown;

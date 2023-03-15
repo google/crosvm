@@ -987,13 +987,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             return Err(anyhow!("Failed to start devices thread: {}", e));
         }
     };
-    if let Some(path) = restore_path {
-        if let Err(e) =
-            device_ctrl_tube.send(&DeviceControlCommand::RestoreDevices { restore_path: path })
-        {
-            error!("fail to send command to devices control socket: {}", e);
-        };
-    }
 
     let vcpus: Vec<Option<_>> = match guest_os.vcpus.take() {
         Some(vec) => vec.into_iter().map(|vcpu| Some(vcpu)).collect(),
@@ -1032,6 +1025,13 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         tsc_sync_mitigations,
         force_calibrated_tsc_leaf,
     )?;
+
+    // Restore VM (if applicable).
+    if let Some(path) = restore_path {
+        // TODO(b/273992211): Port the unix --restore code to Windows.
+        todo!();
+    }
+
     let mut exit_state = ExitState::Stop;
 
     'poll: loop {

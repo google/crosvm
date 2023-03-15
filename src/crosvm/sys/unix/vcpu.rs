@@ -540,6 +540,7 @@ pub fn run_vcpu<V>(
     guest_suspended_cvar: Arc<(Mutex<bool>, Condvar)>,
     #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
     bus_lock_ratelimit_ctrl: Arc<Mutex<Ratelimit>>,
+    run_mode: VmRunMode,
 ) -> Result<JoinHandle<()>>
 where
     V: VcpuArch + 'static,
@@ -598,14 +599,6 @@ where
                         return ExitState::Stop;
                     }
                 };
-
-                #[allow(unused_mut)]
-                let mut run_mode = VmRunMode::Running;
-                #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
-                if to_gdb_tube.is_some() {
-                    // Wait until a GDB client attaches
-                    run_mode = VmRunMode::Breakpoint;
-                }
 
                 mmio_bus.set_access_id(cpu_id);
                 io_bus.set_access_id(cpu_id);
