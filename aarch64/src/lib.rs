@@ -11,50 +11,16 @@ use std::io;
 use std::sync::mpsc;
 use std::sync::Arc;
 
-use arch::get_serial_cmdline;
-use arch::GetSerialCmdlineError;
-use arch::MsrConfig;
-use arch::MsrExitHandlerError;
-use arch::RunnableLinuxVm;
-use arch::VmComponents;
-use arch::VmImage;
-use base::Event;
-use base::MemoryMappingBuilder;
-use base::SendTube;
-use devices::serial_device::SerialHardware;
-use devices::serial_device::SerialParameters;
-use devices::vmwdt::VMWDT_DEFAULT_CLOCK_HZ;
-use devices::vmwdt::VMWDT_DEFAULT_TIMEOUT_SEC;
-use devices::Bus;
-use devices::BusDeviceObj;
-use devices::BusError;
-use devices::IrqChip;
-use devices::IrqChipAArch64;
-use devices::IrqEventSource;
-use devices::PciAddress;
-use devices::PciConfigMmio;
-use devices::PciDevice;
-use devices::PciRootCommand;
-use devices::Serial;
-#[cfg(all(target_arch = "aarch64", feature = "gdb"))]
-use gdbstub::arch::Arch;
-#[cfg(all(target_arch = "aarch64", feature = "gdb"))]
-use gdbstub_arch::aarch64::AArch64 as GdbArch;
-use hypervisor::CpuConfigAArch64;
-use hypervisor::DeviceKind;
-use hypervisor::Hypervisor;
-use hypervisor::HypervisorCap;
-use hypervisor::ProtectionType;
-use hypervisor::VcpuAArch64;
-use hypervisor::VcpuFeature;
-use hypervisor::VcpuInitAArch64;
-use hypervisor::VcpuRegAArch64;
-use hypervisor::Vm;
-use hypervisor::VmAArch64;
-#[cfg(windows)]
-use jail::FakeMinijailStub as Minijail;
-use kernel_loader::LoadedKernel;
-#[cfg(unix)]
+use arch::{get_serial_cmdline, GetSerialCmdlineError, RunnableLinuxVm, VmComponents, VmImage};
+use base::{Event, MemoryMappingBuilder};
+use devices::serial_device::{SerialHardware, SerialParameters};
+use devices::{
+    Bus, BusDeviceObj, BusError, IrqChip, IrqChipAArch64, PciAddress, PciConfigMmio, PciDevice,
+};
+use hypervisor::{
+    arm64_core_reg, DeviceKind, Hypervisor, HypervisorCap, ProtectionType, VcpuAArch64,
+    VcpuFeature, Vm, VmAArch64,
+};
 use minijail::Minijail;
 use remain::sorted;
 use resources::AddressRange;
@@ -915,16 +881,20 @@ impl AArch64 {
 
         // All interrupts masked
         let pstate = PSR_D_BIT | PSR_A_BIT | PSR_I_BIT | PSR_F_BIT | PSR_MODE_EL1H;
-        regs.insert(VcpuRegAArch64::Pstate, pstate);
+        vcpu.set_one_reg(arm64_core_reg!(pstate), pstate)
+            .map_err(Error::SetReg)?;
 
         // Other cpus are powered off initially
         if vcpu_id == 0 {
-            let entry_addr = if protection_type.loads_firmware() {
-                Some(AARCH64_PROTECTED_VM_FW_START)
-            } else if protection_type.runs_firmware() {
-                None // Initial PC value is set by the hypervisor
+            let entry_addr = if has_bios {
+                get_bios_addr()
             } else {
-                Some(payload.entry().offset())
+                get_kernel_addr()
+            };
+            let entry_addr_reg_id = if protected_vm == ProtectionType::Protected {
+                arm64_core_reg!(regs, 1)
+            } else {
+                arm64_core_reg!(pc)
             };
 
             /* PC -- entry point */
@@ -933,14 +903,15 @@ impl AArch64 {
             }
 
             /* X0 -- fdt address */
-            regs.insert(VcpuRegAArch64::X(0), fdt_address.offset());
+            let mem_size = guest_mem.memory_size();
+            let fdt_addr = (AARCH64_PHYS_MEM_START + fdt_offset(mem_size, has_bios)) as u64;
+            vcpu.set_one_reg(arm64_core_reg!(regs, 0), fdt_addr)
+                .map_err(Error::SetReg)?;
 
-            if protection_type.runs_firmware() {
-                /* X1 -- payload entry point */
-                regs.insert(VcpuRegAArch64::X(1), payload.entry().offset());
-
-                /* X2 -- image size */
-                regs.insert(VcpuRegAArch64::X(2), payload.size());
+            /* X2 -- image size */
+            if protected_vm == ProtectionType::Protected {
+                vcpu.set_one_reg(arm64_core_reg!(regs, 2), image_size as u64)
+                    .map_err(Error::SetReg)?;
             }
         }
 
