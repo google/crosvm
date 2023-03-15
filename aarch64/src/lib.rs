@@ -448,12 +448,20 @@ impl arch::LinuxArch for AArch64 {
                 .map_err(Error::CreateVcpu)?
                 .downcast::<Vcpu>()
                 .map_err(|_| Error::DowncastVcpu)?;
-            let per_vcpu_init = Self::vcpu_init(
-                vcpu_id,
-                &payload,
-                fdt_offset,
-                components.hv_cfg.protection_type,
-            );
+            let per_vcpu_init = if vm
+                .get_hypervisor()
+                .check_capability(HypervisorCap::HypervisorInitializedBootContext)
+            {
+                // No registers are initialized: VcpuInitAArch64.regs is an empty BTreeMap
+                Default::default()
+            } else {
+                Self::vcpu_init(
+                    vcpu_id,
+                    &payload,
+                    fdt_offset,
+                    components.hv_cfg.protection_type,
+                )
+            };
             has_pvtime &= vcpu.has_pvtime_support();
             vcpus.push(vcpu);
             vcpu_ids.push(vcpu_id);

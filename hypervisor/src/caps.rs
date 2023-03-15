@@ -30,6 +30,12 @@ pub enum HypervisorCap {
     // If this capability is declared, then instead crosvm will allocate space for the swiotlb
     // outside of guest physical memory and specify both the address and size in the device tree.
     StaticSwiotlbAllocationRequired,
+    /// Some hypervisors (presently: Gunyah) will configure initial boot-time registers
+    /// for vCPUs without need for CrosVM to specify.
+    ///
+    /// If this capability is declared, then crosvm will not try to initialize vcpu
+    /// registers when creating the VM.
+    HypervisorInitializedBootContext,
 }
 
 /// A capability the `Vm` can possibly expose.
