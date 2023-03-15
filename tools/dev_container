@@ -83,6 +83,8 @@ PODMAN_ARGS = [
     "--mount type=tmpfs,destination=/tmp",
     # KVM is required to run a VM for testing.
     "--device /dev/kvm",
+    # Allow access to group permissions of the user (e.g. for kvm access).
+    "--group-add keep-groups",
 ]
 
 PRIVILEGED_ARGS = [
