@@ -9,6 +9,7 @@ haxm = []
 whpx = []
 gdb = ["gdbstub", "gdbstub_arch"]
 geniezone = []
+gunyah = []
 
 [dependencies]
 anyhow = "*"

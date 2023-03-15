@@ -232,6 +232,9 @@ trace_marker = ["cros_tracing/trace_marker"]
 ## Facilitate tracing all syscalls by sandboxed processes.
 seccomp_trace = ["jail/seccomp_trace","base/seccomp_trace","devices/seccomp_trace"]
 
+## Enables the use of the Gunyah hypervisor
+gunyah = ["hypervisor/gunyah"]
+
 #! ### Windows-specific feature flags
 #!
 #! These feature flags are only available on Windows builds of crosvm.
@@ -309,8 +312,8 @@ crash-report = ["broker_ipc/crash-report", "crash_report"]
 #! Note that these may include project specific features that will not be functional at runtime but
 #! are enabled for compile and test coverage.
 
-## All features that are compiled and tested for aarch64
-all-aarch64 = [
+## All features that are compiled and tested for aarch64 and x86_64
+all-default = [
     "android-sparse",
     "arc_quota",
     "audio_cras",
@@ -340,8 +343,14 @@ all-aarch64 = [
     "x",
 ]
 
+## All features that are compiled and tested for aarch64
+all-aarch64 = [
+    "all-default",
+    "gunyah",
+]
+
 ## All features that are compiled and tested for x86_64
-all-x86_64 = ["all-aarch64", "plugin", "scudo"]
+all-x86_64 = ["all-default", "plugin", "scudo"]
 
 ## All features that are compiled and tested for armhf
 ## Note: This platform is deprecated and will be phased out.
