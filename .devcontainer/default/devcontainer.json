@@ -1,13 +1,17 @@
 {
-    "image": "gcr.io/crosvm-infra/crosvm_dev_user:r0032",
-    "extensions": [
-        "rust-lang.rust-analyzer",
-        "bungcip.better-toml",
-        "esbenp.prettier-vscode",
-        "ms-python.vscode-pylance",
-        "foxundermoon.shell-format",
-        "timonwong.shellcheck",
-    ],
+    "image": "gcr.io/crosvm-infra/crosvm_dev_user:latest",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "rust-lang.rust-analyzer",
+                "bungcip.better-toml",
+                "esbenp.prettier-vscode",
+                "ms-python.vscode-pylance",
+                "foxundermoon.shell-format",
+                "timonwong.shellcheck"
+            ]
+        }
+    },
     "runArgs": [
         "--privileged",
         "--device=/dev/kvm",
@@ -16,9 +20,9 @@
         "--device=/dev/vhost-net",
         "--device=/dev/vhost-vsock",
         "--mount=type=tmpfs,destination=/tmp",
-        "--mount=type=tmpfs,destination=/var/empty",
+        "--mount=type=tmpfs,destination=/var/empty"
     ],
     "containerUser": "crosvmdev",
     "updateContentCommand": "sudo chown -R --reference=/workspaces/crosvm /home/crosvmdev /cache /scratch",
-    "postCreateCommand": "sudo chmod 666 /dev/kvm",
+    "postCreateCommand": "sudo chmod 666 /dev/kvm"
 }

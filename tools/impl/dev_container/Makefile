@@ -27,13 +27,16 @@ all: crosvm_dev crosvm_dev_user
 
 upload: all
 	$(DOCKER) push $(TAG_BASE)/crosvm_dev:$(VERSION)
+	$(DOCKER) push $(TAG_BASE)/crosvm_dev:latest
 	$(DOCKER) push $(TAG_BASE)/crosvm_dev_user:$(VERSION)
+	$(DOCKER) push $(TAG_BASE)/crosvm_dev_user:latest
 
 crosvm_dev:
 	$(DOCKER) build \
 		-t $(TAG_BASE)/$@:$(VERSION) \
 		-f Dockerfile \
 		$(BUILD_CONTEXT)
+	$(DOCKER) tag $(TAG_BASE)/$@:$(VERSION) $(TAG_BASE)/$@:latest
 
 crosvm_dev_user:
 	$(DOCKER) build \
@@ -41,5 +44,6 @@ crosvm_dev_user:
 		-f Dockerfile.user \
 		--build-arg=VERSION=$(VERSION) \
 		$(BUILD_CONTEXT)
+	$(DOCKER) tag $(TAG_BASE)/$@:$(VERSION) $(TAG_BASE)/$@:latest
 
 .PHONY: all crosvm_dev upload

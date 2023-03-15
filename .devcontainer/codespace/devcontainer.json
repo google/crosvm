@@ -1,6 +1,5 @@
 {
-  // TODO(b/273529589): Automatically use latest version
-  "image": "gcr.io/crosvm-infra/crosvm_dev:r0037",
+  "image": "gcr.io/crosvm-infra/crosvm_dev:latest",
   "customizations": {
     "vscode": {
       "extensions": [
