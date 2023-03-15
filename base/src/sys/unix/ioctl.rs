@@ -19,10 +19,10 @@ use crate::descriptor::AsRawDescriptor;
 #[macro_export]
 macro_rules! ioctl_expr {
     ($dir:expr, $ty:expr, $nr:expr, $size:expr) => {
-        ((($dir as $crate::platform::IoctlNr) << $crate::platform::ioctl::_IOC_DIRSHIFT)
-            | (($ty as $crate::platform::IoctlNr) << $crate::platform::ioctl::_IOC_TYPESHIFT)
-            | (($nr as $crate::platform::IoctlNr) << $crate::platform::ioctl::_IOC_NRSHIFT)
-            | (($size as $crate::platform::IoctlNr) << $crate::platform::ioctl::_IOC_SIZESHIFT))
+        (($dir << $crate::platform::ioctl::_IOC_DIRSHIFT)
+            | ($ty << $crate::platform::ioctl::_IOC_TYPESHIFT)
+            | ($nr << $crate::platform::ioctl::_IOC_NRSHIFT)
+            | ($size << $crate::platform::ioctl::_IOC_SIZESHIFT)) as $crate::platform::IoctlNr
     };
 }
 
