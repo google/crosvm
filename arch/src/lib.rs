@@ -445,7 +445,6 @@ pub trait LinuxArch {
         devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipArch,
         vcpu_ids: &mut Vec<usize>,
-        dump_device_tree_blob: Option<PathBuf>,
         debugcon_jail: Option<Minijail>,
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] pflash_jail: Option<Minijail>,
         #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,

@@ -8,7 +8,6 @@
 
 use std::collections::BTreeMap;
 use std::io;
-use std::path::PathBuf;
 use std::sync::mpsc;
 use std::sync::Arc;
 
@@ -366,7 +365,6 @@ impl arch::LinuxArch for AArch64 {
         devs: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
         irq_chip: &mut dyn IrqChipAArch64,
         vcpu_ids: &mut Vec<usize>,
-        dump_device_tree_blob: Option<PathBuf>,
         _debugcon_jail: Option<Minijail>,
         #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
@@ -679,7 +677,6 @@ impl arch::LinuxArch for AArch64 {
             }),
             bat_mmio_base_and_irq,
             vmwdt_cfg,
-            dump_device_tree_blob,
         )
         .map_err(Error::CreateFdt)?;
 

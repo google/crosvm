@@ -229,7 +229,6 @@ where
         None,
         kernel_end,
         params,
-        None,
     )
     .expect("failed to setup system_memory");
 
