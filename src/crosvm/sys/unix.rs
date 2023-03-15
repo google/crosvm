@@ -882,7 +882,7 @@ fn create_devices(
                 devices.push((Box::new(dev) as Box<dyn BusDeviceObj>, stub.jail));
             }
             VirtioTransportType::Mmio => {
-                let dev = VirtioMmioDevice::new(vm.get_memory().clone(), stub.dev, false)
+                let dev = VirtioMmioDevice::new(vm.get_memory().clone(), stub.dev)
                     .context("failed to create virtio mmio dev")?;
                 devices.push((Box::new(dev) as Box<dyn BusDeviceObj>, stub.jail));
             }
