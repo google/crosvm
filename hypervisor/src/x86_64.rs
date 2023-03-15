@@ -879,7 +879,6 @@ pub struct VcpuNmiState {
     pub injected: bool,
     pub pending: Option<bool>,
     pub masked: bool,
-    pub pad: u8,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

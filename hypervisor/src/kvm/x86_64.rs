@@ -1318,7 +1318,6 @@ impl From<&VcpuEvents> for kvm_vcpu_events {
             kvm_ve.flags |= KVM_VCPUEVENT_VALID_NMI_PENDING;
         }
         kvm_ve.nmi.masked = ve.nmi.masked as u8;
-        kvm_ve.nmi.pad = ve.nmi.pad;
 
         if let Some(sipi_vector) = ve.sipi_vector {
             kvm_ve.sipi_vector = sipi_vector;
@@ -1374,7 +1373,6 @@ impl From<&kvm_vcpu_events> for VcpuEvents {
                 None
             },
             masked: ve.nmi.masked != 0,
-            pad: ve.nmi.pad,
         };
 
         let sipi_vector = if ve.flags & KVM_VCPUEVENT_VALID_SIPI_VECTOR != 0 {
@@ -1631,7 +1629,6 @@ mod tests {
         kvm_ve.nmi.injected = 1;
         kvm_ve.nmi.pending = 1;
         kvm_ve.nmi.masked = 0;
-        kvm_ve.nmi.pad = 111;
 
         kvm_ve.sipi_vector = 105;
 
@@ -1667,7 +1664,6 @@ mod tests {
         assert_eq!(ve.nmi.injected, true);
         assert_eq!(ve.nmi.pending.unwrap(), true);
         assert_eq!(ve.nmi.masked, false);
-        assert_eq!(ve.nmi.pad, 111);
 
         assert_eq!(ve.sipi_vector.unwrap(), 105);
 
@@ -1695,7 +1691,6 @@ mod tests {
         assert_eq!(kvm_ve_restored.nmi.injected, 1);
         assert_eq!(kvm_ve_restored.nmi.pending, 1);
         assert_eq!(kvm_ve_restored.nmi.masked, 0);
-        assert_eq!(kvm_ve_restored.nmi.pad, 111);
 
         assert_eq!(kvm_ve_restored.sipi_vector, 105);
 
