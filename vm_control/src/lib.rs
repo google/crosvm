@@ -670,6 +670,17 @@ pub enum VmIrqRequest {
         queue_id: usize,
         device_name: String,
     },
+    /// Allocate a specific gsi to irqfd with register_irqfd(). This must only
+    /// be used when it is known that the gsi is free. Only the snapshot
+    /// subsystem can make this guarantee, and use of this request by any other
+    /// caller is strongly discouraged.
+    AllocateOneMsiAtGsi {
+        irqfd: Event,
+        gsi: u32,
+        device_id: u32,
+        queue_id: usize,
+        device_name: String,
+    },
     /// Add one msi route entry into the IRQ chip.
     AddMsiRoute {
         gsi: u32,
@@ -726,6 +737,24 @@ impl VmIrqRequest {
                     }
                 } else {
                     VmIrqResponse::Err(SysError::new(EINVAL))
+                }
+            }
+            AllocateOneMsiAtGsi {
+                ref irqfd,
+                gsi,
+                device_id,
+                queue_id,
+                ref device_name,
+            } => {
+                match set_up_irq(IrqSetup::Event(
+                    gsi,
+                    irqfd,
+                    device_id,
+                    queue_id,
+                    device_name.clone(),
+                )) {
+                    Ok(_) => VmIrqResponse::Ok,
+                    Err(e) => VmIrqResponse::Err(e),
                 }
             }
             AddMsiRoute {

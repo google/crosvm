@@ -4,7 +4,11 @@
 
 use std::convert::TryInto;
 
+use serde::Deserialize;
+use serde::Serialize;
+
 use base::error;
+use base::info;
 use base::AsRawDescriptor;
 use base::Error as SysError;
 use base::Event;
@@ -30,7 +34,7 @@ const FUNCTION_MASK_BIT: u16 = 0x4000;
 const MSIX_ENABLE_BIT: u16 = 0x8000;
 const MSIX_TABLE_ENTRY_MASK_BIT: u32 = 0x1;
 
-#[derive(Clone, Default)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 struct MsixTableEntry {
     msg_addr_lo: u32,
     msg_addr_hi: u32,
@@ -62,9 +66,21 @@ pub struct MsixConfig {
     device_name: String,
 }
 
+pub struct MsixConfigSnapshot {
+    table_entries: Vec<MsixTableEntry>,
+    pba_entries: Vec<u64>,
+    /// Just like MsixConfig::irq_vec, but only the GSI.
+    irq_gsi_vec: Vec<Option<u32>>,
+    masked: bool,
+    enabled: bool,
+    msix_num: u16,
+    pci_id: u32,
+    device_name: String,
+}
+
 #[sorted]
 #[derive(Error, Debug)]
-enum MsixError {
+pub enum MsixError {
     #[error("AddMsiRoute failed: {0}")]
     AddMsiRoute(SysError),
     #[error("failed to receive AddMsiRoute response: {0}")]
@@ -77,6 +93,8 @@ enum MsixError {
     AllocateOneMsiRecv(TubeError),
     #[error("failed to send AllocateOneMsi request: {0}")]
     AllocateOneMsiSend(TubeError),
+    #[error("invalid vector length in snapshot: {0}")]
+    InvalidVectorLength(std::num::TryFromIntError),
 }
 
 type MsixResult<T> = std::result::Result<T, MsixError>;
@@ -205,7 +223,96 @@ impl MsixConfig {
         MsixStatus::NothingToDo
     }
 
-    fn add_msi_route(&self, index: u16, gsi: u32) -> MsixResult<()> {
+    /// Create a snapshot of the current MsixConfig struct for use in
+    /// snapshotting.
+    pub fn snapshot(&mut self) -> MsixConfigSnapshot {
+        MsixConfigSnapshot {
+            device_name: self.device_name.clone(),
+            enabled: self.enabled,
+            masked: self.masked,
+            msix_num: self.msix_num,
+            pci_id: self.pci_id,
+            pba_entries: self.pba_entries.clone(),
+            table_entries: self.table_entries.clone(),
+            irq_gsi_vec: self
+                .irq_vec
+                .iter()
+                .map(|irq_opt| irq_opt.as_ref().map(|irq| irq.gsi))
+                .collect(),
+        }
+    }
+
+    /// Creates a MsixConfig struct based on a snapshot. In short, this will
+    /// restore all data exposed via MMIO, and recreate all MSI-X vectors (they
+    /// will be re-wired to the irq chip).
+    pub fn from_snapshot(msix_config_tube: Tube, snapshot: MsixConfigSnapshot) -> MsixResult<Self> {
+        let mut config = MsixConfig::new(
+            snapshot
+                .irq_gsi_vec
+                .len()
+                .try_into()
+                .map_err(MsixError::InvalidVectorLength)?,
+            msix_config_tube,
+            snapshot.pci_id,
+            snapshot.device_name,
+        );
+
+        config.enabled = snapshot.enabled;
+        config.masked = snapshot.masked;
+        config.msix_num = snapshot.msix_num;
+        config.pba_entries = snapshot.pba_entries;
+        config.table_entries = snapshot.table_entries;
+
+        for (vector, gsi) in snapshot.irq_gsi_vec.iter().enumerate() {
+            if let Some(gsi_num) = gsi {
+                config.msix_restore_one(vector, *gsi_num)?;
+            } else {
+                info!(
+                    "skipping restore of vector {} for device {}",
+                    vector, config.device_name
+                );
+            }
+        }
+        Ok(config)
+    }
+
+    /// Restore the specified MSI-X vector.
+    ///
+    /// Note: we skip the checks from [MsixConfig::msix_enable_one] because for
+    /// an interrupt to be present in [MsixConfigSnapshot::irq_gsi_vec], it must
+    /// have passed those checks.
+    fn msix_restore_one(&mut self, index: usize, gsi: u32) -> MsixResult<()> {
+        let irqfd = Event::new().map_err(MsixError::AllocateOneMsi)?;
+        let request = VmIrqRequest::AllocateOneMsiAtGsi {
+            irqfd,
+            gsi,
+            device_id: self.pci_id,
+            queue_id: index as usize,
+            device_name: self.device_name.clone(),
+        };
+        self.msi_device_socket
+            .send(&request)
+            .map_err(MsixError::AllocateOneMsiSend)?;
+        if let VmIrqResponse::Err(e) = self
+            .msi_device_socket
+            .recv()
+            .map_err(MsixError::AllocateOneMsiRecv)?
+        {
+            return Err(MsixError::AllocateOneMsi(e));
+        };
+
+        self.irq_vec[index] = Some(IrqfdGsi {
+            irqfd: match request {
+                VmIrqRequest::AllocateOneMsiAtGsi { irqfd, .. } => irqfd,
+                _ => unreachable!(),
+            },
+            gsi,
+        });
+        self.add_msi_route(index as u16, gsi)?;
+        Ok(())
+    }
+
+    fn add_msi_route(&mut self, index: u16, gsi: u32) -> MsixResult<()> {
         let mut data: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 0];
         self.read_msix_table((index * 16).into(), data.as_mut());
         let msi_address: u64 = u64::from_le_bytes(data);
@@ -652,5 +759,104 @@ impl MsixCap {
     #[cfg(unix)]
     pub fn msg_ctl(&self) -> MsixCtrl {
         self.msg_ctl
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use std::thread;
+
+    #[track_caller]
+    fn recv_allocate_msi(t: &Tube) -> u32 {
+        match t.recv::<VmIrqRequest>().unwrap() {
+            VmIrqRequest::AllocateOneMsiAtGsi { gsi, .. } => gsi,
+            _ => panic!("unexpected irqchip message"),
+        }
+    }
+
+    struct MsiRouteDetails {
+        gsi: u32,
+        msi_address: u64,
+        msi_data: u32,
+    }
+
+    #[track_caller]
+    fn recv_add_msi_route(t: &Tube) -> MsiRouteDetails {
+        match t.recv::<VmIrqRequest>().unwrap() {
+            VmIrqRequest::AddMsiRoute {
+                gsi,
+                msi_address,
+                msi_data,
+            } => MsiRouteDetails {
+                gsi,
+                msi_address,
+                msi_data,
+            },
+            _ => panic!("unexpected irqchip message"),
+        }
+    }
+
+    #[track_caller]
+    fn send_ok(t: &Tube) {
+        t.send(&VmIrqResponse::Ok).unwrap();
+    }
+
+    #[test]
+    fn verify_msix_restore_smoke() {
+        let (irqchip_tube, msix_config_tube) = Tube::pair().unwrap();
+
+        let (_unused, unused_config_tube) = Tube::pair().unwrap();
+
+        let mut cfg = MsixConfig::new(2, unused_config_tube, 0, "test_device".to_owned());
+
+        // Set up two MSI-X vectors (0 and 1).
+        // Data is 0xdVEC_NUM. Address is 0xaVEC_NUM.
+        cfg.table_entries[0].msg_data = 0xd0;
+        cfg.table_entries[0].msg_addr_lo = 0xa0;
+        cfg.table_entries[0].msg_addr_hi = 0;
+        cfg.table_entries[1].msg_data = 0xd1;
+        cfg.table_entries[1].msg_addr_lo = 0xa1;
+        cfg.table_entries[1].msg_addr_hi = 0;
+
+        // Pretend that these vectors were hooked up to GSIs 10 & 20,
+        // respectively.
+        cfg.irq_vec = vec![
+            Some(IrqfdGsi {
+                gsi: 10,
+                irqfd: Event::new().unwrap(),
+            }),
+            Some(IrqfdGsi {
+                gsi: 20,
+                irqfd: Event::new().unwrap(),
+            }),
+        ];
+
+        // Take a snapshot of MsixConfig.
+        let snapshot = cfg.snapshot();
+
+        // Create a fake irqchip to respond to our requests
+        let irqchip_fake = thread::spawn(move || {
+            assert_eq!(recv_allocate_msi(&irqchip_tube), 10);
+            send_ok(&irqchip_tube);
+            let route_one = recv_add_msi_route(&irqchip_tube);
+            assert_eq!(route_one.gsi, 10);
+            assert_eq!(route_one.msi_address, 0xa0);
+            assert_eq!(route_one.msi_data, 0xd0);
+            send_ok(&irqchip_tube);
+
+            assert_eq!(recv_allocate_msi(&irqchip_tube), 20);
+            send_ok(&irqchip_tube);
+            let route_two = recv_add_msi_route(&irqchip_tube);
+            assert_eq!(route_two.gsi, 20);
+            assert_eq!(route_two.msi_address, 0xa1);
+            assert_eq!(route_two.msi_data, 0xd1);
+            send_ok(&irqchip_tube);
+            irqchip_tube
+        });
+
+        let _restored_cfg = MsixConfig::from_snapshot(msix_config_tube, snapshot).unwrap();
+        irqchip_fake.join().unwrap();
     }
 }
