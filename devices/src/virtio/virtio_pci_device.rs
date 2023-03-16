@@ -38,6 +38,7 @@ use vm_control::VmMemoryResponse;
 use vm_control::VmMemorySource;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
+use zerocopy::FromBytes;
 
 use self::virtio_pci_common_config::VirtioPciCommonConfig;
 use super::*;
@@ -82,7 +83,7 @@ pub enum PciCapabilityType {
 
 #[allow(dead_code)]
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, FromBytes)]
 pub struct VirtioPciCap {
     // cap_vndr and cap_next are autofilled based on id() in pci configuration
     pub cap_vndr: u8, // Generic PCI field: PCI_CAP_ID_VNDR

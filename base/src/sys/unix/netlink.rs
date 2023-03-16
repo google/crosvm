@@ -7,9 +7,11 @@ use std::mem::MaybeUninit;
 use std::os::unix::io::AsRawFd;
 use std::str;
 
-use data_model::DataInit;
 use libc::EINVAL;
 use log::error;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
+use zerocopy::LayoutVerified;
 
 use super::errno_result;
 use super::getpid;
@@ -32,9 +34,8 @@ const GENL_HDRLEN: usize = std::mem::size_of::<GenlMsgHdr>();
 const NLA_HDRLEN: usize = std::mem::size_of::<NlAttr>();
 const NLATTR_ALIGN_TO: usize = 4;
 
-// Custom nlmsghdr struct that can be declared DataInit.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, FromBytes, AsBytes)]
 struct NlMsgHdr {
     pub nlmsg_len: u32,
     pub nlmsg_type: u16,
@@ -42,27 +43,23 @@ struct NlMsgHdr {
     pub nlmsg_seq: u32,
     pub nlmsg_pid: u32,
 }
-unsafe impl DataInit for NlMsgHdr {}
 
 /// Netlink attribute struct, can be used by netlink consumer
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, FromBytes, AsBytes)]
 pub struct NlAttr {
     pub len: u16,
     pub _type: u16,
 }
-unsafe impl DataInit for NlAttr {}
 
 /// Generic netlink header struct, can be used by netlink consumer
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, FromBytes, AsBytes)]
 pub struct GenlMsgHdr {
     pub cmd: u8,
     pub version: u8,
     pub reserved: u16,
 }
-unsafe impl DataInit for GenlMsgHdr {}
-
 /// A single netlink message, including its header and data.
 pub struct NetlinkMessage<'a> {
     pub _type: u16,
@@ -95,7 +92,7 @@ impl<'a> Iterator for NetlinkGenericDataIter<'a> {
         if self.data.len() < NLA_HDRLEN {
             return None;
         }
-        let nl_hdr = NlAttr::from_slice(&self.data[..NLA_HDRLEN])?;
+        let nl_hdr = NlAttr::read_from(&self.data[..NLA_HDRLEN])?;
 
         // Make sure NlAtrr fits
         let nl_data_len = nl_hdr.len as usize;
@@ -136,7 +133,7 @@ impl<'a> Iterator for NetlinkMessageIter<'a> {
         if self.data.len() < NLMSGHDR_SIZE {
             return None;
         }
-        let hdr = NlMsgHdr::from_slice(&self.data[..NLMSGHDR_SIZE])?;
+        let hdr = NlMsgHdr::read_from(&self.data[..NLMSGHDR_SIZE])?;
 
         // NLMSG_OK
         let msg_len = hdr.nlmsg_len as usize;
@@ -264,8 +261,9 @@ impl NetlinkGenericSocket {
         let data = unsafe { allocation.as_mut_slice(buf_size) };
 
         // Prepare the netlink message header
-        let mut hdr =
-            &mut NlMsgHdr::from_mut_slice(&mut data[..NLMSGHDR_SIZE]).expect("failed to unwrap");
+        let hdr = LayoutVerified::<_, NlMsgHdr>::new(&mut data[..NLMSGHDR_SIZE])
+            .expect("failed to unwrap")
+            .into_mut();
         hdr.nlmsg_len = NLMSGHDR_SIZE as u32 + GENL_HDRLEN as u32;
         hdr.nlmsg_len += NLA_HDRLEN as u32 + family_name.len() as u32 + 1;
         hdr.nlmsg_flags = libc::NLM_F_REQUEST as u16;
@@ -274,16 +272,18 @@ impl NetlinkGenericSocket {
 
         // Prepare generic netlink message header
         let genl_hdr_end = NLMSGHDR_SIZE + GENL_HDRLEN;
-        let genl_hdr = GenlMsgHdr::from_mut_slice(&mut data[NLMSGHDR_SIZE..genl_hdr_end])
-            .expect("unable to get GenlMsgHdr from slice");
+        let genl_hdr = LayoutVerified::<_, GenlMsgHdr>::new(&mut data[NLMSGHDR_SIZE..genl_hdr_end])
+            .expect("unable to get GenlMsgHdr from slice")
+            .into_mut();
         genl_hdr.cmd = libc::CTRL_CMD_GETFAMILY as u8;
         genl_hdr.version = 0x1;
 
         // Netlink attributes
         let nlattr_start = genl_hdr_end;
         let nlattr_end = nlattr_start + NLA_HDRLEN;
-        let nl_attr = NlAttr::from_mut_slice(&mut data[nlattr_start..nlattr_end])
-            .expect("unable to get NlAttr from slice");
+        let nl_attr = LayoutVerified::<_, NlAttr>::new(&mut data[nlattr_start..nlattr_end])
+            .expect("unable to get NlAttr from slice")
+            .into_mut();
         nl_attr._type = libc::CTRL_ATTR_FAMILY_NAME as u16;
         nl_attr.len = family_name.len() as u16 + 1 + NLA_HDRLEN as u16;
 

@@ -13,8 +13,9 @@ use std::sync::Arc;
 use std::sync::MutexGuard;
 
 use base::error;
-use data_model::DataInit;
 use sync::Mutex;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 /// Type of offset in the register space.
 pub type RegisterOffset = u64;
@@ -64,7 +65,11 @@ pub trait RegisterValue:
     'static
     + Into<u64>
     + Clone
-    + DataInit
+    + AsBytes
+    + FromBytes
+    + Send
+    + Sync
+    + Copy
     + std::ops::BitOr<Self, Output = Self>
     + std::ops::BitAnd<Self, Output = Self>
     + std::ops::Not<Output = Self>
@@ -263,7 +268,7 @@ impl<T: RegisterValue> RegisterInterface for Register<T> {
         let total_size = (overlap.to - overlap.from) as usize + 1;
 
         let mut reg_value: T = self.lock().value;
-        let value: &mut [u8] = reg_value.as_mut_slice();
+        let value: &mut [u8] = reg_value.as_bytes_mut();
         for i in 0..total_size {
             value[my_start_idx + i] = self.apply_write_masks_to_byte(
                 value[my_start_idx + i],

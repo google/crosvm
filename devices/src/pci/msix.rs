@@ -12,11 +12,12 @@ use base::RawDescriptor;
 use base::Tube;
 use base::TubeError;
 use bit_field::*;
-use data_model::DataInit;
 use remain::sorted;
 use thiserror::Error;
 use vm_control::VmIrqRequest;
 use vm_control::VmIrqResponse;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 use crate::pci::PciCapability;
 use crate::pci::PciCapabilityID;
@@ -580,7 +581,7 @@ impl AsRawDescriptor for MsixConfig {
 //   15:    Enable. Enable all MSI-X when set.
 // See <https://wiki.osdev.org/PCI#Enabling_MSI-X> for the details.
 #[bitfield]
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 pub struct MsixCtrl {
     table_size: B10,
     reserved: B4,
@@ -588,12 +589,9 @@ pub struct MsixCtrl {
     enable: B1,
 }
 
-// It is safe to implement DataInit; all members are simple numbers and any value is valid.
-unsafe impl DataInit for MsixCap {}
-
 #[allow(dead_code)]
 #[repr(C)]
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, AsBytes, FromBytes)]
 /// MSI-X Capability Structure
 pub struct MsixCap {
     // To make add_capability() happy
@@ -613,7 +611,7 @@ pub struct MsixCap {
 
 impl PciCapability for MsixCap {
     fn bytes(&self) -> &[u8] {
-        self.as_slice()
+        self.as_bytes()
     }
 
     fn id(&self) -> PciCapabilityID {

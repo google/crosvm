@@ -6,11 +6,11 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use base::warn;
-use data_model::DataInit;
 use once_cell::sync::Lazy;
 use resources::Alloc;
 use resources::SystemAllocator;
 use sync::Mutex;
+use zerocopy::FromBytes;
 
 use crate::pci::pci_configuration::PciCapabilityID;
 use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
@@ -290,8 +290,8 @@ impl PciePort {
         self.removed_downstream_valid = false;
         match offset {
             PCIE_SLTCTL_OFFSET => {
-                let value = match u16::from_slice(data) {
-                    Some(&v) => v,
+                let value = match u16::read_from(data) {
+                    Some(v) => v,
                     None => {
                         warn!("write SLTCTL isn't word, len: {}", data.len());
                         return;
@@ -334,8 +334,8 @@ impl PciePort {
                 if self.slot_control.is_none() {
                     return;
                 }
-                let value = match u16::from_slice(data) {
-                    Some(v) => *v,
+                let value = match u16::read_from(data) {
+                    Some(v) => v,
                     None => {
                         warn!("write SLTSTA isn't word, len: {}", data.len());
                         return;
@@ -357,20 +357,20 @@ impl PciePort {
                     self.slot_status &= !PCIE_SLTSTA_DLLSC;
                 }
             }
-            PCIE_ROOTCTL_OFFSET => match u16::from_slice(data) {
+            PCIE_ROOTCTL_OFFSET => match u16::read_from(data) {
                 Some(v) => {
                     if self.is_root_port {
-                        self.root_cap.lock().control = *v;
+                        self.root_cap.lock().control = v;
                     } else {
                         warn!("write root control register while device isn't root port");
                     }
                 }
                 None => warn!("write root control isn't word, len: {}", data.len()),
             },
-            PCIE_ROOTSTA_OFFSET => match u32::from_slice(data) {
+            PCIE_ROOTSTA_OFFSET => match u32::read_from(data) {
                 Some(v) => {
                     if self.is_root_port {
-                        if *v & PCIE_ROOTSTA_PME_STATUS != 0 {
+                        if v & PCIE_ROOTSTA_PME_STATUS != 0 {
                             let mut r = self.root_cap.lock();
                             if let Some(requester_id) = r.pme_pending_requester_id {
                                 r.status &= !PCIE_ROOTSTA_PME_PENDING;

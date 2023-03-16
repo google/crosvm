@@ -45,6 +45,7 @@ use resources::Error as ResourcesError;
 use sync::Mutex;
 use thiserror::Error;
 use vfio_sys::*;
+use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
 use crate::IommuDevType;
@@ -1513,19 +1514,17 @@ impl VfioPciConfig {
         VfioPciConfig { device }
     }
 
-    pub fn read_config<T: DataInit>(&self, offset: u32) -> T {
+    pub fn read_config<T: FromBytes>(&self, offset: u32) -> T {
         let mut buf = vec![0u8; std::mem::size_of::<T>()];
         self.device
             .region_read(VFIO_PCI_CONFIG_REGION_INDEX, &mut buf, offset.into());
-        T::from_slice(&buf)
-            .copied()
-            .expect("failed to convert config data from slice")
+        T::read_from(&buf[..]).expect("failed to convert config data from slice")
     }
 
-    pub fn write_config<T: DataInit>(&self, config: T, offset: u32) {
+    pub fn write_config<T: AsBytes>(&self, config: T, offset: u32) {
         self.device.region_write(
             VFIO_PCI_CONFIG_REGION_INDEX,
-            config.as_slice(),
+            config.as_bytes(),
             offset.into(),
         );
     }

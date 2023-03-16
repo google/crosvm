@@ -14,7 +14,6 @@ use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
-use data_model::DataInit;
 use data_model::Le16;
 use data_model::Le32;
 use data_model::Le64;
@@ -32,8 +31,6 @@ struct UsedElem {
     id: Le32,
     len: Le32,
 }
-// Safe as there are no implicit offset.
-unsafe impl DataInit for UsedElem {}
 
 const BUF_SIZE: u64 = 1024;
 

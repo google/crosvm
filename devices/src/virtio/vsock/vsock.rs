@@ -36,7 +36,6 @@ use cros_async::AsyncError;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::SelectResult;
-use data_model::DataInit;
 use data_model::Le32;
 use data_model::Le64;
 use futures::channel::mpsc;

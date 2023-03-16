@@ -10,9 +10,10 @@ use base::Event;
 use base::RawDescriptor;
 use base::Tube;
 use bit_field::*;
-use data_model::DataInit;
 use vm_control::VmIrqRequest;
 use vm_control::VmIrqResponse;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 use crate::pci::PciCapability;
 use crate::pci::PciCapabilityID;
@@ -257,7 +258,7 @@ impl MsiConfig {
 }
 
 #[bitfield]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, AsBytes, FromBytes)]
 pub struct MsiCtrl {
     enable: B1,
     multi_msg_capable: B3,
@@ -270,36 +271,39 @@ pub struct MsiCtrl {
 }
 
 #[allow(dead_code)]
-#[repr(C)]
-#[derive(Clone, Copy, Default)]
+#[repr(C, align(4))]
+#[derive(Clone, Copy, Default, AsBytes, FromBytes)]
 struct Msi32BitWithoutMask {
     msg_data: u16,
     msg_extended_data: u16,
+    _padding: [u8; 12],
 }
 
 #[allow(dead_code)]
-#[repr(C)]
-#[derive(Clone, Copy, Default)]
+#[repr(C, align(4))]
+#[derive(Clone, Copy, Default, AsBytes, FromBytes)]
 struct Msi32BitWithMask {
     msg_data: u16,
     msg_extended_data: u16,
     mask_bits: u32,
     pending_bits: u32,
+    _padding: [u8; 4],
 }
 
 #[allow(dead_code)]
-#[repr(C)]
-#[derive(Clone, Copy, Default)]
-struct Msi64BitWithMask {
+#[repr(C, align(4))]
+#[derive(Clone, Copy, Default, AsBytes, FromBytes)]
+struct Msi64BitWithoutMask {
     msg_upper: u32,
     msg_data: u16,
     msg_extended_data: u16,
+    _padding: [u8; 8],
 }
 
 #[allow(dead_code)]
 #[repr(C)]
-#[derive(Clone, Copy, Default)]
-struct Msi64BitWithoutMask {
+#[derive(Clone, Copy, Default, AsBytes, FromBytes)]
+struct Msi64BitWithMask {
     msg_upper: u32,
     msg_data: u16,
     msg_extended_data: u16,
@@ -308,7 +312,8 @@ struct Msi64BitWithoutMask {
 }
 
 #[allow(dead_code)]
-#[derive(Clone, Copy)]
+#[repr(C)]
+#[derive(Clone, Copy, AsBytes, FromBytes)]
 union MsiVary {
     msi_32bit_without_mask: Msi32BitWithoutMask,
     msi_32bit_with_mask: Msi32BitWithMask,
@@ -318,7 +323,7 @@ union MsiVary {
 
 #[allow(dead_code)]
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, AsBytes, FromBytes)]
 /// MSI Capability Structure
 pub struct MsiCap {
     // To make add_capability() happy
@@ -332,11 +337,9 @@ pub struct MsiCap {
     msi_vary: MsiVary,
 }
 
-unsafe impl DataInit for MsiCap {}
-
 impl PciCapability for MsiCap {
     fn bytes(&self) -> &[u8] {
-        self.as_slice()
+        self.as_bytes()
     }
 
     fn id(&self) -> PciCapabilityID {

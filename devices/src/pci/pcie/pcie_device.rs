@@ -4,9 +4,9 @@
 
 use std::sync::Arc;
 
-use data_model::DataInit;
 use resources::SystemAllocator;
 use sync::Mutex;
+use zerocopy::AsBytes;
 
 use crate::pci::pci_configuration::PciCapabilityID;
 use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
@@ -50,7 +50,7 @@ pub trait PcieDevice: Send {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, AsBytes)]
 pub struct PcieCap {
     _cap_vndr: u8,
     _cap_next: u8,
@@ -77,12 +77,10 @@ pub struct PcieCap {
     slot_control_2: u16,
     slot_status_2: u16,
 }
-// It is safe to implement DataInit; all members are simple numbers and any value is valid.
-unsafe impl DataInit for PcieCap {}
 
 impl PciCapability for PcieCap {
     fn bytes(&self) -> &[u8] {
-        self.as_slice()
+        self.as_bytes()
     }
 
     fn id(&self) -> PciCapabilityID {

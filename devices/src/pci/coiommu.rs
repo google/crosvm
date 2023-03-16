@@ -48,7 +48,6 @@ use base::Tube;
 use base::TubeError;
 use base::WaitContext;
 use base::WorkerThread;
-use data_model::DataInit;
 use hypervisor::Datamatch;
 use resources::Alloc;
 use resources::AllocOptions;
@@ -283,8 +282,6 @@ struct PinPageInfo {
     pad: [u16; 3],
     nr_pages: u64,
 }
-// Safe because the PinPageInfo structure is raw data
-unsafe impl DataInit for PinPageInfo {}
 
 const COIOMMU_UPPER_LEVEL_STRIDE: u64 = 9;
 const COIOMMU_UPPER_LEVEL_MASK: u64 = (1 << COIOMMU_UPPER_LEVEL_STRIDE) - 1;

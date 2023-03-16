@@ -4,8 +4,8 @@
 
 use std::str;
 
-use data_model::DataInit;
 use thiserror::Error;
+use zerocopy::FromBytes;
 
 use super::netlink::*;
 
@@ -39,14 +39,13 @@ enum GenmsghdrCmd {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, FromBytes)]
 struct AcpiGenlEvent {
     device_class: [::std::os::raw::c_char; 20usize],
     bus_id: [::std::os::raw::c_char; 15usize],
     _type: u32,
     data: u32,
 }
-unsafe impl DataInit for AcpiGenlEvent {}
 
 pub struct AcpiNotifyEvent {
     pub device_class: String,
@@ -63,11 +62,11 @@ impl AcpiNotifyEvent {
             return Err(AcpiEventError::InvalidMsgLen(msg_len));
         }
 
-        let genl_hdr = GenlMsgHdr::from_slice(&netlink_message.data[..GENL_HDRLEN])
+        let genl_hdr = GenlMsgHdr::read_from(&netlink_message.data[..GENL_HDRLEN])
             .expect("unable to get GenlMsgHdr from slice");
 
         let nlattr_end = GENL_HDRLEN + NLA_HDRLEN;
-        let nl_attr = NlAttr::from_slice(&netlink_message.data[GENL_HDRLEN..nlattr_end])
+        let nl_attr = NlAttr::read_from(&netlink_message.data[GENL_HDRLEN..nlattr_end])
             .expect("unable to get NlAttr from slice");
 
         // Sanity check that the headers have correct for acpi event `cmd` and `_type`
@@ -77,7 +76,7 @@ impl AcpiNotifyEvent {
             return Err(AcpiEventError::TypeAttrMissmatch);
         }
 
-        let acpi_event = AcpiGenlEvent::from_slice(&netlink_message.data[nlattr_end..msg_len])
+        let acpi_event = AcpiGenlEvent::read_from(&netlink_message.data[nlattr_end..msg_len])
             .expect("unable to get AcpiGenlEvent from slice");
 
         // The raw::c_char is either i8 or u8 which is known portability issue:
