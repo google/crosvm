@@ -113,7 +113,7 @@ def check_crosvm_tests(platform: Platform):
             return None
         dut = None
         if platform == "x86_64":
-            dut = "--dut=host"
+            dut = "--dut=vm"
         elif platform == "aarch64":
             dut = "--dut=vm"
         return cmd("./tools/run_tests --platform", platform, dut).with_color_flag()
