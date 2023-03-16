@@ -15,8 +15,8 @@ use std::collections::HashMap as Map;
 use std::convert::TryInto;
 use std::sync::Arc;
 
-use base::warn;
 use base::MappedRegion;
+use log::warn;
 use vulkano::device::physical::PhysicalDeviceType;
 use vulkano::device::Device;
 use vulkano::device::DeviceCreateInfo;

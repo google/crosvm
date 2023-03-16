@@ -14,6 +14,7 @@ rutabaga_gfx = { path = "../" }
 base = {path = "../../base" }
 data_model = {path = "../../common/data_model" }
 libc = "0.2.93"
+log = "0.4"
 
 [features]
 minigbm = ["rutabaga_gfx/minigbm"]

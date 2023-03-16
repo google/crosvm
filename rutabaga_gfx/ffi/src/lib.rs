@@ -16,7 +16,6 @@ use std::ptr::null_mut;
 use std::slice::from_raw_parts;
 use std::slice::from_raw_parts_mut;
 
-use base::error;
 use base::FromRawDescriptor;
 use base::IntoRawDescriptor;
 use base::SafeDescriptor;
@@ -24,6 +23,7 @@ use data_model::VolatileSlice;
 use libc::iovec;
 use libc::EINVAL;
 use libc::ESRCH;
+use log::error;
 use rutabaga_gfx::*;
 
 const NO_ERROR: i32 = 0;

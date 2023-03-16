@@ -18,13 +18,13 @@ use std::sync::Condvar;
 use std::sync::Mutex;
 use std::thread;
 
-use base::error;
 use base::Event;
 use base::EventToken;
 use base::FileReadWriteVolatile;
 use base::SafeDescriptor;
 use base::WaitContext;
 use data_model::VolatileSlice;
+use log::error;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 

@@ -21,11 +21,12 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use base::warn;
 use base::Error as SysError;
 use base::FromRawDescriptor;
 use base::SafeDescriptor;
 use data_model::VolatileSlice;
+use log::debug;
+use log::warn;
 
 use crate::generated::virgl_debug_callback_bindings::*;
 use crate::generated::virgl_renderer_bindings::*;
@@ -163,14 +164,14 @@ extern "C" fn debug_callback(fmt: *const ::std::os::raw::c_char, ap: stdio::va_l
     };
 
     if printed_len < 0 {
-        base::debug!(
+        debug!(
             "rutabaga_gfx::virgl_renderer::debug_callback: vsnprintf returned {}",
             printed_len
         );
     } else {
         // vsnprintf returns the number of chars that *would* have been printed
         let len = min(printed_len as usize, BUF_LEN - 1);
-        base::debug!("{}", String::from_utf8_lossy(&v[..len]));
+        debug!("{}", String::from_utf8_lossy(&v[..len]));
     }
 }
 

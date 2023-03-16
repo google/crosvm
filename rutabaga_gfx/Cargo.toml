@@ -25,6 +25,7 @@ remain = "0.2"
 thiserror = "1.0.23"
 serde = { version = "1", features = [ "derive" ] }
 zerocopy = "*"
+log = "0.4"
 
 [target.'cfg(not(target_os = "fuchsia"))'.dependencies]
 base = { path = "../base" }
