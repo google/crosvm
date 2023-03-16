@@ -779,7 +779,14 @@ pub struct MonitorInfo {
     pub hmonitor: HMONITOR,
     pub display_rect: Rect,
     pub work_rect: Rect,
-    pub dpi: i32,
+    raw_dpi: i32,
+    // Whether we are running in a Remote Desktop Protocol (RDP) session. The monitor DPI returned
+    // by `GetDpiForMonitor()` may not make sense in that case. For example, the DPI is always 25
+    // under Chrome Remote Desktop, which is way lower than the standard DPI 96. This might be a
+    // flaw in RDP itself. We have to override the DPI in that case, otherwise the guest DPI
+    // calculated based on it would be too low as well.
+    // https://learn.microsoft.com/en-us/troubleshoot/windows-server/shell-experience/dpi-adjustment-unavailable-in-rdp
+    is_rdp_session: bool,
 }
 
 impl MonitorInfo {
@@ -788,12 +795,31 @@ impl MonitorInfo {
     pub unsafe fn new(hmonitor: HMONITOR) -> Result<Self> {
         let monitor_info: MONITORINFO =
             Self::get_monitor_info(hmonitor).context("When creating MonitorInfo")?;
+        // Docs state that apart from `GetSystemMetrics(SM_REMOTESESSION)`, we also need to check
+        // registry entries to see if we are running in a remote session that uses RemoteFX vGPU:
+        // https://learn.microsoft.com/en-us/windows/win32/termserv/detecting-the-terminal-services-environment
+        // However, RemoteFX vGPU was then removed because of security vulnerabilities:
+        // https://support.microsoft.com/en-us/topic/kb4570006-update-to-disable-and-remove-the-remotefx-vgpu-component-in-windows-bbdf1531-7188-2bf4-0de6-641de79f09d2
+        // So, we are only calling `GetSystemMetrics(SM_REMOTESESSION)` here until this changes in
+        // the future.
+        // Safe because no memory management is needed for arguments.
+        let is_rdp_session = unsafe { GetSystemMetrics(SM_REMOTESESSION) != 0 };
         Ok(Self {
             hmonitor,
             display_rect: monitor_info.rcMonitor.to_rect(),
             work_rect: monitor_info.rcWork.to_rect(),
-            dpi: Self::get_dpi(hmonitor),
+            raw_dpi: Self::get_monitor_dpi(hmonitor),
+            is_rdp_session,
         })
+    }
+
+    pub fn get_dpi(&self) -> i32 {
+        if self.is_rdp_session {
+            // Override the DPI since the system may not tell us the correct value in RDP sessions.
+            DEFAULT_HOST_DPI
+        } else {
+            self.raw_dpi
+        }
     }
 
     /// Calls `GetMonitorInfoW()` internally.
@@ -811,7 +837,7 @@ impl MonitorInfo {
     }
 
     /// Calls `GetDpiForMonitor()` internally.
-    fn get_dpi(hmonitor: HMONITOR) -> i32 {
+    fn get_monitor_dpi(hmonitor: HMONITOR) -> i32 {
         let mut dpi_x = 0;
         let mut dpi_y = 0;
         // This is always safe since `GetDpiForMonitor` won't crash if HMONITOR is invalid, but
@@ -834,8 +860,16 @@ impl fmt::Debug for MonitorInfo {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "{{hmonitor: {:p}, display_rect: {:?}, work_rect: {:?}, DPI: {}}}",
-            self.hmonitor, self.display_rect, self.work_rect, self.dpi,
+            "{{hmonitor: {:p}, display_rect: {:?}, work_rect: {:?}, DPI: {}{}}}",
+            self.hmonitor,
+            self.display_rect,
+            self.work_rect,
+            self.get_dpi(),
+            if self.is_rdp_session {
+                format!(" (raw value: {}, overriden due to RDP)", self.raw_dpi)
+            } else {
+                String::new()
+            }
         )
     }
 }
