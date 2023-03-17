@@ -82,6 +82,8 @@ pub struct ResourceCreateBlob {
     pub size: u64,
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
 pub struct RutabagaMapping {
     pub ptr: u64,
     pub size: u64,

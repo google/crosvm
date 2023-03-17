@@ -127,6 +127,11 @@ struct rutabaga_handle {
 	uint32_t handle_type;
 };
 
+struct rutabaga_mapping {
+    uint64_t ptr;
+    uint64_t size;
+};
+
 /**
  * Assumes null-terminated C-string.
  */
@@ -248,6 +253,11 @@ int32_t rutabaga_resource_unref(struct rutabaga *ptr, uint32_t resource_id);
  */
 int32_t rutabaga_resource_export_blob(struct rutabaga *ptr, uint32_t resource_id,
 				      struct rutabaga_handle *handle);
+
+int32_t rutabaga_resource_map(struct rutabaga *ptr, uint32_t resource_id,
+                struct rutabaga_mapping *mapping);
+
+int32_t rutabaga_resource_unmap(struct rutabaga *ptr, uint32_t resource_id);
 
 int32_t rutabaga_resource_map_info(struct rutabaga *ptr, uint32_t resource_id, uint32_t *map_info);
 

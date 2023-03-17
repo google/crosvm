@@ -79,6 +79,12 @@ pub struct rutabaga_handle {
 }
 
 #[repr(C)]
+pub struct rutabaga_mapping {
+    pub ptr: u64,
+    pub size: u64,
+}
+
+#[repr(C)]
 pub struct rutabaga_channel {
     pub channel_name: *const c_char,
     pub channel_type: u32,
@@ -454,6 +460,31 @@ pub extern "C" fn rutabaga_resource_export_blob(
         (*handle).handle_type = hnd.handle_type;
         (*handle).os_handle = hnd.os_handle.into_raw_descriptor();
         NO_ERROR
+    }))
+    .unwrap_or(-ESRCH)
+}
+
+#[no_mangle]
+pub extern "C" fn rutabaga_resource_map(
+    ptr: &mut rutabaga,
+    resource_id: u32,
+    mapping: &mut rutabaga_mapping,
+) -> i32 {
+    catch_unwind(AssertUnwindSafe(|| {
+        let result = ptr.map(resource_id);
+        let internal_map = return_on_error!(result);
+        (*mapping).ptr = internal_map.ptr;
+        (*mapping).size = internal_map.size;
+        NO_ERROR
+    }))
+    .unwrap_or(-ESRCH)
+}
+
+#[no_mangle]
+pub extern "C" fn rutabaga_resource_unmap(ptr: &mut rutabaga, resource_id: u32) -> i32 {
+    catch_unwind(AssertUnwindSafe(|| {
+        let result = ptr.unmap(resource_id);
+        return_result(result)
     }))
     .unwrap_or(-ESRCH)
 }
