@@ -568,6 +568,7 @@ dependencies = [
  "anyhow",
  "base",
  "cfg-if",
+ "libtest-mimic",
  "once_cell",
 ]
 

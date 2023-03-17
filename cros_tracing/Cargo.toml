@@ -6,6 +6,12 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[test]]
+name = "trace_marker"
+path = "tests/trace_marker.rs"
+harness = false
+required-features = ["trace_marker"]
+
 [features]
 trace_marker = ["once_cell"]
 
@@ -15,3 +21,5 @@ base = "*"
 cfg-if = "1.0.0"
 once_cell = { version = "1.7", optional = true }
 
+[dev-dependencies]
+libtest-mimic = "0.6"
