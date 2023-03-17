@@ -427,7 +427,6 @@ impl Drop for UnlinkSeqPacketListener {
 
 #[cfg(test)]
 mod test {
-    use std::env;
     use std::fs::File;
     use std::io::Write;
     use std::time::Duration;
@@ -435,6 +434,7 @@ mod test {
 
     use base::AsRawDescriptor;
     use base::EventExt;
+    use tempfile::tempdir;
 
     use super::*;
     use crate::with_deadline;
@@ -702,8 +702,8 @@ mod test {
 
     #[test]
     fn unix_seqpacket_listener_path() {
-        let mut socket_path = env::temp_dir();
-        socket_path.push("unix_seqpacket_listener_path");
+        let temp_dir = tempdir().expect("failed to create tempdir");
+        let socket_path = temp_dir.path().join("unix_seqpacket_listener_path");
         let listener = UnlinkSeqPacketListener(
             SeqPacketListener::bind(&socket_path).expect("failed to create SeqPacketListener"),
         );
@@ -715,8 +715,8 @@ mod test {
     fn unix_seqpacket_path_exists_pass() {
         Executor::new()
             .run_until(async {
-                let mut socket_path = env::temp_dir();
-                socket_path.push("path_to_socket");
+                let temp_dir = tempdir().expect("failed to create tempdir");
+                let socket_path = temp_dir.path().join("path_to_socket");
                 let _listener = UnlinkSeqPacketListener(
                     SeqPacketListener::bind(&socket_path)
                         .expect("failed to create SeqPacketListener"),
@@ -732,8 +732,8 @@ mod test {
     fn unix_seqpacket_path_listener_accept() {
         Executor::new()
             .run_until(async {
-                let mut socket_path = env::temp_dir();
-                socket_path.push("path_listerner_accept");
+                let temp_dir = tempdir().expect("failed to create tempdir");
+                let socket_path = temp_dir.path().join("path_listerner_accept");
                 let listener = UnlinkSeqPacketListener(
                     SeqPacketListener::bind(&socket_path)
                         .expect("failed to create SeqPacketListener"),
