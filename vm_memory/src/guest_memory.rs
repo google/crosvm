@@ -106,6 +106,43 @@ pub struct MemoryRegionInformation<'a> {
     pub host_addr: usize,
     pub shm: &'a BackingObject,
     pub shm_offset: u64,
+    pub options: MemoryRegionOptions,
+}
+
+#[sorted]
+#[derive(Clone, Copy, Debug, PartialOrd, PartialEq, Eq, Ord)]
+pub enum MemoryRegionPurpose {
+    // General purpose guest memory
+    GuestMemoryRegion,
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    ProtectedFirmwareRegion,
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    StaticSwiotlbRegion,
+}
+
+impl Default for MemoryRegionPurpose {
+    fn default() -> Self {
+        MemoryRegionPurpose::GuestMemoryRegion
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialOrd, PartialEq, Eq, Ord)]
+pub struct MemoryRegionOptions {
+    /// Some hypervisors (presently: Gunyah) need explicit knowledge about
+    /// which memory region is used for protected firwmare, static swiotlb,
+    /// or general purpose guest memory.
+    pub purpose: MemoryRegionPurpose,
+}
+
+impl MemoryRegionOptions {
+    pub fn new() -> MemoryRegionOptions {
+        Default::default()
+    }
+
+    pub fn purpose(mut self, purpose: MemoryRegionPurpose) -> Self {
+        self.purpose = purpose;
+        self
+    }
 }
 
 /// A regions of memory mapped memory.
@@ -118,6 +155,8 @@ pub struct MemoryRegion {
 
     shared_obj: BackingObject,
     obj_offset: u64,
+
+    options: MemoryRegionOptions,
 }
 
 impl MemoryRegion {
@@ -139,6 +178,7 @@ impl MemoryRegion {
             guest_base,
             shared_obj: BackingObject::Shm(shm),
             obj_offset: offset,
+            options: Default::default(),
         })
     }
 
@@ -160,6 +200,7 @@ impl MemoryRegion {
             guest_base,
             shared_obj: BackingObject::File(file),
             obj_offset: offset,
+            options: Default::default(),
         })
     }
 
@@ -197,7 +238,7 @@ impl AsRawDescriptors for GuestMemory {
 
 impl GuestMemory {
     /// Creates backing shm for GuestMemory regions
-    fn create_shm(ranges: &[(GuestAddress, u64)]) -> Result<SharedMemory> {
+    fn create_shm(ranges: &[(GuestAddress, u64, MemoryRegionOptions)]) -> Result<SharedMemory> {
         let mut aligned_size = 0;
         let pg_size = pagesize();
         for range in ranges {
@@ -220,8 +261,10 @@ impl GuestMemory {
     }
 
     /// Creates a container for guest memory regions.
-    /// Valid memory regions are specified as a Vec of (Address, Size) tuples sorted by Address.
-    pub fn new(ranges: &[(GuestAddress, u64)]) -> Result<GuestMemory> {
+    /// Valid memory regions are specified as a Vec of (Address, Size, MemoryRegionOptions)
+    pub fn new_with_options(
+        ranges: &[(GuestAddress, u64, MemoryRegionOptions)],
+    ) -> Result<GuestMemory> {
         // Create shm
         let shm = Arc::new(GuestMemory::create_shm(ranges)?);
 
@@ -253,6 +296,7 @@ impl GuestMemory {
                 guest_base: range.0,
                 shared_obj: BackingObject::Shm(shm.clone()),
                 obj_offset: offset,
+                options: range.2,
             });
 
             offset += size as u64;
@@ -261,6 +305,18 @@ impl GuestMemory {
         Ok(GuestMemory {
             regions: Arc::from(regions),
         })
+    }
+
+    /// Creates a container for guest memory regions.
+    /// Valid memory regions are specified as a Vec of (Address, Size) tuples sorted by Address.
+    pub fn new(ranges: &[(GuestAddress, u64)]) -> Result<GuestMemory> {
+        GuestMemory::new_with_options(
+            ranges
+                .iter()
+                .map(|(addr, size)| (*addr, *size, Default::default()))
+                .collect::<Vec<(GuestAddress, u64, MemoryRegionOptions)>>()
+                .as_slice(),
+        )
     }
 
     /// Creates a `GuestMemory` from a collection of MemoryRegions.
@@ -391,6 +447,7 @@ impl GuestMemory {
                 host_addr: region.mapping.as_ptr() as usize,
                 shm: &region.shared_obj,
                 shm_offset: region.obj_offset,
+                options: region.options,
             })?;
         }
         Ok(())
