@@ -14,6 +14,7 @@ use gdbstub::arch::Arch;
 #[cfg(feature = "gdb")]
 use gdbstub_arch::aarch64::AArch64 as GdbArch;
 use libc::EINVAL;
+use serde::Deserialize;
 use serde::Serialize;
 use vm_memory::GuestAddress;
 
@@ -130,9 +131,14 @@ pub trait VcpuAArch64: Vcpu {
     fn snapshot(&self) -> anyhow::Result<VcpuInnerSnapshot> {
         Err(anyhow!("not yet implemented"))
     }
+
+    /// Restore VCPU
+    fn restore(&self, _inner_vcpu: VcpuInnerSnapshot) -> anyhow::Result<()> {
+        Err(anyhow!("not yet implemented"))
+    }
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct VcpuInnerSnapshot {}
 
 impl_downcast!(VcpuAArch64);

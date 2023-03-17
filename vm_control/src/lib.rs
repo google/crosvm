@@ -118,9 +118,10 @@ pub enum VcpuControl {
     // Request the current state of the vCPU. The result is sent back over the included channel.
     GetStates(mpsc::Sender<VmRunMode>),
     Snapshot(mpsc::Sender<anyhow::Result<VcpuSnapshot>>),
+    Restore(mpsc::Sender<anyhow::Result<()>>, Box<VcpuSnapshot>),
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct VcpuSnapshot {
     pub vcpu: VcpuInnerSnapshot,
     pub vcpu_id: usize,
@@ -1294,6 +1295,7 @@ impl VmRequest {
         usb_control_tube: Option<&Tube>,
         bat_control: &mut Option<BatControl>,
         kick_vcpus: impl Fn(VcpuControl),
+        kick_vcpu: impl Fn(VcpuControl, usize),
         force_s2idle: bool,
         #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
         device_control_tube: &Tube,
@@ -1641,6 +1643,29 @@ impl VmRequest {
             VmRequest::Restore(RestoreCommand::Apply { ref restore_path }) => {
                 let f = || {
                     let _guard = VcpuSuspendGuard::new(&kick_vcpus, vcpu_size)?;
+                    let _device_guard = DeviceSleepGuard::new(device_control_tube)?;
+                    let vcpu_path = restore_path.with_extension("vcpu");
+                    let cpu_file = OpenOptions::new()
+                        .read(true)
+                        .write(false)
+                        .open(&vcpu_path)
+                        .with_context(|| format!("failed to open path {}", vcpu_path.display()))?;
+                    let vcpus_data: Vec<serde_json::Value> = serde_json::from_reader(cpu_file)?;
+                    let (send_chan, recv_chan) = mpsc::channel();
+                    for data in vcpus_data {
+                        let vcpu_snap: VcpuSnapshot = serde_json::from_value(data)
+                            .context("failed to deserialize vcpu snapshot")?;
+                        let vcpu_id = vcpu_snap.vcpu_id;
+                        kick_vcpu(
+                            VcpuControl::Restore(send_chan.clone(), Box::new(vcpu_snap)),
+                            vcpu_id,
+                        );
+                    }
+                    for _ in 0..vcpu_size {
+                        if let Err(e) = recv_chan.recv() {
+                            bail!("Failed to restore vcpu: {}", e);
+                        }
+                    }
                     device_control_tube
                         .send(&DeviceControlCommand::RestoreDevices {
                             restore_path: restore_path.clone(),

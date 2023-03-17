@@ -150,9 +150,21 @@ pub trait VcpuX86_64: Vcpu {
             tsc_offset: self.get_tsc_offset()?,
         })
     }
+
+    fn restore(&mut self, inner_vcpu: VcpuInnerSnapshot) -> anyhow::Result<()> {
+        self.set_regs(&inner_vcpu.regs)?;
+        self.set_sregs(&inner_vcpu.sregs)?;
+        self.set_debugregs(&inner_vcpu.debug_regs)?;
+        self.set_xcrs(&inner_vcpu.xcrs)?;
+        self.set_msrs(&inner_vcpu.msrs)?;
+        self.set_xsave(&inner_vcpu.xsave)?;
+        self.set_vcpu_events(&inner_vcpu.vcpu_events)?;
+        self.set_tsc_offset(inner_vcpu.tsc_offset)?;
+        Ok(())
+    }
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct VcpuInnerSnapshot {
     regs: Regs,
     sregs: Sregs,
@@ -655,7 +667,7 @@ impl IrqRoute {
 
 /// State of a VCPU's general purpose registers.
 #[repr(C)]
-#[derive(Debug, Copy, Clone, Serialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct Regs {
     pub rax: u64,
     pub rbx: u64,
@@ -704,7 +716,7 @@ impl Default for Regs {
 
 /// State of a memory segment.
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, Serialize)]
+#[derive(Debug, Default, Copy, Clone, Serialize, Deserialize)]
 pub struct Segment {
     pub base: u64,
     pub limit: u32,
@@ -721,7 +733,7 @@ pub struct Segment {
 
 /// State of a global descriptor table or interrupt descriptor table.
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, Serialize)]
+#[derive(Debug, Default, Copy, Clone, Serialize, Deserialize)]
 pub struct DescriptorTable {
     pub base: u64,
     pub limit: u16,
@@ -729,7 +741,7 @@ pub struct DescriptorTable {
 
 /// State of a VCPU's special registers.
 #[repr(C)]
-#[derive(Debug, Copy, Clone, Serialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct Sregs {
     pub cs: Segment,
     pub ds: Segment,
@@ -846,7 +858,7 @@ impl Default for Sregs {
 
 /// State of a VCPU's floating point unit.
 #[repr(C)]
-#[derive(Debug, Copy, Clone, Serialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct Fpu {
     pub fpr: [[u8; 16usize]; 8usize],
     pub fcw: u16,
@@ -925,7 +937,7 @@ pub struct VcpuTripleFaultState {
 
 /// State of a VCPU's debug registers.
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, Serialize)]
+#[derive(Debug, Default, Copy, Clone, Serialize, Deserialize)]
 pub struct DebugRegs {
     pub db: [u64; 4usize],
     pub dr6: u64,
@@ -950,5 +962,5 @@ pub enum CpuHybridType {
 
 /// State of the VCPU's x87 FPU, MMX, XMM, YMM registers.
 /// May contain more state depending on enabled extensions.
-#[derive(Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Xsave(pub Vec<u32>);

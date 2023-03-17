@@ -3048,6 +3048,13 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                         msg,
                                                     )
                                                 },
+                                                |msg, index| {
+                                                    vcpu::kick_vcpu(
+                                                        &vcpu_handles.get(index),
+                                                        linux.irq_chip.as_irq_chip(),
+                                                        msg,
+                                                    )
+                                                },
                                                 cfg.force_s2idle,
                                                 #[cfg(feature = "swap")]
                                                 swap_controller.as_ref(),

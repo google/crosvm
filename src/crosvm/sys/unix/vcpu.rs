@@ -400,6 +400,14 @@ where
                                 error!("Failed to send snapshot complete: {}", e);
                             }
                         }
+                        VcpuControl::Restore(response_chan, vcpu_data) => {
+                            if let Err(e) = vcpu.restore(vcpu_data.vcpu) {
+                                panic!("Failed to restore Vcpu #{}: {}", vcpu.id(), e);
+                            };
+                            if let Err(e) = response_chan.send(Ok(())) {
+                                error!("Failed to send restore complete: {}", e);
+                            }
+                        }
                     }
                 }
             }
@@ -679,6 +687,24 @@ pub fn kick_all_vcpus(
 ) {
     for (handle, tube) in vcpu_handles {
         if let Err(e) = tube.send(message.clone()) {
+            error!("failed to send VcpuControl: {}", e);
+        }
+        let _ = handle.kill(SIGRTMIN() + 0);
+    }
+    irq_chip.kick_halted_vcpus();
+}
+
+/// Signals specific running VCPUs to vmexit, sends VcpuControl message to the VCPU tube, and tells
+/// `irq_chip` to stop blocking halted VCPUs. The channel message is set first because both the
+/// signal and the irq_chip kick could cause the VCPU thread to continue through the VCPU run
+/// loop.
+pub fn kick_vcpu(
+    vcpu_handle: &Option<&(JoinHandle<()>, mpsc::Sender<vm_control::VcpuControl>)>,
+    irq_chip: &dyn IrqChip,
+    message: VcpuControl,
+) {
+    if let Some((handle, tube)) = vcpu_handle {
+        if let Err(e) = tube.send(message) {
             error!("failed to send VcpuControl: {}", e);
         }
         let _ = handle.kill(SIGRTMIN() + 0);
