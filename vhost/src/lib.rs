@@ -25,6 +25,7 @@ use thiserror::Error;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
+use vm_memory::MemoryRegionInformation;
 
 #[cfg(unix)]
 pub use crate::net::Net;
@@ -145,15 +146,23 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
         // we correctly specify the size to match the amount of backing memory.
         let vhost_regions = unsafe { vhost_memory.regions.as_mut_slice(num_regions as usize) };
 
-        let _ = mem.with_regions::<_, ()>(|index, guest_addr, size, host_addr, _, _| {
-            vhost_regions[index] = virtio_sys::vhost::vhost_memory_region {
-                guest_phys_addr: guest_addr.offset() as u64,
-                memory_size: size as u64,
-                userspace_addr: host_addr as u64,
-                flags_padding: 0u64,
-            };
-            Ok(())
-        });
+        let _ = mem.with_regions::<_, ()>(
+            |MemoryRegionInformation {
+                 index,
+                 guest_addr,
+                 size,
+                 host_addr,
+                 ..
+             }| {
+                vhost_regions[index] = virtio_sys::vhost::vhost_memory_region {
+                    guest_phys_addr: guest_addr.offset() as u64,
+                    memory_size: size as u64,
+                    userspace_addr: host_addr as u64,
+                    flags_padding: 0u64,
+                };
+                Ok(())
+            },
+        );
 
         // This ioctl is called with a pointer that is valid for the lifetime
         // of this function. The kernel will make its own copy of the memory

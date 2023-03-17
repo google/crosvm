@@ -44,6 +44,7 @@ use resources::Error as ResourcesError;
 use sync::Mutex;
 use thiserror::Error;
 use vfio_sys::*;
+use vm_memory::MemoryRegionInformation;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
@@ -392,7 +393,12 @@ impl VfioContainer {
 
                     if !iommu_enabled {
                         vm.get_memory().with_regions(
-                            |_index, guest_addr, size, host_addr, _mmap, _fd_offset| {
+                            |MemoryRegionInformation {
+                                 guest_addr,
+                                 size,
+                                 host_addr,
+                                 ..
+                             }| {
                                 // Safe because the guest regions are guaranteed not to overlap
                                 unsafe {
                                     self.vfio_dma_map(

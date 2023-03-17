@@ -35,6 +35,7 @@ use libc::EOVERFLOW;
 use sync::Mutex;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
+use vm_memory::MemoryRegionInformation;
 use winapi::shared::winerror::ERROR_BUSY;
 use winapi::shared::winerror::ERROR_SUCCESS;
 use winapi::um::memoryapi::OfferVirtualMemory;
@@ -218,19 +219,26 @@ impl WhpxVm {
             .map_err(WhpxError::SetupPartition)?;
 
         guest_mem
-            .with_regions(|_, guest_addr, size, host_addr, _, _| {
-                unsafe {
-                    // Safe because the guest regions are guaranteed not to overlap.
-                    set_user_memory_region(
-                        &partition,
-                        false, // read_only
-                        false, // track dirty pages
-                        guest_addr.offset(),
-                        size as u64,
-                        host_addr as *mut u8,
-                    )
-                }
-            })
+            .with_regions(
+                |MemoryRegionInformation {
+                     guest_addr,
+                     size,
+                     host_addr,
+                     ..
+                 }| {
+                    unsafe {
+                        // Safe because the guest regions are guaranteed not to overlap.
+                        set_user_memory_region(
+                            &partition,
+                            false, // read_only
+                            false, // track dirty pages
+                            guest_addr.offset(),
+                            size as u64,
+                            host_addr as *mut u8,
+                        )
+                    }
+                },
+            )
             .map_err(WhpxError::MapGpaRange)?;
 
         Ok(WhpxVm {

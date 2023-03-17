@@ -17,6 +17,7 @@ use base::WorkerThread;
 use rutabaga_gfx::DeviceId;
 use vm_control::VmMemorySource;
 use vm_memory::GuestMemory;
+use vm_memory::MemoryRegionInformation;
 use vmm_vhost::message::VhostUserConfigFlags;
 use vmm_vhost::message::VhostUserGpuMapMsg;
 use vmm_vhost::message::VhostUserProtocolFeatures;
@@ -176,13 +177,20 @@ impl VhostUserHandler {
     pub fn set_mem_table(&mut self, mem: &GuestMemory) -> Result<()> {
         let mut regions: Vec<VhostUserMemoryRegionInfo> = Vec::new();
         mem.with_regions::<_, ()>(
-            |_idx, guest_phys_addr, memory_size, userspace_addr, mmap, mmap_offset| {
+            |MemoryRegionInformation {
+                 guest_addr,
+                 size,
+                 host_addr,
+                 shm,
+                 shm_offset,
+                 ..
+             }| {
                 let region = VhostUserMemoryRegionInfo {
-                    guest_phys_addr: guest_phys_addr.0,
-                    memory_size: memory_size as u64,
-                    userspace_addr: userspace_addr as u64,
-                    mmap_offset,
-                    mmap_handle: mmap.as_raw_descriptor(),
+                    guest_phys_addr: guest_addr.0,
+                    memory_size: size as u64,
+                    userspace_addr: host_addr as u64,
+                    mmap_offset: shm_offset as u64,
+                    mmap_handle: shm.as_raw_descriptor(),
                 };
                 regions.push(region);
                 Ok(())

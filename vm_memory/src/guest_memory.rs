@@ -98,6 +98,16 @@ impl AsRef<dyn AsRawDescriptor + Sync + Send> for BackingObject {
     }
 }
 
+/// For MemoryRegion::with_regions
+pub struct MemoryRegionInformation<'a> {
+    pub index: usize,
+    pub guest_addr: GuestAddress,
+    pub size: usize,
+    pub host_addr: usize,
+    pub shm: &'a BackingObject,
+    pub shm_offset: u64,
+}
+
 /// A regions of memory mapped memory.
 /// Holds the memory mapping with its offset in guest memory.
 /// Also holds the backing object for the mapping and the offset in that object of the mapping.
@@ -369,27 +379,19 @@ impl GuestMemory {
     }
 
     /// Perform the specified action on each region's addresses.
-    ///
-    /// Callback is called with arguments:
-    ///  * index: usize
-    ///  * guest_addr : GuestAddress
-    ///  * size: usize
-    ///  * host_addr: usize
-    ///  * shm: Descriptor of the backing memory region
-    ///  * shm_offset: usize
     pub fn with_regions<F, E>(&self, mut cb: F) -> result::Result<(), E>
     where
-        F: FnMut(usize, GuestAddress, usize, usize, &BackingObject, u64) -> result::Result<(), E>,
+        F: FnMut(MemoryRegionInformation) -> result::Result<(), E>,
     {
         for (index, region) in self.regions.iter().enumerate() {
-            cb(
+            cb(MemoryRegionInformation {
                 index,
-                region.start(),
-                region.mapping.size(),
-                region.mapping.as_ptr() as usize,
-                &region.shared_obj,
-                region.obj_offset,
-            )?;
+                guest_addr: region.start(),
+                size: region.mapping.size(),
+                host_addr: region.mapping.as_ptr() as usize,
+                shm: &region.shared_obj,
+                shm_offset: region.obj_offset,
+            })?;
         }
         Ok(())
     }
@@ -1111,28 +1113,36 @@ mod tests {
         gm.write_obj_at_addr(0x0420u16, GuestAddress(0x10000))
             .unwrap();
 
-        let _ = gm.with_regions::<_, ()>(|index, _, size, _, obj, offset| {
-            let shm = match obj {
-                BackingObject::Shm(s) => s,
-                _ => {
-                    panic!("backing object isn't SharedMemory");
+        let _ = gm.with_regions::<_, ()>(
+            |MemoryRegionInformation {
+                 index,
+                 size,
+                 shm: obj,
+                 shm_offset: offset,
+                 ..
+             }| {
+                let shm = match obj {
+                    BackingObject::Shm(s) => s,
+                    _ => {
+                        panic!("backing object isn't SharedMemory");
+                    }
+                };
+                let mmap = MemoryMappingBuilder::new(size)
+                    .from_shared_memory(shm)
+                    .offset(offset)
+                    .build()
+                    .unwrap();
+
+                if index == 0 {
+                    assert!(mmap.read_obj::<u16>(0x0).unwrap() == 0x1337u16);
                 }
-            };
-            let mmap = MemoryMappingBuilder::new(size)
-                .from_shared_memory(shm)
-                .offset(offset)
-                .build()
-                .unwrap();
 
-            if index == 0 {
-                assert!(mmap.read_obj::<u16>(0x0).unwrap() == 0x1337u16);
-            }
+                if index == 1 {
+                    assert!(mmap.read_obj::<u16>(0x0).unwrap() == 0x0420u16);
+                }
 
-            if index == 1 {
-                assert!(mmap.read_obj::<u16>(0x0).unwrap() == 0x0420u16);
-            }
-
-            Ok(())
-        });
+                Ok(())
+            },
+        );
     }
 }
