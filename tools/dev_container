@@ -25,10 +25,13 @@
 #   ./tools/dev_container --cros
 
 import argparse
+from pathlib import Path
+import shutil
 from argh import arg  # type: ignore
 from impl.common import (
     chdir,
     cmd,
+    confirm,
     cros_repo_root,
     CROSVM_ROOT,
     is_cros_repo,
@@ -39,7 +42,6 @@ from impl.common import (
 )
 from typing import Optional, Tuple, List
 import getpass
-import shutil
 import sys
 import unittest
 import os
@@ -66,7 +68,6 @@ DOCKER_ARGS = [
     # KVM is required to run a VM for testing.
     "--device /dev/kvm",
 ]
-
 if sys.platform == "linux":
     DOCKER_ARGS.extend(
         [
@@ -85,20 +86,11 @@ PODMAN_ARGS = [
     "--device /dev/kvm",
     # Allow access to group permissions of the user (e.g. for kvm access).
     "--group-add keep-groups",
+    # Pass through TERM configuration for color support
+    f"--env TERM={os.environ.get('TERM', 'xterm-256color')}",
+    # Increase number of PIDs the container can spawn (we run a lot of test processes in parallel)
+    "--pids-limit=4096",
 ]
-
-PRIVILEGED_ARGS = [
-    # Share devices and syslog
-    "--volume /dev/log:/dev/log",
-    "--device /dev/net/tun",
-    "--device /dev/vhost-net",
-    "--device /dev/vhost-vsock",
-    # For plugin process jail
-    "--mount type=tmpfs,destination=/var/empty",
-]
-
-
-PODMAN_IS_DEFAULT = shutil.which("docker") == None
 
 
 def container_name(cros: bool):
@@ -171,17 +163,31 @@ def ensure_container_is_alive(docker: cmd, docker_args: List[Optional[str]], cro
 
     if not container_is_running(docker, cros):
         # Run neverending sleep to keep container alive while we 'docker exec' commands.
+        print(f"Starting container...")
         docker(
             f"run --detach --name {container_name(cros)}",
             *docker_args,
             "sleep infinity",
-        ).fg(quiet=True)
+        ).fg(quiet=False)
         cid = container_id(docker, cros)
-        print(f"Started container ({cid}).")
     else:
         cid = container_id(docker, cros)
         print(f"Using existing container ({cid}).")
     return cid
+
+
+def validate_podman(podman: cmd):
+    graph_driver_name = podman("info --format={{.Store.GraphDriverName}}").stdout()
+    config_file_name = podman("info --format={{.Store.ConfigFile}}").stdout()
+    if graph_driver_name == "vfs":
+        print("You are using vfs as a storage driver. This will be extremely slow.")
+        print("Using the overlay driver is strongly recommended.")
+        print("Note: This will delete all existing podman images and containers.")
+        if confirm(f"Do you want me to update your config in {config_file_name}?"):
+            podman("system reset -f").fg()
+            with open(config_file_name, "a") as config_file:
+                print("[storage]", file=config_file)
+                print('driver = "overlay"', file=config_file)
 
 
 @arg("command", nargs=argparse.REMAINDER)
@@ -191,39 +197,39 @@ def main(
     clean: bool = False,
     hermetic: bool = False,
     interactive: bool = False,
-    podman: bool = PODMAN_IS_DEFAULT,
+    use_docker: bool = False,
     self_test: bool = False,
     pull: bool = False,
-    unprivileged: bool = False,
     cros: bool = False,
 ):
     chdir(CROSVM_ROOT)
 
-    if cros and unprivileged:
-        print("ERROR: crOS container must be run in privileged mode")
-        sys.exit(1)
-
-    if unprivileged:
-        print("WARNING: Running dev_container with --unprivileged is a work in progress.")
-        print("Not all tests are expected to pass.")
-        print()
+    if CACHE_DIR:
+        Path(CACHE_DIR).mkdir(exist_ok=True)
 
     docker_args = [
         *workspace_mount_args(cros),
-        *(PRIVILEGED_ARGS if not unprivileged else []),
     ]
-    if podman:
-        print("WARNING: Running dev_container with podman is experimental.")
-        print("It is strongly recommended to use docker.")
+    has_docker = shutil.which("docker") != None
+    has_podman = shutil.which("podman") != None
+    if not has_podman and not has_docker:
+        raise Exception("Please install podman (or docker) to use the dev container.")
+
+    if has_docker and not has_podman:
+        use_docker = True
+
+    if use_docker:
+        print(
+            "WARNING: Running dev_container with docker may cause root-owned files to be created."
+        )
+        print("Use podman to prevent this.")
         print()
-        docker = cmd("podman")
-        docker_args += [*PODMAN_ARGS]
-    else:
         docker = cmd("docker")
-        docker_args += [
-            "--privileged" if not unprivileged else None,
-            *DOCKER_ARGS,
-        ]
+        docker_args += DOCKER_ARGS
+    else:
+        docker = cmd("podman")
+        docker_args += PODMAN_ARGS
+        validate_podman(docker)
 
     if cros:
         docker_args.append(CROS_IMAGE_NAME)
@@ -270,7 +276,7 @@ def main(
     else:
         # cmd is executed directly
         cid = ensure_container_is_alive(docker, docker_args, cros)
-        if podman:
+        if not use_docker:
             if not command:
                 command = ("/bin/bash",)
         else:
