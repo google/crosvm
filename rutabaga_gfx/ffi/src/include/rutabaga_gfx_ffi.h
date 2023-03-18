@@ -8,7 +8,15 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+
+#if defined(__WIN32__)
+struct iovec {
+   void *iov_base; /* Starting address */
+   size_t iov_len; /* Length in bytes */
+};
+#else
 #include <sys/uio.h>
+#endif
 
 #ifndef RUTABAGA_GFX_FFI_H
 #define RUTABAGA_GFX_FFI_H
