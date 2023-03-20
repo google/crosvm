@@ -434,8 +434,8 @@ impl PciConfigIo {
                 (data[0] as u32) << (offset * 8),
             ),
             2 => (
-                0x0000_ffff << (offset * 16),
-                u32::from(u16::from_le_bytes(data.try_into().unwrap())) << (offset * 16),
+                0x0000_ffff << (offset * 8),
+                u32::from(u16::from_le_bytes(data.try_into().unwrap())) << (offset * 8),
             ),
             4 => (0xffff_ffff, u32::from_le_bytes(data.try_into().unwrap())),
             _ => return,
@@ -785,4 +785,41 @@ mod tests {
         create_pci_virtual_config_mmio(create_pci_root()),
         modify_pci_virtual_config_mmio
     );
+
+    #[test]
+    fn pci_set_config_address_word() {
+        let mut pci_io_config = create_pci_io_config(create_pci_root());
+
+        // Set the full 32-bit config_address to a known value (0x11223344).
+        pci_io_config.write(
+            BusAccessInfo {
+                offset: 0,
+                address: 0xCF8,
+                id: 0,
+            },
+            &[0x44, 0x33, 0x22, 0x11],
+        );
+
+        // Overwrite the high 16 bits of config_address with 0x55AA (test for b/274366589).
+        pci_io_config.write(
+            BusAccessInfo {
+                offset: 2,
+                address: 0xCFA,
+                id: 0,
+            },
+            &[0xAA, 0x55],
+        );
+
+        // Verify config_address has the expected value (0x55AA3344).
+        let mut config_address = [0u8; 4];
+        pci_io_config.read(
+            BusAccessInfo {
+                offset: 0,
+                address: 0xCF8,
+                id: 0,
+            },
+            &mut config_address,
+        );
+        assert_eq!(config_address, [0x44, 0x33, 0xAA, 0x55]);
+    }
 }
