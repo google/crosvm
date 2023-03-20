@@ -107,8 +107,9 @@ static int test_create_context(struct rutabaga_test *test, const char *context_n
 	bool found_cross_domain = false;
 	struct CrossDomainCapabilities *capset;
 
-	num_capsets = rutabaga_get_num_capsets();
-	CHECK(num_capsets > 0);
+	result = rutabaga_get_num_capsets(test->rutabaga, &num_capsets);
+	CHECK_RESULT(result);
+	CHECK(num_capsets == 1);
 
 	for (uint32_t i = 0; i < num_capsets; i++) {
 		result = rutabaga_get_capset_info(test->rutabaga, i, &capset_id, &capset_version,

@@ -178,25 +178,12 @@ pub extern "C" fn rutabaga_finish(ptr: &mut *mut rutabaga) -> i32 {
 }
 
 #[no_mangle]
-pub extern "C" fn rutabaga_get_num_capsets() -> u32 {
-    let mut num_capsets = 0;
-
-    // Cross-domain (like virtio_wl with llvmpipe) is always available.
-    num_capsets += 1;
-
-    // Four capsets for virgl_renderer
-    #[cfg(feature = "virgl_renderer")]
-    {
-        num_capsets += 4;
-    }
-
-    // One capset for gfxstream
-    #[cfg(feature = "gfxstream")]
-    {
-        num_capsets += 1;
-    }
-
-    num_capsets
+pub extern "C" fn rutabaga_get_num_capsets(ptr: &mut rutabaga, num_capsets: &mut u32) -> i32 {
+    catch_unwind(AssertUnwindSafe(|| {
+        *num_capsets = ptr.get_num_capsets();
+        NO_ERROR
+    }))
+    .unwrap_or(-ESRCH)
 }
 
 #[no_mangle]

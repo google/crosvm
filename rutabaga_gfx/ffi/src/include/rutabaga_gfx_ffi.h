@@ -182,7 +182,7 @@ int32_t rutabaga_init(const struct rutabaga_builder *builder, struct rutabaga **
  */
 int32_t rutabaga_finish(struct rutabaga **ptr);
 
-uint32_t rutabaga_get_num_capsets(void);
+int32_t rutabaga_get_num_capsets(struct rutabaga *ptr, uint32_t *num_capsets);
 
 int32_t rutabaga_get_capset_info(struct rutabaga *ptr, uint32_t capset_index, uint32_t *capset_id,
 				 uint32_t *capset_version, uint32_t *capset_size);

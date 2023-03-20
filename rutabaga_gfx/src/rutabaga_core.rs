@@ -350,6 +350,11 @@ impl Rutabaga {
         Ok(component.get_capset(capset_id, version))
     }
 
+    /// Gets the number of capsets
+    pub fn get_num_capsets(&self) -> u32 {
+        self.capset_info.len() as u32
+    }
+
     /// Forces context zero for the default rutabaga component.
     pub fn force_ctx_0(&self) {
         if let Some(component) = self.components.get(&self.default_component) {
