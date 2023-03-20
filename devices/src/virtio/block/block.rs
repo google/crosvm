@@ -10,6 +10,7 @@ use cros_async::ExecutorKind;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
+use serde::Serializer;
 
 fn block_option_sparse_default() -> bool {
     true
@@ -29,23 +30,45 @@ fn block_option_io_concurrency_default() -> NonZeroU32 {
 /// This is based on the virtio-block ID length limit.
 pub const DISK_ID_LEN: usize = 20;
 
+pub fn serialize_disk_id<S: Serializer>(
+    id: &Option<[u8; DISK_ID_LEN]>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    match id {
+        None => serializer.serialize_none(),
+        Some(id) => {
+            // Find the first zero byte in the id.
+            let len = id.iter().position(|v| *v == 0).unwrap_or(DISK_ID_LEN);
+            serializer.serialize_some(
+                std::str::from_utf8(&id[0..len])
+                    .map_err(|e| serde::ser::Error::custom(e.to_string()))?,
+            )
+        }
+    }
+}
+
 fn deserialize_disk_id<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<[u8; DISK_ID_LEN]>, D::Error> {
-    let id = String::deserialize(deserializer)?;
+    let id = Option::<String>::deserialize(deserializer)?;
 
-    if id.len() > DISK_ID_LEN {
-        return Err(serde::de::Error::custom(format!(
-            "disk id must be {} or fewer characters",
-            DISK_ID_LEN
-        )));
+    match id {
+        None => Ok(None),
+        Some(id) => {
+            if id.len() > DISK_ID_LEN {
+                return Err(serde::de::Error::custom(format!(
+                    "disk id must be {} or fewer characters",
+                    DISK_ID_LEN
+                )));
+            }
+
+            let mut ret = [0u8; DISK_ID_LEN];
+            // Slicing id to value's length will never panic
+            // because we checked that value will fit into id above.
+            ret[..id.len()].copy_from_slice(id.as_bytes());
+            Ok(Some(ret))
+        }
     }
-
-    let mut ret = [0u8; DISK_ID_LEN];
-    // Slicing id to value's length will never panic
-    // because we checked that value will fit into id above.
-    ret[..id.len()].copy_from_slice(id.as_bytes());
-    Ok(Some(ret))
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, serde_keyvalue::FromKeyValues)]
@@ -66,7 +89,11 @@ pub struct DiskOption {
     // camel_case variant allowed for backward compatibility.
     #[serde(default = "block_option_block_size_default", alias = "block_size")]
     pub block_size: u32,
-    #[serde(default, deserialize_with = "deserialize_disk_id")]
+    #[serde(
+        default,
+        serialize_with = "serialize_disk_id",
+        deserialize_with = "deserialize_disk_id"
+    )]
     pub id: Option<[u8; DISK_ID_LEN]>,
     // camel_case variant allowed for backward compatibility.
     #[cfg(windows)]
@@ -390,5 +417,62 @@ mod tests {
                 async_executor: Some(ex_kind),
             }
         );
+    }
+
+    #[test]
+    fn diskoption_serialize_deserialize() {
+        // With id == None
+        let original = DiskOption {
+            path: "./rootfs".into(),
+            read_only: false,
+            root: false,
+            sparse: true,
+            direct: false,
+            block_size: 512,
+            id: None,
+            #[cfg(windows)]
+            io_concurrency: NonZeroU32::new(1).unwrap(),
+            multiple_workers: false,
+            async_executor: None,
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let deserialized = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, deserialized);
+
+        // With id == Some
+        let original = DiskOption {
+            path: "./rootfs".into(),
+            read_only: false,
+            root: false,
+            sparse: true,
+            direct: false,
+            block_size: 512,
+            id: Some(*b"BLK\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"),
+            #[cfg(windows)]
+            io_concurrency: NonZeroU32::new(1).unwrap(),
+            multiple_workers: false,
+            async_executor: Some(ExecutorKind::default()),
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let deserialized = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, deserialized);
+
+        // With id taking all the available space.
+        let original = DiskOption {
+            path: "./rootfs".into(),
+            read_only: false,
+            root: false,
+            sparse: true,
+            direct: false,
+            block_size: 512,
+            id: Some(*b"QWERTYUIOPASDFGHJKL:"),
+            #[cfg(windows)]
+            io_concurrency: NonZeroU32::new(1).unwrap(),
+            multiple_workers: false,
+            async_executor: Some(ExecutorKind::default()),
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let deserialized = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, deserialized);
     }
 }
