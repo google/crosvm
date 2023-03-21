@@ -49,6 +49,7 @@ sudo apt-get install --yes --no-install-recommends \
     qemu-system-x86 \
     rsync \
     screen \
+    strace \
     tmux \
     wayland-protocols \
     wget

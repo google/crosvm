@@ -54,6 +54,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=private \
     && ./install-armhf-deps \
     && ./install-mingw64-deps
 
+# Add wine64 to PATH, as debian removed alternative entry to wine64
+ENV PATH=/usr/lib/wine:$PATH
+
 # Install an older version of binutils-mingw-w64-x86-64. The latest version is crashing when
 # linking crosvm. See b/265995780
 RUN wget https://snapshot.debian.org/archive/debian/20230101T091029Z/pool/main/b/binutils-mingw-w64/binutils-mingw-w64-x86-64_2.38.90.20220713-2%2B9%2Bb1_amd64.deb \
