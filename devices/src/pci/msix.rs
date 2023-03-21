@@ -4,6 +4,8 @@
 
 use std::convert::TryInto;
 
+use anyhow::Context;
+
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -66,7 +68,8 @@ pub struct MsixConfig {
     device_name: String,
 }
 
-pub struct MsixConfigSnapshot {
+#[derive(Serialize, Deserialize)]
+struct MsixConfigSnapshot {
     table_entries: Vec<MsixTableEntry>,
     pba_entries: Vec<u64>,
     /// Just like MsixConfig::irq_vec, but only the GSI.
@@ -93,6 +96,8 @@ pub enum MsixError {
     AllocateOneMsiRecv(TubeError),
     #[error("failed to send AllocateOneMsi request: {0}")]
     AllocateOneMsiSend(TubeError),
+    #[error("failed to deserialize snapshot: {0}")]
+    DeserializationFailed(serde_json::Error),
     #[error("invalid vector length in snapshot: {0}")]
     InvalidVectorLength(std::num::TryFromIntError),
 }
@@ -225,55 +230,53 @@ impl MsixConfig {
 
     /// Create a snapshot of the current MsixConfig struct for use in
     /// snapshotting.
-    pub fn snapshot(&mut self) -> MsixConfigSnapshot {
-        MsixConfigSnapshot {
-            device_name: self.device_name.clone(),
-            enabled: self.enabled,
+    pub fn snapshot(&mut self) -> anyhow::Result<serde_json::Value> {
+        serde_json::to_value(MsixConfigSnapshot {
+            table_entries: self.table_entries.clone(),
+            pba_entries: self.pba_entries.clone(),
             masked: self.masked,
+            enabled: self.enabled,
             msix_num: self.msix_num,
             pci_id: self.pci_id,
-            pba_entries: self.pba_entries.clone(),
-            table_entries: self.table_entries.clone(),
+            device_name: self.device_name.clone(),
             irq_gsi_vec: self
                 .irq_vec
                 .iter()
                 .map(|irq_opt| irq_opt.as_ref().map(|irq| irq.gsi))
                 .collect(),
-        }
+        })
+        .context("failed to serialize MsixConfigSnapshot")
     }
 
-    /// Creates a MsixConfig struct based on a snapshot. In short, this will
+    /// Restore a MsixConfig struct based on a snapshot. In short, this will
     /// restore all data exposed via MMIO, and recreate all MSI-X vectors (they
     /// will be re-wired to the irq chip).
-    pub fn from_snapshot(msix_config_tube: Tube, snapshot: MsixConfigSnapshot) -> MsixResult<Self> {
-        let mut config = MsixConfig::new(
-            snapshot
-                .irq_gsi_vec
-                .len()
-                .try_into()
-                .map_err(MsixError::InvalidVectorLength)?,
-            msix_config_tube,
-            snapshot.pci_id,
-            snapshot.device_name,
-        );
+    pub fn restore(&mut self, snapshot: serde_json::Value) -> MsixResult<()> {
+        let snapshot: MsixConfigSnapshot =
+            serde_json::from_value(snapshot).map_err(MsixError::DeserializationFailed)?;
 
-        config.enabled = snapshot.enabled;
-        config.masked = snapshot.masked;
-        config.msix_num = snapshot.msix_num;
-        config.pba_entries = snapshot.pba_entries;
-        config.table_entries = snapshot.table_entries;
+        self.table_entries = snapshot.table_entries;
+        self.pba_entries = snapshot.pba_entries;
+        self.masked = snapshot.masked;
+        self.enabled = snapshot.enabled;
+        self.msix_num = snapshot.msix_num;
+        self.pci_id = snapshot.pci_id;
+        self.device_name = snapshot.device_name;
 
+        self.irq_vec.clear();
+        self.irq_vec
+            .resize_with(snapshot.irq_gsi_vec.len(), || None::<IrqfdGsi>);
         for (vector, gsi) in snapshot.irq_gsi_vec.iter().enumerate() {
             if let Some(gsi_num) = gsi {
-                config.msix_restore_one(vector, *gsi_num)?;
+                self.msix_restore_one(vector, *gsi_num)?;
             } else {
                 info!(
                     "skipping restore of vector {} for device {}",
-                    vector, config.device_name
+                    vector, self.device_name
                 );
             }
         }
-        Ok(config)
+        Ok(())
     }
 
     /// Restore the specified MSI-X vector.
@@ -806,7 +809,6 @@ mod tests {
     #[test]
     fn verify_msix_restore_smoke() {
         let (irqchip_tube, msix_config_tube) = Tube::pair().unwrap();
-
         let (_unused, unused_config_tube) = Tube::pair().unwrap();
 
         let mut cfg = MsixConfig::new(2, unused_config_tube, 0, "test_device".to_owned());
@@ -834,7 +836,7 @@ mod tests {
         ];
 
         // Take a snapshot of MsixConfig.
-        let snapshot = cfg.snapshot();
+        let snapshot = cfg.snapshot().unwrap();
 
         // Create a fake irqchip to respond to our requests
         let irqchip_fake = thread::spawn(move || {
@@ -856,7 +858,11 @@ mod tests {
             irqchip_tube
         });
 
-        let _restored_cfg = MsixConfig::from_snapshot(msix_config_tube, snapshot).unwrap();
+        let mut restored_cfg = MsixConfig::new(10, msix_config_tube, 10, "some_device".to_owned());
+        restored_cfg.restore(snapshot).unwrap();
         irqchip_fake.join().unwrap();
+
+        assert_eq!(restored_cfg.pci_id, 0);
+        assert_eq!(restored_cfg.device_name, "test_device");
     }
 }

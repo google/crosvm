@@ -24,6 +24,8 @@ use libc::ERANGE;
 use resources::Alloc;
 use resources::AllocOptions;
 use resources::SystemAllocator;
+use serde::Deserialize;
+use serde::Serialize;
 use sync::Mutex;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_ACKNOWLEDGE;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_DRIVER;
@@ -920,6 +922,12 @@ impl PciDevice for VirtioPciDevice {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct VirtioPciDeviceSnapshot {
+    inner_device: serde_json::Value,
+    msix_config: serde_json::Value,
+}
+
 impl Suspendable for VirtioPciDevice {
     fn sleep(&mut self) -> anyhow::Result<()> {
         if let Some(state) = self.device.stop()? {
@@ -936,11 +944,17 @@ impl Suspendable for VirtioPciDevice {
     }
 
     fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
-        self.device.snapshot()
+        serde_json::to_value(VirtioPciDeviceSnapshot {
+            inner_device: self.device.snapshot()?,
+            msix_config: self.msix_config.lock().snapshot()?,
+        })
+        .context("failed to serialize VirtioPciDeviceSnapshot")
     }
 
     fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
-        self.device.restore(data)
+        let deser: VirtioPciDeviceSnapshot = serde_json::from_value(data)?;
+        self.msix_config.lock().restore(deser.msix_config)?;
+        self.device.restore(deser.inner_device)
     }
 }
 
