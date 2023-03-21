@@ -241,7 +241,7 @@ bitflags! {
 /// A vhost-user message consists of 3 header fields and an optional payload. All numbers are in the
 /// machine native byte order.
 #[repr(packed)]
-#[derive(Copy)]
+#[derive(Copy, FromBytes)]
 pub struct VhostUserMsgHeader<R: Req> {
     request: u32,
     flags: u32,

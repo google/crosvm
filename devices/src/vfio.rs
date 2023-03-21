@@ -33,7 +33,6 @@ use base::RawDescriptor;
 use base::SafeDescriptor;
 use data_model::vec_with_array_field;
 use data_model::zerocopy_from_reader;
-use data_model::DataInit;
 use hypervisor::DeviceKind;
 use hypervisor::Vm;
 use once_cell::sync::OnceCell;
@@ -1437,8 +1436,8 @@ impl VfioDevice {
     }
 
     /// Writes data into the specified `VfioRegionAddr.addr` + `offset`.
-    pub fn region_write_to_addr<T: DataInit>(&self, val: &T, addr: &VfioRegionAddr, offset: u64) {
-        self.region_write(addr.index, val.as_slice(), addr.addr + offset);
+    pub fn region_write_to_addr<T: AsBytes>(&self, val: &T, addr: &VfioRegionAddr, offset: u64) {
+        self.region_write(addr.index, val.as_bytes(), addr.addr + offset);
     }
 
     /// get vfio device's descriptors which are passed into minijail process

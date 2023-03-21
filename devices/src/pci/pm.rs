@@ -4,7 +4,8 @@
 
 #![cfg_attr(windows, allow(dead_code))]
 
-use data_model::DataInit;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 use crate::pci::PciCapability;
 use crate::pci::PciCapabilityID;
@@ -29,7 +30,7 @@ pub enum PciDevicePower {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, AsBytes, FromBytes)]
 pub struct PciPmCap {
     _cap_vndr: u8,
     _cap_next: u8,
@@ -38,12 +39,9 @@ pub struct PciPmCap {
     padding: u16,
 }
 
-// It is safe to implement DataInit; all members are simple numbers and any value is valid.
-unsafe impl DataInit for PciPmCap {}
-
 impl PciCapability for PciPmCap {
     fn bytes(&self) -> &[u8] {
-        self.as_slice()
+        self.as_bytes()
     }
 
     fn id(&self) -> PciCapabilityID {

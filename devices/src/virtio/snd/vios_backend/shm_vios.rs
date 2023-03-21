@@ -513,13 +513,7 @@ impl VioSClient {
         }
         Ok(reply[status_size..]
             .chunks(info_size)
-            .map(|info_buffer| {
-                let mut info: T = Default::default();
-                // Need to use copy_from_slice instead of T::from_slice because the info_buffer may
-                // not be aligned correctly
-                info.as_bytes_mut().copy_from_slice(info_buffer);
-                info
-            })
+            .map(|info_buffer| T::read_from(info_buffer).unwrap())
             .collect())
     }
 

@@ -17,7 +17,6 @@ use base::Protection;
 use base::RawDescriptor;
 use base::Result;
 use base::Tube;
-use data_model::DataInit;
 use data_model::Le32;
 use hypervisor::Datamatch;
 use libc::ERANGE;
@@ -40,6 +39,7 @@ use vm_control::VmMemoryResponse;
 use vm_control::VmMemorySource;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
+use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
 use self::virtio_pci_common_config::VirtioPciCommonConfig;
@@ -85,7 +85,7 @@ pub enum PciCapabilityType {
 
 #[allow(dead_code)]
 #[repr(C)]
-#[derive(Clone, Copy, FromBytes)]
+#[derive(Clone, Copy, FromBytes, AsBytes)]
 pub struct VirtioPciCap {
     // cap_vndr and cap_next are autofilled based on id() in pci configuration
     pub cap_vndr: u8, // Generic PCI field: PCI_CAP_ID_VNDR
@@ -98,12 +98,10 @@ pub struct VirtioPciCap {
     pub offset: Le32, // Offset within bar.
     pub length: Le32, // Length of the structure, in bytes.
 }
-// It is safe to implement DataInit; all members are simple numbers and any value is valid.
-unsafe impl DataInit for VirtioPciCap {}
 
 impl PciCapability for VirtioPciCap {
     fn bytes(&self) -> &[u8] {
-        self.as_slice()
+        self.as_bytes()
     }
 
     fn id(&self) -> PciCapabilityID {
@@ -137,17 +135,15 @@ impl VirtioPciCap {
 
 #[allow(dead_code)]
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, AsBytes, FromBytes)]
 pub struct VirtioPciNotifyCap {
     cap: VirtioPciCap,
     notify_off_multiplier: Le32,
 }
-// It is safe to implement DataInit; all members are simple numbers and any value is valid.
-unsafe impl DataInit for VirtioPciNotifyCap {}
 
 impl PciCapability for VirtioPciNotifyCap {
     fn bytes(&self) -> &[u8] {
-        self.as_slice()
+        self.as_bytes()
     }
 
     fn id(&self) -> PciCapabilityID {
@@ -185,18 +181,16 @@ impl VirtioPciNotifyCap {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, AsBytes, FromBytes)]
 pub struct VirtioPciShmCap {
     cap: VirtioPciCap,
     offset_hi: Le32, // Most sig 32 bits of offset
     length_hi: Le32, // Most sig 32 bits of length
 }
-// It is safe to implement DataInit; all members are simple numbers and any value is valid.
-unsafe impl DataInit for VirtioPciShmCap {}
 
 impl PciCapability for VirtioPciShmCap {
     fn bytes(&self) -> &[u8] {
-        self.as_slice()
+        self.as_bytes()
     }
 
     fn id(&self) -> PciCapabilityID {

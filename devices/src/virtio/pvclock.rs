@@ -32,7 +32,6 @@ use base::ReadNotifier;
 use base::Tube;
 use base::WaitContext;
 use base::WorkerThread;
-use data_model::DataInit;
 use data_model::Le32;
 use data_model::Le64;
 use vm_control::PvClockCommand;
@@ -70,7 +69,7 @@ const VIRTIO_PVCLOCK_S_IOERR: u8 = 1;
 
 const VIRTIO_PVCLOCK_CLOCKSOURCE_RATING: u32 = 450;
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, AsBytes, FromBytes)]
 #[repr(C)]
 struct virtio_pvclock_config {
     // Number of nanoseconds the VM has been suspended without guest suspension.
@@ -79,9 +78,6 @@ struct virtio_pvclock_config {
     clocksource_rating: Le32,
     padding: u32,
 }
-
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtio_pvclock_config {}
 
 #[derive(Debug, Clone, Copy, Default, FromBytes, AsBytes)]
 #[repr(C)]
@@ -96,9 +92,6 @@ struct virtio_pvclock_set_pvclock_page_req {
     status: u8,
     padding: [u8; 7],
 }
-
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtio_pvclock_set_pvclock_page_req {}
 
 // Data structure for interacting with pvclock shared memory.
 struct PvclockSharedData {
@@ -567,7 +560,7 @@ impl VirtioDevice for PvClock {
     }
 
     fn read_config(&self, offset: u64, data: &mut [u8]) {
-        copy_config(data, 0, self.get_config().as_slice(), offset);
+        copy_config(data, 0, self.get_config().as_bytes(), offset);
     }
 
     fn write_config(&mut self, offset: u64, data: &[u8]) {

@@ -832,7 +832,6 @@ mod tests {
 
     use anyhow::anyhow;
     use anyhow::bail;
-    use data_model::DataInit;
     #[cfg(unix)]
     use tempfile::Builder;
     #[cfg(unix)]
@@ -840,18 +839,18 @@ mod tests {
     use vmm_vhost::message::MasterReq;
     use vmm_vhost::SlaveReqHandler;
     use vmm_vhost::VhostUserSlaveReqHandler;
+    use zerocopy::AsBytes;
+    use zerocopy::FromBytes;
 
     use super::*;
     use crate::virtio::vhost::user::vmm::VhostUserHandler;
 
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    #[repr(C)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, AsBytes, FromBytes)]
+    #[repr(C, packed(4))]
     struct FakeConfig {
         x: u32,
         y: u64,
     }
-
-    unsafe impl DataInit for FakeConfig {}
 
     const FAKE_CONFIG_DATA: FakeConfig = FakeConfig { x: 1, y: 2 };
 
@@ -917,7 +916,7 @@ mod tests {
         }
 
         fn read_config(&self, offset: u64, dst: &mut [u8]) {
-            dst.copy_from_slice(&FAKE_CONFIG_DATA.as_slice()[offset as usize..]);
+            dst.copy_from_slice(&FAKE_CONFIG_DATA.as_bytes()[offset as usize..]);
         }
 
         fn reset(&mut self) {}
@@ -982,8 +981,8 @@ mod tests {
             let mut buf = vec![0; std::mem::size_of::<FakeConfig>()];
             vmm_handler.read_config(0, &mut buf).unwrap();
             // Check if the obtained config data is correct.
-            let config = FakeConfig::from_slice(&buf).unwrap();
-            assert_eq!(*config, FAKE_CONFIG_DATA);
+            let config = FakeConfig::read_from(buf.as_bytes()).unwrap();
+            assert_eq!(config, FAKE_CONFIG_DATA);
 
             println!("set_mem_table");
             let mem = GuestMemory::new(&[(GuestAddress(0x0), 0x10000)]).unwrap();
@@ -1054,8 +1053,8 @@ mod tests {
         let mut buf = vec![0; std::mem::size_of::<FakeConfig>()];
         vmm_handler.read_config(0, &mut buf).unwrap();
         // Check if the obtained config data is correct.
-        let config = FakeConfig::from_slice(&buf).unwrap();
-        assert_eq!(*config, FAKE_CONFIG_DATA);
+        let config = FakeConfig::read_from(buf.as_bytes()).unwrap();
+        assert_eq!(config, FAKE_CONFIG_DATA);
 
         println!("set_mem_table");
         let mem = GuestMemory::new(&[(GuestAddress(0x0), 0x10000)]).unwrap();

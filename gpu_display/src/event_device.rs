@@ -7,19 +7,18 @@ use std::fmt;
 use std::io;
 use std::io::Error;
 use std::io::ErrorKind;
-use std::io::Read;
 use std::io::Write;
 use std::iter::ExactSizeIterator;
-use std::mem::size_of;
 
 use base::AsRawDescriptor;
 use base::RawDescriptor;
 use base::StreamChannel;
-use data_model::DataInit;
+use data_model::zerocopy_from_reader;
 use linux_input_sys::virtio_input_event;
 use linux_input_sys::InputEventDecoder;
 use serde::Deserialize;
 use serde::Serialize;
+use zerocopy::AsBytes;
 
 const EVENT_SIZE: usize = virtio_input_event::SIZE;
 const EVENT_BUFFER_LEN_MAX: usize = 64 * EVENT_SIZE;
@@ -132,12 +131,12 @@ impl EventDevice {
         }
 
         for event in it {
-            let bytes = event.as_slice();
+            let bytes = event.as_bytes();
             self.event_buffer.extend(bytes.iter());
         }
 
         self.event_buffer
-            .extend(virtio_input_event::syn().as_slice().iter());
+            .extend(virtio_input_event::syn().as_bytes().iter());
 
         self.flush_buffered_events()
     }
@@ -149,7 +148,7 @@ impl EventDevice {
             return Ok(false);
         }
 
-        let bytes = event.as_slice();
+        let bytes = event.as_bytes();
         let written = self.event_socket.write(bytes)?;
 
         if written == bytes.len() {
@@ -164,15 +163,8 @@ impl EventDevice {
     }
 
     pub fn recv_event_encoded(&self) -> io::Result<virtio_input_event> {
-        let mut event_bytes = [0u8; size_of::<virtio_input_event>()];
-        (&self.event_socket).read_exact(&mut event_bytes)?;
-        match virtio_input_event::from_slice(&event_bytes) {
-            Some(event) => Ok(*event),
-            None => Err(Error::new(
-                ErrorKind::InvalidInput,
-                "failed to read virtio_input_event",
-            )),
-        }
+        zerocopy_from_reader::<_, virtio_input_event>(&self.event_socket)
+            .map_err(|_| Error::new(ErrorKind::InvalidInput, "failed to read virtio_input_event"))
     }
 }
 

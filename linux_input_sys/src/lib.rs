@@ -6,7 +6,7 @@
 
 use std::mem::size_of;
 
-use data_model::DataInit;
+use data_model::zerocopy_from_slice;
 use data_model::Le16;
 use data_model::SLe32;
 use zerocopy::AsBytes;
@@ -50,7 +50,7 @@ pub trait InputEventDecoder {
     fn decode(data: &[u8]) -> virtio_input_event;
 }
 
-#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, FromBytes, AsBytes)]
 #[repr(C)]
 pub struct input_event {
     pub timestamp_fields: [u64; 2],
@@ -58,8 +58,6 @@ pub struct input_event {
     pub code: u16,
     pub value: i32,
 }
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for input_event {}
 
 impl input_event {
     pub fn from_virtio_input_event(other: &virtio_input_event) -> input_event {
@@ -77,9 +75,10 @@ impl InputEventDecoder for input_event {
 
     fn decode(data: &[u8]) -> virtio_input_event {
         #[repr(align(8))]
+        #[derive(FromBytes)]
         struct Aligner([u8; input_event::SIZE]);
-        let data_aligned = Aligner(*<[u8; input_event::SIZE]>::from_slice(data).unwrap());
-        let e = Self::from_slice(&data_aligned.0).unwrap();
+        let data_aligned = zerocopy_from_slice::<Aligner>(data).unwrap();
+        let e: &input_event = zerocopy_from_slice(data_aligned.0.as_bytes()).unwrap();
         virtio_input_event {
             type_: Le16::from(e.type_),
             code: Le16::from(e.code),
@@ -96,17 +95,15 @@ pub struct virtio_input_event {
     pub value: SLe32,
 }
 
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtio_input_event {}
-
 impl InputEventDecoder for virtio_input_event {
     const SIZE: usize = size_of::<Self>();
 
     fn decode(data: &[u8]) -> virtio_input_event {
         #[repr(align(4))]
+        #[derive(FromBytes)]
         struct Aligner([u8; virtio_input_event::SIZE]);
-        let data_aligned = Aligner(*<[u8; virtio_input_event::SIZE]>::from_slice(data).unwrap());
-        *Self::from_slice(&data_aligned.0).unwrap()
+        let data_aligned = zerocopy_from_slice::<Aligner>(data).unwrap();
+        *zerocopy_from_slice(data_aligned.0.as_bytes()).unwrap()
     }
 }
 

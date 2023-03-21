@@ -11,12 +11,13 @@ use std::io::SeekFrom;
 use std::mem;
 
 use base::AsRawDescriptor;
-use data_model::DataInit;
+use data_model::zerocopy_from_reader;
 use remain::sorted;
 use resources::AddressRange;
 use thiserror::Error;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
+use zerocopy::FromBytes;
 
 #[allow(dead_code)]
 #[allow(non_camel_case_types)]
@@ -28,18 +29,6 @@ mod elf;
 mod arm64;
 
 pub use arm64::load_arm64_kernel;
-
-// Elf32_Ehdr is plain old data with no implicit padding.
-unsafe impl data_model::DataInit for elf::Elf32_Ehdr {}
-
-// Elf32_Phdr is plain old data with no implicit padding.
-unsafe impl data_model::DataInit for elf::Elf32_Phdr {}
-
-// Elf64_Ehdr is plain old data with no implicit padding.
-unsafe impl data_model::DataInit for elf::Elf64_Ehdr {}
-
-// Elf64_Phdr is plain old data with no implicit padding.
-unsafe impl data_model::DataInit for elf::Elf64_Phdr {}
 
 #[sorted]
 #[derive(Error, Debug, PartialEq, Eq)]
@@ -346,12 +335,12 @@ where
 fn read_elf_by_type<F, FileHeader, ProgramHeader>(mut file: &mut F) -> Result<Elf64>
 where
     F: Read + Seek + AsRawDescriptor,
-    FileHeader: DataInit + Default + Into<elf::Elf64_Ehdr>,
-    ProgramHeader: DataInit + Default + Into<elf::Elf64_Phdr>,
+    FileHeader: FromBytes + Default + Into<elf::Elf64_Ehdr>,
+    ProgramHeader: FromBytes + Default + Into<elf::Elf64_Phdr>,
 {
     file.seek(SeekFrom::Start(0))
         .map_err(|_| Error::SeekKernelStart)?;
-    let ehdr: FileHeader = FileHeader::from_reader(&mut file).map_err(|_| Error::ReadHeader)?;
+    let ehdr: FileHeader = zerocopy_from_reader(&mut file).map_err(|_| Error::ReadHeader)?;
     let ehdr: elf::Elf64_Ehdr = ehdr.into();
 
     if ehdr.e_phentsize as usize != mem::size_of::<ProgramHeader>() {
@@ -366,7 +355,7 @@ where
         .map_err(|_| Error::SeekProgramHeader)?;
     let phdrs: Vec<ProgramHeader> = (0..ehdr.e_phnum)
         .enumerate()
-        .map(|_| ProgramHeader::from_reader(&mut file).map_err(|_| Error::ReadProgramHeader))
+        .map(|_| zerocopy_from_reader(&mut file).map_err(|_| Error::ReadProgramHeader))
         .collect::<Result<Vec<ProgramHeader>>>()?;
 
     Ok(Elf64 {

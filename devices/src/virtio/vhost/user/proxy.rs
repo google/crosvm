@@ -72,6 +72,8 @@ use vmm_vhost::Error as VhostError;
 use vmm_vhost::Protocol;
 use vmm_vhost::Result as VhostResult;
 use vmm_vhost::SlaveReqHelper;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 use crate::pci::PciBarConfiguration;
 use crate::pci::PciBarIndex;
@@ -155,7 +157,7 @@ const SIBLING_ACTION_MESSAGE_TYPES: &[MasterReq] = &[
 pub type Result<T> = anyhow::Result<T>;
 
 // Device configuration as per section 5.7.4.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, AsBytes, FromBytes)]
 #[repr(C)]
 struct VirtioVhostUserConfig {
     status: Le32,
@@ -1252,18 +1254,15 @@ impl Worker {
 
 // Doorbell capability of the proxy device.
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, FromBytes, AsBytes)]
 pub struct VirtioPciDoorbellCap {
     cap: VirtioPciCap,
     doorbell_off_multiplier: Le32,
 }
-// It is safe to implement DataInit; `VirtioPciCap` implements DataInit and for
-// Le32 any value is valid.
-unsafe impl DataInit for VirtioPciDoorbellCap {}
 
 impl PciCapability for VirtioPciDoorbellCap {
     fn bytes(&self) -> &[u8] {
-        self.as_slice()
+        self.as_bytes()
     }
 
     // TODO: What should this be.
@@ -1725,7 +1724,7 @@ impl VirtioDevice for VirtioVhostUser {
         copy_config(
             data,
             0, /* dst_offset */
-            self.config.as_slice(),
+            self.config.as_bytes(),
             offset,
         );
     }

@@ -9,10 +9,10 @@ use std::io::Write;
 use base::warn;
 use base::AsRawDescriptor;
 use base::RawDescriptor;
-use data_model::DataInit;
 use linux_input_sys::input_event;
 use linux_input_sys::virtio_input_event;
 use linux_input_sys::InputEventDecoder;
+use zerocopy::AsBytes;
 
 use super::constants::*;
 use super::evdev::grab_evdev;
@@ -114,9 +114,9 @@ where
             let event_bytes = match encoding {
                 EventType::InputEvent => {
                     evt = input_event::from_virtio_input_event(vio_evt);
-                    evt.as_slice()
+                    evt.as_bytes()
                 }
-                EventType::VirtioInputEvent => vio_evt.as_slice(),
+                EventType::VirtioInputEvent => vio_evt.as_bytes(),
             };
             self.source
                 .write_all(event_bytes)
@@ -250,10 +250,10 @@ mod tests {
     use std::io::Read;
     use std::io::Write;
 
-    use data_model::DataInit;
     use data_model::Le16;
     use data_model::SLe32;
     use linux_input_sys::InputEventDecoder;
+    use zerocopy::AsBytes;
 
     use crate::virtio::input::event_source::input_event;
     use crate::virtio::input::event_source::virtio_input_event;
@@ -267,7 +267,7 @@ mod tests {
         fn new(evts: &[input_event]) -> SourceMock {
             let mut events: Vec<u8> = vec![];
             for evt in evts {
-                for byte in evt.as_slice() {
+                for byte in evt.as_bytes() {
                     events.push(*byte);
                 }
             }

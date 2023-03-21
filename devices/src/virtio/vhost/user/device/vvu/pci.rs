@@ -17,12 +17,13 @@ use base::info;
 use base::Event;
 use base::MemoryMapping;
 use base::MemoryMappingBuilder;
-use data_model::DataInit;
 use memoffset::offset_of;
 use resources::Alloc;
 use vfio_sys::*;
 use virtio_sys::virtio_config;
 use virtio_sys::virtio_config::VIRTIO_F_VERSION_1;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 use crate::pci::MsixCap;
 use crate::pci::PciAddress;
@@ -61,7 +62,7 @@ fn get_pci_cap_addr(cap: &VirtioPciCap) -> Result<VfioRegionAddr> {
 }
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 /// VirtIO spec: 4.1.4.3 Common configuration structure layout
 struct virtio_pci_common_cfg {
     // For the whole device.
@@ -88,16 +89,12 @@ struct virtio_pci_common_cfg {
     queue_used_hi: u32,
 }
 
-unsafe impl DataInit for virtio_pci_common_cfg {}
-
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 struct virtio_pci_notification_cfg {
     notification_select: u16,
     notification_msix_vector: u16,
 }
-
-unsafe impl DataInit for virtio_pci_notification_cfg {}
 
 #[derive(Clone)]
 pub struct VvuPciCaps {

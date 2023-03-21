@@ -16,6 +16,7 @@ use vhost::Error as VhostError;
 use vmm_vhost::message::MasterReq;
 use vmm_vhost::message::Req;
 use vmm_vhost::message::VhostUserMsgHeader;
+use zerocopy::LayoutVerified;
 
 mod control_socket;
 pub mod user;
@@ -130,9 +131,12 @@ pub fn vhost_header_from_bytes<R: Req>(bytes: &[u8]) -> Option<&VhostUserMsgHead
     if bytes.len() < HEADER_LEN {
         return None;
     }
-
     // This can't fail because we already checked the size and because packed alignment is 1.
-    Some(VhostUserMsgHeader::<R>::from_slice(&bytes[0..HEADER_LEN]).unwrap())
+    Some(
+        LayoutVerified::<_, VhostUserMsgHeader<R>>::new(&bytes[0..HEADER_LEN])
+            .unwrap()
+            .into_ref(),
+    )
 }
 
 pub fn vhost_body_from_message_bytes<T: DataInit>(bytes: &mut [u8]) -> anyhow::Result<&mut T> {

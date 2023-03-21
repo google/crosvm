@@ -18,7 +18,6 @@ use base::WorkerThread;
 use cros_async::select3;
 use cros_async::EventAsync;
 use cros_async::Executor;
-use data_model::DataInit;
 use data_model::Le32;
 use data_model::Le64;
 use futures::pin_mut;
@@ -51,15 +50,12 @@ const VIRTIO_PMEM_REQ_TYPE_FLUSH: u32 = 0;
 const VIRTIO_PMEM_RESP_TYPE_OK: u32 = 0;
 const VIRTIO_PMEM_RESP_TYPE_EIO: u32 = 1;
 
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes)]
 #[repr(C)]
 struct virtio_pmem_config {
     start_address: Le64,
     size: Le64,
 }
-
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtio_pmem_config {}
 
 #[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes)]
 #[repr(C)]
@@ -67,17 +63,11 @@ struct virtio_pmem_resp {
     status_code: Le32,
 }
 
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtio_pmem_resp {}
-
 #[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes)]
 #[repr(C)]
 struct virtio_pmem_req {
     type_: Le32,
 }
-
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for virtio_pmem_req {}
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -299,7 +289,7 @@ impl VirtioDevice for Pmem {
             start_address: Le64::from(self.mapping_address.offset()),
             size: Le64::from(self.mapping_size as u64),
         };
-        copy_config(data, 0, config.as_slice(), offset);
+        copy_config(data, 0, config.as_bytes(), offset);
     }
 
     fn activate(
