@@ -198,6 +198,7 @@ pub(super) fn create_gpu(
         resource_bridges,
         display_backends,
         gpu_parameters,
+        None,
         event_devices,
         /* external_blob= */ false,
         /* system_blob= */ false,

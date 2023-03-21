@@ -5,7 +5,7 @@
 //! GPU related things
 //! depends on "gpu" feature
 
-#[cfg(feature = "virgl_renderer_next")]
+#[cfg(feature = "gpu")]
 use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
@@ -18,7 +18,7 @@ use serde_keyvalue::FromKeyValues;
 use super::*;
 use crate::crosvm::config::Config;
 
-#[cfg(feature = "virgl_renderer_next")]
+#[cfg(feature = "gpu")]
 use base::platform::move_proc_to_cgroup;
 
 pub struct GpuCacheInfo<'a> {
@@ -91,7 +91,7 @@ pub fn create_gpu_device(
     resource_bridges: Vec<Tube>,
     wayland_socket_path: Option<&PathBuf>,
     x_display: Option<String>,
-    #[cfg(feature = "virgl_renderer_next")] render_server_fd: Option<SafeDescriptor>,
+    render_server_fd: Option<SafeDescriptor>,
     event_devices: Vec<EventDevice>,
 ) -> DeviceResult {
     let mut display_backends = vec![
@@ -121,7 +121,6 @@ pub fn create_gpu_device(
         resource_bridges,
         display_backends,
         cfg.gpu_parameters.as_ref().unwrap(),
-        #[cfg(feature = "virgl_renderer_next")]
         render_server_fd,
         event_devices,
         /*external_blob=*/ cfg.jail_config.is_some(),
@@ -185,7 +184,7 @@ pub struct GpuRenderServerParameters {
     pub precompiled_cache_path: Option<String>,
 }
 
-#[cfg(feature = "virgl_renderer_next")]
+#[cfg(feature = "gpu")]
 fn get_gpu_render_server_environment(cache_info: Option<&GpuCacheInfo>) -> Result<Vec<String>> {
     let mut env = HashMap::<String, String>::new();
     let os_env_len = env::vars_os().count();
@@ -215,7 +214,7 @@ fn get_gpu_render_server_environment(cache_info: Option<&GpuCacheInfo>) -> Resul
     Ok(env.iter().map(|(k, v)| format!("{}={}", k, v)).collect())
 }
 
-#[cfg(feature = "virgl_renderer_next")]
+#[cfg(feature = "gpu")]
 pub fn start_gpu_render_server(
     cfg: &Config,
     render_server_parameters: &GpuRenderServerParameters,

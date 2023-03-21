@@ -199,8 +199,6 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         /*resource_bridges=*/ Vec::new(),
         display_backends,
         &config.params,
-        #[cfg(feature = "virgl_renderer_next")]
-        /*render_server_fd=*/
         None,
         config.event_devices,
         external_blob,

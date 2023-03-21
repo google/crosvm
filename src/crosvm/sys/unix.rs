@@ -212,9 +212,7 @@ fn create_virtio_devices(
     pmem_device_tubes: &mut Vec<Tube>,
     fs_device_tubes: &mut Vec<Tube>,
     #[cfg(feature = "gpu")] gpu_control_tube: Tube,
-    #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))] render_server_fd: Option<
-        SafeDescriptor,
-    >,
+    #[cfg(feature = "gpu")] render_server_fd: Option<SafeDescriptor>,
     vvu_proxy_device_tubes: &mut Vec<Tube>,
     vvu_proxy_max_sibling_mem_size: u64,
     registered_evt_q: &SendTube,
@@ -347,7 +345,6 @@ fn create_virtio_devices(
                 // Use the unnamed socket for GPU display screens.
                 cfg.wayland_socket_paths.get(""),
                 cfg.x_display.clone(),
-                #[cfg(feature = "virgl_renderer_next")]
                 render_server_fd,
                 event_devices,
             )?);
@@ -716,9 +713,7 @@ fn create_devices(
     fs_device_tubes: &mut Vec<Tube>,
     #[cfg(feature = "usb")] usb_provider: HostBackendDeviceProvider,
     #[cfg(feature = "gpu")] gpu_control_tube: Tube,
-    #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))] render_server_fd: Option<
-        SafeDescriptor,
-    >,
+    #[cfg(feature = "gpu")] render_server_fd: Option<SafeDescriptor>,
     vvu_proxy_device_tubes: &mut Vec<Tube>,
     vvu_proxy_max_sibling_mem_size: u64,
     iova_max_addr: &mut Option<u64>,
@@ -849,7 +844,7 @@ fn create_devices(
         fs_device_tubes,
         #[cfg(feature = "gpu")]
         gpu_control_tube,
-        #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
+        #[cfg(feature = "gpu")]
         render_server_fd,
         vvu_proxy_device_tubes,
         vvu_proxy_max_sibling_mem_size,
@@ -1701,7 +1696,7 @@ where
 
     create_file_backed_mappings(&cfg, &mut vm, &mut sys_allocator)?;
 
-    #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
+    #[cfg(feature = "gpu")]
     // Hold on to the render server jail so it keeps running until we exit run_vm()
     let (_render_server_jail, render_server_fd) =
         if let Some(parameters) = &cfg.gpu_render_server_parameters {
@@ -1811,7 +1806,7 @@ where
         usb_provider,
         #[cfg(feature = "gpu")]
         gpu_control_device_tube,
-        #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
+        #[cfg(feature = "gpu")]
         render_server_fd,
         &mut vvu_proxy_device_tubes,
         components.memory_size,

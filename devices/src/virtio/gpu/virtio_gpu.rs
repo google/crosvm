@@ -335,14 +335,10 @@ impl VirtioGpu {
         external_blob: bool,
         udmabuf: bool,
         fence_handler: RutabagaFenceHandler,
-        #[cfg(feature = "virgl_renderer_next")] render_server_fd: Option<SafeDescriptor>,
+        rutabaga_server_descriptor: Option<SafeDescriptor>,
     ) -> Option<VirtioGpu> {
         let rutabaga = rutabaga_builder
-            .build(
-                fence_handler,
-                #[cfg(feature = "virgl_renderer_next")]
-                render_server_fd,
-            )
+            .build(fence_handler, rutabaga_server_descriptor)
             .map_err(|e| error!("failed to build rutabaga {}", e))
             .ok()?;
 

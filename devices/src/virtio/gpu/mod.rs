@@ -215,7 +215,7 @@ fn build(
     #[cfg(windows)] wndproc_thread: &mut Option<WindowProcedureThread>,
     udmabuf: bool,
     fence_handler: RutabagaFenceHandler,
-    #[cfg(feature = "virgl_renderer_next")] render_server_fd: Option<SafeDescriptor>,
+    rutabaga_server_descriptor: Option<SafeDescriptor>,
 ) -> Option<VirtioGpu> {
     let mut display_opt = None;
     for display_backend in display_backends {
@@ -249,8 +249,7 @@ fn build(
         external_blob,
         udmabuf,
         fence_handler,
-        #[cfg(feature = "virgl_renderer_next")]
-        render_server_fd,
+        rutabaga_server_descriptor,
     )
 }
 
@@ -1074,8 +1073,7 @@ pub struct Gpu {
     wndproc_thread: Option<WindowProcedureThread>,
     base_features: u64,
     udmabuf: bool,
-    #[cfg(feature = "virgl_renderer_next")]
-    render_server_fd: Option<SafeDescriptor>,
+    rutabaga_server_descriptor: Option<SafeDescriptor>,
     context_mask: u64,
     #[cfg(unix)]
     gpu_cgroup_path: Option<PathBuf>,
@@ -1088,7 +1086,7 @@ impl Gpu {
         resource_bridges: Vec<Tube>,
         display_backends: Vec<DisplayBackend>,
         gpu_parameters: &GpuParameters,
-        #[cfg(feature = "virgl_renderer_next")] render_server_fd: Option<SafeDescriptor>,
+        rutabaga_server_descriptor: Option<SafeDescriptor>,
         event_devices: Vec<EventDevice>,
         external_blob: bool,
         system_blob: bool,
@@ -1127,11 +1125,7 @@ impl Gpu {
             GpuMode::ModeGfxstream => RutabagaComponentType::Gfxstream,
         };
 
-        #[cfg(feature = "virgl_renderer_next")]
-        let use_render_server = render_server_fd.is_some();
-
-        #[cfg(not(feature = "virgl_renderer_next"))]
-        let use_render_server = false;
+        let use_render_server = rutabaga_server_descriptor.is_some();
 
         let rutabaga_builder = RutabagaBuilder::new(component, gpu_parameters.context_mask)
             .set_display_width(display_width)
@@ -1171,8 +1165,7 @@ impl Gpu {
             wndproc_thread: Some(wndproc_thread),
             base_features,
             udmabuf: gpu_parameters.udmabuf,
-            #[cfg(feature = "virgl_renderer_next")]
-            render_server_fd,
+            rutabaga_server_descriptor,
             context_mask: gpu_parameters.context_mask,
             #[cfg(unix)]
             gpu_cgroup_path: gpu_cgroup_path.cloned(),
@@ -1187,8 +1180,7 @@ impl Gpu {
         mapper: Box<dyn SharedMemoryMapper>,
     ) -> Option<Frontend> {
         let rutabaga_builder = self.rutabaga_builder.take()?;
-        #[cfg(feature = "virgl_renderer_next")]
-        let render_server_fd = self.render_server_fd.take();
+        let rutabaga_server_descriptor = self.rutabaga_server_descriptor.take();
         let event_devices = self.event_devices.split_off(0);
 
         build(
@@ -1203,8 +1195,7 @@ impl Gpu {
             &mut self.wndproc_thread,
             self.udmabuf,
             fence_handler,
-            #[cfg(feature = "virgl_renderer_next")]
-            render_server_fd,
+            rutabaga_server_descriptor,
         )
         .map(|vgpu| Frontend::new(vgpu, fence_state))
     }
@@ -1288,9 +1279,8 @@ impl VirtioDevice for Gpu {
             }
         }
 
-        #[cfg(feature = "virgl_renderer_next")]
-        if let Some(ref render_server_fd) = self.render_server_fd {
-            keep_rds.push(render_server_fd.as_raw_descriptor());
+        if let Some(ref rutabaga_server_descriptor) = self.rutabaga_server_descriptor {
+            keep_rds.push(rutabaga_server_descriptor.as_raw_descriptor());
         }
 
         keep_rds.push(self.exit_evt_wrtube.as_raw_descriptor());
@@ -1393,8 +1383,7 @@ impl VirtioDevice for Gpu {
         let external_blob = self.external_blob;
         let udmabuf = self.udmabuf;
         let fence_state = Arc::new(Mutex::new(Default::default()));
-        #[cfg(feature = "virgl_renderer_next")]
-        let render_server_fd = self.render_server_fd.take();
+        let rutabaga_server_descriptor = self.rutabaga_server_descriptor.take();
 
         #[cfg(windows)]
         let mut wndproc_thread = self.wndproc_thread.take();
@@ -1430,8 +1419,7 @@ impl VirtioDevice for Gpu {
                 &mut wndproc_thread,
                 udmabuf,
                 fence_handler,
-                #[cfg(feature = "virgl_renderer_next")]
-                render_server_fd,
+                rutabaga_server_descriptor,
             ) {
                 Some(backend) => backend,
                 None => return,
