@@ -321,8 +321,12 @@ pub fn create_gpu_minijail(root: &Path, config: &SandboxConfig) -> Result<Minija
     jail.mount_bind(sys_dev_char_path, sys_dev_char_path, false)?;
 
     // Necessary for CGROUP control of the vGPU threads
+    // This is not necessary UNLESS one wants to make use
+    // of the gpu cgroup command line options.
     let sys_cpuset_path = Path::new("/sys/fs/cgroup/cpuset");
-    jail.mount_bind(sys_cpuset_path, sys_cpuset_path, true)?;
+    if sys_cpuset_path.exists() {
+        jail.mount_bind(sys_cpuset_path, sys_cpuset_path, true)?;
+    }
 
     let sys_devices_path = Path::new("/sys/devices");
     jail.mount_bind(sys_devices_path, sys_devices_path, false)?;
