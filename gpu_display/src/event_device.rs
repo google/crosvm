@@ -10,6 +10,7 @@ use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Write;
 use std::iter::ExactSizeIterator;
+use std::mem::size_of;
 
 use base::AsRawDescriptor;
 use base::RawDescriptor;
@@ -163,7 +164,7 @@ impl EventDevice {
     }
 
     pub fn recv_event_encoded(&self) -> io::Result<virtio_input_event> {
-        let mut event_bytes = [0u8; 24];
+        let mut event_bytes = [0u8; size_of::<virtio_input_event>()];
         (&self.event_socket).read_exact(&mut event_bytes)?;
         match virtio_input_event::from_slice(&event_bytes) {
             Some(event) => Ok(*event),
