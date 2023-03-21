@@ -280,12 +280,12 @@ pub struct BusRange {
 impl BusRange {
     /// Returns true if `addr` is within the range.
     pub fn contains(&self, addr: u64) -> bool {
-        self.base <= addr && addr < self.base + self.len
+        self.base <= addr && addr < self.base.saturating_add(self.len)
     }
 
     /// Returns true if there is overlap with the given range.
     pub fn overlaps(&self, base: u64, len: u64) -> bool {
-        self.base < (base + len) && base < self.base + self.len
+        self.base < base.saturating_add(len) && base < self.base.saturating_add(self.len)
     }
 }
 
