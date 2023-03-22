@@ -126,6 +126,52 @@ impl<T> ExitContextAnyhow<T> for anyhow::Result<T> {
     }
 }
 
+/// Trait for attaching context with process exit codes to an Option.
+pub trait ExitContextOption<T> {
+    fn exit_code<X>(self, exit_code: X) -> anyhow::Result<T>
+    where
+        X: Into<ExitCode>;
+
+    fn exit_context<X, C>(self, exit_code: X, context: C) -> anyhow::Result<T>
+    where
+        X: Into<ExitCode>,
+        C: Display + Send + Sync + 'static;
+
+    fn with_exit_context<X, C, F>(self, exit_code: X, f: F) -> anyhow::Result<T>
+    where
+        X: Into<ExitCode>,
+        C: Display + Send + Sync + 'static,
+        F: FnOnce() -> C;
+}
+
+impl<T> ExitContextOption<T> for std::option::Option<T> {
+    fn exit_code<X>(self, exit_code: X) -> anyhow::Result<T>
+    where
+        X: Into<ExitCode>,
+    {
+        self.context(ExitCodeWrapper(exit_code.into()))
+    }
+
+    fn exit_context<X, C>(self, exit_code: X, context: C) -> anyhow::Result<T>
+    where
+        X: Into<ExitCode>,
+        C: Display + Send + Sync + 'static,
+    {
+        self.context(ExitCodeWrapper(exit_code.into()))
+            .context(context)
+    }
+
+    fn with_exit_context<X, C, F>(self, exit_code: X, f: F) -> anyhow::Result<T>
+    where
+        X: Into<ExitCode>,
+        C: Display + Send + Sync + 'static,
+        F: FnOnce() -> C,
+    {
+        self.context(ExitCodeWrapper(exit_code.into()))
+            .with_context(f)
+    }
+}
+
 #[macro_export]
 macro_rules! bail_exit_code {
     ($exit_code:literal, $msg:literal $(,)?) => {
