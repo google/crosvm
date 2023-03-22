@@ -31,6 +31,7 @@ use std::os::unix::prelude::OpenOptionsExt;
 use std::os::unix::process::ExitStatusExt;
 use std::path::Path;
 use std::process;
+use std::rc::Rc;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Barrier;
@@ -2492,7 +2493,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
     // Tube keyed on the socket path used to create it.
     struct AddressedTube {
-        tube: Tube,
+        tube: Rc<Tube>,
         socket_addr: String,
     }
 
@@ -2513,6 +2514,53 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     impl AddressedTube {
         pub fn send<T: Serialize>(&self, msg: &T) -> Result<(), base::TubeError> {
             self.tube.send(msg)
+        }
+    }
+
+    fn find_registered_tube<'a>(
+        registered_tubes: &'a HashMap<RegisteredEvent, HashSet<AddressedTube>>,
+        socket_addr: &str,
+        event: RegisteredEvent,
+    ) -> (Option<&'a Rc<Tube>>, bool) {
+        let mut registered_tube: Option<&Rc<Tube>> = None;
+        let mut already_registered = false;
+        'outer: for (evt, addr_tubes) in registered_tubes {
+            for addr_tube in addr_tubes {
+                if addr_tube.socket_addr == socket_addr {
+                    if *evt == event {
+                        already_registered = true;
+                        break 'outer;
+                    }
+                    // Since all tubes of the same addr should
+                    // be an RC to the same tube, it doesn't
+                    // matter which one we get. But we do need
+                    // to check for a registration for the
+                    // current event, so can't break here.
+                    registered_tube = Some(&addr_tube.tube);
+                }
+            }
+        }
+        (registered_tube, already_registered)
+    }
+
+    fn make_addr_tube_from_maybe_existing(
+        tube: Option<&Rc<Tube>>,
+        addr: String,
+    ) -> Result<AddressedTube> {
+        if let Some(registered_tube) = tube {
+            Ok(AddressedTube {
+                tube: registered_tube.clone(),
+                socket_addr: addr,
+            })
+        } else {
+            let sock = UnixSeqpacket::connect(addr.clone()).with_context(|| {
+                format!("failed to connect to registered listening socket {}", addr)
+            })?;
+            let tube = Tube::new_from_unix_seqpacket(sock);
+            Ok(AddressedTube {
+                tube: Rc::new(tube),
+                socket_addr: addr,
+            })
         }
     }
 
@@ -2974,35 +3022,28 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                             }
                                         }
                                         VmRequest::RegisterListener { socket_addr, event } => {
-                                            let mut already_registered = false;
-
-                                            if let Some(tubes) = registered_evt_tubes.get(&event) {
-                                                for addr_tube in tubes {
-                                                    if addr_tube.socket_addr == socket_addr {
-                                                        already_registered = true;
-                                                        break;
-                                                    }
-                                                }
-                                            }
+                                            let (registered_tube, already_registered) =
+                                                find_registered_tube(
+                                                    &registered_evt_tubes,
+                                                    &socket_addr,
+                                                    event,
+                                                );
 
                                             if !already_registered {
-                                                if let Ok(socket) =
-                                                    UnixSeqpacket::connect(socket_addr.clone())
+                                                let addr_tube = make_addr_tube_from_maybe_existing(
+                                                    registered_tube,
+                                                    socket_addr,
+                                                )?;
+
+                                                if let Some(tubes) =
+                                                    registered_evt_tubes.get_mut(&event)
                                                 {
-                                                    let addr_tube = AddressedTube {
-                                                        tube: Tube::new_from_unix_seqpacket(socket),
-                                                        socket_addr,
-                                                    };
-                                                    if let Some(tubes) =
-                                                        registered_evt_tubes.get_mut(&event)
-                                                    {
-                                                        tubes.insert(addr_tube);
-                                                    } else {
-                                                        registered_evt_tubes.insert(
-                                                            event,
-                                                            vec![addr_tube].into_iter().collect(),
-                                                        );
-                                                    }
+                                                    tubes.insert(addr_tube);
+                                                } else {
+                                                    registered_evt_tubes.insert(
+                                                        event,
+                                                        vec![addr_tube].into_iter().collect(),
+                                                    );
                                                 }
                                             }
                                             VmResponse::Ok
