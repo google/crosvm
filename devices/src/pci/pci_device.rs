@@ -21,6 +21,7 @@ use resources::SystemAllocator;
 use sync::Mutex;
 use thiserror::Error;
 use vm_control::IoEventUpdateRequest;
+use vm_control::VmMemoryRequest;
 use vm_control::VmMemoryResponse;
 
 use super::PciId;
@@ -585,9 +586,9 @@ impl<T: PciDevice> BusDevice for T {
             }
             // Handles ioevent changes:
             if !(result.io_add.is_empty()
-                || result.io_remove.is_empty()
-                || result.mmio_add.is_empty()
-                || result.mmio_remove.is_empty())
+                && result.io_remove.is_empty()
+                && result.mmio_add.is_empty()
+                && result.mmio_remove.is_empty())
             {
                 let (ioevent_unregister_requests, ioevent_register_requests) =
                     match get_ioevent_requests(self.ioevents(), old_ranges, new_ranges) {
@@ -728,6 +729,9 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     }
     fn write_virtual_config_register(&mut self, reg_idx: usize, value: u32) {
         (**self).write_virtual_config_register(reg_idx, value)
+    }
+    fn get_vm_memory_request_tube(&self) -> Option<&Tube> {
+        (**self).get_vm_memory_request_tube()
     }
     fn read_config_register(&self, reg_idx: usize) -> u32 {
         (**self).read_config_register(reg_idx)
@@ -874,7 +878,8 @@ fn send_ioevent_update_request(
     tube: &Tube,
     request: IoEventUpdateRequest,
 ) -> std::result::Result<(), IoEventError> {
-    tube.send(&request).map_err(|_| IoEventError::TubeFail)?;
+    tube.send(&VmMemoryRequest::IoEventRaw(request))
+        .map_err(|_| IoEventError::TubeFail)?;
     if let VmMemoryResponse::Err(e) = tube
         .recv::<VmMemoryResponse>()
         .map_err(|_| IoEventError::TubeFail)?
