@@ -459,7 +459,7 @@ fn create_balloon_device(
 fn create_vsock_device(cfg: &Config) -> DeviceResult {
     // We only support a single guest, so we can confidently assign a default
     // CID if one isn't provided. We choose the lowest non-reserved value.
-    let dev = virtio::Vsock::new(
+    let dev = virtio::vsock::Vsock::new(
         cfg.vsock
             .as_ref()
             .map(|cfg| cfg.cid)

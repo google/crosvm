@@ -52,10 +52,11 @@ use zerocopy::FromBytes;
 
 use crate::virtio::async_utils;
 use crate::virtio::copy_config;
-use crate::virtio::virtio_vsock_config;
-use crate::virtio::virtio_vsock_event;
-use crate::virtio::virtio_vsock_hdr;
-use crate::virtio::vsock_op;
+use crate::virtio::vsock::sys::windows::protocol::virtio_vsock_config;
+use crate::virtio::vsock::sys::windows::protocol::virtio_vsock_event;
+use crate::virtio::vsock::sys::windows::protocol::virtio_vsock_hdr;
+use crate::virtio::vsock::sys::windows::protocol::vsock_op;
+use crate::virtio::vsock::sys::windows::protocol::TYPE_STREAM_SOCKET;
 use crate::virtio::DescriptorError;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
@@ -64,7 +65,6 @@ use crate::virtio::Reader;
 use crate::virtio::SignalableInterrupt;
 use crate::virtio::VirtioDevice;
 use crate::virtio::Writer;
-use crate::virtio::TYPE_STREAM_SOCKET;
 use crate::Suspendable;
 use base::WorkerThread;
 

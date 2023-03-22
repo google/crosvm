@@ -6,9 +6,11 @@ cfg_if::cfg_if! {
     if #[cfg(unix)] {
         mod unix;
         use unix as platform;
+        pub use crate::virtio::vhost::Vsock;
     } else if #[cfg(windows)] {
         mod windows;
         use windows as platform;
+        pub use windows::Vsock;
     }
 }
 

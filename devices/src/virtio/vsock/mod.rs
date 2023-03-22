@@ -9,4 +9,5 @@
 //! implementation to the kernel.
 
 mod sys;
+pub use sys::Vsock;
 pub use sys::VsockConfig;
