@@ -544,7 +544,7 @@ fn move_to_staging_invalid_base_addr() {
     worker.close();
 }
 
-fn swap_out_all(page_handler: &mut PageHandler) {
+fn swap_out_all(page_handler: &PageHandler) {
     while page_handler.swap_out(1024 * 1024).unwrap() != 0 {}
 }
 
@@ -570,7 +570,7 @@ fn swap_out_success() {
         base_addr1..(base_addr1 + 3 * pagesize()),
         base_addr2..(base_addr2 + 3 * pagesize()),
     ];
-    let mut page_handler =
+    let page_handler =
         PageHandler::create(&file, &staging_shmem, &regions, worker.channel.clone()).unwrap();
     // write data before registering to userfaultfd
     unsafe {
@@ -590,7 +590,7 @@ fn swap_out_success() {
             .unwrap();
     }
     worker.channel.wait_complete();
-    swap_out_all(&mut page_handler);
+    swap_out_all(&page_handler);
     // page faults on all pages. page 0 and page 2 will be swapped in from the file. page 1 will
     // be filled with zero.
     for i in 0..3 {
@@ -647,7 +647,7 @@ fn swap_out_handled_page() {
     let base_addr1 = mmap1.as_ptr() as usize;
 
     let regions = [base_addr1..(base_addr1 + 3 * pagesize())];
-    let mut page_handler =
+    let page_handler =
         PageHandler::create(&file, &staging_shmem, &regions, worker.channel.clone()).unwrap();
     // write data before registering to userfaultfd
     unsafe {
@@ -665,7 +665,7 @@ fn swap_out_handled_page() {
     page_handler
         .handle_page_fault(&uffd, base_addr1 + pagesize())
         .unwrap();
-    swap_out_all(&mut page_handler);
+    swap_out_all(&page_handler);
 
     // read values on another thread to avoid blocking forever
     let join_handle = thread::spawn(move || {
@@ -708,7 +708,7 @@ fn swap_out_twice() {
         base_addr1..(base_addr1 + 3 * pagesize()),
         base_addr2..(base_addr2 + 3 * pagesize()),
     ];
-    let mut page_handler =
+    let page_handler =
         PageHandler::create(&file, &staging_shmem, &regions, worker.channel.clone()).unwrap();
     unsafe {
         for i in 0..pagesize() {
@@ -727,7 +727,7 @@ fn swap_out_twice() {
             .unwrap();
     }
     worker.channel.wait_complete();
-    swap_out_all(&mut page_handler);
+    swap_out_all(&page_handler);
     // page faults on all pages in mmap1.
     for i in 0..3 {
         page_handler
@@ -757,7 +757,7 @@ fn swap_out_twice() {
             .unwrap();
     }
     worker.channel.wait_complete();
-    swap_out_all(&mut page_handler);
+    swap_out_all(&page_handler);
 
     // page faults on all pages.
     for i in 0..3 {
@@ -821,7 +821,7 @@ fn swap_in_success() {
         base_addr1..(base_addr1 + 3 * pagesize()),
         base_addr2..(base_addr2 + 3 * pagesize()),
     ];
-    let mut page_handler =
+    let page_handler =
         PageHandler::create(&file, &staging_shmem, &regions, worker.channel.clone()).unwrap();
     unsafe {
         for i in base_addr1 + pagesize()..base_addr1 + 2 * pagesize() {
@@ -843,7 +843,7 @@ fn swap_in_success() {
             .unwrap();
     }
     worker.channel.wait_complete();
-    swap_out_all(&mut page_handler);
+    swap_out_all(&page_handler);
     page_handler
         .handle_page_fault(&uffd, base_addr1 + pagesize())
         .unwrap();
@@ -862,6 +862,137 @@ fn swap_in_success() {
             .unwrap();
     }
     worker.channel.wait_complete();
+    let mut swap_in_ctx = page_handler.start_swap_in();
+    while swap_in_ctx.swap_in(&uffd, 1024 * 1024).unwrap() != 0 {}
+    unregister_regions(&regions, array::from_ref(&uffd)).unwrap();
+
+    // read values on another thread to avoid blocking forever
+    let join_handle = thread::spawn(move || {
+        let mut result = Vec::new();
+        for i in 0..3 {
+            for j in 0..pagesize() {
+                let ptr = (base_addr1 + i * pagesize() + j) as *mut u8;
+                unsafe {
+                    result.push(*ptr);
+                }
+            }
+        }
+        for i in 0..3 {
+            for j in 0..pagesize() {
+                let ptr = (base_addr2 + i * pagesize() + j) as *mut u8;
+                unsafe {
+                    result.push(*ptr);
+                }
+            }
+        }
+        result
+    });
+    let result = wait_thread_with_timeout(join_handle, 100);
+    let values: Vec<u8> = vec![0, 1, 0, 0, 4, 3];
+    for (i, v) in values.iter().enumerate() {
+        for j in 0..pagesize() {
+            assert_eq!(&result[i * pagesize() + j], v);
+        }
+    }
+    worker.close();
+}
+
+#[test]
+fn trim_success() {
+    let worker = Worker::new(2, 2);
+    let uffd = create_uffd_for_test();
+    let file = tempfile::tempfile().unwrap();
+    let staging_shmem = SharedMemory::new("test staging memory", 6 * pagesize() as u64).unwrap();
+    let shm = SharedMemory::new("shm", 6 * pagesize() as u64).unwrap();
+    let mmap1 = MemoryMappingBuilder::new(3 * pagesize())
+        .from_shared_memory(&shm)
+        .build()
+        .unwrap();
+    let mmap2 = MemoryMappingBuilder::new(3 * pagesize())
+        .from_shared_memory(&shm)
+        .offset(3 * pagesize() as u64)
+        .build()
+        .unwrap();
+    let base_addr1 = mmap1.as_ptr() as usize;
+    let base_addr2 = mmap2.as_ptr() as usize;
+    let regions = [
+        base_addr1..(base_addr1 + 3 * pagesize()),
+        base_addr2..(base_addr2 + 3 * pagesize()),
+    ];
+    let page_handler =
+        PageHandler::create(&file, &staging_shmem, &regions, worker.channel.clone()).unwrap();
+    unsafe {
+        for i in base_addr1..base_addr1 + pagesize() {
+            *(i as *mut u8) = 0;
+        }
+        for i in base_addr1 + pagesize()..base_addr1 + 2 * pagesize() {
+            *(i as *mut u8) = 1;
+        }
+        for i in base_addr2..base_addr2 + pagesize() {
+            *(i as *mut u8) = 0;
+        }
+        for i in base_addr2 + pagesize()..base_addr2 + 2 * pagesize() {
+            *(i as *mut u8) = 2;
+        }
+        for i in base_addr2 + 2 * pagesize()..base_addr2 + 3 * pagesize() {
+            *(i as *mut u8) = 3;
+        }
+    }
+    unsafe { register_regions(&regions, array::from_ref(&uffd)) }.unwrap();
+
+    unsafe {
+        page_handler.move_to_staging(base_addr1, &shm, 0).unwrap();
+        page_handler
+            .move_to_staging(base_addr2, &shm, 3 * pagesize() as u64)
+            .unwrap();
+    }
+    worker.channel.wait_complete();
+
+    let mut trim_ctx = page_handler.start_trim();
+
+    assert_eq!(trim_ctx.trim_pages(6 * pagesize()).unwrap().unwrap(), 1);
+    assert_eq!(trim_ctx.trimmed_clean_pages(), 0);
+    assert_eq!(trim_ctx.trimmed_zero_pages(), 1);
+    // 1 zero page
+    assert_eq!(trim_ctx.trim_pages(6 * pagesize()).unwrap().unwrap(), 1);
+    assert_eq!(trim_ctx.trimmed_clean_pages(), 0);
+    assert_eq!(trim_ctx.trimmed_zero_pages(), 2);
+
+    swap_out_all(&page_handler);
+    for i in 0..3 {
+        page_handler
+            .handle_page_fault(&uffd, base_addr1 + i * pagesize())
+            .unwrap();
+        page_handler
+            .handle_page_fault(&uffd, base_addr2 + i * pagesize())
+            .unwrap();
+    }
+    unsafe {
+        for i in base_addr2 + pagesize()..base_addr2 + 2 * pagesize() {
+            *(i as *mut u8) = 4;
+        }
+    }
+
+    // move to staging memory.
+    unsafe {
+        page_handler.move_to_staging(base_addr1, &shm, 0).unwrap();
+        page_handler
+            .move_to_staging(base_addr2, &shm, 3 * pagesize() as u64)
+            .unwrap();
+    }
+    worker.channel.wait_complete();
+
+    let mut trim_ctx = page_handler.start_trim();
+    // 2 zero pages and 1 clean page
+    assert_eq!(trim_ctx.trim_pages(6 * pagesize()).unwrap().unwrap(), 3);
+    assert_eq!(trim_ctx.trimmed_clean_pages(), 1);
+    assert_eq!(trim_ctx.trimmed_zero_pages(), 2);
+    // 1 zero page and 1 clean pages
+    assert_eq!(trim_ctx.trim_pages(6 * pagesize()).unwrap().unwrap(), 2);
+    assert_eq!(trim_ctx.trimmed_clean_pages(), 2);
+    assert_eq!(trim_ctx.trimmed_zero_pages(), 3);
+    assert!(trim_ctx.trim_pages(pagesize()).unwrap().is_none());
+
     let mut swap_in_ctx = page_handler.start_swap_in();
     while swap_in_ctx.swap_in(&uffd, 1024 * 1024).unwrap() != 0 {}
     unregister_regions(&regions, array::from_ref(&uffd)).unwrap();

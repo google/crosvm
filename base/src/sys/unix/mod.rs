@@ -71,6 +71,7 @@ pub use capabilities::drop_capabilities;
 pub use descriptor::*;
 pub use event::EventExt;
 pub(crate) use event::PlatformEvent;
+pub use file::find_next_data;
 pub use file::FileDataIterator;
 pub use file_flags::*;
 pub use get_filesystem_type::*;

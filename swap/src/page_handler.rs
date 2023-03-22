@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use base::error;
+use base::sys::find_next_data;
 use base::unix::FileDataIterator;
 use base::AsRawDescriptor;
 use base::SharedMemory;
@@ -165,6 +166,7 @@ struct PageHandleContext<'a> {
 pub struct PageHandler<'a> {
     ctx: Mutex<PageHandleContext<'a>>,
     channel: Arc<Channel<MoveToStaging>>,
+    swap_raw_file: &'a File,
 }
 
 impl<'a> PageHandler<'a> {
@@ -180,14 +182,14 @@ impl<'a> PageHandler<'a> {
     /// * `address_ranges` - The list of address range of the regions. the start address must align
     ///   with page. the size must be multiple of pagesize.
     pub fn create(
-        swap_file: &'a File,
+        swap_raw_file: &'a File,
         staging_shmem: &'a SharedMemory,
         address_ranges: &[Range<usize>],
         stating_move_context: Arc<Channel<MoveToStaging>>,
     ) -> Result<Self> {
         // Truncate the file into the size to hold all regions, otherwise access beyond the end of
         // file may cause SIGBUS.
-        swap_file
+        swap_raw_file
             .set_len(
                 address_ranges
                     .iter()
@@ -231,7 +233,7 @@ impl<'a> PageHandler<'a> {
                     assert!(is_page_aligned(base_addr));
                     assert!(is_page_aligned(region_size));
 
-                    let file = SwapFile::new(swap_file, offset_pages, num_of_pages)?;
+                    let file = SwapFile::new(swap_raw_file, offset_pages, num_of_pages)?;
                     let staging_memory = StagingMemory::new(
                         staging_shmem,
                         pages_to_bytes(offset_pages) as u64,
@@ -259,6 +261,7 @@ impl<'a> PageHandler<'a> {
                 mlock_budget_pages: bytes_to_pages(MLOCK_BUDGET),
             }),
             channel: stating_move_context,
+            swap_raw_file,
         })
     }
 
@@ -571,6 +574,19 @@ impl<'a> PageHandler<'a> {
         }
     }
 
+    /// Create a new [TrimContext].
+    pub fn start_trim(&'a self) -> TrimContext<'a> {
+        TrimContext {
+            ctx: &self.ctx,
+            swap_raw_file: self.swap_raw_file,
+            cur_page: 0,
+            cur_region: 0,
+            next_data_in_file: 0..0,
+            clean_pages: 0,
+            zero_pages: 0,
+        }
+    }
+
     /// Returns count of pages active on the memory.
     pub fn compute_resident_pages(&self) -> usize {
         self.ctx
@@ -736,5 +752,138 @@ impl Drop for SwapInContext<'_> {
             }
         }
         ctx.mlock_budget_pages = bytes_to_pages(MLOCK_BUDGET);
+    }
+}
+
+/// Context for trim operation.
+///
+/// This drops 2 types of pages in the staging memory to reduce disk write.
+///
+/// * Clean pages
+///   * The pages which have been swapped out to the disk and have not been changed.
+///   * Drop the pages in the staging memory and mark it as present on the swap file.
+/// * Zero pages
+///   * Drop the pages in the staging memory. The pages will be UFFD_ZEROed on page fault.
+pub struct TrimContext<'a> {
+    ctx: &'a Mutex<PageHandleContext<'a>>,
+    swap_raw_file: &'a File,
+    cur_region: usize,
+    cur_page: usize,
+    /// The page idx range of pages which have been stored in the swap file.
+    next_data_in_file: Range<usize>,
+    clean_pages: usize,
+    zero_pages: usize,
+}
+
+impl TrimContext<'_> {
+    /// Trim pages in the staging memory.
+    ///
+    /// This returns the pages trimmed. This returns `None` if it traversed all pages in the staging
+    /// memory.
+    ///
+    /// # Arguments
+    ///
+    /// `max_size` - The maximum pages to be compared.
+    pub fn trim_pages(&mut self, max_pages: usize) -> anyhow::Result<Option<usize>> {
+        let mut ctx = self.ctx.lock();
+        if self.cur_region >= ctx.regions.len() {
+            return Ok(None);
+        }
+        let region = &mut ctx.regions[self.cur_region];
+        let region_size_bytes = pages_to_bytes(region.file.num_pages()) as u64;
+        let mut n_trimmed = 0;
+
+        for _ in 0..max_pages {
+            if let Some(slice_in_staging) = region
+                .staging_memory
+                .page_content(self.cur_page)
+                .context("get page of staging memory")?
+            {
+                let idx_range = self.cur_page..self.cur_page + 1;
+
+                if self.cur_page >= self.next_data_in_file.end {
+                    let offset_in_region = pages_to_bytes(self.cur_page) as u64;
+                    let offset = region.file.base_offset() + offset_in_region;
+                    if let Some(offset_range) = find_next_data(
+                        self.swap_raw_file,
+                        offset,
+                        region_size_bytes - offset_in_region,
+                    )
+                    .context("find next data in swap file")?
+                    {
+                        let start = bytes_to_pages(
+                            (offset_range.start - region.file.base_offset()) as usize,
+                        );
+                        let end =
+                            bytes_to_pages((offset_range.end - region.file.base_offset()) as usize);
+                        self.next_data_in_file = start..end;
+                    } else {
+                        self.next_data_in_file = region.file.num_pages()..region.file.num_pages();
+                    }
+                }
+
+                // Check zero page on the staging memory first. If the page is non-zero and have not
+                // been changed, zero checking is useless, but less cost than file I/O for the pages
+                // which were in the swap file and now is zero.
+                // Check 2 types of page in the same loop to utilize CPU cache for staging memory.
+                if slice_in_staging.is_all_zero() {
+                    region
+                        .staging_memory
+                        .clear_range(idx_range.clone())
+                        .context("clear a page in staging memory")?;
+                    if self.cur_page >= self.next_data_in_file.start {
+                        // The page is on the swap file as well.
+                        let munlocked_pages = region
+                            .file
+                            .erase_from_disk(idx_range)
+                            .context("clear a page in swap file")?;
+                        if munlocked_pages != 0 {
+                            // Only either of swap-in or trimming runs at the same time. This is not
+                            // expected path. Just logging an error because leaking
+                            // mlock_budget_pages is not fatal.
+                            error!("pages are mlock(2)ed while trimming");
+                        }
+                    }
+                    n_trimmed += 1;
+                    self.zero_pages += 1;
+                } else if self.cur_page >= self.next_data_in_file.start {
+                    // The previous content of the page is on the disk.
+                    let slice_in_file = region
+                        .file
+                        .get_slice(idx_range.clone())
+                        .context("get slice in swap file")?;
+
+                    if slice_in_staging == slice_in_file {
+                        region
+                            .staging_memory
+                            .clear_range(idx_range.clone())
+                            .context("clear a page in staging memory")?;
+                        region.file.mark_as_present(self.cur_page);
+                        n_trimmed += 1;
+                        self.clean_pages += 1;
+                    }
+                }
+            }
+
+            self.cur_page += 1;
+            if self.cur_page >= region.file.num_pages() {
+                self.cur_region += 1;
+                self.cur_page = 0;
+                self.next_data_in_file = 0..0;
+                break;
+            }
+        }
+
+        Ok(Some(n_trimmed))
+    }
+
+    /// Total trimmed clean pages.
+    pub fn trimmed_clean_pages(&self) -> usize {
+        self.clean_pages
+    }
+
+    /// Total trimmed zero pages.
+    pub fn trimmed_zero_pages(&self) -> usize {
+        self.zero_pages
     }
 }

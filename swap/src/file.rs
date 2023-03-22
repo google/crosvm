@@ -85,6 +85,10 @@ impl<'a> SwapFile<'a> {
         })
     }
 
+    pub(crate) fn base_offset(&self) -> u64 {
+        self.offset
+    }
+
     /// Returns the total count of managed pages.
     pub fn num_pages(&self) -> usize {
         self.present_list.len()
@@ -156,7 +160,10 @@ impl<'a> SwapFile<'a> {
         }
     }
 
-    /// Clears the pages in the file corresponding to the index.
+    /// Mark the pages in the file corresponding to the index as cleared.
+    ///
+    /// The contents on the swap file are preserved and will be reused by
+    /// `SwapFile::mark_as_present()` and reduce disk I/O.
     ///
     /// If the pages are mlock(2)ed, unlock them before MADV_DONTNEED. This returns the number of
     /// pages munlock(2)ed.
@@ -249,6 +256,17 @@ impl<'a> SwapFile<'a> {
         Ok(())
     }
 
+    /// Mark the page as present on the file.
+    ///
+    /// The content on the swap file on previous `SwapFile::write_to_file()` is reused.
+    ///
+    /// # Arguments
+    ///
+    /// * `idx` - the index of the page from the head of the pages.
+    pub fn mark_as_present(&mut self, idx: usize) {
+        self.present_list.mark_as_present(idx..idx + 1);
+    }
+
     /// Writes the contents to the swap file.
     ///
     /// # Arguments
@@ -291,7 +309,8 @@ impl<'a> SwapFile<'a> {
         self.present_list.first_data_range(max_pages)
     }
 
-    /// Returns the [VolatileSlice] corresponding to the indices.
+    /// Returns the [VolatileSlice] corresponding to the indices regardless of whether the pages are
+    /// present or not.
     ///
     /// If the range is out of the region, this returns [Error::OutOfRange].
     ///

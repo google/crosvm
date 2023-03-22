@@ -29,6 +29,39 @@ fn lseek(fd: &dyn AsRawDescriptor, offset: u64, option: LseekOption) -> Result<u
     Ok(ret as u64)
 }
 
+/// Find the offset range of the next data in the file.
+///
+/// # Arguments
+///
+/// * `fd` - the [trait@AsRawDescriptor] of the file
+/// * `offset` - the offset to start traversing from
+/// * `len` - the len of the region over which to traverse
+pub fn find_next_data(
+    fd: &dyn AsRawDescriptor,
+    offset: u64,
+    len: u64,
+) -> Result<Option<Range<u64>>> {
+    let end = offset + len;
+    let offset_data = match lseek(fd, offset, LseekOption::Data) {
+        Ok(offset) => {
+            if offset >= end {
+                return Ok(None);
+            } else {
+                offset
+            }
+        }
+        Err(e) => {
+            return match e.errno() {
+                libc::ENXIO => Ok(None),
+                _ => Err(e),
+            }
+        }
+    };
+    let offset_hole = lseek(fd, offset_data, LseekOption::Hole)?;
+
+    Ok(Some(offset_data..offset_hole.min(end)))
+}
+
 /// Iterator returning the offset range of data in the file.
 ///
 /// This uses `lseek(2)` internally, and thus it changes the file offset.
@@ -53,34 +86,13 @@ impl<'a> FileDataIterator<'a> {
             end: offset + len,
         }
     }
-
-    fn find_next_data(&self) -> Result<Option<Range<u64>>> {
-        let offset_data = match lseek(self.fd, self.offset, LseekOption::Data) {
-            Ok(offset) => {
-                if offset >= self.end {
-                    return Ok(None);
-                } else {
-                    offset
-                }
-            }
-            Err(e) => {
-                return match e.errno() {
-                    libc::ENXIO => Ok(None),
-                    _ => Err(e),
-                }
-            }
-        };
-        let offset_hole = lseek(self.fd, offset_data, LseekOption::Hole)?;
-
-        Ok(Some(offset_data..offset_hole.min(self.end)))
-    }
 }
 
 impl<'a> Iterator for FileDataIterator<'a> {
     type Item = Range<u64>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.find_next_data() {
+        match find_next_data(self.fd, self.offset, self.end - self.offset) {
             Ok(data_range) => {
                 if let Some(ref data_range) = data_range {
                     self.offset = data_range.end;

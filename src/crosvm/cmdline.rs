@@ -310,8 +310,17 @@ pub struct SwapEnableCommand {
 }
 
 #[derive(FromArgs)]
+#[argh(subcommand, name = "trim")]
+/// Trim pages in the staging memory
+pub struct SwapTrimCommand {
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
+
+#[derive(FromArgs)]
 #[argh(subcommand, name = "out")]
-/// Enable swap of a VM
+/// Swap out staging memory to swap file
 pub struct SwapOutCommand {
     #[argh(positional, arg_name = "VM_SOCKET")]
     /// VM Socket path
@@ -348,6 +357,7 @@ pub struct SwapCommand {
 /// Swap related operations
 pub enum SwapSubcommands {
     Enable(SwapEnableCommand),
+    Trim(SwapTrimCommand),
     SwapOut(SwapOutCommand),
     Disable(SwapDisableCommand),
     Status(SwapStatusCommand),
