@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::path::PathBuf;
-use std::str::FromStr;
 
 use devices::IommuDevType;
 use devices::PciAddress;
@@ -14,26 +13,17 @@ use serde_keyvalue::FromKeyValues;
 
 use crate::crosvm::config::Config;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, FromKeyValues)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub enum HypervisorKind {
-    Kvm,
+    Kvm {
+        device: Option<PathBuf>,
+    },
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     #[cfg(feature = "geniezone")]
-    Geniezone,
-}
-
-impl FromStr for HypervisorKind {
-    type Err = &'static str;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "kvm" => Ok(HypervisorKind::Kvm),
-            #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-            #[cfg(feature = "geniezone")]
-            "geniezone" => Ok(HypervisorKind::Geniezone),
-            _ => Err("invalid hypervisor backend"),
-        }
-    }
+    Geniezone {
+        device: Option<PathBuf>,
+    },
 }
 
 #[cfg(feature = "audio")]

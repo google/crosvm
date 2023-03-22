@@ -89,6 +89,7 @@ use vm_memory::MemoryPolicy;
 use self::process::*;
 use self::vcpu::*;
 use crate::crosvm::config::Executable;
+use crate::crosvm::config::HypervisorKind;
 use crate::Config;
 
 const MAX_DATAGRAM_SIZE: usize = 4096;
@@ -586,7 +587,15 @@ pub fn run_config(cfg: Config) -> Result<()> {
         mem_policy |= MemoryPolicy::USE_HUGEPAGES;
     }
     mem.set_memory_policy(mem_policy);
-    let kvm = Kvm::new_with_path(&cfg.kvm_device_path).context("error creating Kvm")?;
+
+    let kvm_device_path = if let Some(HypervisorKind::Kvm { device }) = &cfg.hypervisor {
+        device.as_deref()
+    } else {
+        None
+    };
+
+    let kvm_device_path = kvm_device_path.unwrap_or(Path::new("/dev/kvm"));
+    let kvm = Kvm::new_with_path(kvm_device_path).context("error creating Kvm")?;
     let mut vm = Vm::new(&kvm, mem).context("error creating vm")?;
     vm.create_irq_chip()
         .context("failed to create kvm irqchip")?;

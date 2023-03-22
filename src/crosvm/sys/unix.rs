@@ -198,6 +198,11 @@ use crate::crosvm::gdb::GdbStub;
 use crate::crosvm::ratelimit::Ratelimit;
 use crate::crosvm::sys::cmdline::DevicesCommand;
 
+const KVM_PATH: &str = "/dev/kvm";
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+#[cfg(feature = "geniezone")]
+const GENIEZONE_PATH: &str = "/dev/gzvm";
+
 fn create_virtio_devices(
     cfg: &Config,
     vm: &mut impl Vm,
@@ -1332,13 +1337,10 @@ fn create_guest_memory(
 
 #[cfg(any(target_arch = "aarch64"))]
 #[cfg(feature = "geniezone")]
-fn run_gz(cfg: Config, components: VmComponents) -> Result<ExitState> {
-    let gzvm = Geniezone::new_with_path(&cfg.geniezone_device_path).with_context(|| {
-        format!(
-            "failed to open GenieZone device {}",
-            cfg.geniezone_device_path.display(),
-        )
-    })?;
+fn run_gz(device_path: Option<&Path>, cfg: Config, components: VmComponents) -> Result<ExitState> {
+    let device_path = device_path.unwrap_or(Path::new(GENIEZONE_PATH));
+    let gzvm = Geniezone::new_with_path(device_path)
+        .with_context(|| format!("failed to open GenieZone device {}", device_path.display()))?;
 
     let guest_mem = create_guest_memory(&cfg, &components, &gzvm)?;
 
@@ -1382,13 +1384,10 @@ fn run_gz(cfg: Config, components: VmComponents) -> Result<ExitState> {
     )
 }
 
-fn run_kvm(cfg: Config, components: VmComponents) -> Result<ExitState> {
-    let kvm = Kvm::new_with_path(&cfg.kvm_device_path).with_context(|| {
-        format!(
-            "failed to open KVM device {}",
-            cfg.kvm_device_path.display(),
-        )
-    })?;
+fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) -> Result<ExitState> {
+    let device_path = device_path.unwrap_or(Path::new(KVM_PATH));
+    let kvm = Kvm::new_with_path(device_path)
+        .with_context(|| format!("failed to open KVM device {}", device_path.display()))?;
 
     let guest_mem = create_guest_memory(&cfg, &components, &kvm)?;
 
@@ -1480,16 +1479,27 @@ fn run_kvm(cfg: Config, components: VmComponents) -> Result<ExitState> {
     )
 }
 
-fn get_default_hypervisor(cfg: &Config) -> Result<HypervisorKind> {
-    if cfg.kvm_device_path.exists() {
-        return Ok(HypervisorKind::Kvm);
+/// Choose a default hypervisor if no `--hypervisor` option was specified.
+fn get_default_hypervisor() -> Option<HypervisorKind> {
+    let kvm_path = Path::new(KVM_PATH);
+    if kvm_path.exists() {
+        return Some(HypervisorKind::Kvm {
+            device: Some(kvm_path.to_path_buf()),
+        });
     }
+
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     #[cfg(feature = "geniezone")]
-    if cfg.geniezone_device_path.exists() {
-        return Ok(HypervisorKind::Geniezone);
+    {
+        let gz_path = Path::new(GENIEZONE_PATH);
+        if gz_path.exists() {
+            return Some(HypervisorKind::Geniezone {
+                device: Some(gz_path.to_path_buf()),
+            });
+        }
     }
-    bail!("failed to get default hypervisor!");
+
+    None
 }
 
 pub fn run_config(cfg: Config) -> Result<ExitState> {
@@ -1502,16 +1512,17 @@ pub fn run_config(cfg: Config) -> Result<ExitState> {
 
     let hypervisor = cfg
         .hypervisor
-        .or_else(|| get_default_hypervisor(&cfg).ok())
+        .clone()
+        .or_else(get_default_hypervisor)
         .context("no enabled hypervisor")?;
 
-    debug!("creating {:?} hypervisor", hypervisor);
+    debug!("creating hypervisor: {:?}", hypervisor);
 
     match hypervisor {
-        HypervisorKind::Kvm => run_kvm(cfg, components),
+        HypervisorKind::Kvm { device } => run_kvm(device.as_deref(), cfg, components),
         #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
         #[cfg(feature = "geniezone")]
-        HypervisorKind::Geniezone => run_gz(cfg, components),
+        HypervisorKind::Geniezone { device } => run_gz(device.as_deref(), cfg, components),
     }
 }
 

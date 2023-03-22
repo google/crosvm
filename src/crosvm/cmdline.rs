@@ -1140,12 +1140,6 @@ pub struct RunCommand {
     /// (EXPERIMENTAL) gdb on the given port
     pub gdb: Option<u32>,
 
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-    #[cfg(all(unix, feature = "geniezone"))]
-    #[argh(option, long = "geniezone-device", arg_name = "PATH")]
-    /// path to the GZVM device. (default /dev/gzvm)
-    pub geniezone_device_path: Option<PathBuf>,
-
     #[cfg(feature = "gpu")]
     #[argh(option)]
     // Although `gpu` is a vector, we are currently limited to a single GPU device due to the
@@ -1276,7 +1270,6 @@ pub struct RunCommand {
 
     /// hypervisor backend
     #[argh(option)]
-    #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
     pub hypervisor: Option<HypervisorKind>,
 
@@ -1324,7 +1317,7 @@ pub struct RunCommand {
 
     #[cfg(unix)]
     #[argh(option, arg_name = "PATH")]
-    #[serde(skip)] // TODO(b/255223604)
+    #[serde(skip)] // Deprecated - use `hypervisor` instead.
     #[merge(strategy = overwrite_option)]
     /// path to the KVM device. (default /dev/kvm)
     pub kvm_device: Option<PathBuf>,
@@ -2266,13 +2259,15 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         #[cfg(unix)]
         if let Some(p) = cmd.kvm_device {
-            cfg.kvm_device_path = p;
-        }
+            log::warn!(
+                "`--kvm-device <PATH>` is deprecated; use `--hypervisor kvm[device=<PATH>]` instead"
+            );
 
-        #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-        #[cfg(all(unix, feature = "geniezone"))]
-        if let Some(p) = cmd.geniezone_device_path {
-            cfg.geniezone_device_path = p;
+            if cmd.hypervisor.is_some() {
+                return Err("cannot specify both --hypervisor and --kvm-device".to_string());
+            }
+
+            cfg.hypervisor = Some(crate::crosvm::config::HypervisorKind::Kvm { device: Some(p) });
         }
 
         #[cfg(unix)]
@@ -2373,7 +2368,11 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         cfg.hugepages = cmd.hugepages;
 
-        cfg.hypervisor = cmd.hypervisor;
+        // `cfg.hypervisor` may have been set by the deprecated `--kvm-device` option above.
+        // TODO(b/274817652): remove this workaround when `--kvm-device` is removed.
+        if cfg.hypervisor.is_none() {
+            cfg.hypervisor = cmd.hypervisor;
+        }
 
         #[cfg(unix)]
         {
