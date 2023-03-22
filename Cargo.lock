@@ -253,8 +253,25 @@ dependencies = [
  "bitflags",
  "cexpr",
  "clang-sys",
- "clap 3.2.23",
- "env_logger",
+ "lazy_static",
+ "lazycell",
+ "peeking_take_while",
+ "proc-macro2",
+ "quote 1.0.21",
+ "regex",
+ "rustc-hash",
+ "shlex",
+]
+
+[[package]]
+name = "bindgen"
+version = "0.63.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "36d860121800b2a9a94f9b5604b332d5cffb234ce17609ea479d723dbc9d3885"
+dependencies = [
+ "bitflags",
+ "cexpr",
+ "clang-sys",
  "lazy_static",
  "lazycell",
  "log",
@@ -264,6 +281,7 @@ dependencies = [
  "regex",
  "rustc-hash",
  "shlex",
+ "syn 1.0.103",
  "which",
 ]
 
@@ -1610,7 +1628,7 @@ dependencies = [
 name = "minijail-sys"
 version = "0.0.14"
 dependencies = [
- "bindgen",
+ "bindgen 0.63.0",
  "libc",
  "pkg-config",
  "which",
@@ -2461,7 +2479,7 @@ version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2cbcf2717fa856a7226499babbbccb07353ea2fc2b27defd38bd13b1227cc78"
 dependencies = [
- "bindgen",
+ "bindgen 0.60.1",
  "cc",
  "cfg-if",
 ]
