@@ -6,9 +6,10 @@
 import argparse
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
+from itertools import chain, product, starmap
+from pathlib import Path
 from typing import Dict, Iterable, List, NamedTuple
 
 from impl.common import CROSVM_ROOT, Triple, verbose
@@ -26,6 +27,9 @@ To cross-compile for aarch64, armhf or windows you can use:
     $ ./tools/build_release --platform=armhf
     $ ./tools/build_release --platform=mingw64
 """
+
+# We only need PGO for main binary, but for consistency, only exclude incompatible parts from PGO
+PGO_EXCLUDE = ["crosvm_control"]
 
 
 class Executable(NamedTuple):
@@ -129,10 +133,28 @@ def main():
         action="store_true",
         help="Output in JSON instead of human readable format.",
     )
-    parser.add_argument("--strip", action="store_true", help="Strip output binaries.")
+    parser.add_argument("--strip", action="store_true", help="Strip output binaries")
+    pgo_group = parser.add_mutually_exclusive_group()
+    pgo_group.add_argument(
+        "--profile-generate",
+        help="Target directory to generate profile when running, must use absolute path",
+    )
+    pgo_group.add_argument(
+        "--profile-use", help="Profile file used for PGO, must use absolute path"
+    )
     parser.add_argument("cargo_arguments", nargs="*", help="Extra arguments pass to cargo")
 
     args = parser.parse_args()
+
+    if args.profile_generate and (
+        not os.path.isabs(args.profile_generate) or not os.path.isdir(args.profile_generate)
+    ):
+        raise ValueError("--profile-generate argument is not an absolute path to a folder")
+    if args.profile_use and (
+        not os.path.isabs(args.profile_use) or not os.path.isfile(args.profile_use)
+    ):
+        raise ValueError("--profile-use argument is not an absolute path to a file")
+
     build_target = Triple.from_shorthand(args.build_target) if args.build_target else None
     build_target = build_target or Triple.host_default()
 
@@ -142,6 +164,7 @@ def main():
         "--features=" + features,
         f"--target={build_target}",
         "--workspace",
+        *[f"--exclude={x}" for x in PGO_EXCLUDE if args.profile_generate or args.profile_use],
         *args.cargo_arguments,
     ]
 
@@ -151,6 +174,10 @@ def main():
     build_env["RUSTFLAGS"] += " -D warnings"
     if args.strip:
         build_env["RUSTFLAGS"] += " -C strip=symbols"
+    if args.profile_generate:
+        build_env["RUSTFLAGS"] += " -C profile-generate=" + args.profile_generate
+    if args.profile_use:
+        build_env["RUSTFLAGS"] += " -C profile-use=" + args.profile_use
 
     executables = list(cargo("build", CROSVM_ROOT, cargo_args, build_env))
 
