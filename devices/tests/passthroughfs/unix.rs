@@ -4,6 +4,7 @@
 
 use std::ffi::CString;
 use std::fs::File;
+use std::io;
 use std::path::Path;
 
 use devices::virtio::fs::passthrough::Config;
@@ -28,10 +29,7 @@ fn create_test_data(temp_dir: &TempDir, dirs: &[&str], files: &[&str]) {
 }
 
 /// Looks up the given `path` in `fs`.
-///
-/// Returns `None` if the given entry doesn't exist.
-/// Panics if something wrong happens.
-fn lookup(fs: &PassthroughFs, path: &Path) -> Option<Inode> {
+fn lookup(fs: &PassthroughFs, path: &Path) -> io::Result<Inode> {
     let mut inode = 1;
     let ctx = Context {
         uid: 0,
@@ -43,15 +41,12 @@ fn lookup(fs: &PassthroughFs, path: &Path) -> Option<Inode> {
         let ent = match fs.lookup(ctx, inode, &name) {
             Ok(ent) => ent,
             Err(e) => {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    return None;
-                }
-                panic!("lookup for {:?} ({:?}) failed with {}", name, path, e);
+                return Err(e);
             }
         };
         inode = ent.inode;
     }
-    Some(inode)
+    Ok(inode)
 }
 
 fn test_lookup() {
@@ -64,13 +59,23 @@ fn test_lookup() {
     let capable = FsOptions::empty();
     fs.init(capable).unwrap();
 
-    assert!(lookup(&fs, &temp_dir.path().join("a.txt")).is_some());
-    assert!(lookup(&fs, &temp_dir.path().join("dir")).is_some());
-    assert!(lookup(&fs, &temp_dir.path().join("dir/b.txt")).is_some());
+    assert!(lookup(&fs, &temp_dir.path().join("a.txt")).is_ok());
+    assert!(lookup(&fs, &temp_dir.path().join("dir")).is_ok());
+    assert!(lookup(&fs, &temp_dir.path().join("dir/b.txt")).is_ok());
 
-    assert_eq!(lookup(&fs, &temp_dir.path().join("nonexistent-file")), None);
+    assert_eq!(
+        lookup(&fs, &temp_dir.path().join("nonexistent-file"))
+            .expect_err("file must not exist")
+            .kind(),
+        io::ErrorKind::NotFound
+    );
     // "A.txt" is different from "a.txt".
-    assert_eq!(lookup(&fs, &temp_dir.path().join("A.txt")), None);
+    assert_eq!(
+        lookup(&fs, &temp_dir.path().join("A.txt"))
+            .expect_err("file must not exist")
+            .kind(),
+        io::ErrorKind::NotFound
+    );
 }
 
 fn test_lookup_ascii_casefold() {
@@ -88,18 +93,29 @@ fn test_lookup_ascii_casefold() {
 
     // Ensure that "A.txt" is equated with "a.txt".
     let a_inode = lookup(&fs, &temp_dir.path().join("a.txt")).expect("a.txt must be found");
-    assert_eq!(lookup(&fs, &temp_dir.path().join("A.txt")), Some(a_inode));
+    assert_eq!(
+        lookup(&fs, &temp_dir.path().join("A.txt")).expect("A.txt must exist"),
+        a_inode
+    );
 
     let dir_inode = lookup(&fs, &temp_dir.path().join("dir")).expect("dir must be found");
-    assert_eq!(lookup(&fs, &temp_dir.path().join("DiR")), Some(dir_inode));
+    assert_eq!(
+        lookup(&fs, &temp_dir.path().join("DiR")).expect("DiR must exist"),
+        dir_inode
+    );
 
     let b_inode = lookup(&fs, &temp_dir.path().join("dir/b.txt")).expect("dir/b.txt must be found");
     assert_eq!(
-        lookup(&fs, &temp_dir.path().join("dIr/B.TxT")),
-        Some(b_inode)
+        lookup(&fs, &temp_dir.path().join("dIr/B.TxT")).expect("dIr/B.TxT must exist"),
+        b_inode
     );
 
-    assert_eq!(lookup(&fs, &temp_dir.path().join("nonexistent-file")), None);
+    assert_eq!(
+        lookup(&fs, &temp_dir.path().join("nonexistent-file"))
+            .expect_err("file must not exist")
+            .kind(),
+        io::ErrorKind::NotFound
+    );
 }
 
 pub fn main() {
