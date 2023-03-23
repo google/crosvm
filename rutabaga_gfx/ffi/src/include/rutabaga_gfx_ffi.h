@@ -144,7 +144,7 @@ struct rutabaga_mapping {
  * Assumes null-terminated C-string.
  */
 struct rutabaga_channel {
-	char *channel_name;
+	const char *channel_name;
 	uint32_t channel_type;
 };
 
