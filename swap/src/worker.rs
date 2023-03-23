@@ -7,10 +7,16 @@
 #![deny(missing_docs)]
 
 use std::collections::VecDeque;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 
+use anyhow::Context;
 use base::error;
+use base::Event;
+use base::EventWaitResult;
 use sync::Condvar;
 use sync::Mutex;
 
@@ -173,6 +179,78 @@ impl<T> ChannelState<T> {
             n_waiting: 0,
             is_closed: false,
         }
+    }
+}
+
+/// The event channel for background jobs.
+///
+/// This sends an abort request from the main thread to the job thread via atomic boolean flag.
+///
+/// This notifies the main thread that the job thread is completed via [Event].
+pub struct BackgroundJobControl {
+    event: Event,
+    abort_flag: AtomicBool,
+}
+
+impl BackgroundJobControl {
+    /// Creates [BackgroundJobControl].
+    pub fn new() -> anyhow::Result<Self> {
+        Ok(Self {
+            event: Event::new()?,
+            abort_flag: AtomicBool::new(false),
+        })
+    }
+
+    /// Creates [BackgroundJob].
+    pub fn new_job(&self) -> BackgroundJob<'_> {
+        BackgroundJob {
+            event: &self.event,
+            abort_flag: &self.abort_flag,
+        }
+    }
+
+    /// Abort the background job.
+    pub fn abort(&self) {
+        self.abort_flag.store(true, Ordering::Release);
+    }
+
+    /// Reset the internal state for a next job.
+    ///
+    /// Returns false, if the event is already reset and no event exists.
+    pub fn reset(&self) -> anyhow::Result<bool> {
+        self.abort_flag.store(false, Ordering::Release);
+        Ok(matches!(
+            self.event
+                .wait_timeout(Duration::ZERO)
+                .context("failed to get job complete event")?,
+            EventWaitResult::Signaled
+        ))
+    }
+
+    /// Returns the event to notify the completion of background job.
+    pub fn get_completion_event(&self) -> &Event {
+        &self.event
+    }
+}
+
+/// Background job context.
+///
+/// When dropped, this sends an event to the main thread via [Event].
+pub struct BackgroundJob<'a> {
+    event: &'a Event,
+    abort_flag: &'a AtomicBool,
+}
+
+impl BackgroundJob<'_> {
+    /// Returns whether the background job is aborted or not.
+    pub fn is_aborted(&self) -> bool {
+        self.abort_flag.load(Ordering::Acquire)
+    }
+}
+
+impl Drop for BackgroundJob<'_> {
+    fn drop(&mut self) {
+        self.event.signal().expect("send job complete event");
     }
 }
 
@@ -342,5 +420,68 @@ mod tests {
         // cleanup
         task.consume(6);
         wait_thread_with_timeout(close_thread, 100);
+    }
+
+    #[test]
+    fn new_background_job_event() {
+        assert!(BackgroundJobControl::new().is_ok());
+    }
+
+    #[test]
+    fn background_job_is_not_aborted_default() {
+        let event = BackgroundJobControl::new().unwrap();
+
+        let job = event.new_job();
+
+        assert!(!job.is_aborted());
+    }
+
+    #[test]
+    fn abort_background_job() {
+        let event = BackgroundJobControl::new().unwrap();
+
+        let job = event.new_job();
+        event.abort();
+
+        assert!(job.is_aborted());
+    }
+
+    #[test]
+    fn reset_background_job() {
+        let event = BackgroundJobControl::new().unwrap();
+
+        event.abort();
+        event.reset().unwrap();
+        let job = event.new_job();
+
+        assert!(!job.is_aborted());
+    }
+
+    #[test]
+    fn reset_background_job_event() {
+        let event = BackgroundJobControl::new().unwrap();
+
+        let job = event.new_job();
+        drop(job);
+
+        assert!(event.reset().unwrap());
+    }
+
+    #[test]
+    fn reset_background_job_event_twice() {
+        let event = BackgroundJobControl::new().unwrap();
+
+        let job = event.new_job();
+        drop(job);
+
+        event.reset().unwrap();
+        assert!(!event.reset().unwrap());
+    }
+
+    #[test]
+    fn reset_background_job_event_no_jobs() {
+        let event = BackgroundJobControl::new().unwrap();
+
+        assert!(!event.reset().unwrap());
     }
 }
