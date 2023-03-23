@@ -24,6 +24,7 @@ use syn::Ident;
 use syn::Lit;
 use syn::LitInt;
 use syn::Meta;
+use syn::MetaNameValue;
 use syn::Type;
 use syn::Visibility;
 
@@ -391,10 +392,10 @@ fn parse_bits_attr(attrs: &[Attribute]) -> Result<Option<LitInt>> {
     let mut expected_bits = None;
 
     for attr in attrs {
-        if attr.path.is_ident("doc") {
+        if attr.path().is_ident("doc") {
             continue;
         }
-        if let Some(v) = try_parse_bits_attr(attr)? {
+        if let Some(v) = try_parse_bits_attr(attr) {
             expected_bits = Some(v);
             continue;
         }
@@ -406,15 +407,20 @@ fn parse_bits_attr(attrs: &[Attribute]) -> Result<Option<LitInt>> {
 }
 
 // This function will return None if the attribute is not #[bits = *].
-fn try_parse_bits_attr(attr: &Attribute) -> Result<Option<LitInt>> {
-    if attr.path.is_ident("bits") {
-        if let Meta::NameValue(name_value) = attr.parse_meta()? {
-            if let Lit::Int(int) = name_value.lit {
-                return Ok(Some(int));
-            }
+fn try_parse_bits_attr(attr: &Attribute) -> Option<LitInt> {
+    if attr.path().is_ident("bits") {
+        if let Meta::NameValue(MetaNameValue {
+            value:
+                syn::Expr::Lit(syn::ExprLit {
+                    lit: Lit::Int(int), ..
+                }),
+            ..
+        }) = &attr.meta
+        {
+            return Some(int).cloned();
         }
     }
-    Ok(None)
+    None
 }
 
 fn parse_remove_bits_attr(ast: &mut DeriveInput) -> Result<Option<u64>> {
@@ -422,7 +428,7 @@ fn parse_remove_bits_attr(ast: &mut DeriveInput) -> Result<Option<u64>> {
     let mut bits_idx = 0;
 
     for (i, attr) in ast.attrs.iter().enumerate() {
-        if let Some(w) = try_parse_bits_attr(attr)? {
+        if let Some(w) = try_parse_bits_attr(attr) {
             bits_idx = i;
             width = Some(w.base10_parse()?);
         }

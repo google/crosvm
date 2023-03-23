@@ -127,7 +127,7 @@ version = "0.1.0"
 dependencies = [
  "proc-macro2",
  "quote 1.0.33",
- "syn 1.0.103",
+ "syn 2.0.37",
 ]
 
 [[package]]
@@ -252,7 +252,7 @@ version = "0.1.0"
 dependencies = [
  "proc-macro2",
  "quote 1.0.33",
- "syn 1.0.103",
+ "syn 2.0.37",
 ]
 
 [[package]]
@@ -310,7 +310,7 @@ version = "0.1.0"
 dependencies = [
  "proc-macro2",
  "quote 1.0.33",
- "syn 1.0.103",
+ "syn 2.0.37",
 ]
 
 [[package]]
@@ -2423,7 +2423,7 @@ dependencies = [
  "argh",
  "proc-macro2",
  "quote 1.0.33",
- "syn 1.0.103",
+ "syn 2.0.37",
 ]
 
 [[package]]

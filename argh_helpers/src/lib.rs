@@ -136,20 +136,26 @@ pub fn pad_description_for_argh(
         if let syn::Fields::Named(fields) = &mut s.fields {
             for f in fields.named.iter_mut() {
                 for a in f.attrs.iter_mut() {
-                    if a.path
+                    if a.path()
                         .get_ident()
                         .map(|i| i.to_string())
                         .unwrap_or_default()
                         == *"doc"
                     {
-                        if let Ok(syn::Meta::NameValue(nv)) = a.parse_meta() {
-                            if let syn::Lit::Str(s) = nv.lit {
-                                let doc = s.value().lines().fold(String::new(), |mut output, s| {
-                                    let _ = write!(output, "{: <61}", s);
-                                    output
-                                });
-                                *a = syn::parse_quote! { #[doc= #doc] };
-                            }
+                        if let syn::Meta::NameValue(syn::MetaNameValue {
+                            value:
+                                syn::Expr::Lit(syn::ExprLit {
+                                    lit: syn::Lit::Str(s),
+                                    ..
+                                }),
+                            ..
+                        }) = &a.meta
+                        {
+                            let doc = s.value().lines().fold(String::new(), |mut output, s| {
+                                let _ = write!(output, "{: <61}", s);
+                                output
+                            });
+                            *a = syn::parse_quote! { #[doc= #doc] };
                         }
                     }
                 }
