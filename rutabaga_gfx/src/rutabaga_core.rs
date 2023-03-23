@@ -20,6 +20,9 @@ use crate::rutabaga_utils::*;
 #[cfg(feature = "virgl_renderer")]
 use crate::virgl_renderer::VirglRenderer;
 
+const RUTABAGA_DEFAULT_WIDTH: u32 = 1280;
+const RUTABAGA_DEFAULT_HEIGHT: u32 = 1024;
+
 /// Information required for 2D functionality.
 pub struct Rutabaga2DInfo {
     pub width: u32,
@@ -767,8 +770,8 @@ impl Rutabaga {
 
 /// Rutabaga Builder, following the Rust builder pattern.
 pub struct RutabagaBuilder {
-    display_width: Option<u32>,
-    display_height: Option<u32>,
+    display_width: u32,
+    display_height: u32,
     default_component: RutabagaComponentType,
     gfxstream_flags: GfxstreamFlags,
     virglrenderer_flags: VirglRendererFlags,
@@ -785,8 +788,8 @@ impl RutabagaBuilder {
         let gfxstream_flags = GfxstreamFlags::new().use_async_fence_cb(true);
 
         RutabagaBuilder {
-            display_width: None,
-            display_height: None,
+            display_width: RUTABAGA_DEFAULT_WIDTH,
+            display_height: RUTABAGA_DEFAULT_HEIGHT,
             default_component,
             gfxstream_flags,
             virglrenderer_flags,
@@ -797,13 +800,13 @@ impl RutabagaBuilder {
 
     /// Set display width for the RutabagaBuilder
     pub fn set_display_width(mut self, display_width: u32) -> RutabagaBuilder {
-        self.display_width = Some(display_width);
+        self.display_width = display_width;
         self
     }
 
     /// Set display height for the RutabagaBuilder
     pub fn set_display_height(mut self, display_height: u32) -> RutabagaBuilder {
-        self.display_height = Some(display_height);
+        self.display_height = display_height;
         self
     }
 
@@ -983,18 +986,9 @@ impl RutabagaBuilder {
 
             #[cfg(feature = "gfxstream")]
             if self.default_component == RutabagaComponentType::Gfxstream {
-                let display_width = self
-                    .display_width
-                    .ok_or(RutabagaError::InvalidRutabagaBuild("missing display width"))?;
-                let display_height =
-                    self.display_height
-                        .ok_or(RutabagaError::InvalidRutabagaBuild(
-                            "missing display height",
-                        ))?;
-
                 let gfxstream = Gfxstream::init(
-                    display_width,
-                    display_height,
+                    self.display_width,
+                    self.display_height,
                     self.gfxstream_flags,
                     fence_handler.clone(),
                 )?;
