@@ -98,4 +98,10 @@ generate! {
 
     /// _Future for the [`select10`] function.
     (Select10, <_Fut1, _Fut2, _Fut3, _Fut4, _Fut5, _Fut6, _Fut7, _Fut8, _Fut9, _Fut10>),
+
+    /// _Future for the [`select11`] function.
+    (Select11, <_Fut1, _Fut2, _Fut3, _Fut4, _Fut5, _Fut6, _Fut7, _Fut8, _Fut9, _Fut10, _Fut11>),
+
+    /// _Future for the [`select12`] function.
+    (Select12, <_Fut1, _Fut2, _Fut3, _Fut4, _Fut5, _Fut6, _Fut7, _Fut8, _Fut9, _Fut10, _Fut11, _Fut12>),
 }

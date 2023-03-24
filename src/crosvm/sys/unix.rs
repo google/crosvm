@@ -211,6 +211,7 @@ fn create_virtio_devices(
     resources: &mut SystemAllocator,
     #[cfg_attr(not(feature = "gpu"), allow(unused_variables))] vm_evt_wrtube: &SendTube,
     #[cfg(feature = "balloon")] balloon_device_tube: Option<Tube>,
+    #[cfg(feature = "balloon")] balloon_wss_device_tube: Option<Tube>,
     #[cfg(feature = "balloon")] balloon_inflate_tube: Option<Tube>,
     #[cfg(feature = "balloon")] init_balloon_size: u64,
     disk_device_tubes: &mut Vec<Tube>,
@@ -484,8 +485,9 @@ fn create_virtio_devices(
 
     #[cfg(feature = "balloon")]
     if let Some(balloon_device_tube) = balloon_device_tube {
-        let balloon_features =
-            (cfg.balloon_page_reporting as u64) << BalloonFeatures::PageReporting as u64;
+        let balloon_features = (cfg.balloon_page_reporting as u64)
+            << BalloonFeatures::PageReporting as u64
+            | (cfg.balloon_wss_reporting as u64) << BalloonFeatures::WSSReporting as u64;
         devs.push(create_balloon_device(
             cfg.protection_type,
             &cfg.jail_config,
@@ -495,6 +497,7 @@ fn create_virtio_devices(
                 BalloonMode::Relaxed
             },
             balloon_device_tube,
+            balloon_wss_device_tube,
             balloon_inflate_tube,
             init_balloon_size,
             balloon_features,
@@ -712,6 +715,7 @@ fn create_devices(
     irq_control_tubes: &mut Vec<Tube>,
     control_tubes: &mut Vec<TaggedControlTube>,
     #[cfg(feature = "balloon")] balloon_device_tube: Option<Tube>,
+    #[cfg(feature = "balloon")] balloon_wss_device_tube: Option<Tube>,
     #[cfg(feature = "balloon")] init_balloon_size: u64,
     disk_device_tubes: &mut Vec<Tube>,
     pmem_device_tubes: &mut Vec<Tube>,
@@ -840,6 +844,7 @@ fn create_devices(
         vm_evt_wrtube,
         #[cfg(feature = "balloon")]
         balloon_device_tube,
+        balloon_wss_device_tube,
         #[cfg(feature = "balloon")]
         balloon_inflate_tube,
         #[cfg(feature = "balloon")]
@@ -1671,6 +1676,16 @@ where
         (None, None)
     };
 
+    #[cfg(feature = "balloon")]
+    let (balloon_wss_host_tube, balloon_wss_device_tube) = if cfg.balloon_wss_reporting {
+        let (host, device) = Tube::pair().context("failed to create tube")?;
+        host.set_recv_timeout(Some(Duration::from_millis(100)))
+            .context("failed to set timeout")?;
+        (Some(host), Some(device))
+    } else {
+        (None, None)
+    };
+
     // Create one control socket per disk.
     let mut disk_device_tubes = Vec::new();
     let mut disk_host_tubes = Vec::new();
@@ -1871,6 +1886,8 @@ where
         &mut control_tubes,
         #[cfg(feature = "balloon")]
         balloon_device_tube,
+        #[cfg(feature = "balloon")]
+        balloon_wss_device_tube,
         #[cfg(feature = "balloon")]
         init_balloon_size,
         &mut disk_device_tubes,
@@ -2073,6 +2090,8 @@ where
         control_tubes,
         #[cfg(feature = "balloon")]
         balloon_host_tube,
+        #[cfg(feature = "balloon")]
+        balloon_wss_host_tube,
         &disk_host_tubes,
         #[cfg(feature = "gpu")]
         gpu_control_host_tube,
@@ -2517,6 +2536,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     irq_control_tubes: Vec<Tube>,
     mut control_tubes: Vec<TaggedControlTube>,
     #[cfg(feature = "balloon")] balloon_host_tube: Option<Tube>,
+    #[cfg(feature = "balloon")] balloon_wss_host_tube: Option<Tube>,
     disk_host_tubes: &[Tube],
     #[cfg(feature = "gpu")] gpu_control_tube: Tube,
     #[cfg(feature = "usb")] usb_control_tube: Tube,
@@ -2886,6 +2906,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     let mut pvpanic_code = PvPanicCode::Unknown;
     #[cfg(feature = "balloon")]
     let mut balloon_stats_id: u64 = 0;
+    let mut balloon_wss_id: u64 = 0;
     let mut registered_evt_tubes: HashMap<RegisteredEvent, HashSet<AddressedTube>> = HashMap::new();
 
     'wait: loop {
@@ -3121,7 +3142,11 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                 #[cfg(feature = "balloon")]
                                                 balloon_host_tube.as_ref(),
                                                 #[cfg(feature = "balloon")]
+                                                balloon_wss_host_tube.as_ref(),
+                                                #[cfg(feature = "balloon")]
                                                 &mut balloon_stats_id,
+                                                #[cfg(feature = "balloon")]
+                                                &mut balloon_wss_id,
                                                 disk_host_tubes,
                                                 &mut linux.pm,
                                                 #[cfg(feature = "gpu")]

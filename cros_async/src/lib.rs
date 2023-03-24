@@ -495,6 +495,89 @@ pub async fn select10<
     select::Select10::new(f1, f2, f3, f4, f5, f6, f7, f8, f9, f10).await
 }
 
+pub async fn select11<
+    F1: Future + Unpin,
+    F2: Future + Unpin,
+    F3: Future + Unpin,
+    F4: Future + Unpin,
+    F5: Future + Unpin,
+    F6: Future + Unpin,
+    F7: Future + Unpin,
+    F8: Future + Unpin,
+    F9: Future + Unpin,
+    F10: Future + Unpin,
+    F11: Future + Unpin,
+>(
+    f1: F1,
+    f2: F2,
+    f3: F3,
+    f4: F4,
+    f5: F5,
+    f6: F6,
+    f7: F7,
+    f8: F8,
+    f9: F9,
+    f10: F10,
+    f11: F11,
+) -> (
+    SelectResult<F1>,
+    SelectResult<F2>,
+    SelectResult<F3>,
+    SelectResult<F4>,
+    SelectResult<F5>,
+    SelectResult<F6>,
+    SelectResult<F7>,
+    SelectResult<F8>,
+    SelectResult<F9>,
+    SelectResult<F10>,
+    SelectResult<F11>,
+) {
+    select::Select11::new(f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11).await
+}
+
+pub async fn select12<
+    F1: Future + Unpin,
+    F2: Future + Unpin,
+    F3: Future + Unpin,
+    F4: Future + Unpin,
+    F5: Future + Unpin,
+    F6: Future + Unpin,
+    F7: Future + Unpin,
+    F8: Future + Unpin,
+    F9: Future + Unpin,
+    F10: Future + Unpin,
+    F11: Future + Unpin,
+    F12: Future + Unpin,
+>(
+    f1: F1,
+    f2: F2,
+    f3: F3,
+    f4: F4,
+    f5: F5,
+    f6: F6,
+    f7: F7,
+    f8: F8,
+    f9: F9,
+    f10: F10,
+    f11: F11,
+    f12: F12,
+) -> (
+    SelectResult<F1>,
+    SelectResult<F2>,
+    SelectResult<F3>,
+    SelectResult<F4>,
+    SelectResult<F5>,
+    SelectResult<F6>,
+    SelectResult<F7>,
+    SelectResult<F8>,
+    SelectResult<F9>,
+    SelectResult<F10>,
+    SelectResult<F11>,
+    SelectResult<F12>,
+) {
+    select::Select12::new(f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12).await
+}
+
 // Combination helpers to run until all futures are complete.
 
 /// Creates a combinator that runs the two given futures to completion, returning a tuple of the

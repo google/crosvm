@@ -26,6 +26,11 @@ pub enum BalloonTubeCommand {
     Stats {
         id: u64,
     },
+    // Fetch balloon wss. The ID can be used to discard stale states if any
+    // previous wss request failed or timed out.
+    WorkingSetSize {
+        id: u64,
+    },
 }
 
 // BalloonStats holds stats returned from the stats_queue.
@@ -45,6 +50,32 @@ pub struct BalloonStats {
     pub unevictable_memory: Option<u64>,
 }
 
+// TODO(b/276353613): remove and refactor bins into Vec
+pub const VIRTIO_BALLOON_WSS_NUM_BINS: usize = 4;
+
+// WSSBucket stores information about a bucket (or bin) of the working set size.
+#[derive(Default, Serialize, Deserialize, Debug, Clone, Copy)]
+pub struct WSSBucket {
+    pub age: u64,
+    pub bytes: u64,
+}
+
+// BalloonWSS holds WSS returned from the wss_queue.
+#[derive(Default, Serialize, Deserialize, Debug, Clone)]
+pub struct BalloonWSS {
+    pub wss: [WSSBucket; VIRTIO_BALLOON_WSS_NUM_BINS],
+}
+
+impl BalloonWSS {
+    pub fn new() -> Self {
+        BalloonWSS {
+            wss: [WSSBucket {
+                ..Default::default()
+            }; VIRTIO_BALLOON_WSS_NUM_BINS],
+        }
+    }
+}
+
 // BalloonTubeResult are results to BalloonTubeCommand defined above.
 #[derive(Serialize, Deserialize, Debug)]
 pub enum BalloonTubeResult {
@@ -55,5 +86,9 @@ pub enum BalloonTubeResult {
     },
     Adjusted {
         num_bytes: u64,
+    },
+    WorkingSetSize {
+        wss: BalloonWSS,
+        id: u64,
     },
 }

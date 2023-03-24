@@ -704,6 +704,7 @@ pub fn create_balloon_device(
     jail_config: &Option<JailConfig>,
     mode: BalloonMode,
     tube: Tube,
+    wss_tube: Option<Tube>,
     inflate_tube: Option<Tube>,
     init_balloon_size: u64,
     enabled_features: u64,
@@ -712,6 +713,7 @@ pub fn create_balloon_device(
     let dev = virtio::Balloon::new(
         virtio::base_features(protection_type),
         tube,
+        wss_tube,
         inflate_tube,
         init_balloon_size,
         mode,

@@ -42,6 +42,8 @@ pub use balloon_control::BalloonStats;
 use balloon_control::BalloonTubeCommand;
 #[cfg(feature = "balloon")]
 use balloon_control::BalloonTubeResult;
+pub use balloon_control::BalloonWSS;
+pub use balloon_control::WSSBucket;
 use base::error;
 use base::info;
 use base::warn;
@@ -186,6 +188,7 @@ pub enum BalloonControlCommand {
         num_bytes: u64,
     },
     Stats,
+    WorkingSetSize,
 }
 
 // BalloonControlResult holds results for BalloonControlCommand defined above.
@@ -194,6 +197,9 @@ pub enum BalloonControlResult {
     Stats {
         stats: BalloonStats,
         balloon_actual: u64,
+    },
+    WorkingSetSize {
+        wss: BalloonWSS,
     },
 }
 
@@ -1310,7 +1316,9 @@ impl VmRequest {
         &self,
         run_mode: &mut Option<VmRunMode>,
         #[cfg(feature = "balloon")] balloon_host_tube: Option<&Tube>,
+        #[cfg(feature = "balloon")] balloon_wss_host_tube: Option<&Tube>,
         #[cfg(feature = "balloon")] balloon_stats_id: &mut u64,
+        #[cfg(feature = "balloon")] balloon_wss_id: &mut u64,
         disk_host_tubes: &[Tube],
         pm: &mut Option<Arc<Mutex<dyn PmResource + Send>>>,
         #[cfg(feature = "gpu")] gpu_control_tube: &Tube,
@@ -1532,11 +1540,62 @@ impl VmRequest {
                                         };
                                     }
                                     Err(e) => {
-                                        error!("balloon socket recv failed: {}", e);
+                                        error!("balloon socket recv for stats failed: {}", e);
                                         break VmResponse::Err(SysError::last());
                                     }
                                     Ok(BalloonTubeResult::Adjusted { .. }) => {
                                         unreachable!("unexpected adjusted response")
+                                    }
+                                    Ok(BalloonTubeResult::WorkingSetSize { .. }) => {
+                                        unreachable!("unexpected wss response")
+                                    }
+                                }
+                            }
+                        }
+                        Err(_) => VmResponse::Err(SysError::last()),
+                    }
+                } else {
+                    VmResponse::Err(SysError::new(ENOTSUP))
+                }
+            }
+            #[cfg(feature = "balloon")]
+            VmRequest::BalloonCommand(BalloonControlCommand::WorkingSetSize) => {
+                if let Some(balloon_wss_host_tube) = balloon_wss_host_tube {
+                    // NB: There are a few reasons stale balloon wss could be left
+                    // in balloon_wss_host_tube:
+                    //  - the send succeeds, but the recv fails because the device
+                    //      is not ready yet. So when the device is ready, there are
+                    //      extra ess requests queued.
+                    //  - the send succeed, but the recv times out. When the device
+                    //      does return the stats, there will be no consumer.
+                    //
+                    // To guard against this, add an `id` to the wss request. If
+                    // the id returned to us doesn't match, we keep trying to read
+                    // until it does.
+                    *balloon_wss_id = (*balloon_wss_id).wrapping_add(1);
+                    let sent_id = *balloon_wss_id;
+                    match balloon_wss_host_tube
+                        .send(&BalloonTubeCommand::WorkingSetSize { id: sent_id })
+                    {
+                        Ok(_) => {
+                            loop {
+                                match balloon_wss_host_tube.recv() {
+                                    Ok(BalloonTubeResult::WorkingSetSize { wss, id }) => {
+                                        if sent_id != id {
+                                            // Keep trying to get fresh stats.
+                                            continue;
+                                        }
+                                        break VmResponse::BalloonWSS { wss };
+                                    }
+                                    Err(e) => {
+                                        error!("balloon socket recv for wss failed: {}", e);
+                                        break VmResponse::Err(SysError::last());
+                                    }
+                                    Ok(BalloonTubeResult::Adjusted { .. }) => {
+                                        unreachable!("unexpected adjusted response")
+                                    }
+                                    Ok(BalloonTubeResult::Stats { .. }) => {
+                                        unreachable!("unexpected stats response")
                                     }
                                 }
                             }
@@ -1797,6 +1856,8 @@ pub enum VmResponse {
         stats: BalloonStats,
         balloon_actual: u64,
     },
+    /// Results of balloon WSS-R command
+    BalloonWSS { wss: BalloonWSS },
     /// Results of usb control commands.
     UsbResponse(UsbControlResult),
     #[cfg(feature = "gpu")]
@@ -1831,6 +1892,14 @@ impl Display for VmResponse {
                     serde_json::to_string_pretty(&stats)
                         .unwrap_or_else(|_| "invalid_response".to_string()),
                     balloon_actual
+                )
+            }
+            VmResponse::BalloonWSS { wss } => {
+                write!(
+                    f,
+                    "wss: {}",
+                    serde_json::to_string_pretty(&wss)
+                        .unwrap_or_else(|_| "invalid_response".to_string())
                 )
             }
             UsbResponse(result) => write!(f, "usb control request get result {:?}", result),

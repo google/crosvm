@@ -820,6 +820,12 @@ pub struct RunCommand {
     /// enable page reporting in balloon.
     pub balloon_page_reporting: bool,
 
+    #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
+    #[merge(strategy = overwrite_false)]
+    /// enable working set size reporting in balloon.
+    pub balloon_wss_reporting: bool,
+
     #[argh(option)]
     /// comma separated key=value pairs for setting up battery
     /// device
@@ -2698,6 +2704,7 @@ impl TryFrom<RunCommand> for super::config::Config {
         cfg.rng = !cmd.no_rng;
         cfg.balloon = !cmd.no_balloon;
         cfg.balloon_page_reporting = cmd.balloon_page_reporting;
+        cfg.balloon_wss_reporting = cmd.balloon_wss_reporting;
         #[cfg(feature = "audio")]
         {
             cfg.virtio_snds = cmd.virtio_snd;

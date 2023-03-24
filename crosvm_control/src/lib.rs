@@ -25,12 +25,14 @@ use libc::ssize_t;
 use vm_control::client::*;
 use vm_control::BalloonControlCommand;
 use vm_control::BalloonStats;
+use vm_control::BalloonWSS;
 use vm_control::DiskControlCommand;
 use vm_control::RegisteredEvent;
 use vm_control::UsbControlAttachedDevice;
 use vm_control::UsbControlResult;
 use vm_control::VmRequest;
 use vm_control::VmResponse;
+use vm_control::WSSBucket;
 use vm_control::USB_CONTROL_MAX_PORTS;
 
 fn validate_socket_path(socket_path: *const c_char) -> Option<PathBuf> {
@@ -428,6 +430,86 @@ pub extern "C" fn crosvm_client_balloon_stats(
                 if !actual.is_null() {
                     unsafe {
                         *actual = balloon_actual;
+                    }
+                }
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    })
+    .unwrap_or(false)
+}
+
+/// Externally exposed variant of BalloonWss/WSSBucket, used for FFI.
+#[derive(Clone, Copy, Debug)]
+#[repr(C)]
+pub struct WSSBucketFfi {
+    age: u64,
+    bytes: u64,
+}
+
+impl WSSBucketFfi {
+    fn new() -> Self {
+        Self { age: 0, bytes: 0 }
+    }
+}
+
+impl From<WSSBucket> for WSSBucketFfi {
+    fn from(other: WSSBucket) -> Self {
+        Self {
+            age: other.age,
+            bytes: other.bytes,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct BalloonWSSFfi {
+    wss: [WSSBucketFfi; 4],
+}
+
+impl From<&BalloonWSS> for BalloonWSSFfi {
+    fn from(other: &BalloonWSS) -> Self {
+        let mut ffi = Self {
+            wss: [WSSBucketFfi::new(); 4],
+        };
+        for (ffi_wss, other_wss) in ffi.wss.iter_mut().zip(other.wss) {
+            *ffi_wss = other_wss.into();
+        }
+        ffi
+    }
+}
+
+impl BalloonWSSFfi {
+    pub fn new() -> Self {
+        Self {
+            wss: [WSSBucketFfi::new(); 4],
+        }
+    }
+}
+
+/// Returns balloon working set size of the crosvm instance whose control socket is listening on socket_path.
+#[no_mangle]
+pub extern "C" fn crosvm_client_balloon_wss(
+    socket_path: *const c_char,
+    wss: *mut BalloonWSSFfi,
+) -> bool {
+    catch_unwind(|| {
+        if let Some(socket_path) = validate_socket_path(socket_path) {
+            let request = &VmRequest::BalloonCommand(BalloonControlCommand::WorkingSetSize);
+            if let Ok(VmResponse::BalloonWSS {
+                wss: ref balloon_wss,
+            }) = handle_request(request, &socket_path)
+            {
+                if !wss.is_null() {
+                    // SAFETY: deref of raw pointer is safe because we check to
+                    // make sure the pointer is not null.
+                    unsafe {
+                        *wss = balloon_wss.into();
                     }
                 }
                 true
