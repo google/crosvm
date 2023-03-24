@@ -2,9 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// virtio-fs is a Unix-only device.
-#![cfg(unix)]
-
 use std::ffi::CString;
 use std::fs::File;
 use std::path::Path;
@@ -57,7 +54,6 @@ fn lookup(fs: &PassthroughFs, path: &Path) -> Option<Inode> {
     Some(inode)
 }
 
-#[test]
 fn test_lookup() {
     let temp_dir = TempDir::new().unwrap();
     create_test_data(&temp_dir, &["dir"], &["a.txt", "dir/b.txt"]);
@@ -77,7 +73,6 @@ fn test_lookup() {
     assert_eq!(lookup(&fs, &temp_dir.path().join("A.txt")), None);
 }
 
-#[test]
 fn test_lookup_ascii_casefold() {
     let temp_dir = TempDir::new().unwrap();
     create_test_data(&temp_dir, &["dir"], &["a.txt", "dir/b.txt"]);
@@ -105,4 +100,25 @@ fn test_lookup_ascii_casefold() {
     );
 
     assert_eq!(lookup(&fs, &temp_dir.path().join("nonexistent-file")), None);
+}
+
+pub fn main() {
+    // Use `libtest_mimic` to force to run each test in single thread, as PassthroughFS can execute
+    // process-wide fs operations such as fchdir.
+    let args = libtest_mimic::Arguments {
+        test_threads: Some(1),
+        ..libtest_mimic::Arguments::from_args()
+    };
+
+    let tests = vec![
+        libtest_mimic::Trial::test("test_lookup", move || {
+            test_lookup();
+            Ok(())
+        }),
+        libtest_mimic::Trial::test("test_lookup_ascii_casefold", move || {
+            test_lookup_ascii_casefold();
+            Ok(())
+        }),
+    ];
+    libtest_mimic::run(&args, tests).exit();
 }

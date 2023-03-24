@@ -829,6 +829,7 @@ dependencies = [
  "kvm_sys",
  "libc",
  "libcras",
+ "libtest-mimic",
  "libva",
  "libvda",
  "linux_input_sys",
