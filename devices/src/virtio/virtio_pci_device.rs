@@ -10,6 +10,7 @@ use acpi_tables::sdt::SDT;
 use anyhow::anyhow;
 use anyhow::Context;
 use base::error;
+use base::info;
 use base::AsRawDescriptor;
 use base::AsRawDescriptors;
 use base::Event;
@@ -752,6 +753,9 @@ impl PciDevice for VirtioPciDevice {
 
     fn read_config_register(&self, reg_idx: usize) -> u32 {
         let mut data: u32 = self.config_regs.read_reg(reg_idx);
+        if reg_idx < 5 && self.debug_label() == "pcivirtio-gpu" {
+            info!("virtio gpu read config register {}", reg_idx);
+        }
         if let Some(msix_cap_reg_idx) = self.msix_cap_reg_idx {
             if msix_cap_reg_idx == reg_idx {
                 data = self.msix_config.lock().read_msix_capability(data);

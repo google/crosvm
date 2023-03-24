@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use anyhow::anyhow;
 use base::error;
+use base::info;
 use base::unix::process::fork_process;
 use base::AsRawDescriptor;
 #[cfg(feature = "swap")]
@@ -121,7 +122,13 @@ fn child_proc<D: BusDevice>(tube: Tube, mut device: D) {
                 Ok(())
             }
             Command::ReadConfig(idx) => {
+                if idx < 5 && device.debug_label() == "pcivirtio-gpu" {
+                    info!("gpu read config {}", idx);
+                }
                 let val = device.config_register_read(idx as usize);
+                if idx < 5 && device.debug_label() == "pcivirtio-gpu" {
+                    info!("done gpu read config {}", idx);
+                }
                 tube.send(&CommandResult::ReadConfigResult(val))
             }
             Command::WriteConfig {
@@ -236,6 +243,7 @@ impl ProxyDevice {
             }
 
             device.on_sandboxed();
+            info!("begin child proc {}", debug_label);
             child_proc(child_tube, device);
 
             // We're explicitly not using std::process::exit here to avoid the cleanup of
