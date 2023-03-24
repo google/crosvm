@@ -404,7 +404,7 @@ pub enum Level {
 
 /// Represents a IOAPIC redirection table entry.
 #[bitfield]
-#[derive(Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IoapicRedirectionTableEntry {
     vector: BitField8,
     #[bits = 3]

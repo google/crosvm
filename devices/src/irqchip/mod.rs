@@ -11,6 +11,8 @@ use hypervisor::IrqRoute;
 use hypervisor::MPState;
 use hypervisor::Vcpu;
 use resources::SystemAllocator;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::pci::CrosvmDeviceId;
 use crate::pci::PciId;
@@ -68,7 +70,7 @@ struct IrqEvent {
     source: IrqEventSource,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DeviceId {
     /// PCI Device, use its PciId directly.
     PciDeviceId(PciId),
@@ -114,7 +116,7 @@ impl From<DeviceId> for u32 {
 }
 
 /// Identification information about the source of an IrqEvent
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct IrqEventSource {
     pub device_id: DeviceId,
     pub queue_id: usize,

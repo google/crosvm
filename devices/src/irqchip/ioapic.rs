@@ -6,6 +6,7 @@
 // See https://www.intel.com/content/dam/doc/datasheet/io-controller-hub-10-family-datasheet.pdf
 // for a specification.
 
+use anyhow::Context;
 use base::error;
 use base::warn;
 use base::Error;
@@ -21,6 +22,8 @@ use hypervisor::TriggerMode;
 use hypervisor::MAX_IOAPIC_PINS;
 use hypervisor::NUM_IOAPIC_PINS;
 use remain::sorted;
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 use vm_control::VmIrqRequest;
 use vm_control::VmIrqResponse;
@@ -77,6 +80,48 @@ fn decode_irq_from_selector(selector: u8) -> (usize, bool) {
 // not exactly the same as) KVM's IOAPIC.
 const RTC_IRQ: usize = 0x8;
 
+/// [Ioapic] stores MSIs used to back GSIs, but not enough information to re-create these MSIs
+/// (it is missing the address & data). It also includes data that is unused by the userspace
+/// ioapic (the per gsi resample event, [IrqEvent::resample_event], is always None).
+/// This struct is essentially the complete serialized form of [IrqEvent] as used in
+/// [Ioapic::out_events].
+#[derive(Clone, Serialize, Deserialize)]
+struct OutEventSnapshot {
+    gsi: u32,
+    msi_address: u64,
+    msi_data: u32,
+    source: IrqEventSource,
+}
+
+/// Snapshot of [Ioapic] state. Some fields were intentionally excluded:
+/// * [Ioapic::resample_events]: these will get re-registered when the VM is
+///   created (e.g. prior to restoring a snapshot).
+/// * [Ioapic::out_events]: this isn't serializable as it contains Events.
+///   Replaced by [IoapicSnapshot::out_event_snapshots].
+/// * [Ioapic::irq_tube]: will be set up as part of creating the VM.
+///
+/// See [Ioapic] for descriptions of fields by the same names.
+#[derive(Serialize, Deserialize)]
+struct IoapicSnapshot {
+    num_pins: usize,
+    ioregsel: u8,
+    ioapicid: u32,
+    rtc_remote_irr: bool,
+    out_event_snapshots: Vec<Option<OutEventSnapshot>>,
+    redirect_table: Vec<IoapicRedirectionTableEntry>,
+    interrupt_level: Vec<bool>,
+}
+
+/// Stores the outbound IRQ line in runtime & serializable forms.
+struct OutEvent {
+    /// The actual IrqEvent used to dispatch IRQs when the VM is running.
+    irq_event: IrqEvent,
+    /// Serializable form of this IRQ line so that it can be re-created when
+    /// the VM is snapshotted & resumed. Will be None until the line is
+    /// completely set up.
+    snapshot: Option<OutEventSnapshot>,
+}
+
 pub struct Ioapic {
     /// Number of supported IO-APIC inputs / redirection entries.
     num_pins: usize,
@@ -88,7 +133,8 @@ pub struct Ioapic {
     /// one of its interrupts is being coalesced.
     rtc_remote_irr: bool,
     /// Outgoing irq events that are used to inject MSI interrupts.
-    out_events: Vec<Option<IrqEvent>>,
+    /// Also contains the serializable form used for snapshotting.
+    out_events: Vec<Option<OutEvent>>,
     /// Events that should be triggered on an EOI. The outer Vec is indexed by GSI, and the inner
     /// Vec is an unordered list of registered resample events for the GSI.
     resample_events: Vec<Vec<Event>>,
@@ -188,15 +234,20 @@ impl Ioapic {
         for (gsi, out_event) in self.out_events.iter_mut().enumerate() {
             let event = Event::new()?;
             register_irqfd(gsi as u32, &event)?;
-            *out_event = Some(IrqEvent {
-                gsi: gsi as u32,
-                event,
-                resample_event: None,
-                source: IrqEventSource {
-                    device_id: CrosvmDeviceId::DirectGsi.into(),
-                    queue_id: 0,
-                    device_name: "direct_gsi".into(),
+            *out_event = Some(OutEvent {
+                irq_event: IrqEvent {
+                    gsi: gsi as u32,
+                    event,
+                    resample_event: None,
+                    source: IrqEventSource {
+                        device_id: CrosvmDeviceId::DirectGsi.into(),
+                        queue_id: 0,
+                        device_name: "direct_gsi".into(),
+                    },
                 },
+                // TODO(b/275124020): make sure this works with snapshotting by restoring
+                // the ioapic first, and then calling this function.
+                snapshot: None,
             });
         }
         Ok(())
@@ -320,7 +371,7 @@ impl Ioapic {
         }
 
         let injected = match self.out_events.get(irq) {
-            Some(Some(evt)) => evt.event.signal().is_ok(),
+            Some(Some(out_event)) => out_event.irq_event.event.signal().is_ok(),
             _ => false,
         };
 
@@ -419,7 +470,7 @@ impl Ioapic {
         // the GSI's route to the new MSI data+addr destination.
         let name = self.debug_label();
         let gsi = if let Some(evt) = &self.out_events[index] {
-            evt.gsi
+            evt.irq_event.gsi
         } else {
             let event = Event::new().map_err(IoapicError::CreateEvent)?;
             let request = VmIrqRequest::AllocateOneMsi {
@@ -437,21 +488,24 @@ impl Ioapic {
                 .map_err(IoapicError::AllocateOneMsiRecv)?
             {
                 VmIrqResponse::AllocateOneMsi { gsi, .. } => {
-                    self.out_events[index] = Some(IrqEvent {
-                        gsi,
-                        event: match request {
-                            VmIrqRequest::AllocateOneMsi { irqfd, .. } => irqfd,
-                            _ => unreachable!(),
+                    self.out_events[index] = Some(OutEvent {
+                        irq_event: IrqEvent {
+                            gsi,
+                            event: match request {
+                                VmIrqRequest::AllocateOneMsi { irqfd, .. } => irqfd,
+                                _ => unreachable!(),
+                            },
+                            resample_event: None,
+                            // This source isn't currently used for anything, we already sent the
+                            // relevant source information to the main thread via the AllocateOneMsi
+                            // request, but we populate it anyways for debugging.
+                            source: IrqEventSource {
+                                device_id: self.device_id(),
+                                queue_id: index,
+                                device_name: name,
+                            },
                         },
-                        resample_event: None,
-                        // This source isn't currently used for anything, we already sent the
-                        // relevant source information to the main thread via the AllocateOneMsi
-                        // request, but we populate it anyways for debugging.
-                        source: IrqEventSource {
-                            device_id: self.device_id(),
-                            queue_id: index,
-                            device_name: name,
-                        },
+                        snapshot: None,
                     });
                     gsi
                 }
@@ -474,6 +528,103 @@ impl Ioapic {
         if let VmIrqResponse::Err(e) = self.irq_tube.recv().map_err(IoapicError::AddMsiRouteRecv)? {
             return Err(IoapicError::AddMsiRoute(e));
         }
+
+        // Track this MSI route for snapshotting so it can be restored.
+        self.out_events[index]
+            .as_mut()
+            .expect("IRQ is guaranteed initialized")
+            .snapshot = Some(OutEventSnapshot {
+            gsi,
+            msi_address,
+            msi_data,
+            source: IrqEventSource {
+                device_id: self.device_id(),
+                queue_id: index,
+                device_name: self.debug_label(),
+            },
+        });
+        Ok(())
+    }
+
+    /// Similar to [Ioapic::setup_msi], but used only to re-create an MSI as
+    /// part of the snapshot restore process, which allows us to assume certain
+    /// invariants (like msi_data != 0) already hold.
+    fn restore_msi(
+        &mut self,
+        index: usize,
+        gsi: u32,
+        msi_address: u64,
+        msi_data: u32,
+    ) -> std::result::Result<(), IoapicError> {
+        let event = Event::new().map_err(IoapicError::CreateEvent)?;
+        let name = self.debug_label();
+        let request = VmIrqRequest::AllocateOneMsiAtGsi {
+            irqfd: event,
+            gsi,
+            device_id: self.device_id().into(),
+            queue_id: index, // Use out_events index as queue_id for outgoing ioapic MSIs
+            device_name: name.clone(),
+        };
+        self.irq_tube
+            .send(&request)
+            .map_err(IoapicError::AllocateOneMsiSend)?;
+        if let VmIrqResponse::Err(e) = self
+            .irq_tube
+            .recv()
+            .map_err(IoapicError::AllocateOneMsiRecv)?
+        {
+            return Err(IoapicError::AllocateOneMsi(e));
+        }
+
+        self.out_events[index] = Some(OutEvent {
+            irq_event: IrqEvent {
+                gsi,
+                event: match request {
+                    VmIrqRequest::AllocateOneMsiAtGsi { irqfd, .. } => irqfd,
+                    _ => unreachable!(),
+                },
+                resample_event: None,
+                // This source isn't currently used for anything, we already sent the
+                // relevant source information to the main thread via the AllocateOneMsi
+                // request, but we populate it anyways for debugging.
+                source: IrqEventSource {
+                    device_id: self.device_id(),
+                    queue_id: index,
+                    device_name: name,
+                },
+            },
+            snapshot: None,
+        });
+
+        // Set the MSI route for the GSI.  This controls which apic(s) get the interrupt when the
+        // ioapic's outgoing event is written, and various attributes of how the interrupt is
+        // delivered.
+        let request = VmIrqRequest::AddMsiRoute {
+            gsi,
+            msi_address,
+            msi_data,
+        };
+        self.irq_tube
+            .send(&request)
+            .map_err(IoapicError::AddMsiRouteSend)?;
+        if let VmIrqResponse::Err(e) = self.irq_tube.recv().map_err(IoapicError::AddMsiRouteRecv)? {
+            return Err(IoapicError::AddMsiRoute(e));
+        }
+
+        // Track this MSI route for snapshotting so it can be restored.
+        self.out_events[index]
+            .as_mut()
+            .expect("IRQ is guaranteed initialized")
+            .snapshot = Some(OutEventSnapshot {
+            gsi,
+            msi_address,
+            msi_data,
+            source: IrqEventSource {
+                device_id: self.device_id(),
+                queue_id: index,
+                device_name: self.debug_label(),
+            },
+        });
         Ok(())
     }
 
@@ -500,6 +651,54 @@ impl Ioapic {
 }
 
 impl Suspendable for Ioapic {
+    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        serde_json::to_value(IoapicSnapshot {
+            num_pins: self.num_pins,
+            ioregsel: self.ioregsel,
+            ioapicid: self.ioapicid,
+            rtc_remote_irr: self.rtc_remote_irr,
+            out_event_snapshots: self
+                .out_events
+                .iter()
+                .map(|out_event_opt| {
+                    if let Some(out_event) = out_event_opt {
+                        out_event.snapshot.clone()
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
+            redirect_table: self.redirect_table.clone(),
+            interrupt_level: self.interrupt_level.clone(),
+        })
+        .context("failed serializing Ioapic")
+    }
+
+    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        let snap: IoapicSnapshot =
+            serde_json::from_value(data).context("failed to deserialize Ioapic snapshot")?;
+
+        self.num_pins = snap.num_pins;
+        self.ioregsel = snap.ioregsel;
+        self.ioapicid = snap.ioapicid;
+        self.rtc_remote_irr = snap.rtc_remote_irr;
+        self.redirect_table = snap.redirect_table;
+        self.interrupt_level = snap.interrupt_level;
+        self.out_events = (0..snap.num_pins).map(|_| None).collect();
+
+        for (index, maybe_out_event) in snap.out_event_snapshots.iter().enumerate() {
+            if let Some(out_event) = maybe_out_event {
+                self.restore_msi(
+                    index,
+                    out_event.gsi,
+                    out_event.msi_address,
+                    out_event.msi_data,
+                )?;
+            }
+        }
+        Ok(())
+    }
+
     fn sleep(&mut self) -> anyhow::Result<()> {
         Ok(())
     }
@@ -533,6 +732,7 @@ mod tests {
     use hypervisor::DeliveryMode;
     use hypervisor::DeliveryStatus;
     use hypervisor::DestinationMode;
+    use std::thread;
 
     use super::*;
 
@@ -562,15 +762,28 @@ mod tests {
     fn set_up_with_irq(irq: usize, trigger: TriggerMode) -> Ioapic {
         let mut ioapic = self::new();
         set_up_redirection_table_entry(&mut ioapic, irq, trigger);
-        ioapic.out_events[irq] = Some(IrqEvent {
-            gsi: NUM_IOAPIC_PINS as u32,
-            event: Event::new().unwrap(),
-            resample_event: None,
-            source: IrqEventSource {
-                device_id: ioapic.device_id(),
-                queue_id: irq,
-                device_name: ioapic.debug_label(),
+        ioapic.out_events[irq] = Some(OutEvent {
+            irq_event: IrqEvent {
+                gsi: NUM_IOAPIC_PINS as u32,
+                event: Event::new().unwrap(),
+                resample_event: None,
+                source: IrqEventSource {
+                    device_id: ioapic.device_id(),
+                    queue_id: irq,
+                    device_name: ioapic.debug_label(),
+                },
             },
+
+            snapshot: Some(OutEventSnapshot {
+                gsi: NUM_IOAPIC_PINS as u32,
+                msi_address: 0xa,
+                msi_data: 0xd,
+                source: IrqEventSource {
+                    device_id: ioapic.device_id(),
+                    queue_id: irq,
+                    device_name: ioapic.debug_label(),
+                },
+            }),
         });
         ioapic
     }
@@ -983,5 +1196,70 @@ mod tests {
 
         // TODO(mutexlox): Verify that this actually fires an interrupt.
         ioapic.service_irq(irq, true);
+    }
+
+    #[track_caller]
+    fn recv_allocate_msi(t: &Tube) -> u32 {
+        match t.recv::<VmIrqRequest>().unwrap() {
+            VmIrqRequest::AllocateOneMsiAtGsi { gsi, .. } => gsi,
+            _ => panic!("unexpected irqchip message"),
+        }
+    }
+
+    struct MsiRouteDetails {
+        gsi: u32,
+        msi_address: u64,
+        msi_data: u32,
+    }
+
+    #[track_caller]
+    fn recv_add_msi_route(t: &Tube) -> MsiRouteDetails {
+        match t.recv::<VmIrqRequest>().unwrap() {
+            VmIrqRequest::AddMsiRoute {
+                gsi,
+                msi_address,
+                msi_data,
+            } => MsiRouteDetails {
+                gsi,
+                msi_address,
+                msi_data,
+            },
+            _ => panic!("unexpected irqchip message"),
+        }
+    }
+
+    #[track_caller]
+    fn send_ok(t: &Tube) {
+        t.send(&VmIrqResponse::Ok).unwrap();
+    }
+
+    #[test]
+    fn verify_ioapic_restore_smoke() {
+        let (irqchip_tube, ioapic_irq_tube) = Tube::pair().unwrap();
+
+        // Creates an ioapic w/ an MSI for GSI = NUM_IOAPIC_PINS, MSI
+        // address 0xa, and data 0xd. The irq index (pin number) is 10, but
+        // this is not meaningful.
+        let saved_ioapic = set_up_with_irq(10, TriggerMode::Level);
+
+        // Take a snapshot of the ioapic.
+        let snapshot = saved_ioapic.snapshot().unwrap();
+
+        // Create a fake irqchip to respond to our requests
+        let irqchip_fake = thread::spawn(move || {
+            assert_eq!(recv_allocate_msi(&irqchip_tube), NUM_IOAPIC_PINS as u32);
+            send_ok(&irqchip_tube);
+            let route = recv_add_msi_route(&irqchip_tube);
+            assert_eq!(route.gsi, NUM_IOAPIC_PINS as u32);
+            assert_eq!(route.msi_address, 0xa);
+            assert_eq!(route.msi_data, 0xd);
+            send_ok(&irqchip_tube);
+            irqchip_tube
+        });
+
+        let mut restored_ioapic = Ioapic::new(ioapic_irq_tube, NUM_IOAPIC_PINS).unwrap();
+        restored_ioapic.restore(snapshot).unwrap();
+
+        irqchip_fake.join().unwrap();
     }
 }
