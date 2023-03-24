@@ -9,6 +9,7 @@ use std::sync::Arc;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use acpi_tables::sdt::SDT;
 use anyhow::bail;
+use anyhow::Context;
 use base::error;
 use base::Event;
 use base::MemoryMapping;
@@ -589,44 +590,16 @@ impl<T: PciDevice> BusDevice for T {
             && result.mmio_add.is_empty()
             && result.mmio_remove.is_empty())
         {
-            let (ioevent_unregister_requests, ioevent_register_requests) =
-                match get_ioevent_requests(self.ioevents(), old_ranges, new_ranges) {
-                    Ok(a) => a,
-                    Err(e) => {
-                        error!("Failed to get ioevent requests: {:?}", e);
-                        return Default::default();
-                    }
-                };
-            if let Some(tube) = self.get_vm_memory_request_tube() {
-                for request in ioevent_unregister_requests {
-                    if let Err(e) = send_ioevent_update_request(tube, request) {
-                        match &e {
-                            IoEventError::SystemError(_) => {
-                                // Do nothing, as unregister may fail due to placeholder value
-                            }
-                            _ => {
-                                error!(
-                                    "IoEvent unregister failed for {}: {:?}",
-                                    self.debug_label(),
-                                    &e
-                                );
-                            }
-                        }
-                    }
-                }
-                for request in ioevent_register_requests {
-                    if let Err(e) = send_ioevent_update_request(tube, request) {
-                        error!(
-                            "IoEvent register failed for {}: {:?}",
-                            self.debug_label(),
-                            &e
-                        );
-                    }
-                }
-            } else {
+            if let Err(e) = send_ioevent_updates(
+                self.get_vm_memory_request_tube(),
+                self.ioevents(),
+                old_ranges,
+                new_ranges,
+            ) {
                 error!(
-                    "get_vm_memory_request_tube not implemented for {}, device may malfunction",
-                    self.debug_label()
+                    "send_ioevent_updates failed for {}: {:#}",
+                    self.debug_label(),
+                    e
                 );
             }
         }
@@ -878,6 +851,37 @@ fn send_ioevent_update_request(
     {
         return Err(IoEventError::SystemError(e));
     }
+    Ok(())
+}
+
+/// Sends register/unregister messages for ioevents based on the updated ranges.
+fn send_ioevent_updates(
+    vm_memory_request_tube: Option<&Tube>,
+    ioevents: Vec<(&Event, u64, Datamatch)>,
+    old_ranges: Vec<(BusRange, BusType)>,
+    new_ranges: Vec<(BusRange, BusType)>,
+) -> anyhow::Result<()> {
+    let tube = vm_memory_request_tube
+        .context("get_vm_memory_request_tube not implemented, device may malfunction")?;
+
+    let (ioevent_unregister_requests, ioevent_register_requests) =
+        get_ioevent_requests(ioevents, old_ranges, new_ranges)
+            .context("Failed to get ioevent requests")?;
+
+    for request in ioevent_unregister_requests {
+        match send_ioevent_update_request(tube, request) {
+            Err(IoEventError::SystemError(_)) => {
+                // Do nothing, as unregister may fail due to placeholder value
+            }
+            Err(e) => return Err(e).context("IoEvent unregister failed"),
+            Ok(()) => {}
+        }
+    }
+
+    for request in ioevent_register_requests {
+        send_ioevent_update_request(tube, request).context("IoEvent register failed")?;
+    }
+
     Ok(())
 }
 
