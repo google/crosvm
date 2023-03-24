@@ -112,6 +112,8 @@ const VIRTIO_BALLOON_F_EVENTS_VQ: u32 = 7; // Event vq is enabled
 struct virtio_balloon_config {
     num_pages: Le32,
     actual: Le32,
+    free_page_hint_cmd_id: Le32,
+    poison_val: Le32,
 }
 
 // BalloonState is shared by the worker and device thread.
@@ -823,6 +825,8 @@ impl Balloon {
         virtio_balloon_config {
             num_pages: state.num_pages.into(),
             actual: state.actual_pages.into(),
+            free_page_hint_cmd_id: 0.into(),
+            poison_val: 0.into(),
         }
     }
 
