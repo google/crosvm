@@ -590,17 +590,20 @@ impl<T: PciDevice> BusDevice for T {
             && result.mmio_add.is_empty()
             && result.mmio_remove.is_empty())
         {
-            if let Err(e) = send_ioevent_updates(
-                self.get_vm_memory_request_tube(),
-                self.ioevents(),
-                old_ranges,
-                new_ranges,
-            ) {
-                error!(
-                    "send_ioevent_updates failed for {}: {:#}",
-                    self.debug_label(),
-                    e
-                );
+            let ioevents = self.ioevents();
+            if !ioevents.is_empty() {
+                if let Err(e) = send_ioevent_updates(
+                    self.get_vm_memory_request_tube(),
+                    ioevents,
+                    old_ranges,
+                    new_ranges,
+                ) {
+                    error!(
+                        "send_ioevent_updates failed for {}: {:#}",
+                        self.debug_label(),
+                        e
+                    );
+                }
             }
         }
 
