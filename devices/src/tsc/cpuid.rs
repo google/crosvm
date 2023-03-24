@@ -71,23 +71,18 @@ pub fn tsc_frequency_cpuid(cpuid_count: CpuidCountFn) -> Option<hypervisor::CpuI
 
 /// Given the tsc frequency in Hz and the bus frequency in Hz, return a fake version of
 /// cpuid leaf 0x15.
-pub fn fake_tsc_frequency_cpuid(tsc_hz: u64, bus_hz: u32) -> hypervisor::CpuIdEntry {
+pub fn fake_tsc_frequency_cpuid(tsc_hz: u64, bus_hz: u32) -> CpuidResult {
     // We use 1000 for the crystal clock ratio denominator so we can preserve precision in case
     // tsc_hz is not neatly divisible by bus_hz
     let crystal_clock_ratio_denominator: u32 = 1000;
     let crystal_clock_ratio_numerator: u32 =
         (tsc_hz * crystal_clock_ratio_denominator as u64 / bus_hz as u64) as u32;
 
-    hypervisor::CpuIdEntry {
-        function: 0x15,
-        index: 0,
-        flags: 0,
-        cpuid: CpuidResult {
-            eax: crystal_clock_ratio_denominator,
-            ebx: crystal_clock_ratio_numerator,
-            ecx: bus_hz,
-            edx: 0,
-        },
+    CpuidResult {
+        eax: crystal_clock_ratio_denominator,
+        ebx: crystal_clock_ratio_numerator,
+        ecx: bus_hz,
+        edx: 0,
     }
 }
 

@@ -75,8 +75,6 @@ pub struct CpuIdContext {
     apic_frequency: u32,
     /// The TSC frequency in Hz, if it could be determined.
     tsc_frequency: Option<u64>,
-    /// Whether the hypervisor requires a calibrated TSC cpuid leaf (0x15).
-    calibrated_tsc_leaf_required: bool,
     /// CPU feature configurations.
     cpu_config: CpuConfigX86_64,
     /// __cpuid_count or a fake function for test.
@@ -108,7 +106,6 @@ impl CpuIdContext {
             } else {
                 None
             },
-            calibrated_tsc_leaf_required,
             cpu_config,
             cpuid_count,
             cpuid,
@@ -223,17 +220,9 @@ pub fn adjust_cpuid(entry: &mut CpuIdEntry, ctx: &CpuIdContext) {
             }
         }
         0x15 => {
-            if ctx.calibrated_tsc_leaf_required
-                || ctx.cpu_config.force_calibrated_tsc_leaf {
-
-                let cpuid_15 = ctx
-                    .tsc_frequency
-                    .map(|tsc_freq| devices::tsc::fake_tsc_frequency_cpuid(
-                            tsc_freq, ctx.apic_frequency));
-
-                if let Some(new_entry) = cpuid_15 {
-                    entry.cpuid = new_entry.cpuid;
-                }
+            if let Some(tsc_freq) = ctx.tsc_frequency {
+                // A calibrated TSC is required by the hypervisor or was forced by the user.
+                entry.cpuid = devices::tsc::fake_tsc_frequency_cpuid(tsc_freq, ctx.apic_frequency);
             } else if ctx.cpu_config.enable_pnp_data {
                 // Expose TSC frequency to guest
                 // Safe because we pass 0x15 for this call and the host
@@ -432,7 +421,6 @@ mod tests {
             apic_frequency: 0,
             tsc_frequency: None,
             cpu_config,
-            calibrated_tsc_leaf_required: false,
             cpuid_count: fake_cpuid_count,
             cpuid: fake_cpuid,
         };
