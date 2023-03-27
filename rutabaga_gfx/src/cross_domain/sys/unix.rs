@@ -7,13 +7,18 @@ use std::io::IoSlice;
 use std::io::IoSliceMut;
 use std::io::Seek;
 use std::io::SeekFrom;
+use std::os::unix::io::AsRawFd;
+use std::os::unix::io::FromRawFd;
+use std::os::unix::prelude::AsFd;
 
+use data_model::VolatileSlice;
 use libc::O_ACCMODE;
 use libc::O_WRONLY;
-
 use nix::cmsg_space;
 use nix::fcntl::fcntl;
 use nix::fcntl::FcntlArg;
+use nix::sys::epoll::EpollCreateFlags;
+use nix::sys::epoll::EpollFlags;
 use nix::sys::eventfd::eventfd;
 use nix::sys::eventfd::EfdFlags;
 use nix::sys::socket::connect;
@@ -27,26 +32,9 @@ use nix::sys::socket::MsgFlags;
 use nix::sys::socket::SockFlag;
 use nix::sys::socket::SockType;
 use nix::sys::socket::UnixAddr;
-
 use nix::unistd::pipe;
 use nix::unistd::read;
 use nix::unistd::write;
-
-use std::os::unix::io::AsRawFd;
-use std::os::unix::io::FromRawFd;
-use std::os::unix::prelude::AsFd;
-
-use nix::sys::epoll::EpollCreateFlags;
-use nix::sys::epoll::EpollFlags;
-
-use super::epoll_internal::Epoll;
-use super::epoll_internal::EpollEvent;
-
-use crate::cross_domain::CrossDomainEvent;
-use crate::cross_domain::CrossDomainToken;
-use crate::cross_domain::WAIT_CONTEXT_MAX;
-
-use data_model::VolatileSlice;
 
 use super::super::cross_domain::add_item;
 use super::super::cross_domain::CrossDomainContext;
@@ -58,9 +46,12 @@ use super::super::cross_domain_protocol::CROSS_DOMAIN_ID_TYPE_READ_PIPE;
 use super::super::cross_domain_protocol::CROSS_DOMAIN_ID_TYPE_VIRTGPU_BLOB;
 use super::super::cross_domain_protocol::CROSS_DOMAIN_ID_TYPE_WRITE_PIPE;
 use super::super::cross_domain_protocol::CROSS_DOMAIN_MAX_IDENTIFIERS;
-
+use super::epoll_internal::Epoll;
+use super::epoll_internal::EpollEvent;
 use crate::cross_domain::cross_domain_protocol::CrossDomainInit;
-
+use crate::cross_domain::CrossDomainEvent;
+use crate::cross_domain::CrossDomainToken;
+use crate::cross_domain::WAIT_CONTEXT_MAX;
 use crate::rutabaga_os::AsRawDescriptor;
 use crate::rutabaga_os::FromRawDescriptor;
 use crate::rutabaga_os::RawDescriptor;

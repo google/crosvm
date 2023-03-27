@@ -1631,11 +1631,12 @@ fn validate_file_backed_mapping(mapping: &mut FileBackedMappingParameters) -> Re
 #[cfg(test)]
 #[allow(clippy::needless_update)]
 mod tests {
+    #[cfg(unix)]
+    use std::time::Duration;
+
     use argh::FromArgs;
     use devices::PciClassCode;
     use devices::StubPciParameters;
-    #[cfg(unix)]
-    use std::time::Duration;
 
     use super::*;
 

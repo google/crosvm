@@ -6,14 +6,19 @@
 // section: 10.3. The AC adapter status change is signalized by generating associated GPE, which
 // Notify()'s AC adapter device in the ACPI name space.
 
-use crate::Suspendable;
-use crate::{pci::CrosvmDeviceId, BusAccessInfo, BusDevice, DeviceId};
+use std::fs::read_to_string;
+use std::path::PathBuf;
+
 use acpi_tables::aml;
 use acpi_tables::aml::Aml;
 use anyhow::Context;
 use base::warn;
-use std::fs::read_to_string;
-use std::path::PathBuf;
+
+use crate::pci::CrosvmDeviceId;
+use crate::BusAccessInfo;
+use crate::BusDevice;
+use crate::DeviceId;
+use crate::Suspendable;
 
 pub const ACDC_VIRT_MMIO_SIZE: u64 = 0x10;
 

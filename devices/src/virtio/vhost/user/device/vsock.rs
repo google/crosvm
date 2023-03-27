@@ -43,14 +43,14 @@ use zerocopy::AsBytes;
 
 use crate::virtio::device_constants::vsock::NUM_QUEUES;
 use crate::virtio::device_constants::vsock::QUEUE_SIZE;
-use crate::virtio::vhost::user::VhostUserDevice;
-use crate::virtio::vhost::user::VhostUserListener;
-use crate::virtio::vhost::user::VhostUserListenerTrait;
 // TODO(acourbot) try to remove the system dependencies and make the device usable on all platforms.
 use crate::virtio::vhost::user::device::handler::sys::unix::Doorbell;
 use crate::virtio::vhost::user::device::handler::vmm_va_to_gpa;
 use crate::virtio::vhost::user::device::handler::MappingInfo;
 use crate::virtio::vhost::user::device::handler::VhostUserPlatformOps;
+use crate::virtio::vhost::user::VhostUserDevice;
+use crate::virtio::vhost::user::VhostUserListener;
+use crate::virtio::vhost::user::VhostUserListenerTrait;
 use crate::virtio::Queue;
 use crate::virtio::SignalableInterrupt;
 

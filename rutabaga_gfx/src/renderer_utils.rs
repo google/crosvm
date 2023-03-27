@@ -13,7 +13,6 @@ use std::process::abort;
 #[cfg(feature = "virgl_renderer_next")]
 use crate::rutabaga_os::IntoRawDescriptor;
 use crate::rutabaga_os::SafeDescriptor;
-
 use crate::rutabaga_utils::RutabagaError;
 use crate::rutabaga_utils::RutabagaFence;
 use crate::rutabaga_utils::RutabagaFenceHandler;

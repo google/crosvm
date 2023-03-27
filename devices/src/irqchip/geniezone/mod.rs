@@ -17,19 +17,17 @@ use hypervisor::MPState;
 use hypervisor::Vcpu;
 use hypervisor::Vm;
 use resources::SystemAllocator;
+use sync::Mutex;
 
 use crate::Bus;
-use crate::IrqEdgeEvent;
-use crate::IrqEventSource;
-use crate::IrqLevelEvent;
-
 use crate::IrqChip;
 use crate::IrqChipAArch64;
 use crate::IrqChipCap;
+use crate::IrqEdgeEvent;
 use crate::IrqEventIndex;
+use crate::IrqEventSource;
+use crate::IrqLevelEvent;
 use crate::VcpuRunState;
-
-use sync::Mutex;
 
 /// Default ARM routing table.  AARCH64_GIC_NR_SPIS pins go to VGIC.
 fn default_irq_routing_table() -> Vec<IrqRoute> {

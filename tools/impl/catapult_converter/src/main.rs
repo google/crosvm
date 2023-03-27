@@ -2,6 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::fs;
+use std::hash::Hash;
+use std::hash::Hasher;
+
 use argh::FromArgs;
 use serde::Deserialize;
 use serde::Serialize;
@@ -9,11 +15,6 @@ use serde_json::json;
 use serde_json::to_string_pretty;
 use serde_json::Number;
 use serde_json::Value;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::fs;
-use std::hash::Hash;
-use std::hash::Hasher;
 use uuid::Uuid;
 
 /// This tool takes results from Fuchsia performance tests (in Fuchsia's JSON perf test results

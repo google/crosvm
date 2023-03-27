@@ -11,17 +11,13 @@ use std::os::raw::c_void;
 use std::path::PathBuf;
 use std::str::Utf8Error;
 
-use crate::rutabaga_os::SafeDescriptor;
-
 use data_model::VolatileMemoryError;
+#[cfg(unix)]
+use nix::Error as NixError;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
-
-#[cfg(unix)]
-use nix::Error as NixError;
-
 #[cfg(feature = "vulkano")]
 use vulkano::device::DeviceCreationError;
 #[cfg(feature = "vulkano")]
@@ -36,6 +32,8 @@ use vulkano::memory::MemoryMapError;
 use vulkano::LoadingError;
 #[cfg(feature = "vulkano")]
 use vulkano::VulkanError;
+
+use crate::rutabaga_os::SafeDescriptor;
 
 /// Represents a buffer.  `base` contains the address of a buffer, while `len` contains the length
 /// of the buffer.

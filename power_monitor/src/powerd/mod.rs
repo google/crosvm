@@ -6,11 +6,6 @@
 //!
 //! <https://chromium.googlesource.com/chromiumos/platform2/+/HEAD/power_manager/README.md>
 
-use crate::BatteryData;
-use crate::BatteryStatus;
-use crate::PowerData;
-use crate::PowerMonitor;
-
 use std::error::Error;
 use std::os::unix::io::RawFd;
 
@@ -29,6 +24,10 @@ use thiserror::Error;
 use crate::protos::power_supply_properties::PowerSupplyProperties;
 use crate::protos::power_supply_properties::PowerSupplyProperties_BatteryState;
 use crate::protos::power_supply_properties::PowerSupplyProperties_ExternalPower;
+use crate::BatteryData;
+use crate::BatteryStatus;
+use crate::PowerData;
+use crate::PowerMonitor;
 
 // Interface name from power_manager/dbus_bindings/org.chromium.PowerManager.xml.
 const POWER_INTERFACE_NAME: &str = "org.chromium.PowerManager";

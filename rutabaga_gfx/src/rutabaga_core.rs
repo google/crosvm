@@ -10,7 +10,6 @@ use std::sync::Arc;
 use data_model::VolatileSlice;
 
 use crate::cross_domain::CrossDomain;
-
 #[cfg(feature = "gfxstream")]
 use crate::gfxstream::Gfxstream;
 use crate::rutabaga_2d::Rutabaga2D;

@@ -3,8 +3,6 @@
 // found in the LICENSE file.
 
 pub mod geniezone_sys;
-pub use geniezone_sys::*;
-
 use std::cell::RefCell;
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
@@ -45,6 +43,7 @@ use gdbstub::arch::Arch;
 use gdbstub_arch::aarch64::reg::id::AArch64RegId;
 #[cfg(feature = "gdb")]
 use gdbstub_arch::aarch64::AArch64 as GdbArch;
+pub use geniezone_sys::*;
 use libc::open;
 use libc::EBUSY;
 use libc::EFAULT;

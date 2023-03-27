@@ -85,6 +85,7 @@ use base::SharedMemoryUnix;
 use base::Tube;
 use base::TubeError;
 use base::WaitContext;
+use base::WorkerThread;
 use data_model::*;
 #[cfg(feature = "minigbm")]
 use libc::EBADF;
@@ -144,7 +145,6 @@ use crate::virtio::device_constants::wl::VIRTIO_WL_F_USE_SHMEM;
 use crate::virtio::virtio_device::Error as VirtioError;
 use crate::virtio::VirtioDeviceSaved;
 use crate::Suspendable;
-use base::WorkerThread;
 
 const VIRTWL_SEND_MAX_ALLOCS: usize = 28;
 const VIRTIO_WL_CMD_VFD_NEW: u32 = 256;

@@ -10,6 +10,8 @@ use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
+#[cfg(feature = "gpu")]
+use base::platform::move_proc_to_cgroup;
 use jail::*;
 use serde::Deserialize;
 use serde::Serialize;
@@ -17,9 +19,6 @@ use serde_keyvalue::FromKeyValues;
 
 use super::*;
 use crate::crosvm::config::Config;
-
-#[cfg(feature = "gpu")]
-use base::platform::move_proc_to_cgroup;
 
 pub struct GpuCacheInfo<'a> {
     directory: Option<&'a str>,

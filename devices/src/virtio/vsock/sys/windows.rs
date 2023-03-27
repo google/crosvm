@@ -6,12 +6,11 @@ pub mod protocol;
 pub mod vsock;
 
 pub(crate) use protocol::*;
-pub use vsock::Vsock;
-pub use vsock::VsockError;
-
 use serde::Deserialize;
 use serde::Serialize;
 use serde_keyvalue::FromKeyValues;
+pub use vsock::Vsock;
+pub use vsock::VsockError;
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq, FromKeyValues)]
 #[serde(deny_unknown_fields)]

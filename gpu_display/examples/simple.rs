@@ -8,7 +8,6 @@ use std::process::exit;
 mod platform {
     use anyhow::Context;
     use anyhow::Result;
-
     use gpu_display::*;
 
     pub fn run() -> Result<()> {

@@ -4,7 +4,6 @@
 
 use std::sync::Arc;
 
-use crate::rutabaga_os::AsRawDescriptor;
 use vulkano::device::Device;
 use vulkano::device::DeviceExtensions;
 use vulkano::memory::DeviceMemory;
@@ -13,6 +12,7 @@ use vulkano::memory::MemoryAllocateInfo;
 use vulkano::memory::MemoryImportInfo;
 
 use crate::rutabaga_gralloc::vulkano_gralloc::VulkanoGralloc;
+use crate::rutabaga_os::AsRawDescriptor;
 use crate::rutabaga_utils::RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_WIN32;
 use crate::RutabagaError;
 use crate::RutabagaHandle;

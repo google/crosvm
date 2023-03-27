@@ -6,14 +6,15 @@
 
 #![deny(missing_docs)]
 
-#[cfg(feature = "seccomp_trace")]
-use log::debug;
-use log::warn;
-use minijail::Minijail;
 use std::ffi::CString;
 use std::mem::ManuallyDrop;
 use std::os::unix::process::ExitStatusExt;
 use std::process;
+
+#[cfg(feature = "seccomp_trace")]
+use log::debug;
+use log::warn;
+use minijail::Minijail;
 
 use crate::error;
 use crate::unix::wait_for_pid;

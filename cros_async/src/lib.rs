@@ -75,7 +75,6 @@ pub use sys::TaskHandle;
 mod timer;
 mod waker;
 
-use futures::stream::FuturesUnordered;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::Poll;
@@ -92,6 +91,7 @@ pub use blocking::TimeoutAction;
 pub use event::EventAsync;
 #[cfg(windows)]
 pub use futures::executor::block_on;
+use futures::stream::FuturesUnordered;
 pub use io_ext::AllocateMode;
 pub use io_ext::AsyncWrapper;
 pub use io_ext::Error as AsyncError;

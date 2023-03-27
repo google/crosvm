@@ -6,16 +6,14 @@ mod descriptor;
 mod shm;
 pub mod sys;
 
-pub use shm::SharedMemory;
-
-pub use sys::platform::descriptor::RawDescriptor;
-pub use sys::platform::shm::round_up_to_page_size;
-
 pub use descriptor::AsRawDescriptor;
 pub use descriptor::AsRawDescriptors;
 pub use descriptor::FromRawDescriptor;
 pub use descriptor::IntoRawDescriptor;
 pub use descriptor::SafeDescriptor;
+pub use shm::SharedMemory;
+pub use sys::platform::descriptor::RawDescriptor;
+pub use sys::platform::shm::round_up_to_page_size;
 
 pub unsafe trait MappedRegion: Send + Sync {
     /// Returns a pointer to the beginning of the memory region. Should only be

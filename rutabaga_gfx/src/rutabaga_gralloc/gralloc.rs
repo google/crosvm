@@ -10,15 +10,14 @@ use std::collections::BTreeMap as Map;
 #[cfg(feature = "vulkano")]
 use log::error;
 
-use crate::rutabaga_os::round_up_to_page_size;
-use crate::rutabaga_os::MappedRegion;
-
 use crate::rutabaga_gralloc::formats::*;
 #[cfg(feature = "minigbm")]
 use crate::rutabaga_gralloc::minigbm::MinigbmDevice;
 use crate::rutabaga_gralloc::system_gralloc::SystemGralloc;
 #[cfg(feature = "vulkano")]
 use crate::rutabaga_gralloc::vulkano_gralloc::VulkanoGralloc;
+use crate::rutabaga_os::round_up_to_page_size;
+use crate::rutabaga_os::MappedRegion;
 use crate::rutabaga_utils::*;
 
 /*

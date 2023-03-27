@@ -18,36 +18,31 @@ use std::thread;
 
 use data_model::VolatileSlice;
 use log::error;
-
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
 use crate::cross_domain::cross_domain_protocol::*;
-use crate::cross_domain::CrossDomainToken;
-
 use crate::cross_domain::sys::channel;
 use crate::cross_domain::sys::channel_signal;
 use crate::cross_domain::sys::channel_wait;
 use crate::cross_domain::sys::descriptor_analysis;
 use crate::cross_domain::sys::read_volatile;
 use crate::cross_domain::sys::write_volatile;
-
 use crate::cross_domain::sys::Receiver;
 use crate::cross_domain::sys::Sender;
 use crate::cross_domain::sys::SystemStream;
 use crate::cross_domain::sys::WaitContext;
-
+use crate::cross_domain::CrossDomainToken;
 use crate::rutabaga_core::RutabagaComponent;
 use crate::rutabaga_core::RutabagaContext;
 use crate::rutabaga_core::RutabagaResource;
+use crate::rutabaga_os::SafeDescriptor;
 use crate::rutabaga_utils::*;
 use crate::DrmFormat;
 use crate::ImageAllocationInfo;
 use crate::ImageMemoryRequirements;
 use crate::RutabagaGralloc;
 use crate::RutabagaGrallocFlags;
-
-use crate::rutabaga_os::SafeDescriptor;
 
 const CROSS_DOMAIN_DEFAULT_BUFFER_SIZE: usize = 4096;
 const CROSS_DOMAIN_MAX_SEND_RECV_SIZE: usize =

@@ -2233,9 +2233,9 @@ pub fn check_host_hybrid_support(cpuid: &CpuIdCall) -> std::result::Result<(), H
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use std::mem::size_of;
+
+    use super::*;
 
     const TEST_MEMORY_SIZE: u64 = 2 * GB;
 

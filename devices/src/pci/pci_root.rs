@@ -729,10 +729,10 @@ impl Suspendable for PciVirtualConfigMmio {
 
 #[cfg(test)]
 mod tests {
-    use crate::suspendable_tests;
+    use base::Tube;
 
     use super::*;
-    use base::Tube;
+    use crate::suspendable_tests;
 
     fn create_pci_root() -> Arc<Mutex<PciRoot>> {
         let io_bus = Arc::new(Bus::new());

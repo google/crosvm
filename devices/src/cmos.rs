@@ -421,7 +421,6 @@ mod tests {
     use chrono::NaiveDateTime;
 
     use super::*;
-
     use crate::suspendable_tests;
 
     fn read_reg(cmos: &mut Cmos, reg: u8) -> u8 {

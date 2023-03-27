@@ -10,6 +10,7 @@ use anyhow::Context;
 use base::error;
 use base::Event;
 use base::RawDescriptor;
+use base::WorkerThread;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
@@ -25,7 +26,6 @@ use crate::virtio::SharedMemoryMapper;
 use crate::virtio::SharedMemoryRegion;
 use crate::virtio::VirtioDevice;
 use crate::Suspendable;
-use base::WorkerThread;
 
 pub struct VhostUserVirtioDevice {
     device_type: DeviceType,

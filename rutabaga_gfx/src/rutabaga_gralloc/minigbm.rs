@@ -16,15 +16,14 @@ use std::io::SeekFrom;
 use std::os::raw::c_char;
 use std::sync::Arc;
 
-use crate::rutabaga_os::AsRawDescriptor;
-use crate::rutabaga_os::FromRawDescriptor;
-
 use crate::rutabaga_gralloc::formats::DrmFormat;
 use crate::rutabaga_gralloc::gralloc::Gralloc;
 use crate::rutabaga_gralloc::gralloc::ImageAllocationInfo;
 use crate::rutabaga_gralloc::gralloc::ImageMemoryRequirements;
 use crate::rutabaga_gralloc::minigbm_bindings::*;
 use crate::rutabaga_gralloc::rendernode;
+use crate::rutabaga_os::AsRawDescriptor;
+use crate::rutabaga_os::FromRawDescriptor;
 use crate::rutabaga_utils::*;
 
 struct MinigbmDeviceInner {

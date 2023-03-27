@@ -6,7 +6,6 @@ use std::fs;
 
 use fixture::vm::Config;
 use fixture::vm::TestVm;
-
 use tempfile::TempDir;
 
 /// Tests audio playback on virtio-snd with file backend

@@ -10,19 +10,18 @@ use std::io::SeekFrom;
 use std::io::Write;
 use std::path::Path;
 
-use crate::virtio::snd::common_backend::SndData;
-use crate::virtio::snd::constants::VIRTIO_SND_D_OUTPUT;
-use crate::virtio::snd::parameters::Parameters;
-use crate::virtio::snd::sys::SysAudioStreamSourceGenerator;
-
 use audio_streams::NoopStreamSourceGenerator;
 use audio_util::FileStreamSourceGenerator;
 use base::error;
 use base::open_file;
 use base::AsRawDescriptor;
 use base::RawDescriptor;
-
 use thiserror::Error as ThisError;
+
+use crate::virtio::snd::common_backend::SndData;
+use crate::virtio::snd::constants::VIRTIO_SND_D_OUTPUT;
+use crate::virtio::snd::parameters::Parameters;
+use crate::virtio::snd::sys::SysAudioStreamSourceGenerator;
 
 #[derive(ThisError, Debug)]
 pub enum Error {

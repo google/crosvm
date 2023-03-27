@@ -22,10 +22,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use crate::rutabaga_os::FromRawDescriptor;
-use crate::rutabaga_os::IntoRawDescriptor;
-use crate::rutabaga_os::SafeDescriptor;
-
 use data_model::VolatileSlice;
 use log::debug;
 use log::error;
@@ -37,6 +33,9 @@ use crate::renderer_utils::*;
 use crate::rutabaga_core::RutabagaComponent;
 use crate::rutabaga_core::RutabagaContext;
 use crate::rutabaga_core::RutabagaResource;
+use crate::rutabaga_os::FromRawDescriptor;
+use crate::rutabaga_os::IntoRawDescriptor;
+use crate::rutabaga_os::SafeDescriptor;
 use crate::rutabaga_utils::*;
 
 type Query = virgl_renderer_export_query;

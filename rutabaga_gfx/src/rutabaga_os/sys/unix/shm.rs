@@ -4,23 +4,21 @@
 
 use std::convert::TryInto;
 use std::ffi::CStr;
-
-use libc::off_t;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::io::OwnedFd;
+
+use libc::off_t;
+use nix::sys::memfd::memfd_create;
+use nix::sys::memfd::MemFdCreateFlag;
+use nix::unistd::ftruncate;
+use nix::unistd::sysconf;
+use nix::unistd::SysconfVar;
 
 use crate::rutabaga_os::descriptor::AsRawDescriptor;
 use crate::rutabaga_os::descriptor::IntoRawDescriptor;
 use crate::rutabaga_os::RawDescriptor;
 use crate::rutabaga_utils::RutabagaError;
 use crate::rutabaga_utils::RutabagaResult;
-
-use nix::sys::memfd::memfd_create;
-use nix::sys::memfd::MemFdCreateFlag;
-
-use nix::unistd::ftruncate;
-use nix::unistd::sysconf;
-use nix::unistd::SysconfVar;
 
 pub struct SharedMemory {
     fd: OwnedFd,

@@ -2,17 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use data_model::VolatileSlice;
 use std::fs::File;
+
+use data_model::VolatileSlice;
 
 use super::super::cross_domain::CrossDomainContext;
 use super::super::cross_domain::CrossDomainState;
 use super::super::cross_domain_protocol::CrossDomainInit;
 use super::super::cross_domain_protocol::CrossDomainSendReceive;
-
 use crate::cross_domain::CrossDomainEvent;
 use crate::cross_domain::CrossDomainToken;
-
 use crate::rutabaga_utils::RutabagaError;
 use crate::rutabaga_utils::RutabagaResult;
 

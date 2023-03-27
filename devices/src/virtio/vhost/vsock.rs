@@ -13,6 +13,7 @@ use base::warn;
 use base::AsRawDescriptor;
 use base::Event;
 use base::RawDescriptor;
+use base::WorkerThread;
 use data_model::Le64;
 use vhost::Vhost;
 use vhost::Vsock as VhostVsockHandle;
@@ -31,7 +32,6 @@ use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::VirtioDevice;
 use crate::Suspendable;
-use base::WorkerThread;
 
 pub struct Vsock {
     worker_thread: Option<WorkerThread<()>>,

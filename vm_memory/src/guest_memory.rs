@@ -4,7 +4,6 @@
 
 //! Track memory regions that are mapped to the guest VM.
 
-use anyhow::bail;
 use std::convert::AsRef;
 use std::convert::TryFrom;
 use std::fs::File;
@@ -14,8 +13,8 @@ use std::marker::Send;
 use std::marker::Sync;
 use std::result;
 use std::sync::Arc;
-use zerocopy::AsBytes;
 
+use anyhow::bail;
 use base::pagesize;
 use base::AsRawDescriptor;
 use base::AsRawDescriptors;
@@ -31,6 +30,7 @@ use cros_async::BackingMemory;
 use data_model::volatile_memory::*;
 use remain::sorted;
 use thiserror::Error;
+use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
 use crate::guest_address::GuestAddress;

@@ -19,7 +19,6 @@ use std::time::Duration;
 use aarch64::AArch64 as Arch;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use aarch64::MsrHandlers;
-
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;

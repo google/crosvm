@@ -9,7 +9,6 @@ mod common;
 
 #[cfg(unix)]
 mod test {
-    use super::common::*;
     use base::pagesize;
     use base::sys::wait_for_pid;
     use base::AsRawDescriptor;
@@ -20,6 +19,8 @@ mod test {
     use swap::userfaultfd::register_regions;
     use swap::userfaultfd::unregister_regions;
     use swap::userfaultfd::Userfaultfd;
+
+    use super::common::*;
 
     pub fn register_region_skip_obsolete_process() {
         let shm = create_shared_memory("test", 3 * pagesize());

@@ -15,12 +15,10 @@ use std::os::windows::io::RawHandle;
 
 use winapi::shared::minwindef::FALSE;
 use winapi::shared::minwindef::TRUE;
-use winapi::um::winnt::DUPLICATE_SAME_ACCESS;
-
 use winapi::um::handleapi::CloseHandle;
 use winapi::um::handleapi::DuplicateHandle;
-
 use winapi::um::processthreadsapi::GetCurrentProcess;
+use winapi::um::winnt::DUPLICATE_SAME_ACCESS;
 
 use crate::rutabaga_os::descriptor::AsRawDescriptor;
 use crate::rutabaga_os::descriptor::Descriptor;

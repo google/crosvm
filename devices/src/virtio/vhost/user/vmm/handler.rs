@@ -13,6 +13,7 @@ use base::AsRawDescriptor;
 use base::Event;
 use base::Protection;
 use base::SafeDescriptor;
+use base::WorkerThread;
 use rutabaga_gfx::DeviceId;
 use vm_control::VmMemorySource;
 use vm_memory::GuestMemory;
@@ -39,7 +40,6 @@ use crate::virtio::Queue;
 use crate::virtio::SharedMemoryMapper;
 use crate::virtio::SharedMemoryRegion;
 use crate::virtio::SignalableInterrupt;
-use base::WorkerThread;
 
 type BackendReqHandler = MasterReqHandler<Mutex<BackendReqHandlerImpl>>;
 

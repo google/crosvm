@@ -10,7 +10,8 @@ use std::mem::size_of;
 use std::path::Path;
 
 use base::named_pipes::OverlappedWrapper;
-use base::{Event, PipeConnection};
+use base::Event;
+use base::PipeConnection;
 
 use crate::client::HandleRequestResult;
 use crate::VmRequest;

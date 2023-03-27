@@ -12,9 +12,6 @@ use std::time::Duration;
 use std::time::Instant;
 
 use async_trait::async_trait;
-use base::warn;
-use thiserror::Error as ThisError;
-
 use audio_streams::AsyncBufferCommit;
 use audio_streams::AsyncPlaybackBuffer;
 use audio_streams::AsyncPlaybackBufferStream;
@@ -25,10 +22,12 @@ use audio_streams::SampleFormat;
 use audio_streams::StreamControl;
 use audio_streams::StreamSource;
 use audio_streams::StreamSourceGenerator;
+use base::warn;
 use base::MappedRegion;
 use base::MemoryMapping;
 use base::MemoryMappingBuilder;
 use base::MmapError;
+use thiserror::Error as ThisError;
 
 #[derive(ThisError, Debug)]
 pub enum Error {

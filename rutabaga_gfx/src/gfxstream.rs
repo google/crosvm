@@ -18,10 +18,6 @@ use std::ptr::null;
 use std::ptr::null_mut;
 use std::sync::Arc;
 
-use crate::rutabaga_os::FromRawDescriptor;
-use crate::rutabaga_os::IntoRawDescriptor;
-use crate::rutabaga_os::RawDescriptor;
-use crate::rutabaga_os::SafeDescriptor;
 use data_model::VolatileSlice;
 
 use crate::generated::virgl_renderer_bindings::iovec;
@@ -31,6 +27,10 @@ use crate::renderer_utils::*;
 use crate::rutabaga_core::RutabagaComponent;
 use crate::rutabaga_core::RutabagaContext;
 use crate::rutabaga_core::RutabagaResource;
+use crate::rutabaga_os::FromRawDescriptor;
+use crate::rutabaga_os::IntoRawDescriptor;
+use crate::rutabaga_os::RawDescriptor;
+use crate::rutabaga_os::SafeDescriptor;
 use crate::rutabaga_utils::*;
 
 // User data, for custom use by renderer. An example is VirglCookie which includes a fence

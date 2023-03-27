@@ -26,6 +26,7 @@ use base::SendTube;
 use base::Timer;
 use base::VmEventType;
 use base::WaitContext;
+use base::WorkerThread;
 use remain::sorted;
 use sync::Mutex;
 use thiserror::Error;
@@ -35,7 +36,6 @@ use crate::BusAccessInfo;
 use crate::BusDevice;
 use crate::DeviceId;
 use crate::Suspendable;
-use base::WorkerThread;
 
 // Registers offsets
 const VMWDT_REG_STATUS: u32 = 0x00;

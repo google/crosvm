@@ -4,7 +4,6 @@
 
 use std::convert::TryFrom;
 use std::fs::File;
-
 use std::os::unix::io::AsRawFd;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::io::IntoRawFd;

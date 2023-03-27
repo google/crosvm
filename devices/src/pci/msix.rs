@@ -5,10 +5,6 @@
 use std::convert::TryInto;
 
 use anyhow::Context;
-
-use serde::Deserialize;
-use serde::Serialize;
-
 use base::error;
 use base::info;
 use base::AsRawDescriptor;
@@ -19,6 +15,8 @@ use base::Tube;
 use base::TubeError;
 use bit_field::*;
 use remain::sorted;
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 use vm_control::VmIrqRequest;
 use vm_control::VmIrqResponse;
@@ -768,8 +766,9 @@ impl MsixCap {
 #[cfg(test)]
 mod tests {
 
-    use super::*;
     use std::thread;
+
+    use super::*;
 
     #[track_caller]
     fn recv_allocate_msi(t: &Tube) -> u32 {

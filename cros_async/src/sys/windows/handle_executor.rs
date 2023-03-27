@@ -409,11 +409,13 @@ impl Drop for OverlappedOperation {
 mod test {
     use super::*;
     const FUT_MSG: i32 = 5;
-    use crate::BlockingPool;
+    use std::rc::Rc;
+
     use futures::channel::mpsc as fut_mpsc;
     use futures::SinkExt;
     use futures::StreamExt;
-    use std::rc::Rc;
+
+    use crate::BlockingPool;
 
     #[test]
     fn run_future() {

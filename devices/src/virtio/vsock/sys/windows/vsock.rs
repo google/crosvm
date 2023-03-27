@@ -29,6 +29,7 @@ use base::AsRawDescriptor;
 use base::Error as SysError;
 use base::Event;
 use base::EventExt;
+use base::WorkerThread;
 use cros_async::select2;
 use cros_async::select6;
 use cros_async::sync::Mutex;
@@ -66,7 +67,6 @@ use crate::virtio::SignalableInterrupt;
 use crate::virtio::VirtioDevice;
 use crate::virtio::Writer;
 use crate::Suspendable;
-use base::WorkerThread;
 
 #[sorted]
 #[derive(ThisError, Debug)]

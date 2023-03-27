@@ -38,6 +38,7 @@ use base::SafeDescriptor;
 use base::ScmSocket;
 use base::Tube;
 use base::WaitContext;
+use base::WorkerThread;
 use data_model::DataInit;
 use data_model::Le32;
 use hypervisor::Datamatch;
@@ -99,7 +100,6 @@ use crate::virtio::VIRTIO_F_ACCESS_PLATFORM;
 use crate::virtio::VIRTIO_MSI_NO_VECTOR;
 use crate::PciAddress;
 use crate::Suspendable;
-use base::WorkerThread;
 
 // Note: There are two sets of queues that will be mentioned here. 1st set is
 // for this Virtio PCI device itself. 2nd set is the actual device backends

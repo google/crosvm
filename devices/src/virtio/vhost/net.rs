@@ -14,10 +14,12 @@ use base::Event;
 use base::RawDescriptor;
 use base::Tube;
 use base::WorkerThread;
+use net_util::MacAddress;
 use net_util::TapT;
 use vhost::NetT as VhostNetT;
 use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
+use zerocopy::AsBytes;
 
 use super::control_socket::*;
 use super::worker::Worker;
@@ -31,8 +33,6 @@ use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::VirtioDevice;
 use crate::Suspendable;
-use net_util::MacAddress;
-use zerocopy::AsBytes;
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 2;
@@ -330,6 +330,7 @@ pub mod tests {
 
     use hypervisor::ProtectionType;
     use net_util::sys::unix::fakes::FakeTap;
+    use net_util::TapTCommon;
     use vhost::net::fakes::FakeNet;
     use vm_memory::GuestAddress;
     use vm_memory::GuestMemory;
@@ -339,7 +340,6 @@ pub mod tests {
     use crate::virtio::base_features;
     use crate::virtio::VIRTIO_MSI_NO_VECTOR;
     use crate::IrqLevelEvent;
-    use net_util::TapTCommon;
 
     fn create_guest_memory() -> result::Result<GuestMemory, GuestMemoryError> {
         let start_addr1 = GuestAddress(0x0);

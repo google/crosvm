@@ -20,6 +20,9 @@ use base::Event;
 use base::EventToken;
 use base::Result;
 use base::WaitContext;
+use base::WorkerThread;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::bus::BusAccessInfo;
 use crate::pci::CrosvmDeviceId;
@@ -28,10 +31,6 @@ use crate::suspendable::DeviceState;
 use crate::suspendable::Suspendable;
 use crate::BusDevice;
 use crate::DeviceId;
-use base::WorkerThread;
-
-use serde::Deserialize;
-use serde::Serialize;
 
 const LOOP_SIZE: usize = 0x40;
 
@@ -589,11 +588,11 @@ mod tests {
     use std::io;
     use std::sync::Arc;
 
-    use crate::suspendable_tests;
     use hypervisor::ProtectionType;
     use sync::Mutex;
 
     use super::*;
+    use crate::suspendable_tests;
     pub use crate::sys::serial_device::SerialDevice;
 
     #[derive(Clone)]

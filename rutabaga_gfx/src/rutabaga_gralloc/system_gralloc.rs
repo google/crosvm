@@ -5,12 +5,11 @@
 //! Utility file for allocating exportable system memory.  On Linux systems,
 //! this is is often done with memfd.
 
-use crate::rutabaga_os::SharedMemory;
-
 use crate::rutabaga_gralloc::formats::canonical_image_requirements;
 use crate::rutabaga_gralloc::gralloc::Gralloc;
 use crate::rutabaga_gralloc::gralloc::ImageAllocationInfo;
 use crate::rutabaga_gralloc::gralloc::ImageMemoryRequirements;
+use crate::rutabaga_os::SharedMemory;
 use crate::rutabaga_utils::*;
 
 /// A gralloc implementation capable of allocation from system memory.

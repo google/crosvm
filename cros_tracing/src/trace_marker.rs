@@ -11,7 +11,6 @@ use std::sync::Mutex;
 
 use base::error;
 use base::RawDescriptor;
-
 use once_cell::sync::OnceCell;
 
 static TRACE_MARKER_FILE: OnceCell<Mutex<File>> = OnceCell::new();
