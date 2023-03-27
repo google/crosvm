@@ -118,6 +118,14 @@ extern "C" fn pipe_virgl_renderer_ctx_attach_resource(_ctx_id: c_int, _res_handl
 extern "C" fn pipe_virgl_renderer_ctx_detach_resource(_ctx_id: c_int, _res_handle: c_int) {
     unimplemented!();
 }
+#[no_mangle]
+extern "C" fn pipe_virgl_renderer_get_cap_set(_set: u32, _max_ver: *mut u32, _max_size: *mut u32) {
+    unimplemented!();
+}
+#[no_mangle]
+extern "C" fn pipe_virgl_renderer_fill_caps(_set: u32, _version: u32, _caps: *mut c_void) {
+    unimplemented!();
+}
 
 #[no_mangle]
 extern "C" fn stream_renderer_flush_resource_and_readback(
