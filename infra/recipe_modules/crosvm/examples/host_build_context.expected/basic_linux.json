@@ -69,6 +69,7 @@
       "git",
       "config",
       "--global",
+      "--replace-all",
       "credential.helper",
       "gcloud.sh"
     ],

@@ -69,6 +69,7 @@
       "git",
       "config",
       "--global",
+      "--replace-all",
       "credential.helper",
       "gcloud.sh"
     ],
@@ -216,6 +217,20 @@
     "name": "Prepare Container Build.Prepare dev_container",
     "~followup_annotations": [
       "@@@STEP_NEST_LEVEL@1@@@"
+    ]
+  },
+  {
+    "cmd": [
+      "sudo",
+      "apt-get",
+      "install",
+      "-y",
+      "podman"
+    ],
+    "infra_step": true,
+    "name": "Prepare Container Build.Prepare dev_container.Ensure podman is installed",
+    "~followup_annotations": [
+      "@@@STEP_NEST_LEVEL@2@@@"
     ]
   },
   {

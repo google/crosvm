@@ -170,7 +170,17 @@ class CrosvmApi(recipe_api.RecipeApi):
             # Use gcloud for authentication, which will make sure we are interacting with gerrit
             # using the Luci configured identity.
             if not self.m.platform.is_win:
-                self.__set_git_config("credential.helper", "gcloud.sh")
+                self.m.step(
+                    "Set git config: credential.helper",
+                    [
+                        "git",
+                        "config",
+                        "--global",
+                        "--replace-all",
+                        "credential.helper",
+                        "gcloud.sh",
+                    ],
+                )
 
     def get_git_sha(self):
         result = self.m.step(

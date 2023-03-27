@@ -61,9 +61,9 @@ Usage:
 
 &emsp; **@property**<br>&mdash; **def [dev\_container\_cache](/infra/recipe_modules/crosvm/api.py#39)(self):**
 
-&mdash; **def [get\_git\_sha](/infra/recipe_modules/crosvm/api.py#175)(self):**
+&mdash; **def [get\_git\_sha](/infra/recipe_modules/crosvm/api.py#186)(self):**
 
-&mdash; **def [host\_build\_context](/infra/recipe_modules/crosvm/api.py#113)(self):**
+&mdash; **def [host\_build\_context](/infra/recipe_modules/crosvm/api.py#114)(self):**
 
 Prepares source and system to build crosvm directly on the host.
 
@@ -78,7 +78,7 @@ Usage:
 
 Directory used to install local tools required by the build.
 
-&mdash; **def [prepare\_git](/infra/recipe_modules/crosvm/api.py#160)(self):**
+&mdash; **def [prepare\_git](/infra/recipe_modules/crosvm/api.py#161)(self):**
 
 &emsp; **@property**<br>&mdash; **def [rustup\_home](/infra/recipe_modules/crosvm/api.py#19)(self):**
 
@@ -94,11 +94,11 @@ Use when no build commands are needed.
 
 Where the crosvm source will be checked out.
 
-&mdash; **def [step\_in\_container](/infra/recipe_modules/crosvm/api.py#144)(self, step_name, command, cros=False, \*\*kwargs):**
+&mdash; **def [step\_in\_container](/infra/recipe_modules/crosvm/api.py#145)(self, step_name, command, cros=False, \*\*kwargs):**
 
 Runs a luci step inside the crosvm dev container.
 
-&mdash; **def [upload\_coverage](/infra/recipe_modules/crosvm/api.py#183)(self, filename):**
+&mdash; **def [upload\_coverage](/infra/recipe_modules/crosvm/api.py#194)(self, filename):**
 ## Recipes
 
 ### *recipes* / [build\_chromeos\_hatch](/infra/recipes/build_chromeos_hatch.py)
