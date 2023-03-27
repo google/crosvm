@@ -4,20 +4,6 @@
     "name": "Prepare Cros Container Build"
   },
   {
-    "cmd": [
-      "sudo",
-      "apt-get",
-      "install",
-      "-y",
-      "podman"
-    ],
-    "infra_step": true,
-    "name": "Prepare Cros Container Build.Ensure podman is installed",
-    "~followup_annotations": [
-      "@@@STEP_NEST_LEVEL@1@@@"
-    ]
-  },
-  {
     "cmd": [],
     "name": "Prepare Cros Container Build.Prepare git",
     "~followup_annotations": [

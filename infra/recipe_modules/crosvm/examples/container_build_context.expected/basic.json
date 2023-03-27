@@ -221,20 +221,6 @@
   },
   {
     "cmd": [
-      "sudo",
-      "apt-get",
-      "install",
-      "-y",
-      "podman"
-    ],
-    "infra_step": true,
-    "name": "Prepare Container Build.Prepare dev_container.Ensure podman is installed",
-    "~followup_annotations": [
-      "@@@STEP_NEST_LEVEL@2@@@"
-    ]
-  },
-  {
-    "cmd": [
       "vpython3",
       "[CACHE]/builder/crosvm/tools/dev_container",
       "--verbose",
