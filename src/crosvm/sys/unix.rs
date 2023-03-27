@@ -2817,18 +2817,15 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     // Restore VM (if applicable).
     // Must happen after the vCPU barrier to avoid deadlock.
     if let Some(path) = &cfg.restore_path {
-        device_ctrl_tube
-            .send(&DeviceControlCommand::RestoreDevices {
-                restore_path: path.clone(),
-            })
-            .context("send command to devices control socket")?;
-        let response = device_ctrl_tube
-            .recv()
-            .context("receive from devices control socket")?;
-        match response {
-            vm_control::VmResponse::Ok => {}
-            _ => bail!("unexpected restore response: {response:?}"),
-        };
+        vm_control::do_restore(
+            path.clone(),
+            |msg| vcpu::kick_all_vcpus(&vcpu_handles, linux.irq_chip.as_irq_chip(), msg),
+            |msg, index| {
+                vcpu::kick_vcpu(&vcpu_handles.get(index), linux.irq_chip.as_irq_chip(), msg)
+            },
+            &device_ctrl_tube,
+            linux.vcpu_count,
+        )?;
         // Allow the vCPUs to start for real.
         vcpu::kick_all_vcpus(
             &vcpu_handles,

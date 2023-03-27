@@ -1687,42 +1687,14 @@ impl VmRequest {
                 }
             }
             VmRequest::Restore(RestoreCommand::Apply { ref restore_path }) => {
-                let f = || {
-                    let _guard = VcpuSuspendGuard::new(&kick_vcpus, vcpu_size)?;
-                    let _device_guard = DeviceSleepGuard::new(device_control_tube)?;
-                    let vcpu_path = restore_path.with_extension("vcpu");
-                    let cpu_file = OpenOptions::new()
-                        .read(true)
-                        .write(false)
-                        .open(&vcpu_path)
-                        .with_context(|| format!("failed to open path {}", vcpu_path.display()))?;
-                    let vcpus_data: Vec<serde_json::Value> = serde_json::from_reader(cpu_file)?;
-                    let (send_chan, recv_chan) = mpsc::channel();
-                    for data in vcpus_data {
-                        let vcpu_snap: VcpuSnapshot = serde_json::from_value(data)
-                            .context("failed to deserialize vcpu snapshot")?;
-                        let vcpu_id = vcpu_snap.vcpu_id;
-                        kick_vcpu(
-                            VcpuControl::Restore(send_chan.clone(), Box::new(vcpu_snap)),
-                            vcpu_id,
-                        );
-                    }
-                    for _ in 0..vcpu_size {
-                        if let Err(e) = recv_chan.recv() {
-                            bail!("Failed to restore vcpu: {}", e);
-                        }
-                    }
-                    device_control_tube
-                        .send(&DeviceControlCommand::RestoreDevices {
-                            restore_path: restore_path.clone(),
-                        })
-                        .context("send command to devices control socket")?;
-                    device_control_tube
-                        .recv()
-                        .context("receive from devices control socket")
-                };
-                match f() {
-                    Ok(r) => r,
+                match do_restore(
+                    restore_path.clone(),
+                    kick_vcpus,
+                    kick_vcpu,
+                    device_control_tube,
+                    vcpu_size,
+                ) {
+                    Ok(()) => VmResponse::Ok,
                     Err(e) => {
                         error!("failed to handle restore: {:?}", e);
                         VmResponse::Err(SysError::new(EIO))
@@ -1739,6 +1711,53 @@ impl VmRequest {
             } => VmResponse::Ok,
             VmRequest::Unregister { socket_addr: _ } => VmResponse::Ok,
         }
+    }
+}
+
+/// Restore the VM to the snapshot at `restore_path`.
+///
+/// Same as `VmRequest::execute` with a `VmRequest::Restore`. Exposed as a separate function
+/// because not all the `VmRequest::execute` arguments are available in the "cold restore" flow.
+pub fn do_restore(
+    restore_path: PathBuf,
+    kick_vcpus: impl Fn(VcpuControl),
+    kick_vcpu: impl Fn(VcpuControl, usize),
+    device_control_tube: &Tube,
+    vcpu_size: usize,
+) -> anyhow::Result<()> {
+    let _guard = VcpuSuspendGuard::new(&kick_vcpus, vcpu_size)?;
+    let _device_guard = DeviceSleepGuard::new(device_control_tube)?;
+    let vcpu_path = restore_path.with_extension("vcpu");
+    let cpu_file = OpenOptions::new()
+        .read(true)
+        .write(false)
+        .open(&vcpu_path)
+        .with_context(|| format!("failed to open path {}", vcpu_path.display()))?;
+    let vcpus_data: Vec<serde_json::Value> = serde_json::from_reader(cpu_file)?;
+    let (send_chan, recv_chan) = mpsc::channel();
+    for data in vcpus_data {
+        let vcpu_snap: VcpuSnapshot =
+            serde_json::from_value(data).context("failed to deserialize vcpu snapshot")?;
+        let vcpu_id = vcpu_snap.vcpu_id;
+        kick_vcpu(
+            VcpuControl::Restore(send_chan.clone(), Box::new(vcpu_snap)),
+            vcpu_id,
+        );
+    }
+    for _ in 0..vcpu_size {
+        if let Err(e) = recv_chan.recv() {
+            bail!("Failed to restore vcpu: {}", e);
+        }
+    }
+    device_control_tube
+        .send(&DeviceControlCommand::RestoreDevices { restore_path })
+        .context("send command to devices control socket")?;
+    let resp = device_control_tube
+        .recv()
+        .context("receive from devices control socket")?;
+    match resp {
+        VmResponse::Ok => Ok(()),
+        _ => bail!("unexpected RestoreDevices response: {resp}"),
     }
 }
 
