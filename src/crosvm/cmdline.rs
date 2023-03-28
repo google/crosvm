@@ -1850,6 +1850,22 @@ pub struct RunCommand {
     ///        supports POSIX ACLs.  This should only be enabled
     ///        when the underlying file system supports POSIX ACLs.
     ///        The default value for this option is "true".
+    ///     uid=UID - uid of the device process in the user
+    ///        namespace created by minijail. (default: 0)
+    ///     gid=GID - gid of the device process in the user
+    ///        namespace created by minijail. (default: 0)
+    ///     Options uid and gid are useful when the crosvm process
+    ///     has no CAP_SETGID/CAP_SETUID but an identity mapping of
+    ///     the current user/group between the VM and the host is
+    ///     required. Say the current user and the crosvm process
+    ///     has uid 5000, a user can use "uid=5000" and
+    ///     "uidmap=5000 5000 1" such that files owned by user
+    ///     5000 still appear to be owned by user 5000 in the VM.
+    ///     These 2 options are useful only when there is 1 user
+    ///     in the VM accessing shared files. If multiple users
+    ///     want to access the shared file, gid/uid options are
+    ///     useless. It'd be better to create a new user namespace
+    ///     and give CAP_SETUID/CAP_SETGID to the crosvm.
     pub shared_dir: Vec<SharedDir>,
 
     #[argh(option, arg_name = "PATH:WIDTH:HEIGHT")]

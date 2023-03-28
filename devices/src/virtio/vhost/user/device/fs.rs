@@ -241,4 +241,22 @@ pub struct Options {
     /// `crosvm run --shared-dir` flag except only the keys related to virtio-fs
     /// are valid here.
     cfg: Option<Config>,
+    #[argh(option, arg_name = "UID", default = "0")]
+    /// uid of the device process in the new user namespace created by minijail.
+    /// These two options (uid/gid) are useful when the crosvm process cannot
+    /// get CAP_SETGID/CAP_SETUID but an identity mapping of the current
+    /// user/group between the VM and the host is required.
+    /// Say the current user and the crosvm process has uid 5000, a user can use
+    /// "uid=5000" and "uidmap=5000 5000 1" such that files owned by user 5000
+    /// still appear to be owned by user 5000 in the VM. These 2 options are
+    /// useful only when there is 1 user in the VM accessing shared files.
+    /// If multiple users want to access the shared file, gid/uid options are
+    /// useless. It'd be better to create a new user namespace and give
+    /// CAP_SETUID/CAP_SETGID to the crosvm.
+    /// Default: 0.
+    uid: u32,
+    #[argh(option, arg_name = "GID", default = "0")]
+    /// gid of the device process in the new user namespace created by minijail.
+    /// Default: 0.
+    gid: u32,
 }

@@ -45,6 +45,9 @@ pub enum RunAsUser {
     CurrentUser,
     /// Runs as the root user in the jail.
     Root,
+    /// Runs as the specified uid and gid.
+    /// This requires `SandboxConfig::ugid_map` to be set.
+    Specified(u32, u32),
 }
 
 /// Config for the sandbox to be created by [Minijail].
@@ -169,6 +172,14 @@ pub fn create_sandbox_minijail(
                 .context("error setting UID map")?;
             jail.gidmap(&format!("0 {} 1", crosvm_gid))
                 .context("error setting GID map")?;
+        }
+        RunAsUser::Specified(uid, gid) => {
+            if uid != 0 {
+                jail.change_uid(uid)
+            }
+            if gid != 0 {
+                jail.change_gid(gid)
+            }
         }
     }
     if config.bind_mounts {

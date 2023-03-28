@@ -409,6 +409,7 @@ pub struct SharedDir {
     pub src: PathBuf,
     pub tag: String,
     pub kind: SharedDirKind,
+    pub ugid: (Option<u32>, Option<u32>),
     pub uid_map: String,
     pub gid_map: String,
     pub fs_cfg: passthrough::Config,
@@ -422,6 +423,7 @@ impl Default for SharedDir {
             src: Default::default(),
             tag: Default::default(),
             kind: Default::default(),
+            ugid: (None, None),
             uid_map: format!("0 {} 1", unsafe { geteuid() }),
             gid_map: format!("0 {} 1", unsafe { getegid() }),
             fs_cfg: Default::default(),
@@ -450,6 +452,20 @@ impl FromStr for SharedDir {
         //   and directory contents should be considered valid (default: 5)
         // * cache=CACHE - one of "never", "always", or "auto" (default: auto)
         // * writeback=BOOL - indicates whether writeback caching should be enabled (default: false)
+        // * uid=UID - uid of the device process in the user namespace created by minijail.
+        //   (default: 0)
+        // * gid=GID - gid of the device process in the user namespace created by minijail.
+        //   (default: 0)
+        // These two options (uid/gid) are useful when the crosvm process has no
+        // CAP_SETGID/CAP_SETUID but an identity mapping of the current user/group
+        // between the VM and the host is required.
+        // Say the current user and the crosvm process has uid 5000, a user can use
+        // "uid=5000" and "uidmap=5000 5000 1" such that files owned by user 5000
+        // still appear to be owned by user 5000 in the VM. These 2 options are
+        // useful only when there is 1 user in the VM accessing shared files.
+        // If multiple users want to access the shared file, gid/uid options are
+        // useless. It'd be better to create a new user namespace and give
+        // CAP_SETUID/CAP_SETGID to the crosvm.
         let mut components = param.split(':');
         let src = PathBuf::from(
             components
@@ -486,6 +502,12 @@ impl FromStr for SharedDir {
                 }
                 "uidmap" => shared_dir.uid_map = value.into(),
                 "gidmap" => shared_dir.gid_map = value.into(),
+                "uid" => {
+                    shared_dir.ugid.0 = Some(value.parse().map_err(|_| "`uid` must be an integer")?)
+                }
+                "gid" => {
+                    shared_dir.ugid.1 = Some(value.parse().map_err(|_| "`gid` must be an integer")?)
+                }
                 _ => type_opts.push(opt),
             }
         }
@@ -2237,6 +2259,7 @@ mod tests {
         assert_eq!(shared_dir.fs_cfg.rewrite_security_xattrs, true);
         assert_eq!(shared_dir.fs_cfg.use_dax, false);
         assert_eq!(shared_dir.fs_cfg.posix_acl, true);
+        assert_eq!(shared_dir.ugid, (None, None));
     }
 
     #[cfg(unix)]
@@ -2259,5 +2282,21 @@ mod tests {
         assert_eq!(shared_dir.fs_cfg.rewrite_security_xattrs, true);
         assert_eq!(shared_dir.fs_cfg.use_dax, false);
         assert_eq!(shared_dir.fs_cfg.posix_acl, true);
+        assert_eq!(shared_dir.ugid, (None, None));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn parse_shared_dir_ugid_set() {
+        let shared_dir: SharedDir =
+            "/:hostRoot:type=fs:uidmap=40417 40417 1:gidmap=5000 5000 1:uid=40417:gid=5000"
+                .parse()
+                .unwrap();
+        assert_eq!(shared_dir.src, Path::new("/").to_path_buf());
+        assert_eq!(shared_dir.tag, "hostRoot");
+        assert!(shared_dir.kind == SharedDirKind::FS);
+        assert_eq!(shared_dir.uid_map, "40417 40417 1");
+        assert_eq!(shared_dir.gid_map, "5000 5000 1");
+        assert_eq!(shared_dir.ugid, (Some(40417), Some(5000)));
     }
 }

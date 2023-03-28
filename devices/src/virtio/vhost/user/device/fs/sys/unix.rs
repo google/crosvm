@@ -32,6 +32,8 @@ fn default_gidmap() -> String {
 fn jail_and_fork(
     mut keep_rds: Vec<RawDescriptor>,
     dir_path: PathBuf,
+    uid: u32,
+    gid: u32,
     uid_map: Option<String>,
     gid_map: Option<String>,
 ) -> anyhow::Result<i32> {
@@ -41,6 +43,12 @@ fn jail_and_fork(
     j.namespace_pids();
     j.namespace_user();
     j.namespace_user_disable_setgroups();
+    if uid != 0 {
+        j.change_uid(uid);
+    }
+    if gid != 0 {
+        j.change_gid(gid);
+    }
     j.uidmap(&uid_map.unwrap_or_else(default_uidmap))?;
     j.gidmap(&gid_map.unwrap_or_else(default_gidmap))?;
     j.run_as_init();
@@ -106,7 +114,14 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     base::syslog::push_descriptors(&mut keep_rds);
     cros_tracing::push_descriptors!(&mut keep_rds);
 
-    let pid = jail_and_fork(keep_rds, opts.shared_dir, opts.uid_map, opts.gid_map)?;
+    let pid = jail_and_fork(
+        keep_rds,
+        opts.shared_dir,
+        opts.uid,
+        opts.gid,
+        opts.uid_map,
+        opts.gid_map,
+    )?;
 
     // Parent, nothing to do but wait and then exit
     if pid != 0 {
