@@ -7,9 +7,6 @@ use std::arch::x86_64::CpuidResult;
 use std::cmp::min;
 use std::intrinsics::copy_nonoverlapping;
 use std::mem::size_of;
-use std::os::raw::c_int;
-use std::sync::atomic::AtomicU64;
-use std::sync::Arc;
 
 use base::errno_result;
 use base::ioctl;
@@ -46,7 +43,6 @@ use crate::Segment;
 use crate::Sregs;
 use crate::Vcpu;
 use crate::VcpuExit;
-use crate::VcpuRunHandle;
 use crate::VcpuX86_64;
 use crate::Xsave;
 
@@ -89,7 +85,6 @@ pub struct HaxmVcpu {
     pub(super) id: usize,
     pub(super) tunnel: *mut hax_tunnel,
     pub(super) io_buffer: *mut c_void,
-    pub(super) vcpu_run_handle_fingerprint: Arc<AtomicU64>,
 }
 
 unsafe impl Send for HaxmVcpu {}
@@ -146,16 +141,11 @@ impl Vcpu for HaxmVcpu {
             id: self.id,
             tunnel: self.tunnel,
             io_buffer: self.io_buffer,
-            vcpu_run_handle_fingerprint: self.vcpu_run_handle_fingerprint.clone(),
         })
     }
 
     fn as_vcpu(&self) -> &dyn Vcpu {
         self
-    }
-
-    fn take_run_handle(&self, signal_num: Option<c_int>) -> Result<VcpuRunHandle> {
-        take_run_handle(self, signal_num)
     }
 
     /// Returns the vcpu id.
@@ -171,18 +161,6 @@ impl Vcpu for HaxmVcpu {
         unsafe {
             (*self.tunnel)._exit_reason = if exit { HAX_EXIT_PAUSED } else { 0 };
         }
-    }
-
-    /// Sets/clears the bit for immediate exit for the vcpu on the current thread.
-    fn set_local_immediate_exit(exit: bool) {
-        set_local_immediate_exit(exit)
-    }
-
-    fn set_local_immediate_exit_fn(&self) -> extern "C" fn() {
-        extern "C" fn f() {
-            HaxmVcpu::set_local_immediate_exit(true);
-        }
-        f
     }
 
     /// Signals to the hypervisor that this guest is being paused by userspace.  Only works on Vms
@@ -326,16 +304,7 @@ impl Vcpu for HaxmVcpu {
     #[allow(clippy::cast_ptr_alignment)]
     // The pointer is page aligned so casting to a different type is well defined, hence the clippy
     // allow attribute.
-    fn run(&mut self, run_handle: &VcpuRunHandle) -> Result<VcpuExit> {
-        // Acquire is used to ensure this check is ordered after the `compare_exchange` in `run`.
-        if self
-            .vcpu_run_handle_fingerprint
-            .load(std::sync::atomic::Ordering::Acquire)
-            != run_handle.fingerprint().as_u64()
-        {
-            panic!("invalid VcpuRunHandle used to run Vcpu");
-        }
-
+    fn run(&mut self) -> Result<VcpuExit> {
         // Safe because we know that our file is a VCPU fd and we verify the return result.
         let ret = unsafe { ioctl(self, HAX_VCPU_IOCTL_RUN()) };
         if ret != 0 {

@@ -28,8 +28,6 @@ pub mod x86_64;
 #[cfg(all(unix, feature = "geniezone"))]
 pub mod geniezone;
 
-use std::os::raw::c_int;
-
 use base::AsRawDescriptor;
 use base::Event;
 use base::MappedRegion;
@@ -211,57 +209,6 @@ pub trait Vm: Send {
     fn handle_deflate(&mut self, guest_address: GuestAddress, size: u64) -> Result<()>;
 }
 
-/// A unique fingerprint for a particular `VcpuRunHandle`, used in `Vcpu` impls to ensure the
-/// `VcpuRunHandle ` they receive is the same one that was returned from `take_run_handle`.
-#[derive(Clone, PartialEq, Eq)]
-pub struct VcpuRunHandleFingerprint(u64);
-
-impl VcpuRunHandleFingerprint {
-    pub fn as_u64(&self) -> u64 {
-        self.0
-    }
-}
-
-/// A handle returned by a `Vcpu` to be used with `Vcpu::run` to execute a virtual machine's VCPU.
-///
-/// This is used to ensure that the caller has bound the `Vcpu` to a thread with
-/// `Vcpu::take_run_handle` and to execute hypervisor specific cleanup routines when dropped.
-pub struct VcpuRunHandle {
-    drop_fn: fn(),
-    fingerprint: VcpuRunHandleFingerprint,
-    // Prevents Send+Sync for this type.
-    phantom: std::marker::PhantomData<*mut ()>,
-}
-
-impl VcpuRunHandle {
-    /// Used by `Vcpu` impls to create a unique run handle, that when dropped, will call the given
-    /// `drop_fn`.
-    pub fn new(drop_fn: fn()) -> Self {
-        // Creates a probably unique number with a hash of the current thread id and epoch time.
-        use std::hash::Hash;
-        use std::hash::Hasher;
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        std::time::Instant::now().hash(&mut hasher);
-        std::thread::current().id().hash(&mut hasher);
-        Self {
-            drop_fn,
-            fingerprint: VcpuRunHandleFingerprint(hasher.finish()),
-            phantom: std::marker::PhantomData,
-        }
-    }
-
-    /// Gets the unique fingerprint which may be copied and compared freely.
-    pub fn fingerprint(&self) -> &VcpuRunHandleFingerprint {
-        &self.fingerprint
-    }
-}
-
-impl Drop for VcpuRunHandle {
-    fn drop(&mut self) {
-        (self.drop_fn)();
-    }
-}
-
 /// Operation for Io and Mmio
 #[derive(Copy, Clone, Debug)]
 pub enum IoOperation {
@@ -282,11 +229,45 @@ pub struct IoParams {
     pub operation: IoOperation,
 }
 
+/// Handle to a virtual CPU that may be used to request a VM exit from within a signal handler.
+#[cfg(unix)]
+pub struct VcpuSignalHandle {
+    inner: std::sync::Weak<dyn VcpuSignalHandleInner>,
+}
+
+#[cfg(unix)]
+impl VcpuSignalHandle {
+    /// Request an immediate exit for this VCPU.
+    ///
+    /// This function is safe to call from a signal handler.
+    pub fn signal_immediate_exit(&self) {
+        if let Some(inner) = self.inner.upgrade() {
+            // SAFETY: The `Vcpu` owns the strong reference to this `Arc`, so it must still exist.
+            unsafe {
+                inner.signal_immediate_exit();
+            }
+        }
+    }
+}
+
+/// Signal-safe mechanism for requesting an immediate VCPU exit.
+///
+/// Each hypervisor backend must implement this for its VCPU type.
+#[cfg(unix)]
+pub(crate) trait VcpuSignalHandleInner {
+    /// Signal the associated VCPU to exit if it is currently running.
+    ///
+    /// # Safety
+    ///
+    /// The implementation of this function must be async signal safe.
+    /// <https://man7.org/linux/man-pages/man7/signal-safety.7.html>
+    ///
+    /// The caller must ensure the VCPU referenced by `self` still exists.
+    unsafe fn signal_immediate_exit(&self);
+}
+
 /// A virtual CPU holding a virtualized hardware thread's state, such as registers and interrupt
 /// state, which may be used to execute virtual machines.
-///
-/// To run, `take_run_handle` must be called to lock the vcpu to a thread. Then the returned
-/// `VcpuRunHandle` can be used for running.
 pub trait Vcpu: downcast_rs::DowncastSync {
     /// Makes a shallow clone of this `Vcpu`.
     fn try_clone(&self) -> Result<Self>
@@ -296,21 +277,8 @@ pub trait Vcpu: downcast_rs::DowncastSync {
     /// Casts this architecture specific trait object to the base trait object `Vcpu`.
     fn as_vcpu(&self) -> &dyn Vcpu;
 
-    /// Returns a unique `VcpuRunHandle`. A `VcpuRunHandle` is required to run the guest.
-    ///
-    /// Assigns a vcpu to the current thread so that signal handlers can call
-    /// set_local_immediate_exit().  An optional signal number will be temporarily blocked while
-    /// assigning the vcpu to the thread and later blocked when `VcpuRunHandle` is destroyed.
-    ///
-    /// Returns an error, `EBUSY`, if the current thread already contains a Vcpu.
-    fn take_run_handle(&self, signal_num: Option<c_int>) -> Result<VcpuRunHandle>;
-
     /// Runs the VCPU until it exits, returning the reason for the exit.
-    ///
-    /// Note that the state of the VCPU and associated VM must be setup first for this to do
-    /// anything useful. The given `run_handle` must be the same as the one returned by
-    /// `take_run_handle` for this `Vcpu`.
-    fn run(&mut self, run_handle: &VcpuRunHandle) -> Result<VcpuExit>;
+    fn run(&mut self) -> Result<VcpuExit>;
 
     /// Returns the vcpu id.
     fn id(&self) -> usize;
@@ -318,14 +286,10 @@ pub trait Vcpu: downcast_rs::DowncastSync {
     /// Sets the bit that requests an immediate exit.
     fn set_immediate_exit(&self, exit: bool);
 
-    /// Sets/clears the bit for immediate exit for the vcpu on the current thread.
-    fn set_local_immediate_exit(exit: bool)
-    where
-        Self: Sized;
-
-    /// Returns a function pointer that invokes `set_local_immediate_exit` in a
-    /// signal-safe way when called.
-    fn set_local_immediate_exit_fn(&self) -> extern "C" fn();
+    /// Returns a handle that can be used to cause this VCPU to exit from `run()` from a signal
+    /// handler.
+    #[cfg(unix)]
+    fn signal_handle(&self) -> VcpuSignalHandle;
 
     /// Handles an incoming MMIO request from the guest.
     ///

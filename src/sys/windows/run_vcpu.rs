@@ -64,7 +64,6 @@ use hypervisor::IoOperation;
 use hypervisor::IoParams;
 use hypervisor::VcpuExit;
 use hypervisor::VcpuInitX86_64;
-use hypervisor::VcpuRunHandle;
 use sync::Condvar;
 use sync::Mutex;
 use vm_control::VmRunMode;
@@ -101,7 +100,6 @@ impl VcpuRunMode {
 struct RunnableVcpuInfo<V> {
     vcpu: V,
     thread_priority_handle: Option<SafeMultimediaHandle>,
-    vcpu_run_handle: VcpuRunHandle,
 }
 
 #[derive(Clone, Debug)]
@@ -238,14 +236,9 @@ impl VcpuRunThread {
             };
         }
 
-        let vcpu_run_handle = vcpu
-            .take_run_handle(None)
-            .exit_context(Exit::RunnableVcpu, "failed to set thread id for vcpu")?;
-
         Ok(RunnableVcpuInfo {
             vcpu,
             thread_priority_handle,
-            vcpu_run_handle,
         })
     }
 
@@ -333,7 +326,6 @@ impl VcpuRunThread {
                     let RunnableVcpuInfo {
                         vcpu,
                         thread_priority_handle: _thread_priority_handle,
-                        vcpu_run_handle,
                     } = runnable_vcpu?;
 
                     if let Some(offset) = tsc_offset {
@@ -357,7 +349,6 @@ impl VcpuRunThread {
                         &context,
                         vcpu,
                         vm,
-                        vcpu_run_handle,
                         irq_chip,
                         io_bus,
                         mmio_bus,
@@ -659,7 +650,6 @@ fn vcpu_loop<V>(
     context: &VcpuRunThread,
     mut vcpu: V,
     vm: impl VmArch + 'static,
-    vcpu_run_handle: VcpuRunHandle,
     irq_chip: Box<dyn IrqChipArch + 'static>,
     io_bus: Bus,
     mmio_bus: Bus,
@@ -715,7 +705,7 @@ where
                         Ordering::SeqCst,
                     );
                 }
-                vcpu.run(&vcpu_run_handle)
+                vcpu.run()
             };
             if let Some(ref monitoring_metadata) = context.monitoring_metadata {
                 *monitoring_metadata.last_exit_snapshot.lock() = Some(VcpuExitData {

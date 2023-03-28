@@ -139,11 +139,8 @@ where
 
     // We do our initial run of our program, it should load the value of 0x55
     // from guest address 0x3000 into rax
-    let run_handle = vcpu
-        .take_run_handle(None)
-        .expect("failed to take run handle");
     loop {
-        match vcpu.run(&run_handle).expect("run failed") {
+        match vcpu.run().expect("run failed") {
             // Continue on external interrupt or signal
             VcpuExit::Intr => continue,
             VcpuExit::Hlt => break,
@@ -164,7 +161,7 @@ where
         .expect("failed to remove memory region");
 
     loop {
-        match vcpu.run(&run_handle).expect("run failed") {
+        match vcpu.run().expect("run failed") {
             // Continue on external interrupt or signal
             VcpuExit::Intr => continue,
             VcpuExit::Hlt => break,

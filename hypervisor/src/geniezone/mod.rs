@@ -3,19 +3,16 @@
 // found in the LICENSE file.
 
 pub mod geniezone_sys;
-use std::cell::RefCell;
+
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::collections::BinaryHeap;
 use std::convert::TryFrom;
 use std::ffi::CString;
-use std::mem::ManuallyDrop;
-use std::os::raw::c_int;
 use std::os::raw::c_ulong;
 use std::os::unix::prelude::OsStrExt;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
 use base::errno_result;
@@ -24,7 +21,6 @@ use base::ioctl;
 use base::ioctl_with_ref;
 use base::ioctl_with_val;
 use base::pagesize;
-use base::sys::BlockedSignal;
 use base::AsRawDescriptor;
 use base::Error;
 use base::Event;
@@ -46,7 +42,6 @@ use gdbstub_arch::aarch64::reg::id::AArch64RegId;
 use gdbstub_arch::aarch64::AArch64 as GdbArch;
 pub use geniezone_sys::*;
 use libc::open;
-use libc::EBUSY;
 use libc::EFAULT;
 use libc::EINVAL;
 use libc::EIO;
@@ -79,7 +74,8 @@ use crate::VcpuAArch64;
 use crate::VcpuExit;
 use crate::VcpuFeature;
 use crate::VcpuRegAArch64;
-use crate::VcpuRunHandle;
+use crate::VcpuSignalHandle;
+use crate::VcpuSignalHandleInner;
 use crate::Vm;
 use crate::VmAArch64;
 use crate::VmCap;
@@ -660,12 +656,18 @@ impl GeniezoneVm {
             .build()
             .map_err(|_| Error::new(ENOSPC))?;
 
+        let signal_handle = Arc::new(GeniezoneVcpuSignalHandle {
+            // SAFETY: `run_mmap` is known to be a valid pointer to a `gzvm_vcpu_run` structure from
+            // the allocation above.
+            run: unsafe { &mut *(run_mmap.as_ptr() as *mut gzvm_vcpu_run) },
+        });
+
         Ok(GeniezoneVcpu {
             vm: self.vm.try_clone()?,
             vcpu,
             id,
             run_mmap,
-            vcpu_run_handle_fingerprint: Default::default(),
+            signal_handle,
         })
     }
 
@@ -1051,21 +1053,30 @@ impl AsRawDescriptor for GeniezoneVm {
     }
 }
 
+struct GeniezoneVcpuSignalHandle {
+    run: *mut gzvm_vcpu_run,
+}
+
+// It is safe to write to the `immediate_exit` field from any thread.
+unsafe impl Send for GeniezoneVcpuSignalHandle {}
+unsafe impl Sync for GeniezoneVcpuSignalHandle {}
+
+impl VcpuSignalHandleInner for GeniezoneVcpuSignalHandle {
+    // The caller must ensure that the VCPU lifetime is at least as long as the
+    // VcpuSignalHandleInner lifetime.
+    unsafe fn signal_immediate_exit(&self) {
+        (*(self.run)).immediate_exit = 1;
+    }
+}
+
 /// A wrapper around using a Geniezone Vcpu.
 pub struct GeniezoneVcpu {
     vm: SafeDescriptor,
     vcpu: SafeDescriptor,
     id: usize,
     run_mmap: MemoryMapping,
-    vcpu_run_handle_fingerprint: Arc<AtomicU64>,
+    signal_handle: Arc<GeniezoneVcpuSignalHandle>,
 }
-
-pub(super) struct VcpuThread {
-    run: *mut gzvm_vcpu_run,
-    signal_num: Option<c_int>,
-}
-
-thread_local!(static VCPU_THREAD: RefCell<Option<VcpuThread>> = RefCell::new(None));
 
 impl Vcpu for GeniezoneVcpu {
     fn try_clone(&self) -> Result<Self> {
@@ -1075,75 +1086,17 @@ impl Vcpu for GeniezoneVcpu {
             .build()
             .map_err(|_| Error::new(ENOSPC))?;
 
-        let vcpu_run_handle_fingerprint = self.vcpu_run_handle_fingerprint.clone();
-
         Ok(GeniezoneVcpu {
             vm,
             vcpu,
             id: self.id,
             run_mmap,
-            vcpu_run_handle_fingerprint,
+            signal_handle: self.signal_handle.clone(),
         })
     }
 
     fn as_vcpu(&self) -> &dyn Vcpu {
         self
-    }
-
-    #[allow(clippy::cast_ptr_alignment)]
-    fn take_run_handle(&self, signal_num: Option<c_int>) -> Result<VcpuRunHandle> {
-        fn vcpu_run_handle_drop() {
-            VCPU_THREAD.with(|v| {
-                // This assumes that a failure in `BlockedSignal::new` means the signal is already
-                // blocked and there it should not be unblocked on exit.
-                let _blocked_signal = &(*v.borrow())
-                    .as_ref()
-                    .and_then(|state| state.signal_num)
-                    .map(BlockedSignal::new);
-
-                *v.borrow_mut() = None;
-            });
-        }
-
-        // Prevent `vcpu_run_handle_drop` from being called until we actually setup the signal
-        // blocking. The handle needs to be made now so that we can use the fingerprint.
-        let vcpu_run_handle = ManuallyDrop::new(VcpuRunHandle::new(vcpu_run_handle_drop));
-
-        // AcqRel ordering is sufficient to ensure only one thread gets to set its fingerprint to
-        // this Vcpu and subsequent `run` calls will see the fingerprint.
-        if self
-            .vcpu_run_handle_fingerprint
-            .compare_exchange(
-                0,
-                vcpu_run_handle.fingerprint().as_u64(),
-                std::sync::atomic::Ordering::AcqRel,
-                std::sync::atomic::Ordering::Acquire,
-            )
-            .is_err()
-        {
-            return Err(Error::new(EBUSY));
-        }
-
-        // Block signal while we add -- if a signal fires (very unlikely,
-        // as this means something is trying to pause the vcpu before it has
-        // even started) it'll try to grab the read lock while this write
-        // lock is grabbed and cause a deadlock.
-        // Assuming that a failure to block means it's already blocked.
-        let _blocked_signal = signal_num.map(BlockedSignal::new);
-
-        VCPU_THREAD.with(|v| {
-            if v.borrow().is_none() {
-                *v.borrow_mut() = Some(VcpuThread {
-                    run: self.run_mmap.as_ptr() as *mut gzvm_vcpu_run,
-                    signal_num,
-                });
-                Ok(())
-            } else {
-                Err(Error::new(EBUSY))
-            }
-        })?;
-
-        Ok(ManuallyDrop::into_inner(vcpu_run_handle))
     }
 
     fn id(&self) -> usize {
@@ -1156,21 +1109,10 @@ impl Vcpu for GeniezoneVcpu {
         run.immediate_exit = exit as u8;
     }
 
-    fn set_local_immediate_exit(exit: bool) {
-        VCPU_THREAD.with(|v| {
-            if let Some(state) = &(*v.borrow()) {
-                unsafe {
-                    (*state.run).immediate_exit = exit as u8;
-                };
-            }
-        });
-    }
-
-    fn set_local_immediate_exit_fn(&self) -> extern "C" fn() {
-        extern "C" fn f() {
-            GeniezoneVcpu::set_local_immediate_exit(true);
+    fn signal_handle(&self) -> VcpuSignalHandle {
+        VcpuSignalHandle {
+            inner: Arc::downgrade(&self.signal_handle) as _,
         }
-        f
     }
 
     fn pvclock_ctrl(&self) -> Result<()> {
@@ -1184,16 +1126,7 @@ impl Vcpu for GeniezoneVcpu {
     #[allow(clippy::cast_ptr_alignment)]
     // The pointer is page aligned so casting to a different type is well defined, hence the clippy
     // allow attribute.
-    fn run(&mut self, run_handle: &VcpuRunHandle) -> Result<VcpuExit> {
-        // Acquire is used to ensure this check is ordered after the `compare_exchange` in `run`.
-        if self
-            .vcpu_run_handle_fingerprint
-            .load(std::sync::atomic::Ordering::Acquire)
-            != run_handle.fingerprint().as_u64()
-        {
-            panic!("invalid VcpuRunHandle used to run Vcpu");
-        }
-
+    fn run(&mut self) -> Result<VcpuExit> {
         // Safe because we know that our file is a VCPU fd and we verify the return result.
         let ret = unsafe { ioctl_with_val(self, GZVM_RUN(), self.run_mmap.as_ptr() as u64) };
         if ret != 0 {

@@ -456,7 +456,6 @@ impl VmX86_64 for HaxmVm {
             id,
             tunnel: tunnel_info.va as *mut hax_tunnel,
             io_buffer: tunnel_info.io_va as *mut c_void,
-            vcpu_run_handle_fingerprint: Default::default(),
         }))
     }
 

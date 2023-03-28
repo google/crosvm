@@ -4,16 +4,12 @@
 
 use core::ffi::c_void;
 use std::arch::x86_64::CpuidResult;
-use std::cell::RefCell;
 use std::convert::TryInto;
 use std::mem::size_of;
-use std::os::raw::c_int;
-use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
 use base::Error;
 use base::Result;
-use libc::EBUSY;
 use libc::EINVAL;
 use libc::EIO;
 use libc::ENOENT;
@@ -39,7 +35,6 @@ use crate::Regs;
 use crate::Sregs;
 use crate::Vcpu;
 use crate::VcpuExit;
-use crate::VcpuRunHandle;
 use crate::VcpuX86_64;
 use crate::Xsave;
 
@@ -298,14 +293,6 @@ impl Drop for SafeInstructionEmulator {
 unsafe impl Send for SafeInstructionEmulator {}
 unsafe impl Sync for SafeInstructionEmulator {}
 
-/// VCPU Thread contains basic vcpu info, for cancelling the vcpu requests without a vcpu handle.
-pub(super) struct VcpuThread {
-    vm_partition: Arc<SafePartition>,
-    index: u32,
-}
-
-thread_local!(static VCPU_THREAD: RefCell<Option<VcpuThread>> = RefCell::new(None));
-
 struct SafeVirtualProcessor {
     vm_partition: Arc<SafePartition>,
     index: u32,
@@ -333,7 +320,6 @@ impl Drop for SafeVirtualProcessor {
 pub struct WhpxVcpu {
     index: u32,
     safe_virtual_processor: Arc<SafeVirtualProcessor>,
-    vcpu_run_handle_fingerprint: Arc<AtomicU64>,
     vm_partition: Arc<SafePartition>,
     last_exit_context: Arc<WHV_RUN_VP_EXIT_CONTEXT>,
     // must be arc, since we cannot "dupe" an instruction emulator similar to a handle.
@@ -352,7 +338,6 @@ impl WhpxVcpu {
         Ok(WhpxVcpu {
             index,
             safe_virtual_processor: Arc::new(safe_virtual_processor),
-            vcpu_run_handle_fingerprint: Default::default(),
             vm_partition,
             last_exit_context: Arc::new(Default::default()),
             instruction_emulator: Arc::new(instruction_emulator),
@@ -519,7 +504,6 @@ impl Vcpu for WhpxVcpu {
         Ok(WhpxVcpu {
             index: self.index,
             safe_virtual_processor: self.safe_virtual_processor.clone(),
-            vcpu_run_handle_fingerprint: self.vcpu_run_handle_fingerprint.clone(),
             vm_partition: self.vm_partition.clone(),
             last_exit_context: self.last_exit_context.clone(),
             instruction_emulator: self.instruction_emulator.clone(),
@@ -530,47 +514,6 @@ impl Vcpu for WhpxVcpu {
 
     fn as_vcpu(&self) -> &dyn Vcpu {
         self
-    }
-
-    fn take_run_handle(&self, _signal_num: Option<c_int>) -> Result<VcpuRunHandle> {
-        fn vcpu_run_handle_drop() {
-            VCPU_THREAD.with(|v| {
-                *v.borrow_mut() = None;
-            });
-        }
-
-        let vcpu_run_handle = VcpuRunHandle::new(vcpu_run_handle_drop);
-
-        // AcqRel ordering is sufficient to ensure only one thread gets to set its fingerprint to
-        // this Vcpu and subsequent `run` calls will see the fingerprint.
-        if self
-            .vcpu_run_handle_fingerprint
-            .compare_exchange(
-                0,
-                vcpu_run_handle.fingerprint().as_u64(),
-                std::sync::atomic::Ordering::AcqRel,
-                std::sync::atomic::Ordering::Acquire,
-            )
-            .is_err()
-        {
-            // Prevent `vcpu_run_handle_drop` from being called.
-            std::mem::forget(vcpu_run_handle);
-            return Err(Error::new(EBUSY));
-        }
-
-        VCPU_THREAD.with(|v| {
-            if v.borrow().is_none() {
-                *v.borrow_mut() = Some(VcpuThread {
-                    vm_partition: self.vm_partition.clone(),
-                    index: self.index,
-                });
-                Ok(())
-            } else {
-                Err(Error::new(EBUSY))
-            }
-        })?;
-
-        Ok(vcpu_run_handle)
     }
 
     /// Returns the vcpu id.
@@ -586,27 +529,6 @@ impl Vcpu for WhpxVcpu {
                 WHvCancelRunVirtualProcessor(self.vm_partition.partition, self.index, 0);
             }
         }
-    }
-
-    ///  Exits the vcpu immediately if exit is true for the vcpu on the current thread.
-    fn set_local_immediate_exit(exit: bool) {
-        if exit {
-            VCPU_THREAD.with(|v| {
-                if let Some(state) = &(*v.borrow()) {
-                    // safe because we own the vcpu index and assume the vm partition is still valid.
-                    unsafe {
-                        WHvCancelRunVirtualProcessor(state.vm_partition.partition, state.index, 0);
-                    }
-                }
-            });
-        }
-    }
-
-    fn set_local_immediate_exit_fn(&self) -> extern "C" fn() {
-        extern "C" fn f() {
-            WhpxVcpu::set_local_immediate_exit(true);
-        }
-        f
     }
 
     /// Signals to the hypervisor that this guest is being paused by userspace.  Only works on Vms
@@ -710,16 +632,7 @@ impl Vcpu for WhpxVcpu {
     }
 
     #[allow(non_upper_case_globals)]
-    fn run(&mut self, run_handle: &VcpuRunHandle) -> Result<VcpuExit> {
-        // Acquire is used to ensure this check is ordered after the `compare_exchange` in `run`.
-        if self
-            .vcpu_run_handle_fingerprint
-            .load(std::sync::atomic::Ordering::Acquire)
-            != run_handle.fingerprint().as_u64()
-        {
-            panic!("invalid VcpuRunHandle used to run Vcpu");
-        }
-
+    fn run(&mut self) -> Result<VcpuExit> {
         // safe because we own this whpx virtual processor index, and assume the vm partition is still valid
         let exit_context_ptr = Arc::as_ptr(&self.last_exit_context);
         check_whpx!(unsafe {

@@ -76,9 +76,8 @@ fn test_whpx_mmio_fetch_memory() {
     // And ensure that 1 write is performed.
     let memory_writes = AtomicU16::new(0);
 
-    let run_handle = vcpu.take_run_handle(None).unwrap();
     loop {
-        match vcpu.run(&run_handle).expect("run failed") {
+        match vcpu.run().expect("run failed") {
             VcpuExit::Mmio => {
                 exits.fetch_add(1, Ordering::SeqCst);
                 vcpu.handle_mmio(&mut |IoParams {
