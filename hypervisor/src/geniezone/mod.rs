@@ -1177,10 +1177,6 @@ impl Vcpu for GeniezoneVcpu {
         Err(Error::new(libc::ENXIO))
     }
 
-    fn set_signal_mask(&self, _signals: &[c_int]) -> Result<()> {
-        Err(Error::new(libc::ENXIO))
-    }
-
     unsafe fn enable_raw_capability(&self, _cap: u32, _args: &[u64; 4]) -> Result<()> {
         Err(Error::new(libc::ENXIO))
     }

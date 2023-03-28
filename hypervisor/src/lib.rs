@@ -374,11 +374,6 @@ pub trait Vcpu: downcast_rs::DowncastSync {
     /// that support `VmCap::PvClockSuspend`.
     fn pvclock_ctrl(&self) -> Result<()>;
 
-    /// Specifies set of signals that are blocked during execution of `RunnableVcpu::run`.  Signals
-    /// that are not blocked will cause run to return with `VcpuExit::Intr`.  Only works on Vms that
-    /// support `VmCap::SignalMask`.
-    fn set_signal_mask(&self, signals: &[c_int]) -> Result<()>;
-
     /// Enables a hypervisor-specific extension on this Vcpu.  `cap` is a constant defined by the
     /// hypervisor API (e.g., kvm.h).  `args` are the arguments for enabling the feature, if any.
     ///

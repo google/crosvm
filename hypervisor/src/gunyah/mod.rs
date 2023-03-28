@@ -873,10 +873,6 @@ impl Vcpu for GunyahVcpu {
         Err(Error::new(ENOTSUP))
     }
 
-    fn set_signal_mask(&self, _signals: &[c_int]) -> Result<()> {
-        unimplemented!()
-    }
-
     unsafe fn enable_raw_capability(&self, _cap: u32, _args: &[u64; 4]) -> Result<()> {
         unimplemented!()
     }

@@ -21,7 +21,6 @@ use std::collections::BTreeMap;
 use std::collections::BinaryHeap;
 use std::convert::TryFrom;
 use std::ffi::CString;
-use std::mem::size_of;
 use std::mem::ManuallyDrop;
 use std::os::raw::c_int;
 use std::os::raw::c_ulong;
@@ -40,7 +39,6 @@ use base::ioctl_with_mut_ref;
 use base::ioctl_with_ref;
 use base::ioctl_with_val;
 use base::pagesize;
-use base::signal;
 use base::AsRawDescriptor;
 use base::Error;
 use base::Event;
@@ -57,7 +55,6 @@ use base::SafeDescriptor;
 use data_model::vec_with_array_field;
 use kvm_sys::*;
 use libc::open64;
-use libc::sigset_t;
 use libc::EBUSY;
 use libc::EFAULT;
 use libc::EINVAL;
@@ -899,38 +896,6 @@ impl Vcpu for KvmVcpu {
 
     fn pvclock_ctrl(&self) -> Result<()> {
         self.pvclock_ctrl_arch()
-    }
-
-    fn set_signal_mask(&self, signals: &[c_int]) -> Result<()> {
-        let sigset = signal::create_sigset(signals)?;
-
-        let mut kvm_sigmask = vec_with_array_field::<kvm_signal_mask, sigset_t>(1);
-        // Rust definition of sigset_t takes 128 bytes, but the kernel only
-        // expects 8-bytes structure, so we can't write
-        // kvm_sigmask.len  = size_of::<sigset_t>() as u32;
-        kvm_sigmask[0].len = 8;
-        // Ensure the length is not too big.
-        const _ASSERT: usize = size_of::<sigset_t>() - 8usize;
-
-        // Safe as we allocated exactly the needed space
-        unsafe {
-            copy_nonoverlapping(
-                &sigset as *const sigset_t as *const u8,
-                kvm_sigmask[0].sigset.as_mut_ptr(),
-                8,
-            );
-        }
-
-        let ret = unsafe {
-            // The ioctl is safe because the kernel will only read from the
-            // kvm_signal_mask structure.
-            ioctl_with_ref(self, KVM_SET_SIGNAL_MASK(), &kvm_sigmask[0])
-        };
-        if ret == 0 {
-            Ok(())
-        } else {
-            errno_result()
-        }
     }
 
     unsafe fn enable_raw_capability(&self, cap: u32, args: &[u64; 4]) -> Result<()> {

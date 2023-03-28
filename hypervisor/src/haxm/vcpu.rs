@@ -192,14 +192,6 @@ impl Vcpu for HaxmVcpu {
         // HaxmVcpu does not support VmCapability::PvClockSuspend
     }
 
-    /// Specifies set of signals that are blocked during execution of `RunnableVcpu::run`.  Signals
-    /// that are not blocked will will cause run to return with `VcpuExit::Intr`. Only works on Vms
-    /// that support `VmCapability::SignalMask`.
-    fn set_signal_mask(&self, _signals: &[c_int]) -> Result<()> {
-        // HaxmVcpu does not support VmCapability::SignalMask
-        Err(Error::new(libc::ENXIO))
-    }
-
     /// Enables a hypervisor-specific extension on this Vcpu.  `cap` is a constant defined by the
     /// hypervisor API.  `args` are the arguments for enabling the feature, if any.
     unsafe fn enable_raw_capability(&self, _cap: u32, _args: &[u64; 4]) -> Result<()> {

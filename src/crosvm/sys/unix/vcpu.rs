@@ -49,23 +49,13 @@ use super::ExitState;
 #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
 use crate::crosvm::ratelimit::Ratelimit;
 
-pub fn setup_vcpu_signal_handler<T: Vcpu>(use_hypervisor_signals: bool) -> Result<()> {
-    if use_hypervisor_signals {
-        unsafe {
-            extern "C" fn handle_signal(_: c_int) {}
-            // Our signal handler does nothing and is trivially async signal safe.
-            register_rt_signal_handler(SIGRTMIN() + 0, handle_signal)
-                .context("error registering signal handler")?;
+pub fn setup_vcpu_signal_handler<T: Vcpu>() -> Result<()> {
+    unsafe {
+        extern "C" fn handle_signal<T: Vcpu>(_: c_int) {
+            T::set_local_immediate_exit(true);
         }
-        block_signal(SIGRTMIN() + 0).context("failed to block signal")?;
-    } else {
-        unsafe {
-            extern "C" fn handle_signal<T: Vcpu>(_: c_int) {
-                T::set_local_immediate_exit(true);
-            }
-            register_rt_signal_handler(SIGRTMIN() + 0, handle_signal::<T>)
-                .context("error registering signal handler")?;
-        }
+        register_rt_signal_handler(SIGRTMIN() + 0, handle_signal::<T>)
+            .context("error registering signal handler")?;
     }
     Ok(())
 }
@@ -148,7 +138,6 @@ pub fn runnable_vcpu<V>(
     irq_chip: &mut dyn IrqChipArch,
     vcpu_count: usize,
     has_bios: bool,
-    use_hypervisor_signals: bool,
     cpu_config: Option<CpuConfigArch>,
 ) -> Result<(V, VcpuRunHandle)>
 where
@@ -187,13 +176,6 @@ where
     )
     .context("failed to configure vcpu")?;
 
-    if use_hypervisor_signals {
-        let mut v = get_blocked_signals().context("failed to retrieve signal mask for vcpu")?;
-        v.retain(|&x| x != SIGRTMIN() + 0);
-        vcpu.set_signal_mask(&v)
-            .context("failed to set the signal mask for vcpu")?;
-    }
-
     let vcpu_run_handle = vcpu
         .take_run_handle(Some(SIGRTMIN() + 0))
         .context("failed to set thread id for vcpu")?;
@@ -213,7 +195,6 @@ fn vcpu_loop<V>(
     mmio_bus: Bus,
     requires_pvclock_ctrl: bool,
     from_main_tube: mpsc::Receiver<VcpuControl>,
-    use_hypervisor_signals: bool,
     #[cfg(feature = "gdb")] to_gdb_tube: Option<mpsc::Sender<VcpuDebugStatusMessage>>,
     #[cfg(feature = "gdb")] guest_mem: GuestMemory,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] msr_handlers: MsrHandlers,
@@ -456,16 +437,7 @@ where
         }
 
         if interrupted_by_signal {
-            if use_hypervisor_signals {
-                // Try to clear the signal that we use to kick VCPU if it is pending before
-                // attempting to handle pause requests.
-                if let Err(e) = clear_signal(SIGRTMIN() + 0) {
-                    error!("failed to clear pending signal: {}", e);
-                    return ExitState::Crash;
-                }
-            } else {
-                vcpu.set_immediate_exit(false);
-            }
+            vcpu.set_immediate_exit(false);
         }
 
         if let Err(e) = irq_chip.inject_interrupts(&vcpu) {
@@ -492,7 +464,6 @@ pub fn run_vcpu<V>(
     vm_evt_wrtube: SendTube,
     requires_pvclock_ctrl: bool,
     from_main_tube: mpsc::Receiver<VcpuControl>,
-    use_hypervisor_signals: bool,
     #[cfg(feature = "gdb")] to_gdb_tube: Option<mpsc::Sender<VcpuDebugStatusMessage>>,
     enable_per_vm_core_scheduling: bool,
     cpu_config: Option<CpuConfigArch>,
@@ -535,7 +506,6 @@ where
                     irq_chip.as_mut(),
                     vcpu_count,
                     has_bios,
-                    use_hypervisor_signals,
                     cpu_config,
                 );
 
@@ -578,7 +548,6 @@ where
                     mmio_bus,
                     requires_pvclock_ctrl,
                     from_main_tube,
-                    use_hypervisor_signals,
                     #[cfg(feature = "gdb")]
                     to_gdb_tube,
                     #[cfg(feature = "gdb")]

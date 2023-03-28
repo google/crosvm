@@ -617,14 +617,6 @@ impl Vcpu for WhpxVcpu {
         check_whpx!(unsafe { WHvSuspendPartitionTime(self.vm_partition.partition) })
     }
 
-    /// Specifies set of signals that are blocked during execution of `RunnableVcpu::run`.  Signals
-    /// that are not blocked will cause run to return with `VcpuExit::Intr`.  Only works on Vms that
-    /// support `VmCapability::SignalMask`.
-    fn set_signal_mask(&self, _signals: &[c_int]) -> Result<()> {
-        // Whpx does not support VmCapability::SignalMask
-        Err(Error::new(ENXIO))
-    }
-
     /// Enables a hypervisor-specific extension on this Vcpu.  `cap` is a constant defined by the
     /// hypervisor API (e.g., kvm.h).  `args` are the arguments for enabling the feature, if any.
     unsafe fn enable_raw_capability(&self, _cap: u32, _args: &[u64; 4]) -> Result<()> {

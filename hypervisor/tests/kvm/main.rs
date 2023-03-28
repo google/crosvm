@@ -240,15 +240,6 @@ fn irqfd_resample() {
 }
 
 #[test]
-fn set_signal_mask() {
-    let kvm = Kvm::new().unwrap();
-    let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
-    let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
-    let vcpu = vm.create_vcpu(0).unwrap();
-    vcpu.set_signal_mask(&[base::SIGRTMIN() + 0]).unwrap();
-}
-
-#[test]
 fn vcpu_mmap_size() {
     let kvm = Kvm::new().unwrap();
     let mmap_size = kvm.get_vcpu_mmap_size().unwrap();

@@ -2697,11 +2697,18 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
     let mut vcpu_handles = Vec::with_capacity(linux.vcpu_count);
     let vcpu_thread_barrier = Arc::new(Barrier::new(linux.vcpu_count + 1));
-    let use_hypervisor_signals = !linux
+
+    if !linux
         .vm
         .get_hypervisor()
-        .check_capability(HypervisorCap::ImmediateExit);
-    vcpu::setup_vcpu_signal_handler::<Vcpu>(use_hypervisor_signals)?;
+        .check_capability(HypervisorCap::ImmediateExit)
+    {
+        return Err(anyhow!(
+            "missing required hypervisor capability ImmediateExit"
+        ));
+    }
+
+    vcpu::setup_vcpu_signal_handler::<Vcpu>()?;
 
     let vcpus: Vec<Option<_>> = match linux.vcpus.take() {
         Some(vec) => vec.into_iter().map(Some).collect(),
@@ -2828,7 +2835,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 .context("failed to clone vm event tube")?,
             linux.vm.check_capability(VmCap::PvClockSuspend),
             from_main_channel,
-            use_hypervisor_signals,
             #[cfg(feature = "gdb")]
             to_gdb_channel.clone(),
             cfg.per_vm_core_scheduling,
