@@ -29,7 +29,6 @@ use std::convert::TryInto;
 use std::fmt;
 use std::fmt::Display;
 use std::fs::File;
-use std::fs::OpenOptions;
 use std::path::PathBuf;
 use std::result::Result as StdResult;
 use std::str::FromStr;
@@ -1662,11 +1661,7 @@ impl VmRequest {
                     }
                     info!("flushed IRQs in {} iterations", flush_attempts);
                     let vcpu_path = snapshot_path.with_extension("vcpu");
-                    let cpu_file = OpenOptions::new()
-                        .create(true)
-                        .write(true)
-                        .truncate(true)
-                        .open(&vcpu_path)
+                    let cpu_file = File::create(&vcpu_path)
                         .with_context(|| format!("failed to open path {}", vcpu_path.display()))?;
                     let (send_chan, recv_chan) = mpsc::channel();
                     kick_vcpus(VcpuControl::Snapshot(send_chan));
@@ -1743,10 +1738,7 @@ pub fn do_restore(
     let _guard = VcpuSuspendGuard::new(&kick_vcpus, vcpu_size)?;
     let _device_guard = DeviceSleepGuard::new(device_control_tube)?;
     let vcpu_path = restore_path.with_extension("vcpu");
-    let cpu_file = OpenOptions::new()
-        .read(true)
-        .write(false)
-        .open(&vcpu_path)
+    let cpu_file = File::open(&vcpu_path)
         .with_context(|| format!("failed to open path {}", vcpu_path.display()))?;
     let vcpus_data: Vec<serde_json::Value> = serde_json::from_reader(cpu_file)?;
     let (send_chan, recv_chan) = mpsc::channel();

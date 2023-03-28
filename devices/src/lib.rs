@@ -45,7 +45,7 @@ cfg_if::cfg_if! {
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
-use std::fs::OpenOptions;
+use std::fs::File;
 use std::sync::Arc;
 
 use anyhow::anyhow;
@@ -346,19 +346,11 @@ async fn snapshot_handler(
     // TODO(b/268094487): If the snapshot fail, this leaves an incomplete memory snapshot at the
     // requested path.
 
-    let mut json_file = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(path)
-        .with_context(|| format!("failed to open {}", path.display()))?;
+    let mut json_file =
+        File::create(path).with_context(|| format!("failed to open {}", path.display()))?;
 
     let mem_path = path.with_extension("mem");
-    let mut mem_file = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(&mem_path)
+    let mut mem_file = File::create(&mem_path)
         .with_context(|| format!("failed to open {}", mem_path.display()))?;
 
     snapshot_root.guest_memory_metadata = guest_memory
@@ -382,18 +374,11 @@ async fn restore_handler(
     guest_memory: &GuestMemory,
     buses: &[&Bus],
 ) -> anyhow::Result<()> {
-    let file = OpenOptions::new()
-        .read(true)
-        .write(false)
-        .open(path)
-        .with_context(|| format!("failed to open {}", path.display()))?;
+    let file = File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
 
     let mem_path = path.with_extension("mem");
-    let mut mem_file = OpenOptions::new()
-        .read(true)
-        .write(false)
-        .open(&mem_path)
-        .with_context(|| format!("failed to open {}", mem_path.display()))?;
+    let mut mem_file =
+        File::open(&mem_path).with_context(|| format!("failed to open {}", mem_path.display()))?;
 
     let snapshot_root: SnapshotRoot = serde_json::from_reader(file)?;
 
