@@ -628,6 +628,30 @@ impl Ioapic {
         Ok(())
     }
 
+    /// On warm restore, there could already be MSIs registered. We need to
+    /// release them in case the routing has changed (e.g. different
+    /// data <-> GSI).
+    fn release_all_msis(&mut self) -> std::result::Result<(), IoapicError> {
+        for out_event in self.out_events.drain(..).flatten() {
+            let request = VmIrqRequest::ReleaseOneIrq {
+                gsi: out_event.irq_event.gsi,
+                irqfd: out_event.irq_event.event,
+            };
+
+            self.irq_tube
+                .send(&request)
+                .map_err(IoapicError::ReleaseOneIrqSend)?;
+            if let VmIrqResponse::Err(e) = self
+                .irq_tube
+                .recv()
+                .map_err(IoapicError::ReleaseOneIrqRecv)?
+            {
+                return Err(IoapicError::ReleaseOneIrq(e));
+            }
+        }
+        Ok(())
+    }
+
     fn ioapic_read(&mut self) -> u32 {
         match self.ioregsel {
             IOAPIC_REG_VERSION => ((self.num_pins - 1) as u32) << 16 | IOAPIC_VERSION_ID,
@@ -684,6 +708,8 @@ impl Suspendable for Ioapic {
         self.rtc_remote_irr = snap.rtc_remote_irr;
         self.redirect_table = snap.redirect_table;
         self.interrupt_level = snap.interrupt_level;
+        self.release_all_msis()
+            .context("failed to clear MSIs prior to restore")?;
         self.out_events = (0..snap.num_pins).map(|_| None).collect();
 
         for (index, maybe_out_event) in snap.out_event_snapshots.iter().enumerate() {
@@ -725,6 +751,12 @@ enum IoapicError {
     AllocateOneMsiSend(TubeError),
     #[error("failed to create event object: {0}")]
     CreateEvent(Error),
+    #[error("ReleaseOneIrq failed: {0}")]
+    ReleaseOneIrq(Error),
+    #[error("failed to receive ReleaseOneIrq response: {0}")]
+    ReleaseOneIrqRecv(TubeError),
+    #[error("failed to send ReleaseOneIrq request: {0}")]
+    ReleaseOneIrqSend(TubeError),
 }
 
 #[cfg(test)]
@@ -1202,7 +1234,7 @@ mod tests {
     fn recv_allocate_msi(t: &Tube) -> u32 {
         match t.recv::<VmIrqRequest>().unwrap() {
             VmIrqRequest::AllocateOneMsiAtGsi { gsi, .. } => gsi,
-            _ => panic!("unexpected irqchip message"),
+            msg => panic!("unexpected irqchip message: {:?}", msg),
         }
     }
 
@@ -1224,7 +1256,15 @@ mod tests {
                 msi_address,
                 msi_data,
             },
-            _ => panic!("unexpected irqchip message"),
+            msg => panic!("unexpected irqchip message: {:?}", msg),
+        }
+    }
+
+    #[track_caller]
+    fn recv_release_one_irq(t: &Tube) -> u32 {
+        match t.recv::<VmIrqRequest>().unwrap() {
+            VmIrqRequest::ReleaseOneIrq { gsi, irqfd: _ } => gsi,
+            msg => panic!("unexpected irqchip message: {:?}", msg),
         }
     }
 
@@ -1233,9 +1273,13 @@ mod tests {
         t.send(&VmIrqResponse::Ok).unwrap();
     }
 
+    /// Simulates restoring the ioapic as if the VM had never booted a guest.
+    /// This is called the "cold" restore case since all the devices are
+    /// expected to be essentially blank / unconfigured.
     #[test]
-    fn verify_ioapic_restore_smoke() {
+    fn verify_ioapic_restore_cold_smoke() {
         let (irqchip_tube, ioapic_irq_tube) = Tube::pair().unwrap();
+        let gsi_num = NUM_IOAPIC_PINS as u32;
 
         // Creates an ioapic w/ an MSI for GSI = NUM_IOAPIC_PINS, MSI
         // address 0xa, and data 0xd. The irq index (pin number) is 10, but
@@ -1245,12 +1289,12 @@ mod tests {
         // Take a snapshot of the ioapic.
         let snapshot = saved_ioapic.snapshot().unwrap();
 
-        // Create a fake irqchip to respond to our requests
+        // Create a fake irqchip to respond to our requests.
         let irqchip_fake = thread::spawn(move || {
-            assert_eq!(recv_allocate_msi(&irqchip_tube), NUM_IOAPIC_PINS as u32);
+            assert_eq!(recv_allocate_msi(&irqchip_tube), gsi_num);
             send_ok(&irqchip_tube);
             let route = recv_add_msi_route(&irqchip_tube);
-            assert_eq!(route.gsi, NUM_IOAPIC_PINS as u32);
+            assert_eq!(route.gsi, gsi_num);
             assert_eq!(route.msi_address, 0xa);
             assert_eq!(route.msi_data, 0xd);
             send_ok(&irqchip_tube);
@@ -1259,6 +1303,49 @@ mod tests {
 
         let mut restored_ioapic = Ioapic::new(ioapic_irq_tube, NUM_IOAPIC_PINS).unwrap();
         restored_ioapic.restore(snapshot).unwrap();
+
+        irqchip_fake.join().unwrap();
+    }
+
+    /// In the warm case, we are restoring to an Ioapic that already exists and
+    /// may have MSIs already allocated. Here, we're verifying the restore
+    /// process releases any existing MSIs before registering the restored MSIs.
+    #[test]
+    fn verify_ioapic_restore_warm_smoke() {
+        let (irqchip_tube, ioapic_irq_tube) = Tube::pair().unwrap();
+        let gsi_num = NUM_IOAPIC_PINS as u32;
+
+        // Creates an ioapic w/ an MSI for GSI = NUM_IOAPIC_PINS, MSI
+        // address 0xa, and data 0xd. The irq index (pin number) is 10, but
+        // this is not meaningful.
+        let mut ioapic = set_up_with_irq(10, TriggerMode::Level);
+
+        // We don't connect this Tube until after the IRQ is initially set up
+        // as it triggers messages we don't want to assert on (they're about
+        // ioapic functionality, not snapshotting).
+        ioapic.irq_tube = ioapic_irq_tube;
+
+        // Take a snapshot of the ioapic.
+        let snapshot = ioapic.snapshot().unwrap();
+
+        // Create a fake irqchip to respond to our requests.
+        let irqchip_fake = thread::spawn(move || {
+            // We should clear the existing MSI as the first restore step.
+            assert_eq!(recv_release_one_irq(&irqchip_tube), gsi_num);
+            send_ok(&irqchip_tube);
+
+            // Then re-allocate it as part of restoring.
+            assert_eq!(recv_allocate_msi(&irqchip_tube), gsi_num);
+            send_ok(&irqchip_tube);
+            let route = recv_add_msi_route(&irqchip_tube);
+            assert_eq!(route.gsi, gsi_num);
+            assert_eq!(route.msi_address, 0xa);
+            assert_eq!(route.msi_data, 0xd);
+            send_ok(&irqchip_tube);
+            irqchip_tube
+        });
+
+        ioapic.restore(snapshot).unwrap();
 
         irqchip_fake.join().unwrap();
     }
