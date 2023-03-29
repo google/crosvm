@@ -15,7 +15,7 @@ use crate::virtio::iommu::ExportedRegion;
 /// A wrapper that works with gpa, or iova and an iommu.
 pub fn read_obj_from_addr_wrapper<T: FromBytes>(
     mem: &GuestMemory,
-    exported_region: &Option<ExportedRegion>,
+    exported_region: Option<&ExportedRegion>,
     addr: GuestAddress,
 ) -> anyhow::Result<T> {
     if let Some(exported_region) = exported_region {
@@ -29,7 +29,7 @@ pub fn read_obj_from_addr_wrapper<T: FromBytes>(
 /// A wrapper that works with gpa, or iova and an iommu.
 pub fn write_obj_at_addr_wrapper<T: FromBytes + AsBytes>(
     mem: &GuestMemory,
-    exported_region: &Option<ExportedRegion>,
+    exported_region: Option<&ExportedRegion>,
     val: T,
     addr: GuestAddress,
 ) -> anyhow::Result<()> {

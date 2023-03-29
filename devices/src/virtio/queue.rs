@@ -142,8 +142,9 @@ impl DescriptorChain {
         let desc_head = desc_table
             .checked_add((index as u64) * 16)
             .context("integer overflow")?;
-        let desc: Desc = read_obj_from_addr_wrapper(mem, &exported_desc_table, desc_head)
-            .with_context(|| format!("failed to read desc {:x}", desc_head.offset()))?;
+        let desc: Desc =
+            read_obj_from_addr_wrapper(mem, exported_desc_table.as_ref(), desc_head)
+                .with_context(|| format!("failed to read desc {:x}", desc_head.offset()))?;
 
         let addr = GuestAddress(desc.addr.into());
         let len = desc.len.to_native();
@@ -573,7 +574,8 @@ impl Queue {
 
         let avail_index_addr = self.avail_ring.unchecked_add(2);
         let avail_index: u16 =
-            read_obj_from_addr_wrapper(mem, &self.exported_avail_ring, avail_index_addr).unwrap();
+            read_obj_from_addr_wrapper(mem, self.exported_avail_ring.as_ref(), avail_index_addr)
+                .unwrap();
 
         Wrapping(avail_index)
     }
@@ -590,7 +592,7 @@ impl Queue {
         let avail_event_addr = self.used_ring.unchecked_add(4 + 8 * u64::from(self.size));
         write_obj_at_addr_wrapper(
             mem,
-            &self.exported_used_ring,
+            self.exported_used_ring.as_ref(),
             avail_index.0,
             avail_event_addr,
         )
@@ -604,7 +606,8 @@ impl Queue {
         fence(Ordering::SeqCst);
 
         let avail_flags: u16 =
-            read_obj_from_addr_wrapper(mem, &self.exported_avail_ring, self.avail_ring).unwrap();
+            read_obj_from_addr_wrapper(mem, self.exported_avail_ring.as_ref(), self.avail_ring)
+                .unwrap();
 
         avail_flags & flag == flag
     }
@@ -621,7 +624,8 @@ impl Queue {
 
         let used_event_addr = self.avail_ring.unchecked_add(4 + 2 * u64::from(self.size));
         let used_event: u16 =
-            read_obj_from_addr_wrapper(mem, &self.exported_avail_ring, used_event_addr).unwrap();
+            read_obj_from_addr_wrapper(mem, self.exported_avail_ring.as_ref(), used_event_addr)
+                .unwrap();
 
         Wrapping(used_event)
     }
@@ -634,8 +638,13 @@ impl Queue {
         fence(Ordering::SeqCst);
 
         let used_index_addr = self.used_ring.unchecked_add(2);
-        write_obj_at_addr_wrapper(mem, &self.exported_used_ring, used_index.0, used_index_addr)
-            .unwrap();
+        write_obj_at_addr_wrapper(
+            mem,
+            self.exported_used_ring.as_ref(),
+            used_index.0,
+            used_index_addr,
+        )
+        .unwrap();
     }
 
     /// Get the first available descriptor chain without removing it from the queue.
@@ -661,7 +670,8 @@ impl Queue {
 
         // This index is checked below in checked_new.
         let descriptor_index: u16 =
-            read_obj_from_addr_wrapper(mem, &self.exported_avail_ring, desc_idx_addr).unwrap();
+            read_obj_from_addr_wrapper(mem, self.exported_avail_ring.as_ref(), desc_idx_addr)
+                .unwrap();
 
         let iommu = self.iommu.as_ref().map(Arc::clone);
         DescriptorChain::checked_new(
@@ -734,11 +744,16 @@ impl Queue {
         let used_elem = used_ring.unchecked_add((4 + next_used * 8) as u64);
 
         // These writes can't fail as we are guaranteed to be within the descriptor ring.
-        write_obj_at_addr_wrapper(mem, &self.exported_used_ring, desc_index as u32, used_elem)
-            .unwrap();
         write_obj_at_addr_wrapper(
             mem,
-            &self.exported_used_ring,
+            self.exported_used_ring.as_ref(),
+            desc_index as u32,
+            used_elem,
+        )
+        .unwrap();
+        write_obj_at_addr_wrapper(
+            mem,
+            self.exported_used_ring.as_ref(),
             len,
             used_elem.unchecked_add(4),
         )
