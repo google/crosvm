@@ -47,9 +47,7 @@ use zerocopy::FromBytes;
 
 use super::async_utils;
 use super::copy_config;
-use super::descriptor_utils;
 use super::DescriptorChain;
-use super::DescriptorError;
 use super::DeviceType;
 use super::Interrupt;
 use super::Queue;
@@ -73,9 +71,6 @@ pub enum BalloonError {
     /// Failed to create async message receiver.
     #[error("failed to create async message receiver: {0}")]
     CreatingMessageReceiver(base::TubeError),
-    /// Virtio descriptor error
-    #[error("virtio descriptor error: {0}")]
-    Descriptor(DescriptorError),
     /// Failed to receive command message.
     #[error("failed to receive command message: {0}")]
     ReceivingCommand(base::TubeError),
@@ -258,7 +253,7 @@ fn release_ranges<F>(
     release_memory_tube: Option<&Tube>,
     inflate_ranges: Vec<(u64, u64)>,
     desc_handler: &mut F,
-) -> descriptor_utils::Result<()>
+) -> anyhow::Result<()>
 where
     F: FnMut(GuestAddress, u64),
 {
@@ -296,10 +291,9 @@ where
 // Processes one message's list of addresses.
 fn handle_address_chain<F>(
     release_memory_tube: Option<&Tube>,
-    avail_desc: DescriptorChain,
-    mem: &GuestMemory,
+    avail_desc: &DescriptorChain,
     desc_handler: &mut F,
-) -> descriptor_utils::Result<()>
+) -> anyhow::Result<()>
 where
     F: FnMut(GuestAddress, u64),
 {
@@ -309,7 +303,7 @@ where
     // gains in a newly booted system, so it's worth attempting.
     let mut range_start = 0;
     let mut range_size = 0;
-    let mut reader = Reader::new(mem.clone(), avail_desc)?;
+    let mut reader = Reader::new(avail_desc);
     let mut inflate_ranges: Vec<(u64, u64)> = Vec::new();
     for res in reader.iter::<Le32>() {
         let pfn = match res {
@@ -361,13 +355,10 @@ async fn handle_queue<F>(
             }
             Ok(d) => d,
         };
-        let index = avail_desc.index;
-        if let Err(e) =
-            handle_address_chain(release_memory_tube, avail_desc, mem, &mut desc_handler)
-        {
+        if let Err(e) = handle_address_chain(release_memory_tube, &avail_desc, &mut desc_handler) {
             error!("balloon: failed to process inflate addresses: {}", e);
         }
-        queue.add_used(mem, index, 0);
+        queue.add_used(mem, avail_desc, 0);
         queue.trigger_interrupt(mem, &interrupt);
     }
 }
@@ -375,20 +366,18 @@ async fn handle_queue<F>(
 // Processes one page-reporting descriptor.
 fn handle_reported_buffer<F>(
     release_memory_tube: Option<&Tube>,
-    avail_desc: DescriptorChain,
+    avail_desc: &DescriptorChain,
     desc_handler: &mut F,
-) -> descriptor_utils::Result<()>
+) -> anyhow::Result<()>
 where
     F: FnMut(GuestAddress, u64),
 {
-    let mut reported_ranges: Vec<(u64, u64)> = Vec::new();
-    let regions = avail_desc.into_iter();
-    for desc in regions {
-        let (desc_regions, _exported) = desc.into_mem_regions();
-        for r in desc_regions {
-            reported_ranges.push((r.gpa.offset(), r.len));
-        }
-    }
+    let reported_ranges: Vec<(u64, u64)> = avail_desc
+        .readable_mem_regions()
+        .iter()
+        .chain(avail_desc.writable_mem_regions().iter())
+        .map(|r| (r.offset, r.len as u64))
+        .collect();
 
     release_ranges(release_memory_tube, reported_ranges, desc_handler)
 }
@@ -412,11 +401,11 @@ async fn handle_reporting_queue<F>(
             }
             Ok(d) => d,
         };
-        let index = avail_desc.index;
-        if let Err(e) = handle_reported_buffer(release_memory_tube, avail_desc, &mut desc_handler) {
+        if let Err(e) = handle_reported_buffer(release_memory_tube, &avail_desc, &mut desc_handler)
+        {
             error!("balloon: failed to process reported buffer: {}", e);
         }
-        queue.add_used(mem, index, 0);
+        queue.add_used(mem, avail_desc, 0);
         queue.trigger_interrupt(mem, &interrupt);
     }
 }
@@ -451,12 +440,12 @@ async fn handle_stats_queue(
 ) {
     // Consume the first stats buffer sent from the guest at startup. It was not
     // requested by anyone, and the stats are stale.
-    let mut index = match queue.next_async(mem, &mut queue_event).await {
+    let mut avail_desc = match queue.next_async(mem, &mut queue_event).await {
         Err(e) => {
             error!("Failed to read descriptor {}", e);
             return;
         }
-        Ok(d) => d.index,
+        Ok(d) => d,
     };
     loop {
         // Wait for a request to read the stats.
@@ -469,24 +458,17 @@ async fn handle_stats_queue(
         };
 
         // Request a new stats_desc to the guest.
-        queue.add_used(mem, index, 0);
+        queue.add_used(mem, avail_desc, 0);
         queue.trigger_interrupt(mem, &interrupt);
 
-        let stats_desc = match queue.next_async(mem, &mut queue_event).await {
+        avail_desc = match queue.next_async(mem, &mut queue_event).await {
             Err(e) => {
                 error!("Failed to read descriptor {}", e);
                 return;
             }
             Ok(d) => d,
         };
-        index = stats_desc.index;
-        let mut reader = match Reader::new(mem.clone(), stats_desc) {
-            Ok(r) => r,
-            Err(e) => {
-                error!("balloon: failed to CREATE Reader: {}", e);
-                continue;
-            }
-        };
+        let mut reader = Reader::new(&avail_desc);
         let stats = parse_balloon_stats(&mut reader);
 
         let actual_pages = state.lock().await.actual_pages as u64;
@@ -566,15 +548,10 @@ async fn handle_events_queue(
             .next_async(mem, &mut queue_event)
             .await
             .map_err(BalloonError::AsyncAwait)?;
-        let index = avail_desc.index;
-        match Reader::new(mem.clone(), avail_desc) {
-            Ok(mut r) => {
-                handle_event(state.clone(), interrupt.clone(), &mut r, command_tube).await?
-            }
-            Err(e) => error!("balloon: failed to CREATE Reader: {}", e),
-        };
+        let mut reader = Reader::new(&avail_desc);
+        handle_event(state.clone(), interrupt.clone(), &mut reader, command_tube).await?;
 
-        queue.add_used(mem, index, 0);
+        queue.add_used(mem, avail_desc, 0);
         queue.trigger_interrupt(mem, &interrupt);
     }
 }
@@ -608,9 +585,7 @@ async fn handle_wss_op_queue(
             .next_async(mem, &mut queue_event)
             .await
             .map_err(BalloonError::AsyncAwait)?;
-        let index = avail_desc.index;
-
-        let mut writer = Writer::new(mem.clone(), avail_desc).map_err(BalloonError::Descriptor)?;
+        let mut writer = Writer::new(&avail_desc);
 
         match op {
             WSSOp::WSSReport { id } => {
@@ -636,7 +611,7 @@ async fn handle_wss_op_queue(
             }
         }
 
-        queue.add_used(mem, index, writer.bytes_written() as u32);
+        queue.add_used(mem, avail_desc, writer.bytes_written() as u32);
         queue.trigger_interrupt(mem, &interrupt);
     }
 
@@ -687,15 +662,7 @@ async fn handle_wss_data_queue(
             .next_async(mem, &mut queue_event)
             .await
             .map_err(BalloonError::AsyncAwait)?;
-        let index = avail_desc.index;
-        let mut reader = match Reader::new(mem.clone(), avail_desc) {
-            Ok(r) => r,
-            Err(e) => {
-                error!("balloon: failed to CREATE Reader: {}", e);
-                continue;
-            }
-        };
-
+        let mut reader = Reader::new(&avail_desc);
         let wss = parse_balloon_wss(&mut reader);
 
         // Closure to hold the mutex for handling a WSS-R command response
@@ -731,7 +698,7 @@ async fn handle_wss_data_queue(
             }
         }
 
-        queue.add_used(mem, index, 0);
+        queue.add_used(mem, avail_desc, 0);
         queue.trigger_interrupt(mem, &interrupt);
     }
 }
@@ -1314,7 +1281,7 @@ mod tests {
         .expect("create_descriptor_chain failed");
 
         let mut addrs = Vec::new();
-        let res = handle_address_chain(None, chain, &memory, &mut |guest_address, len| {
+        let res = handle_address_chain(None, &chain, &mut |guest_address, len| {
             addrs.push((guest_address, len));
         });
         assert!(res.is_ok());

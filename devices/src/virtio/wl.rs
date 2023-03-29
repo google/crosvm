@@ -1700,30 +1700,21 @@ pub fn process_in_queue<I: SignalableInterrupt>(
             break;
         };
 
-        let index = desc.index;
         let mut should_pop = false;
         if let Some(in_resp) = state.next_recv() {
-            let bytes_written = match Writer::new(mem.clone(), desc) {
-                Ok(mut writer) => {
-                    match encode_resp(&mut writer, in_resp) {
-                        Ok(()) => {
-                            should_pop = true;
-                        }
-                        Err(e) => {
-                            error!("failed to encode response to descriptor chain: {}", e);
-                        }
-                    };
-                    writer.bytes_written() as u32
+            let mut writer = Writer::new(&desc);
+            match encode_resp(&mut writer, in_resp) {
+                Ok(()) => {
+                    should_pop = true;
                 }
                 Err(e) => {
-                    error!("invalid descriptor: {}", e);
-                    0
+                    error!("failed to encode response to descriptor chain: {}", e);
                 }
-            };
-
+            }
+            let bytes_written = writer.bytes_written() as u32;
             needs_interrupt = true;
             in_queue.pop_peeked(mem);
-            in_queue.add_used(mem, index, bytes_written);
+            in_queue.add_used(mem, desc, bytes_written);
         } else {
             break;
         }
@@ -1752,33 +1743,23 @@ pub fn process_out_queue<I: SignalableInterrupt>(
 ) {
     let mut needs_interrupt = false;
     while let Some(desc) = out_queue.pop(mem) {
-        let desc_index = desc.index;
-        match (
-            Reader::new(mem.clone(), desc.clone()),
-            Writer::new(mem.clone(), desc),
-        ) {
-            (Ok(mut reader), Ok(mut writer)) => {
-                let resp = match state.execute(&mut reader) {
-                    Ok(r) => r,
-                    Err(e) => WlResp::Err(Box::new(e)),
-                };
+        let mut reader = Reader::new(&desc);
+        let mut writer = Writer::new(&desc);
 
-                match encode_resp(&mut writer, resp) {
-                    Ok(()) => {}
-                    Err(e) => {
-                        error!("failed to encode response to descriptor chain: {}", e);
-                    }
-                }
+        let resp = match state.execute(&mut reader) {
+            Ok(r) => r,
+            Err(e) => WlResp::Err(Box::new(e)),
+        };
 
-                out_queue.add_used(mem, desc_index, writer.bytes_written() as u32);
-                needs_interrupt = true;
-            }
-            (_, Err(e)) | (Err(e), _) => {
-                error!("invalid descriptor: {}", e);
-                out_queue.add_used(mem, desc_index, 0);
-                needs_interrupt = true;
+        match encode_resp(&mut writer, resp) {
+            Ok(()) => {}
+            Err(e) => {
+                error!("failed to encode response to descriptor chain: {}", e);
             }
         }
+
+        out_queue.add_used(mem, desc, writer.bytes_written() as u32);
+        needs_interrupt = true;
     }
 
     if needs_interrupt {

@@ -58,7 +58,7 @@ use crate::virtio::vsock::sys::windows::protocol::virtio_vsock_event;
 use crate::virtio::vsock::sys::windows::protocol::virtio_vsock_hdr;
 use crate::virtio::vsock::sys::windows::protocol::vsock_op;
 use crate::virtio::vsock::sys::windows::protocol::TYPE_STREAM_SOCKET;
-use crate::virtio::DescriptorError;
+use crate::virtio::DescriptorChain;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
@@ -79,12 +79,8 @@ pub enum VsockError {
     CloneDescriptor(SysError),
     #[error("Failed to create EventAsync: {0}")]
     CreateEventAsync(AsyncError),
-    #[error("Failed to create queue reader: {0}")]
-    CreateReader(DescriptorError),
     #[error("Failed to create wait context: {0}")]
     CreateWaitContext(SysError),
-    #[error("Failed to create queue writer: {0}")]
-    CreateWriter(DescriptorError),
     #[error("Failed to read queue: {0}")]
     ReadQueue(io::Error),
     #[error("Failed to reset event object: {0}")]
@@ -518,7 +514,15 @@ impl Worker {
     ) -> Result<()> {
         loop {
             // Run continuously until exit evt
-            let (mut reader, index) = self.get_next(&mut queue, &mut queue_evt).await?;
+            let avail_desc = match queue.next_async(&self.mem, &mut queue_evt).await {
+                Ok(d) => d,
+                Err(e) => {
+                    error!("vsock: Failed to read descriptor {}", e);
+                    return Err(VsockError::AwaitQueue(e));
+                }
+            };
+
+            let mut reader = Reader::new(&avail_desc);
             while reader.available_bytes() >= std::mem::size_of::<virtio_vsock_hdr>() {
                 let header = match reader.read_obj::<virtio_vsock_hdr>() {
                     Ok(hdr) => hdr,
@@ -549,7 +553,7 @@ impl Worker {
                 };
             }
 
-            queue.add_used(&self.mem, index, 0);
+            queue.add_used(&self.mem, avail_desc, 0);
             queue.trigger_interrupt(&self.mem, &self.interrupt);
         }
     }
@@ -1111,13 +1115,12 @@ impl Worker {
         }
     }
 
-    // Get a `Writer`, or wait if there's no descriptors currently available on
-    // the queue.
-    async fn get_next_writer(
+    async fn write_bytes_to_queue(
         &self,
         queue: &mut Queue,
         queue_evt: &mut EventAsync,
-    ) -> Result<(Writer, u16)> {
+        bytes: &[u8],
+    ) -> Result<()> {
         let avail_desc = match queue.next_async(&self.mem, queue_evt).await {
             Ok(d) => d,
             Err(e) => {
@@ -1125,22 +1128,8 @@ impl Worker {
                 return Err(VsockError::AwaitQueue(e));
             }
         };
-        let index = avail_desc.index;
-        Writer::new(self.mem.clone(), avail_desc)
-            .map_err(|e| {
-                error!("vsock: failed to create Writer: {}", e);
-                VsockError::CreateWriter(e)
-            })
-            .map(|r| (r, index))
-    }
 
-    async fn write_bytes_to_queue(
-        &self,
-        queue: &mut Queue,
-        queue_evt: &mut EventAsync,
-        bytes: &[u8],
-    ) -> Result<()> {
-        let (mut writer, desc_index) = self.get_next_writer(queue, queue_evt).await?;
+        let mut writer = Writer::new(&avail_desc);
         let res = writer.write_all(bytes);
 
         if let Err(e) = res {
@@ -1154,7 +1143,7 @@ impl Worker {
 
         let bytes_written = writer.bytes_written() as u32;
         if bytes_written > 0 {
-            queue.add_used(&self.mem, desc_index, bytes_written);
+            queue.add_used(&self.mem, avail_desc, bytes_written);
             queue.trigger_interrupt(&self.mem, &self.interrupt);
             Ok(())
         } else {
@@ -1170,7 +1159,15 @@ impl Worker {
         loop {
             // Log but don't act on events. They are reserved exclusively for guest migration events
             // resulting in CID resets, which we don't support.
-            let (mut reader, _index) = self.get_next(&mut queue, &mut queue_evt).await?;
+            let avail_desc = match queue.next_async(&self.mem, &mut queue_evt).await {
+                Ok(d) => d,
+                Err(e) => {
+                    error!("vsock: Failed to read descriptor {}", e);
+                    return Err(VsockError::AwaitQueue(e));
+                }
+            };
+
+            let mut reader = Reader::new(&avail_desc);
             for event in reader.iter::<virtio_vsock_event>() {
                 if event.is_ok() {
                     error!(
@@ -1180,27 +1177,6 @@ impl Worker {
                 }
             }
         }
-    }
-
-    async fn get_next(
-        &self,
-        queue: &mut Queue,
-        queue_evt: &mut EventAsync,
-    ) -> Result<(Reader, u16)> {
-        let avail_desc = match queue.next_async(&self.mem, queue_evt).await {
-            Ok(d) => d,
-            Err(e) => {
-                error!("vsock: Failed to read descriptor {}", e);
-                return Err(VsockError::AwaitQueue(e));
-            }
-        };
-        let index = avail_desc.index;
-        Reader::new(self.mem.clone(), avail_desc)
-            .map_err(|e| {
-                error!("vsock: failed to create Reader: {}", e);
-                VsockError::CreateReader(e)
-            })
-            .map(|r| (r, index))
     }
 
     fn run(

@@ -22,7 +22,6 @@ use cros_async::SelectResult;
 use futures::FutureExt;
 use vm_memory::GuestMemory;
 
-use crate::virtio::queue::DescriptorChain;
 use crate::virtio::queue::Queue;
 use crate::virtio::video::async_cmd_desc_map::AsyncCmdDescMap;
 use crate::virtio::video::command::QueueType;
@@ -40,6 +39,7 @@ use crate::virtio::video::response;
 use crate::virtio::video::response::Response;
 use crate::virtio::video::Error;
 use crate::virtio::video::Result;
+use crate::virtio::DescriptorChain;
 use crate::virtio::Reader;
 use crate::virtio::SignalableInterrupt;
 use crate::virtio::Writer;
@@ -87,9 +87,7 @@ impl<I: SignalableInterrupt> Worker<I> {
             return Ok(());
         }
         while let Some((desc, response)) = responses.pop_front() {
-            let desc_index = desc.index;
-            let mut writer =
-                Writer::new(self.mem.clone(), desc).map_err(Error::InvalidDescriptorChain)?;
+            let mut writer = Writer::new(&desc);
             if let Err(e) = response.write(&mut writer) {
                 error!(
                     "failed to write a command response for {:?}: {}",
@@ -97,7 +95,7 @@ impl<I: SignalableInterrupt> Worker<I> {
                 );
             }
             self.cmd_queue
-                .add_used(&self.mem, desc_index, writer.bytes_written() as u32);
+                .add_used(&self.mem, desc, writer.bytes_written() as u32);
         }
         self.cmd_queue
             .trigger_interrupt(&self.mem, &self.cmd_queue_interrupt);
@@ -111,14 +109,12 @@ impl<I: SignalableInterrupt> Worker<I> {
             .pop(&self.mem)
             .ok_or(Error::DescriptorNotAvailable)?;
 
-        let desc_index = desc.index;
-        let mut writer =
-            Writer::new(self.mem.clone(), desc).map_err(Error::InvalidDescriptorChain)?;
+        let mut writer = Writer::new(&desc);
         event
             .write(&mut writer)
             .map_err(|error| Error::WriteEventFailure { event, error })?;
         self.event_queue
-            .add_used(&self.mem, desc_index, writer.bytes_written() as u32);
+            .add_used(&self.mem, desc, writer.bytes_written() as u32);
         self.event_queue
             .trigger_interrupt(&self.mem, &self.event_queue_interrupt);
         Ok(())
@@ -205,8 +201,7 @@ impl<I: SignalableInterrupt> Worker<I> {
         desc: DescriptorChain,
     ) -> Result<VecDeque<WritableResp>> {
         let mut responses: VecDeque<WritableResp> = Default::default();
-        let mut reader =
-            Reader::new(self.mem.clone(), desc.clone()).map_err(Error::InvalidDescriptorChain)?;
+        let mut reader = Reader::new(&desc);
 
         let cmd = VideoCmd::from_reader(&mut reader).map_err(Error::ReadFailure)?;
 

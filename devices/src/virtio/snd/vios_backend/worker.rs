@@ -204,8 +204,7 @@ impl Worker {
     // Err if it encounters an unrecoverable error.
     fn process_controlq_buffers(&mut self) -> Result<()> {
         while let Some(avail_desc) = lock_pop_unlock(&self.control_queue, &self.guest_memory) {
-            let mut reader = Reader::new(self.guest_memory.clone(), avail_desc.clone())
-                .map_err(SoundError::Descriptor)?;
+            let mut reader = Reader::new(&avail_desc);
             let available_bytes = reader.available_bytes();
             if available_bytes < std::mem::size_of::<virtio_snd_hdr>() {
                 error!(
@@ -278,9 +277,7 @@ impl Worker {
                             VIRTIO_SND_S_OK
                         }
                     };
-                    let desc_index = avail_desc.index;
-                    let mut writer = Writer::new(self.guest_memory.clone(), avail_desc)
-                        .map_err(SoundError::Descriptor)?;
+                    let mut writer = Writer::new(&avail_desc);
                     writer
                         .write_obj(virtio_snd_hdr {
                             code: Le32::from(code),
@@ -290,7 +287,7 @@ impl Worker {
                         let mut queue_lock = self.control_queue.lock();
                         queue_lock.add_used(
                             &self.guest_memory,
-                            desc_index,
+                            avail_desc,
                             writer.bytes_written() as u32,
                         );
                         queue_lock.trigger_interrupt(&self.guest_memory, &self.interrupt);
@@ -384,15 +381,10 @@ impl Worker {
     fn process_event_triggered(&mut self) -> Result<()> {
         while let Some(evt) = self.vios_client.pop_event() {
             if let Some(desc) = self.event_queue.pop(&self.guest_memory) {
-                let desc_index = desc.index;
-                let mut writer =
-                    Writer::new(self.guest_memory.clone(), desc).map_err(SoundError::Descriptor)?;
+                let mut writer = Writer::new(&desc);
                 writer.write_obj(evt).map_err(SoundError::QueueIO)?;
-                self.event_queue.add_used(
-                    &self.guest_memory,
-                    desc_index,
-                    writer.bytes_written() as u32,
-                );
+                self.event_queue
+                    .add_used(&self.guest_memory, desc, writer.bytes_written() as u32);
                 {
                     self.event_queue
                         .trigger_interrupt(&self.guest_memory, &self.interrupt);
@@ -507,9 +499,7 @@ impl Worker {
         code: u32,
         info_vec: Vec<T>,
     ) -> Result<()> {
-        let desc_index = desc.index;
-        let mut writer =
-            Writer::new(self.guest_memory.clone(), desc).map_err(SoundError::Descriptor)?;
+        let mut writer = Writer::new(&desc);
         writer
             .write_obj(virtio_snd_hdr {
                 code: Le32::from(code),
@@ -520,11 +510,7 @@ impl Worker {
         }
         {
             let mut queue_lock = self.control_queue.lock();
-            queue_lock.add_used(
-                &self.guest_memory,
-                desc_index,
-                writer.bytes_written() as u32,
-            );
+            queue_lock.add_used(&self.guest_memory, desc, writer.bytes_written() as u32);
             queue_lock.trigger_interrupt(&self.guest_memory, &self.interrupt);
         }
         Ok(())
@@ -578,8 +564,7 @@ fn io_loop(
                 }
             };
             while let Some(avail_desc) = lock_pop_unlock(queue, &guest_memory) {
-                let mut reader = Reader::new(guest_memory.clone(), avail_desc.clone())
-                    .map_err(SoundError::Descriptor)?;
+                let mut reader = Reader::new(&avail_desc);
                 let xfer: virtio_snd_pcm_xfer = reader.read_obj().map_err(SoundError::QueueIO)?;
                 let stream_id = xfer.stream_id.to_native();
                 if stream_id as usize >= senders.len() {

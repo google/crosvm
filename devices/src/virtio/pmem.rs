@@ -34,7 +34,6 @@ use zerocopy::FromBytes;
 use super::async_utils;
 use super::copy_config;
 use super::DescriptorChain;
-use super::DescriptorError;
 use super::DeviceType;
 use super::Interrupt;
 use super::Queue;
@@ -72,9 +71,6 @@ struct virtio_pmem_req {
 #[sorted]
 #[derive(Error, Debug)]
 enum Error {
-    /// Invalid virtio descriptor chain.
-    #[error("virtio descriptor error: {0}")]
-    Descriptor(DescriptorError),
     /// Failed to read from virtqueue.
     #[error("failed to read from virtqueue: {0}")]
     ReadQueue(io::Error),
@@ -126,14 +122,13 @@ fn execute_request(
 }
 
 fn handle_request(
-    mem: &GuestMemory,
-    avail_desc: DescriptorChain,
+    avail_desc: &DescriptorChain,
     pmem_device_tube: &Tube,
     mapping_arena_slot: u32,
     mapping_size: usize,
 ) -> Result<usize> {
-    let mut reader = Reader::new(mem.clone(), avail_desc.clone()).map_err(Error::Descriptor)?;
-    let mut writer = Writer::new(mem.clone(), avail_desc).map_err(Error::Descriptor)?;
+    let mut reader = Reader::new(avail_desc);
+    let mut writer = Writer::new(avail_desc);
 
     let status_code = reader
         .read_obj()
@@ -166,10 +161,9 @@ async fn handle_queue(
             }
             Ok(d) => d,
         };
-        let index = avail_desc.index;
+
         let written = match handle_request(
-            mem,
-            avail_desc,
+            &avail_desc,
             &pmem_device_tube,
             mapping_arena_slot,
             mapping_size,
@@ -180,7 +174,7 @@ async fn handle_queue(
                 0
             }
         };
-        queue.add_used(mem, index, written as u32);
+        queue.add_used(mem, avail_desc, written as u32);
         queue.trigger_interrupt(mem, &interrupt);
     }
 }

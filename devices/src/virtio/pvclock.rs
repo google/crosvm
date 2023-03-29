@@ -10,6 +10,7 @@
 //! For more information about this device, please visit <go/virtio-pvclock>.
 
 use std::arch::x86_64::_rdtsc;
+use std::mem::size_of;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -455,16 +456,34 @@ fn run_worker(
             match event.token {
                 Token::SetPvClockPageQueue => {
                     let _ = set_pvclock_page_queue_evt.wait();
-                    let desc = match set_pvclock_page_queue.pop(&worker.mem) {
-                        Some(desc) => desc,
+                    let desc_chain = match set_pvclock_page_queue.pop(&worker.mem) {
+                        Some(desc_chain) => desc_chain,
                         None => {
                             error!("set_pvclock_page queue was empty");
                             continue;
                         }
                     };
 
-                    let mut req: virtio_pvclock_set_pvclock_page_req =
-                        match worker.mem.read_obj_from_addr(desc.addr) {
+                    // This device does not follow the virtio spec requirements for device-readable
+                    // vs. device-writable descriptors, so we can't use `Reader`/`Writer`. Pick the
+                    // first descriptor from the chain and assume the whole req structure is
+                    // contained within it.
+                    let desc = desc_chain
+                        .readable_mem_regions()
+                        .iter()
+                        .chain(desc_chain.writable_mem_regions().iter())
+                        .next()
+                        .unwrap();
+
+                    let len = if desc.len < size_of::<virtio_pvclock_set_pvclock_page_req>() {
+                        error!("pvclock descriptor too short");
+                        0
+                    } else {
+                        let addr = GuestAddress(desc.offset);
+                        let mut req: virtio_pvclock_set_pvclock_page_req = match worker
+                            .mem
+                            .read_obj_from_addr(addr)
+                        {
                             Ok(req) => req,
                             Err(e) => {
                                 error!("failed to read request from set_pvclock_page queue: {}", e);
@@ -472,20 +491,23 @@ fn run_worker(
                             }
                         };
 
-                    req.status = match worker.set_pvclock_page(req.pvclock_page_pa.into()) {
-                        Err(e) => {
-                            error!("failed to set pvclock page: {:#}", e);
-                            VIRTIO_PVCLOCK_S_IOERR
+                        req.status = match worker.set_pvclock_page(req.pvclock_page_pa.into()) {
+                            Err(e) => {
+                                error!("failed to set pvclock page: {:#}", e);
+                                VIRTIO_PVCLOCK_S_IOERR
+                            }
+                            Ok(_) => VIRTIO_PVCLOCK_S_OK,
+                        };
+
+                        if let Err(e) = worker.mem.write_obj_at_addr(req, addr) {
+                            error!("failed to write set_pvclock_page status: {}", e);
+                            continue;
                         }
-                        Ok(_) => VIRTIO_PVCLOCK_S_OK,
+
+                        desc.len as u32
                     };
 
-                    if let Err(e) = worker.mem.write_obj_at_addr(req, desc.addr) {
-                        error!("failed to write set_pvclock_page status: {}", e);
-                        continue;
-                    }
-
-                    set_pvclock_page_queue.add_used(&worker.mem, desc.index, desc.len);
+                    set_pvclock_page_queue.add_used(&worker.mem, desc_chain, len);
                     set_pvclock_page_queue.trigger_interrupt(&worker.mem, &interrupt);
                 }
                 Token::SuspendResume => {

@@ -36,7 +36,6 @@ pub use super::super::device_constants::gpu::VIRTIO_GPU_F_RESOURCE_BLOB;
 pub use super::super::device_constants::gpu::VIRTIO_GPU_F_RESOURCE_SYNC;
 pub use super::super::device_constants::gpu::VIRTIO_GPU_F_RESOURCE_UUID;
 pub use super::super::device_constants::gpu::VIRTIO_GPU_F_VIRGL;
-use super::super::DescriptorError;
 use super::edid::EdidBytes;
 use super::Reader;
 use super::Writer;
@@ -598,15 +597,6 @@ pub enum GpuCommandDecodeError {
     /// An I/O error occurred.
     #[error("an I/O error occurred: {0}")]
     IO(io::Error),
-    /// The command referenced an inaccessible area of memory.
-    #[error("command referenced an inaccessible area of memory: {0}")]
-    Memory(DescriptorError),
-}
-
-impl From<DescriptorError> for GpuCommandDecodeError {
-    fn from(e: DescriptorError) -> GpuCommandDecodeError {
-        GpuCommandDecodeError::Memory(e)
-    }
 }
 
 impl From<io::Error> for GpuCommandDecodeError {
@@ -810,21 +800,12 @@ pub enum GpuResponseEncodeError {
     /// An I/O error occurred.
     #[error("an I/O error occurred: {0}")]
     IO(io::Error),
-    /// The response was encoded to an inaccessible area of memory.
-    #[error("response was encoded to an inaccessible area of memory: {0}")]
-    Memory(DescriptorError),
     /// More displays than are valid were in a `OkDisplayInfo`.
     #[error("{0} is more displays than are valid")]
     TooManyDisplays(usize),
     /// More planes than are valid were in a `OkResourcePlaneInfo`.
     #[error("{0} is more planes than are valid")]
     TooManyPlanes(usize),
-}
-
-impl From<DescriptorError> for GpuResponseEncodeError {
-    fn from(e: DescriptorError) -> GpuResponseEncodeError {
-        GpuResponseEncodeError::Memory(e)
-    }
 }
 
 impl From<io::Error> for GpuResponseEncodeError {

@@ -34,7 +34,6 @@ use crate::pci::PciCapability;
 use crate::virtio::copy_config;
 use crate::virtio::device_constants::fs::FS_MAX_TAG_LEN;
 use crate::virtio::device_constants::fs::QUEUE_SIZE;
-use crate::virtio::DescriptorError;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::PciCapabilityType;
@@ -75,9 +74,6 @@ pub enum Error {
     /// Failed to get the securebits for the worker thread.
     #[error("failed to get securebits for the worker thread: {0}")]
     GetSecurebits(SysError),
-    /// The `len` field of the header is too small.
-    #[error("DescriptorChain is invalid: {0}")]
-    InvalidDescriptorChain(DescriptorError),
     /// A request is missing readable descriptors.
     #[error("request does not have any readable descriptors")]
     NoReadableDescriptors,

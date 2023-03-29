@@ -231,14 +231,11 @@ impl Stream {
         match self.current_state {
             StreamState::Started => {
                 while let Some(desc) = self.buffer_queue.pop_front() {
-                    let mut reader = Reader::new(self.guest_memory.clone(), desc.clone())
-                        .map_err(SoundError::CreateReader)?;
+                    let mut reader = Reader::new(&desc);
                     // Ignore the first buffer, it was already read by the time this thread
                     // receives the descriptor
                     reader.consume(std::mem::size_of::<virtio_snd_pcm_xfer>());
-                    let desc_index = desc.index;
-                    let mut writer = Writer::new(self.guest_memory.clone(), desc)
-                        .map_err(SoundError::CreateWriter)?;
+                    let mut writer = Writer::new(&desc);
                     let io_res = if self.capture {
                         let buffer_size =
                             writer.available_bytes() - std::mem::size_of::<virtio_snd_pcm_status>();
@@ -285,7 +282,7 @@ impl Stream {
                         let mut io_queue_lock = self.io_queue.lock();
                         io_queue_lock.add_used(
                             &self.guest_memory,
-                            desc_index,
+                            desc,
                             writer.bytes_written() as u32,
                         );
                         io_queue_lock.trigger_interrupt(&self.guest_memory, &self.interrupt);
@@ -419,8 +416,7 @@ pub fn reply_control_op_status(
     queue: &Arc<Mutex<Queue>>,
     interrupt: &Interrupt,
 ) -> Result<()> {
-    let desc_index = desc.index;
-    let mut writer = Writer::new(guest_memory.clone(), desc).map_err(SoundError::Descriptor)?;
+    let mut writer = Writer::new(&desc);
     writer
         .write_obj(virtio_snd_hdr {
             code: Le32::from(code),
@@ -428,7 +424,7 @@ pub fn reply_control_op_status(
         .map_err(SoundError::QueueIO)?;
     {
         let mut queue_lock = queue.lock();
-        queue_lock.add_used(guest_memory, desc_index, writer.bytes_written() as u32);
+        queue_lock.add_used(guest_memory, desc, writer.bytes_written() as u32);
         queue_lock.trigger_interrupt(guest_memory, interrupt);
     }
     Ok(())
@@ -443,8 +439,7 @@ pub fn reply_pcm_buffer_status(
     queue: &Arc<Mutex<Queue>>,
     interrupt: &Interrupt,
 ) -> Result<()> {
-    let desc_index = desc.index;
-    let mut writer = Writer::new(guest_memory.clone(), desc).map_err(SoundError::Descriptor)?;
+    let mut writer = Writer::new(&desc);
     if writer.available_bytes() > std::mem::size_of::<virtio_snd_pcm_status>() {
         writer
             .consume_bytes(writer.available_bytes() - std::mem::size_of::<virtio_snd_pcm_status>());
@@ -457,7 +452,7 @@ pub fn reply_pcm_buffer_status(
         .map_err(SoundError::QueueIO)?;
     {
         let mut queue_lock = queue.lock();
-        queue_lock.add_used(guest_memory, desc_index, writer.bytes_written() as u32);
+        queue_lock.add_used(guest_memory, desc, writer.bytes_written() as u32);
         queue_lock.trigger_interrupt(guest_memory, interrupt);
     }
     Ok(())

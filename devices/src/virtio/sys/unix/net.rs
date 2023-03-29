@@ -40,36 +40,29 @@ pub fn process_rx<I: SignalableInterrupt, T: TapT>(
             }
         };
 
-        let index = desc_chain.index;
-        let bytes_written = match Writer::new(mem.clone(), desc_chain) {
-            Ok(mut writer) => {
-                match writer.write_from(&mut tap, writer.available_bytes()) {
-                    Ok(_) => {}
-                    Err(ref e) if e.kind() == io::ErrorKind::WriteZero => {
-                        warn!("net: rx: buffer is too small to hold frame");
-                        break;
-                    }
-                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                        // No more to read from the tap.
-                        break;
-                    }
-                    Err(e) => {
-                        warn!("net: rx: failed to write slice: {}", e);
-                        return Err(NetError::WriteBuffer(e));
-                    }
-                };
+        let mut writer = Writer::new(&desc_chain);
 
-                writer.bytes_written() as u32
+        match writer.write_from(&mut tap, writer.available_bytes()) {
+            Ok(_) => {}
+            Err(ref e) if e.kind() == io::ErrorKind::WriteZero => {
+                warn!("net: rx: buffer is too small to hold frame");
+                break;
+            }
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                // No more to read from the tap.
+                break;
             }
             Err(e) => {
-                error!("net: failed to create Writer: {}", e);
-                0
+                warn!("net: rx: failed to write slice: {}", e);
+                return Err(NetError::WriteBuffer(e));
             }
         };
 
+        let bytes_written = writer.bytes_written() as u32;
+
         if bytes_written > 0 {
             rx_queue.pop_peeked(mem);
-            rx_queue.add_used(mem, index, bytes_written);
+            rx_queue.add_used(mem, desc_chain, bytes_written);
             needs_interrupt = true;
         }
     }
@@ -92,29 +85,23 @@ pub fn process_tx<I: SignalableInterrupt, T: TapT>(
     mut tap: &mut T,
 ) {
     while let Some(desc_chain) = tx_queue.pop(mem) {
-        let index = desc_chain.index;
-
-        match Reader::new(mem.clone(), desc_chain) {
-            Ok(mut reader) => {
-                let expected_count = reader.available_bytes();
-                match reader.read_to(&mut tap, expected_count) {
-                    Ok(count) => {
-                        // Tap writes must be done in one call. If the entire frame was not
-                        // written, it's an error.
-                        if count != expected_count {
-                            error!(
-                                "net: tx: wrote only {} bytes of {} byte frame",
-                                count, expected_count
-                            );
-                        }
-                    }
-                    Err(e) => error!("net: tx: failed to write frame to tap: {}", e),
+        let mut reader = Reader::new(&desc_chain);
+        let expected_count = reader.available_bytes();
+        match reader.read_to(&mut tap, expected_count) {
+            Ok(count) => {
+                // Tap writes must be done in one call. If the entire frame was not
+                // written, it's an error.
+                if count != expected_count {
+                    error!(
+                        "net: tx: wrote only {} bytes of {} byte frame",
+                        count, expected_count
+                    );
                 }
             }
-            Err(e) => error!("net: failed to create Reader: {}", e),
+            Err(e) => error!("net: tx: failed to write frame to tap: {}", e),
         }
 
-        tx_queue.add_used(mem, index, 0);
+        tx_queue.add_used(mem, desc_chain, 0);
     }
 
     tx_queue.trigger_interrupt(mem, interrupt);

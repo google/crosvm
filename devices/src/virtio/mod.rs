@@ -8,6 +8,7 @@ mod async_device;
 mod async_utils;
 #[cfg(feature = "balloon")]
 mod balloon;
+mod descriptor_chain;
 mod descriptor_utils;
 pub mod device_constants;
 mod input;
@@ -41,7 +42,10 @@ pub mod vsock;
 pub use self::balloon::*;
 pub use self::block::*;
 pub use self::console::*;
-pub use self::descriptor_utils::Error as DescriptorError;
+pub use self::descriptor_chain::Desc;
+pub use self::descriptor_chain::DescriptorChain;
+pub use self::descriptor_chain::DescriptorChainIter;
+pub use self::descriptor_chain::SplitDescriptorChain;
 pub use self::descriptor_utils::*;
 #[cfg(feature = "gpu")]
 pub use self::gpu::*;

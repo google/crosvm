@@ -44,31 +44,23 @@ fn rx_single_frame(
         None => return false,
     };
 
-    let index = desc_chain.index;
-    let bytes_written = match Writer::new(mem.clone(), desc_chain) {
-        Ok(mut writer) => {
-            match writer.write_all(&rx_buf[0..rx_count]) {
-                Ok(()) => (),
-                Err(ref e) if e.kind() == io::ErrorKind::WriteZero => {
-                    warn!(
-                        "net: rx: buffer is too small to hold frame of size {}",
-                        rx_count
-                    );
-                }
-                Err(e) => {
-                    warn!("net: rx: failed to write slice: {}", e);
-                }
-            };
-
-            writer.bytes_written() as u32
+    let mut writer = Writer::new(&desc_chain);
+    match writer.write_all(&rx_buf[0..rx_count]) {
+        Ok(()) => (),
+        Err(ref e) if e.kind() == io::ErrorKind::WriteZero => {
+            warn!(
+                "net: rx: buffer is too small to hold frame of size {}",
+                rx_count
+            );
         }
         Err(e) => {
-            error!("net: failed to create Writer: {}", e);
-            0
+            warn!("net: rx: failed to write slice: {}", e);
         }
     };
 
-    rx_queue.add_used(mem, index, bytes_written);
+    let bytes_written = writer.bytes_written() as u32;
+
+    rx_queue.add_used(mem, desc_chain, bytes_written);
 
     true
 }
@@ -175,26 +167,20 @@ pub fn process_tx<I: SignalableInterrupt, T: TapT>(
     }
 
     while let Some(desc_chain) = tx_queue.pop(mem) {
-        let index = desc_chain.index;
-
-        match Reader::new(mem.clone(), desc_chain) {
-            Ok(reader) => {
-                let mut frame = [0u8; MAX_BUFFER_SIZE];
-                match read_to_end(reader, &mut frame[..]) {
-                    Ok(len) => {
-                        // We need to copy frame into continuous buffer before writing it to
-                        // slirp because tap requires frame to complete in a single write.
-                        if let Err(err) = tap.write_all(&frame[..len]) {
-                            error!("net: tx: failed to write to tap: {}", err);
-                        }
-                    }
-                    Err(e) => error!("net: tx: failed to read frame into buffer: {}", e),
+        let mut reader = Reader::new(&desc_chain);
+        let mut frame = [0u8; MAX_BUFFER_SIZE];
+        match read_to_end(reader, &mut frame[..]) {
+            Ok(len) => {
+                // We need to copy frame into continuous buffer before writing it to
+                // slirp because tap requires frame to complete in a single write.
+                if let Err(err) = tap.write_all(&frame[..len]) {
+                    error!("net: tx: failed to write to tap: {}", err);
                 }
             }
-            Err(e) => error!("net: failed to create Reader: {}", e),
+            Err(e) => error!("net: tx: failed to read frame into buffer: {}", e),
         }
 
-        tx_queue.add_used(mem, index, 0);
+        tx_queue.add_used(mem, desc_chain, 0);
     }
 
     tx_queue.trigger_interrupt(mem, interrupt);

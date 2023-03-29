@@ -468,21 +468,18 @@ mod test {
 
     fn device_write(mem: &QueueMemory, q: &mut DeviceQueue, data: &[u8]) -> usize {
         let desc_chain = q.pop(mem).unwrap();
-        let index = desc_chain.index;
-
-        let mut writer = Writer::new(mem.clone(), desc_chain).unwrap();
+        let mut writer = Writer::new(&desc_chain);
         let written = writer.write(data).unwrap();
-        q.add_used(mem, index, written as u32);
+        q.add_used(mem, desc_chain, written as u32);
         written
     }
 
     fn device_read(mem: &QueueMemory, q: &mut DeviceQueue, len: usize) -> Vec<u8> {
         let desc_chain = q.pop(mem).unwrap();
-        let desc_index = desc_chain.index;
-        let mut reader = Reader::new(mem.clone(), desc_chain).unwrap();
+        let mut reader = Reader::new(&desc_chain);
         let mut buf = vec![0; len];
         reader.read_exact(&mut buf).unwrap();
-        q.add_used(mem, desc_index, len as u32);
+        q.add_used(mem, desc_chain, len as u32);
         buf
     }
 

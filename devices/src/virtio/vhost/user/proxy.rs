@@ -597,9 +597,8 @@ impl Worker {
             // If a sibling is disconnected, send 0-length data to the guest and return an error.
             if !is_connected {
                 // Send 0-length data
-                let index = desc.index;
                 self.rx_queue.pop_peeked(&self.mem);
-                self.rx_queue.add_used(&self.mem, index, 0 /* len */);
+                self.rx_queue.add_used(&self.mem, desc, 0 /* len */);
                 if !self.rx_queue.trigger_interrupt(&self.mem, &self.interrupt) {
                     // This interrupt should always be injected. We'd rather fail
                     // fast if there is an error.
@@ -620,7 +619,6 @@ impl Worker {
                 .context("failed to read Vhost-user sibling message header")?;
             let buf = self.get_sibling_msg_data::<R>(&hdr)?;
 
-            let index = desc.index;
             let bytes_written = {
                 let res = if !R::is_header_valid(&hdr) {
                     Err(anyhow!("invalid header for {:?}", hdr.get_code()))
@@ -633,7 +631,7 @@ impl Worker {
                 // message to the virt queue and return how many bytes
                 // were written.
                 match res {
-                    Ok(()) => self.forward_msg_to_device(desc, &hdr, &buf),
+                    Ok(()) => self.forward_msg_to_device(&desc, &hdr, &buf),
                     Err(e) => Err(e),
                 }
             };
@@ -646,7 +644,7 @@ impl Worker {
                 Ok(bytes_written) => {
                     // The driver is able to deal with a descriptor with 0 bytes written.
                     self.rx_queue.pop_peeked(&self.mem);
-                    self.rx_queue.add_used(&self.mem, index, bytes_written);
+                    self.rx_queue.add_used(&self.mem, desc, bytes_written);
                     if !self.rx_queue.trigger_interrupt(&self.mem, &self.interrupt) {
                         // This interrupt should always be injected. We'd rather fail
                         // fast if there is an error.
@@ -719,28 +717,22 @@ impl Worker {
     // queue. Returns the number of bytes written to the virt queue.
     fn forward_msg_to_device<R: Req>(
         &mut self,
-        desc_chain: DescriptorChain,
+        desc_chain: &DescriptorChain,
         hdr: &VhostUserMsgHeader<R>,
         buf: &[u8],
     ) -> Result<u32> {
-        let bytes_written = match Writer::new(self.mem.clone(), desc_chain) {
-            Ok(mut writer) => {
-                if writer.available_bytes()
-                    < buf.len() + std::mem::size_of::<VhostUserMsgHeader<R>>()
-                {
-                    bail!("rx buffer too small to accomodate server data");
-                }
-                // Write header first then any data. Do these separately to prevent any reorders.
-                let mut written = writer
-                    .write(hdr.as_slice())
-                    .context("failed to write header")?;
-                written += writer.write(buf).context("failed to write message body")?;
-                written as u32
-            }
-            Err(e) => {
-                bail!("failed to create Writer: {}", e);
-            }
-        };
+        let mut writer = Writer::new(desc_chain);
+
+        if writer.available_bytes() < buf.len() + std::mem::size_of::<VhostUserMsgHeader<R>>() {
+            bail!("rx buffer too small to accomodate server data");
+        }
+        // Write header first then any data. Do these separately to prevent any reorders.
+        let mut written = writer
+            .write(hdr.as_slice())
+            .context("failed to write header")?;
+        written += writer.write(buf).context("failed to write message body")?;
+        let bytes_written = written as u32;
+
         Ok(bytes_written)
     }
 
@@ -1083,45 +1075,40 @@ impl Worker {
     // the Vhost-user sibling over its socket connection.
     fn process_tx(&mut self) -> Result<()> {
         while let Some(desc_chain) = self.tx_queue.pop(&self.mem) {
-            let index = desc_chain.index;
-            match Reader::new(self.mem.clone(), desc_chain) {
-                Ok(mut reader) => {
-                    let expected_count = reader.available_bytes();
-                    let mut msg = vec![0; expected_count];
-                    reader
-                        .read_exact(&mut msg)
-                        .context("virtqueue read failed")?;
+            let mut reader = Reader::new(&desc_chain);
+            let expected_count = reader.available_bytes();
+            let mut msg = vec![0; expected_count];
+            reader
+                .read_exact(&mut msg)
+                .context("virtqueue read failed")?;
 
-                    // This may be a SlaveReq, but the bytes of any valid SlaveReq
-                    // are also a valid MasterReq.
-                    let hdr =
-                        vhost_header_from_bytes::<MasterReq>(&msg).context("message too short")?;
-                    let (dest, (msg, fd)) = if hdr.is_reply() {
-                        (self.slave_req_helper.as_mut().as_mut(), (msg, None))
-                    } else {
-                        let processed_msg = self.process_message_from_backend(msg)?;
-                        (
-                            self.slave_req_fd
-                                .as_mut()
-                                .context("missing slave_req_fd")?
-                                .as_mut(),
-                            processed_msg,
-                        )
-                    };
+            // This may be a SlaveReq, but the bytes of any valid SlaveReq
+            // are also a valid MasterReq.
+            let hdr = vhost_header_from_bytes::<MasterReq>(&msg).context("message too short")?;
+            let (dest, (msg, fd)) = if hdr.is_reply() {
+                (self.slave_req_helper.as_mut().as_mut(), (msg, None))
+            } else {
+                let processed_msg = self.process_message_from_backend(msg)?;
+                (
+                    self.slave_req_fd
+                        .as_mut()
+                        .context("missing slave_req_fd")?
+                        .as_mut(),
+                    processed_msg,
+                )
+            };
 
-                    if let Some(fd) = fd {
-                        let written = dest
-                            .send_with_fd(&[IoSlice::new(msg.as_slice())], fd.as_raw_descriptor())
-                            .context("failed to foward message")?;
-                        dest.write_all(&msg[written..])
-                    } else {
-                        dest.write_all(msg.as_slice())
-                    }
+            if let Some(fd) = fd {
+                let written = dest
+                    .send_with_fd(&[IoSlice::new(msg.as_slice())], fd.as_raw_descriptor())
                     .context("failed to foward message")?;
-                }
-                Err(e) => error!("failed to create Reader: {}", e),
+                dest.write_all(&msg[written..])
+            } else {
+                dest.write_all(msg.as_slice())
             }
-            self.tx_queue.add_used(&self.mem, index, 0);
+            .context("failed to foward message")?;
+
+            self.tx_queue.add_used(&self.mem, desc_chain, 0);
             if !self.tx_queue.trigger_interrupt(&self.mem, &self.interrupt) {
                 panic!("failed inject tx queue interrupt");
             }

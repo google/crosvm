@@ -12,275 +12,26 @@ use anyhow::Context;
 use anyhow::Result;
 use base::error;
 use base::warn;
-use base::Protection;
 use cros_async::AsyncError;
 use cros_async::EventAsync;
-use data_model::Le16;
-use data_model::Le32;
-use data_model::Le64;
-use smallvec::smallvec;
-use smallvec::SmallVec;
 use sync::Mutex;
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
-use zerocopy::AsBytes;
-use zerocopy::FromBytes;
 
 use super::SignalableInterrupt;
 use super::VIRTIO_MSI_NO_VECTOR;
 use crate::virtio::ipc_memory_mapper::ExportedRegion;
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
-use crate::virtio::memory_mapper::MemRegion;
 use crate::virtio::memory_util::read_obj_from_addr_wrapper;
 use crate::virtio::memory_util::write_obj_at_addr_wrapper;
-
-const VIRTQ_DESC_F_NEXT: u16 = 0x1;
-const VIRTQ_DESC_F_WRITE: u16 = 0x2;
-#[allow(dead_code)]
-const VIRTQ_DESC_F_INDIRECT: u16 = 0x4;
+use crate::virtio::DescriptorChain;
+use crate::virtio::SplitDescriptorChain;
 
 #[allow(dead_code)]
 const VIRTQ_USED_F_NO_NOTIFY: u16 = 0x1;
 #[allow(dead_code)]
 const VIRTQ_AVAIL_F_NO_INTERRUPT: u16 = 0x1;
-
-/// An iterator over a single descriptor chain.  Not to be confused with AvailIter,
-/// which iterates over the descriptor chain heads in a queue.
-pub struct DescIter {
-    next: Option<DescriptorChain>,
-}
-
-impl DescIter {
-    /// Returns an iterator that only yields the readable descriptors in the chain.
-    pub fn readable(self) -> impl Iterator<Item = DescriptorChain> {
-        self.take_while(DescriptorChain::is_read_only)
-    }
-
-    /// Returns an iterator that only yields the writable descriptors in the chain.
-    pub fn writable(self) -> impl Iterator<Item = DescriptorChain> {
-        self.skip_while(DescriptorChain::is_read_only)
-    }
-}
-
-impl Iterator for DescIter {
-    type Item = DescriptorChain;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(current) = self.next.take() {
-            self.next = current.next_descriptor();
-            Some(current)
-        } else {
-            None
-        }
-    }
-}
-
-/// A virtio descriptor chain.
-#[derive(Clone)]
-pub struct DescriptorChain {
-    mem: GuestMemory,
-    desc_table: GuestAddress,
-    queue_size: u16,
-    ttl: u16, // used to prevent infinite chain cycles
-
-    /// Index into the descriptor table
-    pub index: u16,
-
-    /// Guest physical address of device specific data, or IO virtual address
-    /// if iommu is used
-    pub addr: GuestAddress,
-
-    /// Length of device specific data
-    pub len: u32,
-
-    /// Includes next, write, and indirect bits
-    pub flags: u16,
-
-    /// Index into the descriptor table of the next descriptor if flags has
-    /// the next bit set
-    pub next: u16,
-
-    /// The memory regions associated with the current descriptor.
-    regions: SmallVec<[MemRegion; 1]>,
-
-    /// Translates `addr` to guest physical address
-    iommu: Option<Arc<Mutex<IpcMemoryMapper>>>,
-
-    /// The exported descriptor table of this chain's queue. Present
-    /// iff iommu is present.
-    exported_desc_table: Option<ExportedRegion>,
-
-    /// The exported iommu region of the current descriptor. Present iff
-    /// iommu is present.
-    exported_region: Option<ExportedRegion>,
-}
-
-#[derive(Copy, Clone, Debug, FromBytes, AsBytes)]
-#[repr(C)]
-pub struct Desc {
-    pub addr: Le64,
-    pub len: Le32,
-    pub flags: Le16,
-    pub next: Le16,
-}
-
-impl DescriptorChain {
-    pub(crate) fn checked_new(
-        mem: &GuestMemory,
-        desc_table: GuestAddress,
-        queue_size: u16,
-        index: u16,
-        required_flags: u16,
-        iommu: Option<Arc<Mutex<IpcMemoryMapper>>>,
-        exported_desc_table: Option<ExportedRegion>,
-    ) -> Result<DescriptorChain> {
-        if index >= queue_size {
-            bail!("index ({}) >= queue_size ({})", index, queue_size);
-        }
-
-        let desc_head = desc_table
-            .checked_add((index as u64) * 16)
-            .context("integer overflow")?;
-        let desc: Desc =
-            read_obj_from_addr_wrapper(mem, exported_desc_table.as_ref(), desc_head)
-                .with_context(|| format!("failed to read desc {:x}", desc_head.offset()))?;
-
-        let addr = GuestAddress(desc.addr.into());
-        let len = desc.len.to_native();
-        let (regions, exported_region) = if let Some(iommu) = &iommu {
-            if exported_desc_table.is_none() {
-                bail!("missing exported descriptor table");
-            }
-
-            let exported_region =
-                ExportedRegion::new(mem, iommu.clone(), addr.offset(), len.into())
-                    .context("failed to get mem regions")?;
-
-            let regions = exported_region.get_mem_regions();
-            let required_prot = if required_flags & VIRTQ_DESC_F_WRITE == 0 {
-                Protection::read()
-            } else {
-                Protection::write()
-            };
-            for r in &regions {
-                if !r.prot.allows(&required_prot) {
-                    bail!("missing RW permissions for descriptor");
-                }
-            }
-
-            (regions, Some(exported_region))
-        } else {
-            (
-                smallvec![MemRegion {
-                    gpa: addr,
-                    len: len.into(),
-                    prot: Protection::read_write(),
-                }],
-                None,
-            )
-        };
-
-        let chain = DescriptorChain {
-            mem: mem.clone(),
-            desc_table,
-            queue_size,
-            ttl: queue_size,
-            index,
-            addr,
-            len,
-            flags: desc.flags.into(),
-            next: desc.next.into(),
-            iommu,
-            regions,
-            exported_region,
-            exported_desc_table,
-        };
-
-        if chain.is_valid() && chain.flags & required_flags == required_flags {
-            Ok(chain)
-        } else {
-            bail!("chain is invalid")
-        }
-    }
-
-    pub fn into_mem_regions(self) -> (SmallVec<[MemRegion; 1]>, Option<ExportedRegion>) {
-        (self.regions, self.exported_region)
-    }
-
-    fn is_valid(&self) -> bool {
-        if self.len > 0 {
-            // Each region in `self.regions` must be a contiguous range in `self.mem`.
-            if !self
-                .regions
-                .iter()
-                .all(|r| self.mem.is_valid_range(r.gpa, r.len))
-            {
-                return false;
-            }
-        }
-
-        !self.has_next() || self.next < self.queue_size
-    }
-
-    /// Gets if this descriptor chain has another descriptor chain linked after it.
-    pub fn has_next(&self) -> bool {
-        self.flags & VIRTQ_DESC_F_NEXT != 0 && self.ttl > 1
-    }
-
-    /// If the driver designated this as a write only descriptor.
-    ///
-    /// If this is false, this descriptor is read only.
-    /// Write only means the the emulated device can write and the driver can read.
-    pub fn is_write_only(&self) -> bool {
-        self.flags & VIRTQ_DESC_F_WRITE != 0
-    }
-
-    /// If the driver designated this as a read only descriptor.
-    ///
-    /// If this is false, this descriptor is write only.
-    /// Read only means the emulated device can read and the driver can write.
-    pub fn is_read_only(&self) -> bool {
-        self.flags & VIRTQ_DESC_F_WRITE == 0
-    }
-
-    /// Gets the next descriptor in this descriptor chain, if there is one.
-    ///
-    /// Note that this is distinct from the next descriptor chain returned by `AvailIter`, which is
-    /// the head of the next _available_ descriptor chain.
-    pub fn next_descriptor(&self) -> Option<DescriptorChain> {
-        if self.has_next() {
-            // Once we see a write-only descriptor, all subsequent descriptors must be write-only.
-            let required_flags = self.flags & VIRTQ_DESC_F_WRITE;
-            let iommu = self.iommu.as_ref().map(Arc::clone);
-            match DescriptorChain::checked_new(
-                &self.mem,
-                self.desc_table,
-                self.queue_size,
-                self.next,
-                required_flags,
-                iommu,
-                self.exported_desc_table.clone(),
-            ) {
-                Ok(mut c) => {
-                    c.ttl = self.ttl - 1;
-                    Some(c)
-                }
-                Err(e) => {
-                    error!("{:#}", e);
-                    None
-                }
-            }
-        } else {
-            None
-        }
-    }
-
-    /// Produces an iterator over all the descriptors in this chain.
-    pub fn into_iter(self) -> DescIter {
-        DescIter { next: Some(self) }
-    }
-}
 
 /// Consuming iterator over all available descriptor chain heads in the queue.
 pub struct AvailIter<'a, 'b> {
@@ -674,20 +425,19 @@ impl Queue {
                 .unwrap();
 
         let iommu = self.iommu.as_ref().map(Arc::clone);
-        DescriptorChain::checked_new(
+        let chain = SplitDescriptorChain::new(
             mem,
             self.desc_table,
             self.size,
             descriptor_index,
-            0,
-            iommu,
-            self.exported_desc_table.clone(),
-        )
-        .map_err(|e| {
-            error!("{:#}", e);
-            e
-        })
-        .ok()
+            self.exported_desc_table.as_ref(),
+        );
+        DescriptorChain::new(chain, mem, descriptor_index, iommu)
+            .map_err(|e| {
+                error!("{:#}", e);
+                e
+            })
+            .ok()
     }
 
     /// Remove the first available descriptor chain from the queue.
@@ -730,7 +480,8 @@ impl Queue {
     }
 
     /// Puts an available descriptor head into the used ring for use by the guest.
-    pub fn add_used(&mut self, mem: &GuestMemory, desc_index: u16, len: u32) {
+    pub fn add_used(&mut self, mem: &GuestMemory, desc_chain: DescriptorChain, len: u32) {
+        let desc_index = desc_chain.index();
         if desc_index >= self.size {
             error!(
                 "attempted to add out of bounds descriptor to used ring: {}",
@@ -924,10 +675,17 @@ impl Queue {
 mod tests {
     use std::convert::TryInto;
 
+    use data_model::Le16;
+    use data_model::Le32;
+    use data_model::Le64;
     use memoffset::offset_of;
+    use zerocopy::AsBytes;
+    use zerocopy::FromBytes;
 
     use super::super::Interrupt;
     use super::*;
+    use crate::virtio::create_descriptor_chain;
+    use crate::virtio::Desc;
     use crate::IrqLevelEvent;
 
     const GUEST_MEMORY_SIZE: u64 = 0x10000;
@@ -1015,6 +773,11 @@ mod tests {
         queue.ack_features((1u64) << VIRTIO_RING_F_EVENT_IDX);
     }
 
+    fn fake_desc_chain(mem: &GuestMemory) -> DescriptorChain {
+        create_descriptor_chain(mem, GuestAddress(0), GuestAddress(0), Vec::new(), 0)
+            .expect("failed to create descriptor chain")
+    }
+
     #[test]
     fn queue_event_id_guest_fast() {
         let mut queue = Queue::new(QUEUE_SIZE.try_into().unwrap());
@@ -1032,7 +795,7 @@ mod tests {
         // device has handled them, so increase self.next_used to 0x100
         let mut device_generate: Wrapping<u16> = Wrapping(0x100);
         for _ in 0..device_generate.0 {
-            queue.add_used(&mem, 0x0, BUFFER_LEN);
+            queue.add_used(&mem, fake_desc_chain(&mem), BUFFER_LEN);
         }
 
         // At this moment driver hasn't handled any interrupts yet, so it
@@ -1050,7 +813,7 @@ mod tests {
         // Assume driver submit another u16::MAX - 0x100 req to device,
         // Device has handled all of them, so increase self.next_used to u16::MAX
         for _ in device_generate.0..u16::max_value() {
-            queue.add_used(&mem, 0x0, BUFFER_LEN);
+            queue.add_used(&mem, fake_desc_chain(&mem), BUFFER_LEN);
         }
         device_generate = Wrapping(u16::max_value());
 
@@ -1068,7 +831,7 @@ mod tests {
 
         // Assume driver submit another 1 request,
         // device has handled it, so wrap self.next_used to 0
-        queue.add_used(&mem, 0x0, BUFFER_LEN);
+        queue.add_used(&mem, fake_desc_chain(&mem), BUFFER_LEN);
         device_generate += Wrapping(1);
 
         // At this moment driver has handled all the previous interrupts, so it
@@ -1101,7 +864,7 @@ mod tests {
         // device have handled 0x100 req, so increase self.next_used to 0x100
         let mut device_generate: Wrapping<u16> = Wrapping(0x100);
         for _ in 0..device_generate.0 {
-            queue.add_used(&mem, 0x0, BUFFER_LEN);
+            queue.add_used(&mem, fake_desc_chain(&mem), BUFFER_LEN);
         }
 
         // At this moment driver hasn't handled any interrupts yet, so it
@@ -1118,7 +881,7 @@ mod tests {
 
         // Assume driver submit another 1 request,
         // device has handled it, so increment self.next_used.
-        queue.add_used(&mem, 0x0, BUFFER_LEN);
+        queue.add_used(&mem, fake_desc_chain(&mem), BUFFER_LEN);
         device_generate += Wrapping(1);
 
         // At this moment driver hasn't finished last interrupt yet,
@@ -1128,7 +891,7 @@ mod tests {
         // Assume driver submit another u16::MAX - 0x101 req to device,
         // Device has handled all of them, so increase self.next_used to u16::MAX
         for _ in device_generate.0..u16::max_value() {
-            queue.add_used(&mem, 0x0, BUFFER_LEN);
+            queue.add_used(&mem, fake_desc_chain(&mem), BUFFER_LEN);
         }
         device_generate = Wrapping(u16::max_value());
 
@@ -1142,7 +905,7 @@ mod tests {
 
         // Assume driver submit another 1 request,
         // device has handled it, so wrap self.next_used to 0
-        queue.add_used(&mem, 0x0, BUFFER_LEN);
+        queue.add_used(&mem, fake_desc_chain(&mem), BUFFER_LEN);
         device_generate += Wrapping(1);
 
         // At this moment driver has already finished the last interrupt(0x100),
@@ -1151,7 +914,7 @@ mod tests {
 
         // Assume driver submit another 1 request,
         // device has handled it, so increment self.next_used to 1
-        queue.add_used(&mem, 0x0, BUFFER_LEN);
+        queue.add_used(&mem, fake_desc_chain(&mem), BUFFER_LEN);
         device_generate += Wrapping(1);
 
         // At this moment driver hasn't finished last interrupt((Wrapping(0)) yet,
@@ -1168,7 +931,7 @@ mod tests {
 
         // Assume driver submit another 1 request,
         // device has handled it, so increase self.next_used.
-        queue.add_used(&mem, 0x0, BUFFER_LEN);
+        queue.add_used(&mem, fake_desc_chain(&mem), BUFFER_LEN);
         device_generate += Wrapping(1);
 
         // At this moment driver has finished all the previous interrupts, so it

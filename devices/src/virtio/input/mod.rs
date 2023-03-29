@@ -39,7 +39,6 @@ use self::event_source::SocketEventSource;
 use super::copy_config;
 use super::virtio_device::Error as VirtioError;
 use super::DescriptorChain;
-use super::DescriptorError;
 use super::DeviceType;
 use super::Interrupt;
 use super::Queue;
@@ -57,9 +56,6 @@ const QUEUE_SIZES: &[u16] = &[EVENT_QUEUE_SIZE, STATUS_QUEUE_SIZE];
 #[sorted]
 #[derive(Error, Debug)]
 pub enum InputError {
-    // Virtio descriptor error
-    #[error("virtio descriptor error: {0}")]
-    Descriptor(DescriptorError),
     // Failed to get axis information of event device
     #[error("failed to get axis information of event device: {0}")]
     EvdevAbsInfoError(base::Error),
@@ -352,12 +348,8 @@ struct Worker<T: EventSource> {
 
 impl<T: EventSource> Worker<T> {
     // Fills a virtqueue with events from the source.  Returns the number of bytes written.
-    fn fill_event_virtqueue(
-        event_source: &mut T,
-        avail_desc: DescriptorChain,
-        mem: &GuestMemory,
-    ) -> Result<usize> {
-        let mut writer = Writer::new(mem.clone(), avail_desc).map_err(InputError::Descriptor)?;
+    fn fill_event_virtqueue(event_source: &mut T, avail_desc: &DescriptorChain) -> Result<usize> {
+        let mut writer = Writer::new(avail_desc);
 
         while writer.available_bytes() >= virtio_input_event::SIZE {
             if let Some(evt) = event_source.pop_available_event() {
@@ -381,25 +373,17 @@ impl<T: EventSource> Worker<T> {
                     break;
                 }
                 Some(avail_desc) => {
-                    let avail_desc_index = avail_desc.index;
+                    let bytes_written =
+                        match Worker::fill_event_virtqueue(&mut self.event_source, &avail_desc) {
+                            Ok(count) => count,
+                            Err(e) => {
+                                error!("Input: failed to send events to guest: {}", e);
+                                break;
+                            }
+                        };
 
-                    let bytes_written = match Worker::fill_event_virtqueue(
-                        &mut self.event_source,
-                        avail_desc,
-                        &self.guest_memory,
-                    ) {
-                        Ok(count) => count,
-                        Err(e) => {
-                            error!("Input: failed to send events to guest: {}", e);
-                            break;
-                        }
-                    };
-
-                    self.event_queue.add_used(
-                        &self.guest_memory,
-                        avail_desc_index,
-                        bytes_written as u32,
-                    );
+                    self.event_queue
+                        .add_used(&self.guest_memory, avail_desc, bytes_written as u32);
                     needs_interrupt = true;
                 }
             }
@@ -409,12 +393,8 @@ impl<T: EventSource> Worker<T> {
     }
 
     // Sends events from the guest to the source.  Returns the number of bytes read.
-    fn read_event_virtqueue(
-        avail_desc: DescriptorChain,
-        event_source: &mut T,
-        mem: &GuestMemory,
-    ) -> Result<usize> {
-        let mut reader = Reader::new(mem.clone(), avail_desc).map_err(InputError::Descriptor)?;
+    fn read_event_virtqueue(avail_desc: &DescriptorChain, event_source: &mut T) -> Result<usize> {
+        let mut reader = Reader::new(avail_desc);
         while reader.available_bytes() >= virtio_input_event::SIZE {
             let evt: virtio_input_event = reader.read_obj().map_err(InputError::ReadQueue)?;
             event_source.send_event(&evt)?;
@@ -426,13 +406,8 @@ impl<T: EventSource> Worker<T> {
     fn process_status_queue(&mut self) -> Result<bool> {
         let mut needs_interrupt = false;
         while let Some(avail_desc) = self.status_queue.pop(&self.guest_memory) {
-            let avail_desc_index = avail_desc.index;
-
-            let bytes_read = match Worker::read_event_virtqueue(
-                avail_desc,
-                &mut self.event_source,
-                &self.guest_memory,
-            ) {
+            let bytes_read = match Worker::read_event_virtqueue(&avail_desc, &mut self.event_source)
+            {
                 Ok(count) => count,
                 Err(e) => {
                     error!("Input: failed to read events from virtqueue: {}", e);
@@ -441,7 +416,7 @@ impl<T: EventSource> Worker<T> {
             };
 
             self.status_queue
-                .add_used(&self.guest_memory, avail_desc_index, bytes_read as u32);
+                .add_used(&self.guest_memory, avail_desc, bytes_read as u32);
             needs_interrupt = true;
         }
 

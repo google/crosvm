@@ -51,8 +51,8 @@ impl gpu::QueueReader for SharedReader {
         self.queue.lock().pop(mem)
     }
 
-    fn add_used(&self, mem: &GuestMemory, desc_index: u16, len: u32) {
-        self.queue.lock().add_used(mem, desc_index, len)
+    fn add_used(&self, mem: &GuestMemory, desc_chain: DescriptorChain, len: u32) {
+        self.queue.lock().add_used(mem, desc_chain, len)
     }
 
     fn signal_used(&self, mem: &GuestMemory) {

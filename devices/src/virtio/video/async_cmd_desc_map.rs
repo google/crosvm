@@ -4,13 +4,13 @@
 
 use std::collections::BTreeMap;
 
-use crate::virtio::queue::DescriptorChain;
 use crate::virtio::video::command::QueueType;
 use crate::virtio::video::device::AsyncCmdResponse;
 use crate::virtio::video::device::AsyncCmdTag;
 use crate::virtio::video::error::VideoError;
 use crate::virtio::video::protocol;
 use crate::virtio::video::response::CmdResponse;
+use crate::virtio::DescriptorChain;
 
 /// AsyncCmdDescMap is a BTreeMap which stores descriptor chains in which asynchronous
 /// responses will be written.

@@ -79,7 +79,6 @@ use crate::virtio::device_constants::block::VIRTIO_BLK_T_OUT;
 use crate::virtio::device_constants::block::VIRTIO_BLK_T_WRITE_ZEROES;
 use crate::virtio::vhost::user::device::VhostBackendReqConnectionState;
 use crate::virtio::DescriptorChain;
-use crate::virtio::DescriptorError;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
@@ -109,8 +108,6 @@ const DISCARD_SECTOR_ALIGNMENT: u32 = 128;
 pub enum ExecuteError {
     #[error("failed to copy ID string: {0}")]
     CopyId(io::Error),
-    #[error("virtio descriptor error: {0}")]
-    Descriptor(DescriptorError),
     #[error("failed to perform discard or write zeroes; sector={sector} num_sectors={num_sectors} flags={flags}; {ioerr:?}")]
     DiscardWriteZeroes {
         ioerr: Option<disk::Error>,
@@ -156,7 +153,6 @@ impl ExecuteError {
     fn status(&self) -> u8 {
         match self {
             ExecuteError::CopyId(_) => VIRTIO_BLK_S_IOERR,
-            ExecuteError::Descriptor(_) => VIRTIO_BLK_S_IOERR,
             ExecuteError::DiscardWriteZeroes { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::Flush(_) => VIRTIO_BLK_S_IOERR,
             ExecuteError::MissingStatus => VIRTIO_BLK_S_IOERR,
@@ -234,15 +230,13 @@ impl DiskState {
 }
 
 async fn process_one_request(
-    avail_desc: DescriptorChain,
+    avail_desc: &DescriptorChain,
     disk_state: Rc<AsyncMutex<DiskState>>,
     flush_timer: Rc<RefCell<TimerAsync>>,
     flush_timer_armed: Rc<RefCell<bool>>,
-    mem: &GuestMemory,
 ) -> result::Result<usize, ExecuteError> {
-    let mut reader =
-        Reader::new(mem.clone(), avail_desc.clone()).map_err(ExecuteError::Descriptor)?;
-    let mut writer = Writer::new(mem.clone(), avail_desc).map_err(ExecuteError::Descriptor)?;
+    let mut reader = Reader::new(avail_desc);
+    let mut writer = Writer::new(avail_desc);
 
     // The last byte of the buffer is virtio_blk_req::status.
     // Split it into a separate Writer so that status_writer is the final byte and
@@ -287,11 +281,8 @@ pub async fn process_one_chain<I: SignalableInterrupt>(
     flush_timer: Rc<RefCell<TimerAsync>>,
     flush_timer_armed: Rc<RefCell<bool>>,
 ) {
-    let descriptor_index = avail_desc.index;
     let len =
-        match process_one_request(avail_desc, disk_state, flush_timer, flush_timer_armed, &mem)
-            .await
-        {
+        match process_one_request(&avail_desc, disk_state, flush_timer, flush_timer_armed).await {
             Ok(len) => len,
             Err(e) => {
                 error!("block: failed to handle request: {}", e);
@@ -300,7 +291,7 @@ pub async fn process_one_chain<I: SignalableInterrupt>(
         };
 
     let mut queue = queue.borrow_mut();
-    queue.add_used(&mem, descriptor_index, len as u32);
+    queue.add_used(&mem, avail_desc, len as u32);
     queue.trigger_interrupt(&mem, interrupt);
 }
 
@@ -1281,7 +1272,7 @@ mod tests {
             })),
         }));
 
-        let fut = process_one_request(avail_desc, disk_state, flush_timer, flush_timer_armed, &mem);
+        let fut = process_one_request(&avail_desc, disk_state, flush_timer, flush_timer_armed);
 
         ex.run_until(fut)
             .expect("running executor failed")
@@ -1344,7 +1335,7 @@ mod tests {
             })),
         }));
 
-        let fut = process_one_request(avail_desc, disk_state, flush_timer, flush_timer_armed, &mem);
+        let fut = process_one_request(&avail_desc, disk_state, flush_timer, flush_timer_armed);
 
         ex.run_until(fut)
             .expect("running executor failed")
@@ -1409,7 +1400,7 @@ mod tests {
             })),
         }));
 
-        let fut = process_one_request(avail_desc, disk_state, flush_timer, flush_timer_armed, &mem);
+        let fut = process_one_request(&avail_desc, disk_state, flush_timer, flush_timer_armed);
 
         ex.run_until(fut)
             .expect("running executor failed")

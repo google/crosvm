@@ -28,7 +28,6 @@ use zerocopy::AsBytes;
 use crate::virtio;
 use crate::virtio::copy_config;
 use crate::virtio::virtio_device::VirtioDevice;
-use crate::virtio::DescriptorError;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::Suspendable;
@@ -97,9 +96,6 @@ pub enum Error {
     /// Making an EventAsync failed.
     #[error("failed to create an EventAsync: {0}")]
     EventAsyncCreationFailed(cros_async::AsyncError),
-    /// A DescriptorChain contains invalid data.
-    #[error("DescriptorChain contains invalid data: {0}")]
-    InvalidDescriptorChain(DescriptorError),
     /// Failed to read a virtio-video command.
     #[error("failed to read a command from the guest: {0}")]
     ReadFailure(ReadCmdError),

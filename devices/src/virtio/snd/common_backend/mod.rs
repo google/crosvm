@@ -57,7 +57,7 @@ use crate::virtio::snd::sys::set_audio_thread_priority;
 use crate::virtio::snd::sys::SysAsyncStreamObjects;
 use crate::virtio::snd::sys::SysAudioStreamSourceGenerator;
 use crate::virtio::snd::sys::SysBufferWriter;
-use crate::virtio::DescriptorError;
+use crate::virtio::DescriptorChain;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
@@ -94,9 +94,6 @@ pub enum Error {
     /// Cloning kill event failed.
     #[error("Failed to clone kill event: {0}")]
     CloneKillEvent(SysError),
-    /// Descriptor chain was invalid.
-    #[error("Failed to valildate descriptor chain: {0}")]
-    DescriptorChain(DescriptorError),
     // Future error.
     #[error("Unexpected error. Done was not triggered before dropped: {0}")]
     DoneNotTriggered(Canceled),
@@ -194,7 +191,7 @@ const SUPPORTED_FRAME_RATES: u64 = 1 << VIRTIO_SND_PCM_RATE_8000
 
 // Response from pcm_worker to pcm_queue
 pub struct PcmResponse {
-    pub(crate) desc_index: u16,
+    pub(crate) desc_chain: DescriptorChain,
     pub(crate) status: virtio_snd_pcm_status, // response to the pcm message
     pub(crate) writer: Writer,
     pub(crate) done: Option<oneshot::Sender<()>>, // when pcm response is written to the queue

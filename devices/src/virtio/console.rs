@@ -90,16 +90,8 @@ fn handle_input<I: SignalableInterrupt>(
         let desc = receive_queue
             .peek(mem)
             .ok_or(ConsoleError::RxDescriptorsExhausted)?;
-        let desc_index = desc.index;
-        // TODO(morg): Handle extra error cases as Err(ConsoleError) instead of just returning.
-        let mut writer = match Writer::new(mem.clone(), desc) {
-            Ok(w) => w,
-            Err(e) => {
-                error!("console: failed to create Writer: {}", e);
-                return Ok(());
-            }
-        };
 
+        let mut writer = Writer::new(&desc);
         while writer.available_bytes() > 0 && !buffer.is_empty() {
             let (buffer_front, buffer_back) = buffer.as_slices();
             let buffer_chunk = if !buffer_front.is_empty() {
@@ -115,7 +107,7 @@ fn handle_input<I: SignalableInterrupt>(
 
         if bytes_written > 0 {
             receive_queue.pop_peeked(mem);
-            receive_queue.add_used(mem, desc_index, bytes_written);
+            receive_queue.add_used(mem, desc, bytes_written);
             receive_queue.trigger_interrupt(mem, interrupt);
         }
 
@@ -156,17 +148,11 @@ fn process_transmit_queue<I: SignalableInterrupt>(
 ) {
     let mut needs_interrupt = false;
     while let Some(avail_desc) = transmit_queue.pop(mem) {
-        let desc_index = avail_desc.index;
+        let reader = Reader::new(&avail_desc);
+        process_transmit_request(reader, output)
+            .unwrap_or_else(|e| error!("console: process_transmit_request failed: {}", e));
 
-        match Reader::new(mem.clone(), avail_desc) {
-            Ok(reader) => process_transmit_request(reader, output)
-                .unwrap_or_else(|e| error!("console: process_transmit_request failed: {}", e)),
-            Err(e) => {
-                error!("console: failed to create reader: {}", e);
-            }
-        };
-
-        transmit_queue.add_used(mem, desc_index, 0);
+        transmit_queue.add_used(mem, avail_desc, 0);
         needs_interrupt = true;
     }
 

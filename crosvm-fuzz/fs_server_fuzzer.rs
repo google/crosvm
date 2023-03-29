@@ -48,8 +48,8 @@ mod fuzzer {
             )
             .unwrap();
 
-            let r = Reader::new(mem.clone(), chain.clone()).unwrap();
-            let w = Writer::new(mem.clone(), chain).unwrap();
+            let r = Reader::new(&chain);
+            let w = Writer::new(&chain);
             fuzz_server(r, w);
         });
     });

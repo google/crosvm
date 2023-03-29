@@ -64,7 +64,6 @@ use crate::virtio::iommu::ipc_memory_mapper::*;
 use crate::virtio::iommu::memory_mapper::*;
 use crate::virtio::iommu::protocol::*;
 use crate::virtio::DescriptorChain;
-use crate::virtio::DescriptorError;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
@@ -129,12 +128,8 @@ type Result<T> = result::Result<T, IommuError>;
 pub enum IommuError {
     #[error("async executor error: {0}")]
     AsyncExec(AsyncError),
-    #[error("failed to create reader: {0}")]
-    CreateReader(DescriptorError),
     #[error("failed to create wait context: {0}")]
     CreateWaitContext(SysError),
-    #[error("failed to create writer: {0}")]
-    CreateWriter(DescriptorError),
     #[error("failed getting host address: {0}")]
     GetHostAddress(GuestMemoryError),
     #[error("failed to read from guest address: {0}")]
@@ -549,10 +544,8 @@ impl State {
         &mut self,
         avail_desc: &DescriptorChain,
     ) -> Result<(usize, Option<EventAsync>)> {
-        let mut reader =
-            Reader::new(self.mem.clone(), avail_desc.clone()).map_err(IommuError::CreateReader)?;
-        let mut writer =
-            Writer::new(self.mem.clone(), avail_desc.clone()).map_err(IommuError::CreateWriter)?;
+        let mut reader = Reader::new(avail_desc);
+        let mut writer = Writer::new(avail_desc);
 
         // at least we need space to write VirtioIommuReqTail
         if writer.available_bytes() < size_of::<virtio_iommu_req_tail>() {
@@ -602,7 +595,6 @@ async fn request_queue<I: SignalableInterrupt>(
             .next_async(&mem, &mut queue_event)
             .await
             .map_err(IommuError::ReadAsyncDesc)?;
-        let desc_index = avail_desc.index;
 
         let (len, fault_resolved_event) = match state.borrow_mut().execute_request(&avail_desc) {
             Ok(res) => res,
@@ -624,7 +616,7 @@ async fn request_queue<I: SignalableInterrupt>(
             debug!("iommu fault resolved");
         }
 
-        queue.add_used(&mem, desc_index, len as u32);
+        queue.add_used(&mem, avail_desc, len as u32);
         queue.trigger_interrupt(&mem, &interrupt);
     }
 }

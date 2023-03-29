@@ -31,7 +31,7 @@ mod tests {
         )
         .expect("create_descriptor_chain failed");
 
-        let mut reader = Reader::new(memory.clone(), chain).expect("failed to create Reader");
+        let mut reader = Reader::new(&chain);
 
         // TODO(b/235104127): Potentially use tempfile for ro_file so that this
         // test can run on Windows.
@@ -69,7 +69,7 @@ mod tests {
         )
         .expect("create_descriptor_chain failed");
 
-        let mut writer = Writer::new(memory.clone(), chain).expect("failed to create Writer");
+        let mut writer = Writer::new(&chain);
 
         let file = tempfile().expect("failed to create temp file");
 

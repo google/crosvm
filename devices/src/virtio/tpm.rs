@@ -20,7 +20,6 @@ use thiserror::Error;
 use vm_memory::GuestMemory;
 
 use super::DescriptorChain;
-use super::DescriptorError;
 use super::DeviceType;
 use super::Interrupt;
 use super::Queue;
@@ -54,9 +53,9 @@ pub trait TpmBackend: Send {
 }
 
 impl Worker {
-    fn perform_work(&mut self, desc: DescriptorChain) -> Result<u32> {
-        let mut reader = Reader::new(self.mem.clone(), desc.clone()).map_err(Error::Descriptor)?;
-        let mut writer = Writer::new(self.mem.clone(), desc).map_err(Error::Descriptor)?;
+    fn perform_work(&mut self, desc: &DescriptorChain) -> Result<u32> {
+        let mut reader = Reader::new(desc);
+        let mut writer = Writer::new(desc);
 
         let available_bytes = reader.available_bytes();
         if available_bytes > TPM_BUFSIZE {
@@ -92,9 +91,7 @@ impl Worker {
     fn process_queue(&mut self) -> NeedsInterrupt {
         let mut needs_interrupt = NeedsInterrupt::No;
         while let Some(avail_desc) = self.queue.pop(&self.mem) {
-            let index = avail_desc.index;
-
-            let len = match self.perform_work(avail_desc) {
+            let len = match self.perform_work(&avail_desc) {
                 Ok(len) => len,
                 Err(err) => {
                     error!("{}", err);
@@ -102,7 +99,7 @@ impl Worker {
                 }
             };
 
-            self.queue.add_used(&self.mem, index, len);
+            self.queue.add_used(&self.mem, avail_desc, len);
             needs_interrupt = NeedsInterrupt::Yes;
         }
 
@@ -257,8 +254,6 @@ enum Error {
     BufferTooSmall { size: usize, required: usize },
     #[error("vtpm command is too long: {size} > {} bytes", TPM_BUFSIZE)]
     CommandTooLong { size: usize },
-    #[error("virtio descriptor error: {0}")]
-    Descriptor(DescriptorError),
     #[error("vtpm failed to read from guest memory: {0}")]
     Read(io::Error),
     #[error(
