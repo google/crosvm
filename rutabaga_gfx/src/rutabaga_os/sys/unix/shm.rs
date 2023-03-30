@@ -4,6 +4,7 @@
 
 use std::convert::TryInto;
 use std::ffi::CStr;
+use std::os::unix::io::AsRawFd;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::io::OwnedFd;
 
@@ -33,12 +34,16 @@ impl SharedMemory {
     ///
     /// The file descriptor is opened with the close on exec flag and allows memfd sealing.
     pub fn new(debug_name: &CStr, size: u64) -> RutabagaResult<SharedMemory> {
-        let raw_fd = memfd_create(debug_name, MemFdCreateFlag::MFD_CLOEXEC)?;
-        let size_off_t: off_t = size.try_into()?;
-        ftruncate(raw_fd, size_off_t)?;
-
         // Nix will transition to owned fd in future releases, do it locally here.
+        let raw_fd = memfd_create(
+            debug_name,
+            MemFdCreateFlag::MFD_CLOEXEC | MemFdCreateFlag::MFD_ALLOW_SEALING,
+        )?;
         let fd = unsafe { OwnedFd::from_raw_fd(raw_fd) };
+
+        let size_off_t: off_t = size.try_into()?;
+        ftruncate(fd.as_raw_fd(), size_off_t)?;
+
         Ok(SharedMemory { fd, size })
     }
 
