@@ -79,5 +79,7 @@ fn main() -> Result<()> {
         .file(test_file)
         .compile("crosvm_control_test");
 
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=src");
     Ok(())
 }
