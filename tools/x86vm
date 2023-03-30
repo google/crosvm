@@ -3,8 +3,10 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-from impl.testvm import main
 import sys
+from impl.common import TOOLS_ROOT, cmd
 
 if __name__ == "__main__":
-    main("x86_64", sys.argv[1:])
+    sys.exit(
+        cmd(sys.executable, TOOLS_ROOT / "testvm", *sys.argv[1:], "--arch=x86_64").fg(check=False)
+    )

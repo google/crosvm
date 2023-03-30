@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+# Copyright 2021 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import shutil
+
+from impl.common import run_commands, argh
+from impl import testvm
+
+USAGE = """Manages VMs for testing crosvm.
+
+Can run an x86_64 and an aarch64 vm via `./tools/x86vm` and `./tools/aarch64vm`.
+The VM image will be downloaded and initialized on first use.
+
+The easiest way to use the VM is:
+
+  $ ./tools/aarch64vm ssh
+
+Which will initialize and boot the VM, then wait for SSH to be available and
+opens an SSH session. The VM will stay alive between calls.
+
+Alternatively, you can set up an SSH config to connect to the VM. First ensure
+the VM ready:
+
+  $ ./tools/aarch64vm wait
+"""
+
+
+@argh.arg("--arch", required=True, choices=testvm.ARCH_OPTIONS)
+def up(arch: testvm.Arch = "x86_64", reset: bool = False):
+    "Start the VM if it's not already running."
+    testvm.up(arch, reset)
+
+
+@argh.arg("--arch", required=True, choices=testvm.ARCH_OPTIONS)
+def run(arch: testvm.Arch = "x86_64", reset: bool = False):
+    "Run the VM in foreground for debugging purposes."
+    if testvm.is_running(arch):
+        raise Exception("VM is already running")
+    testvm.build_if_needed(arch, reset)
+    testvm.run_qemu(
+        arch,
+        testvm.rootfs_img_path(arch),
+        background=False,
+    )
+
+
+@argh.arg("--arch", required=True, choices=testvm.ARCH_OPTIONS)
+def wait(arch: testvm.Arch = "x86_64", timeout: int = 120):
+    "Blocks until the VM is ready to use."
+    testvm.wait(arch, timeout)
+
+
+@argh.arg("--arch", required=True, choices=testvm.ARCH_OPTIONS)
+def ssh(arch: testvm.Arch = "x86_64", timeout: int = 120):
+    "Starts an interactive shell via SSH, will ensure the VM is running."
+    testvm.up(arch)
+    wait(arch, timeout)
+    testvm.ssh_exec(arch)
+
+
+@argh.arg("--arch", required=True, choices=testvm.ARCH_OPTIONS)
+def stop(arch: testvm.Arch = "x86_64"):
+    "Gracefully stops the running VM."
+    if not testvm.is_running(arch):
+        print("VM is not running.")
+        return
+    testvm.ssh_exec(arch, "sudo poweroff")
+
+
+@argh.arg("--arch", required=True, choices=testvm.ARCH_OPTIONS)
+def kill(arch: testvm.Arch = "x86_64"):
+    "Kills the running VM with SIGKILL."
+    if not testvm.is_running(arch):
+        print("VM is not running.")
+        return
+    testvm.kill_vm(arch)
+
+
+@argh.arg("--arch", required=True, choices=testvm.ARCH_OPTIONS)
+def clean(arch: testvm.Arch = "x86_64"):
+    "Stops the VM and deletes all data."
+    if testvm.is_running(arch):
+        kill(arch)
+    if testvm.data_dir(arch).exists():
+        shutil.rmtree(testvm.data_dir(arch))
+
+
+if __name__ == "__main__":
+    run_commands(up, run, wait, ssh, stop, kill, clean, usage=USAGE)

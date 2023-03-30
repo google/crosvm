@@ -287,7 +287,6 @@ def main(
     if dut == "host":
         check_host_prerequisites(run_root_tests)
     if dut == "vm":
-        testvm.build_if_needed(get_vm_arch(triple))
         testvm.up(get_vm_arch(triple))
 
     nextest_args = [

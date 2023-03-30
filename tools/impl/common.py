@@ -61,6 +61,8 @@ import rich.live
 import rich.spinner
 import rich.text
 
+# Hack: argh does not support type annotations. This prevents type errors.
+argh: Any  # type: ignore
 
 # File where to store http headers for gcloud authentication
 AUTH_HEADERS_FILE = Path(gettempdir()) / f"crosvm_gcloud_auth_headers_{getpass.getuser()}"

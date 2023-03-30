@@ -2,65 +2,24 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import argparse
 import itertools
 import json
 import os
-import shutil
 import socket
 import subprocess
 import sys
 import time
-import urllib.request as request
+import typing
 from contextlib import closing
 from pathlib import Path
 from typing import Dict, Iterable, List, Literal, Optional, Tuple
 
 from .common import CACHE_DIR, download_file
 
-USAGE = """%(prog)s {command} [options]
-
-Manages VMs for testing crosvm.
-
-Can run an x86_64 and an aarch64 vm via `./tools/x86vm` and `./tools/aarch64vm`.
-The VM image will be downloaded and initialized on first use.
-
-The easiest way to use the VM is:
-
-  $ ./tools/aarch64vm ssh
-
-Which will initialize and boot the VM, then wait for SSH to be available and
-opens an SSH session. The VM will stay alive between calls.
-
-Alternatively, you can set up an SSH config to connect to the VM. First ensure
-the VM ready:
-
-  $ ./tools/aarch64vm wait
-
-Then append the VMs ssh config to your SSH config:
-
-  $ ./tools/aarch64vm ssh_config >> ~/.ssh/config
-
-And connect as usual:
-
-  $ ssh crosvm_$ARCH
-
-Commands:
-
-  build: Download base image and create rootfs overlay.
-  up: Ensure that the VM is running in the background.
-  run: Run the VM in the foreground process for debugging.
-  wait: Boot the VM if it's offline and wait until it's available.
-  ssh: SSH into the VM. Boot and wait if it's not available.
-  ssh_config: Prints the ssh config needed to connnect to the VM.
-  stop: Gracefully shutdown the VM.
-  kill: Kill the QEMU process. Might damage the image file.
-  clean: Stop all VMs and delete all data.
-"""
-
 KVM_SUPPORT = os.access("/dev/kvm", os.W_OK)
 
 Arch = Literal["x86_64", "aarch64"]
+ARCH_OPTIONS = typing.get_args(Arch)
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
 SRC_DIR = SCRIPT_DIR.joinpath("testvm")
@@ -302,10 +261,12 @@ def is_ssh_port_available(arch: Arch):
         return sock.connect_ex(("127.0.0.1", SSH_PORTS[arch])) != 0
 
 
-def up(arch: Arch):
+def up(arch: Arch, reset: bool = False):
+    "Start the VM if it's not already running."
     if is_running(arch):
         return
 
+    build_if_needed(arch, reset)
     print("Booting VM...")
     run_qemu(
         arch,
@@ -314,20 +275,10 @@ def up(arch: Arch):
     )
 
 
-def run(arch: Arch):
-    if is_running(arch):
-        raise Exception("VM is already running")
-    run_qemu(
-        arch,
-        rootfs_img_path(arch),
-        background=False,
-    )
-
-
 def wait(arch: Arch, timeout: int = 120):
-    if not is_running(arch):
-        up(arch)
-    elif ping_vm(arch):
+    "Blocks until the VM is ready to use."
+    up(arch)
+    if ping_vm(arch):
         return
 
     print("Waiting for VM")
@@ -340,92 +291,3 @@ def wait(arch: Arch, timeout: int = 120):
             print()
             return
     raise Exception("Timeout while waiting for VM")
-
-
-def ssh(arch: Arch, timeout: int):
-    wait(arch, timeout)
-    ssh_exec(arch)
-
-
-def ssh_config(arch: Arch):
-    print(f"Host crosvm_{arch}")
-    print(f"    HostName localhost")
-    for opt, value in ssh_opts(arch).items():
-        print(f"    {opt} {value}")
-
-
-def stop(arch: Arch):
-    if not is_running(arch):
-        print("VM is not running.")
-        return
-    ssh_exec(arch, "sudo poweroff")
-
-
-def kill(arch: Arch):
-    if not is_running(arch):
-        print("VM is not running.")
-        return
-    kill_vm(arch)
-
-
-def clean(arch: Arch):
-    if is_running(arch):
-        kill(arch)
-    if data_dir(arch).exists():
-        shutil.rmtree(data_dir(arch))
-
-
-def main(arch: Arch, argv: List[str]):
-    COMMANDS = [
-        "build",
-        "up",
-        "run",
-        "wait",
-        "ssh",
-        "ssh_config",
-        "stop",
-        "kill",
-        "clean",
-    ]
-    parser = argparse.ArgumentParser(usage=USAGE)
-    parser.add_argument("command", choices=COMMANDS)
-    parser.add_argument(
-        "--reset",
-        action="store_true",
-        help="Reset VM image to a fresh state. Removes all user modifications.",
-    )
-    parser.add_argument(
-        "--timeout",
-        type=int,
-        default=60,
-        help="Timeout in seconds while waiting for the VM to come up.",
-    )
-    args = parser.parse_args(argv)
-
-    if args.command == "clean":
-        clean(arch)
-        return
-
-    if args.command == "ssh_config":
-        ssh_config(arch)
-        return
-
-    # Ensure the images are built regardless of which command we execute.
-    build_if_needed(arch, reset=args.reset)
-
-    if args.command == "build":
-        return  # Nothing left to do.
-    elif args.command == "run":
-        run(arch)
-    elif args.command == "up":
-        up(arch)
-    elif args.command == "ssh":
-        ssh(arch, args.timeout)
-    elif args.command == "stop":
-        stop(arch)
-    elif args.command == "kill":
-        kill(arch)
-    elif args.command == "wait":
-        wait(arch, args.timeout)
-    else:
-        print(f"Unknown command {args.command}")
