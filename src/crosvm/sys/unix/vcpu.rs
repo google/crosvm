@@ -19,7 +19,6 @@ use std::time::Duration;
 use aarch64::AArch64 as Arch;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use aarch64::MsrHandlers;
-use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
 use arch::CpuSet;
@@ -385,23 +384,20 @@ where
                                 error!("Failed to send GetState: {}", e);
                             };
                         }
-                        VcpuControl::Snapshot(_response_chan) => {
-                            let snap = match vcpu.snapshot() {
-                                Err(e) => {
-                                    Err(anyhow!("Failed to snapshot Vcpu #{}: {}", vcpu.id(), e))
-                                }
-                                Ok(snap) => Ok(snap),
-                            };
-                            if let Err(e) = _response_chan.send(snap) {
-                                error!("Failed to send snapshot complete: {}", e);
+                        VcpuControl::Snapshot(response_chan) => {
+                            let resp = vcpu
+                                .snapshot()
+                                .with_context(|| format!("Failed to snapshot Vcpu #{}", vcpu.id()));
+                            if let Err(e) = response_chan.send(resp) {
+                                error!("Failed to send snapshot response: {}", e);
                             }
                         }
                         VcpuControl::Restore(response_chan, vcpu_data) => {
-                            if let Err(e) = vcpu.restore(*vcpu_data) {
-                                panic!("Failed to restore Vcpu #{}: {}", vcpu.id(), e);
-                            };
-                            if let Err(e) = response_chan.send(Ok(())) {
-                                error!("Failed to send restore complete: {}", e);
+                            let resp = vcpu
+                                .restore(*vcpu_data)
+                                .with_context(|| format!("Failed to restore Vcpu #{}", vcpu.id()));
+                            if let Err(e) = response_chan.send(resp) {
+                                error!("Failed to send restore response: {}", e);
                             }
                         }
                     }
