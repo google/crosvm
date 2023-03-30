@@ -56,6 +56,7 @@ use sync::Mutex;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::MemoryRegionInformation;
+use vm_memory::MemoryRegionPurpose;
 
 use crate::ClockState;
 use crate::Config;
@@ -493,8 +494,8 @@ unsafe fn set_user_memory_region(
     guest_addr: u64,
     memory_size: u64,
     userspace_addr: *mut u8,
+    flags: u32,
 ) -> Result<()> {
-    let flags = 0;
     let region = gzvm_userspace_memory_region {
         slot,
         flags,
@@ -607,8 +608,14 @@ impl GeniezoneVm {
                  guest_addr,
                  size,
                  host_addr,
+                 options,
                  ..
              }| {
+                let flags = match options.purpose {
+                    MemoryRegionPurpose::GuestMemoryRegion => GZVM_USER_MEM_REGION_GUEST_MEM,
+                    MemoryRegionPurpose::ProtectedFirmwareRegion => GZVM_USER_MEM_REGION_PROTECT_FW,
+                    MemoryRegionPurpose::StaticSwiotlbRegion => GZVM_USER_MEM_REGION_STATIC_SWIOTLB,
+                };
                 unsafe {
                     // Safe because the guest regions are guaranteed not to overlap.
                     set_user_memory_region(
@@ -619,6 +626,7 @@ impl GeniezoneVm {
                         guest_addr.offset(),
                         size as u64,
                         host_addr as *mut u8,
+                        flags,
                     )
                 }
             },
@@ -912,6 +920,7 @@ impl Vm for GeniezoneVm {
             Some(gap) => gap.0,
             None => (regions.len() + self.guest_mem.num_regions() as usize) as MemSlot,
         };
+        let flags = 0;
 
         // Safe because we check that the given guest address is valid and has no overlaps. We also
         // know that the pointer and size are correct because the MemoryMapping interface ensures
@@ -926,6 +935,7 @@ impl Vm for GeniezoneVm {
                 guest_addr.offset(),
                 size,
                 mem.as_ptr(),
+                flags,
             )
         };
 
@@ -956,7 +966,7 @@ impl Vm for GeniezoneVm {
         }
         // Safe because the slot is checked against the list of memory slots.
         unsafe {
-            set_user_memory_region(&self.vm, slot, false, false, 0, 0, std::ptr::null_mut())?;
+            set_user_memory_region(&self.vm, slot, false, false, 0, 0, std::ptr::null_mut(), 0)?;
         }
         self.mem_slot_gaps.lock().push(Reverse(slot));
         // This remove will always succeed because of the contains_key check above.
