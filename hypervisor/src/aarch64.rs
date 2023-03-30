@@ -138,18 +138,23 @@ pub trait VcpuAArch64: Vcpu {
     fn get_gdb_register(&self, reg: <GdbArch as Arch>::RegId, data: &mut [u8]) -> Result<usize>;
 
     /// Snapshot VCPU
-    fn snapshot(&self) -> anyhow::Result<VcpuInnerSnapshot> {
+    fn snapshot(&self) -> anyhow::Result<VcpuSnapshot> {
         Err(anyhow!("not yet implemented"))
     }
 
     /// Restore VCPU
-    fn restore(&self, _inner_vcpu: VcpuInnerSnapshot) -> anyhow::Result<()> {
+    fn restore(&self, _snapshot: VcpuSnapshot) -> anyhow::Result<()> {
         Err(anyhow!("not yet implemented"))
     }
 }
 
+/// Aarch64 specific vCPU snapshot.
+///
+/// Not implemented yet.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct VcpuInnerSnapshot {}
+pub struct VcpuSnapshot {
+    pub vcpu_id: usize,
+}
 
 impl_downcast!(VcpuAArch64);
 

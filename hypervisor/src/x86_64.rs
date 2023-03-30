@@ -138,8 +138,9 @@ pub trait VcpuX86_64: Vcpu {
     fn set_tsc_offset(&self, offset: u64) -> Result<()>;
 
     /// Snapshot vCPU state
-    fn snapshot(&self) -> anyhow::Result<VcpuInnerSnapshot> {
-        Ok(VcpuInnerSnapshot {
+    fn snapshot(&self) -> anyhow::Result<VcpuSnapshot> {
+        Ok(VcpuSnapshot {
+            vcpu_id: self.id(),
             regs: self.get_regs()?,
             sregs: self.get_sregs()?,
             debug_regs: self.get_debugregs()?,
@@ -151,21 +152,24 @@ pub trait VcpuX86_64: Vcpu {
         })
     }
 
-    fn restore(&mut self, inner_vcpu: VcpuInnerSnapshot) -> anyhow::Result<()> {
-        self.set_regs(&inner_vcpu.regs)?;
-        self.set_sregs(&inner_vcpu.sregs)?;
-        self.set_debugregs(&inner_vcpu.debug_regs)?;
-        self.set_xcrs(&inner_vcpu.xcrs)?;
-        self.set_msrs(&inner_vcpu.msrs)?;
-        self.set_xsave(&inner_vcpu.xsave)?;
-        self.set_vcpu_events(&inner_vcpu.vcpu_events)?;
-        self.set_tsc_offset(inner_vcpu.tsc_offset)?;
+    fn restore(&mut self, snapshot: VcpuSnapshot) -> anyhow::Result<()> {
+        assert_eq!(snapshot.vcpu_id, self.id());
+        self.set_regs(&snapshot.regs)?;
+        self.set_sregs(&snapshot.sregs)?;
+        self.set_debugregs(&snapshot.debug_regs)?;
+        self.set_xcrs(&snapshot.xcrs)?;
+        self.set_msrs(&snapshot.msrs)?;
+        self.set_xsave(&snapshot.xsave)?;
+        self.set_vcpu_events(&snapshot.vcpu_events)?;
+        self.set_tsc_offset(snapshot.tsc_offset)?;
         Ok(())
     }
 }
 
+/// x86 specific vCPU snapshot.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct VcpuInnerSnapshot {
+pub struct VcpuSnapshot {
+    pub vcpu_id: usize,
     regs: Regs,
     sregs: Sregs,
     debug_regs: DebugRegs,

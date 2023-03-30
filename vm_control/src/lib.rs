@@ -64,7 +64,7 @@ use hypervisor::IoEventAddress;
 use hypervisor::IrqRoute;
 use hypervisor::IrqSource;
 pub use hypervisor::MemSlot;
-use hypervisor::VcpuInnerSnapshot;
+use hypervisor::VcpuSnapshot;
 use hypervisor::Vm;
 use libc::EINVAL;
 use libc::EIO;
@@ -122,12 +122,6 @@ pub enum VcpuControl {
     GetStates(mpsc::Sender<VmRunMode>),
     Snapshot(mpsc::Sender<anyhow::Result<VcpuSnapshot>>),
     Restore(mpsc::Sender<anyhow::Result<()>>, Box<VcpuSnapshot>),
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct VcpuSnapshot {
-    pub vcpu: VcpuInnerSnapshot,
-    pub vcpu_id: usize,
 }
 
 /// Mode of execution for the VM.
@@ -1740,11 +1734,9 @@ pub fn do_restore(
     let vcpu_path = restore_path.with_extension("vcpu");
     let cpu_file = File::open(&vcpu_path)
         .with_context(|| format!("failed to open path {}", vcpu_path.display()))?;
-    let vcpus_data: Vec<serde_json::Value> = serde_json::from_reader(cpu_file)?;
+    let vcpu_snapshots: Vec<VcpuSnapshot> = serde_json::from_reader(cpu_file)?;
     let (send_chan, recv_chan) = mpsc::channel();
-    for data in vcpus_data {
-        let vcpu_snap: VcpuSnapshot =
-            serde_json::from_value(data).context("failed to deserialize vcpu snapshot")?;
+    for vcpu_snap in vcpu_snapshots {
         let vcpu_id = vcpu_snap.vcpu_id;
         kick_vcpu(
             VcpuControl::Restore(send_chan.clone(), Box::new(vcpu_snap)),

@@ -390,17 +390,14 @@ where
                                 Err(e) => {
                                     Err(anyhow!("Failed to snapshot Vcpu #{}: {}", vcpu.id(), e))
                                 }
-                                Ok(snap) => Ok(VcpuSnapshot {
-                                    vcpu: snap,
-                                    vcpu_id: cpu_id,
-                                }),
+                                Ok(snap) => Ok(snap),
                             };
                             if let Err(e) = _response_chan.send(snap) {
                                 error!("Failed to send snapshot complete: {}", e);
                             }
                         }
                         VcpuControl::Restore(response_chan, vcpu_data) => {
-                            if let Err(e) = vcpu.restore(vcpu_data.vcpu) {
+                            if let Err(e) = vcpu.restore(*vcpu_data) {
                                 panic!("Failed to restore Vcpu #{}: {}", vcpu.id(), e);
                             };
                             if let Err(e) = response_chan.send(Ok(())) {
