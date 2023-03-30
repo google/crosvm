@@ -2,7 +2,6 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import itertools
 import json
 import os
 import socket
@@ -12,9 +11,9 @@ import time
 import typing
 from contextlib import closing
 from pathlib import Path
-from typing import Dict, Iterable, List, Literal, Optional, Tuple
+from typing import Dict, List, Literal, Optional
 
-from .common import CACHE_DIR, download_file
+from .common import CACHE_DIR, download_file, cmd
 
 KVM_SUPPORT = os.access("/dev/kvm", os.W_OK)
 
@@ -70,6 +69,9 @@ def rootfs_img_path(arch: Arch):
     return data_dir(arch).joinpath(f"rootfs-{arch}-{BASE_IMG_VERSION}.qcow2")
 
 
+ssh = cmd("ssh")
+qemu_img = cmd("qemu-img")
+
 # List of ports to use for SSH for each architecture
 SSH_PORTS: Dict[Arch, int] = {
     "x86_64": 9000,
@@ -77,38 +79,30 @@ SSH_PORTS: Dict[Arch, int] = {
 }
 
 # QEMU arguments shared by all architectures
-SHARED_ARGS: List[Tuple[str, str]] = [
-    ("-display", "none"),
-    ("-device", "virtio-net-pci,netdev=net0"),
-    ("-smp", "8"),
-    ("-m", "4G"),
+SHARED_ARGS: List[str] = [
+    "-display none",
+    "-device virtio-net-pci,netdev=net0",
+    "-smp 8",
+    "-m 4G",
 ]
 
-# Arguments to QEMU for each architecture
-ARCH_TO_QEMU: Dict[Arch, Tuple[str, List[Iterable[str]]]] = {
-    # arch: (qemu-binary, [(param, value), ...])
-    "x86_64": (
+# QEMU command for each architecture
+ARCH_TO_QEMU: Dict[Arch, cmd] = {
+    "x86_64": cmd(
         "qemu-system-x86_64",
-        [
-            ("-cpu", "host"),
-            ("-netdev", f"user,id=net0,hostfwd=tcp::{SSH_PORTS['x86_64']}-:22"),
-            *([("-enable-kvm",)] if KVM_SUPPORT else []),
-            *SHARED_ARGS,
-        ],
+        "-cpu host",
+        f"-netdev user,id=net0,hostfwd=tcp::{SSH_PORTS['x86_64']}-:22",
+        "-enable-kvm" if KVM_SUPPORT else None,
+        *SHARED_ARGS,
     ),
-    "aarch64": (
+    "aarch64": cmd(
         "qemu-system-aarch64",
-        [
-            ("-M", "virt"),
-            ("-machine", "virt,virtualization=true,gic-version=3"),
-            ("-cpu", "cortex-a57"),
-            ("-bios", "/usr/share/qemu-efi-aarch64/QEMU_EFI.fd"),
-            (
-                "-netdev",
-                f"user,id=net0,hostfwd=tcp::{SSH_PORTS['aarch64']}-:22",
-            ),
-            *SHARED_ARGS,
-        ],
+        "-M virt",
+        "-machine virt,virtualization=true,gic-version=3",
+        "-cpu cortex-a57",
+        "-bios /usr/share/qemu-efi-aarch64/QEMU_EFI.fd",
+        f"-netdev user,id=net0,hostfwd=tcp::{SSH_PORTS['aarch64']}-:22",
+        *SHARED_ARGS,
     ),
 }
 
@@ -129,32 +123,22 @@ def ssh_cmd_args(arch: Arch):
 
 
 def ssh_exec(arch: Arch, cmd: Optional[str] = None):
-    subprocess.run(
-        [
-            "ssh",
-            "localhost",
-            *ssh_cmd_args(arch),
-            *(["-T", cmd] if cmd else []),
-        ],
-    ).check_returncode()
+    os.chmod(ID_RSA, 0o600)
+    ssh.with_args(
+        "localhost",
+        *ssh_cmd_args(arch),
+        *(["-T", cmd] if cmd else []),
+    ).fg(check=False)
 
 
 def ping_vm(arch: Arch):
     os.chmod(ID_RSA, 0o600)
-    return (
-        subprocess.run(
-            [
-                "ssh",
-                "localhost",
-                *ssh_cmd_args(arch),
-                "-oConnectTimeout=1",
-                "-T",
-                "exit",
-            ],
-            capture_output=True,
-        ).returncode
-        == 0
-    )
+    return ssh(
+        "localhost",
+        *ssh_cmd_args(arch),
+        "-oConnectTimeout=1",
+        "-T exit",
+    ).success()
 
 
 def write_pid_file(arch: Arch, pid: int):
@@ -180,16 +164,13 @@ def run_qemu(
         print(f"You may be running the {arch}vm in another place and need to kill it.")
         sys.exit(1)
 
-    (binary, arch_args) = ARCH_TO_QEMU[arch]
-    qemu_args = [*arch_args, ("-hda", str(hda))]
+    qemu = ARCH_TO_QEMU[arch]
     if background:
-        qemu_args.append(("-serial", f"file:{data_dir(arch).joinpath('vm_log')}"))
+        serial = f"file:{data_dir(arch).joinpath('vm_log')}"
     else:
-        qemu_args.append(("-serial", "stdio"))
+        serial = "stdio"
 
-    # Flatten list of tuples into flat list of arguments
-    qemu_cmd = [binary, *itertools.chain(*qemu_args)]
-    process = subprocess.Popen(qemu_cmd, start_new_session=background)
+    process = qemu.with_args(f"-hda {hda}", f"-serial {serial}").popen(start_new_session=background)
     write_pid_file(arch, process.pid)
     if not background:
         process.wait()
@@ -240,20 +221,14 @@ def build_if_needed(arch: Arch, reset: bool = False):
         # The rootfs is backed by the base image generated above. So we can
         # easily reset to a clean VM by rebuilding an empty rootfs image.
         print("Creating rootfs overlay...")
-        subprocess.run(
-            [
-                "qemu-img",
-                "create",
-                "-f",
-                "qcow2",
-                "-F",
-                "qcow2",
-                "-b",
-                base_img,
-                rootfs_img,
-                "4G",
-            ]
-        ).check_returncode()
+        qemu_img.with_args(
+            "create",
+            "-f qcow2",
+            "-F qcow2",
+            f"-b {base_img}",
+            rootfs_img,
+            "4G",
+        ).fg(quiet=True)
 
 
 def is_ssh_port_available(arch: Arch):

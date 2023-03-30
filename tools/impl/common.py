@@ -395,7 +395,7 @@ class Command(object):
         if style is None or verbose():
             return self.__run(stdout=None, stderr=None, check=check).returncode
         else:
-            process = self.popen(stderr=STDOUT)
+            process = self.popen(stdout=PIPE, stderr=STDOUT)
             style(process)
             returncode = process.wait()
             if returncode != 0 and check:
@@ -526,21 +526,20 @@ class Command(object):
 
     def __stdin_stream(self):
         if self.stdin_cmd:
-            return self.stdin_cmd.popen().stdout
+            return self.stdin_cmd.popen(stdout=PIPE, stderr=PIPE).stdout
         return None
 
-    def popen(self, stderr: Optional[int] = PIPE) -> "subprocess.Popen[str]":
+    def popen(self, **kwargs: Any) -> "subprocess.Popen[str]":
         """
         Runs a program and returns the Popen object of the running process.
         """
         return subprocess.Popen(
             self.args,
             cwd=self.cwd,
-            stdout=subprocess.PIPE,
-            stderr=stderr,
             stdin=self.__stdin_stream(),
             env={**os.environ, **self.env_vars},
             text=True,
+            **kwargs,
         )
 
     @staticmethod

@@ -218,20 +218,23 @@ class Task(object):
 
     def execute(self):
         "Execute the task while updating the status variables."
-        self.start_time = datetime.now()
-        success = True
-        for command in self.commands:
-            if verbose():
-                self.log_lines.append(f"$ {command}")
-            process = command.popen(stderr=subprocess.STDOUT)
-            assert process.stdout
-            for line in iter(process.stdout.readline, ""):
-                self.log_lines.append(line.strip())
-            if process.wait() != 0:
-                success = False
-        self.duration = datetime.now() - self.start_time
-        self.success = success
-        self.done = True
+        try:
+            self.start_time = datetime.now()
+            success = True
+            for command in self.commands:
+                if verbose():
+                    self.log_lines.append(f"$ {command}")
+                process = command.popen(stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                assert process.stdout
+                for line in iter(process.stdout.readline, ""):
+                    self.log_lines.append(line.strip())
+                if process.wait() != 0:
+                    success = False
+            self.duration = datetime.now() - self.start_time
+            self.success = success
+            self.done = True
+        except Exception:
+            self.log_lines.append(traceback.format_exc())
 
 
 def print_logs(tasks: List[Task]):
