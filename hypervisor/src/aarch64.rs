@@ -143,7 +143,7 @@ pub trait VcpuAArch64: Vcpu {
     }
 
     /// Restore VCPU
-    fn restore(&self, _snapshot: VcpuSnapshot) -> anyhow::Result<()> {
+    fn restore(&self, _snapshot: &VcpuSnapshot) -> anyhow::Result<()> {
         Err(anyhow!("not yet implemented"))
     }
 }

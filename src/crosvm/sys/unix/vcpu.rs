@@ -394,7 +394,7 @@ where
                         }
                         VcpuControl::Restore(response_chan, vcpu_data) => {
                             let resp = vcpu
-                                .restore(*vcpu_data)
+                                .restore(&vcpu_data)
                                 .with_context(|| format!("Failed to restore Vcpu #{}", vcpu.id()));
                             if let Err(e) = response_chan.send(resp) {
                                 error!("Failed to send restore response: {}", e);

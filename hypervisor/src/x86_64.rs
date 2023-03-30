@@ -152,7 +152,7 @@ pub trait VcpuX86_64: Vcpu {
         })
     }
 
-    fn restore(&mut self, snapshot: VcpuSnapshot) -> anyhow::Result<()> {
+    fn restore(&mut self, snapshot: &VcpuSnapshot) -> anyhow::Result<()> {
         assert_eq!(snapshot.vcpu_id, self.id());
         self.set_regs(&snapshot.regs)?;
         self.set_sregs(&snapshot.sregs)?;
