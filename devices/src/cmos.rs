@@ -8,6 +8,8 @@ use std::time::Duration;
 
 use anyhow::anyhow;
 use anyhow::Context;
+use base::custom_serde::deserialize_seq_to_arr;
+use base::custom_serde::serialize_arr;
 use base::error;
 use base::Event;
 use base::EventToken;
@@ -22,7 +24,6 @@ use chrono::Timelike;
 use chrono::Utc;
 use serde::Deserialize;
 use serde::Serialize;
-use serde::Serializer;
 use sync::Mutex;
 use vm_control::VmResponse;
 
@@ -83,14 +84,6 @@ pub struct Cmos {
     alarm_fn: Option<AlarmFn>,
     #[serde(skip_serializing)] // skip serializing the worker thread
     worker: Option<WorkerThread<AlarmFn>>,
-}
-
-fn serialize_arr<S>(data: &[u8; DATA_LEN], serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    let vec = data.to_vec();
-    serde::Serialize::serialize(&vec, serializer)
 }
 
 struct AlarmFn {
@@ -386,16 +379,14 @@ impl Suspendable for Cmos {
         #[derive(Deserialize)]
         struct CmosIndex {
             index: u8,
-            data: Vec<u8>,
+            #[serde(deserialize_with = "deserialize_seq_to_arr")]
+            data: [u8; DATA_LEN],
         }
 
         let deser: CmosIndex =
             serde_json::from_value(data).context("failed to deserialize Cmos")?;
         self.index = deser.index;
-        self.data = deser
-            .data
-            .try_into()
-            .map_err(|_| anyhow!("invalid cmos data"))?;
+        self.data = deser.data;
         self.set_alarm();
 
         Ok(())

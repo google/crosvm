@@ -7,6 +7,9 @@
 use std::result::Result;
 use std::sync::Arc;
 
+use serde::de::Error;
+use serde::Deserialize;
+use serde::Deserializer;
 use serde::Serialize;
 use serde::Serializer;
 use sync::Mutex;
@@ -40,4 +43,24 @@ where
     S: Serializer,
 {
     serde::Serialize::serialize(&data[..], serializer)
+}
+
+/// Deserialize sequence of T into an Array of SIZE == Size of sequence.
+/// This function is a workaround to the serde limitation on array size (32) deserialization.
+pub fn deserialize_seq_to_arr<
+    'de,
+    D,
+    T: Sized + Deserialize<'de> + std::fmt::Debug,
+    const SIZE: usize,
+>(
+    deserializer: D,
+) -> Result<[T; SIZE], D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let vals_vec: Vec<T> = serde::Deserialize::deserialize(deserializer)?;
+    let vals_arr: [T; SIZE] = vals_vec.try_into().map_err(|_| {
+        <D as Deserializer>::Error::custom("failed to convert vector to array while deserializing")
+    })?;
+    Ok(vals_arr)
 }

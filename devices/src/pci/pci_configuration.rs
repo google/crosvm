@@ -5,8 +5,8 @@
 use std::convert::TryFrom;
 use std::convert::TryInto;
 
-use anyhow::anyhow;
 use anyhow::Context;
+use base::custom_serde::deserialize_seq_to_arr;
 use base::custom_serde::serialize_arr;
 use base::warn;
 use remain::sorted;
@@ -245,11 +245,17 @@ pub trait PciCapability {
 /// Contains the configuration space of a PCI node.
 /// See the [specification](https://en.wikipedia.org/wiki/PCI_configuration_space).
 /// The configuration space is accessed with DWORD reads and writes from the guest.
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct PciConfiguration {
-    #[serde(serialize_with = "serialize_arr")]
+    #[serde(
+        serialize_with = "serialize_arr",
+        deserialize_with = "deserialize_seq_to_arr"
+    )]
     registers: [u32; NUM_CONFIGURATION_REGISTERS],
-    #[serde(serialize_with = "serialize_arr")]
+    #[serde(
+        serialize_with = "serialize_arr",
+        deserialize_with = "deserialize_seq_to_arr"
+    )]
     writable_bits: [u32; NUM_CONFIGURATION_REGISTERS], // writable bits for each register.
     bar_used: [bool; NUM_BAR_REGS],
     bar_configs: [Option<PciBarConfiguration>; NUM_BAR_REGS],
@@ -674,30 +680,9 @@ impl PciConfiguration {
     }
 
     pub fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
-        // Due to serde's limitation on array size, we're transforming the array to a slice for
-        // deserialization.
-        #[derive(Deserialize)]
-        pub struct PciConfigSerializable {
-            registers: Vec<u32>,
-            writable_bits: Vec<u32>,
-            bar_used: [bool; NUM_BAR_REGS],
-            bar_configs: [Option<PciBarConfiguration>; NUM_BAR_REGS],
-            last_capability: Option<(usize, usize)>,
-        }
-
-        let deser: PciConfigSerializable =
+        let deser: PciConfiguration =
             serde_json::from_value(data).context("failed to deserialize PciConfiguration")?;
-        self.registers = deser
-            .registers
-            .try_into()
-            .map_err(|_| anyhow!("invalid registers"))?;
-        self.writable_bits = deser
-            .writable_bits
-            .try_into()
-            .map_err(|_| anyhow!("invalid registers"))?;
-        self.bar_used = deser.bar_used;
-        self.bar_configs = deser.bar_configs;
-        self.last_capability = deser.last_capability;
+        *self = deser;
         Ok(())
     }
 }
