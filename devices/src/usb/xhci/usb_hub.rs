@@ -19,12 +19,15 @@ use super::xhci_regs::PORTSC_CONNECT_STATUS_CHANGE;
 use super::xhci_regs::PORTSC_CURRENT_CONNECT_STATUS;
 use super::xhci_regs::PORTSC_PORT_ENABLED;
 use super::xhci_regs::PORTSC_PORT_ENABLED_DISABLED_CHANGE;
+use super::xhci_regs::PORTSC_PORT_SPEED_MASK;
+use super::xhci_regs::PORTSC_PORT_SPEED_SHIFT;
 use super::xhci_regs::USB2_PORTS_END;
 use super::xhci_regs::USB2_PORTS_START;
 use super::xhci_regs::USB3_PORTS_END;
 use super::xhci_regs::USB3_PORTS_START;
 use super::xhci_regs::USB_STS_PORT_CHANGE_DETECT;
 use crate::register_space::Register;
+use usb_util::DeviceSpeed;
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -97,6 +100,7 @@ impl UsbPort {
         }
         usb_debug!("device detached from port {}", self.port_id);
         *locked = None;
+        self.portsc.clear_bits(PORTSC_PORT_SPEED_MASK);
         self.send_device_disconnected_event()
             .map_err(|reason| Error::Detach {
                 port_id: self.port_id,
@@ -125,9 +129,21 @@ impl UsbPort {
         device: Box<dyn XhciBackendDevice>,
     ) -> std::result::Result<(), InterrupterError> {
         usb_debug!("A backend is connected to port {}", self.port_id);
+        let speed = device.get_speed();
         let mut locked = self.backend_device.lock();
         assert!(locked.is_none());
         *locked = Some(device);
+        self.portsc.clear_bits(PORTSC_PORT_SPEED_MASK);
+        // Speed mappings from xHCI spec 7.2.2.1.1 ("Default Speed ID Mapping")
+        let speed_id: u32 = match speed {
+            None => 0,
+            Some(DeviceSpeed::Full) => 1,
+            Some(DeviceSpeed::Low) => 2,
+            Some(DeviceSpeed::High) => 3,
+            Some(DeviceSpeed::Super) => 4,
+            Some(DeviceSpeed::SuperPlus) => 5,
+        };
+        self.portsc.set_bits(speed_id << PORTSC_PORT_SPEED_SHIFT);
         self.send_device_connected_event()
     }
 

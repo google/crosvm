@@ -30,6 +30,7 @@ pub use self::types::ControlRequestType;
 pub use self::types::DescriptorHeader;
 pub use self::types::DescriptorType;
 pub use self::types::DeviceDescriptor;
+pub use self::types::DeviceSpeed;
 pub use self::types::EndpointDescriptor;
 pub use self::types::EndpointDirection;
 pub use self::types::EndpointType;

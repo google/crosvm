@@ -4,6 +4,7 @@
 
 use super::xhci_transfer::XhciTransfer;
 use crate::usb::host_backend::error::Result;
+use usb_util::DeviceSpeed;
 
 /// Address of this usb device, as in Set Address standard usb device request.
 pub type UsbDeviceAddress = u32;
@@ -29,4 +30,6 @@ pub trait XhciBackendDevice: Send {
     fn set_address(&mut self, address: UsbDeviceAddress);
     /// Reset the backend device.
     fn reset(&mut self) -> Result<()>;
+    /// Get speed of this device.
+    fn get_speed(&self) -> Option<DeviceSpeed>;
 }

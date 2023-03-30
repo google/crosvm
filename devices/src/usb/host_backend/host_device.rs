@@ -16,6 +16,7 @@ use usb_util::ControlRequestRecipient;
 use usb_util::DescriptorHeader;
 use usb_util::DescriptorType;
 use usb_util::Device;
+use usb_util::DeviceSpeed;
 use usb_util::InterfaceDescriptor;
 use usb_util::StandardControlRequest;
 use usb_util::Transfer;
@@ -607,5 +608,14 @@ impl XhciBackendDevice for HostDevice {
     fn reset(&mut self) -> Result<()> {
         usb_debug!("resetting host device");
         self.device.lock().reset().map_err(Error::Reset)
+    }
+
+    fn get_speed(&self) -> Option<DeviceSpeed> {
+        let speed = self.device.lock().get_speed();
+        if let Ok(speed) = speed {
+            speed
+        } else {
+            None
+        }
     }
 }

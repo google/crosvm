@@ -70,6 +70,10 @@ pub const PORTSC_PORT_LINK_STATE_MASK: u32 = 0x000001E0;
 /// Bitmask for portsc register, see spec 5.4.8.
 pub const PORTSC_PORT_POWER: u32 = 1u32 << 9;
 /// Bitmask for portsc register, see spec 5.4.8.
+pub const PORTSC_PORT_SPEED_MASK: u32 = 0x00003C00;
+/// Bitmask for portsc register, see spec 5.4.8.
+pub const PORTSC_PORT_SPEED_SHIFT: u32 = 10;
+/// Bitmask for portsc register, see spec 5.4.8.
 pub const PORTSC_CONNECT_STATUS_CHANGE: u32 = 1u32 << 17;
 /// Bitmask for portsc register, see spec 5.4.8.
 pub const PORTSC_PORT_ENABLED_DISABLED_CHANGE: u32 = 1u32 << 18;

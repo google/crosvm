@@ -13,6 +13,7 @@ use std::os::raw::c_uint;
 use std::os::raw::c_void;
 use std::sync::Arc;
 
+use base::error;
 use base::handle_eintr_errno;
 use base::AsRawDescriptor;
 use base::IoctlNr;
@@ -30,6 +31,7 @@ use crate::ControlRequestRecipient;
 use crate::ControlRequestType;
 use crate::DeviceDescriptor;
 use crate::DeviceDescriptorTree;
+use crate::DeviceSpeed;
 use crate::Error;
 use crate::Result;
 use crate::StandardControlRequest;
@@ -360,6 +362,23 @@ impl Device {
         }
 
         Ok(())
+    }
+
+    /// Get speed of this device.
+    pub fn get_speed(&self) -> Result<Option<DeviceSpeed>> {
+        let speed = unsafe { self.ioctl(usb_sys::USBDEVFS_GET_SPEED()) }?;
+        match speed {
+            1 => Ok(Some(DeviceSpeed::Low)),       // Low Speed
+            2 => Ok(Some(DeviceSpeed::Full)),      // Full Speed
+            3 => Ok(Some(DeviceSpeed::High)),      // High Speed
+            4 => Ok(Some(DeviceSpeed::High)),      // Wireless, treat as a High Speed device
+            5 => Ok(Some(DeviceSpeed::Super)),     // Super Speed
+            6 => Ok(Some(DeviceSpeed::SuperPlus)), // Super Speed Plus
+            _ => {
+                error!("unexpected speed: {:?}", speed);
+                Ok(None)
+            }
+        }
     }
 }
 

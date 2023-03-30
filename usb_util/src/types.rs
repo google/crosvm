@@ -343,6 +343,15 @@ pub fn control_request_type(
         | (recipient as u8)
 }
 
+/// USB device speed
+pub enum DeviceSpeed {
+    Full,
+    Low,
+    High,
+    Super,
+    SuperPlus,
+}
+
 #[cfg(test)]
 #[allow(clippy::unusual_byte_groupings)]
 mod tests {
