@@ -11,7 +11,7 @@ use super::fallocate;
 use super::FallocateMode;
 
 pub(crate) fn file_punch_hole(file: &File, offset: u64, length: u64) -> io::Result<()> {
-    fallocate(file, FallocateMode::PunchHole, true, offset, length as u64)
+    fallocate(file, FallocateMode::PunchHole, true, offset, length)
         .map_err(|e| io::Error::from_raw_os_error(e.errno()))
 }
 

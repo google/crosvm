@@ -36,7 +36,7 @@ impl Child {
         if let Some(exit_code) = status.code() {
             Ok(exit_code as u8)
         } else if let Some(signal) = status.signal() {
-            let exit_code = if signal as i32 >= 128 {
+            let exit_code = if signal >= 128 {
                 warn!("wait for child: unexpected signal({:?})", signal);
                 255
             } else {

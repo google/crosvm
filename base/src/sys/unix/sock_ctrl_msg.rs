@@ -72,7 +72,7 @@ fn CMSG_DATA(cmsg_buffer: *mut cmsghdr) -> *mut RawFd {
 
 // This function is like CMSG_NEXT, but safer because it reads only from references, although it
 // does some pointer arithmetic on cmsg_ptr.
-#[allow(clippy::cast_ptr_alignment)]
+#[allow(clippy::cast_ptr_alignment, clippy::unnecessary_cast)]
 fn get_next_cmsg(msghdr: &msghdr, cmsg: &cmsghdr, cmsg_ptr: *mut cmsghdr) -> *mut cmsghdr {
     let next_cmsg = (cmsg_ptr as *mut u8).wrapping_add(CMSG_ALIGN!(cmsg.cmsg_len)) as *mut cmsghdr;
     if next_cmsg
@@ -175,7 +175,7 @@ fn raw_sendmsg<D: AsIobuf>(fd: RawFd, out_data: &[D], out_fds: &[RawFd]) -> Resu
 
 // Musl requires a try_into when assigning to msg_iovlen, msg_controllen and
 // cmsg_len that is unnecessary when compiling for glibc.
-#[allow(clippy::useless_conversion)]
+#[allow(clippy::useless_conversion, clippy::unnecessary_cast)]
 fn raw_recvmsg(fd: RawFd, iovs: &mut [IoSliceMut], in_fds: &mut [RawFd]) -> Result<(usize, usize)> {
     let cmsg_capacity = CMSG_SPACE!(size_of::<RawFd>() * in_fds.len());
     let mut cmsg_buffer = CmsgBuffer::with_capacity(cmsg_capacity);

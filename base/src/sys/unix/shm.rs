@@ -180,7 +180,7 @@ impl SharedMemory {
         let file_size = file.seek(SeekFrom::End(0))?;
         Ok(SharedMemory {
             fd: file,
-            size: file_size as u64,
+            size: file_size,
         })
     }
 
