@@ -196,6 +196,7 @@ pub struct Gfxstream {}
 
 struct GfxstreamContext {
     ctx_id: u32,
+    fence_handler: RutabagaFenceHandler,
 }
 
 impl RutabagaContext for GfxstreamContext {
@@ -243,6 +244,11 @@ impl RutabagaContext for GfxstreamContext {
     }
 
     fn context_create_fence(&mut self, fence: RutabagaFence) -> RutabagaResult<()> {
+        if fence.ring_idx as u32 == 1 {
+            self.fence_handler.call(fence);
+            return Ok(());
+        }
+
         // Safe becase only integers are given to gfxstream, not memory.
         let ret = unsafe {
             stream_renderer_context_create_fence(fence.fence_id, fence.ctx_id, fence.ring_idx)
@@ -640,7 +646,7 @@ impl RutabagaComponent for Gfxstream {
         ctx_id: u32,
         context_init: u32,
         context_name: Option<&str>,
-        _fence_handler: RutabagaFenceHandler,
+        fence_handler: RutabagaFenceHandler,
     ) -> RutabagaResult<Box<dyn RutabagaContext>> {
         let mut name: &str = "gpu_renderer";
         if let Some(name_string) = context_name.filter(|s| s.len() > 0) {
@@ -658,6 +664,9 @@ impl RutabagaComponent for Gfxstream {
             )
         };
         ret_to_res(ret)?;
-        Ok(Box::new(GfxstreamContext { ctx_id }))
+        Ok(Box::new(GfxstreamContext {
+            ctx_id,
+            fence_handler,
+        }))
     }
 }
