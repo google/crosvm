@@ -574,10 +574,14 @@ impl Hypervisor for Geniezone {
     }
 
     fn check_capability(&self, cap: HypervisorCap) -> bool {
-        matches!(
-            cap,
-            HypervisorCap::UserMemory | HypervisorCap::ImmediateExit
-        )
+        match cap {
+            HypervisorCap::UserMemory => true,
+            HypervisorCap::ArmPmuV3 => false,
+            HypervisorCap::ImmediateExit => true,
+            HypervisorCap::StaticSwiotlbAllocationRequired => true,
+            HypervisorCap::HypervisorInitializedBootContext => false,
+            HypervisorCap::S390UserSigp | HypervisorCap::TscDeadlineTimer => false,
+        }
     }
 }
 
