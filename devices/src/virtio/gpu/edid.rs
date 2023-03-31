@@ -227,7 +227,7 @@ fn populate_detailed_timing(edid_block: &mut [u8], info: &DisplayInfo) {
     // Horizontal blanking in pixels.
     edid_block[3] = horizontal_blanking_lsb;
     // Upper bits of the two above vals.
-    edid_block[4] = horizontal_blanking_msb | (width_msb << 4) as u8;
+    edid_block[4] = horizontal_blanking_msb | (width_msb << 4);
 
     let vertical_active: u32 = info.height();
     let vertical_active_lsb: u8 = (vertical_active & 0xFF) as u8;

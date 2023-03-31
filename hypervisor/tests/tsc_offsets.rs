@@ -180,7 +180,7 @@ fn test_tsc_offset_run(
     let threshold = 250_000_000;
 
     let vcpu_regs = Regs {
-        rip: load_addr.offset() as u64,
+        rip: load_addr.offset(),
         rflags: 2,
         rcx: 0x3000,
         ..Default::default()

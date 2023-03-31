@@ -1135,7 +1135,7 @@ impl Worker {
         // The sibling is indicating a used queue event on
         // vring number |index|. Acknowledge the event and
         // inject the related interrupt into the guest.
-        let kick_data = &self.vrings[index as usize].kick_data;
+        let kick_data = &self.vrings[index].kick_data;
         let kick_evt = kick_data
             .kick_evt
             .as_ref()

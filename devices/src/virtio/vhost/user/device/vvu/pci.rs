@@ -503,7 +503,7 @@ impl VvuPciDevice {
     }
 
     fn init(&mut self, device_vq_num: usize) -> Result<()> {
-        self.set_status(VIRTIO_CONFIG_STATUS_RESET as u8);
+        self.set_status(VIRTIO_CONFIG_STATUS_RESET);
         // Wait until reset is done with timeout.
         let deadline = Instant::now() + Duration::from_secs(1);
         loop {

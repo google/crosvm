@@ -2513,7 +2513,7 @@ impl FileSystem for PassthroughFs {
         if size == 0 {
             Ok(GetxattrReply::Count(res as u32))
         } else {
-            buf.truncate(res as usize);
+            buf.truncate(res);
             Ok(GetxattrReply::Value(buf))
         }
     }

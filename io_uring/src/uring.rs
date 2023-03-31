@@ -874,7 +874,7 @@ impl SubmitQueueState {
         // Safe because self being constructed from the correct mmap guaratees that the memory is
         // valid to written.
         unsafe {
-            std::ptr::write_volatile(self.array.load(Ordering::Relaxed).add(index), value as u32);
+            std::ptr::write_volatile(self.array.load(Ordering::Relaxed).add(index), value);
         }
     }
 }

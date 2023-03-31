@@ -260,7 +260,7 @@ mod tests {
         // Init a vec that translates to u64::max;
         let u64_mem = vec![0xffu8; std::mem::size_of::<u64>()];
         let (ret, u64_mem) = source.read_to_vec(None, u64_mem).await.unwrap();
-        assert_eq!(ret as usize, std::mem::size_of::<u64>());
+        assert_eq!(ret, std::mem::size_of::<u64>());
         let mut val = 0u64.to_ne_bytes();
         val.copy_from_slice(&u64_mem);
         u64::from_ne_bytes(val)

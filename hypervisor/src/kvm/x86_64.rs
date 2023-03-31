@@ -538,7 +538,7 @@ impl VmX86_64 for KvmVm {
     /// See the documentation on the KVM_SET_TSS_ADDR ioctl.
     fn set_tss_addr(&self, addr: GuestAddress) -> Result<()> {
         // Safe because we know that our file is a VM fd and we verify the return result.
-        let ret = unsafe { ioctl_with_val(self, KVM_SET_TSS_ADDR(), addr.offset() as u64) };
+        let ret = unsafe { ioctl_with_val(self, KVM_SET_TSS_ADDR(), addr.offset()) };
         if ret == 0 {
             Ok(())
         } else {
@@ -551,8 +551,7 @@ impl VmX86_64 for KvmVm {
     /// See the documentation on the KVM_SET_IDENTITY_MAP_ADDR ioctl.
     fn set_identity_map_addr(&self, addr: GuestAddress) -> Result<()> {
         // Safe because we know that our file is a VM fd and we verify the return result.
-        let ret =
-            unsafe { ioctl_with_ref(self, KVM_SET_IDENTITY_MAP_ADDR(), &(addr.offset() as u64)) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_IDENTITY_MAP_ADDR(), &addr.offset()) };
         if ret == 0 {
             Ok(())
         } else {
@@ -1156,7 +1155,7 @@ impl From<&kvm_ioapic_state__bindgen_ty_1> for IoapicRedirectionTableEntry {
         let mut entry = IoapicRedirectionTableEntry::default();
         // Safe because the 64-bit layout of the IoapicRedirectionTableEntry matches the kvm_sys
         // table entry layout
-        entry.set(0, 64, unsafe { item.bits as u64 });
+        entry.set(0, 64, unsafe { item.bits });
         entry
     }
 }
@@ -1635,7 +1634,7 @@ fn to_kvm_xcrs(r: &[Register]) -> kvm_xcrs {
         ..Default::default()
     };
     for (i, &xcr) in r.iter().enumerate() {
-        kvm.xcrs[i].xcr = xcr.id as u32;
+        kvm.xcrs[i].xcr = xcr.id;
         kvm.xcrs[i].value = xcr.value;
     }
     kvm
@@ -1645,7 +1644,7 @@ fn to_kvm_msrs(vec: &[Register]) -> Vec<kvm_msrs> {
     let vec: Vec<kvm_msr_entry> = vec
         .iter()
         .map(|e| kvm_msr_entry {
-            index: e.id as u32,
+            index: e.id,
             data: e.value,
             ..Default::default()
         })

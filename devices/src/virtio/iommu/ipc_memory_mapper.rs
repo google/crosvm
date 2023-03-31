@@ -313,7 +313,7 @@ impl ExportedRegion {
             .lock()
             .regions
             .iter()
-            .all(|r| mem.range_overlap(r.gpa, r.gpa.unchecked_add(r.len as u64)))
+            .all(|r| mem.range_overlap(r.gpa, r.gpa.unchecked_add(r.len)))
     }
 
     /// Gets the list of guest physical regions for the exported region.

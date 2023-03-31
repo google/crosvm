@@ -583,7 +583,7 @@ mod tests {
 
         let s2 = state.clone();
         r.set_write_cb(move |val: u8| {
-            *s2.lock() = val as u8;
+            *s2.lock() = val;
             val
         });
         let data: [u8; 4] = [0, 0, 0, 0xff];

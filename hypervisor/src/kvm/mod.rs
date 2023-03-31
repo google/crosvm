@@ -426,7 +426,7 @@ impl KvmVm {
                 None => (false, 0, 4),
             },
             Datamatch::U64(v) => match v {
-                Some(u) => (true, u as u64, 8),
+                Some(u) => (true, u, 8),
                 None => (false, 0, 8),
             },
         };
@@ -444,7 +444,7 @@ impl KvmVm {
             datamatch: datamatch_value,
             len: datamatch_len,
             addr: match addr {
-                IoEventAddress::Pio(p) => p as u64,
+                IoEventAddress::Pio(p) => p,
                 IoEventAddress::Mmio(m) => m,
             },
             fd: evt.as_raw_descriptor(),
@@ -592,7 +592,7 @@ impl Vm for KvmVm {
                 slot,
                 read_only,
                 log_dirty_pages,
-                guest_addr.offset() as u64,
+                guest_addr.offset(),
                 size,
                 mem.as_ptr(),
             )
@@ -1144,7 +1144,7 @@ impl Vcpu for KvmVcpu {
         // Safe because the exit_reason (which comes from the kernel) told us which
         // union field to use.
         let hyperv = unsafe { &mut run.__bindgen_anon_1.hyperv };
-        match hyperv.type_ as u32 {
+        match hyperv.type_ {
             KVM_EXIT_HYPERV_SYNIC => {
                 let synic = unsafe { &hyperv.u.synic };
                 handle_fn(HypervHypercall::HypervSynic {

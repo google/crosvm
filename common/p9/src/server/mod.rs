@@ -810,6 +810,7 @@ impl Server {
         Ok(Rreadlink { target })
     }
 
+    #[allow(clippy::unnecessary_cast)] // nlink_t is u32 on 32-bit platforms
     fn get_attr(&mut self, get_attr: &Tgetattr) -> io::Result<Rgetattr> {
         let fid = self.fids.get_mut(&get_attr.fid).ok_or_else(ebadf)?;
 

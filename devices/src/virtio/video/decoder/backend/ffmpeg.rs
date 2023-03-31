@@ -435,7 +435,7 @@ impl DecoderSession for FfmpegDecoderSession {
                     format_converter: SwConverter::new(
                         avcontext.width as usize,
                         avcontext.height as usize,
-                        avcontext.pix_fmt as i32,
+                        avcontext.pix_fmt,
                         dst_pix_format.pix_fmt(),
                     )
                     .context("while setting output parameters")

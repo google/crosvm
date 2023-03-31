@@ -59,7 +59,7 @@ impl<'de> Deserialize<'de> for PciClassParameters {
         let class_numeric = u32::deserialize(deserializer)?;
 
         let class_code = (class_numeric >> 16) as u8;
-        let class = PciClassCode::try_from(class_code as u8).map_err(|_| {
+        let class = PciClassCode::try_from(class_code).map_err(|_| {
             serde::de::Error::custom(format!("Unknown class code {:#x}", class_code))
         })?;
 

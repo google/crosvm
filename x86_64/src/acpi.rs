@@ -268,8 +268,8 @@ fn write_facp_overrides(
     facp.write(FADT_FIELD_SMI_COMMAND, 0u32);
     facp.write(FADT_FIELD_FACS_ADDR32, 0u32);
     facp.write(FADT_FIELD_DSDT_ADDR32, 0u32);
-    facp.write(FADT_FIELD_FACS_ADDR, facs_offset.0 as u64);
-    facp.write(FADT_FIELD_DSDT_ADDR, dsdt_offset.0 as u64);
+    facp.write(FADT_FIELD_FACS_ADDR, facs_offset.0);
+    facp.write(FADT_FIELD_DSDT_ADDR, dsdt_offset.0);
 
     // PM1A Event Block Address
     facp.write(FADT_FIELD_PM1A_EVENT_BLK_ADDR, pm_iobase);
@@ -626,7 +626,7 @@ pub fn create_acpi_tables(
     );
     madt.write(
         MADT_FIELD_LAPIC_ADDR,
-        super::mptable::APIC_DEFAULT_PHYS_BASE as u32,
+        super::mptable::APIC_DEFAULT_PHYS_BASE,
     );
     // Our IrqChip implementations (the KVM in-kernel irqchip and the split irqchip) expose a pair
     // of PC-compatible 8259 PICs.

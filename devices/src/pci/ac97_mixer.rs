@@ -159,7 +159,7 @@ impl Ac97Mixer {
 
     // Returns the value read in the Mic volume register (0x18).
     fn get_pcm_out_volume(&self) -> u16 {
-        let reg = (self.pcm_out_vol_l as u16) << 8 | self.pcm_out_vol_r as u16;
+        let reg = (self.pcm_out_vol_l << 8) | self.pcm_out_vol_r;
         if self.pcm_out_mute {
             reg | MUTE_REG_BIT
         } else {

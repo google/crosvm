@@ -214,7 +214,7 @@ impl UsbEndpoint {
                         }
                         XhciTransferState::Completed => {
                             let status = t.status();
-                            let actual_length = t.actual_length() as usize;
+                            let actual_length = t.actual_length();
                             let copied_length = buffer
                                 .write(t.buffer.as_slice())
                                 .map_err(Error::WriteBuffer)?;

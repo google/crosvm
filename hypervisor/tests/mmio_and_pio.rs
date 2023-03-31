@@ -98,7 +98,7 @@ where
     vcpu.set_sregs(&vcpu_sregs).expect("set sregs failed");
 
     let vcpu_regs = Regs {
-        rip: load_addr.offset() as u64,
+        rip: load_addr.offset(),
         rflags: 2,
         rax: 0x33,
         rbx: 0x3000,

@@ -313,7 +313,7 @@ mod test {
         assert_eq!(er.is_full().unwrap(), false);
         assert_eq!(er.is_empty(), false);
         let t: Trb = gm
-            .read_obj_from_addr(GuestAddress(0x200 + 2 * trb_size as u64))
+            .read_obj_from_addr(GuestAddress(0x200 + 2 * trb_size))
             .unwrap();
         assert_eq!(t.get_control(), 6);
         assert_eq!(t.get_cycle(), true);

@@ -287,7 +287,7 @@ impl VirtioDevice for Pmem {
     fn read_config(&self, offset: u64, data: &mut [u8]) {
         let config = virtio_pmem_config {
             start_address: Le64::from(self.mapping_address.offset()),
-            size: Le64::from(self.mapping_size as u64),
+            size: Le64::from(self.mapping_size),
         };
         copy_config(data, 0, config.as_bytes(), offset);
     }

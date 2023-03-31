@@ -145,7 +145,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
         vhost_memory.nregions = num_regions as u32;
         // regions is a zero-length array, so taking a mut slice requires that
         // we correctly specify the size to match the amount of backing memory.
-        let vhost_regions = unsafe { vhost_memory.regions.as_mut_slice(num_regions as usize) };
+        let vhost_regions = unsafe { vhost_memory.regions.as_mut_slice(num_regions) };
 
         let _ = mem.with_regions::<_, ()>(
             |MemoryRegionInformation {
@@ -156,7 +156,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
                  ..
              }| {
                 vhost_regions[index] = virtio_sys::vhost::vhost_memory_region {
-                    guest_phys_addr: guest_addr.offset() as u64,
+                    guest_phys_addr: guest_addr.offset(),
                     memory_size: size as u64,
                     userspace_addr: host_addr as u64,
                     flags_padding: 0u64,
@@ -351,7 +351,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
     fn set_vring_call(&self, queue_index: usize, event: &Event) -> Result<()> {
         let vring_file = virtio_sys::vhost::vhost_vring_file {
             index: queue_index as u32,
-            fd: event.as_raw_descriptor() as i32,
+            fd: event.as_raw_descriptor(),
         };
 
         // This ioctl is called on a valid vhost_net descriptor and has its
@@ -371,7 +371,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
     fn set_vring_err(&self, queue_index: usize, event: &Event) -> Result<()> {
         let vring_file = virtio_sys::vhost::vhost_vring_file {
             index: queue_index as u32,
-            fd: event.as_raw_descriptor() as i32,
+            fd: event.as_raw_descriptor(),
         };
 
         // This ioctl is called on a valid vhost_net fd and has its
@@ -392,7 +392,7 @@ pub trait Vhost: AsRawDescriptor + std::marker::Sized {
     fn set_vring_kick(&self, queue_index: usize, event: &Event) -> Result<()> {
         let vring_file = virtio_sys::vhost::vhost_vring_file {
             index: queue_index as u32,
-            fd: event.as_raw_descriptor() as i32,
+            fd: event.as_raw_descriptor(),
         };
 
         // This ioctl is called on a valid vhost_net descriptor and has its

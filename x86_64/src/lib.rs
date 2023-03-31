@@ -1991,7 +1991,7 @@ impl X8664arch {
         io_bus
             .insert(
                 pm.clone(),
-                pm_iobase as u64,
+                pm_iobase,
                 devices::acpi::ACPIPM_RESOURCE_LEN as u64,
             )
             .unwrap();

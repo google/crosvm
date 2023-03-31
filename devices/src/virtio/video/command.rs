@@ -219,7 +219,7 @@ impl<'a> VideoCmd {
                     .collect::<Vec<u32>>();
 
                 // Read all the entries for all the planes.
-                let plane_entries = (0..num_planes as usize)
+                let plane_entries = (0..num_planes)
                     .map(|i| {
                         let num_entries: u32 = num_entries[i].into();
                         (0..num_entries)

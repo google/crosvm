@@ -399,7 +399,7 @@ fn pin_page(
 ) -> Result<()> {
     let leaf_entry = gfn_to_dtt_pte(mem, dtt_level, dtt_root, dtt_iter, gfn)?;
 
-    let gpa = (gfn << PAGE_SHIFT_4K) as u64;
+    let gpa = gfn << PAGE_SHIFT_4K;
     let host_addr = mem
         .get_host_address_range(GuestAddress(gpa), PAGE_SIZE_4K as usize)
         .context("failed to get host address")? as u64;
@@ -523,7 +523,7 @@ fn unpin_page(
         // The compare_exchange success as the original leaf entry is
         // DTTE_PINNED_FLAG and the new leaf entry is 0 now. Unpin the
         // page.
-        let gpa = (gfn << PAGE_SHIFT_4K) as u64;
+        let gpa = gfn << PAGE_SHIFT_4K;
         if vfio_unmap(vfio_container, gpa, PAGE_SIZE_4K) {
             UnpinResult::Unpinned
         } else {
@@ -597,7 +597,7 @@ impl PinWorker {
                 match event.token {
                     Token::Kill => break 'wait,
                     Token::Pin { index } => {
-                        let offset = index * mem::size_of::<u64>() as usize;
+                        let offset = index * mem::size_of::<u64>();
                         if let Some(event) = self.ioevents.get(index) {
                             if let Err(e) = event.wait() {
                                 error!(
@@ -1451,7 +1451,7 @@ impl PciDevice for CoIommuDev {
         let mmio_addr = self.allocate_bar_address(
             resources,
             address,
-            COIOMMU_MMIO_BAR_SIZE as u64,
+            COIOMMU_MMIO_BAR_SIZE,
             COIOMMU_MMIO_BAR,
             "coiommu-mmiobar",
         )?;
@@ -1541,7 +1541,7 @@ impl PciDevice for CoIommuDev {
             .config_regs
             .get_bar_addr(COIOMMU_NOTIFYMAP_BAR as usize);
         match addr {
-            o if mmio_bar <= o && o < mmio_bar + COIOMMU_MMIO_BAR_SIZE as u64 => {
+            o if mmio_bar <= o && o < mmio_bar + COIOMMU_MMIO_BAR_SIZE => {
                 self.read_mmio(addr, data);
             }
             o if notifymap <= o && o < notifymap + COIOMMU_NOTIFYMAP_SIZE as u64 => {
@@ -1560,7 +1560,7 @@ impl PciDevice for CoIommuDev {
             .config_regs
             .get_bar_addr(COIOMMU_NOTIFYMAP_BAR as usize);
         match addr {
-            o if mmio_bar <= o && o < mmio_bar + COIOMMU_MMIO_BAR_SIZE as u64 => {
+            o if mmio_bar <= o && o < mmio_bar + COIOMMU_MMIO_BAR_SIZE => {
                 self.write_mmio(addr, data);
             }
             o if notifymap <= o && o < notifymap + COIOMMU_NOTIFYMAP_SIZE as u64 => {

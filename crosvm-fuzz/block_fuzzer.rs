@@ -60,7 +60,7 @@ fuzz_target!(|bytes| {
     if mem
         .write_all_at_addr(
             &bytes[2 * size_u64..(2 * size_u64) + CMD_SIZE],
-            GuestAddress(command_addr as u64),
+            GuestAddress(command_addr),
         )
         .is_err()
     {
@@ -71,7 +71,7 @@ fuzz_target!(|bytes| {
     let desc_table = read_u64(&mut data_image);
 
     if mem
-        .write_all_at_addr(&bytes[32..], GuestAddress(desc_table as u64))
+        .write_all_at_addr(&bytes[32..], GuestAddress(desc_table))
         .is_err()
     {
         return;

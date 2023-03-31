@@ -13,7 +13,7 @@ const MAX_FFMPEG_PLANES: usize = 4;
 /// This could change depending on FFmpeg's build configuration (AVX etc.).
 pub fn max_buffer_alignment() -> usize {
     // Safe because this function has no side effects and just returns an integer.
-    unsafe { ffi::av_cpu_max_align() as usize }
+    unsafe { ffi::av_cpu_max_align() }
 }
 
 // See AvPixelFormat::line_size.

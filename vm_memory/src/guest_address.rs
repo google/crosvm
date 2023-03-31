@@ -68,7 +68,7 @@ impl GuestAddress {
 
     /// Returns the bitwise and of the address with the given mask.
     pub fn mask(self, mask: u64) -> GuestAddress {
-        GuestAddress(self.0 & mask as u64)
+        GuestAddress(self.0 & mask)
     }
 
     /// Returns the next highest address that is a multiple of `align`, or an unchanged copy of the
@@ -87,7 +87,7 @@ impl BitAnd<u64> for GuestAddress {
     type Output = GuestAddress;
 
     fn bitand(self, other: u64) -> GuestAddress {
-        GuestAddress(self.0 & other as u64)
+        GuestAddress(self.0 & other)
     }
 }
 
@@ -95,7 +95,7 @@ impl BitOr<u64> for GuestAddress {
     type Output = GuestAddress;
 
     fn bitor(self, other: u64) -> GuestAddress {
-        GuestAddress(self.0 | other as u64)
+        GuestAddress(self.0 | other)
     }
 }
 

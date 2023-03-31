@@ -126,8 +126,8 @@ impl VhostUserPlatformOps for VvuOps {
             assert_eq!(offset % page_size, 0);
 
             vmm_maps.push(MappingInfo {
-                vmm_addr: region.user_addr as u64,
-                guest_phys: region.guest_phys_addr as u64,
+                vmm_addr: region.user_addr,
+                guest_phys: region.guest_phys_addr,
                 size: region.memory_size,
             });
 
@@ -172,7 +172,7 @@ impl VhostUserPlatformOps for VvuOps {
         if file.is_some() {
             return Err(VhostError::InvalidParam);
         }
-        let doorbell = DoorbellRegion::new(index as u8, &self.vfio_dev, &self.caps)?;
+        let doorbell = DoorbellRegion::new(index, &self.vfio_dev, &self.caps)?;
         Ok(Doorbell::Vfio(doorbell))
     }
 }

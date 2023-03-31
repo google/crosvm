@@ -419,12 +419,10 @@ impl State {
             let vfio_map_result = match dmabuf_map {
                 // Safe because [dmabuf_map, dmabuf_map + size) refers to an external mmap'ed region.
                 Some(dmabuf_map) => unsafe {
-                    mapper.1.lock().vfio_dma_map(
-                        req.virt_start.into(),
-                        dmabuf_map as u64,
-                        size,
-                        prot,
-                    )
+                    mapper
+                        .1
+                        .lock()
+                        .vfio_dma_map(req.virt_start.into(), dmabuf_map, size, prot)
                 },
                 None => mapper.1.lock().add_map(MappingInfo {
                     iova: req.virt_start.into(),
@@ -586,7 +584,7 @@ impl State {
             .write_all(tail.as_bytes())
             .map_err(IommuError::GuestMemoryWrite)?;
         Ok((
-            (reply_len as usize) + size_of::<virtio_iommu_req_tail>(),
+            reply_len + size_of::<virtio_iommu_req_tail>(),
             fault_resolved_event,
         ))
     }

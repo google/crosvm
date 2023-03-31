@@ -244,7 +244,7 @@ impl PluginObject {
                 1 => vm.unregister_ioevent(&evt, addr, Datamatch::U8(Some(datamatch as u8))),
                 2 => vm.unregister_ioevent(&evt, addr, Datamatch::U16(Some(datamatch as u16))),
                 4 => vm.unregister_ioevent(&evt, addr, Datamatch::U32(Some(datamatch as u32))),
-                8 => vm.unregister_ioevent(&evt, addr, Datamatch::U64(Some(datamatch as u64))),
+                8 => vm.unregister_ioevent(&evt, addr, Datamatch::U64(Some(datamatch))),
                 _ => Err(SysError::new(EINVAL)),
             },
             PluginObject::Memory { slot, .. } => vm.remove_memory_region(slot).and(Ok(())),
@@ -376,7 +376,7 @@ pub fn run_vcpus(
                                     VcpuExit::MmioRead { address, size } => {
                                         let mut data = [0; 8];
                                         vcpu_plugin.mmio_read(
-                                            address as u64,
+                                            address,
                                             &mut data[..size],
                                             &vcpu,
                                         );
@@ -389,7 +389,7 @@ pub fn run_vcpus(
                                         data,
                                     } => {
                                         vcpu_plugin.mmio_write(
-                                            address as u64,
+                                            address,
                                             &data[..size],
                                             &vcpu,
                                         );

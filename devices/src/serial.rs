@@ -352,7 +352,7 @@ impl Serial {
     }
 
     fn handle_write(&mut self, offset: u8, v: u8) -> Result<()> {
-        match offset as u8 {
+        match offset {
             DLAB_LOW if self.is_dlab_set() => {
                 self.baud_divisor = (self.baud_divisor & 0xff00) | v as u16
             }

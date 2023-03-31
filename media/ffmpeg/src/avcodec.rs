@@ -625,7 +625,7 @@ impl AvBuffer {
     /// Return a slice to the data contained in this buffer.
     pub fn as_mut_slice(&mut self) -> &mut [u8] {
         // Safe because the data has been initialized from valid storage in the constructor.
-        unsafe { std::slice::from_raw_parts_mut((*self.0).data, (*self.0).size as usize) }
+        unsafe { std::slice::from_raw_parts_mut((*self.0).data, (*self.0).size) }
     }
 
     /// Consumes the `AVBuffer`, returning a `AVBufferRef` that can be used in `AVFrame`, `AVPacket`

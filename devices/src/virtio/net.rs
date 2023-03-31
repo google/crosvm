@@ -540,7 +540,7 @@ where
     ) -> Result<Self, NetError> {
         Ok(Self {
             guest_mac: mac_addr.map(|mac| mac.octets()),
-            queue_sizes: vec![QUEUE_SIZE; (taps.len() * 2 + 1) as usize].into_boxed_slice(),
+            queue_sizes: vec![QUEUE_SIZE; taps.len() * 2 + 1].into_boxed_slice(),
             worker_threads: Vec::new(),
             taps,
             avail_features,

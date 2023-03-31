@@ -1105,7 +1105,7 @@ impl VfioPciDevice {
 
         for mmap in bar_mmaps.iter() {
             let mmap_range = if let Some(mmap_range) =
-                AddressRange::from_start_and_size(mmap.offset as u64, mmap.size as u64)
+                AddressRange::from_start_and_size(mmap.offset, mmap.size)
             {
                 mmap_range
             } else {

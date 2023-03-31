@@ -364,7 +364,7 @@ impl Vm {
                             index as u32,
                             false,
                             false,
-                            guest_addr.offset() as u64,
+                            guest_addr.offset(),
                             size as u64,
                             host_addr as *mut u8,
                         )
@@ -439,7 +439,7 @@ impl Vm {
                 slot,
                 read_only,
                 log_dirty_pages,
-                guest_addr.offset() as u64,
+                guest_addr.offset(),
                 size,
                 mem.as_ptr(),
             )
@@ -516,8 +516,7 @@ impl Vm {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub fn set_identity_map_addr(&self, addr: GuestAddress) -> Result<()> {
         // Safe because we know that our file is a VM fd and we verify the return result.
-        let ret =
-            unsafe { ioctl_with_ref(self, KVM_SET_IDENTITY_MAP_ADDR(), &(addr.offset() as u64)) };
+        let ret = unsafe { ioctl_with_ref(self, KVM_SET_IDENTITY_MAP_ADDR(), &addr.offset()) };
         if ret == 0 {
             Ok(())
         } else {
@@ -786,7 +785,7 @@ impl Vm {
                 None => (false, 0, 4),
             },
             Datamatch::U64(v) => match v {
-                Some(u) => (true, u as u64, 8),
+                Some(u) => (true, u, 8),
                 None => (false, 0, 8),
             },
         };
@@ -804,7 +803,7 @@ impl Vm {
             datamatch: datamatch_value,
             len: datamatch_len,
             addr: match addr {
-                IoeventAddress::Pio(p) => p as u64,
+                IoeventAddress::Pio(p) => p,
                 IoeventAddress::Mmio(m) => m,
             },
             fd: evt.as_raw_descriptor(),
@@ -1645,7 +1644,7 @@ impl RunnableVcpu {
                     // Safe because the exit_reason (which comes from the kernel) told us which
                     // union field to use.
                     let hyperv = unsafe { &run.__bindgen_anon_1.hyperv };
-                    match hyperv.type_ as u32 {
+                    match hyperv.type_ {
                         KVM_EXIT_HYPERV_SYNIC => {
                             let synic = unsafe { &hyperv.u.synic };
                             Ok(VcpuExit::HypervSynic {

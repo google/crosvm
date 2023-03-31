@@ -713,7 +713,7 @@ impl<D: DecoderBackend> Decoder<D> {
                     session.set_output_parameters(OUTPUT_BUFFER_COUNT, Format::NV12)?;
                 }
 
-                session.use_output_buffer(buffer_id as i32, resource)
+                session.use_output_buffer(buffer_id, resource)
             }
         }?;
         Ok(VideoCmdResponseType::Async(AsyncCmdTag::Queue {

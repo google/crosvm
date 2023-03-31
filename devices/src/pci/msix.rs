@@ -294,7 +294,7 @@ impl MsixConfig {
             irqfd,
             gsi,
             device_id: self.pci_id,
-            queue_id: index as usize,
+            queue_id: index,
             device_name: self.device_name.clone(),
         };
         self.msi_device_socket
@@ -394,7 +394,7 @@ impl MsixConfig {
         let request = VmIrqRequest::AllocateOneMsi {
             irqfd,
             device_id: self.pci_id,
-            queue_id: index as usize,
+            queue_id: index,
             device_name: self.device_name.clone(),
         };
         self.msi_device_socket
@@ -684,7 +684,7 @@ impl MsixConfig {
     ///  # Arguments
     ///  * 'vector' - the index to the MSI-X table entry
     pub fn get_irqfd(&self, vector: usize) -> Option<&Event> {
-        match self.irq_vec.get(vector as usize).unwrap_or(&None) {
+        match self.irq_vec.get(vector).unwrap_or(&None) {
             Some(irq) => Some(&irq.irqfd),
             None => None,
         }

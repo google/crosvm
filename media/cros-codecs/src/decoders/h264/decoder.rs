@@ -464,13 +464,13 @@ where
                     pic.frame_num_offset = 0;
                 } else if self.prev_pic_info.frame_num > pic.frame_num {
                     pic.frame_num_offset =
-                        self.prev_pic_info.frame_num_offset + self.curr_info.max_frame_num as i32;
+                        self.prev_pic_info.frame_num_offset + self.curr_info.max_frame_num;
                 } else {
                     pic.frame_num_offset = self.prev_pic_info.frame_num_offset;
                 }
 
                 let mut abs_frame_num = if sps.num_ref_frames_in_pic_order_cnt_cycle() != 0 {
-                    pic.frame_num_offset + pic.frame_num as i32
+                    pic.frame_num_offset + pic.frame_num
                 } else {
                     0
                 };
@@ -529,7 +529,7 @@ where
                     pic.frame_num_offset = 0;
                 } else if self.prev_pic_info.frame_num > pic.frame_num {
                     pic.frame_num_offset =
-                        self.prev_pic_info.frame_num_offset + self.curr_info.max_frame_num as i32;
+                        self.prev_pic_info.frame_num_offset + self.curr_info.max_frame_num;
                 } else {
                     pic.frame_num_offset = self.prev_pic_info.frame_num_offset;
                 }
@@ -539,9 +539,9 @@ where
                 if matches!(pic.is_idr, IsIdr::Yes { .. }) {
                     temp_pic_order_cnt = 0;
                 } else if pic.nal_ref_idc == 0 {
-                    temp_pic_order_cnt = 2 * (pic.frame_num_offset + pic.frame_num as i32) - 1;
+                    temp_pic_order_cnt = 2 * (pic.frame_num_offset + pic.frame_num) - 1;
                 } else {
-                    temp_pic_order_cnt = 2 * (pic.frame_num_offset + pic.frame_num as i32);
+                    temp_pic_order_cnt = 2 * (pic.frame_num_offset + pic.frame_num);
                 }
 
                 if matches!(pic.field, Field::Frame) {
@@ -2265,13 +2265,13 @@ where
 
     pub fn get_raster_from_zigzag_8x8(src: [u8; 64], dst: &mut [u8; 64]) {
         for i in 0..64 {
-            dst[i] = src[ZIGZAG_8X8[i] as usize];
+            dst[i] = src[ZIGZAG_8X8[i]];
         }
     }
 
     pub fn get_raster_from_zigzag_4x4(src: [u8; 16], dst: &mut [u8; 16]) {
         for i in 0..16 {
-            dst[i] = src[ZIGZAG_4X4[i] as usize];
+            dst[i] = src[ZIGZAG_4X4[i]];
         }
     }
 

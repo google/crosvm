@@ -369,9 +369,7 @@ impl Process {
             4 => {
                 vm.register_ioevent(&evt, addr, Datamatch::U32(Some(io_event.datamatch as u32)))?
             }
-            8 => {
-                vm.register_ioevent(&evt, addr, Datamatch::U64(Some(io_event.datamatch as u64)))?
-            }
+            8 => vm.register_ioevent(&evt, addr, Datamatch::U64(Some(io_event.datamatch)))?,
             _ => return Err(SysError::new(EINVAL)),
         };
 

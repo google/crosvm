@@ -292,7 +292,7 @@ where
             // mov [eax],ebx
             // so we're writing 0x12 (the contents of ebx) to the address
             // in eax (write_addr).
-            vcpu_regs.rax = write_addr.offset() as u64;
+            vcpu_regs.rax = write_addr.offset();
             vcpu_regs.rbx = 0x12;
             // ecx will contain 0, but after the second instruction it will
             // also contain 0x12

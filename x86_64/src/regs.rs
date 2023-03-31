@@ -258,7 +258,7 @@ fn write_idt_value(val: u64, guest_mem: &GuestMemory) -> Result<()> {
 
 /// Configures the GDT, IDT, and segment registers for long mode.
 pub fn configure_segments_and_sregs(mem: &GuestMemory, sregs: &mut Sregs) -> Result<()> {
-    let gdt_table: [u64; BOOT_GDT_MAX as usize] = [
+    let gdt_table: [u64; BOOT_GDT_MAX] = [
         gdt::gdt_entry(0, 0, 0),            // NULL
         gdt::gdt_entry(0xa09b, 0, 0xfffff), // CODE
         gdt::gdt_entry(0xc093, 0, 0xfffff), // DATA
@@ -271,11 +271,11 @@ pub fn configure_segments_and_sregs(mem: &GuestMemory, sregs: &mut Sregs) -> Res
 
     // Write segments
     write_gdt_table(&gdt_table[..], mem)?;
-    sregs.gdt.base = BOOT_GDT_OFFSET as u64;
+    sregs.gdt.base = BOOT_GDT_OFFSET;
     sregs.gdt.limit = mem::size_of_val(&gdt_table) as u16 - 1;
 
     write_idt_value(0, mem)?;
-    sregs.idt.base = BOOT_IDT_OFFSET as u64;
+    sregs.idt.base = BOOT_IDT_OFFSET;
     sregs.idt.limit = mem::size_of::<u64>() as u16 - 1;
 
     sregs.cs = code_seg;
@@ -301,11 +301,11 @@ pub fn setup_page_tables(mem: &GuestMemory, sregs: &mut Sregs) -> Result<()> {
     let boot_pde_addr = GuestAddress(0xb000);
 
     // Entry covering VA [0..512GB)
-    mem.write_obj_at_addr(boot_pdpte_addr.offset() as u64 | 0x03, boot_pml4_addr)
+    mem.write_obj_at_addr(boot_pdpte_addr.offset() | 0x03, boot_pml4_addr)
         .map_err(|_| Error::WritePML4Address)?;
 
     // Entry covering VA [0..1GB)
-    mem.write_obj_at_addr(boot_pde_addr.offset() as u64 | 0x03, boot_pdpte_addr)
+    mem.write_obj_at_addr(boot_pde_addr.offset() | 0x03, boot_pdpte_addr)
         .map_err(|_| Error::WritePDPTEAddress)?;
 
     // 512 2MB entries together covering VA [0..1GB). Note we are assuming
@@ -314,7 +314,7 @@ pub fn setup_page_tables(mem: &GuestMemory, sregs: &mut Sregs) -> Result<()> {
         mem.write_obj_at_addr((i << 21) + 0x83u64, boot_pde_addr.unchecked_add(i * 8))
             .map_err(|_| Error::WritePDEAddress)?;
     }
-    sregs.cr3 = boot_pml4_addr.offset() as u64;
+    sregs.cr3 = boot_pml4_addr.offset();
     sregs.cr4 |= X86_CR4_PAE;
     sregs.cr0 |= X86_CR0_PG;
     sregs.efer |= EFER_LMA; // Long mode is active. Must be auto-enabled with CR0_PG.

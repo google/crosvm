@@ -298,9 +298,9 @@ pub fn setup_mptable(
             irqtype: mp_irq_source_types_mp_INT as u8,
             irqflag: MP_IRQDIR_DEFAULT as u16,
             srcbus: isa_bus_id,
-            srcbusirq: i as u8,
+            srcbusirq: i,
             dstapic: ioapicid,
-            dstirq: i as u8,
+            dstirq: i,
         };
         mem.write_obj_at_addr(mpc_intsrc, base_mp)
             .map_err(|_| Error::WriteMpcIntsrc)?;

@@ -976,7 +976,7 @@ fn setup_simple_lock(flags: u32) -> Server {
         ROOT_FID,
         filename,
         ROOT_FID + 1,
-        flags as u32,
+        flags,
     )
     .expect("failed to open file");
 

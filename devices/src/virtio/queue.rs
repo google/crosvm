@@ -213,7 +213,7 @@ impl DescriptorChain {
             if !self
                 .regions
                 .iter()
-                .all(|r| self.mem.is_valid_range(r.gpa, r.len as u64))
+                .all(|r| self.mem.is_valid_range(r.gpa, r.len))
             {
                 return false;
             }
@@ -739,7 +739,7 @@ impl Queue {
         write_obj_at_addr_wrapper(
             mem,
             &self.exported_used_ring,
-            len as u32,
+            len,
             used_elem.unchecked_add(4),
         )
         .unwrap();

@@ -266,8 +266,7 @@ impl BusDevice for Vmwdt {
 
                 if reg_val != 0 {
                     let due = Duration::from_nanos(1);
-                    let interval =
-                        Duration::from_millis((1000 / cpu_watchdog.timer_freq_hz) as u64);
+                    let interval = Duration::from_millis(1000 / cpu_watchdog.timer_freq_hz);
                     cpu_watchdog.timer.reset(due, Some(interval)).unwrap();
                 } else {
                     cpu_watchdog.timer.clear().unwrap();

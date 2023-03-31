@@ -91,7 +91,7 @@ impl<'a> IoBufMut<'a> {
 
     #[inline]
     pub fn len(&self) -> usize {
-        self.iov.iov_len as usize
+        self.iov.iov_len
     }
 
     #[inline]

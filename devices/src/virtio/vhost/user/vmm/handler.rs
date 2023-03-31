@@ -189,7 +189,7 @@ impl VhostUserHandler {
                     guest_phys_addr: guest_addr.0,
                     memory_size: size as u64,
                     userspace_addr: host_addr as u64,
-                    mmap_offset: shm_offset as u64,
+                    mmap_offset: shm_offset,
                     mmap_handle: shm.as_raw_descriptor(),
                 };
                 regions.push(region);

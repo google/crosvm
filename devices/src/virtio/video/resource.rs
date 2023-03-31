@@ -379,14 +379,13 @@ mod tests {
     fn check_guest_mem_handle(page_order: &[usize]) {
         const PAGE_SIZE: usize = 0x1000;
         const U32_SIZE: usize = std::mem::size_of::<u32>();
-        const ENTRIES_PER_PAGE: usize = PAGE_SIZE as usize / std::mem::size_of::<u32>();
+        const ENTRIES_PER_PAGE: usize = PAGE_SIZE / std::mem::size_of::<u32>();
 
         // Fill a vector of the same size as the handle with u32s of increasing value, following
         // the page layout given as argument.
         let mut data = vec![0u8; PAGE_SIZE * page_order.len()];
         for (page_index, page) in page_order.iter().enumerate() {
-            let page_slice =
-                &mut data[(page * PAGE_SIZE as usize)..((page + 1) * PAGE_SIZE as usize)];
+            let page_slice = &mut data[(page * PAGE_SIZE)..((page + 1) * PAGE_SIZE)];
             for (index, chunk) in page_slice.chunks_exact_mut(4).enumerate() {
                 let sized_chunk: &mut [u8; 4] = chunk.try_into().unwrap();
                 *sized_chunk = (((page_index * ENTRIES_PER_PAGE) + index) as u32).to_ne_bytes();
@@ -410,7 +409,7 @@ mod tests {
                 .iter()
                 .map(|&page| GuestMemArea {
                     offset: page as u64 * PAGE_SIZE as u64,
-                    length: PAGE_SIZE as usize,
+                    length: PAGE_SIZE,
                 })
                 .collect(),
         });

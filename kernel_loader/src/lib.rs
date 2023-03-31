@@ -351,7 +351,7 @@ where
         return Err(Error::InvalidProgramHeaderOffset);
     }
 
-    file.seek(SeekFrom::Start(ehdr.e_phoff as u64))
+    file.seek(SeekFrom::Start(ehdr.e_phoff))
         .map_err(|_| Error::SeekProgramHeader)?;
     let phdrs: Vec<ProgramHeader> = (0..ehdr.e_phnum)
         .enumerate()

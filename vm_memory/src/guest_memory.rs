@@ -999,7 +999,7 @@ unsafe impl BackingMemory for GuestMemory {
         &self,
         mem_range: cros_async::MemRegion,
     ) -> mem::Result<VolatileSlice<'_>> {
-        self.get_slice_at_addr(GuestAddress(mem_range.offset as u64), mem_range.len)
+        self.get_slice_at_addr(GuestAddress(mem_range.offset), mem_range.len)
             .map_err(|_| mem::Error::InvalidOffset(mem_range.offset, mem_range.len))
     }
 }

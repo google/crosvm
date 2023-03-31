@@ -74,7 +74,7 @@ impl StreamInfo for &Header {
     }
 
     fn coded_size(&self) -> (u32, u32) {
-        (self.width() as u32, self.height() as u32)
+        (self.width(), self.height())
     }
 
     fn visible_rect(&self) -> ((u32, u32), (u32, u32)) {

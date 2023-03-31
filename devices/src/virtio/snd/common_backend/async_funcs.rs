@@ -235,7 +235,7 @@ async fn write_data(
             .map_err(Error::Io)?,
     };
 
-    if transferred as usize != buffer_writer.endpoint_period_bytes() {
+    if transferred != buffer_writer.endpoint_period_bytes() {
         error!(
             "Bytes written {} != period_bytes {}",
             transferred,
@@ -258,7 +258,7 @@ async fn read_data<'a>(
         None => src_buf.copy_to(&mut io::sink()),
     }
     .map_err(Error::Io)?;
-    if transferred as usize != period_bytes {
+    if transferred != period_bytes {
         error!(
             "Bytes written {} != period_bytes {}",
             transferred, period_bytes

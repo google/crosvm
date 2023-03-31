@@ -40,7 +40,7 @@ fn test_run() {
     vcpu.set_sregs(&vcpu_sregs).expect("set sregs failed");
 
     let mut vcpu_regs: kvm_regs = unsafe { std::mem::zeroed() };
-    vcpu_regs.rip = load_addr.offset() as u64;
+    vcpu_regs.rip = load_addr.offset();
     vcpu_regs.rflags = 2;
     // Write 0x12 to the beginning of the 9th page.
     vcpu_regs.rsi = 0x8000;

@@ -23,13 +23,8 @@ mod test {
 
     fn test_averror(averror: c_int, expected_message: &str) {
         let mut buffer = [0u8; 255];
-        let ret = unsafe {
-            ffi::av_strerror(
-                averror,
-                buffer.as_mut_ptr() as *mut c_char,
-                buffer.len() as usize,
-            )
-        };
+        let ret =
+            unsafe { ffi::av_strerror(averror, buffer.as_mut_ptr() as *mut c_char, buffer.len()) };
         assert_eq!(ret, 0);
 
         let end_of_string = buffer.iter().position(|i| *i == 0).unwrap_or(buffer.len());

@@ -145,7 +145,7 @@ impl PciBridge {
             && window_size & (BR_WINDOW_ALIGNMENT as u32 - 1) == 0
         {
             // the top of memory will be one less than a 1MB boundary
-            let limit = (window_base + window_size - BR_WINDOW_ALIGNMENT as u32) as u32;
+            let limit = window_base + window_size - BR_WINDOW_ALIGNMENT as u32;
             let value = (window_base >> BR_MEM_BASE_SHIFT) | limit;
             self.write_config_register(BR_MEM_REG, 0, &value.to_le_bytes());
         }

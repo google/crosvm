@@ -476,7 +476,7 @@ impl AsyncDisk for SingleFileDisk {
             let buf = vec![0u8; write_size];
             nwritten += self
                 .inner
-                .write_from_vec(Some(file_offset + nwritten as u64), buf)
+                .write_from_vec(Some(file_offset + nwritten), buf)
                 .await
                 .map(|(n, _)| n as u64)
                 .map_err(Error::WriteFromVec)?;
