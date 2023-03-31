@@ -345,6 +345,7 @@ impl XSurface {
 }
 
 impl GpuDisplaySurface for XSurface {
+    #[allow(clippy::unnecessary_cast)]
     fn surface_descriptor(&self) -> u64 {
         self.window as u64
     }
@@ -514,6 +515,7 @@ impl DisplayT for DisplayX {
         self.display.flush();
     }
 
+    #[allow(clippy::unnecessary_cast)]
     fn next_event(&mut self) -> GpuDisplayResult<u64> {
         let ev = self.display.next_event();
         let descriptor = ev.window() as u64;
