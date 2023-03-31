@@ -1735,6 +1735,13 @@ pub fn do_restore(
     let cpu_file = File::open(&vcpu_path)
         .with_context(|| format!("failed to open path {}", vcpu_path.display()))?;
     let vcpu_snapshots: Vec<VcpuSnapshot> = serde_json::from_reader(cpu_file)?;
+    if vcpu_snapshots.len() != vcpu_size {
+        bail!(
+            "bad cpu count in snapshot: expected={} got={}",
+            vcpu_size,
+            vcpu_snapshots.len()
+        );
+    }
     let (send_chan, recv_chan) = mpsc::channel();
     for vcpu_snap in vcpu_snapshots {
         let vcpu_id = vcpu_snap.vcpu_id;
