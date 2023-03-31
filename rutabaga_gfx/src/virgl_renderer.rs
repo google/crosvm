@@ -298,8 +298,7 @@ impl VirglRenderer {
         #[cfg(feature = "virgl_renderer_next")]
         {
             let mut map_info = 0;
-            let ret =
-                unsafe { virgl_renderer_resource_get_map_info(resource_id as u32, &mut map_info) };
+            let ret = unsafe { virgl_renderer_resource_get_map_info(resource_id, &mut map_info) };
             ret_to_res(ret)?;
 
             Ok(map_info)
@@ -331,9 +330,8 @@ impl VirglRenderer {
         {
             let mut fd_type = 0;
             let mut fd = 0;
-            let ret = unsafe {
-                virgl_renderer_resource_export_blob(resource_id as u32, &mut fd_type, &mut fd)
-            };
+            let ret =
+                unsafe { virgl_renderer_resource_export_blob(resource_id, &mut fd_type, &mut fd) };
             ret_to_res(ret)?;
 
             // Safe because the FD was just returned by a successful virglrenderer
@@ -556,7 +554,7 @@ impl RutabagaComponent for VirglRenderer {
         let (iovecs, num_iovecs) = match buf {
             Some(buf) => {
                 iov.base = buf.as_ptr() as *mut c_void;
-                iov.len = buf.size() as usize;
+                iov.len = buf.size();
                 (&mut iov as *mut RutabagaIovec as *mut iovec, 1)
             }
             None => (null_mut(), 0),

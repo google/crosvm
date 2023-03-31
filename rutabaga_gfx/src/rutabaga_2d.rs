@@ -45,11 +45,11 @@ pub fn transfer_2d<'a, S: Iterator<Item = VolatileSlice<'a>>>(
     let rect_h = rect_h as u64;
 
     let dst_stride = dst_stride as u64;
-    let dst_offset = dst_offset as u64;
+    let dst_offset = dst_offset;
     let dst_resource_offset = dst_offset + (rect_y * dst_stride) + (rect_x * bytes_per_pixel);
 
     let src_stride = src_stride as u64;
-    let src_offset = src_offset as u64;
+    let src_offset = src_offset;
     let src_resource_offset = src_offset + (rect_y * src_stride) + (rect_x * bytes_per_pixel);
 
     let mut next_src;

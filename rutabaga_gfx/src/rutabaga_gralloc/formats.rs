@@ -242,7 +242,7 @@ pub fn canonical_image_requirements(
         let plane_stride = stride_from_layout(&layout, info.width, plane)?;
         image_requirements.strides[plane] = plane_stride;
         if plane > 0 {
-            image_requirements.offsets[plane] = size as u32;
+            image_requirements.offsets[plane] = size;
         }
 
         let height = info.height;
