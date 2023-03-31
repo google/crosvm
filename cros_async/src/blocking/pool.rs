@@ -459,7 +459,7 @@ mod test {
         // First spawn a thread that blocks the pool.
         let task_mu = mu.clone();
         let task_cv = cv.clone();
-        let _ = pool.spawn(move || {
+        let _blocking_task = pool.spawn(move || {
             let mut ready = task_mu.lock();
             while !*ready {
                 ready = task_cv.wait(ready);

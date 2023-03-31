@@ -376,7 +376,7 @@ mod test {
         let task_mu = mu.clone();
         let task_cv = cv.clone();
         let task_blocker_is_running = blocker_is_running.clone();
-        let _ = pool.spawn(
+        let _blocking_task = pool.spawn(
             move || {
                 task_blocker_is_running.wait();
                 let mut ready = task_mu.lock();
@@ -414,7 +414,7 @@ mod test {
 
         let running = Arc::new((Mutex::new(false), Condvar::new()));
         let running1 = running.clone();
-        let _ = pool.spawn(
+        let _blocking_task = pool.spawn(
             move || {
                 *running1.0.lock() = true;
                 running1.1.notify_one();
@@ -450,7 +450,7 @@ mod test {
 
         let running = Arc::new((Mutex::new(false), Condvar::new()));
         let running1 = running.clone();
-        let _ = pool.spawn(
+        let _blocking_task = pool.spawn(
             move || {
                 *running1.0.lock() = true;
                 running1.1.notify_one();
