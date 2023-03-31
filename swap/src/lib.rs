@@ -201,6 +201,14 @@ impl Status {
             state_transition: *state_transition,
         }
     }
+
+    fn dummy() -> Self {
+        Status {
+            state: State::Pending,
+            metrics: Metrics::default(),
+            state_transition: StateTransition::default(),
+        }
+    }
 }
 
 /// Commands used in vmm-swap feature internally sent to the monitor process from the main and other
@@ -217,24 +225,6 @@ enum Command {
     Status,
     #[serde(with = "base::platform::with_raw_descriptor")]
     ProcessForked(RawDescriptor),
-}
-
-/// Commands sent from the monitor process to the main process.
-#[derive(Serialize, Deserialize, Debug)]
-pub enum VmSwapCommand {
-    /// Suspend vCPUs and devices.
-    Suspend,
-    /// Resume vCPUs and devices.
-    Resume,
-}
-
-/// Response from the main process to the monitor process.
-#[derive(Serialize, Deserialize, Debug)]
-pub enum VmSwapResponse {
-    /// Suspend completes.
-    SuspendCompleted,
-    /// Failed to suspend vCPUs and devices.
-    SuspendFailed,
 }
 
 /// [SwapController] provides APIs to control vmm-swap.
@@ -258,7 +248,7 @@ impl SwapController {
         guest_memory: GuestMemory,
         swap_dir: &Path,
         jail_config: &Option<JailConfig>,
-    ) -> anyhow::Result<(Self, Tube)> {
+    ) -> anyhow::Result<Self> {
         info!("vmm-swap is enabled. launch monitor process.");
 
         let uffd_factory = UffdFactory::new();
@@ -280,10 +270,6 @@ impl SwapController {
         // to the monitor process. The response is `Status` only.
         let (command_tube_main, command_tube_monitor) =
             Tube::pair().context("create swap command tube")?;
-        // The tube in which `VmSwapCommand` is sent from the monitor process to the main process.
-        // The response is `VmSwapResponse`.
-        let (vm_tube_main, vm_tube_monitor) =
-            Tube::pair().context("create swap vm-request tube")?;
 
         // Allocate eventfd before creating sandbox.
         let bg_job_control = BackgroundJobControl::new().context("create background job event")?;
@@ -298,7 +284,6 @@ impl SwapController {
             uffd.as_raw_descriptor(),
             swap_file.as_raw_descriptor(),
             command_tube_monitor.as_raw_descriptor(),
-            vm_tube_monitor.as_raw_descriptor(),
             bg_job_control.get_completion_event().as_raw_descriptor(),
             #[cfg(feature = "log_page_fault")]
             page_fault_logger.as_raw_descriptor(),
@@ -334,7 +319,6 @@ impl SwapController {
             fork_process(jail, keep_rds, Some(String::from("swap monitor")), || {
                 if let Err(e) = monitor_process(
                     command_tube_monitor,
-                    vm_tube_monitor,
                     guest_memory,
                     uffd,
                     swap_file,
@@ -364,14 +348,11 @@ impl SwapController {
             }
         };
 
-        Ok((
-            Self {
-                child_process,
-                uffd_factory,
-                command_tube: command_tube_main,
-            },
-            vm_tube_main,
-        ))
+        Ok(Self {
+            child_process,
+            uffd_factory,
+            command_tube: command_tube_main,
+        })
     }
 
     /// Enable monitoring page faults and move guest memory to staging memory.
@@ -379,7 +360,10 @@ impl SwapController {
     /// The pages will be swapped in from the staging memory to the guest memory on page faults
     /// until pages are written into the swap file by [Self::swap_out()].
     ///
-    /// This returns as soon as it succeeds to send request to the monitor process.
+    /// This waits until enabling vmm-swap finishes on the monitor process.
+    ///
+    /// The caller must guarantee that any contents on the guest memory is not updated during
+    /// enabling vmm-swap.
     ///
     /// # Note
     ///
@@ -393,6 +377,11 @@ impl SwapController {
         self.command_tube
             .send(&Command::Enable)
             .context("send swap enable request")?;
+
+        let _ = self
+            .command_tube
+            .recv::<Status>()
+            .context("receive swap status")?;
         Ok(())
     }
 
@@ -557,7 +546,6 @@ fn regions_from_guest_memory(guest_memory: &GuestMemory) -> Vec<Range<usize>> {
 /// The main thread of the monitor process.
 fn monitor_process(
     command_tube: Tube,
-    vm_tube: Tube,
     guest_memory: GuestMemory,
     uffd: Userfaultfd,
     swap_file: File,
@@ -667,7 +655,6 @@ fn monitor_process(
                                 &uffd_list,
                                 &guest_memory,
                                 &command_tube,
-                                &vm_tube,
                                 &worker,
                                 &mutex_transition,
                                 &bg_job_control,
@@ -732,58 +719,71 @@ enum SwapState<'scope> {
     Failed,
 }
 
+fn handle_enable_command<'scope>(
+    state: SwapState,
+    bg_job_control: &BackgroundJobControl,
+    page_handler: &PageHandler,
+    guest_memory: &GuestMemory,
+    worker: &Worker<MoveToStaging>,
+    state_transition: &Mutex<StateTransition>,
+) -> anyhow::Result<SwapState<'scope>> {
+    match state {
+        SwapState::SwapInInProgress(join_handle) => {
+            info!("abort swap-in");
+            abort_background_job(join_handle, bg_job_control).context("abort swap-in")?;
+        }
+        SwapState::Trim(join_handle) => {
+            info!("abort trim");
+            abort_background_job(join_handle, bg_job_control).context("abort trim")?;
+        }
+        _ => {}
+    }
+
+    info!("start moving memory to staging");
+    match move_guest_to_staging(page_handler, guest_memory, worker) {
+        Ok(new_state_transition) => {
+            info!(
+                "move {} pages to staging in {} ms",
+                new_state_transition.pages, new_state_transition.time_ms
+            );
+            *state_transition.lock() = new_state_transition;
+            Ok(SwapState::SwapOutPending)
+        }
+        Err(e) => {
+            error!("failed to move memory to staging: {}", e);
+            *state_transition.lock() = StateTransition::default();
+            Ok(SwapState::Failed)
+        }
+    }
+}
+
 fn move_guest_to_staging(
     page_handler: &PageHandler,
     guest_memory: &GuestMemory,
-    vm_tube: &Tube,
     worker: &Worker<MoveToStaging>,
 ) -> anyhow::Result<StateTransition> {
     let start_time = std::time::Instant::now();
 
-    // Suspend vCPUs and devices from the main process.
-    vm_tube
-        .send(&VmSwapCommand::Suspend)
-        .context("request suspend")?;
-
     let mut pages = 0;
 
-    let result = match vm_tube.recv().context("recv suspend completed") {
-        Ok(VmSwapResponse::SuspendCompleted) => {
-            let result = guest_memory.with_regions::<_, anyhow::Error>(
-                |MemoryRegionInformation {
-                     host_addr,
-                     shm,
-                     shm_offset,
-                     ..
-                 }| {
-                    // safe because:
-                    // * all the regions are registered to all userfaultfd
-                    // * no process access the guest memory
-                    // * page fault events are handled by PageHandler
-                    // * wait for all the copy completed within _processes_guard
-                    pages += unsafe { page_handler.move_to_staging(host_addr, shm, shm_offset) }
-                        .context("move to staging")?;
-                    Ok(())
-                },
-            );
-            worker.channel.wait_complete();
-            result
-        }
-        Ok(VmSwapResponse::SuspendFailed) => Err(anyhow::anyhow!("failed to suspend vm")),
-        // When failed to receive suspend response, try resume the vm.
-        Err(e) => Err(e),
-    };
-
-    // Resume vCPUs and devices from the main process.
-    if let Err(e) = vm_tube
-        .send(&VmSwapCommand::Resume)
-        .context("request resume")
-    {
-        if let Err(e) = result {
-            error!("failed to move memory to staging: {:?}", e);
-        }
-        return Err(e);
-    }
+    let result = guest_memory.with_regions::<_, anyhow::Error>(
+        |MemoryRegionInformation {
+             host_addr,
+             shm,
+             shm_offset,
+             ..
+         }| {
+            // safe because:
+            // * all the regions are registered to all userfaultfd
+            // * no process access the guest memory
+            // * page fault events are handled by PageHandler
+            // * wait for all the copy completed within _processes_guard
+            pages += unsafe { page_handler.move_to_staging(host_addr, shm, shm_offset) }
+                .context("move to staging")?;
+            Ok(())
+        },
+    );
+    worker.channel.wait_complete();
 
     match result {
         Ok(()) => {
@@ -801,7 +801,7 @@ fn move_guest_to_staging(
 }
 
 fn abort_background_job<T>(
-    join_handle: ScopedJoinHandle<'_, T>,
+    join_handle: ScopedJoinHandle<'_, anyhow::Result<T>>,
     bg_job_control: &BackgroundJobControl,
 ) -> anyhow::Result<T> {
     bg_job_control.abort();
@@ -810,7 +810,7 @@ fn abort_background_job<T>(
         .join()
         .expect("panic on the background job thread");
     bg_job_control.reset().context("reset swap in event")?;
-    Ok(result)
+    result.context("failure on background job thread")
 }
 
 fn handle_vmm_swap<'scope, 'env>(
@@ -820,13 +820,12 @@ fn handle_vmm_swap<'scope, 'env>(
     uffd_list: &'env UffdList,
     guest_memory: &GuestMemory,
     command_tube: &Tube,
-    vm_tube: &Tube,
     worker: &Worker<MoveToStaging>,
     state_transition: &'env Mutex<StateTransition>,
     bg_job_control: &'env BackgroundJobControl,
     #[cfg(feature = "log_page_fault")] page_fault_logger: &mut PageFaultEventLogger,
 ) -> anyhow::Result<bool> {
-    let mut state = match move_guest_to_staging(page_handler, guest_memory, vm_tube, worker) {
+    let mut state = match move_guest_to_staging(page_handler, guest_memory, worker) {
         Ok(transition) => {
             info!(
                 "move {} pages to staging in {} ms",
@@ -841,6 +840,9 @@ fn handle_vmm_swap<'scope, 'env>(
             SwapState::Failed
         }
     };
+    command_tube
+        .send(&Status::dummy())
+        .context("send enable finish signal")?;
 
     loop {
         let events = match &state {
@@ -921,38 +923,18 @@ fn handle_vmm_swap<'scope, 'env>(
                         bail!("child process is forked while swap is enabled");
                     }
                     Command::Enable => {
-                        match state {
-                            SwapState::SwapInInProgress(join_handle) => {
-                                info!("abort swap-in");
-                                abort_background_job(join_handle, bg_job_control)
-                                    .context("abort swap in")?
-                                    .context("swap_in failure")?;
-                            }
-                            SwapState::Trim(join_handle) => {
-                                info!("abort trim");
-                                abort_background_job(join_handle, bg_job_control)
-                                    .context("abort trim")?
-                                    .context("trim failure")?;
-                            }
-                            _ => {}
-                        }
-
-                        info!("start moving memory to staging");
-                        match move_guest_to_staging(page_handler, guest_memory, vm_tube, worker) {
-                            Ok(new_state_transition) => {
-                                info!(
-                                    "move {} pages to staging in {} ms",
-                                    new_state_transition.pages, new_state_transition.time_ms
-                                );
-                                state = SwapState::SwapOutPending;
-                                *state_transition.lock() = new_state_transition;
-                            }
-                            Err(e) => {
-                                error!("failed to move memory to staging: {}", e);
-                                state = SwapState::Failed;
-                                *state_transition.lock() = StateTransition::default();
-                            }
-                        }
+                        let result = handle_enable_command(
+                            state,
+                            bg_job_control,
+                            page_handler,
+                            guest_memory,
+                            worker,
+                            state_transition,
+                        );
+                        command_tube
+                            .send(&Status::dummy())
+                            .context("send enable finish signal")?;
+                        state = result?;
                     }
                     Command::Trim => match &state {
                         SwapState::SwapOutPending => {
@@ -1011,8 +993,7 @@ fn handle_vmm_swap<'scope, 'env>(
                             SwapState::Trim(join_handle) => {
                                 info!("abort trim");
                                 abort_background_job(join_handle, bg_job_control)
-                                    .context("abort trim")?
-                                    .context("trim failure")?;
+                                    .context("abort trim")?;
                             }
                             SwapState::SwapOutInProgress { .. } => {
                                 info!("swap out is aborted");
@@ -1065,8 +1046,7 @@ fn handle_vmm_swap<'scope, 'env>(
                             }
                             SwapState::Trim(join_handle) => {
                                 abort_background_job(join_handle, bg_job_control)
-                                    .context("abort trim")?
-                                    .context("trim failure")?;
+                                    .context("abort trim")?;
                             }
                             _ => {}
                         }

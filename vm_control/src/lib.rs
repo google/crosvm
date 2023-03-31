@@ -1373,6 +1373,26 @@ impl VmRequest {
             VmRequest::Swap(SwapCommand::Enable) => {
                 #[cfg(feature = "swap")]
                 if let Some(swap_controller) = swap_controller {
+                    // Suspend all vcpus and devices while vmm-swap is enabling (move the guest
+                    // memory contents to the staging memory) to guarantee no processes other than
+                    // the swap monitor process access the guest memory.
+                    let _vcpu_guard = match VcpuSuspendGuard::new(&kick_vcpus, vcpu_size) {
+                        Ok(guard) => guard,
+                        Err(e) => {
+                            error!("failed to suspend vcpus: {:?}", e);
+                            return VmResponse::Err(SysError::new(EINVAL));
+                        }
+                    };
+                    // TODO(b/253386409): Use `devices::Suspendable::sleep()` instead of sending
+                    // `SIGSTOP` signal.
+                    let _devices_guard = match swap_controller.suspend_devices() {
+                        Ok(guard) => guard,
+                        Err(e) => {
+                            error!("failed to suspend devices: {:?}", e);
+                            return VmResponse::Err(SysError::new(EINVAL));
+                        }
+                    };
+
                     return match swap_controller.enable() {
                         Ok(()) => VmResponse::Ok,
                         Err(e) => {

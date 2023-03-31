@@ -170,10 +170,6 @@ use serde::Serialize;
 use smallvec::SmallVec;
 #[cfg(feature = "swap")]
 use swap::SwapController;
-#[cfg(feature = "swap")]
-use swap::VmSwapCommand;
-#[cfg(feature = "swap")]
-use swap::VmSwapResponse;
 use sync::Condvar;
 use sync::Mutex;
 use vm_control::*;
@@ -1525,7 +1521,7 @@ fn run_vm<Vcpu, V>(
     mut vm: V,
     irq_chip: &mut dyn IrqChipArch,
     ioapic_host_tube: Option<Tube>,
-    #[cfg(feature = "swap")] swap_controller: Option<(SwapController, Tube)>,
+    #[cfg(feature = "swap")] swap_controller: Option<SwapController>,
 ) -> Result<ExitState>
 where
     Vcpu: VcpuArch + 'static,
@@ -1560,14 +1556,6 @@ where
 
     let mut control_tubes = Vec::new();
     let mut irq_control_tubes = Vec::new();
-
-    #[cfg(feature = "swap")]
-    let swap_controller = if let Some((swap_controller, tube)) = swap_controller {
-        control_tubes.push(TaggedControlTube::SwapMonitor(tube));
-        Some(swap_controller)
-    } else {
-        None
-    };
 
     #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
     if let Some(port) = cfg.gdb {
@@ -2443,35 +2431,6 @@ fn handle_hotplug_command<V: VmArch, Vcpu: VcpuArch>(
     }
 }
 
-#[cfg(feature = "swap")]
-fn handle_swap_suspend_command(
-    tube: &Tube,
-    swap_controller: &SwapController,
-    kick_vcpus: impl Fn(VcpuControl),
-    vcpu_num: usize,
-) -> anyhow::Result<()> {
-    info!("suspending vcpus");
-    let _vcpu_guard = VcpuSuspendGuard::new(&kick_vcpus, vcpu_num).context("suspend vcpus")?;
-    info!("suspending devices");
-    // TODO(b/253386409): Use `devices::Suspendable::sleep()` instead of sending `SIGSTOP` signal.
-    let _devices_guard = swap_controller
-        .suspend_devices()
-        .context("suspend devices")?;
-
-    tube.send(&VmSwapResponse::SuspendCompleted)
-        .context("send completed")?;
-
-    // Wait for a resume command.
-    if !matches!(
-        tube.recv().context("wait for VmSwapCommand::Resume")?,
-        VmSwapCommand::Resume
-    ) {
-        anyhow::bail!("the vmm-swap command is not resume.");
-    }
-    info!("resuming vm");
-    Ok(())
-}
-
 fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     mut linux: RunnableLinuxVm<V, Vcpu>,
     sys_allocator: SystemAllocator,
@@ -3254,43 +3213,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                     }
                                 }
                             },
-                            #[cfg(feature = "swap")]
-                            TaggedControlTube::SwapMonitor(tube) => {
-                                match tube.recv::<VmSwapCommand>() {
-                                    Ok(VmSwapCommand::Suspend) => {
-                                        if let Err(e) = handle_swap_suspend_command(
-                                            tube,
-                                            // swap_controller must be present if the tube exists.
-                                            swap_controller.as_ref().unwrap(),
-                                            |msg| {
-                                                vcpu::kick_all_vcpus(
-                                                    &vcpu_handles,
-                                                    linux.irq_chip.as_irq_chip(),
-                                                    msg,
-                                                )
-                                            },
-                                            vcpu_handles.len(),
-                                        ) {
-                                            error!("failed to suspend vm: {:?}", e);
-                                            if let Err(e) =
-                                                tube.send(&VmSwapResponse::SuspendFailed)
-                                            {
-                                                error!("failed to send SuspendFailed: {:?}", e);
-                                            }
-                                        }
-                                    }
-                                    Ok(VmSwapCommand::Resume) => {
-                                        // Ignore resume command.
-                                    }
-                                    Err(e) => {
-                                        if let TubeError::Disconnected = e {
-                                            vm_control_indices_to_remove.push(index);
-                                        } else {
-                                            error!("failed to recv VmSwapCommand: {}", e);
-                                        }
-                                    }
-                                }
-                            }
                         }
                     }
                     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
