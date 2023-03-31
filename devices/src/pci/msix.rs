@@ -98,6 +98,12 @@ pub enum MsixError {
     DeserializationFailed(serde_json::Error),
     #[error("invalid vector length in snapshot: {0}")]
     InvalidVectorLength(std::num::TryFromIntError),
+    #[error("ReleaseOneIrq failed: {0}")]
+    ReleaseOneIrq(base::Error),
+    #[error("failed to receive ReleaseOneIrq response: {0}")]
+    ReleaseOneIrqRecv(TubeError),
+    #[error("failed to send ReleaseOneIrq request: {0}")]
+    ReleaseOneIrqSend(TubeError),
 }
 
 type MsixResult<T> = std::result::Result<T, MsixError>;
@@ -261,7 +267,7 @@ impl MsixConfig {
         self.pci_id = snapshot.pci_id;
         self.device_name = snapshot.device_name;
 
-        self.irq_vec.clear();
+        self.msix_release_all()?;
         self.irq_vec
             .resize_with(snapshot.irq_gsi_vec.len(), || None::<IrqfdGsi>);
         for (vector, gsi) in snapshot.irq_gsi_vec.iter().enumerate() {
@@ -310,6 +316,30 @@ impl MsixConfig {
             gsi,
         });
         self.add_msi_route(index as u16, gsi)?;
+        Ok(())
+    }
+
+    /// On warm restore, there could already be MSIs registered. We need to
+    /// release them in case the routing has changed (e.g. different
+    /// data <-> GSI).
+    fn msix_release_all(&mut self) -> MsixResult<()> {
+        for irqfd_gsi in self.irq_vec.drain(..).flatten() {
+            let request = VmIrqRequest::ReleaseOneIrq {
+                gsi: irqfd_gsi.gsi,
+                irqfd: irqfd_gsi.irqfd,
+            };
+
+            self.msi_device_socket
+                .send(&request)
+                .map_err(MsixError::ReleaseOneIrqSend)?;
+            if let VmIrqResponse::Err(e) = self
+                .msi_device_socket
+                .recv()
+                .map_err(MsixError::ReleaseOneIrqRecv)?
+            {
+                return Err(MsixError::ReleaseOneIrq(e));
+            }
+        }
         Ok(())
     }
 
@@ -774,7 +804,7 @@ mod tests {
     fn recv_allocate_msi(t: &Tube) -> u32 {
         match t.recv::<VmIrqRequest>().unwrap() {
             VmIrqRequest::AllocateOneMsiAtGsi { gsi, .. } => gsi,
-            _ => panic!("unexpected irqchip message"),
+            msg => panic!("unexpected irqchip message: {:?}", msg),
         }
     }
 
@@ -796,7 +826,15 @@ mod tests {
                 msi_address,
                 msi_data,
             },
-            _ => panic!("unexpected irqchip message"),
+            msg => panic!("unexpected irqchip message: {:?}", msg),
+        }
+    }
+
+    #[track_caller]
+    fn recv_release_one_irq(t: &Tube) -> u32 {
+        match t.recv::<VmIrqRequest>().unwrap() {
+            VmIrqRequest::ReleaseOneIrq { gsi, irqfd: _ } => gsi,
+            msg => panic!("unexpected irqchip message: {:?}", msg),
         }
     }
 
@@ -805,8 +843,10 @@ mod tests {
         t.send(&VmIrqResponse::Ok).unwrap();
     }
 
+    /// Tests a cold restore where there are no existing vectors at the time
+    /// restore is called.
     #[test]
-    fn verify_msix_restore_smoke() {
+    fn verify_msix_restore_cold_smoke() {
         let (irqchip_tube, msix_config_tube) = Tube::pair().unwrap();
         let (_unused, unused_config_tube) = Tube::pair().unwrap();
 
@@ -863,5 +903,72 @@ mod tests {
 
         assert_eq!(restored_cfg.pci_id, 0);
         assert_eq!(restored_cfg.device_name, "test_device");
+    }
+
+    /// Tests a warm restore where there are existing vectors at the time
+    /// restore is called. These vectors need to be released first.
+    #[test]
+    fn verify_msix_restore_warm_smoke() {
+        let (irqchip_tube, msix_config_tube) = Tube::pair().unwrap();
+
+        let mut cfg = MsixConfig::new(2, msix_config_tube, 0, "test_device".to_owned());
+
+        // Set up two MSI-X vectors (0 and 1).
+        // Data is 0xdVEC_NUM. Address is 0xaVEC_NUM.
+        cfg.table_entries[0].msg_data = 0xd0;
+        cfg.table_entries[0].msg_addr_lo = 0xa0;
+        cfg.table_entries[0].msg_addr_hi = 0;
+        cfg.table_entries[1].msg_data = 0xd1;
+        cfg.table_entries[1].msg_addr_lo = 0xa1;
+        cfg.table_entries[1].msg_addr_hi = 0;
+
+        // Pretend that these vectors were hooked up to GSIs 10 & 20,
+        // respectively.
+        cfg.irq_vec = vec![
+            Some(IrqfdGsi {
+                gsi: 10,
+                irqfd: Event::new().unwrap(),
+            }),
+            Some(IrqfdGsi {
+                gsi: 20,
+                irqfd: Event::new().unwrap(),
+            }),
+        ];
+
+        // Take a snapshot of MsixConfig.
+        let snapshot = cfg.snapshot().unwrap();
+
+        // Create a fake irqchip to respond to our requests
+        let irqchip_fake = thread::spawn(move || {
+            // First, we free the existing vectors / GSIs.
+            assert_eq!(recv_release_one_irq(&irqchip_tube), 10);
+            send_ok(&irqchip_tube);
+            assert_eq!(recv_release_one_irq(&irqchip_tube), 20);
+            send_ok(&irqchip_tube);
+
+            // Now we re-allocate them.
+            assert_eq!(recv_allocate_msi(&irqchip_tube), 10);
+            send_ok(&irqchip_tube);
+            let route_one = recv_add_msi_route(&irqchip_tube);
+            assert_eq!(route_one.gsi, 10);
+            assert_eq!(route_one.msi_address, 0xa0);
+            assert_eq!(route_one.msi_data, 0xd0);
+            send_ok(&irqchip_tube);
+
+            assert_eq!(recv_allocate_msi(&irqchip_tube), 20);
+            send_ok(&irqchip_tube);
+            let route_two = recv_add_msi_route(&irqchip_tube);
+            assert_eq!(route_two.gsi, 20);
+            assert_eq!(route_two.msi_address, 0xa1);
+            assert_eq!(route_two.msi_data, 0xd1);
+            send_ok(&irqchip_tube);
+            irqchip_tube
+        });
+
+        cfg.restore(snapshot).unwrap();
+        irqchip_fake.join().unwrap();
+
+        assert_eq!(cfg.pci_id, 0);
+        assert_eq!(cfg.device_name, "test_device");
     }
 }
