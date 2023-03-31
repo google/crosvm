@@ -36,7 +36,7 @@ fn unix_seqpacket_listener_from_fd() {
         UnixSeqpacketListener::bind(&socket_path).expect("failed to create UnixSeqpacketListener"),
     );
     // UnixSeqpacketListener should succeed on a valid listening descriptor.
-    let good_dup = UnixSeqpacketListener::bind(&format!("/proc/self/fd/{}", unsafe {
+    let good_dup = UnixSeqpacketListener::bind(format!("/proc/self/fd/{}", unsafe {
         libc::dup(listener.as_raw_descriptor())
     }));
     let good_dup_path = good_dup
@@ -46,7 +46,7 @@ fn unix_seqpacket_listener_from_fd() {
     assert!(good_dup_path.is_err());
     // UnixSeqpacketListener must fail on an existing non-listener socket.
     let s1 = UnixSeqpacket::connect(socket_path.as_path()).expect("UnixSeqpacket::connect failed");
-    let bad_dup = UnixSeqpacketListener::bind(&format!("/proc/self/fd/{}", unsafe {
+    let bad_dup = UnixSeqpacketListener::bind(format!("/proc/self/fd/{}", unsafe {
         libc::dup(s1.as_raw_descriptor())
     }));
     assert!(bad_dup.is_err());
