@@ -186,7 +186,7 @@ fn calibrate_tsc_frequency(
     }
 
     Ok((
-        good_samples.iter().map(|&x| x as i128).sum::<i128>() / good_samples.len() as i128,
+        good_samples.iter().sum::<i128>() / good_samples.len() as i128,
         Vec::from_iter(good_end_moments),
     ))
 }
@@ -239,8 +239,7 @@ fn measure_tsc_offset(
         }
     }
 
-    let average_diff =
-        good_samples.iter().map(|&x| x as i128).sum::<i128>() / good_samples.len() as i128;
+    let average_diff = good_samples.iter().sum::<i128>() / good_samples.len() as i128;
 
     // Convert the diff to nanoseconds using the tsc_frequency
     Ok(average_diff * 1_000_000_000 / tsc_frequency as i128)
@@ -396,7 +395,7 @@ fn calibrate_tsc_state_inner(rdtsc: fn() -> u64, cores: Vec<usize>) -> Result<Ts
         }
     }
 
-    TscState::new(freq as u64, offsets, TSC_OFFSET_GROUPING_THRESHOLD)
+    TscState::new(freq, offsets, TSC_OFFSET_GROUPING_THRESHOLD)
 }
 
 #[cfg(test)]
