@@ -115,7 +115,7 @@ pub struct AndroidSparse {
 fn parse_chunk<T: Read + Seek>(mut input: &mut T, blk_sz: u64) -> Result<Option<ChunkWithSize>> {
     const HEADER_SIZE: usize = mem::size_of::<ChunkHeader>();
     let current_offset = input
-        .seek(SeekFrom::Current(0))
+        .stream_position()
         .map_err(Error::ReadSpecificationError)?;
     let chunk_header =
         ChunkHeader::from_reader(&mut input).map_err(Error::ReadSpecificationError)?;
