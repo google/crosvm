@@ -39,6 +39,7 @@ def main(
     if fix:
         common_args = [
             "--fix",
+            "--allow-no-vcs",
             "--allow-dirty",
             "--allow-staged",
             *common_args,
