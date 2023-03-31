@@ -386,9 +386,10 @@ impl FromStr for TouchDeviceOption {
     }
 }
 
-#[derive(Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Eq, PartialEq, Serialize, Deserialize)]
 pub enum SharedDirKind {
     FS,
+    #[default]
     P9,
 }
 
@@ -402,12 +403,6 @@ impl FromStr for SharedDirKind {
             "9p" | "9P" | "p9" | "P9" => Ok(P9),
             _ => Err("invalid file system type"),
         }
-    }
-}
-
-impl Default for SharedDirKind {
-    fn default() -> SharedDirKind {
-        SharedDirKind::P9
     }
 }
 

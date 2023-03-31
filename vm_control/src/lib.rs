@@ -125,9 +125,10 @@ pub enum VcpuControl {
 }
 
 /// Mode of execution for the VM.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
 pub enum VmRunMode {
     /// The default run mode indicating the VCPUs are running.
+    #[default]
     Running,
     /// Indicates that the VCPUs are suspending execution until the `Running` mode is set.
     Suspending,
@@ -147,12 +148,6 @@ impl Display for VmRunMode {
             Exiting => write!(f, "exiting"),
             Breakpoint => write!(f, "breakpoint"),
         }
-    }
-}
-
-impl Default for VmRunMode {
-    fn default() -> Self {
-        VmRunMode::Running
     }
 }
 
@@ -856,16 +851,11 @@ impl Display for BatControlResult {
     }
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Default, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum BatteryType {
+    #[default]
     Goldfish,
-}
-
-impl Default for BatteryType {
-    fn default() -> Self {
-        BatteryType::Goldfish
-    }
 }
 
 impl FromStr for BatteryType {

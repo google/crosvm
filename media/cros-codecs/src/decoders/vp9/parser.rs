@@ -45,19 +45,14 @@ pub const MAX_TILE_WIDTH_B64: u32 = 64;
 /// The number of pictures in the DPB
 pub const NUM_REF_FRAMES: usize = 8;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, N)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, N)]
 pub enum InterpolationFilter {
+    #[default]
     EightTap = 0,
     EightTapSmooth = 1,
     EightTapSharp = 2,
     Bilinear = 3,
     Switchable = 4,
-}
-
-impl Default for InterpolationFilter {
-    fn default() -> Self {
-        InterpolationFilter::EightTap
-    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, N)]
@@ -68,48 +63,33 @@ pub enum ReferenceFrameType {
     AltRef = 3,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, N)]
-
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, N)]
 pub enum FrameType {
+    #[default]
     KeyFrame = 0,
     InterFrame = 1,
 }
 
-impl Default for FrameType {
-    fn default() -> Self {
-        FrameType::KeyFrame
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, N)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, N)]
 pub enum Profile {
+    #[default]
     Profile0 = 0,
     Profile1 = 1,
     Profile2 = 2,
     Profile3 = 3,
 }
 
-impl Default for Profile {
-    fn default() -> Self {
-        Profile::Profile0
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, N)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, N)]
 pub enum BitDepth {
+    #[default]
     Depth8 = 8,
     Depth10 = 10,
     Depth12 = 12,
 }
 
-impl Default for BitDepth {
-    fn default() -> Self {
-        BitDepth::Depth8
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, N)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, N)]
 pub enum ColorSpace {
+    #[default]
     Unknown = 0,
     Bt601 = 1,
     Bt709 = 2,
@@ -120,22 +100,11 @@ pub enum ColorSpace {
     CsSrgb = 7,
 }
 
-impl Default for ColorSpace {
-    fn default() -> Self {
-        ColorSpace::Unknown
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, N)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, N)]
 pub enum ColorRange {
+    #[default]
     StudioSwing = 0,
     FullSwing = 1,
-}
-
-impl Default for ColorRange {
-    fn default() -> Self {
-        ColorRange::StudioSwing
-    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

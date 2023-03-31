@@ -110,20 +110,15 @@ pub struct MemoryRegionInformation<'a> {
 }
 
 #[sorted]
-#[derive(Clone, Copy, Debug, PartialOrd, PartialEq, Eq, Ord)]
+#[derive(Clone, Copy, Debug, Default, PartialOrd, PartialEq, Eq, Ord)]
 pub enum MemoryRegionPurpose {
     // General purpose guest memory
+    #[default]
     GuestMemoryRegion,
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     ProtectedFirmwareRegion,
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     StaticSwiotlbRegion,
-}
-
-impl Default for MemoryRegionPurpose {
-    fn default() -> Self {
-        MemoryRegionPurpose::GuestMemoryRegion
-    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialOrd, PartialEq, Eq, Ord)]

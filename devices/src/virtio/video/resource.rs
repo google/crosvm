@@ -32,18 +32,13 @@ use crate::virtio::video::protocol::virtio_video_mem_entry;
 use crate::virtio::video::protocol::virtio_video_object_entry;
 
 /// Defines how resources for a given queue are represented.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum ResourceType {
     /// Resources are backed by guest memory pages.
     GuestPages,
     /// Resources are backed by virtio objects.
+    #[default]
     VirtioObject,
-}
-
-impl Default for ResourceType {
-    fn default() -> Self {
-        ResourceType::VirtioObject
-    }
 }
 
 #[repr(C)]

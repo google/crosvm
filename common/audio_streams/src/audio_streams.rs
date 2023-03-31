@@ -126,8 +126,9 @@ pub enum StreamDirection {
 }
 
 /// Valid effects for an audio stream.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub enum StreamEffect {
+    #[default]
     NoEffect,
     #[serde(alias = "aec")]
     EchoCancellation,
@@ -135,12 +136,6 @@ pub enum StreamEffect {
 
 pub mod capture;
 pub mod shm_streams;
-
-impl Default for StreamEffect {
-    fn default() -> Self {
-        StreamEffect::NoEffect
-    }
-}
 
 /// Errors that can pass across threads.
 pub type BoxError = Box<dyn error::Error + Send + Sync>;

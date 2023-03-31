@@ -122,17 +122,12 @@ enum Error {
 const UNPIN_DEFAULT_INTERVAL: Duration = Duration::from_secs(60);
 const UNPIN_GEN_DEFAULT_THRES: u64 = 10;
 /// Holds the coiommu unpin policy
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum CoIommuUnpinPolicy {
+    #[default]
     Off,
     Lru,
-}
-
-impl Default for CoIommuUnpinPolicy {
-    fn default() -> Self {
-        CoIommuUnpinPolicy::Off
-    }
 }
 
 impl fmt::Display for CoIommuUnpinPolicy {

@@ -4,7 +4,6 @@
 
 pub(crate) mod sys;
 
-use std::default::Default;
 use std::str::FromStr;
 
 use base::error;
@@ -56,16 +55,11 @@ const PCI_DEVICE_ID_INTEL_82801AA_5: u16 = 0x2415;
 /// Internally the `Ac97BusMaster` and `Ac97Mixer` structs are used to emulated the bus master and
 /// mixer registers respectively. `Ac97BusMaster` handles moving smaples between guest memory and
 /// the audio backend.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub enum Ac97Backend {
+    #[default]
     NULL,
     System(sys::Ac97Backend),
-}
-
-impl Default for Ac97Backend {
-    fn default() -> Self {
-        Ac97Backend::NULL
-    }
 }
 
 /// Errors that are possible from a `Ac97`.

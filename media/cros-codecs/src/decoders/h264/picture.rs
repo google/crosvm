@@ -15,8 +15,9 @@ use crate::decoders::h264::parser::Sps;
 use crate::decoders::FrameInfo;
 use crate::Resolution;
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum Field {
+    #[default]
     Frame,
     Top,
     Bottom,
@@ -33,35 +34,21 @@ impl Field {
     }
 }
 
-impl Default for Field {
-    fn default() -> Self {
-        Field::Frame
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum Reference {
+    #[default]
     None,
     ShortTerm,
     LongTerm,
 }
 
-impl Default for Reference {
-    fn default() -> Self {
-        Reference::None
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum IsIdr {
+    #[default]
     No,
-    Yes { idr_pic_id: u16 },
-}
-
-impl Default for IsIdr {
-    fn default() -> Self {
-        IsIdr::No
-    }
+    Yes {
+        idr_pic_id: u16,
+    },
 }
 
 #[derive(Default)]

@@ -557,8 +557,9 @@ pub enum Profile {
     High = 100,
 }
 
-#[derive(N, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(N, Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Level {
+    #[default]
     L1 = 10,
     L1B = 9,
     L1_1 = 11,
@@ -579,12 +580,6 @@ pub enum Level {
     L6 = 60,
     L6_1 = 61,
     L6_2 = 62,
-}
-
-impl Default for Level {
-    fn default() -> Self {
-        Level::L1
-    }
 }
 
 /// A H264 Sequence Parameter Set. A syntax structure containing syntax elements

@@ -186,20 +186,15 @@ pub enum UnpinResponse {
     Failed,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 pub enum IommuDevType {
     #[serde(rename = "off")]
+    #[default]
     NoIommu,
     #[serde(rename = "viommu")]
     VirtioIommu,
     #[serde(rename = "coiommu")]
     CoIommu,
-}
-
-impl Default for IommuDevType {
-    fn default() -> Self {
-        IommuDevType::NoIommu
-    }
 }
 
 // Thread that handles commands sent to devices - such as snapshot, sleep, suspend

@@ -30,18 +30,13 @@ static EXECUTOR: Lazy<CancellableBlockingPool> =
 
 const DEFAULT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
-#[derive(PartialEq, Eq, PartialOrd)]
+#[derive(PartialEq, Eq, PartialOrd, Default)]
 enum WindDownStates {
+    #[default]
     Armed,
     Disarmed,
     ShuttingDown,
     ShutDown,
-}
-
-impl Default for WindDownStates {
-    fn default() -> Self {
-        WindDownStates::Armed
-    }
 }
 
 #[derive(Default)]

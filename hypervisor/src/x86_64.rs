@@ -458,8 +458,9 @@ pub enum PicSelect {
 }
 
 #[repr(C)]
-#[derive(enumn::N, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(enumn::N, Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum PicInitState {
+    #[default]
     Icw1 = 0,
     Icw2 = 1,
     Icw3 = 2,
@@ -473,12 +474,6 @@ impl From<u8> for PicInitState {
             error!("Invalid PicInitState {}, setting to 0", item);
             PicInitState::Icw1
         })
-    }
-}
-
-impl Default for PicInitState {
-    fn default() -> Self {
-        PicInitState::Icw1
     }
 }
 
