@@ -2,6 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+from enum import Enum
 import json
 import os
 import socket
@@ -11,14 +12,15 @@ import time
 import typing
 from contextlib import closing
 from pathlib import Path
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional, Tuple
 
-from .common import CACHE_DIR, download_file, cmd
+from .common import CACHE_DIR, download_file, cmd, rich, console
 
 KVM_SUPPORT = os.access("/dev/kvm", os.W_OK)
 
 Arch = Literal["x86_64", "aarch64"]
-ARCH_OPTIONS = typing.get_args(Arch)
+ARCH_OPTIONS = typing.cast(Tuple[Arch], typing.get_args(Arch))
+
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
 SRC_DIR = SCRIPT_DIR.joinpath("testvm")
@@ -51,6 +53,10 @@ def data_dir(arch: Arch):
 
 def pid_path(arch: Arch):
     return data_dir(arch).joinpath("pid")
+
+
+def log_path(arch: Arch):
+    return data_dir(arch).joinpath("vm_log")
 
 
 def base_img_name(arch: Arch):
@@ -170,10 +176,36 @@ def run_qemu(
     else:
         serial = "stdio"
 
-    process = qemu.with_args(f"-hda {hda}", f"-serial {serial}").popen(start_new_session=background)
-    write_pid_file(arch, process.pid)
-    if not background:
-        process.wait()
+    console.print(f"Booting {arch} VM with disk", hda)
+    command = qemu.with_args(
+        f"-hda {hda}",
+        f"-serial {serial}",
+        f"-netdev user,id=net0,hostfwd=tcp::{SSH_PORTS[arch]}-:22",
+    )
+    if background:
+        # Start qemu in a new session so it can outlive this process.
+        process = command.popen(
+            start_new_session=background, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+        )
+
+        # Wait for 1s to see if the qemu is staying alive.
+        assert process.stdout
+        for _ in range(10):
+            if process.poll() is not None:
+                sys.stdout.write(process.stdout.read())
+                print(f"'{command}' exited with code {process.returncode}")
+                sys.exit(process.returncode)
+            time.sleep(0.1)
+
+        # Print any warnings qemu might produce.
+        sys.stdout.write(process.stdout.read(0))
+        sys.stdout.flush()
+        process.stdout.close()
+
+        # Save pid so we can manage the process later.
+        write_pid_file(arch, process.pid)
+    else:
+        command.fg()
 
 
 def run_vm(arch: Arch, background: bool = False):
@@ -200,12 +232,18 @@ def is_running(arch: Arch):
 def kill_vm(arch: Arch):
     pid = read_pid_file(arch)
     if pid:
-        os.kill(pid, 9)
+        try:
+            os.kill(pid, 9)
+            # Ping with signal 0 until we get an OSError indicating the process has shutdown.
+            while True:
+                os.kill(pid, 0)
+        except OSError:
+            return
 
 
 def build_if_needed(arch: Arch, reset: bool = False):
     if reset and is_running(arch):
-        print("Killing existing VM...")
+        print(f"Killing existing {arch} VM to perform reset...")
         kill_vm(arch)
         time.sleep(1)
 
@@ -213,14 +251,14 @@ def build_if_needed(arch: Arch, reset: bool = False):
 
     base_img = base_img_path(arch)
     if not base_img.exists():
-        print(f"Downloading base image ({base_img_url(arch)})...")
+        print(f"Downloading {arch} base image ({base_img_url(arch)})...")
         download_file(base_img_url(arch), base_img_path(arch))
 
     rootfs_img = rootfs_img_path(arch)
     if not rootfs_img.exists() or reset:
         # The rootfs is backed by the base image generated above. So we can
         # easily reset to a clean VM by rebuilding an empty rootfs image.
-        print("Creating rootfs overlay...")
+        print(f"Creating {arch} rootfs overlay...")
         qemu_img.with_args(
             "create",
             "-f qcow2",
@@ -236,33 +274,68 @@ def is_ssh_port_available(arch: Arch):
         return sock.connect_ex(("127.0.0.1", SSH_PORTS[arch])) != 0
 
 
-def up(arch: Arch, reset: bool = False):
-    "Start the VM if it's not already running."
+def up(arch: Arch, reset: bool = False, wait: bool = False, timeout: int = 120):
+    "Starts the test vm if it's not already running. Optionally wait for it to be reachable."
+
+    # Try waiting for the running VM, if it does not become reachable, kill it.
     if is_running(arch):
-        return
+        if not wait:
+            console.print(f"{arch} VM is running on port {SSH_PORTS[arch]}")
+            return
+        if not wait_until_reachable(arch, timeout):
+            if is_running(arch):
+                print(f"{arch} VM is not reachable. Restarting it.")
+                kill_vm(arch)
+            else:
+                print(f"{arch} VM stopped. Starting it again.")
+        else:
+            console.print(f"{arch} VM is running on port {SSH_PORTS[arch]}")
+            return
 
     build_if_needed(arch, reset)
-    print("Booting VM...")
     run_qemu(
         arch,
         rootfs_img_path(arch),
         background=True,
     )
 
+    if wait:
+        if wait_until_reachable(arch, timeout):
+            console.print(f"{arch} VM is running on port {SSH_PORTS[arch]}")
+        else:
+            raise Exception(f"Waiting for {arch} VM timed out.")
 
-def wait(arch: Arch, timeout: int = 120):
+
+def wait_until_reachable(arch: Arch, timeout: int = 120):
     "Blocks until the VM is ready to use."
-    up(arch)
+    if not is_running(arch):
+        return False
     if ping_vm(arch):
-        return
+        return True
 
-    print("Waiting for VM")
-    start_time = time.time()
-    while (time.time() - start_time) < timeout:
-        time.sleep(1)
-        sys.stdout.write(".")
-        sys.stdout.flush()
+    with rich.live.Live(
+        rich.spinner.Spinner("point", f"Waiting for {arch} VM to become reachable...")
+    ):
+        start_time = time.time()
+        while (time.time() - start_time) < timeout:
+            if not is_running(arch):
+                return False
+            if ping_vm(arch):
+                return True
+    return False
+
+
+class VmState(Enum):
+    REACHABLE = "Reachable"
+    RUNNING_NOT_REACHABLE = "Running, but not reachable"
+    STOPPED = "Stopped"
+
+
+def state(arch: Arch):
+    if is_running(arch):
         if ping_vm(arch):
-            print()
-            return
-    raise Exception("Timeout while waiting for VM")
+            return VmState.REACHABLE
+        else:
+            return VmState.RUNNING_NOT_REACHABLE
+    else:
+        return VmState.STOPPED

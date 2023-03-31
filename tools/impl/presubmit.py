@@ -4,28 +4,28 @@
 # found in the LICENSE file.
 
 import os
-import re
 import subprocess
+import sys
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from fnmatch import fnmatch
 from pathlib import Path
-import sys
 from time import sleep
-from typing import Callable, List, NamedTuple, Optional, Set, Union
-from datetime import datetime, timedelta
+from typing import Callable, List, NamedTuple, Optional, Union
 
-from impl.common import Command, all_tracked_files, cmd, console, verbose
-
-import rich
-import rich.console
-import rich.live
-import rich.spinner
-import rich.text
+from impl.common import (
+    Command,
+    all_tracked_files,
+    cmd,
+    console,
+    rich,
+    strip_ansi_escape_sequences,
+    verbose,
+)
 
 git = cmd("git")
-
-ansi_escape = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
 
 @dataclass
@@ -204,7 +204,7 @@ class Task(object):
             *(
                 # Print last log lines without it's original colors
                 rich.text.Text(
-                    "│ " + ansi_escape.sub("", log_line),
+                    "│ " + strip_ansi_escape_sequences(log_line),
                     style="light_slate_grey",
                     overflow="ellipsis",
                     no_wrap=True,

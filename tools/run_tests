@@ -287,6 +287,7 @@ def main(
     if dut == "host":
         check_host_prerequisites(run_root_tests)
     if dut == "vm":
+        # Start VM ahead of time but don't wait for it to boot.
         testvm.up(get_vm_arch(triple))
 
     nextest_args = [
@@ -353,7 +354,7 @@ def main(
         if dut == "host":
             target = HostTarget(package_dir)
         elif dut == "vm":
-            testvm.wait(get_vm_arch(triple))
+            testvm.up(get_vm_arch(triple), wait=True)
             remote = Remote("localhost", testvm.ssh_opts(get_vm_arch(triple)))
             target = SshTarget(package_archive, remote)
 

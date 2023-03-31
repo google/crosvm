@@ -4,14 +4,16 @@
 # found in the LICENSE file.
 
 import shutil
+from typing import Iterable, Optional
 
-from impl.common import run_commands, argh
+from impl.common import run_commands, argh, console, strip_ansi_escape_sequences
 from impl import testvm
+from impl.testvm import Arch, VmState
 
 USAGE = """Manages VMs for testing crosvm.
 
 Can run an x86_64 and an aarch64 vm via `./tools/x86vm` and `./tools/aarch64vm`.
-The VM image will be downloaded and initialized on first use.
+Both are a wrapper around `./tools/testvm --arch=x86_64/aarch64`.
 
 The easiest way to use the VM is:
 
@@ -20,21 +22,43 @@ The easiest way to use the VM is:
 Which will initialize and boot the VM, then wait for SSH to be available and
 opens an SSH session. The VM will stay alive between calls.
 
-Alternatively, you can set up an SSH config to connect to the VM. First ensure
-the VM ready:
+Available commands are:
+    - up: Start the VM if it is not already running.
+    - stop: Gracefully stop the VM
+    - kill: Send SIGKILL to the VM
+    - clean: Stop the VM and delete all images
+    - logs: Print logs of the VM console
 
-  $ ./tools/aarch64vm wait
+All of these can be called on `./tools/x86vm` or `./tools/aarch64vm`, but also on
+`tools/testvm` to apply to both VMs.
 """
 
 
-@argh.arg("--arch", required=True, choices=testvm.ARCH_OPTIONS)
-def up(arch: testvm.Arch = "x86_64", reset: bool = False):
+def cli_shorthand(arch: Arch):
+    if arch == "x86_64":
+        return "tools/x86vm"
+    elif arch == "aarch64":
+        return "tools/aarch64vm"
+    else:
+        raise Exception(f"Unknown architecture: {arch}")
+
+
+def arch_or_all(arch: Optional[Arch]):
+    return (arch,) if arch else testvm.ARCH_OPTIONS
+
+
+ARCHS = testvm.ARCH_OPTIONS
+
+
+@argh.arg("--arch-list", "--arch", nargs="*", type=str, default=ARCHS, choices=ARCHS)
+def up(arch_list: Iterable[Arch] = [], reset: bool = False, wait: bool = False, timeout: int = 120):
     "Start the VM if it's not already running."
-    testvm.up(arch, reset)
+    for arch in arch_list:
+        testvm.up(arch, reset, wait, timeout)
 
 
 @argh.arg("--arch", required=True, choices=testvm.ARCH_OPTIONS)
-def run(arch: testvm.Arch = "x86_64", reset: bool = False):
+def run(arch: Arch = "x86_64", reset: bool = False):
     "Run the VM in foreground for debugging purposes."
     if testvm.is_running(arch):
         raise Exception("VM is already running")
@@ -47,45 +71,88 @@ def run(arch: testvm.Arch = "x86_64", reset: bool = False):
 
 
 @argh.arg("--arch", required=True, choices=testvm.ARCH_OPTIONS)
-def wait(arch: testvm.Arch = "x86_64", timeout: int = 120):
-    "Blocks until the VM is ready to use."
-    testvm.wait(arch, timeout)
-
-
-@argh.arg("--arch", required=True, choices=testvm.ARCH_OPTIONS)
-def ssh(arch: testvm.Arch = "x86_64", timeout: int = 120):
+def shell(arch: Arch = "x86_64", timeout: int = 120):
     "Starts an interactive shell via SSH, will ensure the VM is running."
-    testvm.up(arch)
-    wait(arch, timeout)
+    testvm.up(arch, wait=True, timeout=timeout)
     testvm.ssh_exec(arch)
 
 
-@argh.arg("--arch", required=True, choices=testvm.ARCH_OPTIONS)
-def stop(arch: testvm.Arch = "x86_64"):
+@argh.arg("--arch-list", "--arch", nargs="*", type=str, default=ARCHS, choices=ARCHS)
+def stop(arch_list: Iterable[Arch] = []):
     "Gracefully stops the running VM."
-    if not testvm.is_running(arch):
-        print("VM is not running.")
-        return
-    testvm.ssh_exec(arch, "sudo poweroff")
+    for arch in arch_list:
+        if not testvm.is_running(arch):
+            print(f"{arch} VM is not running")
+            break
+        console.print(f"Stopping {arch} VM")
+        testvm.ssh_exec(arch, "sudo poweroff")
 
 
-@argh.arg("--arch", required=True, choices=testvm.ARCH_OPTIONS)
-def kill(arch: testvm.Arch = "x86_64"):
+@argh.arg("--arch-list", "--arch", nargs="*", type=str, default=ARCHS, choices=ARCHS)
+def kill(arch_list: Iterable[Arch] = []):
     "Kills the running VM with SIGKILL."
-    if not testvm.is_running(arch):
-        print("VM is not running.")
-        return
-    testvm.kill_vm(arch)
+    for arch in arch_list:
+        if not testvm.is_running(arch):
+            console.print(f"{arch} VM is not running")
+            break
+        console.print(f"Killing {arch} VM process")
+        testvm.kill_vm(arch)
+        print()
+
+
+@argh.arg("--arch-list", "--arch", nargs="*", type=str, default=ARCHS, choices=ARCHS)
+def clean(arch_list: Iterable[Arch] = []):
+    "Stops the VM or VMs and deletes all data."
+    for arch in arch_list:
+        if testvm.is_running(arch):
+            kill(arch)
+        if testvm.data_dir(arch).exists():
+            console.print("Cleaning data directory", testvm.data_dir(arch))
+            shutil.rmtree(testvm.data_dir(arch))
+        print()
+
+
+def vm_status(arch: Arch):
+    def cli_tip(*args: str):
+        return f"[green][bold]{cli_shorthand(arch)} {' '.join(args)}[/bold][/green]"
+
+    vm = f"{arch} VM"
+    port = f"[blue]{testvm.SSH_PORTS[arch]}[/blue]"
+
+    state = testvm.state(arch)
+    if state == VmState.REACHABLE:
+        console.print(f"{vm} is [green]reachable[/green] on port {port}")
+        console.print(f"Start a shell with {cli_tip('shell')}")
+    elif state == VmState.STOPPED:
+        console.print(f"{vm} is [red]stopped[/red]")
+        console.print(f"Start the VM with {cli_tip('up')}")
+    else:
+        console.print(f"{vm} is running but [red]not reachable[/red] on port {port}")
+        console.print(f"Recent logs:")
+        logs(arch, 10, style="light_slate_grey")
+        console.print(f"See all logs with {cli_tip('logs')}")
+
+
+@argh.arg("--arch-list", "--arch", nargs="*", type=str, default=ARCHS, choices=ARCHS)
+def status(arch_list: Iterable[Arch] = []):
+    for arch in arch_list:
+        vm_status(arch)
+        print()
 
 
 @argh.arg("--arch", required=True, choices=testvm.ARCH_OPTIONS)
-def clean(arch: testvm.Arch = "x86_64"):
-    "Stops the VM and deletes all data."
-    if testvm.is_running(arch):
-        kill(arch)
-    if testvm.data_dir(arch).exists():
-        shutil.rmtree(testvm.data_dir(arch))
+def logs(arch: Arch = "x86_64", n: int = 0, style: Optional[str] = None):
+    log_lines = testvm.log_path(arch).read_text().splitlines()
+    if n > 0 and len(log_lines) > n:
+        log_lines = log_lines[-n:]
+    for line in log_lines:
+        if style:
+            console.print(
+                strip_ansi_escape_sequences(line), style=style, markup=False, highlight=False
+            )
+        else:
+            print(line)
 
 
 if __name__ == "__main__":
-    run_commands(up, run, wait, ssh, stop, kill, clean, usage=USAGE)
+    run_commands(up, run, shell, stop, kill, clean, status, logs, usage=USAGE, default_fn=status)
