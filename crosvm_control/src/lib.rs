@@ -51,7 +51,7 @@ fn validate_socket_path(socket_path: *const c_char) -> Option<PathBuf> {
 pub extern "C" fn crosvm_client_stop_vm(socket_path: *const c_char) -> bool {
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
-            vms_request(&VmRequest::Exit, &socket_path).is_ok()
+            vms_request(&VmRequest::Exit, socket_path).is_ok()
         } else {
             false
         }
@@ -66,7 +66,7 @@ pub extern "C" fn crosvm_client_stop_vm(socket_path: *const c_char) -> bool {
 pub extern "C" fn crosvm_client_suspend_vm(socket_path: *const c_char) -> bool {
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
-            vms_request(&VmRequest::Suspend, &socket_path).is_ok()
+            vms_request(&VmRequest::Suspend, socket_path).is_ok()
         } else {
             false
         }
@@ -81,7 +81,7 @@ pub extern "C" fn crosvm_client_suspend_vm(socket_path: *const c_char) -> bool {
 pub extern "C" fn crosvm_client_resume_vm(socket_path: *const c_char) -> bool {
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
-            vms_request(&VmRequest::Resume, &socket_path).is_ok()
+            vms_request(&VmRequest::Resume, socket_path).is_ok()
         } else {
             false
         }
@@ -96,7 +96,7 @@ pub extern "C" fn crosvm_client_resume_vm(socket_path: *const c_char) -> bool {
 pub extern "C" fn crosvm_client_make_rt_vm(socket_path: *const c_char) -> bool {
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
-            vms_request(&VmRequest::MakeRT, &socket_path).is_ok()
+            vms_request(&VmRequest::MakeRT, socket_path).is_ok()
         } else {
             false
         }
@@ -113,7 +113,7 @@ pub extern "C" fn crosvm_client_balloon_vms(socket_path: *const c_char, num_byte
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
             let command = BalloonControlCommand::Adjust { num_bytes };
-            vms_request(&VmRequest::BalloonCommand(command), &socket_path).is_ok()
+            vms_request(&VmRequest::BalloonCommand(command), socket_path).is_ok()
         } else {
             false
         }
@@ -128,7 +128,7 @@ pub extern "C" fn crosvm_client_balloon_vms(socket_path: *const c_char, num_byte
 pub extern "C" fn crosvm_client_swap_enable_vm(socket_path: *const c_char) -> bool {
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
-            vms_request(&VmRequest::Swap(SwapCommand::Enable), &socket_path).is_ok()
+            vms_request(&VmRequest::Swap(SwapCommand::Enable), socket_path).is_ok()
         } else {
             false
         }
@@ -144,7 +144,7 @@ pub extern "C" fn crosvm_client_swap_enable_vm(socket_path: *const c_char) -> bo
 pub extern "C" fn crosvm_client_swap_swapout_vm(socket_path: *const c_char) -> bool {
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
-            vms_request(&VmRequest::Swap(SwapCommand::SwapOut), &socket_path).is_ok()
+            vms_request(&VmRequest::Swap(SwapCommand::SwapOut), socket_path).is_ok()
         } else {
             false
         }
@@ -159,7 +159,7 @@ pub extern "C" fn crosvm_client_swap_swapout_vm(socket_path: *const c_char) -> b
 pub extern "C" fn crosvm_client_swap_disable_vm(socket_path: *const c_char) -> bool {
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
-            vms_request(&VmRequest::Swap(SwapCommand::Disable), &socket_path).is_ok()
+            vms_request(&VmRequest::Swap(SwapCommand::Disable), socket_path).is_ok()
         } else {
             false
         }
@@ -267,7 +267,7 @@ pub extern "C" fn crosvm_client_usb_attach(
             }
             let dev_path = Path::new(unsafe { CStr::from_ptr(dev_path) }.to_str().unwrap_or(""));
 
-            if let Ok(UsbControlResult::Ok { port }) = do_usb_attach(&socket_path, dev_path) {
+            if let Ok(UsbControlResult::Ok { port }) = do_usb_attach(socket_path, dev_path) {
                 if !out_port.is_null() {
                     unsafe { *out_port = port };
                 }
@@ -290,7 +290,7 @@ pub extern "C" fn crosvm_client_usb_attach(
 pub extern "C" fn crosvm_client_usb_detach(socket_path: *const c_char, port: u8) -> bool {
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
-            do_usb_detach(&socket_path, port).is_ok()
+            do_usb_detach(socket_path, port).is_ok()
         } else {
             false
         }
@@ -319,7 +319,7 @@ pub extern "C" fn crosvm_client_modify_battery(
             let target = unsafe { CStr::from_ptr(target) };
 
             do_modify_battery(
-                &socket_path,
+                socket_path,
                 battery_type.to_str().unwrap(),
                 property.to_str().unwrap(),
                 target.to_str().unwrap(),
@@ -348,7 +348,7 @@ pub extern "C" fn crosvm_client_resize_disk(
                     disk_index,
                     command: DiskControlCommand::Resize { new_size },
                 };
-                vms_request(&request, &socket_path).is_ok()
+                vms_request(&request, socket_path).is_ok()
             } else {
                 false
             }
@@ -419,7 +419,7 @@ pub extern "C" fn crosvm_client_balloon_stats(
             if let Ok(VmResponse::BalloonStats {
                 stats: ref balloon_stats,
                 balloon_actual,
-            }) = handle_request(request, &socket_path)
+            }) = handle_request(request, socket_path)
             {
                 if !stats.is_null() {
                     unsafe {
@@ -506,7 +506,7 @@ pub extern "C" fn crosvm_client_balloon_wss(
             let request = &VmRequest::BalloonCommand(BalloonControlCommand::WorkingSetSize);
             if let Ok(VmResponse::BalloonWSS {
                 wss: ref balloon_wss,
-            }) = handle_request(request, &socket_path)
+            }) = handle_request(request, socket_path)
             {
                 if !wss.is_null() {
                     // SAFETY: deref of raw pointer is safe because we check to
@@ -564,7 +564,7 @@ pub extern "C" fn crosvm_client_register_events_listener(
                         event,
                         socket_addr: listening_socket_path.to_str().unwrap().to_string(),
                     };
-                    vms_request(&request, &socket_path).is_ok()
+                    vms_request(&request, socket_path).is_ok()
                 } else {
                     false
                 }
@@ -593,7 +593,7 @@ pub extern "C" fn crosvm_client_unregister_events_listener(
                         event,
                         socket_addr: listening_socket_path.to_str().unwrap().to_string(),
                     };
-                    vms_request(&request, &socket_path).is_ok()
+                    vms_request(&request, socket_path).is_ok()
                 } else {
                     false
                 }
@@ -619,7 +619,7 @@ pub extern "C" fn crosvm_client_unregister_listener(
                 let request = VmRequest::Unregister {
                     socket_addr: listening_socket_path.to_str().unwrap().to_string(),
                 };
-                vms_request(&request, &socket_path).is_ok()
+                vms_request(&request, socket_path).is_ok()
             } else {
                 false
             }

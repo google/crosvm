@@ -53,7 +53,7 @@ fn main() -> Result<()> {
         .with_config(config)
         .generate()
         .context("Unable to generate bindings")?
-        .write_to_file(&output_file);
+        .write_to_file(output_file);
 
     // Do not perform the compilation check on Windows since GCC might not be installed.
     if std::env::var("CARGO_CFG_WINDOWS").is_ok() {
