@@ -342,7 +342,6 @@ impl FfmpegEncoder {
     pub fn new() -> Self {
         // Find all the encoders supported by libav and store them.
         let codecs = AvCodecIterator::new()
-            .into_iter()
             .filter_map(|codec| {
                 if !codec.is_encoder() {
                     return None;

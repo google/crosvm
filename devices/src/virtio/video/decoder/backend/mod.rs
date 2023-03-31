@@ -281,7 +281,6 @@ mod tests {
             .expect("Failed to add event pipe to wait context");
         // Output buffers suitable for receiving NV12 frames for our stream.
         let output_buffers = (0..NUM_OUTPUT_BUFFERS)
-            .into_iter()
             .map(|i| {
                 SharedMemory::new(
                     format!("video-output-buffer-{}", i),
