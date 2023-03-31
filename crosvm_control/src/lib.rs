@@ -48,7 +48,7 @@ fn validate_socket_path(socket_path: *const c_char) -> Option<PathBuf> {
 ///
 /// The function returns true on success or false if an error occured.
 #[no_mangle]
-pub extern "C" fn crosvm_client_stop_vm(socket_path: *const c_char) -> bool {
+pub unsafe extern "C" fn crosvm_client_stop_vm(socket_path: *const c_char) -> bool {
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
             vms_request(&VmRequest::Exit, socket_path).is_ok()
@@ -63,7 +63,7 @@ pub extern "C" fn crosvm_client_stop_vm(socket_path: *const c_char) -> bool {
 ///
 /// The function returns true on success or false if an error occured.
 #[no_mangle]
-pub extern "C" fn crosvm_client_suspend_vm(socket_path: *const c_char) -> bool {
+pub unsafe extern "C" fn crosvm_client_suspend_vm(socket_path: *const c_char) -> bool {
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
             vms_request(&VmRequest::Suspend, socket_path).is_ok()
@@ -78,7 +78,7 @@ pub extern "C" fn crosvm_client_suspend_vm(socket_path: *const c_char) -> bool {
 ///
 /// The function returns true on success or false if an error occured.
 #[no_mangle]
-pub extern "C" fn crosvm_client_resume_vm(socket_path: *const c_char) -> bool {
+pub unsafe extern "C" fn crosvm_client_resume_vm(socket_path: *const c_char) -> bool {
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
             vms_request(&VmRequest::Resume, socket_path).is_ok()
@@ -93,7 +93,7 @@ pub extern "C" fn crosvm_client_resume_vm(socket_path: *const c_char) -> bool {
 ///
 /// The function returns true on success or false if an error occured.
 #[no_mangle]
-pub extern "C" fn crosvm_client_make_rt_vm(socket_path: *const c_char) -> bool {
+pub unsafe extern "C" fn crosvm_client_make_rt_vm(socket_path: *const c_char) -> bool {
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
             vms_request(&VmRequest::MakeRT, socket_path).is_ok()
@@ -109,7 +109,10 @@ pub extern "C" fn crosvm_client_make_rt_vm(socket_path: *const c_char) -> bool {
 ///
 /// The function returns true on success or false if an error occured.
 #[no_mangle]
-pub extern "C" fn crosvm_client_balloon_vms(socket_path: *const c_char, num_bytes: u64) -> bool {
+pub unsafe extern "C" fn crosvm_client_balloon_vms(
+    socket_path: *const c_char,
+    num_bytes: u64,
+) -> bool {
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
             let command = BalloonControlCommand::Adjust { num_bytes };
@@ -125,7 +128,7 @@ pub extern "C" fn crosvm_client_balloon_vms(socket_path: *const c_char, num_byte
 ///
 /// The function returns true on success or false if an error occured.
 #[no_mangle]
-pub extern "C" fn crosvm_client_swap_enable_vm(socket_path: *const c_char) -> bool {
+pub unsafe extern "C" fn crosvm_client_swap_enable_vm(socket_path: *const c_char) -> bool {
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
             vms_request(&VmRequest::Swap(SwapCommand::Enable), socket_path).is_ok()
@@ -141,7 +144,7 @@ pub extern "C" fn crosvm_client_swap_enable_vm(socket_path: *const c_char) -> bo
 ///
 /// The function returns true on success or false if an error occured.
 #[no_mangle]
-pub extern "C" fn crosvm_client_swap_swapout_vm(socket_path: *const c_char) -> bool {
+pub unsafe extern "C" fn crosvm_client_swap_swapout_vm(socket_path: *const c_char) -> bool {
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
             vms_request(&VmRequest::Swap(SwapCommand::SwapOut), socket_path).is_ok()
@@ -156,7 +159,7 @@ pub extern "C" fn crosvm_client_swap_swapout_vm(socket_path: *const c_char) -> b
 ///
 /// The function returns true on success or false if an error occured.
 #[no_mangle]
-pub extern "C" fn crosvm_client_swap_disable_vm(socket_path: *const c_char) -> bool {
+pub unsafe extern "C" fn crosvm_client_swap_disable_vm(socket_path: *const c_char) -> bool {
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
             vms_request(&VmRequest::Swap(SwapCommand::Disable), socket_path).is_ok()
@@ -207,7 +210,7 @@ pub extern "C" fn crosvm_client_max_usb_devices() -> usize {
 /// Use the value returned by [`crosvm_client_max_usb_devices()`] to determine the size of the input
 /// array to this function.
 #[no_mangle]
-pub extern "C" fn crosvm_client_usb_list(
+pub unsafe extern "C" fn crosvm_client_usb_list(
     socket_path: *const c_char,
     entries: *mut UsbDeviceEntry,
     entries_length: ssize_t,
@@ -251,7 +254,7 @@ pub extern "C" fn crosvm_client_usb_list(
 ///
 /// The function returns true on success or false if an error occured.
 #[no_mangle]
-pub extern "C" fn crosvm_client_usb_attach(
+pub unsafe extern "C" fn crosvm_client_usb_attach(
     socket_path: *const c_char,
     _bus: u8,
     _addr: u8,
@@ -287,7 +290,7 @@ pub extern "C" fn crosvm_client_usb_attach(
 ///
 /// The function returns true on success or false if an error occured.
 #[no_mangle]
-pub extern "C" fn crosvm_client_usb_detach(socket_path: *const c_char, port: u8) -> bool {
+pub unsafe extern "C" fn crosvm_client_usb_detach(socket_path: *const c_char, port: u8) -> bool {
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
             do_usb_detach(socket_path, port).is_ok()
@@ -303,7 +306,7 @@ pub extern "C" fn crosvm_client_usb_detach(socket_path: *const c_char, port: u8)
 ///
 /// The function returns true on success or false if an error occured.
 #[no_mangle]
-pub extern "C" fn crosvm_client_modify_battery(
+pub unsafe extern "C" fn crosvm_client_modify_battery(
     socket_path: *const c_char,
     battery_type: *const c_char,
     property: *const c_char,
@@ -336,7 +339,7 @@ pub extern "C" fn crosvm_client_modify_battery(
 ///
 /// The function returns true on success or false if an error occured.
 #[no_mangle]
-pub extern "C" fn crosvm_client_resize_disk(
+pub unsafe extern "C" fn crosvm_client_resize_disk(
     socket_path: *const c_char,
     disk_index: u64,
     new_size: u64,
@@ -408,7 +411,7 @@ impl From<&BalloonStats> for BalloonStatsFfi {
 ///
 /// Entries in `BalloonStatsFfi` that are not available will be set to `-1`.
 #[no_mangle]
-pub extern "C" fn crosvm_client_balloon_stats(
+pub unsafe extern "C" fn crosvm_client_balloon_stats(
     socket_path: *const c_char,
     stats: *mut BalloonStatsFfi,
     actual: *mut u64,
@@ -497,7 +500,7 @@ impl BalloonWSSFfi {
 
 /// Returns balloon working set size of the crosvm instance whose control socket is listening on socket_path.
 #[no_mangle]
-pub extern "C" fn crosvm_client_balloon_wss(
+pub unsafe extern "C" fn crosvm_client_balloon_wss(
     socket_path: *const c_char,
     wss: *mut BalloonWSSFfi,
 ) -> bool {
@@ -551,7 +554,7 @@ impl TryFrom<RegisteredEventFfi> for RegisteredEvent {
 
 /// Registers the connected process as a listener for `event`.
 #[no_mangle]
-pub extern "C" fn crosvm_client_register_events_listener(
+pub unsafe extern "C" fn crosvm_client_register_events_listener(
     socket_path: *const c_char,
     listening_socket_path: *const c_char,
     event: RegisteredEventFfi,
@@ -580,7 +583,7 @@ pub extern "C" fn crosvm_client_register_events_listener(
 
 /// Unegisters the connected process as a listener for `event`.
 #[no_mangle]
-pub extern "C" fn crosvm_client_unregister_events_listener(
+pub unsafe extern "C" fn crosvm_client_unregister_events_listener(
     socket_path: *const c_char,
     listening_socket_path: *const c_char,
     event: RegisteredEventFfi,
@@ -609,7 +612,7 @@ pub extern "C" fn crosvm_client_unregister_events_listener(
 
 /// Unegisters the connected process as a listener for all events.
 #[no_mangle]
-pub extern "C" fn crosvm_client_unregister_listener(
+pub unsafe extern "C" fn crosvm_client_unregister_listener(
     socket_path: *const c_char,
     listening_socket_path: *const c_char,
 ) -> bool {
