@@ -98,13 +98,6 @@ pub fn create_gpu_device(
         virtio::DisplayBackend::Stub,
     ];
 
-    let wayland_socket_dirs = cfg
-        .wayland_socket_paths
-        .iter()
-        .map(|(_name, path)| path.parent())
-        .collect::<Option<Vec<_>>>()
-        .ok_or_else(|| anyhow!("wayland socket path has no parent or file name"))?;
-
     if let Some(socket_path) = wayland_socket_path {
         display_backends.insert(
             0,
@@ -158,7 +151,13 @@ pub fn create_gpu_device(
         // each new wayland context must open() the socket. If the wayland socket is ever
         // destroyed and remade in the same host directory, new connections will be possible
         // without restarting the wayland device.
-        for dir in &wayland_socket_dirs {
+        for socket_path in cfg.wayland_socket_paths.values() {
+            let dir = socket_path.parent().with_context(|| {
+                format!(
+                    "wayland socket path '{}' has no parent",
+                    socket_path.display(),
+                )
+            })?;
             jail.mount_bind(dir, dir, true)?;
         }
 
