@@ -365,7 +365,7 @@ impl MockShmStream {
     /// from `wait_for_next_action_with_timeout`, or until `timeout` elapses.
     /// Returns true if a response was successfully received.
     pub fn trigger_callback_with_timeout(&mut self, timeout: Duration) -> bool {
-        let &(ref lock, ref cvar) = &*self.request_notifier;
+        let (lock, cvar) = &*self.request_notifier;
         let mut requested = lock.lock().unwrap();
         *requested = true;
         cvar.notify_one();
@@ -383,7 +383,7 @@ impl MockShmStream {
     }
 
     fn notify_request(&mut self) {
-        let &(ref lock, ref cvar) = &*self.request_notifier;
+        let (lock, cvar) = &*self.request_notifier;
         let mut requested = lock.lock().unwrap();
         *requested = false;
         cvar.notify_one();
@@ -421,7 +421,7 @@ impl ShmStream for MockShmStream {
     ) -> GenericResult<Option<ServerRequest>> {
         {
             let start_time = Instant::now();
-            let &(ref lock, ref cvar) = &*self.request_notifier;
+            let (lock, cvar) = &*self.request_notifier;
             let mut requested = lock.lock().unwrap();
             while !*requested {
                 requested = cvar.wait_timeout(requested, timeout).unwrap().0;
@@ -449,7 +449,7 @@ impl MockShmStreamSource {
     /// Get the last stream that has been created from this source. If no stream
     /// has been created, block until one has.
     pub fn get_last_stream(&self) -> MockShmStream {
-        let &(ref last_stream, ref cvar) = &*self.last_stream;
+        let (last_stream, cvar) = &*self.last_stream;
         let mut stream = last_stream.lock().unwrap();
         loop {
             match &*stream {
@@ -472,7 +472,7 @@ impl<E: std::error::Error> ShmStreamSource<E> for MockShmStreamSource {
         _client_shm: &dyn SharedMemory<Error = E>,
         _buffer_offsets: [u64; 2],
     ) -> GenericResult<Box<dyn ShmStream>> {
-        let &(ref last_stream, ref cvar) = &*self.last_stream;
+        let (last_stream, cvar) = &*self.last_stream;
         let mut stream = last_stream.lock().unwrap();
 
         let new_stream = MockShmStream::new(num_channels, frame_rate, format, buffer_size);
