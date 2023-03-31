@@ -24,7 +24,7 @@ fn setup_env(build_type: &str) -> TempDir {
     env::set_var("CARGO_CFG_TARGET_ARCH", "x86_64");
     env::set_var("CARGO_CFG_TARGET_ENV", "gnu");
     let deps = tempdir.path().join("deps");
-    std::fs::create_dir_all(&deps).unwrap();
+    std::fs::create_dir_all(deps).unwrap();
     let out_dir = tempdir.path().join("build").join("crate_name").join("out");
     std::fs::create_dir_all(&out_dir).unwrap();
     env::set_var("OUT_DIR", out_dir.as_os_str().to_str().unwrap());
