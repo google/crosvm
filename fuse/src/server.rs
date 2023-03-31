@@ -1093,10 +1093,10 @@ impl<F: FileSystem + Sync> Server<F> {
         }
     }
 
-    fn lookup_dirent_attribute<'d>(
+    fn lookup_dirent_attribute(
         &self,
         in_header: &InHeader,
-        dir_entry: &DirEntry<'d>,
+        dir_entry: &DirEntry,
     ) -> io::Result<Entry> {
         let parent = in_header.nodeid.into();
         let name = dir_entry.name.to_bytes();
