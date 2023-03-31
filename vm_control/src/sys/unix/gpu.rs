@@ -23,4 +23,8 @@ impl DisplayModeTrait for UnixDisplayMode {
     fn get_virtual_display_size(&self) -> (u32, u32) {
         self.get_window_size()
     }
+
+    fn get_virtual_display_size_4k_uhd(&self, _is_4k_uhd_enabled: bool) -> (u32, u32) {
+        self.get_virtual_display_size()
+    }
 }

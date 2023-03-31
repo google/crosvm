@@ -2,6 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#[cfg(feature = "kiwi")]
+use base::warn;
+#[cfg(feature = "kiwi")]
+use battlestar::process_invariants;
 use devices::virtio::GpuDisplayMode;
 use devices::virtio::GpuDisplayParameters;
 #[cfg(feature = "gfxstream")]
@@ -104,7 +108,35 @@ pub(crate) fn validate_gpu_config(cfg: &mut Config) -> Result<(), String> {
             gpu_parameters.display_params.push(Default::default());
         }
 
-        let (width, height) = gpu_parameters.display_params[0].get_virtual_display_size();
+        // Process invariants are not written to the static `PROCESS_INVARIANTS` yet, so instead of
+        // calling `phenotype!(kiwi_emulator_feature, get_enable_4k_uhd_resolution)`, we have to
+        // load it by ourselves.
+        // TODO(b/276909432): The BSS should read the experiment flags and specify the virtual
+        // display size, and then we can remove this workaround.
+        #[cfg(feature = "kiwi")]
+        let is_4k_uhd_enabled = match process_invariants::load_invariants(
+            &cfg.process_invariants_data_handle,
+            &cfg.process_invariants_data_size,
+        ) {
+            Ok(invariants) => invariants
+                .get_flag_snapshot()
+                .get_features()
+                .kiwi_emulator_feature
+                .clone()
+                .unwrap_or_default()
+                .get_enable_4k_uhd_resolution(),
+            Err(e) => {
+                warn!(
+                    "Failed to load process invariants, will not enable 4k UHD: {}",
+                    e
+                );
+                false
+            }
+        };
+        #[cfg(not(feature = "kiwi"))]
+        let is_4k_uhd_enabled = false;
+        let (width, height) =
+            gpu_parameters.display_params[0].get_virtual_display_size_4k_uhd(is_4k_uhd_enabled);
         if let Some(virtio_multi_touch) = cfg.virtio_multi_touch.first_mut() {
             virtio_multi_touch.set_default_size(width, height);
         }

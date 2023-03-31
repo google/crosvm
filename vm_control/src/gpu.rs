@@ -31,9 +31,19 @@ pub(crate) trait DisplayModeTrait {
 
     /// Returns the virtual display size used for creating the display device.
     ///
+    /// We need to query the phenotype flags to see if resolutions higher than 1080p should be
+    /// enabled. This functions assumes process invariants have been set up and phenotype flags are
+    /// available. If not, use `get_virtual_display_size_4k_uhd()` instead.
+    ///
     /// This may be different from the initial host window size since different display backends may
     /// have different alignment requirements on it.
     fn get_virtual_display_size(&self) -> (u32, u32);
+
+    /// Returns the virtual display size used for creating the display device.
+    ///
+    /// While `get_virtual_display_size()` reads phenotype flags internally, this function does not,
+    /// so it can be used when process invariants and phenotype flags are not yet ready.
+    fn get_virtual_display_size_4k_uhd(&self, is_4k_uhd_enabled: bool) -> (u32, u32);
 }
 
 impl Default for DisplayMode {
@@ -89,6 +99,10 @@ impl DisplayParameters {
 
     pub fn get_virtual_display_size(&self) -> (u32, u32) {
         self.mode.get_virtual_display_size()
+    }
+
+    pub fn get_virtual_display_size_4k_uhd(&self, is_4k_uhd_enabled: bool) -> (u32, u32) {
+        self.mode.get_virtual_display_size_4k_uhd(is_4k_uhd_enabled)
     }
 
     pub fn horizontal_dpi(&self) -> u32 {
