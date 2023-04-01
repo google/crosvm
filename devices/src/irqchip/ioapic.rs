@@ -80,11 +80,14 @@ fn decode_irq_from_selector(selector: u8) -> (usize, bool) {
 // not exactly the same as) KVM's IOAPIC.
 const RTC_IRQ: usize = 0x8;
 
-/// [Ioapic] stores MSIs used to back GSIs, but not enough information to re-create these MSIs
-/// (it is missing the address & data). It also includes data that is unused by the userspace
-/// ioapic (the per gsi resample event, [IrqEvent::resample_event], is always None).
 /// This struct is essentially the complete serialized form of [IrqEvent] as used in
 /// [Ioapic::out_events].
+///
+/// [Ioapic] stores MSIs used to back GSIs, but not enough information to re-create these MSIs
+/// (it is missing the address & data). It also includes data that is unused by the userspace
+/// ioapic (the per gsi resample event, [IrqEvent::resample_event], is always None). This
+/// struct incorporates the necessary information for snapshotting, and excludes that which
+/// is not required.
 #[derive(Clone, Serialize, Deserialize)]
 struct OutEventSnapshot {
     gsi: u32,
