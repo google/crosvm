@@ -17,7 +17,7 @@ use crate::IntoAsync;
 use crate::IoSource;
 
 /// Creates a concrete `IoSource` using the handle_executor.
-pub(crate) fn async_handle_from<'a, F: IntoAsync + 'a + Send>(f: F) -> AsyncResult<IoSource<F>> {
+pub(crate) fn async_handle_from<'a, F: IntoAsync + 'a>(f: F) -> AsyncResult<IoSource<F>> {
     Ok(IoSource::Handle(HandleSource::new(
         vec![f].into_boxed_slice(),
     )?))
@@ -194,7 +194,7 @@ impl Executor {
     /// Create a new `IoSource<F>` associated with `self`. Callers may then use the returned
     /// `IoSource` to directly start async operations without needing a separate reference to the
     /// executor.
-    pub fn async_from<'a, F: IntoAsync + 'a + Send>(&self, f: F) -> AsyncResult<IoSource<F>> {
+    pub fn async_from<'a, F: IntoAsync + 'a>(&self, f: F) -> AsyncResult<IoSource<F>> {
         match self {
             Executor::Handle(_) => async_handle_from(f),
         }

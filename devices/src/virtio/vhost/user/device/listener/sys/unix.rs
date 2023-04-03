@@ -152,7 +152,7 @@ where
             None => {
                 // Nobody is on the other end yet, wait until we get a connection.
                 let async_waiter = ex
-                    .async_from_local(AsyncWrapper::new(listener))
+                    .async_from(AsyncWrapper::new(listener))
                     .context("failed to create async waiter")?;
                 async_waiter.wait_readable().await?;
 
