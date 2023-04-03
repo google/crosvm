@@ -32,7 +32,7 @@ pub enum IoSource<F: base::AsRawDescriptor> {
 
 pub enum AllocateMode {
     #[cfg(unix)]
-    Default,
+    Allocate,
     PunchHole,
     ZeroRange,
 }
@@ -42,7 +42,7 @@ pub enum AllocateMode {
 impl From<AllocateMode> for u32 {
     fn from(value: AllocateMode) -> Self {
         match value {
-            AllocateMode::Default => 0,
+            AllocateMode::Allocate => 0,
             AllocateMode::PunchHole => {
                 (libc::FALLOC_FL_PUNCH_HOLE | libc::FALLOC_FL_KEEP_SIZE) as u32
             }

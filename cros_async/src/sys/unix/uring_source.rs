@@ -501,7 +501,7 @@ mod tests {
                 .open(&file_path)
                 .unwrap();
             let source = UringSource::new(f, ex).unwrap();
-            if let Err(e) = source.fallocate(0, 4096, AllocateMode::Default).await {
+            if let Err(e) = source.fallocate(0, 4096, AllocateMode::Allocate).await {
                 match e {
                     crate::io_ext::Error::Uring(super::super::uring_executor::Error::Io(
                         io_err,

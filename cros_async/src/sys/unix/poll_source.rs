@@ -412,7 +412,7 @@ mod tests {
                 .unwrap();
             let source = PollSource::new(f, ex).unwrap();
             source
-                .fallocate(0, 4096, AllocateMode::Default)
+                .fallocate(0, 4096, AllocateMode::Allocate)
                 .await
                 .unwrap();
 
