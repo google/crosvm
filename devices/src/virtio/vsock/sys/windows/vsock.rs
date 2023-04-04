@@ -547,9 +547,10 @@ impl Worker {
                         e
                     )
                 };
-                queue.add_used(&self.mem, index, 0);
-                queue.trigger_interrupt(&self.mem, &self.interrupt);
             }
+
+            queue.add_used(&self.mem, index, 0);
+            queue.trigger_interrupt(&self.mem, &self.interrupt);
         }
     }
 
