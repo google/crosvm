@@ -421,4 +421,126 @@ mod tests {
 
         assert_eq!(vfio.path, PathBuf::from("/path/to/dev"));
     }
+
+    #[test]
+    fn hypervisor_default() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(&[], &["/dev/null"])
+            .unwrap()
+            .try_into()
+            .unwrap();
+
+        assert_eq!(config.hypervisor, None);
+    }
+
+    #[test]
+    fn hypervisor_kvm() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &["--hypervisor", "kvm", "/dev/null"],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        assert_eq!(
+            config.hypervisor,
+            Some(HypervisorKind::Kvm { device: None })
+        );
+    }
+
+    #[test]
+    fn hypervisor_kvm_device() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &["--hypervisor", "kvm[device=/not/default]", "/dev/null"],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        assert_eq!(
+            config.hypervisor,
+            Some(HypervisorKind::Kvm {
+                device: Some(PathBuf::from("/not/default"))
+            })
+        );
+    }
+
+    #[test]
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(feature = "geniezone")]
+    fn hypervisor_geniezone() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &["--hypervisor", "geniezone", "/dev/null"],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        assert_eq!(
+            config.hypervisor,
+            Some(HypervisorKind::Geniezone { device: None })
+        );
+    }
+
+    #[test]
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
+    #[cfg(feature = "geniezone")]
+    fn hypervisor_geniezone_device() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &[
+                "--hypervisor",
+                "geniezone[device=/not/default]",
+                "/dev/null",
+            ],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        assert_eq!(
+            config.hypervisor,
+            Some(HypervisorKind::Geniezone {
+                device: Some(PathBuf::from("/not/default"))
+            })
+        );
+    }
+
+    #[test]
+    #[cfg(all(any(target_arch = "arm", target_arch = "aarch64"), feature = "gunyah"))]
+    fn hypervisor_gunyah() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &["--hypervisor", "gunyah", "/dev/null"],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        assert_eq!(
+            config.hypervisor,
+            Some(HypervisorKind::Gunyah { device: None })
+        );
+    }
+
+    #[test]
+    #[cfg(all(any(target_arch = "arm", target_arch = "aarch64"), feature = "gunyah"))]
+    fn hypervisor_gunyah_device() {
+        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &["--hypervisor", "gunyah[device=/not/default]", "/dev/null"],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        assert_eq!(
+            config.hypervisor,
+            Some(HypervisorKind::Gunyah {
+                device: Some(PathBuf::from("/not/default"))
+            })
+        );
+    }
 }
