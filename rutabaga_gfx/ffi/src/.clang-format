@@ -8,8 +8,8 @@ AllowShortIfStatementsOnASingleLine: false
 AllowShortLoopsOnASingleLine: false
 BreakBeforeBraces: Linux
 ColumnLimit: 100
-IndentWidth: 8
-TabWidth: 8
-UseTab: Always
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
 Cpp11BracedListStyle: false
 IndentCaseLabels: false

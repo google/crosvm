@@ -11,8 +11,8 @@
 
 #if defined(__WIN32__)
 struct iovec {
-   void *iov_base; /* Starting address */
-   size_t iov_len; /* Length in bytes */
+    void *iov_base; /* Starting address */
+    size_t iov_len; /* Length in bytes */
 };
 #else
 #include <sys/uio.h>
@@ -86,53 +86,53 @@ extern "C" {
 struct rutabaga;
 
 struct rutabaga_fence {
-	uint32_t flags;
-	uint64_t fence_id;
-	uint32_t ctx_id;
-	uint32_t ring_idx;
+    uint32_t flags;
+    uint64_t fence_id;
+    uint32_t ctx_id;
+    uint32_t ring_idx;
 };
 
 struct rutabaga_create_blob {
-	uint32_t blob_mem;
-	uint32_t blob_flags;
-	uint64_t blob_id;
-	uint64_t size;
+    uint32_t blob_mem;
+    uint32_t blob_flags;
+    uint64_t blob_id;
+    uint64_t size;
 };
 
 struct rutabaga_create_3d {
-	uint32_t target;
-	uint32_t format;
-	uint32_t bind;
-	uint32_t width;
-	uint32_t height;
-	uint32_t depth;
-	uint32_t array_size;
-	uint32_t last_level;
-	uint32_t nr_samples;
-	uint32_t flags;
+    uint32_t target;
+    uint32_t format;
+    uint32_t bind;
+    uint32_t width;
+    uint32_t height;
+    uint32_t depth;
+    uint32_t array_size;
+    uint32_t last_level;
+    uint32_t nr_samples;
+    uint32_t flags;
 };
 
 struct rutabaga_transfer {
-	uint32_t x;
-	uint32_t y;
-	uint32_t z;
-	uint32_t w;
-	uint32_t h;
-	uint32_t d;
-	uint32_t level;
-	uint32_t stride;
-	uint32_t layer_stride;
-	uint64_t offset;
+    uint32_t x;
+    uint32_t y;
+    uint32_t z;
+    uint32_t w;
+    uint32_t h;
+    uint32_t d;
+    uint32_t level;
+    uint32_t stride;
+    uint32_t layer_stride;
+    uint64_t offset;
 };
 
 struct rutabaga_iovecs {
-	struct iovec *iovecs;
-	size_t num_iovecs;
+    struct iovec *iovecs;
+    size_t num_iovecs;
 };
 
 struct rutabaga_handle {
-	int64_t os_handle;
-	uint32_t handle_type;
+    int64_t os_handle;
+    uint32_t handle_type;
 };
 
 struct rutabaga_mapping {
@@ -144,13 +144,13 @@ struct rutabaga_mapping {
  * Assumes null-terminated C-string.
  */
 struct rutabaga_channel {
-	const char *channel_name;
-	uint32_t channel_type;
+    const char *channel_name;
+    uint32_t channel_type;
 };
 
 struct rutabaga_channels {
-	struct rutabaga_channel *channels;
-	size_t num_channels;
+    struct rutabaga_channel *channels;
+    size_t num_channels;
 };
 
 /**
@@ -159,13 +159,13 @@ struct rutabaga_channels {
 typedef void (*write_fence_cb)(uint64_t user_data, struct rutabaga_fence fence_data);
 
 struct rutabaga_builder {
-	// Required for correct functioning
-	uint64_t user_data;
-	uint64_t capset_mask;
-	write_fence_cb fence_cb;
+    // Required for correct functioning
+    uint64_t user_data;
+    uint64_t capset_mask;
+    write_fence_cb fence_cb;
 
-	// Optional and platform specific
-	struct rutabaga_channels *channels;
+    // Optional and platform specific
+    struct rutabaga_channels *channels;
 };
 
 /**
@@ -185,14 +185,14 @@ int32_t rutabaga_finish(struct rutabaga **ptr);
 int32_t rutabaga_get_num_capsets(struct rutabaga *ptr, uint32_t *num_capsets);
 
 int32_t rutabaga_get_capset_info(struct rutabaga *ptr, uint32_t capset_index, uint32_t *capset_id,
-				 uint32_t *capset_version, uint32_t *capset_size);
+                                 uint32_t *capset_version, uint32_t *capset_size);
 
 /**
  * # Safety
  * - `capset` must point an array of bytes of size `capset_size`.
  */
 int32_t rutabaga_get_capset(struct rutabaga *ptr, uint32_t capset_id, uint32_t version,
-			    uint8_t *capset, uint32_t capset_size);
+                            uint8_t *capset, uint32_t capset_size);
 
 /**
  * # Safety
@@ -200,18 +200,18 @@ int32_t rutabaga_get_capset(struct rutabaga *ptr, uint32_t capset_id, uint32_t v
  *   `context_name_len` bytes encoding a UTF-8 string.
  */
 int32_t rutabaga_context_create(struct rutabaga *ptr, uint32_t ctx_id, uint32_t context_init,
-				const char *context_name, uint32_t context_name_len);
+                                const char *context_name, uint32_t context_name_len);
 
 int32_t rutabaga_context_destroy(struct rutabaga *ptr, uint32_t ctx_id);
 
 int32_t rutabaga_context_attach_resource(struct rutabaga *ptr, uint32_t ctx_id,
-					 uint32_t resource_id);
+                                         uint32_t resource_id);
 
 int32_t rutabaga_context_detach_resource(struct rutabaga *ptr, uint32_t ctx_id,
-					 uint32_t resource_id);
+                                         uint32_t resource_id);
 
 int32_t rutabaga_resource_create_3d(struct rutabaga *ptr, uint32_t resource_id,
-				    const struct rutabaga_create_3d *create_3d);
+                                    const struct rutabaga_create_3d *create_3d);
 
 /**
  * # Safety
@@ -222,7 +222,7 @@ int32_t rutabaga_resource_create_3d(struct rutabaga *ptr, uint32_t resource_id,
  *   is unreferenced.
  */
 int32_t rutabaga_resource_attach_backing(struct rutabaga *ptr, uint32_t resource_id,
-					 const struct rutabaga_iovecs *iovecs);
+                                         const struct rutabaga_iovecs *iovecs);
 
 int32_t rutabaga_resource_detach_backing(struct rutabaga *ptr, uint32_t resource_id);
 
@@ -232,12 +232,12 @@ int32_t rutabaga_resource_detach_backing(struct rutabaga *ptr, uint32_t resource
  *   iovecs of size `(*iovecs).num_iovecs`.
  */
 int32_t rutabaga_resource_transfer_read(struct rutabaga *ptr, uint32_t ctx_id, uint32_t resource_id,
-					const struct rutabaga_transfer *transfer,
-					const struct iovec *iovec);
+                                        const struct rutabaga_transfer *transfer,
+                                        const struct iovec *iovec);
 
 int32_t rutabaga_resource_transfer_write(struct rutabaga *ptr, uint32_t ctx_id,
-					 uint32_t resource_id,
-					 const struct rutabaga_transfer *transfer);
+                                         uint32_t resource_id,
+                                         const struct rutabaga_transfer *transfer);
 
 /**
  * # Safety
@@ -249,9 +249,9 @@ int32_t rutabaga_resource_transfer_write(struct rutabaga *ptr, uint32_t ctx_id,
  *   is unreferenced.
  */
 int32_t rutabaga_resource_create_blob(struct rutabaga *ptr, uint32_t ctx_id, uint32_t resource_id,
-				      const struct rutabaga_create_blob *rutabaga_create_blob,
-				      const struct rutabaga_iovecs *iovecs,
-				      const struct rutabaga_handle *handle);
+                                      const struct rutabaga_create_blob *rutabaga_create_blob,
+                                      const struct rutabaga_iovecs *iovecs,
+                                      const struct rutabaga_handle *handle);
 
 int32_t rutabaga_resource_unref(struct rutabaga *ptr, uint32_t resource_id);
 
@@ -260,10 +260,10 @@ int32_t rutabaga_resource_unref(struct rutabaga *ptr, uint32_t resource_id);
  * Caller owns raw descriptor on success and is responsible for closing it.
  */
 int32_t rutabaga_resource_export_blob(struct rutabaga *ptr, uint32_t resource_id,
-				      struct rutabaga_handle *handle);
+                                      struct rutabaga_handle *handle);
 
 int32_t rutabaga_resource_map(struct rutabaga *ptr, uint32_t resource_id,
-                struct rutabaga_mapping *mapping);
+                              struct rutabaga_mapping *mapping);
 
 int32_t rutabaga_resource_unmap(struct rutabaga *ptr, uint32_t resource_id);
 
@@ -274,7 +274,7 @@ int32_t rutabaga_resource_map_info(struct rutabaga *ptr, uint32_t resource_id, u
  * - `commands` must point to a contiguous memory region of `size` bytes.
  */
 int32_t rutabaga_submit_command(struct rutabaga *ptr, uint32_t ctx_id, uint8_t *commands,
-				size_t size);
+                                size_t size);
 
 int32_t rutabaga_create_fence(struct rutabaga *ptr, const struct rutabaga_fence *fence);
 
