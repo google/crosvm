@@ -418,132 +418,15 @@ impl<F: AsRawDescriptor> HandleSource<F> {
     }
 }
 
+// NOTE: Prefer adding tests to io_source.rs if not backend specific.
 #[cfg(test)]
 mod tests {
     use std::fs;
 
-    use tempfile::tempfile;
     use tempfile::NamedTempFile;
 
     use super::super::HandleExecutor;
     use super::*;
-    use crate::mem::VecIoWrapper;
-
-    #[test]
-    fn test_read_vec() {
-        let mut f = tempfile().unwrap();
-        f.write_all("data".as_bytes()).unwrap();
-        f.flush().unwrap();
-        f.seek(SeekFrom::Start(0)).unwrap();
-
-        async fn read_data(handle_src: &HandleSource<File>) {
-            let buf: Vec<u8> = vec![0; 4];
-            let (bytes_read, buf) = handle_src.read_to_vec(Some(0), buf).await.unwrap();
-            assert_eq!(bytes_read, 4);
-            assert_eq!(std::str::from_utf8(buf.as_slice()).unwrap(), "data");
-        }
-
-        let ex = HandleExecutor::new().unwrap();
-        let handle_src = HandleSource::new(vec![f].into_boxed_slice()).unwrap();
-        ex.run_until(read_data(&handle_src)).unwrap();
-    }
-
-    #[test]
-    fn test_read_mem() {
-        let mut f = tempfile().unwrap();
-        f.write_all("data".as_bytes()).unwrap();
-        f.flush().unwrap();
-        f.seek(SeekFrom::Start(0)).unwrap();
-
-        async fn read_data(handle_src: &HandleSource<File>) {
-            let mem = Arc::new(VecIoWrapper::from(vec![0; 4]));
-            let bytes_read = handle_src
-                .read_to_mem(
-                    Some(0),
-                    Arc::<VecIoWrapper>::clone(&mem),
-                    &[
-                        MemRegion { offset: 0, len: 2 },
-                        MemRegion { offset: 2, len: 2 },
-                    ],
-                )
-                .await
-                .unwrap();
-            assert_eq!(bytes_read, 4);
-            let vec: Vec<u8> = match Arc::try_unwrap(mem) {
-                Ok(v) => v.into(),
-                Err(_) => panic!("Too many vec refs"),
-            };
-            assert_eq!(std::str::from_utf8(vec.as_slice()).unwrap(), "data");
-        }
-
-        let ex = HandleExecutor::new().unwrap();
-        let handle_src = HandleSource::new(vec![f].into_boxed_slice()).unwrap();
-        ex.run_until(read_data(&handle_src)).unwrap();
-    }
-
-    #[test]
-    fn test_write_vec() {
-        let mut temp_file = NamedTempFile::new().unwrap();
-
-        async fn write_data(handle_src: &HandleSource<File>) {
-            let mut buf: Vec<u8> = Vec::new();
-            buf.extend_from_slice("data".as_bytes());
-
-            let (bytes_written, _) = handle_src.write_from_vec(Some(0), buf).await.unwrap();
-            assert_eq!(bytes_written, 4);
-        }
-
-        let ex = HandleExecutor::new().unwrap();
-        let f = fs::OpenOptions::new()
-            .write(true)
-            .open(temp_file.path())
-            .unwrap();
-        let handle_src = HandleSource::new(vec![f].into_boxed_slice()).unwrap();
-        ex.run_until(write_data(&handle_src)).unwrap();
-
-        let mut buf = vec![0; 4];
-        temp_file.read_exact(&mut buf).unwrap();
-        assert_eq!(std::str::from_utf8(buf.as_slice()).unwrap(), "data");
-    }
-
-    #[test]
-    fn test_write_mem() {
-        let mut temp_file = NamedTempFile::new().unwrap();
-
-        async fn write_data(handle_src: &HandleSource<File>) {
-            let mut buf: Vec<u8> = Vec::new();
-            buf.extend_from_slice("data".as_bytes());
-            let mem = Arc::new(VecIoWrapper::from(buf));
-            let bytes_written = handle_src
-                .write_from_mem(
-                    Some(0),
-                    Arc::<VecIoWrapper>::clone(&mem),
-                    &[
-                        MemRegion { offset: 0, len: 2 },
-                        MemRegion { offset: 2, len: 2 },
-                    ],
-                )
-                .await
-                .unwrap();
-            assert_eq!(bytes_written, 4);
-            match Arc::try_unwrap(mem) {
-                Ok(_) => (),
-                Err(_) => panic!("Too many vec refs"),
-            };
-        }
-
-        let ex = HandleExecutor::new().unwrap();
-        let f = fs::OpenOptions::new()
-            .write(true)
-            .open(temp_file.path())
-            .unwrap();
-        let handle_src = HandleSource::new(vec![f].into_boxed_slice()).unwrap();
-        ex.run_until(write_data(&handle_src)).unwrap();
-
-        let mut buf = vec![0; 4];
-        temp_file.read_exact(&mut buf).unwrap();
-        assert_eq!(std::str::from_utf8(buf.as_slice()).unwrap(), "data");
-    }
 
     #[cfg_attr(all(target_os = "windows", target_env = "gnu"), ignore)]
     #[test]

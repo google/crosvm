@@ -355,6 +355,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
     }
 }
 
+// NOTE: Prefer adding tests to io_source.rs if not backend specific.
 #[cfg(test)]
 mod tests {
     use std::fs::File;
@@ -362,41 +363,6 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-
-    #[test]
-    fn readvec() {
-        async fn go(ex: &FdExecutor) {
-            let f = File::open("/dev/zero").unwrap();
-            let async_source = PollSource::new(f, ex).unwrap();
-            let v = vec![0x55u8; 32];
-            let v_ptr = v.as_ptr();
-            let ret = async_source.read_to_vec(None, v).await.unwrap();
-            assert_eq!(ret.0, 32);
-            let ret_v = ret.1;
-            assert_eq!(v_ptr, ret_v.as_ptr());
-            assert!(ret_v.iter().all(|&b| b == 0));
-        }
-
-        let ex = FdExecutor::new().unwrap();
-        ex.run_until(go(&ex)).unwrap();
-    }
-
-    #[test]
-    fn writevec() {
-        async fn go(ex: &FdExecutor) {
-            let f = OpenOptions::new().write(true).open("/dev/null").unwrap();
-            let async_source = PollSource::new(f, ex).unwrap();
-            let v = vec![0x55u8; 32];
-            let v_ptr = v.as_ptr();
-            let ret = async_source.write_from_vec(None, v).await.unwrap();
-            assert_eq!(ret.0, 32);
-            let ret_v = ret.1;
-            assert_eq!(v_ptr, ret_v.as_ptr());
-        }
-
-        let ex = FdExecutor::new().unwrap();
-        ex.run_until(go(&ex)).unwrap();
-    }
 
     #[test]
     fn fallocate() {

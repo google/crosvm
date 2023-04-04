@@ -176,319 +176,180 @@ impl<F: AsRawDescriptor> IoSource<F> {
     }
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
     use std::fs::File;
-    use std::fs::OpenOptions;
-    use std::future::Future;
-    use std::pin::Pin;
+    use std::io::Seek;
+    use std::io::SeekFrom;
+    use std::io::Write;
     use std::sync::Arc;
-    use std::task::Context;
-    use std::task::Poll;
-    use std::task::Waker;
-    use std::thread;
 
-    use base::Event;
-    use base::EventExt;
-    use sync::Mutex;
+    use tempfile::tempfile;
 
     use super::*;
     use crate::mem::VecIoWrapper;
-    use crate::sys::unix::executor::async_poll_from;
-    use crate::sys::unix::executor::async_uring_from;
+    #[cfg(unix)]
     use crate::sys::unix::uring_executor::is_uring_stable;
-    use crate::sys::unix::FdExecutor;
-    use crate::sys::unix::PollSource;
-    use crate::sys::unix::URingExecutor;
-    use crate::sys::unix::UringSource;
     use crate::Executor;
+    use crate::ExecutorKind;
     use crate::MemRegion;
 
-    struct State {
-        should_quit: bool,
-        waker: Option<Waker>,
+    #[cfg(unix)]
+    fn all_kinds() -> Vec<ExecutorKind> {
+        let mut kinds = vec![ExecutorKind::Fd];
+        if is_uring_stable() {
+            kinds.push(ExecutorKind::Uring);
+        }
+        kinds
+    }
+    #[cfg(windows)]
+    fn all_kinds() -> Vec<ExecutorKind> {
+        // TODO: Test OverlappedSource. It requires files to be opened specially, so this test
+        // fixture needs to be refactored first.
+        vec![ExecutorKind::Handle]
     }
 
-    impl State {
-        fn wake(&mut self) {
-            self.should_quit = true;
-            let waker = self.waker.take();
-
-            if let Some(waker) = waker {
-                waker.wake();
-            }
-        }
-    }
-
-    struct Quit {
-        state: Arc<Mutex<State>>,
-    }
-
-    impl Future for Quit {
-        type Output = ();
-
-        fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<()> {
-            let mut state = self.state.lock();
-            if state.should_quit {
-                return Poll::Ready(());
-            }
-
-            state.waker = Some(cx.waker().clone());
-            Poll::Pending
-        }
-    }
-
-    #[test]
-    fn await_uring_from_poll() {
-        if !is_uring_stable() {
-            return;
-        }
-        // Start a uring operation and then await the result from an FdExecutor.
-        async fn go(source: UringSource<File>) {
-            let v = vec![0xa4u8; 16];
-            let (len, vec) = source.read_to_vec(None, v).await.unwrap();
-            assert_eq!(len, 16);
-            assert!(vec.iter().all(|&b| b == 0));
-        }
-
-        let state = Arc::new(Mutex::new(State {
-            should_quit: false,
-            waker: None,
-        }));
-
-        let uring_ex = URingExecutor::new().unwrap();
-        let f = File::open("/dev/zero").unwrap();
-        let source = UringSource::new(f, &uring_ex).unwrap();
-
-        let quit = Quit {
-            state: state.clone(),
-        };
-        let handle = thread::spawn(move || uring_ex.run_until(quit));
-
-        let poll_ex = FdExecutor::new().unwrap();
-        poll_ex.run_until(go(source)).unwrap();
-
-        state.lock().wake();
-        handle.join().unwrap().unwrap();
-    }
-
-    #[test]
-    fn await_poll_from_uring() {
-        if !is_uring_stable() {
-            return;
-        }
-        // Start a poll operation and then await the result from a URingExecutor.
-        async fn go(source: PollSource<File>) {
-            let v = vec![0x2cu8; 16];
-            let (len, vec) = source.read_to_vec(None, v).await.unwrap();
-            assert_eq!(len, 16);
-            assert!(vec.iter().all(|&b| b == 0));
-        }
-
-        let state = Arc::new(Mutex::new(State {
-            should_quit: false,
-            waker: None,
-        }));
-
-        let poll_ex = FdExecutor::new().unwrap();
-        let f = File::open("/dev/zero").unwrap();
-        let source = PollSource::new(f, &poll_ex).unwrap();
-
-        let quit = Quit {
-            state: state.clone(),
-        };
-        let handle = thread::spawn(move || poll_ex.run_until(quit));
-
-        let uring_ex = URingExecutor::new().unwrap();
-        uring_ex.run_until(go(source)).unwrap();
-
-        state.lock().wake();
-        handle.join().unwrap().unwrap();
+    fn tmpfile_with_contents(bytes: &[u8]) -> File {
+        let mut f = tempfile().unwrap();
+        f.write_all(bytes).unwrap();
+        f.flush().unwrap();
+        f.seek(SeekFrom::Start(0)).unwrap();
+        f
     }
 
     #[test]
     fn readvec() {
-        if !is_uring_stable() {
-            return;
-        }
-        async fn go<F: AsRawDescriptor>(async_source: IoSource<F>) {
-            let v = vec![0x55u8; 32];
-            let v_ptr = v.as_ptr();
-            let ret = async_source.read_to_vec(None, v).await.unwrap();
-            assert_eq!(ret.0, 32);
-            let ret_v = ret.1;
-            assert_eq!(v_ptr, ret_v.as_ptr());
-            assert!(ret_v.iter().all(|&b| b == 0));
-        }
+        for kind in all_kinds() {
+            async fn go<F: AsRawDescriptor>(async_source: IoSource<F>) {
+                let v = vec![0x55u8; 32];
+                let v_ptr = v.as_ptr();
+                let (n, v) = async_source.read_to_vec(None, v).await.unwrap();
+                assert_eq!(v_ptr, v.as_ptr());
+                assert_eq!(n, 4);
+                assert_eq!(&v[..4], "data".as_bytes());
+            }
 
-        let f = File::open("/dev/zero").unwrap();
-        let uring_ex = URingExecutor::new().unwrap();
-        let uring_source = async_uring_from(f, &uring_ex).unwrap();
-        uring_ex.run_until(go(uring_source)).unwrap();
-
-        let f = File::open("/dev/zero").unwrap();
-        let poll_ex = FdExecutor::new().unwrap();
-        let poll_source = async_poll_from(f, &poll_ex).unwrap();
-        poll_ex.run_until(go(poll_source)).unwrap();
+            let f = tmpfile_with_contents("data".as_bytes());
+            let ex = Executor::with_executor_kind(kind).unwrap();
+            let source = ex.async_from(f).unwrap();
+            ex.run_until(go(source)).unwrap();
+        }
     }
 
     #[test]
     fn writevec() {
-        if !is_uring_stable() {
-            return;
-        }
-        async fn go<F: AsRawDescriptor>(async_source: IoSource<F>) {
-            let v = vec![0x55u8; 32];
-            let v_ptr = v.as_ptr();
-            let ret = async_source.write_from_vec(None, v).await.unwrap();
-            assert_eq!(ret.0, 32);
-            let ret_v = ret.1;
-            assert_eq!(v_ptr, ret_v.as_ptr());
-        }
+        for kind in all_kinds() {
+            async fn go<F: AsRawDescriptor>(async_source: IoSource<F>) {
+                let v = "data".as_bytes().to_vec();
+                let v_ptr = v.as_ptr();
+                let (n, v) = async_source.write_from_vec(None, v).await.unwrap();
+                assert_eq!(n, 4);
+                assert_eq!(v_ptr, v.as_ptr());
+            }
 
-        let f = OpenOptions::new().write(true).open("/dev/null").unwrap();
-        let ex = URingExecutor::new().unwrap();
-        let uring_source = async_uring_from(f, &ex).unwrap();
-        ex.run_until(go(uring_source)).unwrap();
+            let mut f = tmpfile_with_contents(&[]);
+            let ex = Executor::with_executor_kind(kind).unwrap();
+            let source = ex.async_from(f.try_clone().unwrap()).unwrap();
+            ex.run_until(go(source)).unwrap();
 
-        let f = OpenOptions::new().write(true).open("/dev/null").unwrap();
-        let poll_ex = FdExecutor::new().unwrap();
-        let poll_source = async_poll_from(f, &poll_ex).unwrap();
-        poll_ex.run_until(go(poll_source)).unwrap();
+            f.rewind().unwrap();
+            assert_eq!(std::io::read_to_string(f).unwrap(), "data");
+        }
     }
 
     #[test]
     fn readmem() {
-        if !is_uring_stable() {
-            return;
-        }
-        async fn go<F: AsRawDescriptor>(async_source: IoSource<F>) {
-            let mem = Arc::new(VecIoWrapper::from(vec![0x55u8; 8192]));
-            let ret = async_source
-                .read_to_mem(
-                    None,
-                    Arc::<VecIoWrapper>::clone(&mem),
-                    &[
-                        MemRegion { offset: 0, len: 32 },
-                        MemRegion {
-                            offset: 200,
-                            len: 56,
-                        },
-                    ],
-                )
-                .await
-                .unwrap();
-            assert_eq!(ret, 32 + 56);
-            let vec: Vec<u8> = match Arc::try_unwrap(mem) {
-                Ok(v) => v.into(),
-                Err(_) => panic!("Too many vec refs"),
-            };
-            assert!(vec.iter().take(32).all(|&b| b == 0));
-            assert!(vec.iter().skip(32).take(168).all(|&b| b == 0x55));
-            assert!(vec.iter().skip(200).take(56).all(|&b| b == 0));
-            assert!(vec.iter().skip(256).all(|&b| b == 0x55));
-        }
+        for kind in all_kinds() {
+            async fn go<F: AsRawDescriptor>(async_source: IoSource<F>) {
+                let mem = Arc::new(VecIoWrapper::from(vec![b' '; 10]));
+                let n = async_source
+                    .read_to_mem(
+                        None,
+                        Arc::<VecIoWrapper>::clone(&mem),
+                        &[
+                            MemRegion { offset: 0, len: 2 },
+                            MemRegion { offset: 4, len: 1 },
+                        ],
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(n, 3);
+                let vec: Vec<u8> = match Arc::try_unwrap(mem) {
+                    Ok(v) => v.into(),
+                    Err(_) => panic!("Too many vec refs"),
+                };
+                assert_eq!(std::str::from_utf8(&vec).unwrap(), "da  t     ");
+            }
 
-        let f = File::open("/dev/zero").unwrap();
-        let ex = URingExecutor::new().unwrap();
-        let uring_source = async_uring_from(f, &ex).unwrap();
-        ex.run_until(go(uring_source)).unwrap();
-
-        let f = File::open("/dev/zero").unwrap();
-        let poll_ex = FdExecutor::new().unwrap();
-        let poll_source = async_poll_from(f, &poll_ex).unwrap();
-        poll_ex.run_until(go(poll_source)).unwrap();
+            let f = tmpfile_with_contents("data".as_bytes());
+            let ex = Executor::with_executor_kind(kind).unwrap();
+            let source = ex.async_from(f).unwrap();
+            ex.run_until(go(source)).unwrap();
+        }
     }
 
     #[test]
     fn writemem() {
-        if !is_uring_stable() {
-            return;
-        }
-        async fn go<F: AsRawDescriptor>(async_source: IoSource<F>) {
-            let mem = Arc::new(VecIoWrapper::from(vec![0x55u8; 8192]));
-            let ret = async_source
-                .write_from_mem(
-                    None,
-                    Arc::<VecIoWrapper>::clone(&mem),
-                    &[MemRegion { offset: 0, len: 32 }],
-                )
-                .await
-                .unwrap();
-            assert_eq!(ret, 32);
-        }
+        for kind in all_kinds() {
+            async fn go<F: AsRawDescriptor>(async_source: IoSource<F>) {
+                let mem = Arc::new(VecIoWrapper::from("data".as_bytes().to_vec()));
+                let ret = async_source
+                    .write_from_mem(
+                        None,
+                        Arc::<VecIoWrapper>::clone(&mem),
+                        &[
+                            MemRegion { offset: 0, len: 1 },
+                            MemRegion { offset: 2, len: 2 },
+                        ],
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(ret, 3);
+            }
 
-        let f = OpenOptions::new().write(true).open("/dev/null").unwrap();
-        let ex = URingExecutor::new().unwrap();
-        let uring_source = async_uring_from(f, &ex).unwrap();
-        ex.run_until(go(uring_source)).unwrap();
+            let mut f = tmpfile_with_contents(&[]);
+            let ex = Executor::with_executor_kind(kind).unwrap();
+            let source = ex.async_from(f.try_clone().unwrap()).unwrap();
+            ex.run_until(go(source)).unwrap();
 
-        let f = OpenOptions::new().write(true).open("/dev/null").unwrap();
-        let poll_ex = FdExecutor::new().unwrap();
-        let poll_source = async_poll_from(f, &poll_ex).unwrap();
-        poll_ex.run_until(go(poll_source)).unwrap();
+            f.rewind().unwrap();
+            assert_eq!(std::io::read_to_string(f).unwrap(), "dta");
+        }
     }
 
+    #[cfg(unix)] // TODO: Not implemented on windows.
     #[test]
     fn read_u64s() {
-        if !is_uring_stable() {
-            return;
+        for kind in all_kinds() {
+            async fn go(source: IoSource<File>) -> u64 {
+                source.read_u64().await.unwrap()
+            }
+
+            let f = tmpfile_with_contents(&42u64.to_ne_bytes());
+            let ex = Executor::with_executor_kind(kind).unwrap();
+            let val = ex.run_until(go(ex.async_from(f).unwrap())).unwrap();
+            assert_eq!(val, 42);
         }
-        async fn go(async_source: File, ex: URingExecutor) -> u64 {
-            let source = async_uring_from(async_source, &ex).unwrap();
-            source.read_u64().await.unwrap()
-        }
-
-        let f = File::open("/dev/zero").unwrap();
-        let ex = URingExecutor::new().unwrap();
-        let val = ex.run_until(go(f, ex.clone())).unwrap();
-        assert_eq!(val, 0);
-    }
-
-    #[test]
-    fn read_eventfds() {
-        if !is_uring_stable() {
-            return;
-        }
-
-        async fn go<F: AsRawDescriptor>(source: IoSource<F>) -> u64 {
-            source.read_u64().await.unwrap()
-        }
-
-        let eventfd = Event::new().unwrap();
-        eventfd.write_count(0x55).unwrap();
-        let ex = URingExecutor::new().unwrap();
-        let uring_source = async_uring_from(eventfd, &ex).unwrap();
-        let val = ex.run_until(go(uring_source)).unwrap();
-        assert_eq!(val, 0x55);
-
-        let eventfd = Event::new().unwrap();
-        eventfd.write_count(0xaa).unwrap();
-        let poll_ex = FdExecutor::new().unwrap();
-        let poll_source = async_poll_from(eventfd, &poll_ex).unwrap();
-        let val = poll_ex.run_until(go(poll_source)).unwrap();
-        assert_eq!(val, 0xaa);
     }
 
     #[test]
     fn fsync() {
-        if !is_uring_stable() {
-            return;
-        }
-        async fn go<F: AsRawDescriptor>(source: IoSource<F>) {
-            let v = vec![0x55u8; 32];
-            let v_ptr = v.as_ptr();
-            let ret = source.write_from_vec(None, v).await.unwrap();
-            assert_eq!(ret.0, 32);
-            let ret_v = ret.1;
-            assert_eq!(v_ptr, ret_v.as_ptr());
-            source.fsync().await.unwrap();
-        }
+        for kind in all_kinds() {
+            async fn go<F: AsRawDescriptor>(source: IoSource<F>) {
+                let v = vec![0x55u8; 32];
+                let v_ptr = v.as_ptr();
+                let ret = source.write_from_vec(None, v).await.unwrap();
+                assert_eq!(ret.0, 32);
+                let ret_v = ret.1;
+                assert_eq!(v_ptr, ret_v.as_ptr());
+                source.fsync().await.unwrap();
+            }
 
-        let f = tempfile::tempfile().unwrap();
-        let ex = Executor::new().unwrap();
-        let source = ex.async_from(f).unwrap();
+            let f = tempfile::tempfile().unwrap();
+            let ex = Executor::with_executor_kind(kind).unwrap();
+            let source = ex.async_from(f).unwrap();
 
-        ex.run_until(go(source)).unwrap();
+            ex.run_until(go(source)).unwrap();
+        }
     }
 }

@@ -400,6 +400,7 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
     }
 }
 
+// NOTE: Prefer adding tests to io_source.rs if not backend specific.
 #[cfg(test)]
 mod tests {
     use std::fs::OpenOptions;
