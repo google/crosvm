@@ -12,6 +12,7 @@ import time
 import typing
 from contextlib import closing
 from pathlib import Path
+from random import randrange
 from typing import Dict, List, Literal, Optional, Tuple
 
 from .common import CACHE_DIR, download_file, cmd, rich, console
@@ -55,6 +56,10 @@ def pid_path(arch: Arch):
     return data_dir(arch).joinpath("pid")
 
 
+def ssh_port_path(arch: Arch):
+    return data_dir(arch).joinpath("ssh_port")
+
+
 def log_path(arch: Arch):
     return data_dir(arch).joinpath("vm_log")
 
@@ -75,10 +80,19 @@ def rootfs_img_path(arch: Arch):
     return data_dir(arch).joinpath(f"rootfs-{arch}-{BASE_IMG_VERSION}.qcow2")
 
 
+def ssh_port(arch: Arch) -> int:
+    # Default to fixed ports used by VMs started by previous versions of this script.
+    # TODO(b/275717656): Remove after a while
+    if not ssh_port_path(arch).exists():
+        return SSH_PORTS[arch]
+    return int(ssh_port_path(arch).read_text())
+
+
 ssh = cmd("ssh")
 qemu_img = cmd("qemu-img")
 
 # List of ports to use for SSH for each architecture
+# TODO(b/275717656): Remove after a while
 SSH_PORTS: Dict[Arch, int] = {
     "x86_64": 9000,
     "aarch64": 9001,
@@ -97,7 +111,6 @@ ARCH_TO_QEMU: Dict[Arch, cmd] = {
     "x86_64": cmd(
         "qemu-system-x86_64",
         "-cpu host",
-        f"-netdev user,id=net0,hostfwd=tcp::{SSH_PORTS['x86_64']}-:22",
         "-enable-kvm" if KVM_SUPPORT else None,
         *SHARED_ARGS,
     ),
@@ -107,7 +120,6 @@ ARCH_TO_QEMU: Dict[Arch, cmd] = {
         "-machine virt,virtualization=true,gic-version=3",
         "-cpu cortex-a57",
         "-bios /usr/share/qemu-efi-aarch64/QEMU_EFI.fd",
-        f"-netdev user,id=net0,hostfwd=tcp::{SSH_PORTS['aarch64']}-:22",
         *SHARED_ARGS,
     ),
 }
@@ -115,7 +127,7 @@ ARCH_TO_QEMU: Dict[Arch, cmd] = {
 
 def ssh_opts(arch: Arch) -> Dict[str, str]:
     return {
-        "Port": str(SSH_PORTS[arch]),
+        "Port": str(ssh_port(arch)),
         "User": "crosvm",
         "StrictHostKeyChecking": "no",
         "UserKnownHostsFile": "/dev/null",
@@ -160,15 +172,25 @@ def read_pid_file(arch: Arch):
         return int(pid_file.read())
 
 
+def is_port_available(port: int):
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+        return sock.connect_ex(("127.0.0.1", port)) != 0
+
+
+def pick_ssh_port():
+    for _ in range(5):
+        port = randrange(1024, 32768)
+        if is_port_available(port):
+            return port
+    raise Exception("Could not find a free port")
+
+
 def run_qemu(
     arch: Arch,
     hda: Path,
     background: bool = False,
 ):
-    if not is_ssh_port_available(arch):
-        print(f"Port {SSH_PORTS[arch]} is occupied, but is required for the {arch} vm to run.")
-        print(f"You may be running the {arch}vm in another place and need to kill it.")
-        sys.exit(1)
+    port = pick_ssh_port()
 
     qemu = ARCH_TO_QEMU[arch]
     if background:
@@ -180,7 +202,7 @@ def run_qemu(
     command = qemu.with_args(
         f"-hda {hda}",
         f"-serial {serial}",
-        f"-netdev user,id=net0,hostfwd=tcp::{SSH_PORTS[arch]}-:22",
+        f"-netdev user,id=net0,hostfwd=tcp::{port}-:22",
     )
     if background:
         # Start qemu in a new session so it can outlive this process.
@@ -202,7 +224,8 @@ def run_qemu(
         sys.stdout.flush()
         process.stdout.close()
 
-        # Save pid so we can manage the process later.
+        # Save port and pid so we can manage the process later.
+        ssh_port_path(arch).write_text(str(port))
         write_pid_file(arch, process.pid)
     else:
         command.fg()
@@ -269,18 +292,13 @@ def build_if_needed(arch: Arch, reset: bool = False):
         ).fg(quiet=True)
 
 
-def is_ssh_port_available(arch: Arch):
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
-        return sock.connect_ex(("127.0.0.1", SSH_PORTS[arch])) != 0
-
-
 def up(arch: Arch, reset: bool = False, wait: bool = False, timeout: int = 120):
     "Starts the test vm if it's not already running. Optionally wait for it to be reachable."
 
     # Try waiting for the running VM, if it does not become reachable, kill it.
     if is_running(arch):
         if not wait:
-            console.print(f"{arch} VM is running on port {SSH_PORTS[arch]}")
+            console.print(f"{arch} VM is running on port {ssh_port(arch)}")
             return
         if not wait_until_reachable(arch, timeout):
             if is_running(arch):
@@ -289,7 +307,7 @@ def up(arch: Arch, reset: bool = False, wait: bool = False, timeout: int = 120):
             else:
                 print(f"{arch} VM stopped. Starting it again.")
         else:
-            console.print(f"{arch} VM is running on port {SSH_PORTS[arch]}")
+            console.print(f"{arch} VM is running on port {ssh_port(arch)}")
             return
 
     build_if_needed(arch, reset)
@@ -301,7 +319,7 @@ def up(arch: Arch, reset: bool = False, wait: bool = False, timeout: int = 120):
 
     if wait:
         if wait_until_reachable(arch, timeout):
-            console.print(f"{arch} VM is running on port {SSH_PORTS[arch]}")
+            console.print(f"{arch} VM is running on port {ssh_port(arch)}")
         else:
             raise Exception(f"Waiting for {arch} VM timed out.")
 
