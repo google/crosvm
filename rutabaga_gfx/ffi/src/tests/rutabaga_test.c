@@ -70,6 +70,45 @@ static void rutabaga_test_write_fence(uint64_t user_data, struct rutabaga_fence 
     test->value = fence_data.fence_id;
 }
 
+static int test_capset_mask_calculation(void)
+{
+    int result;
+    uint64_t capset_mask;
+
+    result = rutabaga_calculate_capset_mask("cross-domain:gfxstream", &capset_mask);
+    CHECK_RESULT(result);
+    CHECK(capset_mask == ((1 << RUTABAGA_CAPSET_CROSS_DOMAIN) | (1 << RUTABAGA_CAPSET_GFXSTREAM)));
+
+    result = rutabaga_calculate_capset_mask(":gfxstream", &capset_mask);
+    CHECK_RESULT(result);
+    CHECK(capset_mask == (1 << RUTABAGA_CAPSET_GFXSTREAM));
+
+    result = rutabaga_calculate_capset_mask("cross-domain:", &capset_mask);
+    CHECK_RESULT(result);
+    CHECK(capset_mask == (1 << RUTABAGA_CAPSET_CROSS_DOMAIN));
+
+    result = rutabaga_calculate_capset_mask("cross-domain", &capset_mask);
+    CHECK_RESULT(result);
+    CHECK(capset_mask == (1 << RUTABAGA_CAPSET_CROSS_DOMAIN));
+
+    result = rutabaga_calculate_capset_mask(":", &capset_mask);
+    CHECK_RESULT(result);
+    CHECK(capset_mask == 0);
+
+    result = rutabaga_calculate_capset_mask("fake", &capset_mask);
+    CHECK_RESULT(result);
+    CHECK(capset_mask == 0);
+
+    result = rutabaga_calculate_capset_mask("", &capset_mask);
+    CHECK_RESULT(result);
+    CHECK(capset_mask == 0);
+
+    result = rutabaga_calculate_capset_mask(NULL, &capset_mask);
+    CHECK(result != 0);
+
+    return 0;
+}
+
 static int test_rutabaga_init(struct rutabaga_test *test, uint64_t capset_mask)
 {
     int result;
@@ -372,6 +411,9 @@ int main(int argc, char *argv[])
     for (uint32_t i = 0; i < num_context_names; i++) {
         const char *context_name = context_names[i];
         for (uint32_t j = 0; j < NUM_ITERATIONS; j++) {
+            result = test_capset_mask_calculation();
+            CHECK_RESULT(result);
+
             result = test_rutabaga_init(&test, 1 << RUTABAGA_CAPSET_CROSS_DOMAIN);
             CHECK_RESULT(result);
 

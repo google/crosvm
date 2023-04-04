@@ -263,13 +263,13 @@ const RUTABAGA_CAPSETS: [RutabagaCapsetInfo; 6] = [
     },
 ];
 
-pub fn calculate_capset_mask(context_names: Vec<String>) -> u64 {
+pub fn calculate_capset_mask<'a, I: Iterator<Item = &'a str>>(context_names: I) -> u64 {
     let mut capset_mask = 0;
-    context_names.into_iter().for_each(|name| {
+    for name in context_names {
         if let Some(capset) = RUTABAGA_CAPSETS.iter().find(|capset| capset.name == name) {
             capset_mask |= 1 << capset.capset_id;
         };
-    });
+    }
 
     capset_mask
 }

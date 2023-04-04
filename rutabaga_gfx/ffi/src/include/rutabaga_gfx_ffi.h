@@ -169,6 +169,14 @@ struct rutabaga_builder {
 };
 
 /**
+ * Expects `capset_names` to delimited by a colon, i.e: "gfxstream:cross_domain:magma".
+ *
+ * # Safety
+ * - - `capset_names` must be a null-terminated C-string.
+ */
+int32_t rutabaga_calculate_capset_mask(const char *capset_names, uint64_t *capset_mask);
+
+/**
  * # Safety
  * - If `(*builder).channels` is not null, the caller must ensure `(*channels).channels` points to
  *   a valid array of `struct rutabaga_channel` of size `(*channels).num_channels`.

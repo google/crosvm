@@ -31,9 +31,7 @@ mod serde_capset_mask {
 
     pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
         let s = String::deserialize(deserializer)?;
-        let context_types: Vec<String> = s.split(':').map(|s| s.to_string()).collect();
-
-        Ok(rutabaga_gfx::calculate_capset_mask(context_types))
+        Ok(rutabaga_gfx::calculate_capset_mask(s.split(':')))
     }
 }
 
