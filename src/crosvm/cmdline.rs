@@ -302,7 +302,7 @@ pub struct SuspendCommand {
 
 #[derive(FromArgs)]
 #[argh(subcommand, name = "enable")]
-/// Enable swap of a VM
+/// Enable vmm-swap of a VM. The guest memory is moved to staging memory
 pub struct SwapEnableCommand {
     #[argh(positional, arg_name = "VM_SOCKET")]
     /// VM Socket path
@@ -329,7 +329,7 @@ pub struct SwapOutCommand {
 
 #[derive(FromArgs)]
 #[argh(subcommand, name = "disable")]
-/// Disable swap of a VM
+/// Disable vmm-swap of a VM
 pub struct SwapDisableCommand {
     #[argh(positional, arg_name = "VM_SOCKET")]
     /// VM Socket path
@@ -338,15 +338,16 @@ pub struct SwapDisableCommand {
 
 #[derive(FromArgs)]
 #[argh(subcommand, name = "status")]
-/// Get swap status of a VM
+/// Get vmm-swap status of a VM
 pub struct SwapStatusCommand {
     #[argh(positional, arg_name = "VM_SOCKET")]
     /// VM Socket path
     pub socket_path: String,
 }
 
+/// Vmm-swap commands
 #[derive(FromArgs)]
-#[argh(subcommand, name = "swap", description = "vmm-swap related commands")]
+#[argh(subcommand, name = "swap")]
 pub struct SwapCommand {
     #[argh(subcommand)]
     pub nested: SwapSubcommands,
@@ -354,7 +355,6 @@ pub struct SwapCommand {
 
 #[derive(FromArgs)]
 #[argh(subcommand)]
-/// Swap related operations
 pub enum SwapSubcommands {
     Enable(SwapEnableCommand),
     Trim(SwapTrimCommand),
@@ -1909,7 +1909,8 @@ pub struct RunCommand {
     #[argh(option, long = "swap", arg_name = "PATH")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
-    /// path to create the swap files from. The PATH should be a directory.
+    /// enable vmm-swap via an unnamed temporary file on the filesystem which contains the specified
+    /// directory.
     pub swap_dir: Option<PathBuf>,
 
     #[argh(option, arg_name = "N")]
