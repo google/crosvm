@@ -3,11 +3,11 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-FROM docker.io/debian:testing-slim
+FROM docker.io/debian:testing
 ARG BOARD=hatch
 
 RUN apt update \
-    && apt install -y git python3-pip curl sudo wget
+    && apt install -y git python3-pip curl sudo wget procps
 
 # Add a new password-less sudoer user crosvmdev
 RUN useradd -ms /bin/bash crosvmdev \

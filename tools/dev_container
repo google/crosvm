@@ -53,7 +53,7 @@ CROS_CONTAINER_NAME = (
 )
 
 DEV_IMAGE_NAME = "gcr.io/crosvm-infra/crosvm_dev_user"
-CROS_IMAGE_NAME = "gcr.io/crosvm-infra-experimental/crosvm_cros_cloudbuild"
+CROS_IMAGE_NAME = "gcr.io/crosvm-infra/crosvm_cros_cloudbuild"
 DEV_IMAGE_VERSION = (CROSVM_ROOT / "tools/impl/dev_container/version").read_text().strip()
 
 CACHE_DIR = os.environ.get("CROSVM_CONTAINER_CACHE", None)
@@ -246,7 +246,7 @@ def main(
 
     if pull:
         if cros:
-            docker("pull", "gcr.io/crosvm-infra-experimental/crosvm_cros_cloudbuild").fg()
+            docker("pull", CROS_IMAGE_NAME).fg()
         else:
             docker("pull", f"gcr.io/crosvm-infra/crosvm_dev:{DEV_IMAGE_VERSION}").fg()
             docker("pull", f"gcr.io/crosvm-infra/crosvm_dev_user:{DEV_IMAGE_VERSION}").fg()
