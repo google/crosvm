@@ -663,7 +663,7 @@ impl RutabagaContext for CrossDomainContext {
                         info_3d: Some(info_3d),
                         vulkan_info: reqs.vulkan_info,
                         backing_iovecs: None,
-                        import_mask: 0,
+                        component_mask: 1 << (RutabagaComponentType::CrossDomain as u8),
                     })
                 }
                 _ => Err(RutabagaError::InvalidCrossDomainItemType),
@@ -695,7 +695,7 @@ impl RutabagaContext for CrossDomainContext {
                         info_3d: None,
                         vulkan_info: None,
                         backing_iovecs: None,
-                        import_mask: 0,
+                        component_mask: 1 << (RutabagaComponentType::CrossDomain as u8),
                     })
                 }
                 _ => Err(RutabagaError::InvalidCrossDomainItemType),
@@ -871,7 +871,7 @@ impl RutabagaComponent for CrossDomain {
             info_3d: None,
             vulkan_info: None,
             backing_iovecs: iovec_opt,
-            import_mask: 0,
+            component_mask: 1 << (RutabagaComponentType::CrossDomain as u8),
         })
     }
 

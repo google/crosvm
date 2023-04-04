@@ -178,7 +178,7 @@ impl RutabagaComponent for Rutabaga2D {
             info_3d: None,
             vulkan_info: None,
             backing_iovecs: None,
-            import_mask: 0,
+            component_mask: 1 << (RutabagaComponentType::Rutabaga2D as u8),
         })
     }
 

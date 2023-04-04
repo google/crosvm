@@ -42,7 +42,7 @@ pub struct RutabagaResource {
     pub backing_iovecs: Option<Vec<RutabagaIovec>>,
 
     /// Bitmask of components that have already imported this resource
-    pub import_mask: u32,
+    pub component_mask: u8,
 }
 
 /// A RutabagaComponent is a building block of the Virtual Graphics Interface (VGI).  Each component
@@ -102,7 +102,7 @@ pub trait RutabagaComponent {
             info_3d: None,
             vulkan_info: None,
             backing_iovecs: None,
-            import_mask: 0,
+            component_mask: 0,
         })
     }
 

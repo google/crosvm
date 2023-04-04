@@ -431,7 +431,7 @@ impl RutabagaComponent for Gfxstream {
             info_3d: None,
             vulkan_info: None,
             backing_iovecs: None,
-            import_mask: 0,
+            component_mask: 1 << (RutabagaComponentType::Gfxstream as u8),
         })
     }
 
@@ -617,7 +617,7 @@ impl RutabagaComponent for Gfxstream {
             info_3d: None,
             vulkan_info: self.vulkan_info(resource_id).ok(),
             backing_iovecs: iovec_opt,
-            import_mask: 0,
+            component_mask: 1 << (RutabagaComponentType::Gfxstream as u8),
         })
     }
 

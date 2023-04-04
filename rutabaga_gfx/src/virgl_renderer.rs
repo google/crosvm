@@ -48,7 +48,7 @@ struct VirglRendererContext {
 }
 
 fn import_resource(resource: &mut RutabagaResource) -> RutabagaResult<()> {
-    if (resource.import_mask & (1 << (RutabagaComponentType::VirglRenderer as u32))) != 0 {
+    if (resource.component_mask & (1 << (RutabagaComponentType::VirglRenderer as u8))) != 0 {
         return Ok(());
     }
 
@@ -77,7 +77,7 @@ fn import_resource(resource: &mut RutabagaResource) -> RutabagaResult<()> {
                     libc::close(dmabuf_fd);
                     return Ok(());
                 }
-                resource.import_mask |= 1 << (RutabagaComponentType::VirglRenderer as u32);
+                resource.component_mask |= 1 << (RutabagaComponentType::VirglRenderer as u8);
             }
         }
     }
@@ -454,7 +454,7 @@ impl RutabagaComponent for VirglRenderer {
             info_3d: self.query(resource_id).ok(),
             vulkan_info: None,
             backing_iovecs: None,
-            import_mask: 1 << (RutabagaComponentType::VirglRenderer as u32),
+            component_mask: 1 << (RutabagaComponentType::VirglRenderer as u8),
         })
     }
 
@@ -622,7 +622,7 @@ impl RutabagaComponent for VirglRenderer {
                 info_3d: self.query(resource_id).ok(),
                 vulkan_info: None,
                 backing_iovecs: iovec_opt,
-                import_mask: 1 << (RutabagaComponentType::VirglRenderer as u32),
+                component_mask: 1 << (RutabagaComponentType::VirglRenderer as u8),
             })
         }
         #[cfg(not(feature = "virgl_renderer_next"))]

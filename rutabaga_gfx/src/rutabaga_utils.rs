@@ -610,6 +610,7 @@ pub struct RutabagaChannel {
 }
 
 /// Enumeration of possible rutabaga components.
+#[repr(u8)]
 #[derive(Copy, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub enum RutabagaComponentType {
     Rutabaga2D,
