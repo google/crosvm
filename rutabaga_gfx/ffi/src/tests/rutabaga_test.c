@@ -13,7 +13,8 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "../include/rutabaga_gfx_ffi.h"
+#include <rutabaga_gfx/rutabaga_gfx_ffi.h>
+
 #include "virtgpu_cross_domain_protocol.h"
 
 #define CHECK_RESULT(result)                                                                       \
