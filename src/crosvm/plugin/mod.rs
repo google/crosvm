@@ -48,6 +48,7 @@ use base::Result as SysResult;
 use base::SignalFd;
 use base::WaitContext;
 use base::SIGRTMIN;
+use devices::virtio::NetParametersMode;
 use jail::create_sandbox_minijail;
 use jail::mount_proc;
 use jail::SandboxConfig;
@@ -548,30 +549,51 @@ pub fn run_config(cfg: Config) -> Result<()> {
     };
 
     let mut tap_interfaces: Vec<Tap> = Vec::new();
-    if let Some(host_ip) = cfg.host_ip {
-        if let Some(netmask) = cfg.netmask {
-            if let Some(mac_address) = cfg.mac_address {
+    for net_params in cfg.net {
+        if net_params.vhost_net {
+            bail!("vhost-net not supported with plugin");
+        }
+
+        match net_params.mode {
+            NetParametersMode::RawConfig {
+                host_ip,
+                netmask,
+                mac,
+            } => {
                 let tap = Tap::new(false, false).context("error opening tap device")?;
                 tap.set_ip_addr(host_ip).context("error setting tap ip")?;
                 tap.set_netmask(netmask)
                     .context("error setting tap netmask")?;
-                tap.set_mac_address(mac_address)
+                tap.set_mac_address(mac)
                     .context("error setting tap mac address")?;
 
                 tap.enable().context("error enabling tap device")?;
                 tap_interfaces.push(tap);
             }
+            NetParametersMode::TapName { tap_name, mac } => {
+                let tap = Tap::new_with_name(tap_name.as_bytes(), true, false)
+                    .context("failed to create tap device from name")?;
+                if let Some(mac) = mac {
+                    tap.set_mac_address(mac)
+                        .context("error setting tap mac addres")?;
+                }
+                tap_interfaces.push(tap);
+            }
+            NetParametersMode::TapFd { tap_fd, mac } => {
+                // Safe because we ensure that we get a unique handle to the fd.
+                let tap = unsafe {
+                    Tap::from_raw_descriptor(
+                        validate_raw_descriptor(tap_fd).context("failed to validate raw tap fd")?,
+                    )
+                    .context("failed to create tap device from raw fd")?
+                };
+                if let Some(mac) = mac {
+                    tap.set_mac_address(mac)
+                        .context("error setting tap mac addres")?;
+                }
+                tap_interfaces.push(tap);
+            }
         }
-    }
-    for tap_fd in cfg.tap_fd {
-        // Safe because we ensure that we get a unique handle to the fd.
-        let tap = unsafe {
-            Tap::from_raw_descriptor(
-                validate_raw_descriptor(tap_fd).context("failed to validate raw tap fd")?,
-            )
-            .context("failed to create tap device from raw fd")?
-        };
-        tap_interfaces.push(tap);
     }
 
     let plugin_args: Vec<&str> = cfg.params.iter().map(|s| &s[..]).collect();

@@ -46,6 +46,8 @@ use devices::virtio::GpuDisplayParameters;
 use devices::virtio::GpuParameters;
 #[cfg(unix)]
 use devices::virtio::NetParameters;
+#[cfg(unix)]
+use devices::virtio::NetParametersMode;
 #[cfg(feature = "audio")]
 use devices::Ac97Parameters;
 use devices::PflashParameters;
@@ -2039,8 +2041,9 @@ pub struct RunCommand {
     /// path to sysfs of platform pass through
     pub vfio_platform: Vec<VfioOption>,
 
+    #[cfg(unix)]
     #[argh(switch)]
-    #[serde(skip)] // TODO(b/255223604)
+    #[serde(skip)] // Deprecated - use `net` instead.
     #[merge(strategy = overwrite_false)]
     /// use vhost for networking
     pub vhost_net: bool,
@@ -2651,8 +2654,6 @@ impl TryFrom<RunCommand> for super::config::Config {
             }
         }
 
-        cfg.vhost_net = cmd.vhost_net;
-
         #[cfg(feature = "tpm")]
         {
             cfg.software_tpm = cmd.software_tpm;
@@ -2747,12 +2748,70 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.shared_dirs = cmd.shared_dir;
 
             cfg.net = cmd.net;
-            cfg.host_ip = cmd.host_ip;
-            cfg.netmask = cmd.netmask;
-            cfg.mac_address = cmd.mac_address;
 
-            cfg.tap_name = cmd.tap_name;
-            cfg.tap_fd = cmd.tap_fd;
+            let vhost_net_msg = match cmd.vhost_net {
+                true => ",vhost-net=true",
+                false => "",
+            };
+
+            for tap_name in cmd.tap_name {
+                log::warn!(
+                    "`--tap-name` is deprecated; please use `--net tap-name={tap_name}{vhost_net_msg}`"
+                );
+                cfg.net.push(NetParameters {
+                    mode: NetParametersMode::TapName {
+                        tap_name,
+                        mac: None,
+                    },
+                    vhost_net: cmd.vhost_net,
+                });
+            }
+
+            for tap_fd in cmd.tap_fd {
+                log::warn!(
+                    "`--tap-fd` is deprecated; please use `--net tap-fd={tap_fd}{vhost_net_msg}`"
+                );
+                cfg.net.push(NetParameters {
+                    mode: NetParametersMode::TapFd { tap_fd, mac: None },
+                    vhost_net: cmd.vhost_net,
+                });
+            }
+
+            if cmd.host_ip.is_some() || cmd.netmask.is_some() || cmd.mac_address.is_some() {
+                let host_ip = match cmd.host_ip {
+                    Some(host_ip) => host_ip,
+                    None => return Err("`host-ip` missing from network config".to_string()),
+                };
+                let netmask = match cmd.netmask {
+                    Some(netmask) => netmask,
+                    None => return Err("`netmask` missing from network config".to_string()),
+                };
+                let mac = match cmd.mac_address {
+                    Some(mac) => mac,
+                    None => return Err("`mac` missing from network config".to_string()),
+                };
+
+                if !cmd.vhost_user_net.is_empty() {
+                    return Err(
+                        "vhost-user-net cannot be used with any of --host-ip, --netmask or --mac"
+                            .to_string(),
+                    );
+                }
+
+                log::warn!(
+                    "`--host-ip`, `--netmask`, and `--mac` are deprecated; please use \
+                    `--net host-ip={host_ip},netmask={netmask},mac={mac}{vhost_net_msg}`"
+                );
+
+                cfg.net.push(NetParameters {
+                    mode: NetParametersMode::RawConfig {
+                        host_ip,
+                        netmask,
+                        mac,
+                    },
+                    vhost_net: cmd.vhost_net,
+                });
+            }
 
             cfg.coiommu_param = cmd.coiommu;
 

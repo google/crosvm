@@ -77,8 +77,6 @@ use devices::virtio::BalloonFeatures;
 use devices::virtio::BalloonMode;
 #[cfg(feature = "gpu")]
 use devices::virtio::EventDevice;
-use devices::virtio::NetParameters;
-use devices::virtio::NetParametersMode;
 use devices::virtio::VirtioTransportType;
 #[cfg(feature = "audio")]
 use devices::Ac97Dev;
@@ -509,41 +507,7 @@ fn create_virtio_devices(
         )?);
     }
 
-    let mut net_cfg_extra: Vec<_> = cfg
-        .tap_fd
-        .iter()
-        .map(|fd| NetParameters {
-            vhost_net: cfg.vhost_net,
-            mode: NetParametersMode::TapFd {
-                tap_fd: *fd,
-                mac: None,
-            },
-        })
-        .collect();
-
-    if let (Some(host_ip), Some(netmask), Some(mac)) = (cfg.host_ip, cfg.netmask, cfg.mac_address) {
-        if !cfg.vhost_user_net.is_empty() {
-            bail!("vhost-user-net cannot be used with any of --host-ip, --netmask or --mac");
-        }
-        net_cfg_extra.push(NetParameters {
-            vhost_net: cfg.vhost_net,
-            mode: NetParametersMode::RawConfig {
-                host_ip,
-                netmask,
-                mac,
-            },
-        });
-    }
-
-    net_cfg_extra.extend(cfg.tap_name.iter().map(|tap_name| NetParameters {
-        vhost_net: cfg.vhost_net,
-        mode: NetParametersMode::TapName {
-            mac: None,
-            tap_name: tap_name.to_owned(),
-        },
-    }));
-
-    for opt in [&cfg.net, &net_cfg_extra].into_iter().flatten() {
+    for opt in &cfg.net {
         let vq_pairs = cfg.net_vq_pairs.unwrap_or(1);
         let vcpu_count = cfg.vcpu_count.unwrap_or(1);
         let multi_vq = vq_pairs > 1 && !opt.vhost_net;

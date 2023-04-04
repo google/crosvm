@@ -54,19 +54,7 @@ pub fn check_serial_params(_serial_params: &SerialParameters) -> Result<(), Stri
     Ok(())
 }
 
-pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
-    if cfg.host_ip.is_some() || cfg.netmask.is_some() || cfg.mac_address.is_some() {
-        if cfg.host_ip.is_none() {
-            return Err("`host-ip` missing from network config".to_string());
-        }
-        if cfg.netmask.is_none() {
-            return Err("`netmask` missing from network config".to_string());
-        }
-        if cfg.mac_address.is_none() {
-            return Err("`mac` missing from network config".to_string());
-        }
-    }
-
+pub fn validate_config(_cfg: &mut Config) -> std::result::Result<(), String> {
     Ok(())
 }
 

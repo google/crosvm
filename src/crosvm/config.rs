@@ -7,7 +7,6 @@ use std::arch::x86_64::__cpuid;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use std::arch::x86_64::__cpuid_count;
 use std::collections::BTreeMap;
-use std::net;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -74,7 +73,6 @@ pub(crate) use super::sys::HypervisorKind;
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
-        use base::RawDescriptor;
         use devices::virtio::fs::passthrough;
         #[cfg(feature = "gpu")]
         use crate::crosvm::sys::GpuRenderServerParameters;
@@ -1055,7 +1053,6 @@ pub struct Config {
     pub host_cpu_topology: bool,
     #[cfg(windows)]
     pub host_guid: Option<String>,
-    pub host_ip: Option<net::Ipv4Addr>,
     pub hugepages: bool,
     pub hypervisor: Option<HypervisorKind>,
     pub init_memory: Option<u64>,
@@ -1072,7 +1069,6 @@ pub struct Config {
     pub log_file: Option<String>,
     #[cfg(windows)]
     pub logs_directory: Option<String>,
-    pub mac_address: Option<net_util::MacAddress>,
     pub memory: Option<u64>,
     pub memory_file: Option<PathBuf>,
     pub mmio_address_ranges: Vec<AddressRange>,
@@ -1082,7 +1078,6 @@ pub struct Config {
     #[cfg(windows)]
     pub net_vhost_user_tube: Option<Tube>,
     pub net_vq_pairs: Option<u16>,
-    pub netmask: Option<net::Ipv4Addr>,
     pub no_i8042: bool,
     pub no_rtc: bool,
     pub no_smt: bool,
@@ -1145,9 +1140,6 @@ pub struct Config {
     pub swiotlb: Option<u64>,
     #[cfg(windows)]
     pub syslog_tag: Option<String>,
-    #[cfg(unix)]
-    pub tap_fd: Vec<RawDescriptor>,
-    pub tap_name: Vec<String>,
     #[cfg(target_os = "android")]
     pub task_profiles: Vec<String>,
     #[cfg(unix)]
@@ -1163,7 +1155,6 @@ pub struct Config {
     pub vfio: Vec<super::sys::config::VfioOption>,
     #[cfg(unix)]
     pub vfio_isolate_hotplug: bool,
-    pub vhost_net: bool,
     #[cfg(unix)]
     pub vhost_net_device_path: PathBuf,
     pub vhost_user_blk: Vec<VhostUserOption>,
@@ -1274,7 +1265,6 @@ impl Default for Config {
             host_cpu_topology: false,
             #[cfg(windows)]
             host_guid: None,
-            host_ip: None,
             #[cfg(windows)]
             product_version: None,
             #[cfg(windows)]
@@ -1299,7 +1289,6 @@ impl Default for Config {
             log_file: None,
             #[cfg(windows)]
             logs_directory: None,
-            mac_address: None,
             memory: None,
             memory_file: None,
             mmio_address_ranges: Vec::new(),
@@ -1309,7 +1298,6 @@ impl Default for Config {
             #[cfg(windows)]
             net_vhost_user_tube: None,
             net_vq_pairs: None,
-            netmask: None,
             no_i8042: false,
             no_rtc: false,
             no_smt: false,
@@ -1365,9 +1353,6 @@ impl Default for Config {
             swiotlb: None,
             #[cfg(windows)]
             syslog_tag: None,
-            #[cfg(unix)]
-            tap_fd: Vec::new(),
-            tap_name: Vec::new(),
             #[cfg(target_os = "android")]
             task_profiles: Vec::new(),
             #[cfg(unix)]
@@ -1383,7 +1368,6 @@ impl Default for Config {
             vfio: Vec::new(),
             #[cfg(unix)]
             vfio_isolate_hotplug: false,
-            vhost_net: false,
             #[cfg(unix)]
             vhost_net_device_path: PathBuf::from(VHOST_NET_PATH),
             vhost_user_blk: Vec::new(),
