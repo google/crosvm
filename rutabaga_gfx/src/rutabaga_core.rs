@@ -263,21 +263,21 @@ const RUTABAGA_CAPSETS: [RutabagaCapsetInfo; 6] = [
     },
 ];
 
-pub fn calculate_context_mask(context_names: Vec<String>) -> u64 {
-    let mut context_mask = 0;
+pub fn calculate_capset_mask(context_names: Vec<String>) -> u64 {
+    let mut capset_mask = 0;
     context_names.into_iter().for_each(|name| {
         if let Some(capset) = RUTABAGA_CAPSETS.iter().find(|capset| capset.name == name) {
-            context_mask |= 1 << capset.capset_id;
+            capset_mask |= 1 << capset.capset_id;
         };
     });
 
-    context_mask
+    capset_mask
 }
 
-pub fn calculate_context_types(context_mask: u64) -> Vec<String> {
+pub fn calculate_capset_names(capset_mask: u64) -> Vec<String> {
     RUTABAGA_CAPSETS
         .iter()
-        .filter(|capset| context_mask & (1 << capset.capset_id) != 0)
+        .filter(|capset| capset_mask & (1 << capset.capset_id) != 0)
         .map(|capset| capset.name.to_string())
         .collect()
 }
@@ -773,13 +773,13 @@ pub struct RutabagaBuilder {
     default_component: RutabagaComponentType,
     gfxstream_flags: GfxstreamFlags,
     virglrenderer_flags: VirglRendererFlags,
-    context_mask: u64,
+    capset_mask: u64,
     channels: Option<Vec<RutabagaChannel>>,
 }
 
 impl RutabagaBuilder {
     /// Create new a RutabagaBuilder.
-    pub fn new(default_component: RutabagaComponentType, context_mask: u64) -> RutabagaBuilder {
+    pub fn new(default_component: RutabagaComponentType, capset_mask: u64) -> RutabagaBuilder {
         let virglrenderer_flags = VirglRendererFlags::new()
             .use_thread_sync(true)
             .use_async_fence_cb(true);
@@ -791,7 +791,7 @@ impl RutabagaBuilder {
             default_component,
             gfxstream_flags,
             virglrenderer_flags,
-            context_mask,
+            capset_mask,
             channels: None,
         }
     }
@@ -906,14 +906,14 @@ impl RutabagaBuilder {
         let mut rutabaga_capsets: Vec<RutabagaCapsetInfo> = Default::default();
 
         let capset_enabled =
-            |capset_id: u32| -> bool { (self.context_mask & (1 << capset_id)) != 0 };
+            |capset_id: u32| -> bool { (self.capset_mask & (1 << capset_id)) != 0 };
 
         let mut push_capset = |capset_id: u32| {
             if let Some(capset) = RUTABAGA_CAPSETS
                 .iter()
                 .find(|capset| capset_id == capset.capset_id)
             {
-                if self.context_mask != 0 {
+                if self.capset_mask != 0 {
                     if capset_enabled(capset.capset_id) {
                         rutabaga_capsets.push(*capset);
                     }
@@ -925,7 +925,7 @@ impl RutabagaBuilder {
             };
         };
 
-        if self.context_mask != 0 {
+        if self.capset_mask != 0 {
             let supports_gfxstream = capset_enabled(RUTABAGA_CAPSET_GFXSTREAM);
             let supports_virglrenderer = capset_enabled(RUTABAGA_CAPSET_VIRGL2)
                 | capset_enabled(RUTABAGA_CAPSET_VENUS)

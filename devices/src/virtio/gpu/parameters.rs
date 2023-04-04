@@ -17,14 +17,14 @@ use vm_control::gpu::DisplayParameters;
 
 use super::GpuMode;
 
-mod serde_context_mask {
+mod serde_capset_mask {
     use super::*;
 
-    pub fn serialize<S>(context_mask: &u64, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(capset_mask: &u64, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        let context_types = rutabaga_gfx::calculate_context_types(*context_mask).join(":");
+        let context_types = rutabaga_gfx::calculate_capset_names(*capset_mask).join(":");
 
         serializer.serialize_str(context_types.as_str())
     }
@@ -33,7 +33,7 @@ mod serde_context_mask {
         let s = String::deserialize(deserializer)?;
         let context_types: Vec<String> = s.split(':').map(|s| s.to_string()).collect();
 
-        Ok(rutabaga_gfx::calculate_context_mask(context_types))
+        Ok(rutabaga_gfx::calculate_capset_mask(context_types))
     }
 }
 
@@ -73,8 +73,8 @@ pub struct GpuParameters {
     pub cache_path: Option<String>,
     pub cache_size: Option<String>,
     pub pci_bar_size: u64,
-    #[serde(rename = "context-types", with = "serde_context_mask")]
-    pub context_mask: u64,
+    #[serde(rename = "context-types", with = "serde_capset_mask")]
+    pub capset_mask: u64,
 }
 
 impl Default for GpuParameters {
@@ -98,7 +98,7 @@ impl Default for GpuParameters {
             cache_size: None,
             pci_bar_size: (1 << 33),
             udmabuf: false,
-            context_mask: 0,
+            capset_mask: 0,
         }
     }
 }
@@ -110,26 +110,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn context_mask_serialize_deserialize() {
+    fn capset_mask_serialize_deserialize() {
         #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
-        struct ContextMask {
-            #[serde(rename = "context-types", with = "serde_context_mask")]
+        struct CapsetMask {
+            #[serde(rename = "context-types", with = "serde_capset_mask")]
             pub value: u64,
         }
 
-        // Capset "virgl", id: 1, context_mask: 0b0010
-        // Capset "gfxstream", id: 3, context_mask: 0b1000
-        const CONTEXT_MASK: u64 = 0b1010;
-        const SERIALIZED_CONTEXT_MASK: &str = "{\"context-types\":\"virgl:gfxstream\"}";
+        // Capset "virgl", id: 1, capset_mask: 0b0010
+        // Capset "gfxstream", id: 3, capset_mask: 0b1000
+        const CAPSET_MASK: u64 = 0b1010;
+        const SERIALIZED_CAPSET_MASK: &str = "{\"context-types\":\"virgl:gfxstream\"}";
 
-        let context_mask = ContextMask {
-            value: CONTEXT_MASK,
-        };
+        let capset_mask = CapsetMask { value: CAPSET_MASK };
 
-        assert_eq!(to_string(&context_mask).unwrap(), SERIALIZED_CONTEXT_MASK);
+        assert_eq!(to_string(&capset_mask).unwrap(), SERIALIZED_CAPSET_MASK);
         assert_eq!(
-            from_str::<ContextMask>(SERIALIZED_CONTEXT_MASK).unwrap(),
-            context_mask
+            from_str::<CapsetMask>(SERIALIZED_CAPSET_MASK).unwrap(),
+            capset_mask
         );
     }
 }

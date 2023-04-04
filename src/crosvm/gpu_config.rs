@@ -412,7 +412,7 @@ mod tests {
 
         let gpu_params = parse_gpu_options("context-types=virgl:cross-domain").unwrap();
         assert_eq!(
-            gpu_params.context_mask,
+            gpu_params.capset_mask,
             (1 << RUTABAGA_CAPSET_VIRGL) | (1 << RUTABAGA_CAPSET_CROSS_DOMAIN)
         );
     }

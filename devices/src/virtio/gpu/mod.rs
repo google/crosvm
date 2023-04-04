@@ -1074,7 +1074,7 @@ pub struct Gpu {
     base_features: u64,
     udmabuf: bool,
     rutabaga_server_descriptor: Option<SafeDescriptor>,
-    context_mask: u64,
+    capset_mask: u64,
     #[cfg(unix)]
     gpu_cgroup_path: Option<PathBuf>,
 }
@@ -1127,7 +1127,7 @@ impl Gpu {
 
         let use_render_server = rutabaga_server_descriptor.is_some();
 
-        let rutabaga_builder = RutabagaBuilder::new(component, gpu_parameters.context_mask)
+        let rutabaga_builder = RutabagaBuilder::new(component, gpu_parameters.capset_mask)
             .set_display_width(display_width)
             .set_display_height(display_height)
             .set_rutabaga_channels(rutabaga_channels_opt)
@@ -1166,7 +1166,7 @@ impl Gpu {
             base_features,
             udmabuf: gpu_parameters.udmabuf,
             rutabaga_server_descriptor,
-            context_mask: gpu_parameters.context_mask,
+            capset_mask: gpu_parameters.capset_mask,
             #[cfg(unix)]
             gpu_cgroup_path: gpu_cgroup_path.cloned(),
         }
@@ -1207,7 +1207,7 @@ impl Gpu {
             events_read |= VIRTIO_GPU_EVENT_DISPLAY;
         }
 
-        let num_capsets = match self.context_mask {
+        let num_capsets = match self.capset_mask {
             0 => {
                 match self.rutabaga_component {
                     RutabagaComponentType::Rutabaga2D => 0,
@@ -1231,7 +1231,7 @@ impl Gpu {
                     }
                 }
             }
-            _ => self.context_mask.count_ones(),
+            _ => self.capset_mask.count_ones(),
         };
 
         virtio_gpu_config {
@@ -1310,7 +1310,7 @@ impl VirtioDevice for Gpu {
 
         // If a non-2D component is specified, enable 3D features.  It is possible to run display
         // contexts without 3D backend (i.e, gfxstream / virglrender), so check for that too.
-        if self.rutabaga_component != RutabagaComponentType::Rutabaga2D || self.context_mask != 0 {
+        if self.rutabaga_component != RutabagaComponentType::Rutabaga2D || self.capset_mask != 0 {
             virtio_gpu_features |= 1 << VIRTIO_GPU_F_VIRGL
                 | 1 << VIRTIO_GPU_F_RESOURCE_UUID
                 | 1 << VIRTIO_GPU_F_RESOURCE_BLOB
