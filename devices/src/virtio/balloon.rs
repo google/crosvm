@@ -843,7 +843,8 @@ async fn handle_wss_op_tube(
             }
         }
     } else {
-        error!("no wss device tube even though we have wss vqueues");
+        // No wss_op_tube; just park this future.
+        futures::future::pending::<()>().await;
         Ok(())
     }
 }
