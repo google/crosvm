@@ -168,6 +168,7 @@ pub struct NetParameters {
     pub mode: NetParametersMode,
     #[serde(default)]
     pub vhost_net: bool,
+    pub vq_pairs: Option<u16>,
 }
 
 impl FromStr for NetParameters {
@@ -790,6 +791,7 @@ mod tests {
             params,
             NetParameters {
                 vhost_net: false,
+                vq_pairs: None,
                 mode: NetParametersMode::TapName {
                     tap_name: "tap".to_string(),
                     mac: None
@@ -802,6 +804,7 @@ mod tests {
             params,
             NetParameters {
                 vhost_net: false,
+                vq_pairs: None,
                 mode: NetParametersMode::TapName {
                     tap_name: "tap".to_string(),
                     mac: Some(MacAddress::from_str("3d:70:eb:61:1a:91").unwrap())
@@ -814,6 +817,7 @@ mod tests {
             params,
             NetParameters {
                 vhost_net: false,
+                vq_pairs: None,
                 mode: NetParametersMode::TapFd {
                     tap_fd: 12,
                     mac: None
@@ -826,6 +830,7 @@ mod tests {
             params,
             NetParameters {
                 vhost_net: false,
+                vq_pairs: None,
                 mode: NetParametersMode::TapFd {
                     tap_fd: 12,
                     mac: Some(MacAddress::from_str("3d:70:eb:61:1a:91").unwrap())
@@ -841,6 +846,7 @@ mod tests {
             params,
             NetParameters {
                 vhost_net: false,
+                vq_pairs: None,
                 mode: NetParametersMode::RawConfig {
                     host_ip: Ipv4Addr::from_str("192.168.10.1").unwrap(),
                     netmask: Ipv4Addr::from_str("255.255.255.0").unwrap(),
@@ -860,6 +866,7 @@ mod tests {
             params,
             NetParameters {
                 vhost_net: true,
+                vq_pairs: None,
                 mode: NetParametersMode::RawConfig {
                     host_ip: Ipv4Addr::from_str("192.168.10.1").unwrap(),
                     netmask: Ipv4Addr::from_str("255.255.255.0").unwrap(),
@@ -873,6 +880,7 @@ mod tests {
             params,
             NetParameters {
                 vhost_net: true,
+                vq_pairs: None,
                 mode: NetParametersMode::TapFd {
                     tap_fd: 3,
                     mac: None
@@ -885,6 +893,21 @@ mod tests {
             params,
             NetParameters {
                 vhost_net: false,
+                vq_pairs: None,
+                mode: NetParametersMode::TapFd {
+                    tap_fd: 4,
+                    mac: Some(MacAddress::from_str("3d:70:eb:61:1a:91").unwrap())
+                }
+            }
+        );
+
+        let params =
+            from_net_arg("tap-fd=4,vhost-net=false,mac=\"3d:70:eb:61:1a:91\",vq-pairs=16").unwrap();
+        assert_eq!(
+            params,
+            NetParameters {
+                vhost_net: false,
+                vq_pairs: Some(16),
                 mode: NetParametersMode::TapFd {
                     tap_fd: 4,
                     mac: Some(MacAddress::from_str("3d:70:eb:61:1a:91").unwrap())
@@ -897,6 +920,7 @@ mod tests {
             params,
             NetParameters {
                 vhost_net: true,
+                vq_pairs: None,
                 mode: NetParametersMode::TapName {
                     tap_name: "crosvm_tap".to_owned(),
                     mac: None
@@ -910,6 +934,7 @@ mod tests {
             params,
             NetParameters {
                 vhost_net: true,
+                vq_pairs: None,
                 mode: NetParametersMode::TapName {
                     tap_name: "crosvm_tap".to_owned(),
                     mac: Some(MacAddress::from_str("3d:70:eb:61:1a:91").unwrap())

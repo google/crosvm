@@ -508,7 +508,7 @@ fn create_virtio_devices(
     }
 
     for opt in &cfg.net {
-        let vq_pairs = cfg.net_vq_pairs.unwrap_or(1);
+        let vq_pairs = opt.vq_pairs.unwrap_or(1);
         let vcpu_count = cfg.vcpu_count.unwrap_or(1);
         let multi_vq = vq_pairs > 1 && !opt.vhost_net;
         let (tap, mac) = create_tap_for_net_device(&opt.mode, multi_vq)?;

@@ -1393,7 +1393,7 @@ pub struct RunCommand {
     #[cfg(unix)]
     #[argh(
         option,
-        arg_name = "(tap-name=TAP_NAME,mac=MAC_ADDRESS|tap-fd=TAP_FD,mac=MAC_ADDRESS|host-ip=IP,netmask=NETMASK,mac=MAC_ADDRESS),vhost-net=VHOST_NET"
+        arg_name = "(tap-name=TAP_NAME,mac=MAC_ADDRESS|tap-fd=TAP_FD,mac=MAC_ADDRESS|host-ip=IP,netmask=NETMASK,mac=MAC_ADDRESS),vhost-net=VHOST_NET,vq-pairs=N"
     )]
     #[serde(default)]
     #[merge(strategy = append)]
@@ -1421,6 +1421,8 @@ pub struct RunCommand {
     /// AND
     ///   vhost-net=BOOL  - whether enable vhost_net or not.
     ///                       Default: false.  [Optional]
+    ///   vq-pairs=N      - number of rx/tx queue pairs.
+    ///                       Default: 1.      [Optional]
     ///
     /// Either one tap_name, one tap_fd or a triplet of host_ip,
     /// netmask and mac must be specified.
@@ -1428,7 +1430,7 @@ pub struct RunCommand {
 
     #[cfg(unix)]
     #[argh(option, arg_name = "N")]
-    #[serde(skip)] // TODO(b/255223604)
+    #[serde(skip)] // Deprecated - use `net` instead.
     #[merge(strategy = overwrite_option)]
     /// virtio net virtual queue pairs. (default: 1)
     pub net_vq_pairs: Option<u16>,
@@ -2753,10 +2755,15 @@ impl TryFrom<RunCommand> for super::config::Config {
                 true => ",vhost-net=true",
                 false => "",
             };
+            let vq_pairs_msg = match cmd.net_vq_pairs {
+                Some(n) => format!(",vq-pairs={}", n),
+                None => "".to_string(),
+            };
 
             for tap_name in cmd.tap_name {
                 log::warn!(
-                    "`--tap-name` is deprecated; please use `--net tap-name={tap_name}{vhost_net_msg}`"
+                    "`--tap-name` is deprecated; please use \
+                    `--net tap-name={tap_name}{vhost_net_msg}{vq_pairs_msg}`"
                 );
                 cfg.net.push(NetParameters {
                     mode: NetParametersMode::TapName {
@@ -2764,16 +2771,19 @@ impl TryFrom<RunCommand> for super::config::Config {
                         mac: None,
                     },
                     vhost_net: cmd.vhost_net,
+                    vq_pairs: cmd.net_vq_pairs,
                 });
             }
 
             for tap_fd in cmd.tap_fd {
                 log::warn!(
-                    "`--tap-fd` is deprecated; please use `--net tap-fd={tap_fd}{vhost_net_msg}`"
+                    "`--tap-fd` is deprecated; please use \
+                    `--net tap-fd={tap_fd}{vhost_net_msg}{vq_pairs_msg}`"
                 );
                 cfg.net.push(NetParameters {
                     mode: NetParametersMode::TapFd { tap_fd, mac: None },
                     vhost_net: cmd.vhost_net,
+                    vq_pairs: cmd.net_vq_pairs,
                 });
             }
 
@@ -2800,7 +2810,7 @@ impl TryFrom<RunCommand> for super::config::Config {
 
                 log::warn!(
                     "`--host-ip`, `--netmask`, and `--mac` are deprecated; please use \
-                    `--net host-ip={host_ip},netmask={netmask},mac={mac}{vhost_net_msg}`"
+                    `--net host-ip={host_ip},netmask={netmask},mac={mac}{vhost_net_msg}{vq_pairs_msg}`"
                 );
 
                 cfg.net.push(NetParameters {
@@ -2810,6 +2820,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                         mac,
                     },
                     vhost_net: cmd.vhost_net,
+                    vq_pairs: cmd.net_vq_pairs,
                 });
             }
 
@@ -2837,8 +2848,6 @@ impl TryFrom<RunCommand> for super::config::Config {
                     .get_or_insert_with(Default::default)
                     .pivot_root = p;
             }
-
-            cfg.net_vq_pairs = cmd.net_vq_pairs;
         }
 
         let protection_flags = [

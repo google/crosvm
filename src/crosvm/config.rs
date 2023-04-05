@@ -1077,7 +1077,6 @@ pub struct Config {
     pub net: Vec<NetParameters>,
     #[cfg(windows)]
     pub net_vhost_user_tube: Option<Tube>,
-    pub net_vq_pairs: Option<u16>,
     pub no_i8042: bool,
     pub no_rtc: bool,
     pub no_smt: bool,
@@ -1297,7 +1296,6 @@ impl Default for Config {
             net: Vec::new(),
             #[cfg(windows)]
             net_vhost_user_tube: None,
-            net_vq_pairs: None,
             no_i8042: false,
             no_rtc: false,
             no_smt: false,
