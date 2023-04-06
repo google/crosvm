@@ -369,7 +369,7 @@ impl Drop for ChildCleanup {
                     let mut exit_details = EmulatorChildProcessExitDetails::new();
                     exit_details.set_exit_code(exit_code as u32);
                     exit_details.set_process_type(self.process_type.into());
-                    details.set_emulator_child_process_exit_details(exit_details);
+                    details.emulator_child_process_exit_details = Some(exit_details).into();
                     metrics::log_event_with_details(MetricEventType::ChildProcessExit, &details);
                 } else {
                     error!(

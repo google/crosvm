@@ -81,7 +81,6 @@ use libc::SIGCHLD;
 use libc::SOCK_SEQPACKET;
 use net_util::sys::unix::Tap;
 use net_util::TapTCommon;
-use protobuf::ProtobufError;
 use remain::sorted;
 use thiserror::Error;
 use vm_memory::GuestMemory;
@@ -102,9 +101,9 @@ const MAX_OPEN_FILES: u64 = 32768;
 #[derive(Error, Debug)]
 pub enum CommError {
     #[error("failed to decode plugin request: {0}")]
-    DecodeRequest(ProtobufError),
+    DecodeRequest(protobuf::Error),
     #[error("failed to encode plugin response: {0}")]
-    EncodeResponse(ProtobufError),
+    EncodeResponse(protobuf::Error),
     #[error("plugin request socket has been hung up")]
     PluginSocketHup,
     #[error("failed to recv from plugin request socket: {0}")]
@@ -178,11 +177,8 @@ fn new_pipe_pair() -> SysResult<VcpuPipe> {
     })
 }
 
-fn proto_to_sys_err(e: ProtobufError) -> SysError {
-    match e {
-        ProtobufError::IoError(e) => SysError::new(e.raw_os_error().unwrap_or(EINVAL)),
-        _ => SysError::new(EINVAL),
-    }
+fn proto_to_sys_err(e: protobuf::Error) -> SysError {
+    io_to_sys_err(io::Error::from(e))
 }
 
 fn io_to_sys_err(e: io::Error) -> SysError {

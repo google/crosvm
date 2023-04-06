@@ -111,7 +111,7 @@ fn report_dll_loaded(dll_name: String) {
     let mut dll_load_details = EmulatorDllDetails::new();
     dll_load_details.set_dll_base_name(dll_name);
     let mut details = RecordDetails::new();
-    details.set_emulator_dll_details(dll_load_details);
+    details.emulator_dll_details = Some(dll_load_details).into();
     metrics::log_event_with_details(MetricEventType::DllLoaded, &details);
 }
 

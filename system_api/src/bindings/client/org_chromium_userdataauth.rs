@@ -7,28 +7,17 @@ use dbus::blocking;
 pub trait OrgChromiumUserDataAuthInterface {
     fn is_mounted(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn unmount(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
-    fn mount(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn remove(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn list_keys(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
-    fn get_key_data(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
-    fn check_key(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
-    fn add_key(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
-    fn remove_key(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
-    fn mass_remove_keys(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
-    fn migrate_key(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
-    fn start_fingerprint_auth_session(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
-    fn end_fingerprint_auth_session(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn get_web_authn_secret(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn get_web_authn_secret_hash(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn get_hibernate_secret(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
+    fn get_encryption_info(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn start_migrate_to_dircrypto(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn needs_dircrypto_migration(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn get_supported_key_policies(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn get_account_disk_usage(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn start_auth_session(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
-    fn add_credentials(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
-    fn update_credential(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
-    fn authenticate_auth_session(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn invalidate_auth_session(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn extend_auth_session(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn get_auth_session_status(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
@@ -42,7 +31,9 @@ pub trait OrgChromiumUserDataAuthInterface {
     fn update_auth_factor(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn remove_auth_factor(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn list_auth_factors(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
-    fn prepare_async_auth_factor(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
+    fn get_auth_factor_extended_info(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
+    fn prepare_auth_factor(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
+    fn terminate_auth_factor(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn get_recovery_request(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn reset_application_container(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
 }
@@ -95,6 +86,54 @@ impl dbus::message::SignalArgs for OrgChromiumUserDataAuthInterfaceLowDiskSpace 
     const INTERFACE: &'static str = "org.chromium.UserDataAuthInterface";
 }
 
+#[derive(Debug)]
+pub struct OrgChromiumUserDataAuthInterfaceAuthScanResult {
+    pub status: Vec<u8>,
+}
+
+impl arg::AppendAll for OrgChromiumUserDataAuthInterfaceAuthScanResult {
+    fn append(&self, i: &mut arg::IterAppend) {
+        arg::RefArg::append(&self.status, i);
+    }
+}
+
+impl arg::ReadAll for OrgChromiumUserDataAuthInterfaceAuthScanResult {
+    fn read(i: &mut arg::Iter) -> Result<Self, arg::TypeMismatchError> {
+        Ok(OrgChromiumUserDataAuthInterfaceAuthScanResult {
+            status: i.read()?,
+        })
+    }
+}
+
+impl dbus::message::SignalArgs for OrgChromiumUserDataAuthInterfaceAuthScanResult {
+    const NAME: &'static str = "AuthScanResult";
+    const INTERFACE: &'static str = "org.chromium.UserDataAuthInterface";
+}
+
+#[derive(Debug)]
+pub struct OrgChromiumUserDataAuthInterfacePrepareAuthFactorProgress {
+    pub status: Vec<u8>,
+}
+
+impl arg::AppendAll for OrgChromiumUserDataAuthInterfacePrepareAuthFactorProgress {
+    fn append(&self, i: &mut arg::IterAppend) {
+        arg::RefArg::append(&self.status, i);
+    }
+}
+
+impl arg::ReadAll for OrgChromiumUserDataAuthInterfacePrepareAuthFactorProgress {
+    fn read(i: &mut arg::Iter) -> Result<Self, arg::TypeMismatchError> {
+        Ok(OrgChromiumUserDataAuthInterfacePrepareAuthFactorProgress {
+            status: i.read()?,
+        })
+    }
+}
+
+impl dbus::message::SignalArgs for OrgChromiumUserDataAuthInterfacePrepareAuthFactorProgress {
+    const NAME: &'static str = "PrepareAuthFactorProgress";
+    const INTERFACE: &'static str = "org.chromium.UserDataAuthInterface";
+}
+
 impl<'a, T: blocking::BlockingSender, C: ::std::ops::Deref<Target=T>> OrgChromiumUserDataAuthInterface for blocking::Proxy<'a, C> {
 
     fn is_mounted(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
@@ -107,11 +146,6 @@ impl<'a, T: blocking::BlockingSender, C: ::std::ops::Deref<Target=T>> OrgChromiu
             .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
     }
 
-    fn mount(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
-        self.method_call("org.chromium.UserDataAuthInterface", "Mount", (request, ))
-            .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
-    }
-
     fn remove(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
         self.method_call("org.chromium.UserDataAuthInterface", "Remove", (request, ))
             .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
@@ -119,46 +153,6 @@ impl<'a, T: blocking::BlockingSender, C: ::std::ops::Deref<Target=T>> OrgChromiu
 
     fn list_keys(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
         self.method_call("org.chromium.UserDataAuthInterface", "ListKeys", (request, ))
-            .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
-    }
-
-    fn get_key_data(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
-        self.method_call("org.chromium.UserDataAuthInterface", "GetKeyData", (request, ))
-            .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
-    }
-
-    fn check_key(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
-        self.method_call("org.chromium.UserDataAuthInterface", "CheckKey", (request, ))
-            .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
-    }
-
-    fn add_key(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
-        self.method_call("org.chromium.UserDataAuthInterface", "AddKey", (request, ))
-            .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
-    }
-
-    fn remove_key(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
-        self.method_call("org.chromium.UserDataAuthInterface", "RemoveKey", (request, ))
-            .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
-    }
-
-    fn mass_remove_keys(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
-        self.method_call("org.chromium.UserDataAuthInterface", "MassRemoveKeys", (request, ))
-            .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
-    }
-
-    fn migrate_key(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
-        self.method_call("org.chromium.UserDataAuthInterface", "MigrateKey", (request, ))
-            .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
-    }
-
-    fn start_fingerprint_auth_session(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
-        self.method_call("org.chromium.UserDataAuthInterface", "StartFingerprintAuthSession", (request, ))
-            .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
-    }
-
-    fn end_fingerprint_auth_session(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
-        self.method_call("org.chromium.UserDataAuthInterface", "EndFingerprintAuthSession", (request, ))
             .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
     }
 
@@ -174,6 +168,11 @@ impl<'a, T: blocking::BlockingSender, C: ::std::ops::Deref<Target=T>> OrgChromiu
 
     fn get_hibernate_secret(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
         self.method_call("org.chromium.UserDataAuthInterface", "GetHibernateSecret", (request, ))
+            .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
+    }
+
+    fn get_encryption_info(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
+        self.method_call("org.chromium.UserDataAuthInterface", "GetEncryptionInfo", (request, ))
             .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
     }
 
@@ -199,21 +198,6 @@ impl<'a, T: blocking::BlockingSender, C: ::std::ops::Deref<Target=T>> OrgChromiu
 
     fn start_auth_session(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
         self.method_call("org.chromium.UserDataAuthInterface", "StartAuthSession", (request, ))
-            .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
-    }
-
-    fn add_credentials(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
-        self.method_call("org.chromium.UserDataAuthInterface", "AddCredentials", (request, ))
-            .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
-    }
-
-    fn update_credential(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
-        self.method_call("org.chromium.UserDataAuthInterface", "UpdateCredential", (request, ))
-            .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
-    }
-
-    fn authenticate_auth_session(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
-        self.method_call("org.chromium.UserDataAuthInterface", "AuthenticateAuthSession", (request, ))
             .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
     }
 
@@ -282,8 +266,18 @@ impl<'a, T: blocking::BlockingSender, C: ::std::ops::Deref<Target=T>> OrgChromiu
             .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
     }
 
-    fn prepare_async_auth_factor(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
-        self.method_call("org.chromium.UserDataAuthInterface", "PrepareAsyncAuthFactor", (request, ))
+    fn get_auth_factor_extended_info(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
+        self.method_call("org.chromium.UserDataAuthInterface", "GetAuthFactorExtendedInfo", (request, ))
+            .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
+    }
+
+    fn prepare_auth_factor(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
+        self.method_call("org.chromium.UserDataAuthInterface", "PrepareAuthFactor", (request, ))
+            .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
+    }
+
+    fn terminate_auth_factor(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
+        self.method_call("org.chromium.UserDataAuthInterface", "TerminateAuthFactor", (request, ))
             .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
     }
 
@@ -423,10 +417,8 @@ pub trait OrgChromiumCryptohomeMiscInterface {
     fn update_current_user_activity_timestamp(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn get_sanitized_username(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn get_login_status(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
-    fn get_status_string(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn lock_to_single_user_mount_until_reboot(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn get_rsu_device_id(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
-    fn check_health(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
 }
 
 impl<'a, T: blocking::BlockingSender, C: ::std::ops::Deref<Target=T>> OrgChromiumCryptohomeMiscInterface for blocking::Proxy<'a, C> {
@@ -451,11 +443,6 @@ impl<'a, T: blocking::BlockingSender, C: ::std::ops::Deref<Target=T>> OrgChromiu
             .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
     }
 
-    fn get_status_string(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
-        self.method_call("org.chromium.CryptohomeMiscInterface", "GetStatusString", (request, ))
-            .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
-    }
-
     fn lock_to_single_user_mount_until_reboot(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
         self.method_call("org.chromium.CryptohomeMiscInterface", "LockToSingleUserMountUntilReboot", (request, ))
             .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
@@ -463,11 +450,6 @@ impl<'a, T: blocking::BlockingSender, C: ::std::ops::Deref<Target=T>> OrgChromiu
 
     fn get_rsu_device_id(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
         self.method_call("org.chromium.CryptohomeMiscInterface", "GetRsuDeviceId", (request, ))
-            .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
-    }
-
-    fn check_health(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
-        self.method_call("org.chromium.CryptohomeMiscInterface", "CheckHealth", (request, ))
             .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
     }
 }

@@ -16,14 +16,12 @@ use dbus::ffidisp::BusType;
 use dbus::ffidisp::Connection;
 use dbus::ffidisp::ConnectionItem;
 use dbus::ffidisp::WatchEvent;
-use protobuf::error::ProtobufError;
 use protobuf::Message;
 use remain::sorted;
 use thiserror::Error;
 
+use crate::protos::power_supply_properties::power_supply_properties;
 use crate::protos::power_supply_properties::PowerSupplyProperties;
-use crate::protos::power_supply_properties::PowerSupplyProperties_BatteryState;
-use crate::protos::power_supply_properties::PowerSupplyProperties_ExternalPower;
 use crate::BatteryData;
 use crate::BatteryStatus;
 use crate::PowerData;
@@ -38,29 +36,29 @@ const POLL_SIGNAL_NAME: &str = "PowerSupplyPoll";
 impl From<PowerSupplyProperties> for PowerData {
     fn from(props: PowerSupplyProperties) -> Self {
         let ac_online = if props.has_external_power() {
-            props.get_external_power() != PowerSupplyProperties_ExternalPower::DISCONNECTED
+            props.external_power() != power_supply_properties::ExternalPower::DISCONNECTED
         } else {
             false
         };
 
         let battery = if props.has_battery_state()
-            && props.get_battery_state() != PowerSupplyProperties_BatteryState::NOT_PRESENT
+            && props.battery_state() != power_supply_properties::BatteryState::NOT_PRESENT
         {
-            let status = match props.get_battery_state() {
-                PowerSupplyProperties_BatteryState::FULL => BatteryStatus::NotCharging,
-                PowerSupplyProperties_BatteryState::CHARGING => BatteryStatus::Charging,
-                PowerSupplyProperties_BatteryState::DISCHARGING => BatteryStatus::Discharging,
+            let status = match props.battery_state() {
+                power_supply_properties::BatteryState::FULL => BatteryStatus::NotCharging,
+                power_supply_properties::BatteryState::CHARGING => BatteryStatus::Charging,
+                power_supply_properties::BatteryState::DISCHARGING => BatteryStatus::Discharging,
                 _ => BatteryStatus::Unknown,
             };
 
-            let percent = std::cmp::min(100, props.get_battery_percent().round() as u32);
+            let percent = std::cmp::min(100, props.battery_percent().round() as u32);
             // Convert from volts to microvolts.
-            let voltage = (props.get_battery_voltage() * 1_000_000f64).round() as u32;
+            let voltage = (props.battery_voltage() * 1_000_000f64).round() as u32;
             // Convert from amps to microamps.
-            let current = (props.get_battery_current() * 1_000_000f64).round() as u32;
+            let current = (props.battery_current() * 1_000_000f64).round() as u32;
             // Convert from ampere-hours to micro ampere-hours.
-            let charge_counter = (props.get_battery_charge() * 1_000_000f64).round() as u32;
-            let charge_full = (props.get_battery_charge_full() * 1_000_000f64).round() as u32;
+            let charge_counter = (props.battery_charge() * 1_000_000f64).round() as u32;
+            let charge_full = (props.battery_charge_full() * 1_000_000f64).round() as u32;
 
             Some(BatteryData {
                 status,
@@ -82,7 +80,7 @@ impl From<PowerSupplyProperties> for PowerData {
 #[derive(Error, Debug)]
 pub enum DBusMonitorError {
     #[error("failed to convert protobuf message: {0}")]
-    ConvertProtobuf(ProtobufError),
+    ConvertProtobuf(protobuf::Error),
     #[error("failed to add D-Bus match rule: {0}")]
     DBusAddMatch(dbus::Error),
     #[error("failed to connect to D-Bus: {0}")]

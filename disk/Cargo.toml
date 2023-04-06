@@ -20,7 +20,7 @@ crc32fast = { version = "1.2.1", optional = true }
 cros_async = { path = "../cros_async" }
 data_model = { path = "../common/data_model" }
 libc = "*"
-protobuf = { version = "2.3", optional = true }
+protobuf = { version = "3.2", optional = true }
 protos = { path = "../protos", features = ["composite-disk"], optional = true }
 remain = "*"
 serde = { version = "1", features = [ "derive" ] }

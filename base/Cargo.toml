@@ -46,7 +46,7 @@ minijail = "*"
 rand = "0.8"
 winapi = "*"
 win_util = { path = "../win_util"}
-protobuf = { version = "*", features = [ "with-serde" ] }
+protobuf = "3.2"
 
 [target.'cfg(windows)'.dev-dependencies]
 regex = "*"

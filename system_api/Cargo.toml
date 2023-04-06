@@ -9,4 +9,4 @@ path = "src/system_api.rs"
 
 [target.'cfg(unix)'.dependencies]
 dbus = "0.9"
-protobuf = "2.24"
+protobuf = "3.2"

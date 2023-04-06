@@ -10,7 +10,7 @@ use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 
-use protoc_rust::Customize;
+use protobuf_codegen::Codegen;
 
 /// Builds a set of Rust protos based on the provided proto files. The individual protos will be
 /// dumped into `out_dir` (will be created if needed), along with a file that wraps them
@@ -71,14 +71,10 @@ fn to_includes(proto_paths: &[PathBuf]) -> Vec<PathBuf> {
 }
 
 fn gen_protos(out_dir: &PathBuf, proto_paths: &[PathBuf], includes: &[PathBuf]) {
-    protoc_rust::Codegen::new()
+    Codegen::new()
         .out_dir(out_dir)
         .inputs(proto_paths)
         .includes(includes)
-        .customize(Customize {
-            serde_derive: Some(true),
-            ..Default::default()
-        })
         .run()
         .expect("failed to compile Rust protos");
 }

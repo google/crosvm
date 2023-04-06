@@ -126,7 +126,7 @@ pub enum Error {
     Pair(io::Error),
     #[cfg(windows)]
     #[error("encountered protobuf error: {0}")]
-    Proto(protobuf::ProtobufError),
+    Proto(protobuf::Error),
     #[error("failed to receive packet: {0}")]
     Recv(io::Error),
     #[error("Received a message with a zero sized body. This should not happen.")]

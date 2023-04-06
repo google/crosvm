@@ -9,7 +9,7 @@ anyhow = "*"
 base = { path = "../base" }
 cfg-if = "*"
 libc = { version = "*", optional = true }
-protobuf = { version = "2.24", features = [ "with-serde" ] }
+protobuf = "3.2"
 serde = { version = "1", features = [ "derive" ] }
 serde_json = { version = "*", optional = true }
 sync = { path = "../common/sync", optional = true }

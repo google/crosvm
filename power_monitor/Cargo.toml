@@ -10,7 +10,7 @@ powerd = ["dbus"]
 [dependencies]
 base = { path = "../base" }
 dbus = { version = "0.9", optional = true }
-protobuf = { version = "2.8.1" }
+protobuf = "3.2"
 remain = "0.2"
 thiserror = "1.0.20"
 

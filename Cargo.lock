@@ -1869,48 +1869,58 @@ dependencies = [
 name = "proto_build_tools"
 version = "0.1.0"
 dependencies = [
- "protoc-rust",
+ "protobuf-codegen",
 ]
 
 [[package]]
 name = "protobuf"
-version = "2.27.1"
+version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf7e6d18738ecd0902d30d1ad232c9125985a3422929b16c65517b38adc14f96"
+checksum = "b55bad9126f378a853655831eb7363b7b01b81d19f8cb1218861086ca4a1a61e"
 dependencies = [
- "serde",
- "serde_derive",
+ "once_cell",
+ "protobuf-support",
+ "thiserror",
 ]
 
 [[package]]
 name = "protobuf-codegen"
-version = "2.27.1"
+version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aec1632b7c8f2e620343439a7dfd1f3c47b18906c4be58982079911482b5d707"
+checksum = "0dd418ac3c91caa4032d37cb80ff0d44e2ebe637b2fb243b6234bf89cdac4901"
 dependencies = [
+ "anyhow",
+ "once_cell",
  "protobuf",
+ "protobuf-parse",
+ "regex",
+ "tempfile",
+ "thiserror",
 ]
 
 [[package]]
-name = "protoc"
-version = "2.27.1"
+name = "protobuf-parse"
+version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2ef1dc036942fac2470fdb8a911f125404ee9129e9e807f3d12d8589001a38f"
+checksum = "9d39b14605eaa1f6a340aec7f320b34064feb26c93aec35d6a9a2272a8ddfa49"
 dependencies = [
+ "anyhow",
+ "indexmap",
  "log",
+ "protobuf",
+ "protobuf-support",
+ "tempfile",
+ "thiserror",
  "which",
 ]
 
 [[package]]
-name = "protoc-rust"
-version = "2.27.1"
+name = "protobuf-support"
+version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a9e315121c8e7e21396e940a3d27f92280a6d28e3931213bf6cbfea76c5cc94"
+checksum = "a5d4d7b8601c814cfb36bcebb79f0e61e45e1e93640cf778837833bbed05c372"
 dependencies = [
- "protobuf",
- "protobuf-codegen",
- "protoc",
- "tempfile",
+ "thiserror",
 ]
 
 [[package]]

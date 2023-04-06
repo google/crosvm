@@ -7,5 +7,4 @@ edition = "2021"
 [features]
 
 [dependencies]
-protoc-rust = "2.22"
-
+protobuf-codegen = "3.2"
