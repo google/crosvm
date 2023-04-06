@@ -807,6 +807,7 @@ dependencies = [
  "memoffset 0.6.5",
  "metrics",
  "minijail",
+ "named-lock",
  "net_sys",
  "net_util",
  "num-traits",
