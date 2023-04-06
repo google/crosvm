@@ -882,7 +882,10 @@ fn create_devices(
 
                 let (ioevent_host_tube, ioevent_device_tube) =
                     Tube::pair().context("failed to create ioevent tube")?;
-                irq_control_tubes.push(ioevent_host_tube);
+                control_tubes.push(TaggedControlTube::VmMemory {
+                    tube: ioevent_host_tube,
+                    expose_with_viommu: false,
+                });
 
                 let dev = VirtioPciDevice::new(
                     vm.get_memory().clone(),
@@ -1963,7 +1966,10 @@ where
         irq_control_tubes.push(msi_host_tube);
         let (ioevent_host_tube, ioevent_device_tube) =
             Tube::pair().context("failed to create ioevent tube")?;
-        irq_control_tubes.push(ioevent_host_tube);
+        control_tubes.push(TaggedControlTube::VmMemory {
+            tube: ioevent_host_tube,
+            expose_with_viommu: false,
+        });
         let mut dev = VirtioPciDevice::new(
             vm.get_memory().clone(),
             iommu_dev.dev,

@@ -718,7 +718,7 @@ fn create_devices(
 
         let (ioevent_host_tube, ioevent_device_tube) =
             Tube::pair().context("failed to create ioevent tube")?;
-        irq_control_tubes.push(ioevent_host_tube);
+        control_tubes.push(TaggedControlTube::VmMemory(ioevent_host_tube));
 
         let dev = Box::new(
             VirtioPciDevice::new(
