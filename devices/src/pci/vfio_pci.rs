@@ -32,7 +32,6 @@ use base::RawDescriptor;
 use base::Tube;
 use base::WaitContext;
 use base::WorkerThread;
-use hypervisor::MemSlot;
 use resources::AddressRange;
 use resources::Alloc;
 use resources::AllocOptions;
@@ -43,6 +42,7 @@ use vfio_sys::*;
 use vm_control::HotPlugDeviceInfo;
 use vm_control::HotPlugDeviceType;
 use vm_control::VmMemoryDestination;
+use vm_control::VmMemoryRegionId;
 use vm_control::VmMemoryRequest;
 use vm_control::VmMemoryResponse;
 use vm_control::VmMemorySource;
@@ -668,7 +668,7 @@ pub struct VfioPciDevice {
     #[cfg(feature = "direct")]
     i2c_devs: HashMap<u16, PathBuf>,
     vcfg_shm_mmap: Option<MemoryMapping>,
-    mapped_mmio_bars: BTreeMap<PciBarIndex, (u64, Vec<MemSlot>)>,
+    mapped_mmio_bars: BTreeMap<PciBarIndex, (u64, Vec<VmMemoryRegionId>)>,
     activated: bool,
 }
 
@@ -1183,8 +1183,8 @@ impl VfioPciDevice {
         }
     }
 
-    fn add_bar_mmap(&self, index: u32, bar_addr: u64) -> Vec<MemSlot> {
-        let mut mmaps_slots: Vec<MemSlot> = Vec::new();
+    fn add_bar_mmap(&self, index: u32, bar_addr: u64) -> Vec<VmMemoryRegionId> {
+        let mut mmaps_ids: Vec<VmMemoryRegionId> = Vec::new();
         if self.device.get_region_flags(index) & VFIO_REGION_INFO_FLAG_MMAP != 0 {
             // the bar storing msix table and pba couldn't mmap.
             // these bars should be trapped, so that msix could be emulated.
@@ -1198,7 +1198,7 @@ impl VfioPciDevice {
                 mmaps = self.remove_bar_mmap_lpss(index, mmaps);
             }
             if mmaps.is_empty() {
-                return mmaps_slots;
+                return mmaps_ids;
             }
 
             for mmap in mmaps.iter() {
@@ -1232,22 +1232,22 @@ impl VfioPciDevice {
                     Err(_) => break,
                 };
                 match response {
-                    VmMemoryResponse::RegisterMemory { pfn: _, slot } => {
-                        mmaps_slots.push(slot);
+                    VmMemoryResponse::RegisterMemory(id) => {
+                        mmaps_ids.push(id);
                     }
                     _ => break,
                 }
             }
         }
 
-        mmaps_slots
+        mmaps_ids
     }
 
-    fn remove_bar_mmap(&self, mmap_slots: &[MemSlot]) {
-        for mmap_slot in mmap_slots {
+    fn remove_bar_mmap(&self, mmap_ids: &[VmMemoryRegionId]) {
+        for mmap_id in mmap_ids {
             if self
                 .vm_socket_mem
-                .send(&VmMemoryRequest::UnregisterMemory(*mmap_slot))
+                .send(&VmMemoryRequest::UnregisterMemory(*mmap_id))
                 .is_err()
             {
                 error!("failed to send UnregisterMemory request");
@@ -1260,8 +1260,8 @@ impl VfioPciDevice {
     }
 
     fn disable_bars_mmap(&mut self) {
-        for (_, (_, mmap_slots)) in self.mapped_mmio_bars.iter() {
-            self.remove_bar_mmap(mmap_slots);
+        for (_, (_, mmap_ids)) in self.mapped_mmio_bars.iter() {
+            self.remove_bar_mmap(mmap_ids);
         }
         self.mapped_mmio_bars.clear();
     }
@@ -1273,12 +1273,12 @@ impl VfioPciDevice {
             let bar_idx = mmio_info.bar_index();
             let addr = mmio_info.address();
 
-            if let Some((cur_addr, slots)) = self.mapped_mmio_bars.remove(&bar_idx) {
+            if let Some((cur_addr, ids)) = self.mapped_mmio_bars.remove(&bar_idx) {
                 if cur_addr == addr {
-                    self.mapped_mmio_bars.insert(bar_idx, (cur_addr, slots));
+                    self.mapped_mmio_bars.insert(bar_idx, (cur_addr, ids));
                     continue;
                 } else {
-                    self.remove_bar_mmap(&slots);
+                    self.remove_bar_mmap(&ids);
                 }
             }
 
@@ -1288,8 +1288,8 @@ impl VfioPciDevice {
         }
 
         for (bar_idx, addr) in needs_map.iter() {
-            let slots = self.add_bar_mmap(*bar_idx as u32, *addr);
-            self.mapped_mmio_bars.insert(*bar_idx, (*addr, slots));
+            let ids = self.add_bar_mmap(*bar_idx as u32, *addr);
+            self.mapped_mmio_bars.insert(*bar_idx, (*addr, ids));
         }
     }
 

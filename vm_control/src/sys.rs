@@ -19,4 +19,4 @@ cfg_if::cfg_if! {
     }
 }
 
-pub use platform::handle_request;
+pub use platform::{handle_request, prepare_shared_memory_region, should_prepare_memory_region};

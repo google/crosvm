@@ -8,6 +8,7 @@ use std::sync::Arc;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use acpi_tables::sdt::SDT;
 use anyhow::anyhow;
+use anyhow::bail;
 use anyhow::Context;
 use base::error;
 use base::info;
@@ -33,8 +34,8 @@ use virtio_sys::virtio_config::VIRTIO_CONFIG_S_DRIVER_OK;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_FAILED;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_FEATURES_OK;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_NEEDS_RESET;
-use vm_control::MemSlot;
 use vm_control::VmMemoryDestination;
+use vm_control::VmMemoryRegionId;
 use vm_control::VmMemoryRequest;
 use vm_control::VmMemoryResponse;
 use vm_control::VmMemorySource;
@@ -675,6 +676,8 @@ impl PciDevice for VirtioPciDevice {
                         .take()
                         .expect("missing shared_memory_tube"),
                     alloc,
+                    // See comment VmMemoryRequest::execute
+                    !self.device.expose_shmem_descriptors_with_viommu(),
                 )));
 
             vec![config]
@@ -969,15 +972,17 @@ impl Suspendable for VirtioPciDevice {
 struct VmRequester {
     tube: Tube,
     alloc: Alloc,
-    mappings: BTreeMap<u64, MemSlot>,
+    mappings: BTreeMap<u64, VmMemoryRegionId>,
+    needs_prepare: bool,
 }
 
 impl VmRequester {
-    fn new(tube: Tube, alloc: Alloc) -> Self {
+    fn new(tube: Tube, alloc: Alloc, do_prepare: bool) -> Self {
         Self {
             tube,
             alloc,
             mappings: BTreeMap::new(),
+            needs_prepare: do_prepare,
         }
     }
 }
@@ -989,6 +994,20 @@ impl SharedMemoryMapper for VmRequester {
         offset: u64,
         prot: Protection,
     ) -> anyhow::Result<()> {
+        if self.needs_prepare {
+            self.tube
+                .send(&VmMemoryRequest::PrepareSharedMemoryRegion { alloc: self.alloc })
+                .context("failed to send request")?;
+            match self
+                .tube
+                .recv()
+                .context("failed to recieve request response")?
+            {
+                VmMemoryResponse::Ok => (),
+                e => bail!("unexpected response {:?}", e),
+            };
+            self.needs_prepare = false;
+        }
         let request = VmMemoryRequest::RegisterMemory {
             source,
             dest: VmMemoryDestination::ExistingAllocation {
@@ -1003,8 +1022,8 @@ impl SharedMemoryMapper for VmRequester {
             .recv()
             .context("failed to recieve request response")?
         {
-            VmMemoryResponse::RegisterMemory { pfn: _, slot } => {
-                self.mappings.insert(offset, slot);
+            VmMemoryResponse::RegisterMemory(id) => {
+                self.mappings.insert(offset, id);
                 Ok(())
             }
             e => Err(anyhow!("unexpected response {:?}", e)),
@@ -1012,9 +1031,9 @@ impl SharedMemoryMapper for VmRequester {
     }
 
     fn remove_mapping(&mut self, offset: u64) -> anyhow::Result<()> {
-        let slot = self.mappings.remove(&offset).context("invalid offset")?;
+        let id = self.mappings.remove(&offset).context("invalid offset")?;
         self.tube
-            .send(&VmMemoryRequest::UnregisterMemory(slot))
+            .send(&VmMemoryRequest::UnregisterMemory(id))
             .context("failed to send request")?;
         match self
             .tube

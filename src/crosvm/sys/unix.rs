@@ -2883,6 +2883,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     #[cfg(feature = "balloon")]
     let mut balloon_wss_id: u64 = 0;
     let mut registered_evt_tubes: HashMap<RegisteredEvent, HashSet<AddressedTube>> = HashMap::new();
+    let mut region_state = VmMemoryRegionState::new();
 
     'wait: loop {
         let events = {
@@ -3245,6 +3246,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                         } else {
                                             None
                                         },
+                                        &mut region_state,
                                     );
                                     if let Err(e) = tube.send(&response) {
                                         error!("failed to send VmMemoryControlResponse: {}", e);

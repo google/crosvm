@@ -184,6 +184,7 @@ use tube_transporter::TubeToken;
 use tube_transporter::TubeTransporterReader;
 use vm_control::BalloonControlCommand;
 use vm_control::DeviceControlCommand;
+use vm_control::VmMemoryRegionState;
 use vm_control::VmMemoryRequest;
 use vm_control::VmRunMode;
 use vm_memory::GuestAddress;
@@ -781,6 +782,7 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     vcpu_boxes: &Mutex<Vec<Box<dyn VcpuArch>>>,
     pvclock_host_tube: &Option<Tube>,
     run_mode_arc: &VcpuRunMode,
+    region_state: &mut VmMemoryRegionState,
 ) -> Result<(bool, Option<ExitState>)> {
     match event.token {
         Token::VmEvent => match vm_evt_rdtube.recv::<VmEventType>() {
@@ -829,6 +831,7 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                 &mut sys_allocator_mutex.lock(),
                                 gralloc,
                                 None,
+                                region_state,
                             );
                             if let Err(e) = tube.send(&response) {
                                 error!("failed to send VmMemoryControlResponse: {}", e);
@@ -1043,6 +1046,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     }
 
     let mut exit_state = ExitState::Stop;
+    let mut region_state = VmMemoryRegionState::new();
 
     'poll: loop {
         let events = {
@@ -1076,6 +1080,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 vcpu_boxes.as_ref(),
                 &pvclock_host_tube,
                 run_mode_arc.as_ref(),
+                &mut region_state,
             )?;
             if let Some(state) = state {
                 exit_state = state;

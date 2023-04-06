@@ -48,8 +48,8 @@ use libc::MSG_PEEK;
 use resources::Alloc;
 use sync::Mutex;
 use uuid::Uuid;
-use vm_control::MemSlot;
 use vm_control::VmMemoryDestination;
+use vm_control::VmMemoryRegionId;
 use vm_control::VmMemoryRequest;
 use vm_control::VmMemoryResponse;
 use vm_control::VmMemorySource;
@@ -276,7 +276,7 @@ struct Worker {
     slave_req_helper: SlaveReqHelper<SocketEndpoint<MasterReq>>,
 
     // Stores memory regions that the worker has asked the main thread to register.
-    registered_memory: Vec<MemSlot>,
+    registered_memory: Vec<VmMemoryRegionId>,
 
     // Channel for backend mesages.
     slave_req_fd: Option<SocketEndpoint<SlaveReq>>,
@@ -862,9 +862,9 @@ impl Worker {
 
         match response {
             VmMemoryResponse::Ok => Ok(()),
-            VmMemoryResponse::RegisterMemory { slot, .. } => {
+            VmMemoryResponse::RegisterMemory(id) => {
                 // Store the registered memory slot so we can unregister it when the thread ends.
-                self.registered_memory.push(slot);
+                self.registered_memory.push(id);
                 Ok(())
             }
             VmMemoryResponse::Err(e) => {
@@ -1157,8 +1157,8 @@ impl Worker {
     // Clean up memory regions that the worker registered so that the device can start another
     // worker later.
     fn cleanup_registered_memory(&mut self) {
-        while let Some(slot) = self.registered_memory.pop() {
-            let req = VmMemoryRequest::UnregisterMemory(slot);
+        while let Some(id) = self.registered_memory.pop() {
+            let req = VmMemoryRequest::UnregisterMemory(id);
             if let Err(e) = self.send_memory_request(&req) {
                 error!("failed to unregister memory slot: {}", e);
             }
