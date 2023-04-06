@@ -11,6 +11,7 @@ fsync: 1
 openat: return ENOENT
 newfstatat: 1
 preadv: 1
+pwrite64: 1
 pwritev: 1
 statx: 1
 timerfd_create: 1
