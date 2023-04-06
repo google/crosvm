@@ -52,12 +52,13 @@ pub struct BalloonStats {
 
 // TODO(b/276353613): remove and refactor bins into Vec
 pub const VIRTIO_BALLOON_WSS_NUM_BINS: usize = 4;
+pub const VIRTIO_BALLOON_WSS_CONFIG_SIZE: usize = 5;
 
 // WSSBucket stores information about a bucket (or bin) of the working set size.
 #[derive(Default, Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct WSSBucket {
     pub age: u64,
-    pub bytes: u64,
+    pub bytes: [u64; 2],
 }
 
 // BalloonWSS holds WSS returned from the wss_queue.

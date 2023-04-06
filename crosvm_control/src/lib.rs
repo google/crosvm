@@ -448,12 +448,15 @@ pub extern "C" fn crosvm_client_balloon_stats(
 #[repr(C)]
 pub struct WSSBucketFfi {
     age: u64,
-    bytes: u64,
+    bytes: [u64; 2],
 }
 
 impl WSSBucketFfi {
     fn new() -> Self {
-        Self { age: 0, bytes: 0 }
+        Self {
+            age: 0,
+            bytes: [0, 0],
+        }
     }
 }
 

@@ -13,6 +13,7 @@ use balloon_control::BalloonStats;
 use balloon_control::BalloonTubeCommand;
 use balloon_control::BalloonTubeResult;
 use balloon_control::BalloonWSS;
+use balloon_control::VIRTIO_BALLOON_WSS_CONFIG_SIZE;
 use balloon_control::VIRTIO_BALLOON_WSS_NUM_BINS;
 use base::error;
 use base::warn;
@@ -210,7 +211,8 @@ struct virtio_balloon_wss {
     // https://crsrc.org/o/src/third_party/kernel/v5.15/include/uapi/linux/virtio_balloon.h;l=105
     _reserved: [u8; 4],
     idle_age_ms: Le64,
-    memory_size_bytes: Le64,
+    // TODO(b/273973298): these should become separate fields - bytes for ANON and FILE
+    memory_size_bytes: [Le64; 2],
 }
 
 impl virtio_balloon_wss {
@@ -223,13 +225,14 @@ impl virtio_balloon_wss {
             return;
         }
         wss.wss[index].age = self.idle_age_ms.to_native();
-        wss.wss[index].bytes = self.memory_size_bytes.to_native();
+        wss.wss[index].bytes[0] = self.memory_size_bytes[0].to_native();
+        wss.wss[index].bytes[1] = self.memory_size_bytes[1].to_native();
     }
 }
 
 const _VIRTIO_BALLOON_WSS_OP_INVALID: u16 = 0;
 const VIRTIO_BALLOON_WSS_OP_REQUEST: u16 = 1;
-const VIRTIO_BALLOON_WSS_OP_INTERVALS: u16 = 2;
+const VIRTIO_BALLOON_WSS_OP_CONFIG: u16 = 2;
 const _VIRTIO_BALLOON_WSS_OP_DISCARD: u16 = 3;
 
 // virtio_balloon_op is used to serialize to the wss cmd vq.
@@ -585,9 +588,9 @@ async fn handle_wss_queue(
     interrupt: Interrupt,
 ) -> Result<()> {
     if let Err(e) =
-        send_initial_wss_intervals(mem, &mut queue, &mut queue_event, interrupt.clone()).await
+        send_initial_wss_config(mem, &mut queue, &mut queue_event, interrupt.clone()).await
     {
-        error!("unable to send initial WSS intervals to guest: {}", e);
+        error!("unable to send initial WSS config to guest: {}", e);
     }
 
     loop {
@@ -728,24 +731,29 @@ async fn handle_wss_data_queue(
     }
 }
 
-async fn send_wss_intervals(
+async fn send_wss_config(
     writer: &mut Writer,
-    intervals: [u64; VIRTIO_BALLOON_WSS_NUM_BINS],
-) -> Result<usize> {
+    config: [u64; VIRTIO_BALLOON_WSS_CONFIG_SIZE],
+    queue: &mut Queue,
+    mem: &GuestMemory,
+    index: u16,
+    interrupt: Interrupt,
+) -> Result<()> {
     let cmd = virtio_balloon_op {
-        type_: VIRTIO_BALLOON_WSS_OP_INTERVALS.into(),
+        type_: VIRTIO_BALLOON_WSS_OP_CONFIG.into(),
     };
 
     writer.write_obj(cmd).map_err(BalloonError::WriteQueue)?;
 
-    writer
-        .write_obj(intervals)
-        .map_err(BalloonError::WriteQueue)?;
+    writer.write_obj(config).map_err(BalloonError::WriteQueue)?;
 
-    Ok(writer.bytes_written())
+    queue.add_used(mem, index, writer.bytes_written() as u32);
+    queue.trigger_interrupt(mem, &interrupt);
+
+    Ok(())
 }
 
-async fn send_initial_wss_intervals(
+async fn send_initial_wss_config(
     mem: &GuestMemory,
     queue: &mut Queue,
     queue_event: &mut EventAsync,
@@ -760,15 +768,10 @@ async fn send_initial_wss_intervals(
     let mut writer = Writer::new(mem.clone(), avail_desc).map_err(BalloonError::Descriptor)?;
 
     // NOTE: first VIRTIO_BALLOON_WSS_NUM_BINS - 1 values are the
-    // interval boundaries, last value is the staleness_idx.
-    let intervals: [u64; VIRTIO_BALLOON_WSS_NUM_BINS] = [1, 5, 10, 1];
+    // interval boundaries, then refresh and reporting thresholds.
+    let config: [u64; VIRTIO_BALLOON_WSS_CONFIG_SIZE] = [1, 5, 10, 750, 1000];
 
-    let bytes_written = send_wss_intervals(&mut writer, intervals).await?;
-
-    queue.add_used(mem, index, bytes_written as u32);
-    queue.trigger_interrupt(mem, &interrupt);
-
-    Ok(())
+    send_wss_config(&mut writer, config, queue, mem, index, interrupt).await
 }
 
 // Async task that handles the command socket. The command socket handles messages from the host
