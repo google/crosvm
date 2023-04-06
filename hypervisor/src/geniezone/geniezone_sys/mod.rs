@@ -43,8 +43,8 @@ pub mod aarch64 {
     ioctl_iow_nr!(GZVM_ENABLE_CAP, GZVM_IOC_MAGIC, 0xa3, gzvm_enable_cap);
     ioctl_iow_nr!(GZVM_GET_ONE_REG, GZVM_IOC_MAGIC, 0xab, gzvm_one_reg);
     ioctl_iow_nr!(GZVM_SET_ONE_REG, GZVM_IOC_MAGIC, 0xac, gzvm_one_reg);
-
     ioctl_iowr_nr!(GZVM_CREATE_DEVICE, GZVM_IOC_MAGIC, 0xe0, gzvm_create_device);
+    ioctl_iow_nr!(GZVM_SET_DTB_CONFIG, GZVM_IOC_MAGIC, 0xff, gzvm_dtb_config);
 }
 
 #[cfg(any(target_arch = "aarch64"))]

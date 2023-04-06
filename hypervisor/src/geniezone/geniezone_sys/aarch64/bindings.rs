@@ -286,6 +286,8 @@ pub const GZVM_FUNC_CREATE_DEVICE: ::std::os::raw::c_uint = 11;
 pub const GZVM_FUNC_PROBE: ::std::os::raw::c_uint = 12;
 pub const GZVM_FUNC_ENABLE_CAP: ::std::os::raw::c_uint = 13;
 pub const GZVM_FUNC_MEMREGION_PURPOSE: ::std::os::raw::c_uint = 14;
+pub const GZVM_FUNC_SET_DTB_CONFIG: ::std::os::raw::c_uint = 15;
+pub const NR_GZVM_FUNC: ::std::os::raw::c_uint = 16;
 pub type _bindgen_ty_1 = ::std::os::raw::c_uint;
 pub type gzvm_id_t = u16;
 pub type gzvm_vcpu_id_t = u16;
@@ -477,6 +479,12 @@ pub struct gzvm_create_device {
     pub dev_reg_size: u64,
     pub attr_addr: u64,
     pub attr_size: u64,
+}
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone)]
+pub struct gzvm_dtb_config {
+    pub dtb_addr: u64,
+    pub dtb_size: u64,
 }
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
