@@ -2,15 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::convert::TryInto;
-use std::io;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::sync::Arc;
 
 use base::AsRawDescriptor;
 
-use super::uring_executor::Error;
 use super::uring_executor::RegisteredSource;
 use super::uring_executor::Result;
 use super::uring_executor::URingExecutor;
@@ -18,7 +15,6 @@ use crate::mem::BackingMemory;
 use crate::mem::MemRegion;
 use crate::mem::VecIoWrapper;
 use crate::AllocateMode;
-use crate::AsyncError;
 use crate::AsyncResult;
 
 /// `UringSource` wraps FD backed IO sources for use with io_uring. It is a thin wrapper around
@@ -68,37 +64,6 @@ impl<F: AsRawDescriptor> UringSource<F> {
         let op = self.registered_source.poll_fd_readable()?;
         op.await?;
         Ok(())
-    }
-
-    /// Reads a single u64 (e.g. from an eventfd).
-    pub async fn read_u64(&self) -> AsyncResult<u64> {
-        // This doesn't just forward to read_to_vec to avoid an unnecessary extra allocation from
-        // async-trait.
-        let buf = Arc::new(VecIoWrapper::from(0u64.to_ne_bytes().to_vec()));
-        let op = self.registered_source.start_read_to_mem(
-            None,
-            buf.clone(),
-            &[MemRegion {
-                offset: 0,
-                len: buf.len(),
-            }],
-        )?;
-        let len = op.await?;
-        if len != buf.len() as u32 {
-            Err(AsyncError::Uring(Error::Io(io::Error::new(
-                io::ErrorKind::Other,
-                format!("expected to read {} bytes, but read {}", buf.len(), len),
-            ))))
-        } else {
-            let bytes: Vec<u8> = if let Ok(v) = Arc::try_unwrap(buf) {
-                v.into()
-            } else {
-                panic!("too many refs on buf");
-            };
-
-            // Will never panic because bytes is of the appropriate size.
-            Ok(u64::from_ne_bytes(bytes[..].try_into().unwrap()))
-        }
     }
 
     /// Reads to the given `mem` at the given offsets from the file starting at `file_offset`.
@@ -188,10 +153,6 @@ impl<F: AsRawDescriptor> UringSource<F> {
     /// Provides a ref to the underlying IO source.
     pub fn as_source_mut(&mut self) -> &mut F {
         &mut self.source
-    }
-
-    pub async fn wait_for_handle(&self) -> AsyncResult<u64> {
-        self.read_u64().await
     }
 }
 

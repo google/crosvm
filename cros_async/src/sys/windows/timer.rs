@@ -2,13 +2,22 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use crate::AsyncResult;
+use crate::TimerAsync;
+
+impl TimerAsync {
+    pub async fn next_val_sys(&self) -> AsyncResult<u64> {
+        self.io_source.wait_for_handle().await
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::time::Duration;
     use std::time::Instant;
 
+    use super::*;
     use crate::Executor;
-    use crate::TimerAsync;
 
     #[test]
     fn timer() {

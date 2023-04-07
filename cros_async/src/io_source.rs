@@ -109,11 +109,6 @@ impl<F: AsRawDescriptor> IoSource<F> {
         await_on_inner!(self, read_to_mem, file_offset, mem, mem_offsets)
     }
 
-    /// Reads a single u64 at the current offset.
-    pub async fn read_u64(&self) -> AsyncResult<u64> {
-        await_on_inner!(self, read_u64)
-    }
-
     /// Waits for the object to be readable.
     pub async fn wait_readable(&self) -> AsyncResult<()> {
         await_on_inner!(self, wait_readable)
@@ -171,6 +166,7 @@ impl<F: AsRawDescriptor> IoSource<F> {
     /// Waits on a waitable handle.
     ///
     /// Needed for Windows currently, and subject to a potential future upstream.
+    #[cfg(windows)]
     pub async fn wait_for_handle(&self) -> AsyncResult<u64> {
         await_on_inner!(self, wait_for_handle)
     }
@@ -314,21 +310,6 @@ mod tests {
 
             f.rewind().unwrap();
             assert_eq!(std::io::read_to_string(f).unwrap(), "dta");
-        }
-    }
-
-    #[cfg(unix)] // TODO: Not implemented on windows.
-    #[test]
-    fn read_u64s() {
-        for kind in all_kinds() {
-            async fn go(source: IoSource<File>) -> u64 {
-                source.read_u64().await.unwrap()
-            }
-
-            let f = tmpfile_with_contents(&42u64.to_ne_bytes());
-            let ex = Executor::with_executor_kind(kind).unwrap();
-            let val = ex.run_until(go(ex.async_from(f).unwrap())).unwrap();
-            assert_eq!(val, 42);
         }
     }
 

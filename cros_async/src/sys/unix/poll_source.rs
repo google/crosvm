@@ -186,32 +186,6 @@ impl<F: AsRawDescriptor> PollSource<F> {
         Ok(())
     }
 
-    pub async fn read_u64(&self) -> AsyncResult<u64> {
-        let mut buf = 0u64.to_ne_bytes();
-        loop {
-            // Safe because this will only modify `buf` and we check the return value.
-            let res = unsafe {
-                libc::read(
-                    self.as_raw_descriptor(),
-                    buf.as_mut_ptr() as *mut libc::c_void,
-                    buf.len(),
-                )
-            };
-
-            if res >= 0 {
-                return Ok(u64::from_ne_bytes(buf));
-            }
-
-            match base::Error::last() {
-                e if e.errno() == libc::EWOULDBLOCK => {
-                    let op = self.0.wait_readable().map_err(Error::AddingWaker)?;
-                    op.await.map_err(Error::Executor)?;
-                }
-                e => return Err(Error::Read(e).into()),
-            }
-        }
-    }
-
     /// Writes from the given `vec` to the file starting at `file_offset`.
     pub async fn write_from_vec(
         &self,
@@ -348,10 +322,6 @@ impl<F: AsRawDescriptor> PollSource<F> {
     /// Provides a ref to the underlying IO source.
     pub fn as_source(&self) -> &F {
         self
-    }
-
-    pub async fn wait_for_handle(&self) -> AsyncResult<u64> {
-        self.read_u64().await
     }
 }
 
