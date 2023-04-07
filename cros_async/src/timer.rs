@@ -28,8 +28,8 @@ impl TimerAsync {
     ///
     /// NOTE: on Windows, this may return/wake early. See `base::Timer` docs
     /// for details.
-    pub async fn next_val(&self) -> AsyncResult<()> {
-        self.next_val_sys().await
+    pub async fn wait(&self) -> AsyncResult<()> {
+        self.wait_sys().await
     }
 
     /// Async sleep for the given duration.
@@ -40,7 +40,7 @@ impl TimerAsync {
         let mut tfd = Timer::new().map_err(Error::Timer)?;
         tfd.reset(dur, None).map_err(Error::Timer)?;
         let t = TimerAsync::new(tfd, ex).map_err(Error::TimerAsync)?;
-        t.next_val().await.map_err(Error::TimerAsync)?;
+        t.wait().await.map_err(Error::TimerAsync)?;
         Ok(())
     }
 

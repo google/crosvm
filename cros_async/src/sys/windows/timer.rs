@@ -6,7 +6,7 @@ use crate::AsyncResult;
 use crate::TimerAsync;
 
 impl TimerAsync {
-    pub async fn next_val_sys(&self) -> AsyncResult<()> {
+    pub async fn wait_sys(&self) -> AsyncResult<()> {
         self.io_source.wait_for_handle().await
     }
 }

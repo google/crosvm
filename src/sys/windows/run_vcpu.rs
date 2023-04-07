@@ -461,7 +461,7 @@ impl VcpuStallMonitor {
                         )?;
                         reset_timer = false;
                     }
-                    let timer_future = timer.next_val();
+                    let timer_future = timer.wait();
                     pin_mut!(timer_future);
                     match ex.run_until(select2(timer_future, exit_future)) {
                         Ok((timer_result, exit_result)) => {

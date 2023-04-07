@@ -465,7 +465,7 @@ pub async fn flush_disk(
     armed: Rc<RefCell<bool>>,
 ) -> Result<(), ControlError> {
     loop {
-        timer.next_val().await.map_err(ControlError::FlushTimer)?;
+        timer.wait().await.map_err(ControlError::FlushTimer)?;
         if !*armed.borrow() {
             continue;
         }
