@@ -3,18 +3,22 @@
 // found in the LICENSE file.
 
 //! rutabaga_core: Cross-platform, Rust-based, Wayland and Vulkan centric GPU virtualization.
-
 use std::collections::BTreeMap as Map;
+use std::convert::TryInto;
 use std::sync::Arc;
 
 use data_model::VolatileSlice;
 
 use crate::cross_domain::CrossDomain;
+
 #[cfg(feature = "gfxstream")]
 use crate::gfxstream::Gfxstream;
+
 use crate::rutabaga_2d::Rutabaga2D;
+use crate::rutabaga_os::MemoryMapping;
 use crate::rutabaga_os::SafeDescriptor;
 use crate::rutabaga_utils::*;
+
 #[cfg(feature = "virgl_renderer")]
 use crate::virgl_renderer::VirglRenderer;
 
@@ -43,6 +47,8 @@ pub struct RutabagaResource {
 
     /// Bitmask of components that have already imported this resource
     pub component_mask: u8,
+    pub size: u64,
+    pub mapping: Option<MemoryMapping>,
 }
 
 /// A RutabagaComponent is a building block of the Virtual Graphics Interface (VGI).  Each component
@@ -103,6 +109,8 @@ pub trait RutabagaComponent {
             vulkan_info: None,
             backing_iovecs: None,
             component_mask: 0,
+            size: 0,
+            mapping: None,
         })
     }
 
@@ -280,6 +288,20 @@ pub fn calculate_capset_names(capset_mask: u64) -> Vec<String> {
         .filter(|capset| capset_mask & (1 << capset.capset_id) != 0)
         .map(|capset| capset.name.to_string())
         .collect()
+}
+
+fn calculate_component(component_mask: u8) -> RutabagaResult<RutabagaComponentType> {
+    if component_mask.count_ones() != 1 {
+        return Err(RutabagaError::SpecViolation("can't infer single component"));
+    }
+
+    match component_mask.trailing_zeros() {
+        0 => Ok(RutabagaComponentType::Rutabaga2D),
+        1 => Ok(RutabagaComponentType::VirglRenderer),
+        2 => Ok(RutabagaComponentType::Gfxstream),
+        3 => Ok(RutabagaComponentType::CrossDomain),
+        _ => Err(RutabagaError::InvalidComponent),
+    }
 }
 
 /// The global libary handle used to query capability sets, create resources and contexts.
@@ -579,29 +601,64 @@ impl Rutabaga {
     }
 
     /// Returns a memory mapping of the blob resource.
-    pub fn map(&self, resource_id: u32) -> RutabagaResult<RutabagaMapping> {
+    pub fn map(&mut self, resource_id: u32) -> RutabagaResult<RutabagaMapping> {
+        let resource = self
+            .resources
+            .get_mut(&resource_id)
+            .ok_or(RutabagaError::InvalidResourceId)?;
+
+        let component_type = calculate_component(resource.component_mask)?;
+        if component_type == RutabagaComponentType::CrossDomain {
+            let handle_opt = resource.handle.take();
+            match handle_opt {
+                Some(handle) => {
+                    if handle.handle_type != RUTABAGA_MEM_HANDLE_TYPE_SHM {
+                        return Err(RutabagaError::SpecViolation(
+                            "expected a shared memory handle",
+                        ));
+                    }
+
+                    let clone = handle.try_clone()?;
+                    let resource_size: usize = resource.size.try_into()?;
+
+                    // Creating the mapping closes the cloned descriptor.
+                    let mapping =
+                        MemoryMapping::from_safe_descriptor(clone.os_handle, resource_size)?;
+                    let rutabaga_mapping = mapping.as_rutabaga_mapping();
+                    resource.handle = Some(handle);
+                    resource.mapping = Some(mapping);
+
+                    return Ok(rutabaga_mapping);
+                }
+                None => return Err(RutabagaError::SpecViolation("expected a handle to map")),
+            }
+        }
+
         let component = self
             .components
-            .get(&self.default_component)
+            .get(&component_type)
             .ok_or(RutabagaError::InvalidComponent)?;
-
-        if !self.resources.contains_key(&resource_id) {
-            return Err(RutabagaError::InvalidResourceId);
-        }
 
         component.map(resource_id)
     }
 
     /// Unmaps the blob resource from the default component
-    pub fn unmap(&self, resource_id: u32) -> RutabagaResult<()> {
+    pub fn unmap(&mut self, resource_id: u32) -> RutabagaResult<()> {
+        let resource = self
+            .resources
+            .get_mut(&resource_id)
+            .ok_or(RutabagaError::InvalidResourceId)?;
+
+        let component_type = calculate_component(resource.component_mask)?;
+        if component_type == RutabagaComponentType::CrossDomain {
+            resource.mapping = None;
+            return Ok(());
+        }
+
         let component = self
             .components
-            .get(&self.default_component)
+            .get(&component_type)
             .ok_or(RutabagaError::InvalidComponent)?;
-
-        if !self.resources.contains_key(&resource_id) {
-            return Err(RutabagaError::InvalidResourceId);
-        }
 
         component.unmap(resource_id)
     }

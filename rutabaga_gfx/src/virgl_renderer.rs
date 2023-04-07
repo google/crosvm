@@ -455,6 +455,8 @@ impl RutabagaComponent for VirglRenderer {
             vulkan_info: None,
             backing_iovecs: None,
             component_mask: 1 << (RutabagaComponentType::VirglRenderer as u8),
+            size: 0,
+            mapping: None,
         })
     }
 
@@ -623,6 +625,8 @@ impl RutabagaComponent for VirglRenderer {
                 vulkan_info: None,
                 backing_iovecs: iovec_opt,
                 component_mask: 1 << (RutabagaComponentType::VirglRenderer as u8),
+                size: resource_create_blob.size,
+                mapping: None,
             })
         }
         #[cfg(not(feature = "virgl_renderer_next"))]

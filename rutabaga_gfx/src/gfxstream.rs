@@ -432,6 +432,8 @@ impl RutabagaComponent for Gfxstream {
             vulkan_info: None,
             backing_iovecs: None,
             component_mask: 1 << (RutabagaComponentType::Gfxstream as u8),
+            size: 0,
+            mapping: None,
         })
     }
 
@@ -618,6 +620,8 @@ impl RutabagaComponent for Gfxstream {
             vulkan_info: self.vulkan_info(resource_id).ok(),
             backing_iovecs: iovec_opt,
             component_mask: 1 << (RutabagaComponentType::Gfxstream as u8),
+            size: resource_create_blob.size,
+            mapping: None,
         })
     }
 

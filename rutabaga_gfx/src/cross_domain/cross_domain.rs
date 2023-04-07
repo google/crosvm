@@ -664,6 +664,8 @@ impl RutabagaContext for CrossDomainContext {
                         vulkan_info: reqs.vulkan_info,
                         backing_iovecs: None,
                         component_mask: 1 << (RutabagaComponentType::CrossDomain as u8),
+                        size: resource_create_blob.size,
+                        mapping: None,
                     })
                 }
                 _ => Err(RutabagaError::InvalidCrossDomainItemType),
@@ -696,6 +698,8 @@ impl RutabagaContext for CrossDomainContext {
                         vulkan_info: None,
                         backing_iovecs: None,
                         component_mask: 1 << (RutabagaComponentType::CrossDomain as u8),
+                        size: resource_create_blob.size,
+                        mapping: None,
                     })
                 }
                 _ => Err(RutabagaError::InvalidCrossDomainItemType),
@@ -872,6 +876,8 @@ impl RutabagaComponent for CrossDomain {
             vulkan_info: None,
             backing_iovecs: iovec_opt,
             component_mask: 1 << (RutabagaComponentType::CrossDomain as u8),
+            size: resource_create_blob.size,
+            mapping: None,
         })
     }
 
