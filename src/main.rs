@@ -646,6 +646,11 @@ fn crosvm_main<I: IntoIterator<Item = String>>(args: I) -> Result<CommandStatus>
             // Past this point, usage of exit is in danger of leaking zombie processes.
             if let CrossPlatformCommands::Run(cmd) = command {
                 if let Some(syslog_tag) = &cmd.syslog_tag {
+                    base::warn!(
+                        "`crosvm run --syslog-tag` is deprecated; please use \
+                         `crosvm --syslog-tag=\"{}\" run` instead",
+                        syslog_tag
+                    );
                     log_config.proc_name = syslog_tag.clone();
                 }
                 // We handle run_vm separately because it does not simply signal success/error

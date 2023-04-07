@@ -1948,7 +1948,7 @@ pub struct RunCommand {
     pub switches: Vec<PathBuf>,
 
     #[argh(option, arg_name = "TAG")]
-    #[serde(skip)] // TODO(b/255223604)
+    #[serde(skip)] // Deprecated - use `CrosvmCmdlineArgs::syslog_tag` instead.
     #[merge(strategy = overwrite_option)]
     /// when logging to syslog, use the provided tag
     pub syslog_tag: Option<String>,
