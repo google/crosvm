@@ -391,12 +391,9 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
         &self.source
     }
 
-    pub async fn wait_for_handle(&self) -> AsyncResult<u64> {
+    pub async fn wait_for_handle(&self) -> AsyncResult<()> {
         let waiter = super::WaitForHandle::new(&self.source);
-        match waiter.await {
-            Err(e) => Err(AsyncError::HandleSource(e)),
-            Ok(()) => Ok(0),
-        }
+        waiter.await.map_err(AsyncError::HandleSource)
     }
 }
 

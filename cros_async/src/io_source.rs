@@ -167,7 +167,7 @@ impl<F: AsRawDescriptor> IoSource<F> {
     ///
     /// Needed for Windows currently, and subject to a potential future upstream.
     #[cfg(windows)]
-    pub async fn wait_for_handle(&self) -> AsyncResult<u64> {
+    pub async fn wait_for_handle(&self) -> AsyncResult<()> {
         await_on_inner!(self, wait_for_handle)
     }
 }

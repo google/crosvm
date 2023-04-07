@@ -409,12 +409,9 @@ impl<F: AsRawDescriptor> HandleSource<F> {
 
     /// In the multi-source case, the 0th source is waited on. If sources are not interchangeable,
     /// behavior is undefined.
-    pub async fn wait_for_handle(&self) -> AsyncResult<u64> {
+    pub async fn wait_for_handle(&self) -> AsyncResult<()> {
         let waiter = super::WaitForHandle::new(&self.sources[0]);
-        match waiter.await {
-            Err(e) => Err(AsyncError::HandleSource(e)),
-            Ok(()) => Ok(0),
-        }
+        waiter.await.map_err(AsyncError::HandleSource)
     }
 }
 

@@ -7,15 +7,15 @@ use crate::AsyncResult;
 use crate::TimerAsync;
 
 impl TimerAsync {
-    pub async fn next_val_sys(&self) -> AsyncResult<u64> {
-        let (n, v) = self
+    pub async fn next_val_sys(&self) -> AsyncResult<()> {
+        let (n, _) = self
             .io_source
             .read_to_vec(None, 0u64.to_ne_bytes().to_vec())
             .await?;
         if n != 8 {
             return Err(AsyncError::EventAsync(base::Error::new(libc::ENODATA)));
         }
-        Ok(u64::from_ne_bytes(v.try_into().unwrap()))
+        Ok(())
     }
 }
 
@@ -70,9 +70,8 @@ mod tests {
             tfd.reset(dur, None).expect("failed to arm timer");
 
             let t = TimerAsync::new_uring(tfd, ex).unwrap();
-            let count = t.next_val().await.expect("unable to wait for timer");
+            t.next_val().await.expect("unable to wait for timer");
 
-            assert_eq!(count, 1);
             assert!(now.elapsed() >= dur);
         }
 
@@ -90,9 +89,8 @@ mod tests {
             tfd.reset(dur, None).expect("failed to arm timer");
 
             let t = TimerAsync::new_poll(tfd, ex).unwrap();
-            let count = t.next_val().await.expect("unable to wait for timer");
+            t.next_val().await.expect("unable to wait for timer");
 
-            assert_eq!(count, 1);
             assert!(now.elapsed() >= dur);
         }
 

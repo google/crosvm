@@ -28,7 +28,7 @@ impl TimerAsync {
     ///
     /// NOTE: on Windows, this may return/wake early. See `base::Timer` docs
     /// for details.
-    pub async fn next_val(&self) -> AsyncResult<u64> {
+    pub async fn next_val(&self) -> AsyncResult<()> {
         self.next_val_sys().await
     }
 

@@ -54,7 +54,7 @@ impl EventAsync {
 
     /// Gets the next value from the eventfd.
     pub async fn next_val(&self) -> AsyncResult<u64> {
-        let res = self.io_source.wait_for_handle().await;
+        self.io_source.wait_for_handle().await?;
 
         if self.reset_after_read {
             self.io_source
@@ -62,6 +62,6 @@ impl EventAsync {
                 .reset()
                 .map_err(AsyncError::EventAsync)?;
         }
-        res
+        Ok(0)
     }
 }
