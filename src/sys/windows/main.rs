@@ -172,11 +172,6 @@ where
     F: Fn(&mut base::syslog::fmt::Formatter, &log::Record<'_>) -> std::io::Result<()> + Sync + Send,
 {
     if let Err(e) = syslog::init_with(LogConfig {
-        proc_name: if let Some(ref tag) = cfg.syslog_tag {
-            tag.to_string()
-        } else {
-            String::from("crosvm")
-        },
         pipe: if let Some(log_file_path) = &cfg.log_file {
             let file = OpenOptions::new()
                 .create(true)

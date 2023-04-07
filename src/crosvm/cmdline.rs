@@ -2555,7 +2555,6 @@ impl TryFrom<RunCommand> for super::config::Config {
             {
                 cfg.slirp_capture_file = cmd.slirp_capture_file;
             }
-            cfg.syslog_tag = cmd.syslog_tag;
             cfg.product_channel = cmd.product_channel;
             cfg.product_version = cmd.product_version;
         }

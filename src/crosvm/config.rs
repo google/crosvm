@@ -1166,8 +1166,6 @@ pub struct Config {
     pub stub_pci_devices: Vec<StubPciParameters>,
     pub swap_dir: Option<PathBuf>,
     pub swiotlb: Option<u64>,
-    #[cfg(windows)]
-    pub syslog_tag: Option<String>,
     #[cfg(target_os = "android")]
     pub task_profiles: Vec<String>,
     #[cfg(unix)]
@@ -1376,8 +1374,6 @@ impl Default for Config {
             strict_balloon: false,
             stub_pci_devices: Vec::new(),
             swiotlb: None,
-            #[cfg(windows)]
-            syslog_tag: None,
             #[cfg(target_os = "android")]
             task_profiles: Vec::new(),
             #[cfg(unix)]
