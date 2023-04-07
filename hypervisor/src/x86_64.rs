@@ -7,6 +7,8 @@ use std::arch::x86_64::CpuidResult;
 use std::arch::x86_64::__cpuid;
 #[cfg(any(unix, feature = "haxm", feature = "whpx"))]
 use std::arch::x86_64::_rdtsc;
+use std::ops::Deref;
+use std::ops::DerefMut;
 
 use base::error;
 use base::Result;
@@ -959,7 +961,39 @@ pub enum CpuHybridType {
     Core,
 }
 
+/// Some hypervisors (KVM) get/set xsave information as a u32 array. While
+/// we could define this struct per hypervisor, it is simpler to just align
+/// all data to the maximal required alignment for all hypervisors, which is
+/// u32 / 4 bytes.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[repr(align(4))]
+pub struct XsaveByte(u8);
+
 /// State of the VCPU's x87 FPU, MMX, XMM, YMM registers.
 /// May contain more state depending on enabled extensions.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Xsave(pub Vec<u32>);
+pub struct Xsave(pub Vec<XsaveByte>);
+
+impl Xsave {
+    /// Create a new buffer to store Xsave data.
+    ///
+    /// # Argments
+    /// * `len` size in bytes.
+    pub fn new(len: usize) -> Self {
+        Xsave(vec![XsaveByte(0); len])
+    }
+}
+
+impl Deref for Xsave {
+    type Target = Vec<XsaveByte>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for Xsave {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
