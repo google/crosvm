@@ -80,7 +80,6 @@ ioctl_io_nr!(KVM_GET_API_VERSION, KVMIO, 0x00);
 ioctl_io_nr!(KVM_CREATE_VM, KVMIO, 0x01);
 ioctl_io_nr!(KVM_CHECK_EXTENSION, KVMIO, 0x03);
 ioctl_io_nr!(KVM_GET_VCPU_MMAP_SIZE, KVMIO, 0x04);
-ioctl_iow_nr!(KVM_SET_MEMORY_REGION, KVMIO, 0x40, kvm_memory_region);
 ioctl_io_nr!(KVM_CREATE_VCPU, KVMIO, 0x41);
 ioctl_iow_nr!(KVM_GET_DIRTY_LOG, KVMIO, 0x42, kvm_dirty_log);
 ioctl_io_nr!(KVM_SET_NR_MMU_PAGES, KVMIO, 0x44);
