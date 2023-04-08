@@ -20,6 +20,7 @@ use libc::ENXIO;
 use libc::EOPNOTSUPP;
 use vm_memory::GuestAddress;
 use winapi::shared::winerror::E_UNEXPECTED;
+use windows::Win32::Foundation::WHV_E_INSUFFICIENT_BUFFER;
 
 use super::types::*;
 use super::*;
@@ -1051,15 +1052,53 @@ impl VcpuX86_64 for WhpxVcpu {
     }
 
     /// Gets the VCPU XSAVE.
-    // TODO: b/270734340 implement
     fn get_xsave(&self) -> Result<Xsave> {
-        Err(Error::new(EOPNOTSUPP))
+        let mut empty_buffer = [0u8; 1];
+        let mut needed_buf_size: u32 = 0;
+
+        // Find out how much space is needed for XSAVEs.
+        let res = unsafe {
+            WHvGetVirtualProcessorXsaveState(
+                self.vm_partition.partition,
+                self.index,
+                empty_buffer.as_mut_ptr() as *mut _,
+                0,
+                &mut needed_buf_size,
+            )
+        };
+        if res != WHV_E_INSUFFICIENT_BUFFER.0 {
+            // This should always work, so if it doesn't, we'll return unsupported.
+            error!("failed to get size of vcpu xsave");
+            return Err(Error::new(EOPNOTSUPP));
+        }
+
+        let mut xsave_data = Xsave::new(needed_buf_size as usize);
+        // SAFETY: xsave_data is valid for the duration of the FFI call, and we pass its length in
+        // bytes so writes are bounded within the buffer.
+        check_whpx!(unsafe {
+            WHvGetVirtualProcessorXsaveState(
+                self.vm_partition.partition,
+                self.index,
+                xsave_data.as_mut_ptr() as *mut _,
+                xsave_data.len() as u32,
+                &mut needed_buf_size,
+            )
+        })?;
+        Ok(Xsave(xsave_data))
     }
 
     /// Sets the VCPU XSAVE.
-    // TODO: b/270734340 implement
-    fn set_xsave(&self, _xsave: &Xsave) -> Result<()> {
-        Err(Error::new(EOPNOTSUPP))
+    fn set_xsave(&self, xsave: &Xsave) -> Result<()> {
+        // SAFETY: the xsave buffer is valid for the duration of the FFI call, and we pass its
+        // length in bytes so reads are bounded within the buffer.
+        check_whpx!(unsafe {
+            WHvSetVirtualProcessorXsaveState(
+                self.vm_partition.partition,
+                self.index,
+                xsave.0.as_ptr() as *const _,
+                xsave.0.len() as u32,
+            )
+        })
     }
 
     /// Gets the VCPU EVENTS.
@@ -1590,5 +1629,22 @@ mod tests {
         assert_eq!(sregs.efer, EFER_SCE | EFER_LME | EFER_LMA);
         vcpu.get_msrs(&mut efer_reg).expect("failed to get msrs");
         assert_eq!(efer_reg[0].value, EFER_SCE | EFER_LME | EFER_LMA);
+    }
+
+    #[test]
+    fn get_and_set_xsave_smoke() {
+        if !Whpx::is_enabled() {
+            return;
+        }
+        let cpu_count = 1;
+        let mem =
+            GuestMemory::new(&[(GuestAddress(0), 0x1000)]).expect("failed to create guest memory");
+        let vm = new_vm(cpu_count, mem);
+        let vcpu = vm.create_vcpu(0).expect("failed to create vcpu");
+
+        // XSAVE is essentially opaque for our purposes. We just want to make sure our syscalls
+        // succeed.
+        let xsave = vcpu.get_xsave().unwrap();
+        vcpu.set_xsave(&xsave).unwrap();
     }
 }
