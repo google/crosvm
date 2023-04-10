@@ -579,56 +579,61 @@ async fn handle_events_queue(
     }
 }
 
-async fn handle_wss_queue(
+enum WSSOp {
+    WSSReport {
+        id: u64,
+    },
+    WSSConfig {
+        config: [u64; VIRTIO_BALLOON_WSS_CONFIG_SIZE],
+    },
+}
+
+async fn handle_wss_op_queue(
     mem: &GuestMemory,
     mut queue: Queue,
     mut queue_event: EventAsync,
-    mut wss_rx: mpsc::Receiver<u64>,
+    mut wss_op_rx: mpsc::Receiver<WSSOp>,
     state: Arc<AsyncMutex<BalloonState>>,
     interrupt: Interrupt,
 ) -> Result<()> {
-    if let Err(e) =
-        send_initial_wss_config(mem, &mut queue, &mut queue_event, interrupt.clone()).await
-    {
-        error!("unable to send initial WSS config to guest: {}", e);
-    }
-
     loop {
-        let id = match wss_rx.next().await {
-            Some(id) => id,
+        let op = match wss_op_rx.next().await {
+            Some(op) => op,
             None => {
-                error!("wss signal tube was closed");
+                error!("wss op tube was closed");
                 break;
             }
         };
-
-        {
-            let mut state = state.lock().await;
-            state.expecting_wss = true;
-            state.expected_wss_id = id;
-        }
-
         let avail_desc = queue
             .next_async(mem, &mut queue_event)
             .await
             .map_err(BalloonError::AsyncAwait)?;
-
         let index = avail_desc.index;
 
-        let mut writer = match Writer::new(mem.clone(), avail_desc) {
-            Ok(w) => w,
-            Err(e) => {
-                error!("balloon: failed to CREATE Writer: {}", e);
-                continue;
+        let mut writer = Writer::new(mem.clone(), avail_desc).map_err(BalloonError::Descriptor)?;
+
+        match op {
+            WSSOp::WSSReport { id } => {
+                {
+                    let mut state = state.lock().await;
+                    state.expecting_wss = true;
+                    state.expected_wss_id = id;
+                }
+
+                let wss_r = virtio_balloon_op {
+                    type_: VIRTIO_BALLOON_WSS_OP_REQUEST.into(),
+                };
+
+                writer.write_obj(wss_r).map_err(BalloonError::WriteQueue)?;
             }
-        };
+            WSSOp::WSSConfig { config } => {
+                let cmd = virtio_balloon_op {
+                    type_: VIRTIO_BALLOON_WSS_OP_CONFIG.into(),
+                };
 
-        let wss_r = virtio_balloon_op {
-            type_: VIRTIO_BALLOON_WSS_OP_REQUEST.into(),
-        };
-
-        if let Err(e) = writer.write_obj(wss_r) {
-            error!("failed to write wss-r command: {}", e);
+                writer.write_obj(cmd).map_err(BalloonError::WriteQueue)?;
+                writer.write_obj(config).map_err(BalloonError::WriteQueue)?;
+            }
         }
 
         queue.add_used(mem, index, writer.bytes_written() as u32);
@@ -731,47 +736,16 @@ async fn handle_wss_data_queue(
     }
 }
 
-async fn send_wss_config(
-    writer: &mut Writer,
-    config: [u64; VIRTIO_BALLOON_WSS_CONFIG_SIZE],
-    queue: &mut Queue,
-    mem: &GuestMemory,
-    index: u16,
-    interrupt: Interrupt,
-) -> Result<()> {
-    let cmd = virtio_balloon_op {
-        type_: VIRTIO_BALLOON_WSS_OP_CONFIG.into(),
-    };
-
-    writer.write_obj(cmd).map_err(BalloonError::WriteQueue)?;
-
-    writer.write_obj(config).map_err(BalloonError::WriteQueue)?;
-
-    queue.add_used(mem, index, writer.bytes_written() as u32);
-    queue.trigger_interrupt(mem, &interrupt);
-
-    Ok(())
-}
-
-async fn send_initial_wss_config(
-    mem: &GuestMemory,
-    queue: &mut Queue,
-    queue_event: &mut EventAsync,
-    interrupt: Interrupt,
-) -> Result<()> {
-    let avail_desc = queue
-        .next_async(mem, queue_event)
-        .await
-        .map_err(BalloonError::AsyncAwait)?;
-    let index = avail_desc.index;
-
-    let mut writer = Writer::new(mem.clone(), avail_desc).map_err(BalloonError::Descriptor)?;
-
+fn send_initial_wss_config(mut wss_op_tx: mpsc::Sender<WSSOp>) {
     // NOTE: first VIRTIO_BALLOON_WSS_NUM_BINS - 1 values are the
     // interval boundaries, then refresh and reporting thresholds.
-    let config: [u64; VIRTIO_BALLOON_WSS_CONFIG_SIZE] = [1, 5, 10, 750, 1000];
+    let config = WSSOp::WSSConfig {
+        config: [1_000, 5_000, 10_000, 750, 1_000],
+    };
 
-    send_wss_config(&mut writer, config, queue, mem, index, interrupt).await
+    if let Err(e) = wss_op_tx.try_send(config) {
+        error!("failed to send inital WSS config to guest: {}", e);
+    }
 }
 
 // Async task that handles the command socket. The command socket handles messages from the host
@@ -781,6 +755,7 @@ async fn handle_command_tube(
     interrupt: Interrupt,
     state: Arc<AsyncMutex<BalloonState>>,
     mut stats_tx: mpsc::Sender<u64>,
+    mut wss_config_tx: mpsc::Sender<WSSOp>,
 ) -> Result<()> {
     loop {
         match command_tube.next().await {
@@ -805,6 +780,11 @@ async fn handle_command_tube(
                         }
                     }
                 }
+                BalloonTubeCommand::WorkingSetSizeConfig { config } => {
+                    if let Err(e) = wss_config_tx.try_send(WSSOp::WSSConfig { config }) {
+                        error!("failed to send config to config handler: {}", e);
+                    }
+                }
                 BalloonTubeCommand::Stats { id } => {
                     if let Err(e) = stats_tx.try_send(id) {
                         error!("failed to signal the stat handler: {}", e);
@@ -825,14 +805,14 @@ async fn handle_command_tube(
 // requesting that the guest balloon be adjusted or to report guest memory statistics.
 async fn handle_wss_op_tube(
     wss_op_tube: Option<&AsyncTube>,
-    mut wss_tx: mpsc::Sender<u64>,
+    mut wss_op_tx: mpsc::Sender<WSSOp>,
 ) -> Result<()> {
     if let Some(wss_op_tube) = wss_op_tube {
         loop {
             match wss_op_tube.next().await {
                 Ok(command) => match command {
                     BalloonTubeCommand::WorkingSetSize { id } => {
-                        if let Err(e) = wss_tx.try_send(id) {
+                        if let Err(e) = wss_op_tx.try_send(WSSOp::WSSReport { id }) {
                             error!("failed to signal the wss handler: {}", e);
                         }
                     }
@@ -983,8 +963,8 @@ fn run_worker(
         };
         pin_mut!(reporting);
 
-        // If VIRTIO_BALLOON_F_WSS_REPORTING is set 2 queues must handled - one
-        // for WSS data and one for WSS notifications.
+        // If VIRTIO_BALLOON_F_WSS_REPORTING is set 2 queues must handled - one for WSS data and one
+        // for WSS notifications.
         let wss_data = if let Some((wss_data_queue, wss_data_queue_evt)) = wss_queues.0 {
             handle_wss_data_queue(
                 &mem,
@@ -1001,13 +981,15 @@ fn run_worker(
         };
         pin_mut!(wss_data);
 
-        let (wss_tx, wss_rx) = mpsc::channel::<u64>(1);
-        let wss_queue = if let Some((wss_cmd_queue, wss_cmd_queue_evt)) = wss_queues.1 {
-            handle_wss_queue(
+        let (wss_op_tx, wss_op_rx) = mpsc::channel::<WSSOp>(1);
+        let wss_op = if let Some((wss_op_queue, wss_op_queue_evt)) = wss_queues.1 {
+            send_initial_wss_config(wss_op_tx.clone());
+
+            handle_wss_op_queue(
                 &mem,
-                wss_cmd_queue,
-                EventAsync::new(wss_cmd_queue_evt, &ex).expect("failed to create async event"),
-                wss_rx,
+                wss_op_queue,
+                EventAsync::new(wss_op_queue_evt, &ex).expect("failed to create async event"),
+                wss_op_rx,
                 state.clone(),
                 interrupt.clone(),
             )
@@ -1015,16 +997,21 @@ fn run_worker(
         } else {
             std::future::pending().right_future()
         };
-        pin_mut!(wss_queue);
+        pin_mut!(wss_op);
 
         // Future to handle command messages that resize the balloon.
-        let command =
-            handle_command_tube(&command_tube, interrupt.clone(), state.clone(), stats_tx);
+        let command = handle_command_tube(
+            &command_tube,
+            interrupt.clone(),
+            state.clone(),
+            stats_tx,
+            wss_op_tx.clone(),
+        );
         pin_mut!(command);
 
         // Future to handle wss command messages for the balloon.
-        let wss_op = handle_wss_op_tube(wss_op_tube.as_ref(), wss_tx);
-        pin_mut!(wss_op);
+        let wss_op_tube = handle_wss_op_tube(wss_op_tube.as_ref(), wss_op_tx);
+        pin_mut!(wss_op_tube);
 
         // Process any requests to resample the irq value.
         let resample = async_utils::handle_irq_resample(&ex, interrupt.clone());
@@ -1071,7 +1058,7 @@ fn run_worker(
                 events,
                 pending_adjusted,
                 wss_data,
-                wss_queue,
+                wss_op_tube,
             ))
             .map(|_| ())
         {

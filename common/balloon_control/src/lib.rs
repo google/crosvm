@@ -31,6 +31,10 @@ pub enum BalloonTubeCommand {
     WorkingSetSize {
         id: u64,
     },
+    // Send balloon wss config to guest.
+    WorkingSetSizeConfig {
+        config: [u64; VIRTIO_BALLOON_WSS_CONFIG_SIZE],
+    },
 }
 
 // BalloonStats holds stats returned from the stats_queue.

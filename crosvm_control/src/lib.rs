@@ -632,3 +632,31 @@ pub unsafe extern "C" fn crosvm_client_unregister_listener(
     })
     .unwrap_or(false)
 }
+
+/// Set Working Set Size config in guest.
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_client_balloon_wss_config(
+    socket_path: *const c_char,
+    config: *const [u64; 5],
+) -> bool {
+    catch_unwind(|| {
+        if let Some(socket_path) = validate_socket_path(socket_path) {
+            if !config.is_null() {
+                // SAFETY: deref of raw pointer is safe because we check to
+                // make sure the pointer is not null.
+                unsafe {
+                    let request =
+                        VmRequest::BalloonCommand(BalloonControlCommand::WorkingSetSizeConfig {
+                            config: *config,
+                        });
+                    vms_request(&request, socket_path).is_ok()
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    })
+    .unwrap_or(false)
+}

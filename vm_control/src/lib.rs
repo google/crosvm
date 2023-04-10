@@ -15,6 +15,7 @@ pub mod gdb;
 #[cfg(feature = "gpu")]
 pub mod gpu;
 
+use balloon_control::VIRTIO_BALLOON_WSS_CONFIG_SIZE;
 #[cfg(unix)]
 use base::MemoryMappingBuilderUnix;
 #[cfg(windows)]
@@ -192,6 +193,9 @@ pub enum BalloonControlCommand {
     },
     Stats,
     WorkingSetSize,
+    WorkingSetSizeConfig {
+        config: [u64; VIRTIO_BALLOON_WSS_CONFIG_SIZE],
+    },
 }
 
 // BalloonControlResult holds results for BalloonControlCommand defined above.
@@ -1602,6 +1606,19 @@ impl VmRequest {
                         num_bytes,
                         allow_failure: false,
                     }) {
+                        Ok(_) => VmResponse::Ok,
+                        Err(_) => VmResponse::Err(SysError::last()),
+                    }
+                } else {
+                    VmResponse::Err(SysError::new(ENOTSUP))
+                }
+            }
+            #[cfg(feature = "balloon")]
+            VmRequest::BalloonCommand(BalloonControlCommand::WorkingSetSizeConfig { config }) => {
+                if let Some(balloon_host_tube) = balloon_host_tube {
+                    match balloon_host_tube
+                        .send(&BalloonTubeCommand::WorkingSetSizeConfig { config })
+                    {
                         Ok(_) => VmResponse::Ok,
                         Err(_) => VmResponse::Err(SysError::last()),
                     }
