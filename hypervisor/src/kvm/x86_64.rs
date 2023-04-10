@@ -723,7 +723,7 @@ impl VcpuX86_64 for KvmVcpu {
         }
         // Ensure xsave is the same size as used in get_xsave.
         // Return err if sizes don't match => not the same extensions are enabled for CPU.
-        if xsave.0.len() != size as usize {
+        if xsave.len() != size as usize {
             return Err(Error::new(EIO));
         }
 
@@ -731,7 +731,7 @@ impl VcpuX86_64 for KvmVcpu {
         // correct amount of memory to our pointer, and we verify the return result.
         // Because of the len check above, and because the layout of `struct kvm_xsave` is
         // compatible with a slice of `u32`, we can pass the pointer to `xsave` directly.
-        let ret = unsafe { ioctl_with_ptr(self, KVM_SET_XSAVE(), xsave.0.as_ptr()) };
+        let ret = unsafe { ioctl_with_ptr(self, KVM_SET_XSAVE(), xsave.as_ptr()) };
         if ret == 0 {
             Ok(())
         } else {

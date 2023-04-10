@@ -7,13 +7,12 @@ use std::arch::x86_64::CpuidResult;
 use std::arch::x86_64::__cpuid;
 #[cfg(any(unix, feature = "haxm", feature = "whpx"))]
 use std::arch::x86_64::_rdtsc;
-use std::ops::Deref;
-use std::ops::DerefMut;
 
 use base::error;
 use base::Result;
 use bit_field::*;
 use downcast_rs::impl_downcast;
+use libc::c_void;
 use serde::Deserialize;
 use serde::Serialize;
 use vm_memory::GuestAddress;
@@ -961,18 +960,15 @@ pub enum CpuHybridType {
     Core,
 }
 
-/// Some hypervisors (KVM) get/set xsave information as a u32 array. While
-/// we could define this struct per hypervisor, it is simpler to just align
-/// all data to the maximal required alignment for all hypervisors, which is
-/// u32 / 4 bytes.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-#[repr(align(4))]
-pub struct XsaveByte(u8);
-
 /// State of the VCPU's x87 FPU, MMX, XMM, YMM registers.
 /// May contain more state depending on enabled extensions.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Xsave(pub Vec<XsaveByte>);
+pub struct Xsave {
+    data: Vec<u32>,
+
+    // Actual length in bytes. May be smaller than data if a non-u32 multiple of bytes is requested.
+    len: usize,
+}
 
 impl Xsave {
     /// Create a new buffer to store Xsave data.
@@ -980,20 +976,22 @@ impl Xsave {
     /// # Argments
     /// * `len` size in bytes.
     pub fn new(len: usize) -> Self {
-        Xsave(vec![XsaveByte(0); len])
+        Xsave {
+            data: vec![0; (len + 3) / 4],
+            len,
+        }
     }
-}
 
-impl Deref for Xsave {
-    type Target = Vec<XsaveByte>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    pub fn as_ptr(&self) -> *const c_void {
+        self.data.as_ptr() as *const c_void
     }
-}
 
-impl DerefMut for Xsave {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+    pub fn as_mut_ptr(&mut self) -> *mut c_void {
+        self.data.as_mut_ptr() as *mut c_void
+    }
+
+    /// Length in bytes of the XSAVE data.
+    pub fn len(&self) -> usize {
+        self.len
     }
 }

@@ -1072,19 +1072,19 @@ impl VcpuX86_64 for WhpxVcpu {
             return Err(Error::new(EOPNOTSUPP));
         }
 
-        let mut xsave_data = Xsave::new(needed_buf_size as usize);
+        let mut xsave = Xsave::new(needed_buf_size as usize);
         // SAFETY: xsave_data is valid for the duration of the FFI call, and we pass its length in
         // bytes so writes are bounded within the buffer.
         check_whpx!(unsafe {
             WHvGetVirtualProcessorXsaveState(
                 self.vm_partition.partition,
                 self.index,
-                xsave_data.as_mut_ptr() as *mut _,
-                xsave_data.len() as u32,
+                xsave.as_mut_ptr(),
+                xsave.len() as u32,
                 &mut needed_buf_size,
             )
         })?;
-        Ok(Xsave(xsave_data))
+        Ok(xsave)
     }
 
     /// Sets the VCPU XSAVE.
@@ -1095,8 +1095,8 @@ impl VcpuX86_64 for WhpxVcpu {
             WHvSetVirtualProcessorXsaveState(
                 self.vm_partition.partition,
                 self.index,
-                xsave.0.as_ptr() as *const _,
-                xsave.0.len() as u32,
+                xsave.as_ptr(),
+                xsave.len() as u32,
             )
         })
     }
