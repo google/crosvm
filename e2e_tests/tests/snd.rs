@@ -40,7 +40,7 @@ fn do_playback() {
     )
     .unwrap();
     vm.exec_in_guest(
-        "aplay --buffer-size=2048 --period-size=1024 \
+        "aplay --buffer-size=48000 --period-size=12000 \
         -d 1 -f dat -Dhw:0,0 /mnt/test_440_48000.raw",
     )
     .unwrap();
@@ -55,8 +55,8 @@ fn do_playback() {
 fn compare_files(temp_dir: TempDir, golden_file_name: &str, output_file_name: &str) -> bool {
     // 1 second, 2 channels, 16 bit (2 byte) format, 48000 frame rate.
     const BYTES_TO_COMPARE: usize = 1 * 2 * 2 * 48000;
-    // Skip the first 2 * buffer-size bytes as it's 0 pads.
-    const SKIP_OFFSET: usize = 2 * 2048;
+    // Skip the first buffer-size bytes as it's 0 pads.
+    const SKIP_OFFSET: usize = 48000;
 
     // Open the second file for reading
     let buf1 = fs::read(temp_dir.path().join(golden_file_name)).unwrap();
