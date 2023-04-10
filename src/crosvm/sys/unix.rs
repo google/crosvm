@@ -219,7 +219,7 @@ fn create_virtio_devices(
     #[cfg(feature = "gpu")] render_server_fd: Option<SafeDescriptor>,
     vvu_proxy_device_tubes: &mut Vec<Tube>,
     vvu_proxy_max_sibling_mem_size: u64,
-    registered_evt_q: &SendTube,
+    #[cfg_attr(not(feature = "balloon"), allow(unused_variables))] registered_evt_q: &SendTube,
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
     let mut devs = Vec::new();
 
@@ -808,6 +808,7 @@ fn create_devices(
         vm_evt_wrtube,
         #[cfg(feature = "balloon")]
         balloon_device_tube,
+        #[cfg(feature = "balloon")]
         balloon_wss_device_tube,
         #[cfg(feature = "balloon")]
         balloon_inflate_tube,
@@ -2876,6 +2877,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     let mut pvpanic_code = PvPanicCode::Unknown;
     #[cfg(feature = "balloon")]
     let mut balloon_stats_id: u64 = 0;
+    #[cfg(feature = "balloon")]
     let mut balloon_wss_id: u64 = 0;
     let mut registered_evt_tubes: HashMap<RegisteredEvent, HashSet<AddressedTube>> = HashMap::new();
 
