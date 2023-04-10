@@ -132,11 +132,13 @@ fn bitfield_tuple_struct_impl(ast: &DeriveInput, fields: &FieldsUnnamed) -> Resu
             type GetterType = Self;
 
             #[inline]
+            #[allow(clippy::unnecessary_cast)]
             fn from_u64(val: u64) -> Self::GetterType {
                 Self(#from_u64)
             }
 
             #[inline]
+            #[allow(clippy::unnecessary_cast)]
             fn into_u64(val: Self::SetterType) -> u64 {
                 #into_u64
             }
