@@ -9,7 +9,6 @@ use libc::ENOENT;
 use libc::ENOTSUP;
 use vm_memory::GuestAddress;
 use vm_memory::MemoryRegionInformation;
-use vm_memory::MemoryRegionOptions;
 use vm_memory::MemoryRegionPurpose;
 
 use base::error;
@@ -35,15 +34,11 @@ fn fdt_create_shm_device(
     fdt: &mut FdtWriter,
     index: u32,
     guest_addr: GuestAddress,
-    options: MemoryRegionOptions,
 ) -> cros_fdt::Result<()> {
     let shm_name = format!("shm-{:x}", index);
     let shm_node = fdt.begin_node(&shm_name)?;
     fdt.property_string("vdevice-type", "shm")?;
     fdt.property_null("peer-default")?;
-    if options.purpose == MemoryRegionPurpose::StaticSwiotlbRegion {
-        fdt.property_string("push-compatible", "restricted-dma-pool")?;
-    }
     fdt.property_u64("dma_base", 0)?;
     let mem_node = fdt.begin_node("memory")?;
     fdt.property_u32("label", index)?;
@@ -171,7 +166,7 @@ impl VmAArch64 for GunyahVm {
                 };
 
                 if create_shm_node {
-                    fdt_create_shm_device(fdt, index.try_into().unwrap(), guest_addr, options)?;
+                    fdt_create_shm_device(fdt, index.try_into().unwrap(), guest_addr)?;
                 }
 
                 Ok(())
