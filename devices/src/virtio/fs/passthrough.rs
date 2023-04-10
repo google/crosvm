@@ -2861,6 +2861,17 @@ mod tests {
 
     const UNITTEST_LOCK_NAME: &str = "passthroughfs_unittest_lock";
 
+    // Create an instance of `Context` with valid uid, gid, and pid.
+    // The correct ids are necessary for test cases where new files are created.
+    fn get_context() -> Context {
+        // Both these calls are safe because they take no parameters, and only return an integer
+        // value. The kernel also guarantees that they can never fail.
+        let uid = unsafe { libc::syscall(SYS_GETEUID) as libc::uid_t };
+        let gid = unsafe { libc::syscall(SYS_GETEGID) as libc::gid_t };
+        let pid = std::process::id() as libc::pid_t;
+        Context { uid, gid, pid }
+    }
+
     /// Creates the given directories and files under `temp_dir`.
     fn create_test_data(temp_dir: &TempDir, dirs: &[&str], files: &[&str]) {
         let path = temp_dir.path();
@@ -2877,11 +2888,7 @@ mod tests {
     /// Looks up the given `path` in `fs`.
     fn lookup(fs: &PassthroughFs, path: &Path) -> io::Result<Inode> {
         let mut inode = 1;
-        let ctx = Context {
-            uid: 0,
-            gid: 0,
-            pid: 0,
-        };
+        let ctx = get_context();
         for name in path.iter() {
             let name = CString::new(name.to_str().unwrap()).unwrap();
             let ent = match fs.lookup(ctx, inode, &name) {
