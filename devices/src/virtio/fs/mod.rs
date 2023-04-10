@@ -44,6 +44,7 @@ use crate::virtio::VirtioPciShmCap;
 use crate::Suspendable;
 
 mod caps;
+mod expiring_map;
 mod multikey;
 pub mod passthrough;
 mod read_dir;
