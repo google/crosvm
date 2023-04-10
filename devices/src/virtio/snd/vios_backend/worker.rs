@@ -84,7 +84,7 @@ impl Worker {
 
         let interrupt_clone = interrupt.clone();
         let guest_memory_clone = guest_memory.clone();
-        let senders: Vec<Sender<StreamMsg>> =
+        let senders: Vec<Sender<Box<StreamMsg>>> =
             streams.iter().map(|sp| sp.msg_sender().clone()).collect();
         let io_thread = thread::Builder::new()
             .name("v_snd_io".to_string())
@@ -544,7 +544,7 @@ fn io_loop(
     tx_queue_evt: Event,
     rx_queue: Arc<Mutex<Queue>>,
     rx_queue_evt: Event,
-    senders: Vec<Sender<StreamMsg>>,
+    senders: Vec<Sender<Box<StreamMsg>>>,
     kill_evt: Event,
 ) -> Result<()> {
     #[derive(EventToken)]

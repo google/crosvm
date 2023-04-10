@@ -54,7 +54,7 @@ enum StreamState {
 
 pub struct Stream {
     stream_id: u32,
-    receiver: Receiver<StreamMsg>,
+    receiver: Receiver<Box<StreamMsg>>,
     vios_client: Arc<VioSClient>,
     guest_memory: GuestMemory,
     control_queue: Arc<Mutex<Queue>>,
@@ -79,7 +79,7 @@ impl Stream {
         io_queue: Arc<Mutex<Queue>>,
         capture: bool,
     ) -> Result<StreamProxy> {
-        let (sender, receiver): (Sender<StreamMsg>, Receiver<StreamMsg>) = channel();
+        let (sender, receiver): (Sender<Box<StreamMsg>>, Receiver<Box<StreamMsg>>) = channel();
         let thread = thread::Builder::new()
             .name(format!("v_snd_stream:{stream_id}"))
             .spawn(move || {
@@ -124,7 +124,7 @@ impl Stream {
 
     fn recv_msg(&mut self) -> Result<bool> {
         let msg = self.receiver.recv().map_err(SoundError::StreamThreadRecv)?;
-        let (code, desc, next_state) = match msg {
+        let (code, desc, next_state) = match *msg {
             StreamMsg::SetParams(desc, params) => {
                 let code = match self.vios_client.set_stream_parameters_raw(params) {
                     Ok(()) => {
@@ -349,19 +349,21 @@ impl Drop for Stream {
 
 /// Basically a proxy to the thread handling a particular stream.
 pub struct StreamProxy {
-    sender: Sender<StreamMsg>,
+    sender: Sender<Box<StreamMsg>>,
     thread: Option<thread::JoinHandle<()>>,
 }
 
 impl StreamProxy {
     /// Access the underlying sender to clone it or send messages
-    pub fn msg_sender(&self) -> &Sender<StreamMsg> {
+    pub fn msg_sender(&self) -> &Sender<Box<StreamMsg>> {
         &self.sender
     }
 
     /// Send a message to the stream thread on the other side of this sender
-    pub fn send_msg(sender: &Sender<StreamMsg>, msg: StreamMsg) -> Result<()> {
-        sender.send(msg).map_err(SoundError::StreamThreadSend)
+    pub fn send_msg(sender: &Sender<Box<StreamMsg>>, msg: StreamMsg) -> Result<()> {
+        sender
+            .send(Box::new(msg))
+            .map_err(SoundError::StreamThreadSend)
     }
 
     /// Convenience function to send a message to this stream's thread

@@ -73,7 +73,7 @@ pub enum SoundError {
     #[error("Failed to receive message: {0}")]
     StreamThreadRecv(RecvError),
     #[error("Failed to send message: {0}")]
-    StreamThreadSend(SendError<StreamMsg>),
+    StreamThreadSend(SendError<Box<StreamMsg>>),
     #[error("Error creating WaitContext: {0}")]
     WaitCtx(BaseError),
 }
