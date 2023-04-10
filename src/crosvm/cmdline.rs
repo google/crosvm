@@ -11,9 +11,6 @@ cfg_if::cfg_if! {
 
         use super::sys::config::VfioOption;
         use super::config::SharedDir;
-    } else if #[cfg(windows)] {
-        use crate::crosvm::sys::config::IrqChipKind;
-
     }
 }
 
@@ -102,6 +99,7 @@ use crate::crosvm::config::GidMap;
 #[cfg(feature = "direct")]
 use crate::crosvm::config::HostPcieRootPortParameters;
 use crate::crosvm::config::HypervisorKind;
+use crate::crosvm::config::IrqChipKind;
 use crate::crosvm::config::MemOptions;
 use crate::crosvm::config::TouchDeviceOption;
 use crate::crosvm::config::VhostUserFsOption;
@@ -1292,11 +1290,9 @@ pub struct RunCommand {
     /// initial ramdisk to load
     pub initrd: Option<PathBuf>,
 
-    #[cfg(windows)]
     #[argh(option, arg_name = "kernel|split|userspace")]
-    #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
-    /// type of interrupt controller emulation.  \"split\" is only available for x86 KVM.
+    /// type of interrupt controller emulation. "split" is only available for x86 KVM.
     pub irqchip: Option<IrqChipKind>,
 
     #[argh(switch)]
@@ -1902,7 +1898,7 @@ pub struct RunCommand {
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[argh(switch)]
-    #[serde(skip)] // TODO(b/255223604)
+    #[serde(skip)] // Deprecated - use `irq_chip` instead.
     #[merge(strategy = overwrite_false)]
     /// (EXPERIMENTAL) enable split-irqchip support
     pub split_irqchip: bool,
@@ -2541,7 +2537,6 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.product_name = cmd.product_name;
             cfg.exit_stats = cmd.exit_stats;
             cfg.host_guid = cmd.host_guid;
-            cfg.irq_chip = cmd.irqchip;
             cfg.kernel_log_file = cmd.kernel_log_file;
             cfg.log_file = cmd.log_file;
             cfg.logs_directory = cmd.logs_directory;
@@ -2690,9 +2685,16 @@ impl TryFrom<RunCommand> for super::config::Config {
         cfg.virtio_switches = cmd.switches;
         cfg.virtio_input_evdevs = cmd.evdev;
 
+        cfg.irq_chip = cmd.irqchip;
+
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        {
-            cfg.split_irqchip = cmd.split_irqchip;
+        if cmd.split_irqchip {
+            if cmd.irqchip.is_some() {
+                return Err("cannot use `--irqchip` and `--split-irqchip` together".to_string());
+            }
+
+            log::warn!("`--split-irqchip` is deprecated; please use `--irqchip=split`");
+            cfg.irq_chip = Some(IrqChipKind::Split);
         }
 
         cfg.initrd_path = cmd.initrd;

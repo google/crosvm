@@ -186,6 +186,7 @@ use crate::crosvm::config::FileBackedMappingParameters;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::crosvm::config::HostPcieRootPortParameters;
 use crate::crosvm::config::HypervisorKind;
+use crate::crosvm::config::IrqChipKind;
 use crate::crosvm::config::SharedDir;
 use crate::crosvm::config::SharedDirKind;
 #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
@@ -1342,13 +1343,14 @@ fn run_gz(device_path: Option<&Path>, cfg: Config, components: VmComponents) -> 
     let vm_clone = vm.try_clone().context("failed to clone vm")?;
 
     let ioapic_host_tube;
-    let mut irq_chip = if cfg.split_irqchip {
-        unimplemented!("Geniezone does not support split irqchip mode");
-    } else {
-        ioapic_host_tube = None;
-
-        GeniezoneKernelIrqChip::new(vm_clone, components.vcpu_count)
-            .context("failed to create IRQ chip")?
+    let mut irq_chip = match cfg.irq_chip.unwrap_or(IrqChipKind::Kernel) {
+        IrqChipKind::Split => bail!("Geniezone does not support split irqchip mode"),
+        IrqChipKind::Userspace => bail!("Geniezone does not support userspace irqchip mode"),
+        IrqChipKind::Kernel => {
+            ioapic_host_tube = None;
+            GeniezoneKernelIrqChip::new(vm_clone, components.vcpu_count)
+                .context("failed to create IRQ chip")?
+        }
     };
 
     run_vm::<GeniezoneVcpu, GeniezoneVm>(
@@ -1421,29 +1423,36 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
     }
 
     let ioapic_host_tube;
-    let mut irq_chip = if cfg.split_irqchip {
-        #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
-        unimplemented!("KVM split irqchip mode only supported on x86 processors");
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        {
-            let (host_tube, ioapic_device_tube) = Tube::pair().context("failed to create tube")?;
-            ioapic_host_tube = Some(host_tube);
-            KvmIrqChip::Split(
-                KvmSplitIrqChip::new(
-                    vm_clone,
-                    components.vcpu_count,
-                    ioapic_device_tube,
-                    Some(120),
+    let mut irq_chip = match cfg.irq_chip.unwrap_or(IrqChipKind::Kernel) {
+        IrqChipKind::Userspace => {
+            bail!("KVM userspace irqchip mode not implemented");
+        }
+        IrqChipKind::Split => {
+            #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+            bail!("KVM split irqchip mode only supported on x86 processors");
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            {
+                let (host_tube, ioapic_device_tube) =
+                    Tube::pair().context("failed to create tube")?;
+                ioapic_host_tube = Some(host_tube);
+                KvmIrqChip::Split(
+                    KvmSplitIrqChip::new(
+                        vm_clone,
+                        components.vcpu_count,
+                        ioapic_device_tube,
+                        Some(120),
+                    )
+                    .context("failed to create IRQ chip")?,
                 )
-                .context("failed to create IRQ chip")?,
+            }
+        }
+        IrqChipKind::Kernel => {
+            ioapic_host_tube = None;
+            KvmIrqChip::Kernel(
+                KvmKernelIrqChip::new(vm_clone, components.vcpu_count)
+                    .context("failed to create IRQ chip")?,
             )
         }
-    } else {
-        ioapic_host_tube = None;
-        KvmIrqChip::Kernel(
-            KvmKernelIrqChip::new(vm_clone, components.vcpu_count)
-                .context("failed to create IRQ chip")?,
-        )
     };
 
     run_vm::<KvmVcpu, KvmVm>(

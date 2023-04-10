@@ -81,8 +81,6 @@ cfg_if::cfg_if! {
         static VHOST_NET_PATH: &str = "/dev/vhost-net";
     } else if #[cfg(windows)] {
         use base::{Event, Tube};
-
-        use crate::crosvm::sys::windows::config::IrqChipKind;
     }
 }
 
@@ -104,6 +102,17 @@ pub enum Executable {
     Kernel(PathBuf),
     /// Path to a plugin executable that is forked by crosvm.
     Plugin(PathBuf),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, FromKeyValues)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub enum IrqChipKind {
+    /// All interrupt controllers are emulated in the kernel.
+    Kernel,
+    /// APIC is emulated in the kernel.  All other interrupt controllers are in userspace.
+    Split,
+    /// All interrupt controllers are emulated in userspace.
+    Userspace,
 }
 
 /// The core types in hybrid architecture.
@@ -1079,7 +1088,6 @@ pub struct Config {
     pub hypervisor: Option<HypervisorKind>,
     pub init_memory: Option<u64>,
     pub initrd_path: Option<PathBuf>,
-    #[cfg(windows)]
     pub irq_chip: Option<IrqChipKind>,
     pub itmt: bool,
     pub jail_config: Option<JailConfig>,
@@ -1154,7 +1162,6 @@ pub struct Config {
     pub software_tpm: bool,
     #[cfg(feature = "audio")]
     pub sound: Option<PathBuf>,
-    pub split_irqchip: bool,
     pub strict_balloon: bool,
     pub stub_pci_devices: Vec<StubPciParameters>,
     pub swap_dir: Option<PathBuf>,
@@ -1294,7 +1301,6 @@ impl Default for Config {
             hypervisor: None,
             init_memory: None,
             initrd_path: None,
-            #[cfg(windows)]
             irq_chip: None,
             itmt: false,
             jail_config: if !cfg!(feature = "default-no-sandbox") {
@@ -1367,7 +1373,6 @@ impl Default for Config {
             software_tpm: false,
             #[cfg(feature = "audio")]
             sound: None,
-            split_irqchip: false,
             strict_balloon: false,
             stub_pci_devices: Vec::new(),
             swiotlb: None,
@@ -2018,6 +2023,48 @@ mod tests {
     #[test]
     fn parse_battery_invalid_type_value() {
         from_key_values::<BatteryConfig>("type=xxx").expect_err("parse should have failed");
+    }
+
+    #[test]
+    fn parse_irqchip_kernel() {
+        let cfg = TryInto::<Config>::try_into(
+            crate::crosvm::cmdline::RunCommand::from_args(
+                &[],
+                &["--irqchip", "kernel", "/dev/null"],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(cfg.irq_chip, Some(IrqChipKind::Kernel));
+    }
+
+    #[test]
+    fn parse_irqchip_split() {
+        let cfg = TryInto::<Config>::try_into(
+            crate::crosvm::cmdline::RunCommand::from_args(
+                &[],
+                &["--irqchip", "split", "/dev/null"],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(cfg.irq_chip, Some(IrqChipKind::Split));
+    }
+
+    #[test]
+    fn parse_irqchip_userspace() {
+        let cfg = TryInto::<Config>::try_into(
+            crate::crosvm::cmdline::RunCommand::from_args(
+                &[],
+                &["--irqchip", "userspace", "/dev/null"],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(cfg.irq_chip, Some(IrqChipKind::Userspace));
     }
 
     #[test]

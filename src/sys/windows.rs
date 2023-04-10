@@ -203,11 +203,11 @@ use x86_64::X8664arch as Arch;
 
 use crate::crosvm::config::Config;
 use crate::crosvm::config::Executable;
+#[cfg(any(feature = "gvm", feature = "whpx"))]
+use crate::crosvm::config::IrqChipKind;
 #[cfg(feature = "gpu")]
 use crate::crosvm::config::TouchDeviceOption;
 use crate::crosvm::sys::config::HypervisorKind;
-#[cfg(any(feature = "gvm", feature = "whpx"))]
-use crate::crosvm::sys::config::IrqChipKind;
 use crate::crosvm::sys::windows::broker::BrokerTubes;
 #[cfg(feature = "stats")]
 use crate::crosvm::sys::windows::stats::StatisticsCollector;
