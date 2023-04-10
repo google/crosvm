@@ -1693,7 +1693,7 @@ pub fn process_in_queue<I: SignalableInterrupt>(
     let mut needs_interrupt = false;
     let mut exhausted_queue = false;
     loop {
-        let desc = if let Some(d) = in_queue.peek(mem) {
+        let mut desc = if let Some(d) = in_queue.peek(mem) {
             d
         } else {
             exhausted_queue = true;
@@ -1702,8 +1702,7 @@ pub fn process_in_queue<I: SignalableInterrupt>(
 
         let mut should_pop = false;
         if let Some(in_resp) = state.next_recv() {
-            let mut writer = Writer::new(&desc);
-            match encode_resp(&mut writer, in_resp) {
+            match encode_resp(&mut desc.writer, in_resp) {
                 Ok(()) => {
                     should_pop = true;
                 }
@@ -1711,7 +1710,7 @@ pub fn process_in_queue<I: SignalableInterrupt>(
                     error!("failed to encode response to descriptor chain: {}", e);
                 }
             }
-            let bytes_written = writer.bytes_written() as u32;
+            let bytes_written = desc.writer.bytes_written() as u32;
             needs_interrupt = true;
             in_queue.pop_peeked(mem);
             in_queue.add_used(mem, desc, bytes_written);
@@ -1742,23 +1741,21 @@ pub fn process_out_queue<I: SignalableInterrupt>(
     state: &mut WlState,
 ) {
     let mut needs_interrupt = false;
-    while let Some(desc) = out_queue.pop(mem) {
-        let mut reader = Reader::new(&desc);
-        let mut writer = Writer::new(&desc);
-
-        let resp = match state.execute(&mut reader) {
+    while let Some(mut desc) = out_queue.pop(mem) {
+        let resp = match state.execute(&mut desc.reader) {
             Ok(r) => r,
             Err(e) => WlResp::Err(Box::new(e)),
         };
 
-        match encode_resp(&mut writer, resp) {
+        match encode_resp(&mut desc.writer, resp) {
             Ok(()) => {}
             Err(e) => {
                 error!("failed to encode response to descriptor chain: {}", e);
             }
         }
 
-        out_queue.add_used(mem, desc, writer.bytes_written() as u32);
+        let len = desc.writer.bytes_written() as u32;
+        out_queue.add_used(mem, desc, len);
         needs_interrupt = true;
     }
 

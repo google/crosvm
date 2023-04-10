@@ -54,7 +54,6 @@ use super::Queue;
 use super::Reader;
 use super::SignalableInterrupt;
 use super::VirtioDevice;
-use super::Writer;
 use crate::Suspendable;
 use crate::UnpinRequest;
 use crate::UnpinResponse;
@@ -291,7 +290,7 @@ where
 // Processes one message's list of addresses.
 fn handle_address_chain<F>(
     release_memory_tube: Option<&Tube>,
-    avail_desc: &DescriptorChain,
+    avail_desc: &mut DescriptorChain,
     desc_handler: &mut F,
 ) -> anyhow::Result<()>
 where
@@ -303,9 +302,8 @@ where
     // gains in a newly booted system, so it's worth attempting.
     let mut range_start = 0;
     let mut range_size = 0;
-    let mut reader = Reader::new(avail_desc);
     let mut inflate_ranges: Vec<(u64, u64)> = Vec::new();
-    for res in reader.iter::<Le32>() {
+    for res in avail_desc.reader.iter::<Le32>() {
         let pfn = match res {
             Ok(pfn) => pfn,
             Err(e) => {
@@ -348,14 +346,16 @@ async fn handle_queue<F>(
     F: FnMut(GuestAddress, u64),
 {
     loop {
-        let avail_desc = match queue.next_async(mem, &mut queue_event).await {
+        let mut avail_desc = match queue.next_async(mem, &mut queue_event).await {
             Err(e) => {
                 error!("Failed to read descriptor {}", e);
                 return;
             }
             Ok(d) => d,
         };
-        if let Err(e) = handle_address_chain(release_memory_tube, &avail_desc, &mut desc_handler) {
+        if let Err(e) =
+            handle_address_chain(release_memory_tube, &mut avail_desc, &mut desc_handler)
+        {
             error!("balloon: failed to process inflate addresses: {}", e);
         }
         queue.add_used(mem, avail_desc, 0);
@@ -373,9 +373,10 @@ where
     F: FnMut(GuestAddress, u64),
 {
     let reported_ranges: Vec<(u64, u64)> = avail_desc
-        .readable_mem_regions()
+        .reader
+        .get_remaining_regions()
         .iter()
-        .chain(avail_desc.writable_mem_regions().iter())
+        .chain(avail_desc.writer.get_remaining_regions().iter())
         .map(|r| (r.offset, r.len as u64))
         .collect();
 
@@ -468,8 +469,7 @@ async fn handle_stats_queue(
             }
             Ok(d) => d,
         };
-        let mut reader = Reader::new(&avail_desc);
-        let stats = parse_balloon_stats(&mut reader);
+        let stats = parse_balloon_stats(&mut avail_desc.reader);
 
         let actual_pages = state.lock().await.actual_pages as u64;
         let result = BalloonTubeResult::Stats {
@@ -544,12 +544,17 @@ async fn handle_events_queue(
     command_tube: &AsyncTube,
 ) -> Result<()> {
     loop {
-        let avail_desc = queue
+        let mut avail_desc = queue
             .next_async(mem, &mut queue_event)
             .await
             .map_err(BalloonError::AsyncAwait)?;
-        let mut reader = Reader::new(&avail_desc);
-        handle_event(state.clone(), interrupt.clone(), &mut reader, command_tube).await?;
+        handle_event(
+            state.clone(),
+            interrupt.clone(),
+            &mut avail_desc.reader,
+            command_tube,
+        )
+        .await?;
 
         queue.add_used(mem, avail_desc, 0);
         queue.trigger_interrupt(mem, &interrupt);
@@ -581,11 +586,11 @@ async fn handle_wss_op_queue(
                 break;
             }
         };
-        let avail_desc = queue
+        let mut avail_desc = queue
             .next_async(mem, &mut queue_event)
             .await
             .map_err(BalloonError::AsyncAwait)?;
-        let mut writer = Writer::new(&avail_desc);
+        let writer = &mut avail_desc.writer;
 
         match op {
             WSSOp::WSSReport { id } => {
@@ -611,7 +616,8 @@ async fn handle_wss_op_queue(
             }
         }
 
-        queue.add_used(mem, avail_desc, writer.bytes_written() as u32);
+        let len = writer.bytes_written() as u32;
+        queue.add_used(mem, avail_desc, len);
         queue.trigger_interrupt(mem, &interrupt);
     }
 
@@ -658,12 +664,11 @@ async fn handle_wss_data_queue(
     interrupt: Interrupt,
 ) -> Result<()> {
     loop {
-        let avail_desc = queue
+        let mut avail_desc = queue
             .next_async(mem, &mut queue_event)
             .await
             .map_err(BalloonError::AsyncAwait)?;
-        let mut reader = Reader::new(&avail_desc);
-        let wss = parse_balloon_wss(&mut reader);
+        let wss = parse_balloon_wss(&mut avail_desc.reader);
 
         // Closure to hold the mutex for handling a WSS-R command response
         {
@@ -1271,7 +1276,7 @@ mod tests {
             .write_obj_at_addr(0xaa55aa55u32, GuestAddress(0x104))
             .unwrap();
 
-        let chain = create_descriptor_chain(
+        let mut chain = create_descriptor_chain(
             &memory,
             GuestAddress(0x0),
             GuestAddress(0x100),
@@ -1281,7 +1286,7 @@ mod tests {
         .expect("create_descriptor_chain failed");
 
         let mut addrs = Vec::new();
-        let res = handle_address_chain(None, &chain, &mut |guest_address, len| {
+        let res = handle_address_chain(None, &mut chain, &mut |guest_address, len| {
             addrs.push((guest_address, len));
         });
         assert!(res.is_ok());

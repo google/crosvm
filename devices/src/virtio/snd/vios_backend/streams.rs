@@ -29,8 +29,6 @@ use crate::virtio::snd::layout::*;
 use crate::virtio::DescriptorChain;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
-use crate::virtio::Reader;
-use crate::virtio::Writer;
 
 /// Messages that the worker can send to the stream (thread).
 pub enum StreamMsg {
@@ -230,12 +228,12 @@ impl Stream {
     fn maybe_process_queued_buffers(&mut self) -> Result<()> {
         match self.current_state {
             StreamState::Started => {
-                while let Some(desc) = self.buffer_queue.pop_front() {
-                    let mut reader = Reader::new(&desc);
+                while let Some(mut desc) = self.buffer_queue.pop_front() {
+                    let reader = &mut desc.reader;
                     // Ignore the first buffer, it was already read by the time this thread
                     // receives the descriptor
                     reader.consume(std::mem::size_of::<virtio_snd_pcm_xfer>());
-                    let mut writer = Writer::new(&desc);
+                    let writer = &mut desc.writer;
                     let io_res = if self.capture {
                         let buffer_size =
                             writer.available_bytes() - std::mem::size_of::<virtio_snd_pcm_status>();
@@ -278,13 +276,10 @@ impl Stream {
                         // release the buffer if the sound server client returned too soon.
                         std::thread::sleep(self.next_buffer - elapsed);
                     }
+                    let len = writer.bytes_written() as u32;
                     {
                         let mut io_queue_lock = self.io_queue.lock();
-                        io_queue_lock.add_used(
-                            &self.guest_memory,
-                            desc,
-                            writer.bytes_written() as u32,
-                        );
+                        io_queue_lock.add_used(&self.guest_memory, desc, len);
                         io_queue_lock.trigger_interrupt(&self.guest_memory, &self.interrupt);
                     }
                 }
@@ -411,20 +406,21 @@ pub fn vios_error_to_status_code(e: VioSError) -> u32 {
 /// Encapsulates sending the virtio_snd_hdr struct back to the driver.
 pub fn reply_control_op_status(
     code: u32,
-    desc: DescriptorChain,
+    mut desc: DescriptorChain,
     guest_memory: &GuestMemory,
     queue: &Arc<Mutex<Queue>>,
     interrupt: &Interrupt,
 ) -> Result<()> {
-    let mut writer = Writer::new(&desc);
+    let writer = &mut desc.writer;
     writer
         .write_obj(virtio_snd_hdr {
             code: Le32::from(code),
         })
         .map_err(SoundError::QueueIO)?;
+    let len = writer.bytes_written() as u32;
     {
         let mut queue_lock = queue.lock();
-        queue_lock.add_used(guest_memory, desc, writer.bytes_written() as u32);
+        queue_lock.add_used(guest_memory, desc, len);
         queue_lock.trigger_interrupt(guest_memory, interrupt);
     }
     Ok(())
@@ -434,12 +430,12 @@ pub fn reply_control_op_status(
 pub fn reply_pcm_buffer_status(
     status: u32,
     latency_bytes: u32,
-    desc: DescriptorChain,
+    mut desc: DescriptorChain,
     guest_memory: &GuestMemory,
     queue: &Arc<Mutex<Queue>>,
     interrupt: &Interrupt,
 ) -> Result<()> {
-    let mut writer = Writer::new(&desc);
+    let writer = &mut desc.writer;
     if writer.available_bytes() > std::mem::size_of::<virtio_snd_pcm_status>() {
         writer
             .consume_bytes(writer.available_bytes() - std::mem::size_of::<virtio_snd_pcm_status>());
@@ -450,9 +446,10 @@ pub fn reply_pcm_buffer_status(
             latency_bytes: Le32::from(latency_bytes),
         })
         .map_err(SoundError::QueueIO)?;
+    let len = writer.bytes_written() as u32;
     {
         let mut queue_lock = queue.lock();
-        queue_lock.add_used(guest_memory, desc, writer.bytes_written() as u32);
+        queue_lock.add_used(guest_memory, desc, len);
         queue_lock.trigger_interrupt(guest_memory, interrupt);
     }
     Ok(())

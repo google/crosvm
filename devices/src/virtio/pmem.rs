@@ -37,9 +37,7 @@ use super::DescriptorChain;
 use super::DeviceType;
 use super::Interrupt;
 use super::Queue;
-use super::Reader;
 use super::VirtioDevice;
-use super::Writer;
 use crate::Suspendable;
 
 const QUEUE_SIZE: u16 = 256;
@@ -122,15 +120,13 @@ fn execute_request(
 }
 
 fn handle_request(
-    avail_desc: &DescriptorChain,
+    avail_desc: &mut DescriptorChain,
     pmem_device_tube: &Tube,
     mapping_arena_slot: u32,
     mapping_size: usize,
 ) -> Result<usize> {
-    let mut reader = Reader::new(avail_desc);
-    let mut writer = Writer::new(avail_desc);
-
-    let status_code = reader
+    let status_code = avail_desc
+        .reader
         .read_obj()
         .map(|request| execute_request(request, pmem_device_tube, mapping_arena_slot, mapping_size))
         .map_err(Error::ReadQueue)?;
@@ -139,9 +135,12 @@ fn handle_request(
         status_code: status_code.into(),
     };
 
-    writer.write_obj(response).map_err(Error::WriteQueue)?;
+    avail_desc
+        .writer
+        .write_obj(response)
+        .map_err(Error::WriteQueue)?;
 
-    Ok(writer.bytes_written())
+    Ok(avail_desc.writer.bytes_written())
 }
 
 async fn handle_queue(
@@ -154,7 +153,7 @@ async fn handle_queue(
     mapping_size: usize,
 ) {
     loop {
-        let avail_desc = match queue.next_async(mem, &mut queue_event).await {
+        let mut avail_desc = match queue.next_async(mem, &mut queue_event).await {
             Err(e) => {
                 error!("Failed to read descriptor {}", e);
                 return;
@@ -163,7 +162,7 @@ async fn handle_queue(
         };
 
         let written = match handle_request(
-            &avail_desc,
+            &mut avail_desc,
             &pmem_device_tube,
             mapping_arena_slot,
             mapping_size,

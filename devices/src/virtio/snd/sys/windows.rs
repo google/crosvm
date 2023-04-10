@@ -27,7 +27,6 @@ use win_audio::AudioSharedFormat;
 use win_audio::WinAudioServer;
 use win_audio::WinStreamSourceGenerator;
 
-use crate::virtio::snd::common_backend::async_funcs::get_reader_and_writer;
 use crate::virtio::snd::common_backend::async_funcs::PlaybackBufferWriter;
 use crate::virtio::snd::common_backend::stream_info::StreamInfo;
 use crate::virtio::snd::common_backend::DirectionalStream;
@@ -237,15 +236,13 @@ impl PlaybackBufferWriter for WinBufferWriter {
                 error!(" Prefill Unreachable. status should be Quit when the channel is closed");
                 return Err(Error::InvalidPCMWorkerState);
             }
-            Ok(Some(desc_chain)) => {
-                let (mut reader, writer) = get_reader_and_writer(&desc_chain);
-                self.write_to_resampler_buffer(&mut reader)?;
+            Ok(Some(mut desc_chain)) => {
+                self.write_to_resampler_buffer(&mut desc_chain.reader)?;
 
                 sender
                     .send(PcmResponse {
                         desc_chain,
                         status: Ok(0).into(),
-                        writer,
                         done: None,
                     })
                     .await

@@ -223,11 +223,11 @@ async fn process_pcm_ctrl(
 
 async fn write_data(
     mut dst_buf: AsyncPlaybackBuffer<'_>,
-    reader: Option<Reader>,
+    reader: Option<&mut Reader>,
     buffer_writer: &mut Box<dyn PlaybackBufferWriter>,
 ) -> Result<u32, Error> {
     let transferred = match reader {
-        Some(mut reader) => buffer_writer.copy_to_buffer(&mut dst_buf, &mut reader)?,
+        Some(reader) => buffer_writer.copy_to_buffer(&mut dst_buf, reader)?,
         None => dst_buf
             .copy_from(&mut io::repeat(0).take(buffer_writer.endpoint_period_bytes() as u64))
             .map_err(Error::Io)?,
@@ -289,7 +289,6 @@ async fn drain_desc_receiver(
     while let Some(desc_chain) = o_desc_chain {
         // From the virtio-snd spec:
         // The device MUST complete all pending I/O messages for the specified stream ID.
-        let writer = Writer::new(&desc_chain);
         let status = virtio_snd_pcm_status::new(StatusCode::OK, 0);
         // Fetch next DescriptorChain to see if the current one is the last one.
         o_desc_chain = desc_receiver.next().await;
@@ -303,7 +302,6 @@ async fn drain_desc_receiver(
             .send(PcmResponse {
                 desc_chain,
                 status,
-                writer,
                 done,
             })
             .await
@@ -317,14 +315,6 @@ async fn drain_desc_receiver(
         };
     }
     Ok(())
-}
-
-pub(crate) fn get_reader_and_writer(desc_chain: &DescriptorChain) -> (Reader, Writer) {
-    let mut reader = Reader::new(desc_chain);
-    // stream_id was already read in handle_pcm_queue
-    reader.consume(std::mem::size_of::<virtio_snd_pcm_xfer>());
-    let writer = Writer::new(desc_chain);
-    (reader, writer)
 }
 
 /// Start a pcm worker that receives descriptors containing PCM frames (audio data) from the tx/rx
@@ -397,15 +387,19 @@ async fn pcm_worker_loop(
                             write_data(dst_buf, None, &mut buffer_writer).await?;
                             return Err(Error::InvalidPCMWorkerState);
                         }
-                        Ok(Some(desc_chain)) => {
-                            let (reader, writer) = get_reader_and_writer(&desc_chain);
+                        Ok(Some(mut desc_chain)) => {
+                            // stream_id was already read in handle_pcm_queue
+                            let status = write_data(
+                                dst_buf,
+                                Some(&mut desc_chain.reader),
+                                &mut buffer_writer,
+                            )
+                            .await
+                            .into();
                             sender
                                 .send(PcmResponse {
                                     desc_chain,
-                                    status: write_data(dst_buf, Some(reader), &mut buffer_writer)
-                                        .await
-                                        .into(),
-                                    writer,
+                                    status,
                                     done: None,
                                 })
                                 .await
@@ -443,16 +437,14 @@ async fn pcm_worker_loop(
                         read_data(src_buf, None, period_bytes).await?;
                         return Err(Error::InvalidPCMWorkerState);
                     }
-                    Ok(Some(desc_chain)) => {
-                        let (_reader, mut writer) = get_reader_and_writer(&desc_chain);
-
+                    Ok(Some(mut desc_chain)) => {
+                        let status = read_data(src_buf, Some(&mut desc_chain.writer), period_bytes)
+                            .await
+                            .into();
                         sender
                             .send(PcmResponse {
                                 desc_chain,
-                                status: read_data(src_buf, Some(&mut writer), period_bytes)
-                                    .await
-                                    .into(),
-                                writer,
+                                status,
                                 done: None,
                             })
                             .await
@@ -470,33 +462,33 @@ async fn defer_pcm_response_to_worker(
     status: virtio_snd_pcm_status,
     response_sender: &mut mpsc::UnboundedSender<PcmResponse>,
 ) -> Result<(), Error> {
-    let writer = Writer::new(&desc_chain);
     response_sender
         .send(PcmResponse {
             desc_chain,
             status,
-            writer,
             done: None,
         })
         .await
         .map_err(Error::MpscSend)
 }
 
-fn send_pcm_response_with_writer<I: SignalableInterrupt>(
-    mut writer: Writer,
-    desc_chain: DescriptorChain,
+fn send_pcm_response<I: SignalableInterrupt>(
+    mut desc_chain: DescriptorChain,
     mem: &GuestMemory,
     queue: &mut Queue,
     interrupt: &I,
     status: virtio_snd_pcm_status,
 ) -> Result<(), Error> {
+    let writer = &mut desc_chain.writer;
+
     // For rx queue only. Fast forward the unused audio data buffer.
     if writer.available_bytes() > std::mem::size_of::<virtio_snd_pcm_status>() {
         writer
             .consume_bytes(writer.available_bytes() - std::mem::size_of::<virtio_snd_pcm_status>());
     }
     writer.write_obj(status).map_err(Error::WriteResponse)?;
-    queue.add_used(mem, desc_chain, writer.bytes_written() as u32);
+    let len = writer.bytes_written() as u32;
+    queue.add_used(mem, desc_chain, len);
     queue.trigger_interrupt(mem, interrupt);
     Ok(())
 }
@@ -534,8 +526,7 @@ pub async fn send_pcm_response_worker<I: SignalableInterrupt>(
         };
 
         if let Some(r) = res {
-            send_pcm_response_with_writer(
-                r.writer,
+            send_pcm_response(
                 r.desc_chain,
                 mem,
                 &mut *queue.lock().await,
@@ -582,14 +573,13 @@ pub async fn handle_pcm_queue(
         .fuse();
         pin_mut!(next_async);
 
-        let desc_chain = select! {
+        let mut desc_chain = select! {
             _ = on_reset => break,
             res = next_async => res.map_err(Error::Async)?,
         };
 
-        let mut reader = Reader::new(&desc_chain);
-
-        let pcm_xfer: virtio_snd_pcm_xfer = reader.read_obj().map_err(Error::ReadMessage)?;
+        let pcm_xfer: virtio_snd_pcm_xfer =
+            desc_chain.reader.read_obj().map_err(Error::ReadMessage)?;
         let stream_id: usize = u32::from(pcm_xfer.stream_id) as usize;
 
         let streams = streams.read_lock().await;
@@ -657,7 +647,7 @@ pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
     pin_mut!(on_reset);
 
     loop {
-        let desc_chain = {
+        let mut desc_chain = {
             let next_async = queue.next_async(mem, queue_event).fuse();
             pin_mut!(next_async);
 
@@ -667,8 +657,8 @@ pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
             }
         };
 
-        let mut reader = Reader::new(&desc_chain);
-        let mut writer = Writer::new(&desc_chain);
+        let reader = &mut desc_chain.reader;
+        let writer = &mut desc_chain.writer;
         // Don't advance the reader
         let code = reader
             .clone()
@@ -845,7 +835,7 @@ pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
                         &rx_send,
                         streams,
                         VirtioSndPcmCmd::with_set_params_and_direction(set_params, dir),
-                        &mut writer,
+                        writer,
                         stream_id,
                     )
                     .await
@@ -865,7 +855,7 @@ pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
                                 .map_err(Error::WriteResponse);
                         }
                     };
-                    process_pcm_ctrl(ex, &tx_send, &rx_send, streams, cmd, &mut writer, stream_id)
+                    process_pcm_ctrl(ex, &tx_send, &rx_send, streams, cmd, writer, stream_id)
                         .await
                         .and(Ok(()))?;
                     Ok(())
@@ -880,7 +870,8 @@ pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
         };
 
         handle_ctrl_msg.await?;
-        queue.add_used(mem, desc_chain, writer.bytes_written() as u32);
+        let len = writer.bytes_written() as u32;
+        queue.add_used(mem, desc_chain, len);
         queue.trigger_interrupt(mem, &interrupt);
     }
     Ok(())

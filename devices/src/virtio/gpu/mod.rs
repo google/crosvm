@@ -649,9 +649,7 @@ impl Frontend {
     pub fn process_queue(&mut self, mem: &GuestMemory, queue: &dyn QueueReader) -> bool {
         let mut signal_used = false;
         while let Some(desc) = queue.pop(mem) {
-            let mut reader = Reader::new(&desc);
-            let mut writer = Writer::new(&desc);
-            if let Some(ret_desc) = self.process_descriptor(mem, desc, &mut reader, &mut writer) {
+            if let Some(ret_desc) = self.process_descriptor(mem, desc) {
                 queue.add_used(mem, ret_desc.desc_chain, ret_desc.len);
                 signal_used = true;
             }
@@ -663,10 +661,10 @@ impl Frontend {
     fn process_descriptor(
         &mut self,
         mem: &GuestMemory,
-        desc_chain: DescriptorChain,
-        reader: &mut Reader,
-        writer: &mut Writer,
+        mut desc_chain: DescriptorChain,
     ) -> Option<ReturnDescriptor> {
+        let reader = &mut desc_chain.reader;
+        let writer = &mut desc_chain.writer;
         let mut resp = Err(GpuResponse::ErrUnspec);
         let mut gpu_cmd = None;
         let mut len = 0;

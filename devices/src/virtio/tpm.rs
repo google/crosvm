@@ -23,10 +23,8 @@ use super::DescriptorChain;
 use super::DeviceType;
 use super::Interrupt;
 use super::Queue;
-use super::Reader;
 use super::SignalableInterrupt;
 use super::VirtioDevice;
-use super::Writer;
 use crate::Suspendable;
 
 // A single queue of size 2. The guest kernel driver will enqueue a single
@@ -53,11 +51,8 @@ pub trait TpmBackend: Send {
 }
 
 impl Worker {
-    fn perform_work(&mut self, desc: &DescriptorChain) -> Result<u32> {
-        let mut reader = Reader::new(desc);
-        let mut writer = Writer::new(desc);
-
-        let available_bytes = reader.available_bytes();
+    fn perform_work(&mut self, desc: &mut DescriptorChain) -> Result<u32> {
+        let available_bytes = desc.reader.available_bytes();
         if available_bytes > TPM_BUFSIZE {
             return Err(Error::CommandTooLong {
                 size: available_bytes,
@@ -65,7 +60,7 @@ impl Worker {
         }
 
         let mut command = vec![0u8; available_bytes];
-        reader.read_exact(&mut command).map_err(Error::Read)?;
+        desc.reader.read_exact(&mut command).map_err(Error::Read)?;
 
         let response = self.backend.execute_command(&command);
 
@@ -75,7 +70,7 @@ impl Worker {
             });
         }
 
-        let writer_len = writer.available_bytes();
+        let writer_len = desc.writer.available_bytes();
         if response.len() > writer_len {
             return Err(Error::BufferTooSmall {
                 size: writer_len,
@@ -83,15 +78,15 @@ impl Worker {
             });
         }
 
-        writer.write_all(response).map_err(Error::Write)?;
+        desc.writer.write_all(response).map_err(Error::Write)?;
 
-        Ok(writer.bytes_written() as u32)
+        Ok(desc.writer.bytes_written() as u32)
     }
 
     fn process_queue(&mut self) -> NeedsInterrupt {
         let mut needs_interrupt = NeedsInterrupt::No;
-        while let Some(avail_desc) = self.queue.pop(&self.mem) {
-            let len = match self.perform_work(&avail_desc) {
+        while let Some(mut avail_desc) = self.queue.pop(&self.mem) {
+            let len = match self.perform_work(&mut avail_desc) {
                 Ok(len) => len,
                 Err(err) => {
                     error!("{}", err);

@@ -62,7 +62,6 @@ use crate::virtio::DescriptorChain;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
-use crate::virtio::Reader;
 use crate::virtio::SignalableInterrupt;
 use crate::virtio::VirtioDevice;
 use crate::virtio::Writer;
@@ -514,7 +513,7 @@ impl Worker {
     ) -> Result<()> {
         loop {
             // Run continuously until exit evt
-            let avail_desc = match queue.next_async(&self.mem, &mut queue_evt).await {
+            let mut avail_desc = match queue.next_async(&self.mem, &mut queue_evt).await {
                 Ok(d) => d,
                 Err(e) => {
                     error!("vsock: Failed to read descriptor {}", e);
@@ -522,7 +521,7 @@ impl Worker {
                 }
             };
 
-            let mut reader = Reader::new(&avail_desc);
+            let reader = &mut avail_desc.reader;
             while reader.available_bytes() >= std::mem::size_of::<virtio_vsock_hdr>() {
                 let header = match reader.read_obj::<virtio_vsock_hdr>() {
                     Ok(hdr) => hdr,
@@ -1121,7 +1120,7 @@ impl Worker {
         queue_evt: &mut EventAsync,
         bytes: &[u8],
     ) -> Result<()> {
-        let avail_desc = match queue.next_async(&self.mem, queue_evt).await {
+        let mut avail_desc = match queue.next_async(&self.mem, queue_evt).await {
             Ok(d) => d,
             Err(e) => {
                 error!("vsock: Failed to read descriptor {}", e);
@@ -1129,7 +1128,7 @@ impl Worker {
             }
         };
 
-        let mut writer = Writer::new(&avail_desc);
+        let writer = &mut avail_desc.writer;
         let res = writer.write_all(bytes);
 
         if let Err(e) = res {
@@ -1159,7 +1158,7 @@ impl Worker {
         loop {
             // Log but don't act on events. They are reserved exclusively for guest migration events
             // resulting in CID resets, which we don't support.
-            let avail_desc = match queue.next_async(&self.mem, &mut queue_evt).await {
+            let mut avail_desc = match queue.next_async(&self.mem, &mut queue_evt).await {
                 Ok(d) => d,
                 Err(e) => {
                     error!("vsock: Failed to read descriptor {}", e);
@@ -1167,8 +1166,7 @@ impl Worker {
                 }
             };
 
-            let mut reader = Reader::new(&avail_desc);
-            for event in reader.iter::<virtio_vsock_event>() {
+            for event in avail_desc.reader.iter::<virtio_vsock_event>() {
                 if event.is_ok() {
                     error!(
                         "Received event with id {:?}, this should not happen, and will not be handled",

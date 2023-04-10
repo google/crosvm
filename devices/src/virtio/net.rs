@@ -49,7 +49,6 @@ use super::Queue;
 use super::Reader;
 use super::SignalableInterrupt;
 use super::VirtioDevice;
-use super::Writer;
 use crate::Suspendable;
 
 /// The maximum buffer size when segmentation offload is enabled. This
@@ -276,20 +275,22 @@ pub fn process_ctrl<I: SignalableInterrupt, T: TapT>(
     acked_features: u64,
     vq_pairs: u16,
 ) -> Result<(), NetError> {
-    while let Some(desc_chain) = ctrl_queue.pop(mem) {
-        let mut reader = Reader::new(&desc_chain);
-        let mut writer = Writer::new(&desc_chain);
-        if let Err(e) = process_ctrl_request(&mut reader, tap, acked_features, vq_pairs) {
+    while let Some(mut desc_chain) = ctrl_queue.pop(mem) {
+        if let Err(e) = process_ctrl_request(&mut desc_chain.reader, tap, acked_features, vq_pairs)
+        {
             error!("process_ctrl_request failed: {}", e);
-            writer
+            desc_chain
+                .writer
                 .write_all(&[VIRTIO_NET_ERR as u8])
                 .map_err(NetError::WriteAck)?;
         } else {
-            writer
+            desc_chain
+                .writer
                 .write_all(&[VIRTIO_NET_OK as u8])
                 .map_err(NetError::WriteAck)?;
         }
-        ctrl_queue.add_used(mem, desc_chain, writer.bytes_written() as u32);
+        let len = desc_chain.writer.bytes_written() as u32;
+        ctrl_queue.add_used(mem, desc_chain, len);
     }
 
     ctrl_queue.trigger_interrupt(mem, interrupt);

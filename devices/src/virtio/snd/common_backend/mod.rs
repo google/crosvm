@@ -62,7 +62,6 @@ use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::VirtioDevice;
-use crate::virtio::Writer;
 use crate::Suspendable;
 
 pub mod async_funcs;
@@ -193,7 +192,6 @@ const SUPPORTED_FRAME_RATES: u64 = 1 << VIRTIO_SND_PCM_RATE_8000
 pub struct PcmResponse {
     pub(crate) desc_chain: DescriptorChain,
     pub(crate) status: virtio_snd_pcm_status, // response to the pcm message
-    pub(crate) writer: Writer,
     pub(crate) done: Option<oneshot::Sender<()>>, // when pcm response is written to the queue
 }
 

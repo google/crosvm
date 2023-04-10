@@ -12,8 +12,6 @@ mod fuzzer {
     use cros_fuzz::fuzz_target;
     use devices::virtio::create_descriptor_chain;
     use devices::virtio::DescriptorType;
-    use devices::virtio::Reader;
-    use devices::virtio::Writer;
     use fuse::fuzzing::fuzz_server;
     use vm_memory::GuestAddress;
     use vm_memory::GuestMemory;
@@ -31,7 +29,7 @@ mod fuzzer {
         GUEST_MEM.with(|mem| {
             mem.write_all_at_addr(data, BUFFER_ADDR).unwrap();
 
-            let chain = create_descriptor_chain(
+            let mut chain = create_descriptor_chain(
                 mem,
                 GuestAddress(0),
                 BUFFER_ADDR,
@@ -48,9 +46,7 @@ mod fuzzer {
             )
             .unwrap();
 
-            let r = Reader::new(&chain);
-            let w = Writer::new(&chain);
-            fuzz_server(r, w);
+            fuzz_server(&mut chain.reader, &mut chain.writer);
         });
     });
 }

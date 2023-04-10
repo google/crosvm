@@ -25,10 +25,8 @@ use super::copy_config;
 use super::DeviceType;
 use super::Interrupt;
 use super::Queue;
-use super::Reader;
 use super::SignalableInterrupt;
 use super::VirtioDevice;
-use super::Writer;
 use crate::Suspendable;
 
 const QUEUE_SIZE: u16 = 128;
@@ -82,16 +80,14 @@ struct Worker {
 
 impl Worker {
     fn process_queue(&mut self) -> P9Result<()> {
-        while let Some(avail_desc) = self.queue.pop(&self.mem) {
-            let mut reader = Reader::new(&avail_desc);
-            let mut writer = Writer::new(&avail_desc);
-
+        while let Some(mut avail_desc) = self.queue.pop(&self.mem) {
             self.server
-                .handle_message(&mut reader, &mut writer)
+                .handle_message(&mut avail_desc.reader, &mut avail_desc.writer)
                 .map_err(P9Error::Internal)?;
 
-            self.queue
-                .add_used(&self.mem, avail_desc, writer.bytes_written() as u32);
+            let len = avail_desc.writer.bytes_written() as u32;
+
+            self.queue.add_used(&self.mem, avail_desc, len);
         }
         self.queue.trigger_interrupt(&self.mem, &self.interrupt);
 

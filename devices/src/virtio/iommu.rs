@@ -70,6 +70,7 @@ use crate::virtio::Queue;
 use crate::virtio::Reader;
 use crate::virtio::SignalableInterrupt;
 use crate::virtio::VirtioDevice;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::virtio::Writer;
 use crate::Suspendable;
 
@@ -542,10 +543,10 @@ impl State {
 
     fn execute_request(
         &mut self,
-        avail_desc: &DescriptorChain,
+        avail_desc: &mut DescriptorChain,
     ) -> Result<(usize, Option<EventAsync>)> {
-        let mut reader = Reader::new(avail_desc);
-        let mut writer = Writer::new(avail_desc);
+        let reader = &mut avail_desc.reader;
+        let writer = &mut avail_desc.writer;
 
         // at least we need space to write VirtioIommuReqTail
         if writer.available_bytes() < size_of::<virtio_iommu_req_tail>() {
@@ -561,15 +562,12 @@ impl State {
         };
 
         let (reply_len, fault_resolved_event) = match req_head.type_ {
-            VIRTIO_IOMMU_T_ATTACH => self.process_attach_request(&mut reader, &mut tail)?,
-            VIRTIO_IOMMU_T_DETACH => self.process_detach_request(&mut reader, &mut tail)?,
-            VIRTIO_IOMMU_T_MAP => (self.process_dma_map_request(&mut reader, &mut tail)?, None),
-            VIRTIO_IOMMU_T_UNMAP => self.process_dma_unmap_request(&mut reader, &mut tail)?,
+            VIRTIO_IOMMU_T_ATTACH => self.process_attach_request(reader, &mut tail)?,
+            VIRTIO_IOMMU_T_DETACH => self.process_detach_request(reader, &mut tail)?,
+            VIRTIO_IOMMU_T_MAP => (self.process_dma_map_request(reader, &mut tail)?, None),
+            VIRTIO_IOMMU_T_UNMAP => self.process_dma_unmap_request(reader, &mut tail)?,
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-            VIRTIO_IOMMU_T_PROBE => (
-                self.process_probe_request(&mut reader, &mut writer, &mut tail)?,
-                None,
-            ),
+            VIRTIO_IOMMU_T_PROBE => (self.process_probe_request(reader, writer, &mut tail)?, None),
             _ => return Err(IommuError::UnexpectedDescriptor),
         };
 
@@ -591,12 +589,13 @@ async fn request_queue<I: SignalableInterrupt>(
 ) -> Result<()> {
     loop {
         let mem = state.borrow().mem.clone();
-        let avail_desc = queue
+        let mut avail_desc = queue
             .next_async(&mem, &mut queue_event)
             .await
             .map_err(IommuError::ReadAsyncDesc)?;
 
-        let (len, fault_resolved_event) = match state.borrow_mut().execute_request(&avail_desc) {
+        let (len, fault_resolved_event) = match state.borrow_mut().execute_request(&mut avail_desc)
+        {
             Ok(res) => res,
             Err(e) => {
                 error!("execute_request failed: {}", e);

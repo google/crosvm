@@ -46,7 +46,6 @@ use crate::virtio::Queue;
 use crate::virtio::Reader;
 use crate::virtio::SignalableInterrupt;
 use crate::virtio::VirtioDevice;
-use crate::virtio::Writer;
 use crate::Suspendable;
 
 pub(crate) const QUEUE_SIZE: u16 = 256;
@@ -87,11 +86,11 @@ fn handle_input<I: SignalableInterrupt>(
     receive_queue: &mut Queue,
 ) -> result::Result<(), ConsoleError> {
     loop {
-        let desc = receive_queue
+        let mut desc = receive_queue
             .peek(mem)
             .ok_or(ConsoleError::RxDescriptorsExhausted)?;
 
-        let mut writer = Writer::new(&desc);
+        let writer = &mut desc.writer;
         while writer.available_bytes() > 0 && !buffer.is_empty() {
             let (buffer_front, buffer_back) = buffer.as_slices();
             let buffer_chunk = if !buffer_front.is_empty() {
@@ -123,7 +122,7 @@ fn handle_input<I: SignalableInterrupt>(
 ///
 /// * `reader` - The Reader with the data we want to write.
 /// * `output` - The output sink we are going to write the data to.
-fn process_transmit_request(mut reader: Reader, output: &mut dyn io::Write) -> io::Result<()> {
+fn process_transmit_request(reader: &mut Reader, output: &mut dyn io::Write) -> io::Result<()> {
     let len = reader.available_bytes();
     let mut data = vec![0u8; len];
     reader.read_exact(&mut data)?;
@@ -147,9 +146,8 @@ fn process_transmit_queue<I: SignalableInterrupt>(
     output: &mut dyn io::Write,
 ) {
     let mut needs_interrupt = false;
-    while let Some(avail_desc) = transmit_queue.pop(mem) {
-        let reader = Reader::new(&avail_desc);
-        process_transmit_request(reader, output)
+    while let Some(mut avail_desc) = transmit_queue.pop(mem) {
+        process_transmit_request(&mut avail_desc.reader, output)
             .unwrap_or_else(|e| error!("console: process_transmit_request failed: {}", e));
 
         transmit_queue.add_used(mem, avail_desc, 0);

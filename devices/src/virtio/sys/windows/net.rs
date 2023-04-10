@@ -28,7 +28,6 @@ use super::super::super::ProtectionType;
 use super::super::super::Queue;
 use super::super::super::Reader;
 use super::super::super::SignalableInterrupt;
-use super::super::super::Writer;
 
 // Copies a single frame from `self.rx_buf` into the guest. Returns true
 // if a buffer was used, and false if the frame must be deferred until a buffer
@@ -39,13 +38,12 @@ fn rx_single_frame(
     rx_buf: &mut [u8],
     rx_count: usize,
 ) -> bool {
-    let desc_chain = match rx_queue.pop(mem) {
+    let mut desc_chain = match rx_queue.pop(mem) {
         Some(desc) => desc,
         None => return false,
     };
 
-    let mut writer = Writer::new(&desc_chain);
-    match writer.write_all(&rx_buf[0..rx_count]) {
+    match desc_chain.writer.write_all(&rx_buf[0..rx_count]) {
         Ok(()) => (),
         Err(ref e) if e.kind() == io::ErrorKind::WriteZero => {
             warn!(
@@ -58,7 +56,7 @@ fn rx_single_frame(
         }
     };
 
-    let bytes_written = writer.bytes_written() as u32;
+    let bytes_written = desc_chain.writer.bytes_written() as u32;
 
     rx_queue.add_used(mem, desc_chain, bytes_written);
 
@@ -153,7 +151,7 @@ pub fn process_tx<I: SignalableInterrupt, T: TapT>(
 ) {
     // Reads up to `buf.len()` bytes or until there is no more data in `r`, whichever
     // is smaller.
-    fn read_to_end(mut r: Reader, buf: &mut [u8]) -> io::Result<usize> {
+    fn read_to_end(r: &mut Reader, buf: &mut [u8]) -> io::Result<usize> {
         let mut count = 0;
         while count < buf.len() {
             match r.read(&mut buf[count..]) {
@@ -166,10 +164,9 @@ pub fn process_tx<I: SignalableInterrupt, T: TapT>(
         Ok(count)
     }
 
-    while let Some(desc_chain) = tx_queue.pop(mem) {
-        let mut reader = Reader::new(&desc_chain);
+    while let Some(mut desc_chain) = tx_queue.pop(mem) {
         let mut frame = [0u8; MAX_BUFFER_SIZE];
-        match read_to_end(reader, &mut frame[..]) {
+        match read_to_end(&mut desc_chain.reader, &mut frame[..]) {
             Ok(len) => {
                 // We need to copy frame into continuous buffer before writing it to
                 // slirp because tap requires frame to complete in a single write.

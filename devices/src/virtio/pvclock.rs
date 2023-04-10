@@ -469,9 +469,10 @@ fn run_worker(
                     // first descriptor from the chain and assume the whole req structure is
                     // contained within it.
                     let desc = desc_chain
-                        .readable_mem_regions()
+                        .reader
+                        .get_remaining_regions()
                         .iter()
-                        .chain(desc_chain.writable_mem_regions().iter())
+                        .chain(desc_chain.writer.get_remaining_regions().iter())
                         .next()
                         .unwrap();
 

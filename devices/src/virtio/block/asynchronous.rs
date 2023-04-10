@@ -230,13 +230,13 @@ impl DiskState {
 }
 
 async fn process_one_request(
-    avail_desc: &DescriptorChain,
+    avail_desc: &mut DescriptorChain,
     disk_state: Rc<AsyncMutex<DiskState>>,
     flush_timer: Rc<RefCell<TimerAsync>>,
     flush_timer_armed: Rc<RefCell<bool>>,
 ) -> result::Result<usize, ExecuteError> {
-    let mut reader = Reader::new(avail_desc);
-    let mut writer = Writer::new(avail_desc);
+    let reader = &mut avail_desc.reader;
+    let writer = &mut avail_desc.writer;
 
     // The last byte of the buffer is virtio_blk_req::status.
     // Split it into a separate Writer so that status_writer is the final byte and
@@ -248,8 +248,8 @@ async fn process_one_request(
     let mut status_writer = writer.split_at(status_offset);
 
     let status = match BlockAsync::execute_request(
-        &mut reader,
-        &mut writer,
+        reader,
+        writer,
         disk_state,
         flush_timer,
         flush_timer_armed,
@@ -274,21 +274,22 @@ async fn process_one_request(
 /// Process one descriptor chain asynchronously.
 pub async fn process_one_chain<I: SignalableInterrupt>(
     queue: Rc<RefCell<Queue>>,
-    avail_desc: DescriptorChain,
+    mut avail_desc: DescriptorChain,
     disk_state: Rc<AsyncMutex<DiskState>>,
     mem: GuestMemory,
     interrupt: &I,
     flush_timer: Rc<RefCell<TimerAsync>>,
     flush_timer_armed: Rc<RefCell<bool>>,
 ) {
-    let len =
-        match process_one_request(&avail_desc, disk_state, flush_timer, flush_timer_armed).await {
-            Ok(len) => len,
-            Err(e) => {
-                error!("block: failed to handle request: {}", e);
-                0
-            }
-        };
+    let len = match process_one_request(&mut avail_desc, disk_state, flush_timer, flush_timer_armed)
+        .await
+    {
+        Ok(len) => len,
+        Err(e) => {
+            error!("block: failed to handle request: {}", e);
+            0
+        }
+    };
 
     let mut queue = queue.borrow_mut();
     queue.add_used(&mem, avail_desc, len as u32);
@@ -1240,7 +1241,7 @@ mod tests {
         mem.write_obj_at_addr(req_hdr, GuestAddress(0x1000))
             .expect("writing req failed");
 
-        let avail_desc = create_descriptor_chain(
+        let mut avail_desc = create_descriptor_chain(
             &mem,
             GuestAddress(0x100),  // Place descriptor chain at 0x100.
             GuestAddress(0x1000), // Describe buffer at 0x1000.
@@ -1272,7 +1273,7 @@ mod tests {
             })),
         }));
 
-        let fut = process_one_request(&avail_desc, disk_state, flush_timer, flush_timer_armed);
+        let fut = process_one_request(&mut avail_desc, disk_state, flush_timer, flush_timer_armed);
 
         ex.run_until(fut)
             .expect("running executor failed")
@@ -1301,7 +1302,7 @@ mod tests {
         mem.write_obj_at_addr(req_hdr, GuestAddress(0x1000))
             .expect("writing req failed");
 
-        let avail_desc = create_descriptor_chain(
+        let mut avail_desc = create_descriptor_chain(
             &mem,
             GuestAddress(0x100),  // Place descriptor chain at 0x100.
             GuestAddress(0x1000), // Describe buffer at 0x1000.
@@ -1335,7 +1336,7 @@ mod tests {
             })),
         }));
 
-        let fut = process_one_request(&avail_desc, disk_state, flush_timer, flush_timer_armed);
+        let fut = process_one_request(&mut avail_desc, disk_state, flush_timer, flush_timer_armed);
 
         ex.run_until(fut)
             .expect("running executor failed")
@@ -1365,7 +1366,7 @@ mod tests {
         mem.write_obj_at_addr(req_hdr, GuestAddress(0x1000))
             .expect("writing req failed");
 
-        let avail_desc = create_descriptor_chain(
+        let mut avail_desc = create_descriptor_chain(
             &mem,
             GuestAddress(0x100),  // Place descriptor chain at 0x100.
             GuestAddress(0x1000), // Describe buffer at 0x1000.
@@ -1400,7 +1401,7 @@ mod tests {
             })),
         }));
 
-        let fut = process_one_request(&avail_desc, disk_state, flush_timer, flush_timer_armed);
+        let fut = process_one_request(&mut avail_desc, disk_state, flush_timer, flush_timer_armed);
 
         ex.run_until(fut)
             .expect("running executor failed")
