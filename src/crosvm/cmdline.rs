@@ -585,8 +585,8 @@ pub struct UsbListCommand {
 /// This allows the letters assigned to each disk to reflect the order of their declaration, as
 /// we have several options for specifying disks (rwroot, root, etc) and order can thus be lost
 /// when they are aggregated.
-#[derive(Deserialize, Serialize, Debug)]
-#[serde(deny_unknown_fields, from = "DiskOption")]
+#[derive(Deserialize, Serialize, Clone, Debug)]
+#[serde(deny_unknown_fields, from = "DiskOption", into = "DiskOption")]
 struct DiskOptionWithId {
     disk_option: DiskOption,
     index: usize,
@@ -610,6 +610,12 @@ impl From<DiskOption> for DiskOptionWithId {
             disk_option,
             index: DISK_COUNTER.fetch_add(1, Ordering::Relaxed),
         }
+    }
+}
+
+impl From<DiskOptionWithId> for DiskOption {
+    fn from(disk_option_with_id: DiskOptionWithId) -> Self {
+        disk_option_with_id.disk_option
     }
 }
 
