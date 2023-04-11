@@ -11,9 +11,31 @@ winapi = { version = "*", features = ["everything", "std", "impl-default"] }
 libc = "*"
 once_cell = "1.7"
 serde = { version = "1", features = [ "derive" ] }
-windows = "0.10.0"
 
-[build-dependencies]
-windows = "0.10.0"
+[dependencies.windows]
+version = "0.39.0"
+features = [
+    "Win32_Foundation",
+    "Win32_Globalization",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_Input_Ime",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_TextServices",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Com",
+]
+
+[build-dependencies.windows]
+version = "0.39.0"
+features = [
+    "Win32_Foundation",
+    "Win32_Globalization",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_Input_Ime",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_TextServices",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Com",
+]
 
 [workspace]
