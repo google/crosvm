@@ -117,7 +117,7 @@ pub enum IrqChipKind {
 
 /// The core types in hybrid architecture.
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-#[derive(Debug, PartialEq, Eq, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct CpuCoreType {
     /// Intel Atom.
@@ -126,7 +126,7 @@ pub struct CpuCoreType {
     pub core: CpuSet,
 }
 
-#[derive(Debug, Default, PartialEq, Eq, Deserialize, FromKeyValues)]
+#[derive(Debug, Default, PartialEq, Eq, Deserialize, Serialize, FromKeyValues)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct CpuOptions {
     /// Number of CPU cores.
@@ -140,7 +140,7 @@ pub struct CpuOptions {
     pub core_types: Option<CpuCoreType>,
 }
 
-#[derive(Debug, Default, Deserialize, FromKeyValues)]
+#[derive(Debug, Default, Deserialize, Serialize, FromKeyValues)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct MemOptions {
     /// Amount of guest memory in MiB.

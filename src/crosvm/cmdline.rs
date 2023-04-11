@@ -58,6 +58,7 @@ use merge::bool::overwrite_false;
 use merge::vec::append;
 use resources::AddressRange;
 use serde::Deserialize;
+use serde::Serialize;
 #[cfg(feature = "gpu")]
 use serde_keyvalue::FromKeyValues;
 
@@ -584,7 +585,7 @@ pub struct UsbListCommand {
 /// This allows the letters assigned to each disk to reflect the order of their declaration, as
 /// we have several options for specifying disks (rwroot, root, etc) and order can thus be lost
 /// when they are aggregated.
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 #[serde(deny_unknown_fields, from = "DiskOption")]
 struct DiskOptionWithId {
     disk_option: DiskOption,
@@ -697,6 +698,12 @@ fn load_config_file<P: AsRef<Path>>(config_file: P) -> Result<Box<RunCommand>, S
         .map(Box::new)
 }
 
+#[cfg(feature = "config-file")]
+fn write_config_file(config_file: &Path, cmd: &RunCommand) -> Result<(), String> {
+    let file = std::fs::File::create(config_file).map_err(|e| e.to_string())?;
+    serde_json::to_writer_pretty(file, cmd).map_err(|e| e.to_string())
+}
+
 /// Overwrite an `Option<T>` if the right member is set.
 ///
 /// The default merge strategy for `Option<T>` is to merge `right` into `left` iff `left.is_none()`.
@@ -749,7 +756,7 @@ fn overwrite<T>(left: &mut T, right: T) {
 /// review to make sure they won't be obsoleted.
 #[remain::sorted]
 #[argh_helpers::pad_description_for_argh]
-#[derive(FromArgs, Deserialize, merge::Merge)]
+#[derive(FromArgs, Deserialize, Serialize, merge::Merge)]
 #[argh(subcommand, name = "run", description = "Start a new crosvm instance")]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct RunCommand {
@@ -1081,6 +1088,13 @@ pub struct RunCommand {
     #[merge(strategy = overwrite_option)]
     /// directory with smbios_entry_point/DMI files
     pub dmi: Option<PathBuf>,
+
+    #[cfg(feature = "config-file")]
+    #[argh(option, arg_name = "CONFIG_FILE")]
+    #[serde(skip)]
+    #[merge(skip)]
+    /// path to a JSON configuration file to write the current configuration.
+    dump_cfg: Option<PathBuf>,
 
     #[argh(option, long = "dump-device-tree-blob", arg_name = "FILE")]
     #[serde(skip)] // TODO(b/255223604)
@@ -2272,6 +2286,11 @@ impl TryFrom<RunCommand> for super::config::Config {
             }
             cmd.squash()
         };
+
+        #[cfg(feature = "config-file")]
+        if let Some(cfg_path) = &cmd.dump_cfg {
+            write_config_file(cfg_path, &cmd)?;
+        }
 
         let mut cfg = Self::default();
         // TODO: we need to factor out some(?) of the checks into config::validate_config
