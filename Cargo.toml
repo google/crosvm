@@ -382,7 +382,7 @@ chromeos = ["all-chromeos"]
 [dependencies]
 anyhow = "1.0.32"
 arch = { path = "arch" }
-argh = "0.1"
+argh = "0.1.10"
 argh_helpers = { path = "argh_helpers" }
 audio_streams = "*"
 base = "*"
