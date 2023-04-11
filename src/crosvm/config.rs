@@ -140,7 +140,7 @@ pub struct CpuOptions {
     pub core_types: Option<CpuCoreType>,
 }
 
-#[derive(Debug, Default, Deserialize, Serialize, FromKeyValues)]
+#[derive(Debug, Default, Deserialize, Serialize, FromKeyValues, PartialEq, Eq)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct MemOptions {
     /// Amount of guest memory in MiB.

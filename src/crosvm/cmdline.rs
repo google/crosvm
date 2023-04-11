@@ -706,12 +706,10 @@ impl TryFrom<GpuDisplayParameters> for FixedGpuDisplayParameters {
 
 /// Deserialize `config_file` into a `RunCommand`.
 #[cfg(feature = "config-file")]
-fn load_config_file<P: AsRef<Path>>(config_file: P) -> Result<Box<RunCommand>, String> {
+fn load_config_file<P: AsRef<Path>>(config_file: P) -> Result<RunCommand, String> {
     let config = std::fs::read_to_string(config_file).map_err(|e| e.to_string())?;
 
-    serde_json::from_str(&config)
-        .map_err(|e| e.to_string())
-        .map(Box::new)
+    serde_json::from_str(&config).map_err(|e| e.to_string())
 }
 
 #[cfg(feature = "config-file")]
@@ -771,6 +769,11 @@ fn overwrite<T>(left: &mut T, right: T) {
 /// parameters that can be specified several times (typically of `Vec` type) should be appended
 /// (`#[merge(strategy = append)]`), but there might also be exceptions.
 ///
+/// The command-line is the root configuration source, but one or more configuration files can be
+/// specified for inclusion using the `--cfg` argument. Configuration files are applied in the
+/// order they are mentioned, overriding (for `Option` fields) or augmenting (for `Vec` fields)
+/// their fields, and the command-line options are finally applied last.
+///
 /// The doccomment of the member will be displayed as its help message with `--help`.
 ///
 /// Note that many parameters are marked with `#[serde(skip)]` and annotated with b/255223604. This
@@ -778,7 +781,7 @@ fn overwrite<T>(left: &mut T, right: T) {
 /// review to make sure they won't be obsoleted.
 #[remain::sorted]
 #[argh_helpers::pad_description_for_argh]
-#[derive(FromArgs, Deserialize, Serialize, merge::Merge)]
+#[derive(FromArgs, Default, Deserialize, Serialize, merge::Merge)]
 #[argh(subcommand, name = "run", description = "Start a new crosvm instance")]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct RunCommand {
@@ -909,25 +912,13 @@ pub struct RunCommand {
 
     #[cfg(feature = "config-file")]
     #[argh(option, arg_name = "CONFIG_FILE", from_str_fn(load_config_file))]
-    // TODO(b/218223240) We only allow one configuration file because accurate merging is not
-    // possible on boolean fields. We would need to convert these to `Option<bool>` but
-    // unfortunately argh is currently unable to recognize these as switches.
-    //
-    // For now, we only allow one configuration file to be specified. Since argh's switches can
-    // only be true, and the command-line parameters are merged last, merging using
-    // `merging::overwrite_false` is guaranteed to be accurate since only true values can be
-    // explicitly specified through the command-line.
-    //
-    // Eventually we will want to turn this into a `Vec<Self>` so several configuration files can
-    // be passed, and remove the `#[serde(skip)]` attribute so they can be included from other
-    // configuration files as well.
     #[serde(skip)]
     #[merge(skip)]
     /// path to a JSON configuration file to load.
     ///
-    /// The options specified in the file can be overridden or augmented by other command-line
-    /// parameters.
-    cfg: Option<Box<Self>>,
+    /// The options specified in the file can be overridden or augmented by subsequent uses of
+    /// this argument, or other command-line parameters.
+    cfg: Vec<Self>,
 
     #[argh(option, arg_name = "CID")]
     #[serde(skip)] // Deprecated - use `vsock` instead.
@@ -2277,13 +2268,11 @@ pub struct RunCommand {
 #[cfg(feature = "config-file")]
 impl RunCommand {
     /// Merge the content of `self` into `self.cfg` if it exists, and return the merged
-    /// configuration which `self.cfg` is empty.
+    /// configuration in which `self.cfg` is empty.
     pub fn squash(mut self) -> Self {
         use merge::Merge;
 
-        self.cfg
-            .take()
-            .map(|b| *b)
+        std::mem::take(&mut self.cfg)
             .into_iter()
             .chain(std::iter::once(self))
             .reduce(|mut acc: Self, cfg| {
@@ -2301,7 +2290,7 @@ impl TryFrom<RunCommand> for super::config::Config {
         // Squash the configuration file (if any) and command-line arguments together.
         #[cfg(feature = "config-file")]
         let cmd = {
-            if cmd.cfg.is_some() {
+            if !cmd.cfg.is_empty() {
                 log::warn!(
                     "`--cfg` is still experimental and the configuration file format may change"
                 );
@@ -3079,5 +3068,47 @@ impl TryFrom<RunCommand> for super::config::Config {
         super::config::validate_config(&mut cfg)?;
 
         Ok(cfg)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn merge_runcommands() {
+        let cmd2 = RunCommand {
+            mem: Some(MemOptions { size: Some(4096) }),
+            kernel: Some("/path/to/kernel".into()),
+            params: vec!["firstparam".into()],
+            ..Default::default()
+        };
+
+        let cmd3 = RunCommand {
+            mem: Some(MemOptions { size: Some(8192) }),
+            params: vec!["secondparam".into()],
+            ..Default::default()
+        };
+
+        let cmd1 = RunCommand {
+            mem: Some(MemOptions { size: Some(2048) }),
+            params: vec!["thirdparam".into(), "fourthparam".into()],
+            cfg: vec![cmd2, cmd3],
+            ..Default::default()
+        };
+
+        let merged_cmd = cmd1.squash();
+
+        assert_eq!(merged_cmd.mem, Some(MemOptions { size: Some(2048) }));
+        assert_eq!(merged_cmd.kernel, Some("/path/to/kernel".into()));
+        assert_eq!(
+            merged_cmd.params,
+            vec![
+                String::from("firstparam"),
+                String::from("secondparam"),
+                String::from("thirdparam"),
+                String::from("fourthparam"),
+            ]
+        );
     }
 }

@@ -118,16 +118,18 @@ Or, if we apply the simplification rules discussed in the previous section:
 ## Combining configuration files and command-line options
 
 One useful use of configuration files is to specify a base configuration that can be augmented or
-modified.
+modified by other configuration files or command-line arguments.
 
-Configuration files and other command-line options can be specified together. When this happens, the
-command-line parameters will be merged into the initial configuration created by the configuration
-file, regardless of their position relative to the `--cfg` argument and even if they come before it.
+All the configuration files specified with `--cfg` are merged by order of appearance into a single
+configuration. The merge rules are generally that arguments that can only be specified once are
+overwritten by the newest configuration, while arguments that can be specified many times (like
+devices) are extended.
 
-The effect of command-line arguments redefining items of the configuration file depends on the
-nature of said items. If an item can be specified several times (like a block device), then the
-command-line arguments will augment the configuration file. For instance, considering this
-configuration file `vm.json`:
+Finally, the other command-line parameters are merged into the configuration, regardless of their
+position relative to a `--cfg` argument (i.e. even if they come before it). This means that
+command-line arguments take precedence over anything in configuration files.
+
+For instance, considering this configuration file `vm.json`:
 
 ```json
 {
