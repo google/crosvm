@@ -445,7 +445,10 @@ impl VirtioDevice for VirtioSnd {
         let stream_info_builders = self.stream_info_builders.to_vec();
 
         self.worker_thread = Some(WorkerThread::start("v_snd_common", move |kill_evt| {
-            set_audio_thread_priority();
+            let _thread_priority_handle = set_audio_thread_priority();
+            if let Err(e) = _thread_priority_handle {
+                warn!("Failed to set audio thread to real time: {}", e);
+            };
             if let Err(err_string) = run_worker(
                 interrupt,
                 queues,

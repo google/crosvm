@@ -10,7 +10,6 @@ use audio_streams::StreamSourceGenerator;
 use base::error;
 use base::set_rt_prio_limit;
 use base::set_rt_round_robin;
-use base::warn;
 use cros_async::Executor;
 use futures::channel::mpsc::UnboundedSender;
 #[cfg(feature = "audio_cras")]
@@ -108,12 +107,9 @@ pub(crate) fn create_stream_source_generators(
     }
 }
 
-pub(crate) fn set_audio_thread_priority() {
-    if let Err(e) = set_rt_prio_limit(u64::from(AUDIO_THREAD_RTPRIO))
+pub(crate) fn set_audio_thread_priority() -> Result<(), base::Error> {
+    set_rt_prio_limit(u64::from(AUDIO_THREAD_RTPRIO))
         .and_then(|_| set_rt_round_robin(i32::from(AUDIO_THREAD_RTPRIO)))
-    {
-        warn!("Failed to set audio thread to real time: {}", e);
-    }
 }
 
 impl StreamInfo {

@@ -30,7 +30,7 @@ use arch::VcpuArch;
 use arch::VmArch;
 use base::error;
 use base::info;
-use base::set_audio_thread_priorities;
+use base::set_audio_thread_priority;
 use base::set_cpu_affinity;
 use base::warn;
 use base::Event;
@@ -229,7 +229,7 @@ impl VcpuRunThread {
             // Until we are multi process on Windows, we can't use the normal thread priority APIs;
             // instead, we use a trick from the audio device which is able to set a thread RT even
             // though the process itself is not RT.
-            thread_priority_handle = match set_audio_thread_priorities() {
+            thread_priority_handle = match set_audio_thread_priority() {
                 Ok(hndl) => Some(hndl),
                 Err(e) => {
                     warn!("Failed to set vcpu thread to real time priority: {}", e);

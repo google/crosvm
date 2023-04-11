@@ -128,7 +128,7 @@ cfg_if::cfg_if! {
             DuplicateHandleRequest, DuplicateHandleResponse, DuplicateHandleTube
         };
         pub use tube::ProtoTube;
-        pub use platform::{set_audio_thread_priorities, thread};
+        pub use platform::{set_audio_thread_priority, thread};
         pub use platform::Terminal;
     } else {
         compile_error!("Unsupported platform");

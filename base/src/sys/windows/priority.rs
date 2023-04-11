@@ -15,7 +15,7 @@ use winapi::um::processthreadsapi::SetThreadPriority;
 use super::errno_result;
 use super::Result;
 
-pub fn set_audio_thread_priorities() -> Result<SafeMultimediaHandle> {
+pub fn set_audio_thread_priority() -> Result<SafeMultimediaHandle> {
     // Safe because we know Pro Audio is part of windows and we down task_index.
     let multimedia_handle = unsafe {
         let mut task_index: u32 = 0;
@@ -83,7 +83,7 @@ mod test {
             let thread_priority = GetThreadPriority(GetCurrentThread());
             assert_eq!(thread_priority, THREAD_PRIORITY_NORMAL as i32);
             {
-                let _handle = set_audio_thread_priorities();
+                let _handle = set_audio_thread_priority();
                 let thread_priority = GetThreadPriority(GetCurrentThread());
                 assert_eq!(thread_priority, THREAD_PRIORITY_TIME_CRITICAL as i32);
             }

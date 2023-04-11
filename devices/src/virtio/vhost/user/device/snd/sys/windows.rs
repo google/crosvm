@@ -6,6 +6,7 @@ use anyhow::bail;
 use anyhow::Context;
 use argh::FromArgs;
 use base::info;
+use base::warn;
 use base::Event;
 use base::RawDescriptor;
 use base::Tube;
@@ -17,6 +18,7 @@ use serde::Serialize;
 use tube_transporter::TubeToken;
 
 use crate::virtio::snd::parameters::Parameters;
+use crate::virtio::snd::sys::set_audio_thread_priority;
 use crate::virtio::vhost::user::device::handler::sys::windows::read_from_tube_transporter;
 use crate::virtio::vhost::user::device::handler::sys::windows::run_handler;
 use crate::virtio::vhost::user::device::handler::VhostUserRegularOps;
@@ -103,6 +105,12 @@ pub fn run_snd_device(opts: Options) -> anyhow::Result<()> {
     //         .unwrap()
     //         .lower_token();
     // }
+
+    // Set the audio thread priority here. This assumes our executor is running on a single thread.
+    let _thread_priority_handle = set_audio_thread_priority();
+    if let Err(e) = _thread_priority_handle {
+        warn!("Failed to set audio thread to real time: {}", e);
+    };
 
     let handler = snd_device.into_req_handler(Box::new(VhostUserRegularOps), &ex)?;
 

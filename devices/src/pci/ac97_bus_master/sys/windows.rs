@@ -20,7 +20,7 @@ use audio_streams::PlaybackBufferStream;
 use audio_streams::SampleFormat;
 use base::error;
 use base::info;
-use base::set_audio_thread_priorities;
+use base::set_audio_thread_priority;
 use base::set_thread_priority;
 use base::warn;
 use base::Event;
@@ -251,7 +251,7 @@ impl Ac97BusMaster {
                     thread::Builder::new()
                         .name("Ac97BusMaster playback thread".to_string())
                         .spawn(move || {
-                            let thread_priority_result = set_audio_thread_priorities();
+                            let thread_priority_result = set_audio_thread_priority();
                             if thread_priority_result.is_err() {
                                 warn!("Failed to set audio thread to PRO AUDIO.");
                             }
