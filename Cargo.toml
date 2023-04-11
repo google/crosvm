@@ -18,6 +18,7 @@ required-features = [ "direct" ]
 
 [profile.release]
 panic = 'abort'
+opt-level = 3
 overflow-checks = true
 
 [profile.release-test]
@@ -27,7 +28,6 @@ panic = 'unwind'
 # Reproduces the options used when building crosvm for ChromeOS.
 [profile.chromeos]
 inherits = "release"
-opt-level = "s"
 strip = "symbols"
 
 # Enables LTO to further reduce the size of the binary.
