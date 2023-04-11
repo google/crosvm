@@ -115,6 +115,24 @@ Or, if we apply the simplification rules discussed in the previous section:
 --net tap-name=crosvm_tap
 ```
 
+Note that so `cfg` directive can also be used within configuration files, allowing a form of
+configuration inclusion:
+
+```json
+{
+  ...
+  "cfg": [ "net.json", "gpu.json" ],
+  ...
+}
+
+```
+
+Included files are always applied first. So in this example, the `net.json` is the base
+configuration to which `gpu.json` is applied, and finally the parent file that included these two.
+This order does not matter if each file specifies different options, but in case of overlap
+parameters from the parent will take precedence over included ones, regardless of where the `cfg`
+directive appears in the file.
+
 ## Combining configuration files and command-line options
 
 One useful use of configuration files is to specify a base configuration that can be augmented or

@@ -56,7 +56,9 @@ use hypervisor::CpuHybridType;
 use hypervisor::ProtectionType;
 use merge::vec::append;
 use resources::AddressRange;
+use serde::de::Error as SerdeError;
 use serde::Deserialize;
+use serde::Deserializer;
 use serde::Serialize;
 #[cfg(feature = "gpu")]
 use serde_keyvalue::FromKeyValues;
@@ -712,6 +714,44 @@ fn load_config_file<P: AsRef<Path>>(config_file: P) -> Result<RunCommand, String
     serde_json::from_str(&config).map_err(|e| e.to_string())
 }
 
+/// Return a vector configuration loaded from the files pointed by strings in a sequence.
+///
+/// Used for including configuration files from another one.
+#[cfg(feature = "config-file")]
+fn include_config_file<'de, D>(deserializer: D) -> Result<Vec<RunCommand>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::SeqAccess;
+
+    struct ConfigVisitor;
+
+    impl<'de> serde::de::Visitor<'de> for ConfigVisitor {
+        type Value = Vec<RunCommand>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("an array of paths to configuration file to include")
+        }
+
+        fn visit_seq<S>(self, mut seq: S) -> Result<Self::Value, S::Error>
+        where
+            S: SeqAccess<'de>,
+        {
+            let mut ret = Vec::new();
+
+            while let Some(path) = seq.next_element::<&'de str>()? {
+                let config =
+                    load_config_file(path).map_err(<S as SeqAccess<'de>>::Error::custom)?;
+                ret.push(config);
+            }
+
+            Ok(ret)
+        }
+    }
+
+    deserializer.deserialize_seq(ConfigVisitor)
+}
+
 #[cfg(feature = "config-file")]
 fn write_config_file(config_file: &Path, cmd: &RunCommand) -> Result<(), String> {
     let file = std::fs::File::create(config_file).map_err(|e| e.to_string())?;
@@ -773,6 +813,10 @@ fn overwrite<T>(left: &mut T, right: T) {
 /// specified for inclusion using the `--cfg` argument. Configuration files are applied in the
 /// order they are mentioned, overriding (for `Option` fields) or augmenting (for `Vec` fields)
 /// their fields, and the command-line options are finally applied last.
+///
+/// A configuration files can also include other configuration files by using `cfg` itself.
+/// Included configuration files are applied first, with the parent configuration file applied
+/// last.
 ///
 /// The doccomment of the member will be displayed as its help message with `--help`.
 ///
@@ -912,7 +956,7 @@ pub struct RunCommand {
 
     #[cfg(feature = "config-file")]
     #[argh(option, arg_name = "CONFIG_FILE", from_str_fn(load_config_file))]
-    #[serde(skip)]
+    #[serde(default, deserialize_with = "include_config_file")]
     #[merge(skip)]
     /// path to a JSON configuration file to load.
     ///
@@ -2274,6 +2318,7 @@ impl RunCommand {
 
         std::mem::take(&mut self.cfg)
             .into_iter()
+            .map(|c| c.squash())
             .chain(std::iter::once(self))
             .reduce(|mut acc: Self, cfg| {
                 acc.merge(cfg);
