@@ -58,7 +58,7 @@ This requires tests to be cautious about global state, especially integration te
 with system devices.
 
 If you require exclusive access to a device or file, you have to use
-[file-based locking](https://docs.rs/namedlock/latest/namedlock/) to prevent access by other test
+[file-based locking](https://docs.rs/named-lock/latest/named_lock) to prevent access by other test
 processes.
 
 ## Platorms tested
