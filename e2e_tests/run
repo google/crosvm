@@ -7,4 +7,4 @@
 # There is an RFC for cargo to allow for this kind of dependency:
 # https://github.com/rust-lang/cargo/issues/9096
 cargo build -p crosvm
-cargo nextest run
+cargo nextest run -p e2e_tests
