@@ -2921,6 +2921,15 @@ mod tests {
         fs.unlink(ctx, parent_inode, &filename)
     }
 
+    /// Forgets cache.
+    fn forget(fs: &PassthroughFs, path: &Path) -> io::Result<()> {
+        let ctx = get_context();
+        let inode = lookup(fs, path)?;
+        // Pass `u64::MAX` to ensure that the refcount goes to 0 and we forget inode.
+        fs.forget(ctx, inode, u64::MAX);
+        Ok(())
+    }
+
     #[test]
     fn rewrite_xattr_names() {
         // Since PassthroughFs may executes process-wide operations such as `fchdir`, acquire
@@ -3144,5 +3153,68 @@ mod tests {
     #[test]
     fn create_and_remove_casefold() {
         test_create_and_remove(true /* casefold */);
+    }
+
+    fn test_create_and_forget(ascii_casefold: bool) {
+        // Since PassthroughFs may executes process-wide operations such as `fchdir`, acquire
+        // `NamedLock` before starting each unit test creating a `PassthroughFs` instance.
+        let lock = NamedLock::create(UNITTEST_LOCK_NAME).expect("create named lock");
+        let _guard = lock.lock().expect("acquire named lock");
+
+        let temp_dir = TempDir::new().unwrap();
+        let timeout = Duration::from_millis(10);
+        let cfg = Config {
+            entry_timeout: timeout,
+            attr_timeout: timeout,
+            cache_policy: CachePolicy::Auto,
+            ascii_casefold,
+            ..Default::default()
+        };
+        let fs = PassthroughFs::new("tag", cfg).unwrap();
+
+        let capable = FsOptions::empty();
+        fs.init(capable).unwrap();
+
+        // Create a.txt.
+        let a_path = temp_dir.path().join("a.txt");
+        let a_entry = create(&fs, &a_path).expect("create a.txt");
+        assert_eq!(
+            a_entry.inode,
+            lookup(&fs, &a_path).expect("lookup a.txt"),
+            "Created file 'a.txt' must be looked up"
+        );
+
+        // Forget a.txt's inode from PassthroughFs's internal cache.
+        forget(&fs, &a_path).expect("forget a.txt");
+
+        if ascii_casefold {
+            let upper_a_path = temp_dir.path().join("A.TXT");
+            let new_a_inode = lookup(&fs, &upper_a_path).expect("lookup a.txt");
+            assert_ne!(
+                a_entry.inode, new_a_inode,
+                "inode must be changed after forget()"
+            );
+            assert_eq!(
+                new_a_inode,
+                lookup(&fs, &a_path).expect("lookup a.txt"),
+                "inode must be same for a.txt and A.TXT"
+            );
+        } else {
+            assert_ne!(
+                a_entry.inode,
+                lookup(&fs, &a_path).expect("lookup a.txt"),
+                "inode must be changed after forget()"
+            );
+        }
+    }
+
+    #[test]
+    fn create_and_forget() {
+        test_create_and_forget(false /* ascii_casefold */);
+    }
+
+    #[test]
+    fn create_and_forget_casefold() {
+        test_create_and_forget(true /* ascii_casefold */);
     }
 }
