@@ -2854,6 +2854,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             |msg, index| {
                 vcpu::kick_vcpu(&vcpu_handles.get(index), linux.irq_chip.as_irq_chip(), msg)
             },
+            &irq_handler_control,
             &device_ctrl_tube,
             linux.vcpu_count,
         )?;
@@ -3421,13 +3422,13 @@ fn irq_handler_thread(
             .context("failed to add descriptor to wait context")?;
     }
 
-    let events = irq_chip
+    let mut irq_event_tokens = irq_chip
         .irq_event_tokens()
         .context("failed get event tokens from irqchip")?;
 
-    for (index, _gsi, evt) in events {
+    for (index, _gsi, evt) in irq_event_tokens.iter() {
         wait_ctx
-            .add(&evt, IrqHandlerToken::IrqFd { index })
+            .add(evt, IrqHandlerToken::IrqFd { index: *index })
             .context("failed to add irq chip event tokens to wait context")?;
     }
 
@@ -3470,6 +3471,36 @@ fn irq_handler_thread(
                                         .context("failed to add new IRQ control Tube to wait context")?;
                                     }
                                     irq_control_tubes.append(&mut tubes);
+                                }
+                                IrqHandlerRequest::RefreshIrqEventTokens => {
+                                    for (_index, _gsi, evt) in irq_event_tokens.iter() {
+                                        wait_ctx.delete(evt).context(
+                                            "failed to remove irq chip event \
+                                                token from wait context",
+                                        )?;
+                                    }
+
+                                    irq_event_tokens = irq_chip
+                                        .irq_event_tokens()
+                                        .context("failed get event tokens from irqchip")?;
+                                    for (index, _gsi, evt) in irq_event_tokens.iter() {
+                                        wait_ctx
+                                            .add(evt, IrqHandlerToken::IrqFd { index: *index })
+                                            .context(
+                                                "failed to add irq chip event \
+                                                tokens to wait context",
+                                            )?;
+                                    }
+
+                                    if let Err(e) = handler_control
+                                        .send(&IrqHandlerResponse::IrqEventTokenRefreshComplete)
+                                    {
+                                        error!(
+                                            "failed to notify IRQ event token refresh \
+                                            was completed: {}",
+                                            e
+                                        );
+                                    }
                                 }
                                 IrqHandlerRequest::WakeAndNotifyIteration => {
                                     notify_control_on_iteration_end = true;

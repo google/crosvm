@@ -319,6 +319,14 @@ pub enum DeviceControlCommand {
 pub enum IrqHandlerRequest {
     /// No response is sent for this command.
     AddIrqControlTubes(Vec<Tube>),
+    /// Refreshes the set of event tokens (Events) from the Irqchip that the IRQ
+    /// handler waits on to forward IRQs to their final destination (e.g. via
+    /// Irqchip::service_irq_event).
+    ///
+    /// If the set of tokens exposed by the Irqchip changes while the VM is
+    /// running (such as for snapshot restore), this command must be sent
+    /// otherwise the VM will not receive IRQs as expected.
+    RefreshIrqEventTokens,
     WakeAndNotifyIteration,
     /// No response is sent for this command.
     Exit,
@@ -329,6 +337,8 @@ const EXPECTED_MAX_IRQ_FLUSH_ITERATIONS: usize = 100;
 /// Response for [IrqHandlerRequest].
 #[derive(Serialize, Deserialize, Debug)]
 pub enum IrqHandlerResponse {
+    /// Sent when the IRQ event tokens have been refreshed.
+    IrqEventTokenRefreshComplete,
     /// Specifies the number of tokens serviced in the requested iteration
     /// (less the token for the `WakeAndNotifyIteration` request).
     HandlerIterationComplete(usize),
@@ -1845,6 +1855,7 @@ impl VmRequest {
                                     break;
                                 }
                             }
+                            _ => bail!("received unexpected reply from IRQ handler: {:?}", resp),
                         }
                         flush_attempts += 1;
                         if flush_attempts > EXPECTED_MAX_IRQ_FLUSH_ITERATIONS {
@@ -1893,6 +1904,7 @@ impl VmRequest {
                     restore_path.clone(),
                     kick_vcpus,
                     kick_vcpu,
+                    irq_handler_control,
                     device_control_tube,
                     vcpu_size,
                 ) {
@@ -1924,6 +1936,7 @@ pub fn do_restore(
     restore_path: PathBuf,
     kick_vcpus: impl Fn(VcpuControl),
     kick_vcpu: impl Fn(VcpuControl, usize),
+    irq_handler_control: &Tube,
     device_control_tube: &Tube,
     vcpu_size: usize,
 ) -> anyhow::Result<()> {
@@ -1956,13 +1969,26 @@ pub fn do_restore(
     device_control_tube
         .send(&DeviceControlCommand::RestoreDevices { restore_path })
         .context("send command to devices control socket")?;
-    let resp = device_control_tube
+    let resp: VmResponse = device_control_tube
         .recv()
         .context("receive from devices control socket")?;
-    match resp {
-        VmResponse::Ok => Ok(()),
-        _ => bail!("unexpected RestoreDevices response: {resp}"),
+    if !matches!(resp, VmResponse::Ok) {
+        bail!("unexpected RestoreDevices response: {resp}");
     }
+
+    irq_handler_control
+        .send(&IrqHandlerRequest::RefreshIrqEventTokens)
+        .context("failed to send refresh irq event token command to IRQ handler thread")?;
+    let resp: IrqHandlerResponse = irq_handler_control
+        .recv()
+        .context("failed to recv refresh response from IRQ handler thread")?;
+    if !matches!(resp, IrqHandlerResponse::IrqEventTokenRefreshComplete) {
+        bail!(
+            "received unexpected reply from IRQ handler thread: {:?}",
+            resp
+        );
+    }
+    Ok(())
 }
 
 /// Indication of success or failure of a `VmRequest`.
