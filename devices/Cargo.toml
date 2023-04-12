@@ -43,7 +43,7 @@ balloon_control = { path = "../common/balloon_control" }
 base = { path = "../base" }
 bit_field = { path = "../bit_field" }
 cfg-if = "1.0.0"
-chrono = "*"
+chrono = { version = "*", features = [ "serde" ] }
 crc32fast = { version = "1.2.1", optional = true }
 cros_async = { path = "../cros_async" }
 cros-codecs = { path = "../media/cros-codecs", optional = true }
