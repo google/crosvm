@@ -54,40 +54,31 @@ CROS_CONTAINER_NAME = (
     f"crosvm_cros_{getpass.getuser()}_{zlib.crc32(os.path.realpath(__file__).encode('utf-8')):x}"
 )
 
-DEV_IMAGE_NAME = "gcr.io/crosvm-infra/crosvm_dev_user"
+DEV_IMAGE_NAME = "gcr.io/crosvm-infra/crosvm_dev"
 CROS_IMAGE_NAME = "gcr.io/crosvm-infra/crosvm_cros_cloudbuild"
 DEV_IMAGE_VERSION = (CROSVM_ROOT / "tools/impl/dev_container/version").read_text().strip()
 
 CACHE_DIR = os.environ.get("CROSVM_CONTAINER_CACHE", None)
 
-DOCKER_ARGS = [
+COMMON_ARGS = [
     # Share cache dir
     f"--volume {CACHE_DIR}:/cache:rw" if CACHE_DIR else None,
     # Use tmpfs in the container for faster performance.
     "--mount type=tmpfs,destination=/tmp",
     # KVM is required to run a VM for testing.
     "--device /dev/kvm",
+    # Enable terminal colors
+    f"--env TERM={os.environ.get('TERM', 'xterm-256color')}",
 ]
-if sys.platform == "linux":
-    DOCKER_ARGS.extend(
-        [
-            f"--env OUTSIDE_UID={os.getuid()}",
-            f"--env OUTSIDE_GID={os.getgid()}",
-            f"--env TERM={os.environ.get('TERM', 'xterm-256color')}",
-        ]
-    )
+
+DOCKER_ARGS = [
+    *COMMON_ARGS,
+]
 
 PODMAN_ARGS = [
-    # Share cache dir
-    f"--volume {CACHE_DIR}:/cache:rw" if CACHE_DIR else None,
-    # Use tmpfs in the container for faster performance.
-    "--mount type=tmpfs,destination=/tmp",
-    # KVM is required to run a VM for testing.
-    "--device /dev/kvm",
+    *COMMON_ARGS,
     # Allow access to group permissions of the user (e.g. for kvm access).
     "--group-add keep-groups",
-    # Pass through TERM configuration for color support
-    f"--env TERM={os.environ.get('TERM', 'xterm-256color')}",
     # Increase number of PIDs the container can spawn (we run a lot of test processes in parallel)
     "--pids-limit=4096",
 ]
@@ -219,9 +210,6 @@ def main(
     if CACHE_DIR:
         Path(CACHE_DIR).mkdir(exist_ok=True)
 
-    docker_args = [
-        *workspace_mount_args(cros),
-    ]
     has_docker = shutil.which("docker") != None
     has_podman = shutil.which("podman") != None
     if not has_podman and not has_docker:
@@ -241,10 +229,16 @@ def main(
         print("Use podman to prevent this.")
         print()
         docker = cmd("docker")
-        docker_args += DOCKER_ARGS
+        docker_args = [
+            *DOCKER_ARGS,
+            *workspace_mount_args(cros),
+        ]
     else:
         docker = cmd("podman")
-        docker_args += PODMAN_ARGS
+        docker_args = [
+            *PODMAN_ARGS,
+            *workspace_mount_args(cros),
+        ]
         validate_podman(docker)
 
     if cros:
@@ -272,7 +266,6 @@ def main(
             docker("pull", CROS_IMAGE_NAME).fg()
         else:
             docker("pull", f"gcr.io/crosvm-infra/crosvm_dev:{DEV_IMAGE_VERSION}").fg()
-            docker("pull", f"gcr.io/crosvm-infra/crosvm_dev_user:{DEV_IMAGE_VERSION}").fg()
         return
 
     # If a command is provided run non-interactive unless explicitly asked for.
@@ -293,14 +286,8 @@ def main(
     else:
         # cmd is executed directly
         cid = ensure_container_is_alive(docker, docker_args, cros)
-        if not use_docker:
-            if not command:
-                command = ("/bin/bash",)
-        else:
-            if not command:
-                command = ("/tools/entrypoint.sh",)
-            else:
-                command = ("/tools/entrypoint.sh",) + tuple(command)
+        if not command:
+            command = ("/bin/bash",)
         quoted_cmd = list(map(quoted, command))
         docker("exec", *tty_args, cid, *quoted_cmd).fg()
 

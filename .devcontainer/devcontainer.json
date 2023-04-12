@@ -1,0 +1,20 @@
+{
+  "image": "gcr.io/crosvm-infra/crosvm_dev:latest",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "bungcip.better-toml",
+        "esbenp.prettier-vscode",
+        "ms-python.vscode-pylance",
+        "foxundermoon.shell-format",
+        "timonwong.shellcheck"
+      ]
+    }
+  },
+  "runArgs": [
+    // Allow a higher PID limit since we launch a lot of test processes.
+    "--pids-limit=4096"
+  ],
+  "updateContentCommand": "git config --global --add safe.directory '*' && git submodule update --init"
+}

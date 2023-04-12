@@ -361,6 +361,9 @@ def generate_plan(
         )
         console.print()
 
+    if not os.access("/dev/kvm", os.W_OK):
+        console.print("[yellow]Warning:[/yellow] Cannot access KVM. Integration tests are not run.")
+
     # Sort so that priority tasks are launched (and rendered) first
     tasks.sort(key=lambda t: (t.priority, t.title), reverse=True)
     return tasks

@@ -3,6 +3,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import os
 import typing
 from typing import Generator, List, Literal, Optional, Tuple
 
@@ -112,10 +113,11 @@ def check_crosvm_tests(platform: Platform):
         if not platform_is_supported(platform):
             return None
         dut = None
-        if platform == "x86_64":
-            dut = "--dut=vm"
-        elif platform == "aarch64":
-            dut = "--dut=vm"
+        if os.access("/dev/kvm", os.W_OK):
+            if platform == "x86_64":
+                dut = "--dut=vm"
+            elif platform == "aarch64":
+                dut = "--dut=vm"
         return cmd("./tools/run_tests --platform", platform, dut).with_color_flag()
 
     check.__doc__ = f"Runs all crosvm tests for {platform}."

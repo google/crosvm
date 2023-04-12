@@ -12,5 +12,12 @@
       ]
     }
   },
-  "updateContentCommand": "git submodule update --init"
+  "runArgs": [
+    // Allow access to the kvm device so we can run VMs for testing
+    "--device=/dev/kvm",
+    "--group-add=kvm",
+    // Allow a higher PID limit since we launch a lot of test processes.
+    "--pids-limit=4096"
+  ],
+  "updateContentCommand": "git config --global --add safe.directory '*' && git submodule update --init"
 }
