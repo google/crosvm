@@ -169,7 +169,7 @@ struct rutabaga_builder {
 };
 
 /**
- * Expects `capset_names` to delimited by a colon, i.e: "gfxstream:cross_domain:magma".
+ * Expects `capset_names` to delimited by a colon, i.e.: "gfxstream:cross_domain:magma".
  *
  * # Safety
  * - - `capset_names` must be a null-terminated C-string.
@@ -226,7 +226,7 @@ int32_t rutabaga_resource_create_3d(struct rutabaga *ptr, uint32_t resource_id,
  * - If `iovecs` is not null, the caller must ensure `(*iovecs).iovecs` points to a valid array of
  *   iovecs of size `(*iovecs).num_iovecs`.
  * - Each iovec must point to valid memory starting at `iov_base` with length `iov_len`.
- * - Each iovec must valid until the resource's backing is explictly detached or the resource is
+ * - Each iovec must valid until the resource's backing is explicitly detached or the resource is
  *   is unreferenced.
  */
 int32_t rutabaga_resource_attach_backing(struct rutabaga *ptr, uint32_t resource_id,
@@ -252,8 +252,8 @@ int32_t rutabaga_resource_transfer_write(struct rutabaga *ptr, uint32_t ctx_id,
  * - If `iovecs` is not null, the caller must ensure `(*iovecs).iovecs` points to a valid array of
  *   iovecs of size `(*iovecs).num_iovecs`.
  * - If `handle` is not null, the caller must ensure it is a valid OS-descriptor.  Ownership is
- *   transfered to rutabaga.
- * - Each iovec must valid until the resource's backing is explictly detached or the resource is
+ *   transferred to rutabaga.
+ * - Each iovec must valid until the resource's backing is explicitly detached or the resource is
  *   is unreferenced.
  */
 int32_t rutabaga_resource_create_blob(struct rutabaga *ptr, uint32_t ctx_id, uint32_t resource_id,

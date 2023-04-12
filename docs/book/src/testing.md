@@ -51,7 +51,7 @@ Upstream crosvm is not involved in these tests and they are not executed in cros
 
 ## Parallel test execution
 
-Crosvm tests are executed in parallel, each test case in it's own process via
+Crosvm tests are executed in parallel, each test case in its own process via
 [cargo nextest](http://nexte.st).
 
 This requires tests to be cautious about global state, especially integration tests which interact

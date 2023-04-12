@@ -7,7 +7,7 @@ Currently, we aim to produce a fresh cros_container every week (about 20GB in si
 ## Usage Instruction
 
 This container need to be built with `docker buildx` for its support of insecure builder (equivalent
-to `docker run --priviliged` but for build) which is required for `cros_sdk` due to its usage of
+to `docker run --privileged` but for build) which is required for `cros_sdk` due to its usage of
 multiple linux namespaces and chroot.
 
 Individual commands from the `cloudbuild.yaml` files can be executed locally. Note you need

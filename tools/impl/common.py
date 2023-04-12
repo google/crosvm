@@ -577,7 +577,7 @@ class Styles(object):
 
     @staticmethod
     def live_truncated(num_lines: int = 8):
-        "Prints only the last `num_lines` of output while the program is running and succeessful."
+        "Prints only the last `num_lines` of output while the program is running and successful."
 
         def output(process: "subprocess.Popen[str]"):
             assert process.stdout
@@ -601,7 +601,7 @@ class Styles(object):
 
     @staticmethod
     def quiet_with_progress(title: str):
-        "Prints only the last `num_lines` of output while the program is running and succeessful."
+        "Prints only the last `num_lines` of output while the program is running and successful."
 
         def output(process: "subprocess.Popen[str]"):
             assert process.stdout
