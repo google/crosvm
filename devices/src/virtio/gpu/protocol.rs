@@ -76,17 +76,16 @@ pub const VIRTIO_GPU_CMD_UPDATE_CURSOR: u32 = 0x300;
 pub const VIRTIO_GPU_CMD_MOVE_CURSOR: u32 = 0x301;
 
 /* success responses */
-/* FIXME(b/2050923): Conflicts in enum values.  The value of
- * OK_RESOURCE_PLANE_INFO (which is not upstream) conflicts with upstream
- * OK_EDID.  We assign both OK_EDID and OK_RESOURCE_UUID to the same value. */
 pub const VIRTIO_GPU_RESP_OK_NODATA: u32 = 0x1100;
 pub const VIRTIO_GPU_RESP_OK_DISPLAY_INFO: u32 = 0x1101;
 pub const VIRTIO_GPU_RESP_OK_CAPSET_INFO: u32 = 0x1102;
 pub const VIRTIO_GPU_RESP_OK_CAPSET: u32 = 0x1103;
-pub const VIRTIO_GPU_RESP_OK_RESOURCE_PLANE_INFO: u32 = 0x1104;
-pub const VIRTIO_GPU_RESP_OK_EDID: u32 = 0x1105;
+pub const VIRTIO_GPU_RESP_OK_EDID: u32 = 0x1104;
 pub const VIRTIO_GPU_RESP_OK_RESOURCE_UUID: u32 = 0x1105;
 pub const VIRTIO_GPU_RESP_OK_MAP_INFO: u32 = 0x1106;
+
+/* CHROMIUM(b/277982577): success responses */
+pub const VIRTIO_GPU_RESP_OK_RESOURCE_PLANE_INFO: u32 = 0x11FF;
 
 /* error responses */
 pub const VIRTIO_GPU_RESP_ERR_UNSPEC: u32 = 0x1200;
