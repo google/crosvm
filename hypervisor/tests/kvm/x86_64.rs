@@ -379,7 +379,7 @@ fn get_msrs() {
         },
         // This one will fail to fetch
         Register {
-            id: 0x000003f1,
+            id: 0xffffffff,
             ..Default::default()
         },
     ];

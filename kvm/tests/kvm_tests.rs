@@ -395,7 +395,7 @@ fn get_msrs() {
         },
         // This one will fail to fetch
         kvm_msr_entry {
-            index: 0x000003f1,
+            index: 0xffffffff,
             ..Default::default()
         },
     ];
