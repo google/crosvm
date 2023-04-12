@@ -38,8 +38,6 @@ use std::rc::Rc;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Barrier;
-#[cfg(feature = "balloon")]
-use std::time::Duration;
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use aarch64::AArch64 as Arch;
@@ -1667,10 +1665,6 @@ where
             // Balloon gets a special socket so balloon requests can be forwarded
             // from the main process.
             let (host, device) = Tube::pair().context("failed to create tube")?;
-            // Set recv timeout to avoid deadlock on sending BalloonControlCommand
-            // before the guest is ready.
-            host.set_recv_timeout(Some(Duration::from_millis(100)))
-                .context("failed to set timeout")?;
             (Some(host), Some(device))
         }
     } else {
@@ -2531,6 +2525,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         },
         #[cfg(feature = "registered_events")]
         RegisteredEvent,
+        #[cfg(feature = "balloon")]
+        BalloonTube,
     }
 
     #[cfg(feature = "registered_events")]
@@ -2640,6 +2636,17 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             .add(socket.as_ref(), Token::VmControl { id: *id })
             .context("failed to add descriptor to wait context")?;
     }
+
+    #[cfg(feature = "balloon")]
+    let mut balloon_tube = balloon_host_tube
+        .map(|tube| -> Result<BalloonTube> {
+            wait_ctx
+                .add(&tube, Token::BalloonTube)
+                .context("failed to add descriptor to wait context")?;
+            Ok(BalloonTube::new(tube))
+        })
+        .transpose()
+        .context("failed to create balloon tube")?;
 
     if cfg.jail_config.is_some() {
         // Before starting VCPUs, in case we started with some capabilities, drop them all.
@@ -2937,10 +2944,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
     let mut exit_state = ExitState::Stop;
     let mut pvpanic_code = PvPanicCode::Unknown;
-    #[cfg(feature = "balloon")]
-    let mut balloon_stats_id: u64 = 0;
-    #[cfg(feature = "balloon")]
-    let mut balloon_wss_id: u64 = 0;
     #[cfg(feature = "registered_events")]
     let mut registered_evt_tubes: HashMap<RegisteredEvent, HashSet<AddressedProtoTube>> =
         HashMap::new();
@@ -3196,15 +3199,20 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                 .retain(|_, tubes| !tubes.is_empty());
                                             VmResponse::Ok
                                         }
+                                        #[cfg(feature = "balloon")]
+                                        VmRequest::BalloonCommand(cmd) => {
+                                            if let Some(balloon_tube) = balloon_tube.as_mut() {
+                                                match balloon_tube.send_cmd(cmd, id) {
+                                                    Some(response) => response,
+                                                    None => continue,
+                                                }
+                                            } else {
+                                                VmResponse::Err(base::Error::new(libc::ENOTSUP))
+                                            }
+                                        }
                                         _ => {
                                             let response = request.execute(
                                                 &mut run_mode_opt,
-                                                #[cfg(feature = "balloon")]
-                                                balloon_host_tube.as_ref(),
-                                                #[cfg(feature = "balloon")]
-                                                &mut balloon_stats_id,
-                                                #[cfg(feature = "balloon")]
-                                                &mut balloon_wss_id,
                                                 disk_host_tubes,
                                                 &mut linux.pm,
                                                 #[cfg(feature = "gpu")]
@@ -3376,6 +3384,25 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                         vm_memory_handler_control.send(
                             &VmMemoryHandlerRequest::AddControlTubes(add_vm_memory_control_tubes),
                         )?;
+                    }
+                }
+                #[cfg(feature = "balloon")]
+                Token::BalloonTube => {
+                    match balloon_tube.as_mut().expect("missing balloon tube").recv() {
+                        Ok(resp) => {
+                            for (resp, idx) in resp {
+                                if let Some(TaggedControlTube::Vm(tube)) = control_tubes.get(&idx) {
+                                    if let Err(e) = tube.send(&resp) {
+                                        error!("failed to send VmResponse: {}", e);
+                                    }
+                                } else {
+                                    error!("Bad tube index {}", idx);
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            error!("Error processing balloon tube {:?}", err)
+                        }
                     }
                 }
             }

@@ -19,6 +19,8 @@ use std::ffi::CStr;
 use std::panic::catch_unwind;
 use std::path::Path;
 use std::path::PathBuf;
+#[cfg(unix)]
+use std::time::Duration;
 
 use libc::c_char;
 use libc::ssize_t;
@@ -588,13 +590,49 @@ pub unsafe extern "C" fn crosvm_client_balloon_stats(
     stats: *mut BalloonStatsFfi,
     actual: *mut u64,
 ) -> bool {
+    crosvm_client_balloon_stats_impl(
+        socket_path,
+        #[cfg(unix)]
+        None,
+        stats,
+        actual,
+    )
+}
+
+/// See crosvm_client_balloon_stats.
+#[cfg(unix)]
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_client_balloon_stats_with_timeout(
+    socket_path: *const c_char,
+    timeout_ms: u64,
+    stats: *mut BalloonStatsFfi,
+    actual: *mut u64,
+) -> bool {
+    crosvm_client_balloon_stats_impl(
+        socket_path,
+        Some(Duration::from_millis(timeout_ms)),
+        stats,
+        actual,
+    )
+}
+
+fn crosvm_client_balloon_stats_impl(
+    socket_path: *const c_char,
+    #[cfg(unix)] timeout_ms: Option<Duration>,
+    stats: *mut BalloonStatsFfi,
+    actual: *mut u64,
+) -> bool {
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
             let request = &VmRequest::BalloonCommand(BalloonControlCommand::Stats {});
+            #[cfg(not(unix))]
+            let resp = handle_request(request, socket_path);
+            #[cfg(unix)]
+            let resp = handle_request_with_timeout(request, socket_path, timeout_ms);
             if let Ok(VmResponse::BalloonStats {
                 stats: ref balloon_stats,
                 balloon_actual,
-            }) = handle_request(request, socket_path)
+            }) = resp
             {
                 if !stats.is_null() {
                     // SAFETY: just checked that `stats` is not null.

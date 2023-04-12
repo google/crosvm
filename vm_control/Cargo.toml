@@ -8,7 +8,7 @@ edition = "2021"
 balloon = []
 gdb = ["gdbstub", "gdbstub_arch"]
 gpu = []
-registered_events = ["protos/registered_events"]
+registered_events = ["balloon", "protos/registered_events"]
 swap = ["swap/enable"]
 
 [dependencies]

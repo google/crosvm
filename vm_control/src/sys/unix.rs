@@ -6,6 +6,7 @@
 pub(crate) mod gpu;
 
 use std::path::Path;
+use std::time::Duration;
 
 use base::error;
 use base::AsRawDescriptor;
@@ -36,9 +37,26 @@ pub fn handle_request<T: AsRef<Path> + std::fmt::Debug>(
     request: &VmRequest,
     socket_path: T,
 ) -> HandleRequestResult {
+    handle_request_with_timeout(request, socket_path, None)
+}
+
+pub fn handle_request_with_timeout<T: AsRef<Path> + std::fmt::Debug>(
+    request: &VmRequest,
+    socket_path: T,
+    timeout: Option<Duration>,
+) -> HandleRequestResult {
     match UnixSeqpacket::connect(&socket_path) {
         Ok(s) => {
             let socket = Tube::new_from_unix_seqpacket(s);
+            if timeout.is_some() {
+                if let Err(e) = socket.set_recv_timeout(timeout) {
+                    error!(
+                        "failed to set recv timeout on socket at '{:?}': {}",
+                        socket_path, e
+                    );
+                    return Err(());
+                }
+            }
             if let Err(e) = socket.send(request) {
                 error!(
                     "failed to send request to socket at '{:?}': {}",

@@ -21,16 +21,10 @@ pub enum BalloonTubeCommand {
         // size.
         allow_failure: bool,
     },
-    // Fetch balloon stats. The ID can be used to discard stale states
-    // if any previous stats requests failed or timed out.
-    Stats {
-        id: u64,
-    },
-    // Fetch balloon wss. The ID can be used to discard stale states if any
-    // previous wss request failed or timed out.
-    WorkingSetSize {
-        id: u64,
-    },
+    // Fetch balloon stats.
+    Stats,
+    // Fetch balloon wss.
+    WorkingSetSize,
     // Send balloon wss config to guest.
     WorkingSetSizeConfig {
         bins: Vec<u64>,
@@ -85,7 +79,6 @@ pub enum BalloonTubeResult {
     Stats {
         stats: BalloonStats,
         balloon_actual: u64,
-        id: u64,
     },
     Adjusted {
         num_bytes: u64,
@@ -94,6 +87,5 @@ pub enum BalloonTubeResult {
         wss: BalloonWSS,
         /// size of the balloon in bytes.
         balloon_actual: u64,
-        id: u64,
     },
 }

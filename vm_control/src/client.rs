@@ -13,6 +13,8 @@ use thiserror::Error;
 #[cfg(feature = "gpu")]
 pub use crate::gpu::*;
 pub use crate::sys::handle_request;
+#[cfg(unix)]
+pub use crate::sys::handle_request_with_timeout;
 pub use crate::*;
 
 #[sorted]

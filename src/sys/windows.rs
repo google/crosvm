@@ -183,6 +183,8 @@ use tube_transporter::TubeToken;
 use tube_transporter::TubeTransporterReader;
 use vm_control::api::VmMemoryClient;
 use vm_control::BalloonControlCommand;
+#[cfg(feature = "balloon")]
+use vm_control::BalloonTube;
 use vm_control::DeviceControlCommand;
 use vm_control::IrqHandlerRequest;
 use vm_control::PvClockCommand;
@@ -795,7 +797,7 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     virtio_snd_host_mute_tube: &mut Option<Tube>,
     proto_main_loop_tube: Option<&ProtoTube>,
     anti_tamper_main_thread_tube: &Option<ProtoTube>,
-    balloon_host_tube: &Option<Tube>,
+    #[cfg(feature = "balloon")] mut balloon_tube: Option<&mut BalloonTube>,
     memory_size_mb: u64,
     vcpu_boxes: &Mutex<Vec<Box<dyn VcpuArch>>>,
     pvclock_host_tube: &Option<Tube>,
@@ -898,20 +900,19 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                 VmRequest::Unregister { socket_addr } => {
                                     unimplemented!("not implemented on Windows");
                                 }
+                                #[cfg(feature = "balloon")]
+                                VmRequest::BalloonCommand(cmd) => {
+                                    if let Some(balloon_tube) = balloon_tube {
+                                        balloon_tube.send_cmd(cmd, id)
+                                    } else {
+                                        error!("balloon not enabled");
+                                        None
+                                    }
+                                }
                                 _ => {
-                                    #[cfg(feature = "balloon")]
-                                    let mut balloon_stats_id = 0;
-                                    #[cfg(feature = "balloon")]
-                                    let mut balloon_wss_id = 0;
                                     let vcpu_size = vcpu_boxes.lock().len();
                                     let response = request.execute(
                                         &mut run_mode_opt,
-                                        #[cfg(feature = "balloon")]
-                                        balloon_host_tube.as_ref(),
-                                        #[cfg(feature = "balloon")]
-                                        &mut balloon_stats_id,
-                                        #[cfg(feature = "balloon")]
-                                        &mut balloon_wss_id,
                                         disk_host_tubes,
                                         &mut guest_os.pm,
                                         #[cfg(feature = "gpu")]
@@ -954,12 +955,14 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                         },
                                     );
 
-                                    response
+                                    Some(response)
                                 }
                             };
 
-                            if let Err(e) = tube.0.send(&response) {
-                                error!("failed to send VmResponse: {}", e);
+                            if let Some(response) = response {
+                                if let Err(e) = tube.0.send(&response) {
+                                    error!("failed to send VmResponse: {}", e);
+                                }
                             }
 
                             if let Some(run_mode) = run_mode_opt {
@@ -989,12 +992,30 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 }
             }
         }
+        #[cfg(feature = "balloon")]
+        Token::BalloonTube => match balloon_tube.as_mut().expect("missing balloon tube").recv() {
+            Ok(resp) => {
+                for (resp, idx) in resp {
+                    if let Some(TaggedControlTube::Vm(tube)) = control_tubes.get(&idx) {
+                        if let Err(e) = tube.0.send(&resp) {
+                            error!("failed to send VmResponse: {}", e);
+                        }
+                    } else {
+                        error!("Bad tube index {}", idx);
+                    }
+                }
+            }
+            Err(err) => {
+                error!("Error processing balloon tube {:?}", err)
+            }
+        },
+        #[cfg(not(feature = "balloon"))]
+        Token::BalloonTube => unreachable!("balloon tube not registered"),
         #[allow(unreachable_patterns)]
         _ => product::handle_received_token(
             &event.token,
             ac97_host_tubes,
             anti_tamper_main_thread_tube,
-            balloon_host_tube,
             control_tubes,
             guest_os,
             ipc_main_loop_tube,
@@ -1187,6 +1208,24 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         sys_allocator_mutex.clone(),
     );
 
+    let mut triggers = vec![(vm_evt_rdtube.get_read_notifier(), Token::VmEvent)];
+    product::push_triggers(&mut triggers, &ipc_main_loop_tube, &proto_main_loop_tube);
+    let wait_ctx = WaitContext::build_with(&triggers).exit_context(
+        Exit::WaitContextAdd,
+        "failed to add trigger to wait context",
+    )?;
+
+    #[cfg(feature = "balloon")]
+    let mut balloon_tube = balloon_host_tube
+        .map(|tube| -> Result<BalloonTube> {
+            wait_ctx
+                .add(&tube, Token::BalloonTube)
+                .context("failed to add trigger to wait context")?;
+            Ok(BalloonTube::new(tube))
+        })
+        .transpose()
+        .context("failed to create balloon tube")?;
+
     let (vm_memory_handler_control, vm_memory_handler_control_for_thread) = Tube::pair()?;
     let vm_memory_handler_thread_join_handle = std::thread::Builder::new()
         .name("vm_memory_handler_thread".into())
@@ -1204,13 +1243,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             }
         })
         .unwrap();
-
-    let mut triggers = vec![(vm_evt_rdtube.get_read_notifier(), Token::VmEvent)];
-    product::push_triggers(&mut triggers, &ipc_main_loop_tube, &proto_main_loop_tube);
-    let wait_ctx = WaitContext::build_with(&triggers).exit_context(
-        Exit::WaitContextAdd,
-        "failed to add trigger to wait context",
-    )?;
 
     if let Some(evt) = broker_shutdown_evt.as_ref() {
         wait_ctx.add(evt, Token::BrokerShutdown).exit_context(
@@ -1385,7 +1417,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 &mut virtio_snd_host_mute_tube,
                 proto_main_loop_tube.as_ref(),
                 &anti_tamper_main_thread_tube,
-                &balloon_host_tube,
+                #[cfg(feature = "balloon")]
+                balloon_tube.as_mut(),
                 memory_size_mb,
                 vcpu_boxes.as_ref(),
                 &pvclock_host_tube,

@@ -23,6 +23,8 @@ use base::MemoryMappingBuilderWindows;
 use hypervisor::BalloonEvent;
 use hypervisor::MemRegion;
 
+#[cfg(feature = "balloon")]
+mod balloon_tube;
 pub mod client;
 pub mod display;
 pub mod sys;
@@ -42,15 +44,6 @@ use std::sync::Arc;
 
 use anyhow::bail;
 use anyhow::Context;
-pub use balloon_control::BalloonStats;
-#[cfg(feature = "balloon")]
-use balloon_control::BalloonTubeCommand;
-#[cfg(feature = "balloon")]
-use balloon_control::BalloonTubeResult;
-pub use balloon_control::BalloonWSS;
-pub use balloon_control::WSSBucket;
-pub use balloon_control::VIRTIO_BALLOON_WS_MAX_NUM_BINS;
-pub use balloon_control::VIRTIO_BALLOON_WS_MIN_NUM_BINS;
 use base::error;
 use base::info;
 use base::warn;
@@ -109,6 +102,8 @@ pub use vm_control_product::GpuSendToService;
 pub use vm_control_product::ServiceSendToGpu;
 use vm_memory::GuestAddress;
 
+#[cfg(feature = "balloon")]
+pub use crate::balloon_tube::*;
 #[cfg(feature = "gdb")]
 pub use crate::gdb::VcpuDebug;
 #[cfg(feature = "gdb")]
@@ -186,34 +181,6 @@ pub trait PmResource {
 /// necessary for correctness. Importing that value directly would be overkill because it would
 /// require adding a big dependency for a single const.
 pub const USB_CONTROL_MAX_PORTS: usize = 16;
-
-// Balloon commands that are sent on the crosvm control socket.
-#[derive(Serialize, Deserialize, Debug)]
-pub enum BalloonControlCommand {
-    /// Set the size of the VM's balloon.
-    Adjust {
-        num_bytes: u64,
-    },
-    Stats,
-    WorkingSetSize,
-    WorkingSetSizeConfig {
-        bins: Vec<u64>,
-        refresh_threshold: u64,
-        report_threshold: u64,
-    },
-}
-
-// BalloonControlResult holds results for BalloonControlCommand defined above.
-#[derive(Serialize, Deserialize, Debug)]
-pub enum BalloonControlResult {
-    Stats {
-        stats: BalloonStats,
-        balloon_actual: u64,
-    },
-    WorkingSetSize {
-        wss: BalloonWSS,
-    },
-}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum DiskControlCommand {
@@ -1245,6 +1212,7 @@ pub enum VmRequest {
     /// Make the VM's RT VCPU real-time.
     MakeRT,
     /// Command for balloon driver.
+    #[cfg(feature = "balloon")]
     BalloonCommand(BalloonControlCommand),
     /// Send a command to a disk chosen by `disk_index`.
     /// `disk_index` is a 0-based count of `--disk`, `--rwdisk`, and `-r` command-line options.
@@ -1550,9 +1518,6 @@ impl VmRequest {
     pub fn execute(
         &self,
         run_mode: &mut Option<VmRunMode>,
-        #[cfg(feature = "balloon")] balloon_host_tube: Option<&Tube>,
-        #[cfg(feature = "balloon")] balloon_stats_id: &mut u64,
-        #[cfg(feature = "balloon")] balloon_wss_id: &mut u64,
         disk_host_tubes: &[Tube],
         pm: &mut Option<Arc<Mutex<dyn PmResource + Send>>>,
         #[cfg(feature = "gpu")] gpu_control_tube: Option<&Tube>,
@@ -1810,150 +1775,7 @@ impl VmRequest {
                 VmResponse::Ok
             }
             #[cfg(feature = "balloon")]
-            VmRequest::BalloonCommand(BalloonControlCommand::Adjust { num_bytes }) => {
-                if let Some(balloon_host_tube) = balloon_host_tube {
-                    match balloon_host_tube.send(&BalloonTubeCommand::Adjust {
-                        num_bytes,
-                        allow_failure: false,
-                    }) {
-                        Ok(_) => VmResponse::Ok,
-                        Err(_) => VmResponse::Err(SysError::last()),
-                    }
-                } else {
-                    VmResponse::Err(SysError::new(ENOTSUP))
-                }
-            }
-            #[cfg(feature = "balloon")]
-            VmRequest::BalloonCommand(BalloonControlCommand::WorkingSetSizeConfig {
-                ref bins,
-                refresh_threshold,
-                report_threshold,
-            }) => {
-                if let Some(balloon_host_tube) = balloon_host_tube {
-                    match balloon_host_tube.send(&BalloonTubeCommand::WorkingSetSizeConfig {
-                        bins: bins.clone(),
-                        refresh_threshold,
-                        report_threshold,
-                    }) {
-                        Ok(_) => VmResponse::Ok,
-                        Err(_) => VmResponse::Err(SysError::last()),
-                    }
-                } else {
-                    VmResponse::Err(SysError::new(ENOTSUP))
-                }
-            }
-            #[cfg(feature = "balloon")]
-            VmRequest::BalloonCommand(BalloonControlCommand::Stats) => {
-                if let Some(balloon_host_tube) = balloon_host_tube {
-                    // NB: There are a few reasons stale balloon stats could be left
-                    // in balloon_host_tube:
-                    //  - the send succeeds, but the recv fails because the device
-                    //      is not ready yet. So when the device is ready, there are
-                    //      extra stats requests queued.
-                    //  - the send succeed, but the recv times out. When the device
-                    //      does return the stats, there will be no consumer.
-                    //
-                    // To guard against this, add an `id` to the stats request. If
-                    // the id returned to us doesn't match, we keep trying to read
-                    // until it does.
-                    *balloon_stats_id = (*balloon_stats_id).wrapping_add(1);
-                    let sent_id = *balloon_stats_id;
-                    match balloon_host_tube.send(&BalloonTubeCommand::Stats { id: sent_id }) {
-                        Ok(_) => {
-                            loop {
-                                match balloon_host_tube.recv() {
-                                    Ok(BalloonTubeResult::Stats {
-                                        stats,
-                                        balloon_actual,
-                                        id,
-                                    }) => {
-                                        if sent_id != id {
-                                            // Keep trying to get the fresh stats.
-                                            continue;
-                                        }
-                                        break VmResponse::BalloonStats {
-                                            stats,
-                                            balloon_actual,
-                                        };
-                                    }
-                                    Err(e) => {
-                                        error!("balloon socket recv for stats failed: {}", e);
-                                        break VmResponse::Err(SysError::last());
-                                    }
-                                    Ok(BalloonTubeResult::Adjusted { .. }) => {
-                                        unreachable!("unexpected adjusted response")
-                                    }
-                                    Ok(BalloonTubeResult::WorkingSetSize { .. }) => {
-                                        // stale WSS message, can discard
-                                        continue;
-                                    }
-                                }
-                            }
-                        }
-                        Err(_) => VmResponse::Err(SysError::last()),
-                    }
-                } else {
-                    VmResponse::Err(SysError::new(ENOTSUP))
-                }
-            }
-            #[cfg(feature = "balloon")]
-            VmRequest::BalloonCommand(BalloonControlCommand::WorkingSetSize) => {
-                if let Some(balloon_host_tube) = balloon_host_tube {
-                    // NB: There are a few reasons stale balloon wss could be left
-                    // in balloon_wss_host_tube:
-                    //  - the send succeeds, but the recv fails because the device
-                    //      is not ready yet. So when the device is ready, there are
-                    //      extra ess requests queued.
-                    //  - the send succeed, but the recv times out. When the device
-                    //      does return the stats, there will be no consumer.
-                    //
-                    // To guard against this, add an `id` to the wss request. If
-                    // the id returned to us doesn't match, we keep trying to read
-                    // until it does.
-                    *balloon_wss_id = (*balloon_wss_id).wrapping_add(1);
-                    let sent_id = *balloon_wss_id;
-                    match balloon_host_tube
-                        .send(&BalloonTubeCommand::WorkingSetSize { id: sent_id })
-                    {
-                        Ok(_) => {
-                            loop {
-                                match balloon_host_tube.recv() {
-                                    Ok(BalloonTubeResult::WorkingSetSize {
-                                        wss,
-                                        balloon_actual,
-                                        id,
-                                    }) => {
-                                        if sent_id != id {
-                                            // Keep trying to get fresh stats.
-                                            continue;
-                                        }
-                                        break VmResponse::BalloonWSS {
-                                            wss,
-                                            balloon_actual,
-                                        };
-                                    }
-                                    Err(e) => {
-                                        error!("balloon socket recv for wss failed: {}", e);
-                                        break VmResponse::Err(SysError::last());
-                                    }
-                                    Ok(BalloonTubeResult::Adjusted { .. }) => {
-                                        unreachable!("unexpected adjusted response")
-                                    }
-                                    Ok(BalloonTubeResult::Stats { .. }) => {
-                                        // stale stats message, can discard
-                                        continue;
-                                    }
-                                }
-                            }
-                        }
-                        Err(_) => VmResponse::Err(SysError::last()),
-                    }
-                } else {
-                    VmResponse::Err(SysError::new(ENOTSUP))
-                }
-            }
-            #[cfg(not(feature = "balloon"))]
-            VmRequest::BalloonCommand(_) => VmResponse::Err(SysError::new(ENOTSUP)),
+            VmRequest::BalloonCommand(_) => unreachable!("Should be handled with BalloonTube"),
             VmRequest::DiskCommand {
                 disk_index,
                 ref command,
@@ -2265,11 +2087,13 @@ pub enum VmResponse {
     /// number `pfn` and memory slot number `slot`.
     RegisterMemory { pfn: u64, slot: u32 },
     /// Results of balloon control commands.
+    #[cfg(feature = "balloon")]
     BalloonStats {
         stats: BalloonStats,
         balloon_actual: u64,
     },
     /// Results of balloon WSS-R command
+    #[cfg(feature = "balloon")]
     BalloonWSS {
         wss: BalloonWSS,
         balloon_actual: u64,
@@ -2300,6 +2124,7 @@ impl Display for VmResponse {
                 "memory registered to page frame number {:#x} and memory slot {}",
                 pfn, slot
             ),
+            #[cfg(feature = "balloon")]
             VmResponse::BalloonStats {
                 stats,
                 balloon_actual,
@@ -2312,6 +2137,7 @@ impl Display for VmResponse {
                     balloon_actual
                 )
             }
+            #[cfg(feature = "balloon")]
             VmResponse::BalloonWSS {
                 wss,
                 balloon_actual,

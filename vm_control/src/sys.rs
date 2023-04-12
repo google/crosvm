@@ -9,6 +9,7 @@ cfg_if::cfg_if! {
         pub use platform::{VmMsyncRequest, VmMsyncResponse, FsMappingRequest};
         #[cfg(feature = "gpu")]
         pub use platform::gpu::UnixDisplayMode as DisplayMode;
+        pub use platform::handle_request_with_timeout;
     } else if #[cfg(windows)] {
         pub mod windows;
         pub use windows as platform;

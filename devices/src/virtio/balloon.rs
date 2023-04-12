@@ -152,7 +152,6 @@ struct BalloonState {
     num_pages: u32,
     actual_pages: u32,
     expecting_wss: bool,
-    expected_wss_id: u64,
     // Flag indicating that the balloon is in the process of a failable update. This
     // is set by an Adjust command that has allow_failure set, and is cleared when the
     // Adjusted success/failure response is sent.
@@ -459,7 +458,7 @@ async fn handle_stats_queue(
     mem: &GuestMemory,
     mut queue: Queue,
     mut queue_event: EventAsync,
-    mut stats_rx: mpsc::Receiver<u64>,
+    mut stats_rx: mpsc::Receiver<()>,
     command_tube: &AsyncTube,
     #[cfg(feature = "registered_events")] registered_evt_q: Option<&SendTubeAsync>,
     state: Arc<AsyncRwLock<BalloonState>>,
@@ -481,13 +480,13 @@ async fn handle_stats_queue(
     };
 
     loop {
-        let id = select_biased! {
-            id_res = stats_rx.next() => {
+        select_biased! {
+            msg = stats_rx.next() => {
                 // Wait for a request to read the stats.
-                match id_res {
-                    Some(id) => id,
+                match msg {
+                    Some(()) => (),
                     None => {
-                        error!("stats signal tube was closed");
+                        error!("stats signal channel was closed");
                         return queue;
                     }
                 }
@@ -512,7 +511,6 @@ async fn handle_stats_queue(
         let result = BalloonTubeResult::Stats {
             balloon_actual: actual_pages << VIRTIO_BALLOON_PFN_SHIFT,
             stats,
-            id,
         };
         let send_result = command_tube.send(result).await;
         if let Err(e) = send_result {
@@ -602,9 +600,7 @@ async fn handle_events_queue(
 }
 
 enum WSSOp {
-    WSSReport {
-        id: u64,
-    },
+    WSSReport,
     WSSConfig {
         bins: Vec<u64>,
         refresh_threshold: u64,
@@ -643,11 +639,10 @@ async fn handle_wss_op_queue(
         let writer = &mut avail_desc.writer;
 
         match op {
-            WSSOp::WSSReport { id } => {
+            WSSOp::WSSReport => {
                 {
                     let mut state = state.lock().await;
                     state.expecting_wss = true;
-                    state.expected_wss_id = id;
                 }
 
                 let wss_r = virtio_balloon_op {
@@ -743,7 +738,6 @@ async fn handle_wss_data_queue(
             let result = BalloonTubeResult::WorkingSetSize {
                 wss,
                 balloon_actual,
-                id: state.expected_wss_id,
             };
             let send_result = command_tube.send(result).await;
             if let Err(e) = send_result {
@@ -774,7 +768,7 @@ async fn handle_command_tube(
     command_tube: &AsyncTube,
     interrupt: Interrupt,
     state: Arc<AsyncRwLock<BalloonState>>,
-    mut stats_tx: mpsc::Sender<u64>,
+    mut stats_tx: mpsc::Sender<()>,
     mut wss_op_tx: mpsc::Sender<WSSOp>,
 ) -> Result<()> {
     loop {
@@ -813,13 +807,13 @@ async fn handle_command_tube(
                         error!("failed to send config to wss handler: {}", e);
                     }
                 }
-                BalloonTubeCommand::Stats { id } => {
-                    if let Err(e) = stats_tx.try_send(id) {
+                BalloonTubeCommand::Stats => {
+                    if let Err(e) = stats_tx.try_send(()) {
                         error!("failed to signal the stat handler: {}", e);
                     }
                 }
-                BalloonTubeCommand::WorkingSetSize { id } => {
-                    if let Err(e) = wss_op_tx.try_send(WSSOp::WSSReport { id }) {
+                BalloonTubeCommand::WorkingSetSize => {
+                    if let Err(e) = wss_op_tx.try_send(WSSOp::WSSReport) {
                         error!("failed to send report request to wss handler: {}", e);
                     }
                 }
@@ -1008,9 +1002,7 @@ fn run_worker(
         pin_mut!(deflate);
 
         // The next queue is used for stats messages if VIRTIO_BALLOON_F_STATS_VQ is negotiated.
-        // The message type is the id of the stats request, so we can detect if there are any stale
-        // stats results that were queued during an error condition.
-        let (stats_tx, stats_rx) = mpsc::channel::<u64>(1);
+        let (stats_tx, stats_rx) = mpsc::channel::<()>(1);
         let has_stats_queue = stats_queue.is_some();
         let stats = if let Some((stats_queue, stats_queue_evt)) = stats_queue {
             let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
@@ -1334,7 +1326,6 @@ impl Balloon {
                 failable_update: false,
                 pending_adjusted_responses: VecDeque::new(),
                 expecting_wss: false,
-                expected_wss_id: 0,
             })),
             worker_thread: None,
             features,
