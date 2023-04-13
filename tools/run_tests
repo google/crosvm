@@ -69,11 +69,12 @@ class TestFilter(object):
         yield quoted(self.expression)
 
 
-def configure_cargo(cmd: Command, triple: Triple, features: str):
+def configure_cargo(cmd: Command, triple: Triple, features: str, no_default_features: bool):
     "Configures the provided cmd with cargo arguments and environment needed to build for triple."
     return (
         cmd.with_args(
             "--workspace",
+            "--no-default-features" if no_default_features else None,
             f"--features={features}",
         )
         .with_color_flag()
@@ -145,6 +146,7 @@ def get_vm_arch(triple: Triple):
 @argh.arg("--filter-expr", "-E", type=str, action="append", help="Nextest filter expression.")
 @argh.arg("--platform", "-p", help="Which platform to test. (x86_64, aarch64, armhw, mingw64)")
 @argh.arg("--dut", help="Which device to test on. (vm or host)")
+@argh.arg("--no-default-features", help="Don't enable default features")
 @argh.arg("--no-run", "--build-only", help="Build only, do not run any tests.")
 @argh.arg("--no-unit-tests", help="Do not run unit tests.")
 @argh.arg("--no-integration-tests", help="Do not run integration tests.")
@@ -161,6 +163,7 @@ def main(
     filter_expr: List[str] = [],
     platform: Optional[str] = None,
     dut: Optional[str] = None,
+    no_default_features: bool = False,
     no_run: bool = False,
     no_unit_tests: bool = False,
     no_integration_tests: bool = False,
@@ -260,6 +263,7 @@ def main(
     integration_test_str = dut_str if dut else skip_str
     console.print(f"Running tests for [green]{triple}[/green]")
     console.print(f"With features: [green]{features}[/green]")
+    console.print(f"no-default-features: [green]{no_default_features}[/green]")
     console.print()
     console.print(f"  Unit tests:        [bold]{unit_test_str}[/bold]")
     console.print(f"  Integration tests: [bold]{integration_test_str}[/bold]")
@@ -308,9 +312,11 @@ def main(
 
     console.print()
     console.rule("Building tests")
-    nextest_run = configure_cargo(cmd("cargo nextest run"), triple, features).with_args(
-        *nextest_args
-    )
+
+    nextest_run = configure_cargo(
+        cmd("cargo nextest run"), triple, features, no_default_features
+    ).with_args(*nextest_args)
+
     with record_time("Build"):
         returncode = nextest_run.with_args("--no-run").fg(
             style=Styles.live_truncated(), check=False
@@ -338,7 +344,9 @@ def main(
     if dut:
         package_dir = triple.target_dir / PACKAGE_NAME
         package_archive = package_dir.with_suffix(".tar.zst")
-        nextest_package = configure_cargo(cmd(TOOLS_ROOT / "nextest_package"), triple, features)
+        nextest_package = configure_cargo(
+            cmd(TOOLS_ROOT / "nextest_package"), triple, features, no_default_features
+        )
 
         test_exclusions = [*DO_NOT_RUN]
         if not run_root_tests:
