@@ -271,7 +271,7 @@ pub type Result<T> = result::Result<T, Error>;
 ///
 /// * base - The address at which the range start.
 /// * len - The length of the range in bytes.
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Copy, Clone, Serialize, Deserialize)]
 pub struct BusRange {
     pub base: u64,
     pub len: u64,
@@ -306,6 +306,12 @@ impl Ord for BusRange {
 impl PartialOrd for BusRange {
     fn partial_cmp(&self, other: &BusRange) -> Option<Ordering> {
         self.base.partial_cmp(&other.base)
+    }
+}
+
+impl std::fmt::Debug for BusRange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:#x}..+{:#x}", self.base, self.len)
     }
 }
 

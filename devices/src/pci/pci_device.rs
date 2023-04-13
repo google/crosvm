@@ -11,6 +11,7 @@ use acpi_tables::sdt::SDT;
 use anyhow::bail;
 use anyhow::Context;
 use base::error;
+use base::trace;
 use base::Event;
 use base::MemoryMapping;
 use base::RawDescriptor;
@@ -513,6 +514,16 @@ fn update_ranges(
     (remove_ranges, add_ranges)
 }
 
+// Debug-only helper function to convert a slice of bytes into a u32.
+// This can be lossy - only use it for logging!
+fn trace_data(data: &[u8], offset: u64) -> u32 {
+    let mut data4 = [0u8; 4];
+    for (d, s) in data4.iter_mut().skip(offset as usize).zip(data.iter()) {
+        *d = *s;
+    }
+    u32::from_le_bytes(data4)
+}
+
 impl<T: PciDevice> BusDevice for T {
     fn debug_label(&self) -> String {
         PciDevice::debug_label(self)
@@ -541,6 +552,12 @@ impl<T: PciDevice> BusDevice for T {
         if offset as usize + data.len() > 4 {
             return Default::default();
         }
+
+        trace!(
+            "reg_idx {:02X} data {:08X}",
+            reg_idx,
+            trace_data(data, offset)
+        );
 
         let old_command_reg = self.read_config_register(COMMAND_REG);
         let old_ranges =
@@ -592,6 +609,11 @@ impl<T: PciDevice> BusDevice for T {
         {
             let ioevents = self.ioevents();
             if !ioevents.is_empty() {
+                trace!(
+                    "sending ioevent updates: remove {:?} add {:?}",
+                    result.mmio_remove,
+                    result.mmio_add,
+                );
                 if let Err(e) = send_ioevent_updates(
                     self.get_vm_memory_request_tube(),
                     ioevents,
