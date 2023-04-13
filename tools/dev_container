@@ -189,6 +189,18 @@ def validate_podman(podman: cmd):
                 print("[storage]", file=config_file)
                 print('driver = "overlay"', file=config_file)
 
+    username = os.environ["USER"]
+    subuids = Path("/etc/subuid").read_text()
+    if not username in subuids:
+        print("Rootless podman requires subuid's to be set up for your user.")
+        usermod = cmd(
+            "sudo usermod --add-subuids 900000-965535 --add-subgids 900000-965535", username
+        )
+        print("I can fix that by running:", usermod)
+        if confirm("Ok?"):
+            usermod.fg()
+            podman("system migrate").fg()
+
 
 @arg("command", nargs=argparse.REMAINDER)
 def main(
