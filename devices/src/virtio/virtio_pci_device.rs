@@ -11,6 +11,7 @@ use anyhow::anyhow;
 use anyhow::Context;
 use base::error;
 use base::info;
+use base::trace;
 use base::AsRawDescriptor;
 use base::AsRawDescriptors;
 use base::Event;
@@ -872,7 +873,18 @@ impl PciDevice for VirtioPciDevice {
                         .write_config(offset - DEVICE_CONFIG_BAR_OFFSET, data);
                 }
                 NOTIFICATION_BAR_OFFSET..=NOTIFICATION_LAST => {
-                    // Handled with ioevents.
+                    // Notifications are normally handled with ioevents inside the hypervisor and
+                    // do not reach write_bar(). However, if the ioevent registration hasn't
+                    // finished yet, it is possible for a write to the notification region to make
+                    // it through as a normal MMIO exit and end up here. To handle that case,
+                    // provide a fallback that looks up the corresponding queue for the offset and
+                    // triggers its event, which is equivalent to what the ioevent would do.
+                    let queue_index = (offset - NOTIFICATION_BAR_OFFSET) as usize
+                        / NOTIFY_OFF_MULTIPLIER as usize;
+                    trace!("write_bar notification fallback for queue {}", queue_index);
+                    if let Some(evt) = self.queue_evts.get(queue_index) {
+                        let _ = evt.signal();
+                    }
                 }
                 MSIX_TABLE_BAR_OFFSET..=MSIX_TABLE_LAST => {
                     let behavior = self
