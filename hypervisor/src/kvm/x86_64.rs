@@ -22,6 +22,8 @@ use kvm_sys::*;
 use libc::E2BIG;
 use libc::EIO;
 use libc::ENXIO;
+use serde::Deserialize;
+use serde::Serialize;
 use vm_memory::GuestAddress;
 
 use super::Config;
@@ -52,13 +54,7 @@ use crate::Register;
 use crate::Regs;
 use crate::Segment;
 use crate::Sregs;
-use crate::VcpuEvents;
-use crate::VcpuExceptionState;
 use crate::VcpuExit;
-use crate::VcpuInterruptState;
-use crate::VcpuNmiState;
-use crate::VcpuSmiState;
-use crate::VcpuTripleFaultState;
 use crate::VcpuX86_64;
 use crate::VmCap;
 use crate::VmX86_64;
@@ -68,6 +64,54 @@ use crate::NUM_IOAPIC_PINS;
 
 type KvmCpuId = kvm::CpuId;
 const KVM_XSAVE_MAX_SIZE: i32 = 4096;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VcpuEvents {
+    pub exception: VcpuExceptionState,
+    pub interrupt: VcpuInterruptState,
+    pub nmi: VcpuNmiState,
+    pub sipi_vector: Option<u32>,
+    pub smi: VcpuSmiState,
+    pub triple_fault: VcpuTripleFaultState,
+    pub exception_payload: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VcpuExceptionState {
+    pub injected: bool,
+    pub nr: u8,
+    pub has_error_code: bool,
+    pub pending: Option<bool>,
+    pub error_code: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VcpuInterruptState {
+    pub injected: bool,
+    pub nr: u8,
+    pub soft: bool,
+    pub shadow: Option<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VcpuNmiState {
+    pub injected: bool,
+    pub pending: Option<bool>,
+    pub masked: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VcpuSmiState {
+    pub smm: Option<bool>,
+    pub pending: bool,
+    pub smm_inside_nmi: bool,
+    pub latched_init: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VcpuTripleFaultState {
+    pub pending: Option<bool>,
+}
 
 pub fn get_cpuid_with_initial_capacity<T: AsRawDescriptor>(
     descriptor: &T,
@@ -739,18 +783,27 @@ impl VcpuX86_64 for KvmVcpu {
         }
     }
 
-    fn get_vcpu_events(&self) -> Result<VcpuEvents> {
+    fn get_interrupt_state(&self) -> Result<serde_json::Value> {
         let mut vcpu_evts: kvm_vcpu_events = Default::default();
         let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_VCPU_EVENTS(), &mut vcpu_evts) };
         if ret == 0 {
-            Ok(VcpuEvents::from(&vcpu_evts))
+            Ok(
+                serde_json::to_value(VcpuEvents::from(&vcpu_evts)).map_err(|e| {
+                    error!("failed to serialize vcpu_events: {:?}", e);
+                    Error::new(EIO)
+                })?,
+            )
         } else {
             errno_result()
         }
     }
 
-    fn set_vcpu_events(&self, vcpu_evts: &VcpuEvents) -> Result<()> {
-        let vcpu_events = kvm_vcpu_events::from(vcpu_evts);
+    fn set_interrupt_state(&self, data: serde_json::Value) -> Result<()> {
+        let vcpu_events =
+            kvm_vcpu_events::from(&serde_json::from_value::<VcpuEvents>(data).map_err(|e| {
+                error!("failed to deserialize vcpu_events: {:?}", e);
+                Error::new(EIO)
+            })?);
         let ret = unsafe { ioctl_with_ref(self, KVM_SET_VCPU_EVENTS(), &vcpu_events) };
         if ret == 0 {
             Ok(())

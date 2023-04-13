@@ -51,7 +51,6 @@ use hypervisor::Regs;
 use hypervisor::Sregs;
 use hypervisor::TriggerMode;
 use hypervisor::Vcpu;
-use hypervisor::VcpuEvents;
 use hypervisor::VcpuExit;
 use hypervisor::VcpuRunHandle;
 use hypervisor::VcpuX86_64;
@@ -747,10 +746,10 @@ impl VcpuX86_64 for FakeVcpu {
     fn set_xsave(&self, _xsave: &Xsave) -> Result<()> {
         unimplemented!()
     }
-    fn get_vcpu_events(&self) -> Result<VcpuEvents> {
+    fn get_interrupt_state(&self) -> Result<serde_json::Value> {
         unimplemented!()
     }
-    fn set_vcpu_events(&self, _vcpu_events: &VcpuEvents) -> Result<()> {
+    fn set_interrupt_state(&self, _data: serde_json::Value) -> Result<()> {
         unimplemented!()
     }
     fn get_debugregs(&self) -> Result<DebugRegs> {
