@@ -35,6 +35,7 @@ use virtio_sys::virtio_config::VIRTIO_CONFIG_S_DRIVER_OK;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_FAILED;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_FEATURES_OK;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_NEEDS_RESET;
+use vm_control::IoEventUpdateRequest;
 use vm_control::VmMemoryDestination;
 use vm_control::VmMemoryRegionId;
 use vm_control::VmMemoryRequest;
@@ -268,6 +269,11 @@ const VIRTIO_PCI_REVISION_ID: u8 = 1;
 const CAPABILITIES_BAR_NUM: usize = 0;
 const SHMEM_BAR_NUM: usize = 2;
 
+struct QueueEvent {
+    event: Event,
+    ioevent_registered: bool,
+}
+
 /// Implements the
 /// [PCI](http://docs.oasis-open.org/virtio/virtio/v1.0/cs04/virtio-v1.0-cs04.html#x1-650001)
 /// transport for virtio devices.
@@ -283,7 +289,7 @@ pub struct VirtioPciDevice {
     interrupt: Option<Interrupt>,
     interrupt_evt: Option<IrqLevelEvent>,
     queues: Vec<Queue>,
-    queue_evts: Vec<Event>,
+    queue_evts: Vec<QueueEvent>,
     mem: GuestMemory,
     settings_bar: u8,
     msix_config: Arc<Mutex<MsixConfig>>,
@@ -298,6 +304,58 @@ pub struct VirtioPciDevice {
 
     // Tube for request registeration of ioevents when PCI BAR reprogramming is detected.
     ioevent_tube: Tube,
+}
+
+fn ioevent_request(ioevent_tube: &Tube, request: IoEventUpdateRequest) -> anyhow::Result<()> {
+    ioevent_tube
+        .send(&VmMemoryRequest::IoEventRaw(request))
+        .context("ioevent_tube.send()")?;
+    match ioevent_tube
+        .recv::<VmMemoryResponse>()
+        .context("ioevent_tube.recv()")?
+    {
+        VmMemoryResponse::Ok => Ok(()),
+        VmMemoryResponse::Err(e) => Err(e).context("VmMemoryRequest::IoEventRaw"),
+        other => Err(anyhow!("unexpected VmMemoryResponse {:?}", other)),
+    }
+}
+
+fn register_ioevent(
+    ioevent_tube: &Tube,
+    event: &Event,
+    addr: u64,
+    datamatch: Datamatch,
+) -> anyhow::Result<()> {
+    ioevent_request(
+        ioevent_tube,
+        IoEventUpdateRequest {
+            event: event
+                .try_clone()
+                .context("failed to clone event for ioevent_request")?,
+            addr,
+            datamatch,
+            register: true,
+        },
+    )
+}
+
+fn unregister_ioevent(
+    ioevent_tube: &Tube,
+    event: &Event,
+    addr: u64,
+    datamatch: Datamatch,
+) -> anyhow::Result<()> {
+    ioevent_request(
+        ioevent_tube,
+        IoEventUpdateRequest {
+            event: event
+                .try_clone()
+                .context("failed to clone event for ioevent_request")?,
+            addr,
+            datamatch,
+            register: false,
+        },
+    )
 }
 
 impl VirtioPciDevice {
@@ -318,7 +376,10 @@ impl VirtioPciDevice {
 
         let mut queue_evts = Vec::new();
         for _ in device.queue_max_sizes() {
-            queue_evts.push(Event::new()?)
+            queue_evts.push(QueueEvent {
+                event: Event::new()?,
+                ioevent_registered: false,
+            });
         }
         let queues: Vec<Queue> = device
             .queue_max_sizes()
@@ -493,16 +554,30 @@ impl VirtioPciDevice {
         );
         self.interrupt = Some(interrupt.clone());
 
+        let bar0 = self.config_regs.get_bar_addr(self.settings_bar as usize);
+        let notify_base = bar0 + NOTIFICATION_BAR_OFFSET;
+
         // Use ready queues and their events.
         let queues = self
             .queues
             .iter_mut()
-            .zip(self.queue_evts.iter())
-            .filter(|(q, _)| q.ready())
-            .map(|(queue, evt)| {
+            .enumerate()
+            .zip(self.queue_evts.iter_mut())
+            .filter(|((_, q), _)| q.ready())
+            .map(|((queue_index, queue), evt)| {
+                if !evt.ioevent_registered {
+                    register_ioevent(
+                        &self.ioevent_tube,
+                        &evt.event,
+                        notify_base + queue_index as u64 * u64::from(NOTIFY_OFF_MULTIPLIER),
+                        Datamatch::AnyLength,
+                    )
+                    .context("failed to register ioevent")?;
+                    evt.ioevent_registered = true;
+                }
                 Ok((
                     queue.activate().context("failed to activate queue")?,
-                    evt.try_clone().context("failed to clone queue_evt")?,
+                    evt.event.try_clone().context("failed to clone queue_evt")?,
                 ))
             })
             .collect::<anyhow::Result<Vec<(Queue, Event)>>>()?;
@@ -518,6 +593,25 @@ impl VirtioPciDevice {
             self.device_activated = true;
         }
 
+        Ok(())
+    }
+
+    fn unregister_ioevents(&mut self) -> anyhow::Result<()> {
+        let bar0 = self.config_regs.get_bar_addr(self.settings_bar as usize);
+        let notify_base = bar0 + NOTIFICATION_BAR_OFFSET;
+
+        for (queue_index, evt) in self.queue_evts.iter_mut().enumerate() {
+            if evt.ioevent_registered {
+                unregister_ioevent(
+                    &self.ioevent_tube,
+                    &evt.event,
+                    notify_base + queue_index as u64 * u64::from(NOTIFY_OFF_MULTIPLIER),
+                    Datamatch::AnyLength,
+                )
+                .context("failed to unregister ioevent")?;
+                evt.ioevent_registered = false;
+            }
+        }
         Ok(())
     }
 }
@@ -570,7 +664,11 @@ impl PciDevice for VirtioPciDevice {
 
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         let mut rds = self.device.keep_rds();
-        rds.extend(self.queue_evts.iter().map(Event::as_raw_descriptor));
+        rds.extend(
+            self.queue_evts
+                .iter()
+                .map(|qe| qe.event.as_raw_descriptor()),
+        );
         if let Some(interrupt_evt) = &self.interrupt_evt {
             rds.extend(interrupt_evt.as_raw_descriptors());
         }
@@ -746,26 +844,6 @@ impl PciDevice for VirtioPciDevice {
         Ok(())
     }
 
-    fn ioevents(&self) -> Vec<(&Event, u64, Datamatch)> {
-        let bar0 = self.config_regs.get_bar_addr(self.settings_bar as usize);
-        let notify_base = bar0 + NOTIFICATION_BAR_OFFSET;
-        self.queue_evts
-            .iter()
-            .enumerate()
-            .map(|(i, event)| {
-                (
-                    event,
-                    notify_base + i as u64 * NOTIFY_OFF_MULTIPLIER as u64,
-                    Datamatch::AnyLength,
-                )
-            })
-            .collect()
-    }
-
-    fn get_vm_memory_request_tube(&self) -> Option<&Tube> {
-        Some(&self.ioevent_tube)
-    }
-
     fn read_config_register(&self, reg_idx: usize) -> u32 {
         let mut data: u32 = self.config_regs.read_reg(reg_idx);
         if reg_idx < 5 && self.debug_label() == "pcivirtio-gpu" {
@@ -886,7 +964,7 @@ impl PciDevice for VirtioPciDevice {
                         / NOTIFY_OFF_MULTIPLIER as usize;
                     trace!("write_bar notification fallback for queue {}", queue_index);
                     if let Some(evt) = self.queue_evts.get(queue_index) {
-                        let _ = evt.signal();
+                        let _ = evt.event.signal();
                     }
                 }
                 MSIX_TABLE_BAR_OFFSET..=MSIX_TABLE_LAST => {
@@ -927,6 +1005,9 @@ impl PciDevice for VirtioPciDevice {
             self.queues.iter_mut().for_each(Queue::reset);
             // select queue 0 by default
             self.common_config.queue_select = 0;
+            if let Err(e) = self.unregister_ioevents() {
+                error!("failed to unregister ioevents: {:#}", e);
+            }
         }
     }
 
