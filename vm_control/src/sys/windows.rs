@@ -10,13 +10,8 @@ use std::mem::size_of;
 use std::path::Path;
 
 use base::named_pipes::OverlappedWrapper;
-use base::Error;
 use base::Event;
 use base::PipeConnection;
-use hypervisor::MemSlot;
-use hypervisor::Vm;
-use resources::Alloc;
-use resources::SystemAllocator;
 
 use crate::client::HandleRequestResult;
 use crate::VmRequest;
@@ -65,16 +60,4 @@ pub fn recv_service_message(
         overlapped_wrapper,
         exit_event,
     )
-}
-
-pub fn should_prepare_memory_region() -> bool {
-    false
-}
-
-pub fn prepare_shared_memory_region(
-    _vm: &mut dyn Vm,
-    _allocator: &mut SystemAllocator,
-    _alloc: Alloc,
-) -> std::result::Result<(u64, MemSlot), Error> {
-    unimplemented!()
 }

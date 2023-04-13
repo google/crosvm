@@ -21,7 +21,6 @@ use hypervisor::MemSlot;
 use hypervisor::Vm;
 use libc::EINVAL;
 use libc::ERANGE;
-use once_cell::sync::Lazy;
 use resources::Alloc;
 use resources::SystemAllocator;
 use serde::Deserialize;
@@ -135,62 +134,47 @@ pub enum FsMappingRequest {
     },
 }
 
-pub fn prepare_shared_memory_region(
-    vm: &mut dyn Vm,
-    allocator: &mut SystemAllocator,
-    alloc: Alloc,
-) -> Result<(u64, MemSlot), SysError> {
-    if !matches!(alloc, Alloc::PciBar { .. }) {
-        return Err(SysError::new(EINVAL));
-    }
-    match allocator.mmio_allocator_any().get(&alloc) {
-        Some((range, _)) => {
-            let size: usize = match range.len().and_then(|x| x.try_into().ok()) {
-                Some(v) => v,
-                None => return Err(SysError::new(ERANGE)),
-            };
-            let arena = match MemoryMappingArena::new(size) {
-                Ok(a) => a,
-                Err(MmapError::SystemCallFailed(e)) => return Err(e),
-                _ => return Err(SysError::new(EINVAL)),
-            };
-
-            match vm.add_memory_region(GuestAddress(range.start), Box::new(arena), false, false) {
-                Ok(slot) => Ok((range.start >> 12, slot)),
-                Err(e) => Err(e),
-            }
-        }
-        None => Err(SysError::new(EINVAL)),
-    }
-}
-
-static SHOULD_PREPARE_MEMORY_REGION: Lazy<bool> = Lazy::new(|| {
-    if cfg!(target_arch = "x86_64") {
-        // The legacy x86 MMU allocates an rmap and a page tracking array
-        // that take 2.5MiB per 1GiB of user memory region address space,
-        // so avoid mapping the whole shared memory region if we're not
-        // using the tdp mmu.
-        match std::fs::read("/sys/module/kvm/parameters/tdp_mmu") {
-            Ok(bytes) if bytes.len() > 0 => bytes[0] == b'Y',
-            _ => false,
-        }
-    } else {
-        true
-    }
-});
-
-pub fn should_prepare_memory_region() -> bool {
-    *SHOULD_PREPARE_MEMORY_REGION
-}
-
 impl FsMappingRequest {
     pub fn execute(&self, vm: &mut dyn Vm, allocator: &mut SystemAllocator) -> VmResponse {
         use self::FsMappingRequest::*;
         match *self {
-            AllocateSharedMemoryRegion(alloc) => {
-                match prepare_shared_memory_region(vm, allocator, alloc) {
-                    Ok((pfn, slot)) => VmResponse::RegisterMemory { pfn, slot },
-                    Err(e) => VmResponse::Err(e),
+            AllocateSharedMemoryRegion(Alloc::PciBar {
+                bus,
+                dev,
+                func,
+                bar,
+            }) => {
+                match allocator.mmio_allocator_any().get(&Alloc::PciBar {
+                    bus,
+                    dev,
+                    func,
+                    bar,
+                }) {
+                    Some((range, _)) => {
+                        let size: usize = match range.len().and_then(|x| x.try_into().ok()) {
+                            Some(v) => v,
+                            None => return VmResponse::Err(SysError::new(ERANGE)),
+                        };
+                        let arena = match MemoryMappingArena::new(size) {
+                            Ok(a) => a,
+                            Err(MmapError::SystemCallFailed(e)) => return VmResponse::Err(e),
+                            _ => return VmResponse::Err(SysError::new(EINVAL)),
+                        };
+
+                        match vm.add_memory_region(
+                            GuestAddress(range.start),
+                            Box::new(arena),
+                            false,
+                            false,
+                        ) {
+                            Ok(slot) => VmResponse::RegisterMemory {
+                                pfn: range.start >> 12,
+                                slot,
+                            },
+                            Err(e) => VmResponse::Err(e),
+                        }
+                    }
+                    None => VmResponse::Err(SysError::new(EINVAL)),
                 }
             }
             CreateMemoryMapping {
@@ -214,6 +198,7 @@ impl FsMappingRequest {
                     Err(e) => VmResponse::Err(e),
                 }
             }
+            _ => VmResponse::Err(SysError::new(EINVAL)),
         }
     }
 }
