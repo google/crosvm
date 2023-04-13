@@ -568,6 +568,7 @@ impl PciDevice for VirtioPciDevice {
 
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         let mut rds = self.device.keep_rds();
+        rds.extend(self.queue_evts.iter().map(Event::as_raw_descriptor));
         if let Some(interrupt_evt) = &self.interrupt_evt {
             rds.extend(interrupt_evt.as_raw_descriptors());
         }
