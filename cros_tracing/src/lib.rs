@@ -9,7 +9,12 @@ cfg_if::cfg_if! {
         use trace_marker as platform;
 
         pub use trace_marker::*;
-    } else {
+    } else if #[cfg(feature = "perfetto")] {
+        pub mod perfetto;
+        use self::perfetto as platform;
+        pub use platform::*;
+    }
+    else {
         /// A crate that provides noop tracing.
         pub mod noop;
         use noop as platform;
