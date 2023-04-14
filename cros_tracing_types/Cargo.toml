@@ -1,0 +1,10 @@
+[package]
+name = "cros_tracing_types"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+edition = "2021"
+
+[dependencies]
+anyhow = "*"
+lazy_static = "*"
+sync = { path = "../common/sync" }
