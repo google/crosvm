@@ -15,6 +15,7 @@ use base::Error;
 use base::Result;
 use libc::EBUSY;
 use libc::EINVAL;
+use libc::EIO;
 use libc::ENOENT;
 use libc::ENXIO;
 use libc::EOPNOTSUPP;
@@ -1068,7 +1069,7 @@ impl VcpuX86_64 for WhpxVcpu {
         if res != WHV_E_INSUFFICIENT_BUFFER.0 {
             // This should always work, so if it doesn't, we'll return unsupported.
             error!("failed to get size of vcpu xsave");
-            return Err(Error::new(EOPNOTSUPP));
+            return Err(Error::new(EIO));
         }
 
         let mut xsave = Xsave::new(needed_buf_size as usize);
