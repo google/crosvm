@@ -603,18 +603,27 @@ impl BalloonWSSFfi {
 pub unsafe extern "C" fn crosvm_client_balloon_wss(
     socket_path: *const c_char,
     wss: *mut BalloonWSSFfi,
+    actual: *mut u64,
 ) -> bool {
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
             let request = &VmRequest::BalloonCommand(BalloonControlCommand::WorkingSetSize);
             if let Ok(VmResponse::BalloonWSS {
                 wss: ref balloon_wss,
+                balloon_actual,
             }) = handle_request(request, socket_path)
             {
                 if !wss.is_null() {
                     // SAFETY: just checked that `wss` is not null.
                     unsafe {
                         *wss = balloon_wss.into();
+                    }
+                }
+
+                if !actual.is_null() {
+                    // SAFETY: just checked that `actual` is not null.
+                    unsafe {
+                        *actual = balloon_actual;
                     }
                 }
                 true

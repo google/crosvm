@@ -702,9 +702,14 @@ async fn handle_wss_data_queue(
             // Closure to hold the mutex for handling a WSS-R command response
             {
                 let mut state = state.lock().await;
+
+                // update wss report with balloon pages now that we have a lock on state
+                let balloon_actual = (state.actual_pages as u64) << VIRTIO_BALLOON_PFN_SHIFT;
+
                 if state.expecting_wss {
                     let result = BalloonTubeResult::WorkingSetSize {
                         wss,
+                        balloon_actual,
                         id: state.expected_wss_id,
                     };
                     let send_result = wss_op_tube.send(result).await;

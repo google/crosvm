@@ -1701,12 +1701,19 @@ impl VmRequest {
                         Ok(_) => {
                             loop {
                                 match balloon_wss_host_tube.recv() {
-                                    Ok(BalloonTubeResult::WorkingSetSize { wss, id }) => {
+                                    Ok(BalloonTubeResult::WorkingSetSize {
+                                        wss,
+                                        balloon_actual,
+                                        id,
+                                    }) => {
                                         if sent_id != id {
                                             // Keep trying to get fresh stats.
                                             continue;
                                         }
-                                        break VmResponse::BalloonWSS { wss };
+                                        break VmResponse::BalloonWSS {
+                                            wss,
+                                            balloon_actual,
+                                        };
                                     }
                                     Err(e) => {
                                         error!("balloon socket recv for wss failed: {}", e);
@@ -1978,7 +1985,10 @@ pub enum VmResponse {
         balloon_actual: u64,
     },
     /// Results of balloon WSS-R command
-    BalloonWSS { wss: BalloonWSS },
+    BalloonWSS {
+        wss: BalloonWSS,
+        balloon_actual: u64,
+    },
     /// Results of usb control commands.
     UsbResponse(UsbControlResult),
     #[cfg(feature = "gpu")]
@@ -2015,12 +2025,16 @@ impl Display for VmResponse {
                     balloon_actual
                 )
             }
-            VmResponse::BalloonWSS { wss } => {
+            VmResponse::BalloonWSS {
+                wss,
+                balloon_actual,
+            } => {
                 write!(
                     f,
-                    "wss: {}",
+                    "wss: {}, balloon_actual: {}",
                     serde_json::to_string_pretty(&wss)
-                        .unwrap_or_else(|_| "invalid_response".to_string())
+                        .unwrap_or_else(|_| "invalid_response".to_string()),
+                    balloon_actual,
                 )
             }
             UsbResponse(result) => write!(f, "usb control request get result {:?}", result),
