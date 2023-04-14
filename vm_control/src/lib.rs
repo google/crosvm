@@ -1424,7 +1424,6 @@ impl VmRequest {
         &self,
         run_mode: &mut Option<VmRunMode>,
         #[cfg(feature = "balloon")] balloon_host_tube: Option<&Tube>,
-        #[cfg(feature = "balloon")] balloon_wss_host_tube: Option<&Tube>,
         #[cfg(feature = "balloon")] balloon_stats_id: &mut u64,
         #[cfg(feature = "balloon")] balloon_wss_id: &mut u64,
         disk_host_tubes: &[Tube],
@@ -1668,7 +1667,8 @@ impl VmRequest {
                                         unreachable!("unexpected adjusted response")
                                     }
                                     Ok(BalloonTubeResult::WorkingSetSize { .. }) => {
-                                        unreachable!("unexpected wss response")
+                                        // stale WSS message, can discard
+                                        continue;
                                     }
                                 }
                             }
@@ -1681,7 +1681,7 @@ impl VmRequest {
             }
             #[cfg(feature = "balloon")]
             VmRequest::BalloonCommand(BalloonControlCommand::WorkingSetSize) => {
-                if let Some(balloon_wss_host_tube) = balloon_wss_host_tube {
+                if let Some(balloon_host_tube) = balloon_host_tube {
                     // NB: There are a few reasons stale balloon wss could be left
                     // in balloon_wss_host_tube:
                     //  - the send succeeds, but the recv fails because the device
@@ -1695,12 +1695,12 @@ impl VmRequest {
                     // until it does.
                     *balloon_wss_id = (*balloon_wss_id).wrapping_add(1);
                     let sent_id = *balloon_wss_id;
-                    match balloon_wss_host_tube
+                    match balloon_host_tube
                         .send(&BalloonTubeCommand::WorkingSetSize { id: sent_id })
                     {
                         Ok(_) => {
                             loop {
-                                match balloon_wss_host_tube.recv() {
+                                match balloon_host_tube.recv() {
                                     Ok(BalloonTubeResult::WorkingSetSize {
                                         wss,
                                         balloon_actual,
@@ -1723,7 +1723,8 @@ impl VmRequest {
                                         unreachable!("unexpected adjusted response")
                                     }
                                     Ok(BalloonTubeResult::Stats { .. }) => {
-                                        unreachable!("unexpected stats response")
+                                        // stale stats message, can discard
+                                        continue;
                                     }
                                 }
                             }

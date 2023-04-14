@@ -24,7 +24,7 @@ use base::SendTube;
 use base::Tube;
 use base::WorkerThread;
 use cros_async::block_on;
-use cros_async::select12;
+use cros_async::select11;
 use cros_async::sync::Mutex as AsyncMutex;
 use cros_async::AsyncTube;
 use cros_async::EventAsync;
@@ -677,67 +677,62 @@ async fn handle_wss_data_queue(
     mem: &GuestMemory,
     mut queue: Queue,
     mut queue_event: EventAsync,
-    wss_op_tube: Option<&AsyncTube>,
+    command_tube: &AsyncTube,
     registered_evt_q: Option<&SendTubeAsync>,
     state: Arc<AsyncMutex<BalloonState>>,
     interrupt: Interrupt,
 ) -> Result<()> {
-    if let Some(wss_op_tube) = wss_op_tube {
-        loop {
-            let avail_desc = queue
-                .next_async(mem, &mut queue_event)
-                .await
-                .map_err(BalloonError::AsyncAwait)?;
-            let index = avail_desc.index;
-            let mut reader = match Reader::new(mem.clone(), avail_desc) {
-                Ok(r) => r,
-                Err(e) => {
-                    error!("balloon: failed to CREATE Reader: {}", e);
-                    continue;
-                }
-            };
-
-            let wss = parse_balloon_wss(&mut reader);
-
-            // Closure to hold the mutex for handling a WSS-R command response
-            {
-                let mut state = state.lock().await;
-
-                // update wss report with balloon pages now that we have a lock on state
-                let balloon_actual = (state.actual_pages as u64) << VIRTIO_BALLOON_PFN_SHIFT;
-
-                if state.expecting_wss {
-                    let result = BalloonTubeResult::WorkingSetSize {
-                        wss,
-                        balloon_actual,
-                        id: state.expected_wss_id,
-                    };
-                    let send_result = wss_op_tube.send(result).await;
-                    if let Err(e) = send_result {
-                        error!("failed to send wss result: {}", e);
-                    }
-
-                    state.expecting_wss = false;
-                }
+    loop {
+        let avail_desc = queue
+            .next_async(mem, &mut queue_event)
+            .await
+            .map_err(BalloonError::AsyncAwait)?;
+        let index = avail_desc.index;
+        let mut reader = match Reader::new(mem.clone(), avail_desc) {
+            Ok(r) => r,
+            Err(e) => {
+                error!("balloon: failed to CREATE Reader: {}", e);
+                continue;
             }
+        };
 
-            // TODO: pipe back the wss to the registered event socket, needs
-            // event-with-payload, currently events are simple enums
-            if let Some(registered_evt_q) = registered_evt_q {
-                if let Err(e) = registered_evt_q
-                    .send(&RegisteredEvent::VirtioBalloonWssReport)
-                    .await
-                {
-                    error!("failed to send VirtioBalloonWSSReport event: {}", e);
+        let wss = parse_balloon_wss(&mut reader);
+
+        // Closure to hold the mutex for handling a WSS-R command response
+        {
+            let mut state = state.lock().await;
+
+            // update wss report with balloon pages now that we have a lock on state
+            let balloon_actual = (state.actual_pages as u64) << VIRTIO_BALLOON_PFN_SHIFT;
+
+            if state.expecting_wss {
+                let result = BalloonTubeResult::WorkingSetSize {
+                    wss,
+                    balloon_actual,
+                    id: state.expected_wss_id,
+                };
+                let send_result = command_tube.send(result).await;
+                if let Err(e) = send_result {
+                    error!("failed to send wss result: {}", e);
                 }
-            }
 
-            queue.add_used(mem, index, 0);
-            queue.trigger_interrupt(mem, &interrupt);
+                state.expecting_wss = false;
+            }
         }
-    } else {
-        error!("no wss device tube even though we have wss vqueues");
-        Ok(())
+
+        // TODO: pipe back the wss to the registered event socket, needs
+        // event-with-payload, currently events are simple enums
+        if let Some(registered_evt_q) = registered_evt_q {
+            if let Err(e) = registered_evt_q
+                .send(&RegisteredEvent::VirtioBalloonWssReport)
+                .await
+            {
+                error!("failed to send VirtioBalloonWSSReport event: {}", e);
+            }
+        }
+
+        queue.add_used(mem, index, 0);
+        queue.trigger_interrupt(mem, &interrupt);
     }
 }
 
@@ -760,7 +755,7 @@ async fn handle_command_tube(
     interrupt: Interrupt,
     state: Arc<AsyncMutex<BalloonState>>,
     mut stats_tx: mpsc::Sender<u64>,
-    mut wss_config_tx: mpsc::Sender<WSSOp>,
+    mut wss_op_tx: mpsc::Sender<WSSOp>,
 ) -> Result<()> {
     loop {
         match command_tube.next().await {
@@ -786,8 +781,8 @@ async fn handle_command_tube(
                     }
                 }
                 BalloonTubeCommand::WorkingSetSizeConfig { config } => {
-                    if let Err(e) = wss_config_tx.try_send(WSSOp::WSSConfig { config }) {
-                        error!("failed to send config to config handler: {}", e);
+                    if let Err(e) = wss_op_tx.try_send(WSSOp::WSSConfig { config }) {
+                        error!("failed to send config to wss handler: {}", e);
                     }
                 }
                 BalloonTubeCommand::Stats { id } => {
@@ -795,45 +790,16 @@ async fn handle_command_tube(
                         error!("failed to signal the stat handler: {}", e);
                     }
                 }
-                BalloonTubeCommand::WorkingSetSize { .. } => {
-                    error!("should not get a working set size command on this tube!");
+                BalloonTubeCommand::WorkingSetSize { id } => {
+                    if let Err(e) = wss_op_tx.try_send(WSSOp::WSSReport { id }) {
+                        error!("failed to send report request to wss handler: {}", e);
+                    }
                 }
             },
             Err(e) => {
                 return Err(BalloonError::ReceivingCommand(e));
             }
         }
-    }
-}
-
-// Async task that handles the command socket. The command socket handles messages from the host
-// requesting that the guest balloon be adjusted or to report guest memory statistics.
-async fn handle_wss_op_tube(
-    wss_op_tube: Option<&AsyncTube>,
-    mut wss_op_tx: mpsc::Sender<WSSOp>,
-) -> Result<()> {
-    if let Some(wss_op_tube) = wss_op_tube {
-        loop {
-            match wss_op_tube.next().await {
-                Ok(command) => match command {
-                    BalloonTubeCommand::WorkingSetSize { id } => {
-                        if let Err(e) = wss_op_tx.try_send(WSSOp::WSSReport { id }) {
-                            error!("failed to signal the wss handler: {}", e);
-                        }
-                    }
-                    _ => {
-                        error!("should only ever get a working set size command on this tube!");
-                    }
-                },
-                Err(e) => {
-                    return Err(BalloonError::ReceivingCommand(e));
-                }
-            }
-        }
-    } else {
-        // No wss_op_tube; just park this future.
-        futures::future::pending::<()>().await;
-        Ok(())
     }
 }
 
@@ -865,7 +831,6 @@ fn run_worker(
     events_queue: Option<(Queue, Event)>,
     wss_queues: (Option<(Queue, Event)>, Option<(Queue, Event)>),
     command_tube: Tube,
-    wss_op_tube: Option<Tube>,
     #[cfg(windows)] dynamic_mapping_tube: Tube,
     release_memory_tube: Option<Tube>,
     interrupt: Interrupt,
@@ -874,10 +839,9 @@ fn run_worker(
     mem: GuestMemory,
     state: Arc<AsyncMutex<BalloonState>>,
     registered_evt_q: Option<SendTube>,
-) -> (Option<Tube>, Tube, Option<Tube>, Option<SendTube>) {
+) -> (Option<Tube>, Tube, Option<SendTube>) {
     let ex = Executor::new().unwrap();
     let command_tube = AsyncTube::new(&ex, command_tube).unwrap();
-    let wss_op_tube = wss_op_tube.map(|t| AsyncTube::new(&ex, t).unwrap());
     let registered_evt_q_async = registered_evt_q
         .as_ref()
         .map(|q| SendTubeAsync::new(q.try_clone().unwrap(), &ex).unwrap());
@@ -975,7 +939,7 @@ fn run_worker(
                 &mem,
                 wss_data_queue,
                 EventAsync::new(wss_data_queue_evt, &ex).expect("failed to create async event"),
-                wss_op_tube.as_ref(),
+                &command_tube,
                 registered_evt_q_async.as_ref(),
                 state.clone(),
                 interrupt.clone(),
@@ -1010,13 +974,9 @@ fn run_worker(
             interrupt.clone(),
             state.clone(),
             stats_tx,
-            wss_op_tx.clone(),
+            wss_op_tx,
         );
         pin_mut!(command);
-
-        // Future to handle wss command messages for the balloon.
-        let wss_op_tube = handle_wss_op_tube(wss_op_tube.as_ref(), wss_op_tx);
-        pin_mut!(wss_op_tube);
 
         // Process any requests to resample the irq value.
         let resample = async_utils::handle_irq_resample(&ex, interrupt.clone());
@@ -1051,7 +1011,7 @@ fn run_worker(
         pin_mut!(pending_adjusted);
 
         if let Err(e) = ex
-            .run_until(select12(
+            .run_until(select11(
                 inflate,
                 deflate,
                 stats,
@@ -1063,7 +1023,6 @@ fn run_worker(
                 events,
                 pending_adjusted,
                 wss_data,
-                wss_op_tube,
             ))
             .map(|_| ())
         {
@@ -1071,18 +1030,12 @@ fn run_worker(
         }
     }
 
-    (
-        release_memory_tube,
-        command_tube.into(),
-        wss_op_tube.map(Into::into),
-        registered_evt_q,
-    )
+    (release_memory_tube, command_tube.into(), registered_evt_q)
 }
 
 /// Virtio device for memory balloon inflation/deflation.
 pub struct Balloon {
     command_tube: Option<Tube>,
-    wss_op_tube: Option<Tube>,
     #[cfg(windows)]
     dynamic_mapping_tube: Option<Tube>,
     release_memory_tube: Option<Tube>,
@@ -1090,7 +1043,7 @@ pub struct Balloon {
     state: Arc<AsyncMutex<BalloonState>>,
     features: u64,
     acked_features: u64,
-    worker_thread: Option<WorkerThread<(Option<Tube>, Tube, Option<Tube>, Option<SendTube>)>>,
+    worker_thread: Option<WorkerThread<(Option<Tube>, Tube, Option<SendTube>)>>,
     registered_evt_q: Option<SendTube>,
 }
 
@@ -1112,7 +1065,6 @@ impl Balloon {
     pub fn new(
         base_features: u64,
         command_tube: Tube,
-        wss_op_tube: Option<Tube>,
         #[cfg(windows)] dynamic_mapping_tube: Tube,
         release_memory_tube: Option<Tube>,
         init_balloon_size: u64,
@@ -1133,7 +1085,6 @@ impl Balloon {
 
         Ok(Balloon {
             command_tube: Some(command_tube),
-            wss_op_tube,
             #[cfg(windows)]
             dynamic_mapping_tube: Some(dynamic_mapping_tube),
             release_memory_tube,
@@ -1197,9 +1148,6 @@ impl VirtioDevice for Balloon {
         let mut rds = Vec::new();
         if let Some(command_tube) = &self.command_tube {
             rds.push(command_tube.as_raw_descriptor());
-        }
-        if let Some(wss_op_tube) = &self.wss_op_tube {
-            rds.push(wss_op_tube.as_raw_descriptor());
         }
         if let Some(release_memory_tube) = &self.release_memory_tube {
             rds.push(release_memory_tube.as_raw_descriptor());
@@ -1290,8 +1238,6 @@ impl VirtioDevice for Balloon {
 
         let command_tube = self.command_tube.take().unwrap();
 
-        let wss_op_tube = self.wss_op_tube.take();
-
         #[cfg(windows)]
         let mapping_tube = self.dynamic_mapping_tube.take().unwrap();
         let release_memory_tube = self.release_memory_tube.take();
@@ -1310,7 +1256,6 @@ impl VirtioDevice for Balloon {
                 events_queue,
                 wss_queues,
                 command_tube,
-                wss_op_tube,
                 #[cfg(windows)]
                 mapping_tube,
                 release_memory_tube,
@@ -1328,12 +1273,10 @@ impl VirtioDevice for Balloon {
 
     fn reset(&mut self) -> bool {
         if let Some(worker_thread) = self.worker_thread.take() {
-            let (release_memory_tube, command_tube, wss_op_tube, registered_evt_q) =
-                worker_thread.stop();
+            let (release_memory_tube, command_tube, registered_evt_q) = worker_thread.stop();
             self.release_memory_tube = release_memory_tube;
             self.command_tube = Some(command_tube);
             self.registered_evt_q = registered_evt_q;
-            self.wss_op_tube = wss_op_tube;
             return true;
         }
         false

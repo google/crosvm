@@ -439,7 +439,6 @@ fn create_balloon_device(
     let dev = virtio::Balloon::new(
         virtio::base_features(cfg.protection_type),
         balloon_device_tube,
-        None,
         dynamic_mapping_device_tube,
         inflate_tube,
         init_balloon_size,
