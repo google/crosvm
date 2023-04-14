@@ -12,8 +12,8 @@ use sync::Mutex;
 use vm_control::GpeNotify;
 use vm_control::PmeNotify;
 
-use crate::bus::HostHotPlugKey;
 use crate::bus::HotPlugBus;
+use crate::bus::HotPlugKey;
 use crate::pci::pci_configuration::PciCapabilityID;
 use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
 use crate::pci::pcie::pcie_device::PcieCap;
@@ -30,7 +30,7 @@ use crate::pci::PciDeviceError;
 const PCIE_RP_DID: u16 = 0x3420;
 pub struct PcieRootPort {
     pcie_port: PciePort,
-    downstream_devices: BTreeMap<PciAddress, HostHotPlugKey>,
+    downstream_devices: BTreeMap<PciAddress, HotPlugKey>,
     hotplug_out_begin: bool,
     removed_downstream: Vec<PciAddress>,
 }
@@ -176,7 +176,7 @@ impl HotPlugBus for PcieRootPort {
         self.pcie_port.is_match(host_addr)
     }
 
-    fn add_hotplug_device(&mut self, host_key: HostHotPlugKey, guest_addr: PciAddress) {
+    fn add_hotplug_device(&mut self, hotplug_key: HotPlugKey, guest_addr: PciAddress) {
         if !self.pcie_port.hotplug_implemented() {
             return;
         }
@@ -188,12 +188,12 @@ impl HotPlugBus for PcieRootPort {
             self.removed_downstream.clear();
         }
 
-        self.downstream_devices.insert(guest_addr, host_key);
+        self.downstream_devices.insert(guest_addr, hotplug_key);
     }
 
-    fn get_hotplug_device(&self, host_key: HostHotPlugKey) -> Option<PciAddress> {
+    fn get_hotplug_device(&self, hotplug_key: HotPlugKey) -> Option<PciAddress> {
         for (guest_address, host_info) in self.downstream_devices.iter() {
-            if host_key == *host_info {
+            if hotplug_key == *host_info {
                 return Some(*guest_address);
             }
         }
@@ -204,7 +204,7 @@ impl HotPlugBus for PcieRootPort {
         self.downstream_devices.is_empty()
     }
 
-    fn get_hotplug_key(&self) -> Option<HostHotPlugKey> {
+    fn get_hotplug_key(&self) -> Option<HotPlugKey> {
         None
     }
 }

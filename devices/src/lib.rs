@@ -77,8 +77,8 @@ pub use self::bus::BusRange;
 pub use self::bus::BusResumeDevice;
 pub use self::bus::BusType;
 pub use self::bus::Error as BusError;
-pub use self::bus::HostHotPlugKey;
 pub use self::bus::HotPlugBus;
+pub use self::bus::HotPlugKey;
 #[cfg(feature = "stats")]
 pub use self::bus_stats::BusStatistics;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
