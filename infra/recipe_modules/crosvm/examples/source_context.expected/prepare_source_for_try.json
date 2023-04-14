@@ -203,7 +203,7 @@
       }
     },
     "name": "Prepare source.gerrit fetch current CL info",
-    "timeout": 360,
+    "timeout": 480,
     "~followup_annotations": [
       "@@@STEP_NEST_LEVEL@1@@@",
       "@@@STEP_LOG_LINE@json.output@[@@@",
