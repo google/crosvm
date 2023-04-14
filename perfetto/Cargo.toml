@@ -1,0 +1,32 @@
+[package]
+name = "perfetto"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+edition = "2021"
+
+[features]
+# Bypassing default features requires specifying either openssl or
+# pure-rust-hashes.
+default = ["openssl"]
+
+# Use a pure Rust crate for hashing instead of openssl.
+pure-rust-hashes = ["sha2"]
+
+[dependencies]
+anyhow = "*"
+cfg-if = "1.0.0"
+cros_tracing_types = { path = "../cros_tracing_types" }
+data_model = { path = "../common/data_model" }
+protobuf = "3.2"
+serde = { version = "1", features = [ "derive" ] }
+sha2 = { version = "*", optional = true }
+openssl = { version = "*", optional = true }
+
+[target.'cfg(windows)'.dev-dependencies]
+sync = { path = "../common/sync" }
+once_cell = "1.7"
+base = { path = "../base" }
+cros_tracing_types = { path = "../cros_tracing_types" }
+
+[build-dependencies]
+proto_build_tools = { path = "../proto_build_tools" }

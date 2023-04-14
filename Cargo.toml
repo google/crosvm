@@ -106,6 +106,7 @@ exclude = [
     "tools/audio_streams_conformance_test",
     "tools/examples/baremetal",
     "tube_transporter",
+    "perfetto",
     "win_audio",
     "win_util",
 ]
