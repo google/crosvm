@@ -17,9 +17,8 @@ use crate::rutabaga_utils::RutabagaError;
 use crate::rutabaga_utils::RutabagaFence;
 use crate::rutabaga_utils::RutabagaFenceHandler;
 use crate::rutabaga_utils::RutabagaResult;
+#[cfg(feature = "virgl_renderer")]
 use crate::rutabaga_utils::RUTABAGA_FLAG_FENCE;
-#[cfg(feature = "gfxstream")]
-use crate::rutabaga_utils::RUTABAGA_FLAG_INFO_RING_IDX;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -44,6 +43,7 @@ pub struct VirglCookie {
     pub fence_handler: Option<RutabagaFenceHandler>,
 }
 
+#[cfg(feature = "virgl_renderer")]
 pub unsafe extern "C" fn write_fence(cookie: *mut c_void, fence: u32) {
     catch_unwind(|| {
         assert!(!cookie.is_null());
@@ -63,22 +63,13 @@ pub unsafe extern "C" fn write_fence(cookie: *mut c_void, fence: u32) {
 }
 
 #[cfg(feature = "gfxstream")]
-pub extern "C" fn write_context_fence(
-    cookie: *mut c_void,
-    fence_id: u64,
-    ctx_id: u32,
-    ring_idx: u8,
-) {
+pub extern "C" fn write_context_fence(cookie: *mut c_void, fence: *const RutabagaFence) {
     catch_unwind(|| {
         assert!(!cookie.is_null());
         let cookie = unsafe { &*(cookie as *mut VirglCookie) };
         if let Some(handler) = &cookie.fence_handler {
-            handler.call(RutabagaFence {
-                flags: RUTABAGA_FLAG_FENCE | RUTABAGA_FLAG_INFO_RING_IDX,
-                fence_id,
-                ctx_id,
-                ring_idx,
-            });
+            // We trust gfxstream not give a dangling pointer
+            unsafe { handler.call(*fence) };
         }
     })
     .unwrap_or_else(|_| abort())
