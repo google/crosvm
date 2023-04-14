@@ -1101,14 +1101,45 @@ impl VcpuX86_64 for WhpxVcpu {
         })
     }
 
-    // TODO: b/270734340 implement
     fn get_interrupt_state(&self) -> Result<serde_json::Value> {
-        Err(Error::new(EOPNOTSUPP))
+        let mut whpx_interrupt_regs: WhpxInterruptRegs = Default::default();
+        let reg_names = WhpxInterruptRegs::get_register_names();
+        // SAFETY: we have enough space for all the registers & the memory lives for the duration
+        // of the FFI call.
+        check_whpx!(unsafe {
+            WHvGetVirtualProcessorRegisters(
+                self.vm_partition.partition,
+                self.index,
+                reg_names as *const WHV_REGISTER_NAME,
+                reg_names.len() as u32,
+                whpx_interrupt_regs.as_mut_ptr(),
+            )
+        })?;
+
+        serde_json::to_value(whpx_interrupt_regs.into_serializable()).map_err(|e| {
+            error!("failed to serialize interrupt state: {:?}", e);
+            Error::new(EIO)
+        })
     }
 
-    // TODO: b/270734340 implement
-    fn set_interrupt_state(&self, _data: serde_json::Value) -> Result<()> {
-        Err(Error::new(EOPNOTSUPP))
+    fn set_interrupt_state(&self, data: serde_json::Value) -> Result<()> {
+        let whpx_interrupt_regs =
+            WhpxInterruptRegs::from_serializable(serde_json::from_value(data).map_err(|e| {
+                error!("failed to serialize interrupt state: {:?}", e);
+                Error::new(EIO)
+            })?);
+        let reg_names = WhpxInterruptRegs::get_register_names();
+        // SAFETY: we have enough space for all the registers & the memory lives for the duration
+        // of the FFI call.
+        check_whpx!(unsafe {
+            WHvSetVirtualProcessorRegisters(
+                self.vm_partition.partition,
+                self.index,
+                reg_names as *const WHV_REGISTER_NAME,
+                reg_names.len() as u32,
+                whpx_interrupt_regs.as_ptr(),
+            )
+        })
     }
 
     /// Gets the VCPU debug registers.
