@@ -210,7 +210,7 @@ fn build(
     display_event: Arc<AtomicBool>,
     rutabaga_builder: RutabagaBuilder,
     event_devices: Vec<EventDevice>,
-    mapper: Box<dyn SharedMemoryMapper>,
+    mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
     external_blob: bool,
     #[cfg(windows)] wndproc_thread: &mut Option<WindowProcedureThread>,
     udmabuf: bool,
@@ -1048,7 +1048,7 @@ pub struct Gpu {
     exit_evt_wrtube: SendTube,
     #[cfg(unix)]
     gpu_control_tube: Option<Tube>,
-    mapper: Option<Box<dyn SharedMemoryMapper>>,
+    mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
     resource_bridges: Option<ResourceBridges>,
     event_devices: Vec<EventDevice>,
     worker_thread: Option<WorkerThread<()>>,
@@ -1135,7 +1135,7 @@ impl Gpu {
             exit_evt_wrtube,
             #[cfg(unix)]
             gpu_control_tube: Some(gpu_control_tube),
-            mapper: None,
+            mapper: Arc::new(Mutex::new(None)),
             resource_bridges: Some(ResourceBridges::new(resource_bridges)),
             event_devices,
             worker_thread: None,
@@ -1162,7 +1162,7 @@ impl Gpu {
         &mut self,
         fence_state: Arc<Mutex<FenceState>>,
         fence_handler: RutabagaFenceHandler,
-        mapper: Box<dyn SharedMemoryMapper>,
+        mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
     ) -> Option<Frontend> {
         let rutabaga_builder = self.rutabaga_builder.take()?;
         let rutabaga_server_descriptor = self.rutabaga_server_descriptor.take();
@@ -1258,7 +1258,7 @@ impl VirtioDevice for Gpu {
             keep_rds.push(libc::STDERR_FILENO);
         }
 
-        if let Some(ref mapper) = self.mapper {
+        if let Some(ref mapper) = *self.mapper.lock() {
             if let Some(descriptor) = mapper.as_raw_descriptor() {
                 keep_rds.push(descriptor);
             }
@@ -1376,7 +1376,7 @@ impl VirtioDevice for Gpu {
         #[cfg(unix)]
         let gpu_cgroup_path = self.gpu_cgroup_path.clone();
 
-        let mapper = self.mapper.take().context("missing mapper")?;
+        let mapper = Arc::clone(&self.mapper);
         let rutabaga_builder = self
             .rutabaga_builder
             .take()
@@ -1438,7 +1438,7 @@ impl VirtioDevice for Gpu {
     }
 
     fn set_shared_memory_mapper(&mut self, mapper: Box<dyn SharedMemoryMapper>) {
-        self.mapper = Some(mapper);
+        self.mapper.lock().replace(mapper);
     }
 
     fn expose_shmem_descriptors_with_viommu(&self) -> bool {

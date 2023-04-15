@@ -36,6 +36,7 @@ use rutabaga_gfx::RutabagaIovec;
 use rutabaga_gfx::Transfer3D;
 use rutabaga_gfx::RUTABAGA_MEM_HANDLE_TYPE_DMABUF;
 use rutabaga_gfx::RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_FD;
+use sync::Mutex;
 use vm_control::gpu::DisplayParameters;
 use vm_control::gpu::GpuControlCommand;
 use vm_control::gpu::GpuControlResult;
@@ -303,7 +304,7 @@ pub struct VirtioGpu {
     cursor_scanout: VirtioGpuScanout,
     // Maps event devices to scanout number.
     event_devices: Map<u32, u32>,
-    mapper: Box<dyn SharedMemoryMapper>,
+    mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
     rutabaga: Rutabaga,
     resources: Map<u32, VirtioGpuResource>,
     external_blob: bool,
@@ -346,7 +347,7 @@ impl VirtioGpu {
         display_event: Arc<AtomicBool>,
         rutabaga_builder: RutabagaBuilder,
         event_devices: Vec<EventDevice>,
-        mapper: Box<dyn SharedMemoryMapper>,
+        mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
         external_blob: bool,
         udmabuf: bool,
         fence_handler: RutabagaFenceHandler,
@@ -887,6 +888,9 @@ impl VirtioGpu {
         };
 
         self.mapper
+            .lock()
+            .as_mut()
+            .expect("No backend request connection found")
             .add_mapping(source.unwrap(), offset, Protection::read_write())
             .map_err(|_| ErrUnspec)?;
 
@@ -903,6 +907,9 @@ impl VirtioGpu {
 
         let shmem_offset = resource.shmem_offset.ok_or(ErrUnspec)?;
         self.mapper
+            .lock()
+            .as_mut()
+            .expect("No backend request connection found")
             .remove_mapping(shmem_offset)
             .map_err(|_| ErrUnspec)?;
         resource.shmem_offset = None;

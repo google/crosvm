@@ -218,7 +218,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         fence_state: Default::default(),
         queue_workers: Default::default(),
         platform_workers: Default::default(),
-        backend_req_conn: VhostBackendReqConnectionState::NoConnection,
+        shmem_mapper: Arc::new(Mutex::new(None)),
     });
 
     let handler = DeviceRequestHandler::new(backend, Box::new(VhostUserRegularOps));

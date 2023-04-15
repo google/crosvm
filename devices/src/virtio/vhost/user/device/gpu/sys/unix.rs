@@ -33,7 +33,6 @@ use crate::virtio::vhost::user::device::gpu::MAX_QUEUE_NUM;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 use crate::virtio::vhost::user::device::wl::parse_wayland_sock;
-use crate::virtio::vhost::user::VhostBackendReqConnectionState;
 use crate::virtio::Gpu;
 use crate::virtio::GpuDisplayParameters;
 use crate::virtio::GpuParameters;
@@ -271,7 +270,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         fence_state: Default::default(),
         queue_workers: Default::default(),
         platform_workers: Default::default(),
-        backend_req_conn: VhostBackendReqConnectionState::NoConnection,
+        shmem_mapper: Arc::new(Mutex::new(None)),
     });
 
     // Run until the backend is finished.
