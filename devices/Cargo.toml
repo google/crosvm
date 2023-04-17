@@ -83,7 +83,6 @@ thiserror = "1.0.20"
 tpm2 = { path = "../tpm2", optional = true }
 cros_tracing = { path = "../cros_tracing" }
 uuid = { version = "1", features = [ "serde" ] }
-vhost = { path = "../vhost" }
 vmm_vhost = { path = "../third_party/vmm_vhost", features = ["vmm", "device", "vfio-device"] }
 virtio_sys = { path = "../virtio_sys" }
 vm_control = { path = "../vm_control" }
@@ -97,6 +96,7 @@ minijail = "*"
 p9 = "*"
 usb_util = { path = "../usb_util" }
 vfio_sys = { path = "../vfio_sys" }
+vhost = { path = "../vhost" }
 
 [target.'cfg(target_os="linux")'.dependencies]
 swap = { path = "../swap", optional = true }

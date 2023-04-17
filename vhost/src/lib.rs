@@ -4,7 +4,8 @@
 
 //! Linux vhost kernel API wrapper.
 
-#[cfg(unix)]
+#![cfg(unix)]
+
 pub mod net;
 mod vsock;
 
