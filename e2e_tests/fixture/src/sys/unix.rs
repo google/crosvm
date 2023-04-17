@@ -43,11 +43,7 @@ pub(crate) type SerialArgs = Path;
 
 /// Returns the name of crosvm binary.
 pub fn binary_name() -> &'static str {
-    if cfg!(feature = "direct") {
-        "crosvm-direct"
-    } else {
-        "crosvm"
-    }
+    "crosvm"
 }
 
 /// Safe wrapper for libc::mkfifo
