@@ -235,6 +235,24 @@ fn balloon_stats(cmd: cmdline::BalloonStatsCommand) -> std::result::Result<(), (
     }
 }
 
+#[cfg(feature = "balloon")]
+fn balloon_wss(cmd: cmdline::BalloonWssCommand) -> std::result::Result<(), ()> {
+    let command = BalloonControlCommand::WorkingSetSize {};
+    let request = &VmRequest::BalloonCommand(command);
+    let response = handle_request(request, cmd.socket_path)?;
+    match serde_json::to_string_pretty(&response) {
+        Ok(response_json) => println!("{response_json}"),
+        Err(e) => {
+            error!("Failed to serialize into JSON: {e}");
+            return Err(());
+        }
+    }
+    match response {
+        VmResponse::BalloonWSS { .. } => Ok(()),
+        _ => Err(()),
+    }
+}
+
 fn modify_battery(cmd: cmdline::BatteryCommand) -> std::result::Result<(), ()> {
     do_modify_battery(
         cmd.socket_path,
@@ -676,6 +694,10 @@ fn crosvm_main<I: IntoIterator<Item = String>>(args: I) -> Result<CommandStatus>
                     #[cfg(feature = "balloon")]
                     CrossPlatformCommands::BalloonStats(cmd) => {
                         balloon_stats(cmd).map_err(|_| anyhow!("balloon_stats subcommand failed"))
+                    }
+                    #[cfg(feature = "balloon")]
+                    CrossPlatformCommands::BalloonWss(cmd) => {
+                        balloon_wss(cmd).map_err(|_| anyhow!("balloon_wss subcommand failed"))
                     }
                     CrossPlatformCommands::Battery(cmd) => {
                         modify_battery(cmd).map_err(|_| anyhow!("battery subcommand failed"))

@@ -134,6 +134,8 @@ pub enum CrossPlatformCommands {
     Balloon(BalloonCommand),
     #[cfg(feature = "balloon")]
     BalloonStats(BalloonStatsCommand),
+    #[cfg(feature = "balloon")]
+    BalloonWss(BalloonWssCommand),
     Battery(BatteryCommand),
     #[cfg(feature = "composite-disk")]
     CreateComposite(CreateCompositeCommand),
@@ -183,6 +185,15 @@ pub struct BalloonCommand {
 pub struct BalloonStatsCommand {
     #[argh(positional, arg_name = "VM_SOCKET")]
     /// VM Socket path
+    pub socket_path: String,
+}
+
+#[derive(argh::FromArgs)]
+#[argh(subcommand, name = "balloon_wss")]
+/// Prints virtio balloon working set size for a `VM_SOCKET`
+pub struct BalloonWssCommand {
+    #[argh(positional, arg_name = "VM_SOOCKET")]
+    /// VM control socket path.
     pub socket_path: String,
 }
 
