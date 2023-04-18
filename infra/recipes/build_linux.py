@@ -72,11 +72,7 @@ def collect_binary_sizes(api, properties):
 
 def RunSteps(api, properties):
     with api.crosvm.container_build_context():
-        presubmit_group = (
-            f"linux_{properties.test_arch}_direct"
-            if properties.crosvm_direct
-            else f"linux_{properties.test_arch}"
-        )
+        presubmit_group = f"linux_{properties.test_arch}"
         result = api.step(
             "List checks to run",
             [
