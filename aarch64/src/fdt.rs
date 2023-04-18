@@ -115,11 +115,12 @@ fn create_resv_memory_node(
         fdt.property_array_u64("reg", &[resv_addr.0, resv_size])?;
         node
     } else {
-        fdt.begin_node("restricted_dma_reserved")?
+        let node = fdt.begin_node("restricted_dma_reserved")?;
+        fdt.property_u64("size", resv_size)?;
+        node
     };
     fdt.property_u32("phandle", PHANDLE_RESTRICTED_DMA_POOL)?;
     fdt.property_string("compatible", "restricted-dma-pool")?;
-    fdt.property_u64("size", resv_size)?;
     fdt.property_u64("alignment", base::pagesize() as u64)?;
     fdt.end_node(restricted_dma_pool)?;
 
