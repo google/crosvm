@@ -230,6 +230,10 @@ def main(
     if has_docker and not has_podman:
         use_docker = True
 
+    # cros container only works in docker
+    if cros:
+        use_docker = True
+
     if use_docker:
         print(
             "WARNING: Running dev_container with docker may cause root-owned files to be created."
@@ -244,6 +248,7 @@ def main(
         validate_podman(docker)
 
     if cros:
+        docker_args.append("--privileged")  # cros container requires privileged container
         docker_args.append(CROS_IMAGE_NAME)
     else:
         docker_args.append(DEV_IMAGE_NAME + ":" + DEV_IMAGE_VERSION)
