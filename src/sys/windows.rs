@@ -174,6 +174,7 @@ use tube_transporter::TubeToken;
 use tube_transporter::TubeTransporterReader;
 use vm_control::BalloonControlCommand;
 use vm_control::DeviceControlCommand;
+use vm_control::IrqHandlerRequest;
 use vm_control::VmMemoryRegionState;
 use vm_control::VmMemoryRequest;
 use vm_control::VmRunMode;
@@ -926,14 +927,16 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     let sys_allocator_mutex = Arc::new(Mutex::new(sys_allocator));
 
     let exit_evt = Event::new().exit_context(Exit::CreateEvent, "failed to create event")?;
+    let (irq_handler_control, irq_handler_control_for_worker) = Tube::pair().exit_context(
+        Exit::CreateTube,
+        "failed to create IRQ handler control Tube",
+    )?;
 
     // Create a separate thread to wait on IRQ events. This is a natural division
     // because IRQ interrupts have no dependencies on other events, and this lets
     // us avoid approaching the Windows WaitForMultipleObjects 64-object limit.
     let irq_join_handle = IrqWaitWorker::start(
-        exit_evt
-            .try_clone()
-            .exit_context(Exit::CloneEvent, "failed to clone event")?,
+        irq_handler_control_for_worker,
         guest_os
             .irq_chip
             .try_box_clone()
@@ -1131,6 +1134,12 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     let mut res = Ok(exit_state);
     guest_os.irq_chip.kick_halted_vcpus();
     let _ = exit_evt.signal();
+
+    // Shut down the IRQ handler thread.
+    if let Err(e) = irq_handler_control.send(&IrqHandlerRequest::Exit) {
+        error!("failed to request exit from IRQ handler thread: {}", e);
+    }
+
     // Ensure any child threads have ended by sending the Exit vm event (possibly again) to ensure
     // their run loops are aborted.
     let _ = vm_evt_wrtube.send::<VmEventType>(&VmEventType::Exit);

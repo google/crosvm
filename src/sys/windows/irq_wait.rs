@@ -6,12 +6,14 @@
 //! Should be started on a background thread.
 
 use std::collections::HashMap;
+use std::io;
 use std::sync::Arc;
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
 use std::time::Instant;
 
+use anyhow::Context;
 use arch::IrqChipArch;
 use base::error;
 use base::info;
@@ -31,25 +33,34 @@ use metrics::log_high_frequency_descriptor_event;
 use metrics::MetricEventType;
 use resources::SystemAllocator;
 use sync::Mutex;
+use vm_control::IrqHandlerRequest;
+use vm_control::IrqHandlerResponse;
 use vm_control::IrqSetup;
 use vm_control::VmIrqRequest;
 
 pub struct IrqWaitWorker {
-    exit_evt: Event,
+    irq_handler_control: Tube,
     irq_chip: Box<dyn IrqChipArch>,
     irq_control_tubes: Vec<Tube>,
     sys_allocator: Arc<Mutex<SystemAllocator>>,
 }
 
+#[derive(EventToken)]
+enum Token {
+    VmControl { index: usize },
+    IrqHandlerControl,
+    DelayedIrqEvent,
+}
+
 impl IrqWaitWorker {
     pub fn start(
-        exit_evt: Event,
+        irq_handler_control: Tube,
         irq_chip: Box<dyn IrqChipArch>,
         irq_control_tubes: Vec<Tube>,
         sys_allocator: Arc<Mutex<SystemAllocator>>,
-    ) -> JoinHandle<Result<()>> {
+    ) -> JoinHandle<anyhow::Result<()>> {
         let mut irq_worker = IrqWaitWorker {
-            exit_evt,
+            irq_handler_control,
             irq_chip,
             irq_control_tubes,
             sys_allocator,
@@ -60,15 +71,26 @@ impl IrqWaitWorker {
             .unwrap()
     }
 
-    fn run(&mut self) -> Result<()> {
-        #[derive(EventToken)]
-        enum Token {
-            Exit,
-            VmControl { index: usize },
-            DelayedIrqEvent,
-        }
+    fn add_child(
+        wait_ctx: &WaitContext<Token>,
+        children: &mut Vec<JoinHandle<Result<()>>>,
+        child_control_tubes: &mut Vec<Tube>,
+        irq_chip: Box<dyn IrqChipArch>,
+        irq_frequencies: Arc<Mutex<Vec<u64>>>,
+    ) -> Result<Arc<WaitContext<ChildToken>>> {
+        let (child_control_tube, child_control_tube_for_child) = Tube::pair().map_err(|e| {
+            error!("failed to create IRQ child control tube: {:?}", e);
+            base::Error::from(io::Error::new(io::ErrorKind::Other, e))
+        })?;
+        let (child_wait_ctx, child_join_handle) =
+            IrqWaitWorkerChild::start(child_control_tube_for_child, irq_chip, irq_frequencies)?;
+        children.push(child_join_handle);
+        child_control_tubes.push(child_control_tube);
+        Ok(child_wait_ctx)
+    }
 
-        let wait_ctx = WaitContext::build_with(&[(&self.exit_evt, Token::Exit)])?;
+    fn run(&mut self) -> anyhow::Result<()> {
+        let wait_ctx = WaitContext::new()?;
 
         let mut max_event_index: usize = 0;
         let mut vm_control_added_irq_events: Vec<Event> = Vec::new();
@@ -77,13 +99,21 @@ impl IrqWaitWorker {
         let irq_frequencies = Arc::new(Mutex::new(vec![0; max_event_index + 1]));
         let irq_events = self.irq_chip.irq_event_tokens()?;
         let mut children = vec![];
+        let mut child_control_tubes = vec![];
 
-        let (mut child_wait_ctx, child_join_handle) = IrqWaitWorkerChild::start(
-            self.exit_evt.try_clone()?,
+        let mut child_wait_ctx = Self::add_child(
+            &wait_ctx,
+            &mut children,
+            &mut child_control_tubes,
             self.irq_chip.try_box_clone()?,
             irq_frequencies.clone(),
+        )
+        .context("failed to create IRQ wait child")?;
+
+        wait_ctx.add(
+            self.irq_handler_control.get_read_notifier(),
+            Token::IrqHandlerControl,
         )?;
-        children.push(child_join_handle);
 
         for (event_index, source, evt) in irq_events {
             child_wait_ctx.add(&evt, ChildToken::IrqEvent { event_index })?;
@@ -121,12 +151,55 @@ impl IrqWaitWorker {
                 }
             };
 
+            let mut token_count = events.len();
+            let mut notify_control_on_iteration_end = false;
             let mut vm_control_indices_to_remove = Vec::new();
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
-                    Token::Exit => {
-                        info!("irq event loop got exit event");
-                        break 'poll;
+                    Token::IrqHandlerControl => {
+                        match self.irq_handler_control.recv::<IrqHandlerRequest>() {
+                            Ok(request) => match request {
+                                IrqHandlerRequest::Exit => {
+                                    info!("irq event loop got exit request");
+                                    break 'poll;
+                                }
+                                IrqHandlerRequest::AddIrqControlTubes(_tubes) => {
+                                    panic!("CrosVM on Windows does not support adding devices on the fly yet.");
+                                }
+                                IrqHandlerRequest::WakeAndNotifyIteration => {
+                                    for child_control_tube in child_control_tubes.iter() {
+                                        child_control_tube
+                                            .send(&IrqHandlerRequest::WakeAndNotifyIteration)
+                                            .context("failed to send flush command to IRQ handler child thread")?;
+                                        let resp = child_control_tube
+                                            .recv()
+                                            .context("failed to recv flush response from IRQ handler child thread")?;
+                                        match resp {
+                                            IrqHandlerResponse::HandlerIterationComplete(
+                                                tokens_serviced,
+                                            ) => {
+                                                token_count += tokens_serviced;
+                                            }
+                                            unexpected_resp => panic!(
+                                                "got unexpected response: {:?}",
+                                                unexpected_resp
+                                            ),
+                                        }
+                                    }
+                                    notify_control_on_iteration_end = true;
+                                }
+                                IrqHandlerRequest::RefreshIrqEventTokens => {
+                                    todo!("not implemented yet");
+                                }
+                            },
+                            Err(e) => {
+                                if let TubeError::Disconnected = e {
+                                    panic!("irq handler control tube disconnected.");
+                                } else {
+                                    error!("failed to recv IrqHandlerRequest: {}", e);
+                                }
+                            }
+                        }
                     }
                     Token::VmControl { index } => {
                         if let Some(tube) = self.irq_control_tubes.get(index) {
@@ -134,7 +207,6 @@ impl IrqWaitWorker {
                                 Ok(request) => {
                                     let response = {
                                         let irq_chip = &mut self.irq_chip;
-                                        let exit_evt = &self.exit_evt;
                                         // TODO(b/229262201): Refactor the closure into a standalone function to reduce indentation.
                                         request.execute(
                                             |setup| match setup {
@@ -178,14 +250,10 @@ impl IrqWaitWorker {
                                                         {
                                                             // The child wait thread has reached max capacity, we
                                                             // need to add another.
-                                                            let (new_wait_ctx, child_join_handle) =
-                                                                IrqWaitWorkerChild::start(
-                                                                    exit_evt.try_clone()?,
-                                                                    irq_chip.try_box_clone()?,
-                                                                    irq_frequencies.clone(),
-                                                                )?;
-                                                            child_wait_ctx = new_wait_ctx;
-                                                            children.push(child_join_handle);
+                                                            child_wait_ctx = Self::add_child(
+                                                                &wait_ctx, &mut children, &mut child_control_tubes,
+                                                                irq_chip.try_box_clone()?, irq_frequencies.clone())?;
+
                                                         }
                                                         let irqevent =
                                                             irqevent.get_trigger().try_clone()?;
@@ -290,14 +358,36 @@ impl IrqWaitWorker {
             for index in vm_control_indices_to_remove {
                 self.irq_control_tubes.swap_remove(index);
             }
+
+            if notify_control_on_iteration_end {
+                if let Err(e) =
+                    // We want to send the number of IRQ events processed in
+                    // this iteration. Token count is almost what we want,
+                    // except it counts the IrqHandlerControl token, so we just
+                    // subtract it off to get the desired value.
+                    self.irq_handler_control.send(
+                        &IrqHandlerResponse::HandlerIterationComplete(token_count - 1),
+                    )
+                {
+                    error!(
+                        "failed to notify on iteration completion (snapshotting may fail): {}",
+                        e
+                    );
+                }
+            }
         }
 
-        // Ensure all children have ended by firing off the exit event again to make sure the loop
-        // is exited, and joining to ensure none are hanging.
-        let _ = self.exit_evt.signal();
+        // Ensure all children have exited.
+        for child_control_tube in child_control_tubes.iter() {
+            if let Err(e) = child_control_tube.send(&IrqHandlerRequest::Exit) {
+                warn!("failed to send exit signal to IRQ worker: {}", e);
+            }
+        }
+
+        // Ensure all children have exited and aren't stalled / stuck.
         for child in children {
             match child.join() {
-                Ok(Err(e)) => warn!("IRQ woker child ended in error: {}", e),
+                Ok(Err(e)) => warn!("IRQ worker child ended in error: {}", e),
                 Err(e) => warn!("IRQ worker child panicked with error: {:?}", e),
                 _ => {}
             }
@@ -309,7 +399,7 @@ impl IrqWaitWorker {
 
 #[derive(EventToken)]
 enum ChildToken {
-    Exit,
+    IrqHandlerControl,
     IrqEvent { event_index: IrqEventIndex },
 }
 /// An arbitrarily expandible worker for waiting on irq events.
@@ -317,21 +407,21 @@ enum ChildToken {
 /// the parent worker's job is just to handle the irq control tube requests.
 struct IrqWaitWorkerChild {
     wait_ctx: Arc<WaitContext<ChildToken>>,
-    exit_evt: Event,
+    irq_handler_control: Tube,
     irq_chip: Box<dyn IrqChipArch>,
     irq_frequencies: Arc<Mutex<Vec<u64>>>,
 }
 
 impl IrqWaitWorkerChild {
     fn start(
-        exit_evt: Event,
+        irq_handler_control: Tube,
         irq_chip: Box<dyn IrqChipArch>,
         irq_frequencies: Arc<Mutex<Vec<u64>>>,
     ) -> Result<(Arc<WaitContext<ChildToken>>, JoinHandle<Result<()>>)> {
         let child_wait_ctx = Arc::new(WaitContext::new()?);
         let mut child = IrqWaitWorkerChild {
             wait_ctx: child_wait_ctx.clone(),
-            exit_evt,
+            irq_handler_control,
             irq_chip,
             irq_frequencies,
         };
@@ -343,7 +433,10 @@ impl IrqWaitWorkerChild {
     }
 
     fn run(&mut self) -> Result<()> {
-        self.wait_ctx.add(&self.exit_evt, ChildToken::Exit)?;
+        self.wait_ctx.add(
+            self.irq_handler_control.get_read_notifier(),
+            ChildToken::IrqHandlerControl,
+        )?;
         'poll: loop {
             let events = {
                 match self.wait_ctx.wait() {
@@ -355,11 +448,36 @@ impl IrqWaitWorkerChild {
                 }
             };
 
+            let token_count = events.len();
+            let mut notify_control_on_iteration_end = false;
+
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
-                    ChildToken::Exit => {
-                        info!("irq child event loop got exit event");
-                        break 'poll;
+                    ChildToken::IrqHandlerControl => {
+                        match self.irq_handler_control.recv::<IrqHandlerRequest>() {
+                            Ok(request) => match request {
+                                IrqHandlerRequest::Exit => {
+                                    info!("irq child event loop got exit event");
+                                    break 'poll;
+                                }
+                                IrqHandlerRequest::AddIrqControlTubes(_tubes) => {
+                                    panic!("Windows does not support adding devices on the fly.");
+                                }
+                                IrqHandlerRequest::WakeAndNotifyIteration => {
+                                    notify_control_on_iteration_end = true;
+                                }
+                                IrqHandlerRequest::RefreshIrqEventTokens => {
+                                    todo!("not implemented yet");
+                                }
+                            },
+                            Err(e) => {
+                                if let TubeError::Disconnected = e {
+                                    panic!("irq handler control tube disconnected.");
+                                } else {
+                                    error!("failed to recv IrqHandlerRequest: {}", e);
+                                }
+                            }
+                        }
                     }
                     ChildToken::IrqEvent { event_index } => {
                         self.irq_frequencies.lock()[event_index] += 1;
@@ -367,6 +485,23 @@ impl IrqWaitWorkerChild {
                             error!("failed to signal irq {}: {}", event_index, e);
                         }
                     }
+                }
+            }
+
+            if notify_control_on_iteration_end {
+                if let Err(e) =
+                    // We want to send the number of IRQ events processed in
+                    // this iteration. Token count is almost what we want,
+                    // except it counts the IrqHandlerControl token, so we just
+                    // subtract it off to get the desired value.
+                    self.irq_handler_control.send(
+                        &IrqHandlerResponse::HandlerIterationComplete(token_count - 1),
+                    )
+                {
+                    error!(
+                        "failed to notify on child iteration completion (snapshotting may fail): {}",
+                        e
+                    );
                 }
             }
         }
