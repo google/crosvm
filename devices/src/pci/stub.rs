@@ -12,6 +12,7 @@
 //! scanned if function 0 is present. A stub PCI device is useful in that situation to present
 //! something to the guest on function 0.
 
+use anyhow::Context;
 use base::RawDescriptor;
 use resources::Alloc;
 use resources::SystemAllocator;
@@ -106,8 +107,13 @@ pub struct StubPciParameters {
     pub revision: u8,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct StubPciDevice {
+    #[serde(default)]
+    #[serde(skip)]
     requested_address: PciAddress,
+    #[serde(default)]
+    #[serde(skip)]
     assigned_address: Option<PciAddress>,
     config_regs: PciConfiguration,
 }
@@ -208,6 +214,17 @@ impl Suspendable for StubPciDevice {
 
     fn wake(&mut self) -> anyhow::Result<()> {
         // There are no workers to sleep/wake.
+        Ok(())
+    }
+
+    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        serde_json::to_value(self).context("failed to snapshot")
+    }
+
+    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        let restored_device: StubPciDevice =
+            serde_json::from_value(data).context("failed to restore snapshot")?;
+        *self = restored_device;
         Ok(())
     }
 }
@@ -364,5 +381,55 @@ mod test {
         assert_eq!(params.class.subclass, 0x23);
         assert_eq!(params.class.programming_interface, 0x45);
         assert_eq!(params.revision, 52);
+    }
+
+    #[test]
+    fn stub_pci_device_snapshot_restore() -> anyhow::Result<()> {
+        let mut device = StubPciDevice::new(&CONFIG);
+        let init_reg_value = device.read_config_register(1);
+        let snapshot_init = device.snapshot().unwrap();
+
+        // Modify config reg 1 and make sure it went through.
+        let new_reg_value: u32 = 0xCAFE;
+        device.write_config_register(1, 0, &new_reg_value.to_le_bytes());
+        assert_eq!(device.read_config_register(1), new_reg_value);
+
+        // Capture a snapshot after the modification.
+        let mut snapshot_modified = device.snapshot().unwrap();
+        assert_ne!(snapshot_init, snapshot_modified);
+
+        // Modify the same register and verify that it's restored correctly.
+        device.write_config_register(1, 0, &[0xBA, 0xBA]);
+        assert_ne!(device.read_config_register(1), new_reg_value);
+        assert_ne!(device.read_config_register(1), init_reg_value);
+        device.restore(snapshot_init.clone())?;
+        assert_eq!(device.read_config_register(1), init_reg_value);
+
+        // Capture a snapshot after restoring the initial snapshot.
+        let mut snapshot_restored = device.snapshot().unwrap();
+        assert_eq!(snapshot_init, snapshot_restored);
+
+        // Restore to the first modification and verify the values.
+        device.restore(snapshot_modified.clone())?;
+        assert_eq!(device.read_config_register(1), new_reg_value);
+        snapshot_restored = device.snapshot().unwrap();
+        assert_eq!(snapshot_modified, snapshot_restored);
+
+        /*
+        Restore the initial snapshot and verify that addresses are not encoded.
+        The addresses are only configurable during VM creation so they never
+        change afterwards and are not part of the snapshot. Force a change
+        to requested_address to confirm that.
+        */
+        device.restore(snapshot_init.clone())?;
+        device.requested_address = PciAddress {
+            bus: 0x0d,
+            dev: 0x0e,
+            func: 0x4,
+        };
+        snapshot_modified = device.snapshot().unwrap();
+        assert_eq!(snapshot_init, snapshot_modified);
+
+        Ok(())
     }
 }

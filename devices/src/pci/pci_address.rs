@@ -47,7 +47,7 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// PCI Device Address, AKA Bus:Device.Function
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PciAddress {
     /// Bus number, in the range `0..=255`.
     pub bus: u8,
