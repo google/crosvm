@@ -26,8 +26,7 @@ use tempfile::TempDir;
 
 use crate::utils::find_crosvm_binary;
 use crate::utils::run_with_timeout;
-use crate::vm::kernel_path;
-use crate::vm::rootfs_path;
+use crate::vm::local_path_from_url;
 use crate::vm::Config;
 
 const FROM_GUEST_PIPE: &str = "from_guest";
@@ -90,10 +89,12 @@ impl TestVmSys {
     // - ttyS1: Serial device attached to the named pipes.
     fn configure_serial_devices(
         command: &mut Command,
+        stdout_hardware_type: &str,
         from_guest_pipe: &Path,
         to_guest_pipe: &Path,
     ) {
-        command.args(["--serial", "type=stdout,hardware=virtio-console,console"]);
+        let stdout_serial_option = format!("type=stdout,hardware={},console", stdout_hardware_type);
+        command.args(["--serial", &stdout_serial_option]);
 
         // Setup channel for communication with the delegate.
         let serial_params = format!(
@@ -105,10 +106,10 @@ impl TestVmSys {
     }
 
     /// Configures the VM rootfs to load from the guest_under_test assets.
-    fn configure_rootfs(command: &mut Command, o_direct: bool) {
+    fn configure_rootfs(command: &mut Command, o_direct: bool, path: &Path) {
         let rootfs_and_option = format!(
             "{}{},ro,root",
-            rootfs_path().to_str().unwrap(),
+            path.as_os_str().to_str().unwrap(),
             if o_direct { ",direct=true" } else { "" }
         );
         command
@@ -203,14 +204,24 @@ impl TestVmSys {
     pub fn append_config_args(command: &mut Command, test_dir: &Path, cfg: &Config) -> Result<()> {
         TestVmSys::configure_serial_devices(
             command,
+            &cfg.console_hardware,
             &test_dir.join(FROM_GUEST_PIPE),
             &test_dir.join(TO_GUEST_PIPE),
         );
         command.args(["--socket", test_dir.join(CONTROL_PIPE).to_str().unwrap()]);
-        TestVmSys::configure_rootfs(command, cfg.o_direct);
-        // Set kernel as the last argument.
-        command.arg(kernel_path());
 
+        if let Some(rootfs_url) = &cfg.rootfs_url {
+            TestVmSys::configure_rootfs(command, cfg.o_direct, &local_path_from_url(rootfs_url));
+        };
+
+        // Set initrd if being requested
+        if let Some(initrd_url) = &cfg.initrd_url {
+            command.arg("--initrd");
+            command.arg(local_path_from_url(initrd_url));
+        }
+
+        // Set kernel as the last argument.
+        command.arg(local_path_from_url(&cfg.kernel_url));
         Ok(())
     }
 
@@ -219,41 +230,64 @@ impl TestVmSys {
         let config_file_path = test_dir.join(VM_JSON_CONFIG_FILE);
         let mut config_file = File::create(&config_file_path)?;
 
+        writeln!(config_file, "{{")?;
+        writeln!(
+            config_file,
+            r#""kernel": "{}""#,
+            local_path_from_url(&cfg.kernel_url).display()
+        )?;
+        if let Some(initrd_url) = &cfg.initrd_url {
+            writeln!(
+                config_file,
+                r#"",initrd": "{}""#,
+                local_path_from_url(initrd_url)
+                    .to_str()
+                    .context("invalid initrd path")?
+            )?;
+        };
         writeln!(
             config_file,
             r#"
-            {{
-              "kernel": "{}",
-              "socket": "{}",
-              "params": [ "init=/bin/delegate" ],
-              "serial": [
-                {{
-                  "type": "stdout"
-                }},
-                {{
-                  "type": "file",
-                  "path": "{}",
-                  "input": "{}",
-                  "num": 2
-                }}
-              ],
-              "block": [
-                {{
-                  "path": "{}",
-                  "ro": true,
-                  "root": true,
-                  "direct": {}
-                }}
-              ]
-            }}
-            "#,
-            kernel_path().display(),
+        ,"socket": "{}",
+        "params": [ "init=/bin/delegate" ],
+        "serial": [
+          {{
+            "type": "stdout"
+          }},
+          {{
+            "type": "file",
+            "path": "{}",
+            "input": "{}",
+            "num": 2
+          }}
+        ]
+        "#,
             test_dir.join(CONTROL_PIPE).display(),
             test_dir.join(FROM_GUEST_PIPE).display(),
             test_dir.join(TO_GUEST_PIPE).display(),
-            rootfs_path().to_str().unwrap(),
-            cfg.o_direct,
         )?;
+
+        if let Some(rootfs_url) = &cfg.rootfs_url {
+            writeln!(
+                config_file,
+                r#"
+                ,"block": [
+                    {{
+                      "path": "{}",
+                      "ro": true,
+                      "root": true,
+                      "direct": {}
+                    }}
+                  ]
+                  "#,
+                local_path_from_url(rootfs_url)
+                    .to_str()
+                    .context("invalid rootfs path")?,
+                cfg.o_direct,
+            )?;
+        };
+
+        writeln!(config_file, "}}")?;
 
         Ok(config_file_path)
     }

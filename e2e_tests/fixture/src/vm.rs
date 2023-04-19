@@ -16,8 +16,10 @@ use anyhow::Context;
 use anyhow::Result;
 use base::syslog;
 use base::test_utils::check_can_sudo;
+use crc32fast::hash;
 use log::Level;
 use prebuilts::download_file;
+use url::Url;
 
 use crate::sys::SerialArgs;
 use crate::sys::TestVmSys;
@@ -47,48 +49,38 @@ fn prebuilt_version() -> &'static str {
     include_str!("../../guest_under_test/PREBUILT_VERSION").trim()
 }
 
-fn kernel_prebuilt_url() -> String {
-    format!(
+fn kernel_prebuilt_url_string() -> Url {
+    Url::parse(&format!(
         "{}/guest-bzimage-{}-{}",
         PREBUILT_URL,
         ARCH,
         prebuilt_version()
-    )
+    ))
+    .unwrap()
 }
 
-fn rootfs_prebuilt_url() -> String {
-    format!(
+fn rootfs_prebuilt_url_string() -> Url {
+    Url::parse(&format!(
         "{}/guest-rootfs-{}-{}",
         PREBUILT_URL,
         ARCH,
         prebuilt_version()
-    )
+    ))
+    .unwrap()
 }
 
-/// The kernel bzImage is stored next to the test executable, unless overridden by
-/// CROSVM_CARGO_TEST_KERNEL_BINARY
-pub(super) fn kernel_path() -> PathBuf {
-    match env::var("CROSVM_CARGO_TEST_KERNEL_BINARY") {
-        Ok(value) => PathBuf::from(value),
-        Err(_) => env::current_exe()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .join(format!("bzImage-{}", prebuilt_version())),
+pub(super) fn local_path_from_url(url: &Url) -> PathBuf {
+    if url.scheme() == "file" {
+        return url.to_file_path().unwrap();
     }
-}
-
-/// The rootfs image is stored next to the test executable, unless overridden by
-/// CROSVM_CARGO_TEST_ROOTFS_IMAGE
-pub(super) fn rootfs_path() -> PathBuf {
-    match env::var("CROSVM_CARGO_TEST_ROOTFS_IMAGE") {
-        Ok(value) => PathBuf::from(value),
-        Err(_) => env::current_exe()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .join(format!("rootfs-{}", prebuilt_version())),
+    if url.scheme() != "http" && url.scheme() != "https" {
+        panic!("Only file, http, https URLs are supported for artifacts")
     }
+    env::current_exe().unwrap().parent().unwrap().join(format!(
+        "e2e_prebuilt-{:x}-{:x}",
+        hash(url.as_str().as_bytes()),
+        hash(url.path().as_bytes())
+    ))
 }
 
 /// Represents a command running in the guest. See `TestVm::exec_in_guest_async()`
@@ -176,6 +168,18 @@ pub struct Config {
 
     /// Wrapper command line for executing `TestVM`
     pub(super) wrapper_cmd: Option<String>,
+
+    /// Url to kernel image
+    pub(super) kernel_url: Url,
+
+    /// Url to initrd image
+    pub(super) initrd_url: Option<Url>,
+
+    /// Url to rootfs image
+    pub(super) rootfs_url: Option<Url>,
+
+    /// Console hardware type
+    pub(super) console_hardware: String,
 }
 
 impl Default for Config {
@@ -186,6 +190,10 @@ impl Default for Config {
             o_direct: Default::default(),
             log_file: None,
             wrapper_cmd: None,
+            kernel_url: kernel_prebuilt_url_string(),
+            initrd_url: None,
+            rootfs_url: Some(rootfs_prebuilt_url_string()),
+            console_hardware: "virtio-console".to_owned(),
         }
     }
 }
@@ -197,7 +205,6 @@ impl Config {
     }
 
     /// Uses extra arguments for `crosvm run`.
-    #[allow(dead_code)]
     pub fn extra_args(mut self, args: Vec<String>) -> Self {
         let mut args = args;
         self.extra_args.append(&mut args);
@@ -221,7 +228,35 @@ impl Config {
         env::var("CROSVM_CARGO_TEST_E2E_WRAPPER_CMD").map_or((), |x| cfg.wrapper_cmd = Some(x));
         env::var("CROSVM_CARGO_TEST_LOG_FILE").map_or((), |x| cfg.log_file = Some(x));
         env::var("CROSVM_CARGO_TEST_LOG_LEVEL_DEBUG").map_or((), |_| cfg.log_level = Level::Debug);
+        env::var("CROSVM_CARGO_TEST_KERNEL_IMAGE")
+            .map_or((), |x| cfg.kernel_url = Url::from_file_path(x).unwrap());
+        env::var("CROSVM_CARGO_TEST_INITRD_IMAGE").map_or((), |x| {
+            cfg.initrd_url = Some(Url::from_file_path(x).unwrap())
+        });
+        env::var("CROSVM_CARGO_TEST_ROOTFS_IMAGE").map_or((), |x| {
+            cfg.rootfs_url = Some(Url::from_file_path(x).unwrap())
+        });
         cfg
+    }
+
+    pub fn with_kernel(mut self, url: &str) -> Self {
+        self.kernel_url = Url::parse(url).unwrap();
+        self
+    }
+
+    pub fn with_initrd(mut self, url: &str) -> Self {
+        self.initrd_url = Some(Url::parse(url).unwrap());
+        self
+    }
+
+    pub fn with_rootfs(mut self, url: &str) -> Self {
+        self.rootfs_url = Some(Url::parse(url).unwrap());
+        self
+    }
+
+    pub fn with_stdout_hardware(mut self, hw_type: &str) -> Self {
+        self.console_hardware = hw_type.to_owned();
+        self
     }
 }
 
@@ -264,24 +299,31 @@ impl TestVm {
                 );
             }
         }
+    }
 
-        let kernel_path = kernel_path();
-        if env::var("CROSVM_CARGO_TEST_KERNEL_BINARY").is_err() {
-            if !kernel_path.exists() {
-                download_file(&kernel_prebuilt_url(), &kernel_path).unwrap();
-            }
+    fn initiailize_artifacts(cfg: &Config) {
+        let kernel_path = local_path_from_url(&cfg.kernel_url);
+        if !kernel_path.exists() && cfg.kernel_url.scheme() != "file" {
+            download_file(cfg.kernel_url.as_str(), &kernel_path).unwrap();
         }
         assert!(kernel_path.exists(), "{:?} does not exist", kernel_path);
 
-        let rootfs_path = rootfs_path();
-        if env::var("CROSVM_CARGO_TEST_ROOTFS_IMAGE").is_err() {
-            if !rootfs_path.exists() {
-                download_file(&rootfs_prebuilt_url(), &rootfs_path).unwrap();
+        if let Some(initrd_url) = &cfg.initrd_url {
+            let initrd_path = local_path_from_url(initrd_url);
+            if !initrd_path.exists() && initrd_url.scheme() != "file" {
+                download_file(initrd_url.as_str(), &initrd_path).unwrap();
             }
+            assert!(initrd_path.exists(), "{:?} does not exist", initrd_path);
         }
-        assert!(rootfs_path.exists(), "{:?} does not exist", rootfs_path);
 
-        TestVmSys::check_rootfs_file(&rootfs_path);
+        if let Some(rootfs_url) = &cfg.rootfs_url {
+            let rootfs_path = local_path_from_url(rootfs_url);
+            if !rootfs_path.exists() && rootfs_url.scheme() != "file" {
+                download_file(rootfs_url.as_str(), &rootfs_path).unwrap();
+            }
+            assert!(rootfs_path.exists(), "{:?} does not exist", rootfs_path);
+            TestVmSys::check_rootfs_file(&rootfs_path);
+        }
     }
 
     /// Instanciate a new crosvm instance. The first call will trigger the download of prebuilt
@@ -294,6 +336,9 @@ impl TestVm {
         F: FnOnce(&mut Command, &SerialArgs, &Config) -> Result<()>,
     {
         PREP_ONCE.call_once(TestVm::initialize_once);
+
+        TestVm::initiailize_artifacts(&cfg);
+
         let mut vm = TestVm {
             sys: TestVmSys::new_generic(f, cfg, sudo).with_context(|| "Could not start crosvm")?,
             ready: false,

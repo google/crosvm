@@ -65,7 +65,12 @@ def parse_seccomp_trace_events_to_pid_table(
 bench = cmd("cargo test").with_color_flag()
 
 
-def main(target_name: str, log_seccomp: bool = False, log_seccomp_output_dir: str = ""):
+def main(
+    target_name: str,
+    log_seccomp: bool = False,
+    log_seccomp_output_dir: str = "",
+    nocapture: bool = False,
+):
     """Run an end-to-end benchmark target.
 
     target-name -- name of target
@@ -98,8 +103,12 @@ def main(target_name: str, log_seccomp: bool = False, log_seccomp_output_dir: st
                     ),
                 }
             )
-
-        bench("--release", "--bench", target_name).with_envs(build_env).fg()
+        if nocapture:
+            bench("--release", "--bench", target_name, "--", "--nocapture").with_envs(
+                build_env
+            ).fg()
+        else:
+            bench("--release", "--bench", target_name).with_envs(build_env).fg()
 
         if log_seccomp:
             with open(pathlib.Path(tempdir) / "crosvm.log", "r") as f:
