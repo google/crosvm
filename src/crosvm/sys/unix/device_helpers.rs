@@ -72,6 +72,7 @@ use resources::Alloc;
 use resources::AllocOptions;
 use resources::SystemAllocator;
 use sync::Mutex;
+use vm_control::api::VmMemoryClient;
 use vm_memory::GuestAddress;
 
 use crate::crosvm::config::TouchDeviceOption;
@@ -396,7 +397,7 @@ pub fn create_vvu_proxy_device(
     let dev = VirtioVhostUser::new(
         virtio::base_features(protection_type),
         listener,
-        tube,
+        VmMemoryClient::new(tube),
         opt.addr,
         opt.uuid,
         max_sibling_mem_size,
@@ -1457,7 +1458,7 @@ pub fn create_vfio_device(
                 guest_address,
                 vfio_device_tube_msi,
                 vfio_device_tube_msix,
-                vfio_device_tube_mem,
+                VmMemoryClient::new(vfio_device_tube_mem),
                 vfio_device_tube_vm,
                 #[cfg(feature = "direct")]
                 is_intel_lpss,
@@ -1501,7 +1502,8 @@ pub fn create_vfio_device(
                 bail!("hotplug is not supported for VFIO platform devices");
             }
 
-            let vfio_plat_dev = VfioPlatformDevice::new(vfio_device, vfio_device_tube_mem);
+            let vfio_plat_dev =
+                VfioPlatformDevice::new(vfio_device, VmMemoryClient::new(vfio_device_tube_mem));
 
             Ok((
                 VfioDeviceVariant::Platform(vfio_plat_dev),

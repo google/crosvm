@@ -36,7 +36,6 @@ use base::Protection;
 use base::RawDescriptor;
 use base::SafeDescriptor;
 use base::ScmSocket;
-use base::Tube;
 use base::WaitContext;
 use base::WorkerThread;
 use data_model::DataInit;
@@ -48,10 +47,9 @@ use libc::MSG_PEEK;
 use resources::Alloc;
 use sync::Mutex;
 use uuid::Uuid;
+use vm_control::api::VmMemoryClient;
 use vm_control::VmMemoryDestination;
 use vm_control::VmMemoryRegionId;
-use vm_control::VmMemoryRequest;
-use vm_control::VmMemoryResponse;
 use vm_control::VmMemorySource;
 use vm_memory::udmabuf::UdmabufDriver;
 use vm_memory::udmabuf::UdmabufDriverTrait;
@@ -254,7 +252,7 @@ struct Worker {
     tx_queue: Queue,
 
     // To communicate with the main process.
-    main_process_tube: Tube,
+    vm_memory_client: VmMemoryClient,
 
     // The bar representing the doorbell and notification.
     io_pci_bar: Alloc,
@@ -822,45 +820,11 @@ impl Worker {
                 allocation: self.shmem_pci_bar,
                 offset: self.shmem_pci_bar_mem_offset as u64,
             };
-            self.register_memory(source, dest)?;
+            self.vm_memory_client
+                .register_memory(source, dest, Protection::read_write())?;
             self.shmem_pci_bar_mem_offset += region.memory_size as usize;
         }
         Ok(())
-    }
-
-    fn register_memory(&mut self, source: VmMemorySource, dest: VmMemoryDestination) -> Result<()> {
-        let request = VmMemoryRequest::RegisterMemory {
-            source,
-            dest,
-            prot: Protection::read_write(),
-        };
-        self.send_memory_request(&request)?;
-        Ok(())
-    }
-
-    // Sends memory mapping request to the main process. If successful adds the
-    // mmaped info into `registered_memory`, else returns error.
-    fn send_memory_request(&mut self, request: &VmMemoryRequest) -> Result<()> {
-        self.main_process_tube
-            .send(request)
-            .context("sending mapping request to tube failed")?;
-
-        let response = self
-            .main_process_tube
-            .recv()
-            .context("receiving mapping request from tube failed")?;
-
-        match response {
-            VmMemoryResponse::Ok => Ok(()),
-            VmMemoryResponse::RegisterMemory(id) => {
-                // Store the registered memory slot so we can unregister it when the thread ends.
-                self.registered_memory.push(id);
-                Ok(())
-            }
-            VmMemoryResponse::Err(e) => {
-                bail!("memory mapping failed: {}", e);
-            }
-        }
     }
 
     // Handles |SET_VRING_CALL|.
@@ -884,14 +848,14 @@ impl Worker {
         // Safe because we own the file.
         let evt = unsafe { Event::from_raw_descriptor(file.into_raw_descriptor()) };
 
-        self.send_memory_request(&VmMemoryRequest::IoEventWithAlloc {
-            evt: evt.try_clone().context("failed to dup event")?,
-            allocation: self.io_pci_bar,
-            offset: DOORBELL_OFFSET + DOORBELL_OFFSET_MULTIPLIER as u64 * index as u64,
-            datamatch: Datamatch::AnyLength,
-            register: true,
-        })
-        .context("failed to register IoEvent")?;
+        self.vm_memory_client
+            .register_io_event_with_alloc(
+                evt.try_clone().context("failed to dup event")?,
+                self.io_pci_bar,
+                DOORBELL_OFFSET + DOORBELL_OFFSET_MULTIPLIER as u64 * index as u64,
+                Datamatch::AnyLength,
+            )
+            .context("failed to register IoEvent")?;
 
         // Save the eventfd because we will need to supply it to KVM to unregister the eventfd.
         self.vrings[index as usize].call_evt = Some(evt);
@@ -1143,8 +1107,7 @@ impl Worker {
     // worker later.
     fn cleanup_registered_memory(&mut self) {
         while let Some(id) = self.registered_memory.pop() {
-            let req = VmMemoryRequest::UnregisterMemory(id);
-            if let Err(e) = self.send_memory_request(&req) {
+            if let Err(e) = self.vm_memory_client.unregister_memory(id) {
                 error!("failed to unregister memory slot: {}", e);
             }
         }
@@ -1222,18 +1185,21 @@ impl Worker {
             .filter_map(|(idx, v)| v.call_evt.take().map(|e| (idx, e)))
             .collect();
         for (idx, evt) in vring_call_evts {
-            if let Err(e) = self.send_memory_request(&VmMemoryRequest::IoEventWithAlloc {
+            if let Err(e) = self.vm_memory_client.unregister_io_event_with_alloc(
                 evt,
-                allocation: self.io_pci_bar,
-                offset: DOORBELL_OFFSET + DOORBELL_OFFSET_MULTIPLIER as u64 * idx as u64,
-                datamatch: Datamatch::AnyLength,
-                register: false,
-            }) {
+                self.io_pci_bar,
+                DOORBELL_OFFSET + DOORBELL_OFFSET_MULTIPLIER as u64 * idx as u64,
+                Datamatch::AnyLength,
+            ) {
                 error!("failed to unregister ioevent: idx={}:, {:#}", idx, e);
-                last_err = Some(e);
+                last_err = Some(Err(e).context("failed to unregister ioevent"));
             }
         }
-        last_err.map_or(Ok(()), Err)
+
+        match last_err {
+            None => Ok(()),
+            Some(e) => e,
+        }
     }
 }
 
@@ -1281,12 +1247,12 @@ enum State {
 
         // The tube communicate with the main process from a worker.
         // This will be passed on to a worker thread when it's spawned.
-        main_process_tube: Tube,
+        vm_memory_client: VmMemoryClient,
     },
     /// The VVU-proxy PCI device is activated but its worker thread hasn't started.
     Activated {
         listener: UnixListener,
-        main_process_tube: Tube,
+        vm_memory_client: VmMemoryClient,
 
         mem: GuestMemory,
         interrupt: Interrupt,
@@ -1365,7 +1331,7 @@ impl VirtioVhostUser {
     pub fn new(
         base_features: u64,
         listener: UnixListener,
-        main_process_tube: Tube,
+        vm_memory_client: VmMemoryClient,
         pci_address: Option<PciAddress>,
         uuid: Option<Uuid>,
         max_sibling_mem_size: u64,
@@ -1387,7 +1353,7 @@ impl VirtioVhostUser {
             notification_select: None,
             notification_msix_vectors: [None; MAX_VHOST_DEVICE_QUEUES],
             state: Arc::new(Mutex::new(State::Initialized {
-                main_process_tube,
+                vm_memory_client,
                 listener,
             })),
             pci_address,
@@ -1508,7 +1474,7 @@ impl VirtioVhostUser {
 
         // Retrieve values stored in the state value.
         let (
-            main_process_tube,
+            vm_memory_client,
             listener,
             mem,
             interrupt,
@@ -1519,7 +1485,7 @@ impl VirtioVhostUser {
             iommu,
         ) = match old_state {
             State::Activated {
-                main_process_tube,
+                vm_memory_client,
                 listener,
                 mem,
                 interrupt,
@@ -1529,7 +1495,7 @@ impl VirtioVhostUser {
                 tx_queue_evt,
                 iommu,
             } => (
-                main_process_tube,
+                vm_memory_client,
                 listener,
                 mem,
                 interrupt,
@@ -1580,7 +1546,7 @@ impl VirtioVhostUser {
                 interrupt,
                 rx_queue,
                 tx_queue,
-                main_process_tube,
+                vm_memory_client,
                 io_pci_bar,
                 shmem_pci_bar,
                 shmem_pci_bar_mem_offset: 0,
@@ -1635,12 +1601,12 @@ impl VirtioVhostUser {
                         interrupt,
                         rx_queue,
                         tx_queue,
-                        main_process_tube,
+                        vm_memory_client,
                         ..
                     } = worker;
 
                     *state = State::Activated {
-                        main_process_tube,
+                        vm_memory_client,
                         listener,
                         mem,
                         interrupt,
@@ -1677,10 +1643,10 @@ impl VirtioDevice for VirtioVhostUser {
 
         match &*self.state.lock() {
             State::Initialized {
-                main_process_tube,
+                vm_memory_client,
                 listener,
             } => {
-                rds.push(main_process_tube.as_raw_descriptor());
+                rds.push(vm_memory_client.as_raw_descriptor());
                 rds.push(listener.as_raw_descriptor());
             }
             State::Activated { .. } | State::Running { .. } | State::Invalid => {
@@ -1824,11 +1790,11 @@ impl VirtioDevice for VirtioVhostUser {
         match old_state {
             State::Initialized {
                 listener,
-                main_process_tube,
+                vm_memory_client,
             } => {
                 *state = State::Activated {
                     listener,
-                    main_process_tube,
+                    vm_memory_client,
                     mem,
                     interrupt,
                     rx_queue,
@@ -1894,7 +1860,7 @@ impl VirtioDevice for VirtioVhostUser {
             }
             State::Activated {
                 listener,
-                main_process_tube,
+                vm_memory_client,
                 ref mut rx_queue,
                 ref mut tx_queue,
                 ..
@@ -1903,7 +1869,7 @@ impl VirtioDevice for VirtioVhostUser {
                 tx_queue.reset_counters();
                 *state = State::Initialized {
                     listener,
-                    main_process_tube,
+                    vm_memory_client,
                 };
             }
             State::Running => {

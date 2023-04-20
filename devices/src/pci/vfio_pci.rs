@@ -39,12 +39,11 @@ use resources::MmioType;
 use resources::SystemAllocator;
 use sync::Mutex;
 use vfio_sys::*;
+use vm_control::api::VmMemoryClient;
 use vm_control::HotPlugDeviceInfo;
 use vm_control::HotPlugDeviceType;
 use vm_control::VmMemoryDestination;
 use vm_control::VmMemoryRegionId;
-use vm_control::VmMemoryRequest;
-use vm_control::VmMemoryResponse;
 use vm_control::VmMemorySource;
 use vm_control::VmRequest;
 use vm_control::VmResponse;
@@ -660,7 +659,7 @@ pub struct VfioPciDevice {
     msi_cap: Option<VfioMsiCap>,
     msix_cap: Option<Arc<Mutex<VfioMsixCap>>>,
     irq_type: Option<VfioIrqType>,
-    vm_socket_mem: Tube,
+    vm_memory_client: VmMemoryClient,
     device_data: Option<DeviceData>,
     pm_evt: Option<Event>,
     is_in_low_power: Arc<Mutex<bool>>,
@@ -705,7 +704,7 @@ impl VfioPciDevice {
         guest_address: Option<PciAddress>,
         vfio_device_socket_msi: Tube,
         vfio_device_socket_msix: Tube,
-        vfio_device_socket_mem: Tube,
+        vm_memory_client: VmMemoryClient,
         vfio_device_socket_vm: Tube,
         #[cfg(feature = "direct")] is_intel_lpss: bool,
     ) -> Result<Self, PciDeviceError> {
@@ -881,7 +880,7 @@ impl VfioPciDevice {
             msi_cap,
             msix_cap,
             irq_type: None,
-            vm_socket_mem: vfio_device_socket_mem,
+            vm_memory_client,
             device_data,
             pm_evt: None,
             is_in_low_power: Arc::new(Mutex::new(false)),
@@ -1222,31 +1221,22 @@ impl VfioPciDevice {
                     Ok(device_file) => device_file.into(),
                     Err(_) => break,
                 };
-                if self
-                    .vm_socket_mem
-                    .send(&VmMemoryRequest::RegisterMemory {
-                        source: VmMemorySource::Descriptor {
-                            descriptor,
-                            offset,
-                            size: mmap_size,
-                        },
-                        dest: VmMemoryDestination::GuestPhysicalAddress(guest_map_start),
-                        prot: Protection::read_write(),
-                    })
-                    .is_err()
-                {
-                    break;
-                }
-
-                let response: VmMemoryResponse = match self.vm_socket_mem.recv() {
-                    Ok(res) => res,
-                    Err(_) => break,
-                };
-                match response {
-                    VmMemoryResponse::RegisterMemory(id) => {
+                match self.vm_memory_client.register_memory(
+                    VmMemorySource::Descriptor {
+                        descriptor,
+                        offset,
+                        size: mmap_size,
+                    },
+                    VmMemoryDestination::GuestPhysicalAddress(guest_map_start),
+                    Protection::read_write(),
+                ) {
+                    Ok(id) => {
                         mmaps_ids.push(id);
                     }
-                    _ => break,
+                    Err(e) => {
+                        error!("register_memory failed: {}", e);
+                        break;
+                    }
                 }
             }
         }
@@ -1256,16 +1246,8 @@ impl VfioPciDevice {
 
     fn remove_bar_mmap(&self, mmap_ids: &[VmMemoryRegionId]) {
         for mmap_id in mmap_ids {
-            if self
-                .vm_socket_mem
-                .send(&VmMemoryRequest::UnregisterMemory(*mmap_id))
-                .is_err()
-            {
-                error!("failed to send UnregisterMemory request");
-                return;
-            }
-            if self.vm_socket_mem.recv::<VmMemoryResponse>().is_err() {
-                error!("failed to receive UnregisterMemory response");
+            if let Err(e) = self.vm_memory_client.unregister_memory(*mmap_id) {
+                error!("unregister_memory failed: {}", e);
             }
         }
     }
@@ -1782,7 +1764,7 @@ impl PciDevice for VfioPciDevice {
         if let Some(ref interrupt_evt) = self.interrupt_evt {
             rds.extend(interrupt_evt.as_raw_descriptors());
         }
-        rds.push(self.vm_socket_mem.as_raw_descriptor());
+        rds.push(self.vm_memory_client.as_raw_descriptor());
         if let Some(vm_socket_vm) = &self.vm_socket_vm {
             rds.push(vm_socket_vm.as_raw_descriptor());
         }

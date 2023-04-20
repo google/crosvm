@@ -27,7 +27,6 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::ensure;
 use anyhow::Context;
@@ -58,10 +57,8 @@ use serde::Serialize;
 use serde_keyvalue::FromKeyValues;
 use sync::Mutex;
 use thiserror::Error as ThisError;
-use vm_control::IoEventUpdateRequest;
+use vm_control::api::VmMemoryClient;
 use vm_control::VmMemoryDestination;
-use vm_control::VmMemoryRequest;
-use vm_control::VmMemoryResponse;
 use vm_control::VmMemorySource;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
@@ -115,8 +112,6 @@ enum Error {
     CreateSharedMemory,
     #[error("Failed to get DTT entry")]
     GetDTTEntry,
-    #[error("Tube error")]
-    TubeError,
 }
 
 //default interval is 60s
@@ -1018,7 +1013,7 @@ pub struct CoIommuDev {
     topologymap_mem: SafeDescriptor,
     topologymap_addr: Option<u64>,
     mmapped: bool,
-    device_tube: Tube,
+    vm_memory_client: VmMemoryClient,
     pin_thread: Option<WorkerThread<PinWorker>>,
     unpin_thread: Option<WorkerThread<UnpinWorker>>,
     unpin_tube: Option<Tube>,
@@ -1032,7 +1027,7 @@ impl CoIommuDev {
     pub fn new(
         mem: GuestMemory,
         vfio_container: Arc<Mutex<VfioContainer>>,
-        device_tube: Tube,
+        vm_memory_client: VmMemoryClient,
         unpin_tube: Option<Tube>,
         endpoints: Vec<u16>,
         vcpu_count: u64,
@@ -1097,7 +1092,7 @@ impl CoIommuDev {
             topologymap_mem: topologymap_mem.into(),
             topologymap_addr: None,
             mmapped: false,
-            device_tube,
+            vm_memory_client,
             pin_thread: None,
             unpin_thread: None,
             unpin_tube,
@@ -1113,25 +1108,6 @@ impl CoIommuDev {
         })
     }
 
-    fn send_msg(&self, msg: &VmMemoryRequest) -> Result<()> {
-        self.device_tube.send(msg).context(Error::TubeError)?;
-        let res = self.device_tube.recv().context(Error::TubeError)?;
-        match res {
-            VmMemoryResponse::RegisterMemory { .. } | VmMemoryResponse::Ok => Ok(()),
-            VmMemoryResponse::Err(e) => Err(anyhow!("Receive msg err {}", e)),
-        }
-    }
-
-    fn register_ioevent(&self, event: &Event, addr: u64, datamatch: Datamatch) -> Result<()> {
-        let request = VmMemoryRequest::IoEventRaw(IoEventUpdateRequest {
-            event: event.try_clone().unwrap(),
-            addr,
-            datamatch,
-            register: true,
-        });
-        self.send_msg(&request)
-    }
-
     fn register_mmap(
         &self,
         descriptor: SafeDescriptor,
@@ -1140,16 +1116,19 @@ impl CoIommuDev {
         gpa: u64,
         prot: Protection,
     ) -> Result<()> {
-        let request = VmMemoryRequest::RegisterMemory {
-            source: VmMemorySource::Descriptor {
-                descriptor,
-                offset,
-                size: size as u64,
-            },
-            dest: VmMemoryDestination::GuestPhysicalAddress(gpa),
-            prot,
-        };
-        self.send_msg(&request)
+        let _region = self
+            .vm_memory_client
+            .register_memory(
+                VmMemorySource::Descriptor {
+                    descriptor,
+                    offset,
+                    size: size as u64,
+                },
+                VmMemoryDestination::GuestPhysicalAddress(gpa),
+                prot,
+            )
+            .context("register_mmap register_memory failed")?;
+        Ok(())
     }
 
     fn mmap(&mut self) {
@@ -1215,7 +1194,12 @@ impl CoIommuDev {
         let bar0 = self.config_regs.get_bar_addr(COIOMMU_MMIO_BAR as usize);
         let notify_base = bar0 + mem::size_of::<CoIommuReg>() as u64;
         for (i, evt) in self.ioevents.iter().enumerate() {
-            self.register_ioevent(evt, notify_base + i as u64, Datamatch::AnyLength)
+            self.vm_memory_client
+                .register_io_event(
+                    evt.try_clone().expect("failed to clone event"),
+                    notify_base + i as u64,
+                    Datamatch::AnyLength,
+                )
                 .expect("failed to register ioevent");
         }
 
@@ -1549,7 +1533,7 @@ impl PciDevice for CoIommuDev {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         let mut rds = vec![
             self.vfio_container.lock().as_raw_descriptor(),
-            self.device_tube.as_raw_descriptor(),
+            self.vm_memory_client.as_raw_descriptor(),
             self.notifymap_mem.as_raw_descriptor(),
             self.topologymap_mem.as_raw_descriptor(),
         ];

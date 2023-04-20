@@ -179,6 +179,7 @@ use smallvec::SmallVec;
 use sync::Mutex;
 use tube_transporter::TubeToken;
 use tube_transporter::TubeTransporterReader;
+use vm_control::api::VmMemoryClient;
 use vm_control::BalloonControlCommand;
 use vm_control::DeviceControlCommand;
 use vm_control::IrqHandlerRequest;
@@ -437,7 +438,7 @@ fn create_balloon_device(
     let dev = virtio::Balloon::new(
         virtio::base_features(cfg.protection_type),
         balloon_device_tube,
-        dynamic_mapping_device_tube,
+        VmMemoryClient::new(dynamic_mapping_device_tube),
         inflate_tube,
         init_balloon_size,
         if cfg.strict_balloon {
@@ -726,8 +727,8 @@ fn create_devices(
                 stub.dev,
                 msi_device_tube,
                 cfg.disable_virtio_intx,
-                shared_memory_tube,
-                ioevent_device_tube,
+                shared_memory_tube.map(VmMemoryClient::new),
+                VmMemoryClient::new(ioevent_device_tube),
             )
             .exit_context(Exit::VirtioPciDev, "failed to create virtio pci dev")?,
         ) as Box<dyn BusDeviceObj>;

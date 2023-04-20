@@ -18,6 +18,7 @@ use resources::Error as SystemAllocatorFaliure;
 use resources::SystemAllocator;
 use sync::Mutex;
 use thiserror::Error;
+use vm_control::api::VmMemoryClient;
 
 use super::PciId;
 use crate::bus::BusDeviceObj;
@@ -378,6 +379,12 @@ pub trait PciDevice: Send + Suspendable {
         Ok(())
     }
 
+    /// Gets a reference to the API client for sending VmMemoryRequest. Any devices that uses ioevents
+    /// must provide this.
+    fn get_vm_memory_client(&self) -> Option<&VmMemoryClient> {
+        None
+    }
+
     /// Reads from a PCI configuration register.
     /// * `reg_idx` - PCI register index (in units of 4 bytes).
     fn read_config_register(&self, reg_idx: usize) -> u32;
@@ -667,6 +674,9 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     }
     fn write_virtual_config_register(&mut self, reg_idx: usize, value: u32) {
         (**self).write_virtual_config_register(reg_idx, value)
+    }
+    fn get_vm_memory_client(&self) -> Option<&VmMemoryClient> {
+        (**self).get_vm_memory_client()
     }
     fn read_config_register(&self, reg_idx: usize) -> u32 {
         (**self).read_config_register(reg_idx)

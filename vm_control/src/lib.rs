@@ -10,6 +10,7 @@
 //! The wire message format is a little-endian C-struct of fixed size, along with a file descriptor
 //! if the request type expects one.
 
+pub mod api;
 #[cfg(feature = "gdb")]
 pub mod gdb;
 #[cfg(feature = "gpu")]

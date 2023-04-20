@@ -168,6 +168,7 @@ use smallvec::SmallVec;
 use swap::SwapController;
 use sync::Condvar;
 use sync::Mutex;
+use vm_control::api::VmMemoryClient;
 use vm_control::*;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
@@ -792,7 +793,7 @@ fn create_devices(
             let dev = CoIommuDev::new(
                 vm.get_memory().clone(),
                 vfio_container,
-                coiommu_device_tube,
+                VmMemoryClient::new(coiommu_device_tube),
                 coiommu_tube,
                 coiommu_attached_endpoints,
                 vcpu_count,
@@ -862,8 +863,8 @@ fn create_devices(
                     stub.dev,
                     msi_device_tube,
                     cfg.disable_virtio_intx,
-                    shared_memory_tube,
-                    ioevent_device_tube,
+                    shared_memory_tube.map(VmMemoryClient::new),
+                    VmMemoryClient::new(ioevent_device_tube),
                 )
                 .context("failed to create virtio pci dev")?;
 
@@ -1974,7 +1975,7 @@ where
             msi_device_tube,
             cfg.disable_virtio_intx,
             None,
-            ioevent_device_tube,
+            VmMemoryClient::new(ioevent_device_tube),
         )
         .context("failed to create virtio pci dev")?;
         // early reservation for viommu.

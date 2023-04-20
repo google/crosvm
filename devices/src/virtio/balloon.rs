@@ -41,6 +41,8 @@ use futures::FutureExt;
 use futures::StreamExt;
 use remain::sorted;
 use thiserror::Error as ThisError;
+#[cfg(windows)]
+use vm_control::api::VmMemoryClient;
 #[cfg(feature = "registered_events")]
 use vm_control::RegisteredEventWithData;
 use vm_memory::GuestAddress;
@@ -808,7 +810,7 @@ fn run_worker(
     events_queue: Option<(Queue, Event)>,
     wss_queues: (Option<(Queue, Event)>, Option<(Queue, Event)>),
     command_tube: Tube,
-    #[cfg(windows)] dynamic_mapping_tube: Tube,
+    #[cfg(windows)] vm_memory_client: VmMemoryClient,
     release_memory_tube: Option<Tube>,
     interrupt: Interrupt,
     kill_evt: Event,
@@ -838,7 +840,7 @@ fn run_worker(
                     &guest_address,
                     len,
                     #[cfg(windows)]
-                    &dynamic_mapping_tube,
+                    &vm_memory_client,
                     #[cfg(unix)]
                     &mem,
                 )
@@ -858,7 +860,7 @@ fn run_worker(
                     &guest_address,
                     len,
                     #[cfg(windows)]
-                    &dynamic_mapping_tube,
+                    &vm_memory_client,
                 )
             },
         );
@@ -899,7 +901,7 @@ fn run_worker(
                         &guest_address,
                         len,
                         #[cfg(windows)]
-                        &dynamic_mapping_tube,
+                        &vm_memory_client,
                         #[cfg(unix)]
                         &mem,
                     )
@@ -1022,7 +1024,7 @@ fn run_worker(
 pub struct Balloon {
     command_tube: Option<Tube>,
     #[cfg(windows)]
-    dynamic_mapping_tube: Option<Tube>,
+    vm_memory_client: Option<VmMemoryClient>,
     release_memory_tube: Option<Tube>,
     pending_adjusted_response_event: Event,
     state: Arc<AsyncRwLock<BalloonState>>,
@@ -1051,7 +1053,7 @@ impl Balloon {
     pub fn new(
         base_features: u64,
         command_tube: Tube,
-        #[cfg(windows)] dynamic_mapping_tube: Tube,
+        #[cfg(windows)] vm_memory_client: VmMemoryClient,
         release_memory_tube: Option<Tube>,
         init_balloon_size: u64,
         mode: BalloonMode,
@@ -1072,7 +1074,7 @@ impl Balloon {
         Ok(Balloon {
             command_tube: Some(command_tube),
             #[cfg(windows)]
-            dynamic_mapping_tube: Some(dynamic_mapping_tube),
+            vm_memory_client: Some(vm_memory_client),
             release_memory_tube,
             pending_adjusted_response_event: Event::new().map_err(BalloonError::CreatingEvent)?,
             state: Arc::new(AsyncRwLock::new(BalloonState {
@@ -1227,7 +1229,7 @@ impl VirtioDevice for Balloon {
         let command_tube = self.command_tube.take().unwrap();
 
         #[cfg(windows)]
-        let mapping_tube = self.dynamic_mapping_tube.take().unwrap();
+        let vm_memory_client = self.vm_memory_client.take().unwrap();
         let release_memory_tube = self.release_memory_tube.take();
         #[cfg(feature = "registered_events")]
         let registered_evt_q = self.registered_evt_q.take();
@@ -1246,7 +1248,7 @@ impl VirtioDevice for Balloon {
                 wss_queues,
                 command_tube,
                 #[cfg(windows)]
-                mapping_tube,
+                vm_memory_client,
                 release_memory_tube,
                 interrupt,
                 kill_evt,
