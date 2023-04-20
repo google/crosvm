@@ -40,7 +40,8 @@ For other systems, please see below for instructions on
 ### Using the development container
 
 We provide a Debian container with the required packages installed. With
-[Docker installed](https://docs.docker.com/get-docker/), it can be started with:
+[Podman](https://podman.io/getting-started/installation) or
+[Docker](https://docs.docker.com/get-docker/) installed, it can be started with:
 
 ```sh
 ./tools/dev_container

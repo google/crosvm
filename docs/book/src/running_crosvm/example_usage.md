@@ -1,7 +1,7 @@
 # Example Usage
 
 This section will explain how to use a prebuilt Ubuntu image as the guest OS. If you want to prepare
-a kernel and rootfs by yourself, please see [Building crosvm].
+a kernel and rootfs by yourself, please see [Custom Kernel / Rootfs](./custom_kernel_rootfs.md).
 
 The example code for this guide is available in [tools/examples]
 
@@ -116,6 +116,5 @@ The full source for this example can be executed directly (Note, you may want to
 ./tools/examples/example_desktop
 ```
 
-[building crosvm]: ../building_crosvm.md
 [tools/examples]: https://source.chromium.org/chromiumos/chromiumos/codesearch/+/main:src/platform/crosvm/tools/examples
 [virt-builder]: https://libguestfs.org/virt-builder.1.html
