@@ -333,8 +333,25 @@ impl GunyahVm {
         }
     }
 
-    pub fn unregister_irqfd(&self, _label: u32, _evt: &Event) -> Result<()> {
-        unimplemented!()
+    pub fn unregister_irqfd(&self, label: u32, _evt: &Event) -> Result<()> {
+        let gh_fn_irqfd_arg = gh_fn_irqfd_arg {
+            label,
+            ..Default::default()
+        };
+
+        let function_desc = gh_fn_desc {
+            type_: GH_FN_IRQFD,
+            arg_size: size_of::<gh_fn_irqfd_arg>() as u32,
+            // Safe because kernel is expecting pointer with non-zero arg_size
+            arg: &gh_fn_irqfd_arg as *const gh_fn_irqfd_arg as u64,
+        };
+
+        let ret = unsafe { ioctl_with_ref(self, GH_VM_REMOVE_FUNCTION(), &function_desc) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
     }
 
     pub fn try_clone(&self) -> Result<Self>
@@ -561,10 +578,32 @@ impl Vm for GunyahVm {
     fn unregister_ioevent(
         &mut self,
         _evt: &Event,
-        _addr: IoEventAddress,
+        addr: IoEventAddress,
         _datamatch: Datamatch,
     ) -> Result<()> {
-        unimplemented!()
+        let maddr = if let IoEventAddress::Mmio(maddr) = addr {
+            maddr
+        } else {
+            todo!()
+        };
+
+        let gh_fn_ioeventfd_arg = gh_fn_ioeventfd_arg {
+            addr: maddr,
+            ..Default::default()
+        };
+
+        let function_desc = gh_fn_desc {
+            type_: GH_FN_IOEVENTFD,
+            arg_size: size_of::<gh_fn_ioeventfd_arg>() as u32,
+            arg: &gh_fn_ioeventfd_arg as *const gh_fn_ioeventfd_arg as u64,
+        };
+
+        let ret = unsafe { ioctl_with_ref(self, GH_VM_REMOVE_FUNCTION(), &function_desc) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            errno_result()
+        }
     }
 
     fn handle_io_events(&self, _addr: IoEventAddress, _data: &[u8]) -> Result<()> {
