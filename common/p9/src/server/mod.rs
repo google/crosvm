@@ -724,10 +724,9 @@ impl Server {
         let st = stat(&file)?;
 
         fid.file = Some(file);
-        let iounit = st.st_blksize as u32;
         Ok(Rlopen {
             qid: st.into(),
-            iounit,
+            iounit: 0, // Allow the client to send requests up to the negotiated max message size.
         })
     }
 
@@ -758,7 +757,6 @@ impl Server {
         // Safe because we just opened this fd and we know it is valid.
         let file = unsafe { File::from_raw_fd(fd) };
         let st = stat(&file)?;
-        let iounit = st.st_blksize as u32;
 
         fid.file = Some(file);
         fid.filetype = FileType::Regular;
@@ -769,7 +767,7 @@ impl Server {
 
         Ok(Rlcreate {
             qid: st.into(),
-            iounit,
+            iounit: 0, // Allow the client to send requests up to the negotiated max message size.
         })
     }
 
