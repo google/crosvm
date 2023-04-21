@@ -128,7 +128,7 @@ const _P9_LOCK_GRACE: u8 = 3;
 
 // Minimum and maximum message size that we'll expect from the client.
 const MIN_MESSAGE_SIZE: u32 = 256;
-const MAX_MESSAGE_SIZE: u32 = ::std::u16::MAX as u32;
+const MAX_MESSAGE_SIZE: u32 = 64 * 1024 + 24; // 64 KiB of payload plus some extra for the header
 
 #[derive(PartialEq, Eq)]
 enum FileType {
