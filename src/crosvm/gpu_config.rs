@@ -55,16 +55,6 @@ pub(crate) fn fixup_gpu_options(
             "backend type {:?} is deprecated, please use gfxstream",
             gpu_params.mode
         ));
-
-        #[cfg(unix)]
-        {
-            if gpu_params.gfxstream_use_guest_angle.is_some() {
-                return Err("'angle' is only supported for gfxstream backend".to_string());
-            }
-            if gpu_params.gfxstream_support_gles31.is_some() {
-                return Err("'gles31' is only supported for gfxstream backend".to_string());
-            }
-        }
     }
 
     Ok(FixedGpuParameters(gpu_params))
@@ -304,104 +294,6 @@ mod tests {
                 format!("vulkan=invalid_value,backend={}", BACKEND).as_str()
             )
             .is_err());
-        }
-    }
-
-    #[cfg(feature = "gfxstream")]
-    #[test]
-    fn parse_gpu_options_gfxstream_with_guest_angle_specified() {
-        assert_eq!(
-            parse_gpu_options("backend=gfxstream")
-                .unwrap()
-                .gfxstream_use_guest_angle,
-            None,
-        );
-        assert_eq!(
-            parse_gpu_options("backend=gfxstream,angle=true")
-                .unwrap()
-                .gfxstream_use_guest_angle,
-            Some(true),
-        );
-        assert_eq!(
-            parse_gpu_options("angle=true,backend=gfxstream")
-                .unwrap()
-                .gfxstream_use_guest_angle,
-            Some(true),
-        );
-        assert_eq!(
-            parse_gpu_options("backend=gfxstream,angle=false")
-                .unwrap()
-                .gfxstream_use_guest_angle,
-            Some(false),
-        );
-        assert_eq!(
-            parse_gpu_options("angle=false,backend=gfxstream")
-                .unwrap()
-                .gfxstream_use_guest_angle,
-            Some(false),
-        );
-        assert!(parse_gpu_options("backend=gfxstream,angle=invalid_value").is_err());
-        assert!(parse_gpu_options("angle=invalid_value,backend=gfxstream").is_err());
-    }
-
-    #[test]
-    fn parse_gpu_options_not_gfxstream_with_angle_specified() {
-        assert!(parse_gpu_options("backend=2d,angle=true").is_err());
-        assert!(parse_gpu_options("angle=true,backend=2d").is_err());
-
-        #[cfg(feature = "virgl_renderer")]
-        {
-            assert!(parse_gpu_options("backend=virglrenderer,angle=true").is_err());
-            assert!(parse_gpu_options("angle=true,backend=virglrenderer").is_err());
-        }
-    }
-
-    #[cfg(feature = "gfxstream")]
-    #[test]
-    fn parse_gpu_options_gfxstream_with_gles31_specified() {
-        assert_eq!(
-            parse_gpu_options("backend=gfxstream")
-                .unwrap()
-                .gfxstream_support_gles31,
-            None,
-        );
-        assert_eq!(
-            parse_gpu_options("backend=gfxstream,gles31=true")
-                .unwrap()
-                .gfxstream_support_gles31,
-            Some(true),
-        );
-        assert_eq!(
-            parse_gpu_options("gles31=true,backend=gfxstream")
-                .unwrap()
-                .gfxstream_support_gles31,
-            Some(true),
-        );
-        assert_eq!(
-            parse_gpu_options("backend=gfxstream,gles31=false")
-                .unwrap()
-                .gfxstream_support_gles31,
-            Some(false),
-        );
-        assert_eq!(
-            parse_gpu_options("gles31=false,backend=gfxstream")
-                .unwrap()
-                .gfxstream_support_gles31,
-            Some(false),
-        );
-        assert!(parse_gpu_options("backend=gfxstream,gles31=invalid_value").is_err());
-        assert!(parse_gpu_options("gles31=invalid_value,backend=gfxstream").is_err());
-    }
-
-    #[test]
-    fn parse_gpu_options_not_gfxstream_with_gles31_specified() {
-        assert!(parse_gpu_options("backend=2d,gles31=true").is_err());
-        assert!(parse_gpu_options("gles31=true,backend=2d").is_err());
-
-        #[cfg(feature = "virgl_renderer")]
-        {
-            assert!(parse_gpu_options("backend=virglrenderer,gles31=true").is_err());
-            assert!(parse_gpu_options("gles31=true,backend=virglrenderer").is_err());
         }
     }
 

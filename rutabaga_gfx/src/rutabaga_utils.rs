@@ -440,19 +440,16 @@ impl VirglRendererFlags {
 }
 
 /// Flags for the gfxstream renderer.
-const GFXSTREAM_RENDERER_FLAGS_USE_EGL: u32 = 1 << 0;
+const STREAM_RENDERER_FLAGS_USE_EGL: u32 = 1 << 0;
 #[allow(dead_code)]
-const GFXSTREAM_RENDERER_FLAGS_THREAD_SYNC: u32 = 1 << 1;
-const GFXSTREAM_RENDERER_FLAGS_USE_GLX: u32 = 1 << 2;
-const GFXSTREAM_RENDERER_FLAGS_USE_SURFACELESS: u32 = 1 << 3;
-const GFXSTREAM_RENDERER_FLAGS_USE_GLES: u32 = 1 << 4;
-const GFXSTREAM_RENDERER_FLAGS_NO_VK_BIT: u32 = 1 << 5;
-const GFXSTREAM_RENDERER_FLAGS_ENABLE_GLES31_BIT: u32 = 1 << 9;
-const GFXSTREAM_RENDERER_FLAGS_USE_EXTERNAL_BLOB: u32 = 1 << 10;
-const GFXSTREAM_RENDERER_FLAGS_USE_SYSTEM_BLOB: u32 = 1 << 11;
-const GFXSTREAM_RENDERER_FLAGS_GUEST_USES_ANGLE: u32 = 1 << 21;
-const GFXSTREAM_RENDERER_FLAGS_VULKAN_NATIVE_SWAPCHAIN_BIT: u32 = 1 << 22;
-const GFXSTREAM_RENDERER_FLAGS_ASYNC_FENCE_CB: u32 = 1 << 23;
+const STREAM_RENDERER_FLAGS_THREAD_SYNC: u32 = 1 << 1;
+const STREAM_RENDERER_FLAGS_USE_GLX: u32 = 1 << 2;
+const STREAM_RENDERER_FLAGS_USE_SURFACELESS: u32 = 1 << 3;
+const STREAM_RENDERER_FLAGS_USE_GLES: u32 = 1 << 4;
+const STREAM_RENDERER_FLAGS_USE_VK_BIT: u32 = 1 << 5;
+const STREAM_RENDERER_FLAGS_USE_EXTERNAL_BLOB: u32 = 1 << 6;
+const STREAM_RENDERER_FLAGS_USE_SYSTEM_BLOB: u32 = 1 << 7;
+const STREAM_RENDERER_FLAGS_VULKAN_NATIVE_SWAPCHAIN_BIT: u32 = 1 << 8;
 
 /// gfxstream flag struct.
 #[derive(Copy, Clone, Default)]
@@ -481,61 +478,46 @@ impl GfxstreamFlags {
 
     /// Use EGL for context creation.
     pub fn use_egl(self, v: bool) -> GfxstreamFlags {
-        self.set_flag(GFXSTREAM_RENDERER_FLAGS_USE_EGL, v)
+        self.set_flag(STREAM_RENDERER_FLAGS_USE_EGL, v)
     }
 
     /// Use GLX for context creation.
     pub fn use_glx(self, v: bool) -> GfxstreamFlags {
-        self.set_flag(GFXSTREAM_RENDERER_FLAGS_USE_GLX, v)
+        self.set_flag(STREAM_RENDERER_FLAGS_USE_GLX, v)
     }
 
     /// No surfaces required when creating context.
     pub fn use_surfaceless(self, v: bool) -> GfxstreamFlags {
-        self.set_flag(GFXSTREAM_RENDERER_FLAGS_USE_SURFACELESS, v)
+        self.set_flag(STREAM_RENDERER_FLAGS_USE_SURFACELESS, v)
     }
 
     /// Use GLES drivers.
     pub fn use_gles(self, v: bool) -> GfxstreamFlags {
-        self.set_flag(GFXSTREAM_RENDERER_FLAGS_USE_GLES, v)
+        self.set_flag(STREAM_RENDERER_FLAGS_USE_GLES, v)
     }
 
     /// Support using Vulkan.
     pub fn use_vulkan(self, v: bool) -> GfxstreamFlags {
-        self.set_flag(GFXSTREAM_RENDERER_FLAGS_NO_VK_BIT, !v)
-    }
-
-    /// Use ANGLE as the guest GLES driver.
-    pub fn use_guest_angle(self, v: bool) -> GfxstreamFlags {
-        self.set_flag(GFXSTREAM_RENDERER_FLAGS_GUEST_USES_ANGLE, v)
-    }
-
-    /// Use async fence completion callback.
-    pub fn use_async_fence_cb(self, v: bool) -> GfxstreamFlags {
-        self.set_flag(GFXSTREAM_RENDERER_FLAGS_ASYNC_FENCE_CB, v)
-    }
-
-    /// Enable GLES 3.1 support.
-    pub fn support_gles31(self, v: bool) -> GfxstreamFlags {
-        self.set_flag(GFXSTREAM_RENDERER_FLAGS_ENABLE_GLES31_BIT, v)
+        self.set_flag(STREAM_RENDERER_FLAGS_USE_VK_BIT, v)
     }
 
     /// Use the Vulkan swapchain to draw on the host window.
     pub fn set_wsi(self, v: Option<&RutabagaWsi>) -> GfxstreamFlags {
         let use_vulkan_swapchain = matches!(v, Some(RutabagaWsi::Vulkan));
         self.set_flag(
-            GFXSTREAM_RENDERER_FLAGS_VULKAN_NATIVE_SWAPCHAIN_BIT,
+            STREAM_RENDERER_FLAGS_VULKAN_NATIVE_SWAPCHAIN_BIT,
             use_vulkan_swapchain,
         )
     }
 
     /// Use external blob when creating resources.
     pub fn use_external_blob(self, v: bool) -> GfxstreamFlags {
-        self.set_flag(GFXSTREAM_RENDERER_FLAGS_USE_EXTERNAL_BLOB, v)
+        self.set_flag(STREAM_RENDERER_FLAGS_USE_EXTERNAL_BLOB, v)
     }
 
     /// Use system blob when creating resources.
     pub fn use_system_blob(self, v: bool) -> GfxstreamFlags {
-        self.set_flag(GFXSTREAM_RENDERER_FLAGS_USE_SYSTEM_BLOB, v)
+        self.set_flag(STREAM_RENDERER_FLAGS_USE_SYSTEM_BLOB, v)
     }
 }
 

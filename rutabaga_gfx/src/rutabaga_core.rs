@@ -840,8 +840,7 @@ impl RutabagaBuilder {
         let virglrenderer_flags = VirglRendererFlags::new()
             .use_thread_sync(true)
             .use_async_fence_cb(true);
-        let gfxstream_flags = GfxstreamFlags::new().use_async_fence_cb(true);
-
+        let gfxstream_flags = GfxstreamFlags::new();
         RutabagaBuilder {
             display_width: RUTABAGA_DEFAULT_WIDTH,
             display_height: RUTABAGA_DEFAULT_HEIGHT,
@@ -897,18 +896,6 @@ impl RutabagaBuilder {
     pub fn set_use_vulkan(mut self, v: bool) -> RutabagaBuilder {
         self.gfxstream_flags = self.gfxstream_flags.use_vulkan(v);
         self.virglrenderer_flags = self.virglrenderer_flags.use_venus(v);
-        self
-    }
-
-    /// Set use guest ANGLE in gfxstream
-    pub fn set_use_guest_angle(mut self, v: bool) -> RutabagaBuilder {
-        self.gfxstream_flags = self.gfxstream_flags.use_guest_angle(v);
-        self
-    }
-
-    /// Set enable GLES 3.1 support in gfxstream
-    pub fn set_support_gles31(mut self, v: bool) -> RutabagaBuilder {
-        self.gfxstream_flags = self.gfxstream_flags.support_gles31(v);
         self
     }
 

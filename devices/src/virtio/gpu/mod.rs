@@ -1141,11 +1141,6 @@ impl Gpu {
             .set_use_system_blob(system_blob)
             .set_use_render_server(use_render_server);
 
-        #[cfg(feature = "gfxstream")]
-        let rutabaga_builder = rutabaga_builder
-            .set_use_guest_angle(gpu_parameters.gfxstream_use_guest_angle.unwrap_or_default())
-            .set_support_gles31(gpu_parameters.gfxstream_support_gles31.unwrap_or_default());
-
         Gpu {
             exit_evt_wrtube,
             #[cfg(unix)]
