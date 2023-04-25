@@ -257,12 +257,6 @@ CHECKS: List[Check] = [
         ],
         can_fix=True,
     ),
-    Check(
-        check_crosvm_build("x86_64", features="direct"),
-        custom_name=f"crosvm_build_direct",
-        files=["**.rs"],
-        priority=True,
-    ),
     *(
         Check(
             check_crosvm_build(platform, features="default"),
@@ -393,7 +387,6 @@ GROUPS: List[Group] = [
         checks=[
             "health_checks",
             *(f"linux_{platform}" for platform in PLATFORMS),
-            "linux_x86_64_direct",
         ],
     ),
     # Convenience groups for local usage:
@@ -455,13 +448,6 @@ GROUPS: List[Group] = [
             ],
         )
         for platform in PLATFORMS
-    ),
-    Group(
-        name=f"linux_x86_64_direct",
-        doc=f"Checks run on the linux_x86_64_direct builder",
-        checks=[
-            "crosvm_build_direct",
-        ],
     ),
 ]
 
