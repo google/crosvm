@@ -297,7 +297,7 @@ impl URingAllowlist {
 ///
 /// # Example polling an FD for readable status.
 ///
-/// ```
+/// ```no_run
 /// # use std::fs::File;
 /// # use std::os::unix::io::AsRawFd;
 /// # use std::path::Path;

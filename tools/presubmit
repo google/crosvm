@@ -103,6 +103,16 @@ def check_cargo_doc(_: CheckContext):
     return cmd("./tools/cargo-doc").with_env("RUSTDOCFLAGS", "-D warnings").with_color_flag()
 
 
+def check_doc_tests(_: CheckContext):
+    "Runs cargo doc tests. These cannot be run via nextest and run_tests."
+    return cmd(
+        "cargo test",
+        "--doc",
+        "--workspace",
+        "--features=all-x86_64",
+    ).with_color_flag()
+
+
 def check_mdbook(_: CheckContext):
     "Runs cargo-doc and verifies that no warnings are emitted."
     return cmd("mdbook build docs/book/")
@@ -211,6 +221,11 @@ CHECKS: List[Check] = [
     ),
     Check(
         check_cargo_doc,
+        files=["**.rs", "**Cargo.toml"],
+        priority=True,
+    ),
+    Check(
+        check_doc_tests,
         files=["**.rs", "**Cargo.toml"],
         priority=True,
     ),
@@ -355,7 +370,7 @@ GROUPS: List[Group] = [
         name="default",
         doc="Checks run by default",
         checks=[
-            "health_checks",
+            "default_health_checks",
             # Run only one task per platform to prevent blocking on the build cache.
             "crosvm_tests_x86_64",
             "crosvm_unit_tests_aarch64",
@@ -367,7 +382,7 @@ GROUPS: List[Group] = [
         name="quick",
         doc="Runs a quick subset of presubmit checks.",
         checks=[
-            "health_checks",
+            "default_health_checks",
             "crosvm_unit_tests_x86_64",
             "clippy_aarch64",
         ],
@@ -401,10 +416,9 @@ GROUPS: List[Group] = [
             "python_format",
         ],
     ),
-    # The groups below are used by builders in CI:
     Group(
-        name="health_checks",
-        doc="Checks run on the health_check builder",
+        name="default_health_checks",
+        doc="Health checks to run by default",
         checks=[
             "copyright_header",
             "file_ends_with_newline",
@@ -413,11 +427,20 @@ GROUPS: List[Group] = [
             "mdbook",
             "cargo_doc",
             "python_format",
-            "python_tests",
             "python_types",
             "rust_features",
             "rust_format",
             "rust_lockfiles",
+        ],
+    ),
+    # The groups below are used by builders in CI:
+    Group(
+        name="health_checks",
+        doc="Checks run on the health_check builder",
+        checks=[
+            "default_health_checks",
+            "doc_tests",
+            "python_tests",
         ]
         + (["infra_configs", "infra_tests"] if not is_kiwi_repo() else []),
     ),

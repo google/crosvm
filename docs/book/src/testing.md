@@ -21,6 +21,19 @@ unit tests:
 
 This allows us to execute unit tests for any platform using emulators such as qemu-static or wine64.
 
+### Documentation tests
+
+Rust's
+[documentation tests](https://doc.rust-lang.org/rustdoc/write-documentation/documentation-tests.html)
+can be used to provide examples as part of the documentation that is verified by CI.
+
+Documentation tests are slow and not run as part of the usual workflows, but can be run locally
+with:
+
+```sh
+./tools/presubmit doc_tests
+```
+
 ### Integration tests
 
 Cargo has native support for

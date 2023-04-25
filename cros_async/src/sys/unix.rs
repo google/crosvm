@@ -29,7 +29,7 @@ use crate::Result;
 ///
 ///  # Example
 ///
-///    ```
+///    ```no_run
 ///    use cros_async::sys::unix::run_one_uring;
 ///
 ///    let fut = async { 55 };
