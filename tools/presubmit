@@ -413,6 +413,8 @@ GROUPS: List[Group] = [
         name="default_health_checks",
         doc="Health checks to run by default",
         checks=[
+            # Check if lockfiles need updating first. Otherwise another step may do the update.
+            "rust_lockfiles",
             "copyright_header",
             "file_ends_with_newline",
             "line_endings",
@@ -423,7 +425,6 @@ GROUPS: List[Group] = [
             "python_types",
             "rust_features",
             "rust_format",
-            "rust_lockfiles",
         ],
     ),
     # The groups below are used by builders in CI:
