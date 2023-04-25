@@ -1461,7 +1461,7 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
                         vm_clone,
                         components.vcpu_count,
                         ioapic_device_tube,
-                        Some(120),
+                        Some(24),
                     )
                     .context("failed to create IRQ chip")?,
                 )

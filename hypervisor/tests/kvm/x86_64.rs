@@ -146,7 +146,7 @@ fn ioapic_state() {
         ioregsel: 2,
         ioapicid: 4,
         current_interrupt_level_bitmap: 8,
-        redirect_table: [noredir; 120],
+        redirect_table: [noredir; 24],
     };
 
     // Initialize first 24 (kvm_state limit) redirection entries

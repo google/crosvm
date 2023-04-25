@@ -19,7 +19,6 @@ use hypervisor::IoapicState;
 use hypervisor::MsiAddressMessage;
 use hypervisor::MsiDataMessage;
 use hypervisor::TriggerMode;
-use hypervisor::MAX_IOAPIC_PINS;
 use hypervisor::NUM_IOAPIC_PINS;
 use remain::sorted;
 use serde::Deserialize;
@@ -214,7 +213,8 @@ impl BusDevice for Ioapic {
 
 impl Ioapic {
     pub fn new(irq_tube: Tube, num_pins: usize) -> Result<Ioapic> {
-        let num_pins = num_pins.max(NUM_IOAPIC_PINS).min(MAX_IOAPIC_PINS);
+        // TODO(dverkamp): clean this up once we are sure all callers use 24 pins.
+        assert_eq!(num_pins, NUM_IOAPIC_PINS);
         let mut entry = IoapicRedirectionTableEntry::new();
         entry.set_interrupt_mask(true);
         Ok(Ioapic {

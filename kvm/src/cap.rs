@@ -126,8 +126,6 @@ pub enum Cap {
     S390UserSigp = KVM_CAP_S390_USER_SIGP,
     ImmediateExit = KVM_CAP_IMMEDIATE_EXIT,
     ArmPmuV3 = KVM_CAP_ARM_PMU_V3,
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64",))]
-    IoapicNumPins = KVM_CAP_IOAPIC_NUM_PINS,
     ArmProtectedVm = KVM_CAP_ARM_PROTECTED_VM,
     ArmMte = KVM_CAP_ARM_MTE,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]

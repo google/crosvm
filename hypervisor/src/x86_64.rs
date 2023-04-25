@@ -430,9 +430,6 @@ pub struct IoapicRedirectionTableEntry {
 /// Number of pins on the standard KVM/IOAPIC.
 pub const NUM_IOAPIC_PINS: usize = 24;
 
-/// Maximum number of pins on the IOAPIC.
-pub const MAX_IOAPIC_PINS: usize = 120;
-
 /// Represents the state of the IOAPIC.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -450,7 +447,7 @@ pub struct IoapicState {
         serialize_with = "serialize_arr",
         deserialize_with = "deserialize_seq_to_arr"
     )]
-    pub redirect_table: [IoapicRedirectionTableEntry; 120],
+    pub redirect_table: [IoapicRedirectionTableEntry; NUM_IOAPIC_PINS],
 }
 
 impl Default for IoapicState {
