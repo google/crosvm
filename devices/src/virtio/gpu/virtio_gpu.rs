@@ -13,7 +13,6 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use base::error;
-use base::info;
 use base::FromRawDescriptor;
 use base::IntoRawDescriptor;
 use base::Protection;
@@ -687,9 +686,7 @@ impl VirtioGpu {
 
     /// Gets a capset from rutabaga.
     pub fn get_capset(&self, capset_id: u32, version: u32) -> VirtioGpuResult {
-        info!("virgl get capset");
         let capset = self.rutabaga.get_capset(capset_id, version)?;
-        info!("virgl get capset done");
         Ok(OkCapset(capset))
     }
 
