@@ -7,7 +7,9 @@ use std::thread::JoinHandle;
 
 use anyhow::Result;
 use arch::RunnableLinuxVm;
+use arch::VcpuArch;
 use arch::VirtioDeviceStub;
+use arch::VmArch;
 use base::AsRawDescriptor;
 use base::Event;
 use base::EventToken;
@@ -34,8 +36,6 @@ use devices::virtio::DisplayBackend;
 use devices::virtio::EventDevice;
 use devices::virtio::Gpu;
 use devices::virtio::GpuParameters;
-use hypervisor::VcpuX86_64 as VcpuArch;
-use hypervisor::VmX86_64 as VmArch;
 pub(crate) use metrics::log_descriptor;
 pub(crate) use metrics::MetricEventType;
 use sync::Mutex;

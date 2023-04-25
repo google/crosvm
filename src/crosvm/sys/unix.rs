@@ -45,10 +45,13 @@ use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
+use arch::IrqChipArch;
 use arch::LinuxArch;
 use arch::RunnableLinuxVm;
 use arch::VcpuAffinity;
+use arch::VcpuArch;
 use arch::VirtioDeviceStub;
+use arch::VmArch;
 use arch::VmComponents;
 use arch::VmImage;
 use base::ReadNotifier;
@@ -93,12 +96,6 @@ use devices::HostHotPlugKey;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use devices::HotPlugBus;
 use devices::IommuDevType;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use devices::IrqChipAArch64 as IrqChipArch;
-#[cfg(target_arch = "riscv64")]
-use devices::IrqChipRiscv64 as IrqChipArch;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use devices::IrqChipX86_64 as IrqChipArch;
 use devices::IrqEventIndex;
 use devices::IrqEventSource;
 use devices::KvmKernelIrqChip;
@@ -149,20 +146,8 @@ use hypervisor::CpuConfigX86_64;
 use hypervisor::Hypervisor;
 use hypervisor::HypervisorCap;
 use hypervisor::ProtectionType;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use hypervisor::VcpuAArch64 as VcpuArch;
-#[cfg(target_arch = "riscv64")]
-use hypervisor::VcpuRiscv64 as VcpuArch;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use hypervisor::VcpuX86_64 as VcpuArch;
 use hypervisor::Vm;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use hypervisor::VmAArch64 as VmArch;
 use hypervisor::VmCap;
-#[cfg(target_arch = "riscv64")]
-use hypervisor::VmRiscv64 as VmArch;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use hypervisor::VmX86_64 as VmArch;
 use jail::*;
 use libc;
 use minijail::Minijail;

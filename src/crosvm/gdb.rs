@@ -9,6 +9,8 @@ use std::time::Duration;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use aarch64::AArch64 as CrosvmArch;
 use anyhow::Context;
+use arch::GdbArch;
+use arch::VcpuArch;
 use base::error;
 use base::info;
 use base::Tube;
@@ -36,14 +38,6 @@ use gdbstub::target::ext::breakpoints::HwBreakpointOps;
 use gdbstub::target::Target;
 use gdbstub::target::TargetError::NonFatal;
 use gdbstub::target::TargetResult;
-#[cfg(target_arch = "aarch64")]
-use gdbstub_arch::aarch64::AArch64 as GdbArch;
-#[cfg(target_arch = "x86_64")]
-use gdbstub_arch::x86::X86_64_SSE as GdbArch;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use hypervisor::VcpuAArch64 as VcpuArch;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use hypervisor::VcpuX86_64 as VcpuArch;
 use remain::sorted;
 use sync::Mutex;
 use thiserror::Error as ThisError;

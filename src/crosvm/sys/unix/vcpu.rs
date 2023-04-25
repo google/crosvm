@@ -21,48 +21,23 @@ use aarch64::AArch64 as Arch;
 use aarch64::MsrHandlers;
 use anyhow::Context;
 use anyhow::Result;
+use arch::CpuConfigArch;
 use arch::CpuSet;
+use arch::IrqChipArch;
 use arch::LinuxArch;
 use arch::MsrConfig;
+use arch::VcpuArch;
+use arch::VcpuInitArch;
+use arch::VmArch;
 use base::*;
 use devices::Bus;
 use devices::IrqChip;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use devices::IrqChipAArch64 as IrqChipArch;
-#[cfg(target_arch = "riscv64")]
-use devices::IrqChipRiscv64 as IrqChipArch;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use devices::IrqChipX86_64 as IrqChipArch;
 use devices::VcpuRunState;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use hypervisor::CpuConfigAArch64 as CpuConfigArch;
-#[cfg(target_arch = "riscv64")]
-use hypervisor::CpuConfigRiscv64 as CpuConfigArch;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use hypervisor::CpuConfigX86_64 as CpuConfigArch;
 use hypervisor::IoOperation;
 use hypervisor::IoParams;
 use hypervisor::Vcpu;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use hypervisor::VcpuAArch64 as VcpuArch;
 use hypervisor::VcpuExit;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use hypervisor::VcpuInitAArch64 as VcpuInitArch;
-#[cfg(target_arch = "riscv64")]
-use hypervisor::VcpuInitRiscv64 as VcpuInitArch;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use hypervisor::VcpuInitX86_64 as VcpuInitArch;
-#[cfg(target_arch = "riscv64")]
-use hypervisor::VcpuRiscv64 as VcpuArch;
 use hypervisor::VcpuRunHandle;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use hypervisor::VcpuX86_64 as VcpuArch;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use hypervisor::VmAArch64 as VmArch;
-#[cfg(target_arch = "riscv64")]
-use hypervisor::VmRiscv64 as VmArch;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use hypervisor::VmX86_64 as VmArch;
 use libc::c_int;
 #[cfg(target_arch = "riscv64")]
 use riscv64::MsrHandlers;

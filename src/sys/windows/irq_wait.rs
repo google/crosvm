@@ -12,6 +12,7 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 use std::time::Instant;
 
+use arch::IrqChipArch;
 use base::error;
 use base::info;
 use base::warn;
@@ -23,10 +24,6 @@ use base::Tube;
 use base::TubeError;
 use base::WaitContext;
 use base::MAXIMUM_WAIT_OBJECTS;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use devices::IrqChipAArch64 as IrqChipArch;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use devices::IrqChipX86_64 as IrqChipArch;
 use devices::IrqEdgeEvent;
 use devices::IrqEventIndex;
 use devices::IrqEventSource;

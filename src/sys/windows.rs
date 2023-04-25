@@ -38,9 +38,13 @@ use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
+use arch::CpuConfigArch;
+use arch::IrqChipArch;
 use arch::LinuxArch;
 use arch::RunnableLinuxVm;
+use arch::VcpuArch;
 use arch::VirtioDeviceStub;
+use arch::VmArch;
 use arch::VmComponents;
 use arch::VmImage;
 use base::enable_high_res_timers;
@@ -105,10 +109,6 @@ use devices::BusDeviceObj;
 use devices::GvmIrqChip;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use devices::IrqChip;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use devices::IrqChipAArch64 as IrqChipArch;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use devices::IrqChipX86_64 as IrqChipArch;
 use devices::UserspaceIrqChip;
 use devices::VirtioPciDevice;
 #[cfg(feature = "whpx")]
@@ -141,24 +141,14 @@ use hypervisor::whpx::WhpxFeature;
 use hypervisor::whpx::WhpxVcpu;
 #[cfg(feature = "whpx")]
 use hypervisor::whpx::WhpxVm;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use hypervisor::CpuConfigX86_64;
 use hypervisor::Hypervisor;
 #[cfg(feature = "whpx")]
 use hypervisor::HypervisorCap;
 #[cfg(feature = "whpx")]
 use hypervisor::HypervisorX86_64;
 use hypervisor::ProtectionType;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use hypervisor::VcpuAArch64 as VcpuArch;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use hypervisor::VcpuX86_64 as VcpuArch;
 #[cfg(any(feature = "gvm", feature = "whpx"))]
 use hypervisor::Vm;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use hypervisor::VmAArch64 as VmArch;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use hypervisor::VmX86_64 as VmArch;
 use irq_wait::IrqWaitWorker;
 use jail::FakeMinijailStub as Minijail;
 #[cfg(not(feature = "crash-report"))]

@@ -20,10 +20,14 @@ use std::time::Instant;
 use aarch64::AArch64 as Arch;
 use anyhow::anyhow;
 use anyhow::Result;
+use arch::CpuConfigArch;
 use arch::CpuSet;
+use arch::IrqChipArch;
 use arch::LinuxArch;
 use arch::RunnableLinuxVm;
 use arch::VcpuAffinity;
+use arch::VcpuArch;
+use arch::VmArch;
 use base::error;
 use base::info;
 use base::set_audio_thread_priorities;
@@ -48,12 +52,6 @@ use crosvm_cli::sys::windows::exit::ExitContext;
 use crosvm_cli::sys::windows::exit::ExitContextAnyhow;
 use devices::tsc::TscSyncMitigations;
 use devices::Bus;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use devices::IrqChip;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use devices::IrqChipAArch64 as IrqChipArch;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use devices::IrqChipX86_64 as IrqChipArch;
 use devices::VcpuRunState;
 use futures::pin_mut;
 #[cfg(feature = "whpx")]
@@ -64,17 +62,9 @@ use hypervisor::HypervisorCap;
 use hypervisor::IoEventAddress;
 use hypervisor::IoOperation;
 use hypervisor::IoParams;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use hypervisor::VcpuAArch64 as VcpuArch;
 use hypervisor::VcpuExit;
 use hypervisor::VcpuInitX86_64;
 use hypervisor::VcpuRunHandle;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use hypervisor::VcpuX86_64 as VcpuArch;
-#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-use hypervisor::VmAArch64 as VmArch;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use hypervisor::VmX86_64 as VmArch;
 use sync::Condvar;
 use sync::Mutex;
 use vm_control::VmRunMode;
