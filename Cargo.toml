@@ -344,6 +344,9 @@ all-aarch64 = [
     "gunyah",
 ]
 
+## All features that are compiled and tested for riscv64
+all-riscv64 = [ ]
+
 ## All features that are compiled and tested for x86_64
 all-x86_64 = ["all-default", "plugin", "scudo"]
 

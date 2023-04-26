@@ -26,6 +26,7 @@ from impl.common import (
     Triple,
 )
 from impl.test_config import ROOT_TESTS, DO_NOT_RUN, DO_NOT_RUN_AARCH64, DO_NOT_RUN_WIN64, E2E_TESTS
+from impl.test_config import DO_NOT_BUILD_RISCV64
 from impl import testvm
 
 rsync = cmd("rsync")
@@ -139,12 +140,16 @@ def get_vm_arch(triple: Triple):
         return "x86_64"
     elif str(triple) == "aarch64-unknown-linux-gnu":
         return "aarch64"
+    elif str(triple) == "riscv64gc-unknown-linux-gnu":
+        return "riscv64"
     else:
         raise Exception(f"{triple} is not supported for running tests in a VM.")
 
 
 @argh.arg("--filter-expr", "-E", type=str, action="append", help="Nextest filter expression.")
-@argh.arg("--platform", "-p", help="Which platform to test. (x86_64, aarch64, armhw, mingw64)")
+@argh.arg(
+    "--platform", "-p", help="Which platform to test. (x86_64, aarch64, armhw, mingw64, riscv64)"
+)
 @argh.arg("--dut", help="Which device to test on. (vm or host)")
 @argh.arg("--no-default-features", help="Don't enable default features")
 @argh.arg("--no-run", "--build-only", help="Build only, do not run any tests.")
@@ -312,6 +317,9 @@ def main(
 
     console.print()
     console.rule("Building tests")
+
+    if triple == Triple.from_shorthand("riscv64"):
+        nextest_args += ["--exclude=" + s for s in DO_NOT_BUILD_RISCV64]
 
     nextest_run = configure_cargo(
         cmd("cargo nextest run"), triple, features, no_default_features

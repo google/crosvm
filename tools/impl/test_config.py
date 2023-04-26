@@ -12,6 +12,19 @@ BUILD_FEATURES: Dict[str, str] = {
     "x86_64-pc-windows-msvc": "win64",
 }
 
+# Do not build these on riscv64. They don't yet have riscv64 support of the backing libraries in the
+# dev container.
+DO_NOT_BUILD_RISCV64 = [
+    "tpm2",
+    "tpm2-sys",
+    "libvda",
+    "libva",
+    "ffmpeg",
+    "vmm_vhost",
+    "system_api",
+    "gpu_display",
+]
+
 # Configuration of integration tests
 #
 # The configuration below only applies to integration tests to fine tune which tests can be run

@@ -118,6 +118,7 @@ def check_rust_features(*_files: str):
             *collect_features("all-armhf"),
             *collect_features("all-mingw64"),
             *collect_features("all-msvc64"),
+            *collect_features("all-riscv64"),
         )
     )
     disabled_features = [
