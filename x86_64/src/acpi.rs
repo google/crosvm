@@ -242,9 +242,9 @@ fn create_facp_table(sci_irq: u16, force_s2idle: bool) -> SDT {
     facp.write(FADT_FIELD_MINOR_REVISION, FADT_MINOR_REVISION); // FADT minor version
     facp.write(FADT_FIELD_HYPERVISOR_ID, *b"CROSVM"); // Hypervisor Vendor Identity
 
-    facp.write(FADT_FIELD_RTC_CENTURY, devices::cmos::RTC_REG_CENTURY);
-    facp.write(FADT_FIELD_RTC_DAY_ALARM, devices::cmos::RTC_REG_ALARM_DAY);
-    facp.write(
+    facp.write::<u8>(FADT_FIELD_RTC_CENTURY, devices::cmos::RTC_REG_CENTURY);
+    facp.write::<u8>(FADT_FIELD_RTC_DAY_ALARM, devices::cmos::RTC_REG_ALARM_DAY);
+    facp.write::<u8>(
         FADT_FIELD_RTC_MONTH_ALARM,
         devices::cmos::RTC_REG_ALARM_MONTH,
     );

@@ -41,30 +41,30 @@ const INDEX_OFFSET: u64 = 0x0;
 const DATA_OFFSET: u64 = 0x1;
 const DATA_LEN: usize = 128;
 
-const RTC_REG_SEC: usize = 0x0;
-const RTC_REG_ALARM_SEC: usize = 0x1;
-const RTC_REG_MIN: usize = 0x2;
-const RTC_REG_ALARM_MIN: usize = 0x3;
-const RTC_REG_HOUR: usize = 0x4;
-const RTC_REG_ALARM_HOUR: usize = 0x5;
-const RTC_REG_WEEK_DAY: usize = 0x6;
-const RTC_REG_DAY: usize = 0x7;
-const RTC_REG_MONTH: usize = 0x8;
-const RTC_REG_YEAR: usize = 0x9;
-pub const RTC_REG_CENTURY: usize = 0x32;
-pub const RTC_REG_ALARM_DAY: usize = 0x33;
-pub const RTC_REG_ALARM_MONTH: usize = 0x34;
+const RTC_REG_SEC: u8 = 0x0;
+const RTC_REG_ALARM_SEC: u8 = 0x1;
+const RTC_REG_MIN: u8 = 0x2;
+const RTC_REG_ALARM_MIN: u8 = 0x3;
+const RTC_REG_HOUR: u8 = 0x4;
+const RTC_REG_ALARM_HOUR: u8 = 0x5;
+const RTC_REG_WEEK_DAY: u8 = 0x6;
+const RTC_REG_DAY: u8 = 0x7;
+const RTC_REG_MONTH: u8 = 0x8;
+const RTC_REG_YEAR: u8 = 0x9;
+pub const RTC_REG_CENTURY: u8 = 0x32;
+pub const RTC_REG_ALARM_DAY: u8 = 0x33;
+pub const RTC_REG_ALARM_MONTH: u8 = 0x34;
 
-const RTC_REG_B: usize = 0x0b;
+const RTC_REG_B: u8 = 0x0b;
 const RTC_REG_B_UNSUPPORTED: u8 = 0xdd;
 const RTC_REG_B_24_HOUR_MODE: u8 = 0x02;
 const RTC_REG_B_ALARM_ENABLE: u8 = 0x20;
 
-const RTC_REG_C: usize = 0x0c;
+const RTC_REG_C: u8 = 0x0c;
 const RTC_REG_C_IRQF: u8 = 0x80;
 const RTC_REG_C_AF: u8 = 0x20;
 
-const RTC_REG_D: usize = 0x0d;
+const RTC_REG_D: u8 = 0x0d;
 const RTC_REG_D_VRT: u8 = 0x80; // RAM and time valid
 
 pub type CmosNowFn = fn() -> DateTime<Utc>;
@@ -174,7 +174,7 @@ impl Cmos {
     }
 
     fn set_alarm(&mut self) {
-        if self.data[RTC_REG_B] & RTC_REG_B_ALARM_ENABLE != 0 {
+        if self.data[RTC_REG_B as usize] & RTC_REG_B_ALARM_ENABLE != 0 {
             let now = (self.now_fn)();
             let target = alarm_from_registers(now.year(), &self.data).and_then(|this_year| {
                 // There is no year register for the alarm. If the alarm target has
@@ -262,13 +262,13 @@ fn from_bcd(v: u8) -> Option<u32> {
 fn alarm_from_registers(year: i32, data: &[u8; DATA_LEN]) -> Option<DateTime<Utc>> {
     Utc.ymd_opt(
         year,
-        from_bcd(data[RTC_REG_ALARM_MONTH])?,
-        from_bcd(data[RTC_REG_ALARM_DAY])?,
+        from_bcd(data[RTC_REG_ALARM_MONTH as usize])?,
+        from_bcd(data[RTC_REG_ALARM_DAY as usize])?,
     )
     .and_hms_opt(
-        from_bcd(data[RTC_REG_ALARM_HOUR])?,
-        from_bcd(data[RTC_REG_ALARM_MIN])?,
-        from_bcd(data[RTC_REG_ALARM_SEC])?,
+        from_bcd(data[RTC_REG_ALARM_HOUR as usize])?,
+        from_bcd(data[RTC_REG_ALARM_MIN as usize])?,
+        from_bcd(data[RTC_REG_ALARM_SEC as usize])?,
     )
     .single()
 }
@@ -291,7 +291,7 @@ impl BusDevice for Cmos {
             INDEX_OFFSET => self.index = data[0] & INDEX_MASK,
             DATA_OFFSET => {
                 let mut data = data[0];
-                if self.index == RTC_REG_B as u8 {
+                if self.index == RTC_REG_B {
                     if data & RTC_REG_B_UNSUPPORTED != 0 {
                         error!(
                             "Ignoring unsupported bits: {:x}",
@@ -307,7 +307,7 @@ impl BusDevice for Cmos {
 
                 self.data[self.index as usize] = data;
 
-                if self.index == RTC_REG_B as u8 {
+                if self.index == RTC_REG_B {
                     self.set_alarm();
                 }
             }
@@ -336,7 +336,7 @@ impl BusDevice for Cmos {
                 let day = now.day(); // 1..=31
                 let month = now.month(); // 1..=12
                 let year = now.year();
-                match self.index as usize {
+                match self.index {
                     RTC_REG_SEC => to_bcd(seconds as u8),
                     RTC_REG_MIN => to_bcd(minutes as u8),
                     RTC_REG_HOUR => to_bcd(hours as u8),
