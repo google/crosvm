@@ -40,7 +40,9 @@ def RunSteps(api):
         api.crosvm.step_in_container(
             "Unshallow crosvm as needed",
             [
-                "for i in $(seq 1 5);do if [[ $(git rev-parse --is-shallow-repository) == 'true' ]]; then git fetch cros --unshallow; else break; fi; done"
+                "bash",
+                "-c",
+                "for i in $(seq 1 5);do if [[ $(git rev-parse --is-shallow-repository) == 'true' ]]; then git fetch cros --unshallow; else break; fi; done",
             ],
             cros=True,
         )
