@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["Rivos Inc."]
 edition = "2021"
 
-[dependencies]
+[target.'cfg(target_arch = "riscv64")'.dependencies]
 arch = { path = "../arch" }
 cros_fdt = { path = "../cros_fdt" }
 data_model = { path = "../common/data_model" }
