@@ -9,7 +9,7 @@ path = "src/lib.rs"
 
 [dependencies]
 base = "*"
-bitflags = "1"
+bitflags = "2.2.1"
 crossbeam-utils = "0.8"
 cros_tracing = { path = "../cros_tracing" }
 data_model = { path = "../common/data_model" }

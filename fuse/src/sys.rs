@@ -35,6 +35,8 @@ pub const FATTR_LOCKOWNER: u32 = 512;
 const FATTR_CTIME: u32 = 1024;
 
 bitflags! {
+    #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[repr(transparent)]
     pub struct SetattrValid: u32 {
         const MODE = FATTR_MODE;
         const UID = FATTR_UID;
@@ -68,6 +70,8 @@ const FOPEN_STREAM: u32 = 16;
 bitflags! {
     /// Options controlling the behavior of files opened by the server in response
     /// to an open or create request.
+    #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[repr(transparent)]
     pub struct OpenOptions: u32 {
         const DIRECT_IO = FOPEN_DIRECT_IO;
         const KEEP_CACHE = FOPEN_KEEP_CACHE;
@@ -163,6 +167,8 @@ const MAP_ALIGNMENT: u32 = 67108864;
 bitflags! {
     /// A bitfield passed in as a parameter to and returned from the `init` method of the
     /// `FileSystem` trait.
+    #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[repr(transparent)]
     pub struct FsOptions: u32 {
         /// Indicates that the filesystem supports asynchronous read requests.
         ///
@@ -422,6 +428,8 @@ const IOCTL_COMPAT_X32: u32 = 32;
 pub const IOCTL_MAX_IOV: usize = 256;
 
 bitflags! {
+    #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[repr(transparent)]
     pub struct IoctlFlags: u32 {
         /// 32bit compat ioctl on 64bit machine
         const COMPAT = IOCTL_COMPAT;
@@ -461,6 +469,8 @@ const SETUPMAPPING_FLAG_WRITE: u64 = 1;
 const SETUPMAPPING_FLAG_READ: u64 = 2;
 
 bitflags! {
+    #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[repr(transparent)]
     pub struct SetUpMappingFlags: u64 {
         /// Create writable mapping.
         const WRITE = SETUPMAPPING_FLAG_WRITE;

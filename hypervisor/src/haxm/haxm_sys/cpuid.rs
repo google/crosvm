@@ -17,6 +17,8 @@ const fn feature_bit(bit: u32) -> u32 {
  * Features for CPUID with EAX=01h stored in ECX
  */
 bitflags! {
+    #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[repr(transparent)]
     pub struct Feature1Ecx: u32 {
         const SSE3 = feature_bit(0);          /* 0x00000001  Streaming SIMD Extensions 3 */
         const PCLMULQDQ = feature_bit(1);     /* 0x00000002  PCLMULQDQ Instruction */
@@ -58,6 +60,8 @@ bitflags! {
  * Features for CPUID with EAX=01h stored in EDX
  */
 bitflags! {
+    #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[repr(transparent)]
     pub struct Feature1Edx: u32 {
         const FPU = feature_bit(0);    /* 0x00000001  Floating Point Unit On-Chip */
         const VME = feature_bit(1);    /* 0x00000002  Virtual 8086 Mode Enhancements */
@@ -96,6 +100,8 @@ bitflags! {
  * Features for CPUID with EAX=80000001h stored in ECX
  */
 bitflags! {
+    #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[repr(transparent)]
     pub struct Feature80000001Ecx: u32 {
         const LAHF = feature_bit(0);      /* 0x00000001  LAHF/SAHF Instructions */
         const ABM  = feature_bit(5);      /* 0x00000020  Advanced bit manipulation (lzcnt and popcnt) */
@@ -109,6 +115,8 @@ bitflags! {
  * Features for CPUID with EAX=80000001h stored in EDX
  */
 bitflags! {
+    #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[repr(transparent)]
     pub struct Feature80000001Edx: u32 {
         const SYSCALL = feature_bit(11); /* 0x00000800  SYSCALL/SYSRET Instructions */
         const NX = feature_bit(20);      /* 0x00100000  No-Execute Bit */

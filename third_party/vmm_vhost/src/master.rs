@@ -931,7 +931,7 @@ mod tests {
         master
             .set_config(
                 0x100,
-                unsafe { VhostUserConfigFlags::from_bits_unchecked(0xffff_ffff) },
+                VhostUserConfigFlags::from_bits_retain(0xffff_ffff),
                 &buf[0..4],
             )
             .unwrap_err();

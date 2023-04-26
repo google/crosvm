@@ -8,6 +8,8 @@ use crate::constants;
 
 bitflags! {
     /// Gives the driver a hint of intended usage to optimize allocation (e.g. tiling).
+    #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[repr(transparent)]
     pub struct UsageHint: u32 {
         /// Surface usage not indicated.
         const USAGE_HINT_GENERIC = constants::VA_SURFACE_ATTRIB_USAGE_HINT_GENERIC;

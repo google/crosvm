@@ -9,6 +9,8 @@ use crate::GuestMemory;
 use crate::Result;
 
 bitflags! {
+    #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[repr(transparent)]
     pub struct MemoryPolicy: u32 {
     }
 }

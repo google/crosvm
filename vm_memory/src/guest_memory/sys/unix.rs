@@ -14,6 +14,8 @@ use crate::GuestMemory;
 use crate::Result;
 
 bitflags! {
+    #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[repr(transparent)]
     pub struct MemoryPolicy: u32 {
         const USE_HUGEPAGES = 1;
         const LOCK_GUEST_MEMORY = (1 << 1);
