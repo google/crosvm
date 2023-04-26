@@ -320,14 +320,6 @@ pub fn get_exit_code_process(handle: RawHandle) -> io::Result<Option<DWORD>> {
 
 pub type HResult<T> = Result<T, HRESULT>;
 
-// windows-rs bindings
-#[cfg(target_env = "msvc")]
-mod bindings {
-    ::windows::include_bindings!();
-}
-#[cfg(target_env = "msvc")]
-pub use bindings::Windows::Win32::Globalization::ImmDisableIME;
-
 /// Each type of process should have its own type here. This affects both exit
 /// handling and sandboxing policy.
 ///
