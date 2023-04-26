@@ -370,6 +370,19 @@ mod test {
     }
 
     #[test]
+    fn drop_doesnt_block() {
+        let pool = BlockingPool::default();
+        let (tx, rx) = std::sync::mpsc::sync_channel(0);
+        // The blocking work should continue even though we drop the future.
+        //
+        // If we cancelled the work, then the recv call would fail. If we blocked on the work, then
+        // the send would never complete because the channel is size zero and so waits for a
+        // matching recv call.
+        std::mem::drop(pool.spawn(move || tx.send(()).unwrap()));
+        rx.recv().unwrap();
+    }
+
+    #[test]
     fn fast_tasks_with_short_keepalive() {
         let pool = BlockingPool::new(256, Duration::from_millis(1));
 
