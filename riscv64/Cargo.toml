@@ -4,11 +4,16 @@ version = "0.1.0"
 authors = ["Rivos Inc."]
 edition = "2021"
 
+[features]
+gdb = ["gdbstub", "gdbstub_arch", "arch/gdb", "hypervisor/gdb"]
+
 [target.'cfg(target_arch = "riscv64")'.dependencies]
 arch = { path = "../arch" }
 cros_fdt = { path = "../cros_fdt" }
 data_model = { path = "../common/data_model" }
 devices = { path = "../devices" }
+gdbstub = { version = "0.6.3", optional = true }
+gdbstub_arch = { version = "0.2.4", optional = true }
 hypervisor = { path = "../hypervisor" }
 kernel_cmdline = { path = "../kernel_cmdline" }
 kvm = { path = "../kvm" }

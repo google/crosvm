@@ -146,6 +146,7 @@ gdb = [
     "arch/gdb",
     "gdbstub",
     "gdbstub_arch",
+    "riscv64/gdb",
     "vm_control/gdb",
     "x86_64/gdb",
 ]
@@ -345,7 +346,9 @@ all-aarch64 = [
 ]
 
 ## All features that are compiled and tested for riscv64
-all-riscv64 = [ ]
+all-riscv64 = [
+    "gdb",
+]
 
 ## All features that are compiled and tested for x86_64
 all-x86_64 = ["all-default", "plugin", "scudo"]
@@ -356,7 +359,7 @@ all-armhf = [
     "android-sparse",
     "composite-disk",
     "default",
-    "gdb", # no effect because gdb is not supported for armhf
+    "gdb",
     "libvda-stub",
     "tpm",
 ]

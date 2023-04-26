@@ -2052,6 +2052,8 @@ dependencies = [
  "cros_fdt",
  "data_model 0.1.1-alpha.1",
  "devices",
+ "gdbstub",
+ "gdbstub_arch",
  "hypervisor",
  "kernel_cmdline",
  "kvm",

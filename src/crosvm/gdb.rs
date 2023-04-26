@@ -23,7 +23,7 @@ use gdbstub::stub::run_blocking;
 use gdbstub::stub::run_blocking::BlockingEventLoop;
 use gdbstub::stub::SingleThreadStopReason;
 use gdbstub::target::ext::base::single_register_access::SingleRegisterAccess;
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use gdbstub::target::ext::base::single_register_access::SingleRegisterAccessOps;
 use gdbstub::target::ext::base::singlethread::SingleThreadBase;
 use gdbstub::target::ext::base::singlethread::SingleThreadResume;
@@ -39,6 +39,8 @@ use gdbstub::target::Target;
 use gdbstub::target::TargetError::NonFatal;
 use gdbstub::target::TargetResult;
 use remain::sorted;
+#[cfg(target_arch = "riscv64")]
+use riscv64::Riscv64 as CrosvmArch;
 use sync::Mutex;
 use thiserror::Error as ThisError;
 use vm_control::VcpuControl;
@@ -290,7 +292,7 @@ impl SingleThreadBase for GdbStub {
         Some(self)
     }
 
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     #[inline(always)]
     fn support_single_register_access(&mut self) -> Option<SingleRegisterAccessOps<(), Self>> {
         Some(self)

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#![cfg(all(unix, target_arch = "x86_64", feature = "gdb"))]
+#![cfg(all(unix, target_arch = "x86_64"))]
 
 use std::arch::x86_64::CpuidResult;
 use std::arch::x86_64::__cpuid;

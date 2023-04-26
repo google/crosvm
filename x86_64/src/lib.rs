@@ -97,17 +97,17 @@ use devices::ProxyDevice;
 use devices::Serial;
 use devices::SerialHardware;
 use devices::SerialParameters;
-#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+#[cfg(feature = "gdb")]
 use gdbstub_arch::x86::reg::id::X86_64CoreRegId;
-#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+#[cfg(feature = "gdb")]
 use gdbstub_arch::x86::reg::X86SegmentRegs;
-#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+#[cfg(feature = "gdb")]
 use gdbstub_arch::x86::reg::X86_64CoreRegs;
-#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+#[cfg(feature = "gdb")]
 use gdbstub_arch::x86::reg::X87FpuInternalRegs;
-#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+#[cfg(feature = "gdb")]
 use hypervisor::x86_64::Regs;
-#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+#[cfg(feature = "gdb")]
 use hypervisor::x86_64::Sregs;
 use hypervisor::CpuConfigX86_64;
 use hypervisor::Hypervisor;
@@ -1032,7 +1032,7 @@ impl arch::LinuxArch for X8664arch {
             rt_cpus: components.rt_cpus,
             delay_rt: components.delay_rt,
             bat_control,
-            #[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+            #[cfg(feature = "gdb")]
             gdb: components.gdb,
             pm: Some(acpi_dev_resource.pm),
             root_config: pci,
@@ -1118,7 +1118,7 @@ impl arch::LinuxArch for X8664arch {
     }
 }
 
-#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+#[cfg(feature = "gdb")]
 impl<T: VcpuX86_64> arch::GdbOps<T> for X8664arch {
     type Error = Error;
 
@@ -1318,7 +1318,7 @@ impl<T: VcpuX86_64> arch::GdbOps<T> for X8664arch {
     }
 }
 
-#[cfg(all(target_arch = "x86_64", feature = "gdb"))]
+#[cfg(feature = "gdb")]
 // return the translated address and the size of the page it resides in.
 fn phys_addr(mem: &GuestMemory, vaddr: u64, sregs: &Sregs) -> Result<(u64, u64)> {
     const CR0_PG_MASK: u64 = 1 << 31;

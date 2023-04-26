@@ -40,7 +40,7 @@ use riscv64::Riscv64 as Arch;
 use sync::Condvar;
 use sync::Mutex;
 use vm_control::*;
-#[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
+#[cfg(feature = "gdb")]
 use vm_memory::GuestMemory;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use x86_64::msr::MsrHandlers;
@@ -258,12 +258,8 @@ fn vcpu_loop<V>(
     from_main_tube: mpsc::Receiver<VcpuControl>,
     use_hypervisor_signals: bool,
     privileged_vm: bool,
-    #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
-    to_gdb_tube: Option<
-        mpsc::Sender<VcpuDebugStatusMessage>,
-    >,
-    #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
-    guest_mem: GuestMemory,
+    #[cfg(feature = "gdb")] to_gdb_tube: Option<mpsc::Sender<VcpuDebugStatusMessage>>,
+    #[cfg(feature = "gdb")] guest_mem: GuestMemory,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] msr_handlers: MsrHandlers,
     guest_suspended_cvar: Arc<(Mutex<bool>, Condvar)>,
     #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
@@ -334,10 +330,7 @@ where
                                 VmRunMode::Exiting => return ExitState::Stop,
                             }
                         }
-                        #[cfg(all(
-                            any(target_arch = "x86_64", target_arch = "aarch64"),
-                            feature = "gdb"
-                        ))]
+                        #[cfg(feature = "gdb")]
                         VcpuControl::Debug(d) => {
                             if let Err(e) = crate::crosvm::gdb::vcpu_control_debug(
                                 cpu_id,
@@ -462,10 +455,7 @@ where
                     handle_s2idle_request(privileged_vm, &guest_suspended_cvar);
                 }
                 Ok(VcpuExit::Debug) => {
-                    #[cfg(all(
-                        any(target_arch = "x86_64", target_arch = "aarch64"),
-                        feature = "gdb"
-                    ))]
+                    #[cfg(feature = "gdb")]
                     if let Err(e) =
                         crate::crosvm::gdb::vcpu_exit_debug(cpu_id, to_gdb_tube.as_ref())
                     {
@@ -551,9 +541,7 @@ pub fn run_vcpu<V>(
     requires_pvclock_ctrl: bool,
     from_main_tube: mpsc::Receiver<VcpuControl>,
     use_hypervisor_signals: bool,
-    #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))] to_gdb_tube: Option<
-        mpsc::Sender<VcpuDebugStatusMessage>,
-    >,
+    #[cfg(feature = "gdb")] to_gdb_tube: Option<mpsc::Sender<VcpuDebugStatusMessage>>,
     enable_per_vm_core_scheduling: bool,
     cpu_config: Option<CpuConfigArch>,
     privileged_vm: bool,
@@ -585,7 +573,7 @@ where
                     return ExitState::Stop;
                 }
 
-                #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
+                #[cfg(feature = "gdb")]
                 let guest_mem = vm.get_memory().clone();
 
                 let runnable_vcpu = runnable_vcpu(
@@ -642,15 +630,9 @@ where
                     from_main_tube,
                     use_hypervisor_signals,
                     privileged_vm,
-                    #[cfg(all(
-                        any(target_arch = "x86_64", target_arch = "aarch64"),
-                        feature = "gdb"
-                    ))]
+                    #[cfg(feature = "gdb")]
                     to_gdb_tube,
-                    #[cfg(all(
-                        any(target_arch = "x86_64", target_arch = "aarch64"),
-                        feature = "gdb"
-                    ))]
+                    #[cfg(feature = "gdb")]
                     guest_mem,
                     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
                     msr_handlers,

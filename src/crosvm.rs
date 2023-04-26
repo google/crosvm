@@ -7,7 +7,7 @@
 
 pub mod cmdline;
 pub mod config;
-#[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
+#[cfg(feature = "gdb")]
 pub mod gdb;
 #[cfg(feature = "gpu")]
 mod gpu_config;

@@ -184,9 +184,9 @@ use crate::crosvm::config::HypervisorKind;
 use crate::crosvm::config::IrqChipKind;
 use crate::crosvm::config::SharedDir;
 use crate::crosvm::config::SharedDirKind;
-#[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
+#[cfg(feature = "gdb")]
 use crate::crosvm::gdb::gdb_thread;
-#[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
+#[cfg(feature = "gdb")]
 use crate::crosvm::gdb::GdbStub;
 #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
 use crate::crosvm::ratelimit::Ratelimit;
@@ -1198,7 +1198,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
             .collect::<Result<Vec<SDT>>>()?,
         rt_cpus: cfg.rt_cpus.clone(),
         delay_rt: cfg.delay_rt,
-        #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
+        #[cfg(feature = "gdb")]
         gdb: None,
         dmi_path: cfg.dmi_path.clone(),
         no_i8042: cfg.no_i8042,
@@ -1608,7 +1608,7 @@ where
     let mut control_tubes = Vec::new();
     let mut irq_control_tubes = Vec::new();
 
-    #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
+    #[cfg(feature = "gdb")]
     if let Some(port) = cfg.gdb {
         // GDB needs a control socket to interrupt vcpus.
         let (gdb_host_tube, gdb_control_tube) = Tube::pair().context("failed to create tube")?;
@@ -2626,7 +2626,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         drop_capabilities().context("failed to drop process capabilities")?;
     }
 
-    #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
+    #[cfg(feature = "gdb")]
     // Create a channel for GDB thread.
     let (to_gdb_channel, from_vcpu_channel) = if linux.gdb.is_some() {
         let (s, r) = mpsc::channel();
@@ -2711,7 +2711,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
     #[allow(unused_mut)]
     let mut run_mode = VmRunMode::Running;
-    #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
+    #[cfg(feature = "gdb")]
     if to_gdb_channel.is_some() {
         // Wait until a GDB client attaches
         run_mode = VmRunMode::Breakpoint;
@@ -2785,7 +2785,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             linux.vm.check_capability(VmCap::PvClockSuspend),
             from_main_channel,
             use_hypervisor_signals,
-            #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
+            #[cfg(feature = "gdb")]
             to_gdb_channel.clone(),
             cfg.per_vm_core_scheduling,
             cpu_config,
@@ -2807,7 +2807,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         vcpu_handles.push((handle, to_vcpu_channel));
     }
 
-    #[cfg(all(any(target_arch = "x86_64", target_arch = "aarch64"), feature = "gdb"))]
+    #[cfg(feature = "gdb")]
     // Spawn GDB thread.
     if let Some((gdb_port_num, gdb_control_tube)) = linux.gdb.take() {
         let to_vcpu_channels = vcpu_handles
