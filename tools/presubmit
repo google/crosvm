@@ -128,7 +128,7 @@ def check_crosvm_tests(platform: Platform):
                 dut = "--dut=vm"
             elif platform == "aarch64":
                 dut = "--dut=vm"
-        return cmd("./tools/run_tests --platform", platform, dut).with_color_flag()
+        return cmd("./tools/run_tests --verbose --platform", platform, dut).with_color_flag()
 
     check.__doc__ = f"Runs all crosvm tests for {platform}."
 
@@ -139,7 +139,7 @@ def check_crosvm_unit_tests(platform: Platform):
     def check(_: CheckContext):
         if not platform_is_supported(platform):
             return None
-        return cmd("./tools/run_tests --platform", platform).with_color_flag()
+        return cmd("./tools/run_tests --verbose --platform", platform).with_color_flag()
 
     check.__doc__ = f"Runs crosvm unit tests for {platform}."
 
@@ -149,7 +149,7 @@ def check_crosvm_unit_tests(platform: Platform):
 def check_crosvm_build(platform: Platform, features: Optional[str]):
     def check(_: CheckContext):
         return cmd(
-            "./tools/run_tests --no-run --platform",
+            "./tools/run_tests --no-run --verbose --platform",
             platform,
             f"--features={features}" if features is not None else None,
         ).with_color_flag()
