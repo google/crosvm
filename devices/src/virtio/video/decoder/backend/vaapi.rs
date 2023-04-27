@@ -415,24 +415,24 @@ impl AsBufferHandle for GuestResourceHandle {
 }
 
 /// A convenience type implementing persistent slice access for BufferHandles.
-struct BufferMapping<T: AsBufferHandle> {
+struct BufferMapping<'a, T: AsBufferHandle> {
     #[allow(dead_code)]
     /// The underlying resource. Must be kept so as not to drop the BufferHandle
-    resource: T,
+    resource: &'a T,
     /// The mapping that backs the underlying slices returned by AsRef and AsMut
     mapping: MemoryMappingArena,
 }
 
-impl<T: AsBufferHandle> BufferMapping<T> {
+impl<'a, T: AsBufferHandle> BufferMapping<'a, T> {
     /// Creates a new BufferMap
-    pub fn new(resource: T, offset: usize, size: usize) -> Result<Self> {
+    pub fn new(resource: &'a T, offset: usize, size: usize) -> Result<Self> {
         let mapping = resource.as_buffer_handle().get_mapping(offset, size)?;
 
         Ok(Self { resource, mapping })
     }
 }
 
-impl<T: AsBufferHandle> AsRef<[u8]> for BufferMapping<T> {
+impl<'a, T: AsBufferHandle> AsRef<[u8]> for BufferMapping<'a, T> {
     fn as_ref(&self) -> &[u8] {
         let mapping = &self.mapping;
         // Safe because the mapping is linear and we own it, so it will not be unmapped during
@@ -441,7 +441,7 @@ impl<T: AsBufferHandle> AsRef<[u8]> for BufferMapping<T> {
     }
 }
 
-impl<T: AsBufferHandle> AsMut<[u8]> for BufferMapping<T> {
+impl<'a, T: AsBufferHandle> AsMut<[u8]> for BufferMapping<'a, T> {
     fn as_mut(&mut self) -> &mut [u8] {
         let mapping = &self.mapping;
         // Safe because the mapping is linear and we own it, so it will not be unmapped during
@@ -511,7 +511,7 @@ impl VaapiDecoderSession {
 
         // Get a mapping from the start of the buffer to the size of the
         // underlying decoded data in the Image.
-        let mut output_map = BufferMapping::new(output_buffer, 0, buffer_size)?;
+        let mut output_map = BufferMapping::new(&output_buffer, 0, buffer_size)?;
 
         let output_bytes = output_map.as_mut();
 
@@ -648,7 +648,7 @@ impl VaapiDecoderSession {
         } = job;
 
         let bitstream_map = BufferMapping::new(
-            resource,
+            &resource,
             offset.try_into().unwrap(),
             bytes_used.try_into().unwrap(),
         )
