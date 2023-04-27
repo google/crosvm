@@ -1270,7 +1270,7 @@ fn create_whpx_vm(
     force_calibrated_tsc_leaf: bool,
     vm_evt_wrtube: SendTube,
 ) -> Result<WhpxVm> {
-    let cpu_config = CpuConfigX86_64::new(
+    let cpu_config = hypervisor::CpuConfigX86_64::new(
         force_calibrated_tsc_leaf,
         false, /* host_cpu_topology */
         false, /* enable_hwp */
