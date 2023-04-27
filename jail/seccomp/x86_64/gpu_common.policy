@@ -93,6 +93,7 @@ getsockopt: 1
 shutdown: 1
 
 # Rules for Mesa's shader binary cache.
+fallocate: 1
 flock: 1
 inotify_add_watch: 1
 inotify_init1: 1
