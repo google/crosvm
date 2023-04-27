@@ -1379,15 +1379,13 @@ fn run_kvm(device_path: Option<&Path>, cfg: Config, components: VmComponents) ->
             .context("failed to disable MSR_PLATFORM_INFO read access")?;
     }
 
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     if !cfg.userspace_msr.is_empty() {
         vm.enable_userspace_msr()
             .context("failed to enable userspace MSR handling, do you have kernel 5.10 or later")?;
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        {
-            let msr_list = get_override_msr_list(&cfg.userspace_msr);
-            vm.set_msr_filter(msr_list)
-                .context("failed to set msr filter")?;
-        }
+        let msr_list = get_override_msr_list(&cfg.userspace_msr);
+        vm.set_msr_filter(msr_list)
+            .context("failed to set msr filter")?;
     }
 
     // Check that the VM was actually created in protected mode as expected.
@@ -2799,6 +2797,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                         .context("failed to clone vcpu cgroup tasks file")?,
                 ),
             },
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             cfg.userspace_msr.clone(),
             guest_suspended_cvar.clone(),
             #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]

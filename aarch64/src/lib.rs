@@ -14,8 +14,6 @@ use std::sync::Arc;
 
 use arch::get_serial_cmdline;
 use arch::GetSerialCmdlineError;
-use arch::MsrConfig;
-use arch::MsrExitHandlerError;
 use arch::RunnableLinuxVm;
 use arch::VmComponents;
 use arch::VmImage;
@@ -987,31 +985,6 @@ impl AArch64 {
         }
 
         VcpuInitAArch64 { regs }
-    }
-}
-
-pub struct MsrHandlers;
-
-impl MsrHandlers {
-    pub fn new() -> Self {
-        Self {}
-    }
-
-    pub fn read(&self, _index: u32) -> Option<u64> {
-        None
-    }
-
-    pub fn write(&self, _index: u32, _data: u64) -> Option<()> {
-        None
-    }
-
-    pub fn add_handler(
-        &mut self,
-        _index: u32,
-        _msr_config: MsrConfig,
-        _cpu_id: usize,
-    ) -> std::result::Result<(), MsrExitHandlerError> {
-        Ok(())
     }
 }
 

@@ -59,11 +59,6 @@ impl KvmVm {
     pub fn set_pvclock_arch(&self, _state: &ClockState) -> Result<()> {
         Err(Error::new(ENXIO))
     }
-
-    /// Enable userspace msr. This is not available on riscv, just succeed.
-    pub fn enable_userspace_msr(&self) -> Result<()> {
-        Ok(())
-    }
 }
 
 impl Kvm {

@@ -15,11 +15,13 @@ use arch::set_default_serial_parameters;
 use arch::CpuSet;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use arch::MsrAction;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use arch::MsrConfig;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use arch::MsrFilter;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use arch::MsrRWType;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use arch::MsrValueFrom;
 use arch::Pstore;
 use arch::VcpuAffinity;
@@ -1171,6 +1173,7 @@ pub struct Config {
     #[cfg(unix)]
     pub unmap_guest_memory_on_fork: bool,
     pub usb: bool,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub userspace_msr: BTreeMap<u32, MsrConfig>,
     pub vcpu_affinity: Option<VcpuAffinity>,
     pub vcpu_cgroup_path: Option<PathBuf>,
@@ -1379,6 +1382,7 @@ impl Default for Config {
             #[cfg(unix)]
             unmap_guest_memory_on_fork: false,
             usb: true,
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             userspace_msr: BTreeMap::new(),
             vcpu_affinity: None,
             vcpu_cgroup_path: None,
@@ -1482,6 +1486,7 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
         }
     } else {
         // TODO(b/215297064): Support generic cpuaffinity if there's a need.
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         if !cfg.userspace_msr.is_empty() {
             for (_, msr_config) in cfg.userspace_msr.iter() {
                 if msr_config.from == MsrValueFrom::RWFromRunningCPU {
