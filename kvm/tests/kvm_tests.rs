@@ -6,6 +6,12 @@
 
 use base::pagesize;
 use base::Event;
+#[cfg(any(
+    target_arch = "x86",
+    target_arch = "x86_64",
+    target_arch = "arm",
+    target_arch = "aarch64"
+))]
 use base::FromRawDescriptor;
 use base::MappedRegion;
 use base::MemoryMappingBuilder;
@@ -283,6 +289,12 @@ fn unregister_ioevent() {
 }
 
 #[test]
+#[cfg(any(
+    target_arch = "x86",
+    target_arch = "x86_64",
+    target_arch = "arm",
+    target_arch = "aarch64"
+))]
 fn irqfd_resample() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
