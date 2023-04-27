@@ -56,11 +56,10 @@ pub use crate::dll_notification::*;
 #[macro_export]
 macro_rules! syscall_bail {
     ($details:expr) => {
-        ::anyhow::bail!(
-            "{} (Error code {})",
-            $details,
+        // SAFETY: Safe because GetLastError is thread safe and won't access the memory.
+        ::anyhow::bail!("{} (Error code {})", $details, unsafe {
             ::winapi::um::errhandlingapi::GetLastError()
-        )
+        })
     };
 }
 
