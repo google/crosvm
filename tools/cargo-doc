@@ -1,17 +1,31 @@
-#!/usr/bin/env bash
+#!/usr/bin/env python3
 # Copyright 2021 The ChromiumOS Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-set -ex
+from typing import Optional
+
+from impl.common import CROSVM_ROOT, chdir, cmd, quoted, run_main
 
 # Build cargo-doc
 # $ ./tools/cargo-doc --target-dir /path/to/dir
 
-cargo doc \
-    --workspace \
-    --no-deps \
-    --exclude crosvm-fuzz \
-    --features="all-x86_64" \
-    --document-private-items \
-    "$@"
+cargo = cmd("cargo").with_color_flag()
+
+
+def main(target_dir: Optional[str] = None, *extra_args: str):
+    chdir(CROSVM_ROOT)
+    cargo(
+        "doc",
+        "--workspace",
+        "--no-deps",
+        "--exclude=crosvm-fuzz",
+        "--features=all-x86_64",
+        "--document-private-items",
+        quoted(f"--target-dir={target_dir}") if target_dir else None,
+        *extra_args,
+    ).fg()
+
+
+if __name__ == "__main__":
+    run_main(main)
