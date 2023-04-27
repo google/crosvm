@@ -733,3 +733,35 @@ pub fn create_acpi_tables(
 
     Some(rsdp_offset)
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::acpi::*;
+
+    #[test]
+    fn facp_table_creation() {
+        let sci_irq = 5;
+        let force_s2idle = true;
+        let facp = create_facp_table(sci_irq as u16, force_s2idle);
+
+        assert_eq!(facp.read::<u32>(FADT_FIELD_FLAGS), FADT_LOW_POWER_S2IDLE);
+        assert_eq!(facp.read::<u16>(FADT_FIELD_SCI_INTERRUPT), sci_irq);
+        assert_eq!(
+            facp.read::<u8>(FADT_FIELD_MINOR_REVISION),
+            FADT_MINOR_REVISION
+        );
+        assert_eq!(facp.read::<[u8; 6]>(FADT_FIELD_HYPERVISOR_ID), *b"CROSVM");
+        assert_eq!(
+            facp.read::<u8>(FADT_FIELD_RTC_CENTURY),
+            devices::cmos::RTC_REG_CENTURY
+        );
+        assert_eq!(
+            facp.read::<u8>(FADT_FIELD_RTC_DAY_ALARM),
+            devices::cmos::RTC_REG_ALARM_DAY
+        );
+        assert_eq!(
+            facp.read::<u8>(FADT_FIELD_RTC_MONTH_ALARM),
+            devices::cmos::RTC_REG_ALARM_MONTH
+        );
+    }
+}
