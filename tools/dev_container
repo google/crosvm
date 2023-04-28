@@ -199,6 +199,7 @@ def main(
     stop: bool = False,
     clean: bool = False,
     hermetic: bool = False,
+    interactive: bool = False,
     use_docker: bool = False,
     self_test: bool = False,
     pull: bool = False,
@@ -267,10 +268,13 @@ def main(
             docker("pull", f"gcr.io/crosvm-infra/crosvm_dev:{DEV_IMAGE_VERSION}").fg()
         return
 
-    # Default to interactive mode if a tty is present.
-    if sys.stdin.isatty():
+    # If a command is provided run non-interactive unless explicitly asked for.
+    tty_args = []
+    if not command or interactive:
+        if not sys.stdin.isatty():
+            raise Exception("Trying to run an interactive session in a non-interactive terminal.")
         tty_args = ["--interactive", "--tty"]
-    else:
+    elif sys.stdin.isatty():
         # Even if run non-interactively, we do want to pass along a tty for proper output.
         tty_args = ["--tty"]
 
