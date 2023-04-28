@@ -14,7 +14,7 @@ use serde::Serialize;
 use serde::Serializer;
 use sync::Mutex;
 
-/// Serialize data T inside an Arc<Mutex<T>>. T must be serializable.
+/// Serialize data `T` inside an `Arc<Mutex<T>>`. `T` must be serializable.
 ///
 /// NOTE: This does not validate already serialized Mutexes and data. If multiple structs contain a
 /// clone of the Arc, and they are all being serialized, this will result in the same data being

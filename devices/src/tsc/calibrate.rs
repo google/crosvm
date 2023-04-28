@@ -34,7 +34,7 @@ pub enum TscCalibrationError {
     SetCpuAffinityError { core: usize, err: base::Error },
 }
 
-/// Get the standard deviation of a Vec<T>.
+/// Get the standard deviation of a `Vec<T>`.
 pub fn standard_deviation<T: num_traits::ToPrimitive + num_traits::Num + Copy>(items: &[T]) -> f64 {
     let sum: T = items.iter().fold(T::zero(), |acc: T, elem| acc + *elem);
     let count = items.len();

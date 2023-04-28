@@ -446,8 +446,8 @@ pub unsafe extern "C" fn crosvm_client_resize_disk(
     .unwrap_or(false)
 }
 
-/// Similar to internally used `BalloonStats` but using i64 instead of
-/// Option<u64>. `None` (or values bigger than i64::max) will be encoded as -1.
+/// Similar to internally used `BalloonStats` but using `i64` instead of
+/// `Option<u64>`. `None` (or values bigger than `i64::max`) will be encoded as -1.
 #[repr(C)]
 pub struct BalloonStatsFfi {
     swap_in: i64,

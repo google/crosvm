@@ -71,7 +71,7 @@ pub struct ConfigWriteResult {
     pub io_add: Vec<BusRange>,
 
     /// Device specified at PciAddress will be removed after this config write
-    /// - 'Vec<PciAddress>>': specified device will be removed after this config write
+    /// - `Vec<PciAddress>>`: specified device will be removed after this config write
     pub removed_pci_devices: Vec<PciAddress>,
 }
 
