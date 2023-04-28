@@ -157,7 +157,7 @@ panic-memfd = []
 qcow = ["disk/qcow"]
 
 ## Enables vmm-swap of guest memory. This is only available on Linux.
-swap = ["aarch64/swap", "arch/swap", "devices/swap", "vm_control/swap", "x86_64/swap", "dep:swap"]
+swap = ["aarch64/swap", "arch/swap", "devices/swap", "vm_control/swap", "x86_64/swap", "swap/enable"]
 
 ## Enables collection of VM statistics.
 stats = ["devices/stats"]
@@ -429,6 +429,7 @@ serde_json = "*"
 serde_keyvalue = { path = "serde_keyvalue", features = ["argh_derive"] }
 smallvec = "1.6.1"
 static_assertions = "1.1"
+swap = { path = "swap", default-features = false }
 sync = { path = "common/sync" }
 tempfile = "3"
 thiserror = { version = "1.0.20" }
@@ -450,9 +451,6 @@ aarch64 = { path = "aarch64" }
 minijail = "*" # provided by ebuild
 p9 = "*"
 vhost = { path = "vhost" }
-
-[target.'cfg(target_os="linux")'.dependencies]
-swap = { path = "swap", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 anti_tamper = { path = "anti_tamper" }

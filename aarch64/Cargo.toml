@@ -6,6 +6,7 @@ edition = "2021"
 
 [features]
 gdb = ["gdbstub", "gdbstub_arch", "arch/gdb", "hypervisor/gdb"]
+swap = ["swap/enable"]
 
 [dependencies]
 arch = { path = "../arch" }
@@ -23,6 +24,7 @@ memoffset = "0.6"
 rand = "0.8"
 remain = "*"
 resources = { path = "../resources" }
+swap = { path = "../swap" }
 sync = { path = "../common/sync" }
 base = { path = "../base" }
 thiserror = "*"
@@ -31,6 +33,3 @@ vm_memory = { path = "../vm_memory" }
 
 [target.'cfg(unix)'.dependencies]
 minijail = "*"
-
-[target.'cfg(target_os="linux")'.dependencies]
-swap = { path = "../swap", optional = true }

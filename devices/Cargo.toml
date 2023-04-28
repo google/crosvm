@@ -29,6 +29,7 @@ gfxstream = ["gpu", "rutabaga_gfx/gfxstream"]
 slirp = ["net_util/slirp"]
 stats = []
 seccomp_trace = []
+swap = ["swap/enable"]
 whpx = []
 
 [dependencies]
@@ -82,6 +83,7 @@ system_api = { path = "../system_api", optional = true }
 thiserror = "1.0.20"
 tpm2 = { path = "../tpm2", optional = true }
 cros_tracing = { path = "../cros_tracing" }
+swap = { path = "../swap" }
 uuid = { version = "1", features = [ "serde" ] }
 vmm_vhost = { path = "../third_party/vmm_vhost", features = ["vmm", "device", "vfio-device"] }
 virtio_sys = { path = "../virtio_sys" }
@@ -97,9 +99,6 @@ p9 = "*"
 usb_util = { path = "../usb_util" }
 vfio_sys = { path = "../vfio_sys" }
 vhost = { path = "../vhost" }
-
-[target.'cfg(target_os="linux")'.dependencies]
-swap = { path = "../swap", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 broker_ipc = { path = "../broker_ipc" }

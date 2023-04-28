@@ -89,6 +89,7 @@ use rutabaga_gfx::RutabagaMappedRegion;
 use rutabaga_gfx::VulkanInfo;
 use serde::Deserialize;
 use serde::Serialize;
+use swap::Status as SwapStatus;
 use sync::Mutex;
 #[cfg(unix)]
 pub use sys::FsMappingRequest;
@@ -1178,15 +1179,6 @@ pub enum SwapCommand {
     SwapOut,
     Disable,
     Status,
-}
-
-cfg_if::cfg_if! {
-    if #[cfg(feature = "swap")] {
-        use swap::Status as SwapStatus;
-    } else {
-        #[derive(Serialize, Deserialize, Debug, Clone)]
-        pub enum SwapStatus {}
-    }
 }
 
 ///

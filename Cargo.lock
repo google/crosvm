@@ -2253,6 +2253,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base",
+ "cfg-if",
  "cros_tracing",
  "data_model 0.1.1-alpha.1",
  "jail",
