@@ -12,7 +12,7 @@ use super::Result;
 use crate::syscall;
 
 /// Obtain file system type of the file system that the file is served from.
-#[allow(clippy::useless_conversion)] // f_type conversion is necessary on 32-bit platforms
+#[allow(clippy::unnecessary_cast)]
 pub fn get_filesystem_type(file: &File) -> Result<i64> {
     let mut statfs_buf = MaybeUninit::<libc::statfs64>::uninit();
     // Safe because we just got the memory space with exact required amount and
@@ -20,7 +20,7 @@ pub fn get_filesystem_type(file: &File) -> Result<i64> {
     syscall!(unsafe { fstatfs64(file.as_raw_fd(), statfs_buf.as_mut_ptr()) })?;
     // Safe because the kernel guarantees the struct is initialized.
     let statfs_buf = unsafe { statfs_buf.assume_init() };
-    Ok(statfs_buf.f_type.into())
+    Ok(statfs_buf.f_type as i64)
 }
 
 #[cfg(test)]

@@ -539,7 +539,8 @@ impl<F: FileSystem + Sync> Server<F> {
         let Rename2In { newdir, flags, .. } =
             zerocopy_from_reader(&mut r).map_err(Error::DecodeMessage)?;
 
-        let flags = flags & (libc::RENAME_EXCHANGE | libc::RENAME_NOREPLACE);
+        #[allow(clippy::unnecessary_cast)]
+        let flags = flags & (libc::RENAME_EXCHANGE | libc::RENAME_NOREPLACE) as u32;
 
         self.do_rename(in_header, size_of::<Rename2In>(), newdir, flags, r, w)
     }
