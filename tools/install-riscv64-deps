@@ -7,7 +7,8 @@ set -ex
 sudo apt-get install --yes --no-install-recommends \
     binutils-riscv64-linux-gnu \
     g++-riscv64-linux-gnu \
-    libc6-dev-riscv64-cross
+    libc6-dev-riscv64-cross \
+    qemu-user-static
 
 # Add riscv64gc target to Rust
 rustup target add riscv64gc-unknown-linux-gnu
@@ -56,5 +57,11 @@ sudo mkdir -p /usr/riscv64-linux-gnu/usr/include/sys/
 sudo cp ./libcap/include/sys/capability.h /usr/riscv64-linux-gnu/usr/include/sys/
 
 sudo ln -f /usr/bin/pkg-config /usr/bin/riscv64-linux-gnu-pkg-config
+
+# Copy the riscv64 libc to the host so that we can run the riscv64 static qemu.
+sudo cp /usr/riscv64-linux-gnu/lib/ld-linux-riscv64-lp64d.so.1 /lib
+
+# Copy the libraries to more standard path so the unit test running qemu can find them.
+sudo cp /usr/riscv64-linux-gnu/lib/* /usr/lib/riscv64-linux-gnu/
 
 popd || exit 1
