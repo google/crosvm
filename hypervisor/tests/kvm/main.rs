@@ -28,6 +28,8 @@ use hypervisor::IoEventAddress;
 use hypervisor::Vm;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use hypervisor::VmAArch64;
+#[cfg(target_arch = "riscv64")]
+use hypervisor::VmRiscv64;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use hypervisor::VmX86_64;
 use kvm::Cap;

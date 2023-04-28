@@ -30,6 +30,8 @@ const ARCH: &str = "x86_64";
 const ARCH: &str = "arm";
 #[cfg(target_arch = "aarch64")]
 const ARCH: &str = "aarch64";
+#[cfg(target_arch = "riscv64")]
+const ARCH: &str = "riscv64";
 
 /// Timeout when waiting for pipes that are expected to be ready.
 const COMMUNICATION_TIMEOUT: Duration = Duration::from_secs(5);
