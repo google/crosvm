@@ -3118,9 +3118,11 @@ impl TryFrom<RunCommand> for super::config::Config {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "config-file")]
     use super::*;
 
     #[test]
+    #[cfg(feature = "config-file")]
     fn merge_runcommands() {
         let cmd2 = RunCommand {
             mem: Some(MemOptions { size: Some(4096) }),
