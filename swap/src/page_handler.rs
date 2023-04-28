@@ -39,7 +39,7 @@ use crate::userfaultfd::Error as UffdError;
 use crate::userfaultfd::Userfaultfd;
 use crate::worker::Channel;
 use crate::worker::Task;
-use crate::Metrics;
+use crate::SwapMetrics;
 
 pub(crate) const MLOCK_BUDGET: usize = 16 * 1024 * 1024; // = 16MB
 const PREFETCH_THRESHOLD: usize = 4 * 1024 * 1024; // = 4MB
@@ -653,16 +653,16 @@ impl<'a> PageHandler<'a> {
             .sum()
     }
 
-    /// Generates [Metrics].
-    pub fn compute_metrics(&self) -> Metrics {
-        Metrics {
-            resident_pages: self.compute_resident_pages(),
-            copied_from_file_pages: self.compute_copied_from_file_pages(),
-            copied_from_staging_pages: self.compute_copied_from_staging_pages(),
-            zeroed_pages: self.compute_zeroed_pages(),
-            redundant_pages: self.compute_redundant_pages(),
-            staging_pages: self.compute_staging_pages(),
-            swap_pages: self.compute_swap_pages(),
+    /// Generates [SwapMetrics].
+    pub fn compute_metrics(&self) -> SwapMetrics {
+        SwapMetrics {
+            resident_pages: self.compute_resident_pages() as u64,
+            copied_from_file_pages: self.compute_copied_from_file_pages() as u64,
+            copied_from_staging_pages: self.compute_copied_from_staging_pages() as u64,
+            zeroed_pages: self.compute_zeroed_pages() as u64,
+            redundant_pages: self.compute_redundant_pages() as u64,
+            staging_pages: self.compute_staging_pages() as u64,
+            swap_pages: self.compute_swap_pages() as u64,
         }
     }
 }

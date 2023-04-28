@@ -89,7 +89,7 @@ use rutabaga_gfx::RutabagaMappedRegion;
 use rutabaga_gfx::VulkanInfo;
 use serde::Deserialize;
 use serde::Serialize;
-use swap::Status as SwapStatus;
+use swap::SwapStatus;
 use sync::Mutex;
 #[cfg(unix)]
 pub use sys::FsMappingRequest;

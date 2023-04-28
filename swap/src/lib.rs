@@ -33,22 +33,23 @@ use serde::Serialize;
 ///
 /// This should not contain fields but be a plain enum because this will be displayed to user using
 /// `serde_json` crate.
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum State {
+#[repr(C)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub enum SwapState {
     /// vmm-swap is ready. userfaultfd is disabled until vmm-swap is enabled.
-    Ready,
-    /// Pages in guest memory are moved to the staging memory.
-    Pending,
-    /// Trimming staging memory.
-    TrimInProgress,
-    /// swap-out is in progress.
-    SwapOutInProgress,
-    /// swap out succeeded.
-    Active,
-    /// swap-in is in progress.
-    SwapInInProgress,
+    Ready = 0,
     /// swap out failed.
-    Failed,
+    Failed = 1,
+    /// Pages in guest memory are moved to the staging memory.
+    Pending = 2,
+    /// Trimming staging memory.
+    TrimInProgress = 3,
+    /// swap-out is in progress.
+    SwapOutInProgress = 4,
+    /// swap out succeeded.
+    Active = 5,
+    /// swap-in is in progress.
+    SwapInInProgress = 6,
 }
 
 /// Latency and number of pages of swap operations (move to staging, swap out, swap in).
@@ -63,54 +64,57 @@ pub enum State {
 /// | `Active`            | transition record of `swap out`              |
 /// | `SwapInInProgress`  | transition record of `swap disable`          |
 /// | `Failed`            | empty                                        |
+#[repr(C)]
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Default)]
-pub struct StateTransition {
+pub struct SwapStateTransition {
     /// The number of pages moved for the state transition.
-    pub pages: usize,
+    pub pages: u64,
     /// Time taken for the state transition.
-    pub time_ms: u128,
+    pub time_ms: u64,
 }
 
 /// Current metrics of vmm-swap.
 ///
 /// This is only available while vmm-swap is enabled.
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub struct Metrics {
+#[repr(C)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default)]
+pub struct SwapMetrics {
     /// count of pages on RAM.
-    pub resident_pages: usize,
+    pub resident_pages: u64,
     /// count of pages copied from the vmm-swap file.
-    pub copied_from_file_pages: usize,
+    pub copied_from_file_pages: u64,
     /// count of pages copied from the staging memory.
-    pub copied_from_staging_pages: usize,
+    pub copied_from_staging_pages: u64,
     /// count of pages initialized with zero.
-    pub zeroed_pages: usize,
+    pub zeroed_pages: u64,
     /// count of pages which were already initialized on page faults. This can happen when several
     /// threads/processes access the uninitialized/removed page at the same time.
-    pub redundant_pages: usize,
+    pub redundant_pages: u64,
     /// count of pages in staging memory.
-    pub staging_pages: usize,
+    pub staging_pages: u64,
     /// count of pages in swap files.
-    pub swap_pages: usize,
+    pub swap_pages: u64,
 }
 
 /// The response to `crosvm swap status` command.
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Status {
-    /// Current vmm-swap [State].
-    pub state: State,
-    /// Current [Metrics] of vmm-swap.
-    pub metrics: Metrics,
-    /// Latency and number of pages for current [State]. See [StateTransition] for details.
-    pub state_transition: StateTransition,
+#[repr(C)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub struct SwapStatus {
+    /// Current vmm-swap [SwapState].
+    pub state: SwapState,
+    /// Current [SwapMetrics] of vmm-swap.
+    pub metrics: SwapMetrics,
+    /// Latency and number of pages for current [SwapState]. See [SwapStateTransition] for details.
+    pub state_transition: SwapStateTransition,
 }
 
-impl Status {
-    /// Creates dummy [Status].
+impl SwapStatus {
+    /// Creates dummy [SwapStatus].
     pub fn dummy() -> Self {
-        Status {
-            state: State::Pending,
-            metrics: Metrics::default(),
-            state_transition: StateTransition::default(),
+        SwapStatus {
+            state: SwapState::Pending,
+            metrics: SwapMetrics::default(),
+            state_transition: SwapStateTransition::default(),
         }
     }
 }

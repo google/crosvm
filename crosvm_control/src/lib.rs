@@ -22,6 +22,7 @@ use std::path::PathBuf;
 
 use libc::c_char;
 use libc::ssize_t;
+pub use swap::SwapStatus;
 use vm_control::client::*;
 use vm_control::BalloonControlCommand;
 use vm_control::BalloonStats;
@@ -212,6 +213,66 @@ pub unsafe extern "C" fn crosvm_client_swap_disable_vm(socket_path: *const c_cha
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
             vms_request(&VmRequest::Swap(SwapCommand::Disable), socket_path).is_ok()
+        } else {
+            false
+        }
+    })
+    .unwrap_or(false)
+}
+
+/// Trim staging memory for vmm swap for crosvm instance whose control socket is listening on
+/// `socket_path`.
+///
+/// The function returns true on success or false if an error occured.
+///
+/// # Safety
+///
+/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
+/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
+/// null pointers are passed.
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_client_swap_trim(socket_path: *const c_char) -> bool {
+    catch_unwind(|| {
+        if let Some(socket_path) = validate_socket_path(socket_path) {
+            vms_request(&VmRequest::Swap(SwapCommand::Trim), socket_path).is_ok()
+        } else {
+            false
+        }
+    })
+    .unwrap_or(false)
+}
+
+/// Returns vmm-swap status of the crosvm instance whose control socket is listening on
+/// `socket_path`.
+///
+/// The parameters `status` is optional and will only be written to if they are non-null.
+///
+/// The function returns true on success or false if an error occured.
+///
+/// # Safety
+///
+/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
+/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
+/// null pointers are passed.
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_client_swap_status(
+    socket_path: *const c_char,
+    status: *mut SwapStatus,
+) -> bool {
+    catch_unwind(|| {
+        if let Some(socket_path) = validate_socket_path(socket_path) {
+            let request = &VmRequest::Swap(SwapCommand::Status);
+            if let Ok(VmResponse::SwapStatus(response)) = handle_request(request, socket_path) {
+                if !status.is_null() {
+                    // SAFETY: just checked that `status` is not null.
+                    unsafe {
+                        *status = response;
+                    }
+                }
+                true
+            } else {
+                false
+            }
         } else {
             false
         }

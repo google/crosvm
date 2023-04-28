@@ -700,6 +700,7 @@ dependencies = [
  "cbindgen",
  "cc",
  "libc",
+ "swap",
  "tempfile",
  "vm_control",
 ]
