@@ -56,8 +56,10 @@ use hypervisor::CpuHybridType;
 use hypervisor::ProtectionType;
 use merge::vec::append;
 use resources::AddressRange;
+#[cfg(feature = "config-file")]
 use serde::de::Error as SerdeError;
 use serde::Deserialize;
+#[cfg(feature = "config-file")]
 use serde::Deserializer;
 use serde::Serialize;
 #[cfg(feature = "gpu")]
