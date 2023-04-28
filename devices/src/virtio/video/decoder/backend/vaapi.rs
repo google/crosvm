@@ -260,7 +260,6 @@ impl VaapiDecoder {
 
         let va_profiles = display.query_config_profiles()?;
 
-        let mut profiles = Vec::new();
         let mut in_fmts = Vec::new();
         let mut out_fmts = Vec::new();
         let mut profiles_map: BTreeMap<Format, Vec<Profile>> = Default::default();
@@ -271,6 +270,8 @@ impl VaapiDecoder {
         let levels: BTreeMap<Format, Vec<Level>> = Default::default();
 
         for va_profile in va_profiles {
+            let mut profiles = Vec::new();
+
             let entrypoints = display.query_config_entrypoints(va_profile)?;
             if !entrypoints
                 .iter()
@@ -280,6 +281,13 @@ impl VaapiDecoder {
                 // VAEntrypointVLD.
                 continue;
             }
+
+            let profile = match Profile::try_from(va_profile) {
+                Ok(p) => p,
+                // Skip if we cannot convert to a valid virtio format
+                Err(_) => continue,
+            };
+
             // Manually push all VP8 profiles, since VA exposes only a single
             // VP8 profile for all of these
             if va_profile == libva::VAProfile::VAProfileVP8Version0_3 {
@@ -287,13 +295,9 @@ impl VaapiDecoder {
                 profiles.push(Profile::VP8Profile1);
                 profiles.push(Profile::VP8Profile2);
                 profiles.push(Profile::VP8Profile3);
+            } else {
+                profiles.push(profile);
             }
-
-            let profile = match Profile::try_from(va_profile) {
-                Ok(p) => p,
-                // Skip if we cannot convert to a valid virtio format
-                Err(_) => continue,
-            };
 
             let coded_cap = VaapiDecoder::get_coded_cap(display.as_ref(), va_profile)?;
             let raw_caps = VaapiDecoder::get_raw_caps(Rc::clone(&display), &coded_cap)?;
@@ -317,7 +321,7 @@ impl VaapiDecoder {
             let coded_format = profile.to_format();
             match profiles_map.entry(coded_format) {
                 Entry::Vacant(e) => {
-                    e.insert(vec![profile]);
+                    e.insert(profiles);
                 }
                 Entry::Occupied(mut ps) => {
                     ps.get_mut().push(profile);
