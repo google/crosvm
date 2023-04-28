@@ -13,11 +13,12 @@ use anyhow::anyhow;
 use anyhow::Result;
 use base::MappedRegion;
 use base::MemoryMappingArena;
-use cros_codecs::decoders::BlockingMode;
-use cros_codecs::decoders::DynDecodedHandle;
+use cros_codecs::decoders::DecodeError;
+use cros_codecs::decoders::DecodedHandle;
 use cros_codecs::decoders::VideoDecoder;
+use cros_codecs::libva;
+use cros_codecs::libva::Display;
 use cros_codecs::DecodedFormat;
-use libva::Display;
 
 use crate::virtio::video::decoder::Capability;
 use crate::virtio::video::decoder::DecoderBackend;
@@ -45,19 +46,6 @@ struct PendingJob {
     resource: GuestResourceHandle,
     offset: u32,
     bytes_used: u32,
-}
-
-/// A set of params returned when a dynamic resolution change is found in the
-/// bitstream.
-pub struct DrcParams {
-    /// The minimum amount of buffers needed to decode the stream.
-    min_num_buffers: usize,
-    /// The stream's new width.
-    width: u32,
-    /// The stream's new height.
-    height: u32,
-    /// The visible resolution.
-    visible_rect: Rect,
 }
 
 impl TryFrom<DecodedFormat> for Format {
@@ -398,7 +386,7 @@ trait AsBufferHandle {
     fn as_buffer_handle(&self) -> &Self::BufferHandle;
 }
 
-impl AsBufferHandle for &mut GuestResource {
+impl AsBufferHandle for GuestResource {
     type BufferHandle = GuestResourceHandle;
 
     fn as_buffer_handle(&self) -> &Self::BufferHandle {
@@ -458,49 +446,24 @@ pub struct VaapiDecoderSession {
     /// is called or when we detect a dynamic resolution change.
     output_queue_state: OutputQueueState,
     /// Queue containing decoded pictures.
-    ready_queue: VecDeque<Box<dyn DynDecodedHandle>>,
+    ready_queue: VecDeque<Box<dyn DecodedHandle>>,
     /// Queue containing the buffers we have not yet submitted to the codec.
     submit_queue: VecDeque<PendingJob>,
     /// The event queue we can use to signal new events.
     event_queue: EventQueue<DecoderEvent>,
     /// Whether the decoder is currently flushing.
     flushing: bool,
-    /// The last value for "display_order" we have managed to output.
-    last_display_order: u64,
 }
 
 impl VaapiDecoderSession {
-    fn change_resolution(&mut self, new_params: DrcParams) -> Result<()> {
-        // Ask the client for new buffers.
-        self.event_queue
-            .queue_event(DecoderEvent::ProvidePictureBuffers {
-                min_num_buffers: u32::try_from(new_params.min_num_buffers)?,
-                width: new_params.width as i32,
-                height: new_params.height as i32,
-                visible_rect: new_params.visible_rect,
-            })?;
-
-        // Drop our output queue and wait for the new number of output buffers.
-        self.output_queue_state = match &self.output_queue_state {
-            // If this is part of the initialization step, then do not switch states.
-            OutputQueueState::AwaitingBufferCount => OutputQueueState::AwaitingBufferCount,
-            OutputQueueState::Decoding { .. } => OutputQueueState::Drc,
-            _ => return Err(anyhow!("Invalid state during DRC.")),
-        };
-
-        Ok(())
-    }
-
     /// Copy raw decoded data from `image` into the output buffer
-    pub fn output_picture(&mut self, decoded_frame: &dyn DynDecodedHandle) -> Result<bool> {
+    pub fn output_picture(&mut self, decoded_frame: &dyn DecodedHandle) -> Result<bool> {
         let output_queue = self.output_queue_state.output_queue_mut()?;
 
         // Output buffer to be used.
         let (picture_buffer_id, output_buffer) = match output_queue.try_get_ready_buffer() {
             Some(ready_buffer) => ready_buffer,
-            None => {
-                return Ok(false);
-            }
+            None => return Ok(false),
         };
 
         let display_resolution = decoded_frame.display_resolution();
@@ -511,8 +474,7 @@ impl VaapiDecoderSession {
 
         // Get a mapping from the start of the buffer to the size of the
         // underlying decoded data in the Image.
-        let mut output_map = BufferMapping::new(&output_buffer, 0, buffer_size)?;
-
+        let mut output_map = BufferMapping::new(output_buffer, 0, buffer_size)?;
         let output_bytes = output_map.as_mut();
 
         backend_handle.read(output_bytes)?;
@@ -548,74 +510,12 @@ impl VaapiDecoderSession {
             return Ok(());
         }
 
-        while let Some(mut decoded_frame) = self.ready_queue.pop_front() {
-            let display_order = decoded_frame.display_order().expect(
-                "A frame should have its display order set before being returned from the decoder.",
-            );
-
-            // We are receiving frames as-is from the decoder, which means there
-            // may be gaps if the decoder returns frames out of order.
-            // We simply wait in this case, as the decoder will eventually
-            // produce more frames that makes the gap not exist anymore.
-            //
-            // On the other hand, we take care to not stall. We compromise by
-            // emitting frames out of order instead. This should not really
-            // happen in production and a warn is left so we can think about
-            // bumping the number of resources allocated by the backends.
-            let gap = display_order != 0 && display_order != self.last_display_order + 1;
-
-            let stall = if let Some(left) = self.codec.num_resources_left() {
-                left == 0
-            } else {
-                false
-            };
-
-            if gap && !stall {
-                self.ready_queue.push_front(decoded_frame);
-                break;
-            } else if gap && stall {
-                self.ready_queue.push_front(decoded_frame);
-
-                // Try polling the decoder for all pending jobs.
-                let handles = self.codec.poll(BlockingMode::Blocking)?;
-                self.ready_queue.extend(handles);
-
-                self.ready_queue
-                    .make_contiguous()
-                    .sort_by_key(|h| h.display_order());
-
-                decoded_frame = self.ready_queue.pop_front().unwrap();
-
-                // See whether we *still* have a gap
-                let display_order = decoded_frame.display_order().expect(
-                "A frame should have its display order set before being returned from the decoder."
-                );
-
-                let gap = display_order != 0 && display_order != self.last_display_order + 1;
-
-                if gap {
-                    // If the stall is not due to a missing frame, then this may
-                    // signal that we are not allocating enough resources.
-                    base::warn!("Outputting out of order to avoid stalling.");
-                    base::warn!(
-                        "Expected {}, got {}",
-                        self.last_display_order + 1,
-                        display_order
-                    );
-                    base::warn!("Either a dropped frame, or not enough resources for the codec.");
-                    base::warn!(
-                        "Increasing the number of allocated resources can possibly fix this."
-                    );
-                }
-            }
-
+        while let Some(decoded_frame) = self.ready_queue.pop_front() {
             let outputted = self.output_picture(decoded_frame.as_ref())?;
             if !outputted {
                 self.ready_queue.push_front(decoded_frame);
                 break;
             }
-
-            self.last_display_order = display_order;
         }
 
         Ok(())
@@ -638,104 +538,96 @@ impl VaapiDecoderSession {
         }
     }
 
-    fn decode_one_job(&mut self, job: PendingJob) -> VideoResult<()> {
-        let PendingJob {
-            resource_id,
-            timestamp,
-            resource,
-            offset,
-            bytes_used,
-        } = job;
-
-        let bitstream_map = BufferMapping::new(
-            &resource,
-            offset.try_into().unwrap(),
-            bytes_used.try_into().unwrap(),
-        )
-        .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?;
-
-        let frames = self.codec.decode(timestamp, bitstream_map.as_ref());
-
-        // We are always done with the input buffer after `self.codec.decode()`.
-        self.event_queue
-            .queue_event(DecoderEvent::NotifyEndOfBitstreamBuffer(resource_id))
-            .map_err(|e| {
-                VideoError::BackendFailure(anyhow!(
-                    "Can't queue the NotifyEndOfBitstream event {}",
-                    e
-                ))
-            })?;
-
-        match frames {
-            Ok(frames) => {
-                if self.codec.negotiation_possible() {
-                    let resolution = self.codec.coded_resolution().unwrap();
-
-                    let drc_params = DrcParams {
-                        min_num_buffers: self.codec.num_resources_total(),
-                        width: resolution.width,
-                        height: resolution.height,
-                        visible_rect: Rect {
-                            left: 0,
-                            top: 0,
-                            right: resolution.width as i32,
-                            bottom: resolution.height as i32,
-                        },
-                    };
-
-                    self.change_resolution(drc_params)
-                        .map_err(VideoError::BackendFailure)?;
-                }
-
-                for decoded_frame in frames {
-                    self.ready_queue.push_back(decoded_frame);
-                }
-
-                self.ready_queue
-                    .make_contiguous()
-                    .sort_by_key(|h| h.display_order());
-
-                self.drain_ready_queue()
+    fn drain_submit_queue(&mut self) -> VideoResult<()> {
+        while let Some(job) = self.submit_queue.front() {
+            let bitstream_map =
+                BufferMapping::new(&job.resource, job.offset as usize, job.bytes_used as usize)
                     .map_err(VideoError::BackendFailure)?;
 
-                Ok(())
-            }
-
-            Err(e) => {
-                let event_queue = &mut self.event_queue;
-
-                event_queue
-                    .queue_event(DecoderEvent::NotifyError(VideoError::BackendFailure(
-                        anyhow!("Decoding buffer {} failed", resource_id),
-                    )))
-                    .map_err(|e| {
-                        VideoError::BackendFailure(anyhow!(
-                            "Can't queue the NotifyError event {}",
-                            e
-                        ))
-                    })?;
-
-                Err(VideoError::BackendFailure(anyhow!(e)))
-            }
-        }
-    }
-
-    fn drain_submit_queue(&mut self) -> VideoResult<()> {
-        while let Some(queued_buffer) = self.submit_queue.pop_front() {
-            match self.codec.num_resources_left() {
-                Some(left) if left == 0 => {
-                    self.submit_queue.push_front(queued_buffer);
-                    break;
+            match self.codec.decode(job.timestamp, bitstream_map.as_ref()) {
+                Ok(_) => {
+                    // We are always done with the input buffer after decode returns.
+                    self.event_queue
+                        .queue_event(DecoderEvent::NotifyEndOfBitstreamBuffer(job.resource_id))
+                        .map_err(|e| {
+                            VideoError::BackendFailure(anyhow!(
+                                "Can't queue the NotifyEndOfBitstream event {}",
+                                e
+                            ))
+                        })?;
+                    self.submit_queue.pop_front();
                 }
-
-                _ => self.decode_one_job(queued_buffer)?,
+                Err(DecodeError::CheckEvents) => {
+                    self.process_decoder_events()?;
+                }
+                Err(e) => {
+                    self.event_queue
+                        .queue_event(DecoderEvent::NotifyError(VideoError::BackendFailure(
+                            anyhow!("Decoding buffer {} failed", job.resource_id),
+                        )))
+                        .map_err(|e| {
+                            VideoError::BackendFailure(anyhow!(
+                                "Can't queue the NotifyError event {}",
+                                e
+                            ))
+                        })?;
+                    return Err(VideoError::BackendFailure(e.into()));
+                }
             }
         }
 
         Ok(())
     }
 
+    fn process_decoder_events(&mut self) -> VideoResult<()> {
+        while let Some(event) = self.codec.next_event() {
+            match event {
+                cros_codecs::decoders::DecoderEvent::FrameReady(frame) => {
+                    self.ready_queue.push_back(frame)
+                }
+                cros_codecs::decoders::DecoderEvent::FormatChanged(format) => {
+                    let resolution = format.coded_resolution();
+
+                    // Ask the client for new buffers.
+                    self.event_queue
+                        .queue_event(DecoderEvent::ProvidePictureBuffers {
+                            min_num_buffers: format.num_resources_total() as u32,
+                            width: resolution.width as i32,
+                            height: resolution.height as i32,
+                            visible_rect: Rect {
+                                left: 0,
+                                top: 0,
+                                right: resolution.width as i32,
+                                bottom: resolution.height as i32,
+                            },
+                        })
+                        .map_err(|e| VideoError::BackendFailure(e.into()))?;
+
+                    // Drop our output queue and wait for the new number of output buffers.
+                    self.output_queue_state = match &self.output_queue_state {
+                        // If this is part of the initialization step, then do not switch states.
+                        OutputQueueState::AwaitingBufferCount => {
+                            OutputQueueState::AwaitingBufferCount
+                        }
+                        OutputQueueState::Decoding { .. } => OutputQueueState::Drc,
+                        OutputQueueState::Drc => {
+                            return Err(VideoError::BackendFailure(anyhow!(
+                                "Invalid state during DRC."
+                            )))
+                        }
+                    };
+                }
+            }
+        }
+
+        self.drain_ready_queue()
+            .map_err(VideoError::BackendFailure)?;
+
+        Ok(())
+    }
+
     fn try_make_progress(&mut self) -> VideoResult<()> {
+        self.process_decoder_events()?;
         // Note that the ready queue must be drained first to avoid deadlock.
         // This is because draining the submit queue will fail if the ready
         // queue is full enough, since this prevents the deallocation of the
@@ -880,20 +772,13 @@ impl DecoderSession for VaapiDecoderSession {
 
         self.try_make_progress()?;
 
-        if self.submit_queue.len() != 0 {
+        if !self.submit_queue.is_empty() {
             return Ok(());
         }
 
         // Retrieve ready frames from the codec, if any.
-        let pics = self
-            .codec
-            .flush()
-            .map_err(|e| VideoError::BackendFailure(anyhow!(e)))?;
-
-        self.ready_queue.extend(pics);
-        self.ready_queue
-            .make_contiguous()
-            .sort_by_key(|h| h.display_order());
+        self.codec.flush();
+        self.process_decoder_events()?;
 
         self.drain_ready_queue()
             .map_err(VideoError::BackendFailure)?;
@@ -903,14 +788,15 @@ impl DecoderSession for VaapiDecoderSession {
     }
 
     fn reset(&mut self) -> VideoResult<()> {
+        // Make sure the codec is not active.
+        self.codec.flush();
+        self.process_decoder_events()?;
+
         // Drop the queued output buffers.
         self.clear_output_buffers()?;
 
         self.submit_queue.clear();
         self.ready_queue.clear();
-        self.codec
-            .flush()
-            .map_err(|e| VideoError::BackendFailure(anyhow!("Flushing the codec failed {}", e)))?;
 
         self.event_queue
             .queue_event(DecoderEvent::ResetCompleted(Ok(())))
@@ -1012,9 +898,8 @@ impl DecoderBackend for VaapiDecoder {
     }
 
     fn new_session(&mut self, format: Format) -> VideoResult<Self::Session> {
-        let display = Display::open().ok_or(VideoError::BackendFailure(anyhow!(
-            "failed to open VA display"
-        )))?;
+        let display = Display::open()
+            .ok_or_else(|| VideoError::BackendFailure(anyhow!("failed to open VA display")))?;
 
         let codec: Box<dyn VideoDecoder> = match format {
             Format::VP8 => Box::new(
@@ -1048,7 +933,6 @@ impl DecoderBackend for VaapiDecoder {
             submit_queue: Default::default(),
             event_queue: EventQueue::new().map_err(|e| VideoError::BackendFailure(anyhow!(e)))?,
             flushing: Default::default(),
-            last_display_order: Default::default(),
         })
     }
 }

@@ -17,7 +17,7 @@ libvda-stub = ["libvda/libvda-stub"]
 geniezone = []
 tpm = ["tpm2"]
 usb = []
-vaapi = ["libva", "cros-codecs/vaapi", "downcast-rs", "crc32fast"]
+vaapi = ["cros-codecs/vaapi", "downcast-rs", "crc32fast"]
 video-decoder = []
 video-encoder = []
 minigbm = ["rutabaga_gfx/minigbm"]
@@ -47,7 +47,7 @@ cfg-if = "1.0.0"
 chrono = { version = "*", features = [ "serde" ] }
 crc32fast = { version = "1.2.1", optional = true }
 cros_async = { path = "../cros_async" }
-cros-codecs = { path = "../media/cros-codecs", optional = true }
+cros-codecs = { version = "0.0.2", optional = true }
 crosvm_cli = { path = "../crosvm_cli" }
 data_model = { path = "../common/data_model" }
 dbus = { version = "0.9", optional = true }
@@ -60,7 +60,6 @@ rutabaga_gfx = { path = "../rutabaga_gfx" }
 hypervisor = { path = "../hypervisor" }
 kvm_sys = { path = "../kvm_sys" }
 libc = "*"
-libva = { path = "../media/libva", optional = true }
 libvda = { path = "../media/libvda", optional = true }
 linux_input_sys = { path = "../linux_input_sys" }
 memoffset = { version = "0.6" }

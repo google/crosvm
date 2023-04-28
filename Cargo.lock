@@ -505,16 +505,30 @@ dependencies = [
 
 [[package]]
 name = "cros-codecs"
-version = "0.1.0"
+version = "0.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb1e490c786cfbfd653b9b8b3875291d76cd78d84a9dddebbc16c1802795c938"
 dependencies = [
  "anyhow",
  "bitreader",
  "bytes",
  "crc32fast",
+ "cros-libva",
  "enumn",
- "libva",
  "log",
  "thiserror",
+]
+
+[[package]]
+name = "cros-libva"
+version = "0.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb352d93b5e5bd2fe76ed9d8d2b8c1994da13b2b75f0dfd5e90d69ea8829e6c5"
+dependencies = [
+ "anyhow",
+ "bitflags 1.3.2",
+ "log",
+ "pkg-config",
 ]
 
 [[package]]
@@ -815,7 +829,6 @@ dependencies = [
  "libc",
  "libcras",
  "libtest-mimic",
- "libva",
  "libvda",
  "linux_input_sys",
  "memoffset 0.6.5",
@@ -1477,17 +1490,6 @@ dependencies = [
  "clap 4.1.8",
  "termcolor",
  "threadpool",
-]
-
-[[package]]
-name = "libva"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bitflags 2.2.1",
- "crc32fast",
- "log",
- "pkg-config",
 ]
 
 [[package]]
