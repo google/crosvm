@@ -699,6 +699,7 @@ impl arch::LinuxArch for AArch64 {
             vmwdt_cfg,
             dump_device_tree_blob,
             &|writer, phandles| vm.create_fdt(writer, phandles),
+            components.dynamic_power_coefficient,
         )
         .map_err(Error::CreateFdt)?;
 

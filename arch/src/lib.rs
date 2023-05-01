@@ -320,6 +320,7 @@ pub struct VmComponents {
     #[cfg(feature = "direct")]
     pub direct_gpe: Vec<u32>,
     pub dmi_path: Option<PathBuf>,
+    pub dynamic_power_coefficient: BTreeMap<usize, u32>,
     pub extra_kernel_params: Vec<String>,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub force_s2idle: bool,

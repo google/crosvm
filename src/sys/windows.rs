@@ -1493,6 +1493,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         pcie_ecam: cfg.pcie_ecam,
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         oem_strings: cfg.oem_strings.clone(),
+        dynamic_power_coefficient: cfg.dynamic_power_coefficient.clone(),
     })
 }
 

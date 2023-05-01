@@ -79,6 +79,7 @@ use crate::crosvm::config::parse_cpu_affinity;
 use crate::crosvm::config::parse_cpu_capacity;
 #[cfg(feature = "direct")]
 use crate::crosvm::config::parse_direct_io_options;
+use crate::crosvm::config::parse_dynamic_power_coefficient;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::crosvm::config::parse_memory_region;
 use crate::crosvm::config::parse_mmio_address_range;
@@ -1160,6 +1161,17 @@ pub struct RunCommand {
     #[merge(strategy = overwrite_option)]
     /// dump generated device tree as a DTB file
     pub dump_device_tree_blob: Option<PathBuf>,
+
+    #[argh(
+        option,
+        arg_name = "CPU=DYN_PWR[,CPU=DYN_PWR[,...]]",
+        from_str_fn(parse_dynamic_power_coefficient)
+    )]
+    #[serde(skip)] // TODO(b/255223604)
+    #[merge(strategy = overwrite_option)]
+    /// pass power modeling param from to guest OS; scalar coefficient used in conjuction with
+    /// voltage and frequency for calculating power; in units of uW/MHz/^2
+    pub dynamic_power_coefficient: Option<BTreeMap<usize, u32>>,
 
     #[argh(switch)]
     #[serde(skip)] // TODO(b/255223604)
@@ -2433,6 +2445,10 @@ impl TryFrom<RunCommand> for super::config::Config {
         }
 
         cfg.vcpu_affinity = cmd.cpu_affinity;
+
+        if let Some(dynamic_power_coefficient) = cmd.dynamic_power_coefficient {
+            cfg.dynamic_power_coefficient = dynamic_power_coefficient;
+        }
 
         if let Some(capacity) = cmd.cpu_capacity {
             cfg.cpu_capacity = capacity;
