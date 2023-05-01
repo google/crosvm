@@ -107,9 +107,17 @@ def check_rust_features(*_files: str):
     def collect_features(feature_name: str) -> Generator[str, None, None]:
         yield feature_name
         for feature in features[feature_name]:
-            name = feature.split("/")[0]
-            if name in features:
-                yield from collect_features(name)
+            if feature in features:
+                yield from collect_features(feature)
+            else:
+                # optional crate is enabled through sub-feature of the crate.
+                # e.g. protos optional crate/feature is enabled by protos/plugin
+                optional_crate_name = feature.split("/")[0]
+                if (
+                    optional_crate_name in features
+                    and features[optional_crate_name][0] == f"dep:{optional_crate_name}"
+                ):
+                    yield optional_crate_name
 
     all_platform_features = set(
         (
