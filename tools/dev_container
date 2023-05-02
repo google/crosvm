@@ -28,19 +28,21 @@ import argparse
 from pathlib import Path
 import shutil
 from argh import arg  # type: ignore
-from impl.common import (
-    chdir,
-    cmd,
+from impl.util import (
+    add_common_args,
     confirm,
     cros_repo_root,
     CROSVM_ROOT,
     is_cros_repo,
     is_kiwi_repo,
     kiwi_repo_root,
-    quoted,
-    run_main,
 )
-from typing import Optional, Tuple, List
+from impl.command import (
+    chdir,
+    cmd,
+    quoted,
+)
+from typing import Optional, List
 import getpass
 import sys
 import unittest
@@ -193,18 +195,21 @@ def validate_podman(podman: cmd):
             podman("system migrate").fg()
 
 
-@arg("command", nargs=argparse.REMAINDER)
-def main(
-    command: Tuple[str, ...],
-    stop: bool = False,
-    clean: bool = False,
-    hermetic: bool = False,
-    interactive: bool = False,
-    use_docker: bool = False,
-    self_test: bool = False,
-    pull: bool = False,
-    cros: bool = False,
-):
+def main(argv: List[str]):
+    parser = argparse.ArgumentParser()
+    add_common_args(parser)
+    parser.add_argument("--stop", action="store_true")
+    parser.add_argument("--clean", action="store_true")
+    parser.add_argument("--hermetic", action="store_true")
+    parser.add_argument("--interactive", action="store_true")
+    parser.add_argument("--use-docker", action="store_true")
+    parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--pull", action="store_true")
+    parser.add_argument("--cros", action="store_true")
+    parser.add_argument("command", nargs=argparse.REMAINDER)
+
+    args = parser.parse_args(argv)
+
     chdir(CROSVM_ROOT)
 
     if CACHE_DIR:
@@ -215,11 +220,12 @@ def main(
     if not has_podman and not has_docker:
         raise Exception("Please install podman (or docker) to use the dev container.")
 
+    use_docker = args.use_docker
     if has_docker and not has_podman:
         use_docker = True
 
     # cros container only works in docker
-    if cros:
+    if args.cros:
         use_docker = True
 
     if use_docker:
@@ -231,46 +237,48 @@ def main(
         docker = cmd("docker")
         docker_args = [
             *DOCKER_ARGS,
-            *workspace_mount_args(cros),
+            *workspace_mount_args(args.cros),
         ]
     else:
         docker = cmd("podman")
         docker_args = [
             *PODMAN_ARGS,
-            *workspace_mount_args(cros),
+            *workspace_mount_args(args.cros),
         ]
         validate_podman(docker)
 
-    if cros:
+    if args.cros:
         docker_args.append("--privileged")  # cros container requires privileged container
         docker_args.append(CROS_IMAGE_NAME)
     else:
         docker_args.append(DEV_IMAGE_NAME + ":" + DEV_IMAGE_VERSION)
 
-    if self_test:
+    if args.self_test:
         TestDevContainer.docker = docker
         suite = unittest.defaultTestLoader.loadTestsFromTestCase(TestDevContainer)
         unittest.TextTestRunner().run(suite)
         return
 
-    if stop:
-        if not delete_container(docker, cros):
+    if args.stop:
+        if not delete_container(docker, args.cros):
             print(f"container is not running.")
         return
 
-    if clean:
-        delete_container(docker, cros)
+    if args.clean:
+        delete_container(docker, args.cros)
 
-    if pull:
-        if cros:
+    if args.pull:
+        if args.cros:
             docker("pull", CROS_IMAGE_NAME).fg()
         else:
             docker("pull", f"gcr.io/crosvm-infra/crosvm_dev:{DEV_IMAGE_VERSION}").fg()
         return
 
+    command = args.command
+
     # If a command is provided run non-interactive unless explicitly asked for.
     tty_args = []
-    if not command or interactive:
+    if not command or args.interactive:
         if not sys.stdin.isatty():
             raise Exception("Trying to run an interactive session in a non-interactive terminal.")
         tty_args = ["--interactive", "--tty"]
@@ -279,13 +287,13 @@ def main(
         tty_args = ["--tty"]
 
     # Start an interactive shell by default
-    if hermetic:
+    if args.hermetic:
         # cmd is passed to entrypoint
         quoted_cmd = list(map(quoted, command))
         docker(f"run --rm", *tty_args, *docker_args, *quoted_cmd).fg()
     else:
         # cmd is executed directly
-        cid = ensure_container_is_alive(docker, docker_args, cros)
+        cid = ensure_container_is_alive(docker, docker_args, args.cros)
         if not command:
             command = ("/bin/bash",)
         quoted_cmd = list(map(quoted, command))
@@ -330,8 +338,8 @@ class TestDevContainer(unittest.TestCase):
         # Make sure we can get back into a good state and execute commands.
         ensure_container_is_alive(self.docker, self.docker_args, cros=False)
         self.assertTrue(container_is_running(self.docker, cros=False))
-        main(("true",))
+        main(["true"])
 
 
 if __name__ == "__main__":
-    run_main(main)
+    main(sys.argv[1:])
