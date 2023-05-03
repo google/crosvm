@@ -695,14 +695,6 @@ pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
     device
         .register_device_capabilities()
         .map_err(DeviceRegistrationError::RegisterDeviceCapabilities)?;
-    for (event, addr, datamatch) in device.ioevents() {
-        let io_addr = IoEventAddress::Mmio(addr);
-        linux
-            .vm
-            .register_ioevent(event, io_addr, datamatch)
-            .map_err(DeviceRegistrationError::RegisterIoevent)?;
-        keep_rds.push(event.as_raw_descriptor());
-    }
 
     #[cfg(unix)]
     let arced_dev: Arc<Mutex<dyn BusDevice>> = if let Some(jail) = jail {
@@ -1102,12 +1094,6 @@ pub fn generate_pci_root(
         device
             .register_device_capabilities()
             .map_err(DeviceRegistrationError::RegisterDeviceCapabilities)?;
-        for (event, addr, datamatch) in device.ioevents() {
-            let io_addr = IoEventAddress::Mmio(addr);
-            vm.register_ioevent(event, io_addr, datamatch)
-                .map_err(DeviceRegistrationError::RegisterIoevent)?;
-            keep_rds.push(event.as_raw_descriptor());
-        }
 
         if let Some(vcfg_base) = vcfg_base {
             let (methods, shm) = device.generate_acpi_methods();
