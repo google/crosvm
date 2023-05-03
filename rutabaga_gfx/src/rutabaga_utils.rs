@@ -143,10 +143,13 @@ pub const RUTABAGA_MAP_CACHE_WC: u32 = 0x03;
 /// Rutabaga capsets.
 pub const RUTABAGA_CAPSET_VIRGL: u32 = 1;
 pub const RUTABAGA_CAPSET_VIRGL2: u32 = 2;
-pub const RUTABAGA_CAPSET_GFXSTREAM: u32 = 3;
+pub const RUTABAGA_CAPSET_GFXSTREAM_VULKAN: u32 = 3;
 pub const RUTABAGA_CAPSET_VENUS: u32 = 4;
 pub const RUTABAGA_CAPSET_CROSS_DOMAIN: u32 = 5;
 pub const RUTABAGA_CAPSET_DRM: u32 = 6;
+pub const RUTABAGA_CAPSET_GFXSTREAM_MAGMA: u32 = 7;
+pub const RUTABAGA_CAPSET_GFXSTREAM_GLES: u32 = 8;
+pub const RUTABAGA_CAPSET_GFXSTREAM_COMPOSER: u32 = 9;
 
 /// An error generated while using this crate.
 #[sorted]

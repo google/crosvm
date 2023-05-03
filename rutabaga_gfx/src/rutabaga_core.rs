@@ -238,7 +238,7 @@ struct RutabagaCapsetInfo {
     pub name: &'static str,
 }
 
-const RUTABAGA_CAPSETS: [RutabagaCapsetInfo; 6] = [
+const RUTABAGA_CAPSETS: [RutabagaCapsetInfo; 9] = [
     RutabagaCapsetInfo {
         capset_id: RUTABAGA_CAPSET_VIRGL,
         component: RutabagaComponentType::VirglRenderer,
@@ -250,9 +250,9 @@ const RUTABAGA_CAPSETS: [RutabagaCapsetInfo; 6] = [
         name: "virgl2",
     },
     RutabagaCapsetInfo {
-        capset_id: RUTABAGA_CAPSET_GFXSTREAM,
+        capset_id: RUTABAGA_CAPSET_GFXSTREAM_VULKAN,
         component: RutabagaComponentType::Gfxstream,
-        name: "gfxstream",
+        name: "gfxstream-vulkan",
     },
     RutabagaCapsetInfo {
         capset_id: RUTABAGA_CAPSET_VENUS,
@@ -268,6 +268,21 @@ const RUTABAGA_CAPSETS: [RutabagaCapsetInfo; 6] = [
         capset_id: RUTABAGA_CAPSET_DRM,
         component: RutabagaComponentType::VirglRenderer,
         name: "drm",
+    },
+    RutabagaCapsetInfo {
+        capset_id: RUTABAGA_CAPSET_GFXSTREAM_MAGMA,
+        component: RutabagaComponentType::Gfxstream,
+        name: "gfxstream-magma",
+    },
+    RutabagaCapsetInfo {
+        capset_id: RUTABAGA_CAPSET_GFXSTREAM_GLES,
+        component: RutabagaComponentType::Gfxstream,
+        name: "gfxstream-gles",
+    },
+    RutabagaCapsetInfo {
+        capset_id: RUTABAGA_CAPSET_GFXSTREAM_COMPOSER,
+        component: RutabagaComponentType::Gfxstream,
+        name: "gfxstream-composer",
     },
 ];
 
@@ -970,7 +985,10 @@ impl RutabagaBuilder {
         };
 
         if self.capset_mask != 0 {
-            let supports_gfxstream = capset_enabled(RUTABAGA_CAPSET_GFXSTREAM);
+            let supports_gfxstream = capset_enabled(RUTABAGA_CAPSET_GFXSTREAM_VULKAN)
+                | capset_enabled(RUTABAGA_CAPSET_GFXSTREAM_MAGMA)
+                | capset_enabled(RUTABAGA_CAPSET_GFXSTREAM_GLES)
+                | capset_enabled(RUTABAGA_CAPSET_GFXSTREAM_COMPOSER);
             let supports_virglrenderer = capset_enabled(RUTABAGA_CAPSET_VIRGL2)
                 | capset_enabled(RUTABAGA_CAPSET_VENUS)
                 | capset_enabled(RUTABAGA_CAPSET_DRM);
@@ -988,6 +1006,11 @@ impl RutabagaBuilder {
                 .use_virgl(capset_enabled(RUTABAGA_CAPSET_VIRGL2))
                 .use_venus(capset_enabled(RUTABAGA_CAPSET_VENUS))
                 .use_drm(capset_enabled(RUTABAGA_CAPSET_DRM));
+
+            self.gfxstream_flags = self
+                .gfxstream_flags
+                .use_gles(capset_enabled(RUTABAGA_CAPSET_GFXSTREAM_GLES))
+                .use_vulkan(capset_enabled(RUTABAGA_CAPSET_GFXSTREAM_VULKAN))
         }
 
         // Make sure that disabled components are not used as default.
@@ -1037,7 +1060,10 @@ impl RutabagaBuilder {
 
                 rutabaga_components.insert(RutabagaComponentType::Gfxstream, gfxstream);
 
-                push_capset(RUTABAGA_CAPSET_GFXSTREAM);
+                push_capset(RUTABAGA_CAPSET_GFXSTREAM_VULKAN);
+                push_capset(RUTABAGA_CAPSET_GFXSTREAM_MAGMA);
+                push_capset(RUTABAGA_CAPSET_GFXSTREAM_GLES);
+                push_capset(RUTABAGA_CAPSET_GFXSTREAM_COMPOSER);
             }
 
             let cross_domain = CrossDomain::init(self.channels)?;

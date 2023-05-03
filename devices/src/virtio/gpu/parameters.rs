@@ -105,7 +105,7 @@ mod tests {
         // Capset "virgl", id: 1, capset_mask: 0b0010
         // Capset "gfxstream", id: 3, capset_mask: 0b1000
         const CAPSET_MASK: u64 = 0b1010;
-        const SERIALIZED_CAPSET_MASK: &str = "{\"context-types\":\"virgl:gfxstream\"}";
+        const SERIALIZED_CAPSET_MASK: &str = "{\"context-types\":\"virgl:gfxstream-vulkan\"}";
 
         let capset_mask = CapsetMask { value: CAPSET_MASK };
 
