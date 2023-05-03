@@ -409,6 +409,20 @@ fn set_msrs() {
 }
 
 #[test]
+fn set_msrs_unsupported() {
+    let kvm = Kvm::new().unwrap();
+    let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
+    let vm = KvmVm::new(&kvm, gm, Default::default()).unwrap();
+    let vcpu = vm.create_vcpu(0).unwrap();
+
+    let msrs = vec![Register {
+        id: u32::MAX,
+        value: u64::MAX,
+    }];
+    assert_eq!(vcpu.set_msrs(&msrs), Err(base::Error::new(libc::EPERM)));
+}
+
+#[test]
 fn get_hyperv_cpuid() {
     let kvm = Kvm::new().unwrap();
     let gm = GuestMemory::new(&[(GuestAddress(0), 0x10000)]).unwrap();
