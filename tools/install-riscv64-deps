@@ -4,64 +4,14 @@
 # found in the LICENSE file.
 set -ex
 
+# Note: This requires riscv64 packages to be available via apt, which can be obtained
+# from the debian-ports repository.
 sudo apt-get install --yes --no-install-recommends \
-    binutils-riscv64-linux-gnu \
-    g++-riscv64-linux-gnu \
-    libc6-dev-riscv64-cross \
-    qemu-user-static
+  binutils-riscv64-linux-gnu \
+  g++-riscv64-linux-gnu \
+  libcap-dev:riscv64 \
+  libwayland-dev:riscv64 \
+  qemu-user-static
 
 # Add riscv64gc target to Rust
 rustup target add riscv64gc-unknown-linux-gnu
-
-# Clone, patch, build and install libcap for riscv
-# TODO(dgreid) - remove this when the standard libcap:riscv64 package is
-# functional from the dev_container debian version. At time of writing there is
-# a disfunctional libc:riscv64 dependency that breaks the host libc in debian:buster.
-LIBCAP_DIR=$(mktemp -d)
-pushd "$LIBCAP_DIR" || exit 1
-
-# Define a function to clean up the temporary directory
-cleanup() {
-  rm -rf "$LIBCAP_DIR"
-}
-
-# Register the cleanup function to be called on script exit
-trap cleanup EXIT
-
-git clone --depth 1 --branch v1.2.53 https://git.kernel.org/pub/scm/libs/libcap/libcap.git
-cd libcap
-# Patch cross compile issue with libcap using target CC to build host tools.
-cat <<EOF >> libcap.patch
-diff --git a/Make.Rules b/Make.Rules
-index 125f2aa..a78c656 100644
---- a/Make.Rules
-+++ b/Make.Rules
-@@ -58,7 +58,7 @@ CC := \$(CROSS_COMPILE)gcc
- DEFINES := -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64
- COPTS ?= -O2
- CFLAGS ?= \$(COPTS) \$(DEFINES)
--BUILD_CC ?= \$(CC)
-+BUILD_CC ?= gcc
- BUILD_COPTS ?= -O2
- BUILD_CFLAGS ?= \$(BUILD_COPTS) \$(DEFINES) \$(IPATH)
- AR := \$(CROSS_COMPILE)ar
-EOF
-patch -p1 < libcap.patch
-
-make ARCH=riscv64 CROSS_COMPILE=riscv64-linux-gnu- GOLANG=no
-
-sudo cp libcap/libcap.so* libcap/libpsx.so* /usr/riscv64-linux-gnu/lib/
-sudo mkdir -p /usr/lib/riscv64-linux-gnu/pkgconfig
-sudo cp libcap/*.pc /usr/lib/riscv64-linux-gnu/pkgconfig/
-sudo mkdir -p /usr/riscv64-linux-gnu/usr/include/sys/
-sudo cp ./libcap/include/sys/capability.h /usr/riscv64-linux-gnu/usr/include/sys/
-
-sudo ln -f /usr/bin/pkg-config /usr/bin/riscv64-linux-gnu-pkg-config
-
-# Copy the riscv64 libc to the host so that we can run the riscv64 static qemu.
-sudo cp /usr/riscv64-linux-gnu/lib/ld-linux-riscv64-lp64d.so.1 /lib
-
-# Copy the libraries to more standard path so the unit test running qemu can find them.
-sudo cp /usr/riscv64-linux-gnu/lib/* /usr/lib/riscv64-linux-gnu/
-
-popd || exit 1

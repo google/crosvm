@@ -21,7 +21,7 @@ TAG_BASE=gcr.io/crosvm-infra
 VERSION=$(shell cat version)
 BUILD_CONTEXT=$(shell realpath ../../../)
 
-DOCKER ?= docker
+DOCKER ?= podman
 
 all: crosvm_dev
 

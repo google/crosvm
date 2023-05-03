@@ -16,7 +16,12 @@ runner = "wine64"
 PKG_CONFIG_x86_64-unknown-linux-gnu = "x86_64-linux-gnu-pkg-config"
 PKG_CONFIG_aarch64-unknown-linux-gnu = "aarch64-linux-gnu-pkg-config"
 PKG_CONFIG_armv7_unknown_linux_gnueabihf = "arm-linux-gnueabihf-pkg-config"
-PKG_CONFIG_riscv64gc_unknown_linux_gnu = "riscv64-linux-gnu-pkg-config"
+
+# riscv does not have a pkg-config wrapper, so we need to configure it manually.
+# See https://autotools.info/pkgconfig/cross-compiling.html for details.
+PKG_CONFIG_PATH_riscv64gc_unknown_linux_gnu = ""
+PKG_CONFIG_LIBDIR_riscv64gc_unknown_linux_gnu = "/usr/lib/riscv64-linux-gnu/pkgconfig"
+PKG_CONFIG_SYSROOT_DIR_riscv64gc_unknown_linux_gnu = "/usr/lib/riscv64-linux-gnu"
 
 # libslirp is currently not properly configured via pkg-config and cannot use the wrapper like
 # other architextures do.
