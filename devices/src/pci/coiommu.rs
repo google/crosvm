@@ -58,6 +58,7 @@ use serde::Serialize;
 use serde_keyvalue::FromKeyValues;
 use sync::Mutex;
 use thiserror::Error as ThisError;
+use vm_control::IoEventUpdateRequest;
 use vm_control::VmMemoryDestination;
 use vm_control::VmMemoryRequest;
 use vm_control::VmMemoryResponse;
@@ -1116,10 +1117,19 @@ impl CoIommuDev {
         self.device_tube.send(msg).context(Error::TubeError)?;
         let res = self.device_tube.recv().context(Error::TubeError)?;
         match res {
-            VmMemoryResponse::RegisterMemory { .. } => Ok(()),
+            VmMemoryResponse::RegisterMemory { .. } | VmMemoryResponse::Ok => Ok(()),
             VmMemoryResponse::Err(e) => Err(anyhow!("Receive msg err {}", e)),
-            _ => Err(anyhow!("Msg cannot be handled")),
         }
+    }
+
+    fn register_ioevent(&self, event: &Event, addr: u64, datamatch: Datamatch) -> Result<()> {
+        let request = VmMemoryRequest::IoEventRaw(IoEventUpdateRequest {
+            event: event.try_clone().unwrap(),
+            addr,
+            datamatch,
+            register: true,
+        });
+        self.send_msg(&request)
     }
 
     fn register_mmap(
@@ -1196,11 +1206,19 @@ impl CoIommuDev {
         let notifymap_mmap = self.notifymap_mmap.clone();
         let dtt_root = self.coiommu_reg.dtt_root;
         let dtt_level = self.coiommu_reg.dtt_level;
-        let ioevents = self
+        let ioevents: Vec<Event> = self
             .ioevents
             .iter()
             .map(|e| e.try_clone().unwrap())
             .collect();
+
+        let bar0 = self.config_regs.get_bar_addr(COIOMMU_MMIO_BAR as usize);
+        let notify_base = bar0 + mem::size_of::<CoIommuReg>() as u64;
+        for (i, evt) in self.ioevents.iter().enumerate() {
+            self.register_ioevent(evt, notify_base + i as u64, Datamatch::AnyLength)
+                .expect("failed to register ioevent");
+        }
+
         let vfio_container = self.vfio_container.clone();
         let pinstate = self.pinstate.clone();
         let params = self.params;
@@ -1339,13 +1357,19 @@ impl CoIommuDev {
             // be used by the frontend driver. In case the frontend driver
             // went here, do a simple handle to make sure the frontend driver
             // will not be blocked, and through an error log.
-            let index = (offset - mmio_len) as usize * mem::size_of::<u64>();
-            self.notifymap_mmap.write_obj::<u64>(0, index).unwrap();
-            error!(
-                "{}: No page will be pinned as driver is accessing unused trigger register: offset 0x{:x}",
-                self.debug_label(),
-                offset
-            );
+            let index = (offset - mmio_len) as usize;
+            if let Some(event) = self.ioevents.get(index) {
+                let _ = event.signal();
+            } else {
+                self.notifymap_mmap
+                    .write_obj::<u64>(0, index * mem::size_of::<u64>())
+                    .unwrap();
+                error!(
+                    "{}: No page will be pinned as driver is accessing unused trigger register: offset 0x{:x}",
+                    self.debug_label(),
+                    offset
+                );
+            }
             return;
         }
 
@@ -1532,6 +1556,7 @@ impl PciDevice for CoIommuDev {
         if let Some(unpin_tube) = &self.unpin_tube {
             rds.push(unpin_tube.as_raw_descriptor());
         }
+        rds.extend(self.ioevents.iter().map(Event::as_raw_descriptor));
         rds
     }
 
@@ -1571,16 +1596,6 @@ impl PciDevice for CoIommuDev {
             }
             _ => {}
         }
-    }
-
-    fn ioevents(&self) -> Vec<(&Event, u64, Datamatch)> {
-        let bar0 = self.config_regs.get_bar_addr(COIOMMU_MMIO_BAR as usize);
-        let notify_base = bar0 + mem::size_of::<CoIommuReg>() as u64;
-        self.ioevents
-            .iter()
-            .enumerate()
-            .map(|(i, event)| (event, notify_base + i as u64, Datamatch::AnyLength))
-            .collect()
     }
 
     fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration> {
