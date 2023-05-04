@@ -27,7 +27,6 @@
 import argparse
 from pathlib import Path
 import shutil
-from argh import arg  # type: ignore
 from impl.util import (
     add_common_args,
     confirm,
