@@ -137,7 +137,7 @@ impl VcpuRiscv64 for KvmVcpu {
         if ret == 0 {
             Ok(val)
         } else {
-            return errno_result();
+            errno_result()
         }
     }
 }
