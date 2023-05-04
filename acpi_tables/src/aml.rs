@@ -1463,7 +1463,7 @@ impl<'a> Aml for BufferTerm<'a> {
 }
 
 /// Buffer object with the data in it.
-struct BufferData {
+pub struct BufferData {
     data: Vec<u8>,
 }
 
