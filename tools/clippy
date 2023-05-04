@@ -11,6 +11,7 @@
 
 from typing import Optional
 from impl.common import CROSVM_ROOT, run_main, cmd, chdir, Triple, SHORTHANDS
+from impl.test_config import DO_NOT_BUILD_RISCV64
 
 clippy = cmd("cargo clippy").with_color_flag()
 
@@ -45,9 +46,13 @@ def main(
             *common_args,
         ]
     print("Clippy crosvm workspace")
+    exclude_args = []
+    if triple == Triple.from_shorthand("riscv64"):
+        exclude_args = ["--exclude=" + s for s in DO_NOT_BUILD_RISCV64]
     clippy(
         "--workspace",
         f"--features={triple.feature_flag}",
+        *exclude_args,
         *common_args,
     ).with_envs(triple.get_cargo_env()).fg()
 
