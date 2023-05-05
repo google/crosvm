@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use anyhow::anyhow;
 use base::error;
+use base::info;
 use base::unix::process::fork_process;
 use base::AsRawDescriptor;
 #[cfg(feature = "swap")]
@@ -20,6 +21,7 @@ use minijail::Minijail;
 use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
+use std::fs;
 use thiserror::Error;
 
 use crate::bus::ConfigWriteResult;
@@ -223,6 +225,18 @@ impl ProxyDevice {
         #[cfg(feature = "swap")]
         if let Some(swap_controller) = swap_controller {
             keep_rds.extend(swap_controller.as_raw_descriptors());
+        }
+
+        // This will be removed after b/183540186 gets fixed.
+        // Only enabled it for x86_64 since the original bug mostly happens on x86 boards.
+        if cfg!(target_arch = "x86_64") && debug_label == "pcivirtio-gpu" {
+            if let Ok(cmd) = fs::read_to_string("/proc/self/cmdline") {
+                if cmd.contains("arcvm") {
+                    if let Ok(share) = fs::read_to_string("/sys/fs/cgroup/cpu/arcvm/cpu.shares") {
+                        info!("arcvm cpu share when booting gpu is {:}", share.trim());
+                    }
+                }
+            }
         }
 
         let child_process = fork_process(jail, keep_rds, Some(debug_label.clone()), || {
