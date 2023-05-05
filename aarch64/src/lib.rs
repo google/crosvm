@@ -59,6 +59,8 @@ use remain::sorted;
 use resources::AddressRange;
 use resources::SystemAllocator;
 use resources::SystemAllocatorConfig;
+#[cfg(unix)]
+use sync::Condvar;
 use sync::Mutex;
 use thiserror::Error;
 use vm_control::BatControl;
@@ -379,6 +381,7 @@ impl arch::LinuxArch for AArch64 {
         dump_device_tree_blob: Option<PathBuf>,
         _debugcon_jail: Option<Minijail>,
         #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
+        #[cfg(unix)] _guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmAArch64,

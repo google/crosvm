@@ -97,6 +97,8 @@ use devices::ProxyDevice;
 use devices::Serial;
 use devices::SerialHardware;
 use devices::SerialParameters;
+#[cfg(unix)]
+use devices::VirtualPmc;
 #[cfg(feature = "gdb")]
 use gdbstub_arch::x86::reg::id::X86_64CoreRegId;
 #[cfg(feature = "gdb")]
@@ -131,6 +133,8 @@ use remain::sorted;
 use resources::AddressRange;
 use resources::SystemAllocator;
 use resources::SystemAllocatorConfig;
+#[cfg(unix)]
+use sync::Condvar;
 use sync::Mutex;
 use thiserror::Error;
 use vm_control::BatControl;
@@ -694,6 +698,7 @@ impl arch::LinuxArch for X8664arch {
         debugcon_jail: Option<Minijail>,
         pflash_jail: Option<Minijail>,
         #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
+        #[cfg(unix)] guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmX86_64,
@@ -893,6 +898,8 @@ impl arch::LinuxArch for X8664arch {
             swap_controller,
             #[cfg(unix)]
             components.ac_adapter,
+            #[cfg(unix)]
+            guest_suspended_cvar,
         )?;
 
         // Create customized SSDT table
@@ -1803,6 +1810,7 @@ impl X8664arch {
         resume_notify_devices: &mut Vec<Arc<Mutex<dyn BusResumeDevice>>>,
         #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
         #[cfg(unix)] ac_adapter: bool,
+        #[cfg(unix)] guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
     ) -> Result<(acpi::AcpiDevResource, Option<BatControl>)> {
         // The AML data for the acpi devices
         let mut amls = Vec::new();
@@ -1916,6 +1924,31 @@ impl X8664arch {
         };
         #[cfg(windows)]
         let acdc = None;
+
+        //Virtual PMC
+        #[cfg(unix)]
+        if let Some(guest_suspended_cvar) = guest_suspended_cvar {
+            let alloc = resources.get_anon_alloc();
+            let mmio_base = resources
+                .allocate_mmio(
+                    devices::pmc_virt::VPMC_VIRT_MMIO_SIZE,
+                    alloc,
+                    "VirtualPmc".to_string(),
+                    resources::AllocOptions::new().align(devices::pmc_virt::VPMC_VIRT_MMIO_SIZE),
+                )
+                .unwrap();
+
+            let pmc_virtio_mmio =
+                Arc::new(Mutex::new(VirtualPmc::new(mmio_base, guest_suspended_cvar)));
+            mmio_bus
+                .insert(
+                    pmc_virtio_mmio.clone(),
+                    mmio_base,
+                    devices::pmc_virt::VPMC_VIRT_MMIO_SIZE,
+                )
+                .unwrap();
+            pmc_virtio_mmio.lock().to_aml_bytes(&mut amls);
+        }
 
         let mut pmresource = devices::ACPIPMResource::new(
             pm_sci_evt.try_clone().map_err(Error::CloneEvent)?,

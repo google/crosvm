@@ -136,6 +136,7 @@ pub enum CrosvmDeviceId {
     Pflash = 18,
     VirtioMmio = 19,
     AcAdapter = 20,
+    VirtualPmc = 21,
 }
 
 impl TryFrom<u16> for CrosvmDeviceId {
@@ -163,6 +164,7 @@ impl TryFrom<u16> for CrosvmDeviceId {
             18 => Ok(CrosvmDeviceId::Pflash),
             19 => Ok(CrosvmDeviceId::VirtioMmio),
             20 => Ok(CrosvmDeviceId::AcAdapter),
+            21 => Ok(CrosvmDeviceId::VirtualPmc),
             _ => Err(base::Error::new(EINVAL)),
         }
     }

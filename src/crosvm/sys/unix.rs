@@ -1961,6 +1961,12 @@ where
     // KVM_CREATE_VCPU uses apic id for x86 and uses cpu id for others.
     let mut vcpu_ids = Vec::new();
 
+    let guest_suspended_cvar = if cfg.force_s2idle {
+        Some(Arc::new((Mutex::new(false), Condvar::new())))
+    } else {
+        None
+    };
+
     #[cfg_attr(not(feature = "direct"), allow(unused_mut))]
     let mut linux = Arch::build_vm::<V, Vcpu>(
         components,
@@ -1980,6 +1986,7 @@ where
         simple_jail(&cfg.jail_config, "block_device")?,
         #[cfg(feature = "swap")]
         swap_controller.as_ref(),
+        guest_suspended_cvar.clone(),
     )
     .context("the architecture failed to build the vm")?;
 
@@ -2068,6 +2075,7 @@ where
         #[cfg(feature = "swap")]
         swap_controller,
         reg_evt_rdtube,
+        guest_suspended_cvar,
     )
 }
 
@@ -2509,6 +2517,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] hp_thread: std::thread::JoinHandle<()>,
     #[cfg(feature = "swap")] swap_controller: Option<SwapController>,
     reg_evt_rdtube: RecvTube,
+    guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
 ) -> Result<ExitState> {
     #[derive(EventToken)]
     enum Token {
@@ -2707,8 +2716,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
     #[cfg(target_os = "android")]
     android::set_process_profiles(&cfg.task_profiles)?;
-
-    let guest_suspended_cvar = Arc::new((Mutex::new(false), Condvar::new()));
 
     #[allow(unused_mut)]
     let mut run_mode = VmRunMode::Running;
@@ -3157,7 +3164,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                         .name("s2idle_wait".to_owned())
                                                         .spawn(move || {
                                                             trigger_vm_suspend_and_wait_for_entry(
-                                                                guest_suspended_cvar,
+                                                                guest_suspended_cvar.unwrap(),
                                                                 &send_tube,
                                                                 delayed_response,
                                                                 suspend_evt,

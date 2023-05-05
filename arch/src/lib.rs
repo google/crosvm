@@ -76,6 +76,8 @@ pub use serial::get_serial_cmdline;
 pub use serial::set_default_serial_parameters;
 pub use serial::GetSerialCmdlineError;
 pub use serial::SERIAL_ADDR;
+#[cfg(unix)]
+use sync::Condvar;
 use sync::Mutex;
 use thiserror::Error;
 use vm_control::BatControl;
@@ -454,6 +456,7 @@ pub trait LinuxArch {
         debugcon_jail: Option<Minijail>,
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] pflash_jail: Option<Minijail>,
         #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
+        #[cfg(unix)] guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
         V: VmArch,
