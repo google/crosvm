@@ -53,5 +53,5 @@ pub fn fuzz_server<R: Reader + ZeroCopyReader, W: Writer + ZeroCopyWriter>(r: R,
     let server = Server::new(NullFs);
     let mapper = NullMapper {};
 
-    let _ = server.handle_message(r, w, &mapper);
+    let _ = server.handle_message(r, w, mapper);
 }

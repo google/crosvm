@@ -200,7 +200,7 @@ impl IrqChipX86_64 for KvmKernelIrqChip {
                 interrupt_bitmaps.push(vcpu.get_interrupt_bitmap()?);
             }
         }
-        serde_json::to_value(&KvmKernelIrqChipSnapshot {
+        serde_json::to_value(KvmKernelIrqChipSnapshot {
             routes: self.routes.lock().clone(),
             apic_base: apics,
             interrupt_bitmap: interrupt_bitmaps,
@@ -867,7 +867,7 @@ impl IrqChipX86_64 for KvmSplitIrqChip {
     }
 
     fn snapshot_chip_specific(&self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(&KvmSplitIrqChipSnapshot {
+        serde_json::to_value(KvmSplitIrqChipSnapshot {
             routes: self.routes.lock().clone(),
         })
         .context("failed to serialize KvmSplitIrqChip")

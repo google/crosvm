@@ -533,7 +533,7 @@ impl Suspendable for Serial {
             last_write_was_newline: self.last_write_was_newline,
         };
 
-        let serialized = serde_json::to_value(&snap).context("error serializing")?;
+        let serialized = serde_json::to_value(snap).context("error serializing")?;
         Ok(serialized)
     }
 

@@ -78,7 +78,7 @@ pub trait IrqChipX86_64: IrqChip {
             lapics.push(self.get_lapic_state(i)?);
             mp_states.push(self.get_mp_state(i)?);
         }
-        serde_json::to_value(&IrqChipSnapshot {
+        serde_json::to_value(IrqChipSnapshot {
             ioapic_state: self.get_ioapic_state()?,
             lapic_state: lapics,
             pic_state_1: self.get_pic_state(PicSelect::Primary)?,
