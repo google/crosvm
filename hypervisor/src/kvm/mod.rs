@@ -1024,7 +1024,6 @@ impl Vcpu for KvmVcpu {
                     KVM_SYSTEM_EVENT_SHUTDOWN => Ok(VcpuExit::SystemEventShutdown),
                     KVM_SYSTEM_EVENT_RESET => self.system_event_reset(event_flags),
                     KVM_SYSTEM_EVENT_CRASH => Ok(VcpuExit::SystemEventCrash),
-                    KVM_SYSTEM_EVENT_S2IDLE => Ok(VcpuExit::SystemEventS2Idle),
                     _ => {
                         error!(
                             "Unknown KVM system event {} with flags {}",

@@ -22,9 +22,6 @@
  * copy in the ARM_PROTECTED stuff that isn't quite upstream yet.
  */
 
-// Added by kvm_sys/bindgen.sh
-pub const KVM_SYSTEM_EVENT_S2IDLE: u32 = 4;
-
 #[repr(C)]
 #[derive(Default)]
 pub struct __IncompleteArrayField<T>(::std::marker::PhantomData<T>, [T; 0]);

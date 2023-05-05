@@ -1677,12 +1677,6 @@ pub struct RunCommand {
     /// path to a disk image
     pub pmem_device: Vec<DiskOption>,
 
-    #[argh(switch)]
-    #[serde(skip)] // TODO(b/255223604)
-    #[merge(strategy = overwrite_option)]
-    /// grant this Guest VM certain privileges to manage Host resources, such as power management
-    pub privileged_vm: Option<bool>,
-
     #[cfg(feature = "process-invariants")]
     #[argh(option, arg_name = "PATH")]
     #[serde(skip)] // TODO(b/255223604)
@@ -3086,8 +3080,6 @@ impl TryFrom<RunCommand> for super::config::Config {
         {
             cfg.force_calibrated_tsc_leaf = cmd.force_calibrated_tsc_leaf.unwrap_or_default();
         }
-
-        cfg.privileged_vm = cmd.privileged_vm.unwrap_or_default();
 
         cfg.stub_pci_devices = cmd.stub_pci_device;
 

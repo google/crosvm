@@ -2790,7 +2790,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             to_gdb_channel.clone(),
             cfg.per_vm_core_scheduling,
             cpu_config,
-            cfg.privileged_vm,
             match vcpu_cgroup_tasks_file {
                 None => None,
                 Some(ref f) => Some(
@@ -2800,7 +2799,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             },
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             cfg.userspace_msr.clone(),
-            guest_suspended_cvar.clone(),
             #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
             bus_lock_ratelimit_ctrl,
             run_mode,

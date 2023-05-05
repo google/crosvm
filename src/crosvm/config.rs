@@ -1158,7 +1158,6 @@ pub struct Config {
     pub plugin_mounts: Vec<BindMount>,
     pub plugin_root: Option<PathBuf>,
     pub pmem_devices: Vec<DiskOption>,
-    pub privileged_vm: bool,
     #[cfg(feature = "process-invariants")]
     pub process_invariants_data_handle: Option<u64>,
     #[cfg(feature = "process-invariants")]
@@ -1375,7 +1374,6 @@ impl Default for Config {
             plugin_mounts: Vec::new(),
             plugin_root: None,
             pmem_devices: Vec::new(),
-            privileged_vm: false,
             #[cfg(feature = "process-invariants")]
             process_invariants_data_handle: None,
             #[cfg(feature = "process-invariants")]

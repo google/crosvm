@@ -1232,7 +1232,6 @@ impl Vcpu for GeniezoneVcpu {
                     GZVM_SYSTEM_EVENT_SHUTDOWN => Ok(VcpuExit::SystemEventShutdown),
                     GZVM_SYSTEM_EVENT_RESET => Ok(VcpuExit::SystemEventReset),
                     GZVM_SYSTEM_EVENT_CRASH => Ok(VcpuExit::SystemEventCrash),
-                    GZVM_SYSTEM_EVENT_S2IDLE => Ok(VcpuExit::SystemEventS2Idle),
                     _ => {
                         error!("Unknown GZVM system event {}", event_type);
                         Err(Error::new(EINVAL))

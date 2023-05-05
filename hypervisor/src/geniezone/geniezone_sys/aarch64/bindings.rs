@@ -130,7 +130,6 @@ pub const GZVM_SYSTEM_EVENT_CRASH: u32 = 3;
 pub const GZVM_SYSTEM_EVENT_WAKEUP: u32 = 4;
 pub const GZVM_SYSTEM_EVENT_SUSPEND: u32 = 5;
 pub const GZVM_SYSTEM_EVENT_SEV_TERM: u32 = 6;
-pub const GZVM_SYSTEM_EVENT_S2IDLE: u32 = 7;
 pub const GIC_V3_NR_LRS: u32 = 16;
 pub const GZVM_IOC_MAGIC: u32 = 146;
 pub const GZVM_CAP_ARM_VM_IPA_SIZE: u32 = 165;
