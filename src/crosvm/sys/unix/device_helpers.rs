@@ -916,7 +916,7 @@ pub fn create_wayland_device(
         // destroyed and remade in the same host directory, new connections will be possible
         // without restarting the wayland device.
         for dir in &wayland_socket_dirs {
-            jail.mount_bind(dir, dir, true)?;
+            jail.mount(dir, dir, "", (libc::MS_BIND | libc::MS_REC) as usize)?;
         }
 
         Some(jail)
