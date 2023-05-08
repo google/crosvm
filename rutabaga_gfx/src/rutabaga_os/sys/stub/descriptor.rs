@@ -12,7 +12,7 @@ use crate::rutabaga_os::descriptor::SafeDescriptor;
 type Error = std::io::Error;
 type Result<T> = std::result::Result<T, Error>;
 
-pub type RawDescriptor = u64;
+pub type RawDescriptor = i64;
 
 impl Drop for SafeDescriptor {
     fn drop(&mut self) {

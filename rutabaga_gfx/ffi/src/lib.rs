@@ -72,7 +72,7 @@ pub struct rutabaga_iovecs {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct rutabaga_handle {
-    pub os_handle: i32,
+    pub os_handle: i64,
     pub handle_type: u32,
 }
 
@@ -425,7 +425,9 @@ pub unsafe extern "C" fn rutabaga_resource_create_blob(
         let mut handle_opt: Option<RutabagaHandle> = None;
         if let Some(hnd) = handle {
             handle_opt = Some(RutabagaHandle {
-                os_handle: RutabagaDescriptor::from_raw_descriptor((*hnd).os_handle),
+                os_handle: RutabagaDescriptor::from_raw_descriptor(
+                    (*hnd).os_handle.try_into().unwrap(),
+                ),
                 handle_type: (*hnd).handle_type,
             });
         }
@@ -460,7 +462,7 @@ pub extern "C" fn rutabaga_resource_export_blob(
         let hnd = return_on_error!(result);
 
         (*handle).handle_type = hnd.handle_type;
-        (*handle).os_handle = hnd.os_handle.into_raw_descriptor();
+        (*handle).os_handle = hnd.os_handle.into_raw_descriptor() as i64;
         NO_ERROR
     }))
     .unwrap_or(-ESRCH)

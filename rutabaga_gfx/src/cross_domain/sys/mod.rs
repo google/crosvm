@@ -7,7 +7,7 @@ cfg_if::cfg_if! {
         pub(crate) mod unix;
         mod epoll_internal;
         use unix as platform;
-    } else if #[cfg(any(target_os = "fuchsia",target_os = "windows"))] {
+    } else if #[cfg(any(target_os = "fuchsia",target_os = "windows", target_os = "macos"))] {
         pub(crate) mod stub;
         use stub as platform;
     } else {

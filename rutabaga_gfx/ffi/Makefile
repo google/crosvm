@@ -6,6 +6,8 @@ prefix ?= /usr/local
 libdir = ${prefix}/lib
 includedir = ${prefix}/include/rutabaga_gfx
 
+UNAME := $(shell uname -s)
+
 ifdef debug
   release :=
   target :=debug
@@ -20,7 +22,15 @@ endif
 
 RUTABAGA_VERSION_MAJOR := 0
 SRC ?= src
+
+ifeq ($(UNAME), Linux)
 LIB_NAME := librutabaga_gfx_ffi.so
+endif
+
+ifeq ($(UNAME), Darwin)
+LIB_NAME := librutabaga_gfx_ffi.dylib
+endif
+
 RUTABAGA_VERSION := $(RUTABAGA_VERSION_MAJOR).1.1-alpha.1
 
 all: build
@@ -29,11 +39,22 @@ build:
 	cargo build --features=gfxstream $(release)
 
 install: build
+ifeq ($(UNAME), Linux)
 	install -D -m 755 $(OUT)/$(LIB_NAME) $(DESTDIR)$(libdir)
+endif
+ifeq ($(UNAME), Darwin)
+        install_name_tool -id $(DESTDIR)$(libdir)/$(LIB_NAME) $(DESTDIR)$(libdir)/$(LIB_NAME)
+endif
 	ln -sf $(DESTDIR)$(prefix)/$(LIB_NAME) $(DESTDIR)$(libdir)/$(LIB_NAME).$(RUTABAGA_VERSION)
 	ln -sf $(DESTDIR)$(prefix)/$(LIB_NAME) $(DESTDIR)$(libdir)/$(LIB_NAME).$(RUTABAGA_VERSION_MAJOR)
+ifeq ($(UNAME), Linux)
 	install -D -m 0644 $(SRC)/share/rutabaga_gfx_ffi.pc $(DESTDIR)$(libdir)/pkgconfig/rutabaga_gfx_ffi.pc
 	install -D -m 0644 $(SRC)/include/rutabaga_gfx_ffi.h $(DESTDIR)$(includedir)/rutabaga_gfx_ffi.h
+endif
+ifeq ($(UNAME), Darwin)
+	install -m 0644 $(SRC)/share/rutabaga_gfx_ffi.pc $(DESTDIR)$(libdir)/pkgconfig/rutabaga_gfx_ffi.pc
+	install -m 0644 $(SRC)/include/rutabaga_gfx_ffi.h $(DESTDIR)$(includedir)/rutabaga_gfx_ffi.h
+endif
 
 clean:
 	cargo clean $(release)
