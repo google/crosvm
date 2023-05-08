@@ -18,4 +18,3 @@ pub use platform::executor::Executor;
 pub use platform::executor::ExecutorKind;
 pub use platform::executor::SetDefaultExecutorKindError;
 pub use platform::executor::TaskHandle;
-pub use platform::run_one;

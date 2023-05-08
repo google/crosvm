@@ -617,7 +617,10 @@ mod test {
         }
 
         let x = Rc::new(RefCell::new(0));
-        super::super::run_one_poll(my_async(x.clone())).unwrap();
+        {
+            let ex = FdExecutor::new().unwrap();
+            ex.run_until(my_async(x.clone())).unwrap();
+        }
         assert_eq!(*x.borrow(), 4);
     }
 
