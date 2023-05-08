@@ -886,13 +886,22 @@ impl VcpuX86_64 for KvmVcpu {
     }
 
     fn get_all_msrs(&self) -> Result<Vec<Register>> {
-        let mut msrs = self
+        let mut msrs: Vec<_> = self
             .kvm
             .get_msr_index_list()?
             .into_iter()
             .map(|i| Register { id: i, value: 0 })
             .collect();
+        let count = msrs.len();
         self.get_msrs(&mut msrs)?;
+        if msrs.len() != count {
+            error!(
+                "failed to get all MSRs: requested {}, got {}",
+                count,
+                msrs.len()
+            );
+            return Err(base::Error::new(libc::EPERM));
+        }
         Ok(msrs)
     }
 
