@@ -224,7 +224,9 @@ class Task(object):
             for command in self.commands:
                 if verbose():
                     self.log_lines.append(f"$ {command}")
-                process = command.popen(stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                process = command.popen(
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, errors="replace"
+                )
                 assert process.stdout
                 for line in iter(process.stdout.readline, ""):
                     self.log_lines.append(line.strip())
