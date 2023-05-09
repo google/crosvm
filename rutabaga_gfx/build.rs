@@ -147,7 +147,10 @@ fn virglrenderer_deps() -> Result<()> {
 #[cfg(feature = "virgl_renderer")]
 fn virglrenderer() -> Result<()> {
     // Use virglrenderer package from pkgconfig on ChromeOS builds
-    if std::env::var("CROSVM_BUILD_VARIANT").unwrap_or_default() == "chromeos" {
+    if std::env::var("CROSVM_BUILD_VARIANT").unwrap_or_default() == "chromeos"
+        || std::env::var("CROSVM_USE_SYSTEM_VIRGLRENDERER").unwrap_or_else(|_| "0".to_string())
+            != "0"
+    {
         pkg_config::Config::new().probe("virglrenderer")?;
         virglrenderer_deps()?;
         return Ok(());
