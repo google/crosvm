@@ -4,8 +4,6 @@ version = "0.1.0"
 authors = ["The ChromiumOS Authors"]
 edition = "2021"
 default-run = "crosvm"
-# b:223855233
-resolver = "1"
 
 [[bin]]
 name = "crosvm"
