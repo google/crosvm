@@ -602,10 +602,6 @@ fn submit_from_any_thread() {
     assert_eq!(*in_flight.lock(), 0);
     assert_eq!(uring.submit_ring.lock().added, 0);
     assert_eq!(uring.complete_ring.num_ready(), 0);
-    assert_eq!(
-        uring.stats.total_ops.load(Ordering::Relaxed),
-        (NUM_THREADS * ITERATIONS) as u64
-    );
 }
 
 // TODO(b/183722981): Fix and re-enable test
@@ -712,10 +708,6 @@ fn multi_thread_submit_and_complete() {
         NUM_COMPLETERS as u32
     );
     assert_eq!(uring.submit_ring.lock().added, 0);
-    assert_eq!(
-        uring.stats.total_ops.load(Ordering::Relaxed),
-        (NUM_SUBMITTERS * ITERATIONS + NUM_COMPLETERS) as u64
-    );
 }
 
 #[test]

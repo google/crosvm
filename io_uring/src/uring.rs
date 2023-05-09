@@ -16,8 +16,6 @@ use std::pin::Pin;
 use std::ptr::null;
 use std::sync::atomic::AtomicPtr;
 use std::sync::atomic::AtomicU32;
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
 use base::AsRawDescriptor;
@@ -76,14 +74,6 @@ impl From<Error> for io::Error {
             e => io::Error::new(io::ErrorKind::Other, e),
         }
     }
-}
-
-/// Basic statistics about the operations that have been submitted to the uring.
-#[derive(Default)]
-pub struct URingStats {
-    total_enter_calls: AtomicU64, // Number of times the uring has been entered.
-    pub total_ops: AtomicU64,     // Total ops submitted to io_uring.
-    total_complete: AtomicU64,    // Total ops completed by io_uring.
 }
 
 pub struct SubmitQueue {
@@ -317,8 +307,6 @@ pub struct URingContext {
     ring_file: File, // Holds the io_uring context FD returned from io_uring_setup.
     pub submit_ring: Mutex<SubmitQueue>,
     pub complete_ring: CompleteQueueState,
-    in_flight: AtomicUsize, // The number of pending operations.
-    pub stats: URingStats,
 }
 
 impl URingContext {
@@ -416,8 +404,6 @@ impl URingContext {
                     num_sqes: ring_params.sq_entries as usize,
                 }),
                 complete_ring,
-                in_flight: AtomicUsize::new(0),
-                stats: Default::default(),
             })
         }
     }
@@ -717,18 +703,11 @@ impl URingContext {
     // Calls io_uring_enter, submitting any new sqes that have been added to the submit queue and
     // waiting for `wait_nr` operations to complete.
     fn enter(&self, wait_nr: u64) -> Result<()> {
-        let completed = self.complete_ring.num_completed();
-        self.stats
-            .total_complete
-            .fetch_add(completed as u64, Ordering::Relaxed);
-        self.in_flight.fetch_sub(completed, Ordering::Relaxed);
-
         let added = self.submit_ring.lock().prepare_submit();
         if added == 0 && wait_nr == 0 {
             return Ok(());
         }
 
-        self.stats.total_enter_calls.fetch_add(1, Ordering::Relaxed);
         let flags = if wait_nr > 0 {
             IORING_ENTER_GETEVENTS
         } else {
@@ -742,12 +721,6 @@ impl URingContext {
         match res {
             Ok(_) => {
                 self.submit_ring.lock().complete_submit(added);
-                self.stats
-                    .total_ops
-                    .fetch_add(added as u64, Ordering::Relaxed);
-
-                // Release store synchronizes with acquire load above.
-                self.in_flight.fetch_add(added, Ordering::Release);
             }
             Err(e) => {
                 // An EBUSY return means that some completed events must be processed before
@@ -881,7 +854,6 @@ impl SubmitQueueState {
 
 #[derive(Default)]
 struct CompleteQueueData {
-    completed: usize,
     //For ops that pass in arrays of iovecs, they need to be valid for the duration of the
     //operation because the kernel might read them at any time.
     pending_op_addrs: BTreeMap<UserData, Pin<Box<[IoBufMut<'static>]>>>,
@@ -937,11 +909,6 @@ impl CompleteQueueState {
         tail.saturating_sub(head)
     }
 
-    fn num_completed(&self) -> usize {
-        let mut data = self.data.lock();
-        ::std::mem::replace(&mut data.completed, 0)
-    }
-
     fn pop_front(&self) -> Option<(UserData, std::io::Result<u32>)> {
         // Take the lock on self.data first so that 2 threads don't try to pop the same completed op
         // from the queue.
@@ -955,8 +922,6 @@ impl CompleteQueueState {
         if head == self.pointers.tail(Ordering::Acquire) {
             return None;
         }
-
-        data.completed += 1;
 
         let cqe = self.get_cqe(head);
         let user_data = cqe.user_data;
