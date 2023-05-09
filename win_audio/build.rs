@@ -7,9 +7,7 @@ use std::env;
 static PREBUILTS_VERSION_FILENAME: &str = "prebuilts_version";
 static R8BRAIN_LIB: &str = "r8Brain.lib";
 static R8BRAIN_DLL: &str = "r8Brain.dll";
-#[cfg(windows)]
 static UCRTBASE_DLL: &str = "ucrtbased.dll";
-#[cfg(windows)]
 static VCRUNTIME_DLL: &str = "vcruntime140d.dll";
 
 fn main() {
@@ -24,14 +22,7 @@ fn main() {
         let files = prebuilts::download_prebuilts(
             "r8brain",
             version,
-            &[
-                R8BRAIN_DLL,
-                R8BRAIN_LIB,
-                #[cfg(windows)]
-                UCRTBASE_DLL,
-                #[cfg(windows)]
-                VCRUNTIME_DLL,
-            ],
+            &[R8BRAIN_DLL, R8BRAIN_LIB, UCRTBASE_DLL, VCRUNTIME_DLL],
         )
         .unwrap();
         let lib_dir = files

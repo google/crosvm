@@ -5,7 +5,6 @@
 static PREBUILTS_VERSION_FILENAME: &str = "prebuilts_version";
 static SLIRP_LIB: &str = "libslirp.lib";
 static SLIRP_DLL: &str = "libslirp-0.dll";
-#[cfg(unix)]
 static GLIB_FILENAME: &str = "libglib-2.0.dll.a";
 
 fn main() {
@@ -21,19 +20,11 @@ fn main() {
             .parse::<u32>()
             .unwrap();
         // TODO(b:242204245) build libslirp locally on windows from build.rs.
-        prebuilts::download_prebuilts(
-            "libslirp",
-            version,
-            &[
-                SLIRP_DLL,
-                SLIRP_LIB,
-                #[cfg(unix)]
-                // When compiling with mingw64 to run under wine64, we need glib as slirp links
-                // against it.
-                GLIB_FILENAME,
-            ],
-        )
-        .unwrap();
+        let mut libs = vec![SLIRP_DLL, SLIRP_LIB];
+        if std::env::var("CARGO_CFG_TARGET_ENV") == Ok("gnu".to_string()) {
+            libs.push(GLIB_FILENAME);
+        }
+        prebuilts::download_prebuilts("libslirp", version, &libs).unwrap();
     }
 
     // For unix, libslirp-sys's build script will make the appropriate linking calls to pkg_config.
