@@ -8,6 +8,8 @@ use std::arch::x86_64::__cpuid;
 #[cfg(any(unix, feature = "haxm", feature = "whpx"))]
 use std::arch::x86_64::_rdtsc;
 
+use base::custom_serde::deserialize_seq_to_arr;
+use base::custom_serde::serialize_arr;
 use base::error;
 use base::Result;
 use bit_field::*;
@@ -433,7 +435,7 @@ pub const MAX_IOAPIC_PINS: usize = 120;
 
 /// Represents the state of the IOAPIC.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IoapicState {
     /// base_address is the memory base address for this IOAPIC. It cannot be changed.
     pub base_address: u64,
@@ -444,6 +446,10 @@ pub struct IoapicState {
     /// current_interrupt_level_bitmap represents a bitmap of the state of all of the irq lines
     pub current_interrupt_level_bitmap: u32,
     /// redirect_table contains the irq settings for each irq line
+    #[serde(
+        serialize_with = "serialize_arr",
+        deserialize_with = "deserialize_seq_to_arr"
+    )]
     pub redirect_table: [IoapicRedirectionTableEntry; 120],
 }
 
@@ -461,7 +467,7 @@ pub enum PicSelect {
 }
 
 #[repr(C)]
-#[derive(enumn::N, Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(enumn::N, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PicInitState {
     #[default]
     Icw1 = 0,
@@ -482,7 +488,7 @@ impl From<u8> for PicInitState {
 
 /// Represents the state of the PIC.
 #[repr(C)]
-#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PicState {
     /// Edge detection.
     pub last_irr: u8,
@@ -516,8 +522,12 @@ pub struct PicState {
 /// The Local APIC consists of 64 128-bit registers, but only the first 32-bits of each register
 /// can be used, so this structure only stores the first 32-bits of each register.
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct LapicState {
+    #[serde(
+        serialize_with = "serialize_arr",
+        deserialize_with = "deserialize_seq_to_arr"
+    )]
     pub regs: [LapicRegister; 64],
 }
 
@@ -543,7 +553,7 @@ impl Eq for LapicState {}
 /// The PitState represents the state of the PIT (aka the Programmable Interval Timer).
 /// The state is simply the state of it's three channels.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PitState {
     pub channels: [PitChannelState; 3],
     /// Hypervisor-specific flags for setting the pit state.
@@ -555,7 +565,7 @@ pub struct PitState {
 /// but the count values and latch values are two bytes. So the access mode controls which of the
 /// two bytes will be read when.
 #[repr(C)]
-#[derive(enumn::N, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(enumn::N, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PitRWMode {
     /// None mode means that no access mode has been set.
     None = 0,
@@ -582,7 +592,7 @@ impl From<u8> for PitRWMode {
 /// This is related to the PitRWMode, it mainly gives more detail about the state of the channel
 /// with respect to PitRWMode::Both.
 #[repr(C)]
-#[derive(enumn::N, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(enumn::N, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PitRWState {
     /// None mode means that no access mode has been set.
     None = 0,
@@ -611,7 +621,7 @@ impl From<u8> for PitRWState {
 
 /// The PitChannelState represents the state of one of the PIT's three counters.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PitChannelState {
     /// The starting value for the counter.
     pub count: u32,

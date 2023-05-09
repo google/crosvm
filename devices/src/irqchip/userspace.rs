@@ -938,6 +938,13 @@ impl<V: VcpuX86_64 + 'static> IrqChipX86_64 for UserspaceIrqChip<V> {
     fn pit_uses_speaker_port(&self) -> bool {
         true
     }
+
+    fn snapshot_chip_specific(&self) -> anyhow::Result<serde_json::Value> {
+        Err(anyhow::anyhow!("Not supported yet in userspace"))
+    }
+    fn restore_chip_specific(&mut self, _data: serde_json::Value) -> anyhow::Result<()> {
+        Err(anyhow::anyhow!("Not supported yet in userspace"))
+    }
 }
 
 /// Condition variable used by `UserspaceIrqChip::wait_until_runnable`.

@@ -64,6 +64,7 @@ use crate::NUM_IOAPIC_PINS;
 
 type KvmCpuId = kvm::CpuId;
 const KVM_XSAVE_MAX_SIZE: i32 = 4096;
+const MSR_IA32_APICBASE: u32 = 0x0000001b;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VcpuEvents {
@@ -239,7 +240,7 @@ impl KvmVm {
         let mut clock_data: kvm_clock_data = Default::default();
         let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_CLOCK(), &mut clock_data) };
         if ret == 0 {
-            Ok(ClockState::from(clock_data))
+            Ok(ClockState::from(&clock_data))
         } else {
             errno_result()
         }
@@ -247,7 +248,7 @@ impl KvmVm {
 
     /// Arch-specific implementation of `Vm::set_pvclock`.
     pub fn set_pvclock_arch(&self, state: &ClockState) -> Result<()> {
-        let clock_data = kvm_clock_data::from(*state);
+        let clock_data = kvm_clock_data::from(state);
         // Safe because we know that our file is a VM fd, we know the kernel will only read correct
         // amount of memory from our pointer, and we verify the return result.
         let ret = unsafe { ioctl_with_ref(self, KVM_SET_CLOCK(), &clock_data) };
@@ -1037,6 +1038,66 @@ impl KvmVcpu {
         }
         Ok(())
     }
+
+    /// X86 specific call to get the value of the APIC_BASE MSR.
+    ///
+    /// See the documentation for The kvm_run structure, and for KVM_GET_LAPIC.
+    pub fn get_apic_base(&self) -> Result<u64> {
+        let mut apic_base = vec![Register {
+            id: MSR_IA32_APICBASE,
+            value: 0,
+        }];
+        self.get_msrs(&mut apic_base)?;
+        match apic_base.get(0) {
+            Some(base) => Ok(base.value),
+            None => Err(Error::new(EIO)),
+        }
+    }
+
+    /// X86 specific call to set the value of the APIC_BASE MSR.
+    ///
+    /// See the documentation for The kvm_run structure, and for KVM_GET_LAPIC.
+    pub fn set_apic_base(&self, apic_base: u64) -> Result<()> {
+        self.set_msrs(&[Register {
+            id: MSR_IA32_APICBASE,
+            value: apic_base,
+        }])
+    }
+
+    /// Call to get pending interrupts acknowledged by the APIC but not yet injected into the CPU.
+    ///
+    /// See the documentation for KVM_GET_SREGS.
+    pub fn get_interrupt_bitmap(&self) -> Result<[u64; 4usize]> {
+        let mut regs: kvm_sregs = Default::default();
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_SREGS(), &mut regs) };
+        if ret >= 0 {
+            Ok(regs.interrupt_bitmap)
+        } else {
+            errno_result()
+        }
+    }
+
+    /// Call to set pending interrupts acknowledged by the APIC but not yet injected into the CPU.
+    ///
+    /// See the documentation for KVM_GET_SREGS.
+    pub fn set_interrupt_bitmap(&self, interrupt_bitmap: [u64; 4usize]) -> Result<()> {
+        // Potentially racy code. Vcpu registers are set in a separate thread and this could result
+        // in Sregs being modified from the Vcpu initialization thread and the Irq restoring
+        // thread.
+        let mut regs: kvm_sregs = Default::default();
+        let ret = unsafe { ioctl_with_mut_ref(self, KVM_GET_SREGS(), &mut regs) };
+        if ret >= 0 {
+            regs.interrupt_bitmap = interrupt_bitmap;
+            let ret = unsafe { ioctl_with_ref(self, KVM_SET_SREGS(), &regs) };
+            if ret >= 0 {
+                Ok(())
+            } else {
+                errno_result()
+            }
+        } else {
+            errno_result()
+        }
+    }
 }
 
 impl<'a> From<&'a KvmCpuId> for CpuId {
@@ -1082,8 +1143,8 @@ impl From<&CpuId> for KvmCpuId {
     }
 }
 
-impl From<ClockState> for kvm_clock_data {
-    fn from(state: ClockState) -> Self {
+impl From<&ClockState> for kvm_clock_data {
+    fn from(state: &ClockState) -> Self {
         kvm_clock_data {
             clock: state.clock,
             flags: state.flags,
@@ -1092,8 +1153,8 @@ impl From<ClockState> for kvm_clock_data {
     }
 }
 
-impl From<kvm_clock_data> for ClockState {
-    fn from(clock_data: kvm_clock_data) -> Self {
+impl From<&kvm_clock_data> for ClockState {
+    fn from(clock_data: &kvm_clock_data) -> Self {
         ClockState {
             clock: clock_data.clock,
             flags: clock_data.flags,

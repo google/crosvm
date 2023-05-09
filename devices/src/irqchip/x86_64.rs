@@ -5,6 +5,8 @@
 use std::ops::Index;
 use std::vec::Vec;
 
+use anyhow::anyhow;
+use anyhow::Context;
 use base::Error;
 use base::Event;
 use base::Result;
@@ -13,9 +15,12 @@ use hypervisor::IrqRoute;
 use hypervisor::IrqSource;
 use hypervisor::IrqSourceChip;
 use hypervisor::LapicState;
+use hypervisor::MPState;
 use hypervisor::PicSelect;
 use hypervisor::PicState;
 use hypervisor::PitState;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::IrqChip;
 
@@ -58,6 +63,64 @@ pub trait IrqChipX86_64: IrqChip {
 
     /// Returns true if the PIT uses port 0x61 for the PC speaker, false if 0x61 is unused.
     fn pit_uses_speaker_port(&self) -> bool;
+
+    /// Snapshot state specific to different IrqChips.
+    fn snapshot_chip_specific(&self) -> anyhow::Result<serde_json::Value>;
+
+    /// Restore state specific to different IrqChips.
+    fn restore_chip_specific(&mut self, data: serde_json::Value) -> anyhow::Result<()>;
+
+    /// Snapshot state common to IrqChips.
+    fn snapshot(&self, cpus_num: usize) -> anyhow::Result<serde_json::Value> {
+        let mut lapics: Vec<LapicState> = Vec::new();
+        let mut mp_states: Vec<MPState> = Vec::new();
+        for i in 0..cpus_num {
+            lapics.push(self.get_lapic_state(i)?);
+            mp_states.push(self.get_mp_state(i)?);
+        }
+        serde_json::to_value(&IrqChipSnapshot {
+            ioapic_state: self.get_ioapic_state()?,
+            lapic_state: lapics,
+            pic_state_1: self.get_pic_state(PicSelect::Primary)?,
+            pic_state_2: self.get_pic_state(PicSelect::Secondary)?,
+            pit_state: self.get_pit()?,
+            chip_specific_state: self.snapshot_chip_specific()?,
+            mp_state: mp_states,
+        })
+        .context("failed to serialize KvmKernelIrqChip")
+    }
+
+    /// Restore state common to IrqChips.
+    fn restore(&mut self, data: serde_json::Value, vcpus_num: usize) -> anyhow::Result<()> {
+        let deser: IrqChipSnapshot =
+            serde_json::from_value(data).context("failed to deserialize data")?;
+        if deser.mp_state.len() != vcpus_num || deser.lapic_state.len() != vcpus_num {
+            return Err(anyhow!("IrqChip data has been modified"));
+        }
+        self.set_pit(&deser.pit_state)?;
+        self.set_pic_state(PicSelect::Primary, &deser.pic_state_1)?;
+        self.set_pic_state(PicSelect::Secondary, &deser.pic_state_2)?;
+        self.set_ioapic_state(&deser.ioapic_state)?;
+        self.restore_chip_specific(deser.chip_specific_state)?;
+        for (i, lapic) in deser.lapic_state.iter().enumerate() {
+            self.set_lapic_state(i, lapic)?;
+        }
+        for (i, mp_state) in deser.mp_state.iter().enumerate() {
+            self.set_mp_state(i, mp_state)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct IrqChipSnapshot {
+    ioapic_state: IoapicState,
+    lapic_state: Vec<LapicState>,
+    pic_state_1: PicState,
+    pic_state_2: PicState,
+    pit_state: PitState,
+    chip_specific_state: serde_json::Value,
+    mp_state: Vec<MPState>,
 }
 
 /// A container for x86 IrqRoutes, grouped by GSI.

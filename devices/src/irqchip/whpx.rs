@@ -543,6 +543,10 @@ impl IrqChip for WhpxSplitIrqChip {
     }
 }
 
+struct WhpxSplitIrqChipSnapshot {
+    routes: Routes,
+}
+
 impl IrqChipX86_64 for WhpxSplitIrqChip {
     fn try_box_clone(&self) -> Result<Box<dyn IrqChipX86_64>> {
         Ok(Box::new(self.try_clone()?))
@@ -607,5 +611,19 @@ impl IrqChipX86_64 for WhpxSplitIrqChip {
     /// devices::Pit uses 0x61.
     fn pit_uses_speaker_port(&self) -> bool {
         true
+    }
+
+    fn snapshot_chip_specific(&self) -> anyhow::Result<serde_json::Value> {
+        serde_json::to_value(&WhpxSplitIrqChipSnapshot {
+            routes: self.routes.lock().clone(),
+        })
+        .context("failed to snapshot WhpxSplitIrqChip")
+    }
+
+    fn restore_chip_specific(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        let deser: WhpxSplitIrqChipSnapshot =
+            serde_json::from_value(data).context("failed to deserialize WhpxSplitIrqChip")?;
+        self.set_irq_routes(routes)?;
+        Ok(())
     }
 }

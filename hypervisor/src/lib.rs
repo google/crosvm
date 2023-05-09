@@ -485,7 +485,7 @@ pub enum DeviceKind {
 
 /// The source chip of an `IrqSource`
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IrqSourceChip {
     PicPrimary,
     PicSecondary,
@@ -496,7 +496,7 @@ pub enum IrqSourceChip {
 
 /// A source of IRQs in an `IrqRoute`.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IrqSource {
     Irqchip { chip: IrqSourceChip, pin: u32 },
     Msi { address: u64, data: u32 },
@@ -504,7 +504,7 @@ pub enum IrqSource {
 
 /// A single route for an IRQ.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IrqRoute {
     pub gsi: u32,
     pub source: IrqSource,
@@ -521,7 +521,7 @@ pub struct ClockState {
 
 /// The MPState represents the state of a processor.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MPState {
     /// the vcpu is currently running (x86/x86_64,arm/arm64)
     Runnable,

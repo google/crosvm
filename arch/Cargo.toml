@@ -29,6 +29,7 @@ libc = "*"
 resources = { path = "../resources" }
 remain = "*"
 serde = { version = "*", features = [ "derive"] }
+serde_json = { version = "1" }
 serde_keyvalue = { path = "../serde_keyvalue", features = ["argh_derive"] }
 swap = { path = "../swap" }
 sync = { path = "../common/sync" }
