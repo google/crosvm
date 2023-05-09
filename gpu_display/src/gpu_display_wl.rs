@@ -15,7 +15,9 @@ use std::cmp::max;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::mem::zeroed;
+use std::panic::catch_unwind;
 use std::path::Path;
+use std::process::abort;
 use std::ptr::null;
 
 use base::error;
@@ -188,11 +190,29 @@ pub struct DisplayWl {
     mt_tracking_id: u16,
 }
 
+/// Error logging callback used by wrapped C implementation.
+///
+/// safe because it must be passed a valid pointer to null-terminated c-string.
+unsafe extern "C" fn error_callback(message: *const ::std::os::raw::c_char) {
+    catch_unwind(|| {
+        assert!(!message.is_null());
+        let msg = unsafe {
+            std::str::from_utf8(std::slice::from_raw_parts(
+                message as *const u8,
+                libc::strlen(message),
+            ))
+            .unwrap()
+        };
+        error!("{}", msg);
+    })
+    .unwrap_or_else(|_| abort())
+}
+
 impl DisplayWl {
     /// Opens a fresh connection to the compositor.
     pub fn new(wayland_path: Option<&Path>) -> GpuDisplayResult<DisplayWl> {
         // The dwl_context_new call should always be safe to call, and we check its result.
-        let ctx = DwlContext(unsafe { dwl_context_new() });
+        let ctx = DwlContext(unsafe { dwl_context_new(Some(error_callback)) });
         if ctx.0.is_null() {
             return Err(GpuDisplayError::Allocate);
         }

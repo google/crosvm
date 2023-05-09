@@ -90,8 +90,12 @@ pub struct dwl_event {
     pub params: [i32; 3usize],
 }
 
+#[allow(non_camel_case_types)]
+pub type dwl_error_callback_type =
+    ::std::option::Option<unsafe extern "C" fn(message: *const ::std::os::raw::c_char)>;
+
 extern "C" {
-    pub fn dwl_context_new() -> *mut dwl_context;
+    pub fn dwl_context_new(log_proc: dwl_error_callback_type) -> *mut dwl_context;
 }
 extern "C" {
     pub fn dwl_context_destroy(self_: *mut *mut dwl_context);

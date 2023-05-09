@@ -17,7 +17,6 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <syslog.h>
 #include <unistd.h>
 
 #include "aura-shell.h"
@@ -95,6 +94,8 @@ struct input {
 	bool pointer_lbutton_state;
 };
 
+typedef void (*dwl_error_callback_type)(const char *message);
+
 struct dwl_context {
 	struct wl_display *display;
 	struct dwl_surface *surfaces[MAX_BUFFER_COUNT];
@@ -107,6 +108,8 @@ struct dwl_context {
 	struct dwl_event event_cbuf[EVENT_BUF_SIZE];
 	size_t event_read_pos;
 	size_t event_write_pos;
+
+	dwl_error_callback_type error_callback;
 };
 
 #define outputs_for_each(context, pos, output)                                 \
@@ -248,12 +251,12 @@ static const struct xdg_wm_base_listener xdg_wm_base_listener = {
 static void wl_keyboard_keymap(void *data, struct wl_keyboard *wl_keyboard,
 			       uint32_t format, int32_t fd, uint32_t size)
 {
-	(void)data;
+	struct dwl_context *context = (struct dwl_context*)data;
 	(void)wl_keyboard;
 	(void)fd;
 	(void)size;
 	if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1) {
-		syslog(LOG_ERR, "wl_keyboard: invalid keymap format");
+		context->error_callback("wl_keyboard: invalid keymap format");
 	}
 }
 
@@ -713,10 +716,15 @@ static void surface_leave(void *data, struct wl_surface *wl_surface,
 static const struct wl_surface_listener surface_listener = {
     .enter = surface_enter, .leave = surface_leave};
 
-struct dwl_context *dwl_context_new()
+static void error_callback_stub(const char *message) {
+	(void)message;
+}
+
+struct dwl_context *dwl_context_new(dwl_error_callback_type error_callback)
 {
 	struct dwl_context *ctx = calloc(1, sizeof(struct dwl_context));
 	ctx->ifaces.context = ctx;
+	ctx->error_callback = error_callback ? error_callback : error_callback_stub;
 	return ctx;
 }
 
@@ -732,7 +740,7 @@ bool dwl_context_setup(struct dwl_context *self, const char *socket_path)
 {
 	struct wl_display *display = wl_display_connect(socket_path);
 	if (!display) {
-		syslog(LOG_ERR, "failed to connect to display");
+		self->error_callback("failed to connect to display");
 		return false;
 	}
 	self->display = display;
@@ -740,7 +748,7 @@ bool dwl_context_setup(struct dwl_context *self, const char *socket_path)
 
 	struct wl_registry *registry = wl_display_get_registry(display);
 	if (!registry) {
-		syslog(LOG_ERR, "failed to get registry");
+		self->error_callback("failed to get registry");
 		goto fail;
 	}
 
@@ -750,27 +758,27 @@ bool dwl_context_setup(struct dwl_context *self, const char *socket_path)
 	dwl_context_output_get_aura(self);
 
 	if (!ifaces->shm) {
-		syslog(LOG_ERR, "missing interface shm");
+		self->error_callback("missing interface shm");
 		goto fail;
 	}
 	if (!ifaces->compositor) {
-		syslog(LOG_ERR, "missing interface compositor");
+		self->error_callback("missing interface compositor");
 		goto fail;
 	}
 	if (!ifaces->subcompositor) {
-		syslog(LOG_ERR, "missing interface subcompositor");
+		self->error_callback("missing interface subcompositor");
 		goto fail;
 	}
 	if (!ifaces->seat) {
-		syslog(LOG_ERR, "missing interface seat");
+		self->error_callback("missing interface seat");
 		goto fail;
 	}
 	if (!ifaces->linux_dmabuf) {
-		syslog(LOG_ERR, "missing interface linux_dmabuf");
+		self->error_callback("missing interface linux_dmabuf");
 		goto fail;
 	}
 	if (!ifaces->xdg_wm_base) {
-		syslog(LOG_ERR, "missing interface xdg_wm_base");
+		self->error_callback("missing interface xdg_wm_base");
 		goto fail;
 	}
 
@@ -876,7 +884,7 @@ struct dwl_dmabuf *dwl_context_dmabuf_new(struct dwl_context *self,
 {
 	struct dwl_dmabuf *dmabuf = calloc(1, sizeof(struct dwl_dmabuf));
 	if (!dmabuf) {
-		syslog(LOG_ERR, "failed to allocate dwl_dmabuf");
+		self->error_callback("failed to allocate dwl_dmabuf");
 		return NULL;
 	}
 	dmabuf->width = width;
@@ -885,8 +893,7 @@ struct dwl_dmabuf *dwl_context_dmabuf_new(struct dwl_context *self,
 	struct zwp_linux_buffer_params_v1 *params =
 	    zwp_linux_dmabuf_v1_create_params(self->ifaces.linux_dmabuf);
 	if (!params) {
-		syslog(LOG_ERR,
-		       "failed to allocate zwp_linux_buffer_params_v1");
+		self->error_callback("failed to allocate zwp_linux_buffer_params_v1");
 		free(dmabuf);
 		return NULL;
 	}
@@ -901,7 +908,7 @@ struct dwl_dmabuf *dwl_context_dmabuf_new(struct dwl_context *self,
 	zwp_linux_buffer_params_v1_destroy(params);
 
 	if (!dmabuf->buffer) {
-		syslog(LOG_ERR, "failed to get wl_buffer for dmabuf");
+		self->error_callback("failed to get wl_buffer for dmabuf");
 		free(dmabuf);
 		return NULL;
 	}
@@ -911,7 +918,7 @@ struct dwl_dmabuf *dwl_context_dmabuf_new(struct dwl_context *self,
 	dmabuf->import_id = import_id;
 	dmabuf->context = self;
 	if (!dwl_context_add_dmabuf(self, dmabuf)) {
-		syslog(LOG_ERR, "failed to add dmabuf to context");
+		self->error_callback("failed to add dmabuf to context");
 		free(dmabuf);
 		return NULL;
 	}
@@ -1016,7 +1023,7 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 	struct wl_shm_pool *shm_pool =
 	    wl_shm_create_pool(self->ifaces.shm, shm_fd, shm_size);
 	if (!shm_pool) {
-		syslog(LOG_ERR, "failed to make shm pool");
+		self->error_callback("failed to make shm pool");
 		goto fail;
 	}
 
@@ -1028,7 +1035,7 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 		struct wl_buffer *buffer = wl_shm_pool_create_buffer(
 		    shm_pool, buffer_size * i, width, height, stride, format);
 		if (!buffer) {
-			syslog(LOG_ERR, "failed to create buffer");
+			self->error_callback("failed to create buffer");
 			goto fail;
 		}
 		disp_surface->buffers[i] = buffer;
@@ -1041,7 +1048,7 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 	disp_surface->wl_surface =
 	    wl_compositor_create_surface(self->ifaces.compositor);
 	if (!disp_surface->wl_surface) {
-		syslog(LOG_ERR, "failed to make surface");
+		self->error_callback("failed to make surface");
 		goto fail;
 	}
 
@@ -1050,7 +1057,7 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 
 	struct wl_region *region = wl_compositor_create_region(self->ifaces.compositor);
 	if (!region) {
-		syslog(LOG_ERR, "failed to make region");
+		self->error_callback("failed to make region");
 		goto fail;
 	}
 
@@ -1069,15 +1076,14 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 		disp_surface->xdg_surface = xdg_wm_base_get_xdg_surface(
 		    self->ifaces.xdg_wm_base, disp_surface->wl_surface);
 		if (!disp_surface->xdg_surface) {
-			syslog(LOG_ERR, "failed to make xdg shell surface");
+			self->error_callback("failed to make xdg shell surface");
 			goto fail;
 		}
 
 		disp_surface->xdg_toplevel =
 		    xdg_surface_get_toplevel(disp_surface->xdg_surface);
 		if (!disp_surface->xdg_toplevel) {
-			syslog(LOG_ERR,
-			       "failed to make toplevel xdg shell surface");
+			self->error_callback("failed to make toplevel xdg shell surface");
 			goto fail;
 		}
 		xdg_toplevel_set_title(disp_surface->xdg_toplevel, "crosvm");
@@ -1091,7 +1097,7 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 			disp_surface->aura = zaura_shell_get_aura_surface(
 			    self->ifaces.aura, disp_surface->wl_surface);
 			if (!disp_surface->aura) {
-				syslog(LOG_ERR, "failed to make aura surface");
+				self->error_callback("failed to make aura surface");
 				goto fail;
 			}
 			zaura_surface_set_frame(
@@ -1109,7 +1115,7 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 			dwl_context_get_surface(self, parent_id);
 
 		if (!parent_surface) {
-			syslog(LOG_ERR, "failed to find parent_surface");
+			self->error_callback("failed to find parent_surface");
 			goto fail;
 		}
 
@@ -1117,7 +1123,7 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 		    self->ifaces.subcompositor, disp_surface->wl_surface,
 		    parent_surface->wl_surface);
 		if (!disp_surface->subsurface) {
-			syslog(LOG_ERR, "failed to make subsurface");
+			self->error_callback("failed to make subsurface");
 			goto fail;
 		}
 		wl_subsurface_set_desync(disp_surface->subsurface);
@@ -1127,7 +1133,7 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 		disp_surface->viewport = wp_viewporter_get_viewport(
 		    self->ifaces.viewporter, disp_surface->wl_surface);
 		if (!disp_surface->viewport) {
-			syslog(LOG_ERR, "failed to make surface viewport");
+			self->error_callback("failed to make surface viewport");
 			goto fail;
 		}
 	}
@@ -1137,7 +1143,7 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 			wp_virtio_gpu_metadata_v1_get_surface_metadata(
 				self->ifaces.virtio_gpu_metadata, disp_surface->wl_surface);
 		if (!disp_surface->virtio_gpu_surface_metadata) {
-			syslog(LOG_ERR, "failed to make surface virtio surface metadata");
+			self->error_callback("failed to make surface virtio surface metadata");
 			goto fail;
 		}
 	}
@@ -1168,7 +1174,7 @@ struct dwl_surface *dwl_context_surface_new(struct dwl_context *self,
 
 	disp_surface->surface_id = surface_id;
 	if (!dwl_context_add_surface(self, disp_surface)) {
-		syslog(LOG_ERR, "failed to add surface to context");
+		self->error_callback("failed to add surface to context");
 		goto fail;
 	}
 
