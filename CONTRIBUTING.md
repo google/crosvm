@@ -17,7 +17,8 @@ logged in, you can obtain
 to upload changes.
 
 Once set up, run `./tools/cl` to install the gerrit commit message hook. This will insert a unique
-"Change-Id" into all commit messages so gerrit can identify changes.
+"Change-Id" into all commit messages so gerrit can identify changes. Even warning messages appear,
+the message hook will be installed.
 
 ### Contributor License Agreement
 
