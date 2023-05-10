@@ -10,7 +10,7 @@ crate-type = ["cdylib"]
 
 [features]
 default = ["qcow"]
-qcow = []
+qcow = ["disk/qcow"]
 
 [dependencies]
 libc = "*"
