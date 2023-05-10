@@ -57,6 +57,8 @@ pub use sys::platform;
 pub use timer::FakeTimer;
 pub use timer::Timer;
 pub use tube::Error as TubeError;
+#[cfg(any(windows, feature = "proto_tube"))]
+pub use tube::ProtoTube;
 pub use tube::RecvTube;
 pub use tube::Result as TubeResult;
 pub use tube::SendTube;
@@ -128,7 +130,6 @@ cfg_if::cfg_if! {
             deserialize_and_recv, serialize_and_send, set_alias_pid, set_duplicate_handle_tube,
             DuplicateHandleRequest, DuplicateHandleResponse, DuplicateHandleTube
         };
-        pub use tube::ProtoTube;
         pub use platform::{set_audio_thread_priority, thread};
         pub use platform::Terminal;
     } else {

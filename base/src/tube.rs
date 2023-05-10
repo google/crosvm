@@ -124,7 +124,7 @@ pub enum Error {
     OperationCancelled,
     #[error("failed to crate tube pair: {0}")]
     Pair(io::Error),
-    #[cfg(windows)]
+    #[cfg(any(windows, feature = "proto_tube"))]
     #[error("encountered protobuf error: {0}")]
     Proto(protobuf::Error),
     #[error("failed to receive packet: {0}")]

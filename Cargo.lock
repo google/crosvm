@@ -219,6 +219,7 @@ dependencies = [
  "minijail",
  "once_cell",
  "protobuf",
+ "protos",
  "rand",
  "regex",
  "remain",

@@ -13,6 +13,7 @@ harness = false
 
 [features]
 chromeos = []
+proto_tube = ["protobuf"]
 seccomp_trace = []
 
 [dependencies]
@@ -27,6 +28,7 @@ env_logger = "0.9.0"
 libc = "*"
 log = "0.4"
 once_cell = "1.7"
+protobuf = { version = "3.2", optional = true }
 remain = "0.2"
 serde = { version = "1", features = [ "derive" ] }
 serde_json = "*"
@@ -38,15 +40,16 @@ zerocopy = "*"
 
 [dev-dependencies]
 libtest-mimic = "0.6"
+protos = { path = "../protos", features = ["composite-disk"] }
 
 [target.'cfg(unix)'.dependencies]
 minijail = "*"
 
 [target.'cfg(windows)'.dependencies]
+protobuf = "3.2"
 rand = "0.8"
 winapi = "*"
 win_util = { path = "../win_util"}
-protobuf = "3.2"
 
 [target.'cfg(windows)'.dev-dependencies]
 regex = "*"
