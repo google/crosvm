@@ -116,7 +116,7 @@ impl TestVmSys {
             .args(["--params", "init=/bin/delegate"]);
     }
 
-    pub fn new_generic<F>(f: F, cfg: Config) -> Result<TestVmSys>
+    pub fn new_generic<F>(f: F, cfg: Config, sudo: bool) -> Result<TestVmSys>
     where
         F: FnOnce(&mut Command, &Path, &Config) -> Result<()>,
     {
@@ -133,12 +133,27 @@ impl TestVmSys {
             Some(cmd) => {
                 let wrapper_splitted =
                     shlex::split(cmd).context("Failed to parse wrapper command")?;
-                let mut command_tmp = Command::new(&wrapper_splitted[0]);
+                let mut command_tmp = if sudo {
+                    let mut command = Command::new("sudo");
+                    command.arg(&wrapper_splitted[0]);
+                    command
+                } else {
+                    Command::new(&wrapper_splitted[0])
+                };
+
                 command_tmp.args(&wrapper_splitted[1..]);
                 command_tmp.arg(find_crosvm_binary());
                 command_tmp
             }
-            None => Command::new(find_crosvm_binary()),
+            None => {
+                if sudo {
+                    let mut command = Command::new("sudo");
+                    command.arg(find_crosvm_binary());
+                    command
+                } else {
+                    Command::new(find_crosvm_binary())
+                }
+            }
         };
 
         if let Some(log_file_name) = &cfg.log_file {
@@ -255,12 +270,19 @@ impl TestVmSys {
         Ok(())
     }
 
-    pub fn crosvm_command(&self, command: &str, mut args: Vec<String>) -> Result<()> {
+    pub fn crosvm_command(&self, command: &str, mut args: Vec<String>, sudo: bool) -> Result<()> {
         args.push(self.control_socket_path.to_str().unwrap().to_string());
 
         println!("$ crosvm {} {:?}", command, &args.join(" "));
 
-        let mut cmd = Command::new(find_crosvm_binary());
+        let mut cmd = if sudo {
+            let mut cmd = Command::new("sudo");
+            cmd.arg(find_crosvm_binary());
+            cmd
+        } else {
+            Command::new(find_crosvm_binary())
+        };
+
         cmd.arg(command).args(args);
 
         let output = cmd.output()?;

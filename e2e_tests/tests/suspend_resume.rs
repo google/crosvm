@@ -2,9 +2,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![cfg(unix)]
+
+use std::path::Path;
+
+use base::test_utils::call_test_with_sudo;
+use fixture::utils::create_vu_block_config;
+use fixture::utils::prepare_disk_img;
+use fixture::vhost_user::CmdType;
+use fixture::vhost_user::Config as VuConfig;
+use fixture::vhost_user::VhostUserBackend;
 use fixture::vm::Config;
 use fixture::vm::TestVm;
 use tempfile::tempdir;
+use tempfile::NamedTempFile;
 
 // Tests for suspend/resume.
 //
@@ -83,4 +94,54 @@ fn suspend_resume_system(vm: &mut TestVm) -> anyhow::Result<()> {
     assert_ne!(snap1, snap2);
     assert_eq!(snap1, snap3);
     Ok(())
+}
+
+#[ignore]
+#[test]
+fn snapshot_vhost_user_root() {
+    call_test_with_sudo("snapshot_vhost_user")
+}
+
+// This test will fail/hang if ran by its self.
+#[ignore = "Only to be called by snapshot_vhost_user_root"]
+#[test]
+fn snapshot_vhost_user() {
+    let block_socket = NamedTempFile::new().unwrap();
+    let disk = prepare_disk_img();
+
+    // Spin up block vhost user process
+    let block_vu_config = create_vu_block_config(CmdType::Device, block_socket.path(), disk.path());
+    let _block_vu_device = VhostUserBackend::new(block_vu_config);
+
+    // Spin up net vhost user process.
+    let net_socket = NamedTempFile::new().unwrap();
+    let net_config = create_net_config(net_socket.path());
+    let _net_vu_device = VhostUserBackend::new(net_config).unwrap();
+
+    let mut config = Config::new();
+    config = config.extra_args(vec![
+        "--vhost-user-blk".to_string(),
+        block_socket.path().to_str().unwrap().to_string(),
+        "--vhost-user-net".to_string(),
+        net_socket.path().to_str().unwrap().to_string(),
+    ]);
+    let mut vm = TestVm::new(config).unwrap();
+
+    let dir = tempdir().unwrap();
+    let snap_path = dir.path().join("snapshot.bkp");
+    vm.snapshot(&snap_path).unwrap();
+    // TODO(rizhang): Add verification for snapshotting when it is implemented.
+}
+
+fn create_net_config(socket: &Path) -> VuConfig {
+    let socket_path = socket.to_str().unwrap();
+    println!("socket={socket_path}");
+    VuConfig::new(CmdType::Device, "net").extra_args(vec![
+        "net".to_string(),
+        "--device".to_string(),
+        format!(
+            "{},{},{},{}",
+            socket_path, "192.168.10.1", "255.255.255.0", "12:34:56:78:9a:bc"
+        ),
+    ])
 }

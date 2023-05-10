@@ -15,6 +15,7 @@ use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
 use base::syslog;
+use base::test_utils::check_can_sudo;
 use log::Level;
 use prebuilts::download_file;
 
@@ -235,6 +236,8 @@ pub struct TestVm {
     sys: TestVmSys,
     // The guest is ready to receive a command.
     ready: bool,
+    // True if commands should be ran with `sudo`.
+    sudo: bool,
 }
 
 impl TestVm {
@@ -286,14 +289,15 @@ impl TestVm {
     ///
     /// This generic method takes a `FnOnce` argument which is in charge of completing the `Command`
     /// with all the relevant options needed to boot the VM.
-    pub fn new_generic<F>(f: F, cfg: Config) -> Result<TestVm>
+    pub fn new_generic<F>(f: F, cfg: Config, sudo: bool) -> Result<TestVm>
     where
         F: FnOnce(&mut Command, &SerialArgs, &Config) -> Result<()>,
     {
         PREP_ONCE.call_once(TestVm::initialize_once);
         let mut vm = TestVm {
-            sys: TestVmSys::new_generic(f, cfg).with_context(|| "Could not start crosvm")?,
+            sys: TestVmSys::new_generic(f, cfg, sudo).with_context(|| "Could not start crosvm")?,
             ready: false,
+            sudo,
         };
         vm.wait_for_guest(BOOT_TIMEOUT)
             .with_context(|| "Guest did not become ready after boot")?;
@@ -301,13 +305,19 @@ impl TestVm {
     }
 
     pub fn new(cfg: Config) -> Result<TestVm> {
-        TestVm::new_generic(TestVmSys::append_config_args, cfg)
+        TestVm::new_generic(TestVmSys::append_config_args, cfg, false)
+    }
+
+    pub fn new_sudo(cfg: Config) -> Result<TestVm> {
+        check_can_sudo();
+
+        TestVm::new_generic(TestVmSys::append_config_args, cfg, true)
     }
 
     /// Instanciate a new crosvm instance using a configuration file. The first call will trigger
     /// the download of prebuilt files if necessary.
     pub fn new_with_config_file(cfg: Config) -> Result<TestVm> {
-        TestVm::new_generic(TestVmSys::append_config_file_arg, cfg)
+        TestVm::new_generic(TestVmSys::append_config_file_arg, cfg, false)
     }
 
     /// Executes the provided command in the guest.
@@ -384,25 +394,26 @@ impl TestVm {
     }
 
     pub fn stop(&mut self) -> Result<()> {
-        self.sys.crosvm_command("stop", vec![])
+        self.sys.crosvm_command("stop", vec![], self.sudo)
     }
 
     pub fn suspend(&mut self) -> Result<()> {
-        self.sys.crosvm_command("suspend", vec![])
+        self.sys.crosvm_command("suspend", vec![], self.sudo)
     }
 
     pub fn resume(&mut self) -> Result<()> {
-        self.sys.crosvm_command("resume", vec![])
+        self.sys.crosvm_command("resume", vec![], self.sudo)
     }
 
     pub fn disk(&mut self, args: Vec<String>) -> Result<()> {
-        self.sys.crosvm_command("disk", args)
+        self.sys.crosvm_command("disk", args, self.sudo)
     }
 
     pub fn snapshot(&mut self, filename: &std::path::Path) -> Result<()> {
         self.sys.crosvm_command(
             "snapshot",
             vec!["take".to_string(), String::from(filename.to_str().unwrap())],
+            self.sudo,
         )
     }
 
@@ -414,6 +425,7 @@ impl TestVm {
                 "restore".to_string(),
                 String::from(filename.to_str().unwrap()),
             ],
+            self.sudo,
         )
     }
 }

@@ -11,6 +11,7 @@ use std::thread;
 use std::time::Duration;
 
 use anyhow::Result;
+use base::test_utils::check_can_sudo;
 
 use crate::utils::find_crosvm_binary;
 
@@ -63,7 +64,20 @@ pub struct VhostUserBackend {
 
 impl VhostUserBackend {
     pub fn new(cfg: Config) -> Result<Self> {
-        let mut cmd = Command::new(find_crosvm_binary());
+        let cmd = Command::new(find_crosvm_binary());
+        Self::new_common(cmd, cfg)
+    }
+
+    /// Start up Vhost User Backend `sudo`.
+    pub fn new_sudo(cfg: Config) -> Result<Self> {
+        check_can_sudo();
+
+        let mut cmd = Command::new("sudo");
+        cmd.arg(find_crosvm_binary());
+        Self::new_common(cmd, cfg)
+    }
+
+    fn new_common(mut cmd: Command, cfg: Config) -> Result<Self> {
         cmd.args([cfg.cmd_type.to_subcommand()]);
         cmd.args(cfg.extra_args);
 

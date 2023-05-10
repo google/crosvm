@@ -175,7 +175,7 @@ impl TestVmSys {
         ]);
     }
 
-    pub fn new_generic<F>(f: F, cfg: Config) -> Result<TestVmSys>
+    pub fn new_generic<F>(f: F, cfg: Config, _sudo: bool) -> Result<TestVmSys>
     where
         F: FnOnce(&mut Command, &SerialArgs, &Config) -> Result<()>,
     {
@@ -326,7 +326,12 @@ impl TestVmSys {
         Ok(())
     }
 
-    pub fn crosvm_command(&mut self, _command: &str, mut _args: Vec<String>) -> Result<()> {
+    pub fn crosvm_command(
+        &mut self,
+        _command: &str,
+        mut _args: Vec<String>,
+        _sudo: bool,
+    ) -> Result<()> {
         unimplemented!()
     }
 }

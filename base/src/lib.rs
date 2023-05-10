@@ -16,6 +16,7 @@ mod mmap;
 mod notifiers;
 mod shm;
 pub mod syslog;
+pub mod test_utils;
 mod timer;
 mod tube;
 mod wait_context;

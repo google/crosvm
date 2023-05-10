@@ -4,46 +4,12 @@
 
 #![cfg(unix)]
 
-use std::env::current_exe;
 use std::net;
-use std::process::Command;
 
+use base::test_utils::call_test_with_sudo;
 use net_util::sys::unix::Tap;
 use net_util::MacAddress;
 use net_util::TapTCommon;
-
-/// The tests below require root privileges.
-/// Re-invoke the test binary to execute the specified test with sudo. The test will fail if
-/// passwordless sudo is not available.
-fn call_test_with_sudo(name: &str) {
-    // Try a passwordless sudo first to provide a proper error message.
-    // Note: The combination of SUDO_ASKPASS and --askpass will fail if sudo has to ask for a
-    // password.
-    let can_sudo = Command::new("sudo")
-        .args(["--askpass", "true"])
-        .env("SUDO_ASKPASS", "false")
-        .output()
-        .unwrap();
-    if !can_sudo.status.success() {
-        panic!("This test need to be run as root or with passwordless sudo.");
-    }
-
-    let result = Command::new("sudo")
-        .args([
-            "--preserve-env",
-            current_exe().unwrap().to_str().unwrap(),
-            "--nocapture",
-            "--ignored",
-            "--exact",
-            name,
-        ])
-        .status()
-        .unwrap();
-
-    if !result.success() {
-        panic!("Test {name} failed in child process.");
-    }
-}
 
 #[test]
 fn tap_create() {

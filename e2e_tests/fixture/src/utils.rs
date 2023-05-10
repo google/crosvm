@@ -8,7 +8,7 @@ use std::env;
 use std::io::ErrorKind;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::process::ExitStatus;
 use std::process::Output;
@@ -20,8 +20,13 @@ use std::time::SystemTime;
 
 use anyhow::anyhow;
 use anyhow::Result;
+use tempfile::NamedTempFile;
 
 use crate::sys::binary_name;
+use crate::vhost_user::CmdType;
+use crate::vhost_user::Config as VuConfig;
+
+pub const DEFAULT_BLOCK_SIZE: u64 = 1024 * 1024;
 
 /// Returns the path to the crosvm binary to be tested.
 ///
@@ -147,5 +152,43 @@ where
         } else {
             println!("Attempt failed: {:?}", result.err());
         }
+    }
+}
+
+/// Prepare a temporary ext4 disk file.
+pub fn prepare_disk_img() -> NamedTempFile {
+    let mut disk = NamedTempFile::new().unwrap();
+    disk.as_file_mut().set_len(DEFAULT_BLOCK_SIZE).unwrap();
+
+    // Add /sbin and /usr/sbin to PATH since some distributions put mkfs.ext4 in one of those
+    // directories but don't add them to non-root PATH.
+    let path = env::var("PATH").unwrap();
+    let path = [&path, "/sbin", "/usr/sbin"].join(":");
+
+    // TODO(b/243127910): Use `mkfs.ext4 -d` to include test data.
+    Command::new("mkfs.ext4")
+        .arg(disk.path().to_str().unwrap())
+        .env("PATH", path)
+        .output()
+        .expect("failed to execute process");
+    disk
+}
+
+pub fn create_vu_block_config(cmd_type: CmdType, socket: &Path, disk: &Path) -> VuConfig {
+    let socket_path = socket.to_str().unwrap();
+    let disk_path = disk.to_str().unwrap();
+    println!("disk={disk_path}, socket={socket_path}");
+    match cmd_type {
+        CmdType::Device => VuConfig::new(cmd_type, "block").extra_args(vec![
+            "block".to_string(),
+            "--socket".to_string(),
+            socket_path.to_string(),
+            "--file".to_string(),
+            disk_path.to_string(),
+        ]),
+        CmdType::Devices => VuConfig::new(cmd_type, "block").extra_args(vec![
+            "--block".to_string(),
+            format!("vhost={},path={}", socket_path, disk_path),
+        ]),
     }
 }
