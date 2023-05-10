@@ -2629,6 +2629,7 @@ dependencies = [
  "hypervisor",
  "libc",
  "once_cell",
+ "protos",
  "remain",
  "resources",
  "rutabaga_gfx",

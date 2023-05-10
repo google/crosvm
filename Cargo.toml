@@ -153,6 +153,9 @@ panic-memfd = []
 ## Enables the use of the qcow format for block devices.
 qcow = ["disk/qcow"]
 
+## Enables the registered_events mechanisms.
+registered_events = ["protos/registered_events", "protobuf", "base/proto_tube", "vm_control/registered_events", "devices/registered_events"]
+
 ## Enables vmm-swap of guest memory. This is only available on Linux.
 swap = ["aarch64/swap", "arch/swap", "devices/swap", "vm_control/swap", "x86_64/swap", "swap/enable"]
 
@@ -376,7 +379,7 @@ all-mingw64 = [
 all-msvc64 = [ "all-mingw64" ]
 
 ## All features that are enabled in ChromeOS builds.
-all-chromeos = ["base/chromeos", "audio_cras", "devices/chromeos", "panic-memfd", "arc_quota", "vtpm"]
+all-chromeos = ["base/chromeos", "audio_cras", "devices/chromeos", "panic-memfd", "arc_quota", "vtpm", "registered_events"]
 
 # Deprecated feature flag. Remove after ChromeOS-side is updated.
 chromeos = ["all-chromeos"]

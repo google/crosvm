@@ -13,3 +13,6 @@ pub mod plugin;
 
 #[cfg(feature = "composite-disk")]
 pub use generated::cdisk_spec;
+
+#[cfg(feature = "registered_events")]
+pub use generated::registered_events;

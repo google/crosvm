@@ -439,6 +439,7 @@ fn create_balloon_device(
             BalloonMode::Relaxed
         },
         balloon_features,
+        #[cfg(feature = "registered_events")]
         None,
     )
     .exit_context(Exit::BalloonDeviceNew, "failed to create balloon")?;

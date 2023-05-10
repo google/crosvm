@@ -20,6 +20,9 @@ static LOCAL_PROTOS: &[LocalProto] = &[
     LocalProto {
         module: "cdisk_spec",
     },
+    LocalProto {
+        module: "registered_events",
+    },
 ];
 
 fn main() -> Result<()> {

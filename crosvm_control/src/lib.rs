@@ -28,6 +28,7 @@ use vm_control::BalloonControlCommand;
 use vm_control::BalloonStats;
 use vm_control::BalloonWSS;
 use vm_control::DiskControlCommand;
+#[cfg(feature = "registered_events")]
 use vm_control::RegisteredEvent;
 use vm_control::UsbControlAttachedDevice;
 use vm_control::UsbControlResult;
@@ -700,14 +701,19 @@ pub unsafe extern "C" fn crosvm_client_balloon_wss(
 
 /// Publically exposed version of RegisteredEvent enum, implemented as an
 /// integral newtype for FFI safety.
+#[cfg(feature = "registered_events")]
 #[repr(C)]
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct RegisteredEventFfi(u32);
 
+#[cfg(feature = "registered_events")]
 pub const REGISTERED_EVENT_VIRTIO_BALLOON_WSS_REPORT: RegisteredEventFfi = RegisteredEventFfi(0);
+#[cfg(feature = "registered_events")]
 pub const REGISTERED_EVENT_VIRTIO_BALLOON_RESIZE: RegisteredEventFfi = RegisteredEventFfi(1);
+#[cfg(feature = "registered_events")]
 pub const REGISTERED_EVENT_VIRTIO_BALLOON_OOM_DEFLATION: RegisteredEventFfi = RegisteredEventFfi(2);
 
+#[cfg(feature = "registered_events")]
 impl TryFrom<RegisteredEventFfi> for RegisteredEvent {
     type Error = &'static str;
 
@@ -730,6 +736,7 @@ impl TryFrom<RegisteredEventFfi> for RegisteredEvent {
 /// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
 /// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
 /// null pointers are passed.
+#[cfg(feature = "registered_events")]
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_register_events_listener(
     socket_path: *const c_char,
@@ -767,6 +774,7 @@ pub unsafe extern "C" fn crosvm_client_register_events_listener(
 /// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
 /// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
 /// null pointers are passed.
+#[cfg(feature = "registered_events")]
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_unregister_events_listener(
     socket_path: *const c_char,
@@ -804,6 +812,7 @@ pub unsafe extern "C" fn crosvm_client_unregister_events_listener(
 /// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
 /// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
 /// null pointers are passed.
+#[cfg(feature = "registered_events")]
 #[no_mangle]
 pub unsafe extern "C" fn crosvm_client_unregister_listener(
     socket_path: *const c_char,

@@ -5,8 +5,9 @@ authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
 [features]
-plugin = ["kvm_sys"]
 composite-disk = []
+plugin = ["kvm_sys"]
+registered_events = []
 
 [dependencies]
 kvm_sys = { path = "../kvm_sys", optional = true }

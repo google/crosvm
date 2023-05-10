@@ -1,0 +1,33 @@
+// Copyright 2020 The ChromiumOS Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+syntax = "proto3";
+
+message VirtioBalloonResize {}
+
+message VirtioBalloonOOMDeflation {}
+
+message VirtioWssBucket {
+    // age of bucket in milliseconds.
+    uint64 age = 1;
+    // file-back memory, in bytes.
+    uint64 file_bytes = 2;
+    // anonymous memory, in bytes.
+    uint64 anon_bytes = 3;
+}
+
+message VirtioBalloonWssReport {
+    // 2-16 buckets of memory working set size.
+    repeated VirtioWssBucket wss_buckets = 1;
+    // actual size of balloon in bytes.
+    uint64 balloon_actual = 2;
+}
+
+message RegisteredEvent {
+    oneof Event {
+        VirtioBalloonResize resize = 1;
+        VirtioBalloonOOMDeflation oom_deflation = 2;
+        VirtioBalloonWssReport wss_report = 3;
+    }
+}

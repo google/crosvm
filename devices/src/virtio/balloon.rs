@@ -20,6 +20,7 @@ use base::warn;
 use base::AsRawDescriptor;
 use base::Event;
 use base::RawDescriptor;
+#[cfg(feature = "registered_events")]
 use base::SendTube;
 use base::Tube;
 use base::WorkerThread;
@@ -29,6 +30,7 @@ use cros_async::sync::RwLock as AsyncRwLock;
 use cros_async::AsyncTube;
 use cros_async::EventAsync;
 use cros_async::Executor;
+#[cfg(feature = "registered_events")]
 use cros_async::SendTubeAsync;
 use data_model::Le16;
 use data_model::Le32;
@@ -39,7 +41,8 @@ use futures::FutureExt;
 use futures::StreamExt;
 use remain::sorted;
 use thiserror::Error as ThisError;
-use vm_control::RegisteredEvent;
+#[cfg(feature = "registered_events")]
+use vm_control::RegisteredEventWithData;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use zerocopy::AsBytes;
@@ -435,7 +438,7 @@ async fn handle_stats_queue(
     mut queue_event: EventAsync,
     mut stats_rx: mpsc::Receiver<u64>,
     command_tube: &AsyncTube,
-    registered_evt_q: Option<&SendTubeAsync>,
+    #[cfg(feature = "registered_events")] registered_evt_q: Option<&SendTubeAsync>,
     state: Arc<AsyncRwLock<BalloonState>>,
     interrupt: Interrupt,
 ) {
@@ -482,9 +485,10 @@ async fn handle_stats_queue(
             error!("failed to send stats result: {}", e);
         }
 
+        #[cfg(feature = "registered_events")]
         if let Some(registered_evt_q) = registered_evt_q {
             if let Err(e) = registered_evt_q
-                .send(&RegisteredEvent::VirtioBalloonResize)
+                .send(&RegisteredEventWithData::VirtioBalloonResize)
                 .await
             {
                 error!("failed to send VirtioBalloonResize event: {}", e);
@@ -659,7 +663,7 @@ async fn handle_wss_data_queue(
     mut queue: Queue,
     mut queue_event: EventAsync,
     command_tube: &AsyncTube,
-    registered_evt_q: Option<&SendTubeAsync>,
+    #[cfg(feature = "registered_events")] registered_evt_q: Option<&SendTubeAsync>,
     state: Arc<AsyncRwLock<BalloonState>>,
     interrupt: Interrupt,
 ) -> Result<()> {
@@ -670,37 +674,33 @@ async fn handle_wss_data_queue(
             .map_err(BalloonError::AsyncAwait)?;
         let wss = parse_balloon_wss(&mut avail_desc.reader);
 
-        // Closure to hold the mutex for handling a WSS-R command response
-        {
-            let mut state = state.lock().await;
+        let mut state = state.lock().await;
 
-            // update wss report with balloon pages now that we have a lock on state
-            let balloon_actual = (state.actual_pages as u64) << VIRTIO_BALLOON_PFN_SHIFT;
+        // update wss report with balloon pages now that we have a lock on state
+        let balloon_actual = (state.actual_pages as u64) << VIRTIO_BALLOON_PFN_SHIFT;
 
-            if state.expecting_wss {
-                let result = BalloonTubeResult::WorkingSetSize {
-                    wss,
-                    balloon_actual,
-                    id: state.expected_wss_id,
-                };
-                let send_result = command_tube.send(result).await;
-                if let Err(e) = send_result {
-                    error!("failed to send wss result: {}", e);
-                }
-
-                state.expecting_wss = false;
-            }
-        }
-
-        // TODO: pipe back the wss to the registered event socket, needs
-        // event-with-payload, currently events are simple enums
+        #[cfg(feature = "registered_events")]
         if let Some(registered_evt_q) = registered_evt_q {
             if let Err(e) = registered_evt_q
-                .send(&RegisteredEvent::VirtioBalloonWssReport)
+                .send(RegisteredEventWithData::from_wss(&wss, balloon_actual))
                 .await
             {
                 error!("failed to send VirtioBalloonWSSReport event: {}", e);
             }
+        }
+
+        if state.expecting_wss {
+            let result = BalloonTubeResult::WorkingSetSize {
+                wss,
+                balloon_actual,
+                id: state.expected_wss_id,
+            };
+            let send_result = command_tube.send(result).await;
+            if let Err(e) = send_result {
+                error!("failed to send wss result: {}", e);
+            }
+
+            state.expecting_wss = false;
         }
 
         queue.add_used(mem, avail_desc, 0);
@@ -793,6 +793,11 @@ async fn handle_pending_adjusted_responses(
     }
 }
 
+#[cfg(feature = "registered_events")]
+type WorkerReturn = (Option<Tube>, Tube, Option<SendTube>);
+#[cfg(not(feature = "registered_events"))]
+type WorkerReturn = (Option<Tube>, Tube);
+
 // The main worker thread. Initialized the asynchronous worker tasks and passes them to the executor
 // to be processed.
 fn run_worker(
@@ -810,10 +815,11 @@ fn run_worker(
     pending_adjusted_response_event: Event,
     mem: GuestMemory,
     state: Arc<AsyncRwLock<BalloonState>>,
-    registered_evt_q: Option<SendTube>,
-) -> (Option<Tube>, Tube, Option<SendTube>) {
+    #[cfg(feature = "registered_events")] registered_evt_q: Option<SendTube>,
+) -> WorkerReturn {
     let ex = Executor::new().unwrap();
     let command_tube = AsyncTube::new(&ex, command_tube).unwrap();
+    #[cfg(feature = "registered_events")]
     let registered_evt_q_async = registered_evt_q
         .as_ref()
         .map(|q| SendTubeAsync::new(q.try_clone().unwrap(), &ex).unwrap());
@@ -869,6 +875,7 @@ fn run_worker(
                 EventAsync::new(stats_queue_evt, &ex).expect("failed to create async event"),
                 stats_rx,
                 &command_tube,
+                #[cfg(feature = "registered_events")]
                 registered_evt_q_async.as_ref(),
                 state.clone(),
                 interrupt.clone(),
@@ -912,6 +919,7 @@ fn run_worker(
                 wss_data_queue,
                 EventAsync::new(wss_data_queue_evt, &ex).expect("failed to create async event"),
                 &command_tube,
+                #[cfg(feature = "registered_events")]
                 registered_evt_q_async.as_ref(),
                 state.clone(),
                 interrupt.clone(),
@@ -1002,7 +1010,12 @@ fn run_worker(
         }
     }
 
-    (release_memory_tube, command_tube.into(), registered_evt_q)
+    (
+        release_memory_tube,
+        command_tube.into(),
+        #[cfg(feature = "registered_events")]
+        registered_evt_q,
+    )
 }
 
 /// Virtio device for memory balloon inflation/deflation.
@@ -1015,7 +1028,8 @@ pub struct Balloon {
     state: Arc<AsyncRwLock<BalloonState>>,
     features: u64,
     acked_features: u64,
-    worker_thread: Option<WorkerThread<(Option<Tube>, Tube, Option<SendTube>)>>,
+    worker_thread: Option<WorkerThread<WorkerReturn>>,
+    #[cfg(feature = "registered_events")]
     registered_evt_q: Option<SendTube>,
 }
 
@@ -1042,7 +1056,7 @@ impl Balloon {
         init_balloon_size: u64,
         mode: BalloonMode,
         enabled_features: u64,
-        registered_evt_q: Option<SendTube>,
+        #[cfg(feature = "registered_events")] registered_evt_q: Option<SendTube>,
     ) -> Result<Balloon> {
         let features = base_features
             | 1 << VIRTIO_BALLOON_F_MUST_TELL_HOST
@@ -1072,6 +1086,7 @@ impl Balloon {
             worker_thread: None,
             features,
             acked_features: 0,
+            #[cfg(feature = "registered_events")]
             registered_evt_q,
         })
     }
@@ -1124,6 +1139,7 @@ impl VirtioDevice for Balloon {
         if let Some(release_memory_tube) = &self.release_memory_tube {
             rds.push(release_memory_tube.as_raw_descriptor());
         }
+        #[cfg(feature = "registered_events")]
         if let Some(registered_evt_q) = &self.registered_evt_q {
             rds.push(registered_evt_q.as_raw_descriptor());
         }
@@ -1213,6 +1229,7 @@ impl VirtioDevice for Balloon {
         #[cfg(windows)]
         let mapping_tube = self.dynamic_mapping_tube.take().unwrap();
         let release_memory_tube = self.release_memory_tube.take();
+        #[cfg(feature = "registered_events")]
         let registered_evt_q = self.registered_evt_q.take();
         let pending_adjusted_response_event = self
             .pending_adjusted_response_event
@@ -1236,6 +1253,7 @@ impl VirtioDevice for Balloon {
                 pending_adjusted_response_event,
                 mem,
                 state,
+                #[cfg(feature = "registered_events")]
                 registered_evt_q,
             )
         }));
@@ -1245,10 +1263,16 @@ impl VirtioDevice for Balloon {
 
     fn reset(&mut self) -> bool {
         if let Some(worker_thread) = self.worker_thread.take() {
+            #[cfg(feature = "registered_events")]
             let (release_memory_tube, command_tube, registered_evt_q) = worker_thread.stop();
+            #[cfg(not(feature = "registered_events"))]
+            let (release_memory_tube, command_tube) = worker_thread.stop();
             self.release_memory_tube = release_memory_tube;
             self.command_tube = Some(command_tube);
-            self.registered_evt_q = registered_evt_q;
+            #[cfg(feature = "registered_events")]
+            {
+                self.registered_evt_q = registered_evt_q;
+            }
             return true;
         }
         false

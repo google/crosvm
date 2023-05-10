@@ -15,12 +15,15 @@ use std::cmp::max;
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+#[cfg(feature = "registered_events")]
 use std::collections::HashMap;
+#[cfg(feature = "registered_events")]
 use std::collections::HashSet;
 use std::convert::TryInto;
 use std::ffi::CString;
 use std::fs::File;
 use std::fs::OpenOptions;
+#[cfg(feature = "registered_events")]
 use std::hash::Hash;
 use std::io::prelude::*;
 use std::io::stdin;
@@ -31,6 +34,7 @@ use std::os::unix::prelude::OpenOptionsExt;
 use std::os::unix::process::ExitStatusExt;
 use std::path::Path;
 use std::process;
+#[cfg(feature = "registered_events")]
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -159,7 +163,6 @@ use resources::SystemAllocator;
 #[cfg(target_arch = "riscv64")]
 use riscv64::Riscv64 as Arch;
 use rutabaga_gfx::RutabagaGralloc;
-use serde::Serialize;
 use smallvec::SmallVec;
 #[cfg(feature = "swap")]
 use swap::SwapController;
@@ -214,7 +217,7 @@ fn create_virtio_devices(
     #[cfg(feature = "gpu")] render_server_fd: Option<SafeDescriptor>,
     vvu_proxy_device_tubes: &mut Vec<Tube>,
     vvu_proxy_max_sibling_mem_size: u64,
-    #[cfg_attr(not(feature = "balloon"), allow(unused_variables))] registered_evt_q: &SendTube,
+    #[cfg(feature = "registered_events")] registered_evt_q: &SendTube,
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
     let mut devs = Vec::new();
 
@@ -493,6 +496,7 @@ fn create_virtio_devices(
             balloon_inflate_tube,
             init_balloon_size,
             balloon_features,
+            #[cfg(feature = "registered_events")]
             Some(
                 registered_evt_q
                     .try_clone()
@@ -686,7 +690,7 @@ fn create_devices(
     vvu_proxy_device_tubes: &mut Vec<Tube>,
     vvu_proxy_max_sibling_mem_size: u64,
     iova_max_addr: &mut Option<u64>,
-    registered_evt_q: &SendTube,
+    #[cfg(feature = "registered_events")] registered_evt_q: &SendTube,
 ) -> DeviceResult<Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>> {
     let mut devices: Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)> = Vec::new();
     #[cfg(feature = "balloon")]
@@ -817,6 +821,7 @@ fn create_devices(
         render_server_fd,
         vvu_proxy_device_tubes,
         vvu_proxy_max_sibling_mem_size,
+        #[cfg(feature = "registered_events")]
         registered_evt_q,
     )?;
 
@@ -1863,6 +1868,7 @@ where
         BTreeMap::new();
     let mut iova_max_addr: Option<u64> = None;
 
+    #[cfg(feature = "registered_events")]
     let (reg_evt_wrtube, reg_evt_rdtube) =
         Tube::directional_pair().context("failed to create registered event tube")?;
 
@@ -1890,6 +1896,7 @@ where
         &mut vvu_proxy_device_tubes,
         components.memory_size,
         &mut iova_max_addr,
+        #[cfg(feature = "registered_events")]
         &reg_evt_wrtube,
     )?;
 
@@ -2105,6 +2112,7 @@ where
         hp_thread,
         #[cfg(feature = "swap")]
         swap_controller,
+        #[cfg(feature = "registered_events")]
         reg_evt_rdtube,
         guest_suspended_cvar,
     )
@@ -2547,7 +2555,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     >,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] hp_thread: std::thread::JoinHandle<()>,
     #[cfg(feature = "swap")] swap_controller: Option<SwapController>,
-    reg_evt_rdtube: RecvTube,
+    #[cfg(feature = "registered_events")] reg_evt_rdtube: RecvTube,
     guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
 ) -> Result<ExitState> {
     #[derive(EventToken)]
@@ -2556,42 +2564,50 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         Suspend,
         ChildSignal,
         VmControlServer,
-        VmControl { index: usize },
+        VmControl {
+            index: usize,
+        },
+        #[cfg(feature = "registered_events")]
         RegisteredEvent,
     }
 
-    // Tube keyed on the socket path used to create it.
-    struct AddressedTube {
-        tube: Rc<Tube>,
+    #[cfg(feature = "registered_events")]
+    struct AddressedProtoTube {
+        tube: Rc<ProtoTube>,
         socket_addr: String,
     }
 
-    impl PartialEq for AddressedTube {
+    #[cfg(feature = "registered_events")]
+    impl PartialEq for AddressedProtoTube {
         fn eq(&self, other: &Self) -> bool {
             self.socket_addr == other.socket_addr
         }
     }
 
-    impl Eq for AddressedTube {}
+    #[cfg(feature = "registered_events")]
+    impl Eq for AddressedProtoTube {}
 
-    impl Hash for AddressedTube {
+    #[cfg(feature = "registered_events")]
+    impl Hash for AddressedProtoTube {
         fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
             self.socket_addr.hash(state);
         }
     }
 
-    impl AddressedTube {
-        pub fn send<T: Serialize>(&self, msg: &T) -> Result<(), base::TubeError> {
-            self.tube.send(msg)
+    #[cfg(feature = "registered_events")]
+    impl AddressedProtoTube {
+        pub fn send<M: protobuf::Message>(&self, msg: &M) -> Result<(), base::TubeError> {
+            self.tube.send_proto(msg)
         }
     }
 
+    #[cfg(feature = "registered_events")]
     fn find_registered_tube<'a>(
-        registered_tubes: &'a HashMap<RegisteredEvent, HashSet<AddressedTube>>,
+        registered_tubes: &'a HashMap<RegisteredEvent, HashSet<AddressedProtoTube>>,
         socket_addr: &str,
         event: RegisteredEvent,
-    ) -> (Option<&'a Rc<Tube>>, bool) {
-        let mut registered_tube: Option<&Rc<Tube>> = None;
+    ) -> (Option<&'a Rc<ProtoTube>>, bool) {
+        let mut registered_tube: Option<&Rc<ProtoTube>> = None;
         let mut already_registered = false;
         'outer: for (evt, addr_tubes) in registered_tubes {
             for addr_tube in addr_tubes {
@@ -2612,12 +2628,13 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         (registered_tube, already_registered)
     }
 
+    #[cfg(feature = "registered_events")]
     fn make_addr_tube_from_maybe_existing(
-        tube: Option<&Rc<Tube>>,
+        tube: Option<&Rc<ProtoTube>>,
         addr: String,
-    ) -> Result<AddressedTube> {
+    ) -> Result<AddressedProtoTube> {
         if let Some(registered_tube) = tube {
-            Ok(AddressedTube {
+            Ok(AddressedProtoTube {
                 tube: registered_tube.clone(),
                 socket_addr: addr,
             })
@@ -2625,8 +2642,8 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             let sock = UnixSeqpacket::connect(addr.clone()).with_context(|| {
                 format!("failed to connect to registered listening socket {}", addr)
             })?;
-            let tube = Tube::new_from_unix_seqpacket(sock);
-            Ok(AddressedTube {
+            let tube = ProtoTube::new_from_unix_seqpacket(sock);
+            Ok(AddressedProtoTube {
                 tube: Rc::new(tube),
                 socket_addr: addr,
             })
@@ -2647,6 +2664,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         (&linux.suspend_evt, Token::Suspend),
         (&sigchld_fd, Token::ChildSignal),
         (&vm_evt_rdtube, Token::VmEvent),
+        #[cfg(feature = "registered_events")]
         (&reg_evt_rdtube, Token::RegisteredEvent),
     ])
     .context("failed to build wait context")?;
@@ -2912,7 +2930,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     let mut balloon_stats_id: u64 = 0;
     #[cfg(feature = "balloon")]
     let mut balloon_wss_id: u64 = 0;
-    let mut registered_evt_tubes: HashMap<RegisteredEvent, HashSet<AddressedTube>> = HashMap::new();
+    #[cfg(feature = "registered_events")]
+    let mut registered_evt_tubes: HashMap<RegisteredEvent, HashSet<AddressedProtoTube>> =
+        HashMap::new();
     let mut region_state = VmMemoryRegionState::new();
 
     'wait: loop {
@@ -2929,12 +2949,14 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         let mut vm_control_indices_to_remove = Vec::new();
         for event in events.iter().filter(|e| e.is_readable) {
             match event.token {
-                Token::RegisteredEvent => match reg_evt_rdtube.recv::<RegisteredEvent>() {
+                #[cfg(feature = "registered_events")]
+                Token::RegisteredEvent => match reg_evt_rdtube.recv::<RegisteredEventWithData>() {
                     Ok(reg_evt) => {
+                        let evt = reg_evt.into_event();
                         let mut tubes_to_remove: Vec<String> = Vec::new();
-                        if let Some(tubes) = registered_evt_tubes.get_mut(&reg_evt) {
+                        if let Some(tubes) = registered_evt_tubes.get_mut(&evt) {
                             for tube in tubes.iter() {
-                                if let Err(e) = tube.send(&reg_evt) {
+                                if let Err(e) = tube.send(&reg_evt.into_proto()) {
                                     warn!(
                                         "failed to send registered event {:?} to {}, removing from \
                                          registrations: {}",
@@ -3097,6 +3119,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                 VmResponse::Ok
                                             }
                                         }
+                                        #[cfg(feature = "registered_events")]
                                         VmRequest::RegisterListener { socket_addr, event } => {
                                             let (registered_tube, already_registered) =
                                                 find_registered_tube(
@@ -3124,6 +3147,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                             }
                                             VmResponse::Ok
                                         }
+                                        #[cfg(feature = "registered_events")]
                                         VmRequest::UnregisterListener { socket_addr, event } => {
                                             if let Some(tubes) =
                                                 registered_evt_tubes.get_mut(&event)
@@ -3134,6 +3158,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                 .retain(|_, tubes| !tubes.is_empty());
                                             VmResponse::Ok
                                         }
+                                        #[cfg(feature = "registered_events")]
                                         VmRequest::Unregister { socket_addr } => {
                                             for (_, tubes) in registered_evt_tubes.iter_mut() {
                                                 tubes.retain(|t| t.socket_addr != socket_addr);

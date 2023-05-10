@@ -4,6 +4,9 @@ version = "0.1.0"
 authors = ["The ChromiumOS Authors"]
 edition = "2021"
 
+[features]
+registered_events = ["vm_control/registered_events"]
+
 [lib]
 crate-type = ["cdylib", "staticlib"]
 

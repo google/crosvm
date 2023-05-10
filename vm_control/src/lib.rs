@@ -77,6 +77,8 @@ use libc::EIO;
 use libc::ENODEV;
 use libc::ENOTSUP;
 use libc::ERANGE;
+#[cfg(feature = "registered_events")]
+use protos::registered_events;
 use remain::sorted;
 use resources::Alloc;
 use resources::SystemAllocator;
@@ -1232,26 +1234,94 @@ pub enum VmRequest {
     /// Command to Restore devices
     Restore(RestoreCommand),
     /// Register for event notification
+    #[cfg(feature = "registered_events")]
     RegisterListener {
         socket_addr: String,
         event: RegisteredEvent,
     },
     /// Unregister for notifications for event
+    #[cfg(feature = "registered_events")]
     UnregisterListener {
         socket_addr: String,
         event: RegisteredEvent,
     },
     /// Unregister for all event notification
+    #[cfg(feature = "registered_events")]
     Unregister { socket_addr: String },
 }
 
 /// NOTE: when making any changes to this enum please also update
 /// RegisteredEventFfi in crosvm_control/src/lib.rs
+#[cfg(feature = "registered_events")]
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum RegisteredEvent {
     VirtioBalloonWssReport,
     VirtioBalloonResize,
     VirtioBalloonOOMDeflation,
+}
+
+#[cfg(feature = "registered_events")]
+#[derive(Serialize, Deserialize, Debug)]
+pub enum RegisteredEventWithData {
+    VirtioBalloonWssReport {
+        wss_buckets: [WSSBucket; 4],
+        balloon_actual: u64,
+    },
+    VirtioBalloonResize,
+    VirtioBalloonOOMDeflation,
+}
+
+#[cfg(feature = "registered_events")]
+impl RegisteredEventWithData {
+    pub fn into_event(&self) -> RegisteredEvent {
+        match self {
+            Self::VirtioBalloonWssReport { .. } => RegisteredEvent::VirtioBalloonWssReport,
+            Self::VirtioBalloonResize => RegisteredEvent::VirtioBalloonResize,
+            Self::VirtioBalloonOOMDeflation => RegisteredEvent::VirtioBalloonOOMDeflation,
+        }
+    }
+
+    pub fn into_proto(&self) -> registered_events::RegisteredEvent {
+        match self {
+            Self::VirtioBalloonWssReport {
+                wss_buckets,
+                balloon_actual,
+            } => {
+                let mut report = registered_events::VirtioBalloonWssReport {
+                    balloon_actual: *balloon_actual,
+                    ..registered_events::VirtioBalloonWssReport::new()
+                };
+                for wss in wss_buckets {
+                    report.wss_buckets.push(registered_events::VirtioWssBucket {
+                        age: wss.age,
+                        file_bytes: wss.bytes[0],
+                        anon_bytes: wss.bytes[1],
+                        ..registered_events::VirtioWssBucket::new()
+                    });
+                }
+                let mut event = registered_events::RegisteredEvent::new();
+                event.set_wss_report(report);
+                event
+            }
+            Self::VirtioBalloonResize => {
+                let mut event = registered_events::RegisteredEvent::new();
+                event.set_resize(registered_events::VirtioBalloonResize::new());
+                event
+            }
+            Self::VirtioBalloonOOMDeflation => {
+                let mut event = registered_events::RegisteredEvent::new();
+                event.set_oom_deflation(registered_events::VirtioBalloonOOMDeflation::new());
+                event
+            }
+        }
+    }
+
+    pub fn from_wss(wss: &BalloonWSS, balloon_actual: u64) -> Self {
+        RegisteredEventWithData::VirtioBalloonWssReport {
+            wss_buckets: wss.wss,
+            balloon_actual,
+        }
+    }
 }
 
 pub fn handle_disk_command(command: &DiskControlCommand, disk_host_tube: &Tube) -> VmResponse {
@@ -1907,14 +1977,17 @@ impl VmRequest {
                     }
                 }
             }
+            #[cfg(feature = "registered_events")]
             VmRequest::RegisterListener {
                 socket_addr: _,
                 event: _,
             } => VmResponse::Ok,
+            #[cfg(feature = "registered_events")]
             VmRequest::UnregisterListener {
                 socket_addr: _,
                 event: _,
             } => VmResponse::Ok,
+            #[cfg(feature = "registered_events")]
             VmRequest::Unregister { socket_addr: _ } => VmResponse::Ok,
         }
     }

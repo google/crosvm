@@ -6,6 +6,7 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
+use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
 use cbindgen::Config;
@@ -25,15 +26,33 @@ static INCLUDE_GUARD: &str = "CROSVM_CONTROL_H_";
 
 static CROSVM_CONTROL_HEADER_NAME: &str = "crosvm_control.h";
 
+static REGISTERED_EVENTS_PROTO_FILENAME: &str = "registered_events.proto";
+static REGISTERED_EVENTS_PROTO_SRC: &str = "../protos/src";
+
 fn main() -> Result<()> {
     // Skip building dependencies when generating documents.
     if std::env::var("CARGO_DOC").is_ok() {
         return Ok(());
     }
 
+    let proto_src =
+        PathBuf::from(REGISTERED_EVENTS_PROTO_SRC).join(REGISTERED_EVENTS_PROTO_FILENAME);
+
+    if !proto_src.exists() {
+        bail!(
+            "can't find {} in {}, won't be able to export for users",
+            REGISTERED_EVENTS_PROTO_FILENAME,
+            REGISTERED_EVENTS_PROTO_SRC
+        );
+    }
+
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
 
     let output_dir = PathBuf::from(env::var("OUT_DIR").context("failed to get OUT_DIR")?);
+
+    let proto_out = output_dir.join(REGISTERED_EVENTS_PROTO_FILENAME);
+
+    fs::copy(proto_src, proto_out).context("couldn't copy proto to OUT_DIR")?;
 
     let output_file = output_dir
         .join(CROSVM_CONTROL_HEADER_NAME)

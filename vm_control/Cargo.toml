@@ -8,6 +8,7 @@ edition = "2021"
 balloon = []
 gdb = ["gdbstub", "gdbstub_arch"]
 gpu = []
+registered_events = ["protos/registered_events"]
 swap = ["swap/enable"]
 
 [dependencies]
@@ -21,6 +22,7 @@ gdbstub_arch = { version = "0.2.4", optional = true }
 hypervisor = { path = "../hypervisor" }
 libc = "*"
 once_cell = "1.7.2"
+protos = { path = "../protos", optional = true }
 remain = "*"
 resources = { path = "../resources" }
 rutabaga_gfx = { path = "../rutabaga_gfx"}
