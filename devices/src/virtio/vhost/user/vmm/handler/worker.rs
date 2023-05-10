@@ -15,11 +15,9 @@ use crate::virtio::interrupt::SignalableInterrupt;
 use crate::virtio::vhost::user::vmm::handler::sys::run_backend_request_handler;
 use crate::virtio::vhost::user::vmm::handler::BackendReqHandler;
 use crate::virtio::Interrupt;
-use crate::virtio::Queue;
 use crate::virtio::VIRTIO_MSI_NO_VECTOR;
 
 pub struct Worker {
-    pub queues: Vec<(Queue, Event)>,
     pub mem: GuestMemory,
     pub kill_evt: Event,
     pub non_msix_evt: Event,

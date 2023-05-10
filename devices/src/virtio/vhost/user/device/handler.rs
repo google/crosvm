@@ -374,6 +374,8 @@ pub struct DeviceRequestHandler {
     mem: Option<GuestMemory>,
     backend: Box<dyn VhostUserBackend>,
     ops: Box<dyn VhostUserPlatformOps>,
+    // Active queues that are sleeping.
+    paused_queues: Vec<Option<Queue>>,
 }
 
 impl DeviceRequestHandler {
@@ -388,6 +390,8 @@ impl DeviceRequestHandler {
             vrings.push(Vring::new(MAX_VRING_LEN));
         }
 
+        let mut paused_queues = Vec::new();
+        paused_queues.resize_with(backend.max_queue_num(), Default::default);
         DeviceRequestHandler {
             vrings,
             owned: false,
@@ -395,6 +399,7 @@ impl DeviceRequestHandler {
             mem: None,
             backend,
             ops,
+            paused_queues,
         }
     }
 }
@@ -693,6 +698,19 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
         } else {
             Vec::new()
         })
+    }
+
+    fn sleep(&mut self) -> VhostResult<()> {
+        for (idx, _) in self.vrings.iter().enumerate() {
+            match self.backend.stop_queue(idx) {
+                Ok(queue) => self.paused_queues[idx] = Some(queue),
+                Err(e) => {
+                    error!("Failed to stop queue: {}", e);
+                    self.paused_queues[idx] = None;
+                }
+            }
+        }
+        Ok(())
     }
 }
 

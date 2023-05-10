@@ -347,6 +347,12 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
         )?;
         node.wait_for_ack(&hdr)
     }
+
+    fn sleep(&self) -> Result<()> {
+        let mut node = self.node();
+        let hdr = node.send_request_header(MasterReq::SLEEP, None)?;
+        node.wait_for_ack(&hdr)
+    }
 }
 
 impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {

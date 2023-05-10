@@ -463,6 +463,11 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
     fn get_shared_memory_regions(&mut self) -> Result<Vec<VhostSharedMemoryRegion>> {
         Ok(vec![])
     }
+
+    fn sleep(&mut self) -> Result<()> {
+        base::warn!("Sleep not implemented for vsock.");
+        Ok(())
+    }
 }
 
 #[derive(FromArgs)]

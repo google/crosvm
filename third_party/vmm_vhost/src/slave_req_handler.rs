@@ -104,6 +104,7 @@ pub trait VhostUserSlaveReqHandler {
     fn add_mem_region(&self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()>;
     fn remove_mem_region(&self, region: &VhostUserSingleMemoryRegion) -> Result<()>;
     fn get_shared_memory_regions(&self) -> Result<Vec<VhostSharedMemoryRegion>>;
+    fn sleep(&self) -> Result<()>;
 }
 
 /// Services provided to the master by the slave without interior mutability.
@@ -156,6 +157,7 @@ pub trait VhostUserSlaveReqHandlerMut {
     fn add_mem_region(&mut self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()>;
     fn remove_mem_region(&mut self, region: &VhostUserSingleMemoryRegion) -> Result<()>;
     fn get_shared_memory_regions(&mut self) -> Result<Vec<VhostSharedMemoryRegion>>;
+    fn sleep(&mut self) -> Result<()>;
 }
 
 impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
@@ -271,6 +273,10 @@ impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
 
     fn get_shared_memory_regions(&self) -> Result<Vec<VhostSharedMemoryRegion>> {
         self.lock().unwrap().get_shared_memory_regions()
+    }
+
+    fn sleep(&self) -> Result<()> {
+        self.lock().unwrap().sleep()
     }
 }
 
@@ -389,6 +395,10 @@ where
 
     fn get_shared_memory_regions(&self) -> Result<Vec<VhostSharedMemoryRegion>> {
         self.as_ref().get_shared_memory_regions()
+    }
+
+    fn sleep(&self) -> Result<()> {
+        self.as_ref().sleep()
     }
 }
 
@@ -924,6 +934,10 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
                 }
                 self.slave_req_helper
                     .send_reply_with_payload(&hdr, &msg, buf.as_slice())?;
+            }
+            MasterReq::SLEEP => {
+                let res = self.backend.sleep();
+                self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
             }
             _ => {
                 return Err(Error::InvalidMessage);

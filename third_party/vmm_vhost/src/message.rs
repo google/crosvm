@@ -148,8 +148,10 @@ pub enum MasterReq {
     GET_STATUS = 40,
     /// Get a list of the device's shared memory regions.
     GET_SHARED_MEMORY_REGIONS = 41,
+    /// Stop all queue handlers and save each queue state.
+    SLEEP = 42,
     /// Upper bound of valid commands.
-    MAX_CMD = 42,
+    MAX_CMD = 43,
 }
 
 impl From<MasterReq> for u32 {

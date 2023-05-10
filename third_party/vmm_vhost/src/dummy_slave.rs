@@ -277,4 +277,8 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
     fn get_shared_memory_regions(&mut self) -> Result<Vec<VhostSharedMemoryRegion>> {
         Ok(Vec::new())
     }
+
+    fn sleep(&mut self) -> Result<()> {
+        Ok(())
+    }
 }

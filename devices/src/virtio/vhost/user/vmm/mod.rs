@@ -119,6 +119,9 @@ pub enum Error {
     /// Error getting the shmem regions.
     #[error("failed to enumerate shmem regions {0}")]
     ShmemRegions(VhostError),
+    /// Failed to sleep the device.
+    #[error("failed to sleep the device {0}")]
+    Sleep(VhostError),
     /// Failed to connect socket.
     #[error("failed to connect socket: {0}")]
     SocketConnect(std::io::Error),

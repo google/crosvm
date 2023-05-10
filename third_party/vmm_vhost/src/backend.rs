@@ -171,6 +171,9 @@ pub trait VhostBackend: std::marker::Sized {
     /// * `queue_index` - Index of the queue to modify.
     /// * `event` - Event that will be signaled from guest.
     fn set_vring_err(&self, queue_index: usize, event: &Event) -> Result<()>;
+
+    /// Put the device to sleep.
+    fn sleep(&self) -> Result<()>;
 }
 
 /// An interface for setting up vhost-based backend drivers.
@@ -257,6 +260,9 @@ pub trait VhostBackendMut: std::marker::Sized {
     /// * `queue_index` - Index of the queue to modify.
     /// * `event` - Event that will be signaled from guest.
     fn set_vring_err(&mut self, queue_index: usize, event: &Event) -> Result<()>;
+
+    /// Put the device to sleep.
+    fn sleep(&mut self) -> Result<()>;
 }
 
 impl<T: VhostBackendMut> VhostBackend for RwLock<T> {
@@ -317,6 +323,10 @@ impl<T: VhostBackendMut> VhostBackend for RwLock<T> {
     fn set_vring_err(&self, queue_index: usize, event: &Event) -> Result<()> {
         self.write().unwrap().set_vring_err(queue_index, event)
     }
+
+    fn sleep(&self) -> Result<()> {
+        self.write().unwrap().sleep()
+    }
 }
 
 impl<T: VhostBackendMut> VhostBackend for RefCell<T> {
@@ -374,6 +384,10 @@ impl<T: VhostBackendMut> VhostBackend for RefCell<T> {
 
     fn set_vring_err(&self, queue_index: usize, event: &Event) -> Result<()> {
         self.borrow_mut().set_vring_err(queue_index, event)
+    }
+
+    fn sleep(&self) -> Result<()> {
+        self.borrow_mut().sleep()
     }
 }
 #[cfg(test)]
@@ -457,6 +471,10 @@ mod tests {
 
         fn set_vring_err(&mut self, queue_index: usize, _event: &Event) -> Result<()> {
             assert_eq!(queue_index, 1);
+            Ok(())
+        }
+
+        fn sleep(&mut self) -> Result<()> {
             Ok(())
         }
     }
