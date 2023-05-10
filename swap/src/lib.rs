@@ -23,6 +23,7 @@ cfg_if::cfg_if! {
         pub mod worker;
 
         pub use crate::controller::SwapController;
+        pub use crate::controller::SwapDeviceUffdSender;
     }
 }
 

@@ -40,6 +40,8 @@ use crate::Suspendable;
 pub enum Error {
     #[error("Failed to fork jail process: {0}")]
     ForkingJail(#[from] minijail::Error),
+    #[error("Failed to configure swap: {0}")]
+    Swap(anyhow::Error),
     #[error("Failed to configure tube: {0}")]
     Tube(#[from] TubeError),
 }
@@ -223,9 +225,13 @@ impl ProxyDevice {
         keep_rds.push(child_tube.as_raw_descriptor());
 
         #[cfg(feature = "swap")]
-        if let Some(swap_controller) = swap_controller {
-            keep_rds.extend(swap_controller.as_raw_descriptors());
-        }
+        let swap_device_uffd_sender = if let Some(swap_controller) = swap_controller {
+            let sender = swap_controller.prepare_fork().map_err(Error::Swap)?;
+            keep_rds.extend(sender.as_raw_descriptors());
+            Some(sender)
+        } else {
+            None
+        };
 
         // This will be removed after b/183540186 gets fixed.
         // Only enabled it for x86_64 since the original bug mostly happens on x86 boards.
@@ -241,8 +247,8 @@ impl ProxyDevice {
 
         let child_process = fork_process(jail, keep_rds, Some(debug_label.clone()), || {
             #[cfg(feature = "swap")]
-            if let Some(swap_controller) = swap_controller {
-                if let Err(e) = swap_controller.on_process_forked() {
+            if let Some(swap_device_uffd_sender) = swap_device_uffd_sender {
+                if let Err(e) = swap_device_uffd_sender.on_process_forked() {
                     error!("failed to SwapController::on_process_forked: {:?}", e);
                     // exit() is trivially safe.
                     unsafe { libc::exit(1) };

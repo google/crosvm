@@ -30,8 +30,8 @@ use base::warn;
 use base::AsRawDescriptor;
 use base::AsRawDescriptors;
 use base::EventToken;
-use base::FromRawDescriptor;
 use base::RawDescriptor;
+use base::SendTube;
 use base::SharedMemory;
 use base::Tube;
 use base::WaitContext;
@@ -76,7 +76,7 @@ const MAX_TRIM_PAGES: usize = 1024;
 /// processes.
 ///
 /// This is mainly originated from the `crosvm swap <command>` command line.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
 enum Command {
     Enable,
     Trim,
@@ -84,8 +84,11 @@ enum Command {
     Disable,
     Exit,
     Status,
-    #[serde(with = "base::platform::with_raw_descriptor")]
-    ProcessForked(RawDescriptor),
+    ProcessForked {
+        #[serde(with = "base::platform::with_as_descriptor")]
+        uffd: Userfaultfd,
+        reply_tube: Tube,
+    },
 }
 
 /// [SwapController] provides APIs to control vmm-swap.
@@ -305,22 +308,6 @@ impl SwapController {
         Ok(())
     }
 
-    /// Create a new userfaultfd and send it to the monitor process.
-    ///
-    /// This must be called as soon as a child process which may touch the guest memory is forked.
-    ///
-    /// Userfaultfd(2) originally has `UFFD_FEATURE_EVENT_FORK`. But it is not applicable to crosvm
-    /// since it does not support non-root user namespace.
-    pub fn on_process_forked(&self) -> anyhow::Result<()> {
-        let uffd = self.uffd_factory.create().context("create userfaultfd")?;
-        self.command_tube
-            .send(&Command::ProcessForked(uffd.as_raw_descriptor()))
-            .context("send forked event")?;
-        // The fd for Userfaultfd in this process is droped when this method exits, but the
-        // userfaultfd keeps alive in the monitor process which it is sent to.
-        Ok(())
-    }
-
     /// Suspend device processes using `SIGSTOP` signal.
     ///
     /// When the returned `ProcessesGuard` is dropped, the devices resume.
@@ -329,12 +316,80 @@ impl SwapController {
     pub fn suspend_devices(&self) -> anyhow::Result<ProcessesGuard> {
         freeze_child_processes(self.child_process.pid)
     }
+
+    /// Create a new [SwapDeviceUffdSender].
+    ///
+    /// This should be called from the main process because creating a [Tube]s requires seccomp
+    /// policy.
+    pub fn prepare_fork(&self) -> anyhow::Result<SwapDeviceUffdSender> {
+        let uffd_factory = self
+            .uffd_factory
+            .try_clone()
+            .context("try clone uffd factory")?;
+        let command_tube = self
+            .command_tube
+            .try_clone_send_tube()
+            .context("try clone tube")?;
+        let (sender, receiver) = Tube::pair().context("create tube")?;
+        receiver
+            .set_recv_timeout(Some(Duration::from_secs(60)))
+            .context("set recv timeout")?;
+        Ok(SwapDeviceUffdSender {
+            uffd_factory,
+            command_tube,
+            sender,
+            receiver,
+        })
+    }
 }
 
 impl AsRawDescriptors for SwapController {
     fn as_raw_descriptors(&self) -> Vec<RawDescriptor> {
         let mut rds = self.uffd_factory.as_raw_descriptors();
         rds.push(self.command_tube.as_raw_descriptor());
+        rds
+    }
+}
+
+/// Create a new userfaultfd and send it to the monitor process.
+pub struct SwapDeviceUffdSender {
+    uffd_factory: UffdFactory,
+    command_tube: SendTube,
+    sender: Tube,
+    receiver: Tube,
+}
+
+impl SwapDeviceUffdSender {
+    /// Create a new userfaultfd and send it to the monitor process.
+    ///
+    /// This must be called as soon as a child process which may touch the guest memory is forked.
+    ///
+    /// Userfaultfd(2) originally has `UFFD_FEATURE_EVENT_FORK`. But it is not applicable to crosvm
+    /// since it does not support non-root user namespace.
+    pub fn on_process_forked(self) -> anyhow::Result<()> {
+        let uffd = self.uffd_factory.create().context("create userfaultfd")?;
+        // The fd for Userfaultfd in this process is dropped when it is sent via Tube, but the
+        // userfaultfd keeps alive in the monitor process which it is sent to.
+        self.command_tube
+            .send(&Command::ProcessForked {
+                uffd,
+                reply_tube: self.sender,
+            })
+            .context("send forked event")?;
+        // Wait to proceeds the child process logic until the userfaultfd is set up.
+        if !self.receiver.recv::<bool>().context("recv tube")? {
+            bail!("failed to register a new userfaultfd");
+        }
+        Ok(())
+    }
+}
+
+impl AsRawDescriptors for SwapDeviceUffdSender {
+    fn as_raw_descriptors(&self) -> Vec<RawDescriptor> {
+        let mut rds = self.uffd_factory.as_raw_descriptors();
+        rds.push(self.command_tube.as_raw_descriptor());
+        rds.push(self.sender.as_raw_descriptor());
+        rds.push(self.receiver.as_raw_descriptor());
         rds
     }
 }
@@ -382,6 +437,11 @@ impl<'a> UffdList<'a> {
 
     fn main_uffd(&self) -> &Userfaultfd {
         &self.list[Self::ID_MAIN_UFFD as usize]
+    }
+
+    // Return cloned main [Userfaultfd]
+    fn clone_main_uffd(&self) -> crate::userfaultfd::Result<Userfaultfd> {
+        self.list[Self::ID_MAIN_UFFD as usize].try_clone()
     }
 
     fn get_list(&self) -> &[Userfaultfd] {
@@ -465,12 +525,17 @@ fn monitor_process(
                     .recv::<Command>()
                     .context("recv swap command")?
                 {
-                    Command::ProcessForked(raw_descriptor) => {
-                        debug!("new fork uffd: {:?}", raw_descriptor);
-                        // Safe because the raw_descriptor is sent from another process via Tube and
-                        // no one in this process owns it.
-                        let uffd = unsafe { Userfaultfd::from_raw_descriptor(raw_descriptor) };
-                        uffd_list.register(uffd).context("register forked uffd")?;
+                    Command::ProcessForked { uffd, reply_tube } => {
+                        debug!("new fork uffd: {:?}", uffd);
+                        let result = if let Err(e) = uffd_list.register(uffd) {
+                            error!("failed to register uffd to list: {:?}", e);
+                            false
+                        } else {
+                            true
+                        };
+                        if let Err(e) = reply_tube.send(&result) {
+                            error!("failed to response to new process: {:?}", e);
+                        }
                     }
                     Command::Enable => {
                         info!("enabling vmm-swap");
@@ -513,8 +578,9 @@ fn monitor_process(
                                 scope,
                                 &wait_ctx,
                                 &page_handler,
-                                &uffd_list,
+                                &mut uffd_list,
                                 &guest_memory,
+                                &regions,
                                 &command_tube,
                                 &worker,
                                 &mutex_transition,
@@ -695,8 +761,9 @@ fn handle_vmm_swap<'scope, 'env>(
     scope: &'scope Scope<'scope, 'env>,
     wait_ctx: &WaitContext<Token>,
     page_handler: &'env PageHandler<'env>,
-    uffd_list: &'env UffdList,
+    uffd_list: &'env mut UffdList,
     guest_memory: &GuestMemory,
+    regions: &[Range<usize>],
     command_tube: &Tube,
     worker: &Worker<MoveToStaging>,
     state_transition: &'env Mutex<SwapStateTransition>,
@@ -793,13 +860,24 @@ fn handle_vmm_swap<'scope, 'env>(
                     .recv::<Command>()
                     .context("recv swap command")?
                 {
-                    Command::ProcessForked(raw_descriptor) => {
-                        debug!("new fork uffd: {:?}", raw_descriptor);
-                        // TODO(b/266898615): The forked processes must wait running until the
-                        // regions are registered to the new uffd if vmm-swap is already enabled.
-                        // There are currently no use cases for swap + hotplug, so this is currently
-                        // not implemented.
-                        bail!("child process is forked while swap is enabled");
+                    Command::ProcessForked { uffd, reply_tube } => {
+                        debug!("new fork uffd: {:?}", uffd);
+                        // SAFETY: regions is generated from the guest memory
+                        // SAFETY: the uffd is from a new process.
+                        let result = if let Err(e) =
+                            unsafe { register_regions(regions, std::array::from_ref(&uffd)) }
+                        {
+                            error!("failed to setup uffd: {:?}", e);
+                            false
+                        } else if let Err(e) = uffd_list.register(uffd) {
+                            error!("failed to register uffd to list: {:?}", e);
+                            false
+                        } else {
+                            true
+                        };
+                        if let Err(e) = reply_tube.send(&result) {
+                            error!("failed to response to new process: {:?}", e);
+                        }
                     }
                     Command::Enable => {
                         let result = handle_enable_command(
@@ -889,13 +967,13 @@ fn handle_vmm_swap<'scope, 'env>(
                         }
                         *state_transition.lock() = SwapStateTransition::default();
 
-                        let join_handle = scope.spawn(|| {
+                        let uffd = uffd_list.clone_main_uffd().context("clone main uffd")?;
+                        let join_handle = scope.spawn(move || {
                             let mut ctx = page_handler.start_swap_in();
-                            let uffd = uffd_list.main_uffd();
                             let job = bg_job_control.new_job();
                             let start_time = std::time::Instant::now();
                             while !job.is_aborted() {
-                                match ctx.swap_in(uffd, MAX_SWAP_CHUNK_SIZE) {
+                                match ctx.swap_in(&uffd, MAX_SWAP_CHUNK_SIZE) {
                                     Ok(num_pages) => {
                                         if num_pages == 0 {
                                             break;
@@ -935,9 +1013,12 @@ fn handle_vmm_swap<'scope, 'env>(
                             _ => {}
                         }
                         let mut ctx = page_handler.start_swap_in();
-                        let uffd = uffd_list.main_uffd();
                         // Swap-in all before exit.
-                        while ctx.swap_in(uffd, MAX_SWAP_CHUNK_SIZE).context("swap in")? > 0 {}
+                        while ctx
+                            .swap_in(uffd_list.main_uffd(), MAX_SWAP_CHUNK_SIZE)
+                            .context("swap in")?
+                            > 0
+                        {}
                         return Ok(true);
                     }
                     Command::Status => {
