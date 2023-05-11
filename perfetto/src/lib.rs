@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#![deny(missing_docs)]
-
 mod bindings;
 mod hashes;
 
@@ -11,9 +9,9 @@ pub mod protos {
     include!(concat!(env!("OUT_DIR"), "/perfetto_protos/generated.rs"));
 }
 
+use std::ffi::c_void;
 use std::ffi::CString;
 use std::mem::size_of;
-use std::os::raw::c_void;
 use std::path::Path;
 use std::slice;
 use std::time::Duration;
@@ -57,10 +55,10 @@ macro_rules! zero {
 #[macro_export]
 macro_rules! tag_or_empty_string {
     () => {
-        "\0".as_ptr() as *const i8
+        "\0".as_ptr() as *const std::ffi::c_char
     };
     ($tag:expr) => {
-        concat!($tag, "\0").as_ptr() as *const i8
+        concat!($tag, "\0").as_ptr() as *const std::ffi::c_char
     };
 }
 
@@ -125,7 +123,7 @@ macro_rules! perfetto_tags {
 ///           perfetto_tags).
 ///
 /// # Examples
-/// ```
+/// ```no_run
 /// setup_perfetto!(
 ///     tracing,
 ///     mycrate,
@@ -152,8 +150,8 @@ macro_rules! setup_perfetto {
                 &ctrace_category {
                     client_index: PerfettoCategory::$cat as u64,
                     instances_callback: Some(instances_callback),
-                    name: concat!(stringify!($cat), "\0").as_ptr() as *const i8,
-                    description: concat!($description, "\0").as_ptr() as *const i8,
+                    name: concat!(stringify!($cat), "\0").as_ptr() as *const std::ffi::c_char,
+                    description: concat!($description, "\0").as_ptr() as *const std::ffi::c_char,
                     tags: $tags
                 },
             )+
@@ -235,7 +233,7 @@ macro_rules! setup_perfetto {
                         Some($crate::TraceEvent::new(
                             category_index,
                             instances,
-                            concat!($name, "\0").as_ptr() as *const i8,
+                            concat!($name, "\0").as_ptr() as *const std::ffi::c_char,
                         ))
                     } else {
                         None
@@ -262,7 +260,7 @@ macro_rules! setup_perfetto {
                         $crate::trace_event_begin(
                             category_index,
                             instances,
-                            concat!($name, "\0").as_ptr() as *const i8,
+                            concat!($name, "\0").as_ptr() as *const std::ffi::c_char,
                         )
                     };
                 }
@@ -431,7 +429,7 @@ macro_rules! setup_perfetto {
                         $crate::trace_counter(
                             category_index,
                             instances,
-                            concat!($name, "\0").as_ptr() as *const i8,
+                            concat!($name, "\0").as_ptr() as *const std::ffi::c_char,
                             $value,
                         )
                     };
@@ -654,7 +652,7 @@ pub struct TraceEvent {
 
 impl TraceEvent {
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    pub fn new(category_index: u64, instances: u32, name: *const i8) -> Self {
+    pub fn new(category_index: u64, instances: u32, name: *const std::ffi::c_char) -> Self {
         unsafe {
             trace_event_begin(
                 category_index,
@@ -738,6 +736,7 @@ impl Clock {
 mod tests {
     #![allow(dead_code)]
     use cros_tracing_types::static_strings::StaticString;
+    use std::ffi::c_char;
 
     use super::*;
 

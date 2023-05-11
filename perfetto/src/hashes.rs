@@ -9,10 +9,10 @@ cfg_if::cfg_if! {
         use sha2::Digest;
         use sha2::Sha256;
 
-        pub fn sha256(bytes: [u8]) -> [u8; 32] {
+        pub fn sha256(bytes: &[u8]) -> [u8; 32] {
             let mut hasher = Sha256::new();
             hasher.update(bytes);
-            trace_hash.finalize()[0..32].try_into().unwrap()
+            hasher.finalize()[0..32].try_into().unwrap()
         }
     } else if #[cfg(feature = "openssl")] {
         use openssl::sha::sha256;

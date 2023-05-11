@@ -1853,13 +1853,16 @@ name = "perfetto"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base",
  "cfg-if",
  "cros_tracing_types",
  "data_model 0.1.1-alpha.1",
+ "once_cell",
  "openssl",
  "proto_build_tools",
  "protobuf",
  "serde",
+ "sync",
 ]
 
 [[package]]
