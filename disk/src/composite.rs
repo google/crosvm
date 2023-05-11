@@ -487,6 +487,11 @@ impl AsyncDisk for AsyncCompositeDiskFile {
         Ok(())
     }
 
+    async fn fdatasync(&self) -> crate::Result<()> {
+        // AsyncCompositeDiskFile does not implement fdatasync for now. Fallback to fsync.
+        self.fsync().await
+    }
+
     async fn read_to_mem<'a>(
         &'a self,
         file_offset: u64,

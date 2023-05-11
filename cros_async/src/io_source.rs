@@ -148,6 +148,12 @@ impl<F: AsRawDescriptor> IoSource<F> {
         await_on_inner!(self, fsync)
     }
 
+    /// Sync all data of completed write operations to the backing storage, avoiding updating extra
+    /// metadata. Note that an implementation may simply implement fsync for fdatasync.
+    pub async fn fdatasync(&self) -> AsyncResult<()> {
+        await_on_inner!(self, fdatasync)
+    }
+
     /// Yields the underlying IO source.
     pub fn into_source(self) -> F {
         on_inner!(self, into_source)

@@ -100,6 +100,16 @@ impl<
             .await
     }
 
+    async fn fdatasync(&self) -> Result<()> {
+        let inner_clone = self.inner.clone();
+        self.blocking_pool
+            .spawn(move || {
+                let mut disk_file = inner_clone.lock();
+                disk_file.fdatasync().map_err(Error::IoFdatasync)
+            })
+            .await
+    }
+
     async fn read_to_mem<'a>(
         &'a self,
         mut file_offset: u64,

@@ -140,6 +140,14 @@ impl<F: AsRawDescriptor> UringSource<F> {
         Ok(())
     }
 
+    /// Sync all data of completed write operations to the backing storage. Currently, the
+    /// implementation is equivalent to fsync.
+    pub async fn fdatasync(&self) -> AsyncResult<()> {
+        // Currently io_uring does not implement fdatasync. Fall back to fsync.
+        // TODO(b/281609112): Implement real fdatasync with io_uring.
+        self.fsync().await
+    }
+
     /// Yields the underlying IO source.
     pub fn into_source(self) -> F {
         self.source

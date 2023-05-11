@@ -33,6 +33,9 @@ pub enum Error {
     /// An error occurred when executing fallocate synchronously.
     #[error("An error occurred when executing fallocate synchronously: {0}")]
     Fallocate(base::Error),
+    /// An error occurred when executing fdatasync synchronously.
+    #[error("An error occurred when executing fdatasync synchronously: {0}")]
+    Fdatasync(base::Error),
     /// An error occurred when executing fsync synchronously.
     #[error("An error occurred when executing fsync synchronously: {0}")]
     Fsync(base::Error),
@@ -55,6 +58,7 @@ impl From<Error> for io::Error {
             AddingWaker(e) => e.into(),
             Executor(e) => e.into(),
             Fallocate(e) => e.into(),
+            Fdatasync(e) => e.into(),
             Fsync(e) => e.into(),
             Read(e) => e.into(),
             Seeking(e) => e.into(),
@@ -306,6 +310,17 @@ impl<F: AsRawDescriptor> PollSource<F> {
             Ok(())
         } else {
             Err(AsyncError::Poll(Error::Fsync(base::Error::last())))
+        }
+    }
+
+    /// Sync all data of completed write operations to the backing storage, avoiding updating extra
+    /// metadata.
+    pub async fn fdatasync(&self) -> AsyncResult<()> {
+        let ret = unsafe { libc::fdatasync(self.as_raw_descriptor()) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            Err(AsyncError::Poll(Error::Fdatasync(base::Error::last())))
         }
     }
 

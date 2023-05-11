@@ -379,6 +379,13 @@ impl<F: AsRawDescriptor> HandleSource<F> {
             .map_err(AsyncError::HandleSource)
     }
 
+    /// Sync all data of completed write operations to the backing storage. Currently, the
+    /// implementation is equivalent to fsync.
+    pub async fn fdatasync(&self) -> AsyncResult<()> {
+        // TODO(b/282003931): Fall back to regular fsync.
+        self.fsync().await
+    }
+
     /// Note that on Windows w/ multiple sources these functions do not make sense.
     /// TODO(nkgold): decide on what these should mean.
 

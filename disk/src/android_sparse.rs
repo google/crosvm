@@ -367,6 +367,11 @@ impl AsyncDisk for AsyncAndroidSparse {
         Ok(())
     }
 
+    async fn fdatasync(&self) -> DiskResult<()> {
+        // Do nothing because it's read-only.
+        Ok(())
+    }
+
     /// Reads data from `file_offset` to the end of the current chunk and write them into memory
     /// `mem` at `mem_offsets`.
     async fn read_to_mem<'a>(

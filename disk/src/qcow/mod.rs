@@ -1551,6 +1551,11 @@ impl FileSync for QcowFile {
         self.avail_clusters.append(&mut self.unref_clusters);
         Ok(())
     }
+
+    fn fdatasync(&mut self) -> io::Result<()> {
+        // QcowFile does not implement fdatasync. Just fall back to fsync.
+        self.fsync()
+    }
 }
 
 impl FileSetLen for QcowFile {

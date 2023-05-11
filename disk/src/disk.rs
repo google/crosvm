@@ -86,8 +86,12 @@ pub enum Error {
     CreateSingleFileDisk(cros_async::AsyncError),
     #[error("failure with fallocate: {0}")]
     Fallocate(cros_async::AsyncError),
+    #[error("failure with fdatasync: {0}")]
+    Fdatasync(cros_async::AsyncError),
     #[error("failure with fsync: {0}")]
     Fsync(cros_async::AsyncError),
+    #[error("failure with fdatasync: {0}")]
+    IoFdatasync(io::Error),
     #[error("failure with fsync: {0}")]
     IoFsync(io::Error),
     #[error("checking host fs type: {0}")]
@@ -327,6 +331,10 @@ pub trait AsyncDisk: DiskGetLen + FileSetLen + FileAllocate {
     /// Asynchronously fsyncs any completed operations to the disk.
     async fn fsync(&self) -> Result<()>;
 
+    /// Asynchronously fdatasyncs any completed operations to the disk.
+    /// Note that an implementation may simply call fsync for fdatasync.
+    async fn fdatasync(&self) -> Result<()>;
+
     /// Reads from the file at 'file_offset' into memory `mem` at `mem_offsets`.
     /// `mem_offsets` is similar to an iovec except relative to the start of `mem`.
     async fn read_to_mem<'a>(
@@ -424,6 +432,10 @@ impl AsyncDisk for SingleFileDisk {
 
     async fn fsync(&self) -> Result<()> {
         self.inner.fsync().await.map_err(Error::Fsync)
+    }
+
+    async fn fdatasync(&self) -> Result<()> {
+        self.inner.fdatasync().await.map_err(Error::Fdatasync)
     }
 
     async fn read_to_mem<'a>(

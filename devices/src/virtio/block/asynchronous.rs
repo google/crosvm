@@ -821,7 +821,7 @@ impl BlockAsync {
             VIRTIO_BLK_T_FLUSH => {
                 disk_state
                     .disk_image
-                    .fsync()
+                    .fdatasync()
                     .await
                     .map_err(ExecuteError::Flush)?;
 

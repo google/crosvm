@@ -373,6 +373,13 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
             .map_err(AsyncError::OverlappedSource)
     }
 
+    /// Sync all data of completed write operations to the backing storage. Currently, the
+    /// implementation is equivalent to fsync.
+    pub async fn fdatasync(&self) -> AsyncResult<()> {
+        // TODO(b/282003931): Fall back to regular fsync.
+        self.fsync().await
+    }
+
     /// Yields the underlying IO source.
     pub fn into_source(self) -> F {
         unimplemented!("`into_source` is not supported on Windows.")
