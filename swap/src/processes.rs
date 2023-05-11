@@ -42,7 +42,7 @@ pub struct ProcessesGuard {
 /// This must be called from the main process.
 pub fn freeze_child_processes(monitor_pid: Pid) -> Result<ProcessesGuard> {
     let guard = ProcessesGuard {
-        pids: load_children(monitor_pid)?,
+        pids: load_descendants(getpid(), monitor_pid)?,
     };
 
     guard.stop_the_world().context("stop the world")?;
@@ -80,13 +80,17 @@ impl Drop for ProcessesGuard {
     }
 }
 
-/// Loads Pids of crosvm child processes except the monitor procesess.
-fn load_children(monitor_pid: Pid) -> Result<Vec<Pid>> {
-    // children of the main process.
-    let children = read_to_string(format!("/proc/self/task/{}/children", getpid()))
+/// Loads Pids of crosvm descendant processes except the monitor procesess.
+fn load_descendants(current_pid: Pid, monitor_pid: Pid) -> Result<Vec<Pid>> {
+    // children of the current process.
+    let children = read_to_string(format!("/proc/{0}/task/{0}/children", current_pid))
         .context("read children")?;
+    let children = children.trim();
+    // str::split() to empty string results a iterator just returning 1 empty string.
+    if children.is_empty() {
+        return Ok(Vec::new());
+    }
     let pids: std::result::Result<Vec<i32>, ParseIntError> = children
-        .trim()
         .split(" ")
         .map(i32::from_str)
         // except this monitor process
@@ -95,7 +99,14 @@ fn load_children(monitor_pid: Pid) -> Result<Vec<Pid>> {
             _ => true,
         })
         .collect();
-    pids.context("parse pids")
+    let pids = pids.context("parse pids")?;
+    let mut result = Vec::new();
+    for pid in pids {
+        result.push(pid);
+        let pids = load_descendants(pid, monitor_pid)?;
+        result.extend(pids);
+    }
+    Ok(result)
 }
 
 /// Extract process state from /proc/pid/stat.
