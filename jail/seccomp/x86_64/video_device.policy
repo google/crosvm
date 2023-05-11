@@ -94,6 +94,7 @@ sched_setaffinity: 1
 sched_setscheduler: arg1 == SCHED_IDLE || arg1 == SCHED_BATCH
 
 # Required by mesa on AMD GPU
+kcmp: 1
 sysinfo: 1
 
 prctl: arg0 == PR_SET_NAME
