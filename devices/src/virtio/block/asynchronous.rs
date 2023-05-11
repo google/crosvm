@@ -917,7 +917,7 @@ impl VirtioDevice for BlockAsync {
     ) -> anyhow::Result<()> {
         let read_only = self.read_only;
         let sparse = self.sparse;
-        let id = self.id.take();
+        let id = self.id;
         let executor_kind = self.executor_kind;
         let disk_image = self
             .disk_image
@@ -1443,6 +1443,7 @@ mod tests {
 
         // Create a BlockAsync to test
         let features = base_features(ProtectionType::Unprotected);
+        let id = b"Block serial number\0";
         let mut b = BlockAsync::new(
             features,
             disk_image.try_clone().unwrap(),
@@ -1450,7 +1451,7 @@ mod tests {
             false,
             512,
             enables_multiple_workers,
-            None,
+            Some(*id),
             Some(Tube::pair().unwrap().0),
             None,
             None,
@@ -1488,6 +1489,7 @@ mod tests {
             b.control_tube.is_some(),
             "BlockAsync should have a control tube"
         );
+        assert_eq!(b.id, Some(*b"Block serial number\0"));
 
         // re-activate should succeed
         b.activate(
