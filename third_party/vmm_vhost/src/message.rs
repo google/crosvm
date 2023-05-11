@@ -150,8 +150,10 @@ pub enum MasterReq {
     GET_SHARED_MEMORY_REGIONS = 41,
     /// Stop all queue handlers and save each queue state.
     SLEEP = 42,
+    /// Start up all queue handlers with their saved queue state.
+    WAKE = 43,
     /// Upper bound of valid commands.
-    MAX_CMD = 43,
+    MAX_CMD = 44,
 }
 
 impl From<MasterReq> for u32 {

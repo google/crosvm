@@ -281,4 +281,8 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
     fn sleep(&mut self) -> Result<()> {
         Ok(())
     }
+
+    fn wake(&mut self) -> Result<()> {
+        Ok(())
+    }
 }

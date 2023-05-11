@@ -174,6 +174,9 @@ pub trait VhostBackend: std::marker::Sized {
 
     /// Put the device to sleep.
     fn sleep(&self) -> Result<()>;
+
+    /// Wake the device up.
+    fn wake(&self) -> Result<()>;
 }
 
 /// An interface for setting up vhost-based backend drivers.
@@ -263,6 +266,9 @@ pub trait VhostBackendMut: std::marker::Sized {
 
     /// Put the device to sleep.
     fn sleep(&mut self) -> Result<()>;
+
+    /// Wake the device up.
+    fn wake(&mut self) -> Result<()>;
 }
 
 impl<T: VhostBackendMut> VhostBackend for RwLock<T> {
@@ -327,6 +333,10 @@ impl<T: VhostBackendMut> VhostBackend for RwLock<T> {
     fn sleep(&self) -> Result<()> {
         self.write().unwrap().sleep()
     }
+
+    fn wake(&self) -> Result<()> {
+        self.write().unwrap().wake()
+    }
 }
 
 impl<T: VhostBackendMut> VhostBackend for RefCell<T> {
@@ -388,6 +398,10 @@ impl<T: VhostBackendMut> VhostBackend for RefCell<T> {
 
     fn sleep(&self) -> Result<()> {
         self.borrow_mut().sleep()
+    }
+
+    fn wake(&self) -> Result<()> {
+        self.borrow_mut().wake()
     }
 }
 #[cfg(test)]
@@ -475,6 +489,10 @@ mod tests {
         }
 
         fn sleep(&mut self) -> Result<()> {
+            Ok(())
+        }
+
+        fn wake(&mut self) -> Result<()> {
             Ok(())
         }
     }

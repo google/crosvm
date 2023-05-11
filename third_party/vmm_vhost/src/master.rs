@@ -353,6 +353,12 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
         let hdr = node.send_request_header(MasterReq::SLEEP, None)?;
         node.wait_for_ack(&hdr)
     }
+
+    fn wake(&self) -> Result<()> {
+        let mut node = self.node();
+        let hdr = node.send_request_header(MasterReq::WAKE, None)?;
+        node.wait_for_ack(&hdr)
+    }
 }
 
 impl<E: Endpoint<MasterReq>> VhostUserMaster for Master<E> {

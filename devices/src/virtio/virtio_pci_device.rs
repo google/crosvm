@@ -292,6 +292,9 @@ pub struct VirtioPciDevice {
     msix_cap_reg_idx: Option<usize>,
     common_config: VirtioPciCommonConfig,
 
+    // True if the device is asleep (aka suspended).
+    is_asleep: bool,
+
     iommu: Option<Arc<Mutex<IpcMemoryMapper>>>,
 
     // API client that is present if the device has shared memory regions, and
@@ -390,6 +393,7 @@ impl VirtioPciDevice {
                 queue_select: 0,
                 msix_config: VIRTIO_MSI_NO_VECTOR,
             },
+            is_asleep: false,
             iommu: None,
             shared_memory_vm_memory_client,
             ioevent_vm_memory_client,
@@ -954,16 +958,26 @@ struct VirtioPciDeviceSnapshot {
 
 impl Suspendable for VirtioPciDevice {
     fn sleep(&mut self) -> anyhow::Result<()> {
-        if let Some(state) = self.device.stop()? {
-            self.queues = state.queues;
+        // If the device is already asleep, there is no need to send a request to stop workers
+        // since they should already be stopped.
+        if self.is_asleep {
+            return Ok(());
         }
+        self.device.sleep()?;
+        self.is_asleep = true;
         Ok(())
     }
 
     fn wake(&mut self) -> anyhow::Result<()> {
-        if self.device_activated {
-            self.activate()?;
+        // If the device is awake, workers will be running so no need to send a request to start
+        // them up.
+        if !self.is_asleep {
+            return Ok(());
         }
+        if self.device_activated {
+            self.device.wake()?;
+        }
+        self.is_asleep = false;
         Ok(())
     }
 

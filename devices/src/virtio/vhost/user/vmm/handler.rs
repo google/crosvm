@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 mod sys;
-mod worker;
+pub(crate) mod worker;
 
 use std::sync::Mutex;
 
@@ -372,9 +372,15 @@ impl VhostUserHandler {
         Ok(())
     }
 
+    /// Sends a message to the device process to stop worker futures/threads
     pub fn sleep(&mut self) -> Result<()> {
         self.vu.sleep().map_err(Error::Sleep)?;
         Ok(())
+    }
+
+    /// Sends a message to the device process to start up worker futures/threads.
+    pub fn wake(&mut self) -> Result<()> {
+        self.vu.wake().map_err(Error::Wake)
     }
 }
 

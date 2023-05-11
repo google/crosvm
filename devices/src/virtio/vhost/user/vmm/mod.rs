@@ -137,6 +137,12 @@ pub enum Error {
     /// Too many shmem regions.
     #[error("too many shmem regions: {0} > 1")]
     TooManyShmemRegions(usize),
+    /// failed to wake the vhost user device.
+    #[error("failed to wake the vhost user device.")]
+    Wake(VhostError),
+    /// failed to wake the worker.
+    #[error("failed to wake the worker.")]
+    WakeWorker,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

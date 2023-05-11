@@ -105,6 +105,7 @@ pub trait VhostUserSlaveReqHandler {
     fn remove_mem_region(&self, region: &VhostUserSingleMemoryRegion) -> Result<()>;
     fn get_shared_memory_regions(&self) -> Result<Vec<VhostSharedMemoryRegion>>;
     fn sleep(&self) -> Result<()>;
+    fn wake(&self) -> Result<()>;
 }
 
 /// Services provided to the master by the slave without interior mutability.
@@ -157,7 +158,12 @@ pub trait VhostUserSlaveReqHandlerMut {
     fn add_mem_region(&mut self, region: &VhostUserSingleMemoryRegion, fd: File) -> Result<()>;
     fn remove_mem_region(&mut self, region: &VhostUserSingleMemoryRegion) -> Result<()>;
     fn get_shared_memory_regions(&mut self) -> Result<Vec<VhostSharedMemoryRegion>>;
+    /// Request the device to sleep by stopping their workers. This should NOT be called if the
+    /// device is already asleep.
     fn sleep(&mut self) -> Result<()>;
+    /// Request the device to wake up by starting up their workers. This should NOT be called if the
+    /// device is already awake.
+    fn wake(&mut self) -> Result<()>;
 }
 
 impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
@@ -277,6 +283,10 @@ impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
 
     fn sleep(&self) -> Result<()> {
         self.lock().unwrap().sleep()
+    }
+
+    fn wake(&self) -> Result<()> {
+        self.lock().unwrap().wake()
     }
 }
 
@@ -399,6 +409,10 @@ where
 
     fn sleep(&self) -> Result<()> {
         self.as_ref().sleep()
+    }
+
+    fn wake(&self) -> Result<()> {
+        self.as_ref().wake()
     }
 }
 
@@ -937,6 +951,10 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
             }
             MasterReq::SLEEP => {
                 let res = self.backend.sleep();
+                self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
+            }
+            MasterReq::WAKE => {
+                let res = self.backend.wake();
                 self.slave_req_helper.send_ack_message(&hdr, res.is_ok())?;
             }
             _ => {
