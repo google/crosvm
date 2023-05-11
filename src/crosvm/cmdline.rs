@@ -2238,6 +2238,13 @@ pub struct RunCommand {
     /// Possible backend values: libvda
     pub video_encoder: Vec<VideoDeviceConfig>,
 
+    #[cfg(target_arch = "aarch64")]
+    #[argh(switch)]
+    #[serde(skip)]
+    #[merge(strategy = overwrite_option)]
+    /// enable a virtual cpu freq device
+    pub virt_cpufreq: Option<bool>,
+
     #[cfg(feature = "audio")]
     #[argh(
         option,
@@ -2446,6 +2453,11 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         if let Some(capacity) = cmd.cpu_capacity {
             cfg.cpu_capacity = capacity;
+        }
+
+        #[cfg(target_arch = "aarch64")]
+        {
+            cfg.virt_cpufreq = cmd.virt_cpufreq.unwrap_or_default();
         }
 
         cfg.vcpu_cgroup_path = cmd.vcpu_cgroup_path;

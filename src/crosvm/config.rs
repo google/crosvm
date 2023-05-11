@@ -1229,6 +1229,7 @@ pub struct Config {
     pub video_dec: Vec<VideoDeviceConfig>,
     #[cfg(feature = "video-encoder")]
     pub video_enc: Vec<VideoDeviceConfig>,
+    pub virt_cpufreq: bool,
     pub virtio_input_evdevs: Vec<PathBuf>,
     pub virtio_keyboard: Vec<PathBuf>,
     pub virtio_mice: Vec<PathBuf>,
@@ -1439,6 +1440,7 @@ impl Default for Config {
             video_dec: Vec::new(),
             #[cfg(feature = "video-encoder")]
             video_enc: Vec::new(),
+            virt_cpufreq: false,
             virtio_input_evdevs: Vec::new(),
             virtio_keyboard: Vec::new(),
             virtio_mice: Vec::new(),
@@ -1525,6 +1527,13 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
                     );
                 }
             }
+        }
+    }
+    if cfg.virt_cpufreq {
+        if !cfg.host_cpu_topology || (cfg.vcpu_affinity.is_none() && cfg.cpu_capacity.is_empty()) {
+            return Err("`virt-cpufreq` requires 'host-cpu-topology' enable or \
+                       have vcpu_affinity and cpu_capacity configured"
+                .to_string());
         }
     }
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]

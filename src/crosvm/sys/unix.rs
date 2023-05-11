@@ -1150,6 +1150,41 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         (None, 0)
     };
 
+    let mut cpu_frequencies = BTreeMap::new();
+
+    if cfg.virt_cpufreq {
+        if !cfg.cpu_capacity.is_empty() {
+            panic!("`virt-cpufreq` requires cpu_capacity to be set!");
+        }
+
+        let host_cpu_frequencies = Arch::get_host_cpu_frequencies_khz()?;
+
+        for cpu_id in 0..cfg.vcpu_count.unwrap_or(1) {
+            let vcpu_affinity = match cfg.vcpu_affinity.clone() {
+                Some(VcpuAffinity::Global(v)) => v,
+                Some(VcpuAffinity::PerVcpu(mut m)) => m.remove(&cpu_id).unwrap_or_default(),
+                None => {
+                    panic!("There must be some vcpu_affinity setting with VirtCpufreq enabled!")
+                }
+            };
+
+            // Check that the physical CPUs that the vCPU is affined to all share the same
+            // frequency domain.
+            if let Some(freq_domain) = host_cpu_frequencies.get(&(vcpu_affinity[0] as usize)) {
+                for cpu in vcpu_affinity.iter() {
+                    if let Some(frequencies) = host_cpu_frequencies.get(cpu) {
+                        if frequencies != freq_domain {
+                            panic!("Affined CPUs do not share a frequency domain!");
+                        }
+                    }
+                }
+                cpu_frequencies.insert(cpu_id as usize, freq_domain.clone());
+            } else {
+                panic!("No frequency domain for cpu:{}", cpu_id);
+            }
+        }
+    }
+
     Ok(VmComponents {
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         ac_adapter: cfg.ac_adapter,
@@ -1163,6 +1198,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         vcpu_affinity: cfg.vcpu_affinity.clone(),
         cpu_clusters: cfg.cpu_clusters.clone(),
         cpu_capacity: cfg.cpu_capacity.clone(),
+        cpu_frequencies,
         #[cfg(feature = "direct")]
         direct_gpe: cfg.direct_gpe.clone(),
         #[cfg(feature = "direct")]

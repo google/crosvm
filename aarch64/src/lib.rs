@@ -15,6 +15,7 @@ use std::sync::Arc;
 use arch::get_serial_cmdline;
 use arch::GetSerialCmdlineError;
 use arch::RunnableLinuxVm;
+use arch::VcpuAffinity;
 use arch::VmComponents;
 use arch::VmImage;
 use base::Event;
@@ -35,6 +36,7 @@ use devices::PciConfigMmio;
 use devices::PciDevice;
 use devices::PciRootCommand;
 use devices::Serial;
+use devices::VirtCpufreq;
 #[cfg(feature = "gdb")]
 use gdbstub::arch::Arch;
 #[cfg(feature = "gdb")]
@@ -201,6 +203,11 @@ const AARCH64_MMIO_SIZE: u64 = 0x2000000;
 // Virtio devices start at SPI interrupt number 4
 const AARCH64_IRQ_BASE: u32 = 4;
 
+// Virtual CPU Frequency Device.
+const AARCH64_VIRTFREQ_BASE: u64 = 0x1040000;
+const AARCH64_VIRTFREQ_SIZE: u64 = 0x8;
+const AARCH64_VIRTFREQ_MAXSIZE: u64 = 0x10000;
+
 // PMU PPI interrupt, same as qemu
 const AARCH64_PMU_IRQ: u32 = 7;
 
@@ -219,6 +226,8 @@ pub enum Error {
     CloneIrqChip(base::Error),
     #[error("the given kernel command line was invalid: {0}")]
     Cmdline(kernel_cmdline::Error),
+    #[error("failed to configure CPU Frequencies: {0}")]
+    CpuFrequencies(base::Error),
     #[error("unable to create battery devices: {0}")]
     CreateBatDevices(arch::DeviceRegistrationError),
     #[error("unable to make an Event: {0}")]
@@ -277,6 +286,8 @@ pub enum Error {
     RegisterIrqfd(base::Error),
     #[error("error registering PCI bus: {0}")]
     RegisterPci(BusError),
+    #[error("error registering virtual cpufreq device: {0}")]
+    RegisterVirtCpufreq(BusError),
     #[error("error registering virtual socket device: {0}")]
     RegisterVsock(arch::DeviceRegistrationError),
     #[error("failed to set device attr: {0}")]
@@ -609,6 +620,34 @@ impl arch::LinuxArch for AArch64 {
             .insert(pci_bus, AARCH64_PCI_CFG_BASE, AARCH64_PCI_CFG_SIZE)
             .map_err(Error::RegisterPci)?;
 
+        if !components.cpu_frequencies.is_empty() {
+            for vcpu in 0..vcpu_count {
+                let vcpu_affinity = match components.vcpu_affinity.clone() {
+                    Some(VcpuAffinity::Global(v)) => v,
+                    Some(VcpuAffinity::PerVcpu(mut m)) => m.remove(&vcpu).unwrap_or_default(),
+                    None => panic!("vcpu_affinity needs to be set for VirtCpufreq"),
+                };
+
+                let virt_cpufreq = Arc::new(Mutex::new(VirtCpufreq::new(
+                    vcpu_affinity[0].try_into().unwrap(),
+                )));
+
+                if vcpu as u64 * AARCH64_VIRTFREQ_SIZE + AARCH64_VIRTFREQ_SIZE
+                    > AARCH64_VIRTFREQ_MAXSIZE
+                {
+                    panic!("Exceeded maximum number of virt cpufreq devices");
+                }
+
+                mmio_bus
+                    .insert(
+                        virt_cpufreq,
+                        AARCH64_VIRTFREQ_BASE + (vcpu as u64 * AARCH64_VIRTFREQ_SIZE),
+                        AARCH64_VIRTFREQ_SIZE,
+                    )
+                    .map_err(Error::RegisterVirtCpufreq)?;
+            }
+        }
+
         let mut cmdline = Self::get_base_linux_cmdline();
         get_serial_cmdline(&mut cmdline, serial_parameters, "mmio")
             .map_err(Error::GetSerialCmdline)?;
@@ -684,6 +723,7 @@ impl arch::LinuxArch for AArch64 {
             vcpu_count as u32,
             components.cpu_clusters,
             components.cpu_capacity,
+            components.cpu_frequencies,
             fdt_offset,
             cmdline.as_str(),
             (payload.entry(), payload.size() as usize),
@@ -768,6 +808,17 @@ impl arch::LinuxArch for AArch64 {
     ) -> std::result::Result<PciAddress, Self::Error> {
         // hotplug function isn't verified on AArch64, so set it unsupported here.
         Err(Error::Unsupported)
+    }
+
+    fn get_host_cpu_frequencies_khz() -> std::result::Result<BTreeMap<usize, Vec<u32>>, Self::Error>
+    {
+        Ok(
+            Self::collect_for_each_cpu(base::logical_core_frequencies_khz)
+                .map_err(Error::CpuFrequencies)?
+                .into_iter()
+                .enumerate()
+                .collect(),
+        )
     }
 }
 
@@ -989,6 +1040,13 @@ impl AArch64 {
         }
 
         VcpuInitAArch64 { regs }
+    }
+
+    fn collect_for_each_cpu<F, T>(func: F) -> std::result::Result<Vec<T>, base::Error>
+    where
+        F: Fn(usize) -> std::result::Result<T, base::Error>,
+    {
+        (0..base::number_of_logical_cores()?).map(func).collect()
     }
 }
 

@@ -137,6 +137,7 @@ pub enum CrosvmDeviceId {
     VirtioMmio = 19,
     AcAdapter = 20,
     VirtualPmc = 21,
+    VirtCpufreq = 22,
 }
 
 impl TryFrom<u16> for CrosvmDeviceId {

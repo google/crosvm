@@ -652,6 +652,72 @@ pub fn move_proc_to_cgroup(cgroup_path: PathBuf, process_id: Pid) -> Result<()> 
     move_to_cgroup(cgroup_path, process_id, "cgroup.procs")
 }
 
+/// Queries the property of a specified CPU sysfs node.
+fn parse_sysfs_cpu_info_vec(cpu_id: usize, property: &str) -> Result<Vec<u32>> {
+    let path = format!("/sys/devices/system/cpu/cpu{cpu_id}/{property}");
+    let res: Result<Vec<_>> = std::fs::read_to_string(path)?
+        .split_whitespace()
+        .map(|x| x.parse().map_err(|_| Error::new(libc::EINVAL)))
+        .collect();
+    res
+}
+
+/// Returns a list of supported frequencies in kHz for a given logical core.
+pub fn logical_core_frequencies_khz(cpu_id: usize) -> Result<Vec<u32>> {
+    parse_sysfs_cpu_info_vec(cpu_id, "cpufreq/scaling_available_frequencies")
+}
+
+#[repr(C)]
+pub struct sched_attr {
+    pub size: u32,
+
+    pub sched_policy: u32,
+    pub sched_flags: u64,
+    pub sched_nice: i32,
+
+    pub sched_priority: u32,
+
+    pub sched_runtime: u64,
+    pub sched_deadline: u64,
+    pub sched_period: u64,
+
+    pub sched_util_min: u32,
+    pub sched_util_max: u32,
+}
+
+impl sched_attr {
+    pub fn default() -> Self {
+        Self {
+            size: std::mem::size_of::<sched_attr>() as u32,
+            sched_policy: 0,
+            sched_flags: 0,
+            sched_nice: 0,
+            sched_priority: 0,
+            sched_runtime: 0,
+            sched_deadline: 0,
+            sched_period: 0,
+            sched_util_min: 0,
+            sched_util_max: 0,
+        }
+    }
+}
+
+pub fn sched_setattr(pid: Pid, attr: &mut sched_attr, flags: u32) -> Result<()> {
+    let ret = unsafe {
+        libc::syscall(
+            libc::SYS_sched_setattr,
+            pid as usize,
+            attr as *mut sched_attr as usize,
+            flags as usize,
+        )
+    };
+
+    if ret < 0 {
+        return Err(Error::last());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::Write;

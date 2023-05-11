@@ -32,6 +32,7 @@ pub mod serial_device;
 mod software_tpm;
 mod suspendable;
 mod sys;
+mod virtcpufreq;
 pub mod virtio;
 #[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
 mod vtpm_proxy;
@@ -128,6 +129,7 @@ pub use self::serial_device::SerialType;
 pub use self::software_tpm::SoftwareTpm;
 pub use self::suspendable::DeviceState;
 pub use self::suspendable::Suspendable;
+pub use self::virtcpufreq::VirtCpufreq;
 pub use self::virtio::VirtioMmioDevice;
 pub use self::virtio::VirtioPciDevice;
 #[cfg(all(feature = "vtpm", target_arch = "x86_64"))]

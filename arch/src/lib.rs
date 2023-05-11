@@ -316,6 +316,7 @@ pub struct VmComponents {
     pub android_fstab: Option<File>,
     pub cpu_capacity: BTreeMap<usize, u32>,
     pub cpu_clusters: Vec<CpuSet>,
+    pub cpu_frequencies: BTreeMap<usize, Vec<u32>>,
     pub delay_rt: bool,
     #[cfg(feature = "direct")]
     pub direct_fixed_evts: Vec<devices::ACPIPMFixedEvent>,
@@ -496,6 +497,9 @@ pub trait LinuxArch {
         hp_control_tube: &mpsc::Sender<PciRootCommand>,
         #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
     ) -> Result<PciAddress, Self::Error>;
+
+    /// Returns frequency map for each of the host's logical cores.
+    fn get_host_cpu_frequencies_khz() -> Result<BTreeMap<usize, Vec<u32>>, Self::Error>;
 }
 
 #[cfg(feature = "gdb")]
