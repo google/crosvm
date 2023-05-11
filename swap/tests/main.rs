@@ -4,10 +4,10 @@
 
 //! Integration tests for vmm-swap feature
 
-#[cfg(unix)]
+#[cfg(all(unix, feature = "enable"))]
 mod common;
 
-#[cfg(unix)]
+#[cfg(all(unix, feature = "enable"))]
 mod test {
     use base::pagesize;
     use base::sys::wait_for_pid;
@@ -92,12 +92,12 @@ fn main() {
     };
 
     let tests = vec![
-        #[cfg(unix)]
+        #[cfg(all(unix, feature = "enable"))]
         libtest_mimic::Trial::test("register_region_skip_obsolete_process", move || {
             test::register_region_skip_obsolete_process();
             Ok(())
         }),
-        #[cfg(unix)]
+        #[cfg(all(unix, feature = "enable"))]
         libtest_mimic::Trial::test("unregister_region_skip_obsolete_process", move || {
             test::unregister_region_skip_obsolete_process();
             Ok(())

@@ -431,7 +431,7 @@ serde_json = "*"
 serde_keyvalue = { path = "serde_keyvalue", features = ["argh_derive"] }
 smallvec = "1.6.1"
 static_assertions = "1.1"
-swap = { path = "swap", default-features = false }
+swap = { path = "swap" }
 sync = { path = "common/sync" }
 tempfile = "3"
 thiserror = { version = "1.0.20" }

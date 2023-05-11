@@ -5,7 +5,7 @@
 //! Integration tests for [PageHandler]. these are more than unit tests since [PageHandler] rely on
 //! the userfaultfd(2) kernel feature.
 
-#![cfg(unix)]
+#![cfg(all(unix, feature = "enable"))]
 
 mod common;
 
