@@ -57,7 +57,7 @@ Networking support is easiest set up with a TAP device on the host, which can be
 ```
 
 The script will create a TAP device called `crosvm_tap` and sets up routing. For details, see the
-instructions for [network devices](./advanced_usage.md#network-device).
+instructions for [network devices](../devices/net.md).
 
 With the `crosvm_tap` in place we can use it when running crosvm:
 

@@ -28,6 +28,7 @@ fi
 # The rootfs is an image of a partitioned hard drive, so we need to tell
 # the kernel which partition to use (vda5 in case of ubuntu-20.04).
 cargo run --no-default-features -- run \
+    --disable-sandbox \
     --rwdisk ./rootfs \
     --initrd ./initrd.img-* \
     -p "root=/dev/vda5" \
