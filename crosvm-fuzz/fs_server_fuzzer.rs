@@ -29,7 +29,9 @@ mod fuzzer {
         GUEST_MEM.with(|mem| {
             mem.write_all_at_addr(data, BUFFER_ADDR).unwrap();
 
-            let mut chain = create_descriptor_chain(
+            // We need a valid descriptor chain, but it's not part of what is being fuzzed here.
+            // So skip fuzzing if the chain is invalid.
+            if let Ok(mut chain) = create_descriptor_chain(
                 mem,
                 GuestAddress(0),
                 BUFFER_ADDR,
@@ -43,10 +45,9 @@ mod fuzzer {
                     ),
                 ],
                 0,
-            )
-            .unwrap();
-
-            fuzz_server(&mut chain.reader, &mut chain.writer);
+            ) {
+                fuzz_server(&mut chain.reader, &mut chain.writer);
+            }
         });
     });
 }
