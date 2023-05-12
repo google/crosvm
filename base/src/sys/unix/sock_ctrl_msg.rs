@@ -71,7 +71,10 @@ fn CMSG_DATA(cmsg_buffer: *mut cmsghdr) -> *mut RawFd {
 // does some pointer arithmetic on cmsg_ptr.
 #[allow(clippy::cast_ptr_alignment, clippy::unnecessary_cast)]
 fn get_next_cmsg(msghdr: &msghdr, cmsg: &cmsghdr, cmsg_ptr: *mut cmsghdr) -> *mut cmsghdr {
-    let next_cmsg = (cmsg_ptr as *mut u8).wrapping_add(CMSG_ALIGN(cmsg.cmsg_len)) as *mut cmsghdr;
+    // The extra cast of cmsg_len to usize is required to build against musl libc, which uses
+    // u32 for cmsg_len.
+    let next_cmsg =
+        (cmsg_ptr as *mut u8).wrapping_add(CMSG_ALIGN(cmsg.cmsg_len as usize)) as *mut cmsghdr;
     if next_cmsg
         .wrapping_offset(1)
         .wrapping_sub(msghdr.msg_control as usize) as usize
