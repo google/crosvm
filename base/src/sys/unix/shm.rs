@@ -15,6 +15,7 @@ use libc::c_char;
 use libc::c_int;
 use libc::c_long;
 use libc::c_uint;
+use libc::close;
 use libc::fcntl;
 use libc::ftruncate64;
 use libc::off64_t;
@@ -29,12 +30,14 @@ use libc::F_SEAL_SEAL;
 use libc::F_SEAL_SHRINK;
 use libc::F_SEAL_WRITE;
 use libc::MFD_ALLOW_SEALING;
+use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
 
 use super::errno_result;
 use super::Error;
 use super::Result;
+use crate::trace;
 use crate::AsRawDescriptor;
 use crate::FromRawDescriptor;
 use crate::IntoRawDescriptor;
@@ -52,6 +55,7 @@ pub struct SharedMemory {
 
 // from <sys/memfd.h>
 const MFD_CLOEXEC: c_uint = 0x0001;
+const MFD_NOEXEC_SEAL: c_uint = 0x0008;
 
 unsafe fn memfd_create(name: *const c_char, flags: c_uint) -> c_int {
     syscall(SYS_memfd_create as c_long, name, flags) as c_int
@@ -137,18 +141,50 @@ impl MemfdSeals {
     }
 }
 
+static MFD_NOEXEC_SEAL_SUPPORTED: Lazy<bool> = Lazy::new(|| {
+    // SAFETY: We pass a valid zero-terminated C string and check the result.
+    let fd = unsafe {
+        // The memfd name used here does not need to be unique, since duplicates are allowed and
+        // will not cause failures.
+        memfd_create(
+            b"MFD_NOEXEC_SEAL_test\0".as_ptr() as *const c_char,
+            MFD_CLOEXEC | MFD_ALLOW_SEALING | MFD_NOEXEC_SEAL,
+        )
+    };
+    if fd < 0 {
+        trace!("MFD_NOEXEC_SEAL is not supported");
+        false
+    } else {
+        trace!("MFD_NOEXEC_SEAL is supported");
+        // SAFETY: We know `fd` is a valid file descriptor owned by us.
+        unsafe {
+            close(fd);
+        }
+        true
+    }
+});
+
 impl SharedMemory {
-    /// Creates a new shared memory file descriptor with zero size.
+    /// Creates a new shared memory file descriptor with the specified `size` in bytes.
     ///
-    /// If a name is given, it will appear in `/proc/self/fd/<shm fd>` for the purposes of
-    /// debugging. The name does not need to be unique.
+    /// `name` will appear in `/proc/self/fd/<shm fd>` for the purposes of debugging. The name does
+    /// not need to be unique.
     ///
     /// The file descriptor is opened with the close on exec flag and allows memfd sealing.
+    ///
+    /// If the `MFD_NOEXEC_SEAL` flag is supported, the resulting file will also be created with a
+    /// non-executable file mode (in other words, it cannot be passed to the `exec` family of system
+    /// calls).
     pub fn new(debug_name: &CStr, size: u64) -> Result<SharedMemory> {
+        let mut flags = MFD_CLOEXEC | MFD_ALLOW_SEALING;
+        if *MFD_NOEXEC_SEAL_SUPPORTED {
+            flags |= MFD_NOEXEC_SEAL;
+        }
+
         let shm_name = debug_name.as_ptr() as *const c_char;
         // The following are safe because we give a valid C string and check the
         // results of the memfd_create call.
-        let fd = unsafe { memfd_create(shm_name, MFD_CLOEXEC | MFD_ALLOW_SEALING) };
+        let fd = unsafe { memfd_create(shm_name, flags) };
         if fd < 0 {
             return errno_result();
         }
