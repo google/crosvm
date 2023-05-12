@@ -446,6 +446,10 @@ impl arch::LinuxArch for Riscv64 {
         // hotplug function isn't verified on Riscv64, so set it unsupported here.
         Err(Error::Unsupported)
     }
+
+    fn get_host_cpu_frequencies_khz() -> Result<BTreeMap<usize, Vec<u32>>> {
+        Ok(BTreeMap::new())
+    }
 }
 
 #[cfg(feature = "gdb")]
