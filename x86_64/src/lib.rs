@@ -697,7 +697,7 @@ impl arch::LinuxArch for X8664arch {
         dump_device_tree_blob: Option<PathBuf>,
         debugcon_jail: Option<Minijail>,
         pflash_jail: Option<Minijail>,
-        #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
+        #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
         #[cfg(unix)] guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
@@ -1108,7 +1108,7 @@ impl arch::LinuxArch for X8664arch {
         #[cfg(unix)] minijail: Option<Minijail>,
         resources: &mut SystemAllocator,
         hp_control_tube: &mpsc::Sender<PciRootCommand>,
-        #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
+        #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
     ) -> Result<PciAddress> {
         arch::configure_pci_device(
             linux,
@@ -1531,7 +1531,7 @@ impl X8664arch {
         bios_size: u64,
         mmio_bus: &devices::Bus,
         jail: Option<Minijail>,
-        #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
+        #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
     ) -> Result<()> {
         let size = pflash_image.metadata().map_err(Error::LoadPflash)?.len();
         let start = FIRST_ADDR_PAST_32BITS - bios_size - size;
@@ -1811,7 +1811,7 @@ impl X8664arch {
         #[cfg_attr(windows, allow(unused_variables))] mmio_bus: &devices::Bus,
         max_bus: u8,
         resume_notify_devices: &mut Vec<Arc<Mutex<dyn BusResumeDevice>>>,
-        #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
+        #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
         #[cfg(unix)] ac_adapter: bool,
         #[cfg(unix)] guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
     ) -> Result<(acpi::AcpiDevResource, Option<BatControl>)> {
@@ -2058,7 +2058,7 @@ impl X8664arch {
         io_bus: &devices::Bus,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         serial_jail: Option<Minijail>,
-        #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
+        #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
     ) -> Result<()> {
         let com_evt_1_3 = devices::IrqEdgeEvent::new().map_err(Error::CreateEvent)?;
         let com_evt_2_4 = devices::IrqEdgeEvent::new().map_err(Error::CreateEvent)?;
@@ -2095,7 +2095,7 @@ impl X8664arch {
         io_bus: &devices::Bus,
         serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
         debugcon_jail: Option<Minijail>,
-        #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
+        #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
     ) -> Result<()> {
         for param in serial_parameters.values() {
             if param.hardware != SerialHardware::Debugcon {

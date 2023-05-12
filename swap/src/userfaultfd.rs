@@ -70,7 +70,9 @@ impl From<UffdError> for Error {
     fn from(e: UffdError) -> Self {
         match e {
             UffdError::PartiallyCopied(copied) => Self::PartiallyCopied(copied),
+            UffdError::CopyFailed(errno) if errno as i32 == libc::ESRCH => Self::UffdClosed,
             UffdError::ZeropageFailed(errno) if errno as i32 == libc::EEXIST => Self::PageExist,
+            UffdError::ZeropageFailed(errno) if errno as i32 == libc::ESRCH => Self::UffdClosed,
             other => Self::Userfaultfd(other),
         }
     }

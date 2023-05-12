@@ -217,7 +217,7 @@ impl ProxyDevice {
         mut device: D,
         jail: Minijail,
         mut keep_rds: Vec<RawDescriptor>,
-        #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
+        #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
     ) -> Result<ProxyDevice> {
         let debug_label = device.debug_label();
         let (child_tube, parent_tube) = Tube::pair()?;
@@ -531,7 +531,7 @@ mod tests {
             minijail,
             keep_fds,
             #[cfg(feature = "swap")]
-            None,
+            &mut None,
         )
         .unwrap()
     }

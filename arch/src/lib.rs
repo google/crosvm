@@ -455,7 +455,7 @@ pub trait LinuxArch {
         dump_device_tree_blob: Option<PathBuf>,
         debugcon_jail: Option<Minijail>,
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] pflash_jail: Option<Minijail>,
-        #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
+        #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
         #[cfg(unix)] guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
     ) -> std::result::Result<RunnableLinuxVm<V, Vcpu>, Self::Error>
     where
@@ -494,7 +494,7 @@ pub trait LinuxArch {
         #[cfg(unix)] minijail: Option<Minijail>,
         resources: &mut SystemAllocator,
         hp_control_tube: &mpsc::Sender<PciRootCommand>,
-        #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
+        #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
     ) -> Result<PciAddress, Self::Error>;
 
     /// Returns frequency map for each of the host's logical cores.
@@ -642,7 +642,7 @@ pub fn configure_pci_device<V: VmArch, Vcpu: VcpuArch>(
     #[cfg(unix)] jail: Option<Minijail>,
     resources: &mut SystemAllocator,
     hp_control_tube: &mpsc::Sender<PciRootCommand>,
-    #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
+    #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
 ) -> Result<PciAddress, DeviceRegistrationError> {
     // Allocate PCI device address before allocating BARs.
     let pci_address = device
@@ -754,7 +754,7 @@ pub fn generate_virtio_mmio_bus(
     resources: &mut SystemAllocator,
     vm: &mut impl Vm,
     sdts: Vec<SDT>,
-    #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
+    #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
 ) -> Result<(BTreeMap<u32, String>, Vec<SDT>), DeviceRegistrationError> {
     #[cfg_attr(windows, allow(unused_mut))]
     let mut pid_labels = BTreeMap::new();
@@ -949,7 +949,7 @@ pub fn generate_pci_root(
     vm: &mut impl Vm,
     max_irqs: usize,
     vcfg_base: Option<u64>,
-    #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
+    #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
 ) -> Result<
     (
         PciRoot,

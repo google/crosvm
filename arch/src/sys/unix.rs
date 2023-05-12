@@ -55,7 +55,7 @@ pub fn add_goldfish_battery(
     irq_chip: &mut dyn IrqChip,
     irq_num: u32,
     resources: &mut SystemAllocator,
-    #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
+    #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
 ) -> Result<(Tube, u64), DeviceRegistrationError> {
     let alloc = resources.get_anon_alloc();
     let mmio_base = resources
@@ -145,7 +145,7 @@ pub fn generate_platform_bus(
     irq_chip: &mut dyn IrqChip,
     mmio_bus: &Bus,
     resources: &mut SystemAllocator,
-    #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
+    #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
 ) -> Result<(Vec<Arc<Mutex<dyn BusDevice>>>, BTreeMap<u32, String>), DeviceRegistrationError> {
     let mut platform_devices = Vec::new();
     let mut pid_labels = BTreeMap::new();

@@ -30,6 +30,9 @@ use base::warn;
 use base::AsRawDescriptor;
 use base::AsRawDescriptors;
 use base::EventToken;
+use base::MappedRegion;
+use base::MemoryMapping;
+use base::MemoryMappingBuilder;
 use base::RawDescriptor;
 use base::SendTube;
 use base::SharedMemory;
@@ -49,14 +52,17 @@ use vm_memory::MemoryRegionInformation;
 
 #[cfg(feature = "log_page_fault")]
 use crate::logger::PageFaultEventLogger;
+use crate::page_handler::Error as PageHandlerError;
 use crate::page_handler::MoveToStaging;
 use crate::page_handler::PageHandler;
 use crate::page_handler::MLOCK_BUDGET;
+use crate::pagesize::pages_to_bytes;
 use crate::pagesize::THP_SIZE;
 use crate::processes::freeze_child_processes;
 use crate::processes::ProcessesGuard;
 use crate::userfaultfd::register_regions;
 use crate::userfaultfd::unregister_regions;
+use crate::userfaultfd::Error as UffdError;
 use crate::userfaultfd::Factory as UffdFactory;
 use crate::userfaultfd::UffdEvent;
 use crate::userfaultfd::Userfaultfd;
@@ -89,6 +95,7 @@ enum Command {
         uffd: Userfaultfd,
         reply_tube: Tube,
     },
+    StaticDeviceSetupComplete(u32),
 }
 
 /// [SwapController] provides APIs to control vmm-swap.
@@ -96,6 +103,10 @@ pub struct SwapController {
     child_process: Child,
     uffd_factory: UffdFactory,
     command_tube: Tube,
+    num_static_devices: u32,
+    // Keep 1 page dummy mmap in the main process to make it present in all the descendant
+    // processes.
+    _dummy_mmap: MemoryMapping,
 }
 
 impl SwapController {
@@ -137,6 +148,12 @@ impl SwapController {
 
         // Allocate eventfd before creating sandbox.
         let bg_job_control = BackgroundJobControl::new().context("create background job event")?;
+
+        // Dummy 1 page mmap to check liveness of each userfaultfd in UffdList.
+        let dummy_mmap = MemoryMappingBuilder::new(pages_to_bytes(1))
+            .build()
+            .context("create dummy mmap")?;
+        let dummy_mmap_addr = dummy_mmap.as_ptr();
 
         #[cfg(feature = "log_page_fault")]
         let page_fault_logger = PageFaultEventLogger::create(&swap_dir, &guest_memory)
@@ -187,6 +204,7 @@ impl SwapController {
                     uffd,
                     swap_file,
                     bg_job_control,
+                    dummy_mmap_addr,
                     #[cfg(feature = "log_page_fault")]
                     page_fault_logger,
                 ) {
@@ -216,6 +234,8 @@ impl SwapController {
             child_process,
             uffd_factory,
             command_tube: command_tube_main,
+            num_static_devices: 0,
+            _dummy_mmap: dummy_mmap,
         })
     }
 
@@ -321,7 +341,7 @@ impl SwapController {
     ///
     /// This should be called from the main process because creating a [Tube]s requires seccomp
     /// policy.
-    pub fn prepare_fork(&self) -> anyhow::Result<SwapDeviceUffdSender> {
+    pub fn prepare_fork(&mut self) -> anyhow::Result<SwapDeviceUffdSender> {
         let uffd_factory = self
             .uffd_factory
             .try_clone()
@@ -334,12 +354,25 @@ impl SwapController {
         receiver
             .set_recv_timeout(Some(Duration::from_secs(60)))
             .context("set recv timeout")?;
+        self.num_static_devices += 1;
         Ok(SwapDeviceUffdSender {
             uffd_factory,
             command_tube,
             sender,
             receiver,
         })
+    }
+
+    /// Notify the monitor process that all static devices are forked.
+    ///
+    /// Devices forked after this call are treated as dynamic devices which can die (e.g. hotplug
+    /// devices).
+    pub fn on_static_devices_setup_complete(&self) -> anyhow::Result<()> {
+        // This sends the number of static devices counted on the main process because device
+        // initializations are executed on child processes asynchronously.
+        self.command_tube
+            .send(&Command::StaticDeviceSetupComplete(self.num_static_devices))
+            .context("send command")
     }
 }
 
@@ -394,7 +427,7 @@ impl AsRawDescriptors for SwapDeviceUffdSender {
     }
 }
 
-#[derive(EventToken)]
+#[derive(EventToken, Clone, Copy)]
 enum Token {
     UffdEvents(u32),
     Command,
@@ -403,20 +436,50 @@ enum Token {
 
 struct UffdList<'a> {
     list: Vec<Userfaultfd>,
+    dummy_mmap_addr: *mut u8,
     wait_ctx: &'a WaitContext<Token>,
+    num_static_uffd: Option<usize>,
 }
 
 impl<'a> UffdList<'a> {
     const ID_MAIN_UFFD: u32 = 0;
 
-    fn new(main_uffd: Userfaultfd, wait_ctx: &'a WaitContext<Token>) -> Self {
+    fn new(
+        main_uffd: Userfaultfd,
+        dummy_mmap_addr: *mut u8,
+        wait_ctx: &'a WaitContext<Token>,
+    ) -> Self {
         Self {
             list: vec![main_uffd],
+            dummy_mmap_addr,
             wait_ctx,
+            num_static_uffd: None,
         }
     }
 
-    fn register(&mut self, uffd: Userfaultfd) -> anyhow::Result<()> {
+    fn set_num_static_devices(&mut self, num_static_devices: u32) -> bool {
+        if self.num_static_uffd.is_some() {
+            return false;
+        }
+        // +1 corresponds to the uffd of the main process.
+        let num_static_uffd = num_static_devices as usize + 1;
+        self.num_static_uffd = Some(num_static_uffd);
+        true
+    }
+
+    fn register(&mut self, uffd: Userfaultfd) -> anyhow::Result<bool> {
+        let is_dynamic_uffd = self
+            .num_static_uffd
+            .map(|num_static_uffd| self.list.len() >= num_static_uffd)
+            .unwrap_or(false);
+        if is_dynamic_uffd {
+            // Dynamic uffds are target of GC. uffd GC uses dummy mmap to check the liveness of the
+            // userfaultfd.
+            // SAFETY: no one except UffdList access dummy_mmap.
+            unsafe { uffd.register(self.dummy_mmap_addr as usize, pages_to_bytes(1)) }
+                .context("register dummy mmap")?;
+        }
+
         let id_uffd = self
             .list
             .len()
@@ -428,6 +491,54 @@ impl<'a> UffdList<'a> {
             .context("add to wait context")?;
         self.list.push(uffd);
 
+        Ok(is_dynamic_uffd)
+    }
+
+    fn free_dummy_page(&self) {
+        // SAFETY: no one except UffdList access dummy_mmap.
+        let res = unsafe {
+            libc::madvise(
+                self.dummy_mmap_addr as *mut libc::c_void,
+                pages_to_bytes(1),
+                libc::MADV_REMOVE,
+            )
+        };
+        if res < 0 {
+            error!("failed to clear dummy mmap: {:?}", base::Error::last());
+        }
+    }
+
+    /// Remove all dead [Userfaultfd] in the list.
+    fn gc_dead_uffds(&mut self) -> anyhow::Result<()> {
+        let mut idx = self.num_static_uffd.unwrap();
+        let mut is_swapped = false;
+        while idx < self.list.len() {
+            // UFFDIO_ZEROPAGE returns ESRCH for dead uffd.
+            let is_dead_uffd = matches!(
+                self.list[idx].zero(self.dummy_mmap_addr as usize, pages_to_bytes(1), false),
+                Err(UffdError::UffdClosed)
+            );
+            if is_dead_uffd {
+                self.wait_ctx
+                    .delete(&self.list[idx])
+                    .context("delete dead uffd from wait context")?;
+                self.list.swap_remove(idx);
+                is_swapped = true;
+            } else {
+                if is_swapped {
+                    self.wait_ctx
+                        .modify(
+                            &self.list[idx],
+                            base::EventType::ReadWrite,
+                            Token::UffdEvents(idx as u32),
+                        )
+                        .context("update token")?;
+                    is_swapped = false;
+                }
+                idx += 1;
+            }
+        }
+        self.free_dummy_page();
         Ok(())
     }
 
@@ -471,6 +582,7 @@ fn monitor_process(
     uffd: Userfaultfd,
     swap_file: File,
     bg_job_control: BackgroundJobControl,
+    dummy_mmap_addr: *mut u8,
     #[cfg(feature = "log_page_fault")] mut page_fault_logger: PageFaultEventLogger,
 ) -> anyhow::Result<()> {
     info!("monitor_process started");
@@ -493,8 +605,9 @@ fn monitor_process(
     // The worker threads are killed when the main thread of the monitor process dies.
     let worker = Worker::new(n_worker, n_worker);
 
-    let mut uffd_list = UffdList::new(uffd, &wait_ctx);
+    let mut uffd_list = UffdList::new(uffd, dummy_mmap_addr, &wait_ctx);
     let mut state_transition = SwapStateTransition::default();
+    let mut try_gc_uffds = false;
 
     loop {
         let events = wait_ctx.wait().context("wait poll events")?;
@@ -527,14 +640,24 @@ fn monitor_process(
                 {
                     Command::ProcessForked { uffd, reply_tube } => {
                         debug!("new fork uffd: {:?}", uffd);
-                        let result = if let Err(e) = uffd_list.register(uffd) {
-                            error!("failed to register uffd to list: {:?}", e);
-                            false
-                        } else {
-                            true
+                        let result = match uffd_list.register(uffd) {
+                            Ok(is_dynamic_uffd) => {
+                                try_gc_uffds = is_dynamic_uffd;
+                                true
+                            }
+                            Err(e) => {
+                                error!("failed to register uffd to list: {:?}", e);
+                                false
+                            }
                         };
                         if let Err(e) = reply_tube.send(&result) {
                             error!("failed to response to new process: {:?}", e);
+                        }
+                    }
+                    Command::StaticDeviceSetupComplete(num_static_devices) => {
+                        info!("static device setup complete: n={}", num_static_devices);
+                        if !uffd_list.set_num_static_devices(num_static_devices) {
+                            bail!("failed to set num_static_devices");
                         }
                     }
                     Command::Enable => {
@@ -637,6 +760,10 @@ fn monitor_process(
                     bg_job_control.reset()?;
                 }
             };
+        }
+        if try_gc_uffds {
+            uffd_list.gc_dead_uffds().context("gc dead uffds")?;
+            try_gc_uffds = false;
         }
     }
 }
@@ -789,6 +916,7 @@ fn handle_vmm_swap<'scope, 'env>(
         .send(&SwapStatus::dummy())
         .context("send enable finish signal")?;
 
+    let mut try_gc_uffds = false;
     loop {
         let events = match &state {
             State::SwapOutInProgress { started_time } => {
@@ -841,9 +969,17 @@ fn handle_vmm_swap<'scope, 'env>(
                             UffdEvent::Pagefault { addr, .. } => {
                                 #[cfg(feature = "log_page_fault")]
                                 page_fault_logger.log_page_fault(addr as usize, id_uffd);
-                                page_handler
-                                    .handle_page_fault(uffd, addr as usize)
-                                    .context("handle fault")?;
+                                match page_handler.handle_page_fault(uffd, addr as usize) {
+                                    Ok(()) => {}
+                                    Err(PageHandlerError::Userfaultfd(UffdError::UffdClosed)) => {
+                                        // Do nothing for the uffd. It will be garbage-collected
+                                        // when a new uffd is registered.
+                                        break;
+                                    }
+                                    Err(e) => {
+                                        bail!("failed to handle page fault: {:?}", e);
+                                    }
+                                }
                             }
                             UffdEvent::Remove { start, end } => {
                                 page_handler
@@ -869,14 +1005,26 @@ fn handle_vmm_swap<'scope, 'env>(
                         {
                             error!("failed to setup uffd: {:?}", e);
                             false
-                        } else if let Err(e) = uffd_list.register(uffd) {
-                            error!("failed to register uffd to list: {:?}", e);
-                            false
                         } else {
-                            true
+                            match uffd_list.register(uffd) {
+                                Ok(is_dynamic_uffd) => {
+                                    try_gc_uffds = is_dynamic_uffd;
+                                    true
+                                }
+                                Err(e) => {
+                                    error!("failed to register uffd to list: {:?}", e);
+                                    false
+                                }
+                            }
                         };
                         if let Err(e) = reply_tube.send(&result) {
                             error!("failed to response to new process: {:?}", e);
+                        }
+                    }
+                    Command::StaticDeviceSetupComplete(num_static_devices) => {
+                        info!("static device setup complete: n={}", num_static_devices);
+                        if !uffd_list.set_num_static_devices(num_static_devices) {
+                            bail!("failed to set num_static_devices");
                         }
                     }
                     Command::Enable => {
@@ -1076,6 +1224,10 @@ fn handle_vmm_swap<'scope, 'env>(
                     }
                 }
             };
+        }
+        if try_gc_uffds {
+            uffd_list.gc_dead_uffds().context("gc dead uffds")?;
+            try_gc_uffds = false;
         }
     }
 }

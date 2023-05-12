@@ -139,7 +139,7 @@ where
         4,
         None,
         #[cfg(feature = "swap")]
-        None,
+        &mut None,
     )
     .unwrap();
     let pci = Arc::new(Mutex::new(pci));
@@ -172,7 +172,7 @@ where
         &serial_params,
         None,
         #[cfg(feature = "swap")]
-        None,
+        &mut None,
     )
     .unwrap();
 
@@ -219,7 +219,7 @@ where
         max_bus,
         &mut resume_notify_devices,
         #[cfg(feature = "swap")]
-        None,
+        &mut None,
         #[cfg(unix)]
         false,
         Default::default(),

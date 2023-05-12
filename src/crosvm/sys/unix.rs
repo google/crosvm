@@ -1606,7 +1606,7 @@ fn run_vm<Vcpu, V>(
     mut vm: V,
     irq_chip: &mut dyn IrqChipArch,
     ioapic_host_tube: Option<Tube>,
-    #[cfg(feature = "swap")] swap_controller: Option<SwapController>,
+    #[cfg(feature = "swap")] mut swap_controller: Option<SwapController>,
 ) -> Result<ExitState>
 where
     Vcpu: VcpuArch + 'static,
@@ -2020,7 +2020,7 @@ where
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         simple_jail(&cfg.jail_config, "block_device")?,
         #[cfg(feature = "swap")]
-        swap_controller.as_ref(),
+        &mut swap_controller,
         guest_suspended_cvar.clone(),
     )
     .context("the architecture failed to build the vm")?;
@@ -2171,7 +2171,7 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
     hp_control_tube: &mpsc::Sender<PciRootCommand>,
     iommu_host_tube: &Option<Tube>,
     device: &HotPlugDeviceInfo,
-    #[cfg(feature = "swap")] swap_controller: Option<&SwapController>,
+    #[cfg(feature = "swap")] swap_controller: &mut Option<SwapController>,
 ) -> Result<()> {
     let host_addr = PciAddress::from_path(&device.path)
         .context("failed to parse hotplug device's PCI address")?;
@@ -2495,7 +2495,7 @@ fn handle_hotplug_command<V: VmArch, Vcpu: VcpuArch>(
     iommu_host_tube: &Option<Tube>,
     device: &HotPlugDeviceInfo,
     add: bool,
-    #[cfg(feature = "swap")] swap_controller: Option<&SwapController>,
+    #[cfg(feature = "swap")] swap_controller: &mut Option<SwapController>,
 ) -> VmResponse {
     let iommu_host_tube = if cfg.vfio_isolate_hotplug {
         iommu_host_tube
@@ -2551,7 +2551,9 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         PciRootCommand,
     >,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] hp_thread: std::thread::JoinHandle<()>,
-    #[cfg(feature = "swap")] swap_controller: Option<SwapController>,
+    #[allow(unused_mut)] // mut is required x86 only
+    #[cfg(feature = "swap")]
+    mut swap_controller: Option<SwapController>,
     #[cfg(feature = "registered_events")] reg_evt_rdtube: RecvTube,
     guest_suspended_cvar: Option<Arc<(Mutex<bool>, Condvar)>>,
 ) -> Result<ExitState> {
@@ -2927,6 +2929,13 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         )
     }
 
+    #[cfg(feature = "swap")]
+    if let Some(swap_controller) = &swap_controller {
+        swap_controller
+            .on_static_devices_setup_complete()
+            .context("static device setup complete")?;
+    }
+
     let mut exit_state = ExitState::Stop;
     let mut pvpanic_code = PvPanicCode::Unknown;
     #[cfg(feature = "balloon")]
@@ -3108,7 +3117,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                     &device,
                                                     add,
                                                     #[cfg(feature = "swap")]
-                                                    swap_controller.as_ref(),
+                                                    &mut swap_controller,
                                                 )
                                             }
 

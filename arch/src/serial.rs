@@ -101,7 +101,7 @@ pub fn add_serial_devices(
     com_evt_2_4: &Event,
     serial_parameters: &BTreeMap<(SerialHardware, u8), SerialParameters>,
     #[cfg_attr(windows, allow(unused_variables))] serial_jail: Option<Minijail>,
-    #[cfg(feature = "swap")] swap_controller: Option<&swap::SwapController>,
+    #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
 ) -> std::result::Result<(), DeviceRegistrationError> {
     for com_num in 0..=3 {
         let com_evt = match com_num {
