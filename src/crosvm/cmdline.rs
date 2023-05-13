@@ -1032,9 +1032,10 @@ pub struct RunCommand {
     ///       clusters=[[0,2],[1,3],[4-7,12]] - creates one cluster
     ///         for cores 0 and 2, another one for cores 1 and 3,
     ///         and one last for cores 4, 5, 6, 7 and 12.
-    ///     core-types=[atom=[CPUSET],core=[CPUSET]] - Hybrid core types. (default: None)
-    ///       Set the type of virtual hybrid CPUs. Now it supports
-    ///       to set intel Atom or intel Core types.
+    ///     core-types=[atom=[CPUSET],core=[CPUSET]] - Hybrid core
+    ///       types. (default: None)
+    ///       Set the type of virtual hybrid CPUs. Currently
+    ///       supports Intel Atom and Intel Core cpu types.
     ///       Examples:
     ///       core-types=[atom=[0,1],core=[2,3]] - set vCPU 0 and
     ///       vCPU 1 as intel Atom type, also set vCPU 2 and vCPU 3
