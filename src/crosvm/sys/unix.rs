@@ -1153,10 +1153,6 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
     let mut cpu_frequencies = BTreeMap::new();
 
     if cfg.virt_cpufreq {
-        if !cfg.cpu_capacity.is_empty() {
-            panic!("`virt-cpufreq` requires cpu_capacity to be set!");
-        }
-
         let host_cpu_frequencies = Arch::get_host_cpu_frequencies_khz()?;
 
         for cpu_id in 0..cfg.vcpu_count.unwrap_or(1) {

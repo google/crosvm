@@ -1530,8 +1530,8 @@ pub fn validate_config(cfg: &mut Config) -> std::result::Result<(), String> {
         }
     }
     if cfg.virt_cpufreq {
-        if !cfg.host_cpu_topology || (cfg.vcpu_affinity.is_none() && cfg.cpu_capacity.is_empty()) {
-            return Err("`virt-cpufreq` requires 'host-cpu-topology' enable or \
+        if !cfg.host_cpu_topology && (cfg.vcpu_affinity.is_none() || cfg.cpu_capacity.is_empty()) {
+            return Err("`virt-cpufreq` requires 'host-cpu-topology' enabled or \
                        have vcpu_affinity and cpu_capacity configured"
                 .to_string());
         }
