@@ -390,6 +390,7 @@ pub enum Exit {
     SandboxCreateProcessElevationRequired = 0xE000009E,
     BalloonSizeInvalid = 0xE000009F,
     VhostUserSndDeviceNew = 0xE00000A0,
+    FailedToCreateControlServer = 0xE00000A1,
 }
 
 impl From<Exit> for ExitCode {
