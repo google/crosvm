@@ -12,6 +12,16 @@ fn boot_test_vm() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[test]
+fn boot_test_vm_uring() -> anyhow::Result<()> {
+    let mut vm = TestVm::new(
+        Config::new().extra_args(vec!["--async-executor".to_string(), "uring".to_string()]),
+    )
+    .unwrap();
+    assert_eq!(vm.exec_in_guest("echo 42")?.trim(), "42");
+    Ok(())
+}
+
 #[cfg(unix)]
 #[test]
 fn boot_test_vm_odirect() {

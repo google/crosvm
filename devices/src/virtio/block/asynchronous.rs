@@ -309,11 +309,19 @@ pub async fn handle_queue<I: SignalableInterrupt + 'static>(
     flush_timer_armed: Rc<RefCell<bool>>,
 ) {
     let mut background_tasks = FuturesUnordered::new();
+    let evt_future = evt.next_val().fuse();
+    pin_mut!(evt_future);
     loop {
         // Wait for the next signal from `evt` and process `background_tasks` in the meantime.
+        //
+        // NOTE: We can't call `evt.next_val()` directly in the `select!` expression. That would
+        // create a new future each time, which, in the completion-based async backends like
+        // io_uring, means we'd submit a new syscall each time (i.e. a race condition on the
+        // eventfd).
         futures::select! {
             _ = background_tasks.next() => continue,
-            res = evt.next_val().fuse() => {
+            res = evt_future => {
+                evt_future.set(evt.next_val().fuse());
                 if let Err(e) = res {
                     error!("Failed to read the next queue event: {}", e);
                     continue;
