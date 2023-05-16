@@ -2,11 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fs::OpenOptions;
-use std::io::prelude::*;
 use std::mem;
-use std::path::Path;
-use std::path::PathBuf;
 use std::result;
 use std::slice;
 
@@ -41,9 +37,6 @@ pub enum Error {
     /// A provided OEM string contained a null character
     #[error("a provided SMBIOS OEM string contains a null character")]
     OemStringHasNullCharacter,
-    /// Failure while opening SMBIOS data file
-    #[error("Failure while opening SMBIOS data file {1}: {0}")]
-    OpenFailed(std::io::Error, PathBuf),
     /// Too many OEM strings provided
     #[error("Too many OEM strings were provided, limited to 255")]
     TooManyOemStrings,
@@ -58,9 +51,6 @@ pub enum Error {
 pub type Result<T> = result::Result<T, Error>;
 
 const SMBIOS_START: u64 = 0xf0000; // First possible location per the spec.
-
-// Constants sourced from SMBIOS Spec 2.3.1.
-const SM2_MAGIC_IDENT: &[u8; 4usize] = b"_SM_";
 
 // Constants sourced from SMBIOS Spec 3.2.0.
 const SM3_MAGIC_IDENT: &[u8; 5usize] = b"_SM3_";
@@ -183,87 +173,7 @@ fn write_string(mem: &GuestMemory, val: &str, mut curptr: GuestAddress) -> Resul
     Ok(curptr)
 }
 
-fn setup_smbios_from_file(mem: &GuestMemory, path: &Path) -> Result<()> {
-    let mut sme_path = PathBuf::from(path);
-    sme_path.push("smbios_entry_point");
-    let mut sme = Vec::new();
-    OpenOptions::new()
-        .read(true)
-        .open(&sme_path)
-        .map_err(|e| Error::OpenFailed(e, sme_path))?
-        .read_to_end(&mut sme)
-        .map_err(|_| Error::IoFailed)?;
-
-    let mut dmi_path = PathBuf::from(path);
-    dmi_path.push("DMI");
-    let mut dmi = Vec::new();
-    OpenOptions::new()
-        .read(true)
-        .open(&dmi_path)
-        .map_err(|e| Error::OpenFailed(e, dmi_path))?
-        .read_to_end(&mut dmi)
-        .map_err(|_| Error::IoFailed)?;
-
-    // Try SMBIOS 3.0 format.
-    if sme.len() == mem::size_of::<Smbios30Entrypoint>() && sme.starts_with(SM3_MAGIC_IDENT) {
-        let mut smbios_ep = Smbios30Entrypoint::default();
-        smbios_ep.as_bytes_mut().copy_from_slice(&sme);
-
-        let physptr = GuestAddress(SMBIOS_START)
-            .checked_add(mem::size_of::<Smbios30Entrypoint>() as u64)
-            .ok_or(Error::NotEnoughMemory)?;
-
-        mem.write_at_addr(&dmi, physptr)
-            .map_err(|_| Error::NotEnoughMemory)?;
-
-        // Update EP DMI location
-        smbios_ep.physptr = physptr.offset();
-        smbios_ep.checksum = 0;
-        smbios_ep.checksum = compute_checksum(&smbios_ep);
-
-        mem.write_obj_at_addr(smbios_ep, GuestAddress(SMBIOS_START))
-            .map_err(|_| Error::NotEnoughMemory)?;
-
-        return Ok(());
-    }
-
-    // Try SMBIOS 2.3 format.
-    if sme.len() == mem::size_of::<Smbios23Entrypoint>() && sme.starts_with(SM2_MAGIC_IDENT) {
-        let mut smbios_ep = Smbios23Entrypoint::default();
-        smbios_ep.as_bytes_mut().copy_from_slice(&sme);
-
-        let physptr = GuestAddress(SMBIOS_START)
-            .checked_add(mem::size_of::<Smbios23Entrypoint>() as u64)
-            .ok_or(Error::NotEnoughMemory)?;
-
-        mem.write_at_addr(&dmi, physptr)
-            .map_err(|_| Error::NotEnoughMemory)?;
-
-        // Update EP DMI location
-        smbios_ep.dmi.address = physptr.offset() as u32;
-        smbios_ep.dmi.checksum = 0;
-        smbios_ep.dmi.checksum = compute_checksum(&smbios_ep.dmi);
-        smbios_ep.checksum = 0;
-        smbios_ep.checksum = compute_checksum(&smbios_ep);
-
-        mem.write_obj_at_addr(smbios_ep, GuestAddress(SMBIOS_START))
-            .map_err(|_| Error::WriteSmbiosEp)?;
-
-        return Ok(());
-    }
-
-    Err(Error::InvalidInput)
-}
-
-pub fn setup_smbios(
-    mem: &GuestMemory,
-    dmi_path: Option<PathBuf>,
-    oem_strings: &[String],
-) -> Result<()> {
-    if let Some(dmi_path) = dmi_path {
-        return setup_smbios_from_file(mem, &dmi_path);
-    }
-
+pub fn setup_smbios(mem: &GuestMemory, oem_strings: &[String]) -> Result<()> {
     let physptr = GuestAddress(SMBIOS_START)
         .checked_add(mem::size_of::<Smbios30Entrypoint>() as u64)
         .ok_or(Error::NotEnoughMemory)?;
@@ -397,7 +307,7 @@ mod tests {
         let mem = GuestMemory::new(&[(GuestAddress(SMBIOS_START), 4096)]).unwrap();
 
         // Use default 3.0 SMBIOS format.
-        setup_smbios(&mem, None, &Vec::new()).unwrap();
+        setup_smbios(&mem, &Vec::new()).unwrap();
 
         let smbios_ep: Smbios30Entrypoint =
             mem.read_obj_from_addr(GuestAddress(SMBIOS_START)).unwrap();

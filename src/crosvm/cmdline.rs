@@ -1144,12 +1144,6 @@ pub struct RunCommand {
     /// capture keyboard input from the display window
     pub display_window_mouse: Option<bool>,
 
-    #[argh(option, arg_name = "DIR")]
-    #[serde(skip)] // TODO(b/255223604)
-    #[merge(strategy = overwrite_option)]
-    /// directory with smbios_entry_point/DMI files
-    pub dmi: Option<PathBuf>,
-
     #[cfg(feature = "config-file")]
     #[argh(option, arg_name = "CONFIG_FILE")]
     #[serde(skip)]
@@ -3032,9 +3026,6 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.no_rtc = cmd.no_rtc.unwrap_or_default();
             cfg.oem_strings = cmd.oem_strings;
 
-            if !cfg.oem_strings.is_empty() && cfg.dmi_path.is_some() {
-                return Err("unable to use oem-strings and dmi-path together".to_string());
-            }
             for (index, msr_config) in cmd.userspace_msr {
                 if cfg.userspace_msr.insert(index, msr_config).is_some() {
                     return Err(String::from("msr must be unique"));
@@ -3070,8 +3061,6 @@ impl TryFrom<RunCommand> for super::config::Config {
         }
 
         cfg.disable_virtio_intx = cmd.disable_virtio_intx.unwrap_or_default();
-
-        cfg.dmi_path = cmd.dmi;
 
         cfg.dump_device_tree_blob = cmd.dump_device_tree_blob;
 

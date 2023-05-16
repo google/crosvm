@@ -925,8 +925,7 @@ impl arch::LinuxArch for X8664arch {
             mptable::setup_mptable(&mem, vcpu_count as u8, &pci_irqs)
                 .map_err(Error::SetupMptable)?;
         }
-        smbios::setup_smbios(&mem, components.dmi_path, &components.oem_strings)
-            .map_err(Error::SetupSmbios)?;
+        smbios::setup_smbios(&mem, &components.oem_strings).map_err(Error::SetupSmbios)?;
 
         let host_cpus = if components.host_cpu_topology {
             components.vcpu_affinity.clone()
