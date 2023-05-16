@@ -43,7 +43,6 @@ members = [
     "broker_ipc",
     "common/audio_streams",
     "common/balloon_control",
-    "common/cros-fuzz",
     "common/data_model",
     "common/p9",
     "common/sync",
@@ -476,7 +475,6 @@ rand = "0.8"
 audio_streams = { path = "common/audio_streams" }
 base = { path = "base" }
 cros_async =  { path = "cros_async" }
-cros_fuzz = { path = "common/cros-fuzz" } # ignored by ebuild
 data_model = { path = "common/data_model" }
 libcras = { path = "libcras_stub" } # ignored by ebuild
 p9 = { path = "common/p9" } # ignored by ebuild

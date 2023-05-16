@@ -559,15 +559,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cros_fuzz"
-version = "0.1.0"
-dependencies = [
- "cfg-if",
- "libfuzzer-sys",
- "rand_core",
-]
-
-[[package]]
 name = "cros_tracing"
 version = "0.1.0"
 dependencies = [
@@ -680,7 +671,7 @@ name = "crosvm-fuzz"
 version = "0.0.1"
 dependencies = [
  "base",
- "cros_fuzz",
+ "cfg-if",
  "data_model 0.1.1-alpha.1",
  "devices",
  "disk",
@@ -688,8 +679,10 @@ dependencies = [
  "hypervisor",
  "kernel_loader",
  "libc",
+ "libfuzzer-sys",
  "p9",
  "rand",
+ "rand_core",
  "tempfile",
  "usb_util",
  "vm_memory",

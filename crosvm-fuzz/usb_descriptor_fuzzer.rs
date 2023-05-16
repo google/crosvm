@@ -5,7 +5,7 @@
 #![cfg(not(test))]
 #![no_main]
 
-use cros_fuzz::fuzz_target;
+use crosvm_fuzz::fuzz_target;
 use usb_util::parse_usbfs_descriptors;
 
 fuzz_target!(|data| {

@@ -12,7 +12,7 @@ use std::io::SeekFrom;
 use std::mem::size_of;
 
 use base::Event;
-use cros_fuzz::fuzz_target;
+use crosvm_fuzz::fuzz_target;
 use devices::virtio::base_features;
 use devices::virtio::BlockAsync;
 use devices::virtio::Interrupt;

@@ -8,7 +8,7 @@
 use std::fs::File;
 use std::io::Write;
 
-use cros_fuzz::fuzz_target;
+use crosvm_fuzz::fuzz_target;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 

@@ -6,7 +6,7 @@
 #![no_main]
 #![allow(unused_variables)]
 
-use cros_fuzz::fuzz_target;
+use crosvm_fuzz::fuzz_target;
 
 fuzz_target!(|bytes: &[u8]| {
     #[cfg(unix)]

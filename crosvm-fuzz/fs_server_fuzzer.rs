@@ -9,7 +9,7 @@
 mod fuzzer {
     use std::convert::TryInto;
 
-    use cros_fuzz::fuzz_target;
+    use crosvm_fuzz::fuzz_target;
     use devices::virtio::create_descriptor_chain;
     use devices::virtio::DescriptorType;
     use fuse::fuzzing::fuzz_server;
@@ -54,7 +54,7 @@ mod fuzzer {
 
 #[cfg(not(unix))]
 mod fuzzer {
-    use cros_fuzz::fuzz_target;
+    use crosvm_fuzz::fuzz_target;
 
     fuzz_target!(|_data| {});
 }

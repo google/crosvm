@@ -13,7 +13,7 @@ use std::io::Write;
 use std::mem::size_of;
 
 use base::FileReadWriteAtVolatile;
-use cros_fuzz::fuzz_target;
+use crosvm_fuzz::fuzz_target;
 use data_model::VolatileSlice;
 use disk::QcowFile;
 

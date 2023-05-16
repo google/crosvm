@@ -7,8 +7,8 @@
 
 use std::mem::size_of;
 
-use cros_fuzz::fuzz_target;
-use cros_fuzz::rand::FuzzRng;
+use crosvm_fuzz::fuzz_target;
+use crosvm_fuzz::rand::FuzzRng;
 use devices::virtio::Queue;
 use rand::Rng;
 use rand::RngCore;
