@@ -7,6 +7,7 @@
 
 set -e
 
+sudo mkdir -p /var/empty
 SRC=$(realpath "$(dirname "${BASH_SOURCE[0]}")")
 mkdir -p "$SRC/images/network" && cd "$_"
 
@@ -35,7 +36,6 @@ fi
 # ANCHOR: run
 # Use the previously configured crosvm_tap device for networking.
 cargo run -- run \
-    --disable-sandbox \
     --rwdisk ./rootfs \
     --initrd ./initrd.img-* \
     --tap-name crosvm_tap \
