@@ -337,8 +337,6 @@ pub struct VmComponents {
     pub no_rtc: bool,
     pub no_smt: bool,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    pub oem_strings: Vec<String>,
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub pci_low_start: Option<u64>,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub pcie_ecam: Option<AddressRange>,
@@ -349,6 +347,8 @@ pub struct VmComponents {
     /// `hv_cfg.protection_type == ProtectionType::UnprotectedWithFirmware`.
     pub pvm_fw: Option<File>,
     pub rt_cpus: CpuSet,
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub smbios: SmbiosOptions,
     pub swiotlb: Option<u64>,
     pub vcpu_affinity: Option<VcpuAffinity>,
     pub vcpu_count: usize,
@@ -1350,6 +1350,27 @@ pub struct MsrConfig {
 pub enum MsrExitHandlerError {
     #[error("Fail to create MSR handler")]
     HandlerCreateFailed,
+}
+
+/// SMBIOS table configuration
+#[derive(Clone, Debug, Default, Serialize, Deserialize, FromKeyValues, PartialEq, Eq)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct SmbiosOptions {
+    /// BIOS vendor name.
+    pub bios_vendor: Option<String>,
+
+    /// BIOS version number (free-form string).
+    pub bios_version: Option<String>,
+
+    /// System manufacturer name.
+    pub manufacturer: Option<String>,
+
+    /// System product name.
+    pub product_name: Option<String>,
+
+    /// Additional OEM strings to add to SMBIOS table.
+    #[serde(default)]
+    pub oem_strings: Vec<String>,
 }
 
 #[cfg(test)]

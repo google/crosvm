@@ -16,6 +16,7 @@ use std::sync::Arc;
 use std::thread;
 
 use arch::LinuxArch;
+use arch::SmbiosOptions;
 use base::Event;
 use base::Tube;
 use devices::IrqChipX86_64;
@@ -235,7 +236,7 @@ where
 
     // Note that this puts the mptable at 0x9FC00 in guest physical memory.
     mptable::setup_mptable(&guest_mem, 1, &pci_irqs).expect("failed to setup mptable");
-    smbios::setup_smbios(&guest_mem, &Vec::new()).expect("failed to setup smbios");
+    smbios::setup_smbios(&guest_mem, &SmbiosOptions::default()).expect("failed to setup smbios");
 
     let mut apic_ids = Vec::new();
     acpi::create_acpi_tables(

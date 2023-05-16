@@ -1213,7 +1213,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         no_i8042: cfg.no_i8042,
         no_rtc: cfg.no_rtc,
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        oem_strings: cfg.oem_strings.clone(),
+        smbios: cfg.smbios.clone(),
         host_cpu_topology: cfg.host_cpu_topology,
         itmt: cfg.itmt,
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]

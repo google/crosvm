@@ -26,6 +26,8 @@ use arch::CpuSet;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use arch::MsrConfig;
 use arch::Pstore;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use arch::SmbiosOptions;
 use arch::VcpuAffinity;
 use argh::FromArgs;
 use base::getpid;
@@ -1613,7 +1615,7 @@ pub struct RunCommand {
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[argh(option, arg_name = "OEM_STRING")]
-    #[serde(skip)] // TODO(b/255223604)
+    #[serde(skip)] // Deprecated - use `smbios` instead.
     #[merge(strategy = append)]
     /// SMBIOS OEM string values to add to the DMI tables
     pub oem_strings: Vec<String>,
@@ -2007,6 +2009,20 @@ pub struct RunCommand {
     #[merge(strategy = overwrite_option)]
     /// Redirects slirp network packets to the supplied log file rather than the current directory as `slirp_capture_packets.pcap`
     pub slirp_capture_file: Option<String>,
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[argh(option, arg_name = "key=val,...")]
+    #[serde(default)]
+    #[merge(strategy = overwrite_option)]
+    /// SMBIOS table configuration (DMI)
+    /// The fields are key=value pairs.
+    ///  Valid keys are:
+    ///     bios-vendor=STRING - BIOS vendor name.
+    ///     bios-version=STRING - BIOS version number (free-form string).
+    ///     manufacturer=STRING - System manufacturer name.
+    ///     product-name=STRING - System product name.
+    ///     oem-strings=[...] - Free-form OEM strings (SMBIOS type 11).
+    pub smbios: Option<SmbiosOptions>,
 
     #[argh(option, short = 's', arg_name = "PATH")]
     #[merge(strategy = overwrite_option)]
@@ -3135,7 +3151,14 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.pci_low_start = cmd.pci_start;
             cfg.no_i8042 = cmd.no_i8042.unwrap_or_default();
             cfg.no_rtc = cmd.no_rtc.unwrap_or_default();
-            cfg.oem_strings = cmd.oem_strings;
+            cfg.smbios = cmd.smbios.unwrap_or_default();
+
+            if !cmd.oem_strings.is_empty() {
+                log::warn!(
+                    "`--oem-strings` is deprecated; use `--smbios oem-strings=[...]` instead."
+                );
+                cfg.smbios.oem_strings.extend_from_slice(&cmd.oem_strings);
+            }
 
             for (index, msr_config) in cmd.userspace_msr {
                 if cfg.userspace_msr.insert(index, msr_config).is_some() {
