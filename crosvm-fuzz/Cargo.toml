@@ -21,6 +21,7 @@ base = { path = "../base" }
 tempfile = "3"
 usb_util = { path = "../usb_util" }
 vm_memory = { path = "../vm_memory" }
+p9 = { path = "../common/p9" }
 
 [features]
 upstream-fuzz = ["cros_fuzz/upstream-fuzz"]
@@ -49,4 +50,8 @@ path = "virtqueue_fuzzer.rs"
 [[bin]]
 name = "crosvm_zimage_fuzzer"
 path = "zimage_fuzzer.rs"
+
+[[bin]]
+name = "crosvm_p9_tframe_fuzzer"
+path = "p9_tframe_fuzzer.rs"
 

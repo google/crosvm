@@ -688,6 +688,7 @@ dependencies = [
  "hypervisor",
  "kernel_loader",
  "libc",
+ "p9",
  "rand",
  "tempfile",
  "usb_util",

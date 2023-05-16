@@ -12,7 +12,6 @@ extern crate wire_format_derive;
 mod protocol;
 mod server;
 
-#[cfg(fuzzing)]
 pub mod fuzzing;
 
 pub use server::*;
