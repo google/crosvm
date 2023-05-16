@@ -1,7 +1,7 @@
 [package]
 name = "crosvm-fuzz"
 version = "0.0.1"
-authors = ["The ChromiumOS Authors"]
+publish = false
 edition = "2021"
 
 [package.metadata]
@@ -31,30 +31,44 @@ libfuzzer-sys = "=0.4.4"
 default = ["disk/qcow"]
 
 [[bin]]
-name = "crosvm_block_fuzzer"
-path = "block_fuzzer.rs"
+name = "block_fuzzer"
+path = "fuzz_targets/block_fuzzer.rs"
+test = false
+doc = false
 
 [[bin]]
-name = "crosvm_fs_server_fuzzer"
-path = "fs_server_fuzzer.rs"
+name = "fs_server_fuzzer"
+path = "fuzz_targets/fs_server_fuzzer.rs"
+test = false
+doc = false
 
 [[bin]]
-name = "crosvm_qcow_fuzzer"
-path = "qcow_fuzzer.rs"
+name = "p9_tframe_fuzzer"
+path = "fuzz_targets/p9_tframe_fuzzer.rs"
+test = false
+doc = false
 
 [[bin]]
-name = "crosvm_usb_descriptor_fuzzer"
-path = "usb_descriptor_fuzzer.rs"
+name = "qcow_fuzzer"
+path = "fuzz_targets/qcow_fuzzer.rs"
+test = false
+doc = false
 
 [[bin]]
-name = "crosvm_virtqueue_fuzzer"
-path = "virtqueue_fuzzer.rs"
+name = "usb_descriptor_fuzzer"
+path = "fuzz_targets/usb_descriptor_fuzzer.rs"
+test = false
+doc = false
 
 [[bin]]
-name = "crosvm_zimage_fuzzer"
-path = "zimage_fuzzer.rs"
+name = "virtqueue_fuzzer"
+path = "fuzz_targets/virtqueue_fuzzer.rs"
+test = false
+doc = false
 
 [[bin]]
-name = "crosvm_p9_tframe_fuzzer"
-path = "p9_tframe_fuzzer.rs"
+name = "zimage_fuzzer"
+path = "fuzz_targets/zimage_fuzzer.rs"
+test = false
+doc = false
 
