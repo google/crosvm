@@ -63,8 +63,8 @@ emerge-${BOARD} --update --deep -j$(nproc) crosvm
 prefer to use standard cargo workflows used upstream.
 
 Just make sure to initialize git submodules (`git submodules update --init`), which is not done by
-repo. After that, you can use the workflows as outlined in [Building Crosvm](../building_crosvm.md)
-**outside** of cros_sdk.
+repo. After that, you can use the workflows as outlined in
+[Building Crosvm](../building_crosvm/linux.md) **outside** of cros_sdk.
 
 Note: You can **not** build or test ChromeOS specific features this way.
 

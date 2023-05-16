@@ -1,8 +1,9 @@
 # Summary
 
 - [Introduction](./introduction.md)
-- [Building Crosvm](./building_crosvm.md)
-  - [Building Crosvm on Windows](./building_crosvm/windows.md)
+- [Building Crosvm](./building_crosvm/index.md)
+  - [On Linux](./building_crosvm/linux.md)
+  - [On Windows](./building_crosvm/windows.md)
 - [Running Crosvm](./running_crosvm/index.md)
   - [Example Usage](./running_crosvm/example_usage.md)
   - [Advanced Usage](./running_crosvm/advanced_usage.md)

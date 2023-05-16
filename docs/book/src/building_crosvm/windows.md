@@ -1,7 +1,7 @@
 # Building Crosvm on Windows
 
 This page describes how to build and develop crosvm on windows. If you are targeting linux, please
-see [Building Crosvm on linux](../building_crosvm.md)
+see [Building Crosvm on linux](./linux.md)
 
 NOTE: Following instruction assume that
 
