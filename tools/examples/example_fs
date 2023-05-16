@@ -1,0 +1,36 @@
+#!/bin/bash
+# Copyright 2023 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# Example VM with a shared directory
+
+set -e
+
+SRC=$(realpath "$(dirname "${BASH_SOURCE[0]}")")
+#If "example_simple" is executed, reuse its image. Otherwise, create one.
+mkdir -p "$SRC/images/simple" && cd "$_"
+mkdir -p "host_shared_dir"
+HOST_SHARED_DIR="$SRC/images/simple/host_shared_dir"
+
+if ! [ -f rootfs ]; then
+    # Build a simple ubuntu image and create a user with no password.
+    virt-builder ubuntu-20.04 \
+        --run-command "useradd -m -g sudo -p '' $USER ; chage -d 0 $USER" \
+        -o ./rootfs
+
+    virt-builder --get-kernel ./rootfs -o .
+fi
+
+# Use crosvm/tools/examples/images/simple/host_shared_dir as mount point
+cargo run -- run \
+    --shared-dir "$HOST_SHARED_DIR:my_shared_tag:type=fs" \
+    --rwdisk ./rootfs \
+    --initrd ./initrd.img-* \
+    -p "root=/dev/vda5 " \
+    ./vmlinuz-*
+
+## In guest OS, run following instructions to set up the shared directory
+## sudo su
+## mkdir /tmp/guest_shared_dir
+## mount -t virtiofs my_shared_tag /tmp/guest_shared_dir

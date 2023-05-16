@@ -17,6 +17,7 @@
   - [Block](./devices/block.md)
   - [Network](./devices/net.md)
   - [Balloon](./devices/balloon.md)
+  - [Fs](./devices/fs.md)
   - [Vsock](./devices/vsock.md)
   - [Pmem](./devices/pmem.md)
   - [Wayland](./devices/wayland.md)
