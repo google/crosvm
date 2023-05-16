@@ -60,6 +60,7 @@ pub fn process_rx<I: SignalableInterrupt, T: TapT>(
         };
 
         let bytes_written = writer.bytes_written() as u32;
+        cros_tracing::trace_simple_print!("{bytes_written} bytes read from tap");
 
         if bytes_written > 0 {
             rx_queue.pop_peeked(mem);
@@ -99,6 +100,7 @@ pub fn process_tx<I: SignalableInterrupt, T: TapT>(
                         count, expected_count
                     );
                 }
+                cros_tracing::trace_simple_print!("{count} bytes write to tap");
             }
             Err(e) => error!("net: tx: failed to write frame to tap: {}", e),
         }

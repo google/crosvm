@@ -44,6 +44,7 @@ The cros_tracing API consists of the following:
 The categories that are currently supported by cros_tracing are:
 
 - VirtioFs
+- VirtioNet
 
 ### The trace_marker Backend
 

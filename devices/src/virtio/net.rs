@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::fmt;
 use std::io;
 use std::io::Write;
 use std::mem;
@@ -408,10 +409,12 @@ where
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
                     Token::RxTap => {
+                        let _trace = cros_tracing::trace_event!(VirtioNet, "handle RxTap event");
                         self.handle_rx_token(&wait_ctx)?;
                         tap_polling_enabled = false;
                     }
                     Token::RxQueue => {
+                        let _trace = cros_tracing::trace_event!(VirtioNet, "handle RxQueue event");
                         if let Err(e) = rx_queue_evt.wait() {
                             error!("net: error reading rx queue Event: {}", e);
                             break 'wait;
@@ -420,6 +423,7 @@ where
                         tap_polling_enabled = true;
                     }
                     Token::TxQueue => {
+                        let _trace = cros_tracing::trace_event!(VirtioNet, "handle TxQueue event");
                         if let Err(e) = tx_queue_evt.wait() {
                             error!("net: error reading tx queue Event: {}", e);
                             break 'wait;
@@ -427,6 +431,8 @@ where
                         self.process_tx();
                     }
                     Token::CtrlQueue => {
+                        let _trace =
+                            cros_tracing::trace_event!(VirtioNet, "handle CtrlQueue event");
                         if let Some(ctrl_evt) = &ctrl_queue_evt {
                             if let Err(e) = ctrl_evt.wait() {
                                 error!("net: error reading ctrl queue Event: {}", e);
@@ -441,6 +447,8 @@ where
                         }
                     }
                     Token::InterruptResample => {
+                        let _trace =
+                            cros_tracing::trace_event!(VirtioNet, "handle InterruptResample event");
                         // We can unwrap safely because interrupt must have the event.
                         let _ = self.interrupt.get_resample_evt().unwrap().wait();
                         self.interrupt.do_interrupt_resample();
@@ -545,7 +553,7 @@ where
         mac_addr: Option<MacAddress>,
         #[cfg(windows)] slirp_kill_evt: Option<Event>,
     ) -> Result<Self, NetError> {
-        Ok(Self {
+        let net = Self {
             guest_mac: mac_addr.map(|mac| mac.octets()),
             queue_sizes: vec![QUEUE_SIZE; taps.len() * 2 + 1].into_boxed_slice(),
             worker_threads: Vec::new(),
@@ -555,7 +563,9 @@ where
             mtu,
             #[cfg(windows)]
             slirp_kill_evt: None,
-        })
+        };
+        cros_tracing::trace_simple_print!("New Net device created: {:?}", net);
+        Ok(net)
     }
 
     /// Returns the maximum number of receive/transmit queue pairs for this device.
@@ -763,6 +773,7 @@ where
                     worker
                 }));
         }
+        cros_tracing::trace_simple_print!("Net device activated: {:?}", self);
         Ok(())
     }
 
@@ -777,6 +788,23 @@ where
 }
 
 impl<T> Suspendable for Net<T> where T: 'static + TapT + ReadNotifier {}
+
+impl<T> std::fmt::Debug for Net<T>
+where
+    T: TapT + ReadNotifier,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Net")
+            .field("guest_mac", &self.guest_mac)
+            .field("queue_sizes", &self.queue_sizes)
+            .field("worker_threads_size", &self.worker_threads.len())
+            .field("taps_size", &self.taps.len())
+            .field("avail_features", &self.avail_features)
+            .field("acked_features", &self.acked_features)
+            .field("mtu", &self.mtu)
+            .finish()
+    }
+}
 
 #[cfg(test)]
 mod tests {
