@@ -383,6 +383,7 @@ impl RawExecutor {
                         OpStatus::Pending(OpData { file, waker }) => (file, waker),
                         OpStatus::Completed => panic!("poll operation completed more than once"),
                         OpStatus::WakeEvent => {
+                            *op = OpStatus::WakeEvent;
                             // NOTE: We set O_NONBLOCK, so there is no risk of this getting stuck.
                             match self.wake_event.wait() {
                                 Ok(_) => {}
@@ -710,5 +711,39 @@ mod test {
         }
         assert_eq!(rc.get(), 1);
         Rc::try_unwrap(rc).expect("Rc had too many refs");
+    }
+
+    // Test the waker implementation. This code path doesn't get hit by `IoSource`, only by backend
+    // agnostic libraries, like `BlockingPool` and `futures::channel`.
+    #[test]
+    fn test_non_io_waker() {
+        use std::task::Poll;
+
+        struct Sleep(Option<u64>);
+
+        impl Future for Sleep {
+            type Output = ();
+
+            fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+                if let Some(ms) = self.0.take() {
+                    let waker = cx.waker().clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(ms));
+                        waker.wake();
+                    });
+                    Poll::Pending
+                } else {
+                    Poll::Ready(())
+                }
+            }
+        }
+
+        let ex = FdExecutor::new().unwrap();
+        ex.run_until(async move {
+            // Test twice because there was once a bug where the second time panic'd.
+            Sleep(Some(1)).await;
+            Sleep(Some(1)).await;
+        })
+        .unwrap();
     }
 }
