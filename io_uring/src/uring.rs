@@ -639,26 +639,19 @@ impl URingContext {
             io_uring_enter(self.ring_file.as_raw_fd(), added as u64, wait_nr, flags)
         };
 
+        // An EINTR means we did successfully submit the events.
+        if res.is_ok() || res == Err(libc::EINTR) {
+            self.submit_ring.lock().complete_submit(added);
+        } else {
+            self.submit_ring.lock().fail_submit(added);
+        }
+
         match res {
-            Ok(_) => {
-                self.submit_ring.lock().complete_submit(added);
-            }
-            Err(e) => {
-                // An EBUSY return means that some completed events must be processed before
-                // submitting more, so wait for some to finish without pushing the new sqes in
-                // that case.
-                // An EINTR means we successfully submitted the events but were interrupted while
-                // waiting, so just wait again.
-                // Any other error should be propagated up.
-
-                if e != libc::EINTR {
-                    self.submit_ring.lock().fail_submit(added);
-                }
-
-                if wait_nr == 0 || (e != libc::EBUSY && e != libc::EINTR) {
-                    return Err(Error::RingEnter(e));
-                }
-
+            Ok(()) => Ok(()),
+            // EBUSY means that some completed events need to be processed before more can
+            // be submitted, so wait for some sqes to finish without submitting new ones.
+            // EINTR means we were interrupted while waiting, so start waiting again.
+            Err(libc::EBUSY) | Err(libc::EINTR) if wait_nr != 0 => {
                 loop {
                     // Safe because the only memory modified is in the completion queue.
                     let res =
@@ -668,9 +661,8 @@ impl URingContext {
                     }
                 }
             }
+            Err(e) => Err(Error::RingEnter(e)),
         }
-
-        Ok(())
     }
 
     /// Sends operations added with the `add_*` functions to the kernel.
