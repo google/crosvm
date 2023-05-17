@@ -1002,14 +1002,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
     let anti_tamper_main_thread_tube = spawn_anti_tamper_thread(&wait_ctx);
 
-    #[cfg(feature = "sandbox")]
-    if sandbox::is_sandbox_target() {
-        sandbox::TargetServices::get()
-            .exit_context(Exit::SandboxError, "failed to create sandbox")?
-            .expect("Could not create sandbox!")
-            .lower_token();
-    }
-
     let ime_thread = run_ime_thread(product_args, &exit_evt)?;
 
     let original_terminal_mode = stdin().set_raw_mode().ok();
@@ -1994,6 +1986,35 @@ where
     } else {
         None
     };
+
+    // Lower the token, locking the main process down to a stricter security policy.
+    //
+    // WARNING:
+    //
+    // Windows system calls can behave in unusual ways if they happen concurrently to the token
+    // lowering. For example, access denied can happen if Tube pairs are created in another thread
+    // (b/281108137), and lower_token happens right before the client pipe is connected. Tubes are
+    // not privileged resources, but can be broken due to the token changing unexpectedly.
+    //
+    // We explicitly lower the token here and *then* call run_control to make it clear that any
+    // resources that require a privileged token should be created on the main thread & passed into
+    // run_control, to follow the correct order:
+    // - Privileged resources are created.
+    // - Token is lowered.
+    // - Threads are spawned & may create more non-privileged resources (without fear of the token
+    //   changing at an undefined time).
+    //
+    // Recommendation: If you find your code doesnt work in run_control because of the sandbox, you
+    // should split any resource creation to before this token lowering & pass the resources into
+    // run_control. Don't move the token lowering somewhere else without considering multi-threaded
+    // effects.
+    #[cfg(feature = "sandbox")]
+    if sandbox::is_sandbox_target() {
+        sandbox::TargetServices::get()
+            .exit_code_from_err("failed to create sandbox")?
+            .expect("Could not create sandbox!")
+            .lower_token();
+    }
 
     run_control(
         windows,
