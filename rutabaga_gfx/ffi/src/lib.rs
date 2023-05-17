@@ -579,7 +579,8 @@ pub unsafe extern "C" fn rutabaga_submit_command(
 ) -> i32 {
     catch_unwind(AssertUnwindSafe(|| {
         let cmd_slice = from_raw_parts_mut(cmd.cmd, cmd.cmd_size as usize);
-        let result = ptr.submit_command(cmd.ctx_id, cmd_slice);
+        let fence_ids = from_raw_parts(cmd.fence_ids, cmd.num_in_fences as usize);
+        let result = ptr.submit_command(cmd.ctx_id, cmd_slice, fence_ids);
         return_result(result)
     }))
     .unwrap_or(-ESRCH)

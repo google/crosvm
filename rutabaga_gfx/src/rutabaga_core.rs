@@ -212,7 +212,7 @@ pub trait RutabagaContext {
     }
 
     /// Implementations must handle the context-specific command stream.
-    fn submit_cmd(&mut self, _commands: &mut [u8]) -> RutabagaResult<()>;
+    fn submit_cmd(&mut self, _commands: &mut [u8], _fence_ids: &[u64]) -> RutabagaResult<()>;
 
     /// Implementations may use `resource` in this context's command stream.
     fn attach(&mut self, _resource: &mut RutabagaResource);
@@ -833,13 +833,18 @@ impl Rutabaga {
     }
 
     /// submits `commands` to the context given by `ctx_id`.
-    pub fn submit_command(&mut self, ctx_id: u32, commands: &mut [u8]) -> RutabagaResult<()> {
+    pub fn submit_command(
+        &mut self,
+        ctx_id: u32,
+        commands: &mut [u8],
+        fence_ids: &[u64],
+    ) -> RutabagaResult<()> {
         let ctx = self
             .contexts
             .get_mut(&ctx_id)
             .ok_or(RutabagaError::InvalidContextId)?;
 
-        ctx.submit_cmd(commands)
+        ctx.submit_cmd(commands, fence_ids)
     }
 }
 

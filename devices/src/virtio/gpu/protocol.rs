@@ -32,6 +32,7 @@ pub use super::super::device_constants::gpu::virtio_gpu_config;
 pub use super::super::device_constants::gpu::VIRTIO_GPU_F_CONTEXT_INIT;
 pub use super::super::device_constants::gpu::VIRTIO_GPU_F_CREATE_GUEST_HANDLE;
 pub use super::super::device_constants::gpu::VIRTIO_GPU_F_EDID;
+pub use super::super::device_constants::gpu::VIRTIO_GPU_F_FENCE_PASSING;
 pub use super::super::device_constants::gpu::VIRTIO_GPU_F_RESOURCE_BLOB;
 pub use super::super::device_constants::gpu::VIRTIO_GPU_F_RESOURCE_UUID;
 pub use super::super::device_constants::gpu::VIRTIO_GPU_F_VIRGL;
@@ -153,6 +154,7 @@ pub fn virtio_gpu_cmd_str(cmd: u32) -> &'static str {
 
 pub const VIRTIO_GPU_FLAG_FENCE: u32 = 1 << 0;
 pub const VIRTIO_GPU_FLAG_INFO_RING_IDX: u32 = 1 << 1;
+pub const VIRTIO_GPU_FLAG_FENCE_SHAREABLE: u32 = 1 << 2;
 
 #[derive(Copy, Clone, Debug, Default, AsBytes, FromBytes)]
 #[repr(C)]
@@ -395,7 +397,20 @@ pub struct virtio_gpu_ctx_resource {
 pub struct virtio_gpu_cmd_submit {
     pub hdr: virtio_gpu_ctrl_hdr,
     pub size: Le32,
-    pub padding: Le32,
+
+    // The in-fence IDs are prepended to the cmd_buf and memory layout
+    // of the VIRTIO_GPU_CMD_SUBMIT_3D buffer looks like this:
+    //   _________________
+    //   | CMD_SUBMIT_3D |
+    //   -----------------
+    //   |  header       |
+    //   |  in-fence IDs |
+    //   |  cmd_buf      |
+    //   -----------------
+    //
+    // This makes in-fence IDs naturally aligned to the sizeof(u64) inside
+    // of the virtio buffer.
+    pub num_in_fences: Le32,
 }
 
 pub const VIRTIO_GPU_CAPSET_VIRGL: u32 = 1;

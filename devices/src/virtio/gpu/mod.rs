@@ -58,6 +58,7 @@ pub use self::protocol::virtio_gpu_config;
 pub use self::protocol::VIRTIO_GPU_F_CONTEXT_INIT;
 pub use self::protocol::VIRTIO_GPU_F_CREATE_GUEST_HANDLE;
 pub use self::protocol::VIRTIO_GPU_F_EDID;
+pub use self::protocol::VIRTIO_GPU_F_FENCE_PASSING;
 pub use self::protocol::VIRTIO_GPU_F_RESOURCE_BLOB;
 pub use self::protocol::VIRTIO_GPU_F_RESOURCE_UUID;
 pub use self::protocol::VIRTIO_GPU_F_VIRGL;
@@ -546,11 +547,24 @@ impl Frontend {
             }
             GpuCommand::CmdSubmit3d(info) => {
                 if reader.available_bytes() != 0 {
+                    let num_in_fences = info.num_in_fences.to_native() as usize;
                     let cmd_size = info.size.to_native() as usize;
                     let mut cmd_buf = vec![0; cmd_size];
+                    let mut fence_ids: Vec<u64> = Vec::with_capacity(num_in_fences);
+                    let ctx_id = info.hdr.ctx_id.to_native();
+
+                    for _ in 0..num_in_fences {
+                        match reader.read_obj::<Le64>() {
+                            Ok(fence_id) => {
+                                fence_ids.push(fence_id.to_native());
+                            }
+                            Err(_) => return Err(GpuResponse::ErrUnspec),
+                        }
+                    }
+
                     if reader.read_exact(&mut cmd_buf[..]).is_ok() {
                         self.virtio_gpu
-                            .submit_command(info.hdr.ctx_id.to_native(), &mut cmd_buf[..])
+                            .submit_command(ctx_id, &mut cmd_buf[..], &fence_ids[..])
                     } else {
                         Err(GpuResponse::ErrInvalidParameter)
                     }
@@ -1339,6 +1353,10 @@ impl VirtioDevice for Gpu {
             if self.udmabuf {
                 virtio_gpu_features |= 1 << VIRTIO_GPU_F_CREATE_GUEST_HANDLE;
             }
+
+            // New experimental/unstable feature, not upstreamed.
+            // Safe to enable because guest must explicitly opt-in.
+            virtio_gpu_features |= 1 << VIRTIO_GPU_F_FENCE_PASSING;
         }
 
         self.base_features | virtio_gpu_features

@@ -107,6 +107,7 @@ pub mod gpu {
     pub const VIRTIO_GPU_F_RESOURCE_BLOB: u32 = 3;
     pub const VIRTIO_GPU_F_CONTEXT_INIT: u32 = 4;
     /* The following capabilities are not upstreamed. */
+    pub const VIRTIO_GPU_F_FENCE_PASSING: u32 = 5;
     pub const VIRTIO_GPU_F_CREATE_GUEST_HANDLE: u32 = 6;
 
     pub const VIRTIO_GPU_SHM_ID_HOST_VISIBLE: u8 = 0x0001;

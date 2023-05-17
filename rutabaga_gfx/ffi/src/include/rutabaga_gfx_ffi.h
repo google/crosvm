@@ -98,6 +98,7 @@ extern "C" {
  */
 #define RUTABAGA_FLAG_FENCE (1 << 0)
 #define RUTABAGA_FLAG_INFO_RING_IDX (1 << 1)
+#define RUTABAGA_FLAG_FENCE_SHAREABLE (1 << 2)
 
 /**
  * Rutabaga Debug

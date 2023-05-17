@@ -967,8 +967,13 @@ impl VirtioGpu {
     }
 
     /// Submits a command buffer to a rutabaga context.
-    pub fn submit_command(&mut self, ctx_id: u32, commands: &mut [u8]) -> VirtioGpuResult {
-        self.rutabaga.submit_command(ctx_id, commands)?;
+    pub fn submit_command(
+        &mut self,
+        ctx_id: u32,
+        commands: &mut [u8],
+        fence_ids: &[u64],
+    ) -> VirtioGpuResult {
+        self.rutabaga.submit_command(ctx_id, commands, fence_ids)?;
         Ok(OkNoData)
     }
 
