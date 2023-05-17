@@ -45,8 +45,10 @@ crosvm run --block "${ROOT_IMAGE}" -p "root=/dev/vda" bzImage
 
 ### With virtiofs
 
-Linux kernel 5.4+ is required for using virtiofs. This is convenient for testing. The file system
-must be named "mtd\*" or "ubi\*".
+Linux kernel 5.4+ is required for using virtiofs. This is convenient for testing. Note kernels
+before 5.15 require the file system to be named "mtd\*" or "ubi\*". See
+[discussions](https://listman.redhat.com/archives/virtio-fs/2019-September/000893.html) and
+[a patch](https://lore.kernel.org/lkml/20210617153649.1886693-3-hch@lst.de/) for the details.
 
 ```sh
 crosvm run --shared-dir "/:mtdfake:type=fs:cache=always" \
