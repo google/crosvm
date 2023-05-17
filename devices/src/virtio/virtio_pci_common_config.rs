@@ -5,6 +5,8 @@
 use std::convert::TryInto;
 
 use base::warn;
+use serde::Deserialize;
+use serde::Serialize;
 use vm_memory::GuestAddress;
 
 use super::*;
@@ -31,6 +33,7 @@ use super::*;
 /// le64 queue_desc;                // read-write
 /// le64 queue_avail;               // read-write
 /// le64 queue_used;                // read-write
+#[derive(Copy, Clone, Serialize, Deserialize)]
 pub struct VirtioPciCommonConfig {
     pub driver_status: u8,
     pub config_generation: u8,

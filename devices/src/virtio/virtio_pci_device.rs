@@ -952,8 +952,13 @@ impl PciDevice for VirtioPciDevice {
 
 #[derive(Serialize, Deserialize)]
 struct VirtioPciDeviceSnapshot {
+    config_regs: serde_json::Value,
     inner_device: serde_json::Value,
+    device_activated: bool,
+    interrupt: Option<serde_json::Value>,
+    queues: Vec<serde_json::Value>,
     msix_config: serde_json::Value,
+    common_config: VirtioPciCommonConfig,
 }
 
 impl Suspendable for VirtioPciDevice {
@@ -982,9 +987,28 @@ impl Suspendable for VirtioPciDevice {
     }
 
     fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        if self.iommu.is_some() {
+            return Err(anyhow!("Cannot snapshot if iommu is present."));
+        }
+        let interrupt = match &self.interrupt {
+            Some(interrupt) => Some(interrupt.snapshot()?),
+            None => None,
+        };
+        let queues: Vec<serde_json::Value> = self
+            .queues
+            .iter()
+            .map(|queue| queue.snapshot())
+            .collect::<anyhow::Result<Vec<serde_json::Value>>>()?;
+
         serde_json::to_value(VirtioPciDeviceSnapshot {
+            config_regs: serde_json::to_value(&self.config_regs)
+                .context("failed to serialize config_regs")?,
             inner_device: self.device.snapshot()?,
+            device_activated: self.device_activated,
+            interrupt,
+            queues,
             msix_config: self.msix_config.lock().snapshot()?,
+            common_config: self.common_config,
         })
         .context("failed to serialize VirtioPciDeviceSnapshot")
     }

@@ -131,7 +131,10 @@ fn snapshot_vhost_user() {
     let dir = tempdir().unwrap();
     let snap_path = dir.path().join("snapshot.bkp");
     vm.snapshot(&snap_path).unwrap();
-    // TODO(rizhang): Add verification for snapshotting when it is implemented.
+
+    let snapshot_json = std::fs::read_to_string(snap_path).unwrap();
+
+    assert!(snapshot_json.contains("\"device_name\":\"virtio-block\""));
 }
 
 fn create_net_config(socket: &Path) -> VuConfig {

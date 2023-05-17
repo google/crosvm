@@ -11,6 +11,7 @@ use base::error;
 use base::Event;
 use base::RawDescriptor;
 use base::WorkerThread;
+use serde_json::Value;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
@@ -213,5 +214,10 @@ impl Suspendable for VhostUserVirtioDevice {
             .borrow_mut()
             .wake()
             .context("Failed to wake device.")
+    }
+
+    fn snapshot(&self) -> anyhow::Result<Value> {
+        // TODO(b/280608177): Snapshot devices
+        serde_json::to_value("").context("failed to serialize")
     }
 }

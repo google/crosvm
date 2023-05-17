@@ -7,6 +7,7 @@ use std::sync::atomic::fence;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
@@ -14,6 +15,8 @@ use base::error;
 use base::warn;
 use cros_async::AsyncError;
 use cros_async::EventAsync;
+use serde::Deserialize;
+use serde::Serialize;
 use sync::Mutex;
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::GuestAddress;
@@ -76,6 +79,21 @@ pub struct Queue {
     exported_desc_table: Option<ExportedRegion>,
     exported_avail_ring: Option<ExportedRegion>,
     exported_used_ring: Option<ExportedRegion>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct QueueSnapshot {
+    activated: bool,
+    size: u16,
+    ready: bool,
+    vector: u16,
+    desc_table: GuestAddress,
+    avail_ring: GuestAddress,
+    used_ring: GuestAddress,
+    pub next_avail: Wrapping<u16>,
+    pub next_used: Wrapping<u16>,
+    features: u64,
+    last_used: Wrapping<u16>,
 }
 
 macro_rules! accessors {
@@ -649,6 +667,27 @@ impl Queue {
 
     pub fn set_iommu(&mut self, iommu: Arc<Mutex<IpcMemoryMapper>>) {
         self.iommu = Some(iommu);
+    }
+
+    pub fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        if self.iommu.is_some() {
+            return Err(anyhow!("Cannot snapshot if iommu is present."));
+        }
+
+        serde_json::to_value(QueueSnapshot {
+            activated: self.activated,
+            size: self.size,
+            ready: self.ready,
+            vector: self.vector,
+            desc_table: self.desc_table,
+            avail_ring: self.avail_ring,
+            used_ring: self.used_ring,
+            next_avail: self.next_avail,
+            next_used: self.next_used,
+            features: self.features,
+            last_used: self.last_used,
+        })
+        .context("failed to serialize MsixConfigSnapshot")
     }
 }
 
