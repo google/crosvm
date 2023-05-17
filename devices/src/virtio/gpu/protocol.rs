@@ -643,7 +643,7 @@ impl GpuCommand {
     /// Decodes a command from the given chunk of memory.
     pub fn decode(cmd: &mut Reader) -> Result<GpuCommand, GpuCommandDecodeError> {
         use self::GpuCommand::*;
-        let hdr = cmd.clone().read_obj::<virtio_gpu_ctrl_hdr>()?;
+        let hdr = cmd.peek_obj::<virtio_gpu_ctrl_hdr>()?;
         Ok(match hdr.type_.into() {
             VIRTIO_GPU_CMD_GET_DISPLAY_INFO => GetDisplayInfo(cmd.read_obj()?),
             VIRTIO_GPU_CMD_RESOURCE_CREATE_2D => ResourceCreate2d(cmd.read_obj()?),

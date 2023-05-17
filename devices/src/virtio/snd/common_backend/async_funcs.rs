@@ -662,8 +662,7 @@ pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
         let writer = &mut desc_chain.writer;
         // Don't advance the reader
         let code = reader
-            .clone()
-            .read_obj::<virtio_snd_hdr>()
+            .peek_obj::<virtio_snd_hdr>()
             .map_err(Error::ReadMessage)?
             .code
             .into();

@@ -1495,10 +1495,7 @@ impl WlState {
     }
 
     fn execute(&mut self, reader: &mut Reader) -> WlResult<WlResp> {
-        let type_ = {
-            let mut type_reader = reader.clone();
-            type_reader.read_obj::<Le32>().map_err(WlError::ParseDesc)?
-        };
+        let type_: Le32 = reader.peek_obj::<Le32>().map_err(WlError::ParseDesc)?;
         match type_.into() {
             VIRTIO_WL_CMD_VFD_NEW => {
                 let ctrl = reader

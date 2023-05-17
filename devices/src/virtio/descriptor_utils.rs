@@ -10,6 +10,8 @@ use std::io;
 use std::io::Write;
 use std::iter::FromIterator;
 use std::marker::PhantomData;
+use std::mem::size_of;
+use std::mem::MaybeUninit;
 use std::ptr::copy_nonoverlapping;
 use std::sync::Arc;
 
@@ -17,7 +19,6 @@ use anyhow::Context;
 use base::FileReadWriteAtVolatile;
 use base::FileReadWriteVolatile;
 use cros_async::MemRegion;
-use data_model::zerocopy_from_reader;
 use data_model::Le16;
 use data_model::Le32;
 use data_model::Le64;
@@ -33,7 +34,6 @@ use super::DescriptorChain;
 use crate::virtio::ipc_memory_mapper::ExportedRegion;
 use crate::virtio::SplitDescriptorChain;
 
-#[derive(Clone)]
 struct DescriptorChainRegions {
     regions: SmallVec<[MemRegion; 2]>,
 
@@ -177,7 +177,12 @@ impl DescriptorChainRegions {
     }
 
     fn split_at(&mut self, offset: usize) -> DescriptorChainRegions {
-        let mut other = self.clone();
+        let mut other = DescriptorChainRegions {
+            regions: self.regions.clone(),
+            _exported_regions: self._exported_regions.clone(),
+            current: self.current,
+            bytes_consumed: self.bytes_consumed,
+        };
         other.consume(offset);
         other.bytes_consumed = 0;
 
@@ -206,7 +211,6 @@ impl DescriptorChainRegions {
 /// descriptors after any device-readable descriptors (2.6.4.2 in Virtio Spec v1.1).
 /// Reader will skip iterating over descriptor chain when first writable
 /// descriptor is encountered.
-#[derive(Clone)]
 pub struct Reader {
     mem: GuestMemory,
     regions: DescriptorChainRegions,
@@ -243,9 +247,33 @@ impl Reader {
         }
     }
 
-    /// Reads an object from the descriptor chain buffer.
+    /// Reads an object from the descriptor chain buffer without consuming it.
+    pub fn peek_obj<T: FromBytes>(&self) -> io::Result<T> {
+        let mut obj = MaybeUninit::uninit();
+
+        // SAFETY: We pass a valid pointer and size of `obj`.
+        let copied = unsafe {
+            copy_regions_to_mut_ptr(
+                &self.mem,
+                self.get_remaining_regions(),
+                obj.as_mut_ptr() as *mut u8,
+                size_of::<T>(),
+            )?
+        };
+        if copied != size_of::<T>() {
+            return Err(io::Error::from(io::ErrorKind::UnexpectedEof));
+        }
+
+        // SAFETY: `FromBytes` guarantees any set of initialized bytes is a valid value for `T`, and
+        // we initialized all bytes in `obj` in the copy above.
+        Ok(unsafe { obj.assume_init() })
+    }
+
+    /// Reads and consumes an object from the descriptor chain buffer.
     pub fn read_obj<T: FromBytes>(&mut self) -> io::Result<T> {
-        zerocopy_from_reader(self)
+        let obj = self.peek_obj::<T>()?;
+        self.consume(size_of::<T>());
+        Ok(obj)
     }
 
     /// Reads objects by consuming all the remaining data in the descriptor chain buffer and returns
@@ -460,25 +488,59 @@ impl Reader {
     }
 }
 
-impl io::Read for Reader {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let mut rem = buf;
-        let mut total = 0;
-        for b in self.regions.get_remaining(&self.mem) {
-            if rem.is_empty() {
-                break;
-            }
-
-            let count = cmp::min(rem.len(), b.size());
-
-            // Safe because we have already verified that `b` points to valid memory.
-            unsafe {
-                copy_nonoverlapping(b.as_ptr(), rem.as_mut_ptr(), count);
-            }
-            rem = &mut rem[count..];
-            total += count;
+/// Copy up to `size` bytes from `src` into `dst`.
+///
+/// Returns the total number of bytes copied.
+///
+/// # Safety
+///
+/// The caller must ensure that it is safe to write `size` bytes of data into `dst`.
+///
+/// After the function returns, it is only safe to assume that the number of bytes indicated by the
+/// return value (which may be less than the requested `size`) have been initialized. Bytes beyond
+/// that point are not initialized by this function.
+unsafe fn copy_regions_to_mut_ptr(
+    mem: &GuestMemory,
+    src: &[MemRegion],
+    dst: *mut u8,
+    size: usize,
+) -> io::Result<usize> {
+    let mut copied = 0;
+    for src_region in src {
+        if copied >= size {
+            break;
         }
 
+        let remaining = size - copied;
+        let count = cmp::min(remaining, src_region.len);
+
+        let vslice = mem
+            .get_slice_at_addr(GuestAddress(src_region.offset), count)
+            .map_err(|_e| io::Error::from(io::ErrorKind::InvalidData))?;
+
+        // SAFETY: `get_slice_at_addr()` verified that the region points to valid memory, and
+        // the `count` calculation ensures we will write at most `size` bytes into `dst`.
+        unsafe {
+            copy_nonoverlapping(vslice.as_ptr(), dst.add(copied), count);
+        }
+
+        copied += count;
+    }
+
+    Ok(copied)
+}
+
+impl io::Read for Reader {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        // SAFETY: We pass a valid pointer and size combination derived from `buf`.
+        let total = unsafe {
+            copy_regions_to_mut_ptr(
+                &self.mem,
+                self.regions.get_remaining_regions(),
+                buf.as_mut_ptr(),
+                buf.len(),
+            )?
+        };
         self.regions.consume(total);
         Ok(total)
     }
@@ -491,7 +553,6 @@ impl io::Read for Reader {
 /// descriptors after any device-readable descriptors (2.6.4.2 in Virtio Spec v1.1).
 /// Writer will start iterating the descriptors from the first writable one and will
 /// assume that all following descriptors are writable.
-#[derive(Clone)]
 pub struct Writer {
     mem: GuestMemory,
     regions: DescriptorChainRegions,
@@ -1459,5 +1520,61 @@ mod tests {
             .fold(0usize, |total, iov| total + iov.size());
         assert!(first > 0);
         assert!(first <= 8);
+    }
+
+    #[test]
+    fn reader_peek_obj() {
+        use DescriptorType::*;
+
+        let memory_start_addr = GuestAddress(0x0);
+        let memory = GuestMemory::new(&[(memory_start_addr, 0x10000)]).unwrap();
+
+        // Write test data to memory.
+        memory
+            .write_obj_at_addr(Le16::from(0xBEEF), GuestAddress(0x100))
+            .unwrap();
+        memory
+            .write_obj_at_addr(Le16::from(0xDEAD), GuestAddress(0x200))
+            .unwrap();
+
+        let mut chain_reader = create_descriptor_chain(
+            &memory,
+            GuestAddress(0x0),
+            GuestAddress(0x100),
+            vec![(Readable, 2), (Readable, 2)],
+            0x100 - 2,
+        )
+        .expect("create_descriptor_chain failed");
+        let reader = &mut chain_reader.reader;
+
+        // peek_obj() at the beginning of the chain should return the first object.
+        let peek1 = reader.peek_obj::<Le16>().unwrap();
+        assert_eq!(peek1, Le16::from(0xBEEF));
+
+        // peek_obj() again should return the same object, since it was not consumed.
+        let peek2 = reader.peek_obj::<Le16>().unwrap();
+        assert_eq!(peek2, Le16::from(0xBEEF));
+
+        // peek_obj() of an object spanning two descriptors should copy from both.
+        let peek3 = reader.peek_obj::<Le32>().unwrap();
+        assert_eq!(peek3, Le32::from(0xDEADBEEF));
+
+        // read_obj() should return the first object.
+        let read1 = reader.read_obj::<Le16>().unwrap();
+        assert_eq!(read1, Le16::from(0xBEEF));
+
+        // peek_obj() of a value that is larger than the rest of the chain should fail.
+        reader
+            .peek_obj::<Le32>()
+            .expect_err("peek_obj past end of chain");
+
+        // read_obj() again should return the second object.
+        let read2 = reader.read_obj::<Le16>().unwrap();
+        assert_eq!(read2, Le16::from(0xDEAD));
+
+        // peek_obj() should fail at the end of the chain.
+        reader
+            .peek_obj::<Le16>()
+            .expect_err("peek_obj past end of chain");
     }
 }
