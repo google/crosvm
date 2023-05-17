@@ -21,7 +21,6 @@ use anyhow::anyhow;
 use anyhow::Context;
 use base::debug;
 use base::error;
-use base::info;
 #[cfg(unix)]
 use base::platform::move_task_to_cgroup;
 use base::warn;
@@ -311,7 +310,6 @@ pub struct Frontend {
     fence_state: Arc<Mutex<FenceState>>,
     return_cursor_descriptors: VecDeque<ReturnDescriptor>,
     virtio_gpu: VirtioGpu,
-    booting: bool,
 }
 
 impl Frontend {
@@ -320,7 +318,6 @@ impl Frontend {
             fence_state,
             return_cursor_descriptors: Default::default(),
             virtio_gpu,
-            booting: true,
         }
     }
 
@@ -367,12 +364,9 @@ impl Frontend {
         cmd: GpuCommand,
         reader: &mut Reader,
     ) -> VirtioGpuResult {
-        if self.booting {
-            info!("gpu booting: cmd {:?}", cmd);
-        }
         self.virtio_gpu.force_ctx_0();
 
-        let ret = match cmd {
+        match cmd {
             GpuCommand::GetDisplayInfo(_) => Ok(GpuResponse::OkDisplayInfo(
                 self.virtio_gpu.display_info().to_vec(),
             )),
@@ -635,14 +629,7 @@ impl Frontend {
                 self.virtio_gpu.resource_unmap_blob(resource_id)
             }
             GpuCommand::GetEdid(info) => self.virtio_gpu.get_edid(info.scanout.to_native()),
-        };
-        if self.booting {
-            if let GpuCommand::GetCapset(_) = cmd {
-                self.booting = false;
-            }
-            info!("gpu booting: cmd {:?} done", cmd);
         }
-        ret
     }
 
     /// Processes virtio messages on `queue`.
@@ -909,9 +896,6 @@ impl Worker {
             }
 
             for event in events.iter().filter(|e| e.is_readable) {
-                if self.state.booting {
-                    info!("gpu booting: event {:?}", event.token);
-                }
                 match event.token {
                     WorkerToken::CtrlQueue => {
                         let _ = self.ctrl_evt.wait();
