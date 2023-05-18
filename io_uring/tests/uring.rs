@@ -79,24 +79,6 @@ unsafe fn add_one_write(
     )
 }
 
-fn check_readv(uring: &URingContext, buf: &mut [u8], fd: RawFd, offset: u64, user_data: UserData) {
-    let io_vecs = unsafe {
-        //safe to transmut from IoSlice to iovec.
-        vec![IoSliceMut::new(buf)]
-            .into_iter()
-            .map(|slice| std::mem::transmute::<IoSliceMut, libc::iovec>(slice))
-    };
-    let (user_data_ret, res) = unsafe {
-        // Safe because the `wait` call waits until the kernel is done with `buf`.
-        uring
-            .add_readv_iter(io_vecs, fd, Some(offset), user_data)
-            .unwrap();
-        uring.wait().unwrap().next().unwrap()
-    };
-    assert_eq!(user_data_ret, user_data);
-    assert_eq!(res.unwrap(), buf.len() as u32);
-}
-
 fn create_test_file(size: u64) -> std::fs::File {
     let f = tempfile().unwrap();
     f.set_len(size).unwrap();
@@ -149,7 +131,21 @@ fn read_readv() {
     // double the quue depth of buffers.
     for i in 0..queue_size * 2 {
         let index = i as u64;
-        check_readv(&uring, &mut buf, f.as_raw_fd(), (index % 2) * 0x1000, index);
+        let io_vecs = unsafe {
+            //safe to transmut from IoSlice to iovec.
+            vec![IoSliceMut::new(&mut buf)]
+                .into_iter()
+                .map(|slice| std::mem::transmute::<IoSliceMut, libc::iovec>(slice))
+        };
+        let (user_data_ret, res) = unsafe {
+            // Safe because the `wait` call waits until the kernel is done with `buf`.
+            uring
+                .add_readv_iter(io_vecs, f.as_raw_fd(), Some((index % 2) * 0x1000), index)
+                .unwrap();
+            uring.wait().unwrap().next().unwrap()
+        };
+        assert_eq!(user_data_ret, index);
+        assert_eq!(res.unwrap(), buf.len() as u32);
     }
 }
 
