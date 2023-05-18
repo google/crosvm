@@ -183,32 +183,6 @@ impl SubmitQueue {
         self.submitting -= count;
         self.added -= count;
     }
-
-    unsafe fn add_rw_op(
-        &mut self,
-        ptr: *const u8,
-        len: usize,
-        fd: RawFd,
-        offset: Option<u64>,
-        user_data: UserData,
-        op: u8,
-    ) -> Result<()> {
-        self.prep_next_sqe(|sqe, iovec| {
-            iovec.iov_base = ptr as *const libc::c_void as *mut _;
-            iovec.iov_len = len;
-            sqe.opcode = op;
-            sqe.set_addr(iovec as *const _ as *const libc::c_void as u64);
-            sqe.len = 1;
-            sqe.set_off(file_offset_to_raw_offset(offset));
-            sqe.set_buf_index(0);
-            sqe.ioprio = 0;
-            sqe.user_data = user_data;
-            sqe.flags = 0;
-            sqe.fd = fd;
-        })?;
-
-        Ok(())
-    }
 }
 
 /// Enum to represent all io_uring operations
@@ -406,57 +380,6 @@ impl URingContext {
                 complete_ring,
             })
         }
-    }
-
-    /// Asynchronously writes to `fd` from the address given in `ptr`.
-    /// # Safety
-    /// `add_write` will write up to `len` bytes of data from the address given by `ptr`. This is
-    /// only safe if the caller guarantees that the memory lives until the transaction is complete
-    /// and that completion has been returned from the `wait` function. In addition there must not
-    /// be other references to the data pointed to by `ptr` until the operation completes.  Ensure
-    /// that the fd remains open until the op completes as well.
-    pub unsafe fn add_write(
-        &self,
-        ptr: *const u8,
-        len: usize,
-        fd: RawFd,
-        offset: Option<u64>,
-        user_data: UserData,
-    ) -> Result<()> {
-        self.submit_ring.lock().add_rw_op(
-            ptr,
-            len,
-            fd,
-            offset,
-            user_data,
-            io_uring_op_IORING_OP_WRITEV as u8,
-        )
-    }
-
-    /// Asynchronously reads from `fd` to the address given in `ptr`.
-    /// # Safety
-    /// `add_read` will write up to `len` bytes of data to the address given by `ptr`. This is only
-    /// safe if the caller guarantees there are no other references to that memory and that the
-    /// memory lives until the transaction is complete and that completion has been returned from
-    /// the `wait` function.  In addition there must not be any mutable references to the data
-    /// pointed to by `ptr` until the operation completes.  Ensure that the fd remains open until
-    /// the op completes as well.
-    pub unsafe fn add_read(
-        &self,
-        ptr: *mut u8,
-        len: usize,
-        fd: RawFd,
-        offset: Option<u64>,
-        user_data: UserData,
-    ) -> Result<()> {
-        self.submit_ring.lock().add_rw_op(
-            ptr,
-            len,
-            fd,
-            offset,
-            user_data,
-            io_uring_op_IORING_OP_READV as u8,
-        )
     }
 
     /// # Safety
