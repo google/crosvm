@@ -22,6 +22,7 @@ minijail = "*"
 
 [build-dependencies]
 which = "4"
+rayon = "1.5.3"
 
 [dev-dependencies]
 cfg-if = "*"

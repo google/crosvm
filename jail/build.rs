@@ -9,6 +9,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 
+use rayon::prelude::*;
+
 fn rewrite_policies(seccomp_policy_path: &Path, rewrote_policy_folder: &Path) {
     for entry in fs::read_dir(seccomp_policy_path).unwrap() {
         let policy_file = entry.unwrap();
@@ -68,7 +70,7 @@ fn compile_policies(out_dir: &Path, rewrote_policy_folder: &Path, compile_seccom
         .collect::<Vec<_>>();
 
     let s = entries
-        .iter()
+        .par_iter()
         .filter(|ent| ent.path().extension() == Some(OsStr::new("policy")))
         .map(|policy_file| {
             compile_policy(
