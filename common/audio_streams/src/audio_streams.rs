@@ -808,6 +808,12 @@ impl NoopStreamSourceGenerator {
     }
 }
 
+impl Default for NoopStreamSourceGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StreamSourceGenerator for NoopStreamSourceGenerator {
     fn generate(&self) -> Result<Box<dyn StreamSource>, BoxError> {
         Ok(Box::new(NoopStreamSource))

@@ -564,6 +564,12 @@ impl VmMemoryRegionState {
     }
 }
 
+impl Default for VmMemoryRegionState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 fn handle_prepared_region(
     vm: &mut impl Vm,
     region_state: &mut VmMemoryRegionState,

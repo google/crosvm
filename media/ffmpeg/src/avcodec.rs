@@ -218,6 +218,12 @@ impl EncoderContextBuilder {
     }
 }
 
+impl Default for AvCodecIterator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Lightweight abstraction over libavcodec's `av_codec_iterate` function that can be used to
 /// enumerate all the supported codecs.
 pub struct AvCodecIterator(*mut libc::c_void);

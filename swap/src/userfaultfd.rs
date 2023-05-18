@@ -147,6 +147,12 @@ pub struct Factory {
     dev_file: Option<File>,
 }
 
+impl Default for Factory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Factory {
     /// Create [Factory] and try open `/dev/userfaultfd`.
     ///

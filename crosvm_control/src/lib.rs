@@ -652,6 +652,12 @@ impl BalloonWSSFfi {
     }
 }
 
+impl Default for BalloonWSSFfi {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Returns balloon working set size of the crosvm instance whose control socket is listening on socket_path.
 ///
 /// The function returns true on success or false if an error occured.

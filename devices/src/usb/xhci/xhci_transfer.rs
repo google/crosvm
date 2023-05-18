@@ -246,6 +246,12 @@ impl XhciTransferManager {
     }
 }
 
+impl Default for XhciTransferManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Xhci transfer denotes a transfer initiated by guest os driver. It will be submitted to a
 /// XhciBackendDevice.
 pub struct XhciTransfer {

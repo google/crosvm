@@ -232,6 +232,12 @@ impl Routes {
     }
 }
 
+impl Default for Routes {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 const EMPTY_ROUTE: [IrqSource; 0] = [];
 
 impl Index<usize> for Routes {

@@ -67,6 +67,12 @@ impl DisplayEventDispatcher {
     }
 }
 
+impl Default for DisplayEventDispatcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// This class is used for dispatching thread and window messages. It should be created before any
 /// other threads start to post messages to the WndProc thread, and before the WndProc thread enters
 /// the window message loop. Once all windows tracked by it are destroyed, it will signal exiting

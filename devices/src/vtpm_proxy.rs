@@ -88,6 +88,12 @@ impl VtpmProxy {
     }
 }
 
+impl Default for VtpmProxy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TpmBackend for VtpmProxy {
     fn execute_command<'a>(&'a mut self, command: &[u8]) -> &'a [u8] {
         match self.try_execute_command(command) {

@@ -539,6 +539,12 @@ impl Pic {
     }
 }
 
+impl Default for Pic {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Suspendable for Pic {
     fn sleep(&mut self) -> anyhow::Result<()> {
         Ok(())

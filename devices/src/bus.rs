@@ -706,6 +706,12 @@ impl Bus {
     }
 }
 
+impl Default for Bus {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use anyhow::Result as AnyhowResult;

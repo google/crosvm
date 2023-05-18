@@ -50,3 +50,9 @@ impl ReadNotifier for Console {
         &self.0
     }
 }
+
+impl Default for Console {
+    fn default() -> Self {
+        Self::new()
+    }
+}
