@@ -513,7 +513,8 @@ fn run_worker(
         })
         .collect();
 
-    let (mut ctrl_queue, mut ctrl_queue_evt) = queues.remove(0);
+    let (ctrl_queue, mut ctrl_queue_evt) = queues.remove(0);
+    let ctrl_queue = Rc::new(AsyncMutex::new(ctrl_queue));
     let (_event_queue, _event_queue_evt) = queues.remove(0);
     let (tx_queue, tx_queue_evt) = queues.remove(0);
     let (rx_queue, rx_queue_evt) = queues.remove(0);
@@ -540,13 +541,13 @@ fn run_worker(
             &snd_data,
             &mut f_kill,
             &mut f_resample,
-            &mut ctrl_queue,
+            ctrl_queue.clone(),
             &mut ctrl_queue_evt,
-            &tx_queue,
+            tx_queue.clone(),
             &tx_queue_evt,
             tx_send.clone(),
             &mut tx_recv,
-            &rx_queue,
+            rx_queue.clone(),
             &rx_queue_evt,
             rx_send.clone(),
             &mut rx_recv,
@@ -594,13 +595,13 @@ fn run_worker_once(
     snd_data: &SndData,
     mut f_kill: &mut (impl Future<Output = anyhow::Result<()>> + FusedFuture + Unpin),
     mut f_resample: &mut (impl Future<Output = anyhow::Result<()>> + FusedFuture + Unpin),
-    ctrl_queue: &mut Queue,
+    ctrl_queue: Rc<AsyncMutex<Queue>>,
     ctrl_queue_evt: &mut EventAsync,
-    tx_queue: &Rc<AsyncMutex<Queue>>,
+    tx_queue: Rc<AsyncMutex<Queue>>,
     tx_queue_evt: &EventAsync,
     tx_send: mpsc::UnboundedSender<PcmResponse>,
     tx_recv: &mut mpsc::UnboundedReceiver<PcmResponse>,
-    rx_queue: &Rc<AsyncMutex<Queue>>,
+    rx_queue: Rc<AsyncMutex<Queue>>,
     rx_queue_evt: &EventAsync,
     rx_send: mpsc::UnboundedSender<PcmResponse>,
     rx_recv: &mut mpsc::UnboundedReceiver<PcmResponse>,
@@ -636,7 +637,7 @@ fn run_worker_once(
         mem,
         streams,
         tx_send2,
-        tx_queue,
+        tx_queue.clone(),
         tx_queue_evt,
         Some(&reset_signal),
     )
@@ -653,7 +654,7 @@ fn run_worker_once(
         mem,
         streams,
         rx_send2,
-        rx_queue,
+        rx_queue.clone(),
         rx_queue_evt,
         Some(&reset_signal),
     )
@@ -757,7 +758,7 @@ fn reset_streams(
     let f_tx_response = async {
         while send_pcm_response_worker(
             mem,
-            tx_queue,
+            tx_queue.clone(),
             interrupt.clone(),
             tx_recv,
             Some(&reset_signal),
@@ -770,7 +771,7 @@ fn reset_streams(
     let f_rx_response = async {
         while send_pcm_response_worker(
             mem,
-            rx_queue,
+            rx_queue.clone(),
             interrupt.clone(),
             rx_recv,
             Some(&reset_signal),

@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::bail;
@@ -14,6 +15,7 @@ use base::RawDescriptor;
 use base::Terminal;
 use cros_async::Executor;
 use hypervisor::ProtectionType;
+use sync::Mutex;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
@@ -26,11 +28,13 @@ use crate::virtio::console::virtio_console_config;
 use crate::virtio::copy_config;
 use crate::virtio::vhost::user::device::handler::sys::Doorbell;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
+use crate::virtio::vhost::user::device::handler::Error as DeviceError;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 use crate::virtio::vhost::user::device::handler::VhostUserPlatformOps;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 use crate::virtio::vhost::user::device::VhostUserDevice;
+use crate::virtio::Queue;
 use crate::SerialHardware;
 use crate::SerialParameters;
 use crate::SerialType;
@@ -79,6 +83,8 @@ impl VhostUserDevice for VhostUserConsoleDevice {
             acked_features: 0,
             acked_protocol_features: VhostUserProtocolFeatures::empty(),
             ex: ex.clone(),
+            active_in_queue: None,
+            active_out_queue: None,
         };
 
         let handler = DeviceRequestHandler::new(Box::new(backend), ops);
@@ -91,6 +97,8 @@ struct ConsoleBackend {
     acked_features: u64,
     acked_protocol_features: VhostUserProtocolFeatures,
     ex: Executor,
+    active_in_queue: Option<Arc<Mutex<Queue>>>,
+    active_out_queue: Option<Arc<Mutex<Queue>>>,
 }
 
 impl VhostUserBackend for ConsoleBackend {
@@ -143,7 +151,9 @@ impl VhostUserBackend for ConsoleBackend {
 
     fn reset(&mut self) {
         for queue_num in 0..self.max_queue_num() {
-            self.stop_queue(queue_num);
+            if let Err(e) = self.stop_queue(queue_num) {
+                error!("Failed to stop_queue during reset: {}", e);
+            }
         }
     }
 
@@ -155,35 +165,71 @@ impl VhostUserBackend for ConsoleBackend {
         doorbell: Doorbell,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
+        let queue = Arc::new(Mutex::new(queue));
         match idx {
             // ReceiveQueue
-            0 => self
-                .device
-                .console
-                .start_receive_queue(&self.ex, mem, queue, doorbell, kick_evt),
+            0 => {
+                let res = self.device.console.start_receive_queue(
+                    &self.ex,
+                    mem,
+                    queue.clone(),
+                    doorbell,
+                    kick_evt,
+                );
+                self.active_in_queue = Some(queue);
+                res
+            }
             // TransmitQueue
-            1 => self
-                .device
-                .console
-                .start_transmit_queue(&self.ex, mem, queue, doorbell, kick_evt),
+            1 => {
+                let res = self.device.console.start_transmit_queue(
+                    &self.ex,
+                    mem,
+                    queue.clone(),
+                    doorbell,
+                    kick_evt,
+                );
+                self.active_out_queue = Some(queue);
+                res
+            }
             _ => bail!("attempted to start unknown queue: {}", idx),
         }
     }
 
-    fn stop_queue(&mut self, idx: usize) {
+    fn stop_queue(&mut self, idx: usize) -> anyhow::Result<virtio::Queue> {
         match idx {
             0 => {
                 if let Err(e) = self.device.console.stop_receive_queue() {
                     error!("error while stopping rx queue: {}", e);
+                }
+                if let Some(active_in_queue) = self.active_in_queue.take() {
+                    let queue = match Arc::try_unwrap(active_in_queue) {
+                        Ok(queue_mutex) => queue_mutex.into_inner(),
+                        Err(_) => panic!("failed to recover queue from worker"),
+                    };
+                    Ok(queue)
+                } else {
+                    Err(anyhow::Error::new(DeviceError::WorkerNotFound))
                 }
             }
             1 => {
                 if let Err(e) = self.device.console.stop_transmit_queue() {
                     error!("error while stopping tx queue: {}", e);
                 }
+                if let Some(active_out_queue) = self.active_out_queue.take() {
+                    let queue = match Arc::try_unwrap(active_out_queue) {
+                        Ok(queue_mutex) => queue_mutex.into_inner(),
+                        Err(_) => panic!("failed to recover queue from worker"),
+                    };
+                    Ok(queue)
+                } else {
+                    Err(anyhow::Error::new(DeviceError::WorkerNotFound))
+                }
             }
-            _ => error!("attempted to stop unknown queue: {}", idx),
-        };
+            _ => {
+                error!("attempted to stop unknown queue: {}", idx);
+                Err(anyhow::Error::new(DeviceError::WorkerNotFound))
+            }
+        }
     }
 }
 

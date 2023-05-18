@@ -67,7 +67,11 @@ use base::IntoRawDescriptor;
 use base::Protection;
 use base::SafeDescriptor;
 use base::SharedMemory;
+use cros_async::TaskHandle;
+use futures::future::AbortHandle;
+use futures::future::Aborted;
 use sys::Doorbell;
+use thiserror::Error as ThisError;
 use vm_control::VmMemorySource;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
@@ -201,7 +205,8 @@ pub trait VhostUserBackend {
     ) -> anyhow::Result<()>;
 
     /// Indicates that the backend should stop processing requests for virtio queue number `idx`.
-    fn stop_queue(&mut self, idx: usize);
+    /// This method should return the queue passed to `start_queue` for the corresponding `idx`.
+    fn stop_queue(&mut self, idx: usize) -> anyhow::Result<Queue>;
 
     /// Resets the vhost-user backend.
     fn reset(&mut self);
@@ -532,7 +537,9 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
         // that file descriptor is readable) on the descriptor specified by
         // VHOST_USER_SET_VRING_KICK, and stop ring upon receiving
         // VHOST_USER_GET_VRING_BASE.
-        self.backend.stop_queue(index as usize);
+        if let Err(e) = self.backend.stop_queue(index as usize) {
+            error!("Failed to stop queue in get_vring_base: {}", e);
+        }
 
         let vring = &mut self.vrings[index as usize];
         vring.reset();
@@ -823,6 +830,19 @@ impl SharedMemoryMapper for VhostShmemMapper {
     }
 }
 
+pub(crate) struct WorkerState<T, U> {
+    pub(crate) abort_handle: AbortHandle,
+    pub(crate) queue_task: TaskHandle<std::result::Result<U, Aborted>>,
+    pub(crate) queue: T,
+}
+
+/// Errors for device operations
+#[derive(Debug, ThisError)]
+pub enum Error {
+    #[error("worker not found when stopping queue")]
+    WorkerNotFound,
+}
+
 #[cfg(test)]
 mod tests {
     #[cfg(unix)]
@@ -932,7 +952,10 @@ mod tests {
             Ok(())
         }
 
-        fn stop_queue(&mut self, _idx: usize) {}
+        fn stop_queue(&mut self, _idx: usize) -> anyhow::Result<Queue> {
+            // TODO(280607609): Return a `Queue`.
+            Err(anyhow!("Missing queue"))
+        }
     }
 
     #[cfg(unix)]

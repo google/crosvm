@@ -28,9 +28,11 @@ use vmm_vhost::message::VhostUserVirtioFeatures;
 
 use crate::virtio::gpu;
 use crate::virtio::vhost::user::device::handler::sys::Doorbell;
+use crate::virtio::vhost::user::device::handler::Error as DeviceError;
 use crate::virtio::vhost::user::device::handler::VhostBackendReqConnection;
 use crate::virtio::vhost::user::device::handler::VhostBackendReqConnectionState;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::device::handler::WorkerState;
 use crate::virtio::DescriptorChain;
 use crate::virtio::Gpu;
 use crate::virtio::Queue;
@@ -88,7 +90,7 @@ struct GpuBackend {
     acked_protocol_features: u64,
     state: Option<Rc<RefCell<gpu::Frontend>>>,
     fence_state: Arc<Mutex<gpu::FenceState>>,
-    queue_workers: [Option<AbortHandle>; MAX_QUEUE_NUM],
+    queue_workers: [Option<WorkerState<Arc<Mutex<Queue>>, ()>>; MAX_QUEUE_NUM],
     platform_workers: Rc<RefCell<Vec<AbortHandle>>>,
     backend_req_conn: VhostBackendReqConnectionState,
 }
@@ -148,9 +150,9 @@ impl VhostUserBackend for GpuBackend {
         doorbell: Doorbell,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
-        if let Some(handle) = self.queue_workers.get_mut(idx).and_then(Option::take) {
+        if self.queue_workers[idx].is_some() {
             warn!("Starting new queue handler without stopping old handler");
-            handle.abort();
+            self.stop_queue(idx)?;
         }
 
         match idx {
@@ -164,8 +166,9 @@ impl VhostUserBackend for GpuBackend {
         let kick_evt = EventAsync::new(kick_evt, &self.ex)
             .context("failed to create EventAsync for kick_evt")?;
 
+        let queue = Arc::new(Mutex::new(queue));
         let reader = SharedReader {
-            queue: Arc::new(Mutex::new(queue)),
+            queue: queue.clone(),
             doorbell,
         };
 
@@ -201,20 +204,34 @@ impl VhostUserBackend for GpuBackend {
 
         // Start handling the control queue.
         let (handle, registration) = AbortHandle::new_pair();
-        self.ex
-            .spawn_local(Abortable::new(
-                run_ctrl_queue(reader, mem, kick_evt, state),
-                registration,
-            ))
-            .detach();
+        let queue_task = self.ex.spawn_local(Abortable::new(
+            run_ctrl_queue(reader, mem, kick_evt, state),
+            registration,
+        ));
 
-        self.queue_workers[idx] = Some(handle);
+        self.queue_workers[idx] = Some(WorkerState {
+            abort_handle: handle,
+            queue_task,
+            queue,
+        });
         Ok(())
     }
 
-    fn stop_queue(&mut self, idx: usize) {
-        if let Some(handle) = self.queue_workers.get_mut(idx).and_then(Option::take) {
-            handle.abort();
+    fn stop_queue(&mut self, idx: usize) -> anyhow::Result<Queue> {
+        if let Some(worker) = self.queue_workers.get_mut(idx).and_then(Option::take) {
+            worker.abort_handle.abort();
+
+            // Wait for queue_task to be aborted.
+            let _ = self.ex.run_until(async { worker.queue_task.await });
+
+            let queue = match Arc::try_unwrap(worker.queue) {
+                Ok(queue_mutex) => queue_mutex.into_inner(),
+                Err(_) => panic!("failed to recover queue from worker"),
+            };
+
+            Ok(queue)
+        } else {
+            Err(anyhow::Error::new(DeviceError::WorkerNotFound))
         }
     }
 
@@ -224,7 +241,9 @@ impl VhostUserBackend for GpuBackend {
         }
 
         for queue_num in 0..self.max_queue_num() {
-            self.stop_queue(queue_num);
+            if let Err(e) = self.stop_queue(queue_num) {
+                error!("Failed to stop_queue during reset: {}", e);
+            }
         }
     }
 

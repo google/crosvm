@@ -83,8 +83,11 @@ fn handle_input<I: SignalableInterrupt>(
     mem: &GuestMemory,
     interrupt: &I,
     buffer: &mut VecDeque<u8>,
-    receive_queue: &mut Queue,
+    receive_queue: &Arc<Mutex<Queue>>,
 ) -> result::Result<(), ConsoleError> {
+    let mut receive_queue = receive_queue
+        .try_lock()
+        .expect("Lock should not be unavailable");
     loop {
         let mut desc = receive_queue
             .peek(mem)
@@ -142,10 +145,13 @@ fn process_transmit_request(reader: &mut Reader, output: &mut dyn io::Write) -> 
 fn process_transmit_queue<I: SignalableInterrupt>(
     mem: &GuestMemory,
     interrupt: &I,
-    transmit_queue: &mut Queue,
+    transmit_queue: &Arc<Mutex<Queue>>,
     output: &mut dyn io::Write,
 ) {
     let mut needs_interrupt = false;
+    let mut transmit_queue = transmit_queue
+        .try_lock()
+        .expect("Lock should not be unavailable");
     while let Some(mut avail_desc) = transmit_queue.pop(mem) {
         process_transmit_request(&mut avail_desc.reader, output)
             .unwrap_or_else(|e| error!("console: process_transmit_request failed: {}", e));
@@ -166,9 +172,9 @@ struct Worker {
     output: Box<dyn io::Write + Send>,
     kill_evt: Event,
     in_avail_evt: Event,
-    receive_queue: Queue,
+    receive_queue: Arc<Mutex<Queue>>,
     receive_evt: Event,
-    transmit_queue: Queue,
+    transmit_queue: Arc<Mutex<Queue>>,
     transmit_evt: Event,
 }
 
@@ -284,7 +290,7 @@ impl Worker {
                         process_transmit_queue(
                             &self.mem,
                             &self.interrupt,
-                            &mut self.transmit_queue,
+                            &self.transmit_queue,
                             &mut self.output,
                         );
                     }
@@ -298,7 +304,7 @@ impl Worker {
                                 &self.mem,
                                 &self.interrupt,
                                 in_buf_ref.lock().deref_mut(),
-                                &mut self.receive_queue,
+                                &self.receive_queue,
                             ) {
                                 Ok(()) => {}
                                 // Console errors are no-ops, so just continue.
@@ -318,7 +324,7 @@ impl Worker {
                                 &self.mem,
                                 &self.interrupt,
                                 in_buf_ref.lock().deref_mut(),
-                                &mut self.receive_queue,
+                                &self.receive_queue,
                             ) {
                                 Ok(()) => {}
                                 // Console errors are no-ops, so just continue.
@@ -450,10 +456,10 @@ impl VirtioDevice for Console {
                 in_avail_evt,
                 kill_evt,
                 // Device -> driver
-                receive_queue,
+                receive_queue: Arc::new(Mutex::new(receive_queue)),
                 receive_evt,
                 // Driver -> device
-                transmit_queue,
+                transmit_queue: Arc::new(Mutex::new(transmit_queue)),
                 transmit_evt,
             };
             worker.run();

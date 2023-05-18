@@ -41,9 +41,11 @@ use crate::virtio::device_constants::wl::VIRTIO_WL_F_SEND_FENCES;
 use crate::virtio::device_constants::wl::VIRTIO_WL_F_TRANS_FLAGS;
 use crate::virtio::device_constants::wl::VIRTIO_WL_F_USE_SHMEM;
 use crate::virtio::vhost::user::device::handler::sys::Doorbell;
+use crate::virtio::vhost::user::device::handler::Error as DeviceError;
 use crate::virtio::vhost::user::device::handler::VhostBackendReqConnection;
 use crate::virtio::vhost::user::device::handler::VhostBackendReqConnectionState;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::device::handler::WorkerState;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 use crate::virtio::wl;
@@ -53,7 +55,7 @@ use crate::virtio::SharedMemoryRegion;
 const MAX_QUEUE_NUM: usize = QUEUE_SIZES.len();
 
 async fn run_out_queue(
-    mut queue: Queue,
+    queue: Rc<RefCell<Queue>>,
     mem: GuestMemory,
     doorbell: Doorbell,
     kick_evt: EventAsync,
@@ -65,12 +67,12 @@ async fn run_out_queue(
             break;
         }
 
-        wl::process_out_queue(&doorbell, &mut queue, &mem, &mut wlstate.borrow_mut());
+        wl::process_out_queue(&doorbell, &queue, &mem, &mut wlstate.borrow_mut());
     }
 }
 
 async fn run_in_queue(
-    mut queue: Queue,
+    queue: Rc<RefCell<Queue>>,
     mem: GuestMemory,
     doorbell: Doorbell,
     kick_evt: EventAsync,
@@ -86,7 +88,7 @@ async fn run_in_queue(
             break;
         }
 
-        if wl::process_in_queue(&doorbell, &mut queue, &mem, &mut wlstate.borrow_mut())
+        if wl::process_in_queue(&doorbell, &queue, &mem, &mut wlstate.borrow_mut())
             == Err(wl::DescriptorsExhausted)
         {
             if let Err(e) = kick_evt.next_val().await {
@@ -107,7 +109,7 @@ struct WlBackend {
     features: u64,
     acked_features: u64,
     wlstate: Option<Rc<RefCell<wl::WlState>>>,
-    workers: [Option<AbortHandle>; MAX_QUEUE_NUM],
+    workers: [Option<WorkerState<Rc<RefCell<Queue>>, ()>>; MAX_QUEUE_NUM],
     backend_req_conn: VhostBackendReqConnectionState,
 }
 
@@ -206,9 +208,9 @@ impl VhostUserBackend for WlBackend {
         doorbell: Doorbell,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
-        if let Some(handle) = self.workers.get_mut(idx).and_then(Option::take) {
+        if self.workers[idx].is_some() {
             warn!("Starting new queue handler without stopping old handler");
-            handle.abort();
+            self.stop_queue(idx)?;
         }
 
         let kick_evt = EventAsync::new(kick_evt, &self.ex)
@@ -259,7 +261,8 @@ impl VhostUserBackend for WlBackend {
             Some(state) => state.clone(),
         };
         let (handle, registration) = AbortHandle::new_pair();
-        match idx {
+        let queue = Rc::new(RefCell::new(queue));
+        let queue_task = match idx {
             0 => {
                 let wlstate_ctx = clone_descriptor(wlstate.borrow().wait_ctx())
                     .map(|fd| {
@@ -273,35 +276,46 @@ impl VhostUserBackend for WlBackend {
                             .context("failed to create async WaitContext")
                     })?;
 
-                self.ex
-                    .spawn_local(Abortable::new(
-                        run_in_queue(queue, mem, doorbell, kick_evt, wlstate, wlstate_ctx),
-                        registration,
-                    ))
-                    .detach();
+                self.ex.spawn_local(Abortable::new(
+                    run_in_queue(queue.clone(), mem, doorbell, kick_evt, wlstate, wlstate_ctx),
+                    registration,
+                ))
             }
-            1 => {
-                self.ex
-                    .spawn_local(Abortable::new(
-                        run_out_queue(queue, mem, doorbell, kick_evt, wlstate),
-                        registration,
-                    ))
-                    .detach();
-            }
+            1 => self.ex.spawn_local(Abortable::new(
+                run_out_queue(queue.clone(), mem, doorbell, kick_evt, wlstate),
+                registration,
+            )),
             _ => bail!("attempted to start unknown queue: {}", idx),
-        }
-        self.workers[idx] = Some(handle);
+        };
+        self.workers[idx] = Some(WorkerState {
+            abort_handle: handle,
+            queue_task,
+            queue,
+        });
         Ok(())
     }
 
-    fn stop_queue(&mut self, idx: usize) {
-        if let Some(handle) = self.workers.get_mut(idx).and_then(Option::take) {
-            handle.abort();
+    fn stop_queue(&mut self, idx: usize) -> anyhow::Result<Queue> {
+        if let Some(worker) = self.workers.get_mut(idx).and_then(Option::take) {
+            worker.abort_handle.abort();
+
+            // Wait for queue_task to be aborted.
+            let _ = self.ex.run_until(async { worker.queue_task.await });
+
+            let queue = match Rc::try_unwrap(worker.queue) {
+                Ok(queue_cell) => queue_cell.into_inner(),
+                Err(_) => panic!("failed to recover queue from worker"),
+            };
+
+            Ok(queue)
+        } else {
+            Err(anyhow::Error::new(DeviceError::WorkerNotFound))
         }
     }
+
     fn reset(&mut self) {
-        for handle in self.workers.iter_mut().filter_map(Option::take) {
-            handle.abort();
+        for worker in self.workers.iter_mut().filter_map(Option::take) {
+            worker.abort_handle.abort();
         }
     }
 

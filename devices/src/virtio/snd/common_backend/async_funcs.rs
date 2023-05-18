@@ -508,7 +508,7 @@ async fn await_reset_signal(reset_signal_option: Option<&(AsyncMutex<bool>, Cond
 
 pub async fn send_pcm_response_worker<I: SignalableInterrupt>(
     mem: &GuestMemory,
-    queue: &Rc<AsyncMutex<Queue>>,
+    queue: Rc<AsyncMutex<Queue>>,
     interrupt: I,
     recv: &mut mpsc::UnboundedReceiver<PcmResponse>,
     reset_signal: Option<&(AsyncMutex<bool>, Condvar)>,
@@ -552,7 +552,7 @@ pub async fn handle_pcm_queue(
     mem: &GuestMemory,
     streams: &Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo>>>>,
     mut response_sender: mpsc::UnboundedSender<PcmResponse>,
-    queue: &Rc<AsyncMutex<Queue>>,
+    queue: Rc<AsyncMutex<Queue>>,
     queue_event: &EventAsync,
     reset_signal: Option<&(AsyncMutex<bool>, Condvar)>,
 ) -> Result<(), Error> {
@@ -636,7 +636,7 @@ pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
     mem: &GuestMemory,
     streams: &Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo>>>>,
     snd_data: &SndData,
-    queue: &mut Queue,
+    queue: Rc<AsyncMutex<Queue>>,
     queue_event: &mut EventAsync,
     interrupt: I,
     tx_send: mpsc::UnboundedSender<PcmResponse>,
@@ -646,6 +646,7 @@ pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
     let on_reset = await_reset_signal(reset_signal).fuse();
     pin_mut!(on_reset);
 
+    let mut queue = queue.lock().await;
     loop {
         let mut desc_chain = {
             let next_async = queue.next_async(mem, queue_event).fuse();

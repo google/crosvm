@@ -114,6 +114,7 @@ fn snapshot_vhost_user() {
     let _block_vu_device = VhostUserBackend::new(block_vu_config);
 
     // Spin up net vhost user process.
+    // Queue handlers don't get activated currently.
     let net_socket = NamedTempFile::new().unwrap();
     let net_config = create_net_config(net_socket.path());
     let _net_vu_device = VhostUserBackend::new(net_config).unwrap();

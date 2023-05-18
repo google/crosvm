@@ -4,6 +4,8 @@
 
 pub mod sys;
 
+use std::sync::Arc;
+
 use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
@@ -12,9 +14,9 @@ use base::Event;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::IntoAsync;
-use futures::future::AbortHandle;
 use net_util::TapT;
 use once_cell::sync::OnceCell;
+use sync::Mutex;
 pub use sys::start_device as run_net_device;
 pub use sys::Options;
 use vm_memory::GuestMemory;
@@ -27,7 +29,10 @@ use crate::virtio::net::process_ctrl;
 use crate::virtio::net::process_tx;
 use crate::virtio::net::virtio_features_to_tap_offload;
 use crate::virtio::vhost::user::device::handler::sys::Doorbell;
+use crate::virtio::vhost::user::device::handler::Error as DeviceError;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::device::handler::WorkerState;
+use crate::virtio::Queue;
 
 thread_local! {
     pub(crate) static NET_EXECUTOR: OnceCell<Executor> = OnceCell::new();
@@ -38,7 +43,7 @@ thread_local! {
 const MAX_QUEUE_NUM: usize = 3; /* rx, tx, ctrl */
 
 async fn run_tx_queue<T: TapT>(
-    mut queue: virtio::Queue,
+    queue: Arc<Mutex<Queue>>,
     mem: GuestMemory,
     mut tap: T,
     doorbell: Doorbell,
@@ -50,12 +55,12 @@ async fn run_tx_queue<T: TapT>(
             break;
         }
 
-        process_tx(&doorbell, &mut queue, &mem, &mut tap);
+        process_tx(&doorbell, &queue, &mem, &mut tap);
     }
 }
 
 async fn run_ctrl_queue<T: TapT>(
-    mut queue: virtio::Queue,
+    queue: Arc<Mutex<Queue>>,
     mem: GuestMemory,
     mut tap: T,
     doorbell: Doorbell,
@@ -69,14 +74,7 @@ async fn run_ctrl_queue<T: TapT>(
             break;
         }
 
-        if let Err(e) = process_ctrl(
-            &doorbell,
-            &mut queue,
-            &mem,
-            &mut tap,
-            acked_features,
-            vq_pairs,
-        ) {
+        if let Err(e) = process_ctrl(&doorbell, &queue, &mem, &mut tap, acked_features, vq_pairs) {
             error!("Failed to process ctrl queue: {}", e);
             break;
         }
@@ -88,7 +86,7 @@ pub(crate) struct NetBackend<T: TapT + IntoAsync> {
     avail_features: u64,
     acked_features: u64,
     acked_protocol_features: VhostUserProtocolFeatures,
-    workers: [Option<AbortHandle>; MAX_QUEUE_NUM],
+    workers: [Option<WorkerState<Arc<Mutex<Queue>>, ()>>; MAX_QUEUE_NUM],
     mtu: u16,
     #[cfg(all(windows, feature = "slirp"))]
     slirp_kill_event: Event,
@@ -168,9 +166,24 @@ where
         sys::start_queue(self, idx, queue, mem, doorbell, kick_evt)
     }
 
-    fn stop_queue(&mut self, idx: usize) {
-        if let Some(handle) = self.workers.get_mut(idx).and_then(Option::take) {
-            handle.abort();
+    fn stop_queue(&mut self, idx: usize) -> anyhow::Result<virtio::Queue> {
+        if let Some(worker) = self.workers.get_mut(idx).and_then(Option::take) {
+            worker.abort_handle.abort();
+
+            // Wait for queue_task to be aborted.
+            NET_EXECUTOR.with(|ex| {
+                let ex = ex.get().expect("Executor not initialized");
+                let _ = ex.run_until(async { worker.queue_task.await });
+            });
+
+            let queue = match Arc::try_unwrap(worker.queue) {
+                Ok(queue_mutex) => queue_mutex.into_inner(),
+                Err(_) => panic!("failed to recover queue from worker"),
+            };
+
+            Ok(queue)
+        } else {
+            Err(anyhow::Error::new(DeviceError::WorkerNotFound))
         }
     }
 }

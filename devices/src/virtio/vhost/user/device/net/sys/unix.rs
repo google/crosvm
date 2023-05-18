@@ -4,6 +4,7 @@
 
 use std::net::Ipv4Addr;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::thread;
 
 use anyhow::anyhow;
@@ -26,6 +27,7 @@ use hypervisor::ProtectionType;
 use net_util::sys::unix::Tap;
 use net_util::MacAddress;
 use net_util::TapT;
+use sync::Mutex;
 use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
@@ -37,6 +39,7 @@ use crate::virtio::net::validate_and_configure_tap;
 use crate::virtio::net::NetError;
 use crate::virtio::vhost::user::device::handler::sys::Doorbell;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::device::handler::WorkerState;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 use crate::virtio::vhost::user::device::net::run_ctrl_queue;
@@ -135,7 +138,7 @@ where
 }
 
 async fn run_rx_queue<T: TapT>(
-    mut queue: virtio::Queue,
+    queue: Arc<Mutex<virtio::Queue>>,
     mem: GuestMemory,
     mut tap: IoSource<T>,
     doorbell: Doorbell,
@@ -146,7 +149,7 @@ async fn run_rx_queue<T: TapT>(
             error!("Failed to wait for tap device to become readable: {}", e);
             break;
         }
-        match process_rx(&doorbell, &mut queue, &mem, tap.as_source_mut()) {
+        match process_rx(&doorbell, &queue, &mem, tap.as_source_mut()) {
             Ok(()) => {}
             Err(NetError::RxDescriptorsExhausted) => {
                 if let Err(e) = kick_evt.next_val().await {
@@ -171,9 +174,9 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
     doorbell: Doorbell,
     kick_evt: Event,
 ) -> anyhow::Result<()> {
-    if let Some(handle) = backend.workers.get_mut(idx).and_then(Option::take) {
+    if backend.workers[idx].is_some() {
         warn!("Starting new queue handler without stopping old handler");
-        handle.abort();
+        backend.stop_queue(idx)?;
     }
 
     NET_EXECUTOR.with(|ex| {
@@ -187,29 +190,26 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
             .try_clone()
             .context("failed to clone tap device")?;
         let (handle, registration) = AbortHandle::new_pair();
-        match idx {
+        let queue = Arc::new(Mutex::new(queue));
+        let queue_task = match idx {
             0 => {
                 let tap = ex
                     .async_from(tap)
                     .context("failed to create async tap device")?;
 
                 ex.spawn_local(Abortable::new(
-                    run_rx_queue(queue, mem, tap, doorbell, kick_evt),
+                    run_rx_queue(queue.clone(), mem, tap, doorbell, kick_evt),
                     registration,
                 ))
-                .detach();
             }
-            1 => {
-                ex.spawn_local(Abortable::new(
-                    run_tx_queue(queue, mem, tap, doorbell, kick_evt),
-                    registration,
-                ))
-                .detach();
-            }
+            1 => ex.spawn_local(Abortable::new(
+                run_tx_queue(queue.clone(), mem, tap, doorbell, kick_evt),
+                registration,
+            )),
             2 => {
                 ex.spawn_local(Abortable::new(
                     run_ctrl_queue(
-                        queue,
+                        queue.clone(),
                         mem,
                         tap,
                         doorbell,
@@ -219,12 +219,15 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
                     ),
                     registration,
                 ))
-                .detach();
             }
             _ => bail!("attempted to start unknown queue: {}", idx),
-        }
+        };
 
-        backend.workers[idx] = Some(handle);
+        backend.workers[idx] = Some(WorkerState {
+            abort_handle: handle,
+            queue_task,
+            queue,
+        });
         Ok(())
     })
 }

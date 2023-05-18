@@ -47,11 +47,14 @@ use crate::virtio::vhost::user::device::handler::sys::windows::read_from_tube_tr
 use crate::virtio::vhost::user::device::handler::sys::windows::run_handler;
 use crate::virtio::vhost::user::device::handler::sys::Doorbell;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
+use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 use crate::virtio::vhost::user::device::handler::VhostUserRegularOps;
+use crate::virtio::vhost::user::device::handler::WorkerState;
 use crate::virtio::vhost::user::device::net::run_ctrl_queue;
 use crate::virtio::vhost::user::device::net::run_tx_queue;
 use crate::virtio::vhost::user::device::net::NetBackend;
 use crate::virtio::vhost::user::device::net::NET_EXECUTOR;
+use crate::virtio::Queue;
 use crate::virtio::SignalableInterrupt;
 
 impl<T: 'static> NetBackend<T>
@@ -81,7 +84,7 @@ where
 }
 
 async fn run_rx_queue<T: TapT>(
-    mut queue: virtio::Queue,
+    mut queue: Arc<Mutex<virtio::Queue>>,
     mem: GuestMemory,
     mut tap: IoSource<T>,
     call_evt: Doorbell,
@@ -101,6 +104,7 @@ async fn run_rx_queue<T: TapT>(
             .read_overlapped(&mut rx_buf, &mut overlapped_wrapper)
             .expect("read_overlapped failed")
     };
+    // let queue = queue.try_lock().expect("Lock should not be unavailable");
     loop {
         // If we already have a packet from deferred RX, we don't need to wait for the slirp device.
         if !deferred_rx {
@@ -112,7 +116,7 @@ async fn run_rx_queue<T: TapT>(
 
         let needs_interrupt = process_rx(
             &call_evt,
-            &mut queue,
+            &queue,
             &mem,
             tap.as_source_mut(),
             &mut rx_buf,
@@ -121,7 +125,12 @@ async fn run_rx_queue<T: TapT>(
             &mut overlapped_wrapper,
         );
         if needs_interrupt {
-            call_evt.signal_used_queue(queue.vector());
+            call_evt.signal_used_queue(
+                queue
+                    .try_lock()
+                    .expect("Lock should not be unavailable")
+                    .vector(),
+            );
         }
 
         // There aren't any RX descriptors available for us to write packets to. Wait for the guest
@@ -144,9 +153,9 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
     doorbell: Doorbell,
     kick_evt: Event,
 ) -> anyhow::Result<()> {
-    if let Some(handle) = backend.workers.get_mut(idx).and_then(Option::take) {
+    if backend.workers.get(idx).is_some() {
         warn!("Starting new queue handler without stopping old handler");
-        handle.abort();
+        backend.stop_queue(idx);
     }
 
     let overlapped_wrapper =
@@ -163,7 +172,8 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
             .try_clone()
             .context("failed to clone tap device")?;
         let (handle, registration) = AbortHandle::new_pair();
-        match idx {
+        let queue = Arc::new(Mutex::new(queue));
+        let queue_task = match idx {
             0 => {
                 let tap = ex
                     .async_from(tap)
@@ -178,7 +188,7 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
 
                 ex.spawn_local(Abortable::new(
                     run_rx_queue(
-                        queue,
+                        queue.clone(),
                         mem,
                         tap,
                         doorbell,
@@ -188,19 +198,15 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
                     ),
                     registration,
                 ))
-                .detach();
             }
-            1 => {
-                ex.spawn_local(Abortable::new(
-                    run_tx_queue(queue, mem, tap, doorbell, kick_evt),
-                    registration,
-                ))
-                .detach();
-            }
+            1 => ex.spawn_local(Abortable::new(
+                run_tx_queue(queue.clone(), mem, tap, doorbell, kick_evt),
+                registration,
+            )),
             2 => {
                 ex.spawn_local(Abortable::new(
                     run_ctrl_queue(
-                        queue,
+                        queue.clone(),
                         mem,
                         tap,
                         doorbell,
@@ -210,12 +216,15 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
                     ),
                     registration,
                 ))
-                .detach();
             }
             _ => bail!("attempted to start unknown queue: {}", idx),
-        }
+        };
 
-        backend.workers[idx] = Some(handle);
+        backend.workers[idx] = Some(WorkerState {
+            abort_handle: handle,
+            queue_task,
+            queue,
+        });
         Ok(())
     })
 }

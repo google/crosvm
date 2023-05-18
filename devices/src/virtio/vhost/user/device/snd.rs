@@ -38,14 +38,18 @@ use crate::virtio::snd::common_backend::hardcoded_snd_data;
 use crate::virtio::snd::common_backend::hardcoded_virtio_snd_config;
 use crate::virtio::snd::common_backend::stream_info::StreamInfo;
 use crate::virtio::snd::common_backend::stream_info::StreamInfoBuilder;
+use crate::virtio::snd::common_backend::Error;
 use crate::virtio::snd::common_backend::PcmResponse;
 use crate::virtio::snd::common_backend::SndData;
 use crate::virtio::snd::common_backend::MAX_QUEUE_NUM;
 use crate::virtio::snd::parameters::Parameters;
 use crate::virtio::vhost::user::device::handler::sys::Doorbell;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
+use crate::virtio::vhost::user::device::handler::Error as DeviceError;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
+use crate::virtio::vhost::user::device::handler::WorkerState;
 use crate::virtio::vhost::user::VhostUserDevice;
+use crate::virtio::Queue;
 
 static SND_EXECUTOR: OnceCell<Executor> = OnceCell::new();
 
@@ -60,8 +64,9 @@ struct SndBackend {
     avail_features: u64,
     acked_features: u64,
     acked_protocol_features: VhostUserProtocolFeatures,
-    workers: [Option<AbortHandle>; MAX_QUEUE_NUM],
-    response_workers: [Option<AbortHandle>; 2], // tx and rx
+    workers: [Option<WorkerState<Rc<AsyncMutex<Queue>>, Result<(), Error>>>; MAX_QUEUE_NUM],
+    // tx and rx
+    response_workers: [Option<WorkerState<Rc<AsyncMutex<Queue>>, Result<(), Error>>>; 2],
     snd_data: Rc<SndData>,
     streams: Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo>>>>,
     tx_send: mpsc::UnboundedSender<PcmResponse>,
@@ -175,22 +180,22 @@ impl VhostUserBackend for SndBackend {
     }
 
     fn reset(&mut self) {
-        for handle in self.workers.iter_mut().filter_map(Option::take) {
-            handle.abort();
+        for worker in self.workers.iter_mut().filter_map(Option::take) {
+            worker.abort_handle.abort();
         }
     }
 
     fn start_queue(
         &mut self,
         idx: usize,
-        mut queue: virtio::Queue,
+        queue: virtio::Queue,
         mem: GuestMemory,
         doorbell: Doorbell,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
-        if let Some(handle) = self.workers.get_mut(idx).and_then(Option::take) {
+        if self.workers[idx].is_some() {
             warn!("Starting new queue handler without stopping old handler");
-            handle.abort();
+            self.stop_queue(idx)?;
         }
 
         // Safe because the executor is initialized in main() below.
@@ -199,21 +204,23 @@ impl VhostUserBackend for SndBackend {
         let mut kick_evt =
             EventAsync::new(kick_evt, ex).context("failed to create EventAsync for kick_evt")?;
         let (handle, registration) = AbortHandle::new_pair();
-        match idx {
+        let queue = Rc::new(AsyncMutex::new(queue));
+        let queue_task = match idx {
             0 => {
                 // ctrl queue
                 let streams = self.streams.clone();
                 let snd_data = self.snd_data.clone();
                 let tx_send = self.tx_send.clone();
                 let rx_send = self.rx_send.clone();
-                ex.spawn_local(Abortable::new(
+                let ctrl_queue = queue.clone();
+                Some(ex.spawn_local(Abortable::new(
                     async move {
                         handle_ctrl_queue(
                             ex,
                             &mem,
                             &streams,
                             &snd_data,
-                            &mut queue,
+                            ctrl_queue,
                             &mut kick_evt,
                             doorbell,
                             tx_send,
@@ -223,10 +230,9 @@ impl VhostUserBackend for SndBackend {
                         .await
                     },
                     registration,
-                ))
-                .detach();
+                )))
             }
-            1 => {} // TODO(woodychow): Add event queue support
+            1 => None, // TODO(woodychow): Add event queue support
             2 | 3 => {
                 let (send, recv) = if idx == 2 {
                     (self.tx_send.clone(), self.tx_recv.take())
@@ -234,50 +240,85 @@ impl VhostUserBackend for SndBackend {
                     (self.rx_send.clone(), self.rx_recv.take())
                 };
                 let mut recv = recv.ok_or_else(|| anyhow!("queue restart is not supported"))?;
-                let queue = Rc::new(AsyncMutex::new(queue));
-                let queue2 = Rc::clone(&queue);
                 let mem = Rc::new(mem);
                 let mem2 = Rc::clone(&mem);
                 let streams = Rc::clone(&self.streams);
-                ex.spawn_local(Abortable::new(
+                let queue_pcm_queue = queue.clone();
+                let queue_task = ex.spawn_local(Abortable::new(
                     async move {
-                        handle_pcm_queue(&mem, &streams, send, &queue, &kick_evt, None).await
+                        handle_pcm_queue(&mem, &streams, send, queue_pcm_queue, &kick_evt, None)
+                            .await
                     },
                     registration,
-                ))
-                .detach();
+                ));
 
                 let (handle2, registration2) = AbortHandle::new_pair();
 
-                ex.spawn_local(Abortable::new(
+                let queue_response_queue = queue.clone();
+                let response_queue_task = ex.spawn_local(Abortable::new(
                     async move {
-                        send_pcm_response_worker(&mem2, &queue2, doorbell, &mut recv, None).await
+                        send_pcm_response_worker(
+                            &mem2,
+                            queue_response_queue,
+                            doorbell,
+                            &mut recv,
+                            None,
+                        )
+                        .await
                     },
                     registration2,
-                ))
-                .detach();
+                ));
 
-                self.response_workers[idx - PCM_RESPONSE_WORKER_IDX_OFFSET] = Some(handle2);
+                self.response_workers[idx - PCM_RESPONSE_WORKER_IDX_OFFSET] = Some(WorkerState {
+                    abort_handle: handle2,
+                    queue_task: response_queue_task,
+                    queue: queue.clone(),
+                });
+
+                Some(queue_task)
             }
             _ => bail!("attempted to start unknown queue: {}", idx),
-        }
+        };
 
-        self.workers[idx] = Some(handle);
+        if let Some(queue_task) = queue_task {
+            self.workers[idx] = Some(WorkerState {
+                abort_handle: handle,
+                queue_task,
+                queue,
+            });
+        }
         Ok(())
     }
 
-    fn stop_queue(&mut self, idx: usize) {
-        if let Some(handle) = self.workers.get_mut(idx).and_then(Option::take) {
-            handle.abort();
+    fn stop_queue(&mut self, idx: usize) -> anyhow::Result<virtio::Queue> {
+        let ex = SND_EXECUTOR.get().expect("Executor not initialized");
+        if let Some(worker) = self.workers.get_mut(idx).and_then(Option::take) {
+            worker.abort_handle.abort();
+
+            // Wait for queue_task to be aborted.
+            let _ = ex.run_until(async { worker.queue_task.await });
         }
         if idx == 2 || idx == 3 {
-            if let Some(handle) = self
+            if let Some(worker) = self
                 .response_workers
                 .get_mut(idx - PCM_RESPONSE_WORKER_IDX_OFFSET)
                 .and_then(Option::take)
             {
-                handle.abort();
+                worker.abort_handle.abort();
+
+                // Wait for queue_task to be aborted.
+                let _ = ex.run_until(async { worker.queue_task.await });
             }
+        }
+        if let Some(worker) = self.workers.get_mut(idx).and_then(Option::take) {
+            let queue = match Rc::try_unwrap(worker.queue) {
+                Ok(queue_mutex) => queue_mutex.into_inner(),
+                Err(_) => panic!("failed to recover queue from worker"),
+            };
+
+            Ok(queue)
+        } else {
+            Err(anyhow::Error::new(DeviceError::WorkerNotFound))
         }
     }
 }

@@ -1684,7 +1684,7 @@ pub struct DescriptorsExhausted;
 /// Handle incoming events and forward them to the VM over the input queue.
 pub fn process_in_queue<I: SignalableInterrupt>(
     interrupt: &I,
-    in_queue: &mut Queue,
+    in_queue: &Rc<RefCell<Queue>>,
     mem: &GuestMemory,
     state: &mut WlState,
 ) -> ::std::result::Result<(), DescriptorsExhausted> {
@@ -1692,6 +1692,7 @@ pub fn process_in_queue<I: SignalableInterrupt>(
 
     let mut needs_interrupt = false;
     let mut exhausted_queue = false;
+    let mut in_queue = in_queue.borrow_mut();
     loop {
         let mut desc = if let Some(d) = in_queue.peek(mem) {
             d
@@ -1736,11 +1737,12 @@ pub fn process_in_queue<I: SignalableInterrupt>(
 /// Handle messages from the output queue and forward them to the display sever, if necessary.
 pub fn process_out_queue<I: SignalableInterrupt>(
     interrupt: &I,
-    out_queue: &mut Queue,
+    out_queue: &Rc<RefCell<Queue>>,
     mem: &GuestMemory,
     state: &mut WlState,
 ) {
     let mut needs_interrupt = false;
+    let mut out_queue = out_queue.borrow_mut();
     while let Some(mut desc) = out_queue.pop(mem) {
         let resp = match state.execute(&mut desc.reader) {
             Ok(r) => r,
@@ -1767,9 +1769,9 @@ pub fn process_out_queue<I: SignalableInterrupt>(
 struct Worker {
     interrupt: Interrupt,
     mem: GuestMemory,
-    in_queue: Queue,
+    in_queue: Rc<RefCell<Queue>>,
     in_queue_evt: Event,
-    out_queue: Queue,
+    out_queue: Rc<RefCell<Queue>>,
     out_queue_evt: Event,
     state: WlState,
 }
@@ -1791,9 +1793,9 @@ impl Worker {
         Worker {
             interrupt,
             mem,
-            in_queue: in_queue.0,
+            in_queue: Rc::new(RefCell::new(in_queue.0)),
             in_queue_evt: in_queue.1,
-            out_queue: out_queue.0,
+            out_queue: Rc::new(RefCell::new(out_queue.0)),
             out_queue_evt: out_queue.1,
             state: WlState::new(
                 wayland_paths,
@@ -1860,7 +1862,7 @@ impl Worker {
                         let _ = self.out_queue_evt.wait();
                         process_out_queue(
                             &self.interrupt,
-                            &mut self.out_queue,
+                            &self.out_queue,
                             &self.mem,
                             &mut self.state,
                         );
@@ -1869,7 +1871,7 @@ impl Worker {
                     Token::State => {
                         if let Err(DescriptorsExhausted) = process_in_queue(
                             &self.interrupt,
-                            &mut self.in_queue,
+                            &self.in_queue,
                             &self.mem,
                             &mut self.state,
                         ) {
@@ -1892,8 +1894,18 @@ impl Worker {
             }
         }
 
+        let in_queue = match Rc::try_unwrap(self.in_queue) {
+            Ok(queue_cell) => queue_cell.into_inner(),
+            Err(_) => panic!("failed to recover queue from worker"),
+        };
+
+        let out_queue = match Rc::try_unwrap(self.out_queue) {
+            Ok(queue_cell) => queue_cell.into_inner(),
+            Err(_) => panic!("failed to recover queue from worker"),
+        };
+
         Ok(VirtioDeviceSaved {
-            queues: vec![self.in_queue, self.out_queue],
+            queues: vec![in_queue, out_queue],
         })
     }
 }

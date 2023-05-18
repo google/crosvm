@@ -6,6 +6,7 @@
 
 use std::collections::VecDeque;
 use std::io;
+use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::Context;
@@ -23,6 +24,7 @@ use cros_async::IntoAsync;
 use cros_async::IoSource;
 use futures::FutureExt;
 use hypervisor::ProtectionType;
+use sync::Mutex;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserVirtioFeatures;
 use zerocopy::AsBytes;
@@ -57,7 +59,7 @@ impl AsRawDescriptor for AsyncSerialInput {
 impl IntoAsync for AsyncSerialInput {}
 
 async fn run_tx_queue<I: SignalableInterrupt>(
-    mut queue: virtio::Queue,
+    queue: &Arc<Mutex<virtio::Queue>>,
     mem: GuestMemory,
     doorbell: I,
     kick_evt: EventAsync,
@@ -68,12 +70,12 @@ async fn run_tx_queue<I: SignalableInterrupt>(
             error!("Failed to read kick event for tx queue: {}", e);
             break;
         }
-        process_transmit_queue(&mem, &doorbell, &mut queue, output.as_mut());
+        process_transmit_queue(&mem, &doorbell, queue, output.as_mut());
     }
 }
 
 async fn run_rx_queue<I: SignalableInterrupt>(
-    mut queue: virtio::Queue,
+    queue: &Arc<Mutex<virtio::Queue>>,
     mem: GuestMemory,
     doorbell: I,
     kick_evt: EventAsync,
@@ -100,7 +102,7 @@ async fn run_rx_queue<I: SignalableInterrupt>(
 
         // Submit all the data obtained during this read.
         while !in_buffer.is_empty() {
-            match handle_input(&mem, &doorbell, &mut in_buffer, &mut queue) {
+            match handle_input(&mem, &doorbell, &mut in_buffer, queue) {
                 Ok(()) => {}
                 Err(ConsoleError::RxDescriptorsExhausted) => {
                     // Wait until a descriptor becomes available and try again.
@@ -129,7 +131,7 @@ impl ConsoleDevice {
         &mut self,
         ex: &Executor,
         mem: GuestMemory,
-        queue: virtio::Queue,
+        queue: Arc<Mutex<virtio::Queue>>,
         doorbell: I,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
@@ -149,7 +151,7 @@ impl ConsoleDevice {
 
             Ok(async move {
                 select2(
-                    run_rx_queue(queue, mem, doorbell, kick_evt, &async_input).boxed_local(),
+                    run_rx_queue(&queue, mem, doorbell, kick_evt, &async_input).boxed_local(),
                     abort,
                 )
                 .await;
@@ -173,7 +175,7 @@ impl ConsoleDevice {
         &mut self,
         ex: &Executor,
         mem: GuestMemory,
-        queue: virtio::Queue,
+        queue: Arc<Mutex<virtio::Queue>>,
         doorbell: I,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
@@ -183,7 +185,7 @@ impl ConsoleDevice {
         let tx_future = |mut output, abort| {
             Ok(async move {
                 select2(
-                    run_tx_queue(queue, mem, doorbell, kick_evt, &mut output).boxed_local(),
+                    run_tx_queue(&queue, mem, doorbell, kick_evt, &mut output).boxed_local(),
                     abort,
                 )
                 .await;
@@ -317,6 +319,8 @@ impl VirtioDevice for AsyncConsole {
         self.state =
             VirtioConsoleState::Running(WorkerThread::start("v_console", move |kill_evt| {
                 let mut console = console;
+                let receive_queue = Arc::new(Mutex::new(receive_queue));
+                let transmit_queue = Arc::new(Mutex::new(transmit_queue));
 
                 console.start_receive_queue(
                     &ex,

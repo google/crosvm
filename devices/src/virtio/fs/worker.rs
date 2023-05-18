@@ -2,11 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::fs::File;
 use std::io;
 use std::os::unix::io::AsRawFd;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use base::error;
@@ -142,7 +144,7 @@ impl fuse::Mapper for Mapper {
 
 pub struct Worker<F: FileSystem + Sync> {
     mem: GuestMemory,
-    queue: Queue,
+    queue: Rc<RefCell<Queue>>,
     server: Arc<fuse::Server<F>>,
     irq: Interrupt,
     tube: Arc<Mutex<Tube>>,
@@ -152,12 +154,13 @@ pub struct Worker<F: FileSystem + Sync> {
 pub fn process_fs_queue<I: SignalableInterrupt, F: FileSystem + Sync>(
     mem: &GuestMemory,
     interrupt: &I,
-    queue: &mut Queue,
+    queue: &Rc<RefCell<Queue>>,
     server: &Arc<fuse::Server<F>>,
     tube: &Arc<Mutex<Tube>>,
     slot: u32,
 ) -> Result<()> {
     let mapper = Mapper::new(Arc::clone(tube), slot);
+    let mut queue = queue.borrow_mut();
     while let Some(mut avail_desc) = queue.pop(mem) {
         let total =
             server.handle_message(&mut avail_desc.reader, &mut avail_desc.writer, &mapper)?;
@@ -180,7 +183,7 @@ impl<F: FileSystem + Sync> Worker<F> {
     ) -> Worker<F> {
         Worker {
             mem,
-            queue,
+            queue: Rc::new(RefCell::new(queue)),
             server,
             irq,
             tube,
@@ -245,7 +248,7 @@ impl<F: FileSystem + Sync> Worker<F> {
                         if let Err(e) = process_fs_queue(
                             &self.mem,
                             &self.irq,
-                            &mut self.queue,
+                            &self.queue,
                             &self.server,
                             &self.tube,
                             self.slot,
