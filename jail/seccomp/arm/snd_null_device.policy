@@ -12,4 +12,5 @@ connect: 1
 prlimit64: 1
 sched_setscheduler: 1
 timerfd_create: 1
+timerfd_settime: 1
 timerfd_settime64: 1
