@@ -11,7 +11,6 @@
 use std::mem::size_of;
 use std::os::raw::c_char;
 use std::os::raw::c_int;
-use std::os::raw::c_uchar;
 use std::os::raw::c_uint;
 use std::os::raw::c_void;
 use std::ptr::null;
@@ -137,15 +136,7 @@ extern "C" {
     fn stream_renderer_get_cap_set(set: u32, max_ver: *mut u32, max_size: *mut u32);
     fn stream_renderer_fill_caps(set: u32, version: u32, caps: *mut c_void);
 
-    fn stream_renderer_flush_resource_and_readback(
-        res_handle: u32,
-        x: u32,
-        y: u32,
-        width: u32,
-        height: u32,
-        pixels: *mut c_uchar,
-        max_bytes: u32,
-    );
+    fn stream_renderer_flush(res_handle: u32);
     fn stream_renderer_create_blob(
         ctx_id: u32,
         res_handle: u32,
@@ -531,15 +522,7 @@ impl RutabagaComponent for Gfxstream {
 
     fn resource_flush(&self, resource: &mut RutabagaResource) -> RutabagaResult<()> {
         unsafe {
-            stream_renderer_flush_resource_and_readback(
-                resource.resource_id,
-                0,
-                0,
-                0,
-                0,
-                null_mut(),
-                0,
-            );
+            stream_renderer_flush(resource.resource_id);
         }
         Ok(())
     }

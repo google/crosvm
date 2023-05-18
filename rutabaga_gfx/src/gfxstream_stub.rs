@@ -12,7 +12,6 @@
 
 use std::os::raw::c_char;
 use std::os::raw::c_int;
-use std::os::raw::c_uchar;
 use std::os::raw::c_uint;
 use std::os::raw::c_void;
 
@@ -125,15 +124,7 @@ extern "C" fn stream_renderer_fill_caps(_set: u32, _version: u32, _caps: *mut c_
 }
 
 #[no_mangle]
-extern "C" fn stream_renderer_flush_resource_and_readback(
-    _res_handle: u32,
-    _x: u32,
-    _y: u32,
-    _width: u32,
-    _height: u32,
-    _pixels: *mut c_uchar,
-    _max_bytes: u32,
-) {
+extern "C" fn stream_renderer_flush(_res_handle: u32) {
     unimplemented!();
 }
 #[no_mangle]
