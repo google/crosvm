@@ -171,20 +171,22 @@ impl<E: Endpoint<MasterReq>> Master<E> {
     }
 
     /// Set base address for page modification logging.
-    // Clippy doesn't seem to know that if let with && is still experimental
-    #[allow(clippy::unnecessary_unwrap)]
     pub fn set_log_base(&self, base: u64, fd: Option<RawDescriptor>) -> Result<()> {
         let mut node = self.node();
         let val = VhostUserU64::new(base);
 
-        if node.acked_protocol_features & VhostUserProtocolFeatures::LOG_SHMFD.bits() != 0
-            && fd.is_some()
-        {
-            let fds = [fd.unwrap()];
-            let _ = node.send_request_with_body(MasterReq::SET_LOG_BASE, &val, Some(&fds))?;
-        } else {
-            let _ = node.send_request_with_body(MasterReq::SET_LOG_BASE, &val, None)?;
+        let should_have_fd =
+            node.acked_protocol_features & VhostUserProtocolFeatures::LOG_SHMFD.bits() != 0;
+        if should_have_fd != fd.is_some() {
+            return Err(VhostUserError::InvalidParam);
         }
+
+        let _ = node.send_request_with_body(
+            MasterReq::SET_LOG_BASE,
+            &val,
+            fd.as_ref().map(std::slice::from_ref),
+        )?;
+
         Ok(())
     }
 
