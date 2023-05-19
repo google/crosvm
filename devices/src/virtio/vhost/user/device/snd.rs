@@ -12,7 +12,7 @@ use anyhow::Context;
 use base::error;
 use base::warn;
 use base::Event;
-use cros_async::sync::Mutex as AsyncMutex;
+use cros_async::sync::RwLock as AsyncRwLock;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use futures::channel::mpsc;
@@ -64,11 +64,11 @@ struct SndBackend {
     avail_features: u64,
     acked_features: u64,
     acked_protocol_features: VhostUserProtocolFeatures,
-    workers: [Option<WorkerState<Rc<AsyncMutex<Queue>>, Result<(), Error>>>; MAX_QUEUE_NUM],
+    workers: [Option<WorkerState<Rc<AsyncRwLock<Queue>>, Result<(), Error>>>; MAX_QUEUE_NUM],
     // tx and rx
-    response_workers: [Option<WorkerState<Rc<AsyncMutex<Queue>>, Result<(), Error>>>; 2],
+    response_workers: [Option<WorkerState<Rc<AsyncRwLock<Queue>>, Result<(), Error>>>; 2],
     snd_data: Rc<SndData>,
-    streams: Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo>>>>,
+    streams: Rc<AsyncRwLock<Vec<AsyncRwLock<StreamInfo>>>>,
     tx_send: mpsc::UnboundedSender<PcmResponse>,
     rx_send: mpsc::UnboundedSender<PcmResponse>,
     tx_recv: Option<mpsc::UnboundedReceiver<PcmResponse>>,
@@ -96,9 +96,9 @@ impl SndBackend {
         let streams = builders
             .into_iter()
             .map(StreamInfoBuilder::build)
-            .map(AsyncMutex::new)
+            .map(AsyncRwLock::new)
             .collect();
-        let streams = Rc::new(AsyncMutex::new(streams));
+        let streams = Rc::new(AsyncRwLock::new(streams));
 
         let (tx_send, tx_recv) = mpsc::unbounded();
         let (rx_send, rx_recv) = mpsc::unbounded();
@@ -204,7 +204,7 @@ impl VhostUserBackend for SndBackend {
         let mut kick_evt =
             EventAsync::new(kick_evt, ex).context("failed to create EventAsync for kick_evt")?;
         let (handle, registration) = AbortHandle::new_pair();
-        let queue = Rc::new(AsyncMutex::new(queue));
+        let queue = Rc::new(AsyncRwLock::new(queue));
         let queue_task = match idx {
             0 => {
                 // ctrl queue

@@ -14,7 +14,7 @@ use audio_streams::AsyncPlaybackBuffer;
 use base::debug;
 use base::error;
 use cros_async::sync::Condvar;
-use cros_async::sync::Mutex as AsyncMutex;
+use cros_async::sync::RwLock as AsyncRwLock;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use futures::channel::mpsc;
@@ -156,7 +156,7 @@ async fn process_pcm_ctrl(
     ex: &Executor,
     tx_send: &mpsc::UnboundedSender<PcmResponse>,
     rx_send: &mpsc::UnboundedSender<PcmResponse>,
-    streams: &Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo>>>>,
+    streams: &Rc<AsyncRwLock<Vec<AsyncRwLock<StreamInfo>>>>,
     cmd: VirtioSndPcmCmd,
     writer: &mut Writer,
     stream_id: usize,
@@ -326,7 +326,7 @@ pub async fn start_pcm_worker(
     ex: Executor,
     dstream: DirectionalStream,
     mut desc_receiver: mpsc::UnboundedReceiver<DescriptorChain>,
-    status_mutex: Rc<AsyncMutex<WorkerStatus>>,
+    status_mutex: Rc<AsyncRwLock<WorkerStatus>>,
     mut sender: mpsc::UnboundedSender<PcmResponse>,
 ) -> Result<(), Error> {
     let res = pcm_worker_loop(ex, dstream, &mut desc_receiver, &status_mutex, &mut sender).await;
@@ -347,7 +347,7 @@ async fn pcm_worker_loop(
     ex: Executor,
     dstream: DirectionalStream,
     desc_receiver: &mut mpsc::UnboundedReceiver<DescriptorChain>,
-    status_mutex: &Rc<AsyncMutex<WorkerStatus>>,
+    status_mutex: &Rc<AsyncRwLock<WorkerStatus>>,
     sender: &mut mpsc::UnboundedSender<PcmResponse>,
 ) -> Result<(), Error> {
     match dstream {
@@ -494,7 +494,7 @@ fn send_pcm_response<I: SignalableInterrupt>(
 }
 
 // Await until reset_signal has been released
-async fn await_reset_signal(reset_signal_option: Option<&(AsyncMutex<bool>, Condvar)>) {
+async fn await_reset_signal(reset_signal_option: Option<&(AsyncRwLock<bool>, Condvar)>) {
     match reset_signal_option {
         Some((lock, cvar)) => {
             let mut reset = lock.lock().await;
@@ -508,10 +508,10 @@ async fn await_reset_signal(reset_signal_option: Option<&(AsyncMutex<bool>, Cond
 
 pub async fn send_pcm_response_worker<I: SignalableInterrupt>(
     mem: &GuestMemory,
-    queue: Rc<AsyncMutex<Queue>>,
+    queue: Rc<AsyncRwLock<Queue>>,
     interrupt: I,
     recv: &mut mpsc::UnboundedReceiver<PcmResponse>,
-    reset_signal: Option<&(AsyncMutex<bool>, Condvar)>,
+    reset_signal: Option<&(AsyncRwLock<bool>, Condvar)>,
 ) -> Result<(), Error> {
     let on_reset = await_reset_signal(reset_signal).fuse();
     pin_mut!(on_reset);
@@ -550,11 +550,11 @@ pub async fn send_pcm_response_worker<I: SignalableInterrupt>(
 /// each queue.
 pub async fn handle_pcm_queue(
     mem: &GuestMemory,
-    streams: &Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo>>>>,
+    streams: &Rc<AsyncRwLock<Vec<AsyncRwLock<StreamInfo>>>>,
     mut response_sender: mpsc::UnboundedSender<PcmResponse>,
-    queue: Rc<AsyncMutex<Queue>>,
+    queue: Rc<AsyncRwLock<Queue>>,
     queue_event: &EventAsync,
-    reset_signal: Option<&(AsyncMutex<bool>, Condvar)>,
+    reset_signal: Option<&(AsyncRwLock<bool>, Condvar)>,
 ) -> Result<(), Error> {
     let on_reset = await_reset_signal(reset_signal).fuse();
     pin_mut!(on_reset);
@@ -634,14 +634,14 @@ pub async fn handle_pcm_queue(
 pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
     ex: &Executor,
     mem: &GuestMemory,
-    streams: &Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo>>>>,
+    streams: &Rc<AsyncRwLock<Vec<AsyncRwLock<StreamInfo>>>>,
     snd_data: &SndData,
-    queue: Rc<AsyncMutex<Queue>>,
+    queue: Rc<AsyncRwLock<Queue>>,
     queue_event: &mut EventAsync,
     interrupt: I,
     tx_send: mpsc::UnboundedSender<PcmResponse>,
     rx_send: mpsc::UnboundedSender<PcmResponse>,
-    reset_signal: Option<&(AsyncMutex<bool>, Condvar)>,
+    reset_signal: Option<&(AsyncRwLock<bool>, Condvar)>,
 ) -> Result<(), Error> {
     let on_reset = await_reset_signal(reset_signal).fuse();
     pin_mut!(on_reset);

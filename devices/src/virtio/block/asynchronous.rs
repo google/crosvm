@@ -29,7 +29,7 @@ use base::Tube;
 use base::TubeError;
 use base::WorkerThread;
 use cros_async::select5;
-use cros_async::sync::Mutex as AsyncMutex;
+use cros_async::sync::RwLock as AsyncRwLock;
 use cros_async::AsyncError;
 use cros_async::AsyncTube;
 use cros_async::EventAsync;
@@ -202,7 +202,7 @@ pub struct DiskState {
     pub id: Option<BlockId>,
     /// A DiskState is owned by each worker's executor and cannot be shared by workers, thus
     /// `worker_shared_state` holds the state shared by workers in Arc.
-    worker_shared_state: Arc<AsyncMutex<WorkerSharedState>>,
+    worker_shared_state: Arc<AsyncRwLock<WorkerSharedState>>,
 }
 
 /// Disk state which can be modified by other worker threads
@@ -224,14 +224,17 @@ impl DiskState {
             disk_image,
             read_only,
             id,
-            worker_shared_state: Arc::new(AsyncMutex::new(WorkerSharedState { disk_size, sparse })),
+            worker_shared_state: Arc::new(AsyncRwLock::new(WorkerSharedState {
+                disk_size,
+                sparse,
+            })),
         }
     }
 }
 
 async fn process_one_request(
     avail_desc: &mut DescriptorChain,
-    disk_state: Rc<AsyncMutex<DiskState>>,
+    disk_state: Rc<AsyncRwLock<DiskState>>,
     flush_timer: Rc<RefCell<TimerAsync>>,
     flush_timer_armed: Rc<RefCell<bool>>,
 ) -> result::Result<usize, ExecuteError> {
@@ -275,7 +278,7 @@ async fn process_one_request(
 pub async fn process_one_chain<I: SignalableInterrupt>(
     queue: Rc<RefCell<Queue>>,
     mut avail_desc: DescriptorChain,
-    disk_state: Rc<AsyncMutex<DiskState>>,
+    disk_state: Rc<AsyncRwLock<DiskState>>,
     mem: GuestMemory,
     interrupt: &I,
     flush_timer: Rc<RefCell<TimerAsync>>,
@@ -301,7 +304,7 @@ pub async fn process_one_chain<I: SignalableInterrupt>(
 // executor.
 pub async fn handle_queue<I: SignalableInterrupt + 'static>(
     mem: GuestMemory,
-    disk_state: Rc<AsyncMutex<DiskState>>,
+    disk_state: Rc<AsyncRwLock<DiskState>>,
     queue: Rc<RefCell<Queue>>,
     evt: EventAsync,
     interrupt: I,
@@ -355,7 +358,7 @@ pub async fn handle_queue<I: SignalableInterrupt + 'static>(
 pub async fn handle_vhost_user_command_tube(
     command_tube: AsyncTube,
     backend_req_connection: Arc<Mutex<VhostBackendReqConnectionState>>,
-    disk_state: Rc<AsyncMutex<DiskState>>,
+    disk_state: Rc<AsyncRwLock<DiskState>>,
 ) -> Result<(), ExecuteError> {
     // Process the commands.
     handle_command_tube(
@@ -374,7 +377,7 @@ enum ConfigChangeSignal {
 async fn handle_command_tube(
     command_tube: &Option<AsyncTube>,
     signal: ConfigChangeSignal,
-    disk_state: Rc<AsyncMutex<DiskState>>,
+    disk_state: Rc<AsyncRwLock<DiskState>>,
 ) -> Result<(), ExecuteError> {
     let command_tube = match command_tube {
         Some(c) => c,
@@ -422,7 +425,7 @@ async fn handle_command_tube(
     }
 }
 
-async fn resize(disk_state: Rc<AsyncMutex<DiskState>>, new_size: u64) -> DiskControlResult {
+async fn resize(disk_state: Rc<AsyncRwLock<DiskState>>, new_size: u64) -> DiskControlResult {
     // Acquire exclusive, mutable access to the state so the virtqueue task won't be able to read
     // the state while resizing.
     let mut disk_state = disk_state.lock().await;
@@ -460,7 +463,7 @@ async fn resize(disk_state: Rc<AsyncMutex<DiskState>>, new_size: u64) -> DiskCon
 
 /// Periodically flushes the disk when the given timer fires.
 pub async fn flush_disk(
-    disk_state: Rc<AsyncMutex<DiskState>>,
+    disk_state: Rc<AsyncRwLock<DiskState>>,
     timer: TimerAsync,
     armed: Rc<RefCell<bool>>,
 ) -> Result<(), ControlError> {
@@ -487,15 +490,15 @@ pub async fn flush_disk(
 // The main worker thread. Initialized the asynchronous worker tasks and passes them to the executor
 // to be processed.
 //
-// `disk_state` is wrapped by `AsyncMutex`, which provides both shared and exclusive locks. It's
-// because the state can be read from the virtqueue task while the control task is processing
-// a resizing command.
+// `disk_state` is wrapped by `AsyncRwLock`, which provides both shared and exclusive locks. It's
+// because the state can be read from the virtqueue task while the control task is processing a
+// resizing command.
 fn run_worker(
     ex: Executor,
     interrupt: Interrupt,
     queues: Vec<(Queue, Event)>,
     mem: GuestMemory,
-    disk_state: &Rc<AsyncMutex<DiskState>>,
+    disk_state: &Rc<AsyncRwLock<DiskState>>,
     control_tube: &Option<AsyncTube>,
     kill_evt: Event,
 ) -> Result<(), String> {
@@ -684,7 +687,7 @@ impl BlockAsync {
     async fn execute_request(
         reader: &mut Reader,
         writer: &mut Writer,
-        disk_state: Rc<AsyncMutex<DiskState>>,
+        disk_state: Rc<AsyncRwLock<DiskState>>,
         flush_timer: Rc<RefCell<TimerAsync>>,
         flush_timer_armed: Rc<RefCell<bool>>,
     ) -> result::Result<(), ExecuteError> {
@@ -950,7 +953,7 @@ impl VirtioDevice for BlockAsync {
             vec![(queues, disk_image)]
         };
 
-        let shared_state = Arc::new(AsyncMutex::new(WorkerSharedState {
+        let shared_state = Arc::new(AsyncRwLock::new(WorkerSharedState {
             disk_size: self.disk_size.clone(),
             sparse,
         }));
@@ -972,7 +975,7 @@ impl VirtioDevice for BlockAsync {
                     Ok(d) => d,
                     Err(e) => panic!("Failed to create async disk {}", e),
                 };
-                let disk_state = Rc::new(AsyncMutex::new(DiskState {
+                let disk_state = Rc::new(AsyncRwLock::new(DiskState {
                     disk_image: async_image,
                     read_only,
                     id,
@@ -1271,11 +1274,11 @@ mod tests {
         ));
         let flush_timer_armed = Rc::new(RefCell::new(false));
 
-        let disk_state = Rc::new(AsyncMutex::new(DiskState {
+        let disk_state = Rc::new(AsyncRwLock::new(DiskState {
             disk_image: Box::new(af),
             read_only: false,
             id: None,
-            worker_shared_state: Arc::new(AsyncMutex::new(WorkerSharedState {
+            worker_shared_state: Arc::new(AsyncRwLock::new(WorkerSharedState {
                 disk_size: Arc::new(AtomicU64::new(disk_size)),
                 sparse: true,
             })),
@@ -1334,11 +1337,11 @@ mod tests {
             TimerAsync::new(timer, &ex).expect("Failed to create an async timer"),
         ));
         let flush_timer_armed = Rc::new(RefCell::new(false));
-        let disk_state = Rc::new(AsyncMutex::new(DiskState {
+        let disk_state = Rc::new(AsyncRwLock::new(DiskState {
             disk_image: Box::new(af),
             read_only: false,
             id: None,
-            worker_shared_state: Arc::new(AsyncMutex::new(WorkerSharedState {
+            worker_shared_state: Arc::new(AsyncRwLock::new(WorkerSharedState {
                 disk_size: Arc::new(AtomicU64::new(disk_size)),
                 sparse: true,
             })),
@@ -1399,11 +1402,11 @@ mod tests {
 
         let id = b"a20-byteserialnumber";
 
-        let disk_state = Rc::new(AsyncMutex::new(DiskState {
+        let disk_state = Rc::new(AsyncRwLock::new(DiskState {
             disk_image: Box::new(af),
             read_only: false,
             id: Some(*id),
-            worker_shared_state: Arc::new(AsyncMutex::new(WorkerSharedState {
+            worker_shared_state: Arc::new(AsyncRwLock::new(WorkerSharedState {
                 disk_size: Arc::new(AtomicU64::new(disk_size)),
                 sparse: true,
             })),

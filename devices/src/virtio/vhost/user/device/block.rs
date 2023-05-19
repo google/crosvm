@@ -16,7 +16,7 @@ use anyhow::Context;
 use base::warn;
 use base::Event;
 use base::Timer;
-use cros_async::sync::Mutex as AsyncMutex;
+use cros_async::sync::RwLock as AsyncRwLock;
 use cros_async::AsyncTube;
 use cros_async::EventAsync;
 use cros_async::Executor;
@@ -54,7 +54,7 @@ const NUM_QUEUES: u16 = 16;
 
 struct BlockBackend {
     ex: Executor,
-    disk_state: Rc<AsyncMutex<DiskState>>,
+    disk_state: Rc<AsyncRwLock<DiskState>>,
     disk_size: Arc<AtomicU64>,
     block_size: u32,
     seg_max: u32,
@@ -86,7 +86,7 @@ impl VhostUserDevice for BlockAsync {
         };
         let async_image = disk_image.to_async_disk(ex)?;
 
-        let disk_state = Rc::new(AsyncMutex::new(DiskState::new(
+        let disk_state = Rc::new(AsyncRwLock::new(DiskState::new(
             async_image,
             Arc::clone(&self.disk_size),
             self.read_only,

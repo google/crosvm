@@ -9,7 +9,7 @@ use std::sync::Arc;
 use audio_streams::SampleFormat;
 use audio_streams::StreamEffect;
 use base::error;
-use cros_async::sync::Mutex as AsyncMutex;
+use cros_async::sync::RwLock as AsyncRwLock;
 use cros_async::Executor;
 use futures::channel::mpsc;
 use futures::Future;
@@ -94,7 +94,7 @@ pub struct StreamInfo {
     pub just_reset: bool,
 
     // Worker related
-    pub status_mutex: Rc<AsyncMutex<WorkerStatus>>,
+    pub status_mutex: Rc<AsyncRwLock<WorkerStatus>>,
     pub sender: Option<mpsc::UnboundedSender<DescriptorChain>>,
     worker_future: Option<Box<dyn Future<Output = Result<(), Error>> + Unpin>>,
     ex: Option<Executor>, // Executor provided on `prepare()`. Used on `drop()`.
@@ -150,7 +150,7 @@ impl From<StreamInfoBuilder> for StreamInfo {
             state: 0,
             effects: builder.effects,
             just_reset: false,
-            status_mutex: Rc::new(AsyncMutex::new(WorkerStatus::Pause)),
+            status_mutex: Rc::new(AsyncRwLock::new(WorkerStatus::Pause)),
             sender: None,
             worker_future: None,
             ex: None,
@@ -290,7 +290,7 @@ impl StreamInfo {
         self.sender = Some(sender);
         self.state = VIRTIO_SND_R_PCM_PREPARE;
 
-        self.status_mutex = Rc::new(AsyncMutex::new(WorkerStatus::Pause));
+        self.status_mutex = Rc::new(AsyncRwLock::new(WorkerStatus::Pause));
         let f = start_pcm_worker(
             ex.clone(),
             stream,

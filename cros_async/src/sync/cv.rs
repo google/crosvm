@@ -9,9 +9,9 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use super::super::sync::mu::MutexGuard;
-use super::super::sync::mu::MutexReadGuard;
-use super::super::sync::mu::RawMutex;
+use super::super::sync::mu::RawRwLock;
+use super::super::sync::mu::RwLockReadGuard;
+use super::super::sync::mu::RwLockWriteGuard;
 use super::super::sync::waiter::Kind as WaiterKind;
 use super::super::sync::waiter::Waiter;
 use super::super::sync::waiter::WaiterAdapter;
@@ -23,9 +23,9 @@ const HAS_WAITERS: usize = 1 << 1;
 
 /// A primitive to wait for an event to occur without consuming CPU time.
 ///
-/// Condition variables are used in combination with a `Mutex` when a thread wants to wait for some
-/// condition to become true. The condition must always be verified while holding the `Mutex` lock.
-/// It is an error to use a `Condvar` with more than one `Mutex` while there are threads waiting on
+/// Condition variables are used in combination with a `RwLock` when a thread wants to wait for some
+/// condition to become true. The condition must always be verified while holding the `RwLock` lock.
+/// It is an error to use a `Condvar` with more than one `RwLock` while there are threads waiting on
 /// the `Condvar`.
 ///
 /// # Examples
@@ -37,14 +37,14 @@ const HAS_WAITERS: usize = 1 << 1;
 ///
 /// use cros_async::{
 ///     block_on,
-///     sync::{Condvar, Mutex},
+///     sync::{Condvar, RwLock},
 /// };
 ///
 /// const N: usize = 13;
 ///
 /// // Spawn a few threads to increment a shared variable (non-atomically), and
 /// // let all threads waiting on the Condvar know once the increments are done.
-/// let data = Arc::new(Mutex::new(0));
+/// let data = Arc::new(RwLock::new(0));
 /// let cv = Arc::new(Condvar::new());
 ///
 /// for _ in 0..N {
@@ -82,8 +82,8 @@ impl Condvar {
 
     /// Block the current thread until this `Condvar` is notified by another thread.
     ///
-    /// This method will atomically unlock the `Mutex` held by `guard` and then block the current
-    /// thread. Any call to `notify_one` or `notify_all` after the `Mutex` is unlocked may wake up
+    /// This method will atomically unlock the `RwLock` held by `guard` and then block the current
+    /// thread. Any call to `notify_one` or `notify_all` after the `RwLock` is unlocked may wake up
     /// the thread.
     ///
     /// To allow for more efficient scheduling, this call may return even when the programmer
@@ -95,7 +95,7 @@ impl Condvar {
     ///
     /// # Panics
     ///
-    /// This method will panic if used with more than one `Mutex` at the same time.
+    /// This method will panic if used with more than one `RwLock` at the same time.
     ///
     /// # Examples
     ///
@@ -105,10 +105,10 @@ impl Condvar {
     ///
     /// # use cros_async::{
     /// #     block_on,
-    /// #     sync::{Condvar, Mutex},
+    /// #     sync::{Condvar, RwLock},
     /// # };
     ///
-    /// # let mu = Arc::new(Mutex::new(false));
+    /// # let mu = Arc::new(RwLock::new(false));
     /// # let cv = Arc::new(Condvar::new());
     /// # let (mu2, cv2) = (mu.clone(), cv.clone());
     ///
@@ -127,7 +127,7 @@ impl Condvar {
     // Clippy doesn't like the lifetime parameters here but doing what it suggests leads to code
     // that doesn't compile.
     #[allow(clippy::needless_lifetimes)]
-    pub async fn wait<'g, T>(&self, guard: MutexGuard<'g, T>) -> MutexGuard<'g, T> {
+    pub async fn wait<'g, T>(&self, guard: RwLockWriteGuard<'g, T>) -> RwLockWriteGuard<'g, T> {
         let waiter = Arc::new(Waiter::new(
             WaiterKind::Exclusive,
             cancel_waiter,
@@ -135,9 +135,9 @@ impl Condvar {
             WaitingFor::Condvar,
         ));
 
-        self.add_waiter(waiter.clone(), guard.as_raw_mutex());
+        self.add_waiter(waiter.clone(), guard.as_raw_rwlock());
 
-        // Get a reference to the mutex and then drop the lock.
+        // Get a reference to the rwlock and then drop the lock.
         let mu = guard.into_inner();
 
         // Wait to be woken up.
@@ -147,11 +147,11 @@ impl Condvar {
         mu.lock_from_cv().await
     }
 
-    /// Like `wait()` but takes and returns a `MutexReadGuard` instead.
+    /// Like `wait()` but takes and returns a `RwLockReadGuard` instead.
     // Clippy doesn't like the lifetime parameters here but doing what it suggests leads to code
     // that doesn't compile.
     #[allow(clippy::needless_lifetimes)]
-    pub async fn wait_read<'g, T>(&self, guard: MutexReadGuard<'g, T>) -> MutexReadGuard<'g, T> {
+    pub async fn wait_read<'g, T>(&self, guard: RwLockReadGuard<'g, T>) -> RwLockReadGuard<'g, T> {
         let waiter = Arc::new(Waiter::new(
             WaiterKind::Shared,
             cancel_waiter,
@@ -159,9 +159,9 @@ impl Condvar {
             WaitingFor::Condvar,
         ));
 
-        self.add_waiter(waiter.clone(), guard.as_raw_mutex());
+        self.add_waiter(waiter.clone(), guard.as_raw_rwlock());
 
-        // Get a reference to the mutex and then drop the lock.
+        // Get a reference to the rwlock and then drop the lock.
         let mu = guard.into_inner();
 
         // Wait to be woken up.
@@ -171,7 +171,7 @@ impl Condvar {
         mu.read_lock_from_cv().await
     }
 
-    fn add_waiter(&self, waiter: Arc<Waiter>, raw_mutex: &RawMutex) {
+    fn add_waiter(&self, waiter: Arc<Waiter>, raw_rwlock: &RawRwLock) {
         // Acquire the spin lock.
         let mut oldstate = self.state.load(Ordering::Relaxed);
         while (oldstate & SPINLOCK) != 0
@@ -192,12 +192,12 @@ impl Condvar {
         // Safe because the spin lock guarantees exclusive access and the reference does not escape
         // this function.
         let mu = unsafe { &mut *self.mu.get() };
-        let muptr = raw_mutex as *const RawMutex as usize;
+        let muptr = raw_rwlock as *const RawRwLock as usize;
 
         match *mu {
             0 => *mu = muptr,
             p if p == muptr => {}
-            _ => panic!("Attempting to use Condvar with more than one Mutex at the same time"),
+            _ => panic!("Attempting to use Condvar with more than one RwLock at the same time"),
         }
 
         // Safe because the spin lock guarantees exclusive access.
@@ -215,9 +215,9 @@ impl Condvar {
     /// `wait`.
     ///
     /// Unlike more traditional condition variable interfaces, this method requires a reference to
-    /// the `Mutex` associated with this `Condvar`. This is because it is inherently racy to call
-    /// `notify_one` or `notify_all` without first acquiring the `Mutex` lock. Additionally, taking
-    /// a reference to the `Mutex` here allows us to make some optimizations that can improve
+    /// the `RwLock` associated with this `Condvar`. This is because it is inherently racy to call
+    /// `notify_one` or `notify_all` without first acquiring the `RwLock` lock. Additionally, taking
+    /// a reference to the `RwLock` here allows us to make some optimizations that can improve
     /// performance by reducing unnecessary wakeups.
     pub fn notify_one(&self) {
         let mut oldstate = self.state.load(Ordering::Relaxed);
@@ -247,7 +247,7 @@ impl Condvar {
         let wake_list = get_wake_list(waiters);
 
         let newstate = if waiters.is_empty() {
-            // Also clear the mutex associated with this Condvar since there are no longer any
+            // Also clear the rwlock associated with this Condvar since there are no longer any
             // waiters.  Safe because the spin lock guarantees exclusive access.
             unsafe { *self.mu.get() = 0 };
 
@@ -273,9 +273,9 @@ impl Condvar {
     /// All threads currently waiting on the `Condvar` will be woken up from their call to `wait`.
     ///
     /// Unlike more traditional condition variable interfaces, this method requires a reference to
-    /// the `Mutex` associated with this `Condvar`. This is because it is inherently racy to call
-    /// `notify_one` or `notify_all` without first acquiring the `Mutex` lock. Additionally, taking
-    /// a reference to the `Mutex` here allows us to make some optimizations that can improve
+    /// the `RwLock` associated with this `Condvar`. This is because it is inherently racy to call
+    /// `notify_one` or `notify_all` without first acquiring the `RwLock` lock. Additionally, taking
+    /// a reference to the `RwLock` here allows us to make some optimizations that can improve
     /// performance by reducing unnecessary wakeups.
     pub fn notify_all(&self) {
         let mut oldstate = self.state.load(Ordering::Relaxed);
@@ -302,7 +302,7 @@ impl Condvar {
         // Safe because the spin lock guarantees exclusive access to `self.waiters`.
         let wake_list = unsafe { (*self.waiters.get()).take() };
 
-        // Clear the mutex associated with this Condvar since there are no longer any waiters. Safe
+        // Clear the rwlock associated with this Condvar since there are no longer any waiters. Safe
         // because we the spin lock guarantees exclusive access.
         unsafe { *self.mu.get() = 0 };
 
@@ -361,7 +361,7 @@ impl Condvar {
         };
 
         let set_on_release = if waiters.is_empty() {
-            // Clear the mutex associated with this Condvar since there are no longer any waiters. Safe
+            // Clear the rwlock associated with this Condvar since there are no longer any waiters. Safe
             // because we the spin lock guarantees exclusive access.
             unsafe { *self.mu.get() = 0 };
 
@@ -479,7 +479,7 @@ mod test {
     use futures_util::task::LocalSpawnExt;
 
     use super::super::super::block_on;
-    use super::super::super::sync::Mutex;
+    use super::super::super::sync::RwLock;
     use super::*;
 
     // Dummy waker used when we want to manually drive futures.
@@ -497,7 +497,7 @@ mod test {
 
     #[test]
     fn notify_one() {
-        let mu = Arc::new(Mutex::new(()));
+        let mu = Arc::new(RwLock::new(()));
         let cv = Arc::new(Condvar::new());
 
         let mu2 = mu.clone();
@@ -514,10 +514,10 @@ mod test {
     }
 
     #[test]
-    fn multi_mutex() {
+    fn multi_rwlock() {
         const NUM_THREADS: usize = 5;
 
-        let mu = Arc::new(Mutex::new(false));
+        let mu = Arc::new(RwLock::new(false));
         let cv = Arc::new(Condvar::new());
 
         let mut threads = Vec::with_capacity(NUM_THREADS);
@@ -543,8 +543,8 @@ mod test {
             .try_for_each(JoinHandle::join)
             .expect("Failed to join threads");
 
-        // Now use the Condvar with a different mutex.
-        let alt_mu = Arc::new(Mutex::new(None));
+        // Now use the Condvar with a different rwlock.
+        let alt_mu = Arc::new(RwLock::new(None));
         let alt_mu2 = alt_mu.clone();
         let cv2 = cv.clone();
         let handle = thread::spawn(move || {
@@ -561,17 +561,17 @@ mod test {
 
         handle
             .join()
-            .expect("Failed to join thread alternate mutex");
+            .expect("Failed to join thread alternate rwlock");
     }
 
     #[test]
     fn notify_one_single_thread_async() {
-        async fn notify(mu: Rc<Mutex<()>>, cv: Rc<Condvar>) {
+        async fn notify(mu: Rc<RwLock<()>>, cv: Rc<Condvar>) {
             let _g = mu.lock().await;
             cv.notify_one();
         }
 
-        async fn wait(mu: Rc<Mutex<()>>, cv: Rc<Condvar>, spawner: LocalSpawner) {
+        async fn wait(mu: Rc<RwLock<()>>, cv: Rc<Condvar>, spawner: LocalSpawner) {
             let mu2 = Rc::clone(&mu);
             let cv2 = Rc::clone(&cv);
 
@@ -587,7 +587,7 @@ mod test {
         let mut ex = LocalPool::new();
         let spawner = ex.spawner();
 
-        let mu = Rc::new(Mutex::new(()));
+        let mu = Rc::new(RwLock::new(()));
         let cv = Rc::new(Condvar::new());
 
         spawner
@@ -599,12 +599,12 @@ mod test {
 
     #[test]
     fn notify_one_multi_thread_async() {
-        async fn notify(mu: Arc<Mutex<()>>, cv: Arc<Condvar>) {
+        async fn notify(mu: Arc<RwLock<()>>, cv: Arc<Condvar>) {
             let _g = mu.lock().await;
             cv.notify_one();
         }
 
-        async fn wait(mu: Arc<Mutex<()>>, cv: Arc<Condvar>, tx: Sender<()>, pool: ThreadPool) {
+        async fn wait(mu: Arc<RwLock<()>>, cv: Arc<Condvar>, tx: Sender<()>, pool: ThreadPool) {
             let mu2 = Arc::clone(&mu);
             let cv2 = Arc::clone(&cv);
 
@@ -619,7 +619,7 @@ mod test {
 
         let ex = ThreadPool::new().expect("Failed to create ThreadPool");
 
-        let mu = Arc::new(Mutex::new(()));
+        let mu = Arc::new(RwLock::new(()));
         let cv = Arc::new(Condvar::new());
 
         let (tx, rx) = channel();
@@ -635,7 +635,7 @@ mod test {
         const OBSERVERS: usize = 7;
         const ITERATIONS: usize = 103;
 
-        async fn observe(mu: &Arc<Mutex<usize>>, cv: &Arc<Condvar>) {
+        async fn observe(mu: &Arc<RwLock<usize>>, cv: &Arc<Condvar>) {
             let mut count = mu.read_lock().await;
             while *count == 0 {
                 count = cv.wait_read(count).await;
@@ -643,7 +643,7 @@ mod test {
             let _ = unsafe { ptr::read_volatile(&*count as *const usize) };
         }
 
-        async fn decrement(mu: &Arc<Mutex<usize>>, cv: &Arc<Condvar>) {
+        async fn decrement(mu: &Arc<RwLock<usize>>, cv: &Arc<Condvar>) {
             let mut count = mu.lock().await;
             while *count == 0 {
                 count = cv.wait(count).await;
@@ -651,7 +651,7 @@ mod test {
             *count -= 1;
         }
 
-        async fn increment(mu: Arc<Mutex<usize>>, cv: Arc<Condvar>, done: Sender<()>) {
+        async fn increment(mu: Arc<RwLock<usize>>, cv: Arc<Condvar>, done: Sender<()>) {
             for _ in 0..TASKS * OBSERVERS * ITERATIONS {
                 *mu.lock().await += 1;
                 cv.notify_one();
@@ -661,9 +661,9 @@ mod test {
         }
 
         async fn observe_either(
-            mu: Arc<Mutex<usize>>,
+            mu: Arc<RwLock<usize>>,
             cv: Arc<Condvar>,
-            alt_mu: Arc<Mutex<usize>>,
+            alt_mu: Arc<RwLock<usize>>,
             alt_cv: Arc<Condvar>,
             done: Sender<()>,
         ) {
@@ -678,9 +678,9 @@ mod test {
         }
 
         async fn decrement_either(
-            mu: Arc<Mutex<usize>>,
+            mu: Arc<RwLock<usize>>,
             cv: Arc<Condvar>,
-            alt_mu: Arc<Mutex<usize>>,
+            alt_mu: Arc<RwLock<usize>>,
             alt_cv: Arc<Condvar>,
             done: Sender<()>,
         ) {
@@ -696,8 +696,8 @@ mod test {
 
         let ex = ThreadPool::new().expect("Failed to create ThreadPool");
 
-        let mu = Arc::new(Mutex::new(0usize));
-        let alt_mu = Arc::new(Mutex::new(0usize));
+        let mu = Arc::new(RwLock::new(0usize));
+        let alt_mu = Arc::new(RwLock::new(0usize));
 
         let cv = Arc::new(Condvar::new());
         let alt_cv = Arc::new(Condvar::new());
@@ -745,7 +745,7 @@ mod test {
         const TASKS: usize = 17;
         const ITERATIONS: usize = 103;
 
-        async fn decrement(mu: &Arc<Mutex<usize>>, cv: &Arc<Condvar>) {
+        async fn decrement(mu: &Arc<RwLock<usize>>, cv: &Arc<Condvar>) {
             let mut count = mu.lock().await;
             while *count == 0 {
                 count = cv.wait(count).await;
@@ -753,7 +753,7 @@ mod test {
             *count -= 1;
         }
 
-        async fn increment(mu: Arc<Mutex<usize>>, cv: Arc<Condvar>, done: Sender<()>) {
+        async fn increment(mu: Arc<RwLock<usize>>, cv: Arc<Condvar>, done: Sender<()>) {
             for _ in 0..TASKS * ITERATIONS {
                 *mu.lock().await += 1;
                 cv.notify_all();
@@ -763,9 +763,9 @@ mod test {
         }
 
         async fn decrement_either(
-            mu: Arc<Mutex<usize>>,
+            mu: Arc<RwLock<usize>>,
             cv: Arc<Condvar>,
-            alt_mu: Arc<Mutex<usize>>,
+            alt_mu: Arc<RwLock<usize>>,
             alt_cv: Arc<Condvar>,
             done: Sender<()>,
         ) {
@@ -781,8 +781,8 @@ mod test {
 
         let ex = ThreadPool::new().expect("Failed to create ThreadPool");
 
-        let mu = Arc::new(Mutex::new(0usize));
-        let alt_mu = Arc::new(Mutex::new(0usize));
+        let mu = Arc::new(RwLock::new(0usize));
+        let alt_mu = Arc::new(RwLock::new(0usize));
 
         let cv = Arc::new(Condvar::new());
         let alt_cv = Arc::new(Condvar::new());
@@ -818,7 +818,7 @@ mod test {
     fn notify_all() {
         const THREADS: usize = 13;
 
-        let mu = Arc::new(Mutex::new(0));
+        let mu = Arc::new(RwLock::new(0));
         let cv = Arc::new(Condvar::new());
         let (tx, rx) = channel();
 
@@ -860,13 +860,13 @@ mod test {
     fn notify_all_single_thread_async() {
         const TASKS: usize = 13;
 
-        async fn reset(mu: Rc<Mutex<usize>>, cv: Rc<Condvar>) {
+        async fn reset(mu: Rc<RwLock<usize>>, cv: Rc<Condvar>) {
             let mut count = mu.lock().await;
             *count = 0;
             cv.notify_all();
         }
 
-        async fn watcher(mu: Rc<Mutex<usize>>, cv: Rc<Condvar>, spawner: LocalSpawner) {
+        async fn watcher(mu: Rc<RwLock<usize>>, cv: Rc<Condvar>, spawner: LocalSpawner) {
             let mut count = mu.lock().await;
             *count += 1;
             if *count == TASKS {
@@ -883,7 +883,7 @@ mod test {
         let mut ex = LocalPool::new();
         let spawner = ex.spawner();
 
-        let mu = Rc::new(Mutex::new(0));
+        let mu = Rc::new(RwLock::new(0));
         let cv = Rc::new(Condvar::new());
 
         for _ in 0..TASKS {
@@ -899,14 +899,14 @@ mod test {
     fn notify_all_multi_thread_async() {
         const TASKS: usize = 13;
 
-        async fn reset(mu: Arc<Mutex<usize>>, cv: Arc<Condvar>) {
+        async fn reset(mu: Arc<RwLock<usize>>, cv: Arc<Condvar>) {
             let mut count = mu.lock().await;
             *count = 0;
             cv.notify_all();
         }
 
         async fn watcher(
-            mu: Arc<Mutex<usize>>,
+            mu: Arc<RwLock<usize>>,
             cv: Arc<Condvar>,
             pool: ThreadPool,
             tx: Sender<()>,
@@ -926,7 +926,7 @@ mod test {
 
         let pool = ThreadPool::new().expect("Failed to create ThreadPool");
 
-        let mu = Arc::new(Mutex::new(0));
+        let mu = Arc::new(RwLock::new(0));
         let cv = Arc::new(Condvar::new());
 
         let (tx, rx) = channel();
@@ -942,14 +942,14 @@ mod test {
 
     #[test]
     fn wake_all_readers() {
-        async fn read(mu: Arc<Mutex<bool>>, cv: Arc<Condvar>) {
+        async fn read(mu: Arc<RwLock<bool>>, cv: Arc<Condvar>) {
             let mut ready = mu.read_lock().await;
             while !*ready {
                 ready = cv.wait_read(ready).await;
             }
         }
 
-        let mu = Arc::new(Mutex::new(false));
+        let mu = Arc::new(RwLock::new(false));
         let cv = Arc::new(Condvar::new());
         let mut readers = [
             Box::pin(read(mu.clone(), cv.clone())),
@@ -988,7 +988,7 @@ mod test {
 
     #[test]
     fn cancel_before_notify() {
-        async fn dec(mu: Arc<Mutex<usize>>, cv: Arc<Condvar>) {
+        async fn dec(mu: Arc<RwLock<usize>>, cv: Arc<Condvar>) {
             let mut count = mu.lock().await;
 
             while *count == 0 {
@@ -998,7 +998,7 @@ mod test {
             *count -= 1;
         }
 
-        let mu = Arc::new(Mutex::new(0));
+        let mu = Arc::new(RwLock::new(0));
         let cv = Arc::new(Condvar::new());
 
         let arc_waker = Arc::new(TestWaker);
@@ -1033,7 +1033,7 @@ mod test {
 
     #[test]
     fn cancel_after_notify_one() {
-        async fn dec(mu: Arc<Mutex<usize>>, cv: Arc<Condvar>) {
+        async fn dec(mu: Arc<RwLock<usize>>, cv: Arc<Condvar>) {
             let mut count = mu.lock().await;
 
             while *count == 0 {
@@ -1043,7 +1043,7 @@ mod test {
             *count -= 1;
         }
 
-        let mu = Arc::new(Mutex::new(0));
+        let mu = Arc::new(RwLock::new(0));
         let cv = Arc::new(Condvar::new());
 
         let arc_waker = Arc::new(TestWaker);
@@ -1077,7 +1077,7 @@ mod test {
 
     #[test]
     fn cancel_after_notify_all() {
-        async fn dec(mu: Arc<Mutex<usize>>, cv: Arc<Condvar>) {
+        async fn dec(mu: Arc<RwLock<usize>>, cv: Arc<Condvar>) {
             let mut count = mu.lock().await;
 
             while *count == 0 {
@@ -1087,7 +1087,7 @@ mod test {
             *count -= 1;
         }
 
-        let mu = Arc::new(Mutex::new(0));
+        let mu = Arc::new(RwLock::new(0));
         let cv = Arc::new(Condvar::new());
 
         let arc_waker = Arc::new(TestWaker);
@@ -1126,7 +1126,7 @@ mod test {
     #[test]
     fn timed_wait() {
         async fn wait_deadline(
-            mu: Arc<Mutex<usize>>,
+            mu: Arc<RwLock<usize>>,
             cv: Arc<Condvar>,
             timeout: oneshot::Receiver<()>,
         ) {
@@ -1152,7 +1152,7 @@ mod test {
             *count += 1;
         }
 
-        let mu = Arc::new(Mutex::new(0));
+        let mu = Arc::new(RwLock::new(0));
         let cv = Arc::new(Condvar::new());
 
         let arc_waker = Arc::new(TestWaker);

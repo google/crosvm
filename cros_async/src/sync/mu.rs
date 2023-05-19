@@ -18,7 +18,7 @@ use super::super::sync::waiter::WaiterAdapter;
 use super::super::sync::waiter::WaiterList;
 use super::super::sync::waiter::WaitingFor;
 
-// Set when the mutex is exclusively locked.
+// Set when the rwlock is exclusively locked.
 const LOCKED: usize = 1 << 0;
 // Set when there are one or more threads waiting to acquire the lock.
 const HAS_WAITERS: usize = 1 << 1;
@@ -26,7 +26,7 @@ const HAS_WAITERS: usize = 1 << 1;
 // the lock or adds itself back into the wait queue. Used to prevent unnecessary wake ups when a
 // thread has been removed from the wait queue but has not gotten CPU time yet.
 const DESIGNATED_WAKER: usize = 1 << 2;
-// Used to provide exclusive access to the `waiters` field in `Mutex`. Should only be held while
+// Used to provide exclusive access to the `waiters` field in `RwLock`. Should only be held while
 // modifying the waiter list.
 const SPINLOCK: usize = 1 << 3;
 // Set when a thread that wants an exclusive lock adds itself to the wait queue. New threads
@@ -37,7 +37,7 @@ const WRITER_WAITING: usize = 1 << 4;
 // every time it is woken up. When this bit is set, all other threads are prevented from acquiring
 // the lock until the thread that set the `LONG_WAIT` bit has acquired the lock.
 const LONG_WAIT: usize = 1 << 5;
-// The bit that is added to the mutex state in order to acquire a shared lock. Since more than one
+// The bit that is added to the rwlock state in order to acquire a shared lock. Since more than one
 // thread can acquire a shared lock, we cannot use a single bit. Instead we use all the remaining
 // bits in the state to track the number of threads that have acquired a shared lock.
 const READ_LOCK: usize = 1 << 8;
@@ -72,7 +72,7 @@ trait Kind {
     fn clear_on_acquire() -> usize;
 
     // The waiter that a thread should use when waiting to acquire this kind of lock.
-    fn new_waiter(raw: &RawMutex) -> Arc<Waiter>;
+    fn new_waiter(raw: &RawRwLock) -> Arc<Waiter>;
 }
 
 // A lock type for shared read-only access to the data. More than one thread may hold this kind of
@@ -96,11 +96,11 @@ impl Kind for Shared {
         0
     }
 
-    fn new_waiter(raw: &RawMutex) -> Arc<Waiter> {
+    fn new_waiter(raw: &RawRwLock) -> Arc<Waiter> {
         Arc::new(Waiter::new(
             WaiterKind::Shared,
             cancel_waiter,
-            raw as *const RawMutex as usize,
+            raw as *const RawRwLock as usize,
             WaitingFor::Mutex,
         ))
     }
@@ -127,18 +127,19 @@ impl Kind for Exclusive {
         WRITER_WAITING
     }
 
-    fn new_waiter(raw: &RawMutex) -> Arc<Waiter> {
+    fn new_waiter(raw: &RawRwLock) -> Arc<Waiter> {
         Arc::new(Waiter::new(
             WaiterKind::Exclusive,
             cancel_waiter,
-            raw as *const RawMutex as usize,
+            raw as *const RawRwLock as usize,
             WaitingFor::Mutex,
         ))
     }
 }
 
 // Scan `waiters` and return the ones that should be woken up. Also returns any bits that should be
-// set in the mutex state when the current thread releases the spin lock protecting the waiter list.
+// set in the rwlock state when the current thread releases the spin lock protecting the waiter
+// list.
 //
 // If the first waiter is trying to acquire a shared lock, then all waiters in the list that are
 // waiting for a shared lock are also woken up. If any waiters waiting for an exclusive lock are
@@ -193,14 +194,14 @@ fn cpu_relax(iterations: usize) {
     }
 }
 
-pub(crate) struct RawMutex {
+pub(crate) struct RawRwLock {
     state: AtomicUsize,
     waiters: UnsafeCell<WaiterList>,
 }
 
-impl RawMutex {
-    pub fn new() -> RawMutex {
-        RawMutex {
+impl RawRwLock {
+    pub fn new() -> RawRwLock {
+        RawRwLock {
             state: AtomicUsize::new(0),
             waiters: UnsafeCell::new(WaiterList::new(WaiterAdapter::new())),
         }
@@ -287,8 +288,8 @@ impl RawMutex {
                     return;
                 }
             } else if (oldstate & SPINLOCK) == 0 {
-                // The mutex is locked and the spin lock is available.  Try to add this thread
-                // to the waiter queue.
+                // The rwlock is locked and the spin lock is available.  Try to add this thread to
+                // the waiter queue.
                 let w = waiter.get_or_insert_with(|| K::new_waiter(self));
                 w.reset(WaitingFor::Mutex);
 
@@ -382,20 +383,20 @@ impl RawMutex {
     #[inline]
     pub fn unlock(&self) {
         // Fast path, if possible. We can directly clear the locked bit since we have exclusive
-        // access to the mutex.
+        // access to the rwlock.
         let oldstate = self.state.fetch_sub(LOCKED, Ordering::Release);
 
-        // Panic if we just tried to unlock a mutex that wasn't held by this thread. This shouldn't
+        // Panic if we just tried to unlock a rwlock that wasn't held by this thread. This shouldn't
         // really be possible since `unlock` is not a public method.
         debug_assert_eq!(
             oldstate & READ_MASK,
             0,
-            "`unlock` called on mutex held in read-mode"
+            "`unlock` called on rwlock held in read-mode"
         );
         debug_assert_ne!(
             oldstate & LOCKED,
             0,
-            "`unlock` called on mutex not held in write-mode"
+            "`unlock` called on rwlock not held in write-mode"
         );
 
         if (oldstate & HAS_WAITERS) != 0 && (oldstate & DESIGNATED_WAKER) == 0 {
@@ -413,12 +414,12 @@ impl RawMutex {
         debug_assert_eq!(
             oldstate & LOCKED,
             0,
-            "`read_unlock` called on mutex held in write-mode"
+            "`read_unlock` called on rwlock held in write-mode"
         );
         debug_assert_ne!(
             oldstate & READ_MASK,
             0,
-            "`read_unlock` called on mutex not held in read-mode"
+            "`read_unlock` called on rwlock not held in read-mode"
         );
 
         if (oldstate & HAS_WAITERS) != 0
@@ -556,7 +557,7 @@ impl RawMutex {
 
         // Don't drop the old waiter while holding the spin lock.
         let old_waiter = if waiter.is_linked() && waiting_for == WaitingFor::Mutex {
-            // We know that the waiter is still linked and is waiting for the mutex, which
+            // We know that the waiter is still linked and is waiting for the rwlock, which
             // guarantees that it is still linked into `self.waiters`.
             let mut cursor = unsafe { waiters.cursor_mut_from_ptr(waiter as *const Waiter) };
             cursor.remove()
@@ -565,7 +566,7 @@ impl RawMutex {
         };
 
         let (wake_list, set_on_release) = if wake_next || waiting_for == WaitingFor::None {
-            // Either the waiter was already woken or it's been removed from the mutex's waiter
+            // Either the waiter was already woken or it's been removed from the rwlock's waiter
             // list and is going to be woken. Either way, we need to wake up another thread.
             get_wake_list(waiters)
         } else {
@@ -612,41 +613,42 @@ impl RawMutex {
     }
 }
 
-unsafe impl Send for RawMutex {}
-unsafe impl Sync for RawMutex {}
+unsafe impl Send for RawRwLock {}
+unsafe impl Sync for RawRwLock {}
 
 fn cancel_waiter(raw: usize, waiter: &Waiter, wake_next: bool) {
-    let raw_mutex = raw as *const RawMutex;
+    let raw_rwlock = raw as *const RawRwLock;
 
-    // Safe because the thread that owns the waiter that is being canceled must
-    // also own a reference to the mutex, which ensures that this pointer is
-    // valid.
-    unsafe { (*raw_mutex).cancel_waiter(waiter, wake_next) }
+    // Safe because the thread that owns the waiter that is being canceled must also own a reference
+    // to the rwlock, which ensures that this pointer is valid.
+    unsafe { (*raw_rwlock).cancel_waiter(waiter, wake_next) }
 }
 
 /// A high-level primitive that provides safe, mutable access to a shared resource.
 ///
-/// Unlike more traditional mutexes, `Mutex` can safely provide both shared, immutable access (via
-/// `read_lock()`) as well as exclusive, mutable access (via `lock()`) to an underlying resource
-/// with no loss of performance.
+/// `RwLock` safely provides both shared, immutable access (via `read_lock()`) as well as exclusive,
+/// mutable access (via `lock()`) to an underlying resource asynchronously while ensuring fairness
+/// with no loss of performance. If you don't need `read_lock()` nor fairness, try upstream
+/// `futures::lock::Mutex` instead.
 ///
 /// # Poisoning
 ///
-/// `Mutex` does not support lock poisoning so if a thread panics while holding the lock, the
+/// `RwLock` does not support lock poisoning so if a thread panics while holding the lock, the
 /// poisoned data will be accessible by other threads in your program. If you need to guarantee that
-/// other threads cannot access poisoned data then you may wish to wrap this `Mutex` inside another
+/// other threads cannot access poisoned data then you may wish to wrap this `RwLock` inside another
 /// type that provides the poisoning feature. See the implementation of `std::sync::Mutex` for an
-/// example of this.
+/// example of this. Note `futures::lock::Mutex` does not support poisoning either.
 ///
 ///
 /// # Fairness
 ///
-/// This `Mutex` implementation does not guarantee that threads will acquire the lock in the same
+/// This `RwLock` implementation does not guarantee that threads will acquire the lock in the same
 /// order that they call `lock()` or `read_lock()`. However it will attempt to prevent long-term
 /// starvation: if a thread repeatedly fails to acquire the lock beyond a threshold then all other
-/// threads will fail to acquire the lock until the starved thread has acquired it.
+/// threads will fail to acquire the lock until the starved thread has acquired it. Note, on the
+/// other hand, `futures::lock::Mutex` does not guarantee fairness.
 ///
-/// Similarly, this `Mutex` will attempt to balance reader and writer threads: once there is a
+/// Similarly, this `RwLock` will attempt to balance reader and writer threads: once there is a
 /// writer thread waiting to acquire the lock no new reader threads will be allowed to acquire it.
 /// However, any reader threads that were already waiting will still be allowed to acquire it.
 ///
@@ -657,7 +659,7 @@ fn cancel_waiter(raw: usize, waiter: &Waiter, wake_next: bool) {
 /// use std::thread;
 /// use std::sync::mpsc::channel;
 ///
-/// use cros_async::{block_on, sync::Mutex};
+/// use cros_async::{block_on, sync::RwLock};
 ///
 /// const N: usize = 10;
 ///
@@ -665,8 +667,8 @@ fn cancel_waiter(raw: usize, waiter: &Waiter, wake_next: bool) {
 /// // let the main thread know once all increments are done.
 /// //
 /// // Here we're using an Arc to share memory among threads, and the data inside
-/// // the Arc is protected with a mutex.
-/// let data = Arc::new(Mutex::new(0));
+/// // the Arc is protected with a rwlock.
+/// let data = Arc::new(RwLock::new(0));
 ///
 /// let (tx, rx) = channel();
 /// for _ in 0..N {
@@ -687,23 +689,23 @@ fn cancel_waiter(raw: usize, waiter: &Waiter, wake_next: bool) {
 /// rx.recv().unwrap();
 /// ```
 #[repr(align(128))]
-pub struct Mutex<T: ?Sized> {
-    raw: RawMutex,
+pub struct RwLock<T: ?Sized> {
+    raw: RawRwLock,
     value: UnsafeCell<T>,
 }
 
-impl<T> Mutex<T> {
-    /// Create a new, unlocked `Mutex` ready for use.
-    pub fn new(v: T) -> Mutex<T> {
-        Mutex {
-            raw: RawMutex::new(),
+impl<T> RwLock<T> {
+    /// Create a new, unlocked `RwLock` ready for use.
+    pub fn new(v: T) -> RwLock<T> {
+        RwLock {
+            raw: RawRwLock::new(),
             value: UnsafeCell::new(v),
         }
     }
 
-    /// Consume the `Mutex` and return the contained value. This method does not perform any locking
-    /// as the compiler will guarantee that there are no other references to `self` and the caller
-    /// owns the `Mutex`.
+    /// Consume the `RwLock` and return the contained value. This method does not perform any
+    /// locking as the compiler will guarantee that there are no other references to `self` and the
+    /// caller owns the `RwLock`.
     pub fn into_inner(self) -> T {
         // Don't need to acquire the lock because the compiler guarantees that there are
         // no references to `self`.
@@ -711,44 +713,45 @@ impl<T> Mutex<T> {
     }
 }
 
-impl<T: ?Sized> Mutex<T> {
-    /// Acquires exclusive, mutable access to the resource protected by the `Mutex`, blocking the
+impl<T: ?Sized> RwLock<T> {
+    /// Acquires exclusive, mutable access to the resource protected by the `RwLock`, blocking the
     /// current thread until it is able to do so. Upon returning, the current thread will be the
-    /// only thread with access to the resource. The `Mutex` will be released when the returned
-    /// `MutexGuard` is dropped.
+    /// only thread with access to the resource. The `RwLock` will be released when the returned
+    /// `RwLockWriteGuard` is dropped.
     ///
-    /// Calling `lock()` while holding a `MutexGuard` or a `MutexReadGuard` will cause a deadlock.
+    /// Calling `lock()` while holding a `RwLockWriteGuard` or a `RwLockReadGuard` will cause a
+    /// deadlock.
     ///
     /// Callers that are not in an async context may wish to use the `block_on` method to block the
-    /// thread until the `Mutex` is acquired.
+    /// thread until the `RwLock` is acquired.
     #[inline]
-    pub async fn lock(&self) -> MutexGuard<'_, T> {
+    pub async fn lock(&self) -> RwLockWriteGuard<'_, T> {
         self.raw.lock().await;
 
         // Safe because we have exclusive access to `self.value`.
-        MutexGuard {
+        RwLockWriteGuard {
             mu: self,
             value: unsafe { &mut *self.value.get() },
         }
     }
 
-    /// Acquires shared, immutable access to the resource protected by the `Mutex`, blocking the
+    /// Acquires shared, immutable access to the resource protected by the `RwLock`, blocking the
     /// current thread until it is able to do so. Upon returning there may be other threads that
     /// also have immutable access to the resource but there will not be any threads that have
-    /// mutable access to the resource. When the returned `MutexReadGuard` is dropped the thread
+    /// mutable access to the resource. When the returned `RwLockReadGuard` is dropped the thread
     /// releases its access to the resource.
     ///
-    /// Calling `read_lock()` while holding a `MutexReadGuard` may deadlock. Calling `read_lock()`
-    /// while holding a `MutexGuard` will deadlock.
+    /// Calling `read_lock()` while holding a `RwLockReadGuard` may deadlock. Calling `read_lock()`
+    /// while holding a `RwLockWriteGuard` will deadlock.
     ///
     /// Callers that are not in an async context may wish to use the `block_on` method to block the
-    /// thread until the `Mutex` is acquired.
+    /// thread until the `RwLock` is acquired.
     #[inline]
-    pub async fn read_lock(&self) -> MutexReadGuard<'_, T> {
+    pub async fn read_lock(&self) -> RwLockReadGuard<'_, T> {
         self.raw.read_lock().await;
 
         // Safe because we have shared read-only access to `self.value`.
-        MutexReadGuard {
+        RwLockReadGuard {
             mu: self,
             value: unsafe { &*self.value.get() },
         }
@@ -756,11 +759,11 @@ impl<T: ?Sized> Mutex<T> {
 
     // Called from `Condvar::wait` when the thread wants to reacquire the lock.
     #[inline]
-    pub(crate) async fn lock_from_cv(&self) -> MutexGuard<'_, T> {
+    pub(crate) async fn lock_from_cv(&self) -> RwLockWriteGuard<'_, T> {
         self.raw.lock_slow::<Exclusive>(DESIGNATED_WAKER, 0).await;
 
         // Safe because we have exclusive access to `self.value`.
-        MutexGuard {
+        RwLockWriteGuard {
             mu: self,
             value: unsafe { &mut *self.value.get() },
         }
@@ -768,7 +771,7 @@ impl<T: ?Sized> Mutex<T> {
 
     // Like `lock_from_cv` but for acquiring a shared lock.
     #[inline]
-    pub(crate) async fn read_lock_from_cv(&self) -> MutexReadGuard<'_, T> {
+    pub(crate) async fn read_lock_from_cv(&self) -> RwLockReadGuard<'_, T> {
         // Threads that have waited in the Condvar's waiter list don't have to care if there is a
         // writer waiting since they have already waited once.
         self.raw
@@ -776,7 +779,7 @@ impl<T: ?Sized> Mutex<T> {
             .await;
 
         // Safe because we have exclusive access to `self.value`.
-        MutexReadGuard {
+        RwLockReadGuard {
             mu: self,
             value: unsafe { &*self.value.get() },
         }
@@ -799,40 +802,40 @@ impl<T: ?Sized> Mutex<T> {
     }
 }
 
-unsafe impl<T: ?Sized + Send> Send for Mutex<T> {}
-unsafe impl<T: ?Sized + Send> Sync for Mutex<T> {}
+unsafe impl<T: ?Sized + Send> Send for RwLock<T> {}
+unsafe impl<T: ?Sized + Send> Sync for RwLock<T> {}
 
-impl<T: ?Sized + Default> Default for Mutex<T> {
+impl<T: ?Sized + Default> Default for RwLock<T> {
     fn default() -> Self {
         Self::new(Default::default())
     }
 }
 
-impl<T> From<T> for Mutex<T> {
+impl<T> From<T> for RwLock<T> {
     fn from(source: T) -> Self {
         Self::new(source)
     }
 }
 
-/// An RAII implementation of a "scoped exclusive lock" for a `Mutex`. When this structure is
-/// dropped, the lock will be released. The resource protected by the `Mutex` can be accessed via
+/// An RAII implementation of a "scoped exclusive lock" for a `RwLock`. When this structure is
+/// dropped, the lock will be released. The resource protected by the `RwLock` can be accessed via
 /// the `Deref` and `DerefMut` implementations of this structure.
-pub struct MutexGuard<'a, T: ?Sized + 'a> {
-    mu: &'a Mutex<T>,
+pub struct RwLockWriteGuard<'a, T: ?Sized + 'a> {
+    mu: &'a RwLock<T>,
     value: &'a mut T,
 }
 
-impl<'a, T: ?Sized> MutexGuard<'a, T> {
-    pub(crate) fn into_inner(self) -> &'a Mutex<T> {
+impl<'a, T: ?Sized> RwLockWriteGuard<'a, T> {
+    pub(crate) fn into_inner(self) -> &'a RwLock<T> {
         self.mu
     }
 
-    pub(crate) fn as_raw_mutex(&self) -> &RawMutex {
+    pub(crate) fn as_raw_rwlock(&self) -> &RawRwLock {
         &self.mu.raw
     }
 }
 
-impl<'a, T: ?Sized> Deref for MutexGuard<'a, T> {
+impl<'a, T: ?Sized> Deref for RwLockWriteGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -840,37 +843,37 @@ impl<'a, T: ?Sized> Deref for MutexGuard<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized> DerefMut for MutexGuard<'a, T> {
+impl<'a, T: ?Sized> DerefMut for RwLockWriteGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.value
     }
 }
 
-impl<'a, T: ?Sized> Drop for MutexGuard<'a, T> {
+impl<'a, T: ?Sized> Drop for RwLockWriteGuard<'a, T> {
     fn drop(&mut self) {
         self.mu.unlock()
     }
 }
 
-/// An RAII implementation of a "scoped shared lock" for a `Mutex`. When this structure is dropped,
-/// the lock will be released. The resource protected by the `Mutex` can be accessed via the `Deref`
-/// implementation of this structure.
-pub struct MutexReadGuard<'a, T: ?Sized + 'a> {
-    mu: &'a Mutex<T>,
+/// An RAII implementation of a "scoped shared lock" for a `RwLock`. When this structure is dropped,
+/// the lock will be released. The resource protected by the `RwLock` can be accessed via the
+/// `Deref` implementation of this structure.
+pub struct RwLockReadGuard<'a, T: ?Sized + 'a> {
+    mu: &'a RwLock<T>,
     value: &'a T,
 }
 
-impl<'a, T: ?Sized> MutexReadGuard<'a, T> {
-    pub(crate) fn into_inner(self) -> &'a Mutex<T> {
+impl<'a, T: ?Sized> RwLockReadGuard<'a, T> {
+    pub(crate) fn into_inner(self) -> &'a RwLock<T> {
         self.mu
     }
 
-    pub(crate) fn as_raw_mutex(&self) -> &RawMutex {
+    pub(crate) fn as_raw_rwlock(&self) -> &RawRwLock {
         &self.mu.raw
     }
 }
 
-impl<'a, T: ?Sized> Deref for MutexReadGuard<'a, T> {
+impl<'a, T: ?Sized> Deref for RwLockReadGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -878,7 +881,7 @@ impl<'a, T: ?Sized> Deref for MutexReadGuard<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized> Drop for MutexReadGuard<'a, T> {
+impl<'a, T: ?Sized> Drop for RwLockReadGuard<'a, T> {
     fn drop(&mut self) {
         self.mu.read_unlock()
     }
@@ -929,14 +932,14 @@ mod test {
 
     #[test]
     fn it_works() {
-        let mu = Mutex::new(NonCopy(13));
+        let mu = RwLock::new(NonCopy(13));
 
         assert_eq!(*block_on(mu.lock()), NonCopy(13));
     }
 
     #[test]
     fn smoke() {
-        let mu = Mutex::new(NonCopy(7));
+        let mu = RwLock::new(NonCopy(7));
 
         mem::drop(block_on(mu.lock()));
         mem::drop(block_on(mu.lock()));
@@ -944,7 +947,7 @@ mod test {
 
     #[test]
     fn rw_smoke() {
-        let mu = Mutex::new(NonCopy(7));
+        let mu = RwLock::new(NonCopy(7));
 
         mem::drop(block_on(mu.lock()));
         mem::drop(block_on(mu.read_lock()));
@@ -954,23 +957,23 @@ mod test {
 
     #[test]
     fn async_smoke() {
-        async fn lock(mu: Rc<Mutex<NonCopy>>) {
+        async fn lock(mu: Rc<RwLock<NonCopy>>) {
             mu.lock().await;
         }
 
-        async fn read_lock(mu: Rc<Mutex<NonCopy>>) {
+        async fn read_lock(mu: Rc<RwLock<NonCopy>>) {
             mu.read_lock().await;
         }
 
-        async fn double_read_lock(mu: Rc<Mutex<NonCopy>>) {
+        async fn double_read_lock(mu: Rc<RwLock<NonCopy>>) {
             let first = mu.read_lock().await;
             mu.read_lock().await;
 
             // Make sure first lives past the second read lock.
-            first.as_raw_mutex();
+            first.as_raw_rwlock();
         }
 
-        let mu = Rc::new(Mutex::new(NonCopy(7)));
+        let mu = Rc::new(RwLock::new(NonCopy(7)));
 
         let mut ex = LocalPool::new();
         let spawner = ex.spawner();
@@ -993,7 +996,7 @@ mod test {
 
     #[test]
     fn send() {
-        let mu = Mutex::new(NonCopy(19));
+        let mu = RwLock::new(NonCopy(19));
 
         thread::spawn(move || {
             let value = block_on(mu.lock());
@@ -1005,9 +1008,9 @@ mod test {
 
     #[test]
     fn arc_nested() {
-        // Tests nested mutexes and access to underlying data.
-        let mu = Mutex::new(1);
-        let arc = Arc::new(Mutex::new(mu));
+        // Tests nested rwlocks and access to underlying data.
+        let mu = RwLock::new(1);
+        let arc = Arc::new(RwLock::new(mu));
         thread::spawn(move || {
             let nested = block_on(arc.lock());
             let lock2 = block_on(nested.lock());
@@ -1019,11 +1022,11 @@ mod test {
 
     #[test]
     fn arc_access_in_unwind() {
-        let arc = Arc::new(Mutex::new(1));
+        let arc = Arc::new(RwLock::new(1));
         let arc2 = arc.clone();
         thread::spawn(move || {
             struct Unwinder {
-                i: Arc<Mutex<i32>>,
+                i: Arc<RwLock<i32>>,
             }
             impl Drop for Unwinder {
                 fn drop(&mut self) {
@@ -1041,14 +1044,14 @@ mod test {
 
     #[test]
     fn unsized_value() {
-        let mutex: &Mutex<[i32]> = &Mutex::new([1, 2, 3]);
+        let rwlock: &RwLock<[i32]> = &RwLock::new([1, 2, 3]);
         {
-            let b = &mut *block_on(mutex.lock());
+            let b = &mut *block_on(rwlock.lock());
             b[0] = 4;
             b[2] = 5;
         }
         let expected: &[i32] = &[4, 2, 5];
-        assert_eq!(&*block_on(mutex.lock()), expected);
+        assert_eq!(&*block_on(rwlock.lock()), expected);
     }
     #[test]
     fn high_contention() {
@@ -1057,7 +1060,7 @@ mod test {
 
         let mut threads = Vec::with_capacity(THREADS);
 
-        let mu = Arc::new(Mutex::new(0usize));
+        let mu = Arc::new(RwLock::new(0usize));
         for _ in 0..THREADS {
             let mu2 = mu.clone();
             threads.push(thread::spawn(move || {
@@ -1080,7 +1083,7 @@ mod test {
         const TASKS: usize = 17;
         const ITERATIONS: usize = 103;
 
-        async fn increment(mu: Arc<Mutex<usize>>, alt_mu: Arc<Mutex<usize>>, tx: Sender<()>) {
+        async fn increment(mu: Arc<RwLock<usize>>, alt_mu: Arc<RwLock<usize>>, tx: Sender<()>) {
             for _ in 0..ITERATIONS {
                 select! {
                     mut count = mu.lock().fuse() => *count += 1,
@@ -1092,8 +1095,8 @@ mod test {
 
         let ex = ThreadPool::new().expect("Failed to create ThreadPool");
 
-        let mu = Arc::new(Mutex::new(0usize));
-        let alt_mu = Arc::new(Mutex::new(0usize));
+        let mu = Arc::new(RwLock::new(0usize));
+        let alt_mu = Arc::new(RwLock::new(0usize));
 
         let (tx, rx) = channel();
         for _ in 0..TASKS {
@@ -1120,7 +1123,7 @@ mod test {
         const ITERATIONS: usize = 103;
 
         // Async closures are unstable.
-        async fn increment(mu: Rc<Mutex<usize>>) {
+        async fn increment(mu: Rc<RwLock<usize>>) {
             for _ in 0..ITERATIONS {
                 *mu.lock().await += 1;
             }
@@ -1129,7 +1132,7 @@ mod test {
         let mut ex = LocalPool::new();
         let spawner = ex.spawner();
 
-        let mu = Rc::new(Mutex::new(0usize));
+        let mu = Rc::new(RwLock::new(0usize));
         for _ in 0..TASKS {
             spawner
                 .spawn_local(increment(Rc::clone(&mu)))
@@ -1148,7 +1151,7 @@ mod test {
         const ITERATIONS: usize = 103;
 
         // Async closures are unstable.
-        async fn increment(mu: Arc<Mutex<usize>>, tx: Sender<()>) {
+        async fn increment(mu: Arc<RwLock<usize>>, tx: Sender<()>) {
             for _ in 0..ITERATIONS {
                 *mu.lock().await += 1;
             }
@@ -1157,7 +1160,7 @@ mod test {
 
         let ex = ThreadPool::new().expect("Failed to create ThreadPool");
 
-        let mu = Arc::new(Mutex::new(0usize));
+        let mu = Arc::new(RwLock::new(0usize));
         let (tx, rx) = channel();
         for _ in 0..TASKS {
             ex.spawn_ok(increment(Arc::clone(&mu), tx.clone()));
@@ -1173,7 +1176,7 @@ mod test {
 
     #[test]
     fn get_mut() {
-        let mut mu = Mutex::new(NonCopy(13));
+        let mut mu = RwLock::new(NonCopy(13));
         *mu.get_mut() = NonCopy(17);
 
         assert_eq!(mu.into_inner(), NonCopy(17));
@@ -1181,7 +1184,7 @@ mod test {
 
     #[test]
     fn into_inner() {
-        let mu = Mutex::new(NonCopy(29));
+        let mu = RwLock::new(NonCopy(29));
         assert_eq!(mu.into_inner(), NonCopy(29));
     }
 
@@ -1195,7 +1198,7 @@ mod test {
         }
 
         let value = Arc::new(AtomicUsize::new(0));
-        let needs_drop = Mutex::new(NeedsDrop(value.clone()));
+        let needs_drop = RwLock::new(NeedsDrop(value.clone()));
         assert_eq!(value.load(Ordering::Acquire), 0);
 
         {
@@ -1211,7 +1214,7 @@ mod test {
         const THREADS: isize = 7;
         const ITERATIONS: isize = 13;
 
-        let mu = Arc::new(Mutex::new(0isize));
+        let mu = Arc::new(RwLock::new(0isize));
         let mu2 = mu.clone();
 
         let (tx, rx) = channel();
@@ -1284,7 +1287,7 @@ mod test {
             }
         }
 
-        async fn writer(mu: Rc<Mutex<isize>>) {
+        async fn writer(mu: Rc<RwLock<isize>>) {
             let mut guard = mu.lock().await;
             for _ in 0..ITERATIONS {
                 let tmp = *guard;
@@ -1301,7 +1304,7 @@ mod test {
             }
         }
 
-        async fn reader(mu: Rc<Mutex<isize>>) {
+        async fn reader(mu: Rc<RwLock<isize>>) {
             let guard = mu.read_lock().await;
             assert!(*guard >= 0);
         }
@@ -1309,7 +1312,7 @@ mod test {
         const TASKS: isize = 7;
         const ITERATIONS: isize = 13;
 
-        let mu = Rc::new(Mutex::new(0isize));
+        let mu = Rc::new(RwLock::new(0isize));
         let mut ex = LocalPool::new();
         let spawner = ex.spawner();
 
@@ -1331,7 +1334,7 @@ mod test {
 
     #[test]
     fn rw_multi_thread_async() {
-        async fn writer(mu: Arc<Mutex<isize>>, tx: Sender<()>) {
+        async fn writer(mu: Arc<RwLock<isize>>, tx: Sender<()>) {
             let mut guard = mu.lock().await;
             for _ in 0..ITERATIONS {
                 let tmp = *guard;
@@ -1344,7 +1347,7 @@ mod test {
             tx.send(()).unwrap();
         }
 
-        async fn reader(mu: Arc<Mutex<isize>>, tx: Sender<()>) {
+        async fn reader(mu: Arc<RwLock<isize>>, tx: Sender<()>) {
             let guard = mu.read_lock().await;
             assert!(*guard >= 0);
 
@@ -1355,7 +1358,7 @@ mod test {
         const TASKS: isize = 7;
         const ITERATIONS: isize = 13;
 
-        let mu = Arc::new(Mutex::new(0isize));
+        let mu = Arc::new(RwLock::new(0isize));
         let ex = ThreadPool::new().expect("Failed to create ThreadPool");
 
         let (txw, rxw) = channel();
@@ -1382,17 +1385,17 @@ mod test {
 
     #[test]
     fn wake_all_readers() {
-        async fn read(mu: Arc<Mutex<()>>) {
+        async fn read(mu: Arc<RwLock<()>>) {
             let g = mu.read_lock().await;
             pending!();
             mem::drop(g);
         }
 
-        async fn write(mu: Arc<Mutex<()>>) {
+        async fn write(mu: Arc<RwLock<()>>) {
             mu.lock().await;
         }
 
-        let mu = Arc::new(Mutex::new(()));
+        let mu = Arc::new(RwLock::new(()));
         let mut futures: [Pin<Box<dyn Future<Output = ()>>>; 5] = [
             Box::pin(read(mu.clone())),
             Box::pin(read(mu.clone())),
@@ -1472,7 +1475,7 @@ mod test {
 
     #[test]
     fn long_wait() {
-        async fn tight_loop(mu: Arc<Mutex<bool>>) {
+        async fn tight_loop(mu: Arc<RwLock<bool>>) {
             loop {
                 let ready = mu.lock().await;
                 if *ready {
@@ -1482,11 +1485,11 @@ mod test {
             }
         }
 
-        async fn mark_ready(mu: Arc<Mutex<bool>>) {
+        async fn mark_ready(mu: Arc<RwLock<bool>>) {
             *mu.lock().await = true;
         }
 
-        let mu = Arc::new(Mutex::new(false));
+        let mu = Arc::new(RwLock::new(false));
         let mut tl = Box::pin(tight_loop(mu.clone()));
         let mut mark = Box::pin(mark_ready(mu.clone()));
 
@@ -1530,7 +1533,7 @@ mod test {
 
     #[test]
     fn cancel_long_wait_before_wake() {
-        async fn tight_loop(mu: Arc<Mutex<bool>>) {
+        async fn tight_loop(mu: Arc<RwLock<bool>>) {
             loop {
                 let ready = mu.lock().await;
                 if *ready {
@@ -1540,11 +1543,11 @@ mod test {
             }
         }
 
-        async fn mark_ready(mu: Arc<Mutex<bool>>) {
+        async fn mark_ready(mu: Arc<RwLock<bool>>) {
             *mu.lock().await = true;
         }
 
-        let mu = Arc::new(Mutex::new(false));
+        let mu = Arc::new(RwLock::new(false));
         let mut tl = Box::pin(tight_loop(mu.clone()));
         let mut mark = Box::pin(mark_ready(mu.clone()));
 
@@ -1577,7 +1580,7 @@ mod test {
 
     #[test]
     fn cancel_long_wait_after_wake() {
-        async fn tight_loop(mu: Arc<Mutex<bool>>) {
+        async fn tight_loop(mu: Arc<RwLock<bool>>) {
             loop {
                 let ready = mu.lock().await;
                 if *ready {
@@ -1587,11 +1590,11 @@ mod test {
             }
         }
 
-        async fn mark_ready(mu: Arc<Mutex<bool>>) {
+        async fn mark_ready(mu: Arc<RwLock<bool>>) {
             *mu.lock().await = true;
         }
 
-        let mu = Arc::new(Mutex::new(false));
+        let mu = Arc::new(RwLock::new(false));
         let mut tl = Box::pin(tight_loop(mu.clone()));
         let mut mark = Box::pin(mark_ready(mu.clone()));
 
@@ -1636,11 +1639,11 @@ mod test {
 
     #[test]
     fn designated_waker() {
-        async fn inc(mu: Arc<Mutex<usize>>) {
+        async fn inc(mu: Arc<RwLock<usize>>) {
             *mu.lock().await += 1;
         }
 
-        let mu = Arc::new(Mutex::new(0));
+        let mu = Arc::new(RwLock::new(0));
 
         let mut futures = [
             Box::pin(inc(mu.clone())),
@@ -1710,11 +1713,11 @@ mod test {
 
     #[test]
     fn cancel_designated_waker() {
-        async fn inc(mu: Arc<Mutex<usize>>) {
+        async fn inc(mu: Arc<RwLock<usize>>) {
             *mu.lock().await += 1;
         }
 
-        let mu = Arc::new(Mutex::new(0));
+        let mu = Arc::new(RwLock::new(0));
 
         let mut fut = Box::pin(inc(mu.clone()));
 
@@ -1731,7 +1734,7 @@ mod test {
         // Drop the lock.  This will wake up the future.
         mem::drop(count);
 
-        // Now drop the future without polling. This should clear all the state in the mutex.
+        // Now drop the future without polling. This should clear all the state in the rwlock.
         mem::drop(fut);
 
         assert_eq!(mu.raw.state.load(Ordering::Relaxed), 0);
@@ -1739,11 +1742,11 @@ mod test {
 
     #[test]
     fn cancel_before_wake() {
-        async fn inc(mu: Arc<Mutex<usize>>) {
+        async fn inc(mu: Arc<RwLock<usize>>) {
             *mu.lock().await += 1;
         }
 
-        let mu = Arc::new(Mutex::new(0));
+        let mu = Arc::new(RwLock::new(0));
 
         let mut fut1 = Box::pin(inc(mu.clone()));
 
@@ -1802,11 +1805,11 @@ mod test {
 
     #[test]
     fn cancel_after_wake() {
-        async fn inc(mu: Arc<Mutex<usize>>) {
+        async fn inc(mu: Arc<RwLock<usize>>) {
             *mu.lock().await += 1;
         }
 
-        let mu = Arc::new(Mutex::new(0));
+        let mu = Arc::new(RwLock::new(0));
 
         let mut fut1 = Box::pin(inc(mu.clone()));
 
@@ -1864,7 +1867,7 @@ mod test {
 
     #[test]
     fn timeout() {
-        async fn timed_lock(timer: oneshot::Receiver<()>, mu: Arc<Mutex<()>>) {
+        async fn timed_lock(timer: oneshot::Receiver<()>, mu: Arc<RwLock<()>>) {
             select! {
                 res = timer.fuse() => {
                     match res {
@@ -1876,7 +1879,7 @@ mod test {
             }
         }
 
-        let mu = Arc::new(Mutex::new(()));
+        let mu = Arc::new(RwLock::new(()));
         let (tx, rx) = oneshot::channel();
 
         let mut timeout = Box::pin(timed_lock(rx, mu.clone()));
@@ -1906,7 +1909,7 @@ mod test {
             panic!("timed_lock not ready after timeout");
         }
 
-        // The mutex state should not show any waiters.
+        // The rwlock state should not show any waiters.
         assert_eq!(mu.raw.state.load(Ordering::Relaxed) & HAS_WAITERS, 0);
 
         mem::drop(g);
@@ -1916,24 +1919,24 @@ mod test {
 
     #[test]
     fn writer_waiting() {
-        async fn read_zero(mu: Arc<Mutex<usize>>) {
+        async fn read_zero(mu: Arc<RwLock<usize>>) {
             let val = mu.read_lock().await;
             pending!();
 
             assert_eq!(*val, 0);
         }
 
-        async fn inc(mu: Arc<Mutex<usize>>) {
+        async fn inc(mu: Arc<RwLock<usize>>) {
             *mu.lock().await += 1;
         }
 
-        async fn read_one(mu: Arc<Mutex<usize>>) {
+        async fn read_one(mu: Arc<RwLock<usize>>) {
             let val = mu.read_lock().await;
 
             assert_eq!(*val, 1);
         }
 
-        let mu = Arc::new(Mutex::new(0));
+        let mu = Arc::new(RwLock::new(0));
 
         let mut r1 = Box::pin(read_zero(mu.clone()));
         let mut r2 = Box::pin(read_zero(mu.clone()));
@@ -1991,14 +1994,14 @@ mod test {
 
     #[test]
     fn notify_one() {
-        async fn read(mu: Arc<Mutex<usize>>, cv: Arc<Condvar>) {
+        async fn read(mu: Arc<RwLock<usize>>, cv: Arc<Condvar>) {
             let mut count = mu.read_lock().await;
             while *count == 0 {
                 count = cv.wait_read(count).await;
             }
         }
 
-        async fn write(mu: Arc<Mutex<usize>>, cv: Arc<Condvar>) {
+        async fn write(mu: Arc<RwLock<usize>>, cv: Arc<Condvar>) {
             let mut count = mu.lock().await;
             while *count == 0 {
                 count = cv.wait(count).await;
@@ -2007,7 +2010,7 @@ mod test {
             *count -= 1;
         }
 
-        let mu = Arc::new(Mutex::new(0));
+        let mu = Arc::new(RwLock::new(0));
         let cv = Arc::new(Condvar::new());
 
         let arc_waker = Arc::new(TestWaker);
@@ -2037,7 +2040,7 @@ mod test {
         // This should wake all readers + one writer.
         cv.notify_one();
 
-        // Poll the readers and the writer so they add themselves to the mutex's waiter list.
+        // Poll the readers and the writer so they add themselves to the rwlock's waiter list.
         for r in &mut readers {
             if r.as_mut().poll(&mut cx).is_ready() {
                 panic!("reader unexpectedly ready");
@@ -2079,7 +2082,7 @@ mod test {
 
     #[test]
     fn notify_when_unlocked() {
-        async fn dec(mu: Arc<Mutex<usize>>, cv: Arc<Condvar>) {
+        async fn dec(mu: Arc<RwLock<usize>>, cv: Arc<Condvar>) {
             let mut count = mu.lock().await;
 
             while *count == 0 {
@@ -2089,7 +2092,7 @@ mod test {
             *count -= 1;
         }
 
-        let mu = Arc::new(Mutex::new(0));
+        let mu = Arc::new(RwLock::new(0));
         let cv = Arc::new(Condvar::new());
 
         let arc_waker = Arc::new(TestWaker);
@@ -2112,7 +2115,7 @@ mod test {
         *block_on(mu.lock()) = futures.len();
         cv.notify_all();
 
-        // Since we haven't polled `futures` yet, the mutex should not have any waiters.
+        // Since we haven't polled `futures` yet, the rwlock should not have any waiters.
         assert_eq!(mu.raw.state.load(Ordering::Relaxed) & HAS_WAITERS, 0);
 
         for f in &mut futures {
@@ -2125,7 +2128,7 @@ mod test {
 
     #[test]
     fn notify_reader_writer() {
-        async fn read(mu: Arc<Mutex<usize>>, cv: Arc<Condvar>) {
+        async fn read(mu: Arc<RwLock<usize>>, cv: Arc<Condvar>) {
             let mut count = mu.read_lock().await;
             while *count == 0 {
                 count = cv.wait_read(count).await;
@@ -2136,7 +2139,7 @@ mod test {
             pending!();
         }
 
-        async fn write(mu: Arc<Mutex<usize>>, cv: Arc<Condvar>) {
+        async fn write(mu: Arc<RwLock<usize>>, cv: Arc<Condvar>) {
             let mut count = mu.lock().await;
             while *count == 0 {
                 count = cv.wait(count).await;
@@ -2145,11 +2148,11 @@ mod test {
             *count -= 1;
         }
 
-        async fn lock(mu: Arc<Mutex<usize>>) {
+        async fn lock(mu: Arc<RwLock<usize>>) {
             mem::drop(mu.lock().await);
         }
 
-        let mu = Arc::new(Mutex::new(0));
+        let mu = Arc::new(RwLock::new(0));
         let cv = Arc::new(Condvar::new());
 
         let arc_waker = Arc::new(TestWaker);
@@ -2199,7 +2202,7 @@ mod test {
             panic!("lock() unable to complete");
         }
 
-        // Since we haven't polled `futures` yet, the mutex state should now be empty.
+        // Since we haven't polled `futures` yet, the rwlock state should now be empty.
         assert_eq!(mu.raw.state.load(Ordering::Relaxed), 0);
 
         // Poll everything again. The readers should be able to make progress (but not complete) but
@@ -2243,7 +2246,7 @@ mod test {
 
     #[test]
     fn notify_readers_with_read_lock() {
-        async fn read(mu: Arc<Mutex<usize>>, cv: Arc<Condvar>) {
+        async fn read(mu: Arc<RwLock<usize>>, cv: Arc<Condvar>) {
             let mut count = mu.read_lock().await;
             while *count == 0 {
                 count = cv.wait_read(count).await;
@@ -2253,7 +2256,7 @@ mod test {
             pending!();
         }
 
-        let mu = Arc::new(Mutex::new(0));
+        let mu = Arc::new(RwLock::new(0));
         let cv = Arc::new(Condvar::new());
 
         let arc_waker = Arc::new(TestWaker);

@@ -32,7 +32,7 @@ use base::EventExt;
 use base::WorkerThread;
 use cros_async::select2;
 use cros_async::select6;
-use cros_async::sync::Mutex;
+use cros_async::sync::RwLock;
 use cros_async::AsyncError;
 use cros_async::EventAsync;
 use cros_async::Executor;
@@ -249,7 +249,7 @@ impl PortPair {
 }
 
 // Note: variables herein do not have to be atomic because this struct is guarded
-// by a Mutex.
+// by a RwLock.
 struct VsockConnection {
     // The guest port.
     guest_port: Le32,
@@ -297,7 +297,7 @@ struct Worker {
     host_guid: Option<String>,
     guest_cid: u64,
     // Map of host port to a VsockConnection.
-    connections: Mutex<HashMap<PortPair, VsockConnection>>,
+    connections: RwLock<HashMap<PortPair, VsockConnection>>,
     connection_event: Event,
 }
 
@@ -313,14 +313,14 @@ impl Worker {
             interrupt,
             host_guid,
             guest_cid,
-            connections: Mutex::new(HashMap::new()),
+            connections: RwLock::new(HashMap::new()),
             connection_event: Event::new().unwrap(),
         }
     }
 
     async fn process_rx_queue(
         &self,
-        recv_queue: Arc<Mutex<Queue>>,
+        recv_queue: Arc<RwLock<Queue>>,
         mut rx_queue_evt: EventAsync,
         ex: &Executor,
     ) -> Result<()> {
@@ -330,7 +330,7 @@ impl Worker {
             // TODO(b/200810561): Optimize this FuturesUnordered code.
             // Set up the EventAsyncs to select on
             let futures = FuturesUnordered::new();
-            // This needs to be its own scope since it holds a Mutex on `self.connections`.
+            // This needs to be its own scope since it holds a RwLock on `self.connections`.
             {
                 let connections = self.connections.read_lock().await;
                 for (port, connection) in connections.iter() {
@@ -776,7 +776,7 @@ impl Worker {
 
     async fn process_tx_packets(
         &self,
-        send_queue: &Arc<Mutex<Queue>>,
+        send_queue: &Arc<RwLock<Queue>>,
         rx_queue_evt: Event,
         mut packet_recv_queue: mpsc::Receiver<(virtio_vsock_hdr, Vec<u8>)>,
         ex: &Executor,
@@ -846,7 +846,7 @@ impl Worker {
         &self,
         port: PortPair,
         mut packet_recv_queue: mpsc::Receiver<(virtio_vsock_hdr, Vec<u8>)>,
-        send_queue: &Arc<Mutex<Queue>>,
+        send_queue: &Arc<RwLock<Queue>>,
         mut rx_queue_evt: EventAsync,
         ex: &Executor,
     ) -> PortPair {
@@ -871,7 +871,7 @@ impl Worker {
         &self,
         header: virtio_vsock_hdr,
         data: &[u8],
-        send_queue: &Arc<Mutex<Queue>>,
+        send_queue: &Arc<RwLock<Queue>>,
         rx_queue_evt: &mut EventAsync,
         ex: &Executor,
     ) -> bool {
@@ -1038,7 +1038,7 @@ impl Worker {
 
     async fn send_vsock_credit_update(
         &self,
-        send_queue: &Arc<Mutex<Queue>>,
+        send_queue: &Arc<RwLock<Queue>>,
         rx_queue_evt: &mut EventAsync,
         header: virtio_vsock_hdr,
     ) {
@@ -1080,7 +1080,7 @@ impl Worker {
 
     async fn send_vsock_reset(
         &self,
-        send_queue: &Arc<Mutex<Queue>>,
+        send_queue: &Arc<RwLock<Queue>>,
         rx_queue_evt: &mut EventAsync,
         header: virtio_vsock_hdr,
     ) {
@@ -1193,7 +1193,7 @@ impl Worker {
         // threaded. We need the mutex for compile time correctness, but technically it is not
         // actually providing mandatory locking, at least not at the moment. If we later use a
         // multi-threaded executor, then this lock will be important.
-        let rx_queue_arc = Arc::new(Mutex::new(rx_queue));
+        let rx_queue_arc = Arc::new(RwLock::new(rx_queue));
 
         let rx_evt_async = EventAsync::new(
             rx_queue_evt

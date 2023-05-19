@@ -8,5 +8,5 @@ mod spin;
 mod waiter;
 
 pub use cv::Condvar;
-pub use mu::Mutex;
+pub use mu::RwLock;
 pub use spin::SpinLock;

@@ -22,7 +22,7 @@ use base::RawDescriptor;
 use base::WorkerThread;
 use cros_async::block_on;
 use cros_async::sync::Condvar;
-use cros_async::sync::Mutex as AsyncMutex;
+use cros_async::sync::RwLock as AsyncRwLock;
 use cros_async::AsyncError;
 use cros_async::EventAsync;
 use cros_async::Executor;
@@ -499,9 +499,9 @@ fn run_worker(
     let streams = stream_info_builders
         .into_iter()
         .map(StreamInfoBuilder::build)
-        .map(AsyncMutex::new)
+        .map(AsyncRwLock::new)
         .collect();
-    let streams = Rc::new(AsyncMutex::new(streams));
+    let streams = Rc::new(AsyncRwLock::new(streams));
 
     let mut queues: Vec<(Queue, EventAsync)> = queues
         .into_iter()
@@ -514,13 +514,13 @@ fn run_worker(
         .collect();
 
     let (ctrl_queue, mut ctrl_queue_evt) = queues.remove(0);
-    let ctrl_queue = Rc::new(AsyncMutex::new(ctrl_queue));
+    let ctrl_queue = Rc::new(AsyncRwLock::new(ctrl_queue));
     let (_event_queue, _event_queue_evt) = queues.remove(0);
     let (tx_queue, tx_queue_evt) = queues.remove(0);
     let (rx_queue, rx_queue_evt) = queues.remove(0);
 
-    let tx_queue = Rc::new(AsyncMutex::new(tx_queue));
-    let rx_queue = Rc::new(AsyncMutex::new(rx_queue));
+    let tx_queue = Rc::new(AsyncRwLock::new(tx_queue));
+    let rx_queue = Rc::new(AsyncRwLock::new(rx_queue));
 
     let (tx_send, mut tx_recv) = mpsc::unbounded();
     let (rx_send, mut rx_recv) = mpsc::unbounded();
@@ -574,7 +574,7 @@ fn run_worker(
     Ok(())
 }
 
-async fn notify_reset_signal(reset_signal: &(AsyncMutex<bool>, Condvar)) {
+async fn notify_reset_signal(reset_signal: &(AsyncRwLock<bool>, Condvar)) {
     let (lock, cvar) = reset_signal;
     *lock.lock().await = true;
     cvar.notify_all();
@@ -589,19 +589,19 @@ async fn notify_reset_signal(reset_signal: &(AsyncMutex<bool>, Condvar)) {
 /// the streams and run the worker again.
 fn run_worker_once(
     ex: &Executor,
-    streams: &Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo>>>>,
+    streams: &Rc<AsyncRwLock<Vec<AsyncRwLock<StreamInfo>>>>,
     mem: &GuestMemory,
     interrupt: Interrupt,
     snd_data: &SndData,
     mut f_kill: &mut (impl Future<Output = anyhow::Result<()>> + FusedFuture + Unpin),
     mut f_resample: &mut (impl Future<Output = anyhow::Result<()>> + FusedFuture + Unpin),
-    ctrl_queue: Rc<AsyncMutex<Queue>>,
+    ctrl_queue: Rc<AsyncRwLock<Queue>>,
     ctrl_queue_evt: &mut EventAsync,
-    tx_queue: Rc<AsyncMutex<Queue>>,
+    tx_queue: Rc<AsyncRwLock<Queue>>,
     tx_queue_evt: &EventAsync,
     tx_send: mpsc::UnboundedSender<PcmResponse>,
     tx_recv: &mut mpsc::UnboundedReceiver<PcmResponse>,
-    rx_queue: Rc<AsyncMutex<Queue>>,
+    rx_queue: Rc<AsyncRwLock<Queue>>,
     rx_queue_evt: &EventAsync,
     rx_send: mpsc::UnboundedSender<PcmResponse>,
     rx_recv: &mut mpsc::UnboundedReceiver<PcmResponse>,
@@ -609,7 +609,7 @@ fn run_worker_once(
     let tx_send2 = tx_send.clone();
     let rx_send2 = rx_send.clone();
 
-    let reset_signal = (AsyncMutex::new(false), Condvar::new());
+    let reset_signal = (AsyncRwLock::new(false), Condvar::new());
 
     let f_ctrl = handle_ctrl_queue(
         ex,
@@ -722,15 +722,15 @@ fn run_worker_once(
 
 fn reset_streams(
     ex: &Executor,
-    streams: &Rc<AsyncMutex<Vec<AsyncMutex<StreamInfo>>>>,
+    streams: &Rc<AsyncRwLock<Vec<AsyncRwLock<StreamInfo>>>>,
     mem: &GuestMemory,
     interrupt: Interrupt,
-    tx_queue: &Rc<AsyncMutex<Queue>>,
+    tx_queue: &Rc<AsyncRwLock<Queue>>,
     tx_recv: &mut mpsc::UnboundedReceiver<PcmResponse>,
-    rx_queue: &Rc<AsyncMutex<Queue>>,
+    rx_queue: &Rc<AsyncRwLock<Queue>>,
     rx_recv: &mut mpsc::UnboundedReceiver<PcmResponse>,
 ) -> Result<(), AsyncError> {
-    let reset_signal = (AsyncMutex::new(false), Condvar::new());
+    let reset_signal = (AsyncRwLock::new(false), Condvar::new());
 
     let do_reset = async {
         let streams = streams.read_lock().await;

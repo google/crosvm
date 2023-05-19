@@ -25,7 +25,7 @@ use base::Tube;
 use base::WorkerThread;
 use cros_async::block_on;
 use cros_async::select11;
-use cros_async::sync::Mutex as AsyncMutex;
+use cros_async::sync::RwLock as AsyncRwLock;
 use cros_async::AsyncTube;
 use cros_async::EventAsync;
 use cros_async::Executor;
@@ -436,7 +436,7 @@ async fn handle_stats_queue(
     mut stats_rx: mpsc::Receiver<u64>,
     command_tube: &AsyncTube,
     registered_evt_q: Option<&SendTubeAsync>,
-    state: Arc<AsyncMutex<BalloonState>>,
+    state: Arc<AsyncRwLock<BalloonState>>,
     interrupt: Interrupt,
 ) {
     // Consume the first stats buffer sent from the guest at startup. It was not
@@ -503,7 +503,7 @@ async fn send_adjusted_response(
 }
 
 async fn handle_event(
-    state: Arc<AsyncMutex<BalloonState>>,
+    state: Arc<AsyncRwLock<BalloonState>>,
     interrupt: Interrupt,
     r: &mut Reader,
     command_tube: &AsyncTube,
@@ -539,7 +539,7 @@ async fn handle_events_queue(
     mem: &GuestMemory,
     mut queue: Queue,
     mut queue_event: EventAsync,
-    state: Arc<AsyncMutex<BalloonState>>,
+    state: Arc<AsyncRwLock<BalloonState>>,
     interrupt: Interrupt,
     command_tube: &AsyncTube,
 ) -> Result<()> {
@@ -575,7 +575,7 @@ async fn handle_wss_op_queue(
     mut queue: Queue,
     mut queue_event: EventAsync,
     mut wss_op_rx: mpsc::Receiver<WSSOp>,
-    state: Arc<AsyncMutex<BalloonState>>,
+    state: Arc<AsyncRwLock<BalloonState>>,
     interrupt: Interrupt,
 ) -> Result<()> {
     loop {
@@ -660,7 +660,7 @@ async fn handle_wss_data_queue(
     mut queue_event: EventAsync,
     command_tube: &AsyncTube,
     registered_evt_q: Option<&SendTubeAsync>,
-    state: Arc<AsyncMutex<BalloonState>>,
+    state: Arc<AsyncRwLock<BalloonState>>,
     interrupt: Interrupt,
 ) -> Result<()> {
     loop {
@@ -725,7 +725,7 @@ fn send_initial_wss_config(mut wss_op_tx: mpsc::Sender<WSSOp>) {
 async fn handle_command_tube(
     command_tube: &AsyncTube,
     interrupt: Interrupt,
-    state: Arc<AsyncMutex<BalloonState>>,
+    state: Arc<AsyncRwLock<BalloonState>>,
     mut stats_tx: mpsc::Sender<u64>,
     mut wss_op_tx: mpsc::Sender<WSSOp>,
 ) -> Result<()> {
@@ -778,7 +778,7 @@ async fn handle_command_tube(
 async fn handle_pending_adjusted_responses(
     pending_adjusted_response_event: EventAsync,
     command_tube: &AsyncTube,
-    state: Arc<AsyncMutex<BalloonState>>,
+    state: Arc<AsyncRwLock<BalloonState>>,
 ) -> Result<()> {
     loop {
         pending_adjusted_response_event
@@ -809,7 +809,7 @@ fn run_worker(
     kill_evt: Event,
     pending_adjusted_response_event: Event,
     mem: GuestMemory,
-    state: Arc<AsyncMutex<BalloonState>>,
+    state: Arc<AsyncRwLock<BalloonState>>,
     registered_evt_q: Option<SendTube>,
 ) -> (Option<Tube>, Tube, Option<SendTube>) {
     let ex = Executor::new().unwrap();
@@ -1012,7 +1012,7 @@ pub struct Balloon {
     dynamic_mapping_tube: Option<Tube>,
     release_memory_tube: Option<Tube>,
     pending_adjusted_response_event: Event,
-    state: Arc<AsyncMutex<BalloonState>>,
+    state: Arc<AsyncRwLock<BalloonState>>,
     features: u64,
     acked_features: u64,
     worker_thread: Option<WorkerThread<(Option<Tube>, Tube, Option<SendTube>)>>,
@@ -1061,7 +1061,7 @@ impl Balloon {
             dynamic_mapping_tube: Some(dynamic_mapping_tube),
             release_memory_tube,
             pending_adjusted_response_event: Event::new().map_err(BalloonError::CreatingEvent)?,
-            state: Arc::new(AsyncMutex::new(BalloonState {
+            state: Arc::new(AsyncRwLock::new(BalloonState {
                 num_pages: (init_balloon_size >> VIRTIO_BALLOON_PFN_SHIFT) as u32,
                 actual_pages: 0,
                 failable_update: false,
