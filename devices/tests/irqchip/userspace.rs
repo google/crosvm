@@ -51,6 +51,7 @@ use hypervisor::Sregs;
 use hypervisor::TriggerMode;
 use hypervisor::Vcpu;
 use hypervisor::VcpuExit;
+use hypervisor::VcpuSnapshot;
 use hypervisor::VcpuX86_64;
 use hypervisor::Xsave;
 use resources::AddressRange;
@@ -781,6 +782,12 @@ impl VcpuX86_64 for FakeVcpu {
         unimplemented!()
     }
     fn set_tsc_offset(&self, _offset: u64) -> Result<()> {
+        unimplemented!()
+    }
+    fn snapshot(&self) -> anyhow::Result<VcpuSnapshot> {
+        unimplemented!()
+    }
+    fn restore(&mut self, _snapshot: &VcpuSnapshot) -> anyhow::Result<()> {
         unimplemented!()
     }
 }

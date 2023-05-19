@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use anyhow::anyhow;
 use base::Result;
 use hypervisor::DeviceKind;
 
@@ -23,4 +24,13 @@ pub trait IrqChipAArch64: IrqChip {
 
     /// Once all the VCPUs have been enabled, finalize the irq chip.
     fn finalize(&self) -> Result<()>;
+
+    // Snapshot irqchip.
+    fn snapshot(&self, _cpus_num: usize) -> anyhow::Result<serde_json::Value> {
+        Err(anyhow!("Snapshot not yet implemented for AArch64"))
+    }
+
+    fn restore(&mut self, _data: serde_json::Value, _vcpus_num: usize) -> anyhow::Result<()> {
+        Err(anyhow!("Restore not yet implemented for AArch64"))
+    }
 }

@@ -1516,6 +1516,8 @@ impl VmRequest {
         device_control_tube: &Tube,
         vcpu_size: usize,
         irq_handler_control: &Tube,
+        snapshot_irqchip: impl Fn() -> anyhow::Result<serde_json::Value>,
+        restore_irqchip: impl FnMut(serde_json::Value) -> anyhow::Result<()>,
     ) -> VmResponse {
         match *self {
             VmRequest::Exit => {
@@ -1931,6 +1933,8 @@ impl VmRequest {
                         }
                     }
                     info!("flushed IRQs in {} iterations", flush_attempts);
+
+                    // Snapshot Vcpus
                     let vcpu_path = snapshot_path.with_extension("vcpu");
                     let cpu_file = File::create(&vcpu_path)
                         .with_context(|| format!("failed to open path {}", vcpu_path.display()))?;
@@ -1950,6 +1954,17 @@ impl VmRequest {
                         }
                     }
                     serde_json::to_writer(cpu_file, &cpu_vec).expect("Failed to write Vcpu state");
+
+                    // Snapshot irqchip
+                    let irqchip_path = snapshot_path.with_extension("irqchip");
+                    let irqchip_file = File::create(&irqchip_path).with_context(|| {
+                        format!("failed to open path {}", irqchip_path.display())
+                    })?;
+                    let irqchip_snap = snapshot_irqchip()?;
+                    serde_json::to_writer(irqchip_file, &irqchip_snap)
+                        .expect("Failed to write irqchip state");
+
+                    // Snapshot devices
                     device_control_tube
                         .send(&DeviceControlCommand::SnapshotDevices {
                             snapshot_path: snapshot_path.clone(),
@@ -1975,6 +1990,7 @@ impl VmRequest {
                     irq_handler_control,
                     device_control_tube,
                     vcpu_size,
+                    restore_irqchip,
                 ) {
                     Ok(()) => VmResponse::Ok,
                     Err(e) => {
@@ -2010,9 +2026,19 @@ pub fn do_restore(
     irq_handler_control: &Tube,
     device_control_tube: &Tube,
     vcpu_size: usize,
+    mut restore_irqchip: impl FnMut(serde_json::Value) -> anyhow::Result<()>,
 ) -> anyhow::Result<()> {
     let _guard = VcpuSuspendGuard::new(&kick_vcpus, vcpu_size)?;
     let _device_guard = DeviceSleepGuard::new(device_control_tube)?;
+
+    // Restore IrqChip
+    let irq_path = restore_path.with_extension("irqchip");
+    let irq_file = File::open(&irq_path)
+        .with_context(|| format!("failed to open path {}", irq_path.display()))?;
+    let irq_snapshot: serde_json::Value = serde_json::from_reader(irq_file)?;
+    restore_irqchip(irq_snapshot)?;
+
+    // Restore Vcpu(s)
     let vcpu_path = restore_path.with_extension("vcpu");
     let cpu_file = File::open(&vcpu_path)
         .with_context(|| format!("failed to open path {}", vcpu_path.display()))?;
@@ -2037,6 +2063,8 @@ pub fn do_restore(
             bail!("Failed to restore vcpu: {}", e);
         }
     }
+
+    // Restore devices
     device_control_tube
         .send(&DeviceControlCommand::RestoreDevices { restore_path })
         .context("send command to devices control socket")?;

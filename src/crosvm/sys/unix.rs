@@ -2915,6 +2915,12 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             &irq_handler_control,
             &device_ctrl_tube,
             linux.vcpu_count,
+            |image| {
+                linux
+                    .irq_chip
+                    .try_box_clone()?
+                    .restore(image, linux.vcpu_count)
+            },
         )?;
         // Allow the vCPUs to start for real.
         vcpu::kick_all_vcpus(
@@ -3205,6 +3211,13 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                 &device_ctrl_tube,
                                                 vcpu_handles.len(),
                                                 &irq_handler_control,
+                                                || linux.irq_chip.snapshot(linux.vcpu_count),
+                                                |image| {
+                                                    linux
+                                                        .irq_chip
+                                                        .try_box_clone()?
+                                                        .restore(image, linux.vcpu_count)
+                                                },
                                             );
 
                                             // For non s2idle guest suspension we are done
