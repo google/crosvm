@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use argh::FromArgValue;
 use argh::FromArgs;
 use cros_async::ExecutorKind;
-use devices::virtio::block::block::DiskOption;
+use devices::virtio::block::DiskOption;
 use devices::virtio::vhost::user::device;
 use devices::virtio::vhost::user::VhostUserParams;
 use devices::virtio::vsock::VsockConfig;

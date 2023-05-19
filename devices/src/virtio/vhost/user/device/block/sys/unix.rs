@@ -10,7 +10,7 @@ use cros_async::Executor;
 use hypervisor::ProtectionType;
 
 use crate::virtio::base_features;
-use crate::virtio::block::block::DiskOption;
+use crate::virtio::block::DiskOption;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 use crate::virtio::vhost::user::VhostUserDevice;

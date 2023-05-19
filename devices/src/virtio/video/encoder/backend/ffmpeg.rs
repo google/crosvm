@@ -30,11 +30,11 @@ use ffmpeg::AV_PKT_FLAG_KEY;
 
 use crate::virtio::video::encoder::backend::Encoder;
 use crate::virtio::video::encoder::backend::EncoderSession;
-use crate::virtio::video::encoder::encoder::EncoderCapabilities;
-use crate::virtio::video::encoder::encoder::EncoderEvent;
-use crate::virtio::video::encoder::encoder::InputBufferId;
-use crate::virtio::video::encoder::encoder::OutputBufferId;
-use crate::virtio::video::encoder::encoder::SessionConfig;
+use crate::virtio::video::encoder::EncoderCapabilities;
+use crate::virtio::video::encoder::EncoderEvent;
+use crate::virtio::video::encoder::InputBufferId;
+use crate::virtio::video::encoder::OutputBufferId;
+use crate::virtio::video::encoder::SessionConfig;
 use crate::virtio::video::error::VideoError;
 use crate::virtio::video::error::VideoResult;
 use crate::virtio::video::ffmpeg::TryAsAvFrameExt;

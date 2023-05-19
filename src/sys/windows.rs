@@ -85,7 +85,7 @@ use devices::tsc::get_tsc_sync_mitigations;
 use devices::tsc::standard_deviation;
 use devices::tsc::TscSyncMitigations;
 use devices::virtio;
-use devices::virtio::block::block::DiskOption;
+use devices::virtio::block::DiskOption;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::common_backend::VirtioSnd;
 #[cfg(feature = "audio")]

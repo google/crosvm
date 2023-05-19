@@ -14,6 +14,7 @@ cfg_if::cfg_if! {
         pub use platform::*;
     } else if #[cfg(windows)] {
         pub use windows as platform;
+        pub use platform::*;
     } else {
         compile_error!("Unsupported platform");
     }

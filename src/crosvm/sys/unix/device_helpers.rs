@@ -25,7 +25,7 @@ use devices::serial_device::SerialType;
 use devices::vfio::VfioCommonSetup;
 use devices::vfio::VfioCommonTrait;
 use devices::virtio;
-use devices::virtio::block::block::DiskOption;
+use devices::virtio::block::DiskOption;
 use devices::virtio::console::asynchronous::AsyncConsole;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::device_constants::video::VideoBackendType;

@@ -45,6 +45,7 @@ mod sock_ctrl_msg;
 mod stream_channel;
 mod terminal;
 mod timer;
+pub mod tube;
 pub mod vsock;
 mod write_zeroes;
 

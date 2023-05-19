@@ -16,7 +16,7 @@ use libvda::encode::VeaImplType;
 use libvda::encode::VeaInstance;
 
 use super::*;
-use crate::virtio::video::encoder::encoder::*;
+use crate::virtio::video::encoder::*;
 use crate::virtio::video::error::VideoError;
 use crate::virtio::video::error::VideoResult;
 use crate::virtio::video::format::Bitrate;

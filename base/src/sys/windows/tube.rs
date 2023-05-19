@@ -136,7 +136,7 @@ impl Tube {
         }
     }
 
-    pub(super) fn try_clone(&self) -> Result<Self> {
+    pub(crate) fn try_clone(&self) -> Result<Self> {
         Ok(Tube {
             socket: self.socket.try_clone().map_err(Error::Clone)?,
             target_pid: self.target_pid,

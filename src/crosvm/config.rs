@@ -30,7 +30,7 @@ use base::pagesize;
 use cros_async::ExecutorKind;
 use devices::serial_device::SerialHardware;
 use devices::serial_device::SerialParameters;
-use devices::virtio::block::block::DiskOption;
+use devices::virtio::block::DiskOption;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::device_constants::video::VideoDeviceConfig;
 #[cfg(feature = "gpu")]

@@ -9,7 +9,7 @@ use anyhow::Context;
 use winapi::um::winnt::FILE_SHARE_READ;
 use winapi::um::winnt::FILE_SHARE_WRITE;
 
-use crate::virtio::block::block::DiskOption;
+use crate::virtio::block::DiskOption;
 
 pub fn get_seg_max(_queue_size: u16) -> u32 {
     // Allow a single segment per request, since vectored I/O is not implemented for Windows yet.

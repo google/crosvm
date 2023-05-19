@@ -23,7 +23,7 @@ use hypervisor::ProtectionType;
 use tube_transporter::TubeToken;
 
 use crate::virtio::base_features;
-use crate::virtio::block::block::DiskOption;
+use crate::virtio::block::DiskOption;
 use crate::virtio::vhost::user::device::block::BlockBackend;
 use crate::virtio::vhost::user::device::handler::sys::windows::read_from_tube_transporter;
 use crate::virtio::vhost::user::device::handler::sys::windows::run_handler;

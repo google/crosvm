@@ -18,7 +18,6 @@ rustflags = [
     "-Aclippy::len_zero",
     "-Aclippy::match_bool",
     "-Aclippy::match_wild_err_arm",
-    "-Aclippy::module_inception",
     "-Aclippy::needless_bool",
     "-Aclippy::new-ret-no-self",
     "-Aclippy::or_fun_call",

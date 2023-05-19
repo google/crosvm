@@ -30,7 +30,7 @@ use arch::VcpuAffinity;
 use argh::FromArgs;
 use base::getpid;
 use cros_async::ExecutorKind;
-use devices::virtio::block::block::DiskOption;
+use devices::virtio::block::DiskOption;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
 use devices::virtio::device_constants::video::VideoDeviceConfig;
 #[cfg(feature = "audio")]

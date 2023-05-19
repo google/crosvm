@@ -35,6 +35,7 @@ mod stream_channel;
 mod system_info;
 mod terminal;
 mod timer;
+pub mod tube;
 mod wait;
 
 pub mod thread;

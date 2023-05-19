@@ -6,10 +6,10 @@ use std::fs::File;
 
 use data_model::VolatileSlice;
 
-use super::super::cross_domain::CrossDomainContext;
-use super::super::cross_domain::CrossDomainState;
 use super::super::cross_domain_protocol::CrossDomainInit;
 use super::super::cross_domain_protocol::CrossDomainSendReceive;
+use super::super::CrossDomainContext;
+use super::super::CrossDomainState;
 use crate::cross_domain::CrossDomainEvent;
 use crate::cross_domain::CrossDomainToken;
 use crate::rutabaga_utils::RutabagaError;

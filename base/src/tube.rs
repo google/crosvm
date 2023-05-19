@@ -7,15 +7,12 @@ use std::io;
 use remain::sorted;
 use thiserror::Error as ThisError;
 
-#[cfg_attr(windows, path = "sys/windows/tube.rs")]
-#[cfg_attr(not(windows), path = "sys/unix/tube.rs")]
-mod tube;
 use std::time::Duration;
 
+pub use crate::sys::tube::*;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde::Serialize;
-pub use tube::*;
 
 impl Tube {
     /// Creates a Send/Recv pair of Tubes.
@@ -38,7 +35,7 @@ use crate::ReadNotifier;
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]
 /// A Tube end which can only send messages. Cloneable.
-pub struct SendTube(Tube);
+pub struct SendTube(pub(crate) Tube);
 
 #[allow(dead_code)]
 impl SendTube {
@@ -71,7 +68,7 @@ impl SendTube {
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]
 /// A Tube end which can only recv messages.
-pub struct RecvTube(Tube);
+pub struct RecvTube(pub(crate) Tube);
 
 #[allow(dead_code)]
 impl RecvTube {

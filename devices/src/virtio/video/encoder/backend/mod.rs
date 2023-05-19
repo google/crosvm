@@ -9,11 +9,11 @@ pub mod vda;
 
 use base::AsRawDescriptor;
 
-use super::encoder::EncoderCapabilities;
-use super::encoder::EncoderEvent;
-use super::encoder::InputBufferId;
-use super::encoder::OutputBufferId;
-use super::encoder::SessionConfig;
+use super::EncoderCapabilities;
+use super::EncoderEvent;
+use super::InputBufferId;
+use super::OutputBufferId;
+use super::SessionConfig;
 use crate::virtio::video::error::VideoResult;
 use crate::virtio::video::format::Bitrate;
 use crate::virtio::video::resource::GuestResource;

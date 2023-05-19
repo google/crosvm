@@ -15,7 +15,7 @@ use base::open_file;
 use base::FlockOperation;
 use disk::DiskFile;
 
-use crate::virtio::block::block::DiskOption;
+use crate::virtio::block::DiskOption;
 
 pub fn get_seg_max(queue_size: u16) -> u32 {
     let seg_max = min(max(iov_max(), 1), u32::max_value() as usize) as u32;
