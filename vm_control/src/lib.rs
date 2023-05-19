@@ -1893,95 +1893,15 @@ impl VmRequest {
             }
             VmRequest::HotPlugCommand { device: _, add: _ } => VmResponse::Ok,
             VmRequest::Snapshot(SnapshotCommand::Take { ref snapshot_path }) => {
-                let f = || -> anyhow::Result<VmResponse> {
-                    let _vcpu_guard = VcpuSuspendGuard::new(&kick_vcpus, vcpu_size)?;
-                    let _device_guard = DeviceSleepGuard::new(device_control_tube)?;
-
-                    // We want to flush all pending IRQs to the LAPICs. There are two cases:
-                    //
-                    // MSIs: these are directly delivered to the LAPIC. We must verify the handler
-                    // thread cycles once to deliver these interrupts.
-                    //
-                    // Legacy interrupts: in the case of a split IRQ chip, these interrupts may
-                    // flow through the userspace IOAPIC. If the hypervisor does not support
-                    // irqfds (e.g. WHPX), a single iteration will only flush the IRQ to the
-                    // IOAPIC. The underlying MSI will be asserted at this point, but if the
-                    // IRQ handler doesn't run another iteration, it won't be delivered to the
-                    // LAPIC. This is why we cycle the handler thread twice (doing so ensures we
-                    // process the underlying MSI).
-                    //
-                    // We can handle both of these cases by iterating until there are no tokens
-                    // serviced on the requested iteration. Note that in the legacy case, this
-                    // ensures at least two iterations.
-                    //
-                    // Note: within CrosVM, *all* interrupts are eventually converted into the
-                    // same mechanicism that MSIs use. This is why we say "underlying" MSI for
-                    // a legacy IRQ.
-                    let mut flush_attempts = 0;
-                    loop {
-                        irq_handler_control
-                            .send(&IrqHandlerRequest::WakeAndNotifyIteration)
-                            .context("failed to send flush command to IRQ handler thread")?;
-                        let resp = irq_handler_control
-                            .recv()
-                            .context("failed to recv flush response from IRQ handler thread")?;
-                        match resp {
-                            IrqHandlerResponse::HandlerIterationComplete(tokens_serviced) => {
-                                if tokens_serviced == 0 {
-                                    break;
-                                }
-                            }
-                            _ => bail!("received unexpected reply from IRQ handler: {:?}", resp),
-                        }
-                        flush_attempts += 1;
-                        if flush_attempts > EXPECTED_MAX_IRQ_FLUSH_ITERATIONS {
-                            warn!("flushing IRQs for snapshot may be stalled after iteration {}, expected <= {} iterations", flush_attempts, EXPECTED_MAX_IRQ_FLUSH_ITERATIONS);
-                        }
-                    }
-                    info!("flushed IRQs in {} iterations", flush_attempts);
-
-                    // Snapshot Vcpus
-                    let vcpu_path = snapshot_path.with_extension("vcpu");
-                    let cpu_file = File::create(&vcpu_path)
-                        .with_context(|| format!("failed to open path {}", vcpu_path.display()))?;
-                    let (send_chan, recv_chan) = mpsc::channel();
-                    kick_vcpus(VcpuControl::Snapshot(send_chan));
-                    // Validate all Vcpus snapshot successfully
-                    let mut cpu_vec = Vec::with_capacity(vcpu_size);
-                    for _ in 0..vcpu_size {
-                        match recv_chan
-                            .recv()
-                            .context("Failed to snapshot Vcpu, aborting snapshot")?
-                        {
-                            Ok(snap) => {
-                                cpu_vec.push(snap);
-                            }
-                            Err(e) => bail!("Failed to snapshot Vcpu, aborting snapshot: {}", e),
-                        }
-                    }
-                    serde_json::to_writer(cpu_file, &cpu_vec).expect("Failed to write Vcpu state");
-
-                    // Snapshot irqchip
-                    let irqchip_path = snapshot_path.with_extension("irqchip");
-                    let irqchip_file = File::create(&irqchip_path).with_context(|| {
-                        format!("failed to open path {}", irqchip_path.display())
-                    })?;
-                    let irqchip_snap = snapshot_irqchip()?;
-                    serde_json::to_writer(irqchip_file, &irqchip_snap)
-                        .expect("Failed to write irqchip state");
-
-                    // Snapshot devices
-                    device_control_tube
-                        .send(&DeviceControlCommand::SnapshotDevices {
-                            snapshot_path: snapshot_path.clone(),
-                        })
-                        .context("send command to devices control socket")?;
-                    device_control_tube
-                        .recv()
-                        .context("receive from devices control socket")
-                };
-                match f() {
-                    Ok(r) => r,
+                match do_snapshot(
+                    snapshot_path.to_path_buf(),
+                    kick_vcpus,
+                    irq_handler_control,
+                    device_control_tube,
+                    vcpu_size,
+                    snapshot_irqchip,
+                ) {
+                    Ok(()) => VmResponse::Ok,
                     Err(e) => {
                         error!("failed to handle snapshot: {:?}", e);
                         VmResponse::Err(SysError::new(EIO))
@@ -2019,6 +1939,102 @@ impl VmRequest {
             VmRequest::Unregister { socket_addr: _ } => VmResponse::Ok,
         }
     }
+}
+
+/// Snapshot the VM to file at `snapshot_path`
+fn do_snapshot(
+    snapshot_path: PathBuf,
+    kick_vcpus: impl Fn(VcpuControl),
+    irq_handler_control: &Tube,
+    device_control_tube: &Tube,
+    vcpu_size: usize,
+    snapshot_irqchip: impl Fn() -> anyhow::Result<serde_json::Value>,
+) -> anyhow::Result<()> {
+    let _vcpu_guard = VcpuSuspendGuard::new(&kick_vcpus, vcpu_size)?;
+    let _device_guard = DeviceSleepGuard::new(device_control_tube)?;
+
+    // We want to flush all pending IRQs to the LAPICs. There are two cases:
+    //
+    // MSIs: these are directly delivered to the LAPIC. We must verify the handler
+    // thread cycles once to deliver these interrupts.
+    //
+    // Legacy interrupts: in the case of a split IRQ chip, these interrupts may
+    // flow through the userspace IOAPIC. If the hypervisor does not support
+    // irqfds (e.g. WHPX), a single iteration will only flush the IRQ to the
+    // IOAPIC. The underlying MSI will be asserted at this point, but if the
+    // IRQ handler doesn't run another iteration, it won't be delivered to the
+    // LAPIC. This is why we cycle the handler thread twice (doing so ensures we
+    // process the underlying MSI).
+    //
+    // We can handle both of these cases by iterating until there are no tokens
+    // serviced on the requested iteration. Note that in the legacy case, this
+    // ensures at least two iterations.
+    //
+    // Note: within CrosVM, *all* interrupts are eventually converted into the
+    // same mechanicism that MSIs use. This is why we say "underlying" MSI for
+    // a legacy IRQ.
+    let mut flush_attempts = 0;
+    loop {
+        irq_handler_control
+            .send(&IrqHandlerRequest::WakeAndNotifyIteration)
+            .context("failed to send flush command to IRQ handler thread")?;
+        let resp = irq_handler_control
+            .recv()
+            .context("failed to recv flush response from IRQ handler thread")?;
+        match resp {
+            IrqHandlerResponse::HandlerIterationComplete(tokens_serviced) => {
+                if tokens_serviced == 0 {
+                    break;
+                }
+            }
+            _ => bail!("received unexpected reply from IRQ handler: {:?}", resp),
+        }
+        flush_attempts += 1;
+        if flush_attempts > EXPECTED_MAX_IRQ_FLUSH_ITERATIONS {
+            warn!("flushing IRQs for snapshot may be stalled after iteration {}, expected <= {} iterations", flush_attempts, EXPECTED_MAX_IRQ_FLUSH_ITERATIONS);
+        }
+    }
+    info!("flushed IRQs in {} iterations", flush_attempts);
+
+    // Snapshot Vcpus
+    let vcpu_path = snapshot_path.with_extension("vcpu");
+    let cpu_file = File::create(&vcpu_path)
+        .with_context(|| format!("failed to open path {}", vcpu_path.display()))?;
+    let (send_chan, recv_chan) = mpsc::channel();
+    kick_vcpus(VcpuControl::Snapshot(send_chan));
+    // Validate all Vcpus snapshot successfully
+    let mut cpu_vec = Vec::with_capacity(vcpu_size);
+    for _ in 0..vcpu_size {
+        match recv_chan
+            .recv()
+            .context("Failed to snapshot Vcpu, aborting snapshot")?
+        {
+            Ok(snap) => {
+                cpu_vec.push(snap);
+            }
+            Err(e) => bail!("Failed to snapshot Vcpu, aborting snapshot: {}", e),
+        }
+    }
+    serde_json::to_writer(cpu_file, &cpu_vec).expect("Failed to write Vcpu state");
+
+    // Snapshot irqchip
+    let irqchip_path = snapshot_path.with_extension("irqchip");
+    let irqchip_file = File::create(&irqchip_path)
+        .with_context(|| format!("failed to open path {}", irqchip_path.display()))?;
+    let irqchip_snap = snapshot_irqchip()?;
+    serde_json::to_writer(irqchip_file, &irqchip_snap).expect("Failed to write irqchip state");
+
+    // Snapshot devices
+    device_control_tube
+        .send(&DeviceControlCommand::SnapshotDevices { snapshot_path })
+        .context("send command to devices control socket")?;
+    let resp: VmResponse = device_control_tube
+        .recv()
+        .context("receive from devices control socket")?;
+    if !matches!(resp, VmResponse::Ok) {
+        bail!("unexpected SnapshotDevices response: {resp}");
+    }
+    Ok(())
 }
 
 /// Restore the VM to the snapshot at `restore_path`.
