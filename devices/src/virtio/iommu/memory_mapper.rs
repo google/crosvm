@@ -257,6 +257,11 @@ impl BasicMemoryMapper {
     pub fn len(&self) -> usize {
         self.maps.len()
     }
+
+    #[cfg(test)]
+    pub fn is_empty(&self) -> bool {
+        self.maps.is_empty()
+    }
 }
 
 impl MemoryMapper for BasicMemoryMapper {

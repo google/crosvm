@@ -70,6 +70,10 @@ impl ScatterGatherBuffer {
         Ok(total_len)
     }
 
+    pub fn is_empty(&self) -> Result<bool> {
+        Ok(self.len()? == 0)
+    }
+
     /// Get the guest address and length of the TRB's data buffer.
     /// This is usually a separate buffer pointed to by the TRB,
     /// but it can also be within the TRB itself in the case of immediate data.

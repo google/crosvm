@@ -45,6 +45,10 @@ impl AvBufferSource for MemoryMappingAvBufferSource {
     fn len(&self) -> usize {
         self.0.size()
     }
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 pub trait TryAsAvFrameExt {
@@ -156,7 +160,7 @@ impl TryFrom<Format> for AvPixelFormat {
         })
         .map_err(|_|
             // The error case should never happen as long as we use valid constant values, but
-            // don't panic in case something goes wrong. 
+            // don't panic in case something goes wrong.
             TryFromFormatError(()))
     }
 }

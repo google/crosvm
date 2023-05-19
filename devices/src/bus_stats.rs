@@ -191,7 +191,7 @@ impl BusStatistics {
 
     /// Merge several BusStatistics into one.
     pub fn merged(stats: &[Arc<Mutex<BusStatistics>>]) -> BusStatistics {
-        if stats.len() == 0 {
+        if stats.is_empty() {
             return BusStatistics::new();
         }
 

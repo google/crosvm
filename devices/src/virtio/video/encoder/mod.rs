@@ -328,7 +328,7 @@ impl<T: EncoderSession> Stream<T> {
             ));
         }
 
-        if responses.len() > 0 {
+        if !responses.is_empty() {
             Some(responses)
         } else {
             None
@@ -783,7 +783,7 @@ impl<T: Encoder> EncoderDevice<T> {
                 // We currently only support single-buffer formats, but some clients may mistake
                 // color planes with memory planes and submit several planes to us. This doesn't
                 // matter as we will only consider the first one.
-                if data_sizes.len() < 1 {
+                if data_sizes.is_empty() {
                     return Err(VideoError::InvalidParameter);
                 }
 
@@ -1035,8 +1035,8 @@ impl<T: Encoder> EncoderDevice<T> {
         let mut create_session = stream.encoder_session.is_none();
         // TODO(ishitatsuyuki): We should additionally check that no resources are *attached* while
         //                      a params is being set.
-        let src_resources_queued = stream.src_resources.len() > 0;
-        let dst_resources_queued = stream.dst_resources.len() > 0;
+        let src_resources_queued = !stream.src_resources.is_empty();
+        let dst_resources_queued = !stream.dst_resources.is_empty();
 
         // Dynamic framerate changes are allowed. The framerate can be set on either the input or
         // output queue. Changing the framerate can influence the selected H.264 level, as the
@@ -1273,7 +1273,7 @@ impl<T: Encoder> EncoderDevice<T> {
             .get_mut(&stream_id)
             .ok_or(VideoError::InvalidStreamId(stream_id))?;
         let mut recreate_session = false;
-        let resources_queued = stream.src_resources.len() > 0 || stream.dst_resources.len() > 0;
+        let resources_queued = !stream.src_resources.is_empty() || !stream.dst_resources.is_empty();
 
         match ctrl_val {
             CtrlVal::BitrateMode(bitrate_mode) => {

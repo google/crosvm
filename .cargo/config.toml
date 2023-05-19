@@ -14,8 +14,6 @@ rustflags = [
     "-Aclippy::collapsible_if",
     "-Aclippy::enum_variant_names",
     "-Aclippy::identity_op",
-    "-Aclippy::len_without_is_empty",
-    "-Aclippy::len_zero",
     "-Aclippy::match_bool",
     "-Aclippy::match_wild_err_arm",
     "-Aclippy::needless_bool",

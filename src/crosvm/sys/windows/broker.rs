@@ -883,7 +883,7 @@ impl Supervisor {
     }
 
     fn all_non_metrics_processes_exited(&self) -> bool {
-        self.children.len() == 0 || self.is_only_metrics_process_running()
+        self.children.is_empty() || self.is_only_metrics_process_running()
     }
 
     fn start_exit_timer(&mut self, timeout_token: Token) -> Result<()> {
@@ -1033,7 +1033,7 @@ impl Supervisor {
                             );
                         }
                         ensure_exit_code!(
-                            self.children.len() == 0,
+                            self.children.is_empty(),
                             Exit::BrokerMetricsExitedTimeout,
                             "metrics exited, but other broker children did not exit within the \
                             timeout",

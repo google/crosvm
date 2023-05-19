@@ -84,6 +84,10 @@ impl AvBufferSource for InputBuffer {
     fn len(&self) -> usize {
         self.mapping.size()
     }
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 enum CodecJob {

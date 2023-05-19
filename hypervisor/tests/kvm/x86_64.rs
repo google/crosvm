@@ -39,14 +39,14 @@ use vm_memory::GuestMemory;
 fn get_supported_cpuid() {
     let hypervisor = Kvm::new().unwrap();
     let cpuid = hypervisor.get_supported_cpuid().unwrap();
-    assert!(cpuid.cpu_id_entries.len() > 0);
+    assert!(!cpuid.cpu_id_entries.is_empty());
 }
 
 #[test]
 fn get_emulated_cpuid() {
     let hypervisor = Kvm::new().unwrap();
     let cpuid = hypervisor.get_emulated_cpuid().unwrap();
-    assert!(cpuid.cpu_id_entries.len() > 0);
+    assert!(!cpuid.cpu_id_entries.is_empty());
 }
 
 #[test]

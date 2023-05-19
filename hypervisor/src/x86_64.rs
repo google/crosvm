@@ -958,4 +958,9 @@ impl Xsave {
     pub fn len(&self) -> usize {
         self.len
     }
+
+    /// Returns true is length of XSAVE data is zero
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }

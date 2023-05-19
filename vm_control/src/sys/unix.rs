@@ -171,7 +171,7 @@ static SHOULD_PREPARE_MEMORY_REGION: Lazy<bool> = Lazy::new(|| {
         // so avoid mapping the whole shared memory region if we're not
         // using the tdp mmu.
         match std::fs::read("/sys/module/kvm/parameters/tdp_mmu") {
-            Ok(bytes) if bytes.len() > 0 => bytes[0] == b'Y',
+            Ok(bytes) if !bytes.is_empty() => bytes[0] == b'Y',
             _ => false,
         }
     } else if cfg!(target_pointer_width = "64") {

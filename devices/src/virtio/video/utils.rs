@@ -63,7 +63,7 @@ impl<T> EventQueue<T> {
 
     /// Remove all the posted events for which `predicate` returns `false`.
     pub fn retain<P: FnMut(&T) -> bool>(&mut self, predicate: P) {
-        if self.pending_events.len() > 0 {
+        if !self.pending_events.is_empty() {
             let _ = self
                 .event
                 .wait_timeout(Duration::from_millis(0))

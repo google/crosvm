@@ -494,7 +494,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
         config.bind_mounts = true;
         let uid_map = format!("0 {} 1", geteuid());
         let gid_map = format!("0 {} 1", getegid());
-        let gid_map = if cfg.plugin_gid_maps.len() > 0 {
+        let gid_map = if !cfg.plugin_gid_maps.is_empty() {
             gid_map
                 + &cfg
                     .plugin_gid_maps

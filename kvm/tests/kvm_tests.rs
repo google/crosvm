@@ -88,7 +88,7 @@ fn get_supported_cpuid() {
     let kvm = Kvm::new().unwrap();
     let mut cpuid = kvm.get_supported_cpuid().unwrap();
     let cpuid_entries = cpuid.mut_entries_slice();
-    assert!(cpuid_entries.len() > 0);
+    assert!(!cpuid_entries.is_empty());
 }
 
 #[test]

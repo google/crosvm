@@ -692,7 +692,7 @@ impl RutabagaComponent for VirglRenderer {
         _fence_handler: RutabagaFenceHandler,
     ) -> RutabagaResult<Box<dyn RutabagaContext>> {
         let mut name: &str = "gpu_renderer";
-        if let Some(name_string) = context_name.filter(|s| s.len() > 0) {
+        if let Some(name_string) = context_name.filter(|s| !s.is_empty()) {
             name = name_string;
         }
 

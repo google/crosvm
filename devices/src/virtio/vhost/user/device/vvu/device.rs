@@ -104,7 +104,7 @@ impl VfioReceiver {
                 .context("failed to receive data")
                 .map_err(RecvIntoBufsError::Fatal)?;
 
-            if data.len() == 0 {
+            if data.is_empty() {
                 // TODO(b/216407443): We should change `self.state` and exit gracefully.
                 info!("VVU connection is closed");
                 return Err(RecvIntoBufsError::Disconnect);

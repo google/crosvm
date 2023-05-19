@@ -584,6 +584,7 @@ pub trait AvBufferSource: Send {
         self.as_ptr() as *mut u8
     }
     fn len(&self) -> usize;
+    fn is_empty(&self) -> bool;
 }
 
 /// Wrapper around `AVBuffer` and `AVBufferRef`.
@@ -1022,6 +1023,10 @@ mod tests {
 
             fn len(&self) -> usize {
                 0
+            }
+
+            fn is_empty(&self) -> bool {
+                true
             }
         }
 

@@ -86,6 +86,11 @@ impl<'a> IoBufMut<'a> {
         self.buf.len as usize
     }
 
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.buf.len == 0
+    }
+
     /// Gets a const pointer to this slice's memory.
     #[inline]
     pub fn as_ptr(&self) -> *const u8 {

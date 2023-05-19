@@ -304,7 +304,7 @@ impl Stream {
             }
             StreamState::Prepared => {} // Do nothing, any buffers will be processed after start
             _ => {
-                if self.buffer_queue.len() > 0 {
+                if !self.buffer_queue.is_empty() {
                     warn!("virtio-snd: Buffers received while in unexpected state");
                 }
             }

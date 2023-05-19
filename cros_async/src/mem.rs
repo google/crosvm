@@ -94,6 +94,10 @@ impl VecIoWrapper {
         self.inner.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     // Check that the offsets are all valid in the backing vec.
     fn check_addrs(&self, mem_range: &MemRegion) -> Result<()> {
         let end = mem_range

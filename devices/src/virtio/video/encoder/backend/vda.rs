@@ -62,7 +62,7 @@ impl LibvdaEncoder {
             output_formats,
         } = instance.get_capabilities();
 
-        if input_formats.len() == 0 || output_formats.len() == 0 {
+        if input_formats.is_empty() || output_formats.is_empty() {
             error!("No input or output formats.");
             return Err(VideoError::InvalidFormat);
         }

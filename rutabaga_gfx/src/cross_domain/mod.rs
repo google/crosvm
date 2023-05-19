@@ -300,7 +300,7 @@ impl CrossDomainWorker {
             match event.token {
                 CrossDomainToken::ContextChannel => {
                     let (len, files) = self.state.receive_msg(receive_buf)?;
-                    if len != 0 || files.len() != 0 {
+                    if len != 0 || !files.is_empty() {
                         let mut cmd_receive: CrossDomainSendReceive = Default::default();
 
                         let num_files = files.len();
