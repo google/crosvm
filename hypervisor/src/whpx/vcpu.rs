@@ -1581,4 +1581,21 @@ mod tests {
         let xsave = vcpu.get_xsave().unwrap();
         vcpu.set_xsave(&xsave).unwrap();
     }
+
+    #[test]
+    fn get_and_set_interrupt_state_smoke() {
+        if !Whpx::is_enabled() {
+            return;
+        }
+        let cpu_count = 1;
+        let mem =
+            GuestMemory::new(&[(GuestAddress(0), 0x1000)]).expect("failed to create guest memory");
+        let vm = new_vm(cpu_count, mem);
+        let vcpu = vm.create_vcpu(0).expect("failed to create vcpu");
+
+        // For the sake of snapshotting, interrupt state is essentially opaque. We just want to make
+        // sure our syscalls succeed.
+        let interrupt_state = vcpu.get_interrupt_state().unwrap();
+        vcpu.set_interrupt_state(interrupt_state).unwrap();
+    }
 }
