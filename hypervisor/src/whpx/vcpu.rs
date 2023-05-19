@@ -14,7 +14,6 @@ use libc::EINVAL;
 use libc::EIO;
 use libc::ENOENT;
 use libc::ENXIO;
-use libc::EOPNOTSUPP;
 use vm_memory::GuestAddress;
 use winapi::shared::winerror::E_UNEXPECTED;
 use windows::Win32::Foundation::WHV_E_INSUFFICIENT_BUFFER;
@@ -1157,9 +1156,64 @@ impl VcpuX86_64 for WhpxVcpu {
         Ok(())
     }
 
-    // TODO: b/270734340 implement
     fn get_all_msrs(&self) -> Result<Vec<Register>> {
-        Err(Error::new(EOPNOTSUPP))
+        // Note that some members of VALID_MSRS cannot be fetched from WHPX with
+        // WHvGetVirtualProcessorRegisters per the HTLFS, so we enumerate all of
+        // permitted MSRs here.
+        //
+        // We intentionally exclude WHvRegisterPendingInterruption and
+        // WHvRegisterInterruptState because they are included in
+        // get_interrupt_state.
+        //
+        // We also exclude MSR_TSC, because on WHPX, we will use virtio-pvclock
+        // to restore the guest clocks. Note that this will be *guest aware*
+        // snapshotting. We may in the future add guest unaware snapshotting
+        // for Windows, in which case we will want to save/restore TSC such that
+        // the guest does not observe any change.
+        let mut registers = vec![
+            Register {
+                id: MSR_EFER,
+                ..Default::default()
+            },
+            Register {
+                id: MSR_KERNEL_GS_BASE,
+                ..Default::default()
+            },
+            Register {
+                id: MSR_APIC_BASE,
+                ..Default::default()
+            },
+            Register {
+                id: MSR_SYSENTER_CS,
+                ..Default::default()
+            },
+            Register {
+                id: MSR_SYSENTER_EIP,
+                ..Default::default()
+            },
+            Register {
+                id: MSR_SYSENTER_ESP,
+                ..Default::default()
+            },
+            Register {
+                id: MSR_STAR,
+                ..Default::default()
+            },
+            Register {
+                id: MSR_LSTAR,
+                ..Default::default()
+            },
+            Register {
+                id: MSR_CSTAR,
+                ..Default::default()
+            },
+            Register {
+                id: MSR_SFMASK,
+                ..Default::default()
+            },
+        ];
+        self.get_msrs(&mut registers)?;
+        Ok(registers)
     }
 
     /// Sets the model-specific registers.
