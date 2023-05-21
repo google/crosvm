@@ -25,16 +25,12 @@ pub async fn await_and_exit(ex: &Executor, event: Event) -> Result<()> {
 /// signalling the resample event associated with the interrupt.
 pub async fn handle_irq_resample(ex: &Executor, interrupt: Interrupt) -> Result<()> {
     // Clone resample_evt if interrupt has one.
-    let resample_evt = if let Some(resample_evt) = interrupt.get_resample_evt() {
+    if let Some(resample_evt) = interrupt.get_resample_evt() {
         let resample_evt = resample_evt
             .try_clone()
             .context("resample_evt.try_clone() failed")?;
-        Some(EventAsync::new(resample_evt, ex).context("failed to create async resample event")?)
-    } else {
-        None
-    };
-
-    if let Some(resample_evt) = resample_evt {
+        let resample_evt =
+            EventAsync::new(resample_evt, ex).context("failed to create async resample event")?;
         loop {
             let _ = resample_evt
                 .next_val()
@@ -44,7 +40,7 @@ pub async fn handle_irq_resample(ex: &Executor, interrupt: Interrupt) -> Result<
         }
     } else {
         // No resample event; park the future.
-        futures::future::pending::<()>().await;
+        std::future::pending::<()>().await;
+        Ok(())
     }
-    Ok(())
 }
