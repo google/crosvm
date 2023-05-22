@@ -5,6 +5,8 @@
 #![cfg(not(test))]
 #![no_main]
 
+use std::io::Read;
+use std::io::Write;
 use std::mem::size_of;
 
 use crosvm_fuzz::fuzz_target;
@@ -105,13 +107,17 @@ fuzz_target!(|data: &[u8]| {
         rng.fill_bytes(&mut buf[..]);
         mem.write_all_at_addr(&buf[..], q.used_ring()).unwrap();
 
-        while let Some(avail_desc) = q.pop(mem) {
-            let total = avail_desc
-                .writer
-                .get_remaining()
-                .iter()
-                .try_fold(0u32, |sum, cur| sum.checked_add(cur.size() as u32));
-            q.add_used(mem, avail_desc, total.unwrap_or(0));
+        while let Some(mut avail_desc) = q.pop(mem) {
+            // Read the entire readable portion of the buffer.
+            let mut read_buf = vec![0u8; avail_desc.reader.available_bytes()];
+            avail_desc.reader.read_exact(&mut read_buf).unwrap();
+
+            // Write the entire writable portion of the buffer.
+            let write_buf = vec![0u8; avail_desc.writer.available_bytes()];
+            avail_desc.writer.write_all(&write_buf).unwrap();
+
+            let bytes_written = avail_desc.writer.bytes_written() as u32;
+            q.add_used(mem, avail_desc, bytes_written);
         }
     });
 });
