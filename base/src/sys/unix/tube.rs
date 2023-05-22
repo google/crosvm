@@ -15,6 +15,7 @@ use serde::Serialize;
 use crate::descriptor::AsRawDescriptor;
 use crate::descriptor::FromRawDescriptor;
 use crate::descriptor::SafeDescriptor;
+use crate::handle_eintr;
 use crate::platform::deserialize_with_descriptors;
 use crate::platform::SerializeDescriptors;
 use crate::tube::Error;
@@ -86,9 +87,10 @@ impl Tube {
             return Err(Error::SendTooManyFds);
         }
 
-        self.socket
-            .send_with_fds(&[IoSlice::new(&msg_json)], &msg_descriptors)
-            .map_err(Error::Send)?;
+        handle_eintr!(self
+            .socket
+            .send_with_fds(&[IoSlice::new(&msg_json)], &msg_descriptors))
+        .map_err(Error::Send)?;
         Ok(())
     }
 
@@ -101,10 +103,10 @@ impl Tube {
 
         let mut msg_descriptors_full = [0; TUBE_MAX_FDS];
 
-        let (msg_json_size, descriptor_size) = self
+        let (msg_json_size, descriptor_size) = handle_eintr!(self
             .socket
-            .recv_with_fds(IoSliceMut::new(&mut msg_json), &mut msg_descriptors_full)
-            .map_err(Error::Recv)?;
+            .recv_with_fds(IoSliceMut::new(&mut msg_json), &mut msg_descriptors_full))
+        .map_err(Error::Recv)?;
 
         if msg_json_size == 0 {
             return Err(Error::Disconnected);
@@ -144,8 +146,7 @@ impl Tube {
         let bytes = msg.write_to_bytes().map_err(Error::Proto)?;
         let no_fds: [RawFd; 0] = [];
 
-        self.socket
-            .send_with_fds(&[IoSlice::new(&bytes)], &no_fds)
+        handle_eintr!(self.socket.send_with_fds(&[IoSlice::new(&bytes)], &no_fds))
             .map_err(Error::Send)?;
 
         Ok(())
@@ -157,10 +158,10 @@ impl Tube {
         let mut msg_bytes = vec![0u8; msg_size];
         let mut msg_descriptors_full = [0; TUBE_MAX_FDS];
 
-        let (msg_bytes_size, _) = self
+        let (msg_bytes_size, _) = handle_eintr!(self
             .socket
-            .recv_with_fds(IoSliceMut::new(&mut msg_bytes), &mut msg_descriptors_full)
-            .map_err(Error::Recv)?;
+            .recv_with_fds(IoSliceMut::new(&mut msg_bytes), &mut msg_descriptors_full))
+        .map_err(Error::Recv)?;
 
         if msg_bytes_size == 0 {
             return Err(Error::Disconnected);
