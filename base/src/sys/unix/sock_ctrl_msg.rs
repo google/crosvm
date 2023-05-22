@@ -6,6 +6,7 @@
 //! (e.g. Unix domain sockets).
 
 use std::fs::File;
+use std::io;
 use std::io::IoSlice;
 use std::io::IoSliceMut;
 use std::mem::size_of;
@@ -34,8 +35,6 @@ use libc::SCM_RIGHTS;
 use libc::SOL_SOCKET;
 
 use super::net::UnixSeqpacket;
-use super::Error;
-use super::Result;
 use super::StreamChannel;
 use crate::AsRawDescriptor;
 
@@ -123,7 +122,7 @@ impl CmsgBuffer {
 // Musl requires a try_into when assigning to msg_iovlen and msg_controllen
 // that is unnecessary when compiling for glibc.
 #[allow(clippy::useless_conversion)]
-fn raw_sendmsg<D: AsIobuf>(fd: RawFd, out_data: &[D], out_fds: &[RawFd]) -> Result<usize> {
+fn raw_sendmsg<D: AsIobuf>(fd: RawFd, out_data: &[D], out_fds: &[RawFd]) -> io::Result<usize> {
     let cmsg_capacity = CMSG_SPACE(size_of::<RawFd>() * out_fds.len());
     let mut cmsg_buffer = CmsgBuffer::with_capacity(cmsg_capacity);
 
@@ -167,7 +166,7 @@ fn raw_sendmsg<D: AsIobuf>(fd: RawFd, out_data: &[D], out_fds: &[RawFd]) -> Resu
     let write_count = unsafe { sendmsg(fd, &msg, MSG_NOSIGNAL) };
 
     if write_count == -1 {
-        Err(Error::last())
+        Err(io::Error::last_os_error())
     } else {
         Ok(write_count as usize)
     }
@@ -176,7 +175,11 @@ fn raw_sendmsg<D: AsIobuf>(fd: RawFd, out_data: &[D], out_fds: &[RawFd]) -> Resu
 // Musl requires a try_into when assigning to msg_iovlen, msg_controllen and
 // cmsg_len that is unnecessary when compiling for glibc.
 #[allow(clippy::useless_conversion, clippy::unnecessary_cast)]
-fn raw_recvmsg(fd: RawFd, iovs: &mut [IoSliceMut], in_fds: &mut [RawFd]) -> Result<(usize, usize)> {
+fn raw_recvmsg(
+    fd: RawFd,
+    iovs: &mut [IoSliceMut],
+    in_fds: &mut [RawFd],
+) -> io::Result<(usize, usize)> {
     let cmsg_capacity = CMSG_SPACE(size_of::<RawFd>() * in_fds.len());
     let mut cmsg_buffer = CmsgBuffer::with_capacity(cmsg_capacity);
 
@@ -197,7 +200,7 @@ fn raw_recvmsg(fd: RawFd, iovs: &mut [IoSliceMut], in_fds: &mut [RawFd]) -> Resu
     let total_read = unsafe { recvmsg(fd, &mut msg, 0) };
 
     if total_read == -1 {
-        return Err(Error::last());
+        return Err(io::Error::last_os_error());
     }
 
     if total_read == 0 && (msg.msg_controllen as usize) < size_of::<cmsghdr>() {
@@ -242,11 +245,13 @@ pub trait ScmSocket {
     ///
     /// On success, returns the number of bytes sent.
     ///
+    /// The error is constructed via `std::io::Error::last_os_error()`.
+    ///
     /// # Arguments
     ///
     /// * `buf` - A buffer of data to send on the `socket`.
     /// * `fd` - A file descriptors to be sent.
-    fn send_with_fd<D: AsIobuf>(&self, buf: &[D], fd: RawFd) -> Result<usize> {
+    fn send_with_fd<D: AsIobuf>(&self, buf: &[D], fd: RawFd) -> io::Result<usize> {
         self.send_with_fds(buf, &[fd])
     }
 
@@ -254,11 +259,13 @@ pub trait ScmSocket {
     ///
     /// On success, returns the number of bytes sent.
     ///
+    /// The error is constructed via `std::io::Error::last_os_error()`.
+    ///
     /// # Arguments
     ///
     /// * `buf` - A buffer of data to send on the `socket`.
     /// * `fds` - A list of file descriptors to be sent.
-    fn send_with_fds<D: AsIobuf>(&self, buf: &[D], fd: &[RawFd]) -> Result<usize> {
+    fn send_with_fds<D: AsIobuf>(&self, buf: &[D], fd: &[RawFd]) -> io::Result<usize> {
         raw_sendmsg(self.socket_fd(), buf, fd)
     }
 
@@ -266,11 +273,13 @@ pub trait ScmSocket {
     ///
     /// On success, returns the number of bytes sent.
     ///
+    /// The error is constructed via `std::io::Error::last_os_error()`.
+    ///
     /// # Arguments
     ///
     /// * `bufs` - A slice of slices of data to send on the `socket`.
     /// * `fd` - A file descriptors to be sent.
-    fn send_bufs_with_fd(&self, bufs: &[IoSlice], fd: RawFd) -> Result<usize> {
+    fn send_bufs_with_fd(&self, bufs: &[IoSlice], fd: RawFd) -> io::Result<usize> {
         self.send_bufs_with_fds(bufs, &[fd])
     }
 
@@ -278,11 +287,13 @@ pub trait ScmSocket {
     ///
     /// On success, returns the number of bytes sent.
     ///
+    /// The error is constructed via `std::io::Error::last_os_error()`.
+    ///
     /// # Arguments
     ///
     /// * `bufs` - A slice of slices of data to send on the `socket`.
     /// * `fds` - A list of file descriptors to be sent.
-    fn send_bufs_with_fds(&self, bufs: &[IoSlice], fd: &[RawFd]) -> Result<usize> {
+    fn send_bufs_with_fds(&self, bufs: &[IoSlice], fd: &[RawFd]) -> io::Result<usize> {
         raw_sendmsg(self.socket_fd(), bufs, fd)
     }
 
@@ -290,10 +301,12 @@ pub trait ScmSocket {
     ///
     /// On success, returns the number of bytes and an optional file descriptor.
     ///
+    /// The error is constructed via `std::io::Error::last_os_error()`.
+    ///
     /// # Arguments
     ///
     /// * `buf` - A buffer to receive data from the socket.vm
-    fn recv_with_fd(&self, buf: IoSliceMut) -> Result<(usize, Option<File>)> {
+    fn recv_with_fd(&self, buf: IoSliceMut) -> io::Result<(usize, Option<File>)> {
         let mut fd = [0];
         let (read_count, fd_count) = self.recv_with_fds(buf, &mut fd)?;
         let file = if fd_count == 0 {
@@ -311,6 +324,8 @@ pub trait ScmSocket {
     /// On success, returns the number of bytes and file descriptors received as a tuple
     /// `(bytes count, files count)`.
     ///
+    /// The error is constructed via `std::io::Error::last_os_error()`.
+    ///
     /// # Arguments
     ///
     /// * `buf` - A buffer to receive data from the socket.
@@ -319,7 +334,7 @@ pub trait ScmSocket {
     ///           returned tuple. The caller owns these file descriptors, but they will not be
     ///           closed on drop like a `File`-like type would be. It is recommended that each valid
     ///           file descriptor gets wrapped in a drop type that closes it after this returns.
-    fn recv_with_fds(&self, buf: IoSliceMut, fds: &mut [RawFd]) -> Result<(usize, usize)> {
+    fn recv_with_fds(&self, buf: IoSliceMut, fds: &mut [RawFd]) -> io::Result<(usize, usize)> {
         raw_recvmsg(self.socket_fd(), &mut [buf], fds)
     }
 
@@ -327,6 +342,8 @@ pub trait ScmSocket {
     ///
     /// On success, returns the number of bytes and file descriptors received as a tuple
     /// `(bytes count, files count)`.
+    ///
+    /// The error is constructed via `std::io::Error::last_os_error()`.
     ///
     /// # Arguments
     ///
@@ -343,7 +360,7 @@ pub trait ScmSocket {
         &self,
         iovecs: &mut [IoSliceMut],
         fds: &mut [RawFd],
-    ) -> Result<(usize, usize)> {
+    ) -> io::Result<(usize, usize)> {
         raw_recvmsg(self.socket_fd(), iovecs, fds)
     }
 }

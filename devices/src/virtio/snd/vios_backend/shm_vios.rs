@@ -87,7 +87,7 @@ pub enum Error {
     #[error("Failed to connect to VioS server {1}: {0:?}")]
     ServerConnectionError(IOError, PathBuf),
     #[error("Failed to communicate with VioS server: {0:?}")]
-    ServerError(BaseError),
+    ServerError(IOError),
     #[error("Failed to communicate with VioS server: {0:?}")]
     ServerIOError(IOError),
     #[error("Error accessing VioS server's shared memory: {0}")]

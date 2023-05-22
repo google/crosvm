@@ -104,7 +104,7 @@ impl Tube {
         let (msg_json_size, descriptor_size) = self
             .socket
             .recv_with_fds(IoSliceMut::new(&mut msg_json), &mut msg_descriptors_full)
-            .map_err(Error::Send)?;
+            .map_err(Error::Recv)?;
 
         if msg_json_size == 0 {
             return Err(Error::Disconnected);
@@ -160,7 +160,7 @@ impl Tube {
         let (msg_bytes_size, _) = self
             .socket
             .recv_with_fds(IoSliceMut::new(&mut msg_bytes), &mut msg_descriptors_full)
-            .map_err(Error::Send)?;
+            .map_err(Error::Recv)?;
 
         if msg_bytes_size == 0 {
             return Err(Error::Disconnected);

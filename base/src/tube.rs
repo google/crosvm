@@ -129,7 +129,7 @@ pub enum Error {
     #[error("Received a message with a zero sized body. This should not happen.")]
     RecvUnexpectedEmptyBody,
     #[error("failed to send packet: {0}")]
-    Send(crate::platform::Error),
+    Send(io::Error),
     #[error("failed to send packet: {0}")]
     SendIo(io::Error),
     #[error("failed to write packet to intermediate buffer: {0}")]

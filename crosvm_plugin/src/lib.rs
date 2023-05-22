@@ -319,7 +319,9 @@ impl crosvm {
             .map_err(proto_error_to_int)?;
         self.socket
             .send_with_fds(&[IoSlice::new(self.request_buffer.as_slice())], fds)
-            .map_err(|e| -e.errno())?;
+            // raw_os_error is expected to be `Some` because it is constructed via
+            // `std::io::Error::last_os_error()`.
+            .map_err(|e| -e.raw_os_error().unwrap_or(EINVAL))?;
 
         let mut datagram_fds = [0; MAX_DATAGRAM_FD];
         let (msg_size, fd_count) = self
@@ -328,7 +330,9 @@ impl crosvm {
                 IoSliceMut::new(&mut self.response_buffer),
                 &mut datagram_fds,
             )
-            .map_err(|e| -e.errno())?;
+            // raw_os_error is expected to be `Some` because it is constructed via
+            // `std::io::Error::last_os_error()`.
+            .map_err(|e| -e.raw_os_error().unwrap_or(EINVAL))?;
         // Safe because the first fd_count fds from recv_with_fds are owned by us and valid.
         let datagram_files = datagram_fds[..fd_count]
             .iter()

@@ -389,9 +389,9 @@ enum WlError {
     #[error("failed to read a pipe: {0}")]
     ReadPipe(io::Error),
     #[error("failed to recv on a socket: {0}")]
-    RecvVfd(Error),
+    RecvVfd(io::Error),
     #[error("failed to send on a socket: {0}")]
-    SendVfd(Error),
+    SendVfd(io::Error),
     #[error("shmem mapper failure: {0}")]
     ShmemMapperError(anyhow::Error),
     #[error("failed to connect socket: {0}")]

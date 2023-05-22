@@ -581,6 +581,7 @@ impl Process {
     ) -> result::Result<(), CommError> {
         let (msg_size, request_file) = self.request_sockets[index]
             .recv_with_fd(IoSliceMut::new(&mut self.request_buffer))
+            .map_err(io_to_sys_err)
             .map_err(CommError::PluginSocketRecv)?;
 
         if msg_size == 0 {
@@ -807,6 +808,7 @@ impl Process {
         assert_ne!(self.response_buffer.len(), 0);
         self.request_sockets[index]
             .send_with_fds(&[IoSlice::new(&self.response_buffer[..])], &response_fds)
+            .map_err(io_to_sys_err)
             .map_err(CommError::PluginSocketSend)?;
 
         Ok(())
