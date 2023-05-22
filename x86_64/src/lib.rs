@@ -332,7 +332,7 @@ const MB: u64 = 1 << 20;
 const GB: u64 = 1 << 30;
 
 pub const BOOT_STACK_POINTER: u64 = 0x8000;
-const START_OF_RAM_32BITS: u64 = if cfg!(feature = "direct") { 0x1000 } else { 0 };
+const START_OF_RAM_32BITS: u64 = 0;
 const FIRST_ADDR_PAST_32BITS: u64 = 1 << 32;
 // Linux (with 4-level paging) has a physical memory limit of 46 bits (64 TiB).
 const HIGH_MMIO_MAX_END: u64 = (1u64 << 46) - 1;
@@ -382,17 +382,7 @@ static LOW_MEMORY_LAYOUT: OnceCell<LowMemoryLayout> = OnceCell::new();
 pub fn init_low_memory_layout(pcie_ecam: Option<AddressRange>, pci_low_start: Option<u64>) {
     LOW_MEMORY_LAYOUT.get_or_init(|| {
         // Make sure it align to 256MB for MTRR convenient
-        const MEM_32BIT_GAP_SIZE: u64 = if cfg!(feature = "direct") {
-            // Allow space for identity mapping coreboot memory regions on the host
-            // which is found at around 7a00_0000 (little bit before 2GB)
-            //
-            // TODO(b/188011323): stop hardcoding sizes and addresses here and instead
-            // determine the memory map from how the VM has been configured via the
-            // command line.
-            2560 * MB
-        } else {
-            768 * MB
-        };
+        const MEM_32BIT_GAP_SIZE: u64 = 768 * MB;
         // Reserved memory for nand_bios/LAPIC/IOAPIC/HPET/.....
         const RESERVED_MEM_SIZE: u64 = 0x800_0000;
         const PCI_MMIO_END: u64 = FIRST_ADDR_PAST_32BITS - RESERVED_MEM_SIZE - 1;
@@ -2374,22 +2364,6 @@ mod tests {
         assert_eq!(read_pci_mmio_before_32bit().start, 2 * GB);
         assert_eq!(read_pcie_cfg_mmio().start, 3 * GB);
         assert_eq!(read_pcie_cfg_mmio().len().unwrap(), 256 * MB);
-    }
-
-    #[test]
-    #[cfg(feature = "direct")]
-    #[ignore] // TODO(b/236253615): Fix and re-enable this test.
-    fn end_addr_before_32bits() {
-        setup();
-        // On volteer, type16 (coreboot) region is at 0x00000000769f3000-0x0000000076ffffff.
-        // On brya, type16 region is at 0x0000000076876000-0x00000000803fffff
-        let brya_type16_address = 0x7687_6000;
-        assert!(
-            read_pci_mmio_before_32bit().start < brya_type16_address,
-            "{} < {}",
-            read_pci_mmio_before_32bit().start,
-            brya_type16_address
-        );
     }
 
     #[test]
