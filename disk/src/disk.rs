@@ -26,6 +26,7 @@ use cros_async::AllocateMode;
 use cros_async::BackingMemory;
 use cros_async::Executor;
 use cros_async::IoSource;
+use cros_async::MemRegionIter;
 use thiserror::Error as ThisError;
 
 mod asynchronous;
@@ -341,7 +342,7 @@ pub trait AsyncDisk: DiskGetLen + FileSetLen + FileAllocate {
         &'a self,
         file_offset: u64,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        mem_offsets: &'a [cros_async::MemRegion],
+        mem_offsets: cros_async::MemRegionIter<'a>,
     ) -> Result<usize>;
 
     /// Writes to the file at 'file_offset' from memory `mem` at `mem_offsets`.
@@ -349,7 +350,7 @@ pub trait AsyncDisk: DiskGetLen + FileSetLen + FileAllocate {
         &'a self,
         file_offset: u64,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        mem_offsets: &'a [cros_async::MemRegion],
+        mem_offsets: cros_async::MemRegionIter<'a>,
     ) -> Result<usize>;
 
     /// Replaces a range of bytes with a hole.
@@ -368,7 +369,11 @@ pub trait AsyncDisk: DiskGetLen + FileSetLen + FileAllocate {
             len: buf.len(),
         };
         let n = self
-            .read_to_mem(file_offset, backing_mem.clone(), &[region])
+            .read_to_mem(
+                file_offset,
+                backing_mem.clone(),
+                MemRegionIter::new(&[region]),
+            )
             .await?;
         backing_mem
             .get_volatile_slice(region)
@@ -388,8 +393,12 @@ pub trait AsyncDisk: DiskGetLen + FileSetLen + FileAllocate {
             offset: 0,
             len: buf.len(),
         };
-        self.write_from_mem(file_offset, backing_mem, &[region])
-            .await
+        self.write_from_mem(
+            file_offset,
+            backing_mem,
+            cros_async::MemRegionIter::new(&[region]),
+        )
+        .await
     }
 }
 
@@ -442,7 +451,7 @@ impl AsyncDisk for SingleFileDisk {
         &'a self,
         file_offset: u64,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        mem_offsets: &'a [cros_async::MemRegion],
+        mem_offsets: cros_async::MemRegionIter<'a>,
     ) -> Result<usize> {
         self.inner
             .read_to_mem(Some(file_offset), mem, mem_offsets)
@@ -454,7 +463,7 @@ impl AsyncDisk for SingleFileDisk {
         &'a self,
         file_offset: u64,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        mem_offsets: &'a [cros_async::MemRegion],
+        mem_offsets: cros_async::MemRegionIter<'a>,
     ) -> Result<usize> {
         self.inner
             .write_from_mem(Some(file_offset), mem, mem_offsets)

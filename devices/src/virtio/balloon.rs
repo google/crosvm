@@ -395,8 +395,7 @@ where
     let reported_ranges: Vec<(u64, u64)> = avail_desc
         .reader
         .get_remaining_regions()
-        .iter()
-        .chain(avail_desc.writer.get_remaining_regions().iter())
+        .chain(avail_desc.writer.get_remaining_regions())
         .map(|r| (r.offset, r.len as u64))
         .collect();
 

@@ -45,7 +45,7 @@ impl<F: AsRawDescriptor> UringSource<F> {
         let op = self.registered_source.start_read_to_mem(
             file_offset,
             buf.clone(),
-            &[MemRegion {
+            [MemRegion {
                 offset: 0,
                 len: buf.len(),
             }],
@@ -72,7 +72,7 @@ impl<F: AsRawDescriptor> UringSource<F> {
         &self,
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        mem_offsets: &[MemRegion],
+        mem_offsets: impl IntoIterator<Item = MemRegion>,
     ) -> AsyncResult<usize> {
         let op = self
             .registered_source
@@ -91,7 +91,7 @@ impl<F: AsRawDescriptor> UringSource<F> {
         let op = self.registered_source.start_write_from_mem(
             file_offset,
             buf.clone(),
-            &[MemRegion {
+            [MemRegion {
                 offset: 0,
                 len: buf.len(),
             }],
@@ -111,7 +111,7 @@ impl<F: AsRawDescriptor> UringSource<F> {
         &self,
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        mem_offsets: &[MemRegion],
+        mem_offsets: impl IntoIterator<Item = MemRegion>,
     ) -> AsyncResult<usize> {
         let op = self
             .registered_source
@@ -323,7 +323,7 @@ mod tests {
                 .read_to_mem(
                     None,
                     Arc::<VecIoWrapper>::clone(&vw),
-                    &[MemRegion {
+                    [MemRegion {
                         offset: 32,
                         len: 33,
                     }],

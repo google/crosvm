@@ -100,6 +100,7 @@ pub use io_source::AllocateMode;
 pub use io_source::IoSource;
 pub use mem::BackingMemory;
 pub use mem::MemRegion;
+pub use mem::MemRegionIter;
 pub use mem::VecIoWrapper;
 use remain::sorted;
 pub use select::SelectResult;

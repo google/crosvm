@@ -114,10 +114,10 @@ impl<
         &'a self,
         mut file_offset: u64,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        mem_offsets: &'a [cros_async::MemRegion],
+        mem_offsets: cros_async::MemRegionIter<'a>,
     ) -> Result<usize> {
         let inner_clone = self.inner.clone();
-        let mem_offsets = mem_offsets.to_vec();
+        let mem_offsets: Vec<cros_async::MemRegion> = mem_offsets.collect();
         self.blocking_pool
             .spawn(move || {
                 let mut disk_file = inner_clone.lock();
@@ -142,10 +142,10 @@ impl<
         &'a self,
         mut file_offset: u64,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        mem_offsets: &'a [cros_async::MemRegion],
+        mem_offsets: cros_async::MemRegionIter<'a>,
     ) -> Result<usize> {
         let inner_clone = self.inner.clone();
-        let mem_offsets = mem_offsets.to_vec();
+        let mem_offsets: Vec<cros_async::MemRegion> = mem_offsets.collect();
         self.blocking_pool
             .spawn(move || {
                 let mut disk_file = inner_clone.lock();

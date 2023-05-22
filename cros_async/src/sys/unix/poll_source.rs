@@ -17,10 +17,10 @@ use super::fd_executor::EpollReactor;
 use super::fd_executor::RegisteredSource;
 use crate::common_executor::RawExecutor;
 use crate::mem::BackingMemory;
-use crate::mem::MemRegion;
 use crate::AllocateMode;
 use crate::AsyncError;
 use crate::AsyncResult;
+use crate::MemRegion;
 
 #[sorted]
 #[derive(ThisError, Debug)]
@@ -137,15 +137,15 @@ impl<F: AsRawDescriptor> PollSource<F> {
     }
 
     /// Reads to the given `mem` at the given offsets from the file starting at `file_offset`.
-    pub async fn read_to_mem<'a>(
-        &'a self,
+    pub async fn read_to_mem(
+        &self,
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        mem_offsets: &'a [MemRegion],
+        mem_offsets: impl IntoIterator<Item = MemRegion>,
     ) -> AsyncResult<usize> {
         let mut iovecs = mem_offsets
-            .iter()
-            .filter_map(|&mem_vec| mem.get_volatile_slice(mem_vec).ok())
+            .into_iter()
+            .filter_map(|mem_range| mem.get_volatile_slice(mem_range).ok())
             .collect::<Vec<VolatileSlice>>();
 
         loop {
@@ -233,15 +233,15 @@ impl<F: AsRawDescriptor> PollSource<F> {
     }
 
     /// Writes from the given `mem` from the given offsets to the file starting at `file_offset`.
-    pub async fn write_from_mem<'a>(
-        &'a self,
+    pub async fn write_from_mem(
+        &self,
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        mem_offsets: &'a [MemRegion],
+        mem_offsets: impl IntoIterator<Item = MemRegion>,
     ) -> AsyncResult<usize> {
         let iovecs = mem_offsets
-            .iter()
-            .map(|&mem_vec| mem.get_volatile_slice(mem_vec))
+            .into_iter()
+            .map(|mem_range| mem.get_volatile_slice(mem_range))
             .filter_map(|r| r.ok())
             .collect::<Vec<VolatileSlice>>();
 

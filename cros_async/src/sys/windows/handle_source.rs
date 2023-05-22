@@ -161,7 +161,7 @@ impl<F: AsRawDescriptor> HandleSource<F> {
     fn get_slices(
         mem: &Arc<dyn BackingMemory + Send + Sync>,
         mem_offsets: Vec<MemRegion>,
-    ) -> Result<SmallVec<[VolatileSlice; 16]>> {
+    ) -> Result<SmallVec<[VolatileSlice<'_>; 16]>> {
         mem_offsets
             .into_iter()
             .map(|region| {
@@ -228,13 +228,13 @@ impl<F: AsRawDescriptor> HandleSource<F> {
     }
 
     /// Reads to the given `mem` at the given offsets from the file starting at `file_offset`.
-    pub async fn read_to_mem<'a>(
-        &'a self,
+    pub async fn read_to_mem(
+        &self,
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        mem_offsets: &'a [MemRegion],
+        mem_offsets: impl IntoIterator<Item = MemRegion>,
     ) -> AsyncResult<usize> {
-        let mem_offsets = mem_offsets.to_owned();
+        let mem_offsets = mem_offsets.into_iter().collect();
         let handles = HandleWrapper::new(self.as_descriptors());
         let descriptors = self.source_descriptors.clone();
 
@@ -298,13 +298,13 @@ impl<F: AsRawDescriptor> HandleSource<F> {
     }
 
     /// Writes from the given `mem` from the given offsets to the file starting at `file_offset`.
-    pub async fn write_from_mem<'a>(
-        &'a self,
+    pub async fn write_from_mem(
+        &self,
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        mem_offsets: &'a [MemRegion],
+        mem_offsets: impl IntoIterator<Item = MemRegion>,
     ) -> AsyncResult<usize> {
-        let mem_offsets = mem_offsets.to_owned();
+        let mem_offsets = mem_offsets.into_iter().collect();
         let handles = HandleWrapper::new(self.as_descriptors());
         let descriptors = self.source_descriptors.clone();
 

@@ -79,11 +79,11 @@ use thiserror::Error as ThisError;
 use crate::common_executor::RawExecutor;
 use crate::common_executor::Reactor;
 use crate::mem::BackingMemory;
-use crate::mem::MemRegion;
 use crate::waker::WakerToken;
 use crate::waker::WeakWake;
 use crate::AsyncResult;
 use crate::IoSource;
+use crate::MemRegion;
 
 #[sorted]
 #[derive(Debug, ThisError)]
@@ -203,7 +203,7 @@ impl RegisteredSource {
         &self,
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        addrs: &[MemRegion],
+        addrs: impl IntoIterator<Item = MemRegion>,
     ) -> Result<PendingOperation> {
         let ex = self.ex.upgrade().ok_or(Error::ExecutorGone)?;
         let token = ex
@@ -221,7 +221,7 @@ impl RegisteredSource {
         &self,
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        addrs: &[MemRegion],
+        addrs: impl IntoIterator<Item = MemRegion>,
     ) -> Result<PendingOperation> {
         let ex = self.ex.upgrade().ok_or(Error::ExecutorGone)?;
         let token = ex
@@ -539,11 +539,11 @@ impl UringReactor {
         source: &RegisteredSource,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         offset: Option<u64>,
-        addrs: &[MemRegion],
+        addrs: impl IntoIterator<Item = MemRegion>,
     ) -> Result<WakerToken> {
         let iovecs = addrs
-            .iter()
-            .map(|&mem_range| {
+            .into_iter()
+            .map(|mem_range| {
                 let vslice = mem
                     .get_volatile_slice(mem_range)
                     .map_err(|_| Error::InvalidOffset)?;
@@ -593,11 +593,11 @@ impl UringReactor {
         source: &RegisteredSource,
         mem: Arc<dyn BackingMemory + Send + Sync>,
         offset: Option<u64>,
-        addrs: &[MemRegion],
+        addrs: impl IntoIterator<Item = MemRegion>,
     ) -> Result<WakerToken> {
         let iovecs = addrs
-            .iter()
-            .map(|&mem_range| {
+            .into_iter()
+            .map(|mem_range| {
                 let vslice = mem
                     .get_volatile_slice(mem_range)
                     .map_err(|_| Error::InvalidOffset)?;
@@ -921,7 +921,7 @@ mod tests {
         // Submit the op to the kernel. Next, test that the source keeps its Arc open for the duration
         // of the op.
         let pending_op = registered_source
-            .start_read_to_mem(None, Arc::clone(&bm), &[MemRegion { offset: 0, len: 8 }])
+            .start_read_to_mem(None, Arc::clone(&bm), [MemRegion { offset: 0, len: 8 }])
             .expect("failed to start read to mem");
 
         // Here the Arc count must be two, one for `bm` and one to signify that the kernel has a
@@ -968,7 +968,7 @@ mod tests {
         // Submit the op to the kernel. Next, test that the source keeps its Arc open for the duration
         // of the op.
         let pending_op = registered_source
-            .start_write_from_mem(None, Arc::clone(&bm), &[MemRegion { offset: 0, len: 8 }])
+            .start_write_from_mem(None, Arc::clone(&bm), [MemRegion { offset: 0, len: 8 }])
             .expect("failed to start write to mem");
 
         // Here the Arc count must be two, one for `bm` and one to signify that the kernel has a
@@ -1022,7 +1022,7 @@ mod tests {
             .expect("register source failed");
 
         let read_task = rx_source
-            .start_read_to_mem(None, Arc::clone(&bm), &[MemRegion { offset: 0, len: 8 }])
+            .start_read_to_mem(None, Arc::clone(&bm), [MemRegion { offset: 0, len: 8 }])
             .expect("failed to start read to mem");
 
         ex.spawn_local(cancel_io(read_task)).detach();
@@ -1031,7 +1031,7 @@ mod tests {
         let buf =
             Arc::new(VecIoWrapper::from(vec![0xc2u8; 16])) as Arc<dyn BackingMemory + Send + Sync>;
         let write_task = tx_source
-            .start_write_from_mem(None, Arc::clone(&buf), &[MemRegion { offset: 0, len: 8 }])
+            .start_write_from_mem(None, Arc::clone(&buf), [MemRegion { offset: 0, len: 8 }])
             .expect("failed to start write from mem");
 
         ex.run_until(check_result(write_task, 8))
@@ -1069,7 +1069,7 @@ mod tests {
             .start_write_from_mem(
                 None,
                 bm,
-                &[MemRegion {
+                [MemRegion {
                     offset: 0,
                     len: mem::size_of::<u64>(),
                 }],
@@ -1172,7 +1172,7 @@ mod tests {
             .start_write_from_mem(
                 None,
                 bm,
-                &[MemRegion {
+                [MemRegion {
                     offset: 0,
                     len: mem::size_of::<u64>(),
                 }],

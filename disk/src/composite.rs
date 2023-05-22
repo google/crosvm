@@ -31,7 +31,7 @@ use base::RawDescriptor;
 use crc32fast::Hasher;
 use cros_async::BackingMemory;
 use cros_async::Executor;
-use cros_async::MemRegion;
+use cros_async::MemRegionIter;
 use data_model::VolatileSlice;
 use protobuf::Message;
 use protos::cdisk_spec;
@@ -496,15 +496,18 @@ impl AsyncDisk for AsyncCompositeDiskFile {
         &'a self,
         file_offset: u64,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        mem_offsets: &'a [MemRegion],
+        mem_offsets: MemRegionIter<'a>,
     ) -> crate::Result<usize> {
         let disk = self
             .disk_at_offset(file_offset)
             .map_err(crate::Error::ReadingData)?;
         let remaining_disk = disk.offset + disk.length - file_offset;
-        let mem_offsets = MemRegion::truncate(remaining_disk.try_into().unwrap(), mem_offsets);
         disk.file
-            .read_to_mem(file_offset - disk.offset, mem, &mem_offsets)
+            .read_to_mem(
+                file_offset - disk.offset,
+                mem,
+                mem_offsets.take_bytes(remaining_disk.try_into().unwrap()),
+            )
             .await
     }
 
@@ -512,16 +515,19 @@ impl AsyncDisk for AsyncCompositeDiskFile {
         &'a self,
         file_offset: u64,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        mem_offsets: &'a [MemRegion],
+        mem_offsets: MemRegionIter<'a>,
     ) -> crate::Result<usize> {
         let disk = self
             .disk_at_offset(file_offset)
             .map_err(crate::Error::ReadingData)?;
         let remaining_disk = disk.offset + disk.length - file_offset;
-        let mem_offsets = MemRegion::truncate(remaining_disk.try_into().unwrap(), mem_offsets);
         let n = disk
             .file
-            .write_from_mem(file_offset - disk.offset, mem, &mem_offsets)
+            .write_from_mem(
+                file_offset - disk.offset,
+                mem,
+                mem_offsets.take_bytes(remaining_disk.try_into().unwrap()),
+            )
             .await?;
         disk.set_needs_fsync();
         Ok(n)

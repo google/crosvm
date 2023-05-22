@@ -376,7 +376,7 @@ impl AsyncDisk for AsyncAndroidSparse {
         &'a self,
         file_offset: u64,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        mem_offsets: &'a [cros_async::MemRegion],
+        mem_offsets: cros_async::MemRegionIter<'a>,
     ) -> DiskResult<usize> {
         let found_chunk = self.chunks.range(..=file_offset).next_back();
         let (
@@ -393,13 +393,12 @@ impl AsyncDisk for AsyncAndroidSparse {
         let chunk_size = *expanded_size;
 
         // Truncate `mem_offsets` to the remaining size of the current chunk.
-        let mem_offsets =
-            cros_async::MemRegion::truncate((chunk_size - chunk_offset) as usize, mem_offsets);
-        let mem_size = mem_offsets.iter().map(|x| x.len).sum();
+        let mem_offsets = mem_offsets.take_bytes((chunk_size - chunk_offset) as usize);
+        let mem_size = mem_offsets.clone().map(|x| x.len).sum();
         match chunk {
             Chunk::DontCare => {
-                for region in mem_offsets.iter() {
-                    mem.get_volatile_slice(*region)
+                for region in mem_offsets {
+                    mem.get_volatile_slice(region)
                         .map_err(DiskError::GuestMemory)?
                         .write_bytes(0);
                 }
@@ -407,7 +406,7 @@ impl AsyncDisk for AsyncAndroidSparse {
             }
             Chunk::Raw(offset) => self
                 .inner
-                .read_to_mem(Some(offset + chunk_offset), mem, &mem_offsets)
+                .read_to_mem(Some(offset + chunk_offset), mem, mem_offsets)
                 .await
                 .map_err(DiskError::ReadToMem),
             Chunk::Fill(fill_bytes) => {
@@ -421,9 +420,9 @@ impl AsyncDisk for AsyncAndroidSparse {
                     .collect();
 
                 let mut filled_count = 0;
-                for region in mem_offsets.iter() {
+                for region in mem_offsets {
                     let buf = &filled_memory[filled_count..filled_count + region.len];
-                    mem.get_volatile_slice(*region)
+                    mem.get_volatile_slice(region)
                         .map_err(DiskError::GuestMemory)?
                         .copy_from(buf);
                     filled_count += region.len;
@@ -437,7 +436,7 @@ impl AsyncDisk for AsyncAndroidSparse {
         &'a self,
         _file_offset: u64,
         _mem: Arc<dyn BackingMemory + Send + Sync>,
-        _mem_offsets: &'a [cros_async::MemRegion],
+        _mem_offsets: cros_async::MemRegionIter<'a>,
     ) -> DiskResult<usize> {
         Err(DiskError::UnsupportedOperation)
     }
@@ -656,6 +655,7 @@ mod tests {
      * Tests for Async.
      */
     use cros_async::MemRegion;
+    use cros_async::MemRegionIter;
     use vm_memory::GuestAddress;
     use vm_memory::GuestMemory;
 
@@ -680,10 +680,10 @@ mod tests {
                 .read_to_mem(
                     (offset + count) as u64,
                     guest_mem.clone(),
-                    &[MemRegion {
+                    MemRegionIter::new(&[MemRegion {
                         offset: count as u64,
                         len: len - count,
-                    }],
+                    }]),
                 )
                 .await;
             count += result.unwrap();
@@ -729,10 +729,10 @@ mod tests {
                 .read_to_mem(
                     0,
                     guest_mem.clone(),
-                    &[
+                    MemRegionIter::new(&[
                         MemRegion { offset: 1, len: 3 },
                         MemRegion { offset: 6, len: 2 },
-                    ],
+                    ]),
                 )
                 .await
                 .unwrap();
@@ -780,10 +780,10 @@ mod tests {
                 .read_to_mem(
                     0,
                     guest_mem.clone(),
-                    &[
+                    MemRegionIter::new(&[
                         MemRegion { offset: 1, len: 3 },
                         MemRegion { offset: 6, len: 2 },
-                    ],
+                    ]),
                 )
                 .await
                 .unwrap();
@@ -873,10 +873,10 @@ mod tests {
                 .read_to_mem(
                     0,
                     guest_mem.clone(),
-                    &[
+                    MemRegionIter::new(&[
                         MemRegion { offset: 1, len: 3 },
                         MemRegion { offset: 6, len: 2 },
-                    ],
+                    ]),
                 )
                 .await
                 .unwrap();

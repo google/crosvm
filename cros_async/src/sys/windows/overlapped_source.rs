@@ -17,8 +17,6 @@ use base::FromRawDescriptor;
 use base::PunchHole;
 use base::RawDescriptor;
 use base::WriteZeroesAt;
-use data_model::VolatileSlice;
-use smallvec::SmallVec;
 use thiserror::Error as ThisError;
 use winapi::shared::minwindef::DWORD;
 use winapi::um::minwinbase::OVERLAPPED;
@@ -107,21 +105,6 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
             seek_forbidden,
         })
     }
-
-    #[inline]
-    fn get_slices(
-        mem: &Arc<dyn BackingMemory + Send + Sync>,
-        mem_offsets: Vec<MemRegion>,
-    ) -> AsyncResult<SmallVec<[VolatileSlice; 16]>> {
-        mem_offsets
-            .into_iter()
-            .map(|region| {
-                mem.get_volatile_slice(region).map_err(|e| {
-                    AsyncError::OverlappedSource(Error::BackingMemoryVolatileSliceFetchFailed(e))
-                })
-            })
-            .collect::<AsyncResult<SmallVec<[VolatileSlice; 16]>>>()
-    }
 }
 
 fn create_overlapped(offset: Option<u64>) -> OVERLAPPED {
@@ -194,13 +177,12 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
     }
 
     /// Reads to the given `mem` at the given offsets from the file starting at `file_offset`.
-    pub async fn read_to_mem<'a>(
-        &'a self,
+    pub async fn read_to_mem(
+        &self,
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        mem_offsets: &'a [MemRegion],
+        mem_offsets: impl IntoIterator<Item = MemRegion>,
     ) -> AsyncResult<usize> {
-        let memory_slices = Self::get_slices(&mem, mem_offsets.to_owned())?;
         let mut total_bytes_read = 0;
         let mut offset = match file_offset {
             Some(offset) if !self.seek_forbidden => Some(offset),
@@ -215,9 +197,13 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
             }
         };
 
-        for slice in memory_slices {
+        for region in mem_offsets.into_iter() {
             let overlapped = create_overlapped(offset);
             let mut overlapped_op = self.reg_source.register_overlapped_operation(overlapped)?;
+
+            let slice = mem.get_volatile_slice(region).map_err(|e| {
+                AsyncError::OverlappedSource(Error::BackingMemoryVolatileSliceFetchFailed(e))
+            })?;
 
             // Safe because we're passing a volatile slice (valid ptr), and the size of the memory region it refers to.
             unsafe {
@@ -280,13 +266,12 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
     }
 
     /// Writes from the given `mem` from the given offsets to the file starting at `file_offset`.
-    pub async fn write_from_mem<'a>(
-        &'a self,
+    pub async fn write_from_mem(
+        &self,
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        mem_offsets: &'a [MemRegion],
+        mem_offsets: impl IntoIterator<Item = MemRegion>,
     ) -> AsyncResult<usize> {
-        let memory_slices = Self::get_slices(&mem, mem_offsets.to_owned())?;
         let mut total_bytes_written = 0;
         let mut offset = match file_offset {
             Some(offset) if !self.seek_forbidden => Some(offset),
@@ -301,9 +286,13 @@ impl<F: AsRawDescriptor> OverlappedSource<F> {
             }
         };
 
-        for slice in memory_slices {
+        for region in mem_offsets.into_iter() {
             let overlapped = create_overlapped(offset);
             let mut overlapped_op = self.reg_source.register_overlapped_operation(overlapped)?;
+
+            let slice = mem.get_volatile_slice(region).map_err(|e| {
+                AsyncError::OverlappedSource(Error::BackingMemoryVolatileSliceFetchFailed(e))
+            })?;
 
             // Safe because we're passing a volatile slice (valid ptr), and the size of the memory region it refers to.
             unsafe {
@@ -484,7 +473,7 @@ mod tests {
                 .read_to_mem(
                     Some(0),
                     Arc::<VecIoWrapper>::clone(&mem),
-                    &[
+                    [
                         MemRegion { offset: 0, len: 2 },
                         MemRegion { offset: 2, len: 2 },
                     ],
@@ -540,7 +529,7 @@ mod tests {
                 .write_from_mem(
                     Some(0),
                     Arc::<VecIoWrapper>::clone(&mem),
-                    &[
+                    [
                         MemRegion { offset: 0, len: 2 },
                         MemRegion { offset: 2, len: 2 },
                     ],

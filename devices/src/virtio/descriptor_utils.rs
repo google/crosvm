@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::borrow::Cow;
 use std::cmp;
 use std::io;
 use std::io::Write;
@@ -17,6 +16,7 @@ use anyhow::Context;
 use base::FileReadWriteAtVolatile;
 use base::FileReadWriteVolatile;
 use cros_async::MemRegion;
+use cros_async::MemRegionIter;
 use data_model::Le16;
 use data_model::Le32;
 use data_model::Le64;
@@ -35,6 +35,15 @@ use crate::virtio::SplitDescriptorChain;
 struct DescriptorChainRegions {
     regions: SmallVec<[MemRegion; 2]>,
 
+    // Index of the current region in `regions`.
+    current_region_index: usize,
+
+    // Number of bytes consumed in the current region.
+    current_region_offset: usize,
+
+    // Total bytes consumed in the entire descriptor chain.
+    bytes_consumed: usize,
+
     // For virtio devices that operate on IOVAs rather than guest phyiscal
     // addresses, the IOVA regions must be exported from virtio-iommu to get
     // the underlying memory regions. It is only valid for the virtio device
@@ -42,9 +51,6 @@ struct DescriptorChainRegions {
     // references to the exported regions until the descriptor chain is
     // dropped.
     _exported_regions: Option<Arc<Vec<ExportedRegion>>>,
-
-    current: usize,
-    bytes_consumed: usize,
 }
 
 impl DescriptorChainRegions {
@@ -55,7 +61,8 @@ impl DescriptorChainRegions {
         DescriptorChainRegions {
             regions,
             _exported_regions: exported_regions,
-            current: 0,
+            current_region_index: 0,
+            current_region_offset: 0,
             bytes_consumed: 0,
         }
     }
@@ -64,7 +71,6 @@ impl DescriptorChainRegions {
         // This is guaranteed not to overflow because the total length of the chain is checked
         // during all creations of `DescriptorChain` (see `DescriptorChain::new()`).
         self.get_remaining_regions()
-            .iter()
             .fold(0usize, |count, region| count + region.len)
     }
 
@@ -76,8 +82,19 @@ impl DescriptorChainRegions {
     /// consume any bytes from the `DescriptorChain`. Instead callers should use the `consume`
     /// method to advance the `DescriptorChain`. Multiple calls to `get` with no intervening calls
     /// to `consume` will return the same data.
-    fn get_remaining_regions(&self) -> &[MemRegion] {
-        &self.regions[self.current..]
+    fn get_remaining_regions(&self) -> MemRegionIter {
+        MemRegionIter::new(&self.regions[self.current_region_index..])
+            .skip_bytes(self.current_region_offset)
+    }
+
+    /// Like `get_remaining_regions` but guarantees that the combined length of all the returned
+    /// iovecs is not greater than `count`. The combined length of the returned iovecs may be less
+    /// than `count` but will always be greater than 0 as long as there is still space left in the
+    /// `DescriptorChain`.
+    fn get_remaining_regions_with_count(&self, count: usize) -> MemRegionIter {
+        MemRegionIter::new(&self.regions[self.current_region_index..])
+            .skip_bytes(self.current_region_offset)
+            .take_bytes(count)
     }
 
     /// Returns all the remaining buffers in the `DescriptorChain` as `VolatileSlice`s of the given
@@ -86,43 +103,11 @@ impl DescriptorChainRegions {
     /// calls to `get` with no intervening calls to `consume` will return the same data.
     fn get_remaining<'mem>(&self, mem: &'mem GuestMemory) -> SmallVec<[VolatileSlice<'mem>; 16]> {
         self.get_remaining_regions()
-            .iter()
             .filter_map(|region| {
                 mem.get_slice_at_addr(GuestAddress(region.offset), region.len)
                     .ok()
             })
             .collect()
-    }
-
-    /// Like `get_remaining` but guarantees that the combined length of all the returned iovecs is
-    /// not greater than `count`. The combined length of the returned iovecs may be less than
-    /// `count` but will always be greater than 0 as long as there is still space left in the
-    /// `DescriptorChain`.
-    fn get_remaining_regions_with_count(&self, count: usize) -> Cow<[MemRegion]> {
-        let regions = self.get_remaining_regions();
-        let mut region_count = 0;
-        let mut rem = count;
-        for region in regions {
-            if rem < region.len {
-                break;
-            }
-
-            region_count += 1;
-            rem -= region.len;
-        }
-
-        // Special case where the number of bytes to be copied is smaller than the `size()` of the
-        // first regions.
-        if region_count == 0 && !regions.is_empty() && count > 0 {
-            debug_assert!(count < regions[0].len);
-            // Safe because we know that count is smaller than the length of the first slice.
-            Cow::Owned(vec![MemRegion {
-                offset: regions[0].offset,
-                len: count,
-            }])
-        } else {
-            Cow::Borrowed(&regions[..region_count])
-        }
     }
 
     /// Like 'get_remaining_with_count' except convert the offsets to volatile slices in the
@@ -133,7 +118,6 @@ impl DescriptorChainRegions {
         count: usize,
     ) -> SmallVec<[VolatileSlice<'mem>; 16]> {
         self.get_remaining_regions_with_count(count)
-            .iter()
             .filter_map(|region| {
                 mem.get_slice_at_addr(GuestAddress(region.offset), region.len)
                     .ok()
@@ -144,33 +128,23 @@ impl DescriptorChainRegions {
     /// Consumes `count` bytes from the `DescriptorChain`. If `count` is larger than
     /// `self.available_bytes()` then all remaining bytes in the `DescriptorChain` will be consumed.
     fn consume(&mut self, mut count: usize) {
-        // The implementation is adapted from `IoSlice::advance` in libstd. We can't use
-        // `get_remaining` here because then the compiler complains that `self.current` is already
-        // borrowed and doesn't allow us to modify it.  We also need to borrow the iovecs mutably.
-        let current = self.current;
-        for region in &mut self.regions[current..] {
-            if count == 0 {
-                break;
+        while let Some(region) = self.regions.get(self.current_region_index) {
+            let region_remaining = region.len - self.current_region_offset;
+            if count < region_remaining {
+                // The remaining count to consume is less than the remaining un-consumed length of
+                // the current region. Adjust the region offset without advancing to the next region
+                // and stop.
+                self.current_region_offset += count;
+                self.bytes_consumed += count;
+                return;
             }
 
-            let consumed = if count < region.len {
-                // Safe because we know that the iovec pointed to valid memory and we are adding a
-                // value that is smaller than the length of the memory.
-                *region = MemRegion {
-                    offset: region.offset + count as u64,
-                    len: region.len - count,
-                };
-                count
-            } else {
-                self.current += 1;
-                region.len
-            };
+            // The current region has been exhausted. Advance to the next region.
+            self.current_region_index += 1;
+            self.current_region_offset = 0;
 
-            // This shouldn't overflow because `consumed <= buf.size()` and we already verified
-            // that adding all `buf.size()` values will not overflow when the Reader/Writer was
-            // constructed.
-            self.bytes_consumed += consumed;
-            count -= consumed;
+            self.bytes_consumed += region_remaining;
+            count -= region_remaining;
         }
     }
 
@@ -178,15 +152,16 @@ impl DescriptorChainRegions {
         let mut other = DescriptorChainRegions {
             regions: self.regions.clone(),
             _exported_regions: self._exported_regions.clone(),
-            current: self.current,
+            current_region_index: self.current_region_index,
+            current_region_offset: self.current_region_offset,
             bytes_consumed: self.bytes_consumed,
         };
         other.consume(offset);
         other.bytes_consumed = 0;
 
         let mut rem = offset;
-        let mut end = self.current;
-        for region in &mut self.regions[self.current..] {
+        let mut end = self.current_region_index;
+        for region in &mut self.regions[self.current_region_index..] {
             if rem <= region.len {
                 region.len = rem;
                 break;
@@ -415,9 +390,12 @@ impl Reader {
         count: usize,
         off: u64,
     ) -> disk::Result<usize> {
-        let mem_regions = self.regions.get_remaining_regions_with_count(count);
         let written = dst
-            .write_from_mem(off, Arc::new(self.mem.clone()), &mem_regions)
+            .write_from_mem(
+                off,
+                Arc::new(self.mem.clone()),
+                self.regions.get_remaining_regions_with_count(count),
+            )
             .await?;
         self.regions.consume(written);
         Ok(written)
@@ -457,7 +435,7 @@ impl Reader {
         self.regions.bytes_consumed()
     }
 
-    pub fn get_remaining_regions(&self) -> &[MemRegion] {
+    pub fn get_remaining_regions(&self) -> MemRegionIter {
         self.regions.get_remaining_regions()
     }
 
@@ -499,7 +477,7 @@ impl Reader {
 /// that point are not initialized by this function.
 unsafe fn copy_regions_to_mut_ptr(
     mem: &GuestMemory,
-    src: &[MemRegion],
+    src: MemRegionIter,
     dst: *mut u8,
     size: usize,
 ) -> io::Result<usize> {
@@ -698,9 +676,12 @@ impl Writer {
         count: usize,
         off: u64,
     ) -> disk::Result<usize> {
-        let regions = self.regions.get_remaining_regions_with_count(count);
         let read = src
-            .read_to_mem(off, Arc::new(self.mem.clone()), &regions)
+            .read_to_mem(
+                off,
+                Arc::new(self.mem.clone()),
+                self.regions.get_remaining_regions_with_count(count),
+            )
             .await?;
         self.regions.consume(read);
         Ok(read)
@@ -731,7 +712,7 @@ impl Writer {
         self.regions.bytes_consumed()
     }
 
-    pub fn get_remaining_regions(&self) -> &[MemRegion] {
+    pub fn get_remaining_regions(&self) -> MemRegionIter {
         self.regions.get_remaining_regions()
     }
 
@@ -1437,20 +1418,17 @@ mod tests {
 
         let drain = regions
             .get_remaining_regions_with_count(::std::usize::MAX)
-            .iter()
             .fold(0usize, |total, region| total + region.len);
         assert_eq!(drain, 128);
 
         let exact = regions
             .get_remaining_regions_with_count(32)
-            .iter()
             .fold(0usize, |total, region| total + region.len);
         assert!(exact > 0);
         assert!(exact <= 32);
 
         let split = regions
             .get_remaining_regions_with_count(24)
-            .iter()
             .fold(0usize, |total, region| total + region.len);
         assert!(split > 0);
         assert!(split <= 24);
@@ -1459,7 +1437,6 @@ mod tests {
 
         let first = regions
             .get_remaining_regions_with_count(8)
-            .iter()
             .fold(0usize, |total, region| total + region.len);
         assert!(first > 0);
         assert!(first <= 8);

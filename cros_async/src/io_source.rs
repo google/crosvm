@@ -100,11 +100,11 @@ impl<F: AsRawDescriptor> IoSource<F> {
     }
 
     /// Reads to the given `mem` at the given offsets from the file starting at `file_offset`.
-    pub async fn read_to_mem<'a>(
-        &'a self,
+    pub async fn read_to_mem(
+        &self,
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        mem_offsets: &'a [MemRegion],
+        mem_offsets: impl IntoIterator<Item = MemRegion>,
     ) -> AsyncResult<usize> {
         await_on_inner!(self, read_to_mem, file_offset, mem, mem_offsets)
     }
@@ -124,11 +124,11 @@ impl<F: AsRawDescriptor> IoSource<F> {
     }
 
     /// Writes from the given `mem` at the given offsets to the file starting at `file_offset`.
-    pub async fn write_from_mem<'a>(
-        &'a self,
+    pub async fn write_from_mem(
+        &self,
         file_offset: Option<u64>,
         mem: Arc<dyn BackingMemory + Send + Sync>,
-        mem_offsets: &'a [MemRegion],
+        mem_offsets: impl IntoIterator<Item = MemRegion>,
     ) -> AsyncResult<usize> {
         await_on_inner!(self, write_from_mem, file_offset, mem, mem_offsets)
     }
@@ -268,7 +268,7 @@ mod tests {
                     .read_to_mem(
                         None,
                         Arc::<VecIoWrapper>::clone(&mem),
-                        &[
+                        [
                             MemRegion { offset: 0, len: 2 },
                             MemRegion { offset: 4, len: 1 },
                         ],
@@ -299,7 +299,7 @@ mod tests {
                     .write_from_mem(
                         None,
                         Arc::<VecIoWrapper>::clone(&mem),
-                        &[
+                        [
                             MemRegion { offset: 0, len: 1 },
                             MemRegion { offset: 2, len: 2 },
                         ],

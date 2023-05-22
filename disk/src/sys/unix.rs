@@ -31,7 +31,11 @@ mod tests {
             let f = File::open("/dev/zero").unwrap();
             let async_file = SingleFileDisk::new(f, ex).unwrap();
             let result = async_file
-                .read_to_mem(0, guest_mem, &[MemRegion { offset: 0, len: 48 }])
+                .read_to_mem(
+                    0,
+                    guest_mem,
+                    MemRegionIter::new(&[MemRegion { offset: 0, len: 48 }]),
+                )
                 .await;
             assert_eq!(48, result.unwrap());
         }
@@ -47,7 +51,11 @@ mod tests {
             let f = OpenOptions::new().write(true).open("/dev/null").unwrap();
             let async_file = SingleFileDisk::new(f, ex).unwrap();
             let result = async_file
-                .write_from_mem(0, guest_mem, &[MemRegion { offset: 0, len: 48 }])
+                .write_from_mem(
+                    0,
+                    guest_mem,
+                    MemRegionIter::new(&[MemRegion { offset: 0, len: 48 }]),
+                )
                 .await;
             assert_eq!(48, result.unwrap());
         }

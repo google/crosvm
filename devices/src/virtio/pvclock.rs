@@ -470,8 +470,7 @@ fn run_worker(
                     let desc = desc_chain
                         .reader
                         .get_remaining_regions()
-                        .iter()
-                        .chain(desc_chain.writer.get_remaining_regions().iter())
+                        .chain(desc_chain.writer.get_remaining_regions())
                         .next()
                         .unwrap();
 
