@@ -21,4 +21,13 @@ pub trait IrqChipRiscv64: IrqChip {
 
     /// Returns the number of ids and sources supported by this IrqChip(assuming it's AIA).
     fn get_num_ids_sources(&self) -> (usize, usize);
+
+    // Snapshot irqchip.
+    fn snapshot(&self, _cpus_num: usize) -> anyhow::Result<serde_json::Value> {
+        Err(anyhow!("Snapshot not yet implemented for RiskV64"))
+    }
+
+    fn restore(&mut self, _data: serde_json::Value, _vcpus_num: usize) -> anyhow::Result<()> {
+        Err(anyhow!("Restore not yet implemented for RiskV64"))
+    }
 }
