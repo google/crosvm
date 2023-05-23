@@ -3185,7 +3185,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                 disk_host_tubes,
                                                 &mut linux.pm,
                                                 #[cfg(feature = "gpu")]
-                                                &gpu_control_tube,
+                                                Some(&gpu_control_tube),
                                                 #[cfg(feature = "usb")]
                                                 Some(&usb_control_tube),
                                                 #[cfg(not(feature = "usb"))]

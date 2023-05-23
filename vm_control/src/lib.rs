@@ -1506,7 +1506,7 @@ impl VmRequest {
         #[cfg(feature = "balloon")] balloon_wss_id: &mut u64,
         disk_host_tubes: &[Tube],
         pm: &mut Option<Arc<Mutex<dyn PmResource + Send>>>,
-        #[cfg(feature = "gpu")] gpu_control_tube: &Tube,
+        #[cfg(feature = "gpu")] gpu_control_tube: Option<&Tube>,
         usb_control_tube: Option<&Tube>,
         bat_control: &mut Option<BatControl>,
         kick_vcpus: impl Fn(VcpuControl),
@@ -1825,20 +1825,26 @@ impl VmRequest {
                 None => VmResponse::Err(SysError::new(ENODEV)),
             },
             #[cfg(feature = "gpu")]
-            VmRequest::GpuCommand(ref cmd) => {
-                let res = gpu_control_tube.send(cmd);
-                if let Err(e) = res {
-                    error!("fail to send command to gpu control socket: {}", e);
-                    return VmResponse::Err(SysError::new(EIO));
-                }
-                match gpu_control_tube.recv() {
-                    Ok(response) => VmResponse::GpuResponse(response),
-                    Err(e) => {
-                        error!("fail to recv command from gpu control socket: {}", e);
-                        VmResponse::Err(SysError::new(EIO))
+            VmRequest::GpuCommand(ref cmd) => match gpu_control_tube {
+                Some(gpu_control) => {
+                    let res = gpu_control.send(cmd);
+                    if let Err(e) = res {
+                        error!("fail to send command to gpu control socket: {}", e);
+                        return VmResponse::Err(SysError::new(EIO));
+                    }
+                    match gpu_control.recv() {
+                        Ok(response) => VmResponse::GpuResponse(response),
+                        Err(e) => {
+                            error!("fail to recv command from gpu control socket: {}", e);
+                            VmResponse::Err(SysError::new(EIO))
+                        }
                     }
                 }
-            }
+                None => {
+                    error!("gpu control is not enabled in crosvm");
+                    VmResponse::Err(SysError::new(EIO))
+                }
+            },
             VmRequest::UsbCommand(ref cmd) => {
                 let usb_control_tube = match usb_control_tube {
                     Some(t) => t,

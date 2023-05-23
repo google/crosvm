@@ -75,6 +75,7 @@ impl TaggedControlTube {
 pub(super) enum Token {
     VmEvent,
     BrokerShutdown,
+    VmControlServer,
     VmControl { index: usize },
 }
 
