@@ -69,6 +69,7 @@ pub enum TrbCompletionCode {
     Success = 1,
     TransactionError = 4,
     TrbError = 5,
+    StallError = 6,
     NoSlotsAvailableError = 9,
     SlotNotEnabledError = 11,
     ShortPacket = 13,
@@ -95,6 +96,9 @@ pub enum DeviceSlotState {
 pub enum EndpointState {
     Disabled = 0,
     Running = 1,
+    Halted = 2,
+    Stopped = 3,
+    Error = 4,
 }
 
 #[bitfield]

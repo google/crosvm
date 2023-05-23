@@ -22,6 +22,7 @@ use data_model::vec_with_array_field;
 use libc::EAGAIN;
 use libc::ENODEV;
 use libc::ENOENT;
+use libc::EPIPE;
 
 use crate::control_request_type;
 use crate::descriptor;
@@ -67,6 +68,7 @@ pub enum TransferStatus {
     Error,
     Cancelled,
     NoDevice,
+    Stalled,
 }
 
 impl Device {
@@ -466,6 +468,8 @@ impl Transfer {
             TransferStatus::NoDevice
         } else if status == -ENOENT {
             TransferStatus::Cancelled
+        } else if status == -EPIPE {
+            TransferStatus::Stalled
         } else {
             TransferStatus::Error
         }

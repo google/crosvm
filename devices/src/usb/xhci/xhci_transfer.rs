@@ -18,7 +18,9 @@ use sync::Mutex;
 use thiserror::Error;
 use usb_util::TransferStatus;
 use usb_util::UsbRequestSetup;
+use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
+use vm_memory::GuestMemoryError;
 
 use super::interrupter::Error as InterrupterError;
 use super::interrupter::Interrupter;
@@ -27,6 +29,9 @@ use super::scatter_gather_buffer::ScatterGatherBuffer;
 use super::usb_hub::Error as HubError;
 use super::usb_hub::UsbPort;
 use super::xhci_abi::AddressedTrb;
+use super::xhci_abi::DequeuePtr;
+use super::xhci_abi::EndpointContext;
+use super::xhci_abi::EndpointState;
 use super::xhci_abi::Error as TrbError;
 use super::xhci_abi::EventDataTrb;
 use super::xhci_abi::SetupStageTrb;
@@ -47,6 +52,8 @@ pub enum Error {
     CreateBuffer(BufferError),
     #[error("cannot detach from port: {0}")]
     DetachPort(HubError),
+    #[error("failed to read guest memory: {0}")]
+    ReadGuestMemory(GuestMemoryError),
     #[error("cannot send interrupt: {0}")]
     SendInterrupt(InterrupterError),
     #[error("failed to submit transfer to backend")]
@@ -57,6 +64,8 @@ pub enum Error {
     TrbType(BitFieldError),
     #[error("cannot write completion event: {0}")]
     WriteCompletionEvent(SysError),
+    #[error("failed to write guest memory: {0}")]
+    WriteGuestMemory(GuestMemoryError),
 }
 
 type Result<T> = std::result::Result<T, Error>;
@@ -191,6 +200,7 @@ impl XhciTransferManager {
         endpoint_id: u8,
         transfer_trbs: TransferDescriptor,
         completion_event: Event,
+        endpoint_context_addr: GuestAddress,
     ) -> XhciTransfer {
         assert!(!transfer_trbs.is_empty());
         let transfer_dir = {
@@ -213,6 +223,7 @@ impl XhciTransferManager {
             endpoint_id,
             transfer_dir,
             transfer_trbs,
+            endpoint_context_addr,
         };
         self.transfers.lock().push(Arc::downgrade(&t.state));
         t
@@ -266,6 +277,7 @@ pub struct XhciTransfer {
     transfer_dir: TransferDirection,
     transfer_trbs: TransferDescriptor,
     transfer_completion_event: Event,
+    endpoint_context_addr: GuestAddress,
 }
 
 impl Drop for XhciTransfer {
@@ -338,6 +350,23 @@ impl XhciTransfer {
                     .signal()
                     .map_err(Error::WriteCompletionEvent)?;
             }
+            TransferStatus::Stalled => {
+                let mut context = self.get_endpoint_context()?;
+                let dequeue_pointer = match self.transfer_trbs.last() {
+                    Some(atrb) => atrb.gpa,
+                    None => context.get_tr_dequeue_pointer().get_gpa().0,
+                };
+                usb_debug!(
+                    "endpoint is stalled. set state to Halted and dequeue pointer to {:#x}",
+                    dequeue_pointer
+                );
+                context.set_endpoint_state(EndpointState::Halted);
+                context.set_tr_dequeue_pointer(DequeuePtr::new(GuestAddress(dequeue_pointer)));
+                self.set_endpoint_context(context)?;
+                self.transfer_completion_event
+                    .signal()
+                    .map_err(Error::WriteCompletionEvent)?;
+            }
             _ => {
                 // Transfer failed, we are not handling this correctly yet. Guest kernel might see
                 // short packets for in transfer and might think control transfer is successful. It
@@ -355,7 +384,6 @@ impl XhciTransfer {
         //   2. When a short transfer occurs during the execution of a Transfer TRB and the
         //      Interrupt-on-Short Packet flag is set.
         //   3. If an error occurs during the execution of a Transfer TRB.
-        // Errors are handled above, so just check for the two flags.
         for atrb in &self.transfer_trbs {
             edtla += atrb.trb.transfer_length().map_err(Error::TransferLength)?;
             if atrb.trb.interrupt_on_completion()
@@ -373,6 +401,20 @@ impl XhciTransfer {
                                 .map_err(Error::CastTrb)?
                                 .get_event_data(),
                             tlength,
+                            true,
+                            self.slot_id,
+                            self.endpoint_id,
+                        )
+                        .map_err(Error::SendInterrupt)?;
+                } else if *status == TransferStatus::Stalled {
+                    usb_debug!("on transfer complete stalled");
+                    let residual_transfer_length = edtla - bytes_transferred;
+                    self.interrupter
+                        .lock()
+                        .send_transfer_event_trb(
+                            TrbCompletionCode::StallError,
+                            atrb.gpa,
+                            residual_transfer_length,
                             true,
                             self.slot_id,
                             self.endpoint_id,
@@ -461,6 +503,20 @@ impl XhciTransfer {
             }
         }
         Ok(valid)
+    }
+
+    fn get_endpoint_context(&self) -> Result<EndpointContext> {
+        let ctx = self
+            .mem
+            .read_obj_from_addr(self.endpoint_context_addr)
+            .map_err(Error::ReadGuestMemory)?;
+        Ok(ctx)
+    }
+
+    fn set_endpoint_context(&self, endpoint_context: EndpointContext) -> Result<()> {
+        self.mem
+            .write_obj_at_addr(endpoint_context, self.endpoint_context_addr)
+            .map_err(Error::WriteGuestMemory)
     }
 }
 

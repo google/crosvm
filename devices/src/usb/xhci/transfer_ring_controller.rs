@@ -7,6 +7,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use base::Event;
 use sync::Mutex;
+use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
 use super::interrupter::Interrupter;
@@ -31,6 +32,7 @@ pub struct TransferRingTrbHandler {
     slot_id: u8,
     endpoint_id: u8,
     transfer_manager: XhciTransferManager,
+    endpoint_context_addr: GuestAddress,
 }
 
 impl TransferDescriptorHandler for TransferRingTrbHandler {
@@ -47,6 +49,7 @@ impl TransferDescriptorHandler for TransferRingTrbHandler {
             self.endpoint_id,
             descriptor,
             completion_event,
+            self.endpoint_context_addr,
         );
         xhci_transfer
             .send_to_backend_if_valid()
@@ -72,6 +75,7 @@ impl TransferRingController {
         interrupter: Arc<Mutex<Interrupter>>,
         slot_id: u8,
         endpoint_id: u8,
+        endpoint_context_addr: GuestAddress,
     ) -> Result<Arc<TransferRingController>, TransferRingControllerError> {
         RingBufferController::new_with_handler(
             format!("transfer ring slot_{} ep_{}", slot_id, endpoint_id),
@@ -84,6 +88,7 @@ impl TransferRingController {
                 slot_id,
                 endpoint_id,
                 transfer_manager: XhciTransferManager::new(),
+                endpoint_context_addr,
             },
         )
     }

@@ -437,6 +437,9 @@ impl DeviceSlot {
             port_id,
             self.slot_id
         );
+        let endpoint_context_addr = self
+            .get_device_context_addr()?
+            .unchecked_add(size_of::<SlotContext>() as u64);
 
         // Initialize the control endpoint. Endpoint id = 1.
         self.set_trc(
@@ -449,6 +452,7 @@ impl DeviceSlot {
                     self.interrupter.clone(),
                     self.slot_id,
                     1,
+                    endpoint_context_addr,
                 )
                 .map_err(Error::CreateTransferController)?,
             ),
@@ -698,6 +702,10 @@ impl DeviceSlot {
         );
         let mut device_context = self.get_device_context()?;
         let transfer_ring_index = (device_context_index - 1) as usize;
+        let endpoint_context_addr = self
+            .get_device_context_addr()?
+            .unchecked_add(size_of::<SlotContext>() as u64)
+            .unchecked_add(size_of::<EndpointContext>() as u64 * transfer_ring_index as u64);
         let trc = TransferRingController::new(
             self.mem.clone(),
             self.hub
@@ -707,6 +715,7 @@ impl DeviceSlot {
             self.interrupter.clone(),
             self.slot_id,
             device_context_index,
+            endpoint_context_addr,
         )
         .map_err(Error::CreateTransferController)?;
         trc.set_dequeue_pointer(
