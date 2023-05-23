@@ -283,7 +283,7 @@ fn perform_read<F: FnMut(&mut [u8]) -> io::Result<usize>>(
     read_fn: &mut F,
     buf: &mut [u8],
 ) -> io::Result<usize> {
-    let res = match read_fn(buf) {
+    let bytes_read = match read_fn(buf) {
         Ok(s) => Ok(s),
         Err(e)
             if e.raw_os_error()
@@ -292,9 +292,8 @@ fn perform_read<F: FnMut(&mut [u8]) -> io::Result<usize>>(
             Ok(buf.len())
         }
         Err(e) => Err(e),
-    };
+    }?;
 
-    let bytes_read = res?;
     if bytes_read != buf.len() {
         Err(io::Error::new(
             io::ErrorKind::UnexpectedEof,

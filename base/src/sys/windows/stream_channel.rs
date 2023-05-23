@@ -183,11 +183,17 @@ impl StreamChannel {
         })
     }
 
+    /// Gets the readable byte count. Returns zero for broken pipes since that will cause the read
+    /// notifier to be set, and for the consumer to quickly discover the broken pipe.
     fn get_readable_byte_count(&self) -> io::Result<u32> {
-        self.pipe_conn.get_available_byte_count().map_err(|e| {
-            error!("StreamChannel failed to get readable byte count: {}", e);
-            e
-        })
+        match self.pipe_conn.get_available_byte_count() {
+            Err(e) if e.kind() == io::ErrorKind::BrokenPipe => Ok(0),
+            Err(e) => {
+                error!("StreamChannel failed to get readable byte count: {}", e);
+                Err(e)
+            }
+            Ok(byte_count) => Ok(byte_count),
+        }
     }
 
     pub(super) fn inner_read(&self, buf: &mut [u8]) -> io::Result<usize> {
