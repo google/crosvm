@@ -37,8 +37,8 @@ use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 use zerocopy::LayoutVerified;
 
-use crate::sys::IoBufMut;
 use crate::DataInit;
+use crate::IoBufMut;
 
 #[sorted]
 #[derive(Error, Eq, PartialEq, Debug)]

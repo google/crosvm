@@ -227,7 +227,9 @@ pub use flexible_array::vec_with_array_field;
 pub use flexible_array::FlexibleArray;
 pub use flexible_array::FlexibleArrayWrapper;
 
+mod iobuf;
+pub use iobuf::create_iobuf;
+pub use iobuf::IoBuf;
+pub use iobuf::IoBufMut;
+
 mod sys;
-pub use sys::create_iobuf;
-pub use sys::IoBuf;
-pub use sys::IoBufMut;
