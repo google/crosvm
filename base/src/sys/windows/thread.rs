@@ -4,7 +4,6 @@
 
 use std::any::Any;
 use std::panic;
-use std::panic::UnwindSafe;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Receiver;
 use std::thread;
@@ -15,13 +14,13 @@ use std::time::Duration;
 pub fn spawn_with_timeout<F, T>(f: F) -> JoinHandleWithTimeout<T>
 where
     F: FnOnce() -> T,
-    F: Send + UnwindSafe + 'static,
+    F: Send + 'static,
     T: Send + 'static,
 {
     // Use a channel to signal completion to the join handle
     let (tx, rx) = channel();
     let handle = thread::spawn(move || {
-        let val = panic::catch_unwind(f);
+        let val = panic::catch_unwind(panic::AssertUnwindSafe(f));
         tx.send(()).unwrap();
         val
     });
