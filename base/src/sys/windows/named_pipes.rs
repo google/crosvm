@@ -24,6 +24,7 @@ use winapi::shared::minwindef::FALSE;
 use winapi::shared::minwindef::TRUE;
 use winapi::shared::winerror::ERROR_IO_INCOMPLETE;
 use winapi::shared::winerror::ERROR_IO_PENDING;
+use winapi::shared::winerror::ERROR_MORE_DATA;
 use winapi::shared::winerror::ERROR_NO_DATA;
 use winapi::shared::winerror::ERROR_PIPE_CONNECTED;
 use winapi::um::errhandlingapi::GetLastError;
@@ -602,9 +603,15 @@ impl PipeConnection {
     ) -> Result<()> {
         // Safe because we are providing a valid buffer slice and also providing a valid
         // overlapped struct.
-        unsafe {
-            self.read_overlapped(buf, overlapped_wrapper)?;
-        };
+        match unsafe { self.read_overlapped(buf, overlapped_wrapper) } {
+            // More data isn't necessarily an error as long as we've filled the provided buffer,
+            // as is checked later in this function.
+            Err(e) if e.raw_os_error().expect("must be an OS error") == ERROR_MORE_DATA as i32 => {
+                Ok(())
+            }
+            Err(e) => Err(e),
+            Ok(()) => Ok(()),
+        }?;
 
         #[derive(EventToken)]
         enum Token {
