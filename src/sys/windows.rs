@@ -1046,7 +1046,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     host_cpu_topology: bool,
     tsc_sync_mitigations: TscSyncMitigations,
     force_calibrated_tsc_leaf: bool,
-    product_args: RunControlArgs,
+    mut product_args: RunControlArgs,
     mut virtio_snd_host_mute_tube: Option<Tube>,
     restore_path: Option<PathBuf>,
     control_server_path: Option<PathBuf>,
@@ -1137,7 +1137,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
     let mut vm_control_server = create_control_server(control_server_path, &wait_ctx)?;
 
-    let ime_thread = run_ime_thread(product_args, &exit_evt)?;
+    let ime_thread = run_ime_thread(&mut product_args, &exit_evt)?;
 
     let original_terminal_mode = stdin().set_raw_mode().ok();
 

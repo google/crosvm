@@ -104,7 +104,7 @@ pub(super) fn handle_pvclock_request(tube: &Option<Tube>, command: PvClockComman
 
 // Run ime thread.
 pub(super) fn run_ime_thread(
-    product_args: RunControlArgs,
+    product_args: &mut RunControlArgs,
     exit_evt: &Event,
 ) -> Result<Option<JoinHandle<Result<()>>>> {
     Ok(None)
