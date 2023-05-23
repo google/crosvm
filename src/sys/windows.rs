@@ -6,6 +6,7 @@
 // isn't marked so. Remove this when we do so.
 #![allow(dead_code, unused_imports, unused_variables, unreachable_code)]
 
+pub(crate) mod control_server;
 pub(crate) mod irq_wait;
 pub(crate) mod main;
 #[cfg(not(feature = "crash-report"))]
