@@ -9,10 +9,14 @@ use std::io::Result;
 use std::mem::size_of;
 use std::path::Path;
 
+use base::error;
+use base::named_pipes::BlockingMode;
+use base::named_pipes::FramingMode;
 use base::named_pipes::OverlappedWrapper;
 use base::Error;
 use base::Event;
 use base::PipeConnection;
+use base::PipeTube;
 use hypervisor::MemSlot;
 use hypervisor::Vm;
 use resources::Alloc;
@@ -23,12 +27,44 @@ use crate::VmRequest;
 
 pub const SERVICE_MESSAGE_HEADER_SIZE: usize = size_of::<u32>();
 
-// TODO(b/145563346): Make this work on Windows
 pub fn handle_request<T: AsRef<Path> + std::fmt::Debug>(
-    _request: &VmRequest,
-    _socket_path: T,
+    request: &VmRequest,
+    socket_path: T,
 ) -> HandleRequestResult {
-    Err(())
+    match base::named_pipes::create_client_pipe(
+        socket_path
+            .as_ref()
+            .to_str()
+            .expect("socket path must be a string"),
+        &FramingMode::Message,
+        &BlockingMode::Wait,
+        /* overlapped= */ false,
+    ) {
+        Ok(pipe) => {
+            let tube = PipeTube::from(pipe, None);
+            if let Err(e) = tube.send(request) {
+                error!(
+                    "failed to send request to pipe at '{:?}': {}",
+                    socket_path, e
+                );
+                return Err(());
+            }
+            match tube.recv() {
+                Ok(response) => Ok(response),
+                Err(e) => {
+                    error!(
+                        "failed to recv response from pipe at '{:?}': {}",
+                        socket_path, e
+                    );
+                    Err(())
+                }
+            }
+        }
+        Err(e) => {
+            error!("failed to connect to socket at '{:?}': {}", socket_path, e);
+            Err(())
+        }
+    }
 }
 
 /// Send the size header first and then the protbuf message.
