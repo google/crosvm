@@ -153,11 +153,11 @@ impl Tube {
             Cursor::new(Vec::with_capacity(mem::size_of::<usize>() + size_header));
         data_packet
             .write(&size_header.to_le_bytes())
-            .map_err(Error::SendIoBuf)?;
+            .map_err(Error::from_send_io_buf_error)?;
         data_packet.write(&bytes).map_err(Error::SendIoBuf)?;
         self.socket
             .write_immutable(&data_packet.into_inner())
-            .map_err(Error::SendIo)?;
+            .map_err(Error::from_send_io_error)?;
 
         Ok(())
     }
@@ -165,11 +165,12 @@ impl Tube {
     fn recv_proto<M: protobuf::Message>(&self) -> Result<M> {
         let mut header_bytes = [0u8; mem::size_of::<usize>()];
         perform_read(&mut |buf| (&self.socket).read(buf), &mut header_bytes)
-            .map_err(Error::Recv)?;
+            .map_err(Error::from_recv_io_error)?;
         let size_header = usize::from_le_bytes(header_bytes);
 
         let mut proto_bytes = vec![0u8; size_header];
-        perform_read(&mut |buf| (&self.socket).read(buf), &mut proto_bytes).map_err(Error::Recv)?;
+        perform_read(&mut |buf| (&self.socket).read(buf), &mut proto_bytes)
+            .map_err(Error::from_recv_io_error)?;
         protobuf::Message::parse_from_bytes(&proto_bytes).map_err(Error::Proto)
     }
 
@@ -258,7 +259,7 @@ pub fn serialize_and_send<T: Serialize, F: Fn(&[u8]) -> io::Result<usize>>(
     // Multiple writers (producers) are safe because each write is atomic.
     let data_bytes = data_packet.into_inner();
 
-    write_fn(&data_bytes).map_err(Error::SendIo)?;
+    write_fn(&data_bytes).map_err(Error::from_send_io_error)?;
     Ok(())
 }
 
@@ -310,7 +311,7 @@ pub fn deserialize_and_recv<T: DeserializeOwned, F: FnMut(&mut [u8]) -> io::Resu
     mut read_fn: F,
 ) -> Result<T> {
     let mut header_bytes = vec![0u8; mem::size_of::<MsgHeader>()];
-    perform_read(&mut read_fn, header_bytes.as_mut_slice()).map_err(Error::Recv)?;
+    perform_read(&mut read_fn, header_bytes.as_mut_slice()).map_err(Error::from_recv_io_error)?;
 
     // Safe because the header is always written by the send function, and only that function
     // writes to this channel.
@@ -318,7 +319,7 @@ pub fn deserialize_and_recv<T: DeserializeOwned, F: FnMut(&mut [u8]) -> io::Resu
         MsgHeader::from_slice(header_bytes.as_slice()).expect("Tube header failed to deserialize.");
 
     let mut msg_json = vec![0u8; header.msg_json_size];
-    perform_read(&mut read_fn, msg_json.as_mut_slice()).map_err(Error::Recv)?;
+    perform_read(&mut read_fn, msg_json.as_mut_slice()).map_err(Error::from_recv_io_error)?;
 
     if msg_json.is_empty() {
         // This means we got a message header, but there is no json body (due to a zero size in
@@ -329,7 +330,8 @@ pub fn deserialize_and_recv<T: DeserializeOwned, F: FnMut(&mut [u8]) -> io::Resu
 
     let msg_descriptors: Vec<RawDescriptor> = if header.descriptor_json_size > 0 {
         let mut msg_descriptors_json = vec![0u8; header.descriptor_json_size];
-        perform_read(&mut read_fn, msg_descriptors_json.as_mut_slice()).map_err(Error::Recv)?;
+        perform_read(&mut read_fn, msg_descriptors_json.as_mut_slice())
+            .map_err(Error::from_recv_io_error)?;
         let descriptor_usizes: Vec<usize> =
             serde_json::from_slice(msg_descriptors_json.as_slice()).map_err(Error::Json)?;
 
@@ -511,5 +513,27 @@ impl Drop for FlushOnDropTube {
         if let Err(e) = self.0.flush_blocking() {
             warn!("failed to flush Tube: {}", e)
         }
+    }
+}
+
+impl Error {
+    fn map_io_error(e: io::Error, err_ctor: fn(io::Error) -> Error) -> Error {
+        if e.kind() == io::ErrorKind::BrokenPipe {
+            Error::Disconnected
+        } else {
+            err_ctor(e)
+        }
+    }
+
+    fn from_recv_io_error(e: io::Error) -> Error {
+        Self::map_io_error(e, Error::Recv)
+    }
+
+    fn from_send_io_error(e: io::Error) -> Error {
+        Self::map_io_error(e, Error::SendIo)
+    }
+
+    fn from_send_io_buf_error(e: io::Error) -> Error {
+        Self::map_io_error(e, Error::SendIoBuf)
     }
 }
