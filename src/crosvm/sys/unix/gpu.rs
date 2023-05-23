@@ -4,13 +4,12 @@
 
 //! GPU related things
 //! depends on "gpu" feature
+static_assertions::assert_cfg!(feature = "gpu");
 
-#[cfg(feature = "gpu")]
 use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
-#[cfg(feature = "gpu")]
 use base::platform::move_proc_to_cgroup;
 use jail::*;
 use serde::Deserialize;
@@ -182,7 +181,6 @@ pub struct GpuRenderServerParameters {
     pub precompiled_cache_path: Option<String>,
 }
 
-#[cfg(feature = "gpu")]
 fn get_gpu_render_server_environment(cache_info: Option<&GpuCacheInfo>) -> Result<Vec<String>> {
     let mut env = HashMap::<String, String>::new();
     let os_env_len = env::vars_os().count();
@@ -212,7 +210,6 @@ fn get_gpu_render_server_environment(cache_info: Option<&GpuCacheInfo>) -> Resul
     Ok(env.iter().map(|(k, v)| format!("{}={}", k, v)).collect())
 }
 
-#[cfg(feature = "gpu")]
 pub fn start_gpu_render_server(
     cfg: &Config,
     render_server_parameters: &GpuRenderServerParameters,
