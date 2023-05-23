@@ -12,6 +12,7 @@ use std::os::windows::io::RawHandle;
 use std::time::Duration;
 
 use data_model::DataInit;
+use log::warn;
 use once_cell::sync::Lazy;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -33,6 +34,7 @@ use crate::BlockingMode;
 use crate::CloseNotifier;
 use crate::EventToken;
 use crate::FramingMode;
+use crate::PipeConnection;
 use crate::ReadNotifier;
 use crate::StreamChannel;
 
@@ -162,11 +164,12 @@ impl Tube {
 
     fn recv_proto<M: protobuf::Message>(&self) -> Result<M> {
         let mut header_bytes = [0u8; mem::size_of::<usize>()];
-        perform_read(&|buf| (&self.socket).read(buf), &mut header_bytes).map_err(Error::Recv)?;
+        perform_read(&mut |buf| (&self.socket).read(buf), &mut header_bytes)
+            .map_err(Error::Recv)?;
         let size_header = usize::from_le_bytes(header_bytes);
 
         let mut proto_bytes = vec![0u8; size_header];
-        perform_read(&|buf| (&self.socket).read(buf), &mut proto_bytes).map_err(Error::Recv)?;
+        perform_read(&mut |buf| (&self.socket).read(buf), &mut proto_bytes).map_err(Error::Recv)?;
         protobuf::Message::parse_from_bytes(&proto_bytes).map_err(Error::Proto)
     }
 
@@ -276,8 +279,8 @@ fn duplicate_handle(desc: RawHandle, target_pid: Option<u32>) -> Result<RawHandl
 ///   We use this to ignore errors when reading the message header, which has the lengths we need
 ///   to allocate our buffers for the remainder of the message.
 /// * We filled the supplied buffer.
-fn perform_read<F: Fn(&mut [u8]) -> io::Result<usize>>(
-    read_fn: &F,
+fn perform_read<F: FnMut(&mut [u8]) -> io::Result<usize>>(
+    read_fn: &mut F,
     buf: &mut [u8],
 ) -> io::Result<usize> {
     let res = match read_fn(buf) {
@@ -304,11 +307,11 @@ fn perform_read<F: Fn(&mut [u8]) -> io::Result<usize>>(
 
 /// Deserializes a Tube packet by calling the supplied read function. This function MUST
 /// assert that the buffer was filled.
-pub fn deserialize_and_recv<T: DeserializeOwned, F: Fn(&mut [u8]) -> io::Result<usize>>(
-    read_fn: F,
+pub fn deserialize_and_recv<T: DeserializeOwned, F: FnMut(&mut [u8]) -> io::Result<usize>>(
+    mut read_fn: F,
 ) -> Result<T> {
     let mut header_bytes = vec![0u8; mem::size_of::<MsgHeader>()];
-    perform_read(&read_fn, header_bytes.as_mut_slice()).map_err(Error::Recv)?;
+    perform_read(&mut read_fn, header_bytes.as_mut_slice()).map_err(Error::Recv)?;
 
     // Safe because the header is always written by the send function, and only that function
     // writes to this channel.
@@ -316,7 +319,7 @@ pub fn deserialize_and_recv<T: DeserializeOwned, F: Fn(&mut [u8]) -> io::Result<
         MsgHeader::from_slice(header_bytes.as_slice()).expect("Tube header failed to deserialize.");
 
     let mut msg_json = vec![0u8; header.msg_json_size];
-    perform_read(&read_fn, msg_json.as_mut_slice()).map_err(Error::Recv)?;
+    perform_read(&mut read_fn, msg_json.as_mut_slice()).map_err(Error::Recv)?;
 
     if msg_json.is_empty() {
         // This means we got a message header, but there is no json body (due to a zero size in
@@ -327,7 +330,7 @@ pub fn deserialize_and_recv<T: DeserializeOwned, F: Fn(&mut [u8]) -> io::Result<
 
     let msg_descriptors: Vec<RawDescriptor> = if header.descriptor_json_size > 0 {
         let mut msg_descriptors_json = vec![0u8; header.descriptor_json_size];
-        perform_read(&read_fn, msg_descriptors_json.as_mut_slice()).map_err(Error::Recv)?;
+        perform_read(&mut read_fn, msg_descriptors_json.as_mut_slice()).map_err(Error::Recv)?;
         let descriptor_usizes: Vec<usize> =
             serde_json::from_slice(msg_descriptors_json.as_slice()).map_err(Error::Json)?;
 
@@ -460,5 +463,54 @@ impl ProtoTube {
 impl ReadNotifier for ProtoTube {
     fn get_read_notifier(&self) -> &dyn AsRawDescriptor {
         self.0.get_read_notifier()
+    }
+}
+
+/// A wrapper around a named pipe that uses Tube serialization.
+///
+/// This limited form of `Tube` offers absolutely no notifier support, and can only send/recv
+/// blocking messages.
+pub struct PipeTube {
+    pipe: PipeConnection,
+
+    // Default target_pid to current PID on serialization (see `Tube` comment header for details).
+    target_pid: Option<u32>,
+}
+
+impl PipeTube {
+    pub fn from(pipe: PipeConnection, target_pid: Option<u32>) -> Self {
+        Self { pipe, target_pid }
+    }
+
+    pub fn send<T: Serialize>(&self, msg: &T) -> Result<()> {
+        serialize_and_send(|buf| self.pipe.write(buf), msg, self.target_pid)
+    }
+
+    pub fn recv<T: DeserializeOwned>(&self) -> Result<T> {
+        deserialize_and_recv(|buf| {
+            // SAFETY:
+            // 1. We are reading bytes, so no matter what data is on the pipe, it is representable
+            //    as bytes.
+            // 2. A read is quantized in bytes, so no partial reads are possible.
+            unsafe { self.pipe.read(buf) }
+        })
+    }
+}
+
+/// Wrapper around a Tube which is known to be the server end of a named pipe. This wrapper ensures
+/// that the Tube is flushed before it is dropped.
+pub struct FlushOnDropTube(pub Tube);
+
+impl FlushOnDropTube {
+    pub fn from(tube: Tube) -> Self {
+        Self(tube)
+    }
+}
+
+impl Drop for FlushOnDropTube {
+    fn drop(&mut self) {
+        if let Err(e) = self.0.flush_blocking() {
+            warn!("failed to flush Tube: {}", e)
+        }
     }
 }

@@ -131,6 +131,8 @@ cfg_if::cfg_if! {
             deserialize_and_recv, serialize_and_send, set_alias_pid, set_duplicate_handle_tube,
             DuplicateHandleRequest, DuplicateHandleResponse, DuplicateHandleTube
         };
+        pub use tube::PipeTube;
+        pub use tube::FlushOnDropTube;
         pub use platform::{set_audio_thread_priority, thread};
         pub use platform::Terminal;
     } else {
