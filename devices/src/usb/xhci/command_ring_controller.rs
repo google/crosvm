@@ -32,6 +32,7 @@ use super::xhci_abi::DisableSlotCommandTrb;
 use super::xhci_abi::Error as TrbError;
 use super::xhci_abi::EvaluateContextCommandTrb;
 use super::xhci_abi::ResetDeviceCommandTrb;
+use super::xhci_abi::ResetEndpointCommandTrb;
 use super::xhci_abi::SetTRDequeuePointerCommandTrb;
 use super::xhci_abi::StopEndpointCommandTrb;
 use super::xhci_abi::TransferDescriptor;
@@ -317,6 +318,43 @@ impl CommandRingTrbHandler {
         }
     }
 
+    fn reset_endpoint(&self, atrb: &AddressedTrb, event: Event) -> Result<()> {
+        let trb = atrb
+            .trb
+            .cast::<ResetEndpointCommandTrb>()
+            .map_err(Error::CastTrb)?;
+        let slot_id = trb.get_slot_id();
+        let endpoint_id = trb.get_endpoint_id();
+        if valid_slot_id(slot_id) {
+            let gpa = atrb.gpa;
+            let interrupter = self.interrupter.clone();
+            self.slots
+                .reset_endpoint(slot_id, endpoint_id, move |completion_code| {
+                    CommandRingTrbHandler::command_completion_callback(
+                        &interrupter,
+                        completion_code,
+                        slot_id,
+                        gpa,
+                        &event,
+                    )
+                    .map_err(|e| {
+                        error!("command completion callback failed: {}", e);
+                    })
+                })
+                .map_err(Error::StopEndpoint)?;
+            Ok(())
+        } else {
+            error!("reset endpoint trb has invalid slot id {}", slot_id);
+            CommandRingTrbHandler::command_completion_callback(
+                &self.interrupter,
+                TrbCompletionCode::TrbError,
+                slot_id,
+                atrb.gpa,
+                &event,
+            )
+        }
+    }
+
     fn set_tr_dequeue_ptr(&self, atrb: &AddressedTrb, event: Event) -> Result<()> {
         let trb = atrb
             .trb
@@ -369,19 +407,7 @@ impl TransferDescriptorHandler for CommandRingTrbHandler {
                 atrb.gpa,
                 &complete_event,
             ),
-            Ok(TrbType::ResetEndpointCommand) => {
-                error!(
-                    "Receiving reset endpoint command. \
-                     It should only happen when cmd ring stall"
-                );
-                CommandRingTrbHandler::command_completion_callback(
-                    &self.interrupter,
-                    TrbCompletionCode::TrbError,
-                    0,
-                    atrb.gpa,
-                    &complete_event,
-                )
-            }
+            Ok(TrbType::ResetEndpointCommand) => self.reset_endpoint(atrb, complete_event),
             Ok(TrbType::StopEndpointCommand) => self.stop_endpoint(atrb, complete_event),
             Ok(TrbType::SetTRDequeuePointerCommand) => {
                 self.set_tr_dequeue_ptr(atrb, complete_event)

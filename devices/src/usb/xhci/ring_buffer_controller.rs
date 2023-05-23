@@ -126,11 +126,21 @@ where
         self.ring_buffer.lock()
     }
 
+    /// Get dequeue pointer of the internal ring buffer.
+    pub fn get_dequeue_pointer(&self) -> GuestAddress {
+        self.lock_ring_buffer().get_dequeue_pointer()
+    }
+
     /// Set dequeue pointer of the internal ring buffer.
     pub fn set_dequeue_pointer(&self, ptr: GuestAddress) {
         usb_debug!("{}: set dequeue pointer: {:x}", self.name, ptr.0);
         // Fast because this should only happen during xhci setup.
         self.lock_ring_buffer().set_dequeue_pointer(ptr);
+    }
+
+    /// Get consumer cycle state.
+    pub fn get_consumer_cycle_state(&self) -> bool {
+        self.lock_ring_buffer().get_consumer_cycle_state()
     }
 
     /// Set consumer cycle state.

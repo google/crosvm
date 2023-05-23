@@ -222,6 +222,17 @@ impl DeviceSlots {
     ) -> Result<()> {
         self.slots[slot_id as usize - 1].stop_endpoint(self.fail_handle.clone(), endpoint_id, cb)
     }
+
+    pub fn reset_endpoint<
+        C: FnMut(TrbCompletionCode) -> std::result::Result<(), ()> + 'static + Send,
+    >(
+        &self,
+        slot_id: u8,
+        endpoint_id: u8,
+        cb: C,
+    ) -> Result<()> {
+        self.slots[slot_id as usize - 1].reset_endpoint(self.fail_handle.clone(), endpoint_id, cb)
+    }
 }
 
 // Usb port id. Valid ids starts from 1, to MAX_PORTS.
@@ -339,16 +350,19 @@ impl DeviceSlot {
                 return Ok(false);
             }
         };
-        let context = self.get_device_context()?;
-        if context.endpoint_context[endpoint_index]
+        let mut context = self.get_device_context()?;
+        let endpoint_state = context.endpoint_context[endpoint_index]
             .get_endpoint_state()
-            .map_err(Error::GetEndpointState)?
-            == EndpointState::Running
-        {
+            .map_err(Error::GetEndpointState)?;
+        if endpoint_state == EndpointState::Running || endpoint_state == EndpointState::Stopped {
+            if endpoint_state == EndpointState::Stopped {
+                context.endpoint_context[endpoint_index].set_endpoint_state(EndpointState::Running);
+                self.set_device_context(context)?;
+            }
             usb_debug!("endpoint is started, start transfer ring");
             transfer_ring_controller.start();
         } else {
-            error!("doorbell rung when endpoint is not started");
+            error!("doorbell rung when endpoint state is {:?}", endpoint_state);
         }
         Ok(true)
     }
@@ -627,7 +641,7 @@ impl DeviceSlot {
         }
     }
 
-    /// Stop a endpoint.
+    /// Stop an endpoint.
     pub fn stop_endpoint<
         C: FnMut(TrbCompletionCode) -> std::result::Result<(), ()> + 'static + Send,
     >(
@@ -641,9 +655,15 @@ impl DeviceSlot {
             return cb(TrbCompletionCode::TrbError).map_err(|_| Error::CallbackFailed);
         }
         let index = endpoint_id - 1;
+        let mut device_context = self.get_device_context()?;
+        let endpoint_context = &mut device_context.endpoint_context[index as usize];
+        let dequeue_pointer;
+        let dcs;
         match self.get_trc(index as usize) {
             Some(trc) => {
                 usb_debug!("stopping endpoint");
+                dequeue_pointer = Some(trc.get_dequeue_pointer());
+                dcs = Some(trc.get_consumer_cycle_state());
                 let auto_cb = RingBufferStopCallback::new(fallible_closure(
                     fail_handle,
                     move || -> Result<()> {
@@ -655,8 +675,75 @@ impl DeviceSlot {
             None => {
                 error!("endpoint at index {} is not started", index);
                 cb(TrbCompletionCode::ContextStateError).map_err(|_| Error::CallbackFailed)?;
+                dequeue_pointer = None;
+                dcs = None;
             }
         }
+        endpoint_context.set_endpoint_state(EndpointState::Stopped);
+        if let Some(dequeue_pointer) = dequeue_pointer {
+            endpoint_context.set_tr_dequeue_pointer(DequeuePtr::new(dequeue_pointer));
+        }
+        if let Some(dcs) = dcs {
+            endpoint_context.set_dequeue_cycle_state(dcs);
+        }
+        self.set_device_context(device_context)?;
+        Ok(())
+    }
+
+    /// Reset an endpoint.
+    pub fn reset_endpoint<
+        C: FnMut(TrbCompletionCode) -> std::result::Result<(), ()> + 'static + Send,
+    >(
+        &self,
+        fail_handle: Arc<dyn FailHandle>,
+        endpoint_id: u8,
+        mut cb: C,
+    ) -> Result<()> {
+        if !valid_endpoint_id(endpoint_id) {
+            error!("trb indexing wrong endpoint id");
+            return cb(TrbCompletionCode::TrbError).map_err(|_| Error::CallbackFailed);
+        }
+        let index = endpoint_id - 1;
+        let mut device_context = self.get_device_context()?;
+        let endpoint_context = &mut device_context.endpoint_context[index as usize];
+        if endpoint_context
+            .get_endpoint_state()
+            .map_err(Error::GetEndpointState)?
+            != EndpointState::Halted
+        {
+            error!("endpoint at index {} is not halted", index);
+            return cb(TrbCompletionCode::ContextStateError).map_err(|_| Error::CallbackFailed);
+        }
+        let dequeue_pointer;
+        let dcs;
+        match self.get_trc(index as usize) {
+            Some(trc) => {
+                usb_debug!("resetting endpoint");
+                dequeue_pointer = Some(trc.get_dequeue_pointer());
+                dcs = Some(trc.get_consumer_cycle_state());
+                let auto_cb = RingBufferStopCallback::new(fallible_closure(
+                    fail_handle,
+                    move || -> Result<()> {
+                        cb(TrbCompletionCode::Success).map_err(|_| Error::CallbackFailed)
+                    },
+                ));
+                trc.stop(auto_cb);
+            }
+            None => {
+                error!("endpoint at index {} is not started", index);
+                cb(TrbCompletionCode::ContextStateError).map_err(|_| Error::CallbackFailed)?;
+                dequeue_pointer = None;
+                dcs = None;
+            }
+        }
+        endpoint_context.set_endpoint_state(EndpointState::Stopped);
+        if let Some(dequeue_pointer) = dequeue_pointer {
+            endpoint_context.set_tr_dequeue_pointer(DequeuePtr::new(dequeue_pointer));
+        }
+        if let Some(dcs) = dcs {
+            endpoint_context.set_dequeue_cycle_state(dcs);
+        }
+        self.set_device_context(device_context)?;
         Ok(())
     }
 

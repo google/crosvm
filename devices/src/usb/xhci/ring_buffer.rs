@@ -112,11 +112,21 @@ impl RingBuffer {
         Ok(Some(td))
     }
 
+    /// Get dequeue pointer of the ring buffer.
+    pub fn get_dequeue_pointer(&self) -> GuestAddress {
+        self.dequeue_pointer
+    }
+
     /// Set dequeue pointer of the ring buffer.
     pub fn set_dequeue_pointer(&mut self, addr: GuestAddress) {
         usb_debug!("{}: set dequeue pointer {:x}", self.name.as_str(), addr.0);
 
         self.dequeue_pointer = addr;
+    }
+
+    /// Get consumer cycle state of the ring buffer.
+    pub fn get_consumer_cycle_state(&self) -> bool {
+        self.consumer_cycle_state
     }
 
     /// Set consumer cycle state of the ring buffer.
