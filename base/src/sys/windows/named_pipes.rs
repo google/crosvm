@@ -801,13 +801,57 @@ impl PipeConnection {
         unsafe { set_named_pipe_handle_state(self.handle.as_raw_descriptor(), &mut client_mode) }
     }
 
-    /// For a server named pipe, waits for a client to connect
+    /// For a server named pipe, waits for a client to connect (blocking).
     pub fn wait_for_client_connection(&self) -> Result<()> {
         let mut overlapped_wrapper = OverlappedWrapper::new(/* include_event = */ true)?;
         self.wait_for_client_connection_internal(
             &mut overlapped_wrapper,
             /* should_block = */ true,
         )
+    }
+
+    /// Interruptable blocking wait for a client to connect.
+    pub fn wait_for_client_connection_overlapped_blocking(
+        &mut self,
+        exit_event: &Event,
+    ) -> Result<()> {
+        let mut overlapped_wrapper = OverlappedWrapper::new(/* include_event = */ true)?;
+        self.wait_for_client_connection_internal(
+            &mut overlapped_wrapper,
+            /* should_block = */ false,
+        )?;
+
+        #[derive(EventToken)]
+        enum Token {
+            Connected,
+            Exit,
+        }
+
+        let wait_ctx = WaitContext::build_with(&[
+            (
+                overlapped_wrapper.get_h_event_ref().unwrap(),
+                Token::Connected,
+            ),
+            (exit_event, Token::Exit),
+        ])?;
+
+        let events = wait_ctx.wait()?;
+        if let Some(event) = events.into_iter().next() {
+            return match event.token {
+                Token::Connected => Ok(()),
+                Token::Exit => {
+                    // We must cancel IO here because it is unsafe to free the overlapped wrapper
+                    // while the IO operation is active.
+                    self.cancel_io()?;
+
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::Interrupted,
+                        "IO canceled on exit request",
+                    ))
+                }
+            };
+        }
+        unreachable!("wait cannot return Ok with zero events");
     }
 
     /// For a server named pipe, waits for a client to connect using the given overlapped wrapper
@@ -829,6 +873,11 @@ impl PipeConnection {
     ) -> Result<()> {
         // Safe because the handle is valid and we're checking the return
         // code according to the documentation
+        //
+        // TODO(b/279669296) this safety statement is incomplete, and as such incorrect in one case:
+        //      overlapped_wrapper must live until the overlapped operation is complete; however,
+        //      if should_block is false, nothing guarantees that lifetime and so overlapped_wrapper
+        //      could be freed while the operation is still running.
         unsafe {
             let success_flag = ConnectNamedPipe(
                 self.as_raw_descriptor(),
@@ -1043,6 +1092,7 @@ pub struct NamedPipeInfo {
 #[cfg(test)]
 mod tests {
     use std::mem::size_of;
+    use std::time::Duration;
 
     use super::*;
 
@@ -1313,5 +1363,61 @@ mod tests {
             )
             .unwrap();
         assert_eq!(recv_buffer, MSG);
+    }
+
+    #[test]
+    fn test_wait_for_connection_blocking() {
+        let pipe_name = generate_pipe_name();
+
+        let mut server_pipe = create_server_pipe(
+            &pipe_name,
+            &FramingMode::Message,
+            &BlockingMode::Wait,
+            /* timeout= */ 0,
+            /* buffer_size= */ 1000,
+            /* overlapped= */ true,
+        )
+        .unwrap();
+
+        let server = crate::thread::spawn_with_timeout(move || {
+            let exit_event = Event::new().unwrap();
+            server_pipe
+                .wait_for_client_connection_overlapped_blocking(&exit_event)
+                .unwrap();
+        });
+
+        let _client = create_client_pipe(
+            &pipe_name,
+            &FramingMode::Message,
+            &BlockingMode::Wait,
+            /* overlapped= */ true,
+        )
+        .unwrap();
+        server.try_join(Duration::from_secs(10)).unwrap();
+    }
+
+    #[test]
+    fn test_wait_for_connection_blocking_exit_triggered() {
+        let pipe_name = generate_pipe_name();
+
+        let mut server_pipe = create_server_pipe(
+            &pipe_name,
+            &FramingMode::Message,
+            &BlockingMode::Wait,
+            /* timeout= */ 0,
+            /* buffer_size= */ 1000,
+            /* overlapped= */ true,
+        )
+        .unwrap();
+
+        let exit_event = Event::new().unwrap();
+        let exit_event_for_server = exit_event.try_clone().unwrap();
+        let server = crate::thread::spawn_with_timeout(move || {
+            assert!(server_pipe
+                .wait_for_client_connection_overlapped_blocking(&exit_event_for_server)
+                .is_err());
+        });
+        exit_event.signal().unwrap();
+        server.try_join(Duration::from_secs(10)).unwrap();
     }
 }
