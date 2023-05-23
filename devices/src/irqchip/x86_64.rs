@@ -187,6 +187,20 @@ impl Routes {
         routes
     }
 
+    /// Gets the routes as a flat Vec of `IrqRoute`s.
+    pub fn get_routes(&self) -> Vec<IrqRoute> {
+        let mut routes = Vec::with_capacity(self.routes.len());
+        for (gsi, sources) in self.routes.iter().enumerate() {
+            for source in sources.iter() {
+                routes.push(IrqRoute {
+                    gsi: gsi.try_into().expect("GSIs must be < u32::MAX"),
+                    source: *source,
+                });
+            }
+        }
+        routes
+    }
+
     /// Determines whether or not two irq routes on the same GSI conflict.
     /// Returns true if they conflict.
     fn conflict(source: &IrqSource, other: &IrqSource) -> bool {
