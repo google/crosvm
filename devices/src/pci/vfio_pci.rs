@@ -524,6 +524,7 @@ impl VfioPciWorker {
         wakeup_evt: Event,
         kill_evt: Event,
         msix_evt: Vec<Event>,
+        is_in_low_power: Arc<Mutex<bool>>,
     ) {
         #[derive(EventToken)]
         enum Token {
@@ -589,12 +590,20 @@ impl VfioPciWorker {
                     }
                     Token::WakeUp => {
                         let _ = wakeup_evt.wait();
-                        if let Some(pm_cap) = &self.pm_cap {
-                            if pm_cap.lock().should_trigger_pme() {
-                                let request = VmRequest::PciPme(self.address.pme_requester_id());
-                                if self.vm_socket.send(&request).is_ok() {
-                                    if let Err(e) = self.vm_socket.recv::<VmResponse>() {
-                                        error!("{} failed to send PME: {}", self.name.clone(), e);
+
+                        if *is_in_low_power.lock() {
+                            if let Some(pm_cap) = &self.pm_cap {
+                                if pm_cap.lock().should_trigger_pme() {
+                                    let request =
+                                        VmRequest::PciPme(self.address.pme_requester_id());
+                                    if self.vm_socket.send(&request).is_ok() {
+                                        if let Err(e) = self.vm_socket.recv::<VmResponse>() {
+                                            error!(
+                                                "{} failed to send PME: {}",
+                                                self.name.clone(),
+                                                e
+                                            );
+                                        }
                                     }
                                 }
                             }
@@ -654,6 +663,7 @@ pub struct VfioPciDevice {
     vm_socket_mem: Tube,
     device_data: Option<DeviceData>,
     pm_evt: Option<Event>,
+    is_in_low_power: Arc<Mutex<bool>>,
     worker_thread: Option<WorkerThread<VfioPciWorker>>,
     vm_socket_vm: Option<Tube>,
     sysfs_path: PathBuf,
@@ -874,6 +884,7 @@ impl VfioPciDevice {
             vm_socket_mem: vfio_device_socket_mem,
             device_data,
             pm_evt: None,
+            is_in_low_power: Arc::new(Mutex::new(false)),
             worker_thread: None,
             vm_socket_vm: Some(vfio_device_socket_vm),
             sysfs_path: sysfs_path.to_path_buf(),
@@ -1347,6 +1358,7 @@ impl VfioPciDevice {
         let sysfs_path = self.sysfs_path.clone();
         let pm_cap = self.pm_cap.clone();
         let msix_cap = self.msix_cap.clone();
+        let is_in_low_power = self.is_in_low_power.clone();
         self.worker_thread = Some(WorkerThread::start("vfio_pci", move |kill_evt| {
             let mut worker = VfioPciWorker {
                 address,
@@ -1356,7 +1368,7 @@ impl VfioPciDevice {
                 pm_cap,
                 msix_cap,
             };
-            worker.run(req_evt, pm_evt, kill_evt, msix_evt);
+            worker.run(req_evt, pm_evt, kill_evt, msix_evt, is_in_low_power);
             worker
         }));
         self.activated = true;
@@ -2117,12 +2129,14 @@ impl PciDevice for VfioPciDevice {
                         if let Some(pm_evt) =
                             self.pm_evt.as_ref().map(|evt| evt.try_clone().unwrap())
                         {
+                            *self.is_in_low_power.lock() = true;
                             let _ = self.device.pm_low_power_enter_with_wakeup(pm_evt);
                         } else {
                             let _ = self.device.pm_low_power_enter();
                         }
                     }
                     _ => {
+                        *self.is_in_low_power.lock() = false;
                         let _ = self.device.pm_low_power_exit();
                     }
                 };
