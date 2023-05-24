@@ -1113,7 +1113,9 @@ impl Gpu {
             GpuMode::ModeGfxstream => RutabagaComponentType::Gfxstream,
         };
 
-        let use_render_server = rutabaga_server_descriptor.is_some();
+        // only allow virglrenderer to fork its own render server when crosvm sandboxing is disabled
+        let use_render_server = rutabaga_server_descriptor.is_some()
+            || gpu_parameters.allow_implicit_render_server_exec;
 
         let rutabaga_builder = RutabagaBuilder::new(component, gpu_parameters.capset_mask)
             .set_display_width(display_width)

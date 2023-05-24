@@ -67,6 +67,7 @@ pub struct GpuParameters {
     // enforce that blob resources MUST be exportable as file descriptors
     pub external_blob: bool,
     pub system_blob: bool,
+    pub allow_implicit_render_server_exec: bool,
 }
 
 impl Default for GpuParameters {
@@ -89,6 +90,7 @@ impl Default for GpuParameters {
             capset_mask: 0,
             external_blob: false,
             system_blob: false,
+            allow_implicit_render_server_exec: false,
         }
     }
 }
