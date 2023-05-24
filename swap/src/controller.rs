@@ -337,32 +337,6 @@ impl SwapController {
         freeze_child_processes(self.child_process.pid)
     }
 
-    /// Create a new [SwapDeviceUffdSender].
-    ///
-    /// This should be called from the main process because creating a [Tube]s requires seccomp
-    /// policy.
-    pub fn prepare_fork(&mut self) -> anyhow::Result<SwapDeviceUffdSender> {
-        let uffd_factory = self
-            .uffd_factory
-            .try_clone()
-            .context("try clone uffd factory")?;
-        let command_tube = self
-            .command_tube
-            .try_clone_send_tube()
-            .context("try clone tube")?;
-        let (sender, receiver) = Tube::pair().context("create tube")?;
-        receiver
-            .set_recv_timeout(Some(Duration::from_secs(60)))
-            .context("set recv timeout")?;
-        self.num_static_devices += 1;
-        Ok(SwapDeviceUffdSender {
-            uffd_factory,
-            command_tube,
-            sender,
-            receiver,
-        })
-    }
-
     /// Notify the monitor process that all static devices are forked.
     ///
     /// Devices forked after this call are treated as dynamic devices which can die (e.g. hotplug
@@ -374,9 +348,62 @@ impl SwapController {
             .send(&Command::StaticDeviceSetupComplete(self.num_static_devices))
             .context("send command")
     }
+
+    /// Create [SwapDeviceHelper].
+    pub fn create_device_helper(&self) -> anyhow::Result<SwapDeviceHelper> {
+        let uffd_factory = self
+            .uffd_factory
+            .try_clone()
+            .context("try clone uffd factory")?;
+        let command_tube = self
+            .command_tube
+            .try_clone_send_tube()
+            .context("try clone tube")?;
+        Ok(SwapDeviceHelper {
+            uffd_factory,
+            command_tube,
+        })
+    }
 }
 
-impl AsRawDescriptors for SwapController {
+/// Create a new [SwapDeviceUffdSender] which is passed to the forked child process.
+pub trait PrepareFork {
+    /// Create a new [SwapDeviceUffdSender].
+    fn prepare_fork(&mut self) -> anyhow::Result<SwapDeviceUffdSender>;
+}
+
+impl PrepareFork for SwapController {
+    /// Create a new [SwapDeviceUffdSender].
+    ///
+    /// This should be called from the main process because creating a [Tube]s requires seccomp
+    /// policy.
+    ///
+    /// This also counts the number of static devices which are created before booting.
+    fn prepare_fork(&mut self) -> anyhow::Result<SwapDeviceUffdSender> {
+        let command_tube = self
+            .command_tube
+            .try_clone_send_tube()
+            .context("try clone tube")?;
+        self.num_static_devices += 1;
+        SwapDeviceUffdSender::new(command_tube, &self.uffd_factory)
+    }
+}
+
+/// Helper to create [SwapDeviceUffdSender] from child processes (e.g. JailWarden for hotplug devices).
+pub struct SwapDeviceHelper {
+    uffd_factory: UffdFactory,
+    command_tube: SendTube,
+}
+
+impl PrepareFork for SwapDeviceHelper {
+    /// Create a new [SwapDeviceUffdSender].
+    fn prepare_fork(&mut self) -> anyhow::Result<SwapDeviceUffdSender> {
+        let command_tube = self.command_tube.try_clone().context("try clone tube")?;
+        SwapDeviceUffdSender::new(command_tube, &self.uffd_factory)
+    }
+}
+
+impl AsRawDescriptors for SwapDeviceHelper {
     fn as_raw_descriptors(&self) -> Vec<RawDescriptor> {
         let mut rds = self.uffd_factory.as_raw_descriptors();
         rds.push(self.command_tube.as_raw_descriptor());
@@ -393,6 +420,20 @@ pub struct SwapDeviceUffdSender {
 }
 
 impl SwapDeviceUffdSender {
+    fn new(command_tube: SendTube, uffd_factory: &UffdFactory) -> anyhow::Result<Self> {
+        let uffd_factory = uffd_factory.try_clone().context("try clone uffd factory")?;
+        let (sender, receiver) = Tube::pair().context("create tube")?;
+        receiver
+            .set_recv_timeout(Some(Duration::from_secs(60)))
+            .context("set recv timeout")?;
+        Ok(SwapDeviceUffdSender {
+            uffd_factory,
+            command_tube,
+            sender,
+            receiver,
+        })
+    }
+
     /// Create a new userfaultfd and send it to the monitor process.
     ///
     /// This must be called as soon as a child process which may touch the guest memory is forked.

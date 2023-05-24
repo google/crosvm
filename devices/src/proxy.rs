@@ -213,11 +213,11 @@ impl ProxyDevice {
     /// * `device` - The device to isolate to another process.
     /// * `jail` - The jail to use for isolating the given device.
     /// * `keep_rds` - File descriptors that will be kept open in the child.
-    pub fn new<D: BusDevice>(
+    pub fn new<D: BusDevice, #[cfg(feature = "swap")] P: swap::PrepareFork>(
         mut device: D,
         jail: Minijail,
         mut keep_rds: Vec<RawDescriptor>,
-        #[cfg(feature = "swap")] swap_controller: &mut Option<swap::SwapController>,
+        #[cfg(feature = "swap")] swap_prepare_fork: &mut Option<P>,
     ) -> Result<ProxyDevice> {
         let debug_label = device.debug_label();
         let (child_tube, parent_tube) = Tube::pair()?;
@@ -225,8 +225,8 @@ impl ProxyDevice {
         keep_rds.push(child_tube.as_raw_descriptor());
 
         #[cfg(feature = "swap")]
-        let swap_device_uffd_sender = if let Some(swap_controller) = swap_controller {
-            let sender = swap_controller.prepare_fork().map_err(Error::Swap)?;
+        let swap_device_uffd_sender = if let Some(prepare_fork) = swap_prepare_fork {
+            let sender = prepare_fork.prepare_fork().map_err(Error::Swap)?;
             keep_rds.extend(sender.as_raw_descriptors());
             Some(sender)
         } else {
@@ -531,7 +531,7 @@ mod tests {
             minijail,
             keep_fds,
             #[cfg(feature = "swap")]
-            &mut None,
+            &mut None::<swap::SwapController>,
         )
         .unwrap()
     }
