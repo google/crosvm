@@ -1078,10 +1078,8 @@ impl Gpu {
         gpu_parameters: &GpuParameters,
         rutabaga_server_descriptor: Option<SafeDescriptor>,
         event_devices: Vec<EventDevice>,
-        external_blob: bool,
-        system_blob: bool,
         base_features: u64,
-        channels: BTreeMap<String, PathBuf>,
+        channels: &BTreeMap<String, PathBuf>,
         #[cfg(windows)] wndproc_thread: WindowProcedureThread,
         #[cfg(unix)] gpu_cgroup_path: Option<&PathBuf>,
     ) -> Gpu {
@@ -1092,7 +1090,7 @@ impl Gpu {
         let (display_width, display_height) = display_params[0].get_virtual_display_size();
 
         let mut rutabaga_channels: Vec<RutabagaChannel> = Vec::new();
-        for (channel_name, path) in &channels {
+        for (channel_name, path) in channels {
             match &channel_name[..] {
                 "" => rutabaga_channels.push(RutabagaChannel {
                     base_channel: path.clone(),
@@ -1127,8 +1125,8 @@ impl Gpu {
             .set_use_surfaceless(gpu_parameters.renderer_use_surfaceless)
             .set_use_vulkan(gpu_parameters.use_vulkan.unwrap_or_default())
             .set_wsi(gpu_parameters.wsi.as_ref())
-            .set_use_external_blob(external_blob)
-            .set_use_system_blob(system_blob)
+            .set_use_external_blob(gpu_parameters.external_blob)
+            .set_use_system_blob(gpu_parameters.system_blob)
             .set_use_render_server(use_render_server);
 
         Gpu {
@@ -1144,7 +1142,7 @@ impl Gpu {
             display_event: Arc::new(AtomicBool::new(false)),
             rutabaga_builder: Some(rutabaga_builder),
             pci_bar_size: gpu_parameters.pci_bar_size,
-            external_blob,
+            external_blob: gpu_parameters.external_blob,
             rutabaga_component: component,
             #[cfg(windows)]
             wndproc_thread: Some(wndproc_thread),

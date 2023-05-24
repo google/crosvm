@@ -286,15 +286,15 @@ fn create_virtio_devices(
     #[cfg(feature = "gpu")]
     {
         if let Some(gpu_parameters) = &cfg.gpu_parameters {
-            let display_param = if gpu_parameters.display_params.is_empty() {
-                Default::default()
-            } else {
-                gpu_parameters.display_params[0].clone()
-            };
-            let (gpu_display_w, gpu_display_h) = display_param.get_virtual_display_size();
-
             let mut event_devices = Vec::new();
             if cfg.display_window_mouse {
+                let display_param = if gpu_parameters.display_params.is_empty() {
+                    Default::default()
+                } else {
+                    gpu_parameters.display_params[0].clone()
+                };
+                let (gpu_display_w, gpu_display_h) = display_param.get_virtual_display_size();
+
                 let (event_device_socket, virtio_dev_socket) =
                     StreamChannel::pair(BlockingMode::Nonblocking, FramingMode::Byte)
                         .context("failed to create socket")?;
@@ -344,9 +344,6 @@ fn create_virtio_devices(
                 vm_evt_wrtube,
                 gpu_control_tube,
                 resource_bridges,
-                // Use the unnamed socket for GPU display screens.
-                cfg.wayland_socket_paths.get(""),
-                cfg.x_display.clone(),
                 render_server_fd,
                 event_devices,
             )?);

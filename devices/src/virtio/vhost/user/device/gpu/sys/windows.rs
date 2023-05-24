@@ -185,11 +185,13 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
     let wndproc_thread =
         virtio::gpu::start_wndproc_thread(None).context("failed to start wndproc_thread")?;
 
+    let mut gpu_params = config.params.clone();
+
     // Required to share memory across processes.
-    let external_blob = true;
+    gpu_params.external_blob = true;
 
     // Fallback for when external_blob is not available on the machine. Currently always off.
-    let system_blob = false;
+    gpu_params.system_blob = false;
 
     let base_features = virtio::base_features(ProtectionType::Unprotected);
 
@@ -197,13 +199,11 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         config.exit_evt_wrtube,
         /*resource_bridges=*/ Vec::new(),
         display_backends,
-        &config.params,
-        None,
+        &gpu_params,
+        /*render_server_descriptor*/ None,
         config.event_devices,
-        external_blob,
-        system_blob,
         base_features,
-        /*channels=*/ Default::default(),
+        /*channels=*/ &Default::default(),
         wndproc_thread,
     )));
 

@@ -201,10 +201,8 @@ pub(super) fn create_gpu(
         gpu_parameters,
         None,
         event_devices,
-        /* external_blob= */ false,
-        /* system_blob= */ false,
         features,
-        BTreeMap::new(),
+        &BTreeMap::new(),
         wndproc_thread,
     ))
 }

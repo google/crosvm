@@ -170,7 +170,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         wayland_sock,
     } = opts;
 
-    let wayland_paths: BTreeMap<_, _> = wayland_sock.into_iter().collect();
+    let channels: BTreeMap<_, _> = wayland_sock.into_iter().collect();
 
     let resource_bridge_listeners = resource_bridge
         .into_iter()
@@ -229,7 +229,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         virtio::DisplayBackend::X(x_display),
         virtio::DisplayBackend::Stub,
     ];
-    if let Some(p) = wayland_paths.get("") {
+    if let Some(p) = channels.get("") {
         display_backends.insert(0, virtio::DisplayBackend::Wayland(Some(p.to_owned())));
     }
 
@@ -238,13 +238,12 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
 
     // The regular gpu device sets this to true when sandboxing is enabled. Assume that we
     // are always sandboxed.
-    let external_blob = true;
+    gpu_parameters.external_blob = true;
 
     // Fallback for when external_blob is not available on the machine. Currently always off.
-    let system_blob = false;
+    gpu_parameters.system_blob = false;
 
     let base_features = virtio::base_features(ProtectionType::Unprotected);
-    let channels = wayland_paths;
 
     let listener = VhostUserListener::new_from_socket_or_vfio(&socket, &vfio, MAX_QUEUE_NUM, None)?;
 
@@ -254,12 +253,11 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         Vec::new(), // resource_bridges, handled separately by us
         display_backends,
         &gpu_parameters,
+        /* rutabaga_server_descriptor */
         None,
         event_devices,
-        external_blob,
-        system_blob,
         base_features,
-        channels,
+        &channels,
         /* gpu_cgroup_path */
         None,
     )));
