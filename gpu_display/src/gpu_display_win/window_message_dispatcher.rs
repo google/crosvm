@@ -8,7 +8,6 @@ use std::io::ErrorKind;
 use std::marker::PhantomPinned;
 use std::os::raw::c_void;
 use std::pin::Pin;
-use std::ptr::null_mut;
 use std::rc::Rc;
 
 use anyhow::bail;
@@ -25,6 +24,8 @@ use winapi::shared::minwindef::LRESULT;
 use winapi::shared::windef::HWND;
 use winapi::um::winuser::*;
 
+use super::window::BasicWindow;
+use super::window::MessageOnlyWindow;
 use super::window::MessagePacket;
 use super::window::Window;
 use super::window_message_processor::*;
@@ -96,11 +97,15 @@ impl Default for DisplayEventDispatcher {
     }
 }
 
-/// This class is used for dispatching thread and window messages. It should be created before any
-/// other threads start to post messages to the WndProc thread, and before the WndProc thread enters
-/// the window message loop. Once all windows tracked by it are destroyed, it will signal exiting
-/// the message loop and then it can be dropped.
+/// This struct is used for dispatching window messages. Note that messages targeting the WndProc
+/// thread itself shouldn't be posted using `PostThreadMessageW()`, but posted as window messages to
+/// `message_router_window`, so that they won't get lost when the modal loop is running.
+///
+/// This struct should be created before the WndProc thread enters the message loop. Once all
+/// windows tracked by it are destroyed, it will signal exiting the message loop, and then it can be
+/// dropped.
 pub(crate) struct WindowMessageDispatcher<T: HandleWindowMessage> {
+    message_router_window: Option<MessageOnlyWindow>,
     message_processor: Option<WindowMessageProcessor<T>>,
     display_event_dispatcher: DisplayEventDispatcher,
     gpu_main_display_tube: Option<Rc<Tube>>,
@@ -115,10 +120,13 @@ impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
     /// TODO(b/238680252): This should be good enough for supporting multi-windowing, but we should
     /// revisit it if we also want to manage some child windows of the crosvm window.
     pub fn create(
-        window: Window,
+        message_router_window: MessageOnlyWindow,
+        gui_window: Window,
         gpu_main_display_tube: Option<Rc<Tube>>,
     ) -> Result<Pin<Box<Self>>> {
+        static CONTEXT_MESSAGE: &str = "When creating WindowMessageDispatcher";
         let mut dispatcher = Box::pin(Self {
+            message_router_window: Some(message_router_window),
             message_processor: Default::default(),
             display_event_dispatcher: DisplayEventDispatcher::new(),
             gpu_main_display_tube,
@@ -126,9 +134,21 @@ impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
         });
         dispatcher
             .as_mut()
-            .create_message_processor(window)
-            .context("When creating WindowMessageDispatcher")?;
+            .attach_thread_message_router()
+            .context(CONTEXT_MESSAGE)?;
+        dispatcher
+            .as_mut()
+            .create_message_processor(gui_window)
+            .context(CONTEXT_MESSAGE)?;
         Ok(dispatcher)
+    }
+
+    /// # Safety
+    /// The caller must not use the handle after the message loop terminates.
+    pub unsafe fn message_router_handle(&self) -> Option<HWND> {
+        self.message_router_window
+            .as_ref()
+            .map(|router| router.handle())
     }
 
     #[cfg(feature = "kiwi")]
@@ -140,32 +160,43 @@ impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
         }
     }
 
-    pub fn process_thread_message(self: Pin<&mut Self>, packet: &MessagePacket) {
-        // Safe because we won't move the dispatcher out of the returned mutable reference.
-        unsafe {
-            self.get_unchecked_mut()
-                .process_thread_message_internal(packet);
-        }
-    }
-
     /// Returns `Some` if the message is processed by the targeted window.
     pub fn dispatch_window_message(
         &mut self,
         hwnd: HWND,
         packet: &MessagePacket,
     ) -> Option<LRESULT> {
+        // `WM_NCDESTROY` is sent at the end of the window destruction, and is the last message the
+        // window will receive before its handle becomes invalid. So, we will perform final cleanups
+        // when this message is received.
+        //
+        // First, check if the message is targeting the wndproc thread itself.
+        if let Some(router) = &self.message_router_window {
+            if router.is_same_window(hwnd) {
+                let ret = self.process_simulated_thread_message(hwnd, packet);
+                // If the destruction of thread message router completes, exit the message loop and
+                // terminate the wndproc thread.
+                if packet.msg == WM_NCDESTROY {
+                    if let Some(router_window) = &self.message_router_window {
+                        Self::remove_pointer_from_window(router_window);
+                    }
+                    self.message_router_window = None;
+                    Self::request_exit_message_loop();
+                }
+                return Some(ret);
+            }
+        }
+
+        // Second, check if the message is targeting our GUI window.
         if let Some(processor) = &mut self.message_processor {
             if processor.window().is_same_window(hwnd) {
                 let ret = processor.process_message(packet);
-                // `WM_NCDESTROY` is sent at the end of the window destruction, and is the last
-                // message the window will receive. Drop the message processor so that associated
-                // resources can be cleaned up before the window is completely gone.
+                // If the destruction of window completes, drop the message processor so that
+                // associated resources can be cleaned up before the window is completely gone.
                 if packet.msg == WM_NCDESTROY {
-                    if let Err(e) = Self::remove_pointer_from_window(processor.window()) {
-                        error!("{:?}", e);
-                    }
+                    Self::remove_pointer_from_window(processor.window());
                     self.message_processor = None;
-                    Self::request_exit_message_loop();
+                    self.request_destroy_message_router_window();
                 }
                 return Some(ret);
             }
@@ -173,11 +204,22 @@ impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
         None
     }
 
+    fn attach_thread_message_router(self: Pin<&mut Self>) -> Result<()> {
+        let dispatcher_ptr = &*self as *const Self;
+        // Safe because we won't move the dispatcher out of it.
+        match unsafe { &self.get_unchecked_mut().message_router_window } {
+            // Safe because we guarantee the dispatcher outlives the thread message router.
+            Some(router) => unsafe { Self::store_pointer_in_window(dispatcher_ptr, router) },
+            None => bail!("Thread message router not found, cannot associate with dispatcher!"),
+        }
+    }
+
     fn create_message_processor(self: Pin<&mut Self>, window: Window) -> Result<()> {
         if !window.is_valid() {
             bail!("Window handle is invalid!");
         }
-        Self::store_pointer_in_window(&*self, &window)?;
+        // Safe because we guarantee the dispatcher outlives our GUI windows.
+        unsafe { Self::store_pointer_in_window(&*self, &window)? };
         // Safe because we won't move the dispatcher out of it, and the dispatcher is aware of the
         // lifecycle of the window.
         unsafe {
@@ -188,7 +230,14 @@ impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
         Ok(())
     }
 
-    fn process_thread_message_internal(&mut self, packet: &MessagePacket) {
+    /// Processes messages targeting the WndProc thread itself. Note that these messages are not
+    /// posted using `PostThreadMessageW()`, but posted to `message_router_window` as window
+    /// messages (hence "simulated"), so they won't get lost if the modal loop is running.
+    fn process_simulated_thread_message(
+        &mut self,
+        message_router_hwnd: HWND,
+        packet: &MessagePacket,
+    ) -> LRESULT {
         let MessagePacket {
             msg,
             w_param,
@@ -208,27 +257,16 @@ impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
                     gpu_display,
                     "WM_USER_WNDPROC_THREAD_DROP_KILL_WINDOW_INTERNAL"
                 );
-                match &self.message_processor {
-                    Some(processor) => {
-                        info!("Destroying window on WndProc thread drop");
-                        if let Err(e) = processor.window().destroy() {
-                            error!(
-                                "Failed to destroy window when dropping WndProc thread: {:?}",
-                                e
-                            );
-                        }
-                    }
-                    None => info!("No window to destroy on WndProc thread drop"),
-                }
+                self.request_destory_gui_window();
             }
             _ => {
-                let _trace_event = trace_event!(gpu_display, "WM_OTHER_THREAD_MESSAGE");
-                // Safe because we are processing a message targeting this thread.
-                unsafe {
-                    DefWindowProcW(null_mut(), msg, w_param, l_param);
-                }
+                let _trace_event =
+                    trace_event!(gpu_display, "WM_OTHER_MESSAGE_ROUTER_WINDOW_MESSAGE");
+                // Safe because we are processing a message targeting the message router window.
+                return unsafe { DefWindowProcW(message_router_hwnd, msg, w_param, l_param) };
             }
         }
+        0
     }
 
     fn handle_display_message(&mut self, message: DisplaySendToWndProc<T>) {
@@ -288,7 +326,13 @@ impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
         false
     }
 
-    fn store_pointer_in_window(pointer: *const Self, window: &Window) -> Result<()> {
+    /// # Safety
+    /// The caller is responsible for keeping the pointer valid until `remove_pointer_from_window()`
+    /// is called.
+    unsafe fn store_pointer_in_window(
+        pointer: *const Self,
+        window: &dyn BasicWindow,
+    ) -> Result<()> {
         window
             .set_property(DISPATCHER_PROPERTY_NAME, pointer as *mut c_void)
             .context("When storing message dispatcher pointer")
@@ -296,10 +340,34 @@ impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
 
     /// When the window is being destroyed, we must remove all entries added to the property list
     /// before `WM_NCDESTROY` returns.
-    fn remove_pointer_from_window(window: &Window) -> Result<()> {
-        window
-            .remove_property(DISPATCHER_PROPERTY_NAME)
-            .context("When removing message dispatcher pointer")
+    fn remove_pointer_from_window(window: &dyn BasicWindow) {
+        if let Err(e) = window.remove_property(DISPATCHER_PROPERTY_NAME) {
+            error!("Failed to remove message dispatcher pointer: {:?}", e);
+        }
+    }
+
+    fn request_destory_gui_window(&self) {
+        info!("Destroying GUI window on WndProc thread drop");
+        match &self.message_processor {
+            Some(processor) => {
+                if let Err(e) = processor.window().destroy() {
+                    error!("Failed to destroy GUI window: {:?}", e);
+                }
+            }
+            None => error!("No GUI window to destroy!"),
+        }
+    }
+
+    fn request_destroy_message_router_window(&self) {
+        info!("Destroying thread message router on WndProc thread drop");
+        match &self.message_router_window {
+            Some(router) => {
+                if let Err(e) = router.destroy() {
+                    error!("Failed to destroy thread message router: {:?}", e);
+                }
+            }
+            None => error!("No thread message router to destroy!"),
+        }
     }
 
     fn request_exit_message_loop() {

@@ -4,7 +4,6 @@
 
 mod math_util;
 pub mod surface;
-mod thread_message_util;
 mod window;
 mod window_message_dispatcher;
 mod window_message_processor;

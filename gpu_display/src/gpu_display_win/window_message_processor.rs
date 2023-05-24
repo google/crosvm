@@ -21,6 +21,7 @@ use winapi::shared::minwindef::UINT;
 use winapi::shared::minwindef::WPARAM;
 use winapi::um::winuser::*;
 
+use super::window::BasicWindow;
 use super::window::MessagePacket;
 use super::window::Window;
 use super::window_message_dispatcher::DisplayEventDispatcher;
@@ -368,7 +369,7 @@ impl<T: HandleWindowMessage> WindowMessageProcessor<T> {
                 0
             }
             _ => {
-                let _trace_event = trace_event!(gpu_display, "WM_OTHER_WINDOW_MESSAGE");
+                let _trace_event = trace_event!(gpu_display, "WM_OTHER_GUI_WINDOW_MESSAGE");
                 self.window.default_process_message(packet)
             }
         }

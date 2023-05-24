@@ -40,13 +40,12 @@ use winapi::shared::minwindef::LRESULT;
 use winapi::shared::minwindef::UINT;
 use winapi::shared::minwindef::WPARAM;
 use winapi::shared::windef::HWND;
-use winapi::um::processthreadsapi::GetCurrentThreadId;
 use winapi::um::winbase::INFINITE;
 use winapi::um::winbase::WAIT_OBJECT_0;
 use winapi::um::winnt::MAXIMUM_WAIT_OBJECTS;
 use winapi::um::winuser::*;
 
-use super::thread_message_util;
+use super::window::MessageOnlyWindow;
 use super::window::MessagePacket;
 use super::window::Window;
 use super::window_message_dispatcher::WindowMessageDispatcher;
@@ -149,7 +148,7 @@ impl MsgWaitContext {
 /// communicate with it.
 pub struct WindowProcedureThread<T: HandleWindowMessage> {
     thread: Option<JoinHandle<()>>,
-    thread_id: u32,
+    message_router_handle: HWND,
     message_loop_state: Option<Arc<AtomicI32>>,
     thread_terminated_event: Event,
     _marker: PhantomData<T>,
@@ -159,7 +158,7 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
     pub fn start_thread(
         #[cfg(feature = "kiwi")] gpu_main_display_tube: Option<Tube>,
     ) -> Result<Self> {
-        let (thread_id_sender, thread_id_receiver) = channel();
+        let (message_router_handle_sender, message_router_handle_receiver) = channel();
         let message_loop_state = Arc::new(AtomicI32::new(MessageLoopState::NotStarted as i32));
         let thread_terminated_event = Event::new().unwrap();
 
@@ -173,11 +172,8 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
         let thread = match ThreadBuilder::new()
             .name("gpu_display_wndproc".into())
             .spawn(move || {
-                // Must be called before any other threads post messages to the WndProc thread.
-                thread_message_util::force_create_message_queue();
-
                 Self::run_message_loop(
-                    thread_id_sender,
+                    message_router_handle_sender,
                     message_loop_state_clone,
                     gpu_main_display_tube,
                 );
@@ -190,11 +186,11 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
             Err(e) => bail!("Failed to spawn WndProc thread: {}", e),
         };
 
-        match thread_id_receiver.recv() {
-            Ok(thread_id_res) => match thread_id_res {
-                Ok(thread_id) => Ok(Self {
+        match message_router_handle_receiver.recv() {
+            Ok(message_router_handle_res) => match message_router_handle_res {
+                Ok(message_router_handle) => Ok(Self {
                     thread: Some(thread),
-                    thread_id,
+                    message_router_handle: message_router_handle as HWND,
                     message_loop_state: Some(message_loop_state),
                     thread_terminated_event,
                     _marker: PhantomData,
@@ -212,38 +208,66 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
     }
 
     pub fn post_display_command(&self, message: DisplaySendToWndProc<T>) -> Result<()> {
-        if !self.is_message_loop_running() {
-            bail!("Host window has been destroyed!");
-        }
+        self.post_message_to_thread_carrying_object(
+            WM_USER_HANDLE_DISPLAY_MESSAGE_INTERNAL,
+            message,
+        )
+        .context("When posting DisplaySendToWndProc message")
+    }
 
-        // Safe because the WndProc thread is still running the message loop.
-        unsafe {
-            thread_message_util::post_message_carrying_object(
-                self.thread_id,
-                WM_USER_HANDLE_DISPLAY_MESSAGE_INTERNAL,
-                message,
-            )
-            .context("When posting DisplaySendToWndProc message")
+    /// Calls `PostMessageW()` internally.
+    fn post_message_to_thread(&self, msg: UINT, w_param: WPARAM, l_param: LPARAM) -> Result<()> {
+        if !self.is_message_loop_running() {
+            bail!("Cannot post message to WndProc thread because message loop is not running!");
         }
+        // Safe because the message loop is still running.
+        if unsafe { PostMessageW(self.message_router_handle, msg, w_param, l_param) } == 0 {
+            syscall_bail!("Failed to call PostMessageW()");
+        }
+        Ok(())
+    }
+
+    /// Calls `PostMessageW()` internally. This is a common pattern, where we send a pointer to
+    /// the given object as the lParam. The receiver is responsible for destructing the object.
+    fn post_message_to_thread_carrying_object<U>(&self, msg: UINT, object: U) -> Result<()> {
+        let mut boxed_object = Box::new(object);
+        self.post_message_to_thread(
+            msg,
+            /* w_param= */ 0,
+            &mut *boxed_object as *mut U as LPARAM,
+        )
+        .map(|_| {
+            // If successful, the receiver will be responsible for destructing the object.
+            std::mem::forget(boxed_object);
+        })
     }
 
     fn run_message_loop(
-        thread_id_sender: Sender<Result<u32>>,
+        message_router_handle_sender: Sender<Result<u32>>,
         message_loop_state: Arc<AtomicI32>,
         gpu_main_display_tube: Option<Tube>,
     ) {
         let gpu_main_display_tube = gpu_main_display_tube.map(Rc::new);
-        // Safe because the dispatcher will take care of the lifetime of the `Window` object.
-        let create_window_res = unsafe { Self::create_window() };
-        match create_window_res.and_then(|window| {
-            WindowMessageDispatcher::<T>::create(window, gpu_main_display_tube.clone())
+        // Safe because the dispatcher will take care of the lifetime of the `MessageOnlyWindow` and
+        // `Window` objects.
+        match unsafe { Self::create_windows() }.and_then(|(message_router_window, gui_window)| {
+            WindowMessageDispatcher::<T>::create(
+                message_router_window,
+                gui_window,
+                gpu_main_display_tube.clone(),
+            )
         }) {
             Ok(dispatcher) => {
                 info!("WndProc thread entering message loop");
                 message_loop_state.store(MessageLoopState::Running as i32, Ordering::SeqCst);
-                // Safe because `GetCurrentThreadId()` has no failure mode.
-                if let Err(e) = thread_id_sender.send(Ok(unsafe { GetCurrentThreadId() })) {
-                    error!("Failed to send WndProc thread ID: {}", e);
+
+                // Safe because we won't use the handle unless the message loop is still running.
+                let message_router_handle =
+                    unsafe { dispatcher.message_router_handle().unwrap_or(null_mut()) };
+                // HWND cannot be sent cross threads, so we cast it to u32 first.
+                if let Err(e) = message_router_handle_sender.send(Ok(message_router_handle as u32))
+                {
+                    error!("Failed to send message router handle: {}", e);
                 }
 
                 let exit_state = Self::run_message_loop_body(dispatcher, gpu_main_display_tube);
@@ -255,7 +279,7 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
                     MessageLoopState::EarlyTerminatedWithError as i32,
                     Ordering::SeqCst,
                 );
-                if let Err(e) = thread_id_sender.send(Err(e)) {
+                if let Err(e) = message_router_handle_sender.send(Err(e)) {
                     error!("Failed to report message loop early termination: {}", e)
                 }
             }
@@ -282,7 +306,7 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
             match unsafe { msg_wait_ctx.wait() } {
                 Ok(token) => match token {
                     Token::MessagePump => {
-                        if !Self::retrieve_and_dispatch_messages(&mut message_dispatcher) {
+                        if !Self::retrieve_and_dispatch_messages() {
                             info!("WndProc thread exiting message loop normally");
                             return MessageLoopState::ExitedNormally;
                         }
@@ -309,9 +333,7 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
 
     /// Retrieves and dispatches all messages in the queue, and returns whether the message loop
     /// should continue running.
-    fn retrieve_and_dispatch_messages(
-        message_dispatcher: &mut Pin<Box<WindowMessageDispatcher<T>>>,
-    ) -> bool {
+    fn retrieve_and_dispatch_messages() -> bool {
         // Since `MsgWaitForMultipleObjects()` returns only when there is a new event in the queue,
         // if we call `MsgWaitForMultipleObjects()` again without draining the queue, it will ignore
         // existing events and will not return immediately. Hence, we need to keep calling
@@ -340,24 +362,13 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
             }
 
             // Safe because `PeekMessageW()` has populated `message`.
-            let new_message = unsafe { message.assume_init() };
-            if new_message.message == WM_QUIT {
-                return false;
-            }
-
-            if new_message.hwnd.is_null() {
-                // Thread messages don't target a specific window and `DispatchMessageW()` won't
-                // send them to `wnd_proc()` function, hence we need to handle it as a special case.
-                message_dispatcher
-                    .as_mut()
-                    .process_thread_message(&new_message.into());
-            } else {
-                // Dispatch window-specific messages.
-                // Safe because `PeekMessageW()` has populated `message`.
-                unsafe {
-                    TranslateMessage(&new_message);
-                    DispatchMessageW(&new_message);
+            unsafe {
+                let new_message = message.assume_init();
+                if new_message.message == WM_QUIT {
+                    return false;
                 }
+                TranslateMessage(&new_message);
+                DispatchMessageW(&new_message);
             }
         }
     }
@@ -400,15 +411,11 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
         }
 
         info!("WndProc thread is still in message loop before dropping. Signaling killing windows");
-        // Safe because the WndProc thread is still running the message loop.
-        if let Err(e) = unsafe {
-            thread_message_util::post_message(
-                self.thread_id,
-                WM_USER_WNDPROC_THREAD_DROP_KILL_WINDOW_INTERNAL,
-                /* w_param */ 0,
-                /* l_param */ 0,
-            )
-        } {
+        if let Err(e) = self.post_message_to_thread(
+            WM_USER_WNDPROC_THREAD_DROP_KILL_WINDOW_INTERNAL,
+            /* w_param */ 0,
+            /* l_param */ 0,
+        ) {
             error!("Failed to signal WndProc thread to kill windows: {:?}", e);
         }
     }
@@ -433,23 +440,28 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
     }
 
     /// # Safety
-    /// The owner of the returned `Window` object is responsible for dropping it before we finish
+    /// The owner of the returned window objects is responsible for dropping them before we finish
     /// processing `WM_NCDESTROY`, because the window handle will become invalid afterwards.
-    unsafe fn create_window() -> Result<Window> {
+    unsafe fn create_windows() -> Result<(MessageOnlyWindow, Window)> {
+        let message_router_window = MessageOnlyWindow::new(
+            Some(Self::wnd_proc),
+            /* class_name */ "THREAD_MESSAGE_ROUTER",
+            /* title */ "ThreadMessageRouter",
+        )?;
         // Gfxstream window is a child window of crosvm window. Without WS_CLIPCHILDREN, the parent
         // window may use the background brush to clear the gfxstream window client area when
         // drawing occurs. This caused the screen flickering issue during resizing.
         // See b/197786842 for details.
-        let dw_style = WS_POPUP | WS_CLIPCHILDREN;
-        Window::new(
+        let gui_window = Window::new(
             Some(Self::wnd_proc),
             /* class_name */ "CROSVM",
             /* title */ "crosvm",
             APP_ICON_ID,
-            dw_style,
+            WS_POPUP | WS_CLIPCHILDREN,
             // The window size and style can be adjusted later when `Surface` is created.
             &size2(1, 1),
-        )
+        )?;
+        Ok((message_router_window, gui_window))
     }
 
     unsafe extern "system" fn wnd_proc(
