@@ -78,6 +78,7 @@ use crate::pci::pci_device::BarRange;
 use crate::pci::pci_device::PciDevice;
 use crate::pci::pci_device::Result as PciResult;
 use crate::pci::PciAddress;
+use crate::pci::PciBarIndex;
 use crate::pci::PciDeviceError;
 use crate::vfio::VfioContainer;
 use crate::Suspendable;
@@ -91,9 +92,9 @@ const COIOMMU_CMD_ACTIVATE: u64 = 1;
 const COIOMMU_CMD_PARK_UNPIN: u64 = 2;
 const COIOMMU_CMD_UNPARK_UNPIN: u64 = 3;
 const COIOMMU_REVISION_ID: u8 = 0x10;
-const COIOMMU_MMIO_BAR: u8 = 0;
+const COIOMMU_MMIO_BAR: PciBarIndex = 0;
 const COIOMMU_MMIO_BAR_SIZE: u64 = 0x2000;
-const COIOMMU_NOTIFYMAP_BAR: u8 = 2;
+const COIOMMU_NOTIFYMAP_BAR: PciBarIndex = 2;
 const COIOMMU_NOTIFYMAP_SIZE: usize = 0x2000;
 const COIOMMU_TOPOLOGYMAP_BAR: u8 = 4;
 const COIOMMU_TOPOLOGYMAP_SIZE: usize = 0x2000;
@@ -1191,7 +1192,7 @@ impl CoIommuDev {
             .map(|e| e.try_clone().unwrap())
             .collect();
 
-        let bar0 = self.config_regs.get_bar_addr(COIOMMU_MMIO_BAR as usize);
+        let bar0 = self.config_regs.get_bar_addr(COIOMMU_MMIO_BAR);
         let notify_base = bar0 + mem::size_of::<CoIommuReg>() as u64;
         for (i, evt) in self.ioevents.iter().enumerate() {
             self.vm_memory_client
@@ -1285,15 +1286,11 @@ impl CoIommuDev {
         Ok(addr)
     }
 
-    fn read_mmio(&mut self, addr: u64, data: &mut [u8]) {
-        let bar = self.config_regs.get_bar_addr(COIOMMU_MMIO_BAR as usize);
-        let offset = addr - bar;
+    fn read_mmio(&mut self, offset: u64, data: &mut [u8]) {
         if offset >= mem::size_of::<CoIommuReg>() as u64 {
             error!(
-                "{}: read_mmio: invalid addr 0x{:x} bar 0x{:x} offset 0x{:x}",
+                "{}: read_mmio: invalid offset 0x{:x}",
                 self.debug_label(),
-                addr,
-                bar,
                 offset
             );
             return;
@@ -1320,10 +1317,8 @@ impl CoIommuDev {
         data.copy_from_slice(&v.to_ne_bytes());
     }
 
-    fn write_mmio(&mut self, addr: u64, data: &[u8]) {
-        let bar = self.config_regs.get_bar_addr(COIOMMU_MMIO_BAR as usize);
+    fn write_mmio(&mut self, offset: u64, data: &[u8]) {
         let mmio_len = mem::size_of::<CoIommuReg>() as u64;
-        let offset = addr - bar;
         if offset >= mmio_len {
             if data.len() != 1 {
                 error!(
@@ -1460,7 +1455,7 @@ impl PciDevice for CoIommuDev {
             resources,
             address,
             COIOMMU_MMIO_BAR_SIZE,
-            COIOMMU_MMIO_BAR,
+            COIOMMU_MMIO_BAR as u8,
             "coiommu-mmiobar",
         )?;
 
@@ -1501,7 +1496,7 @@ impl PciDevice for CoIommuDev {
             resources,
             address,
             COIOMMU_NOTIFYMAP_SIZE as u64,
-            COIOMMU_NOTIFYMAP_BAR,
+            COIOMMU_NOTIFYMAP_BAR as u8,
             "coiommu-notifymap",
         )?;
         self.notifymap_addr = Some(notifymap_addr);
@@ -1544,16 +1539,10 @@ impl PciDevice for CoIommuDev {
         rds
     }
 
-    fn read_bar(&mut self, addr: u64, data: &mut [u8]) {
-        let mmio_bar = self.config_regs.get_bar_addr(COIOMMU_MMIO_BAR as usize);
-        let notifymap = self
-            .config_regs
-            .get_bar_addr(COIOMMU_NOTIFYMAP_BAR as usize);
-        match addr {
-            o if mmio_bar <= o && o < mmio_bar + COIOMMU_MMIO_BAR_SIZE => {
-                self.read_mmio(addr, data);
-            }
-            o if notifymap <= o && o < notifymap + COIOMMU_NOTIFYMAP_SIZE as u64 => {
+    fn read_bar(&mut self, bar_index: PciBarIndex, offset: u64, data: &mut [u8]) {
+        match bar_index {
+            COIOMMU_MMIO_BAR => self.read_mmio(offset, data),
+            COIOMMU_NOTIFYMAP_BAR => {
                 // With coiommu device activated, the accessing the notifymap bar
                 // won't cause vmexit. If goes here, means the coiommu device is
                 // deactivated, and will not do the pin/unpin work. Thus no need
@@ -1563,16 +1552,10 @@ impl PciDevice for CoIommuDev {
         }
     }
 
-    fn write_bar(&mut self, addr: u64, data: &[u8]) {
-        let mmio_bar = self.config_regs.get_bar_addr(COIOMMU_MMIO_BAR as usize);
-        let notifymap = self
-            .config_regs
-            .get_bar_addr(COIOMMU_NOTIFYMAP_BAR as usize);
-        match addr {
-            o if mmio_bar <= o && o < mmio_bar + COIOMMU_MMIO_BAR_SIZE => {
-                self.write_mmio(addr, data);
-            }
-            o if notifymap <= o && o < notifymap + COIOMMU_NOTIFYMAP_SIZE as u64 => {
+    fn write_bar(&mut self, bar_index: PciBarIndex, offset: u64, data: &[u8]) {
+        match bar_index {
+            COIOMMU_MMIO_BAR => self.write_mmio(offset, data),
+            COIOMMU_NOTIFYMAP_BAR => {
                 // With coiommu device activated, the accessing the notifymap bar
                 // won't cause vmexit. If goes here, means the coiommu device is
                 // deactivated, and will not do the pin/unpin work. Thus no need

@@ -22,6 +22,7 @@ use crate::pci::pcie::pcie_device::PcieDevice;
 use crate::pci::BarRange;
 use crate::pci::PciAddress;
 use crate::pci::PciBarConfiguration;
+use crate::pci::PciBarIndex;
 use crate::pci::PciBus;
 use crate::pci::PciClassCode;
 use crate::pci::PciConfiguration;
@@ -350,9 +351,9 @@ impl PciDevice for PciBridge {
         self.config.write_reg(reg_idx, offset, data)
     }
 
-    fn read_bar(&mut self, _addr: u64, _data: &mut [u8]) {}
+    fn read_bar(&mut self, _bar_index: PciBarIndex, _offset: u64, _data: &mut [u8]) {}
 
-    fn write_bar(&mut self, _addr: u64, _data: &[u8]) {}
+    fn write_bar(&mut self, _bar_index: PciBarIndex, _offset: u64, _data: &[u8]) {}
 
     fn get_removed_children_devices(&self) -> Vec<PciAddress> {
         if !self.device.lock().get_removed_devices().is_empty() {

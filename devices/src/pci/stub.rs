@@ -30,6 +30,7 @@ use crate::pci::pci_configuration::PciSubclass;
 use crate::pci::pci_device::PciDevice;
 use crate::pci::pci_device::Result;
 use crate::pci::PciAddress;
+use crate::pci::PciBarIndex;
 use crate::pci::PciDeviceError;
 use crate::Suspendable;
 
@@ -201,9 +202,9 @@ impl PciDevice for StubPciDevice {
         self.config_regs.write_reg(reg_idx, offset, data)
     }
 
-    fn read_bar(&mut self, _addr: u64, _data: &mut [u8]) {}
+    fn read_bar(&mut self, _bar_index: PciBarIndex, _offset: u64, _data: &mut [u8]) {}
 
-    fn write_bar(&mut self, _addr: u64, _data: &[u8]) {}
+    fn write_bar(&mut self, _bar_index: PciBarIndex, _offset: u64, _data: &[u8]) {}
 }
 
 impl Suspendable for StubPciDevice {

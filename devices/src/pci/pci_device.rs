@@ -34,6 +34,7 @@ use crate::pci::pci_configuration::NUM_BAR_REGS;
 use crate::pci::pci_configuration::PCI_ID_REG;
 use crate::pci::PciAddress;
 use crate::pci::PciAddressError;
+use crate::pci::PciBarIndex;
 use crate::pci::PciInterruptPin;
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 #[cfg(all(unix, feature = "audio"))]
@@ -407,13 +408,17 @@ pub trait PciDevice: Send + Suspendable {
     fn write_virtual_config_register(&mut self, _reg_idx: usize, _value: u32) {}
 
     /// Reads from a BAR region mapped in to the device.
-    /// * `addr` - The guest address inside the BAR.
-    /// * `data` - Filled with the data from `addr`.
-    fn read_bar(&mut self, addr: u64, data: &mut [u8]);
+    /// * `bar_index` - The index of the PCI BAR.
+    /// * `offset` - The starting offset in bytes inside the BAR.
+    /// * `data` - Filled with the data from `offset`.
+    fn read_bar(&mut self, bar_index: PciBarIndex, offset: u64, data: &mut [u8]);
+
     /// Writes to a BAR region mapped in to the device.
-    /// * `addr` - The guest address inside the BAR.
+    /// * `bar_index` - The index of the PCI BAR.
+    /// * `offset` - The starting offset in bytes inside the BAR.
     /// * `data` - The data to write.
-    fn write_bar(&mut self, addr: u64, data: &[u8]);
+    fn write_bar(&mut self, bar_index: PciBarIndex, offset: u64, data: &[u8]);
+
     /// Invoked when the device is sandboxed.
     fn on_device_sandboxed(&mut self) {}
 
@@ -512,6 +517,55 @@ fn trace_data(data: &[u8], offset: u64) -> u32 {
     u32::from_le_bytes(data4)
 }
 
+/// Find the BAR containing an access specified by `address` and `size`.
+///
+/// If found, returns the BAR index and offset in bytes within that BAR corresponding to `address`.
+///
+/// The BAR must fully contain the access region; partial overlaps will return `None`. Zero-sized
+/// accesses should not normally happen, but in case one does, this function will return `None`.
+///
+/// This function only finds memory BARs, not I/O BARs. If a device with a BAR in I/O address space
+/// is ever added, address space information will need to be added to `BusDevice::read()` and
+/// `BusDevice::write()` and passed along to this function.
+fn find_bar_and_offset(
+    device: &impl PciDevice,
+    address: u64,
+    size: usize,
+) -> Option<(PciBarIndex, u64)> {
+    if size == 0 {
+        return None;
+    }
+
+    for bar_index in 0..NUM_BAR_REGS {
+        if let Some(bar_info) = device.get_bar_configuration(bar_index) {
+            if !bar_info.is_memory() {
+                continue;
+            }
+
+            // If access address >= BAR address, calculate the offset of the access in bytes from
+            // the start of the BAR. If underflow occurs, the access begins before this BAR, so it
+            // cannot be fully contained in the BAR; skip to the next BAR.
+            let Some(offset) = address.checked_sub(bar_info.address()) else {
+                continue;
+            };
+
+            // Calculate the largest valid offset given the BAR size and access size. If underflow
+            // occurs, the access size is larger than the BAR size, so the access is definitely not
+            // fully contained in the BAR; skip to the next BAR.
+            let Some(max_offset) = bar_info.size().checked_sub(size as u64) else {
+                continue;
+            };
+
+            // If offset <= max_offset, then the access is entirely contained within the BAR.
+            if offset <= max_offset {
+                return Some((bar_index, offset));
+            }
+        }
+    }
+
+    None
+}
+
 impl<T: PciDevice> BusDevice for T {
     fn debug_label(&self) -> String {
         PciDevice::debug_label(self)
@@ -524,11 +578,19 @@ impl<T: PciDevice> BusDevice for T {
     }
 
     fn read(&mut self, info: BusAccessInfo, data: &mut [u8]) {
-        self.read_bar(info.address, data)
+        if let Some((bar_index, offset)) = find_bar_and_offset(self, info.address, data.len()) {
+            self.read_bar(bar_index, offset, data);
+        } else {
+            error!("PciDevice::read({:#x}) did not match a BAR", info.address);
+        }
     }
 
     fn write(&mut self, info: BusAccessInfo, data: &[u8]) {
-        self.write_bar(info.address, data)
+        if let Some((bar_index, offset)) = find_bar_and_offset(self, info.address, data.len()) {
+            self.write_bar(bar_index, offset, data);
+        } else {
+            error!("PciDevice::write({:#x}) did not match a BAR", info.address);
+        }
     }
 
     fn config_register_write(
@@ -684,11 +746,11 @@ impl<T: PciDevice + ?Sized> PciDevice for Box<T> {
     fn write_config_register(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
         (**self).write_config_register(reg_idx, offset, data)
     }
-    fn read_bar(&mut self, addr: u64, data: &mut [u8]) {
-        (**self).read_bar(addr, data)
+    fn read_bar(&mut self, bar_index: PciBarIndex, offset: u64, data: &mut [u8]) {
+        (**self).read_bar(bar_index, offset, data)
     }
-    fn write_bar(&mut self, addr: u64, data: &[u8]) {
-        (**self).write_bar(addr, data)
+    fn write_bar(&mut self, bar_index: PciBarIndex, offset: u64, data: &[u8]) {
+        (**self).write_bar(bar_index, offset, data)
     }
     /// Invoked when the device is sandboxed.
     fn on_device_sandboxed(&mut self) {
@@ -791,9 +853,9 @@ mod tests {
             self.config_regs.write_reg(reg_idx, offset, data)
         }
 
-        fn read_bar(&mut self, _addr: u64, _data: &mut [u8]) {}
+        fn read_bar(&mut self, _bar_index: PciBarIndex, _offset: u64, _data: &mut [u8]) {}
 
-        fn write_bar(&mut self, _addr: u64, _data: &[u8]) {}
+        fn write_bar(&mut self, _bar_index: PciBarIndex, _offset: u64, _data: &[u8]) {}
 
         fn allocate_address(&mut self, _resources: &mut SystemAllocator) -> Result<PciAddress> {
             Err(Error::PciAllocationFailed)
@@ -940,5 +1002,64 @@ mod tests {
                 removed_pci_devices: Vec::new(),
             }
         );
+    }
+
+    #[test]
+    fn find_bar() {
+        let mut dev = TestDev {
+            config_regs: PciConfiguration::new(
+                0x1234,
+                0xABCD,
+                PciClassCode::MultimediaController,
+                &PciMultimediaSubclass::AudioDevice,
+                None,
+                PciHeaderType::Device,
+                0x5678,
+                0xEF01,
+                0,
+            ),
+        };
+
+        let _ = dev.config_regs.add_pci_bar(
+            PciBarConfiguration::new(
+                0,
+                BAR0_SIZE,
+                PciBarRegionType::Memory64BitRegion,
+                PciBarPrefetchable::Prefetchable,
+            )
+            .set_address(BAR0_ADDR),
+        );
+        let _ = dev.config_regs.add_pci_bar(
+            PciBarConfiguration::new(
+                2,
+                BAR2_SIZE,
+                PciBarRegionType::IoRegion,
+                PciBarPrefetchable::NotPrefetchable,
+            )
+            .set_address(BAR2_ADDR),
+        );
+
+        // No matching BAR
+        assert_eq!(find_bar_and_offset(&dev, 0, 4), None);
+        assert_eq!(find_bar_and_offset(&dev, 0xbfffffff, 4), None);
+        assert_eq!(find_bar_and_offset(&dev, 0xc0000000, 0), None);
+        assert_eq!(find_bar_and_offset(&dev, 0xc0000000, 0x1001), None);
+        assert_eq!(find_bar_and_offset(&dev, 0xffff_ffff_ffff_ffff, 1), None);
+        assert_eq!(find_bar_and_offset(&dev, 0xffff_ffff_ffff_ffff, 4), None);
+
+        // BAR0 (64-bit memory BAR at 0xc0000000, size 0x1000)
+        assert_eq!(find_bar_and_offset(&dev, 0xc0000000, 4), Some((0, 0)));
+        assert_eq!(find_bar_and_offset(&dev, 0xc0000001, 4), Some((0, 1)));
+        assert_eq!(find_bar_and_offset(&dev, 0xc0000ffc, 4), Some((0, 0xffc)));
+        assert_eq!(find_bar_and_offset(&dev, 0xc0000ffd, 4), None);
+        assert_eq!(find_bar_and_offset(&dev, 0xc0000ffe, 4), None);
+        assert_eq!(find_bar_and_offset(&dev, 0xc0000fff, 4), None);
+        assert_eq!(find_bar_and_offset(&dev, 0xc0000fff, 1), Some((0, 0xfff)));
+        assert_eq!(find_bar_and_offset(&dev, 0xc0001000, 1), None);
+        assert_eq!(find_bar_and_offset(&dev, 0xc0000000, 0xfff), Some((0, 0)));
+        assert_eq!(find_bar_and_offset(&dev, 0xc0000000, 0x1000), Some((0, 0)));
+
+        // BAR2 (I/O BAR)
+        assert_eq!(find_bar_and_offset(&dev, 0x800, 1), None);
     }
 }

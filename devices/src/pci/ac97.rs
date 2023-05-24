@@ -41,6 +41,7 @@ use crate::pci::pci_device::BarRange;
 use crate::pci::pci_device::PciDevice;
 use crate::pci::pci_device::Result;
 use crate::pci::PciAddress;
+use crate::pci::PciBarIndex;
 use crate::pci::PciDeviceError;
 use crate::pci::PciInterruptPin;
 use crate::pci::PCI_VENDOR_ID_INTEL;
@@ -378,31 +379,25 @@ impl PciDevice for Ac97Dev {
         rds
     }
 
-    fn read_bar(&mut self, addr: u64, data: &mut [u8]) {
-        let bar0 = self.config_regs.get_bar_addr(0);
-        let bar1 = self.config_regs.get_bar_addr(1);
-        match addr {
-            a if a >= bar0 && a < bar0 + MIXER_REGS_SIZE => self.read_mixer(addr - bar0, data),
-            a if a >= bar1 && a < bar1 + MASTER_REGS_SIZE => {
-                self.read_bus_master(addr - bar1, data)
-            }
-            _ => (),
+    fn read_bar(&mut self, bar_index: PciBarIndex, offset: u64, data: &mut [u8]) {
+        match bar_index {
+            0 => self.read_mixer(offset, data),
+            1 => self.read_bus_master(offset, data),
+            _ => {}
         }
     }
 
-    fn write_bar(&mut self, addr: u64, data: &[u8]) {
-        let bar0 = self.config_regs.get_bar_addr(0);
-        let bar1 = self.config_regs.get_bar_addr(1);
-        match addr {
-            a if a >= bar0 && a < bar0 + MIXER_REGS_SIZE => self.write_mixer(addr - bar0, data),
-            a if a >= bar1 && a < bar1 + MASTER_REGS_SIZE => {
+    fn write_bar(&mut self, bar_index: PciBarIndex, offset: u64, data: &[u8]) {
+        match bar_index {
+            0 => self.write_mixer(offset, data),
+            1 => {
                 // Check if the irq needs to be passed to the device.
                 if let Some(irq_evt) = self.irq_evt.take() {
                     self.bus_master.set_irq_event(irq_evt);
                 }
-                self.write_bus_master(addr - bar1, data)
+                self.write_bus_master(offset, data);
             }
-            _ => (),
+            _ => {}
         }
     }
 }

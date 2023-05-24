@@ -37,6 +37,7 @@ use crate::pci::pci_device::BarRange;
 use crate::pci::pci_device::PciDevice;
 use crate::pci::pci_device::Result;
 use crate::pci::PciAddress;
+use crate::pci::PciBarIndex;
 use crate::pci::PciDeviceError;
 use crate::pci::PCI_VENDOR_ID_REDHAT;
 use crate::Suspendable;
@@ -44,7 +45,7 @@ use crate::Suspendable;
 const PCI_DEVICE_ID_REDHAT_PVPANIC: u16 = 0x0011;
 const PCI_PVPANIC_REVISION_ID: u8 = 1;
 
-const PVPANIC_REG_NUM: u8 = 0;
+const PVPANIC_BAR_INDEX: PciBarIndex = 0;
 const PVPANIC_REG_SIZE: u64 = 0x10;
 
 // Guest panicked
@@ -150,7 +151,7 @@ impl PciDevice for PvPanicPciDevice {
                     bus: address.bus,
                     dev: address.dev,
                     func: address.func,
-                    bar: PVPANIC_REG_NUM,
+                    bar: PVPANIC_BAR_INDEX as u8,
                 },
                 "pvpanic_reg".to_string(),
                 AllocOptions::new()
@@ -159,7 +160,7 @@ impl PciDevice for PvPanicPciDevice {
             )
             .map_err(|e| pci_device::Error::IoAllocationFailed(PVPANIC_REG_SIZE, e))?;
         let pvpanic_config = PciBarConfiguration::new(
-            PVPANIC_REG_NUM.into(),
+            PVPANIC_BAR_INDEX,
             PVPANIC_REG_SIZE,
             PciBarRegionType::Memory32BitRegion,
             PciBarPrefetchable::NotPrefetchable,
@@ -193,18 +194,16 @@ impl PciDevice for PvPanicPciDevice {
         self.config_regs.write_reg(reg_idx, offset, data)
     }
 
-    fn read_bar(&mut self, addr: u64, data: &mut [u8]) {
-        let mmio_addr = self.config_regs.get_bar_addr(PVPANIC_REG_NUM as usize);
-        data[0] = if addr == mmio_addr && data.len() == 1 {
+    fn read_bar(&mut self, bar_index: PciBarIndex, offset: u64, data: &mut [u8]) {
+        data[0] = if bar_index == PVPANIC_BAR_INDEX && offset == 0 && data.len() == 1 {
             PVPANIC_CAPABILITIES
         } else {
             0
         };
     }
 
-    fn write_bar(&mut self, addr: u64, data: &[u8]) {
-        let mmio_addr = self.config_regs.get_bar_addr(PVPANIC_REG_NUM as usize);
-        if addr != mmio_addr || data.len() != 1 {
+    fn write_bar(&mut self, bar_index: PciBarIndex, offset: u64, data: &[u8]) {
+        if bar_index != PVPANIC_BAR_INDEX || offset != 0 || data.len() != 1 {
             return;
         }
 
@@ -280,17 +279,16 @@ mod test {
         let mut data: [u8; 1] = [0; 1];
 
         // Read from an invalid addr
-        device.read_bar(0, &mut data);
+        device.read_bar(0, 1, &mut data);
         assert_eq!(data[0], 0);
 
         // Read from the valid addr
-        let mmio_addr = device.config_regs.get_bar_addr(PVPANIC_REG_NUM as usize);
-        device.read_bar(mmio_addr, &mut data);
+        device.read_bar(0, 0, &mut data);
         assert_eq!(data[0], PVPANIC_CAPABILITIES);
 
         // Write to the valid addr.
         data[0] = PVPANIC_CRASH_LOADED;
-        device.write_bar(mmio_addr, &data);
+        device.write_bar(0, 0, &data);
 
         // Verify the event
         let val = evt_rdtube.recv::<VmEventType>().unwrap();

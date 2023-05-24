@@ -38,7 +38,7 @@ use crate::IrqLevelEvent;
 use crate::Suspendable;
 
 struct MmioInfo {
-    index: u32,
+    index: usize,
     start: u64,
     length: u64,
 }
@@ -181,7 +181,7 @@ impl VfioPlatformDevice {
         Ok(ranges)
     }
 
-    fn region_mmap(&self, index: u32, start_addr: u64) -> Vec<MemoryMapping> {
+    fn region_mmap(&self, index: usize, start_addr: u64) -> Vec<MemoryMapping> {
         let mut mem_map: Vec<MemoryMapping> = Vec::new();
         if self.device.get_region_flags(index) & VFIO_REGION_INFO_FLAG_MMAP != 0 {
             let mmaps = self.device.get_region_mmap(index);

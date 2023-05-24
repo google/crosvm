@@ -30,6 +30,7 @@ use crate::pci::pci_device::Error;
 use crate::pci::pci_device::PciBus;
 use crate::pci::pci_device::PciDevice;
 use crate::pci::PciAddress;
+use crate::pci::PciBarIndex;
 use crate::pci::PciId;
 use crate::pci::PCI_VENDOR_ID_INTEL;
 use crate::Bus;
@@ -68,9 +69,9 @@ impl PciDevice for PciRootConfiguration {
         self.config.write_reg(reg_idx, offset, data)
     }
 
-    fn read_bar(&mut self, _addr: u64, _data: &mut [u8]) {}
+    fn read_bar(&mut self, _bar_index: PciBarIndex, _offset: u64, _data: &mut [u8]) {}
 
-    fn write_bar(&mut self, _addr: u64, _data: &[u8]) {}
+    fn write_bar(&mut self, _bar_index: PciBarIndex, _offset: u64, _data: &[u8]) {}
 
     fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration> {
         self.config.get_bar_configuration(bar_num)

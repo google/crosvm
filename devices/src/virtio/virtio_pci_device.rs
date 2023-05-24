@@ -287,7 +287,7 @@ pub struct VirtioPciDevice {
     queues: Vec<Queue>,
     queue_evts: Vec<QueueEvent>,
     mem: GuestMemory,
-    settings_bar: u8,
+    settings_bar: PciBarIndex,
     msix_config: Arc<Mutex<MsixConfig>>,
     msix_cap_reg_idx: Option<usize>,
     common_config: VirtioPciCommonConfig,
@@ -476,7 +476,7 @@ impl VirtioPciDevice {
             .map_err(PciDeviceError::CapabilitiesSetup)?;
         self.msix_cap_reg_idx = Some(msix_offset / 4);
 
-        self.settings_bar = settings_bar;
+        self.settings_bar = settings_bar as PciBarIndex;
         Ok(())
     }
 
@@ -498,7 +498,7 @@ impl VirtioPciDevice {
         );
         self.interrupt = Some(interrupt.clone());
 
-        let bar0 = self.config_regs.get_bar_addr(self.settings_bar as usize);
+        let bar0 = self.config_regs.get_bar_addr(self.settings_bar);
         let notify_base = bar0 + NOTIFICATION_BAR_OFFSET;
 
         // Use ready queues and their events.
@@ -541,7 +541,7 @@ impl VirtioPciDevice {
     }
 
     fn unregister_ioevents(&mut self) -> anyhow::Result<()> {
-        let bar0 = self.config_regs.get_bar_addr(self.settings_bar as usize);
+        let bar0 = self.config_regs.get_bar_addr(self.settings_bar);
         let notify_base = bar0 + NOTIFICATION_BAR_OFFSET;
 
         for (queue_index, evt) in self.queue_evts.iter_mut().enumerate() {
@@ -810,18 +810,8 @@ impl PciDevice for VirtioPciDevice {
         self.config_regs.write_reg(reg_idx, offset, data)
     }
 
-    fn read_bar(&mut self, addr: u64, data: &mut [u8]) {
-        let bar = match self
-            .config_regs
-            .get_bars()
-            .find(|bar| bar.address_range().contains(&addr))
-        {
-            Some(bar) => bar,
-            None => return,
-        };
-
-        if bar.bar_index() == self.settings_bar as PciBarIndex {
-            let offset = addr - bar.address();
+    fn read_bar(&mut self, bar_index: usize, offset: u64, data: &mut [u8]) {
+        if bar_index == self.settings_bar {
             match offset {
                 COMMON_CONFIG_BAR_OFFSET..=COMMON_CONFIG_LAST => self.common_config.read(
                     offset - COMMON_CONFIG_BAR_OFFSET,
@@ -859,23 +849,12 @@ impl PciDevice for VirtioPciDevice {
                 _ => (),
             }
         } else {
-            self.device
-                .read_bar(bar.bar_index(), addr - bar.address(), data);
+            self.device.read_bar(bar_index, offset, data);
         }
     }
 
-    fn write_bar(&mut self, addr: u64, data: &[u8]) {
-        let bar = match self
-            .config_regs
-            .get_bars()
-            .find(|bar| bar.address_range().contains(&addr))
-        {
-            Some(bar) => bar,
-            None => return,
-        };
-
-        if bar.bar_index() == self.settings_bar as PciBarIndex {
-            let offset = addr - bar.address();
+    fn write_bar(&mut self, bar_index: usize, offset: u64, data: &[u8]) {
+        if bar_index == self.settings_bar {
             match offset {
                 COMMON_CONFIG_BAR_OFFSET..=COMMON_CONFIG_LAST => self.common_config.write(
                     offset - COMMON_CONFIG_BAR_OFFSET,
@@ -923,8 +902,7 @@ impl PciDevice for VirtioPciDevice {
                 _ => (),
             }
         } else {
-            self.device
-                .write_bar(bar.bar_index(), addr - bar.address(), data);
+            self.device.write_bar(bar_index, offset, data);
         }
 
         if !self.device_activated && self.is_driver_ready() {

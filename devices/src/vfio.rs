@@ -70,7 +70,7 @@ pub enum VfioError {
     #[error("group is inviable")]
     GroupViable,
     #[error("invalid region index: {0}")]
-    InvalidIndex(u32),
+    InvalidIndex(usize),
     #[error("invalid file path")]
     InvalidPath,
     #[error("failed to add guest memory map into iommu table: {0}")]
@@ -743,7 +743,7 @@ pub struct VfioIrq {
 #[derive(Debug, Default, Clone)]
 pub struct VfioRegionAddr {
     /// region number.
-    pub index: u32,
+    pub index: usize,
     /// offset in the region.
     pub addr: u64,
 }
@@ -1290,8 +1290,8 @@ impl VfioDevice {
     ///     VFIO_REGION_INFO_FLAG_WRITE: region supports write
     ///     VFIO_REGION_INFO_FLAG_MMAP:  region supports mmap
     ///     VFIO_REGION_INFO_FLAG_CAPS:  region's info supports caps
-    pub fn get_region_flags(&self, index: u32) -> u32 {
-        match self.regions.get(index as usize) {
+    pub fn get_region_flags(&self, index: usize) -> u32 {
+        match self.regions.get(index) {
             Some(v) => v.flags,
             None => {
                 warn!("get_region_flags() with invalid index: {}", index);
@@ -1302,8 +1302,8 @@ impl VfioDevice {
 
     /// get a region's offset
     /// return: Region offset from the start of vfio device descriptor
-    pub fn get_region_offset(&self, index: u32) -> u64 {
-        match self.regions.get(index as usize) {
+    pub fn get_region_offset(&self, index: usize) -> u64 {
+        match self.regions.get(index) {
             Some(v) => v.offset,
             None => {
                 warn!("get_region_offset with invalid index: {}", index);
@@ -1314,8 +1314,8 @@ impl VfioDevice {
 
     /// get a region's size
     /// return: Region size from the start of vfio device descriptor
-    pub fn get_region_size(&self, index: u32) -> u64 {
-        match self.regions.get(index as usize) {
+    pub fn get_region_size(&self, index: usize) -> u64 {
+        match self.regions.get(index) {
             Some(v) => v.size,
             None => {
                 warn!("get_region_size with invalid index: {}", index);
@@ -1326,13 +1326,13 @@ impl VfioDevice {
 
     /// get a number of regions
     /// return: Number of regions of vfio device descriptor
-    pub fn get_region_count(&self) -> u32 {
-        self.regions.len() as u32
+    pub fn get_region_count(&self) -> usize {
+        self.regions.len()
     }
 
     /// get a region's mmap info vector
-    pub fn get_region_mmap(&self, index: u32) -> Vec<vfio_region_sparse_mmap_area> {
-        match self.regions.get(index as usize) {
+    pub fn get_region_mmap(&self, index: usize) -> Vec<vfio_region_sparse_mmap_area> {
+        match self.regions.get(index) {
             Some(v) => v.mmaps.clone(),
             None => {
                 warn!("get_region_mmap with invalid index: {}", index);
@@ -1366,7 +1366,7 @@ impl VfioDevice {
     pub fn get_offset_for_addr(&self, addr: &VfioRegionAddr) -> Result<u64> {
         let region = self
             .regions
-            .get(addr.index as usize)
+            .get(addr.index)
             .ok_or(VfioError::InvalidIndex(addr.index))?;
         Ok(region.offset + addr.addr)
     }
@@ -1375,10 +1375,10 @@ impl VfioDevice {
     /// index: region num
     /// buf: data destination and buf length is read size
     /// addr: offset in the region
-    pub fn region_read(&self, index: u32, buf: &mut [u8], addr: u64) {
+    pub fn region_read(&self, index: usize, buf: &mut [u8], addr: u64) {
         let stub: &VfioRegion = self
             .regions
-            .get(index as usize)
+            .get(index)
             .unwrap_or_else(|| panic!("tried to read VFIO with an invalid index: {}", index));
 
         let size = buf.len() as u64;
@@ -1414,10 +1414,10 @@ impl VfioDevice {
     /// index: region num
     /// buf: data src and buf length is write size
     /// addr: offset in the region
-    pub fn region_write(&self, index: u32, buf: &[u8], addr: u64) {
+    pub fn region_write(&self, index: usize, buf: &[u8], addr: u64) {
         let stub: &VfioRegion = self
             .regions
-            .get(index as usize)
+            .get(index)
             .unwrap_or_else(|| panic!("tried to write VFIO with an invalid index: {}", index));
 
         let size = buf.len() as u64;
@@ -1521,14 +1521,17 @@ impl VfioPciConfig {
 
     pub fn read_config<T: FromBytes>(&self, offset: u32) -> T {
         let mut buf = vec![0u8; std::mem::size_of::<T>()];
-        self.device
-            .region_read(VFIO_PCI_CONFIG_REGION_INDEX, &mut buf, offset.into());
+        self.device.region_read(
+            VFIO_PCI_CONFIG_REGION_INDEX as usize,
+            &mut buf,
+            offset.into(),
+        );
         T::read_from(&buf[..]).expect("failed to convert config data from slice")
     }
 
     pub fn write_config<T: AsBytes>(&self, config: T, offset: u32) {
         self.device.region_write(
-            VFIO_PCI_CONFIG_REGION_INDEX,
+            VFIO_PCI_CONFIG_REGION_INDEX as usize,
             config.as_bytes(),
             offset.into(),
         );
