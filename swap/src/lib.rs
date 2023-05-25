@@ -17,6 +17,7 @@ cfg_if::cfg_if! {
         pub mod page_handler;
         mod processes;
         mod staging;
+        mod uffd_list;
         // this is public only for integration tests.
         pub mod userfaultfd;
         // this is public only for integration tests.

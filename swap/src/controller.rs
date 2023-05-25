@@ -60,6 +60,8 @@ use crate::pagesize::pages_to_bytes;
 use crate::pagesize::THP_SIZE;
 use crate::processes::freeze_child_processes;
 use crate::processes::ProcessesGuard;
+use crate::uffd_list::Token as UffdListToken;
+use crate::uffd_list::UffdList;
 use crate::userfaultfd::register_regions;
 use crate::userfaultfd::unregister_regions;
 use crate::userfaultfd::Error as UffdError;
@@ -475,129 +477,9 @@ enum Token {
     BackgroundJobCompleted,
 }
 
-struct UffdList<'a> {
-    list: Vec<Userfaultfd>,
-    dummy_mmap_addr: *mut u8,
-    wait_ctx: &'a WaitContext<Token>,
-    num_static_uffd: Option<usize>,
-}
-
-impl<'a> UffdList<'a> {
-    const ID_MAIN_UFFD: u32 = 0;
-
-    fn new(
-        main_uffd: Userfaultfd,
-        dummy_mmap_addr: *mut u8,
-        wait_ctx: &'a WaitContext<Token>,
-    ) -> Self {
-        Self {
-            list: vec![main_uffd],
-            dummy_mmap_addr,
-            wait_ctx,
-            num_static_uffd: None,
-        }
-    }
-
-    fn set_num_static_devices(&mut self, num_static_devices: u32) -> bool {
-        if self.num_static_uffd.is_some() {
-            return false;
-        }
-        // +1 corresponds to the uffd of the main process.
-        let num_static_uffd = num_static_devices as usize + 1;
-        self.num_static_uffd = Some(num_static_uffd);
-        true
-    }
-
-    fn register(&mut self, uffd: Userfaultfd) -> anyhow::Result<bool> {
-        let is_dynamic_uffd = self
-            .num_static_uffd
-            .map(|num_static_uffd| self.list.len() >= num_static_uffd)
-            .unwrap_or(false);
-        if is_dynamic_uffd {
-            // Dynamic uffds are target of GC. uffd GC uses dummy mmap to check the liveness of the
-            // userfaultfd.
-            // SAFETY: no one except UffdList access dummy_mmap.
-            unsafe { uffd.register(self.dummy_mmap_addr as usize, pages_to_bytes(1)) }
-                .context("register dummy mmap")?;
-        }
-
-        let id_uffd = self
-            .list
-            .len()
-            .try_into()
-            .context("too many userfaultfd forked")?;
-
-        self.wait_ctx
-            .add(&uffd, Token::UffdEvents(id_uffd))
-            .context("add to wait context")?;
-        self.list.push(uffd);
-
-        Ok(is_dynamic_uffd)
-    }
-
-    fn free_dummy_page(&self) {
-        // SAFETY: no one except UffdList access dummy_mmap.
-        let res = unsafe {
-            libc::madvise(
-                self.dummy_mmap_addr as *mut libc::c_void,
-                pages_to_bytes(1),
-                libc::MADV_REMOVE,
-            )
-        };
-        if res < 0 {
-            error!("failed to clear dummy mmap: {:?}", base::Error::last());
-        }
-    }
-
-    /// Remove all dead [Userfaultfd] in the list.
-    fn gc_dead_uffds(&mut self) -> anyhow::Result<()> {
-        let mut idx = self.num_static_uffd.unwrap();
-        let mut is_swapped = false;
-        while idx < self.list.len() {
-            // UFFDIO_ZEROPAGE returns ESRCH for dead uffd.
-            let is_dead_uffd = matches!(
-                self.list[idx].zero(self.dummy_mmap_addr as usize, pages_to_bytes(1), false),
-                Err(UffdError::UffdClosed)
-            );
-            if is_dead_uffd {
-                self.wait_ctx
-                    .delete(&self.list[idx])
-                    .context("delete dead uffd from wait context")?;
-                self.list.swap_remove(idx);
-                is_swapped = true;
-            } else {
-                if is_swapped {
-                    self.wait_ctx
-                        .modify(
-                            &self.list[idx],
-                            base::EventType::ReadWrite,
-                            Token::UffdEvents(idx as u32),
-                        )
-                        .context("update token")?;
-                    is_swapped = false;
-                }
-                idx += 1;
-            }
-        }
-        self.free_dummy_page();
-        Ok(())
-    }
-
-    fn get(&self, id: u32) -> Option<&Userfaultfd> {
-        self.list.get(id as usize)
-    }
-
-    fn main_uffd(&self) -> &Userfaultfd {
-        &self.list[Self::ID_MAIN_UFFD as usize]
-    }
-
-    // Return cloned main [Userfaultfd]
-    fn clone_main_uffd(&self) -> crate::userfaultfd::Result<Userfaultfd> {
-        self.list[Self::ID_MAIN_UFFD as usize].try_clone()
-    }
-
-    fn get_list(&self) -> &[Userfaultfd] {
-        &self.list
+impl UffdListToken for Token {
+    fn uffd_token(idx: u32) -> Self {
+        Token::UffdEvents(idx)
     }
 }
 
@@ -630,10 +512,6 @@ fn monitor_process(
 
     let wait_ctx = WaitContext::build_with(&[
         (&command_tube, Token::Command),
-        // Even though swap isn't enabled until the enable command is received, it's necessary to
-        // start waiting on the main uffd here so that uffd fork events can be processed, because
-        // child processes will block until their corresponding uffd fork event is read.
-        (&uffd, Token::UffdEvents(UffdList::ID_MAIN_UFFD)),
         (
             bg_job_control.get_completion_event(),
             Token::BackgroundJobCompleted,
@@ -646,7 +524,8 @@ fn monitor_process(
     // The worker threads are killed when the main thread of the monitor process dies.
     let worker = Worker::new(n_worker, n_worker);
 
-    let mut uffd_list = UffdList::new(uffd, dummy_mmap_addr, &wait_ctx);
+    let mut uffd_list =
+        UffdList::new(uffd, dummy_mmap_addr, &wait_ctx).context("create uffd list")?;
     let mut state_transition = SwapStateTransition::default();
     let mut try_gc_uffds = false;
 
@@ -929,7 +808,7 @@ fn handle_vmm_swap<'scope, 'env>(
     scope: &'scope Scope<'scope, 'env>,
     wait_ctx: &WaitContext<Token>,
     page_handler: &'env PageHandler<'env>,
-    uffd_list: &'env mut UffdList,
+    uffd_list: &'env mut UffdList<Token>,
     guest_memory: &GuestMemory,
     regions: &[Range<usize>],
     command_tube: &Tube,
