@@ -24,10 +24,10 @@ pub trait IrqChipRiscv64: IrqChip {
 
     // Snapshot irqchip.
     fn snapshot(&self, _cpus_num: usize) -> anyhow::Result<serde_json::Value> {
-        Err(anyhow!("Snapshot not yet implemented for RiskV64"))
+        anyhow::bail!("snapshot not yet implemented for riscv64")
     }
 
     fn restore(&mut self, _data: serde_json::Value, _vcpus_num: usize) -> anyhow::Result<()> {
-        Err(anyhow!("Restore not yet implemented for RiskV64"))
+        anyhow::bail!("restore not yet implemented for riscv64")
     }
 }
