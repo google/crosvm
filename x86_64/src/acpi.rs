@@ -740,9 +740,9 @@ mod tests {
 
     #[test]
     fn facp_table_creation() {
-        let sci_irq = 5;
+        let sci_irq: u16 = 5;
         let force_s2idle = true;
-        let facp = create_facp_table(sci_irq as u16, force_s2idle);
+        let facp = create_facp_table(sci_irq, force_s2idle);
 
         assert_eq!(facp.read::<u32>(FADT_FIELD_FLAGS), FADT_LOW_POWER_S2IDLE);
         assert_eq!(facp.read::<u16>(FADT_FIELD_SCI_INTERRUPT), sci_irq);

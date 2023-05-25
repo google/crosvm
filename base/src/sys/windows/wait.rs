@@ -206,10 +206,10 @@ impl<T: EventToken> EventContext<T> {
                 timeout.as_millis() as DWORD,
             )
         };
-        let handles_len = min(MAXIMUM_WAIT_OBJECTS, raw_handles_list.len()) as usize;
+        let handles_len = min(MAXIMUM_WAIT_OBJECTS, raw_handles_list.len());
 
         const MAXIMUM_WAIT_OBJECTS_U32: u32 = MAXIMUM_WAIT_OBJECTS as u32;
-        match result as u32 {
+        match result {
             WAIT_OBJECT_0..=MAXIMUM_WAIT_OBJECTS_U32 => {
                 let mut event_index = (result - WAIT_OBJECT_0) as usize;
                 if event_index >= handles_len {

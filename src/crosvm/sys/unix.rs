@@ -1171,7 +1171,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
 
             // Check that the physical CPUs that the vCPU is affined to all share the same
             // frequency domain.
-            if let Some(freq_domain) = host_cpu_frequencies.get(&(vcpu_affinity[0] as usize)) {
+            if let Some(freq_domain) = host_cpu_frequencies.get(&vcpu_affinity[0]) {
                 for cpu in vcpu_affinity.iter() {
                     if let Some(frequencies) = host_cpu_frequencies.get(cpu) {
                         if frequencies != freq_domain {
@@ -1179,7 +1179,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
                         }
                     }
                 }
-                cpu_frequencies.insert(cpu_id as usize, freq_domain.clone());
+                cpu_frequencies.insert(cpu_id, freq_domain.clone());
             } else {
                 panic!("No frequency domain for cpu:{}", cpu_id);
             }

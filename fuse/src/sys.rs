@@ -516,6 +516,7 @@ impl From<libc::stat64> for Attr {
             mtimensec: st.st_mtime_nsec as u32,
             ctimensec: st.st_ctime_nsec as u32,
             mode: st.st_mode,
+            #[allow(clippy::unnecessary_cast)]
             nlink: st.st_nlink as u32,
             uid: st.st_uid,
             gid: st.st_gid,
@@ -542,6 +543,7 @@ pub struct Kstatfs {
 }
 
 impl From<libc::statvfs64> for Kstatfs {
+    #[allow(clippy::unnecessary_cast)]
     fn from(st: libc::statvfs64) -> Self {
         Kstatfs {
             blocks: st.f_blocks,

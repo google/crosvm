@@ -493,7 +493,7 @@ fn capture_buffer(
     let func_regs = regs.func_regs_mut(Ac97Function::Input);
     if let Some(buffer) = next_guest_buffer(func_regs, mem)? {
         in_buffer
-            .copy_cb(buffer.size() as usize, |inb| buffer.copy_from(inb))
+            .copy_cb(buffer.size(), |inb| buffer.copy_from(inb))
             .map_err(AudioError::CaptureCopyFailure)?;
     }
     Ok(())

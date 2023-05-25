@@ -192,7 +192,7 @@ impl FileReadWriteAtVolatile for File {
             }
         }
 
-        Ok(ret as usize)
+        Ok(ret)
     }
 }
 

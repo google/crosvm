@@ -43,7 +43,7 @@ fn fdt_create_shm_device(
     let mem_node = fdt.begin_node("memory")?;
     fdt.property_u32("label", index)?;
     fdt.property_u32("#address-cells", 2)?;
-    fdt.property_u64("base", guest_addr.offset() as u64)?;
+    fdt.property_u64("base", guest_addr.offset())?;
     fdt.end_node(mem_node)?;
     fdt.end_node(shm_node)
 }

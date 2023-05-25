@@ -2776,6 +2776,7 @@ impl FileSystem for PassthroughFs {
         Ok(())
     }
 
+    #[allow(clippy::unnecessary_cast)]
     fn ioctl<R: io::Read>(
         &self,
         ctx: Context,

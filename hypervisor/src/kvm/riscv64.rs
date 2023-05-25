@@ -145,7 +145,7 @@ impl VcpuRiscv64 for KvmVcpu {
 // Returns the id used for call to `KVM_[GET|SET]_ONE_REG`.
 fn vcpu_reg_id(reg: VcpuRegister) -> u64 {
     fn id_from_reg(reg_type: u32, index: u64) -> u64 {
-        reg_type as u64 | index | KVM_REG_RISCV as u64 | KVM_REG_SIZE_U64 as u64
+        reg_type as u64 | index | KVM_REG_RISCV as u64 | KVM_REG_SIZE_U64
     }
 
     match reg {

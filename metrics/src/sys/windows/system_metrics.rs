@@ -142,7 +142,7 @@ impl Worker {
                 if total_systime > 0 {
                     let cpu_usage = 100 * total_processtime / total_systime;
                     // The i64 cast will not cause overflow because the usage is at most 100.
-                    log_metric(MetricEventType::CpuUsage, cpu_usage as i64);
+                    log_metric(MetricEventType::CpuUsage, cpu_usage);
                 }
             }
             *cpu_measurements = None;

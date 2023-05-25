@@ -120,7 +120,7 @@ impl IoCompletionPort {
         if success {
             return Ok(CompletionPacket {
                 result: Ok(bytes_transferred as usize),
-                completion_key: completion_key as usize,
+                completion_key,
                 overlapped_ptr: overlapped as usize,
             });
         }
@@ -133,7 +133,7 @@ impl IoCompletionPort {
             // Overlapped operation failed.
             Ok(CompletionPacket {
                 result: Err(SysError::last()),
-                completion_key: completion_key as usize,
+                completion_key,
                 overlapped_ptr: overlapped as usize,
             })
         }
@@ -217,7 +217,7 @@ impl IoCompletionPort {
             if entry.lpCompletionKey as RawDescriptor == INVALID_HANDLE_VALUE {
                 completion_packets.push(CompletionPacket {
                     result: Ok(0),
-                    completion_key: entry.lpCompletionKey as usize,
+                    completion_key: entry.lpCompletionKey,
                     overlapped_ptr: entry.lpOverlapped as usize,
                 });
                 continue;
@@ -237,13 +237,13 @@ impl IoCompletionPort {
             if success {
                 completion_packets.push(CompletionPacket {
                     result: Ok(bytes_transferred as usize),
-                    completion_key: entry.lpCompletionKey as usize,
+                    completion_key: entry.lpCompletionKey,
                     overlapped_ptr: entry.lpOverlapped as usize,
                 });
             } else {
                 completion_packets.push(CompletionPacket {
                     result: Err(SysError::last()),
-                    completion_key: entry.lpCompletionKey as usize,
+                    completion_key: entry.lpCompletionKey,
                     overlapped_ptr: entry.lpOverlapped as usize,
                 });
             }

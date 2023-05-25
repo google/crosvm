@@ -107,7 +107,7 @@ fn create_chosen_node(
     fdt.property("rng-seed", &rng_seed_bytes)?;
 
     if let Some((initrd_addr, initrd_size)) = initrd {
-        let initrd_start = initrd_addr.offset() as u64;
+        let initrd_start = initrd_addr.offset();
         let initrd_end = initrd_start + initrd_size as u64;
         fdt.property_u64("linux,initrd-start", initrd_start)?;
         fdt.property_u64("linux,initrd-end", initrd_end)?;
@@ -159,12 +159,7 @@ fn create_aia_node(
         let aplic_node = fdt.begin_node(&name)?;
         fdt.property_string("compatible", "riscv,aplic")?;
 
-        let regs = [
-            0u32,
-            aia_aplic_addr(num_cpus) as u32,
-            0,
-            AIA_APLIC_SIZE as u32,
-        ];
+        let regs = [0u32, aia_aplic_addr(num_cpus) as u32, 0, AIA_APLIC_SIZE];
         fdt.property_array_u32("reg", &regs)?;
         fdt.property_u32("#interrupt-cells", 2)?;
         fdt.property_null("interrupt-controller")?;

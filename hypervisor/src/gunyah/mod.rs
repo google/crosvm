@@ -467,7 +467,7 @@ impl Vm for GunyahVm {
                 &self.vm,
                 slot,
                 read_only,
-                guest_addr.offset() as u64,
+                guest_addr.offset(),
                 size,
                 mem_region.as_ptr(),
             )
@@ -526,7 +526,7 @@ impl Vm for GunyahVm {
                 None => (false, 0, 4),
             },
             Datamatch::U64(v) => match v {
-                Some(u) => (true, u as u64, 8),
+                Some(u) => (true, u, 8),
                 None => (false, 0, 8),
             },
         };
@@ -543,7 +543,7 @@ impl Vm for GunyahVm {
         };
 
         let gh_fn_ioeventfd_arg = gh_fn_ioeventfd_arg {
-            fd: evt.as_raw_descriptor() as i32,
+            fd: evt.as_raw_descriptor(),
             datamatch: datamatch_value,
             len: datamatch_len,
             addr: maddr,

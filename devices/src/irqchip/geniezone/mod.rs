@@ -78,8 +78,8 @@ impl GeniezoneKernelIrqChip {
             dev_type: gzvm_device_type_GZVM_DEV_TYPE_ARM_VGIC_V3_DIST,
             id: 0,
             flags: 0,
-            dev_addr: dist_if_addr as u64,
-            dev_reg_size: AARCH64_GIC_DIST_SIZE as u64,
+            dev_addr: dist_if_addr,
+            dev_reg_size: AARCH64_GIC_DIST_SIZE,
             attr_addr: 0_u64,
             attr_size: 0_u64,
         };
@@ -96,8 +96,8 @@ impl GeniezoneKernelIrqChip {
             dev_type: gzvm_device_type_GZVM_DEV_TYPE_ARM_VGIC_V3_REDIST,
             id: 0,
             flags: 0,
-            dev_addr: redist_addr as u64,
-            dev_reg_size: AARCH64_GIC_REDIST_SIZE as u64,
+            dev_addr: redist_addr,
+            dev_reg_size: AARCH64_GIC_REDIST_SIZE,
             attr_addr: 0_u64,
             attr_size: 0_u64,
         };

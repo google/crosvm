@@ -158,10 +158,7 @@ fn create_cpu_nodes(
         }
 
         if !cpu_frequencies.is_empty() {
-            fdt.property_u32(
-                "operating-points-v2",
-                PHANDLE_OPP_DOMAIN_BASE + cpu_id as u32,
-            )?;
+            fdt.property_u32("operating-points-v2", PHANDLE_OPP_DOMAIN_BASE + cpu_id)?;
         }
         fdt.end_node(cpu_node)?;
     }
@@ -186,7 +183,7 @@ fn create_cpu_nodes(
         for cpu_id in 0..num_cpus {
             if let Some(frequencies) = cpu_frequencies.get(&(cpu_id as usize)) {
                 let opp_table_node = fdt.begin_node(&format!("opp_table{}", cpu_id))?;
-                fdt.property_u32("phandle", PHANDLE_OPP_DOMAIN_BASE + cpu_id as u32)?;
+                fdt.property_u32("phandle", PHANDLE_OPP_DOMAIN_BASE + cpu_id)?;
                 fdt.property_string("compatible", "operating-points-v2")?;
                 for freq in frequencies.iter() {
                     let opp_hz = (*freq) as u64 * 1000;

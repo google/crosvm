@@ -554,7 +554,7 @@ impl Geniezone {
     /// Gets the size of the mmap required to use vcpu's `gzvm_vcpu_run` structure.
     pub fn get_vcpu_mmap_size(&self) -> Result<usize> {
         // We don't use mmap, return sizeof(gzvm_vcpu_run) directly
-        let res = std::mem::size_of::<gzvm_vcpu_run>() as usize;
+        let res = std::mem::size_of::<gzvm_vcpu_run>();
         Ok(res)
     }
 }
@@ -773,7 +773,7 @@ impl GeniezoneVm {
                 None => (false, 0, 4),
             },
             Datamatch::U64(v) => match v {
-                Some(u) => (true, u as u64, 8),
+                Some(u) => (true, u, 8),
                 None => (false, 0, 8),
             },
         };
@@ -791,7 +791,7 @@ impl GeniezoneVm {
             datamatch: datamatch_value,
             len: datamatch_len,
             addr: match addr {
-                IoEventAddress::Pio(p) => p as u64,
+                IoEventAddress::Pio(p) => p,
                 IoEventAddress::Mmio(m) => m,
             },
             fd: evt.as_raw_descriptor(),
@@ -923,7 +923,7 @@ impl Vm for GeniezoneVm {
                 slot,
                 read_only,
                 log_dirty_pages,
-                guest_addr.offset() as u64,
+                guest_addr.offset(),
                 size,
                 mem.as_ptr(),
             )
