@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::env;
+use std::ffi::OsStr;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -22,42 +23,65 @@ fn rewrite_policies(seccomp_policy_path: &Path, rewrote_policy_folder: &Path) {
     }
 }
 
+fn compile_policy(
+    compile_script: &Path,
+    compile_policy_folder: &Path,
+    output_folder: &Path,
+    policy_file: &fs::DirEntry,
+) -> String {
+    let output_file_path = compile_policy_folder.join(
+        policy_file
+            .path()
+            .with_extension("bpf")
+            .file_name()
+            .unwrap(),
+    );
+    let status = Command::new(compile_script)
+        .arg("--arch-json")
+        .arg(output_folder.join("constants.json"))
+        .arg("--default-action")
+        .arg("trap")
+        .arg(policy_file.path())
+        .arg(&output_file_path)
+        .spawn()
+        .unwrap()
+        .wait()
+        .expect("Spawning the bpf compiler failed");
+    if !status.success() {
+        panic!("Compile bpf failed");
+    }
+    format!(
+        r#"("{}", include_bytes!("{}").to_vec()),"#,
+        policy_file.path().file_stem().unwrap().to_str().unwrap(),
+        output_file_path.to_str().unwrap()
+    )
+}
+
 fn compile_policies(out_dir: &Path, rewrote_policy_folder: &Path, compile_seccomp_policy: &Path) {
     let compiled_policy_folder = out_dir.join("policy_output");
     fs::create_dir_all(&compiled_policy_folder).unwrap();
     let mut include_all_bytes = String::from("std::collections::HashMap::from([\n");
-    for entry in fs::read_dir(rewrote_policy_folder).unwrap() {
-        let policy_file = entry.unwrap();
-        if policy_file.path().extension().unwrap() == "policy" {
-            let output_file_path = compiled_policy_folder.join(
-                policy_file
-                    .path()
-                    .with_extension("bpf")
-                    .file_name()
-                    .unwrap(),
-            );
-            let status = Command::new(compile_seccomp_policy)
-                .arg("--arch-json")
-                .arg(rewrote_policy_folder.join("constants.json"))
-                .arg("--default-action")
-                .arg("trap")
-                .arg(policy_file.path())
-                .arg(&output_file_path)
-                .spawn()
-                .unwrap()
-                .wait()
-                .expect("Spawning the bpf compiler failed");
-            if !status.success() {
-                panic!("Compile bpf failed");
-            }
-            let s = format!(
-                r#"("{}", include_bytes!("{}").to_vec()),"#,
-                policy_file.path().file_stem().unwrap().to_str().unwrap(),
-                output_file_path.to_str().unwrap()
-            );
-            include_all_bytes += s.as_str();
-        }
-    }
+
+    let entries = fs::read_dir(rewrote_policy_folder)
+        .unwrap()
+        .map(|ent| ent.unwrap())
+        .collect::<Vec<_>>();
+
+    let s = entries
+        .iter()
+        .filter(|ent| ent.path().extension() == Some(OsStr::new("policy")))
+        .map(|policy_file| {
+            compile_policy(
+                compile_seccomp_policy,
+                &compiled_policy_folder,
+                rewrote_policy_folder,
+                policy_file,
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("");
+    include_all_bytes += &s;
+
     include_all_bytes += "])";
     fs::write(out_dir.join("bpf_includes.in"), include_all_bytes).unwrap();
 }
