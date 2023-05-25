@@ -30,9 +30,6 @@ use base::warn;
 use base::AsRawDescriptor;
 use base::AsRawDescriptors;
 use base::EventToken;
-use base::MappedRegion;
-use base::MemoryMapping;
-use base::MemoryMappingBuilder;
 use base::RawDescriptor;
 use base::SendTube;
 use base::SharedMemory;
@@ -56,7 +53,6 @@ use crate::page_handler::Error as PageHandlerError;
 use crate::page_handler::MoveToStaging;
 use crate::page_handler::PageHandler;
 use crate::page_handler::MLOCK_BUDGET;
-use crate::pagesize::pages_to_bytes;
 use crate::pagesize::THP_SIZE;
 use crate::processes::freeze_child_processes;
 use crate::processes::ProcessesGuard;
@@ -64,6 +60,7 @@ use crate::uffd_list::Token as UffdListToken;
 use crate::uffd_list::UffdList;
 use crate::userfaultfd::register_regions;
 use crate::userfaultfd::unregister_regions;
+use crate::userfaultfd::DeadUffdCheckerImpl;
 use crate::userfaultfd::Error as UffdError;
 use crate::userfaultfd::Factory as UffdFactory;
 use crate::userfaultfd::UffdEvent;
@@ -108,7 +105,7 @@ pub struct SwapController {
     num_static_devices: u32,
     // Keep 1 page dummy mmap in the main process to make it present in all the descendant
     // processes.
-    _dummy_mmap: MemoryMapping,
+    _dead_uffd_checker: DeadUffdCheckerImpl,
 }
 
 impl SwapController {
@@ -151,11 +148,7 @@ impl SwapController {
         // Allocate eventfd before creating sandbox.
         let bg_job_control = BackgroundJobControl::new().context("create background job event")?;
 
-        // Dummy 1 page mmap to check liveness of each userfaultfd in UffdList.
-        let dummy_mmap = MemoryMappingBuilder::new(pages_to_bytes(1))
-            .build()
-            .context("create dummy mmap")?;
-        let dummy_mmap_addr = dummy_mmap.as_ptr();
+        let dead_uffd_checker = DeadUffdCheckerImpl::new().context("create dead uffd checker")?;
 
         #[cfg(feature = "log_page_fault")]
         let page_fault_logger = PageFaultEventLogger::create(&swap_dir, &guest_memory)
@@ -206,7 +199,7 @@ impl SwapController {
                     uffd,
                     swap_file,
                     bg_job_control,
-                    dummy_mmap_addr,
+                    &dead_uffd_checker,
                     #[cfg(feature = "log_page_fault")]
                     page_fault_logger,
                 ) {
@@ -237,7 +230,7 @@ impl SwapController {
             uffd_factory,
             command_tube: command_tube_main,
             num_static_devices: 0,
-            _dummy_mmap: dummy_mmap,
+            _dead_uffd_checker: dead_uffd_checker,
         })
     }
 
@@ -505,7 +498,7 @@ fn monitor_process(
     uffd: Userfaultfd,
     swap_file: File,
     bg_job_control: BackgroundJobControl,
-    dummy_mmap_addr: *mut u8,
+    dead_uffd_checker: &DeadUffdCheckerImpl,
     #[cfg(feature = "log_page_fault")] mut page_fault_logger: PageFaultEventLogger,
 ) -> anyhow::Result<()> {
     info!("monitor_process started");
@@ -525,7 +518,7 @@ fn monitor_process(
     let worker = Worker::new(n_worker, n_worker);
 
     let mut uffd_list =
-        UffdList::new(uffd, dummy_mmap_addr, &wait_ctx).context("create uffd list")?;
+        UffdList::new(uffd, dead_uffd_checker, &wait_ctx).context("create uffd list")?;
     let mut state_transition = SwapStateTransition::default();
     let mut try_gc_uffds = false;
 
@@ -808,7 +801,7 @@ fn handle_vmm_swap<'scope, 'env>(
     scope: &'scope Scope<'scope, 'env>,
     wait_ctx: &WaitContext<Token>,
     page_handler: &'env PageHandler<'env>,
-    uffd_list: &'env mut UffdList<Token>,
+    uffd_list: &'env mut UffdList<Token, DeadUffdCheckerImpl>,
     guest_memory: &GuestMemory,
     regions: &[Range<usize>],
     command_tube: &Tube,
