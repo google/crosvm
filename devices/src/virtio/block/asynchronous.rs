@@ -234,9 +234,9 @@ impl DiskState {
 
 async fn process_one_request(
     avail_desc: &mut DescriptorChain,
-    disk_state: Rc<AsyncRwLock<DiskState>>,
-    flush_timer: Rc<RefCell<TimerAsync>>,
-    flush_timer_armed: Rc<RefCell<bool>>,
+    disk_state: &AsyncRwLock<DiskState>,
+    flush_timer: &RefCell<TimerAsync>,
+    flush_timer_armed: &RefCell<bool>,
 ) -> result::Result<usize, ExecuteError> {
     let reader = &mut avail_desc.reader;
     let writer = &mut avail_desc.writer;
@@ -276,13 +276,13 @@ async fn process_one_request(
 
 /// Process one descriptor chain asynchronously.
 pub async fn process_one_chain<I: SignalableInterrupt>(
-    queue: Rc<RefCell<Queue>>,
+    queue: &RefCell<Queue>,
     mut avail_desc: DescriptorChain,
-    disk_state: Rc<AsyncRwLock<DiskState>>,
-    mem: GuestMemory,
+    disk_state: &AsyncRwLock<DiskState>,
+    mem: &GuestMemory,
     interrupt: &I,
-    flush_timer: Rc<RefCell<TimerAsync>>,
-    flush_timer_armed: Rc<RefCell<bool>>,
+    flush_timer: &RefCell<TimerAsync>,
+    flush_timer_armed: &RefCell<bool>,
 ) {
     let len = match process_one_request(&mut avail_desc, disk_state, flush_timer, flush_timer_armed)
         .await
@@ -295,8 +295,8 @@ pub async fn process_one_chain<I: SignalableInterrupt>(
     };
 
     let mut queue = queue.borrow_mut();
-    queue.add_used(&mem, avail_desc, len as u32);
-    queue.trigger_interrupt(&mem, interrupt);
+    queue.add_used(mem, avail_desc, len as u32);
+    queue.trigger_interrupt(mem, interrupt);
 }
 
 // There is one async task running `handle_queue` per virtio queue in use.
@@ -332,24 +332,15 @@ pub async fn handle_queue<I: SignalableInterrupt + 'static>(
             }
         };
         while let Some(descriptor_chain) = queue.borrow_mut().pop(&mem) {
-            let queue = Rc::clone(&queue);
-            let disk_state = Rc::clone(&disk_state);
-            let mem = mem.clone();
-            let interrupt = interrupt.clone();
-            let flush_timer = Rc::clone(&flush_timer);
-            let flush_timer_armed = Rc::clone(&flush_timer_armed);
-            background_tasks.push(async move {
-                process_one_chain(
-                    queue,
-                    descriptor_chain,
-                    disk_state,
-                    mem,
-                    &interrupt,
-                    flush_timer,
-                    flush_timer_armed,
-                )
-                .await
-            });
+            background_tasks.push(process_one_chain(
+                &queue,
+                descriptor_chain,
+                &disk_state,
+                &mem,
+                &interrupt,
+                &flush_timer,
+                &flush_timer_armed,
+            ));
         }
     }
 }
@@ -390,9 +381,7 @@ async fn handle_command_tube(
         match command_tube.next().await {
             Ok(command) => {
                 let resp = match command {
-                    DiskControlCommand::Resize { new_size } => {
-                        resize(Rc::clone(&disk_state), new_size).await
-                    }
+                    DiskControlCommand::Resize { new_size } => resize(&disk_state, new_size).await,
                 };
 
                 let resp_clone = resp.clone();
@@ -425,7 +414,7 @@ async fn handle_command_tube(
     }
 }
 
-async fn resize(disk_state: Rc<AsyncRwLock<DiskState>>, new_size: u64) -> DiskControlResult {
+async fn resize(disk_state: &AsyncRwLock<DiskState>, new_size: u64) -> DiskControlResult {
     // Acquire exclusive, mutable access to the state so the virtqueue task won't be able to read
     // the state while resizing.
     let mut disk_state = disk_state.lock().await;
@@ -687,9 +676,9 @@ impl BlockAsync {
     async fn execute_request(
         reader: &mut Reader,
         writer: &mut Writer,
-        disk_state: Rc<AsyncRwLock<DiskState>>,
-        flush_timer: Rc<RefCell<TimerAsync>>,
-        flush_timer_armed: Rc<RefCell<bool>>,
+        disk_state: &AsyncRwLock<DiskState>,
+        flush_timer: &RefCell<TimerAsync>,
+        flush_timer_armed: &RefCell<bool>,
     ) -> result::Result<(), ExecuteError> {
         // Acquire immutable access to prevent tasks from resizing disk.
         let disk_state = disk_state.read_lock().await;
@@ -1284,7 +1273,12 @@ mod tests {
             })),
         }));
 
-        let fut = process_one_request(&mut avail_desc, disk_state, flush_timer, flush_timer_armed);
+        let fut = process_one_request(
+            &mut avail_desc,
+            &disk_state,
+            &flush_timer,
+            &flush_timer_armed,
+        );
 
         ex.run_until(fut)
             .expect("running executor failed")
@@ -1347,7 +1341,12 @@ mod tests {
             })),
         }));
 
-        let fut = process_one_request(&mut avail_desc, disk_state, flush_timer, flush_timer_armed);
+        let fut = process_one_request(
+            &mut avail_desc,
+            &disk_state,
+            &flush_timer,
+            &flush_timer_armed,
+        );
 
         ex.run_until(fut)
             .expect("running executor failed")
@@ -1412,7 +1411,12 @@ mod tests {
             })),
         }));
 
-        let fut = process_one_request(&mut avail_desc, disk_state, flush_timer, flush_timer_armed);
+        let fut = process_one_request(
+            &mut avail_desc,
+            &disk_state,
+            &flush_timer,
+            &flush_timer_armed,
+        );
 
         ex.run_until(fut)
             .expect("running executor failed")
