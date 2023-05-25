@@ -17,7 +17,7 @@ impl PlatformIoBuf for IoBuf {
     fn new(ptr: *mut u8, len: usize) -> Self {
         WSABUF {
             buf: ptr as *mut i8,
-            len: len as u32,
+            len: len.try_into().unwrap(),
         }
     }
 
@@ -33,7 +33,7 @@ impl PlatformIoBuf for IoBuf {
 
     #[inline]
     fn set_len(&mut self, len: usize) {
-        self.len = len as _;
+        self.len = len.try_into().unwrap();
     }
 
     #[inline]
