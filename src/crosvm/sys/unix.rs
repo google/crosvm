@@ -468,6 +468,15 @@ fn create_virtio_devices(
         )?);
     }
 
+    for (idx, rotary_socket) in cfg.virtio_rotary.iter().enumerate() {
+        devs.push(create_rotary_device(
+            cfg.protection_type,
+            &cfg.jail_config,
+            rotary_socket,
+            idx as u32,
+        )?);
+    }
+
     for dev_path in &cfg.virtio_input_evdevs {
         devs.push(create_vinput_device(
             cfg.protection_type,

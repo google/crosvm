@@ -1233,6 +1233,7 @@ pub struct Config {
     pub virtio_keyboard: Vec<PathBuf>,
     pub virtio_mice: Vec<PathBuf>,
     pub virtio_multi_touch: Vec<TouchDeviceOption>,
+    pub virtio_rotary: Vec<PathBuf>,
     pub virtio_single_touch: Vec<TouchDeviceOption>,
     #[cfg(feature = "audio")]
     #[serde(skip)]
@@ -1443,6 +1444,7 @@ impl Default for Config {
             virtio_keyboard: Vec::new(),
             virtio_mice: Vec::new(),
             virtio_multi_touch: Vec::new(),
+            virtio_rotary: Vec::new(),
             virtio_single_touch: Vec::new(),
             #[cfg(feature = "audio")]
             virtio_snds: Vec::new(),

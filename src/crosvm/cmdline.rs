@@ -1760,6 +1760,12 @@ pub struct RunCommand {
     ///     o_direct=BOOL - Use O_DIRECT mode to bypass page cache
     root: Option<DiskOptionWithId>,
 
+    #[argh(option, arg_name = "PATH")]
+    #[serde(skip)] // TODO(b/255223604)
+    #[merge(strategy = append)]
+    /// path to a socket from where to read rotary input events and write status updates to
+    pub rotary: Vec<PathBuf>,
+
     #[argh(option, arg_name = "CPUSET")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
@@ -2776,6 +2782,7 @@ impl TryFrom<RunCommand> for super::config::Config {
         cfg.virtio_mice = cmd.mouse;
         cfg.virtio_keyboard = cmd.keyboard;
         cfg.virtio_switches = cmd.switches;
+        cfg.virtio_rotary = cmd.rotary;
         cfg.virtio_input_evdevs = cmd.evdev;
 
         cfg.irq_chip = cmd.irqchip;

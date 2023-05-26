@@ -746,3 +746,20 @@ where
         virtio_features,
     })
 }
+
+/// Creates a new virtio device for rotary.
+pub fn new_rotary<T>(
+    idx: u32,
+    source: T,
+    virtio_features: u64,
+) -> Result<Input<SocketEventSource<T>>>
+where
+    T: Read + Write + AsRawDescriptor + Send + 'static,
+{
+    Ok(Input {
+        worker_thread: None,
+        config: defaults::new_rotary_config(idx),
+        source: Some(SocketEventSource::new(source)),
+        virtio_features,
+    })
+}

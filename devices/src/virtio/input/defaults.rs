@@ -67,6 +67,18 @@ pub fn new_switches_config(idx: u32) -> VirtioInputConfig {
     )
 }
 
+/// Instantiates a VirtioInputConfig object with the default configuration for a collection of rotary.
+pub fn new_rotary_config(idx: u32) -> VirtioInputConfig {
+    VirtioInputConfig::new(
+        virtio_input_device_ids::new(0, 0, 0, 0),
+        name_with_index(b"Crosvm Virtio Rotary ", idx),
+        name_with_index(b"virtio-rotary-", idx),
+        virtio_input_bitmap::new([0u8; 128]),
+        default_rotary_events(),
+        BTreeMap::new(),
+    )
+}
+
 /// Instantiates a VirtioInputConfig object with the default configuration for a touchscreen (no
 /// multitouch support).
 pub fn new_single_touch_config(idx: u32, width: u32, height: u32) -> VirtioInputConfig {
@@ -320,6 +332,12 @@ fn default_switch_events() -> BTreeMap<u16, virtio_input_bitmap> {
             SW_MACHINE_COVER,
         ]),
     );
+    supported_events
+}
+
+fn default_rotary_events() -> BTreeMap<u16, virtio_input_bitmap> {
+    let mut supported_events: BTreeMap<u16, virtio_input_bitmap> = BTreeMap::new();
+    supported_events.insert(EV_REL, virtio_input_bitmap::from_bits(&[REL_WHEEL]));
     supported_events
 }
 

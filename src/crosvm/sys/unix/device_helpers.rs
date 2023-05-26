@@ -678,6 +678,25 @@ pub fn create_switches_device<T: IntoUnixStream>(
     })
 }
 
+pub fn create_rotary_device<T: IntoUnixStream>(
+    protection_type: ProtectionType,
+    jail_config: &Option<JailConfig>,
+    rotary_socket: T,
+    idx: u32,
+) -> DeviceResult {
+    let socket = rotary_socket
+        .into_unix_stream()
+        .context("failed configuring virtio rotary")?;
+
+    let dev = virtio::new_rotary(idx, socket, virtio::base_features(protection_type))
+        .context("failed to set up input device")?;
+
+    Ok(VirtioDeviceStub {
+        dev: Box::new(dev),
+        jail: simple_jail(jail_config, "input_device")?,
+    })
+}
+
 pub fn create_vinput_device(
     protection_type: ProtectionType,
     jail_config: &Option<JailConfig>,

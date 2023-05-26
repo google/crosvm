@@ -334,6 +334,22 @@ mod tests {
     }
 
     #[test]
+    fn virtio_rotary() {
+        let mut config: Config = crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &["--rotary", "/dev/rotary-test", "/dev/null"],
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        assert_eq!(
+            config.virtio_rotary.pop().unwrap(),
+            PathBuf::from("/dev/rotary-test")
+        );
+    }
+
+    #[test]
     fn vfio_pci_path() {
         let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
             &[],
