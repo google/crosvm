@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-mod sys;
-
 use std::borrow::Cow;
 use std::cmp;
 use std::io;
@@ -858,7 +856,9 @@ mod tests {
     use std::fs::File;
     use std::io::Read;
 
+    use cros_async::Executor;
     use tempfile::tempfile;
+    use tempfile::NamedTempFile;
 
     use super::*;
 
@@ -1576,5 +1576,79 @@ mod tests {
         reader
             .peek_obj::<Le16>()
             .expect_err("peek_obj past end of chain");
+    }
+
+    #[test]
+    fn region_reader_failing_io() {
+        let ex = Executor::new().unwrap();
+        ex.run_until(region_reader_failing_io_async(&ex)).unwrap();
+    }
+    async fn region_reader_failing_io_async(ex: &Executor) {
+        use DescriptorType::*;
+
+        let memory_start_addr = GuestAddress(0x0);
+        let memory = GuestMemory::new(&[(memory_start_addr, 0x10000)]).unwrap();
+
+        let mut chain = create_descriptor_chain(
+            &memory,
+            GuestAddress(0x0),
+            GuestAddress(0x100),
+            vec![(Readable, 256), (Readable, 256)],
+            0,
+        )
+        .expect("create_descriptor_chain failed");
+
+        let reader = &mut chain.reader;
+
+        // Open a file in read-only mode so writes to it to trigger an I/O error.
+        let named_temp_file = NamedTempFile::new().expect("failed to create temp file");
+        let ro_file =
+            File::open(named_temp_file.path()).expect("failed to open temp file read only");
+        let async_ro_file = disk::SingleFileDisk::new(ro_file, ex).expect("Failed to crate SFD");
+
+        reader
+            .read_exact_to_at_fut(&async_ro_file, 512, 0)
+            .await
+            .expect_err("successfully read more bytes than SingleFileDisk size");
+
+        // The write above should have failed entirely, so we end up not writing any bytes at all.
+        assert_eq!(reader.available_bytes(), 512);
+        assert_eq!(reader.bytes_read(), 0);
+    }
+
+    #[test]
+    fn region_writer_failing_io() {
+        let ex = Executor::new().unwrap();
+        ex.run_until(region_writer_failing_io_async(&ex)).unwrap()
+    }
+    async fn region_writer_failing_io_async(ex: &Executor) {
+        use DescriptorType::*;
+
+        let memory_start_addr = GuestAddress(0x0);
+        let memory = GuestMemory::new(&[(memory_start_addr, 0x10000)]).unwrap();
+
+        let mut chain = create_descriptor_chain(
+            &memory,
+            GuestAddress(0x0),
+            GuestAddress(0x100),
+            vec![(Writable, 256), (Writable, 256)],
+            0,
+        )
+        .expect("create_descriptor_chain failed");
+
+        let writer = &mut chain.writer;
+
+        let file = tempfile().expect("failed to create temp file");
+
+        file.set_len(384).unwrap();
+        let async_file = disk::SingleFileDisk::new(file, ex).expect("Failed to crate SFD");
+
+        writer
+            .write_all_from_at_fut(&async_file, 512, 0)
+            .await
+            .expect_err("successfully wrote more bytes than in SingleFileDisk");
+
+        assert_eq!(writer.available_bytes(), 128);
+        assert_eq!(writer.bytes_written(), 384);
     }
 }
