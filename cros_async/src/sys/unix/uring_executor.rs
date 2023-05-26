@@ -179,7 +179,7 @@ static IS_URING_STABLE: Lazy<bool> = Lazy::new(|| {
 // Checks if the uring executor is stable.
 // Caches the result so that the check is only run once.
 // Useful for falling back to the FD executor on pre-uring kernels.
-pub(crate) fn is_uring_stable() -> bool {
+pub fn is_uring_stable() -> bool {
     *IS_URING_STABLE
 }
 

@@ -165,6 +165,12 @@ pub enum SetDefaultExecutorKindError {
     UringUnavailable(UringError),
 }
 
+/// Reference to a task managed by the executor.
+///
+/// Dropping a `TaskHandle` attempts to cancel the associated task. Call `detach` to allow it to
+/// continue running the background.
+///
+/// `await`ing the `TaskHandle` waits for the task to finish and yields its result.
 pub enum TaskHandle<R> {
     Uring(common_executor::TaskHandle<UringReactor, R>),
     Fd(common_executor::TaskHandle<EpollReactor, R>),
@@ -175,6 +181,15 @@ impl<R: Send + 'static> TaskHandle<R> {
         match self {
             TaskHandle::Uring(x) => x.detach(),
             TaskHandle::Fd(x) => x.detach(),
+        }
+    }
+
+    // Cancel the task and wait for it to stop. Returns the result of the task if it was already
+    // finished.
+    pub async fn cancel(self) -> Option<R> {
+        match self {
+            TaskHandle::Uring(x) => x.cancel().await,
+            TaskHandle::Fd(x) => x.cancel().await,
         }
     }
 }

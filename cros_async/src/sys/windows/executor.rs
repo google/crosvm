@@ -149,6 +149,12 @@ pub enum SetDefaultExecutorKindError {
     SetMoreThanOnce(ExecutorKind),
 }
 
+/// Reference to a task managed by the executor.
+///
+/// Dropping a `TaskHandle` attempts to cancel the associated task. Call `detach` to allow it to
+/// continue running the background.
+///
+/// `await`ing the `TaskHandle` waits for the task to finish and yields its result.
 pub enum TaskHandle<R> {
     Handle(common_executor::TaskHandle<HandleReactor, R>),
 }
@@ -157,6 +163,14 @@ impl<R: Send + 'static> TaskHandle<R> {
     pub fn detach(self) {
         match self {
             TaskHandle::Handle(x) => x.detach(),
+        }
+    }
+
+    // Cancel the task and wait for it to stop. Returns the result of the task if it was already
+    // finished.
+    pub async fn cancel(self) -> Option<R> {
+        match self {
+            TaskHandle::Handle(x) => x.cancel().await,
         }
     }
 }

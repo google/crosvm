@@ -235,6 +235,10 @@ impl<Re: Reactor, R: Send + 'static> TaskHandle<Re, R> {
             raw.detached_tasks.lock().push(self.task);
         }
     }
+
+    pub async fn cancel(self) -> Option<R> {
+        self.task.cancel().await
+    }
 }
 
 impl<Re: Reactor, R: 'static> Future for TaskHandle<Re, R> {
