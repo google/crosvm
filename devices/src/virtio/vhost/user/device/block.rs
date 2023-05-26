@@ -13,14 +13,15 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
-use base::warn;
 use base::Event;
 use base::Timer;
+use base::{error, warn};
 use cros_async::sync::RwLock as AsyncRwLock;
 use cros_async::AsyncTube;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::ExecutorKind;
+use cros_async::TaskHandle;
 use cros_async::TimerAsync;
 use futures::future::AbortHandle;
 use futures::future::Abortable;
@@ -65,6 +66,13 @@ struct BlockBackend {
     flush_timer_armed: Rc<RefCell<bool>>,
     backend_req_conn: Arc<Mutex<VhostBackendReqConnectionState>>,
     workers: [Option<WorkerState<Rc<RefCell<Queue>>, ()>>; NUM_QUEUES as usize],
+    flush_disk_worker_state: Option<BlockNonQueueWorker>,
+    vhost_command_tube_worker_state: Option<BlockNonQueueWorker>,
+}
+
+struct BlockNonQueueWorker {
+    abort_handle: AbortHandle,
+    task: TaskHandle<()>,
 }
 
 impl VhostUserDevice for BlockAsync {
@@ -112,23 +120,54 @@ impl VhostUserDevice for BlockAsync {
             .context("Failed to clone flush_timer")
             .and_then(|t| TimerAsync::new(t, ex).context("Failed to create an async timer"))?;
         let flush_timer_armed = Rc::new(RefCell::new(false));
-        ex.spawn_local(flush_disk(
-            Rc::clone(&disk_state),
-            flush_timer_read,
-            Rc::clone(&flush_timer_armed),
-        ))
-        .detach();
+
+        let (abort_handle, registration) = AbortHandle::new_pair();
+        let disk_state_clone = disk_state.clone();
+        let flush_timer_armed_clone = flush_timer_armed.clone();
+        let task = ex.spawn_local(async {
+            let _ = Abortable::new(
+                async {
+                    if let Err(e) =
+                        flush_disk(disk_state_clone, flush_timer_read, flush_timer_armed_clone)
+                            .await
+                    {
+                        error!("flush_disk task failed: {:?}", e);
+                    }
+                },
+                registration,
+            )
+            .await;
+        });
+
+        let flush_disk_worker_state = Some(BlockNonQueueWorker { abort_handle, task });
 
         let backend_req_conn = Arc::new(Mutex::new(VhostBackendReqConnectionState::NoConnection));
-        if let Some(control_tube) = self.control_tube.take() {
+        let vhost_command_tube_worker_state = if let Some(control_tube) = self.control_tube.take() {
+            let (abort_handle, registration) = AbortHandle::new_pair();
             let async_tube = AsyncTube::new(ex, control_tube)?;
-            ex.spawn_local(handle_vhost_user_command_tube(
-                async_tube,
-                Arc::clone(&backend_req_conn),
-                Rc::clone(&disk_state),
-            ))
-            .detach();
-        }
+            let backend_req_connection_clone = backend_req_conn.clone();
+            let disk_state_clone = disk_state.clone();
+            let task = ex.spawn_local(async {
+                let _ = Abortable::new(
+                    async {
+                        if let Err(e) = handle_vhost_user_command_tube(
+                            async_tube,
+                            backend_req_connection_clone,
+                            disk_state_clone,
+                        )
+                        .await
+                        {
+                            error!("handle_vhost_user_command_tube task failed: {}", e);
+                        }
+                    },
+                    registration,
+                )
+                .await;
+            });
+            Some(BlockNonQueueWorker { abort_handle, task })
+        } else {
+            None
+        };
 
         let backend = BlockBackend {
             ex: ex.clone(),
@@ -143,6 +182,8 @@ impl VhostUserDevice for BlockAsync {
             backend_req_conn: Arc::clone(&backend_req_conn),
             flush_timer_armed,
             workers: Default::default(),
+            flush_disk_worker_state,
+            vhost_command_tube_worker_state,
         };
 
         let handler = DeviceRequestHandler::new(Box::new(backend), ops);
@@ -255,7 +296,7 @@ impl VhostUserBackend for BlockBackend {
             worker.abort_handle.abort();
 
             // Wait for queue_task to be aborted.
-            let _ = self.ex.run_until(async { worker.queue_task.await });
+            let _ = self.ex.run_until(worker.queue_task);
 
             let queue = match Rc::try_unwrap(worker.queue) {
                 Ok(queue_cell) => queue_cell.into_inner(),
@@ -276,5 +317,22 @@ impl VhostUserBackend for BlockBackend {
         }
 
         *backend_req_conn = VhostBackendReqConnectionState::Connected(conn);
+    }
+
+    fn stop_non_queue_workers(&mut self) -> anyhow::Result<()> {
+        if let Some(flush_disk_worker_state) = self.flush_disk_worker_state.take() {
+            flush_disk_worker_state.abort_handle.abort();
+            self.ex.run_until(flush_disk_worker_state.task)?;
+        }
+
+        if let Some(vhost_user_command_tube_worker_state) =
+            self.vhost_command_tube_worker_state.take()
+        {
+            vhost_user_command_tube_worker_state.abort_handle.abort();
+            self.ex
+                .run_until(async { vhost_user_command_tube_worker_state.task.await })?;
+        }
+
+        Ok(())
     }
 }

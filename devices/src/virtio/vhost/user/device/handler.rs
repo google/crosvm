@@ -224,6 +224,13 @@ pub trait VhostUserBackend {
     fn set_backend_req_connection(&mut self, _conn: VhostBackendReqConnection) {
         error!("set_backend_req_connection is not implemented");
     }
+
+    /// Used to stop non queue workers that `VhostUserBackend::stop_queue` can't stop.
+    fn stop_non_queue_workers(&mut self) -> anyhow::Result<()> {
+        error!("sleep not implemented for device");
+        // TODO(rizhang): Return error once basic devices support this.
+        Ok(())
+    }
 }
 
 /// A virtio ring entry.
@@ -710,7 +717,9 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
                 }
             }
         }
-        Ok(())
+        self.backend
+            .stop_non_queue_workers()
+            .map_err(VhostError::SleepError)
     }
 }
 

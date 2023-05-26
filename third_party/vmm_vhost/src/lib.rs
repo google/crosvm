@@ -130,6 +130,9 @@ pub enum Error {
     /// Failure from the slave side.
     #[error("slave internal error")]
     SlaveInternalError,
+    /// Failure to run device specific sleep.
+    #[error("Failed to run device specific sleep: {0}")]
+    SleepError(anyhow::Error),
     /// The socket is broken or has been closed.
     #[error("socket is broken: {0}")]
     SocketBroken(std::io::Error),
