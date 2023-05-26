@@ -3074,6 +3074,21 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                             continue;
                         }
 
+                        // Ignore clean exits of non-tracked child processes when running without
+                        // sandboxing. The virtio gpu process launches a render server for
+                        // pass-through graphics. Host GPU drivers have been observed to fork
+                        // child processes that exit cleanly which should not be considered a
+                        // crash. When running with sandboxing, this should be handled by the
+                        // device's process handler.
+                        if cfg.jail_config.is_none()
+                            && !linux.pid_debug_label_map.contains_key(&pid)
+                            && siginfo.ssi_signo == libc::SIGCHLD as u32
+                            && siginfo.ssi_code == libc::CLD_EXITED
+                            && siginfo.ssi_status == 0
+                        {
+                            continue;
+                        }
+
                         error!(
                             "child {} exited: signo {}, status {}, code {}",
                             pid_label, siginfo.ssi_signo, siginfo.ssi_status, siginfo.ssi_code
