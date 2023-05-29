@@ -31,6 +31,7 @@ use std::iter;
 use std::mem;
 use std::os::windows::fs::OpenOptionsExt;
 use std::path::PathBuf;
+use std::sync::mpsc;
 use std::sync::Arc;
 
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
@@ -116,6 +117,7 @@ use devices::GvmIrqChip;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use devices::IrqChip;
 use devices::UserspaceIrqChip;
+use devices::VcpuRunState;
 use devices::VirtioPciDevice;
 #[cfg(feature = "whpx")]
 use devices::WhpxSplitIrqChip;
@@ -183,6 +185,8 @@ use vm_control::api::VmMemoryClient;
 use vm_control::BalloonControlCommand;
 use vm_control::DeviceControlCommand;
 use vm_control::IrqHandlerRequest;
+use vm_control::PvClockCommand;
+use vm_control::VcpuControl;
 use vm_control::VmMemoryRegionState;
 use vm_control::VmMemoryRequest;
 use vm_control::VmRequest;
@@ -788,6 +792,7 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     device_ctrl_tube: &Tube,
     wait_ctx: &WaitContext<Token>,
     force_s2idle: bool,
+    vcpu_control_channels: &[mpsc::Sender<VcpuControl>],
 ) -> Result<(bool, Option<ExitState>)> {
     match event.token {
         Token::VmEvent => match vm_evt_rdtube.recv::<VmEventType>() {
@@ -913,6 +918,7 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                     let mut balloon_stats_id = 0;
                                     #[cfg(feature = "balloon")]
                                     let mut balloon_wss_id = 0;
+                                    let vcpu_size = vcpu_boxes.lock().len();
                                     let response = request.execute(
                                         &mut run_mode_opt,
                                         #[cfg(feature = "balloon")]
@@ -928,16 +934,31 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                         None,
                                         &mut None,
                                         |msg| {
-                                            unimplemented!("todo: implement kick_all_vcpus");
+                                            kick_all_vcpus(
+                                                run_mode_arc,
+                                                vcpu_control_channels,
+                                                vcpu_boxes,
+                                                guest_os.irq_chip.as_ref(),
+                                                pvclock_host_tube,
+                                                msg,
+                                            );
                                         },
                                         |msg, index| {
-                                            unimplemented!("todo: implement kick_vcpu");
+                                            kick_vcpu(
+                                                run_mode_arc,
+                                                vcpu_control_channels,
+                                                vcpu_boxes,
+                                                guest_os.irq_chip.as_ref(),
+                                                pvclock_host_tube,
+                                                index,
+                                                msg,
+                                            );
                                         },
                                         force_s2idle,
                                         #[cfg(feature = "swap")]
                                         None,
                                         device_ctrl_tube,
-                                        vcpu_boxes.lock().len(),
+                                        vcpu_size,
                                         irq_handler_control,
                                         || {
                                             unimplemented!("todo: implement snapshot_irqchip");
@@ -1144,7 +1165,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 
     let vcpu_boxes: Arc<Mutex<Vec<Box<dyn VcpuArch>>>> = Arc::new(Mutex::new(Vec::new()));
     let run_mode_arc = Arc::new(VcpuRunMode::default());
-    let vcpu_threads = run_all_vcpus(
+    let (vcpu_threads, vcpu_control_channels) = run_all_vcpus(
         vcpus,
         vcpu_boxes.clone(),
         &guest_os,
@@ -1207,6 +1228,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 &device_ctrl_tube,
                 &wait_ctx,
                 force_s2idle,
+                &vcpu_control_channels,
             )?;
             if let Some(state) = state {
                 exit_state = state;
@@ -1387,6 +1409,131 @@ fn remove_closed_tubes(
         }
     }
     Ok(())
+}
+
+/// Sends a message to all VCPUs.
+fn kick_all_vcpus(
+    run_mode: &VcpuRunMode,
+    vcpu_control_channels: &[mpsc::Sender<VcpuControl>],
+    vcpu_boxes: &Mutex<Vec<Box<dyn VcpuArch>>>,
+    irq_chip: &dyn IrqChipArch,
+    pvclock_host_tube: &Option<Tube>,
+    msg: VcpuControl,
+) {
+    // On Windows, we handle run mode switching directly rather than delegating to the VCPU thread
+    // like unix does.
+    match &msg {
+        VcpuControl::RunState(VmRunMode::Suspending) => {
+            suspend_all_vcpus(run_mode, vcpu_boxes, irq_chip, pvclock_host_tube);
+            return;
+        }
+        VcpuControl::RunState(VmRunMode::Running) => {
+            resume_all_vcpus(run_mode, vcpu_boxes, irq_chip, pvclock_host_tube);
+            return;
+        }
+        _ => (),
+    }
+
+    // For non RunState commands, we dispatch just like unix would.
+    for vcpu in vcpu_control_channels {
+        if let Err(e) = vcpu.send(msg.clone()) {
+            error!("failed to send VcpuControl message: {}", e);
+        }
+    }
+
+    // Now that we've sent a message, we need VCPUs to exit so they can process it.
+    for vcpu in vcpu_boxes.lock().iter() {
+        vcpu.set_immediate_exit(true);
+    }
+    irq_chip.kick_halted_vcpus();
+
+    // If the VCPU isn't running, we have to notify the run_mode condvar to wake it so it processes
+    // the control message.
+    let current_run_mode = run_mode.get_mode();
+    if current_run_mode != VmRunMode::Running {
+        run_mode.set_and_notify(current_run_mode);
+    }
+}
+
+/// Sends a message to a single VCPU. On Windows, `VcpuControl::RunState` cannot be sent to a single
+/// VCPU.
+fn kick_vcpu(
+    run_mode: &VcpuRunMode,
+    vcpu_control_channels: &[mpsc::Sender<VcpuControl>],
+    vcpu_boxes: &Mutex<Vec<Box<dyn VcpuArch>>>,
+    irq_chip: &dyn IrqChipArch,
+    pvclock_host_tube: &Option<Tube>,
+    index: usize,
+    msg: VcpuControl,
+) {
+    assert!(
+        !matches!(msg, VcpuControl::RunState(_)),
+        "Windows does not support RunState changes on a per VCPU basis"
+    );
+
+    let vcpu = vcpu_control_channels
+        .get(index)
+        .expect("invalid vcpu index specified");
+    if let Err(e) = vcpu.send(msg) {
+        error!("failed to send VcpuControl message: {}", e);
+    }
+
+    // Now that we've sent a message, we need the VCPU to exit so it can
+    // process the message.
+    vcpu_boxes
+        .lock()
+        .get(index)
+        .expect("invalid vcpu index specified")
+        .set_immediate_exit(true);
+    irq_chip.kick_halted_vcpus();
+
+    // If the VCPU isn't running, we have to notify the run_mode condvar to wake it so it processes
+    // the control message. (Technically this wakes all VCPUs, but those without messages will go
+    // back to sleep.)
+    let current_run_mode = run_mode.get_mode();
+    if current_run_mode != VmRunMode::Running {
+        run_mode.set_and_notify(current_run_mode);
+    }
+}
+
+/// Suspends all VCPUs. The VM will be effectively frozen in time once this function is called,
+/// though devices on the host will continue to run.
+pub(crate) fn suspend_all_vcpus(
+    run_mode: &VcpuRunMode,
+    vcpu_boxes: &Mutex<Vec<Box<dyn VcpuArch>>>,
+    irq_chip: &dyn IrqChipArch,
+    pvclock_host_tube: &Option<Tube>,
+) {
+    // VCPU threads MUST see the VmRunMode::Suspending flag first, otherwise
+    // they may re-enter the VM.
+    run_mode.set_and_notify(VmRunMode::Suspending);
+
+    // Force all vcpus to exit from the hypervisor
+    for vcpu in vcpu_boxes.lock().iter() {
+        vcpu.set_immediate_exit(true);
+    }
+    irq_chip.kick_halted_vcpus();
+
+    handle_pvclock_request(pvclock_host_tube, PvClockCommand::Suspend)
+        .unwrap_or_else(|e| error!("Error handling pvclock suspend: {:?}", e));
+}
+
+/// Resumes all VCPUs.
+pub(crate) fn resume_all_vcpus(
+    run_mode: &VcpuRunMode,
+    vcpu_boxes: &Mutex<Vec<Box<dyn VcpuArch>>>,
+    irq_chip: &dyn IrqChipArch,
+    pvclock_host_tube: &Option<Tube>,
+) {
+    handle_pvclock_request(pvclock_host_tube, PvClockCommand::Resume)
+        .unwrap_or_else(|e| error!("Error handling pvclock resume: {:?}", e));
+
+    // Make sure any immediate exit bits are disabled
+    for vcpu in vcpu_boxes.lock().iter() {
+        vcpu.set_immediate_exit(false);
+    }
+
+    run_mode.set_and_notify(VmRunMode::Running);
 }
 
 #[cfg(feature = "gvm")]

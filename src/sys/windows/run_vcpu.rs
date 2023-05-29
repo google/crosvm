@@ -9,6 +9,7 @@ use std::fmt;
 use std::fmt::Display;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
+use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Barrier;
 use std::thread;
@@ -66,6 +67,7 @@ use hypervisor::VcpuExit;
 use hypervisor::VcpuInitX86_64;
 use sync::Condvar;
 use sync::Mutex;
+use vm_control::VcpuControl;
 use vm_control::VmRunMode;
 use winapi::shared::winerror::ERROR_RETRY;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -91,6 +93,10 @@ pub struct VcpuRunMode {
 }
 
 impl VcpuRunMode {
+    pub fn get_mode(&self) -> VmRunMode {
+        *self.mtx.lock()
+    }
+
     pub fn set_and_notify(&self, new_mode: VmRunMode) {
         *self.mtx.lock() = new_mode;
         self.cvar.notify_all();
@@ -266,6 +272,7 @@ impl VcpuRunThread {
         host_cpu_topology: bool,
         tsc_offset: Option<u64>,
         force_calibrated_tsc_leaf: bool,
+        vcpu_control: mpsc::Receiver<VcpuControl>,
     ) -> Result<JoinHandle<Result<()>>>
     where
         V: VcpuArch + 'static,
@@ -358,6 +365,7 @@ impl VcpuRunThread {
                         stats,
                         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
                         cpuid_context,
+                        vcpu_control,
                     )
                 };
 
@@ -551,8 +559,9 @@ pub fn run_all_vcpus<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     run_mode_arc: Arc<VcpuRunMode>,
     tsc_sync_mitigations: TscSyncMitigations,
     force_calibrated_tsc_leaf: bool,
-) -> Result<Vec<JoinHandle<Result<()>>>> {
+) -> Result<(Vec<JoinHandle<Result<()>>>, Vec<mpsc::Sender<VcpuControl>>)> {
     let mut vcpu_threads = Vec::with_capacity(guest_os.vcpu_count + 1);
+    let mut vcpu_control_channels = Vec::with_capacity(guest_os.vcpu_count);
     let start_barrier = Arc::new(Barrier::new(guest_os.vcpu_count + 1));
     let enable_vcpu_monitoring = anti_tamper::enable_vcpu_monitoring();
     setup_vcpu_signal_handler()?;
@@ -596,6 +605,8 @@ pub fn run_all_vcpus<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         // - GHAXM/HAXM cannot create vcpu0 in parallel with other Vcpus.
         let vcpu_create_barrier = Arc::new(Barrier::new(2));
         let vcpu_run_thread = VcpuRunThread::new(cpu_id, enable_vcpu_monitoring);
+        let (vcpu_control_send, vcpu_control_recv) = mpsc::channel();
+        vcpu_control_channels.push(vcpu_control_send);
         let join_handle = vcpu_run_thread.run(
             vcpu,
             vcpu_init.clone(),
@@ -628,6 +639,7 @@ pub fn run_all_vcpus<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             host_cpu_topology,
             tsc_offset,
             force_calibrated_tsc_leaf,
+            vcpu_control_recv,
         )?;
         if let Some(ref mut monitor) = stall_monitor {
             monitor.add_vcpu_thread(vcpu_run_thread);
@@ -643,7 +655,7 @@ pub fn run_all_vcpus<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     }
     // Now wait on the start barrier to start all threads at the same time.
     start_barrier.wait();
-    Ok(vcpu_threads)
+    Ok((vcpu_threads, vcpu_control_channels))
 }
 
 fn vcpu_loop<V>(
@@ -657,6 +669,7 @@ fn vcpu_loop<V>(
     run_mode_arc: Arc<VcpuRunMode>,
     #[cfg(feature = "stats")] stats: Option<Arc<Mutex<StatisticsCollector>>>,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] cpuid_context: CpuIdContext,
+    vcpu_control: mpsc::Receiver<VcpuControl>,
 ) -> Result<ExitState>
 where
     V: VcpuArch + 'static,
@@ -926,6 +939,8 @@ where
                 run_mode_lock = run_mode_arc.cvar.wait(run_mode_lock);
             }
         }
+
+        // TODO(b/283520036): check for VcpuControl messages here & respond to them
 
         irq_chip.inject_interrupts(&vcpu).unwrap_or_else(|e| {
             error!(
