@@ -20,6 +20,7 @@ use std::time::Instant;
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
 use aarch64::AArch64 as Arch;
 use anyhow::anyhow;
+use anyhow::Context;
 use anyhow::Result;
 use arch::CpuConfigArch;
 use arch::CpuSet;
@@ -907,7 +908,10 @@ where
             let mut run_mode_lock = run_mode_arc.mtx.lock();
             loop {
                 match *run_mode_lock {
-                    VmRunMode::Running => break,
+                    VmRunMode::Running => {
+                        process_vcpu_control_messages(&mut vcpu, *run_mode_lock, &vcpu_control);
+                        break;
+                    }
                     VmRunMode::Suspending => {
                         // On KVM implementations that use a paravirtualized clock (e.g.
                         // x86), a flag must be set to indicate to the guest kernel that
@@ -933,6 +937,15 @@ where
                         return Ok(ExitState::Stop);
                     }
                 }
+
+                // For non running modes, we don't want to process messages until we've completed
+                // *all* work for any VmRunMode transition. This is because one control message
+                // asks us to inform the requestor of our current state. We want to make sure our
+                // our state has completely transitioned before we respond to the requestor. If
+                // we do this elsewhere, we might respond while in a partial state which could
+                // break features like snapshotting (e.g. by introducing a race condition).
+                process_vcpu_control_messages(&mut vcpu, *run_mode_lock, &vcpu_control);
+
                 // Give ownership of our exclusive lock to the condition variable that
                 // will block. When the condition variable is notified, `wait` will
                 // unblock and return a new exclusive lock.
@@ -940,14 +953,64 @@ where
             }
         }
 
-        // TODO(b/283520036): check for VcpuControl messages here & respond to them
-
         irq_chip.inject_interrupts(&vcpu).unwrap_or_else(|e| {
             error!(
                 "failed to inject interrupts for vcpu {}: {}",
                 context.cpu_id, e
             )
         });
+    }
+}
+
+fn process_vcpu_control_messages<V>(
+    vcpu: &mut V,
+    run_mode: VmRunMode,
+    vcpu_control: &mpsc::Receiver<VcpuControl>,
+) where
+    V: VcpuArch + 'static,
+{
+    let control_messages: Vec<VcpuControl> = vcpu_control.try_iter().collect();
+
+    for msg in control_messages {
+        match msg {
+            VcpuControl::RunState(new_mode) => {
+                panic!("VCPUs do not handle RunState messages on Windows")
+            }
+            #[cfg(feature = "gdb")]
+            VcpuControl::Debug(d) => {
+                unimplemented!("Windows VCPUs do not support debug yet.");
+            }
+            VcpuControl::MakeRT => {
+                unimplemented!("Windows VCPUs do not support on demand RT.");
+            }
+            VcpuControl::GetStates(response_chan) => {
+                // Wondering why we need this given that the state value is already in an Arc?
+                //
+                // The control loop generally sets the run mode directly via the Arc; however,
+                // it has no way of knowing *when* the VCPU threads have actually acknowledged
+                // the new value. By returning the value in here, we prove the the control loop
+                // we have accepted the new value and are done with our state change.
+                if let Err(e) = response_chan.send(run_mode) {
+                    error!("Failed to send GetState: {}", e);
+                };
+            }
+            VcpuControl::Snapshot(response_chan) => {
+                let resp = vcpu
+                    .snapshot()
+                    .with_context(|| format!("Failed to snapshot Vcpu #{}", vcpu.id()));
+                if let Err(e) = response_chan.send(resp) {
+                    error!("Failed to send snapshot response: {}", e);
+                }
+            }
+            VcpuControl::Restore(response_chan, vcpu_data) => {
+                let resp = vcpu
+                    .restore(&vcpu_data)
+                    .with_context(|| format!("Failed to restore Vcpu #{}", vcpu.id()));
+                if let Err(e) = response_chan.send(resp) {
+                    error!("Failed to send restore response: {}", e);
+                }
+            }
+        }
     }
 }
 
