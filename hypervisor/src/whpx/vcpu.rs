@@ -1652,4 +1652,23 @@ mod tests {
         let interrupt_state = vcpu.get_interrupt_state().unwrap();
         vcpu.set_interrupt_state(interrupt_state).unwrap();
     }
+
+    #[test]
+    fn get_all_msrs() {
+        if !Whpx::is_enabled() {
+            return;
+        }
+        let cpu_count = 1;
+        let mem =
+            GuestMemory::new(&[(GuestAddress(0), 0x1000)]).expect("failed to create guest memory");
+        let vm = new_vm(cpu_count, mem);
+        let vcpu = vm.create_vcpu(0).expect("failed to create vcpu");
+
+        let all_msrs = vcpu.get_all_msrs().unwrap();
+
+        // Our MSR buffer is init'ed to zeros in the registers. The APIC base will be non-zero, so
+        // by asserting that we know the MSR fetch actually did get us data.
+        let apic_base = all_msrs.iter().find(|reg| reg.id == MSR_APIC_BASE).unwrap();
+        assert_ne!(apic_base.value, 0);
+    }
 }
