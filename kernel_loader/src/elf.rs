@@ -12,6 +12,8 @@ use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
 pub const __BITS_PER_LONG: u32 = 64;
+pub const BITS_PER_LONG: u32 = 32;
+pub const BITS_PER_LONG_LONG: u32 = 64;
 pub const __FD_SETSIZE: u32 = 1024;
 pub const EM_NONE: u32 = 0;
 pub const EM_M32: u32 = 1;
@@ -272,6 +274,9 @@ pub const NT_LOONGARCH_LBT: u32 = 2564;
 pub const NT_GNU_PROPERTY_TYPE_0: u32 = 5;
 pub const GNU_PROPERTY_AARCH64_FEATURE_1_AND: u32 = 3221225472;
 pub const GNU_PROPERTY_AARCH64_FEATURE_1_BTI: u32 = 1;
+pub const false_: _bindgen_ty_1 = 0;
+pub const true_: _bindgen_ty_1 = 1;
+pub type _bindgen_ty_1 = ::std::os::raw::c_uint;
 pub type Elf32_Addr = u32;
 pub type Elf32_Half = u16;
 pub type Elf32_Off = u32;

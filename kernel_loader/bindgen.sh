@@ -25,8 +25,8 @@ bindgen_generate \
     --with-derive-custom "elf64_hdr=FromBytes,AsBytes" \
     --with-derive-custom "elf32_phdr=FromBytes,AsBytes" \
     --with-derive-custom "elf64_phdr=FromBytes,AsBytes" \
-    "${BINDGEN_LINUX_X86_HEADERS}/include/linux/elf.h" \
+    "${BINDGEN_LINUX}/include/uapi/linux/elf.h" \
     -- \
-    -isystem "${BINDGEN_LINUX_X86_HEADERS}/include" \
+    -isystem "${BINDGEN_LINUX}/include" \
     | replace_linux_int_types \
     > kernel_loader/src/elf.rs
