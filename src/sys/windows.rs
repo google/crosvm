@@ -229,6 +229,9 @@ use crate::sys::windows::product::MetricEventType;
 
 const DEFAULT_GUEST_CID: u64 = 3;
 
+// by default, if enabled, the balloon WS features will use 4 bins.
+const VIRTIO_BALLOON_WS_DEFAULT_NUM_BINS: u8 = 4;
+
 enum TaggedControlTube {
     Vm(FlushOnDropTube),
     VmMemory(Tube),
@@ -453,6 +456,7 @@ fn create_balloon_device(
         balloon_features,
         #[cfg(feature = "registered_events")]
         None,
+        VIRTIO_BALLOON_WS_DEFAULT_NUM_BINS,
     )
     .exit_context(Exit::BalloonDeviceNew, "failed to create balloon")?;
 

@@ -33,7 +33,9 @@ pub enum BalloonTubeCommand {
     },
     // Send balloon wss config to guest.
     WorkingSetSizeConfig {
-        config: [u64; VIRTIO_BALLOON_WSS_CONFIG_SIZE],
+        bins: Vec<u64>,
+        refresh_threshold: u64,
+        report_threshold: u64,
     },
 }
 
@@ -54,9 +56,9 @@ pub struct BalloonStats {
     pub unevictable_memory: Option<u64>,
 }
 
-// TODO(b/276353613): remove and refactor bins into Vec
-pub const VIRTIO_BALLOON_WSS_NUM_BINS: usize = 4;
-pub const VIRTIO_BALLOON_WSS_CONFIG_SIZE: usize = 5;
+pub const VIRTIO_BALLOON_WS_MIN_NUM_BINS: usize = 2;
+pub const VIRTIO_BALLOON_WS_MAX_NUM_BINS: usize = 16;
+pub const VIRTIO_BALLOON_WS_MAX_NUM_INTERVALS: usize = 15;
 
 // WSSBucket stores information about a bucket (or bin) of the working set size.
 #[derive(Default, Serialize, Deserialize, Debug, Clone, Copy)]
@@ -69,16 +71,12 @@ pub struct WSSBucket {
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct BalloonWSS {
     /// working set size, separated per histogram bucket.
-    pub wss: [WSSBucket; VIRTIO_BALLOON_WSS_NUM_BINS],
+    pub wss: Vec<WSSBucket>,
 }
 
 impl BalloonWSS {
     pub fn new() -> Self {
-        BalloonWSS {
-            wss: [WSSBucket {
-                ..Default::default()
-            }; VIRTIO_BALLOON_WSS_NUM_BINS],
-        }
+        BalloonWSS { wss: vec![] }
     }
 }
 

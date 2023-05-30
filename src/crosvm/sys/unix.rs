@@ -509,6 +509,7 @@ fn create_virtio_devices(
                     .try_clone()
                     .context("failed to clone registered_evt_q tube")?,
             ),
+            cfg.balloon_wss_num_bins,
         )?);
     }
 

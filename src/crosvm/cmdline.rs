@@ -899,6 +899,12 @@ pub struct RunCommand {
     /// enable page reporting in balloon.
     pub balloon_page_reporting: Option<bool>,
 
+    #[argh(option)]
+    #[serde(skip)] // TODO(b/255223604)
+    #[merge(strategy = overwrite_option)]
+    /// set number of WSS bins to use (default = 4).
+    pub balloon_wss_num_bins: Option<u8>,
+
     #[argh(switch)]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
@@ -2825,6 +2831,7 @@ impl TryFrom<RunCommand> for super::config::Config {
         cfg.rng = !cmd.no_rng.unwrap_or_default();
         cfg.balloon = !cmd.no_balloon.unwrap_or_default();
         cfg.balloon_page_reporting = cmd.balloon_page_reporting.unwrap_or_default();
+        cfg.balloon_wss_num_bins = cmd.balloon_wss_num_bins.unwrap_or(4);
         cfg.balloon_wss_reporting = cmd.balloon_wss_reporting.unwrap_or_default();
         #[cfg(feature = "audio")]
         {

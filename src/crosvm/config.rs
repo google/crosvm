@@ -94,6 +94,9 @@ const MB_ALIGNED: u64 = ONE_MB - 1;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 const MAX_PCIE_ECAM_SIZE: u64 = ONE_MB * 256;
 
+// by default, if enabled, the balloon WS features will use 4 bins.
+const VIRTIO_BALLOON_WS_DEFAULT_NUM_BINS: u8 = 4;
+
 /// Indicates the location and kind of executable kernel for a VM.
 #[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
@@ -1053,6 +1056,7 @@ pub struct Config {
     pub balloon_bias: i64,
     pub balloon_control: Option<PathBuf>,
     pub balloon_page_reporting: bool,
+    pub balloon_wss_num_bins: u8,
     pub balloon_wss_reporting: bool,
     pub battery_config: Option<BatteryConfig>,
     #[cfg(windows)]
@@ -1262,6 +1266,7 @@ impl Default for Config {
             balloon_bias: 0,
             balloon_control: None,
             balloon_page_reporting: false,
+            balloon_wss_num_bins: VIRTIO_BALLOON_WS_DEFAULT_NUM_BINS,
             balloon_wss_reporting: false,
             battery_config: None,
             #[cfg(windows)]

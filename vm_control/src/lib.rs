@@ -16,7 +16,6 @@ pub mod gdb;
 #[cfg(feature = "gpu")]
 pub mod gpu;
 
-use balloon_control::VIRTIO_BALLOON_WSS_CONFIG_SIZE;
 #[cfg(unix)]
 use base::MemoryMappingBuilderUnix;
 #[cfg(windows)]
@@ -48,6 +47,9 @@ use balloon_control::BalloonTubeCommand;
 use balloon_control::BalloonTubeResult;
 pub use balloon_control::BalloonWSS;
 pub use balloon_control::WSSBucket;
+pub use balloon_control::VIRTIO_BALLOON_WS_MAX_NUM_BINS;
+pub use balloon_control::VIRTIO_BALLOON_WS_MAX_NUM_INTERVALS;
+pub use balloon_control::VIRTIO_BALLOON_WS_MIN_NUM_BINS;
 use base::error;
 use base::info;
 use base::warn;
@@ -198,7 +200,9 @@ pub enum BalloonControlCommand {
     Stats,
     WorkingSetSize,
     WorkingSetSizeConfig {
-        config: [u64; VIRTIO_BALLOON_WSS_CONFIG_SIZE],
+        bins: Vec<u64>,
+        refresh_threshold: u64,
+        report_threshold: u64,
     },
 }
 
@@ -1271,7 +1275,7 @@ pub enum RegisteredEvent {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum RegisteredEventWithData {
     VirtioBalloonWssReport {
-        wss_buckets: [WSSBucket; 4],
+        wss_buckets: Vec<WSSBucket>,
         balloon_actual: u64,
     },
     VirtioBalloonResize,
@@ -1325,7 +1329,7 @@ impl RegisteredEventWithData {
 
     pub fn from_wss(wss: &BalloonWSS, balloon_actual: u64) -> Self {
         RegisteredEventWithData::VirtioBalloonWssReport {
-            wss_buckets: wss.wss,
+            wss_buckets: wss.wss.clone(),
             balloon_actual,
         }
     }
@@ -1694,11 +1698,17 @@ impl VmRequest {
                 }
             }
             #[cfg(feature = "balloon")]
-            VmRequest::BalloonCommand(BalloonControlCommand::WorkingSetSizeConfig { config }) => {
+            VmRequest::BalloonCommand(BalloonControlCommand::WorkingSetSizeConfig {
+                ref bins,
+                refresh_threshold,
+                report_threshold,
+            }) => {
                 if let Some(balloon_host_tube) = balloon_host_tube {
-                    match balloon_host_tube
-                        .send(&BalloonTubeCommand::WorkingSetSizeConfig { config })
-                    {
+                    match balloon_host_tube.send(&BalloonTubeCommand::WorkingSetSizeConfig {
+                        bins: bins.clone(),
+                        refresh_threshold,
+                        report_threshold,
+                    }) {
                         Ok(_) => VmResponse::Ok,
                         Err(_) => VmResponse::Err(SysError::last()),
                     }
