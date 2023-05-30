@@ -3051,7 +3051,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     // here since they are used by the vmm-swap feature.
                     let mut do_exit = false;
                     while let Some(siginfo) =
-                        sigchld_fd.read().context("failed to create signalfd")?
+                        sigchld_fd.read().context("failed to read signalfd")?
                     {
                         let pid = siginfo.ssi_pid;
                         let pid_label = match linux.pid_debug_label_map.get(&pid) {
