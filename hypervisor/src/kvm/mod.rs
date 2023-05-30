@@ -285,23 +285,21 @@ impl KvmVm {
         // the value of the fd and we own the fd.
         let vcpu = unsafe { SafeDescriptor::from_raw_descriptor(fd) };
 
+        // The VCPU mapping is held by an `Arc` inside `KvmVcpu`, and it can also be cloned by
+        // `signal_handle()` for use in `KvmVcpuSignalHandle`. The mapping will not be destroyed
+        // until all references are dropped, so it is safe to reference `kvm_run` fields via the
+        // `as_ptr()` function during either type's lifetime.
         let run_mmap = MemoryMappingBuilder::new(run_mmap_size)
             .from_descriptor(&vcpu)
             .build()
             .map_err(|_| Error::new(ENOSPC))?;
-
-        // SAFETY: `run_mmap` is known to be a valid pointer to a `kvm_run` structure from the
-        // allocation above.
-        let run = unsafe { &mut *(run_mmap.as_ptr() as *mut kvm_run) };
-        let signal_handle = Arc::new(KvmVcpuSignalHandle { run });
 
         Ok(KvmVcpu {
             kvm: self.kvm.try_clone()?,
             vm: self.vm.try_clone()?,
             vcpu,
             id,
-            run_mmap,
-            signal_handle,
+            run_mmap: Arc::new(run_mmap),
         })
     }
 
@@ -768,18 +766,17 @@ impl AsRawDescriptor for KvmVm {
 }
 
 struct KvmVcpuSignalHandle {
-    run: *mut kvm_run,
+    run_mmap: Arc<MemoryMapping>,
 }
 
-// It is safe to write to the `immediate_exit` field from any thread.
-unsafe impl Send for KvmVcpuSignalHandle {}
-unsafe impl Sync for KvmVcpuSignalHandle {}
-
 impl VcpuSignalHandleInner for KvmVcpuSignalHandle {
-    // The caller must ensure that the VCPU lifetime is at least as long as the
-    // VcpuSignalHandleInner lifetime.
-    unsafe fn signal_immediate_exit(&self) {
-        (*(self.run)).immediate_exit = 1;
+    fn signal_immediate_exit(&self) {
+        // SAFETY: we ensure `run_mmap` is a valid mapping of `kvm_run` at creation time, and the
+        // `Arc` ensures the mapping still exists while we hold a reference to it.
+        unsafe {
+            let run = self.run_mmap.as_ptr() as *mut kvm_run;
+            (*run).immediate_exit = 1;
+        }
     }
 }
 
@@ -789,26 +786,20 @@ pub struct KvmVcpu {
     vm: SafeDescriptor,
     vcpu: SafeDescriptor,
     id: usize,
-    run_mmap: MemoryMapping,
-    signal_handle: Arc<KvmVcpuSignalHandle>,
+    run_mmap: Arc<MemoryMapping>,
 }
 
 impl Vcpu for KvmVcpu {
     fn try_clone(&self) -> Result<Self> {
         let vm = self.vm.try_clone()?;
         let vcpu = self.vcpu.try_clone()?;
-        let run_mmap = MemoryMappingBuilder::new(self.run_mmap.size())
-            .from_descriptor(&vcpu)
-            .build()
-            .map_err(|_| Error::new(ENOSPC))?;
 
         Ok(KvmVcpu {
             kvm: self.kvm.try_clone()?,
             vm,
             vcpu,
             id: self.id,
-            run_mmap,
-            signal_handle: self.signal_handle.clone(),
+            run_mmap: self.run_mmap.clone(),
         })
     }
 
@@ -831,7 +822,9 @@ impl Vcpu for KvmVcpu {
 
     fn signal_handle(&self) -> VcpuSignalHandle {
         VcpuSignalHandle {
-            inner: Arc::downgrade(&self.signal_handle) as _,
+            inner: Box::new(KvmVcpuSignalHandle {
+                run_mmap: self.run_mmap.clone(),
+            }),
         }
     }
 
