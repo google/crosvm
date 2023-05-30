@@ -188,42 +188,6 @@ pub fn process_tx<I: SignalableInterrupt, T: TapT>(
     tx_queue.trigger_interrupt(mem, interrupt);
 }
 
-pub trait NetExt {
-    fn new_slirp(
-        #[cfg(feature = "slirp-ring-capture")] slirp_capture_file: &Option<String>,
-    ) -> Result<Net<net_util::Slirp>, NetError>;
-}
-
-impl<T> NetExt for Net<T>
-where
-    T: TapT + ReadNotifier,
-{
-    /// Creates a new virtio network device from a pseudo-TAP device, provided by Slirp.
-    fn new_slirp(
-        #[cfg(feature = "slirp-ring-capture")] slirp_capture_file: &Option<String>,
-    ) -> Result<Net<net_util::Slirp>, NetError> {
-        let avail_features =
-            base_features(ProtectionType::Unprotected) | 1 << virtio_net::VIRTIO_NET_F_CTRL_VQ;
-        let slirp_kill_evt = Event::new().map_err(NetError::CreateKillEvent)?;
-        let slirp = net_util::Slirp::new(
-            slirp_kill_evt
-                .try_clone()
-                .map_err(NetError::CreateKillEvent)?,
-            #[cfg(feature = "slirp-ring-capture")]
-            slirp_capture_file,
-        )
-        .map_err(NetError::SlirpCreateError)?;
-
-        Net::new_internal(
-            vec![slirp],
-            avail_features,
-            1500,
-            None,
-            Some(slirp_kill_evt),
-        )
-    }
-}
-
 impl<T> Worker<T>
 where
     T: TapT + ReadNotifier,
