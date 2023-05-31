@@ -1,6 +1,6 @@
 # Custom Kernel / Rootfs
 
-This document explains how to build a custom kernel and use debootstrab to build a rootfs for
+This document explains how to build a custom kernel and use debootstrap to build a rootfs for
 running crosvm.
 
 For an easier way to get started with prebuilt images, see [Example Usage](./example_usage.md)
@@ -15,12 +15,13 @@ If you are using the chroot for ChromiumOS development, you already have the ker
 Otherwise, you can clone it:
 
 ```bash
-git clone --depth 1 -b chromeos-5.10 https://chromium.googlesource.com/chromiumos/third_party/kernel
+git clone --depth 1 -b chromeos-6.1 https://chromium.googlesource.com/chromiumos/third_party/kernel
 ```
 
 Either way that you get the kernel, the next steps are to configure and build the bzImage:
 
 ```bash
+cd kernel
 CHROMEOS_KERNEL_FAMILY=termina ./chromeos/scripts/prepareconfig container-vm-x86_64
 make olddefconfig
 make -j$(nproc) bzImage
