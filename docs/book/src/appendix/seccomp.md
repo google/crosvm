@@ -6,12 +6,18 @@ the BPF programs, crosvm uses minijail's policy file format. A policy file is wr
 device per architecture. Each device requires a unique set of syscalls to accomplish their function
 and each architecture has slightly different naming for similar syscalls. The ChromeOS docs have a
 useful
-[listing of syscalls](https://chromium.googlesource.com/chromiumos/docs/+/master/constants/syscalls.md).
+[listing of syscalls](https://chromium.googlesource.com/chromiumos/docs/+/HEAD/constants/syscalls.md).
+
+The seccomp policies are compiled from `.policy` source files into BPF bytecode by
+[`jail/build.rs`](https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/jail/build.rs)
+and embedded in the crosvm executable, so it is not necessary to install the seccomp policy files,
+only the crosvm binary itself. Be sure to remember to rebuild crosvm after changing a policy file to
+observe the updated behavior.
 
 ## Writing a Policy for crosvm
 
 The detailed rules for naming policy files can be found in
-[seccomp/README.md](https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/seccomp/README.md)
+[jail/seccomp/README.md](https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/jail/seccomp/README.md)
 
 Most policy files will include the `common_device.policy` from a given architecture using this
 directive near the top:
