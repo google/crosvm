@@ -20,7 +20,7 @@ git submodule update --init
 ```
 
 It is recommended to enable automatic recursive operations to keep the submodules in sync with the
-main repository (But do not push them, as that can conflict with `repo`):
+main repository (but do not push them, as that can conflict with `repo`):
 
 ```sh
 git config submodule.recurse true
@@ -92,12 +92,14 @@ kernel version and permissions.
 ./tools/run_tests --dut=host
 ```
 
-Since we have some architecture-dependent code, we also have the option running unit tests for
-aarch64, armh4 or windows (mingw64). These will use an emulator to execute (QEMU or wine):
+Since we have some architecture-dependent code, we also have the option of running unit tests for
+aarch64, armhf, riscv64, and windows (mingw64). These will use an emulator to execute (QEMU or
+wine):
 
 ```sh
 ./tools/run_tests --platform=aarch64
 ./tools/run_tests --platform=armhf
+./tools/run_tests --platform=riscv64
 ./tools/run_tests --platform=mingw64
 ```
 
@@ -110,14 +112,12 @@ container to build and run the tests.
 
 ### Presubmit checks
 
-To verify changes before submitting, use the `presubmit` script:
+To verify changes before submitting, use the `presubmit` script. To ensure the toolchains for all
+platforms are available, it is recommended to run it inside the dev container.
 
 ```sh
-./tools/presubmit
+./tools/dev_container ./tools/presubmit
 ```
-
-Note: You probably want to run this in `./tools/dev_container` to ensure the toolchains for all
-platforms are available.
 
 This will run clippy, formatters and runs all tests for all platforms. The same checks will also be
 run by our CI system before changes are merged into `main`.
@@ -127,8 +127,8 @@ trade off speed and accuracy.
 
 ## Cross-compilation
 
-Crosvm is built and tested on x86, aarch64 and armhf. Your system needs some setup work to be able
-to cross-comple for other architectures, hence it is recommended to use the
+Crosvm is built and tested on x86, aarch64, armhf, and riscv64. Your system needs some setup work to
+be able to cross-comple for other architectures, hence it is recommended to use the
 [development container](#using-the-development-container), which will have everything configured.
 
 Note: Cross-compilation is **not supported on gLinux**. Please use the development container.
@@ -142,6 +142,7 @@ On Debian this is as easy as:
 ```sh
 sudo dpkg --add-architecture arm64
 sudo dpkg --add-architecture armhf
+sudo dpkg --add-architecture riscv64
 sudo apt update
 ```
 
@@ -154,6 +155,7 @@ With that enabled, the following scripts will install the needed packages:
 ```sh
 ./tools/install-aarch64-deps
 ./tools/install-armhf-deps
+./tools/install-riscv64-deps
 ```
 
 ### Configuring wine and mingw64
