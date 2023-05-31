@@ -2,20 +2,20 @@
 
 The principle characteristics of crosvm are:
 
-- A process per virtual device, made using fork
+- A process per virtual device, made using fork on Linux
 - Each process is sandboxed using [minijail]
-- Takes full advantage of KVM and low-level Linux syscalls, and so only runs on Linux
+- Support for several CPU architectures, operating systems, and [hypervisors]
 - Written in Rust for security and safety
 
 A typical session of crosvm starts in `main.rs` where command line parsing is done to build up a
-`Config` structure. The `Config` is used by `run_config` in `linux/mod.rs` to setup and execute a
-VM. Broken down into rough steps:
+`Config` structure. The `Config` is used by `run_config` in `src/crosvm/sys/unix.rs` to setup and
+execute a VM. Broken down into rough steps:
 
-1. Load the linux kernel from an ELF file.
+1. Load the Linux kernel from an ELF or bzImage file.
 1. Create a handful of control sockets used by the virtual devices.
-1. Invoke the architecture specific VM builder `Arch::build_vm` (located in `x86_64/src/lib.rs` or
-   `aarch64/src/lib.rs`).
-1. `Arch::build_vm` will itself invoke the provided `create_devices` function from `linux/mod.rs`
+1. Invoke the architecture-specific VM builder `Arch::build_vm` (located in `x86_64/src/lib.rs`,
+   `aarch64/src/lib.rs`, or `riscv64/src/lib.rs`).
+1. `Arch::build_vm` will create a `RunnableLinuxVm` to represent a virtual machine instance.
 1. `create_devices` creates every PCI device, including the virtio devices, that were configured in
    `Config`, along with matching [minijail] configs for each.
 1. `Arch::assign_pci_addresses` assigns an address to each PCI device, prioritizing devices that
@@ -47,7 +47,7 @@ each supported architecture.
 ## The VM Control Sockets
 
 For the operations that devices need to perform on the global VM state, such as mapping into guest
-memory address space, there are the vm control sockets. There are a few kinds, split by the type of
+memory address space, there are the VM control sockets. There are a few kinds, split by the type of
 request and response that the socket will process. This also proves basic security privilege
 separation in case a device becomes compromised by a malicious guest. For example, a rogue device
 that is able to allocate MSI routes would not be able to use the same socket to (de)register guest
@@ -59,7 +59,7 @@ main process's control loop.
 The socket exposed by crosvm with the `--socket` command line argument is another form of the VM
 control socket. Because the protocol of the control socket is internal and unstable, the only
 supported way of using that resulting named unix domain socket is via crosvm command line
-subcommands such as `crosvm stop`.
+subcommands such as `crosvm stop` or programmatically via the [`crosvm_control`] library.
 
 ## GuestMemory
 
@@ -202,10 +202,8 @@ receiving descriptors alongside the plain old bytes that serde consumes.
 Source code is organized into crates, each with their own unit tests.
 
 - `./src/` - The top-level binary front-end for using crosvm.
-- `aarch64` - Support code specific to 64 bit ARM architectures.
+- `aarch64` - Support code specific to 64-bit ARM architectures.
 - `base` - Safe wrappers for system facilities which provides cross-platform-compatible interfaces.
-- `bin` - Scripts for code health such as wrappers of `rustfmt` and `clippy`.
-- `ci` - Scripts for continuous integration.
 - `cros_async` - Runtime for async/await programming. This crate provides a `Future` executor based
   on `io_uring` and one based on `epoll`.
 - `devices` - Virtual devices exposed to the guest OS.
@@ -213,7 +211,11 @@ Source code is organized into crates, each with their own unit tests.
 - `hypervisor` - Abstract layer to interact with hypervisors. For Linux, this crate is a wrapper of
   `kvm`.
 - `e2e_tests` - End-to-end tests that run a crosvm VM.
-- `kernel_loader` - Loads elf64 kernel files to a slice of memory.
+- `infra` - Infrastructure recipes for continuous integration testing.
+- `jail` - Sandboxing helper library for Linux.
+- `jail/seccomp` - Contains minijail seccomp policy files for each sandboxed device. Because some
+  syscalls vary by architecture, the seccomp policies are split by architecture.
+- `kernel_loader` - Loads kernel images in various formats to a slice of memory.
 - `kvm_sys` - Low-level (mostly) auto-generated structures and constants for using KVM.
 - `kvm` - Unsafe, low-level wrapper code for using `kvm_sys`.
 - `media/libvda` - Safe wrapper of [libvda], a ChromeOS HW-accelerated video decoding/encoding
@@ -222,21 +224,22 @@ Source code is organized into crates, each with their own unit tests.
   devices.
 - `net_util` - Wrapper for creating TUN/TAP devices.
 - `qcow_util` - A library and a binary to manipulate [qcow] disks.
-- `seccomp` - Contains minijail seccomp policy files for each sandboxed device. Because some
-  syscalls vary by architecture, the seccomp policies are split by architecture.
 - `sync` - Our version of `std::sync::Mutex` and `std::sync::Condvar`.
 - `third_party` - Third-party libraries which we are maintaining on the ChromeOS tree or the AOSP
   tree.
+- `tools` - Scripts for code health such as wrappers of `rustfmt` and `clippy`.
 - `vfio_sys` - Low-level (mostly) auto-generated structures, constants and ioctls for [VFIO].
 - `vhost` - Wrappers for creating vhost based devices.
 - `virtio_sys` - Low-level (mostly) auto-generated structures and constants for interfacing with
   kernel vhost support.
 - `vm_control` - IPC for the VM.
-- `vm_memory` - Vm-specific memory objects.
-- `x86_64` - Support code specific to 64 bit intel machines.
+- `vm_memory` - VM-specific memory objects.
+- `x86_64` - Support code specific to 64-bit x86 machines.
 
+[hypervisors]: https://crosvm.dev/book/hypervisors.html
 [libvda]: https://chromium.googlesource.com/chromiumos/platform2/+/refs/heads/main/arc/vm/libvda/
-[minijail]: https://android.googlesource.com/platform/external/minijail
+[minijail]: https://crosvm.dev/book/appendix/minijail.html
 [qcow]: https://en.wikipedia.org/wiki/Qcow
 [vfio]: https://www.kernel.org/doc/html/latest/driver-api/vfio.html
+[`crosvm_control`]: https://crosvm.dev/book/running_crosvm/programmatic_interaction.html
 [`waitcontext`]: https://crosvm.dev/doc/base/struct.WaitContext.html
