@@ -5,7 +5,6 @@
 use std::convert::TryFrom;
 use std::mem;
 use std::result;
-use std::slice;
 
 use devices::PciAddress;
 use devices::PciInterruptPin;
@@ -14,6 +13,7 @@ use remain::sorted;
 use thiserror::Error;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
+use zerocopy::AsBytes;
 
 use crate::mpspec::*;
 
@@ -77,11 +77,9 @@ const CPU_FEATURE_APIC: u32 = 0x200;
 const CPU_FEATURE_FPU: u32 = 0x001;
 const MPTABLE_START: u64 = 0x400 * 639; // Last 1k of Linux's 640k base RAM.
 
-fn compute_checksum<T: Copy>(v: &T) -> u8 {
-    // Safe because we are only reading the bytes within the size of the `T` reference `v`.
-    let v_slice = unsafe { slice::from_raw_parts(v as *const T as *const u8, mem::size_of::<T>()) };
+fn compute_checksum<T: AsBytes>(v: &T) -> u8 {
     let mut checksum: u8 = 0;
-    for i in v_slice {
+    for i in v.as_bytes() {
         checksum = checksum.wrapping_add(*i);
     }
     checksum
