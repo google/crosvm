@@ -28,14 +28,12 @@ use base::Timer;
 use base::Tube;
 use base::TubeError;
 use base::WorkerThread;
-use cros_async::select5;
 use cros_async::sync::RwLock as AsyncRwLock;
 use cros_async::AsyncError;
 use cros_async::AsyncTube;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::ExecutorKind;
-use cros_async::SelectResult;
 use cros_async::TimerAsync;
 use data_model::Le16;
 use data_model::Le32;
@@ -482,21 +480,21 @@ pub async fn flush_disk(
 // `disk_state` is wrapped by `AsyncRwLock`, which provides both shared and exclusive locks. It's
 // because the state can be read from the virtqueue task while the control task is processing a
 // resizing command.
-fn run_worker(
-    ex: Executor,
+async fn run_worker(
+    ex: &Executor,
     interrupt: Interrupt,
     queues: Vec<(Queue, Event)>,
     mem: GuestMemory,
     disk_state: &Rc<AsyncRwLock<DiskState>>,
     control_tube: &Option<AsyncTube>,
     kill_evt: Event,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     // One flush timer per disk.
     let timer = Timer::new().expect("Failed to create a timer");
     let flush_timer_armed = Rc::new(RefCell::new(false));
 
     // Process any requests to resample the irq value.
-    let resample = async_utils::handle_irq_resample(&ex, interrupt.clone());
+    let resample = async_utils::handle_irq_resample(ex, interrupt.clone()).fuse();
     pin_mut!(resample);
 
     // Handles control requests.
@@ -504,7 +502,8 @@ fn run_worker(
         control_tube,
         ConfigChangeSignal::Interrupt(interrupt.clone()),
         disk_state.clone(),
-    );
+    )
+    .fuse();
     pin_mut!(control);
 
     // Handle all the queues in one sub-select call.
@@ -512,7 +511,7 @@ fn run_worker(
         TimerAsync::new(
             // Call try_clone() to share the same underlying FD with the `flush_disk` task.
             timer.try_clone().expect("Failed to clone flush_timer"),
-            &ex,
+            ex,
         )
         .expect("Failed to create an async timer"),
     ));
@@ -524,39 +523,33 @@ fn run_worker(
                 mem.clone(),
                 Rc::clone(disk_state),
                 Rc::new(RefCell::new(queue)),
-                EventAsync::new(event, &ex).expect("Failed to create async event for queue"),
+                EventAsync::new(event, ex).expect("Failed to create async event for queue"),
                 interrupt.clone(),
                 Rc::clone(&flush_timer),
                 Rc::clone(&flush_timer_armed),
             )
         })
         .collect::<FuturesUnordered<_>>()
-        .into_future();
+        .into_future()
+        .fuse();
+    pin_mut!(queue_handlers);
 
     // Flushes the disk periodically.
-    let flush_timer = TimerAsync::new(timer, &ex).expect("Failed to create an async timer");
-    let disk_flush = flush_disk(disk_state.clone(), flush_timer, flush_timer_armed);
+    let flush_timer = TimerAsync::new(timer, ex).expect("Failed to create an async timer");
+    let disk_flush = flush_disk(disk_state.clone(), flush_timer, flush_timer_armed).fuse();
     pin_mut!(disk_flush);
 
     // Exit if the kill event is triggered.
-    let kill = async_utils::await_and_exit(&ex, kill_evt);
+    let kill = async_utils::await_and_exit(ex, kill_evt).fuse();
     pin_mut!(kill);
 
-    match ex.run_until(select5(queue_handlers, disk_flush, control, resample, kill)) {
-        Ok((_, flush_res, control_res, resample_res, _)) => {
-            if let SelectResult::Finished(Err(e)) = flush_res {
-                return Err(format!("failed to flush a disk: {}", e));
-            }
-            if let SelectResult::Finished(Err(e)) = control_res {
-                return Err(format!("failed to handle a control request: {}", e));
-            }
-            if let SelectResult::Finished(Err(e)) = resample_res {
-                return Err(format!("failed to resample a irq value: {:?}", e));
-            }
-            Ok(())
-        }
-        Err(e) => Err(e.to_string()),
-    }
+    futures::select! {
+        _ = queue_handlers => anyhow::bail!("queue handler exited unexpectedly"),
+        r = disk_flush => return r.context("failed to flush a disk"),
+        r = control => return r.context("failed to handle a control request"),
+        r = resample => return r.context("failed to resample an irq value"),
+        r = kill => return r.context("failed to wait on the kill event"),
+    };
 }
 
 /// Virtio device for exposing block level read/write operations on a host file.
@@ -970,15 +963,18 @@ impl VirtioDevice for BlockAsync {
                     id,
                     worker_shared_state: shared_state,
                 }));
-                if let Err(err_string) = run_worker(
-                    ex,
-                    interrupt,
-                    queues,
-                    mem,
-                    &disk_state,
-                    &async_control,
-                    kill_evt,
-                ) {
+                if let Err(err_string) = ex
+                    .run_until(run_worker(
+                        &ex,
+                        interrupt,
+                        queues,
+                        mem,
+                        &disk_state,
+                        &async_control,
+                        kill_evt,
+                    ))
+                    .expect("run_until failed")
+                {
                     error!("{}", err_string);
                 }
 
