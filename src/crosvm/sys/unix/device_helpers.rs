@@ -45,6 +45,7 @@ use devices::virtio::vsock::VsockConfig;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonMode;
 use devices::virtio::NetError;
+use devices::virtio::NetParameters;
 use devices::virtio::NetParametersMode;
 use devices::virtio::VirtioDevice;
 use devices::virtio::VirtioDeviceType;
@@ -66,7 +67,6 @@ use jail::*;
 use minijail::Minijail;
 use net_util::sys::unix::Tap;
 use net_util::MacAddress;
-use net_util::TapT;
 use net_util::TapTCommon;
 use resources::Alloc;
 use resources::AllocOptions;
@@ -749,37 +749,48 @@ pub fn create_balloon_device(
     })
 }
 
-/// Generic method for creating a network device. `create_device` is a closure that takes the virtio
-/// features and number of queue pairs as parameters, and is responsible for creating the device
-/// itself.
-pub fn create_net_device<F, T>(
-    protection_type: ProtectionType,
-    jail_config: &Option<JailConfig>,
-    mut vq_pairs: u16,
-    vcpu_count: usize,
-    policy: &str,
-    create_device: F,
-) -> DeviceResult
-where
-    F: FnOnce(u64, u16) -> Result<T>,
-    T: VirtioDevice + 'static,
-{
-    if vcpu_count < vq_pairs as usize {
-        warn!("the number of net vq pairs must not exceed the vcpu count, falling back to single queue mode");
-        vq_pairs = 1;
+impl VirtioDeviceBuilder for &NetParameters {
+    const NAME: &'static str = "net";
+
+    fn create_virtio_device(
+        self,
+        protection_type: ProtectionType,
+    ) -> anyhow::Result<Box<dyn VirtioDevice>> {
+        let vq_pairs = self.vq_pairs.unwrap_or(1);
+        let multi_vq = vq_pairs > 1 && self.vhost_net.is_none();
+        let features = virtio::base_features(protection_type);
+        let (tap, mac) = create_tap_for_net_device(&self.mode, multi_vq)?;
+
+        Ok(if let Some(vhost_net) = &self.vhost_net {
+            Box::new(
+                virtio::vhost::Net::<_, vhost::Net<_>>::new(&vhost_net.device, features, tap, mac)
+                    .context("failed to set up virtio-vhost networking")?,
+            ) as Box<dyn VirtioDevice>
+        } else {
+            Box::new(
+                virtio::Net::new(features, tap, vq_pairs, mac)
+                    .context("failed to set up virtio networking")?,
+            ) as Box<dyn VirtioDevice>
+        })
     }
-    let features = virtio::base_features(protection_type);
 
-    let dev = create_device(features, vq_pairs)?;
+    fn create_jail(
+        &self,
+        jail_config: &Option<JailConfig>,
+        virtio_transport: VirtioDeviceType,
+    ) -> anyhow::Result<Option<Minijail>> {
+        let policy = if self.vhost_net.is_some() {
+            "vhost_net"
+        } else {
+            "net"
+        };
 
-    Ok(VirtioDeviceStub {
-        dev: Box::new(dev) as Box<dyn VirtioDevice>,
-        jail: simple_jail(jail_config, policy)?,
-    })
+        simple_jail(jail_config, &virtio_transport.seccomp_policy_file(policy))
+    }
 }
 
 /// Create a new tap interface based on NetParametersMode.
-pub fn create_tap_for_net_device(
+fn create_tap_for_net_device(
     mode: &NetParametersMode,
     multi_vq: bool,
 ) -> DeviceResult<(Tap, Option<MacAddress>)> {
@@ -814,51 +825,6 @@ pub fn create_tap_for_net_device(
             Ok((tap, None))
         }
     }
-}
-
-/// Returns a virtio network device created from a new TAP device.
-pub fn create_virtio_net_device_from_tap<T: TapT + ReadNotifier + 'static>(
-    protection_type: ProtectionType,
-    jail_config: &Option<JailConfig>,
-    vq_pairs: u16,
-    vcpu_count: usize,
-    tap: T,
-    mac: Option<MacAddress>,
-) -> DeviceResult {
-    create_net_device(
-        protection_type,
-        jail_config,
-        vq_pairs,
-        vcpu_count,
-        "net_device",
-        move |features, vq_pairs| {
-            virtio::Net::new(features, tap, vq_pairs, mac)
-                .context("failed to set up virtio networking")
-        },
-    )
-}
-
-/// Returns a virtio-vhost network device created from a new TAP device.
-pub fn create_virtio_vhost_net_device_from_tap<T: TapT + 'static>(
-    protection_type: ProtectionType,
-    jail_config: &Option<JailConfig>,
-    vq_pairs: u16,
-    vcpu_count: usize,
-    vhost_net_device_path: &Path,
-    tap: T,
-    mac: Option<MacAddress>,
-) -> DeviceResult {
-    create_net_device(
-        protection_type,
-        jail_config,
-        vq_pairs,
-        vcpu_count,
-        "vhost_net_device",
-        move |features, _vq_pairs| {
-            virtio::vhost::Net::<T, vhost::Net<T>>::new(vhost_net_device_path, features, tap, mac)
-                .context("failed to set up virtio-vhost networking")
-        },
-    )
 }
 
 pub fn create_vhost_user_net_device(
