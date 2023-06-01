@@ -54,7 +54,7 @@ use std::io;
 use std::io::Write;
 use std::sync::MutexGuard;
 
-use chrono::Local;
+use chrono::Utc;
 pub use env_logger::fmt;
 pub use env_logger::{self};
 pub use log::*;
@@ -283,7 +283,7 @@ impl State {
                 writeln!(
                     buf,
                     "[{} {:5} {}] {}",
-                    Local::now().format("%Y-%m-%dT%H:%M:%S%.9f%:z"),
+                    Utc::now().format("%Y-%m-%dT%H:%M:%S%.9f%:z"),
                     record.level(),
                     record.module_path().unwrap_or("<missing module path>"),
                     record.args()
