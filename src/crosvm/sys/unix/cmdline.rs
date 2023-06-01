@@ -66,8 +66,7 @@ pub struct DevicesCommand {
         arg_name = "vhost=PATH,type=TYPE,[hardware=HW,num=NUM,path=PATH,input=PATH,console,earlycon,stdin]",
         from_str_fn(parse_vu_serial_options)
     )]
-    /// comma separated key=value pairs for setting up serial
-    /// devices. Can be given more than once.
+    /// start a serial device.
     /// Possible key values:
     ///     vhost=PATH - Path to a vhost-user endpoint to listen to.
     ///        This parameter must be given in first position.
@@ -91,10 +90,8 @@ pub struct DevicesCommand {
     ///        port if not provided.
     pub serial: Vec<VhostUserParams<SerialParameters>>,
 
-    #[argh(option, arg_name = "block options")]
+    #[argh(option, arg_name = "vhost=PATH[, block options]")]
     /// start a block device.
-    /// The value must be a comma separated key-value pairs in the
-    /// form of `vhost=PATH[,block options]`.
     /// Possible key values:
     ///     vhost=PATH - Path to a vhost-user endpoint to listen to.
     ///        This parameter must be given in first position.
@@ -102,8 +99,9 @@ pub struct DevicesCommand {
     ///        See help from `crosvm run` command.
     pub block: Vec<VhostUserParams<DiskOption>>,
 
-    #[argh(option, arg_name = "cid=CID[,device=VHOST_DEVICE]")]
+    #[argh(option, arg_name = "vhost=PATH,cid=CID[,device=VHOST_DEVICE]")]
     /// start a vsock device.
+    /// Possible key values:
     ///     vhost=PATH - Path to a vhost-user endpoint to listen to.
     ///        This parameter must be given in first position.
     ///     cid=CID - CID to use for the device.
