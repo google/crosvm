@@ -25,6 +25,7 @@ use cros_async::TaskHandle;
 use cros_async::TimerAsync;
 use futures::future::AbortHandle;
 use futures::future::Abortable;
+use futures::FutureExt;
 use sync::Mutex;
 pub use sys::start_device as run_block_device;
 pub use sys::Options;
@@ -270,6 +271,7 @@ impl VhostUserBackend for BlockBackend {
         let timer = Rc::clone(&self.flush_timer);
         let timer_armed = Rc::clone(&self.flush_timer_armed);
         let queue = Rc::new(RefCell::new(queue));
+        let (_stop_tx, stop_rx) = futures::channel::oneshot::channel();
         let queue_task = self.ex.spawn_local(Abortable::new(
             handle_queue(
                 mem,
@@ -279,7 +281,9 @@ impl VhostUserBackend for BlockBackend {
                 doorbell,
                 timer,
                 timer_armed,
-            ),
+                stop_rx,
+            )
+            .map(|_queue| ()),
             registration,
         ));
 

@@ -40,6 +40,8 @@ use data_model::Le32;
 use data_model::Le64;
 use disk::AsyncDisk;
 use disk::DiskFile;
+use futures::channel::mpsc;
+use futures::channel::oneshot;
 use futures::pin_mut;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -308,7 +310,8 @@ pub async fn handle_queue<I: SignalableInterrupt + 'static>(
     interrupt: I,
     flush_timer: Rc<RefCell<TimerAsync>>,
     flush_timer_armed: Rc<RefCell<bool>>,
-) {
+    mut stop_rx: oneshot::Receiver<()>,
+) -> Rc<RefCell<Queue>> {
     let mut background_tasks = FuturesUnordered::new();
     let evt_future = evt.next_val().fuse();
     pin_mut!(evt_future);
@@ -327,6 +330,12 @@ pub async fn handle_queue<I: SignalableInterrupt + 'static>(
                     error!("Failed to read the next queue event: {}", e);
                     continue;
                 }
+            }
+            _ = stop_rx => {
+                // TODO(fmayle): When we add support for sleep, we should finish all the tasks
+                // instead of dropping.
+                std::mem::drop(background_tasks);
+                return queue;
             }
         };
         while let Some(descriptor_chain) = queue.borrow_mut().pop(&mem) {
@@ -474,6 +483,20 @@ pub async fn flush_disk(
     }
 }
 
+pub enum WorkerCmd {
+    StartQueue {
+        index: usize,
+        queue: Queue,
+        kick_evt: Event,
+    },
+    StopQueue {
+        index: usize,
+        // Once the queue is stopped, it will be sent back over `response_tx`.
+        // `None` indicates that there was no queue at the given index.
+        response_tx: oneshot::Sender<Option<Queue>>,
+    },
+}
+
 // The main worker thread. Initialized the asynchronous worker tasks and passes them to the executor
 // to be processed.
 //
@@ -483,10 +506,10 @@ pub async fn flush_disk(
 async fn run_worker(
     ex: &Executor,
     interrupt: Interrupt,
-    queues: Vec<(Queue, Event)>,
     mem: GuestMemory,
     disk_state: &Rc<AsyncRwLock<DiskState>>,
     control_tube: &Option<AsyncTube>,
+    mut worker_rx: mpsc::UnboundedReceiver<WorkerCmd>,
     kill_evt: Event,
 ) -> anyhow::Result<()> {
     // One flush timer per disk.
@@ -516,40 +539,93 @@ async fn run_worker(
         .expect("Failed to create an async timer"),
     ));
 
-    let queue_handlers = queues
-        .into_iter()
-        .map(|(queue, event)| {
-            handle_queue(
-                mem.clone(),
-                Rc::clone(disk_state),
-                Rc::new(RefCell::new(queue)),
-                EventAsync::new(event, ex).expect("Failed to create async event for queue"),
-                interrupt.clone(),
-                Rc::clone(&flush_timer),
-                Rc::clone(&flush_timer_armed),
-            )
-        })
-        .collect::<FuturesUnordered<_>>()
-        .into_future()
-        .fuse();
-    pin_mut!(queue_handlers);
-
     // Flushes the disk periodically.
-    let flush_timer = TimerAsync::new(timer, ex).expect("Failed to create an async timer");
-    let disk_flush = flush_disk(disk_state.clone(), flush_timer, flush_timer_armed).fuse();
+    let flush_timer2 = TimerAsync::new(timer, ex).expect("Failed to create an async timer");
+    let disk_flush = flush_disk(disk_state.clone(), flush_timer2, flush_timer_armed.clone()).fuse();
     pin_mut!(disk_flush);
 
     // Exit if the kill event is triggered.
     let kill = async_utils::await_and_exit(ex, kill_evt).fuse();
     pin_mut!(kill);
 
-    futures::select! {
-        _ = queue_handlers => anyhow::bail!("queue handler exited unexpectedly"),
-        r = disk_flush => return r.context("failed to flush a disk"),
-        r = control => return r.context("failed to handle a control request"),
-        r = resample => return r.context("failed to resample an irq value"),
-        r = kill => return r.context("failed to wait on the kill event"),
-    };
+    // Running queue handlers.
+    let mut queue_handlers = FuturesUnordered::new();
+    // Async stop functions for queue handlers, by queue index.
+    let mut queue_handler_stop_fns = std::collections::BTreeMap::new();
+
+    loop {
+        futures::select! {
+            _ = queue_handlers.next() => continue,
+            r = disk_flush => return r.context("failed to flush a disk"),
+            r = control => return r.context("failed to handle a control request"),
+            r = resample => return r.context("failed to resample an irq value"),
+            r = kill => return r.context("failed to wait on the kill event"),
+            worker_cmd = worker_rx.next() => {
+                match worker_cmd {
+                    None => anyhow::bail!("worker control channel unexpectedly closed"),
+                    Some(WorkerCmd::StartQueue{index, queue, kick_evt}) => {
+                        let (tx, rx) = oneshot::channel();
+                        let (handle_queue_future, remote_handle) = handle_queue(
+                            mem.clone(),
+                            Rc::clone(disk_state),
+                            Rc::new(RefCell::new(queue)),
+                            EventAsync::new(kick_evt, ex).expect("Failed to create async event for queue"),
+                            interrupt.clone(),
+                            Rc::clone(&flush_timer),
+                            Rc::clone(&flush_timer_armed),
+                            rx,
+                        ).remote_handle();
+                        let old_stop_fn = queue_handler_stop_fns.insert(index, move || {
+                            // Ask the handler to stop.
+                            tx.send(()).unwrap_or_else(|_| panic!("queue handler channel closed early"));
+                            // Wait for its return value.
+                            remote_handle
+                        });
+
+                        // If there was already a handler for this index, stop it before adding the
+                        // new handler future.
+                        if let Some(stop_fn) = old_stop_fn {
+                            warn!("Starting new queue handler without stopping old handler");
+                            // Unfortunately we can't just do `stop_fn().await` because the actual
+                            // work we are waiting on is in `queue_handlers`. So, run both.
+                            let mut fut = stop_fn().fuse();
+                            loop {
+                                futures::select! {
+                                    _ = queue_handlers.next() => continue,
+                                    _queue = fut => break,
+                                }
+                            }
+                        }
+
+                        queue_handlers.push(handle_queue_future);
+                    }
+                    Some(WorkerCmd::StopQueue{index, response_tx}) => {
+                        match queue_handler_stop_fns.remove(&index) {
+                            Some(stop_fn) => {
+                                // NOTE: This await is blocking the select loop. If we want to
+                                // support stopping queues concurrently, then it needs to be moved.
+                                // For now, keep it simple.
+                                //
+                                // Unfortunately we can't just do `stop_fn().await` because the
+                                // actual work we are waiting on is in `queue_handlers`. So, run
+                                // both.
+                                let mut fut = stop_fn().fuse();
+                                let queue = loop {
+                                    futures::select! {
+                                        _ = queue_handlers.next() => continue,
+                                        queue = fut => break queue,
+                                    }
+                                };
+                                let queue = Rc::try_unwrap(queue).unwrap_or_else(|_| panic!("Rc had too many refs")).into_inner();
+                                let _ = response_tx.send(Some(queue));
+                            }
+                            None => { let _ = response_tx.send(None); },
+                        }
+                    }
+                }
+            }
+        };
+    }
 }
 
 /// Virtio device for exposing block level read/write operations on a host file.
@@ -963,14 +1039,28 @@ impl VirtioDevice for BlockAsync {
                     id,
                     worker_shared_state: shared_state,
                 }));
+
+                let (worker_tx, worker_rx) = mpsc::unbounded();
+
+                // Add commands to start all the queues before starting the worker.
+                for (index, (queue, event)) in queues.into_iter().enumerate() {
+                    worker_tx
+                        .unbounded_send(WorkerCmd::StartQueue {
+                            index,
+                            queue,
+                            kick_evt: event,
+                        })
+                        .unwrap_or_else(|_| panic!("worker channel closed early"));
+                }
+
                 if let Err(err_string) = ex
                     .run_until(run_worker(
                         &ex,
                         interrupt,
-                        queues,
                         mem,
                         &disk_state,
                         &async_control,
+                        worker_rx,
                         kill_evt,
                     ))
                     .expect("run_until failed")
