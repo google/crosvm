@@ -35,7 +35,7 @@ fn parse_vu_serial_options(s: &str) -> Result<VhostUserParams<SerialParameters>,
 }
 
 #[argh_helpers::pad_description_for_argh]
-#[derive(FromArgs)]
+#[derive(FromArgs, Debug)]
 #[argh(subcommand, name = "devices")]
 /// Start one or several jailed device processes.
 pub struct DevicesCommand {

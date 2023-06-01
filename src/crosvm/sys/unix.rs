@@ -58,6 +58,7 @@ use arch::VirtioDeviceStub;
 use arch::VmArch;
 use arch::VmComponents;
 use arch::VmImage;
+use argh::FromArgs;
 use base::ReadNotifier;
 #[cfg(feature = "balloon")]
 use base::UnixSeqpacket;
@@ -4016,6 +4017,17 @@ pub fn start_devices(opts: DevicesCommand) -> anyhow::Result<()> {
     // Create vsock devices.
     for (i, params) in opts.vsock.iter().enumerate() {
         add_device(i, &params.device, &params.vhost, &jail, &mut devices_jails)?;
+    }
+
+    // No device created, that's probably not intended - print the help in that case.
+    if devices_jails.is_empty() {
+        let err = DevicesCommand::from_args(
+            &[&std::env::args().next().unwrap_or(String::from("crosvm"))],
+            &["--help"],
+        )
+        .unwrap_err();
+        println!("{}", err.output);
+        return Ok(());
     }
 
     let ex = Executor::new()?;
