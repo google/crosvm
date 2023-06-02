@@ -342,10 +342,7 @@ pub fn create_gpu_minijail(root: &Path, config: &SandboxConfig) -> Result<Minija
     let sys_devices_path = Path::new("/sys/devices");
     jail.mount_bind(sys_devices_path, sys_devices_path, false)?;
 
-    let drm_dri_path = Path::new("/dev/dri");
-    if drm_dri_path.exists() {
-        jail.mount_bind(drm_dri_path, drm_dri_path, false)?;
-    }
+    jail_mount_bind_drm(&mut jail, /* render_node_only= */ false)?;
 
     // If the ARM specific devices exist on the host, bind mount them in.
     let mali0_path = Path::new("/dev/mali0");
@@ -389,6 +386,31 @@ pub fn create_gpu_minijail(root: &Path, config: &SandboxConfig) -> Result<Minija
     }
 
     Ok(jail)
+}
+
+/// Selectively bind mount drm nodes into `jail` based on `render_node_only`
+///
+/// This function will not return an error if drm nodes don't exist
+pub fn jail_mount_bind_drm(jail: &mut Minijail, render_node_only: bool) -> Result<()> {
+    if render_node_only {
+        const DRM_NUM_NODES: u32 = 63;
+        const DRM_RENDER_NODE_START: u32 = 128;
+        for offset in 0..DRM_NUM_NODES {
+            let path_str = format!("/dev/dri/renderD{}", DRM_RENDER_NODE_START + offset);
+            let drm_dri_path = Path::new(&path_str);
+            if !drm_dri_path.exists() {
+                break;
+            }
+            jail.mount_bind(drm_dri_path, drm_dri_path, false)?;
+        }
+    } else {
+        let drm_dri_path = Path::new("/dev/dri");
+        if drm_dri_path.exists() {
+            jail.mount_bind(drm_dri_path, drm_dri_path, false)?;
+        }
+    }
+
+    Ok(())
 }
 
 /// Mirror-mount all the directories in `dirs` into `jail` on a best-effort basis.

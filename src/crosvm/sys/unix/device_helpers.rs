@@ -986,18 +986,7 @@ pub fn create_video_device(
         };
 
         if need_drm_device {
-            // follow the implementation at:
-            // https://chromium.googlesource.com/chromiumos/platform/minigbm/+/c06cc9cccb3cf3c7f9d2aec706c27c34cd6162a0/cros_gralloc/cros_gralloc_driver.cc#90
-            const DRM_NUM_NODES: u32 = 63;
-            const DRM_RENDER_NODE_START: u32 = 128;
-            for offset in 0..DRM_NUM_NODES {
-                let path_str = format!("/dev/dri/renderD{}", DRM_RENDER_NODE_START + offset);
-                let dev_dri_path = Path::new(&path_str);
-                if !dev_dri_path.exists() {
-                    break;
-                }
-                jail.mount_bind(dev_dri_path, dev_dri_path, false)?;
-            }
+            jail_mount_bind_drm(&mut jail, /* render_node_only= */ true)?;
         }
 
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
