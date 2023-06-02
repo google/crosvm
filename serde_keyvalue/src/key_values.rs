@@ -1135,13 +1135,13 @@ mod tests {
     #[test]
     fn deserialize_bool() {
         let res = from_key_values::<SingleStruct<bool>>("m=true").unwrap();
-        assert_eq!(res.m, true);
+        assert!(res.m);
 
         let res = from_key_values::<SingleStruct<bool>>("m=false").unwrap();
-        assert_eq!(res.m, false);
+        assert!(!res.m);
 
         let res = from_key_values::<SingleStruct<bool>>("m").unwrap();
-        assert_eq!(res.m, true);
+        assert!(res.m);
 
         let res = from_key_values::<SingleStruct<bool>>("m=10").unwrap_err();
         assert_eq!(
