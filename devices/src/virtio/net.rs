@@ -170,9 +170,10 @@ pub enum NetParametersMode {
 pub struct NetParameters {
     #[serde(flatten)]
     pub mode: NetParametersMode,
+    pub vq_pairs: Option<u16>,
+    #[cfg(unix)]
     #[serde(default)]
     pub vhost_net: bool,
-    pub vq_pairs: Option<u16>,
 }
 
 impl FromStr for NetParameters {
@@ -825,6 +826,7 @@ mod tests {
         assert_eq!(
             params,
             NetParameters {
+                #[cfg(unix)]
                 vhost_net: false,
                 vq_pairs: None,
                 mode: NetParametersMode::TapName {
@@ -838,6 +840,7 @@ mod tests {
         assert_eq!(
             params,
             NetParameters {
+                #[cfg(unix)]
                 vhost_net: false,
                 vq_pairs: None,
                 mode: NetParametersMode::TapName {
@@ -851,6 +854,7 @@ mod tests {
         assert_eq!(
             params,
             NetParameters {
+                #[cfg(unix)]
                 vhost_net: false,
                 vq_pairs: None,
                 mode: NetParametersMode::TapFd {
@@ -864,6 +868,7 @@ mod tests {
         assert_eq!(
             params,
             NetParameters {
+                #[cfg(unix)]
                 vhost_net: false,
                 vq_pairs: None,
                 mode: NetParametersMode::TapFd {
@@ -880,6 +885,7 @@ mod tests {
         assert_eq!(
             params,
             NetParameters {
+                #[cfg(unix)]
                 vhost_net: false,
                 vq_pairs: None,
                 mode: NetParametersMode::RawConfig {
@@ -890,6 +896,16 @@ mod tests {
             }
         );
 
+        // missing netmask
+        assert!(from_net_arg("host-ip=\"192.168.10.1\",mac=\"3d:70:eb:61:1a:91\"").is_err());
+
+        // invalid parameter
+        assert!(from_net_arg("tap-name=tap,foomatic=true").is_err());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn params_from_key_values_vhost_net() {
         let params = from_net_arg(
             "vhost-net=true,\
                 host-ip=\"192.168.10.1\",\
@@ -986,11 +1002,5 @@ mod tests {
             mac=\"3d:70:eb:61:1a:91\"",
         )
         .is_err());
-
-        // missing netmask
-        assert!(from_net_arg("host-ip=\"192.168.10.1\",mac=\"3d:70:eb:61:1a:91\"").is_err());
-
-        // invalid parameter
-        assert!(from_net_arg("tap-name=tap,foomatic=true").is_err());
     }
 }
