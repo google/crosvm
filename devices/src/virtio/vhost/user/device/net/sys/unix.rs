@@ -107,7 +107,7 @@ where
         Self::new(tap)
     }
 
-    fn new(tap: T) -> anyhow::Result<Self> {
+    pub fn new(tap: T) -> anyhow::Result<Self> {
         let vq_pairs = Self::max_vq_pairs();
         validate_and_configure_tap(&tap, vq_pairs as u16)
             .context("failed to validate and configure tap")?;

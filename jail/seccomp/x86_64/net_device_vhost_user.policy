@@ -1,0 +1,10 @@
+# Copyright 2023 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# Policy file for a network device used as a vhost-user backend.
+
+@include /usr/share/policy/crosvm/vhost_user.policy
+
+@include /usr/share/policy/crosvm/common_device.policy
+@include /usr/share/policy/crosvm/net.policy

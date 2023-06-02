@@ -10,6 +10,7 @@ use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
 use base::error;
+use base::AsRawDescriptors;
 use base::Event;
 use cros_async::EventAsync;
 use cros_async::Executor;
@@ -29,9 +30,11 @@ use crate::virtio::net::process_ctrl;
 use crate::virtio::net::process_tx;
 use crate::virtio::net::virtio_features_to_tap_offload;
 use crate::virtio::vhost::user::device::handler::sys::Doorbell;
+use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::Error as DeviceError;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 use crate::virtio::vhost::user::device::handler::WorkerState;
+use crate::virtio::vhost::user::VhostUserDevice;
 use crate::virtio::Queue;
 
 thread_local! {
@@ -81,7 +84,7 @@ async fn run_ctrl_queue<T: TapT>(
     }
 }
 
-pub(crate) struct NetBackend<T: TapT + IntoAsync> {
+pub struct NetBackend<T: TapT + IntoAsync> {
     tap: T,
     avail_features: u64,
     acked_features: u64,
@@ -98,6 +101,15 @@ where
 {
     fn max_vq_pairs() -> usize {
         MAX_QUEUE_NUM / 2
+    }
+}
+
+impl<T: 'static> AsRawDescriptors for NetBackend<T>
+where
+    T: TapT + IntoAsync + AsRawDescriptors,
+{
+    fn as_raw_descriptors(&self) -> Vec<base::RawDescriptor> {
+        self.tap.as_raw_descriptors()
     }
 }
 
@@ -185,5 +197,27 @@ where
         } else {
             Err(anyhow::Error::new(DeviceError::WorkerNotFound))
         }
+    }
+}
+
+impl<T> VhostUserDevice for NetBackend<T>
+where
+    T: TapT + IntoAsync + 'static,
+{
+    fn max_queue_num(&self) -> usize {
+        MAX_QUEUE_NUM
+    }
+
+    fn into_req_handler(
+        self: Box<Self>,
+        ops: Box<dyn super::handler::VhostUserPlatformOps>,
+        ex: &Executor,
+    ) -> anyhow::Result<Box<dyn vmm_vhost::VhostUserSlaveReqHandler>> {
+        NET_EXECUTOR.with(|thread_ex| {
+            let _ = thread_ex.set(ex.clone());
+        });
+        let handler = DeviceRequestHandler::new(self, ops);
+
+        Ok(Box::new(std::sync::Mutex::new(handler)))
     }
 }

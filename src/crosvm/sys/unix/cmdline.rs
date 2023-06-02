@@ -11,6 +11,7 @@ use devices::virtio::block::DiskOption;
 use devices::virtio::vhost::user::device;
 use devices::virtio::vhost::user::VhostUserParams;
 use devices::virtio::vsock::VsockConfig;
+use devices::virtio::NetParameters;
 use devices::SerialParameters;
 use jail::JailConfig;
 
@@ -108,6 +109,15 @@ pub struct DevicesCommand {
     ///     device=VHOST_DEVICE - path to the vhost-vsock device to
     ///         use (Linux only). Defaults to /dev/vhost-vsock.
     pub vsock: Vec<VhostUserParams<VsockConfig>>,
+
+    #[argh(option, arg_name = "block options")]
+    /// start a network device.
+    /// Possible key values:
+    ///     vhost=PATH - Path to a vhost-user endpoint to listen to.
+    ///        This parameter must be given in first position.
+    ///     network options:
+    ///         See help from the `crosvm run` command.
+    pub net: Vec<VhostUserParams<NetParameters>>,
 
     #[argh(option, short = 's', arg_name = "PATH")]
     /// path to put the control socket.

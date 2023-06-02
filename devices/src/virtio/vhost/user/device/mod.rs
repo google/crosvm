@@ -42,7 +42,7 @@ cfg_if::cfg_if! {
         pub use wl::{run_wl_device, parse_wayland_sock, Options as WlOptions};
         pub use console::{create_vu_console_device, run_console_device, Options as ConsoleOptions};
         pub use fs::{run_fs_device, Options as FsOptions};
-        pub use net::{run_net_device, Options as NetOptions};
+        pub use net::{run_net_device, Options as NetOptions, NetBackend};
     } else if #[cfg(windows)] {
         #[cfg(feature = "slirp")]
         mod net;

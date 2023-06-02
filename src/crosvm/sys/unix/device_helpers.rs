@@ -39,6 +39,7 @@ use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vfio_wrapper::VfioWrapper;
 use devices::virtio::vhost::user::proxy::VirtioVhostUser;
 use devices::virtio::vhost::user::vmm::VhostUserVirtioDevice;
+use devices::virtio::vhost::user::NetBackend;
 use devices::virtio::vhost::user::VhostUserDevice;
 use devices::virtio::vhost::user::VhostUserVsockDevice;
 use devices::virtio::vsock::VsockConfig;
@@ -786,6 +787,21 @@ impl VirtioDeviceBuilder for &NetParameters {
         };
 
         simple_jail(jail_config, &virtio_transport.seccomp_policy_file(policy))
+    }
+
+    fn create_vhost_user_device(
+        self,
+        keep_rds: &mut Vec<RawDescriptor>,
+    ) -> anyhow::Result<Box<dyn VhostUserDevice>> {
+        let vq_pairs = self.vq_pairs.unwrap_or(1);
+        let multi_vq = vq_pairs > 1 && self.vhost_net.is_none();
+        let (tap, _mac) = create_tap_for_net_device(&self.mode, multi_vq)?;
+
+        let backend = NetBackend::new(tap)?;
+
+        keep_rds.extend(backend.as_raw_descriptors());
+
+        Ok(Box::new(backend))
     }
 }
 

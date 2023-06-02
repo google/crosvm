@@ -3996,6 +3996,11 @@ pub fn start_devices(opts: DevicesCommand) -> anyhow::Result<()> {
         add_device(i, &params.device, &params.vhost, &jail, &mut devices_jails)?;
     }
 
+    // Create network devices.
+    for (i, params) in opts.net.iter().enumerate() {
+        add_device(i, &params.device, &params.vhost, &jail, &mut devices_jails)?;
+    }
+
     // No device created, that's probably not intended - print the help in that case.
     if devices_jails.is_empty() {
         let err = DevicesCommand::from_args(
