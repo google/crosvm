@@ -206,21 +206,21 @@ impl PciRoot {
     }
 
     /// Add a `device` to this root PCI bus.
-    pub fn add_device(&mut self, address: PciAddress, device: Arc<Mutex<dyn BusDevice>>) {
+    pub fn add_device(
+        &mut self,
+        address: PciAddress,
+        device: Arc<Mutex<dyn BusDevice>>,
+    ) -> Result<(), Error> {
         // Ignore attempt to replace PCI Root host bridge.
         if !address.is_root() {
             self.devices.insert(address, device);
         }
 
-        if let Err(e) = self.root_bus.lock().add_child_device(address) {
-            error!("add device error: {}", e);
-        }
+        self.root_bus.lock().add_child_device(address)
     }
 
-    pub fn add_bridge(&mut self, bridge_bus: Arc<Mutex<PciBus>>) {
-        if let Err(e) = self.root_bus.lock().add_child_bus(bridge_bus) {
-            error!("add bridge error: {}", e);
-        }
+    pub fn add_bridge(&mut self, bridge_bus: Arc<Mutex<PciBus>>) -> Result<(), Error> {
+        self.root_bus.lock().add_child_bus(bridge_bus)
     }
 
     pub fn remove_device(&mut self, address: PciAddress) {

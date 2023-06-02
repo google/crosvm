@@ -610,6 +610,9 @@ pub enum DeviceRegistrationError {
     /// Could not add a device to the mmio bus.
     #[error("failed to add to mmio bus: {0}")]
     MmioInsert(BusError),
+    /// Failed to insert device into PCI root.
+    #[error("failed to insert device into PCI root: {0}")]
+    PciRootAddDevice(PciDeviceError),
     #[cfg(unix)]
     /// Failed to initialize proxy device for jailed device.
     #[error("failed to create proxy device: {0}")]
@@ -1134,7 +1137,8 @@ pub fn generate_pci_root(
             device.on_sandboxed();
             Arc::new(Mutex::new(device))
         };
-        root.add_device(address, arced_dev.clone());
+        root.add_device(address, arced_dev.clone())
+            .map_err(DeviceRegistrationError::PciRootAddDevice)?;
         for range in &ranges {
             mmio_bus
                 .insert(arced_dev.clone(), range.addr, range.size)
