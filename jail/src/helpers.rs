@@ -324,7 +324,11 @@ pub fn simple_jail(jail_config: &Option<JailConfig>, policy: &str) -> Result<Opt
 }
 
 /// Creates [Minijail] for gpu processes.
-pub fn create_gpu_minijail(root: &Path, config: &SandboxConfig) -> Result<Minijail> {
+pub fn create_gpu_minijail(
+    root: &Path,
+    config: &SandboxConfig,
+    render_node_only: bool,
+) -> Result<Minijail> {
     let mut jail = create_sandbox_minijail(root, MAX_OPEN_FILES_FOR_GPU, config)?;
 
     // Device nodes required for DRM.
@@ -342,7 +346,7 @@ pub fn create_gpu_minijail(root: &Path, config: &SandboxConfig) -> Result<Minija
     let sys_devices_path = Path::new("/sys/devices");
     jail.mount_bind(sys_devices_path, sys_devices_path, false)?;
 
-    jail_mount_bind_drm(&mut jail, /* render_node_only= */ false)?;
+    jail_mount_bind_drm(&mut jail, render_node_only)?;
 
     // If the ARM specific devices exist on the host, bind mount them in.
     let mali0_path = Path::new("/dev/mali0");

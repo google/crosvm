@@ -931,7 +931,11 @@ pub fn create_wayland_device(
     let jail = if let Some(jail_config) = jail_config {
         let mut config = SandboxConfig::new(jail_config, "wl_device");
         config.bind_mounts = true;
-        let mut jail = create_gpu_minijail(&jail_config.pivot_root, &config)?;
+        let mut jail = create_gpu_minijail(
+            &jail_config.pivot_root,
+            &config,
+            /* render_node_only= */ false,
+        )?;
         // Bind mount the wayland socket's directory into jail's root. This is necessary since
         // each new wayland context must open() the socket. If the wayland socket is ever
         // destroyed and remade in the same host directory, new connections will be possible
