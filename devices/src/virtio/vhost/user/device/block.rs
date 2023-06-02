@@ -4,7 +4,6 @@
 
 mod sys;
 
-use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -12,20 +11,16 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::bail;
-use anyhow::Context;
+use base::error;
+use base::warn;
 use base::Event;
-use base::Timer;
-use base::{error, warn};
 use cros_async::sync::RwLock as AsyncRwLock;
 use cros_async::AsyncTube;
-use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::ExecutorKind;
 use cros_async::TaskHandle;
-use cros_async::TimerAsync;
-use futures::future::AbortHandle;
-use futures::future::Abortable;
-use futures::FutureExt;
+use futures::channel::mpsc;
+use futures::channel::oneshot;
 use sync::Mutex;
 pub use sys::start_device as run_block_device;
 pub use sys::Options;
@@ -35,10 +30,10 @@ use vmm_vhost::VhostUserSlaveReqHandler;
 use zerocopy::AsBytes;
 
 use crate::virtio;
-use crate::virtio::block::asynchronous::flush_disk;
-use crate::virtio::block::asynchronous::handle_queue;
-use crate::virtio::block::asynchronous::handle_vhost_user_command_tube;
+use crate::virtio::block::asynchronous::run_worker;
 use crate::virtio::block::asynchronous::BlockAsync;
+use crate::virtio::block::asynchronous::ConfigChangeSignal;
+use crate::virtio::block::asynchronous::WorkerCmd;
 use crate::virtio::block::DiskState;
 use crate::virtio::copy_config;
 use crate::virtio::vhost::user::device::handler::sys::Doorbell;
@@ -48,9 +43,7 @@ use crate::virtio::vhost::user::device::handler::VhostBackendReqConnection;
 use crate::virtio::vhost::user::device::handler::VhostBackendReqConnectionState;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 use crate::virtio::vhost::user::device::handler::VhostUserPlatformOps;
-use crate::virtio::vhost::user::device::handler::WorkerState;
 use crate::virtio::vhost::user::device::VhostUserDevice;
-use crate::virtio::Queue;
 
 const NUM_QUEUES: u16 = 16;
 
@@ -63,17 +56,62 @@ struct BlockBackend {
     avail_features: u64,
     acked_features: u64,
     acked_protocol_features: VhostUserProtocolFeatures,
-    flush_timer: Rc<RefCell<TimerAsync>>,
-    flush_timer_armed: Rc<RefCell<bool>>,
     backend_req_conn: Arc<Mutex<VhostBackendReqConnectionState>>,
-    workers: [Option<WorkerState<Rc<RefCell<Queue>>, ()>>; NUM_QUEUES as usize],
-    flush_disk_worker_state: Option<BlockNonQueueWorker>,
-    vhost_command_tube_worker_state: Option<BlockNonQueueWorker>,
+    control_tube: Option<base::Tube>,
+    worker: Option<Worker>,
 }
 
-struct BlockNonQueueWorker {
-    abort_handle: AbortHandle,
-    task: TaskHandle<()>,
+struct Worker {
+    worker_task: TaskHandle<Option<base::Tube>>,
+    worker_tx: mpsc::UnboundedSender<WorkerCmd<Doorbell>>,
+    kill_evt: Event,
+}
+
+impl BlockBackend {
+    fn start_worker(&mut self) {
+        if self.worker.is_some() {
+            return;
+        }
+
+        let async_tube = self
+            .control_tube
+            .take()
+            .map(|t| AsyncTube::new(&self.ex, t))
+            .transpose()
+            .expect("failed to create async tube");
+        let kill_evt = Event::new().expect("failed to create kill_evt");
+        let (worker_tx, worker_rx) = mpsc::unbounded();
+        let worker_task = self.ex.spawn_local({
+            let ex = self.ex.clone();
+            let disk_state = self.disk_state.clone();
+            let backend_req_conn = self.backend_req_conn.clone();
+            let kill_evt = kill_evt.try_clone().expect("failed to clone event");
+            async move {
+                let result = run_worker(
+                    &ex,
+                    ConfigChangeSignal::VhostUserBackendRequest(backend_req_conn),
+                    &disk_state,
+                    &async_tube,
+                    worker_rx,
+                    kill_evt,
+                    // Use a do-nothing future for irq resampling because vhost-user handles that
+                    // elsewhere.
+                    std::future::pending(),
+                )
+                .await;
+                if let Err(e) = result {
+                    error!("run_worker failed: {}", e);
+                }
+                async_tube.map(base::Tube::from)
+            }
+        });
+
+        self.worker = Some(Worker {
+            worker_task,
+            worker_tx,
+            kill_evt,
+        });
+    }
 }
 
 impl VhostUserDevice for BlockAsync {
@@ -103,74 +141,9 @@ impl VhostUserDevice for BlockAsync {
             self.id,
         )));
 
-        let timer = Timer::new().context("Failed to create a timer")?;
-        let flush_timer_write = Rc::new(RefCell::new(
-            TimerAsync::new(
-                // Call try_clone() to share the same underlying FD with the `flush_disk` task.
-                timer.try_clone().context("Failed to clone flush_timer")?,
-                ex,
-            )
-            .context("Failed to create an async timer")?,
-        ));
-        // Create a separate TimerAsync with the same backing kernel timer. This allows the
-        // `flush_disk` task to borrow its copy waiting for events while the queue handlers can
-        // still borrow their copy momentarily to set timeouts.
-        // Call try_clone() to share the same underlying FD with the `flush_disk` task.
-        let flush_timer_read = timer
-            .try_clone()
-            .context("Failed to clone flush_timer")
-            .and_then(|t| TimerAsync::new(t, ex).context("Failed to create an async timer"))?;
-        let flush_timer_armed = Rc::new(RefCell::new(false));
-
-        let (abort_handle, registration) = AbortHandle::new_pair();
-        let disk_state_clone = disk_state.clone();
-        let flush_timer_armed_clone = flush_timer_armed.clone();
-        let task = ex.spawn_local(async {
-            let _ = Abortable::new(
-                async {
-                    if let Err(e) =
-                        flush_disk(disk_state_clone, flush_timer_read, flush_timer_armed_clone)
-                            .await
-                    {
-                        error!("flush_disk task failed: {:?}", e);
-                    }
-                },
-                registration,
-            )
-            .await;
-        });
-
-        let flush_disk_worker_state = Some(BlockNonQueueWorker { abort_handle, task });
-
         let backend_req_conn = Arc::new(Mutex::new(VhostBackendReqConnectionState::NoConnection));
-        let vhost_command_tube_worker_state = if let Some(control_tube) = self.control_tube.take() {
-            let (abort_handle, registration) = AbortHandle::new_pair();
-            let async_tube = AsyncTube::new(ex, control_tube)?;
-            let backend_req_connection_clone = backend_req_conn.clone();
-            let disk_state_clone = disk_state.clone();
-            let task = ex.spawn_local(async {
-                let _ = Abortable::new(
-                    async {
-                        if let Err(e) = handle_vhost_user_command_tube(
-                            async_tube,
-                            backend_req_connection_clone,
-                            disk_state_clone,
-                        )
-                        .await
-                        {
-                            error!("handle_vhost_user_command_tube task failed: {}", e);
-                        }
-                    },
-                    registration,
-                )
-                .await;
-            });
-            Some(BlockNonQueueWorker { abort_handle, task })
-        } else {
-            None
-        };
 
-        let backend = BlockBackend {
+        let mut backend = BlockBackend {
             ex: ex.clone(),
             disk_state,
             disk_size: Arc::clone(&self.disk_size),
@@ -179,13 +152,11 @@ impl VhostUserDevice for BlockAsync {
             avail_features,
             acked_features: 0,
             acked_protocol_features: VhostUserProtocolFeatures::empty(),
-            flush_timer: flush_timer_write,
-            backend_req_conn: Arc::clone(&backend_req_conn),
-            flush_timer_armed,
-            workers: Default::default(),
-            flush_disk_worker_state,
-            vhost_command_tube_worker_state,
+            backend_req_conn,
+            control_tube: self.control_tube,
+            worker: None,
         };
+        backend.start_worker();
 
         let handler = DeviceRequestHandler::new(Box::new(backend), ops);
         Ok(Box::new(std::sync::Mutex::new(handler)))
@@ -258,59 +229,40 @@ impl VhostUserBackend for BlockBackend {
         doorbell: Doorbell,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
-        if self.workers[idx].is_some() {
-            warn!("Starting new queue handler without stopping old handler");
-            self.stop_queue(idx)?;
-        }
-
-        let kick_evt = EventAsync::new(kick_evt, &self.ex)
-            .context("failed to create EventAsync for kick_evt")?;
-        let (handle, registration) = AbortHandle::new_pair();
-
-        let disk_state = Rc::clone(&self.disk_state);
-        let timer = Rc::clone(&self.flush_timer);
-        let timer_armed = Rc::clone(&self.flush_timer_armed);
-        let queue = Rc::new(RefCell::new(queue));
-        let (_stop_tx, stop_rx) = futures::channel::oneshot::channel();
-        let queue_task = self.ex.spawn_local(Abortable::new(
-            handle_queue(
-                mem,
-                disk_state,
-                queue.clone(),
+        self.worker
+            .as_ref()
+            .expect("worker not started")
+            .worker_tx
+            .unbounded_send(WorkerCmd::StartQueue {
+                index: idx,
+                queue,
                 kick_evt,
-                doorbell,
-                timer,
-                timer_armed,
-                stop_rx,
-            )
-            .map(|_queue| ()),
-            registration,
-        ));
-
-        self.workers[idx] = Some(WorkerState {
-            abort_handle: handle,
-            queue_task,
-            queue,
-        });
+                interrupt: doorbell,
+                mem,
+            })
+            .unwrap_or_else(|_| panic!("worker channel closed early"));
         Ok(())
     }
 
     fn stop_queue(&mut self, idx: usize) -> anyhow::Result<virtio::Queue> {
-        if let Some(worker) = self.workers.get_mut(idx).and_then(Option::take) {
-            worker.abort_handle.abort();
-
-            // Wait for queue_task to be aborted.
-            let _ = self.ex.run_until(worker.queue_task);
-
-            let queue = match Rc::try_unwrap(worker.queue) {
-                Ok(queue_cell) => queue_cell.into_inner(),
-                Err(_) => panic!("failed to recover queue from worker"),
-            };
-
-            Ok(queue)
-        } else {
-            Err(anyhow::Error::new(DeviceError::WorkerNotFound))
-        }
+        let (response_tx, response_rx) = oneshot::channel();
+        self.worker
+            .as_ref()
+            .expect("worker not started")
+            .worker_tx
+            .unbounded_send(WorkerCmd::StopQueue {
+                index: idx,
+                response_tx,
+            })
+            .unwrap_or_else(|_| panic!("worker channel closed early"));
+        self.ex
+            .run_until(async {
+                response_rx
+                    .await
+                    .expect("response_rx closed early")
+                    .ok_or(anyhow::Error::new(DeviceError::WorkerNotFound))
+            })
+            .expect("run_until failed")
     }
 
     fn set_backend_req_connection(&mut self, conn: VhostBackendReqConnection) {
@@ -324,17 +276,14 @@ impl VhostUserBackend for BlockBackend {
     }
 
     fn stop_non_queue_workers(&mut self) -> anyhow::Result<()> {
-        if let Some(flush_disk_worker_state) = self.flush_disk_worker_state.take() {
-            flush_disk_worker_state.abort_handle.abort();
-            self.ex.run_until(flush_disk_worker_state.task)?;
-        }
-
-        if let Some(vhost_user_command_tube_worker_state) =
-            self.vhost_command_tube_worker_state.take()
-        {
-            vhost_user_command_tube_worker_state.abort_handle.abort();
-            self.ex
-                .run_until(async { vhost_user_command_tube_worker_state.task.await })?;
+        // TODO: this also stops all queues as a byproduct which is fine given how it is currently
+        // used but might be unexpected so i should at least tweak the trait docs to mention it
+        if let Some(worker) = self.worker.take() {
+            worker.kill_evt.signal().unwrap();
+            self.control_tube = self
+                .ex
+                .run_until(worker.worker_task)
+                .expect("run_until failed");
         }
 
         Ok(())

@@ -302,7 +302,7 @@ pub async fn process_one_chain<I: SignalableInterrupt>(
 // There is one async task running `handle_queue` per virtio queue in use.
 // Receives messages from the guest and queues a task to complete the operations with the async
 // executor.
-pub async fn handle_queue<I: SignalableInterrupt + 'static>(
+async fn handle_queue<I: SignalableInterrupt + 'static>(
     mem: GuestMemory,
     disk_state: Rc<AsyncRwLock<DiskState>>,
     queue: Rc<RefCell<Queue>>,
@@ -352,22 +352,7 @@ pub async fn handle_queue<I: SignalableInterrupt + 'static>(
     }
 }
 
-/// handles the disk control requests from the vhost user backend control server.
-pub async fn handle_vhost_user_command_tube(
-    command_tube: AsyncTube,
-    backend_req_connection: Arc<Mutex<VhostBackendReqConnectionState>>,
-    disk_state: Rc<AsyncRwLock<DiskState>>,
-) -> Result<(), ExecuteError> {
-    // Process the commands.
-    handle_command_tube(
-        &Some(command_tube),
-        ConfigChangeSignal::VhostUserBackendRequest(backend_req_connection),
-        Rc::clone(&disk_state),
-    )
-    .await
-}
-
-enum ConfigChangeSignal {
+pub enum ConfigChangeSignal {
     Interrupt(Interrupt),
     VhostUserBackendRequest(Arc<Mutex<VhostBackendReqConnectionState>>),
 }
@@ -458,7 +443,7 @@ async fn resize(disk_state: &AsyncRwLock<DiskState>, new_size: u64) -> DiskContr
 }
 
 /// Periodically flushes the disk when the given timer fires.
-pub async fn flush_disk(
+async fn flush_disk(
     disk_state: Rc<AsyncRwLock<DiskState>>,
     timer: TimerAsync,
     armed: Rc<RefCell<bool>>,
@@ -483,11 +468,13 @@ pub async fn flush_disk(
     }
 }
 
-pub enum WorkerCmd {
+pub enum WorkerCmd<I: SignalableInterrupt + 'static> {
     StartQueue {
         index: usize,
         queue: Queue,
         kick_evt: Event,
+        interrupt: I,
+        mem: GuestMemory,
     },
     StopQueue {
         index: usize,
@@ -503,30 +490,21 @@ pub enum WorkerCmd {
 // `disk_state` is wrapped by `AsyncRwLock`, which provides both shared and exclusive locks. It's
 // because the state can be read from the virtqueue task while the control task is processing a
 // resizing command.
-async fn run_worker(
+pub async fn run_worker<I: SignalableInterrupt + 'static>(
     ex: &Executor,
-    interrupt: Interrupt,
-    mem: GuestMemory,
+    signal: ConfigChangeSignal,
     disk_state: &Rc<AsyncRwLock<DiskState>>,
     control_tube: &Option<AsyncTube>,
-    mut worker_rx: mpsc::UnboundedReceiver<WorkerCmd>,
+    mut worker_rx: mpsc::UnboundedReceiver<WorkerCmd<I>>,
     kill_evt: Event,
+    resample_future: impl std::future::Future<Output = anyhow::Result<()>>,
 ) -> anyhow::Result<()> {
     // One flush timer per disk.
     let timer = Timer::new().expect("Failed to create a timer");
     let flush_timer_armed = Rc::new(RefCell::new(false));
 
-    // Process any requests to resample the irq value.
-    let resample = async_utils::handle_irq_resample(ex, interrupt.clone()).fuse();
-    pin_mut!(resample);
-
     // Handles control requests.
-    let control = handle_command_tube(
-        control_tube,
-        ConfigChangeSignal::Interrupt(interrupt.clone()),
-        disk_state.clone(),
-    )
-    .fuse();
+    let control = handle_command_tube(control_tube, signal, disk_state.clone()).fuse();
     pin_mut!(control);
 
     // Handle all the queues in one sub-select call.
@@ -548,6 +526,9 @@ async fn run_worker(
     let kill = async_utils::await_and_exit(ex, kill_evt).fuse();
     pin_mut!(kill);
 
+    let resample_future = resample_future.fuse();
+    pin_mut!(resample_future);
+
     // Running queue handlers.
     let mut queue_handlers = FuturesUnordered::new();
     // Async stop functions for queue handlers, by queue index.
@@ -558,19 +539,19 @@ async fn run_worker(
             _ = queue_handlers.next() => continue,
             r = disk_flush => return r.context("failed to flush a disk"),
             r = control => return r.context("failed to handle a control request"),
-            r = resample => return r.context("failed to resample an irq value"),
+            r = resample_future => return r.context("failed to resample an irq value"),
             r = kill => return r.context("failed to wait on the kill event"),
             worker_cmd = worker_rx.next() => {
                 match worker_cmd {
                     None => anyhow::bail!("worker control channel unexpectedly closed"),
-                    Some(WorkerCmd::StartQueue{index, queue, kick_evt}) => {
+                    Some(WorkerCmd::StartQueue{index, queue, kick_evt, interrupt, mem}) => {
                         let (tx, rx) = oneshot::channel();
                         let (handle_queue_future, remote_handle) = handle_queue(
-                            mem.clone(),
+                            mem,
                             Rc::clone(disk_state),
                             Rc::new(RefCell::new(queue)),
                             EventAsync::new(kick_evt, ex).expect("Failed to create async event for queue"),
-                            interrupt.clone(),
+                            interrupt,
                             Rc::clone(&flush_timer),
                             Rc::clone(&flush_timer_armed),
                             rx,
@@ -1049,6 +1030,8 @@ impl VirtioDevice for BlockAsync {
                             index,
                             queue,
                             kick_evt: event,
+                            interrupt: interrupt.clone(),
+                            mem: mem.clone(),
                         })
                         .unwrap_or_else(|_| panic!("worker channel closed early"));
                 }
@@ -1056,12 +1039,15 @@ impl VirtioDevice for BlockAsync {
                 if let Err(err_string) = ex
                     .run_until(run_worker(
                         &ex,
-                        interrupt,
-                        mem,
+                        ConfigChangeSignal::Interrupt(interrupt.clone()),
                         &disk_state,
                         &async_control,
                         worker_rx,
                         kill_evt,
+                        async {
+                            // Process any requests to resample the irq value.
+                            async_utils::handle_irq_resample(&ex, interrupt.clone()).await
+                        },
                     ))
                     .expect("run_until failed")
                 {
