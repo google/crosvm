@@ -1501,7 +1501,12 @@ pub struct RunCommand {
     ///      )
     ///   )
     /// AND
-    ///   vhost-net=BOOL  - whether enable vhost_net or not.
+    ///   vhost-net
+    ///   OR
+    ///   vhost-net=[device=/vhost_net/device] - use vhost_net.
+    ///                       If the device path is not the default
+    ///                       /dev/vhost-net, it can also be
+    ///                       specified.
     ///                       Default: false.  [Optional]
     ///   vq-pairs=N      - number of rx/tx queue pairs.
     ///                       Default: 1.      [Optional]
@@ -2391,14 +2396,6 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.hypervisor = Some(crate::crosvm::config::HypervisorKind::Kvm { device: Some(p) });
         }
 
-        #[cfg(unix)]
-        if let Some(p) = cmd.vhost_net_device {
-            if !p.exists() {
-                return Err(format!("vhost-net-device path {:?} does not exist", p));
-            }
-            cfg.vhost_net_device_path = p;
-        }
-
         cfg.android_fstab = cmd.android_fstab;
 
         cfg.async_executor = cmd.async_executor;
@@ -2872,9 +2869,30 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         #[cfg(unix)]
         {
+            use devices::virtio::VhostNetParameters;
+            use devices::virtio::VHOST_NET_DEFAULT_PATH;
+
             cfg.shared_dirs = cmd.shared_dir;
 
             cfg.net = cmd.net;
+
+            if let Some(vhost_net_device) = &cmd.vhost_net_device {
+                let vhost_net_path = vhost_net_device.to_string_lossy();
+                log::warn!(
+                    "`--vhost-net-device` is deprecated; please use \
+                    `--net ...,vhost-net=[device={vhost_net_path}]`"
+                );
+            }
+
+            let vhost_net_config = if cmd.vhost_net.unwrap_or_default() {
+                Some(VhostNetParameters {
+                    device: cmd
+                        .vhost_net_device
+                        .unwrap_or_else(|| PathBuf::from(VHOST_NET_DEFAULT_PATH)),
+                })
+            } else {
+                None
+            };
 
             let vhost_net_msg = match cmd.vhost_net.unwrap_or_default() {
                 true => ",vhost-net=true",
@@ -2895,7 +2913,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                         tap_name,
                         mac: None,
                     },
-                    vhost_net: cmd.vhost_net.unwrap_or_default(),
+                    vhost_net: vhost_net_config.clone(),
                     vq_pairs: cmd.net_vq_pairs,
                 });
             }
@@ -2907,7 +2925,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                 );
                 cfg.net.push(NetParameters {
                     mode: NetParametersMode::TapFd { tap_fd, mac: None },
-                    vhost_net: cmd.vhost_net.unwrap_or_default(),
+                    vhost_net: vhost_net_config.clone(),
                     vq_pairs: cmd.net_vq_pairs,
                 });
             }
@@ -2944,7 +2962,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                         netmask,
                         mac,
                     },
-                    vhost_net: cmd.vhost_net.unwrap_or_default(),
+                    vhost_net: vhost_net_config,
                     vq_pairs: cmd.net_vq_pairs,
                 });
             }

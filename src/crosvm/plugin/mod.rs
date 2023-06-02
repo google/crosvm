@@ -546,7 +546,7 @@ pub fn run_config(cfg: Config) -> Result<()> {
 
     let mut tap_interfaces: Vec<Tap> = Vec::new();
     for net_params in cfg.net {
-        if net_params.vhost_net {
+        if net_params.vhost_net.is_some() {
             bail!("vhost-net not supported with plugin");
         }
 

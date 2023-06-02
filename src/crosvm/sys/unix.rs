@@ -517,15 +517,15 @@ fn create_virtio_devices(
     for opt in &cfg.net {
         let vq_pairs = opt.vq_pairs.unwrap_or(1);
         let vcpu_count = cfg.vcpu_count.unwrap_or(1);
-        let multi_vq = vq_pairs > 1 && !opt.vhost_net;
+        let multi_vq = vq_pairs > 1 && opt.vhost_net.is_none();
         let (tap, mac) = create_tap_for_net_device(&opt.mode, multi_vq)?;
-        let dev = if opt.vhost_net {
+        let dev = if let Some(vhost_net) = &opt.vhost_net {
             create_virtio_vhost_net_device_from_tap(
                 cfg.protection_type,
                 &cfg.jail_config,
                 vq_pairs,
                 vcpu_count,
-                cfg.vhost_net_device_path.clone(),
+                &vhost_net.device,
                 tap,
                 mac,
             )

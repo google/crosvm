@@ -8,6 +8,7 @@ use std::io::Write;
 use std::mem;
 use std::net::Ipv4Addr;
 use std::os::raw::c_uint;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -60,6 +61,9 @@ use crate::Suspendable;
 #[cfg(windows)]
 pub(crate) const MAX_BUFFER_SIZE: usize = 65562;
 const QUEUE_SIZE: u16 = 256;
+
+#[cfg(unix)]
+pub static VHOST_NET_DEFAULT_PATH: &str = "/dev/vhost-net";
 
 pub(crate) use super::sys::process_rx;
 pub(crate) use super::sys::process_tx;
@@ -165,15 +169,38 @@ pub enum NetParametersMode {
     },
 }
 
+#[cfg(unix)]
+fn vhost_net_device_path_default() -> PathBuf {
+    PathBuf::from(VHOST_NET_DEFAULT_PATH)
+}
+
+#[cfg(unix)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct VhostNetParameters {
+    #[serde(default = "vhost_net_device_path_default")]
+    pub device: PathBuf,
+}
+
+#[cfg(unix)]
+impl Default for VhostNetParameters {
+    fn default() -> Self {
+        Self {
+            device: vhost_net_device_path_default(),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub struct NetParameters {
     #[serde(flatten)]
     pub mode: NetParametersMode,
     pub vq_pairs: Option<u16>,
+    // Style-guide asks to refrain against #[cfg] directives in structs, this is an exception due
+    // to the fact this struct is used for argument parsing.
     #[cfg(unix)]
-    #[serde(default)]
-    pub vhost_net: bool,
+    pub vhost_net: Option<VhostNetParameters>,
 }
 
 impl FromStr for NetParameters {
@@ -827,7 +854,7 @@ mod tests {
             params,
             NetParameters {
                 #[cfg(unix)]
-                vhost_net: false,
+                vhost_net: None,
                 vq_pairs: None,
                 mode: NetParametersMode::TapName {
                     tap_name: "tap".to_string(),
@@ -841,7 +868,7 @@ mod tests {
             params,
             NetParameters {
                 #[cfg(unix)]
-                vhost_net: false,
+                vhost_net: None,
                 vq_pairs: None,
                 mode: NetParametersMode::TapName {
                     tap_name: "tap".to_string(),
@@ -855,7 +882,7 @@ mod tests {
             params,
             NetParameters {
                 #[cfg(unix)]
-                vhost_net: false,
+                vhost_net: None,
                 vq_pairs: None,
                 mode: NetParametersMode::TapFd {
                     tap_fd: 12,
@@ -869,7 +896,7 @@ mod tests {
             params,
             NetParameters {
                 #[cfg(unix)]
-                vhost_net: false,
+                vhost_net: None,
                 vq_pairs: None,
                 mode: NetParametersMode::TapFd {
                     tap_fd: 12,
@@ -886,7 +913,7 @@ mod tests {
             params,
             NetParameters {
                 #[cfg(unix)]
-                vhost_net: false,
+                vhost_net: None,
                 vq_pairs: None,
                 mode: NetParametersMode::RawConfig {
                     host_ip: Ipv4Addr::from_str("192.168.10.1").unwrap(),
@@ -907,7 +934,7 @@ mod tests {
     #[cfg(unix)]
     fn params_from_key_values_vhost_net() {
         let params = from_net_arg(
-            "vhost-net=true,\
+            "vhost-net=[device=/dev/foo],\
                 host-ip=\"192.168.10.1\",\
                 netmask=\"255.255.255.0\",\
                 mac=\"3d:70:eb:61:1a:91\"",
@@ -916,7 +943,9 @@ mod tests {
         assert_eq!(
             params,
             NetParameters {
-                vhost_net: true,
+                vhost_net: Some(VhostNetParameters {
+                    device: PathBuf::from("/dev/foo")
+                }),
                 vq_pairs: None,
                 mode: NetParametersMode::RawConfig {
                     host_ip: Ipv4Addr::from_str("192.168.10.1").unwrap(),
@@ -926,11 +955,11 @@ mod tests {
             }
         );
 
-        let params = from_net_arg("tap-fd=3,vhost-net=true").unwrap();
+        let params = from_net_arg("tap-fd=3,vhost-net").unwrap();
         assert_eq!(
             params,
             NetParameters {
-                vhost_net: true,
+                vhost_net: Some(Default::default()),
                 vq_pairs: None,
                 mode: NetParametersMode::TapFd {
                     tap_fd: 3,
@@ -939,38 +968,11 @@ mod tests {
             }
         );
 
-        let params = from_net_arg("tap-fd=4,vhost-net=false,mac=\"3d:70:eb:61:1a:91\"").unwrap();
+        let params = from_net_arg("vhost-net,tap-name=crosvm_tap").unwrap();
         assert_eq!(
             params,
             NetParameters {
-                vhost_net: false,
-                vq_pairs: None,
-                mode: NetParametersMode::TapFd {
-                    tap_fd: 4,
-                    mac: Some(MacAddress::from_str("3d:70:eb:61:1a:91").unwrap())
-                }
-            }
-        );
-
-        let params =
-            from_net_arg("tap-fd=4,vhost-net=false,mac=\"3d:70:eb:61:1a:91\",vq-pairs=16").unwrap();
-        assert_eq!(
-            params,
-            NetParameters {
-                vhost_net: false,
-                vq_pairs: Some(16),
-                mode: NetParametersMode::TapFd {
-                    tap_fd: 4,
-                    mac: Some(MacAddress::from_str("3d:70:eb:61:1a:91").unwrap())
-                }
-            }
-        );
-
-        let params = from_net_arg("vhost-net=true,tap-name=crosvm_tap").unwrap();
-        assert_eq!(
-            params,
-            NetParameters {
-                vhost_net: true,
+                vhost_net: Some(Default::default()),
                 vq_pairs: None,
                 mode: NetParametersMode::TapName {
                     tap_name: "crosvm_tap".to_owned(),
@@ -980,11 +982,11 @@ mod tests {
         );
 
         let params =
-            from_net_arg("vhost-net=true,mac=\"3d:70:eb:61:1a:91\",tap-name=crosvm_tap").unwrap();
+            from_net_arg("vhost-net,mac=\"3d:70:eb:61:1a:91\",tap-name=crosvm_tap").unwrap();
         assert_eq!(
             params,
             NetParameters {
-                vhost_net: true,
+                vhost_net: Some(Default::default()),
                 vq_pairs: None,
                 mode: NetParametersMode::TapName {
                     tap_name: "crosvm_tap".to_owned(),
@@ -996,7 +998,7 @@ mod tests {
         // mixed configs
         assert!(from_net_arg(
             "tap-name=tap,\
-            vhost-net=true,\
+            vhost-net,\
             host-ip=\"192.168.10.1\",\
             netmask=\"255.255.255.0\",\
             mac=\"3d:70:eb:61:1a:91\"",

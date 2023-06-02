@@ -79,8 +79,6 @@ cfg_if::cfg_if! {
         #[cfg(feature = "gpu")]
         use crate::crosvm::sys::GpuRenderServerParameters;
         use libc::{getegid, geteuid};
-
-        static VHOST_NET_PATH: &str = "/dev/vhost-net";
     } else if #[cfg(windows)] {
         use base::{Event, Tube};
     }
@@ -1216,8 +1214,6 @@ pub struct Config {
     pub vfio: Vec<super::sys::config::VfioOption>,
     #[cfg(unix)]
     pub vfio_isolate_hotplug: bool,
-    #[cfg(unix)]
-    pub vhost_net_device_path: PathBuf,
     pub vhost_user_blk: Vec<VhostUserOption>,
     pub vhost_user_console: Vec<VhostUserOption>,
     pub vhost_user_fs: Vec<VhostUserFsOption>,
@@ -1427,8 +1423,6 @@ impl Default for Config {
             vfio: Vec::new(),
             #[cfg(unix)]
             vfio_isolate_hotplug: false,
-            #[cfg(unix)]
-            vhost_net_device_path: PathBuf::from(VHOST_NET_PATH),
             vhost_user_blk: Vec::new(),
             vhost_user_console: Vec::new(),
             vhost_user_video_dec: Vec::new(),
