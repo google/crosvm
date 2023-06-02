@@ -142,8 +142,6 @@ use crate::virtio::device_constants::wl::QUEUE_SIZES;
 use crate::virtio::device_constants::wl::VIRTIO_WL_F_SEND_FENCES;
 use crate::virtio::device_constants::wl::VIRTIO_WL_F_TRANS_FLAGS;
 use crate::virtio::device_constants::wl::VIRTIO_WL_F_USE_SHMEM;
-use crate::virtio::virtio_device::Error as VirtioError;
-use crate::virtio::VirtioDeviceSaved;
 use crate::Suspendable;
 
 const VIRTWL_SEND_MAX_ALLOCS: usize = 28;
@@ -1812,7 +1810,7 @@ impl Worker {
         }
     }
 
-    fn run(mut self, kill_evt: Event) -> anyhow::Result<VirtioDeviceSaved> {
+    fn run(mut self, kill_evt: Event) -> anyhow::Result<Vec<Queue>> {
         #[derive(EventToken)]
         enum Token {
             InQueue,
@@ -1895,7 +1893,6 @@ impl Worker {
                 }
             }
         }
-
         let in_queue = match Rc::try_unwrap(self.in_queue) {
             Ok(queue_cell) => queue_cell.into_inner(),
             Err(_) => panic!("failed to recover queue from worker"),
@@ -1906,14 +1903,12 @@ impl Worker {
             Err(_) => panic!("failed to recover queue from worker"),
         };
 
-        Ok(VirtioDeviceSaved {
-            queues: vec![in_queue, out_queue],
-        })
+        Ok(vec![in_queue, out_queue])
     }
 }
 
 pub struct Wl {
-    worker_thread: Option<WorkerThread<anyhow::Result<VirtioDeviceSaved>>>,
+    worker_thread: Option<WorkerThread<anyhow::Result<Vec<Queue>>>>,
     wayland_paths: Map<String, PathBuf>,
     mapper: Option<Box<dyn SharedMemoryMapper>>,
     resource_bridge: Option<Tube>,
@@ -2069,10 +2064,10 @@ impl VirtioDevice for Wl {
         self.mapper = Some(mapper);
     }
 
-    fn stop(&mut self) -> std::result::Result<Option<VirtioDeviceSaved>, VirtioError> {
+    fn virtio_sleep(&mut self) -> anyhow::Result<Option<Vec<Queue>>> {
         if let Some(worker_thread) = self.worker_thread.take() {
-            let state = worker_thread.stop().map_err(VirtioError::InThreadFailure)?;
-            return Ok(Some(state));
+            let queues = worker_thread.stop()?;
+            return Ok(Some(queues));
         }
         Ok(None)
     }

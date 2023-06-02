@@ -37,14 +37,12 @@ use self::event_source::EvdevEventSource;
 use self::event_source::EventSource;
 use self::event_source::SocketEventSource;
 use super::copy_config;
-use super::virtio_device::Error as VirtioError;
 use super::DescriptorChain;
 use super::DeviceType;
 use super::Interrupt;
 use super::Queue;
 use super::SignalableInterrupt;
 use super::VirtioDevice;
-use super::VirtioDeviceSaved;
 use crate::Suspendable;
 
 const EVENT_QUEUE_SIZE: u16 = 64;
@@ -608,7 +606,7 @@ where
         false
     }
 
-    fn stop(&mut self) -> std::result::Result<Option<VirtioDeviceSaved>, VirtioError> {
+    fn virtio_sleep(&mut self) -> anyhow::Result<Option<Vec<Queue>>> {
         if let Some(worker_thread) = self.worker_thread.take() {
             let worker = worker_thread.stop();
             self.source = Some(worker.event_source);
@@ -616,7 +614,7 @@ where
                 /* 0 */ worker.event_queue,
                 /* 1 */ worker.status_queue,
             ];
-            Ok(Some(VirtioDeviceSaved { queues }))
+            Ok(Some(queues))
         } else {
             Ok(None)
         }

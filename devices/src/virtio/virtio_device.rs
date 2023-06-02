@@ -7,13 +7,10 @@ use std::sync::Arc;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use acpi_tables::sdt::SDT;
 use anyhow::Result;
-use base::Error as BaseError;
 use base::Event;
 use base::Protection;
 use base::RawDescriptor;
-use remain::sorted;
 use sync::Mutex;
-use thiserror::Error;
 use vm_control::VmMemorySource;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
@@ -205,12 +202,6 @@ pub trait VirtioDevice: Send + Suspendable {
     /// devices can remain backwards compatible with older drivers.
     fn set_shared_memory_region_base(&mut self, _addr: GuestAddress) {}
 
-    /// Stop the device and return queues and GuestMemory to the underlying bus that the virtio
-    /// device resides on (Pci/Mmio) to preserve their state.
-    fn stop(&mut self) -> Result<Option<VirtioDeviceSaved>, Error> {
-        Err(Error::NotImplemented(self.debug_label()))
-    }
-
     /// Pause all processing.
     ///
     /// Gives up the queues so that a higher layer can potentially snapshot them. The
@@ -245,21 +236,4 @@ pub trait VirtioDevice: Send + Suspendable {
     fn virtio_restore(&mut self, _data: serde_json::Value) -> anyhow::Result<()> {
         anyhow::bail!("virtio_restore not implemented for {}", self.debug_label());
     }
-}
-
-#[sorted]
-#[derive(Error, Debug)]
-pub enum Error {
-    #[error("thread error: {0}")]
-    InThreadFailure(anyhow::Error),
-    #[error("failed to kill {0} worker thread")]
-    KillEventFailure(BaseError),
-    #[error("Stop is not implemented for: {0}")]
-    NotImplemented(String),
-    #[error("thread ending failed: {0}")]
-    ThreadJoinFailure(String),
-}
-
-pub struct VirtioDeviceSaved {
-    pub queues: Vec<Queue>,
 }

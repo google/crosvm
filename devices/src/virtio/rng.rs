@@ -23,8 +23,6 @@ use super::Interrupt;
 use super::Queue;
 use super::SignalableInterrupt;
 use super::VirtioDevice;
-use super::VirtioDeviceSaved;
-use crate::virtio::virtio_device::Error as VirtioError;
 use crate::Suspendable;
 
 const QUEUE_SIZE: u16 = 256;
@@ -69,7 +67,7 @@ impl Worker {
         needs_interrupt
     }
 
-    fn run(mut self, kill_evt: Event) -> anyhow::Result<VirtioDeviceSaved> {
+    fn run(mut self, kill_evt: Event) -> anyhow::Result<Vec<Queue>> {
         #[derive(EventToken)]
         enum Token {
             QueueAvailable,
@@ -124,15 +122,13 @@ impl Worker {
                 self.queue.trigger_interrupt(&self.mem, &self.interrupt);
             }
         }
-        Ok(VirtioDeviceSaved {
-            queues: vec![self.queue],
-        })
+        Ok(vec![self.queue])
     }
 }
 
 /// Virtio device for exposing entropy to the guest OS through virtio.
 pub struct Rng {
-    worker_thread: Option<WorkerThread<anyhow::Result<VirtioDeviceSaved>>>,
+    worker_thread: Option<WorkerThread<anyhow::Result<Vec<Queue>>>>,
     virtio_features: u64,
 }
 
@@ -199,10 +195,10 @@ impl VirtioDevice for Rng {
         false
     }
 
-    fn stop(&mut self) -> std::result::Result<Option<VirtioDeviceSaved>, VirtioError> {
+    fn virtio_sleep(&mut self) -> anyhow::Result<Option<Vec<Queue>>> {
         if let Some(worker_thread) = self.worker_thread.take() {
-            let state = worker_thread.stop().map_err(VirtioError::InThreadFailure)?;
-            return Ok(Some(state));
+            let queues = worker_thread.stop()?;
+            return Ok(Some(queues));
         }
         Ok(None)
     }
