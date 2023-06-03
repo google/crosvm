@@ -32,6 +32,11 @@ use rutabaga_gfx::RutabagaHandle;
 use rutabaga_gfx::RutabagaIntoRawDescriptor;
 use rutabaga_gfx::RutabagaIovec;
 use rutabaga_gfx::Transfer3D;
+use rutabaga_gfx::RUTABAGA_MAP_ACCESS_MASK;
+use rutabaga_gfx::RUTABAGA_MAP_ACCESS_READ;
+use rutabaga_gfx::RUTABAGA_MAP_ACCESS_RW;
+use rutabaga_gfx::RUTABAGA_MAP_ACCESS_WRITE;
+use rutabaga_gfx::RUTABAGA_MAP_CACHE_MASK;
 use rutabaga_gfx::RUTABAGA_MEM_HANDLE_TYPE_DMABUF;
 use rutabaga_gfx::RUTABAGA_MEM_HANDLE_TYPE_OPAQUE_FD;
 use sync::Mutex;
@@ -877,15 +882,25 @@ impl VirtioGpu {
             });
         };
 
+        let prot = match map_info & RUTABAGA_MAP_ACCESS_MASK {
+            RUTABAGA_MAP_ACCESS_READ => Protection::read(),
+            RUTABAGA_MAP_ACCESS_WRITE => Protection::write(),
+            RUTABAGA_MAP_ACCESS_RW => Protection::read_write(),
+            _ => return Err(ErrUnspec),
+        };
+
         self.mapper
             .lock()
             .as_mut()
             .expect("No backend request connection found")
-            .add_mapping(source.unwrap(), offset, Protection::read_write())
+            .add_mapping(source.unwrap(), offset, prot)
             .map_err(|_| ErrUnspec)?;
 
         resource.shmem_offset = Some(offset);
-        Ok(OkMapInfo { map_info })
+        // Access flags not a part of the virtio-gpu spec.
+        Ok(OkMapInfo {
+            map_info: map_info & RUTABAGA_MAP_CACHE_MASK,
+        })
     }
 
     /// Uses the hypervisor to unmap the blob resource.

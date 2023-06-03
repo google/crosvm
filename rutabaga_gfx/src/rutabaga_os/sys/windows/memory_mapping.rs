@@ -20,6 +20,7 @@ impl MemoryMapping {
     pub fn from_safe_descriptor(
         _descriptor: SafeDescriptor,
         _size: usize,
+        _map_info: u32,
     ) -> RutabagaResult<MemoryMapping> {
         Err(RutabagaError::Unsupported)
     }

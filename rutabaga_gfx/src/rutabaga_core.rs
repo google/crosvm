@@ -635,10 +635,16 @@ impl Rutabaga {
 
                     let clone = handle.try_clone()?;
                     let resource_size: usize = resource.size.try_into()?;
+                    let map_info = resource
+                        .map_info
+                        .ok_or(RutabagaError::SpecViolation("no map info available"))?;
 
                     // Creating the mapping closes the cloned descriptor.
-                    let mapping =
-                        MemoryMapping::from_safe_descriptor(clone.os_handle, resource_size)?;
+                    let mapping = MemoryMapping::from_safe_descriptor(
+                        clone.os_handle,
+                        resource_size,
+                        map_info,
+                    )?;
                     let rutabaga_mapping = mapping.as_rutabaga_mapping();
                     resource.handle = Some(handle);
                     resource.mapping = Some(mapping);

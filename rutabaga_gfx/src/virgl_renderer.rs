@@ -346,7 +346,7 @@ impl VirglRenderer {
             let ret = unsafe { virgl_renderer_resource_get_map_info(resource_id, &mut map_info) };
             ret_to_res(ret)?;
 
-            Ok(map_info)
+            Ok(map_info | RUTABAGA_MAP_ACCESS_RW)
         }
         #[cfg(not(feature = "virgl_renderer_next"))]
         Err(RutabagaError::Unsupported)

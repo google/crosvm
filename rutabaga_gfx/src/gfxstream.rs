@@ -349,7 +349,7 @@ impl Gfxstream {
         let ret = unsafe { stream_renderer_resource_map_info(resource_id, &mut map_info) };
         ret_to_res(ret)?;
 
-        Ok(map_info)
+        Ok(map_info | RUTABAGA_MAP_ACCESS_RW)
     }
 
     fn vulkan_info(&self, resource_id: u32) -> RutabagaResult<VulkanInfo> {

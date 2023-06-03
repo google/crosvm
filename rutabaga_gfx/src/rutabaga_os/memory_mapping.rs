@@ -15,8 +15,9 @@ impl MemoryMapping {
     pub fn from_safe_descriptor(
         descriptor: SafeDescriptor,
         size: usize,
+        map_info: u32,
     ) -> RutabagaResult<MemoryMapping> {
-        let mapping = PlatformMapping::from_safe_descriptor(descriptor, size)?;
+        let mapping = PlatformMapping::from_safe_descriptor(descriptor, size, map_info)?;
         Ok(MemoryMapping { mapping })
     }
 

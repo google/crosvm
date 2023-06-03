@@ -154,9 +154,15 @@ unsafe impl Send for RutabagaDebug {}
 unsafe impl Sync for RutabagaDebug {}
 
 /// Mapped memory caching flags (see virtio_gpu spec)
+pub const RUTABAGA_MAP_CACHE_MASK: u32 = 0x0f;
 pub const RUTABAGA_MAP_CACHE_CACHED: u32 = 0x01;
 pub const RUTABAGA_MAP_CACHE_UNCACHED: u32 = 0x02;
 pub const RUTABAGA_MAP_CACHE_WC: u32 = 0x03;
+/// Access flags (not in virtio_gpu spec)
+pub const RUTABAGA_MAP_ACCESS_MASK: u32 = 0xf0;
+pub const RUTABAGA_MAP_ACCESS_READ: u32 = 0x10;
+pub const RUTABAGA_MAP_ACCESS_WRITE: u32 = 0x20;
+pub const RUTABAGA_MAP_ACCESS_RW: u32 = 0x30;
 
 /// Rutabaga capsets.
 pub const RUTABAGA_CAPSET_VIRGL: u32 = 1;

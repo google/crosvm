@@ -56,9 +56,18 @@ extern "C" {
 /**
  * Mapped memory caching flags (see virtio_gpu spec)
  */
-#define RUTABAGA_MAP_CACHE_CACHED 1
-#define RUTABAGA_MAP_CACHE_UNCACHED 2
-#define RUTABAGA_MAP_CACHE_WC 3
+#define RUTABAGA_MAP_CACHE_MASK 0x0f
+#define RUTABAGA_MAP_CACHE_CACHED 0x01
+#define RUTABAGA_MAP_CACHE_UNCACHED 0x02
+#define RUTABAGA_MAP_CACHE_WC 0x03
+
+/**
+ * Mapped memory access flags (not in virtio_gpu spec)
+ */
+#define RUTABAGA_MAP_ACCESS_MASK 0xf0
+#define RUTABAGA_MAP_ACCESS_READ 0x10
+#define RUTABAGA_MAP_ACCESS_WRITE 0x20
+#define RUTABAGA_MAP_ACCESS_RW 0x30
 
 /**
  * Rutabaga handle types

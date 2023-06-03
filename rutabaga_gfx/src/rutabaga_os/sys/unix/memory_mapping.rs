@@ -15,6 +15,11 @@ use crate::rutabaga_os::descriptor::SafeDescriptor;
 use crate::rutabaga_utils::RutabagaError;
 use crate::rutabaga_utils::RutabagaResult;
 
+use crate::rutabaga_utils::RUTABAGA_MAP_ACCESS_MASK;
+use crate::rutabaga_utils::RUTABAGA_MAP_ACCESS_READ;
+use crate::rutabaga_utils::RUTABAGA_MAP_ACCESS_RW;
+use crate::rutabaga_utils::RUTABAGA_MAP_ACCESS_WRITE;
+
 /// Wraps an anonymous shared memory mapping in the current process. Provides
 /// RAII semantics including munmap when no longer needed.
 #[derive(Debug)]
@@ -37,14 +42,22 @@ impl MemoryMapping {
     pub fn from_safe_descriptor(
         descriptor: SafeDescriptor,
         size: usize,
+        map_info: u32,
     ) -> RutabagaResult<MemoryMapping> {
         let non_zero_opt = NonZeroUsize::new(size);
+        let prot = match map_info & RUTABAGA_MAP_ACCESS_MASK {
+            RUTABAGA_MAP_ACCESS_READ => ProtFlags::PROT_READ,
+            RUTABAGA_MAP_ACCESS_WRITE => ProtFlags::PROT_READ,
+            RUTABAGA_MAP_ACCESS_RW => ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
+            _ => return Err(RutabagaError::SpecViolation("incorrect access flags")),
+        };
+
         if let Some(non_zero_size) = non_zero_opt {
             let addr = unsafe {
                 mmap(
                     None,
                     non_zero_size,
-                    ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
+                    prot,
                     MapFlags::MAP_SHARED,
                     descriptor.as_raw_descriptor(),
                     0,
