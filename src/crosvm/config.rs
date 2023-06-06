@@ -2325,7 +2325,7 @@ mod tests {
     fn parse_shared_dir() {
         // Although I want to test /usr/local/bin, Use / instead of
         // /usr/local/bin, as /usr/local/bin doesn't always exist.
-        let s = "/:usr_local_bin:type=fs:cache=always:uidmap=0 655360 5000,5000 600 50,5050 660410 1994950:gidmap=0 655360 1065,1065 20119 1,1066 656426 3934,5000 600 50,5050 660410 1994950:timeout=3600:rewrite-security-xattrs=true:ascii_casefold=false:writeback=true:posix_acl=true";
+        let s = "/:usr_local_bin:type=fs:cache=always:uidmap=0 655360 5000,5000 600 50,5050 660410 1994950:gidmap=0 655360 1065,1065 20119 1,1066 656426 3934,5000 600 50,5050 660410 1994950:timeout=3600:rewrite-security-xattrs=true:writeback=true";
 
         let shared_dir: SharedDir = s.parse().unwrap();
         assert_eq!(shared_dir.src, Path::new("/").to_path_buf());
@@ -2351,6 +2351,18 @@ mod tests {
         assert_eq!(shared_dir.fs_cfg.use_dax, false);
         assert_eq!(shared_dir.fs_cfg.posix_acl, true);
         assert_eq!(shared_dir.ugid, (None, None));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn parse_shared_dir_parses_ascii_casefold_and_posix_acl() {
+        // Although I want to test /usr/local/bin, Use / instead of
+        // /usr/local/bin, as /usr/local/bin doesn't always exist.
+        let s = "/:usr_local_bin:type=fs:ascii_casefold=true:posix_acl=false";
+
+        let shared_dir: SharedDir = s.parse().unwrap();
+        assert_eq!(shared_dir.fs_cfg.ascii_casefold, true);
+        assert_eq!(shared_dir.fs_cfg.posix_acl, false);
     }
 
     #[cfg(unix)]
