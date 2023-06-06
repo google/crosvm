@@ -1480,6 +1480,11 @@ impl WlState {
                     .add(wait_descriptor, self.next_vfd_id)
                     .map_err(WlError::WaitContextAdd)?;
             }
+            // Only necessary if we somehow wrap the id counter. The try_insert
+            // API would be nicer, but that's currently experimental.
+            while self.vfds.contains_key(&self.next_vfd_id) {
+                self.next_vfd_id += 1;
+            }
             self.vfds.insert(self.next_vfd_id, vfd);
             self.in_queue.push_back((
                 vfd_id,
