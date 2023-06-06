@@ -542,6 +542,7 @@ impl IrqChip for WhpxSplitIrqChip {
             IrqChipCap::TscDeadlineTimer => false,
             // TODO(b/180966070): Figure out how to query x2apic support.
             IrqChipCap::X2Apic => false,
+            IrqChipCap::MpStateGetSet => false,
         }
     }
 }

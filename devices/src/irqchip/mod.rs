@@ -265,6 +265,9 @@ pub enum IrqChipCap {
     TscDeadlineTimer,
     /// Extended xAPIC (x2APIC) standard.
     X2Apic,
+    /// Irqchip exposes mp_state_get/set methods. Calling these methods on chips
+    /// without this capability will result in undefined behavior.
+    MpStateGetSet,
 }
 
 /// A capability the `IrqChip` can possibly expose.
