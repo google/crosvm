@@ -23,6 +23,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::IrqChip;
+use crate::IrqChipCap;
 
 pub trait IrqChipX86_64: IrqChip {
     // Clones this trait as a `Box` version of itself.
@@ -74,9 +75,12 @@ pub trait IrqChipX86_64: IrqChip {
     fn snapshot(&self, cpus_num: usize) -> anyhow::Result<serde_json::Value> {
         let mut lapics: Vec<LapicState> = Vec::new();
         let mut mp_states: Vec<MPState> = Vec::new();
+        let has_mp_states = self.check_capability(IrqChipCap::MpStateGetSet);
         for i in 0..cpus_num {
             lapics.push(self.get_lapic_state(i)?);
-            mp_states.push(self.get_mp_state(i)?);
+            if has_mp_states {
+                mp_states.push(self.get_mp_state(i)?);
+            }
         }
         serde_json::to_value(IrqChipSnapshot {
             ioapic_state: self.get_ioapic_state()?,
@@ -94,19 +98,49 @@ pub trait IrqChipX86_64: IrqChip {
     fn restore(&mut self, data: serde_json::Value, vcpus_num: usize) -> anyhow::Result<()> {
         let deser: IrqChipSnapshot =
             serde_json::from_value(data).context("failed to deserialize data")?;
-        if deser.mp_state.len() != vcpus_num || deser.lapic_state.len() != vcpus_num {
-            return Err(anyhow!("IrqChip data has been modified"));
+
+        if deser.lapic_state.len() != vcpus_num {
+            return Err(anyhow!(
+                "IrqChip has the wrong number of LAPIC state snapshots: got {}, expected {}",
+                deser.lapic_state.len(),
+                vcpus_num
+            ));
         }
+        let supports_mp_states = self.check_capability(IrqChipCap::MpStateGetSet);
+
+        if supports_mp_states {
+            if deser.mp_state.len() != vcpus_num {
+                return Err(anyhow!(
+                    "IrqChip has the wrong number of mp state snapshots: got {}, expected {}",
+                    deser.mp_state.len(),
+                    vcpus_num
+                ));
+            }
+        } else if !deser.mp_state.is_empty() {
+            return Err(anyhow!(
+                "IrqChip does not support mp state, but mp state was in the snapshot"
+            ));
+        }
+
         self.set_pit(&deser.pit_state)?;
-        self.set_pic_state(PicSelect::Primary, &deser.pic_state_1)?;
-        self.set_pic_state(PicSelect::Secondary, &deser.pic_state_2)?;
-        self.set_ioapic_state(&deser.ioapic_state)?;
-        self.restore_chip_specific(deser.chip_specific_state)?;
+        self.set_pic_state(PicSelect::Primary, &deser.pic_state_1)
+            .context("failed to set primary PIC")?;
+        self.set_pic_state(PicSelect::Secondary, &deser.pic_state_2)
+            .context("failed to set secondary PIC")?;
+        self.set_ioapic_state(&deser.ioapic_state)
+            .context("failed to set IOAPIC state")?;
+        self.restore_chip_specific(deser.chip_specific_state)
+            .context("failed to set chip specific data")?;
         for (i, lapic) in deser.lapic_state.iter().enumerate() {
-            self.set_lapic_state(i, lapic)?;
+            self.set_lapic_state(i, lapic)
+                .context("failed to set LAPIC state")?;
         }
-        for (i, mp_state) in deser.mp_state.iter().enumerate() {
-            self.set_mp_state(i, mp_state)?;
+
+        if supports_mp_states {
+            for (i, mp_state) in deser.mp_state.iter().enumerate() {
+                self.set_mp_state(i, mp_state)
+                    .context("failed to set mp state")?;
+            }
         }
         Ok(())
     }
