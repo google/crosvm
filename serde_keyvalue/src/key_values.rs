@@ -771,7 +771,11 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut KeyValueDeserializer<'de> {
                 Ok(val)
             }
         } else {
-            Err(self.error_here(ErrorKind::ExpectedOpenBracket))
+            // The `EmptyMapAccess` failing to parse means that this sequence must take arguments,
+            // i.e. that an opening bracket is expected.
+            visitor
+                .visit_map(EmptyMapAccess)
+                .map_err(|_| self.error_here(ErrorKind::ExpectedOpenBracket))
         }
     }
 
@@ -818,7 +822,11 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut KeyValueDeserializer<'de> {
             if self.peek_char() == Some('[') {
                 self.next_char();
             } else {
-                return Err(self.error_here(ErrorKind::ExpectedOpenBracket));
+                // The `EmptyMapAccess` failing to parse means that this struct must take
+                // arguments, i.e. that an opening bracket is expected.
+                return visitor
+                    .visit_map(EmptyMapAccess)
+                    .map_err(|_| self.error_here(ErrorKind::ExpectedOpenBracket));
             }
         }
 
@@ -1240,6 +1248,68 @@ mod tests {
         assert_eq!(res, TestStruct { num: 16, opt: None });
 
         let kv = "";
+        assert!(from_key_values::<TestStruct>(kv).is_err());
+    }
+
+    #[test]
+    fn deserialize_optional_struct_with_default() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct DefaultStruct {
+            #[serde(default)]
+            param: u32,
+        }
+
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct TestStruct {
+            flag: Option<DefaultStruct>,
+        }
+
+        // Specify member explicitly
+        let kv = "flag=[param=12]";
+        let res: TestStruct = from_key_values(kv).unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                flag: Some(DefaultStruct { param: 12 })
+            }
+        );
+
+        // No member specified, braces present.
+        let kv = "flag=[]";
+        let res: TestStruct = from_key_values(kv).unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                flag: Some(DefaultStruct { param: 0 })
+            }
+        );
+
+        // No member specified, no braces.
+        let kv = "flag=";
+        let res: TestStruct = from_key_values(kv).unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                flag: Some(DefaultStruct { param: 0 })
+            }
+        );
+
+        // No member specified, no braces, no equal sign.
+        let kv = "flag";
+        let res: TestStruct = from_key_values(kv).unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                flag: Some(DefaultStruct { param: 0 })
+            }
+        );
+
+        // No closing brace.
+        let kv = "flag=[";
+        assert!(from_key_values::<TestStruct>(kv).is_err());
+
+        // No opening brace.
+        let kv = "flag=]";
         assert!(from_key_values::<TestStruct>(kv).is_err());
     }
 
