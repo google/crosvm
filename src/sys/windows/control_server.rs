@@ -282,7 +282,7 @@ impl ClientWorker {
                         }?;
                         base::serialize_and_send(|buf| client_pipe_write.write(buf), &msg, None)
                             .map_err(|e| match e {
-                                TubeError::SendIo(e) => base::Error::from(e),
+                                TubeError::Send(e) => base::Error::from(e),
                                 tube_error => {
                                     error!(
                                         "unexpected error in control server recv loop: {}",

@@ -139,8 +139,6 @@ pub enum Error {
     RecvUnexpectedEmptyBody,
     #[error("failed to send packet: {0}")]
     Send(io::Error),
-    #[error("failed to send packet: {0}")]
-    SendIo(io::Error),
     #[error("failed to write packet to intermediate buffer: {0}")]
     SendIoBuf(io::Error),
     #[error("attempted to send too many file descriptors")]

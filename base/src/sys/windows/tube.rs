@@ -157,7 +157,7 @@ impl Tube {
         data_packet.write(&bytes).map_err(Error::SendIoBuf)?;
         self.socket
             .write_immutable(&data_packet.into_inner())
-            .map_err(Error::from_send_io_error)?;
+            .map_err(Error::from_send_error)?;
 
         Ok(())
     }
@@ -259,7 +259,7 @@ pub fn serialize_and_send<T: Serialize, F: Fn(&[u8]) -> io::Result<usize>>(
     // Multiple writers (producers) are safe because each write is atomic.
     let data_bytes = data_packet.into_inner();
 
-    write_fn(&data_bytes).map_err(Error::from_send_io_error)?;
+    write_fn(&data_bytes).map_err(Error::from_send_error)?;
     Ok(())
 }
 
@@ -529,8 +529,8 @@ impl Error {
         Self::map_io_error(e, Error::Recv)
     }
 
-    fn from_send_io_error(e: io::Error) -> Error {
-        Self::map_io_error(e, Error::SendIo)
+    fn from_send_error(e: io::Error) -> Error {
+        Self::map_io_error(e, Error::Send)
     }
 
     fn from_send_io_buf_error(e: io::Error) -> Error {
