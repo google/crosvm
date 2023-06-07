@@ -3,8 +3,6 @@
 slow-timeout = { period = "20s", terminate-after = 3 }
 # Always finish running all tests instead of terminating after the first failure.
 fail-fast = false
-
-[profile.presubmit]
 # Retry tests in case they are flaky.
 retries = 2
 
