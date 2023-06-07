@@ -923,8 +923,6 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                     #[cfg(feature = "balloon")]
                                     let mut balloon_wss_id = 0;
                                     let vcpu_size = vcpu_boxes.lock().len();
-                                    let mut irqchip_for_restore =
-                                        guest_os.irq_chip.try_box_clone()?;
                                     let response = request.execute(
                                         &mut run_mode_opt,
                                         #[cfg(feature = "balloon")]
@@ -967,7 +965,12 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                         vcpu_size,
                                         irq_handler_control,
                                         || guest_os.irq_chip.as_ref().snapshot(vcpu_size),
-                                        |snapshot| irqchip_for_restore.restore(snapshot, vcpu_size),
+                                        |snapshot| {
+                                            guest_os
+                                                .irq_chip
+                                                .try_box_clone()?
+                                                .restore(snapshot, vcpu_size)
+                                        },
                                     );
 
                                     response
