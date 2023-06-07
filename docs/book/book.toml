@@ -16,5 +16,6 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 # Redirect previously used paths to updated locations.
 [output.html.redirect]
 "building_crosvm/chromiumos.html" = "../integration/chromeos.html"
+"architecture.html" = "architecture/overview.html"
 
 [output.linkcheck]
