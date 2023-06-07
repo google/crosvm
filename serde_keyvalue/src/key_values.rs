@@ -802,6 +802,13 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut KeyValueDeserializer<'de> {
     where
         V: serde::de::Visitor<'de>,
     {
+        // The top structure (i.e. the first structure that we will ever parse) does not need to be
+        // enclosed in braces, but inner structures do.
+        //
+        // We need to do this here as well as in `deserialize_struct` because the top-element of
+        // flattened structs will be a map, not a struct.
+        self.top_struct_parsed = true;
+
         visitor.visit_map(self)
     }
 
@@ -1310,6 +1317,89 @@ mod tests {
 
         // No opening brace.
         let kv = "flag=]";
+        assert!(from_key_values::<TestStruct>(kv).is_err());
+    }
+
+    #[test]
+    fn deserialize_optional_struct_within_flattened() {
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct FlatStruct {
+            a: u32,
+            #[serde(default)]
+            b: String,
+        }
+
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct DefaultStruct {
+            #[serde(default)]
+            param: u32,
+        }
+
+        #[derive(Deserialize, PartialEq, Debug)]
+        struct TestStruct {
+            #[serde(flatten)]
+            flat: FlatStruct,
+            flag: Option<DefaultStruct>,
+        }
+
+        // Everything specified.
+        let kv = "a=10,b=foomatic,flag=[param=24]";
+        let res: TestStruct = from_key_values(kv).unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                flat: FlatStruct {
+                    a: 10,
+                    b: "foomatic".into(),
+                },
+                flag: Some(DefaultStruct { param: 24 })
+            }
+        );
+
+        // Flag left to default value.
+        let kv = "a=10,b=foomatic,flag";
+        let res: TestStruct = from_key_values(kv).unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                flat: FlatStruct {
+                    a: 10,
+                    b: "foomatic".into(),
+                },
+                flag: Some(DefaultStruct { param: 0 })
+            }
+        );
+
+        // Flattened default value unspecified.
+        let kv = "a=10,flag=[param=24]";
+        let res: TestStruct = from_key_values(kv).unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                flat: FlatStruct {
+                    a: 10,
+                    b: Default::default(),
+                },
+                flag: Some(DefaultStruct { param: 24 })
+            }
+        );
+
+        // No optional, no default value.
+        let kv = "a=10";
+        let res: TestStruct = from_key_values(kv).unwrap();
+        assert_eq!(
+            res,
+            TestStruct {
+                flat: FlatStruct {
+                    a: 10,
+                    b: Default::default(),
+                },
+                flag: None,
+            }
+        );
+
+        // Required member unspecified.
+        let kv = "b=foomatic,flag=[param=24]";
         assert!(from_key_values::<TestStruct>(kv).is_err());
     }
 
