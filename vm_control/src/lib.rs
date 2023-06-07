@@ -538,14 +538,14 @@ pub enum VmMemoryRequest {
 }
 
 /// Struct for managing `VmMemoryRequest`s IOMMU related state.
-pub struct VmMemoryRequestIommuClient<'a> {
-    tube: &'a Tube,
+pub struct VmMemoryRequestIommuClient {
+    tube: Arc<Mutex<Tube>>,
     gpu_memory: BTreeSet<MemSlot>,
 }
 
-impl<'a> VmMemoryRequestIommuClient<'a> {
+impl VmMemoryRequestIommuClient {
     /// Constructs `VmMemoryRequestIommuClient` from a tube for communication with the viommu.
-    pub fn new(tube: &'a Tube) -> Self {
+    pub fn new(tube: Arc<Mutex<Tube>>) -> Self {
         Self {
             tube,
             gpu_memory: BTreeSet::new(),
@@ -697,7 +697,7 @@ impl VmMemoryRequest {
                             dma_buf: descriptor,
                         });
 
-                    match virtio_iommu_request(iommu_client.tube, &request) {
+                    match virtio_iommu_request(&iommu_client.tube.lock(), &request) {
                         Ok(VirtioIOMMUResponse::VfioResponse(VirtioIOMMUVfioResult::Ok)) => (),
                         resp => {
                             error!("Unexpected message response: {:?}", resp);
@@ -725,7 +725,7 @@ impl VmMemoryRequest {
                                     VirtioIOMMUVfioCommand::VfioDmabufUnmap(slot),
                                 );
 
-                                match virtio_iommu_request(iommu_client.tube, &request) {
+                                match virtio_iommu_request(&iommu_client.tube.lock(), &request) {
                                     Ok(VirtioIOMMUResponse::VfioResponse(
                                         VirtioIOMMUVfioResult::Ok,
                                     )) => VmMemoryResponse::Ok,
