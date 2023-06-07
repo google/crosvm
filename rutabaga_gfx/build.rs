@@ -178,10 +178,32 @@ fn virglrenderer() -> Result<()> {
 
 #[cfg(all(feature = "gfxstream", not(feature = "gfxstream_stub")))]
 fn gfxstream() -> Result<()> {
-    let gfxstream_path = std::env::var("GFXSTREAM_PATH")?;
-    println!("cargo:rustc-link-lib=gfxstream_backend");
-    println!("cargo:rustc-link-search={}", gfxstream_path);
-    Ok(())
+    if let Ok(gfxstream_path) = std::env::var("GFXSTREAM_PATH") {
+        println!("cargo:rustc-link-lib=gfxstream_backend");
+        println!("cargo:rustc-link-search={}", gfxstream_path);
+        Ok(())
+    } else {
+        pkg_config::Config::new().probe("gfxstream_backend")?;
+        pkg_config::Config::new().probe("aemu_base")?;
+        pkg_config::Config::new().probe("aemu_host_common")?;
+        pkg_config::Config::new().probe("logging_base")?;
+
+        let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
+
+        if target_os.contains("linux") {
+            pkg_config::Config::new().probe("libdrm")?;
+        }
+
+        // Need to link against libc++ or libstdc++.  Apple is clang-only, while by default other
+        // Unix platforms use libstdc++.
+        if target_os.contains("macos") {
+            println!("cargo:rustc-link-lib=dylib=c++");
+        } else if target_os.contains("linux") || target_os.contains("nto") {
+            println!("cargo:rustc-link-lib=dylib=stdc++");
+        }
+
+        Ok(())
+    }
 }
 
 fn main() -> Result<()> {
