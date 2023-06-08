@@ -167,7 +167,10 @@ extern "C" {
 }
 
 /// The virtio-gpu backend state tracker which supports accelerated rendering.
-pub struct Gfxstream {}
+pub struct Gfxstream {
+    /// Cookie used by Gfxstream, should be held as long as the renderer is alive.
+    _cookie: Box<VirglCookie>,
+}
 
 struct GfxstreamContext {
     ctx_id: u32,
@@ -241,15 +244,17 @@ impl Gfxstream {
         gfxstream_flags: GfxstreamFlags,
         fence_handler: RutabagaFenceHandler,
     ) -> RutabagaResult<Box<dyn RutabagaComponent>> {
-        let cookie: *mut VirglCookie = Box::into_raw(Box::new(VirglCookie {
+        let mut cookie = Box::new(VirglCookie {
             render_server_fd: None,
             fence_handler: Some(fence_handler.clone()),
-        }));
+        });
 
         let mut stream_renderer_params = [
             stream_renderer_param {
                 key: STREAM_RENDERER_PARAM_USER_DATA,
-                value: cookie as u64,
+                // Safe as cookie outlives the stream renderer (stream_renderer_teardown called
+                // at Gfxstream Drop)
+                value: &mut *cookie as *mut VirglCookie as u64,
             },
             stream_renderer_param {
                 key: STREAM_RENDERER_PARAM_RENDERER_FLAGS,
@@ -276,7 +281,7 @@ impl Gfxstream {
             ))?;
         }
 
-        Ok(Box::new(Gfxstream {}))
+        Ok(Box::new(Gfxstream { _cookie: cookie }))
     }
 
     fn map_info(&self, resource_id: u32) -> RutabagaResult<u32> {
