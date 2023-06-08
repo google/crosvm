@@ -124,8 +124,8 @@ cfg_if::cfg_if! {
         pub use platform::set_sparse_file;
         pub use platform::ioctl::ioctl_with_ptr_sized;
         pub use platform::create_overlapped;
+        pub use platform::device_io_control;
         pub use platform::read_overlapped_blocking;
-
 
         pub use tube::{
             deserialize_and_recv, serialize_and_send, set_alias_pid, set_duplicate_handle_tube,

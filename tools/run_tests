@@ -26,7 +26,7 @@ from impl.common import (
     Triple,
 )
 from impl.test_config import ROOT_TESTS, DO_NOT_RUN, DO_NOT_RUN_AARCH64, DO_NOT_RUN_WIN64, E2E_TESTS
-from impl.test_config import DO_NOT_BUILD_RISCV64
+from impl.test_config import DO_NOT_BUILD_RISCV64, DO_NOT_RUN_WINE64
 from impl import testvm
 
 rsync = cmd("rsync")
@@ -337,6 +337,8 @@ def main(
 
     if not no_unit_tests:
         unit_test_filter = copy.deepcopy(test_filter).exclude(*E2E_TESTS).include("kind(bench)")
+        if triple == Triple.from_shorthand("mingw64") and os.name == "posix":
+            unit_test_filter = unit_test_filter.exclude(*DO_NOT_RUN_WINE64)
         console.print()
         console.rule("Running unit tests")
         with record_time("Unit Tests"):
@@ -362,6 +364,8 @@ def main(
             test_exclusions += ROOT_TESTS
         if triple == Triple.from_shorthand("mingw64"):
             test_exclusions += DO_NOT_RUN_WIN64
+            if os.name == "posix":
+                test_exclusions += DO_NOT_RUN_WINE64
         if triple == Triple.from_shorthand("aarch64"):
             test_exclusions += DO_NOT_RUN_AARCH64
         test_filter = test_filter.exclude(*test_exclusions)
