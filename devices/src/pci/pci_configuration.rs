@@ -245,7 +245,7 @@ pub trait PciCapability {
 /// Contains the configuration space of a PCI node.
 /// See the [specification](https://en.wikipedia.org/wiki/PCI_configuration_space).
 /// The configuration space is accessed with DWORD reads and writes from the guest.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct PciConfiguration {
     #[serde(
         serialize_with = "serialize_arr",

@@ -210,6 +210,41 @@ pub trait VirtioDevice: Send + Suspendable {
     fn stop(&mut self) -> Result<Option<VirtioDeviceSaved>, Error> {
         Err(Error::NotImplemented(self.debug_label()))
     }
+
+    /// Pause all processing.
+    ///
+    /// Gives up the queues so that a higher layer can potentially snapshot them. The
+    /// implementations should also drop the `Interrupt` and queues `Event`s that were given along
+    /// with the queues originally.
+    ///
+    /// Unlike `Suspendable::sleep`, this is not idempotent. Attempting to sleep while already
+    /// asleep is an error.
+    fn virtio_sleep(&mut self) -> anyhow::Result<Option<Vec<Queue>>> {
+        anyhow::bail!("virtio_sleep not implemented for {}", self.debug_label());
+    }
+
+    /// Resume all processing.
+    ///
+    /// If the device's queues are active, then the queues and associated data will is included.
+    ///
+    /// Unlike `Suspendable::wake`, this is not idempotent. Attempting to wake while already awake
+    /// is an error.
+    fn virtio_wake(
+        &mut self,
+        _queues_state: Option<(GuestMemory, Interrupt, Vec<(Queue, Event)>)>,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!("virtio_wake not implemented for {}", self.debug_label());
+    }
+
+    /// Snapshot current state. Device must be asleep.
+    fn virtio_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        anyhow::bail!("virtio_snapshot not implemented for {}", self.debug_label());
+    }
+
+    /// Restore device state from a snapshot.
+    fn virtio_restore(&mut self, _data: serde_json::Value) -> anyhow::Result<()> {
+        anyhow::bail!("virtio_restore not implemented for {}", self.debug_label());
+    }
 }
 
 #[sorted]

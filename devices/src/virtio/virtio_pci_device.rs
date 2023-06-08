@@ -292,9 +292,6 @@ pub struct VirtioPciDevice {
     msix_cap_reg_idx: Option<usize>,
     common_config: VirtioPciCommonConfig,
 
-    // True if the device is asleep (aka suspended).
-    is_asleep: bool,
-
     iommu: Option<Arc<Mutex<IpcMemoryMapper>>>,
 
     // API client that is present if the device has shared memory regions, and
@@ -303,6 +300,34 @@ pub struct VirtioPciDevice {
 
     // API client for registration of ioevents when PCI BAR reprogramming is detected.
     ioevent_vm_memory_client: VmMemoryClient,
+
+    // State only present while asleep.
+    sleep_state: Option<SleepState>,
+}
+
+enum SleepState {
+    // Asleep and device hasn't been activated yet by the guest.
+    Inactive,
+    // Asleep and device has been activated by the guest.
+    Active {
+        /// The queues returned from `VirtioDevice::virtio_sleep`.
+        activated_queues: Vec<Queue>,
+    },
+}
+
+#[derive(Serialize, Deserialize)]
+struct VirtioPciDeviceSnapshot {
+    config_regs: PciConfiguration,
+
+    inner_device: serde_json::Value,
+    device_activated: bool,
+
+    interrupt: Option<InterruptSnapshot>,
+    msix_config: serde_json::Value,
+    common_config: VirtioPciCommonConfig,
+
+    queues: Vec<serde_json::Value>,
+    activated_queues: Option<Vec<serde_json::Value>>,
 }
 
 impl VirtioPciDevice {
@@ -393,10 +418,10 @@ impl VirtioPciDevice {
                 queue_select: 0,
                 msix_config: VIRTIO_MSI_NO_VECTOR,
             },
-            is_asleep: false,
             iommu: None,
             shared_memory_vm_memory_client,
             ioevent_vm_memory_client,
+            sleep_state: None,
         })
     }
 
@@ -486,17 +511,12 @@ impl VirtioPciDevice {
 
     /// Activates the underlying `VirtioDevice`. `assign_irq` has to be called first.
     fn activate(&mut self) -> anyhow::Result<()> {
-        let interrupt_evt = if let Some(ref evt) = self.interrupt_evt {
-            evt.try_clone()
-                .with_context(|| format!("{} failed to clone interrupt_evt", self.debug_label()))?
-        } else {
-            return Err(anyhow!("{} interrupt_evt is none", self.debug_label()));
-        };
-
-        let mem = self.mem.clone();
-
         let interrupt = Interrupt::new(
-            interrupt_evt,
+            self.interrupt_evt
+                .as_ref()
+                .ok_or_else(|| anyhow!("{} interrupt_evt is none", self.debug_label()))?
+                .try_clone()
+                .with_context(|| format!("{} failed to clone interrupt_evt", self.debug_label()))?,
             Some(self.msix_config.clone()),
             self.common_config.msix_config,
         );
@@ -534,7 +554,7 @@ impl VirtioPciDevice {
             self.device.set_iommu(iommu);
         }
 
-        if let Err(e) = self.device.activate(mem, interrupt, queues) {
+        if let Err(e) = self.device.activate(self.mem.clone(), interrupt, queues) {
             error!("{} activate failed: {:#}", self.debug_label(), e);
             self.common_config.driver_status |= VIRTIO_CONFIG_S_NEEDS_RESET as u8;
         } else {
@@ -950,39 +970,67 @@ impl PciDevice for VirtioPciDevice {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-struct VirtioPciDeviceSnapshot {
-    config_regs: serde_json::Value,
-    inner_device: serde_json::Value,
-    device_activated: bool,
-    interrupt: Option<serde_json::Value>,
-    queues: Vec<serde_json::Value>,
-    msix_config: serde_json::Value,
-    common_config: VirtioPciCommonConfig,
-}
-
 impl Suspendable for VirtioPciDevice {
     fn sleep(&mut self) -> anyhow::Result<()> {
-        // If the device is already asleep, there is no need to send a request to stop workers
-        // since they should already be stopped.
-        if self.is_asleep {
+        // If the device is already asleep, we should not request it to sleep again.
+        if self.sleep_state.is_some() {
             return Ok(());
         }
-        self.device.sleep()?;
-        self.is_asleep = true;
+        if let Some(queues) = self.device.virtio_sleep()? {
+            anyhow::ensure!(
+                self.device_activated,
+                "unactivated device returned queues on sleep"
+            );
+            self.sleep_state = Some(SleepState::Active {
+                activated_queues: queues,
+            });
+        } else {
+            anyhow::ensure!(
+                !self.device_activated,
+                "activated device didn't return queues on sleep"
+            );
+            self.sleep_state = Some(SleepState::Inactive);
+        }
         Ok(())
     }
 
     fn wake(&mut self) -> anyhow::Result<()> {
-        // If the device is awake, workers will be running so no need to send a request to start
-        // them up.
-        if !self.is_asleep {
-            return Ok(());
-        }
-        if self.device_activated {
-            self.device.wake()?;
-        }
-        self.is_asleep = false;
+        match self.sleep_state.take() {
+            None => {
+                // If the device is already awake, we should not request it to wake again.
+            }
+            Some(SleepState::Inactive) => {
+                self.device
+                    .virtio_wake(None)
+                    .expect("virtio_wake failed, can't recover");
+            }
+            Some(SleepState::Active { activated_queues }) => {
+                // Note that the length of `self.queues` and `self.queue_evts` might not be the same
+                // length as `activated_queues`. We need to filter to ready queues first.
+                let queue_evts = self
+                    .queues
+                    .iter()
+                    .zip(self.queue_evts.iter())
+                    .filter_map(|(q, e)| {
+                        if q.ready() {
+                            Some(e.event.try_clone().expect("failed to clone event"))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(queue_evts.len(), activated_queues.len());
+                self.device
+                    .virtio_wake(Some((
+                        self.mem.clone(),
+                        self.interrupt
+                            .clone()
+                            .expect("interrupt missing for already active queues"),
+                        activated_queues.into_iter().zip(queue_evts).collect(),
+                    )))
+                    .expect("virtio_wake failed, can't recover");
+            }
+        };
         Ok(())
     }
 
@@ -990,33 +1038,121 @@ impl Suspendable for VirtioPciDevice {
         if self.iommu.is_some() {
             return Err(anyhow!("Cannot snapshot if iommu is present."));
         }
-        let interrupt = match &self.interrupt {
-            Some(interrupt) => Some(interrupt.snapshot()?),
-            None => None,
-        };
-        let queues: Vec<serde_json::Value> = self
-            .queues
-            .iter()
-            .map(|queue| queue.snapshot())
-            .collect::<anyhow::Result<Vec<serde_json::Value>>>()?;
-
         serde_json::to_value(VirtioPciDeviceSnapshot {
-            config_regs: serde_json::to_value(&self.config_regs)
-                .context("failed to serialize config_regs")?,
-            inner_device: self.device.snapshot()?,
+            config_regs: self.config_regs.clone(),
+            inner_device: self.device.virtio_snapshot()?,
             device_activated: self.device_activated,
-            interrupt,
-            queues,
+            interrupt: self.interrupt.as_ref().map(|i| i.snapshot()),
             msix_config: self.msix_config.lock().snapshot()?,
             common_config: self.common_config,
+            queues: self
+                .queues
+                .iter()
+                .map(|q| q.snapshot())
+                .collect::<anyhow::Result<Vec<_>>>()?,
+            activated_queues: match &self.sleep_state {
+                None => {
+                    anyhow::bail!("tried snapshotting while awake")
+                }
+                Some(SleepState::Inactive) => None,
+                Some(SleepState::Active { activated_queues }) => Some(
+                    activated_queues
+                        .iter()
+                        .map(|q| q.snapshot())
+                        .collect::<anyhow::Result<Vec<_>>>()?,
+                ),
+            },
         })
         .context("failed to serialize VirtioPciDeviceSnapshot")
     }
 
     fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        // Restoring from an activated state is more complex and low priority, so just fail for
+        // now. We'll need to reset the device before restoring, e.g. must call
+        // self.unregister_ioevents().
+        anyhow::ensure!(
+            !self.device_activated,
+            "tried to restore after virtio device activated. not supported yet"
+        );
+
         let deser: VirtioPciDeviceSnapshot = serde_json::from_value(data)?;
+
+        self.config_regs = deser.config_regs;
+        self.device.virtio_restore(deser.inner_device)?;
+        self.device_activated = deser.device_activated;
+
         self.msix_config.lock().restore(deser.msix_config)?;
-        self.device.restore(deser.inner_device)
+        self.common_config = deser.common_config;
+
+        assert_eq!(self.queues.len(), deser.queues.len());
+        for (q, s) in self.queues.iter_mut().zip(deser.queues.into_iter()) {
+            *q = Queue::restore(s)?;
+        }
+
+        // Verify we are asleep and inactive.
+        match &self.sleep_state {
+            None => {
+                anyhow::bail!("tried restoring while awake")
+            }
+            Some(SleepState::Inactive) => {}
+            Some(SleepState::Active { .. }) => {
+                anyhow::bail!("tried to restore after virtio device activated. not supported yet")
+            }
+        };
+        // Restore `sleep_state`.
+        if let Some(activated_queues_snapshot) = deser.activated_queues {
+            // Restore the activated queues.
+            self.sleep_state = Some(SleepState::Active {
+                activated_queues: activated_queues_snapshot
+                    .into_iter()
+                    .map(Queue::restore)
+                    .collect::<anyhow::Result<Vec<_>>>()?,
+            });
+        } else {
+            self.sleep_state = Some(SleepState::Inactive);
+        }
+
+        // Also replicate the other work in activate: initialize the interrupt and queues
+        // events. This could just as easily be done in `wake` instead.
+        // NOTE: Needs to be done last in `restore` because it relies on the other VirtioPciDevice
+        // fields.
+        self.interrupt = Some(Interrupt::new_from_snapshot(
+            self.interrupt_evt
+                .as_ref()
+                .ok_or_else(|| anyhow!("{} interrupt_evt is none", self.debug_label()))?
+                .try_clone()
+                .with_context(|| format!("{} failed to clone interrupt_evt", self.debug_label()))?,
+            Some(self.msix_config.clone()),
+            self.common_config.msix_config,
+            // TODO: Refactor so the expect failure is impossible.
+            deser
+                .interrupt
+                .expect("interrupt snapshot missing when there are activated queues"),
+        ));
+
+        // Call register_io_events for the activated queue events.
+        let bar0 = self.config_regs.get_bar_addr(self.settings_bar);
+        let notify_base = bar0 + NOTIFICATION_BAR_OFFSET;
+        self.queues
+            .iter()
+            .enumerate()
+            .zip(self.queue_evts.iter_mut())
+            .filter(|((_, q), _)| q.ready())
+            .try_for_each(|((queue_index, _queue), evt)| {
+                if !evt.ioevent_registered {
+                    self.ioevent_vm_memory_client
+                        .register_io_event(
+                            evt.event.try_clone().context("failed to clone Event")?,
+                            notify_base + queue_index as u64 * u64::from(NOTIFY_OFF_MULTIPLIER),
+                            Datamatch::AnyLength,
+                        )
+                        .context("failed to register ioevent")?;
+                    evt.ioevent_registered = true;
+                }
+                Ok::<(), anyhow::Error>(())
+            })?;
+
+        Ok(())
     }
 }
 
