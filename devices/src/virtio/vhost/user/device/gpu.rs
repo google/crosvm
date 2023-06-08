@@ -217,6 +217,9 @@ impl VhostUserBackend for GpuBackend {
             // Wait for queue_task to be aborted.
             let _ = self.ex.run_until(async { worker.queue_task.await });
 
+            // Valid as the GPU device has a single Queue, so clearing the state here is ok.
+            self.state = None;
+
             let queue = match Arc::try_unwrap(worker.queue) {
                 Ok(queue_mutex) => queue_mutex.into_inner(),
                 Err(_) => panic!("failed to recover queue from worker"),
@@ -234,8 +237,12 @@ impl VhostUserBackend for GpuBackend {
         }
 
         for queue_num in 0..self.max_queue_num() {
-            if let Err(e) = self.stop_queue(queue_num) {
-                error!("Failed to stop_queue during reset: {}", e);
+            // The cursor queue is never used, so we should check if the queue is set before
+            // stopping.
+            if self.queue_workers[queue_num].is_some() {
+                if let Err(e) = self.stop_queue(queue_num) {
+                    error!("Failed to stop_queue during reset: {}", e);
+                }
             }
         }
     }
