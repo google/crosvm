@@ -10,9 +10,9 @@ base = { path = "../base" }
 cfg-if = "*"
 libc = { version = "*", optional = true }
 protobuf = "3.2"
-serde = { version = "1", features = [ "derive" ] }
+serde = { version = "1", features = ["derive"] }
 serde_json = { version = "*", optional = true }
-sync = { path = "../common/sync", optional = true }
+sync = { path = "../common/sync" }
 
 [target.'cfg(windows)'.dependencies]
 chrono = { version = "*" }

@@ -6,9 +6,9 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use crate::windows::system_metrics::CoreWinMetrics;
-use crate::windows::Error;
-use crate::windows::Result;
+use crate::sys::windows::Error;
+use crate::sys::windows::Result;
+use crate::sys::CoreWinMetrics;
 
 static INSTANCE_EXISTS: AtomicBool = AtomicBool::new(false);
 

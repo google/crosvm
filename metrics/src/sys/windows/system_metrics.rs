@@ -39,9 +39,9 @@ use winapi::um::winnt::PROCESS_VM_READ;
 use winapi::um::winnt::SYNCHRONIZE;
 
 use crate::log_metric;
-use crate::windows::Error;
-use crate::windows::Result;
-use crate::windows::METRIC_UPLOAD_INTERVAL_SECONDS;
+use crate::sys::windows::Error;
+use crate::sys::windows::Result;
+use crate::sys::windows::METRIC_UPLOAD_INTERVAL_SECONDS;
 use crate::MetricEventType;
 
 const BYTES_PER_MB: usize = 1024 * 1024;

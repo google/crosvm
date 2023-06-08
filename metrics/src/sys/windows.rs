@@ -4,10 +4,11 @@
 
 pub(crate) mod controller;
 pub mod gpu_metrics;
-pub(crate) mod system_metrics;
+pub mod system_metrics;
 pub mod wmi;
 
 pub use gpu_metrics::*;
+pub(crate) use system_metrics::*;
 use win_util::ProcessType;
 
 use crate::protos::event_details::EmulatorProcessType;
@@ -38,6 +39,7 @@ impl From<ProcessType> for EmulatorProcessType {
             ProcessType::Snd => EmulatorProcessType::PROCESS_TYPE_SOUND,
             ProcessType::Broker => EmulatorProcessType::PROCESS_TYPE_BROKER,
             ProcessType::Spu => EmulatorProcessType::PROCESS_TYPE_SPU,
+            ProcessType::UnknownType => panic!("Unknown process type found"),
         }
     }
 }

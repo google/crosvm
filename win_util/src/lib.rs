@@ -301,6 +301,7 @@ pub type HResult<T> = Result<T, HRESULT>;
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Serialize, Deserialize, enumn::N)]
 #[repr(u8)]
 pub enum ProcessType {
+    UnknownType = 0,
     Block = 1,
     Main = 2,
     Metrics = 3,
@@ -312,6 +313,37 @@ pub enum ProcessType {
     Spu = 9,
 }
 
+/// State of a crosvm child process.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Serialize, Deserialize)]
+pub enum ProcessState {
+    UnknownState,
+    /// Process is running normally.
+    Healthy,
+    /// Process died unexpectedly - it is either killed, crashed or something else.
+    Died,
+    /// Process exited on request or gracefully.
+    Exited,
+}
+
+/// Priority of a crosvm child process.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Serialize, Deserialize)]
+pub enum ProcessPriority {
+    UnknwonPriority,
+    /// Crosvm critical process. In absence of this process crosvm cannot function normally.
+    Critical,
+    /// Non-critical process - the process is safe to restart. Crosvm/guest may continue to function
+    /// normally when such process dies.
+    NonCritical,
+}
+
+/// Information about crosvm child process.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Serialize, Deserialize)]
+pub struct ProcessInfo {
+    pub id: u64,
+    pub ptype: ProcessType,
+    pub priority: ProcessPriority,
+    pub state: ProcessState,
+}
 #[cfg(test)]
 mod tests {
     use super::*;
