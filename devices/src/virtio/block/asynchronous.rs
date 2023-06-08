@@ -332,9 +332,9 @@ async fn handle_queue<I: SignalableInterrupt + 'static>(
                 }
             }
             _ = stop_rx => {
-                // TODO(fmayle): When we add support for sleep, we should finish all the tasks
-                // instead of dropping.
-                std::mem::drop(background_tasks);
+                // Process all the descriptors we've already popped from the queue so that we leave
+                // the queue in a consistent state.
+                background_tasks.collect::<()>().await;
                 return queue;
             }
         };
@@ -623,9 +623,14 @@ pub struct BlockAsync {
     pub(crate) control_tube: Option<Tube>,
     pub(crate) queue_sizes: Vec<u16>,
     pub(crate) executor_kind: ExecutorKind,
-    worker_threads: Vec<WorkerThread<(Box<dyn DiskFile>, Option<Tube>)>>,
+    worker_threads: Vec<(
+        WorkerThread<(Box<dyn DiskFile>, Option<Tube>)>,
+        mpsc::UnboundedSender<WorkerCmd<Interrupt>>,
+    )>,
     // Whether to run worker threads in parallel for each queue
     worker_per_queue: bool,
+    // Number of queues passed to `activate`. None if device not activated.
+    num_activated_queues: Option<usize>,
 }
 
 impl BlockAsync {
@@ -691,6 +696,7 @@ impl BlockAsync {
             worker_per_queue: multiple_workers,
             control_tube,
             executor_kind,
+            num_activated_queues: None,
         })
     }
 
@@ -965,6 +971,9 @@ impl VirtioDevice for BlockAsync {
         interrupt: Interrupt,
         queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
+        assert!(self.num_activated_queues.is_none());
+        self.num_activated_queues = Some(queues.len());
+
         let read_only = self.read_only;
         let sparse = self.sparse;
         let id = self.id;
@@ -1004,6 +1013,20 @@ impl VirtioDevice for BlockAsync {
             let interrupt = interrupt.clone();
             let control_tube = self.control_tube.take();
 
+            let (worker_tx, worker_rx) = mpsc::unbounded();
+            // Add commands to start all the queues before starting the worker.
+            for (index, (queue, event)) in queues.into_iter().enumerate() {
+                worker_tx
+                    .unbounded_send(WorkerCmd::StartQueue {
+                        index,
+                        queue,
+                        kick_evt: event,
+                        interrupt: interrupt.clone(),
+                        mem: mem.clone(),
+                    })
+                    .unwrap_or_else(|_| panic!("worker channel closed early"));
+            }
+
             let worker_thread = WorkerThread::start("virtio_blk", move |kill_evt| {
                 let ex = Executor::with_executor_kind(executor_kind)
                     .expect("Failed to create an executor");
@@ -1020,21 +1043,6 @@ impl VirtioDevice for BlockAsync {
                     id,
                     worker_shared_state: shared_state,
                 }));
-
-                let (worker_tx, worker_rx) = mpsc::unbounded();
-
-                // Add commands to start all the queues before starting the worker.
-                for (index, (queue, event)) in queues.into_iter().enumerate() {
-                    worker_tx
-                        .unbounded_send(WorkerCmd::StartQueue {
-                            index,
-                            queue,
-                            kick_evt: event,
-                            interrupt: interrupt.clone(),
-                            mem: mem.clone(),
-                        })
-                        .unwrap_or_else(|_| panic!("worker channel closed early"));
-                }
 
                 if let Err(err_string) = ex
                     .run_until(run_worker(
@@ -1063,7 +1071,7 @@ impl VirtioDevice for BlockAsync {
                     async_control.map(Tube::from),
                 )
             });
-            worker_threads.push(worker_thread);
+            worker_threads.push((worker_thread, worker_tx));
         }
 
         self.worker_threads = worker_threads;
@@ -1072,7 +1080,7 @@ impl VirtioDevice for BlockAsync {
 
     fn reset(&mut self) -> bool {
         let mut success = false;
-        while let Some(worker_thread) = self.worker_threads.pop() {
+        while let Some((worker_thread, _)) = self.worker_threads.pop() {
             let (disk_image, control_tube) = worker_thread.stop();
             self.disk_image = Some(disk_image);
             if let Some(control_tube) = control_tube {
@@ -1080,7 +1088,70 @@ impl VirtioDevice for BlockAsync {
             }
             success = true;
         }
+        self.num_activated_queues = None;
         success
+    }
+
+    fn virtio_sleep(&mut self) -> anyhow::Result<Option<Vec<Queue>>> {
+        let num_activated_queues = match self.num_activated_queues {
+            Some(x) => x,
+            None => return Ok(None), // Not activated.
+        };
+        // Reclaim the queues from workers.
+        let mut queues = Vec::new();
+        for index in 0..num_activated_queues {
+            let worker_index = if self.worker_per_queue { index } else { 0 };
+            let worker_tx = &self.worker_threads[worker_index].1;
+            let (response_tx, response_rx) = oneshot::channel();
+            worker_tx
+                .unbounded_send(WorkerCmd::StopQueue { index, response_tx })
+                .unwrap_or_else(|_| panic!("worker channel closed early"));
+            let queue = cros_async::block_on(async {
+                response_rx
+                    .await
+                    .expect("response_rx closed early")
+                    .expect("missing queue")
+            });
+            queues.push(queue);
+        }
+        // Shutdown the workers.
+        while let Some((worker_thread, _)) = self.worker_threads.pop() {
+            let (disk_image, control_tube) = worker_thread.stop();
+            self.disk_image = Some(disk_image);
+            if let Some(control_tube) = control_tube {
+                self.control_tube = Some(control_tube);
+            }
+        }
+        Ok(Some(queues))
+    }
+
+    fn virtio_wake(
+        &mut self,
+        queues_state: Option<(GuestMemory, Interrupt, Vec<(Queue, Event)>)>,
+    ) -> anyhow::Result<()> {
+        if let Some((mem, interrupt, queues)) = queues_state {
+            // TODO: activate is just what we want at the moment, but we should probably move
+            // it into a "start workers" function to make it obvious that it isn't strictly
+            // used for activate events.
+            self.num_activated_queues = None;
+            self.activate(mem, interrupt, queues)?;
+        }
+        Ok(())
+    }
+
+    fn virtio_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        // `virtio_sleep` ensures there is no pending state, except for the `Queue`s, which are
+        // handled at a higher layer.
+        Ok(serde_json::Value::Null)
+    }
+
+    fn virtio_restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            data == serde_json::Value::Null,
+            "unexpected snapshot data: should be null, got {}",
+            data,
+        );
+        Ok(())
     }
 }
 
