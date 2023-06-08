@@ -405,14 +405,7 @@ impl Vm for HaxmVm {
         }
     }
 
-    fn handle_deflate(&mut self, _guest_address: GuestAddress, _size: u64) -> Result<()> {
-        // TODO(b/233773610): implement ballooning support in haxm
-        warn!("Memory ballooning attempted but not supported on haxm hypervisor");
-        // no-op
-        Ok(())
-    }
-
-    fn handle_inflate(&mut self, _guest_address: GuestAddress, _size: u64) -> Result<()> {
+    fn handle_balloon_event(&mut self, _event: crate::BalloonEvent) -> Result<()> {
         // TODO(b/233773610): implement ballooning support in haxm
         warn!("Memory ballooning attempted but not supported on haxm hypervisor");
         // no-op

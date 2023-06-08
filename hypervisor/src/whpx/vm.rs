@@ -47,6 +47,7 @@ use super::types::*;
 use super::*;
 use crate::host_phys_addr_bits;
 use crate::whpx::whpx_sys::*;
+use crate::BalloonEvent;
 use crate::ClockState;
 use crate::Datamatch;
 use crate::DeliveryMode;
@@ -341,6 +342,104 @@ impl WhpxVm {
                 std::mem::size_of::<WHV_INTERRUPT_CONTROL>() as u32,
             )
         })
+    }
+
+    /// In order to fully unmap a memory range such that the host can reclaim the memory,
+    /// we unmap it from the hypervisor partition, and then mark crosvm's process as uninterested
+    /// in the memory.
+    ///
+    /// This will make crosvm unable to access the memory, and allow Windows to reclaim it for other
+    /// uses when memory is in demand.
+    fn handle_inflate(&mut self, guest_address: GuestAddress, size: u64) -> Result<()> {
+        info!(
+            "Balloon: Requested WHPX unmap of addr: {:?}, size: {:?}",
+            guest_address, size
+        );
+        // Safe because WHPX does proper error checking, even if an out-of-bounds address is
+        // provided.
+        unsafe {
+            check_whpx!(WHvUnmapGpaRange(
+                self.vm_partition.partition,
+                guest_address.offset(),
+                size,
+            ))?;
+        }
+
+        let host_address = self
+            .guest_mem
+            .get_host_address(guest_address)
+            .map_err(|_| Error::new(1))? as *mut c_void;
+
+        // Safe because we have just successfully unmapped this range from the
+        // guest partition, so we know it's unused.
+        let result =
+            unsafe { OfferVirtualMemory(host_address, size as usize, VmOfferPriorityBelowNormal) };
+
+        if result != ERROR_SUCCESS {
+            let err = Error::new(result);
+            error!("Freeing memory failed with error: {}", err);
+            return Err(err);
+        }
+        Ok(())
+    }
+
+    /// Remap memory that has previously been unmapped with #handle_inflate. Note
+    /// that attempts to remap pages that were not previously unmapped, or addresses that are not
+    /// page-aligned, will result in failure.
+    ///
+    /// To do this, reclaim the memory from Windows first, then remap it into the hypervisor
+    /// partition. Remapped memory has no guarantee of content, and the guest should not expect
+    /// it to.
+    fn handle_deflate(&mut self, guest_address: GuestAddress, size: u64) -> Result<()> {
+        info!(
+            "Balloon: Requested WHPX unmap of addr: {:?}, size: {:?}",
+            guest_address, size
+        );
+
+        let host_address = self
+            .guest_mem
+            .get_host_address(guest_address)
+            .map_err(|_| Error::new(1))? as *const c_void;
+
+        // Note that we aren't doing any validation here that this range was previously unmapped.
+        // However, we can avoid that expensive validation by relying on Windows error checking for
+        // ReclaimVirtualMemory. The call will fail if:
+        // - If the range is not currently "offered"
+        // - The range is outside of current guest mem (GuestMemory will fail to convert the
+        //    address)
+        // In short, security is guaranteed by ensuring the guest can never reclaim ranges it
+        // hadn't previously forfeited (and even then, the contents will be zeroed).
+        //
+        // Safe because the memory ranges in question are managed by Windows, not Rust.
+        // Also, ReclaimVirtualMemory has built-in error checking for bad parameters.
+        let result = unsafe { ReclaimVirtualMemory(host_address, size as usize) };
+
+        if result == ERROR_BUSY || result == ERROR_SUCCESS {
+            // In either of these cases, the contents of the reclaimed memory
+            // are preserved or undefined. Regardless, zero the memory
+            // to ensure no unintentional memory contents are shared.
+            //
+            // Safe because we just reclaimed the region in question and haven't yet remapped
+            // it to the guest partition, so we know it's unused.
+            unsafe { RtlZeroMemory(host_address as RawDescriptor, size as usize) };
+        } else {
+            let err = Error::new(result);
+            error!("Reclaiming memory failed with error: {}", err);
+            return Err(err);
+        }
+
+        // Safe because no-overlap is guaranteed by the success of ReclaimVirtualMemory,
+        // Which would fail if it was called on areas which were not unmapped.
+        unsafe {
+            set_user_memory_region(
+                &self.vm_partition,
+                false, // read_only
+                false, // track dirty pages
+                guest_address.offset(),
+                size,
+                host_address as *mut u8,
+            )
+        }
     }
 }
 
@@ -645,101 +744,10 @@ impl Vm for WhpxVm {
         }
     }
 
-    /// In order to fully unmap a memory range such that the host can reclaim the memory,
-    /// we unmap it from the hypervisor partition, and then mark crosvm's process as uninterested
-    /// in the memory.
-    ///
-    /// This will make crosvm unable to access the memory, and allow Windows to reclaim it for other
-    /// uses when memory is in demand.
-    fn handle_inflate(&mut self, guest_address: GuestAddress, size: u64) -> Result<()> {
-        info!(
-            "Balloon: Requested WHPX unmap of addr: {:?}, size: {:?}",
-            guest_address, size
-        );
-        // Safe because WHPX does proper error checking, even if an out-of-bounds address is
-        // provided.
-        unsafe {
-            check_whpx!(WHvUnmapGpaRange(
-                self.vm_partition.partition,
-                guest_address.offset(),
-                size,
-            ))?;
-        }
-
-        let host_address = self
-            .guest_mem
-            .get_host_address(guest_address)
-            .map_err(|_| Error::new(1))? as *mut c_void;
-
-        // Safe because we have just successfully unmapped this range from the
-        // guest partition, so we know it's unused.
-        let result =
-            unsafe { OfferVirtualMemory(host_address, size as usize, VmOfferPriorityBelowNormal) };
-
-        if result != ERROR_SUCCESS {
-            let err = Error::new(result);
-            error!("Freeing memory failed with error: {}", err);
-            return Err(err);
-        }
-        Ok(())
-    }
-
-    /// Remap memory that has previously been unmapped with #handle_inflate. Note
-    /// that attempts to remap pages that were not previously unmapped, or addresses that are not
-    /// page-aligned, will result in failure.
-    ///
-    /// To do this, reclaim the memory from Windows first, then remap it into the hypervisor
-    /// partition. Remapped memory has no guarantee of content, and the guest should not expect
-    /// it to.
-    fn handle_deflate(&mut self, guest_address: GuestAddress, size: u64) -> Result<()> {
-        info!(
-            "Balloon: Requested WHPX unmap of addr: {:?}, size: {:?}",
-            guest_address, size
-        );
-
-        let host_address = self
-            .guest_mem
-            .get_host_address(guest_address)
-            .map_err(|_| Error::new(1))? as *const c_void;
-
-        // Note that we aren't doing any validation here that this range was previously unmapped.
-        // However, we can avoid that expensive validation by relying on Windows error checking for
-        // ReclaimVirtualMemory. The call will fail if:
-        // - If the range is not currently "offered"
-        // - The range is outside of current guest mem (GuestMemory will fail to convert the
-        //    address)
-        // In short, security is guaranteed by ensuring the guest can never reclaim ranges it
-        // hadn't previously forfeited (and even then, the contents will be zeroed).
-        //
-        // Safe because the memory ranges in question are managed by Windows, not Rust.
-        // Also, ReclaimVirtualMemory has built-in error checking for bad parameters.
-        let result = unsafe { ReclaimVirtualMemory(host_address, size as usize) };
-
-        if result == ERROR_BUSY || result == ERROR_SUCCESS {
-            // In either of these cases, the contents of the reclaimed memory
-            // are preserved or undefined. Regardless, zero the memory
-            // to ensure no unintentional memory contents are shared.
-            //
-            // Safe because we just reclaimed the region in question and haven't yet remapped
-            // it to the guest partition, so we know it's unused.
-            unsafe { RtlZeroMemory(host_address as RawDescriptor, size as usize) };
-        } else {
-            let err = Error::new(result);
-            error!("Reclaiming memory failed with error: {}", err);
-            return Err(err);
-        }
-
-        // Safe because no-overlap is guaranteed by the success of ReclaimVirtualMemory,
-        // Which would fail if it was called on areas which were not unmapped.
-        unsafe {
-            set_user_memory_region(
-                &self.vm_partition,
-                false, // read_only
-                false, // track dirty pages
-                guest_address.offset(),
-                size,
-                host_address as *mut u8,
-            )
+    fn handle_balloon_event(&mut self, event: BalloonEvent) -> Result<()> {
+        match event {
+            BalloonEvent::Inflate(m) => self.handle_inflate(m.guest_address, m.size),
+            BalloonEvent::Deflate(m) => self.handle_deflate(m.guest_address, m.size),
         }
     }
 

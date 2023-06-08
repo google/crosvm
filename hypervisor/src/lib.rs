@@ -50,6 +50,24 @@ pub use crate::x86_64::*;
 /// An index in the list of guest-mapped memory regions.
 pub type MemSlot = u32;
 
+/// Range of GPA space. Starting from `guest_address` up to `size`.
+pub struct MemRegion {
+    pub guest_address: GuestAddress,
+    pub size: u64,
+}
+
+/// This is intended for use with virtio-balloon, where a guest driver determines unused ranges and
+/// requests they be freed. Use without the guest's knowledge is sure to break something.
+pub enum BalloonEvent {
+    /// Balloon event when the region is acquired from the guest. The guest cannot access this
+    /// region any more. The guest memory can be reclaimed by the host OS. As per virtio-balloon
+    /// spec, the given address and size are intended to be page-aligned.
+    Inflate(MemRegion),
+    /// Balloon event when the region is returned to the guest. VMM should reallocate memory and
+    /// register it with the hypervisor for accesses by the guest.
+    Deflate(MemRegion),
+}
+
 /// A trait for checking hypervisor capabilities.
 pub trait Hypervisor: Send {
     /// Makes a shallow clone of this `Hypervisor`.
@@ -189,24 +207,8 @@ pub trait Vm: Send {
     /// Remove `size`-byte mapping starting at `offset`.
     fn remove_mapping(&mut self, slot: u32, offset: usize, size: usize) -> Result<()>;
 
-    /// Frees the given segment of guest memory to be reclaimed by the host OS.
-    /// This is intended for use with virtio-balloon, where a guest driver determines
-    /// unused ranges and requests they be freed. Use without the guest's knowledge is sure
-    /// to break something. As per virtio-balloon spec, the given address and size
-    /// are intended to be page-aligned.
-    ///
-    /// # Arguments
-    /// * `guest_address` - Address in the guest's "physical" memory to begin the unmapping
-    /// * `size` - The size of the region to unmap, in bytes
-    fn handle_inflate(&mut self, guest_address: GuestAddress, size: u64) -> Result<()>;
-
-    /// Reallocates memory and maps it to provide to the guest. This is intended to be used
-    /// exclusively in tandem with `handle_inflate`, and will return an `Err` Result otherwise.
-    ///
-    /// # Arguments
-    /// * `guest_address` - Address in the guest's "physical" memory to begin the mapping
-    /// * `size` - The size of the region to map, in bytes
-    fn handle_deflate(&mut self, guest_address: GuestAddress, size: u64) -> Result<()>;
+    /// Events from virtio-balloon that affect the state for guest memory and host memory.
+    fn handle_balloon_event(&mut self, event: BalloonEvent) -> Result<()>;
 }
 
 /// Operation for Io and Mmio

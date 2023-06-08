@@ -20,6 +20,8 @@ pub mod gpu;
 use base::MemoryMappingBuilderUnix;
 #[cfg(windows)]
 use base::MemoryMappingBuilderWindows;
+use hypervisor::BalloonEvent;
+use hypervisor::MemRegion;
 
 pub mod client;
 pub mod display;
@@ -752,14 +754,20 @@ impl VmMemoryRequest {
             DynamicallyFreeMemoryRange {
                 guest_address,
                 size,
-            } => match vm.handle_inflate(guest_address, size) {
+            } => match vm.handle_balloon_event(BalloonEvent::Inflate(MemRegion {
+                guest_address,
+                size,
+            })) {
                 Ok(_) => VmMemoryResponse::Ok,
                 Err(e) => VmMemoryResponse::Err(e),
             },
             DynamicallyReclaimMemoryRange {
                 guest_address,
                 size,
-            } => match vm.handle_deflate(guest_address, size) {
+            } => match vm.handle_balloon_event(BalloonEvent::Deflate(MemRegion {
+                guest_address,
+                size,
+            })) {
                 Ok(_) => VmMemoryResponse::Ok,
                 Err(e) => VmMemoryResponse::Err(e),
             },

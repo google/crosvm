@@ -58,6 +58,7 @@ use vm_memory::GuestMemory;
 use vm_memory::MemoryRegionInformation;
 use vm_memory::MemoryRegionPurpose;
 
+use crate::BalloonEvent;
 use crate::ClockState;
 use crate::Config;
 use crate::Datamatch;
@@ -868,6 +869,19 @@ impl GeniezoneVm {
             errno_result()
         }
     }
+
+    fn handle_inflate(&mut self, guest_address: GuestAddress, size: u64) -> Result<()> {
+        match self.guest_mem.remove_range(guest_address, size) {
+            Ok(_) => Ok(()),
+            Err(vm_memory::Error::MemoryAccess(_, MmapError::SystemCallFailed(e))) => Err(e),
+            Err(_) => Err(Error::new(EIO)),
+        }
+    }
+
+    fn handle_deflate(&mut self, _guest_address: GuestAddress, _size: u64) -> Result<()> {
+        // No-op, when the guest attempts to access the pages again, Linux/GZVM will provide them.
+        Ok(())
+    }
 }
 
 impl Vm for GeniezoneVm {
@@ -1049,17 +1063,11 @@ impl Vm for GeniezoneVm {
         }
     }
 
-    fn handle_inflate(&mut self, guest_address: GuestAddress, size: u64) -> Result<()> {
-        match self.guest_mem.remove_range(guest_address, size) {
-            Ok(_) => Ok(()),
-            Err(vm_memory::Error::MemoryAccess(_, MmapError::SystemCallFailed(e))) => Err(e),
-            Err(_) => Err(Error::new(EIO)),
+    fn handle_balloon_event(&mut self, event: BalloonEvent) -> Result<()> {
+        match event {
+            BalloonEvent::Inflate(m) => self.handle_inflate(m.guest_address, m.size),
+            BalloonEvent::Deflate(m) => self.handle_deflate(m.guest_address, m.size),
         }
-    }
-
-    fn handle_deflate(&mut self, _guest_address: GuestAddress, _size: u64) -> Result<()> {
-        // No-op, when the guest attempts to access the pages again, Linux/GZVM will provide them.
-        Ok(())
     }
 }
 

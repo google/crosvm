@@ -609,11 +609,7 @@ impl Vm for GunyahVm {
         }
     }
 
-    fn handle_inflate(&mut self, _guest_address: GuestAddress, _size: u64) -> Result<()> {
-        unimplemented!()
-    }
-
-    fn handle_deflate(&mut self, _guest_address: GuestAddress, _size: u64) -> Result<()> {
+    fn handle_balloon_event(&mut self, _event: BalloonEvent) -> Result<()> {
         unimplemented!()
     }
 }
