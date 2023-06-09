@@ -105,15 +105,11 @@ pub use sys::VmMsyncRequest;
 #[cfg(unix)]
 pub use sys::VmMsyncResponse;
 use thiserror::Error;
+pub use vm_control_product::GpuSendToMain;
+pub use vm_control_product::GpuSendToService;
+pub use vm_control_product::ServiceSendToGpu;
 use vm_memory::GuestAddress;
 
-use crate::display::AspectRatio;
-use crate::display::DisplaySize;
-use crate::display::GuestDisplayDensity;
-use crate::display::MouseMode;
-use crate::display::WindowEvent;
-use crate::display::WindowMode;
-use crate::display::WindowVisibility;
 #[cfg(feature = "gdb")]
 pub use crate::gdb::VcpuDebug;
 #[cfg(feature = "gdb")]
@@ -2228,56 +2224,10 @@ impl Display for VmResponse {
     }
 }
 
-/// Enum that comes from the Gpu device that will be received by the main event loop.
-#[derive(Serialize, Deserialize, Debug)]
-pub enum GpuSendToService {
-    SendWindowState {
-        window_event: Option<WindowEvent>,
-        hwnd: usize,
-        visibility: WindowVisibility,
-        mode: WindowMode,
-        aspect_ratio: AspectRatio,
-        // TODO(b/203662783): Once we make the controller decide the initial size, this can be removed.
-        initial_guest_display_size: DisplaySize,
-        recommended_guest_display_density: GuestDisplayDensity,
-    },
-    SendExitWindowRequest,
-    SendMouseModeState {
-        mouse_mode: MouseMode,
-    },
-    SendGpuDevice {
-        description: String,
-    },
-}
-
-/// Enum that serves as a general purose Gpu device message that is sent to the main loop.
-#[derive(Serialize, Deserialize, Debug)]
-pub enum GpuSendToMain {
-    // Send these messages to the controller.
-    SendToService(GpuSendToService),
-    // Send to Ac97 device to set mute state.
-    MuteAc97(bool),
-}
-
 /// Enum to send control requests to all Ac97 audio devices.
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Ac97Control {
     Mute(bool),
-}
-
-/// Enum that send controller Ipc requests from the main event loop to the GPU device.
-#[derive(Serialize, Deserialize, Debug)]
-pub enum ServiceSendToGpu {
-    ShowWindow {
-        mode: WindowMode,
-        aspect_ratio: AspectRatio,
-        guest_display_size: DisplaySize,
-    },
-    HideWindow,
-    Shutdown,
-    MouseInputMode {
-        mouse_mode: MouseMode,
-    },
 }
 
 #[cfg(test)]

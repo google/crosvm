@@ -25,13 +25,14 @@ once_cell = "1.7.2"
 protos = { path = "../protos", optional = true }
 remain = "*"
 resources = { path = "../resources" }
-rutabaga_gfx = { path = "../rutabaga_gfx"}
-serde = { version = "1", features = [ "derive" ] }
+rutabaga_gfx = { path = "../rutabaga_gfx" }
+serde = { version = "1", features = ["derive"] }
 serde_json = "*"
 serde_keyvalue = { path = "../serde_keyvalue", features = ["argh_derive"] }
 swap = { path = "../swap" }
 sync = { path = "../common/sync" }
 thiserror = "*"
+vm_control_product = { path = "../vendor/generic/vm_control", package = "vm_control_product" }
 vm_memory = { path = "../vm_memory" }
 
 [target.'cfg(windows)'.dependencies]

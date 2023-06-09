@@ -2715,8 +2715,16 @@ dependencies = [
  "swap",
  "sync",
  "thiserror",
+ "vm_control_product",
  "vm_memory",
  "winapi",
+]
+
+[[package]]
+name = "vm_control_product"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
