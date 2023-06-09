@@ -32,3 +32,15 @@ pub(in crate::virtio::balloon) fn reclaim_memory(
         );
     }
 }
+
+pub(in crate::virtio::balloon) fn balloon_target_reached(
+    size: u64,
+    vm_memory_client: &VmMemoryClient,
+) {
+    if let Err(e) = vm_memory_client.balloon_target_reached(size) {
+        warn!(
+            "Failed to send or receive allocation complete request: {}, size={}",
+            e, size
+        );
+    }
+}

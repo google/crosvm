@@ -12,5 +12,6 @@ cfg_if::cfg_if! {
     }
 }
 
+pub(in crate::virtio::balloon) use platform::balloon_target_reached;
 pub(in crate::virtio::balloon) use platform::free_memory;
 pub(in crate::virtio::balloon) use platform::reclaim_memory;

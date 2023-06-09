@@ -167,6 +167,10 @@ impl VmMemoryClient {
             register: false,
         }))
     }
+
+    pub fn balloon_target_reached(&self, size: u64) -> Result<()> {
+        self.request_unit(&VmMemoryRequest::BalloonTargetReached { size })
+    }
 }
 
 impl AsRawDescriptor for VmMemoryClient {

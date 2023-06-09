@@ -18,3 +18,6 @@ pub(in crate::virtio::balloon) fn free_memory(
 
 // no-op
 pub(in crate::virtio::balloon) fn reclaim_memory(_guest_address: &GuestAddress, _len: u64) {}
+
+// no-op
+pub(in crate::virtio::balloon) fn balloon_target_reached(_size: u64) {}

@@ -18,6 +18,7 @@ use balloon_control::WSSBucket;
 use balloon_control::VIRTIO_BALLOON_WS_MAX_NUM_BINS;
 use balloon_control::VIRTIO_BALLOON_WS_MIN_NUM_BINS;
 use base::error;
+use base::info;
 use base::warn;
 use base::AsRawDescriptor;
 use base::Event;
@@ -27,7 +28,7 @@ use base::SendTube;
 use base::Tube;
 use base::WorkerThread;
 use cros_async::block_on;
-use cros_async::select11;
+use cros_async::select12;
 use cros_async::sync::RwLock as AsyncRwLock;
 use cros_async::AsyncTube;
 use cros_async::EventAsync;
@@ -820,6 +821,7 @@ fn run_worker(
     release_memory_tube: Option<Tube>,
     interrupt: Interrupt,
     kill_evt: Event,
+    target_reached_evt: Event,
     pending_adjusted_response_event: Event,
     mem: GuestMemory,
     state: Arc<AsyncRwLock<BalloonState>>,
@@ -968,6 +970,15 @@ fn run_worker(
         let resample = async_utils::handle_irq_resample(&ex, interrupt.clone());
         pin_mut!(resample);
 
+        // Send a message if balloon target reached event is triggered.
+        let target_reached = handle_target_reached(
+            &ex,
+            target_reached_evt,
+            #[cfg(windows)]
+            &vm_memory_client,
+        );
+        pin_mut!(target_reached);
+
         // Exit if the kill event is triggered.
         let kill = async_utils::await_and_exit(&ex, kill_evt);
         pin_mut!(kill);
@@ -997,7 +1008,7 @@ fn run_worker(
         pin_mut!(pending_adjusted);
 
         if let Err(e) = ex
-            .run_until(select11(
+            .run_until(select12(
                 inflate,
                 deflate,
                 stats,
@@ -1009,6 +1020,7 @@ fn run_worker(
                 events,
                 pending_adjusted,
                 wss_data,
+                target_reached,
             ))
             .map(|_| ())
         {
@@ -1022,6 +1034,31 @@ fn run_worker(
         #[cfg(feature = "registered_events")]
         registered_evt_q,
     )
+}
+
+async fn handle_target_reached(
+    ex: &Executor,
+    target_reached_evt: Event,
+    #[cfg(windows)] vm_memory_client: &VmMemoryClient,
+) -> anyhow::Result<()> {
+    let event_async =
+        EventAsync::new(target_reached_evt, ex).context("failed to create EventAsync")?;
+    loop {
+        // Wait for target reached trigger.
+        let _ = event_async.next_val().await;
+        // Send the message to vm_control on the event. We don't have to read the current
+        // size yet.
+        sys::balloon_target_reached(
+            0,
+            #[cfg(windows)]
+            vm_memory_client,
+        );
+    }
+    // The above loop will never terminate and there is no reason to terminate it either. However,
+    // the function is used in an executor that expects a Result<> return. Make sure that clippy
+    // doesn't enforce the unreachable_code condition.
+    #[allow(unreachable_code)]
+    Ok(())
 }
 
 /// Virtio device for memory balloon inflation/deflation.
@@ -1038,6 +1075,7 @@ pub struct Balloon {
     #[cfg(feature = "registered_events")]
     registered_evt_q: Option<SendTube>,
     wss_num_bins: u8,
+    target_reached_evt: Option<Event>,
 }
 
 /// Operation mode of the balloon.
@@ -1097,6 +1135,7 @@ impl Balloon {
             #[cfg(feature = "registered_events")]
             registered_evt_q,
             wss_num_bins,
+            target_reached_evt: None,
         })
     }
 
@@ -1173,6 +1212,12 @@ impl VirtioDevice for Balloon {
         copy_config(config.as_bytes_mut(), offset, data, 0);
         let mut state = block_on(self.state.lock());
         state.actual_pages = config.actual.to_native();
+
+        // If balloon has updated to the requested memory, let the hypervisor know.
+        if config.num_pages == config.actual {
+            info!("sending target reached event at {:#?}", config.num_pages);
+            self.target_reached_evt.as_ref().map(|e| e.signal());
+        }
         if state.failable_update && state.actual_pages == state.num_pages {
             state.failable_update = false;
             let num_pages = state.num_pages;
@@ -1231,6 +1276,11 @@ impl VirtioDevice for Balloon {
             (None, None)
         };
 
+        let (self_target_reached_evt, target_reached_evt) = Event::new()
+            .and_then(|e| Ok((e.try_clone()?, e)))
+            .context("failed to create target_reached Event pair: {}")?;
+        self.target_reached_evt = Some(self_target_reached_evt);
+
         let state = self.state.clone();
 
         let command_tube = self.command_tube.take().unwrap();
@@ -1259,6 +1309,7 @@ impl VirtioDevice for Balloon {
                 release_memory_tube,
                 interrupt,
                 kill_evt,
+                target_reached_evt,
                 pending_adjusted_response_event,
                 mem,
                 state,

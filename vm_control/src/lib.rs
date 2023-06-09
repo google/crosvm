@@ -525,6 +525,8 @@ pub enum VmMemoryRequest {
         guest_address: GuestAddress,
         size: u64,
     },
+    /// Balloon allocation/deallocation target reached.
+    BalloonTargetReached { size: u64 },
     /// Unregister the given memory slot that was previously registered with `RegisterMemory`.
     UnregisterMemory(VmMemoryRegionId),
     /// Register an ioeventfd by looking up using Alloc info.
@@ -771,6 +773,12 @@ impl VmMemoryRequest {
                 Ok(_) => VmMemoryResponse::Ok,
                 Err(e) => VmMemoryResponse::Err(e),
             },
+            BalloonTargetReached { size } => {
+                match vm.handle_balloon_event(BalloonEvent::BalloonTargetReached(size)) {
+                    Ok(_) => VmMemoryResponse::Ok,
+                    Err(e) => VmMemoryResponse::Err(e),
+                }
+            }
             IoEventWithAlloc {
                 evt,
                 allocation,

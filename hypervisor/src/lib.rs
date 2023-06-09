@@ -66,6 +66,9 @@ pub enum BalloonEvent {
     /// Balloon event when the region is returned to the guest. VMM should reallocate memory and
     /// register it with the hypervisor for accesses by the guest.
     Deflate(MemRegion),
+    /// Balloon event when the requested memory size is achieved. This can be achieved through
+    /// either inflation or deflation. The `u64` will be the current size of the balloon in bytes.
+    BalloonTargetReached(u64),
 }
 
 /// A trait for checking hypervisor capabilities.

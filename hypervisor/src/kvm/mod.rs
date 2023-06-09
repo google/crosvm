@@ -763,6 +763,7 @@ impl Vm for KvmVm {
         match event {
             BalloonEvent::Inflate(m) => self.handle_inflate(m.guest_address, m.size),
             BalloonEvent::Deflate(m) => self.handle_deflate(m.guest_address, m.size),
+            BalloonEvent::BalloonTargetReached(_) => Ok(()),
         }
     }
 }
