@@ -10,4 +10,4 @@ edition = "2021"
 anti-tamper = []
 
 [dependencies]
-base = { path = "../base" }
+base = { path = "../../../base" }

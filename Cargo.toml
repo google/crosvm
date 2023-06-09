@@ -34,7 +34,6 @@ lto = true
 members = [
     "aarch64",
     "acpi_tables",
-    "anti_tamper",
     "arch",
     "argh_helpers",
     "audio_util",
@@ -88,6 +87,7 @@ members = [
     "tpm2",
     "usb_sys",
     "usb_util",
+    "vendor/generic/anti_tamper",
     "vfio_sys",
     "vhost",
     "virtio_sys",
@@ -455,8 +455,8 @@ p9 = "*"
 vhost = { path = "vhost" }
 
 [target.'cfg(windows)'.dependencies]
-anti_tamper = { path = "anti_tamper" }
-cros_async =  { path = "cros_async" }
+anti_tamper = { path = "vendor/generic/anti_tamper" }
+cros_async = { path = "cros_async" }
 ctrlc = "*"
 futures = "0.3"
 gpu_display = { path = "gpu_display", optional = true }
@@ -465,8 +465,8 @@ sandbox = { path = "sandbox" }
 cros_tracing = { path = "cros_tracing" }
 tube_transporter = { path = "tube_transporter" }
 winapi = "*"
-win_audio = { path = "win_audio"}
-win_util = { path = "win_util"}
+win_audio = { path = "win_audio" }
+win_util = { path = "win_util" }
 
 [dev-dependencies]
 base = "*"
@@ -475,7 +475,7 @@ rand = "0.8"
 [patch.crates-io]
 audio_streams = { path = "common/audio_streams" }
 base = { path = "base" }
-cros_async =  { path = "cros_async" }
+cros_async = { path = "cros_async" }
 data_model = { path = "common/data_model" }
 libcras = { path = "libcras_stub" } # ignored by ebuild
 p9 = { path = "common/p9" } # ignored by ebuild
