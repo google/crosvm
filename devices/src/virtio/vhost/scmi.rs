@@ -127,7 +127,7 @@ impl VirtioDevice for Scmi {
         let activate_vqs = |_handle: &VhostScmiHandle| -> Result<()> { Ok(()) };
 
         worker
-            .init(mem, QUEUE_SIZES, activate_vqs)
+            .init(mem, QUEUE_SIZES, activate_vqs, None)
             .context("vhost worker init exited with error")?;
 
         self.worker_thread = Some(WorkerThread::start("vhost_scmi", move |kill_evt| {

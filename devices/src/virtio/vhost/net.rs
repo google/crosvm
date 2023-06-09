@@ -220,7 +220,7 @@ where
             Ok(())
         };
         worker
-            .init(mem, QUEUE_SIZES, activate_vqs)
+            .init(mem, QUEUE_SIZES, activate_vqs, None)
             .context("net worker init exited with error")?;
         self.worker_thread = Some(WorkerThread::start("vhost_net", move |kill_evt| {
             let cleanup_vqs = |handle: &U| -> Result<()> {

@@ -9,6 +9,8 @@ use base::EventToken;
 use base::Tube;
 use base::WaitContext;
 use libc::EIO;
+use serde::Deserialize;
+use serde::Serialize;
 use vhost::Vhost;
 use vm_memory::GuestMemory;
 
@@ -20,10 +22,16 @@ use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::VIRTIO_F_ACCESS_PLATFORM;
 
+#[derive(Clone, Serialize, Deserialize)]
+pub struct VringBase {
+    pub index: usize,
+    pub base: u16,
+}
+
 /// Worker that takes care of running the vhost device.
 pub struct Worker<T: Vhost> {
     interrupt: Interrupt,
-    queues: Vec<(Queue, Event)>,
+    pub queues: Vec<(Queue, Event)>,
     pub vhost_handle: T,
     pub vhost_interrupt: Vec<Event>,
     acked_features: u64,
@@ -57,6 +65,7 @@ impl<T: Vhost> Worker<T> {
         mem: GuestMemory,
         queue_sizes: &[u16],
         activate_vqs: F1,
+        queue_vrings_base: Option<Vec<VringBase>>,
     ) -> Result<()>
     where
         F1: FnOnce(&T) -> Result<()>,
@@ -105,9 +114,23 @@ impl<T: Vhost> Worker<T> {
                     None,
                 )
                 .map_err(Error::VhostSetVringAddr)?;
-            self.vhost_handle
-                .set_vring_base(queue_index, 0)
-                .map_err(Error::VhostSetVringBase)?;
+            if let Some(vrings_base) = &queue_vrings_base {
+                let base = if let Some(vring_base) = vrings_base
+                    .iter()
+                    .find(|vring_base| vring_base.index == queue_index)
+                {
+                    vring_base.base
+                } else {
+                    return Err(Error::VringBaseMissing);
+                };
+                self.vhost_handle
+                    .set_vring_base(queue_index, base)
+                    .map_err(Error::VhostSetVringBase)?;
+            } else {
+                self.vhost_handle
+                    .set_vring_base(queue_index, 0)
+                    .map_err(Error::VhostSetVringBase)?;
+            }
             self.set_vring_call_for_entry(queue_index, queue.vector() as usize)?;
             self.vhost_handle
                 .set_vring_kick(queue_index, queue_evt)

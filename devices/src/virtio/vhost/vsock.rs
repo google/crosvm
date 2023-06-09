@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::BTreeMap as Map;
 use std::fs::OpenOptions;
 use std::os::unix::prelude::OpenOptionsExt;
 
@@ -15,11 +16,14 @@ use base::Event;
 use base::RawDescriptor;
 use base::WorkerThread;
 use data_model::Le64;
+use serde::Deserialize;
+use serde::Serialize;
 use vhost::Vhost;
 use vhost::Vsock as VhostVsockHandle;
 use vm_memory::GuestMemory;
 use zerocopy::AsBytes;
 
+use super::worker::VringBase;
 use super::worker::Worker;
 use super::Error;
 use super::Result;
@@ -33,12 +37,25 @@ use crate::virtio::Queue;
 use crate::virtio::VirtioDevice;
 
 pub struct Vsock {
-    worker_thread: Option<WorkerThread<()>>,
+    worker_thread: Option<WorkerThread<Worker<VhostVsockHandle>>>,
     vhost_handle: Option<VhostVsockHandle>,
     cid: u64,
     interrupts: Option<Vec<Event>>,
     avail_features: u64,
     acked_features: u64,
+    // vrings_base states:
+    // None - device was just created or is running.
+    // Some - device was put to sleep after running or was restored.
+    vrings_base: Option<Vec<VringBase>>,
+    event_queue: Option<Queue>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct VsockSnapshot {
+    cid: u64,
+    avail_features: u64,
+    acked_features: u64,
+    vrings_base: Vec<VringBase>,
 }
 
 impl Vsock {
@@ -74,6 +91,8 @@ impl Vsock {
             interrupts: Some(interrupts),
             avail_features,
             acked_features: 0,
+            vrings_base: None,
+            event_queue: None,
         })
     }
 
@@ -85,6 +104,8 @@ impl Vsock {
             interrupts: None,
             avail_features: features,
             acked_features: 0,
+            vrings_base: None,
+            event_queue: None,
         }
     }
 
@@ -161,7 +182,7 @@ impl VirtioDevice for Vsock {
         let cid = self.cid;
         // The third vq is an event-only vq that is not handled by the vhost
         // subsystem (but still needs to exist).  Split it off here.
-        let _event_queue = queues.remove(2);
+        self.event_queue = Some(queues.remove(2).0);
         let mut worker = Worker::new(
             queues,
             vhost_handle,
@@ -177,7 +198,7 @@ impl VirtioDevice for Vsock {
             Ok(())
         };
         worker
-            .init(mem, QUEUE_SIZES, activate_vqs)
+            .init(mem, QUEUE_SIZES, activate_vqs, self.vrings_base.take())
             .context("vsock worker init exited with error")?;
 
         self.worker_thread = Some(WorkerThread::start("vhost_vsock", move |kill_evt| {
@@ -186,6 +207,7 @@ impl VirtioDevice for Vsock {
             if let Err(e) = result {
                 error!("vsock worker thread exited with error: {:?}", e);
             }
+            worker
         }));
 
         Ok(())
@@ -201,6 +223,93 @@ impl VirtioDevice for Vsock {
                 Err(e) => error!("{}: failed to set owner: {:?}", self.debug_label(), e),
             }
         }
+    }
+
+    fn virtio_sleep(&mut self) -> anyhow::Result<Option<Map<usize, Queue>>> {
+        if let Some(worker_thread) = self.worker_thread.take() {
+            let worker = worker_thread.stop();
+            self.interrupts = Some(worker.vhost_interrupt);
+            worker
+                .vhost_handle
+                .stop()
+                .context("failed to stop vrings")?;
+            let mut queues: Vec<(usize, Queue)> = worker
+                .queues
+                .into_iter()
+                .map(|(queue, _)| queue)
+                .enumerate()
+                .collect();
+            let mut vrings_base = Vec::new();
+            for (pos, _) in queues.iter() {
+                let vring_base = VringBase {
+                    index: *pos,
+                    base: worker.vhost_handle.get_vring_base(*pos)?,
+                };
+                vrings_base.push(vring_base);
+            }
+            self.vrings_base = Some(vrings_base);
+            self.vhost_handle = Some(worker.vhost_handle);
+            queues.push((
+                2,
+                self.event_queue.take().expect("Vsock event queue missing"),
+            ));
+            return Ok(Some(Map::from_iter(queues)));
+        }
+        Ok(None)
+    }
+
+    fn virtio_wake(
+        &mut self,
+        device_state: Option<(GuestMemory, Interrupt, Map<usize, (Queue, Event)>)>,
+    ) -> anyhow::Result<()> {
+        match device_state {
+            None => Ok(()),
+            Some((mem, interrupt, mut queues_map)) => {
+                // TODO: activate is just what we want at the moment, but we should probably move
+                // it into a "start workers" function to make it obvious that it isn't strictly
+                // used for activate events.
+                let queues = vec![
+                    queues_map.remove(&0).expect("missing rx queue"),
+                    queues_map.remove(&1).expect("missing tx queue"),
+                    queues_map.remove(&2).expect("missing evt queue"),
+                ];
+                self.activate(mem, interrupt, queues)?;
+                Ok(())
+            }
+        }
+    }
+
+    fn virtio_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        let vrings_base = self.vrings_base.clone().unwrap_or_default();
+        serde_json::to_value(&VsockSnapshot {
+            // `cid` and `avail_features` are snapshot as a safeguard. Upon restore, validate
+            // cid and avail_features in the current vsock match the previously snapshot vsock.
+            cid: self.cid,
+            avail_features: self.avail_features,
+            acked_features: self.acked_features,
+            vrings_base,
+        })
+        .context("failed to snapshot virtio console")
+    }
+
+    fn virtio_restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        let deser: VsockSnapshot =
+            serde_json::from_value(data).context("failed to deserialize virtio vsock")?;
+        anyhow::ensure!(
+            self.cid == deser.cid,
+            "Virtio vsock incorrect cid for restore:\n Expected: {}, Actual: {}",
+            self.cid,
+            deser.cid,
+        );
+        anyhow::ensure!(
+            self.avail_features == deser.avail_features,
+            "Virtio vsock incorrect avail features for restore:\n Expected: {}, Actual: {}",
+            self.avail_features,
+            deser.avail_features,
+        );
+        self.acked_features = deser.acked_features;
+        self.vrings_base = Some(deser.vrings_base);
+        Ok(())
     }
 }
 

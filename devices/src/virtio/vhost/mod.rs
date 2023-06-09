@@ -136,6 +136,8 @@ pub enum Error {
     #[cfg(unix)]
     #[error("failed to start vhost-vsock driver: {0}")]
     VhostVsockStart(VhostError),
+    #[error("queue missing vring base")]
+    VringBaseMissing,
     /// Error while waiting for events.
     #[error("failed waiting for events: {0}")]
     WaitError(SysError),

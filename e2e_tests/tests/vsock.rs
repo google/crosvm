@@ -21,6 +21,7 @@ use fixture::vhost_user::VhostUserBackend;
 use fixture::vm::Config;
 use fixture::vm::TestVm;
 use rand::Rng;
+use tempfile::tempdir;
 use tempfile::NamedTempFile;
 
 const HOST_CID: u64 = 2;
@@ -43,24 +44,83 @@ fn generate_vhost_port() -> u32 {
 
 #[test]
 fn host_to_guest() {
+    let guest_port = generate_vhost_port();
     let guest_cid = generate_guest_cid();
     let config = Config::new().extra_args(vec!["--cid".to_string(), guest_cid.to_string()]);
-    host_to_guest_connection(config, guest_cid);
+    let mut vm = TestVm::new(config).unwrap();
+    host_to_guest_connection(&mut vm, guest_cid, guest_port);
 }
 
 #[test]
 fn host_to_guest_disable_sandbox() {
+    let guest_port = generate_vhost_port();
     let guest_cid = generate_guest_cid();
     let config = Config::new()
         .extra_args(vec!["--cid".to_string(), guest_cid.to_string()])
         .disable_sandbox();
-    host_to_guest_connection(config, guest_cid);
+    let mut vm = TestVm::new(config).unwrap();
+    host_to_guest_connection(&mut vm, guest_cid, guest_port);
 }
 
-fn host_to_guest_connection(config: Config, guest_cid: u32) {
+#[test]
+fn host_to_guest_snapshot_restore() {
     let guest_port = generate_vhost_port();
+    let guest_cid = generate_guest_cid();
+    let config = Config::new()
+        .extra_args(vec![
+            "--cid".to_string(),
+            guest_cid.to_string(),
+            "--no-usb".to_string(),
+        ])
+        .with_stdout_hardware("legacy-virtio-console");
     let mut vm = TestVm::new(config).unwrap();
+    host_to_guest_connection(&mut vm, guest_cid, guest_port);
+    let dir = tempdir().unwrap();
+    let snap = dir.path().join("snapshot.bkp");
+    vm.snapshot(&snap).unwrap();
+    let config = Config::new()
+        .extra_args(vec![
+            "--cid".to_string(),
+            guest_cid.to_string(),
+            "--restore".to_string(),
+            snap.to_str().unwrap().to_string(),
+            "--no-usb".to_string(),
+        ])
+        .with_stdout_hardware("legacy-virtio-console");
+    vm = TestVm::new_cold_restore(config).unwrap();
+    host_to_guest_connection(&mut vm, guest_cid, guest_port);
+}
 
+#[test]
+fn host_to_guest_disable_sandbox_snapshot_restore() {
+    let guest_port = generate_vhost_port();
+    let guest_cid = generate_guest_cid();
+    let config = Config::new()
+        .extra_args(vec![
+            "--cid".to_string(),
+            guest_cid.to_string(),
+            "--no-usb".to_string(),
+        ])
+        .with_stdout_hardware("legacy-virtio-console");
+    let mut vm = TestVm::new(config.disable_sandbox()).unwrap();
+    host_to_guest_connection(&mut vm, guest_cid, guest_port);
+    let dir = tempdir().unwrap();
+    let snap = dir.path().join("snapshot.bkp");
+    vm.snapshot(&snap).unwrap();
+    let config = Config::new()
+        .extra_args(vec![
+            "--cid".to_string(),
+            guest_cid.to_string(),
+            "--restore".to_string(),
+            snap.to_str().unwrap().to_string(),
+            "--no-usb".to_string(),
+        ])
+        .with_stdout_hardware("legacy-virtio-console");
+    vm = TestVm::new_cold_restore(config.disable_sandbox()).unwrap();
+    host_to_guest_connection(&mut vm, guest_cid, guest_port);
+}
+
+fn host_to_guest_connection(vm: &mut TestVm, guest_cid: u32, guest_port: u32) {
     let guest_cmd = vm
         .exec_in_guest_async(&format!(
             "echo {MESSAGE_TO_HOST} | ncat -l --vsock --send-only {guest_port}"
@@ -87,29 +147,85 @@ fn host_to_guest_connection(config: Config, guest_cid: u32) {
     let host_stdout = std::str::from_utf8(&output.stdout).unwrap();
     assert_eq!(host_stdout.trim(), MESSAGE_TO_HOST);
 
-    guest_cmd.wait(&mut vm).unwrap();
+    guest_cmd.wait(vm).unwrap();
 }
 
 #[test]
 fn guest_to_host() {
+    let host_port = generate_vhost_port();
     let guest_cid = generate_guest_cid();
     let config = Config::new().extra_args(vec!["--cid".to_string(), guest_cid.to_string()]);
-    guest_to_host_connection(config);
+    let mut vm = TestVm::new(config).unwrap();
+    guest_to_host_connection(&mut vm, host_port);
 }
 
 #[test]
 fn guest_to_host_disable_sandbox() {
+    let host_port = generate_vhost_port();
     let guest_cid = generate_guest_cid();
     let config = Config::new()
         .extra_args(vec!["--cid".to_string(), guest_cid.to_string()])
         .disable_sandbox();
-    guest_to_host_connection(config);
+    let mut vm = TestVm::new(config).unwrap();
+    guest_to_host_connection(&mut vm, host_port);
 }
 
-fn guest_to_host_connection(config: Config) {
+#[test]
+fn guest_to_host_snapshot_restore() {
     let host_port = generate_vhost_port();
+    let guest_cid = generate_guest_cid();
+    let config = Config::new()
+        .extra_args(vec![
+            "--cid".to_string(),
+            guest_cid.to_string(),
+            "--no-usb".to_string(),
+        ])
+        .with_stdout_hardware("legacy-virtio-console");
     let mut vm = TestVm::new(config).unwrap();
+    guest_to_host_connection(&mut vm, host_port);
+    let dir = tempdir().unwrap();
+    let snap = dir.path().join("snapshot.bkp");
+    vm.snapshot(&snap).unwrap();
+    let config = Config::new()
+        .extra_args(vec![
+            "--cid".to_string(),
+            guest_cid.to_string(),
+            "--no-usb".to_string(),
+            "--restore".to_string(),
+            snap.to_str().unwrap().to_string(),
+        ])
+        .with_stdout_hardware("legacy-virtio-console");
+    vm = TestVm::new_cold_restore(config).unwrap();
+    guest_to_host_connection(&mut vm, host_port);
+}
 
+#[test]
+fn guest_to_host_disable_sandbox_snapshot_restore() {
+    let host_port = generate_vhost_port();
+    let guest_cid = generate_guest_cid();
+    let config = Config::new()
+        .extra_args(vec!["--cid".to_string(), guest_cid.to_string()])
+        .with_stdout_hardware("legacy-virtio-console")
+        .disable_sandbox();
+    let mut vm = TestVm::new(config).unwrap();
+    guest_to_host_connection(&mut vm, host_port);
+    let dir = tempdir().unwrap();
+    let snap = dir.path().join("snapshot.bkp");
+    vm.snapshot(&snap).unwrap();
+    let config = Config::new()
+        .extra_args(vec![
+            "--cid".to_string(),
+            guest_cid.to_string(),
+            "--no-usb".to_string(),
+            "--restore".to_string(),
+            snap.to_str().unwrap().to_string(),
+        ])
+        .with_stdout_hardware("legacy-virtio-console");
+    vm = TestVm::new_cold_restore(config.disable_sandbox()).unwrap();
+    guest_to_host_connection(&mut vm, host_port);
+}
+
+fn guest_to_host_connection(vm: &mut TestVm, host_port: u32) {
     let mut host_ncat = Command::new("ncat")
         .arg("-l")
         .arg("--send-only")
@@ -153,6 +269,7 @@ fn create_vu_config(cmd_type: CmdType, socket: &Path, cid: u32) -> VuConfig {
 
 #[test]
 fn vhost_user_host_to_guest() {
+    let guest_port = generate_vhost_port();
     let guest_cid = generate_guest_cid();
     let socket = NamedTempFile::new().unwrap();
 
@@ -164,11 +281,13 @@ fn vhost_user_host_to_guest() {
         socket.path().to_str().unwrap().to_string(),
     ]);
 
-    host_to_guest_connection(config, guest_cid);
+    let mut vm = TestVm::new(config).unwrap();
+    host_to_guest_connection(&mut vm, guest_cid, guest_port);
 }
 
 #[test]
 fn vhost_user_host_to_guest_with_devices() {
+    let guest_port = generate_vhost_port();
     let guest_cid = generate_guest_cid();
     let socket = NamedTempFile::new().unwrap();
 
@@ -180,11 +299,13 @@ fn vhost_user_host_to_guest_with_devices() {
         socket.path().to_str().unwrap().to_string(),
     ]);
 
-    host_to_guest_connection(config, guest_cid);
+    let mut vm = TestVm::new(config).unwrap();
+    host_to_guest_connection(&mut vm, guest_cid, guest_port);
 }
 
 #[test]
 fn vhost_user_guest_to_host() {
+    let host_port = generate_vhost_port();
     let guest_cid = generate_guest_cid();
     let socket = NamedTempFile::new().unwrap();
 
@@ -196,11 +317,13 @@ fn vhost_user_guest_to_host() {
         socket.path().to_str().unwrap().to_string(),
     ]);
 
-    guest_to_host_connection(config);
+    let mut vm = TestVm::new(config).unwrap();
+    guest_to_host_connection(&mut vm, host_port);
 }
 
 #[test]
 fn vhost_user_guest_to_host_with_devices() {
+    let host_port = generate_vhost_port();
     let guest_cid = generate_guest_cid();
     let socket = NamedTempFile::new().unwrap();
 
@@ -212,5 +335,6 @@ fn vhost_user_guest_to_host_with_devices() {
         socket.path().to_str().unwrap().to_string(),
     ]);
 
-    guest_to_host_connection(config);
+    let mut vm = TestVm::new(config).unwrap();
+    guest_to_host_connection(&mut vm, host_port);
 }
