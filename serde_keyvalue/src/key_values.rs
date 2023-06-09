@@ -1217,6 +1217,10 @@ mod tests {
                 enable: true,
             }
         );
+
+        // Braces specified at top-level.
+        let kv = "[enable,path=/usr/lib/libossom.so.1,num=12]";
+        assert!(from_key_values::<TestStruct>(kv).is_err());
     }
 
     #[test]
@@ -1400,6 +1404,10 @@ mod tests {
 
         // Required member unspecified.
         let kv = "b=foomatic,flag=[param=24]";
+        assert!(from_key_values::<TestStruct>(kv).is_err());
+
+        // Braces specified at top-level.
+        let kv = "[a=10,b=foomatic,flag=[param=24]]";
         assert!(from_key_values::<TestStruct>(kv).is_err());
     }
 
