@@ -38,7 +38,7 @@ fi
 cargo run -- run \
     --rwdisk ./rootfs \
     --initrd ./initrd.img-* \
-    --tap-name crosvm_tap \
+    --net tap-name=crosvm_tap \
     -p "root=/dev/vda5" \
     ./vmlinuz-*
 # ANCHOR_END: run

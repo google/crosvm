@@ -43,7 +43,7 @@ cargo run --features=gpu,x,virgl_renderer -- run \
     --gpu backend=virglrenderer,width=1920,height=1080 \
     --display-window-keyboard \
     --display-window-mouse \
-    --tap-name crosvm_tap \
+    --net tap-name=crosvm_tap \
     --rwdisk ./rootfs \
     --initrd ./initrd.img-* \
     -p "root=/dev/vda5" \
