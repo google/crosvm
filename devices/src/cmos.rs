@@ -11,6 +11,7 @@ use anyhow::Context;
 use base::custom_serde::deserialize_seq_to_arr;
 use base::custom_serde::serialize_arr;
 use base::error;
+use base::info;
 use base::Event;
 use base::EventToken;
 use base::Timer;
@@ -292,15 +293,22 @@ impl BusDevice for Cmos {
             DATA_OFFSET => {
                 let mut data = data[0];
                 if self.index == RTC_REG_B {
+                    // The features which we don't support are:
+                    //   0x80 (SET)  - disable clock updates (i.e. let guest configure the clock)
+                    //   0x40 (PIE)  - enable periodic interrupts
+                    //   0x10 (IUE)  - enable interrupts after clock updates
+                    //   0x08 (SQWE) - enable square wave generation
+                    //   0x04 (DM)   - use binary data format (instead of BCD)
+                    //   0x01 (DSE)  - control daylight savings (we just do what the host does)
                     if data & RTC_REG_B_UNSUPPORTED != 0 {
-                        error!(
+                        info!(
                             "Ignoring unsupported bits: {:x}",
                             data & RTC_REG_B_UNSUPPORTED
                         );
                         data &= !RTC_REG_B_UNSUPPORTED;
                     }
                     if data & RTC_REG_B_24_HOUR_MODE == 0 {
-                        error!("12-hour mode unsupported");
+                        info!("12-hour mode unsupported");
                         data |= RTC_REG_B_24_HOUR_MODE;
                     }
                 }
