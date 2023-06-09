@@ -328,8 +328,18 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base",
+ "broker_ipc_product",
  "crash_report",
  "metrics",
+ "serde",
+]
+
+[[package]]
+name = "broker_ipc_product"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "crash_report",
  "serde",
 ]
 

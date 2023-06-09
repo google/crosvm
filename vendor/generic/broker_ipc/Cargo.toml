@@ -1,0 +1,14 @@
+[package]
+name = "broker_ipc_product"
+authors = ["The ChromiumOS Authors"]
+version = "0.1.0"
+edition = "2021"
+
+[features]
+process-invariants = []
+crash-report = ["crash_report"]
+
+[dependencies]
+anyhow = "1.0.32"
+crash_report = { path = "../../../crash_report", optional = true }
+serde = { version = "1", features = ["derive"] }

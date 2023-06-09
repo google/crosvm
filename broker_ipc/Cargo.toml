@@ -5,12 +5,13 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-crash-report = []
+crash-report = ["crash_report", "broker_ipc_product/crash-report"]
+process-invariants = ["broker_ipc_product/process-invariants"]
 
 [dependencies]
 anyhow = "1.0.32"
 base = { path = "../base" }
-crash_report = { path = "../crash_report" }
-serde = { version = "1", features = [ "derive" ] }
+crash_report = { path = "../crash_report", optional = true }
+serde = { version = "1", features = ["derive"] }
 metrics = { path = "../metrics" }
-
+broker_ipc_product = { path = "../vendor/generic/broker_ipc/" }

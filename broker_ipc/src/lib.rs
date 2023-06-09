@@ -7,6 +7,7 @@
 
 use std::fs::File;
 use std::fs::OpenOptions;
+use std::path::PathBuf;
 
 use anyhow::Context;
 use base::enable_high_res_timers;
@@ -16,16 +17,15 @@ use base::FromRawDescriptor;
 use base::IntoRawDescriptor;
 use base::SafeDescriptor;
 use base::Tube;
+#[cfg(feature = "process-invariants")]
+pub use broker_ipc_product::init_broker_process_invariants;
+use broker_ipc_product::init_child_crash_reporting;
+use broker_ipc_product::product_child_setup;
+#[cfg(feature = "process-invariants")]
+pub use broker_ipc_product::EmulatorProcessInvariants;
+use broker_ipc_product::ProductAttributes;
 use serde::Deserialize;
 use serde::Serialize;
-
-mod generic;
-use std::path::PathBuf;
-
-use generic as product;
-use product::init_child_crash_reporting;
-use product::product_child_setup;
-use product::ProductAttributes;
 
 /// Arguments that are common to all devices & helper processes.
 #[derive(Serialize, Deserialize)]
@@ -33,6 +33,22 @@ pub struct CommonChildStartupArgs {
     syslog_file: Option<SafeDescriptor>,
     metrics_tube: Option<Tube>,
     product_attrs: ProductAttributes,
+}
+
+impl CommonChildStartupArgs {
+    #[allow(clippy::new_without_default)]
+    pub fn new(
+        syslog_path: Option<PathBuf>,
+        #[cfg(feature = "crash-report")] _crash_attrs: crash_report::CrashReportAttributes,
+        #[cfg(feature = "process-invariants")] _process_invariants: EmulatorProcessInvariants,
+        metrics_tube: Option<Tube>,
+    ) -> anyhow::Result<Self> {
+        Ok(Self {
+            product_attrs: ProductAttributes {},
+            metrics_tube,
+            syslog_file: log_file_from_path(syslog_path)?,
+        })
+    }
 }
 
 pub struct ChildLifecycleCleanup {
