@@ -10,5 +10,5 @@ crash-report = ["crash_report"]
 
 [dependencies]
 anyhow = "1.0.32"
-crash_report = { path = "../../../crash_report", optional = true }
+crash_report = { path = "../crash_report", optional = true }
 serde = { version = "1", features = ["derive"] }

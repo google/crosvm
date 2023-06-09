@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::collections::HashMap;
+use std::os::raw::c_char;
 
 use anyhow::Result;
 use base::RecvTube;
@@ -20,6 +21,12 @@ pub enum ProcessType {}
 pub enum CrashReportReason {
     /// A default value for unspecified crash report reason.
     Unknown,
+    /// A gfxstream render thread hanged.
+    GfxstreamRenderThreadHang,
+    /// A gfxstream sync thread hanged.
+    GfxstreamSyncThreadHang,
+    /// A gfxstream hang was detected unassociated with a specific type.
+    GfxstreamOtherHang,
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq)]
@@ -82,3 +89,8 @@ pub fn upload_crash_report(_reason: CrashReportReason) {}
 
 /// Sets the package name to given `_package_name`.
 pub fn set_package_name(_package_name: &str) {}
+
+/// Update (insert when key is not present) a key-value pair annotation in a crash report.
+pub extern "C" fn update_annotation(_key: *const c_char, _value: *const c_char) {}
+
+pub struct GfxstreamAbort;

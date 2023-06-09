@@ -1,0 +1,17 @@
+[package]
+name = "crash_report"
+version = "0.1.0"
+authors = ["The ChromiumOS Authors"]
+edition = "2021"
+
+[features]
+crash-report = []
+perfetto-system-backend = []
+
+[dependencies]
+anyhow = "1.0.32"
+base = { path = "../../../base" }                # provided by ebuild
+serde = { version = "1", features = ["derive"] }
+
+[target.'cfg(windows)'.dependencies]
+win_util = { path = "../../../win_util" }
