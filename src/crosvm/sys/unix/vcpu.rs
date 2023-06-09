@@ -83,6 +83,7 @@ fn bus_io_handler(bus: &Bus) -> impl FnMut(IoParams) -> Option<[u8; 8]> + '_ {
 /// This function will be called from each VCPU thread at startup.
 pub fn set_vcpu_thread_scheduling(
     vcpu_affinity: CpuSet,
+    core_scheduling: bool,
     enable_per_vm_core_scheduling: bool,
     vcpu_cgroup_tasks_file: Option<File>,
     run_rt: bool,
@@ -93,7 +94,7 @@ pub fn set_vcpu_thread_scheduling(
         }
     }
 
-    if !enable_per_vm_core_scheduling {
+    if core_scheduling && !enable_per_vm_core_scheduling {
         // Do per-vCPU core scheduling by setting a unique cookie to each vCPU.
         if let Err(e) = enable_core_scheduling() {
             error!("Failed to enable core scheduling: {}", e);
@@ -488,6 +489,7 @@ pub fn run_vcpu<V>(
     requires_pvclock_ctrl: bool,
     from_main_tube: mpsc::Receiver<VcpuControl>,
     #[cfg(feature = "gdb")] to_gdb_tube: Option<mpsc::Sender<VcpuDebugStatusMessage>>,
+    enable_core_scheduling: bool,
     enable_per_vm_core_scheduling: bool,
     cpu_config: Option<CpuConfigArch>,
     vcpu_cgroup_tasks_file: Option<File>,
@@ -509,6 +511,7 @@ where
             let vcpu_fn = || -> ExitState {
                 if let Err(e) = set_vcpu_thread_scheduling(
                     vcpu_affinity,
+                    enable_core_scheduling,
                     enable_per_vm_core_scheduling,
                     vcpu_cgroup_tasks_file,
                     run_rt && !delay_rt,

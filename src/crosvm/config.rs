@@ -1067,6 +1067,7 @@ pub struct Config {
     pub bus_lock_ratelimit: u64,
     #[cfg(unix)]
     pub coiommu_param: Option<devices::CoIommuParameters>,
+    pub core_scheduling: bool,
     pub cpu_capacity: BTreeMap<usize, u32>, // CPU index -> capacity
     pub cpu_clusters: Vec<CpuSet>,
     #[cfg(feature = "crash-report")]
@@ -1275,6 +1276,7 @@ impl Default for Config {
             bus_lock_ratelimit: 0,
             #[cfg(unix)]
             coiommu_param: None,
+            core_scheduling: true,
             #[cfg(feature = "crash-report")]
             crash_pipe_name: None,
             #[cfg(feature = "crash-report")]

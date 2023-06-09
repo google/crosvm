@@ -779,6 +779,10 @@ fn overwrite<T>(left: &mut T, right: T) {
     let _ = std::mem::replace(left, right);
 }
 
+fn bool_default_true() -> bool {
+    true
+}
+
 /// User-specified configuration for the `crosvm run` command.
 ///
 /// All fields of this structure MUST be either an `Option` or a `Vec` of their type. Arguments of
@@ -997,6 +1001,13 @@ pub struct RunCommand {
     ///        pinned page must be busy for to be aged into the
     ///        older which is less frequently checked generation.
     pub coiommu: Option<devices::CoIommuParameters>,
+
+    #[argh(option, default = "true")]
+    #[merge(strategy = overwrite)]
+    #[serde(default = "bool_default_true")]
+    /// protect VM threads from hyperthreading-based attacks by scheduling them on different cores.
+    /// Enabled by default, and required for per_vm_core_scheduling.
+    pub core_scheduling: bool,
 
     #[argh(option, arg_name = "CPUSET", from_str_fn(parse_cpu_affinity))]
     #[serde(skip)] // TODO(b/255223604)
@@ -2407,6 +2418,7 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         cfg.params.extend(cmd.params);
 
+        cfg.core_scheduling = cmd.core_scheduling;
         cfg.per_vm_core_scheduling = cmd.per_vm_core_scheduling.unwrap_or_default();
 
         // `--cpu` parameters.
