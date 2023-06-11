@@ -300,13 +300,14 @@ async fn process_one_chain(
 // executor.
 async fn handle_queue(
     disk_state: Rc<AsyncRwLock<DiskState>>,
-    queue: Rc<RefCell<Queue>>,
+    queue: Queue,
     evt: EventAsync,
     interrupt: Interrupt,
     flush_timer: Rc<RefCell<TimerAsync<Timer>>>,
     flush_timer_armed: Rc<RefCell<bool>>,
     mut stop_rx: oneshot::Receiver<()>,
-) -> Rc<RefCell<Queue>> {
+) -> Queue {
+    let queue = RefCell::new(queue);
     let mut background_tasks = FuturesUnordered::new();
     let evt_future = evt.next_val().fuse();
     pin_mut!(evt_future);
@@ -330,7 +331,7 @@ async fn handle_queue(
                 // Process all the descriptors we've already popped from the queue so that we leave
                 // the queue in a consistent state.
                 background_tasks.collect::<()>().await;
-                return queue;
+                return queue.into_inner();
             }
         };
         while let Some(descriptor_chain) = queue.borrow_mut().pop() {
@@ -520,7 +521,7 @@ async fn run_worker(
                         let kick_evt = queue.event().try_clone().expect("Failed to clone queue event");
                         let (handle_queue_future, remote_handle) = handle_queue(
                             Rc::clone(disk_state),
-                            Rc::new(RefCell::new(queue)),
+                            queue,
                             EventAsync::new(kick_evt, ex).expect("Failed to create async event for queue"),
                             interrupt,
                             Rc::clone(&flush_timer),
@@ -568,7 +569,6 @@ async fn run_worker(
                                         queue = fut => break queue,
                                     }
                                 };
-                                let queue = Rc::try_unwrap(queue).unwrap_or_else(|_| panic!("Rc had too many refs")).into_inner();
                                 let _ = response_tx.send(Some(queue));
                             }
                             None => { let _ = response_tx.send(None); },
