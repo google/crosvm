@@ -135,6 +135,7 @@ fn snapshot_vhost_user() {
     let snapshot_json = std::fs::read_to_string(snap_path).unwrap();
 
     assert!(snapshot_json.contains("\"device_name\":\"virtio-block\""));
+    assert!(snapshot_json.contains("\"paused_queue\":{\"activated\":true,\"avail_ring\":"));
 }
 
 fn create_net_config(socket: &Path) -> VuConfig {

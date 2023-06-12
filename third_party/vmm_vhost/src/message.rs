@@ -152,8 +152,10 @@ pub enum MasterReq {
     SLEEP = 42,
     /// Start up all queue handlers with their saved queue state.
     WAKE = 43,
+    /// Request serialized state of vhost process.
+    SNAPSHOT = 44,
     /// Upper bound of valid commands.
-    MAX_CMD = 44,
+    MAX_CMD = 45,
 }
 
 impl From<MasterReq> for u32 {
@@ -472,6 +474,26 @@ impl VhostUserU64 {
 }
 
 impl VhostUserMsgValidator for VhostUserU64 {}
+
+/// A generic message to encapsulate a success or failure.
+#[repr(packed)]
+#[derive(Default, Clone, Copy)]
+pub struct VhostUserSuccess {
+    /// True if request was successful.
+    pub success: bool,
+}
+
+// Safe because it only has data and has no implicit padding.
+unsafe impl DataInit for VhostUserSuccess {}
+
+impl VhostUserSuccess {
+    /// Create a new instance.
+    pub fn new(success: bool) -> Self {
+        VhostUserSuccess { success }
+    }
+}
+
+impl VhostUserMsgValidator for VhostUserSuccess {}
 
 /// A generic message for empty message.
 #[derive(Default, Clone, Copy)]

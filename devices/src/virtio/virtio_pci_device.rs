@@ -1019,7 +1019,9 @@ impl Suspendable for VirtioPciDevice {
                         }
                     })
                     .collect::<Vec<_>>();
-                assert_eq!(queue_evts.len(), activated_queues.len());
+                if !self.device.is_vhost_user() {
+                    assert_eq!(queue_evts.len(), activated_queues.len());
+                }
                 self.device
                     .virtio_wake(Some((
                         self.mem.clone(),

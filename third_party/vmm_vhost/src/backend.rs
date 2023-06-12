@@ -177,6 +177,9 @@ pub trait VhostBackend: std::marker::Sized {
 
     /// Wake the device up.
     fn wake(&self) -> Result<()>;
+
+    /// Snapshot the device and receive serialized state of the device.
+    fn snapshot(&self) -> Result<Vec<u8>>;
 }
 
 /// An interface for setting up vhost-based backend drivers.
@@ -269,6 +272,9 @@ pub trait VhostBackendMut: std::marker::Sized {
 
     /// Wake the device up.
     fn wake(&mut self) -> Result<()>;
+
+    /// Snapshot the device and receive serialized state of the device.
+    fn snapshot(&mut self) -> Result<Vec<u8>>;
 }
 
 impl<T: VhostBackendMut> VhostBackend for RwLock<T> {
@@ -337,6 +343,10 @@ impl<T: VhostBackendMut> VhostBackend for RwLock<T> {
     fn wake(&self) -> Result<()> {
         self.write().unwrap().wake()
     }
+
+    fn snapshot(&self) -> Result<Vec<u8>> {
+        self.write().unwrap().snapshot()
+    }
 }
 
 impl<T: VhostBackendMut> VhostBackend for RefCell<T> {
@@ -402,6 +412,10 @@ impl<T: VhostBackendMut> VhostBackend for RefCell<T> {
 
     fn wake(&self) -> Result<()> {
         self.borrow_mut().wake()
+    }
+
+    fn snapshot(&self) -> Result<Vec<u8>> {
+        self.borrow_mut().snapshot()
     }
 }
 #[cfg(test)]
@@ -494,6 +508,10 @@ mod tests {
 
         fn wake(&mut self) -> Result<()> {
             Ok(())
+        }
+
+        fn snapshot(&mut self) -> Result<Vec<u8>> {
+            Ok(Vec::new())
         }
     }
 

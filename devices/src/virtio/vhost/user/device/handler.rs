@@ -70,6 +70,7 @@ use base::SharedMemory;
 use cros_async::TaskHandle;
 use futures::future::AbortHandle;
 use futures::future::Aborted;
+use serde::Serialize;
 use sys::Doorbell;
 use thiserror::Error as ThisError;
 use vm_control::VmMemorySource;
@@ -235,6 +236,7 @@ pub trait VhostUserBackend {
 
 /// A virtio ring entry.
 struct Vring {
+    // The queue config. This doesn't get mutated by the queue workers.
     queue: Queue,
     doorbell: Option<Doorbell>,
     enabled: bool,
@@ -243,6 +245,15 @@ struct Vring {
     // This queue kick_evt is saved so that the queues handlers can start back up with the
     // same events when it is woken up.
     kick_evt: Option<Event>,
+}
+
+#[derive(Serialize)]
+struct VringSnapshot {
+    // Snapshot of queue config.
+    queue: serde_json::Value,
+    // Snapshot of the activated queue state.
+    paused_queue: Option<serde_json::Value>,
+    enabled: bool,
 }
 
 impl Vring {
@@ -262,6 +273,18 @@ impl Vring {
         self.enabled = false;
         self.paused_queue = None;
         self.kick_evt = None;
+    }
+
+    fn snapshot(&self) -> anyhow::Result<VringSnapshot> {
+        Ok(VringSnapshot {
+            queue: self.queue.snapshot()?,
+            enabled: self.enabled,
+            paused_queue: self
+                .paused_queue
+                .as_ref()
+                .map(Queue::snapshot)
+                .transpose()?,
+        })
     }
 }
 
@@ -390,6 +413,12 @@ pub struct DeviceRequestHandler {
     mem: Option<GuestMemory>,
     backend: Box<dyn VhostUserBackend>,
     ops: Box<dyn VhostUserPlatformOps>,
+}
+
+#[derive(Serialize)]
+pub struct DeviceRequestHandlerSnapshot {
+    vrings: Vec<VringSnapshot>,
+    // TODO(rizhang): Add VhostUserBackend snapshot.
 }
 
 impl DeviceRequestHandler {
@@ -720,7 +749,9 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
                 Err(e) => return Err(VhostError::StopQueueError(e)),
             }
         }
-        Ok(())
+        self.backend
+            .stop_non_queue_workers()
+            .map_err(VhostError::SleepError)
     }
 
     fn wake(&mut self) -> VhostResult<()> {
@@ -744,9 +775,24 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
                 }
             }
         }
-        self.backend
-            .stop_non_queue_workers()
-            .map_err(VhostError::SleepError)
+        Ok(())
+    }
+
+    fn snapshot(&mut self) -> VhostResult<Vec<u8>> {
+        match serde_json::to_vec(&DeviceRequestHandlerSnapshot {
+            vrings: self
+                .vrings
+                .iter()
+                .map(|vring| vring.snapshot())
+                .collect::<anyhow::Result<Vec<VringSnapshot>>>()
+                .map_err(VhostError::SnapshotError)?,
+        }) {
+            Ok(serialized_json) => Ok(serialized_json),
+            Err(e) => {
+                error!("Failed to serialize DeviceRequestHandlerSnapshot: {}", e);
+                Err(VhostError::SerializationFailed)
+            }
+        }
     }
 }
 

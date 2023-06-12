@@ -199,25 +199,38 @@ impl VirtioDevice for VhostUserVirtioDevice {
     fn expose_shmem_descriptors_with_viommu(&self) -> bool {
         self.expose_shmem_descriptors_with_viommu
     }
-}
 
-impl Suspendable for VhostUserVirtioDevice {
-    fn sleep(&mut self) -> anyhow::Result<()> {
+    fn virtio_sleep(&mut self) -> anyhow::Result<Option<Vec<Queue>>> {
         self.handler
             .borrow_mut()
             .sleep()
-            .context("Failed to sleep device.")
+            .context("Failed to sleep device.")?;
+
+        // Vhost user devices won't return queues on sleep, so return an empty Vec so that
+        // VirtioPciDevice can set the sleep state properly.
+        Ok(Some(Vec::new()))
     }
 
-    fn wake(&mut self) -> anyhow::Result<()> {
+    fn virtio_wake(
+        &mut self,
+        // Vhost user doesn't need to pass queue_states back to the device process, since it will
+        // already have it.
+        _queues_state: Option<(GuestMemory, Interrupt, Vec<(Queue, Event)>)>,
+    ) -> anyhow::Result<()> {
         self.handler
             .borrow_mut()
             .wake()
-            .context("Failed to wake device.")
+            .context("Failed to wake device.")?;
+        Ok(())
     }
 
-    fn snapshot(&self) -> anyhow::Result<Value> {
-        // TODO(b/280608177): Snapshot devices
-        serde_json::to_value("").context("failed to serialize")
+    fn virtio_snapshot(&self) -> anyhow::Result<Value> {
+        Ok(self.handler.borrow_mut().snapshot()?)
+    }
+
+    fn is_vhost_user(&self) -> bool {
+        true
     }
 }
+
+impl Suspendable for VhostUserVirtioDevice {}

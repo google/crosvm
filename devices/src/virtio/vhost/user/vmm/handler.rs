@@ -381,6 +381,11 @@ impl VhostUserHandler {
     pub fn wake(&mut self) -> Result<()> {
         self.vu.wake().map_err(Error::Wake)
     }
+
+    pub fn snapshot(&self) -> Result<serde_json::Value> {
+        let snapshot_bytes = self.vu.snapshot().map_err(Error::Snapshot)?;
+        serde_json::from_slice(&snapshot_bytes).map_err(Error::SliceToSerdeValue)
+    }
 }
 
 struct SharedMapperState {

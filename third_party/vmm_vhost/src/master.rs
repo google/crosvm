@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 
+use anyhow::anyhow;
 use base::AsRawDescriptor;
 use base::Event;
 use base::RawDescriptor;
@@ -358,6 +359,19 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
         let mut node = self.node();
         let hdr = node.send_request_header(MasterReq::WAKE, None)?;
         node.wait_for_ack(&hdr)
+    }
+
+    fn snapshot(&self) -> Result<Vec<u8>> {
+        let mut node = self.node();
+        let hdr = node.send_request_header(MasterReq::SNAPSHOT, None)?;
+        let (success_msg, buf_reply, _) = node.recv_reply_with_payload::<VhostUserSuccess>(&hdr)?;
+        if !success_msg.success {
+            Err(VhostUserError::SnapshotError(anyhow!(
+                "Device process failed to snapshot."
+            )))
+        } else {
+            Ok(buf_reply)
+        }
     }
 }
 

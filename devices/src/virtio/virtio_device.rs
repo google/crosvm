@@ -233,7 +233,13 @@ pub trait VirtioDevice: Send + Suspendable {
     }
 
     /// Restore device state from a snapshot.
+    /// TODO(b/280607404): Vhost user will need fds passed to the device process.
     fn virtio_restore(&mut self, _data: serde_json::Value) -> anyhow::Result<()> {
         anyhow::bail!("virtio_restore not implemented for {}", self.debug_label());
+    }
+
+    /// Returns true if the device uses the vhost user protocol.
+    fn is_vhost_user(&self) -> bool {
+        false
     }
 }

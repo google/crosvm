@@ -122,6 +122,12 @@ pub enum Error {
     /// Failed to sleep the device.
     #[error("failed to sleep the device {0}")]
     Sleep(VhostError),
+    /// Failed to convert slice to a serde Value.
+    #[error("Failed to convert slice to a serde Value {0}")]
+    SliceToSerdeValue(serde_json::Error),
+    /// Failed to snapshot.
+    #[error("failed to snapshot: {0}")]
+    Snapshot(VhostError),
     /// Failed to connect socket.
     #[error("failed to connect socket: {0}")]
     SocketConnect(std::io::Error),

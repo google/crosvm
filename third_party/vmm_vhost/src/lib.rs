@@ -127,12 +127,18 @@ pub enum Error {
     /// Error from request handler
     #[error("handler failed to handle request: {0}")]
     ReqHandlerError(IOError),
+    /// Failure to serialize data.
+    #[error("failed to serialize data")]
+    SerializationFailed,
     /// Failure from the slave side.
     #[error("slave internal error")]
     SlaveInternalError,
     /// Failure to run device specific sleep.
     #[error("Failed to run device specific sleep: {0}")]
     SleepError(anyhow::Error),
+    /// Failure to snapshot.
+    #[error("Failed to snapshot")]
+    SnapshotError(anyhow::Error),
     /// The socket is broken or has been closed.
     #[error("socket is broken: {0}")]
     SocketBroken(std::io::Error),

@@ -473,6 +473,11 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
         base::warn!("wake not implemented for vsock.");
         Ok(())
     }
+
+    fn snapshot(&mut self) -> Result<Vec<u8>> {
+        base::warn!("snapshot not implemented for vsock.");
+        Ok(Vec::new())
+    }
 }
 
 #[derive(FromArgs)]
