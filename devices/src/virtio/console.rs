@@ -16,7 +16,6 @@ use std::io::Write;
 use std::ops::DerefMut;
 use std::result;
 use std::sync::Arc;
-use std::thread;
 
 use anyhow::anyhow;
 use anyhow::Context;
@@ -178,66 +177,6 @@ struct Worker {
     transmit_evt: Event,
 }
 
-/// Starts a thread that reads rx and sends the input back via the returned buffer.
-///
-/// The caller should listen on `in_avail_evt` for events. When `in_avail_evt` signals that data
-/// is available, the caller should lock the returned `Mutex` and read data out of the inner
-/// `VecDeque`. The data should be removed from the beginning of the `VecDeque` as it is processed.
-///
-/// # Arguments
-///
-/// * `rx` - Data source that the reader thread will wait on to send data back to the buffer
-/// * `in_avail_evt` - Event triggered by the thread when new input is available on the buffer
-fn spawn_input_thread(
-    mut rx: crate::serial::sys::InStreamType,
-    in_avail_evt: &Event,
-) -> Option<Arc<Mutex<VecDeque<u8>>>> {
-    let buffer = Arc::new(Mutex::new(VecDeque::<u8>::new()));
-    let buffer_cloned = buffer.clone();
-
-    let thread_in_avail_evt = match in_avail_evt.try_clone() {
-        Ok(evt) => evt,
-        Err(e) => {
-            error!("failed to clone in_avail_evt: {}", e);
-            return None;
-        }
-    };
-
-    // The input thread runs in detached mode.
-    let res = thread::Builder::new()
-        .name("console_input".to_string())
-        .spawn(move || {
-            let mut rx_buf = [0u8; 1 << 12];
-            loop {
-                match rx.read(&mut rx_buf) {
-                    Ok(0) => break, // Assume the stream of input has ended.
-                    Ok(size) => {
-                        buffer.lock().extend(&rx_buf[0..size]);
-                        thread_in_avail_evt.signal().unwrap();
-                    }
-                    Err(e) => {
-                        // Being interrupted is not an error, but everything else is.
-                        if sys::is_a_fatal_input_error(&e) {
-                            error!(
-                                "failed to read for bytes to queue into console device: {}",
-                                e
-                            );
-                            break;
-                        }
-                    }
-                }
-
-                // Depending on the platform, a short sleep is needed here (ie. Windows).
-                sys::read_delay_if_needed();
-            }
-        });
-    if let Err(e) = res {
-        error!("failed to spawn input thread: {}", e);
-        return None;
-    }
-    Some(buffer_cloned)
-}
-
 impl Worker {
     fn run(&mut self) {
         #[derive(EventToken)]
@@ -271,7 +210,8 @@ impl Worker {
             }
         }
 
-        'wait: loop {
+        let mut running = true;
+        while running {
             let events = match wait_ctx.wait() {
                 Ok(v) => v,
                 Err(e) => {
@@ -285,7 +225,7 @@ impl Worker {
                     Token::TransmitQueueAvailable => {
                         if let Err(e) = self.transmit_evt.wait() {
                             error!("failed reading transmit queue Event: {}", e);
-                            break 'wait;
+                            break;
                         }
                         process_transmit_queue(
                             &self.mem,
@@ -297,7 +237,7 @@ impl Worker {
                     Token::ReceiveQueueAvailable => {
                         if let Err(e) = self.receive_evt.wait() {
                             error!("failed reading receive queue Event: {}", e);
-                            break 'wait;
+                            break;
                         }
                         if let Some(in_buf_ref) = self.input.as_ref() {
                             match handle_input(
@@ -317,7 +257,7 @@ impl Worker {
                     Token::InputAvailable => {
                         if let Err(e) = self.in_avail_evt.wait() {
                             error!("failed reading in_avail_evt: {}", e);
-                            break 'wait;
+                            break;
                         }
                         if let Some(in_buf_ref) = self.input.as_ref() {
                             match handle_input(
@@ -337,7 +277,7 @@ impl Worker {
                     Token::InterruptResample => {
                         self.interrupt.interrupt_resample();
                     }
-                    Token::Kill => break 'wait,
+                    Token::Kill => running = false,
                 }
             }
         }
@@ -357,6 +297,7 @@ pub struct Console {
     input: Option<ConsoleInput>,
     output: Option<Box<dyn io::Write + Send>>,
     keep_descriptors: Vec<Descriptor>,
+    input_thread: Option<WorkerThread<()>>,
 }
 
 impl Console {
@@ -373,6 +314,7 @@ impl Console {
             input,
             output,
             keep_descriptors: keep_rds.iter().map(|rd| Descriptor(*rd)).collect(),
+            input_thread: None,
         }
     }
 }
@@ -436,11 +378,10 @@ impl VirtioDevice for Console {
         // the main worker thread with an event for notification bridges this gap.
         let input = match self.input.take() {
             Some(ConsoleInput::FromRead(read)) => {
-                let buffer = spawn_input_thread(read, self.in_avail_evt.as_ref().unwrap());
-                if buffer.is_none() {
-                    return Err(anyhow!("failed creating input thread"));
-                };
-                buffer
+                let (buffer, thread) =
+                    sys::spawn_input_thread(read, self.in_avail_evt.as_ref().unwrap());
+                self.input_thread = Some(thread);
+                Some(buffer)
             }
             Some(ConsoleInput::FromThread(buffer)) => Some(buffer),
             None => None,

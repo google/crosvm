@@ -12,5 +12,4 @@ cfg_if::cfg_if! {
     }
 }
 
-pub(in crate::virtio::console) use platform::is_a_fatal_input_error;
-pub(in crate::virtio::console) use platform::read_delay_if_needed;
+pub(in crate::virtio::console) use platform::spawn_input_thread;
