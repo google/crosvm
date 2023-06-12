@@ -89,8 +89,9 @@ fn is_a_fatal_input_error(e: &io::Error) -> bool {
 pub(in crate::virtio::console) fn spawn_input_thread(
     mut rx: Box<named_pipes::PipeConnection>,
     in_avail_evt: &Event,
+    input_buffer: VecDeque<u8>,
 ) -> (Arc<Mutex<VecDeque<u8>>>, WorkerThread<()>) {
-    let buffer = Arc::new(Mutex::new(VecDeque::<u8>::new()));
+    let buffer = Arc::new(Mutex::new(input_buffer));
     let buffer_cloned = buffer.clone();
 
     let thread_in_avail_evt = in_avail_evt

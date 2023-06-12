@@ -25,12 +25,16 @@ use base::Descriptor;
 use base::Event;
 use base::EventToken;
 use base::RawDescriptor;
+#[cfg(windows)]
+use base::ReadNotifier;
 use base::WaitContext;
 use base::WorkerThread;
 use data_model::Le16;
 use data_model::Le32;
 use hypervisor::ProtectionType;
 use remain::sorted;
+use serde::Deserialize;
+use serde::Serialize;
 use sync::Mutex;
 use thiserror::Error as ThisError;
 use vm_memory::GuestMemory;
@@ -266,6 +270,16 @@ pub struct Console {
     output: Option<Box<dyn io::Write + Send>>,
     keep_descriptors: Vec<Descriptor>,
     input_thread: Option<WorkerThread<()>>,
+    // input_buffer is not continuously updated. It holds the state of the buffer when a snapshot
+    // happens, or when a restore is performed. On a fresh startup, it will be empty. On a restore,
+    // it will contain whatever data was remaining in the buffer in the snapshot.
+    input_buffer: VecDeque<u8>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ConsoleSnapshot {
+    base_features: u64,
+    input_buffer: VecDeque<u8>,
 }
 
 impl Console {
@@ -283,6 +297,7 @@ impl Console {
             output,
             keep_descriptors: keep_rds.iter().map(|rd| Descriptor(*rd)).collect(),
             input_thread: None,
+            input_buffer: VecDeque::new(),
         }
     }
 }
@@ -346,8 +361,11 @@ impl VirtioDevice for Console {
         // the main worker thread with an event for notification bridges this gap.
         let input = match self.input.take() {
             Some(ConsoleInput::FromRead(read)) => {
-                let (buffer, thread) =
-                    sys::spawn_input_thread(read, self.in_avail_evt.as_ref().unwrap());
+                let (buffer, thread) = sys::spawn_input_thread(
+                    read,
+                    self.in_avail_evt.as_ref().unwrap(),
+                    self.input_buffer.clone(),
+                );
                 self.input_thread = Some(thread);
                 Some(buffer)
             }
@@ -387,6 +405,71 @@ impl VirtioDevice for Console {
             return true;
         }
         false
+    }
+
+    fn virtio_sleep(&mut self) -> anyhow::Result<Option<Vec<Queue>>> {
+        if let Some(worker_thread) = self.worker_thread.take() {
+            if let Some(input_thread) = self.input_thread.take() {
+                input_thread.stop();
+            }
+            let worker = worker_thread.stop();
+            if let Some(in_buf_ref) = worker.input.as_ref() {
+                self.input_buffer = in_buf_ref.lock().clone();
+            }
+            let receive_queue = match Arc::try_unwrap(worker.receive_queue) {
+                Ok(mutex) => mutex.into_inner(),
+                Err(_) => return Err(anyhow!("failed to retrieve receive queue to sleep device.")),
+            };
+            let transmit_queue = match Arc::try_unwrap(worker.transmit_queue) {
+                Ok(mutex) => mutex.into_inner(),
+                Err(_) => {
+                    return Err(anyhow!(
+                        "failed to retrieve transmit queue to sleep device."
+                    ))
+                }
+            };
+            return Ok(Some(vec![receive_queue, transmit_queue]));
+        }
+        Ok(None)
+    }
+
+    fn virtio_wake(
+        &mut self,
+        queues_state: Option<(GuestMemory, Interrupt, Vec<(Queue, Event)>)>,
+    ) -> anyhow::Result<()> {
+        match queues_state {
+            None => Ok(()),
+            Some((mem, interrupt, queues)) => {
+                // TODO(khei): activate is just what we want at the moment, but we should probably move
+                // it into a "start workers" function to make it obvious that it isn't strictly
+                // used for activate events.
+                self.activate(mem, interrupt, queues)?;
+                Ok(())
+            }
+        }
+    }
+
+    fn virtio_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        serde_json::to_value(&ConsoleSnapshot {
+            // Snapshot base_features as a safeguard when restoring the console device. Saving this
+            // info allows us to validate that the proper config was used for the console.
+            base_features: self.base_features,
+            input_buffer: self.input_buffer.clone(),
+        })
+        .context("failed to snapshot virtio console")
+    }
+
+    fn virtio_restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        let deser: ConsoleSnapshot =
+            serde_json::from_value(data).context("failed to deserialize virtio console")?;
+        anyhow::ensure!(
+            self.base_features == deser.base_features,
+            "Virtio console incorrect base features for restore:\n Expected: {}, Actual: {}",
+            self.base_features,
+            deser.base_features,
+        );
+        self.input_buffer = deser.input_buffer;
+        Ok(())
     }
 }
 
