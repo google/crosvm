@@ -1116,19 +1116,20 @@ impl Suspendable for VirtioPciDevice {
         // events. This could just as easily be done in `wake` instead.
         // NOTE: Needs to be done last in `restore` because it relies on the other VirtioPciDevice
         // fields.
-        self.interrupt = Some(Interrupt::new_from_snapshot(
-            self.interrupt_evt
-                .as_ref()
-                .ok_or_else(|| anyhow!("{} interrupt_evt is none", self.debug_label()))?
-                .try_clone()
-                .with_context(|| format!("{} failed to clone interrupt_evt", self.debug_label()))?,
-            Some(self.msix_config.clone()),
-            self.common_config.msix_config,
-            // TODO: Refactor so the expect failure is impossible.
-            deser
-                .interrupt
-                .expect("interrupt snapshot missing when there are activated queues"),
-        ));
+        if let Some(deser_interrupt) = deser.interrupt {
+            self.interrupt = Some(Interrupt::new_from_snapshot(
+                self.interrupt_evt
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("{} interrupt_evt is none", self.debug_label()))?
+                    .try_clone()
+                    .with_context(|| {
+                        format!("{} failed to clone interrupt_evt", self.debug_label())
+                    })?,
+                Some(self.msix_config.clone()),
+                self.common_config.msix_config,
+                deser_interrupt,
+            ));
+        }
 
         // Call register_io_events for the activated queue events.
         let bar0 = self.config_regs.get_bar_addr(self.settings_bar);
