@@ -50,7 +50,6 @@ use balloon_control::BalloonTubeResult;
 pub use balloon_control::BalloonWSS;
 pub use balloon_control::WSSBucket;
 pub use balloon_control::VIRTIO_BALLOON_WS_MAX_NUM_BINS;
-pub use balloon_control::VIRTIO_BALLOON_WS_MAX_NUM_INTERVALS;
 pub use balloon_control::VIRTIO_BALLOON_WS_MIN_NUM_BINS;
 use base::error;
 use base::info;

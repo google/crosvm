@@ -58,7 +58,6 @@ pub struct BalloonStats {
 
 pub const VIRTIO_BALLOON_WS_MIN_NUM_BINS: usize = 2;
 pub const VIRTIO_BALLOON_WS_MAX_NUM_BINS: usize = 16;
-pub const VIRTIO_BALLOON_WS_MAX_NUM_INTERVALS: usize = 15;
 
 // WSSBucket stores information about a bucket (or bin) of the working set size.
 #[derive(Default, Serialize, Deserialize, Debug, Clone, Copy)]

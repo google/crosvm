@@ -36,6 +36,7 @@ use vm_control::VmRequest;
 use vm_control::VmResponse;
 use vm_control::WSSBucket;
 use vm_control::USB_CONTROL_MAX_PORTS;
+
 pub const VIRTIO_BALLOON_WS_MAX_NUM_BINS: usize = 16;
 pub const VIRTIO_BALLOON_WS_MAX_NUM_INTERVALS: usize = 15;
 
@@ -672,6 +673,7 @@ impl Default for BalloonWSSFfi {
     }
 }
 
+#[repr(C)]
 pub struct BalloonWssConfigFfi {
     intervals: [u64; VIRTIO_BALLOON_WS_MAX_NUM_INTERVALS],
     num_intervals: u8,
