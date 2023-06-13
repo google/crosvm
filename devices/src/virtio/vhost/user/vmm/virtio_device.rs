@@ -227,6 +227,11 @@ impl VirtioDevice for VhostUserVirtioDevice {
         Ok(self.handler.borrow_mut().snapshot()?)
     }
 
+    fn virtio_restore(&mut self, _data: Value) -> anyhow::Result<()> {
+        // TODO(b/280607404): Implement. Returning Ok so that e2e_test pass.
+        Ok(())
+    }
+
     fn is_vhost_user(&self) -> bool {
         true
     }

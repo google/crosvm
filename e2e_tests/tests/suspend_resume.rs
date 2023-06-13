@@ -106,18 +106,30 @@ fn snapshot_vhost_user_root() {
 #[ignore = "Only to be called by snapshot_vhost_user_root"]
 #[test]
 fn snapshot_vhost_user() {
-    let block_socket = NamedTempFile::new().unwrap();
-    let disk = prepare_disk_img();
+    fn spin_up_vhost_user_devices() -> (
+        VhostUserBackend,
+        VhostUserBackend,
+        NamedTempFile,
+        NamedTempFile,
+    ) {
+        let block_socket = NamedTempFile::new().unwrap();
+        let disk = prepare_disk_img();
 
-    // Spin up block vhost user process
-    let block_vu_config = create_vu_block_config(CmdType::Device, block_socket.path(), disk.path());
-    let _block_vu_device = VhostUserBackend::new(block_vu_config);
+        // Spin up block vhost user process
+        let block_vu_config =
+            create_vu_block_config(CmdType::Device, block_socket.path(), disk.path());
+        let block_vu_device = VhostUserBackend::new(block_vu_config).unwrap();
 
-    // Spin up net vhost user process.
-    // Queue handlers don't get activated currently.
-    let net_socket = NamedTempFile::new().unwrap();
-    let net_config = create_net_config(net_socket.path());
-    let _net_vu_device = VhostUserBackend::new(net_config).unwrap();
+        // Spin up net vhost user process.
+        // Queue handlers don't get activated currently.
+        let net_socket = NamedTempFile::new().unwrap();
+        let net_config = create_net_config(net_socket.path());
+        let net_vu_device = VhostUserBackend::new(net_config).unwrap();
+
+        (block_vu_device, net_vu_device, block_socket, net_socket)
+    }
+
+    let (block_vu_device, net_vu_device, block_socket, net_socket) = spin_up_vhost_user_devices();
 
     let mut config = Config::new();
     config = config.extra_args(vec![
@@ -125,6 +137,9 @@ fn snapshot_vhost_user() {
         block_socket.path().to_str().unwrap().to_string(),
         "--vhost-user-net".to_string(),
         net_socket.path().to_str().unwrap().to_string(),
+        "--no-usb".to_string(),
+        "--no-balloon".to_string(),
+        "--no-rng".to_string(),
     ]);
     let mut vm = TestVm::new(config).unwrap();
 
@@ -132,10 +147,31 @@ fn snapshot_vhost_user() {
     let snap_path = dir.path().join("snapshot.bkp");
     vm.snapshot(&snap_path).unwrap();
 
-    let snapshot_json = std::fs::read_to_string(snap_path).unwrap();
+    let snapshot_json = std::fs::read_to_string(&snap_path).unwrap();
 
     assert!(snapshot_json.contains("\"device_name\":\"virtio-block\""));
     assert!(snapshot_json.contains("\"paused_queue\":{\"activated\":true,\"avail_ring\":"));
+
+    drop(vm);
+    drop(block_vu_device);
+    drop(net_vu_device);
+
+    let (_block_vu_device, _net_vu_device, block_socket, net_socket) = spin_up_vhost_user_devices();
+
+    let mut config = Config::new();
+    // Start up VM with cold restore.
+    config = config.extra_args(vec![
+        "--vhost-user-blk".to_string(),
+        block_socket.path().to_str().unwrap().to_string(),
+        "--vhost-user-net".to_string(),
+        net_socket.path().to_str().unwrap().to_string(),
+        "--restore".to_string(),
+        snap_path.to_str().unwrap().to_string(),
+        "--no-usb".to_string(),
+        "--no-balloon".to_string(),
+        "--no-rng".to_string(),
+    ]);
+    let _vm = TestVm::new_cold_restore(config).unwrap();
 }
 
 fn create_net_config(socket: &Path) -> VuConfig {

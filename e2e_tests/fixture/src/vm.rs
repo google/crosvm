@@ -349,8 +349,27 @@ impl TestVm {
         Ok(vm)
     }
 
+    pub fn new_generic_restore<F>(f: F, cfg: Config, sudo: bool) -> Result<TestVm>
+    where
+        F: FnOnce(&mut Command, &SerialArgs, &Config) -> Result<()>,
+    {
+        PREP_ONCE.call_once(TestVm::initialize_once);
+        let mut vm = TestVm {
+            sys: TestVmSys::new_generic(f, cfg, sudo).with_context(|| "Could not start crosvm")?,
+            ready: false,
+            sudo,
+        };
+        vm.ready = true;
+        // TODO(b/280607404): A cold restored VM cannot respond to cmds from `exec_in_guest_async`.
+        Ok(vm)
+    }
+
     pub fn new(cfg: Config) -> Result<TestVm> {
         TestVm::new_generic(TestVmSys::append_config_args, cfg, false)
+    }
+
+    pub fn new_cold_restore(cfg: Config) -> Result<TestVm> {
+        TestVm::new_generic_restore(TestVmSys::append_config_args, cfg, false)
     }
 
     pub fn new_sudo(cfg: Config) -> Result<TestVm> {

@@ -976,6 +976,14 @@ impl Suspendable for VirtioPciDevice {
         if self.sleep_state.is_some() {
             return Ok(());
         }
+
+        // Don't call `self.device.virtio_sleep()` for vhost user devices if the device is not
+        // activated yet, since it will always return an empty Vec.
+        if !self.device_activated && self.device.is_vhost_user() {
+            // This will need to be set, so that a cold restore will work.
+            self.sleep_state = Some(SleepState::Inactive);
+            return Ok(());
+        }
         if let Some(queues) = self.device.virtio_sleep()? {
             anyhow::ensure!(
                 self.device_activated,
@@ -995,6 +1003,11 @@ impl Suspendable for VirtioPciDevice {
     }
 
     fn wake(&mut self) -> anyhow::Result<()> {
+        // A vhost user device that isn't activated doesn't need to be woken up.
+        if !self.device_activated && self.device.is_vhost_user() {
+            self.sleep_state = None;
+            return Ok(());
+        }
         match self.sleep_state.take() {
             None => {
                 // If the device is already awake, we should not request it to wake again.
