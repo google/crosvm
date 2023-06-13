@@ -110,7 +110,7 @@ pub struct DevicesCommand {
     ///         use (Linux only). Defaults to /dev/vhost-vsock.
     pub vsock: Vec<VhostUserParams<VsockConfig>>,
 
-    #[argh(option, arg_name = "block options")]
+    #[argh(option, arg_name = "net options")]
     /// start a network device.
     /// Possible key values:
     ///     vhost=PATH - Path to a vhost-user endpoint to listen to.
