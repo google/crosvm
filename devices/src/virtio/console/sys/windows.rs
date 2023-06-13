@@ -97,20 +97,20 @@ pub(in crate::virtio::console) fn spawn_input_thread(
         .try_clone()
         .expect("failed to clone in_avail_evt");
 
+    let buffer_max_size = 1 << 12;
+    let mut rx_buf = Vec::with_capacity(buffer_max_size);
     let res = WorkerThread::start("v_console_input", move |kill_evt| {
         let mut read_overlapped =
             named_pipes::OverlappedWrapper::new(true).expect("failed to create OverlappedWrapper");
-        let size = rx
-            .get_available_byte_count()
-            .expect("failed to get available byte count");
-
         loop {
-            let buffer_max_size = 1 << 12;
-            let mut rx_buf = vec![];
+            let size = rx
+                .get_available_byte_count()
+                .expect("failed to get available byte count") as usize;
+
             if size < buffer_max_size {
-                rx_buf.resize(size as usize, Default::default());
+                rx_buf.resize(size, Default::default());
             } else {
-                rx_buf.resize(buffer_max_size as usize, Default::default());
+                rx_buf.resize(buffer_max_size, Default::default());
             };
             let res = rx.read_overlapped_blocking(&mut rx_buf, &mut read_overlapped, &kill_evt);
 

@@ -178,7 +178,7 @@ struct Worker {
 }
 
 impl Worker {
-    fn run(&mut self) {
+    fn run(&mut self) -> anyhow::Result<()> {
         #[derive(EventToken)]
         enum Token {
             ReceiveQueueAvailable,
@@ -188,45 +188,26 @@ impl Worker {
             Kill,
         }
 
-        let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
+        let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
             (&self.transmit_evt, Token::TransmitQueueAvailable),
             (&self.receive_evt, Token::ReceiveQueueAvailable),
             (&self.in_avail_evt, Token::InputAvailable),
             (&self.kill_evt, Token::Kill),
-        ]) {
-            Ok(pc) => pc,
-            Err(e) => {
-                error!("failed creating WaitContext: {}", e);
-                return;
-            }
-        };
+        ])?;
         if let Some(resample_evt) = self.interrupt.get_resample_evt() {
-            if wait_ctx
-                .add(resample_evt, Token::InterruptResample)
-                .is_err()
-            {
-                error!("failed adding resample event to WaitContext.");
-                return;
-            }
+            wait_ctx.add(resample_evt, Token::InterruptResample)?;
         }
 
         let mut running = true;
         while running {
-            let events = match wait_ctx.wait() {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("failed polling for events: {}", e);
-                    break;
-                }
-            };
+            let events = wait_ctx.wait()?;
 
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
                     Token::TransmitQueueAvailable => {
-                        if let Err(e) = self.transmit_evt.wait() {
-                            error!("failed reading transmit queue Event: {}", e);
-                            break;
-                        }
+                        self.transmit_evt
+                            .wait()
+                            .context("failed reading transmit queue Event")?;
                         process_transmit_queue(
                             &self.mem,
                             &self.interrupt,
@@ -235,43 +216,29 @@ impl Worker {
                         );
                     }
                     Token::ReceiveQueueAvailable => {
-                        if let Err(e) = self.receive_evt.wait() {
-                            error!("failed reading receive queue Event: {}", e);
-                            break;
-                        }
+                        self.receive_evt
+                            .wait()
+                            .context("failed reading receive queue Event")?;
                         if let Some(in_buf_ref) = self.input.as_ref() {
-                            match handle_input(
+                            let _ = handle_input(
                                 &self.mem,
                                 &self.interrupt,
                                 in_buf_ref.lock().deref_mut(),
                                 &self.receive_queue,
-                            ) {
-                                Ok(()) => {}
-                                // Console errors are no-ops, so just continue.
-                                Err(_) => {
-                                    continue;
-                                }
-                            }
+                            );
                         }
                     }
                     Token::InputAvailable => {
-                        if let Err(e) = self.in_avail_evt.wait() {
-                            error!("failed reading in_avail_evt: {}", e);
-                            break;
-                        }
+                        self.in_avail_evt
+                            .wait()
+                            .context("failed reading in_avail_evt")?;
                         if let Some(in_buf_ref) = self.input.as_ref() {
-                            match handle_input(
+                            let _ = handle_input(
                                 &self.mem,
                                 &self.interrupt,
                                 in_buf_ref.lock().deref_mut(),
                                 &self.receive_queue,
-                            ) {
-                                Ok(()) => {}
-                                // Console errors are no-ops, so just continue.
-                                Err(_) => {
-                                    continue;
-                                }
-                            }
+                            );
                         }
                     }
                     Token::InterruptResample => {
@@ -281,6 +248,7 @@ impl Worker {
                 }
             }
         }
+        Ok(())
     }
 }
 
@@ -403,7 +371,9 @@ impl VirtioDevice for Console {
                 transmit_queue: Arc::new(Mutex::new(transmit_queue)),
                 transmit_evt,
             };
-            worker.run();
+            if let Err(e) = worker.run() {
+                error!("console run failure: {:?}", e);
+            };
             worker
         }));
         Ok(())
