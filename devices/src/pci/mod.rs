@@ -20,6 +20,8 @@ mod msix;
 mod pci_address;
 mod pci_configuration;
 mod pci_device;
+#[cfg(feature = "pci-hotplug")]
+mod pci_hotplug;
 mod pci_root;
 #[cfg(unix)]
 mod pcie;
@@ -74,6 +76,8 @@ pub use self::pci_device::IoEventError as PciIoEventError;
 pub use self::pci_device::PciBus;
 pub use self::pci_device::PciDevice;
 pub use self::pci_device::PreferredIrq;
+#[cfg(feature = "pci-hotplug")]
+pub use self::pci_hotplug::HotPluggable;
 pub use self::pci_root::PciConfigIo;
 pub use self::pci_root::PciConfigMmio;
 pub use self::pci_root::PciRoot;
@@ -97,7 +101,7 @@ pub use self::stub::StubPciParameters;
 pub use self::vfio_pci::VfioPciDevice;
 
 /// PCI has four interrupt pins A->D.
-#[derive(Copy, Clone, Ord, PartialOrd, PartialEq, Eq)]
+#[derive(Copy, Clone, Ord, PartialOrd, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PciInterruptPin {
     IntA,
     IntB,

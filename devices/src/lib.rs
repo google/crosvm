@@ -105,6 +105,8 @@ pub use self::pci::Ac97Dev;
 pub use self::pci::Ac97Parameters;
 pub use self::pci::BarRange;
 pub use self::pci::CrosvmDeviceId;
+#[cfg(feature = "pci-hotplug")]
+pub use self::pci::HotPluggable;
 pub use self::pci::PciAddress;
 pub use self::pci::PciAddressError;
 pub use self::pci::PciBus;

@@ -64,6 +64,8 @@ use crate::pci::PciId;
 use crate::pci::PciInterruptPin;
 use crate::pci::PciSubclass;
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
+#[cfg(feature = "pci-hotplug")]
+use crate::HotPluggable;
 use crate::IrqLevelEvent;
 use crate::Suspendable;
 
@@ -664,131 +666,40 @@ impl PciDevice for VirtioPciDevice {
         &mut self,
         resources: &mut SystemAllocator,
     ) -> std::result::Result<Vec<BarRange>, PciDeviceError> {
-        let address = self
-            .pci_address
-            .expect("allocaten_address must be called prior to allocate_io_bars");
-        // Allocate one bar for the structures pointed to by the capability structures.
-        let mut ranges: Vec<BarRange> = Vec::new();
-        let settings_config_addr = resources
-            .allocate_mmio(
-                CAPABILITY_BAR_SIZE,
-                Alloc::PciBar {
-                    bus: address.bus,
-                    dev: address.dev,
-                    func: address.func,
-                    bar: 0,
-                },
-                format!("virtio-{}-cap_bar", self.device.device_type()),
-                AllocOptions::new()
-                    .max_address(u32::MAX.into())
-                    .align(CAPABILITY_BAR_SIZE),
-            )
-            .map_err(|e| PciDeviceError::IoAllocationFailed(CAPABILITY_BAR_SIZE, e))?;
-        let config = PciBarConfiguration::new(
-            CAPABILITIES_BAR_NUM,
-            CAPABILITY_BAR_SIZE,
-            PciBarRegionType::Memory32BitRegion,
-            PciBarPrefetchable::NotPrefetchable,
+        let device_type = self.device.device_type();
+        allocate_io_bars(
+            self,
+            |size: u64, alloc: Alloc, alloc_option: &AllocOptions| {
+                resources
+                    .allocate_mmio(
+                        size,
+                        alloc,
+                        format!("virtio-{}-cap_bar", device_type),
+                        alloc_option,
+                    )
+                    .map_err(|e| PciDeviceError::IoAllocationFailed(size, e))
+            },
         )
-        .set_address(settings_config_addr);
-        let settings_bar = self
-            .config_regs
-            .add_pci_bar(config)
-            .map_err(|e| PciDeviceError::IoRegistrationFailed(settings_config_addr, e))?
-            as u8;
-        ranges.push(BarRange {
-            addr: settings_config_addr,
-            size: CAPABILITY_BAR_SIZE,
-            prefetchable: false,
-        });
-
-        // Once the BARs are allocated, the capabilities can be added to the PCI configuration.
-        self.add_settings_pci_capabilities(settings_bar)?;
-
-        Ok(ranges)
     }
 
     fn allocate_device_bars(
         &mut self,
         resources: &mut SystemAllocator,
     ) -> std::result::Result<Vec<BarRange>, PciDeviceError> {
-        let address = self
-            .pci_address
-            .expect("allocaten_address must be called prior to allocate_device_bars");
-        let mut ranges: Vec<BarRange> = Vec::new();
-
-        let configs = self.device.get_device_bars(address);
-        let configs = if !configs.is_empty() {
-            configs
-        } else {
-            let region = match self.device.get_shared_memory_region() {
-                None => return Ok(Vec::new()),
-                Some(r) => r,
-            };
-            let config = PciBarConfiguration::new(
-                SHMEM_BAR_NUM,
-                region
-                    .length
-                    .checked_next_power_of_two()
-                    .expect("bar too large"),
-                PciBarRegionType::Memory64BitRegion,
-                PciBarPrefetchable::Prefetchable,
-            );
-
-            let alloc = Alloc::PciBar {
-                bus: address.bus,
-                dev: address.dev,
-                func: address.func,
-                bar: config.bar_index() as u8,
-            };
-
-            self.device
-                .set_shared_memory_mapper(Box::new(VmRequester::new(
-                    self.shared_memory_vm_memory_client
-                        .take()
-                        .expect("missing shared_memory_tube"),
-                    alloc,
-                    // See comment VmMemoryRequest::execute
-                    !self.device.expose_shmem_descriptors_with_viommu(),
-                )));
-
-            vec![config]
-        };
-
-        for config in configs {
-            let device_addr = resources
-                .allocate_mmio(
-                    config.size(),
-                    Alloc::PciBar {
-                        bus: address.bus,
-                        dev: address.dev,
-                        func: address.func,
-                        bar: config.bar_index() as u8,
-                    },
-                    format!("virtio-{}-custom_bar", self.device.device_type()),
-                    AllocOptions::new()
-                        .prefetchable(config.is_prefetchable())
-                        .align(config.size()),
-                )
-                .map_err(|e| PciDeviceError::IoAllocationFailed(config.size(), e))?;
-            let config = config.set_address(device_addr);
-            let _device_bar = self
-                .config_regs
-                .add_pci_bar(config)
-                .map_err(|e| PciDeviceError::IoRegistrationFailed(device_addr, e))?;
-            ranges.push(BarRange {
-                addr: device_addr,
-                size: config.size(),
-                prefetchable: false,
-            });
-        }
-
-        if self.device.get_shared_memory_region().is_some() {
-            self.device
-                .set_shared_memory_region_base(GuestAddress(ranges[0].addr));
-        }
-
-        Ok(ranges)
+        let device_type = self.device.device_type();
+        allocate_device_bars(
+            self,
+            |size: u64, alloc: Alloc, alloc_option: &AllocOptions| {
+                resources
+                    .allocate_mmio(
+                        size,
+                        alloc,
+                        format!("virtio-{}-custom_bar", device_type),
+                        alloc_option,
+                    )
+                    .map_err(|e| PciDeviceError::IoAllocationFailed(size, e))
+            },
+        )
     }
 
     fn destroy_device(&mut self) {
@@ -977,6 +888,195 @@ impl PciDevice for VirtioPciDevice {
         assert!(self.supports_iommu());
         self.iommu = Some(Arc::new(Mutex::new(iommu)));
         Ok(())
+    }
+}
+
+fn allocate_io_bars<F>(
+    virtio_pci_device: &mut VirtioPciDevice,
+    mut alloc_fn: F,
+) -> std::result::Result<Vec<BarRange>, PciDeviceError>
+where
+    F: FnMut(u64, Alloc, &AllocOptions) -> std::result::Result<u64, PciDeviceError>,
+{
+    let address = virtio_pci_device
+        .pci_address
+        .expect("allocate_address must be called prior to allocate_io_bars");
+    // Allocate one bar for the structures pointed to by the capability structures.
+    let settings_config_addr = alloc_fn(
+        CAPABILITY_BAR_SIZE,
+        Alloc::PciBar {
+            bus: address.bus,
+            dev: address.dev,
+            func: address.func,
+            bar: 0,
+        },
+        AllocOptions::new()
+            .max_address(u32::MAX.into())
+            .align(CAPABILITY_BAR_SIZE),
+    )?;
+    let config = PciBarConfiguration::new(
+        CAPABILITIES_BAR_NUM,
+        CAPABILITY_BAR_SIZE,
+        PciBarRegionType::Memory32BitRegion,
+        PciBarPrefetchable::NotPrefetchable,
+    )
+    .set_address(settings_config_addr);
+    let settings_bar = virtio_pci_device
+        .config_regs
+        .add_pci_bar(config)
+        .map_err(|e| PciDeviceError::IoRegistrationFailed(settings_config_addr, e))?
+        as u8;
+    // Once the BARs are allocated, the capabilities can be added to the PCI configuration.
+    virtio_pci_device.add_settings_pci_capabilities(settings_bar)?;
+
+    Ok(vec![BarRange {
+        addr: settings_config_addr,
+        size: CAPABILITY_BAR_SIZE,
+        prefetchable: false,
+    }])
+}
+
+fn allocate_device_bars<F>(
+    virtio_pci_device: &mut VirtioPciDevice,
+    mut alloc_fn: F,
+) -> std::result::Result<Vec<BarRange>, PciDeviceError>
+where
+    F: FnMut(u64, Alloc, &AllocOptions) -> std::result::Result<u64, PciDeviceError>,
+{
+    let address = virtio_pci_device
+        .pci_address
+        .expect("allocate_address must be called prior to allocate_device_bars");
+
+    let configs = virtio_pci_device.device.get_device_bars(address);
+    let configs = if !configs.is_empty() {
+        configs
+    } else {
+        let region = match virtio_pci_device.device.get_shared_memory_region() {
+            None => return Ok(Vec::new()),
+            Some(r) => r,
+        };
+        let config = PciBarConfiguration::new(
+            SHMEM_BAR_NUM,
+            region
+                .length
+                .checked_next_power_of_two()
+                .expect("bar too large"),
+            PciBarRegionType::Memory64BitRegion,
+            PciBarPrefetchable::Prefetchable,
+        );
+
+        let alloc = Alloc::PciBar {
+            bus: address.bus,
+            dev: address.dev,
+            func: address.func,
+            bar: config.bar_index() as u8,
+        };
+
+        virtio_pci_device
+            .device
+            .set_shared_memory_mapper(Box::new(VmRequester::new(
+                virtio_pci_device
+                    .shared_memory_vm_memory_client
+                    .take()
+                    .expect("missing shared_memory_tube"),
+                alloc,
+                // See comment VmMemoryRequest::execute
+                !virtio_pci_device
+                    .device
+                    .expose_shmem_descriptors_with_viommu(),
+            )));
+
+        vec![config]
+    };
+    let mut ranges = vec![];
+    for config in configs {
+        let device_addr = alloc_fn(
+            config.size(),
+            Alloc::PciBar {
+                bus: address.bus,
+                dev: address.dev,
+                func: address.func,
+                bar: config.bar_index() as u8,
+            },
+            AllocOptions::new()
+                .prefetchable(config.is_prefetchable())
+                .align(config.size()),
+        )?;
+        let config = config.set_address(device_addr);
+        let _device_bar = virtio_pci_device
+            .config_regs
+            .add_pci_bar(config)
+            .map_err(|e| PciDeviceError::IoRegistrationFailed(device_addr, e))?;
+        ranges.push(BarRange {
+            addr: device_addr,
+            size: config.size(),
+            prefetchable: false,
+        });
+    }
+
+    if virtio_pci_device
+        .device
+        .get_shared_memory_region()
+        .is_some()
+    {
+        virtio_pci_device
+            .device
+            .set_shared_memory_region_base(GuestAddress(ranges[0].addr));
+    }
+
+    Ok(ranges)
+}
+
+#[cfg(feature = "pci-hotplug")]
+impl HotPluggable for VirtioPciDevice {
+    /// Sets PciAddress to pci_addr
+    fn set_pci_address(&mut self, pci_addr: PciAddress) -> std::result::Result<(), PciDeviceError> {
+        self.pci_address = Some(pci_addr);
+        Ok(())
+    }
+
+    /// Configures IO BAR layout without memory alloc.
+    fn configure_io_bars(&mut self) -> std::result::Result<(), PciDeviceError> {
+        let mut simple_allocator = SimpleAllocator::new(0);
+        allocate_io_bars(self, |size, _, _| simple_allocator.alloc(size, size)).map(|_| ())
+    }
+
+    /// Configure device BAR layout without memory alloc.
+    fn configure_device_bars(&mut self) -> std::result::Result<(), PciDeviceError> {
+        // For device BAR, the space for CAPABILITY_BAR_SIZE should be skipped.
+        let mut simple_allocator = SimpleAllocator::new(CAPABILITY_BAR_SIZE);
+        allocate_device_bars(self, |size, _, _| simple_allocator.alloc(size, size)).map(|_| ())
+    }
+}
+
+#[cfg(feature = "pci-hotplug")]
+/// A simple allocator that can allocate non-overlapping aligned intervals.
+///
+/// The addresses allocated are not exclusively reserved for the device, and cannot be used for a
+/// static device. The allocated placeholder address describes the layout of PCI BAR for hotplugged
+/// devices. Actual memory allocation is handled by PCI BAR reprogramming initiated by guest OS.
+struct SimpleAllocator {
+    current_address: u64,
+}
+
+#[cfg(feature = "pci-hotplug")]
+impl SimpleAllocator {
+    /// Constructs SimpleAllocator. Address will start at or after base_address.
+    fn new(base_address: u64) -> Self {
+        Self {
+            current_address: base_address,
+        }
+    }
+
+    /// Allocate memory with size and align. Returns the start of address.
+    fn alloc(&mut self, size: u64, align: u64) -> std::result::Result<u64, PciDeviceError> {
+        if align > 0 {
+            // aligns current_address upward to align.
+            self.current_address = (self.current_address + align - 1) / align * align;
+        }
+        let start_address = self.current_address;
+        self.current_address += size;
+        Ok(start_address)
     }
 }
 
@@ -1295,5 +1395,23 @@ impl SharedMemoryMapper for VmRequester {
 
     fn as_raw_descriptor(&self) -> Option<RawDescriptor> {
         Some(self.vm_memory_client.as_raw_descriptor())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    #[cfg(feature = "pci-hotplug")]
+    #[test]
+    fn allocate_aligned_address() {
+        let mut simple_allocator = super::SimpleAllocator::new(0);
+        // start at 0, aligned to 0x80. Interval end at 0x20.
+        assert_eq!(simple_allocator.alloc(0x20, 0x80).unwrap(), 0);
+        // 0x20 => start at 0x40. Interval end at 0x80.
+        assert_eq!(simple_allocator.alloc(0x40, 0x40).unwrap(), 0x40);
+        // 0x80 => start at 0x80, Interval end at 0x108.
+        assert_eq!(simple_allocator.alloc(0x88, 0x80).unwrap(), 0x80);
+        // 0x108 => start at 0x180. Interval end at 0x1b0.
+        assert_eq!(simple_allocator.alloc(0x30, 0x80).unwrap(), 0x180);
     }
 }

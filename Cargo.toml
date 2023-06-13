@@ -150,6 +150,9 @@ gdb = [
 ## Enables a panic handler that writes panic info to the `RUST_PANIC_SIG` memfd.
 panic-memfd = []
 
+## Enables PCI hotplug. Only available on Linux, and currently only for x86/x86-64.
+pci-hotplug = ["devices/pci-hotplug"]
+
 ## Enables the use of the qcow format for block devices.
 qcow = ["disk/qcow"]
 
@@ -350,7 +353,12 @@ all-riscv64 = [
 ]
 
 ## All features that are compiled and tested for x86_64
-all-x86_64 = ["all-default", "plugin", "scudo"]
+all-x86_64 = [
+    "all-default",
+    "pci-hotplug",
+    "plugin",
+    "scudo"
+]
 
 ## All features that are compiled and tested for armhf
 ## Note: This platform is deprecated and will be phased out.
