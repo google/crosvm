@@ -13,6 +13,8 @@ use base::TubeError;
 use hypervisor::Datamatch;
 use remain::sorted;
 use resources::Alloc;
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 use vm_memory::GuestAddress;
 
@@ -38,6 +40,7 @@ pub enum ApiClientError {
 
 pub type Result<T> = std::result::Result<T, ApiClientError>;
 
+#[derive(Serialize, Deserialize)]
 pub struct VmMemoryClient {
     tube: Tube,
 }

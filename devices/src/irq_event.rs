@@ -7,6 +7,8 @@ use base::AsRawDescriptors;
 use base::Event;
 use base::RawDescriptor;
 use base::Result;
+use serde::Deserialize;
+use serde::Serialize;
 
 /// A structure suitable for implementing edge triggered interrupts in device backends.
 pub struct IrqEdgeEvent(Event);
@@ -45,6 +47,7 @@ impl IrqEdgeEvent {
 /// the interrupt with an End of Interrupt (EOI) command, the IRQ chip will signal the resample
 /// event. Each time the resample event is signalled, the device should re-check its state and call
 /// [`IrqLevelEvent::trigger()`] again if the interrupt should still be asserted.
+#[derive(Debug, Serialize, Deserialize)]
 pub struct IrqLevelEvent {
     /// An event used by the device backend to signal hypervisor/VM about data or new unit
     /// of work being available.
