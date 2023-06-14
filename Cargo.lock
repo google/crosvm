@@ -1280,6 +1280,7 @@ dependencies = [
  "base",
  "cc",
  "cfg-if",
+ "cros_tracing",
  "data_model 0.1.1-alpha.1",
  "euclid",
  "libc",

@@ -10,6 +10,7 @@ use anyhow::Result;
 use base::error;
 use base::warn;
 use base::Tube;
+use cros_tracing::trace_event;
 use linux_input_sys::virtio_input_event;
 #[cfg(feature = "kiwi")]
 use vm_control::ServiceSendToGpu;
@@ -250,81 +251,106 @@ impl<T: HandleWindowMessage> WindowMessageProcessor<T> {
         };
         match msg {
             WM_ACTIVATE => {
+                let _trace_event = trace_event!(gpu_display, "WM_ACTIVATE");
                 handler.on_activate(&self.window, w_param);
                 0
             }
-            WM_MOUSEACTIVATE => handler.on_mouse_activate(l_param) as LRESULT,
+            WM_MOUSEACTIVATE => {
+                let _trace_event = trace_event!(gpu_display, "WM_MOUSEACTIVATE");
+                handler.on_mouse_activate(l_param) as LRESULT
+            }
             WM_SETFOCUS => {
+                let _trace_event = trace_event!(gpu_display, "WM_SETFOCUS");
                 handler.on_set_focus();
                 0
             }
             WM_INPUT => {
+                let _trace_event = trace_event!(gpu_display, "WM_INPUT");
                 handler.on_raw_input(&self.window, l_param);
                 self.window.default_process_message(packet)
             }
             WM_MOUSEMOVE => {
+                let _trace_event = trace_event!(gpu_display, "WM_MOUSEMOVE");
                 handler.on_mouse_move(w_param, l_param);
                 0
             }
             WM_LBUTTONDOWN | WM_LBUTTONUP => {
+                let _trace_event = trace_event!(gpu_display, "WM_LBUTTONDOWN | WM_LBUTTONUP");
                 let is_down = msg == WM_LBUTTONDOWN;
                 handler.on_mouse_button_left(&self.window, is_down, l_param);
                 0
             }
             WM_RBUTTONDOWN | WM_RBUTTONUP => {
+                let _trace_event = trace_event!(gpu_display, "WM_RBUTTONDOWN | WM_RBUTTONUP");
                 handler.on_mouse_button_right(/* is_down= */ msg == WM_RBUTTONDOWN);
                 0
             }
             WM_MOUSEWHEEL => {
+                let _trace_event = trace_event!(gpu_display, "WM_MOUSEWHEEL");
                 handler.on_mouse_wheel(&self.window, w_param, l_param);
                 0
             }
             WM_SETCURSOR => {
+                let _trace_event = trace_event!(gpu_display, "WM_SETCURSOR");
                 if handler.on_set_cursor(&self.window) {
                     return 0;
                 }
                 self.window.default_process_message(packet)
             }
             WM_KEYDOWN | WM_KEYUP | WM_SYSKEYDOWN | WM_SYSKEYUP => {
+                let _trace_event = trace_event!(
+                    gpu_display,
+                    "WM_KEYDOWN | WM_KEYUP | WM_SYSKEYDOWN | WM_SYSKEYUP"
+                );
                 let key_down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
                 handler.on_key(&self.window, key_down, w_param, l_param);
                 0
             }
             WM_WINDOWPOSCHANGING => {
+                let _trace_event = trace_event!(gpu_display, "WM_WINDOWPOSCHANGING");
                 handler.on_window_pos_changing(&self.window, l_param);
                 0
             }
             WM_SIZING => {
+                let _trace_event = trace_event!(gpu_display, "WM_SIZING");
                 handler.on_window_size_changing(&self.window, w_param, l_param);
                 TRUE as LRESULT
             }
             WM_WINDOWPOSCHANGED => {
+                let _trace_event = trace_event!(gpu_display, "WM_WINDOWPOSCHANGED");
                 if handler.on_window_pos_changed(&self.window, l_param) {
                     return 0;
                 }
                 self.window.default_process_message(packet)
             }
             WM_SIZE => {
+                let _trace_event = trace_event!(gpu_display, "WM_SIZE");
                 handler.on_window_size_changed(&self.window, w_param, l_param);
                 0
             }
             WM_ENTERSIZEMOVE => {
+                let _trace_event = trace_event!(gpu_display, "WM_ENTERSIZEMOVE");
                 handler.on_enter_size_move();
                 0
             }
             WM_EXITSIZEMOVE => {
+                let _trace_event = trace_event!(gpu_display, "WM_EXITSIZEMOVE");
                 handler.on_exit_size_move(&self.window);
                 0
             }
             WM_DISPLAYCHANGE => {
+                let _trace_event = trace_event!(gpu_display, "WM_DISPLAYCHANGE");
                 handler.on_display_change(&self.window);
                 0
             }
             WM_USER_HOST_VIEWPORT_CHANGE_INTERNAL => {
+                let _trace_event =
+                    trace_event!(gpu_display, "WM_USER_HOST_VIEWPORT_CHANGE_INTERNAL");
                 handler.on_host_viewport_change(&self.window, l_param);
                 0
             }
             WM_CLOSE => {
+                let _trace_event = trace_event!(gpu_display, "WM_CLOSE");
                 if handler.on_close() {
                     if let Err(e) = self.window.destroy() {
                         error!("Failed to destroy window on WM_CLOSE: {:?}", e);
@@ -333,10 +359,18 @@ impl<T: HandleWindowMessage> WindowMessageProcessor<T> {
                 0
             }
             WM_DESTROY => {
+                let _trace_event = trace_event!(gpu_display, "WM_DESTROY");
                 handler.on_destroy();
                 0
             }
-            _ => self.window.default_process_message(packet),
+            WM_NCDESTROY => {
+                let _trace_event = trace_event!(gpu_display, "WM_NCDESTROY");
+                0
+            }
+            _ => {
+                let _trace_event = trace_event!(gpu_display, "WM_OTHER_WINDOW_MESSAGE");
+                self.window.default_process_message(packet)
+            }
         }
     }
 

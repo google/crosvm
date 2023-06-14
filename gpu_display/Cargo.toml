@@ -21,6 +21,7 @@ serde = { version = "1", features = [ "derive" ] }
 zerocopy = "*"
 
 [target.'cfg(windows)'.dependencies]
+cros_tracing = { path = "../cros_tracing" }
 metrics = { path = "../metrics" }
 num-traits = "*"
 winapi = "*"

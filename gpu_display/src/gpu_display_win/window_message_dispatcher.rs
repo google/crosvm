@@ -14,10 +14,10 @@ use std::rc::Rc;
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
-use base::debug;
 use base::error;
 use base::info;
 use base::Tube;
+use cros_tracing::trace_event;
 use linux_input_sys::virtio_input_event;
 #[cfg(feature = "kiwi")]
 use vm_control::ServiceSendToGpu;
@@ -196,27 +196,38 @@ impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
         } = *packet;
         match msg {
             WM_USER_HANDLE_DISPLAY_MESSAGE_INTERNAL => {
+                let _trace_event =
+                    trace_event!(gpu_display, "WM_USER_HANDLE_DISPLAY_MESSAGE_INTERNAL");
                 // Safe because the sender gives up the ownership and expects the receiver to
                 // destruct the message.
                 let message = unsafe { Box::from_raw(l_param as *mut DisplaySendToWndProc<T>) };
                 self.handle_display_message(*message);
             }
-            WM_USER_WNDPROC_THREAD_DROP_KILL_WINDOW_INTERNAL => match &self.message_processor {
-                Some(processor) => {
-                    debug!("Destroying window on WndProc thread drop");
-                    if let Err(e) = processor.window().destroy() {
-                        error!(
-                            "Failed to destroy window when dropping WndProc thread: {:?}",
-                            e
-                        );
+            WM_USER_WNDPROC_THREAD_DROP_KILL_WINDOW_INTERNAL => {
+                let _trace_event = trace_event!(
+                    gpu_display,
+                    "WM_USER_WNDPROC_THREAD_DROP_KILL_WINDOW_INTERNAL"
+                );
+                match &self.message_processor {
+                    Some(processor) => {
+                        info!("Destroying window on WndProc thread drop");
+                        if let Err(e) = processor.window().destroy() {
+                            error!(
+                                "Failed to destroy window when dropping WndProc thread: {:?}",
+                                e
+                            );
+                        }
                     }
+                    None => info!("No window to destroy on WndProc thread drop"),
                 }
-                None => debug!("No window to destroy on WndProc thread drop"),
-            },
-            // Safe because we are processing a message targeting this thread.
-            _ => unsafe {
-                DefWindowProcW(null_mut(), msg, w_param, l_param);
-            },
+            }
+            _ => {
+                let _trace_event = trace_event!(gpu_display, "WM_OTHER_THREAD_MESSAGE");
+                // Safe because we are processing a message targeting this thread.
+                unsafe {
+                    DefWindowProcW(null_mut(), msg, w_param, l_param);
+                }
+            }
         }
     }
 

@@ -233,7 +233,12 @@ macro_rules! trace_event_end {
 
 // List of categories that can be enabled.
 // If a category is marked as disabled here, no events will be processed for it.
-setup_trace_marker!((VirtioFs, true), (VirtioNet, true), (USB, true));
+setup_trace_marker!(
+    (VirtioFs, true),
+    (VirtioNet, true),
+    (USB, true),
+    (gpu_display, true)
+);
 
 /// Platform-specific implementation of the `trace_simple_print!` macro. If tracing
 /// is enabled on the system, it writes the given message to the `trace_marker` file.
