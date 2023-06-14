@@ -7,7 +7,6 @@
 #[cfg(windows)]
 use std::marker::PhantomData;
 
-use rutabaga_gfx::RutabagaWsi;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
@@ -16,6 +15,7 @@ use serde_keyvalue::FromKeyValues;
 use vm_control::gpu::DisplayParameters;
 
 use super::GpuMode;
+use super::GpuWsi;
 
 mod serde_capset_mask {
     use super::*;
@@ -57,7 +57,7 @@ pub struct GpuParameters {
     pub renderer_use_surfaceless: bool,
     #[serde(rename = "vulkan")]
     pub use_vulkan: Option<bool>,
-    pub wsi: Option<RutabagaWsi>,
+    pub wsi: Option<GpuWsi>,
     pub udmabuf: bool,
     pub cache_path: Option<String>,
     pub cache_size: Option<String>,

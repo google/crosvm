@@ -934,7 +934,7 @@ impl RutabagaBuilder {
     }
 
     /// Use the Vulkan swapchain to draw on the host window for gfxstream.
-    pub fn set_wsi(mut self, v: Option<&RutabagaWsi>) -> RutabagaBuilder {
+    pub fn set_wsi(mut self, v: RutabagaWsi) -> RutabagaBuilder {
         self.gfxstream_flags = self.gfxstream_flags.set_wsi(v);
         self
     }

@@ -119,7 +119,7 @@ pub(crate) fn validate_gpu_config(cfg: &mut Config) -> Result<(), String> {
 mod tests {
     use argh::FromArgs;
     #[cfg(feature = "gfxstream")]
-    use rutabaga_gfx::RutabagaWsi;
+    use devices::virtio::GpuWsi;
 
     use super::*;
     use crate::crosvm::config::from_key_values;
@@ -220,11 +220,11 @@ mod tests {
     fn parse_gpu_options_gfxstream_with_wsi_specified() {
         {
             let gpu_params = parse_gpu_options("backend=gfxstream,wsi=vk").unwrap();
-            assert!(matches!(gpu_params.wsi, Some(RutabagaWsi::Vulkan)));
+            assert!(matches!(gpu_params.wsi, Some(GpuWsi::Vulkan)));
         }
         {
             let gpu_params = parse_gpu_options("wsi=vk,backend=gfxstream").unwrap();
-            assert!(matches!(gpu_params.wsi, Some(RutabagaWsi::Vulkan)));
+            assert!(matches!(gpu_params.wsi, Some(GpuWsi::Vulkan)));
         }
         {
             assert!(parse_gpu_options("backend=gfxstream,wsi=invalid_value").is_err());
