@@ -12,5 +12,5 @@ cfg_if::cfg_if! {
     }
 }
 
-pub(crate) use platform::net::process_rx;
-pub(crate) use platform::net::process_tx;
+pub(crate) use platform::process_rx;
+pub(crate) use platform::process_tx;

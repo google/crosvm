@@ -18,7 +18,6 @@ mod iommu;
 pub mod pvclock;
 mod queue;
 mod rng;
-mod sys;
 #[cfg(any(feature = "tpm", feature = "vtpm"))]
 mod tpm;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]

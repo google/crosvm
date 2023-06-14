@@ -32,6 +32,11 @@ use super::super::super::Queue;
 use super::super::super::Reader;
 use super::super::super::SignalableInterrupt;
 
+// This file should not be included at virtio mod level if slirp is not include. In case it is,
+// throw a user friendly message.
+#[cfg(not(feature = "slirp"))]
+compile_error!("Net device without slirp not supported on windows");
+
 // Copies a single frame from `self.rx_buf` into the guest. Returns true
 // if a buffer was used, and false if the frame must be deferred until a buffer
 // is made available by the driver.
