@@ -465,8 +465,18 @@ impl TestVm {
         self.sys.crosvm_command("suspend", vec![], self.sudo)
     }
 
+    pub fn suspend_full(&mut self) -> Result<()> {
+        self.sys
+            .crosvm_command("suspend", vec!["--full".to_string()], self.sudo)
+    }
+
     pub fn resume(&mut self) -> Result<()> {
         self.sys.crosvm_command("resume", vec![], self.sudo)
+    }
+
+    pub fn resume_full(&mut self) -> Result<()> {
+        self.sys
+            .crosvm_command("resume", vec!["--full".to_string()], self.sudo)
     }
 
     pub fn disk(&mut self, args: Vec<String>) -> Result<()> {

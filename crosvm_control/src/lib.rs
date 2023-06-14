@@ -84,7 +84,7 @@ pub unsafe extern "C" fn crosvm_client_stop_vm(socket_path: *const c_char) -> bo
 pub unsafe extern "C" fn crosvm_client_suspend_vm(socket_path: *const c_char) -> bool {
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
-            vms_request(&VmRequest::Suspend, socket_path).is_ok()
+            vms_request(&VmRequest::SuspendVcpus, socket_path).is_ok()
         } else {
             false
         }
@@ -105,7 +105,7 @@ pub unsafe extern "C" fn crosvm_client_suspend_vm(socket_path: *const c_char) ->
 pub unsafe extern "C" fn crosvm_client_resume_vm(socket_path: *const c_char) -> bool {
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
-            vms_request(&VmRequest::Resume, socket_path).is_ok()
+            vms_request(&VmRequest::ResumeVcpus, socket_path).is_ok()
         } else {
             false
         }

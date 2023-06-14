@@ -49,6 +49,25 @@ fn boot_test_suspend_resume() {
 
 #[cfg(unix)]
 #[test]
+fn boot_test_suspend_resume_full() {
+    // There is no easy way for us to check if the VM is actually suspended. But at
+    // least exercise the code-path.
+    let mut config = Config::new();
+    config = config.with_stdout_hardware("legacy-virtio-console");
+    config = config.extra_args(vec![
+        "--no-usb".to_string(),
+        "--no-balloon".to_string(),
+        "--no-rng".to_string(),
+    ]);
+
+    let mut vm = TestVm::new(config).unwrap();
+    vm.suspend_full().unwrap();
+    vm.resume_full().unwrap();
+    assert_eq!(vm.exec_in_guest("echo 42").unwrap().trim(), "42");
+}
+
+#[cfg(unix)]
+#[test]
 fn boot_test_vm_disable_sandbox() {
     let mut vm = TestVm::new(Config::new().disable_sandbox()).unwrap();
     assert_eq!(vm.exec_in_guest("echo 42").unwrap().trim(), "42");

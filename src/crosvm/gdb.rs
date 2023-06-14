@@ -87,7 +87,7 @@ pub fn gdb_thread(mut gdbstub: GdbStub, port: u32) {
     }
 
     // Resume the VM when GDB session is disconnected.
-    if let Err(e) = gdbstub.vm_request(VmRequest::Resume) {
+    if let Err(e) = gdbstub.vm_request(VmRequest::ResumeVcpus) {
         error!("Failed to resume the VM after GDB disconnected: {}", e);
     }
 }
@@ -303,7 +303,7 @@ impl SingleThreadResume for GdbStub {
     fn resume(&mut self, _signal: Option<Signal>) -> Result<(), Self::Error> {
         // TODO: Handle any incoming signal.
 
-        self.vm_request(VmRequest::Resume).map_err(|e| {
+        self.vm_request(VmRequest::ResumeVcpus).map_err(|e| {
             error!("Failed to resume the target: {}", e);
             "Failed to resume the target"
         })
@@ -333,7 +333,7 @@ impl SingleThreadSingleStep for GdbStub {
             }
         };
 
-        self.vm_request(VmRequest::Resume).map_err(|e| {
+        self.vm_request(VmRequest::ResumeVcpus).map_err(|e| {
             error!("Failed to resume the target: {}", e);
             "Failed to resume the target"
         })?;
@@ -524,7 +524,7 @@ impl BlockingEventLoop for GdbStubEventLoop {
     fn on_interrupt(
         target: &mut Self::Target,
     ) -> Result<Option<Self::StopReason>, <Self::Target as Target>::Error> {
-        target.vm_request(VmRequest::Suspend).map_err(|e| {
+        target.vm_request(VmRequest::SuspendVcpus).map_err(|e| {
             error!("Failed to suspend the target: {}", e);
             "Failed to suspend the target"
         })?;

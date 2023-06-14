@@ -1233,11 +1233,11 @@ pub enum VmRequest {
     /// Trigger a RTC interrupt in the guest.
     Rtc,
     /// Suspend the VM's VCPUs until resume.
-    Suspend,
+    SuspendVcpus,
     /// Swap the memory content into files on a disk
     Swap(SwapCommand),
     /// Resume the VM's VCPUs that were previously suspended.
-    Resume,
+    ResumeVcpus,
     /// Inject a general-purpose event.
     Gpe(u32),
     /// Inject a PCI PME
@@ -1283,6 +1283,10 @@ pub enum VmRequest {
     /// Unregister for all event notification
     #[cfg(feature = "registered_events")]
     Unregister { socket_addr: String },
+    /// Suspend VM VCPUs and Devices until resume.
+    SuspendVm,
+    /// Resume VM VCPUs and Devices.
+    ResumeVm,
 }
 
 /// NOTE: when making any changes to this enum please also update
@@ -1596,8 +1600,42 @@ impl VmRequest {
                     VmResponse::Err(SysError::new(ENOTSUP))
                 }
             }
-            VmRequest::Suspend => {
+            VmRequest::SuspendVcpus => {
                 *run_mode = Some(VmRunMode::Suspending);
+                VmResponse::Ok
+            }
+            VmRequest::ResumeVcpus => {
+                if let Err(e) = device_control_tube.send(&DeviceControlCommand::GetDevicesState) {
+                    error!("failed to send GetDevicesState: {}", e);
+                    return VmResponse::Err(SysError::new(EIO));
+                }
+                let devices_state = match device_control_tube.recv() {
+                    Ok(VmResponse::DevicesState(state)) => state,
+                    Ok(resp) => {
+                        error!("failed to get devices state. Unexpected behavior: {}", resp);
+                        return VmResponse::Err(SysError::new(EINVAL));
+                    }
+                    Err(e) => {
+                        error!("failed to get devices state. Unexpected behavior: {}", e);
+                        return VmResponse::Err(SysError::new(EINVAL));
+                    }
+                };
+                if let DevicesState::Sleep = devices_state {
+                    error!("Trying to wake Vcpus while Devices are asleep. Did you mean to use `crosvm resume --full`?");
+                    return VmResponse::Err(SysError::new(EINVAL));
+                }
+                *run_mode = Some(VmRunMode::Running);
+
+                if force_s2idle {
+                    // During resume also emulate powerbtn event which will allow to wakeup fully
+                    // suspended guest.
+                    if let Some(pm) = pm {
+                        pm.lock().pwrbtn_evt();
+                    } else {
+                        error!("triggering power btn during resume not supported");
+                        return VmResponse::Err(SysError::new(ENOTSUP));
+                    }
+                }
                 VmResponse::Ok
             }
             VmRequest::Swap(SwapCommand::Enable) => {
@@ -1685,20 +1723,64 @@ impl VmRequest {
                 }
                 VmResponse::Err(SysError::new(ENOTSUP))
             }
-            VmRequest::Resume => {
-                *run_mode = Some(VmRunMode::Running);
-
-                if force_s2idle {
-                    // During resume also emulate powerbtn event which will allow to wakeup fully
-                    // suspended guest.
-                    if let Some(pm) = pm {
-                        pm.lock().pwrbtn_evt();
-                    } else {
-                        error!("triggering power btn during resume not supported");
-                        return VmResponse::Err(SysError::new(ENOTSUP));
+            VmRequest::SuspendVm => {
+                kick_vcpus(VcpuControl::RunState(VmRunMode::Suspending));
+                let current_mode = match get_vcpu_state(kick_vcpus, vcpu_size) {
+                    Ok(state) => state,
+                    Err(e) => {
+                        error!("failed to get vcpu state: {e}");
+                        return VmResponse::Err(SysError::new(EIO));
+                    }
+                };
+                if current_mode != VmRunMode::Suspending {
+                    error!("vCPUs failed to all suspend.");
+                    return VmResponse::Err(SysError::new(EIO));
+                }
+                if let Err(e) = device_control_tube
+                    .send(&DeviceControlCommand::SleepDevices)
+                    .context("send command to devices control socket")
+                {
+                    error!("{:?}", e);
+                    return VmResponse::Err(SysError::new(EIO));
+                };
+                match device_control_tube
+                    .recv()
+                    .context("receive from devices control socket")
+                {
+                    Ok(VmResponse::Ok) => VmResponse::Ok,
+                    Ok(resp) => {
+                        error!("device sleep failed: {}", resp);
+                        VmResponse::Err(SysError::new(EIO))
+                    }
+                    Err(e) => {
+                        error!("receive from devices control socket: {:?}", e);
+                        VmResponse::Err(SysError::new(EIO))
                     }
                 }
-
+            }
+            VmRequest::ResumeVm => {
+                if let Err(e) = device_control_tube
+                    .send(&DeviceControlCommand::WakeDevices)
+                    .context("send command to devices control socket")
+                {
+                    error!("{:?}", e);
+                    return VmResponse::Err(SysError::new(EIO));
+                };
+                match device_control_tube
+                    .recv()
+                    .context("receive from devices control socket")
+                {
+                    Ok(VmResponse::Ok) => (),
+                    Ok(resp) => {
+                        error!("device wake failed: {}", resp);
+                        return VmResponse::Err(SysError::new(EIO));
+                    }
+                    Err(e) => {
+                        error!("receive from devices control socket: {:?}", e);
+                        return VmResponse::Err(SysError::new(EIO));
+                    }
+                }
+                kick_vcpus(VcpuControl::RunState(VmRunMode::Running));
                 VmResponse::Ok
             }
             VmRequest::Gpe(gpe) => {

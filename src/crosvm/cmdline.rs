@@ -296,6 +296,9 @@ pub struct ResumeCommand {
     #[argh(positional, arg_name = "VM_SOCKET")]
     /// VM Socket path
     pub socket_path: String,
+    /// suspend VM VCPUs and Devices
+    #[argh(switch)]
+    pub full: bool,
 }
 
 #[derive(FromArgs)]
@@ -314,6 +317,9 @@ pub struct SuspendCommand {
     #[argh(positional, arg_name = "VM_SOCKET")]
     /// VM Socket path
     pub socket_path: String,
+    /// suspend VM VCPUs and Devices
+    #[argh(switch)]
+    pub full: bool,
 }
 
 #[derive(FromArgs)]

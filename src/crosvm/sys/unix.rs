@@ -3281,7 +3281,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                             );
 
                                             // For non s2idle guest suspension we are done
-                                            if let VmRequest::Suspend = request {
+                                            if let VmRequest::SuspendVcpus = request {
                                                 if cfg.force_s2idle {
                                                     suspend_requested = true;
 
