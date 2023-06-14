@@ -2257,7 +2257,6 @@ dependencies = [
  "nix",
  "pkg-config",
  "remain",
- "serde",
  "thiserror",
  "winapi",
  "zerocopy",
