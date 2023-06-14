@@ -15,8 +15,6 @@ use data_model::VolatileMemoryError;
 #[cfg(unix)]
 use nix::Error as NixError;
 use remain::sorted;
-use serde::Deserialize;
-use serde::Serialize;
 use thiserror::Error;
 #[cfg(feature = "vulkano")]
 use vulkano::device::DeviceCreationError;
@@ -103,9 +101,7 @@ pub struct Resource3DInfo {
 }
 
 /// A unique identifier for a device.
-#[derive(
-    Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize,
-)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DeviceId {
     pub device_uuid: [u8; 16],
     pub driver_uuid: [u8; 16],

@@ -822,7 +822,8 @@ impl SharedMemoryMapper for VhostShmemMapper {
                     descriptor,
                     handle_type,
                     memory_idx,
-                    device_id,
+                    device_uuid,
+                    driver_uuid,
                     size,
                 } => {
                     let msg = VhostUserGpuMapMsg::new(
@@ -831,8 +832,8 @@ impl SharedMemoryMapper for VhostShmemMapper {
                         size,
                         memory_idx,
                         handle_type,
-                        device_id.device_uuid,
-                        device_id.driver_uuid,
+                        device_uuid,
+                        driver_uuid,
                     );
                     self.conn
                         .gpu_map(&msg, &descriptor)

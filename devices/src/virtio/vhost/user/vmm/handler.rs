@@ -14,7 +14,6 @@ use base::Event;
 use base::Protection;
 use base::SafeDescriptor;
 use base::WorkerThread;
-use rutabaga_gfx::DeviceId;
 use vm_control::VmMemorySource;
 use vm_memory::GuestMemory;
 use vm_memory::MemoryRegionInformation;
@@ -482,10 +481,8 @@ impl VhostUserMasterReqHandlerMut for BackendReqHandlerImpl {
                     .map_err(|_| std::io::Error::from_raw_os_error(libc::EIO))?,
                 handle_type: req.handle_type,
                 memory_idx: req.memory_idx,
-                device_id: DeviceId {
-                    device_uuid: req.device_uuid,
-                    driver_uuid: req.driver_uuid,
-                },
+                device_uuid: req.device_uuid,
+                driver_uuid: req.driver_uuid,
                 size: req.len,
             },
             req.shm_offset,

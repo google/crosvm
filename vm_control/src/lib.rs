@@ -369,7 +369,8 @@ pub enum VmMemorySource {
         descriptor: SafeDescriptor,
         handle_type: u32,
         memory_idx: u32,
-        device_id: DeviceId,
+        device_uuid: [u8; 16],
+        driver_uuid: [u8; 16],
         size: u64,
     },
     /// Register the current rutabaga external mapping.
@@ -427,9 +428,14 @@ impl VmMemorySource {
                 descriptor,
                 handle_type,
                 memory_idx,
-                device_id,
+                device_uuid,
+                driver_uuid,
                 size,
             } => {
+                let device_id = DeviceId {
+                    device_uuid,
+                    driver_uuid,
+                };
                 let mapped_region = match gralloc.import_and_map(
                     RutabagaHandle {
                         os_handle: to_rutabaga_desciptor(descriptor),
