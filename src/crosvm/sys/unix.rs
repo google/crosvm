@@ -3809,7 +3809,7 @@ fn vm_memory_handler_thread(
                                         },
                                     )
                                     .context(
-                                        "failed to add new IRQ control Tube to wait context",
+                                        "failed to add new vm memory control Tube to wait context",
                                     )?;
                             }
                             control_tubes.append(&mut tubes);
@@ -3817,9 +3817,9 @@ fn vm_memory_handler_thread(
                     },
                     Err(e) => {
                         if let TubeError::Disconnected = e {
-                            panic!("irq handler control tube disconnected.");
+                            panic!("vm memory control tube disconnected.");
                         } else {
-                            error!("failed to recv IrqHandlerRequest: {}", e);
+                            error!("failed to recv VmMemoryHandlerRequest: {}", e);
                         }
                     }
                 },
@@ -3876,7 +3876,7 @@ fn vm_memory_handler_thread(
             .iter()
             .any(|e| e.is_hungup && !e.is_readable && matches!(e.token, Token::HandlerControl))
         {
-            error!("IRQ handler control hung up but did not request an exit.");
+            error!("vm memory handler control hung up but did not request an exit.");
             break 'wait;
         }
     }
