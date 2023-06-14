@@ -692,16 +692,6 @@ async fn handle_wss_data_queue(
         // update wss report with balloon pages now that we have a lock on state
         let balloon_actual = (state.actual_pages as u64) << VIRTIO_BALLOON_PFN_SHIFT;
 
-        #[cfg(feature = "registered_events")]
-        if let Some(registered_evt_q) = registered_evt_q {
-            if let Err(e) = registered_evt_q
-                .send(RegisteredEventWithData::from_wss(&wss, balloon_actual))
-                .await
-            {
-                error!("failed to send VirtioBalloonWSSReport event: {}", e);
-            }
-        }
-
         if state.expecting_wss {
             let result = BalloonTubeResult::WorkingSetSize {
                 wss,
@@ -714,6 +704,16 @@ async fn handle_wss_data_queue(
             }
 
             state.expecting_wss = false;
+        } else {
+            #[cfg(feature = "registered_events")]
+            if let Some(registered_evt_q) = registered_evt_q {
+                if let Err(e) = registered_evt_q
+                    .send(RegisteredEventWithData::from_wss(&wss, balloon_actual))
+                    .await
+                {
+                    error!("failed to send VirtioBalloonWSSReport event: {}", e);
+                }
+            }
         }
 
         queue.add_used(mem, avail_desc, 0);
