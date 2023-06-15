@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::HashMap;
 use std::io::Write;
 
 use anyhow::anyhow;
@@ -198,20 +199,21 @@ impl VirtioDevice for Rng {
         false
     }
 
-    fn virtio_sleep(&mut self) -> anyhow::Result<Option<Vec<Queue>>> {
+    fn virtio_sleep(&mut self) -> anyhow::Result<Option<HashMap<usize, Queue>>> {
         if let Some(worker_thread) = self.worker_thread.take() {
             let queues = worker_thread.stop()?;
-            return Ok(Some(queues));
+            return Ok(Some(HashMap::from_iter(queues.into_iter().enumerate())));
         }
         Ok(None)
     }
 
     fn virtio_wake(
         &mut self,
-        queues_state: Option<(GuestMemory, Interrupt, Vec<(Queue, Event)>)>,
+        queues_state: Option<(GuestMemory, Interrupt, HashMap<usize, (Queue, Event)>)>,
     ) -> anyhow::Result<()> {
-        if let Some((mem, interrupt, queues)) = queues_state {
-            self.activate(mem, interrupt, queues)?;
+        if let Some((mem, interrupt, mut queues)) = queues_state {
+            let queues_vec = vec![queues.remove(&0).expect("missing requestq")];
+            self.activate(mem, interrupt, queues_vec)?;
         }
         Ok(())
     }

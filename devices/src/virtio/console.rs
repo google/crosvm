@@ -9,6 +9,7 @@
 pub mod asynchronous;
 mod sys;
 
+use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::io;
 use std::io::Read;
@@ -406,7 +407,7 @@ impl VirtioDevice for Console {
         false
     }
 
-    fn virtio_sleep(&mut self) -> anyhow::Result<Option<Vec<Queue>>> {
+    fn virtio_sleep(&mut self) -> anyhow::Result<Option<HashMap<usize, Queue>>> {
         if let Some(worker_thread) = self.worker_thread.take() {
             if let Some(input_thread) = self.input_thread.take() {
                 input_thread.stop();
@@ -427,18 +428,26 @@ impl VirtioDevice for Console {
                     ))
                 }
             };
-            return Ok(Some(vec![receive_queue, transmit_queue]));
+            return Ok(Some(HashMap::from([
+                (0, receive_queue),
+                (1, transmit_queue),
+            ])));
         }
         Ok(None)
     }
 
     fn virtio_wake(
         &mut self,
-        queues_state: Option<(GuestMemory, Interrupt, Vec<(Queue, Event)>)>,
+        queues_state: Option<(GuestMemory, Interrupt, HashMap<usize, (Queue, Event)>)>,
     ) -> anyhow::Result<()> {
         match queues_state {
             None => Ok(()),
-            Some((mem, interrupt, queues)) => {
+            Some((mem, interrupt, mut queues)) => {
+                let queues = vec![
+                    queues.remove(&0).expect("rx queue must be present"),
+                    queues.remove(&1).expect("tx queue must be present"),
+                ];
+
                 // TODO(khei): activate is just what we want at the moment, but we should probably move
                 // it into a "start workers" function to make it obvious that it isn't strictly
                 // used for activate events.

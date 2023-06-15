@@ -32,6 +32,7 @@ use std::cell::RefCell;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap as Map;
 use std::collections::BTreeSet as Set;
+use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::convert::From;
 use std::error::Error as StdError;
@@ -2063,10 +2064,10 @@ impl VirtioDevice for Wl {
         self.mapper = Some(mapper);
     }
 
-    fn virtio_sleep(&mut self) -> anyhow::Result<Option<Vec<Queue>>> {
+    fn virtio_sleep(&mut self) -> anyhow::Result<Option<HashMap<usize, Queue>>> {
         if let Some(worker_thread) = self.worker_thread.take() {
             let queues = worker_thread.stop()?;
-            return Ok(Some(queues));
+            return Ok(Some(HashMap::from_iter(queues.into_iter().enumerate())));
         }
         Ok(None)
     }

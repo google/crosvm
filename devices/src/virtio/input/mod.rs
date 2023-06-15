@@ -9,6 +9,7 @@ mod evdev;
 mod event_source;
 
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::io::Read;
 use std::io::Write;
 
@@ -605,14 +606,11 @@ where
         false
     }
 
-    fn virtio_sleep(&mut self) -> anyhow::Result<Option<Vec<Queue>>> {
+    fn virtio_sleep(&mut self) -> anyhow::Result<Option<HashMap<usize, Queue>>> {
         if let Some(worker_thread) = self.worker_thread.take() {
             let worker = worker_thread.stop();
             self.source = Some(worker.event_source);
-            let queues = vec![
-                /* 0 */ worker.event_queue,
-                /* 1 */ worker.status_queue,
-            ];
+            let queues = HashMap::from([(0, worker.event_queue), (1, worker.status_queue)]);
             Ok(Some(queues))
         } else {
             Ok(None)
