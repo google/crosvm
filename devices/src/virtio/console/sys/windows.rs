@@ -107,12 +107,10 @@ pub(in crate::virtio::console) fn spawn_input_thread(
             let size = rx
                 .get_available_byte_count()
                 .expect("failed to get available byte count") as usize;
-
-            if size < buffer_max_size {
-                rx_buf.resize(size, Default::default());
-            } else {
-                rx_buf.resize(buffer_max_size, Default::default());
-            };
+            // Clamp to [1, buffer capacity]. Need to read at least one byte so that the read call
+            // blocks until data is available.
+            let size = std::cmp::min(std::cmp::max(size, 1), buffer_max_size);
+            rx_buf.resize(size, Default::default());
             let res = rx.read_overlapped_blocking(&mut rx_buf, &mut read_overlapped, &kill_evt);
 
             match res {
