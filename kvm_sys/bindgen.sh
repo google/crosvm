@@ -117,3 +117,15 @@ bindgen_generate \
     -isystem "${BINDGEN_LINUX_ARM64_HEADERS}/include" \
     | replace_linux_int_types \
     > kvm_sys/src/aarch64/bindings.rs
+
+bindgen_generate \
+    --raw-line "${KVM_EXTRAS}" \
+    --blocklist-item='__kernel.*' \
+    --blocklist-item='__BITS_PER_LONG' \
+    --blocklist-item='__FD_SETSIZE' \
+    --blocklist-item='_?IOC.*' \
+    "${BINDGEN_LINUX_RISCV_HEADERS}/include/linux/kvm.h" \
+    -- \
+    -isystem "${BINDGEN_LINUX_RISCV_HEADERS}/include" \
+    | replace_linux_int_types \
+    > kvm_sys/src/riscv64/bindings.rs

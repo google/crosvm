@@ -50,24 +50,27 @@ bindgen_generate() {
 }
 
 bindgen_cleanup() {
-    rm -rf "${BINDGEN_LINUX_X86_HEADERS}" "${BINDGEN_LINUX_ARM64_HEADERS}"
+    rm -rf "${BINDGEN_LINUX_X86_HEADERS}" "${BINDGEN_LINUX_ARM64_HEADERS}" "${BINDGEN_LINUX_RISCV_HEADERS}"
 }
 
-# Install Linux kernel headers for x86 and arm into temporary locations. These are used for KVM bindings.
+# Install Linux kernel headers for each architecture into temporary locations. These are used for KVM bindings.
 
 if [[ -z "${BINDGEN_LINUX_X86_HEADERS+x}" || ! -d "${BINDGEN_LINUX_X86_HEADERS}" ||
-    -z "${BINDGEN_LINUX_ARM64_HEADERS+x}" || ! -d "${BINDGEN_LINUX_ARM64_HEADERS}" ]]; then
+    -z "${BINDGEN_LINUX_ARM64_HEADERS+x}" || ! -d "${BINDGEN_LINUX_ARM64_HEADERS}" ||
+    -z "${BINDGEN_LINUX_RISCV_HEADERS+x}" || ! -d "${BINDGEN_LINUX_RISCV_HEADERS}" ]]; then
     export BINDGEN_LINUX_X86_HEADERS='/tmp/bindgen_linux_x86_headers'
     export BINDGEN_LINUX_ARM64_HEADERS='/tmp/bindgen_linux_arm64_headers'
+    export BINDGEN_LINUX_RISCV_HEADERS='/tmp/bindgen_linux_riscv_headers'
 
     trap bindgen_cleanup EXIT
 
-    echo -n "Installing Linux headers for x86 and arm64..."
+    echo -n "Installing Linux headers for x86, arm64, and riscv..."
     (
         cd "${BINDGEN_LINUX}"
         nproc=$(nproc)
         make -s headers_install ARCH=x86 INSTALL_HDR_PATH="${BINDGEN_LINUX_X86_HEADERS}" -j "${nproc}"
         make -s headers_install ARCH=arm64 INSTALL_HDR_PATH="${BINDGEN_LINUX_ARM64_HEADERS}" -j "${nproc}"
+        make -s headers_install ARCH=riscv INSTALL_HDR_PATH="${BINDGEN_LINUX_RISCV_HEADERS}" -j "${nproc}"
         make -s mrproper
     )
     echo " done."
