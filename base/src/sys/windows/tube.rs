@@ -11,7 +11,7 @@ use std::os::windows::io::AsRawHandle;
 use std::os::windows::io::RawHandle;
 use std::time::Duration;
 
-use data_model::DataInit;
+use data_model::zerocopy_from_slice;
 use log::warn;
 use once_cell::sync::Lazy;
 use serde::de::DeserializeOwned;
@@ -19,6 +19,8 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde::Serializer;
 use winapi::shared::winerror::ERROR_MORE_DATA;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 use crate::descriptor::AsRawDescriptor;
 use crate::descriptor::FromRawDescriptor;
@@ -80,15 +82,12 @@ where
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, AsBytes, FromBytes)]
 #[repr(C)]
 struct MsgHeader {
     msg_json_size: usize,
     descriptor_json_size: usize,
 }
-
-// Safe because it only has data and has no implicit padding.
-unsafe impl DataInit for MsgHeader {}
 
 static DH_TUBE: Lazy<sync::Mutex<Option<DuplicateHandleTube>>> =
     Lazy::new(|| sync::Mutex::new(None));
@@ -242,10 +241,10 @@ pub fn serialize_and_send<T: Serialize, F: Fn(&[u8]) -> io::Result<usize>>(
     };
 
     let mut data_packet = Cursor::new(Vec::with_capacity(
-        header.as_slice().len() + header.msg_json_size + header.descriptor_json_size,
+        header.as_bytes().len() + header.msg_json_size + header.descriptor_json_size,
     ));
     data_packet
-        .write(header.as_slice())
+        .write(header.as_bytes())
         .map_err(Error::SendIoBuf)?;
     data_packet
         .write(msg_json.as_slice())
@@ -315,8 +314,8 @@ pub fn deserialize_and_recv<T: DeserializeOwned, F: FnMut(&mut [u8]) -> io::Resu
 
     // Safe because the header is always written by the send function, and only that function
     // writes to this channel.
-    let header =
-        MsgHeader::from_slice(header_bytes.as_slice()).expect("Tube header failed to deserialize.");
+    let header: &MsgHeader =
+        zerocopy_from_slice(header_bytes.as_slice()).expect("Tube header failed to deserialize.");
 
     let mut msg_json = vec![0u8; header.msg_json_size];
     perform_read(&mut read_fn, msg_json.as_mut_slice()).map_err(Error::from_recv_io_error)?;

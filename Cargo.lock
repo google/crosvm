@@ -1946,6 +1946,7 @@ dependencies = [
  "protobuf",
  "serde",
  "sync",
+ "zerocopy",
 ]
 
 [[package]]

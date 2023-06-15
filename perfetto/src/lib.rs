@@ -19,8 +19,9 @@ use std::time::Duration;
 pub use bindings::*;
 pub use cros_tracing_types::static_strings::StaticString;
 use cros_tracing_types::TraceDuration;
-use data_model::DataInit;
 use protobuf::Message;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 use protos::perfetto_config::trace_config::BufferConfig;
 use protos::perfetto_config::trace_config::DataSource;
@@ -34,15 +35,12 @@ const HEADER_MAGIC: &[u8; 16] = b"\x8d\x10\xa3\xee\x79\x1f\x47\x25\xb2\xb8\xb8\x
 
 /// The optional header written ahead of the trace data.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, AsBytes, FromBytes)]
 struct TraceHeader {
     magic: [u8; 16],
     data_size: u64,
     data_checksum_sha256: [u8; 32],
 }
-
-// Safe because TraceHeader has no implicit padding.
-unsafe impl DataInit for TraceHeader {}
 
 #[macro_export]
 macro_rules! zero {
@@ -564,7 +562,7 @@ impl Trace {
         };
         let mut trace_vec: Vec<u8> =
             Vec::with_capacity(size_of::<TraceHeader>() + trace_data.size as usize);
-        trace_vec.extend_from_slice(header.as_slice());
+        trace_vec.extend_from_slice(header.as_bytes());
         trace_vec.extend_from_slice(trace_data_slice);
 
         // Safe because trace data is a valid buffer created by ctrace_stop_trace_to_buffer and

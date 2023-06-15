@@ -24,6 +24,7 @@ protobuf = "3.2"
 serde = { version = "1", features = [ "derive" ] }
 sha2 = { version = "*", optional = true }
 sync = { path = "../common/sync" }
+zerocopy = "*"
 
 [build-dependencies]
 proto_build_tools = { path = "../proto_build_tools" }
