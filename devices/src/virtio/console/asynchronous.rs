@@ -46,7 +46,6 @@ use crate::virtio::Queue;
 use crate::virtio::SignalableInterrupt;
 use crate::virtio::VirtioDevice;
 use crate::SerialDevice;
-use crate::Suspendable;
 
 /// Wrapper that makes any `SerialInput` usable as an async source by providing an implementation of
 /// `IntoAsync`.
@@ -373,5 +372,3 @@ impl VirtioDevice for AsyncConsole {
         }
     }
 }
-
-impl Suspendable for AsyncConsole {}

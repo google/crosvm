@@ -30,7 +30,6 @@ use crate::virtio::copy_config;
 use crate::virtio::virtio_device::VirtioDevice;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
-use crate::Suspendable;
 
 #[macro_use]
 mod macros;
@@ -315,8 +314,6 @@ impl VirtioDevice for VideoDevice {
         Ok(())
     }
 }
-
-impl Suspendable for VideoDevice {}
 
 #[cfg(feature = "video-decoder")]
 pub fn create_decoder_device(

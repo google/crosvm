@@ -86,7 +86,6 @@ use crate::virtio::Reader;
 use crate::virtio::SignalableInterrupt;
 use crate::virtio::VirtioDevice;
 use crate::virtio::Writer;
-use crate::Suspendable;
 
 const DEFAULT_QUEUE_SIZE: u16 = 256;
 pub const DEFAULT_NUM_QUEUES: u16 = 16;
@@ -1154,8 +1153,6 @@ impl VirtioDevice for BlockAsync {
         Ok(())
     }
 }
-
-impl Suspendable for BlockAsync {}
 
 #[cfg(test)]
 mod tests {

@@ -27,7 +27,6 @@ use super::Interrupt;
 use super::Queue;
 use super::SignalableInterrupt;
 use super::VirtioDevice;
-use crate::Suspendable;
 
 const QUEUE_SIZE: u16 = 128;
 const QUEUE_SIZES: &[u16] = &[QUEUE_SIZE];
@@ -234,5 +233,3 @@ impl VirtioDevice for P9 {
         Ok(())
     }
 }
-
-impl Suspendable for P9 {}

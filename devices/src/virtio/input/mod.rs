@@ -43,7 +43,6 @@ use super::Interrupt;
 use super::Queue;
 use super::SignalableInterrupt;
 use super::VirtioDevice;
-use crate::Suspendable;
 
 const EVENT_QUEUE_SIZE: u16 = 64;
 const STATUS_QUEUE_SIZE: u16 = 64;
@@ -620,8 +619,6 @@ where
         }
     }
 }
-
-impl<T> Suspendable for Input<T> where T: 'static + EventSource + Send {}
 
 /// Creates a new virtio input device from an event device node
 pub fn new_evdev<T>(source: T, virtio_features: u64) -> Result<Input<EvdevEventSource<T>>>

@@ -72,7 +72,6 @@ use crate::virtio::SignalableInterrupt;
 use crate::virtio::VirtioDevice;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::virtio::Writer;
-use crate::Suspendable;
 
 const QUEUE_SIZE: u16 = 256;
 const NUM_QUEUES: usize = 2;
@@ -925,5 +924,3 @@ impl VirtioDevice for Iommu {
         Some(sdts)
     }
 }
-
-impl Suspendable for Iommu {}

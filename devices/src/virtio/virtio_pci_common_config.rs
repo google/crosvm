@@ -249,7 +249,6 @@ mod tests {
     use vm_memory::GuestMemory;
 
     use super::*;
-    use crate::Suspendable;
 
     struct DummyDevice(DeviceType);
     const QUEUE_SIZE: u16 = 256;
@@ -277,8 +276,6 @@ mod tests {
             DUMMY_FEATURES
         }
     }
-
-    impl Suspendable for DummyDevice {}
 
     #[test]
     fn write_base_regs() {

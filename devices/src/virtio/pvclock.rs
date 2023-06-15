@@ -49,7 +49,6 @@ use super::Interrupt;
 use super::Queue;
 use super::SignalableInterrupt;
 use super::VirtioDevice;
-use crate::Suspendable;
 
 // Pvclock has one virtio queue: set_pvclock_page
 const QUEUE_SIZE: u16 = 1;
@@ -555,8 +554,6 @@ fn run_worker(
     // return the tube to the device so a new worker could be spawned in the future
     suspend_tube
 }
-
-impl Suspendable for PvClock {}
 
 impl VirtioDevice for PvClock {
     fn keep_rds(&self) -> Vec<RawDescriptor> {

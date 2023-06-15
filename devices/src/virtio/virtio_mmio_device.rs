@@ -493,20 +493,5 @@ impl BusDevice for VirtioMmioDevice {
     }
 }
 
-impl Suspendable for VirtioMmioDevice {
-    fn sleep(&mut self) -> anyhow::Result<()> {
-        self.device.sleep()
-    }
-
-    fn wake(&mut self) -> anyhow::Result<()> {
-        self.device.wake()
-    }
-
-    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
-        self.device.snapshot()
-    }
-
-    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
-        self.device.restore(data)
-    }
-}
+// TODO: Mimic the Suspendable impl in ViritoPciDevice when/if someone wants it.
+impl Suspendable for VirtioMmioDevice {}

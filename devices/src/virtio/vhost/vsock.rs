@@ -31,7 +31,6 @@ use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::VirtioDevice;
-use crate::Suspendable;
 
 pub struct Vsock {
     worker_thread: Option<WorkerThread<()>>,
@@ -204,8 +203,6 @@ impl VirtioDevice for Vsock {
         }
     }
 }
-
-impl Suspendable for Vsock {}
 
 #[cfg(test)]
 mod tests {

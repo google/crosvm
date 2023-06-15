@@ -225,8 +225,6 @@ impl VirtioDevice for Vsock {
     }
 }
 
-impl Suspendable for Vsock {}
-
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 pub struct PortPair {
     host: u32,

@@ -26,7 +26,6 @@ use crate::virtio::Queue;
 use crate::virtio::SharedMemoryMapper;
 use crate::virtio::SharedMemoryRegion;
 use crate::virtio::VirtioDevice;
-use crate::Suspendable;
 
 pub struct VhostUserVirtioDevice {
     device_type: DeviceType,
@@ -232,5 +231,3 @@ impl VirtioDevice for VhostUserVirtioDevice {
         true
     }
 }
-
-impl Suspendable for VhostUserVirtioDevice {}

@@ -49,7 +49,6 @@ use crate::virtio::Queue;
 use crate::virtio::Reader;
 use crate::virtio::SignalableInterrupt;
 use crate::virtio::VirtioDevice;
-use crate::Suspendable;
 
 pub(crate) const QUEUE_SIZE: u16 = 256;
 
@@ -472,5 +471,3 @@ impl VirtioDevice for Console {
         Ok(())
     }
 }
-
-impl Suspendable for Console {}

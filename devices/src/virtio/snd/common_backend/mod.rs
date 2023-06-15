@@ -62,7 +62,6 @@ use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::VirtioDevice;
-use crate::Suspendable;
 
 pub mod async_funcs;
 pub mod stream_info;
@@ -470,8 +469,6 @@ impl VirtioDevice for VirtioSnd {
         true
     }
 }
-
-impl Suspendable for VirtioSnd {}
 
 #[derive(PartialEq)]
 enum LoopState {

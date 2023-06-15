@@ -80,7 +80,6 @@ use super::SharedMemoryRegion;
 use super::SignalableInterrupt;
 use super::VirtioDevice;
 use super::Writer;
-use crate::Suspendable;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GpuMode {
@@ -1457,8 +1456,6 @@ impl VirtioDevice for Gpu {
         true
     }
 }
-
-impl Suspendable for Gpu {}
 
 /// This struct takes the ownership of resource bridges and tracks which ones should be processed.
 struct ResourceBridges {
