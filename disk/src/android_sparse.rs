@@ -23,12 +23,14 @@ use base::RawDescriptor;
 use cros_async::BackingMemory;
 use cros_async::Executor;
 use cros_async::IoSource;
-use data_model::DataInit;
+use data_model::zerocopy_from_reader;
 use data_model::Le16;
 use data_model::Le32;
 use data_model::VolatileSlice;
 use remain::sorted;
 use thiserror::Error;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 use crate::AsyncDisk;
 use crate::DiskFile;
@@ -54,7 +56,7 @@ pub const SPARSE_HEADER_MAGIC: u32 = 0xed26ff3a;
 const MAJOR_VERSION: u16 = 1;
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, AsBytes, FromBytes)]
 struct SparseHeader {
     magic: Le32,          /* SPARSE_HEADER_MAGIC */
     major_version: Le16,  /* (0x1) - reject images with higher major versions */
@@ -69,23 +71,19 @@ struct SparseHeader {
                           /* table implementation */
 }
 
-unsafe impl DataInit for SparseHeader {}
-
 const CHUNK_TYPE_RAW: u16 = 0xCAC1;
 const CHUNK_TYPE_FILL: u16 = 0xCAC2;
 const CHUNK_TYPE_DONT_CARE: u16 = 0xCAC3;
 const CHUNK_TYPE_CRC32: u16 = 0xCAC4;
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, AsBytes, FromBytes)]
 struct ChunkHeader {
     chunk_type: Le16, /* 0xCAC1 -> raw; 0xCAC2 -> fill; 0xCAC3 -> don't care */
     reserved1: u16,
     chunk_sz: Le32, /* in blocks in output image */
     total_sz: Le32, /* in bytes of chunk input file including chunk header and data */
 }
-
-unsafe impl DataInit for ChunkHeader {}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Chunk {
@@ -117,8 +115,8 @@ fn parse_chunk<T: Read + Seek>(mut input: &mut T, blk_sz: u64) -> Result<Option<
     let current_offset = input
         .stream_position()
         .map_err(Error::ReadSpecificationError)?;
-    let chunk_header =
-        ChunkHeader::from_reader(&mut input).map_err(Error::ReadSpecificationError)?;
+    let chunk_header: ChunkHeader =
+        zerocopy_from_reader(&mut input).map_err(Error::ReadSpecificationError)?;
     let chunk_body_size = (chunk_header.total_sz.to_native() as usize)
         .checked_sub(HEADER_SIZE)
         .ok_or(Error::InvalidSpecification(format!(
@@ -167,8 +165,8 @@ impl AndroidSparse {
     pub fn from_file(mut file: File) -> Result<AndroidSparse> {
         file.seek(SeekFrom::Start(0))
             .map_err(Error::ReadSpecificationError)?;
-        let sparse_header =
-            SparseHeader::from_reader(&mut file).map_err(Error::ReadSpecificationError)?;
+        let sparse_header: SparseHeader =
+            zerocopy_from_reader(&mut file).map_err(Error::ReadSpecificationError)?;
         if sparse_header.magic != SPARSE_HEADER_MAGIC {
             return Err(Error::InvalidSpecification(format!(
                 "Header did not match magic constant. Expected {:x}, was {:x}",
@@ -470,7 +468,7 @@ mod tests {
             chunk_sz: 1.into(),
             total_sz: (CHUNK_SIZE as u32 + 123).into(),
         };
-        let header_bytes = chunk_raw.as_slice();
+        let header_bytes = chunk_raw.as_bytes();
         let mut chunk_bytes: Vec<u8> = Vec::new();
         chunk_bytes.extend_from_slice(header_bytes);
         chunk_bytes.extend_from_slice(&[0u8; 123]);
@@ -493,7 +491,7 @@ mod tests {
             chunk_sz: 100.into(),
             total_sz: (CHUNK_SIZE as u32).into(),
         };
-        let header_bytes = chunk_raw.as_slice();
+        let header_bytes = chunk_raw.as_bytes();
         let mut chunk_cursor = Cursor::new(header_bytes);
         let chunk = parse_chunk(&mut chunk_cursor, 123)
             .expect("Failed to parse")
@@ -513,7 +511,7 @@ mod tests {
             chunk_sz: 100.into(),
             total_sz: (CHUNK_SIZE as u32 + 4).into(),
         };
-        let header_bytes = chunk_raw.as_slice();
+        let header_bytes = chunk_raw.as_bytes();
         let mut chunk_bytes: Vec<u8> = Vec::new();
         chunk_bytes.extend_from_slice(header_bytes);
         chunk_bytes.extend_from_slice(&[123u8; 4]);
@@ -536,7 +534,7 @@ mod tests {
             chunk_sz: 0.into(),
             total_sz: (CHUNK_SIZE as u32 + 4).into(),
         };
-        let header_bytes = chunk_raw.as_slice();
+        let header_bytes = chunk_raw.as_bytes();
         let mut chunk_bytes: Vec<u8> = Vec::new();
         chunk_bytes.extend_from_slice(header_bytes);
         chunk_bytes.extend_from_slice(&[123u8; 4]);
