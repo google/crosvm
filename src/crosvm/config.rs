@@ -1200,6 +1200,7 @@ pub struct Config {
     pub sound: Option<PathBuf>,
     pub strict_balloon: bool,
     pub stub_pci_devices: Vec<StubPciParameters>,
+    pub suspended: bool,
     pub swap_dir: Option<PathBuf>,
     pub swiotlb: Option<u64>,
     #[cfg(target_os = "android")]
@@ -1409,7 +1410,6 @@ impl Default for Config {
             slirp_capture_file: None,
             #[cfg(all(windows, feature = "audio"))]
             snd_split_config: None,
-            swap_dir: None,
             socket_path: None,
             #[cfg(feature = "tpm")]
             software_tpm: false,
@@ -1417,6 +1417,8 @@ impl Default for Config {
             sound: None,
             strict_balloon: false,
             stub_pci_devices: Vec::new(),
+            suspended: false,
+            swap_dir: None,
             swiotlb: None,
             #[cfg(target_os = "android")]
             task_profiles: Vec::new(),

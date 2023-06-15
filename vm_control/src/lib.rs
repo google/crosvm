@@ -2183,8 +2183,8 @@ pub fn do_restore(
     vcpu_size: usize,
     mut restore_irqchip: impl FnMut(serde_json::Value) -> anyhow::Result<()>,
 ) -> anyhow::Result<()> {
-    let _guard = VcpuSuspendGuard::new(&kick_vcpus, vcpu_size)?;
-    let _device_guard = DeviceSleepGuard::new(device_control_tube)?;
+    let _guard = VcpuSuspendGuard::new(&kick_vcpus, vcpu_size);
+    let _devices_guard = DeviceSleepGuard::new(device_control_tube)?;
 
     // Restore IrqChip
     let irq_path = restore_path.with_extension("irqchip");

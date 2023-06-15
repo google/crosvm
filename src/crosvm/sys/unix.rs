@@ -2784,7 +2784,22 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     android::set_process_profiles(&cfg.task_profiles)?;
 
     #[allow(unused_mut)]
-    let mut run_mode = VmRunMode::Running;
+    let mut run_mode = if cfg.suspended {
+        // Sleep devices before creating vcpus.
+        device_ctrl_tube
+            .send(&DeviceControlCommand::SleepDevices)
+            .context("send command to devices control socket")?;
+        match device_ctrl_tube
+            .recv()
+            .context("receive from devices control socket")?
+        {
+            VmResponse::Ok => (),
+            resp => bail!("device sleep failed: {}", resp),
+        }
+        VmRunMode::Suspending
+    } else {
+        VmRunMode::Running
+    };
     #[cfg(feature = "gdb")]
     if to_gdb_channel.is_some() {
         // Wait until a GDB client attaches

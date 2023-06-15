@@ -2036,6 +2036,12 @@ pub struct RunCommand {
     ///     revision=NUM - revision
     pub stub_pci_device: Vec<StubPciParameters>,
 
+    #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
+    #[merge(strategy = overwrite_option)]
+    /// start a VM with vCPUs and devices suspended
+    pub suspended: Option<bool>,
+
     #[argh(option, long = "swap", arg_name = "PATH")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
@@ -2706,6 +2712,7 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         cfg.swap_dir = cmd.swap_dir;
         cfg.restore_path = cmd.restore;
+        cfg.suspended = cmd.suspended.unwrap_or_default();
 
         if let Some(mut socket_path) = cmd.socket {
             if socket_path.is_dir() {

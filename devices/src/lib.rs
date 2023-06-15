@@ -388,8 +388,6 @@ async fn restore_handler(
     }
 
     {
-        let _sleep_guard = SleepGuard::new(buses)?;
-
         guest_memory.restore(snapshot_root.guest_memory_metadata, &mut mem_file)?;
 
         for bus in buses {
@@ -463,6 +461,10 @@ async fn handle_command_tube(
                             .context("Failed to send response")?;
                     }
                     DeviceControlCommand::RestoreDevices { restore_path: path } => {
+                        assert!(
+                            _sleep_guard.is_some(),
+                            "devices must be sleeping to restore"
+                        );
                         if let Err(e) =
                             restore_handler(path.as_path(), &guest_memory, &[&*io_bus, &*mmio_bus])
                                 .await

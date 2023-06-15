@@ -190,6 +190,7 @@ use vm_control::VcpuControl;
 use vm_control::VmMemoryRegionState;
 use vm_control::VmMemoryRequest;
 use vm_control::VmRequest;
+use vm_control::VmResponse;
 use vm_control::VmRunMode;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
@@ -1078,6 +1079,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     restore_path: Option<PathBuf>,
     control_server_path: Option<PathBuf>,
     force_s2idle: bool,
+    suspended: bool,
 ) -> Result<ExitState> {
     let (ipc_main_loop_tube, proto_main_loop_tube, _service_ipc) =
         start_service_ipc_listener(service_pipe_name)?;
@@ -1171,6 +1173,24 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     let vcpu_boxes: Arc<Mutex<Vec<Box<dyn VcpuArch>>>> = Arc::new(Mutex::new(Vec::new()));
     let run_mode_arc = Arc::new(VcpuRunMode::default());
 
+    let run_mode_state = if suspended {
+        // Sleep devices before creating vcpus.
+        device_ctrl_tube
+            .send(&DeviceControlCommand::SleepDevices)
+            .context("send command to devices control socket")?;
+        match device_ctrl_tube
+            .recv()
+            .context("receive from devices control socket")?
+        {
+            VmResponse::Ok => (),
+            resp => bail!("device sleep failed: {}", resp),
+        }
+        run_mode_arc.set_and_notify(VmRunMode::Suspending);
+        VmRunMode::Suspending
+    } else {
+        VmRunMode::Running
+    };
+
     // If we are restoring from a snapshot, then start suspended.
     if restore_path.is_some() {
         run_mode_arc.set_and_notify(VmRunMode::Suspending);
@@ -1236,7 +1256,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             // Other platforms (unix) have multiple modes they could start in (e.g. starting for
             // guest kernel debugging, etc). If/when we support those modes on Windows, we'll need
             // to enter that mode here rather than VmRunMode::Running.
-            VcpuControl::RunState(VmRunMode::Running),
+            VcpuControl::RunState(run_mode_state),
         );
     }
 
@@ -2432,6 +2452,7 @@ where
         cfg.restore_path,
         cfg.socket_path,
         cfg.force_s2idle,
+        cfg.suspended,
     )
 }
 
