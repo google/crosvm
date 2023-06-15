@@ -68,6 +68,11 @@ pub(in crate::virtio::console) fn spawn_input_thread(
         .expect("failed to clone in_avail_evt");
 
     let res = WorkerThread::start("v_console_input", move |kill_evt| {
+        // If there is already data, signal immediately.
+        if !buffer.lock().is_empty() {
+            thread_in_avail_evt.signal().unwrap();
+        }
+
         #[derive(EventToken)]
         enum Token {
             ConsoleEvent,
@@ -102,12 +107,16 @@ pub(in crate::virtio::console) fn spawn_input_thread(
                             match rx.read(&mut rx_buf) {
                                 Ok(size) => {
                                     buffer.lock().extend(&rx_buf[0..size]);
+                                    thread_in_avail_evt.signal().unwrap();
                                 }
                                 Err(e) => {
                                     if e.kind() == io::ErrorKind::WouldBlock {
                                         break 'wait;
                                     }
-                                    error!("failed to read remaining data on exit: {:?}", e);
+                                    if is_a_fatal_input_error(&e) {
+                                        error!("failed to read remaining data on exit: {:?}", e);
+                                        break 'wait;
+                                    }
                                 }
                             }
                         }
