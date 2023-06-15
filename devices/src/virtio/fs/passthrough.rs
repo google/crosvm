@@ -37,7 +37,6 @@ use base::FileFlags;
 use base::FromRawDescriptor;
 use base::RawDescriptor;
 use data_model::zerocopy_from_reader;
-use data_model::DataInit;
 use fuse::filesystem::Context;
 use fuse::filesystem::DirectoryIterator;
 use fuse::filesystem::Entry;
@@ -142,7 +141,19 @@ struct fscrypt_get_policy_ex_arg {
     policy: fscrypt_policy, /* output */
 }
 
-unsafe impl DataInit for fscrypt_get_policy_ex_arg {}
+impl From<&fscrypt_get_policy_ex_arg> for &[u8] {
+    fn from(value: &fscrypt_get_policy_ex_arg) -> Self {
+        assert!(value.policy_size <= size_of::<fscrypt_policy>() as u64);
+        let data_raw: *const fscrypt_get_policy_ex_arg = value;
+        // Safe because the length of the output slice is asserted to be within the struct it points to
+        unsafe {
+            std::slice::from_raw_parts(
+                data_raw.cast(),
+                value.policy_size as usize + size_of::<u64>(),
+            )
+        }
+    }
+}
 
 ioctl_iowr_nr!(FS_IOC_GET_ENCRYPTION_POLICY_EX, 'f' as u32, 22, [u8; 9]);
 
@@ -1288,7 +1299,7 @@ impl PassthroughFs {
             Ok(IoctlReply::Done(Err(io::Error::last_os_error())))
         } else {
             let len = size_of::<u64>() + arg.policy_size as usize;
-            Ok(IoctlReply::Done(Ok(arg.as_slice()[..len].to_vec())))
+            Ok(IoctlReply::Done(Ok(<&[u8]>::from(&arg)[..len].to_vec())))
         }
     }
 
