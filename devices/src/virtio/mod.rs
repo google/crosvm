@@ -128,6 +128,7 @@ cfg_if::cfg_if! {
     }
 }
 
+use futures::channel::oneshot;
 use std::cmp;
 use std::convert::TryFrom;
 
@@ -267,4 +268,13 @@ impl VirtioDeviceType {
             VirtioDeviceType::Vvu => format!("{base}_device_vvu"),
         }
     }
+}
+
+/// Creates a oneshot channel, returning the rx end and adding the tx end to the
+/// provided `Vec`. Useful for creating oneshots that signal a virtqueue future
+/// to stop processing and exit.
+pub(crate) fn create_stop_oneshot(tx_vec: &mut Vec<oneshot::Sender<()>>) -> oneshot::Receiver<()> {
+    let (stop_tx, stop_rx) = futures::channel::oneshot::channel();
+    tx_vec.push(stop_tx);
+    stop_rx
 }

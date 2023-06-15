@@ -15,6 +15,9 @@ use base::error;
 use base::warn;
 use cros_async::AsyncError;
 use cros_async::EventAsync;
+use futures::channel::oneshot;
+use futures::select_biased;
+use futures::FutureExt;
 use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
@@ -476,6 +479,22 @@ impl Queue {
                 return Ok(chain);
             }
             eventfd.next_val().await?;
+        }
+    }
+
+    /// Returns `None` if stop_rx receives a value; otherwise returns the result
+    /// of waiting for the next descriptor.
+    pub async fn next_async_interruptable(
+        &mut self,
+        mem: &GuestMemory,
+        queue_event: &mut EventAsync,
+        mut stop_rx: &mut oneshot::Receiver<()>,
+    ) -> std::result::Result<Option<DescriptorChain>, AsyncError> {
+        select_biased! {
+            avail_desc_res = self.next_async(mem, queue_event).fuse() => {
+                Ok(Some(avail_desc_res?))
+            }
+            _ = stop_rx => Ok(None),
         }
     }
 

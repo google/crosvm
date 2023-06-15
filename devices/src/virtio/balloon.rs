@@ -4,6 +4,7 @@
 
 mod sys;
 
+use std::collections::BTreeMap as Map;
 use std::collections::VecDeque;
 use std::io::Write;
 use std::sync::Arc;
@@ -28,7 +29,6 @@ use base::SendTube;
 use base::Tube;
 use base::WorkerThread;
 use cros_async::block_on;
-use cros_async::select12;
 use cros_async::sync::RwLock as AsyncRwLock;
 use cros_async::AsyncTube;
 use cros_async::EventAsync;
@@ -39,7 +39,10 @@ use data_model::Le16;
 use data_model::Le32;
 use data_model::Le64;
 use futures::channel::mpsc;
+use futures::channel::oneshot;
 use futures::pin_mut;
+use futures::select;
+use futures::select_biased;
 use futures::FutureExt;
 use futures::StreamExt;
 use remain::sorted;
@@ -55,6 +58,7 @@ use zerocopy::FromBytes;
 
 use super::async_utils;
 use super::copy_config;
+use super::create_stop_oneshot;
 use super::DescriptorChain;
 use super::DeviceType;
 use super::Interrupt;
@@ -71,6 +75,9 @@ pub enum BalloonError {
     /// Failed an async await
     #[error("failed async await: {0}")]
     AsyncAwait(cros_async::AsyncError),
+    /// Failed an async await
+    #[error("failed async await: {0}")]
+    AsyncAwaitAnyhow(anyhow::Error),
     /// Failed to create event.
     #[error("failed to create event: {0}")]
     CreatingEvent(base::Error),
@@ -347,16 +354,22 @@ async fn handle_queue<F>(
     release_memory_tube: Option<&Tube>,
     interrupt: Interrupt,
     mut desc_handler: F,
-) where
+    mut stop_rx: oneshot::Receiver<()>,
+) -> Queue
+where
     F: FnMut(GuestAddress, u64),
 {
     loop {
-        let mut avail_desc = match queue.next_async(mem, &mut queue_event).await {
+        let mut avail_desc = match queue
+            .next_async_interruptable(mem, &mut queue_event, &mut stop_rx)
+            .await
+        {
+            Ok(Some(res)) => res,
+            Ok(None) => return queue,
             Err(e) => {
                 error!("Failed to read descriptor {}", e);
-                return;
+                return queue;
             }
-            Ok(d) => d,
         };
         if let Err(e) =
             handle_address_chain(release_memory_tube, &mut avail_desc, &mut desc_handler)
@@ -396,16 +409,22 @@ async fn handle_reporting_queue<F>(
     release_memory_tube: Option<&Tube>,
     interrupt: Interrupt,
     mut desc_handler: F,
-) where
+    mut stop_rx: oneshot::Receiver<()>,
+) -> Queue
+where
     F: FnMut(GuestAddress, u64),
 {
     loop {
-        let avail_desc = match queue.next_async(mem, &mut queue_event).await {
+        let avail_desc = match queue
+            .next_async_interruptable(mem, &mut queue_event, &mut stop_rx)
+            .await
+        {
+            Ok(Some(res)) => res,
+            Ok(None) => return queue,
             Err(e) => {
                 error!("Failed to read descriptor {}", e);
-                return;
+                return queue;
             }
-            Ok(d) => d,
         };
         if let Err(e) = handle_reported_buffer(release_memory_tube, &avail_desc, &mut desc_handler)
         {
@@ -443,24 +462,35 @@ async fn handle_stats_queue(
     #[cfg(feature = "registered_events")] registered_evt_q: Option<&SendTubeAsync>,
     state: Arc<AsyncRwLock<BalloonState>>,
     interrupt: Interrupt,
-) {
-    // Consume the first stats buffer sent from the guest at startup. It was not
-    // requested by anyone, and the stats are stale.
-    let mut avail_desc = match queue.next_async(mem, &mut queue_event).await {
+    mut stop_rx: oneshot::Receiver<()>,
+) -> Queue {
+    let mut avail_desc = match queue
+        .next_async_interruptable(mem, &mut queue_event, &mut stop_rx)
+        .await
+    {
+        // Consume the first stats buffer sent from the guest at startup. It was not
+        // requested by anyone, and the stats are stale.
+        Ok(Some(res)) => res,
+        Ok(None) => return queue,
         Err(e) => {
             error!("Failed to read descriptor {}", e);
-            return;
+            return queue;
         }
-        Ok(d) => d,
     };
+
     loop {
-        // Wait for a request to read the stats.
-        let id = match stats_rx.next().await {
-            Some(id) => id,
-            None => {
-                error!("stats signal tube was closed");
-                break;
+        let id = select_biased! {
+            id_res = stats_rx.next() => {
+                // Wait for a request to read the stats.
+                match id_res {
+                    Some(id) => id,
+                    None => {
+                        error!("stats signal tube was closed");
+                        return queue;
+                    }
+                }
             }
+            _ = stop_rx => return queue,
         };
 
         // Request a new stats_desc to the guest.
@@ -470,7 +500,7 @@ async fn handle_stats_queue(
         avail_desc = match queue.next_async(mem, &mut queue_event).await {
             Err(e) => {
                 error!("Failed to read descriptor {}", e);
-                return;
+                return queue;
             }
             Ok(d) => d,
         };
@@ -548,12 +578,13 @@ async fn handle_events_queue(
     state: Arc<AsyncRwLock<BalloonState>>,
     interrupt: Interrupt,
     command_tube: &AsyncTube,
-) -> Result<()> {
-    loop {
-        let mut avail_desc = queue
-            .next_async(mem, &mut queue_event)
-            .await
-            .map_err(BalloonError::AsyncAwait)?;
+    mut stop_rx: oneshot::Receiver<()>,
+) -> Result<Queue> {
+    while let Some(mut avail_desc) = queue
+        .next_async_interruptable(mem, &mut queue_event, &mut stop_rx)
+        .await
+        .map_err(BalloonError::AsyncAwait)?
+    {
         handle_event(
             state.clone(),
             interrupt.clone(),
@@ -565,6 +596,7 @@ async fn handle_events_queue(
         queue.add_used(mem, avail_desc, 0);
         queue.trigger_interrupt(mem, &interrupt);
     }
+    Ok(queue)
 }
 
 enum WSSOp {
@@ -585,12 +617,20 @@ async fn handle_wss_op_queue(
     mut wss_op_rx: mpsc::Receiver<WSSOp>,
     state: Arc<AsyncRwLock<BalloonState>>,
     interrupt: Interrupt,
-) -> Result<()> {
+    mut stop_rx: oneshot::Receiver<()>,
+) -> Result<Queue> {
     loop {
-        let op = match wss_op_rx.next().await {
-            Some(op) => op,
-            None => {
-                error!("wss op tube was closed");
+        let op = select_biased! {
+            next_op = wss_op_rx.next().fuse() => {
+                match next_op {
+                    Some(op) => op,
+                    None => {
+                        error!("wss op tube was closed");
+                        break;
+                    }
+                }
+            }
+            _ = stop_rx => {
                 break;
             }
         };
@@ -641,7 +681,7 @@ async fn handle_wss_op_queue(
         queue.trigger_interrupt(mem, &interrupt);
     }
 
-    Ok(())
+    Ok(queue)
 }
 
 fn parse_balloon_wss(reader: &mut Reader) -> BalloonWSS {
@@ -678,12 +718,18 @@ async fn handle_wss_data_queue(
     #[cfg(feature = "registered_events")] registered_evt_q: Option<&SendTubeAsync>,
     state: Arc<AsyncRwLock<BalloonState>>,
     interrupt: Interrupt,
-) -> Result<()> {
+    mut stop_rx: oneshot::Receiver<()>,
+) -> Result<Queue> {
     loop {
-        let mut avail_desc = queue
-            .next_async(mem, &mut queue_event)
+        let mut avail_desc = match queue
+            .next_async_interruptable(mem, &mut queue_event, &mut stop_rx)
             .await
-            .map_err(BalloonError::AsyncAwait)?;
+            .map_err(BalloonError::AsyncAwait)?
+        {
+            Some(res) => res,
+            None => return Ok(queue),
+        };
+
         let wss = parse_balloon_wss(&mut avail_desc.reader);
 
         let mut state = state.lock().await;
@@ -801,10 +847,76 @@ async fn handle_pending_adjusted_responses(
     }
 }
 
-#[cfg(feature = "registered_events")]
-type WorkerReturn = (Option<Tube>, Tube, Option<SendTube>);
-#[cfg(not(feature = "registered_events"))]
-type WorkerReturn = (Option<Tube>, Tube);
+/// When the worker is stopped, the queues are preserved here.
+struct PausedQueues {
+    inflate: Queue,
+    deflate: Queue,
+    stats: Option<Queue>,
+    reporting: Option<Queue>,
+    events: Option<Queue>,
+    wss: (Option<Queue>, Option<Queue>),
+}
+
+impl PausedQueues {
+    fn new(inflate: Queue, deflate: Queue) -> Self {
+        PausedQueues {
+            inflate,
+            deflate,
+            stats: None,
+            reporting: None,
+            events: None,
+            wss: (None, None),
+        }
+    }
+}
+
+fn apply_if_some<F, R>(queue_opt: Option<Queue>, mut func: F)
+where
+    F: FnMut(Queue) -> R,
+{
+    if let Some(queue) = queue_opt {
+        func(queue);
+    }
+}
+
+impl From<Box<PausedQueues>> for Map<usize, Queue> {
+    fn from(queues: Box<PausedQueues>) -> Map<usize, Queue> {
+        let mut ret = Map::new();
+        ret.insert(0, queues.inflate);
+        ret.insert(1, queues.deflate);
+        apply_if_some(queues.stats, |stats| ret.insert(2, stats));
+        apply_if_some(queues.reporting, |reporting| ret.insert(3, reporting));
+        apply_if_some(queues.events, |events| ret.insert(4, events));
+        apply_if_some(queues.wss.0, |wss_data| ret.insert(5, wss_data));
+        apply_if_some(queues.wss.1, |wss_op| ret.insert(6, wss_op));
+        ret
+    }
+}
+
+impl From<Map<usize, Queue>> for PausedQueues {
+    fn from(mut queues: Map<usize, Queue>) -> Self {
+        PausedQueues {
+            inflate: queues.remove(&0).expect("the inflate queue is required"),
+            deflate: queues.remove(&1).expect("the deflate queue is required"),
+            stats: queues.remove(&2),
+            reporting: queues.remove(&3),
+            events: queues.remove(&4),
+            wss: (queues.remove(&5), queues.remove(&6)),
+        }
+    }
+}
+
+/// Stores data from the worker when it stops so that data can be re-used when
+/// the worker is restarted.
+struct WorkerReturn {
+    release_memory_tube: Option<Tube>,
+    command_tube: Tube,
+    #[cfg(feature = "registered_events")]
+    registered_evt_q: Option<SendTube>,
+    paused_queues: Option<PausedQueues>,
+    #[cfg(windows)]
+    vm_memory_client: VmMemoryClient,
+}
 
 // The main worker thread. Initialized the asynchronous worker tasks and passes them to the executor
 // to be processed.
@@ -833,9 +945,12 @@ fn run_worker(
         .as_ref()
         .map(|q| SendTubeAsync::new(q.try_clone().unwrap(), &ex).unwrap());
 
+    let mut stop_queue_oneshots = Vec::new();
+
     // We need a block to release all references to command_tube at the end before returning it.
-    {
+    let paused_queues = {
         // The first queue is used for inflate messages
+        let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
         let inflate = handle_queue(
             &mem,
             inflate_queue.0,
@@ -852,10 +967,13 @@ fn run_worker(
                     &mem,
                 )
             },
+            stop_rx,
         );
+        let inflate = inflate.fuse();
         pin_mut!(inflate);
 
         // The second queue is used for deflate messages
+        let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
         let deflate = handle_queue(
             &mem,
             deflate_queue.0,
@@ -870,14 +988,18 @@ fn run_worker(
                     &vm_memory_client,
                 )
             },
+            stop_rx,
         );
+        let deflate = deflate.fuse();
         pin_mut!(deflate);
 
         // The next queue is used for stats messages if VIRTIO_BALLOON_F_STATS_VQ is negotiated.
         // The message type is the id of the stats request, so we can detect if there are any stale
         // stats results that were queued during an error condition.
         let (stats_tx, stats_rx) = mpsc::channel::<u64>(1);
+        let has_stats_queue = stats_queue.is_some();
         let stats = if let Some((stats_queue, stats_queue_evt)) = stats_queue {
+            let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
             handle_stats_queue(
                 &mem,
                 stats_queue,
@@ -888,15 +1010,19 @@ fn run_worker(
                 registered_evt_q_async.as_ref(),
                 state.clone(),
                 interrupt.clone(),
+                stop_rx,
             )
             .left_future()
         } else {
             std::future::pending().right_future()
         };
+        let stats = stats.fuse();
         pin_mut!(stats);
 
         // The next queue is used for reporting messages
+        let has_reporting_queue = reporting_queue.is_some();
         let reporting = if let Some((reporting_queue, reporting_queue_evt)) = reporting_queue {
+            let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
             handle_reporting_queue(
                 &mem,
                 reporting_queue,
@@ -913,16 +1039,20 @@ fn run_worker(
                         &mem,
                     )
                 },
+                stop_rx,
             )
             .left_future()
         } else {
             std::future::pending().right_future()
         };
+        let reporting = reporting.fuse();
         pin_mut!(reporting);
 
         // If VIRTIO_BALLOON_F_WSS_REPORTING is set 2 queues must handled - one for WSS data and one
         // for WSS notifications.
+        let has_wss_data_queue = wss_queues.0.is_some();
         let wss_data = if let Some((wss_data_queue, wss_data_queue_evt)) = wss_queues.0 {
+            let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
             handle_wss_data_queue(
                 &mem,
                 wss_data_queue,
@@ -932,15 +1062,19 @@ fn run_worker(
                 registered_evt_q_async.as_ref(),
                 state.clone(),
                 interrupt.clone(),
+                stop_rx,
             )
             .left_future()
         } else {
             std::future::pending().right_future()
         };
+        let wss_data = wss_data.fuse();
         pin_mut!(wss_data);
 
         let (wss_op_tx, wss_op_rx) = mpsc::channel::<WSSOp>(1);
+        let has_wss_op_queue = wss_queues.1.is_some();
         let wss_op = if let Some((wss_op_queue, wss_op_queue_evt)) = wss_queues.1 {
+            let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
             handle_wss_op_queue(
                 &mem,
                 wss_op_queue,
@@ -948,11 +1082,13 @@ fn run_worker(
                 wss_op_rx,
                 state.clone(),
                 interrupt.clone(),
+                stop_rx,
             )
             .left_future()
         } else {
             std::future::pending().right_future()
         };
+        let wss_op = wss_op.fuse();
         pin_mut!(wss_op);
 
         // Future to handle command messages that resize the balloon.
@@ -983,7 +1119,9 @@ fn run_worker(
         pin_mut!(kill);
 
         // The next queue is used for events if VIRTIO_BALLOON_F_EVENTS_VQ is negotiated.
+        let has_events_queue = events_queue.is_some();
         let events = if let Some((events_queue, events_queue_evt)) = events_queue {
+            let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
             handle_events_queue(
                 &mem,
                 events_queue,
@@ -991,11 +1129,13 @@ fn run_worker(
                 state.clone(),
                 interrupt,
                 &command_tube,
+                stop_rx,
             )
             .left_future()
         } else {
             std::future::pending().right_future()
         };
+        let events = events.fuse();
         pin_mut!(events);
 
         let pending_adjusted = handle_pending_adjusted_responses(
@@ -1006,33 +1146,78 @@ fn run_worker(
         );
         pin_mut!(pending_adjusted);
 
-        if let Err(e) = ex
-            .run_until(select12(
-                inflate,
-                deflate,
-                stats,
-                reporting,
-                command,
-                wss_op,
-                resample,
-                kill,
-                events,
-                pending_adjusted,
-                wss_data,
-                target_reached,
-            ))
-            .map(|_| ())
-        {
-            error!("error happened in executor: {}", e);
-        }
-    }
+        let res = ex.run_until(async {
+            select! {
+                _ = kill.fuse() => (),
+                _ = inflate => return Err(anyhow!("inflate stopped unexpectedly")),
+                _ = deflate => return Err(anyhow!("deflate stopped unexpectedly")),
+                _ = stats => return Err(anyhow!("stats stopped unexpectedly")),
+                _ = reporting => return Err(anyhow!("reporting stopped unexpectedly")),
+                _ = command.fuse() => return Err(anyhow!("command stopped unexpectedly")),
+                _ = wss_op => return Err(anyhow!("wss_op stopped unexpectedly")),
+                _ = resample.fuse() => return Err(anyhow!("resample stopped unexpectedly")),
+                _ = events => return Err(anyhow!("events stopped unexpectedly")),
+                _ = pending_adjusted.fuse() => return Err(anyhow!("pending_adjusted stopped unexpectedly")),
+                _ = wss_data => return Err(anyhow!("wss_data stopped unexpectedly")),
+                _ = target_reached.fuse() => return Err(anyhow!("target_reached stopped unexpectedly")),
+            }
 
-    (
+            // Worker is shutting down. To recover the queues, we have to signal
+            // all the queue futures to exit.
+            for stop_tx in stop_queue_oneshots {
+                if stop_tx.send(()).is_err() {
+                    return Err(anyhow!("failed to request stop for queue future"));
+                }
+            }
+
+            // Collect all the queues (awaiting any queue future should now
+            // return its Queue immediately).
+            let mut paused_queues = PausedQueues::new(
+                inflate.await,
+                deflate.await,
+            );
+            if has_reporting_queue {
+                paused_queues.reporting = Some(reporting.await);
+            }
+            if has_events_queue {
+                paused_queues.events = Some(events.await.context("failed to stop events queue")?);
+            }
+            if has_stats_queue {
+                paused_queues.stats = Some(stats.await);
+            }
+            if has_wss_op_queue {
+                paused_queues.wss.0 = Some(wss_op.await.context("failed to stop wss_op queue")?);
+            }
+            if has_wss_data_queue {
+                paused_queues.wss.1 = Some(wss_data.await.context("failed to stop wss_data queue")?);
+            }
+            Ok(paused_queues)
+        });
+
+        match res {
+            Err(e) => {
+                error!("error happened in executor: {}", e);
+                None
+            }
+            Ok(main_future_res) => match main_future_res {
+                Ok(paused_queues) => Some(paused_queues),
+                Err(e) => {
+                    error!("error happened in main balloon future: {}", e);
+                    None
+                }
+            },
+        }
+    };
+
+    WorkerReturn {
+        command_tube: command_tube.into(),
+        paused_queues,
         release_memory_tube,
-        command_tube.into(),
         #[cfg(feature = "registered_events")]
         registered_evt_q,
-    )
+        #[cfg(windows)]
+        vm_memory_client,
+    }
 }
 
 async fn handle_target_reached(
@@ -1175,6 +1360,45 @@ impl Balloon {
 
         num_queues
     }
+
+    fn stop_worker(&mut self) -> StoppedWorker {
+        if let Some(worker_thread) = self.worker_thread.take() {
+            let worker_ret = worker_thread.stop();
+            self.release_memory_tube = worker_ret.release_memory_tube;
+            self.command_tube = Some(worker_ret.command_tube);
+            #[cfg(feature = "registered_events")]
+            {
+                self.registered_evt_q = worker_ret.registered_evt_q;
+            }
+            #[cfg(windows)]
+            {
+                self.vm_memory_client = Some(worker_ret.vm_memory_client);
+            }
+
+            if let Some(queues) = worker_ret.paused_queues {
+                StoppedWorker::WithQueues(Box::new(queues))
+            } else {
+                StoppedWorker::MissingQueues
+            }
+        } else {
+            StoppedWorker::AlreadyStopped
+        }
+    }
+}
+
+/// When we request to stop the worker, this represents the terminal state
+/// for the thread (if it exists).
+enum StoppedWorker {
+    /// Worker stopped successfully & returned its queues.
+    WithQueues(Box<PausedQueues>),
+
+    /// Worker wasn't running when the stop was requested.
+    AlreadyStopped,
+
+    /// Worker was running but did not successfully return its queues. Something
+    /// has gone wrong (and will be in the error log). In the case of a device
+    /// reset this is fine since the next activation will replace the queues.
+    MissingQueues,
 }
 
 impl VirtioDevice for Balloon {
@@ -1324,20 +1548,23 @@ impl VirtioDevice for Balloon {
     }
 
     fn reset(&mut self) -> bool {
-        if let Some(worker_thread) = self.worker_thread.take() {
-            #[cfg(feature = "registered_events")]
-            let (release_memory_tube, command_tube, registered_evt_q) = worker_thread.stop();
-            #[cfg(not(feature = "registered_events"))]
-            let (release_memory_tube, command_tube) = worker_thread.stop();
-            self.release_memory_tube = release_memory_tube;
-            self.command_tube = Some(command_tube);
-            #[cfg(feature = "registered_events")]
-            {
-                self.registered_evt_q = registered_evt_q;
-            }
-            return true;
+        if let StoppedWorker::AlreadyStopped = self.stop_worker() {
+            return false;
         }
-        false
+        true
+    }
+
+    fn virtio_sleep(&mut self) -> anyhow::Result<Option<Map<usize, Queue>>> {
+        match self.stop_worker() {
+            StoppedWorker::WithQueues(paused_queues) => Ok(Some(paused_queues.into())),
+            StoppedWorker::MissingQueues => {
+                anyhow::bail!("balloon queue workers did not stop cleanly.")
+            }
+            StoppedWorker::AlreadyStopped => {
+                // Device hasn't been activated.
+                Ok(None)
+            }
+        }
     }
 }
 
