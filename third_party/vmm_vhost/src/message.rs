@@ -154,8 +154,10 @@ pub enum MasterReq {
     WAKE = 43,
     /// Request serialized state of vhost process.
     SNAPSHOT = 44,
+    /// Request to restore state of vhost process.
+    RESTORE = 45,
     /// Upper bound of valid commands.
-    MAX_CMD = 45,
+    MAX_CMD = 46,
 }
 
 impl From<MasterReq> for u32 {
@@ -474,6 +476,15 @@ impl VhostUserU64 {
 }
 
 impl VhostUserMsgValidator for VhostUserU64 {}
+
+#[derive(Default, Clone, Copy)]
+/// An empty message.
+pub struct VhostUserEmptyMsg;
+
+// Safe because it only has data and has no implicit padding.
+unsafe impl DataInit for VhostUserEmptyMsg {}
+
+impl VhostUserMsgValidator for VhostUserEmptyMsg {}
 
 /// A generic message to encapsulate a success or failure.
 #[repr(packed)]

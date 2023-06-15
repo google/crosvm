@@ -478,6 +478,11 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
         base::warn!("snapshot not implemented for vsock.");
         Ok(Vec::new())
     }
+
+    fn restore(&mut self, _data_bytes: &[u8], _queue_evts: Option<Vec<File>>) -> Result<()> {
+        base::warn!("restore not implemented for vsock.");
+        Ok(())
+    }
 }
 
 #[derive(FromArgs)]

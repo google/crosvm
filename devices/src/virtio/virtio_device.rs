@@ -17,11 +17,11 @@ use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
 use super::*;
-use crate::pci::MsixStatus;
 use crate::pci::PciAddress;
 use crate::pci::PciBarConfiguration;
 use crate::pci::PciBarIndex;
 use crate::pci::PciCapability;
+use crate::pci::{MsixConfig, MsixStatus};
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -241,5 +241,24 @@ pub trait VirtioDevice: Send {
     /// Returns true if the device uses the vhost user protocol.
     fn is_vhost_user(&self) -> bool {
         false
+    }
+
+    /// Vhost user device specific restore to be called instead of `virtio_restore`. This will
+    /// rewire irqfds, queue_evts, start up the worker if needed, and send a RESTORE request to
+    /// the device process.
+    fn vhost_user_restore(
+        &mut self,
+        _data: serde_json::Value,
+        _queue_configs: &[Queue],
+        _queue_evts: Option<Vec<Event>>,
+        _interrupt: Option<Interrupt>,
+        _mem: GuestMemory,
+        _msix_config: &Arc<Mutex<MsixConfig>>,
+        _device_activated: bool,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!(
+            "vhost_user_restore not implemented for {}",
+            self.debug_label()
+        );
     }
 }

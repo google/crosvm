@@ -1100,7 +1100,6 @@ impl Suspendable for VirtioPciDevice {
         let deser: VirtioPciDeviceSnapshot = serde_json::from_value(data)?;
 
         self.config_regs = deser.config_regs;
-        self.device.virtio_restore(deser.inner_device)?;
         self.device_activated = deser.device_activated;
 
         self.msix_config.lock().restore(deser.msix_config)?;
@@ -1178,6 +1177,43 @@ impl Suspendable for VirtioPciDevice {
                 }
                 Ok::<(), anyhow::Error>(())
             })?;
+
+        if self.device.is_vhost_user() {
+            let (queue_evts, interrupt) = if self.device_activated {
+                (
+                    Some(
+                        self.queue_evts
+                            .iter()
+                            .map(|queue_evt| {
+                                queue_evt
+                                    .event
+                                    .try_clone()
+                                    .context("Failed to clone queue_evt")
+                            })
+                            .collect::<anyhow::Result<Vec<_>>>()?,
+                    ),
+                    Some(
+                        self.interrupt
+                            .as_ref()
+                            .expect("Interrupt should not be empty if device was activated.")
+                            .clone(),
+                    ),
+                )
+            } else {
+                (None, None)
+            };
+            self.device.vhost_user_restore(
+                deser.inner_device,
+                &self.queues,
+                queue_evts,
+                interrupt,
+                self.mem.clone(),
+                &self.msix_config,
+                self.device_activated,
+            )?;
+        } else {
+            self.device.virtio_restore(deser.inner_device)?;
+        }
 
         Ok(())
     }

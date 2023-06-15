@@ -88,6 +88,9 @@ pub enum Error {
     /// client exited properly.
     #[error("client exited properly")]
     ClientExit,
+    /// Failure to deserialize data.
+    #[error("failed to deserialize data")]
+    DeserializationFailed,
     /// client disconnected.
     /// If connection is closed properly, use `ClientExit` instead.
     #[error("client closed the connection")]
@@ -127,6 +130,9 @@ pub enum Error {
     /// Error from request handler
     #[error("handler failed to handle request: {0}")]
     ReqHandlerError(IOError),
+    /// Failure to restore.
+    #[error("Failed to restore")]
+    RestoreError(anyhow::Error),
     /// Failure to serialize data.
     #[error("failed to serialize data")]
     SerializationFailed,
@@ -160,6 +166,9 @@ pub enum Error {
     /// Error from VFIO device.
     #[error("error occurred in VFIO device: {0}")]
     VfioDeviceError(anyhow::Error),
+    /// Error from invalid vring index.
+    #[error("Vring index not found: {0}")]
+    VringIndexNotFound(usize),
 }
 
 impl From<base::TubeError> for Error {

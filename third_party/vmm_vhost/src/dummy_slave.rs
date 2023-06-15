@@ -289,4 +289,8 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
     fn snapshot(&mut self) -> Result<Vec<u8>> {
         Ok(Vec::new())
     }
+
+    fn restore(&mut self, _data_bytes: &[u8], _queue_evts: Option<Vec<File>>) -> Result<()> {
+        Ok(())
+    }
 }

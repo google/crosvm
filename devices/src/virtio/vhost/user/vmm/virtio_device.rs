@@ -6,13 +6,16 @@
 
 use std::cell::RefCell;
 use std::collections::BTreeMap as Map;
+use std::sync::Arc;
 
+use crate::pci::MsixConfig;
 use anyhow::Context;
 use base::error;
 use base::Event;
 use base::RawDescriptor;
 use base::WorkerThread;
 use serde_json::Value;
+use sync::Mutex;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
@@ -220,8 +223,7 @@ impl VirtioDevice for VhostUserVirtioDevice {
         self.handler
             .borrow_mut()
             .wake()
-            .context("Failed to wake device.")?;
-        Ok(())
+            .context("Failed to wake device.")
     }
 
     fn virtio_snapshot(&self) -> anyhow::Result<Value> {
@@ -229,11 +231,64 @@ impl VirtioDevice for VhostUserVirtioDevice {
     }
 
     fn virtio_restore(&mut self, _data: Value) -> anyhow::Result<()> {
-        // TODO(b/280607404): Implement. Returning Ok so that e2e_test pass.
-        Ok(())
+        panic!("virtio_restore should not be called for vhost-user devices.")
     }
 
     fn is_vhost_user(&self) -> bool {
         true
+    }
+
+    fn vhost_user_restore(
+        &mut self,
+        data: Value,
+        queue_configs: &[Queue],
+        queue_evts: Option<Vec<Event>>,
+        interrupt: Option<Interrupt>,
+        mem: GuestMemory,
+        msix_config: &Arc<Mutex<MsixConfig>>,
+        device_activated: bool,
+    ) -> anyhow::Result<()> {
+        if device_activated {
+            let non_msix_evt = Event::new().context("Failed to create event")?;
+            queue_configs
+                .iter()
+                .enumerate()
+                .filter(|(_, q)| q.ready())
+                .try_for_each(|(queue_index, queue)| {
+                    let msix_lock = msix_config.lock();
+                    let irqfd = msix_lock
+                        .get_irqfd(queue.vector() as usize)
+                        .unwrap_or(&non_msix_evt);
+
+                    self.handler
+                        .borrow_mut()
+                        .restore_irqfd(queue_index, irqfd)
+                        .context("Failed to restore irqfd")?;
+
+                    Ok::<(), anyhow::Error>(())
+                })?;
+
+            anyhow::ensure!(
+                self.worker_thread.is_none(),
+                "self.worker_thread is some, but that should not be possible since only cold restore \
+                is supported."
+            );
+            self.worker_thread = Some(
+                self.handler
+                    .borrow_mut()
+                    .start_worker(
+                        interrupt.expect(
+                            "Interrupt doesn't exist. This shouldn't \
+                        happen since the device is activated.",
+                        ),
+                        &format!("{}", self.device_type),
+                        mem,
+                        non_msix_evt,
+                    )
+                    .context("Failed to start worker on restore.")?,
+            );
+        }
+
+        Ok(self.handler.borrow_mut().restore(data, queue_evts)?)
     }
 }

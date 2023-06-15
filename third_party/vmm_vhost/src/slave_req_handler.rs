@@ -108,6 +108,7 @@ pub trait VhostUserSlaveReqHandler {
     fn sleep(&self) -> Result<()>;
     fn wake(&self) -> Result<()>;
     fn snapshot(&self) -> Result<Vec<u8>>;
+    fn restore(&self, data_bytes: &[u8], queue_evts: Option<Vec<File>>) -> Result<()>;
 }
 
 /// Services provided to the master by the slave without interior mutability.
@@ -167,6 +168,7 @@ pub trait VhostUserSlaveReqHandlerMut {
     /// device is already awake.
     fn wake(&mut self) -> Result<()>;
     fn snapshot(&mut self) -> Result<Vec<u8>>;
+    fn restore(&mut self, data_bytes: &[u8], queue_evts: Option<Vec<File>>) -> Result<()>;
 }
 
 impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
@@ -294,6 +296,10 @@ impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
 
     fn snapshot(&self) -> Result<Vec<u8>> {
         self.lock().unwrap().snapshot()
+    }
+
+    fn restore(&self, data_bytes: &[u8], queue_evts: Option<Vec<File>>) -> Result<()> {
+        self.lock().unwrap().restore(data_bytes, queue_evts)
     }
 }
 
@@ -424,6 +430,10 @@ where
 
     fn snapshot(&self) -> Result<Vec<u8>> {
         self.as_ref().snapshot()
+    }
+
+    fn restore(&self, data_bytes: &[u8], queue_evts: Option<Vec<File>>) -> Result<()> {
+        self.as_ref().restore(data_bytes, queue_evts)
     }
 }
 
@@ -982,6 +992,11 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
                     payload.as_slice(),
                 )?;
             }
+            MasterReq::RESTORE => {
+                let res = self.backend.restore(buf.as_slice(), files);
+                let msg = VhostUserSuccess::new(res.is_ok());
+                self.slave_req_helper.send_reply_message(&hdr, &msg)?;
+            }
             _ => {
                 return Err(Error::InvalidMessage);
             }
@@ -1144,6 +1159,7 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
             | MasterReq::SET_LOG_FD
             | MasterReq::SET_SLAVE_REQ_FD
             | MasterReq::SET_INFLIGHT_FD
+            | MasterReq::RESTORE
             | MasterReq::ADD_MEM_REG => Ok(()),
             _ if files.is_some() => Err(Error::InvalidMessage),
             _ => Ok(()),

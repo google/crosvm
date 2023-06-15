@@ -279,30 +279,7 @@ impl VhostUserHandler {
 
         drop(msix_config);
 
-        let label = format!("vhost_user_virtio_{}", label);
-
-        let backend_req_handler = self.backend_req_handler.take();
-        if let Some(handler) = &backend_req_handler {
-            // Using unwrap here to get the mutex protected value
-            handler
-                .backend()
-                .lock()
-                .unwrap()
-                .set_interrupt(interrupt.clone());
-        }
-
-        Ok(WorkerThread::start(label.clone(), move |kill_evt| {
-            let mut worker = worker::Worker {
-                mem,
-                kill_evt,
-                non_msix_evt,
-                backend_req_handler,
-            };
-
-            if let Err(e) = worker.run(interrupt) {
-                error!("failed to start {} worker: {}", label, e);
-            }
-        }))
+        self.start_worker(interrupt, label, mem, non_msix_evt)
     }
 
     /// Deactivates all vrings.
@@ -382,9 +359,63 @@ impl VhostUserHandler {
         self.vu.wake().map_err(Error::Wake)
     }
 
+    /// Sends a snapshot request to the device and it should respond with the device's serialized
+    /// state.
     pub fn snapshot(&self) -> Result<serde_json::Value> {
         let snapshot_bytes = self.vu.snapshot().map_err(Error::Snapshot)?;
         serde_json::from_slice(&snapshot_bytes).map_err(Error::SliceToSerdeValue)
+    }
+
+    /// Sends a restore request with a payload of serialized snapshotted data and queue_evts to the
+    /// device process so that it can revive its state and wire up the queue_evts again.
+    pub fn restore(&self, data: serde_json::Value, queue_evts: Option<Vec<Event>>) -> Result<()> {
+        let data_bytes = serde_json::to_vec(&data).map_err(Error::SerdeValueToSlice)?;
+        self.vu
+            .restore(data_bytes.as_slice(), queue_evts)
+            .map_err(Error::Restore)
+    }
+
+    /// Rewire up irqfds. Meant to be called right before `restore` and should only be called
+    /// if the device is asleep.
+    pub fn restore_irqfd(&self, queue_index: usize, irqfd: &Event) -> Result<()> {
+        self.vu
+            .set_vring_call(queue_index, irqfd)
+            .map_err(Error::SetVringCall)
+    }
+
+    /// Helper to start up the worker thread that will be used with handling interrupts and requests
+    /// from the device process.
+    pub fn start_worker(
+        &mut self,
+        interrupt: Interrupt,
+        label: &str,
+        mem: GuestMemory,
+        non_msix_evt: Event,
+    ) -> Result<WorkerThread<()>> {
+        let label = format!("vhost_user_virtio_{}", label);
+
+        let backend_req_handler = self.backend_req_handler.take();
+        if let Some(handler) = &backend_req_handler {
+            // Using unwrap here to get the mutex protected value
+            handler
+                .backend()
+                .lock()
+                .unwrap()
+                .set_interrupt(interrupt.clone());
+        }
+
+        Ok(WorkerThread::start(label.clone(), move |kill_evt| {
+            let mut worker = worker::Worker {
+                mem,
+                kill_evt,
+                non_msix_evt,
+                backend_req_handler,
+            };
+
+            if let Err(e) = worker.run(interrupt) {
+                error!("failed to start {} worker: {}", label, e);
+            }
+        }))
     }
 }
 

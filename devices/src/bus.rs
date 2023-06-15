@@ -465,7 +465,11 @@ impl Bus {
                         Some(dev_dq) => {
                             match dev_dq.pop_front() {
                                 Some(dev_data) => {
-                                    (*device_lock).restore(dev_data).context("device failed to restore snapshot")?;
+                                    let restore_res = (*device_lock).restore(dev_data);
+                                    if let Err(e) = &restore_res {
+                                        error!("restore failed with error: {}", e);
+                                    }
+                                    restore_res.context("device failed to restore snapshot")?;
                                 }
                                 None => base::info!("no data found in snapshot for {}", device_lock.debug_label()),
                             }
