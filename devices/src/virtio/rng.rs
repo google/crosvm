@@ -102,6 +102,7 @@ impl Worker {
             };
 
             let mut needs_interrupt = false;
+            let mut exiting = false;
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
                     Token::QueueAvailable => {
@@ -114,11 +115,14 @@ impl Worker {
                     Token::InterruptResample => {
                         self.interrupt.interrupt_resample();
                     }
-                    Token::Kill => break 'wait,
+                    Token::Kill => exiting = true,
                 }
             }
             if needs_interrupt {
                 self.queue.trigger_interrupt(&self.mem, &self.interrupt);
+            }
+            if exiting {
+                break;
             }
         }
         Ok(vec![self.queue])
@@ -200,5 +204,30 @@ impl VirtioDevice for Rng {
             return Ok(Some(queues));
         }
         Ok(None)
+    }
+
+    fn virtio_wake(
+        &mut self,
+        queues_state: Option<(GuestMemory, Interrupt, Vec<(Queue, Event)>)>,
+    ) -> anyhow::Result<()> {
+        if let Some((mem, interrupt, queues)) = queues_state {
+            self.activate(mem, interrupt, queues)?;
+        }
+        Ok(())
+    }
+
+    fn virtio_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        // `virtio_sleep` ensures there is no pending state, except for the `Queue`s, which are
+        // handled at a higher layer.
+        Ok(serde_json::Value::Null)
+    }
+
+    fn virtio_restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            data == serde_json::Value::Null,
+            "unexpected snapshot data: should be null, got {}",
+            data,
+        );
+        Ok(())
     }
 }
