@@ -9,6 +9,10 @@ pub mod config;
 mod device_helpers;
 #[cfg(feature = "gpu")]
 pub(crate) mod gpu;
+#[cfg(feature = "pci-hotplug")]
+pub(crate) mod jail_warden;
+#[cfg(feature = "pci-hotplug")]
+pub(crate) mod pci_hotplug_helpers;
 mod vcpu;
 
 use std::cmp::max;

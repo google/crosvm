@@ -1,0 +1,49 @@
+# Copyright 2023 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# Rules for jail_warden, which is union of the rules for the devices it creates,
+# rules for creating devices, and rules for jailing devices.
+
+@include /usr/share/policy/crosvm/common_device.policy
+
+capget: 1
+capset: 1
+chdir: 1
+chroot: 1
+clone: 1
+fchdir: 1
+getdents64: 1
+#ioctl: FIONBIO, SIOCGIFMTU, SIOCSIFFLAGS, SIOCGIFFLAGS, TCGETS, TUNSETIFF
+# TUNSETVNETHDRSZ, TUNSETOFFLOAD, UFFDIO_API, USERFAULTFD_IOC_NEW
+ioctl: arg1 == 0x5421 || \
+       arg1 == 0x8921 || \
+       arg1 == 0x8914 || \
+       arg1 == 0x8913 || \
+       arg1 == 0x5401 || \
+       arg1 == 0x400454ca || \
+       arg1 == 0x400454d8 || \
+       arg1 == 0x400454d0 || \
+       arg1 == 0xc018aa3f || \
+       arg1 == 0xaa00
+madvise: 1
+mmap: arg2 in ~PROT_EXEC || arg2 in ~PROT_WRITE
+mount: 1
+mprotect: arg2 in ~PROT_EXEC || arg2 in ~PROT_WRITE
+newfstatat: 1
+openat: 1
+pivot_root: 1
+prctl: arg0 == PR_SET_NO_NEW_PRIVS || \
+       arg0 == PR_SET_SECUREBITS || \
+       arg0 == PR_SET_SECCOMP || \
+       arg0 == PR_CAPBSET_DROP || \
+       arg0 == PR_SET_NAME
+prlimit64: 1
+setsid: 1
+setsockopt: 1
+socket: arg0 == AF_INET || arg0 == AF_UNIX
+socketpair: 1
+statx: 1
+tgkill: 1
+umount2: 1 # Create jail
+unshare: 1

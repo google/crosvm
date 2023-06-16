@@ -36,6 +36,8 @@ static EMBEDDED_BPFS: Lazy<std::collections::HashMap<&str, Vec<u8>>> =
 pub const MAX_OPEN_FILES_DEFAULT: u64 = 1024;
 /// The max open files for gpu processes.
 const MAX_OPEN_FILES_FOR_GPU: u64 = 32768;
+/// The max open files for jail warden, matching FD_RAW_FAILURE.
+pub const MAX_OPEN_FILES_FOR_JAIL_WARDEN: u64 = 65536;
 
 /// The user in the jail to run as.
 pub enum RunAsUser {
@@ -61,6 +63,8 @@ pub struct SandboxConfig<'a> {
     pub ugid_map: Option<(&'a str, &'a str)>,
     /// The remount mode instead of default MS_PRIVATE.
     pub remount_mode: Option<c_ulong>,
+    /// Whether to use empty net namespace. Enabled by default.
+    pub namespace_net: bool,
     /// Whether or not to configure the jail to support bind-mounts.
     ///
     /// Note that most device processes deny `open(2)` and `openat(2)` by seccomp policy and just
@@ -81,6 +85,7 @@ impl<'a> SandboxConfig<'a> {
             seccomp_policy_name: policy,
             ugid_map: None,
             remount_mode: None,
+            namespace_net: true,
             bind_mounts: false,
             run_as: RunAsUser::Unspecified,
         }
@@ -201,8 +206,10 @@ pub fn create_sandbox_minijail(
     // Run in a new mount namespace.
     jail.namespace_vfs();
 
-    // Run in an empty network namespace.
-    jail.namespace_net();
+    if config.namespace_net {
+        // Run in an empty network namespace.
+        jail.namespace_net();
+    }
 
     // Don't allow the device to gain new privileges.
     jail.no_new_privs();
