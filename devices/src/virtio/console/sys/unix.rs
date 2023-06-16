@@ -99,31 +99,19 @@ pub(in crate::virtio::console) fn spawn_input_thread(
                     return;
                 }
             };
-            for event in events {
+            for event in events.iter() {
                 match event.token {
                     Token::Kill => {
-                        // on kill, read all remaining data.
-                        loop {
-                            match rx.read(&mut rx_buf) {
-                                Ok(size) => {
-                                    buffer.lock().extend(&rx_buf[0..size]);
-                                    thread_in_avail_evt.signal().unwrap();
-                                }
-                                Err(e) => {
-                                    if e.kind() == io::ErrorKind::WouldBlock {
-                                        break 'wait;
-                                    }
-                                    if is_a_fatal_input_error(&e) {
-                                        error!("failed to read remaining data on exit: {:?}", e);
-                                        break 'wait;
-                                    }
-                                }
-                            }
+                        // Ignore the kill event until there are no other events to process so that
+                        // we drain `rx` as much as possible. The next `wait_ctx.wait()` call will
+                        // immediately re-entry this case since we don't call `kill_evt.wait()`.
+                        if events.iter().all(|e| matches!(e.token, Token::Kill)) {
+                            break 'wait;
                         }
                     }
                     Token::ConsoleEvent => {
                         match rx.read(&mut rx_buf) {
-                            Ok(0) => break, // Assume the stream of input has ended.
+                            Ok(0) => break 'wait, // Assume the stream of input has ended.
                             Ok(size) => {
                                 buffer.lock().extend(&rx_buf[0..size]);
                                 thread_in_avail_evt.signal().unwrap();
@@ -135,7 +123,7 @@ pub(in crate::virtio::console) fn spawn_input_thread(
                                         "failed to read for bytes to queue into console device: {}",
                                         e
                                     );
-                                    break;
+                                    break 'wait;
                                 }
                             }
                         }
