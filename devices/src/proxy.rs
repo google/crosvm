@@ -38,6 +38,8 @@ use crate::Suspendable;
 #[sorted]
 #[derive(Error, Debug)]
 pub enum Error {
+    #[error("Failed to activate ProxyDevice")]
+    ActivatingProxyDevice,
     #[error("Failed to fork jail process: {0}")]
     ForkingJail(#[from] minijail::Error),
     #[error("Failed to configure swap: {0}")]
@@ -52,6 +54,7 @@ const SOCKET_TIMEOUT_MS: u64 = 2000;
 
 #[derive(Debug, Serialize, Deserialize)]
 enum Command {
+    Activate,
     Read {
         len: u32,
         info: BusAccessInfo,
@@ -104,6 +107,25 @@ enum CommandResult {
 }
 
 fn child_proc<D: BusDevice>(tube: Tube, mut device: D) {
+    // Wait for activation signal to function as BusDevice.
+    match tube.recv() {
+        Ok(Command::Activate) => {
+            if let Err(e) = tube.send(&CommandResult::Ok) {
+                error!("sending activation result failed: {:?}", &e);
+                return;
+            }
+        }
+        // Commands other than activate is unexpected, close device.
+        Ok(cmd) => {
+            panic!("Receiving Command {:?} before device is activated", &cmd);
+        }
+        // Most likely tube error is caused by other end is dropped, release resource.
+        Err(e) => {
+            error!("device failed before activation: {:?}. Dropping device", e);
+            drop(device);
+            return;
+        }
+    };
     loop {
         let cmd = match tube.recv() {
             Ok(cmd) => cmd,
@@ -114,6 +136,9 @@ fn child_proc<D: BusDevice>(tube: Tube, mut device: D) {
         };
 
         let res = match cmd {
+            Command::Activate => {
+                panic!("Device shall only be activated once, duplicated ProxyDevice likely");
+            }
             Command::Read { len, info } => {
                 let mut buffer = [0u8; 8];
                 device.read(info, &mut buffer[0..len as usize]);
@@ -197,21 +222,25 @@ fn child_proc<D: BusDevice>(tube: Tube, mut device: D) {
     }
 }
 
-/// Wraps an inner `BusDevice` that is run inside a child process via fork.
+/// ChildProcIntf is the interface to the device child process.
 ///
-/// Because forks are very unfriendly to destructors and all memory mappings and file descriptors
-/// are inherited, this should be used as early as possible in the main process.
-pub struct ProxyDevice {
+/// ChildProcIntf implements Serialize, and can be sent across process before it functions as a
+/// ProxyDevice. However, a child process shall only correspond to one ProxyDevice. The uniqueness
+/// is checked when ChildProcIntf is casted into ProxyDevice.
+#[derive(Serialize, Deserialize)]
+pub struct ChildProcIntf {
     tube: Tube,
     pid: pid_t,
     debug_label: String,
 }
 
-impl ProxyDevice {
-    /// Takes the given device and isolates it into another process via fork before returning.
+impl ChildProcIntf {
+    /// Creates ChildProcIntf that shall be turned into exactly one ProxyDevice.
     ///
-    /// The forked process will automatically be terminated when this is dropped, so be sure to keep
-    /// a reference.
+    /// The ChildProcIntf struct holds the interface to the device process. It shall be turned into
+    /// a ProxyDevice exactly once (at an arbitrary process). Since ChildProcIntf may be duplicated
+    /// by serde, the uniqueness of the interface is checked when ChildProcIntf is converted into
+    /// ProxyDevice.
     ///
     /// # Arguments
     /// * `device` - The device to isolate to another process.
@@ -222,7 +251,7 @@ impl ProxyDevice {
         jail: Minijail,
         mut keep_rds: Vec<RawDescriptor>,
         #[cfg(feature = "swap")] swap_prepare_fork: &mut Option<P>,
-    ) -> Result<ProxyDevice> {
+    ) -> Result<ChildProcIntf> {
         let debug_label = device.debug_label();
         let (child_tube, parent_tube) = Tube::pair()?;
 
@@ -280,24 +309,73 @@ impl ProxyDevice {
 
         parent_tube.set_send_timeout(Some(Duration::from_millis(SOCKET_TIMEOUT_MS)))?;
         parent_tube.set_recv_timeout(Some(Duration::from_millis(SOCKET_TIMEOUT_MS)))?;
-        Ok(ProxyDevice {
+        Ok(ChildProcIntf {
             tube: parent_tube,
             pid,
             debug_label,
         })
     }
+}
+
+/// Wraps an inner `BusDevice` that is run inside a child process via fork.
+///
+/// The forked device process will automatically be terminated when this is dropped.
+pub struct ProxyDevice {
+    child_proc_intf: ChildProcIntf,
+}
+
+impl TryFrom<ChildProcIntf> for ProxyDevice {
+    type Error = Error;
+    fn try_from(child_proc_intf: ChildProcIntf) -> Result<Self> {
+        // Notify child process to be activated as a BusDevice.
+        child_proc_intf.tube.send(&Command::Activate)?;
+        // Device returns Ok if it is activated only once.
+        match child_proc_intf.tube.recv()? {
+            CommandResult::Ok => Ok(Self { child_proc_intf }),
+            _ => Err(Error::ActivatingProxyDevice),
+        }
+    }
+}
+
+impl ProxyDevice {
+    /// Takes the given device and isolates it into another process via fork before returning.
+    ///
+    /// Because forks are very unfriendly to destructors and all memory mappings and file
+    /// descriptors are inherited, this should be used as early as possible in the main process.
+    /// ProxyDevice::new shall not be used for hotplugging. Call ChildProcIntf::new on jail warden
+    /// process, send using serde, then cast into ProxyDevice instead.
+    ///
+    /// # Arguments
+    /// * `device` - The device to isolate to another process.
+    /// * `jail` - The jail to use for isolating the given device.
+    /// * `keep_rds` - File descriptors that will be kept open in the child.
+    pub fn new<D: BusDevice, #[cfg(feature = "swap")] P: swap::PrepareFork>(
+        device: D,
+        jail: Minijail,
+        keep_rds: Vec<RawDescriptor>,
+        #[cfg(feature = "swap")] swap_prepare_fork: &mut Option<P>,
+    ) -> Result<ProxyDevice> {
+        ChildProcIntf::new(
+            device,
+            jail,
+            keep_rds,
+            #[cfg(feature = "swap")]
+            swap_prepare_fork,
+        )?
+        .try_into()
+    }
 
     pub fn pid(&self) -> pid_t {
-        self.pid
+        self.child_proc_intf.pid
     }
 
     /// Send a command that does not expect a response from the child device process.
     fn send_no_result(&self, cmd: &Command) {
-        let res = self.tube.send(cmd);
+        let res = self.child_proc_intf.tube.send(cmd);
         if let Err(e) = res {
             error!(
                 "failed write to child device process {}: {}",
-                self.debug_label, e,
+                self.child_proc_intf.debug_label, e,
             );
         }
     }
@@ -305,11 +383,11 @@ impl ProxyDevice {
     /// Send a command and read its response from the child device process.
     fn sync_send(&self, cmd: &Command) -> Option<CommandResult> {
         self.send_no_result(cmd);
-        match self.tube.recv() {
+        match self.child_proc_intf.tube.recv() {
             Err(e) => {
                 error!(
                     "failed to read result of {:?} from child device process {}: {}",
-                    cmd, self.debug_label, e,
+                    cmd, self.child_proc_intf.debug_label, e,
                 );
                 None
             }
@@ -324,7 +402,7 @@ impl BusDevice for ProxyDevice {
     }
 
     fn debug_label(&self) -> String {
-        self.debug_label.clone()
+        self.child_proc_intf.debug_label.clone()
     }
 
     fn config_register_write(
