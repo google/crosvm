@@ -46,6 +46,8 @@ use futures::select_biased;
 use futures::FutureExt;
 use futures::StreamExt;
 use remain::sorted;
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error as ThisError;
 #[cfg(windows)]
 use vm_control::api::VmMemoryClient;
@@ -144,7 +146,7 @@ struct virtio_balloon_config {
 }
 
 // BalloonState is shared by the worker and device thread.
-#[derive(Default)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 struct BalloonState {
     num_pages: u32,
     actual_pages: u32,
@@ -1285,6 +1287,15 @@ pub struct Balloon {
     target_reached_evt: Option<Event>,
 }
 
+/// Snapshot of the [Balloon] state.
+#[derive(Serialize, Deserialize)]
+struct BalloonSnapshot {
+    state: BalloonState,
+    features: u64,
+    acked_features: u64,
+    wss_num_bins: u8,
+}
+
 /// Operation mode of the balloon.
 #[derive(PartialEq, Eq)]
 pub enum BalloonMode {
@@ -1615,6 +1626,42 @@ impl VirtioDevice for Balloon {
             let balloon_queues = queues.into();
             self.start_worker(mem, interrupt, balloon_queues)?;
         }
+        Ok(())
+    }
+
+    fn virtio_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        let state = self
+            .state
+            .lock()
+            .now_or_never()
+            .context("failed to acquire balloon lock")?;
+        serde_json::to_value(BalloonSnapshot {
+            features: self.features,
+            acked_features: self.acked_features,
+            state: state.clone(),
+            wss_num_bins: self.wss_num_bins,
+        })
+        .context("failed to serialize balloon state")
+    }
+
+    fn virtio_restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        let snap: BalloonSnapshot = serde_json::from_value(data).context("error deserializing")?;
+        if snap.features != self.features {
+            anyhow::bail!(
+                "expected features to match, but they did not. Live: {:?}, snapshot {:?}",
+                self.features,
+                snap.features,
+            );
+        }
+
+        let mut state = self
+            .state
+            .lock()
+            .now_or_never()
+            .context("failed to acquire balloon lock")?;
+        *state = snap.state;
+        self.wss_num_bins = snap.wss_num_bins;
+        self.acked_features = snap.acked_features;
         Ok(())
     }
 }
