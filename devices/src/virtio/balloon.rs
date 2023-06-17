@@ -847,6 +847,42 @@ async fn handle_pending_adjusted_responses(
     }
 }
 
+/// Represents queues & events for the balloon device.
+struct BalloonQueues {
+    inflate: (Queue, Event),
+    deflate: (Queue, Event),
+    stats: Option<(Queue, Event)>,
+    reporting: Option<(Queue, Event)>,
+    events: Option<(Queue, Event)>,
+    wss: (Option<(Queue, Event)>, Option<(Queue, Event)>),
+}
+
+impl BalloonQueues {
+    fn new(inflate: (Queue, Event), deflate: (Queue, Event)) -> Self {
+        BalloonQueues {
+            inflate,
+            deflate,
+            stats: None,
+            reporting: None,
+            events: None,
+            wss: (None, None),
+        }
+    }
+}
+
+impl From<Map<usize, (Queue, Event)>> for BalloonQueues {
+    fn from(mut queues: Map<usize, (Queue, Event)>) -> Self {
+        BalloonQueues {
+            inflate: queues.remove(&0).expect("the inflate queue is required"),
+            deflate: queues.remove(&1).expect("the deflate queue is required"),
+            stats: queues.remove(&2),
+            reporting: queues.remove(&3),
+            events: queues.remove(&4),
+            wss: (queues.remove(&5), queues.remove(&6)),
+        }
+    }
+}
+
 /// When the worker is stopped, the queues are preserved here.
 struct PausedQueues {
     inflate: Queue,
@@ -890,19 +926,6 @@ impl From<Box<PausedQueues>> for Map<usize, Queue> {
         apply_if_some(queues.wss.0, |wss_data| ret.insert(5, wss_data));
         apply_if_some(queues.wss.1, |wss_op| ret.insert(6, wss_op));
         ret
-    }
-}
-
-impl From<Map<usize, Queue>> for PausedQueues {
-    fn from(mut queues: Map<usize, Queue>) -> Self {
-        PausedQueues {
-            inflate: queues.remove(&0).expect("the inflate queue is required"),
-            deflate: queues.remove(&1).expect("the deflate queue is required"),
-            stats: queues.remove(&2),
-            reporting: queues.remove(&3),
-            events: queues.remove(&4),
-            wss: (queues.remove(&5), queues.remove(&6)),
-        }
     }
 }
 
@@ -1384,6 +1407,92 @@ impl Balloon {
             StoppedWorker::AlreadyStopped
         }
     }
+
+    /// Given a filtered queue vector from [VirtioDevice::activate], extract
+    /// the queues (accounting for queues that are missing because the features
+    /// are not negotiated) into a structure that is easier to work with.
+    fn get_queues_from_vec(
+        &self,
+        mut queues: Vec<(Queue, Event)>,
+    ) -> anyhow::Result<BalloonQueues> {
+        let expected_queues = Balloon::num_expected_queues(self.acked_features);
+        if queues.len() != expected_queues {
+            return Err(anyhow!(
+                "expected {} queues, got {}",
+                expected_queues,
+                queues.len()
+            ));
+        }
+
+        let inflate_queue = queues.remove(0);
+        let deflate_queue = queues.remove(0);
+        let mut queue_struct = BalloonQueues::new(inflate_queue, deflate_queue);
+
+        if self.acked_features & (1 << VIRTIO_BALLOON_F_STATS_VQ) != 0 {
+            queue_struct.stats = Some(queues.remove(0));
+        }
+        if self.acked_features & (1 << VIRTIO_BALLOON_F_PAGE_REPORTING) != 0 {
+            queue_struct.reporting = Some(queues.remove(0));
+        }
+        if self.acked_features & (1 << VIRTIO_BALLOON_F_EVENTS_VQ) != 0 {
+            queue_struct.events = Some(queues.remove(0));
+        }
+        if self.acked_features & (1 << VIRTIO_BALLOON_F_WSS_REPORTING) != 0 {
+            queue_struct.wss = (Some(queues.remove(0)), Some(queues.remove(0)));
+        }
+        Ok(queue_struct)
+    }
+
+    fn start_worker(
+        &mut self,
+        mem: GuestMemory,
+        interrupt: Interrupt,
+        queues: BalloonQueues,
+    ) -> anyhow::Result<()> {
+        let (self_target_reached_evt, target_reached_evt) = Event::new()
+            .and_then(|e| Ok((e.try_clone()?, e)))
+            .context("failed to create target_reached Event pair: {}")?;
+        self.target_reached_evt = Some(self_target_reached_evt);
+
+        let state = self.state.clone();
+
+        let command_tube = self.command_tube.take().unwrap();
+
+        #[cfg(windows)]
+        let vm_memory_client = self.vm_memory_client.take().unwrap();
+        let release_memory_tube = self.release_memory_tube.take();
+        #[cfg(feature = "registered_events")]
+        let registered_evt_q = self.registered_evt_q.take();
+        let pending_adjusted_response_event = self
+            .pending_adjusted_response_event
+            .try_clone()
+            .context("failed to clone Event")?;
+
+        self.worker_thread = Some(WorkerThread::start("v_balloon", move |kill_evt| {
+            run_worker(
+                queues.inflate,
+                queues.deflate,
+                queues.stats,
+                queues.reporting,
+                queues.events,
+                queues.wss,
+                command_tube,
+                #[cfg(windows)]
+                vm_memory_client,
+                release_memory_tube,
+                interrupt,
+                kill_evt,
+                target_reached_evt,
+                pending_adjusted_response_event,
+                mem,
+                state,
+                #[cfg(feature = "registered_events")]
+                registered_evt_q,
+            )
+        }));
+
+        Ok(())
+    }
 }
 
 /// When we request to stop the worker, this represents the terminal state
@@ -1468,83 +1577,10 @@ impl VirtioDevice for Balloon {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: Vec<(Queue, Event)>,
+        queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
-        let expected_queues = Balloon::num_expected_queues(self.acked_features);
-        if queues.len() != expected_queues {
-            return Err(anyhow!(
-                "expected {} queues, got {}",
-                expected_queues,
-                queues.len()
-            ));
-        }
-
-        let inflate_queue = queues.remove(0);
-        let deflate_queue = queues.remove(0);
-        let stats_queue = if self.acked_features & (1 << VIRTIO_BALLOON_F_STATS_VQ) != 0 {
-            Some(queues.remove(0))
-        } else {
-            None
-        };
-        let reporting_queue = if self.acked_features & (1 << VIRTIO_BALLOON_F_PAGE_REPORTING) != 0 {
-            Some(queues.remove(0))
-        } else {
-            None
-        };
-        let events_queue = if self.acked_features & (1 << VIRTIO_BALLOON_F_EVENTS_VQ) != 0 {
-            Some(queues.remove(0))
-        } else {
-            None
-        };
-        let wss_queues = if self.acked_features & (1 << VIRTIO_BALLOON_F_WSS_REPORTING) != 0 {
-            (Some(queues.remove(0)), Some(queues.remove(0)))
-        } else {
-            (None, None)
-        };
-
-        let (self_target_reached_evt, target_reached_evt) = Event::new()
-            .and_then(|e| Ok((e.try_clone()?, e)))
-            .context("failed to create target_reached Event pair: {}")?;
-        self.target_reached_evt = Some(self_target_reached_evt);
-
-        let state = self.state.clone();
-
-        let command_tube = self.command_tube.take().unwrap();
-
-        #[cfg(windows)]
-        let vm_memory_client = self.vm_memory_client.take().unwrap();
-        let release_memory_tube = self.release_memory_tube.take();
-        #[cfg(feature = "registered_events")]
-        let registered_evt_q = self.registered_evt_q.take();
-        let pending_adjusted_response_event = self
-            .pending_adjusted_response_event
-            .try_clone()
-            .context("failed to clone Event")?;
-
-        self.worker_thread = Some(WorkerThread::start("v_balloon", move |kill_evt| {
-            run_worker(
-                inflate_queue,
-                deflate_queue,
-                stats_queue,
-                reporting_queue,
-                events_queue,
-                wss_queues,
-                command_tube,
-                #[cfg(windows)]
-                vm_memory_client,
-                release_memory_tube,
-                interrupt,
-                kill_evt,
-                target_reached_evt,
-                pending_adjusted_response_event,
-                mem,
-                state,
-                #[cfg(feature = "registered_events")]
-                registered_evt_q,
-            )
-        }));
-
-        Ok(())
+        let queues = self.get_queues_from_vec(queues)?;
+        self.start_worker(mem, interrupt, queues)
     }
 
     fn reset(&mut self) -> bool {
@@ -1565,6 +1601,21 @@ impl VirtioDevice for Balloon {
                 Ok(None)
             }
         }
+    }
+
+    fn virtio_wake(
+        &mut self,
+        queues_state: Option<(GuestMemory, Interrupt, Map<usize, (Queue, Event)>)>,
+    ) -> anyhow::Result<()> {
+        if let Some((mem, interrupt, queues)) = queues_state {
+            if queues.len() < 2 {
+                anyhow::bail!("{} queues were found, but an activated balloon must have at least 2 active queues.", queues.len());
+            }
+
+            let balloon_queues = queues.into();
+            self.start_worker(mem, interrupt, balloon_queues)?;
+        }
+        Ok(())
     }
 }
 
