@@ -229,7 +229,20 @@ pub trait VhostUserBackend {
 
     /// Used to stop non queue workers that `VhostUserBackend::stop_queue` can't stop.
     fn stop_non_queue_workers(&mut self) -> anyhow::Result<()> {
-        error!("sleep not implemented for device");
+        error!("sleep not implemented for vhost user device");
+        // TODO(rizhang): Return error once basic devices support this.
+        Ok(())
+    }
+
+    /// Snapshot device and return serialized bytes.
+    fn snapshot(&self) -> anyhow::Result<Vec<u8>> {
+        error!("snapshot not implemented for vhost user device");
+        // TODO(rizhang): Return error once basic devices support this.
+        Ok(Vec::new())
+    }
+
+    fn restore(&mut self, _data: Vec<u8>) -> anyhow::Result<()> {
+        error!("restore not implemented for vhost user device");
         // TODO(rizhang): Return error once basic devices support this.
         Ok(())
     }
@@ -429,7 +442,7 @@ pub struct DeviceRequestHandler {
 #[derive(Serialize, Deserialize)]
 pub struct DeviceRequestHandlerSnapshot {
     vrings: Vec<VringSnapshot>,
-    // TODO(rizhang): Add VhostUserBackend snapshot.
+    backend: Vec<u8>,
 }
 
 impl DeviceRequestHandler {
@@ -797,6 +810,7 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
                 .map(|vring| vring.snapshot())
                 .collect::<anyhow::Result<Vec<VringSnapshot>>>()
                 .map_err(VhostError::SnapshotError)?,
+            backend: self.backend.snapshot().map_err(VhostError::SnapshotError)?,
         }) {
             Ok(serialized_json) => Ok(serialized_json),
             Err(e) => {
@@ -839,7 +853,9 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
             }
         }
 
-        // TODO(rizhang): Restore self.backend.
+        self.backend
+            .restore(device_request_handler_snapshot.backend)
+            .map_err(VhostError::RestoreError)?;
 
         Ok(())
     }

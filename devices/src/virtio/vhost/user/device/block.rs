@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::bail;
+use anyhow::Context;
 use base::error;
 use base::warn;
 use base::Event;
@@ -21,6 +22,8 @@ use cros_async::ExecutorKind;
 use cros_async::TaskHandle;
 use futures::channel::mpsc;
 use futures::channel::oneshot;
+use serde::Deserialize;
+use serde::Serialize;
 use sync::Mutex;
 pub use sys::start_device as run_block_device;
 pub use sys::Options;
@@ -59,6 +62,15 @@ struct BlockBackend {
     backend_req_conn: Arc<Mutex<VhostBackendReqConnectionState>>,
     control_tube: Option<base::Tube>,
     worker: Option<Worker>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct BlockBackendSnapshot {
+    acked_features: u64,
+    // `avail_features` and `acked_protocol_features` don't need to be snapshotted, but they are
+    // to be used to make sure that the proper features are used on `restore`.
+    avail_features: u64,
+    acked_protocol_features: u64,
 }
 
 struct Worker {
@@ -286,6 +298,38 @@ impl VhostUserBackend for BlockBackend {
                 .expect("run_until failed");
         }
 
+        Ok(())
+    }
+
+    fn snapshot(&self) -> anyhow::Result<Vec<u8>> {
+        // The queue states are being snapshotted in the device handler.
+        let serialized_bytes = serde_json::to_vec(&BlockBackendSnapshot {
+            acked_features: self.acked_features,
+            avail_features: self.avail_features,
+            acked_protocol_features: self.acked_protocol_features.bits(),
+        })
+        .context("Failed to serialize BlockBackendSnapshot")?;
+
+        Ok(serialized_bytes)
+    }
+
+    fn restore(&mut self, data: Vec<u8>) -> anyhow::Result<()> {
+        let block_backend_snapshot: BlockBackendSnapshot =
+            serde_json::from_slice(&data).context("Failed to deserialize BlockBackendSnapshot")?;
+        anyhow::ensure!(
+            self.avail_features == block_backend_snapshot.avail_features,
+            "Vhost user block restored avail_features do not match. Live: {:?}, snapshot: {:?}",
+            self.avail_features,
+            block_backend_snapshot.avail_features,
+        );
+        anyhow::ensure!(
+            self.acked_protocol_features.bits() == block_backend_snapshot.acked_protocol_features,
+            "Vhost user block restored acked_protocol_features do not match. Live: {:?}, \
+            snapshot: {:?}",
+            self.acked_protocol_features,
+            block_backend_snapshot.acked_protocol_features
+        );
+        self.acked_features = block_backend_snapshot.acked_features;
         Ok(())
     }
 }

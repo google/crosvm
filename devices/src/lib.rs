@@ -320,7 +320,7 @@ fn restore_devices(
         }
         Err(e) => {
             // If restore fails, wake devices and return error
-            error!("failed to restore devices: {}", e);
+            error!("failed to restore devices: {:#}", e);
             Err(e)
         }
     }
