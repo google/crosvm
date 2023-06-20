@@ -74,8 +74,8 @@ ioctl: arg1 == FIONBIO || arg1 == FIOCLEX || arg1 == 0x40086200 || arg1 & 0x6400
 lseek: 1
 lstat: 1
 # Used for sharing memory with wayland. Also internally by Intel anv.
-# arg1 == MFD_CLOEXEC|MFD_ALLOW_SEALING or simply MFD_CLOEXEC.
-memfd_create: arg1 == 3 || arg1 == 1
+# arg1 == MFD_CLOEXEC|MFD_ALLOW_SEALING with or without MFD_NOEXEC_SEAL, or simply MFD_CLOEXEC.
+memfd_create: arg1 == 3 || arg1 == 11 || arg1 == 1
 # mmap/mprotect/open/openat differ from the common_device.policy
 mmap: arg2 == PROT_READ|PROT_WRITE || arg2 == PROT_NONE || arg2 == PROT_READ|PROT_EXEC || arg2 == PROT_WRITE || arg2 == PROT_READ
 mprotect: arg2 == PROT_READ|PROT_WRITE || arg2 == PROT_NONE || arg2 == PROT_READ
