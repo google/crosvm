@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::collections::BTreeMap;
-use std::collections::HashMap;
 use std::sync::Arc;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -313,7 +312,7 @@ enum SleepState {
     Active {
         /// The queues returned from `VirtioDevice::virtio_sleep`.
         /// Map is from queue index -> Queue.
-        activated_queues: HashMap<usize, Queue>,
+        activated_queues: BTreeMap<usize, Queue>,
     },
 }
 
@@ -1020,7 +1019,7 @@ impl Suspendable for VirtioPciDevice {
                     .expect("virtio_wake failed, can't recover");
             }
             Some(SleepState::Active { activated_queues }) => {
-                let mut queues_to_wake = HashMap::new();
+                let mut queues_to_wake = BTreeMap::new();
 
                 for (index, queue) in activated_queues.into_iter() {
                     queues_to_wake.insert(
@@ -1122,7 +1121,7 @@ impl Suspendable for VirtioPciDevice {
         };
         // Restore `sleep_state`.
         if let Some(activated_queues_snapshot) = deser.activated_queues {
-            let mut activated_queues = HashMap::new();
+            let mut activated_queues = BTreeMap::new();
             for (index, queue_snapshot) in activated_queues_snapshot {
                 activated_queues.insert(index, Queue::restore(queue_snapshot)?);
             }

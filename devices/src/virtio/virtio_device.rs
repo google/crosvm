@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap as Map;
 use std::sync::Arc;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -210,7 +210,7 @@ pub trait VirtioDevice: Send {
     ///
     /// Unlike `Suspendable::sleep`, this is not idempotent. Attempting to sleep while already
     /// asleep is an error.
-    fn virtio_sleep(&mut self) -> anyhow::Result<Option<HashMap<usize, Queue>>> {
+    fn virtio_sleep(&mut self) -> anyhow::Result<Option<Map<usize, Queue>>> {
         anyhow::bail!("virtio_sleep not implemented for {}", self.debug_label());
     }
 
@@ -222,7 +222,7 @@ pub trait VirtioDevice: Send {
     /// is an error.
     fn virtio_wake(
         &mut self,
-        _queues_state: Option<(GuestMemory, Interrupt, HashMap<usize, (Queue, Event)>)>,
+        _queues_state: Option<(GuestMemory, Interrupt, Map<usize, (Queue, Event)>)>,
     ) -> anyhow::Result<()> {
         anyhow::bail!("virtio_wake not implemented for {}", self.debug_label());
     }

@@ -9,7 +9,7 @@
 pub mod asynchronous;
 mod sys;
 
-use std::collections::HashMap;
+use std::collections::BTreeMap as Map;
 use std::collections::VecDeque;
 use std::io;
 use std::io::Read;
@@ -407,7 +407,7 @@ impl VirtioDevice for Console {
         false
     }
 
-    fn virtio_sleep(&mut self) -> anyhow::Result<Option<HashMap<usize, Queue>>> {
+    fn virtio_sleep(&mut self) -> anyhow::Result<Option<Map<usize, Queue>>> {
         if let Some(worker_thread) = self.worker_thread.take() {
             if let Some(input_thread) = self.input_thread.take() {
                 input_thread.stop();
@@ -428,17 +428,14 @@ impl VirtioDevice for Console {
                     ))
                 }
             };
-            return Ok(Some(HashMap::from([
-                (0, receive_queue),
-                (1, transmit_queue),
-            ])));
+            return Ok(Some(Map::from([(0, receive_queue), (1, transmit_queue)])));
         }
         Ok(None)
     }
 
     fn virtio_wake(
         &mut self,
-        queues_state: Option<(GuestMemory, Interrupt, HashMap<usize, (Queue, Event)>)>,
+        queues_state: Option<(GuestMemory, Interrupt, Map<usize, (Queue, Event)>)>,
     ) -> anyhow::Result<()> {
         match queues_state {
             None => Ok(()),
