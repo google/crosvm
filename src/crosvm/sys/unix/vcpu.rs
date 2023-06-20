@@ -195,7 +195,10 @@ fn set_vcpu_thread_local(vcpu: Option<&dyn VcpuArch>, signal_num: c_int) {
 pub fn setup_vcpu_signal_handler() -> Result<()> {
     unsafe {
         extern "C" fn handle_signal(_: c_int) {
-            VCPU_THREAD.with(|v| {
+            // Use LocalKey::try_with() so we don't panic if a signal happens while the destructor
+            // is running, and ignore any errors (the assumption being that the thread is exiting
+            // anyway in that case).
+            let _result = VCPU_THREAD.try_with(|v| {
                 if let Some(vcpu_signal_handle) = &(*v.borrow()) {
                     vcpu_signal_handle.signal_immediate_exit();
                 }
