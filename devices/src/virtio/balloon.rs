@@ -1214,7 +1214,10 @@ impl VirtioDevice for Balloon {
 
         // If balloon has updated to the requested memory, let the hypervisor know.
         if config.num_pages == config.actual {
-            info!("sending target reached event at {:#?}", config.num_pages);
+            info!(
+                "sending target reached event at {}",
+                u32::from(config.num_pages)
+            );
             self.target_reached_evt.as_ref().map(|e| e.signal());
         }
         if state.failable_update && state.actual_pages == state.num_pages {
