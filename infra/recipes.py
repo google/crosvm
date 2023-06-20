@@ -243,8 +243,19 @@ def main():
   # so we have to use the cutesy `pop` formulation below until then...
   os.environ.pop("PYTHONPATH", None)
 
+  spec = '.vpython3'
+  debugger = os.environ.get('RECIPE_DEBUGGER', '')
+  if debugger.startswith('pycharm'):
+    spec = '.pycharm.vpython3'
+  elif debugger.startswith('vscode'):
+    spec = '.vscode.vpython3'
+
   argv = ([
-    vpython, '-u', os.path.join(engine_path, 'recipe_engine', 'main.py'),
+      vpython,
+      '-vpython-spec',
+      os.path.join(engine_path, spec),
+      '-u',
+      os.path.join(engine_path, 'recipe_engine', 'main.py'),
   ] + args)
 
   if IS_WIN:
