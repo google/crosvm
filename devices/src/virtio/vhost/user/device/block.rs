@@ -155,7 +155,7 @@ impl VhostUserDevice for BlockAsync {
 
         let backend_req_conn = Arc::new(Mutex::new(VhostBackendReqConnectionState::NoConnection));
 
-        let mut backend = BlockBackend {
+        let backend = BlockBackend {
             ex: ex.clone(),
             disk_state,
             disk_size: Arc::clone(&self.disk_size),
@@ -168,7 +168,6 @@ impl VhostUserDevice for BlockAsync {
             control_tube: self.control_tube,
             worker: None,
         };
-        backend.start_worker();
 
         let handler = DeviceRequestHandler::new(Box::new(backend), ops);
         Ok(Box::new(std::sync::Mutex::new(handler)))
@@ -241,6 +240,9 @@ impl VhostUserBackend for BlockBackend {
         doorbell: Doorbell,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
+        // `start_worker` will return early if the worker has already started.
+        self.start_worker();
+
         self.worker
             .as_ref()
             .expect("worker not started")
