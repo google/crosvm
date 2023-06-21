@@ -4,7 +4,6 @@
 
 use std::net::Ipv4Addr;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::thread;
 
 use anyhow::anyhow;
@@ -21,13 +20,13 @@ use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::IntoAsync;
 use cros_async::IoSource;
-use futures::future::AbortHandle;
-use futures::future::Abortable;
+use futures::channel::oneshot;
+use futures::select_biased;
+use futures::FutureExt;
 use hypervisor::ProtectionType;
 use net_util::sys::unix::Tap;
 use net_util::MacAddress;
 use net_util::TapT;
-use sync::Mutex;
 use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
@@ -38,7 +37,6 @@ use crate::virtio::net::process_rx;
 use crate::virtio::net::validate_and_configure_tap;
 use crate::virtio::net::NetError;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
-use crate::virtio::vhost::user::device::handler::WorkerState;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 use crate::virtio::vhost::user::device::net::run_ctrl_queue;
@@ -46,6 +44,7 @@ use crate::virtio::vhost::user::device::net::run_tx_queue;
 use crate::virtio::vhost::user::device::net::NetBackend;
 use crate::virtio::vhost::user::device::net::NET_EXECUTOR;
 use crate::virtio::Interrupt;
+use crate::virtio::Queue;
 use crate::PciAddress;
 
 struct TapConfig {
@@ -131,25 +130,38 @@ where
             avail_features,
             acked_features: 0,
             acked_protocol_features: VhostUserProtocolFeatures::empty(),
-            workers: Default::default(),
             mtu,
+            workers: Default::default(),
         })
     }
 }
 
 async fn run_rx_queue<T: TapT>(
-    queue: Arc<Mutex<virtio::Queue>>,
+    mut queue: Queue,
     mem: GuestMemory,
     mut tap: IoSource<T>,
     doorbell: Interrupt,
     kick_evt: EventAsync,
-) {
+    mut stop_rx: oneshot::Receiver<()>,
+) -> Queue {
     loop {
-        if let Err(e) = tap.wait_readable().await {
-            error!("Failed to wait for tap device to become readable: {}", e);
-            break;
+        select_biased! {
+            // `tap.wait_readable()` requires an immutable reference to `tap`, but `process_rx`
+            // requires a mutable reference to `tap`, so this future needs to be recreated on
+            // every iteration. If more arms are added that doesn't break out of the loop, then
+            // this future could be recreated too many times.
+            rx = tap.wait_readable().fuse() => {
+                if let Err(e) = rx {
+                    error!("Failed to wait for tap device to become readable: {}", e);
+                    break;
+                }
+            }
+            _ = stop_rx => {
+                break;
+            }
         }
-        match process_rx(&doorbell, &queue, &mem, tap.as_source_mut()) {
+
+        match process_rx(&doorbell, &mut queue, &mem, tap.as_source_mut()) {
             Ok(()) => {}
             Err(NetError::RxDescriptorsExhausted) => {
                 if let Err(e) = kick_evt.next_val().await {
@@ -163,6 +175,7 @@ async fn run_rx_queue<T: TapT>(
             }
         }
     }
+    queue
 }
 
 /// Platform specific impl of VhostUserBackend::start_queue.
@@ -189,45 +202,45 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
             .tap
             .try_clone()
             .context("failed to clone tap device")?;
-        let (handle, registration) = AbortHandle::new_pair();
-        let queue = Arc::new(Mutex::new(queue));
-        let queue_task = match idx {
+        let worker_tuple = match idx {
             0 => {
                 let tap = ex
                     .async_from(tap)
                     .context("failed to create async tap device")?;
 
-                ex.spawn_local(Abortable::new(
-                    run_rx_queue(queue.clone(), mem, tap, doorbell, kick_evt),
-                    registration,
-                ))
+                let (stop_tx, stop_rx) = futures::channel::oneshot::channel();
+                (
+                    ex.spawn_local(run_rx_queue(queue, mem, tap, doorbell, kick_evt, stop_rx)),
+                    stop_tx,
+                )
             }
-            1 => ex.spawn_local(Abortable::new(
-                run_tx_queue(queue.clone(), mem, tap, doorbell, kick_evt),
-                registration,
-            )),
+            1 => {
+                let (stop_tx, stop_rx) = futures::channel::oneshot::channel();
+                (
+                    ex.spawn_local(run_tx_queue(queue, mem, tap, doorbell, kick_evt, stop_rx)),
+                    stop_tx,
+                )
+            }
             2 => {
-                ex.spawn_local(Abortable::new(
-                    run_ctrl_queue(
-                        queue.clone(),
+                let (stop_tx, stop_rx) = futures::channel::oneshot::channel();
+                (
+                    ex.spawn_local(run_ctrl_queue(
+                        queue,
                         mem,
                         tap,
                         doorbell,
                         kick_evt,
                         backend.acked_features,
                         1, /* vq_pairs */
-                    ),
-                    registration,
-                ))
+                        stop_rx,
+                    )),
+                    stop_tx,
+                )
             }
             _ => bail!("attempted to start unknown queue: {}", idx),
         };
 
-        backend.workers[idx] = Some(WorkerState {
-            abort_handle: handle,
-            queue_task,
-            queue,
-        });
+        backend.workers[idx] = Some(worker_tuple);
         Ok(())
     })
 }

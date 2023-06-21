@@ -4,7 +4,6 @@
 
 use std::io;
 use std::result;
-use std::sync::Arc;
 
 use base::error;
 use base::warn;
@@ -12,7 +11,6 @@ use base::EventType;
 use base::ReadNotifier;
 use base::WaitContext;
 use net_util::TapT;
-use sync::Mutex;
 use vm_memory::GuestMemory;
 
 use super::super::super::net::NetError;
@@ -23,14 +21,13 @@ use super::super::super::Queue;
 
 pub fn process_rx<T: TapT>(
     interrupt: &Interrupt,
-    rx_queue: &Arc<Mutex<Queue>>,
+    rx_queue: &mut Queue,
     mem: &GuestMemory,
     mut tap: &mut T,
 ) -> result::Result<(), NetError> {
     let mut needs_interrupt = false;
     let mut exhausted_queue = false;
 
-    let mut rx_queue = rx_queue.try_lock().expect("Lock should not be unavailable");
     // Read as many frames as possible.
     loop {
         let mut desc_chain = match rx_queue.peek(mem) {
@@ -82,11 +79,10 @@ pub fn process_rx<T: TapT>(
 
 pub fn process_tx<T: TapT>(
     interrupt: &Interrupt,
-    tx_queue: &Arc<Mutex<Queue>>,
+    tx_queue: &mut Queue,
     mem: &GuestMemory,
     mut tap: &mut T,
 ) {
-    let mut tx_queue = tx_queue.try_lock().expect("Lock should not be unavailable");
     while let Some(mut desc_chain) = tx_queue.pop(mem) {
         let reader = &mut desc_chain.reader;
         let expected_count = reader.available_bytes();
@@ -143,6 +139,11 @@ where
         Ok(())
     }
     pub(super) fn process_rx(&mut self) -> result::Result<(), NetError> {
-        process_rx(&self.interrupt, &self.rx_queue, &self.mem, &mut self.tap)
+        process_rx(
+            &self.interrupt,
+            &mut self.rx_queue,
+            &self.mem,
+            &mut self.tap,
+        )
     }
 }

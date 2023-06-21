@@ -4,8 +4,6 @@
 
 pub mod sys;
 
-use std::sync::Arc;
-
 use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
@@ -15,9 +13,15 @@ use base::Event;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::IntoAsync;
+use cros_async::TaskHandle;
+use futures::channel::oneshot;
+use futures::pin_mut;
+use futures::select_biased;
+use futures::FutureExt;
 use net_util::TapT;
 use once_cell::sync::OnceCell;
-use sync::Mutex;
+use serde::Deserialize;
+use serde::Serialize;
 pub use sys::start_device as run_net_device;
 pub use sys::Options;
 use vm_memory::GuestMemory;
@@ -32,7 +36,6 @@ use crate::virtio::net::virtio_features_to_tap_offload;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::Error as DeviceError;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
-use crate::virtio::vhost::user::device::handler::WorkerState;
 use crate::virtio::vhost::user::VhostUserDevice;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
@@ -46,42 +49,73 @@ thread_local! {
 const MAX_QUEUE_NUM: usize = 3; /* rx, tx, ctrl */
 
 async fn run_tx_queue<T: TapT>(
-    queue: Arc<Mutex<Queue>>,
+    mut queue: Queue,
     mem: GuestMemory,
     mut tap: T,
     doorbell: Interrupt,
     kick_evt: EventAsync,
-) {
+    mut stop_rx: oneshot::Receiver<()>,
+) -> Queue {
+    let kick_evt_future = kick_evt.next_val().fuse();
+    pin_mut!(kick_evt_future);
     loop {
-        if let Err(e) = kick_evt.next_val().await {
-            error!("Failed to read kick event for tx queue: {}", e);
-            break;
+        select_biased! {
+            kick = kick_evt_future => {
+                kick_evt_future.set(kick_evt.next_val().fuse());
+                if let Err(e) = kick {
+                    error!("Failed to read kick event for tx queue: {}", e);
+                    break;
+                }
+            }
+            _ = stop_rx => {
+                break;
+            }
         }
 
-        process_tx(&doorbell, &queue, &mem, &mut tap);
+        process_tx(&doorbell, &mut queue, &mem, &mut tap);
     }
+    queue
 }
 
 async fn run_ctrl_queue<T: TapT>(
-    queue: Arc<Mutex<Queue>>,
+    mut queue: Queue,
     mem: GuestMemory,
     mut tap: T,
     doorbell: Interrupt,
     kick_evt: EventAsync,
     acked_features: u64,
     vq_pairs: u16,
-) {
+    mut stop_rx: oneshot::Receiver<()>,
+) -> Queue {
+    let kick_evt_future = kick_evt.next_val().fuse();
+    pin_mut!(kick_evt_future);
     loop {
-        if let Err(e) = kick_evt.next_val().await {
-            error!("Failed to read kick event for tx queue: {}", e);
-            break;
+        select_biased! {
+            kick = kick_evt_future => {
+                kick_evt_future.set(kick_evt.next_val().fuse());
+                if let Err(e) = kick {
+                    error!("Failed to read kick event for tx queue: {}", e);
+                    break;
+                }
+            }
+            _ = stop_rx => {
+                break;
+            }
         }
 
-        if let Err(e) = process_ctrl(&doorbell, &queue, &mem, &mut tap, acked_features, vq_pairs) {
+        if let Err(e) = process_ctrl(
+            &doorbell,
+            &mut queue,
+            &mem,
+            &mut tap,
+            acked_features,
+            vq_pairs,
+        ) {
             error!("Failed to process ctrl queue: {}", e);
             break;
         }
     }
+    queue
 }
 
 pub struct NetBackend<T: TapT + IntoAsync> {
@@ -89,10 +123,15 @@ pub struct NetBackend<T: TapT + IntoAsync> {
     avail_features: u64,
     acked_features: u64,
     acked_protocol_features: VhostUserProtocolFeatures,
-    workers: [Option<WorkerState<Arc<Mutex<Queue>>, ()>>; MAX_QUEUE_NUM],
     mtu: u16,
     #[cfg(all(windows, feature = "slirp"))]
     slirp_kill_event: Event,
+    workers: [Option<(TaskHandle<Queue>, oneshot::Sender<()>)>; MAX_QUEUE_NUM],
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct NetBackendSnapshot {
+    acked_feature: u64,
 }
 
 impl<T: 'static> NetBackend<T>
@@ -179,24 +218,37 @@ where
     }
 
     fn stop_queue(&mut self, idx: usize) -> anyhow::Result<virtio::Queue> {
-        if let Some(worker) = self.workers.get_mut(idx).and_then(Option::take) {
-            worker.abort_handle.abort();
+        if let Some((task, stop_tx)) = self.workers.get_mut(idx).and_then(Option::take) {
+            if stop_tx.send(()).is_err() {
+                return Err(anyhow!("Failed to request stop for net queue future"));
+            }
 
             // Wait for queue_task to be aborted.
-            NET_EXECUTOR.with(|ex| {
-                let ex = ex.get().expect("Executor not initialized");
-                let _ = ex.run_until(worker.queue_task);
-            });
-
-            let queue = match Arc::try_unwrap(worker.queue) {
-                Ok(queue_mutex) => queue_mutex.into_inner(),
-                Err(_) => panic!("failed to recover queue from worker"),
-            };
+            let queue = NET_EXECUTOR
+                .with(|ex| {
+                    let ex = ex.get().expect("Executor not initialized");
+                    ex.run_until(task)
+                })
+                .context("Failed to resolve queue worker future")?;
 
             Ok(queue)
         } else {
             Err(anyhow::Error::new(DeviceError::WorkerNotFound))
         }
+    }
+
+    fn snapshot(&self) -> anyhow::Result<Vec<u8>> {
+        serde_json::to_vec(&NetBackendSnapshot {
+            acked_feature: self.acked_features,
+        })
+        .context("Failed to serialize NetBackendSnapshot")
+    }
+
+    fn restore(&mut self, data: Vec<u8>) -> anyhow::Result<()> {
+        let net_backend_snapshot: NetBackendSnapshot =
+            serde_json::from_slice(&data).context("Failed to deserialize NetBackendSnapshot")?;
+        self.acked_features = net_backend_snapshot.acked_feature;
+        Ok(())
     }
 }
 
