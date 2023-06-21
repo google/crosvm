@@ -1620,13 +1620,31 @@ impl FileSystem for PassthroughFs {
     fn lookup(&self, _ctx: Context, parent: Inode, name: &CStr) -> io::Result<Entry> {
         let _trace = fs_trace!(self.tag, "lookup", parent, name);
         let data = self.find_inode(parent)?;
-        self.do_lookup(&data, name).or_else(|e| {
-            if self.cfg.ascii_casefold {
-                self.ascii_casefold_lookup(&data, name.to_bytes())
-            } else {
-                Err(e)
+
+        let mut res = self.do_lookup(&data, name);
+        // If `ascii_casefold` is enabled, fallback to `ascii_casefold_lookup()`.
+        if res.is_err() && self.cfg.ascii_casefold {
+            res = self.ascii_casefold_lookup(&data, name.to_bytes());
+        }
+        // FUSE takes a inode=0 as a request to do negative dentry cache.
+        // So, if `negative_timeout` is set, return success with the timeout value and inode=0 as a
+        // response.
+        if let Err(e) = &res {
+            if e.kind() == std::io::ErrorKind::NotFound && !self.cfg.negative_timeout.is_zero() {
+                let attr = MaybeUninit::<libc::stat64>::zeroed();
+                res = Ok(Entry {
+                    inode: 0, // Using 0 for negative entry
+                    entry_timeout: self.cfg.negative_timeout,
+                    // Zero-fill other fields that won't be used.
+                    attr_timeout: Duration::from_secs(0),
+                    generation: 0,
+                    // Safe because zero-initialized `stat64` is a valid value.
+                    attr: unsafe { attr.assume_init() },
+                });
             }
-        })
+        }
+
+        res
     }
 
     fn forget(&self, _ctx: Context, inode: Inode, count: u64) {
@@ -3195,5 +3213,44 @@ mod tests {
         // When removing b.txt, it must be removed from the cache as well.
         unlink(&fs, &b_path).expect("remove b.txt");
         assert!(!fs.exists_in_casefold_cache(parent, &CString::new("B.TXT").unwrap()));
+    }
+
+    #[test]
+    fn lookup_negative_cache() {
+        let temp_dir = TempDir::new().unwrap();
+        // Prepare `a.txt` before starting the test.
+        create_test_data(&temp_dir, &[], &[]);
+
+        let cfg = Config {
+            negative_timeout: Duration::from_secs(5),
+            ..Default::default()
+        };
+        let fs = PassthroughFs::new("tag", cfg).unwrap();
+
+        let capable = FsOptions::empty();
+        fs.init(capable).unwrap();
+
+        let a_path = temp_dir.path().join("a.txt");
+        // a.txt hasn't existed yet.
+        // Since negative_timeout is enabled, success with inode=0 is expected.
+        assert_eq!(
+            0,
+            lookup(&fs, &a_path).expect("lookup a.txt"),
+            "Entry with inode=0 is expected for non-existing file 'a.txt'"
+        );
+        // Create a.txt
+        let a_entry = create(&fs, &a_path).expect("create a.txt");
+        assert_eq!(
+            a_entry.inode,
+            lookup(&fs, &a_path).expect("lookup a.txt"),
+            "Created file 'a.txt' must be looked up"
+        );
+        // Remove a.txt
+        unlink(&fs, &a_path).expect("Remove");
+        assert_eq!(
+            0,
+            lookup(&fs, &a_path).expect("lookup a.txt"),
+            "Entry with inode=0 is expected for the removed file 'a.txt'"
+        );
     }
 }

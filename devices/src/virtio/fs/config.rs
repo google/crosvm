@@ -36,6 +36,10 @@ const fn config_default_timeout() -> Duration {
     Duration::from_secs(5)
 }
 
+const fn config_default_negative_timeout() -> Duration {
+    Duration::ZERO
+}
+
 const fn config_default_posix_acl() -> bool {
     true
 }
@@ -65,6 +69,20 @@ pub struct Config {
         deserialize_with = "deserialize_timeout"
     )]
     pub timeout: Duration,
+
+    /// How long the FUSE client can cache negative lookup results.
+    /// If a file lookup fails, the client can assume the file doesn't exist until the timeout and
+    ///  won't send lookup.
+    /// The value 0 means that negative lookup shouldn't be cached.
+    ///
+    /// If the contents of a directory can only be modified by the FUSE client (i.e., the file
+    /// system has exclusive access), then this should be a large value.
+    /// The default value for this option is 0 seconds (= no negative cache).
+    #[serde(
+        default = "config_default_negative_timeout",
+        deserialize_with = "deserialize_timeout"
+    )]
+    pub negative_timeout: Duration,
 
     /// The caching policy the file system should use. See the documentation of `CachePolicy` for
     /// more details.
@@ -137,6 +155,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             timeout: config_default_timeout(),
+            negative_timeout: config_default_negative_timeout(),
             cache_policy: Default::default(),
             writeback: false,
             rewrite_security_xattrs: false,
