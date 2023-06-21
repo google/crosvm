@@ -665,7 +665,7 @@ fn monitor_process(
                             state_transition,
                         };
                         command_tube.send(&status).context("send status response")?;
-                        info!("swap status: {:?}", status);
+                        debug!("swap status: {:?}", status);
                     }
                 },
                 Token::BackgroundJobCompleted => {
@@ -1089,7 +1089,7 @@ fn handle_vmm_swap<'scope, 'env>(
                             state_transition: *state_transition.lock(),
                         };
                         command_tube.send(&status).context("send status response")?;
-                        info!("swap status: {:?}", status);
+                        debug!("swap status: {:?}", status);
                     }
                 },
                 Token::BackgroundJobCompleted => {
