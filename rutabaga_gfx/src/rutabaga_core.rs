@@ -468,7 +468,7 @@ impl Rutabaga {
             .get_mut(&self.default_component)
             .ok_or(RutabagaError::InvalidComponent)?;
 
-        let mut resource = self
+        let resource = self
             .resources
             .get_mut(&resource_id)
             .ok_or(RutabagaError::InvalidResourceId)?;

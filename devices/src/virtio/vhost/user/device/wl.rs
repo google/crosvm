@@ -300,7 +300,7 @@ impl VhostUserBackend for WlBackend {
             worker.abort_handle.abort();
 
             // Wait for queue_task to be aborted.
-            let _ = self.ex.run_until(async { worker.queue_task.await });
+            let _ = self.ex.run_until(worker.queue_task);
 
             let queue = match Rc::try_unwrap(worker.queue) {
                 Ok(queue_cell) => queue_cell.into_inner(),

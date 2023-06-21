@@ -220,7 +220,7 @@ impl VhostUserBackend for GpuBackend {
             worker.abort_handle.abort();
 
             // Wait for queue_task to be aborted.
-            let _ = self.ex.run_until(async { worker.queue_task.await });
+            let _ = self.ex.run_until(worker.queue_task);
 
             // Valid as the GPU device has a single Queue, so clearing the state here is ok.
             self.state = None;

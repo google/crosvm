@@ -98,7 +98,7 @@ impl UdmabufDriverTrait for UnixUdmabufDriver {
         let pgsize = pagesize();
 
         let mut list = UdmabufCreateList::new(iovecs.len());
-        let mut items = list.mut_entries_slice();
+        let items = list.mut_entries_slice();
         for (i, &(addr, len)) in iovecs.iter().enumerate() {
             let offset = memory_offset(mem, addr, len as u64)?;
 

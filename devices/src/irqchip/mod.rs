@@ -71,11 +71,9 @@ cfg_if::cfg_if! {
 
 }
 
-#[cfg(any(target_arch = "aarch64"))]
-#[cfg(feature = "geniezone")]
+#[cfg(all(target_arch = "aarch64", feature = "geniezone"))]
 mod geniezone;
-#[cfg(any(target_arch = "aarch64"))]
-#[cfg(feature = "geniezone")]
+#[cfg(all(target_arch = "aarch64", feature = "geniezone"))]
 pub use self::geniezone::GeniezoneKernelIrqChip;
 
 pub type IrqEventIndex = usize;

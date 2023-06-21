@@ -382,6 +382,7 @@ mod tests {
         wait_thread_with_timeout(push_thread, 100);
 
         task.consume(6);
+        #[allow(clippy::redundant_clone)]
         let task_clone = task.clone();
         poll_until_with_timeout(|| task_clone.n_executed() == 7, 100);
         assert_eq!(task.n_executed(), 7);

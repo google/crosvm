@@ -154,7 +154,7 @@ impl Vmwdt {
                     }
                     Token::Timer(cpu_id) => {
                         let mut wdts_locked = vm_wdts.lock();
-                        let mut watchdog = &mut wdts_locked[cpu_id];
+                        let watchdog = &mut wdts_locked[cpu_id];
                         if let Err(_e) = watchdog.timer.wait() {
                             error!("error waiting for timer event on vcpu {}", cpu_id);
                         }
@@ -261,7 +261,7 @@ impl BusDevice for Vmwdt {
             VMWDT_REG_STATUS => {
                 self.ensure_started();
                 let mut wdts_locked = self.vm_wdts.lock();
-                let mut cpu_watchdog = &mut wdts_locked[cpu_index];
+                let cpu_watchdog = &mut wdts_locked[cpu_index];
 
                 cpu_watchdog.is_enabled = reg_val != 0;
 
@@ -278,7 +278,7 @@ impl BusDevice for Vmwdt {
                 let pid = gettid();
                 let guest_time_ms = Vmwdt::get_guest_time_ms(ppid, pid as u32);
                 let mut wdts_locked = self.vm_wdts.lock();
-                let mut cpu_watchdog = &mut wdts_locked[cpu_index];
+                let cpu_watchdog = &mut wdts_locked[cpu_index];
                 let next_expiration_interval_ms =
                     reg_val as u64 * 1000 / cpu_watchdog.timer_freq_hz;
 
@@ -301,7 +301,7 @@ impl BusDevice for Vmwdt {
             }
             VMWDT_REG_CLOCK_FREQ_HZ => {
                 let mut wdts_locked = self.vm_wdts.lock();
-                let mut cpu_watchdog = &mut wdts_locked[cpu_index];
+                let cpu_watchdog = &mut wdts_locked[cpu_index];
 
                 debug!(
                     "CPU:{:x} wrote VMWDT_REG_CLOCK_FREQ_HZ {:x}",

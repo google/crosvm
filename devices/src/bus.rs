@@ -360,8 +360,7 @@ impl Bus {
         let devices = self.devices.lock();
         let (range, entry) = devices
             .range(..=BusRange { base: addr, len: 1 })
-            .rev()
-            .next()?;
+            .next_back()?;
         Some((*range, entry.clone()))
     }
 

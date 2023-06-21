@@ -454,7 +454,7 @@ impl VirtioDevice for Console {
     }
 
     fn virtio_snapshot(&self) -> anyhow::Result<serde_json::Value> {
-        serde_json::to_value(&ConsoleSnapshot {
+        serde_json::to_value(ConsoleSnapshot {
             // Snapshot base_features as a safeguard when restoring the console device. Saving this
             // info allows us to validate that the proper config was used for the console.
             base_features: self.base_features,

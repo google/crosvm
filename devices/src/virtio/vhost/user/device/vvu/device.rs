@@ -540,7 +540,7 @@ impl BackendChannelInner {
                 let file = files.pop().context("missing file to mmap")?;
 
                 // msg came from a ProtoclReader, so this can't fail.
-                let mut msg = vhost_body_from_message_bytes::<VhostUserShmemMapMsg>(&mut msg)
+                let msg = vhost_body_from_message_bytes::<VhostUserShmemMapMsg>(&mut msg)
                     .expect("framing error");
 
                 let mapping = MemoryMappingBuilder::new(msg.len as usize)

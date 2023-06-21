@@ -10,6 +10,7 @@ use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
 use std::mem::size_of;
+use std::mem::size_of_val;
 
 use base::FileReadWriteAtVolatile;
 use base::WriteZeroesAt;
@@ -73,7 +74,7 @@ impl QcowRawFile {
         non_zero_flags: u64,
     ) -> io::Result<()> {
         self.file.seek(SeekFrom::Start(offset))?;
-        let mut buffer = BufWriter::with_capacity(table.len() * size_of::<u64>(), &self.file);
+        let mut buffer = BufWriter::with_capacity(size_of_val(table), &self.file);
         for addr in table {
             let val = if *addr == 0 {
                 0
@@ -102,7 +103,7 @@ impl QcowRawFile {
     /// Writes a refcount block to the file.
     pub fn write_refcount_block(&mut self, offset: u64, table: &[u16]) -> io::Result<()> {
         self.file.seek(SeekFrom::Start(offset))?;
-        let mut buffer = BufWriter::with_capacity(table.len() * size_of::<u16>(), &self.file);
+        let mut buffer = BufWriter::with_capacity(size_of_val(table), &self.file);
         for count in table {
             buffer.write_all(&count.to_be_bytes())?;
         }

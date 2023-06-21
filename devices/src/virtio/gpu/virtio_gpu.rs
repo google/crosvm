@@ -990,7 +990,7 @@ impl VirtioGpu {
         scanout_data: Option<VirtioScanoutBlobData>,
         resource_id: u32,
     ) -> VirtioGpuResult {
-        let mut scanout: &mut VirtioGpuScanout;
+        let scanout: &mut VirtioGpuScanout;
         let mut scanout_parent_surface_id = None;
 
         match scanout_type {

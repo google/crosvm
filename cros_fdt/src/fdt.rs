@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::ffi::CString;
 use std::io;
-use std::mem::size_of;
+use std::mem::size_of_val;
 
 use remain::sorted;
 use thiserror::Error as ThisError;
@@ -282,7 +282,7 @@ impl FdtWriter {
 
     /// Write a property containing an array of 32-bit unsigned integers.
     pub fn property_array_u32(&mut self, name: &str, cells: &[u32]) -> Result<()> {
-        let mut arr = Vec::with_capacity(cells.len() * size_of::<u32>());
+        let mut arr = Vec::with_capacity(size_of_val(cells));
         for &c in cells {
             arr.extend(c.to_be_bytes());
         }
@@ -291,7 +291,7 @@ impl FdtWriter {
 
     /// Write a property containing an array of 64-bit unsigned integers.
     pub fn property_array_u64(&mut self, name: &str, cells: &[u64]) -> Result<()> {
-        let mut arr = Vec::with_capacity(cells.len() * size_of::<u64>());
+        let mut arr = Vec::with_capacity(size_of_val(cells));
         for &c in cells {
             arr.extend(c.to_be_bytes());
         }

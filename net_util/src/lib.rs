@@ -35,7 +35,7 @@ use serde::Serializer;
 pub use sys::TapT;
 use thiserror::Error as ThisError;
 
-#[cfg(all(feature = "slirp"))]
+#[cfg(feature = "slirp")]
 pub mod slirp;
 #[cfg(all(feature = "slirp", windows))]
 pub use slirp::Slirp;

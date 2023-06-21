@@ -476,7 +476,7 @@ pub enum DeviceKind {
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     ArmVgicV3,
     /// RiscV AIA in-kernel emulation
-    #[cfg(any(target_arch = "riscv64"))]
+    #[cfg(target_arch = "riscv64")]
     RiscvAia,
 }
 

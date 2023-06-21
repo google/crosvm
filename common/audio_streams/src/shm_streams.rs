@@ -310,7 +310,7 @@ pub struct NullShmStreamSource;
 
 impl NullShmStreamSource {
     pub fn new() -> Self {
-        Self::default()
+        NullShmStreamSource
     }
 }
 

@@ -1179,14 +1179,9 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
     fn update_reply_ack_flag(&mut self) {
         let vflag = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         let pflag = VhostUserProtocolFeatures::REPLY_ACK;
-        if (self.virtio_features & vflag) != 0
+        self.slave_req_helper.reply_ack_enabled = (self.virtio_features & vflag) != 0
             && self.protocol_features.contains(pflag)
-            && (self.acked_protocol_features & pflag.bits()) != 0
-        {
-            self.slave_req_helper.reply_ack_enabled = true;
-        } else {
-            self.slave_req_helper.reply_ack_enabled = false;
-        }
+            && (self.acked_protocol_features & pflag.bits()) != 0;
     }
 }
 

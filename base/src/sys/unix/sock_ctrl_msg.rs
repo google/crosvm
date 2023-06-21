@@ -10,6 +10,7 @@ use std::io;
 use std::io::IoSlice;
 use std::io::IoSliceMut;
 use std::mem::size_of;
+use std::mem::size_of_val;
 use std::mem::MaybeUninit;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::io::FromRawFd;
@@ -123,7 +124,7 @@ impl CmsgBuffer {
 // that is unnecessary when compiling for glibc.
 #[allow(clippy::useless_conversion)]
 fn raw_sendmsg<D: AsIobuf>(fd: RawFd, out_data: &[D], out_fds: &[RawFd]) -> io::Result<usize> {
-    let cmsg_capacity = CMSG_SPACE(size_of::<RawFd>() * out_fds.len());
+    let cmsg_capacity = CMSG_SPACE(size_of_val(out_fds));
     let mut cmsg_buffer = CmsgBuffer::with_capacity(cmsg_capacity);
 
     let iovec = AsIobuf::as_iobuf_slice(out_data);
@@ -140,9 +141,7 @@ fn raw_sendmsg<D: AsIobuf>(fd: RawFd, out_data: &[D], out_fds: &[RawFd]) -> io::
         // Safe because cmsghdr only contains primitive types for which zero
         // initialization is valid.
         let mut cmsg: cmsghdr = unsafe { MaybeUninit::zeroed().assume_init() };
-        cmsg.cmsg_len = CMSG_LEN(size_of::<RawFd>() * out_fds.len())
-            .try_into()
-            .unwrap();
+        cmsg.cmsg_len = CMSG_LEN(size_of_val(out_fds)).try_into().unwrap();
         cmsg.cmsg_level = SOL_SOCKET;
         cmsg.cmsg_type = SCM_RIGHTS;
         unsafe {
@@ -180,7 +179,7 @@ fn raw_recvmsg(
     iovs: &mut [IoSliceMut],
     in_fds: &mut [RawFd],
 ) -> io::Result<(usize, usize)> {
-    let cmsg_capacity = CMSG_SPACE(size_of::<RawFd>() * in_fds.len());
+    let cmsg_capacity = CMSG_SPACE(size_of_val(in_fds));
     let mut cmsg_buffer = CmsgBuffer::with_capacity(cmsg_capacity);
 
     // msghdr on musl has private __pad1 and __pad2 fields that cannot be initialized.

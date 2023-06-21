@@ -296,7 +296,7 @@ impl VhostUserBackend for SndBackend {
             worker.abort_handle.abort();
 
             // Wait for queue_task to be aborted.
-            let _ = ex.run_until(async { worker.queue_task.await });
+            let _ = ex.run_until(worker.queue_task);
         }
         if idx == 2 || idx == 3 {
             if let Some(worker) = self
@@ -307,7 +307,7 @@ impl VhostUserBackend for SndBackend {
                 worker.abort_handle.abort();
 
                 // Wait for queue_task to be aborted.
-                let _ = ex.run_until(async { worker.queue_task.await });
+                let _ = ex.run_until(worker.queue_task);
             }
         }
         if let Some(worker) = self.workers.get_mut(idx).and_then(Option::take) {

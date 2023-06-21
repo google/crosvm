@@ -185,7 +185,7 @@ where
             // Wait for queue_task to be aborted.
             NET_EXECUTOR.with(|ex| {
                 let ex = ex.get().expect("Executor not initialized");
-                let _ = ex.run_until(async { worker.queue_task.await });
+                let _ = ex.run_until(worker.queue_task);
             });
 
             let queue = match Arc::try_unwrap(worker.queue) {

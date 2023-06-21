@@ -1009,8 +1009,7 @@ impl Worker {
 
         let fd = match hdr.get_code() {
             SlaveReq::SHMEM_MAP => {
-                let mut msg =
-                    vhost_body_from_message_bytes(&mut msg).context("incomplete message")?;
+                let msg = vhost_body_from_message_bytes(&mut msg).context("incomplete message")?;
                 let fd = self
                     .handle_map_message(msg)
                     .context("failed to handle map message")?;

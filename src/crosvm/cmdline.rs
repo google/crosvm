@@ -2996,7 +2996,7 @@ impl TryFrom<RunCommand> for super::config::Config {
 
             // The number of vq pairs on a network device shall never exceed the number of vcpu
             // cores. Fix that up if needed.
-            for mut net in &mut cfg.net {
+            for net in &mut cfg.net {
                 if let Some(vq_pairs) = net.vq_pairs {
                     if vq_pairs as usize > cfg.vcpu_count.unwrap_or(1) {
                         log::warn!("the number of net vq pairs must not exceed the vcpu count, falling back to single queue mode");
