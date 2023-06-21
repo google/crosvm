@@ -1864,7 +1864,7 @@ pub struct RunCommand {
     /// Possible key values:
     ///     type=(stdout,syslog,sink,file) - Where to route the
     ///        serial device
-    ///     hardware=(serial,virtio-console,debugcon) - Which type
+    ///     hardware=(serial,virtio-console,debugcon,legacy-virtio-console) - Which type
     ///        of serial hardware to emulate. Defaults to 8250 UART
     ///        (serial).
     ///     num=(1,2,3,4) - Serial Device Number. If not provided,

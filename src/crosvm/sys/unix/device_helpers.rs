@@ -20,6 +20,7 @@ use anyhow::Result;
 use arch::VirtioDeviceStub;
 use base::ReadNotifier;
 use base::*;
+use devices::serial_device::SerialHardware;
 use devices::serial_device::SerialParameters;
 use devices::serial_device::SerialType;
 use devices::vfio::VfioCommonSetup;
@@ -45,6 +46,7 @@ use devices::virtio::vhost::user::VhostUserVsockDevice;
 use devices::virtio::vsock::VsockConfig;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonMode;
+use devices::virtio::Console;
 use devices::virtio::NetError;
 use devices::virtio::NetParameters;
 use devices::virtio::NetParametersMode;
@@ -1346,10 +1348,17 @@ impl VirtioDeviceBuilder for &SerialParameters {
         let mut keep_rds = Vec::new();
         let evt = Event::new().context("failed to create event")?;
 
-        Ok(Box::new(
-            self.create_serial_device::<AsyncConsole>(protection_type, &evt, &mut keep_rds)
-                .context("failed to create console device")?,
-        ))
+        if self.hardware == SerialHardware::LegacyVirtioConsole {
+            Ok(Box::new(
+                self.create_serial_device::<Console>(protection_type, &evt, &mut keep_rds)
+                    .context("failed to create console device")?,
+            ))
+        } else {
+            Ok(Box::new(
+                self.create_serial_device::<AsyncConsole>(protection_type, &evt, &mut keep_rds)
+                    .context("failed to create console device")?,
+            ))
+        }
     }
 
     fn create_vhost_user_device(

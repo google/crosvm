@@ -352,11 +352,10 @@ fn create_virtio_devices(
         }
     }
 
-    for (_, param) in cfg
-        .serial_parameters
-        .iter()
-        .filter(|(_k, v)| v.hardware == SerialHardware::VirtioConsole)
-    {
+    for (_, param) in cfg.serial_parameters.iter().filter(|(_k, v)| {
+        v.hardware == SerialHardware::VirtioConsole
+            || v.hardware == SerialHardware::LegacyVirtioConsole
+    }) {
         let dev = param.create_virtio_device_and_jail(cfg.protection_type, &cfg.jail_config)?;
         devs.push(dev);
     }

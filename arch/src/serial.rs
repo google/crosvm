@@ -187,7 +187,8 @@ pub fn get_serial_cmdline(
                 .insert("console", &format!("ttyS{}", num - 1))
                 .map_err(GetSerialCmdlineError::KernelCmdline)?;
         }
-        Some((SerialHardware::VirtioConsole, num)) => {
+        Some((SerialHardware::VirtioConsole, num))
+        | Some((SerialHardware::LegacyVirtioConsole, num)) => {
             cmdline
                 .insert("console", &format!("hvc{}", num - 1))
                 .map_err(GetSerialCmdlineError::KernelCmdline)?;
