@@ -13,7 +13,10 @@ use std::io::Read;
 use std::io::Write;
 
 use anyhow::anyhow;
+use anyhow::bail;
 use anyhow::Context;
+use base::custom_serde::deserialize_seq_to_arr;
+use base::custom_serde::serialize_arr;
 use base::error;
 use base::warn;
 use base::AsRawDescriptor;
@@ -27,6 +30,8 @@ use data_model::Le32;
 use linux_input_sys::virtio_input_event;
 use linux_input_sys::InputEventDecoder;
 use remain::sorted;
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 use vm_memory::GuestMemory;
 use zerocopy::AsBytes;
@@ -91,7 +96,7 @@ pub enum InputError {
 
 pub type Result<T> = std::result::Result<T, InputError>;
 
-#[derive(Copy, Clone, Default, Debug, AsBytes, FromBytes)]
+#[derive(Copy, Clone, Default, Debug, AsBytes, FromBytes, Serialize, Deserialize)]
 #[repr(C)]
 pub struct virtio_input_device_ids {
     bustype: Le16,
@@ -111,7 +116,7 @@ impl virtio_input_device_ids {
     }
 }
 
-#[derive(Copy, Clone, Default, Debug, AsBytes, FromBytes)]
+#[derive(Copy, Clone, Default, Debug, AsBytes, FromBytes, Serialize, Deserialize)]
 #[repr(C)]
 pub struct virtio_input_absinfo {
     min: Le32,
@@ -182,9 +187,13 @@ impl virtio_input_config {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 #[repr(C)]
 pub struct virtio_input_bitmap {
+    #[serde(
+        serialize_with = "serialize_arr",
+        deserialize_with = "deserialize_seq_to_arr"
+    )]
     bitmap: [u8; 128],
 }
 
@@ -225,6 +234,7 @@ impl virtio_input_bitmap {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VirtioInputConfig {
     select: u8,
     subsel: u8,
@@ -532,6 +542,13 @@ pub struct Input<T: EventSource + Send + 'static> {
     virtio_features: u64,
 }
 
+/// Snapshot of [Input]'s state.
+#[derive(Serialize, Deserialize)]
+struct InputSnapshot {
+    config: VirtioInputConfig,
+    virtio_features: u64,
+}
+
 impl<T> VirtioDevice for Input<T>
 where
     T: 'static + EventSource + Send,
@@ -614,6 +631,41 @@ where
         } else {
             Ok(None)
         }
+    }
+
+    fn virtio_wake(
+        &mut self,
+        queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, (Queue, Event)>)>,
+    ) -> anyhow::Result<()> {
+        if let Some((mem, interrupt, mut queues)) = queues_state {
+            let queue_vec = vec![
+                queues.remove(&0).expect("eventq missing"),
+                queues.remove(&1).expect("statusq missing"),
+            ];
+            self.activate(mem, interrupt, queue_vec)?;
+        }
+        Ok(())
+    }
+
+    fn virtio_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        serde_json::to_value(InputSnapshot {
+            virtio_features: self.virtio_features,
+            config: self.config.clone(),
+        })
+        .context("failed to serialize InputSnapshot")
+    }
+
+    fn virtio_restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        let snap: InputSnapshot = serde_json::from_value(data).context("error deserializing")?;
+        if snap.virtio_features != self.virtio_features {
+            bail!(
+                "expected virtio_features to match, but they did not. Live: {:?}, snapshot {:?}",
+                self.virtio_features,
+                snap.virtio_features,
+            );
+        }
+        self.config = snap.config;
+        Ok(())
     }
 }
 
