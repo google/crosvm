@@ -5,6 +5,8 @@
 use std::collections::VecDeque;
 use std::io;
 use std::sync::Arc;
+use std::time::Duration;
+use std::time::Instant;
 
 use base::error;
 use base::Event;
@@ -90,6 +92,7 @@ pub(in crate::virtio::console) fn spawn_input_thread(
             }
         };
 
+        let mut kill_timeout = None;
         let mut rx_buf = [0u8; 1 << 12];
         'wait: loop {
             let events = match wait_ctx.wait() {
@@ -107,6 +110,21 @@ pub(in crate::virtio::console) fn spawn_input_thread(
                         // immediately re-entry this case since we don't call `kill_evt.wait()`.
                         if events.iter().all(|e| matches!(e.token, Token::Kill)) {
                             break 'wait;
+                        }
+                        const TIMEOUT_DURATION: Duration = Duration::from_millis(500);
+                        match kill_timeout {
+                            None => {
+                                kill_timeout = Some(Instant::now() + TIMEOUT_DURATION);
+                            }
+                            Some(t) => {
+                                if Instant::now() >= t {
+                                    error!(
+                                        "failed to drain console input within {:?}, giving up",
+                                        TIMEOUT_DURATION
+                                    );
+                                    break 'wait;
+                                }
+                            }
                         }
                     }
                     Token::ConsoleEvent => {
