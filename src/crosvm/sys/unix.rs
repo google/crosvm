@@ -74,6 +74,8 @@ use devices::vfio::VfioCommonTrait;
 #[cfg(feature = "gpu")]
 use devices::virtio;
 use devices::virtio::device_constants::video::VideoDeviceType;
+#[cfg(feature = "gpu")]
+use devices::virtio::gpu::EventDevice;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use devices::virtio::memory_mapper::MemoryMapper;
 use devices::virtio::memory_mapper::MemoryMapperTrait;
@@ -83,8 +85,6 @@ use devices::virtio::vhost::user::VhostUserListenerTrait;
 use devices::virtio::BalloonFeatures;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonMode;
-#[cfg(feature = "gpu")]
-use devices::virtio::EventDevice;
 use devices::virtio::VirtioTransportType;
 #[cfg(feature = "audio")]
 use devices::Ac97Dev;
@@ -306,7 +306,7 @@ fn create_virtio_devices(
                     .as_ref()
                     .map(|multi_touch_spec| multi_touch_spec.get_size())
                     .unwrap_or((gpu_display_w, gpu_display_h));
-                let dev = virtio::new_multi_touch(
+                let dev = virtio::input::new_multi_touch(
                     // u32::MAX is the least likely to collide with the indices generated above for
                     // the multi_touch options, which begin at 0.
                     u32::MAX,
@@ -326,7 +326,7 @@ fn create_virtio_devices(
                 let (event_device_socket, virtio_dev_socket) =
                     StreamChannel::pair(BlockingMode::Nonblocking, FramingMode::Byte)
                         .context("failed to create socket")?;
-                let dev = virtio::new_keyboard(
+                let dev = virtio::input::new_keyboard(
                     // u32::MAX is the least likely to collide with the indices generated above for
                     // the multi_touch options, which begin at 0.
                     u32::MAX,

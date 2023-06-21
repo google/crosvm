@@ -370,7 +370,7 @@ fn create_multi_touch_device(
     idx: u32,
 ) -> DeviceResult {
     let (width, height) = multi_touch_spec.get_size();
-    let dev = virtio::new_multi_touch(
+    let dev = virtio::input::new_multi_touch(
         idx,
         event_pipe,
         width,
@@ -386,7 +386,7 @@ fn create_multi_touch_device(
 
 #[cfg(feature = "gpu")]
 fn create_mouse_device(cfg: &Config, event_pipe: StreamChannel, idx: u32) -> DeviceResult {
-    let dev = virtio::new_mouse(idx, event_pipe, virtio::base_features(cfg.protection_type))
+    let dev = virtio::input::new_mouse(idx, event_pipe, virtio::base_features(cfg.protection_type))
         .exit_context(Exit::InputDeviceNew, "failed to set up input device")?;
     Ok(VirtioDeviceStub {
         dev: Box::new(dev),
@@ -638,7 +638,7 @@ fn create_virtio_gpu_and_input_devices(
         .input_event_keyboard_pipes
         .pop()
         .expect("at least one keyboard should be in GPU VMM config");
-    let dev = virtio::new_keyboard(
+    let dev = virtio::input::new_keyboard(
         /* idx= */ 0,
         keyboard_pipe,
         virtio::base_features(cfg.protection_type),

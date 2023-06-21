@@ -19,11 +19,11 @@ use libcras::CrasStreamType;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::virtio::common_backend::PcmResponse;
 use crate::virtio::snd::common_backend::async_funcs::PlaybackBufferWriter;
 use crate::virtio::snd::common_backend::stream_info::StreamInfo;
 use crate::virtio::snd::common_backend::DirectionalStream;
 use crate::virtio::snd::common_backend::Error;
+use crate::virtio::snd::common_backend::PcmResponse;
 use crate::virtio::snd::common_backend::SndData;
 use crate::virtio::snd::parameters::Error as ParametersError;
 use crate::virtio::snd::parameters::Parameters;

@@ -369,6 +369,7 @@ impl<I: SignalableInterrupt> Worker<I> {
     /// * `ex` - Instance of `Executor` of asynchronous operations
     /// * `cmd_evt` - Driver-to-device kick event for the command queue
     /// * `event_evt` - Driver-to-device kick event for the event queue
+    #[allow(dead_code)]
     pub async fn run_async(
         mut self,
         mut device: Box<dyn Device>,

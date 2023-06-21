@@ -20,6 +20,7 @@ use base::WaitContext;
 use crosvm_cli::sys::windows::exit::Exit;
 use crosvm_cli::sys::windows::exit::ExitContext;
 use devices::virtio;
+use devices::virtio::gpu::EventDevice;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost::user::gpu::sys::windows::product::GpuBackendConfig as GpuBackendConfigProduct;
 #[cfg(feature = "gpu")]
@@ -33,7 +34,6 @@ use devices::virtio::vhost::user::snd::sys::windows::product::SndVmmConfig as Sn
 #[cfg(feature = "audio")]
 use devices::virtio::vhost::user::snd::sys::windows::SndVmmConfig;
 use devices::virtio::DisplayBackend;
-use devices::virtio::EventDevice;
 use devices::virtio::Gpu;
 use devices::virtio::GpuParameters;
 pub(crate) use metrics::log_descriptor;

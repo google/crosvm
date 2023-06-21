@@ -11,7 +11,7 @@ mod balloon;
 mod descriptor_chain;
 mod descriptor_utils;
 pub mod device_constants;
-mod input;
+pub mod input;
 mod interrupt;
 mod iommu;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -38,28 +38,61 @@ pub mod vhost;
 pub mod vsock;
 
 #[cfg(feature = "balloon")]
-pub use self::balloon::*;
-pub use self::block::*;
-pub use self::console::*;
+pub use self::balloon::Balloon;
+#[cfg(feature = "balloon")]
+pub use self::balloon::BalloonFeatures;
+#[cfg(feature = "balloon")]
+pub use self::balloon::BalloonMode;
+pub use self::block::BlockAsync;
+pub use self::console::Console;
 pub use self::descriptor_chain::Desc;
 pub use self::descriptor_chain::DescriptorChain;
 pub use self::descriptor_chain::DescriptorChainIter;
 pub use self::descriptor_chain::SplitDescriptorChain;
-pub use self::descriptor_utils::*;
+pub use self::descriptor_utils::create_descriptor_chain;
+pub use self::descriptor_utils::DescriptorType;
+pub use self::descriptor_utils::Reader;
+pub use self::descriptor_utils::Writer;
 #[cfg(feature = "gpu")]
-pub use self::gpu::*;
-pub use self::input::*;
-pub use self::interrupt::*;
-pub use self::iommu::*;
-pub use self::queue::*;
-pub use self::rng::*;
+pub use self::gpu::DisplayBackend;
+#[cfg(feature = "gpu")]
+pub use self::gpu::Gpu;
+#[cfg(feature = "gpu")]
+pub use self::gpu::GpuDisplayMode;
+#[cfg(feature = "gpu")]
+pub use self::gpu::GpuDisplayParameters;
+#[cfg(feature = "gpu")]
+pub use self::gpu::GpuMode;
+#[cfg(feature = "gpu")]
+pub use self::gpu::GpuParameters;
+#[cfg(feature = "gpu")]
+pub use self::gpu::GpuWsi;
+pub use self::interrupt::Interrupt;
+pub use self::interrupt::InterruptSnapshot;
+pub use self::interrupt::SignalableInterrupt;
+pub use self::iommu::ipc_memory_mapper;
+pub use self::iommu::memory_mapper;
+pub use self::iommu::memory_util;
+pub use self::iommu::Iommu;
+pub use self::iommu::IommuError;
+pub use self::queue::Queue;
+pub use self::rng::Rng;
 #[cfg(any(feature = "tpm", feature = "vtpm"))]
-pub use self::tpm::*;
+pub use self::tpm::Tpm;
+#[cfg(any(feature = "tpm", feature = "vtpm"))]
+pub use self::tpm::TpmBackend;
 #[cfg(any(feature = "video-decoder", feature = "video-encoder"))]
-pub use self::video::*;
-pub use self::virtio_device::*;
-pub use self::virtio_mmio_device::*;
-pub use self::virtio_pci_device::*;
+pub use self::video::VideoDevice;
+pub use self::virtio_device::SharedMemoryMapper;
+pub use self::virtio_device::SharedMemoryRegion;
+pub use self::virtio_device::VirtioDevice;
+pub use self::virtio_device::VirtioTransportType;
+pub use self::virtio_mmio_device::VirtioMmioDevice;
+pub use self::virtio_pci_device::PciCapabilityType;
+pub use self::virtio_pci_device::VirtioPciCap;
+pub use self::virtio_pci_device::VirtioPciDevice;
+pub use self::virtio_pci_device::VirtioPciShmCap;
+
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
         mod p9;
@@ -70,24 +103,31 @@ cfg_if::cfg_if! {
         pub mod net;
 
         pub use self::iommu::sys::unix::vfio_wrapper;
-        pub use self::net::*;
-        pub use self::p9::*;
-        pub use self::pmem::*;
+        pub use self::net::Net;
+        pub use self::net::NetError;
+        pub use self::net::NetParameters;
+        pub use self::net::NetParametersMode;
+        pub use self::net::VhostNetParameters;
+        pub use self::net::VHOST_NET_DEFAULT_PATH;
+        pub use self::p9::P9;
+        pub use self::pmem::Pmem;
         #[cfg(feature = "audio")]
-        pub use self::snd::*;
-        pub use self::wl::*;
-
+        pub use self::snd::new_sound;
+        pub use self::wl::Wl;
     } else if #[cfg(windows)] {
         #[cfg(feature = "slirp")]
         pub mod net;
 
         #[cfg(feature = "slirp")]
-        pub use self::net::*;
-        pub use self::vsock::*;
+        pub use self::net::Net;
+        #[cfg(feature = "slirp")]
+        pub use self::net::NetParameters;
+        pub use self::vsock::Vsock;
     } else {
         compile_error!("Unsupported platform");
     }
 }
+
 use std::cmp;
 use std::convert::TryFrom;
 
