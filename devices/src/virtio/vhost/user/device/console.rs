@@ -26,7 +26,6 @@ use crate::virtio;
 use crate::virtio::console::asynchronous::ConsoleDevice;
 use crate::virtio::console::virtio_console_config;
 use crate::virtio::copy_config;
-use crate::virtio::vhost::user::device::handler::sys::Doorbell;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::Error as DeviceError;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
@@ -34,6 +33,7 @@ use crate::virtio::vhost::user::device::handler::VhostUserPlatformOps;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 use crate::virtio::vhost::user::device::VhostUserDevice;
+use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::SerialHardware;
 use crate::SerialParameters;
@@ -162,7 +162,7 @@ impl VhostUserBackend for ConsoleBackend {
         idx: usize,
         queue: virtio::Queue,
         mem: GuestMemory,
-        doorbell: Doorbell,
+        doorbell: Interrupt,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
         let queue = Arc::new(Mutex::new(queue));

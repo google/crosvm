@@ -28,13 +28,13 @@ use vmm_vhost::message::VhostUserVirtioFeatures;
 
 use crate::virtio::gpu;
 use crate::virtio::gpu::QueueReader;
-use crate::virtio::vhost::user::device::handler::sys::Doorbell;
 use crate::virtio::vhost::user::device::handler::Error as DeviceError;
 use crate::virtio::vhost::user::device::handler::VhostBackendReqConnection;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 use crate::virtio::vhost::user::device::handler::WorkerState;
 use crate::virtio::DescriptorChain;
 use crate::virtio::Gpu;
+use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::SharedMemoryMapper;
 use crate::virtio::SharedMemoryRegion;
@@ -45,7 +45,7 @@ const MAX_QUEUE_NUM: usize = gpu::QUEUE_SIZES.len();
 #[derive(Clone)]
 struct SharedReader {
     queue: Arc<Mutex<Queue>>,
-    doorbell: Doorbell,
+    doorbell: Interrupt,
 }
 
 impl gpu::QueueReader for SharedReader {
@@ -147,7 +147,7 @@ impl VhostUserBackend for GpuBackend {
         idx: usize,
         queue: Queue,
         mem: GuestMemory,
-        doorbell: Doorbell,
+        doorbell: Interrupt,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
         if self.queue_workers[idx].is_some() {

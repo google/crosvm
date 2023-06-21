@@ -11,6 +11,7 @@ use base::error;
 use base::info;
 use base::AsRawDescriptor;
 use base::Event;
+use base::MemoryMappingBuilder;
 use base::SafeDescriptor;
 use cros_async::AsyncWrapper;
 use cros_async::Executor;
@@ -25,58 +26,13 @@ use vmm_vhost::SlaveReqHandler;
 use vmm_vhost::VhostUserSlaveReqHandler;
 
 use crate::vfio::VfioDevice;
-use crate::virtio::vhost::user::device::handler::CallEvent;
 use crate::virtio::vhost::user::device::handler::GuestAddress;
 use crate::virtio::vhost::user::device::handler::MappingInfo;
 use crate::virtio::vhost::user::device::handler::MemoryRegion;
 use crate::virtio::vhost::user::device::handler::VhostUserPlatformOps;
-use crate::virtio::vhost::user::device::vvu::doorbell::DoorbellRegion;
 use crate::virtio::vhost::user::device::vvu::pci::VvuPciCaps;
 use crate::virtio::vhost::user::device::vvu::pci::VvuPciDevice;
-use crate::virtio::SignalableInterrupt;
-
-/// A Doorbell that supports both regular call events and signaling through a VVU device.
-#[derive(Clone)]
-pub enum Doorbell {
-    Call(CallEvent),
-    Vfio(DoorbellRegion),
-}
-
-impl From<CallEvent> for Doorbell {
-    fn from(event: CallEvent) -> Self {
-        Doorbell::Call(event)
-    }
-}
-
-impl SignalableInterrupt for Doorbell {
-    fn signal(&self, vector: u16, interrupt_status_mask: u32) {
-        match &self {
-            Self::Call(evt) => evt.signal(vector, interrupt_status_mask),
-            Self::Vfio(evt) => evt.signal(vector, interrupt_status_mask),
-        }
-    }
-
-    fn signal_config_changed(&self) {
-        match &self {
-            Self::Call(evt) => evt.signal_config_changed(),
-            Self::Vfio(evt) => evt.signal_config_changed(),
-        }
-    }
-
-    fn get_resample_evt(&self) -> Option<&Event> {
-        match &self {
-            Self::Call(evt) => evt.get_resample_evt(),
-            Self::Vfio(evt) => evt.get_resample_evt(),
-        }
-    }
-
-    fn do_interrupt_resample(&self) {
-        match &self {
-            Self::Call(evt) => evt.do_interrupt_resample(),
-            Self::Vfio(evt) => evt.do_interrupt_resample(),
-        }
-    }
-}
+use crate::virtio::Interrupt;
 
 /// Ops for running vhost-user over virtio (i.e. virtio-vhost-user).
 pub struct VvuOps {
@@ -168,12 +124,32 @@ impl VhostUserPlatformOps for VvuOps {
             })
     }
 
-    fn set_vring_call(&mut self, index: u8, file: Option<File>) -> VhostResult<Doorbell> {
+    fn set_vring_call(&mut self, index: u8, file: Option<File>) -> VhostResult<Interrupt> {
         if file.is_some() {
             return Err(VhostError::InvalidParam);
         }
-        let doorbell = DoorbellRegion::new(index, &self.vfio_dev, &self.caps)?;
-        Ok(Doorbell::Vfio(doorbell))
+
+        let base = self.caps.doorbell_base_addr();
+        let mmap_region = self.vfio_dev.get_region_mmap(base.index);
+        let region_offset = self.vfio_dev.get_region_offset(base.index);
+        let offset = region_offset + mmap_region[0].offset;
+
+        let mmap = MemoryMappingBuilder::new(mmap_region[0].size as usize)
+            .from_file(self.vfio_dev.device_file())
+            .offset(offset)
+            .build()
+            .map_err(|e| {
+                error!("Failed to mmap vfio memory region: {}", e);
+                VhostError::InvalidOperation
+            })?;
+
+        let mmap_offset = base.addr + (index as u64 * self.caps.doorbell_off_multiplier() as u64);
+        Ok(Interrupt::new_virtio_vhost_user(
+            mmap,
+            mmap_offset
+                .try_into()
+                .expect("mmap_offset too large for usize"),
+        ))
     }
 }
 

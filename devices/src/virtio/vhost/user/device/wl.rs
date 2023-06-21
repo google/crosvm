@@ -40,7 +40,6 @@ use crate::virtio::device_constants::wl::QUEUE_SIZES;
 use crate::virtio::device_constants::wl::VIRTIO_WL_F_SEND_FENCES;
 use crate::virtio::device_constants::wl::VIRTIO_WL_F_TRANS_FLAGS;
 use crate::virtio::device_constants::wl::VIRTIO_WL_F_USE_SHMEM;
-use crate::virtio::vhost::user::device::handler::sys::Doorbell;
 use crate::virtio::vhost::user::device::handler::Error as DeviceError;
 use crate::virtio::vhost::user::device::handler::VhostBackendReqConnection;
 use crate::virtio::vhost::user::device::handler::VhostBackendReqConnectionState;
@@ -49,6 +48,7 @@ use crate::virtio::vhost::user::device::handler::WorkerState;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 use crate::virtio::wl;
+use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::SharedMemoryRegion;
 
@@ -57,7 +57,7 @@ const MAX_QUEUE_NUM: usize = QUEUE_SIZES.len();
 async fn run_out_queue(
     queue: Rc<RefCell<Queue>>,
     mem: GuestMemory,
-    doorbell: Doorbell,
+    doorbell: Interrupt,
     kick_evt: EventAsync,
     wlstate: Rc<RefCell<wl::WlState>>,
 ) {
@@ -74,7 +74,7 @@ async fn run_out_queue(
 async fn run_in_queue(
     queue: Rc<RefCell<Queue>>,
     mem: GuestMemory,
-    doorbell: Doorbell,
+    doorbell: Interrupt,
     kick_evt: EventAsync,
     wlstate: Rc<RefCell<wl::WlState>>,
     wlstate_ctx: IoSource<AsyncWrapper<SafeDescriptor>>,
@@ -205,7 +205,7 @@ impl VhostUserBackend for WlBackend {
         idx: usize,
         queue: Queue,
         mem: GuestMemory,
-        doorbell: Doorbell,
+        doorbell: Interrupt,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
         if self.workers[idx].is_some() {

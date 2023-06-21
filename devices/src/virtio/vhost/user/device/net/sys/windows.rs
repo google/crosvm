@@ -45,7 +45,6 @@ use crate::virtio::net::NetError;
 use crate::virtio::net::MAX_BUFFER_SIZE;
 use crate::virtio::vhost::user::device::handler::sys::windows::read_from_tube_transporter;
 use crate::virtio::vhost::user::device::handler::sys::windows::run_handler;
-use crate::virtio::vhost::user::device::handler::sys::Doorbell;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 use crate::virtio::vhost::user::device::handler::VhostUserRegularOps;
@@ -54,6 +53,7 @@ use crate::virtio::vhost::user::device::net::run_ctrl_queue;
 use crate::virtio::vhost::user::device::net::run_tx_queue;
 use crate::virtio::vhost::user::device::net::NetBackend;
 use crate::virtio::vhost::user::device::net::NET_EXECUTOR;
+use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::SignalableInterrupt;
 
@@ -87,7 +87,7 @@ async fn run_rx_queue<T: TapT>(
     mut queue: Arc<Mutex<virtio::Queue>>,
     mem: GuestMemory,
     mut tap: IoSource<T>,
-    call_evt: Doorbell,
+    call_evt: Interrupt,
     kick_evt: EventAsync,
     read_notifier: EventAsync,
     mut overlapped_wrapper: OverlappedWrapper,
@@ -150,7 +150,7 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
     idx: usize,
     queue: virtio::Queue,
     mem: GuestMemory,
-    doorbell: Doorbell,
+    doorbell: Interrupt,
     kick_evt: Event,
 ) -> anyhow::Result<()> {
     if backend.workers.get(idx).is_some() {

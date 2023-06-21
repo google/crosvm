@@ -25,11 +25,8 @@ use vmm_vhost::message::VhostUserMsgHeader;
 use vmm_vhost::SlaveReqHandler;
 use vmm_vhost::VhostUserSlaveReqHandler;
 
-use crate::virtio::vhost::user::device::handler::CallEvent;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::VhostUserRegularOps;
-
-pub type Doorbell = CallEvent;
 
 pub fn read_from_tube_transporter(
     raw_transport_tube: RawDescriptor,

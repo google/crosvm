@@ -39,7 +39,6 @@ use crate::virtio::block::asynchronous::ConfigChangeSignal;
 use crate::virtio::block::asynchronous::WorkerCmd;
 use crate::virtio::block::DiskState;
 use crate::virtio::copy_config;
-use crate::virtio::vhost::user::device::handler::sys::Doorbell;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::Error as DeviceError;
 use crate::virtio::vhost::user::device::handler::VhostBackendReqConnection;
@@ -47,6 +46,7 @@ use crate::virtio::vhost::user::device::handler::VhostBackendReqConnectionState;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 use crate::virtio::vhost::user::device::handler::VhostUserPlatformOps;
 use crate::virtio::vhost::user::device::VhostUserDevice;
+use crate::virtio::Interrupt;
 
 const NUM_QUEUES: u16 = 16;
 
@@ -75,7 +75,7 @@ struct BlockBackendSnapshot {
 
 struct Worker {
     worker_task: TaskHandle<Option<base::Tube>>,
-    worker_tx: mpsc::UnboundedSender<WorkerCmd<Doorbell>>,
+    worker_tx: mpsc::UnboundedSender<WorkerCmd>,
     kill_evt: Event,
 }
 
@@ -237,7 +237,7 @@ impl VhostUserBackend for BlockBackend {
         idx: usize,
         queue: virtio::Queue,
         mem: GuestMemory,
-        doorbell: Doorbell,
+        doorbell: Interrupt,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
         // `start_worker` will return early if the worker has already started.

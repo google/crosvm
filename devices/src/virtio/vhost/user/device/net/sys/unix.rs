@@ -37,7 +37,6 @@ use crate::virtio;
 use crate::virtio::net::process_rx;
 use crate::virtio::net::validate_and_configure_tap;
 use crate::virtio::net::NetError;
-use crate::virtio::vhost::user::device::handler::sys::Doorbell;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 use crate::virtio::vhost::user::device::handler::WorkerState;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
@@ -46,6 +45,7 @@ use crate::virtio::vhost::user::device::net::run_ctrl_queue;
 use crate::virtio::vhost::user::device::net::run_tx_queue;
 use crate::virtio::vhost::user::device::net::NetBackend;
 use crate::virtio::vhost::user::device::net::NET_EXECUTOR;
+use crate::virtio::Interrupt;
 use crate::PciAddress;
 
 struct TapConfig {
@@ -141,7 +141,7 @@ async fn run_rx_queue<T: TapT>(
     queue: Arc<Mutex<virtio::Queue>>,
     mem: GuestMemory,
     mut tap: IoSource<T>,
-    doorbell: Doorbell,
+    doorbell: Interrupt,
     kick_evt: EventAsync,
 ) {
     loop {
@@ -171,7 +171,7 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
     idx: usize,
     queue: virtio::Queue,
     mem: GuestMemory,
-    doorbell: Doorbell,
+    doorbell: Interrupt,
     kick_evt: Event,
 ) -> anyhow::Result<()> {
     if backend.workers[idx].is_some() {

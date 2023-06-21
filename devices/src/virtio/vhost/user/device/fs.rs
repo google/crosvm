@@ -40,10 +40,10 @@ use crate::virtio::device_constants::fs::FS_MAX_TAG_LEN;
 use crate::virtio::fs::passthrough::Config;
 use crate::virtio::fs::passthrough::PassthroughFs;
 use crate::virtio::fs::process_fs_queue;
-use crate::virtio::vhost::user::device::handler::sys::Doorbell;
 use crate::virtio::vhost::user::device::handler::Error as DeviceError;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 use crate::virtio::vhost::user::device::handler::WorkerState;
+use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 
 const MAX_QUEUE_NUM: usize = 2; /* worker queue and high priority queue */
@@ -51,7 +51,7 @@ const MAX_QUEUE_NUM: usize = 2; /* worker queue and high priority queue */
 async fn handle_fs_queue(
     queue: Rc<RefCell<virtio::Queue>>,
     mem: GuestMemory,
-    doorbell: Doorbell,
+    doorbell: Interrupt,
     kick_evt: EventAsync,
     server: Arc<fuse::Server<PassthroughFs>>,
     tube: Arc<Mutex<Tube>>,
@@ -180,7 +180,7 @@ impl VhostUserBackend for FsBackend {
         idx: usize,
         queue: virtio::Queue,
         mem: GuestMemory,
-        doorbell: Doorbell,
+        doorbell: Interrupt,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
         if self.workers[idx].is_some() {

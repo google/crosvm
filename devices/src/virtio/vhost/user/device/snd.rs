@@ -43,12 +43,12 @@ use crate::virtio::snd::common_backend::PcmResponse;
 use crate::virtio::snd::common_backend::SndData;
 use crate::virtio::snd::common_backend::MAX_QUEUE_NUM;
 use crate::virtio::snd::parameters::Parameters;
-use crate::virtio::vhost::user::device::handler::sys::Doorbell;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::Error as DeviceError;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 use crate::virtio::vhost::user::device::handler::WorkerState;
 use crate::virtio::vhost::user::VhostUserDevice;
+use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 
 static SND_EXECUTOR: OnceCell<Executor> = OnceCell::new();
@@ -190,7 +190,7 @@ impl VhostUserBackend for SndBackend {
         idx: usize,
         queue: virtio::Queue,
         mem: GuestMemory,
-        doorbell: Doorbell,
+        doorbell: Interrupt,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
         if self.workers[idx].is_some() {

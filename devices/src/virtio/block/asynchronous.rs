@@ -469,12 +469,12 @@ async fn flush_disk(
     }
 }
 
-pub enum WorkerCmd<I: SignalableInterrupt + 'static> {
+pub enum WorkerCmd {
     StartQueue {
         index: usize,
         queue: Queue,
         kick_evt: Event,
-        interrupt: I,
+        interrupt: Interrupt,
         mem: GuestMemory,
     },
     StopQueue {
@@ -491,12 +491,12 @@ pub enum WorkerCmd<I: SignalableInterrupt + 'static> {
 // `disk_state` is wrapped by `AsyncRwLock`, which provides both shared and exclusive locks. It's
 // because the state can be read from the virtqueue task while the control task is processing a
 // resizing command.
-pub async fn run_worker<I: SignalableInterrupt + 'static>(
+pub async fn run_worker(
     ex: &Executor,
     signal: ConfigChangeSignal,
     disk_state: &Rc<AsyncRwLock<DiskState>>,
     control_tube: &Option<AsyncTube>,
-    mut worker_rx: mpsc::UnboundedReceiver<WorkerCmd<I>>,
+    mut worker_rx: mpsc::UnboundedReceiver<WorkerCmd>,
     kill_evt: Event,
     resample_future: impl std::future::Future<Output = anyhow::Result<()>>,
 ) -> anyhow::Result<()> {
@@ -626,7 +626,7 @@ pub struct BlockAsync {
     pub(crate) executor_kind: ExecutorKind,
     worker_threads: Vec<(
         WorkerThread<(Box<dyn DiskFile>, Option<Tube>)>,
-        mpsc::UnboundedSender<WorkerCmd<Interrupt>>,
+        mpsc::UnboundedSender<WorkerCmd>,
     )>,
     // Whether to run worker threads in parallel for each queue
     worker_per_queue: bool,
@@ -1783,6 +1783,7 @@ mod tests {
         assert_eq!(
             interrupt
                     .get_interrupt_evt()
+                    .unwrap()
                     // Wait a bit until the blk signals the interrupt
                     .wait_timeout(Duration::from_millis(300)),
             Ok(base::EventWaitResult::Signaled),

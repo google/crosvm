@@ -29,12 +29,12 @@ use crate::virtio::net::build_config;
 use crate::virtio::net::process_ctrl;
 use crate::virtio::net::process_tx;
 use crate::virtio::net::virtio_features_to_tap_offload;
-use crate::virtio::vhost::user::device::handler::sys::Doorbell;
 use crate::virtio::vhost::user::device::handler::DeviceRequestHandler;
 use crate::virtio::vhost::user::device::handler::Error as DeviceError;
 use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 use crate::virtio::vhost::user::device::handler::WorkerState;
 use crate::virtio::vhost::user::VhostUserDevice;
+use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 
 thread_local! {
@@ -49,7 +49,7 @@ async fn run_tx_queue<T: TapT>(
     queue: Arc<Mutex<Queue>>,
     mem: GuestMemory,
     mut tap: T,
-    doorbell: Doorbell,
+    doorbell: Interrupt,
     kick_evt: EventAsync,
 ) {
     loop {
@@ -66,7 +66,7 @@ async fn run_ctrl_queue<T: TapT>(
     queue: Arc<Mutex<Queue>>,
     mem: GuestMemory,
     mut tap: T,
-    doorbell: Doorbell,
+    doorbell: Interrupt,
     kick_evt: EventAsync,
     acked_features: u64,
     vq_pairs: u16,
@@ -172,7 +172,7 @@ where
         idx: usize,
         queue: virtio::Queue,
         mem: GuestMemory,
-        doorbell: Doorbell,
+        doorbell: Interrupt,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
         sys::start_queue(self, idx, queue, mem, doorbell, kick_evt)

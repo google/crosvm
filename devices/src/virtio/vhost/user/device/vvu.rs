@@ -6,7 +6,6 @@
 
 mod bus;
 pub mod device;
-pub mod doorbell;
 pub mod pci;
 mod queue;
 
