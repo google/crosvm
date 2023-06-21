@@ -22,8 +22,8 @@ use winapi::shared::minwindef::WPARAM;
 use winapi::um::winuser::*;
 
 use super::window::BasicWindow;
+use super::window::GuiWindow;
 use super::window::MessagePacket;
-use super::window::Window;
 use super::window_message_dispatcher::DisplayEventDispatcher;
 use super::ObjectId;
 use crate::EventDevice;
@@ -60,7 +60,7 @@ pub struct MessageHandlerResources {
 }
 
 pub type CreateMessageHandlerFunction<T> =
-    Box<dyn FnOnce(&Window, MessageHandlerResources) -> Result<T>>;
+    Box<dyn FnOnce(&GuiWindow, MessageHandlerResources) -> Result<T>>;
 
 /// Called after the handler creation finishes. The argument indicates whether that was successful.
 pub type CreateMessageHandlerCallback = Box<dyn FnOnce(bool)>;
@@ -84,10 +84,10 @@ pub enum DisplaySendToWndProc<T: HandleWindowMessage> {
 pub trait HandleWindowMessage {
     /// Called once when it is safe to assume all future messages targeting this window will be
     /// dispatched to this handler.
-    fn on_message_dispatcher_attached(&mut self, _window: &Window) {}
+    fn on_message_dispatcher_attached(&mut self, _window: &GuiWindow) {}
 
     /// Called when processing `WM_ACTIVATE`.
-    fn on_activate(&mut self, _window: &Window, _w_param: WPARAM) {}
+    fn on_activate(&mut self, _window: &GuiWindow, _w_param: WPARAM) {}
 
     /// Called when processing `WM_MOUSEACTIVATE`. See possible return values:
     /// https://docs.microsoft.com/en-us/windows/win32/inputdev/wm-mouseactivate#return-value
@@ -99,68 +99,70 @@ pub trait HandleWindowMessage {
     fn on_set_focus(&mut self) {}
 
     /// Called when processing `WM_INPUT`.
-    fn on_raw_input(&mut self, _window: &Window, _l_param: LPARAM) {}
+    fn on_raw_input(&mut self, _window: &GuiWindow, _l_param: LPARAM) {}
 
     /// Called when processing `WM_MOUSEMOVE`.
     fn on_mouse_move(&mut self, _w_param: WPARAM, _l_param: LPARAM) {}
 
     /// Called when processing `WM_LBUTTONDOWN` and `WM_LBUTTONUP`.
-    fn on_mouse_button_left(&mut self, _window: &Window, _is_down: bool, _l_param: LPARAM) {}
+    fn on_mouse_button_left(&mut self, _window: &GuiWindow, _is_down: bool, _l_param: LPARAM) {}
 
     /// Called when processing `WM_RBUTTONDOWN` and `WM_RBUTTONUP`.
     fn on_mouse_button_right(&mut self, _is_down: bool) {}
 
     /// Called when processing `WM_MOUSEWHEEL`.
-    fn on_mouse_wheel(&mut self, _window: &Window, _w_param: WPARAM, _l_param: LPARAM) {}
+    fn on_mouse_wheel(&mut self, _window: &GuiWindow, _w_param: WPARAM, _l_param: LPARAM) {}
 
     /// Called when processing `WM_SETCURSOR`. It should return true if the cursor has been handled
     /// and the default processing should be skipped.
-    fn on_set_cursor(&mut self, _window: &Window) -> bool {
+    fn on_set_cursor(&mut self, _window: &GuiWindow) -> bool {
         false
     }
 
     /// Called when processing `WM_KEYDOWN`, `WM_KEYUP`, `WM_SYSKEYDOWN` and `WM_SYSKEYUP`.
-    fn on_key(&mut self, _window: &Window, _key_down: bool, _w_param: WPARAM, _l_param: LPARAM) {}
+    fn on_key(&mut self, _window: &GuiWindow, _key_down: bool, _w_param: WPARAM, _l_param: LPARAM) {
+    }
 
     /// Called when processing `WM_WINDOWPOSCHANGING`.
-    fn on_window_pos_changing(&mut self, _window: &Window, _l_param: LPARAM) {}
+    fn on_window_pos_changing(&mut self, _window: &GuiWindow, _l_param: LPARAM) {}
 
     /// Called when processing `WM_SIZING`.
-    fn on_window_size_changing(&mut self, _window: &Window, _w_param: WPARAM, _l_param: LPARAM) {}
+    fn on_window_size_changing(&mut self, _window: &GuiWindow, _w_param: WPARAM, _l_param: LPARAM) {
+    }
 
     /// Called when processing `WM_WINDOWPOSCHANGED`. It should return true if it is intended to
     /// skip default processing, in which case `WM_SIZE` and `WM_MOVE` won't be sent to the window.
-    fn on_window_pos_changed(&mut self, _window: &Window, _l_param: LPARAM) -> bool {
+    fn on_window_pos_changed(&mut self, _window: &GuiWindow, _l_param: LPARAM) -> bool {
         false
     }
 
     /// Called when processing `WM_SIZE`.
-    fn on_window_size_changed(&mut self, _window: &Window, _w_param: WPARAM, _l_param: LPARAM) {}
+    fn on_window_size_changed(&mut self, _window: &GuiWindow, _w_param: WPARAM, _l_param: LPARAM) {}
 
     /// Called when processing `WM_ENTERSIZEMOVE`.
     fn on_enter_size_move(&mut self) {}
 
     /// Called when processing `WM_EXITSIZEMOVE`.
-    fn on_exit_size_move(&mut self, _window: &Window) {}
+    fn on_exit_size_move(&mut self, _window: &GuiWindow) {}
 
     /// Called when processing `WM_DISPLAYCHANGE`.
-    fn on_display_change(&mut self, _window: &Window) {}
+    fn on_display_change(&mut self, _window: &GuiWindow) {}
 
     /// Called when processing requests from the service.
     #[cfg(feature = "kiwi")]
-    fn on_handle_service_message(&mut self, _window: &Window, _message: &ServiceSendToGpu) {}
+    fn on_handle_service_message(&mut self, _window: &GuiWindow, _message: &ServiceSendToGpu) {}
 
     /// Called when processing inbound events from event devices.
     fn on_handle_event_device(
         &mut self,
-        _window: &Window,
+        _window: &GuiWindow,
         _event_device_kind: EventDeviceKind,
         _event: virtio_input_event,
     ) {
     }
 
     /// Called when processing `WM_USER_HOST_VIEWPORT_CHANGE_INTERNAL`.
-    fn on_host_viewport_change(&mut self, _window: &Window, _l_param: LPARAM) {}
+    fn on_host_viewport_change(&mut self, _window: &GuiWindow, _l_param: LPARAM) {}
 
     /// Called when processing `WM_CLOSE`. It should return true if the window should be destroyed
     /// immediately.
@@ -176,7 +178,7 @@ pub trait HandleWindowMessage {
 /// retrieved from the message pump. Note that we rely on the owner of `WindowMessageProcessor`
 /// object to drop it before the underlying window is completely gone.
 pub(crate) struct WindowMessageProcessor<T: HandleWindowMessage> {
-    window: Window,
+    window: GuiWindow,
     message_handler: Option<T>,
 }
 
@@ -184,7 +186,7 @@ impl<T: HandleWindowMessage> WindowMessageProcessor<T> {
     /// # Safety
     /// The owner of `WindowMessageProcessor` object is responsible for dropping it before we finish
     /// processing `WM_NCDESTROY`, because the window handle will become invalid afterwards.
-    pub unsafe fn new(window: Window) -> Self {
+    pub unsafe fn new(window: GuiWindow) -> Self {
         Self {
             window,
             message_handler: None,
@@ -375,7 +377,7 @@ impl<T: HandleWindowMessage> WindowMessageProcessor<T> {
         }
     }
 
-    pub fn window(&self) -> &Window {
+    pub fn window(&self) -> &GuiWindow {
         &self.window
     }
 }

@@ -25,9 +25,9 @@ use winapi::shared::windef::HWND;
 use winapi::um::winuser::*;
 
 use super::window::BasicWindow;
+use super::window::GuiWindow;
 use super::window::MessageOnlyWindow;
 use super::window::MessagePacket;
-use super::window::Window;
 use super::window_message_processor::*;
 use super::ObjectId;
 use crate::EventDevice;
@@ -116,12 +116,12 @@ pub(crate) struct WindowMessageDispatcher<T: HandleWindowMessage> {
 
 impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
     /// This function should only be called once from the WndProc thread. It will take the ownership
-    /// of the `Window` object, and drop it before the underlying window is completely gone.
+    /// of the `GuiWindow` object, and drop it before the underlying window is completely gone.
     /// TODO(b/238680252): This should be good enough for supporting multi-windowing, but we should
     /// revisit it if we also want to manage some child windows of the crosvm window.
     pub fn create(
         message_router_window: MessageOnlyWindow,
-        gui_window: Window,
+        gui_window: GuiWindow,
         gpu_main_display_tube: Option<Rc<Tube>>,
     ) -> Result<Pin<Box<Self>>> {
         static CONTEXT_MESSAGE: &str = "When creating WindowMessageDispatcher";
@@ -214,7 +214,7 @@ impl<T: HandleWindowMessage> WindowMessageDispatcher<T> {
         }
     }
 
-    fn create_message_processor(self: Pin<&mut Self>, window: Window) -> Result<()> {
+    fn create_message_processor(self: Pin<&mut Self>, window: GuiWindow) -> Result<()> {
         if !window.is_valid() {
             bail!("Window handle is invalid!");
         }

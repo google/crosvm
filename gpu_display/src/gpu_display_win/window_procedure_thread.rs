@@ -45,9 +45,9 @@ use winapi::um::winbase::WAIT_OBJECT_0;
 use winapi::um::winnt::MAXIMUM_WAIT_OBJECTS;
 use winapi::um::winuser::*;
 
+use super::window::GuiWindow;
 use super::window::MessageOnlyWindow;
 use super::window::MessagePacket;
-use super::window::Window;
 use super::window_message_dispatcher::WindowMessageDispatcher;
 use super::window_message_dispatcher::DISPATCHER_PROPERTY_NAME;
 use super::window_message_processor::*;
@@ -249,7 +249,7 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
     ) {
         let gpu_main_display_tube = gpu_main_display_tube.map(Rc::new);
         // Safe because the dispatcher will take care of the lifetime of the `MessageOnlyWindow` and
-        // `Window` objects.
+        // `GuiWindow` objects.
         match unsafe { Self::create_windows() }.and_then(|(message_router_window, gui_window)| {
             WindowMessageDispatcher::<T>::create(
                 message_router_window,
@@ -287,9 +287,11 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
     }
 
     fn run_message_loop_body(
+        #[cfg_attr(not(feature = "kiwi"), allow(unused_variables, unused_mut))]
         mut message_dispatcher: Pin<Box<WindowMessageDispatcher<T>>>,
         gpu_main_display_tube: Option<Rc<Tube>>,
     ) -> MessageLoopState {
+        #[cfg_attr(not(feature = "kiwi"), allow(unused_mut))]
         let mut msg_wait_ctx = MsgWaitContext::new();
         if let Some(tube) = &gpu_main_display_tube {
             if let Err(e) = msg_wait_ctx.add(tube.get_read_notifier(), Token::ServiceMessage) {
@@ -442,7 +444,7 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
     /// # Safety
     /// The owner of the returned window objects is responsible for dropping them before we finish
     /// processing `WM_NCDESTROY`, because the window handle will become invalid afterwards.
-    unsafe fn create_windows() -> Result<(MessageOnlyWindow, Window)> {
+    unsafe fn create_windows() -> Result<(MessageOnlyWindow, GuiWindow)> {
         let message_router_window = MessageOnlyWindow::new(
             Some(Self::wnd_proc),
             /* class_name */ "THREAD_MESSAGE_ROUTER",
@@ -452,7 +454,7 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
         // window may use the background brush to clear the gfxstream window client area when
         // drawing occurs. This caused the screen flickering issue during resizing.
         // See b/197786842 for details.
-        let gui_window = Window::new(
+        let gui_window = GuiWindow::new(
             Some(Self::wnd_proc),
             /* class_name */ "CROSVM",
             /* title */ "crosvm",
