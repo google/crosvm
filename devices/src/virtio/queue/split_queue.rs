@@ -25,7 +25,7 @@ use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 use crate::virtio::memory_util::read_obj_from_addr_wrapper;
 use crate::virtio::memory_util::write_obj_at_addr_wrapper;
 use crate::virtio::DescriptorChain;
-use crate::virtio::SignalableInterrupt;
+use crate::virtio::Interrupt;
 use crate::virtio::SplitDescriptorChain;
 use crate::virtio::VIRTIO_MSI_NO_VECTOR;
 
@@ -622,11 +622,7 @@ impl SplitQueue {
     /// inject interrupt into guest on this queue
     /// return true: interrupt is injected into guest for this queue
     ///        false: interrupt isn't injected
-    pub fn trigger_interrupt<I: SignalableInterrupt>(
-        &mut self,
-        mem: &GuestMemory,
-        interrupt: &I,
-    ) -> bool {
+    pub fn trigger_interrupt(&mut self, mem: &GuestMemory, interrupt: &Interrupt) -> bool {
         if self.queue_wants_interrupt(mem) {
             self.last_used = self.next_used;
             interrupt.signal_used_queue(self.vector);

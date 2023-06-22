@@ -32,7 +32,6 @@ use crate::virtio::fs::Result;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::Reader;
-use crate::virtio::SignalableInterrupt;
 use crate::virtio::Writer;
 
 impl fuse::Reader for Reader {}
@@ -151,9 +150,9 @@ pub struct Worker<F: FileSystem + Sync> {
     slot: u32,
 }
 
-pub fn process_fs_queue<I: SignalableInterrupt, F: FileSystem + Sync>(
+pub fn process_fs_queue<F: FileSystem + Sync>(
     mem: &GuestMemory,
-    interrupt: &I,
+    interrupt: &Interrupt,
     queue: &Rc<RefCell<Queue>>,
     server: &Arc<fuse::Server<F>>,
     tube: &Arc<Mutex<Tube>>,

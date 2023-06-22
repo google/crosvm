@@ -62,7 +62,6 @@ use crate::virtio::DescriptorChain;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
-use crate::virtio::SignalableInterrupt;
 use crate::virtio::VirtioDevice;
 use crate::virtio::Writer;
 use crate::Suspendable;

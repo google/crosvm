@@ -41,9 +41,9 @@ use crate::virtio::snd::common_backend::PcmResponse;
 use crate::virtio::snd::constants::*;
 use crate::virtio::snd::layout::*;
 use crate::virtio::DescriptorChain;
+use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::Reader;
-use crate::virtio::SignalableInterrupt;
 use crate::virtio::Writer;
 
 // TODO(b/246601226): Remove once a generic audio_stream solution that can accpet
@@ -472,11 +472,11 @@ async fn defer_pcm_response_to_worker(
         .map_err(Error::MpscSend)
 }
 
-fn send_pcm_response<I: SignalableInterrupt>(
+fn send_pcm_response(
     mut desc_chain: DescriptorChain,
     mem: &GuestMemory,
     queue: &mut Queue,
-    interrupt: &I,
+    interrupt: &Interrupt,
     status: virtio_snd_pcm_status,
 ) -> Result<(), Error> {
     let writer = &mut desc_chain.writer;
@@ -506,10 +506,10 @@ async fn await_reset_signal(reset_signal_option: Option<&(AsyncRwLock<bool>, Con
     };
 }
 
-pub async fn send_pcm_response_worker<I: SignalableInterrupt>(
+pub async fn send_pcm_response_worker(
     mem: &GuestMemory,
     queue: Rc<AsyncRwLock<Queue>>,
-    interrupt: I,
+    interrupt: Interrupt,
     recv: &mut mpsc::UnboundedReceiver<PcmResponse>,
     reset_signal: Option<&(AsyncRwLock<bool>, Condvar)>,
 ) -> Result<(), Error> {
@@ -631,14 +631,14 @@ pub async fn handle_pcm_queue(
 }
 
 /// Handle all the control messages from the ctrl queue.
-pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
+pub async fn handle_ctrl_queue(
     ex: &Executor,
     mem: &GuestMemory,
     streams: &Rc<AsyncRwLock<Vec<AsyncRwLock<StreamInfo>>>>,
     snd_data: &SndData,
     queue: Rc<AsyncRwLock<Queue>>,
     queue_event: &mut EventAsync,
-    interrupt: I,
+    interrupt: Interrupt,
     tx_send: mpsc::UnboundedSender<PcmResponse>,
     rx_send: mpsc::UnboundedSender<PcmResponse>,
     reset_signal: Option<&(AsyncRwLock<bool>, Condvar)>,
@@ -878,11 +878,11 @@ pub async fn handle_ctrl_queue<I: SignalableInterrupt>(
 }
 
 /// Send events to the audio driver.
-pub async fn handle_event_queue<I: SignalableInterrupt>(
+pub async fn handle_event_queue(
     mem: &GuestMemory,
     mut queue: Queue,
     mut queue_event: EventAsync,
-    interrupt: I,
+    interrupt: Interrupt,
 ) -> Result<(), Error> {
     loop {
         let desc_chain = queue

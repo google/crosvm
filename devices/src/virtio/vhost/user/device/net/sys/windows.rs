@@ -55,7 +55,6 @@ use crate::virtio::vhost::user::device::net::NetBackend;
 use crate::virtio::vhost::user::device::net::NET_EXECUTOR;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
-use crate::virtio::SignalableInterrupt;
 
 impl<T: 'static> NetBackend<T>
 where

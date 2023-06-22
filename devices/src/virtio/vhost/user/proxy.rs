@@ -89,7 +89,6 @@ use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::PciCapabilityType;
 use crate::virtio::Queue;
-use crate::virtio::SignalableInterrupt;
 use crate::virtio::VirtioDevice;
 use crate::virtio::VirtioPciCap;
 use crate::virtio::VIRTIO_F_ACCESS_PLATFORM;

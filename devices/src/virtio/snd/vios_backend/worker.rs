@@ -26,7 +26,6 @@ use super::*;
 use crate::virtio::DescriptorChain;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
-use crate::virtio::SignalableInterrupt;
 
 pub struct Worker {
     // Lock order: Must never hold more than one queue lock at the same time.

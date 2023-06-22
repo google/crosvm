@@ -66,7 +66,6 @@ use super::DeviceType;
 use super::Interrupt;
 use super::Queue;
 use super::Reader;
-use super::SignalableInterrupt;
 use super::VirtioDevice;
 use crate::UnpinRequest;
 use crate::UnpinResponse;

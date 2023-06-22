@@ -79,7 +79,6 @@ use super::Queue;
 use super::Reader;
 use super::SharedMemoryMapper;
 use super::SharedMemoryRegion;
-use super::SignalableInterrupt;
 use super::VirtioDevice;
 use super::Writer;
 

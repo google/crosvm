@@ -48,7 +48,6 @@ use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::Reader;
-use crate::virtio::SignalableInterrupt;
 use crate::virtio::VirtioDevice;
 
 pub(crate) const QUEUE_SIZE: u16 = 256;
@@ -79,12 +78,12 @@ pub struct virtio_console_config {
 /// # Arguments
 ///
 /// * `mem` - The GuestMemory to write the data into
-/// * `interrupt` - SignalableInterrupt used to signal that the queue has been used
+/// * `interrupt` - Interrupt used to signal that the queue has been used
 /// * `buffer` - Ring buffer providing data to put into the guest
 /// * `receive_queue` - The receive virtio Queue
-fn handle_input<I: SignalableInterrupt>(
+fn handle_input(
     mem: &GuestMemory,
-    interrupt: &I,
+    interrupt: &Interrupt,
     buffer: &mut VecDeque<u8>,
     receive_queue: &Arc<Mutex<Queue>>,
 ) -> result::Result<(), ConsoleError> {
@@ -142,12 +141,12 @@ fn process_transmit_request(reader: &mut Reader, output: &mut dyn io::Write) -> 
 /// # Arguments
 ///
 /// * `mem` - The GuestMemory to take the data from
-/// * `interrupt` - SignalableInterrupt used to signal (if required) that the queue has been used
+/// * `interrupt` - Interrupt used to signal (if required) that the queue has been used
 /// * `transmit_queue` - The transmit virtio Queue
 /// * `output` - The output sink we are going to write the data into
-fn process_transmit_queue<I: SignalableInterrupt>(
+fn process_transmit_queue(
     mem: &GuestMemory,
-    interrupt: &I,
+    interrupt: &Interrupt,
     transmit_queue: &Arc<Mutex<Queue>>,
     output: &mut dyn io::Write,
 ) {

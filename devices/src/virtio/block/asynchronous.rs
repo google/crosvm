@@ -85,7 +85,6 @@ use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::Reader;
-use crate::virtio::SignalableInterrupt;
 use crate::virtio::VirtioDevice;
 use crate::virtio::Writer;
 
@@ -276,12 +275,12 @@ async fn process_one_request(
 }
 
 /// Process one descriptor chain asynchronously.
-pub async fn process_one_chain<I: SignalableInterrupt>(
+pub async fn process_one_chain(
     queue: &RefCell<Queue>,
     mut avail_desc: DescriptorChain,
     disk_state: &AsyncRwLock<DiskState>,
     mem: &GuestMemory,
-    interrupt: &I,
+    interrupt: &Interrupt,
     flush_timer: &RefCell<TimerAsync<Timer>>,
     flush_timer_armed: &RefCell<bool>,
 ) {
@@ -303,12 +302,12 @@ pub async fn process_one_chain<I: SignalableInterrupt>(
 // There is one async task running `handle_queue` per virtio queue in use.
 // Receives messages from the guest and queues a task to complete the operations with the async
 // executor.
-async fn handle_queue<I: SignalableInterrupt + 'static>(
+async fn handle_queue(
     mem: GuestMemory,
     disk_state: Rc<AsyncRwLock<DiskState>>,
     queue: Rc<RefCell<Queue>>,
     evt: EventAsync,
-    interrupt: I,
+    interrupt: Interrupt,
     flush_timer: Rc<RefCell<TimerAsync<Timer>>>,
     flush_timer_armed: Rc<RefCell<bool>>,
     mut stop_rx: oneshot::Receiver<()>,

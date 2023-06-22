@@ -23,7 +23,6 @@ use super::DescriptorChain;
 use super::DeviceType;
 use super::Interrupt;
 use super::Queue;
-use super::SignalableInterrupt;
 use super::VirtioDevice;
 
 // A single queue of size 2. The guest kernel driver will enqueue a single

@@ -53,7 +53,6 @@ use super::DeviceType;
 use super::Interrupt;
 use super::Queue;
 use super::Reader;
-use super::SignalableInterrupt;
 use super::VirtioDevice;
 
 /// The maximum buffer size when segmentation offload is enabled. This
@@ -299,8 +298,8 @@ fn process_ctrl_request<T: TapT>(
     Ok(())
 }
 
-pub fn process_ctrl<I: SignalableInterrupt, T: TapT>(
-    interrupt: &I,
+pub fn process_ctrl<T: TapT>(
+    interrupt: &Interrupt,
     ctrl_queue: &Arc<Mutex<Queue>>,
     mem: &GuestMemory,
     tap: &mut T,

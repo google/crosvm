@@ -39,7 +39,6 @@ use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::SharedMemoryMapper;
 use crate::virtio::SharedMemoryRegion;
-use crate::virtio::SignalableInterrupt;
 
 type BackendReqHandler = MasterReqHandler<Mutex<BackendReqHandlerImpl>>;
 

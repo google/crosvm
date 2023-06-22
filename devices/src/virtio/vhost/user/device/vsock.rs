@@ -51,7 +51,6 @@ use crate::virtio::vhost::user::VhostUserListener;
 use crate::virtio::vhost::user::VhostUserListenerTrait;
 use crate::virtio::Queue;
 use crate::virtio::QueueType::Split;
-use crate::virtio::SignalableInterrupt;
 
 const MAX_VRING_LEN: u16 = QUEUE_SIZE;
 const EVENT_QUEUE: usize = NUM_QUEUES - 1;

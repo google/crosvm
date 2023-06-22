@@ -18,7 +18,6 @@ use super::Error;
 use super::Result;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
-use crate::virtio::SignalableInterrupt;
 use crate::virtio::VIRTIO_F_ACCESS_PLATFORM;
 
 /// Worker that takes care of running the vhost device.

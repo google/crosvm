@@ -25,7 +25,6 @@ use super::copy_config;
 use super::queue::Queue;
 use super::DeviceType;
 use super::Interrupt;
-use super::SignalableInterrupt;
 use super::VirtioDevice;
 
 const QUEUE_SIZE: u16 = 128;

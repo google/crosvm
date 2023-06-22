@@ -22,7 +22,6 @@ use vm_memory::GuestMemory;
 use super::DeviceType;
 use super::Interrupt;
 use super::Queue;
-use super::SignalableInterrupt;
 use super::VirtioDevice;
 
 const QUEUE_SIZE: u16 = 256;

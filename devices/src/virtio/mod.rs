@@ -69,7 +69,6 @@ pub use self::gpu::GpuParameters;
 pub use self::gpu::GpuWsi;
 pub use self::interrupt::Interrupt;
 pub use self::interrupt::InterruptSnapshot;
-pub use self::interrupt::SignalableInterrupt;
 pub use self::iommu::ipc_memory_mapper;
 pub use self::iommu::memory_mapper;
 pub use self::iommu::memory_util;

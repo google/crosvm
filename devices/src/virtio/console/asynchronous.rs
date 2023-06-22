@@ -43,7 +43,6 @@ use crate::virtio::copy_config;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
-use crate::virtio::SignalableInterrupt;
 use crate::virtio::VirtioDevice;
 use crate::SerialDevice;
 
@@ -57,10 +56,10 @@ impl AsRawDescriptor for AsyncSerialInput {
 }
 impl IntoAsync for AsyncSerialInput {}
 
-async fn run_tx_queue<I: SignalableInterrupt>(
+async fn run_tx_queue(
     queue: &Arc<Mutex<virtio::Queue>>,
     mem: GuestMemory,
-    doorbell: I,
+    doorbell: Interrupt,
     kick_evt: EventAsync,
     output: &mut Box<dyn io::Write + Send>,
 ) {
@@ -73,10 +72,10 @@ async fn run_tx_queue<I: SignalableInterrupt>(
     }
 }
 
-async fn run_rx_queue<I: SignalableInterrupt>(
+async fn run_rx_queue(
     queue: &Arc<Mutex<virtio::Queue>>,
     mem: GuestMemory,
-    doorbell: I,
+    doorbell: Interrupt,
     kick_evt: EventAsync,
     input: &IoSource<AsyncSerialInput>,
 ) {
@@ -126,12 +125,12 @@ impl ConsoleDevice {
         self.avail_features
     }
 
-    pub fn start_receive_queue<I: SignalableInterrupt + 'static>(
+    pub fn start_receive_queue(
         &mut self,
         ex: &Executor,
         mem: GuestMemory,
         queue: Arc<Mutex<virtio::Queue>>,
-        doorbell: I,
+        doorbell: Interrupt,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
         let input_queue = match self.input.as_mut() {
@@ -170,12 +169,12 @@ impl ConsoleDevice {
         }
     }
 
-    pub fn start_transmit_queue<I: SignalableInterrupt + 'static>(
+    pub fn start_transmit_queue(
         &mut self,
         ex: &Executor,
         mem: GuestMemory,
         queue: Arc<Mutex<virtio::Queue>>,
-        doorbell: I,
+        doorbell: Interrupt,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
         let kick_evt =

@@ -133,7 +133,6 @@ use super::Queue;
 use super::Reader;
 use super::SharedMemoryMapper;
 use super::SharedMemoryRegion;
-use super::SignalableInterrupt;
 use super::VirtioDevice;
 use super::Writer;
 use crate::virtio::device_constants::wl::QUEUE_SIZES;
@@ -1689,8 +1688,8 @@ impl WlState {
 pub struct DescriptorsExhausted;
 
 /// Handle incoming events and forward them to the VM over the input queue.
-pub fn process_in_queue<I: SignalableInterrupt>(
-    interrupt: &I,
+pub fn process_in_queue(
+    interrupt: &Interrupt,
     in_queue: &Rc<RefCell<Queue>>,
     mem: &GuestMemory,
     state: &mut WlState,
@@ -1742,8 +1741,8 @@ pub fn process_in_queue<I: SignalableInterrupt>(
 }
 
 /// Handle messages from the output queue and forward them to the display sever, if necessary.
-pub fn process_out_queue<I: SignalableInterrupt>(
-    interrupt: &I,
+pub fn process_out_queue(
+    interrupt: &Interrupt,
     out_queue: &Rc<RefCell<Queue>>,
     mem: &GuestMemory,
     state: &mut WlState,

@@ -99,9 +99,9 @@ If you just need to add a simple one-off trace point, you can use `trace_simple_
 (taken from `devices/src/virtio/fs/worker.rs`):
 
 ```rust
-pub fn process_fs_queue<I: SignalableInterrupt, F: FileSystem + Sync>(
+pub fn process_fs_queue<F: FileSystem + Sync>(
     mem: &GuestMemory,
-    interrupt: &I,
+    interrupt: &Interrupt,
     queue: &mut Queue,
     server: &Arc<fuse::Server<F>>,
     tube: &Arc<Mutex<Tube>>,
@@ -133,9 +133,9 @@ So far so good, but to get the most out of it you might want to record how long 
 to run and some extra parameters. In that case you want to use `trace_event!()` instead:
 
 ```rust
-pub fn process_fs_queue<I: SignalableInterrupt, F: FileSystem + Sync>(
+pub fn process_fs_queue<F: FileSystem + Sync>(
     mem: &GuestMemory,
-    interrupt: &I,
+    interrupt: &Interrupt,
     queue: &mut Queue,
     server: &Arc<fuse::Server<F>>,
     tube: &Arc<Mutex<Tube>>,

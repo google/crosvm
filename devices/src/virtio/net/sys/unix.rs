@@ -18,11 +18,11 @@ use vm_memory::GuestMemory;
 use super::super::super::net::NetError;
 use super::super::super::net::Token;
 use super::super::super::net::Worker;
+use super::super::super::Interrupt;
 use super::super::super::Queue;
-use super::super::super::SignalableInterrupt;
 
-pub fn process_rx<I: SignalableInterrupt, T: TapT>(
-    interrupt: &I,
+pub fn process_rx<T: TapT>(
+    interrupt: &Interrupt,
     rx_queue: &Arc<Mutex<Queue>>,
     mem: &GuestMemory,
     mut tap: &mut T,
@@ -80,8 +80,8 @@ pub fn process_rx<I: SignalableInterrupt, T: TapT>(
     }
 }
 
-pub fn process_tx<I: SignalableInterrupt, T: TapT>(
-    interrupt: &I,
+pub fn process_tx<T: TapT>(
+    interrupt: &Interrupt,
     tx_queue: &Arc<Mutex<Queue>>,
     mem: &GuestMemory,
     mut tap: &mut T,

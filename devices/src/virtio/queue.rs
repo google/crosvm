@@ -24,7 +24,7 @@ use vm_memory::GuestMemory;
 
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 use crate::virtio::DescriptorChain;
-use crate::virtio::SignalableInterrupt;
+use crate::virtio::Interrupt;
 
 /// Usage: define_queue_method!(method_name, return_type[, mut][, arg1: arg1_type, arg2: arg2_type, ...])
 ///
@@ -130,11 +130,7 @@ impl Queue {
     /// inject interrupt into guest on this queue
     /// return true: interrupt is injected into guest for this queue
     ///        false: interrupt isn't injected
-    pub fn trigger_interrupt<I: SignalableInterrupt>(
-        &mut self,
-        mem: &GuestMemory,
-        interrupt: &I,
-    ) -> bool {
+    pub fn trigger_interrupt(&mut self, mem: &GuestMemory, interrupt: &Interrupt) -> bool {
         match self {
             Queue::SplitVirtQueue(sq) => sq.trigger_interrupt(mem, interrupt),
         }

@@ -27,10 +27,10 @@ use super::super::super::net::NetError;
 use super::super::super::net::Token;
 use super::super::super::net::Worker;
 use super::super::super::net::MAX_BUFFER_SIZE;
+use super::super::super::Interrupt;
 use super::super::super::ProtectionType;
 use super::super::super::Queue;
 use super::super::super::Reader;
-use super::super::super::SignalableInterrupt;
 
 // This file should not be included at virtio mod level if slirp is not include. In case it is,
 // throw a user friendly message.
@@ -71,8 +71,8 @@ fn rx_single_frame(
     true
 }
 
-pub fn process_rx<I: SignalableInterrupt, T: TapT>(
-    interrupt: &I,
+pub fn process_rx<T: TapT>(
+    interrupt: &Interrupt,
     rx_queue: &Arc<Mutex<Queue>>,
     mem: &GuestMemory,
     tap: &mut T,
@@ -152,8 +152,8 @@ pub fn process_rx<I: SignalableInterrupt, T: TapT>(
     needs_interrupt
 }
 
-pub fn process_tx<I: SignalableInterrupt, T: TapT>(
-    interrupt: &I,
+pub fn process_tx<T: TapT>(
+    interrupt: &Interrupt,
     tx_queue: &Arc<Mutex<Queue>>,
     mem: &GuestMemory,
     tap: &mut T,

@@ -11,7 +11,6 @@ use futures::pin_mut;
 use vm_memory::GuestMemory;
 
 use crate::virtio::async_utils;
-use crate::virtio::interrupt::SignalableInterrupt;
 use crate::virtio::vhost::user::vmm::handler::sys::run_backend_request_handler;
 use crate::virtio::vhost::user::vmm::handler::BackendReqHandler;
 use crate::virtio::Interrupt;
