@@ -73,6 +73,7 @@ enum Command {
         reg_idx: u32,
         value: u32,
     },
+    DestroyDevice,
     Shutdown,
     GetRanges,
     Snapshot,
@@ -152,6 +153,10 @@ fn child_proc<D: BusDevice>(tube: Tube, mut device: D) {
             Command::WriteVirtualConfig { reg_idx, value } => {
                 device.virtual_config_register_write(reg_idx as usize, value);
                 // Command::WriteVirtualConfig does not have a result.
+                Ok(())
+            }
+            Command::DestroyDevice => {
+                device.destroy_device();
                 Ok(())
             }
             Command::Shutdown => {
@@ -408,6 +413,10 @@ impl BusDevice for ProxyDevice {
         } else {
             Default::default()
         }
+    }
+
+    fn destroy_device(&mut self) {
+        self.send_no_result(&Command::DestroyDevice);
     }
 }
 
