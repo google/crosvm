@@ -55,6 +55,22 @@ struct InterruptInner {
     async_intr_status: bool,
 }
 
+impl InterruptInner {
+    /// Add `interrupt_status_mask` to any existing interrupt status.
+    ///
+    /// Returns `true` if the interrupt should be triggered after this update.
+    fn update_interrupt_status(&self, interrupt_status_mask: u32) -> bool {
+        // Set bit in ISR and inject the interrupt if it was not already pending.
+        // Don't need to inject the interrupt if the guest hasn't processed it.
+        // In hypervisors where interrupt_status is updated asynchronously, inject the
+        // interrupt even if the previous interrupt appears to be already pending.
+        self.interrupt_status
+            .fetch_or(interrupt_status_mask as usize, Ordering::SeqCst)
+            == 0
+            || self.async_intr_status
+    }
+}
+
 #[derive(Clone)]
 pub struct Interrupt {
     inner: Arc<InterruptInner>,
@@ -71,35 +87,27 @@ impl SignalableInterrupt for Interrupt {
     /// If MSI-X is enabled in this device, MSI-X interrupt is preferred.
     /// Write to the irqfd to VMM to deliver virtual interrupt to the guest
     fn signal(&self, vector: u16, interrupt_status_mask: u32) {
-        // Don't need to set ISR for MSI-X interrupts
-        if let Transport::Pci { pci } = &self.inner.as_ref().transport {
-            if let Some(msix_config) = &pci.msix_config {
-                let mut msix_config = msix_config.lock();
-                if msix_config.enabled() {
-                    if vector != VIRTIO_MSI_NO_VECTOR {
-                        msix_config.trigger(vector);
+        match &self.inner.transport {
+            Transport::Pci { pci } => {
+                // Don't need to set ISR for MSI-X interrupts
+                if let Some(msix_config) = &pci.msix_config {
+                    let mut msix_config = msix_config.lock();
+                    if msix_config.enabled() {
+                        if vector != VIRTIO_MSI_NO_VECTOR {
+                            msix_config.trigger(vector);
+                        }
+                        return;
                     }
-                    return;
+                }
+
+                if self.inner.update_interrupt_status(interrupt_status_mask) {
+                    pci.irq_evt_lvl.trigger().unwrap();
                 }
             }
-        }
-
-        // Set bit in ISR and inject the interrupt if it was not already pending.
-        // Don't need to inject the interrupt if the guest hasn't processed it.
-        // In hypervisors where interrupt_status is updated asynchronously, inject the
-        // interrupt even if the previous interrupt appears to be already pending.
-        if self
-            .inner
-            .as_ref()
-            .interrupt_status
-            .fetch_or(interrupt_status_mask as usize, Ordering::SeqCst)
-            == 0
-            || self.inner.as_ref().async_intr_status
-        {
-            // Write to irqfd to inject PCI INTx or MMIO interrupt
-            match &self.inner.as_ref().transport {
-                Transport::Pci { pci } => pci.irq_evt_lvl.trigger().unwrap(),
-                Transport::Mmio { irq_evt_edge } => irq_evt_edge.trigger().unwrap(),
+            Transport::Mmio { irq_evt_edge } => {
+                if self.inner.update_interrupt_status(interrupt_status_mask) {
+                    irq_evt_edge.trigger().unwrap();
+                }
             }
         }
     }
