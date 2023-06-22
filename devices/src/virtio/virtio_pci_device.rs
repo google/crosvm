@@ -788,6 +788,12 @@ impl PciDevice for VirtioPciDevice {
         Ok(ranges)
     }
 
+    fn destroy_device(&mut self) {
+        if let Err(e) = self.unregister_ioevents() {
+            error!("error destroying {}: {:?}", &self.debug_label(), &e);
+        }
+    }
+
     fn get_bar_configuration(&self, bar_num: usize) -> Option<PciBarConfiguration> {
         self.config_regs.get_bar_configuration(bar_num)
     }
