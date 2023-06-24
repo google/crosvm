@@ -1272,6 +1272,7 @@ dependencies = [
  "linux_input_sys",
  "metrics",
  "num-traits",
+ "once_cell",
  "pkg-config",
  "remain",
  "serde",

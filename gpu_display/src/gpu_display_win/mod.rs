@@ -309,3 +309,36 @@ impl GpuDisplaySurface for SurfaceWin {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use base::Tube;
+    use window_message_processor::HandleWindowMessage;
+
+    #[test]
+    fn can_create_2_window_proc_threads() {
+        struct TestHandle;
+        impl HandleWindowMessage for TestHandle {}
+        #[cfg(feature = "kiwi")]
+        battlestar::process_invariants::init(&Default::default()).unwrap();
+
+        let threads = (0..2)
+            .map(|_| {
+                let (main_ime_tube, _device_ime_tube) =
+                    Tube::pair().expect("failed to create IME tube");
+                (
+                    WindowProcedureThread::<TestHandle>::start_thread(
+                        #[cfg(feature = "kiwi")]
+                        None,
+                        #[cfg(feature = "kiwi")]
+                        _device_ime_tube,
+                    )
+                    .unwrap(),
+                    main_ime_tube,
+                )
+            })
+            .collect::<Vec<_>>();
+        drop(threads);
+    }
+}

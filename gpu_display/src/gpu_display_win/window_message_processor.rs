@@ -81,7 +81,7 @@ pub enum DisplaySendToWndProc<T: HandleWindowMessage> {
 
 /// A trait for processing messages retrieved from the window message queue. All messages routed to
 /// a trait object would target the same window.
-pub trait HandleWindowMessage {
+pub trait HandleWindowMessage: 'static {
     /// Called once when it is safe to assume all future messages targeting this window will be
     /// dispatched to this handler.
     fn on_message_dispatcher_attached(&mut self, _window: &GuiWindow) {}

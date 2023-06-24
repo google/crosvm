@@ -262,10 +262,8 @@ impl GuiWindow {
     /// The owner of `GuiWindow` object is responsible for dropping it before we finish processing
     /// `WM_NCDESTROY`, because the window handle will become invalid afterwards.
     pub unsafe fn new(
-        wnd_proc: WNDPROC,
         class_name: &str,
         title: &str,
-        icon_resource_id: WORD,
         dw_style: DWORD,
         initial_window_size: &Size2D<i32, HostWindowSpace>,
     ) -> Result<Self> {
@@ -273,21 +271,7 @@ impl GuiWindow {
         static CONTEXT_MESSAGE: &str = "When creating Window";
 
         let hinstance = get_current_module_handle();
-        // If we fail to load any UI element below, use NULL to let the system use the default UI
-        // rather than crash.
-        let hicon = Self::load_custom_icon(hinstance, icon_resource_id).unwrap_or(null_mut());
-        let hcursor = Self::load_system_cursor(IDC_ARROW).unwrap_or(null_mut());
-        let hbrush_background = Self::create_opaque_black_brush().unwrap_or(null_mut());
 
-        register_window_class(
-            wnd_proc,
-            hinstance,
-            class_name,
-            hicon,
-            hcursor,
-            hbrush_background,
-        )
-        .context(CONTEXT_MESSAGE)?;
         let hwnd = create_sys_window(
             hinstance,
             class_name,
@@ -659,7 +643,7 @@ impl GuiWindow {
     }
 
     /// Calls `LoadIconW()` internally.
-    fn load_custom_icon(hinstance: HINSTANCE, resource_id: WORD) -> Result<HICON> {
+    pub(crate) fn load_custom_icon(hinstance: HINSTANCE, resource_id: WORD) -> Result<HICON> {
         // Safe because we handle failures below.
         unsafe {
             let hicon = LoadIconW(hinstance, MAKEINTRESOURCEW(resource_id));
@@ -671,7 +655,7 @@ impl GuiWindow {
     }
 
     /// Calls `LoadCursorW()` internally.
-    fn load_system_cursor(cursor_id: LPCWSTR) -> Result<HCURSOR> {
+    pub(crate) fn load_system_cursor(cursor_id: LPCWSTR) -> Result<HCURSOR> {
         // Safe because we handle failures below.
         unsafe {
             let hcursor = LoadCursorW(null_mut(), cursor_id);
@@ -683,7 +667,7 @@ impl GuiWindow {
     }
 
     /// Calls `GetStockObject()` internally.
-    fn create_opaque_black_brush() -> Result<HBRUSH> {
+    pub(crate) fn create_opaque_black_brush() -> Result<HBRUSH> {
         // Safe because we handle failures below.
         unsafe {
             let hobject = GetStockObject(BLACK_BRUSH as i32);
@@ -724,20 +708,11 @@ impl MessageOnlyWindow {
     /// # Safety
     /// The owner of `MessageOnlyWindow` object is responsible for dropping it before we finish
     /// processing `WM_NCDESTROY`, because the window handle will become invalid afterwards.
-    pub unsafe fn new(wnd_proc: WNDPROC, class_name: &str, title: &str) -> Result<Self> {
+    pub unsafe fn new(class_name: &str, title: &str) -> Result<Self> {
         info!("Creating message-only window");
         static CONTEXT_MESSAGE: &str = "When creating MessageOnlyWindow";
 
         let hinstance = get_current_module_handle();
-        register_window_class(
-            wnd_proc,
-            hinstance,
-            class_name,
-            /* hicon */ null_mut(),
-            /* hcursor */ null_mut(),
-            /* hbrush_background */ null_mut(),
-        )
-        .context(CONTEXT_MESSAGE)?;
         let hwnd = create_sys_window(
             hinstance,
             class_name,
@@ -758,38 +733,6 @@ impl BasicWindow for MessageOnlyWindow {
     unsafe fn handle(&self) -> HWND {
         self.hwnd
     }
-}
-
-/// Calls `RegisterClassExW()` internally.
-fn register_window_class(
-    wnd_proc: WNDPROC,
-    hinstance: HINSTANCE,
-    class_name: &str,
-    hicon: HICON,
-    hcursor: HCURSOR,
-    hbrush_background: HBRUSH,
-) -> Result<()> {
-    let class_name = win32_wide_string(class_name);
-    let window_class = WNDCLASSEXW {
-        cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
-        style: CS_OWNDC | CS_HREDRAW | CS_VREDRAW,
-        lpfnWndProc: wnd_proc,
-        cbClsExtra: 0,
-        cbWndExtra: 0,
-        hInstance: hinstance,
-        hIcon: hicon,
-        hCursor: hcursor,
-        hbrBackground: hbrush_background,
-        lpszMenuName: null_mut(),
-        lpszClassName: class_name.as_ptr(),
-        hIconSm: hicon,
-    };
-
-    // Safe because we know the lifetime of `window_class`, and we handle failures below.
-    if unsafe { RegisterClassExW(&window_class) } == 0 {
-        syscall_bail!("Failed to call RegisterClassExW()");
-    }
-    Ok(())
 }
 
 /// Calls `CreateWindowExW()` internally.
@@ -826,7 +769,7 @@ fn create_sys_window(
 }
 
 /// Calls `GetModuleHandleW()` internally.
-fn get_current_module_handle() -> HMODULE {
+pub(crate) fn get_current_module_handle() -> HMODULE {
     // Safe because we handle failures below.
     let hmodule = unsafe { GetModuleHandleW(null_mut()) };
     if hmodule.is_null() {

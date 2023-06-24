@@ -2,6 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import os
 from typing import Dict
 
 BUILD_FEATURES: Dict[str, str] = {
@@ -63,6 +64,7 @@ DO_NOT_RUN_WINE64 = [
     "package(base) and test(get_allocated_ranges_for_fully_allocated_file)",
     "package(base) and test(get_allocated_ranges_for_file_with_one_hole)",
     "package(base) and test(get_allocated_ranges_for_file_with_many_hole)",
+    "package(gpu_display) & test(can_create_2_window_proc_threads)",
 ]
 
 # Avoid e2e tests and benchmarks to be automatically included as unit tests
