@@ -34,6 +34,7 @@
 
 use std::fs::File;
 use std::io::Error as IOError;
+use std::num::TryFromIntError;
 
 use remain::sorted;
 use thiserror::Error as ThisError;
@@ -101,6 +102,9 @@ pub enum Error {
     /// Fd array in question is too big or too small
     #[error("wrong number of attached fds")]
     IncorrectFds,
+    /// Invalid cast to int.
+    #[error("invalid cast to int: {0}")]
+    InvalidCastToInt(TryFromIntError),
     /// Invalid message format, flag or content.
     #[error("invalid message")]
     InvalidMessage,

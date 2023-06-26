@@ -306,9 +306,6 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         let buf = match hdr.get_size() {
             0 => vec![0u8; 0],
             len => {
-                if len as usize > MAX_MSG_SIZE {
-                    return Err(Error::InvalidMessage);
-                }
                 let rbuf = self.sub_sock.recv_data(len as usize)?;
                 if rbuf.len() != len as usize {
                     return Err(Error::InvalidMessage);
@@ -431,9 +428,6 @@ impl<S: VhostUserMasterReqHandler> MasterReqHandler<S> {
         &self,
         req: &VhostUserMsgHeader<SlaveReq>,
     ) -> Result<VhostUserMsgHeader<SlaveReq>> {
-        if mem::size_of::<T>() > MAX_MSG_SIZE {
-            return Err(Error::InvalidParam);
-        }
         Ok(VhostUserMsgHeader::new(
             req.get_code(),
             VhostUserHeaderFlag::REPLY.bits(),

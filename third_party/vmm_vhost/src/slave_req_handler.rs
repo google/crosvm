@@ -464,17 +464,14 @@ impl<E: Endpoint<MasterReq>> SlaveReqHelper<E> {
         req: &VhostUserMsgHeader<MasterReq>,
         payload_size: usize,
     ) -> Result<VhostUserMsgHeader<MasterReq>> {
-        if mem::size_of::<T>() > MAX_MSG_SIZE
-            || payload_size > MAX_MSG_SIZE
-            || mem::size_of::<T>() + payload_size > MAX_MSG_SIZE
-        {
-            return Err(Error::InvalidParam);
-        }
-
         Ok(VhostUserMsgHeader::new(
             req.get_code(),
             VhostUserHeaderFlag::REPLY.bits(),
-            (mem::size_of::<T>() + payload_size) as u32,
+            (mem::size_of::<T>()
+                .checked_add(payload_size)
+                .ok_or(Error::OversizedMsg)?)
+            .try_into()
+            .map_err(Error::InvalidCastToInt)?,
         ))
     }
 
@@ -522,7 +519,7 @@ impl<E: Endpoint<MasterReq>> SlaveReqHelper<E> {
         buf: &[u8],
         files: Option<Vec<File>>,
     ) -> Result<(u8, Option<File>)> {
-        if buf.len() > MAX_MSG_SIZE || buf.len() < mem::size_of::<VhostUserU64>() {
+        if buf.len() < mem::size_of::<VhostUserU64>() {
             return Err(Error::InvalidMessage);
         }
         let msg = unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const VhostUserU64) };
@@ -1056,7 +1053,7 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
 
     fn get_config(&mut self, hdr: &VhostUserMsgHeader<MasterReq>, buf: &[u8]) -> Result<()> {
         let payload_offset = mem::size_of::<VhostUserConfig>();
-        if buf.len() > MAX_MSG_SIZE || buf.len() < payload_offset {
+        if buf.len() < payload_offset {
             return Err(Error::InvalidMessage);
         }
         let msg = unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const VhostUserConfig) };
@@ -1094,7 +1091,7 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
     }
 
     fn set_config(&mut self, size: usize, buf: &[u8]) -> Result<()> {
-        if size > MAX_MSG_SIZE || size < mem::size_of::<VhostUserConfig>() {
+        if size < mem::size_of::<VhostUserConfig>() {
             return Err(Error::InvalidMessage);
         }
         let msg = unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const VhostUserConfig) };

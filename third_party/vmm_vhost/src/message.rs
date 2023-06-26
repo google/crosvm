@@ -21,15 +21,6 @@ use zerocopy::FromBytes;
 
 use crate::VringConfigData;
 
-/// The vhost-user specification uses a field of u32 to store message length.
-/// On the other hand, preallocated buffers are needed to receive messages from the Unix domain
-/// socket. To preallocating a 4GB buffer for each vhost-user message is really just an overhead.
-/// Among all defined vhost-user messages, only the VhostUserConfig and VhostUserMemory has variable
-/// message size. For the VhostUserConfig, a maximum size of 4K is enough because the user
-/// configuration space for virtio devices is (4K - 0x100) bytes at most. For the VhostUserMemory,
-/// 4K should be enough too because it can support 255 memory regions at most.
-pub const MAX_MSG_SIZE: usize = 0x1000;
-
 /// The VhostUserMemory message has variable message size and variable number of attached file
 /// descriptors. Each user memory region entry in the message payload occupies 32 bytes,
 /// so setting maximum number of attached file descriptors based on the maximum message size.
@@ -390,8 +381,6 @@ impl<T: Req> VhostUserMsgValidator for VhostUserMsgHeader<T> {
     #[allow(clippy::if_same_then_else)]
     fn is_valid(&self) -> bool {
         if !self.get_code().is_valid() {
-            return false;
-        } else if self.size as usize > MAX_MSG_SIZE {
             return false;
         } else if self.get_version() != 0x1 {
             return false;
@@ -1238,8 +1227,6 @@ impl VhostSharedMemoryRegion {
 
 #[cfg(test)]
 mod tests {
-    use std::mem;
-
     use super::*;
 
     #[test]
@@ -1296,18 +1283,6 @@ mod tests {
         assert!(!hdr.is_need_reply());
         assert!(!hdr.is_reply());
         assert_eq!(hdr.get_version(), 0x1);
-
-        // Check message length
-        assert!(hdr.is_valid());
-        hdr.set_size(0x2000);
-        assert!(!hdr.is_valid());
-        hdr.set_size(0x100);
-        assert_eq!(hdr.get_size(), 0x100);
-        assert!(hdr.is_valid());
-        hdr.set_size((MAX_MSG_SIZE - mem::size_of::<VhostUserMsgHeader<MasterReq>>()) as u32);
-        assert!(hdr.is_valid());
-        hdr.set_size(0x0);
-        assert!(hdr.is_valid());
 
         // Check version
         hdr.set_version(0x0);

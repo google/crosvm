@@ -206,10 +206,6 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
         body: &T,
         fds: Option<&[RawDescriptor]>,
     ) -> Result<()> {
-        if mem::size_of::<T>() > MAX_MSG_SIZE {
-            return Err(Error::OversizedMsg);
-        }
-
         // We send the header and the body separately here. This is necessary on Windows. Otherwise
         // the recv side cannot read the header independently (the transport is message oriented).
         let mut bytes = self.send_iovec_all(&mut [hdr.as_slice()], fds)?;
@@ -236,20 +232,16 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
         payload: &[u8],
         fds: Option<&[RawDescriptor]>,
     ) -> Result<()> {
-        let len = payload.len();
-        if mem::size_of::<T>() > MAX_MSG_SIZE {
-            return Err(Error::OversizedMsg);
-        }
-        if len > MAX_MSG_SIZE - mem::size_of::<T>() {
-            return Err(Error::OversizedMsg);
-        }
         if let Some(fd_arr) = fds {
             if fd_arr.len() > MAX_ATTACHED_FD_ENTRIES {
                 return Err(Error::IncorrectFds);
             }
         }
 
-        let total = mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>() + len;
+        let len = payload.len();
+        let total = (mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>())
+            .checked_add(len)
+            .ok_or(Error::OversizedMsg)?;
 
         // We send the header and the body separately here. This is necessary on Windows. Otherwise
         // the recv side cannot read the header independently (the transport is message oriented).
