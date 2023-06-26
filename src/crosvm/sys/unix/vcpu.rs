@@ -272,7 +272,7 @@ where
                         VcpuControl::RunState(new_mode) => {
                             run_mode = new_mode;
                             match run_mode {
-                                VmRunMode::Running => break 'state_loop,
+                                VmRunMode::Running => {}
                                 VmRunMode::Suspending => {
                                     // On KVM implementations that use a paravirtualized
                                     // clock (e.g. x86), a flag must be set to indicate to
@@ -340,6 +340,9 @@ where
                             }
                         }
                     }
+                }
+                if run_mode == VmRunMode::Running {
+                    break 'state_loop;
                 }
             }
         }
