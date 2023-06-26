@@ -316,6 +316,7 @@ pub enum DeviceControlCommand {
     WakeDevices,
     SnapshotDevices { snapshot_path: PathBuf },
     RestoreDevices { restore_path: PathBuf },
+    GetDevicesState,
     Exit,
 }
 
@@ -980,6 +981,12 @@ pub enum VmIrqResponse {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum DevicesState {
+    Sleep,
+    Wake,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum BatControlResult {
     Ok,
     NoBatDevice,
@@ -1478,38 +1485,54 @@ impl Drop for VcpuSuspendGuard<'_> {
 /// When this guard is dropped, it wakes the devices.
 pub struct DeviceSleepGuard<'a> {
     device_control_tube: &'a Tube,
+    devices_state: DevicesState,
 }
 
 impl<'a> DeviceSleepGuard<'a> {
     fn new(device_control_tube: &'a Tube) -> anyhow::Result<Self> {
         device_control_tube
-            .send(&DeviceControlCommand::SleepDevices)
+            .send(&DeviceControlCommand::GetDevicesState)
             .context("send command to devices control socket")?;
-        match device_control_tube
+        let devices_state = match device_control_tube
             .recv()
             .context("receive from devices control socket")?
         {
-            VmResponse::Ok => (),
-            resp => bail!("device sleep failed: {}", resp),
+            VmResponse::DevicesState(state) => state,
+            resp => bail!("failed to get devices state. Unexpected behavior: {}", resp),
+        };
+        if let DevicesState::Wake = devices_state {
+            device_control_tube
+                .send(&DeviceControlCommand::SleepDevices)
+                .context("send command to devices control socket")?;
+            match device_control_tube
+                .recv()
+                .context("receive from devices control socket")?
+            {
+                VmResponse::Ok => (),
+                resp => bail!("device sleep failed: {}", resp),
+            }
         }
         Ok(Self {
             device_control_tube,
+            devices_state,
         })
     }
 }
 
 impl Drop for DeviceSleepGuard<'_> {
     fn drop(&mut self) {
-        if let Err(e) = self
-            .device_control_tube
-            .send(&DeviceControlCommand::WakeDevices)
-        {
-            panic!("failed to request device wake after snapshot: {}", e);
-        }
-        match self.device_control_tube.recv() {
-            Ok(VmResponse::Ok) => (),
-            Ok(resp) => panic!("unexpected response to device wake request: {}", resp),
-            Err(e) => panic!("failed to get reply for device wake request: {}", e),
+        if let DevicesState::Wake = self.devices_state {
+            if let Err(e) = self
+                .device_control_tube
+                .send(&DeviceControlCommand::WakeDevices)
+            {
+                panic!("failed to request device wake after snapshot: {}", e);
+            }
+            match self.device_control_tube.recv() {
+                Ok(VmResponse::Ok) => (),
+                Ok(resp) => panic!("unexpected response to device wake request: {}", resp),
+                Err(e) => panic!("failed to get reply for device wake request: {}", e),
+            }
         }
     }
 }
@@ -2174,6 +2197,8 @@ pub enum VmResponse {
     BatResponse(BatControlResult),
     /// Results of swap status command.
     SwapStatus(SwapStatus),
+    /// Gets the state of Devices (sleep/wake)
+    DevicesState(DevicesState),
 }
 
 impl Display for VmResponse {
@@ -2225,6 +2250,7 @@ impl Display for VmResponse {
                         .unwrap_or_else(|_| "invalid_response".to_string()),
                 )
             }
+            DevicesState(status) => write!(f, "devices status: {:?}", status),
         }
     }
 }

@@ -59,6 +59,7 @@ use base::TubeError;
 use cros_async::AsyncTube;
 use cros_async::Executor;
 use vm_control::DeviceControlCommand;
+use vm_control::DevicesState;
 use vm_control::VmResponse;
 use vm_memory::GuestMemory;
 
@@ -477,6 +478,17 @@ async fn handle_command_tube(
                             .send(VmResponse::Ok)
                             .await
                             .context("Failed to send response")?;
+                    }
+                    DeviceControlCommand::GetDevicesState => {
+                        let state = if _sleep_guard.is_some() {
+                            DevicesState::Sleep
+                        } else {
+                            DevicesState::Wake
+                        };
+                        command_tube
+                            .send(VmResponse::DevicesState(state))
+                            .await
+                            .context("failed to send response")?;
                     }
                     DeviceControlCommand::Exit => {
                         return Ok(());
