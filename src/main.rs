@@ -187,7 +187,12 @@ fn swap_vms(cmd: cmdline::SwapCommand) -> std::result::Result<(), ()> {
         Enable(params) => (VmRequest::Swap(SwapCommand::Enable), &params.socket_path),
         Trim(params) => (VmRequest::Swap(SwapCommand::Trim), &params.socket_path),
         SwapOut(params) => (VmRequest::Swap(SwapCommand::SwapOut), &params.socket_path),
-        Disable(params) => (VmRequest::Swap(SwapCommand::Disable), &params.socket_path),
+        Disable(params) => (
+            VmRequest::Swap(SwapCommand::Disable {
+                slow_file_cleanup: params.slow_file_cleanup,
+            }),
+            &params.socket_path,
+        ),
         Status(params) => (VmRequest::Swap(SwapCommand::Status), &params.socket_path),
     };
     if let VmRequest::Swap(SwapCommand::Status) = req {

@@ -1214,7 +1214,7 @@ pub enum SwapCommand {
     Enable,
     Trim,
     SwapOut,
-    Disable,
+    Disable { slow_file_cleanup: bool },
     Status,
 }
 
@@ -1697,10 +1697,14 @@ impl VmRequest {
                 }
                 VmResponse::Err(SysError::new(ENOTSUP))
             }
-            VmRequest::Swap(SwapCommand::Disable) => {
+            VmRequest::Swap(SwapCommand::Disable {
+                #[cfg(feature = "swap")]
+                slow_file_cleanup,
+                ..
+            }) => {
                 #[cfg(feature = "swap")]
                 if let Some(swap_controller) = swap_controller {
-                    return match swap_controller.disable() {
+                    return match swap_controller.disable(slow_file_cleanup) {
                         Ok(()) => VmResponse::Ok,
                         Err(e) => {
                             error!("swap disable failed: {}", e);

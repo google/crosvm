@@ -12,6 +12,7 @@ dup: 1
 epoll_create1: 1
 epoll_ctl: 1
 epoll_wait: 1
+eventfd2: 1
 exit: 1
 exit_group: 1
 fallocate: 1
@@ -55,5 +56,8 @@ set_robust_list: 1
 sigaltstack: 1
 socket: 1
 statx: 1
+timerfd_create: 1
+timerfd_settime: 1
+timerfd_gettime: 1
 tgkill: arg2 == SIGABRT
 write: 1

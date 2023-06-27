@@ -10,6 +10,7 @@ cfg_if::cfg_if! {
     if #[cfg(all(unix, feature = "enable"))] {
         mod controller;
         mod file;
+        mod file_truncator;
         mod logger;
         mod pagesize;
         mod present_list;

@@ -356,6 +356,9 @@ pub struct SwapDisableCommand {
     #[argh(positional, arg_name = "VM_SOCKET")]
     /// VM Socket path
     pub socket_path: String,
+    #[argh(switch)]
+    /// clean up the swap file in the background.
+    pub slow_file_cleanup: bool,
 }
 
 #[derive(FromArgs)]
