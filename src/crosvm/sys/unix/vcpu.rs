@@ -24,6 +24,7 @@ use arch::LinuxArch;
 use arch::VcpuArch;
 use arch::VcpuInitArch;
 use arch::VmArch;
+use base::signal::clear_signal_handler;
 use base::signal::BlockedSignal;
 use base::*;
 use devices::Bus;
@@ -209,6 +210,10 @@ pub fn setup_vcpu_signal_handler() -> Result<()> {
             .context("error registering signal handler")?;
     }
     Ok(())
+}
+
+pub fn remove_vcpu_signal_handler() -> Result<()> {
+    clear_signal_handler(SIGRTMIN() + 0).context("error unregistering signal handler")
 }
 
 fn vcpu_loop<V>(
@@ -591,6 +596,8 @@ where
                     bus_lock_ratelimit_ctrl,
                 );
 
+                // We don't want any more VCPU signals from now until the thread exits.
+                let _ = block_signal(SIGRTMIN() + 0);
                 set_vcpu_thread_local(None, SIGRTMIN() + 0);
 
                 vcpu_exit_state

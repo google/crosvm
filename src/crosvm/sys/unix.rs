@@ -3466,6 +3466,11 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         }
     }
 
+    // After joining all vcpu threads, unregister the process-wide signal handler.
+    if let Err(e) = vcpu::remove_vcpu_signal_handler() {
+        error!("failed to remove vcpu thread signal handler: {:#}", e);
+    }
+
     #[cfg(feature = "swap")]
     // Stop the snapshot monitor process
     if let Some(swap_controller) = swap_controller {
