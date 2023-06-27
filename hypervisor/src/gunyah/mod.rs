@@ -45,7 +45,6 @@ use libc::EINVAL;
 use libc::EIO;
 use libc::ENOENT;
 use libc::ENOSPC;
-use libc::ENOTSUP;
 use libc::EOVERFLOW;
 use libc::O_CLOEXEC;
 use libc::O_RDWR;
@@ -431,7 +430,6 @@ impl Vm for GunyahVm {
             // Strictly speaking, Gunyah supports pvclock, but Gunyah takes care
             // of it and crosvm doesn't need to do anything for it
             VmCap::PvClock => false,
-            VmCap::PvClockSuspend => false,
             VmCap::Protected => true,
             VmCap::EarlyInitCpuid => false,
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -825,8 +823,8 @@ impl Vcpu for GunyahVcpu {
         unreachable!()
     }
 
-    fn pvclock_ctrl(&self) -> Result<()> {
-        Err(Error::new(ENOTSUP))
+    fn on_suspend(&self) -> Result<()> {
+        Ok(())
     }
 
     unsafe fn enable_raw_capability(&self, _cap: u32, _args: &[u64; 4]) -> Result<()> {

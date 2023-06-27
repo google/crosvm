@@ -295,11 +295,14 @@ impl KvmVm {
             .build()
             .map_err(|_| Error::new(ENOSPC))?;
 
+        let cap_kvmclock_ctrl = self.check_raw_capability(KvmCap::KvmclockCtrl);
+
         Ok(KvmVcpu {
             kvm: self.kvm.try_clone()?,
             vm: self.vm.try_clone()?,
             vcpu,
             id,
+            cap_kvmclock_ctrl,
             run_mmap: Arc::new(run_mmap),
         })
     }
@@ -543,7 +546,6 @@ impl Vm for KvmVm {
         match c {
             VmCap::DirtyLog => true,
             VmCap::PvClock => false,
-            VmCap::PvClockSuspend => self.check_raw_capability(KvmCap::KvmclockCtrl),
             VmCap::Protected => self.check_raw_capability(KvmCap::ArmProtectedVm),
             VmCap::EarlyInitCpuid => false,
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -795,6 +797,7 @@ pub struct KvmVcpu {
     vm: SafeDescriptor,
     vcpu: SafeDescriptor,
     id: usize,
+    cap_kvmclock_ctrl: bool,
     run_mmap: Arc<MemoryMapping>,
 }
 
@@ -807,6 +810,7 @@ impl Vcpu for KvmVcpu {
             kvm: self.kvm.try_clone()?,
             vm,
             vcpu,
+            cap_kvmclock_ctrl: self.cap_kvmclock_ctrl,
             id: self.id,
             run_mmap: self.run_mmap.clone(),
         })
@@ -837,8 +841,19 @@ impl Vcpu for KvmVcpu {
         }
     }
 
-    fn pvclock_ctrl(&self) -> Result<()> {
-        self.pvclock_ctrl_arch()
+    fn on_suspend(&self) -> Result<()> {
+        // On KVM implementations that use a paravirtualized clock (e.g. x86), a flag must be set to
+        // indicate to the guest kernel that a vCPU was suspended. The guest kernel will use this
+        // flag to prevent the soft lockup detection from triggering when this vCPU resumes, which
+        // could happen days later in realtime.
+        if self.cap_kvmclock_ctrl {
+            // The ioctl is safe because it does not read or write memory in this process.
+            if unsafe { ioctl(self, KVM_KVMCLOCK_CTRL()) } != 0 {
+                return errno_result();
+            }
+        }
+
+        Ok(())
     }
 
     unsafe fn enable_raw_capability(&self, cap: u32, args: &[u64; 4]) -> Result<()> {

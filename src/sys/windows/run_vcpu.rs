@@ -267,7 +267,6 @@ impl VcpuRunThread {
         mut io_bus: devices::Bus,
         mut mmio_bus: devices::Bus,
         vm_evt_wrtube: SendTube,
-        requires_pvclock_ctrl: bool,
         run_mode_arc: Arc<VcpuRunMode>,
         #[cfg(feature = "stats")] stats: Option<Arc<Mutex<StatisticsCollector>>>,
         host_cpu_topology: bool,
@@ -360,7 +359,6 @@ impl VcpuRunThread {
                         irq_chip,
                         io_bus,
                         mmio_bus,
-                        requires_pvclock_ctrl,
                         run_mode_arc,
                         #[cfg(feature = "stats")]
                         stats,
@@ -554,7 +552,6 @@ pub fn run_all_vcpus<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     guest_os: &RunnableLinuxVm<V, Vcpu>,
     exit_evt: &Event,
     vm_evt_wrtube: &SendTube,
-    pvclock_host_tube: &Option<Tube>,
     #[cfg(feature = "stats")] stats: &Option<Arc<Mutex<StatisticsCollector>>>,
     host_cpu_topology: bool,
     run_mode_arc: Arc<VcpuRunMode>,
@@ -633,7 +630,6 @@ pub fn run_all_vcpus<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             vm_evt_wrtube
                 .try_clone()
                 .exit_context(Exit::CloneTube, "failed to clone tube")?,
-            pvclock_host_tube.is_none(),
             run_mode_arc.clone(),
             #[cfg(feature = "stats")]
             stats.clone(),
@@ -666,7 +662,6 @@ fn vcpu_loop<V>(
     irq_chip: Box<dyn IrqChipArch + 'static>,
     io_bus: Bus,
     mmio_bus: Bus,
-    requires_pvclock_ctrl: bool,
     run_mode_arc: Arc<VcpuRunMode>,
     #[cfg(feature = "stats")] stats: Option<Arc<Mutex<StatisticsCollector>>>,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] cpuid_context: CpuIdContext,
@@ -913,16 +908,11 @@ where
                         break;
                     }
                     VmRunMode::Suspending => {
-                        // On KVM implementations that use a paravirtualized clock (e.g.
-                        // x86), a flag must be set to indicate to the guest kernel that
-                        // a VCPU was suspended. The guest kernel will use this flag to
-                        // prevent the soft lockup detection from triggering when this
-                        // VCPU resumes, which could happen days later in realtime.
-                        if requires_pvclock_ctrl {
-                            vcpu.pvclock_ctrl().unwrap_or_else(|e| error!(
+                        if let Err(e) = vcpu.on_suspend() {
+                            error!(
                                 "failed to signal to hypervisor that vcpu {} is being suspended: {}",
                                 context.cpu_id, e
-                            ));
+                            );
                         }
                     }
                     VmRunMode::Breakpoint => {}

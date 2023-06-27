@@ -92,11 +92,6 @@ impl VmRiscv64 for KvmVm {
 }
 
 impl KvmVcpu {
-    /// Arch-specific implementation of `Vcpu::pvclock_ctrl`.  Always returns an error on Riscv64.
-    pub fn pvclock_ctrl_arch(&self) -> Result<()> {
-        Err(Error::new(ENXIO))
-    }
-
     /// Handles a `KVM_EXIT_SYSTEM_EVENT` with event type `KVM_SYSTEM_EVENT_RESET` with the given
     /// event flags and returns the appropriate `VcpuExit` value for the run loop to handle.
     ///

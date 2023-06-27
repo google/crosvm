@@ -689,7 +689,7 @@ impl Vcpu for FakeVcpu {
     fn handle_wrmsr(&self) {
         unimplemented!()
     }
-    fn pvclock_ctrl(&self) -> Result<()> {
+    fn on_suspend(&self) -> Result<()> {
         unimplemented!()
     }
     unsafe fn enable_raw_capability(&self, _cap: u32, _args: &[u64; 4]) -> Result<()> {

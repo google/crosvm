@@ -519,8 +519,6 @@ impl Vm for WhpxVm {
                 }),
             // there is a pvclock like thing already done w/ hyperv, but we can't get the state.
             VmCap::PvClock => false,
-            // TODO: this isn't in capability features, but only available in 19H1 windows.
-            VmCap::PvClockSuspend => true,
             VmCap::Protected => false,
             // whpx initializes cpuid early during VM creation.
             VmCap::EarlyInitCpuid => true,

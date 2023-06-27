@@ -562,19 +562,6 @@ impl VmX86_64 for KvmVm {
 }
 
 impl KvmVcpu {
-    /// Arch-specific implementation of `Vcpu::pvclock_ctrl`.
-    pub fn pvclock_ctrl_arch(&self) -> Result<()> {
-        let ret = unsafe {
-            // The ioctl is safe because it does not read or write memory in this process.
-            ioctl(self, KVM_KVMCLOCK_CTRL())
-        };
-        if ret == 0 {
-            Ok(())
-        } else {
-            errno_result()
-        }
-    }
-
     /// Handles a `KVM_EXIT_SYSTEM_EVENT` with event type `KVM_SYSTEM_EVENT_RESET` with the given
     /// event flags and returns the appropriate `VcpuExit` value for the run loop to handle.
     pub fn system_event_reset(&self, _event_flags: u64) -> Result<VcpuExit> {

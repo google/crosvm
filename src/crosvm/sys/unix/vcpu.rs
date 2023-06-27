@@ -225,7 +225,6 @@ fn vcpu_loop<V>(
     delay_rt: bool,
     io_bus: Bus,
     mmio_bus: Bus,
-    requires_pvclock_ctrl: bool,
     from_main_tube: mpsc::Receiver<VcpuControl>,
     #[cfg(feature = "gdb")] to_gdb_tube: Option<mpsc::Sender<VcpuDebugStatusMessage>>,
     #[cfg(feature = "gdb")] guest_mem: GuestMemory,
@@ -279,19 +278,11 @@ where
                             match run_mode {
                                 VmRunMode::Running => {}
                                 VmRunMode::Suspending => {
-                                    // On KVM implementations that use a paravirtualized
-                                    // clock (e.g. x86), a flag must be set to indicate to
-                                    // the guest kernel that a vCPU was suspended. The guest
-                                    // kernel will use this flag to prevent the soft lockup
-                                    // detection from triggering when this vCPU resumes,
-                                    // which could happen days later in realtime.
-                                    if requires_pvclock_ctrl {
-                                        if let Err(e) = vcpu.pvclock_ctrl() {
-                                            error!(
-                                                "failed to tell hypervisor vcpu {} is suspending: {}",
-                                                cpu_id, e
-                                            );
-                                        }
+                                    if let Err(e) = vcpu.on_suspend() {
+                                        error!(
+                                            "failed to tell hypervisor vcpu {} is suspending: {}",
+                                            cpu_id, e
+                                        );
                                     }
                                 }
                                 VmRunMode::Breakpoint => {}
@@ -497,7 +488,6 @@ pub fn run_vcpu<V>(
     mut io_bus: Bus,
     mut mmio_bus: Bus,
     vm_evt_wrtube: SendTube,
-    requires_pvclock_ctrl: bool,
     from_main_tube: mpsc::Receiver<VcpuControl>,
     #[cfg(feature = "gdb")] to_gdb_tube: Option<mpsc::Sender<VcpuDebugStatusMessage>>,
     enable_core_scheduling: bool,
@@ -584,7 +574,6 @@ where
                     delay_rt,
                     io_bus,
                     mmio_bus,
-                    requires_pvclock_ctrl,
                     from_main_tube,
                     #[cfg(feature = "gdb")]
                     to_gdb_tube,

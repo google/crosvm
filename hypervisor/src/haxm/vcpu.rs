@@ -163,11 +163,9 @@ impl Vcpu for HaxmVcpu {
         }
     }
 
-    /// Signals to the hypervisor that this guest is being paused by userspace.  Only works on Vms
-    /// that support `VmCapability::PvClockSuspend`.
-    fn pvclock_ctrl(&self) -> Result<()> {
-        Err(Error::new(libc::ENXIO))
-        // HaxmVcpu does not support VmCapability::PvClockSuspend
+    /// Signals to the hypervisor that this guest is being paused by userspace.
+    fn on_suspend(&self) -> Result<()> {
+        Ok(())
     }
 
     /// Enables a hypervisor-specific extension on this Vcpu.  `cap` is a constant defined by the

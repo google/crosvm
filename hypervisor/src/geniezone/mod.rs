@@ -211,11 +211,6 @@ impl VmAArch64 for GeniezoneVm {
 }
 
 impl GeniezoneVcpu {
-    /// Arch-specific implementation of `Vcpu::pvclock_ctrl`.  Always returns an error on AArch64.
-    pub fn pvclock_ctrl_arch(&self) -> Result<()> {
-        Err(Error::new(EINVAL))
-    }
-
     fn set_one_geniezone_reg_u64(
         &self,
         gzvm_reg_id: GeniezoneVcpuRegister,
@@ -902,7 +897,6 @@ impl Vm for GeniezoneVm {
         match c {
             VmCap::DirtyLog => true,
             VmCap::PvClock => false,
-            VmCap::PvClockSuspend => false,
             VmCap::Protected => self.check_raw_capability(GeniezoneCap::ArmProtectedVm),
             VmCap::EarlyInitCpuid => false,
         }
@@ -1136,8 +1130,8 @@ impl Vcpu for GeniezoneVcpu {
         }
     }
 
-    fn pvclock_ctrl(&self) -> Result<()> {
-        Err(Error::new(libc::ENXIO))
+    fn on_suspend(&self) -> Result<()> {
+        Ok(())
     }
 
     unsafe fn enable_raw_capability(&self, _cap: u32, _args: &[u64; 4]) -> Result<()> {

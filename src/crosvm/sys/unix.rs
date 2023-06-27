@@ -2871,7 +2871,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             vm_evt_wrtube
                 .try_clone()
                 .context("failed to clone vm event tube")?,
-            linux.vm.check_capability(VmCap::PvClockSuspend),
             from_main_channel,
             #[cfg(feature = "gdb")]
             to_gdb_channel.clone(),

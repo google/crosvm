@@ -45,8 +45,6 @@ pub enum VmCap {
     DirtyLog,
     /// Paravirtualized clock device
     PvClock,
-    /// PV clock can be notified when guest is being paused
-    PvClockSuspend,
     /// VM can be run in protected mode, where the host does not have access to its memory.
     Protected,
     /// VM completes initialization of CPUID at creation time, not required after.

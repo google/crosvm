@@ -1202,7 +1202,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         &guest_os,
         &exit_evt,
         &vm_evt_wrtube,
-        &pvclock_host_tube,
         #[cfg(feature = "stats")]
         &stats,
         host_cpu_topology,
