@@ -5,6 +5,7 @@
 //! The cross-domain component type, specialized for allocating and sharing resources across domain
 //! boundaries.
 
+use std::cmp::max;
 use std::collections::BTreeMap as Map;
 use std::collections::VecDeque;
 use std::convert::TryInto;
@@ -99,6 +100,7 @@ pub(crate) struct CrossDomainResource {
 pub(crate) struct CrossDomainItems {
     descriptor_id: u32,
     requirements_blob_id: u32,
+    read_pipe_id: u32,
     table: Map<u32, CrossDomainItem>,
 }
 
@@ -150,6 +152,10 @@ pub(crate) fn add_item(item_state: &CrossDomainItemState, item: CrossDomainItem)
             items.requirements_blob_id += 2;
             items.requirements_blob_id
         }
+        CrossDomainItem::WaylandReadPipe(_) => {
+            items.read_pipe_id += 1;
+            max(items.read_pipe_id, CROSS_DOMAIN_PIPE_READ_START)
+        }
         _ => {
             items.descriptor_id += 2;
             items.descriptor_id
@@ -167,6 +173,7 @@ impl Default for CrossDomainItems {
         CrossDomainItems {
             descriptor_id: 1,
             requirements_blob_id: 2,
+            read_pipe_id: CROSS_DOMAIN_PIPE_READ_START,
             table: Default::default(),
         }
     }

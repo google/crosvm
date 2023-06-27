@@ -47,6 +47,9 @@
 // A ring based on this particular context's channel.
 #define CROSS_DOMAIN_CHANNEL_RING 1
 
+// Read pipe IDs start at this value.
+#define CROSS_DOMAIN_PIPE_READ_START 0x80000000
+
 struct CrossDomainCapabilities {
 	uint32_t version;
 	uint32_t supported_channels;

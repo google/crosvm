@@ -44,6 +44,9 @@ pub const CROSS_DOMAIN_QUERY_RING: u32 = 0;
 /// A ring based on this particular context's channel.
 pub const CROSS_DOMAIN_CHANNEL_RING: u32 = 1;
 
+/// Read pipe IDs start at this value.
+pub const CROSS_DOMAIN_PIPE_READ_START: u32 = 0x80000000;
+
 #[repr(C)]
 #[derive(Copy, Clone, Default, AsBytes, FromBytes)]
 pub struct CrossDomainCapabilities {
