@@ -16,6 +16,7 @@ mod interrupt;
 mod iommu;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod pvclock;
+#[path = "queue/split_queue.rs"]
 mod queue;
 mod rng;
 #[cfg(any(feature = "tpm", feature = "vtpm"))]
