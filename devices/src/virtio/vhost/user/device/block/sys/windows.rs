@@ -76,6 +76,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
             .exit_context(Exit::OpenDiskImage, "failed to open disk image")?,
         disk_option.read_only,
         disk_option.sparse,
+        false,
         disk_option.block_size,
         false,
         None,

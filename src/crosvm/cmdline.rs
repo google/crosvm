@@ -969,6 +969,9 @@ pub struct RunCommand {
     ///         worker threads in parallel. this option is not
     ///         effective for vhost-user blk device.
     ///         (default: false)
+    ///     packed-queue=BOOL - Use packed virtqueue
+    ///         in block device. If false, use split virtqueue.
+    ///         (default: false)
     block: Vec<DiskOptionWithId>,
 
     /// ratelimit enforced on detected bus locks in guest.

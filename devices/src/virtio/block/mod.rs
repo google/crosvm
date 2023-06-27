@@ -117,6 +117,10 @@ pub struct DiskOption {
     /// precedence over the async executor kind specified by the subcommand's option.
     /// If None, the default or the specified by the subcommand's option would be used.
     pub async_executor: Option<ExecutorKind>,
+    #[serde(default)]
+    //Option to choose virtqueue type. If true, use the packed virtqueue. If false
+    //or by default, use split virtqueue
+    pub packed_queue: bool,
 }
 
 #[cfg(test)]
@@ -157,6 +161,7 @@ mod tests {
                 io_concurrency: NonZeroU32::new(1).unwrap(),
                 multiple_workers: false,
                 async_executor: None,
+                packed_queue: false,
             }
         );
 
@@ -176,6 +181,7 @@ mod tests {
                 io_concurrency: NonZeroU32::new(1).unwrap(),
                 multiple_workers: false,
                 async_executor: None,
+                packed_queue: false,
             }
         );
 
@@ -195,6 +201,7 @@ mod tests {
                 io_concurrency: NonZeroU32::new(1).unwrap(),
                 multiple_workers: false,
                 async_executor: None,
+                packed_queue: false,
             }
         );
 
@@ -214,6 +221,7 @@ mod tests {
                 io_concurrency: NonZeroU32::new(1).unwrap(),
                 multiple_workers: false,
                 async_executor: None,
+                packed_queue: false,
             }
         );
 
@@ -233,6 +241,7 @@ mod tests {
                 io_concurrency: NonZeroU32::new(1).unwrap(),
                 multiple_workers: false,
                 async_executor: None,
+                packed_queue: false,
             }
         );
         let params = from_block_arg("/some/path.img,sparse=false").unwrap();
@@ -250,6 +259,7 @@ mod tests {
                 io_concurrency: NonZeroU32::new(1).unwrap(),
                 multiple_workers: false,
                 async_executor: None,
+                packed_queue: false,
             }
         );
 
@@ -269,6 +279,7 @@ mod tests {
                 io_concurrency: NonZeroU32::new(1).unwrap(),
                 multiple_workers: false,
                 async_executor: None,
+                packed_queue: false,
             }
         );
 
@@ -288,6 +299,7 @@ mod tests {
                 io_concurrency: NonZeroU32::new(1).unwrap(),
                 multiple_workers: false,
                 async_executor: None,
+                packed_queue: false,
             }
         );
 
@@ -307,6 +319,7 @@ mod tests {
                 io_concurrency: NonZeroU32::new(1).unwrap(),
                 multiple_workers: false,
                 async_executor: None,
+                packed_queue: false,
             }
         );
 
@@ -326,6 +339,7 @@ mod tests {
                 #[cfg(windows)]
                 io_concurrency: NonZeroU32::new(1).unwrap(),
                 multiple_workers: false,
+                packed_queue: false,
             }
         );
 
@@ -346,6 +360,7 @@ mod tests {
                     io_concurrency: NonZeroU32::new(4).unwrap(),
                     multiple_workers: false,
                     async_executor: None,
+                    packed_queue: false,
                 }
             );
         }
@@ -366,6 +381,7 @@ mod tests {
                 io_concurrency: NonZeroU32::new(1).unwrap(),
                 multiple_workers: false,
                 async_executor: None,
+                packed_queue: false,
             }
         );
         let err = from_block_arg("/some/path.img,id=DISK_ID_IS_WAY_TOO_LONG").unwrap_err();
@@ -398,13 +414,34 @@ mod tests {
                 io_concurrency: NonZeroU32::new(1).unwrap(),
                 multiple_workers: false,
                 async_executor: Some(ex_kind),
+                packed_queue: false,
+            }
+        );
+
+        // packed queue
+        let params = from_block_arg("/path/to/disk.img,packed-queue").unwrap();
+        assert_eq!(
+            params,
+            DiskOption {
+                path: "/path/to/disk.img".into(),
+                read_only: false,
+                root: false,
+                sparse: true,
+                direct: false,
+                block_size: 512,
+                id: None,
+                #[cfg(windows)]
+                io_concurrency: NonZeroU32::new(1).unwrap(),
+                multiple_workers: false,
+                async_executor: None,
+                packed_queue: true,
             }
         );
 
         // All together
         let params = from_block_arg(&format!(
             "/some/path.img,block_size=256,ro,root,sparse=false,id=DISK_LABEL\
-            ,direct,async-executor={ex_kind_opt}"
+            ,direct,async-executor={ex_kind_opt},packed-queue=false"
         ))
         .unwrap();
         assert_eq!(
@@ -421,6 +458,7 @@ mod tests {
                 io_concurrency: NonZeroU32::new(1).unwrap(),
                 multiple_workers: false,
                 async_executor: Some(ex_kind),
+                packed_queue: false,
             }
         );
     }
@@ -440,6 +478,7 @@ mod tests {
             io_concurrency: NonZeroU32::new(1).unwrap(),
             multiple_workers: false,
             async_executor: None,
+            packed_queue: false,
         };
         let json = serde_json::to_string(&original).unwrap();
         let deserialized = serde_json::from_str(&json).unwrap();
@@ -458,6 +497,7 @@ mod tests {
             io_concurrency: NonZeroU32::new(1).unwrap(),
             multiple_workers: false,
             async_executor: Some(ExecutorKind::default()),
+            packed_queue: false,
         };
         let json = serde_json::to_string(&original).unwrap();
         let deserialized = serde_json::from_str(&json).unwrap();
@@ -476,6 +516,7 @@ mod tests {
             io_concurrency: NonZeroU32::new(1).unwrap(),
             multiple_workers: false,
             async_executor: Some(ExecutorKind::default()),
+            packed_queue: false,
         };
         let json = serde_json::to_string(&original).unwrap();
         let deserialized = serde_json::from_str(&json).unwrap();

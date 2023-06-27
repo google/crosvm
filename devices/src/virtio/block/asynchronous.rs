@@ -51,6 +51,7 @@ use futures::FutureExt;
 use remain::sorted;
 use sync::Mutex;
 use thiserror::Error as ThisError;
+use virtio_sys::virtio_config::VIRTIO_F_RING_PACKED;
 use vm_control::DiskControlCommand;
 use vm_control::DiskControlResult;
 use vm_memory::GuestMemory;
@@ -640,6 +641,7 @@ impl BlockAsync {
         disk_image: Box<dyn DiskFile>,
         read_only: bool,
         sparse: bool,
+        packed_queue: bool,
         block_size: u32,
         multiple_workers: bool,
         id: Option<BlockId>,
@@ -677,7 +679,7 @@ impl BlockAsync {
         let queue_sizes = vec![q_size; num_queues as usize];
 
         let avail_features =
-            Self::build_avail_features(base_features, read_only, sparse, multi_queue);
+            Self::build_avail_features(base_features, read_only, sparse, multi_queue, packed_queue);
 
         let seg_max = get_seg_max(q_size);
         let executor_kind = executor_kind.unwrap_or_default();
@@ -706,6 +708,7 @@ impl BlockAsync {
         read_only: bool,
         sparse: bool,
         multi_queue: bool,
+        packed_queue: bool,
     ) -> u64 {
         let mut avail_features = base_features;
         if read_only {
@@ -721,6 +724,9 @@ impl BlockAsync {
         avail_features |= 1 << VIRTIO_BLK_F_BLK_SIZE;
         if multi_queue {
             avail_features |= 1 << VIRTIO_BLK_F_MQ;
+        }
+        if packed_queue {
+            avail_features |= 1 << VIRTIO_F_RING_PACKED;
         }
         avail_features
     }
@@ -1196,6 +1202,7 @@ mod tests {
             Box::new(f),
             true,
             false,
+            false,
             512,
             false,
             None,
@@ -1225,6 +1232,7 @@ mod tests {
             features,
             Box::new(f),
             true,
+            false,
             false,
             4096,
             false,
@@ -1256,6 +1264,7 @@ mod tests {
                 Box::new(f),
                 false,
                 true,
+                false,
                 512,
                 false,
                 None,
@@ -1278,6 +1287,7 @@ mod tests {
             let b = BlockAsync::new(
                 features,
                 Box::new(f),
+                false,
                 false,
                 false,
                 512,
@@ -1304,6 +1314,7 @@ mod tests {
                 Box::new(f),
                 true,
                 true,
+                false,
                 512,
                 false,
                 None,
@@ -1334,6 +1345,7 @@ mod tests {
             Box::new(f),
             false,
             true,
+            false,
             512,
             false,
             None,
@@ -1353,6 +1365,7 @@ mod tests {
         let b = BlockAsync::new(
             features,
             Box::new(f),
+            false,
             false,
             false,
             512,
@@ -1614,6 +1627,7 @@ mod tests {
             disk_image.try_clone().unwrap(),
             true,
             false,
+            false,
             512,
             enables_multiple_workers,
             Some(*id),
@@ -1722,6 +1736,7 @@ mod tests {
         let mut b = BlockAsync::new(
             features,
             disk_image.try_clone().unwrap(),
+            false,
             false,
             false,
             512,
@@ -1834,6 +1849,7 @@ mod tests {
             disk_image.try_clone().unwrap(),
             true,
             false,
+            false,
             512,
             false, // run with single worker thread
             None,
@@ -1868,7 +1884,7 @@ mod tests {
         // Create a BlockAsync to test with multiple worker threads
         let features = base_features(ProtectionType::Unprotected);
         let mut b = BlockAsync::new(
-            features, disk_image, true, false, 512, true, None, None, None, None, None,
+            features, disk_image, true, false, false, 512, true, None, None, None, None, None,
         )
         .unwrap();
 

@@ -282,6 +282,7 @@ fn create_block_device(cfg: &Config, disk: &DiskOption, disk_device_tube: Tube) 
         disk.open()?,
         disk.read_only,
         disk.sparse,
+        disk.packed_queue,
         disk.block_size,
         false,
         disk.id,

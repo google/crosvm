@@ -93,6 +93,7 @@ fuzz_target!(|bytes| {
         Box::new(disk_file),
         false,
         true,
+        false,
         512,
         false,
         None,

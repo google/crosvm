@@ -246,13 +246,14 @@ impl<'a> VirtioDeviceBuilder for DiskConfig<'a> {
             self.disk.path.display(),
         );
         let disk_image = self.disk.open()?;
-
+        let base_features = virtio::base_features(protection_type);
         Ok(Box::new(
             virtio::BlockAsync::new(
-                virtio::base_features(protection_type),
+                base_features,
                 disk_image,
                 self.disk.read_only,
                 self.disk.sparse,
+                self.disk.packed_queue,
                 self.disk.block_size,
                 self.disk.multiple_workers,
                 self.disk.id,
@@ -271,12 +272,15 @@ impl<'a> VirtioDeviceBuilder for DiskConfig<'a> {
     ) -> anyhow::Result<Box<dyn VhostUserDevice>> {
         let disk = self.disk;
         let disk_image = disk.open()?;
+        let base_features = virtio::base_features(ProtectionType::Unprotected);
+
         let block = Box::new(
             virtio::BlockAsync::new(
-                virtio::base_features(ProtectionType::Unprotected),
+                base_features,
                 disk_image,
                 disk.read_only,
                 disk.sparse,
+                disk.packed_queue,
                 disk.block_size,
                 false,
                 disk.id,
