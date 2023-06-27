@@ -2353,8 +2353,7 @@ mod tests {
             "0 655360 1065,1065 20119 1,1066 656426 3934,5000 600 50,5050 660410 1994950"
         );
         assert_eq!(shared_dir.fs_cfg.ascii_casefold, false);
-        assert_eq!(shared_dir.fs_cfg.attr_timeout, Duration::from_secs(3600));
-        assert_eq!(shared_dir.fs_cfg.entry_timeout, Duration::from_secs(3600));
+        assert_eq!(shared_dir.fs_cfg.timeout, Duration::from_secs(3600));
         assert_eq!(shared_dir.fs_cfg.writeback, true);
         assert_eq!(
             shared_dir.fs_cfg.cache_policy,
@@ -2388,8 +2387,7 @@ mod tests {
         assert_eq!(shared_dir.uid_map, "0 299 1, 5000 600 50");
         assert_eq!(shared_dir.gid_map, "0 300 1, 5000 600 50");
         assert_eq!(shared_dir.fs_cfg.ascii_casefold, false);
-        assert_eq!(shared_dir.fs_cfg.attr_timeout, Duration::from_secs(3600));
-        assert_eq!(shared_dir.fs_cfg.entry_timeout, Duration::from_secs(3600));
+        assert_eq!(shared_dir.fs_cfg.timeout, Duration::from_secs(3600));
         assert_eq!(shared_dir.fs_cfg.writeback, false);
         assert_eq!(
             shared_dir.fs_cfg.cache_policy,

@@ -483,19 +483,17 @@ impl FromStr for CachePolicy {
 /// Options that configure the behavior of the file system.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    /// How long the FUSE client should consider directory entries to be valid. If the contents of a
-    /// directory can only be modified by the FUSE client (i.e., the file system has exclusive
-    /// access), then this should be a large value.
+    /// How long the FUSE client should consider directory entries and file/directory attributes to
+    /// be valid.
+    /// This value corresponds to `entry_timeout` and `attr_timeout` in
+    /// [libfuse's `fuse_config`](https://libfuse.github.io/doxygen/structfuse__config.html), but
+    /// we use the same value for the two.
     ///
+    /// If the contents of a directory or the attributes of a file or directory can only be
+    /// modified by the FUSE client (i.e., the file system has exclusive access), then this should
+    /// be a large value.
     /// The default value for this option is 5 seconds.
-    pub entry_timeout: Duration,
-
-    /// How long the FUSE client should consider file and directory attributes to be valid. If the
-    /// attributes of a file or directory can only be modified by the FUSE client (i.e., the file
-    /// system has exclusive access), then this should be set to a large value.
-    ///
-    /// The default value for this option is 5 seconds.
-    pub attr_timeout: Duration,
+    pub timeout: Duration,
 
     /// The caching policy the file system should use. See the documentation of `CachePolicy` for
     /// more details.
@@ -560,8 +558,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            entry_timeout: Duration::from_secs(5),
-            attr_timeout: Duration::from_secs(5),
+            timeout: Duration::from_secs(5),
             cache_policy: Default::default(),
             writeback: false,
             rewrite_security_xattrs: false,
@@ -598,8 +595,7 @@ impl FromStr for Config {
                     let seconds = value.parse().map_err(|_| "`timeout` must be an integer")?;
 
                     let dur = Duration::from_secs(seconds);
-                    cfg.entry_timeout = dur;
-                    cfg.attr_timeout = dur;
+                    cfg.timeout = dur;
                 }
                 "cache" => {
                     let policy = value
@@ -782,7 +778,7 @@ pub struct PassthroughFs {
 
     // Time-expiring cache for `ascii_casefold_lookup()`.
     // The key is an inode of a directory, and the value is a cache for the directory.
-    // Each value will be expired `cfg.entry_timeout` after it's created.
+    // Each value will be expired `cfg.timeout` after it's created.
     //
     // TODO(b/267748212): Instead of per-device Mutex, we might want to have per-directory Mutex
     // if we use PassthroughFs in multi-threaded environments.
@@ -840,9 +836,7 @@ impl PassthroughFs {
         let proc = unsafe { File::from_raw_descriptor(raw_descriptor) };
 
         let expiring_casefold_lookup_caches = if cfg.ascii_casefold {
-            Some(Mutex::new(ExpiringCasefoldLookupCaches::new(
-                cfg.entry_timeout,
-            )))
+            Some(Mutex::new(ExpiringCasefoldLookupCaches::new(cfg.timeout)))
         } else {
             None
         };
@@ -1011,8 +1005,9 @@ impl PassthroughFs {
             inode,
             generation: 0,
             attr: st,
-            attr_timeout: self.cfg.attr_timeout,
-            entry_timeout: self.cfg.entry_timeout,
+            // We use the same timeout for the attribute and the entry.
+            attr_timeout: self.cfg.timeout,
+            entry_timeout: self.cfg.timeout,
         }
     }
 
@@ -1069,8 +1064,9 @@ impl PassthroughFs {
                 inode: self.increase_inode_refcount(data),
                 generation: 0,
                 attr: st,
-                attr_timeout: self.cfg.attr_timeout,
-                entry_timeout: self.cfg.entry_timeout,
+                // We use the same timeout for the attribute and the entry.
+                attr_timeout: self.cfg.timeout,
+                entry_timeout: self.cfg.timeout,
             });
         }
 
@@ -1172,7 +1168,7 @@ impl PassthroughFs {
     fn do_getattr(&self, inode: &InodeData) -> io::Result<(libc::stat64, Duration)> {
         let st = stat(inode)?;
 
-        Ok((st, self.cfg.attr_timeout))
+        Ok((st, self.cfg.timeout))
     }
 
     fn do_unlink(&self, parent: &InodeData, name: &CStr, flags: libc::c_int) -> io::Result<()> {
@@ -3236,8 +3232,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let timeout = Duration::from_millis(10);
         let cfg = Config {
-            entry_timeout: timeout,
-            attr_timeout: timeout,
+            timeout,
             cache_policy: CachePolicy::Auto,
             ascii_casefold,
             ..Default::default()
@@ -3306,8 +3301,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let timeout = Duration::from_millis(10);
         let cfg = Config {
-            entry_timeout: timeout,
-            attr_timeout: timeout,
+            timeout,
             cache_policy: CachePolicy::Auto,
             ascii_casefold,
             ..Default::default()
