@@ -1495,6 +1495,10 @@ pub struct RunCommand {
     ///                       Default: false.  [Optional]
     ///   vq-pairs=N      - number of rx/tx queue pairs.
     ///                       Default: 1.      [Optional]
+    ///   packed-queue    - use packed queue.
+    ///                       If not set or set to false, it will
+    ///                       use split virtqueue.
+    ///                       Default: false.  [Optional]
     ///
     /// Either one tap_name, one tap_fd or a triplet of host_ip,
     /// netmask and mac must be specified.
@@ -2912,6 +2916,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                     },
                     vhost_net: vhost_net_config.clone(),
                     vq_pairs: cmd.net_vq_pairs,
+                    packed_queue: false,
                 });
             }
 
@@ -2924,6 +2929,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                     mode: NetParametersMode::TapFd { tap_fd, mac: None },
                     vhost_net: vhost_net_config.clone(),
                     vq_pairs: cmd.net_vq_pairs,
+                    packed_queue: false,
                 });
             }
 
@@ -2961,6 +2967,7 @@ impl TryFrom<RunCommand> for super::config::Config {
                     },
                     vhost_net: vhost_net_config,
                     vq_pairs: cmd.net_vq_pairs,
+                    packed_queue: false,
                 });
             }
 

@@ -35,6 +35,7 @@ use remain::sorted;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error as ThisError;
+use virtio_sys::virtio_config::VIRTIO_F_RING_PACKED;
 use virtio_sys::virtio_net;
 use virtio_sys::virtio_net::virtio_net_hdr_v1;
 use virtio_sys::virtio_net::VIRTIO_NET_CTRL_GUEST_OFFLOADS;
@@ -200,6 +201,8 @@ pub struct NetParameters {
     // to the fact this struct is used for argument parsing.
     #[cfg(unix)]
     pub vhost_net: Option<VhostNetParameters>,
+    #[serde(default)]
+    pub packed_queue: bool,
 }
 
 impl FromStr for NetParameters {
@@ -528,6 +531,7 @@ where
         tap: T,
         vq_pairs: u16,
         mac_addr: Option<MacAddress>,
+        use_packed_queue: bool,
     ) -> Result<Net<T>, NetError> {
         let taps = tap.into_mq_taps(vq_pairs).map_err(NetError::TapOpen)?;
 
@@ -559,6 +563,10 @@ where
 
         if vq_pairs > 1 {
             avail_features |= 1 << virtio_net::VIRTIO_NET_F_MQ;
+        }
+
+        if use_packed_queue {
+            avail_features |= 1 << VIRTIO_F_RING_PACKED;
         }
 
         if mac_addr.is_some() {
@@ -897,7 +905,8 @@ mod tests {
                 mode: NetParametersMode::TapName {
                     tap_name: "tap".to_string(),
                     mac: None
-                }
+                },
+                packed_queue: false
             }
         );
 
@@ -911,7 +920,8 @@ mod tests {
                 mode: NetParametersMode::TapName {
                     tap_name: "tap".to_string(),
                     mac: Some(MacAddress::from_str("3d:70:eb:61:1a:91").unwrap())
-                }
+                },
+                packed_queue: false
             }
         );
 
@@ -925,7 +935,8 @@ mod tests {
                 mode: NetParametersMode::TapFd {
                     tap_fd: 12,
                     mac: None
-                }
+                },
+                packed_queue: false,
             }
         );
 
@@ -939,7 +950,8 @@ mod tests {
                 mode: NetParametersMode::TapFd {
                     tap_fd: 12,
                     mac: Some(MacAddress::from_str("3d:70:eb:61:1a:91").unwrap())
-                }
+                },
+                packed_queue: false
             }
         );
 
@@ -957,7 +969,8 @@ mod tests {
                     host_ip: Ipv4Addr::from_str("192.168.10.1").unwrap(),
                     netmask: Ipv4Addr::from_str("255.255.255.0").unwrap(),
                     mac: MacAddress::from_str("3d:70:eb:61:1a:91").unwrap(),
-                }
+                },
+                packed_queue: false
             }
         );
 
@@ -989,7 +1002,8 @@ mod tests {
                     host_ip: Ipv4Addr::from_str("192.168.10.1").unwrap(),
                     netmask: Ipv4Addr::from_str("255.255.255.0").unwrap(),
                     mac: MacAddress::from_str("3d:70:eb:61:1a:91").unwrap(),
-                }
+                },
+                packed_queue: false
             }
         );
 
@@ -1002,7 +1016,8 @@ mod tests {
                 mode: NetParametersMode::TapFd {
                     tap_fd: 3,
                     mac: None
-                }
+                },
+                packed_queue: false
             }
         );
 
@@ -1015,7 +1030,8 @@ mod tests {
                 mode: NetParametersMode::TapName {
                     tap_name: "crosvm_tap".to_owned(),
                     mac: None
-                }
+                },
+                packed_queue: false
             }
         );
 
@@ -1029,7 +1045,38 @@ mod tests {
                 mode: NetParametersMode::TapName {
                     tap_name: "crosvm_tap".to_owned(),
                     mac: Some(MacAddress::from_str("3d:70:eb:61:1a:91").unwrap())
-                }
+                },
+                packed_queue: false
+            }
+        );
+
+        let params = from_net_arg("tap-name=tap,packed-queue=true").unwrap();
+        assert_eq!(
+            params,
+            NetParameters {
+                #[cfg(unix)]
+                vhost_net: None,
+                vq_pairs: None,
+                mode: NetParametersMode::TapName {
+                    tap_name: "tap".to_string(),
+                    mac: None
+                },
+                packed_queue: true
+            }
+        );
+
+        let params = from_net_arg("tap-name=tap,packed-queue").unwrap();
+        assert_eq!(
+            params,
+            NetParameters {
+                #[cfg(unix)]
+                vhost_net: None,
+                vq_pairs: None,
+                mode: NetParametersMode::TapName {
+                    tap_name: "tap".to_string(),
+                    mac: None
+                },
+                packed_queue: true
             }
         );
 
