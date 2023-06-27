@@ -75,7 +75,6 @@ pub(crate) use super::sys::HypervisorKind;
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
-        use devices::virtio::fs::passthrough;
         #[cfg(feature = "gpu")]
         use crate::crosvm::sys::GpuRenderServerParameters;
         use libc::{getegid, geteuid};
@@ -427,7 +426,7 @@ pub struct SharedDir {
     pub ugid: (Option<u32>, Option<u32>),
     pub uid_map: String,
     pub gid_map: String,
-    pub fs_cfg: passthrough::Config,
+    pub fs_cfg: devices::virtio::fs::Config,
     pub p9_cfg: p9::Config,
 }
 
@@ -2357,7 +2356,7 @@ mod tests {
         assert_eq!(shared_dir.fs_cfg.writeback, true);
         assert_eq!(
             shared_dir.fs_cfg.cache_policy,
-            passthrough::CachePolicy::Always
+            devices::virtio::fs::CachePolicy::Always
         );
         assert_eq!(shared_dir.fs_cfg.rewrite_security_xattrs, true);
         assert_eq!(shared_dir.fs_cfg.use_dax, false);
@@ -2391,7 +2390,7 @@ mod tests {
         assert_eq!(shared_dir.fs_cfg.writeback, false);
         assert_eq!(
             shared_dir.fs_cfg.cache_policy,
-            passthrough::CachePolicy::Always
+            devices::virtio::fs::CachePolicy::Always
         );
         assert_eq!(shared_dir.fs_cfg.rewrite_security_xattrs, true);
         assert_eq!(shared_dir.fs_cfg.use_dax, false);

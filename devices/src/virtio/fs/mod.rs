@@ -42,12 +42,15 @@ use crate::virtio::VirtioDevice;
 use crate::virtio::VirtioPciShmCap;
 
 mod caps;
+mod config;
 mod expiring_map;
 mod multikey;
 pub mod passthrough;
 mod read_dir;
 mod worker;
 
+pub use config::CachePolicy;
+pub use config::Config;
 use fuse::Server;
 use passthrough::PassthroughFs;
 pub use worker::process_fs_queue;
@@ -124,7 +127,7 @@ impl Fs {
         base_features: u64,
         tag: &str,
         num_workers: usize,
-        fs_cfg: passthrough::Config,
+        fs_cfg: Config,
         tube: Tube,
     ) -> Result<Fs> {
         if tag.len() > FS_MAX_TAG_LEN {

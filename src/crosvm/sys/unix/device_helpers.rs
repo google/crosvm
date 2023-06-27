@@ -1123,7 +1123,7 @@ pub fn create_fs_device(
     gid_map: &str,
     src: &Path,
     tag: &str,
-    fs_cfg: virtio::fs::passthrough::Config,
+    fs_cfg: virtio::fs::Config,
     device_tube: Tube,
 ) -> DeviceResult {
     let max_open_files =
