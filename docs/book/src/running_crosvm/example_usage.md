@@ -86,6 +86,12 @@ password:
 ssh 192.168.10.2
 ```
 
+WARNING: If you are on a gLinux machine, then you will need to disable Corp SSH Helper:
+
+```bash
+ssh -oProxyCommand=none 192.168.10.2
+```
+
 The full source for this example can be executed directly:
 
 ```bash
