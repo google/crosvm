@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use acpi_tables::aml;
 use acpi_tables::aml::Aml;
+use anyhow::Context;
 use base::error;
 use base::warn;
 use base::AsRawDescriptor;
@@ -18,6 +19,8 @@ use base::WorkerThread;
 use power_monitor::BatteryStatus;
 use power_monitor::CreatePowerMonitorFn;
 use remain::sorted;
+use serde::Deserialize;
+use serde::Serialize;
 use sync::Mutex;
 use thiserror::Error;
 use vm_control::BatControlCommand;
@@ -43,6 +46,7 @@ type Result<T> = std::result::Result<T, BatteryError>;
 /// the GoldFish Battery MMIO length.
 pub const GOLDFISHBAT_MMIO_LEN: u64 = 0x1000;
 
+#[derive(Clone, Serialize, Deserialize)]
 struct GoldfishBatteryState {
     // interrupt state
     int_status: u32,
@@ -113,6 +117,14 @@ pub struct GoldfishBattery {
     monitor_thread: Option<WorkerThread<()>>,
     tube: Option<Tube>,
     create_power_monitor: Option<Box<dyn CreatePowerMonitorFn>>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct GoldfishBatterySnapshot {
+    state: GoldfishBatteryState,
+    mmio_base: u32,
+    irq_num: u32,
+    activated: bool,
 }
 
 /// Goldfish Battery MMIO offset
@@ -492,5 +504,50 @@ impl Suspendable for GoldfishBattery {
             self.start_monitor();
         }
         Ok(())
+    }
+
+    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        serde_json::to_value(&GoldfishBatterySnapshot {
+            state: self.state.lock().clone(),
+            mmio_base: self.mmio_base,
+            irq_num: self.irq_num,
+            activated: self.activated,
+        })
+        .context("failed to snapshot GoldfishBattery")
+    }
+
+    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        let deser: GoldfishBatterySnapshot =
+            serde_json::from_value(data).context("failed to deserialize GoldfishBattery")?;
+        {
+            let mut locked_state = self.state.lock();
+            *locked_state = deser.state;
+        }
+        self.mmio_base = deser.mmio_base;
+        self.irq_num = deser.irq_num;
+        self.activated = deser.activated;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::suspendable_tests;
+
+    fn modify_device(battery: &mut GoldfishBattery) {
+        let mut state = battery.state.lock();
+        state.set_capacity(70);
+    }
+
+    suspendable_tests! {
+        battery, GoldfishBattery::new(
+            0,
+            0,
+            IrqLevelEvent::new().unwrap(),
+            Tube::pair().unwrap().1,
+            None,
+        ).unwrap(),
+        modify_device
     }
 }
