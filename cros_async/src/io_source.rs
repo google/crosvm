@@ -181,6 +181,7 @@ impl<F: AsRawDescriptor> IoSource<F> {
 #[cfg(test)]
 mod tests {
     use std::fs::File;
+    use std::io::Read;
     use std::io::Seek;
     use std::io::SeekFrom;
     use std::io::Write;
@@ -337,6 +338,118 @@ mod tests {
             let source = ex.async_from(f).unwrap();
 
             ex.run_until(go(source)).unwrap();
+        }
+    }
+
+    #[test]
+    fn readmulti() {
+        for kind in all_kinds() {
+            async fn go<F: AsRawDescriptor>(source: IoSource<F>) {
+                let v = vec![0x55u8; 32];
+                let v2 = vec![0x55u8; 32];
+                let (ret, ret2) = futures::future::join(
+                    source.read_to_vec(None, v),
+                    source.read_to_vec(Some(32), v2),
+                )
+                .await;
+
+                let (count, v) = ret.unwrap();
+                let (count2, v2) = ret2.unwrap();
+
+                assert!(v.iter().take(count).all(|&b| b == 0xAA));
+                assert!(v2.iter().take(count2).all(|&b| b == 0xBB));
+            }
+
+            let mut f = tempfile::tempfile().unwrap();
+            f.write_all(&[0xAA; 32]).unwrap();
+            f.write_all(&[0xBB; 32]).unwrap();
+            f.rewind().unwrap();
+
+            let ex = Executor::with_executor_kind(kind).unwrap();
+            let source = ex.async_from(f).unwrap();
+
+            ex.run_until(go(source)).unwrap();
+        }
+    }
+
+    #[test]
+    fn writemulti() {
+        for kind in all_kinds() {
+            async fn go<F: AsRawDescriptor>(source: IoSource<F>) {
+                let v = vec![0x55u8; 32];
+                let v2 = vec![0x55u8; 32];
+                let (r, r2) = futures::future::join(
+                    source.write_from_vec(None, v),
+                    source.write_from_vec(Some(32), v2),
+                )
+                .await;
+                assert_eq!(32, r.unwrap().0);
+                assert_eq!(32, r2.unwrap().0);
+            }
+
+            let f = tempfile::tempfile().unwrap();
+            let ex = Executor::with_executor_kind(kind).unwrap();
+            let source = ex.async_from(f).unwrap();
+
+            ex.run_until(go(source)).unwrap();
+        }
+    }
+
+    #[test]
+    fn read_current_file_position() {
+        for kind in all_kinds() {
+            async fn go<F: AsRawDescriptor>(source: IoSource<F>) {
+                let (count1, verify1) = source.read_to_vec(None, vec![0u8; 32]).await.unwrap();
+                let (count2, verify2) = source.read_to_vec(None, vec![0u8; 32]).await.unwrap();
+                assert_eq!(count1, 32);
+                assert_eq!(count2, 32);
+                assert_eq!(verify1, [0x55u8; 32]);
+                assert_eq!(verify2, [0xffu8; 32]);
+            }
+
+            let mut f = tempfile::tempfile().unwrap();
+            f.write_all(&[0x55u8; 32]).unwrap();
+            f.write_all(&[0xffu8; 32]).unwrap();
+            f.rewind().unwrap();
+
+            let ex = Executor::with_executor_kind(kind).unwrap();
+            let source = ex.async_from(f).unwrap();
+
+            ex.run_until(go(source)).unwrap();
+        }
+    }
+
+    #[test]
+    fn write_current_file_position() {
+        for kind in all_kinds() {
+            async fn go<F: AsRawDescriptor>(source: IoSource<F>) {
+                let count1 = source
+                    .write_from_vec(None, vec![0x55u8; 32])
+                    .await
+                    .unwrap()
+                    .0;
+                assert_eq!(count1, 32);
+                let count2 = source
+                    .write_from_vec(None, vec![0xffu8; 32])
+                    .await
+                    .unwrap()
+                    .0;
+                assert_eq!(count2, 32);
+            }
+
+            let mut f = tempfile::tempfile().unwrap();
+            let ex = Executor::with_executor_kind(kind).unwrap();
+            let source = ex.async_from(f.try_clone().unwrap()).unwrap();
+
+            ex.run_until(go(source)).unwrap();
+
+            f.rewind().unwrap();
+            let mut verify1 = [0u8; 32];
+            let mut verify2 = [0u8; 32];
+            f.read_exact(&mut verify1).unwrap();
+            f.read_exact(&mut verify2).unwrap();
+            assert_eq!(verify1, [0x55u8; 32]);
+            assert_eq!(verify2, [0xffu8; 32]);
         }
     }
 }

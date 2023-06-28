@@ -192,7 +192,6 @@ mod tests {
     use std::task::Waker;
 
     use sync::Mutex;
-    use tempfile::tempfile;
 
     use super::super::uring_executor::is_uring_stable;
     use super::super::UringSource;
@@ -200,31 +199,6 @@ mod tests {
     use crate::Executor;
     use crate::ExecutorKind;
     use crate::IoSource;
-
-    #[test]
-    fn readmulti() {
-        if !is_uring_stable() {
-            return;
-        }
-
-        async fn go(ex: &Arc<RawExecutor<UringReactor>>) {
-            let f = File::open("/dev/zero").unwrap();
-            let source = UringSource::new(f, ex).unwrap();
-            let v = vec![0x55u8; 32];
-            let v2 = vec![0x55u8; 32];
-            let (ret, ret2) = futures::future::join(
-                source.read_to_vec(None, v),
-                source.read_to_vec(Some(32), v2),
-            )
-            .await;
-
-            assert!(ret.unwrap().1.iter().all(|&b| b == 0));
-            assert!(ret2.unwrap().1.iter().all(|&b| b == 0));
-        }
-
-        let ex = RawExecutor::<UringReactor>::new().unwrap();
-        ex.run_until(go(&ex)).unwrap();
-    }
 
     async fn read_u64<T: AsRawDescriptor>(source: &UringSource<T>) -> u64 {
         // Init a vec that translates to u64::max;
@@ -376,22 +350,6 @@ mod tests {
     }
 
     #[test]
-    fn fsync() {
-        if !is_uring_stable() {
-            return;
-        }
-
-        async fn go(ex: &Arc<RawExecutor<UringReactor>>) {
-            let f = tempfile::tempfile().unwrap();
-            let source = UringSource::new(f, ex).unwrap();
-            source.fsync().await.unwrap();
-        }
-
-        let ex = RawExecutor::<UringReactor>::new().unwrap();
-        ex.run_until(go(&ex)).unwrap();
-    }
-
-    #[test]
     fn wait_read() {
         if !is_uring_stable() {
             return;
@@ -405,70 +363,6 @@ mod tests {
 
         let ex = RawExecutor::<UringReactor>::new().unwrap();
         ex.run_until(go(&ex)).unwrap();
-    }
-
-    #[test]
-    fn writemulti() {
-        if !is_uring_stable() {
-            return;
-        }
-
-        async fn go(ex: &Arc<RawExecutor<UringReactor>>) {
-            let f = tempfile().unwrap();
-            let source = UringSource::new(f, ex).unwrap();
-            let v = vec![0x55u8; 32];
-            let v2 = vec![0x55u8; 32];
-            let (r, r2) = futures::future::join(
-                source.write_from_vec(None, v),
-                source.write_from_vec(Some(32), v2),
-            )
-            .await;
-            assert_eq!(32, r.unwrap().0);
-            assert_eq!(32, r2.unwrap().0);
-        }
-
-        let ex = RawExecutor::<UringReactor>::new().unwrap();
-        ex.run_until(go(&ex)).unwrap();
-    }
-
-    #[test]
-    fn readwrite_current_file_position() {
-        if !is_uring_stable() {
-            return;
-        }
-
-        let ex = RawExecutor::<UringReactor>::new().unwrap();
-        ex.run_until(async {
-            let mut f = tempfile().unwrap();
-            let source = UringSource::new(f.try_clone().unwrap(), &ex).unwrap();
-            assert_eq!(
-                32,
-                source
-                    .write_from_vec(None, vec![0x55u8; 32])
-                    .await
-                    .unwrap()
-                    .0
-            );
-            assert_eq!(
-                32,
-                source
-                    .write_from_vec(None, vec![0xffu8; 32])
-                    .await
-                    .unwrap()
-                    .0
-            );
-            use std::io::Seek;
-            f.seek(std::io::SeekFrom::Start(0)).unwrap();
-            assert_eq!(
-                (32, vec![0x55u8; 32]),
-                source.read_to_vec(None, vec![0u8; 32]).await.unwrap()
-            );
-            assert_eq!(
-                (32, vec![0xffu8; 32]),
-                source.read_to_vec(None, vec![0u8; 32]).await.unwrap()
-            );
-        })
-        .unwrap();
     }
 
     struct State {
