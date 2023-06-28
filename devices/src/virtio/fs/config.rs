@@ -2,16 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::str::FromStr;
 use std::time::Duration;
 
 use serde::Deserialize;
+use serde::Deserializer;
 use serde::Serialize;
+use serde_keyvalue::FromKeyValues;
 
 /// The caching policy that the file system should report to the FUSE client. By default the FUSE
 /// protocol uses close-to-open consistency. This means that any cached contents of the file are
 /// invalidated the next time that file is opened.
-#[derive(Debug, Clone, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Eq, PartialEq, Serialize, Deserialize, FromKeyValues)]
+#[serde(rename_all = "kebab-case")]
 pub enum CachePolicy {
     /// The client should never cache file data and all I/O should be directly forwarded to the
     /// server. This policy must be selected when file contents may change without the knowledge of
@@ -30,21 +32,23 @@ pub enum CachePolicy {
     Always,
 }
 
-impl FromStr for CachePolicy {
-    type Err = &'static str;
+const fn config_default_timeout() -> Duration {
+    Duration::from_secs(5)
+}
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "never" | "Never" | "NEVER" => Ok(CachePolicy::Never),
-            "auto" | "Auto" | "AUTO" => Ok(CachePolicy::Auto),
-            "always" | "Always" | "ALWAYS" => Ok(CachePolicy::Always),
-            _ => Err("invalid cache policy"),
-        }
-    }
+const fn config_default_posix_acl() -> bool {
+    true
+}
+
+fn deserialize_timeout<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Duration, D::Error> {
+    let secs = u64::deserialize(deserializer)?;
+
+    Ok(Duration::from_secs(secs))
 }
 
 /// Options that configure the behavior of the file system.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, FromKeyValues)]
+#[serde(deny_unknown_fields, rename_all = "snake_case")]
 pub struct Config {
     /// How long the FUSE client should consider directory entries and file/directory attributes to
     /// be valid.
@@ -56,10 +60,15 @@ pub struct Config {
     /// modified by the FUSE client (i.e., the file system has exclusive access), then this should
     /// be a large value.
     /// The default value for this option is 5 seconds.
+    #[serde(
+        default = "config_default_timeout",
+        deserialize_with = "deserialize_timeout"
+    )]
     pub timeout: Duration,
 
     /// The caching policy the file system should use. See the documentation of `CachePolicy` for
     /// more details.
+    #[serde(default, alias = "cache")]
     pub cache_policy: CachePolicy,
 
     /// Whether the file system should enabled writeback caching. This can improve performance as it
@@ -75,6 +84,7 @@ pub struct Config {
     /// all files in that directory.
     ///
     /// The default value for this option is `false`.
+    #[serde(default)]
     pub writeback: bool,
 
     /// Controls whether security.* xattrs (except for security.selinux) are re-written. When this
@@ -84,11 +94,13 @@ pub struct Config {
     /// unlikely to have that capability.
     ///
     /// The default value for this option is `false`.
+    #[serde(default, alias = "rewrite-security-xattrs")]
     pub rewrite_security_xattrs: bool,
 
     /// Use case-insensitive lookups for directory entries (ASCII only).
     ///
     /// The default value for this option is `false`.
+    #[serde(default)]
     pub ascii_casefold: bool,
 
     // UIDs which are privileged to perform quota-related operations. We cannot perform a CAP_FOWNER
@@ -96,6 +108,7 @@ pub struct Config {
     // doesn't match the owner uid. In that case, all uids in this list are treated as if they have
     // CAP_FOWNER.
     #[cfg(feature = "arc_quota")]
+    #[serde(default)]
     pub privileged_quota_uids: Vec<libc::uid_t>,
 
     /// Use DAX for shared files.
@@ -107,6 +120,7 @@ pub struct Config {
     /// when the cache policy is `Never`.
     ///
     /// The default value for this option is `false`.
+    #[serde(default)]
     pub use_dax: bool,
 
     /// Enable support for POSIX acls.
@@ -115,13 +129,14 @@ pub struct Config {
     /// system also supports POSIX acls.
     ///
     /// The default value for this option is `true`.
+    #[serde(default = "config_default_posix_acl")]
     pub posix_acl: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Config {
-            timeout: Duration::from_secs(5),
+            timeout: config_default_timeout(),
             cache_policy: Default::default(),
             writeback: false,
             rewrite_security_xattrs: false,
@@ -129,70 +144,7 @@ impl Default for Config {
             #[cfg(feature = "arc_quota")]
             privileged_quota_uids: Default::default(),
             use_dax: false,
-            posix_acl: true,
+            posix_acl: config_default_posix_acl(),
         }
-    }
-}
-
-impl FromStr for Config {
-    type Err = &'static str;
-
-    fn from_str(params: &str) -> Result<Self, Self::Err> {
-        let mut cfg = Self::default();
-        if params.is_empty() {
-            return Ok(cfg);
-        }
-        for opt in params.split(':') {
-            let mut o = opt.splitn(2, '=');
-            let kind = o.next().ok_or("`cfg` options mut not be empty")?;
-            let value = o
-                .next()
-                .ok_or("`cfg` options must be of the form `kind=value`")?;
-            match kind {
-                #[cfg(feature = "arc_quota")]
-                "privileged_quota_uids" => {
-                    cfg.privileged_quota_uids =
-                        value.split(' ').map(|s| s.parse().unwrap()).collect();
-                }
-                "timeout" => {
-                    let seconds = value.parse().map_err(|_| "`timeout` must be an integer")?;
-
-                    let dur = Duration::from_secs(seconds);
-                    cfg.timeout = dur;
-                }
-                "cache" => {
-                    let policy = value
-                        .parse()
-                        .map_err(|_| "`cache` must be one of `never`, `always`, or `auto`")?;
-                    cfg.cache_policy = policy;
-                }
-                "writeback" => {
-                    let writeback = value.parse().map_err(|_| "`writeback` must be a boolean")?;
-                    cfg.writeback = writeback;
-                }
-                "rewrite-security-xattrs" => {
-                    let rewrite_security_xattrs = value
-                        .parse()
-                        .map_err(|_| "`rewrite-security-xattrs` must be a boolean")?;
-                    cfg.rewrite_security_xattrs = rewrite_security_xattrs;
-                }
-                "ascii_casefold" => {
-                    let ascii_casefold = value
-                        .parse()
-                        .map_err(|_| "`ascii_casefold` must be a boolean")?;
-                    cfg.ascii_casefold = ascii_casefold;
-                }
-                "dax" => {
-                    let use_dax = value.parse().map_err(|_| "`dax` must be a boolean")?;
-                    cfg.use_dax = use_dax;
-                }
-                "posix_acl" => {
-                    let posix_acl = value.parse().map_err(|_| "`posix_acl` must be a boolean")?;
-                    cfg.posix_acl = posix_acl;
-                }
-                _ => return Err("unrecognized option for virtio-fs config"),
-            }
-        }
-        Ok(cfg)
     }
 }

@@ -12,6 +12,7 @@ use libc::getegid;
 use libc::geteuid;
 use serde::Deserialize;
 use serde::Serialize;
+use serde_keyvalue::from_key_values;
 use serde_keyvalue::FromKeyValues;
 
 use crate::crosvm::config::Config;
@@ -208,7 +209,8 @@ impl FromStr for SharedDir {
         }
         match shared_dir.kind {
             SharedDirKind::FS => {
-                shared_dir.fs_cfg = type_opts.join(":").parse()?;
+                shared_dir.fs_cfg = from_key_values(&type_opts.join(","))
+                    .map_err(|_| "failed to parse key-value pairs")?;
             }
             SharedDirKind::P9 => {
                 shared_dir.p9_cfg = type_opts.join(":").parse()?;
@@ -815,55 +817,13 @@ mod tests {
             CachePolicy::Never
         );
 
-        // we allow some variants
-        assert_eq!(
-            "/:_data:type=fs:cache=ALWAYS"
-                .parse::<SharedDir>()
-                .unwrap()
-                .fs_cfg
-                .cache_policy,
-            CachePolicy::Always
-        );
-        assert_eq!(
-            "/:_data:type=fs:cache=Always"
-                .parse::<SharedDir>()
-                .unwrap()
-                .fs_cfg
-                .cache_policy,
-            CachePolicy::Always
-        );
-        assert_eq!(
-            "/:_data:type=fs:cache=AUTO"
-                .parse::<SharedDir>()
-                .unwrap()
-                .fs_cfg
-                .cache_policy,
-            CachePolicy::Auto
-        );
-        assert_eq!(
-            "/:_data:type=fs:cache=Auto"
-                .parse::<SharedDir>()
-                .unwrap()
-                .fs_cfg
-                .cache_policy,
-            CachePolicy::Auto
-        );
-        assert_eq!(
-            "/:_data:type=fs:cache=Never"
-                .parse::<SharedDir>()
-                .unwrap()
-                .fs_cfg
-                .cache_policy,
-            CachePolicy::Never
-        );
-        assert_eq!(
-            "/:_data:type=fs:cache=NEVER"
-                .parse::<SharedDir>()
-                .unwrap()
-                .fs_cfg
-                .cache_policy,
-            CachePolicy::Never
-        );
+        // cache policy is case-sensitive
+        assert!("/:_data:type=fs:cache=Always".parse::<SharedDir>().is_err());
+        assert!("/:_data:type=fs:cache=ALWAYS".parse::<SharedDir>().is_err());
+        assert!("/:_data:type=fs:cache=Auto".parse::<SharedDir>().is_err());
+        assert!("/:_data:type=fs:cache=AUTO".parse::<SharedDir>().is_err());
+        assert!("/:_data:type=fs:cache=Never".parse::<SharedDir>().is_err());
+        assert!("/:_data:type=fs:cache=NEVER".parse::<SharedDir>().is_err());
 
         // we don't accept unknown policy
         assert!("/:_data:type=fs:cache=foobar".parse::<SharedDir>().is_err());
