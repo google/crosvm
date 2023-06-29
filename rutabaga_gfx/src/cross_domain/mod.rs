@@ -80,6 +80,7 @@ pub(crate) enum CrossDomainJob {
     HandleFence(RutabagaFence),
     #[allow(dead_code)] // `AddReadPipe` is never constructed on Windows.
     AddReadPipe(u32),
+    Finish,
 }
 
 enum RingWrite<'a, T> {
@@ -204,13 +205,6 @@ impl CrossDomainState {
         }
     }
 
-    fn end_jobs(&self) {
-        let mut jobs = self.jobs.lock().unwrap();
-        *jobs = None;
-        // Only one worker thread in the current implementation.
-        self.jobs_cvar.notify_one();
-    }
-
     fn wait_for_job(&self) -> Option<CrossDomainJob> {
         let mut jobs = self.jobs.lock().unwrap();
         loop {
@@ -302,9 +296,8 @@ impl CrossDomainWorker {
         fence: RutabagaFence,
         thread_resample_evt: &Receiver,
         receive_buf: &mut [u8],
-    ) -> RutabagaResult<bool> {
+    ) -> RutabagaResult<()> {
         let events = self.wait_ctx.wait()?;
-        let mut stop_thread = false;
 
         // The worker thread must:
         //
@@ -418,12 +411,11 @@ impl CrossDomainWorker {
                 }
                 CrossDomainToken::Kill => {
                     self.fence_handler.call(fence);
-                    stop_thread = true;
                 }
             }
         }
 
-        Ok(stop_thread)
+        Ok(())
     }
 
     fn run(
@@ -441,8 +433,7 @@ impl CrossDomainWorker {
             match job {
                 CrossDomainJob::HandleFence(fence) => {
                     match self.handle_fence(fence, &thread_resample_evt, &mut receive_buf) {
-                        Ok(true) => return Ok(()),
-                        Ok(false) => (),
+                        Ok(()) => (),
                         Err(e) => {
                             error!("Worker halting due to: {}", e);
                             return Err(e);
@@ -463,6 +454,7 @@ impl CrossDomainWorker {
                         _ => return Err(RutabagaError::InvalidCrossDomainItemType),
                     }
                 }
+                CrossDomainJob::Finish => return Ok(()),
             }
         }
 
@@ -645,17 +637,15 @@ impl CrossDomainContext {
 impl Drop for CrossDomainContext {
     fn drop(&mut self) {
         if let Some(state) = &self.state {
-            state.end_jobs();
+            state.add_job(CrossDomainJob::Finish);
         }
 
         if let Some(kill_evt) = self.kill_evt.take() {
-            // Don't join the the worker thread unless the write to `kill_evt` is successful.
-            // Otherwise, this may block indefinitely.
+            // Log the error, but still try to join the worker thread
             match channel_signal(&kill_evt) {
                 Ok(_) => (),
                 Err(e) => {
                     error!("failed to write cross domain kill event: {}", e);
-                    return;
                 }
             }
 
