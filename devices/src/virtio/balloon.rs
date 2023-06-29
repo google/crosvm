@@ -142,7 +142,8 @@ struct virtio_balloon_config {
     free_page_hint_cmd_id: Le32,
     poison_val: Le32,
     // WSS field is part of proposed spec extension (b/273973298).
-    wss_num_bins: Le32,
+    wss_num_bins: u8,
+    _reserved: [u8; 3],
 }
 
 // BalloonState is shared by the worker and device thread.
@@ -1367,7 +1368,8 @@ impl Balloon {
             // config correctly.
             free_page_hint_cmd_id: 0.into(),
             poison_val: 0.into(),
-            wss_num_bins: (self.wss_num_bins as u32).into(),
+            wss_num_bins: self.wss_num_bins,
+            _reserved: [0, 0, 0],
         }
     }
 
