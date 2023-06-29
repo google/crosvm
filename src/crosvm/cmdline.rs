@@ -9,8 +9,8 @@ cfg_if::cfg_if! {
         use base::RawDescriptor;
         use devices::virtio::vhost::user::device::parse_wayland_sock;
 
-        use super::sys::config::VfioOption;
-        use super::config::SharedDir;
+        use crate::crosvm::sys::config::VfioOption;
+        use crate::crosvm::sys::config::SharedDir;
     }
 }
 

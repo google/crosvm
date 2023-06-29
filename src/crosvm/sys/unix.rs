@@ -154,7 +154,6 @@ use hypervisor::ProtectionType;
 use hypervisor::Vm;
 use hypervisor::VmCap;
 use jail::*;
-use libc;
 use minijail::Minijail;
 use resources::AddressRange;
 use resources::Alloc;
@@ -187,8 +186,6 @@ use crate::crosvm::config::FileBackedMappingParameters;
 use crate::crosvm::config::HostPcieRootPortParameters;
 use crate::crosvm::config::HypervisorKind;
 use crate::crosvm::config::IrqChipKind;
-use crate::crosvm::config::SharedDir;
-use crate::crosvm::config::SharedDirKind;
 #[cfg(feature = "gdb")]
 use crate::crosvm::gdb::gdb_thread;
 #[cfg(feature = "gdb")]
@@ -196,6 +193,8 @@ use crate::crosvm::gdb::GdbStub;
 #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
 use crate::crosvm::ratelimit::Ratelimit;
 use crate::crosvm::sys::cmdline::DevicesCommand;
+use crate::crosvm::sys::config::SharedDir;
+use crate::crosvm::sys::config::SharedDirKind;
 
 const KVM_PATH: &str = "/dev/kvm";
 #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
