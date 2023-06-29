@@ -23,12 +23,10 @@ use libc::c_void;
 use rutabaga_gfx::ResourceCreate3D;
 use rutabaga_gfx::ResourceCreateBlob;
 use rutabaga_gfx::Rutabaga;
-use rutabaga_gfx::RutabagaBuilder;
 use rutabaga_gfx::RutabagaDescriptor;
 #[cfg(windows)]
 use rutabaga_gfx::RutabagaError;
 use rutabaga_gfx::RutabagaFence;
-use rutabaga_gfx::RutabagaFenceHandler;
 use rutabaga_gfx::RutabagaFromRawDescriptor;
 use rutabaga_gfx::RutabagaHandle;
 use rutabaga_gfx::RutabagaIntoRawDescriptor;
@@ -63,7 +61,7 @@ use crate::virtio::resource_bridge::ResourceInfo;
 use crate::virtio::resource_bridge::ResourceResponse;
 use crate::virtio::SharedMemoryMapper;
 
-fn to_rutabaga_descriptor(s: SafeDescriptor) -> RutabagaDescriptor {
+pub fn to_rutabaga_descriptor(s: SafeDescriptor) -> RutabagaDescriptor {
     // Safe because we own the SafeDescriptor at this point.
     unsafe { RutabagaDescriptor::from_raw_descriptor(s.into_raw_descriptor()) }
 }
@@ -345,21 +343,12 @@ impl VirtioGpu {
         display: GpuDisplay,
         display_params: Vec<GpuDisplayParameters>,
         display_event: Arc<AtomicBool>,
-        rutabaga_builder: RutabagaBuilder,
+        rutabaga: Rutabaga,
         event_devices: Vec<EventDevice>,
         mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
         external_blob: bool,
         udmabuf: bool,
-        fence_handler: RutabagaFenceHandler,
-        rutabaga_server_descriptor: Option<SafeDescriptor>,
     ) -> Option<VirtioGpu> {
-        let server_descriptor = rutabaga_server_descriptor.map(to_rutabaga_descriptor);
-
-        let rutabaga = rutabaga_builder
-            .build(fence_handler, server_descriptor)
-            .map_err(|e| error!("failed to build rutabaga {}", e))
-            .ok()?;
-
         let mut udmabuf_driver = None;
         if udmabuf {
             udmabuf_driver = Some(

@@ -175,8 +175,13 @@ impl VhostUserBackend for GpuBackend {
         let state = if let Some(s) = self.state.as_ref() {
             s.clone()
         } else {
+            let fence_handler_resources =
+                Arc::new(Mutex::new(Some(gpu::FenceHandlerActivationResources {
+                    mem: mem.clone(),
+                    ctrl_queue: reader.clone(),
+                })));
             let fence_handler =
-                gpu::create_fence_handler(mem.clone(), reader.clone(), self.fence_state.clone());
+                gpu::create_fence_handler(fence_handler_resources, self.fence_state.clone());
 
             let state = Rc::new(RefCell::new(
                 self.gpu
