@@ -531,12 +531,13 @@ dependencies = [
 
 [[package]]
 name = "cros-codecs"
-version = "0.0.2"
+version = "0.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb1e490c786cfbfd653b9b8b3875291d76cd78d84a9dddebbc16c1802795c938"
+checksum = "277a30a0ddadfa014380ee30cc60330d260369855417c492fa94421d7c7e9229"
 dependencies = [
  "anyhow",
  "bitreader",
+ "byteorder",
  "bytes",
  "crc32fast",
  "cros-libva",
@@ -547,14 +548,14 @@ dependencies = [
 
 [[package]]
 name = "cros-libva"
-version = "0.0.3"
+version = "0.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb352d93b5e5bd2fe76ed9d8d2b8c1994da13b2b75f0dfd5e90d69ea8829e6c5"
+checksum = "dc78ee9952d72572d126ef28338857d12c08a013ba39b77fd8e20201837def3e"
 dependencies = [
- "anyhow",
  "bitflags 1.3.2",
  "log",
  "pkg-config",
+ "thiserror",
 ]
 
 [[package]]
