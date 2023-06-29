@@ -97,6 +97,19 @@ impl Suspendable for Debugcon {
     fn wake(&mut self) -> anyhow::Result<()> {
         Ok(())
     }
+
+    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        Ok(serde_json::Value::Null)
+    }
+
+    fn restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            data == serde_json::Value::Null,
+            "unexpected snapshot data: should be null, got {}",
+            data,
+        );
+        Ok(())
+    }
 }
 
 #[cfg(test)]
