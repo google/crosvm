@@ -5,6 +5,7 @@
 use std::sync::Arc;
 
 use anyhow::Context;
+use base::debug;
 use base::error;
 use base::Event;
 use base::EventType;
@@ -49,10 +50,9 @@ impl EventHandler for IntrResampleHandler {
         self.resample_evt
             .wait()
             .context("cannot read resample evt")?;
-        usb_debug!("resample triggered");
         let mut interrupter = self.interrupter.lock();
         if !interrupter.event_ring_is_empty() {
-            usb_debug!("irq resample re-assert irq event");
+            debug!("irq resample re-assert irq event");
             // There could be a race condition. When we get resample_evt and other
             // component is sending interrupt at the same time.
             // This might result in one more interrupt than we want. It's handled by

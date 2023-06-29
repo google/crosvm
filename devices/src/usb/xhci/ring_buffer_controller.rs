@@ -8,7 +8,9 @@ use std::sync::Arc;
 use std::sync::MutexGuard;
 
 use anyhow::Context;
+use base::debug;
 use base::error;
+use base::info;
 use base::Error as SysError;
 use base::Event;
 use base::EventType;
@@ -133,7 +135,7 @@ where
 
     /// Set dequeue pointer of the internal ring buffer.
     pub fn set_dequeue_pointer(&self, ptr: GuestAddress) {
-        usb_debug!("{}: set dequeue pointer: {:x}", self.name, ptr.0);
+        xhci_trace!("{}: set_dequeue_pointer({:x})", self.name, ptr.0);
         // Fast because this should only happen during xhci setup.
         self.lock_ring_buffer().set_dequeue_pointer(ptr);
     }
@@ -145,14 +147,14 @@ where
 
     /// Set consumer cycle state.
     pub fn set_consumer_cycle_state(&self, state: bool) {
-        usb_debug!("{}: set consumer cycle state: {}", self.name, state);
+        xhci_trace!("{}: set consumer cycle state: {}", self.name, state);
         // Fast because this should only happen during xhci setup.
         self.lock_ring_buffer().set_consumer_cycle_state(state);
     }
 
     /// Start the ring buffer.
     pub fn start(&self) {
-        usb_debug!("{} started", self.name);
+        xhci_trace!("start {}", self.name);
         let mut state = self.state.lock();
         if *state != RingBufferState::Running {
             *state = RingBufferState::Running;
@@ -164,10 +166,10 @@ where
 
     /// Stop the ring buffer asynchronously.
     pub fn stop(&self, callback: RingBufferStopCallback) {
-        usb_debug!("{} being stopped", self.name);
+        xhci_trace!("stop {}", self.name);
         let mut state = self.state.lock();
         if *state == RingBufferState::Stopped {
-            usb_debug!("{} is already stopped", self.name);
+            info!("xhci: {} is already stopped", self.name);
             return;
         }
         if self.handler.lock().stop() {
@@ -206,7 +208,7 @@ where
         match *state {
             RingBufferState::Stopped => return Ok(()),
             RingBufferState::Stopping => {
-                usb_debug!("{}: stopping ring buffer controller", self.name);
+                debug!("xhci: {}: stopping ring buffer controller", self.name);
                 *state = RingBufferState::Stopped;
                 self.stop_callback.lock().clear();
                 return Ok(());

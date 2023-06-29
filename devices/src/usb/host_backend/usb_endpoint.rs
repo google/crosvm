@@ -5,6 +5,7 @@
 use std::cmp;
 use std::sync::Arc;
 
+use base::debug;
 use base::error;
 use sync::Mutex;
 use usb_util::Device;
@@ -146,18 +147,18 @@ impl UsbEndpoint {
         let tmp_transfer = xhci_transfer.clone();
         match self.direction {
             EndpointDirection::HostToDevice => {
-                usb_debug!(
-                    "out transfer ep_addr {:#x}, buffer len {:?}",
+                let _trace = cros_tracing::trace_event!(
+                    USB,
+                    "Endpoint out transfer",
                     self.ep_addr(),
-                    buffer.len(),
+                    buffer.len()
                 );
                 let callback = move |t: Transfer| {
-                    usb_debug!("out transfer callback");
                     update_transfer_state(&xhci_transfer, &t)?;
                     let state = xhci_transfer.state().lock();
                     match *state {
                         XhciTransferState::Cancelled => {
-                            usb_debug!("transfer has been cancelled");
+                            debug!("Xhci transfer has been cancelled");
                             drop(state);
                             xhci_transfer
                                 .on_transfer_complete(&TransferStatus::Cancelled, 0)
@@ -194,19 +195,19 @@ impl UsbEndpoint {
                 )?;
             }
             EndpointDirection::DeviceToHost => {
-                usb_debug!(
-                    "in transfer ep_addr {:#x}, buffer len {:?}",
+                let _trace = cros_tracing::trace_event!(
+                    USB,
+                    "Endpoint in transfer",
                     self.ep_addr(),
                     buffer.len()
                 );
                 let _addr = self.ep_addr();
                 let callback = move |t: Transfer| {
-                    usb_debug!("ep {:#x} in transfer data {:?}", _addr, t.buffer.as_slice());
                     update_transfer_state(&xhci_transfer, &t)?;
                     let state = xhci_transfer.state().lock();
                     match *state {
                         XhciTransferState::Cancelled => {
-                            usb_debug!("transfer has been cancelled");
+                            debug!("Xhci transfer has been cancelled");
                             drop(state);
                             xhci_transfer
                                 .on_transfer_complete(&TransferStatus::Cancelled, 0)

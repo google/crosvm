@@ -5,6 +5,7 @@
 use std::mem;
 use std::sync::Arc;
 
+use base::debug;
 use base::error;
 use base::warn;
 use usb_util::Device;
@@ -71,10 +72,10 @@ pub fn submit_transfer(
                     Ok(canceller) => {
                         let cancel_callback = Box::new(move || match canceller.cancel() {
                             Ok(()) => {
-                                usb_debug!("cancel issued to kernel");
+                                debug!("cancel issued to kernel");
                             }
                             Err(e) => {
-                                usb_debug!("fail to cancel: {}", e);
+                                error!("failed to cancel XhciTransfer: {}", e);
                             }
                         });
                         *state = XhciTransferState::Submitted { cancel_callback };

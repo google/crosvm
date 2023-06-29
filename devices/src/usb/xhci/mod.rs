@@ -28,6 +28,7 @@ pub mod xhci_transfer;
 use std::sync::Arc;
 use std::thread;
 
+use base::debug;
 use base::error;
 use remain::sorted;
 use sync::Mutex;
@@ -260,16 +261,16 @@ impl Xhci {
     // Callback for usbcmd register write.
     fn usbcmd_callback(&self, value: u32) -> Result<u32> {
         if (value & USB_CMD_RESET) > 0 {
-            usb_debug!("xhci_controller: reset controller");
+            debug!("xhci_controller: reset controller");
             self.reset();
             return Ok(value & (!USB_CMD_RESET));
         }
 
         if (value & USB_CMD_RUNSTOP) > 0 {
-            usb_debug!("xhci_controller: clear halt bits");
+            debug!("xhci_controller: clear halt bits");
             self.regs.usbsts.clear_bits(USB_STS_HALTED);
         } else {
-            usb_debug!("xhci_controller: halt device");
+            debug!("xhci_controller: halt device");
             self.halt();
             self.regs.crcr.clear_bits(CRCR_COMMAND_RING_RUNNING);
         }
@@ -277,7 +278,7 @@ impl Xhci {
         // Enable interrupter if needed.
         let enabled = (value & USB_CMD_INTERRUPTER_ENABLE) > 0
             && (self.regs.iman.get_value() & IMAN_INTERRUPT_ENABLE) > 0;
-        usb_debug!("xhci_controller: interrupter enable?: {}", enabled);
+        debug!("xhci_controller: interrupter enable?: {}", enabled);
         self.interrupter
             .lock()
             .set_enabled(enabled)
@@ -287,7 +288,7 @@ impl Xhci {
 
     // Callback for crcr register write.
     fn crcr_callback(&self, value: u64) -> u64 {
-        usb_debug!("xhci_controller: write to crcr {:x}", value);
+        let _trace = cros_tracing::trace_event!(USB, "crcr_callback", value);
         if (self.regs.crcr.get_value() & CRCR_COMMAND_RING_RUNNING) == 0 {
             self.command_ring_controller
                 .set_dequeue_pointer(GuestAddress(value & CRCR_COMMAND_RING_POINTER));
@@ -302,12 +303,8 @@ impl Xhci {
 
     // Callback for portsc register write.
     fn portsc_callback(&self, index: u32, value: u32) -> Result<u32> {
+        let _trace = cros_tracing::trace_event!(USB, "portsc_callback", index, value);
         let mut value = value;
-        usb_debug!(
-            "xhci_controller: write to portsc index {} value {:x}",
-            index,
-            value
-        );
         let port_id = (index + 1) as u8;
         // xHCI spec 4.19.5. Note: we might want to change this logic if we support USB 3.0.
         if (value & PORTSC_PORT_RESET) > 0 || (value & PORTSC_WARM_PORT_RESET) > 0 {
@@ -328,11 +325,7 @@ impl Xhci {
 
     // Callback for doorbell register write.
     fn doorbell_callback(&self, index: u32, value: u32) -> Result<()> {
-        usb_debug!(
-            "xhci_controller: write to doorbell index {} value {:x}",
-            index,
-            value
-        );
+        let _trace = cros_tracing::trace_event!(USB, "doorbell_callback", index, value);
         let target = (value & DOORBELL_TARGET) as u8;
         let stream_id: u16 = (value >> DOORBELL_STREAM_ID_OFFSET) as u16;
         if (self.regs.usbcmd.get_value() & USB_CMD_RUNSTOP) > 0 {
@@ -341,11 +334,9 @@ impl Xhci {
                 if target != 0 || stream_id != 0 {
                     return Ok(());
                 }
-                usb_debug!("doorbell to command ring");
                 self.regs.crcr.set_bits(CRCR_COMMAND_RING_RUNNING);
                 self.command_ring_controller.start();
             } else {
-                usb_debug!("doorbell to device slot");
                 self.device_slots
                     .slot(index as u8)
                     .ok_or(Error::GetDeviceSlot(index as u8))?
@@ -358,7 +349,7 @@ impl Xhci {
 
     // Callback for iman register write.
     fn iman_callback(&self, value: u32) -> Result<()> {
-        usb_debug!("xhci_controller: write to iman {:x}", value);
+        let _trace = cros_tracing::trace_event!(USB, "iman_callback", value);
         let enabled = ((value & IMAN_INTERRUPT_ENABLE) > 0)
             && ((self.regs.usbcmd.get_value() & USB_CMD_INTERRUPTER_ENABLE) > 0);
         self.interrupter
@@ -369,7 +360,7 @@ impl Xhci {
 
     // Callback for imod register write.
     fn imod_callback(&self, value: u32) -> Result<()> {
-        usb_debug!("xhci_controller: write to imod {:x}", value);
+        let _trace = cros_tracing::trace_event!(USB, "imod_callback", value);
         self.interrupter
             .lock()
             .set_moderation(
@@ -381,7 +372,7 @@ impl Xhci {
 
     // Callback for erstsz register write.
     fn erstsz_callback(&self, value: u32) -> Result<()> {
-        usb_debug!("xhci_controller: write to erstz {:x}", value);
+        let _trace = cros_tracing::trace_event!(USB, "erstsz_callback", value);
         self.interrupter
             .lock()
             .set_event_ring_seg_table_size((value & ERSTSZ_SEGMENT_TABLE_SIZE) as u16)
@@ -390,7 +381,7 @@ impl Xhci {
 
     // Callback for erstba register write.
     fn erstba_callback(&self, value: u64) -> Result<()> {
-        usb_debug!("xhci_controller: write to erstba {:x}", value);
+        let _trace = cros_tracing::trace_event!(USB, "erstba_callback", value);
         self.interrupter
             .lock()
             .set_event_ring_seg_table_base_addr(GuestAddress(
@@ -401,7 +392,7 @@ impl Xhci {
 
     // Callback for erdp register write.
     fn erdp_callback(&self, value: u64) -> Result<()> {
-        usb_debug!("xhci_controller: write to erdp {:x}", value);
+        let _trace = cros_tracing::trace_event!(USB, "erdp_callback", value);
         let mut interrupter = self.interrupter.lock();
         interrupter
             .set_event_ring_dequeue_pointer(GuestAddress(value & ERDP_EVENT_RING_DEQUEUE_POINTER))

@@ -9,7 +9,10 @@ use std::mem;
 use std::sync::Arc;
 use std::sync::Weak;
 
+use base::debug;
 use base::error;
+use base::info;
+use base::warn;
 use base::Error as SysError;
 use base::Event;
 use bit_field::Error as BitFieldError;
@@ -326,7 +329,7 @@ impl XhciTransfer {
     ) -> Result<()> {
         match status {
             TransferStatus::NoDevice => {
-                usb_debug!("device disconnected, detaching from port");
+                info!("xhci: device disconnected, detaching from port");
                 // If the device is gone, we don't need to send transfer completion event, cause we
                 // are going to destroy everything related to this device anyway.
                 return match self.port.detach() {
@@ -356,8 +359,8 @@ impl XhciTransfer {
                     Some(atrb) => atrb.gpa,
                     None => context.get_tr_dequeue_pointer().get_gpa().0,
                 };
-                usb_debug!(
-                    "endpoint is stalled. set state to Halted and dequeue pointer to {:#x}",
+                warn!(
+                    "xhci: endpoint is stalled. set state to Halted and dequeue pointer to {:#x}",
                     dequeue_pointer
                 );
                 context.set_endpoint_state(EndpointState::Halted);
@@ -407,7 +410,7 @@ impl XhciTransfer {
                         )
                         .map_err(Error::SendInterrupt)?;
                 } else if *status == TransferStatus::Stalled {
-                    usb_debug!("on transfer complete stalled");
+                    debug!("xhci: on transfer complete stalled");
                     let residual_transfer_length = edtla - bytes_transferred;
                     self.interrupter
                         .lock()
@@ -423,7 +426,7 @@ impl XhciTransfer {
                 } else {
                     // For Short Transfer details, see xHCI spec 4.10.1.1.
                     if edtla > bytes_transferred {
-                        usb_debug!("on transfer complete short packet");
+                        debug!("xhci: on transfer complete short packet");
                         let residual_transfer_length = edtla - bytes_transferred;
                         self.interrupter
                             .lock()
@@ -437,7 +440,7 @@ impl XhciTransfer {
                             )
                             .map_err(Error::SendInterrupt)?;
                     } else {
-                        usb_debug!("on transfer complete success");
+                        debug!("xhci: on transfer complete success");
                         self.interrupter
                             .lock()
                             .send_transfer_event_trb(

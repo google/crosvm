@@ -7,7 +7,9 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use base::debug;
 use base::error;
+use base::info;
 use bit_field::Error as BitFieldError;
 use remain::sorted;
 use sync::Mutex;
@@ -154,7 +156,7 @@ impl DeviceSlots {
 
     /// Stop all device slots and reset them.
     pub fn stop_all_and_reset<C: FnMut() + 'static + Send>(&self, mut callback: C) {
-        usb_debug!("stopping all device slots and resetting host hub");
+        info!("xhci: stopping all device slots and resetting host hub");
         let slots = self.slots.clone();
         let hub = self.hub.clone();
         let auto_callback = RingBufferStopCallback::new(fallible_closure(
@@ -188,7 +190,7 @@ impl DeviceSlots {
         slot_id: u8,
         cb: C,
     ) -> Result<()> {
-        usb_debug!("device slot {} is being disabled", slot_id);
+        xhci_trace!("device slot {} is being disabled", slot_id);
         DeviceSlot::disable(
             self.fail_handle.clone(),
             &self.slots[slot_id as usize - 1],
@@ -204,7 +206,7 @@ impl DeviceSlots {
         slot_id: u8,
         cb: C,
     ) -> Result<()> {
-        usb_debug!("device slot {} is resetting", slot_id);
+        xhci_trace!("device slot {} is resetting", slot_id);
         DeviceSlot::reset_slot(
             self.fail_handle.clone(),
             &self.slots[slot_id as usize - 1],
@@ -336,8 +338,8 @@ impl DeviceSlot {
             );
             return Ok(false);
         }
-        usb_debug!(
-            "device slot {}: ding-dong. who is that? target = {}",
+        xhci_trace!(
+            "device slot {}: ring_doorbell target = {}",
             self.slot_id,
             target
         );
@@ -359,7 +361,7 @@ impl DeviceSlot {
                 context.endpoint_context[endpoint_index].set_endpoint_state(EndpointState::Running);
                 self.set_device_context(context)?;
             }
-            usb_debug!("endpoint is started, start transfer ring");
+            // endpoint is started, start transfer ring
             transfer_ring_controller.start();
         } else {
             error!("doorbell rung when endpoint state is {:?}", endpoint_state);
@@ -372,8 +374,6 @@ impl DeviceSlot {
         let was_already_enabled = self.enabled.swap(true, Ordering::SeqCst);
         if was_already_enabled {
             error!("device slot is already enabled");
-        } else {
-            usb_debug!("device slot {} enabled", self.slot_id);
         }
         !was_already_enabled
     }
@@ -398,7 +398,7 @@ impl DeviceSlot {
                         .set_slot_state(DeviceSlotState::DisabledOrEnabled);
                     slot.set_device_context(device_context)?;
                     slot.reset();
-                    usb_debug!(
+                    debug!(
                         "device slot {}: all trc disabled, sending trb",
                         slot.slot_id
                     );
@@ -446,10 +446,9 @@ impl DeviceSlot {
         let mut device_context = self.get_device_context()?;
         let port_id = device_context.slot_context.get_root_hub_port_number();
         self.port_id.set(port_id)?;
-        usb_debug!(
+        debug!(
             "port id {} is assigned to slot id {}",
-            port_id,
-            self.slot_id
+            port_id, self.slot_id
         );
         let endpoint_context_addr = self
             .get_device_context_addr()?
@@ -509,7 +508,7 @@ impl DeviceSlot {
             .ok_or(Error::GetTrc(0))?
             .set_consumer_cycle_state(device_context.endpoint_context[0].get_dequeue_cycle_state());
 
-        usb_debug!("Setting endpoint 0 to running");
+        // Setting endpoint 0 to running
         device_context.endpoint_context[0].set_endpoint_state(EndpointState::Running);
         self.set_device_context(device_context)?;
         Ok(TrbCompletionCode::Success)
@@ -520,7 +519,6 @@ impl DeviceSlot {
         &self,
         trb: &ConfigureEndpointCommandTrb,
     ) -> Result<TrbCompletionCode> {
-        usb_debug!("configuring endpoint");
         let input_control_context = if trb.get_deconfigure() {
             // From section 4.6.6 of the xHCI spec:
             // Setting the deconfigure (DC) flag to '1' in the Configure Endpoint Command
@@ -661,7 +659,7 @@ impl DeviceSlot {
         let dcs;
         match self.get_trc(index as usize) {
             Some(trc) => {
-                usb_debug!("stopping endpoint");
+                // stopping endpoint
                 dequeue_pointer = Some(trc.get_dequeue_pointer());
                 dcs = Some(trc.get_consumer_cycle_state());
                 let auto_cb = RingBufferStopCallback::new(fallible_closure(
@@ -718,7 +716,7 @@ impl DeviceSlot {
         let dcs;
         match self.get_trc(index as usize) {
             Some(trc) => {
-                usb_debug!("resetting endpoint");
+                // resetting endpoint
                 dequeue_pointer = Some(trc.get_dequeue_pointer());
                 dcs = Some(trc.get_consumer_cycle_state());
                 let auto_cb = RingBufferStopCallback::new(fallible_closure(
@@ -777,13 +775,13 @@ impl DeviceSlot {
         for i in 0..self.trc_len() {
             self.set_trc(i, None);
         }
-        usb_debug!("reseting device slot {}!", self.slot_id);
+        debug!("resetting device slot {}!", self.slot_id);
         self.enabled.store(false, Ordering::SeqCst);
         self.port_id.reset();
     }
 
     fn add_one_endpoint(&self, device_context_index: u8) -> Result<()> {
-        usb_debug!(
+        xhci_trace!(
             "adding one endpoint, device context index {}",
             device_context_index
         );
@@ -832,7 +830,6 @@ impl DeviceSlot {
             .mem
             .read_obj_from_addr(self.get_device_context_addr()?)
             .map_err(Error::ReadGuestMemory)?;
-        usb_debug!("read device ctx: {:?}", ctx);
         Ok(ctx)
     }
 
@@ -859,7 +856,7 @@ impl DeviceSlot {
                     .ok_or(Error::BadInputContextAddr(input_context_ptr))?,
             )
             .map_err(Error::ReadGuestMemory)?;
-        usb_debug!("context being copied {:?}", ctx);
+        xhci_trace!("copy_context {:?}", ctx);
         let device_context_ptr = self.get_device_context_addr()?;
         self.mem
             .write_obj_at_addr(

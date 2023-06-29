@@ -7,6 +7,7 @@ use std::mem;
 use std::mem::drop;
 use std::sync::Arc;
 
+use base::debug;
 use base::error;
 use base::warn;
 use sync::Mutex;
@@ -130,7 +131,7 @@ impl HostDevice {
                 ControlRequestRecipient::Device,
                 ControlRequestDataPhaseTransferDirection::HostToDevice,
             ) => {
-                usb_debug!("host device handling set address");
+                usb_trace!("handling set address");
                 let addr = self.control_request_setup.value as u32;
                 self.set_address(addr);
                 (TransferStatus::Completed, 0)
@@ -140,7 +141,7 @@ impl HostDevice {
                 ControlRequestRecipient::Device,
                 ControlRequestDataPhaseTransferDirection::HostToDevice,
             ) => {
-                usb_debug!("host device handling set config");
+                usb_trace!("handling set config");
                 (self.set_config()?, 0)
             }
             (
@@ -148,7 +149,7 @@ impl HostDevice {
                 ControlRequestRecipient::Interface,
                 ControlRequestDataPhaseTransferDirection::HostToDevice,
             ) => {
-                usb_debug!("host device handling set interface");
+                usb_trace!("handling set interface");
                 (self.set_interface()?, 0)
             }
             (
@@ -156,7 +157,7 @@ impl HostDevice {
                 ControlRequestRecipient::Endpoint,
                 ControlRequestDataPhaseTransferDirection::HostToDevice,
             ) => {
-                usb_debug!("host device handling clear feature");
+                usb_trace!("handling clear feature");
                 (self.clear_feature()?, 0)
             }
             (
@@ -166,7 +167,6 @@ impl HostDevice {
             ) => {
                 let descriptor_type = (self.control_request_setup.value >> 8) as u8;
                 if descriptor_type == DescriptorType::Configuration as u8 {
-                    usb_debug!("host device handling get config descriptor");
                     let buffer = if let Some(buffer) = buffer {
                         buffer
                     } else {
@@ -228,12 +228,11 @@ impl HostDevice {
 
         let tmp_transfer = xhci_transfer.clone();
         let callback = move |t: Transfer| {
-            usb_debug!("setup token control transfer callback invoked");
+            usb_trace!("setup token control transfer callback");
             update_transfer_state(&xhci_transfer, &t)?;
             let state = xhci_transfer.state().lock();
             match *state {
                 XhciTransferState::Cancelled => {
-                    usb_debug!("transfer cancelled");
                     drop(state);
                     xhci_transfer
                         .on_transfer_complete(&TransferStatus::Cancelled, 0)
@@ -254,7 +253,10 @@ impl HostDevice {
                         }
                     }
                     drop(state);
-                    usb_debug!("transfer completed with actual length {}", actual_length);
+                    debug!(
+                        "xhci transfer completed with actual length {}",
+                        actual_length
+                    );
                     xhci_transfer
                         .on_transfer_complete(&status, actual_length as u32)
                         .map_err(Error::TransferComplete)?;
@@ -298,7 +300,7 @@ impl HostDevice {
                     error!("Control endpoint is in an inconsistant state");
                     return Ok(());
                 }
-                usb_debug!("setup stage setup buffer: {:?}", setup);
+                usb_trace!("setup stage: setup buffer: {:?}", setup);
                 self.control_request_setup = setup;
                 xhci_transfer
                     .on_transfer_complete(&TransferStatus::Completed, 0)
@@ -351,10 +353,7 @@ impl HostDevice {
     fn set_config(&mut self) -> Result<TransferStatus> {
         // It's a standard, set_config, device request.
         let config = (self.control_request_setup.value & 0xff) as u8;
-        usb_debug!(
-            "Set config control transfer is received with config: {}",
-            config
-        );
+        usb_trace!("set_config: {}", config);
         self.release_interfaces();
 
         let cur_config = match self.device.lock().get_active_configuration() {
@@ -363,7 +362,6 @@ impl HostDevice {
                 // The device may be in the default state, in which case
                 // GET_CONFIGURATION may fail.  Assume the device needs to be
                 // reconfigured.
-                usb_debug!("Failed to get active configuration: {}", e);
                 error!("Failed to get active configuration: {}", e);
                 None
             }
@@ -393,7 +391,7 @@ impl HostDevice {
     }
 
     fn set_interface(&mut self) -> Result<TransferStatus> {
-        usb_debug!("set interface");
+        let _trace = cros_tracing::trace_event!(USB, "host_device set_interface");
         // It's a standard, set_interface, interface request.
         let interface = self.control_request_setup.index as u8;
         let alt_setting = self.control_request_setup.value as u8;
@@ -417,7 +415,7 @@ impl HostDevice {
     }
 
     fn clear_feature(&mut self) -> Result<TransferStatus> {
-        usb_debug!("clear feature");
+        let _trace = cros_tracing::trace_event!(USB, "host_device clear_feature");
         let request_setup = &self.control_request_setup;
         // It's a standard, clear_feature, endpoint request.
         const STD_FEATURE_ENDPOINT_HALT: u16 = 0;
@@ -438,9 +436,10 @@ impl HostDevice {
         buffer: &ScatterGatherBuffer,
     ) -> Result<(TransferStatus, u32)> {
         let descriptor_index = self.control_request_setup.value as u8;
-        usb_debug!(
-            "get_config_descriptor_filtered config index: {}",
-            descriptor_index,
+        let _trace = cros_tracing::trace_event!(
+            USB,
+            "host_device get_config_descriptor_filtered",
+            descriptor_index
         );
 
         let config_descriptor = self
@@ -491,7 +490,7 @@ impl HostDevice {
         for i in 0..config_descriptor.num_interfaces() {
             match self.device.lock().claim_interface(i) {
                 Ok(()) => {
-                    usb_debug!("claimed interface {}", i);
+                    debug!("usb: claimed interface {}", i);
                     self.claimed_interfaces.push(i);
                 }
                 Err(e) => {
@@ -514,7 +513,6 @@ impl HostDevice {
                     .ok_or(Error::GetEndpointDescriptor(ep_idx))?;
                 let ep_num = ep_dp.get_endpoint_number();
                 if ep_num == 0 {
-                    usb_debug!("endpoint 0 in endpoint descriptors");
                     continue;
                 }
                 let direction = ep_dp.get_direction();
@@ -599,14 +597,13 @@ impl XhciBackendDevice for HostDevice {
     fn set_address(&mut self, _address: UsbDeviceAddress) {
         // It's a standard, set_address, device request. We do nothing here. As described in XHCI
         // spec. See set address command ring trb.
-        usb_debug!(
-            "Set address control transfer is received with address: {}",
+        debug!(
+            "usb set address control transfer is received with address: {}",
             _address
         );
     }
 
     fn reset(&mut self) -> Result<()> {
-        usb_debug!("resetting host device");
         self.device.lock().reset().map_err(Error::Reset)
     }
 

@@ -99,7 +99,7 @@ impl EventRing {
             .write_all_at_addr(cycle_bit_dword, address)
             .map_err(Error::MemoryWrite)?;
 
-        usb_debug!(
+        xhci_trace!(
             "event write to pointer {:#x}, trb_count {}, {}",
             self.enqueue_pointer.0,
             self.trb_count,
@@ -123,21 +123,21 @@ impl EventRing {
 
     /// Set segment table size.
     pub fn set_seg_table_size(&mut self, size: u16) -> Result<()> {
-        usb_debug!("event ring seg table size is set to {}", size);
+        xhci_trace!("set_seg_table_size({:#x})", size);
         self.segment_table_size = size;
         self.try_reconfigure_event_ring()
     }
 
     /// Set segment table base addr.
     pub fn set_seg_table_base_addr(&mut self, addr: GuestAddress) -> Result<()> {
-        usb_debug!("event ring seg table base addr is set to {:#x}", addr.0);
+        xhci_trace!("set_seg_table_base_addr({:#x})", addr.0);
         self.segment_table_base_address = addr;
         self.try_reconfigure_event_ring()
     }
 
     /// Set dequeue pointer.
     pub fn set_dequeue_pointer(&mut self, addr: GuestAddress) {
-        usb_debug!("event ring dequeue pointer set to {:#x}", addr.0);
+        xhci_trace!("set_dequeue_pointer({:#x})", addr.0);
         self.dequeue_pointer = addr;
     }
 
