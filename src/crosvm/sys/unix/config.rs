@@ -5,6 +5,9 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use anyhow::anyhow;
+use anyhow::bail;
+use anyhow::Context;
 use devices::IommuDevType;
 use devices::PciAddress;
 use devices::SerialParameters;
@@ -91,14 +94,16 @@ pub enum SharedDirKind {
 }
 
 impl FromStr for SharedDirKind {
-    type Err = &'static str;
+    type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         use SharedDirKind::*;
         match s {
             "fs" | "FS" => Ok(FS),
             "9p" | "9P" | "p9" | "P9" => Ok(P9),
-            _ => Err("invalid file system type"),
+            _ => {
+                bail!("invalid file system type");
+            }
         }
     }
 }
@@ -130,7 +135,7 @@ impl Default for SharedDir {
 }
 
 impl FromStr for SharedDir {
-    type Err = &'static str;
+    type Err = anyhow::Error;
 
     fn from_str(param: &str) -> Result<Self, Self::Err> {
         // This is formatted as multiple fields, each separated by ":". The first 2 fields are
@@ -166,15 +171,15 @@ impl FromStr for SharedDir {
         let src = PathBuf::from(
             components
                 .next()
-                .ok_or("missing source path for `shared-dir`")?,
+                .context("missing source path for `shared-dir`")?,
         );
         let tag = components
             .next()
-            .ok_or("missing tag for `shared-dir`")?
+            .context("missing tag for `shared-dir`")?
             .to_owned();
 
         if !src.is_dir() {
-            return Err("source path for `shared-dir` must be a directory");
+            bail!("source path for `shared-dir` must be a directory");
         }
 
         let mut shared_dir = SharedDir {
@@ -185,24 +190,24 @@ impl FromStr for SharedDir {
         let mut type_opts = vec![];
         for opt in components {
             let mut o = opt.splitn(2, '=');
-            let kind = o.next().ok_or("`shared-dir` options must not be empty")?;
+            let kind = o.next().context("`shared-dir` options must not be empty")?;
             let value = o
                 .next()
-                .ok_or("`shared-dir` options must be of the form `kind=value`")?;
+                .context("`shared-dir` options must be of the form `kind=value`")?;
 
             match kind {
                 "type" => {
-                    shared_dir.kind = value
-                        .parse()
-                        .map_err(|_| "`type` must be one of `fs` or `9p`")?
+                    shared_dir.kind = value.parse().with_context(|| {
+                        anyhow!("`type` must be one of `fs` or `9p` but {value}")
+                    })?
                 }
                 "uidmap" => shared_dir.uid_map = value.into(),
                 "gidmap" => shared_dir.gid_map = value.into(),
                 "uid" => {
-                    shared_dir.ugid.0 = Some(value.parse().map_err(|_| "`uid` must be an integer")?)
+                    shared_dir.ugid.0 = Some(value.parse().context("`uid` must be an integer")?);
                 }
                 "gid" => {
-                    shared_dir.ugid.1 = Some(value.parse().map_err(|_| "`gid` must be an integer")?)
+                    shared_dir.ugid.1 = Some(value.parse().context("`gid` must be an integer")?);
                 }
                 _ => type_opts.push(opt),
             }
@@ -210,10 +215,13 @@ impl FromStr for SharedDir {
         match shared_dir.kind {
             SharedDirKind::FS => {
                 shared_dir.fs_cfg = from_key_values(&type_opts.join(","))
-                    .map_err(|_| "failed to parse key-value pairs")?;
+                    .map_err(|e| anyhow!("failed to parse fs config '{:?}': {e}", type_opts))?;
             }
             SharedDirKind::P9 => {
-                shared_dir.p9_cfg = type_opts.join(":").parse()?;
+                shared_dir.p9_cfg = type_opts
+                    .join(":")
+                    .parse()
+                    .map_err(|e| anyhow!("failed to parse 9p config '{:?}': {e}", type_opts))?;
             }
         }
         Ok(shared_dir)
