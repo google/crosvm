@@ -231,10 +231,16 @@ impl VhostUserBackend for GpuBackend {
         }
     }
 
-    fn reset(&mut self) {
+    fn stop_non_queue_workers(&mut self) -> anyhow::Result<()> {
         for handle in self.platform_workers.borrow_mut().drain(..) {
             handle.abort();
         }
+        Ok(())
+    }
+
+    fn reset(&mut self) {
+        self.stop_non_queue_workers()
+            .expect("Failed to stop platform workers.");
 
         for queue_num in 0..self.max_queue_num() {
             // The cursor queue is never used, so we should check if the queue is set before
@@ -257,6 +263,24 @@ impl VhostUserBackend for GpuBackend {
         if opt.replace(conn.take_shmem_mapper().unwrap()).is_some() {
             warn!("connection already established. overwriting");
         }
+    }
+
+    fn snapshot(&self) -> anyhow::Result<Vec<u8>> {
+        // TODO(b/289431114): Snapshot more fields if needed. Right now we just need a bare bones
+        // snapshot of the GPU to create a POC.
+        serde_json::to_vec(&serde_json::Value::Null)
+            .context("Failed to serialize Null in the GPU device")
+    }
+
+    fn restore(&mut self, data: Vec<u8>) -> anyhow::Result<()> {
+        let data =
+            serde_json::to_value(data).context("Failed to deserialize NULL in the GPU device")?;
+        anyhow::ensure!(
+            data == serde_json::Value::Null,
+            "unexpected snapshot data: should be null, got {}",
+            data
+        );
+        Ok(())
     }
 }
 
