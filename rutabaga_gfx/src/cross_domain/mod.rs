@@ -299,7 +299,22 @@ impl CrossDomainWorker {
         let events = self.wait_ctx.wait()?;
         let mut stop_thread = false;
 
-        for event in &events {
+        // The worker thread must:
+        //
+        // (1) Poll the ContextChannel (usually Wayland)
+        // (2) Poll a number of WaylandReadPipes
+        // (3) handle jobs from the virtio-gpu thread.
+        //
+        // We can only process one event at a time, because each `handle_fence` call is associated
+        // with a guest virtio-gpu fence.  Signaling the fence means it's okay for the guest to
+        // access ring data.  If two events are available at the same time (say a ContextChannel
+        // event and a WaylandReadPipe event), and we write responses for both using the same guest
+        // fence data, that will break the expected order of events.  We need the guest to generate
+        // a new fence before we can resume polling.
+        //
+        // The CrossDomainJob queue gurantees a new fence has been generated before polling is
+        // resumed.
+        if let Some(event) = events.first() {
             match event.token {
                 CrossDomainToken::ContextChannel => {
                     let (len, files) = self.state.receive_msg(receive_buf)?;
