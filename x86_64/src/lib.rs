@@ -81,6 +81,7 @@ use devices::BusDevice;
 use devices::BusDeviceObj;
 use devices::BusResumeDevice;
 use devices::Debugcon;
+use devices::FwCfgParameters;
 use devices::IrqChip;
 use devices::IrqChipX86_64;
 use devices::IrqEventSource;
@@ -805,6 +806,10 @@ impl arch::LinuxArch for X8664arch {
 
         // Event used to notify crosvm that guest OS is trying to suspend.
         let suspend_evt = Event::new().map_err(Error::CreateEvent)?;
+
+        if !components.fw_cfg_parameters.is_empty() {
+            Self::setup_fw_cfg_device(&io_bus, components.fw_cfg_parameters.clone())?;
+        }
 
         if !components.no_i8042 {
             Self::setup_legacy_i8042_device(
@@ -1696,6 +1701,23 @@ impl X8664arch {
         cmdline.insert_str("panic=-1").unwrap();
 
         cmdline
+    }
+
+    /// Sets up fw_cfg device. Currently creates an fw_cfg with no slots, so nothing can be
+    /// inserted into it.
+    ///  # Arguments
+    ///
+    /// * - `io_bus` - the IO bus object
+    /// * - `fw_cfg_parameters` - command-line specified data to add to device. May contain
+    /// all None fields if user did not specify data to add to the device
+    fn setup_fw_cfg_device(
+        io_bus: &devices::Bus,
+        fw_cfg_parameters: Vec<FwCfgParameters>,
+    ) -> Result<()> {
+        // Create fw_cfg device w/ 0 file slots.
+        let fw_cfg = Arc::new(Mutex::new(devices::FwCfgDevice::new(0, fw_cfg_parameters)));
+        io_bus.insert(fw_cfg, 0x510, 0x4).unwrap();
+        Ok(())
     }
 
     /// Sets up the legacy x86 i8042/KBD platform device

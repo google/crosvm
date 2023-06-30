@@ -1200,6 +1200,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         direct_gpe: cfg.direct_gpe.clone(),
         #[cfg(feature = "direct")]
         direct_fixed_evts: cfg.direct_fixed_evts.clone(),
+        fw_cfg_parameters: cfg.fw_cfg_parameters.clone(),
         no_smt: cfg.no_smt,
         hugepages: cfg.hugepages,
         hv_cfg: hypervisor::Config {

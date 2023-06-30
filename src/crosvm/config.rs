@@ -51,6 +51,7 @@ use devices::Ac97Backend;
 use devices::Ac97Parameters;
 #[cfg(feature = "direct")]
 use devices::BusRange;
+use devices::FwCfgParameters;
 use devices::PciAddress;
 use devices::PflashParameters;
 use devices::StubPciParameters;
@@ -493,6 +494,28 @@ pub fn parse_userspace_msr_options(value: &str) -> Result<(u32, MsrConfig), Stri
             filter: options.filter,
         },
     ))
+}
+
+pub fn validate_fw_cfg_parameters(params: &FwCfgParameters) -> Result<(), String> {
+    if params.name.is_none() && (params.string.is_some() || params.path.is_some()) {
+        return Err("Must give name of data to --fw-cfg".to_string());
+    }
+
+    if params.string.is_some() && params.path.is_some()
+        || params.name.is_some() && params.string.is_none() && params.path.is_none()
+    {
+        return Err("Provide exactly one of string or path args to --fw-cfg".to_string());
+    }
+
+    Ok(())
+}
+
+pub fn parse_fw_cfg_options(s: &str) -> Result<FwCfgParameters, String> {
+    let params: FwCfgParameters = from_key_values(s)?;
+
+    validate_fw_cfg_parameters(&params)?;
+
+    Ok(params)
 }
 
 pub fn validate_serial_parameters(params: &SerialParameters) -> Result<(), String> {
@@ -962,6 +985,7 @@ pub struct Config {
     pub file_backed_mappings: Vec<FileBackedMappingParameters>,
     pub force_calibrated_tsc_leaf: bool,
     pub force_s2idle: bool,
+    pub fw_cfg_parameters: Vec<FwCfgParameters>,
     #[cfg(feature = "gdb")]
     pub gdb: Option<u32>,
     #[cfg(all(windows, feature = "gpu"))]
@@ -1174,6 +1198,7 @@ impl Default for Config {
             file_backed_mappings: Vec::new(),
             force_calibrated_tsc_leaf: false,
             force_s2idle: false,
+            fw_cfg_parameters: Vec::new(),
             #[cfg(feature = "gdb")]
             gdb: None,
             #[cfg(all(windows, feature = "gpu"))]
@@ -2100,6 +2125,44 @@ mod tests {
         validate_file_backed_mapping(&mut params).unwrap();
         assert_eq!(params.address, 0x3000);
         assert_eq!(params.size, 0x2000);
+    }
+
+    #[test]
+    fn parse_fw_cfg_valid_no_params() {
+        assert!(TryInto::<Config>::try_into(
+            crate::crosvm::cmdline::RunCommand::from_args(&[], &["--fw-cfg", "", "/dev/null"],)
+                .unwrap()
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn parse_fw_cfg_valid_string() {
+        assert!(TryInto::<Config>::try_into(
+            crate::crosvm::cmdline::RunCommand::from_args(
+                &[],
+                &["--fw-cfg", "name=bar,string=foo", "/dev/null"],
+            )
+            .unwrap()
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn parse_fw_cfg_invalid_both_string_and_path() {
+        assert!(crate::crosvm::cmdline::RunCommand::from_args(
+            &[],
+            &["--fw-cfg", "name=bar,string=foo,path=path/to/file",]
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn parse_fw_cfg_invalid_no_name() {
+        assert!(
+            crate::crosvm::cmdline::RunCommand::from_args(&[], &["--fw-cfg", "string=foo",])
+                .is_err()
+        );
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]

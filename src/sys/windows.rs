@@ -1887,6 +1887,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         host_cpu_topology: cfg.host_cpu_topology,
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         force_s2idle: cfg.force_s2idle,
+        fw_cfg_parameters: cfg.fw_cfg_parameters.clone(),
         itmt: false,
         pvm_fw: None,
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]

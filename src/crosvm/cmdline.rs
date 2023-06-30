@@ -47,6 +47,7 @@ use devices::virtio::NetParameters;
 use devices::virtio::NetParametersMode;
 #[cfg(feature = "audio")]
 use devices::Ac97Parameters;
+use devices::FwCfgParameters;
 use devices::PflashParameters;
 use devices::SerialHardware;
 use devices::SerialParameters;
@@ -80,6 +81,7 @@ use crate::crosvm::config::parse_cpu_capacity;
 #[cfg(feature = "direct")]
 use crate::crosvm::config::parse_direct_io_options;
 use crate::crosvm::config::parse_dynamic_power_coefficient;
+use crate::crosvm::config::parse_fw_cfg_options;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::crosvm::config::parse_memory_region;
 use crate::crosvm::config::parse_mmio_address_range;
@@ -1231,6 +1233,24 @@ pub struct RunCommand {
     /// force use of a calibrated TSC cpuid leaf (0x15) even if the hypervisor
     /// doesn't require one.
     pub force_calibrated_tsc_leaf: Option<bool>,
+
+    #[argh(
+        option,
+        arg_name = "[name=NAME,path=PATH,string=STRING]",
+        from_str_fn(parse_fw_cfg_options)
+    )]
+    #[serde(skip)] // TODO(b/255223604)
+    #[merge(strategy = append)]
+    /// comma separated key=value pairs to specify data to pass to
+    /// fw_cfg.
+    /// Possible key values:
+    ///     name - Name of the file in fw_cfg that will
+    ///      be associated with user-provided data
+    ///     path - Path to data that will be included in
+    ///      fw_cfg under filename
+    ///     string - Alternative to path, data to be in
+    ///      included in fw_cfg under filename
+    pub fw_cfg: Vec<FwCfgParameters>,
 
     #[cfg(feature = "gdb")]
     #[argh(option, arg_name = "PORT")]
@@ -2682,6 +2702,8 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.product_version = cmd.product_version;
         }
         cfg.pstore = cmd.pstore;
+
+        cfg.fw_cfg_parameters = cmd.fw_cfg;
 
         #[cfg(unix)]
         for (name, params) in cmd.wayland_sock {

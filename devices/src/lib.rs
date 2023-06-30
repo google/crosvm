@@ -19,6 +19,7 @@ mod debugcon;
 pub mod direct_io;
 #[cfg(feature = "direct")]
 pub mod direct_irq;
+mod fw_cfg;
 mod i8042;
 mod irq_event;
 pub mod irqchip;
@@ -90,6 +91,8 @@ pub use self::direct_io::DirectMmio;
 pub use self::direct_irq::DirectIrq;
 #[cfg(feature = "direct")]
 pub use self::direct_irq::DirectIrqError;
+pub use self::fw_cfg::FwCfgDevice;
+pub use self::fw_cfg::FwCfgParameters;
 pub use self::i8042::I8042Device;
 pub use self::irq_event::IrqEdgeEvent;
 pub use self::irq_event::IrqLevelEvent;

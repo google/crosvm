@@ -38,6 +38,7 @@ use devices::BusDevice;
 use devices::BusDeviceObj;
 use devices::BusError;
 use devices::BusResumeDevice;
+use devices::FwCfgParameters;
 use devices::HotPlugBus;
 use devices::IrqChip;
 use devices::IrqEventSource;
@@ -326,6 +327,7 @@ pub struct VmComponents {
     pub extra_kernel_params: Vec<String>,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub force_s2idle: bool,
+    pub fw_cfg_parameters: Vec<FwCfgParameters>,
     #[cfg(feature = "gdb")]
     pub gdb: Option<(u32, Tube)>, // port and control tube.
     pub host_cpu_topology: bool,
