@@ -73,7 +73,7 @@ pub const MAX_SOCKET_PATH_LENGTH: usize = 108;
 
 struct WriteSocket {
     sock: UnixDatagram,
-    buf: String,
+    buf: Vec<u8>,
 }
 
 const BUF_CAPACITY: usize = 1024;
@@ -82,7 +82,7 @@ impl WriteSocket {
     pub fn new(s: UnixDatagram) -> WriteSocket {
         WriteSocket {
             sock: s,
-            buf: String::with_capacity(BUF_CAPACITY),
+            buf: Vec::with_capacity(BUF_CAPACITY),
         }
     }
 
@@ -104,18 +104,21 @@ impl WriteSocket {
 
 impl io::Write for WriteSocket {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let parsed_str = String::from_utf8_lossy(buf);
-
-        let last_newline_idx = match parsed_str.rfind('\n') {
+        let last_newline_idx = match buf.iter().rposition(|&x| x == b'\n') {
             Some(newline_idx) => Some(self.buf.len() + newline_idx),
             None => None,
         };
-        self.buf.push_str(&parsed_str);
+        self.buf.extend_from_slice(buf);
 
         match last_newline_idx {
             Some(last_newline_idx) => {
-                for line in (self.buf[..last_newline_idx]).lines() {
-                    if self.send_buf(line.as_bytes()).is_err() {
+                for line in (self.buf[..last_newline_idx]).split(|&x| x == b'\n') {
+                    // Also drop CR+LF line endings.
+                    let send_line = match line.split_last() {
+                        Some((b'\r', trimmed)) => trimmed,
+                        _ => line,
+                    };
+                    if self.send_buf(send_line).is_err() {
                         break;
                     }
                 }
@@ -123,7 +126,7 @@ impl io::Write for WriteSocket {
             }
             None => {
                 if self.buf.len() >= BUF_CAPACITY {
-                    if let Err(e) = self.send_buf(self.buf.as_bytes()) {
+                    if let Err(e) = self.send_buf(&self.buf) {
                         info!("Couldn't send full buffer. {:?}", e);
                     }
                     self.buf.clear();
