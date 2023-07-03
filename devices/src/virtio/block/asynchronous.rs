@@ -1633,8 +1633,14 @@ mod tests {
             mem.clone(),
             Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
             vec![
-                (Queue::new(DEFAULT_QUEUE_SIZE), Event::new().unwrap()),
-                (Queue::new(DEFAULT_QUEUE_SIZE), Event::new().unwrap()),
+                (
+                    Queue::new(b.queue_type(), DEFAULT_QUEUE_SIZE),
+                    Event::new().unwrap(),
+                ),
+                (
+                    Queue::new(b.queue_type(), DEFAULT_QUEUE_SIZE),
+                    Event::new().unwrap(),
+                ),
             ],
         )
         .expect("activate should succeed");
@@ -1665,8 +1671,14 @@ mod tests {
             mem,
             Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
             vec![
-                (Queue::new(DEFAULT_QUEUE_SIZE), Event::new().unwrap()),
-                (Queue::new(DEFAULT_QUEUE_SIZE), Event::new().unwrap()),
+                (
+                    Queue::new(b.queue_type(), DEFAULT_QUEUE_SIZE),
+                    Event::new().unwrap(),
+                ),
+                (
+                    Queue::new(b.queue_type(), DEFAULT_QUEUE_SIZE),
+                    Event::new().unwrap(),
+                ),
             ],
         )
         .expect("re-activate should succeed");
@@ -1730,8 +1742,14 @@ mod tests {
             mem,
             interrupt.clone(),
             vec![
-                (Queue::new(DEFAULT_QUEUE_SIZE), Event::new().unwrap()),
-                (Queue::new(DEFAULT_QUEUE_SIZE), Event::new().unwrap()),
+                (
+                    Queue::new(b.queue_type(), DEFAULT_QUEUE_SIZE),
+                    Event::new().unwrap(),
+                ),
+                (
+                    Queue::new(b.queue_type(), DEFAULT_QUEUE_SIZE),
+                    Event::new().unwrap(),
+                ),
             ],
         )
         .expect("activate should succeed");
@@ -1832,8 +1850,14 @@ mod tests {
             mem.clone(),
             Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
             vec![
-                (Queue::new(DEFAULT_QUEUE_SIZE), Event::new().unwrap()),
-                (Queue::new(DEFAULT_QUEUE_SIZE), Event::new().unwrap()),
+                (
+                    Queue::new(b.queue_type(), DEFAULT_QUEUE_SIZE),
+                    Event::new().unwrap(),
+                ),
+                (
+                    Queue::new(b.queue_type(), DEFAULT_QUEUE_SIZE),
+                    Event::new().unwrap(),
+                ),
             ],
         )
         .expect("activate should succeed");
@@ -1853,8 +1877,14 @@ mod tests {
             mem,
             Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
             vec![
-                (Queue::new(DEFAULT_QUEUE_SIZE), Event::new().unwrap()),
-                (Queue::new(DEFAULT_QUEUE_SIZE), Event::new().unwrap()),
+                (
+                    Queue::new(b.queue_type(), DEFAULT_QUEUE_SIZE),
+                    Event::new().unwrap(),
+                ),
+                (
+                    Queue::new(b.queue_type(), DEFAULT_QUEUE_SIZE),
+                    Event::new().unwrap(),
+                ),
             ],
         )
         .expect("activate should succeed");

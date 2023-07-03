@@ -30,8 +30,10 @@ use crate::virtio::ipc_memory_mapper::ExportedRegion;
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 use crate::virtio::memory_util::read_obj_from_addr_wrapper;
 
-const VIRTQ_DESC_F_NEXT: u16 = 0x1;
-const VIRTQ_DESC_F_WRITE: u16 = 0x2;
+/// Virtio flag indicating there is a next descriptor in descripor chain
+pub const VIRTQ_DESC_F_NEXT: u16 = 0x1;
+/// Virtio flag indicating descriptor is write-only
+pub const VIRTQ_DESC_F_WRITE: u16 = 0x2;
 
 /// A single virtio split queue descriptor (`struct virtq_desc` in the spec).
 #[derive(Copy, Clone, Debug, FromBytes, AsBytes)]
@@ -40,7 +42,7 @@ pub struct Desc {
     /// Guest address of memory described by this descriptor.
     pub addr: Le64,
 
-    /// Length of this descriptor's memory region in byutes.
+    /// Length of this descriptor's memory region in bytes.
     pub len: Le32,
 
     /// `VIRTQ_DESC_F_*` flags for this descriptor.

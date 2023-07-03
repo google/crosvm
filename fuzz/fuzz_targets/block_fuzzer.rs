@@ -17,6 +17,7 @@ use devices::virtio::base_features;
 use devices::virtio::BlockAsync;
 use devices::virtio::Interrupt;
 use devices::virtio::Queue;
+use devices::virtio::QueueType::Split;
 use devices::virtio::VirtioDevice;
 use devices::IrqLevelEvent;
 use hypervisor::ProtectionType;
@@ -77,7 +78,7 @@ fuzz_target!(|bytes| {
         return;
     }
 
-    let mut q = Queue::new(QUEUE_SIZE);
+    let mut q = Queue::new(Split, QUEUE_SIZE);
     q.set_size(QUEUE_SIZE / 2);
     q.set_ready(true);
 

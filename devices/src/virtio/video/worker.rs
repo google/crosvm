@@ -22,7 +22,6 @@ use cros_async::SelectResult;
 use futures::FutureExt;
 use vm_memory::GuestMemory;
 
-use crate::virtio::queue::Queue;
 use crate::virtio::video::async_cmd_desc_map::AsyncCmdDescMap;
 use crate::virtio::video::command::QueueType;
 use crate::virtio::video::command::VideoCmd;
@@ -40,6 +39,7 @@ use crate::virtio::video::response::Response;
 use crate::virtio::video::Error;
 use crate::virtio::video::Result;
 use crate::virtio::DescriptorChain;
+use crate::virtio::Queue;
 use crate::virtio::SignalableInterrupt;
 
 /// Worker that takes care of running the virtio video device.

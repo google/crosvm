@@ -12,6 +12,7 @@ use std::mem::size_of;
 use crosvm_fuzz::fuzz_target;
 use crosvm_fuzz::rand::FuzzRng;
 use devices::virtio::Queue;
+use devices::virtio::QueueType::Split;
 use rand::Rng;
 use rand::RngCore;
 use vm_memory::GuestAddress;
@@ -57,7 +58,7 @@ struct virtq_used {
 }
 
 fuzz_target!(|data: &[u8]| {
-    let mut q = Queue::new(MAX_QUEUE_SIZE);
+    let mut q = Queue::new(Split, MAX_QUEUE_SIZE);
     let mut rng = FuzzRng::new(data);
     q.set_size(rng.gen());
 

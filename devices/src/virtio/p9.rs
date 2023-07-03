@@ -22,9 +22,9 @@ use thiserror::Error;
 use vm_memory::GuestMemory;
 
 use super::copy_config;
+use super::queue::Queue;
 use super::DeviceType;
 use super::Interrupt;
-use super::Queue;
 use super::SignalableInterrupt;
 use super::VirtioDevice;
 

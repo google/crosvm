@@ -23,6 +23,7 @@ use crate::pci::PciBarIndex;
 use crate::pci::PciCapability;
 use crate::pci::{MsixConfig, MsixStatus};
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
+use crate::virtio::queue::QueueType;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VirtioTransportType {
@@ -260,5 +261,10 @@ pub trait VirtioDevice: Send {
             "vhost_user_restore not implemented for {}",
             self.debug_label()
         );
+    }
+
+    /// Returns the queue type to use for this device based on the negotiated virtio features
+    fn queue_type(&self) -> QueueType {
+        QueueType::Split
     }
 }

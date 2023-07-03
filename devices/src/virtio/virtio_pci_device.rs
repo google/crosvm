@@ -357,7 +357,7 @@ impl VirtioPciDevice {
         let queues: Vec<Queue> = device
             .queue_max_sizes()
             .iter()
-            .map(|&s| Queue::new(s))
+            .map(|&s| Queue::new(device.queue_type(), s))
             .collect();
 
         let pci_device_id = VIRTIO_PCI_DEVICE_ID_BASE + device.device_type() as u16;
@@ -1111,7 +1111,7 @@ impl Suspendable for VirtioPciDevice {
             "device must have the same number of queues"
         );
         for (q, s) in self.queues.iter_mut().zip(deser.queues.into_iter()) {
-            *q = Queue::restore(s)?;
+            *q = Queue::restore(self.device.queue_type(), s)?;
         }
 
         // Verify we are asleep and inactive.
@@ -1128,7 +1128,10 @@ impl Suspendable for VirtioPciDevice {
         if let Some(activated_queues_snapshot) = deser.activated_queues {
             let mut activated_queues = BTreeMap::new();
             for (index, queue_snapshot) in activated_queues_snapshot {
-                activated_queues.insert(index, Queue::restore(queue_snapshot)?);
+                activated_queues.insert(
+                    index,
+                    Queue::restore(self.device.queue_type(), queue_snapshot)?,
+                );
             }
 
             // Restore the activated queues.

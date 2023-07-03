@@ -25,11 +25,11 @@ use thiserror::Error;
 use vm_memory::GuestMemory;
 use zerocopy::AsBytes;
 
-use crate::virtio;
 use crate::virtio::copy_config;
 use crate::virtio::virtio_device::VirtioDevice;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
+use crate::virtio::Queue;
 
 #[macro_use]
 mod macros;
@@ -201,7 +201,7 @@ impl VirtioDevice for VideoDevice {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: Vec<(virtio::queue::Queue, Event)>,
+        mut queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
         if queues.len() != QUEUE_SIZES.len() {
             return Err(anyhow!(

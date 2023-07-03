@@ -83,7 +83,7 @@ impl VirtioMmioDevice {
         let queues: Vec<Queue> = device
             .queue_max_sizes()
             .iter()
-            .map(|&s| Queue::new(s))
+            .map(|&s| Queue::new(device.queue_type(), s))
             .collect();
 
         Ok(VirtioMmioDevice {

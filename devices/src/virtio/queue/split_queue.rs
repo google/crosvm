@@ -13,11 +13,6 @@ use anyhow::Context;
 use anyhow::Result;
 use base::error;
 use base::warn;
-use cros_async::AsyncError;
-use cros_async::EventAsync;
-use futures::channel::oneshot;
-use futures::select_biased;
-use futures::FutureExt;
 use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
@@ -25,14 +20,14 @@ use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
-use super::SignalableInterrupt;
-use super::VIRTIO_MSI_NO_VECTOR;
 use crate::virtio::ipc_memory_mapper::ExportedRegion;
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 use crate::virtio::memory_util::read_obj_from_addr_wrapper;
 use crate::virtio::memory_util::write_obj_at_addr_wrapper;
 use crate::virtio::DescriptorChain;
+use crate::virtio::SignalableInterrupt;
 use crate::virtio::SplitDescriptorChain;
+use crate::virtio::VIRTIO_MSI_NO_VECTOR;
 
 #[allow(dead_code)]
 const VIRTQ_USED_F_NO_NOTIFY: u16 = 0x1;
@@ -40,7 +35,7 @@ const VIRTQ_USED_F_NO_NOTIFY: u16 = 0x1;
 const VIRTQ_AVAIL_F_NO_INTERRUPT: u16 = 0x1;
 
 /// A virtio queue's parameters.
-pub struct Queue {
+pub struct SplitQueue {
     /// Whether this queue has already been activated.
     activated: bool,
 
@@ -67,8 +62,8 @@ pub struct Queue {
     /// Guest physical address of the used ring
     used_ring: GuestAddress,
 
-    pub next_avail: Wrapping<u16>,
-    pub next_used: Wrapping<u16>,
+    next_avail: Wrapping<u16>,
+    next_used: Wrapping<u16>,
 
     // Device feature bits accepted by the driver
     features: u64,
@@ -85,7 +80,7 @@ pub struct Queue {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct QueueSnapshot {
+pub struct SplitQueueSnapshot {
     activated: bool,
     max_size: u16,
     size: u16,
@@ -116,11 +111,11 @@ macro_rules! accessors {
     };
 }
 
-impl Queue {
+impl SplitQueue {
     /// Constructs an empty virtio queue with the given `max_size`.
-    pub fn new(max_size: u16) -> Queue {
+    pub fn new(max_size: u16) -> SplitQueue {
         assert!(max_size.is_power_of_two());
-        Queue {
+        SplitQueue {
             activated: false,
             max_size,
             size: max_size,
@@ -144,6 +139,8 @@ impl Queue {
     accessors!(desc_table, GuestAddress, set_desc_table);
     accessors!(avail_ring, GuestAddress, set_avail_ring);
     accessors!(used_ring, GuestAddress, set_used_ring);
+    accessors!(next_avail, Wrapping<u16>, set_next_avail);
+    accessors!(next_used, Wrapping<u16>, set_next_used);
 
     /// Return the maximum size of this queue.
     pub fn max_size(&self) -> u16 {
@@ -211,7 +208,7 @@ impl Queue {
     }
 
     /// Convert the queue configuration into an active queue.
-    pub fn activate(&mut self) -> Result<Queue> {
+    pub fn activate(&mut self) -> Result<SplitQueue> {
         if !self.ready {
             bail!("attempted to activate a non-ready queue");
         }
@@ -222,7 +219,7 @@ impl Queue {
 
         self.activated = true;
 
-        let queue = Queue {
+        let queue = SplitQueue {
             activated: self.activated,
             max_size: self.max_size,
             size: self.size,
@@ -316,7 +313,7 @@ impl Queue {
         Ok(())
     }
 
-    /// Releases memory exported by a previous call to [`Queue::export_memory()`].
+    /// Releases memory exported by a previous call to [`SplitQueue::export_memory()`].
     pub fn release_exported_memory(&mut self) {
         self.exported_desc_table = None;
         self.exported_avail_ring = None;
@@ -454,47 +451,6 @@ impl Queue {
         self.next_avail += Wrapping(1);
         if self.features & ((1u64) << VIRTIO_RING_F_EVENT_IDX) != 0 {
             self.set_avail_event(mem, self.next_avail);
-        }
-    }
-
-    /// If a new DescriptorHead is available, returns one and removes it from the queue.
-    pub fn pop(&mut self, mem: &GuestMemory) -> Option<DescriptorChain> {
-        let descriptor_chain = self.peek(mem);
-        if descriptor_chain.is_some() {
-            self.pop_peeked(mem);
-        }
-        descriptor_chain
-    }
-
-    /// Asynchronously read the next descriptor chain from the queue.
-    /// Returns a `DescriptorChain` when it is `await`ed.
-    pub async fn next_async(
-        &mut self,
-        mem: &GuestMemory,
-        eventfd: &mut EventAsync,
-    ) -> std::result::Result<DescriptorChain, AsyncError> {
-        loop {
-            // Check if there are more descriptors available.
-            if let Some(chain) = self.pop(mem) {
-                return Ok(chain);
-            }
-            eventfd.next_val().await?;
-        }
-    }
-
-    /// Returns `None` if stop_rx receives a value; otherwise returns the result
-    /// of waiting for the next descriptor.
-    pub async fn next_async_interruptable(
-        &mut self,
-        mem: &GuestMemory,
-        queue_event: &mut EventAsync,
-        mut stop_rx: &mut oneshot::Receiver<()>,
-    ) -> std::result::Result<Option<DescriptorChain>, AsyncError> {
-        select_biased! {
-            avail_desc_res = self.next_async(mem, queue_event).fuse() => {
-                Ok(Some(avail_desc_res?))
-            }
-            _ = stop_rx => Ok(None),
         }
     }
 
@@ -694,7 +650,7 @@ impl Queue {
             return Err(anyhow!("Cannot snapshot if iommu is present."));
         }
 
-        serde_json::to_value(QueueSnapshot {
+        serde_json::to_value(SplitQueueSnapshot {
             activated: self.activated,
             max_size: self.max_size,
             size: self.size,
@@ -711,9 +667,9 @@ impl Queue {
         .context("failed to serialize MsixConfigSnapshot")
     }
 
-    pub fn restore(queue_value: serde_json::Value) -> anyhow::Result<Self> {
-        let s: QueueSnapshot = serde_json::from_value(queue_value)?;
-        Ok(Queue {
+    pub fn restore(queue_value: serde_json::Value) -> anyhow::Result<SplitQueue> {
+        let s: SplitQueueSnapshot = serde_json::from_value(queue_value)?;
+        let queue = SplitQueue {
             activated: s.activated,
             max_size: s.max_size,
             size: s.size,
@@ -730,7 +686,8 @@ impl Queue {
             exported_desc_table: None,
             exported_avail_ring: None,
             exported_used_ring: None,
-        })
+        };
+        Ok(queue)
     }
 }
 
@@ -745,10 +702,10 @@ mod tests {
     use zerocopy::AsBytes;
     use zerocopy::FromBytes;
 
-    use super::super::Interrupt;
     use super::*;
     use crate::virtio::create_descriptor_chain;
     use crate::virtio::Desc;
+    use crate::virtio::Interrupt;
     use crate::IrqLevelEvent;
 
     const GUEST_MEMORY_SIZE: u64 = 0x10000;
@@ -815,7 +772,7 @@ mod tests {
         }
     }
 
-    fn setup_vq(queue: &mut Queue, mem: &GuestMemory) {
+    fn setup_vq(queue: &mut SplitQueue, mem: &GuestMemory) {
         let desc = Desc {
             addr: Le64::from(BUFFER_OFFSET),
             len: Le32::from(BUFFER_LEN),
@@ -843,7 +800,7 @@ mod tests {
 
     #[test]
     fn queue_event_id_guest_fast() {
-        let mut queue = Queue::new(QUEUE_SIZE.try_into().unwrap());
+        let mut queue = SplitQueue::new(QUEUE_SIZE.try_into().unwrap());
         let memory_start_addr = GuestAddress(0x0);
         let mem = GuestMemory::new(&[(memory_start_addr, GUEST_MEMORY_SIZE)]).unwrap();
         setup_vq(&mut queue, &mem);
@@ -912,7 +869,7 @@ mod tests {
 
     #[test]
     fn queue_event_id_guest_slow() {
-        let mut queue = Queue::new(QUEUE_SIZE.try_into().unwrap());
+        let mut queue = SplitQueue::new(QUEUE_SIZE.try_into().unwrap());
         let memory_start_addr = GuestAddress(0x0);
         let mem = GuestMemory::new(&[(memory_start_addr, GUEST_MEMORY_SIZE)]).unwrap();
         setup_vq(&mut queue, &mem);

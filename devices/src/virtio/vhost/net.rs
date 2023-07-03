@@ -403,8 +403,8 @@ pub mod tests {
             guest_memory,
             Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
             vec![
-                (Queue::new(1), Event::new().unwrap()),
-                (Queue::new(1), Event::new().unwrap()),
+                (Queue::new(net.queue_type(), 1), Event::new().unwrap()),
+                (Queue::new(net.queue_type(), 1), Event::new().unwrap()),
             ],
         );
     }

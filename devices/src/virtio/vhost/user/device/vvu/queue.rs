@@ -436,6 +436,7 @@ mod test {
 
     use super::*;
     use crate::virtio::Queue as DeviceQueue;
+    use crate::virtio::QueueType::Split;
 
     // An allocator that just allocates 0 as an IOVA.
     struct SimpleIovaAllocator(RefCell<bool>);
@@ -496,7 +497,7 @@ mod test {
         let iova_alloc = SimpleIovaAllocator(RefCell::new(false));
         let mut drv_queue =
             UserQueue::new(queue_size, false /* device_writable */, 0, &iova_alloc).unwrap();
-        let mut dev_queue = DeviceQueue::new(queue_size);
+        let mut dev_queue = DeviceQueue::new(Split, queue_size);
         setup_vq(&mut dev_queue, drv_queue.desc_table_addrs().unwrap());
 
         for i in 0..count {
@@ -542,7 +543,7 @@ mod test {
         let iova_alloc = SimpleIovaAllocator(RefCell::new(false));
         let mut drv_queue =
             UserQueue::new(queue_size, true /* device_writable */, 0, &iova_alloc).unwrap();
-        let mut dev_queue = DeviceQueue::new(queue_size);
+        let mut dev_queue = DeviceQueue::new(Split, queue_size);
         setup_vq(&mut dev_queue, drv_queue.desc_table_addrs().unwrap());
 
         for i in 0..count {

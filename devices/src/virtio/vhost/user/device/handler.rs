@@ -100,6 +100,7 @@ use vmm_vhost::VhostUserSlaveReqHandlerMut;
 
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
+use crate::virtio::QueueType::Split;
 use crate::virtio::SharedMemoryMapper;
 use crate::virtio::SharedMemoryRegion;
 
@@ -232,7 +233,7 @@ struct VringSnapshot {
 impl Vring {
     fn new(max_size: u16) -> Self {
         Self {
-            queue: Queue::new(max_size),
+            queue: Queue::new(Split, max_size),
             doorbell: None,
             enabled: false,
             paused_queue: None,
@@ -261,11 +262,11 @@ impl Vring {
     }
 
     fn restore(&mut self, vring_snapshot: VringSnapshot) -> anyhow::Result<()> {
-        self.queue = Queue::restore(vring_snapshot.queue)?;
+        self.queue = Queue::restore(Split, vring_snapshot.queue)?;
         self.enabled = vring_snapshot.enabled;
         self.paused_queue = vring_snapshot
             .paused_queue
-            .map(Queue::restore)
+            .map(|value| Queue::restore(Split, value))
             .transpose()?;
         Ok(())
     }
@@ -544,8 +545,8 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
         }
 
         let vring = &mut self.vrings[index as usize];
-        vring.queue.next_avail = Wrapping(base as u16);
-        vring.queue.next_used = Wrapping(base as u16);
+        vring.queue.set_next_avail(Wrapping(base as u16));
+        vring.queue.set_next_used(Wrapping(base as u16));
 
         Ok(())
     }
@@ -569,7 +570,7 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
 
         Ok(VhostUserVringState::new(
             index,
-            vring.queue.next_avail.0 as u32,
+            vring.queue.next_avail().0 as u32,
         ))
     }
 
@@ -1139,7 +1140,7 @@ mod tests {
 
             for idx in 0..QUEUES_NUM {
                 println!("activate_mem_table: queue_index={}", idx);
-                let queue = Queue::new(0x10);
+                let queue = Queue::new(Split, 0x10);
                 let queue_evt = Event::new().unwrap();
                 let irqfd = Event::new().unwrap();
 
@@ -1221,7 +1222,7 @@ mod tests {
 
         for idx in 0..queues_num {
             println!("activate_mem_table: queue_index={}", idx);
-            let queue = Queue::new(0x10);
+            let queue = Queue::new(Split, 0x10);
             let queue_evt = Event::new().unwrap();
             let irqfd = Event::new().unwrap();
 
