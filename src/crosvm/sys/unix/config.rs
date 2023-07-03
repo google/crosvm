@@ -225,6 +225,7 @@ mod tests {
     use std::time::Duration;
 
     use argh::FromArgs;
+    use devices::virtio::fs::CachePolicy;
 
     use super::*;
     use crate::crosvm::config::from_key_values;
@@ -776,5 +777,95 @@ mod tests {
         assert_eq!(shared_dir.uid_map, "40417 40417 1");
         assert_eq!(shared_dir.gid_map, "5000 5000 1");
         assert_eq!(shared_dir.ugid, (Some(40417), Some(5000)));
+    }
+
+    #[test]
+    fn parse_cache_policy() {
+        // The default policy is `auto`.
+        assert_eq!(
+            "/:_data:type=fs"
+                .parse::<SharedDir>()
+                .unwrap()
+                .fs_cfg
+                .cache_policy,
+            CachePolicy::Auto
+        );
+        assert_eq!(
+            "/:_data:type=fs:cache=always"
+                .parse::<SharedDir>()
+                .unwrap()
+                .fs_cfg
+                .cache_policy,
+            CachePolicy::Always
+        );
+        assert_eq!(
+            "/:_data:type=fs:cache=auto"
+                .parse::<SharedDir>()
+                .unwrap()
+                .fs_cfg
+                .cache_policy,
+            CachePolicy::Auto
+        );
+        assert_eq!(
+            "/:_data:type=fs:cache=never"
+                .parse::<SharedDir>()
+                .unwrap()
+                .fs_cfg
+                .cache_policy,
+            CachePolicy::Never
+        );
+
+        // we allow some variants
+        assert_eq!(
+            "/:_data:type=fs:cache=ALWAYS"
+                .parse::<SharedDir>()
+                .unwrap()
+                .fs_cfg
+                .cache_policy,
+            CachePolicy::Always
+        );
+        assert_eq!(
+            "/:_data:type=fs:cache=Always"
+                .parse::<SharedDir>()
+                .unwrap()
+                .fs_cfg
+                .cache_policy,
+            CachePolicy::Always
+        );
+        assert_eq!(
+            "/:_data:type=fs:cache=AUTO"
+                .parse::<SharedDir>()
+                .unwrap()
+                .fs_cfg
+                .cache_policy,
+            CachePolicy::Auto
+        );
+        assert_eq!(
+            "/:_data:type=fs:cache=Auto"
+                .parse::<SharedDir>()
+                .unwrap()
+                .fs_cfg
+                .cache_policy,
+            CachePolicy::Auto
+        );
+        assert_eq!(
+            "/:_data:type=fs:cache=Never"
+                .parse::<SharedDir>()
+                .unwrap()
+                .fs_cfg
+                .cache_policy,
+            CachePolicy::Never
+        );
+        assert_eq!(
+            "/:_data:type=fs:cache=NEVER"
+                .parse::<SharedDir>()
+                .unwrap()
+                .fs_cfg
+                .cache_policy,
+            CachePolicy::Never
+        );
+
+        // we don't accept unknown policy
+        assert!("/:_data:type=fs:cache=foobar".parse::<SharedDir>().is_err());
     }
 }
