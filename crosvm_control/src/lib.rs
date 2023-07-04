@@ -203,20 +203,6 @@ pub unsafe extern "C" fn crosvm_client_swap_swapout_vm(socket_path: *const c_cha
     .unwrap_or(false)
 }
 
-/// Disable vmm swap according to `args`.
-///
-/// The function returns true on success or false if an error occured.
-///
-/// # Safety
-///
-/// Function is unsafe due to raw pointer usage - a null pointer could be passed in. Usage of
-/// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
-/// null pointers are passed.
-#[no_mangle]
-pub unsafe extern "C" fn crosvm_client_swap_disable_vm(args: *mut SwapDisableArgs) -> bool {
-    crosvm_client_swap_disable_vm2(args)
-}
-
 /// Arguments structure for crosvm_client_swap_disable_vm2.
 #[repr(C)]
 pub struct SwapDisableArgs {
@@ -236,7 +222,7 @@ pub struct SwapDisableArgs {
 /// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
 /// null pointers are passed.
 #[no_mangle]
-pub unsafe extern "C" fn crosvm_client_swap_disable_vm2(args: *mut SwapDisableArgs) -> bool {
+pub unsafe extern "C" fn crosvm_client_swap_disable_vm(args: *mut SwapDisableArgs) -> bool {
     catch_unwind(|| {
         if args.is_null() {
             return false;
