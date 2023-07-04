@@ -56,6 +56,7 @@ pub use shm::SharedMemory;
 pub use sys::platform;
 pub use timer::FakeTimer;
 pub use timer::Timer;
+pub use timer::TimerTrait;
 pub use tube::Error as TubeError;
 #[cfg(any(windows, feature = "proto_tube"))]
 pub use tube::ProtoTube;

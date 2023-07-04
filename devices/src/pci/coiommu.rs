@@ -43,6 +43,7 @@ use base::RawDescriptor;
 use base::SafeDescriptor;
 use base::SharedMemory;
 use base::Timer;
+use base::TimerTrait;
 use base::Tube;
 use base::TubeError;
 use base::WaitContext;

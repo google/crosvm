@@ -236,7 +236,7 @@ impl DiskState {
 async fn process_one_request(
     avail_desc: &mut DescriptorChain,
     disk_state: &AsyncRwLock<DiskState>,
-    flush_timer: &RefCell<TimerAsync>,
+    flush_timer: &RefCell<TimerAsync<Timer>>,
     flush_timer_armed: &RefCell<bool>,
 ) -> result::Result<usize, ExecuteError> {
     let reader = &mut avail_desc.reader;
@@ -282,7 +282,7 @@ pub async fn process_one_chain<I: SignalableInterrupt>(
     disk_state: &AsyncRwLock<DiskState>,
     mem: &GuestMemory,
     interrupt: &I,
-    flush_timer: &RefCell<TimerAsync>,
+    flush_timer: &RefCell<TimerAsync<Timer>>,
     flush_timer_armed: &RefCell<bool>,
 ) {
     let len = match process_one_request(&mut avail_desc, disk_state, flush_timer, flush_timer_armed)
@@ -309,7 +309,7 @@ async fn handle_queue<I: SignalableInterrupt + 'static>(
     queue: Rc<RefCell<Queue>>,
     evt: EventAsync,
     interrupt: I,
-    flush_timer: Rc<RefCell<TimerAsync>>,
+    flush_timer: Rc<RefCell<TimerAsync<Timer>>>,
     flush_timer_armed: Rc<RefCell<bool>>,
     mut stop_rx: oneshot::Receiver<()>,
 ) -> Rc<RefCell<Queue>> {
@@ -446,7 +446,7 @@ async fn resize(disk_state: &AsyncRwLock<DiskState>, new_size: u64) -> DiskContr
 /// Periodically flushes the disk when the given timer fires.
 async fn flush_disk(
     disk_state: Rc<AsyncRwLock<DiskState>>,
-    timer: TimerAsync,
+    timer: TimerAsync<Timer>,
     armed: Rc<RefCell<bool>>,
 ) -> Result<(), ControlError> {
     loop {
@@ -734,7 +734,7 @@ impl BlockAsync {
         reader: &mut Reader,
         writer: &mut Writer,
         disk_state: &AsyncRwLock<DiskState>,
-        flush_timer: &RefCell<TimerAsync>,
+        flush_timer: &RefCell<TimerAsync<Timer>>,
         flush_timer_armed: &RefCell<bool>,
     ) -> result::Result<(), ExecuteError> {
         // Acquire immutable access to prevent tasks from resizing disk.

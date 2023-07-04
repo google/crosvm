@@ -49,6 +49,7 @@ use base::SendTube;
 #[cfg(feature = "gpu")]
 use base::StreamChannel;
 use base::Timer;
+use base::TimerTrait;
 use base::Tube;
 use base::WaitContext;
 #[cfg(feature = "process-invariants")]

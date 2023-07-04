@@ -24,6 +24,7 @@ use base::Event;
 use base::EventToken;
 use base::SendTube;
 use base::Timer;
+use base::TimerTrait;
 use base::VmEventType;
 use base::WaitContext;
 use base::WorkerThread;

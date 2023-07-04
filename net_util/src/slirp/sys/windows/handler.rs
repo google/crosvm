@@ -25,6 +25,7 @@ use base::EventExt;
 use base::EventToken;
 use base::RawDescriptor;
 use base::Timer;
+use base::TimerTrait;
 use base::WaitContext;
 use base::WaitContextExt;
 use metrics::MetricEventType;

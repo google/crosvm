@@ -175,7 +175,7 @@ impl<V: VcpuX86_64 + 'static> UserspaceIrqChip<V> {
             timer_descriptors.push(Descriptor(timer.as_raw_descriptor()));
 
             let id: u8 = id.try_into().or(Err(Error::new(libc::EINVAL)))?;
-            let apic = Apic::new(id, timer);
+            let apic = Apic::new(id, Box::new(timer));
             apics.push(Arc::new(Mutex::new(apic)));
         }
         let dropper = Dropper {

@@ -2,10 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use base::TimerTrait;
+
 use crate::AsyncResult;
+use crate::IntoAsync;
 use crate::TimerAsync;
 
-impl TimerAsync {
+impl<T: TimerTrait + IntoAsync> TimerAsync<T> {
     pub async fn wait_sys(&self) -> AsyncResult<()> {
         self.io_source.wait_for_handle().await
     }

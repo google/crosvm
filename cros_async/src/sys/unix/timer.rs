@@ -2,11 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use base::TimerTrait;
+
 use crate::AsyncError;
 use crate::AsyncResult;
+use crate::IntoAsync;
 use crate::TimerAsync;
 
-impl TimerAsync {
+impl<T: TimerTrait + IntoAsync> TimerAsync<T> {
     pub async fn wait_sys(&self) -> AsyncResult<()> {
         let (n, _) = self
             .io_source
@@ -34,11 +37,11 @@ mod tests {
     use crate::Executor;
     use std::sync::Arc;
 
-    impl TimerAsync {
+    impl TimerAsync<Timer> {
         pub(crate) fn new_poll(
             timer: Timer,
             ex: &Arc<RawExecutor<EpollReactor>>,
-        ) -> AsyncResult<TimerAsync> {
+        ) -> AsyncResult<TimerAsync<Timer>> {
             ex.new_source(timer)
                 .map(|io_source| TimerAsync { io_source })
         }
@@ -46,7 +49,7 @@ mod tests {
         pub(crate) fn new_uring(
             timer: Timer,
             ex: &Arc<RawExecutor<UringReactor>>,
-        ) -> AsyncResult<TimerAsync> {
+        ) -> AsyncResult<TimerAsync<Timer>> {
             ex.new_source(timer)
                 .map(|io_source| TimerAsync { io_source })
         }

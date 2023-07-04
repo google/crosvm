@@ -12,6 +12,7 @@ use std::time::Instant;
 use anyhow::Context;
 use base::error;
 use base::warn;
+use base::Descriptor;
 use base::Error as SysError;
 use base::EventToken;
 use base::WaitContext;
@@ -34,6 +35,7 @@ cfg_if::cfg_if! {
         use base::Timer;
     }
 }
+use base::TimerTrait;
 
 use base::WorkerThread;
 
@@ -293,8 +295,9 @@ impl Pit {
     fn start(&mut self) -> PitResult<()> {
         let pit_counter = self.counters[0].clone();
         self.worker_thread = Some(WorkerThread::start("pit counter worker", move |kill_evt| {
+            let timer_descriptor = Descriptor(pit_counter.lock().timer.as_raw_descriptor());
             let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
-                (&pit_counter.lock().timer, Token::TimerExpire),
+                (&timer_descriptor, Token::TimerExpire),
                 (&kill_evt, Token::Kill),
             ])
             .map_err(PitError::CreateWaitContext)?;
@@ -419,7 +422,7 @@ struct PitCounter {
     // Indicates whether the current timer is valid.
     timer_valid: bool,
     // Timer to set and receive periodic notifications.
-    timer: Timer,
+    timer: Box<dyn TimerTrait>,
 }
 
 impl Drop for PitCounter {
@@ -474,7 +477,7 @@ impl PitCounter {
             // initialize it to max to prevent a misbehaving guest from triggering a divide by 0.
             count: MAX_TIMER_FREQ,
             timer_valid: false,
-            timer,
+            timer: Box::new(timer),
         })
     }
 

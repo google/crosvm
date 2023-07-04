@@ -15,6 +15,7 @@ use base::EventToken;
 use base::FileSync;
 use base::RawDescriptor;
 use base::Result;
+use base::TimerTrait;
 use base::WaitContext;
 use hypervisor::ProtectionType;
 

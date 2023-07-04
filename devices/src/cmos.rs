@@ -15,6 +15,7 @@ use base::info;
 use base::Event;
 use base::EventToken;
 use base::Timer;
+use base::TimerTrait;
 use base::Tube;
 use base::WaitContext;
 use base::WorkerThread;

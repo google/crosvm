@@ -18,6 +18,32 @@ use crate::descriptor::FromRawDescriptor;
 use crate::descriptor::IntoRawDescriptor;
 use crate::descriptor::SafeDescriptor;
 
+/// A trait for timer objects that delivers timer expiration
+/// notifications to an underlying descriptor.
+pub trait TimerTrait: AsRawDescriptor + IntoRawDescriptor + Send {
+    /// Sets the timer to expire after `dur`.  If `interval` is not `None` and non-zero it
+    /// represents the period for repeated expirations after the initial expiration.  Otherwise
+    /// the timer will expire just once.  Cancels any existing duration and repeating interval.
+    fn reset(&mut self, dur: Duration, interval: Option<Duration>) -> Result<()>;
+
+    /// Waits until the timer expires.
+    fn wait(&mut self) -> Result<()>;
+
+    /// After a timer is triggered from an EventContext, mark the timer as having been waited for.
+    /// If a timer is not marked waited, it will immediately trigger the event context again. This
+    /// does not need to be called after calling Timer::wait.
+    ///
+    /// Returns true if the timer has been adjusted since the EventContext was triggered by this
+    /// timer.
+    fn mark_waited(&mut self) -> Result<bool>;
+
+    /// Disarms the timer.
+    fn clear(&mut self) -> Result<()>;
+
+    /// Returns the resolution of timers on the host.
+    fn resolution(&self) -> Result<Duration>;
+}
+
 pub struct Timer {
     pub(crate) handle: SafeDescriptor,
     pub(crate) interval: Option<Duration>,
@@ -88,18 +114,6 @@ impl FakeTimer {
         }
     }
 
-    /// Sets the timer to expire after `dur`.  If `interval` is not `None` and non-zero it
-    /// represents the period for repeated expirations after the initial expiration.  Otherwise
-    /// the timer will expire just once.  Cancels any existing duration and repeating interval.
-    pub fn reset(&mut self, dur: Duration, interval: Option<Duration>) -> Result<()> {
-        let mut guard = self.clock.lock();
-        let deadline = guard.nanos() + dur.as_nanos() as u64;
-        self.deadline_ns = Some(deadline);
-        self.interval = interval;
-        guard.add_event(deadline, self.event.try_clone()?);
-        Ok(())
-    }
-
     /// Waits until the timer expires or an optional wait timeout expires, whichever happens first.
     ///
     /// # Returns
@@ -141,19 +155,23 @@ impl FakeTimer {
             }
         }
     }
+}
 
-    /// Waits until the timer expires.
-    pub fn wait(&mut self) -> Result<()> {
+impl TimerTrait for FakeTimer {
+    fn reset(&mut self, dur: Duration, interval: Option<Duration>) -> Result<()> {
+        let mut guard = self.clock.lock();
+        let deadline = guard.nanos() + dur.as_nanos() as u64;
+        self.deadline_ns = Some(deadline);
+        self.interval = interval;
+        guard.add_event(deadline, self.event.try_clone()?);
+        Ok(())
+    }
+
+    fn wait(&mut self) -> Result<()> {
         self.wait_for(None).map(|_| ())
     }
 
-    /// After a timer is triggered from an EventContext, mark the timer as having been waited for.
-    /// If a timer is not marked waited, it will immediately trigger the event context again. This
-    /// does not need to be called after calling Timer::wait.
-    ///
-    /// Returns true if the timer has been adjusted since the EventContext was triggered by this
-    /// timer.
-    pub fn mark_waited(&mut self) -> Result<bool> {
+    fn mark_waited(&mut self) -> Result<bool> {
         // Just do a self.wait with a timeout of 0. If it times out then the timer has been
         // adjusted.
         if let WaitResult::Timeout = self.wait_for(Some(Duration::from_secs(0)))? {
@@ -163,15 +181,13 @@ impl FakeTimer {
         }
     }
 
-    /// Disarms the timer.
-    pub fn clear(&mut self) -> Result<()> {
+    fn clear(&mut self) -> Result<()> {
         self.deadline_ns = None;
         self.interval = None;
         Ok(())
     }
 
-    /// Returns the resolution of timers on the host.
-    pub fn resolution() -> Result<Duration> {
+    fn resolution(&self) -> Result<Duration> {
         Ok(Duration::from_nanos(1))
     }
 }
@@ -197,7 +213,9 @@ mod tests {
     // clock error is 2*clock_resolution + 100 microseconds to handle
     // time change from calling now() to arming timer
     fn get_clock_error() -> Duration {
-        Timer::resolution()
+        Timer::new()
+            .unwrap()
+            .resolution()
             .expect("expected to be able to read timer resolution")
             .checked_mul(2)
             .expect("timer resolution x 2 should not overflow")
@@ -261,7 +279,9 @@ mod tests {
         let dur = Duration::from_millis(200);
         // clock error is 2*clock_resolution + 100 microseconds to handle
         // time change from calling now() to arming timer
-        let clock_error = Timer::resolution()
+        let clock_error = Timer::new()
+            .unwrap()
+            .resolution()
             .expect("expected to be able to read timer resolution")
             .checked_mul(2)
             .expect("timer resolution x 2 should not overflow")
