@@ -1897,7 +1897,7 @@ pub struct RunCommand {
 
     #[argh(
         option,
-        arg_name = "type=TYPE,[hardware=HW,num=NUM,path=PATH,input=PATH,console,earlycon,stdin]",
+        arg_name = "type=TYPE,[hardware=HW,name=NAME,num=NUM,path=PATH,input=PATH,console,earlycon,stdin]",
         from_str_fn(parse_serial_options)
     )]
     #[serde(default)]
@@ -1910,6 +1910,8 @@ pub struct RunCommand {
     ///     hardware=(serial,virtio-console,debugcon,legacy-virtio-console) - Which type
     ///        of serial hardware to emulate. Defaults to 8250 UART
     ///        (serial).
+    ///     name=NAME - Console Port Name, used for virtio-console
+    ///        as a tag for identification within the guest.
     ///     num=(1,2,3,4) - Serial Device Number. If not provided,
     ///        num will default to 1.
     ///     debugcon_port=PORT - Port for the debugcon device to

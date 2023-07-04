@@ -143,6 +143,7 @@ pub struct SerialParameters {
     #[serde(rename = "type")]
     pub type_: SerialType,
     pub hardware: SerialHardware,
+    pub name: Option<String>,
     pub path: Option<PathBuf>,
     pub input: Option<PathBuf>,
     #[serde(default = "serial_parameters_default_num")]
@@ -260,6 +261,7 @@ mod tests {
             SerialParameters {
                 type_: SerialType::Sink,
                 hardware: SerialHardware::Serial,
+                name: None,
                 path: None,
                 input: None,
                 num: 1,
@@ -368,6 +370,7 @@ mod tests {
             SerialParameters {
                 type_: SerialType::Stdout,
                 hardware: SerialHardware::VirtioConsole,
+                name: None,
                 path: Some("/some/path".into()),
                 input: Some("/some/input".into()),
                 num: 5,

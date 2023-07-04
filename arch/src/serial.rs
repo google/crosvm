@@ -47,6 +47,7 @@ pub fn set_default_serial_parameters(
             .or_insert(SerialParameters {
                 type_: SerialType::Stdout,
                 hardware: SerialHardware::Serial,
+                name: None,
                 path: None,
                 input: None,
                 num: 1,
@@ -66,6 +67,7 @@ pub fn set_default_serial_parameters(
         serial_parameters.entry(key).or_insert(SerialParameters {
             type_: SerialType::Sink,
             hardware: SerialHardware::Serial,
+            name: None,
             path: None,
             input: None,
             num,
@@ -252,6 +254,7 @@ mod tests {
             SerialParameters {
                 type_: SerialType::Stdout,
                 hardware: SerialHardware::VirtioConsole,
+                name: None,
                 path: None,
                 input: None,
                 num: 1,
@@ -282,6 +285,7 @@ mod tests {
             SerialParameters {
                 type_: SerialType::Stdout,
                 hardware: SerialHardware::VirtioConsole,
+                name: None,
                 path: None,
                 input: None,
                 num: 1,
@@ -299,6 +303,7 @@ mod tests {
             SerialParameters {
                 type_: SerialType::Stdout,
                 hardware: SerialHardware::Serial,
+                name: None,
                 path: None,
                 input: None,
                 num: 1,
@@ -330,6 +335,7 @@ mod tests {
             SerialParameters {
                 type_: SerialType::Stdout,
                 hardware: SerialHardware::VirtioConsole,
+                name: None,
                 path: None,
                 input: None,
                 num: 1,
