@@ -18,6 +18,7 @@ use std::time::Duration;
 use std::u32;
 
 use anyhow::Context;
+use base::debug;
 use base::error;
 use base::info;
 use base::warn;
@@ -150,6 +151,11 @@ pub enum ExecuteError {
     WriteStatus(io::Error),
 }
 
+enum LogLevel {
+    Debug,
+    Error,
+}
+
 impl ExecuteError {
     fn status(&self) -> u8 {
         match self {
@@ -167,6 +173,21 @@ impl ExecuteError {
             ExecuteError::WriteIo { .. } => VIRTIO_BLK_S_IOERR,
             ExecuteError::WriteStatus(_) => VIRTIO_BLK_S_IOERR,
             ExecuteError::Unsupported(_) => VIRTIO_BLK_S_UNSUPP,
+        }
+    }
+
+    fn log_level(&self) -> LogLevel {
+        match self {
+            // Since there is no feature bit for the guest to detect support for
+            // VIRTIO_BLK_T_GET_ID, the driver has to try executing the request to see if it works.
+            ExecuteError::Unsupported(VIRTIO_BLK_T_GET_ID) => LogLevel::Debug,
+            // Log disk I/O errors at debug level to avoid flooding the logs.
+            ExecuteError::ReadIo { .. }
+            | ExecuteError::WriteIo { .. }
+            | ExecuteError::Flush { .. }
+            | ExecuteError::DiscardWriteZeroes { .. } => LogLevel::Debug,
+            // Log all other failures as errors.
+            _ => LogLevel::Error,
         }
     }
 }
@@ -262,8 +283,9 @@ async fn process_one_request(
     {
         Ok(()) => VIRTIO_BLK_S_OK,
         Err(e) => {
-            if !matches!(e, ExecuteError::Unsupported(VIRTIO_BLK_T_GET_ID)) {
-                error!("failed executing disk request: {}", e);
+            match e.log_level() {
+                LogLevel::Debug => debug!("failed executing disk request: {}", e),
+                LogLevel::Error => error!("failed executing disk request: {}", e),
             }
             e.status()
         }
