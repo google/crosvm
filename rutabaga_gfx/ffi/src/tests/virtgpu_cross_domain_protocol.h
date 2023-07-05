@@ -51,64 +51,64 @@
 #define CROSS_DOMAIN_PIPE_READ_START 0x80000000
 
 struct CrossDomainCapabilities {
-	uint32_t version;
-	uint32_t supported_channels;
-	uint32_t supports_dmabuf;
-	uint32_t supports_external_gpu_memory;
+    uint32_t version;
+    uint32_t supported_channels;
+    uint32_t supports_dmabuf;
+    uint32_t supports_external_gpu_memory;
 };
 
 struct CrossDomainImageRequirements {
-	uint32_t strides[4];
-	uint32_t offsets[4];
-	uint64_t modifier;
-	uint64_t size;
-	uint32_t blob_id;
-	uint32_t map_info;
-	int32_t memory_idx;
-	int32_t physical_device_idx;
+    uint32_t strides[4];
+    uint32_t offsets[4];
+    uint64_t modifier;
+    uint64_t size;
+    uint32_t blob_id;
+    uint32_t map_info;
+    int32_t memory_idx;
+    int32_t physical_device_idx;
 };
 
 struct CrossDomainHeader {
-	uint8_t cmd;
-	uint8_t fence_ctx_idx;
-	uint16_t cmd_size;
-	uint32_t pad;
+    uint8_t cmd;
+    uint8_t fence_ctx_idx;
+    uint16_t cmd_size;
+    uint32_t pad;
 };
 
 struct CrossDomainInit {
-	struct CrossDomainHeader hdr;
-	uint32_t ring_id;
-	uint32_t channel_type;
+    struct CrossDomainHeader hdr;
+    uint32_t ring_id;
+    uint32_t channel_type;
 };
 
 struct CrossDomainGetImageRequirements {
-	struct CrossDomainHeader hdr;
-	uint32_t width;
-	uint32_t height;
-	uint32_t drm_format;
-	uint32_t flags;
+    struct CrossDomainHeader hdr;
+    uint32_t width;
+    uint32_t height;
+    uint32_t drm_format;
+    uint32_t flags;
 };
 
 struct CrossDomainPoll {
-	struct CrossDomainHeader hdr;
-	uint64_t pad;
+    struct CrossDomainHeader hdr;
+    uint64_t pad;
 };
 
 struct CrossDomainSendReceive {
-	struct CrossDomainHeader hdr;
-	uint32_t num_identifiers;
-	uint32_t opaque_data_size;
-	uint32_t identifiers[CROSS_DOMAIN_MAX_IDENTIFIERS];
-	uint32_t identifier_types[CROSS_DOMAIN_MAX_IDENTIFIERS];
-	uint32_t identifier_sizes[CROSS_DOMAIN_MAX_IDENTIFIERS];
+    struct CrossDomainHeader hdr;
+    uint32_t num_identifiers;
+    uint32_t opaque_data_size;
+    uint32_t identifiers[CROSS_DOMAIN_MAX_IDENTIFIERS];
+    uint32_t identifier_types[CROSS_DOMAIN_MAX_IDENTIFIERS];
+    uint32_t identifier_sizes[CROSS_DOMAIN_MAX_IDENTIFIERS];
 };
 
 struct CrossDomainReadWrite {
-	struct CrossDomainHeader hdr;
-	uint32_t identifier;
-	uint32_t hang_up;
-	uint32_t opaque_data_size;
-	uint32_t pad;
+    struct CrossDomainHeader hdr;
+    uint32_t identifier;
+    uint32_t hang_up;
+    uint32_t opaque_data_size;
+    uint32_t pad;
 };
 
 #endif
