@@ -124,7 +124,7 @@ impl VfioPmCap {
         VfioPmCap {
             offset: cap_start,
             capabilities,
-            config: PmConfig::new(),
+            config: PmConfig::new(false),
         }
     }
 

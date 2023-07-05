@@ -17,7 +17,7 @@ mod pci_hotplug;
 mod pci_root;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 mod pcie;
-mod pm;
+pub mod pm;
 mod pvpanic;
 mod stub;
 #[cfg(any(target_os = "android", target_os = "linux"))]

@@ -111,6 +111,8 @@ pub struct NetResourceCarrier {
     pub pci_address: Option<PciAddress>,
     /// intx_parameter for assign_irq
     pub intx_parameter: Option<IntxParameter>,
+    /// vm_control_tube for VirtioPciDevice constructor
+    pub vm_control_tube: Tube,
 }
 
 impl NetResourceCarrier {
@@ -119,6 +121,7 @@ impl NetResourceCarrier {
         net_param: NetParameters,
         msi_device_tube: Tube,
         ioevent_vm_memory_client: VmMemoryClient,
+        vm_control_tube: Tube,
     ) -> Self {
         Self {
             net_param,
@@ -126,6 +129,7 @@ impl NetResourceCarrier {
             ioevent_vm_memory_client,
             pci_address: None,
             intx_parameter: None,
+            vm_control_tube,
         }
     }
 

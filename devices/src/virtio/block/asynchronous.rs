@@ -1205,8 +1205,6 @@ mod tests {
     use crate::virtio::descriptor_utils::create_descriptor_chain;
     use crate::virtio::descriptor_utils::DescriptorType;
     use crate::virtio::QueueConfig;
-    use crate::virtio::VIRTIO_MSI_NO_VECTOR;
-    use crate::IrqLevelEvent;
 
     #[test]
     fn read_size() {
@@ -1603,7 +1601,7 @@ mod tests {
 
         b.activate(
             mem.clone(),
-            Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
+            Interrupt::new_for_test(),
             BTreeMap::from([(0, q0), (1, q1)]),
         )
         .expect("activate should succeed");
@@ -1644,7 +1642,7 @@ mod tests {
 
         b.activate(
             mem,
-            Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
+            Interrupt::new_for_test(),
             BTreeMap::from([(0, q0), (1, q1)]),
         )
         .expect("re-activate should succeed");
@@ -1714,7 +1712,7 @@ mod tests {
             .activate(&mem, Event::new().unwrap())
             .expect("QueueConfig::activate");
 
-        let interrupt = Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR);
+        let interrupt = Interrupt::new_for_test();
         b.activate(mem, interrupt.clone(), BTreeMap::from([(0, q0), (1, q1)]))
             .expect("activate should succeed");
 
@@ -1819,7 +1817,7 @@ mod tests {
 
         b.activate(
             mem.clone(),
-            Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
+            Interrupt::new_for_test(),
             BTreeMap::from([(0, q0), (1, q1)]),
         )
         .expect("activate should succeed");
@@ -1852,7 +1850,7 @@ mod tests {
 
         b.activate(
             mem,
-            Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
+            Interrupt::new_for_test(),
             BTreeMap::from([(0, q0), (1, q1)]),
         )
         .expect("activate should succeed");

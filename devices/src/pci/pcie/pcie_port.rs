@@ -24,7 +24,7 @@ use crate::pci::pcie::*;
 use crate::pci::pm::PciDevicePower;
 use crate::pci::pm::PciPmCap;
 use crate::pci::pm::PmConfig;
-use crate::pci::pm::PmStatusChanged;
+use crate::pci::pm::PmStatusChange;
 use crate::pci::MsiConfig;
 use crate::pci::PciAddress;
 use crate::pci::PciDeviceError;
@@ -159,7 +159,7 @@ impl PciePort {
                 slot_implemented,
                 port_type,
             ))),
-            pm_config: Arc::new(Mutex::new(PmConfig::new())),
+            pm_config: Arc::new(Mutex::new(PmConfig::new(false))),
 
             root_cap,
             port_type,
@@ -200,7 +200,7 @@ impl PciePort {
                 slot_implemented,
                 port_type,
             ))),
-            pm_config: Arc::new(Mutex::new(PmConfig::new())),
+            pm_config: Arc::new(Mutex::new(PmConfig::new(false))),
 
             root_cap,
             port_type,
@@ -272,7 +272,7 @@ impl PciePort {
     }
 
     pub fn handle_cap_write_result(&mut self, res: Box<dyn PciCapConfigWriteResult>) {
-        if let Some(status) = res.downcast_ref::<PmStatusChanged>() {
+        if let Some(status) = res.downcast_ref::<PmStatusChange>() {
             if status.from == PciDevicePower::D3
                 && status.to == PciDevicePower::D0
                 && self.prepare_hotplug

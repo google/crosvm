@@ -22,6 +22,7 @@ const PM_CAP_PME_SUPPORT_D3_COLD: u16 = 0x8000;
 const PM_CAP_VERSION: u16 = 0x2;
 const PM_PME_STATUS: u16 = 0x8000;
 const PM_PME_ENABLE: u16 = 0x100;
+const PM_NO_SOFT_RESET: u16 = 0x8;
 const PM_POWER_STATE_MASK: u16 = 0x3;
 const PM_POWER_STATE_D0: u16 = 0;
 const PM_POWER_STATE_D3: u16 = 0x3;
@@ -81,9 +82,9 @@ pub struct PmConfig {
 }
 
 impl PmConfig {
-    pub fn new() -> Self {
+    pub fn new(no_soft_reset: bool) -> Self {
         PmConfig {
-            power_control_status: 0,
+            power_control_status: if no_soft_reset { PM_NO_SOFT_RESET } else { 0 },
             cap_mapping: None,
         }
     }
@@ -154,12 +155,12 @@ impl PmConfig {
     }
 }
 
-pub struct PmStatusChanged {
+pub struct PmStatusChange {
     pub from: PciDevicePower,
     pub to: PciDevicePower,
 }
 
-impl PciCapConfigWriteResult for PmStatusChanged {}
+impl PciCapConfigWriteResult for PmStatusChange {}
 
 const PM_CONFIG_READ_MASK: [u32; 2] = [0, 0xffff];
 
@@ -187,7 +188,7 @@ impl PciCapConfig for PmConfig {
             self.write(offset, data);
             let to = self.get_power_status();
             if from != to {
-                return Some(Box::new(PmStatusChanged { from, to }));
+                return Some(Box::new(PmStatusChange { from, to }));
             }
         }
         None

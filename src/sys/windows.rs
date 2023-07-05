@@ -838,6 +838,12 @@ fn create_devices(
             Tube::pair().context("failed to create ioevent tube")?;
         vm_memory_control_tubes.push(ioevent_host_tube);
 
+        let (vm_control_host_tube, vm_control_device_tube) =
+            Tube::pair().context("failed to create vm_control tube")?;
+        control_tubes.push(TaggedControlTube::Vm(FlushOnDropTube::from(
+            vm_control_host_tube,
+        )));
+
         let dev = Box::new(
             VirtioPciDevice::new(
                 mem.clone(),
@@ -846,6 +852,7 @@ fn create_devices(
                 cfg.disable_virtio_intx,
                 shared_memory_tube.map(VmMemoryClient::new),
                 VmMemoryClient::new(ioevent_device_tube),
+                vm_control_device_tube,
             )
             .exit_context(Exit::VirtioPciDev, "failed to create virtio pci dev")?,
         ) as Box<dyn BusDeviceObj>;

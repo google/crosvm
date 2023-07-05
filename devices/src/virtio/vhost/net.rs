@@ -338,8 +338,6 @@ pub mod tests {
     use super::*;
     use crate::virtio::base_features;
     use crate::virtio::QueueConfig;
-    use crate::virtio::VIRTIO_MSI_NO_VECTOR;
-    use crate::IrqLevelEvent;
 
     fn create_guest_memory() -> result::Result<GuestMemory, GuestMemoryError> {
         let start_addr1 = GuestAddress(0x0);
@@ -426,7 +424,7 @@ pub mod tests {
         // Just testing that we don't panic, for now
         let _ = net.activate(
             guest_memory,
-            Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
+            Interrupt::new_for_test(),
             BTreeMap::from([(0, q0), (1, q1)]),
         );
     }

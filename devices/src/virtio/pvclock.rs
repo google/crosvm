@@ -821,13 +821,11 @@ impl VirtioDevice for PvClock {
 mod tests {
     use super::*;
     use crate::virtio::QueueConfig;
-    use crate::virtio::VIRTIO_MSI_NO_VECTOR;
-    use crate::IrqLevelEvent;
 
     const TEST_QUEUE_SIZE: u16 = 2048;
 
     fn make_interrupt() -> Interrupt {
-        Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR)
+        Interrupt::new_for_test()
     }
 
     fn create_sleeping_device() -> (PvClock, GuestMemory, Tube) {

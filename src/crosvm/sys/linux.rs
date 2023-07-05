@@ -789,6 +789,10 @@ fn create_devices(
                     expose_with_viommu: false,
                 });
 
+                let (host_tube, device_tube) =
+                    Tube::pair().context("failed to create device control tube")?;
+                control_tubes.push(TaggedControlTube::Vm(host_tube));
+
                 let dev = VirtioPciDevice::new(
                     vm.get_memory().clone(),
                     stub.dev,
@@ -796,6 +800,7 @@ fn create_devices(
                     cfg.disable_virtio_intx,
                     shared_memory_tube.map(VmMemoryClient::new),
                     VmMemoryClient::new(ioevent_device_tube),
+                    device_tube,
                 )
                 .context("failed to create virtio pci dev")?;
 
@@ -1843,6 +1848,9 @@ where
             tube: ioevent_host_tube,
             expose_with_viommu: false,
         });
+        let (host_tube, device_tube) =
+            Tube::pair().context("failed to create device control tube")?;
+        control_tubes.push(TaggedControlTube::Vm(host_tube));
         let mut dev = VirtioPciDevice::new(
             vm.get_memory().clone(),
             iommu_dev.dev,
@@ -1850,6 +1858,7 @@ where
             cfg.disable_virtio_intx,
             None,
             VmMemoryClient::new(ioevent_device_tube),
+            device_tube,
         )
         .context("failed to create virtio pci dev")?;
         // early reservation for viommu.
@@ -2234,6 +2243,7 @@ fn add_hotplug_net<V: VmArch, Vcpu: VcpuArch>(
     sys_allocator: &mut SystemAllocator,
     irq_control_tubes: &mut Vec<Tube>,
     vm_memory_control_tubes: &mut Vec<VmMemoryTube>,
+    vm_control_tubes: &mut Vec<TaggedControlTube>,
     hotplug_manager: &mut PciHotPlugManager,
     net_param: NetParameters,
 ) -> Result<u8> {
@@ -2245,8 +2255,14 @@ fn add_hotplug_net<V: VmArch, Vcpu: VcpuArch>(
         tube: ioevent_host_tube,
         expose_with_viommu: false,
     });
-    let net_carrier_device =
-        NetResourceCarrier::new(net_param, msi_device_tube, ioevent_vm_memory_client);
+    let (vm_control_host_tube, vm_control_device_tube) = Tube::pair().context("create tube")?;
+    vm_control_tubes.push(TaggedControlTube::Vm(vm_control_host_tube));
+    let net_carrier_device = NetResourceCarrier::new(
+        net_param,
+        msi_device_tube,
+        ioevent_vm_memory_client,
+        vm_control_device_tube,
+    );
     hotplug_manager.hotplug_device(
         vec![ResourceCarrier::VirtioNet(net_carrier_device)],
         linux,
@@ -2261,6 +2277,7 @@ fn handle_hotplug_net_command<V: VmArch, Vcpu: VcpuArch>(
     sys_allocator: &mut SystemAllocator,
     irq_control_tubes: &mut Vec<Tube>,
     vm_memory_control_tubes: &mut Vec<VmMemoryTube>,
+    vm_control_tubes: &mut Vec<TaggedControlTube>,
     hotplug_manager: &mut PciHotPlugManager,
 ) -> VmResponse {
     match net_cmd {
@@ -2269,6 +2286,7 @@ fn handle_hotplug_net_command<V: VmArch, Vcpu: VcpuArch>(
             sys_allocator,
             irq_control_tubes,
             vm_memory_control_tubes,
+            vm_control_tubes,
             hotplug_manager,
             &tap_name,
         ),
@@ -2284,6 +2302,7 @@ fn handle_hotplug_net_add<V: VmArch, Vcpu: VcpuArch>(
     sys_allocator: &mut SystemAllocator,
     irq_control_tubes: &mut Vec<Tube>,
     vm_memory_control_tubes: &mut Vec<VmMemoryTube>,
+    vm_control_tubes: &mut Vec<TaggedControlTube>,
     hotplug_manager: &mut PciHotPlugManager,
     tap_name: &str,
 ) -> VmResponse {
@@ -2302,6 +2321,7 @@ fn handle_hotplug_net_add<V: VmArch, Vcpu: VcpuArch>(
         sys_allocator,
         irq_control_tubes,
         vm_memory_control_tubes,
+        vm_control_tubes,
         hotplug_manager,
         net_param,
     );
@@ -3228,6 +3248,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                     &mut sys_allocator_mutex.lock(),
                                                     &mut add_irq_control_tubes,
                                                     &mut add_vm_memory_control_tubes,
+                                                    &mut add_tubes,
                                                     hotplug_manager,
                                                 )
                                             } else {

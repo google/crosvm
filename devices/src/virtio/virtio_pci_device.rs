@@ -46,6 +46,13 @@ use zerocopy::FromZeroes;
 
 use self::virtio_pci_common_config::VirtioPciCommonConfig;
 use super::*;
+#[cfg(target_arch = "x86_64")]
+use crate::acpi::PmWakeupEvent;
+#[cfg(target_arch = "x86_64")]
+use crate::pci::pm::PciDevicePower;
+use crate::pci::pm::PciPmCap;
+use crate::pci::pm::PmConfig;
+use crate::pci::pm::PmStatusChange;
 use crate::pci::BarRange;
 use crate::pci::MsixCap;
 use crate::pci::MsixConfig;
@@ -295,6 +302,7 @@ pub struct VirtioPciDevice {
     mem: GuestMemory,
     settings_bar: PciBarIndex,
     msix_config: Arc<Mutex<MsixConfig>>,
+    pm_config: Arc<Mutex<PmConfig>>,
     common_config: VirtioPciCommonConfig,
 
     iommu: Option<Arc<Mutex<IpcMemoryMapper>>>,
@@ -308,6 +316,8 @@ pub struct VirtioPciDevice {
 
     // State only present while asleep.
     sleep_state: Option<SleepState>,
+
+    vm_control_tube: Arc<Mutex<Tube>>,
 }
 
 enum SleepState {
@@ -345,6 +355,7 @@ impl VirtioPciDevice {
         disable_intx: bool,
         shared_memory_vm_memory_client: Option<VmMemoryClient>,
         ioevent_vm_memory_client: VmMemoryClient,
+        vm_control_tube: Tube,
     ) -> Result<Self> {
         // shared_memory_vm_memory_client is required if there are shared memory regions.
         assert_eq!(
@@ -419,6 +430,7 @@ impl VirtioPciDevice {
             mem,
             settings_bar: 0,
             msix_config,
+            pm_config: Arc::new(Mutex::new(PmConfig::new(true))),
             common_config: VirtioPciCommonConfig {
                 driver_status: 0,
                 config_generation: 0,
@@ -431,6 +443,7 @@ impl VirtioPciDevice {
             shared_memory_vm_memory_client,
             ioevent_vm_memory_client,
             sleep_state: None,
+            vm_control_tube: Arc::new(Mutex::new(vm_control_tube)),
         })
     }
 
@@ -512,6 +525,10 @@ impl VirtioPciDevice {
             .add_capability(&msix_cap, Some(Box::new(self.msix_config.clone())))
             .map_err(PciDeviceError::CapabilitiesSetup)?;
 
+        self.config_regs
+            .add_capability(&PciPmCap::new(), Some(Box::new(self.pm_config.clone())))
+            .map_err(PciDeviceError::CapabilitiesSetup)?;
+
         self.settings_bar = settings_bar as PciBarIndex;
         Ok(())
     }
@@ -526,6 +543,12 @@ impl VirtioPciDevice {
                 .with_context(|| format!("{} failed to clone interrupt_evt", self.debug_label()))?,
             Some(self.msix_config.clone()),
             self.common_config.msix_config,
+            #[cfg(target_arch = "x86_64")]
+            Some(PmWakeupEvent::new(
+                self.vm_control_tube.clone(),
+                self.pm_config.clone(),
+                self.device.debug_label(),
+            )),
         );
         self.interrupt = Some(interrupt.clone());
 
@@ -596,6 +619,16 @@ impl VirtioPciDevice {
     pub fn pci_address(&self) -> Option<PciAddress> {
         self.pci_address
     }
+
+    #[cfg(target_arch = "x86_64")]
+    fn handle_pm_status_change(&mut self, status: &PmStatusChange) {
+        if let Some(interrupt) = self.interrupt.as_mut() {
+            interrupt.set_wakeup_event_active(status.to == PciDevicePower::D3)
+        }
+    }
+
+    #[cfg(not(target_arch = "x86_64"))]
+    fn handle_pm_status_change(&mut self, _status: &PmStatusChange) {}
 }
 
 impl PciDevice for VirtioPciDevice {
@@ -656,6 +689,7 @@ impl PciDevice for VirtioPciDevice {
             rds.append(&mut iommu.lock().as_raw_descriptors());
         }
         rds.push(self.ioevent_vm_memory_client.as_raw_descriptor());
+        rds.push(self.vm_control_tube.lock().as_raw_descriptor());
         rds
     }
 
@@ -745,6 +779,8 @@ impl PciDevice for VirtioPciDevice {
         if let Some(res) = self.config_regs.write_reg(reg_idx, offset, data) {
             if let Some(msix_behavior) = res.downcast_ref::<MsixStatus>() {
                 self.device.control_notify(*msix_behavior);
+            } else if let Some(status) = res.downcast_ref::<PmStatusChange>() {
+                self.handle_pm_status_change(status);
             }
         }
     }
@@ -1253,6 +1289,12 @@ impl Suspendable for VirtioPciDevice {
                 Some(self.msix_config.clone()),
                 self.common_config.msix_config,
                 deser_interrupt,
+                #[cfg(target_arch = "x86_64")]
+                Some(PmWakeupEvent::new(
+                    self.vm_control_tube.clone(),
+                    self.pm_config.clone(),
+                    self.device.debug_label(),
+                )),
             ));
         }
 

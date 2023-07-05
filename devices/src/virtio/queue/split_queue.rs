@@ -621,7 +621,13 @@ mod tests {
         let mem = GuestMemory::new(&[(memory_start_addr, GUEST_MEMORY_SIZE)]).unwrap();
         let mut queue = setup_vq(&mut queue, &mem);
 
-        let interrupt = Interrupt::new(IrqLevelEvent::new().unwrap(), None, 10);
+        let interrupt = Interrupt::new(
+            IrqLevelEvent::new().unwrap(),
+            None,
+            10,
+            #[cfg(target_arch = "x86_64")]
+            None,
+        );
 
         // Offset of used_event within Avail structure
         let used_event_offset = offset_of!(Avail, used_event) as u64;
@@ -691,7 +697,13 @@ mod tests {
         let mem = GuestMemory::new(&[(memory_start_addr, GUEST_MEMORY_SIZE)]).unwrap();
         let mut queue = setup_vq(&mut queue, &mem);
 
-        let interrupt = Interrupt::new(IrqLevelEvent::new().unwrap(), None, 10);
+        let interrupt = Interrupt::new(
+            IrqLevelEvent::new().unwrap(),
+            None,
+            10,
+            #[cfg(target_arch = "x86_64")]
+            None,
+        );
 
         // Offset of used_event within Avail structure
         let used_event_offset = offset_of!(Avail, used_event) as u64;

@@ -71,6 +71,7 @@ use base::TubeError;
 use chrono::Utc;
 pub use cpuid::adjust_cpuid;
 pub use cpuid::CpuIdContext;
+use devices::acpi::PM_WAKEUP_GPIO;
 use devices::Bus;
 use devices::BusDevice;
 use devices::BusDeviceObj;
@@ -2096,9 +2097,16 @@ impl X8664arch {
         let addresses = root_bus.lock().get_downstream_devices();
         for address in addresses {
             if let Some(acpi_path) = pci_root.lock().acpi_path(&address) {
+                const DEEPEST_SLEEP_STATE: u32 = 3;
                 aml::Device::new(
                     (*acpi_path).into(),
-                    vec![&aml::Name::new("_ADR".into(), &address.acpi_adr())],
+                    vec![
+                        &aml::Name::new("_ADR".into(), &address.acpi_adr()),
+                        &aml::Name::new(
+                            "_PRW".into(),
+                            &aml::Package::new(vec![&PM_WAKEUP_GPIO, &DEEPEST_SLEEP_STATE]),
+                        ),
+                    ],
                 )
                 .to_aml_bytes(&mut amls);
             }

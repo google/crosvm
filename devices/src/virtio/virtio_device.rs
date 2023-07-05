@@ -282,8 +282,6 @@ macro_rules! suspendable_virtio_tests {
     ($name:ident, $dev: expr, $num_queues:literal, $modfun:expr) => {
         mod $name {
             use $crate::virtio::QueueConfig;
-            use $crate::virtio::VIRTIO_MSI_NO_VECTOR;
-            use $crate::IrqLevelEvent;
 
             use super::*;
 
@@ -293,7 +291,7 @@ macro_rules! suspendable_virtio_tests {
             }
 
             fn interrupt() -> Interrupt {
-                Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR)
+                Interrupt::new_for_test()
             }
 
             fn create_queues(

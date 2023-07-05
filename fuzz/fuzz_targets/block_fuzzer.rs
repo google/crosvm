@@ -108,6 +108,8 @@ fuzz_target!(|bytes| {
                 IrqLevelEvent::new().unwrap(),
                 None,   // msix_config
                 0xFFFF, // VIRTIO_MSI_NO_VECTOR
+                #[cfg(target_arch = "x86_64")]
+                None,
             ),
             BTreeMap::from([(0, q)]),
         )

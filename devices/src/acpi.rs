@@ -4,10 +4,13 @@
 
 use std::collections::BTreeMap;
 use std::str::FromStr;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use acpi_tables::aml;
 use acpi_tables::aml::Aml;
+use anyhow::bail;
 use anyhow::Context;
 use base::custom_serde::serialize_arc_mutex;
 use base::error;
@@ -16,6 +19,7 @@ use base::Error as SysError;
 use base::Event;
 use base::EventToken;
 use base::SendTube;
+use base::Tube;
 use base::VmEventType;
 use base::WaitContext;
 use base::WorkerThread;
@@ -26,8 +30,11 @@ use thiserror::Error;
 use vm_control::GpeNotify;
 use vm_control::PmResource;
 use vm_control::PmeNotify;
+use vm_control::VmRequest;
+use vm_control::VmResponse;
 
 use crate::ac_adapter::AcAdapter;
+use crate::pci::pm::PmConfig;
 use crate::pci::CrosvmDeviceId;
 use crate::BusAccessInfo;
 use crate::BusDevice;
@@ -647,6 +654,47 @@ impl Aml for ACPIPMResource {
             &aml::Package::new(vec![&aml::ZERO, &aml::ZERO, &aml::ZERO, &aml::ZERO]),
         )
         .to_aml_bytes(bytes);
+    }
+}
+
+pub const PM_WAKEUP_GPIO: u32 = 0;
+
+pub struct PmWakeupEvent {
+    active: AtomicBool,
+    vm_control_tube: Arc<Mutex<Tube>>,
+    pm_config: Arc<Mutex<PmConfig>>,
+    debug_label: String,
+}
+
+impl PmWakeupEvent {
+    pub fn new(
+        vm_control_tube: Arc<Mutex<Tube>>,
+        pm_config: Arc<Mutex<PmConfig>>,
+        debug_label: String,
+    ) -> Self {
+        Self {
+            active: AtomicBool::new(false),
+            vm_control_tube,
+            pm_config,
+            debug_label,
+        }
+    }
+
+    pub fn trigger_wakeup(&self) -> anyhow::Result<()> {
+        if self.active.load(Ordering::SeqCst) && self.pm_config.lock().should_trigger_pme() {
+            let tube = self.vm_control_tube.lock();
+            tube.send(&VmRequest::Gpe(PM_WAKEUP_GPIO))
+                .with_context(|| format!("{} failed to send pme", self.debug_label))?;
+            match tube.recv::<VmResponse>() {
+                Ok(VmResponse::Ok) => (),
+                e => bail!("{} pme failure {:?}", self.debug_label, e),
+            }
+        }
+        Ok(())
+    }
+
+    pub fn set_active(&self, active: bool) {
+        self.active.store(active, Ordering::SeqCst)
     }
 }
 

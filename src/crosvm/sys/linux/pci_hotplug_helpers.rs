@@ -37,6 +37,7 @@ pub fn build_hotplug_net_device(
         true,
         None,
         net_carrier_device.ioevent_vm_memory_client,
+        net_carrier_device.vm_control_tube,
     )
     .context("create virtio PCI device")?;
     virtio_pci_device
