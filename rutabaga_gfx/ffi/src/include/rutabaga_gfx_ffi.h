@@ -9,11 +9,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#if defined(__WIN32__)
-struct iovec {
-    void *iov_base; /* Starting address */
-    size_t iov_len; /* Length in bytes */
-};
+#if defined(_WIN32)
+struct iovec;
 #else
 #include <sys/uio.h>
 #endif
