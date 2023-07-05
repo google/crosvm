@@ -4,6 +4,8 @@
 
 use std::time::Duration;
 
+#[cfg(feature = "arc_quota")]
+use serde::de::Error;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
@@ -48,6 +50,23 @@ fn deserialize_timeout<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Dur
     let secs = u64::deserialize(deserializer)?;
 
     Ok(Duration::from_secs(secs))
+}
+
+#[cfg(feature = "arc_quota")]
+fn deserialize_privileged_quota_uids<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<libc::uid_t>, D::Error> {
+    // space-separated list
+    let s: &str = serde::Deserialize::deserialize(deserializer)?;
+    s.split(" ")
+        .map(|s| {
+            s.parse::<libc::uid_t>().map_err(|e| {
+                <D as Deserializer>::Error::custom(format!(
+                    "failed to parse priviledged quota uid {s}: {e}"
+                ))
+            })
+        })
+        .collect()
 }
 
 /// Options that configure the behavior of the file system.
@@ -126,7 +145,7 @@ pub struct Config {
     // doesn't match the owner uid. In that case, all uids in this list are treated as if they have
     // CAP_FOWNER.
     #[cfg(feature = "arc_quota")]
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_privileged_quota_uids")]
     pub privileged_quota_uids: Vec<libc::uid_t>,
 
     /// Use DAX for shared files.

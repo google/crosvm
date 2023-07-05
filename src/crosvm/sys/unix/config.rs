@@ -796,6 +796,24 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "arc_quota")]
+    fn parse_shared_dir_arcvm_data() {
+        // Test an actual ARCVM argument for /data/, where the path is replaced with `/`.
+        let arcvm_arg = "/:_data:type=fs:cache=always:uidmap=0 655360 5000,5000 600 50,5050 660410 1994950:gidmap=0 655360 1065,1065 20119 1,1066 656426 3934,5000 600 50,5050 660410 1994950:timeout=3600:rewrite-security-xattrs=true:writeback=true:privileged_quota_uids=0";
+        assert_eq!(
+            arcvm_arg.parse::<SharedDir>().unwrap().fs_cfg,
+            devices::virtio::fs::Config {
+                cache_policy: CachePolicy::Always,
+                timeout: Duration::from_secs(3600),
+                rewrite_security_xattrs: true,
+                writeback: true,
+                privileged_quota_uids: vec![0],
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
     fn parse_shared_dir_ugid_set() {
         let shared_dir: SharedDir =
             "/:hostRoot:type=fs:uidmap=40417 40417 1:gidmap=5000 5000 1:uid=40417:gid=5000"
@@ -855,5 +873,26 @@ mod tests {
 
         // we don't accept unknown policy
         assert!("/:_data:type=fs:cache=foobar".parse::<SharedDir>().is_err());
+    }
+
+    #[cfg(feature = "arc_quota")]
+    #[test]
+    fn parse_privileged_quota_uids() {
+        assert_eq!(
+            "/:_data:type=fs:privileged_quota_uids=0"
+                .parse::<SharedDir>()
+                .unwrap()
+                .fs_cfg
+                .privileged_quota_uids,
+            vec![0]
+        );
+        assert_eq!(
+            "/:_data:type=fs:privileged_quota_uids=0 1 2 3 4"
+                .parse::<SharedDir>()
+                .unwrap()
+                .fs_cfg
+                .privileged_quota_uids,
+            vec![0, 1, 2, 3, 4]
+        );
     }
 }
