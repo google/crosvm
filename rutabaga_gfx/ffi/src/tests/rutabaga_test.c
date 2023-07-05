@@ -119,6 +119,7 @@ static int test_rutabaga_init(struct rutabaga_test *test, uint64_t capset_mask)
 
     builder.fence_cb = rutabaga_test_write_fence;
     builder.capset_mask = capset_mask;
+    builder.wsi = RUTABAGA_WSI_SURFACELESS;
     if (capset_mask & (1 << RUTABAGA_CAPSET_CROSS_DOMAIN)) {
         builder.user_data = (uint64_t)(uintptr_t *)(void *)test;
         channels.channels = (struct rutabaga_channel *)calloc(1, sizeof(struct rutabaga_channel));

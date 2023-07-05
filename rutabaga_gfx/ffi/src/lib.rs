@@ -25,6 +25,7 @@ use log::error;
 use rutabaga_gfx::*;
 
 const NO_ERROR: i32 = 0;
+const RUTABAGA_WSI_SURFACELESS: u64 = 1;
 
 fn return_result<T>(result: RutabagaResult<T>) -> i32 {
     if let Err(e) = result {
@@ -101,6 +102,7 @@ pub type write_fence_cb = extern "C" fn(user_data: u64, fence_data: rutabaga_fen
 pub struct rutabaga_builder<'a> {
     pub user_data: u64,
     pub capset_mask: u64,
+    pub wsi: u64,
     pub fence_cb: write_fence_cb,
     pub channels: Option<&'a rutabaga_channels>,
 }
@@ -165,10 +167,15 @@ pub unsafe extern "C" fn rutabaga_init(builder: &rutabaga_builder, ptr: &mut *mu
             component_type = RutabagaComponentType::Rutabaga2D;
         }
 
+        let rutabaga_wsi = match (*builder).wsi {
+            RUTABAGA_WSI_SURFACELESS => RutabagaWsi::Surfaceless,
+            _ => return -EINVAL,
+        };
+
         let result = RutabagaBuilder::new(component_type, (*builder).capset_mask)
-            .set_use_egl(true)
-            .set_use_surfaceless(true)
             .set_use_external_blob(false)
+            .set_use_egl(true)
+            .set_wsi(rutabaga_wsi)
             .set_rutabaga_channels(rutabaga_channels_opt)
             .build(fence_handler, None);
 

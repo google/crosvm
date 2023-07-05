@@ -85,6 +85,11 @@ extern "C" {
 #define RUTABAGA_FENCE_HANDLE_TYPE_OPAQUE_WIN32 0x8
 #define RUTABAGA_FENCE_HANDLE_TYPE_ZIRCON 0x9
 
+/**
+ * Rutabaga WSI
+ */
+#define RUTABAGA_WSI_SURFACELESS 0x1
+
 struct rutabaga;
 
 struct rutabaga_fence {
@@ -164,6 +169,7 @@ struct rutabaga_builder {
     // Required for correct functioning
     uint64_t user_data;
     uint64_t capset_mask;
+    uint64_t wsi;
     write_fence_cb fence_cb;
 
     // Optional and platform specific
