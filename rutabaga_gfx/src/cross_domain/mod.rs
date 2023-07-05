@@ -656,6 +656,14 @@ impl Drop for CrossDomainContext {
     }
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Default, AsBytes, FromBytes)]
+struct CrossDomainInitLegacy {
+    hdr: CrossDomainHeader,
+    query_ring_id: u32,
+    channel_type: u32,
+}
+
 impl RutabagaContext for CrossDomainContext {
     fn context_create_blob(
         &mut self,
@@ -761,8 +769,23 @@ impl RutabagaContext for CrossDomainContext {
 
             match hdr.cmd {
                 CROSS_DOMAIN_CMD_INIT => {
-                    let cmd_init = CrossDomainInit::read_from_prefix(commands.as_bytes())
-                        .ok_or(RutabagaError::InvalidCommandBuffer)?;
+                    let cmd_init = match CrossDomainInit::read_from_prefix(commands.as_bytes()) {
+                        Some(cmd_init) => cmd_init,
+                        None => {
+                            if let Some(cmd_init) =
+                                CrossDomainInitLegacy::read_from_prefix(commands.as_bytes())
+                            {
+                                CrossDomainInit {
+                                    hdr: cmd_init.hdr,
+                                    query_ring_id: cmd_init.query_ring_id,
+                                    channel_ring_id: cmd_init.query_ring_id,
+                                    channel_type: cmd_init.channel_type,
+                                }
+                            } else {
+                                return Err(RutabagaError::InvalidCommandBuffer);
+                            }
+                        }
+                    };
 
                     self.initialize(&cmd_init)?;
                 }
