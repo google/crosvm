@@ -77,7 +77,8 @@ struct CrossDomainHeader {
 
 struct CrossDomainInit {
     struct CrossDomainHeader hdr;
-    uint32_t ring_id;
+    uint32_t query_ring_id;
+    uint32_t channel_ring_id;
     uint32_t channel_type;
 };
 

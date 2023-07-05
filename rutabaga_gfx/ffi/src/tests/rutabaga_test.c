@@ -60,8 +60,10 @@ struct rutabaga_test {
     struct rutabaga *rutabaga;
     uint32_t ctx_id;
     uint64_t value;
-    uint32_t guest_blob_resource_id;
-    struct iovec *guest_iovecs;
+    uint32_t query_ring_id;
+    uint32_t channel_ring_id;
+    struct iovec *query_iovecs;
+    struct iovec *channel_iovecs;
 };
 
 static void rutabaga_test_write_fence(uint64_t user_data, struct rutabaga_fence fence_data)
@@ -188,29 +190,48 @@ static int test_init_context(struct rutabaga_test *test)
     struct rutabaga_iovecs vecs = { 0 };
     struct CrossDomainInit cmd_init = { { 0 } };
 
-    struct iovec *iovecs = (struct iovec *)calloc(1, sizeof(struct iovec));
-    iovecs[0].iov_base = calloc(1, DEFAULT_BUFFER_SIZE);
-    iovecs[0].iov_len = DEFAULT_BUFFER_SIZE;
+    struct iovec *query_iovecs = (struct iovec *)calloc(1, sizeof(struct iovec));
+    query_iovecs[0].iov_base = calloc(1, DEFAULT_BUFFER_SIZE);
+    query_iovecs[0].iov_len = DEFAULT_BUFFER_SIZE;
 
-    test->guest_iovecs = iovecs;
+    test->query_iovecs = query_iovecs;
     rc_blob.blob_mem = RUTABAGA_BLOB_MEM_GUEST;
     rc_blob.blob_flags = RUTABAGA_BLOB_FLAG_USE_MAPPABLE;
     rc_blob.size = DEFAULT_BUFFER_SIZE;
 
-    vecs.iovecs = iovecs;
+    vecs.iovecs = query_iovecs;
     vecs.num_iovecs = 1;
 
-    result = rutabaga_resource_create_blob(test->rutabaga, 0, test->guest_blob_resource_id,
-                                           &rc_blob, &vecs, NULL);
+    result = rutabaga_resource_create_blob(test->rutabaga, 0, test->query_ring_id, &rc_blob, &vecs,
+                                           NULL);
     CHECK_RESULT(result);
 
-    result = rutabaga_context_attach_resource(test->rutabaga, test->ctx_id,
-                                              test->guest_blob_resource_id);
+    result = rutabaga_context_attach_resource(test->rutabaga, test->ctx_id, test->query_ring_id);
+    CHECK_RESULT(result);
+
+    struct iovec *channel_iovecs = (struct iovec *)calloc(1, sizeof(struct iovec));
+    channel_iovecs[0].iov_base = calloc(1, DEFAULT_BUFFER_SIZE);
+    channel_iovecs[0].iov_len = DEFAULT_BUFFER_SIZE;
+
+    test->channel_iovecs = channel_iovecs;
+    rc_blob.blob_mem = RUTABAGA_BLOB_MEM_GUEST;
+    rc_blob.blob_flags = RUTABAGA_BLOB_FLAG_USE_MAPPABLE;
+    rc_blob.size = DEFAULT_BUFFER_SIZE;
+
+    vecs.iovecs = channel_iovecs;
+    vecs.num_iovecs = 1;
+
+    result = rutabaga_resource_create_blob(test->rutabaga, 0, test->channel_ring_id, &rc_blob,
+                                           &vecs, NULL);
+    CHECK_RESULT(result);
+
+    result = rutabaga_context_attach_resource(test->rutabaga, test->ctx_id, test->channel_ring_id);
     CHECK_RESULT(result);
 
     cmd_init.hdr.cmd = CROSS_DOMAIN_CMD_INIT;
     cmd_init.hdr.cmd_size = sizeof(struct CrossDomainInit);
-    cmd_init.ring_id = test->guest_blob_resource_id;
+    cmd_init.query_ring_id = test->query_ring_id;
+    cmd_init.channel_ring_id = test->channel_ring_id;
     cmd_init.channel_type = CROSS_DOMAIN_CHANNEL_TYPE_WAYLAND;
 
     result = rutabaga_submit_command(test->rutabaga, test->ctx_id, (uint8_t *)&cmd_init,
@@ -223,7 +244,7 @@ static int test_command_submission(struct rutabaga_test *test)
 {
     int result;
     struct CrossDomainGetImageRequirements cmd_get_reqs = { 0 };
-    struct CrossDomainImageRequirements *image_reqs = (void *)test->guest_iovecs[0].iov_base;
+    struct CrossDomainImageRequirements *image_reqs = (void *)test->query_iovecs[0].iov_base;
     struct rutabaga_create_blob rc_blob = { 0 };
     struct rutabaga_fence fence;
     struct rutabaga_handle handle = { 0 };
@@ -303,14 +324,21 @@ static int test_context_finish(struct rutabaga_test *test)
 {
     int result;
 
-    result = rutabaga_context_detach_resource(test->rutabaga, test->ctx_id,
-                                              test->guest_blob_resource_id);
+    result = rutabaga_context_detach_resource(test->rutabaga, test->ctx_id, test->query_ring_id);
     CHECK_RESULT(result);
 
-    result = rutabaga_resource_unref(test->rutabaga, test->guest_blob_resource_id);
+    result = rutabaga_resource_unref(test->rutabaga, test->query_ring_id);
     CHECK_RESULT(result);
 
-    free(test->guest_iovecs[0].iov_base);
+    free(test->query_iovecs[0].iov_base);
+
+    result = rutabaga_context_detach_resource(test->rutabaga, test->ctx_id, test->channel_ring_id);
+    CHECK_RESULT(result);
+
+    result = rutabaga_resource_unref(test->rutabaga, test->channel_ring_id);
+    CHECK_RESULT(result);
+
+    free(test->channel_iovecs[0].iov_base);
 
     result = rutabaga_context_destroy(test->rutabaga, test->ctx_id);
     CHECK_RESULT(result);
@@ -398,7 +426,8 @@ int main(int argc, char *argv[])
 {
     struct rutabaga_test test = { 0 };
     test.ctx_id = 1;
-    test.guest_blob_resource_id = s_resource_id++;
+    test.query_ring_id = s_resource_id++;
+    test.channel_ring_id = s_resource_id++;
 
     int result;
 
