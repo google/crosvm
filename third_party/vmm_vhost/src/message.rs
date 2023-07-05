@@ -1427,7 +1427,6 @@ mod tests {
     #[test]
     fn test_vhost_user_state_from_config() {
         let config = VringConfigData {
-            queue_max_size: 256,
             queue_size: 128,
             flags: VhostUserVringAddrFlags::VHOST_VRING_F_LOG.bits(),
             desc_table_addr: 0x1000,

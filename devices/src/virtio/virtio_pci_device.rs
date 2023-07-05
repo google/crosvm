@@ -284,7 +284,7 @@ pub struct VirtioPciDevice {
 
     interrupt: Option<Interrupt>,
     interrupt_evt: Option<IrqLevelEvent>,
-    queues: Vec<Queue>,
+    queues: Vec<QueueConfig>,
     queue_evts: Vec<QueueEvent>,
     mem: GuestMemory,
     settings_bar: PciBarIndex,
@@ -354,10 +354,10 @@ impl VirtioPciDevice {
                 ioevent_registered: false,
             });
         }
-        let queues: Vec<Queue> = device
+        let queues = device
             .queue_max_sizes()
             .iter()
-            .map(|&s| Queue::new(device.queue_type(), s))
+            .map(|&s| QueueConfig::new(s, device.features()))
             .collect();
 
         let pci_device_id = VIRTIO_PCI_DEVICE_ID_BASE + device.device_type() as u16;
@@ -952,7 +952,7 @@ impl PciDevice for VirtioPciDevice {
         if self.device_activated && self.is_reset_requested() && self.device.reset() {
             self.device_activated = false;
             // reset queues
-            self.queues.iter_mut().for_each(Queue::reset);
+            self.queues.iter_mut().for_each(QueueConfig::reset);
             // select queue 0 by default
             self.common_config.queue_select = 0;
             if let Err(e) = self.unregister_ioevents() {
@@ -1111,7 +1111,7 @@ impl Suspendable for VirtioPciDevice {
             "device must have the same number of queues"
         );
         for (q, s) in self.queues.iter_mut().zip(deser.queues.into_iter()) {
-            *q = Queue::restore(self.device.queue_type(), s)?;
+            q.restore(s)?;
         }
 
         // Verify we are asleep and inactive.

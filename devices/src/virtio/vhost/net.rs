@@ -330,6 +330,7 @@ pub mod tests {
 
     use super::*;
     use crate::virtio::base_features;
+    use crate::virtio::QueueConfig;
     use crate::virtio::VIRTIO_MSI_NO_VECTOR;
     use crate::IrqLevelEvent;
 
@@ -398,14 +399,22 @@ pub mod tests {
     fn activate() {
         let mut net = create_net_common();
         let guest_memory = create_guest_memory().unwrap();
+
+        let mut q0 = QueueConfig::new(1, 0);
+        q0.set_ready(true);
+        let q0 = q0.activate().expect("QueueConfig::activate");
+        let e0 = Event::new().unwrap();
+
+        let mut q1 = QueueConfig::new(1, 0);
+        q1.set_ready(true);
+        let q1 = q1.activate().expect("QueueConfig::activate");
+        let e1 = Event::new().unwrap();
+
         // Just testing that we don't panic, for now
         let _ = net.activate(
             guest_memory,
             Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
-            vec![
-                (Queue::new(net.queue_type(), 1), Event::new().unwrap()),
-                (Queue::new(net.queue_type(), 1), Event::new().unwrap()),
-            ],
+            vec![(q0, e0), (q1, e1)],
         );
     }
 }

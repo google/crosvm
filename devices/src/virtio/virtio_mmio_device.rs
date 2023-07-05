@@ -55,7 +55,7 @@ pub struct VirtioMmioDevice {
     interrupt: Option<Interrupt>,
     interrupt_evt: Option<IrqEdgeEvent>,
     async_intr_status: bool,
-    queues: Vec<Queue>,
+    queues: Vec<QueueConfig>,
     queue_evts: Vec<Event>,
     mem: GuestMemory,
     device_feature_select: u32,
@@ -80,10 +80,10 @@ impl VirtioMmioDevice {
         for _ in device.queue_max_sizes() {
             queue_evts.push(Event::new()?)
         }
-        let queues: Vec<Queue> = device
+        let queues = device
             .queue_max_sizes()
             .iter()
-            .map(|&s| Queue::new(device.queue_type(), s))
+            .map(|&s| QueueConfig::new(s, device.features()))
             .collect();
 
         Ok(VirtioMmioDevice {
@@ -342,7 +342,7 @@ impl VirtioMmioDevice {
         if self.device_activated && self.is_reset_requested() && self.device.reset() {
             self.device_activated = false;
             // reset queues
-            self.queues.iter_mut().for_each(Queue::reset);
+            self.queues.iter_mut().for_each(QueueConfig::reset);
             // select queue 0 by default
             self.queue_select = 0;
             // reset interrupt
@@ -352,14 +352,14 @@ impl VirtioMmioDevice {
 
     fn with_queue<U, F>(&self, f: F) -> Option<U>
     where
-        F: FnOnce(&Queue) -> U,
+        F: FnOnce(&QueueConfig) -> U,
     {
         self.queues.get(self.queue_select as usize).map(f)
     }
 
     fn with_queue_mut<F>(&mut self, f: F)
     where
-        F: FnOnce(&mut Queue),
+        F: FnOnce(&mut QueueConfig),
     {
         if let Some(queue) = self.queues.get_mut(self.queue_select as usize) {
             f(queue);

@@ -1185,6 +1185,7 @@ mod tests {
     use crate::virtio::base_features;
     use crate::virtio::descriptor_utils::create_descriptor_chain;
     use crate::virtio::descriptor_utils::DescriptorType;
+    use crate::virtio::QueueConfig;
     use crate::virtio::VIRTIO_MSI_NO_VECTOR;
     use crate::IrqLevelEvent;
 
@@ -1628,19 +1629,20 @@ mod tests {
         .unwrap();
 
         // activate with queues of an arbitrary size.
+        let mut q0 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
+        q0.set_ready(true);
+        let q0 = q0.activate().expect("QueueConfig::activate");
+        let e0 = Event::new().unwrap();
+
+        let mut q1 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
+        q1.set_ready(true);
+        let q1 = q1.activate().expect("QueueConfig::activate");
+        let e1 = Event::new().unwrap();
+
         b.activate(
             mem.clone(),
             Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
-            vec![
-                (
-                    Queue::new(b.queue_type(), DEFAULT_QUEUE_SIZE),
-                    Event::new().unwrap(),
-                ),
-                (
-                    Queue::new(b.queue_type(), DEFAULT_QUEUE_SIZE),
-                    Event::new().unwrap(),
-                ),
-            ],
+            vec![(q0, e0), (q1, e1)],
         )
         .expect("activate should succeed");
         // assert resources are consumed
@@ -1666,19 +1668,20 @@ mod tests {
         assert_eq!(b.id, Some(*b"Block serial number\0"));
 
         // re-activate should succeed
+        let mut q0 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
+        q0.set_ready(true);
+        let q0 = q0.activate().expect("QueueConfig::activate");
+        let e0 = Event::new().unwrap();
+
+        let mut q1 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
+        q1.set_ready(true);
+        let q1 = q1.activate().expect("QueueConfig::activate");
+        let e1 = Event::new().unwrap();
+
         b.activate(
             mem,
             Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
-            vec![
-                (
-                    Queue::new(b.queue_type(), DEFAULT_QUEUE_SIZE),
-                    Event::new().unwrap(),
-                ),
-                (
-                    Queue::new(b.queue_type(), DEFAULT_QUEUE_SIZE),
-                    Event::new().unwrap(),
-                ),
-            ],
+            vec![(q0, e0), (q1, e1)],
         )
         .expect("re-activate should succeed");
     }
@@ -1736,22 +1739,19 @@ mod tests {
         .unwrap();
 
         // activate with queues of an arbitrary size.
+        let mut q0 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
+        q0.set_ready(true);
+        let q0 = q0.activate().expect("QueueConfig::activate");
+        let e0 = Event::new().unwrap();
+
+        let mut q1 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
+        q1.set_ready(true);
+        let q1 = q1.activate().expect("QueueConfig::activate");
+        let e1 = Event::new().unwrap();
+
         let interrupt = Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR);
-        b.activate(
-            mem,
-            interrupt.clone(),
-            vec![
-                (
-                    Queue::new(b.queue_type(), DEFAULT_QUEUE_SIZE),
-                    Event::new().unwrap(),
-                ),
-                (
-                    Queue::new(b.queue_type(), DEFAULT_QUEUE_SIZE),
-                    Event::new().unwrap(),
-                ),
-            ],
-        )
-        .expect("activate should succeed");
+        b.activate(mem, interrupt.clone(), vec![(q0, e0), (q1, e1)])
+            .expect("activate should succeed");
 
         // assert the original size first
         assert_eq!(
@@ -1845,19 +1845,20 @@ mod tests {
         .unwrap();
 
         // activate with queues of an arbitrary size.
+        let mut q0 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
+        q0.set_ready(true);
+        let q0 = q0.activate().expect("QueueConfig::activate");
+        let e0 = Event::new().unwrap();
+
+        let mut q1 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
+        q1.set_ready(true);
+        let q1 = q1.activate().expect("QueueConfig::activate");
+        let e1 = Event::new().unwrap();
+
         b.activate(
             mem.clone(),
             Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
-            vec![
-                (
-                    Queue::new(b.queue_type(), DEFAULT_QUEUE_SIZE),
-                    Event::new().unwrap(),
-                ),
-                (
-                    Queue::new(b.queue_type(), DEFAULT_QUEUE_SIZE),
-                    Event::new().unwrap(),
-                ),
-            ],
+            vec![(q0, e0), (q1, e1)],
         )
         .expect("activate should succeed");
 
@@ -1872,19 +1873,20 @@ mod tests {
         .unwrap();
 
         // activate should succeed
+        let mut q0 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
+        q0.set_ready(true);
+        let q0 = q0.activate().expect("QueueConfig::activate");
+        let e0 = Event::new().unwrap();
+
+        let mut q1 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
+        q1.set_ready(true);
+        let q1 = q1.activate().expect("QueueConfig::activate");
+        let e1 = Event::new().unwrap();
+
         b.activate(
             mem,
             Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
-            vec![
-                (
-                    Queue::new(b.queue_type(), DEFAULT_QUEUE_SIZE),
-                    Event::new().unwrap(),
-                ),
-                (
-                    Queue::new(b.queue_type(), DEFAULT_QUEUE_SIZE),
-                    Event::new().unwrap(),
-                ),
-            ],
+            vec![(q0, e0), (q1, e1)],
         )
         .expect("activate should succeed");
 

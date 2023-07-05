@@ -12,7 +12,6 @@ use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
 use base::error;
-use base::warn;
 use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
@@ -26,29 +25,19 @@ use crate::virtio::memory_util::read_obj_from_addr_wrapper;
 use crate::virtio::memory_util::write_obj_at_addr_wrapper;
 use crate::virtio::DescriptorChain;
 use crate::virtio::Interrupt;
+use crate::virtio::QueueConfig;
 use crate::virtio::SplitDescriptorChain;
-use crate::virtio::VIRTIO_MSI_NO_VECTOR;
 
 #[allow(dead_code)]
 const VIRTQ_USED_F_NO_NOTIFY: u16 = 0x1;
 #[allow(dead_code)]
 const VIRTQ_AVAIL_F_NO_INTERRUPT: u16 = 0x1;
 
-/// A virtio queue's parameters.
+/// An activated virtio queue with split queue layout.
 pub struct SplitQueue {
-    /// Whether this queue has already been activated.
-    activated: bool,
-
-    /// The maximal size in elements offered by the device
-    max_size: u16,
-
     /// The queue size in elements the driver selected. This is always guaranteed to be a power of
-    /// two less than or equal to `max_size`, as required for split virtqueues. These invariants are
-    /// enforced by `set_size()`.
+    /// two, as required for split virtqueues.
     size: u16,
-
-    /// Inidcates if the queue is finished with configuration
-    ready: bool,
 
     /// MSI-X vector for the queue. Don't care for INTx
     vector: u16,
@@ -81,10 +70,7 @@ pub struct SplitQueue {
 
 #[derive(Serialize, Deserialize)]
 pub struct SplitQueueSnapshot {
-    activated: bool,
-    max_size: u16,
     size: u16,
-    ready: bool,
     vector: u16,
     desc_table: GuestAddress,
     avail_ring: GuestAddress,
@@ -95,56 +81,50 @@ pub struct SplitQueueSnapshot {
     last_used: Wrapping<u16>,
 }
 
-macro_rules! accessors {
-    ($var:ident, $t:ty, $setter:ident) => {
-        pub fn $var(&self) -> $t {
-            self.$var
-        }
-
-        pub fn $setter(&mut self, val: $t) {
-            if self.ready {
-                warn!("ignoring write to {} on ready queue", stringify!($var));
-                return;
-            }
-            self.$var = val;
-        }
-    };
-}
-
 impl SplitQueue {
-    /// Constructs an empty virtio queue with the given `max_size`.
-    pub fn new(max_size: u16) -> SplitQueue {
-        assert!(max_size.is_power_of_two());
-        SplitQueue {
-            activated: false,
-            max_size,
-            size: max_size,
-            ready: false,
-            vector: VIRTIO_MSI_NO_VECTOR,
-            desc_table: GuestAddress(0),
-            avail_ring: GuestAddress(0),
-            used_ring: GuestAddress(0),
-            next_avail: Wrapping(0),
-            next_used: Wrapping(0),
-            features: 0,
-            last_used: Wrapping(0),
-            iommu: None,
+    /// Constructs an activated split virtio queue with the given configuration.
+    pub fn new(config: &QueueConfig) -> Result<SplitQueue> {
+        let size = config.size();
+        if !size.is_power_of_two() {
+            bail!("split queue size {size} is not a power of 2");
+        }
+
+        let desc_table = config.desc_table();
+        let avail_ring = config.avail_ring();
+        let used_ring = config.used_ring();
+
+        // Validate addresses and queue size to ensure that address calculation won't overflow.
+        let ring_sizes = Self::ring_sizes(size, desc_table, avail_ring, used_ring);
+        let rings = ring_sizes
+            .iter()
+            .zip(vec!["descriptor table", "available ring", "used ring"]);
+
+        for ((addr, size), name) in rings {
+            if addr.checked_add(*size as u64).is_none() {
+                bail!(
+                    "virtio queue {} goes out of bounds: start:0x{:08x} size:0x{:08x}",
+                    name,
+                    addr.offset(),
+                    size,
+                );
+            }
+        }
+
+        Ok(SplitQueue {
+            size,
+            vector: config.vector(),
+            desc_table: config.desc_table(),
+            avail_ring: config.avail_ring(),
+            used_ring: config.used_ring(),
+            features: config.acked_features(),
+            iommu: config.iommu(),
+            next_avail: config.next_avail(),
+            next_used: config.next_used(),
+            last_used: config.next_used(),
             exported_desc_table: None,
             exported_avail_ring: None,
             exported_used_ring: None,
-        }
-    }
-
-    accessors!(vector, u16, set_vector);
-    accessors!(desc_table, GuestAddress, set_desc_table);
-    accessors!(avail_ring, GuestAddress, set_avail_ring);
-    accessors!(used_ring, GuestAddress, set_used_ring);
-    accessors!(next_avail, Wrapping<u16>, set_next_avail);
-    accessors!(next_used, Wrapping<u16>, set_next_used);
-
-    /// Return the maximum size of this queue.
-    pub fn max_size(&self) -> u16 {
-        self.max_size
+        })
     }
 
     /// Return the actual size of the queue, as the driver may not set up a
@@ -153,117 +133,32 @@ impl SplitQueue {
         self.size
     }
 
-    /// Set the queue size requested by the driver, which may be smaller than the maximum size.
-    pub fn set_size(&mut self, val: u16) {
-        if self.ready {
-            warn!("ignoring write to queue_size on ready queue");
-            return;
-        }
-
-        if val > self.max_size || !val.is_power_of_two() {
-            warn!(
-                "ignoring invalid queue_size {} (max_size {})",
-                val, self.max_size,
-            );
-            return;
-        }
-
-        self.size = val;
+    /// Getter for vector field
+    pub fn vector(&self) -> u16 {
+        self.vector
     }
 
-    /// Return whether the driver has enabled this queue.
-    pub fn ready(&self) -> bool {
-        self.ready
+    /// Getter for descriptor area
+    pub fn desc_table(&self) -> GuestAddress {
+        self.desc_table
     }
 
-    /// Signal that the driver has completed queue configuration.
-    pub fn set_ready(&mut self, enable: bool) {
-        // If the queue is already in the desired state, return early.
-        if enable == self.ready {
-            return;
-        }
-
-        if enable {
-            // Validate addresses and queue size to ensure that address calculation won't overflow.
-            let ring_sizes = self.ring_sizes();
-            let rings =
-                ring_sizes
-                    .iter()
-                    .zip(vec!["descriptor table", "available ring", "used ring"]);
-
-            for ((addr, size), name) in rings {
-                if addr.checked_add(*size as u64).is_none() {
-                    error!(
-                        "virtio queue {} goes out of bounds: start:0x{:08x} size:0x{:08x}",
-                        name,
-                        addr.offset(),
-                        size,
-                    );
-                    return;
-                }
-            }
-        }
-
-        self.ready = enable;
+    /// Getter for driver area
+    pub fn avail_ring(&self) -> GuestAddress {
+        self.avail_ring
     }
 
-    /// Convert the queue configuration into an active queue.
-    pub fn activate(&mut self) -> Result<SplitQueue> {
-        if !self.ready {
-            bail!("attempted to activate a non-ready queue");
-        }
-
-        if self.activated {
-            bail!("queue is already activated");
-        }
-
-        self.activated = true;
-
-        let queue = SplitQueue {
-            activated: self.activated,
-            max_size: self.max_size,
-            size: self.size,
-            ready: self.ready,
-            vector: self.vector,
-            desc_table: self.desc_table,
-            avail_ring: self.avail_ring,
-            used_ring: self.used_ring,
-            next_avail: self.next_avail,
-            next_used: self.next_used,
-            features: self.features,
-            last_used: self.last_used,
-            iommu: self.iommu.as_ref().map(Arc::clone),
-            exported_desc_table: self.exported_desc_table.clone(),
-            exported_avail_ring: self.exported_avail_ring.clone(),
-            exported_used_ring: self.exported_used_ring.clone(),
-        };
-        Ok(queue)
+    /// Getter for device area
+    pub fn used_ring(&self) -> GuestAddress {
+        self.used_ring
     }
 
     // Return `index` modulo the currently configured queue size.
     fn wrap_queue_index(&self, index: Wrapping<u16>) -> u16 {
-        // We know that `self.size` is a power of two (enforced by `set_size()`), so the modulus can
+        // We know that `self.size` is a power of two (enforced by `new()`), so the modulus can
         // be calculated with a bitmask rather than actual division.
         debug_assert!(self.size.is_power_of_two());
         index.0 & (self.size - 1)
-    }
-
-    /// Reset queue to a clean state
-    pub fn reset(&mut self) {
-        self.activated = false;
-        self.ready = false;
-        self.size = self.max_size;
-        self.vector = VIRTIO_MSI_NO_VECTOR;
-        self.desc_table = GuestAddress(0);
-        self.avail_ring = GuestAddress(0);
-        self.used_ring = GuestAddress(0);
-        self.next_avail = Wrapping(0);
-        self.next_used = Wrapping(0);
-        self.features = 0;
-        self.last_used = Wrapping(0);
-        self.exported_desc_table = None;
-        self.exported_avail_ring = None;
-        self.exported_used_ring = None;
     }
 
     /// Reset queue's counters.
@@ -275,12 +170,17 @@ impl SplitQueue {
         self.last_used = Wrapping(0);
     }
 
-    fn ring_sizes(&self) -> Vec<(GuestAddress, usize)> {
-        let queue_size = self.size as usize;
+    fn ring_sizes(
+        queue_size: u16,
+        desc_table: GuestAddress,
+        avail_ring: GuestAddress,
+        used_ring: GuestAddress,
+    ) -> Vec<(GuestAddress, usize)> {
+        let queue_size = queue_size as usize;
         vec![
-            (self.desc_table, 16 * queue_size),
-            (self.avail_ring, 6 + 2 * queue_size),
-            (self.used_ring, 6 + 8 * queue_size),
+            (desc_table, 16 * queue_size),
+            (avail_ring, 6 + 2 * queue_size),
+            (used_ring, 6 + 8 * queue_size),
         ]
     }
 
@@ -288,16 +188,14 @@ impl SplitQueue {
     /// this queue's memory. After the queue becomes ready, this must be called before
     /// using the queue, to convert the IOVA-based configuration to GuestAddresses.
     pub fn export_memory(&mut self, mem: &GuestMemory) -> Result<()> {
-        if !self.ready {
-            bail!("not ready");
-        }
         if self.exported_desc_table.is_some() {
             bail!("already exported");
         }
 
         let iommu = self.iommu.as_ref().context("no iommu to export with")?;
 
-        let ring_sizes = self.ring_sizes();
+        let ring_sizes =
+            Self::ring_sizes(self.size, self.desc_table, self.avail_ring, self.used_ring);
         let rings = ring_sizes.iter().zip(vec![
             &mut self.exported_desc_table,
             &mut self.exported_avail_ring,
@@ -406,11 +304,6 @@ impl SplitQueue {
     /// Get the first available descriptor chain without removing it from the queue.
     /// Call `pop_peeked` to remove the returned descriptor chain from the queue.
     pub fn peek(&mut self, mem: &GuestMemory) -> Option<DescriptorChain> {
-        if !self.ready {
-            error!("attempt to use virtio queue that is not marked ready");
-            return None;
-        }
-
         let avail_index = self.get_avail_index(mem);
         if self.next_avail == avail_index {
             return None;
@@ -632,25 +525,13 @@ impl SplitQueue {
         }
     }
 
-    /// Acknowledges that this set of features should be enabled on this queue.
-    pub fn ack_features(&mut self, features: u64) {
-        self.features |= features;
-    }
-
-    pub fn set_iommu(&mut self, iommu: Arc<Mutex<IpcMemoryMapper>>) {
-        self.iommu = Some(iommu);
-    }
-
     pub fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
         if self.iommu.is_some() {
             return Err(anyhow!("Cannot snapshot if iommu is present."));
         }
 
         serde_json::to_value(SplitQueueSnapshot {
-            activated: self.activated,
-            max_size: self.max_size,
             size: self.size,
-            ready: self.ready,
             vector: self.vector,
             desc_table: self.desc_table,
             avail_ring: self.avail_ring,
@@ -666,10 +547,7 @@ impl SplitQueue {
     pub fn restore(queue_value: serde_json::Value) -> anyhow::Result<SplitQueue> {
         let s: SplitQueueSnapshot = serde_json::from_value(queue_value)?;
         let queue = SplitQueue {
-            activated: s.activated,
-            max_size: s.max_size,
             size: s.size,
-            ready: s.ready,
             vector: s.vector,
             desc_table: s.desc_table,
             avail_ring: s.avail_ring,
@@ -702,6 +580,7 @@ mod tests {
     use crate::virtio::create_descriptor_chain;
     use crate::virtio::Desc;
     use crate::virtio::Interrupt;
+    use crate::virtio::Queue;
     use crate::IrqLevelEvent;
 
     const GUEST_MEMORY_SIZE: u64 = 0x10000;
@@ -768,7 +647,7 @@ mod tests {
         }
     }
 
-    fn setup_vq(queue: &mut SplitQueue, mem: &GuestMemory) {
+    fn setup_vq(queue: &mut QueueConfig, mem: &GuestMemory) -> Queue {
         let desc = Desc {
             addr: Le64::from(BUFFER_OFFSET),
             len: Le32::from(BUFFER_LEN),
@@ -783,10 +662,13 @@ mod tests {
         let used = Used::default();
         let _ = mem.write_obj_at_addr(used, GuestAddress(USED_OFFSET));
 
-        queue.desc_table = GuestAddress(DESC_OFFSET);
-        queue.avail_ring = GuestAddress(AVAIL_OFFSET);
-        queue.used_ring = GuestAddress(USED_OFFSET);
+        queue.set_desc_table(GuestAddress(DESC_OFFSET));
+        queue.set_avail_ring(GuestAddress(AVAIL_OFFSET));
+        queue.set_used_ring(GuestAddress(USED_OFFSET));
         queue.ack_features((1u64) << VIRTIO_RING_F_EVENT_IDX);
+        queue.set_ready(true);
+
+        queue.activate().expect("QueueConfig::activate failed")
     }
 
     fn fake_desc_chain(mem: &GuestMemory) -> DescriptorChain {
@@ -796,10 +678,11 @@ mod tests {
 
     #[test]
     fn queue_event_id_guest_fast() {
-        let mut queue = SplitQueue::new(QUEUE_SIZE.try_into().unwrap());
+        let mut queue =
+            QueueConfig::new(QUEUE_SIZE.try_into().unwrap(), 1 << VIRTIO_RING_F_EVENT_IDX);
         let memory_start_addr = GuestAddress(0x0);
         let mem = GuestMemory::new(&[(memory_start_addr, GUEST_MEMORY_SIZE)]).unwrap();
-        setup_vq(&mut queue, &mem);
+        let mut queue = setup_vq(&mut queue, &mem);
 
         let interrupt = Interrupt::new(IrqLevelEvent::new().unwrap(), None, 10);
 
@@ -865,10 +748,11 @@ mod tests {
 
     #[test]
     fn queue_event_id_guest_slow() {
-        let mut queue = SplitQueue::new(QUEUE_SIZE.try_into().unwrap());
+        let mut queue =
+            QueueConfig::new(QUEUE_SIZE.try_into().unwrap(), 1 << VIRTIO_RING_F_EVENT_IDX);
         let memory_start_addr = GuestAddress(0x0);
         let mem = GuestMemory::new(&[(memory_start_addr, GUEST_MEMORY_SIZE)]).unwrap();
-        setup_vq(&mut queue, &mem);
+        let mut queue = setup_vq(&mut queue, &mem);
 
         let interrupt = Interrupt::new(IrqLevelEvent::new().unwrap(), None, 10);
 

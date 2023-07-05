@@ -482,7 +482,6 @@ mod tests {
         master.set_vring_num(0, 256).unwrap();
         master.set_vring_base(0, 0).unwrap();
         let config = VringConfigData {
-            queue_max_size: 256,
             queue_size: 128,
             flags: VhostUserVringAddrFlags::VHOST_VRING_F_LOG.bits(),
             desc_table_addr: 0x1000,

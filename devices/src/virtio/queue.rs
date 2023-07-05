@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// !virtqueue interface
+//! virtqueue interface
 
 #![deny(missing_docs)]
 
@@ -11,12 +11,18 @@ mod split_queue;
 use std::num::Wrapping;
 use std::sync::Arc;
 
+use anyhow::bail;
+use anyhow::Context;
 use anyhow::Result;
+use base::error;
+use base::warn;
 use cros_async::AsyncError;
 use cros_async::EventAsync;
 use futures::channel::oneshot;
 use futures::select_biased;
 use futures::FutureExt;
+use serde::Deserialize;
+use serde::Serialize;
 use split_queue::SplitQueue;
 use sync::Mutex;
 use vm_memory::GuestAddress;
@@ -25,6 +31,317 @@ use vm_memory::GuestMemory;
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 use crate::virtio::DescriptorChain;
 use crate::virtio::Interrupt;
+use crate::virtio::VIRTIO_MSI_NO_VECTOR;
+
+/// A virtio queue's parameters.
+///
+/// `QueueConfig` can be converted into a running `Queue` by calling [`QueueConfig::activate()`].
+pub struct QueueConfig {
+    /// Whether this queue has already been activated.
+    activated: bool,
+
+    /// The maximal size in elements offered by the device
+    max_size: u16,
+
+    /// The queue size in elements the driver selected. This is always guaranteed to be a power of
+    /// two less than or equal to `max_size`, as required for split virtqueues. These invariants are
+    /// enforced by `set_size()`.
+    size: u16,
+
+    /// Inidcates if the queue is finished with configuration
+    ready: bool,
+
+    /// MSI-X vector for the queue. Don't care for INTx
+    vector: u16,
+
+    /// Ring features (e.g. `VIRTIO_RING_F_EVENT_IDX`, `VIRTIO_F_RING_PACKED`) offered by the device
+    features: u64,
+
+    // Device feature bits accepted by the driver
+    acked_features: u64,
+
+    /// Guest physical address of the descriptor table
+    desc_table: GuestAddress,
+
+    /// Guest physical address of the available ring (driver area)
+    ///
+    /// TODO(b/290657008): update field and accessor names to match the current virtio spec
+    avail_ring: GuestAddress,
+
+    /// Guest physical address of the used ring (device area)
+    used_ring: GuestAddress,
+
+    /// Initial available ring index when the queue is activated.
+    next_avail: Wrapping<u16>,
+
+    /// Initial used ring index when the queue is activated.
+    next_used: Wrapping<u16>,
+
+    /// If present, `iommu` is used to translate guest addresses from IOVA to GPA.
+    iommu: Option<Arc<Mutex<IpcMemoryMapper>>>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct QueueConfigSnapshot {
+    activated: bool,
+    max_size: u16,
+    size: u16,
+    ready: bool,
+    vector: u16,
+    features: u64,
+    acked_features: u64,
+    desc_table: GuestAddress,
+    avail_ring: GuestAddress,
+    used_ring: GuestAddress,
+    next_avail: Wrapping<u16>,
+    next_used: Wrapping<u16>,
+}
+
+impl QueueConfig {
+    /// Constructs a virtio queue configuration with the given `max_size`.
+    pub fn new(max_size: u16, features: u64) -> Self {
+        assert!(max_size > 0);
+        assert!(max_size <= 32768);
+        QueueConfig {
+            activated: false,
+            max_size,
+            size: max_size,
+            ready: false,
+            vector: VIRTIO_MSI_NO_VECTOR,
+            desc_table: GuestAddress(0),
+            avail_ring: GuestAddress(0),
+            used_ring: GuestAddress(0),
+            features,
+            acked_features: 0,
+            next_used: Wrapping(0),
+            next_avail: Wrapping(0),
+            iommu: None,
+        }
+    }
+
+    /// Returns the maximum size of this queue.
+    pub fn max_size(&self) -> u16 {
+        self.max_size
+    }
+
+    /// Returns the currently configured size of the queue.
+    pub fn size(&self) -> u16 {
+        self.size
+    }
+
+    /// Sets the queue size.
+    pub fn set_size(&mut self, val: u16) {
+        if self.ready {
+            warn!("ignoring write to size on ready queue");
+            return;
+        }
+
+        if val > self.max_size {
+            warn!(
+                "requested queue size {} is larger than max_size {}",
+                val, self.max_size
+            );
+            return;
+        }
+
+        self.size = val;
+    }
+
+    /// Returns the currently configured interrupt vector.
+    pub fn vector(&self) -> u16 {
+        self.vector
+    }
+
+    /// Sets the interrupt vector for this queue.
+    pub fn set_vector(&mut self, val: u16) {
+        if self.ready {
+            warn!("ignoring write to vector on ready queue");
+            return;
+        }
+
+        self.vector = val;
+    }
+
+    /// Getter for descriptor area
+    pub fn desc_table(&self) -> GuestAddress {
+        self.desc_table
+    }
+
+    /// Setter for descriptor area
+    pub fn set_desc_table(&mut self, val: GuestAddress) {
+        if self.ready {
+            warn!("ignoring write to desc_table on ready queue");
+            return;
+        }
+
+        self.desc_table = val;
+    }
+
+    /// Getter for driver area
+    pub fn avail_ring(&self) -> GuestAddress {
+        self.avail_ring
+    }
+
+    /// Setter for driver area
+    pub fn set_avail_ring(&mut self, val: GuestAddress) {
+        if self.ready {
+            warn!("ignoring write to avail_ring on ready queue");
+            return;
+        }
+
+        self.avail_ring = val;
+    }
+
+    /// Getter for device area
+    pub fn used_ring(&self) -> GuestAddress {
+        self.used_ring
+    }
+
+    /// Setter for device area
+    pub fn set_used_ring(&mut self, val: GuestAddress) {
+        if self.ready {
+            warn!("ignoring write to used_ring on ready queue");
+            return;
+        }
+
+        self.used_ring = val;
+    }
+
+    /// Getter for next_avail index
+    pub fn next_avail(&self) -> Wrapping<u16> {
+        self.next_avail
+    }
+
+    /// Setter for next_avail index
+    pub fn set_next_avail(&mut self, val: Wrapping<u16>) {
+        if self.ready {
+            warn!("ignoring write to next_avail on ready queue");
+            return;
+        }
+
+        self.next_avail = val;
+    }
+
+    /// Getter for next_used index
+    pub fn next_used(&self) -> Wrapping<u16> {
+        self.next_used
+    }
+
+    /// Setter for next_used index
+    pub fn set_next_used(&mut self, val: Wrapping<u16>) {
+        if self.ready {
+            warn!("ignoring write to next_used on ready queue");
+            return;
+        }
+
+        self.next_used = val;
+    }
+
+    /// Returns the features that have been acknowledged by the driver.
+    pub fn acked_features(&self) -> u64 {
+        self.acked_features
+    }
+
+    /// Acknowledges that this set of features should be enabled on this queue.
+    pub fn ack_features(&mut self, features: u64) {
+        self.acked_features |= features & self.features;
+    }
+
+    /// Return whether the driver has enabled this queue.
+    pub fn ready(&self) -> bool {
+        self.ready
+    }
+
+    /// Signal that the driver has completed queue configuration.
+    pub fn set_ready(&mut self, enable: bool) {
+        self.ready = enable;
+    }
+
+    /// Convert the queue configuration into an active queue.
+    pub fn activate(&mut self) -> Result<Queue> {
+        if !self.ready {
+            bail!("attempted to activate a non-ready queue");
+        }
+
+        if self.activated {
+            bail!("queue is already activated");
+        }
+
+        let sq = match SplitQueue::new(self) {
+            Ok(sq) => sq,
+            Err(e) => {
+                error!("SplitQueue creation failed: {:#}", e);
+                return Err(e);
+            }
+        };
+
+        let queue = Queue::SplitVirtQueue(sq);
+        self.activated = true;
+        Ok(queue)
+    }
+
+    /// Reset queue to a clean state
+    pub fn reset(&mut self) {
+        self.activated = false;
+        self.ready = false;
+        self.size = self.max_size;
+        self.vector = VIRTIO_MSI_NO_VECTOR;
+        self.desc_table = GuestAddress(0);
+        self.avail_ring = GuestAddress(0);
+        self.used_ring = GuestAddress(0);
+        self.next_avail = Wrapping(0);
+        self.next_used = Wrapping(0);
+        self.acked_features = 0;
+    }
+
+    /// Get IPC memory mapper for iommu
+    pub fn iommu(&self) -> Option<Arc<Mutex<IpcMemoryMapper>>> {
+        self.iommu.as_ref().map(Arc::clone)
+    }
+
+    /// Set IPC memory mapper for iommu
+    pub fn set_iommu(&mut self, iommu: Arc<Mutex<IpcMemoryMapper>>) {
+        self.iommu = Some(iommu);
+    }
+
+    /// Take snapshot of queue configuration
+    pub fn snapshot(&self) -> Result<serde_json::Value> {
+        serde_json::to_value(QueueConfigSnapshot {
+            activated: self.activated,
+            max_size: self.max_size,
+            size: self.size,
+            ready: self.ready,
+            vector: self.vector,
+            features: self.features,
+            acked_features: self.acked_features,
+            desc_table: self.desc_table,
+            avail_ring: self.avail_ring,
+            used_ring: self.used_ring,
+            next_avail: self.next_avail,
+            next_used: self.next_used,
+        })
+        .context("error serializing")
+    }
+
+    /// Restore queue configuration from snapshot
+    pub fn restore(&mut self, data: serde_json::Value) -> Result<()> {
+        let snap: QueueConfigSnapshot =
+            serde_json::from_value(data).context("error deserializing")?;
+        self.activated = snap.activated;
+        self.max_size = snap.max_size;
+        self.size = snap.size;
+        self.ready = snap.ready;
+        self.vector = snap.vector;
+        self.features = snap.features;
+        self.acked_features = snap.acked_features;
+        self.desc_table = snap.desc_table;
+        self.avail_ring = snap.avail_ring;
+        self.used_ring = snap.used_ring;
+        self.next_avail = snap.next_avail;
+        self.next_used = snap.next_used;
+        Ok(())
+    }
+}
 
 /// Usage: define_queue_method!(method_name, return_type[, mut][, arg1: arg1_type, arg2: arg2_type, ...])
 ///
@@ -72,20 +389,6 @@ pub enum QueueType {
 }
 
 impl Queue {
-    /// Constructs an empty virtio queue with the given `max_size`.
-    pub fn new(queue_type: QueueType, max_size: u16) -> Self {
-        match queue_type {
-            QueueType::Split => Self::SplitVirtQueue(SplitQueue::new(max_size)),
-        }
-    }
-
-    /// Convert the queue configuration into an active queue.
-    pub fn activate(&mut self) -> Result<Queue> {
-        match self {
-            Queue::SplitVirtQueue(sq) => sq.activate().map(Queue::SplitVirtQueue),
-        }
-    }
-
     /// Asynchronously read the next descriptor chain from the queue.
     /// Returns a `DescriptorChain` when it is `await`ed.
     pub async fn next_async(
@@ -150,25 +453,9 @@ impl Queue {
     );
 
     define_queue_method!(
-        /// Setter for vector field
-        set_vector,
-        (),
-        mut,
-        val: u16
-    );
-
-    define_queue_method!(
         /// Getter for descriptor area
         desc_table,
         GuestAddress,
-    );
-
-    define_queue_method!(
-        /// Setter for descriptor area
-        set_desc_table,
-        (),
-        mut,
-        val: GuestAddress
     );
 
     define_queue_method!(
@@ -178,59 +465,9 @@ impl Queue {
     );
 
     define_queue_method!(
-        /// Setter for driver area
-        set_avail_ring,
-        (),
-        mut,
-        val: GuestAddress
-    );
-
-    define_queue_method!(
         /// Getter for device area
         used_ring,
         GuestAddress,
-    );
-
-    define_queue_method!(
-        /// Setter for device area
-        set_used_ring,
-        (),
-        mut,
-        val: GuestAddress
-    );
-
-    define_queue_method!(
-        /// Getter for next_avial index
-        next_avail,
-        Wrapping<u16>,
-    );
-
-    define_queue_method!(
-        /// Setter for next_avial index
-        set_next_avail,
-        (),
-        mut,
-        val: Wrapping<u16>
-    );
-
-    define_queue_method!(
-        /// Getter for next_used index
-        next_used,
-        Wrapping<u16>,
-    );
-
-    define_queue_method!(
-        /// Setter for next_used index
-        set_next_used,
-        (),
-        mut,
-        val: Wrapping<u16>
-    );
-
-    define_queue_method!(
-        /// Return the maximum size of this queue.
-        max_size,
-        u16,
     );
 
     define_queue_method!(
@@ -238,35 +475,6 @@ impl Queue {
         /// queue as big as the device allows.
         size,
         u16,
-    );
-
-    define_queue_method!(
-        /// Set the queue size requested by the driver, which may be smaller than the maximum size.
-        set_size,
-        (),
-        mut,
-        val: u16
-    );
-
-    define_queue_method!(
-        /// Return whether the driver has enabled this queue.
-        ready,
-        bool,
-    );
-
-    define_queue_method!(
-        /// Signal that the driver has completed queue configuration.
-        set_ready,
-        (),
-        mut,
-        enable: bool
-    );
-
-    define_queue_method!(
-        /// Reset queue to a clean state
-        reset,
-        (),
-        mut,
     );
 
     define_queue_method!(
@@ -320,22 +528,6 @@ impl Queue {
         mem: &GuestMemory,
         desc_chain: DescriptorChain,
         len: u32
-    );
-
-    define_queue_method!(
-        /// Acknowledges that this set of features should be enabled on this queue.
-        ack_features,
-        (),
-        mut,
-        features: u64
-    );
-
-    define_queue_method!(
-        /// Set IPC memory mapper for iommu
-        set_iommu,
-        (),
-        mut,
-        iommu: Arc<Mutex<IpcMemoryMapper>>
     );
 
     define_queue_method!(

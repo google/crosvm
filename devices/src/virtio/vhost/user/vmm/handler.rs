@@ -217,7 +217,6 @@ impl VhostUserHandler {
             .map_err(Error::SetVringNum)?;
 
         let config_data = VringConfigData {
-            queue_max_size: queue.max_size(),
             queue_size: queue.size(),
             flags: 0u32,
             desc_table_addr: mem

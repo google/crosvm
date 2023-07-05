@@ -27,6 +27,7 @@ use crate::virtio::vhost::user::vmm::VhostUserHandler;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
+use crate::virtio::QueueConfig;
 use crate::virtio::SharedMemoryMapper;
 use crate::virtio::SharedMemoryRegion;
 use crate::virtio::VirtioDevice;
@@ -241,7 +242,7 @@ impl VirtioDevice for VhostUserVirtioDevice {
     fn vhost_user_restore(
         &mut self,
         data: Value,
-        queue_configs: &[Queue],
+        queue_configs: &[QueueConfig],
         queue_evts: Option<Vec<Event>>,
         interrupt: Option<Interrupt>,
         mem: GuestMemory,

@@ -436,7 +436,7 @@ mod test {
 
     use super::*;
     use crate::virtio::Queue as DeviceQueue;
-    use crate::virtio::QueueType::Split;
+    use crate::virtio::QueueConfig;
 
     // An allocator that just allocates 0 as an IOVA.
     struct SimpleIovaAllocator(RefCell<bool>);
@@ -458,11 +458,12 @@ mod test {
         }
     }
 
-    fn setup_vq(queue: &mut DeviceQueue, addrs: DescTableAddrs) {
+    fn setup_vq(queue: &mut QueueConfig, addrs: DescTableAddrs) -> DeviceQueue {
         queue.set_desc_table(IOVA(addrs.desc));
         queue.set_avail_ring(IOVA(addrs.avail));
         queue.set_used_ring(IOVA(addrs.used));
         queue.set_ready(true);
+        queue.activate().expect("QueueConfig::activate")
     }
 
     fn device_write(mem: &QueueMemory, q: &mut DeviceQueue, data: &[u8]) -> usize {
@@ -497,8 +498,8 @@ mod test {
         let iova_alloc = SimpleIovaAllocator(RefCell::new(false));
         let mut drv_queue =
             UserQueue::new(queue_size, false /* device_writable */, 0, &iova_alloc).unwrap();
-        let mut dev_queue = DeviceQueue::new(Split, queue_size);
-        setup_vq(&mut dev_queue, drv_queue.desc_table_addrs().unwrap());
+        let mut dev_queue = QueueConfig::new(queue_size, 0);
+        let mut dev_queue = setup_vq(&mut dev_queue, drv_queue.desc_table_addrs().unwrap());
 
         for i in 0..count {
             let input = vec![(i + 1) as u8; 5];
@@ -543,8 +544,8 @@ mod test {
         let iova_alloc = SimpleIovaAllocator(RefCell::new(false));
         let mut drv_queue =
             UserQueue::new(queue_size, true /* device_writable */, 0, &iova_alloc).unwrap();
-        let mut dev_queue = DeviceQueue::new(Split, queue_size);
-        setup_vq(&mut dev_queue, drv_queue.desc_table_addrs().unwrap());
+        let mut dev_queue = QueueConfig::new(queue_size, 0);
+        let mut dev_queue = setup_vq(&mut dev_queue, drv_queue.desc_table_addrs().unwrap());
 
         for i in 0..count {
             let input = [i as u8; 5];

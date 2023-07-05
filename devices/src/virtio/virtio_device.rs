@@ -23,6 +23,7 @@ use crate::pci::PciBarIndex;
 use crate::pci::PciCapability;
 use crate::pci::{MsixConfig, MsixStatus};
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
+use crate::virtio::queue::QueueConfig;
 use crate::virtio::queue::QueueType;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -250,7 +251,7 @@ pub trait VirtioDevice: Send {
     fn vhost_user_restore(
         &mut self,
         _data: serde_json::Value,
-        _queue_configs: &[Queue],
+        _queue_configs: &[QueueConfig],
         _queue_evts: Option<Vec<Event>>,
         _interrupt: Option<Interrupt>,
         _mem: GuestMemory,

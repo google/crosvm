@@ -100,6 +100,7 @@ use vmm_vhost::VhostUserSlaveReqHandlerMut;
 
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
+use crate::virtio::QueueConfig;
 use crate::virtio::QueueType::Split;
 use crate::virtio::SharedMemoryMapper;
 use crate::virtio::SharedMemoryRegion;
@@ -211,7 +212,7 @@ pub trait VhostUserBackend {
 /// A virtio ring entry.
 struct Vring {
     // The queue config. This doesn't get mutated by the queue workers.
-    queue: Queue,
+    queue: QueueConfig,
     doorbell: Option<Interrupt>,
     enabled: bool,
     // Active queue that is only `Some` when the device is sleeping.
@@ -231,9 +232,9 @@ struct VringSnapshot {
 }
 
 impl Vring {
-    fn new(max_size: u16) -> Self {
+    fn new(max_size: u16, features: u64) -> Self {
         Self {
-            queue: Queue::new(Split, max_size),
+            queue: QueueConfig::new(max_size, features),
             doorbell: None,
             enabled: false,
             paused_queue: None,
@@ -262,7 +263,7 @@ impl Vring {
     }
 
     fn restore(&mut self, vring_snapshot: VringSnapshot) -> anyhow::Result<()> {
-        self.queue = Queue::restore(Split, vring_snapshot.queue)?;
+        self.queue.restore(vring_snapshot.queue)?;
         self.enabled = vring_snapshot.enabled;
         self.paused_queue = vring_snapshot
             .paused_queue
@@ -409,7 +410,7 @@ impl DeviceRequestHandler {
     ) -> Self {
         let mut vrings = Vec::with_capacity(backend.max_queue_num());
         for _ in 0..backend.max_queue_num() {
-            vrings.push(Vring::new(MAX_VRING_LEN));
+            vrings.push(Vring::new(MAX_VRING_LEN, backend.features()));
         }
 
         DeviceRequestHandler {
@@ -1140,7 +1141,9 @@ mod tests {
 
             for idx in 0..QUEUES_NUM {
                 println!("activate_mem_table: queue_index={}", idx);
-                let queue = Queue::new(Split, 0x10);
+                let mut queue = QueueConfig::new(0x10, 0);
+                queue.set_ready(true);
+                let queue = queue.activate().expect("QueueConfig::activate");
                 let queue_evt = Event::new().unwrap();
                 let irqfd = Event::new().unwrap();
 
@@ -1222,7 +1225,9 @@ mod tests {
 
         for idx in 0..queues_num {
             println!("activate_mem_table: queue_index={}", idx);
-            let queue = Queue::new(Split, 0x10);
+            let mut queue = QueueConfig::new(0x10, 0);
+            queue.set_ready(true);
+            let queue = queue.activate().expect("QueueConfig::activate");
             let queue_evt = Event::new().unwrap();
             let irqfd = Event::new().unwrap();
 

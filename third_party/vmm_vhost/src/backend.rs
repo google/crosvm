@@ -23,8 +23,6 @@ pub const VHOST_MAX_MEMORY_REGIONS: usize = 255;
 
 /// Vring configuration data.
 pub struct VringConfigData {
-    /// Maximum queue size supported by the driver.
-    pub queue_max_size: u16,
     /// Actual queue size negotiated by the driver.
     pub queue_size: u16,
     /// Bitmask of vring flags.
@@ -550,7 +548,6 @@ mod tests {
         b.set_vring_num(1, 256).unwrap();
 
         let config = VringConfigData {
-            queue_max_size: 0x1000,
             queue_size: 0x2000,
             flags: 0x0,
             desc_table_addr: 0x4000,
@@ -572,7 +569,6 @@ mod tests {
     #[test]
     fn test_vring_config_data() {
         let mut config = VringConfigData {
-            queue_max_size: 0x1000,
             queue_size: 0x2000,
             flags: 0x0,
             desc_table_addr: 0x4000,
