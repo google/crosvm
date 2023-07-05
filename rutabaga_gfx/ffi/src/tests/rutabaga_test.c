@@ -77,13 +77,13 @@ static int test_capset_mask_calculation(void)
     int result;
     uint64_t capset_mask;
 
-    result = rutabaga_calculate_capset_mask("cross-domain:gfxstream", &capset_mask);
+    result = rutabaga_calculate_capset_mask("cross-domain:gfxstream-vulkan", &capset_mask);
     CHECK_RESULT(result);
-    CHECK(capset_mask == ((1 << RUTABAGA_CAPSET_CROSS_DOMAIN) | (1 << RUTABAGA_CAPSET_GFXSTREAM)));
+    CHECK(capset_mask == ((1 << RUTABAGA_CAPSET_CROSS_DOMAIN) | (1 << RUTABAGA_CAPSET_GFXSTREAM_VULKAN)));
 
-    result = rutabaga_calculate_capset_mask(":gfxstream", &capset_mask);
+    result = rutabaga_calculate_capset_mask(":gfxstream-vulkan", &capset_mask);
     CHECK_RESULT(result);
-    CHECK(capset_mask == (1 << RUTABAGA_CAPSET_GFXSTREAM));
+    CHECK(capset_mask == (1 << RUTABAGA_CAPSET_GFXSTREAM_VULKAN));
 
     result = rutabaga_calculate_capset_mask("cross-domain:", &capset_mask);
     CHECK_RESULT(result);
