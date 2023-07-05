@@ -44,7 +44,7 @@ struct DescriptorChainRegions {
     // Total bytes consumed in the entire descriptor chain.
     bytes_consumed: usize,
 
-    // For virtio devices that operate on IOVAs rather than guest phyiscal
+    // For virtio devices that operate on IOVAs rather than guest physical
     // addresses, the IOVA regions must be exported from virtio-iommu to get
     // the underlying memory regions. It is only valid for the virtio device
     // to access those memory regions while they remain exported, so maintain

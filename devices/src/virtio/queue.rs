@@ -6,6 +6,7 @@
 
 #![deny(missing_docs)]
 
+mod packed_queue;
 mod split_queue;
 
 use std::num::Wrapping;
@@ -14,17 +15,18 @@ use std::sync::Arc;
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
-use base::error;
 use base::warn;
 use cros_async::AsyncError;
 use cros_async::EventAsync;
 use futures::channel::oneshot;
 use futures::select_biased;
 use futures::FutureExt;
+use packed_queue::PackedQueue;
 use serde::Deserialize;
 use serde::Serialize;
 use split_queue::SplitQueue;
 use sync::Mutex;
+use virtio_sys::virtio_config::VIRTIO_F_RING_PACKED;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
@@ -48,7 +50,7 @@ pub struct QueueConfig {
     /// enforced by `set_size()`.
     size: u16,
 
-    /// Inidcates if the queue is finished with configuration
+    /// Indicates if the queue is finished with configuration
     ready: bool,
 
     /// MSI-X vector for the queue. Don't care for INTx
@@ -266,16 +268,15 @@ impl QueueConfig {
         if self.activated {
             bail!("queue is already activated");
         }
-
-        let sq = match SplitQueue::new(self) {
-            Ok(sq) => sq,
-            Err(e) => {
-                error!("SplitQueue creation failed: {:#}", e);
-                return Err(e);
-            }
+        // If VIRTIO_F_RING_PACKED feature bit is set, create a packed queue, otherwise create a split queue
+        let queue: Queue = if ((self.acked_features >> VIRTIO_F_RING_PACKED) & 1) != 0 {
+            let pq = PackedQueue::new(self).context("Failed to create a packed queue.")?;
+            Queue::PackedVirtQueue(pq)
+        } else {
+            let sq = SplitQueue::new(self).context("Failed to create a split queue.")?;
+            Queue::SplitVirtQueue(sq)
         };
 
-        let queue = Queue::SplitVirtQueue(sq);
         self.activated = true;
         Ok(queue)
     }
@@ -359,6 +360,7 @@ macro_rules! define_queue_method {
         pub fn $method(&self, $($var: $vartype),*) -> $return_type {
             match self {
                 Queue::SplitVirtQueue(sq) => sq.$method($($var),*),
+                Queue::PackedVirtQueue(pq) => pq.$method($($var),*),
             }
         }
     };
@@ -370,6 +372,7 @@ macro_rules! define_queue_method {
         pub fn $method(&mut self, $($var: $vartype),*) -> $return_type {
             match self {
                 Queue::SplitVirtQueue(sq) => sq.$method($($var),*),
+                Queue::PackedVirtQueue(pq) => pq.$method($($var),*),
             }
         }
     };
@@ -380,12 +383,16 @@ macro_rules! define_queue_method {
 pub enum Queue {
     /// Split virtqueue type in virtio v1.2 spec: <https://docs.oasis-open.org/virtio/virtio/v1.2/csd01/virtio-v1.2-csd01.html#x1-350007>
     SplitVirtQueue(SplitQueue),
+    /// Packed virtqueue type in virtio v1.2 spec: <https://docs.oasis-open.org/virtio/virtio/v1.2/csd01/virtio-v1.2-csd01.html#x1-720008>
+    PackedVirtQueue(PackedQueue),
 }
 
 /// This enum is used to specify the type of virtqueue (split or packed).
 pub enum QueueType {
     /// Split Virtqueue type
     Split,
+    /// Packed Virtqueue type
+    Packed,
 }
 
 impl Queue {
@@ -436,6 +443,7 @@ impl Queue {
     pub fn trigger_interrupt(&mut self, mem: &GuestMemory, interrupt: &Interrupt) -> bool {
         match self {
             Queue::SplitVirtQueue(sq) => sq.trigger_interrupt(mem, interrupt),
+            Queue::PackedVirtQueue(pq) => pq.trigger_interrupt(mem, interrupt),
         }
     }
 
@@ -443,6 +451,7 @@ impl Queue {
     pub fn restore(queue_type: QueueType, queue_value: serde_json::Value) -> anyhow::Result<Queue> {
         match queue_type {
             QueueType::Split => SplitQueue::restore(queue_value).map(Queue::SplitVirtQueue),
+            QueueType::Packed => PackedQueue::restore(queue_value).map(Queue::PackedVirtQueue),
         }
     }
 

@@ -11,6 +11,7 @@ use std::sync::Arc;
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
+use base::error;
 use base::trace;
 use base::Protection;
 use cros_async::MemRegion;
@@ -30,10 +31,23 @@ use crate::virtio::ipc_memory_mapper::ExportedRegion;
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 use crate::virtio::memory_util::read_obj_from_addr_wrapper;
 
-/// Virtio flag indicating there is a next descriptor in descripor chain
+/// Virtio flag indicating there is a next descriptor in descriptor chain
 pub const VIRTQ_DESC_F_NEXT: u16 = 0x1;
 /// Virtio flag indicating descriptor is write-only
 pub const VIRTQ_DESC_F_WRITE: u16 = 0x2;
+
+/// Packed virtqueue flags
+pub const VIRTQ_DESC_F_AVAIL: u16 = 0x80;
+pub const VIRTQ_DESC_F_USED: u16 = 0x8000;
+
+/// Enable events
+pub const RING_EVENT_FLAGS_ENABLE: u16 = 0x0;
+/// Disable events
+pub const RING_EVENT_FLAGS_DISABLE: u16 = 0x1;
+
+/// Enable events for a specific descriptor.
+/// Only valid if VIRTIO_F_RING_EVENT_IDX has been negotiated.
+pub const RING_EVENT_FLAGS_DESC: u16 = 0x2;
 
 /// A single virtio split queue descriptor (`struct virtq_desc` in the spec).
 #[derive(Copy, Clone, Debug, FromBytes, AsBytes)]
@@ -50,6 +64,82 @@ pub struct Desc {
 
     /// Index of the next descriptor in the chain (only valid if `flags & VIRTQ_DESC_F_NEXT`).
     pub next: Le16,
+}
+
+/// A packed virtio packed queue descriptor (`struct pvirtq_desc` in the spec).
+#[derive(Copy, Clone, Debug, FromBytes, AsBytes)]
+#[repr(C)]
+pub struct PackedDesc {
+    /// Guest address of memory buffer address
+    pub addr: Le64,
+
+    /// Memory buffer length in bytes
+    pub len: Le32,
+
+    /// Buffer ID
+    pub id: Le16,
+
+    /// The flags depending on descriptor type
+    pub flags: Le16,
+}
+
+impl PackedDesc {
+    pub fn addr(&self) -> u64 {
+        self.addr.into()
+    }
+
+    pub fn len(&self) -> u32 {
+        self.len.into()
+    }
+
+    pub fn flags(&self) -> u16 {
+        self.flags.into()
+    }
+
+    pub fn id(&self) -> u16 {
+        self.id.into()
+    }
+
+    pub fn has_next(&self) -> bool {
+        self.flags() & VIRTQ_DESC_F_NEXT != 0
+    }
+
+    pub fn is_available(&self, wrap_value: u16) -> bool {
+        let avail = (self.flags() & VIRTQ_DESC_F_AVAIL) != 0;
+        let used = (self.flags() & VIRTQ_DESC_F_USED) != 0;
+        let wrap = wrap_value != 0;
+        avail != used && avail == wrap
+    }
+}
+
+#[derive(Copy, Clone, Debug, FromBytes, AsBytes)]
+#[repr(C)]
+pub struct PackedDescEvent {
+    pub desc: Le16,
+    pub flag: Le16,
+}
+
+impl PackedDescEvent {
+    pub fn notification_type(&self) -> PackedNotificationType {
+        let flag: u16 = self.flag.into();
+
+        if flag == RING_EVENT_FLAGS_DISABLE {
+            PackedNotificationType::Disable
+        } else if flag == RING_EVENT_FLAGS_DESC {
+            PackedNotificationType::Desc(self.desc.into())
+        } else if flag == RING_EVENT_FLAGS_ENABLE {
+            PackedNotificationType::Enable
+        } else {
+            let desc: u16 = self.desc.into();
+            error!("Unknown packed desc event flag:{:x}, desc:{:x}", flag, desc);
+            PackedNotificationType::Enable
+        }
+    }
+}
+pub enum PackedNotificationType {
+    Enable,
+    Disable,
+    Desc(u16),
 }
 
 /// Type of access allowed for a single virtio descriptor within a descriptor chain.
@@ -79,6 +169,12 @@ pub struct DescriptorChain {
 
     /// The writable memory regions that make up the descriptor chain.
     pub writer: Writer,
+
+    /// The descriptor chain id(only if it is a packed virtqueue descriptor chain)
+    pub id: Option<u16>,
+
+    ///  Number of descriptor in descriptor chain
+    pub count: u16,
 }
 
 impl DescriptorChain {
@@ -129,13 +225,17 @@ impl DescriptorChain {
             }
         }
 
+        let count = chain.count();
+        let id = chain.id();
+
         Self::validate_mem_regions(mem, &readable_regions, &writable_regions)
             .context("invalid descriptor chain memory regions")?;
 
         trace!(
-            "DescriptorChain readable={} writable={}",
+            "Descriptor chain created, index:{index}, count:{count}, buffer id:{:?}, readable:{}, writable:{}",
+            id,
             readable_regions.len(),
-            writable_regions.len(),
+            writable_regions.len()
         );
 
         let exported_regions = if exported_regions.is_empty() {
@@ -152,6 +252,8 @@ impl DescriptorChain {
             index,
             reader,
             writer,
+            id,
+            count,
         };
 
         Ok(desc_chain)
@@ -275,6 +377,13 @@ pub struct Descriptor {
 pub trait DescriptorChainIter {
     /// Return the next descriptor in the chain, or `None` if there are no more descriptors.
     fn next(&mut self) -> Result<Option<Descriptor>>;
+
+    /// Return the number of descriptor has been iterated in the chain
+    fn count(&self) -> u16;
+
+    /// Return Packed descriptor chain buffer id if iterator reaches end, otherwise return None
+    /// SplitDescriptorChainIter should return None.
+    fn id(&self) -> Option<u16>;
 }
 
 /// Iterator over the descriptors of a split virtqueue descriptor chain.
@@ -391,5 +500,165 @@ impl DescriptorChainIter for SplitDescriptorChain<'_, '_> {
             len,
             access,
         }))
+    }
+
+    fn count(&self) -> u16 {
+        self.count
+    }
+
+    fn id(&self) -> Option<u16> {
+        None
+    }
+}
+
+pub struct PackedDescriptorChain<'m, 'd> {
+    avail_wrap_counter: bool,
+
+    /// Current descriptor index within `desc_table`, or `None` if the iterator is exhausted.
+    index: Option<u16>,
+
+    /// Number of descriptors returned by the iterator already.
+    /// If `count` reaches `queue_size`, the chain has a loop and is therefore invalid.
+    count: u16,
+
+    /// Buffer Id, which locates at the last descriptor in the chain
+    id: Option<u16>,
+
+    queue_size: u16,
+
+    /// If `writable` is true, a writable descriptor has already been encountered.
+    /// Valid descriptor chains must consist of readable descriptors followed by writable
+    /// descriptors.
+    writable: bool,
+
+    mem: &'m GuestMemory,
+    desc_table: GuestAddress,
+    exported_desc_table: Option<&'d ExportedRegion>,
+}
+
+impl<'m, 'd> PackedDescriptorChain<'m, 'd> {
+    /// Construct a new iterator over a split virtqueue descriptor chain.
+    ///
+    /// # Arguments
+    /// * `mem` - The [`GuestMemory`] containing the descriptor chain.
+    /// * `desc_table` - Guest physical address of the descriptor table.
+    /// * `queue_size` - Total number of entries in the descriptor table.
+    /// * `index` - The index of the first descriptor in the chain.
+    /// * `exported_desc_table` - If specified, contains the IOMMU mapping of the descriptor table
+    ///   region.
+    pub fn new(
+        mem: &'m GuestMemory,
+        desc_table: GuestAddress,
+        queue_size: u16,
+        avail_wrap_counter: bool,
+        index: u16,
+        exported_desc_table: Option<&'d ExportedRegion>,
+    ) -> PackedDescriptorChain<'m, 'd> {
+        trace!("starting packed descriptor chain head={index}");
+        PackedDescriptorChain {
+            index: Some(index),
+            count: 0,
+            id: None,
+            queue_size,
+            writable: false,
+            mem,
+            desc_table,
+            exported_desc_table,
+            avail_wrap_counter,
+        }
+    }
+}
+
+impl DescriptorChainIter for PackedDescriptorChain<'_, '_> {
+    fn next(&mut self) -> Result<Option<Descriptor>> {
+        let index = match self.index {
+            Some(index) => index,
+            None => {
+                return Ok(None);
+            }
+        };
+
+        if index >= self.queue_size {
+            bail!(
+                "out of bounds descriptor index {} for queue size {}",
+                index,
+                self.queue_size
+            );
+        }
+
+        if self.count >= self.queue_size {
+            bail!("descriptor chain loop detected");
+        }
+
+        let desc_addr = self
+            .desc_table
+            .checked_add((index as u64) * 16)
+            .context("integer overflow")?;
+        let desc =
+            read_obj_from_addr_wrapper::<PackedDesc>(self.mem, self.exported_desc_table, desc_addr)
+                .with_context(|| format!("failed to read desc {:#x}", desc_addr.offset()))?;
+
+        let address: u64 = desc.addr();
+        let len: u32 = desc.len();
+        let flags: u16 = desc.flags();
+
+        trace!("{index:5}: addr={address:#016x} len={len:#08x} flags={flags:#x}");
+
+        if !desc.is_available(self.avail_wrap_counter as u16) {
+            return Ok(None);
+        }
+
+        if len == 0 {
+            bail!("invalid zero-length descriptor");
+        }
+
+        let unexpected_flags = flags
+            & !(VIRTQ_DESC_F_WRITE | VIRTQ_DESC_F_NEXT | VIRTQ_DESC_F_AVAIL | VIRTQ_DESC_F_USED);
+        if unexpected_flags != 0 {
+            bail!("unexpected flags in descriptor {index}: {unexpected_flags:#x}")
+        }
+
+        let access = if flags & VIRTQ_DESC_F_WRITE != 0 {
+            DescriptorAccess::DeviceWrite
+        } else {
+            DescriptorAccess::DeviceRead
+        };
+
+        if access == DescriptorAccess::DeviceRead && self.writable {
+            bail!("invalid device-readable descriptor following writable descriptors");
+        } else if access == DescriptorAccess::DeviceWrite {
+            self.writable = true;
+        }
+
+        // If VIRTQ_DESC_F_NEXT exists, the next descriptor in descriptor chain
+        // is the next element in descriptor table. When index reaches the end of
+        // descriptor table, we need to flip avail_wrap_counter.
+        if desc.has_next() {
+            if index + 1 < self.queue_size {
+                self.index = Some(index + 1);
+            } else {
+                self.index = Some(0);
+                self.avail_wrap_counter = !self.avail_wrap_counter;
+            }
+        } else {
+            self.id = Some(desc.id());
+            self.index = None;
+        }
+
+        self.count += 1;
+
+        Ok(Some(Descriptor {
+            address,
+            len,
+            access,
+        }))
+    }
+
+    fn count(&self) -> u16 {
+        self.count
+    }
+
+    fn id(&self) -> Option<u16> {
+        self.id
     }
 }
