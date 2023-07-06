@@ -471,7 +471,7 @@ impl Log for State {
 
 // Struct that implements io::Write to be used for writing directly to the syslog
 pub struct Syslogger<'a> {
-    buf: String,
+    buf: Vec<u8>,
     level: log::Level,
     get_state_fn: Box<dyn Fn() -> MutexGuard<'a, State> + Send + 'a>,
 }
@@ -479,7 +479,7 @@ pub struct Syslogger<'a> {
 impl<'a> Syslogger<'a> {
     pub fn new(level: log::Level) -> Syslogger<'a> {
         Syslogger {
-            buf: String::new(),
+            buf: Vec::new(),
             level,
             get_state_fn: Box::new(|| STATE.lock()),
         }
@@ -489,7 +489,7 @@ impl<'a> Syslogger<'a> {
         get_state_fn: F,
     ) -> Syslogger<'a> {
         Syslogger {
-            buf: String::new(),
+            buf: Vec::new(),
             level,
             get_state_fn: Box::new(get_state_fn),
         }
@@ -499,16 +499,20 @@ impl<'a> Syslogger<'a> {
 impl<'a> io::Write for Syslogger<'a> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let state = (self.get_state_fn)();
-        let parsed_str = String::from_utf8_lossy(buf);
-        self.buf.push_str(&parsed_str);
+        self.buf.extend_from_slice(buf);
 
-        if let Some(last_newline_idx) = self.buf.rfind('\n') {
-            for line in self.buf[..last_newline_idx].lines() {
+        if let Some(last_newline_idx) = self.buf.iter().rposition(|&x| x == b'\n') {
+            for line in (self.buf[..last_newline_idx]).split(|&x| x == b'\n') {
+                // Also drop CR+LF line endings.
+                let send_line = match line.split_last() {
+                    Some((b'\r', trimmed)) => trimmed,
+                    _ => line,
+                };
                 // Match is to explicitly limit lifetime of args
                 // https://github.com/rust-lang/rust/issues/92698
                 // https://github.com/rust-lang/rust/issues/15023
                 #[allow(clippy::match_single_binding)]
-                match format_args!("{}", line) {
+                match format_args!("{}", String::from_utf8_lossy(send_line)) {
                     args => {
                         let mut record_builder = log::Record::builder();
                         record_builder.level(self.level);
