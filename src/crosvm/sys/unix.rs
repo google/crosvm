@@ -1795,55 +1795,6 @@ where
         }))
         .context("failed to calculate init balloon size")?;
 
-    #[cfg(feature = "direct")]
-    let mut irqs = Vec::new();
-
-    #[cfg(feature = "direct")]
-    for irq in &cfg.direct_level_irq {
-        if !sys_allocator.reserve_irq(*irq) {
-            warn!("irq {} already reserved.", irq);
-        }
-        use devices::CrosvmDeviceId;
-        let irq_event_source = IrqEventSource {
-            device_id: CrosvmDeviceId::DirectIo.into(),
-            queue_id: 0,
-            device_name: format!("direct edge irq {}", irq),
-        };
-        let irq_evt = devices::IrqLevelEvent::new().context("failed to create event")?;
-        irq_chip
-            .register_level_irq_event(*irq, &irq_evt, irq_event_source)
-            .unwrap();
-        let direct_irq = devices::DirectIrq::new_level(&irq_evt)
-            .context("failed to enable interrupt forwarding")?;
-        direct_irq
-            .irq_enable(*irq)
-            .context("failed to enable interrupt forwarding")?;
-        irqs.push(direct_irq);
-    }
-
-    #[cfg(feature = "direct")]
-    for irq in &cfg.direct_edge_irq {
-        if !sys_allocator.reserve_irq(*irq) {
-            warn!("irq {} already reserved.", irq);
-        }
-        use devices::CrosvmDeviceId;
-        let irq_event_source = IrqEventSource {
-            device_id: CrosvmDeviceId::DirectIo.into(),
-            queue_id: 0,
-            device_name: format!("direct level irq {}", irq),
-        };
-        let irq_evt = devices::IrqEdgeEvent::new().context("failed to create event")?;
-        irq_chip
-            .register_edge_irq_event(*irq, &irq_evt, irq_event_source)
-            .unwrap();
-        let direct_irq = devices::DirectIrq::new_edge(&irq_evt)
-            .context("failed to enable interrupt forwarding")?;
-        direct_irq
-            .irq_enable(*irq)
-            .context("failed to enable interrupt forwarding")?;
-        irqs.push(direct_irq);
-    }
-
     // Reserve direct mmio range in advance.
     #[cfg(feature = "direct")]
     if let Some(mmio) = &cfg.direct_mmio {

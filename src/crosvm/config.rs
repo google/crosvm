@@ -941,13 +941,9 @@ pub struct Config {
     pub crash_report_uuid: Option<String>,
     pub delay_rt: bool,
     #[cfg(feature = "direct")]
-    pub direct_edge_irq: Vec<u32>,
-    #[cfg(feature = "direct")]
     pub direct_fixed_evts: Vec<devices::ACPIPMFixedEvent>,
     #[cfg(feature = "direct")]
     pub direct_gpe: Vec<u32>,
-    #[cfg(feature = "direct")]
-    pub direct_level_irq: Vec<u32>,
     #[cfg(feature = "direct")]
     pub direct_mmio: Option<DirectIoOption>,
     #[cfg(feature = "direct")]
@@ -1157,13 +1153,9 @@ impl Default for Config {
             cpu_clusters: Vec::new(),
             delay_rt: false,
             #[cfg(feature = "direct")]
-            direct_edge_irq: Vec::new(),
-            #[cfg(feature = "direct")]
             direct_fixed_evts: Vec::new(),
             #[cfg(feature = "direct")]
             direct_gpe: Vec::new(),
-            #[cfg(feature = "direct")]
-            direct_level_irq: Vec::new(),
             #[cfg(feature = "direct")]
             direct_mmio: None,
             #[cfg(feature = "direct")]

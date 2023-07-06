@@ -230,32 +230,6 @@ impl Ioapic {
         })
     }
 
-    pub fn init_direct_gsi<F>(&mut self, register_irqfd: F) -> Result<()>
-    where
-        F: Fn(u32, &Event) -> Result<()>,
-    {
-        for (gsi, out_event) in self.out_events.iter_mut().enumerate() {
-            let event = Event::new()?;
-            register_irqfd(gsi as u32, &event)?;
-            *out_event = Some(OutEvent {
-                irq_event: IrqEvent {
-                    gsi: gsi as u32,
-                    event,
-                    resample_event: None,
-                    source: IrqEventSource {
-                        device_id: CrosvmDeviceId::DirectGsi.into(),
-                        queue_id: 0,
-                        device_name: "direct_gsi".into(),
-                    },
-                },
-                // TODO(b/275124020): make sure this works with snapshotting by restoring
-                // the ioapic first, and then calling this function.
-                snapshot: None,
-            });
-        }
-        Ok(())
-    }
-
     pub fn get_ioapic_state(&self) -> IoapicState {
         // Convert vector of first NUM_IOAPIC_PINS active interrupts into an u32 value.
         let level_bitmap = self

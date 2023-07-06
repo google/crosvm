@@ -306,15 +306,6 @@ impl KvmSplitIrqChip {
             irq_events: Arc::new(Mutex::new(Default::default())),
         };
 
-        // crosvm-direct requires 1:1 GSI mapping between host and guest. The predefined IRQ
-        // numbering will be exposed to the guest with no option to allocate it dynamically.
-        // Tell the IOAPIC to fill in IRQ output events with 1:1 GSI mapping upfront so that
-        // IOAPIC wont assign a new GSI but use the same as for host instead.
-        #[cfg(feature = "direct")]
-        chip.ioapic
-            .lock()
-            .init_direct_gsi(|gsi, event| chip.vm.register_irqfd(gsi as u32, event, None))?;
-
         // Setup standard x86 irq routes
         let mut routes = kvm_default_irq_routing_table(ioapic_pins);
         // Add dummy MSI routes for the first ioapic_pins GSIs

@@ -1082,13 +1082,6 @@ pub struct RunCommand {
     pub delay_rt: Option<bool>,
 
     #[cfg(feature = "direct")]
-    #[argh(option, arg_name = "irq")]
-    #[serde(skip)] // TODO(b/255223604)
-    #[merge(strategy = overwrite)]
-    /// enable interrupt passthrough
-    pub direct_edge_irq: Vec<u32>,
-
-    #[cfg(feature = "direct")]
     #[argh(option, arg_name = "event=gbllock|powerbtn|sleepbtn|rtc")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite)]
@@ -1101,13 +1094,6 @@ pub struct RunCommand {
     #[merge(strategy = overwrite)]
     /// enable GPE interrupt and register access passthrough
     pub direct_gpe: Vec<u32>,
-
-    #[cfg(feature = "direct")]
-    #[argh(option, arg_name = "irq")]
-    #[serde(skip)] // TODO(b/255223604)
-    #[merge(strategy = overwrite)]
-    /// enable interrupt passthrough
-    pub direct_level_irq: Vec<u32>,
 
     #[cfg(feature = "direct")]
     #[argh(
@@ -3136,8 +3122,6 @@ impl TryFrom<RunCommand> for super::config::Config {
         {
             cfg.direct_pmio = cmd.direct_pmio;
             cfg.direct_mmio = cmd.direct_mmio;
-            cfg.direct_level_irq = cmd.direct_level_irq;
-            cfg.direct_edge_irq = cmd.direct_edge_irq;
             cfg.direct_gpe = cmd.direct_gpe;
             cfg.direct_fixed_evts = cmd.direct_fixed_event;
             cfg.pcie_rp = cmd.pcie_root_port;
