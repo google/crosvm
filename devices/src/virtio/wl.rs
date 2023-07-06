@@ -88,9 +88,7 @@ use base::WaitContext;
 use base::WorkerThread;
 use data_model::*;
 #[cfg(feature = "minigbm")]
-use libc::EBADF;
-#[cfg(feature = "minigbm")]
-use libc::EINVAL;
+use libc::{EBADF, EINVAL};
 use remain::sorted;
 use resources::address_allocator::AddressAllocator;
 use resources::AddressRange;
@@ -538,6 +536,19 @@ impl VmRequester {
     fn register_memory(&self, descriptor: SafeDescriptor, size: u64) -> WlResult<u64> {
         let mut state = self.state.borrow_mut();
         let size = round_up_to_page_size(size as usize) as u64;
+
+        let prot = match FileFlags::from_file(&descriptor) {
+            Ok(FileFlags::Read) => Protection::read(),
+            Ok(FileFlags::Write) => Protection::write(),
+            Ok(FileFlags::ReadWrite) => Protection::read_write(),
+            Err(e) => {
+                return Err(WlError::ShmemMapperError(anyhow!(
+                    "failed to get file descriptor flags with error: {:?}",
+                    e
+                )))
+            }
+        };
+
         let source = VmMemorySource::Descriptor {
             descriptor,
             offset: 0,
@@ -551,10 +562,7 @@ impl VmRequester {
             .context("failed to allocate offset")
             .map_err(WlError::ShmemMapperError)?;
 
-        match state
-            .mapper
-            .add_mapping(source, offset, Protection::read_write())
-        {
+        match state.mapper.add_mapping(source, offset, prot) {
             Ok(()) => {
                 state.allocs.insert(offset, alloc);
                 Ok(offset)
