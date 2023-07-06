@@ -47,7 +47,10 @@ pub struct Vsock {
     // None - device was just created or is running.
     // Some - device was put to sleep after running or was restored.
     vrings_base: Option<Vec<VringBase>>,
+    // Some iff the device is active and awake.
     event_queue: Option<Queue>,
+    // If true, we should send a TRANSPORT_RESET event to the guest at the next opportunity.
+    needs_transport_reset: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -93,6 +96,7 @@ impl Vsock {
             acked_features: 0,
             vrings_base: None,
             event_queue: None,
+            needs_transport_reset: false,
         })
     }
 
@@ -106,6 +110,7 @@ impl Vsock {
             acked_features: 0,
             vrings_base: None,
             event_queue: None,
+            needs_transport_reset: false,
         }
     }
 
@@ -180,9 +185,36 @@ impl VirtioDevice for Vsock {
         let interrupts = self.interrupts.take().context("missing interrupts")?;
         let acked_features = self.acked_features;
         let cid = self.cid;
+
         // The third vq is an event-only vq that is not handled by the vhost
         // subsystem (but still needs to exist).  Split it off here.
-        self.event_queue = Some(queues.remove(2).0);
+        let mut event_queue = queues.remove(2).0;
+        // Send TRANSPORT_RESET event if needed.
+        if self.needs_transport_reset {
+            self.needs_transport_reset = false;
+
+            // We assume the event queue is non-empty. This should be OK for existing use cases
+            // because we expect the guest vsock driver to be initialized at the time of snapshot
+            // and this is only the event we ever write to the queue.
+            //
+            // If that assumption becomes invalid, we could integrate this logic into the worker
+            // thread's event loop so that it can wait for space in the queue.
+            let mut avail_desc = event_queue
+                .pop(&mem)
+                .expect("event queue is empty, can't send transport reset event");
+            let transport_reset = virtio_sys::virtio_vsock::virtio_vsock_event{
+                id: virtio_sys::virtio_vsock::virtio_vsock_event_id_VIRTIO_VSOCK_EVENT_TRANSPORT_RESET.into(),
+            };
+            avail_desc
+                .writer
+                .write_obj(transport_reset)
+                .expect("failed to write transport reset event");
+            let len = avail_desc.writer.bytes_written() as u32;
+            event_queue.add_used(&mem, avail_desc, len);
+            event_queue.trigger_interrupt(&mem, &interrupt);
+        }
+        self.event_queue = Some(event_queue);
+
         let mut worker = Worker::new(
             queues,
             vhost_handle,
@@ -309,6 +341,9 @@ impl VirtioDevice for Vsock {
         );
         self.acked_features = deser.acked_features;
         self.vrings_base = Some(deser.vrings_base);
+        // Send the TRANSPORT_RESET on next wake so that the guest knows that its existing vsock
+        // connections are broken.
+        self.needs_transport_reset = true;
         Ok(())
     }
 }

@@ -102,3 +102,21 @@ bindgen_generate \
     -isystem "${BINDGEN_LINUX_X86_HEADERS}/include" \
     | replace_linux_int_types \
     > virtio_sys/src/virtio_mmio.rs
+
+VIRTIO_VSOCK_EXTRA="// Added by virtio_sys/bindgen.sh
+use data_model::Le16;
+use data_model::Le32;
+use data_model::Le64;
+use zerocopy::AsBytes;"
+
+bindgen_generate \
+    --raw-line "${VIRTIO_VSOCK_EXTRA}" \
+    --allowlist-var='VIRTIO_VSOCK_.*' \
+    --allowlist-type='virtio_vsock_.*' \
+    --with-derive-custom "virtio_vsock_event=AsBytes" \
+    "${BINDGEN_LINUX_X86_HEADERS}/include/linux/virtio_vsock.h" \
+    -- \
+    -isystem "${BINDGEN_LINUX_X86_HEADERS}/include" \
+    | replace_linux_int_types \
+    | replace_linux_endian_types \
+    > virtio_sys/src/virtio_vsock.rs

@@ -20,6 +20,7 @@ pub mod virtio_ids;
 pub mod virtio_mmio;
 pub mod virtio_net;
 pub mod virtio_ring;
+pub mod virtio_vsock;
 pub use crate::virtio_mmio::*;
 
 pub const VHOST: ::std::os::raw::c_uint = 0xaf;
