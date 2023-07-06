@@ -12,7 +12,7 @@
   - [System Requirements](./running_crosvm/requirements.md)
   - [Features](./running_crosvm/features.md)
   - [Programmatic Interaction](./running_crosvm/programmatic_interaction.md)
-- [Testing](./testing.md)
+- [Testing](./testing/index.md)
 - [Devices](./devices/index.md)
   - [Block](./devices/block.md)
   - [Network](./devices/net.md)

@@ -71,8 +71,9 @@ flag. (e.g. `cargo build --features=gdb`)
 
 ### Running all tests
 
-Crosvm's integration tests have special requirements for execution (see [Testing](../testing.md)),
-so we use a special test runner. By default it will only execute unit tests:
+Crosvm's integration tests have special requirements for execution (see
+[Testing](../testing/index.md)), so we use a special test runner. By default it will only execute
+unit tests:
 
 ```sh
 ./tools/run_tests

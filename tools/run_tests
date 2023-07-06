@@ -182,7 +182,7 @@ def main(
     """
     Runs all crosvm tests
 
-    For details on how crosvm tests are organized, see https://crosvm.dev/book/testing.html
+    For details on how crosvm tests are organized, see https://crosvm.dev/book/testing/index.html
 
     # Basic Usage
 

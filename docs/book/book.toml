@@ -17,5 +17,6 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 [output.html.redirect]
 "building_crosvm/chromiumos.html" = "../integration/chromeos.html"
 "architecture.html" = "architecture/overview.html"
+"testing.html" = "testing/index.html"
 
 [output.linkcheck]
