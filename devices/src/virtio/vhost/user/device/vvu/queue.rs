@@ -434,6 +434,8 @@ mod test {
     use std::io::Read;
     use std::io::Write;
 
+    use vm_memory::GuestMemory;
+
     use super::*;
     use crate::virtio::Queue as DeviceQueue;
     use crate::virtio::QueueConfig;
@@ -458,26 +460,26 @@ mod test {
         }
     }
 
-    fn setup_vq(queue: &mut QueueConfig, addrs: DescTableAddrs) -> DeviceQueue {
+    fn setup_vq(queue: &mut QueueConfig, addrs: DescTableAddrs, mem: &GuestMemory) -> DeviceQueue {
         queue.set_desc_table(IOVA(addrs.desc));
         queue.set_avail_ring(IOVA(addrs.avail));
         queue.set_used_ring(IOVA(addrs.used));
         queue.set_ready(true);
-        queue.activate().expect("QueueConfig::activate")
+        queue.activate(mem).expect("QueueConfig::activate")
     }
 
-    fn device_write(mem: &QueueMemory, q: &mut DeviceQueue, data: &[u8]) -> usize {
-        let mut desc_chain = q.pop(mem).unwrap();
+    fn device_write(q: &mut DeviceQueue, data: &[u8]) -> usize {
+        let mut desc_chain = q.pop().unwrap();
         let written = desc_chain.writer.write(data).unwrap();
-        q.add_used(mem, desc_chain, written as u32);
+        q.add_used(desc_chain, written as u32);
         written
     }
 
-    fn device_read(mem: &QueueMemory, q: &mut DeviceQueue, len: usize) -> Vec<u8> {
-        let mut desc_chain = q.pop(mem).unwrap();
+    fn device_read(q: &mut DeviceQueue, len: usize) -> Vec<u8> {
+        let mut desc_chain = q.pop().unwrap();
         let mut buf = vec![0; len];
         desc_chain.reader.read_exact(&mut buf).unwrap();
-        q.add_used(mem, desc_chain, len as u32);
+        q.add_used(desc_chain, len as u32);
         buf
     }
 
@@ -499,15 +501,19 @@ mod test {
         let mut drv_queue =
             UserQueue::new(queue_size, false /* device_writable */, 0, &iova_alloc).unwrap();
         let mut dev_queue = QueueConfig::new(queue_size, 0);
-        let mut dev_queue = setup_vq(&mut dev_queue, drv_queue.desc_table_addrs().unwrap());
+        let mut dev_queue = setup_vq(
+            &mut dev_queue,
+            drv_queue.desc_table_addrs().unwrap(),
+            &drv_queue.mem,
+        );
 
         for i in 0..count {
             let input = vec![(i + 1) as u8; 5];
             driver_write(&mut drv_queue, &input);
 
-            let buf = device_read(&drv_queue.mem, &mut dev_queue, input.len());
+            let buf = device_read(&mut dev_queue, input.len());
             assert_eq!(input, buf);
-            assert!(dev_queue.peek(&drv_queue.mem).is_none());
+            assert!(dev_queue.peek().is_none());
         }
     }
 
@@ -545,13 +551,17 @@ mod test {
         let mut drv_queue =
             UserQueue::new(queue_size, true /* device_writable */, 0, &iova_alloc).unwrap();
         let mut dev_queue = QueueConfig::new(queue_size, 0);
-        let mut dev_queue = setup_vq(&mut dev_queue, drv_queue.desc_table_addrs().unwrap());
+        let mut dev_queue = setup_vq(
+            &mut dev_queue,
+            drv_queue.desc_table_addrs().unwrap(),
+            &drv_queue.mem,
+        );
 
         for i in 0..count {
             let input = [i as u8; 5];
 
             // Device writes data to driver
-            let written = device_write(&drv_queue.mem, &mut dev_queue, &input);
+            let written = device_write(&mut dev_queue, &input);
             assert_eq!(written, input.len());
 
             // Driver reads data

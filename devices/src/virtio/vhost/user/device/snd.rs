@@ -189,7 +189,7 @@ impl VhostUserBackend for SndBackend {
         &mut self,
         idx: usize,
         queue: virtio::Queue,
-        mem: GuestMemory,
+        _mem: GuestMemory,
         doorbell: Interrupt,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
@@ -217,7 +217,6 @@ impl VhostUserBackend for SndBackend {
                     async move {
                         handle_ctrl_queue(
                             ex,
-                            &mem,
                             &streams,
                             &snd_data,
                             ctrl_queue,
@@ -240,14 +239,11 @@ impl VhostUserBackend for SndBackend {
                     (self.rx_send.clone(), self.rx_recv.take())
                 };
                 let mut recv = recv.ok_or_else(|| anyhow!("queue restart is not supported"))?;
-                let mem = Rc::new(mem);
-                let mem2 = Rc::clone(&mem);
                 let streams = Rc::clone(&self.streams);
                 let queue_pcm_queue = queue.clone();
                 let queue_task = ex.spawn_local(Abortable::new(
                     async move {
-                        handle_pcm_queue(&mem, &streams, send, queue_pcm_queue, &kick_evt, None)
-                            .await
+                        handle_pcm_queue(&streams, send, queue_pcm_queue, &kick_evt, None).await
                     },
                     registration,
                 ));
@@ -257,14 +253,8 @@ impl VhostUserBackend for SndBackend {
                 let queue_response_queue = queue.clone();
                 let response_queue_task = ex.spawn_local(Abortable::new(
                     async move {
-                        send_pcm_response_worker(
-                            &mem2,
-                            queue_response_queue,
-                            doorbell,
-                            &mut recv,
-                            None,
-                        )
-                        .await
+                        send_pcm_response_worker(queue_response_queue, doorbell, &mut recv, None)
+                            .await
                     },
                     registration2,
                 ));

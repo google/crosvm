@@ -50,7 +50,6 @@ const MAX_QUEUE_NUM: usize = 3; /* rx, tx, ctrl */
 
 async fn run_tx_queue<T: TapT>(
     mut queue: Queue,
-    mem: GuestMemory,
     mut tap: T,
     doorbell: Interrupt,
     kick_evt: EventAsync,
@@ -72,14 +71,13 @@ async fn run_tx_queue<T: TapT>(
             }
         }
 
-        process_tx(&doorbell, &mut queue, &mem, &mut tap);
+        process_tx(&doorbell, &mut queue, &mut tap);
     }
     queue
 }
 
 async fn run_ctrl_queue<T: TapT>(
     mut queue: Queue,
-    mem: GuestMemory,
     mut tap: T,
     doorbell: Interrupt,
     kick_evt: EventAsync,
@@ -103,14 +101,7 @@ async fn run_ctrl_queue<T: TapT>(
             }
         }
 
-        if let Err(e) = process_ctrl(
-            &doorbell,
-            &mut queue,
-            &mem,
-            &mut tap,
-            acked_features,
-            vq_pairs,
-        ) {
+        if let Err(e) = process_ctrl(&doorbell, &mut queue, &mut tap, acked_features, vq_pairs) {
             error!("Failed to process ctrl queue: {}", e);
             break;
         }

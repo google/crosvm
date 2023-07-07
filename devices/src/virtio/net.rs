@@ -304,12 +304,11 @@ fn process_ctrl_request<T: TapT>(
 pub fn process_ctrl<T: TapT>(
     interrupt: &Interrupt,
     ctrl_queue: &mut Queue,
-    mem: &GuestMemory,
     tap: &mut T,
     acked_features: u64,
     vq_pairs: u16,
 ) -> Result<(), NetError> {
-    while let Some(mut desc_chain) = ctrl_queue.pop(mem) {
+    while let Some(mut desc_chain) = ctrl_queue.pop() {
         if let Err(e) = process_ctrl_request(&mut desc_chain.reader, tap, acked_features, vq_pairs)
         {
             error!("process_ctrl_request failed: {}", e);
@@ -324,10 +323,10 @@ pub fn process_ctrl<T: TapT>(
                 .map_err(NetError::WriteAck)?;
         }
         let len = desc_chain.writer.bytes_written() as u32;
-        ctrl_queue.add_used(mem, desc_chain, len);
+        ctrl_queue.add_used(desc_chain, len);
     }
 
-    ctrl_queue.trigger_interrupt(mem, interrupt);
+    ctrl_queue.trigger_interrupt(interrupt);
     Ok(())
 }
 
@@ -349,7 +348,6 @@ pub enum Token {
 
 pub(super) struct Worker<T: TapT> {
     pub(super) interrupt: Interrupt,
-    pub(super) mem: GuestMemory,
     pub(super) rx_queue: Queue,
     pub(super) tx_queue: Queue,
     pub(super) ctrl_queue: Option<Queue>,
@@ -373,12 +371,7 @@ where
     T: TapT + ReadNotifier,
 {
     fn process_tx(&mut self) {
-        process_tx(
-            &self.interrupt,
-            &mut self.tx_queue,
-            &self.mem,
-            &mut self.tap,
-        )
+        process_tx(&self.interrupt, &mut self.tx_queue, &mut self.tap)
     }
 
     fn process_ctrl(&mut self) -> Result<(), NetError> {
@@ -390,7 +383,6 @@ where
         process_ctrl(
             &self.interrupt,
             ctrl_queue,
-            &self.mem,
             &mut self.tap,
             self.acked_features,
             self.vq_pairs,
@@ -730,7 +722,7 @@ where
 
     fn activate(
         &mut self,
-        mem: GuestMemory,
+        _mem: GuestMemory,
         interrupt: Interrupt,
         mut queues: BTreeMap<usize, (Queue, Event)>,
     ) -> anyhow::Result<()> {
@@ -768,7 +760,6 @@ where
             let tap = self.taps.remove(0);
             let acked_features = self.acked_features;
             let interrupt = interrupt.clone();
-            let memory = mem.clone();
             let first_queue = i == 0;
             // Queues alternate between rx0, tx0, rx1, tx1, ..., rxN, txN, ctrl.
             let (rx_queue, rx_queue_evt) = queues.pop_first().unwrap().1;
@@ -788,7 +779,6 @@ where
                 .push(WorkerThread::start(format!("v_net:{i}"), move |kill_evt| {
                     let mut worker = Worker {
                         interrupt,
-                        mem: memory,
                         rx_queue,
                         tx_queue,
                         ctrl_queue,

@@ -49,16 +49,16 @@ struct SharedReader {
 }
 
 impl gpu::QueueReader for SharedReader {
-    fn pop(&self, mem: &GuestMemory) -> Option<DescriptorChain> {
-        self.queue.lock().pop(mem)
+    fn pop(&self) -> Option<DescriptorChain> {
+        self.queue.lock().pop()
     }
 
-    fn add_used(&self, mem: &GuestMemory, desc_chain: DescriptorChain, len: u32) {
-        self.queue.lock().add_used(mem, desc_chain, len)
+    fn add_used(&self, desc_chain: DescriptorChain, len: u32) {
+        self.queue.lock().add_used(desc_chain, len)
     }
 
-    fn signal_used(&self, mem: &GuestMemory) {
-        self.queue.lock().trigger_interrupt(mem, &self.doorbell);
+    fn signal_used(&self) {
+        self.queue.lock().trigger_interrupt(&self.doorbell);
     }
 }
 
@@ -78,7 +78,7 @@ async fn run_ctrl_queue(
         let needs_interrupt = state.process_queue(&mem, &reader);
 
         if needs_interrupt {
-            reader.signal_used(&mem);
+            reader.signal_used();
         }
     }
 }

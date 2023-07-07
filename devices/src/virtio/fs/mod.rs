@@ -206,7 +206,7 @@ impl VirtioDevice for Fs {
 
     fn activate(
         &mut self,
-        guest_mem: GuestMemory,
+        _guest_mem: GuestMemory,
         interrupt: Interrupt,
         queues: BTreeMap<usize, (Queue, Event)>,
     ) -> anyhow::Result<()> {
@@ -251,14 +251,13 @@ impl VirtioDevice for Fs {
         self.workers = queues
             .into_iter()
             .map(|(idx, (queue, evt))| {
-                let mem = guest_mem.clone();
                 let server = server.clone();
                 let irq = interrupt.clone();
                 let socket = Arc::clone(&socket);
 
                 let worker =
                     WorkerThread::start(format!("v_fs:{}:{}", self.tag, idx), move |kill_evt| {
-                        let mut worker = Worker::new(mem, queue, server, irq, socket, slot);
+                        let mut worker = Worker::new(queue, server, irq, socket, slot);
                         worker.run(evt, kill_evt, watch_resample_event)
                     });
 

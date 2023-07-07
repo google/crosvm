@@ -224,13 +224,7 @@ impl VirtioDevice for VideoDevice {
             .resource_bridge
             .take()
             .context("no resource bridge is passed")?;
-        let mut worker = Worker::new(
-            mem.clone(),
-            cmd_queue,
-            interrupt.clone(),
-            event_queue,
-            interrupt,
-        );
+        let mut worker = Worker::new(cmd_queue, interrupt.clone(), event_queue, interrupt);
 
         let worker_result = match &self.device_type {
             #[cfg(feature = "video-decoder")]

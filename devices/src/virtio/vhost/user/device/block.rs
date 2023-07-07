@@ -236,7 +236,7 @@ impl VhostUserBackend for BlockBackend {
         &mut self,
         idx: usize,
         queue: virtio::Queue,
-        mem: GuestMemory,
+        _mem: GuestMemory,
         doorbell: Interrupt,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
@@ -252,7 +252,6 @@ impl VhostUserBackend for BlockBackend {
                 queue,
                 kick_evt,
                 interrupt: doorbell,
-                mem,
             })
             .unwrap_or_else(|_| panic!("worker channel closed early"));
         Ok(())

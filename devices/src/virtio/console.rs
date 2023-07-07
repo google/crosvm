@@ -77,12 +77,10 @@ pub struct virtio_console_config {
 ///
 /// # Arguments
 ///
-/// * `mem` - The GuestMemory to write the data into
 /// * `interrupt` - Interrupt used to signal that the queue has been used
 /// * `buffer` - Ring buffer providing data to put into the guest
 /// * `receive_queue` - The receive virtio Queue
 fn handle_input(
-    mem: &GuestMemory,
     interrupt: &Interrupt,
     buffer: &mut VecDeque<u8>,
     receive_queue: &Arc<Mutex<Queue>>,
@@ -92,7 +90,7 @@ fn handle_input(
         .expect("Lock should not be unavailable");
     loop {
         let mut desc = receive_queue
-            .peek(mem)
+            .peek()
             .ok_or(ConsoleError::RxDescriptorsExhausted)?;
 
         let writer = &mut desc.writer;
@@ -110,9 +108,9 @@ fn handle_input(
         let bytes_written = writer.bytes_written() as u32;
 
         if bytes_written > 0 {
-            receive_queue.pop_peeked(mem);
-            receive_queue.add_used(mem, desc, bytes_written);
-            receive_queue.trigger_interrupt(mem, interrupt);
+            receive_queue.pop_peeked();
+            receive_queue.add_used(desc, bytes_written);
+            receive_queue.trigger_interrupt(interrupt);
         }
 
         if bytes_written == 0 {
@@ -140,12 +138,10 @@ fn process_transmit_request(reader: &mut Reader, output: &mut dyn io::Write) -> 
 ///
 /// # Arguments
 ///
-/// * `mem` - The GuestMemory to take the data from
 /// * `interrupt` - Interrupt used to signal (if required) that the queue has been used
 /// * `transmit_queue` - The transmit virtio Queue
 /// * `output` - The output sink we are going to write the data into
 fn process_transmit_queue(
-    mem: &GuestMemory,
     interrupt: &Interrupt,
     transmit_queue: &Arc<Mutex<Queue>>,
     output: &mut dyn io::Write,
@@ -154,21 +150,20 @@ fn process_transmit_queue(
     let mut transmit_queue = transmit_queue
         .try_lock()
         .expect("Lock should not be unavailable");
-    while let Some(mut avail_desc) = transmit_queue.pop(mem) {
+    while let Some(mut avail_desc) = transmit_queue.pop() {
         process_transmit_request(&mut avail_desc.reader, output)
             .unwrap_or_else(|e| error!("console: process_transmit_request failed: {}", e));
 
-        transmit_queue.add_used(mem, avail_desc, 0);
+        transmit_queue.add_used(avail_desc, 0);
         needs_interrupt = true;
     }
 
     if needs_interrupt {
-        transmit_queue.trigger_interrupt(mem, interrupt);
+        transmit_queue.trigger_interrupt(interrupt);
     }
 }
 
 struct Worker {
-    mem: GuestMemory,
     interrupt: Interrupt,
     input: Option<Arc<Mutex<VecDeque<u8>>>>,
     output: Box<dyn io::Write + Send>,
@@ -212,7 +207,6 @@ impl Worker {
                             .wait()
                             .context("failed reading transmit queue Event")?;
                         process_transmit_queue(
-                            &self.mem,
                             &self.interrupt,
                             &self.transmit_queue,
                             &mut self.output,
@@ -224,7 +218,6 @@ impl Worker {
                             .context("failed reading receive queue Event")?;
                         if let Some(in_buf_ref) = self.input.as_ref() {
                             let _ = handle_input(
-                                &self.mem,
                                 &self.interrupt,
                                 in_buf_ref.lock().deref_mut(),
                                 &self.receive_queue,
@@ -237,7 +230,6 @@ impl Worker {
                             .context("failed reading in_avail_evt")?;
                         if let Some(in_buf_ref) = self.input.as_ref() {
                             let _ = handle_input(
-                                &self.mem,
                                 &self.interrupt,
                                 in_buf_ref.lock().deref_mut(),
                                 &self.receive_queue,
@@ -332,7 +324,7 @@ impl VirtioDevice for Console {
 
     fn activate(
         &mut self,
-        mem: GuestMemory,
+        _mem: GuestMemory,
         interrupt: Interrupt,
         mut queues: BTreeMap<usize, (Queue, Event)>,
     ) -> anyhow::Result<()> {
@@ -375,7 +367,6 @@ impl VirtioDevice for Console {
 
         self.worker_thread = Some(WorkerThread::start("v_console", move |kill_evt| {
             let mut worker = Worker {
-                mem,
                 interrupt,
                 input,
                 output,

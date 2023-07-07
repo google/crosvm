@@ -347,7 +347,6 @@ struct Worker<T: EventSource> {
     event_source: T,
     event_queue: Queue,
     status_queue: Queue,
-    guest_memory: GuestMemory,
 }
 
 impl<T: EventSource> Worker<T> {
@@ -375,7 +374,7 @@ impl<T: EventSource> Worker<T> {
 
         // Only consume from the queue iterator if we know we have events to send
         while self.event_source.available_events_count() > 0 {
-            match self.event_queue.pop(&self.guest_memory) {
+            match self.event_queue.pop() {
                 None => {
                     break;
                 }
@@ -390,8 +389,7 @@ impl<T: EventSource> Worker<T> {
                             }
                         };
 
-                    self.event_queue
-                        .add_used(&self.guest_memory, avail_desc, bytes_written as u32);
+                    self.event_queue.add_used(avail_desc, bytes_written as u32);
                     needs_interrupt = true;
                 }
             }
@@ -416,7 +414,7 @@ impl<T: EventSource> Worker<T> {
 
     fn process_status_queue(&mut self) -> Result<bool> {
         let mut needs_interrupt = false;
-        while let Some(mut avail_desc) = self.status_queue.pop(&self.guest_memory) {
+        while let Some(mut avail_desc) = self.status_queue.pop() {
             let bytes_read =
                 match Worker::read_event_virtqueue(&mut avail_desc, &mut self.event_source) {
                     Ok(count) => count,
@@ -426,8 +424,7 @@ impl<T: EventSource> Worker<T> {
                     }
                 };
 
-            self.status_queue
-                .add_used(&self.guest_memory, avail_desc, bytes_read as u32);
+            self.status_queue.add_used(avail_desc, bytes_read as u32);
             needs_interrupt = true;
         }
 
@@ -516,12 +513,10 @@ impl<T: EventSource> Worker<T> {
                 }
             }
             if eventq_needs_interrupt {
-                self.event_queue
-                    .trigger_interrupt(&self.guest_memory, &self.interrupt);
+                self.event_queue.trigger_interrupt(&self.interrupt);
             }
             if statusq_needs_interrupt {
-                self.status_queue
-                    .trigger_interrupt(&self.guest_memory, &self.interrupt);
+                self.status_queue.trigger_interrupt(&self.interrupt);
             }
         }
 
@@ -581,7 +576,7 @@ where
 
     fn activate(
         &mut self,
-        mem: GuestMemory,
+        _mem: GuestMemory,
         interrupt: Interrupt,
         mut queues: BTreeMap<usize, (Queue, Event)>,
     ) -> anyhow::Result<()> {
@@ -601,7 +596,6 @@ where
                 event_source: source,
                 event_queue,
                 status_queue,
-                guest_memory: mem,
             };
             worker.run(event_queue_evt, status_queue_evt, kill_evt);
             worker

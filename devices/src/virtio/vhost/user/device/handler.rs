@@ -261,12 +261,12 @@ impl Vring {
         })
     }
 
-    fn restore(&mut self, vring_snapshot: VringSnapshot) -> anyhow::Result<()> {
+    fn restore(&mut self, vring_snapshot: VringSnapshot, mem: &GuestMemory) -> anyhow::Result<()> {
         self.queue.restore(vring_snapshot.queue)?;
         self.enabled = vring_snapshot.enabled;
         self.paused_queue = vring_snapshot
             .paused_queue
-            .map(|value| Queue::restore(&self.queue, value))
+            .map(|value| Queue::restore(&self.queue, value, mem))
             .transpose()?;
         Ok(())
     }
@@ -593,7 +593,13 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
         vring.queue.ack_features(self.backend.acked_features());
         vring.queue.set_ready(true);
 
-        let queue = match vring.queue.activate() {
+        let mem = self
+            .mem
+            .as_ref()
+            .cloned()
+            .ok_or(VhostError::InvalidOperation)?;
+
+        let queue = match vring.queue.activate(&mem) {
             Ok(queue) => queue,
             Err(e) => {
                 error!("failed to activate vring: {:#}", e);
@@ -602,11 +608,6 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
         };
 
         let doorbell = vring.doorbell.clone().ok_or(VhostError::InvalidOperation)?;
-        let mem = self
-            .mem
-            .as_ref()
-            .cloned()
-            .ok_or(VhostError::InvalidOperation)?;
 
         if let Err(e) = self
             .backend
@@ -782,12 +783,14 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
                 VhostError::DeserializationFailed
             })?;
 
+        let mem = self.mem.as_ref().ok_or(VhostError::InvalidOperation)?;
+
         let snapshotted_vrings = device_request_handler_snapshot.vrings;
         assert_eq!(snapshotted_vrings.len(), self.vrings.len());
         for (vring, snapshotted_vring) in self.vrings.iter_mut().zip(snapshotted_vrings.into_iter())
         {
             vring
-                .restore(snapshotted_vring)
+                .restore(snapshotted_vring, mem)
                 .map_err(VhostError::RestoreError)?;
         }
 
@@ -1142,7 +1145,7 @@ mod tests {
                 println!("activate_mem_table: queue_index={}", idx);
                 let mut queue = QueueConfig::new(0x10, 0);
                 queue.set_ready(true);
-                let queue = queue.activate().expect("QueueConfig::activate");
+                let queue = queue.activate(&mem).expect("QueueConfig::activate");
                 let queue_evt = Event::new().unwrap();
                 let irqfd = Event::new().unwrap();
 
@@ -1226,7 +1229,7 @@ mod tests {
             println!("activate_mem_table: queue_index={}", idx);
             let mut queue = QueueConfig::new(0x10, 0);
             queue.set_ready(true);
-            let queue = queue.activate().expect("QueueConfig::activate");
+            let queue = queue.activate(&mem).expect("QueueConfig::activate");
             let queue_evt = Event::new().unwrap();
             let irqfd = Event::new().unwrap();
 

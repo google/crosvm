@@ -635,7 +635,7 @@ impl Worker {
         loop {
             // Run continuously until exit evt
             let mut avail_desc = match queue
-                .next_async_interruptable(&self.mem, &mut queue_evt, &mut stop_rx)
+                .next_async_interruptable(&mut queue_evt, &mut stop_rx)
                 .await
             {
                 Ok(Some(d)) => d,
@@ -677,8 +677,8 @@ impl Worker {
                 };
             }
 
-            queue.add_used(&self.mem, avail_desc, 0);
-            queue.trigger_interrupt(&self.mem, &self.interrupt);
+            queue.add_used(avail_desc, 0);
+            queue.trigger_interrupt(&self.interrupt);
         }
 
         Ok(queue)
@@ -1260,7 +1260,7 @@ impl Worker {
         queue_evt: &mut EventAsync,
         bytes: &[u8],
     ) -> Result<()> {
-        let mut avail_desc = match queue.next_async(&self.mem, queue_evt).await {
+        let mut avail_desc = match queue.next_async(queue_evt).await {
             Ok(d) => d,
             Err(e) => {
                 error!("vsock: Failed to read descriptor {}", e);
@@ -1282,8 +1282,8 @@ impl Worker {
 
         let bytes_written = writer.bytes_written() as u32;
         if bytes_written > 0 {
-            queue.add_used(&self.mem, avail_desc, bytes_written);
-            queue.trigger_interrupt(&self.mem, &self.interrupt);
+            queue.add_used(avail_desc, bytes_written);
+            queue.trigger_interrupt(&self.interrupt);
             Ok(())
         } else {
             error!("vsock: Failed to write bytes to queue");
@@ -1304,7 +1304,7 @@ impl Worker {
             // Log but don't act on events. They are reserved exclusively for guest migration events
             // resulting in CID resets, which we don't support.
             let mut avail_desc = match queue
-                .next_async_interruptable(&self.mem, &mut queue_evt, &mut stop_rx)
+                .next_async_interruptable(&mut queue_evt, &mut stop_rx)
                 .await
             {
                 Ok(Some(d)) => d,

@@ -1691,7 +1691,6 @@ pub struct DescriptorsExhausted;
 pub fn process_in_queue(
     interrupt: &Interrupt,
     in_queue: &Rc<RefCell<Queue>>,
-    mem: &GuestMemory,
     state: &mut WlState,
 ) -> ::std::result::Result<(), DescriptorsExhausted> {
     state.process_wait_context();
@@ -1700,7 +1699,7 @@ pub fn process_in_queue(
     let mut exhausted_queue = false;
     let mut in_queue = in_queue.borrow_mut();
     loop {
-        let mut desc = if let Some(d) = in_queue.peek(mem) {
+        let mut desc = if let Some(d) = in_queue.peek() {
             d
         } else {
             exhausted_queue = true;
@@ -1719,8 +1718,8 @@ pub fn process_in_queue(
             }
             let bytes_written = desc.writer.bytes_written() as u32;
             needs_interrupt = true;
-            in_queue.pop_peeked(mem);
-            in_queue.add_used(mem, desc, bytes_written);
+            in_queue.pop_peeked();
+            in_queue.add_used(desc, bytes_written);
         } else {
             break;
         }
@@ -1730,7 +1729,7 @@ pub fn process_in_queue(
     }
 
     if needs_interrupt {
-        in_queue.trigger_interrupt(mem, interrupt);
+        in_queue.trigger_interrupt(interrupt);
     }
 
     if exhausted_queue {
@@ -1744,12 +1743,11 @@ pub fn process_in_queue(
 pub fn process_out_queue(
     interrupt: &Interrupt,
     out_queue: &Rc<RefCell<Queue>>,
-    mem: &GuestMemory,
     state: &mut WlState,
 ) {
     let mut needs_interrupt = false;
     let mut out_queue = out_queue.borrow_mut();
-    while let Some(mut desc) = out_queue.pop(mem) {
+    while let Some(mut desc) = out_queue.pop() {
         let resp = match state.execute(&mut desc.reader) {
             Ok(r) => r,
             Err(e) => WlResp::Err(Box::new(e)),
@@ -1763,18 +1761,17 @@ pub fn process_out_queue(
         }
 
         let len = desc.writer.bytes_written() as u32;
-        out_queue.add_used(mem, desc, len);
+        out_queue.add_used(desc, len);
         needs_interrupt = true;
     }
 
     if needs_interrupt {
-        out_queue.trigger_interrupt(mem, interrupt);
+        out_queue.trigger_interrupt(interrupt);
     }
 }
 
 struct Worker {
     interrupt: Interrupt,
-    mem: GuestMemory,
     in_queue: Rc<RefCell<Queue>>,
     in_queue_evt: Event,
     out_queue: Rc<RefCell<Queue>>,
@@ -1784,7 +1781,6 @@ struct Worker {
 
 impl Worker {
     fn new(
-        mem: GuestMemory,
         interrupt: Interrupt,
         in_queue: (Queue, Event),
         out_queue: (Queue, Event),
@@ -1798,7 +1794,6 @@ impl Worker {
     ) -> Worker {
         Worker {
             interrupt,
-            mem,
             in_queue: Rc::new(RefCell::new(in_queue.0)),
             in_queue_evt: in_queue.1,
             out_queue: Rc::new(RefCell::new(out_queue.0)),
@@ -1866,21 +1861,13 @@ impl Worker {
                     }
                     Token::OutQueue => {
                         let _ = self.out_queue_evt.wait();
-                        process_out_queue(
-                            &self.interrupt,
-                            &self.out_queue,
-                            &self.mem,
-                            &mut self.state,
-                        );
+                        process_out_queue(&self.interrupt, &self.out_queue, &mut self.state);
                     }
                     Token::Kill => break 'wait,
                     Token::State => {
-                        if let Err(DescriptorsExhausted) = process_in_queue(
-                            &self.interrupt,
-                            &self.in_queue,
-                            &self.mem,
-                            &mut self.state,
-                        ) {
+                        if let Err(DescriptorsExhausted) =
+                            process_in_queue(&self.interrupt, &self.in_queue, &mut self.state)
+                        {
                             if let Err(e) =
                                 wait_ctx.modify(&self.state.wait_ctx, EventType::None, Token::State)
                             {
@@ -2005,7 +1992,7 @@ impl VirtioDevice for Wl {
 
     fn activate(
         &mut self,
-        mem: GuestMemory,
+        _mem: GuestMemory,
         interrupt: Interrupt,
         mut queues: BTreeMap<usize, (Queue, Event)>,
     ) -> anyhow::Result<()> {
@@ -2036,7 +2023,6 @@ impl VirtioDevice for Wl {
 
         self.worker_thread = Some(WorkerThread::start("v_wl", move |kill_evt| {
             Worker::new(
-                mem,
                 interrupt,
                 queues.pop_first().unwrap().1,
                 queues.pop_first().unwrap().1,

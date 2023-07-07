@@ -39,6 +39,8 @@ const VIRTQ_AVAIL_F_NO_INTERRUPT: u16 = 0x1;
 /// An activated virtio queue with split queue layout.
 #[derive(Debug)]
 pub struct SplitQueue {
+    mem: GuestMemory,
+
     /// The queue size in elements the driver selected. This is always guaranteed to be a power of
     /// two, as required for split virtqueues.
     size: u16,
@@ -94,7 +96,7 @@ struct virtq_used_elem {
 
 impl SplitQueue {
     /// Constructs an activated split virtio queue with the given configuration.
-    pub fn new(config: &QueueConfig) -> Result<SplitQueue> {
+    pub fn new(config: &QueueConfig, mem: &GuestMemory) -> Result<SplitQueue> {
         let size = config.size();
         if !size.is_power_of_two() {
             bail!("split queue size {size} is not a power of 2");
@@ -122,6 +124,7 @@ impl SplitQueue {
         }
 
         Ok(SplitQueue {
+            mem: mem.clone(),
             size,
             vector: config.vector(),
             desc_table: config.desc_table(),
@@ -198,7 +201,7 @@ impl SplitQueue {
     /// If this queue is for a device that sits behind a virtio-iommu device, exports
     /// this queue's memory. After the queue becomes ready, this must be called before
     /// using the queue, to convert the IOVA-based configuration to GuestAddresses.
-    pub fn export_memory(&mut self, mem: &GuestMemory) -> Result<()> {
+    pub fn export_memory(&mut self) -> Result<()> {
         if self.exported_desc_table.is_some() {
             bail!("already exported");
         }
@@ -215,7 +218,7 @@ impl SplitQueue {
 
         for ((addr, size), region) in rings {
             *region = Some(
-                ExportedRegion::new(mem, iommu.clone(), addr.offset(), *size as u64)
+                ExportedRegion::new(&self.mem, iommu.clone(), addr.offset(), *size as u64)
                     .context("failed to export region")?,
             );
         }
@@ -234,13 +237,16 @@ impl SplitQueue {
     //
     // All available ring entries between `self.next_avail` and `get_avail_index()` are available
     // to be processed by the device.
-    fn get_avail_index(&self, mem: &GuestMemory) -> Wrapping<u16> {
+    fn get_avail_index(&self) -> Wrapping<u16> {
         fence(Ordering::SeqCst);
 
         let avail_index_addr = self.avail_ring.unchecked_add(2);
-        let avail_index: u16 =
-            read_obj_from_addr_wrapper(mem, self.exported_avail_ring.as_ref(), avail_index_addr)
-                .unwrap();
+        let avail_index: u16 = read_obj_from_addr_wrapper(
+            &self.mem,
+            self.exported_avail_ring.as_ref(),
+            avail_index_addr,
+        )
+        .unwrap();
 
         Wrapping(avail_index)
     }
@@ -251,12 +257,12 @@ impl SplitQueue {
     // (kicking the ring) is not necessary until the driver reaches the `avail_index` descriptor.
     //
     // This value is only used if the `VIRTIO_F_EVENT_IDX` feature has been negotiated.
-    fn set_avail_event(&mut self, mem: &GuestMemory, avail_index: Wrapping<u16>) {
+    fn set_avail_event(&mut self, avail_index: Wrapping<u16>) {
         fence(Ordering::SeqCst);
 
         let avail_event_addr = self.used_ring.unchecked_add(4 + 8 * u64::from(self.size));
         write_obj_at_addr_wrapper(
-            mem,
+            &self.mem,
             self.exported_used_ring.as_ref(),
             avail_index.0,
             avail_event_addr,
@@ -267,12 +273,15 @@ impl SplitQueue {
     // Query the value of a single-bit flag in the available ring.
     //
     // Returns `true` if `flag` is currently set (by the driver) in the available ring flags.
-    fn get_avail_flag(&self, mem: &GuestMemory, flag: u16) -> bool {
+    fn get_avail_flag(&self, flag: u16) -> bool {
         fence(Ordering::SeqCst);
 
-        let avail_flags: u16 =
-            read_obj_from_addr_wrapper(mem, self.exported_avail_ring.as_ref(), self.avail_ring)
-                .unwrap();
+        let avail_flags: u16 = read_obj_from_addr_wrapper(
+            &self.mem,
+            self.exported_avail_ring.as_ref(),
+            self.avail_ring,
+        )
+        .unwrap();
 
         avail_flags & flag == flag
     }
@@ -284,13 +293,16 @@ impl SplitQueue {
     // the driver.
     //
     // This value is only valid if the `VIRTIO_F_EVENT_IDX` feature has been negotiated.
-    fn get_used_event(&self, mem: &GuestMemory) -> Wrapping<u16> {
+    fn get_used_event(&self) -> Wrapping<u16> {
         fence(Ordering::SeqCst);
 
         let used_event_addr = self.avail_ring.unchecked_add(4 + 2 * u64::from(self.size));
-        let used_event: u16 =
-            read_obj_from_addr_wrapper(mem, self.exported_avail_ring.as_ref(), used_event_addr)
-                .unwrap();
+        let used_event: u16 = read_obj_from_addr_wrapper(
+            &self.mem,
+            self.exported_avail_ring.as_ref(),
+            used_event_addr,
+        )
+        .unwrap();
 
         Wrapping(used_event)
     }
@@ -299,12 +311,12 @@ impl SplitQueue {
     //
     // This indicates to the driver that all entries up to (but not including) `used_index` have
     // been used by the device and may be processed by the driver.
-    fn set_used_index(&mut self, mem: &GuestMemory, used_index: Wrapping<u16>) {
+    fn set_used_index(&mut self, used_index: Wrapping<u16>) {
         fence(Ordering::SeqCst);
 
         let used_index_addr = self.used_ring.unchecked_add(2);
         write_obj_at_addr_wrapper(
-            mem,
+            &self.mem,
             self.exported_used_ring.as_ref(),
             used_index.0,
             used_index_addr,
@@ -314,8 +326,8 @@ impl SplitQueue {
 
     /// Get the first available descriptor chain without removing it from the queue.
     /// Call `pop_peeked` to remove the returned descriptor chain from the queue.
-    pub fn peek(&mut self, mem: &GuestMemory) -> Option<DescriptorChain> {
-        let avail_index = self.get_avail_index(mem);
+    pub fn peek(&mut self) -> Option<DescriptorChain> {
+        let avail_index = self.get_avail_index();
         if self.next_avail == avail_index {
             return None;
         }
@@ -330,18 +342,18 @@ impl SplitQueue {
 
         // This index is checked below in checked_new.
         let descriptor_index: u16 =
-            read_obj_from_addr_wrapper(mem, self.exported_avail_ring.as_ref(), desc_idx_addr)
+            read_obj_from_addr_wrapper(&self.mem, self.exported_avail_ring.as_ref(), desc_idx_addr)
                 .unwrap();
 
         let iommu = self.iommu.as_ref().map(Arc::clone);
         let chain = SplitDescriptorChain::new(
-            mem,
+            &self.mem,
             self.desc_table,
             self.size,
             descriptor_index,
             self.exported_desc_table.as_ref(),
         );
-        DescriptorChain::new(chain, mem, descriptor_index, iommu)
+        DescriptorChain::new(chain, &self.mem, descriptor_index, iommu)
             .map_err(|e| {
                 error!("{:#}", e);
                 e
@@ -351,15 +363,15 @@ impl SplitQueue {
 
     /// Remove the first available descriptor chain from the queue.
     /// This function should only be called immediately following `peek`.
-    pub fn pop_peeked(&mut self, mem: &GuestMemory) {
+    pub fn pop_peeked(&mut self) {
         self.next_avail += Wrapping(1);
         if self.features & ((1u64) << VIRTIO_RING_F_EVENT_IDX) != 0 {
-            self.set_avail_event(mem, self.next_avail);
+            self.set_avail_event(self.next_avail);
         }
     }
 
     /// Puts an available descriptor head into the used ring for use by the guest.
-    pub fn add_used(&mut self, mem: &GuestMemory, desc_chain: DescriptorChain, len: u32) {
+    pub fn add_used(&mut self, desc_chain: DescriptorChain, len: u32) {
         let desc_index = desc_chain.index();
         debug_assert!(desc_index < self.size);
 
@@ -373,10 +385,11 @@ impl SplitQueue {
         };
 
         // This write can't fail as we are guaranteed to be within the descriptor ring.
-        write_obj_at_addr_wrapper(mem, self.exported_used_ring.as_ref(), elem, used_elem).unwrap();
+        write_obj_at_addr_wrapper(&self.mem, self.exported_used_ring.as_ref(), elem, used_elem)
+            .unwrap();
 
         self.next_used += Wrapping(1);
-        self.set_used_index(mem, self.next_used);
+        self.set_used_index(self.next_used);
     }
 
     /// Returns if the queue should have an interrupt sent based on its state.
@@ -500,20 +513,20 @@ impl SplitQueue {
     ///                              │                                  │
     ///                              └──────────────────────────────────┘
     /// ```
-    fn queue_wants_interrupt(&self, mem: &GuestMemory) -> bool {
+    fn queue_wants_interrupt(&self) -> bool {
         if self.features & ((1u64) << VIRTIO_RING_F_EVENT_IDX) != 0 {
-            let used_event = self.get_used_event(mem);
+            let used_event = self.get_used_event();
             self.next_used - used_event - Wrapping(1) < self.next_used - self.last_used
         } else {
-            !self.get_avail_flag(mem, VIRTQ_AVAIL_F_NO_INTERRUPT)
+            !self.get_avail_flag(VIRTQ_AVAIL_F_NO_INTERRUPT)
         }
     }
 
     /// inject interrupt into guest on this queue
     /// return true: interrupt is injected into guest for this queue
     ///        false: interrupt isn't injected
-    pub fn trigger_interrupt(&mut self, mem: &GuestMemory, interrupt: &Interrupt) -> bool {
-        if self.queue_wants_interrupt(mem) {
+    pub fn trigger_interrupt(&mut self, interrupt: &Interrupt) -> bool {
+        if self.queue_wants_interrupt() {
             self.last_used = self.next_used;
             interrupt.signal_used_queue(self.vector);
             true
@@ -541,9 +554,13 @@ impl SplitQueue {
         .context("failed to serialize MsixConfigSnapshot")
     }
 
-    pub fn restore(queue_value: serde_json::Value) -> anyhow::Result<SplitQueue> {
+    pub fn restore(
+        queue_value: serde_json::Value,
+        mem: &GuestMemory,
+    ) -> anyhow::Result<SplitQueue> {
         let s: SplitQueueSnapshot = serde_json::from_value(queue_value)?;
         let queue = SplitQueue {
+            mem: mem.clone(),
             size: s.size,
             vector: s.vector,
             desc_table: s.desc_table,
@@ -665,7 +682,7 @@ mod tests {
         queue.ack_features((1u64) << VIRTIO_RING_F_EVENT_IDX);
         queue.set_ready(true);
 
-        queue.activate().expect("QueueConfig::activate failed")
+        queue.activate(mem).expect("QueueConfig::activate failed")
     }
 
     fn fake_desc_chain(mem: &GuestMemory) -> DescriptorChain {
@@ -691,12 +708,12 @@ mod tests {
         // device has handled them, so increase self.next_used to 0x100
         let mut device_generate: Wrapping<u16> = Wrapping(0x100);
         for _ in 0..device_generate.0 {
-            queue.add_used(&mem, fake_desc_chain(&mem), BUFFER_LEN);
+            queue.add_used(fake_desc_chain(&mem), BUFFER_LEN);
         }
 
         // At this moment driver hasn't handled any interrupts yet, so it
         // should inject interrupt.
-        assert_eq!(queue.trigger_interrupt(&mem, &interrupt), true);
+        assert_eq!(queue.trigger_interrupt(&interrupt), true);
 
         // Driver handle all the interrupts and update avail.used_event to 0x100
         let mut driver_handled = device_generate;
@@ -704,18 +721,18 @@ mod tests {
 
         // At this moment driver have handled all the interrupts, and
         // device doesn't generate more data, so interrupt isn't needed.
-        assert_eq!(queue.trigger_interrupt(&mem, &interrupt), false);
+        assert_eq!(queue.trigger_interrupt(&interrupt), false);
 
         // Assume driver submit another u16::MAX - 0x100 req to device,
         // Device has handled all of them, so increase self.next_used to u16::MAX
         for _ in device_generate.0..u16::max_value() {
-            queue.add_used(&mem, fake_desc_chain(&mem), BUFFER_LEN);
+            queue.add_used(fake_desc_chain(&mem), BUFFER_LEN);
         }
         device_generate = Wrapping(u16::max_value());
 
         // At this moment driver just handled 0x100 interrupts, so it
         // should inject interrupt.
-        assert_eq!(queue.trigger_interrupt(&mem, &interrupt), true);
+        assert_eq!(queue.trigger_interrupt(&interrupt), true);
 
         // driver handle all the interrupts and update avail.used_event to u16::MAX
         driver_handled = device_generate;
@@ -723,16 +740,16 @@ mod tests {
 
         // At this moment driver have handled all the interrupts, and
         // device doesn't generate more data, so interrupt isn't needed.
-        assert_eq!(queue.trigger_interrupt(&mem, &interrupt), false);
+        assert_eq!(queue.trigger_interrupt(&interrupt), false);
 
         // Assume driver submit another 1 request,
         // device has handled it, so wrap self.next_used to 0
-        queue.add_used(&mem, fake_desc_chain(&mem), BUFFER_LEN);
+        queue.add_used(fake_desc_chain(&mem), BUFFER_LEN);
         device_generate += Wrapping(1);
 
         // At this moment driver has handled all the previous interrupts, so it
         // should inject interrupt again.
-        assert_eq!(queue.trigger_interrupt(&mem, &interrupt), true);
+        assert_eq!(queue.trigger_interrupt(&interrupt), true);
 
         // driver handle that interrupts and update avail.used_event to 0
         driver_handled = device_generate;
@@ -740,7 +757,7 @@ mod tests {
 
         // At this moment driver have handled all the interrupts, and
         // device doesn't generate more data, so interrupt isn't needed.
-        assert_eq!(queue.trigger_interrupt(&mem, &interrupt), false);
+        assert_eq!(queue.trigger_interrupt(&interrupt), false);
     }
 
     #[test]
@@ -761,12 +778,12 @@ mod tests {
         // device have handled 0x100 req, so increase self.next_used to 0x100
         let mut device_generate: Wrapping<u16> = Wrapping(0x100);
         for _ in 0..device_generate.0 {
-            queue.add_used(&mem, fake_desc_chain(&mem), BUFFER_LEN);
+            queue.add_used(fake_desc_chain(&mem), BUFFER_LEN);
         }
 
         // At this moment driver hasn't handled any interrupts yet, so it
         // should inject interrupt.
-        assert_eq!(queue.trigger_interrupt(&mem, &interrupt), true);
+        assert_eq!(queue.trigger_interrupt(&interrupt), true);
 
         // Driver handle part of the interrupts and update avail.used_event to 0x80
         let mut driver_handled = Wrapping(0x80);
@@ -774,27 +791,27 @@ mod tests {
 
         // At this moment driver hasn't finished last interrupt yet,
         // so interrupt isn't needed.
-        assert_eq!(queue.trigger_interrupt(&mem, &interrupt), false);
+        assert_eq!(queue.trigger_interrupt(&interrupt), false);
 
         // Assume driver submit another 1 request,
         // device has handled it, so increment self.next_used.
-        queue.add_used(&mem, fake_desc_chain(&mem), BUFFER_LEN);
+        queue.add_used(fake_desc_chain(&mem), BUFFER_LEN);
         device_generate += Wrapping(1);
 
         // At this moment driver hasn't finished last interrupt yet,
         // so interrupt isn't needed.
-        assert_eq!(queue.trigger_interrupt(&mem, &interrupt), false);
+        assert_eq!(queue.trigger_interrupt(&interrupt), false);
 
         // Assume driver submit another u16::MAX - 0x101 req to device,
         // Device has handled all of them, so increase self.next_used to u16::MAX
         for _ in device_generate.0..u16::max_value() {
-            queue.add_used(&mem, fake_desc_chain(&mem), BUFFER_LEN);
+            queue.add_used(fake_desc_chain(&mem), BUFFER_LEN);
         }
         device_generate = Wrapping(u16::max_value());
 
         // At this moment driver hasn't finished last interrupt yet,
         // so interrupt isn't needed.
-        assert_eq!(queue.trigger_interrupt(&mem, &interrupt), false);
+        assert_eq!(queue.trigger_interrupt(&interrupt), false);
 
         // driver handle most of the interrupts and update avail.used_event to u16::MAX - 1,
         driver_handled = device_generate - Wrapping(1);
@@ -802,21 +819,21 @@ mod tests {
 
         // Assume driver submit another 1 request,
         // device has handled it, so wrap self.next_used to 0
-        queue.add_used(&mem, fake_desc_chain(&mem), BUFFER_LEN);
+        queue.add_used(fake_desc_chain(&mem), BUFFER_LEN);
         device_generate += Wrapping(1);
 
         // At this moment driver has already finished the last interrupt(0x100),
         // and device service other request, so new interrupt is needed.
-        assert_eq!(queue.trigger_interrupt(&mem, &interrupt), true);
+        assert_eq!(queue.trigger_interrupt(&interrupt), true);
 
         // Assume driver submit another 1 request,
         // device has handled it, so increment self.next_used to 1
-        queue.add_used(&mem, fake_desc_chain(&mem), BUFFER_LEN);
+        queue.add_used(fake_desc_chain(&mem), BUFFER_LEN);
         device_generate += Wrapping(1);
 
         // At this moment driver hasn't finished last interrupt((Wrapping(0)) yet,
         // so interrupt isn't needed.
-        assert_eq!(queue.trigger_interrupt(&mem, &interrupt), false);
+        assert_eq!(queue.trigger_interrupt(&interrupt), false);
 
         // driver handle all the remain interrupts and wrap avail.used_event to 0x1.
         driver_handled = device_generate;
@@ -824,15 +841,15 @@ mod tests {
 
         // At this moment driver has handled all the interrupts, and
         // device doesn't generate more data, so interrupt isn't needed.
-        assert_eq!(queue.trigger_interrupt(&mem, &interrupt), false);
+        assert_eq!(queue.trigger_interrupt(&interrupt), false);
 
         // Assume driver submit another 1 request,
         // device has handled it, so increase self.next_used.
-        queue.add_used(&mem, fake_desc_chain(&mem), BUFFER_LEN);
+        queue.add_used(fake_desc_chain(&mem), BUFFER_LEN);
         device_generate += Wrapping(1);
 
         // At this moment driver has finished all the previous interrupts, so it
         // should inject interrupt again.
-        assert_eq!(queue.trigger_interrupt(&mem, &interrupt), true);
+        assert_eq!(queue.trigger_interrupt(&interrupt), true);
     }
 }

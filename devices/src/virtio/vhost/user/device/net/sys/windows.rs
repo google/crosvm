@@ -88,7 +88,6 @@ where
 
 async fn run_rx_queue<T: TapT>(
     mut queue: Queue,
-    mem: GuestMemory,
     mut tap: IoSource<T>,
     call_evt: Interrupt,
     kick_evt: EventAsync,
@@ -138,7 +137,6 @@ async fn run_rx_queue<T: TapT>(
         let needs_interrupt = process_rx(
             &call_evt,
             &mut queue,
-            &mem,
             tap.as_source_mut(),
             &mut rx_buf,
             &mut deferred_rx,
@@ -175,7 +173,7 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
     backend: &mut NetBackend<T>,
     idx: usize,
     queue: virtio::Queue,
-    mem: GuestMemory,
+    _mem: GuestMemory,
     doorbell: Interrupt,
     kick_evt: Event,
 ) -> anyhow::Result<()> {
@@ -214,7 +212,6 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
                 (
                     ex.spawn_local(run_rx_queue(
                         queue,
-                        mem,
                         tap,
                         doorbell,
                         kick_evt,
@@ -228,7 +225,7 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
             1 => {
                 let (stop_tx, stop_rx) = futures::channel::oneshot::channel();
                 (
-                    ex.spawn_local(run_tx_queue(queue, mem, tap, doorbell, kick_evt, stop_rx)),
+                    ex.spawn_local(run_tx_queue(queue, tap, doorbell, kick_evt, stop_rx)),
                     stop_tx,
                 )
             }
@@ -237,7 +234,6 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
                 (
                     ex.spawn_local(run_ctrl_queue(
                         queue,
-                        mem,
                         tap,
                         doorbell,
                         kick_evt,

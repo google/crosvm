@@ -36,7 +36,6 @@ struct Worker {
     interrupt: Interrupt,
     queue: Queue,
     queue_evt: Event,
-    mem: GuestMemory,
 }
 
 impl Worker {
@@ -44,7 +43,7 @@ impl Worker {
         let queue = &mut self.queue;
 
         let mut needs_interrupt = false;
-        while let Some(mut avail_desc) = queue.pop(&self.mem) {
+        while let Some(mut avail_desc) = queue.pop() {
             let writer = &mut avail_desc.writer;
             let avail_bytes = writer.available_bytes();
 
@@ -59,7 +58,7 @@ impl Worker {
                 }
             };
 
-            queue.add_used(&self.mem, avail_desc, written_size as u32);
+            queue.add_used(avail_desc, written_size as u32);
             needs_interrupt = true;
         }
 
@@ -119,7 +118,7 @@ impl Worker {
                 }
             }
             if needs_interrupt {
-                self.queue.trigger_interrupt(&self.mem, &self.interrupt);
+                self.queue.trigger_interrupt(&self.interrupt);
             }
             if exiting {
                 break;
@@ -164,7 +163,7 @@ impl VirtioDevice for Rng {
 
     fn activate(
         &mut self,
-        mem: GuestMemory,
+        _mem: GuestMemory,
         interrupt: Interrupt,
         mut queues: BTreeMap<usize, (Queue, Event)>,
     ) -> anyhow::Result<()> {
@@ -179,7 +178,6 @@ impl VirtioDevice for Rng {
                 interrupt,
                 queue,
                 queue_evt,
-                mem,
             };
             worker.run(kill_evt)
         }));

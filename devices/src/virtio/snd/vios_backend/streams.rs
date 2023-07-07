@@ -17,7 +17,6 @@ use base::set_rt_round_robin;
 use base::warn;
 use data_model::Le32;
 use sync::Mutex;
-use vm_memory::GuestMemory;
 
 use super::Error as VioSError;
 use super::Result;
@@ -54,7 +53,6 @@ pub struct Stream {
     stream_id: u32,
     receiver: Receiver<Box<StreamMsg>>,
     vios_client: Arc<VioSClient>,
-    guest_memory: GuestMemory,
     control_queue: Arc<Mutex<Queue>>,
     io_queue: Arc<Mutex<Queue>>,
     interrupt: Interrupt,
@@ -71,7 +69,6 @@ impl Stream {
     pub fn try_new(
         stream_id: u32,
         vios_client: Arc<VioSClient>,
-        guest_memory: GuestMemory,
         interrupt: Interrupt,
         control_queue: Arc<Mutex<Queue>>,
         io_queue: Arc<Mutex<Queue>>,
@@ -87,7 +84,6 @@ impl Stream {
                     stream_id,
                     receiver,
                     vios_client,
-                    guest_memory,
                     control_queue,
                     io_queue,
                     interrupt,
@@ -214,13 +210,7 @@ impl Stream {
                 return Ok(false);
             }
         };
-        reply_control_op_status(
-            code,
-            desc,
-            &self.guest_memory,
-            &self.control_queue,
-            &self.interrupt,
-        )?;
+        reply_control_op_status(code, desc, &self.control_queue, &self.interrupt)?;
         self.current_state = next_state;
         Ok(true)
     }
@@ -279,8 +269,8 @@ impl Stream {
                     let len = writer.bytes_written() as u32;
                     {
                         let mut io_queue_lock = self.io_queue.lock();
-                        io_queue_lock.add_used(&self.guest_memory, desc, len);
-                        io_queue_lock.trigger_interrupt(&self.guest_memory, &self.interrupt);
+                        io_queue_lock.add_used(desc, len);
+                        io_queue_lock.trigger_interrupt(&self.interrupt);
                     }
                 }
             }
@@ -296,7 +286,6 @@ impl Stream {
                         VIRTIO_SND_S_OK,
                         0,
                         desc,
-                        &self.guest_memory,
                         &self.io_queue,
                         &self.interrupt,
                     )?;
@@ -326,7 +315,6 @@ impl Drop for Stream {
                 VIRTIO_SND_S_IO_ERR,
                 0,
                 desc,
-                &self.guest_memory,
                 &self.io_queue,
                 &self.interrupt,
             ) {
@@ -407,7 +395,6 @@ pub fn vios_error_to_status_code(e: VioSError) -> u32 {
 pub fn reply_control_op_status(
     code: u32,
     mut desc: DescriptorChain,
-    guest_memory: &GuestMemory,
     queue: &Arc<Mutex<Queue>>,
     interrupt: &Interrupt,
 ) -> Result<()> {
@@ -420,8 +407,8 @@ pub fn reply_control_op_status(
     let len = writer.bytes_written() as u32;
     {
         let mut queue_lock = queue.lock();
-        queue_lock.add_used(guest_memory, desc, len);
-        queue_lock.trigger_interrupt(guest_memory, interrupt);
+        queue_lock.add_used(desc, len);
+        queue_lock.trigger_interrupt(interrupt);
     }
     Ok(())
 }
@@ -431,7 +418,6 @@ pub fn reply_pcm_buffer_status(
     status: u32,
     latency_bytes: u32,
     mut desc: DescriptorChain,
-    guest_memory: &GuestMemory,
     queue: &Arc<Mutex<Queue>>,
     interrupt: &Interrupt,
 ) -> Result<()> {
@@ -449,8 +435,8 @@ pub fn reply_pcm_buffer_status(
     let len = writer.bytes_written() as u32;
     {
         let mut queue_lock = queue.lock();
-        queue_lock.add_used(guest_memory, desc, len);
-        queue_lock.trigger_interrupt(guest_memory, interrupt);
+        queue_lock.add_used(desc, len);
+        queue_lock.trigger_interrupt(interrupt);
     }
     Ok(())
 }

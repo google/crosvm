@@ -20,7 +20,6 @@ use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::SelectResult;
 use futures::FutureExt;
-use vm_memory::GuestMemory;
 
 use crate::virtio::video::async_cmd_desc_map::AsyncCmdDescMap;
 use crate::virtio::video::command::QueueType;
@@ -44,8 +43,6 @@ use crate::virtio::Queue;
 
 /// Worker that takes care of running the virtio video device.
 pub struct Worker {
-    /// Memory region of the guest VM
-    mem: GuestMemory,
     /// VirtIO queue for Command queue
     cmd_queue: Queue,
     /// Device-to-driver notification for command queue
@@ -63,14 +60,12 @@ type WritableResp = (DescriptorChain, response::CmdResponse);
 
 impl Worker {
     pub fn new(
-        mem: GuestMemory,
         cmd_queue: Queue,
         cmd_queue_interrupt: Interrupt,
         event_queue: Queue,
         event_queue_interrupt: Interrupt,
     ) -> Self {
         Self {
-            mem,
             cmd_queue,
             cmd_queue_interrupt,
             event_queue,
@@ -92,10 +87,9 @@ impl Worker {
                 );
             }
             let len = desc.writer.bytes_written() as u32;
-            self.cmd_queue.add_used(&self.mem, desc, len);
+            self.cmd_queue.add_used(desc, len);
         }
-        self.cmd_queue
-            .trigger_interrupt(&self.mem, &self.cmd_queue_interrupt);
+        self.cmd_queue.trigger_interrupt(&self.cmd_queue_interrupt);
         Ok(())
     }
 
@@ -103,16 +97,16 @@ impl Worker {
     fn write_event(&mut self, event: event::VideoEvt) -> Result<()> {
         let mut desc = self
             .event_queue
-            .pop(&self.mem)
+            .pop()
             .ok_or(Error::DescriptorNotAvailable)?;
 
         event
             .write(&mut desc.writer)
             .map_err(|error| Error::WriteEventFailure { event, error })?;
         let len = desc.writer.bytes_written() as u32;
-        self.event_queue.add_used(&self.mem, desc, len);
+        self.event_queue.add_used(desc, len);
         self.event_queue
-            .trigger_interrupt(&self.mem, &self.event_queue_interrupt);
+            .trigger_interrupt(&self.event_queue_interrupt);
         Ok(())
     }
 
@@ -279,7 +273,7 @@ impl Worker {
         device: &mut dyn Device,
         wait_ctx: &WaitContext<Token>,
     ) -> Result<()> {
-        while let Some(desc) = self.cmd_queue.pop(&self.mem) {
+        while let Some(desc) = self.cmd_queue.pop() {
             let mut resps = self.handle_command_desc(device, wait_ctx, desc)?;
             self.write_responses(&mut resps)?;
         }

@@ -138,7 +138,6 @@ where
 
 async fn run_rx_queue<T: TapT>(
     mut queue: Queue,
-    mem: GuestMemory,
     mut tap: IoSource<T>,
     doorbell: Interrupt,
     kick_evt: EventAsync,
@@ -161,7 +160,7 @@ async fn run_rx_queue<T: TapT>(
             }
         }
 
-        match process_rx(&doorbell, &mut queue, &mem, tap.as_source_mut()) {
+        match process_rx(&doorbell, &mut queue, tap.as_source_mut()) {
             Ok(()) => {}
             Err(NetError::RxDescriptorsExhausted) => {
                 if let Err(e) = kick_evt.next_val().await {
@@ -183,7 +182,7 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
     backend: &mut NetBackend<T>,
     idx: usize,
     queue: virtio::Queue,
-    mem: GuestMemory,
+    _mem: GuestMemory,
     doorbell: Interrupt,
     kick_evt: Event,
 ) -> anyhow::Result<()> {
@@ -210,14 +209,14 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
 
                 let (stop_tx, stop_rx) = futures::channel::oneshot::channel();
                 (
-                    ex.spawn_local(run_rx_queue(queue, mem, tap, doorbell, kick_evt, stop_rx)),
+                    ex.spawn_local(run_rx_queue(queue, tap, doorbell, kick_evt, stop_rx)),
                     stop_tx,
                 )
             }
             1 => {
                 let (stop_tx, stop_rx) = futures::channel::oneshot::channel();
                 (
-                    ex.spawn_local(run_tx_queue(queue, mem, tap, doorbell, kick_evt, stop_rx)),
+                    ex.spawn_local(run_tx_queue(queue, tap, doorbell, kick_evt, stop_rx)),
                     stop_tx,
                 )
             }
@@ -226,7 +225,6 @@ pub(in crate::virtio::vhost::user::device::net) fn start_queue<T: 'static + Into
                 (
                     ex.spawn_local(run_ctrl_queue(
                         queue,
-                        mem,
                         tap,
                         doorbell,
                         kick_evt,

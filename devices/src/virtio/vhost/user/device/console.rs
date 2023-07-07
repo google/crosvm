@@ -161,7 +161,7 @@ impl VhostUserBackend for ConsoleBackend {
         &mut self,
         idx: usize,
         queue: virtio::Queue,
-        mem: GuestMemory,
+        _mem: GuestMemory,
         doorbell: Interrupt,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
@@ -171,7 +171,6 @@ impl VhostUserBackend for ConsoleBackend {
             0 => {
                 let res = self.device.console.start_receive_queue(
                     &self.ex,
-                    mem,
                     queue.clone(),
                     doorbell,
                     kick_evt,
@@ -183,7 +182,6 @@ impl VhostUserBackend for ConsoleBackend {
             1 => {
                 let res = self.device.console.start_transmit_queue(
                     &self.ex,
-                    mem,
                     queue.clone(),
                     doorbell,
                     kick_evt,

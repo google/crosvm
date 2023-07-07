@@ -25,7 +25,6 @@ use fuse::filesystem::ZeroCopyWriter;
 use sync::Mutex;
 use vm_control::FsMappingRequest;
 use vm_control::VmResponse;
-use vm_memory::GuestMemory;
 
 use crate::virtio::fs::Error;
 use crate::virtio::fs::Result;
@@ -142,7 +141,6 @@ impl fuse::Mapper for Mapper {
 }
 
 pub struct Worker<F: FileSystem + Sync> {
-    mem: GuestMemory,
     queue: Rc<RefCell<Queue>>,
     server: Arc<fuse::Server<F>>,
     irq: Interrupt,
@@ -151,7 +149,6 @@ pub struct Worker<F: FileSystem + Sync> {
 }
 
 pub fn process_fs_queue<F: FileSystem + Sync>(
-    mem: &GuestMemory,
     interrupt: &Interrupt,
     queue: &Rc<RefCell<Queue>>,
     server: &Arc<fuse::Server<F>>,
@@ -160,12 +157,12 @@ pub fn process_fs_queue<F: FileSystem + Sync>(
 ) -> Result<()> {
     let mapper = Mapper::new(Arc::clone(tube), slot);
     let mut queue = queue.borrow_mut();
-    while let Some(mut avail_desc) = queue.pop(mem) {
+    while let Some(mut avail_desc) = queue.pop() {
         let total =
             server.handle_message(&mut avail_desc.reader, &mut avail_desc.writer, &mapper)?;
 
-        queue.add_used(mem, avail_desc, total as u32);
-        queue.trigger_interrupt(mem, interrupt);
+        queue.add_used(avail_desc, total as u32);
+        queue.trigger_interrupt(interrupt);
     }
 
     Ok(())
@@ -173,7 +170,6 @@ pub fn process_fs_queue<F: FileSystem + Sync>(
 
 impl<F: FileSystem + Sync> Worker<F> {
     pub fn new(
-        mem: GuestMemory,
         queue: Queue,
         server: Arc<fuse::Server<F>>,
         irq: Interrupt,
@@ -181,7 +177,6 @@ impl<F: FileSystem + Sync> Worker<F> {
         slot: u32,
     ) -> Worker<F> {
         Worker {
-            mem,
             queue: Rc::new(RefCell::new(queue)),
             server,
             irq,
@@ -245,7 +240,6 @@ impl<F: FileSystem + Sync> Worker<F> {
                     Token::QueueReady => {
                         queue_evt.wait().map_err(Error::ReadQueueEvent)?;
                         if let Err(e) = process_fs_queue(
-                            &self.mem,
                             &self.irq,
                             &self.queue,
                             &self.server,

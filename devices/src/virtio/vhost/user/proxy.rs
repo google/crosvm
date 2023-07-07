@@ -451,10 +451,10 @@ impl Worker {
         // Now that an export session has been started, we can export the virtqueues to
         // fetch the GuestAddresses corresponding to their IOVA-based config.
         self.rx_queue
-            .export_memory(&self.mem)
+            .export_memory()
             .context("failed to export rx_queue")?;
         self.tx_queue
-            .export_memory(&self.mem)
+            .export_memory()
             .context("failed to export tx_queue")?;
 
         // TODO(abhishekbh): Should interrupt.signal_config_changed be called here ?.
@@ -581,7 +581,7 @@ impl Worker {
                 ConnStatus::NoDataAvailable => return Ok(RxqStatus::Processed),
             };
 
-            let mut desc = match self.rx_queue.peek(&self.mem) {
+            let mut desc = match self.rx_queue.peek() {
                 Some(d) => d,
                 None => {
                     return Ok(RxqStatus::DescriptorsExhausted);
@@ -591,9 +591,9 @@ impl Worker {
             // If a sibling is disconnected, send 0-length data to the guest and return an error.
             if !is_connected {
                 // Send 0-length data
-                self.rx_queue.pop_peeked(&self.mem);
-                self.rx_queue.add_used(&self.mem, desc, 0 /* len */);
-                if !self.rx_queue.trigger_interrupt(&self.mem, &self.interrupt) {
+                self.rx_queue.pop_peeked();
+                self.rx_queue.add_used(desc, 0 /* len */);
+                if !self.rx_queue.trigger_interrupt(&self.interrupt) {
                     // This interrupt should always be injected. We'd rather fail
                     // fast if there is an error.
                     panic!("failed to send interrupt");
@@ -637,9 +637,9 @@ impl Worker {
             match bytes_written {
                 Ok(bytes_written) => {
                     // The driver is able to deal with a descriptor with 0 bytes written.
-                    self.rx_queue.pop_peeked(&self.mem);
-                    self.rx_queue.add_used(&self.mem, desc, bytes_written);
-                    if !self.rx_queue.trigger_interrupt(&self.mem, &self.interrupt) {
+                    self.rx_queue.pop_peeked();
+                    self.rx_queue.add_used(desc, bytes_written);
+                    if !self.rx_queue.trigger_interrupt(&self.interrupt) {
                         // This interrupt should always be injected. We'd rather fail
                         // fast if there is an error.
                         panic!("failed to send interrupt");
@@ -1033,7 +1033,7 @@ impl Worker {
     // Processes data from the device backend (via virtio Tx queue) and forward it to
     // the Vhost-user sibling over its socket connection.
     fn process_tx(&mut self) -> Result<()> {
-        while let Some(mut desc_chain) = self.tx_queue.pop(&self.mem) {
+        while let Some(mut desc_chain) = self.tx_queue.pop() {
             let reader = &mut desc_chain.reader;
             let expected_count = reader.available_bytes();
             let mut msg = vec![0; expected_count];
@@ -1067,8 +1067,8 @@ impl Worker {
             }
             .context("failed to foward message")?;
 
-            self.tx_queue.add_used(&self.mem, desc_chain, 0);
-            if !self.tx_queue.trigger_interrupt(&self.mem, &self.interrupt) {
+            self.tx_queue.add_used(desc_chain, 0);
+            if !self.tx_queue.trigger_interrupt(&self.interrupt) {
                 panic!("failed inject tx queue interrupt");
             }
         }

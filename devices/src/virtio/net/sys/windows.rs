@@ -40,13 +40,8 @@ compile_error!("Net device without slirp not supported on windows");
 // Copies a single frame from `self.rx_buf` into the guest. Returns true
 // if a buffer was used, and false if the frame must be deferred until a buffer
 // is made available by the driver.
-fn rx_single_frame(
-    rx_queue: &mut Queue,
-    mem: &GuestMemory,
-    rx_buf: &mut [u8],
-    rx_count: usize,
-) -> bool {
-    let mut desc_chain = match rx_queue.pop(mem) {
+fn rx_single_frame(rx_queue: &mut Queue, rx_buf: &mut [u8], rx_count: usize) -> bool {
+    let mut desc_chain = match rx_queue.pop() {
         Some(desc) => desc,
         None => return false,
     };
@@ -66,7 +61,7 @@ fn rx_single_frame(
 
     let bytes_written = desc_chain.writer.bytes_written() as u32;
 
-    rx_queue.add_used(mem, desc_chain, bytes_written);
+    rx_queue.add_used(desc_chain, bytes_written);
 
     true
 }
@@ -74,7 +69,6 @@ fn rx_single_frame(
 pub fn process_rx<T: TapT>(
     interrupt: &Interrupt,
     rx_queue: &mut Queue,
-    mem: &GuestMemory,
     tap: &mut T,
     rx_buf: &mut [u8],
     deferred_rx: &mut bool,
@@ -95,7 +89,7 @@ pub fn process_rx<T: TapT>(
         match res {
             Ok(count) => {
                 *rx_count = count;
-                if !rx_single_frame(rx_queue, mem, rx_buf, *rx_count) {
+                if !rx_single_frame(rx_queue, rx_buf, *rx_count) {
                     *deferred_rx = true;
                     break;
                 } else if first_frame {
@@ -151,12 +145,7 @@ pub fn process_rx<T: TapT>(
     needs_interrupt
 }
 
-pub fn process_tx<T: TapT>(
-    interrupt: &Interrupt,
-    tx_queue: &mut Queue,
-    mem: &GuestMemory,
-    tap: &mut T,
-) {
+pub fn process_tx<T: TapT>(interrupt: &Interrupt, tx_queue: &mut Queue, tap: &mut T) {
     // Reads up to `buf.len()` bytes or until there is no more data in `r`, whichever
     // is smaller.
     fn read_to_end(r: &mut Reader, buf: &mut [u8]) -> io::Result<usize> {
@@ -172,7 +161,7 @@ pub fn process_tx<T: TapT>(
         Ok(count)
     }
 
-    while let Some(mut desc_chain) = tx_queue.pop(mem) {
+    while let Some(mut desc_chain) = tx_queue.pop() {
         let mut frame = [0u8; MAX_BUFFER_SIZE];
         match read_to_end(&mut desc_chain.reader, &mut frame[..]) {
             Ok(len) => {
@@ -185,10 +174,10 @@ pub fn process_tx<T: TapT>(
             Err(e) => error!("net: tx: failed to read frame into buffer: {}", e),
         }
 
-        tx_queue.add_used(mem, desc_chain, 0);
+        tx_queue.add_used(desc_chain, 0);
     }
 
-    tx_queue.trigger_interrupt(mem, interrupt);
+    tx_queue.trigger_interrupt(interrupt);
 }
 
 impl<T> Worker<T>
@@ -199,7 +188,6 @@ where
         process_rx(
             &self.interrupt,
             &mut self.rx_queue,
-            &self.mem,
             &mut self.tap,
             &mut self.rx_buf,
             &mut self.deferred_rx,
@@ -216,12 +204,7 @@ where
         // Process a deferred frame first if available. Don't read from tap again
         // until we manage to receive this deferred frame.
         if self.deferred_rx {
-            if rx_single_frame(
-                &mut self.rx_queue,
-                &self.mem,
-                &mut self.rx_buf,
-                self.rx_count,
-            ) {
+            if rx_single_frame(&mut self.rx_queue, &mut self.rx_buf, self.rx_count) {
                 self.deferred_rx = false;
                 needs_interrupt = true;
             } else {
@@ -247,13 +230,7 @@ where
         _tap_polling_enabled: bool,
     ) -> result::Result<(), NetError> {
         // There should be a buffer available now to receive the frame into.
-        if self.deferred_rx
-            && rx_single_frame(
-                &mut self.rx_queue,
-                &self.mem,
-                &mut self.rx_buf,
-                self.rx_count,
-            )
+        if self.deferred_rx && rx_single_frame(&mut self.rx_queue, &mut self.rx_buf, self.rx_count)
         {
             // The guest has made buffers available, so add the tap back to the
             // poll context in case it was removed.

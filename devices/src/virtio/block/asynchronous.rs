@@ -302,7 +302,6 @@ pub async fn process_one_chain(
     queue: &RefCell<Queue>,
     mut avail_desc: DescriptorChain,
     disk_state: &AsyncRwLock<DiskState>,
-    mem: &GuestMemory,
     interrupt: &Interrupt,
     flush_timer: &RefCell<TimerAsync<Timer>>,
     flush_timer_armed: &RefCell<bool>,
@@ -318,15 +317,14 @@ pub async fn process_one_chain(
     };
 
     let mut queue = queue.borrow_mut();
-    queue.add_used(mem, avail_desc, len as u32);
-    queue.trigger_interrupt(mem, interrupt);
+    queue.add_used(avail_desc, len as u32);
+    queue.trigger_interrupt(interrupt);
 }
 
 // There is one async task running `handle_queue` per virtio queue in use.
 // Receives messages from the guest and queues a task to complete the operations with the async
 // executor.
 async fn handle_queue(
-    mem: GuestMemory,
     disk_state: Rc<AsyncRwLock<DiskState>>,
     queue: Rc<RefCell<Queue>>,
     evt: EventAsync,
@@ -361,12 +359,11 @@ async fn handle_queue(
                 return queue;
             }
         };
-        while let Some(descriptor_chain) = queue.borrow_mut().pop(&mem) {
+        while let Some(descriptor_chain) = queue.borrow_mut().pop() {
             background_tasks.push(process_one_chain(
                 &queue,
                 descriptor_chain,
                 &disk_state,
-                &mem,
                 &interrupt,
                 &flush_timer,
                 &flush_timer_armed,
@@ -497,7 +494,6 @@ pub enum WorkerCmd {
         queue: Queue,
         kick_evt: Event,
         interrupt: Interrupt,
-        mem: GuestMemory,
     },
     StopQueue {
         index: usize,
@@ -567,10 +563,9 @@ pub async fn run_worker(
             worker_cmd = worker_rx.next() => {
                 match worker_cmd {
                     None => anyhow::bail!("worker control channel unexpectedly closed"),
-                    Some(WorkerCmd::StartQueue{index, queue, kick_evt, interrupt, mem}) => {
+                    Some(WorkerCmd::StartQueue{index, queue, kick_evt, interrupt}) => {
                         let (tx, rx) = oneshot::channel();
                         let (handle_queue_future, remote_handle) = handle_queue(
-                            mem,
                             Rc::clone(disk_state),
                             Rc::new(RefCell::new(queue)),
                             EventAsync::new(kick_evt, ex).expect("Failed to create async event for queue"),
@@ -995,7 +990,7 @@ impl VirtioDevice for BlockAsync {
 
     fn activate(
         &mut self,
-        mem: GuestMemory,
+        _mem: GuestMemory,
         interrupt: Interrupt,
         queues: BTreeMap<usize, (Queue, Event)>,
     ) -> anyhow::Result<()> {
@@ -1036,7 +1031,6 @@ impl VirtioDevice for BlockAsync {
 
         let mut worker_threads = vec![];
         for (queues, disk_image) in queues_per_worker.into_iter() {
-            let mem = mem.clone();
             let shared_state = Arc::clone(&shared_state);
             let interrupt = interrupt.clone();
             let control_tube = self.control_tube.take();
@@ -1050,7 +1044,6 @@ impl VirtioDevice for BlockAsync {
                         queue,
                         kick_evt: event,
                         interrupt: interrupt.clone(),
-                        mem: mem.clone(),
                     })
                     .unwrap_or_else(|_| panic!("worker channel closed early"));
             }
@@ -1663,12 +1656,12 @@ mod tests {
         // activate with queues of an arbitrary size.
         let mut q0 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q0.set_ready(true);
-        let q0 = q0.activate().expect("QueueConfig::activate");
+        let q0 = q0.activate(&mem).expect("QueueConfig::activate");
         let e0 = Event::new().unwrap();
 
         let mut q1 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q1.set_ready(true);
-        let q1 = q1.activate().expect("QueueConfig::activate");
+        let q1 = q1.activate(&mem).expect("QueueConfig::activate");
         let e1 = Event::new().unwrap();
 
         b.activate(
@@ -1702,12 +1695,12 @@ mod tests {
         // re-activate should succeed
         let mut q0 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q0.set_ready(true);
-        let q0 = q0.activate().expect("QueueConfig::activate");
+        let q0 = q0.activate(&mem).expect("QueueConfig::activate");
         let e0 = Event::new().unwrap();
 
         let mut q1 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q1.set_ready(true);
-        let q1 = q1.activate().expect("QueueConfig::activate");
+        let q1 = q1.activate(&mem).expect("QueueConfig::activate");
         let e1 = Event::new().unwrap();
 
         b.activate(
@@ -1774,12 +1767,12 @@ mod tests {
         // activate with queues of an arbitrary size.
         let mut q0 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q0.set_ready(true);
-        let q0 = q0.activate().expect("QueueConfig::activate");
+        let q0 = q0.activate(&mem).expect("QueueConfig::activate");
         let e0 = Event::new().unwrap();
 
         let mut q1 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q1.set_ready(true);
-        let q1 = q1.activate().expect("QueueConfig::activate");
+        let q1 = q1.activate(&mem).expect("QueueConfig::activate");
         let e1 = Event::new().unwrap();
 
         let interrupt = Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR);
@@ -1885,12 +1878,12 @@ mod tests {
         // activate with queues of an arbitrary size.
         let mut q0 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q0.set_ready(true);
-        let q0 = q0.activate().expect("QueueConfig::activate");
+        let q0 = q0.activate(&mem).expect("QueueConfig::activate");
         let e0 = Event::new().unwrap();
 
         let mut q1 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q1.set_ready(true);
-        let q1 = q1.activate().expect("QueueConfig::activate");
+        let q1 = q1.activate(&mem).expect("QueueConfig::activate");
         let e1 = Event::new().unwrap();
 
         b.activate(
@@ -1913,12 +1906,12 @@ mod tests {
         // activate should succeed
         let mut q0 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q0.set_ready(true);
-        let q0 = q0.activate().expect("QueueConfig::activate");
+        let q0 = q0.activate(&mem).expect("QueueConfig::activate");
         let e0 = Event::new().unwrap();
 
         let mut q1 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q1.set_ready(true);
-        let q1 = q1.activate().expect("QueueConfig::activate");
+        let q1 = q1.activate(&mem).expect("QueueConfig::activate");
         let e1 = Event::new().unwrap();
 
         b.activate(

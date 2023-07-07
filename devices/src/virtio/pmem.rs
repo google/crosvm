@@ -144,7 +144,6 @@ fn handle_request(
 }
 
 async fn handle_queue(
-    mem: &GuestMemory,
     queue: &mut Queue,
     mut queue_event: EventAsync,
     interrupt: Interrupt,
@@ -153,7 +152,7 @@ async fn handle_queue(
     mapping_size: usize,
 ) {
     loop {
-        let mut avail_desc = match queue.next_async(mem, &mut queue_event).await {
+        let mut avail_desc = match queue.next_async(&mut queue_event).await {
             Err(e) => {
                 error!("Failed to read descriptor {}", e);
                 return;
@@ -173,8 +172,8 @@ async fn handle_queue(
                 0
             }
         };
-        queue.add_used(mem, avail_desc, written as u32);
-        queue.trigger_interrupt(mem, &interrupt);
+        queue.add_used(avail_desc, written as u32);
+        queue.trigger_interrupt(&interrupt);
     }
 }
 
@@ -184,7 +183,6 @@ fn run_worker(
     pmem_device_tube: Tube,
     interrupt: Interrupt,
     kill_evt: Event,
-    mem: GuestMemory,
     mapping_arena_slot: u32,
     mapping_size: usize,
 ) {
@@ -194,7 +192,6 @@ fn run_worker(
 
     // Process requests from the virtio queue.
     let queue_fut = handle_queue(
-        &mem,
         queue,
         queue_evt,
         interrupt.clone(),
@@ -293,7 +290,7 @@ impl VirtioDevice for Pmem {
 
     fn activate(
         &mut self,
-        memory: GuestMemory,
+        _memory: GuestMemory,
         interrupt: Interrupt,
         mut queues: BTreeMap<usize, (Queue, Event)>,
     ) -> anyhow::Result<()> {
@@ -319,7 +316,6 @@ impl VirtioDevice for Pmem {
                 pmem_device_tube,
                 interrupt,
                 kill_event,
-                memory,
                 mapping_arena_slot,
                 mapping_size,
             );

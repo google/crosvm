@@ -549,7 +549,9 @@ impl VirtioPciDevice {
                 Ok((
                     queue_index,
                     (
-                        queue.activate().context("failed to activate queue")?,
+                        queue
+                            .activate(&self.mem)
+                            .context("failed to activate queue")?,
                         evt.event.try_clone().context("failed to clone queue_evt")?,
                     ),
                 ))
@@ -1235,7 +1237,10 @@ impl Suspendable for VirtioPciDevice {
                     .queues
                     .get(index)
                     .with_context(|| format!("missing queue config for activated queue {index}"))?;
-                activated_queues.insert(index, Queue::restore(queue_config, queue_snapshot)?);
+                activated_queues.insert(
+                    index,
+                    Queue::restore(queue_config, queue_snapshot, &self.mem)?,
+                );
             }
 
             // Restore the activated queues.

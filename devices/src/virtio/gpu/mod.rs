@@ -146,9 +146,9 @@ pub struct FenceState {
 }
 
 pub trait QueueReader {
-    fn pop(&self, mem: &GuestMemory) -> Option<DescriptorChain>;
-    fn add_used(&self, mem: &GuestMemory, desc_chain: DescriptorChain, len: u32);
-    fn signal_used(&self, mem: &GuestMemory);
+    fn pop(&self) -> Option<DescriptorChain>;
+    fn add_used(&self, desc_chain: DescriptorChain, len: u32);
+    fn signal_used(&self);
 }
 
 struct LocalQueueReader {
@@ -166,18 +166,16 @@ impl LocalQueueReader {
 }
 
 impl QueueReader for LocalQueueReader {
-    fn pop(&self, mem: &GuestMemory) -> Option<DescriptorChain> {
-        self.queue.borrow_mut().pop(mem)
+    fn pop(&self) -> Option<DescriptorChain> {
+        self.queue.borrow_mut().pop()
     }
 
-    fn add_used(&self, mem: &GuestMemory, desc_chain: DescriptorChain, len: u32) {
-        self.queue.borrow_mut().add_used(mem, desc_chain, len)
+    fn add_used(&self, desc_chain: DescriptorChain, len: u32) {
+        self.queue.borrow_mut().add_used(desc_chain, len)
     }
 
-    fn signal_used(&self, mem: &GuestMemory) {
-        self.queue
-            .borrow_mut()
-            .trigger_interrupt(mem, &self.interrupt);
+    fn signal_used(&self) {
+        self.queue.borrow_mut().trigger_interrupt(&self.interrupt);
     }
 }
 
@@ -197,16 +195,16 @@ impl SharedQueueReader {
 }
 
 impl QueueReader for SharedQueueReader {
-    fn pop(&self, mem: &GuestMemory) -> Option<DescriptorChain> {
-        self.queue.lock().pop(mem)
+    fn pop(&self) -> Option<DescriptorChain> {
+        self.queue.lock().pop()
     }
 
-    fn add_used(&self, mem: &GuestMemory, desc_chain: DescriptorChain, len: u32) {
-        self.queue.lock().add_used(mem, desc_chain, len)
+    fn add_used(&self, desc_chain: DescriptorChain, len: u32) {
+        self.queue.lock().add_used(desc_chain, len)
     }
 
-    fn signal_used(&self, mem: &GuestMemory) {
-        self.queue.lock().trigger_interrupt(mem, &self.interrupt);
+    fn signal_used(&self) {
+        self.queue.lock().trigger_interrupt(&self.interrupt);
     }
 }
 
@@ -295,11 +293,9 @@ where
                         && fence_state.descs[i].fence_id <= completed_fence.fence_id
                     {
                         let completed_desc = fence_state.descs.remove(i);
-                        fence_handler_resources.ctrl_queue.add_used(
-                            &fence_handler_resources.mem,
-                            completed_desc.desc_chain,
-                            completed_desc.len,
-                        );
+                        fence_handler_resources
+                            .ctrl_queue
+                            .add_used(completed_desc.desc_chain, completed_desc.len);
                         signal = true;
                     } else {
                         i += 1;
@@ -313,9 +309,7 @@ where
             }
 
             if signal {
-                fence_handler_resources
-                    .ctrl_queue
-                    .signal_used(&fence_handler_resources.mem);
+                fence_handler_resources.ctrl_queue.signal_used();
             }
         }
     }))
@@ -655,9 +649,9 @@ impl Frontend {
     /// Processes virtio messages on `queue`.
     pub fn process_queue(&mut self, mem: &GuestMemory, queue: &dyn QueueReader) -> bool {
         let mut signal_used = false;
-        while let Some(desc) = queue.pop(mem) {
+        while let Some(desc) = queue.pop() {
             if let Some(ret_desc) = self.process_descriptor(mem, desc) {
-                queue.add_used(mem, ret_desc.desc_chain, ret_desc.len);
+                queue.add_used(ret_desc.desc_chain, ret_desc.len);
                 signal_used = true;
             }
         }
@@ -972,8 +966,7 @@ impl Worker {
 
             // All cursor commands go first because they have higher priority.
             while let Some(desc) = self.state.return_cursor() {
-                self.cursor_queue
-                    .add_used(&self.mem, desc.desc_chain, desc.len);
+                self.cursor_queue.add_used(desc.desc_chain, desc.len);
                 signal_used_cursor = true;
             }
 
@@ -1004,11 +997,11 @@ impl Worker {
                 .process_resource_bridges(&mut self.state, &mut event_manager.wait_ctx);
 
             if signal_used_ctrl {
-                self.ctrl_queue.signal_used(&self.mem);
+                self.ctrl_queue.signal_used();
             }
 
             if signal_used_cursor {
-                self.cursor_queue.signal_used(&self.mem);
+                self.cursor_queue.signal_used();
             }
 
             if needs_config_interrupt {

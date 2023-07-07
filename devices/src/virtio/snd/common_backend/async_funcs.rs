@@ -25,7 +25,6 @@ use futures::FutureExt;
 use futures::SinkExt;
 use futures::StreamExt;
 use thiserror::Error as ThisError;
-use vm_memory::GuestMemory;
 #[cfg(windows)]
 use win_audio::AudioSharedFormat;
 use zerocopy::AsBytes;
@@ -474,7 +473,6 @@ async fn defer_pcm_response_to_worker(
 
 fn send_pcm_response(
     mut desc_chain: DescriptorChain,
-    mem: &GuestMemory,
     queue: &mut Queue,
     interrupt: &Interrupt,
     status: virtio_snd_pcm_status,
@@ -488,8 +486,8 @@ fn send_pcm_response(
     }
     writer.write_obj(status).map_err(Error::WriteResponse)?;
     let len = writer.bytes_written() as u32;
-    queue.add_used(mem, desc_chain, len);
-    queue.trigger_interrupt(mem, interrupt);
+    queue.add_used(desc_chain, len);
+    queue.trigger_interrupt(interrupt);
     Ok(())
 }
 
@@ -507,7 +505,6 @@ async fn await_reset_signal(reset_signal_option: Option<&(AsyncRwLock<bool>, Con
 }
 
 pub async fn send_pcm_response_worker(
-    mem: &GuestMemory,
     queue: Rc<AsyncRwLock<Queue>>,
     interrupt: Interrupt,
     recv: &mut mpsc::UnboundedReceiver<PcmResponse>,
@@ -526,13 +523,7 @@ pub async fn send_pcm_response_worker(
         };
 
         if let Some(r) = res {
-            send_pcm_response(
-                r.desc_chain,
-                mem,
-                &mut *queue.lock().await,
-                &interrupt,
-                r.status,
-            )?;
+            send_pcm_response(r.desc_chain, &mut *queue.lock().await, &interrupt, r.status)?;
 
             // Resume pcm_worker
             if let Some(done) = r.done {
@@ -549,7 +540,6 @@ pub async fn send_pcm_response_worker(
 /// Handle messages from the tx or the rx queue. One invocation is needed for
 /// each queue.
 pub async fn handle_pcm_queue(
-    mem: &GuestMemory,
     streams: &Rc<AsyncRwLock<Vec<AsyncRwLock<StreamInfo>>>>,
     mut response_sender: mpsc::UnboundedSender<PcmResponse>,
     queue: Rc<AsyncRwLock<Queue>>,
@@ -564,7 +554,7 @@ pub async fn handle_pcm_queue(
         let next_async = async {
             loop {
                 // Check if there are more descriptors available.
-                if let Some(chain) = queue.lock().await.pop(mem) {
+                if let Some(chain) = queue.lock().await.pop() {
                     return Ok(chain);
                 }
                 queue_event.next_val().await?;
@@ -633,7 +623,6 @@ pub async fn handle_pcm_queue(
 /// Handle all the control messages from the ctrl queue.
 pub async fn handle_ctrl_queue(
     ex: &Executor,
-    mem: &GuestMemory,
     streams: &Rc<AsyncRwLock<Vec<AsyncRwLock<StreamInfo>>>>,
     snd_data: &SndData,
     queue: Rc<AsyncRwLock<Queue>>,
@@ -649,7 +638,7 @@ pub async fn handle_ctrl_queue(
     let mut queue = queue.lock().await;
     loop {
         let mut desc_chain = {
-            let next_async = queue.next_async(mem, queue_event).fuse();
+            let next_async = queue.next_async(queue_event).fuse();
             pin_mut!(next_async);
 
             select! {
@@ -871,27 +860,26 @@ pub async fn handle_ctrl_queue(
 
         handle_ctrl_msg.await?;
         let len = writer.bytes_written() as u32;
-        queue.add_used(mem, desc_chain, len);
-        queue.trigger_interrupt(mem, &interrupt);
+        queue.add_used(desc_chain, len);
+        queue.trigger_interrupt(&interrupt);
     }
     Ok(())
 }
 
 /// Send events to the audio driver.
 pub async fn handle_event_queue(
-    mem: &GuestMemory,
     mut queue: Queue,
     mut queue_event: EventAsync,
     interrupt: Interrupt,
 ) -> Result<(), Error> {
     loop {
         let desc_chain = queue
-            .next_async(mem, &mut queue_event)
+            .next_async(&mut queue_event)
             .await
             .map_err(Error::Async)?;
 
         // TODO(woodychow): Poll and forward events from cras asynchronously (API to be added)
-        queue.add_used(mem, desc_chain, 0);
-        queue.trigger_interrupt(mem, &interrupt);
+        queue.add_used(desc_chain, 0);
+        queue.trigger_interrupt(&interrupt);
     }
 }

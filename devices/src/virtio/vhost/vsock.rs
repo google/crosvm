@@ -200,7 +200,7 @@ impl VirtioDevice for Vsock {
             // If that assumption becomes invalid, we could integrate this logic into the worker
             // thread's event loop so that it can wait for space in the queue.
             let mut avail_desc = event_queue
-                .pop(&mem)
+                .pop()
                 .expect("event queue is empty, can't send transport reset event");
             let transport_reset = virtio_sys::virtio_vsock::virtio_vsock_event{
                 id: virtio_sys::virtio_vsock::virtio_vsock_event_id_VIRTIO_VSOCK_EVENT_TRANSPORT_RESET.into(),
@@ -210,8 +210,8 @@ impl VirtioDevice for Vsock {
                 .write_obj(transport_reset)
                 .expect("failed to write transport reset event");
             let len = avail_desc.writer.bytes_written() as u32;
-            event_queue.add_used(&mem, avail_desc, len);
-            event_queue.trigger_interrupt(&mem, &interrupt);
+            event_queue.add_used(avail_desc, len);
+            event_queue.trigger_interrupt(&interrupt);
         }
         self.event_queue = Some(event_queue);
 

@@ -56,7 +56,6 @@ const MAX_QUEUE_NUM: usize = QUEUE_SIZES.len();
 
 async fn run_out_queue(
     queue: Rc<RefCell<Queue>>,
-    mem: GuestMemory,
     doorbell: Interrupt,
     kick_evt: EventAsync,
     wlstate: Rc<RefCell<wl::WlState>>,
@@ -67,13 +66,12 @@ async fn run_out_queue(
             break;
         }
 
-        wl::process_out_queue(&doorbell, &queue, &mem, &mut wlstate.borrow_mut());
+        wl::process_out_queue(&doorbell, &queue, &mut wlstate.borrow_mut());
     }
 }
 
 async fn run_in_queue(
     queue: Rc<RefCell<Queue>>,
-    mem: GuestMemory,
     doorbell: Interrupt,
     kick_evt: EventAsync,
     wlstate: Rc<RefCell<wl::WlState>>,
@@ -88,7 +86,7 @@ async fn run_in_queue(
             break;
         }
 
-        if wl::process_in_queue(&doorbell, &queue, &mem, &mut wlstate.borrow_mut())
+        if wl::process_in_queue(&doorbell, &queue, &mut wlstate.borrow_mut())
             == Err(wl::DescriptorsExhausted)
         {
             if let Err(e) = kick_evt.next_val().await {
@@ -204,7 +202,7 @@ impl VhostUserBackend for WlBackend {
         &mut self,
         idx: usize,
         queue: Queue,
-        mem: GuestMemory,
+        _mem: GuestMemory,
         doorbell: Interrupt,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
@@ -277,12 +275,12 @@ impl VhostUserBackend for WlBackend {
                     })?;
 
                 self.ex.spawn_local(Abortable::new(
-                    run_in_queue(queue.clone(), mem, doorbell, kick_evt, wlstate, wlstate_ctx),
+                    run_in_queue(queue.clone(), doorbell, kick_evt, wlstate, wlstate_ctx),
                     registration,
                 ))
             }
             1 => self.ex.spawn_local(Abortable::new(
-                run_out_queue(queue.clone(), mem, doorbell, kick_evt, wlstate),
+                run_out_queue(queue.clone(), doorbell, kick_evt, wlstate),
                 registration,
             )),
             _ => bail!("attempted to start unknown queue: {}", idx),

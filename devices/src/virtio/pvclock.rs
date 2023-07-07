@@ -587,7 +587,7 @@ fn run_worker(
             match event.token {
                 Token::SetPvClockPageQueue => {
                     let _ = set_pvclock_page_queue_evt.wait();
-                    let desc_chain = match set_pvclock_page_queue.pop(&worker.mem) {
+                    let desc_chain = match set_pvclock_page_queue.pop() {
                         Some(desc_chain) => desc_chain,
                         None => {
                             error!("set_pvclock_page queue was empty");
@@ -638,8 +638,8 @@ fn run_worker(
                         desc.len as u32
                     };
 
-                    set_pvclock_page_queue.add_used(&worker.mem, desc_chain, len);
-                    set_pvclock_page_queue.trigger_interrupt(&worker.mem, &interrupt);
+                    set_pvclock_page_queue.add_used(desc_chain, len);
+                    set_pvclock_page_queue.trigger_interrupt(&interrupt);
                 }
                 Token::SuspendResume => {
                     let req = match suspend_tube.recv::<PvClockCommand>() {
@@ -839,7 +839,10 @@ mod tests {
             .activate(
                 mem.clone(),
                 make_interrupt(),
-                BTreeMap::from([(0, (fake_queue.activate().unwrap(), Event::new().unwrap()))]),
+                BTreeMap::from([(
+                    0,
+                    (fake_queue.activate(&mem).unwrap(), Event::new().unwrap()),
+                )]),
             )
             .expect("activate should succeed");
 
@@ -863,7 +866,10 @@ mod tests {
         let mut wake_queues = BTreeMap::new();
         let mut fake_queue = QueueConfig::new(TEST_QUEUE_SIZE, 0);
         fake_queue.set_ready(true);
-        wake_queues.insert(0, (fake_queue.activate().unwrap(), Event::new().unwrap()));
+        wake_queues.insert(
+            0,
+            (fake_queue.activate(mem).unwrap(), Event::new().unwrap()),
+        );
         let queues_state = (mem.clone(), make_interrupt(), wake_queues);
         pvclock_device
             .virtio_wake(Some(queues_state))

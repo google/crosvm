@@ -586,9 +586,8 @@ async fn request_queue(
     interrupt: Interrupt,
 ) -> Result<()> {
     loop {
-        let mem = state.borrow().mem.clone();
         let mut avail_desc = queue
-            .next_async(&mem, &mut queue_event)
+            .next_async(&mut queue_event)
             .await
             .map_err(IommuError::ReadAsyncDesc)?;
 
@@ -613,8 +612,8 @@ async fn request_queue(
             debug!("iommu fault resolved");
         }
 
-        queue.add_used(&mem, avail_desc, len as u32);
-        queue.trigger_interrupt(&mem, &interrupt);
+        queue.add_used(avail_desc, len as u32);
+        queue.trigger_interrupt(&interrupt);
     }
 }
 

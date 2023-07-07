@@ -88,6 +88,8 @@ impl Default for PackedQueueIndex {
 
 #[derive(Clone, Debug)]
 pub struct PackedQueue {
+    mem: GuestMemory,
+
     // The queue size in elements the driver selected
     size: u16,
 
@@ -135,7 +137,7 @@ pub struct PackedQueueSnapshot {
 
 impl PackedQueue {
     /// Constructs an empty virtio queue with the given `max_size`.
-    pub fn new(config: &QueueConfig) -> Result<Self> {
+    pub fn new(config: &QueueConfig, mem: &GuestMemory) -> Result<Self> {
         let size = config.size();
 
         let desc_table = config.desc_table();
@@ -162,6 +164,7 @@ impl PackedQueue {
         }
 
         Ok(PackedQueue {
+            mem: mem.clone(),
             size,
             vector: config.vector(),
             desc_table: config.desc_table(),
@@ -231,7 +234,7 @@ impl PackedQueue {
     /// If this queue is for a device that sits behind a virtio-iommu device, exports
     /// this queue's memory. After the queue becomes ready, this must be called before
     /// using the queue, to convert the IOVA-based configuration to GuestAddresses.
-    pub fn export_memory(&mut self, mem: &GuestMemory) -> Result<()> {
+    pub fn export_memory(&mut self) -> Result<()> {
         if self.exported_desc_table.is_some()
             || self.exported_device_area.is_some()
             || self.exported_driver_area.is_some()
@@ -255,7 +258,7 @@ impl PackedQueue {
 
         for ((addr, size), region) in areas {
             *region = Some(
-                ExportedRegion::new(mem, iommu.clone(), addr.offset(), *size as u64)
+                ExportedRegion::new(&self.mem, iommu.clone(), addr.offset(), *size as u64)
                     .context("failed to export region")?,
             );
         }
@@ -273,10 +276,10 @@ impl PackedQueue {
     ///
     // This field is used to specify the timing of when the driver notifies the
     // device that the descriptor table is ready to be processed.
-    fn set_avail_event(&mut self, mem: &GuestMemory, event: PackedDescEvent) {
+    fn set_avail_event(&mut self, event: PackedDescEvent) {
         fence(Ordering::SeqCst);
         write_obj_at_addr_wrapper(
-            mem,
+            &self.mem,
             self.exported_device_area.as_ref(),
             event,
             self.device_event_suppression,
@@ -287,11 +290,11 @@ impl PackedQueue {
     // Get the driver event suppression.
     // This field is used to specify the timing of when the device notifies the
     // driver that the descriptor table is ready to be processed.
-    fn get_driver_event(&self, mem: &GuestMemory) -> PackedDescEvent {
+    fn get_driver_event(&self) -> PackedDescEvent {
         fence(Ordering::SeqCst);
 
         let desc: PackedDescEvent = read_obj_from_addr_wrapper(
-            mem,
+            &self.mem,
             self.exported_driver_area.as_ref(),
             self.driver_event_suppression,
         )
@@ -301,14 +304,14 @@ impl PackedQueue {
 
     /// Get the first available descriptor chain without removing it from the queue.
     /// Call `pop_peeked` to remove the returned descriptor chain from the queue.
-    pub fn peek(&mut self, mem: &GuestMemory) -> Option<DescriptorChain> {
+    pub fn peek(&mut self) -> Option<DescriptorChain> {
         let desc_addr = self
             .desc_table
             .checked_add((self.avail_index.index.0 as u64) * 16)
             .expect("peeked address will not overflow");
 
         let desc = read_obj_from_addr_wrapper::<PackedDesc>(
-            mem,
+            &self.mem,
             self.exported_desc_table.as_ref(),
             desc_addr,
         )
@@ -329,7 +332,7 @@ impl PackedQueue {
 
         let iommu = self.iommu.as_ref().map(Arc::clone);
         let chain = PackedDescriptorChain::new(
-            mem,
+            &self.mem,
             self.desc_table,
             self.size,
             self.avail_index.wrap_counter,
@@ -337,7 +340,7 @@ impl PackedQueue {
             self.exported_desc_table.as_ref(),
         );
 
-        match DescriptorChain::new(chain, mem, self.avail_index.index.0, iommu) {
+        match DescriptorChain::new(chain, &self.mem, self.avail_index.index.0, iommu) {
             Ok(descriptor_chain) => {
                 let chain_count = descriptor_chain.count;
 
@@ -354,15 +357,15 @@ impl PackedQueue {
     }
 
     /// If a new DescriptorHead is available, returns one and removes it from the queue.
-    pub fn pop_peeked(&mut self, mem: &GuestMemory) {
+    pub fn pop_peeked(&mut self) {
         self.avail_index = self.peeked_index;
         if self.features & ((1u64) << VIRTIO_RING_F_EVENT_IDX) != 0 {
-            self.set_avail_event(mem, self.avail_index.to_desc());
+            self.set_avail_event(self.avail_index.to_desc());
         }
     }
 
     /// Write to first descriptor in descriptor chain to mark descriptor chain as used
-    pub fn add_used(&mut self, mem: &GuestMemory, desc_chain: DescriptorChain, len: u32) {
+    pub fn add_used(&mut self, desc_chain: DescriptorChain, len: u32) {
         let desc_index = desc_chain.index();
         if desc_index >= self.size {
             error!(
@@ -383,7 +386,7 @@ impl PackedQueue {
 
         // Write to len field
         write_obj_at_addr_wrapper(
-            mem,
+            &self.mem,
             self.exported_desc_table.as_ref(),
             len,
             desc_addr
@@ -394,7 +397,7 @@ impl PackedQueue {
 
         // Write to id field
         write_obj_at_addr_wrapper(
-            mem,
+            &self.mem,
             self.exported_desc_table.as_ref(),
             chain_id,
             desc_addr
@@ -418,7 +421,7 @@ impl PackedQueue {
         fence(Ordering::SeqCst);
 
         write_obj_at_addr_wrapper(
-            mem,
+            &self.mem,
             self.exported_desc_table.as_ref(),
             flags,
             desc_addr.unchecked_add(14),
@@ -429,8 +432,8 @@ impl PackedQueue {
     }
 
     /// Returns if the queue should have an interrupt sent based on its state.
-    fn queue_wants_interrupt(&mut self, mem: &GuestMemory) -> bool {
-        let driver_event = self.get_driver_event(mem);
+    fn queue_wants_interrupt(&mut self) -> bool {
+        let driver_event = self.get_driver_event();
         match driver_event.notification_type() {
             PackedNotificationType::Enable => true,
             PackedNotificationType::Disable => false,
@@ -466,8 +469,8 @@ impl PackedQueue {
     /// inject interrupt into guest on this queue
     /// return true: interrupt is injected into guest for this queue
     ///        false: interrupt isn't injected
-    pub fn trigger_interrupt(&mut self, mem: &GuestMemory, interrupt: &Interrupt) -> bool {
-        if self.queue_wants_interrupt(mem) {
+    pub fn trigger_interrupt(&mut self, interrupt: &Interrupt) -> bool {
+        if self.queue_wants_interrupt() {
             interrupt.signal_used_queue(self.vector);
             true
         } else {
@@ -488,7 +491,7 @@ impl PackedQueue {
 
     /// TODO: b/290307056 - Implement restore for packed virtqueue,
     /// add tests to validate.
-    pub fn restore(_queue_value: serde_json::Value) -> Result<PackedQueue> {
+    pub fn restore(_queue_value: serde_json::Value, _mem: &GuestMemory) -> Result<PackedQueue> {
         bail!("Restore for packed virtqueue not implemented.");
     }
 }

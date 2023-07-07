@@ -50,7 +50,6 @@ const MAX_QUEUE_NUM: usize = 2; /* worker queue and high priority queue */
 
 async fn handle_fs_queue(
     queue: Rc<RefCell<virtio::Queue>>,
-    mem: GuestMemory,
     doorbell: Interrupt,
     kick_evt: EventAsync,
     server: Arc<fuse::Server<PassthroughFs>>,
@@ -64,7 +63,7 @@ async fn handle_fs_queue(
             error!("Failed to read kick event for fs queue: {}", e);
             break;
         }
-        if let Err(e) = process_fs_queue(&mem, &doorbell, &queue, &server, &tube, slot) {
+        if let Err(e) = process_fs_queue(&doorbell, &queue, &server, &tube, slot) {
             error!("Process FS queue failed: {}", e);
             break;
         }
@@ -179,7 +178,7 @@ impl VhostUserBackend for FsBackend {
         &mut self,
         idx: usize,
         queue: virtio::Queue,
-        mem: GuestMemory,
+        _mem: GuestMemory,
         doorbell: Interrupt,
         kick_evt: Event,
     ) -> anyhow::Result<()> {
@@ -197,7 +196,6 @@ impl VhostUserBackend for FsBackend {
         let queue_task = self.ex.spawn_local(Abortable::new(
             handle_fs_queue(
                 queue.clone(),
-                mem,
                 doorbell,
                 kick_evt,
                 self.server.clone(),

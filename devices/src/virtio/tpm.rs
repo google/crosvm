@@ -40,7 +40,6 @@ const TPM_BUFSIZE: usize = 4096;
 struct Worker {
     interrupt: Interrupt,
     queue: Queue,
-    mem: GuestMemory,
     queue_evt: Event,
     backend: Box<dyn TpmBackend>,
 }
@@ -84,7 +83,7 @@ impl Worker {
 
     fn process_queue(&mut self) -> NeedsInterrupt {
         let mut needs_interrupt = NeedsInterrupt::No;
-        while let Some(mut avail_desc) = self.queue.pop(&self.mem) {
+        while let Some(mut avail_desc) = self.queue.pop() {
             let len = match self.perform_work(&mut avail_desc) {
                 Ok(len) => len,
                 Err(err) => {
@@ -93,7 +92,7 @@ impl Worker {
                 }
             };
 
-            self.queue.add_used(&self.mem, avail_desc, len);
+            self.queue.add_used(avail_desc, len);
             needs_interrupt = NeedsInterrupt::Yes;
         }
 
@@ -154,7 +153,7 @@ impl Worker {
                 }
             }
             if needs_interrupt == NeedsInterrupt::Yes {
-                self.queue.trigger_interrupt(&self.mem, &self.interrupt);
+                self.queue.trigger_interrupt(&self.interrupt);
             }
         }
     }
@@ -196,7 +195,7 @@ impl VirtioDevice for Tpm {
 
     fn activate(
         &mut self,
-        mem: GuestMemory,
+        _mem: GuestMemory,
         interrupt: Interrupt,
         mut queues: BTreeMap<usize, (Queue, Event)>,
     ) -> anyhow::Result<()> {
@@ -210,7 +209,6 @@ impl VirtioDevice for Tpm {
         let worker = Worker {
             interrupt,
             queue,
-            mem,
             queue_evt,
             backend,
         };

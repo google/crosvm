@@ -71,7 +71,6 @@ pub type P9Result<T> = result::Result<T, P9Error>;
 
 struct Worker {
     interrupt: Interrupt,
-    mem: GuestMemory,
     queue: Queue,
     queue_evt: Event,
     server: p9::Server,
@@ -79,16 +78,16 @@ struct Worker {
 
 impl Worker {
     fn process_queue(&mut self) -> P9Result<()> {
-        while let Some(mut avail_desc) = self.queue.pop(&self.mem) {
+        while let Some(mut avail_desc) = self.queue.pop() {
             self.server
                 .handle_message(&mut avail_desc.reader, &mut avail_desc.writer)
                 .map_err(P9Error::Internal)?;
 
             let len = avail_desc.writer.bytes_written() as u32;
 
-            self.queue.add_used(&self.mem, avail_desc, len);
+            self.queue.add_used(avail_desc, len);
         }
-        self.queue.trigger_interrupt(&self.mem, &self.interrupt);
+        self.queue.trigger_interrupt(&self.interrupt);
 
         Ok(())
     }
@@ -206,7 +205,7 @@ impl VirtioDevice for P9 {
 
     fn activate(
         &mut self,
-        guest_mem: GuestMemory,
+        _guest_mem: GuestMemory,
         interrupt: Interrupt,
         mut queues: BTreeMap<usize, (Queue, Event)>,
     ) -> anyhow::Result<()> {
@@ -221,7 +220,6 @@ impl VirtioDevice for P9 {
         self.worker = Some(WorkerThread::start("v_9p", move |kill_evt| {
             let mut worker = Worker {
                 interrupt,
-                mem: guest_mem,
                 queue,
                 queue_evt,
                 server,

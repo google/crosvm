@@ -427,7 +427,7 @@ impl VirtioDevice for VirtioSnd {
 
     fn activate(
         &mut self,
-        guest_mem: GuestMemory,
+        _guest_mem: GuestMemory,
         interrupt: Interrupt,
         queues: BTreeMap<usize, (Queue, Event)>,
     ) -> anyhow::Result<()> {
@@ -447,14 +447,9 @@ impl VirtioDevice for VirtioSnd {
             if let Err(e) = _thread_priority_handle {
                 warn!("Failed to set audio thread to real time: {}", e);
             };
-            if let Err(err_string) = run_worker(
-                interrupt,
-                queues,
-                guest_mem,
-                snd_data,
-                kill_evt,
-                stream_info_builders,
-            ) {
+            if let Err(err_string) =
+                run_worker(interrupt, queues, snd_data, kill_evt, stream_info_builders)
+            {
                 error!("{}", err_string);
             }
         }));
@@ -480,7 +475,6 @@ enum LoopState {
 fn run_worker(
     interrupt: Interrupt,
     queues: BTreeMap<usize, (Queue, Event)>,
-    mem: GuestMemory,
     snd_data: SndData,
     kill_evt: Event,
     stream_info_builders: Vec<StreamInfoBuilder>,
@@ -534,7 +528,6 @@ fn run_worker(
         if run_worker_once(
             &ex,
             &streams,
-            &mem,
             interrupt.clone(),
             &snd_data,
             &mut f_kill,
@@ -557,7 +550,6 @@ fn run_worker(
         if let Err(e) = reset_streams(
             &ex,
             &streams,
-            &mem,
             interrupt.clone(),
             &tx_queue,
             &mut tx_recv,
@@ -588,7 +580,6 @@ async fn notify_reset_signal(reset_signal: &(AsyncRwLock<bool>, Condvar)) {
 fn run_worker_once(
     ex: &Executor,
     streams: &Rc<AsyncRwLock<Vec<AsyncRwLock<StreamInfo>>>>,
-    mem: &GuestMemory,
     interrupt: Interrupt,
     snd_data: &SndData,
     mut f_kill: &mut (impl Future<Output = anyhow::Result<()>> + FusedFuture + Unpin),
@@ -611,7 +602,6 @@ fn run_worker_once(
 
     let f_ctrl = handle_ctrl_queue(
         ex,
-        mem,
         streams,
         snd_data,
         ctrl_queue,
@@ -625,14 +615,12 @@ fn run_worker_once(
 
     // TODO(woodychow): Enable this when libcras sends jack connect/disconnect evts
     // let f_event = handle_event_queue(
-    //     &mem,
     //     snd_state,
     //     event_queue,
     //     event_queue_evt,
     //     interrupt,
     // );
     let f_tx = handle_pcm_queue(
-        mem,
         streams,
         tx_send2,
         tx_queue.clone(),
@@ -640,16 +628,9 @@ fn run_worker_once(
         Some(&reset_signal),
     )
     .fuse();
-    let f_tx_response = send_pcm_response_worker(
-        mem,
-        tx_queue,
-        interrupt.clone(),
-        tx_recv,
-        Some(&reset_signal),
-    )
-    .fuse();
+    let f_tx_response =
+        send_pcm_response_worker(tx_queue, interrupt.clone(), tx_recv, Some(&reset_signal)).fuse();
     let f_rx = handle_pcm_queue(
-        mem,
         streams,
         rx_send2,
         rx_queue.clone(),
@@ -658,7 +639,7 @@ fn run_worker_once(
     )
     .fuse();
     let f_rx_response =
-        send_pcm_response_worker(mem, rx_queue, interrupt, rx_recv, Some(&reset_signal)).fuse();
+        send_pcm_response_worker(rx_queue, interrupt, rx_recv, Some(&reset_signal)).fuse();
 
     pin_mut!(f_ctrl, f_tx, f_tx_response, f_rx, f_rx_response);
 
@@ -721,7 +702,6 @@ fn run_worker_once(
 fn reset_streams(
     ex: &Executor,
     streams: &Rc<AsyncRwLock<Vec<AsyncRwLock<StreamInfo>>>>,
-    mem: &GuestMemory,
     interrupt: Interrupt,
     tx_queue: &Rc<AsyncRwLock<Queue>>,
     tx_recv: &mut mpsc::UnboundedReceiver<PcmResponse>,
@@ -755,7 +735,6 @@ fn reset_streams(
     // Run these in a loop to ensure that they will survive until do_reset is finished
     let f_tx_response = async {
         while send_pcm_response_worker(
-            mem,
             tx_queue.clone(),
             interrupt.clone(),
             tx_recv,
@@ -768,7 +747,6 @@ fn reset_streams(
 
     let f_rx_response = async {
         while send_pcm_response_worker(
-            mem,
             rx_queue.clone(),
             interrupt.clone(),
             rx_recv,

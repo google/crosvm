@@ -350,7 +350,6 @@ where
 
 // Async task that handles the main balloon inflate and deflate queues.
 async fn handle_queue<F>(
-    mem: &GuestMemory,
     mut queue: Queue,
     mut queue_event: EventAsync,
     release_memory_tube: Option<&Tube>,
@@ -363,7 +362,7 @@ where
 {
     loop {
         let mut avail_desc = match queue
-            .next_async_interruptable(mem, &mut queue_event, &mut stop_rx)
+            .next_async_interruptable(&mut queue_event, &mut stop_rx)
             .await
         {
             Ok(Some(res)) => res,
@@ -378,8 +377,8 @@ where
         {
             error!("balloon: failed to process inflate addresses: {}", e);
         }
-        queue.add_used(mem, avail_desc, 0);
-        queue.trigger_interrupt(mem, &interrupt);
+        queue.add_used(avail_desc, 0);
+        queue.trigger_interrupt(&interrupt);
     }
 }
 
@@ -404,7 +403,6 @@ where
 
 // Async task that handles the page reporting queue.
 async fn handle_reporting_queue<F>(
-    mem: &GuestMemory,
     mut queue: Queue,
     mut queue_event: EventAsync,
     release_memory_tube: Option<&Tube>,
@@ -417,7 +415,7 @@ where
 {
     loop {
         let avail_desc = match queue
-            .next_async_interruptable(mem, &mut queue_event, &mut stop_rx)
+            .next_async_interruptable(&mut queue_event, &mut stop_rx)
             .await
         {
             Ok(Some(res)) => res,
@@ -431,8 +429,8 @@ where
         {
             error!("balloon: failed to process reported buffer: {}", e);
         }
-        queue.add_used(mem, avail_desc, 0);
-        queue.trigger_interrupt(mem, &interrupt);
+        queue.add_used(avail_desc, 0);
+        queue.trigger_interrupt(&interrupt);
     }
 }
 
@@ -455,7 +453,6 @@ fn parse_balloon_stats(reader: &mut Reader) -> BalloonStats {
 // The guests queues an initial buffer on boot, which is read and then this future will block until
 // signaled from the command socket that stats should be collected again.
 async fn handle_stats_queue(
-    mem: &GuestMemory,
     mut queue: Queue,
     mut queue_event: EventAsync,
     mut stats_rx: mpsc::Receiver<()>,
@@ -466,7 +463,7 @@ async fn handle_stats_queue(
     mut stop_rx: oneshot::Receiver<()>,
 ) -> Queue {
     let mut avail_desc = match queue
-        .next_async_interruptable(mem, &mut queue_event, &mut stop_rx)
+        .next_async_interruptable(&mut queue_event, &mut stop_rx)
         .await
     {
         // Consume the first stats buffer sent from the guest at startup. It was not
@@ -495,10 +492,10 @@ async fn handle_stats_queue(
         };
 
         // Request a new stats_desc to the guest.
-        queue.add_used(mem, avail_desc, 0);
-        queue.trigger_interrupt(mem, &interrupt);
+        queue.add_used(avail_desc, 0);
+        queue.trigger_interrupt(&interrupt);
 
-        avail_desc = match queue.next_async(mem, &mut queue_event).await {
+        avail_desc = match queue.next_async(&mut queue_event).await {
             Err(e) => {
                 error!("Failed to read descriptor {}", e);
                 return queue;
@@ -572,7 +569,6 @@ async fn handle_event(
 
 // Async task that handles the events queue.
 async fn handle_events_queue(
-    mem: &GuestMemory,
     mut queue: Queue,
     mut queue_event: EventAsync,
     state: Arc<AsyncRwLock<BalloonState>>,
@@ -581,7 +577,7 @@ async fn handle_events_queue(
     mut stop_rx: oneshot::Receiver<()>,
 ) -> Result<Queue> {
     while let Some(mut avail_desc) = queue
-        .next_async_interruptable(mem, &mut queue_event, &mut stop_rx)
+        .next_async_interruptable(&mut queue_event, &mut stop_rx)
         .await
         .map_err(BalloonError::AsyncAwait)?
     {
@@ -593,8 +589,8 @@ async fn handle_events_queue(
         )
         .await?;
 
-        queue.add_used(mem, avail_desc, 0);
-        queue.trigger_interrupt(mem, &interrupt);
+        queue.add_used(avail_desc, 0);
+        queue.trigger_interrupt(&interrupt);
     }
     Ok(queue)
 }
@@ -609,7 +605,6 @@ enum WSOp {
 }
 
 async fn handle_ws_op_queue(
-    mem: &GuestMemory,
     mut queue: Queue,
     mut queue_event: EventAsync,
     mut ws_op_rx: mpsc::Receiver<WSOp>,
@@ -633,7 +628,7 @@ async fn handle_ws_op_queue(
             }
         };
         let mut avail_desc = queue
-            .next_async(mem, &mut queue_event)
+            .next_async(&mut queue_event)
             .await
             .map_err(BalloonError::AsyncAwait)?;
         let writer = &mut avail_desc.writer;
@@ -674,8 +669,8 @@ async fn handle_ws_op_queue(
         }
 
         let len = writer.bytes_written() as u32;
-        queue.add_used(mem, avail_desc, len);
-        queue.trigger_interrupt(mem, &interrupt);
+        queue.add_used(avail_desc, len);
+        queue.trigger_interrupt(&interrupt);
     }
 
     Ok(queue)
@@ -707,7 +702,6 @@ fn parse_balloon_ws(reader: &mut Reader) -> BalloonWS {
 // guest. If the data was requested, we should also send that back on the
 // command tube.
 async fn handle_ws_data_queue(
-    mem: &GuestMemory,
     mut queue: Queue,
     mut queue_event: EventAsync,
     command_tube: &AsyncTube,
@@ -718,7 +712,7 @@ async fn handle_ws_data_queue(
 ) -> Result<Queue> {
     loop {
         let mut avail_desc = match queue
-            .next_async_interruptable(mem, &mut queue_event, &mut stop_rx)
+            .next_async_interruptable(&mut queue_event, &mut stop_rx)
             .await
             .map_err(BalloonError::AsyncAwait)?
         {
@@ -753,8 +747,8 @@ async fn handle_ws_data_queue(
             }
         }
 
-        queue.add_used(mem, avail_desc, 0);
-        queue.trigger_interrupt(mem, &interrupt);
+        queue.add_used(avail_desc, 0);
+        queue.trigger_interrupt(&interrupt);
     }
 }
 
@@ -972,7 +966,6 @@ fn run_worker(
         // The first queue is used for inflate messages
         let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
         let inflate = handle_queue(
-            &mem,
             inflate_queue.0,
             EventAsync::new(inflate_queue.1, &ex).expect("failed to create async event"),
             release_memory_tube.as_ref(),
@@ -995,7 +988,6 @@ fn run_worker(
         // The second queue is used for deflate messages
         let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
         let deflate = handle_queue(
-            &mem,
             deflate_queue.0,
             EventAsync::new(deflate_queue.1, &ex).expect("failed to create async event"),
             None,
@@ -1019,7 +1011,6 @@ fn run_worker(
         let stats = if let Some((stats_queue, stats_queue_evt)) = stats_queue {
             let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
             handle_stats_queue(
-                &mem,
                 stats_queue,
                 EventAsync::new(stats_queue_evt, &ex).expect("failed to create async event"),
                 stats_rx,
@@ -1042,7 +1033,6 @@ fn run_worker(
         let reporting = if let Some((reporting_queue, reporting_queue_evt)) = reporting_queue {
             let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
             handle_reporting_queue(
-                &mem,
                 reporting_queue,
                 EventAsync::new(reporting_queue_evt, &ex).expect("failed to create async event"),
                 release_memory_tube.as_ref(),
@@ -1072,7 +1062,6 @@ fn run_worker(
         let ws_data = if let Some((ws_data_queue, ws_data_queue_evt)) = ws_queues.0 {
             let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
             handle_ws_data_queue(
-                &mem,
                 ws_data_queue,
                 EventAsync::new(ws_data_queue_evt, &ex).expect("failed to create async event"),
                 &command_tube,
@@ -1094,7 +1083,6 @@ fn run_worker(
         let ws_op = if let Some((ws_op_queue, ws_op_queue_evt)) = ws_queues.1 {
             let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
             handle_ws_op_queue(
-                &mem,
                 ws_op_queue,
                 EventAsync::new(ws_op_queue_evt, &ex).expect("failed to create async event"),
                 ws_op_rx,
@@ -1143,7 +1131,6 @@ fn run_worker(
         let events = if let Some((events_queue, events_queue_evt)) = events_queue {
             let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
             handle_events_queue(
-                &mem,
                 events_queue,
                 EventAsync::new(events_queue_evt, &ex).expect("failed to create async event"),
                 state.clone(),

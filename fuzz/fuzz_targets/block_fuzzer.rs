@@ -81,7 +81,7 @@ fuzz_target!(|bytes| {
     let mut q = QueueConfig::new(QUEUE_SIZE, 0);
     q.set_size(QUEUE_SIZE / 2);
     q.set_ready(true);
-    let q = q.activate().expect("QueueConfig::activate");
+    let q = q.activate(&mem).expect("QueueConfig::activate");
 
     let queue_evt = Event::new().unwrap();
 

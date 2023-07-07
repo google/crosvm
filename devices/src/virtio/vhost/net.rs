@@ -410,12 +410,12 @@ pub mod tests {
 
         let mut q0 = QueueConfig::new(1, 0);
         q0.set_ready(true);
-        let q0 = q0.activate().expect("QueueConfig::activate");
+        let q0 = q0.activate(&guest_memory).expect("QueueConfig::activate");
         let e0 = Event::new().unwrap();
 
         let mut q1 = QueueConfig::new(1, 0);
         q1.set_ready(true);
-        let q1 = q1.activate().expect("QueueConfig::activate");
+        let q1 = q1.activate(&guest_memory).expect("QueueConfig::activate");
         let e1 = Event::new().unwrap();
 
         // Just testing that we don't panic, for now
