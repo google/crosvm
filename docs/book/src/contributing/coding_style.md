@@ -13,6 +13,32 @@ The following is high level guidance for producing contributions to crosvm.
 
 ## Style guidelines
 
+### Prefer single responsibility functions
+
+Functions should have a single responsibility. This helps keep functions short and readable. We
+prefer this because functions with multiple responsibilities are hard to follow, often suffer from
+extensive indentation (very short effective line length), and are trickier to test.
+
+When you encounter large/complex functions or are about to add complexity, consider split them into
+multiple functions. Useful patterns that can help with this include splitting enums into sub-enums,
+or broader refactoring to split unrelated responsibilities from each other.
+
+### Avoid large argument lists
+
+When a function exceeds roughly 6 parameters, this is usually a signal that we should be creating a
+struct to handle the parameters. More than 6 arguments tends to make call sites unwieldy & hard to
+read. It could also be a hint that the function has too many responsibilities and should be split
+up.
+
+### Avoid extensive indentation
+
+Sometimes indentation becomes excessive in functions and severely limits the usable line length.
+Even with editor support, it can be tricky to tell which code is associated with which block.
+Classic examples of this are function calls that pass lambdas, where the call site is nested inside
+multiple matches or conditionals. In these cases, try to remove indentation by creating helpers to
+reset the indentation level, but be thoughtful about whether this makes the situation worse by
+creating an onion (too many layers / an overly deep stack).
+
 ### Formatting
 
 To format all code, crosvm defers to `rustfmt`. In addition, the code adheres to the following
@@ -60,6 +86,18 @@ other code. Towards these goals, tests should:
 Less-specific tests, such as most integration tests and system tests, are more likely to require
 obfuscating work behind helper methods. It is still good to strive for clarity and ease of debugging
 in those tests, but they do not need to follow these guidelines.
+
+## Handling technical debt
+
+During development, we don't always have cycles or expertise available to fix problematic patterns
+or overly complex code. In these situations where we find an existing problem, or are tacking on
+code to a problematic area, we should document the problem in a bug and add it to the
+[Code Health](https://issuetracker.google.com/hotlists/4285957) hotlist. This is where maintainers
+look to determine what debt most needs attention. The bug should cover:
+
+- Which style guidance is being violated.
+- What the impact is (readability, easy to introduce bugs, hard to test, etc)
+- Any recommendations for a fix.
 
 [`group_imports=stdexternalcrate`]: https://rust-lang.github.io/rustfmt/?version=v1.5.1&search=#group_imports
 [`imports_granularity=item`]: https://rust-lang.github.io/rustfmt/?version=v1.5.1&search=#imports_granularity
