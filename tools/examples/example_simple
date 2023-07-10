@@ -16,6 +16,10 @@ if ! [ -f rootfs ]; then
     virt-builder ubuntu-20.04 \
         --run-command "useradd -m -g sudo -p '' $USER ; chage -d 0 $USER" \
         -o ./rootfs
+    # Packages can be pre-installed to the image using
+    # --install PACKAGE_NAME
+    # Ex: virt-builder ubuntu-20.04 ... --install openssh-server ncat
+    # In this example, the ubuntu image will come pre-installed with OpenSSH-server and with Ncat.
     # ANCHOR_END: build
 
     # ANCHOR: kernel

@@ -22,6 +22,17 @@ at a different path or one given as an fd, you can use `--vhost-vsock-device` fl
 
 ## Example usage
 
+This example assumes `ncat` is installed. If you are using a VM image created using `virt-builder`,
+it needs to come pre-installed with `ncat`. This can be achieved by running the following command:
+
+```sh
+    # Build a simple ubuntu image and create a user with no password.
+    virt-builder ubuntu-20.04 \
+        --run-command "useradd -m -g sudo -p '' $USER ; chage -d 0 $USER" \
+        -o ./rootfs \
+        --install ncat
+```
+
 At host shell:
 
 ```sh
