@@ -171,6 +171,45 @@ impl Vsock {
             StoppedWorker::AlreadyStopped
         }
     }
+
+    fn start_worker(
+        &mut self,
+        mem: GuestMemory,
+        interrupt: Interrupt,
+        mut queues: VsockQueues,
+    ) -> anyhow::Result<()> {
+        let (rx_queue, rx_queue_evt) = queues.rx;
+        let (tx_queue, tx_queue_evt) = queues.tx;
+        let (event_queue, event_queue_evt) = queues.event;
+
+        let host_guid = self.host_guid.clone();
+        let guest_cid = self.guest_cid;
+        self.worker_thread = Some(WorkerThread::start(
+            "userspace_virtio_vsock",
+            move |kill_evt| {
+                let mut worker = Worker::new(mem, interrupt, host_guid, guest_cid);
+                let result = worker.run(
+                    rx_queue,
+                    tx_queue,
+                    event_queue,
+                    rx_queue_evt,
+                    tx_queue_evt,
+                    event_queue_evt,
+                    kill_evt,
+                );
+
+                match result {
+                    Err(e) => {
+                        error!("userspace vsock worker thread exited with error: {:?}", e);
+                        None
+                    }
+                    Ok(paused_queues_option) => paused_queues_option,
+                }
+            },
+        ));
+
+        Ok(())
+    }
 }
 
 impl VirtioDevice for Vsock {
@@ -212,37 +251,13 @@ impl VirtioDevice for Vsock {
             ));
         }
 
-        let (rx_queue, rx_queue_evt) = queues.remove(0);
-        let (tx_queue, tx_queue_evt) = queues.remove(0);
-        let (event_queue, event_queue_evt) = queues.remove(0);
+        let vsock_queues = VsockQueues {
+            rx: queues.remove(0),
+            tx: queues.remove(0),
+            event: queues.remove(0),
+        };
 
-        let host_guid = self.host_guid.clone();
-        let guest_cid = self.guest_cid;
-        self.worker_thread = Some(WorkerThread::start(
-            "userspace_virtio_vsock",
-            move |kill_evt| {
-                let mut worker = Worker::new(mem, interrupt, host_guid, guest_cid);
-                let result = worker.run(
-                    rx_queue,
-                    tx_queue,
-                    event_queue,
-                    rx_queue_evt,
-                    tx_queue_evt,
-                    event_queue_evt,
-                    kill_evt,
-                );
-
-                match result {
-                    Err(e) => {
-                        error!("userspace vsock worker thread exited with error: {:?}", e);
-                        None
-                    }
-                    Ok(paused_queues_option) => paused_queues_option,
-                }
-            },
-        ));
-
-        Ok(())
+        self.start_worker(mem, interrupt, vsock_queues)
     }
 
     fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
@@ -256,6 +271,22 @@ impl VirtioDevice for Vsock {
                 Ok(None)
             }
         }
+    }
+
+    fn virtio_wake(
+        &mut self,
+        queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, (Queue, Event)>)>,
+    ) -> anyhow::Result<()> {
+        if let Some((mem, interrupt, queues)) = queues_state {
+            self.start_worker(
+                mem,
+                interrupt,
+                queues
+                    .try_into()
+                    .expect("Failed to convert queue BTreeMap to VsockQueues"),
+            )?;
+        }
+        Ok(())
     }
 }
 
@@ -1375,6 +1406,31 @@ impl Worker {
         };
 
         Ok(paused_queue)
+    }
+}
+
+/// Queues & events for the vsock device.
+struct VsockQueues {
+    rx: (Queue, Event),
+    tx: (Queue, Event),
+    event: (Queue, Event),
+}
+
+impl TryFrom<BTreeMap<usize, (Queue, Event)>> for VsockQueues {
+    type Error = anyhow::Error;
+    fn try_from(mut queues: BTreeMap<usize, (Queue, Event)>) -> result::Result<Self, Self::Error> {
+        if queues.len() < 3 {
+            anyhow::bail!(
+                "{} queues were found, but an activated vsock must have at 3 active queues.",
+                queues.len()
+            );
+        }
+
+        Ok(VsockQueues {
+            rx: queues.remove(&0).context("the rx queue is required.")?,
+            tx: queues.remove(&1).context("the tx queue is required.")?,
+            event: queues.remove(&2).context("the event queue is required.")?,
+        })
     }
 }
 
