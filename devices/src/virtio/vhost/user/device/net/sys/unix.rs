@@ -44,7 +44,6 @@ use crate::virtio::vhost::user::device::net::NetBackend;
 use crate::virtio::vhost::user::device::net::NET_EXECUTOR;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
-use crate::PciAddress;
 
 struct TapConfig {
     host_ip: Ipv4Addr,
@@ -255,18 +254,10 @@ pub struct Options {
     #[argh(option, arg_name = "SOCKET_PATH,TAP_FD")]
     /// TAP FD with a socket path"
     tap_fd: Vec<String>,
-    #[argh(option, arg_name = "DEVICE,IP_ADDR,NET_MASK,MAC_ADDR")]
-    /// TAP device config for virtio-vhost-user.
-    /// (e.g. "0000:00:07.0,10.0.2.2,255.255.255.0,12:34:56:78:9a:bc")
-    vvu_device: Vec<String>,
-    #[argh(option, arg_name = "DEVICE,TAP_FD")]
-    /// TAP FD with a vfio device name for virtio-vhost-user
-    vvu_tap_fd: Vec<String>,
 }
 
 enum Connection {
     Socket(String),
-    Vfio(String),
 }
 
 fn new_backend_from_device_arg(arg: &str) -> anyhow::Result<(String, NetBackend<Tap>)> {
@@ -304,8 +295,7 @@ fn new_backend_from_tapfd_arg(arg: &str) -> anyhow::Result<(String, NetBackend<T
 /// Starts a vhost-user net device.
 /// Returns an error if the given `args` is invalid or the device fails to run.
 pub fn start_device(opts: Options) -> anyhow::Result<()> {
-    let num_devices =
-        opts.device.len() + opts.tap_fd.len() + opts.vvu_device.len() + opts.vvu_tap_fd.len();
+    let num_devices = opts.device.len() + opts.tap_fd.len();
 
     if num_devices == 0 {
         bail!("no device option was passed");
@@ -326,18 +316,6 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         );
     }
 
-    // virtio-vhost-user
-    for arg in opts.vvu_device.iter() {
-        devices.push(
-            new_backend_from_device_arg(arg).map(|(s, backend)| (Connection::Vfio(s), backend))?,
-        );
-    }
-    for arg in opts.vvu_tap_fd.iter() {
-        devices.push(
-            new_backend_from_tapfd_arg(arg).map(|(s, backend)| (Connection::Vfio(s), backend))?,
-        );
-    }
-
     let mut threads = Vec::with_capacity(num_devices);
 
     for (conn, backend) in devices {
@@ -350,21 +328,6 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
                         let _ = thread_ex.set(ex.clone());
                     });
                     let listener = VhostUserListener::new_socket(&socket, None)?;
-                    // run_until() returns an Result<Result<..>> which the ? operator lets us
-                    // flatten.
-                    ex.run_until(listener.run_backend(Box::new(backend), &ex))?
-                }));
-            }
-            Connection::Vfio(device_name) => {
-                threads.push(thread::spawn(move || {
-                    NET_EXECUTOR.with(|thread_ex| {
-                        let _ = thread_ex.set(ex.clone());
-                    });
-                    let listener = VhostUserListener::new_vvu(
-                        PciAddress::from_str(&device_name)?,
-                        backend.max_queue_num(),
-                        None,
-                    )?;
                     // run_until() returns an Result<Result<..>> which the ? operator lets us
                     // flatten.
                     ex.run_until(listener.run_backend(Box::new(backend), &ex))?

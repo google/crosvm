@@ -22,7 +22,6 @@ use crate::pci::PciBarConfiguration;
 use crate::pci::PciBarIndex;
 use crate::pci::PciCapability;
 use crate::pci::{MsixConfig, MsixStatus};
-use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 use crate::virtio::queue::QueueConfig;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -80,11 +79,6 @@ pub trait VirtioDevice: Send {
         self.queue_max_sizes().len()
     }
 
-    /// Whether this device supports a virtio-iommu.
-    fn supports_iommu(&self) -> bool {
-        false
-    }
-
     /// The set of feature bits that this device supports in addition to the base features.
     fn features(&self) -> u64 {
         0
@@ -105,12 +99,6 @@ pub trait VirtioDevice: Send {
     fn write_config(&mut self, offset: u64, data: &[u8]) {
         let _ = offset;
         let _ = data;
-    }
-
-    /// If the device is translated by an IOMMU, called before
-    /// |activate| with the IOMMU's mapper.
-    fn set_iommu(&mut self, iommu: &Arc<Mutex<IpcMemoryMapper>>) {
-        let _ = iommu;
     }
 
     /// Activates this device for real usage.

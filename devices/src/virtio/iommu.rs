@@ -4,7 +4,6 @@
 
 pub mod ipc_memory_mapper;
 pub mod memory_mapper;
-pub mod memory_util;
 pub mod protocol;
 pub(crate) mod sys;
 
@@ -60,7 +59,6 @@ use zerocopy::FromBytes;
 use crate::pci::PciAddress;
 use crate::virtio::async_utils;
 use crate::virtio::copy_config;
-use crate::virtio::iommu::ipc_memory_mapper::*;
 use crate::virtio::iommu::memory_mapper::*;
 use crate::virtio::iommu::protocol::*;
 use crate::virtio::DescriptorChain;

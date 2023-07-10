@@ -6,23 +6,17 @@
 
 #![deny(missing_docs)]
 
-use std::sync::Arc;
-
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
 use base::trace;
-use base::Protection;
 use cros_async::MemRegion;
 use smallvec::SmallVec;
-use sync::Mutex;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
 use crate::virtio::descriptor_utils::Reader;
 use crate::virtio::descriptor_utils::Writer;
-use crate::virtio::ipc_memory_mapper::ExportedRegion;
-use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 
 /// Virtio flag indicating there is a next descriptor in descriptor chain
 pub const VIRTQ_DESC_F_NEXT: u16 = 0x1;
@@ -84,36 +78,20 @@ impl DescriptorChain {
     /// * `chain` - Iterator that will be walked to retrieve all of the descriptors in the chain.
     /// * `mem` - The [`GuestMemory`] backing the descriptor table and descriptor memory regions.
     /// * `index` - The index of the first descriptor in the chain.
-    /// * `iommu` - An optional IOMMU to use for mapping descriptor memory regions. If `iommu` is
-    ///   specified, the descriptor memory regions will be mapped for the lifetime of this
-    ///   `DescriptorChain` object.
     pub fn new(
         mut chain: impl DescriptorChainIter,
         mem: &GuestMemory,
         index: u16,
-        iommu: Option<Arc<Mutex<IpcMemoryMapper>>>,
     ) -> Result<DescriptorChain> {
         let mut readable_regions = SmallVec::new();
         let mut writable_regions = SmallVec::new();
-        let mut exported_regions = Vec::new();
 
         while let Some(desc) = chain.next()? {
             if desc.len == 0 {
                 bail!("invalid zero-length descriptor");
             }
 
-            if let Some(iommu) = iommu.as_ref() {
-                Self::add_descriptor_iommu(
-                    &mut readable_regions,
-                    &mut writable_regions,
-                    &mut exported_regions,
-                    desc,
-                    mem,
-                    iommu,
-                )?;
-            } else {
-                Self::add_descriptor(&mut readable_regions, &mut writable_regions, desc)?;
-            }
+            Self::add_descriptor(&mut readable_regions, &mut writable_regions, desc)?;
         }
 
         let count = chain.count();
@@ -129,14 +107,8 @@ impl DescriptorChain {
             writable_regions.len()
         );
 
-        let exported_regions = if exported_regions.is_empty() {
-            None
-        } else {
-            Some(Arc::new(exported_regions))
-        };
-
-        let reader = Reader::new_from_regions(mem, readable_regions, exported_regions.clone());
-        let writer = Writer::new_from_regions(mem, writable_regions, exported_regions);
+        let reader = Reader::new_from_regions(mem, readable_regions);
+        let writer = Writer::new_from_regions(mem, writable_regions);
 
         let desc_chain = DescriptorChain {
             mem: mem.clone(),
@@ -164,43 +136,6 @@ impl DescriptorChain {
             DescriptorAccess::DeviceRead => readable_regions.push(region),
             DescriptorAccess::DeviceWrite => writable_regions.push(region),
         }
-
-        Ok(())
-    }
-
-    fn add_descriptor_iommu(
-        readable_regions: &mut SmallVec<[MemRegion; 2]>,
-        writable_regions: &mut SmallVec<[MemRegion; 2]>,
-        exported_regions: &mut Vec<ExportedRegion>,
-        desc: Descriptor,
-        mem: &GuestMemory,
-        iommu: &Arc<Mutex<IpcMemoryMapper>>,
-    ) -> Result<()> {
-        let exported_region =
-            ExportedRegion::new(mem, iommu.clone(), desc.address, u64::from(desc.len))
-                .context("failed to get mem regions")?;
-
-        let regions = exported_region.get_mem_regions();
-
-        let required_prot = match desc.access {
-            DescriptorAccess::DeviceRead => Protection::read(),
-            DescriptorAccess::DeviceWrite => Protection::write(),
-        };
-        if !regions.iter().all(|r| r.prot.allows(&required_prot)) {
-            bail!("missing RW permissions for descriptor");
-        }
-
-        let regions_iter = regions.iter().map(|r| MemRegion {
-            offset: r.gpa.offset(),
-            len: r.len as usize,
-        });
-
-        match desc.access {
-            DescriptorAccess::DeviceRead => readable_regions.extend(regions_iter),
-            DescriptorAccess::DeviceWrite => writable_regions.extend(regions_iter),
-        }
-
-        exported_regions.push(exported_region);
 
         Ok(())
     }

@@ -62,7 +62,7 @@ cfg_if::cfg_if! {
         mod slave_req_handler;
         mod slave_proxy;
         pub use self::slave_req_handler::{
-            Protocol, SlaveReqHandler, SlaveReqHelper, VhostUserSlaveReqHandler,
+            SlaveReqHandler, SlaveReqHelper, VhostUserSlaveReqHandler,
             VhostUserSlaveReqHandlerMut,
         };
         pub use self::slave_proxy::Slave;

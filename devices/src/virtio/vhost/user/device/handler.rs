@@ -90,7 +90,6 @@ use vmm_vhost::message::VhostUserVirtioFeatures;
 use vmm_vhost::message::VhostUserVringAddrFlags;
 use vmm_vhost::message::VhostUserVringState;
 use vmm_vhost::Error as VhostError;
-use vmm_vhost::Protocol;
 use vmm_vhost::Result as VhostResult;
 use vmm_vhost::Slave;
 use vmm_vhost::VhostUserMasterReqHandler;
@@ -275,8 +274,6 @@ impl Vring {
 
 /// Trait for defining vhost-user ops that are platform-dependent.
 pub trait VhostUserPlatformOps {
-    /// Returns the protocol implemented by these platform ops.
-    fn protocol(&self) -> Protocol;
     /// Create the guest memory for the backend.
     ///
     /// `contexts` and `files` must be the same size, and provide a description of the memory
@@ -312,10 +309,6 @@ pub trait VhostUserPlatformOps {
 pub(super) struct VhostUserRegularOps;
 
 impl VhostUserPlatformOps for VhostUserRegularOps {
-    fn protocol(&self) -> Protocol {
-        Protocol::Regular
-    }
-
     fn set_mem_table(
         &mut self,
         contexts: &[VhostUserMemoryRegion],
@@ -425,10 +418,6 @@ impl DeviceRequestHandler {
 }
 
 impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
-    fn protocol(&self) -> Protocol {
-        self.ops.protocol()
-    }
-
     fn set_owner(&mut self) -> VhostResult<()> {
         if self.owned {
             return Err(VhostError::InvalidOperation);

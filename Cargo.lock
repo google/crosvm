@@ -731,7 +731,6 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tube_transporter",
- "uuid",
  "vhost",
  "vm_control",
  "vm_memory",
@@ -920,7 +919,6 @@ dependencies = [
  "tpm2",
  "tube_transporter",
  "usb_util",
- "uuid",
  "vfio_sys",
  "vhost",
  "virtio_sys",
@@ -2736,7 +2734,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1674845326ee10d37ca60470760d4288a6f80f304007d92e5c53bab78c9cfd79"
 dependencies = [
  "getrandom",
- "serde",
 ]
 
 [[package]]

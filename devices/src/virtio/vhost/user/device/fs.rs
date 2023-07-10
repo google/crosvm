@@ -227,10 +227,7 @@ impl VhostUserBackend for FsBackend {
 pub struct Options {
     #[argh(option, arg_name = "PATH")]
     /// path to a vhost-user socket
-    socket: Option<String>,
-    #[argh(option, arg_name = "STRING")]
-    /// VFIO-PCI device name (e.g. '0000:00:07.0')
-    vfio: Option<String>,
+    socket: String,
     #[argh(option, arg_name = "TAG")]
     /// the virtio-fs tag
     tag: String,

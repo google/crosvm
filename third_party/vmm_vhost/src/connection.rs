@@ -8,8 +8,6 @@
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
         pub mod socket;
-        #[cfg(feature = "vfio-device")]
-        pub mod vfio;
         mod unix;
     } else if #[cfg(windows)] {
         mod tube;

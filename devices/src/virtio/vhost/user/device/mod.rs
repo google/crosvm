@@ -35,7 +35,6 @@ cfg_if::cfg_if! {
         mod fs;
         mod net;
         mod vsock;
-        mod vvu;
         mod wl;
 
         pub use vsock::{run_vsock_device, Options as VsockOptions, VhostUserVsockDevice};

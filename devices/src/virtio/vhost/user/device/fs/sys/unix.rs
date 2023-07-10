@@ -15,7 +15,6 @@ use minijail::Minijail;
 
 use crate::virtio::vhost::user::device::fs::FsBackend;
 use crate::virtio::vhost::user::device::fs::Options;
-use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 
@@ -104,12 +103,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
     let fs_device = Box::new(FsBackend::new(&ex, &opts.tag, opts.cfg)?);
 
     let mut keep_rds = fs_device.keep_rds.clone();
-    let listener = VhostUserListener::new_from_socket_or_vfio(
-        &opts.socket,
-        &opts.vfio,
-        fs_device.max_queue_num(),
-        Some(&mut keep_rds),
-    )?;
+    let listener = VhostUserListener::new_socket(&opts.socket, Some(&mut keep_rds))?;
 
     base::syslog::push_descriptors(&mut keep_rds);
     cros_tracing::push_descriptors!(&mut keep_rds);

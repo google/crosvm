@@ -786,11 +786,6 @@ impl MsixCap {
             pba: (pba_off & 0xffff_fff8u32) | u32::from(pba_pci_bar & 0x7u8),
         }
     }
-
-    #[cfg(unix)]
-    pub fn msg_ctl(&self) -> MsixCtrl {
-        self.msg_ctl
-    }
 }
 
 #[cfg(test)]

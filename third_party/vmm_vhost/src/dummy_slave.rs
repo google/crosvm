@@ -5,7 +5,6 @@ use std::fs::File;
 
 use crate::message::*;
 use crate::Error;
-use crate::Protocol;
 use crate::Result;
 use crate::VhostUserSlaveReqHandlerMut;
 
@@ -41,10 +40,6 @@ impl DummySlaveReqHandler {
 }
 
 impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
-    fn protocol(&self) -> Protocol {
-        Protocol::Regular
-    }
-
     fn set_owner(&mut self) -> Result<()> {
         if self.owned {
             return Err(Error::InvalidOperation);

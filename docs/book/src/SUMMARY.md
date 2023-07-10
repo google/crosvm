@@ -25,7 +25,6 @@
   - [Wayland](./devices/wayland.md)
   - [Video (experimental)](./devices/video.md)
   - [Vhost-user](./devices/vhost_user.md)
-  - [VirtIO Vhost-user (VVU)](./devices/vvu.md)
 - [Tracing](./tracing.md)
 - [Integration](./integration/index.md)
   - [ChromeOS](./integration/chromeos.md)

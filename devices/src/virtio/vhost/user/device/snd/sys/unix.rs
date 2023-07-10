@@ -7,7 +7,6 @@ use argh::FromArgs;
 use cros_async::Executor;
 
 use crate::virtio::snd::parameters::Parameters;
-use crate::virtio::vhost::user::device::handler::VhostUserBackend;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 use crate::virtio::vhost::user::device::snd::SndBackend;
@@ -19,10 +18,7 @@ use crate::virtio::vhost::user::device::snd::SND_EXECUTOR;
 pub struct Options {
     #[argh(option, arg_name = "PATH")]
     /// path to bind a listening vhost-user socket
-    socket: Option<String>,
-    #[argh(option, arg_name = "STRING")]
-    /// VFIO-PCI device name (e.g. '0000:00:07.0')
-    vfio: Option<String>,
+    socket: String,
     #[argh(
         option,
         arg_name = "CONFIG",
@@ -57,12 +53,7 @@ pub fn run_snd_device(opts: Options) -> anyhow::Result<()> {
     let ex = Executor::new().context("Failed to create executor")?;
     let _ = SND_EXECUTOR.set(ex.clone());
 
-    let listener = VhostUserListener::new_from_socket_or_vfio(
-        &opts.socket,
-        &opts.vfio,
-        snd_device.max_queue_num(),
-        None,
-    )?;
+    let listener = VhostUserListener::new_socket(&opts.socket, None)?;
 
     listener.run_device(ex, snd_device)
 }

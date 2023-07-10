@@ -5,9 +5,7 @@
 use std::num::Wrapping;
 use std::sync::atomic::fence;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
-use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
@@ -16,17 +14,12 @@ use base::Event;
 use data_model::Le32;
 use serde::Deserialize;
 use serde::Serialize;
-use sync::Mutex;
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
-use crate::virtio::ipc_memory_mapper::ExportedRegion;
-use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
-use crate::virtio::memory_util::read_obj_from_addr_wrapper;
-use crate::virtio::memory_util::write_obj_at_addr_wrapper;
 use crate::virtio::DescriptorChain;
 use crate::virtio::Interrupt;
 use crate::virtio::QueueConfig;
@@ -66,15 +59,6 @@ pub struct SplitQueue {
     // Device feature bits accepted by the driver
     features: u64,
     last_used: Wrapping<u16>,
-
-    iommu: Option<Arc<Mutex<IpcMemoryMapper>>>,
-
-    // When |iommu| is present, |desc_table| and the rings are IOVAs rather than real
-    // GPAs. These are the exported regions used to access the underlying GPAs. They
-    // are initialized by |export_memory| and released by |release_exported_memory|.
-    exported_desc_table: Option<ExportedRegion>,
-    exported_avail_ring: Option<ExportedRegion>,
-    exported_used_ring: Option<ExportedRegion>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -135,13 +119,9 @@ impl SplitQueue {
             avail_ring: config.avail_ring(),
             used_ring: config.used_ring(),
             features: config.acked_features(),
-            iommu: config.iommu(),
             next_avail: config.next_avail(),
             next_used: config.next_used(),
             last_used: config.next_used(),
-            exported_desc_table: None,
-            exported_avail_ring: None,
-            exported_used_ring: None,
         })
     }
 
@@ -207,40 +187,6 @@ impl SplitQueue {
         ]
     }
 
-    /// If this queue is for a device that sits behind a virtio-iommu device, exports
-    /// this queue's memory. After the queue becomes ready, this must be called before
-    /// using the queue, to convert the IOVA-based configuration to GuestAddresses.
-    pub fn export_memory(&mut self) -> Result<()> {
-        if self.exported_desc_table.is_some() {
-            bail!("already exported");
-        }
-
-        let iommu = self.iommu.as_ref().context("no iommu to export with")?;
-
-        let ring_sizes =
-            Self::ring_sizes(self.size, self.desc_table, self.avail_ring, self.used_ring);
-        let rings = ring_sizes.iter().zip(vec![
-            &mut self.exported_desc_table,
-            &mut self.exported_avail_ring,
-            &mut self.exported_used_ring,
-        ]);
-
-        for ((addr, size), region) in rings {
-            *region = Some(
-                ExportedRegion::new(&self.mem, iommu.clone(), addr.offset(), *size as u64)
-                    .context("failed to export region")?,
-            );
-        }
-        Ok(())
-    }
-
-    /// Releases memory exported by a previous call to [`SplitQueue::export_memory()`].
-    pub fn release_exported_memory(&mut self) {
-        self.exported_desc_table = None;
-        self.exported_avail_ring = None;
-        self.exported_used_ring = None;
-    }
-
     // Get the index of the first available descriptor chain in the available ring
     // (the next one that the driver will fill).
     //
@@ -250,12 +196,10 @@ impl SplitQueue {
         fence(Ordering::SeqCst);
 
         let avail_index_addr = self.avail_ring.unchecked_add(2);
-        let avail_index: u16 = read_obj_from_addr_wrapper(
-            &self.mem,
-            self.exported_avail_ring.as_ref(),
-            avail_index_addr,
-        )
-        .unwrap();
+        let avail_index: u16 = self
+            .mem
+            .read_obj_from_addr_volatile(avail_index_addr)
+            .unwrap();
 
         Wrapping(avail_index)
     }
@@ -270,13 +214,9 @@ impl SplitQueue {
         fence(Ordering::SeqCst);
 
         let avail_event_addr = self.used_ring.unchecked_add(4 + 8 * u64::from(self.size));
-        write_obj_at_addr_wrapper(
-            &self.mem,
-            self.exported_used_ring.as_ref(),
-            avail_index.0,
-            avail_event_addr,
-        )
-        .unwrap();
+        self.mem
+            .write_obj_at_addr_volatile(avail_index.0, avail_event_addr)
+            .unwrap();
     }
 
     // Query the value of a single-bit flag in the available ring.
@@ -285,12 +225,10 @@ impl SplitQueue {
     fn get_avail_flag(&self, flag: u16) -> bool {
         fence(Ordering::SeqCst);
 
-        let avail_flags: u16 = read_obj_from_addr_wrapper(
-            &self.mem,
-            self.exported_avail_ring.as_ref(),
-            self.avail_ring,
-        )
-        .unwrap();
+        let avail_flags: u16 = self
+            .mem
+            .read_obj_from_addr_volatile(self.avail_ring)
+            .unwrap();
 
         avail_flags & flag == flag
     }
@@ -306,12 +244,10 @@ impl SplitQueue {
         fence(Ordering::SeqCst);
 
         let used_event_addr = self.avail_ring.unchecked_add(4 + 2 * u64::from(self.size));
-        let used_event: u16 = read_obj_from_addr_wrapper(
-            &self.mem,
-            self.exported_avail_ring.as_ref(),
-            used_event_addr,
-        )
-        .unwrap();
+        let used_event: u16 = self
+            .mem
+            .read_obj_from_addr_volatile(used_event_addr)
+            .unwrap();
 
         Wrapping(used_event)
     }
@@ -324,13 +260,9 @@ impl SplitQueue {
         fence(Ordering::SeqCst);
 
         let used_index_addr = self.used_ring.unchecked_add(2);
-        write_obj_at_addr_wrapper(
-            &self.mem,
-            self.exported_used_ring.as_ref(),
-            used_index.0,
-            used_index_addr,
-        )
-        .unwrap();
+        self.mem
+            .write_obj_at_addr_volatile(used_index.0, used_index_addr)
+            .unwrap();
     }
 
     /// Get the first available descriptor chain without removing it from the queue.
@@ -350,19 +282,11 @@ impl SplitQueue {
         let desc_idx_addr = self.avail_ring.checked_add(desc_idx_addr_offset)?;
 
         // This index is checked below in checked_new.
-        let descriptor_index: u16 =
-            read_obj_from_addr_wrapper(&self.mem, self.exported_avail_ring.as_ref(), desc_idx_addr)
-                .unwrap();
+        let descriptor_index: u16 = self.mem.read_obj_from_addr_volatile(desc_idx_addr).unwrap();
 
-        let iommu = self.iommu.as_ref().map(Arc::clone);
-        let chain = SplitDescriptorChain::new(
-            &self.mem,
-            self.desc_table,
-            self.size,
-            descriptor_index,
-            self.exported_desc_table.as_ref(),
-        );
-        DescriptorChain::new(chain, &self.mem, descriptor_index, iommu)
+        let chain =
+            SplitDescriptorChain::new(&self.mem, self.desc_table, self.size, descriptor_index);
+        DescriptorChain::new(chain, &self.mem, descriptor_index)
             .map_err(|e| {
                 error!("{:#}", e);
                 e
@@ -394,7 +318,8 @@ impl SplitQueue {
         };
 
         // This write can't fail as we are guaranteed to be within the descriptor ring.
-        write_obj_at_addr_wrapper(&self.mem, self.exported_used_ring.as_ref(), elem, used_elem)
+        self.mem
+            .write_obj_at_addr_volatile(elem, used_elem)
             .unwrap();
 
         self.next_used += Wrapping(1);
@@ -545,10 +470,6 @@ impl SplitQueue {
     }
 
     pub fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
-        if self.iommu.is_some() {
-            return Err(anyhow!("Cannot snapshot if iommu is present."));
-        }
-
         serde_json::to_value(SplitQueueSnapshot {
             size: self.size,
             vector: self.vector,
@@ -581,10 +502,6 @@ impl SplitQueue {
             next_used: s.next_used,
             features: s.features,
             last_used: s.last_used,
-            iommu: None,
-            exported_desc_table: None,
-            exported_avail_ring: None,
-            exported_used_ring: None,
         };
         Ok(queue)
     }

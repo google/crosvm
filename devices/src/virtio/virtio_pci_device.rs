@@ -561,10 +561,6 @@ impl VirtioPciDevice {
             })
             .collect::<anyhow::Result<BTreeMap<usize, Queue>>>()?;
 
-        if let Some(iommu) = &self.iommu {
-            self.device.set_iommu(iommu);
-        }
-
         if let Err(e) = self.device.activate(self.mem.clone(), interrupt, queues) {
             error!("{} activate failed: {:#}", self.debug_label(), e);
             self.common_config.driver_status |= VIRTIO_CONFIG_S_NEEDS_RESET as u8;
@@ -604,10 +600,6 @@ impl VirtioPciDevice {
 }
 
 impl PciDevice for VirtioPciDevice {
-    fn supports_iommu(&self) -> bool {
-        self.device.supports_iommu()
-    }
-
     fn debug_label(&self) -> String {
         format!("pci{}", self.device.debug_label())
     }
@@ -864,12 +856,6 @@ impl PciDevice for VirtioPciDevice {
         }
 
         if !self.device_activated && self.is_driver_ready() {
-            if let Some(iommu) = &self.iommu {
-                for q in &mut self.queues {
-                    q.set_iommu(Arc::clone(iommu));
-                }
-            }
-
             if let Err(e) = self.activate() {
                 error!("failed to activate device: {:#}", e);
             }
@@ -895,12 +881,6 @@ impl PciDevice for VirtioPciDevice {
     #[cfg(target_arch = "x86_64")]
     fn generate_acpi(&mut self, sdts: Vec<SDT>) -> Option<Vec<SDT>> {
         self.device.generate_acpi(&self.pci_address, sdts)
-    }
-
-    fn set_iommu(&mut self, iommu: IpcMemoryMapper) -> anyhow::Result<()> {
-        assert!(self.supports_iommu());
-        self.iommu = Some(Arc::new(Mutex::new(iommu)));
-        Ok(())
     }
 
     fn as_virtio_pci_device(&self) -> Option<&VirtioPciDevice> {

@@ -232,10 +232,7 @@ impl VhostUserBackend for ConsoleBackend {
 pub struct Options {
     #[argh(option, arg_name = "PATH")]
     /// path to a vhost-user socket
-    socket: Option<String>,
-    #[argh(option, arg_name = "STRING")]
-    /// VFIO-PCI device name (e.g. '0000:00:07.0')
-    vfio: Option<String>,
+    socket: String,
     #[argh(option, arg_name = "OUTFILE")]
     /// path to a file
     output_file: Option<PathBuf>,
@@ -305,12 +302,7 @@ pub fn run_console_device(opts: Options) -> anyhow::Result<()> {
     let device = Box::new(create_vu_console_device(&params, &mut Vec::new())?);
     let ex = Executor::new().context("Failed to create executor")?;
 
-    let listener = VhostUserListener::new_from_socket_or_vfio(
-        &opts.socket,
-        &opts.vfio,
-        device.max_queue_num(),
-        None,
-    )?;
+    let listener = VhostUserListener::new_socket(&opts.socket, None)?;
 
     listener.run_device(ex, device)
 }

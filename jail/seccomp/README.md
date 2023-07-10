@@ -28,10 +28,6 @@ thus dedicated policies:
 
 - `vhost_user.policy` contains the set of syscalls required by the regular (i.e. socket-based)
   vhost-user listener. It is never loaded directly.
-- `vvu.policy` contains the set of syscalls required by the VFIO-based vhost-user (aka
-  Virtio-Vhost-User) listener. It is also never loaded directly.
 - `foo_device_vhost_user.policy` is the policy that is loaded when device `foo` is used as a regular
   vhost-user device. It will generally include `common_device.policy`, `vhost_user.policy` and
   `foo.policy`.
-- `foo_device_vvu.policy` is the policy that is loaded when device `foo` is used as a VVU device. It
-  will generally include `common_device.policy`, `vvu.policy` and `foo.policy`.

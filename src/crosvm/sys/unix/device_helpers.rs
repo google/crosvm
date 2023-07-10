@@ -6,7 +6,6 @@ use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::fs::OpenOptions;
 use std::ops::RangeInclusive;
-use std::os::unix::net::UnixListener;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::path::PathBuf;
@@ -38,7 +37,6 @@ use devices::virtio::memory_mapper::MemoryMapperTrait;
 #[cfg(feature = "audio")]
 use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vfio_wrapper::VfioWrapper;
-use devices::virtio::vhost::user::proxy::VirtioVhostUser;
 use devices::virtio::vhost::user::vmm::VhostUserVirtioDevice;
 use devices::virtio::vhost::user::NetBackend;
 use devices::virtio::vhost::user::VhostUserDevice;
@@ -81,7 +79,6 @@ use vm_memory::GuestAddress;
 use crate::crosvm::config::TouchDeviceOption;
 use crate::crosvm::config::VhostUserFsOption;
 use crate::crosvm::config::VhostUserOption;
-use crate::crosvm::config::VvuOption;
 
 pub enum TaggedControlTube {
     Fs(Tube),
@@ -396,32 +393,6 @@ pub fn create_vhost_user_gpu_device(
         dev: Box::new(dev),
         // no sandbox here because virtqueue handling is exported to a different process.
         jail: None,
-    })
-}
-
-pub fn create_vvu_proxy_device(
-    protection_type: ProtectionType,
-    jail_config: &Option<JailConfig>,
-    opt: &VvuOption,
-    tube: Tube,
-    max_sibling_mem_size: u64,
-) -> DeviceResult {
-    let listener =
-        UnixListener::bind(&opt.socket).context("failed to bind listener for vvu proxy device")?;
-
-    let dev = VirtioVhostUser::new(
-        virtio::base_features(protection_type),
-        listener,
-        VmMemoryClient::new(tube),
-        opt.addr,
-        opt.uuid,
-        max_sibling_mem_size,
-    )
-    .context("failed to create VVU proxy device")?;
-
-    Ok(VirtioDeviceStub {
-        dev: Box::new(dev),
-        jail: simple_jail(jail_config, "vvu_proxy_device")?,
     })
 }
 

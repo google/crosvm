@@ -21,31 +21,6 @@ use crate::MasterReqEndpoint;
 use crate::Result;
 use crate::SystemStream;
 
-#[derive(PartialEq, Eq, Debug)]
-/// Vhost-user protocol variants used for the communication.
-pub enum Protocol {
-    /// Use the regular vhost-user protocol.
-    Regular,
-    /// Use the virtio-vhost-user protocol, which is proxied through virtqueues.
-    /// The protocol is mostly same as the vhost-user protocol but no file transfer is allowed.
-    Virtio,
-}
-
-impl Protocol {
-    /// Returns whether the protocol assumes that messages are sent in stream mode like Unix's SOCK_STREAM.
-    ///
-    /// In stream mode, the receivers cannot know the size of the entire message in advance so a
-    /// message header with the body size and the message body will be sent separately. See
-    /// [`SlaveReqHandler::recv_header()`]'s doc comment for more details.
-    fn is_stream_mode(&self) -> bool {
-        match self {
-            Protocol::Regular => true,
-            // VVU proxy sends a message header and its payload at once.
-            Protocol::Virtio => false,
-        }
-    }
-}
-
 /// Services provided to the master by the slave with interior mutability.
 ///
 /// The [VhostUserSlaveReqHandler] trait defines the services provided to the master by the slave.
@@ -68,9 +43,6 @@ impl Protocol {
 /// [SlaveReqHandler]: struct.SlaveReqHandler.html
 #[allow(missing_docs)]
 pub trait VhostUserSlaveReqHandler {
-    /// Returns the type of vhost-user protocol that the handler support.
-    fn protocol(&self) -> Protocol;
-
     fn set_owner(&self) -> Result<()>;
     fn reset_owner(&self) -> Result<()>;
     fn get_features(&self) -> Result<u64>;
@@ -116,9 +88,6 @@ pub trait VhostUserSlaveReqHandler {
 /// This is a helper trait mirroring the [VhostUserSlaveReqHandler] trait.
 #[allow(missing_docs)]
 pub trait VhostUserSlaveReqHandlerMut {
-    /// Returns the type of vhost-user protocol that the handler support.
-    fn protocol(&self) -> Protocol;
-
     fn set_owner(&mut self) -> Result<()>;
     fn reset_owner(&mut self) -> Result<()>;
     fn get_features(&mut self) -> Result<u64>;
@@ -172,10 +141,6 @@ pub trait VhostUserSlaveReqHandlerMut {
 }
 
 impl<T: VhostUserSlaveReqHandlerMut> VhostUserSlaveReqHandler for Mutex<T> {
-    fn protocol(&self) -> Protocol {
-        self.lock().unwrap().protocol()
-    }
-
     fn set_owner(&self) -> Result<()> {
         self.lock().unwrap().set_owner()
     }
@@ -307,10 +272,6 @@ impl<T> VhostUserSlaveReqHandler for T
 where
     T: AsRef<dyn VhostUserSlaveReqHandler>,
 {
-    fn protocol(&self) -> Protocol {
-        self.as_ref().protocol()
-    }
-
     fn set_owner(&self) -> Result<()> {
         self.as_ref().set_owner()
     }
@@ -442,19 +403,15 @@ pub struct SlaveReqHelper<E: Endpoint<MasterReq>> {
     /// Underlying endpoint for communication.
     endpoint: E,
 
-    /// Protocol used for the communication.
-    protocol: Protocol,
-
     /// Sending ack for messages without payload.
     reply_ack_enabled: bool,
 }
 
 impl<E: Endpoint<MasterReq>> SlaveReqHelper<E> {
     /// Creates a new |SlaveReqHelper| instance with an |Endpoint| underneath it.
-    pub fn new(endpoint: E, protocol: Protocol) -> Self {
+    pub fn new(endpoint: E) -> Self {
         SlaveReqHelper {
             endpoint,
-            protocol,
             reply_ack_enabled: false,
         }
     }
@@ -526,11 +483,6 @@ impl<E: Endpoint<MasterReq>> SlaveReqHelper<E> {
         let msg = unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const VhostUserU64) };
         if !msg.is_valid() {
             return Err(Error::InvalidMessage);
-        }
-
-        // Virtio-vhost-user protocol doesn't send FDs.
-        if self.protocol == Protocol::Virtio {
-            return Ok((msg.value as u8, None));
         }
 
         // Bits (0-7) of the payload contain the vring index. Bit 8 is the
@@ -608,7 +560,7 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
     /// Create a vhost-user slave endpoint.
     pub fn new(endpoint: E, backend: S) -> Self {
         SlaveReqHandler {
-            slave_req_helper: SlaveReqHelper::new(endpoint, backend.protocol()),
+            slave_req_helper: SlaveReqHelper::new(endpoint),
             backend,
             virtio_features: 0,
             acked_virtio_features: 0,
@@ -696,9 +648,9 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
     ///
     /// See [`SlaveReqHandler::recv_header`]'s doc comment for the usage.
     pub fn needs_wait_for_payload(&self, hdr: &VhostUserMsgHeader<MasterReq>) -> bool {
-        // For the vhost-user protocols using stream mode, we need to wait until an additional
+        // Since the vhost-user protocol uses stream mode, we need to wait until an additional
         // payload is available if exists.
-        self.backend.protocol().is_stream_mode() && hdr.get_size() != 0
+        hdr.get_size() != 0
     }
 
     /// Main entrance to request from the communication channel.
@@ -1024,17 +976,11 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
             return Err(Error::InvalidMessage);
         }
 
-        let files = match self.slave_req_helper.protocol {
-            Protocol::Regular => {
-                // validate number of fds matching number of memory regions
-                let files = files.ok_or(Error::InvalidMessage)?;
-                if files.len() != msg.num_regions as usize {
-                    return Err(Error::InvalidMessage);
-                }
-                files
-            }
-            Protocol::Virtio => vec![],
-        };
+        // validate number of fds matching number of memory regions
+        let files = files.ok_or(Error::InvalidMessage)?;
+        if files.len() != msg.num_regions as usize {
+            return Err(Error::InvalidMessage);
+        }
 
         // Validate memory regions
         let regions = unsafe {

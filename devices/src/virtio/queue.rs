@@ -12,7 +12,6 @@ pub mod split_descriptor_chain;
 mod split_queue;
 
 use std::num::Wrapping;
-use std::sync::Arc;
 
 use anyhow::bail;
 use anyhow::Context;
@@ -28,12 +27,10 @@ use packed_queue::PackedQueue;
 use serde::Deserialize;
 use serde::Serialize;
 use split_queue::SplitQueue;
-use sync::Mutex;
 use virtio_sys::virtio_config::VIRTIO_F_RING_PACKED;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
-use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 use crate::virtio::DescriptorChain;
 use crate::virtio::Interrupt;
 use crate::virtio::VIRTIO_MSI_NO_VECTOR;
@@ -81,9 +78,6 @@ pub struct QueueConfig {
 
     /// Initial used ring index when the queue is activated.
     next_used: Wrapping<u16>,
-
-    /// If present, `iommu` is used to translate guest addresses from IOVA to GPA.
-    iommu: Option<Arc<Mutex<IpcMemoryMapper>>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -120,7 +114,6 @@ impl QueueConfig {
             acked_features: 0,
             next_used: Wrapping(0),
             next_avail: Wrapping(0),
-            iommu: None,
         }
     }
 
@@ -298,16 +291,6 @@ impl QueueConfig {
         self.next_avail = Wrapping(0);
         self.next_used = Wrapping(0);
         self.acked_features = 0;
-    }
-
-    /// Get IPC memory mapper for iommu
-    pub fn iommu(&self) -> Option<Arc<Mutex<IpcMemoryMapper>>> {
-        self.iommu.as_ref().map(Arc::clone)
-    }
-
-    /// Set IPC memory mapper for iommu
-    pub fn set_iommu(&mut self, iommu: Arc<Mutex<IpcMemoryMapper>>) {
-        self.iommu = Some(iommu);
     }
 
     /// Take snapshot of queue configuration
@@ -502,22 +485,6 @@ impl Queue {
         /// This method doesn't change the queue's metadata so it's reusable without initializing it
         /// again.
         reset_counters,
-        (),
-        mut,
-    );
-
-    define_queue_method!(
-        /// If this queue is for a device that sits behind a virtio-iommu device, exports
-        /// this queue's memory. After the queue becomes ready, this must be called before
-        /// using the queue, to convert the IOVA-based configuration to GuestAddresses.
-        export_memory,
-        Result<()>,
-        mut,
-    );
-
-    define_queue_method!(
-        /// Releases memory exported by a previous call to [`Queue::export_memory()`].
-        release_exported_memory,
         (),
         mut,
     );

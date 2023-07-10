@@ -18,7 +18,6 @@ use base::AsRawDescriptor;
 use base::Event;
 use base::FromRawDescriptor;
 use base::IntoRawDescriptor;
-use cros_async::EventAsync;
 use cros_async::Executor;
 use data_model::Le64;
 use vhost::Vhost;
@@ -36,7 +35,6 @@ use vmm_vhost::message::VhostUserVirtioFeatures;
 use vmm_vhost::message::VhostUserVringAddrFlags;
 use vmm_vhost::message::VhostUserVringState;
 use vmm_vhost::Error;
-use vmm_vhost::Protocol;
 use vmm_vhost::Result;
 use vmm_vhost::VhostUserSlaveReqHandlerMut;
 use zerocopy::AsBytes;
@@ -59,7 +57,6 @@ struct VsockBackend {
     mem: Option<GuestMemory>,
     ops: Box<dyn VhostUserPlatformOps>,
 
-    ex: Executor,
     handle: Vsock,
     cid: u64,
     protocol_features: VhostUserProtocolFeatures,
@@ -105,7 +102,7 @@ impl VhostUserDevice for VhostUserVsockDevice {
     fn into_req_handler(
         self: Box<Self>,
         ops: Box<dyn VhostUserPlatformOps>,
-        ex: &Executor,
+        _ex: &Executor,
     ) -> anyhow::Result<Box<dyn vmm_vhost::VhostUserSlaveReqHandler>> {
         let backend = VsockBackend {
             queues: [
@@ -116,7 +113,6 @@ impl VhostUserDevice for VhostUserVsockDevice {
             vmm_maps: None,
             mem: None,
             ops,
-            ex: ex.clone(),
             handle: self.handle,
             cid: self.cid,
             protocol_features: VhostUserProtocolFeatures::MQ | VhostUserProtocolFeatures::CONFIG,
@@ -135,10 +131,6 @@ fn convert_vhost_error(err: vhost::Error) -> Error {
 }
 
 impl VhostUserSlaveReqHandlerMut for VsockBackend {
-    fn protocol(&self) -> Protocol {
-        self.ops.protocol()
-    }
-
     fn set_owner(&mut self) -> Result<()> {
         self.handle.set_owner().map_err(convert_vhost_error)
     }
@@ -325,31 +317,7 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
 
         let doorbell = self.ops.set_vring_call(index, fd)?;
         let index = usize::from(index);
-        let kernel_evt: Event;
-        let event = match doorbell.get_interrupt_evt() {
-            Some(call_evt) => call_evt,
-            None => {
-                kernel_evt = Event::new().map_err(|_| Error::SlaveInternalError)?;
-                let task_evt = EventAsync::new(
-                    kernel_evt.try_clone().expect("failed to clone event"),
-                    &self.ex,
-                )
-                .map_err(|_| Error::SlaveInternalError)?;
-                let doorbell = doorbell.clone();
-                self.ex
-                    .spawn_local(async move {
-                        loop {
-                            let _ = task_evt
-                                .next_val()
-                                .await
-                                .expect("failed to wait for event fd");
-                            doorbell.signal_used_queue(index as u16);
-                        }
-                    })
-                    .detach();
-                &kernel_evt
-            }
-        };
+        let event = doorbell.get_interrupt_evt();
         if index != EVENT_QUEUE {
             self.handle
                 .set_vring_call(index, event)
@@ -489,10 +457,7 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
 pub struct Options {
     #[argh(option, arg_name = "PATH")]
     /// path to bind a listening vhost-user socket
-    socket: Option<String>,
-    #[argh(option, arg_name = "STRING")]
-    /// name of vfio pci device
-    vfio: Option<String>,
+    socket: String,
     #[argh(option, arg_name = "INT")]
     /// the vsock context id for this device
     cid: u64,
@@ -509,8 +474,7 @@ pub struct Options {
 pub fn run_vsock_device(opts: Options) -> anyhow::Result<()> {
     let ex = Executor::new().context("failed to create executor")?;
 
-    let listener =
-        VhostUserListener::new_from_socket_or_vfio(&opts.socket, &opts.vfio, NUM_QUEUES, None)?;
+    let listener = VhostUserListener::new_socket(&opts.socket, None)?;
 
     let vsock_device = Box::new(VhostUserVsockDevice::new(opts.cid, opts.vhost_socket)?);
 

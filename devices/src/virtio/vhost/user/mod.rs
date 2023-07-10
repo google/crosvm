@@ -9,13 +9,6 @@ use std::fmt::Debug;
 
 pub use self::device::*;
 
-cfg_if::cfg_if! {
-    if #[cfg(unix)] {
-        pub mod proxy;
-        pub use self::proxy::*;
-    } else if #[cfg(windows)] {}
-}
-
 use argh::FromArgValue;
 use serde::Deserialize;
 use serde_keyvalue::ErrorKind;

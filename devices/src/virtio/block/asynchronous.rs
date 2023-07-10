@@ -1770,7 +1770,6 @@ mod tests {
         assert_eq!(
             interrupt
                     .get_interrupt_evt()
-                    .unwrap()
                     // Wait a bit until the blk signals the interrupt
                     .wait_timeout(Duration::from_millis(300)),
             Ok(base::EventWaitResult::Signaled),

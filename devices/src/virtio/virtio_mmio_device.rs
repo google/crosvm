@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 use acpi_tables::aml;
 use acpi_tables::aml::Aml;
@@ -21,7 +20,6 @@ use base::Result;
 use hypervisor::Datamatch;
 use resources::AllocOptions;
 use resources::SystemAllocator;
-use sync::Mutex;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_ACKNOWLEDGE;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_DRIVER;
 use virtio_sys::virtio_config::VIRTIO_CONFIG_S_DRIVER_OK;
@@ -33,7 +31,6 @@ use vm_memory::GuestMemory;
 
 use super::*;
 use crate::pci::CrosvmDeviceId;
-use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 use crate::BusAccessInfo;
 use crate::BusDevice;
 use crate::BusDeviceObj;
@@ -66,8 +63,6 @@ pub struct VirtioMmioDevice {
     mmio_base: u64,
     irq_num: u32,
     config_generation: u32,
-
-    iommu: Option<Arc<Mutex<IpcMemoryMapper>>>,
 }
 
 impl VirtioMmioDevice {
@@ -103,7 +98,6 @@ impl VirtioMmioDevice {
             mmio_base: 0,
             irq_num: 0,
             config_generation: 0,
-            iommu: None,
         })
     }
     pub fn ioevents(&self) -> Vec<(&Event, u64, Datamatch)> {
@@ -332,12 +326,6 @@ impl VirtioMmioDevice {
         };
 
         if !self.device_activated && self.is_driver_ready() {
-            if let Some(iommu) = &self.iommu {
-                for q in &mut self.queues {
-                    q.set_iommu(Arc::clone(iommu));
-                }
-            }
-
             if let Err(e) = self.activate() {
                 error!("failed to activate device: {:#}", e);
             }
@@ -397,9 +385,6 @@ impl VirtioMmioDevice {
         let mut rds = self.device.keep_rds();
         if let Some(interrupt_evt) = &self.interrupt_evt {
             rds.extend(interrupt_evt.as_raw_descriptors());
-        }
-        if let Some(iommu) = &self.iommu {
-            rds.append(&mut iommu.lock().as_raw_descriptors());
         }
         rds
     }

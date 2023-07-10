@@ -26,8 +26,6 @@ use crate::virtio::descriptor_chain::VIRTQ_DESC_F_AVAIL;
 use crate::virtio::descriptor_chain::VIRTQ_DESC_F_NEXT;
 use crate::virtio::descriptor_chain::VIRTQ_DESC_F_USED;
 use crate::virtio::descriptor_chain::VIRTQ_DESC_F_WRITE;
-use crate::virtio::ipc_memory_mapper::ExportedRegion;
-use crate::virtio::memory_util::read_obj_from_addr_wrapper;
 
 /// Enable events
 pub const RING_EVENT_FLAGS_ENABLE: u16 = 0x0;
@@ -115,7 +113,7 @@ pub enum PackedNotificationType {
     Desc(u16),
 }
 
-pub struct PackedDescriptorChain<'m, 'd> {
+pub struct PackedDescriptorChain<'m> {
     avail_wrap_counter: bool,
 
     /// Current descriptor index within `desc_table`, or `None` if the iterator is exhausted.
@@ -137,10 +135,9 @@ pub struct PackedDescriptorChain<'m, 'd> {
 
     mem: &'m GuestMemory,
     desc_table: GuestAddress,
-    exported_desc_table: Option<&'d ExportedRegion>,
 }
 
-impl<'m, 'd> PackedDescriptorChain<'m, 'd> {
+impl<'m> PackedDescriptorChain<'m> {
     /// Construct a new iterator over a split virtqueue descriptor chain.
     ///
     /// # Arguments
@@ -148,16 +145,13 @@ impl<'m, 'd> PackedDescriptorChain<'m, 'd> {
     /// * `desc_table` - Guest physical address of the descriptor table.
     /// * `queue_size` - Total number of entries in the descriptor table.
     /// * `index` - The index of the first descriptor in the chain.
-    /// * `exported_desc_table` - If specified, contains the IOMMU mapping of the descriptor table
-    ///   region.
     pub fn new(
         mem: &'m GuestMemory,
         desc_table: GuestAddress,
         queue_size: u16,
         avail_wrap_counter: bool,
         index: u16,
-        exported_desc_table: Option<&'d ExportedRegion>,
-    ) -> PackedDescriptorChain<'m, 'd> {
+    ) -> PackedDescriptorChain<'m> {
         trace!("starting packed descriptor chain head={index}");
         PackedDescriptorChain {
             index: Some(index),
@@ -167,13 +161,12 @@ impl<'m, 'd> PackedDescriptorChain<'m, 'd> {
             writable: false,
             mem,
             desc_table,
-            exported_desc_table,
             avail_wrap_counter,
         }
     }
 }
 
-impl DescriptorChainIter for PackedDescriptorChain<'_, '_> {
+impl DescriptorChainIter for PackedDescriptorChain<'_> {
     fn next(&mut self) -> Result<Option<Descriptor>> {
         let index = match self.index {
             Some(index) => index,
@@ -198,9 +191,10 @@ impl DescriptorChainIter for PackedDescriptorChain<'_, '_> {
             .desc_table
             .checked_add((index as u64) * 16)
             .context("integer overflow")?;
-        let desc =
-            read_obj_from_addr_wrapper::<PackedDesc>(self.mem, self.exported_desc_table, desc_addr)
-                .with_context(|| format!("failed to read desc {:#x}", desc_addr.offset()))?;
+        let desc = self
+            .mem
+            .read_obj_from_addr::<PackedDesc>(desc_addr)
+            .with_context(|| format!("failed to read desc {:#x}", desc_addr.offset()))?;
 
         let address: u64 = desc.addr();
         let len: u32 = desc.len();

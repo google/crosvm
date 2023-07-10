@@ -69,7 +69,6 @@ pub use self::interrupt::Interrupt;
 pub use self::interrupt::InterruptSnapshot;
 pub use self::iommu::ipc_memory_mapper;
 pub use self::iommu::memory_mapper;
-pub use self::iommu::memory_util;
 pub use self::iommu::Iommu;
 pub use self::iommu::IommuError;
 pub use self::queue::split_descriptor_chain::Desc;
@@ -254,8 +253,6 @@ pub enum VirtioDeviceType {
     Regular,
     /// Socket-backed vhost-user device.
     VhostUser,
-    /// Virtio-backed vhost-user device, aka virtio-vhost-user.
-    Vvu,
 }
 
 impl VirtioDeviceType {
@@ -265,7 +262,6 @@ impl VirtioDeviceType {
         match self {
             VirtioDeviceType::Regular => format!("{base}_device"),
             VirtioDeviceType::VhostUser => format!("{base}_device_vhost_user"),
-            VirtioDeviceType::Vvu => format!("{base}_device_vvu"),
         }
     }
 }

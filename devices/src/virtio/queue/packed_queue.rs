@@ -7,17 +7,14 @@
 use std::num::Wrapping;
 use std::sync::atomic::fence;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 use anyhow::bail;
-use anyhow::Context;
 use anyhow::Result;
 use base::error;
 use base::warn;
 use base::Event;
 use serde::Deserialize;
 use serde::Serialize;
-use sync::Mutex;
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
@@ -26,10 +23,6 @@ use crate::virtio::descriptor_chain::DescriptorChain;
 use crate::virtio::descriptor_chain::VIRTQ_DESC_F_AVAIL;
 use crate::virtio::descriptor_chain::VIRTQ_DESC_F_USED;
 use crate::virtio::descriptor_chain::VIRTQ_DESC_F_WRITE;
-use crate::virtio::ipc_memory_mapper::ExportedRegion;
-use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
-use crate::virtio::memory_util::read_obj_from_addr_wrapper;
-use crate::virtio::memory_util::write_obj_at_addr_wrapper;
 use crate::virtio::queue::packed_descriptor_chain::PackedDesc;
 use crate::virtio::queue::packed_descriptor_chain::PackedDescEvent;
 use crate::virtio::queue::packed_descriptor_chain::PackedDescriptorChain;
@@ -116,12 +109,6 @@ pub struct PackedQueue {
 
     // Read-only by the device, Includes information for reducing the number of driver events
     driver_event_suppression: GuestAddress,
-
-    // exported regions used to access the underlying GPAs.
-    iommu: Option<Arc<Mutex<IpcMemoryMapper>>>,
-    exported_desc_table: Option<ExportedRegion>,
-    exported_device_area: Option<ExportedRegion>,
-    exported_driver_area: Option<ExportedRegion>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -175,10 +162,6 @@ impl PackedQueue {
             driver_event_suppression: config.avail_ring(),
             device_event_suppression: config.used_ring(),
             features: config.acked_features(),
-            iommu: config.iommu(),
-            exported_desc_table: None,
-            exported_driver_area: None,
-            exported_device_area: None,
             avail_index: PackedQueueIndex::default(),
             use_index: PackedQueueIndex::default(),
             peeked_index: PackedQueueIndex::default(),
@@ -240,60 +223,15 @@ impl PackedQueue {
         self.signalled_used_index = PackedQueueIndex::default();
     }
 
-    /// If this queue is for a device that sits behind a virtio-iommu device, exports
-    /// this queue's memory. After the queue becomes ready, this must be called before
-    /// using the queue, to convert the IOVA-based configuration to GuestAddresses.
-    pub fn export_memory(&mut self) -> Result<()> {
-        if self.exported_desc_table.is_some()
-            || self.exported_device_area.is_some()
-            || self.exported_driver_area.is_some()
-        {
-            bail!("memory already exported");
-        }
-
-        let iommu = self.iommu.as_ref().context("no iommu to export with")?;
-
-        let area_sizes = Self::area_sizes(
-            self.size,
-            self.desc_table,
-            self.driver_event_suppression,
-            self.device_event_suppression,
-        );
-        let areas = area_sizes.iter().zip(vec![
-            &mut self.exported_desc_table,
-            &mut self.exported_device_area,
-            &mut self.exported_driver_area,
-        ]);
-
-        for ((addr, size), region) in areas {
-            *region = Some(
-                ExportedRegion::new(&self.mem, iommu.clone(), addr.offset(), *size as u64)
-                    .context("failed to export region")?,
-            );
-        }
-        Ok(())
-    }
-
-    /// Releases memory exported by a previous call to [`PackedQueue::export_memory()`].
-    pub fn release_exported_memory(&mut self) {
-        self.exported_desc_table = None;
-        self.exported_device_area = None;
-        self.exported_driver_area = None;
-    }
-
     /// Set the device event suppression
     ///
     // This field is used to specify the timing of when the driver notifies the
     // device that the descriptor table is ready to be processed.
     fn set_avail_event(&mut self, event: PackedDescEvent) {
         fence(Ordering::SeqCst);
-        write_obj_at_addr_wrapper(
-            &self.mem,
-            self.exported_device_area.as_ref(),
-            event,
-            self.device_event_suppression,
-        )
-        .unwrap();
+        self.mem
+            .write_obj_at_addr_volatile(event, self.device_event_suppression)
+            .unwrap();
     }
 
     // Get the driver event suppression.
@@ -302,12 +240,10 @@ impl PackedQueue {
     fn get_driver_event(&self) -> PackedDescEvent {
         fence(Ordering::SeqCst);
 
-        let desc: PackedDescEvent = read_obj_from_addr_wrapper(
-            &self.mem,
-            self.exported_driver_area.as_ref(),
-            self.driver_event_suppression,
-        )
-        .unwrap();
+        let desc: PackedDescEvent = self
+            .mem
+            .read_obj_from_addr_volatile(self.driver_event_suppression)
+            .unwrap();
         desc
     }
 
@@ -319,16 +255,14 @@ impl PackedQueue {
             .checked_add((self.avail_index.index.0 as u64) * 16)
             .expect("peeked address will not overflow");
 
-        let desc = read_obj_from_addr_wrapper::<PackedDesc>(
-            &self.mem,
-            self.exported_desc_table.as_ref(),
-            desc_addr,
-        )
-        .map_err(|e| {
-            error!("failed to read desc {:#x}", desc_addr.offset());
-            e
-        })
-        .ok()?;
+        let desc = self
+            .mem
+            .read_obj_from_addr::<PackedDesc>(desc_addr)
+            .map_err(|e| {
+                error!("failed to read desc {:#x}", desc_addr.offset());
+                e
+            })
+            .ok()?;
 
         if !desc.is_available(self.avail_index.wrap_counter as u16) {
             return None;
@@ -339,17 +273,15 @@ impl PackedQueue {
         // available.
         fence(Ordering::SeqCst);
 
-        let iommu = self.iommu.as_ref().map(Arc::clone);
         let chain = PackedDescriptorChain::new(
             &self.mem,
             self.desc_table,
             self.size,
             self.avail_index.wrap_counter,
             self.avail_index.index.0,
-            self.exported_desc_table.as_ref(),
         );
 
-        match DescriptorChain::new(chain, &self.mem, self.avail_index.index.0, iommu) {
+        match DescriptorChain::new(chain, &self.mem, self.avail_index.index.0) {
             Ok(descriptor_chain) => {
                 let chain_count = descriptor_chain.count;
 
@@ -394,26 +326,24 @@ impl PackedQueue {
             .expect("Descriptor address should not overflow.");
 
         // Write to len field
-        write_obj_at_addr_wrapper(
-            &self.mem,
-            self.exported_desc_table.as_ref(),
-            len,
-            desc_addr
-                .checked_add(8)
-                .expect("Descriptor address should not overflow."),
-        )
-        .unwrap();
+        self.mem
+            .write_obj_at_addr(
+                len,
+                desc_addr
+                    .checked_add(8)
+                    .expect("Descriptor address should not overflow."),
+            )
+            .unwrap();
 
         // Write to id field
-        write_obj_at_addr_wrapper(
-            &self.mem,
-            self.exported_desc_table.as_ref(),
-            chain_id,
-            desc_addr
-                .checked_add(12)
-                .expect("Descriptor address should not overflow."),
-        )
-        .unwrap();
+        self.mem
+            .write_obj_at_addr(
+                chain_id,
+                desc_addr
+                    .checked_add(12)
+                    .expect("Descriptor address should not overflow."),
+            )
+            .unwrap();
 
         let wrap_counter = self.use_index.wrap_counter;
 
@@ -429,13 +359,9 @@ impl PackedQueue {
         // driver fragmented descriptor data
         fence(Ordering::SeqCst);
 
-        write_obj_at_addr_wrapper(
-            &self.mem,
-            self.exported_desc_table.as_ref(),
-            flags,
-            desc_addr.unchecked_add(14),
-        )
-        .unwrap();
+        self.mem
+            .write_obj_at_addr_volatile(flags, desc_addr.unchecked_add(14))
+            .unwrap();
 
         self.use_index.add_index(desc_chain.count, self.size());
     }

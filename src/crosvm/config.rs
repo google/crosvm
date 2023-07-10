@@ -38,7 +38,6 @@ use devices::virtio::vhost::user::device::snd::sys::windows::SndSplitConfig;
 use devices::virtio::vsock::VsockConfig;
 use devices::virtio::NetParameters;
 use devices::FwCfgParameters;
-use devices::PciAddress;
 use devices::PflashParameters;
 use devices::StubPciParameters;
 #[cfg(target_arch = "x86_64")]
@@ -49,7 +48,6 @@ use resources::AddressRange;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_keyvalue::FromKeyValues;
-use uuid::Uuid;
 use vm_control::BatteryType;
 #[cfg(target_arch = "x86_64")]
 use x86_64::check_host_hybrid_support;
@@ -176,14 +174,6 @@ impl FromStr for VhostUserFsOption {
 
         Ok(Self { socket, tag })
     }
-}
-
-/// Options for virtio-vhost-user proxy device.
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, serde_keyvalue::FromKeyValues)]
-pub struct VvuOption {
-    pub socket: PathBuf,
-    pub addr: Option<PciAddress>,
-    pub uuid: Option<Uuid>,
 }
 
 /// A bind mount for directories in the plugin process.
@@ -911,7 +901,6 @@ pub struct Config {
     pub vsock: Option<VsockConfig>,
     #[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
     pub vtpm_proxy: bool,
-    pub vvu_proxy: Vec<VvuOption>,
     pub wayland_socket_paths: BTreeMap<String, PathBuf>,
     pub x_display: Option<String>,
 }
@@ -1112,7 +1101,6 @@ impl Default for Config {
             virtio_trackpad: Vec::new(),
             #[cfg(all(feature = "vtpm", target_arch = "x86_64"))]
             vtpm_proxy: false,
-            vvu_proxy: Vec::new(),
             wayland_socket_paths: BTreeMap::new(),
             x_display: None,
         }
@@ -1857,20 +1845,5 @@ mod tests {
             let params: VideoDeviceConfig = from_key_values("vaapi").unwrap();
             assert_eq!(params.backend, VideoBackendType::Vaapi);
         }
-    }
-
-    #[test]
-    fn parse_vvu() {
-        assert_eq!(
-            from_key_values::<VvuOption>(
-                "/tmp/vvu-sock,addr=05:2.1,uuid=23546c3d-962d-4ebc-94d9-4acf50996944"
-            )
-            .unwrap(),
-            VvuOption {
-                socket: PathBuf::from("/tmp/vvu-sock"),
-                addr: Some(PciAddress::new(0, 0x05, 0x02, 1).unwrap()),
-                uuid: Some(Uuid::parse_str("23546c3d-962d-4ebc-94d9-4acf50996944").unwrap()),
-            }
-        );
     }
 }

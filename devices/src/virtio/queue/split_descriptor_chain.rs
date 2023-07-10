@@ -23,8 +23,6 @@ use crate::virtio::descriptor_chain::DescriptorAccess;
 use crate::virtio::descriptor_chain::DescriptorChainIter;
 use crate::virtio::descriptor_chain::VIRTQ_DESC_F_NEXT;
 use crate::virtio::descriptor_chain::VIRTQ_DESC_F_WRITE;
-use crate::virtio::ipc_memory_mapper::ExportedRegion;
-use crate::virtio::memory_util::read_obj_from_addr_wrapper;
 
 /// A single virtio split queue descriptor (`struct virtq_desc` in the spec).
 #[derive(Copy, Clone, Debug, FromBytes, AsBytes)]
@@ -44,7 +42,7 @@ pub struct Desc {
 }
 
 /// Iterator over the descriptors of a split virtqueue descriptor chain.
-pub struct SplitDescriptorChain<'m, 'd> {
+pub struct SplitDescriptorChain<'m> {
     /// Current descriptor index within `desc_table`, or `None` if the iterator is exhausted.
     index: Option<u16>,
 
@@ -61,10 +59,9 @@ pub struct SplitDescriptorChain<'m, 'd> {
 
     mem: &'m GuestMemory,
     desc_table: GuestAddress,
-    exported_desc_table: Option<&'d ExportedRegion>,
 }
 
-impl<'m, 'd> SplitDescriptorChain<'m, 'd> {
+impl<'m> SplitDescriptorChain<'m> {
     /// Construct a new iterator over a split virtqueue descriptor chain.
     ///
     /// # Arguments
@@ -72,15 +69,12 @@ impl<'m, 'd> SplitDescriptorChain<'m, 'd> {
     /// * `desc_table` - Guest physical address of the descriptor table.
     /// * `queue_size` - Total number of entries in the descriptor table.
     /// * `index` - The index of the first descriptor in the chain.
-    /// * `exported_desc_table` - If specified, contains the IOMMU mapping of the descriptor table
-    ///   region.
     pub fn new(
         mem: &'m GuestMemory,
         desc_table: GuestAddress,
         queue_size: u16,
         index: u16,
-        exported_desc_table: Option<&'d ExportedRegion>,
-    ) -> SplitDescriptorChain<'m, 'd> {
+    ) -> SplitDescriptorChain<'m> {
         trace!("starting split descriptor chain head={index}");
         SplitDescriptorChain {
             index: Some(index),
@@ -89,12 +83,11 @@ impl<'m, 'd> SplitDescriptorChain<'m, 'd> {
             writable: false,
             mem,
             desc_table,
-            exported_desc_table,
         }
     }
 }
 
-impl DescriptorChainIter for SplitDescriptorChain<'_, '_> {
+impl DescriptorChainIter for SplitDescriptorChain<'_> {
     fn next(&mut self) -> Result<Option<Descriptor>> {
         let index = match self.index {
             Some(index) => index,
@@ -118,9 +111,10 @@ impl DescriptorChainIter for SplitDescriptorChain<'_, '_> {
             .desc_table
             .checked_add((index as u64) * 16)
             .context("integer overflow")?;
-        let desc =
-            read_obj_from_addr_wrapper::<Desc>(self.mem, self.exported_desc_table, desc_addr)
-                .with_context(|| format!("failed to read desc {:#x}", desc_addr.offset()))?;
+        let desc = self
+            .mem
+            .read_obj_from_addr::<Desc>(desc_addr)
+            .with_context(|| format!("failed to read desc {:#x}", desc_addr.offset()))?;
 
         let address: u64 = desc.addr.into();
         let len: u32 = desc.len.into();

@@ -27,7 +27,6 @@ use crate::virtio;
 use crate::virtio::gpu;
 use crate::virtio::gpu::ProcessDisplayResult;
 use crate::virtio::vhost::user::device::gpu::GpuBackend;
-use crate::virtio::vhost::user::device::gpu::MAX_QUEUE_NUM;
 use crate::virtio::vhost::user::device::listener::sys::VhostUserListener;
 use crate::virtio::vhost::user::device::listener::VhostUserListenerTrait;
 use crate::virtio::vhost::user::device::wl::parse_wayland_sock;
@@ -125,10 +124,7 @@ fn gpu_parameters_from_str(input: &str) -> Result<GpuParameters, String> {
 pub struct Options {
     #[argh(option, arg_name = "PATH")]
     /// path to bind a listening vhost-user socket
-    socket: Option<String>,
-    #[argh(option, arg_name = "STRING")]
-    /// VFIO-PCI device name (e.g. '0000:00:07.0')
-    vfio: Option<String>,
+    socket: String,
     #[argh(option, from_str_fn(parse_wayland_sock), arg_name = "PATH[,name=NAME]")]
     /// path to one or more Wayland sockets. The unnamed socket is
     /// used for displaying virtual screens while the named ones are used for IPC
@@ -156,7 +152,6 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         params: mut gpu_parameters,
         resource_bridge,
         socket,
-        vfio,
         wayland_sock,
     } = opts;
 
@@ -228,7 +223,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
 
     let base_features = virtio::base_features(ProtectionType::Unprotected);
 
-    let listener = VhostUserListener::new_from_socket_or_vfio(&socket, &vfio, MAX_QUEUE_NUM, None)?;
+    let listener = VhostUserListener::new_socket(&socket, None)?;
 
     let gpu = Rc::new(RefCell::new(Gpu::new(
         exit_evt_wrtube,

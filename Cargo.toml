@@ -441,7 +441,6 @@ swap = { path = "swap" }
 sync = { path = "common/sync" }
 tempfile = "3"
 thiserror = { version = "1.0.20" }
-uuid = { version = "1", features = [ "serde" ] }
 vm_control = { path = "vm_control" }
 acpi_tables = { path = "acpi_tables" }
 vm_memory = { path = "vm_memory" }

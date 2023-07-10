@@ -40,8 +40,6 @@ pub enum Alloc {
     PciBridgePrefetchWindow { bus: u8, dev: u8, func: u8 },
     /// File-backed memory mapping.
     FileBacked(u64),
-    /// virtio vhost user queue with queue id
-    VvuQueue(u8),
 }
 
 #[sorted]

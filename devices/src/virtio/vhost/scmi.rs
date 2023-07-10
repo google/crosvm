@@ -123,7 +123,6 @@ impl VirtioDevice for Scmi {
             interrupt,
             acked_features,
             None,
-            self.supports_iommu(),
         );
         let activate_vqs = |_handle: &VhostScmiHandle| -> Result<()> { Ok(()) };
 

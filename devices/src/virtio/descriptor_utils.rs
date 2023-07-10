@@ -29,7 +29,6 @@ use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
 use super::DescriptorChain;
-use crate::virtio::ipc_memory_mapper::ExportedRegion;
 use crate::virtio::SplitDescriptorChain;
 
 struct DescriptorChainRegions {
@@ -43,24 +42,12 @@ struct DescriptorChainRegions {
 
     // Total bytes consumed in the entire descriptor chain.
     bytes_consumed: usize,
-
-    // For virtio devices that operate on IOVAs rather than guest physical
-    // addresses, the IOVA regions must be exported from virtio-iommu to get
-    // the underlying memory regions. It is only valid for the virtio device
-    // to access those memory regions while they remain exported, so maintain
-    // references to the exported regions until the descriptor chain is
-    // dropped.
-    _exported_regions: Option<Arc<Vec<ExportedRegion>>>,
 }
 
 impl DescriptorChainRegions {
-    fn new(
-        regions: SmallVec<[MemRegion; 2]>,
-        exported_regions: Option<Arc<Vec<ExportedRegion>>>,
-    ) -> Self {
+    fn new(regions: SmallVec<[MemRegion; 2]>) -> Self {
         DescriptorChainRegions {
             regions,
-            _exported_regions: exported_regions,
             current_region_index: 0,
             current_region_offset: 0,
             bytes_consumed: 0,
@@ -151,7 +138,6 @@ impl DescriptorChainRegions {
     fn split_at(&mut self, offset: usize) -> DescriptorChainRegions {
         let mut other = DescriptorChainRegions {
             regions: self.regions.clone(),
-            _exported_regions: self._exported_regions.clone(),
             current_region_index: self.current_region_index,
             current_region_offset: self.current_region_offset,
             bytes_consumed: self.bytes_consumed,
@@ -212,11 +198,10 @@ impl Reader {
     pub fn new_from_regions(
         mem: &GuestMemory,
         readable_regions: SmallVec<[MemRegion; 2]>,
-        exported_regions: Option<Arc<Vec<ExportedRegion>>>,
     ) -> Reader {
         Reader {
             mem: mem.clone(),
-            regions: DescriptorChainRegions::new(readable_regions, exported_regions),
+            regions: DescriptorChainRegions::new(readable_regions),
         }
     }
 
@@ -539,11 +524,10 @@ impl Writer {
     pub fn new_from_regions(
         mem: &GuestMemory,
         writable_regions: SmallVec<[MemRegion; 2]>,
-        exported_regions: Option<Arc<Vec<ExportedRegion>>>,
     ) -> Writer {
         Writer {
             mem: mem.clone(),
-            regions: DescriptorChainRegions::new(writable_regions, exported_regions),
+            regions: DescriptorChainRegions::new(writable_regions),
         }
     }
 
@@ -828,8 +812,8 @@ pub fn create_descriptor_chain(
         );
     }
 
-    let chain = SplitDescriptorChain::new(memory, descriptor_array_addr, 0x100, 0, None);
-    DescriptorChain::new(chain, memory, 0, None)
+    let chain = SplitDescriptorChain::new(memory, descriptor_array_addr, 0x100, 0);
+    DescriptorChain::new(chain, memory, 0)
 }
 
 #[cfg(test)]

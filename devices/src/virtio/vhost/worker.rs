@@ -38,7 +38,6 @@ pub struct Worker<T: Vhost> {
     pub vhost_interrupt: Vec<Event>,
     acked_features: u64,
     pub response_tube: Option<Tube>,
-    uses_viommu: bool,
 }
 
 impl<T: Vhost> Worker<T> {
@@ -49,7 +48,6 @@ impl<T: Vhost> Worker<T> {
         interrupt: Interrupt,
         acked_features: u64,
         response_tube: Option<Tube>,
-        uses_viommu: bool,
     ) -> Worker<T> {
         Worker {
             interrupt,
@@ -58,7 +56,6 @@ impl<T: Vhost> Worker<T> {
             vhost_interrupt,
             acked_features,
             response_tube,
-            uses_viommu,
         }
     }
 
@@ -79,10 +76,6 @@ impl<T: Vhost> Worker<T> {
 
         let mut features = self.acked_features & avail_features;
         if self.acked_features & (1u64 << VIRTIO_F_ACCESS_PLATFORM) != 0 {
-            // Crosvm doesn't implement the vhost IOTLB APIs.
-            if self.uses_viommu {
-                return Err(Error::VhostIotlbUnsupported);
-            }
             // The vhost API is a bit poorly named, this flag in the context of vhost
             // means that it will do address translation via its IOTLB APIs. If the
             // underlying virtio device doesn't use viommu, it doesn't need vhost

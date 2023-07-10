@@ -7,7 +7,6 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use base::Event;
-use base::MemoryMapping;
 use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
@@ -26,19 +25,9 @@ struct TransportPci {
 }
 
 enum Transport {
-    Pci {
-        pci: TransportPci,
-    },
-    Mmio {
-        irq_evt_edge: IrqEdgeEvent,
-    },
-    VhostUser {
-        call_evt: Event,
-    },
-    VirtioVhostUser {
-        doorbell_region: MemoryMapping,
-        offset: usize,
-    },
+    Pci { pci: TransportPci },
+    Mmio { irq_evt_edge: IrqEdgeEvent },
+    VhostUser { call_evt: Event },
 }
 
 struct InterruptInner {
@@ -106,13 +95,6 @@ impl Interrupt {
                 // interrupt status. For this purpose, we need a mechanism to share interrupt status
                 // between the vmm and the device process.
                 call_evt.signal().unwrap();
-            }
-            Transport::VirtioVhostUser {
-                doorbell_region,
-                offset,
-            } => {
-                // Write `1` to the doorbell, which will be forwarded to the sibling's call FD.
-                doorbell_region.write_obj_volatile(1_u8, *offset).unwrap();
             }
         }
     }
@@ -217,27 +199,12 @@ impl Interrupt {
         }
     }
 
-    /// Create an `Interrupt` wrapping a VVU memory-mapped doorbell region.
-    pub fn new_virtio_vhost_user(mmap: MemoryMapping, offset: usize) -> Interrupt {
-        Interrupt {
-            inner: Arc::new(InterruptInner {
-                interrupt_status: AtomicUsize::new(0),
-                transport: Transport::VirtioVhostUser {
-                    doorbell_region: mmap,
-                    offset,
-                },
-                async_intr_status: false,
-            }),
-        }
-    }
-
     /// Get a reference to the interrupt event.
-    pub fn get_interrupt_evt(&self) -> Option<&Event> {
+    pub fn get_interrupt_evt(&self) -> &Event {
         match &self.inner.as_ref().transport {
-            Transport::Pci { pci } => Some(pci.irq_evt_lvl.get_trigger()),
-            Transport::Mmio { irq_evt_edge } => Some(irq_evt_edge.get_trigger()),
-            Transport::VhostUser { call_evt } => Some(call_evt),
-            Transport::VirtioVhostUser { .. } => None,
+            Transport::Pci { pci } => pci.irq_evt_lvl.get_trigger(),
+            Transport::Mmio { irq_evt_edge } => irq_evt_edge.get_trigger(),
+            Transport::VhostUser { call_evt } => call_evt,
         }
     }
 

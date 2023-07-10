@@ -2,156 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fs::File;
-use std::sync::Arc;
-
 use anyhow::Context;
 use anyhow::Result;
-use base::error;
 use base::info;
 use base::AsRawDescriptor;
-use base::Event;
-use base::MemoryMappingBuilder;
 use base::SafeDescriptor;
 use cros_async::AsyncWrapper;
 use cros_async::Executor;
-use vm_memory::GuestMemory;
 use vmm_vhost::connection::Endpoint;
 use vmm_vhost::message::MasterReq;
-use vmm_vhost::message::VhostUserMemoryRegion;
 use vmm_vhost::Error as VhostError;
-use vmm_vhost::Protocol;
-use vmm_vhost::Result as VhostResult;
 use vmm_vhost::SlaveReqHandler;
 use vmm_vhost::VhostUserSlaveReqHandler;
-
-use crate::vfio::VfioDevice;
-use crate::virtio::vhost::user::device::handler::GuestAddress;
-use crate::virtio::vhost::user::device::handler::MappingInfo;
-use crate::virtio::vhost::user::device::handler::MemoryRegion;
-use crate::virtio::vhost::user::device::handler::VhostUserPlatformOps;
-use crate::virtio::vhost::user::device::vvu::pci::VvuPciCaps;
-use crate::virtio::vhost::user::device::vvu::pci::VvuPciDevice;
-use crate::virtio::Interrupt;
-
-/// Ops for running vhost-user over virtio (i.e. virtio-vhost-user).
-pub struct VvuOps {
-    vfio_dev: Arc<VfioDevice>,
-    caps: VvuPciCaps,
-    notification_evts: Vec<Event>,
-}
-
-impl VvuOps {
-    pub fn new(device: &mut VvuPciDevice) -> Self {
-        Self {
-            vfio_dev: Arc::clone(&device.vfio_dev),
-            caps: device.caps.clone(),
-            notification_evts: std::mem::take(&mut device.notification_evts),
-        }
-    }
-}
-
-impl VhostUserPlatformOps for VvuOps {
-    fn protocol(&self) -> Protocol {
-        Protocol::Virtio
-    }
-
-    fn set_mem_table(
-        &mut self,
-        contexts: &[VhostUserMemoryRegion],
-        files: Vec<File>,
-    ) -> VhostResult<(GuestMemory, Vec<MappingInfo>)> {
-        // virtio-vhost-user doesn't pass FDs.
-        if !files.is_empty() {
-            return Err(VhostError::InvalidParam);
-        }
-
-        let file_offset = self
-            .vfio_dev
-            .get_offset_for_addr(self.caps.shared_mem_cfg_addr())
-            .map_err(|e| {
-                error!("failed to get underlying file: {}", e);
-                VhostError::InvalidOperation
-            })?;
-
-        let mut vmm_maps = Vec::with_capacity(contexts.len());
-        let mut regions = Vec::with_capacity(contexts.len());
-        let page_size = base::pagesize() as u64;
-        for region in contexts {
-            let offset = file_offset + region.mmap_offset;
-            assert_eq!(offset % page_size, 0);
-
-            vmm_maps.push(MappingInfo {
-                vmm_addr: region.user_addr,
-                guest_phys: region.guest_phys_addr,
-                size: region.memory_size,
-            });
-
-            let cloned_file = self.vfio_dev.dev_file().try_clone().map_err(|e| {
-                error!("failed to clone vfio device file: {}", e);
-                VhostError::InvalidOperation
-            })?;
-            let region = MemoryRegion::new_from_file(
-                region.memory_size,
-                GuestAddress(region.guest_phys_addr),
-                file_offset + region.mmap_offset,
-                Arc::new(cloned_file),
-            )
-            .map_err(|e| {
-                error!("failed to create a memory region: {}", e);
-                VhostError::InvalidOperation
-            })?;
-            regions.push(region);
-        }
-
-        let guest_mem = GuestMemory::from_regions(regions).map_err(|e| {
-            error!("failed to create guest memory: {}", e);
-            VhostError::InvalidOperation
-        })?;
-
-        Ok((guest_mem, vmm_maps))
-    }
-
-    fn set_vring_kick(&mut self, index: u8, file: Option<File>) -> VhostResult<Event> {
-        if file.is_some() {
-            return Err(VhostError::InvalidParam);
-        }
-        self.notification_evts[index as usize]
-            .try_clone()
-            .map_err(|e| {
-                error!("failed to clone notification_evts[{}]: {}", index, e);
-                VhostError::InvalidOperation
-            })
-    }
-
-    fn set_vring_call(&mut self, index: u8, file: Option<File>) -> VhostResult<Interrupt> {
-        if file.is_some() {
-            return Err(VhostError::InvalidParam);
-        }
-
-        let base = self.caps.doorbell_base_addr();
-        let mmap_region = self.vfio_dev.get_region_mmap(base.index);
-        let region_offset = self.vfio_dev.get_region_offset(base.index);
-        let offset = region_offset + mmap_region[0].offset;
-
-        let mmap = MemoryMappingBuilder::new(mmap_region[0].size as usize)
-            .from_file(self.vfio_dev.device_file())
-            .offset(offset)
-            .build()
-            .map_err(|e| {
-                error!("Failed to mmap vfio memory region: {}", e);
-                VhostError::InvalidOperation
-            })?;
-
-        let mmap_offset = base.addr + (index as u64 * self.caps.doorbell_off_multiplier() as u64);
-        Ok(Interrupt::new_virtio_vhost_user(
-            mmap,
-            mmap_offset
-                .try_into()
-                .expect("mmap_offset too large for usize"),
-        ))
-    }
-}
 
 /// Performs the run loop for an already-constructor request handler.
 pub async fn run_handler<S, E>(mut req_handler: SlaveReqHandler<S, E>, ex: &Executor) -> Result<()>
