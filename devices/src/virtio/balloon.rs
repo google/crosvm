@@ -66,6 +66,7 @@ use super::DeviceType;
 use super::Interrupt;
 use super::Queue;
 use super::Reader;
+use super::StoppedWorker;
 use super::VirtioDevice;
 use crate::UnpinRequest;
 use crate::UnpinResponse;
@@ -1395,7 +1396,7 @@ impl Balloon {
         num_queues
     }
 
-    fn stop_worker(&mut self) -> StoppedWorker {
+    fn stop_worker(&mut self) -> StoppedWorker<PausedQueues> {
         if let Some(worker_thread) = self.worker_thread.take() {
             let worker_ret = worker_thread.stop();
             self.release_memory_tube = worker_ret.release_memory_tube;
@@ -1504,21 +1505,6 @@ impl Balloon {
 
         Ok(())
     }
-}
-
-/// When we request to stop the worker, this represents the terminal state
-/// for the thread (if it exists).
-enum StoppedWorker {
-    /// Worker stopped successfully & returned its queues.
-    WithQueues(Box<PausedQueues>),
-
-    /// Worker wasn't running when the stop was requested.
-    AlreadyStopped,
-
-    /// Worker was running but did not successfully return its queues. Something
-    /// has gone wrong (and will be in the error log). In the case of a device
-    /// reset this is fine since the next activation will replace the queues.
-    MissingQueues,
 }
 
 impl VirtioDevice for Balloon {

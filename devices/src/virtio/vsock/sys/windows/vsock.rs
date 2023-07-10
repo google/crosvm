@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Display;
@@ -30,7 +31,7 @@ use base::Error as SysError;
 use base::Event;
 use base::EventExt;
 use base::WorkerThread;
-use cros_async::select2;
+use cros_async::select3;
 use cros_async::select6;
 use cros_async::sync::RwLock;
 use cros_async::AsyncError;
@@ -40,7 +41,10 @@ use cros_async::SelectResult;
 use data_model::Le32;
 use data_model::Le64;
 use futures::channel::mpsc;
+use futures::channel::oneshot;
 use futures::pin_mut;
+use futures::select;
+use futures::select_biased;
 use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 use futures::SinkExt;
@@ -53,6 +57,7 @@ use zerocopy::FromBytes;
 
 use crate::virtio::async_utils;
 use crate::virtio::copy_config;
+use crate::virtio::create_stop_oneshot;
 use crate::virtio::vsock::sys::windows::protocol::virtio_vsock_config;
 use crate::virtio::vsock::sys::windows::protocol::virtio_vsock_event;
 use crate::virtio::vsock::sys::windows::protocol::virtio_vsock_hdr;
@@ -62,6 +67,7 @@ use crate::virtio::DescriptorChain;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
+use crate::virtio::StoppedWorker;
 use crate::virtio::VirtioDevice;
 use crate::virtio::Writer;
 use crate::Suspendable;
@@ -135,7 +141,7 @@ pub struct Vsock {
     guest_cid: u64,
     host_guid: Option<String>,
     features: u64,
-    worker_thread: Option<WorkerThread<()>>,
+    worker_thread: Option<WorkerThread<Option<PausedQueues>>>,
 }
 
 impl Vsock {
@@ -151,6 +157,18 @@ impl Vsock {
     fn get_config(&self) -> virtio_vsock_config {
         virtio_vsock_config {
             guest_cid: Le64::from(self.guest_cid),
+        }
+    }
+
+    fn stop_worker(&mut self) -> StoppedWorker<PausedQueues> {
+        if let Some(worker_thread) = self.worker_thread.take() {
+            if let Some(paused_queues) = worker_thread.stop() {
+                StoppedWorker::WithQueues(Box::new(paused_queues))
+            } else {
+                StoppedWorker::MissingQueues
+            }
+        } else {
+            StoppedWorker::AlreadyStopped
         }
     }
 }
@@ -214,13 +232,30 @@ impl VirtioDevice for Vsock {
                     kill_evt,
                 );
 
-                if let Err(e) = result {
-                    error!("userspace vsock worker thread exited with error: {:?}", e);
+                match result {
+                    Err(e) => {
+                        error!("userspace vsock worker thread exited with error: {:?}", e);
+                        None
+                    }
+                    Ok(paused_queues_option) => paused_queues_option,
                 }
             },
         ));
 
         Ok(())
+    }
+
+    fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
+        match self.stop_worker() {
+            StoppedWorker::WithQueues(paused_queues) => Ok(Some(paused_queues.into())),
+            StoppedWorker::MissingQueues => {
+                anyhow::bail!("vsock queue workers did not stop cleanly")
+            }
+            StoppedWorker::AlreadyStopped => {
+                // The device isn't in the activated state.
+                Ok(None)
+            }
+        }
     }
 }
 
@@ -320,6 +355,7 @@ impl Worker {
         recv_queue: Arc<RwLock<Queue>>,
         mut rx_queue_evt: EventAsync,
         ex: &Executor,
+        mut stop_rx: oneshot::Receiver<()>,
     ) -> Result<()> {
         'connections_changed: loop {
             // Run continuously until exit evt
@@ -374,12 +410,17 @@ impl Worker {
             // The expect here only triggers if the FuturesUnordered stream is exhausted. This never
             // happens because it has at least one item, and we only request chunks once.
             let futures_len = futures.len();
-            for port in futures
-                .ready_chunks(futures_len)
-                .next()
-                .await
-                .expect("failed to wait on vsock sockets")
-            {
+            let mut ready_chunks = futures.ready_chunks(futures_len);
+            let ports = select_biased! {
+                ports = ready_chunks.next() => {
+                    ports.expect("failed to wait on vsock sockets")
+                }
+                _ = stop_rx => {
+                    break;
+                }
+            };
+
+            for port in ports {
                 if port.host == CONNECTION_EVENT_PORT_NUM {
                     // New connection event. Setup futures again.
                     if let Err(e) = self.connection_event.reset() {
@@ -474,12 +515,25 @@ impl Worker {
                 let mut header_and_data = vec![0u8; HEADER_SIZE + data_size];
                 header_and_data[..HEADER_SIZE].copy_from_slice(response_header.as_bytes());
                 header_and_data[HEADER_SIZE..].copy_from_slice(data_read);
-                self.write_bytes_to_queue(
-                    &mut *recv_queue.lock().await,
-                    &mut rx_queue_evt,
-                    &header_and_data[..],
-                )
-                .await?;
+                {
+                    let mut recv_queue_lock = recv_queue.lock().await;
+                    let write_fut = self
+                        .write_bytes_to_queue(
+                            &mut recv_queue_lock,
+                            &mut rx_queue_evt,
+                            &header_and_data[..],
+                        )
+                        .fuse();
+                    pin_mut!(write_fut);
+                    // If `stop_rx` is fired but the virt queue is full, this loop will break
+                    // without draining the `header_and_data`.
+                    select_biased! {
+                        write = write_fut => {},
+                        _ = stop_rx => {
+                            break;
+                        }
+                    }
+                }
 
                 connection.tx_cnt += data_size;
 
@@ -500,6 +554,7 @@ impl Worker {
                 }
             }
         }
+        Ok(())
     }
 
     async fn process_tx_queue(
@@ -507,11 +562,16 @@ impl Worker {
         mut queue: Queue,
         mut queue_evt: EventAsync,
         mut process_packets_queue: mpsc::Sender<(virtio_vsock_hdr, Vec<u8>)>,
-    ) -> Result<()> {
+        mut stop_rx: oneshot::Receiver<()>,
+    ) -> Result<Queue> {
         loop {
             // Run continuously until exit evt
-            let mut avail_desc = match queue.next_async(&self.mem, &mut queue_evt).await {
-                Ok(d) => d,
+            let mut avail_desc = match queue
+                .next_async_interruptable(&self.mem, &mut queue_evt, &mut stop_rx)
+                .await
+            {
+                Ok(Some(d)) => d,
+                Ok(None) => break,
                 Err(e) => {
                     error!("vsock: Failed to read descriptor {}", e);
                     return Err(VsockError::AwaitQueue(e));
@@ -552,6 +612,8 @@ impl Worker {
             queue.add_used(&self.mem, avail_desc, 0);
             queue.trigger_interrupt(&self.mem, &self.interrupt);
         }
+
+        Ok(queue)
     }
 
     fn calculate_buf_alloc_from_pipe(pipe: &PipeConnection, port: PortPair) -> usize {
@@ -777,6 +839,7 @@ impl Worker {
         rx_queue_evt: Event,
         mut packet_recv_queue: mpsc::Receiver<(virtio_vsock_hdr, Vec<u8>)>,
         ex: &Executor,
+        mut stop_rx: oneshot::Receiver<()>,
     ) {
         let mut packet_queues = HashMap::new();
         let mut futures = FuturesUnordered::new();
@@ -784,8 +847,12 @@ impl Worker {
         // This will keep us from spinning on spurious notifications when we
         // don't have any open connections.
         futures.push(std::future::pending::<PortPair>().left_future());
+
+        let mut stop_future = FuturesUnordered::new();
+        stop_future.push(stop_rx);
         loop {
-            let (new_packet, connection) = select2(packet_recv_queue.next(), futures.next()).await;
+            let (new_packet, connection, stop_rx_res) =
+                select3(packet_recv_queue.next(), futures.next(), stop_future.next()).await;
             match connection {
                 SelectResult::Finished(Some(port)) => {
                     packet_queues.remove(&port);
@@ -831,6 +898,14 @@ impl Worker {
                     // Triggers when the channel is closed; no more packets coming.
                     packet_recv_queue.close();
                     return;
+                }
+                SelectResult::Pending(_) => {
+                    // Nothing to do.
+                }
+            }
+            match stop_rx_res {
+                SelectResult::Finished(_) => {
+                    break;
                 }
                 SelectResult::Pending(_) => {
                     // Nothing to do.
@@ -1151,12 +1226,21 @@ impl Worker {
         }
     }
 
-    async fn process_event_queue(&self, mut queue: Queue, mut queue_evt: EventAsync) -> Result<()> {
+    async fn process_event_queue(
+        &self,
+        mut queue: Queue,
+        mut queue_evt: EventAsync,
+        mut stop_rx: oneshot::Receiver<()>,
+    ) -> Result<Queue> {
         loop {
             // Log but don't act on events. They are reserved exclusively for guest migration events
             // resulting in CID resets, which we don't support.
-            let mut avail_desc = match queue.next_async(&self.mem, &mut queue_evt).await {
-                Ok(d) => d,
+            let mut avail_desc = match queue
+                .next_async_interruptable(&self.mem, &mut queue_evt, &mut stop_rx)
+                .await
+            {
+                Ok(Some(d)) => d,
+                Ok(None) => break,
                 Err(e) => {
                     error!("vsock: Failed to read descriptor {}", e);
                     return Err(VsockError::AwaitQueue(e));
@@ -1172,6 +1256,7 @@ impl Worker {
                 }
             }
         }
+        Ok(queue)
     }
 
     fn run(
@@ -1183,7 +1268,7 @@ impl Worker {
         tx_queue_evt: Event,
         event_queue_evt: Event,
         kill_evt: Event,
-    ) -> Result<()> {
+    ) -> Result<Option<PausedQueues>> {
         let ex = Executor::new().unwrap();
 
         // Note that this mutex won't ever be contended because the HandleExecutor is single
@@ -1199,44 +1284,123 @@ impl Worker {
             &ex,
         )
         .expect("Failed to set up the rx queue event");
-        let rx_handler = self.process_rx_queue(rx_queue_arc.clone(), rx_evt_async, &ex);
+        let mut stop_queue_oneshots = Vec::new();
+
+        let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
+        let rx_handler = self.process_rx_queue(rx_queue_arc.clone(), rx_evt_async, &ex, stop_rx);
+        let rx_handler = rx_handler.fuse();
         pin_mut!(rx_handler);
 
         let (send, recv) = mpsc::channel(CHANNEL_SIZE);
 
         let tx_evt_async =
             EventAsync::new(tx_queue_evt, &ex).expect("Failed to set up the tx queue event");
-        let tx_handler = self.process_tx_queue(tx_queue, tx_evt_async, send);
+        let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
+        let tx_handler = self.process_tx_queue(tx_queue, tx_evt_async, send, stop_rx);
+        let tx_handler = tx_handler.fuse();
         pin_mut!(tx_handler);
 
-        let packet_handler = self.process_tx_packets(&rx_queue_arc, rx_queue_evt, recv, &ex);
+        let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
+        let packet_handler =
+            self.process_tx_packets(&rx_queue_arc, rx_queue_evt, recv, &ex, stop_rx);
+        let packet_handler = packet_handler.fuse();
         pin_mut!(packet_handler);
 
         let event_evt_async =
             EventAsync::new(event_queue_evt, &ex).expect("Failed to set up the event queue event");
-        let event_handler = self.process_event_queue(event_queue, event_evt_async);
+        let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
+        let event_handler = self.process_event_queue(event_queue, event_evt_async, stop_rx);
+        let event_handler = event_handler.fuse();
         pin_mut!(event_handler);
 
         // Process any requests to resample the irq value.
         let resample_handler = async_utils::handle_irq_resample(&ex, self.interrupt.clone());
+        let resample_handler = resample_handler.fuse();
         pin_mut!(resample_handler);
 
         let kill_evt = EventAsync::new(kill_evt, &ex).expect("Failed to set up the kill event");
         let kill_handler = kill_evt.next_val();
         pin_mut!(kill_handler);
 
-        if let Err(e) = ex.run_until(select6(
-            rx_handler,
-            tx_handler,
-            packet_handler,
-            event_handler,
-            resample_handler,
-            kill_handler,
-        )) {
-            error!("Error happened when running executor: {}", e);
-            return Err(VsockError::RunExecutor(e));
+        let res = ex.run_until(async {
+            select! {
+                _ = kill_handler.fuse() => (),
+                _ = rx_handler => return Err(anyhow!("rx_handler stopped unexpetedly")),
+                _ = tx_handler => return Err(anyhow!("tx_handler stop unexpectedly.")),
+                _ = packet_handler => return Err(anyhow!("packet_handler stop unexpectedly.")),
+                _ = event_handler => return Err(anyhow!("event_handler stop unexpectedly.")),
+                _ = resample_handler => return Err(anyhow!("resample_handler stop unexpectedly.")),
+            }
+            // kill_evt has fired
+
+            for stop_tx in stop_queue_oneshots {
+                if stop_tx.send(()).is_err() {
+                    return Err(anyhow!("failed to request stop for queue future"));
+                }
+            }
+
+            rx_handler.await.context("Failed to stop rx handler.")?;
+            packet_handler.await;
+
+            Ok((
+                tx_handler.await.context("Failed to stop tx handler.")?,
+                event_handler
+                    .await
+                    .context("Failed to stop event handler.")?,
+            ))
+        });
+
+        // At this point, a request to stop this worker has been sent or an error has happened in
+        // one of the futures, which will stop this worker anyways.
+
+        let paused_queue = match res {
+            Ok(main_future_res) => match main_future_res {
+                Ok((tx_queue, event_handler_queue)) => {
+                    let rx_queue = match Arc::try_unwrap(rx_queue_arc.clone()) {
+                        Ok(queue_rw_lock) => queue_rw_lock.into_inner(),
+                        Err(_) => panic!("failed to recover queue from worker"),
+                    };
+                    let paused_queues = PausedQueues::new(rx_queue, tx_queue, event_handler_queue);
+                    Some(paused_queues)
+                }
+                Err(e) => {
+                    error!("Error happened in a vsock future: {}", e);
+                    None
+                }
+            },
+            Err(e) => {
+                error!("error happened in executor: {}", e);
+                None
+            }
+        };
+
+        Ok(paused_queue)
+    }
+}
+
+impl From<Box<PausedQueues>> for BTreeMap<usize, Queue> {
+    fn from(queues: Box<PausedQueues>) -> Self {
+        let mut ret = BTreeMap::new();
+        ret.insert(0, queues.rx_queue);
+        ret.insert(1, queues.tx_queue);
+        ret.insert(2, queues.event_queue);
+        ret
+    }
+}
+
+struct PausedQueues {
+    rx_queue: Queue,
+    tx_queue: Queue,
+    event_queue: Queue,
+}
+
+impl PausedQueues {
+    fn new(rx_queue: Queue, tx_queue: Queue, event_queue: Queue) -> Self {
+        PausedQueues {
+            rx_queue,
+            tx_queue,
+            event_queue,
         }
-        Ok(())
     }
 }
 

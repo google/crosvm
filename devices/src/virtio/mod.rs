@@ -279,3 +279,18 @@ pub(crate) fn create_stop_oneshot(tx_vec: &mut Vec<oneshot::Sender<()>>) -> ones
     tx_vec.push(stop_tx);
     stop_rx
 }
+
+/// When we request to stop the worker, this represents the terminal state
+/// for the thread (if it exists).
+pub(crate) enum StoppedWorker<Q> {
+    /// Worker stopped successfully & returned its queues.
+    WithQueues(Box<Q>),
+
+    /// Worker wasn't running when the stop was requested.
+    AlreadyStopped,
+
+    /// Worker was running but did not successfully return its queues. Something
+    /// has gone wrong (and will be in the error log). In the case of a device
+    /// reset this is fine since the next activation will replace the queues.
+    MissingQueues,
+}
