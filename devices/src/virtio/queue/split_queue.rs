@@ -350,13 +350,7 @@ impl SplitQueue {
     /// Puts an available descriptor head into the used ring for use by the guest.
     pub fn add_used(&mut self, mem: &GuestMemory, desc_chain: DescriptorChain, len: u32) {
         let desc_index = desc_chain.index();
-        if desc_index >= self.size {
-            error!(
-                "attempted to add out of bounds descriptor to used ring: {}",
-                desc_index
-            );
-            return;
-        }
+        debug_assert!(desc_index < self.size);
 
         let used_ring = self.used_ring;
         let next_used = self.wrap_queue_index(self.next_used) as usize;
