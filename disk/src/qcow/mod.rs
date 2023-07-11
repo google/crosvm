@@ -38,6 +38,7 @@ use libc::ENOTSUP;
 use remain::sorted;
 use thiserror::Error;
 
+use crate::asynchronous::DiskFlush;
 use crate::create_disk_file;
 use crate::qcow::qcow_raw_file::QcowRawFile;
 use crate::qcow::refcount::RefCount;
@@ -427,6 +428,14 @@ pub struct QcowFile {
 }
 
 impl DiskFile for QcowFile {}
+
+impl DiskFlush for QcowFile {
+    fn flush(&mut self) -> io::Result<()> {
+        // Using fsync is overkill here, but, the code for flushing state to file tangled up with
+        // the fsync, so it is best we can do for now.
+        self.fsync()
+    }
+}
 
 impl QcowFile {
     /// Creates a QcowFile from `file`. File must be a valid qcow2 image.

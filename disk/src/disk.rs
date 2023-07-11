@@ -93,6 +93,8 @@ pub enum Error {
     Fsync(cros_async::AsyncError),
     #[error("failure with fdatasync: {0}")]
     IoFdatasync(io::Error),
+    #[error("failure with flush: {0}")]
+    IoFlush(io::Error),
     #[error("failure with fsync: {0}")]
     IoFsync(io::Error),
     #[error("checking host fs type: {0}")]
@@ -329,6 +331,9 @@ pub trait AsyncDisk: DiskGetLen + FileSetLen + FileAllocate {
     /// Returns the inner file consuming self.
     fn into_inner(self: Box<Self>) -> Box<dyn DiskFile>;
 
+    /// Flush intermediary buffers and/or dirty state to file. fsync not required.
+    async fn flush(&self) -> Result<()>;
+
     /// Asynchronously fsyncs any completed operations to the disk.
     async fn fsync(&self) -> Result<()>;
 
@@ -437,6 +442,11 @@ impl FileAllocate for SingleFileDisk {
 impl AsyncDisk for SingleFileDisk {
     fn into_inner(self: Box<Self>) -> Box<dyn DiskFile> {
         Box::new(self.inner.into_source())
+    }
+
+    async fn flush(&self) -> Result<()> {
+        // Nothing to flush, all file mutations are immediately sent to the OS.
+        Ok(())
     }
 
     async fn fsync(&self) -> Result<()> {

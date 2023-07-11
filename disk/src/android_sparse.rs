@@ -360,6 +360,11 @@ impl AsyncDisk for AsyncAndroidSparse {
         })
     }
 
+    async fn flush(&self) -> crate::Result<()> {
+        // android sparse is read-only, nothing to flush.
+        Ok(())
+    }
+
     async fn fsync(&self) -> DiskResult<()> {
         // Do nothing because it's read-only.
         Ok(())

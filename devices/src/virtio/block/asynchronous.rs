@@ -1045,18 +1045,26 @@ impl VirtioDevice for BlockAsync {
                 }));
 
                 if let Err(err_string) = ex
-                    .run_until(run_worker(
-                        &ex,
-                        ConfigChangeSignal::Interrupt(interrupt.clone()),
-                        &disk_state,
-                        &async_control,
-                        worker_rx,
-                        kill_evt,
-                        async {
-                            // Process any requests to resample the irq value.
-                            async_utils::handle_irq_resample(&ex, interrupt.clone()).await
-                        },
-                    ))
+                    .run_until(async {
+                        let r = run_worker(
+                            &ex,
+                            ConfigChangeSignal::Interrupt(interrupt.clone()),
+                            &disk_state,
+                            &async_control,
+                            worker_rx,
+                            kill_evt,
+                            async {
+                                // Process any requests to resample the irq value.
+                                async_utils::handle_irq_resample(&ex, interrupt.clone()).await
+                            },
+                        )
+                        .await;
+                        // Flush any in-memory disk image state to file.
+                        if let Err(e) = disk_state.lock().await.disk_image.flush().await {
+                            error!("failed to flush disk image when stopping worker: {e:?}");
+                        }
+                        r
+                    })
                     .expect("run_until failed")
                 {
                     error!("{}", err_string);

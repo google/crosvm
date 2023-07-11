@@ -474,6 +474,11 @@ impl AsyncDisk for AsyncCompositeDiskFile {
         })
     }
 
+    async fn flush(&self) -> crate::Result<()> {
+        futures::future::try_join_all(self.component_disks.iter().map(|c| c.file.flush())).await?;
+        Ok(())
+    }
+
     async fn fsync(&self) -> crate::Result<()> {
         // TODO: handle the disks concurrently
         for disk in self.component_disks.iter() {
