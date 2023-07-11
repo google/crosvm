@@ -9,8 +9,8 @@ use std::sync::Mutex;
 use base::error;
 use base::AsRawDescriptor;
 use base::RawDescriptor;
-use data_model::DataInit;
 use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 use crate::connection::Endpoint;
 use crate::connection::EndpointExt;
@@ -501,7 +501,7 @@ impl<E: Endpoint<MasterReq>> SlaveReqHelper<E> {
         Ok(())
     }
 
-    fn send_reply_with_payload<T: Sized + DataInit>(
+    fn send_reply_with_payload<T: Sized + AsBytes>(
         &mut self,
         req: &VhostUserMsgHeader<MasterReq>,
         msg: &T,
@@ -1164,18 +1164,16 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
         }
     }
 
-    fn extract_request_body<T: Sized + DataInit + VhostUserMsgValidator>(
+    fn extract_request_body<T: Sized + FromBytes + VhostUserMsgValidator>(
         &self,
         hdr: &VhostUserMsgHeader<MasterReq>,
         size: usize,
         buf: &[u8],
     ) -> Result<T> {
         self.check_request_size(hdr, size, mem::size_of::<T>())?;
-        let msg = unsafe { std::ptr::read_unaligned(buf.as_ptr() as *const T) };
-        if !msg.is_valid() {
-            return Err(Error::InvalidMessage);
-        }
-        Ok(msg)
+        T::read_from_prefix(buf)
+            .filter(T::is_valid)
+            .map_or(Err(Error::InvalidMessage), Ok)
     }
 
     fn update_reply_ack_flag(&mut self) {

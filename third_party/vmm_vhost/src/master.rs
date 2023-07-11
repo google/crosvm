@@ -16,8 +16,8 @@ use base::Event;
 use base::RawDescriptor;
 use base::INVALID_DESCRIPTOR;
 use data_model::zerocopy_from_reader;
-use data_model::DataInit;
 use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 use crate::backend::VhostBackend;
 use crate::backend::VhostUserMemoryRegionInfo;
@@ -366,7 +366,7 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
         let mut node = self.node();
         let hdr = node.send_request_header(MasterReq::SNAPSHOT, None)?;
         let (success_msg, buf_reply, _) = node.recv_reply_with_payload::<VhostUserSuccess>(&hdr)?;
-        if !success_msg.success {
+        if !success_msg.success() {
             Err(VhostUserError::SnapshotError(anyhow!(
                 "Device process responded with a failure on SNAPSHOT."
             )))
@@ -394,7 +394,7 @@ impl<E: Endpoint<MasterReq>> VhostBackend for Master<E> {
             queue_evt_fds.as_deref(),
         )?;
         let reply = node.recv_reply::<VhostUserSuccess>(&hdr)?;
-        if !reply.success {
+        if !reply.success() {
             Err(VhostUserError::RestoreError(anyhow!(
                 "Device process responded with a failure on RESTORE."
             )))
@@ -726,7 +726,7 @@ impl<E: Endpoint<MasterReq>> MasterInternal<E> {
         Ok(hdr)
     }
 
-    fn send_request_with_payload<T: Sized + DataInit>(
+    fn send_request_with_payload<T: Sized + AsBytes>(
         &mut self,
         code: MasterReq,
         msg: &T,
@@ -768,7 +768,7 @@ impl<E: Endpoint<MasterReq>> MasterInternal<E> {
         Ok(hdr)
     }
 
-    fn recv_reply<T: Sized + DataInit + Default + VhostUserMsgValidator>(
+    fn recv_reply<T: Sized + FromBytes + AsBytes + Default + VhostUserMsgValidator>(
         &mut self,
         hdr: &VhostUserMsgHeader<MasterReq>,
     ) -> VhostUserResult<T> {
@@ -782,7 +782,7 @@ impl<E: Endpoint<MasterReq>> MasterInternal<E> {
         Ok(body)
     }
 
-    fn recv_reply_with_files<T: Sized + DataInit + Default + VhostUserMsgValidator>(
+    fn recv_reply_with_files<T: Sized + AsBytes + FromBytes + Default + VhostUserMsgValidator>(
         &mut self,
         hdr: &VhostUserMsgHeader<MasterReq>,
     ) -> VhostUserResult<(T, Option<Vec<File>>)> {
@@ -797,7 +797,7 @@ impl<E: Endpoint<MasterReq>> MasterInternal<E> {
         Ok((body, files))
     }
 
-    fn recv_reply_with_payload<T: Sized + DataInit + Default + VhostUserMsgValidator>(
+    fn recv_reply_with_payload<T: Sized + AsBytes + FromBytes + Default + VhostUserMsgValidator>(
         &mut self,
         hdr: &VhostUserMsgHeader<MasterReq>,
     ) -> VhostUserResult<(T, Vec<u8>, Option<Vec<File>>)> {
