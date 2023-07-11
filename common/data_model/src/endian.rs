@@ -57,30 +57,35 @@ macro_rules! endian_type {
             }
 
             /// Converts `self` to the native endianness.
+            #[inline]
             pub fn to_native(self) -> $old_type {
                 $old_type::$from_new(self.0)
             }
         }
 
         impl PartialEq<$old_type> for $new_type {
+            #[inline]
             fn eq(&self, other: &$old_type) -> bool {
                 self.0 == $old_type::$to_new(*other)
             }
         }
 
         impl PartialEq<$new_type> for $old_type {
+            #[inline]
             fn eq(&self, other: &$new_type) -> bool {
                 $old_type::$to_new(other.0) == *self
             }
         }
 
         impl From<$new_type> for $old_type {
+            #[inline]
             fn from(v: $new_type) -> $old_type {
                 $old_type::$from_new(v.0)
             }
         }
 
         impl From<$old_type> for $new_type {
+            #[inline]
             fn from(v: $old_type) -> $new_type {
                 $new_type($old_type::$to_new(v))
             }
