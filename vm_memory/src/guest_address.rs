@@ -57,8 +57,9 @@ impl GuestAddress {
 
     /// Returns the result of the base address + the size.
     /// Only use this when `offset` is guaranteed not to overflow.
+    #[inline]
     pub fn unchecked_add(self, offset: u64) -> GuestAddress {
-        GuestAddress(self.0 + offset)
+        GuestAddress(self.0.wrapping_add(offset))
     }
 
     /// Returns the result of the subtraction of None if there is underflow.
