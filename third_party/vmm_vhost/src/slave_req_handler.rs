@@ -482,7 +482,8 @@ impl<E: Endpoint<MasterReq>> SlaveReqHelper<E> {
         success: bool,
     ) -> Result<()> {
         if self.reply_ack_enabled && req.is_need_reply() {
-            let hdr = self.new_reply_header::<VhostUserU64>(req, 0)?;
+            let hdr: VhostUserMsgHeader<MasterReq> =
+                self.new_reply_header::<VhostUserU64>(req, 0)?;
             let val = if success { 0 } else { 1 };
             let msg = VhostUserU64::new(val);
             self.endpoint.send_message(&hdr, &msg, None)?;
@@ -490,7 +491,7 @@ impl<E: Endpoint<MasterReq>> SlaveReqHelper<E> {
         Ok(())
     }
 
-    fn send_reply_message<T: Sized + DataInit>(
+    fn send_reply_message<T: Sized + AsBytes>(
         &mut self,
         req: &VhostUserMsgHeader<MasterReq>,
         msg: &T,

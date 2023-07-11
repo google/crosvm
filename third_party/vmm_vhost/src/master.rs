@@ -17,6 +17,7 @@ use base::RawDescriptor;
 use base::INVALID_DESCRIPTOR;
 use data_model::zerocopy_from_reader;
 use data_model::DataInit;
+use zerocopy::AsBytes;
 
 use crate::backend::VhostBackend;
 use crate::backend::VhostUserMemoryRegionInfo;
@@ -714,7 +715,7 @@ impl<E: Endpoint<MasterReq>> MasterInternal<E> {
         Ok(hdr)
     }
 
-    fn send_request_with_body<T: Sized + DataInit>(
+    fn send_request_with_body<T: Sized + AsBytes>(
         &mut self,
         code: MasterReq,
         msg: &T,

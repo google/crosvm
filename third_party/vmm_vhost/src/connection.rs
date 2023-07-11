@@ -24,6 +24,7 @@ use std::path::Path;
 
 use base::RawDescriptor;
 use data_model::DataInit;
+use zerocopy::AsBytes;
 
 use crate::connection::Req;
 use crate::message::*;
@@ -200,7 +201,7 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
     /// * - OversizedMsg: message size is too big.
     /// * - PartialMessage: received a partial message.
     /// * - backend specific errors
-    fn send_message<T: Sized + DataInit>(
+    fn send_message<T: Sized + AsBytes>(
         &mut self,
         hdr: &VhostUserMsgHeader<R>,
         body: &T,
@@ -209,7 +210,7 @@ pub trait EndpointExt<R: Req>: Endpoint<R> {
         // We send the header and the body separately here. This is necessary on Windows. Otherwise
         // the recv side cannot read the header independently (the transport is message oriented).
         let mut bytes = self.send_iovec_all(&mut [hdr.as_slice()], fds)?;
-        bytes += self.send_iovec_all(&mut [body.as_slice()], None)?;
+        bytes += self.send_iovec_all(&mut [body.as_bytes()], None)?;
         if bytes != mem::size_of::<VhostUserMsgHeader<R>>() + mem::size_of::<T>() {
             return Err(Error::PartialMessage);
         }

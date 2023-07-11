@@ -8,7 +8,7 @@ use anyhow::anyhow;
 use anyhow::Context;
 use base::Error as SysError;
 use base::TubeError;
-use data_model::DataInit;
+use data_model::zerocopy_from_mut_slice;
 use net_util::Error as TapError;
 use remain::sorted;
 use thiserror::Error;
@@ -17,6 +17,8 @@ use vhost::Error as VhostError;
 use vmm_vhost::message::MasterReq;
 use vmm_vhost::message::Req;
 use vmm_vhost::message::VhostUserMsgHeader;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 use zerocopy::LayoutVerified;
 
 mod control_socket;
@@ -159,7 +161,9 @@ pub fn vhost_header_from_bytes<R: Req>(bytes: &[u8]) -> Option<&VhostUserMsgHead
     )
 }
 
-pub fn vhost_body_from_message_bytes<T: DataInit>(bytes: &mut [u8]) -> anyhow::Result<&mut T> {
+pub fn vhost_body_from_message_bytes<T: FromBytes + AsBytes>(
+    bytes: &mut [u8],
+) -> anyhow::Result<&mut T> {
     let body_len = std::mem::size_of::<T>();
     let hdr = vhost_header_from_bytes::<MasterReq>(bytes).context("failed to parse header")?;
 
@@ -174,5 +178,5 @@ pub fn vhost_body_from_message_bytes<T: DataInit>(bytes: &mut [u8]) -> anyhow::R
 
     // We already checked the size. This can only fail due to alignment, but all valid
     // message types are packed (i.e. alignment=1).
-    Ok(T::from_mut_slice(&mut bytes[HEADER_LEN..]).expect("bad alignment"))
+    Ok(zerocopy_from_mut_slice(&mut bytes[HEADER_LEN..]).expect("bad alignment"))
 }

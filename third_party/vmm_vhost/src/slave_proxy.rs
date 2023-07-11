@@ -9,7 +9,7 @@ use std::sync::MutexGuard;
 
 use base::AsRawDescriptor;
 use base::RawDescriptor;
-use data_model::DataInit;
+use zerocopy::AsBytes;
 
 use crate::connection::Endpoint;
 use crate::connection::EndpointExt;
@@ -39,7 +39,7 @@ impl SlaveInternal {
         fds: Option<&[RawDescriptor]>,
     ) -> Result<u64>
     where
-        T: DataInit,
+        T: AsBytes,
     {
         let len = mem::size_of::<T>();
         let mut hdr = VhostUserMsgHeader::new(request, 0, len as u32);
@@ -109,7 +109,7 @@ impl Slave {
         fds: Option<&[RawDescriptor]>,
     ) -> io::Result<u64>
     where
-        T: DataInit,
+        T: AsBytes,
     {
         self.node()
             .send_message(request, msg, fds)

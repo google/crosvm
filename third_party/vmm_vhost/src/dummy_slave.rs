@@ -253,6 +253,7 @@ impl VhostUserSlaveReqHandlerMut for DummySlaveReqHandler {
                 mmap_offset: 0,
                 num_queues: inflight.num_queues,
                 queue_size: inflight.queue_size,
+                ..Default::default()
             },
             file,
         ))

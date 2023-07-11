@@ -19,7 +19,7 @@ vfio-device = []
 [dependencies]
 anyhow = "*"
 base = { path = "../../base" }
-bitflags = "2.2.1"
+bitflags = "2.3"
 cfg-if = "1.0.0"
 data_model = { path = "../../common/data_model" }
 libc = ">=0.2.39"
