@@ -158,7 +158,7 @@ impl SplitQueue {
         // We know that `self.size` is a power of two (enforced by `new()`), so the modulus can
         // be calculated with a bitmask rather than actual division.
         debug_assert!(self.size.is_power_of_two());
-        index.0 & (self.size - 1)
+        index.0 & self.size.wrapping_sub(1)
     }
 
     /// Reset queue's counters.
