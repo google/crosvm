@@ -12,12 +12,15 @@ use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
 use base::error;
+use data_model::Le32;
 use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
 use virtio_sys::virtio_ring::VIRTIO_RING_F_EVENT_IDX;
 use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
+use zerocopy::AsBytes;
+use zerocopy::FromBytes;
 
 use crate::virtio::ipc_memory_mapper::ExportedRegion;
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
@@ -79,6 +82,13 @@ pub struct SplitQueueSnapshot {
     next_used: Wrapping<u16>,
     features: u64,
     last_used: Wrapping<u16>,
+}
+
+#[repr(C)]
+#[derive(AsBytes, FromBytes)]
+struct virtq_used_elem {
+    id: Le32,
+    len: Le32,
 }
 
 impl SplitQueue {
@@ -356,21 +366,13 @@ impl SplitQueue {
         let next_used = self.wrap_queue_index(self.next_used) as usize;
         let used_elem = used_ring.unchecked_add((4 + next_used * 8) as u64);
 
-        // These writes can't fail as we are guaranteed to be within the descriptor ring.
-        write_obj_at_addr_wrapper(
-            mem,
-            self.exported_used_ring.as_ref(),
-            desc_index as u32,
-            used_elem,
-        )
-        .unwrap();
-        write_obj_at_addr_wrapper(
-            mem,
-            self.exported_used_ring.as_ref(),
-            len,
-            used_elem.unchecked_add(4),
-        )
-        .unwrap();
+        let elem = virtq_used_elem {
+            id: Le32::from(u32::from(desc_index)),
+            len: Le32::from(len),
+        };
+
+        // This write can't fail as we are guaranteed to be within the descriptor ring.
+        write_obj_at_addr_wrapper(mem, self.exported_used_ring.as_ref(), elem, used_elem).unwrap();
 
         self.next_used += Wrapping(1);
         self.set_used_index(mem, self.next_used);
