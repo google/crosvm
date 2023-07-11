@@ -157,7 +157,7 @@ pub struct Config {
     /// when the cache policy is `Never`.
     ///
     /// The default value for this option is `false`.
-    #[serde(default)]
+    #[serde(default, alias = "dax")]
     pub use_dax: bool,
 
     /// Enable support for POSIX acls.

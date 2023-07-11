@@ -828,6 +828,45 @@ mod tests {
     }
 
     #[test]
+    fn parse_shared_dir_vm_fio() {
+        // Tests shared-dir argurments used in ChromeOS's vm.Fio tast tests.
+
+        // --shared-dir for rootfs
+        let shared_dir: SharedDir =
+            "/:root:type=fs:cache=always:timeout=5:writeback=false:dax=false:ascii_casefold=false"
+                .parse()
+                .unwrap();
+        assert_eq!(
+            shared_dir.fs_cfg,
+            devices::virtio::fs::Config {
+                cache_policy: CachePolicy::Always,
+                timeout: Duration::from_secs(5),
+                writeback: false,
+                use_dax: false,
+                ascii_casefold: false,
+                ..Default::default()
+            }
+        );
+
+        // --shared-dir for vm.Fio.virtiofs_dax_*
+        let shared_dir: SharedDir =
+            "/:shared:type=fs:cache=auto:timeout=1:writeback=true:dax=true:ascii_casefold=false"
+                .parse()
+                .unwrap();
+        assert_eq!(
+            shared_dir.fs_cfg,
+            devices::virtio::fs::Config {
+                cache_policy: CachePolicy::Auto,
+                timeout: Duration::from_secs(1),
+                writeback: true,
+                use_dax: true,
+                ascii_casefold: false,
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
     fn parse_cache_policy() {
         // The default policy is `auto`.
         assert_eq!(
@@ -893,6 +932,32 @@ mod tests {
                 .fs_cfg
                 .privileged_quota_uids,
             vec![0, 1, 2, 3, 4]
+        );
+    }
+
+    #[test]
+    fn parse_dax() {
+        // DAX is disabled by default
+        assert!(
+            !"/:_data:type=fs"
+                .parse::<SharedDir>()
+                .unwrap()
+                .fs_cfg
+                .use_dax
+        );
+        assert!(
+            "/:_data:type=fs:dax=true"
+                .parse::<SharedDir>()
+                .unwrap()
+                .fs_cfg
+                .use_dax
+        );
+        assert!(
+            !"/:_data:type=fs:dax=false"
+                .parse::<SharedDir>()
+                .unwrap()
+                .fs_cfg
+                .use_dax
         );
     }
 }
