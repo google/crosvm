@@ -18,7 +18,7 @@ if ! [ -f rootfs ]; then
         -o ./rootfs
     # Packages can be pre-installed to the image using
     # --install PACKAGE_NAME
-    # Ex: virt-builder ubuntu-20.04 ... --install openssh-server ncat
+    # Ex: virt-builder ubuntu-20.04 ... --install openssh-server,ncat
     # In this example, the ubuntu image will come pre-installed with OpenSSH-server and with Ncat.
     # ANCHOR_END: build
 
