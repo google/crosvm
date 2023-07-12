@@ -204,7 +204,11 @@ fn guest_to_host_disable_sandbox_snapshot_restore() {
     let host_port = generate_vhost_port();
     let guest_cid = generate_guest_cid();
     let config = Config::new()
-        .extra_args(vec!["--cid".to_string(), guest_cid.to_string()])
+        .extra_args(vec![
+            "--cid".to_string(),
+            guest_cid.to_string(),
+            "--no-usb".to_string(),
+        ])
         .with_stdout_hardware("legacy-virtio-console")
         .disable_sandbox();
     let mut vm = TestVm::new(config).unwrap();

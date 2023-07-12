@@ -383,11 +383,9 @@ impl Bus {
             match &(device_entry.device) {
                 BusDeviceEntry::OuterSync(dev) => {
                     let mut device_lock = (*dev).lock();
-                    if let Err(e) = device_lock.sleep() {
-                        //TODO: Enable this line when b/232437513 is done
-                        // return Err(anyhow!("Failed to sleep {}.", (*device_lock).debug_label()));
-                        error!("Failed to sleep {}: {}", (*device_lock).debug_label(), e);
-                    }
+                    device_lock.sleep().with_context(|| {
+                        format!("failed to sleep {}", device_lock.debug_label())
+                    })?;
                 }
                 BusDeviceEntry::InnerSync(dev) => {
                     (**dev).sleep_sync().context("failed to sleep device")?;
@@ -403,11 +401,9 @@ impl Bus {
             match &(device_entry.device) {
                 BusDeviceEntry::OuterSync(dev) => {
                     let mut device_lock = (*dev).lock();
-                    if let Err(e) = device_lock.wake() {
-                        //TODO: Enable this line when b/232437513 is done
-                        // return Err(anyhow!("Failed to wake {}.", (*device_lock).debug_label()));
-                        error!("Failed to wake {}: {}", (*device_lock).debug_label(), e);
-                    };
+                    device_lock
+                        .wake()
+                        .with_context(|| format!("failed to wake {}", device_lock.debug_label()))?;
                 }
                 BusDeviceEntry::InnerSync(dev) => {
                     (**dev).wake_sync().context("failed to wake device")?;
@@ -443,9 +439,7 @@ impl Bus {
                     add_snapshot(device_id, snapshot);
                 }
                 Err(e) => {
-                    //TODO: Enable this line when b/232437513 is done
-                    // return Err(anyhow!("Failed to snapshot {}.", (*device_lock).debug_label()));
-                    error!("Failed to snapshot {}: {}.", device_label, e);
+                    return Err(anyhow!("Failed to snapshot {}: {}.", device_label, e));
                 }
             }
         }
