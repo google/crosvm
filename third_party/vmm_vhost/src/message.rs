@@ -6,6 +6,7 @@
 //! For message definition, please refer to the [vhost-user spec](https://github.com/qemu/qemu/blob/f7526eece29cd2e36a63b6703508b24453095eb8/docs/interop/vhost-user.txt).
 
 #![allow(dead_code)]
+#![allow(deprecated)]
 #![allow(non_camel_case_types)]
 #![allow(clippy::upper_case_acronyms)]
 

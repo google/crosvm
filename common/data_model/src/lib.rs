@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![allow(deprecated)]
+
 use std::io;
 use std::mem::size_of;
 use std::mem::MaybeUninit;
@@ -49,6 +51,12 @@ pub fn zerocopy_from_slice<T: FromBytes>(data: &[u8]) -> Option<&T> {
 /// to implicit padding to be undefined behavior, which can cause UB when working with `T`.
 /// For details on structure padding in Rust, see
 /// <https://doc.rust-lang.org/reference/type-layout.html#the-c-representation>.
+#[deprecated(
+    note = "This type was created when there's no suitable POD (plain-old-data) types in the rust
+     ecosystem. It does not verify the safety of treating a data structure as POD and multiple
+     incorrect and unsound usage have occured previously. Users should use `zerocopy` crate as
+     alternative."
+)]
 pub unsafe trait DataInit: Copy + Send + Sync {
     /// Converts a slice of raw data into a reference of `Self`.
     ///

@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![allow(deprecated)]
+
 use std::alloc::Layout;
 use std::cell::Cell;
 use std::cell::RefCell;

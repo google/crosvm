@@ -18,8 +18,6 @@
 //! violate pointer aliasing. The second is because unvolatile accesses are inherently undefined if
 //! done concurrently without synchronization. With volatile access we know that the compiler has
 //! not reordered or elided the access.
-#![allow(deprecated)]
-
 use std::cmp::min;
 use std::mem::size_of;
 use std::ptr::copy;
@@ -36,7 +34,6 @@ use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 use zerocopy::LayoutVerified;
 
-use crate::DataInit;
 use crate::IoBufMut;
 
 #[sorted]
@@ -237,7 +234,7 @@ impl<'a> VolatileSlice<'a> {
     /// ```
     pub fn copy_to<T>(&self, buf: &mut [T])
     where
-        T: DataInit,
+        T: FromBytes + AsBytes + Copy,
     {
         let mut addr = self.as_mut_ptr() as *const u8;
         for v in buf.iter_mut().take(self.size() / size_of::<T>()) {

@@ -10,6 +10,8 @@
 //! implementation (referred to as `device backend` in this module) in the
 //! device VM.
 
+#![allow(deprecated)]
+
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fs::File;

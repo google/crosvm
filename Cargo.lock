@@ -1874,9 +1874,11 @@ checksum = "9b7820b9daea5457c9f21c69448905d723fbd21136ccf521748f23fd49e723ee"
 name = "p9"
 version = "0.1.0"
 dependencies = [
+ "data_model 0.1.1-alpha.1",
  "libc",
  "serde",
  "wire_format_derive",
+ "zerocopy",
 ]
 
 [[package]]

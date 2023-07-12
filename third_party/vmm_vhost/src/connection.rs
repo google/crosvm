@@ -3,6 +3,8 @@
 
 //! Common data structures for listener and endpoint.
 
+#![allow(deprecated)]
+
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
         pub mod socket;

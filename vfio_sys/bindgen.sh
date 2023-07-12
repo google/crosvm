@@ -28,7 +28,7 @@ pub struct vfio_region_info_with_cap {
 }
 
 // vfio_iommu_type1_info_cap_iova_range minus the incomplete iova_ranges
-// array, so that Copy/DataInit can be implemented.
+// array, so that Copy/AsBytes/FromBytes can be implemented.
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone, AsBytes, FromBytes)]
 pub struct vfio_iommu_type1_info_cap_iova_range_header {
