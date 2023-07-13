@@ -7,7 +7,7 @@ edition = "2021"
 [features]
 gdb = ["gdbstub", "gdbstub_arch", "arch/gdb", "hypervisor/gdb"]
 
-[target.'cfg(target_arch = "riscv64")'.dependencies]
+[dependencies]
 arch = { path = "../arch" }
 cros_fdt = { path = "../cros_fdt" }
 data_model = { path = "../common/data_model" }
@@ -19,7 +19,6 @@ kernel_cmdline = { path = "../kernel_cmdline" }
 kvm = { path = "../kvm" }
 kvm_sys = { path = "../kvm_sys" }
 libc = "*"
-minijail = "*"
 rand = "0.8"
 remain = "*"
 resources = { path = "../resources" }
@@ -28,3 +27,6 @@ thiserror = "*"
 base = { path = "../base" }
 vm_control = { path = "../vm_control" }
 vm_memory = { path = "../vm_memory" }
+
+[target.'cfg(unix)'.dependencies]
+minijail = "*"
