@@ -4,6 +4,7 @@
 
 mod sys;
 
+use std::collections::BTreeMap;
 use std::fmt;
 use std::io;
 use std::io::Write;
@@ -803,6 +804,46 @@ where
         }
         cros_tracing::trace_simple_print!("Net device activated: {:?}", self);
         Ok(())
+    }
+
+    fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
+        if self.worker_threads.is_empty() {
+            return Ok(None);
+        }
+        let mut queues = BTreeMap::new();
+        let mut queue_index = 0;
+        let mut ctrl_queue = None;
+        for worker_thread in self.worker_threads.drain(..) {
+            let mut worker = worker_thread.stop();
+            if worker.ctrl_queue.is_some() {
+                ctrl_queue = worker.ctrl_queue.take();
+            }
+            self.taps.push(worker.tap);
+            queues.insert(queue_index + 0, worker.rx_queue);
+            queues.insert(queue_index + 1, worker.tx_queue);
+            queue_index += 2;
+        }
+        if let Some(ctrl_queue) = ctrl_queue {
+            queues.insert(queue_index, ctrl_queue);
+        }
+        Ok(Some(queues))
+    }
+
+    fn virtio_wake(
+        &mut self,
+        device_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, (Queue, Event)>)>,
+    ) -> anyhow::Result<()> {
+        match device_state {
+            None => Ok(()),
+            Some((mem, interrupt, queues_map)) => {
+                // TODO: activate is just what we want at the moment, but we should probably move
+                // it into a "start workers" function to make it obvious that it isn't strictly
+                // used for activate events.
+                let queues = queues_map.into_values().collect();
+                self.activate(mem, interrupt, queues)?;
+                Ok(())
+            }
+        }
     }
 
     fn reset(&mut self) -> bool {
