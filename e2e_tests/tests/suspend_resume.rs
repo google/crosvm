@@ -43,10 +43,6 @@ fn suspend_snapshot_restore_resume_disable_sandbox() -> anyhow::Result<()> {
 }
 
 fn suspend_resume_system(vm: &mut TestVm, disabled_sandbox: bool) -> anyhow::Result<()> {
-    // WARNING: Suspend/resume is only partially implemented, some aspects of these tests only work
-    // by chance. Still, the tests are useful to avoid backslide. If a seemingly unrelated change
-    // breaks this test, it is probably reasonable to disable the test.
-
     // Verify RAM is saved and restored by interacting with a filesystem pinned in RAM (i.e. tmpfs
     // with swap disabled).
     vm.exec_in_guest("swapoff -a").unwrap();
