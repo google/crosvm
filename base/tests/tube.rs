@@ -75,6 +75,17 @@ fn send_recv_one_fd() {
     test_event_pair(test_msg.b, recv_msg.b);
 }
 
+#[test]
+fn send_recv_event() {
+    let (req, res) = Tube::pair().unwrap();
+    let e1 = Event::new().unwrap();
+    res.send(&e1).unwrap();
+
+    let recv_event: Event = req.recv().unwrap();
+    recv_event.signal().unwrap();
+    e1.wait().unwrap();
+}
+
 /// Send messages to a Tube with the given identifier (see `consume_messages`; we use this to
 /// track different message producers).
 #[track_caller]

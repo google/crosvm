@@ -2347,24 +2347,6 @@ pub enum Ac97Control {
     Mute(bool),
 }
 
-#[cfg(test)]
-mod tests {
-    use base::Event;
-
-    use super::*;
-
-    #[test]
-    fn sock_send_recv_event() {
-        let (req, res) = Tube::pair().unwrap();
-        let e1 = Event::new().unwrap();
-        res.send(&e1).unwrap();
-
-        let recv_event: Event = req.recv().unwrap();
-        recv_event.signal().unwrap();
-        e1.wait().unwrap();
-    }
-}
-
 #[sorted]
 #[derive(Error, Debug)]
 pub enum VirtioIOMMUVfioError {
