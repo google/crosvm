@@ -7,19 +7,34 @@ use std::io::Result;
 use std::mem::size_of;
 use std::os::unix::io::AsRawFd;
 
-use data_model::zerocopy_from_slice;
-use zerocopy::AsBytes;
-use zerocopy::FromBytes;
-
 use crate::syscall;
 
 #[repr(C, packed)]
-#[derive(Clone, Copy, AsBytes, FromBytes)]
+#[derive(Clone, Copy)]
 struct LinuxDirent64 {
     d_ino: libc::ino64_t,
     d_off: libc::off64_t,
     d_reclen: libc::c_ushort,
     d_ty: libc::c_uchar,
+}
+
+impl LinuxDirent64 {
+    // Note: Taken from data_model::DataInit
+    fn from_slice(data: &[u8]) -> Option<&Self> {
+        // Early out to avoid an unneeded `align_to` call.
+        if data.len() != size_of::<Self>() {
+            return None;
+        }
+        // The `align_to` method ensures that we don't have any unaligned references.
+        // This aliases a pointer, but because the pointer is from a const slice reference,
+        // there are no mutable aliases.
+        // Finally, the reference returned can not outlive data because they have equal implicit
+        // lifetime constraints.
+        match unsafe { data.align_to::<Self>() } {
+            ([], [mid], []) => Some(mid),
+            _ => None,
+        }
+    }
 }
 
 pub struct DirEntry<'r> {
@@ -73,8 +88,8 @@ impl<'d, D: AsRawFd> ReadDir<'d, D> {
 
         let (front, back) = rem.split_at(size_of::<LinuxDirent64>());
 
-        let dirent64 = zerocopy_from_slice::<LinuxDirent64>(front)
-            .expect("unable to get LinuxDirent64 from slice");
+        let dirent64 =
+            LinuxDirent64::from_slice(front).expect("unable to get LinuxDirent64 from slice");
 
         let namelen = dirent64.d_reclen as usize - size_of::<LinuxDirent64>();
         debug_assert!(namelen <= back.len(), "back is smaller than `namelen`");

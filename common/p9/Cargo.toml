@@ -8,8 +8,6 @@ edition = "2021"
 libc = "*"
 serde = { version = "*", features = [ "derive" ] }
 wire_format_derive = { path = "wire_format_derive", version = "*" }
-zerocopy = "*"
-data_model = {path ="../data_model"}
 
 [features]
 trace = []
