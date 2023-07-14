@@ -86,7 +86,7 @@ impl Default for PackedQueueIndex {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PackedQueue {
     // The queue size in elements the driver selected
     size: u16,

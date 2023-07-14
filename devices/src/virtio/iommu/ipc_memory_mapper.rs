@@ -71,6 +71,14 @@ pub struct IpcMemoryMapper {
     endpoint_id: u32,
 }
 
+impl std::fmt::Debug for IpcMemoryMapper {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_struct("IpcMemoryMapper")
+            .field("endpoint_id", &self.endpoint_id)
+            .finish()
+    }
+}
+
 fn map_bad_resp(resp: IommuResponse) -> anyhow::Error {
     match resp {
         IommuResponse::Err(e) => anyhow!("remote error {}", e),
@@ -172,6 +180,7 @@ pub fn create_ipc_mapper(endpoint_id: u32, request_tx: Tube) -> CreateIpcMapperR
     }
 }
 
+#[derive(Debug)]
 struct ExportedRegionInner {
     regions: Vec<MemRegion>,
     iova: u64,
@@ -188,7 +197,7 @@ impl Drop for ExportedRegionInner {
 }
 
 /// A region exported from the virtio-iommu.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ExportedRegion {
     inner: Arc<Mutex<ExportedRegionInner>>,
 }

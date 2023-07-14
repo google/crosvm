@@ -380,6 +380,7 @@ macro_rules! define_queue_method {
 
 /// Virtqueue interface representing different types of virtqueues
 /// The struct of each queue type is wrapped in the enum variants
+#[derive(Debug)]
 pub enum Queue {
     /// Split virtqueue type in virtio v1.2 spec: <https://docs.oasis-open.org/virtio/virtio/v1.2/csd01/virtio-v1.2-csd01.html#x1-350007>
     SplitVirtQueue(SplitQueue),

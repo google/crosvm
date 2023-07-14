@@ -37,6 +37,7 @@ const VIRTQ_USED_F_NO_NOTIFY: u16 = 0x1;
 const VIRTQ_AVAIL_F_NO_INTERRUPT: u16 = 0x1;
 
 /// An activated virtio queue with split queue layout.
+#[derive(Debug)]
 pub struct SplitQueue {
     /// The queue size in elements the driver selected. This is always guaranteed to be a power of
     /// two, as required for split virtqueues.
