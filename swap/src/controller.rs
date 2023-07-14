@@ -803,10 +803,11 @@ fn move_guest_to_staging(
 
     match result {
         Ok(()) => {
-            if page_handler.compute_resident_pages() > 0 {
+            let regident_pages = page_handler.count_resident_pages(guest_memory);
+            if regident_pages > 0 {
                 error!(
                     "active page is not zero just after swap out but {} pages",
-                    page_handler.compute_resident_pages()
+                    regident_pages
                 );
             }
             let time_ms = start_time.elapsed().as_millis().try_into()?;
@@ -1135,7 +1136,7 @@ fn handle_vmm_swap<'scope, 'env>(
                     Command::Status => {
                         let status = SwapStatus {
                             state: (&state).into(),
-                            metrics: page_handler.compute_metrics(),
+                            metrics: page_handler.generate_metrics(guest_memory),
                             state_transition: *state_transition.lock(),
                         };
                         command_tube.send(&status).context("send status response")?;
