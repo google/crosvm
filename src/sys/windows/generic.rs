@@ -213,8 +213,9 @@ pub(super) fn create_gpu(
     features: u64,
     _product_args: GpuBackendConfigProduct,
 ) -> Result<Gpu> {
-    let wndproc_thread =
-        virtio::gpu::start_wndproc_thread().expect("Failed to start wndproc_thread!");
+    let wndproc_thread = gpu_display::WindowProcedureThread::builder()
+        .start_thread()
+        .expect("Failed to start wndproc_thread!");
 
     Ok(Gpu::new(
         vm_evt_wrtube

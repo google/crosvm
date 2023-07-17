@@ -176,8 +176,10 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         (&config.params.display_params[0]).into(),
     )];
 
-    let wndproc_thread =
-        virtio::gpu::start_wndproc_thread().context("failed to start wndproc_thread")?;
+    let wndproc_thread_builder = gpu_display::WindowProcedureThread::builder();
+    let wndproc_thread = wndproc_thread_builder
+        .start_thread()
+        .context("failed to start wndproc_thread")?;
 
     let mut gpu_params = config.params.clone();
 

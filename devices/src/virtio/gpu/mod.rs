@@ -1931,19 +1931,3 @@ impl ResourceBridges {
             .resize(self.resource_bridges.len(), false);
     }
 }
-
-/// This function creates the window procedure thread and windows.
-///
-/// We have seen third-party DLLs hooking into window creation. They may have deep call stack, and
-/// they may not be well tested against late window creation, which may lead to stack overflow.
-/// Hence, this should be called as early as possible when the VM is booting.
-#[cfg(windows)]
-#[inline]
-pub fn start_wndproc_thread(
-    #[cfg(feature = "kiwi")] gpu_main_display_tube: Option<Tube>,
-) -> anyhow::Result<WindowProcedureThread> {
-    WindowProcedureThread::start_thread(
-        #[cfg(feature = "kiwi")]
-        gpu_main_display_tube,
-    )
-}

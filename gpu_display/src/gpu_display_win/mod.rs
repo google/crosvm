@@ -34,6 +34,7 @@ use vm_control::gpu::DisplayParameters;
 use vm_control::ModifyWaitContext;
 use window_message_processor::DisplaySendToWndProc;
 pub use window_procedure_thread::WindowProcedureThread;
+pub use window_procedure_thread::WindowProcedureThreadBuilder;
 
 use crate::DisplayT;
 use crate::EventDevice;
@@ -327,14 +328,17 @@ mod tests {
             .map(|_| {
                 let (main_ime_tube, _device_ime_tube) =
                     Tube::pair().expect("failed to create IME tube");
+                let wndproc_thread_builder = WindowProcedureThread::<TestHandle>::builder();
+                #[cfg(feature = "kiwi")]
+                let wndproc_thread_builder = {
+                    let mut wndproc_thread_builder = wndproc_thread_builder;
+                    wndproc_thread_builder
+                        .set_display_tube(None)
+                        .set_ime_tube(Some(_device_ime_tube));
+                    wndproc_thread_builder
+                };
                 (
-                    WindowProcedureThread::<TestHandle>::start_thread(
-                        #[cfg(feature = "kiwi")]
-                        None,
-                        #[cfg(feature = "kiwi")]
-                        _device_ime_tube,
-                    )
-                    .unwrap(),
+                    wndproc_thread_builder.start_thread().unwrap(),
                     main_ime_tube,
                 )
             })
