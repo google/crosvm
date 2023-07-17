@@ -10,4 +10,3 @@ proc-macro2 = "^1"
 
 [lib]
 proc-macro = true
-path = "wire_format_derive.rs"
