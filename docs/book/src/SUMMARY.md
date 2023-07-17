@@ -46,6 +46,7 @@ ______________________________________________________________________
   - [Seccomp](./appendix/seccomp.md)
   - [Memory Layout](./appendix/memory_layout.md)
   - [Minijail](./appendix/minijail.md)
+  - [Rutabaga](./appendix/rutabaga_gfx.md)
 
 ______________________________________________________________________
 
