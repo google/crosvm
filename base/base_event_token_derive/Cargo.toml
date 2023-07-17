@@ -7,7 +7,6 @@ include = ["*.rs", "Cargo.toml"]
 
 [lib]
 proc-macro = true
-path = "event_token_derive.rs"
 
 [dependencies]
 proc-macro2 = "^1"
