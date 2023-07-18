@@ -583,15 +583,13 @@ where
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: Vec<(Queue, Event)>,
+        mut queues: BTreeMap<usize, (Queue, Event)>,
     ) -> anyhow::Result<()> {
         if queues.len() != 2 {
             return Err(anyhow!("expected 2 queues, got {}", queues.len()));
         }
-
-        // Status is queue 1, event is queue 0
-        let (status_queue, status_queue_evt) = queues.remove(1);
-        let (event_queue, event_queue_evt) = queues.remove(0);
+        let (event_queue, event_queue_evt) = queues.remove(&0).unwrap();
+        let (status_queue, status_queue_evt) = queues.remove(&1).unwrap();
 
         let source = self
             .source
@@ -636,12 +634,8 @@ where
         &mut self,
         queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, (Queue, Event)>)>,
     ) -> anyhow::Result<()> {
-        if let Some((mem, interrupt, mut queues)) = queues_state {
-            let queue_vec = vec![
-                queues.remove(&0).expect("eventq missing"),
-                queues.remove(&1).expect("statusq missing"),
-            ];
-            self.activate(mem, interrupt, queue_vec)?;
+        if let Some((mem, interrupt, queues)) = queues_state {
+            self.activate(mem, interrupt, queues)?;
         }
         Ok(())
     }

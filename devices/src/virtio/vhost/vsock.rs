@@ -171,7 +171,7 @@ impl VirtioDevice for Vsock {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: Vec<(Queue, Event)>,
+        mut queues: BTreeMap<usize, (Queue, Event)>,
     ) -> anyhow::Result<()> {
         if queues.len() != NUM_QUEUES {
             return Err(anyhow!(
@@ -188,7 +188,7 @@ impl VirtioDevice for Vsock {
 
         // The third vq is an event-only vq that is not handled by the vhost
         // subsystem (but still needs to exist).  Split it off here.
-        let mut event_queue = queues.remove(2).0;
+        let mut event_queue = queues.remove(&2).unwrap().0;
         // Send TRANSPORT_RESET event if needed.
         if self.needs_transport_reset {
             self.needs_transport_reset = false;
@@ -265,11 +265,10 @@ impl VirtioDevice for Vsock {
                 .vhost_handle
                 .stop()
                 .context("failed to stop vrings")?;
-            let mut queues: Vec<(usize, Queue)> = worker
+            let mut queues: BTreeMap<usize, Queue> = worker
                 .queues
                 .into_iter()
-                .map(|(queue, _)| queue)
-                .enumerate()
+                .map(|(i, (q, _))| (i, q))
                 .collect();
             let mut vrings_base = Vec::new();
             for (pos, _) in queues.iter() {
@@ -281,10 +280,10 @@ impl VirtioDevice for Vsock {
             }
             self.vrings_base = Some(vrings_base);
             self.vhost_handle = Some(worker.vhost_handle);
-            queues.push((
+            queues.insert(
                 2,
                 self.event_queue.take().expect("Vsock event queue missing"),
-            ));
+            );
             return Ok(Some(BTreeMap::from_iter(queues)));
         }
         Ok(None)
@@ -296,15 +295,10 @@ impl VirtioDevice for Vsock {
     ) -> anyhow::Result<()> {
         match device_state {
             None => Ok(()),
-            Some((mem, interrupt, mut queues_map)) => {
+            Some((mem, interrupt, queues)) => {
                 // TODO: activate is just what we want at the moment, but we should probably move
                 // it into a "start workers" function to make it obvious that it isn't strictly
                 // used for activate events.
-                let queues = vec![
-                    queues_map.remove(&0).expect("missing rx queue"),
-                    queues_map.remove(&1).expect("missing tx queue"),
-                    queues_map.remove(&2).expect("missing evt queue"),
-                ];
                 self.activate(mem, interrupt, queues)?;
                 Ok(())
             }

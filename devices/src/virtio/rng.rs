@@ -166,13 +166,13 @@ impl VirtioDevice for Rng {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: Vec<(Queue, Event)>,
+        mut queues: BTreeMap<usize, (Queue, Event)>,
     ) -> anyhow::Result<()> {
         if queues.len() != 1 {
             return Err(anyhow!("expected 1 queue, got {}", queues.len()));
         }
 
-        let (queue, queue_evt) = queues.remove(0);
+        let (queue, queue_evt) = queues.remove(&0).unwrap();
 
         self.worker_thread = Some(WorkerThread::start("v_rng", move |kill_evt| {
             let worker = Worker {
@@ -210,9 +210,8 @@ impl VirtioDevice for Rng {
         &mut self,
         queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, (Queue, Event)>)>,
     ) -> anyhow::Result<()> {
-        if let Some((mem, interrupt, mut queues)) = queues_state {
-            let queues_vec = vec![queues.remove(&0).expect("missing requestq")];
-            self.activate(mem, interrupt, queues_vec)?;
+        if let Some((mem, interrupt, queues)) = queues_state {
+            self.activate(mem, interrupt, queues)?;
         }
         Ok(())
     }

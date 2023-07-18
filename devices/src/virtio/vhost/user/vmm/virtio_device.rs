@@ -164,7 +164,7 @@ impl VirtioDevice for VhostUserVirtioDevice {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        queues: Vec<(Queue, Event)>,
+        queues: BTreeMap<usize, (Queue, Event)>,
     ) -> anyhow::Result<()> {
         let worker_thread = self
             .handler

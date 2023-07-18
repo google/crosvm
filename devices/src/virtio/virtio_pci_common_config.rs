@@ -244,6 +244,8 @@ impl VirtioPciCommonConfig {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use base::Event;
     use base::RawDescriptor;
     use vm_memory::GuestMemory;
@@ -268,7 +270,7 @@ mod tests {
             &mut self,
             _mem: GuestMemory,
             _interrupt: Interrupt,
-            _queues: Vec<(Queue, Event)>,
+            _queues: BTreeMap<usize, (Queue, Event)>,
         ) -> anyhow::Result<()> {
             Ok(())
         }

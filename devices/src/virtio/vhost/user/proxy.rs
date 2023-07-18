@@ -1771,14 +1771,14 @@ impl VirtioDevice for VirtioVhostUser {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: Vec<(Queue, Event)>,
+        mut queues: BTreeMap<usize, (Queue, Event)>,
     ) -> anyhow::Result<()> {
         if queues.len() != NUM_PROXY_DEVICE_QUEUES {
             return Err(anyhow!("bad queue length: {}", queues.len()));
         }
 
-        let (rx_queue, rx_queue_evt) = queues.remove(0);
-        let (tx_queue, tx_queue_evt) = queues.remove(0);
+        let (rx_queue, rx_queue_evt) = queues.pop_first().unwrap().1;
+        let (tx_queue, tx_queue_evt) = queues.pop_first().unwrap().1;
 
         let mut state = self.state.lock();
         // Use `State::Invalid` as the intermediate state here.

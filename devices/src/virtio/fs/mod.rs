@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::BTreeMap;
 use std::io;
 use std::sync::Arc;
 
@@ -207,7 +208,7 @@ impl VirtioDevice for Fs {
         &mut self,
         guest_mem: GuestMemory,
         interrupt: Interrupt,
-        queues: Vec<(Queue, Event)>,
+        queues: BTreeMap<usize, (Queue, Event)>,
     ) -> anyhow::Result<()> {
         if queues.len() != self.queue_sizes.len() {
             return Err(anyhow!(
@@ -249,7 +250,6 @@ impl VirtioDevice for Fs {
 
         self.workers = queues
             .into_iter()
-            .enumerate()
             .map(|(idx, (queue, evt))| {
                 let mem = guest_mem.clone();
                 let server = server.clone();
