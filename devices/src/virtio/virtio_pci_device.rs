@@ -1181,6 +1181,19 @@ impl Suspendable for VirtioPciDevice {
                 Ok::<(), anyhow::Error>(())
             })?;
 
+        // There might be data in the queue that wasn't drained by the device
+        // at the time it was snapshotted. In this case, the doorbell should
+        // still be signaled. If it is not, the driver may never re-trigger the
+        // doorbell, and the device will stall. So here, we explicitly signal
+        // every doorbell. Spurious doorbells are safe (devices will check their
+        // queue, realize nothing is there, and go back to sleep.)
+        self.queue_evts.iter_mut().try_for_each(|queue_event| {
+            queue_event
+                .event
+                .signal()
+                .context("failed to wake doorbell")
+        })?;
+
         if self.device.is_vhost_user() {
             let (queue_evts, interrupt) = if self.device_activated {
                 (
