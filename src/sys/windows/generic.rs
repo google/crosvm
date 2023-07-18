@@ -14,6 +14,7 @@ use base::AsRawDescriptor;
 use base::Event;
 use base::EventToken;
 use base::ProtoTube;
+use base::ReadNotifier;
 use base::SendTube;
 use base::Tube;
 use base::WaitContext;
@@ -62,8 +63,8 @@ pub(super) enum TaggedControlTube {
     Unused,
 }
 
-impl TaggedControlTube {
-    pub fn get_read_notifier(&self) -> &dyn AsRawDescriptor {
+impl ReadNotifier for TaggedControlTube {
+    fn get_read_notifier(&self) -> &dyn AsRawDescriptor {
         panic!(
             "get_read_notifier called on generic tagged control: {:?}",
             self
