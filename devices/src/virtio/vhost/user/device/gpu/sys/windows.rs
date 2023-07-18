@@ -115,15 +115,28 @@ pub struct Options {
     bootstrap: usize,
 }
 
+/// Main process end for input event devices.
+#[derive(Deserialize, Serialize)]
+pub struct InputEventVmmConfig {
+    // Pipes to receive input events on.
+    pub multi_touch_pipes: Vec<StreamChannel>,
+    pub mouse_pipes: Vec<StreamChannel>,
+    pub keyboard_pipes: Vec<StreamChannel>,
+}
+
+/// Backend process end for input event devices.
+#[derive(Deserialize, Serialize)]
+pub struct InputEventBackendConfig {
+    // Event devices to send input events to.
+    pub event_devices: Vec<EventDevice>,
+}
+
 /// Main process end for a GPU device.
 #[derive(Deserialize, Serialize)]
 pub struct GpuVmmConfig {
     // Tube for setting up the vhost-user connection. May not exist if not using vhost-user.
     pub main_vhost_user_tube: Option<Tube>,
-    // Pipes to receive input events on.
-    pub input_event_multi_touch_pipes: Vec<StreamChannel>,
-    pub input_event_mouse_pipes: Vec<StreamChannel>,
-    pub input_event_keyboard_pipes: Vec<StreamChannel>,
+    pub input_event_vmm_config: InputEventVmmConfig,
     pub product_config: product::GpuVmmConfig,
 }
 
@@ -137,8 +150,7 @@ pub struct GpuBackendConfig {
     pub exit_event: Event,
     // A tube to send an exit request.
     pub exit_evt_wrtube: SendTube,
-    // Event devices to send input events to.
-    pub event_devices: Vec<EventDevice>,
+    pub input_event_backend_config: InputEventBackendConfig,
     // GPU parameters.
     pub params: GpuParameters,
     // Product related configurations.
@@ -197,7 +209,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         display_backends,
         &gpu_params,
         /*render_server_descriptor*/ None,
-        config.event_devices,
+        config.input_event_backend_config.event_devices,
         base_features,
         /*channels=*/ &Default::default(),
         wndproc_thread,

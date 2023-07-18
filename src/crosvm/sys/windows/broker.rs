@@ -77,6 +77,10 @@ use devices::virtio::snd::parameters::Parameters as SndParameters;
 use devices::virtio::vhost::user::device::gpu::sys::windows::GpuBackendConfig;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost::user::device::gpu::sys::windows::GpuVmmConfig;
+#[cfg(feature = "gpu")]
+use devices::virtio::vhost::user::device::gpu::sys::windows::InputEventBackendConfig;
+#[cfg(feature = "gpu")]
+use devices::virtio::vhost::user::device::gpu::sys::windows::InputEventVmmConfig;
 #[cfg(feature = "audio")]
 use devices::virtio::vhost::user::device::snd::sys::windows::SndBackendConfig;
 #[cfg(feature = "audio")]
@@ -1660,7 +1664,7 @@ fn platform_create_gpu(
         device_vhost_user_tube: None,
         exit_event,
         exit_evt_wrtube,
-        event_devices,
+        input_event_backend_config: InputEventBackendConfig { event_devices },
         params: cfg
             .gpu_parameters
             .as_ref()
@@ -1671,9 +1675,11 @@ fn platform_create_gpu(
 
     let vmm_config = GpuVmmConfig {
         main_vhost_user_tube: None,
-        input_event_multi_touch_pipes,
-        input_event_mouse_pipes,
-        input_event_keyboard_pipes,
+        input_event_vmm_config: InputEventVmmConfig {
+            multi_touch_pipes: input_event_multi_touch_pipes,
+            mouse_pipes: input_event_mouse_pipes,
+            keyboard_pipes: input_event_keyboard_pipes,
+        },
         product_config: vmm_config_product,
     };
 

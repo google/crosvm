@@ -643,7 +643,8 @@ fn create_virtio_gpu_and_input_devices(
 
     // Iterate event devices, create the VMM end.
     for (idx, pipe) in gpu_vmm_config
-        .input_event_multi_touch_pipes
+        .input_event_vmm_config
+        .multi_touch_pipes
         .drain(..)
         .enumerate()
     {
@@ -657,12 +658,18 @@ fn create_virtio_gpu_and_input_devices(
 
     product::push_mouse_device(cfg, &mut gpu_vmm_config, &mut devs)?;
 
-    for (idx, pipe) in gpu_vmm_config.input_event_mouse_pipes.drain(..).enumerate() {
+    for (idx, pipe) in gpu_vmm_config
+        .input_event_vmm_config
+        .mouse_pipes
+        .drain(..)
+        .enumerate()
+    {
         devs.push(create_mouse_device(cfg, pipe, idx as u32)?);
     }
 
     let keyboard_pipe = gpu_vmm_config
-        .input_event_keyboard_pipes
+        .input_event_vmm_config
+        .keyboard_pipes
         .pop()
         .expect("at least one keyboard should be in GPU VMM config");
     let dev = virtio::input::new_keyboard(
@@ -695,7 +702,7 @@ fn create_virtio_gpu_and_input_devices(
                 &backend_config.params,
                 &backend_config.exit_evt_wrtube,
                 resource_bridges,
-                backend_config.event_devices,
+                backend_config.input_event_backend_config.event_devices,
                 backend_config.product_config,
             )?);
         }
