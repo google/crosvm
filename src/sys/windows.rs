@@ -100,6 +100,10 @@ use devices::virtio::snd::parameters::Parameters as SndParameters;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost::user::device::gpu::sys::windows::GpuVmmConfig;
 #[cfg(feature = "gpu")]
+use devices::virtio::vhost::user::device::gpu::sys::windows::InputEventSplitConfig;
+#[cfg(feature = "gpu")]
+use devices::virtio::vhost::user::device::gpu::sys::windows::InputEventVmmConfig;
+#[cfg(feature = "gpu")]
 use devices::virtio::vhost::user::gpu::sys::windows::product::GpuBackendConfig as GpuBackendConfigProduct;
 #[cfg(feature = "audio")]
 use devices::virtio::vhost::user::snd::sys::windows::product::SndBackendConfig as SndBackendConfigProduct;
@@ -615,10 +619,26 @@ fn create_virtio_devices(
     devs.push(create_vsock_device(cfg)?);
 
     #[cfg(feature = "gpu")]
+    let event_devices = if let Some(InputEventSplitConfig {
+        backend_config,
+        vmm_config,
+    }) = cfg.input_event_split_config.take()
+    {
+        devs.extend(
+            create_virtio_input_event_devices(cfg, vmm_config)
+                .context("create input event devices")?,
+        );
+        backend_config.map(|cfg| cfg.event_devices)
+    } else {
+        None
+    };
+
+    #[cfg(feature = "gpu")]
     if let Some(gpu_vmm_config) = cfg.gpu_vmm_config.take() {
-        devs.extend(create_virtio_gpu_and_input_devices(
+        devs.push(create_virtio_gpu_device(
             cfg,
             gpu_vmm_config,
+            event_devices,
             control_tubes,
         )?);
     }
@@ -627,24 +647,15 @@ fn create_virtio_devices(
 }
 
 #[cfg(feature = "gpu")]
-fn create_virtio_gpu_and_input_devices(
-    cfg: &mut Config,
-    mut gpu_vmm_config: GpuVmmConfig,
-    #[allow(clippy::ptr_arg)] control_tubes: &mut Vec<TaggedControlTube>,
+fn create_virtio_input_event_devices(
+    cfg: &Config,
+    mut input_event_vmm_config: InputEventVmmConfig,
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
-    let mut input_event_split_config = cfg
-        .input_event_split_config
-        .take()
-        .context("Input event VMM config is missing")?;
-    let input_event_vmm_config = &mut input_event_split_config.vmm_config;
     let mut devs = Vec::new();
-    let resource_bridges = Vec::<Tube>::new();
 
     if !cfg.virtio_single_touch.is_empty() {
         unimplemented!("--single-touch is no longer supported. Use --multi-touch instead.");
     }
-
-    product::push_gpu_control_tubes(control_tubes, &mut gpu_vmm_config);
 
     // Iterate event devices, create the VMM end.
     for (idx, pipe) in input_event_vmm_config
@@ -660,7 +671,7 @@ fn create_virtio_gpu_and_input_devices(
         )?);
     }
 
-    product::push_mouse_device(cfg, input_event_vmm_config, &mut devs)?;
+    product::push_mouse_device(cfg, &mut input_event_vmm_config, &mut devs)?;
 
     for (idx, pipe) in input_event_vmm_config.mouse_pipes.drain(..).enumerate() {
         devs.push(create_mouse_device(cfg, pipe, idx as u32)?);
@@ -682,36 +693,49 @@ fn create_virtio_gpu_and_input_devices(
         jail: None,
     });
 
+    Ok(devs)
+}
+
+#[cfg(feature = "gpu")]
+fn create_virtio_gpu_device(
+    cfg: &mut Config,
+    mut gpu_vmm_config: GpuVmmConfig,
+    event_devices: Option<Vec<EventDevice>>,
+    #[allow(clippy::ptr_arg)] control_tubes: &mut Vec<TaggedControlTube>,
+) -> DeviceResult<VirtioDeviceStub> {
+    let resource_bridges = Vec::<Tube>::new();
+
+    product::push_gpu_control_tubes(control_tubes, &mut gpu_vmm_config);
+
     match cfg.gpu_backend_config.take() {
         None => {
             // No backend config present means the backend is running in another process.
-            devs.push(create_vhost_user_gpu_device(
+            create_vhost_user_gpu_device(
                 virtio::base_features(cfg.protection_type),
                 gpu_vmm_config
                     .main_vhost_user_tube
                     .take()
                     .expect("GPU VMM vhost-user tube should be set"),
-            )?);
+            )
+            .context("create vhost-user GPU device")
         }
         Some(backend_config) => {
-            let input_event_backend_config =
-                input_event_split_config.backend_config.take().context(
-                    "input event backend config is missing when creating virtio-gpu in \
-                    the current process.",
-                )?;
             // Backend config present, so initialize GPU in this process.
-            devs.push(create_gpu_device(
+            create_gpu_device(
                 cfg,
                 &backend_config.params,
                 &backend_config.exit_evt_wrtube,
                 resource_bridges,
-                input_event_backend_config.event_devices,
+                event_devices.ok_or_else(|| {
+                    anyhow!(
+                        "event devices are missing when creating virtio-gpu in the current process."
+                    )
+                })?,
                 backend_config.product_config,
-            )?);
+            )
+            .context("create GPU device")
         }
     }
-
-    Ok(devs)
 }
 
 fn create_devices(
