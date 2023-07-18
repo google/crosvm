@@ -234,9 +234,14 @@ impl VhostUserHandler {
         self.vu
             .set_vring_kick(queue_index, queue.event())
             .map_err(Error::SetVringKick)?;
-        self.vu
-            .set_vring_enable(queue_index, true)
-            .map_err(Error::SetVringEnable)?;
+
+        // Per protocol documentation, `VHOST_USER_SET_VRING_ENABLE` should be sent only when
+        // `VHOST_USER_F_PROTOCOL_FEATURES` has been negotiated.
+        if self.acked_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES != 0 {
+            self.vu
+                .set_vring_enable(queue_index, true)
+                .map_err(Error::SetVringEnable)?;
+        }
 
         Ok(())
     }
@@ -273,9 +278,11 @@ impl VhostUserHandler {
     /// Deactivates all vrings.
     pub fn reset(&mut self, queues_num: usize) -> Result<()> {
         for queue_index in 0..queues_num {
-            self.vu
-                .set_vring_enable(queue_index, false)
-                .map_err(Error::SetVringEnable)?;
+            if self.acked_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES != 0 {
+                self.vu
+                    .set_vring_enable(queue_index, false)
+                    .map_err(Error::SetVringEnable)?;
+            }
             self.vu
                 .get_vring_base(queue_index)
                 .map_err(Error::GetVringBase)?;
