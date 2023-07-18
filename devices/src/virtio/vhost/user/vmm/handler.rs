@@ -23,12 +23,12 @@ use vmm_vhost::message::VhostUserGpuMapMsg;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserShmemMapMsg;
 use vmm_vhost::message::VhostUserShmemUnmapMsg;
-use vmm_vhost::message::VhostUserVirtioFeatures;
 use vmm_vhost::HandlerResult;
 use vmm_vhost::MasterReqHandler;
 use vmm_vhost::VhostUserMasterReqHandlerMut;
 use vmm_vhost::VhostUserMemoryRegionInfo;
 use vmm_vhost::VringConfigData;
+use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 
 use crate::virtio::vhost::user::vmm::handler::sys::create_backend_req_handler;
 use crate::virtio::vhost::user::vmm::handler::sys::SocketMaster;
@@ -75,7 +75,7 @@ impl VhostUserHandler {
         let acked_features = set_features(&mut vu, avail_features, init_features)?;
 
         let mut protocol_features = VhostUserProtocolFeatures::empty();
-        if acked_features & VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits() != 0 {
+        if acked_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES != 0 {
             let avail_protocol_features = vu
                 .get_protocol_features()
                 .map_err(Error::GetProtocolFeatures)?;

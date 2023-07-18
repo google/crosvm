@@ -797,9 +797,7 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
             }
             Ok(MasterReq::SET_VRING_ENABLE) => {
                 let msg = self.extract_request_body::<VhostUserVringState>(&hdr, size, &buf)?;
-                if self.acked_virtio_features & VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits()
-                    == 0
-                {
+                if self.acked_virtio_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES == 0 {
                     return Err(Error::InvalidOperation);
                 }
                 let enable = match msg.num {
@@ -1124,11 +1122,11 @@ impl<S: VhostUserSlaveReqHandler, E: Endpoint<MasterReq>> SlaveReqHandler<S, E> 
     }
 
     fn update_reply_ack_flag(&mut self) {
-        let vflag = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
         let pflag = VhostUserProtocolFeatures::REPLY_ACK;
-        self.slave_req_helper.reply_ack_enabled = (self.virtio_features & vflag) != 0
-            && self.protocol_features.contains(pflag)
-            && (self.acked_protocol_features & pflag.bits()) != 0;
+        self.slave_req_helper.reply_ack_enabled =
+            (self.virtio_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES) != 0
+                && self.protocol_features.contains(pflag)
+                && (self.acked_protocol_features & pflag.bits()) != 0;
     }
 }
 

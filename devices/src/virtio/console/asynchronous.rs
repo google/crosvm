@@ -27,7 +27,7 @@ use futures::FutureExt;
 use hypervisor::ProtectionType;
 use sync::Mutex;
 use vm_memory::GuestMemory;
-use vmm_vhost::message::VhostUserVirtioFeatures;
+use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 use zerocopy::AsBytes;
 
 use super::handle_input;
@@ -215,8 +215,8 @@ impl SerialDevice for ConsoleDevice {
         _out_timestamp: bool,
         _keep_rds: Vec<RawDescriptor>,
     ) -> ConsoleDevice {
-        let avail_features = virtio::base_features(protection_type)
-            | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
+        let avail_features =
+            virtio::base_features(protection_type) | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
         ConsoleDevice {
             input: input.map(AsyncSerialInput).map(AsyncQueueState::Stopped),
             output: AsyncQueueState::Stopped(output.unwrap_or_else(|| Box::new(io::sink()))),

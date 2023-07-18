@@ -21,7 +21,7 @@ pub use sys::run_snd_device;
 pub use sys::Options;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
-use vmm_vhost::message::VhostUserVirtioFeatures;
+use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 use zerocopy::AsBytes;
 
 use crate::virtio;
@@ -76,7 +76,7 @@ impl SndBackend {
     pub fn new(params: Parameters) -> anyhow::Result<Self> {
         let cfg = hardcoded_virtio_snd_config(&params);
         let avail_features = virtio::base_features(ProtectionType::Unprotected)
-            | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
+            | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
 
         let snd_data = hardcoded_snd_data(&params);
         let mut keep_rds = Vec::new();

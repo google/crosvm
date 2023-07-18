@@ -29,7 +29,7 @@ use net_util::TapT;
 use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
-use vmm_vhost::message::VhostUserVirtioFeatures;
+use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 
 use crate::virtio;
 use crate::virtio::net::process_rx;
@@ -119,7 +119,7 @@ where
             | 1 << virtio_net::VIRTIO_NET_F_HOST_TSO4
             | 1 << virtio_net::VIRTIO_NET_F_HOST_UFO
             | 1 << virtio_net::VIRTIO_NET_F_MTU
-            | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
+            | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
 
         let mtu = tap.mtu()?;
 

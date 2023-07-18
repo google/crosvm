@@ -31,12 +31,12 @@ use vmm_vhost::message::VhostUserInflight;
 use vmm_vhost::message::VhostUserMemoryRegion;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserSingleMemoryRegion;
-use vmm_vhost::message::VhostUserVirtioFeatures;
 use vmm_vhost::message::VhostUserVringAddrFlags;
 use vmm_vhost::message::VhostUserVringState;
 use vmm_vhost::Error;
 use vmm_vhost::Result;
 use vmm_vhost::VhostUserSlaveReqHandlerMut;
+use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 use zerocopy::AsBytes;
 
 use crate::virtio::device_constants::vsock::NUM_QUEUES;
@@ -142,14 +142,14 @@ impl VhostUserSlaveReqHandlerMut for VsockBackend {
     fn get_features(&mut self) -> Result<u64> {
         // Add the vhost-user features that we support.
         let features = self.handle.get_features().map_err(convert_vhost_error)?
-            | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
+            | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
         Ok(features)
     }
 
     fn set_features(&mut self, features: u64) -> Result<()> {
         // Unset the vhost-user feature flags as they are not supported by the underlying vhost
         // device.
-        let features = features & !VhostUserVirtioFeatures::all().bits();
+        let features = features & !(1 << VHOST_USER_F_PROTOCOL_FEATURES);
         self.handle
             .set_features(features)
             .map_err(convert_vhost_error)

@@ -136,8 +136,7 @@ impl VhostUserDevice for BlockAsync {
         ops: Box<dyn VhostUserPlatformOps>,
         ex: &Executor,
     ) -> anyhow::Result<Box<dyn VhostUserSlaveReqHandler>> {
-        let avail_features =
-            self.avail_features | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
+        let avail_features = self.avail_features | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
 
         let disk_image = match self.disk_image.take() {
             Some(disk_image) => disk_image,

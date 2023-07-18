@@ -30,7 +30,7 @@ use hypervisor::ProtectionType;
 use rutabaga_gfx::RutabagaGralloc;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
-use vmm_vhost::message::VhostUserVirtioFeatures;
+use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 
 use crate::virtio::base_features;
 use crate::virtio::device_constants::wl::NUM_QUEUES;
@@ -123,7 +123,7 @@ impl WlBackend {
             | 1 << VIRTIO_WL_F_TRANS_FLAGS
             | 1 << VIRTIO_WL_F_SEND_FENCES
             | 1 << VIRTIO_WL_F_USE_SHMEM
-            | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
+            | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
         WlBackend {
             ex: ex.clone(),
             wayland_paths: Some(wayland_paths),

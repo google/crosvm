@@ -22,7 +22,7 @@ pub use sys::run_gpu_device;
 pub use sys::Options;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
-use vmm_vhost::message::VhostUserVirtioFeatures;
+use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 
 use crate::virtio::device_constants::gpu::NUM_QUEUES;
 use crate::virtio::gpu;
@@ -100,7 +100,7 @@ impl VhostUserBackend for GpuBackend {
     }
 
     fn features(&self) -> u64 {
-        self.gpu.borrow().features() | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits()
+        self.gpu.borrow().features() | 1 << VHOST_USER_F_PROTOCOL_FEATURES
     }
 
     fn ack_features(&mut self, value: u64) -> anyhow::Result<()> {

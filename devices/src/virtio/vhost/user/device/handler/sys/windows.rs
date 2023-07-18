@@ -129,8 +129,8 @@ mod tests {
 
         std::thread::spawn(move || {
             // VMM side
-            let allow_features = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
-            let init_features = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
+            let allow_features = 1 << VHOST_USER_F_PROTOCOL_FEATURES;
+            let init_features = 1 << VHOST_USER_F_PROTOCOL_FEATURES;
             let allow_protocol_features = VhostUserProtocolFeatures::CONFIG;
 
             let mut vmm_handler = VhostUserHandler::new_from_connection(

@@ -18,8 +18,8 @@ use hypervisor::ProtectionType;
 use sync::Mutex;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
-use vmm_vhost::message::VhostUserVirtioFeatures;
 use vmm_vhost::VhostUserSlaveReqHandler;
+use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 use zerocopy::AsBytes;
 
 use crate::virtio;
@@ -107,7 +107,7 @@ impl VhostUserBackend for ConsoleBackend {
     }
 
     fn features(&self) -> u64 {
-        self.device.console.avail_features() | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits()
+        self.device.console.avail_features() | 1 << VHOST_USER_F_PROTOCOL_FEATURES
     }
 
     fn ack_features(&mut self, value: u64) -> anyhow::Result<()> {

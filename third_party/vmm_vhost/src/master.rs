@@ -340,8 +340,7 @@ impl<E: Endpoint<MasterReq>> Master<E> {
     /// Get the protocol feature bitmask from the underlying vhost implementation.
     pub fn get_protocol_features(&mut self) -> Result<VhostUserProtocolFeatures> {
         let mut node = self.node();
-        let flag = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
-        if node.virtio_features & flag == 0 {
+        if node.virtio_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES == 0 {
             return Err(VhostUserError::InvalidOperation);
         }
         let hdr = node.send_request_header(MasterReq::GET_PROTOCOL_FEATURES, None)?;
@@ -358,8 +357,7 @@ impl<E: Endpoint<MasterReq>> Master<E> {
     /// Enable protocol features in the underlying vhost implementation.
     pub fn set_protocol_features(&mut self, features: VhostUserProtocolFeatures) -> Result<()> {
         let mut node = self.node();
-        let flag = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
-        if node.virtio_features & flag == 0 {
+        if node.virtio_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES == 0 {
             return Err(VhostUserError::InvalidOperation);
         }
         if features.contains(VhostUserProtocolFeatures::SHARED_MEMORY_REGIONS)
@@ -399,7 +397,7 @@ impl<E: Endpoint<MasterReq>> Master<E> {
     pub fn set_vring_enable(&mut self, queue_index: usize, enable: bool) -> Result<()> {
         let mut node = self.node();
         // set_vring_enable() is supported only when PROTOCOL_FEATURES has been enabled.
-        if node.acked_virtio_features & VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits() == 0 {
+        if node.acked_virtio_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES == 0 {
             return Err(VhostUserError::InvalidOperation);
         }
 
@@ -872,7 +870,7 @@ mod tests {
             .set_protocol_features(VhostUserProtocolFeatures::all())
             .is_err());
 
-        let vfeatures = 0x15 | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
+        let vfeatures = 0x15 | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
         let hdr = VhostUserMsgHeader::new(MasterReq::GET_FEATURES, 0x4, 8);
         let msg = VhostUserU64::new(vfeatures);
         peer.send_message(&hdr, &msg, None).unwrap();

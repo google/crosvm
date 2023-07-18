@@ -86,7 +86,6 @@ use vmm_vhost::message::VhostUserShmemMapMsg;
 use vmm_vhost::message::VhostUserShmemMapMsgFlags;
 use vmm_vhost::message::VhostUserShmemUnmapMsg;
 use vmm_vhost::message::VhostUserSingleMemoryRegion;
-use vmm_vhost::message::VhostUserVirtioFeatures;
 use vmm_vhost::message::VhostUserVringAddrFlags;
 use vmm_vhost::message::VhostUserVringState;
 use vmm_vhost::Error as VhostError;
@@ -94,6 +93,7 @@ use vmm_vhost::Result as VhostResult;
 use vmm_vhost::Slave;
 use vmm_vhost::VhostUserMasterReqHandler;
 use vmm_vhost::VhostUserSlaveReqHandlerMut;
+use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
@@ -460,7 +460,7 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
         // VHOST_USER_SET_VRING_ENABLE with parameter 1, or after it has been disabled by
         // VHOST_USER_SET_VRING_ENABLE with parameter 0.
         let acked_features = self.backend.acked_features();
-        let vring_enabled = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits() & acked_features != 0;
+        let vring_enabled = acked_features & 1 << VHOST_USER_F_PROTOCOL_FEATURES != 0;
         for v in &mut self.vrings {
             v.enabled = vring_enabled;
         }
@@ -632,7 +632,7 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
 
         // This request should be handled only when VHOST_USER_F_PROTOCOL_FEATURES
         // has been negotiated.
-        if self.backend.acked_features() & VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits() == 0 {
+        if self.backend.acked_features() & 1 << VHOST_USER_F_PROTOCOL_FEATURES == 0 {
             return Err(VhostError::InvalidOperation);
         }
 
@@ -1001,7 +1001,7 @@ mod tests {
             let mut active_queues = Vec::new();
             active_queues.resize_with(Self::MAX_QUEUE_NUM, Default::default);
             Self {
-                avail_features: VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits(),
+                avail_features: 1 << VHOST_USER_F_PROTOCOL_FEATURES,
                 acked_features: 0,
                 acked_protocol_features: VhostUserProtocolFeatures::empty(),
                 active_queues,
@@ -1104,8 +1104,8 @@ mod tests {
             // VMM side
             rx.recv().unwrap(); // Ensure the device is ready.
 
-            let allow_features = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
-            let init_features = VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
+            let allow_features = 1 << VHOST_USER_F_PROTOCOL_FEATURES;
+            let init_features = 1 << VHOST_USER_F_PROTOCOL_FEATURES;
             let allow_protocol_features = VhostUserProtocolFeatures::CONFIG;
             let connection = UnixStream::connect(&path).unwrap();
             let mut vmm_handler = VhostUserHandler::new_from_connection(

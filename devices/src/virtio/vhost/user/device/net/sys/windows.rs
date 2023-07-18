@@ -39,7 +39,7 @@ use tube_transporter::TubeToken;
 use virtio_sys::virtio_net;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
-use vmm_vhost::message::VhostUserVirtioFeatures;
+use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 
 use crate::virtio;
 use crate::virtio::base_features;
@@ -71,7 +71,7 @@ where
     ) -> anyhow::Result<NetBackend<Slirp>> {
         let avail_features = base_features(ProtectionType::Unprotected)
             | 1 << virtio_net::VIRTIO_NET_F_CTRL_VQ
-            | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
+            | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
         let slirp = Slirp::new_for_multi_process(guest_pipe).map_err(NetError::SlirpCreateError)?;
 
         Ok(NetBackend::<Slirp> {

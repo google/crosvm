@@ -17,7 +17,7 @@ use serde_json::Value;
 use sync::Mutex;
 use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
-use vmm_vhost::message::VhostUserVirtioFeatures;
+use vmm_vhost::VHOST_USER_F_PROTOCOL_FEATURES;
 
 use crate::pci::MsixConfig;
 use crate::virtio::copy_config;
@@ -64,9 +64,8 @@ impl VhostUserVirtioDevice {
         cfg: Option<&[u8]>,
         expose_shmem_descriptors_with_viommu: bool,
     ) -> Result<VhostUserVirtioDevice> {
-        let allow_features =
-            allow_features | base_features | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
-        let init_features = base_features | VhostUserVirtioFeatures::PROTOCOL_FEATURES.bits();
+        let allow_features = allow_features | base_features | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
+        let init_features = base_features | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
 
         let handler = VhostUserHandler::new_from_connection(
             connection,
