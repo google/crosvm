@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::collections::BTreeMap as Map;
+use std::collections::BTreeMap;
 use std::fs::OpenOptions;
 use std::os::unix::prelude::OpenOptionsExt;
 
@@ -257,7 +257,7 @@ impl VirtioDevice for Vsock {
         }
     }
 
-    fn virtio_sleep(&mut self) -> anyhow::Result<Option<Map<usize, Queue>>> {
+    fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
         if let Some(worker_thread) = self.worker_thread.take() {
             let worker = worker_thread.stop();
             self.interrupts = Some(worker.vhost_interrupt);
@@ -285,14 +285,14 @@ impl VirtioDevice for Vsock {
                 2,
                 self.event_queue.take().expect("Vsock event queue missing"),
             ));
-            return Ok(Some(Map::from_iter(queues)));
+            return Ok(Some(BTreeMap::from_iter(queues)));
         }
         Ok(None)
     }
 
     fn virtio_wake(
         &mut self,
-        device_state: Option<(GuestMemory, Interrupt, Map<usize, (Queue, Event)>)>,
+        device_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, (Queue, Event)>)>,
     ) -> anyhow::Result<()> {
         match device_state {
             None => Ok(()),

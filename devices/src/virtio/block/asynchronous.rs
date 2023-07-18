@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 use std::cell::RefCell;
-use std::collections::BTreeMap as Map;
+use std::collections::BTreeMap;
 
 use std::io;
 use std::io::Write;
@@ -1100,13 +1100,13 @@ impl VirtioDevice for BlockAsync {
         success
     }
 
-    fn virtio_sleep(&mut self) -> anyhow::Result<Option<Map<usize, Queue>>> {
+    fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
         let num_activated_queues = match self.num_activated_queues {
             Some(x) => x,
             None => return Ok(None), // Not activated.
         };
         // Reclaim the queues from workers.
-        let mut queues = Map::new();
+        let mut queues = BTreeMap::new();
         for index in 0..num_activated_queues {
             let worker_index = if self.worker_per_queue { index } else { 0 };
             let worker_tx = &self.worker_threads[worker_index].1;
@@ -1135,7 +1135,7 @@ impl VirtioDevice for BlockAsync {
 
     fn virtio_wake(
         &mut self,
-        queues_state: Option<(GuestMemory, Interrupt, Map<usize, (Queue, Event)>)>,
+        queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, (Queue, Event)>)>,
     ) -> anyhow::Result<()> {
         if let Some((mem, interrupt, queues)) = queues_state {
             // TODO: activate is just what we want at the moment, but we should probably move

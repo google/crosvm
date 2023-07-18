@@ -4,7 +4,7 @@
 
 mod sys;
 
-use std::collections::BTreeMap as Map;
+use std::collections::BTreeMap;
 use std::collections::VecDeque;
 use std::io::Write;
 use std::sync::Arc;
@@ -872,8 +872,8 @@ impl BalloonQueues {
     }
 }
 
-impl From<Map<usize, (Queue, Event)>> for BalloonQueues {
-    fn from(mut queues: Map<usize, (Queue, Event)>) -> Self {
+impl From<BTreeMap<usize, (Queue, Event)>> for BalloonQueues {
+    fn from(mut queues: BTreeMap<usize, (Queue, Event)>) -> Self {
         BalloonQueues {
             inflate: queues.remove(&0).expect("the inflate queue is required"),
             deflate: queues.remove(&1).expect("the deflate queue is required"),
@@ -917,9 +917,9 @@ where
     }
 }
 
-impl From<Box<PausedQueues>> for Map<usize, Queue> {
-    fn from(queues: Box<PausedQueues>) -> Map<usize, Queue> {
-        let mut ret = Map::new();
+impl From<Box<PausedQueues>> for BTreeMap<usize, Queue> {
+    fn from(queues: Box<PausedQueues>) -> BTreeMap<usize, Queue> {
+        let mut ret = BTreeMap::new();
         ret.insert(0, queues.inflate);
         ret.insert(1, queues.deflate);
         apply_if_some(queues.stats, |stats| ret.insert(2, stats));
@@ -1587,7 +1587,7 @@ impl VirtioDevice for Balloon {
         true
     }
 
-    fn virtio_sleep(&mut self) -> anyhow::Result<Option<Map<usize, Queue>>> {
+    fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
         match self.stop_worker() {
             StoppedWorker::WithQueues(paused_queues) => Ok(Some(paused_queues.into())),
             StoppedWorker::MissingQueues => {
@@ -1602,7 +1602,7 @@ impl VirtioDevice for Balloon {
 
     fn virtio_wake(
         &mut self,
-        queues_state: Option<(GuestMemory, Interrupt, Map<usize, (Queue, Event)>)>,
+        queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, (Queue, Event)>)>,
     ) -> anyhow::Result<()> {
         if let Some((mem, interrupt, queues)) = queues_state {
             if queues.len() < 2 {

@@ -5,7 +5,7 @@
 //! VirtioDevice implementation for the VMM side of a vhost-user connection.
 
 use std::cell::RefCell;
-use std::collections::BTreeMap as Map;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::pci::MsixConfig;
@@ -204,7 +204,7 @@ impl VirtioDevice for VhostUserVirtioDevice {
         self.expose_shmem_descriptors_with_viommu
     }
 
-    fn virtio_sleep(&mut self) -> anyhow::Result<Option<Map<usize, Queue>>> {
+    fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
         self.handler
             .borrow_mut()
             .sleep()
@@ -212,14 +212,14 @@ impl VirtioDevice for VhostUserVirtioDevice {
 
         // Vhost user devices won't return queues on sleep, so return an empty Vec so that
         // VirtioPciDevice can set the sleep state properly.
-        Ok(Some(Map::new()))
+        Ok(Some(BTreeMap::new()))
     }
 
     fn virtio_wake(
         &mut self,
         // Vhost user doesn't need to pass queue_states back to the device process, since it will
         // already have it.
-        _queues_state: Option<(GuestMemory, Interrupt, Map<usize, (Queue, Event)>)>,
+        _queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, (Queue, Event)>)>,
     ) -> anyhow::Result<()> {
         self.handler
             .borrow_mut()
