@@ -22,13 +22,19 @@ if ! [ -f rootfs ]; then
         # $SRC=/path/to/crosvm
         --copy-in "$SRC/guest/01-netcfg.yaml:/etc/netplan/"
 
-        # Install sshd and authorized key for the user.
+        # Install sshd.
         --install openssh-server
-        # OPTIONAL: inject RSA public key as known key
-        # --ssh-inject "$USER:file:$HOME/.ssh/id_rsa.pub"
 
         -o rootfs
     )
+
+    # Inject authorized key for the user.
+    # If the SSH RSA public key file is missing, you will need to login to
+    # the VM the first time and change passwords before you can login via SSH.
+    ID_RSA_PUB="$HOME/.ssh/id_rsa.pub"
+    if [ -r "${ID_RSA_PUB}" ]; then
+        builder_args+=("--ssh-inject" "${USER}:file:${ID_RSA_PUB}")
+    fi
     virt-builder ubuntu-20.04 "${builder_args[@]}"
     # ANCHOR_END: build
 
