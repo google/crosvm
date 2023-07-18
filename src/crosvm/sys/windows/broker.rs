@@ -661,6 +661,10 @@ fn run_internal(mut cfg: Config, log_args: LogArgs) -> Result<()> {
         Tube::directional_pair().context("failed to create vm event tube")?;
 
     #[cfg(feature = "gpu")]
+    let input_event_split_config = platform_create_input_event_config(&cfg)
+        .context("create input event devices for virtio-gpu device")?;
+
+    #[cfg(feature = "gpu")]
     let gpu_cfg = platform_create_gpu(
         &cfg,
         &mut main_child,
@@ -675,12 +679,14 @@ fn run_internal(mut cfg: Config, log_args: LogArgs) -> Result<()> {
         // Pass both backend and frontend configs to main process.
         cfg.gpu_backend_config = Some(gpu_cfg.0);
         cfg.gpu_vmm_config = Some(gpu_cfg.1);
+        cfg.input_event_split_config = Some(input_event_split_config);
         None
     } else {
         Some(start_up_gpu(
             &mut cfg,
             &log_args,
             gpu_cfg,
+            input_event_split_config,
             &mut main_child,
             &mut children,
             &mut wait_ctx,
@@ -1647,7 +1653,7 @@ fn platform_create_input_event_config(cfg: &Config) -> Result<InputEventSplitCon
     keyboard_pipes.push(virtio_input_pipe);
 
     Ok(InputEventSplitConfig {
-        backend_config: InputEventBackendConfig { event_devices },
+        backend_config: Some(InputEventBackendConfig { event_devices }),
         vmm_config: InputEventVmmConfig {
             multi_touch_pipes,
             mouse_pipes,
@@ -1674,16 +1680,10 @@ fn platform_create_gpu(
     let (backend_config_product, vmm_config_product) =
         get_gpu_product_configs(cfg, main_child.alias_pid)?;
 
-    let InputEventSplitConfig {
-        backend_config: input_event_backend_config,
-        vmm_config: input_event_vmm_config,
-    } = platform_create_input_event_config(cfg).context("create input events for virtio-gpu")?;
-
     let backend_config = GpuBackendConfig {
         device_vhost_user_tube: None,
         exit_event,
         exit_evt_wrtube,
-        input_event_backend_config,
         params: cfg
             .gpu_parameters
             .as_ref()
@@ -1694,7 +1694,6 @@ fn platform_create_gpu(
 
     let vmm_config = GpuVmmConfig {
         main_vhost_user_tube: None,
-        input_event_vmm_config,
         product_config: vmm_config_product,
     };
 
@@ -1707,6 +1706,7 @@ fn start_up_gpu(
     cfg: &mut Config,
     log_args: &LogArgs,
     gpu_cfg: (GpuBackendConfig, GpuVmmConfig),
+    mut input_event_cfg: InputEventSplitConfig,
     main_child: &mut ChildProcess,
     children: &mut HashMap<u32, ChildCleanup>,
     wait_ctx: &mut WaitContext<Token>,
@@ -1748,9 +1748,14 @@ fn start_up_gpu(
     backend_cfg.device_vhost_user_tube = Some(device_host_user_tube);
     vmm_cfg.main_vhost_user_tube = Some(main_vhost_user_tube);
 
-    // Send VMM config to main process. Note we don't set gpu_backend_config, since it is passed to
-    // the child.
+    // Send VMM config to main process. Note we don't set gpu_backend_config and
+    // input_event_backend_config, since it is passed to the child.
     cfg.gpu_vmm_config = Some(vmm_cfg);
+    let input_event_backend_config = input_event_cfg
+        .backend_config
+        .take()
+        .context("input event backend config is missing.")?;
+    cfg.input_event_split_config = Some(input_event_cfg);
 
     let startup_args = CommonChildStartupArgs::new(
         log_args,
@@ -1764,7 +1769,10 @@ fn start_up_gpu(
     gpu_child.bootstrap_tube.send(&startup_args).unwrap();
 
     // Send backend config to GPU child.
-    gpu_child.bootstrap_tube.send(&backend_cfg).unwrap();
+    gpu_child
+        .bootstrap_tube
+        .send(&(backend_cfg, input_event_backend_config))
+        .unwrap();
 
     Ok(gpu_child)
 }

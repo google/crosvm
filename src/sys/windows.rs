@@ -632,6 +632,11 @@ fn create_virtio_gpu_and_input_devices(
     mut gpu_vmm_config: GpuVmmConfig,
     #[allow(clippy::ptr_arg)] control_tubes: &mut Vec<TaggedControlTube>,
 ) -> DeviceResult<Vec<VirtioDeviceStub>> {
+    let mut input_event_split_config = cfg
+        .input_event_split_config
+        .take()
+        .context("Input event VMM config is missing")?;
+    let input_event_vmm_config = &mut input_event_split_config.vmm_config;
     let mut devs = Vec::new();
     let resource_bridges = Vec::<Tube>::new();
 
@@ -642,8 +647,7 @@ fn create_virtio_gpu_and_input_devices(
     product::push_gpu_control_tubes(control_tubes, &mut gpu_vmm_config);
 
     // Iterate event devices, create the VMM end.
-    for (idx, pipe) in gpu_vmm_config
-        .input_event_vmm_config
+    for (idx, pipe) in input_event_vmm_config
         .multi_touch_pipes
         .drain(..)
         .enumerate()
@@ -656,19 +660,13 @@ fn create_virtio_gpu_and_input_devices(
         )?);
     }
 
-    product::push_mouse_device(cfg, &mut gpu_vmm_config, &mut devs)?;
+    product::push_mouse_device(cfg, input_event_vmm_config, &mut devs)?;
 
-    for (idx, pipe) in gpu_vmm_config
-        .input_event_vmm_config
-        .mouse_pipes
-        .drain(..)
-        .enumerate()
-    {
+    for (idx, pipe) in input_event_vmm_config.mouse_pipes.drain(..).enumerate() {
         devs.push(create_mouse_device(cfg, pipe, idx as u32)?);
     }
 
-    let keyboard_pipe = gpu_vmm_config
-        .input_event_vmm_config
+    let keyboard_pipe = input_event_vmm_config
         .keyboard_pipes
         .pop()
         .expect("at least one keyboard should be in GPU VMM config");
@@ -696,13 +694,18 @@ fn create_virtio_gpu_and_input_devices(
             )?);
         }
         Some(backend_config) => {
+            let input_event_backend_config =
+                input_event_split_config.backend_config.take().context(
+                    "input event backend config is missing when creating virtio-gpu in \
+                    the current process.",
+                )?;
             // Backend config present, so initialize GPU in this process.
             devs.push(create_gpu_device(
                 cfg,
                 &backend_config.params,
                 &backend_config.exit_evt_wrtube,
                 resource_bridges,
-                backend_config.input_event_backend_config.event_devices,
+                input_event_backend_config.event_devices,
                 backend_config.product_config,
             )?);
         }

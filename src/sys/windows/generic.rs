@@ -30,6 +30,8 @@ use devices::virtio::vhost::user::gpu::sys::windows::product::GpuBackendConfig a
 use devices::virtio::vhost::user::gpu::sys::windows::product::GpuVmmConfig as GpuVmmConfigProduct;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost::user::gpu::sys::windows::GpuVmmConfig;
+#[cfg(feature = "gpu")]
+use devices::virtio::vhost::user::gpu::sys::windows::InputEventVmmConfig;
 #[cfg(feature = "audio")]
 use devices::virtio::vhost::user::snd::sys::windows::product::SndBackendConfig as SndBackendConfigProduct;
 #[cfg(feature = "audio")]
@@ -287,7 +289,7 @@ pub(crate) fn setup_metrics_reporting() -> Result<()> {
 
 pub(super) fn push_mouse_device(
     cfg: &Config,
-    #[cfg(feature = "gpu")] _gpu_vmm_config: &mut GpuVmmConfig,
+    #[cfg(feature = "gpu")] _input_event_vmm_config: &mut InputEventVmmConfig,
     _devs: &mut [VirtioDeviceStub],
 ) -> Result<()> {
     Ok(())

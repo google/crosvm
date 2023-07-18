@@ -136,7 +136,7 @@ pub struct InputEventBackendConfig {
 #[derive(Deserialize, Serialize)]
 pub struct InputEventSplitConfig {
     // Config sent to the backend.
-    pub backend_config: InputEventBackendConfig,
+    pub backend_config: Option<InputEventBackendConfig>,
     // Config sent to the main process.
     pub vmm_config: InputEventVmmConfig,
 }
@@ -146,7 +146,6 @@ pub struct InputEventSplitConfig {
 pub struct GpuVmmConfig {
     // Tube for setting up the vhost-user connection. May not exist if not using vhost-user.
     pub main_vhost_user_tube: Option<Tube>,
-    pub input_event_vmm_config: InputEventVmmConfig,
     pub product_config: product::GpuVmmConfig,
 }
 
@@ -160,7 +159,6 @@ pub struct GpuBackendConfig {
     pub exit_event: Event,
     // A tube to send an exit request.
     pub exit_evt_wrtube: SendTube,
-    pub input_event_backend_config: InputEventBackendConfig,
     // GPU parameters.
     pub params: GpuParameters,
     // Product related configurations.
@@ -179,9 +177,10 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
     let startup_args: CommonChildStartupArgs = bootstrap_tube.recv::<CommonChildStartupArgs>()?;
     let _child_cleanup = common_child_setup(startup_args)?;
 
-    let mut config: GpuBackendConfig = bootstrap_tube
-        .recv()
-        .context("failed to parse GPU backend config from bootstrap tube")?;
+    let (mut config, input_event_backend_config): (GpuBackendConfig, InputEventBackendConfig) =
+        bootstrap_tube
+            .recv()
+            .context("failed to parse GPU backend config from bootstrap tube")?;
 
     let vhost_user_tube = config
         .device_vhost_user_tube
@@ -219,7 +218,7 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
         display_backends,
         &gpu_params,
         /*render_server_descriptor*/ None,
-        config.input_event_backend_config.event_devices,
+        input_event_backend_config.event_devices,
         base_features,
         /*channels=*/ &Default::default(),
         wndproc_thread,
