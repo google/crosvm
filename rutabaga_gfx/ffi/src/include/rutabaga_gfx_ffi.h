@@ -147,6 +147,15 @@ struct rutabaga_mapping {
     uint64_t size;
 };
 
+struct rutabaga_command {
+    uint32_t ctx_id;
+    uint32_t cmd_size;
+    uint8_t *cmd;
+
+    uint32_t num_in_fences;
+    uint64_t *fence_ids;
+};
+
 /**
  * Assumes null-terminated C-string.
  */
@@ -287,10 +296,11 @@ int32_t rutabaga_resource_map_info(struct rutabaga *ptr, uint32_t resource_id, u
 
 /**
  * # Safety
- * - `commands` must point to a contiguous memory region of `size` bytes.
+ * - `cmd` must be not null
+ * - `cmd->cmd` point to a contiguous memory region of `cmd_size` bytes.
+ * - `cmd->fence_ids` must point to a contiguous array of `num_in_fences` elements
  */
-int32_t rutabaga_submit_command(struct rutabaga *ptr, uint32_t ctx_id, uint8_t *commands,
-                                size_t size);
+int32_t rutabaga_submit_command(struct rutabaga *ptr, struct rutabaga_command *cmd);
 
 int32_t rutabaga_create_fence(struct rutabaga *ptr, const struct rutabaga_fence *fence);
 

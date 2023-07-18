@@ -17,6 +17,7 @@ use std::os::raw::c_void;
 
 use crate::generated::virgl_renderer_bindings::iovec;
 use crate::gfxstream::stream_renderer_box;
+use crate::gfxstream::stream_renderer_command;
 use crate::gfxstream::stream_renderer_create_blob;
 use crate::gfxstream::stream_renderer_fence;
 use crate::gfxstream::stream_renderer_handle;
@@ -83,11 +84,7 @@ extern "C" fn stream_renderer_transfer_write_iov(
     unimplemented!();
 }
 #[no_mangle]
-extern "C" fn stream_renderer_submit_cmd(
-    _commands: *mut c_void,
-    _ctx_id: i32,
-    _dword_count: i32,
-) -> c_int {
+extern "C" fn stream_renderer_submit_cmd(_cmd: *const stream_renderer_command) -> c_int {
     unimplemented!();
 }
 #[no_mangle]

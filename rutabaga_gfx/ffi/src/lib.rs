@@ -95,6 +95,15 @@ pub struct rutabaga_channels {
     pub num_channels: usize,
 }
 
+#[repr(C)]
+pub struct rutabaga_command {
+    pub ctx_id: u32,
+    pub cmd_size: u32,
+    pub cmd: *mut u8,
+    pub num_in_fences: u32,
+    pub fence_ids: *mut u64,
+}
+
 #[allow(non_camel_case_types)]
 pub type write_fence_cb = extern "C" fn(user_data: u64, fence_data: rutabaga_fence);
 
@@ -518,13 +527,11 @@ pub extern "C" fn rutabaga_resource_map_info(
 #[no_mangle]
 pub unsafe extern "C" fn rutabaga_submit_command(
     ptr: &mut rutabaga,
-    ctx_id: u32,
-    commands: *mut u8,
-    size: usize,
+    cmd: &rutabaga_command,
 ) -> i32 {
     catch_unwind(AssertUnwindSafe(|| {
-        let cmd_slice = from_raw_parts_mut(commands, size);
-        let result = ptr.submit_command(ctx_id, cmd_slice);
+        let cmd_slice = from_raw_parts_mut(cmd.cmd, cmd.cmd_size as usize);
+        let result = ptr.submit_command(cmd.ctx_id, cmd_slice);
         return_result(result)
     }))
     .unwrap_or(-ESRCH)

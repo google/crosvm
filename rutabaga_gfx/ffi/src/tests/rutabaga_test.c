@@ -79,7 +79,8 @@ static int test_capset_mask_calculation(void)
 
     result = rutabaga_calculate_capset_mask("cross-domain:gfxstream-vulkan", &capset_mask);
     CHECK_RESULT(result);
-    CHECK(capset_mask == ((1 << RUTABAGA_CAPSET_CROSS_DOMAIN) | (1 << RUTABAGA_CAPSET_GFXSTREAM_VULKAN)));
+    CHECK(capset_mask ==
+          ((1 << RUTABAGA_CAPSET_CROSS_DOMAIN) | (1 << RUTABAGA_CAPSET_GFXSTREAM_VULKAN)));
 
     result = rutabaga_calculate_capset_mask(":gfxstream-vulkan", &capset_mask);
     CHECK_RESULT(result);
@@ -189,6 +190,7 @@ static int test_init_context(struct rutabaga_test *test)
     int result;
     struct rutabaga_create_blob rc_blob = { 0 };
     struct rutabaga_iovecs vecs = { 0 };
+    struct rutabaga_command cmd = { 0 };
     struct CrossDomainInit cmd_init = { { 0 } };
 
     struct iovec *query_iovecs = (struct iovec *)calloc(1, sizeof(struct iovec));
@@ -235,8 +237,11 @@ static int test_init_context(struct rutabaga_test *test)
     cmd_init.channel_ring_id = test->channel_ring_id;
     cmd_init.channel_type = CROSS_DOMAIN_CHANNEL_TYPE_WAYLAND;
 
-    result = rutabaga_submit_command(test->rutabaga, test->ctx_id, (uint8_t *)&cmd_init,
-                                     cmd_init.hdr.cmd_size);
+    cmd.ctx_id = test->ctx_id;
+    cmd.cmd = (uint8_t *)&cmd_init;
+    cmd.cmd_size = cmd_init.hdr.cmd_size;
+
+    result = rutabaga_submit_command(test->rutabaga, &cmd);
     CHECK_RESULT(result);
     return 0;
 }
@@ -249,6 +254,7 @@ static int test_command_submission(struct rutabaga_test *test)
     struct rutabaga_create_blob rc_blob = { 0 };
     struct rutabaga_fence fence;
     struct rutabaga_handle handle = { 0 };
+    struct rutabaga_command cmd = { 0 };
     uint32_t map_info;
 
     fence.flags = RUTABAGA_FLAG_FENCE | RUTABAGA_FLAG_INFO_RING_IDX;
@@ -269,8 +275,11 @@ static int test_command_submission(struct rutabaga_test *test)
 
             cmd_get_reqs.flags = GBM_BO_USE_LINEAR | GBM_BO_USE_SCANOUT;
 
-            result = rutabaga_submit_command(test->rutabaga, test->ctx_id, (uint8_t *)&cmd_get_reqs,
-                                             cmd_get_reqs.hdr.cmd_size);
+            cmd.ctx_id = test->ctx_id;
+            cmd.cmd = (uint8_t *)&cmd_get_reqs;
+            cmd.cmd_size = cmd_get_reqs.hdr.cmd_size;
+
+            result = rutabaga_submit_command(test->rutabaga, &cmd);
 
             CHECK(test->value < fence.fence_id);
             result = rutabaga_create_fence(test->rutabaga, &fence);

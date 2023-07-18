@@ -8,6 +8,7 @@
 
 #![cfg(feature = "gfxstream")]
 
+use std::convert::TryInto;
 use std::mem::size_of;
 use std::os::raw::c_char;
 use std::os::raw::c_int;
@@ -59,6 +60,15 @@ pub struct stream_renderer_vulkan_info {
     pub memory_index: u32,
     pub device_uuid: [u8; 16],
     pub driver_uuid: [u8; 16],
+}
+
+#[repr(C)]
+pub struct stream_renderer_command {
+    pub ctx_id: u32,
+    pub cmd_size: u32,
+    pub cmd: *const u8,
+    pub num_in_fences: u32,
+    pub in_fence_descriptors: *const u64,
 }
 
 #[allow(non_camel_case_types)]
@@ -119,7 +129,7 @@ extern "C" {
         iovec: *mut iovec,
         iovec_cnt: c_uint,
     ) -> c_int;
-    fn stream_renderer_submit_cmd(commands: *mut c_void, ctx_id: i32, dword_count: i32) -> c_int;
+    fn stream_renderer_submit_cmd(cmd: *const stream_renderer_command) -> c_int;
     fn stream_renderer_resource_attach_iov(
         res_handle: c_int,
         iov: *mut iovec,
@@ -182,15 +192,17 @@ impl RutabagaContext for GfxstreamContext {
         if commands.len() % size_of::<u32>() != 0 {
             return Err(RutabagaError::InvalidCommandSize(commands.len()));
         }
-        let dword_count = (commands.len() / size_of::<u32>()) as i32;
-        // Safe because the context and buffer are valid and gfxstream will have been
-        // initialized if there are Context instances.
+
         let ret = unsafe {
-            stream_renderer_submit_cmd(
-                commands.as_mut_ptr() as *mut c_void,
-                self.ctx_id as i32,
-                dword_count,
-            )
+            let cmd = stream_renderer_command {
+                ctx_id: self.ctx_id,
+                cmd_size: commands.len().try_into()?,
+                cmd: commands.as_mut_ptr(),
+                num_in_fences: 0,
+                in_fence_descriptors: null(),
+            };
+
+            stream_renderer_submit_cmd(&cmd as *const stream_renderer_command)
         };
         ret_to_res(ret)
     }
