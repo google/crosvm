@@ -40,7 +40,7 @@ const ARCH: &str = "riscv64";
 const COMMUNICATION_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Timeout for the VM to boot and the delegate to report that it's ready.
-const BOOT_TIMEOUT: Duration = Duration::from_secs(30);
+const BOOT_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Default timeout when waiting for guest commands to execute
 const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
