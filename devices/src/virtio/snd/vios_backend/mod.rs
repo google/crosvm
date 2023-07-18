@@ -75,7 +75,7 @@ pub type Result<T> = std::result::Result<T, SoundError>;
 pub struct Sound {
     config: virtio_snd_config,
     virtio_features: u64,
-    worker_thread: Option<WorkerThread<bool>>,
+    worker_thread: Option<WorkerThread<anyhow::Result<Worker>>>,
     vios_client: Arc<VioSClient>,
 }
 
@@ -141,15 +141,15 @@ impl VirtioDevice for Sound {
                     Arc::new(Mutex::new(rx_queue)),
                 ) {
                     Ok(mut worker) => match worker.control_loop(kill_evt) {
-                        Ok(_) => true,
+                        Ok(_) => Ok(worker),
                         Err(e) => {
                             error!("virtio-snd: Error in worker loop: {}", e);
-                            false
+                            Err(anyhow!("virtio-snd: Error in worker loop: {}", e))
                         }
                     },
                     Err(e) => {
                         error!("virtio-snd: Failed to create worker: {}", e);
-                        false
+                        Err(anyhow!("virtio-snd: Failed to create worker: {}", e))
                     }
                 },
             ));
@@ -162,13 +162,64 @@ impl VirtioDevice for Sound {
 
         if let Some(worker_thread) = self.worker_thread.take() {
             let worker_status = worker_thread.stop();
-            ret = worker_status;
+            ret = worker_status.is_ok();
         }
         if let Err(e) = self.vios_client.stop_bg_thread() {
             error!("virtio-snd: Failed to stop vios background thread: {}", e);
             ret = false;
         }
         ret
+    }
+
+    fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
+        if let Some(worker_thread) = self.worker_thread.take() {
+            let worker = worker_thread.stop();
+            self.vios_client
+                .stop_bg_thread()
+                .context("failed to stop VioS Client background thread")?;
+
+            let mut worker = worker.context("failed to stop worker_thread")?;
+            let ctrl_queue = worker.control_queue.clone();
+            let event_queue = worker.event_queue.take().unwrap();
+            let tx_queue = worker.tx_queue.clone();
+            let rx_queue = worker.rx_queue.clone();
+
+            // Must drop worker to drop all references to queues.
+            // This also drops the io_thread
+            drop(worker);
+
+            let ctrl_queue = match Arc::try_unwrap(ctrl_queue) {
+                Ok(q) => q.into_inner(),
+                Err(_) => panic!("too many refs to snd control queue"),
+            };
+            let tx_queue = match Arc::try_unwrap(tx_queue) {
+                Ok(q) => q.into_inner(),
+                Err(_) => panic!("too many refs to snd tx queue"),
+            };
+            let rx_queue = match Arc::try_unwrap(rx_queue) {
+                Ok(q) => q.into_inner(),
+                Err(_) => panic!("too many refs to snd rx queue"),
+            };
+            let queues = vec![ctrl_queue, event_queue, tx_queue, rx_queue];
+            return Ok(Some(BTreeMap::from_iter(queues.into_iter().enumerate())));
+        }
+        Ok(None)
+    }
+
+    fn virtio_wake(
+        &mut self,
+        device_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, Queue>)>,
+    ) -> anyhow::Result<()> {
+        match device_state {
+            None => Ok(()),
+            Some((mem, interrupt, queues)) => {
+                // TODO: activate is just what we want at the moment, but we should probably move
+                // it into a "start workers" function to make it obvious that it isn't strictly
+                // used for activate events.
+                self.activate(mem, interrupt, queues)?;
+                Ok(())
+            }
+        }
     }
 }
 

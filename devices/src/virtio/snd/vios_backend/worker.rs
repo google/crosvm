@@ -29,10 +29,12 @@ use crate::virtio::Queue;
 pub struct Worker {
     // Lock order: Must never hold more than one queue lock at the same time.
     interrupt: Interrupt,
-    control_queue: Arc<Mutex<Queue>>,
-    event_queue: Queue,
+    pub control_queue: Arc<Mutex<Queue>>,
+    pub event_queue: Option<Queue>,
     vios_client: Arc<VioSClient>,
     streams: Vec<StreamProxy>,
+    pub tx_queue: Arc<Mutex<Queue>>,
+    pub rx_queue: Arc<Mutex<Queue>>,
     io_thread: Option<thread::JoinHandle<Result<()>>>,
     io_kill: Event,
 }
@@ -72,20 +74,30 @@ impl Worker {
         let interrupt_clone = interrupt.clone();
         let senders: Vec<Sender<Box<StreamMsg>>> =
             streams.iter().map(|sp| sp.msg_sender().clone()).collect();
+        let tx_queue_thread = tx_queue.clone();
+        let rx_queue_thread = rx_queue.clone();
         let io_thread = thread::Builder::new()
             .name("v_snd_io".to_string())
             .spawn(move || {
                 try_set_real_time_priority();
 
-                io_loop(interrupt_clone, tx_queue, rx_queue, senders, kill_io)
+                io_loop(
+                    interrupt_clone,
+                    tx_queue_thread,
+                    rx_queue_thread,
+                    senders,
+                    kill_io,
+                )
             })
             .map_err(SoundError::CreateThread)?;
         Ok(Worker {
             interrupt,
             control_queue,
-            event_queue,
+            event_queue: Some(event_queue),
             vios_client,
             streams,
+            tx_queue,
+            rx_queue,
             io_thread: Some(io_thread),
             io_kill: self_kill_io,
         })
@@ -108,7 +120,10 @@ impl Worker {
         }
         let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
             (self.control_queue.lock().event(), Token::ControlQAvailable),
-            (self.event_queue.event(), Token::EventQAvailable),
+            (
+                self.event_queue.as_ref().expect("queue missing").event(),
+                Token::EventQAvailable,
+            ),
             (&event_notifier, Token::EventTriggered),
             (&kill_evt, Token::Kill),
         ])
@@ -119,6 +134,7 @@ impl Worker {
                 .add(resample_evt, Token::InterruptResample)
                 .map_err(SoundError::WaitCtx)?;
         }
+        let mut event_queue = self.event_queue.take().expect("event_queue missing");
         'wait: loop {
             let wait_events = wait_ctx.wait().map_err(SoundError::WaitCtx)?;
 
@@ -136,14 +152,11 @@ impl Worker {
                         // Just read from the event object to make sure the producer of such events
                         // never blocks. The buffers will only be used when actual virtio-snd
                         // events are triggered.
-                        self.event_queue
-                            .event()
-                            .wait()
-                            .map_err(SoundError::QueueEvt)?;
+                        event_queue.event().wait().map_err(SoundError::QueueEvt)?;
                     }
                     Token::EventTriggered => {
                         event_notifier.wait().map_err(SoundError::QueueEvt)?;
-                        self.process_event_triggered()?;
+                        self.process_event_triggered(&mut event_queue)?;
                     }
                     Token::InterruptResample => {
                         self.interrupt.interrupt_resample();
@@ -155,6 +168,7 @@ impl Worker {
                 }
             }
         }
+        self.event_queue = Some(event_queue);
         Ok(())
     }
 
@@ -352,14 +366,14 @@ impl Worker {
         Ok(())
     }
 
-    fn process_event_triggered(&mut self) -> Result<()> {
+    fn process_event_triggered(&mut self, event_queue: &mut Queue) -> Result<()> {
         while let Some(evt) = self.vios_client.pop_event() {
-            if let Some(mut desc) = self.event_queue.pop() {
+            if let Some(mut desc) = event_queue.pop() {
                 let writer = &mut desc.writer;
                 writer.write_obj(evt).map_err(SoundError::QueueIO)?;
                 let len = writer.bytes_written() as u32;
-                self.event_queue.add_used(desc, len);
-                self.event_queue.trigger_interrupt(&self.interrupt);
+                event_queue.add_used(desc, len);
+                event_queue.trigger_interrupt(&self.interrupt);
             } else {
                 warn!("virtio-snd: Dropping event because there are no buffers in virtqueue");
             }
