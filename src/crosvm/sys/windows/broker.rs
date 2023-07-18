@@ -80,6 +80,8 @@ use devices::virtio::vhost::user::device::gpu::sys::windows::GpuVmmConfig;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost::user::device::gpu::sys::windows::InputEventBackendConfig;
 #[cfg(feature = "gpu")]
+use devices::virtio::vhost::user::device::gpu::sys::windows::InputEventSplitConfig;
+#[cfg(feature = "gpu")]
 use devices::virtio::vhost::user::device::gpu::sys::windows::InputEventVmmConfig;
 #[cfg(feature = "audio")]
 use devices::virtio::vhost::user::device::snd::sys::windows::SndBackendConfig;
@@ -1615,6 +1617,46 @@ fn start_up_snd(
 }
 
 #[cfg(feature = "gpu")]
+fn platform_create_input_event_config(cfg: &Config) -> Result<InputEventSplitConfig> {
+    let mut event_devices = vec![];
+    let mut multi_touch_pipes = vec![];
+    let mut mouse_pipes = vec![];
+    let mut keyboard_pipes = vec![];
+
+    for _ in cfg.virtio_multi_touch.iter() {
+        let (event_device_pipe, virtio_input_pipe) =
+            StreamChannel::pair(BlockingMode::Nonblocking, FramingMode::Byte)
+                .exit_context(Exit::EventDeviceSetup, "failed to set up EventDevice")?;
+        event_devices.push(EventDevice::touchscreen(event_device_pipe));
+        multi_touch_pipes.push(virtio_input_pipe);
+    }
+
+    for _ in cfg.virtio_mice.iter() {
+        let (event_device_pipe, virtio_input_pipe) =
+            StreamChannel::pair(BlockingMode::Nonblocking, FramingMode::Byte)
+                .exit_context(Exit::EventDeviceSetup, "failed to set up EventDevice")?;
+        event_devices.push(EventDevice::mouse(event_device_pipe));
+        mouse_pipes.push(virtio_input_pipe);
+    }
+
+    // One keyboard
+    let (event_device_pipe, virtio_input_pipe) =
+        StreamChannel::pair(BlockingMode::Nonblocking, FramingMode::Byte)
+            .exit_context(Exit::EventDeviceSetup, "failed to set up EventDevice")?;
+    event_devices.push(EventDevice::keyboard(event_device_pipe));
+    keyboard_pipes.push(virtio_input_pipe);
+
+    Ok(InputEventSplitConfig {
+        backend_config: InputEventBackendConfig { event_devices },
+        vmm_config: InputEventVmmConfig {
+            multi_touch_pipes,
+            mouse_pipes,
+            keyboard_pipes,
+        },
+    })
+}
+
+#[cfg(feature = "gpu")]
 /// Create backend and VMM configurations for the GPU device.
 fn platform_create_gpu(
     cfg: &Config,
@@ -1629,42 +1671,19 @@ fn platform_create_gpu(
             .exit_context(Exit::CloneEvent, "failed to clone event")?,
     );
 
-    let mut event_devices = vec![];
-    let mut input_event_multi_touch_pipes = vec![];
-    let mut input_event_mouse_pipes = vec![];
-    let mut input_event_keyboard_pipes = vec![];
-
-    for _ in cfg.virtio_multi_touch.iter() {
-        let (event_device_pipe, virtio_input_pipe) =
-            StreamChannel::pair(BlockingMode::Nonblocking, FramingMode::Byte)
-                .exit_context(Exit::EventDeviceSetup, "failed to set up EventDevice")?;
-        event_devices.push(EventDevice::touchscreen(event_device_pipe));
-        input_event_multi_touch_pipes.push(virtio_input_pipe);
-    }
-
-    for _ in cfg.virtio_mice.iter() {
-        let (event_device_pipe, virtio_input_pipe) =
-            StreamChannel::pair(BlockingMode::Nonblocking, FramingMode::Byte)
-                .exit_context(Exit::EventDeviceSetup, "failed to set up EventDevice")?;
-        event_devices.push(EventDevice::mouse(event_device_pipe));
-        input_event_mouse_pipes.push(virtio_input_pipe);
-    }
-
-    // One keyboard
-    let (event_device_pipe, virtio_input_pipe) =
-        StreamChannel::pair(BlockingMode::Nonblocking, FramingMode::Byte)
-            .exit_context(Exit::EventDeviceSetup, "failed to set up EventDevice")?;
-    event_devices.push(EventDevice::keyboard(event_device_pipe));
-    input_event_keyboard_pipes.push(virtio_input_pipe);
-
     let (backend_config_product, vmm_config_product) =
         get_gpu_product_configs(cfg, main_child.alias_pid)?;
+
+    let InputEventSplitConfig {
+        backend_config: input_event_backend_config,
+        vmm_config: input_event_vmm_config,
+    } = platform_create_input_event_config(cfg).context("create input events for virtio-gpu")?;
 
     let backend_config = GpuBackendConfig {
         device_vhost_user_tube: None,
         exit_event,
         exit_evt_wrtube,
-        input_event_backend_config: InputEventBackendConfig { event_devices },
+        input_event_backend_config,
         params: cfg
             .gpu_parameters
             .as_ref()
@@ -1675,11 +1694,7 @@ fn platform_create_gpu(
 
     let vmm_config = GpuVmmConfig {
         main_vhost_user_tube: None,
-        input_event_vmm_config: InputEventVmmConfig {
-            multi_touch_pipes: input_event_multi_touch_pipes,
-            mouse_pipes: input_event_mouse_pipes,
-            keyboard_pipes: input_event_keyboard_pipes,
-        },
+        input_event_vmm_config,
         product_config: vmm_config_product,
     };
 

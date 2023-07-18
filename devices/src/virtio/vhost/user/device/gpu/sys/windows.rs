@@ -131,6 +131,16 @@ pub struct InputEventBackendConfig {
     pub event_devices: Vec<EventDevice>,
 }
 
+/// Configuration for running input event devices, split by a part sent to the main VMM and a part
+/// sent to the window thread (either main process or a vhost-user process).
+#[derive(Deserialize, Serialize)]
+pub struct InputEventSplitConfig {
+    // Config sent to the backend.
+    pub backend_config: InputEventBackendConfig,
+    // Config sent to the main process.
+    pub vmm_config: InputEventVmmConfig,
+}
+
 /// Main process end for a GPU device.
 #[derive(Deserialize, Serialize)]
 pub struct GpuVmmConfig {

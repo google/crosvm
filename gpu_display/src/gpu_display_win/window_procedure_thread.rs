@@ -379,7 +379,6 @@ impl<T: HandleWindowMessage> WindowProcedureThread<T> {
         mut message_dispatcher: Pin<Box<WindowMessageDispatcher<T>>>,
         gpu_main_display_tube: Option<Rc<Tube>>,
     ) -> MessageLoopState {
-        #[cfg_attr(not(feature = "kiwi"), allow(unused_mut))]
         let mut msg_wait_ctx = MsgWaitContext::new();
         if let Some(tube) = &gpu_main_display_tube {
             if let Err(e) = msg_wait_ctx.add(tube.get_read_notifier(), Token::ServiceMessage) {
