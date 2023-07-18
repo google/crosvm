@@ -68,11 +68,20 @@ With the `crosvm_tap` in place we can use it when running crosvm:
 To use the network device in the guest, we need to assign it a static IP address. In our example
 guest this can be done via a netplan config:
 
+First, create a guest directory and the netplan config:
+
+```bash
+mkdir guest/
+touch guest/01-netcfg.yaml
+```
+
+Then edit guest/01-netcfg.yaml and add the following contents:
+
 ```yaml
 {{#include ../../../../tools/examples/guest/01-netcfg.yaml:5:}}
 ```
 
-Which can be installed when building the VM image:
+The netplan config can be installed when building the VM image:
 
 ```bash
 {{#include ../../../../tools/examples/example_network:build}}

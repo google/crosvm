@@ -19,11 +19,13 @@ if ! [ -f rootfs ]; then
 
         # Configure network via netplan config in 01-netcfg.yaml
         --hostname crosvm-test
+        # $SRC=/path/to/crosvm
         --copy-in "$SRC/guest/01-netcfg.yaml:/etc/netplan/"
 
         # Install sshd and authorized key for the user.
         --install openssh-server
-        --ssh-inject "$USER:file:$HOME/.ssh/id_rsa.pub"
+        # OPTIONAL: inject RSA public key as known key
+        # --ssh-inject "$USER:file:$HOME/.ssh/id_rsa.pub"
 
         -o rootfs
     )
