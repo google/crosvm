@@ -2077,4 +2077,21 @@ impl VirtioDevice for Wl {
         }
         Ok(None)
     }
+
+    fn virtio_wake(
+        &mut self,
+        device_state: Option<(GuestMemory, Interrupt, Map<usize, (Queue, Event)>)>,
+    ) -> anyhow::Result<()> {
+        match device_state {
+            None => Ok(()),
+            Some((mem, interrupt, queues_map)) => {
+                // TODO: activate is just what we want at the moment, but we should probably move
+                // it into a "start workers" function to make it obvious that it isn't strictly
+                // used for activate events.
+                let queues = queues_map.into_values().collect();
+                self.activate(mem, interrupt, queues)?;
+                Ok(())
+            }
+        }
+    }
 }
