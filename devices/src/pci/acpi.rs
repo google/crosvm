@@ -80,10 +80,8 @@ impl Aml for DeviceVcfgRegister {
             ],
         )
         .to_aml_bytes(bytes);
-        // HACK: TODO: Using "VREG" here is intentional.
-        // Refer to `read_virtual_config_register` in devices/src/pci/vfio_pci.rs for more info.
         aml::Field::new(
-            "VREG".into(),
+            "SHAM".into(),
             aml::FieldAccessType::DWord,
             aml::FieldLockRule::Lock,
             aml::FieldUpdateRule::Preserve,

@@ -2088,18 +2088,6 @@ impl PciDevice for VfioPciDevice {
     }
 
     fn read_virtual_config_register(&self, reg_idx: usize) -> u32 {
-        // HACK TODO:
-        // The results should be passed via shared memory (see `write_virtual_config_register`);
-        // HOWEVER, for not-yet-known reasons, Guest is unable to see the changes immediately
-        // even after `msync`. While the investigation is still ongoing, let's use this hack
-        // temporarily to unblock integration tests.
-        if reg_idx < 1024 {
-            if let Some(shm) = &self.vcfg_shm_mmap {
-                return shm
-                    .read_obj::<u32>(reg_idx * std::mem::size_of::<u32>())
-                    .expect("failed to read vcfg.");
-            }
-        }
         warn!(
             "{} read unsupported vcfg register {}",
             self.debug_label(),
