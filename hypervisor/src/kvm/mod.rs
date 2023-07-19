@@ -1035,42 +1035,46 @@ impl Vcpu for KvmVcpu {
         let run = unsafe { &mut *(self.run_mmap.as_ptr() as *mut kvm_run) };
         // Verify that the handler is called in the right context.
         assert!(run.exit_reason == KVM_EXIT_IO);
-        let run_start = run as *mut kvm_run as *mut u8;
         // Safe because the exit_reason (which comes from the kernel) told us which
         // union field to use.
         let io = unsafe { run.__bindgen_anon_1.io };
-        let size = (io.count as usize) * (io.size as usize);
+        let size = usize::from(io.size);
+
+        // The data_offset is defined by the kernel to be some number of bytes into the kvm_run
+        // structure, which we have fully mmap'd.
+        let mut data_ptr = unsafe { (run as *mut kvm_run as *mut u8).add(io.data_offset as usize) };
+
         match io.direction as u32 {
             KVM_EXIT_IO_IN => {
-                if let Some(data) = handle_fn(IoParams {
-                    address: io.port.into(),
-                    size,
-                    operation: IoOperation::Read,
-                }) {
-                    // The data_offset is defined by the kernel to be some number of bytes
-                    // into the kvm_run structure, which we have fully mmap'd.
-                    unsafe {
-                        let data_ptr = run_start.offset(io.data_offset as isize);
-                        copy_nonoverlapping(data.as_ptr(), data_ptr, size);
+                for _ in 0..io.count {
+                    if let Some(data) = handle_fn(IoParams {
+                        address: io.port.into(),
+                        size,
+                        operation: IoOperation::Read,
+                    }) {
+                        unsafe {
+                            copy_nonoverlapping(data.as_ptr(), data_ptr, size);
+                            data_ptr = data_ptr.add(size);
+                        }
+                    } else {
+                        return Err(Error::new(EINVAL));
                     }
-                    Ok(())
-                } else {
-                    Err(Error::new(EINVAL))
                 }
+                Ok(())
             }
             KVM_EXIT_IO_OUT => {
-                let mut data = [0; 8];
-                // The data_offset is defined by the kernel to be some number of bytes
-                // into the kvm_run structure, which we have fully mmap'd.
-                unsafe {
-                    let data_ptr = run_start.offset(io.data_offset as isize);
-                    copy_nonoverlapping(data_ptr, data.as_mut_ptr(), min(size, data.len()));
+                for _ in 0..io.count {
+                    let mut data = [0; 8];
+                    unsafe {
+                        copy_nonoverlapping(data_ptr, data.as_mut_ptr(), min(size, data.len()));
+                        data_ptr = data_ptr.add(size);
+                    }
+                    handle_fn(IoParams {
+                        address: io.port.into(),
+                        size,
+                        operation: IoOperation::Write { data },
+                    });
                 }
-                handle_fn(IoParams {
-                    address: io.port.into(),
-                    size,
-                    operation: IoOperation::Write { data },
-                });
                 Ok(())
             }
             _ => Err(Error::new(EINVAL)),
