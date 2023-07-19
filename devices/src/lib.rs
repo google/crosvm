@@ -79,8 +79,12 @@ pub use self::bus::HotPlugKey;
 pub use self::bus_stats::BusStatistics;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use self::debugcon::Debugcon;
+pub use self::fw_cfg::Error as FwCfgError;
 pub use self::fw_cfg::FwCfgDevice;
 pub use self::fw_cfg::FwCfgParameters;
+pub use self::fw_cfg::FW_CFG_BASE_PORT;
+pub use self::fw_cfg::FW_CFG_MAX_FILE_SLOTS;
+pub use self::fw_cfg::FW_CFG_WIDTH;
 pub use self::i8042::I8042Device;
 pub use self::irq_event::IrqEdgeEvent;
 pub use self::irq_event::IrqLevelEvent;

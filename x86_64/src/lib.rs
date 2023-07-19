@@ -100,6 +100,9 @@ use devices::SerialHardware;
 use devices::SerialParameters;
 #[cfg(unix)]
 use devices::VirtualPmc;
+use devices::FW_CFG_BASE_PORT;
+use devices::FW_CFG_MAX_FILE_SLOTS;
+use devices::FW_CFG_WIDTH;
 #[cfg(feature = "gdb")]
 use gdbstub_arch::x86::reg::id::X86_64CoreRegId;
 #[cfg(feature = "gdb")]
@@ -187,6 +190,8 @@ pub enum Error {
     CreateEvent(base::Error),
     #[error("failed to create fdt: {0}")]
     CreateFdt(cros_fdt::Error),
+    #[error("failed to create fw_cfg device: {0}")]
+    CreateFwCfgDevice(devices::FwCfgError),
     #[error("failed to create IOAPIC device: {0}")]
     CreateIoapicDevice(base::Error),
     #[error("failed to create a PCI root hub: {0}")]
@@ -1707,10 +1712,15 @@ impl X8664arch {
         io_bus: &devices::Bus,
         fw_cfg_parameters: Vec<FwCfgParameters>,
     ) -> Result<()> {
-        // Create fw_cfg device w/ 0 file slots.
-        let fw_cfg = Arc::new(Mutex::new(devices::FwCfgDevice::new(0, fw_cfg_parameters)));
-        io_bus.insert(fw_cfg, 0x510, 0x4).unwrap();
-        Ok(())
+        match devices::FwCfgDevice::new(FW_CFG_MAX_FILE_SLOTS, fw_cfg_parameters) {
+            Ok(device) => {
+                io_bus
+                    .insert(Arc::new(Mutex::new(device)), FW_CFG_BASE_PORT, FW_CFG_WIDTH)
+                    .unwrap();
+                Ok(())
+            }
+            Err(err) => Err(Error::CreateFwCfgDevice(err)),
+        }
     }
 
     /// Sets up the legacy x86 i8042/KBD platform device
