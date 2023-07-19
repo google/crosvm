@@ -755,7 +755,7 @@ pub fn create_balloon_device(
     init_balloon_size: u64,
     enabled_features: u64,
     #[cfg(feature = "registered_events")] registered_evt_q: Option<SendTube>,
-    wss_num_bins: u8,
+    ws_num_bins: u8,
 ) -> DeviceResult {
     let dev = virtio::Balloon::new(
         virtio::base_features(protection_type),
@@ -766,7 +766,7 @@ pub fn create_balloon_device(
         enabled_features,
         #[cfg(feature = "registered_events")]
         registered_evt_q,
-        wss_num_bins,
+        ws_num_bins,
     )
     .context("failed to create balloon")?;
 
