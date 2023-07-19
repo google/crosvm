@@ -152,8 +152,7 @@ fn child_proc<D: BusDevice>(tube: Tube, mut device: D) {
             }
             Command::WriteVirtualConfig { reg_idx, value } => {
                 device.virtual_config_register_write(reg_idx as usize, value);
-                // Command::WriteVirtualConfig does not have a result.
-                Ok(())
+                tube.send(&CommandResult::Ok)
             }
             Command::DestroyDevice => {
                 device.destroy_device();
@@ -374,7 +373,7 @@ impl BusDevice for ProxyDevice {
 
     fn virtual_config_register_write(&mut self, reg_idx: usize, value: u32) {
         let reg_idx = reg_idx as u32;
-        self.send_no_result(&Command::WriteVirtualConfig { reg_idx, value });
+        self.sync_send(&Command::WriteVirtualConfig { reg_idx, value });
     }
 
     fn virtual_config_register_read(&self, reg_idx: usize) -> u32 {
