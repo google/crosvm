@@ -156,8 +156,6 @@ use hypervisor::HypervisorCap;
 #[cfg(feature = "whpx")]
 use hypervisor::HypervisorX86_64;
 use hypervisor::ProtectionType;
-#[cfg(any(feature = "gvm", feature = "whpx"))]
-use hypervisor::Vm;
 use hypervisor::Vm;
 use irq_wait::IrqWaitWorker;
 use jail::FakeMinijailStub as Minijail;
