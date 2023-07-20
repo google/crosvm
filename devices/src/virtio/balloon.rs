@@ -872,19 +872,6 @@ impl BalloonQueues {
     }
 }
 
-impl From<BTreeMap<usize, (Queue, Event)>> for BalloonQueues {
-    fn from(mut queues: BTreeMap<usize, (Queue, Event)>) -> Self {
-        BalloonQueues {
-            inflate: queues.remove(&0).expect("the inflate queue is required"),
-            deflate: queues.remove(&1).expect("the deflate queue is required"),
-            stats: queues.remove(&2),
-            reporting: queues.remove(&3),
-            events: queues.remove(&4),
-            wss: (queues.remove(&5), queues.remove(&6)),
-        }
-    }
-}
-
 /// When the worker is stopped, the queues are preserved here.
 struct PausedQueues {
     inflate: Queue,
@@ -919,15 +906,17 @@ where
 
 impl From<Box<PausedQueues>> for BTreeMap<usize, Queue> {
     fn from(queues: Box<PausedQueues>) -> BTreeMap<usize, Queue> {
-        let mut ret = BTreeMap::new();
-        ret.insert(0, queues.inflate);
-        ret.insert(1, queues.deflate);
-        apply_if_some(queues.stats, |stats| ret.insert(2, stats));
-        apply_if_some(queues.reporting, |reporting| ret.insert(3, reporting));
-        apply_if_some(queues.events, |events| ret.insert(4, events));
-        apply_if_some(queues.wss.0, |wss_data| ret.insert(5, wss_data));
-        apply_if_some(queues.wss.1, |wss_op| ret.insert(6, wss_op));
-        ret
+        let mut ret = Vec::new();
+        ret.push(queues.inflate);
+        ret.push(queues.deflate);
+        apply_if_some(queues.stats, |stats| ret.push(stats));
+        apply_if_some(queues.reporting, |reporting| ret.push(reporting));
+        apply_if_some(queues.events, |events| ret.push(events));
+        apply_if_some(queues.wss.0, |wss_data| ret.push(wss_data));
+        apply_if_some(queues.wss.1, |wss_op| ret.push(wss_op));
+        // WARNING: We don't use the indices from the virito spec on purpose, see comment in
+        // get_queues_from_map for the rationale.
+        ret.into_iter().enumerate().collect()
     }
 }
 
@@ -1423,9 +1412,9 @@ impl Balloon {
     /// Given a filtered queue vector from [VirtioDevice::activate], extract
     /// the queues (accounting for queues that are missing because the features
     /// are not negotiated) into a structure that is easier to work with.
-    fn get_queues_from_vec(
+    fn get_queues_from_map(
         &self,
-        mut queues: Vec<(Queue, Event)>,
+        mut queues: BTreeMap<usize, (Queue, Event)>,
     ) -> anyhow::Result<BalloonQueues> {
         let expected_queues = Balloon::num_expected_queues(self.acked_features);
         if queues.len() != expected_queues {
@@ -1436,21 +1425,26 @@ impl Balloon {
             ));
         }
 
-        let inflate_queue = queues.remove(0);
-        let deflate_queue = queues.remove(0);
+        // WARNING: We use `pop_first` instead of explicitly using the indices from the virtio spec
+        // because the Linux virtio drivers only "allocates" queue indices that are used.
+        let inflate_queue = queues.pop_first().unwrap().1;
+        let deflate_queue = queues.pop_first().unwrap().1;
         let mut queue_struct = BalloonQueues::new(inflate_queue, deflate_queue);
 
         if self.acked_features & (1 << VIRTIO_BALLOON_F_STATS_VQ) != 0 {
-            queue_struct.stats = Some(queues.remove(0));
+            queue_struct.stats = Some(queues.pop_first().unwrap().1);
         }
         if self.acked_features & (1 << VIRTIO_BALLOON_F_PAGE_REPORTING) != 0 {
-            queue_struct.reporting = Some(queues.remove(0));
+            queue_struct.reporting = Some(queues.pop_first().unwrap().1);
         }
         if self.acked_features & (1 << VIRTIO_BALLOON_F_EVENTS_VQ) != 0 {
-            queue_struct.events = Some(queues.remove(0));
+            queue_struct.events = Some(queues.pop_first().unwrap().1);
         }
         if self.acked_features & (1 << VIRTIO_BALLOON_F_WSS_REPORTING) != 0 {
-            queue_struct.wss = (Some(queues.remove(0)), Some(queues.remove(0)));
+            queue_struct.wss = (
+                Some(queues.pop_first().unwrap().1),
+                Some(queues.pop_first().unwrap().1),
+            );
         }
         Ok(queue_struct)
     }
@@ -1574,9 +1568,9 @@ impl VirtioDevice for Balloon {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        queues: Vec<(Queue, Event)>,
+        queues: BTreeMap<usize, (Queue, Event)>,
     ) -> anyhow::Result<()> {
-        let queues = self.get_queues_from_vec(queues)?;
+        let queues = self.get_queues_from_map(queues)?;
         self.start_worker(mem, interrupt, queues)
     }
 
@@ -1609,7 +1603,7 @@ impl VirtioDevice for Balloon {
                 anyhow::bail!("{} queues were found, but an activated balloon must have at least 2 active queues.", queues.len());
             }
 
-            let balloon_queues = queues.into();
+            let balloon_queues = self.get_queues_from_map(queues)?;
             self.start_worker(mem, interrupt, balloon_queues)?;
         }
         Ok(())

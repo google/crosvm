@@ -4,6 +4,7 @@
 
 //! Asynchronous console device which implementation can be shared by VMM and vhost-user.
 
+use std::collections::BTreeMap;
 use std::collections::VecDeque;
 use std::io;
 use std::sync::Arc;
@@ -288,7 +289,7 @@ impl VirtioDevice for AsyncConsole {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: Vec<(Queue, Event)>,
+        mut queues: BTreeMap<usize, (Queue, Event)>,
     ) -> anyhow::Result<()> {
         if queues.len() < 2 {
             return Err(anyhow!("expected 2 queues, got {}", queues.len()));
@@ -311,8 +312,8 @@ impl VirtioDevice for AsyncConsole {
         };
 
         let ex = Executor::new().expect("failed to create an executor");
-        let (receive_queue, receive_evt) = queues.remove(0);
-        let (transmit_queue, transmit_evt) = queues.remove(0);
+        let (receive_queue, receive_evt) = queues.remove(&0).unwrap();
+        let (transmit_queue, transmit_evt) = queues.remove(&1).unwrap();
 
         self.state =
             VirtioConsoleState::Running(WorkerThread::start("v_console", move |kill_evt| {

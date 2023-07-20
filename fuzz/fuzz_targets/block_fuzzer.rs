@@ -5,6 +5,7 @@
 #![cfg(not(test))]
 #![no_main]
 
+use std::collections::BTreeMap;
 use std::io::Cursor;
 use std::io::Read;
 use std::io::Seek;
@@ -110,7 +111,7 @@ fuzz_target!(|bytes| {
                 None,   // msix_config
                 0xFFFF, // VIRTIO_MSI_NO_VECTOR
             ),
-            vec![(q, queue_evt.try_clone().unwrap())],
+            BTreeMap::from([(0, (q, queue_evt.try_clone().unwrap()))]),
         )
         .unwrap();
 

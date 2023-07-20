@@ -5,6 +5,7 @@
 mod sys;
 pub(crate) mod worker;
 
+use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 use base::error;
@@ -256,7 +257,7 @@ impl VhostUserHandler {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        queues: Vec<(Queue, Event)>,
+        queues: BTreeMap<usize, (Queue, Event)>,
         label: &str,
     ) -> Result<WorkerThread<()>> {
         self.set_mem_table(&mem)?;
@@ -268,7 +269,7 @@ impl VhostUserHandler {
         let msix_config = msix_config_opt.lock();
 
         let non_msix_evt = Event::new().map_err(Error::CreateEvent)?;
-        for (queue_index, (queue, queue_evt)) in queues.iter().enumerate() {
+        for (&queue_index, (queue, queue_evt)) in queues.iter() {
             let irqfd = msix_config
                 .get_irqfd(queue.vector() as usize)
                 .unwrap_or(&non_msix_evt);

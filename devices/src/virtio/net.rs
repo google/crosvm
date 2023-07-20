@@ -717,7 +717,7 @@ where
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: Vec<(Queue, Event)>,
+        mut queues: BTreeMap<usize, (Queue, Event)>,
     ) -> anyhow::Result<()> {
         let ctrl_vq_enabled = self.acked_features & (1 << virtio_net::VIRTIO_NET_F_CTRL_VQ) != 0;
         let mq_enabled = self.acked_features & (1 << virtio_net::VIRTIO_NET_F_MQ) != 0;
@@ -756,10 +756,10 @@ where
             let memory = mem.clone();
             let first_queue = i == 0;
             // Queues alternate between rx0, tx0, rx1, tx1, ..., rxN, txN, ctrl.
-            let (rx_queue, rx_queue_evt) = queues.remove(0);
-            let (tx_queue, tx_queue_evt) = queues.remove(0);
+            let (rx_queue, rx_queue_evt) = queues.pop_first().unwrap().1;
+            let (tx_queue, tx_queue_evt) = queues.pop_first().unwrap().1;
             let (ctrl_queue, ctrl_queue_evt) = if first_queue && ctrl_vq_enabled {
-                let (queue, evt) = queues.remove(queues.len() - 1);
+                let (queue, evt) = queues.pop_last().unwrap().1;
                 (Some(queue), Some(evt))
             } else {
                 (None, None)
@@ -835,11 +835,10 @@ where
     ) -> anyhow::Result<()> {
         match device_state {
             None => Ok(()),
-            Some((mem, interrupt, queues_map)) => {
+            Some((mem, interrupt, queues)) => {
                 // TODO: activate is just what we want at the moment, but we should probably move
                 // it into a "start workers" function to make it obvious that it isn't strictly
                 // used for activate events.
-                let queues = queues_map.into_values().collect();
                 self.activate(mem, interrupt, queues)?;
                 Ok(())
             }

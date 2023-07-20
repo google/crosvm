@@ -12,6 +12,7 @@ pub use self::shm_vios::*;
 pub mod streams;
 mod worker;
 
+use std::collections::BTreeMap;
 use std::io::Error as IoError;
 use std::path::Path;
 use std::sync::mpsc::RecvError;
@@ -108,7 +109,7 @@ impl VirtioDevice for Sound {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: Vec<(Queue, Event)>,
+        mut queues: BTreeMap<usize, (Queue, Event)>,
     ) -> anyhow::Result<()> {
         if self.worker_thread.is_some() {
             return Err(anyhow!("virtio-snd: Device is already active"));
@@ -119,10 +120,10 @@ impl VirtioDevice for Sound {
                 queues.len(),
             ));
         }
-        let (control_queue, control_queue_evt) = queues.remove(0);
-        let (event_queue, event_queue_evt) = queues.remove(0);
-        let (tx_queue, tx_queue_evt) = queues.remove(0);
-        let (rx_queue, rx_queue_evt) = queues.remove(0);
+        let (control_queue, control_queue_evt) = queues.remove(&0).unwrap();
+        let (event_queue, event_queue_evt) = queues.remove(&1).unwrap();
+        let (tx_queue, tx_queue_evt) = queues.remove(&2).unwrap();
+        let (rx_queue, rx_queue_evt) = queues.remove(&3).unwrap();
 
         let vios_client = self.vios_client.clone();
         vios_client

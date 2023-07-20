@@ -545,11 +545,14 @@ impl VirtioPciDevice {
                     evt.ioevent_registered = true;
                 }
                 Ok((
-                    queue.activate().context("failed to activate queue")?,
-                    evt.event.try_clone().context("failed to clone queue_evt")?,
+                    queue_index,
+                    (
+                        queue.activate().context("failed to activate queue")?,
+                        evt.event.try_clone().context("failed to clone queue_evt")?,
+                    ),
                 ))
             })
-            .collect::<anyhow::Result<Vec<(Queue, Event)>>>()?;
+            .collect::<anyhow::Result<BTreeMap<usize, (Queue, Event)>>>()?;
 
         if let Some(iommu) = &self.iommu {
             self.device.set_iommu(iommu);
