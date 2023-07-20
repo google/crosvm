@@ -1521,6 +1521,9 @@ impl ::protobuf::Message for PinMetadata {
 #[derive(PartialEq,Clone,Default,Debug)]
 // @@protoc_insertion_point(message:user_data_auth.CryptohomeRecoveryMetadata)
 pub struct CryptohomeRecoveryMetadata {
+    // message fields
+    // @@protoc_insertion_point(field:user_data_auth.CryptohomeRecoveryMetadata.mediator_pub_key)
+    pub mediator_pub_key: ::std::vec::Vec<u8>,
     // special fields
     // @@protoc_insertion_point(special_field:user_data_auth.CryptohomeRecoveryMetadata.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -1548,6 +1551,9 @@ impl ::protobuf::Message for CryptohomeRecoveryMetadata {
     fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
         while let Some(tag) = is.read_raw_tag_or_eof()? {
             match tag {
+                10 => {
+                    self.mediator_pub_key = is.read_bytes()?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -1560,12 +1566,18 @@ impl ::protobuf::Message for CryptohomeRecoveryMetadata {
     #[allow(unused_variables)]
     fn compute_size(&self) -> u64 {
         let mut my_size = 0;
+        if !self.mediator_pub_key.is_empty() {
+            my_size += ::protobuf::rt::bytes_size(1, &self.mediator_pub_key);
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
     }
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.mediator_pub_key.is_empty() {
+            os.write_bytes(1, &self.mediator_pub_key)?;
+        }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -1583,11 +1595,13 @@ impl ::protobuf::Message for CryptohomeRecoveryMetadata {
     }
 
     fn clear(&mut self) {
+        self.mediator_pub_key.clear();
         self.special_fields.clear();
     }
 
     fn default_instance() -> &'static CryptohomeRecoveryMetadata {
         static instance: CryptohomeRecoveryMetadata = CryptohomeRecoveryMetadata {
+            mediator_pub_key: ::std::vec::Vec::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -1768,6 +1782,10 @@ pub struct CommonMetadata {
     pub chromeos_version_last_updated: ::std::string::String,
     // @@protoc_insertion_point(field:user_data_auth.CommonMetadata.chrome_version_last_updated)
     pub chrome_version_last_updated: ::std::string::String,
+    // @@protoc_insertion_point(field:user_data_auth.CommonMetadata.lockout_policy)
+    pub lockout_policy: ::protobuf::EnumOrUnknown<LockoutPolicy>,
+    // @@protoc_insertion_point(field:user_data_auth.CommonMetadata.user_specified_name)
+    pub user_specified_name: ::std::string::String,
     // special fields
     // @@protoc_insertion_point(special_field:user_data_auth.CommonMetadata.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -1801,6 +1819,12 @@ impl ::protobuf::Message for CommonMetadata {
                 18 => {
                     self.chrome_version_last_updated = is.read_string()?;
                 },
+                24 => {
+                    self.lockout_policy = is.read_enum_or_unknown()?;
+                },
+                34 => {
+                    self.user_specified_name = is.read_string()?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -1819,6 +1843,12 @@ impl ::protobuf::Message for CommonMetadata {
         if !self.chrome_version_last_updated.is_empty() {
             my_size += ::protobuf::rt::string_size(2, &self.chrome_version_last_updated);
         }
+        if self.lockout_policy != ::protobuf::EnumOrUnknown::new(LockoutPolicy::LOCKOUT_POLICY_UNKNOWN) {
+            my_size += ::protobuf::rt::int32_size(3, self.lockout_policy.value());
+        }
+        if !self.user_specified_name.is_empty() {
+            my_size += ::protobuf::rt::string_size(4, &self.user_specified_name);
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -1830,6 +1860,12 @@ impl ::protobuf::Message for CommonMetadata {
         }
         if !self.chrome_version_last_updated.is_empty() {
             os.write_string(2, &self.chrome_version_last_updated)?;
+        }
+        if self.lockout_policy != ::protobuf::EnumOrUnknown::new(LockoutPolicy::LOCKOUT_POLICY_UNKNOWN) {
+            os.write_enum(3, ::protobuf::EnumOrUnknown::value(&self.lockout_policy))?;
+        }
+        if !self.user_specified_name.is_empty() {
+            os.write_string(4, &self.user_specified_name)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -1850,6 +1886,8 @@ impl ::protobuf::Message for CommonMetadata {
     fn clear(&mut self) {
         self.chromeos_version_last_updated.clear();
         self.chrome_version_last_updated.clear();
+        self.lockout_policy = ::protobuf::EnumOrUnknown::new(LockoutPolicy::LOCKOUT_POLICY_UNKNOWN);
+        self.user_specified_name.clear();
         self.special_fields.clear();
     }
 
@@ -1857,6 +1895,8 @@ impl ::protobuf::Message for CommonMetadata {
         static instance: CommonMetadata = CommonMetadata {
             chromeos_version_last_updated: ::std::string::String::new(),
             chrome_version_last_updated: ::std::string::String::new(),
+            lockout_policy: ::protobuf::EnumOrUnknown::from_i32(0),
+            user_specified_name: ::std::string::String::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -2785,6 +2825,51 @@ impl ::protobuf::Enum for AuthIntent {
 impl ::std::default::Default for AuthIntent {
     fn default() -> Self {
         AuthIntent::AUTH_INTENT_UNSPECIFIED
+    }
+}
+
+
+#[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
+// @@protoc_insertion_point(enum:user_data_auth.LockoutPolicy)
+pub enum LockoutPolicy {
+    // @@protoc_insertion_point(enum_value:user_data_auth.LockoutPolicy.LOCKOUT_POLICY_UNKNOWN)
+    LOCKOUT_POLICY_UNKNOWN = 0,
+    // @@protoc_insertion_point(enum_value:user_data_auth.LockoutPolicy.LOCKOUT_POLICY_NONE)
+    LOCKOUT_POLICY_NONE = 1,
+    // @@protoc_insertion_point(enum_value:user_data_auth.LockoutPolicy.LOCKOUT_POLICY_ATTEMPT_LIMITED)
+    LOCKOUT_POLICY_ATTEMPT_LIMITED = 2,
+    // @@protoc_insertion_point(enum_value:user_data_auth.LockoutPolicy.LOCKOUT_POLICY_TIME_LIMITED)
+    LOCKOUT_POLICY_TIME_LIMITED = 3,
+}
+
+impl ::protobuf::Enum for LockoutPolicy {
+    const NAME: &'static str = "LockoutPolicy";
+
+    fn value(&self) -> i32 {
+        *self as i32
+    }
+
+    fn from_i32(value: i32) -> ::std::option::Option<LockoutPolicy> {
+        match value {
+            0 => ::std::option::Option::Some(LockoutPolicy::LOCKOUT_POLICY_UNKNOWN),
+            1 => ::std::option::Option::Some(LockoutPolicy::LOCKOUT_POLICY_NONE),
+            2 => ::std::option::Option::Some(LockoutPolicy::LOCKOUT_POLICY_ATTEMPT_LIMITED),
+            3 => ::std::option::Option::Some(LockoutPolicy::LOCKOUT_POLICY_TIME_LIMITED),
+            _ => ::std::option::Option::None
+        }
+    }
+
+    const VALUES: &'static [LockoutPolicy] = &[
+        LockoutPolicy::LOCKOUT_POLICY_UNKNOWN,
+        LockoutPolicy::LOCKOUT_POLICY_NONE,
+        LockoutPolicy::LOCKOUT_POLICY_ATTEMPT_LIMITED,
+        LockoutPolicy::LOCKOUT_POLICY_TIME_LIMITED,
+    ];
+}
+
+impl ::std::default::Default for LockoutPolicy {
+    fn default() -> Self {
+        LockoutPolicy::LOCKOUT_POLICY_UNKNOWN
     }
 }
 

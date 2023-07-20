@@ -850,10 +850,10 @@ pub struct ListKeysReply {
     // message fields
     // @@protoc_insertion_point(field:user_data_auth.ListKeysReply.error)
     pub error: ::protobuf::EnumOrUnknown<CryptohomeErrorCode>,
-    // @@protoc_insertion_point(field:user_data_auth.ListKeysReply.labels)
-    pub labels: ::std::vec::Vec<::std::string::String>,
     // @@protoc_insertion_point(field:user_data_auth.ListKeysReply.error_info)
     pub error_info: ::protobuf::MessageField<CryptohomeErrorInfo>,
+    // @@protoc_insertion_point(field:user_data_auth.ListKeysReply.labels)
+    pub labels: ::std::vec::Vec<::std::string::String>,
     // special fields
     // @@protoc_insertion_point(special_field:user_data_auth.ListKeysReply.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -884,11 +884,11 @@ impl ::protobuf::Message for ListKeysReply {
                 8 => {
                     self.error = is.read_enum_or_unknown()?;
                 },
-                18 => {
-                    self.labels.push(is.read_string()?);
-                },
                 26 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.error_info)?;
+                },
+                18 => {
+                    self.labels.push(is.read_string()?);
                 },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -905,13 +905,13 @@ impl ::protobuf::Message for ListKeysReply {
         if self.error != ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET) {
             my_size += ::protobuf::rt::int32_size(1, self.error.value());
         }
-        for value in &self.labels {
-            my_size += ::protobuf::rt::string_size(2, &value);
-        };
         if let Some(v) = self.error_info.as_ref() {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         }
+        for value in &self.labels {
+            my_size += ::protobuf::rt::string_size(2, &value);
+        };
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -921,12 +921,12 @@ impl ::protobuf::Message for ListKeysReply {
         if self.error != ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET) {
             os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.error))?;
         }
-        for v in &self.labels {
-            os.write_string(2, &v)?;
-        };
         if let Some(v) = self.error_info.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
         }
+        for v in &self.labels {
+            os.write_string(2, &v)?;
+        };
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -945,16 +945,16 @@ impl ::protobuf::Message for ListKeysReply {
 
     fn clear(&mut self) {
         self.error = ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET);
-        self.labels.clear();
         self.error_info.clear();
+        self.labels.clear();
         self.special_fields.clear();
     }
 
     fn default_instance() -> &'static ListKeysReply {
         static instance: ListKeysReply = ListKeysReply {
             error: ::protobuf::EnumOrUnknown::from_i32(0),
-            labels: ::std::vec::Vec::new(),
             error_info: ::protobuf::MessageField::none(),
+            labels: ::std::vec::Vec::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -3375,6 +3375,96 @@ impl ::protobuf::Message for StartAuthSessionRequest {
 }
 
 #[derive(PartialEq,Clone,Default,Debug)]
+// @@protoc_insertion_point(message:user_data_auth.StatusInfo)
+pub struct StatusInfo {
+    // message fields
+    // @@protoc_insertion_point(field:user_data_auth.StatusInfo.time_available_in)
+    pub time_available_in: u64,
+    // special fields
+    // @@protoc_insertion_point(special_field:user_data_auth.StatusInfo.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a StatusInfo {
+    fn default() -> &'a StatusInfo {
+        <StatusInfo as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl StatusInfo {
+    pub fn new() -> StatusInfo {
+        ::std::default::Default::default()
+    }
+}
+
+impl ::protobuf::Message for StatusInfo {
+    const NAME: &'static str = "StatusInfo";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                8 => {
+                    self.time_available_in = is.read_uint64()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if self.time_available_in != 0 {
+            my_size += ::protobuf::rt::uint64_size(1, self.time_available_in);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if self.time_available_in != 0 {
+            os.write_uint64(1, self.time_available_in)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> StatusInfo {
+        StatusInfo::new()
+    }
+
+    fn clear(&mut self) {
+        self.time_available_in = 0;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static StatusInfo {
+        static instance: StatusInfo = StatusInfo {
+            time_available_in: 0,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+#[derive(PartialEq,Clone,Default,Debug)]
 // @@protoc_insertion_point(message:user_data_auth.AuthFactorWithStatus)
 pub struct AuthFactorWithStatus {
     // message fields
@@ -3382,6 +3472,8 @@ pub struct AuthFactorWithStatus {
     pub auth_factor: ::protobuf::MessageField<super::auth_factor::AuthFactor>,
     // @@protoc_insertion_point(field:user_data_auth.AuthFactorWithStatus.available_for_intents)
     pub available_for_intents: ::std::vec::Vec<::protobuf::EnumOrUnknown<super::auth_factor::AuthIntent>>,
+    // @@protoc_insertion_point(field:user_data_auth.AuthFactorWithStatus.status_info)
+    pub status_info: ::protobuf::MessageField<StatusInfo>,
     // special fields
     // @@protoc_insertion_point(special_field:user_data_auth.AuthFactorWithStatus.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -3418,6 +3510,9 @@ impl ::protobuf::Message for AuthFactorWithStatus {
                 18 => {
                     ::protobuf::rt::read_repeated_packed_enum_or_unknown_into(is, &mut self.available_for_intents)?
                 },
+                26 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.status_info)?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -3437,6 +3532,10 @@ impl ::protobuf::Message for AuthFactorWithStatus {
         for value in &self.available_for_intents {
             my_size += ::protobuf::rt::int32_size(2, value.value());
         };
+        if let Some(v) = self.status_info.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -3449,6 +3548,9 @@ impl ::protobuf::Message for AuthFactorWithStatus {
         for v in &self.available_for_intents {
             os.write_enum(2, ::protobuf::EnumOrUnknown::value(v))?;
         };
+        if let Some(v) = self.status_info.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -3468,6 +3570,7 @@ impl ::protobuf::Message for AuthFactorWithStatus {
     fn clear(&mut self) {
         self.auth_factor.clear();
         self.available_for_intents.clear();
+        self.status_info.clear();
         self.special_fields.clear();
     }
 
@@ -3475,6 +3578,111 @@ impl ::protobuf::Message for AuthFactorWithStatus {
         static instance: AuthFactorWithStatus = AuthFactorWithStatus {
             auth_factor: ::protobuf::MessageField::none(),
             available_for_intents: ::std::vec::Vec::new(),
+            status_info: ::protobuf::MessageField::none(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+#[derive(PartialEq,Clone,Default,Debug)]
+// @@protoc_insertion_point(message:user_data_auth.AuthFactorStatusUpdate)
+pub struct AuthFactorStatusUpdate {
+    // message fields
+    // @@protoc_insertion_point(field:user_data_auth.AuthFactorStatusUpdate.broadcast_id)
+    pub broadcast_id: ::std::vec::Vec<u8>,
+    // @@protoc_insertion_point(field:user_data_auth.AuthFactorStatusUpdate.auth_factor_with_status)
+    pub auth_factor_with_status: ::protobuf::MessageField<AuthFactorWithStatus>,
+    // special fields
+    // @@protoc_insertion_point(special_field:user_data_auth.AuthFactorStatusUpdate.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a AuthFactorStatusUpdate {
+    fn default() -> &'a AuthFactorStatusUpdate {
+        <AuthFactorStatusUpdate as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl AuthFactorStatusUpdate {
+    pub fn new() -> AuthFactorStatusUpdate {
+        ::std::default::Default::default()
+    }
+}
+
+impl ::protobuf::Message for AuthFactorStatusUpdate {
+    const NAME: &'static str = "AuthFactorStatusUpdate";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.broadcast_id = is.read_bytes()?;
+                },
+                18 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.auth_factor_with_status)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if !self.broadcast_id.is_empty() {
+            my_size += ::protobuf::rt::bytes_size(1, &self.broadcast_id);
+        }
+        if let Some(v) = self.auth_factor_with_status.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.broadcast_id.is_empty() {
+            os.write_bytes(1, &self.broadcast_id)?;
+        }
+        if let Some(v) = self.auth_factor_with_status.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> AuthFactorStatusUpdate {
+        AuthFactorStatusUpdate::new()
+    }
+
+    fn clear(&mut self) {
+        self.broadcast_id.clear();
+        self.auth_factor_with_status.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static AuthFactorStatusUpdate {
+        static instance: AuthFactorStatusUpdate = AuthFactorStatusUpdate {
+            broadcast_id: ::std::vec::Vec::new(),
+            auth_factor_with_status: ::protobuf::MessageField::none(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -3487,14 +3695,18 @@ pub struct StartAuthSessionReply {
     // message fields
     // @@protoc_insertion_point(field:user_data_auth.StartAuthSessionReply.error)
     pub error: ::protobuf::EnumOrUnknown<CryptohomeErrorCode>,
+    // @@protoc_insertion_point(field:user_data_auth.StartAuthSessionReply.error_info)
+    pub error_info: ::protobuf::MessageField<CryptohomeErrorInfo>,
     // @@protoc_insertion_point(field:user_data_auth.StartAuthSessionReply.auth_session_id)
     pub auth_session_id: ::std::vec::Vec<u8>,
+    // @@protoc_insertion_point(field:user_data_auth.StartAuthSessionReply.broadcast_id)
+    pub broadcast_id: ::std::vec::Vec<u8>,
     // @@protoc_insertion_point(field:user_data_auth.StartAuthSessionReply.user_exists)
     pub user_exists: bool,
     // @@protoc_insertion_point(field:user_data_auth.StartAuthSessionReply.auth_factors)
     pub auth_factors: ::std::vec::Vec<super::auth_factor::AuthFactor>,
-    // @@protoc_insertion_point(field:user_data_auth.StartAuthSessionReply.error_info)
-    pub error_info: ::protobuf::MessageField<CryptohomeErrorInfo>,
+    // @@protoc_insertion_point(field:user_data_auth.StartAuthSessionReply.configured_auth_factors_with_status)
+    pub configured_auth_factors_with_status: ::std::vec::Vec<AuthFactorWithStatus>,
     // special fields
     // @@protoc_insertion_point(special_field:user_data_auth.StartAuthSessionReply.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -3525,8 +3737,14 @@ impl ::protobuf::Message for StartAuthSessionReply {
                 8 => {
                     self.error = is.read_enum_or_unknown()?;
                 },
+                50 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.error_info)?;
+                },
                 18 => {
                     self.auth_session_id = is.read_bytes()?;
+                },
+                66 => {
+                    self.broadcast_id = is.read_bytes()?;
                 },
                 24 => {
                     self.user_exists = is.read_bool()?;
@@ -3534,8 +3752,8 @@ impl ::protobuf::Message for StartAuthSessionReply {
                 42 => {
                     self.auth_factors.push(is.read_message()?);
                 },
-                50 => {
-                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.error_info)?;
+                74 => {
+                    self.configured_auth_factors_with_status.push(is.read_message()?);
                 },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -3552,8 +3770,15 @@ impl ::protobuf::Message for StartAuthSessionReply {
         if self.error != ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET) {
             my_size += ::protobuf::rt::int32_size(1, self.error.value());
         }
+        if let Some(v) = self.error_info.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
         if !self.auth_session_id.is_empty() {
             my_size += ::protobuf::rt::bytes_size(2, &self.auth_session_id);
+        }
+        if !self.broadcast_id.is_empty() {
+            my_size += ::protobuf::rt::bytes_size(8, &self.broadcast_id);
         }
         if self.user_exists != false {
             my_size += 1 + 1;
@@ -3562,10 +3787,10 @@ impl ::protobuf::Message for StartAuthSessionReply {
             let len = value.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         };
-        if let Some(v) = self.error_info.as_ref() {
-            let len = v.compute_size();
+        for value in &self.configured_auth_factors_with_status {
+            let len = value.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-        }
+        };
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -3575,8 +3800,14 @@ impl ::protobuf::Message for StartAuthSessionReply {
         if self.error != ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET) {
             os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.error))?;
         }
+        if let Some(v) = self.error_info.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(6, v, os)?;
+        }
         if !self.auth_session_id.is_empty() {
             os.write_bytes(2, &self.auth_session_id)?;
+        }
+        if !self.broadcast_id.is_empty() {
+            os.write_bytes(8, &self.broadcast_id)?;
         }
         if self.user_exists != false {
             os.write_bool(3, self.user_exists)?;
@@ -3584,9 +3815,9 @@ impl ::protobuf::Message for StartAuthSessionReply {
         for v in &self.auth_factors {
             ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
         };
-        if let Some(v) = self.error_info.as_ref() {
-            ::protobuf::rt::write_message_field_with_cached_size(6, v, os)?;
-        }
+        for v in &self.configured_auth_factors_with_status {
+            ::protobuf::rt::write_message_field_with_cached_size(9, v, os)?;
+        };
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -3605,20 +3836,24 @@ impl ::protobuf::Message for StartAuthSessionReply {
 
     fn clear(&mut self) {
         self.error = ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET);
+        self.error_info.clear();
         self.auth_session_id.clear();
+        self.broadcast_id.clear();
         self.user_exists = false;
         self.auth_factors.clear();
-        self.error_info.clear();
+        self.configured_auth_factors_with_status.clear();
         self.special_fields.clear();
     }
 
     fn default_instance() -> &'static StartAuthSessionReply {
         static instance: StartAuthSessionReply = StartAuthSessionReply {
             error: ::protobuf::EnumOrUnknown::from_i32(0),
+            error_info: ::protobuf::MessageField::none(),
             auth_session_id: ::std::vec::Vec::new(),
+            broadcast_id: ::std::vec::Vec::new(),
             user_exists: false,
             auth_factors: ::std::vec::Vec::new(),
-            error_info: ::protobuf::MessageField::none(),
+            configured_auth_factors_with_status: ::std::vec::Vec::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -4135,10 +4370,10 @@ pub struct CreatePersistentUserReply {
     // message fields
     // @@protoc_insertion_point(field:user_data_auth.CreatePersistentUserReply.error)
     pub error: ::protobuf::EnumOrUnknown<CryptohomeErrorCode>,
-    // @@protoc_insertion_point(field:user_data_auth.CreatePersistentUserReply.sanitized_username)
-    pub sanitized_username: ::std::string::String,
     // @@protoc_insertion_point(field:user_data_auth.CreatePersistentUserReply.error_info)
     pub error_info: ::protobuf::MessageField<CryptohomeErrorInfo>,
+    // @@protoc_insertion_point(field:user_data_auth.CreatePersistentUserReply.sanitized_username)
+    pub sanitized_username: ::std::string::String,
     // special fields
     // @@protoc_insertion_point(special_field:user_data_auth.CreatePersistentUserReply.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -4169,11 +4404,11 @@ impl ::protobuf::Message for CreatePersistentUserReply {
                 8 => {
                     self.error = is.read_enum_or_unknown()?;
                 },
-                18 => {
-                    self.sanitized_username = is.read_string()?;
-                },
                 26 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.error_info)?;
+                },
+                18 => {
+                    self.sanitized_username = is.read_string()?;
                 },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -4190,12 +4425,12 @@ impl ::protobuf::Message for CreatePersistentUserReply {
         if self.error != ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET) {
             my_size += ::protobuf::rt::int32_size(1, self.error.value());
         }
-        if !self.sanitized_username.is_empty() {
-            my_size += ::protobuf::rt::string_size(2, &self.sanitized_username);
-        }
         if let Some(v) = self.error_info.as_ref() {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if !self.sanitized_username.is_empty() {
+            my_size += ::protobuf::rt::string_size(2, &self.sanitized_username);
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
@@ -4206,11 +4441,11 @@ impl ::protobuf::Message for CreatePersistentUserReply {
         if self.error != ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET) {
             os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.error))?;
         }
-        if !self.sanitized_username.is_empty() {
-            os.write_string(2, &self.sanitized_username)?;
-        }
         if let Some(v) = self.error_info.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        }
+        if !self.sanitized_username.is_empty() {
+            os.write_string(2, &self.sanitized_username)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -4230,16 +4465,16 @@ impl ::protobuf::Message for CreatePersistentUserReply {
 
     fn clear(&mut self) {
         self.error = ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET);
-        self.sanitized_username.clear();
         self.error_info.clear();
+        self.sanitized_username.clear();
         self.special_fields.clear();
     }
 
     fn default_instance() -> &'static CreatePersistentUserReply {
         static instance: CreatePersistentUserReply = CreatePersistentUserReply {
             error: ::protobuf::EnumOrUnknown::from_i32(0),
-            sanitized_username: ::std::string::String::new(),
             error_info: ::protobuf::MessageField::none(),
+            sanitized_username: ::std::string::String::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -4328,10 +4563,10 @@ pub struct PrepareGuestVaultReply {
     // message fields
     // @@protoc_insertion_point(field:user_data_auth.PrepareGuestVaultReply.error)
     pub error: ::protobuf::EnumOrUnknown<CryptohomeErrorCode>,
-    // @@protoc_insertion_point(field:user_data_auth.PrepareGuestVaultReply.sanitized_username)
-    pub sanitized_username: ::std::string::String,
     // @@protoc_insertion_point(field:user_data_auth.PrepareGuestVaultReply.error_info)
     pub error_info: ::protobuf::MessageField<CryptohomeErrorInfo>,
+    // @@protoc_insertion_point(field:user_data_auth.PrepareGuestVaultReply.sanitized_username)
+    pub sanitized_username: ::std::string::String,
     // special fields
     // @@protoc_insertion_point(special_field:user_data_auth.PrepareGuestVaultReply.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -4362,11 +4597,11 @@ impl ::protobuf::Message for PrepareGuestVaultReply {
                 8 => {
                     self.error = is.read_enum_or_unknown()?;
                 },
-                18 => {
-                    self.sanitized_username = is.read_string()?;
-                },
                 26 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.error_info)?;
+                },
+                18 => {
+                    self.sanitized_username = is.read_string()?;
                 },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -4383,12 +4618,12 @@ impl ::protobuf::Message for PrepareGuestVaultReply {
         if self.error != ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET) {
             my_size += ::protobuf::rt::int32_size(1, self.error.value());
         }
-        if !self.sanitized_username.is_empty() {
-            my_size += ::protobuf::rt::string_size(2, &self.sanitized_username);
-        }
         if let Some(v) = self.error_info.as_ref() {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if !self.sanitized_username.is_empty() {
+            my_size += ::protobuf::rt::string_size(2, &self.sanitized_username);
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
@@ -4399,11 +4634,11 @@ impl ::protobuf::Message for PrepareGuestVaultReply {
         if self.error != ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET) {
             os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.error))?;
         }
-        if !self.sanitized_username.is_empty() {
-            os.write_string(2, &self.sanitized_username)?;
-        }
         if let Some(v) = self.error_info.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        }
+        if !self.sanitized_username.is_empty() {
+            os.write_string(2, &self.sanitized_username)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -4423,16 +4658,16 @@ impl ::protobuf::Message for PrepareGuestVaultReply {
 
     fn clear(&mut self) {
         self.error = ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET);
-        self.sanitized_username.clear();
         self.error_info.clear();
+        self.sanitized_username.clear();
         self.special_fields.clear();
     }
 
     fn default_instance() -> &'static PrepareGuestVaultReply {
         static instance: PrepareGuestVaultReply = PrepareGuestVaultReply {
             error: ::protobuf::EnumOrUnknown::from_i32(0),
-            sanitized_username: ::std::string::String::new(),
             error_info: ::protobuf::MessageField::none(),
+            sanitized_username: ::std::string::String::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -4535,10 +4770,10 @@ pub struct PrepareEphemeralVaultReply {
     // message fields
     // @@protoc_insertion_point(field:user_data_auth.PrepareEphemeralVaultReply.error)
     pub error: ::protobuf::EnumOrUnknown<CryptohomeErrorCode>,
-    // @@protoc_insertion_point(field:user_data_auth.PrepareEphemeralVaultReply.sanitized_username)
-    pub sanitized_username: ::std::string::String,
     // @@protoc_insertion_point(field:user_data_auth.PrepareEphemeralVaultReply.error_info)
     pub error_info: ::protobuf::MessageField<CryptohomeErrorInfo>,
+    // @@protoc_insertion_point(field:user_data_auth.PrepareEphemeralVaultReply.sanitized_username)
+    pub sanitized_username: ::std::string::String,
     // special fields
     // @@protoc_insertion_point(special_field:user_data_auth.PrepareEphemeralVaultReply.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -4569,11 +4804,11 @@ impl ::protobuf::Message for PrepareEphemeralVaultReply {
                 8 => {
                     self.error = is.read_enum_or_unknown()?;
                 },
-                18 => {
-                    self.sanitized_username = is.read_string()?;
-                },
                 26 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.error_info)?;
+                },
+                18 => {
+                    self.sanitized_username = is.read_string()?;
                 },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -4590,12 +4825,12 @@ impl ::protobuf::Message for PrepareEphemeralVaultReply {
         if self.error != ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET) {
             my_size += ::protobuf::rt::int32_size(1, self.error.value());
         }
-        if !self.sanitized_username.is_empty() {
-            my_size += ::protobuf::rt::string_size(2, &self.sanitized_username);
-        }
         if let Some(v) = self.error_info.as_ref() {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if !self.sanitized_username.is_empty() {
+            my_size += ::protobuf::rt::string_size(2, &self.sanitized_username);
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
@@ -4606,11 +4841,11 @@ impl ::protobuf::Message for PrepareEphemeralVaultReply {
         if self.error != ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET) {
             os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.error))?;
         }
-        if !self.sanitized_username.is_empty() {
-            os.write_string(2, &self.sanitized_username)?;
-        }
         if let Some(v) = self.error_info.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        }
+        if !self.sanitized_username.is_empty() {
+            os.write_string(2, &self.sanitized_username)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -4630,16 +4865,16 @@ impl ::protobuf::Message for PrepareEphemeralVaultReply {
 
     fn clear(&mut self) {
         self.error = ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET);
-        self.sanitized_username.clear();
         self.error_info.clear();
+        self.sanitized_username.clear();
         self.special_fields.clear();
     }
 
     fn default_instance() -> &'static PrepareEphemeralVaultReply {
         static instance: PrepareEphemeralVaultReply = PrepareEphemeralVaultReply {
             error: ::protobuf::EnumOrUnknown::from_i32(0),
-            sanitized_username: ::std::string::String::new(),
             error_info: ::protobuf::MessageField::none(),
+            sanitized_username: ::std::string::String::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -4990,10 +5225,10 @@ pub struct PreparePersistentVaultReply {
     // message fields
     // @@protoc_insertion_point(field:user_data_auth.PreparePersistentVaultReply.error)
     pub error: ::protobuf::EnumOrUnknown<CryptohomeErrorCode>,
-    // @@protoc_insertion_point(field:user_data_auth.PreparePersistentVaultReply.sanitized_username)
-    pub sanitized_username: ::std::string::String,
     // @@protoc_insertion_point(field:user_data_auth.PreparePersistentVaultReply.error_info)
     pub error_info: ::protobuf::MessageField<CryptohomeErrorInfo>,
+    // @@protoc_insertion_point(field:user_data_auth.PreparePersistentVaultReply.sanitized_username)
+    pub sanitized_username: ::std::string::String,
     // special fields
     // @@protoc_insertion_point(special_field:user_data_auth.PreparePersistentVaultReply.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -5024,11 +5259,11 @@ impl ::protobuf::Message for PreparePersistentVaultReply {
                 8 => {
                     self.error = is.read_enum_or_unknown()?;
                 },
-                18 => {
-                    self.sanitized_username = is.read_string()?;
-                },
                 26 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.error_info)?;
+                },
+                18 => {
+                    self.sanitized_username = is.read_string()?;
                 },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -5045,12 +5280,12 @@ impl ::protobuf::Message for PreparePersistentVaultReply {
         if self.error != ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET) {
             my_size += ::protobuf::rt::int32_size(1, self.error.value());
         }
-        if !self.sanitized_username.is_empty() {
-            my_size += ::protobuf::rt::string_size(2, &self.sanitized_username);
-        }
         if let Some(v) = self.error_info.as_ref() {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if !self.sanitized_username.is_empty() {
+            my_size += ::protobuf::rt::string_size(2, &self.sanitized_username);
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
@@ -5061,11 +5296,11 @@ impl ::protobuf::Message for PreparePersistentVaultReply {
         if self.error != ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET) {
             os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.error))?;
         }
-        if !self.sanitized_username.is_empty() {
-            os.write_string(2, &self.sanitized_username)?;
-        }
         if let Some(v) = self.error_info.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        }
+        if !self.sanitized_username.is_empty() {
+            os.write_string(2, &self.sanitized_username)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -5085,16 +5320,16 @@ impl ::protobuf::Message for PreparePersistentVaultReply {
 
     fn clear(&mut self) {
         self.error = ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET);
-        self.sanitized_username.clear();
         self.error_info.clear();
+        self.sanitized_username.clear();
         self.special_fields.clear();
     }
 
     fn default_instance() -> &'static PreparePersistentVaultReply {
         static instance: PreparePersistentVaultReply = PreparePersistentVaultReply {
             error: ::protobuf::EnumOrUnknown::from_i32(0),
-            sanitized_username: ::std::string::String::new(),
             error_info: ::protobuf::MessageField::none(),
+            sanitized_username: ::std::string::String::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -5197,10 +5432,10 @@ pub struct PrepareVaultForMigrationReply {
     // message fields
     // @@protoc_insertion_point(field:user_data_auth.PrepareVaultForMigrationReply.error)
     pub error: ::protobuf::EnumOrUnknown<CryptohomeErrorCode>,
-    // @@protoc_insertion_point(field:user_data_auth.PrepareVaultForMigrationReply.sanitized_username)
-    pub sanitized_username: ::std::string::String,
     // @@protoc_insertion_point(field:user_data_auth.PrepareVaultForMigrationReply.error_info)
     pub error_info: ::protobuf::MessageField<CryptohomeErrorInfo>,
+    // @@protoc_insertion_point(field:user_data_auth.PrepareVaultForMigrationReply.sanitized_username)
+    pub sanitized_username: ::std::string::String,
     // special fields
     // @@protoc_insertion_point(special_field:user_data_auth.PrepareVaultForMigrationReply.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -5231,11 +5466,11 @@ impl ::protobuf::Message for PrepareVaultForMigrationReply {
                 8 => {
                     self.error = is.read_enum_or_unknown()?;
                 },
-                18 => {
-                    self.sanitized_username = is.read_string()?;
-                },
                 26 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.error_info)?;
+                },
+                18 => {
+                    self.sanitized_username = is.read_string()?;
                 },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -5252,12 +5487,12 @@ impl ::protobuf::Message for PrepareVaultForMigrationReply {
         if self.error != ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET) {
             my_size += ::protobuf::rt::int32_size(1, self.error.value());
         }
-        if !self.sanitized_username.is_empty() {
-            my_size += ::protobuf::rt::string_size(2, &self.sanitized_username);
-        }
         if let Some(v) = self.error_info.as_ref() {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if !self.sanitized_username.is_empty() {
+            my_size += ::protobuf::rt::string_size(2, &self.sanitized_username);
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
@@ -5268,11 +5503,11 @@ impl ::protobuf::Message for PrepareVaultForMigrationReply {
         if self.error != ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET) {
             os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.error))?;
         }
-        if !self.sanitized_username.is_empty() {
-            os.write_string(2, &self.sanitized_username)?;
-        }
         if let Some(v) = self.error_info.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        }
+        if !self.sanitized_username.is_empty() {
+            os.write_string(2, &self.sanitized_username)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -5292,16 +5527,16 @@ impl ::protobuf::Message for PrepareVaultForMigrationReply {
 
     fn clear(&mut self) {
         self.error = ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET);
-        self.sanitized_username.clear();
         self.error_info.clear();
+        self.sanitized_username.clear();
         self.special_fields.clear();
     }
 
     fn default_instance() -> &'static PrepareVaultForMigrationReply {
         static instance: PrepareVaultForMigrationReply = PrepareVaultForMigrationReply {
             error: ::protobuf::EnumOrUnknown::from_i32(0),
-            sanitized_username: ::std::string::String::new(),
             error_info: ::protobuf::MessageField::none(),
+            sanitized_username: ::std::string::String::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -10384,6 +10619,8 @@ pub struct AddAuthFactorReply {
     pub error: ::protobuf::EnumOrUnknown<CryptohomeErrorCode>,
     // @@protoc_insertion_point(field:user_data_auth.AddAuthFactorReply.error_info)
     pub error_info: ::protobuf::MessageField<CryptohomeErrorInfo>,
+    // @@protoc_insertion_point(field:user_data_auth.AddAuthFactorReply.added_auth_factor)
+    pub added_auth_factor: ::protobuf::MessageField<AuthFactorWithStatus>,
     // special fields
     // @@protoc_insertion_point(special_field:user_data_auth.AddAuthFactorReply.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -10417,6 +10654,9 @@ impl ::protobuf::Message for AddAuthFactorReply {
                 18 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.error_info)?;
                 },
+                26 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.added_auth_factor)?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -10436,6 +10676,10 @@ impl ::protobuf::Message for AddAuthFactorReply {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         }
+        if let Some(v) = self.added_auth_factor.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -10447,6 +10691,9 @@ impl ::protobuf::Message for AddAuthFactorReply {
         }
         if let Some(v) = self.error_info.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+        }
+        if let Some(v) = self.added_auth_factor.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -10467,6 +10714,7 @@ impl ::protobuf::Message for AddAuthFactorReply {
     fn clear(&mut self) {
         self.error = ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET);
         self.error_info.clear();
+        self.added_auth_factor.clear();
         self.special_fields.clear();
     }
 
@@ -10474,6 +10722,7 @@ impl ::protobuf::Message for AddAuthFactorReply {
         static instance: AddAuthFactorReply = AddAuthFactorReply {
             error: ::protobuf::EnumOrUnknown::from_i32(0),
             error_info: ::protobuf::MessageField::none(),
+            added_auth_factor: ::protobuf::MessageField::none(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -10618,8 +10867,6 @@ pub struct AuthenticateAuthFactorReply {
     pub error: ::protobuf::EnumOrUnknown<CryptohomeErrorCode>,
     // @@protoc_insertion_point(field:user_data_auth.AuthenticateAuthFactorReply.error_info)
     pub error_info: ::protobuf::MessageField<CryptohomeErrorInfo>,
-    // @@protoc_insertion_point(field:user_data_auth.AuthenticateAuthFactorReply.authenticated)
-    pub authenticated: bool,
     // @@protoc_insertion_point(field:user_data_auth.AuthenticateAuthFactorReply.authorized_for)
     pub authorized_for: ::std::vec::Vec<::protobuf::EnumOrUnknown<super::auth_factor::AuthIntent>>,
     // @@protoc_insertion_point(field:user_data_auth.AuthenticateAuthFactorReply.seconds_left)
@@ -10657,9 +10904,6 @@ impl ::protobuf::Message for AuthenticateAuthFactorReply {
                 18 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.error_info)?;
                 },
-                24 => {
-                    self.authenticated = is.read_bool()?;
-                },
                 32 => {
                     self.authorized_for.push(is.read_enum_or_unknown()?);
                 },
@@ -10688,9 +10932,6 @@ impl ::protobuf::Message for AuthenticateAuthFactorReply {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         }
-        if self.authenticated != false {
-            my_size += 1 + 1;
-        }
         for value in &self.authorized_for {
             my_size += ::protobuf::rt::int32_size(4, value.value());
         };
@@ -10708,9 +10949,6 @@ impl ::protobuf::Message for AuthenticateAuthFactorReply {
         }
         if let Some(v) = self.error_info.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
-        }
-        if self.authenticated != false {
-            os.write_bool(3, self.authenticated)?;
         }
         for v in &self.authorized_for {
             os.write_enum(4, ::protobuf::EnumOrUnknown::value(v))?;
@@ -10737,7 +10975,6 @@ impl ::protobuf::Message for AuthenticateAuthFactorReply {
     fn clear(&mut self) {
         self.error = ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET);
         self.error_info.clear();
-        self.authenticated = false;
         self.authorized_for.clear();
         self.seconds_left = ::std::option::Option::None;
         self.special_fields.clear();
@@ -10747,7 +10984,6 @@ impl ::protobuf::Message for AuthenticateAuthFactorReply {
         static instance: AuthenticateAuthFactorReply = AuthenticateAuthFactorReply {
             error: ::protobuf::EnumOrUnknown::from_i32(0),
             error_info: ::protobuf::MessageField::none(),
-            authenticated: false,
             authorized_for: ::std::vec::Vec::new(),
             seconds_left: ::std::option::Option::None,
             special_fields: ::protobuf::SpecialFields::new(),
@@ -10895,6 +11131,8 @@ pub struct UpdateAuthFactorReply {
     pub error: ::protobuf::EnumOrUnknown<CryptohomeErrorCode>,
     // @@protoc_insertion_point(field:user_data_auth.UpdateAuthFactorReply.error_info)
     pub error_info: ::protobuf::MessageField<CryptohomeErrorInfo>,
+    // @@protoc_insertion_point(field:user_data_auth.UpdateAuthFactorReply.updated_auth_factor)
+    pub updated_auth_factor: ::protobuf::MessageField<AuthFactorWithStatus>,
     // special fields
     // @@protoc_insertion_point(special_field:user_data_auth.UpdateAuthFactorReply.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -10928,6 +11166,9 @@ impl ::protobuf::Message for UpdateAuthFactorReply {
                 18 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.error_info)?;
                 },
+                26 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.updated_auth_factor)?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -10947,6 +11188,10 @@ impl ::protobuf::Message for UpdateAuthFactorReply {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         }
+        if let Some(v) = self.updated_auth_factor.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -10958,6 +11203,9 @@ impl ::protobuf::Message for UpdateAuthFactorReply {
         }
         if let Some(v) = self.error_info.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+        }
+        if let Some(v) = self.updated_auth_factor.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -10978,6 +11226,7 @@ impl ::protobuf::Message for UpdateAuthFactorReply {
     fn clear(&mut self) {
         self.error = ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET);
         self.error_info.clear();
+        self.updated_auth_factor.clear();
         self.special_fields.clear();
     }
 
@@ -10985,6 +11234,242 @@ impl ::protobuf::Message for UpdateAuthFactorReply {
         static instance: UpdateAuthFactorReply = UpdateAuthFactorReply {
             error: ::protobuf::EnumOrUnknown::from_i32(0),
             error_info: ::protobuf::MessageField::none(),
+            updated_auth_factor: ::protobuf::MessageField::none(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+#[derive(PartialEq,Clone,Default,Debug)]
+// @@protoc_insertion_point(message:user_data_auth.UpdateAuthFactorMetadataRequest)
+pub struct UpdateAuthFactorMetadataRequest {
+    // message fields
+    // @@protoc_insertion_point(field:user_data_auth.UpdateAuthFactorMetadataRequest.auth_session_id)
+    pub auth_session_id: ::std::vec::Vec<u8>,
+    // @@protoc_insertion_point(field:user_data_auth.UpdateAuthFactorMetadataRequest.auth_factor_label)
+    pub auth_factor_label: ::std::string::String,
+    // @@protoc_insertion_point(field:user_data_auth.UpdateAuthFactorMetadataRequest.auth_factor)
+    pub auth_factor: ::protobuf::MessageField<super::auth_factor::AuthFactor>,
+    // special fields
+    // @@protoc_insertion_point(special_field:user_data_auth.UpdateAuthFactorMetadataRequest.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a UpdateAuthFactorMetadataRequest {
+    fn default() -> &'a UpdateAuthFactorMetadataRequest {
+        <UpdateAuthFactorMetadataRequest as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl UpdateAuthFactorMetadataRequest {
+    pub fn new() -> UpdateAuthFactorMetadataRequest {
+        ::std::default::Default::default()
+    }
+}
+
+impl ::protobuf::Message for UpdateAuthFactorMetadataRequest {
+    const NAME: &'static str = "UpdateAuthFactorMetadataRequest";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.auth_session_id = is.read_bytes()?;
+                },
+                18 => {
+                    self.auth_factor_label = is.read_string()?;
+                },
+                26 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.auth_factor)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if !self.auth_session_id.is_empty() {
+            my_size += ::protobuf::rt::bytes_size(1, &self.auth_session_id);
+        }
+        if !self.auth_factor_label.is_empty() {
+            my_size += ::protobuf::rt::string_size(2, &self.auth_factor_label);
+        }
+        if let Some(v) = self.auth_factor.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.auth_session_id.is_empty() {
+            os.write_bytes(1, &self.auth_session_id)?;
+        }
+        if !self.auth_factor_label.is_empty() {
+            os.write_string(2, &self.auth_factor_label)?;
+        }
+        if let Some(v) = self.auth_factor.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> UpdateAuthFactorMetadataRequest {
+        UpdateAuthFactorMetadataRequest::new()
+    }
+
+    fn clear(&mut self) {
+        self.auth_session_id.clear();
+        self.auth_factor_label.clear();
+        self.auth_factor.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static UpdateAuthFactorMetadataRequest {
+        static instance: UpdateAuthFactorMetadataRequest = UpdateAuthFactorMetadataRequest {
+            auth_session_id: ::std::vec::Vec::new(),
+            auth_factor_label: ::std::string::String::new(),
+            auth_factor: ::protobuf::MessageField::none(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+#[derive(PartialEq,Clone,Default,Debug)]
+// @@protoc_insertion_point(message:user_data_auth.UpdateAuthFactorMetadataReply)
+pub struct UpdateAuthFactorMetadataReply {
+    // message fields
+    // @@protoc_insertion_point(field:user_data_auth.UpdateAuthFactorMetadataReply.error)
+    pub error: ::protobuf::EnumOrUnknown<CryptohomeErrorCode>,
+    // @@protoc_insertion_point(field:user_data_auth.UpdateAuthFactorMetadataReply.error_info)
+    pub error_info: ::protobuf::MessageField<CryptohomeErrorInfo>,
+    // @@protoc_insertion_point(field:user_data_auth.UpdateAuthFactorMetadataReply.updated_auth_factor)
+    pub updated_auth_factor: ::protobuf::MessageField<AuthFactorWithStatus>,
+    // special fields
+    // @@protoc_insertion_point(special_field:user_data_auth.UpdateAuthFactorMetadataReply.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a UpdateAuthFactorMetadataReply {
+    fn default() -> &'a UpdateAuthFactorMetadataReply {
+        <UpdateAuthFactorMetadataReply as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl UpdateAuthFactorMetadataReply {
+    pub fn new() -> UpdateAuthFactorMetadataReply {
+        ::std::default::Default::default()
+    }
+}
+
+impl ::protobuf::Message for UpdateAuthFactorMetadataReply {
+    const NAME: &'static str = "UpdateAuthFactorMetadataReply";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                8 => {
+                    self.error = is.read_enum_or_unknown()?;
+                },
+                18 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.error_info)?;
+                },
+                26 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.updated_auth_factor)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if self.error != ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET) {
+            my_size += ::protobuf::rt::int32_size(1, self.error.value());
+        }
+        if let Some(v) = self.error_info.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if let Some(v) = self.updated_auth_factor.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if self.error != ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET) {
+            os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.error))?;
+        }
+        if let Some(v) = self.error_info.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+        }
+        if let Some(v) = self.updated_auth_factor.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> UpdateAuthFactorMetadataReply {
+        UpdateAuthFactorMetadataReply::new()
+    }
+
+    fn clear(&mut self) {
+        self.error = ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET);
+        self.error_info.clear();
+        self.updated_auth_factor.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static UpdateAuthFactorMetadataReply {
+        static instance: UpdateAuthFactorMetadataReply = UpdateAuthFactorMetadataReply {
+            error: ::protobuf::EnumOrUnknown::from_i32(0),
+            error_info: ::protobuf::MessageField::none(),
+            updated_auth_factor: ::protobuf::MessageField::none(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -11199,6 +11684,144 @@ impl ::protobuf::Message for RemoveAuthFactorReply {
 }
 
 #[derive(PartialEq,Clone,Default,Debug)]
+// @@protoc_insertion_point(message:user_data_auth.AuthIntentsForAuthFactorType)
+pub struct AuthIntentsForAuthFactorType {
+    // message fields
+    // @@protoc_insertion_point(field:user_data_auth.AuthIntentsForAuthFactorType.type)
+    pub type_: ::protobuf::EnumOrUnknown<super::auth_factor::AuthFactorType>,
+    // @@protoc_insertion_point(field:user_data_auth.AuthIntentsForAuthFactorType.current)
+    pub current: ::std::vec::Vec<::protobuf::EnumOrUnknown<super::auth_factor::AuthIntent>>,
+    // @@protoc_insertion_point(field:user_data_auth.AuthIntentsForAuthFactorType.minimum)
+    pub minimum: ::std::vec::Vec<::protobuf::EnumOrUnknown<super::auth_factor::AuthIntent>>,
+    // @@protoc_insertion_point(field:user_data_auth.AuthIntentsForAuthFactorType.maximum)
+    pub maximum: ::std::vec::Vec<::protobuf::EnumOrUnknown<super::auth_factor::AuthIntent>>,
+    // special fields
+    // @@protoc_insertion_point(special_field:user_data_auth.AuthIntentsForAuthFactorType.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a AuthIntentsForAuthFactorType {
+    fn default() -> &'a AuthIntentsForAuthFactorType {
+        <AuthIntentsForAuthFactorType as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl AuthIntentsForAuthFactorType {
+    pub fn new() -> AuthIntentsForAuthFactorType {
+        ::std::default::Default::default()
+    }
+}
+
+impl ::protobuf::Message for AuthIntentsForAuthFactorType {
+    const NAME: &'static str = "AuthIntentsForAuthFactorType";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                8 => {
+                    self.type_ = is.read_enum_or_unknown()?;
+                },
+                16 => {
+                    self.current.push(is.read_enum_or_unknown()?);
+                },
+                18 => {
+                    ::protobuf::rt::read_repeated_packed_enum_or_unknown_into(is, &mut self.current)?
+                },
+                24 => {
+                    self.minimum.push(is.read_enum_or_unknown()?);
+                },
+                26 => {
+                    ::protobuf::rt::read_repeated_packed_enum_or_unknown_into(is, &mut self.minimum)?
+                },
+                32 => {
+                    self.maximum.push(is.read_enum_or_unknown()?);
+                },
+                34 => {
+                    ::protobuf::rt::read_repeated_packed_enum_or_unknown_into(is, &mut self.maximum)?
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if self.type_ != ::protobuf::EnumOrUnknown::new(super::auth_factor::AuthFactorType::AUTH_FACTOR_TYPE_UNSPECIFIED) {
+            my_size += ::protobuf::rt::int32_size(1, self.type_.value());
+        }
+        for value in &self.current {
+            my_size += ::protobuf::rt::int32_size(2, value.value());
+        };
+        for value in &self.minimum {
+            my_size += ::protobuf::rt::int32_size(3, value.value());
+        };
+        for value in &self.maximum {
+            my_size += ::protobuf::rt::int32_size(4, value.value());
+        };
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if self.type_ != ::protobuf::EnumOrUnknown::new(super::auth_factor::AuthFactorType::AUTH_FACTOR_TYPE_UNSPECIFIED) {
+            os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.type_))?;
+        }
+        for v in &self.current {
+            os.write_enum(2, ::protobuf::EnumOrUnknown::value(v))?;
+        };
+        for v in &self.minimum {
+            os.write_enum(3, ::protobuf::EnumOrUnknown::value(v))?;
+        };
+        for v in &self.maximum {
+            os.write_enum(4, ::protobuf::EnumOrUnknown::value(v))?;
+        };
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> AuthIntentsForAuthFactorType {
+        AuthIntentsForAuthFactorType::new()
+    }
+
+    fn clear(&mut self) {
+        self.type_ = ::protobuf::EnumOrUnknown::new(super::auth_factor::AuthFactorType::AUTH_FACTOR_TYPE_UNSPECIFIED);
+        self.current.clear();
+        self.minimum.clear();
+        self.maximum.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static AuthIntentsForAuthFactorType {
+        static instance: AuthIntentsForAuthFactorType = AuthIntentsForAuthFactorType {
+            type_: ::protobuf::EnumOrUnknown::from_i32(0),
+            current: ::std::vec::Vec::new(),
+            minimum: ::std::vec::Vec::new(),
+            maximum: ::std::vec::Vec::new(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+#[derive(PartialEq,Clone,Default,Debug)]
 // @@protoc_insertion_point(message:user_data_auth.ListAuthFactorsRequest)
 pub struct ListAuthFactorsRequest {
     // message fields
@@ -11303,6 +11926,8 @@ pub struct ListAuthFactorsReply {
     pub configured_auth_factors_with_status: ::std::vec::Vec<AuthFactorWithStatus>,
     // @@protoc_insertion_point(field:user_data_auth.ListAuthFactorsReply.supported_auth_factors)
     pub supported_auth_factors: ::std::vec::Vec<::protobuf::EnumOrUnknown<super::auth_factor::AuthFactorType>>,
+    // @@protoc_insertion_point(field:user_data_auth.ListAuthFactorsReply.auth_intents_for_types)
+    pub auth_intents_for_types: ::std::vec::Vec<AuthIntentsForAuthFactorType>,
     // special fields
     // @@protoc_insertion_point(special_field:user_data_auth.ListAuthFactorsReply.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -11348,6 +11973,9 @@ impl ::protobuf::Message for ListAuthFactorsReply {
                 34 => {
                     ::protobuf::rt::read_repeated_packed_enum_or_unknown_into(is, &mut self.supported_auth_factors)?
                 },
+                50 => {
+                    self.auth_intents_for_types.push(is.read_message()?);
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -11378,6 +12006,10 @@ impl ::protobuf::Message for ListAuthFactorsReply {
         for value in &self.supported_auth_factors {
             my_size += ::protobuf::rt::int32_size(4, value.value());
         };
+        for value in &self.auth_intents_for_types {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -11398,6 +12030,9 @@ impl ::protobuf::Message for ListAuthFactorsReply {
         };
         for v in &self.supported_auth_factors {
             os.write_enum(4, ::protobuf::EnumOrUnknown::value(v))?;
+        };
+        for v in &self.auth_intents_for_types {
+            ::protobuf::rt::write_message_field_with_cached_size(6, v, os)?;
         };
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -11421,6 +12056,7 @@ impl ::protobuf::Message for ListAuthFactorsReply {
         self.configured_auth_factors.clear();
         self.configured_auth_factors_with_status.clear();
         self.supported_auth_factors.clear();
+        self.auth_intents_for_types.clear();
         self.special_fields.clear();
     }
 
@@ -11431,6 +12067,7 @@ impl ::protobuf::Message for ListAuthFactorsReply {
             configured_auth_factors: ::std::vec::Vec::new(),
             configured_auth_factors_with_status: ::std::vec::Vec::new(),
             supported_auth_factors: ::std::vec::Vec::new(),
+            auth_intents_for_types: ::std::vec::Vec::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -12343,6 +12980,252 @@ impl ::protobuf::Message for GetRecoveryRequestReply {
 }
 
 #[derive(PartialEq,Clone,Default,Debug)]
+// @@protoc_insertion_point(message:user_data_auth.CreateVaultKeysetRequest)
+pub struct CreateVaultKeysetRequest {
+    // message fields
+    // @@protoc_insertion_point(field:user_data_auth.CreateVaultKeysetRequest.auth_session_id)
+    pub auth_session_id: ::std::vec::Vec<u8>,
+    // @@protoc_insertion_point(field:user_data_auth.CreateVaultKeysetRequest.passkey)
+    pub passkey: ::std::vec::Vec<u8>,
+    // @@protoc_insertion_point(field:user_data_auth.CreateVaultKeysetRequest.key_label)
+    pub key_label: ::std::string::String,
+    // @@protoc_insertion_point(field:user_data_auth.CreateVaultKeysetRequest.type)
+    pub type_: ::protobuf::EnumOrUnknown<super::auth_factor::AuthFactorType>,
+    // @@protoc_insertion_point(field:user_data_auth.CreateVaultKeysetRequest.disable_key_data)
+    pub disable_key_data: bool,
+    // special fields
+    // @@protoc_insertion_point(special_field:user_data_auth.CreateVaultKeysetRequest.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a CreateVaultKeysetRequest {
+    fn default() -> &'a CreateVaultKeysetRequest {
+        <CreateVaultKeysetRequest as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl CreateVaultKeysetRequest {
+    pub fn new() -> CreateVaultKeysetRequest {
+        ::std::default::Default::default()
+    }
+}
+
+impl ::protobuf::Message for CreateVaultKeysetRequest {
+    const NAME: &'static str = "CreateVaultKeysetRequest";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.auth_session_id = is.read_bytes()?;
+                },
+                18 => {
+                    self.passkey = is.read_bytes()?;
+                },
+                26 => {
+                    self.key_label = is.read_string()?;
+                },
+                32 => {
+                    self.type_ = is.read_enum_or_unknown()?;
+                },
+                40 => {
+                    self.disable_key_data = is.read_bool()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if !self.auth_session_id.is_empty() {
+            my_size += ::protobuf::rt::bytes_size(1, &self.auth_session_id);
+        }
+        if !self.passkey.is_empty() {
+            my_size += ::protobuf::rt::bytes_size(2, &self.passkey);
+        }
+        if !self.key_label.is_empty() {
+            my_size += ::protobuf::rt::string_size(3, &self.key_label);
+        }
+        if self.type_ != ::protobuf::EnumOrUnknown::new(super::auth_factor::AuthFactorType::AUTH_FACTOR_TYPE_UNSPECIFIED) {
+            my_size += ::protobuf::rt::int32_size(4, self.type_.value());
+        }
+        if self.disable_key_data != false {
+            my_size += 1 + 1;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.auth_session_id.is_empty() {
+            os.write_bytes(1, &self.auth_session_id)?;
+        }
+        if !self.passkey.is_empty() {
+            os.write_bytes(2, &self.passkey)?;
+        }
+        if !self.key_label.is_empty() {
+            os.write_string(3, &self.key_label)?;
+        }
+        if self.type_ != ::protobuf::EnumOrUnknown::new(super::auth_factor::AuthFactorType::AUTH_FACTOR_TYPE_UNSPECIFIED) {
+            os.write_enum(4, ::protobuf::EnumOrUnknown::value(&self.type_))?;
+        }
+        if self.disable_key_data != false {
+            os.write_bool(5, self.disable_key_data)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> CreateVaultKeysetRequest {
+        CreateVaultKeysetRequest::new()
+    }
+
+    fn clear(&mut self) {
+        self.auth_session_id.clear();
+        self.passkey.clear();
+        self.key_label.clear();
+        self.type_ = ::protobuf::EnumOrUnknown::new(super::auth_factor::AuthFactorType::AUTH_FACTOR_TYPE_UNSPECIFIED);
+        self.disable_key_data = false;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static CreateVaultKeysetRequest {
+        static instance: CreateVaultKeysetRequest = CreateVaultKeysetRequest {
+            auth_session_id: ::std::vec::Vec::new(),
+            passkey: ::std::vec::Vec::new(),
+            key_label: ::std::string::String::new(),
+            type_: ::protobuf::EnumOrUnknown::from_i32(0),
+            disable_key_data: false,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+#[derive(PartialEq,Clone,Default,Debug)]
+// @@protoc_insertion_point(message:user_data_auth.CreateVaultKeysetReply)
+pub struct CreateVaultKeysetReply {
+    // message fields
+    // @@protoc_insertion_point(field:user_data_auth.CreateVaultKeysetReply.error)
+    pub error: ::protobuf::EnumOrUnknown<CryptohomeErrorCode>,
+    // @@protoc_insertion_point(field:user_data_auth.CreateVaultKeysetReply.error_info)
+    pub error_info: ::protobuf::MessageField<CryptohomeErrorInfo>,
+    // special fields
+    // @@protoc_insertion_point(special_field:user_data_auth.CreateVaultKeysetReply.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a CreateVaultKeysetReply {
+    fn default() -> &'a CreateVaultKeysetReply {
+        <CreateVaultKeysetReply as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl CreateVaultKeysetReply {
+    pub fn new() -> CreateVaultKeysetReply {
+        ::std::default::Default::default()
+    }
+}
+
+impl ::protobuf::Message for CreateVaultKeysetReply {
+    const NAME: &'static str = "CreateVaultKeysetReply";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                8 => {
+                    self.error = is.read_enum_or_unknown()?;
+                },
+                18 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.error_info)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if self.error != ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET) {
+            my_size += ::protobuf::rt::int32_size(1, self.error.value());
+        }
+        if let Some(v) = self.error_info.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if self.error != ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET) {
+            os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.error))?;
+        }
+        if let Some(v) = self.error_info.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> CreateVaultKeysetReply {
+        CreateVaultKeysetReply::new()
+    }
+
+    fn clear(&mut self) {
+        self.error = ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET);
+        self.error_info.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static CreateVaultKeysetReply {
+        static instance: CreateVaultKeysetReply = CreateVaultKeysetReply {
+            error: ::protobuf::EnumOrUnknown::from_i32(0),
+            error_info: ::protobuf::MessageField::none(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+#[derive(PartialEq,Clone,Default,Debug)]
 // @@protoc_insertion_point(message:user_data_auth.PrepareAuthFactorRequest)
 pub struct PrepareAuthFactorRequest {
     // message fields
@@ -12763,6 +13646,243 @@ impl ::protobuf::Message for TerminateAuthFactorReply {
         static instance: TerminateAuthFactorReply = TerminateAuthFactorReply {
             error: ::protobuf::EnumOrUnknown::from_i32(0),
             error_info: ::protobuf::MessageField::none(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+#[derive(PartialEq,Clone,Default,Debug)]
+// @@protoc_insertion_point(message:user_data_auth.ModifyAuthFactorIntentsRequest)
+pub struct ModifyAuthFactorIntentsRequest {
+    // message fields
+    // @@protoc_insertion_point(field:user_data_auth.ModifyAuthFactorIntentsRequest.auth_session_id)
+    pub auth_session_id: ::std::vec::Vec<u8>,
+    // @@protoc_insertion_point(field:user_data_auth.ModifyAuthFactorIntentsRequest.type)
+    pub type_: ::protobuf::EnumOrUnknown<super::auth_factor::AuthFactorType>,
+    // @@protoc_insertion_point(field:user_data_auth.ModifyAuthFactorIntentsRequest.intents)
+    pub intents: ::std::vec::Vec<::protobuf::EnumOrUnknown<super::auth_factor::AuthIntent>>,
+    // special fields
+    // @@protoc_insertion_point(special_field:user_data_auth.ModifyAuthFactorIntentsRequest.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a ModifyAuthFactorIntentsRequest {
+    fn default() -> &'a ModifyAuthFactorIntentsRequest {
+        <ModifyAuthFactorIntentsRequest as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl ModifyAuthFactorIntentsRequest {
+    pub fn new() -> ModifyAuthFactorIntentsRequest {
+        ::std::default::Default::default()
+    }
+}
+
+impl ::protobuf::Message for ModifyAuthFactorIntentsRequest {
+    const NAME: &'static str = "ModifyAuthFactorIntentsRequest";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.auth_session_id = is.read_bytes()?;
+                },
+                16 => {
+                    self.type_ = is.read_enum_or_unknown()?;
+                },
+                24 => {
+                    self.intents.push(is.read_enum_or_unknown()?);
+                },
+                26 => {
+                    ::protobuf::rt::read_repeated_packed_enum_or_unknown_into(is, &mut self.intents)?
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if !self.auth_session_id.is_empty() {
+            my_size += ::protobuf::rt::bytes_size(1, &self.auth_session_id);
+        }
+        if self.type_ != ::protobuf::EnumOrUnknown::new(super::auth_factor::AuthFactorType::AUTH_FACTOR_TYPE_UNSPECIFIED) {
+            my_size += ::protobuf::rt::int32_size(2, self.type_.value());
+        }
+        for value in &self.intents {
+            my_size += ::protobuf::rt::int32_size(3, value.value());
+        };
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.auth_session_id.is_empty() {
+            os.write_bytes(1, &self.auth_session_id)?;
+        }
+        if self.type_ != ::protobuf::EnumOrUnknown::new(super::auth_factor::AuthFactorType::AUTH_FACTOR_TYPE_UNSPECIFIED) {
+            os.write_enum(2, ::protobuf::EnumOrUnknown::value(&self.type_))?;
+        }
+        for v in &self.intents {
+            os.write_enum(3, ::protobuf::EnumOrUnknown::value(v))?;
+        };
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> ModifyAuthFactorIntentsRequest {
+        ModifyAuthFactorIntentsRequest::new()
+    }
+
+    fn clear(&mut self) {
+        self.auth_session_id.clear();
+        self.type_ = ::protobuf::EnumOrUnknown::new(super::auth_factor::AuthFactorType::AUTH_FACTOR_TYPE_UNSPECIFIED);
+        self.intents.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static ModifyAuthFactorIntentsRequest {
+        static instance: ModifyAuthFactorIntentsRequest = ModifyAuthFactorIntentsRequest {
+            auth_session_id: ::std::vec::Vec::new(),
+            type_: ::protobuf::EnumOrUnknown::from_i32(0),
+            intents: ::std::vec::Vec::new(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+#[derive(PartialEq,Clone,Default,Debug)]
+// @@protoc_insertion_point(message:user_data_auth.ModifyAuthFactorIntentsReply)
+pub struct ModifyAuthFactorIntentsReply {
+    // message fields
+    // @@protoc_insertion_point(field:user_data_auth.ModifyAuthFactorIntentsReply.error)
+    pub error: ::protobuf::EnumOrUnknown<CryptohomeErrorCode>,
+    // @@protoc_insertion_point(field:user_data_auth.ModifyAuthFactorIntentsReply.error_info)
+    pub error_info: ::protobuf::MessageField<CryptohomeErrorInfo>,
+    // @@protoc_insertion_point(field:user_data_auth.ModifyAuthFactorIntentsReply.auth_intents)
+    pub auth_intents: ::protobuf::MessageField<AuthIntentsForAuthFactorType>,
+    // special fields
+    // @@protoc_insertion_point(special_field:user_data_auth.ModifyAuthFactorIntentsReply.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a ModifyAuthFactorIntentsReply {
+    fn default() -> &'a ModifyAuthFactorIntentsReply {
+        <ModifyAuthFactorIntentsReply as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl ModifyAuthFactorIntentsReply {
+    pub fn new() -> ModifyAuthFactorIntentsReply {
+        ::std::default::Default::default()
+    }
+}
+
+impl ::protobuf::Message for ModifyAuthFactorIntentsReply {
+    const NAME: &'static str = "ModifyAuthFactorIntentsReply";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                8 => {
+                    self.error = is.read_enum_or_unknown()?;
+                },
+                18 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.error_info)?;
+                },
+                26 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.auth_intents)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if self.error != ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET) {
+            my_size += ::protobuf::rt::int32_size(1, self.error.value());
+        }
+        if let Some(v) = self.error_info.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if let Some(v) = self.auth_intents.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if self.error != ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET) {
+            os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.error))?;
+        }
+        if let Some(v) = self.error_info.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+        }
+        if let Some(v) = self.auth_intents.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> ModifyAuthFactorIntentsReply {
+        ModifyAuthFactorIntentsReply::new()
+    }
+
+    fn clear(&mut self) {
+        self.error = ::protobuf::EnumOrUnknown::new(CryptohomeErrorCode::CRYPTOHOME_ERROR_NOT_SET);
+        self.error_info.clear();
+        self.auth_intents.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static ModifyAuthFactorIntentsReply {
+        static instance: ModifyAuthFactorIntentsReply = ModifyAuthFactorIntentsReply {
+            error: ::protobuf::EnumOrUnknown::from_i32(0),
+            error_info: ::protobuf::MessageField::none(),
+            auth_intents: ::protobuf::MessageField::none(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -14003,6 +15123,10 @@ pub enum CryptohomeErrorCode {
     CRYPTOHOME_ERROR_RECOVERY_FATAL = 57,
     // @@protoc_insertion_point(enum_value:user_data_auth.CryptohomeErrorCode.CRYPTOHOME_ERROR_BIOMETRICS_BUSY)
     CRYPTOHOME_ERROR_BIOMETRICS_BUSY = 58,
+    // @@protoc_insertion_point(enum_value:user_data_auth.CryptohomeErrorCode.CRYPTOHOME_ERROR_CREDENTIAL_LOCKED)
+    CRYPTOHOME_ERROR_CREDENTIAL_LOCKED = 59,
+    // @@protoc_insertion_point(enum_value:user_data_auth.CryptohomeErrorCode.CRYPTOHOME_ERROR_CREDENTIAL_EXPIRED)
+    CRYPTOHOME_ERROR_CREDENTIAL_EXPIRED = 60,
 }
 
 impl ::protobuf::Enum for CryptohomeErrorCode {
@@ -14073,6 +15197,8 @@ impl ::protobuf::Enum for CryptohomeErrorCode {
             56 => ::std::option::Option::Some(CryptohomeErrorCode::CRYPTOHOME_ERROR_RECOVERY_TRANSIENT),
             57 => ::std::option::Option::Some(CryptohomeErrorCode::CRYPTOHOME_ERROR_RECOVERY_FATAL),
             58 => ::std::option::Option::Some(CryptohomeErrorCode::CRYPTOHOME_ERROR_BIOMETRICS_BUSY),
+            59 => ::std::option::Option::Some(CryptohomeErrorCode::CRYPTOHOME_ERROR_CREDENTIAL_LOCKED),
+            60 => ::std::option::Option::Some(CryptohomeErrorCode::CRYPTOHOME_ERROR_CREDENTIAL_EXPIRED),
             _ => ::std::option::Option::None
         }
     }
@@ -14137,6 +15263,8 @@ impl ::protobuf::Enum for CryptohomeErrorCode {
         CryptohomeErrorCode::CRYPTOHOME_ERROR_RECOVERY_TRANSIENT,
         CryptohomeErrorCode::CRYPTOHOME_ERROR_RECOVERY_FATAL,
         CryptohomeErrorCode::CRYPTOHOME_ERROR_BIOMETRICS_BUSY,
+        CryptohomeErrorCode::CRYPTOHOME_ERROR_CREDENTIAL_LOCKED,
+        CryptohomeErrorCode::CRYPTOHOME_ERROR_CREDENTIAL_EXPIRED,
     ];
 }
 
@@ -14170,6 +15298,8 @@ pub enum PrimaryAction {
     PRIMARY_INCORRECT_AUTH = 8,
     // @@protoc_insertion_point(enum_value:user_data_auth.PrimaryAction.PRIMARY_LE_LOCKED_OUT)
     PRIMARY_LE_LOCKED_OUT = 9,
+    // @@protoc_insertion_point(enum_value:user_data_auth.PrimaryAction.PRIMARY_LE_EXPIRED)
+    PRIMARY_LE_EXPIRED = 10,
 }
 
 impl ::protobuf::Enum for PrimaryAction {
@@ -14191,6 +15321,7 @@ impl ::protobuf::Enum for PrimaryAction {
             7 => ::std::option::Option::Some(PrimaryAction::PRIMARY_TPM_LOCKOUT),
             8 => ::std::option::Option::Some(PrimaryAction::PRIMARY_INCORRECT_AUTH),
             9 => ::std::option::Option::Some(PrimaryAction::PRIMARY_LE_LOCKED_OUT),
+            10 => ::std::option::Option::Some(PrimaryAction::PRIMARY_LE_EXPIRED),
             _ => ::std::option::Option::None
         }
     }
@@ -14206,6 +15337,7 @@ impl ::protobuf::Enum for PrimaryAction {
         PrimaryAction::PRIMARY_TPM_LOCKOUT,
         PrimaryAction::PRIMARY_INCORRECT_AUTH,
         PrimaryAction::PRIMARY_LE_LOCKED_OUT,
+        PrimaryAction::PRIMARY_LE_EXPIRED,
     ];
 }
 
@@ -14227,8 +15359,6 @@ pub enum PossibleAction {
     POSSIBLY_REBOOT = 2,
     // @@protoc_insertion_point(enum_value:user_data_auth.PossibleAction.POSSIBLY_AUTH)
     POSSIBLY_AUTH = 3,
-    // @@protoc_insertion_point(enum_value:user_data_auth.PossibleAction.POSSIBLY_INCORRECT_AUTH)
-    POSSIBLY_INCORRECT_AUTH = 4,
     // @@protoc_insertion_point(enum_value:user_data_auth.PossibleAction.POSSIBLY_DELETE_VAULT)
     POSSIBLY_DELETE_VAULT = 5,
     // @@protoc_insertion_point(enum_value:user_data_auth.PossibleAction.POSSIBLY_POWERWASH)
@@ -14252,7 +15382,6 @@ impl ::protobuf::Enum for PossibleAction {
             1 => ::std::option::Option::Some(PossibleAction::POSSIBLY_RETRY),
             2 => ::std::option::Option::Some(PossibleAction::POSSIBLY_REBOOT),
             3 => ::std::option::Option::Some(PossibleAction::POSSIBLY_AUTH),
-            4 => ::std::option::Option::Some(PossibleAction::POSSIBLY_INCORRECT_AUTH),
             5 => ::std::option::Option::Some(PossibleAction::POSSIBLY_DELETE_VAULT),
             6 => ::std::option::Option::Some(PossibleAction::POSSIBLY_POWERWASH),
             7 => ::std::option::Option::Some(PossibleAction::POSSIBLY_DEV_CHECK_UNEXPECTED_STATE),
@@ -14266,7 +15395,6 @@ impl ::protobuf::Enum for PossibleAction {
         PossibleAction::POSSIBLY_RETRY,
         PossibleAction::POSSIBLY_REBOOT,
         PossibleAction::POSSIBLY_AUTH,
-        PossibleAction::POSSIBLY_INCORRECT_AUTH,
         PossibleAction::POSSIBLY_DELETE_VAULT,
         PossibleAction::POSSIBLY_POWERWASH,
         PossibleAction::POSSIBLY_DEV_CHECK_UNEXPECTED_STATE,

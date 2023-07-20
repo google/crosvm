@@ -29,6 +29,7 @@ pub trait OrgChromiumUserDataAuthInterface {
     fn prepare_vault_for_migration(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn add_auth_factor(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn update_auth_factor(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
+    fn update_auth_factor_metadata(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn remove_auth_factor(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn list_auth_factors(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn get_auth_factor_extended_info(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
@@ -36,6 +37,8 @@ pub trait OrgChromiumUserDataAuthInterface {
     fn terminate_auth_factor(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn get_recovery_request(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
     fn reset_application_container(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
+    fn create_vault_keyset(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
+    fn get_arc_disk_features(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error>;
 }
 
 #[derive(Debug)]
@@ -59,6 +62,30 @@ impl arg::ReadAll for OrgChromiumUserDataAuthInterfaceDircryptoMigrationProgress
 
 impl dbus::message::SignalArgs for OrgChromiumUserDataAuthInterfaceDircryptoMigrationProgress {
     const NAME: &'static str = "DircryptoMigrationProgress";
+    const INTERFACE: &'static str = "org.chromium.UserDataAuthInterface";
+}
+
+#[derive(Debug)]
+pub struct OrgChromiumUserDataAuthInterfaceAuthFactorStatusUpdate {
+    pub status: Vec<u8>,
+}
+
+impl arg::AppendAll for OrgChromiumUserDataAuthInterfaceAuthFactorStatusUpdate {
+    fn append(&self, i: &mut arg::IterAppend) {
+        arg::RefArg::append(&self.status, i);
+    }
+}
+
+impl arg::ReadAll for OrgChromiumUserDataAuthInterfaceAuthFactorStatusUpdate {
+    fn read(i: &mut arg::Iter) -> Result<Self, arg::TypeMismatchError> {
+        Ok(OrgChromiumUserDataAuthInterfaceAuthFactorStatusUpdate {
+            status: i.read()?,
+        })
+    }
+}
+
+impl dbus::message::SignalArgs for OrgChromiumUserDataAuthInterfaceAuthFactorStatusUpdate {
+    const NAME: &'static str = "AuthFactorStatusUpdate";
     const INTERFACE: &'static str = "org.chromium.UserDataAuthInterface";
 }
 
@@ -256,6 +283,11 @@ impl<'a, T: blocking::BlockingSender, C: ::std::ops::Deref<Target=T>> OrgChromiu
             .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
     }
 
+    fn update_auth_factor_metadata(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
+        self.method_call("org.chromium.UserDataAuthInterface", "UpdateAuthFactorMetadata", (request, ))
+            .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
+    }
+
     fn remove_auth_factor(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
         self.method_call("org.chromium.UserDataAuthInterface", "RemoveAuthFactor", (request, ))
             .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
@@ -288,6 +320,16 @@ impl<'a, T: blocking::BlockingSender, C: ::std::ops::Deref<Target=T>> OrgChromiu
 
     fn reset_application_container(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
         self.method_call("org.chromium.UserDataAuthInterface", "ResetApplicationContainer", (request, ))
+            .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
+    }
+
+    fn create_vault_keyset(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
+        self.method_call("org.chromium.UserDataAuthInterface", "CreateVaultKeyset", (request, ))
+            .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
+    }
+
+    fn get_arc_disk_features(&self, request: Vec<u8>) -> Result<Vec<u8>, dbus::Error> {
+        self.method_call("org.chromium.UserDataAuthInterface", "GetArcDiskFeatures", (request, ))
             .and_then(|r: (Vec<u8>, )| Ok(r.0, ))
     }
 }

@@ -7,4 +7,5 @@ pub mod auth_factor;
 pub mod fido;
 pub mod key;
 pub mod rpc;
+pub mod spaced;
 pub mod vtpm_interface;

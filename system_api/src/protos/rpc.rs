@@ -1192,6 +1192,10 @@ pub enum CryptohomeErrorCode {
     CRYPTOHOME_ERROR_RECOVERY_FATAL = 57,
     // @@protoc_insertion_point(enum_value:cryptohome.CryptohomeErrorCode.CRYPTOHOME_ERROR_BIOMETRICS_BUSY)
     CRYPTOHOME_ERROR_BIOMETRICS_BUSY = 58,
+    // @@protoc_insertion_point(enum_value:cryptohome.CryptohomeErrorCode.CRYPTOHOME_ERROR_CREDENTIAL_LOCKED)
+    CRYPTOHOME_ERROR_CREDENTIAL_LOCKED = 59,
+    // @@protoc_insertion_point(enum_value:cryptohome.CryptohomeErrorCode.CRYPTOHOME_ERROR_CREDENTIAL_EXPIRED)
+    CRYPTOHOME_ERROR_CREDENTIAL_EXPIRED = 60,
 }
 
 impl ::protobuf::Enum for CryptohomeErrorCode {
@@ -1262,6 +1266,8 @@ impl ::protobuf::Enum for CryptohomeErrorCode {
             56 => ::std::option::Option::Some(CryptohomeErrorCode::CRYPTOHOME_ERROR_RECOVERY_TRANSIENT),
             57 => ::std::option::Option::Some(CryptohomeErrorCode::CRYPTOHOME_ERROR_RECOVERY_FATAL),
             58 => ::std::option::Option::Some(CryptohomeErrorCode::CRYPTOHOME_ERROR_BIOMETRICS_BUSY),
+            59 => ::std::option::Option::Some(CryptohomeErrorCode::CRYPTOHOME_ERROR_CREDENTIAL_LOCKED),
+            60 => ::std::option::Option::Some(CryptohomeErrorCode::CRYPTOHOME_ERROR_CREDENTIAL_EXPIRED),
             _ => ::std::option::Option::None
         }
     }
@@ -1326,6 +1332,8 @@ impl ::protobuf::Enum for CryptohomeErrorCode {
         CryptohomeErrorCode::CRYPTOHOME_ERROR_RECOVERY_TRANSIENT,
         CryptohomeErrorCode::CRYPTOHOME_ERROR_RECOVERY_FATAL,
         CryptohomeErrorCode::CRYPTOHOME_ERROR_BIOMETRICS_BUSY,
+        CryptohomeErrorCode::CRYPTOHOME_ERROR_CREDENTIAL_LOCKED,
+        CryptohomeErrorCode::CRYPTOHOME_ERROR_CREDENTIAL_EXPIRED,
     ];
 }
 
