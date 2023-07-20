@@ -14,6 +14,8 @@ use std::os::raw::c_char;
 use std::os::raw::c_int;
 use std::os::raw::c_uint;
 use std::os::raw::c_void;
+use std::panic::catch_unwind;
+use std::process::abort;
 use std::ptr::null;
 use std::ptr::null_mut;
 use std::sync::Arc;
@@ -179,7 +181,7 @@ extern "C" {
 /// The virtio-gpu backend state tracker which supports accelerated rendering.
 pub struct Gfxstream {
     /// Cookie used by Gfxstream, should be held as long as the renderer is alive.
-    _cookie: Box<VirglCookie>,
+    _cookie: Box<RutabagaCookie>,
 }
 
 struct GfxstreamContext {
@@ -249,6 +251,18 @@ impl Drop for GfxstreamContext {
     }
 }
 
+extern "C" fn write_context_fence(cookie: *mut c_void, fence: *const RutabagaFence) {
+    catch_unwind(|| {
+        assert!(!cookie.is_null());
+        let cookie = unsafe { &*(cookie as *mut RutabagaCookie) };
+        if let Some(handler) = &cookie.fence_handler {
+            // We trust gfxstream not give a dangling pointer
+            unsafe { handler.call(*fence) };
+        }
+    })
+    .unwrap_or_else(|_| abort())
+}
+
 impl Gfxstream {
     pub fn init(
         display_width: u32,
@@ -256,9 +270,9 @@ impl Gfxstream {
         gfxstream_flags: GfxstreamFlags,
         fence_handler: RutabagaFenceHandler,
     ) -> RutabagaResult<Box<dyn RutabagaComponent>> {
-        let mut cookie = Box::new(VirglCookie {
+        let mut cookie = Box::new(RutabagaCookie {
             render_server_fd: None,
-            fence_handler: Some(fence_handler.clone()),
+            fence_handler: Some(fence_handler),
         });
 
         let mut stream_renderer_params = [
@@ -266,7 +280,7 @@ impl Gfxstream {
                 key: STREAM_RENDERER_PARAM_USER_DATA,
                 // Safe as cookie outlives the stream renderer (stream_renderer_teardown called
                 // at Gfxstream Drop)
-                value: &mut *cookie as *mut VirglCookie as u64,
+                value: &mut *cookie as *mut RutabagaCookie as u64,
             },
             stream_renderer_param {
                 key: STREAM_RENDERER_PARAM_RENDERER_FLAGS,

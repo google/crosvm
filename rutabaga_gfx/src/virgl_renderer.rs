@@ -13,6 +13,7 @@ use std::io::Error as SysError;
 use std::mem::size_of;
 use std::mem::transmute;
 use std::os::raw::c_char;
+use std::os::raw::c_int;
 use std::os::raw::c_void;
 use std::os::unix::io::AsRawFd;
 use std::panic::catch_unwind;
@@ -193,7 +194,7 @@ extern "C" fn debug_callback(fmt: *const ::std::os::raw::c_char, ap: stdio::va_l
 extern "C" fn write_context_fence(cookie: *mut c_void, ctx_id: u32, ring_idx: u64, fence_id: u64) {
     catch_unwind(|| {
         assert!(!cookie.is_null());
-        let cookie = unsafe { &*(cookie as *mut VirglCookie) };
+        let cookie = unsafe { &*(cookie as *mut RutabagaCookie) };
 
         // Call fence completion callback
         if let Some(handler) = &cookie.fence_handler {
@@ -204,6 +205,44 @@ extern "C" fn write_context_fence(cookie: *mut c_void, ctx_id: u32, ring_idx: u6
                 ring_idx: ring_idx as u8,
             });
         }
+    })
+    .unwrap_or_else(|_| abort())
+}
+
+unsafe extern "C" fn write_fence(cookie: *mut c_void, fence: u32) {
+    catch_unwind(|| {
+        assert!(!cookie.is_null());
+        let cookie = &*(cookie as *mut RutabagaCookie);
+
+        // Call fence completion callback
+        if let Some(handler) = &cookie.fence_handler {
+            handler.call(RutabagaFence {
+                flags: RUTABAGA_FLAG_FENCE,
+                fence_id: fence as u64,
+                ctx_id: 0,
+                ring_idx: 0,
+            });
+        }
+    })
+    .unwrap_or_else(|_| abort())
+}
+
+#[cfg(feature = "virgl_renderer_next")]
+unsafe extern "C" fn get_server_fd(cookie: *mut c_void, version: u32) -> c_int {
+    catch_unwind(|| {
+        assert!(!cookie.is_null());
+        let cookie = &mut *(cookie as *mut RutabagaCookie);
+
+        if version != 0 {
+            return -1;
+        }
+
+        // Transfer the fd ownership to virglrenderer.
+        cookie
+            .render_server_fd
+            .take()
+            .map(SafeDescriptor::into_raw_descriptor)
+            .unwrap_or(-1)
     })
     .unwrap_or_else(|_| abort())
 }
@@ -279,7 +318,7 @@ impl VirglRenderer {
         // Otherwise, Resource and Context would become invalid because their lifetime is not tied
         // to the Renderer instance. Doing so greatly simplifies the ownership for users of this
         // library.
-        let cookie = Box::into_raw(Box::new(VirglCookie {
+        let cookie = Box::into_raw(Box::new(RutabagaCookie {
             render_server_fd,
             fence_handler: Some(fence_handler),
         }));
