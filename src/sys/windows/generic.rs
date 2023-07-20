@@ -77,7 +77,7 @@ pub(super) enum Token {
     VmEvent,
     BrokerShutdown,
     VmControlServer,
-    VmControl { index: usize },
+    VmControl { id: usize },
 }
 
 pub(super) fn handle_hungup_event(token: &Token) {
@@ -156,7 +156,7 @@ pub(super) fn handle_received_token<V: VmArch + 'static, Vcpu: VcpuArch + 'stati
     _ac97_host_tubes: &[Tube],
     _anti_tamper_main_thread_tube: &Option<ProtoTube>,
     _balloon_host_tube: &Option<Tube>,
-    _control_tubes: &[SharedTaggedControlTube],
+    _control_tubes: &BTreeMap<usize, SharedTaggedControlTube>,
     _guest_os: &mut RunnableLinuxVm<V, Vcpu>,
     _ipc_main_loop_tube: Option<&Tube>,
     _memory_size_mb: u64,

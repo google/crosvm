@@ -12,7 +12,6 @@ pub(crate) mod gpu;
 mod vcpu;
 
 use std::cmp::max;
-use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 #[cfg(feature = "registered_events")]
@@ -2500,7 +2499,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     control_server_socket: Option<UnlinkUnixSeqpacketListener>,
     irq_control_tubes: Vec<Tube>,
     vm_memory_control_tubes: Vec<VmMemoryTube>,
-    mut control_tubes: Vec<TaggedControlTube>,
+    control_tubes: Vec<TaggedControlTube>,
     #[cfg(feature = "balloon")] balloon_host_tube: Option<Tube>,
     disk_host_tubes: &[Tube],
     #[cfg(feature = "gpu")] gpu_control_tube: Tube,
@@ -2528,7 +2527,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         ChildSignal,
         VmControlServer,
         VmControl {
-            index: usize,
+            id: usize,
         },
         #[cfg(feature = "registered_events")]
         RegisteredEvent,
@@ -2634,9 +2633,11 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             .add(socket_server, Token::VmControlServer)
             .context("failed to add descriptor to wait context")?;
     }
-    for (index, socket) in control_tubes.iter().enumerate() {
+    let mut control_tubes = BTreeMap::from_iter(control_tubes.into_iter().enumerate());
+    let mut next_control_id = control_tubes.len();
+    for (id, socket) in control_tubes.iter() {
         wait_ctx
-            .add(socket.as_ref(), Token::VmControl { index })
+            .add(socket.as_ref(), Token::VmControl { id: *id })
             .context("failed to add descriptor to wait context")?;
     }
 
@@ -2955,7 +2956,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             }
         };
 
-        let mut vm_control_indices_to_remove = Vec::new();
+        let mut vm_control_ids_to_remove = Vec::new();
         for event in events.iter().filter(|e| e.is_readable) {
             match event.token {
                 #[cfg(feature = "registered_events")]
@@ -3084,30 +3085,28 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                     if let Some(socket_server) = &control_server_socket {
                         match socket_server.accept() {
                             Ok(socket) => {
+                                let id = next_control_id;
+                                next_control_id += 1;
                                 wait_ctx
-                                    .add(
-                                        &socket,
-                                        Token::VmControl {
-                                            index: control_tubes.len(),
-                                        },
-                                    )
+                                    .add(&socket, Token::VmControl { id })
                                     .context("failed to add descriptor to wait context")?;
-                                control_tubes.push(TaggedControlTube::Vm(
-                                    Tube::new_from_unix_seqpacket(socket),
-                                ));
+                                control_tubes.insert(
+                                    id,
+                                    TaggedControlTube::Vm(Tube::new_from_unix_seqpacket(socket)),
+                                );
                             }
                             Err(e) => error!("failed to accept socket: {}", e),
                         }
                     }
                 }
-                Token::VmControl { index } => {
+                Token::VmControl { id } => {
                     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
                     let mut add_tubes = Vec::new();
                     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
                     let mut add_irq_control_tubes = Vec::new();
                     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
                     let mut add_vm_memory_control_tubes = Vec::new();
-                    if let Some(socket) = control_tubes.get(index) {
+                    if let Some(socket) = control_tubes.get(&id) {
                         match socket {
                             TaggedControlTube::Vm(tube) => match tube.recv::<VmRequest>() {
                                 Ok(request) => {
@@ -3316,7 +3315,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                 }
                                 Err(e) => {
                                     if let TubeError::Disconnected = e {
-                                        vm_control_indices_to_remove.push(index);
+                                        vm_control_ids_to_remove.push(id);
                                     } else {
                                         error!("failed to recv VmRequest: {}", e);
                                     }
@@ -3332,7 +3331,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                     }
                                     Err(e) => {
                                         if let TubeError::Disconnected = e {
-                                            vm_control_indices_to_remove.push(index);
+                                            vm_control_ids_to_remove.push(id);
                                         } else {
                                             error!("failed to recv VmMsyncRequest: {}", e);
                                         }
@@ -3349,7 +3348,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                 }
                                 Err(e) => {
                                     if let TubeError::Disconnected = e {
-                                        vm_control_indices_to_remove.push(index);
+                                        vm_control_ids_to_remove.push(id);
                                     } else {
                                         error!("failed to recv VmResponse: {}", e);
                                     }
@@ -3358,20 +3357,13 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                         }
                     }
                     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-                    if !add_tubes.is_empty() {
-                        for (idx, socket) in add_tubes.iter().enumerate() {
-                            wait_ctx
-                                .add(
-                                    socket.as_ref(),
-                                    Token::VmControl {
-                                        index: idx + control_tubes.len(),
-                                    },
-                                )
-                                .context(
-                                    "failed to add hotplug vfio-pci descriptor to wait context",
-                                )?;
-                        }
-                        control_tubes.append(&mut add_tubes);
+                    for socket in add_tubes {
+                        let id = next_control_id;
+                        next_control_id += 1;
+                        wait_ctx
+                            .add(socket.as_ref(), Token::VmControl { id })
+                            .context("failed to add hotplug vfio-pci descriptor to wait context")?;
+                        control_tubes.insert(id, socket);
                     }
                     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
                     if !add_irq_control_tubes.is_empty() {
@@ -3393,14 +3385,13 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
             &events,
             &wait_ctx,
             &mut control_tubes,
-            vm_control_indices_to_remove,
+            vm_control_ids_to_remove,
             |token: &Token| {
-                if let Token::VmControl { index } = token {
-                    return Some(*index);
+                if let Token::VmControl { id } = token {
+                    return Some(*id);
                 }
                 None
             },
-            |index: usize| Token::VmControl { index },
         )?;
     }
 
@@ -3494,14 +3485,14 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
 #[derive(EventToken)]
 enum IrqHandlerToken {
     IrqFd { index: IrqEventIndex },
-    VmIrq { index: usize },
+    VmIrq { id: usize },
     DelayedIrqFd,
     HandlerControl,
 }
 
 /// Handles IRQs and requests from devices to add additional IRQ lines.
 fn irq_handler_thread(
-    mut irq_control_tubes: Vec<Tube>,
+    irq_control_tubes: Vec<Tube>,
     mut irq_chip: Box<dyn IrqChipArch + 'static>,
     sys_allocator_mutex: Arc<Mutex<SystemAllocator>>,
     handler_control: Tube,
@@ -3528,9 +3519,14 @@ fn irq_handler_thread(
             .context("failed to add irq chip event tokens to wait context")?;
     }
 
-    for (index, socket) in irq_control_tubes.iter().enumerate() {
+    let mut irq_control_tubes = BTreeMap::from_iter(irq_control_tubes.into_iter().enumerate());
+    let mut next_control_id = irq_control_tubes.len();
+    for (id, socket) in irq_control_tubes.iter() {
         wait_ctx
-            .add(socket.get_read_notifier(), IrqHandlerToken::VmIrq { index })
+            .add(
+                socket.get_read_notifier(),
+                IrqHandlerToken::VmIrq { id: *id },
+            )
             .context("irq control tubes to wait context")?;
     }
 
@@ -3555,18 +3551,18 @@ fn irq_handler_thread(
                         Ok(request) => {
                             match request {
                                 IrqHandlerRequest::Exit => break 'wait,
-                                IrqHandlerRequest::AddIrqControlTubes(mut tubes) => {
-                                    for (index, socket) in tubes.iter().enumerate() {
+                                IrqHandlerRequest::AddIrqControlTubes(tubes) => {
+                                    for socket in tubes {
+                                        let id = next_control_id;
+                                        next_control_id += 1;
                                         wait_ctx
                                         .add(
                                             socket.get_read_notifier(),
-                                            IrqHandlerToken::VmIrq {
-                                                index: irq_control_tubes.len() + index,
-                                            },
+                                            IrqHandlerToken::VmIrq { id },
                                         )
                                         .context("failed to add new IRQ control Tube to wait context")?;
+                                        irq_control_tubes.insert(id, socket);
                                     }
-                                    irq_control_tubes.append(&mut tubes);
                                 }
                                 IrqHandlerRequest::RefreshIrqEventTokens => {
                                     for (_index, _gsi, evt) in irq_event_tokens.iter() {
@@ -3612,15 +3608,15 @@ fn irq_handler_thread(
                         }
                     }
                 }
-                IrqHandlerToken::VmIrq { index } => {
-                    if let Some(tube) = irq_control_tubes.get(index) {
+                IrqHandlerToken::VmIrq { id } => {
+                    if let Some(tube) = irq_control_tubes.get(&id) {
                         handle_irq_tube_request(
                             &sys_allocator_mutex,
                             &mut irq_chip,
                             &mut vm_irq_tubes_to_remove,
                             &wait_ctx,
                             tube,
-                            index,
+                            id,
                         );
                     }
                 }
@@ -3654,12 +3650,11 @@ fn irq_handler_thread(
             &mut irq_control_tubes,
             vm_irq_tubes_to_remove,
             |token: &IrqHandlerToken| {
-                if let IrqHandlerToken::VmIrq { index } = token {
-                    return Some(*index);
+                if let IrqHandlerToken::VmIrq { id } = token {
+                    return Some(*id);
                 }
                 None
             },
-            |index: usize| IrqHandlerToken::VmIrq { index },
         )?;
         if events.iter().any(|e| {
             e.is_hungup && !e.is_readable && matches!(e.token, IrqHandlerToken::HandlerControl)
@@ -3736,7 +3731,7 @@ pub enum VmMemoryHandlerRequest {
 }
 
 fn vm_memory_handler_thread(
-    mut control_tubes: Vec<VmMemoryTube>,
+    control_tubes: Vec<VmMemoryTube>,
     mut vm: impl Vm,
     sys_allocator_mutex: Arc<Mutex<SystemAllocator>>,
     mut gralloc: RutabagaGralloc,
@@ -3745,16 +3740,18 @@ fn vm_memory_handler_thread(
 ) -> anyhow::Result<()> {
     #[derive(EventToken)]
     enum Token {
-        VmControl { index: usize },
+        VmControl { id: usize },
         HandlerControl,
     }
 
     let wait_ctx =
         WaitContext::build_with(&[(handler_control.get_read_notifier(), Token::HandlerControl)])
             .context("failed to build wait context")?;
-    for (index, socket) in control_tubes.iter().enumerate() {
+    let mut control_tubes = BTreeMap::from_iter(control_tubes.into_iter().enumerate());
+    let mut next_control_id = control_tubes.len();
+    for (id, socket) in control_tubes.iter() {
         wait_ctx
-            .add(socket.as_ref(), Token::VmControl { index })
+            .add(socket.as_ref(), Token::VmControl { id: *id })
             .context("failed to add descriptor to wait context")?;
     }
 
@@ -3771,26 +3768,23 @@ fn vm_memory_handler_thread(
             }
         };
 
-        let mut vm_control_indices_to_remove = Vec::new();
+        let mut vm_control_ids_to_remove = Vec::new();
         for event in events.iter().filter(|e| e.is_readable) {
             match event.token {
                 Token::HandlerControl => match handler_control.recv::<VmMemoryHandlerRequest>() {
                     Ok(request) => match request {
                         VmMemoryHandlerRequest::Exit => break 'wait,
-                        VmMemoryHandlerRequest::AddControlTubes(mut tubes) => {
-                            for (index, socket) in tubes.iter().enumerate() {
+                        VmMemoryHandlerRequest::AddControlTubes(tubes) => {
+                            for socket in tubes {
+                                let id = next_control_id;
+                                next_control_id += 1;
                                 wait_ctx
-                                    .add(
-                                        socket.get_read_notifier(),
-                                        Token::VmControl {
-                                            index: control_tubes.len() + index,
-                                        },
-                                    )
+                                    .add(socket.get_read_notifier(), Token::VmControl { id })
                                     .context(
                                         "failed to add new vm memory control Tube to wait context",
                                     )?;
+                                control_tubes.insert(id, socket);
                             }
-                            control_tubes.append(&mut tubes);
                         }
                     },
                     Err(e) => {
@@ -3801,11 +3795,11 @@ fn vm_memory_handler_thread(
                         }
                     }
                 },
-                Token::VmControl { index } => {
+                Token::VmControl { id } => {
                     if let Some(VmMemoryTube {
                         tube,
                         expose_with_viommu,
-                    }) = control_tubes.get(index)
+                    }) = control_tubes.get(&id)
                     {
                         match tube.recv::<VmMemoryRequest>() {
                             Ok(request) => {
@@ -3826,7 +3820,7 @@ fn vm_memory_handler_thread(
                             }
                             Err(e) => {
                                 if let TubeError::Disconnected = e {
-                                    vm_control_indices_to_remove.push(index);
+                                    vm_control_ids_to_remove.push(id);
                                 } else {
                                     error!("failed to recv VmMemoryControlRequest: {}", e);
                                 }
@@ -3841,14 +3835,13 @@ fn vm_memory_handler_thread(
             &events,
             &wait_ctx,
             &mut control_tubes,
-            vm_control_indices_to_remove,
+            vm_control_ids_to_remove,
             |token: &Token| {
-                if let Token::VmControl { index } = token {
-                    return Some(*index);
+                if let Token::VmControl { id } = token {
+                    return Some(*id);
                 }
                 None
             },
-            |index: usize| Token::VmControl { index },
         )?;
         if events
             .iter()
@@ -3865,15 +3858,14 @@ fn vm_memory_handler_thread(
 /// the underlying socket before removing it. This function also handles
 /// removing closed sockets in such a way that avoids phantom events.
 ///
-/// `tube_indices_to_remove` is the set of indices that we already know should
+/// `tube_ids_to_remove` is the set of ids that we already know should
 /// be removed (e.g. from getting a disconnect error on read).
 fn remove_hungup_and_drained_tubes<T, U>(
     events: &SmallVec<[TriggeredEvent<T>; 16]>,
     wait_ctx: &WaitContext<T>,
-    tubes: &mut Vec<U>,
-    mut tube_indices_to_remove: Vec<usize>,
-    get_tube_index: fn(token: &T) -> Option<usize>,
-    make_token_for_tube: fn(usize) -> T,
+    tubes: &mut BTreeMap<usize, U>,
+    mut tube_ids_to_remove: Vec<usize>,
+    get_tube_id: fn(token: &T) -> Option<usize>,
 ) -> anyhow::Result<()>
 where
     T: EventToken,
@@ -3885,19 +3877,16 @@ where
     // Below case covers a condition where we have received a hungup event and the tube is not
     // readable.
     // In case of readable tube, once all data is read, any attempt to read more data on hungup
-    // tube should fail. On such failure, we get Disconnected error and index gets added to
-    // vm_control_indices_to_remove by the time we reach here.
+    // tube should fail. On such failure, we get Disconnected error and ids gets added to
+    // tube_ids_to_remove by the time we reach here.
     for event in events.iter().filter(|e| e.is_hungup && !e.is_readable) {
-        if let Some(index) = get_tube_index(&event.token) {
-            tube_indices_to_remove.push(index);
+        if let Some(id) = get_tube_id(&event.token) {
+            tube_ids_to_remove.push(id);
         }
     }
 
-    // Sort in reverse so the highest indexes are removed first. This removal algorithm
-    // preserves correct indexes as each element is removed.
-    tube_indices_to_remove.sort_unstable_by_key(|&k| Reverse(k));
-    tube_indices_to_remove.dedup();
-    for index in tube_indices_to_remove {
+    tube_ids_to_remove.dedup();
+    for id in tube_ids_to_remove {
         // Delete the socket from the `wait_ctx` synchronously. Otherwise, the kernel will do
         // this automatically when the FD inserted into the `wait_ctx` is closed after this
         // if-block, but this removal can be deferred unpredictably. In some instances where the
@@ -3906,25 +3895,10 @@ where
         // now belongs to a different socket, the control loop will start to interact with
         // sockets that might not be ready to use. This can cause incorrect hangup detection or
         // blocking on a socket that will never be ready. See also: crbug.com/1019986
-        if let Some(socket) = tubes.get(index) {
+        if let Some(socket) = tubes.remove(&id) {
             wait_ctx
                 .delete(socket.get_read_notifier())
                 .context("failed to remove descriptor from wait context")?;
-        }
-
-        // This line implicitly drops the socket at `index` when it gets returned by
-        // `swap_remove`. After this line, the socket at `index` is not the one from
-        // `tube_indices_to_remove`. Because of this socket's change in index, we need to
-        // use `wait_ctx.modify` to change the associated index in its `Token::VmControl`.
-        tubes.swap_remove(index);
-        if let Some(tube) = tubes.get(index) {
-            wait_ctx
-                .modify(
-                    tube.get_read_notifier(),
-                    EventType::Read,
-                    make_token_for_tube(index),
-                )
-                .context("failed to add descriptor to wait context")?;
         }
     }
     Ok(())
