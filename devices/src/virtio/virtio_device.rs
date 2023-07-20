@@ -119,7 +119,7 @@ pub trait VirtioDevice: Send {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        queues: BTreeMap<usize, (Queue, Event)>,
+        queues: Vec<(Queue, Event)>,
     ) -> Result<()>;
 
     /// Optionally deactivates this device. If the reset method is

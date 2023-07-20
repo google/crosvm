@@ -2007,7 +2007,7 @@ impl VirtioDevice for Wl {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: BTreeMap<usize, (Queue, Event)>,
+        mut queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
         if queues.len() != QUEUE_SIZES.len() {
             return Err(anyhow!(
@@ -2038,8 +2038,8 @@ impl VirtioDevice for Wl {
             Worker::new(
                 mem,
                 interrupt,
-                queues.pop_first().unwrap().1,
-                queues.pop_first().unwrap().1,
+                queues.remove(0),
+                queues.remove(0),
                 wayland_paths,
                 mapper,
                 use_transition_flags,
@@ -2084,10 +2084,11 @@ impl VirtioDevice for Wl {
     ) -> anyhow::Result<()> {
         match device_state {
             None => Ok(()),
-            Some((mem, interrupt, queues)) => {
+            Some((mem, interrupt, queues_map)) => {
                 // TODO: activate is just what we want at the moment, but we should probably move
                 // it into a "start workers" function to make it obvious that it isn't strictly
                 // used for activate events.
+                let queues = queues_map.into_values().collect();
                 self.activate(mem, interrupt, queues)?;
                 Ok(())
             }

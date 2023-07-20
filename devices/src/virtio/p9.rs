@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::collections::BTreeMap;
 use std::io;
 use std::io::Write;
 use std::mem;
@@ -208,13 +207,13 @@ impl VirtioDevice for P9 {
         &mut self,
         guest_mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: BTreeMap<usize, (Queue, Event)>,
+        mut queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
         if queues.len() != 1 {
             return Err(anyhow!("expected 1 queue, got {}", queues.len()));
         }
 
-        let (queue, queue_evt) = queues.remove(&0).unwrap();
+        let (queue, queue_evt) = queues.remove(0);
 
         let server = self.server.take().context("missing server")?;
 

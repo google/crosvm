@@ -241,7 +241,7 @@ impl VirtioDevice for Vsock {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: BTreeMap<usize, (Queue, Event)>,
+        mut queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
         if queues.len() != QUEUE_SIZES.len() {
             return Err(anyhow!(
@@ -252,9 +252,9 @@ impl VirtioDevice for Vsock {
         }
 
         let vsock_queues = VsockQueues {
-            rx: queues.remove(&0).unwrap(),
-            tx: queues.remove(&1).unwrap(),
-            event: queues.remove(&2).unwrap(),
+            rx: queues.remove(0),
+            tx: queues.remove(0),
+            event: queues.remove(0),
         };
 
         self.start_worker(mem, interrupt, vsock_queues)

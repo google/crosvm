@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use acpi_tables::aml;
@@ -155,18 +154,14 @@ impl VirtioMmioDevice {
             .queues
             .iter_mut()
             .zip(self.queue_evts.iter())
-            .enumerate()
-            .filter(|(_, (q, _))| q.ready())
-            .map(|(queue_index, (queue, evt))| {
+            .filter(|(q, _)| q.ready())
+            .map(|(queue, evt)| {
                 Ok((
-                    queue_index,
-                    (
-                        queue.activate().context("failed to activate queue")?,
-                        evt.try_clone().context("failed to clone queue_evt")?,
-                    ),
+                    queue.activate().context("failed to activate queue")?,
+                    evt.try_clone().context("failed to clone queue_evt")?,
                 ))
             })
-            .collect::<anyhow::Result<BTreeMap<usize, (Queue, Event)>>>()?;
+            .collect::<anyhow::Result<Vec<(Queue, Event)>>>()?;
 
         if let Err(e) = self.device.activate(mem, interrupt, queues) {
             error!("{} activate failed: {:#}", self.debug_label(), e);

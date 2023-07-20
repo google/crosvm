@@ -7,7 +7,6 @@
 //!
 //! [v3 RFC]: https://markmail.org/thread/wxdne5re7aaugbjg
 
-use std::collections::BTreeMap;
 use std::thread;
 
 use anyhow::anyhow;
@@ -202,7 +201,7 @@ impl VirtioDevice for VideoDevice {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: BTreeMap<usize, (Queue, Event)>,
+        mut queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
         if queues.len() != QUEUE_SIZES.len() {
             return Err(anyhow!(
@@ -217,8 +216,8 @@ impl VirtioDevice for VideoDevice {
             .context("failed to create kill Event pair")?;
         self.kill_evt = Some(self_kill_evt);
 
-        let (cmd_queue, cmd_evt) = queues.pop_first().unwrap().1;
-        let (event_queue, event_evt) = queues.pop_first().unwrap().1;
+        let (cmd_queue, cmd_evt) = queues.remove(0);
+        let (event_queue, event_evt) = queues.remove(0);
         let backend = self.backend;
         let resource_bridge = self
             .resource_bridge

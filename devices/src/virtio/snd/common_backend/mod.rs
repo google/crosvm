@@ -4,7 +4,6 @@
 
 // virtio-sound spec: https://github.com/oasis-tcs/virtio-spec/blob/master/virtio-sound.tex
 
-use std::collections::BTreeMap;
 use std::io;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -429,7 +428,7 @@ impl VirtioDevice for VirtioSnd {
         &mut self,
         guest_mem: GuestMemory,
         interrupt: Interrupt,
-        queues: BTreeMap<usize, (Queue, Event)>,
+        queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
         if queues.len() != self.queue_sizes.len() {
             return Err(anyhow!(
@@ -479,7 +478,7 @@ enum LoopState {
 
 fn run_worker(
     interrupt: Interrupt,
-    queues: BTreeMap<usize, (Queue, Event)>,
+    queues: Vec<(Queue, Event)>,
     mem: GuestMemory,
     snd_data: SndData,
     kill_evt: Event,
@@ -503,7 +502,7 @@ fn run_worker(
 
     let mut queues: Vec<(Queue, EventAsync)> = queues
         .into_iter()
-        .map(|(_, (q, e))| {
+        .map(|(q, e)| {
             (
                 q,
                 EventAsync::new(e, &ex).expect("Failed to create async event for queue"),

@@ -10,7 +10,6 @@
 //! For more information about this device, please visit <go/virtio-pvclock>.
 
 use std::arch::x86_64::_rdtsc;
-use std::collections::BTreeMap;
 use std::mem::size_of;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -594,7 +593,7 @@ impl VirtioDevice for PvClock {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: BTreeMap<usize, (Queue, Event)>,
+        mut queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
         if queues.len() != QUEUE_SIZES.len() {
             return Err(anyhow!(
@@ -604,7 +603,7 @@ impl VirtioDevice for PvClock {
             ));
         }
 
-        let (set_pvclock_page_queue, set_pvclock_page_queue_evt) = queues.remove(&0).unwrap();
+        let (set_pvclock_page_queue, set_pvclock_page_queue_evt) = queues.remove(0);
 
         let suspend_tube = self
             .suspend_tube

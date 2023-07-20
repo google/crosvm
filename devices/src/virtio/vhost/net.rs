@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::collections::BTreeMap;
 use std::mem;
 use std::path::Path;
 
@@ -178,7 +177,7 @@ where
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        queues: BTreeMap<usize, (Queue, Event)>,
+        queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
         if queues.len() != NUM_QUEUES {
             return Err(anyhow!(
@@ -415,7 +414,7 @@ pub mod tests {
         let _ = net.activate(
             guest_memory,
             Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
-            BTreeMap::from([(0, (q0, e0)), (1, (q1, e1))]),
+            vec![(q0, e0), (q1, e1)],
         );
     }
 }

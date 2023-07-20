@@ -969,7 +969,7 @@ impl VirtioDevice for BlockAsync {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        queues: BTreeMap<usize, (Queue, Event)>,
+        queues: Vec<(Queue, Event)>,
     ) -> anyhow::Result<()> {
         assert!(self.num_activated_queues.is_none());
         self.num_activated_queues = Some(queues.len());
@@ -988,9 +988,9 @@ impl VirtioDevice for BlockAsync {
             // 1 queue per 1 worker
             queues
                 .into_iter()
-                .map(|entry| {
+                .map(|queue| {
                     Ok((
-                        BTreeMap::from([entry]),
+                        vec![queue],
                         disk_image
                             .try_clone()
                             .context("Failed to clone a disk image")?,
@@ -1015,7 +1015,7 @@ impl VirtioDevice for BlockAsync {
 
             let (worker_tx, worker_rx) = mpsc::unbounded();
             // Add commands to start all the queues before starting the worker.
-            for (index, (queue, event)) in queues.into_iter() {
+            for (index, (queue, event)) in queues.into_iter().enumerate() {
                 worker_tx
                     .unbounded_send(WorkerCmd::StartQueue {
                         index,
@@ -1142,7 +1142,19 @@ impl VirtioDevice for BlockAsync {
             // it into a "start workers" function to make it obvious that it isn't strictly
             // used for activate events.
             self.num_activated_queues = None;
-            self.activate(mem, interrupt, queues)?;
+
+            let mut queues_vec: Vec<Option<(Queue, Event)>> = Vec::with_capacity(queues.len());
+            queues_vec.resize_with(queues.len(), || None);
+            for (index, queue_and_event) in queues.into_iter() {
+                queues_vec[index] = Some(queue_and_event)
+            }
+            assert!(
+                !queues_vec.iter().any(|item| item.is_none()),
+                "block queue numbers must be contiguous."
+            );
+            let queues_vec = queues_vec.into_iter().flatten().collect();
+
+            self.activate(mem, interrupt, queues_vec)?;
         }
         Ok(())
     }
@@ -1638,7 +1650,7 @@ mod tests {
         b.activate(
             mem.clone(),
             Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
-            BTreeMap::from([(0, (q0, e0)), (1, (q1, e1))]),
+            vec![(q0, e0), (q1, e1)],
         )
         .expect("activate should succeed");
         // assert resources are consumed
@@ -1677,7 +1689,7 @@ mod tests {
         b.activate(
             mem,
             Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
-            BTreeMap::from([(0, (q0, e0)), (1, (q1, e1))]),
+            vec![(q0, e0), (q1, e1)],
         )
         .expect("re-activate should succeed");
     }
@@ -1746,12 +1758,8 @@ mod tests {
         let e1 = Event::new().unwrap();
 
         let interrupt = Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR);
-        b.activate(
-            mem,
-            interrupt.clone(),
-            BTreeMap::from([(0, (q0, e0)), (1, (q1, e1))]),
-        )
-        .expect("activate should succeed");
+        b.activate(mem, interrupt.clone(), vec![(q0, e0), (q1, e1)])
+            .expect("activate should succeed");
 
         // assert the original size first
         assert_eq!(
@@ -1858,7 +1866,7 @@ mod tests {
         b.activate(
             mem.clone(),
             Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
-            BTreeMap::from([(0, (q0, e0)), (1, (q1, e1))]),
+            vec![(q0, e0), (q1, e1)],
         )
         .expect("activate should succeed");
 
@@ -1886,7 +1894,7 @@ mod tests {
         b.activate(
             mem,
             Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
-            BTreeMap::from([(0, (q0, e0)), (1, (q1, e1))]),
+            vec![(q0, e0), (q1, e1)],
         )
         .expect("activate should succeed");
 
