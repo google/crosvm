@@ -321,6 +321,7 @@ impl VirglRenderer {
         let cookie = Box::into_raw(Box::new(RutabagaCookie {
             render_server_fd,
             fence_handler: Some(fence_handler),
+            debug_handler: None,
         }));
 
         // Safe because a valid cookie and set of callbacks is used and the result is checked for

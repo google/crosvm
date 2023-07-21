@@ -36,11 +36,15 @@ use crate::rutabaga_os::SafeDescriptor;
 use crate::rutabaga_utils::*;
 
 // See `virtgpu-gfxstream-renderer.h` for definitions
+const STREAM_RENDERER_PARAM_NULL: u64 = 0;
 const STREAM_RENDERER_PARAM_USER_DATA: u64 = 1;
 const STREAM_RENDERER_PARAM_RENDERER_FLAGS: u64 = 2;
 const STREAM_RENDERER_PARAM_FENCE_CALLBACK: u64 = 3;
 const STREAM_RENDERER_PARAM_WIN0_WIDTH: u64 = 4;
 const STREAM_RENDERER_PARAM_WIN0_HEIGHT: u64 = 5;
+const STREAM_RENDERER_PARAM_DEBUG_CALLBACK: u64 = 6;
+
+const STREAM_RENDERER_MAX_PARAMS: usize = 6;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -84,6 +88,9 @@ pub type stream_renderer_box = virgl_box;
 
 #[allow(non_camel_case_types)]
 pub type stream_renderer_fence = RutabagaFence;
+
+#[allow(non_camel_case_types)]
+pub type stream_renderer_debug = RutabagaDebug;
 
 extern "C" {
     // Entry point for the stream renderer.
@@ -263,19 +270,34 @@ extern "C" fn write_context_fence(cookie: *mut c_void, fence: *const RutabagaFen
     .unwrap_or_else(|_| abort())
 }
 
+extern "C" fn gfxstream_debug_callback(cookie: *mut c_void, debug: *const stream_renderer_debug) {
+    catch_unwind(|| {
+        assert!(!cookie.is_null());
+        let cookie = unsafe { &*(cookie as *mut RutabagaCookie) };
+        if let Some(handler) = &cookie.debug_handler {
+            // We trust gfxstream not give a dangling pointer
+            unsafe { handler.call(*debug) };
+        }
+    })
+    .unwrap_or_else(|_| abort())
+}
+
 impl Gfxstream {
     pub fn init(
         display_width: u32,
         display_height: u32,
         gfxstream_flags: GfxstreamFlags,
         fence_handler: RutabagaFenceHandler,
+        debug_handler: Option<RutabagaDebugHandler>,
     ) -> RutabagaResult<Box<dyn RutabagaComponent>> {
+        let use_debug = debug_handler.is_some();
         let mut cookie = Box::new(RutabagaCookie {
             render_server_fd: None,
             fence_handler: Some(fence_handler),
+            debug_handler,
         });
 
-        let mut stream_renderer_params = [
+        let mut stream_renderer_params: [stream_renderer_param; STREAM_RENDERER_MAX_PARAMS] = [
             stream_renderer_param {
                 key: STREAM_RENDERER_PARAM_USER_DATA,
                 // Safe as cookie outlives the stream renderer (stream_renderer_teardown called
@@ -297,6 +319,17 @@ impl Gfxstream {
             stream_renderer_param {
                 key: STREAM_RENDERER_PARAM_WIN0_HEIGHT,
                 value: display_height as u64,
+            },
+            if use_debug {
+                stream_renderer_param {
+                    key: STREAM_RENDERER_PARAM_DEBUG_CALLBACK,
+                    value: gfxstream_debug_callback as usize as u64,
+                }
+            } else {
+                stream_renderer_param {
+                    key: STREAM_RENDERER_PARAM_NULL,
+                    value: 0,
+                }
             },
         ];
 

@@ -90,6 +90,13 @@ extern "C" {
  */
 #define RUTABAGA_WSI_SURFACELESS 0x1
 
+/**
+ * Rutabaga Debug
+ */
+#define RUTABAGA_DEBUG_ERROR 0x1
+#define RUTABAGA_DEBUG_WARN 0x2
+#define RUTABAGA_DEBUG_INFO 0x3
+
 struct rutabaga;
 
 struct rutabaga_fence {
@@ -169,10 +176,22 @@ struct rutabaga_channels {
     size_t num_channels;
 };
 
+struct rutabaga_debug {
+    uint32_t debug_type;
+    const char *message;
+};
+
 /**
  * Throwing an exception inside this callback is not allowed.
  */
 typedef void (*write_fence_cb)(uint64_t user_data, struct rutabaga_fence fence_data);
+
+/**
+ * # Safety
+ * - Throwing an exception inside this callback is not allowed.
+ * - `rutabaga_debug` and contained values only valid for the duration of callback.
+ */
+typedef void (*debug_callback)(uint64_t user_data, struct rutabaga_debug *debug);
 
 struct rutabaga_builder {
     // Required for correct functioning
@@ -180,6 +199,9 @@ struct rutabaga_builder {
     uint64_t capset_mask;
     uint64_t wsi;
     write_fence_cb fence_cb;
+
+    // Optional for debugging.
+    debug_callback debug_cb;
 
     // Optional and platform specific
     struct rutabaga_channels *channels;

@@ -5,8 +5,10 @@
 //! rutabaga_utils: Utility enums, structs, and implementations needed by the rest of the crate.
 
 use std::ffi::NulError;
+use std::fmt;
 use std::io::Error as IoError;
 use std::num::TryFromIntError;
+use std::os::raw::c_char;
 use std::os::raw::c_void;
 use std::path::PathBuf;
 use std::str::Utf8Error;
@@ -131,6 +133,25 @@ pub struct RutabagaFence {
     pub ctx_id: u32,
     pub ring_idx: u8,
 }
+
+/// Rutabaga debug types
+pub const RUTABAGA_DEBUG_ERROR: u32 = 0x01;
+pub const RUTABAGA_DEBUG_WARNING: u32 = 0x02;
+pub const RUTABAGA_DEBUG_INFO: u32 = 0x03;
+
+/// Convenience struct for debug data
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct RutabagaDebug {
+    pub debug_type: u32,
+    pub message: *const c_char,
+}
+
+// This is sketchy, since `message` is a C-string and there's no locking + atomics.  However,
+// the current use case is to mirror the C-API.  If the `RutabagaDebugHandler` is used with
+// by Rust code, a different struct should be used.
+unsafe impl Send for RutabagaDebug {}
+unsafe impl Sync for RutabagaDebug {}
 
 /// Mapped memory caching flags (see virtio_gpu spec)
 pub const RUTABAGA_MAP_CACHE_CACHED: u32 = 0x01;
@@ -651,5 +672,14 @@ where
     }
 }
 
+impl<S> fmt::Debug for RutabagaClosure<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Closure debug").finish()
+    }
+}
+
 pub type RutabagaFenceClosure = RutabagaClosure<RutabagaFence>;
 pub type RutabagaFenceHandler = RutabagaHandler<RutabagaFence>;
+
+pub type RutabagaDebugClosure = RutabagaClosure<RutabagaDebug>;
+pub type RutabagaDebugHandler = RutabagaHandler<RutabagaDebug>;

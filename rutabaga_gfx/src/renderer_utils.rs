@@ -5,6 +5,7 @@
 //! renderer_utils: Utility functions and structs used by virgl_renderer and gfxstream.
 
 use crate::rutabaga_os::SafeDescriptor;
+use crate::rutabaga_utils::RutabagaDebugHandler;
 use crate::rutabaga_utils::RutabagaError;
 use crate::rutabaga_utils::RutabagaFenceHandler;
 use crate::rutabaga_utils::RutabagaResult;
@@ -30,4 +31,5 @@ pub fn ret_to_res(ret: i32) -> RutabagaResult<()> {
 pub struct RutabagaCookie {
     pub render_server_fd: Option<SafeDescriptor>,
     pub fence_handler: Option<RutabagaFenceHandler>,
+    pub debug_handler: Option<RutabagaDebugHandler>,
 }

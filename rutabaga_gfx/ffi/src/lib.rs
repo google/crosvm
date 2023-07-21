@@ -7,6 +7,7 @@ extern crate rutabaga_gfx;
 
 use std::convert::TryInto;
 use std::ffi::CStr;
+use std::ffi::CString;
 use std::os::raw::c_char;
 use std::panic::catch_unwind;
 use std::panic::AssertUnwindSafe;
@@ -16,20 +17,39 @@ use std::ptr::null;
 use std::ptr::null_mut;
 use std::slice::from_raw_parts;
 use std::slice::from_raw_parts_mut;
+use std::sync::Mutex;
 
 use data_model::VolatileSlice;
 use libc::iovec;
 use libc::EINVAL;
 use libc::ESRCH;
-use log::error;
+use once_cell::sync::OnceCell;
 use rutabaga_gfx::*;
 
 const NO_ERROR: i32 = 0;
 const RUTABAGA_WSI_SURFACELESS: u64 = 1;
 
+static S_DEBUG_HANDLER: OnceCell<Mutex<RutabagaDebugHandler>> = OnceCell::new();
+
+fn log_error(debug_string: String) {
+    // Although this should be only called from a single-thread environment, add locking to
+    // to reduce the amount of unsafe code blocks.
+    if let Some(ref handler_mutex) = S_DEBUG_HANDLER.get() {
+        let cstring = CString::new(debug_string.as_str()).expect("CString creation failed");
+
+        let debug = RutabagaDebug {
+            debug_type: RUTABAGA_DEBUG_ERROR,
+            message: cstring.as_ptr(),
+        };
+
+        let handler = handler_mutex.lock().unwrap();
+        handler.call(debug);
+    }
+}
+
 fn return_result<T>(result: RutabagaResult<T>) -> i32 {
     if let Err(e) = result {
-        error!("Received an error {}", e);
+        log_error(e.to_string());
         -EINVAL
     } else {
         NO_ERROR
@@ -41,7 +61,7 @@ macro_rules! return_on_error {
         match $result {
             Ok(t) => t,
             Err(e) => {
-                error!("Received an error {}", e);
+                log_error(e.to_string());
                 return -EINVAL;
             }
         }
@@ -62,6 +82,9 @@ type rutabaga_transfer = Transfer3D;
 
 #[allow(non_camel_case_types)]
 type rutabaga_fence = RutabagaFence;
+
+#[allow(non_camel_case_types)]
+type rutabaga_debug = RutabagaDebug;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -105,20 +128,30 @@ pub struct rutabaga_command {
 }
 
 #[allow(non_camel_case_types)]
-pub type write_fence_cb = extern "C" fn(user_data: u64, fence_data: rutabaga_fence);
+pub type fence_callback = extern "C" fn(user_data: u64, fence: rutabaga_fence);
+
+#[allow(non_camel_case_types)]
+pub type debug_callback = extern "C" fn(user_data: u64, debug: &rutabaga_debug);
 
 #[repr(C)]
 pub struct rutabaga_builder<'a> {
     pub user_data: u64,
     pub capset_mask: u64,
     pub wsi: u64,
-    pub fence_cb: write_fence_cb,
+    pub fence_cb: fence_callback,
+    pub debug_cb: Option<debug_callback>,
     pub channels: Option<&'a rutabaga_channels>,
 }
 
-fn create_ffi_fence_handler(user_data: u64, fence_cb: write_fence_cb) -> RutabagaFenceHandler {
+fn create_ffi_fence_handler(user_data: u64, fence_cb: fence_callback) -> RutabagaFenceHandler {
     RutabagaFenceClosure::new(Box::new(move |completed_fence| {
         fence_cb(user_data, completed_fence)
+    }))
+}
+
+fn create_ffi_debug_handler(user_data: u64, debug_cb: debug_callback) -> RutabagaDebugHandler {
+    RutabagaDebugClosure::new(Box::new(move |rutabaga_debug| {
+        debug_cb(user_data, &rutabaga_debug)
     }))
 }
 
@@ -151,6 +184,15 @@ pub unsafe extern "C" fn rutabaga_calculate_capset_mask(
 pub unsafe extern "C" fn rutabaga_init(builder: &rutabaga_builder, ptr: &mut *mut rutabaga) -> i32 {
     catch_unwind(AssertUnwindSafe(|| {
         let fence_handler = create_ffi_fence_handler((*builder).user_data, (*builder).fence_cb);
+        let mut debug_handler_opt: Option<RutabagaDebugHandler> = None;
+
+        if let Some(func) = (*builder).debug_cb {
+            let debug_handler = create_ffi_debug_handler((*builder).user_data, func);
+            S_DEBUG_HANDLER
+                .set(Mutex::new(debug_handler.clone()))
+                .expect("once_cell set failed");
+            debug_handler_opt = Some(debug_handler);
+        }
 
         let mut rutabaga_channels_opt = None;
         if let Some(channels) = (*builder).channels {
@@ -187,6 +229,7 @@ pub unsafe extern "C" fn rutabaga_init(builder: &rutabaga_builder, ptr: &mut *mu
             .set_use_external_blob(false)
             .set_use_egl(true)
             .set_wsi(rutabaga_wsi)
+            .set_debug_handler(debug_handler_opt)
             .set_rutabaga_channels(rutabaga_channels_opt)
             .build(fence_handler, None);
 

@@ -827,7 +827,7 @@ impl Rutabaga {
         Ok(())
     }
 
-    /// Submits `commands` to the context given by `ctx_id`.
+    /// submits `commands` to the context given by `ctx_id`.
     pub fn submit_command(&mut self, ctx_id: u32, commands: &mut [u8]) -> RutabagaResult<()> {
         let ctx = self
             .contexts
@@ -847,6 +847,7 @@ pub struct RutabagaBuilder {
     virglrenderer_flags: VirglRendererFlags,
     capset_mask: u64,
     channels: Option<Vec<RutabagaChannel>>,
+    debug_handler: Option<RutabagaDebugHandler>,
 }
 
 impl RutabagaBuilder {
@@ -864,6 +865,7 @@ impl RutabagaBuilder {
             virglrenderer_flags,
             capset_mask,
             channels: None,
+            debug_handler: None,
         }
     }
 
@@ -945,6 +947,15 @@ impl RutabagaBuilder {
         channels: Option<Vec<RutabagaChannel>>,
     ) -> RutabagaBuilder {
         self.channels = channels;
+        self
+    }
+
+    /// Set rutabaga channels for the RutabagaBuilder
+    pub fn set_debug_handler(
+        mut self,
+        debug_handler: Option<RutabagaDebugHandler>,
+    ) -> RutabagaBuilder {
+        self.debug_handler = debug_handler;
         self
     }
 
@@ -1056,6 +1067,7 @@ impl RutabagaBuilder {
                     self.display_height,
                     self.gfxstream_flags,
                     fence_handler.clone(),
+                    self.debug_handler.clone(),
                 )?;
 
                 rutabaga_components.insert(RutabagaComponentType::Gfxstream, gfxstream);
