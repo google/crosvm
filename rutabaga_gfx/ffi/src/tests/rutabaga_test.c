@@ -66,13 +66,13 @@ struct rutabaga_test {
     struct iovec *channel_iovecs;
 };
 
-static void rutabaga_test_write_fence(uint64_t user_data, struct rutabaga_fence fence_data)
+static void rutabaga_test_write_fence(uint64_t user_data, const struct rutabaga_fence *fence)
 {
     struct rutabaga_test *test = (void *)(uintptr_t)user_data;
-    test->value = fence_data.fence_id;
+    test->value = fence->fence_id;
 }
 
-static void rutabaga_test_debug_cb(uint64_t user_data, struct rutabaga_debug *debug)
+static void rutabaga_test_debug_cb(uint64_t user_data, const struct rutabaga_debug *debug)
 {
     if (debug->message) {
         printf("The debug message is %s\n", debug->message);

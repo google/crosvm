@@ -30,17 +30,6 @@ extern "C" {
 #define RUTABAGA_VERSION_PATCH 1
 
 /**
- * Blob resource creation parameters.
- */
-#define RUTABAGA_BLOB_MEM_GUEST 1
-#define RUTABAGA_BLOB_MEM_HOST3D 2
-#define RUTABAGA_BLOB_MEM_HOST3D_GUEST 3
-
-#define RUTABAGA_BLOB_FLAG_USE_MAPPABLE 1
-#define RUTABAGA_BLOB_FLAG_USE_SHAREABLE 2
-#define RUTABAGA_BLOB_FLAG_USE_CROSS_DEVICE 4
-
-/**
  * Rutabaga capsets.
  */
 #define RUTABAGA_CAPSET_VIRGL 1
@@ -54,22 +43,22 @@ extern "C" {
 #define RUTABAGA_CAPSET_GFXSTREAM_COMPOSER 9
 
 /**
+ * Blob resource creation parameters.
+ */
+#define RUTABAGA_BLOB_MEM_GUEST 1
+#define RUTABAGA_BLOB_MEM_HOST3D 2
+#define RUTABAGA_BLOB_MEM_HOST3D_GUEST 3
+
+#define RUTABAGA_BLOB_FLAG_USE_MAPPABLE 1
+#define RUTABAGA_BLOB_FLAG_USE_SHAREABLE 2
+#define RUTABAGA_BLOB_FLAG_USE_CROSS_DEVICE 4
+
+/**
  * Mapped memory caching flags (see virtio_gpu spec)
  */
 #define RUTABAGA_MAP_CACHE_CACHED 1
 #define RUTABAGA_MAP_CACHE_UNCACHED 2
 #define RUTABAGA_MAP_CACHE_WC 3
-
-/**
- * Rutabaga flags for creating fences.
- */
-#define RUTABAGA_FLAG_FENCE (1 << 0)
-#define RUTABAGA_FLAG_INFO_RING_IDX (1 << 1)
-
-/**
- * Rutabaga channel types
- */
-#define RUTABAGA_CHANNEL_TYPE_WAYLAND 1
 
 /**
  * Rutabaga handle types
@@ -86,9 +75,20 @@ extern "C" {
 #define RUTABAGA_FENCE_HANDLE_TYPE_ZIRCON 0x9
 
 /**
+ * Rutabaga channel types
+ */
+#define RUTABAGA_CHANNEL_TYPE_WAYLAND 1
+
+/**
  * Rutabaga WSI
  */
 #define RUTABAGA_WSI_SURFACELESS 0x1
+
+/**
+ * Rutabaga flags for creating fences.
+ */
+#define RUTABAGA_FLAG_FENCE (1 << 0)
+#define RUTABAGA_FLAG_INFO_RING_IDX (1 << 1)
 
 /**
  * Rutabaga Debug
@@ -98,13 +98,6 @@ extern "C" {
 #define RUTABAGA_DEBUG_INFO 0x3
 
 struct rutabaga;
-
-struct rutabaga_fence {
-    uint32_t flags;
-    uint64_t fence_id;
-    uint32_t ctx_id;
-    uint32_t ring_idx;
-};
 
 struct rutabaga_create_blob {
     uint32_t blob_mem;
@@ -176,6 +169,13 @@ struct rutabaga_channels {
     size_t num_channels;
 };
 
+struct rutabaga_fence {
+    uint32_t flags;
+    uint64_t fence_id;
+    uint32_t ctx_id;
+    uint32_t ring_idx;
+};
+
 struct rutabaga_debug {
     uint32_t debug_type;
     const char *message;
@@ -184,24 +184,24 @@ struct rutabaga_debug {
 /**
  * Throwing an exception inside this callback is not allowed.
  */
-typedef void (*write_fence_cb)(uint64_t user_data, struct rutabaga_fence fence_data);
+typedef void (*rutabaga_fence_callback)(uint64_t user_data, const struct rutabaga_fence *fence);
 
 /**
  * # Safety
  * - Throwing an exception inside this callback is not allowed.
  * - `rutabaga_debug` and contained values only valid for the duration of callback.
  */
-typedef void (*debug_callback)(uint64_t user_data, struct rutabaga_debug *debug);
+typedef void (*rutabaga_debug_callback)(uint64_t user_data, const struct rutabaga_debug *debug);
 
 struct rutabaga_builder {
     // Required for correct functioning
     uint64_t user_data;
     uint64_t capset_mask;
     uint64_t wsi;
-    write_fence_cb fence_cb;
+    rutabaga_fence_callback fence_cb;
 
     // Optional for debugging.
-    debug_callback debug_cb;
+    rutabaga_debug_callback debug_cb;
 
     // Optional and platform specific
     struct rutabaga_channels *channels;

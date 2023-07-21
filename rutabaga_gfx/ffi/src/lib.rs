@@ -128,28 +128,34 @@ pub struct rutabaga_command {
 }
 
 #[allow(non_camel_case_types)]
-pub type fence_callback = extern "C" fn(user_data: u64, fence: rutabaga_fence);
+pub type rutabaga_fence_callback = extern "C" fn(user_data: u64, fence: &rutabaga_fence);
 
 #[allow(non_camel_case_types)]
-pub type debug_callback = extern "C" fn(user_data: u64, debug: &rutabaga_debug);
+pub type rutabaga_debug_callback = extern "C" fn(user_data: u64, debug: &rutabaga_debug);
 
 #[repr(C)]
 pub struct rutabaga_builder<'a> {
     pub user_data: u64,
     pub capset_mask: u64,
     pub wsi: u64,
-    pub fence_cb: fence_callback,
-    pub debug_cb: Option<debug_callback>,
+    pub fence_cb: rutabaga_fence_callback,
+    pub debug_cb: Option<rutabaga_debug_callback>,
     pub channels: Option<&'a rutabaga_channels>,
 }
 
-fn create_ffi_fence_handler(user_data: u64, fence_cb: fence_callback) -> RutabagaFenceHandler {
+fn create_ffi_fence_handler(
+    user_data: u64,
+    fence_cb: rutabaga_fence_callback,
+) -> RutabagaFenceHandler {
     RutabagaFenceClosure::new(Box::new(move |completed_fence| {
-        fence_cb(user_data, completed_fence)
+        fence_cb(user_data, &completed_fence)
     }))
 }
 
-fn create_ffi_debug_handler(user_data: u64, debug_cb: debug_callback) -> RutabagaDebugHandler {
+fn create_ffi_debug_handler(
+    user_data: u64,
+    debug_cb: rutabaga_debug_callback,
+) -> RutabagaDebugHandler {
     RutabagaDebugClosure::new(Box::new(move |rutabaga_debug| {
         debug_cb(user_data, &rutabaga_debug)
     }))
