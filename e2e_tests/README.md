@@ -3,6 +3,10 @@
 These tests run a crosvm VM on the host to verify end to end behavior. They use a prebuilt guest
 kernel and rootfs, which is downloaded from google cloud storage.
 
+The e2e_tests can be executed by:
+
+`$ ./tools/run_tests2 --dut=vm -E 'rdeps(e2e_tests)'`
+
 ## Running with locally built kernel/rootfs
 
 If the test needs to run offline, or you want to make changes to the kernel or rootfs, you have to
