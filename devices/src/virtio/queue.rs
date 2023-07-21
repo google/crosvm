@@ -6,7 +6,9 @@
 
 #![deny(missing_docs)]
 
+pub mod packed_descriptor_chain;
 mod packed_queue;
+pub mod split_descriptor_chain;
 mod split_queue;
 
 use std::num::Wrapping;

@@ -22,11 +22,6 @@ use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
 use crate::virtio::descriptor_chain::DescriptorChain;
-use crate::virtio::descriptor_chain::PackedDesc;
-use crate::virtio::descriptor_chain::PackedDescEvent;
-use crate::virtio::descriptor_chain::PackedDescriptorChain;
-use crate::virtio::descriptor_chain::PackedNotificationType;
-use crate::virtio::descriptor_chain::RING_EVENT_FLAGS_DESC;
 use crate::virtio::descriptor_chain::VIRTQ_DESC_F_AVAIL;
 use crate::virtio::descriptor_chain::VIRTQ_DESC_F_USED;
 use crate::virtio::descriptor_chain::VIRTQ_DESC_F_WRITE;
@@ -34,6 +29,11 @@ use crate::virtio::ipc_memory_mapper::ExportedRegion;
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 use crate::virtio::memory_util::read_obj_from_addr_wrapper;
 use crate::virtio::memory_util::write_obj_at_addr_wrapper;
+use crate::virtio::queue::packed_descriptor_chain::PackedDesc;
+use crate::virtio::queue::packed_descriptor_chain::PackedDescEvent;
+use crate::virtio::queue::packed_descriptor_chain::PackedDescriptorChain;
+use crate::virtio::queue::packed_descriptor_chain::PackedNotificationType;
+use crate::virtio::queue::packed_descriptor_chain::RING_EVENT_FLAGS_DESC;
 use crate::virtio::Interrupt;
 use crate::virtio::QueueConfig;
 
