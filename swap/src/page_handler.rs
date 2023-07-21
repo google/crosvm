@@ -20,8 +20,6 @@ use base::SharedMemory;
 use data_model::VolatileSlice;
 use sync::Mutex;
 use thiserror::Error as ThisError;
-use vm_memory::GuestMemory;
-use vm_memory::MemoryRegionInformation;
 
 use crate::file::Error as FileError;
 use crate::file::SwapFile;
@@ -572,32 +570,6 @@ impl<'a> PageHandler<'a> {
         }
     }
 
-    /// Returns count of pages active on the memory.
-    pub fn count_resident_pages(&self, guest_memory: &GuestMemory) -> usize {
-        let mut pages = 0;
-        if let Err(e) = guest_memory.with_regions::<_, anyhow::Error>(
-            |MemoryRegionInformation {
-                 size,
-                 shm,
-                 shm_offset,
-                 ..
-             }| {
-                let file_data = FileDataIterator::new(shm, shm_offset, size as u64);
-                let resident_bytes: u64 = file_data.map(|range| range.end - range.start).sum();
-                let resident_bytes = resident_bytes.try_into()?;
-
-                pages += bytes_to_pages(resident_bytes);
-
-                Ok(())
-            },
-        ) {
-            error!("failed to load resident pages count: {:?}", e);
-            0
-        } else {
-            pages
-        }
-    }
-
     /// Returns count of pages copied from vmm-swap file to the guest memory.
     fn compute_copied_from_file_pages(&self) -> usize {
         self.ctx
@@ -653,17 +625,14 @@ impl<'a> PageHandler<'a> {
             .sum()
     }
 
-    /// Generates [SwapMetrics].
-    pub fn generate_metrics(&self, guest_memory: &GuestMemory) -> SwapMetrics {
-        SwapMetrics {
-            resident_pages: self.count_resident_pages(guest_memory) as u64,
-            copied_from_file_pages: self.compute_copied_from_file_pages() as u64,
-            copied_from_staging_pages: self.compute_copied_from_staging_pages() as u64,
-            zeroed_pages: self.compute_zeroed_pages() as u64,
-            redundant_pages: self.compute_redundant_pages() as u64,
-            staging_pages: self.compute_staging_pages() as u64,
-            swap_pages: self.compute_swap_pages() as u64,
-        }
+    /// Fill [SwapMetrics] with page handler metrics.
+    pub fn load_metrics(&self, metrics: &mut SwapMetrics) {
+        metrics.copied_from_file_pages = self.compute_copied_from_file_pages() as u64;
+        metrics.copied_from_staging_pages = self.compute_copied_from_staging_pages() as u64;
+        metrics.zeroed_pages = self.compute_zeroed_pages() as u64;
+        metrics.redundant_pages = self.compute_redundant_pages() as u64;
+        metrics.staging_pages = self.compute_staging_pages() as u64;
+        metrics.swap_pages = self.compute_swap_pages() as u64;
     }
 }
 

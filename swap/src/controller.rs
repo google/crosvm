@@ -26,6 +26,7 @@ use base::info;
 use base::syslog;
 use base::unix::process::fork_process;
 use base::unix::process::Child;
+use base::unix::FileDataIterator;
 use base::warn;
 use base::AsRawDescriptor;
 use base::AsRawDescriptors;
@@ -54,6 +55,7 @@ use crate::page_handler::Error as PageHandlerError;
 use crate::page_handler::MoveToStaging;
 use crate::page_handler::PageHandler;
 use crate::page_handler::MLOCK_BUDGET;
+use crate::pagesize::bytes_to_pages;
 use crate::pagesize::THP_SIZE;
 use crate::processes::freeze_child_processes;
 use crate::processes::ProcessesGuard;
@@ -77,6 +79,32 @@ use crate::SwapStatus;
 const MAX_SWAP_CHUNK_SIZE: usize = 2 * 1024 * 1024; // = 2MB
 /// The max pages to trim at once.
 const MAX_TRIM_PAGES: usize = 1024;
+
+/// Returns count of pages active on the guest memory.
+fn count_resident_pages(guest_memory: &GuestMemory) -> usize {
+    let mut pages = 0;
+    if let Err(e) = guest_memory.with_regions::<_, anyhow::Error>(
+        |MemoryRegionInformation {
+             size,
+             shm,
+             shm_offset,
+             ..
+         }| {
+            let file_data = FileDataIterator::new(shm, shm_offset, size as u64);
+            let resident_bytes: u64 = file_data.map(|range| range.end - range.start).sum();
+            let resident_bytes = resident_bytes.try_into()?;
+
+            pages += bytes_to_pages(resident_bytes);
+
+            Ok(())
+        },
+    ) {
+        error!("failed to load resident pages count: {:?}", e);
+        0
+    } else {
+        pages
+    }
+}
 
 /// Commands used in vmm-swap feature internally sent to the monitor process from the main and other
 /// processes.
@@ -686,9 +714,13 @@ fn monitor_process(
                         return Ok(());
                     }
                     Command::Status => {
+                        let metrics = SwapMetrics {
+                            resident_pages: count_resident_pages(&guest_memory) as u64,
+                            ..Default::default()
+                        };
                         let status = SwapStatus {
                             state: SwapState::Ready,
-                            metrics: SwapMetrics::default(),
+                            metrics,
                             state_transition,
                         };
                         command_tube.send(&status).context("send status response")?;
@@ -803,11 +835,11 @@ fn move_guest_to_staging(
 
     match result {
         Ok(()) => {
-            let regident_pages = page_handler.count_resident_pages(guest_memory);
-            if regident_pages > 0 {
+            let resident_pages = count_resident_pages(guest_memory);
+            if resident_pages > 0 {
                 error!(
                     "active page is not zero just after swap out but {} pages",
-                    regident_pages
+                    resident_pages
                 );
             }
             let time_ms = start_time.elapsed().as_millis().try_into()?;
@@ -1134,9 +1166,14 @@ fn handle_vmm_swap<'scope, 'env>(
                         });
                     }
                     Command::Status => {
+                        let mut metrics = SwapMetrics {
+                            resident_pages: count_resident_pages(guest_memory) as u64,
+                            ..Default::default()
+                        };
+                        page_handler.load_metrics(&mut metrics);
                         let status = SwapStatus {
                             state: (&state).into(),
-                            metrics: page_handler.generate_metrics(guest_memory),
+                            metrics,
                             state_transition: *state_transition.lock(),
                         };
                         command_tube.send(&status).context("send status response")?;
