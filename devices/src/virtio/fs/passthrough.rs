@@ -57,15 +57,11 @@ use fuse::Mapper;
 use protobuf::Message;
 use sync::Mutex;
 #[cfg(feature = "arc_quota")]
-use system_api::client::OrgChromiumArcQuota;
+use system_api::client::OrgChromiumSpaced;
 #[cfg(feature = "arc_quota")]
-use system_api::UserDataAuth::SetMediaRWDataFileProjectIdReply;
+use system_api::spaced::SetProjectIdReply;
 #[cfg(feature = "arc_quota")]
-use system_api::UserDataAuth::SetMediaRWDataFileProjectIdRequest;
-#[cfg(feature = "arc_quota")]
-use system_api::UserDataAuth::SetMediaRWDataFileProjectInheritanceFlagReply;
-#[cfg(feature = "arc_quota")]
-use system_api::UserDataAuth::SetMediaRWDataFileProjectInheritanceFlagRequest;
+use system_api::spaced::SetProjectInheritanceFlagReply;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
@@ -442,6 +438,25 @@ fn statat<D: AsRawDescriptor>(dir: &D, name: &CStr) -> io::Result<libc::stat64> 
 
     // Safe because the kernel guarantees that the struct is now fully initialized.
     Ok(unsafe { st.assume_init() })
+}
+
+#[cfg(feature = "arc_quota")]
+fn is_android_project_id(project_id: u32) -> bool {
+    // The following constants defines the valid range of project ID used by
+    // Android and are taken from android_filesystem_config.h in Android
+    // codebase.
+    //
+    // Project IDs reserved for Android files on external storage. Total 100 IDs
+    // from PROJECT_ID_EXT_DEFAULT (1000) are reserved.
+    const PROJECT_ID_FOR_ANDROID_FILES: std::ops::RangeInclusive<u32> = 1000..=1099;
+    // Project IDs reserved for Android apps.
+    // The lower-limit of the range is PROJECT_ID_EXT_DATA_START.
+    // The upper-limit of the range differs before and after T. Here we use that
+    // of T (PROJECT_ID_APP_CACHE_END) as it is larger.
+    const PROJECT_ID_FOR_ANDROID_APPS: std::ops::RangeInclusive<u32> = 20000..=69999;
+
+    PROJECT_ID_FOR_ANDROID_FILES.contains(&project_id)
+        || PROJECT_ID_FOR_ANDROID_APPS.contains(&project_id)
 }
 
 /// Per-directory cache for `PassthroughFs::ascii_casefold_lookup()`.
@@ -1162,21 +1177,23 @@ impl PassthroughFs {
             let current_attr = unsafe { buf.assume_init() };
 
             // Project ID cannot be changed inside a user namespace.
-            // Use UserDataAuth to avoid this restriction.
+            // Use Spaced to avoid this restriction.
             if current_attr.fsx_projid != in_attr.fsx_projid {
                 let connection = self.dbus_connection.as_ref().unwrap().lock();
                 let proxy = connection.with_proxy(
-                    "org.chromium.UserDataAuth",
-                    "/org/chromium/UserDataAuth",
+                    "org.chromium.Spaced",
+                    "/org/chromium/Spaced",
                     DEFAULT_DBUS_TIMEOUT,
                 );
-                let mut proto: SetMediaRWDataFileProjectIdRequest = Message::new();
-                proto.project_id = in_attr.fsx_projid;
+                let project_id = in_attr.fsx_projid;
+                if !is_android_project_id(project_id) {
+                    return Err(io::Error::from_raw_os_error(libc::EINVAL));
+                }
                 // Safe because data is a valid file descriptor.
                 let fd = unsafe { dbus::arg::OwnedFd::new(base::clone_descriptor(&*data)?) };
-                match proxy.set_media_rwdata_file_project_id(fd, proto.write_to_bytes().unwrap()) {
+                match proxy.set_project_id(fd, project_id) {
                     Ok(r) => {
-                        let r = SetMediaRWDataFileProjectIdReply::parse_from_bytes(&r)
+                        let r = SetProjectIdReply::parse_from_bytes(&r)
                             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
                         if !r.success {
                             return Ok(IoctlReply::Done(Err(io::Error::from_raw_os_error(
@@ -1252,26 +1269,22 @@ impl PassthroughFs {
             let current_flags = unsafe { buf.assume_init() };
 
             // Project inheritance flag cannot be changed inside a user namespace.
-            // Use UserDataAuth to avoid this restriction.
+            // Use Spaced to avoid this restriction.
             if (in_flags & FS_PROJINHERIT_FL) != (current_flags & FS_PROJINHERIT_FL) {
                 let connection = self.dbus_connection.as_ref().unwrap().lock();
                 let proxy = connection.with_proxy(
-                    "org.chromium.UserDataAuth",
-                    "/org/chromium/UserDataAuth",
+                    "org.chromium.Spaced",
+                    "/org/chromium/Spaced",
                     DEFAULT_DBUS_TIMEOUT,
                 );
-                let mut proto: SetMediaRWDataFileProjectInheritanceFlagRequest = Message::new();
                 // If the input flags contain FS_PROJINHERIT_FL, then it is a set. Otherwise it is a
                 // reset.
-                proto.enable = (in_flags & FS_PROJINHERIT_FL) == FS_PROJINHERIT_FL;
+                let enable = (in_flags & FS_PROJINHERIT_FL) == FS_PROJINHERIT_FL;
                 // Safe because data is a valid file descriptor.
                 let fd = unsafe { dbus::arg::OwnedFd::new(base::clone_descriptor(&*data)?) };
-                match proxy.set_media_rwdata_file_project_inheritance_flag(
-                    fd,
-                    proto.write_to_bytes().unwrap(),
-                ) {
+                match proxy.set_project_inheritance_flag(fd, enable) {
                     Ok(r) => {
-                        let r = SetMediaRWDataFileProjectInheritanceFlagReply::parse_from_bytes(&r)
+                        let r = SetProjectInheritanceFlagReply::parse_from_bytes(&r)
                             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
                         if !r.success {
                             return Ok(IoctlReply::Done(Err(io::Error::from_raw_os_error(
