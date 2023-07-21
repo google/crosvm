@@ -603,7 +603,7 @@ pub fn safe_descriptor_from_path<P: AsRef<Path>>(path: P) -> Result<Option<SafeD
 /// Note that this will not work properly if the same `/proc/self/fd/N` path is used twice in
 /// different places, as the metadata (including the offset) will be shared between both file
 /// descriptors.
-pub fn open_file<P: AsRef<Path>>(path: P, options: &OpenOptions) -> Result<File> {
+pub fn open_file_or_duplicate<P: AsRef<Path>>(path: P, options: &OpenOptions) -> Result<File> {
     let path = path.as_ref();
     // Special case '/proc/self/fd/*' paths. The FD is already open, just use it.
     Ok(if let Some(fd) = safe_descriptor_from_path(path)? {

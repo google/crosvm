@@ -149,7 +149,7 @@ pub use platform::get_filesystem_type;
 pub use platform::getpid;
 pub use platform::logical_core_frequencies_khz;
 pub use platform::number_of_logical_cores;
-pub use platform::open_file;
+pub use platform::open_file_or_duplicate;
 pub use platform::pagesize;
 pub use platform::platform_timer_resolution::enable_high_res_timers;
 pub use platform::round_up_to_page_size;

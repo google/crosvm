@@ -13,7 +13,7 @@ use std::path::Path;
 use audio_streams::NoopStreamSourceGenerator;
 use audio_util::FileStreamSourceGenerator;
 use base::error;
-use base::open_file;
+use base::open_file_or_duplicate;
 use base::AsRawDescriptor;
 use base::RawDescriptor;
 use thiserror::Error as ThisError;
@@ -43,7 +43,7 @@ fn allocate_space(mut file: &File, size: usize) -> Result<(), Error> {
 fn open_playback_file(dir_path: &String, stream_id: usize) -> Result<File, Error> {
     let file_name = format!("stream-{}.out", stream_id);
     let file_path = Path::new(dir_path).join(file_name);
-    let file = open_file(
+    let file = open_file_or_duplicate(
         file_path,
         OpenOptions::new().read(true).create(true).write(true),
     )

@@ -1211,7 +1211,7 @@ pub fn create_pmem_device(
     index: usize,
     pmem_device_tube: Tube,
 ) -> DeviceResult {
-    let fd = open_file(
+    let fd = open_file_or_duplicate(
         &disk.path,
         OpenOptions::new().read(true).write(!disk.read_only),
     )

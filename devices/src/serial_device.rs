@@ -12,7 +12,7 @@ use std::io::stdout;
 use std::path::PathBuf;
 
 use base::error;
-use base::open_file;
+use base::open_file_or_duplicate;
 #[cfg(windows)]
 use base::platform::Console as WinConsole;
 use base::syslog;
@@ -178,7 +178,7 @@ impl SerialParameters {
         let input: Option<Box<dyn SerialInput>> = if let Some(input_path) = &self.input {
             let input_path = input_path.as_path();
 
-            let input_file = open_file(input_path, OpenOptions::new().read(true))
+            let input_file = open_file_or_duplicate(input_path, OpenOptions::new().read(true))
                 .map_err(|e| Error::FileOpen(e.into(), input_path.into()))?;
 
             keep_rds.push(input_file.as_raw_descriptor());
@@ -207,8 +207,9 @@ impl SerialParameters {
             }
             SerialType::File => match &self.path {
                 Some(path) => {
-                    let file = open_file(path, OpenOptions::new().append(true).create(true))
-                        .map_err(|e| Error::FileCreate(e.into(), path.clone()))?;
+                    let file =
+                        open_file_or_duplicate(path, OpenOptions::new().append(true).create(true))
+                            .map_err(|e| Error::FileCreate(e.into(), path.clone()))?;
                     let sync = file.try_clone().map_err(Error::FileClone)?;
 
                     keep_rds.push(file.as_raw_descriptor());

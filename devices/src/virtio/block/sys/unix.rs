@@ -11,7 +11,7 @@ use std::os::unix::prelude::OpenOptionsExt;
 use anyhow::Context;
 use base::flock;
 use base::iov_max;
-use base::open_file;
+use base::open_file_or_duplicate;
 use base::FlockOperation;
 use disk::DiskFile;
 
@@ -36,7 +36,7 @@ impl DiskOption {
             options.custom_flags(libc::O_DIRECT);
         }
 
-        let raw_image: File = open_file(&self.path, &options)
+        let raw_image: File = open_file_or_duplicate(&self.path, &options)
             .with_context(|| format!("failed to load disk image {}", self.path.display()))?;
         // Lock the disk image to prevent other crosvm instances from using it.
         let lock_op = if self.read_only {

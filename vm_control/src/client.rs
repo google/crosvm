@@ -6,7 +6,7 @@ use std::fs::OpenOptions;
 use std::path::Path;
 use std::path::PathBuf;
 
-use base::open_file;
+use base::open_file_or_duplicate;
 use remain::sorted;
 use thiserror::Error;
 
@@ -59,7 +59,7 @@ pub fn do_usb_attach<T: AsRef<Path> + std::fmt::Debug>(
     socket_path: T,
     dev_path: &Path,
 ) -> ModifyUsbResult<UsbControlResult> {
-    let usb_file = open_file(dev_path, OpenOptions::new().read(true).write(true))
+    let usb_file = open_file_or_duplicate(dev_path, OpenOptions::new().read(true).write(true))
         .map_err(|e| ModifyUsbError::FailedToOpenDevice(dev_path.into(), e))?;
 
     let request = VmRequest::UsbCommand(UsbControlCommand::AttachDevice { file: usb_file });

@@ -1091,7 +1091,7 @@ fn create_pcie_root_port(
 fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
     let initrd_image = if let Some(initrd_path) = &cfg.initrd_path {
         Some(
-            open_file(initrd_path, OpenOptions::new().read(true))
+            open_file_or_duplicate(initrd_path, OpenOptions::new().read(true))
                 .with_context(|| format!("failed to open initrd {}", initrd_path.display()))?,
         )
     } else {
@@ -1099,7 +1099,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
     };
     let pvm_fw_image = if let Some(pvm_fw_path) = &cfg.pvm_fw {
         Some(
-            open_file(pvm_fw_path, OpenOptions::new().read(true))
+            open_file_or_duplicate(pvm_fw_path, OpenOptions::new().read(true))
                 .with_context(|| format!("failed to open pvm_fw {}", pvm_fw_path.display()))?,
         )
     } else {
@@ -1108,12 +1108,12 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
 
     let vm_image = match cfg.executable_path {
         Some(Executable::Kernel(ref kernel_path)) => VmImage::Kernel(
-            open_file(kernel_path, OpenOptions::new().read(true)).with_context(|| {
-                format!("failed to open kernel image {}", kernel_path.display())
-            })?,
+            open_file_or_duplicate(kernel_path, OpenOptions::new().read(true)).with_context(
+                || format!("failed to open kernel image {}", kernel_path.display()),
+            )?,
         ),
         Some(Executable::Bios(ref bios_path)) => VmImage::Bios(
-            open_file(bios_path, OpenOptions::new().read(true))
+            open_file_or_duplicate(bios_path, OpenOptions::new().read(true))
                 .with_context(|| format!("failed to open bios {}", bios_path.display()))?,
         ),
         _ => panic!("Did not receive a bios or kernel, should be impossible."),
@@ -1134,7 +1134,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
     {
         (
             Some(
-                open_file(
+                open_file_or_duplicate(
                     &pflash_parameters.path,
                     OpenOptions::new().read(true).write(true),
                 )

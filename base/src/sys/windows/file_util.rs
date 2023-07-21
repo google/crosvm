@@ -18,7 +18,7 @@ use crate::Result;
 /// Note that on POSIX, this wrapper handles opening existing FDs via /proc/self/fd/N. On Windows,
 /// this functionality doesn't exist, but we preserve this seemingly not very useful function to
 /// simplify cross platform code.
-pub fn open_file<P: AsRef<Path>>(path: P, options: &OpenOptions) -> Result<File> {
+pub fn open_file_or_duplicate<P: AsRef<Path>>(path: P, options: &OpenOptions) -> Result<File> {
     Ok(options.open(path)?)
 }
 

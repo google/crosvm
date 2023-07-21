@@ -53,7 +53,7 @@ use arch::VmImage;
 use base::enable_high_res_timers;
 use base::error;
 use base::info;
-use base::open_file;
+use base::open_file_or_duplicate;
 use base::warn;
 use base::AsRawDescriptor;
 #[cfg(feature = "gpu")]
@@ -1901,7 +1901,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
     {
         (
             Some(
-                open_file(
+                open_file_or_duplicate(
                     &pflash_parameters.path,
                     OpenOptions::new().read(true).write(true),
                 )

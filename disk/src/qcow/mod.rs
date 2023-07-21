@@ -20,7 +20,7 @@ use std::path::Path;
 use std::str;
 
 use base::error;
-use base::open_file;
+use base::open_file_or_duplicate;
 use base::AsRawDescriptor;
 use base::AsRawDescriptors;
 use base::FileAllocate;
@@ -465,7 +465,7 @@ impl QcowFile {
 
         let backing_file = if let Some(backing_file_path) = header.backing_file_path.as_ref() {
             let path = backing_file_path.clone();
-            let backing_raw_file = open_file(
+            let backing_raw_file = open_file_or_duplicate(
                 Path::new(&path),
                 OpenOptions::new().read(true), // TODO(b/190435784): Add support for O_DIRECT.
             )
@@ -615,7 +615,7 @@ impl QcowFile {
         backing_file_max_nesting_depth: u32,
     ) -> Result<QcowFile> {
         let backing_path = Path::new(backing_file_name);
-        let backing_raw_file = open_file(
+        let backing_raw_file = open_file_or_duplicate(
             backing_path,
             OpenOptions::new().read(true), // TODO(b/190435784): add support for O_DIRECT.
         )

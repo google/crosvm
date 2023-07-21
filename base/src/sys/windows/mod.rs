@@ -46,7 +46,7 @@ pub use console::*;
 pub use descriptor::*;
 pub use event::*;
 pub use events::*;
-pub use file_util::open_file;
+pub use file_util::open_file_or_duplicate;
 pub use file_util::set_sparse_file;
 pub use foreground_window::give_foregrounding_permission;
 pub use get_filesystem_type::*;

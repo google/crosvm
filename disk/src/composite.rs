@@ -22,7 +22,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use base::open_file;
+use base::open_file_or_duplicate;
 use base::AsRawDescriptors;
 use base::FileAllocate;
 use base::FileReadWriteAtVolatile;
@@ -217,7 +217,7 @@ impl CompositeDiskFile {
                 } else {
                     component_path
                 };
-                let comp_file = open_file(
+                let comp_file = open_file_or_duplicate(
                     &path,
                     OpenOptions::new().read(true).write(writable), // TODO(b/190435784): add support for O_DIRECT.
                 )

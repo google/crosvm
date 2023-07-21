@@ -9,7 +9,7 @@ use std::os::unix::prelude::OpenOptionsExt;
 use anyhow::anyhow;
 use anyhow::Context;
 use base::error;
-use base::open_file;
+use base::open_file_or_duplicate;
 use base::warn;
 use base::AsRawDescriptor;
 use base::Event;
@@ -64,7 +64,7 @@ struct VsockSnapshot {
 impl Vsock {
     /// Create a new virtio-vsock device with the given VM cid.
     pub fn new(base_features: u64, vsock_config: &VsockConfig) -> anyhow::Result<Vsock> {
-        let device_file = open_file(
+        let device_file = open_file_or_duplicate(
             &vsock_config.vhost_device,
             OpenOptions::new()
                 .read(true)
