@@ -10,6 +10,7 @@ use std::num::TryFromIntError;
 use std::os::raw::c_void;
 use std::path::PathBuf;
 use std::str::Utf8Error;
+use std::sync::Arc;
 
 use data_model::VolatileMemoryError;
 #[cfg(unix)]
@@ -631,45 +632,24 @@ impl RutabagaHandle {
     }
 }
 
-/// Trait for fence completion handlers
-pub trait RutabagaFenceCallback: Send {
-    fn call(&self, data: RutabagaFence);
-    fn clone_box(&self) -> RutabagaFenceHandler;
+pub struct RutabagaClosure<S> {
+    closure: Box<dyn Fn(S) + Send + Sync>,
 }
 
-/// Wrapper type to allow cloning while respecting object-safety
-pub type RutabagaFenceHandler = Box<dyn RutabagaFenceCallback>;
+type RutabagaHandler<S> = Arc<RutabagaClosure<S>>;
 
-impl Clone for RutabagaFenceHandler {
-    fn clone(&self) -> Self {
-        self.clone_box()
-    }
-}
-
-/// Fence handler implementation that wraps a closure
-#[derive(Clone)]
-pub struct RutabagaFenceClosure<T> {
-    closure: T,
-}
-
-impl<T> RutabagaFenceClosure<T>
+impl<S> RutabagaClosure<S>
 where
-    T: Fn(RutabagaFence) + Clone + Send + 'static,
+    S: Send + Sync + Clone + 'static,
 {
-    pub fn new(closure: T) -> RutabagaFenceHandler {
-        Box::new(RutabagaFenceClosure { closure })
+    pub fn new(closure: Box<dyn Fn(S) + Send + Sync>) -> RutabagaHandler<S> {
+        Arc::new(RutabagaClosure { closure })
     }
-}
 
-impl<T> RutabagaFenceCallback for RutabagaFenceClosure<T>
-where
-    T: Fn(RutabagaFence) + Clone + Send + 'static,
-{
-    fn call(&self, data: RutabagaFence) {
+    pub fn call(&self, data: S) {
         (self.closure)(data)
     }
-
-    fn clone_box(&self) -> RutabagaFenceHandler {
-        Box::new(self.clone())
-    }
 }
+
+pub type RutabagaFenceClosure = RutabagaClosure<RutabagaFence>;
+pub type RutabagaFenceHandler = RutabagaHandler<RutabagaFence>;

@@ -117,7 +117,9 @@ pub struct rutabaga_builder<'a> {
 }
 
 fn create_ffi_fence_handler(user_data: u64, fence_cb: write_fence_cb) -> RutabagaFenceHandler {
-    RutabagaFenceClosure::new(move |completed_fence| fence_cb(user_data, completed_fence))
+    RutabagaFenceClosure::new(Box::new(move |completed_fence| {
+        fence_cb(user_data, completed_fence)
+    }))
 }
 
 #[no_mangle]
