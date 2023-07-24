@@ -241,7 +241,7 @@ CHECKS: List[Check] = [
     Check(
         check_python_types,
         files=["tools/**.py"],
-        exclude=["tools/windows/*"],
+        exclude=["tools/windows/*", "tools/contrib/memstats_chart/*"],
         python_tools=True,
     ),
     Check(
