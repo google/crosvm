@@ -232,17 +232,17 @@ pub enum ControlRequestRecipient {
 /// Standard request defined in usb spec.
 #[derive(PartialEq, Eq)]
 pub enum StandardControlRequest {
-    GetStatus = 0x00,
-    ClearFeature = 0x01,
-    SetFeature = 0x03,
-    SetAddress = 0x05,
-    GetDescriptor = 0x06,
-    SetDescriptor = 0x07,
-    GetConfiguration = 0x08,
-    SetConfiguration = 0x09,
-    GetInterface = 0x0a,
-    SetInterface = 0x11,
-    SynchFrame = 0x12,
+    GetStatus = 0,
+    ClearFeature = 1,
+    SetFeature = 3,
+    SetAddress = 5,
+    GetDescriptor = 6,
+    SetDescriptor = 7,
+    GetConfiguration = 8,
+    SetConfiguration = 9,
+    GetInterface = 10,
+    SetInterface = 11,
+    SynchFrame = 12,
 }
 
 /// RequestSetup is first part of control transfer buffer.
@@ -316,17 +316,18 @@ impl UsbRequestSetup {
             return None;
         }
         match self.request {
-            0x00 => Some(StandardControlRequest::GetStatus),
-            0x01 => Some(StandardControlRequest::ClearFeature),
-            0x03 => Some(StandardControlRequest::SetFeature),
-            0x05 => Some(StandardControlRequest::SetAddress),
-            0x06 => Some(StandardControlRequest::GetDescriptor),
-            0x07 => Some(StandardControlRequest::SetDescriptor),
-            0x08 => Some(StandardControlRequest::GetConfiguration),
-            0x09 => Some(StandardControlRequest::SetConfiguration),
-            0x0a => Some(StandardControlRequest::GetInterface),
-            0x11 => Some(StandardControlRequest::SetInterface),
-            0x12 => Some(StandardControlRequest::SynchFrame),
+            // Defined in USB 2.0 Specification Table 9-4
+            0 => Some(StandardControlRequest::GetStatus),
+            1 => Some(StandardControlRequest::ClearFeature),
+            3 => Some(StandardControlRequest::SetFeature),
+            5 => Some(StandardControlRequest::SetAddress),
+            6 => Some(StandardControlRequest::GetDescriptor),
+            7 => Some(StandardControlRequest::SetDescriptor),
+            8 => Some(StandardControlRequest::GetConfiguration),
+            9 => Some(StandardControlRequest::SetConfiguration),
+            10 => Some(StandardControlRequest::GetInterface),
+            11 => Some(StandardControlRequest::SetInterface),
+            12 => Some(StandardControlRequest::SynchFrame),
             _ => None,
         }
     }
