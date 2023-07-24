@@ -79,11 +79,6 @@ pub struct VfioOption {
     /// PCI address to use for the VFIO device in the guest.
     /// If not specified, defaults to mirroring the host PCI address.
     pub guest_address: Option<PciAddress>,
-
-    /// Apply special handling for Intel LPSS devices.
-    #[cfg(feature = "direct")]
-    #[serde(default)]
-    pub intel_lpss: bool,
 }
 
 #[derive(Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -557,22 +552,6 @@ mod tests {
             vfio.guest_address,
             Some(PciAddress::new(0, 0x42, 0x15, 4).unwrap())
         );
-    }
-
-    #[test]
-    #[cfg(feature = "direct")]
-    fn vfio_pci_intel_lpss() {
-        let config: Config = crate::crosvm::cmdline::RunCommand::from_args(
-            &[],
-            &["--vfio", "/path/to/dev,intel-lpss=true", "/dev/null"],
-        )
-        .unwrap()
-        .try_into()
-        .unwrap();
-
-        let vfio = config.vfio.first().unwrap();
-
-        assert_eq!(vfio.intel_lpss, true);
     }
 
     #[test]

@@ -3,8 +3,6 @@
 // found in the LICENSE file.
 
 use std::fs::read;
-#[cfg(feature = "direct")]
-use std::fs::read_to_string;
 use std::fs::write;
 use std::fs::File;
 use std::fs::OpenOptions;
@@ -19,8 +17,6 @@ use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
 use base::error;
-#[cfg(feature = "direct")]
-use base::warn;
 use base::Tube;
 use data_model::zerocopy_from_slice;
 use sync::Mutex;
@@ -32,10 +28,6 @@ use zerocopy::FromBytes;
 
 use crate::pci::pci_configuration::PciBridgeSubclass;
 use crate::pci::pci_configuration::CAPABILITY_LIST_HEAD_OFFSET;
-#[cfg(feature = "direct")]
-use crate::pci::pci_configuration::CLASS_REG;
-#[cfg(feature = "direct")]
-use crate::pci::pci_configuration::CLASS_REG_REVISION_ID_OFFSET;
 use crate::pci::pci_configuration::HEADER_TYPE_REG;
 use crate::pci::pci_configuration::PCI_CAP_NEXT_POINTER;
 use crate::pci::pcie::pci_bridge::PciBridgeBusRange;
@@ -317,10 +309,6 @@ pub struct PcieHostPort {
     hotplug_in_process: Arc<Mutex<bool>>,
     hotplug_child_exist: Arc<Mutex<bool>>,
     vm_socket: Arc<Mutex<Tube>>,
-    #[cfg(feature = "direct")]
-    sysfs_path: Option<PathBuf>,
-    #[cfg(feature = "direct")]
-    header_type_reg: Option<u32>,
 }
 
 impl PcieHostPort {
@@ -362,36 +350,12 @@ impl PcieHostPort {
             return Err(anyhow!("host {} isn't pcie device", host_name));
         }
 
-        #[cfg(feature = "direct")]
-        let (sysfs_path, header_type_reg) =
-            match PcieHostPort::coordinated_pm(host_sysfs_path, true) {
-                Ok(_) => {
-                    // Cache the dword at offset 0x0c (cacheline size, latency timer,
-                    // header type, BIST).
-                    // When using the "direct" feature, this dword can be accessed for
-                    // device power state. Directly accessing a device's physical PCI
-                    // config space in D3cold state causes a hang. We treat the cacheline
-                    // size, latency timer and header type field as immutable in the
-                    // guest.
-                    let reg: u32 = host_config.read_config((HEADER_TYPE_REG as u64) * 4);
-                    (Some(host_sysfs_path.to_path_buf()), Some(reg))
-                }
-                Err(e) => {
-                    warn!("coordinated_pm not supported: {}", e);
-                    (None, None)
-                }
-            };
-
         Ok(PcieHostPort {
             host_config,
             host_name,
             hotplug_in_process: Arc::new(Mutex::new(false)),
             hotplug_child_exist: Arc::new(Mutex::new(false)),
             vm_socket: Arc::new(Mutex::new(socket)),
-            #[cfg(feature = "direct")]
-            sysfs_path,
-            #[cfg(feature = "direct")]
-            header_type_reg,
         })
     }
 
@@ -418,39 +382,11 @@ impl PcieHostPort {
 
     pub fn read_config(&self, reg_idx: usize, data: &mut u32) {
         if reg_idx == HEADER_TYPE_REG {
-            #[cfg(feature = "direct")]
-            if let Some(header_type_reg) = self.header_type_reg {
-                let mut v = header_type_reg.to_le_bytes();
-                // HACK
-                // Reads from the "BIST" register are interpreted as device
-                // PCI power state
-                v[3] = self.power_state().unwrap_or_else(|e| {
-                    error!("Failed to get device power state: {}", e);
-                    5 // unknown state
-                });
-                *data = u32::from_le_bytes(v);
-                return;
-            }
             *data = self.host_config.read_config((HEADER_TYPE_REG as u64) * 4)
         }
     }
 
-    #[allow(unused_variables)]
-    pub fn write_config(&mut self, reg_idx: usize, offset: u64, data: &[u8]) {
-        #[cfg(feature = "direct")]
-        if self.sysfs_path.is_some()
-            && reg_idx == CLASS_REG
-            && offset == CLASS_REG_REVISION_ID_OFFSET as u64
-            && data.len() == 1
-        {
-            // HACK
-            // Byte writes to the "Revision ID" register are interpreted as PM
-            // op calls
-            if let Err(e) = self.op_call(data[0]) {
-                error!("Failed to perform op call: {}", e);
-            }
-        }
-    }
+    pub fn write_config(&mut self, _reg_idx: usize, _offset: u64, _data: &[u8]) {}
 
     pub fn get_bridge_window_size(&self) -> (u64, u64) {
         let br_memory: u32 = self.host_config.read_config(BR_MEM_REG as u64 * 4);
@@ -508,47 +444,5 @@ impl PcieHostPort {
 
     pub fn hot_unplug(&mut self) {
         *self.hotplug_child_exist.lock() = false;
-    }
-
-    #[cfg(feature = "direct")]
-    fn coordinated_pm(host_sysfs_path: &Path, enter: bool) -> Result<()> {
-        let path = Path::new(host_sysfs_path).join("power/coordinated");
-        write(&path, if enter { "enter\n" } else { "exit\n" })
-            .with_context(|| format!("Failed to write to {}", path.to_string_lossy()))
-    }
-
-    #[cfg(feature = "direct")]
-    fn power_state(&self) -> Result<u8> {
-        let path = Path::new(&self.sysfs_path.as_ref().unwrap()).join("power_state");
-        let state = read_to_string(&path)
-            .with_context(|| format!("Failed to read from {}", path.to_string_lossy()))?;
-        match state.as_str() {
-            "D0\n" => Ok(0),
-            "D1\n" => Ok(1),
-            "D2\n" => Ok(2),
-            "D3hot\n" => Ok(3),
-            "D3cold\n" => Ok(4),
-            "unknown\n" => Ok(5),
-            _ => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "invalid state",
-            ))?,
-        }
-    }
-
-    #[cfg(feature = "direct")]
-    fn op_call(&self, id: u8) -> Result<()> {
-        let path = Path::new(self.sysfs_path.as_ref().unwrap()).join("power/op_call");
-        write(&path, &[id])
-            .with_context(|| format!("Failed to write to {}", path.to_string_lossy()))
-    }
-}
-
-#[cfg(feature = "direct")]
-impl Drop for PcieHostPort {
-    fn drop(&mut self) {
-        if self.sysfs_path.is_some() {
-            let _ = PcieHostPort::coordinated_pm(self.sysfs_path.as_ref().unwrap(), false);
-        }
     }
 }

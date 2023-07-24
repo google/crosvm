@@ -28,8 +28,6 @@ pub const STATUS_REG_CAPABILITIES_USED_MASK: u32 = 0x0010_0000;
 #[allow(dead_code)]
 #[cfg(unix)]
 pub const CLASS_REG: usize = 2;
-#[cfg(feature = "direct")]
-pub const CLASS_REG_REVISION_ID_OFFSET: usize = 0;
 pub const HEADER_TYPE_REG: usize = 3;
 pub const HEADER_TYPE_MULTIFUNCTION_MASK: u32 = 0x0080_0000;
 pub const BAR0_REG: usize = 4;

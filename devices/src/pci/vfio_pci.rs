@@ -6,8 +6,6 @@ use std::cmp::max;
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-#[cfg(feature = "direct")]
-use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -16,8 +14,6 @@ use std::sync::Arc;
 use std::u32;
 
 use acpi_tables::aml::Aml;
-#[cfg(feature = "direct")]
-use anyhow::Context;
 use base::debug;
 use base::error;
 use base::pagesize;
@@ -63,12 +59,6 @@ use crate::pci::msix::MsixStatus;
 use crate::pci::msix::BITS_PER_PBA_ENTRY;
 use crate::pci::msix::MSIX_PBA_ENTRIES_MODULO;
 use crate::pci::msix::MSIX_TABLE_ENTRIES_MODULO;
-#[cfg(feature = "direct")]
-use crate::pci::pci_configuration::CLASS_REG;
-#[cfg(feature = "direct")]
-use crate::pci::pci_configuration::CLASS_REG_REVISION_ID_OFFSET;
-#[cfg(feature = "direct")]
-use crate::pci::pci_configuration::HEADER_TYPE_REG;
 use crate::pci::pci_device::BarRange;
 use crate::pci::pci_device::Error as PciDeviceError;
 use crate::pci::pci_device::PciDevice;
@@ -118,11 +108,6 @@ const PCI_EXT_CAP_ID_CAC: u16 = 0x0C;
 const PCI_EXT_CAP_ID_ARI: u16 = 0x0E;
 const PCI_EXT_CAP_ID_SRIOV: u16 = 0x10;
 const PCI_EXT_CAP_ID_REBAR: u16 = 0x15;
-
-#[cfg(feature = "direct")]
-const LPSS_MANATEE_OFFSET: u64 = 0x400;
-#[cfg(feature = "direct")]
-const LPSS_MANATEE_SIZE: u64 = 0x400;
 
 struct VfioPmCap {
     offset: u32,
@@ -669,32 +654,11 @@ pub struct VfioPciDevice {
     worker_thread: Option<WorkerThread<VfioPciWorker>>,
     vm_socket_vm: Option<Tube>,
     sysfs_path: PathBuf,
-    #[cfg(feature = "direct")]
-    header_type_reg: Option<u32>,
     // PCI Express Extended Capabilities
     ext_caps: Vec<ExtCap>,
-    #[cfg(feature = "direct")]
-    is_intel_lpss: bool,
-    #[cfg(feature = "direct")]
-    supports_coordinated_pm: bool,
-    #[cfg(feature = "direct")]
-    i2c_devs: HashMap<u16, PathBuf>,
     vcfg_shm_mmap: Option<MemoryMapping>,
     mapped_mmio_bars: BTreeMap<PciBarIndex, (u64, Vec<VmMemoryRegionId>)>,
     activated: bool,
-}
-
-#[cfg(feature = "direct")]
-fn iter_dir_starts_with(
-    path: &Path,
-    start: &'static str,
-) -> anyhow::Result<impl Iterator<Item = fs::DirEntry>> {
-    let dir = fs::read_dir(path)
-        .with_context(|| format!("read_dir call on {} failed", path.to_string_lossy()))?;
-    Ok(dir
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().map(|f| f.is_dir()).unwrap_or(false))
-        .filter(move |e| e.file_name().to_str().unwrap_or("").starts_with(start)))
 }
 
 impl VfioPciDevice {
@@ -709,7 +673,6 @@ impl VfioPciDevice {
         vfio_device_socket_msix: Tube,
         vm_memory_client: VmMemoryClient,
         vfio_device_socket_vm: Tube,
-        #[cfg(feature = "direct")] is_intel_lpss: bool,
     ) -> Result<Self, PciDeviceError> {
         let preferred_address = if let Some(bus_num) = hotplug_bus_number {
             debug!("hotplug bus {}", bus_num);
@@ -835,40 +798,6 @@ impl VfioPciDevice {
             None
         };
 
-        #[cfg(feature = "direct")]
-        let mut i2c_devs: HashMap<u16, PathBuf> = HashMap::new();
-
-        #[cfg(feature = "direct")]
-        let (supports_coordinated_pm, header_type_reg) =
-            match VfioPciDevice::coordinated_pm(sysfs_path, true) {
-                Ok(_) => {
-                    if is_intel_lpss {
-                        if let Err(e) = VfioPciDevice::coordinated_pm_i2c(sysfs_path, &mut i2c_devs)
-                        {
-                            warn!("coordinated_pm_i2c not supported: {}", e);
-                            for (_, i2c_path) in i2c_devs.iter() {
-                                let _ = VfioPciDevice::coordinated_pm(i2c_path, false);
-                            }
-                            i2c_devs.clear();
-                        }
-                    }
-
-                    // Cache the dword at offset 0x0c (cacheline size, latency timer,
-                    // header type, BIST).
-                    // When using the "direct" feature, this dword can be accessed for
-                    // device power state. Directly accessing a device's physical PCI
-                    // config space in D3cold state causes a hang. We treat the cacheline
-                    // size, latency timer and header type field as immutable in the
-                    // guest.
-                    let reg: u32 = config.read_config((HEADER_TYPE_REG as u32) * 4);
-                    (true, Some(reg))
-                }
-                Err(e) => {
-                    warn!("coordinated_pm not supported: {}", e);
-                    (false, None)
-                }
-            };
-
         Ok(VfioPciDevice {
             device: dev,
             config,
@@ -890,15 +819,7 @@ impl VfioPciDevice {
             worker_thread: None,
             vm_socket_vm: Some(vfio_device_socket_vm),
             sysfs_path: sysfs_path.to_path_buf(),
-            #[cfg(feature = "direct")]
-            header_type_reg,
             ext_caps,
-            #[cfg(feature = "direct")]
-            is_intel_lpss,
-            #[cfg(feature = "direct")]
-            supports_coordinated_pm,
-            #[cfg(feature = "direct")]
-            i2c_devs,
             vcfg_shm_mmap: None,
             mapped_mmio_bars: BTreeMap::new(),
             activated: false,
@@ -1169,23 +1090,6 @@ impl VfioPciDevice {
         self.adjust_bar_mmap(bar_mmaps, &msix_regions)
     }
 
-    #[cfg(feature = "direct")]
-    fn remove_bar_mmap_lpss(
-        &self,
-        bar_index: u32,
-        bar_mmaps: Vec<vfio_region_sparse_mmap_area>,
-    ) -> Vec<vfio_region_sparse_mmap_area> {
-        // must be BAR0
-        if bar_index != 0 {
-            return bar_mmaps;
-        }
-
-        match AddressRange::from_start_and_size(LPSS_MANATEE_OFFSET, LPSS_MANATEE_SIZE) {
-            Some(lpss_range) => self.adjust_bar_mmap(bar_mmaps, &[lpss_range]),
-            None => bar_mmaps,
-        }
-    }
-
     fn add_bar_mmap(&self, index: PciBarIndex, bar_addr: u64) -> Vec<VmMemoryRegionId> {
         let mut mmaps_ids: Vec<VmMemoryRegionId> = Vec::new();
         if self.device.get_region_flags(index) & VFIO_REGION_INFO_FLAG_MMAP != 0 {
@@ -1195,10 +1099,6 @@ impl VfioPciDevice {
 
             if self.msix_cap.is_some() {
                 mmaps = self.remove_bar_mmap_msix(index, mmaps);
-            }
-            #[cfg(feature = "direct")]
-            if self.is_intel_lpss {
-                mmaps = self.remove_bar_mmap_lpss(index, mmaps);
             }
             if mmaps.is_empty() {
                 return mmaps_ids;
@@ -1604,99 +1504,6 @@ impl VfioPciDevice {
         self.device.get_max_addr()
     }
 
-    #[cfg(feature = "direct")]
-    fn coordinated_pm(sysfs_path: &Path, enter: bool) -> anyhow::Result<()> {
-        let path = sysfs_path.join("power/coordinated");
-        fs::write(&path, if enter { "enter\n" } else { "exit\n" })
-            .with_context(|| format!("Failed to write to {}", path.to_string_lossy()))
-    }
-
-    #[cfg(feature = "direct")]
-    fn coordinated_pm_i2c_adap(
-        adap_path: &Path,
-        i2c_devs: &mut HashMap<u16, PathBuf>,
-    ) -> anyhow::Result<()> {
-        for entry in iter_dir_starts_with(adap_path, "i2c-")? {
-            let path = adap_path.join(entry.file_name());
-
-            VfioPciDevice::coordinated_pm(&path, true)?;
-
-            let addr_path = path.join("address");
-            let addr = fs::read_to_string(&addr_path).with_context(|| {
-                format!(
-                    "Failed to read to string from {}",
-                    addr_path.to_string_lossy()
-                )
-            })?;
-            let addr = addr.trim_end().parse::<u16>().with_context(|| {
-                format!(
-                    "Failed to parse {} from {}",
-                    addr,
-                    addr_path.to_string_lossy()
-                )
-            })?;
-
-            if let Some(c) = i2c_devs.insert(addr, path.to_path_buf()) {
-                anyhow::bail!(
-                    "Collision encountered: {}, {}",
-                    path.to_string_lossy(),
-                    c.to_string_lossy()
-                );
-            }
-        }
-        Ok(())
-    }
-
-    #[cfg(feature = "direct")]
-    fn coordinated_pm_i2c_platdev(
-        plat_path: &Path,
-        i2c_devs: &mut HashMap<u16, PathBuf>,
-    ) -> anyhow::Result<()> {
-        for entry in iter_dir_starts_with(plat_path, "i2c-")? {
-            let path = plat_path.join(entry.file_name());
-            VfioPciDevice::coordinated_pm_i2c_adap(&path, i2c_devs)?;
-        }
-        Ok(())
-    }
-
-    #[cfg(feature = "direct")]
-    fn coordinated_pm_i2c(
-        sysfs_path: &Path,
-        i2c_devs: &mut HashMap<u16, PathBuf>,
-    ) -> anyhow::Result<()> {
-        for entry in iter_dir_starts_with(sysfs_path, "i2c_designware")? {
-            let path = sysfs_path.join(entry.file_name());
-            VfioPciDevice::coordinated_pm_i2c_platdev(&path, i2c_devs)?;
-        }
-        Ok(())
-    }
-
-    #[cfg(feature = "direct")]
-    fn power_state(&self) -> anyhow::Result<u8> {
-        let path = self.sysfs_path.join("power_state");
-        let state = fs::read_to_string(&path)
-            .with_context(|| format!("Failed to read from {}", path.to_string_lossy()))?;
-        match state.as_str() {
-            "D0\n" => Ok(0),
-            "D1\n" => Ok(1),
-            "D2\n" => Ok(2),
-            "D3hot\n" => Ok(3),
-            "D3cold\n" => Ok(4),
-            "unknown\n" => Ok(5),
-            _ => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "invalid state",
-            ))?,
-        }
-    }
-
-    #[cfg(feature = "direct")]
-    fn op_call(path: &Path, id: u8) -> anyhow::Result<()> {
-        let path = path.join("power/op_call");
-        fs::write(&path, &[id])
-            .with_context(|| format!("Failed to write to {}", path.to_string_lossy()))
-    }
-
     fn get_ext_cap_by_reg(&self, reg: u32) -> Option<ExtCap> {
         self.ext_caps
             .iter()
@@ -1904,21 +1711,6 @@ impl PciDevice for VfioPciDevice {
     }
 
     fn read_config_register(&self, reg_idx: usize) -> u32 {
-        #[cfg(feature = "direct")]
-        if reg_idx == HEADER_TYPE_REG {
-            if let Some(header_type_reg) = self.header_type_reg {
-                let mut v = header_type_reg.to_le_bytes();
-                // HACK
-                // Reads from the "BIST" register are interpreted as device
-                // PCI power state
-                v[3] = self.power_state().unwrap_or_else(|e| {
-                    error!("Failed to get device power state: {}", e);
-                    5 // unknown state
-                });
-                return u32::from_le_bytes(v);
-            }
-        }
-
         let reg: u32 = (reg_idx * 4) as u32;
         let mut config: u32 = self.config.read_config(reg);
 
@@ -1973,21 +1765,6 @@ impl PciDevice for VfioPciDevice {
         if self.worker_thread.is_none() && self.vm_socket_vm.is_some() {
             self.start_work_thread();
         };
-
-        #[cfg(feature = "direct")]
-        if self.supports_coordinated_pm
-            && reg_idx == CLASS_REG
-            && offset == CLASS_REG_REVISION_ID_OFFSET as u64
-            && data.len() == 1
-        {
-            // HACK
-            // Byte writes to the "Revision ID" register are interpreted as PM
-            // op calls
-            if let Err(e) = VfioPciDevice::op_call(&self.sysfs_path, data[0]) {
-                error!("Failed to perform op call: {}", e);
-            }
-            return;
-        }
 
         let start = (reg_idx * 4) as u64 + offset;
 
@@ -2188,51 +1965,6 @@ impl PciDevice for VfioPciDevice {
             }
         }
 
-        #[cfg(feature = "direct")]
-        if self.is_intel_lpss
-            && bar_index == 0
-            && offset >= LPSS_MANATEE_OFFSET
-            && offset < LPSS_MANATEE_OFFSET + LPSS_MANATEE_SIZE
-        {
-            if offset != LPSS_MANATEE_OFFSET {
-                warn!(
-                    "{} write_bar invalid offset 0x{:x}",
-                    self.debug_label(),
-                    offset,
-                );
-                return;
-            }
-
-            let val = if let Ok(bytes) = data.try_into() {
-                u64::from_le_bytes(bytes)
-            } else {
-                warn!(
-                    "{} write_bar invalid len 0x{:x}",
-                    self.debug_label(),
-                    data.len()
-                );
-                return;
-            };
-            let addr = val as u16;
-            let id = (val >> 32) as u8;
-
-            match self.i2c_devs.get(&addr) {
-                Some(path) => {
-                    if let Err(e) = VfioPciDevice::op_call(path, id) {
-                        error!("{} Failed to perform op call: {}", self.debug_label(), e);
-                    }
-                }
-                None => {
-                    warn!(
-                        "{} write_bar addr 0x{:x} id 0x{:x} not found",
-                        self.debug_label(),
-                        addr,
-                        id
-                    );
-                }
-            }
-            return;
-        }
         self.device.region_write(bar_index, data, offset);
     }
 
@@ -2274,14 +2006,6 @@ impl PciDevice for VfioPciDevice {
 
 impl Suspendable for VfioPciDevice {
     fn sleep(&mut self) -> anyhow::Result<()> {
-        #[cfg(feature = "direct")]
-        if self.supports_coordinated_pm {
-            for (_, i2c_path) in self.i2c_devs.iter() {
-                let _ = VfioPciDevice::coordinated_pm(i2c_path, false);
-            }
-            let _ = VfioPciDevice::coordinated_pm(&self.sysfs_path, false);
-        }
-
         if let Some(worker_thread) = self.worker_thread.take() {
             let res = worker_thread.stop();
             self.pci_address = Some(res.address);

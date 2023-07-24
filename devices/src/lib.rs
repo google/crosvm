@@ -15,10 +15,6 @@ mod bus_stats;
 pub mod cmos;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod debugcon;
-#[cfg(feature = "direct")]
-pub mod direct_io;
-#[cfg(feature = "direct")]
-pub mod direct_irq;
 mod fw_cfg;
 mod i8042;
 mod irq_event;
@@ -83,14 +79,6 @@ pub use self::bus::HotPlugKey;
 pub use self::bus_stats::BusStatistics;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub use self::debugcon::Debugcon;
-#[cfg(feature = "direct")]
-pub use self::direct_io::DirectIo;
-#[cfg(feature = "direct")]
-pub use self::direct_io::DirectMmio;
-#[cfg(feature = "direct")]
-pub use self::direct_irq::DirectIrq;
-#[cfg(feature = "direct")]
-pub use self::direct_irq::DirectIrqError;
 pub use self::fw_cfg::FwCfgDevice;
 pub use self::fw_cfg::FwCfgParameters;
 pub use self::i8042::I8042Device;

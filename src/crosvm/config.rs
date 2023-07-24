@@ -49,8 +49,6 @@ use devices::virtio::NetParameters;
 use devices::Ac97Backend;
 #[cfg(feature = "audio")]
 use devices::Ac97Parameters;
-#[cfg(feature = "direct")]
-use devices::BusRange;
 use devices::FwCfgParameters;
 use devices::PciAddress;
 use devices::PflashParameters;
@@ -319,14 +317,6 @@ impl FromStr for GidMap {
     }
 }
 
-/// Direct IO forwarding options
-#[cfg(feature = "direct")]
-#[derive(Debug, Deserialize, Serialize)]
-pub struct DirectIoOption {
-    pub path: PathBuf,
-    pub ranges: Vec<BusRange>,
-}
-
 pub const DEFAULT_TOUCH_DEVICE_HEIGHT: u32 = 1024;
 pub const DEFAULT_TOUCH_DEVICE_WIDTH: u32 = 1280;
 
@@ -416,12 +406,6 @@ pub struct FileBackedMappingParameters {
     pub sync: bool,
     #[serde(default)]
     pub align: bool,
-}
-
-#[derive(Clone, Deserialize, Serialize)]
-pub struct HostPcieRootPortParameters {
-    pub host_path: PathBuf,
-    pub hp_gpe: Option<u32>,
 }
 
 fn parse_hex_or_decimal(maybe_hex_string: &str) -> Result<u64, String> {
@@ -652,53 +636,6 @@ pub fn parse_memory_region(value: &str) -> Result<AddressRange, String> {
     }
 }
 
-#[cfg(feature = "direct")]
-pub fn parse_pcie_root_port_params(value: &str) -> Result<HostPcieRootPortParameters, String> {
-    let opts: Vec<_> = value.split(',').collect();
-    if opts.len() > 2 {
-        return Err(invalid_value_err(
-            value,
-            "pcie-root-port has maxmimum two arguments",
-        ));
-    }
-    let pcie_path = PathBuf::from(opts[0]);
-    if !pcie_path.exists() {
-        return Err(invalid_value_err(
-            value,
-            "the pcie root port path does not exist",
-        ));
-    }
-    if !pcie_path.is_dir() {
-        return Err(invalid_value_err(
-            value,
-            "the pcie root port path should be directory",
-        ));
-    }
-
-    let hp_gpe = if opts.len() == 2 {
-        let gpes: Vec<&str> = opts[1].split('=').collect();
-        if gpes.len() != 2 || gpes[0] != "hp_gpe" {
-            return Err(invalid_value_err(value, "it should be hp_gpe=Num"));
-        }
-        match gpes[1].parse::<u32>() {
-            Ok(gpe) => Some(gpe),
-            Err(_) => {
-                return Err(invalid_value_err(
-                    value,
-                    "host hp gpe must be a non-negative integer",
-                ));
-            }
-        }
-    } else {
-        None
-    };
-
-    Ok(HostPcieRootPortParameters {
-        host_path: pcie_path,
-        hp_gpe,
-    })
-}
-
 pub fn parse_bus_id_addr(v: &str) -> Result<(u8, u8, u16, u16), String> {
     debug!("parse_bus_id_addr: {}", v);
     let mut ids = v.split(':');
@@ -840,50 +777,6 @@ pub fn parse_cpu_affinity(s: &str) -> Result<VcpuAffinity, String> {
     }
 }
 
-#[cfg(feature = "direct")]
-pub fn parse_direct_io_options(s: &str) -> Result<DirectIoOption, String> {
-    let parts: Vec<&str> = s.splitn(2, '@').collect();
-    if parts.len() != 2 {
-        return Err(invalid_value_err(
-            s,
-            "missing port range, use /path@X-Y,Z,.. syntax",
-        ));
-    }
-    let path = PathBuf::from(parts[0]);
-    if !path.exists() {
-        return Err(invalid_value_err(parts[0], "the path does not exist"));
-    };
-    let ranges: Result<Vec<BusRange>, String> = parts[1]
-        .split(',')
-        .map(|frag| frag.split('-'))
-        .map(|mut range| {
-            let base = range
-                .next()
-                .map(parse_hex_or_decimal)
-                .map_or(Ok(None), |r| r.map(Some));
-            let last = range
-                .next()
-                .map(parse_hex_or_decimal)
-                .map_or(Ok(None), |r| r.map(Some));
-            (base, last)
-        })
-        .map(|range| match range {
-            (Ok(Some(base)), Ok(None)) => Ok(BusRange { base, len: 1 }),
-            (Ok(Some(base)), Ok(Some(last))) => Ok(BusRange {
-                base,
-                len: last.saturating_sub(base).saturating_add(1),
-            }),
-            (Err(_), _) => Err(invalid_value_err(s, "invalid base range value")),
-            (_, Err(_)) => Err(invalid_value_err(s, "invalid last range value")),
-            _ => Err(invalid_value_err(s, "invalid range format")),
-        })
-        .collect();
-    Ok(DirectIoOption {
-        path,
-        ranges: ranges?,
-    })
-}
-
 pub fn executable_is_plugin(executable: &Option<Executable>) -> bool {
     matches!(executable, Some(Executable::Plugin(_)))
 }
@@ -963,14 +856,6 @@ pub struct Config {
     #[cfg(feature = "crash-report")]
     pub crash_report_uuid: Option<String>,
     pub delay_rt: bool,
-    #[cfg(feature = "direct")]
-    pub direct_fixed_evts: Vec<devices::ACPIPMFixedEvent>,
-    #[cfg(feature = "direct")]
-    pub direct_gpe: Vec<u32>,
-    #[cfg(feature = "direct")]
-    pub direct_mmio: Option<DirectIoOption>,
-    #[cfg(feature = "direct")]
-    pub direct_pmio: Option<DirectIoOption>,
     pub disable_virtio_intx: bool,
     pub disks: Vec<DiskOption>,
     pub display_window_keyboard: bool,
@@ -1036,8 +921,6 @@ pub struct Config {
     pub pci_low_start: Option<u64>,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub pcie_ecam: Option<AddressRange>,
-    #[cfg(feature = "direct")]
-    pub pcie_rp: Vec<HostPcieRootPortParameters>,
     pub per_vm_core_scheduling: bool,
     pub pflash_parameters: Option<PflashParameters>,
     #[cfg(feature = "plugin")]
@@ -1176,14 +1059,6 @@ impl Default for Config {
             cpu_capacity: BTreeMap::new(),
             cpu_clusters: Vec::new(),
             delay_rt: false,
-            #[cfg(feature = "direct")]
-            direct_fixed_evts: Vec::new(),
-            #[cfg(feature = "direct")]
-            direct_gpe: Vec::new(),
-            #[cfg(feature = "direct")]
-            direct_mmio: None,
-            #[cfg(feature = "direct")]
-            direct_pmio: None,
             disks: Vec::new(),
             disable_virtio_intx: false,
             display_window_keyboard: false,
@@ -1257,8 +1132,6 @@ impl Default for Config {
             pci_low_start: None,
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             pcie_ecam: None,
-            #[cfg(feature = "direct")]
-            pcie_rp: Vec::new(),
             per_vm_core_scheduling: false,
             pflash_parameters: None,
             #[cfg(feature = "plugin")]
@@ -2014,52 +1887,6 @@ mod tests {
         assert_eq!(params.subsystem_vendor, 0xfffc);
         assert_eq!(params.subsystem_device, 0xfffb);
         assert_eq!(params.revision, 0xa);
-    }
-
-    #[cfg(feature = "direct")]
-    #[test]
-    fn parse_direct_io_options_valid() {
-        // Use /dev/zero here which is usually available on any systems,
-        // /dev/mem may not.
-        let params = parse_direct_io_options("/dev/zero@1,100-110").unwrap();
-        assert_eq!(params.path.to_str(), Some("/dev/zero"));
-        assert_eq!(params.ranges[0], BusRange { base: 1, len: 1 });
-        assert_eq!(params.ranges[1], BusRange { base: 100, len: 11 });
-    }
-
-    #[cfg(feature = "direct")]
-    #[test]
-    fn parse_direct_io_options_hex() {
-        // Use /dev/zero here which is usually available on any systems,
-        // /dev/mem may not.
-        let params = parse_direct_io_options("/dev/zero@1,0x10,100-110,0x10-0x20").unwrap();
-        assert_eq!(params.path.to_str(), Some("/dev/zero"));
-        assert_eq!(params.ranges[0], BusRange { base: 1, len: 1 });
-        assert_eq!(params.ranges[1], BusRange { base: 0x10, len: 1 });
-        assert_eq!(params.ranges[2], BusRange { base: 100, len: 11 });
-        assert_eq!(
-            params.ranges[3],
-            BusRange {
-                base: 0x10,
-                len: 0x11
-            }
-        );
-    }
-
-    #[cfg(feature = "direct")]
-    #[test]
-    fn parse_direct_io_options_invalid() {
-        // Use /dev/zero here which is usually available on any systems,
-        // /dev/mem may not.
-        assert!(parse_direct_io_options("/dev/zero@0y10")
-            .unwrap_err()
-            .to_string()
-            .contains("invalid base range value"));
-
-        assert!(parse_direct_io_options("/dev/zero@")
-            .unwrap_err()
-            .to_string()
-            .contains("invalid base range value"));
     }
 
     #[test]

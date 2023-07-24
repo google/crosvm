@@ -319,10 +319,6 @@ pub struct VmComponents {
     pub cpu_clusters: Vec<CpuSet>,
     pub cpu_frequencies: BTreeMap<usize, Vec<u32>>,
     pub delay_rt: bool,
-    #[cfg(feature = "direct")]
-    pub direct_fixed_evts: Vec<devices::ACPIPMFixedEvent>,
-    #[cfg(feature = "direct")]
-    pub direct_gpe: Vec<u32>,
     pub dynamic_power_coefficient: BTreeMap<usize, u32>,
     pub extra_kernel_params: Vec<String>,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]

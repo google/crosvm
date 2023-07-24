@@ -17,6 +17,3 @@ prebuilts = { path = "../../prebuilts" }
 log = "*"
 shlex = "*"
 url = "2.3"
-
-[features]
-direct = []

@@ -7,7 +7,6 @@ edition = "2021"
 [features]
 power-monitor-powerd = ["power_monitor/powerd"]
 gdb = ["gdbstub", "gdbstub_arch"]
-direct = []
 trace_marker = ["cros_tracing/trace_marker"]
 seccomp_trace = []
 swap = ["swap/enable"]

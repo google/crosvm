@@ -159,8 +159,6 @@ use jail::*;
 use minijail::Minijail;
 use resources::AddressRange;
 use resources::Alloc;
-#[cfg(feature = "direct")]
-use resources::Error as ResourceError;
 use resources::SystemAllocator;
 #[cfg(target_arch = "riscv64")]
 use riscv64::Riscv64 as Arch;
@@ -184,8 +182,6 @@ use x86_64::X8664arch as Arch;
 use crate::crosvm::config::Config;
 use crate::crosvm::config::Executable;
 use crate::crosvm::config::FileBackedMappingParameters;
-#[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), feature = "direct"))]
-use crate::crosvm::config::HostPcieRootPortParameters;
 use crate::crosvm::config::HypervisorKind;
 use crate::crosvm::config::IrqChipKind;
 #[cfg(feature = "gdb")]
@@ -715,8 +711,6 @@ fn create_devices(
                 vfio_dev.guest_address,
                 Some(&mut coiommu_attached_endpoints),
                 vfio_dev.iommu,
-                #[cfg(feature = "direct")]
-                vfio_dev.intel_lpss,
             )?;
             match dev {
                 VfioDeviceVariant::Pci(vfio_pci_device) => {
@@ -986,87 +980,6 @@ impl HotPlugStub {
         }
     }
 }
-#[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), feature = "direct"))]
-/// Creates PCIE root port with host port passthrtough.
-///
-/// user specify host pcie root port which link to this virtual pcie rp,
-/// reserve the host pci BDF and create a virtual pcie RP with some attrs same as host
-fn create_host_passthrough_pcie_root_port(
-    host_pcie_rp: Vec<HostPcieRootPortParameters>,
-    sys_allocator: &mut SystemAllocator,
-    irq_control_tubes: &mut Vec<Tube>,
-    control_tubes: &mut Vec<TaggedControlTube>,
-    devices: &mut Vec<(Box<dyn BusDeviceObj>, Option<Minijail>)>,
-) -> Result<HotPlugStub> {
-    let mut hp_stub = HotPlugStub::new();
-    for host_pcie in host_pcie_rp.iter() {
-        let (vm_host_tube, vm_device_tube) = Tube::pair().context("failed to create tube")?;
-        let pcie_host = PcieHostPort::new(host_pcie.host_path.as_path(), vm_device_tube)?;
-        let bus_range = pcie_host.get_bus_range();
-        let mut slot_implemented = true;
-        for i in bus_range.secondary..=bus_range.subordinate {
-            // if this bus is occupied by one vfio-pci device, this vfio-pci device is
-            // connected to a pci bridge on host statically, then it should be connected
-            // to a virtual pci bridge in guest statically, this bridge won't have
-            // hotplug capability and won't use slot.
-            if !sys_allocator.pci_bus_empty(i) {
-                slot_implemented = false;
-                break;
-            }
-        }
-
-        let pcie_root_port = Arc::new(Mutex::new(PcieRootPort::new_from_host(
-            pcie_host,
-            slot_implemented,
-        )?));
-        control_tubes.push(TaggedControlTube::Vm(vm_host_tube));
-
-        let (msi_host_tube, msi_device_tube) = Tube::pair().context("failed to create tube")?;
-        irq_control_tubes.push(msi_host_tube);
-        let mut pci_bridge = Box::new(PciBridge::new(pcie_root_port.clone(), msi_device_tube));
-        // early reservation for host pcie root port devices.
-        let rootport_addr = pci_bridge.allocate_address(sys_allocator);
-        if rootport_addr.is_err() {
-            warn!(
-                "address reservation failed for hot pcie root port {}",
-                pci_bridge.debug_label()
-            );
-        }
-
-        // Only append the sub pci range of a hot-pluggable root port to virtio-iommu
-        if slot_implemented {
-            hp_stub.iommu_bus_ranges.push(RangeInclusive::new(
-                PciAddress {
-                    bus: pci_bridge.get_secondary_num(),
-                    dev: 0,
-                    func: 0,
-                }
-                .to_u32(),
-                PciAddress {
-                    bus: pci_bridge.get_subordinate_num(),
-                    dev: 32,
-                    func: 8,
-                }
-                .to_u32(),
-            ));
-        }
-
-        devices.push((pci_bridge, None));
-        if slot_implemented {
-            if let Some(gpe) = host_pcie.hp_gpe {
-                hp_stub
-                    .gpe_notify_devs
-                    .insert(gpe, pcie_root_port.clone() as Arc<Mutex<dyn GpeNotify>>);
-            }
-            hp_stub.hotplug_buses.insert(
-                bus_range.secondary,
-                pcie_root_port as Arc<Mutex<dyn HotPlugBus>>,
-            );
-        }
-    }
-
-    Ok(hp_stub)
-}
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 /// Creates PCIE root port with only virtual devices.
@@ -1244,10 +1157,6 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
         cpu_clusters: cfg.cpu_clusters.clone(),
         cpu_capacity: cfg.cpu_capacity.clone(),
         cpu_frequencies,
-        #[cfg(feature = "direct")]
-        direct_gpe: cfg.direct_gpe.clone(),
-        #[cfg(feature = "direct")]
-        direct_fixed_evts: cfg.direct_fixed_evts.clone(),
         fw_cfg_parameters: cfg.fw_cfg_parameters.clone(),
         no_smt: cfg.no_smt,
         hugepages: cfg.hugepages,
@@ -1839,23 +1748,6 @@ where
         }))
         .context("failed to calculate init balloon size")?;
 
-    // Reserve direct mmio range in advance.
-    #[cfg(feature = "direct")]
-    if let Some(mmio) = &cfg.direct_mmio {
-        for range in mmio.ranges.iter() {
-            AddressRange::from_start_and_size(range.base, range.len)
-                .ok_or(ResourceError::OutOfSpace)
-                .and_then(|range| sys_allocator.reserve_mmio(range))
-                .with_context(|| {
-                    format!(
-                        "failed to reserved direct mmio: {:x}-{:x}",
-                        range.base,
-                        range.base + range.len - 1,
-                    )
-                })?;
-        }
-    };
-
     let mut iommu_attached_endpoints: BTreeMap<u32, Arc<Mutex<Box<dyn MemoryMapperTrait>>>> =
         BTreeMap::new();
     let mut iova_max_addr: Option<u64> = None;
@@ -1893,27 +1785,7 @@ where
         &reg_evt_wrtube,
     )?;
 
-    #[cfg(all(feature = "direct", any(target_arch = "x86", target_arch = "x86_64")))]
-    let hp_stub = if cfg.pcie_rp.is_empty() {
-        create_pure_virtual_pcie_root_port(
-            &mut sys_allocator,
-            &mut irq_control_tubes,
-            &mut devices,
-            1,
-        )
-    } else {
-        create_host_passthrough_pcie_root_port(
-            cfg.pcie_rp.clone(),
-            &mut sys_allocator,
-            &mut irq_control_tubes,
-            &mut control_tubes,
-            &mut devices,
-        )
-    }?;
-    #[cfg(all(
-        not(feature = "direct"),
-        any(target_arch = "x86", target_arch = "x86_64")
-    ))]
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     let hp_stub = create_pure_virtual_pcie_root_port(
         &mut sys_allocator,
         &mut irq_control_tubes,
@@ -2000,7 +1872,6 @@ where
         None
     };
 
-    #[cfg_attr(not(feature = "direct"), allow(unused_mut))]
     let mut linux = Arch::build_vm::<V, Vcpu>(
         components,
         &vm_evt_wrtube,
@@ -2048,34 +1919,6 @@ where
         std::thread::Builder::new()
             .name("pci_root".to_string())
             .spawn(move || start_pci_root_worker(pci_root, hp_worker_tube))?
-    };
-
-    #[cfg(feature = "direct")]
-    if let Some(pmio) = &cfg.direct_pmio {
-        let direct_io = Arc::new(
-            devices::DirectIo::new(&pmio.path, false).context("failed to open direct io device")?,
-        );
-        for range in pmio.ranges.iter() {
-            linux
-                .io_bus
-                .insert_sync(direct_io.clone(), range.base, range.len)
-                .context("Error with pmio")?;
-        }
-    };
-
-    #[cfg(feature = "direct")]
-    if let Some(mmio) = &cfg.direct_mmio {
-        let direct_mmio = Arc::new(
-            devices::DirectMmio::new(&mmio.path, false, &mmio.ranges)
-                .context("failed to open direct mmio device")?,
-        );
-
-        for range in mmio.ranges.iter() {
-            linux
-                .mmio_bus
-                .insert_sync(direct_mmio.clone(), range.base, range.len)
-                .context("Error with mmio")?;
-        }
     };
 
     let gralloc = RutabagaGralloc::new().context("failed to create gralloc")?;
@@ -2251,8 +2094,6 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
                 } else {
                     IommuDevType::NoIommu
                 },
-                #[cfg(feature = "direct")]
-                false,
             )?;
             let vfio_pci_device = match vfio_device {
                 VfioDeviceVariant::Pci(pci) => Box::new(pci),

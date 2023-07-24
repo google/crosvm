@@ -257,9 +257,6 @@ slirp = ["devices/slirp", "net_util/slirp"]
 ## Run crosvm with `--disable-sandbox` by default.
 default-no-sandbox = []
 
-## Special build of crosvm for ChromeOS that only supports direct device passthrough.
-direct = ["balloon", "devices/direct", "arch/direct", "x86_64/direct"]
-
 #! ### Project specific features
 #!
 #! These features are specific to downstream projects and may not be functional or useful

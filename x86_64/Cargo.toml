@@ -6,7 +6,6 @@ edition = "2021"
 
 [features]
 gdb = ["gdbstub_arch", "arch/gdb"]
-direct = ["arch/direct", "devices/direct"]
 seccomp_trace = []
 swap = ["swap/enable"]
 
