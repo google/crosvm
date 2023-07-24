@@ -50,6 +50,8 @@ use crate::utils::FailHandle;
 pub enum Error {
     #[error("bad device context: {0}")]
     BadDeviceContextAddr(GuestAddress),
+    #[error("device slot get a bad endpoint id: {0}")]
+    BadEndpointId(u8),
     #[error("bad input context address: {0}")]
     BadInputContextAddr(GuestAddress),
     #[error("device slot get a bad port id: {0}")]
@@ -412,7 +414,10 @@ impl DeviceSlot {
     }
 
     // Assigns the device address and initializes slot and endpoint 0 context.
-    pub fn set_address(&self, trb: &AddressDeviceCommandTrb) -> Result<TrbCompletionCode> {
+    pub fn set_address(
+        self: &Arc<Self>,
+        trb: &AddressDeviceCommandTrb,
+    ) -> Result<TrbCompletionCode> {
         if !self.enabled.load(Ordering::SeqCst) {
             error!(
                 "trying to set address to a disabled device slot {}",
@@ -450,9 +455,6 @@ impl DeviceSlot {
             "port id {} is assigned to slot id {}",
             port_id, self.slot_id
         );
-        let endpoint_context_addr = self
-            .get_device_context_addr()?
-            .unchecked_add(size_of::<SlotContext>() as u64);
 
         // Initialize the control endpoint. Endpoint id = 1.
         self.set_trc(
@@ -465,7 +467,7 @@ impl DeviceSlot {
                     self.interrupter.clone(),
                     self.slot_id,
                     1,
-                    endpoint_context_addr,
+                    Arc::downgrade(self),
                 )
                 .map_err(Error::CreateTransferController)?,
             ),
@@ -516,7 +518,7 @@ impl DeviceSlot {
 
     // Adds or drops multiple endpoints in the device slot.
     pub fn configure_endpoint(
-        &self,
+        self: &Arc<Self>,
         trb: &ConfigureEndpointCommandTrb,
     ) -> Result<TrbCompletionCode> {
         let input_control_context = if trb.get_deconfigure() {
@@ -780,17 +782,13 @@ impl DeviceSlot {
         self.port_id.reset();
     }
 
-    fn add_one_endpoint(&self, device_context_index: u8) -> Result<()> {
+    fn add_one_endpoint(self: &Arc<Self>, device_context_index: u8) -> Result<()> {
         xhci_trace!(
             "adding one endpoint, device context index {}",
             device_context_index
         );
         let mut device_context = self.get_device_context()?;
         let transfer_ring_index = (device_context_index - 1) as usize;
-        let endpoint_context_addr = self
-            .get_device_context_addr()?
-            .unchecked_add(size_of::<SlotContext>() as u64)
-            .unchecked_add(size_of::<EndpointContext>() as u64 * transfer_ring_index as u64);
         let trc = TransferRingController::new(
             self.mem.clone(),
             self.hub
@@ -800,7 +798,7 @@ impl DeviceSlot {
             self.interrupter.clone(),
             self.slot_id,
             device_context_index,
-            endpoint_context_addr,
+            Arc::downgrade(self),
         )
         .map_err(Error::CreateTransferController)?;
         trc.set_dequeue_pointer(
@@ -817,7 +815,7 @@ impl DeviceSlot {
         self.set_device_context(device_context)
     }
 
-    fn drop_one_endpoint(&self, device_context_index: u8) -> Result<()> {
+    fn drop_one_endpoint(self: &Arc<Self>, device_context_index: u8) -> Result<()> {
         let endpoint_index = (device_context_index - 1) as usize;
         self.set_trc(endpoint_index, None);
         let mut ctx = self.get_device_context()?;
@@ -882,5 +880,27 @@ impl DeviceSlot {
         let mut ctx = self.get_device_context()?;
         ctx.slot_context.set_slot_state(state);
         self.set_device_context(ctx)
+    }
+
+    pub fn halt_endpoint(&self, endpoint_id: u8) -> Result<()> {
+        if !valid_endpoint_id(endpoint_id) {
+            return Err(Error::BadEndpointId(endpoint_id));
+        }
+        let index = endpoint_id - 1;
+        let mut device_context = self.get_device_context()?;
+        let endpoint_context = &mut device_context.endpoint_context[index as usize];
+        match self.get_trc(index as usize) {
+            Some(trc) => {
+                endpoint_context.set_tr_dequeue_pointer(DequeuePtr::new(trc.get_dequeue_pointer()));
+                endpoint_context.set_dequeue_cycle_state(trc.get_consumer_cycle_state());
+            }
+            None => {
+                error!("trc for endpoint {} not found", endpoint_id);
+                return Err(Error::BadEndpointId(endpoint_id));
+            }
+        }
+        endpoint_context.set_endpoint_state(EndpointState::Halted);
+        self.set_device_context(device_context)?;
+        Ok(())
     }
 }

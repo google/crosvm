@@ -3,13 +3,14 @@
 // found in the LICENSE file.
 
 use std::sync::Arc;
+use std::sync::Weak;
 
 use anyhow::Context;
 use base::Event;
 use sync::Mutex;
-use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 
+use super::device_slot::DeviceSlot;
 use super::interrupter::Interrupter;
 use super::usb_hub::UsbPort;
 use super::xhci_abi::TransferDescriptor;
@@ -32,7 +33,6 @@ pub struct TransferRingTrbHandler {
     slot_id: u8,
     endpoint_id: u8,
     transfer_manager: XhciTransferManager,
-    endpoint_context_addr: GuestAddress,
 }
 
 impl TransferDescriptorHandler for TransferRingTrbHandler {
@@ -49,7 +49,6 @@ impl TransferDescriptorHandler for TransferRingTrbHandler {
             self.endpoint_id,
             descriptor,
             completion_event,
-            self.endpoint_context_addr,
         );
         xhci_transfer
             .send_to_backend_if_valid()
@@ -75,7 +74,7 @@ impl TransferRingController {
         interrupter: Arc<Mutex<Interrupter>>,
         slot_id: u8,
         endpoint_id: u8,
-        endpoint_context_addr: GuestAddress,
+        device_slot: Weak<DeviceSlot>,
     ) -> Result<Arc<TransferRingController>, TransferRingControllerError> {
         RingBufferController::new_with_handler(
             format!("transfer ring slot_{} ep_{}", slot_id, endpoint_id),
@@ -87,8 +86,7 @@ impl TransferRingController {
                 interrupter,
                 slot_id,
                 endpoint_id,
-                transfer_manager: XhciTransferManager::new(),
-                endpoint_context_addr,
+                transfer_manager: XhciTransferManager::new(device_slot),
             },
         )
     }

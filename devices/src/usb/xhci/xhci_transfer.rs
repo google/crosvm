@@ -21,10 +21,10 @@ use sync::Mutex;
 use thiserror::Error;
 use usb_util::TransferStatus;
 use usb_util::UsbRequestSetup;
-use vm_memory::GuestAddress;
 use vm_memory::GuestMemory;
 use vm_memory::GuestMemoryError;
 
+use super::device_slot::DeviceSlot;
 use super::interrupter::Error as InterrupterError;
 use super::interrupter::Interrupter;
 use super::scatter_gather_buffer::Error as BufferError;
@@ -32,9 +32,6 @@ use super::scatter_gather_buffer::ScatterGatherBuffer;
 use super::usb_hub::Error as HubError;
 use super::usb_hub::UsbPort;
 use super::xhci_abi::AddressedTrb;
-use super::xhci_abi::DequeuePtr;
-use super::xhci_abi::EndpointContext;
-use super::xhci_abi::EndpointState;
 use super::xhci_abi::Error as TrbError;
 use super::xhci_abi::EventDataTrb;
 use super::xhci_abi::SetupStageTrb;
@@ -55,6 +52,8 @@ pub enum Error {
     CreateBuffer(BufferError),
     #[error("cannot detach from port: {0}")]
     DetachPort(HubError),
+    #[error("failed to halt the endpoint: {0}")]
+    HaltEndpoint(u8),
     #[error("failed to read guest memory: {0}")]
     ReadGuestMemory(GuestMemoryError),
     #[error("cannot send interrupt: {0}")]
@@ -183,13 +182,15 @@ impl XhciTransferType {
 #[derive(Clone)]
 pub struct XhciTransferManager {
     transfers: Arc<Mutex<Vec<Weak<Mutex<XhciTransferState>>>>>,
+    device_slot: Weak<DeviceSlot>,
 }
 
 impl XhciTransferManager {
     /// Create a new manager.
-    pub fn new() -> XhciTransferManager {
+    pub fn new(device_slot: Weak<DeviceSlot>) -> XhciTransferManager {
         XhciTransferManager {
             transfers: Arc::new(Mutex::new(Vec::new())),
+            device_slot,
         }
     }
 
@@ -203,7 +204,6 @@ impl XhciTransferManager {
         endpoint_id: u8,
         transfer_trbs: TransferDescriptor,
         completion_event: Event,
-        endpoint_context_addr: GuestAddress,
     ) -> XhciTransfer {
         assert!(!transfer_trbs.is_empty());
         let transfer_dir = {
@@ -226,7 +226,7 @@ impl XhciTransferManager {
             endpoint_id,
             transfer_dir,
             transfer_trbs,
-            endpoint_context_addr,
+            device_slot: self.device_slot.clone(),
         };
         self.transfers.lock().push(Arc::downgrade(&t.state));
         t
@@ -262,7 +262,7 @@ impl XhciTransferManager {
 
 impl Default for XhciTransferManager {
     fn default() -> Self {
-        Self::new()
+        Self::new(Weak::new())
     }
 }
 
@@ -280,7 +280,7 @@ pub struct XhciTransfer {
     transfer_dir: TransferDirection,
     transfer_trbs: TransferDescriptor,
     transfer_completion_event: Event,
-    endpoint_context_addr: GuestAddress,
+    device_slot: Weak<DeviceSlot>,
 }
 
 impl Drop for XhciTransfer {
@@ -354,18 +354,12 @@ impl XhciTransfer {
                     .map_err(Error::WriteCompletionEvent)?;
             }
             TransferStatus::Stalled => {
-                let mut context = self.get_endpoint_context()?;
-                let dequeue_pointer = match self.transfer_trbs.last() {
-                    Some(atrb) => atrb.gpa,
-                    None => context.get_tr_dequeue_pointer().get_gpa().0,
-                };
-                warn!(
-                    "xhci: endpoint is stalled. set state to Halted and dequeue pointer to {:#x}",
-                    dequeue_pointer
-                );
-                context.set_endpoint_state(EndpointState::Halted);
-                context.set_tr_dequeue_pointer(DequeuePtr::new(GuestAddress(dequeue_pointer)));
-                self.set_endpoint_context(context)?;
+                warn!("xhci: endpoint is stalled. set state to Halted");
+                if let Some(device_slot) = self.device_slot.upgrade() {
+                    device_slot
+                        .halt_endpoint(self.endpoint_id)
+                        .map_err(|_| Error::HaltEndpoint(self.endpoint_id))?;
+                }
                 self.transfer_completion_event
                     .signal()
                     .map_err(Error::WriteCompletionEvent)?;
@@ -506,20 +500,6 @@ impl XhciTransfer {
             }
         }
         Ok(valid)
-    }
-
-    fn get_endpoint_context(&self) -> Result<EndpointContext> {
-        let ctx = self
-            .mem
-            .read_obj_from_addr(self.endpoint_context_addr)
-            .map_err(Error::ReadGuestMemory)?;
-        Ok(ctx)
-    }
-
-    fn set_endpoint_context(&self, endpoint_context: EndpointContext) -> Result<()> {
-        self.mem
-            .write_obj_at_addr(endpoint_context, self.endpoint_context_addr)
-            .map_err(Error::WriteGuestMemory)
     }
 }
 
