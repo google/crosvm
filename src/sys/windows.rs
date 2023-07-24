@@ -884,7 +884,7 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                         Ok(request) => {
                             let mut run_mode_opt = None;
                             let response = match request {
-                                VmRequest::HotPlugCommand { device, add } => {
+                                VmRequest::HotPlugVfioCommand { device, add } => {
                                     // Suppress warnings.
                                     let _ = (device, add);
                                     unimplemented!("not implemented on Windows");

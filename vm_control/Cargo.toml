@@ -8,6 +8,7 @@ edition = "2021"
 balloon = []
 gdb = ["gdbstub", "gdbstub_arch"]
 gpu = []
+pci-hotplug = []
 registered_events = ["balloon", "protos/registered_events"]
 swap = ["swap/enable"]
 

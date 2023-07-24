@@ -204,6 +204,14 @@ pub enum DiskControlResult {
     Err(SysError),
 }
 
+/// Net control commands for adding and removing tap devices.
+#[cfg(feature = "pci-hotplug")]
+#[derive(Serialize, Deserialize, Debug)]
+pub enum NetControlCommand {
+    AddTap(String),
+    RemoveTap(u8),
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub enum UsbControlCommand {
     AttachDevice {
@@ -228,6 +236,29 @@ pub struct UsbControlAttachedDevice {
 impl UsbControlAttachedDevice {
     pub fn valid(self) -> bool {
         self.port != 0
+    }
+}
+
+#[cfg(feature = "pci-hotplug")]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[must_use]
+/// Result for hotplug and removal of PCI device.
+pub enum PciControlResult {
+    AddOk { bus: u8 },
+    ErrString(String),
+    RemoveOk,
+}
+
+#[cfg(feature = "pci-hotplug")]
+impl Display for PciControlResult {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::PciControlResult::*;
+
+        match self {
+            AddOk { bus } => write!(f, "add_ok {}", bus),
+            ErrString(e) => write!(f, "error: {}", e),
+            RemoveOk => write!(f, "remove_ok"),
+        }
     }
 }
 
@@ -1227,11 +1258,14 @@ pub enum VmRequest {
     GpuCommand(GpuControlCommand),
     /// Command to set battery.
     BatCommand(BatteryType, BatControlCommand),
-    /// Command to add/remove multiple pci devices
-    HotPlugCommand {
+    /// Command to add/remove multiple vfio-pci devices
+    HotPlugVfioCommand {
         device: HotPlugDeviceInfo,
         add: bool,
     },
+    /// Command to add/remove network tap device as virtio-pci device
+    #[cfg(feature = "pci-hotplug")]
+    HotPlugNetCommand(NetControlCommand),
     /// Command to Snapshot devices
     Snapshot(SnapshotCommand),
     /// Command to Restore devices
@@ -1850,7 +1884,11 @@ impl VmRequest {
                     None => VmResponse::BatResponse(BatControlResult::NoBatDevice),
                 }
             }
-            VmRequest::HotPlugCommand { device: _, add: _ } => VmResponse::Ok,
+            VmRequest::HotPlugVfioCommand { device: _, add: _ } => VmResponse::Ok,
+            #[cfg(feature = "pci-hotplug")]
+            VmRequest::HotPlugNetCommand(ref _net_cmd) => {
+                VmResponse::ErrString("hot plug not supported".to_owned())
+            }
             VmRequest::Snapshot(SnapshotCommand::Take { ref snapshot_path }) => {
                 match do_snapshot(
                     snapshot_path.to_path_buf(),
@@ -2095,6 +2133,9 @@ pub enum VmResponse {
     /// Results of balloon WS-R command
     #[cfg(feature = "balloon")]
     BalloonWS { ws: BalloonWS, balloon_actual: u64 },
+    /// Results of PCI hot plug
+    #[cfg(feature = "pci-hotplug")]
+    PciHotPlugResponse { bus: u8 },
     /// Results of usb control commands.
     UsbResponse(UsbControlResult),
     #[cfg(feature = "gpu")]
@@ -2145,6 +2186,8 @@ impl Display for VmResponse {
                 )
             }
             UsbResponse(result) => write!(f, "usb control request get result {:?}", result),
+            #[cfg(feature = "pci-hotplug")]
+            PciHotPlugResponse { bus } => write!(f, "pci hotplug bus {:?}", bus),
             #[cfg(feature = "gpu")]
             GpuResponse(result) => write!(f, "gpu control request result {:?}", result),
             BatResponse(result) => write!(f, "{}", result),

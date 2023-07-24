@@ -7,6 +7,9 @@ edition = "2021"
 [dev-dependencies]
 anyhow = "*"
 fixture = { path = "fixture" }
+libc = "*"
+net_sys = {path = "../net_sys"}
+net_util = {path = "../net_util"}
 rand = "0.8"
 tempfile = "3"
 prebuilts = { path = "../prebuilts" }

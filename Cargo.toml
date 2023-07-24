@@ -152,7 +152,7 @@ gdb = [
 panic-memfd = []
 
 ## Enables PCI hotplug. Only available on Linux, and currently only for x86/x86-64.
-pci-hotplug = ["devices/pci-hotplug"]
+pci-hotplug = ["devices/pci-hotplug", "vm_control/pci-hotplug"]
 
 ## Enables the use of the qcow format for block devices.
 qcow = ["disk/qcow"]

@@ -566,7 +566,7 @@ impl VfioPciWorker {
                             hp_interrupt: false,
                         };
 
-                        let request = VmRequest::HotPlugCommand { device, add: false };
+                        let request = VmRequest::HotPlugVfioCommand { device, add: false };
                         if self.vm_socket.send(&request).is_ok() {
                             if let Err(e) = self.vm_socket.recv::<VmResponse>() {
                                 error!("{} failed to remove vfio_device: {}", self.name.clone(), e);

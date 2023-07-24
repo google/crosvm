@@ -16,6 +16,8 @@ cfg_if::cfg_if! {
         pub(crate) use unix::gpu::GpuRenderServerParameters;
     } else if #[cfg(windows)] {
         use windows as platform;
+        #[cfg(feature = "pci-hotplug")]
+        compile_error!("pci-hotplug not supported on windows");
     } else {
         compile_error!("Unsupported platform");
     }

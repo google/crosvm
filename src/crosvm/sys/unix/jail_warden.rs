@@ -79,7 +79,6 @@ pub struct JailWardenImpl {
 }
 
 impl JailWardenImpl {
-    #[allow(dead_code)]
     /// Constructor of JailWardenImpl
     pub fn new(
         guest_memory: GuestMemory,
@@ -228,7 +227,6 @@ pub struct PermissiveJailWarden {
 }
 
 impl PermissiveJailWarden {
-    #[allow(dead_code)]
     /// Constructor of PermissiveJailWarden
     pub fn new(
         guest_memory: GuestMemory,

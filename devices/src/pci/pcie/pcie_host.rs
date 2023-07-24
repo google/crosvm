@@ -274,7 +274,7 @@ impl HotplugWorker {
                 }
             }
             // Request to hotplug the new added pcie device into guest
-            let request = VmRequest::HotPlugCommand {
+            let request = VmRequest::HotPlugVfioCommand {
                 device: child.clone(),
                 add: true,
             };

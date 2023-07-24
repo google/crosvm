@@ -917,6 +917,8 @@ pub struct Config {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub oem_strings: Vec<String>,
     pub params: Vec<String>,
+    #[cfg(feature = "pci-hotplug")]
+    pub pci_hotplug_slots: Option<u8>,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub pci_low_start: Option<u64>,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -1128,6 +1130,8 @@ impl Default for Config {
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             oem_strings: Vec::new(),
             params: Vec::new(),
+            #[cfg(feature = "pci-hotplug")]
+            pci_hotplug_slots: None,
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             pci_low_start: None,
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]

@@ -13,6 +13,8 @@ pub(crate) mod gpu;
 pub(crate) mod jail_warden;
 #[cfg(feature = "pci-hotplug")]
 pub(crate) mod pci_hotplug_helpers;
+#[cfg(feature = "pci-hotplug")]
+pub(crate) mod pci_hotplug_manager;
 mod vcpu;
 
 use std::cmp::max;
@@ -87,6 +89,10 @@ use devices::virtio::vhost::user::VhostUserListenerTrait;
 use devices::virtio::BalloonFeatures;
 #[cfg(feature = "balloon")]
 use devices::virtio::BalloonMode;
+#[cfg(feature = "pci-hotplug")]
+use devices::virtio::NetParameters;
+#[cfg(feature = "pci-hotplug")]
+use devices::virtio::NetParametersMode;
 use devices::virtio::VirtioTransportType;
 #[cfg(feature = "audio")]
 use devices::Ac97Dev;
@@ -108,6 +114,8 @@ use devices::IrqEventSource;
 use devices::KvmKernelIrqChip;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use devices::KvmSplitIrqChip;
+#[cfg(feature = "pci-hotplug")]
+use devices::NetResourceCarrier;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use devices::PciAddress;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -127,6 +135,8 @@ use devices::PcieRootPort;
 use devices::PcieUpstreamPort;
 use devices::PvPanicCode;
 use devices::PvPanicPciDevice;
+#[cfg(feature = "pci-hotplug")]
+use devices::ResourceCarrier;
 use devices::StubPciDevice;
 use devices::VirtioMmioDevice;
 use devices::VirtioPciDevice;
@@ -156,7 +166,16 @@ use hypervisor::ProtectionType;
 use hypervisor::Vm;
 use hypervisor::VmCap;
 use jail::*;
+#[cfg(feature = "pci-hotplug")]
+use jail_warden::JailWarden;
+#[cfg(feature = "pci-hotplug")]
+use jail_warden::JailWardenImpl;
+#[cfg(feature = "pci-hotplug")]
+use jail_warden::PermissiveJailWarden;
+use libc;
 use minijail::Minijail;
+#[cfg(feature = "pci-hotplug")]
+use pci_hotplug_manager::PciHotPlugManager;
 use resources::AddressRange;
 use resources::Alloc;
 use resources::SystemAllocator;
@@ -1574,6 +1593,23 @@ where
         // access to those files will not be possible.
         info!("crosvm entering multiprocess mode");
     }
+    #[cfg(all(feature = "pci-hotplug", feature = "swap"))]
+    let swap_device_helper = match &swap_controller {
+        Some(swap_controller) => Some(swap_controller.create_device_helper()?),
+        None => None,
+    };
+    // hotplug_manager must be created before vm is started since it forks jail warden process.
+    #[cfg(feature = "pci-hotplug")]
+    let mut hotplug_manager = if cfg.pci_hotplug_slots.is_some() {
+        Some(PciHotPlugManager::new(
+            vm.get_memory().clone(),
+            &cfg,
+            #[cfg(feature = "swap")]
+            swap_device_helper,
+        )?)
+    } else {
+        None
+    };
 
     #[cfg(feature = "gpu")]
     let (gpu_control_host_tube, gpu_control_device_tube) =
@@ -1785,12 +1821,17 @@ where
         &reg_evt_wrtube,
     )?;
 
+    #[cfg(feature = "pci-hotplug")]
+    let pci_hotplug_slots = cfg.pci_hotplug_slots;
+    #[cfg(not(feature = "pci-hotplug"))]
+    #[allow(unused_variables)]
+    let pci_hotplug_slots: Option<u8> = None;
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     let hp_stub = create_pure_virtual_pcie_root_port(
         &mut sys_allocator,
         &mut irq_control_tubes,
         &mut devices,
-        1,
+        pci_hotplug_slots.unwrap_or(1),
     )?;
 
     arch::assign_pci_addresses(&mut devices, &mut sys_allocator)?;
@@ -1900,9 +1941,23 @@ where
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     let (hp_control_tube, hp_worker_tube) = mpsc::channel();
+    #[cfg(all(
+        feature = "pci-hotplug",
+        any(target_arch = "x86", target_arch = "x86_64")
+    ))]
+    if let Some(hotplug_manager) = &mut hotplug_manager {
+        hotplug_manager.set_rootbus_controller(hp_control_tube.clone())?;
+    }
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     let hp_thread = {
         for (bus_num, hp_bus) in hp_stub.hotplug_buses.into_iter() {
+            #[cfg(feature = "pci-hotplug")]
+            if let Some(hotplug_manager) = &mut hotplug_manager {
+                hotplug_manager.add_port(hp_bus)?;
+            } else {
+                linux.hotplug_bus.insert(bus_num, hp_bus);
+            }
+            #[cfg(not(feature = "pci-hotplug"))]
             linux.hotplug_bus.insert(bus_num, hp_bus);
         }
 
@@ -1948,6 +2003,8 @@ where
         hp_control_tube,
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         hp_thread,
+        #[cfg(feature = "pci-hotplug")]
+        hotplug_manager,
         #[cfg(feature = "swap")]
         swap_controller,
         #[cfg(feature = "registered_events")]
@@ -2137,6 +2194,103 @@ fn add_hotplug_device<V: VmArch, Vcpu: VcpuArch>(
         hp_bus.lock().hot_plug(pci_address);
     }
     Ok(())
+}
+
+#[cfg(feature = "pci-hotplug")]
+fn add_hotplug_net<V: VmArch, Vcpu: VcpuArch>(
+    linux: &mut RunnableLinuxVm<V, Vcpu>,
+    sys_allocator: &mut SystemAllocator,
+    irq_control_tubes: &mut Vec<Tube>,
+    vm_memory_control_tubes: &mut Vec<VmMemoryTube>,
+    hotplug_manager: &mut PciHotPlugManager,
+    net_param: NetParameters,
+) -> Result<u8> {
+    let (msi_host_tube, msi_device_tube) = Tube::pair().context("create tube")?;
+    irq_control_tubes.push(msi_host_tube);
+    let (ioevent_host_tube, ioevent_device_tube) = Tube::pair().context("create tube")?;
+    let ioevent_vm_memory_client = VmMemoryClient::new(ioevent_device_tube);
+    vm_memory_control_tubes.push(VmMemoryTube {
+        tube: ioevent_host_tube,
+        expose_with_viommu: false,
+    });
+    let net_carrier_device =
+        NetResourceCarrier::new(net_param, msi_device_tube, ioevent_vm_memory_client);
+    hotplug_manager.hotplug_device(
+        vec![ResourceCarrier::VirtioNet(net_carrier_device)],
+        linux,
+        sys_allocator,
+    )
+}
+
+#[cfg(feature = "pci-hotplug")]
+fn handle_hotplug_net_command<V: VmArch, Vcpu: VcpuArch>(
+    net_cmd: NetControlCommand,
+    linux: &mut RunnableLinuxVm<V, Vcpu>,
+    sys_allocator: &mut SystemAllocator,
+    irq_control_tubes: &mut Vec<Tube>,
+    vm_memory_control_tubes: &mut Vec<VmMemoryTube>,
+    hotplug_manager: &mut PciHotPlugManager,
+) -> VmResponse {
+    match net_cmd {
+        NetControlCommand::AddTap(tap_name) => handle_hotplug_net_add(
+            linux,
+            sys_allocator,
+            irq_control_tubes,
+            vm_memory_control_tubes,
+            hotplug_manager,
+            &tap_name,
+        ),
+        NetControlCommand::RemoveTap(bus) => {
+            handle_hotplug_net_remove(linux, sys_allocator, hotplug_manager, bus)
+        }
+    }
+}
+
+#[cfg(feature = "pci-hotplug")]
+fn handle_hotplug_net_add<V: VmArch, Vcpu: VcpuArch>(
+    linux: &mut RunnableLinuxVm<V, Vcpu>,
+    sys_allocator: &mut SystemAllocator,
+    irq_control_tubes: &mut Vec<Tube>,
+    vm_memory_control_tubes: &mut Vec<VmMemoryTube>,
+    hotplug_manager: &mut PciHotPlugManager,
+    tap_name: &str,
+) -> VmResponse {
+    let net_param_mode = NetParametersMode::TapName {
+        tap_name: tap_name.to_owned(),
+        mac: None,
+    };
+    let net_param = NetParameters {
+        mode: net_param_mode,
+        vhost_net: None,
+        vq_pairs: None,
+        packed_queue: false,
+    };
+    let ret = add_hotplug_net(
+        linux,
+        sys_allocator,
+        irq_control_tubes,
+        vm_memory_control_tubes,
+        hotplug_manager,
+        net_param,
+    );
+
+    match ret {
+        Ok(pci_bus) => VmResponse::PciHotPlugResponse { bus: pci_bus },
+        Err(e) => VmResponse::ErrString(format!("{:?}", e)),
+    }
+}
+
+#[cfg(feature = "pci-hotplug")]
+fn handle_hotplug_net_remove<V: VmArch, Vcpu: VcpuArch>(
+    linux: &mut RunnableLinuxVm<V, Vcpu>,
+    sys_allocator: &mut SystemAllocator,
+    hotplug_manager: &mut PciHotPlugManager,
+    bus: u8,
+) -> VmResponse {
+    match hotplug_manager.remove_hotplug_device(bus, linux, sys_allocator) {
+        Ok(_) => VmResponse::Ok,
+        Err(e) => VmResponse::ErrString(format!("{:?}", e)),
+    }
 }
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -2401,6 +2555,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         PciRootCommand,
     >,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] hp_thread: std::thread::JoinHandle<()>,
+    #[cfg(feature = "pci-hotplug")] mut hotplug_manager: Option<PciHotPlugManager>,
     #[allow(unused_mut)] // mut is required x86 only
     #[cfg(feature = "swap")]
     mut swap_controller: Option<SwapController>,
@@ -3009,7 +3164,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                     let mut suspend_requested = false;
                                     let mut run_mode_opt = None;
                                     let response = match request {
-                                        VmRequest::HotPlugCommand { device, add } => {
+                                        VmRequest::HotPlugVfioCommand { device, add } => {
                                             #[cfg(any(
                                                 target_arch = "x86",
                                                 target_arch = "x86_64"
@@ -3042,6 +3197,23 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                                 // Suppress warnings.
                                                 let _ = (device, add);
                                                 VmResponse::Ok
+                                            }
+                                        }
+                                        #[cfg(feature = "pci-hotplug")]
+                                        VmRequest::HotPlugNetCommand(net_cmd) => {
+                                            if let Some(hotplug_manager) = &mut hotplug_manager {
+                                                handle_hotplug_net_command(
+                                                    net_cmd,
+                                                    &mut linux,
+                                                    &mut sys_allocator_mutex.lock(),
+                                                    &mut add_irq_control_tubes,
+                                                    &mut add_vm_memory_control_tubes,
+                                                    hotplug_manager,
+                                                )
+                                            } else {
+                                                VmResponse::ErrString(
+                                                    "PCI hotplug is not enabled.".to_owned(),
+                                                )
                                             }
                                         }
                                         #[cfg(feature = "registered_events")]

@@ -140,6 +140,10 @@ impl HotPlugBus for PcieUpstreamPort {
         self.downstream_devices.remove(&addr);
     }
 
+    fn get_secondary_bus_number(&self) -> Option<u8> {
+        Some(self.pcie_port.get_bus_range()?.secondary)
+    }
+
     fn is_match(&self, host_addr: PciAddress) -> Option<u8> {
         self.pcie_port.is_match(host_addr)
     }
@@ -322,6 +326,10 @@ impl HotPlugBus for PcieDownstreamPort {
         }
 
         self.hotplug_out_begin = true;
+    }
+
+    fn get_secondary_bus_number(&self) -> Option<u8> {
+        Some(self.pcie_port.get_bus_range()?.secondary)
     }
 
     fn is_match(&self, host_addr: PciAddress) -> Option<u8> {

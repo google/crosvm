@@ -155,6 +155,8 @@ pub enum CrossPlatformCommands {
     Usb(UsbCommand),
     Version(VersionCommand),
     Vfio(VfioCrosvmCommand),
+    #[cfg(feature = "pci-hotplug")]
+    VirtioNet(VirtioNetCommand),
     Snapshot(SnapshotCommand),
 }
 
@@ -471,6 +473,49 @@ pub enum VfioSubCommand {
 pub struct VfioCrosvmCommand {
     #[argh(subcommand)]
     pub command: VfioSubCommand,
+}
+
+#[cfg(feature = "pci-hotplug")]
+#[derive(FromArgs)]
+#[argh(subcommand)]
+pub enum VirtioNetSubCommand {
+    AddTap(VirtioNetAddSubCommand),
+    RemoveTap(VirtioNetRemoveSubCommand),
+}
+
+#[cfg(feature = "pci-hotplug")]
+#[derive(FromArgs)]
+#[argh(subcommand, name = "add")]
+/// Add by Tap name.
+pub struct VirtioNetAddSubCommand {
+    #[argh(positional)]
+    /// tap name
+    pub tap_name: String,
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM Socket path
+    pub socket_path: String,
+}
+
+#[cfg(feature = "pci-hotplug")]
+#[derive(FromArgs)]
+#[argh(subcommand, name = "remove")]
+/// Remove tap by bus number.
+pub struct VirtioNetRemoveSubCommand {
+    #[argh(positional)]
+    /// bus number for device to remove
+    pub bus: u8,
+    #[argh(positional, arg_name = "VM_SOCKET")]
+    /// VM socket path
+    pub socket_path: String,
+}
+
+#[cfg(feature = "pci-hotplug")]
+#[derive(FromArgs)]
+#[argh(subcommand, name = "virtio-net")]
+/// add network device as virtio into guest.
+pub struct VirtioNetCommand {
+    #[argh(subcommand)]
+    pub command: VirtioNetSubCommand,
 }
 
 #[derive(FromArgs)]
@@ -1568,6 +1613,13 @@ pub struct RunCommand {
     #[merge(strategy = append)]
     /// extra kernel or plugin command line arguments. Can be given more than once
     pub params: Vec<String>,
+
+    #[cfg(unix)]
+    #[argh(option, arg_name = "pci_hotplug_slots")]
+    #[serde(default)]
+    #[merge(strategy = overwrite_option)]
+    /// number of hotplug slot count (default: None)
+    pub pci_hotplug_slots: Option<u8>,
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[argh(option, arg_name = "pci_low_mmio_start")]
@@ -3078,6 +3130,11 @@ impl TryFrom<RunCommand> for super::config::Config {
                     return Err(String::from("msr must be unique"));
                 }
             }
+        }
+
+        #[cfg(feature = "pci-hotplug")]
+        {
+            cfg.pci_hotplug_slots = cmd.pci_hotplug_slots;
         }
 
         // cfg.balloon_bias is in bytes.

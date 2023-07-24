@@ -6,6 +6,10 @@ use std::fs::OpenOptions;
 use std::path::Path;
 use std::path::PathBuf;
 
+#[cfg(feature = "pci-hotplug")]
+use anyhow::anyhow;
+#[cfg(feature = "pci-hotplug")]
+use anyhow::Result as AnyHowResult;
 use base::open_file_or_duplicate;
 use remain::sorted;
 use thiserror::Error;
@@ -52,6 +56,20 @@ pub fn vms_request<T: AsRef<Path> + std::fmt::Debug>(
             println!("unexpected response: {r}");
             Err(())
         }
+    }
+}
+
+#[cfg(feature = "pci-hotplug")]
+/// Send a `VmRequest` for PCI hotplug that expects `VmResponse::PciResponse::AddOk(bus)`
+pub fn do_net_add<T: AsRef<Path> + std::fmt::Debug>(
+    tap_name: &str,
+    socket_path: T,
+) -> AnyHowResult<u8> {
+    let request = VmRequest::HotPlugNetCommand(NetControlCommand::AddTap(tap_name.to_owned()));
+    let response = handle_request(&request, socket_path).map_err(|()| anyhow!("socket error: "))?;
+    match response {
+        VmResponse::PciHotPlugResponse { bus } => Ok(bus),
+        e => Err(anyhow!("Unexpected response: {:#}", e)),
     }
 }
 
