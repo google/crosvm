@@ -47,10 +47,12 @@ all: $(TARGET)/rootfs $(TARGET)/bzImage
 
 # Clean all local build artifacts, but not downloaded sources.
 clean:
-	rm -rf $(TARGET)/kernel-build $(TARGET)/rootfs-build $(TARGET)/rootfs $(TARGET)/bzImage
+	rm -rf $(TARGET)/kernel-build $(TARGET)/rootfs-build $(TARGET)/initramfs-build $(TARGET)/rootfs $(TARGET)/bzImage $(TARGET)/initramfs.cpio.gz
 
 clean-all:
 	rm -rf $(TARGET)
+
+x86_64_initramfs: $(TARGET)/initramfs
 
 ################################################################################
 # Build rootfs
@@ -73,6 +75,25 @@ $(TARGET)/rootfs-build/delegate: rootfs/delegate.rs
 	rustup target add $(RUST_TARGET)
 	rustc --edition=2018 rootfs/delegate.rs --out-dir $(@D) \
 		 $(RUSTFLAGS) --target $(RUST_TARGET)
+
+################################################################################
+# Build initramfs
+
+# Build initramfs from Containerfile and package as cpio archive
+$(TARGET)/initramfs: $(TARGET)/rootfs-build/delegate initramfs/Containerfile initramfs/init.sh
+	-mkdir -p $(TARGET)/initramfs-build
+	cp initramfs/init.sh $(TARGET)/initramfs-build/init.sh
+	cp $(TARGET)/rootfs-build/delegate $(TARGET)/initramfs-build/delegate
+	podman build -t crosvm_e2e_test_guest_initramfs $(TARGET)/initramfs-build -f initramfs/Containerfile
+	-mkdir -p $(TARGET)/initramfs-build/cpio-base
+	# Create container and export into squashfs, and don't forget to clean up
+	# the container afterwards.
+	set -x; \
+		CONTAINER=$$(podman create crosvm_e2e_test_guest_initramfs); \
+		podman export $$CONTAINER | tar -xf - -C $(TARGET)/initramfs-build/cpio-base; \
+		podman rm $$CONTAINER; \
+		cd $(TARGET)/initramfs-build/cpio-base; \
+		find . -print0 | cpio --null --create --verbose --format=newc | gzip --best > $(TARGET)/initramfs.cpio.gz
 
 ################################################################################
 # Build kernel

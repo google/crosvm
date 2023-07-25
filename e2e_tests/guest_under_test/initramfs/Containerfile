@@ -1,0 +1,170 @@
+# Copyright 2023 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+FROM docker.io/debian:bookworm as builder
+
+RUN echo "\ndeb-src http://deb.debian.org/debian bookworm main non-free-firmware\n" >> /etc/apt/sources.list
+
+RUN apt-get update
+RUN apt-get install -y bash-static git meson linux-headers-amd64 wget bison gettext
+
+# Download rust static coreutils
+WORKDIR /root
+RUN wget https://github.com/uutils/coreutils/releases/download/0.0.20/coreutils-0.0.20-x86_64-unknown-linux-musl.tar.gz -O coreutils.tar.gz
+RUN tar -zxvf coreutils.tar.gz
+
+# Download source code and build util-linux
+RUN git clone https://github.com/util-linux/util-linux.git
+WORKDIR /root/util-linux
+RUN git checkout v2.39.1
+RUN apt-get build-dep -y util-linux
+RUN meson setup build -D static-programs="losetup, mount, umount" -D build-python=disabled -D cryptsetup=disabled -D build-chfn-chsh=disabled -D build-su=disabled -D build-runuser=disabled
+RUN ninja -C build
+
+FROM scratch
+
+# Create /bin directory manually to avoid potential problems caused by implicit directory creation with COPY
+COPY --from=builder /root/coreutils-0.0.20-x86_64-unknown-linux-musl/coreutils /coreutils
+RUN ["/coreutils", "mkdir", "/bin"]
+
+# Start populating /bin directory with bash and coreutils
+COPY --from=builder /bin/bash-static /bin/bash
+COPY --from=builder /root/coreutils-0.0.20-x86_64-unknown-linux-musl/coreutils /bin/coreutils
+
+# Link /bin/bash to /bin/sh so podman can accept shell style RUN statements
+RUN ["/coreutils", "ln", "-s", "/bin/bash", "/bin/sh"]
+
+# Cleanup initially copied coreutils binary as it now lives in /bin
+RUN coreutils rm /coreutils
+
+# Coreutils multirun binary provides following sub-commands
+RUN coreutils ln -s /bin/coreutils /bin/arch \
+    && coreutils ln -s /bin/coreutils /bin/b2sum \
+    && coreutils ln -s /bin/coreutils /bin/b3sum \
+    && coreutils ln -s /bin/coreutils /bin/base32 \
+    && coreutils ln -s /bin/coreutils /bin/base64 \
+    && coreutils ln -s /bin/coreutils /bin/basename \
+    && coreutils ln -s /bin/coreutils /bin/basenc \
+    && coreutils ln -s /bin/coreutils /bin/cat \
+    && coreutils ln -s /bin/coreutils /bin/chgrp \
+    && coreutils ln -s /bin/coreutils /bin/chmod \
+    && coreutils ln -s /bin/coreutils /bin/chown \
+    && coreutils ln -s /bin/coreutils /bin/chroot \
+    && coreutils ln -s /bin/coreutils /bin/cksum \
+    && coreutils ln -s /bin/coreutils /bin/comm \
+    && coreutils ln -s /bin/coreutils /bin/cp \
+    && coreutils ln -s /bin/coreutils /bin/csplit \
+    && coreutils ln -s /bin/coreutils /bin/cut \
+    && coreutils ln -s /bin/coreutils /bin/date \
+    && coreutils ln -s /bin/coreutils /bin/dd \
+    && coreutils ln -s /bin/coreutils /bin/df \
+    && coreutils ln -s /bin/coreutils /bin/dir \
+    && coreutils ln -s /bin/coreutils /bin/dircolors \
+    && coreutils ln -s /bin/coreutils /bin/dirname \
+    && coreutils ln -s /bin/coreutils /bin/du \
+    && coreutils ln -s /bin/coreutils /bin/echo \
+    && coreutils ln -s /bin/coreutils /bin/env \
+    && coreutils ln -s /bin/coreutils /bin/expand \
+    && coreutils ln -s /bin/coreutils /bin/expr \
+    && coreutils ln -s /bin/coreutils /bin/factor \
+    && coreutils ln -s /bin/coreutils /bin/false \
+    && coreutils ln -s /bin/coreutils /bin/fmt \
+    && coreutils ln -s /bin/coreutils /bin/fold \
+    && coreutils ln -s /bin/coreutils /bin/groups \
+    && coreutils ln -s /bin/coreutils /bin/hashsum \
+    && coreutils ln -s /bin/coreutils /bin/head \
+    && coreutils ln -s /bin/coreutils /bin/hostid \
+    && coreutils ln -s /bin/coreutils /bin/hostname \
+    && coreutils ln -s /bin/coreutils /bin/id \
+    && coreutils ln -s /bin/coreutils /bin/install \
+    && coreutils ln -s /bin/coreutils /bin/join \
+    && coreutils ln -s /bin/coreutils /bin/kill \
+    && coreutils ln -s /bin/coreutils /bin/link \
+    && coreutils ln -s /bin/coreutils /bin/ln \
+    && coreutils ln -s /bin/coreutils /bin/logname \
+    && coreutils ln -s /bin/coreutils /bin/ls \
+    && coreutils ln -s /bin/coreutils /bin/md5sum \
+    && coreutils ln -s /bin/coreutils /bin/mkdir \
+    && coreutils ln -s /bin/coreutils /bin/mkfifo \
+    && coreutils ln -s /bin/coreutils /bin/mknod \
+    && coreutils ln -s /bin/coreutils /bin/mktemp \
+    && coreutils ln -s /bin/coreutils /bin/more \
+    && coreutils ln -s /bin/coreutils /bin/mv \
+    && coreutils ln -s /bin/coreutils /bin/nice \
+    && coreutils ln -s /bin/coreutils /bin/nl \
+    && coreutils ln -s /bin/coreutils /bin/nohup \
+    && coreutils ln -s /bin/coreutils /bin/nproc \
+    && coreutils ln -s /bin/coreutils /bin/numfmt \
+    && coreutils ln -s /bin/coreutils /bin/od \
+    && coreutils ln -s /bin/coreutils /bin/paste \
+    && coreutils ln -s /bin/coreutils /bin/pathchk \
+    && coreutils ln -s /bin/coreutils /bin/pr \
+    && coreutils ln -s /bin/coreutils /bin/printenv \
+    && coreutils ln -s /bin/coreutils /bin/printf \
+    && coreutils ln -s /bin/coreutils /bin/ptx \
+    && coreutils ln -s /bin/coreutils /bin/pwd \
+    && coreutils ln -s /bin/coreutils /bin/readlink \
+    && coreutils ln -s /bin/coreutils /bin/realpath \
+    && coreutils ln -s /bin/coreutils /bin/relpath \
+    && coreutils ln -s /bin/coreutils /bin/rm \
+    && coreutils ln -s /bin/coreutils /bin/rmdir \
+    && coreutils ln -s /bin/coreutils /bin/seq \
+    && coreutils ln -s /bin/coreutils /bin/sha1sum \
+    && coreutils ln -s /bin/coreutils /bin/sha224sum \
+    && coreutils ln -s /bin/coreutils /bin/sha256sum \
+    && coreutils ln -s /bin/coreutils /bin/sha3-224sum \
+    && coreutils ln -s /bin/coreutils /bin/sha3-256sum \
+    && coreutils ln -s /bin/coreutils /bin/sha3-384sum \
+    && coreutils ln -s /bin/coreutils /bin/sha3-512sum \
+    && coreutils ln -s /bin/coreutils /bin/sha384sum \
+    && coreutils ln -s /bin/coreutils /bin/sha3sum \
+    && coreutils ln -s /bin/coreutils /bin/sha512sum \
+    && coreutils ln -s /bin/coreutils /bin/shake128sum \
+    && coreutils ln -s /bin/coreutils /bin/shake256sum \
+    && coreutils ln -s /bin/coreutils /bin/shred \
+    && coreutils ln -s /bin/coreutils /bin/shuf \
+    && coreutils ln -s /bin/coreutils /bin/sleep \
+    && coreutils ln -s /bin/coreutils /bin/sort \
+    && coreutils ln -s /bin/coreutils /bin/split \
+    && coreutils ln -s /bin/coreutils /bin/stat \
+    && coreutils ln -s /bin/coreutils /bin/stty \
+    && coreutils ln -s /bin/coreutils /bin/sum \
+    && coreutils ln -s /bin/coreutils /bin/sync \
+    && coreutils ln -s /bin/coreutils /bin/tac \
+    && coreutils ln -s /bin/coreutils /bin/tail \
+    && coreutils ln -s /bin/coreutils /bin/tee \
+    && coreutils ln -s /bin/coreutils /bin/test \
+    && coreutils ln -s /bin/coreutils /bin/timeout \
+    && coreutils ln -s /bin/coreutils /bin/touch \
+    && coreutils ln -s /bin/coreutils /bin/tr \
+    && coreutils ln -s /bin/coreutils /bin/true \
+    && coreutils ln -s /bin/coreutils /bin/truncate \
+    && coreutils ln -s /bin/coreutils /bin/tsort \
+    && coreutils ln -s /bin/coreutils /bin/tty \
+    && coreutils ln -s /bin/coreutils /bin/uname \
+    && coreutils ln -s /bin/coreutils /bin/unexpand \
+    && coreutils ln -s /bin/coreutils /bin/uniq \
+    && coreutils ln -s /bin/coreutils /bin/unlink \
+    && coreutils ln -s /bin/coreutils /bin/vdir \
+    && coreutils ln -s /bin/coreutils /bin/wc \
+    && coreutils ln -s /bin/coreutils /bin/whoami \
+    && coreutils ln -s /bin/coreutils /bin/yes
+
+# Install statically linked util-linux tools
+COPY --from=builder /root/util-linux/build/mount.static /bin/mount
+COPY --from=builder /root/util-linux/build/umount.static /bin/umount
+COPY --from=builder /root/util-linux/build/losetup.static /bin/losetup
+
+# Install delegate
+COPY ./delegate /bin/delegate
+
+# Populate root directory with other empty folders
+WORKDIR /
+RUN mkdir -p usr dev etc lib lib64 mnt proc root sbin sys newroot; exit 0
+
+COPY ./init.sh /init
+
+RUN chmod +x /init
+
+CMD /bin/bash
