@@ -3267,7 +3267,7 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                         #[cfg(feature = "balloon")]
                                         VmRequest::BalloonCommand(cmd) => {
                                             if let Some(balloon_tube) = balloon_tube.as_mut() {
-                                                match balloon_tube.send_cmd(cmd, id) {
+                                                match balloon_tube.send_cmd(cmd, Some(id)) {
                                                     Some(response) => response,
                                                     None => continue,
                                                 }

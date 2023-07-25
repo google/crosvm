@@ -93,14 +93,18 @@ impl BalloonTube {
 
     /// Sends or queues the given command to this tube. Associates the
     /// response with the given key.
-    pub fn send_cmd(&mut self, cmd: BalloonControlCommand, key: usize) -> Option<VmResponse> {
+    pub fn send_cmd(
+        &mut self,
+        cmd: BalloonControlCommand,
+        key: Option<usize>,
+    ) -> Option<VmResponse> {
         if !self.pending_queue.is_empty() {
-            self.pending_queue.push_back((cmd, Some(key)));
+            self.pending_queue.push_back((cmd, key));
             return None;
         }
         let resp = do_send(&self.tube, &cmd);
         if resp.is_none() {
-            self.pending_queue.push_back((cmd, Some(key)));
+            self.pending_queue.push_back((cmd, key));
         }
         resp
     }
@@ -179,7 +183,7 @@ mod tests {
         let (host, device) = Tube::pair().unwrap();
         let mut balloon_tube = BalloonTube::new(host);
 
-        let resp = balloon_tube.send_cmd(BalloonControlCommand::Stats, 0xc0ffee);
+        let resp = balloon_tube.send_cmd(BalloonControlCommand::Stats, Some(0xc0ffee));
         assert!(resp.is_none());
 
         balloon_device_respond_stats(&device);
@@ -195,9 +199,9 @@ mod tests {
         let (host, device) = Tube::pair().unwrap();
         let mut balloon_tube = BalloonTube::new(host);
 
-        let resp = balloon_tube.send_cmd(BalloonControlCommand::Stats, 0xc0ffee);
+        let resp = balloon_tube.send_cmd(BalloonControlCommand::Stats, Some(0xc0ffee));
         assert!(resp.is_none());
-        let resp = balloon_tube.send_cmd(BalloonControlCommand::Stats, 0xbadcafe);
+        let resp = balloon_tube.send_cmd(BalloonControlCommand::Stats, Some(0xbadcafe));
         assert!(resp.is_none());
 
         balloon_device_respond_stats(&device);
@@ -220,9 +224,12 @@ mod tests {
         let (host, device) = Tube::pair().unwrap();
         let mut balloon_tube = BalloonTube::new(host);
 
-        let resp = balloon_tube.send_cmd(BalloonControlCommand::Stats, 0xc0ffee);
+        let resp = balloon_tube.send_cmd(BalloonControlCommand::Stats, Some(0xc0ffee));
         assert!(resp.is_none());
-        let resp = balloon_tube.send_cmd(BalloonControlCommand::Adjust { num_bytes: 0 }, 0xbadcafe);
+        let resp = balloon_tube.send_cmd(
+            BalloonControlCommand::Adjust { num_bytes: 0 },
+            Some(0xbadcafe),
+        );
         assert!(resp.is_none());
 
         balloon_device_respond_stats(&device);

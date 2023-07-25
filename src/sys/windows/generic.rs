@@ -40,6 +40,7 @@ use devices::virtio::GpuParameters;
 pub(crate) use metrics::log_descriptor;
 pub(crate) use metrics::MetricEventType;
 use sync::Mutex;
+use vm_control::BalloonTube;
 use vm_control::PvClockCommand;
 
 use super::run_vcpu::VcpuRunMode;
@@ -156,6 +157,7 @@ pub(super) fn handle_received_token<V: VmArch + 'static, Vcpu: VcpuArch + 'stati
     token: &Token,
     _ac97_host_tubes: &[Tube],
     _anti_tamper_main_thread_tube: &Option<ProtoTube>,
+    _balloon_tube: Option<&mut BalloonTube>,
     _control_tubes: &BTreeMap<usize, SharedTaggedControlTube>,
     _guest_os: &mut RunnableLinuxVm<V, Vcpu>,
     _ipc_main_loop_tube: Option<&Tube>,
