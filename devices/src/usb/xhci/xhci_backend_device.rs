@@ -32,4 +32,8 @@ pub trait XhciBackendDevice: Send {
     fn reset(&mut self) -> Result<()>;
     /// Get speed of this device.
     fn get_speed(&self) -> Option<DeviceSpeed>;
+    /// Allocate streams for the endpoint
+    fn alloc_streams(&self, ep: u8, num_streams: u16) -> Result<()>;
+    /// Free streams for the endpoint
+    fn free_streams(&self, ep: u8) -> Result<()>;
 }

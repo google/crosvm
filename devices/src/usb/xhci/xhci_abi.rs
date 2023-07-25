@@ -833,6 +833,23 @@ pub struct EndpointContext {
     reserved7: B32,
 }
 
+#[bitfield]
+#[derive(Clone, Copy, AsBytes, FromBytes)]
+pub struct StreamContext {
+    dequeue_cycle_state: bool,
+    stream_context_type: B3,
+    tr_dequeue_pointer: DequeuePtr,
+    stopped_edtla: B24,
+    reserved1: B8,
+    reserved2: B32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, FromBytes, AsBytes)]
+pub struct StreamContextArray {
+    pub stream_contexts: [StreamContext; 16],
+}
+
 /// Device context.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, FromBytes, AsBytes)]

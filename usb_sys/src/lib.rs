@@ -190,7 +190,13 @@ pub struct usbdevfs_disconnect_claim {
 pub struct usbdevfs_streams {
     pub num_streams: c_uint,
     pub num_eps: c_uint,
-    pub eps: __IncompleteArrayField<c_char>,
+    pub eps: __IncompleteArrayField<c_uchar>,
+}
+
+impl Default for usbdevfs_streams {
+    fn default() -> Self {
+        unsafe { ::std::mem::zeroed() }
+    }
 }
 
 const U: u32 = 'U' as u32;

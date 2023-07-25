@@ -9,6 +9,7 @@ use std::io::Seek;
 use std::io::SeekFrom;
 use std::mem::size_of_val;
 use std::os::raw::c_int;
+use std::os::raw::c_uchar;
 use std::os::raw::c_uint;
 use std::os::raw::c_void;
 use std::sync::Arc;
@@ -382,6 +383,37 @@ impl Device {
             }
         }
     }
+
+    /// Allocate streams for the endpoint
+    pub fn alloc_streams(&self, ep: u8, num_streams: u16) -> Result<()> {
+        let mut streams = vec_with_array_field::<usb_sys::usbdevfs_streams, c_uchar>(1);
+        streams[0].num_streams = num_streams as c_uint;
+        streams[0].num_eps = 1 as c_uint;
+        // Safe because we have allocated enough memory
+        let eps = unsafe { streams[0].eps.as_mut_slice(1) };
+        eps[0] = ep as c_uchar;
+        // Safe because self.fd is a valid usbdevfs file descriptor and we pass a valid
+        // pointer to a usbdevfs_streams structure.
+        unsafe {
+            self.ioctl_with_ref(usb_sys::USBDEVFS_ALLOC_STREAMS(), &streams[0])?;
+        }
+        Ok(())
+    }
+
+    /// Free streams for the endpoint
+    pub fn free_streams(&self, ep: u8) -> Result<()> {
+        let mut streams = vec_with_array_field::<usb_sys::usbdevfs_streams, c_uchar>(1);
+        streams[0].num_eps = 1 as c_uint;
+        // Safe because we have allocated enough memory
+        let eps = unsafe { streams[0].eps.as_mut_slice(1) };
+        eps[0] = ep as c_uchar;
+        // Safe because self.fd is a valid usbdevfs file descriptor and we pass a valid
+        // pointer to a usbdevfs_streams structure.
+        unsafe {
+            self.ioctl_with_ref(usb_sys::USBDEVFS_FREE_STREAMS(), &streams[0])?;
+        }
+        Ok(())
+    }
 }
 
 impl AsRawDescriptor for Device {
@@ -449,8 +481,12 @@ impl Transfer {
     }
 
     /// Create a bulk transfer.
-    pub fn new_bulk(endpoint: u8, buffer: Vec<u8>) -> Result<Transfer> {
-        Self::new(usb_sys::USBDEVFS_URB_TYPE_BULK, endpoint, buffer, &[])
+    pub fn new_bulk(endpoint: u8, buffer: Vec<u8>, stream_id: Option<u16>) -> Result<Transfer> {
+        let mut transfer = Self::new(usb_sys::USBDEVFS_URB_TYPE_BULK, endpoint, buffer, &[])?;
+        if let Some(stream_id) = stream_id {
+            transfer.urb_mut().number_of_packets_or_stream_id = stream_id as u32;
+        }
+        Ok(transfer)
     }
 
     /// Create an isochronous transfer.

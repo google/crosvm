@@ -121,8 +121,12 @@ impl UsbEndpoint {
         buffer: ScatterGatherBuffer,
     ) -> Result<()> {
         let transfer_buffer = self.get_transfer_buffer(&buffer)?;
-        let usb_transfer =
-            Transfer::new_bulk(self.ep_addr(), transfer_buffer).map_err(Error::CreateTransfer)?;
+        let usb_transfer = Transfer::new_bulk(
+            self.ep_addr(),
+            transfer_buffer,
+            xhci_transfer.get_stream_id(),
+        )
+        .map_err(Error::CreateTransfer)?;
         self.do_handle_transfer(xhci_transfer, usb_transfer, buffer)
     }
 

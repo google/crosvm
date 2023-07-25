@@ -204,6 +204,7 @@ impl XhciTransferManager {
         endpoint_id: u8,
         transfer_trbs: TransferDescriptor,
         completion_event: Event,
+        stream_id: Option<u16>,
     ) -> XhciTransfer {
         assert!(!transfer_trbs.is_empty());
         let transfer_dir = {
@@ -227,6 +228,7 @@ impl XhciTransferManager {
             transfer_dir,
             transfer_trbs,
             device_slot: self.device_slot.clone(),
+            stream_id,
         };
         self.transfers.lock().push(Arc::downgrade(&t.state));
         t
@@ -281,6 +283,7 @@ pub struct XhciTransfer {
     transfer_trbs: TransferDescriptor,
     transfer_completion_event: Event,
     device_slot: Weak<DeviceSlot>,
+    stream_id: Option<u16>,
 }
 
 impl Drop for XhciTransfer {
@@ -319,6 +322,11 @@ impl XhciTransfer {
     /// get transfer direction.
     pub fn get_transfer_dir(&self) -> TransferDirection {
         self.transfer_dir
+    }
+
+    /// get stream id.
+    pub fn get_stream_id(&self) -> Option<u16> {
+        self.stream_id
     }
 
     /// This functions should be invoked when transfer is completed (or failed).

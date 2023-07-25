@@ -16,6 +16,8 @@ use crate::utils::Error as UtilsError;
 pub enum Error {
     #[error("failed to add to event loop: {0}")]
     AddToEventLoop(UtilsError),
+    #[error("failed to alloc streams: {0}")]
+    AllocStreams(UsbUtilError),
     #[error("backend provider is in a bad state")]
     BadBackendProviderState,
     #[error("xhci transfer is in a bad state")]
@@ -30,6 +32,8 @@ pub enum Error {
     CreateLibUsbContext(UsbUtilError),
     #[error("failed to create transfer: {0}")]
     CreateTransfer(UsbUtilError),
+    #[error("failed to free streams: {0}")]
+    FreeStreams(UsbUtilError),
     #[error("failed to get active config: {0}")]
     GetActiveConfig(UsbUtilError),
     #[error("failed to get config descriptor: {0}")]

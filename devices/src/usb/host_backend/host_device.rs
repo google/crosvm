@@ -615,4 +615,18 @@ impl XhciBackendDevice for HostDevice {
             None
         }
     }
+
+    fn alloc_streams(&self, ep: u8, num_streams: u16) -> Result<()> {
+        self.device
+            .lock()
+            .alloc_streams(ep, num_streams)
+            .map_err(Error::AllocStreams)
+    }
+
+    fn free_streams(&self, ep: u8) -> Result<()> {
+        self.device
+            .lock()
+            .free_streams(ep)
+            .map_err(Error::FreeStreams)
+    }
 }
