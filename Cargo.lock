@@ -181,6 +181,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "audio_streams_conformance_test"
+version = "0.1.0"
+dependencies = [
+ "argh",
+ "audio_streams",
+ "cfg-if",
+ "cros_async",
+ "libcras",
+ "minijail",
+ "remain",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "audio_util"
 version = "0.1.0"
 dependencies = [

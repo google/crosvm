@@ -37,6 +37,7 @@ members = [
     "arch",
     "argh_helpers",
     "audio_util",
+    "audio_streams_conformance_test",
     "base",
     "bit_field",
     "broker_ipc",

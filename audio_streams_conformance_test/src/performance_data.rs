@@ -5,7 +5,6 @@
 use std::fmt;
 use std::time::Duration;
 
-use num::integer::Roots;
 use serde::Serialize;
 
 use crate::args::Args;
@@ -31,6 +30,7 @@ pub struct PerformanceReport {
 }
 
 impl fmt::Display for PerformanceReport {
+    #[allow(clippy::print_in_format_impl)]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if self.mismatched_frame_count != 0 {
             eprint!(
@@ -132,10 +132,10 @@ fn linear_regression(x: &[f64], y: &[f64]) -> Result<EstimatedRate> {
     let b = (x_y_sum - x_average * y_sum) / (x_square_sum - x_average * x_sum);
     let n = y.len() as f64;
     /* err = sqrt(sum((y_i - hat(y_i)) ^ 2) / n) */
-    let err: f64 = ((n * y_square_sum - y_sum * y_sum - b * b * (n * x_square_sum - x_sum * x_sum))
-        as f64
-        / (n * (n - 2.0)))
-        .sqrt();
+    let err: f64 =
+        ((n * y_square_sum - y_sum * y_sum - b * b * (n * x_square_sum - x_sum * x_sum))
+            / (n * (n - 2.0)))
+            .sqrt();
 
     Ok(EstimatedRate::new(b, err))
 }
@@ -186,11 +186,11 @@ impl PerformanceData {
         let stddev_time = (steps
             .iter()
             .map(|x| {
-                x.as_nanos().abs_diff(avg_time.as_nanos())
-                    * x.as_nanos().abs_diff(avg_time.as_nanos())
+                (x.as_nanos().abs_diff(avg_time.as_nanos())
+                    * x.as_nanos().abs_diff(avg_time.as_nanos())) as f64
             })
-            .sum::<u128>()
-            / steps.len() as u128)
+            .sum::<f64>()
+            / steps.len() as f64)
             .sqrt();
 
         let rate = linear_regression(&time_records, &frames)?;

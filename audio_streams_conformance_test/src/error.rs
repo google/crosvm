@@ -20,6 +20,7 @@ pub enum Error {
     FetchBuffer(BoxError),
     #[error("failed to generate stream source: {0}")]
     GenerateStreamSource(BoxError),
+    #[allow(dead_code)]
     #[error("invalid stream source: `{0}`")]
     InvalidStreamSuorce(String),
     #[error("mismatched x[] and y[] for linear regression")]

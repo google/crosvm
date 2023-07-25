@@ -1,0 +1,23 @@
+[package]
+name = "audio_streams_conformance_test"
+version = "0.1.0"
+authors = ["The Chromium OS Authors"]
+edition = "2021"
+
+[features]
+audio_cras = ["dep:libcras"]
+chromeos = ["audio_cras"]
+
+[dependencies]
+argh = "*"
+audio_streams = { path = "../common/audio_streams" }
+cfg-if = "1.0.0"
+cros_async = { path = "../cros_async" }
+libcras = { version = "*", optional = true }
+remain = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "*"
+thiserror = "1.0.20"
+
+[target.'cfg(unix)'.dependencies]
+minijail = "*"
