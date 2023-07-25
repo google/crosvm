@@ -1324,6 +1324,10 @@ impl VirtioDevice for Gpu {
             resource_bridges.append_raw_descriptors(&mut keep_rds);
         }
 
+        for event_device in &self.event_devices {
+            keep_rds.push(event_device.as_raw_descriptor());
+        }
+
         keep_rds
     }
 
