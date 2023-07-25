@@ -414,7 +414,7 @@ mod tests {
     fn new_sealed() {
         let mut shm = create_test_shmem();
         let mut seals = shm.get_seals().expect("failed to get seals");
-        assert_eq!(seals.bitmask(), 0);
+        assert!(!seals.seal_seal());
         seals.set_seal_seal();
         shm.add_seals(seals).expect("failed to add seals");
         seals = shm.get_seals().expect("failed to get seals");
