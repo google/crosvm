@@ -1337,86 +1337,90 @@ impl Worker {
         event_queue_evt: Event,
         kill_evt: Event,
     ) -> Result<Option<PausedQueues>> {
-        let ex = Executor::new().unwrap();
-
         // Note that this mutex won't ever be contended because the HandleExecutor is single
         // threaded. We need the mutex for compile time correctness, but technically it is not
         // actually providing mandatory locking, at least not at the moment. If we later use a
         // multi-threaded executor, then this lock will be important.
         let rx_queue_arc = Arc::new(RwLock::new(rx_queue));
 
-        let rx_evt_async = EventAsync::new(
-            rx_queue_evt
-                .try_clone()
-                .map_err(VsockError::CloneDescriptor)?,
-            &ex,
-        )
-        .expect("Failed to set up the rx queue event");
-        let mut stop_queue_oneshots = Vec::new();
+        // Run executor / create futures in a scope, preventing extra reference to `rx_queue_arc`.
+        let res = {
+            let ex = Executor::new().unwrap();
 
-        let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
-        let rx_handler = self.process_rx_queue(rx_queue_arc.clone(), rx_evt_async, &ex, stop_rx);
-        let rx_handler = rx_handler.fuse();
-        pin_mut!(rx_handler);
+            let rx_evt_async = EventAsync::new(
+                rx_queue_evt
+                    .try_clone()
+                    .map_err(VsockError::CloneDescriptor)?,
+                &ex,
+            )
+            .expect("Failed to set up the rx queue event");
+            let mut stop_queue_oneshots = Vec::new();
 
-        let (send, recv) = mpsc::channel(CHANNEL_SIZE);
+            let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
+            let rx_handler =
+                self.process_rx_queue(rx_queue_arc.clone(), rx_evt_async, &ex, stop_rx);
+            let rx_handler = rx_handler.fuse();
+            pin_mut!(rx_handler);
 
-        let tx_evt_async =
-            EventAsync::new(tx_queue_evt, &ex).expect("Failed to set up the tx queue event");
-        let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
-        let tx_handler = self.process_tx_queue(tx_queue, tx_evt_async, send, stop_rx);
-        let tx_handler = tx_handler.fuse();
-        pin_mut!(tx_handler);
+            let (send, recv) = mpsc::channel(CHANNEL_SIZE);
 
-        let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
-        let packet_handler =
-            self.process_tx_packets(&rx_queue_arc, rx_queue_evt, recv, &ex, stop_rx);
-        let packet_handler = packet_handler.fuse();
-        pin_mut!(packet_handler);
+            let tx_evt_async =
+                EventAsync::new(tx_queue_evt, &ex).expect("Failed to set up the tx queue event");
+            let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
+            let tx_handler = self.process_tx_queue(tx_queue, tx_evt_async, send, stop_rx);
+            let tx_handler = tx_handler.fuse();
+            pin_mut!(tx_handler);
 
-        let event_evt_async =
-            EventAsync::new(event_queue_evt, &ex).expect("Failed to set up the event queue event");
-        let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
-        let event_handler = self.process_event_queue(event_queue, event_evt_async, stop_rx);
-        let event_handler = event_handler.fuse();
-        pin_mut!(event_handler);
+            let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
+            let packet_handler =
+                self.process_tx_packets(&rx_queue_arc, rx_queue_evt, recv, &ex, stop_rx);
+            let packet_handler = packet_handler.fuse();
+            pin_mut!(packet_handler);
 
-        // Process any requests to resample the irq value.
-        let resample_handler = async_utils::handle_irq_resample(&ex, self.interrupt.clone());
-        let resample_handler = resample_handler.fuse();
-        pin_mut!(resample_handler);
+            let event_evt_async = EventAsync::new(event_queue_evt, &ex)
+                .expect("Failed to set up the event queue event");
+            let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
+            let event_handler = self.process_event_queue(event_queue, event_evt_async, stop_rx);
+            let event_handler = event_handler.fuse();
+            pin_mut!(event_handler);
 
-        let kill_evt = EventAsync::new(kill_evt, &ex).expect("Failed to set up the kill event");
-        let kill_handler = kill_evt.next_val();
-        pin_mut!(kill_handler);
+            // Process any requests to resample the irq value.
+            let resample_handler = async_utils::handle_irq_resample(&ex, self.interrupt.clone());
+            let resample_handler = resample_handler.fuse();
+            pin_mut!(resample_handler);
 
-        let res = ex.run_until(async {
-            select! {
-                _ = kill_handler.fuse() => (),
-                _ = rx_handler => return Err(anyhow!("rx_handler stopped unexpetedly")),
-                _ = tx_handler => return Err(anyhow!("tx_handler stop unexpectedly.")),
-                _ = packet_handler => return Err(anyhow!("packet_handler stop unexpectedly.")),
-                _ = event_handler => return Err(anyhow!("event_handler stop unexpectedly.")),
-                _ = resample_handler => return Err(anyhow!("resample_handler stop unexpectedly.")),
-            }
-            // kill_evt has fired
+            let kill_evt = EventAsync::new(kill_evt, &ex).expect("Failed to set up the kill event");
+            let kill_handler = kill_evt.next_val();
+            pin_mut!(kill_handler);
 
-            for stop_tx in stop_queue_oneshots {
-                if stop_tx.send(()).is_err() {
-                    return Err(anyhow!("failed to request stop for queue future"));
+            ex.run_until(async {
+                select! {
+                    _ = kill_handler.fuse() => (),
+                    _ = rx_handler => return Err(anyhow!("rx_handler stopped unexpetedly")),
+                    _ = tx_handler => return Err(anyhow!("tx_handler stop unexpectedly.")),
+                    _ = packet_handler => return Err(anyhow!("packet_handler stop unexpectedly.")),
+                    _ = event_handler => return Err(anyhow!("event_handler stop unexpectedly.")),
+                    _ = resample_handler => return Err(anyhow!("resample_handler stop unexpectedly.")),
                 }
-            }
+                // kill_evt has fired
 
-            rx_handler.await.context("Failed to stop rx handler.")?;
-            packet_handler.await;
+                for stop_tx in stop_queue_oneshots {
+                    if stop_tx.send(()).is_err() {
+                        return Err(anyhow!("failed to request stop for queue future"));
+                    }
+                }
 
-            Ok((
-                tx_handler.await.context("Failed to stop tx handler.")?,
-                event_handler
-                    .await
-                    .context("Failed to stop event handler.")?,
-            ))
-        });
+                rx_handler.await.context("Failed to stop rx handler.")?;
+                packet_handler.await;
+
+                Ok((
+                    tx_handler.await.context("Failed to stop tx handler.")?,
+                    event_handler
+                        .await
+                        .context("Failed to stop event handler.")?,
+                ))
+            })
+        };
 
         // At this point, a request to stop this worker has been sent or an error has happened in
         // one of the futures, which will stop this worker anyways.
@@ -1424,7 +1428,7 @@ impl Worker {
         let paused_queue = match res {
             Ok(main_future_res) => match main_future_res {
                 Ok((tx_queue, event_handler_queue)) => {
-                    let rx_queue = match Arc::try_unwrap(rx_queue_arc.clone()) {
+                    let rx_queue = match Arc::try_unwrap(rx_queue_arc) {
                         Ok(queue_rw_lock) => queue_rw_lock.into_inner(),
                         Err(_) => panic!("failed to recover queue from worker"),
                     };
