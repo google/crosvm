@@ -134,6 +134,8 @@ mdbook build
 
 Output is found at `docs/book/book/html/`.
 
+To format markdown files, run `./tools/fmt` in the `dev_container`.
+
 [crosvm owners]: https://chromium.googlesource.com/crosvm/crosvm/+/HEAD/OWNERS
 [github mirror]: https://github.com/google/crosvm
 [google markdown style guide]: https://github.com/google/styleguide/blob/gh-pages/docguide/style.md
