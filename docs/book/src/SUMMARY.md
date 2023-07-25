@@ -21,6 +21,7 @@
   - [Fs](./devices/fs.md)
   - [Vsock](./devices/vsock.md)
   - [Pmem](./devices/pmem.md)
+  - [USB](./devices/usb.md)
   - [Wayland](./devices/wayland.md)
   - [Video (experimental)](./devices/video.md)
   - [Vhost-user](./devices/vhost_user.md)

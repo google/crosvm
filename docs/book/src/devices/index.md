@@ -10,6 +10,7 @@ Here is a (non-comprehensive) list of emulated devices provided by crosvm.
 
 - [`CMOS/RTC`] - Used to get the current calendar time.
 - [`i8042`] - Used by the guest kernel to exit crosvm.
+- [usb] - xhci emulation to provide USB device passthrough.
 - [`serial`] - x86 I/O port driven serial devices that print to stdout and take input from stdin.
 
 ### VirtIO Devices
@@ -32,11 +33,12 @@ Here is a (non-comprehensive) list of emulated devices provided by crosvm.
 - [`wayland`] - Allows the guest to use the host's Wayland socket.
 - [`vsock`] - Enables use of virtual sockets for the guest.
 - [`vhost-user`] - VirtIO devices which offloads the device implementation to another process
-  through the [vhost-user protocol].
+  through the [vhost-user protocol]:
   - [vmm side]: Shares its virtqueues.
   - [device side]: Consumes virtqueues.
 
 [device side]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/vhost/user/device/
+[usb]: usb.md
 [vhost-user protocol]: https://qemu.readthedocs.io/en/latest/interop/vhost-user.html
 [vmm side]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/vhost/user/vmm/
 [`balloon`]: balloon.md
