@@ -107,7 +107,7 @@ enum OpStatus {
 // An IO source previously registered with an EpollReactor. Used to initiate asynchronous IO with the
 // associated executor.
 pub struct RegisteredSource<F> {
-    source: F,
+    pub(crate) source: F,
     ex: Weak<RawExecutor<EpollReactor>>,
 }
 
@@ -148,25 +148,6 @@ impl<F: AsRawDescriptor> RegisteredSource<F> {
             token: Some(token),
             ex: self.ex.clone(),
         })
-    }
-}
-
-impl<F> RegisteredSource<F> {
-    // Consume this RegisteredSource and return the inner IO source.
-    pub fn into_source(self) -> F {
-        self.source
-    }
-}
-
-impl<F> AsRef<F> for RegisteredSource<F> {
-    fn as_ref(&self) -> &F {
-        &self.source
-    }
-}
-
-impl<F> AsMut<F> for RegisteredSource<F> {
-    fn as_mut(&mut self) -> &mut F {
-        &mut self.source
     }
 }
 

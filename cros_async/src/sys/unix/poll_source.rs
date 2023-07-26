@@ -3,8 +3,6 @@
 // found in the LICENSE file.
 
 use std::io;
-use std::ops::Deref;
-use std::ops::DerefMut;
 use std::sync::Arc;
 
 use base::AsRawDescriptor;
@@ -80,20 +78,6 @@ impl<F: AsRawDescriptor> PollSource<F> {
     }
 }
 
-impl<F: AsRawDescriptor> Deref for PollSource<F> {
-    type Target = F;
-
-    fn deref(&self) -> &Self::Target {
-        self.0.as_ref()
-    }
-}
-
-impl<F: AsRawDescriptor> DerefMut for PollSource<F> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.0.as_mut()
-    }
-}
-
 impl<F: AsRawDescriptor> PollSource<F> {
     /// Reads from the iosource at `file_offset` and fill the given `vec`.
     pub async fn read_to_vec(
@@ -106,7 +90,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
             let res = if let Some(offset) = file_offset {
                 unsafe {
                     libc::pread64(
-                        self.as_raw_descriptor(),
+                        self.0.source.as_raw_descriptor(),
                         vec.as_mut_ptr() as *mut libc::c_void,
                         vec.len(),
                         offset as libc::off64_t,
@@ -115,7 +99,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
             } else {
                 unsafe {
                     libc::read(
-                        self.as_raw_descriptor(),
+                        self.0.source.as_raw_descriptor(),
                         vec.as_mut_ptr() as *mut libc::c_void,
                         vec.len(),
                     )
@@ -154,7 +138,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
             let res = if let Some(offset) = file_offset {
                 unsafe {
                     libc::preadv64(
-                        self.as_raw_descriptor(),
+                        self.0.source.as_raw_descriptor(),
                         iovecs.as_mut_ptr() as *mut _,
                         iovecs.len() as i32,
                         offset as libc::off64_t,
@@ -163,7 +147,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
             } else {
                 unsafe {
                     libc::readv(
-                        self.as_raw_descriptor(),
+                        self.0.source.as_raw_descriptor(),
                         iovecs.as_mut_ptr() as *mut _,
                         iovecs.len() as i32,
                     )
@@ -202,7 +186,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
             let res = if let Some(offset) = file_offset {
                 unsafe {
                     libc::pwrite64(
-                        self.as_raw_descriptor(),
+                        self.0.source.as_raw_descriptor(),
                         vec.as_ptr() as *const libc::c_void,
                         vec.len(),
                         offset as libc::off64_t,
@@ -211,7 +195,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
             } else {
                 unsafe {
                     libc::write(
-                        self.as_raw_descriptor(),
+                        self.0.source.as_raw_descriptor(),
                         vec.as_ptr() as *const libc::c_void,
                         vec.len(),
                     )
@@ -251,7 +235,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
             let res = if let Some(offset) = file_offset {
                 unsafe {
                     libc::pwritev64(
-                        self.as_raw_descriptor(),
+                        self.0.source.as_raw_descriptor(),
                         iovecs.as_ptr() as *mut _,
                         iovecs.len() as i32,
                         offset as libc::off64_t,
@@ -260,7 +244,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
             } else {
                 unsafe {
                     libc::writev(
-                        self.as_raw_descriptor(),
+                        self.0.source.as_raw_descriptor(),
                         iovecs.as_ptr() as *mut _,
                         iovecs.len() as i32,
                     )
@@ -291,7 +275,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
         let mode_u32: u32 = mode.into();
         let ret = unsafe {
             libc::fallocate64(
-                self.as_raw_descriptor(),
+                self.0.source.as_raw_descriptor(),
                 mode_u32 as libc::c_int,
                 file_offset as libc::off64_t,
                 len as libc::off64_t,
@@ -306,7 +290,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
 
     /// Sync all completed write operations to the backing storage.
     pub async fn fsync(&self) -> AsyncResult<()> {
-        let ret = unsafe { libc::fsync(self.as_raw_descriptor()) };
+        let ret = unsafe { libc::fsync(self.0.source.as_raw_descriptor()) };
         if ret == 0 {
             Ok(())
         } else {
@@ -317,7 +301,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
     /// Sync all data of completed write operations to the backing storage, avoiding updating extra
     /// metadata.
     pub async fn fdatasync(&self) -> AsyncResult<()> {
-        let ret = unsafe { libc::fdatasync(self.as_raw_descriptor()) };
+        let ret = unsafe { libc::fdatasync(self.0.source.as_raw_descriptor()) };
         if ret == 0 {
             Ok(())
         } else {
@@ -327,17 +311,17 @@ impl<F: AsRawDescriptor> PollSource<F> {
 
     /// Yields the underlying IO source.
     pub fn into_source(self) -> F {
-        self.0.into_source()
+        self.0.source
     }
 
     /// Provides a mutable ref to the underlying IO source.
     pub fn as_source_mut(&mut self) -> &mut F {
-        self
+        &mut self.0.source
     }
 
     /// Provides a ref to the underlying IO source.
     pub fn as_source(&self) -> &F {
-        self
+        &self.0.source
     }
 }
 
