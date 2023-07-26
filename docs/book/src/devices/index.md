@@ -37,6 +37,31 @@ Here is a (non-comprehensive) list of emulated devices provided by crosvm.
   - [vmm side]: Shares its virtqueues.
   - [device side]: Consumes virtqueues.
 
+## Device hotplug (experimental)
+
+A hotplug-capable device can be added as a PCI device to the guest. To enable hotplug, compile
+crosvm with feature flag `pci-hotplug`:
+
+```sh
+cargo build --features=pci-hotplug #additional parameters
+```
+
+When starting the VM, specify the number of slots with `--pci-hotplug-slots` option. Additionally,
+specify a [control socket](../architecture/overview.md#the-vm-control-sockets) specified with `-s`
+option for sending hotplug commands.
+
+For example, to run a VM with 3 PCI hotplug slots and control socket:
+
+```sh
+VM_SOCKET=/run/crosvm.socket
+crosvm run \
+    -s ${VM_SOCKET} \
+    --pci-hotplug-slots 3
+    # usual crosvm args
+```
+
+Currently, only network devices are supported.
+
 [device side]: https://chromium.googlesource.com/crosvm/crosvm/+/refs/heads/main/devices/src/virtio/vhost/user/device/
 [usb]: usb.md
 [vhost-user protocol]: https://qemu.readthedocs.io/en/latest/interop/vhost-user.html
