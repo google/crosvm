@@ -28,7 +28,7 @@ pub use swap::SwapStatus;
 use vm_control::client::*;
 use vm_control::BalloonControlCommand;
 use vm_control::BalloonStats;
-use vm_control::BalloonWSS;
+use vm_control::BalloonWS;
 use vm_control::DiskControlCommand;
 #[cfg(feature = "registered_events")]
 use vm_control::RegisteredEvent;
@@ -36,7 +36,7 @@ use vm_control::UsbControlAttachedDevice;
 use vm_control::UsbControlResult;
 use vm_control::VmRequest;
 use vm_control::VmResponse;
-use vm_control::WSSBucket;
+use vm_control::WSBucket;
 use vm_control::USB_CONTROL_MAX_PORTS;
 
 pub const VIRTIO_BALLOON_WS_MAX_NUM_BINS: usize = 16;
@@ -658,7 +658,33 @@ fn crosvm_client_balloon_stats_impl(
     .unwrap_or(false)
 }
 
-/// Externally exposed variant of BalloonWss/WSSBucket, used for FFI.
+/// Externally exposed variant of BalloonWS/WSBucket, used for FFI.
+#[derive(Clone, Copy, Debug)]
+#[repr(C)]
+pub struct WorkingSetBucketFfi {
+    age: u64,
+    bytes: [u64; 2],
+}
+
+impl WorkingSetBucketFfi {
+    fn new() -> Self {
+        Self {
+            age: 0,
+            bytes: [0, 0],
+        }
+    }
+}
+
+impl From<WSBucket> for WorkingSetBucketFfi {
+    fn from(other: WSBucket) -> Self {
+        Self {
+            age: other.age,
+            bytes: other.bytes,
+        }
+    }
+}
+
+// TODO(b/288432539): remove once concierge is migrated
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct WSSBucketFfi {
@@ -675,8 +701,8 @@ impl WSSBucketFfi {
     }
 }
 
-impl From<WSSBucket> for WSSBucketFfi {
-    fn from(other: WSSBucket) -> Self {
+impl From<WSBucket> for WSSBucketFfi {
+    fn from(other: WSBucket) -> Self {
         Self {
             age: other.age,
             bytes: other.bytes,
@@ -684,6 +710,70 @@ impl From<WSSBucket> for WSSBucketFfi {
     }
 }
 
+impl From<WorkingSetBucketFfi> for WSSBucketFfi {
+    fn from(value: WorkingSetBucketFfi) -> Self {
+        WSSBucketFfi {
+            age: value.age,
+            bytes: value.bytes,
+        }
+    }
+}
+
+impl From<WSSBucketFfi> for WorkingSetBucketFfi {
+    fn from(value: WSSBucketFfi) -> Self {
+        WorkingSetBucketFfi {
+            age: value.age,
+            bytes: value.bytes,
+        }
+    }
+}
+// ^ */ TODO(b/288432539): remove once concierge is migrated
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct BalloonWSFfi {
+    ws: [WorkingSetBucketFfi; VIRTIO_BALLOON_WS_MAX_NUM_BINS],
+    num_bins: u8,
+    _reserved: [u8; 7],
+}
+
+impl TryFrom<&BalloonWS> for BalloonWSFfi {
+    type Error = &'static str;
+
+    fn try_from(value: &BalloonWS) -> Result<Self, Self::Error> {
+        if value.ws.len() > VIRTIO_BALLOON_WS_MAX_NUM_BINS {
+            return Err("too many WS buckets in source object.");
+        }
+
+        let mut ffi = Self {
+            ws: [WorkingSetBucketFfi::new(); VIRTIO_BALLOON_WS_MAX_NUM_BINS],
+            num_bins: value.ws.len() as u8,
+            ..Default::default()
+        };
+        for (ffi_ws, other_ws) in ffi.ws.iter_mut().zip(value.ws.iter()) {
+            *ffi_ws = (*other_ws).into();
+        }
+        Ok(ffi)
+    }
+}
+
+impl BalloonWSFfi {
+    pub fn new() -> Self {
+        Self {
+            ws: [WorkingSetBucketFfi::new(); VIRTIO_BALLOON_WS_MAX_NUM_BINS],
+            num_bins: 0,
+            _reserved: [0; 7],
+        }
+    }
+}
+
+impl Default for BalloonWSFfi {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// TODO(b/288432539): remove once concierge is migrated
 #[repr(C)]
 #[derive(Debug)]
 pub struct BalloonWSSFfi {
@@ -692,20 +782,54 @@ pub struct BalloonWSSFfi {
     _reserved: [u8; 7],
 }
 
-impl TryFrom<&BalloonWSS> for BalloonWSSFfi {
+impl From<&mut BalloonWSSFfi> for BalloonWSFfi {
+    fn from(value: &mut BalloonWSSFfi) -> Self {
+        let mut ws = [WorkingSetBucketFfi {
+            age: 0,
+            bytes: [0; 2],
+        }; VIRTIO_BALLOON_WS_MAX_NUM_BINS];
+        for (idx, &bucket) in value.wss.iter().enumerate() {
+            ws[idx] = bucket.into();
+        }
+        BalloonWSFfi {
+            ws,
+            num_bins: value.num_bins,
+            _reserved: value._reserved,
+        }
+    }
+}
+
+impl From<BalloonWSFfi> for BalloonWSSFfi {
+    fn from(value: BalloonWSFfi) -> Self {
+        let mut wss = [WSSBucketFfi {
+            age: 0,
+            bytes: [0; 2],
+        }; VIRTIO_BALLOON_WS_MAX_NUM_BINS];
+        for (idx, &bucket) in value.ws.iter().enumerate() {
+            wss[idx] = bucket.into();
+        }
+        BalloonWSSFfi {
+            wss,
+            num_bins: value.num_bins,
+            _reserved: value._reserved,
+        }
+    }
+}
+
+impl TryFrom<&BalloonWS> for BalloonWSSFfi {
     type Error = &'static str;
 
-    fn try_from(value: &BalloonWSS) -> Result<Self, Self::Error> {
-        if value.wss.len() > VIRTIO_BALLOON_WS_MAX_NUM_BINS {
-            return Err("too many WSS buckets in source object.");
+    fn try_from(value: &BalloonWS) -> Result<Self, Self::Error> {
+        if value.ws.len() > VIRTIO_BALLOON_WS_MAX_NUM_BINS {
+            return Err("too many WS buckets in source object.");
         }
 
         let mut ffi = Self {
             wss: [WSSBucketFfi::new(); VIRTIO_BALLOON_WS_MAX_NUM_BINS],
-            num_bins: value.wss.len() as u8,
+            num_bins: value.ws.len() as u8,
             ..Default::default()
         };
-        for (ffi_wss, other_wss) in ffi.wss.iter_mut().zip(value.wss.iter()) {
+        for (ffi_wss, other_wss) in ffi.wss.iter_mut().zip(value.ws.iter()) {
             *ffi_wss = (*other_wss).into();
         }
         Ok(ffi)
@@ -727,7 +851,18 @@ impl Default for BalloonWSSFfi {
         Self::new()
     }
 }
+// ^ */ TODO(b/288432539): remove once concierge is migrated
 
+#[repr(C)]
+pub struct BalloonWSRConfigFfi {
+    intervals: [u64; VIRTIO_BALLOON_WS_MAX_NUM_INTERVALS],
+    num_intervals: u8,
+    _reserved: [u8; 7],
+    refresh_threshold: u64,
+    report_threshold: u64,
+}
+
+// TODO(b/288432539): remove once concierge is migrated
 #[repr(C)]
 pub struct BalloonWssConfigFfi {
     intervals: [u64; VIRTIO_BALLOON_WS_MAX_NUM_INTERVALS],
@@ -737,7 +872,40 @@ pub struct BalloonWssConfigFfi {
     report_threshold: u64,
 }
 
-/// Returns balloon working set size of the crosvm instance whose control socket is listening on socket_path.
+impl From<&BalloonWssConfigFfi> for BalloonWSRConfigFfi {
+    fn from(value: &BalloonWssConfigFfi) -> Self {
+        BalloonWSRConfigFfi {
+            intervals: value.intervals,
+            num_intervals: value.num_intervals,
+            _reserved: value._reserved,
+            refresh_threshold: value.refresh_threshold,
+            report_threshold: value.report_threshold,
+        }
+    }
+}
+// ^ */ TODO(b/288432539): remove once concierge is migrated
+
+// TODO(b/288432539): remove once concierge is migrated
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_client_balloon_wss(
+    socket_path: *const c_char,
+    wss: *mut BalloonWSSFfi,
+    actual: *mut u64,
+) -> bool {
+    if wss.is_null() {
+        return false;
+    }
+    let ret;
+    unsafe {
+        let mut ws: BalloonWSFfi = (&mut *wss).into();
+        ret = crosvm_client_balloon_working_set(socket_path, &mut ws, actual);
+        *wss = ws.into();
+    }
+    ret
+}
+// ^ */ TODO(b/288432539): remove once concierge is migrated
+
+/// Returns balloon working set of the crosvm instance whose control socket is listening on socket_path.
 ///
 /// The function returns true on success or false if an error occured.
 ///
@@ -747,23 +915,23 @@ pub struct BalloonWssConfigFfi {
 /// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
 /// null pointers are passed.
 #[no_mangle]
-pub unsafe extern "C" fn crosvm_client_balloon_wss(
+pub unsafe extern "C" fn crosvm_client_balloon_working_set(
     socket_path: *const c_char,
-    wss: *mut BalloonWSSFfi,
+    ws: *mut BalloonWSFfi,
     actual: *mut u64,
 ) -> bool {
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
-            let request = &VmRequest::BalloonCommand(BalloonControlCommand::WorkingSetSize);
-            if let Ok(VmResponse::BalloonWSS {
-                wss: ref balloon_wss,
+            let request = &VmRequest::BalloonCommand(BalloonControlCommand::WorkingSet);
+            if let Ok(VmResponse::BalloonWS {
+                ws: ref balloon_ws,
                 balloon_actual,
             }) = handle_request(request, socket_path)
             {
-                if !wss.is_null() {
-                    // SAFETY: just checked that `wss` is not null.
+                if !ws.is_null() {
+                    // SAFETY: just checked that `ws` is not null.
                     unsafe {
-                        *wss = match balloon_wss.try_into() {
+                        *ws = match balloon_ws.try_into() {
                             Ok(result) => result,
                             Err(_) => return false,
                         };
@@ -795,7 +963,7 @@ pub unsafe extern "C" fn crosvm_client_balloon_wss(
 pub struct RegisteredEventFfi(u32);
 
 #[cfg(feature = "registered_events")]
-pub const REGISTERED_EVENT_VIRTIO_BALLOON_WSS_REPORT: RegisteredEventFfi = RegisteredEventFfi(0);
+pub const REGISTERED_EVENT_VIRTIO_BALLOON_WS_REPORT: RegisteredEventFfi = RegisteredEventFfi(0);
 #[cfg(feature = "registered_events")]
 pub const REGISTERED_EVENT_VIRTIO_BALLOON_RESIZE: RegisteredEventFfi = RegisteredEventFfi(1);
 #[cfg(feature = "registered_events")]
@@ -807,7 +975,7 @@ impl TryFrom<RegisteredEventFfi> for RegisteredEvent {
 
     fn try_from(value: RegisteredEventFfi) -> Result<Self, Self::Error> {
         match value.0 {
-            0 => Ok(RegisteredEvent::VirtioBalloonWssReport),
+            0 => Ok(RegisteredEvent::VirtioBalloonWsReport),
             1 => Ok(RegisteredEvent::VirtioBalloonResize),
             2 => Ok(RegisteredEvent::VirtioBalloonOOMDeflation),
             _ => Err("RegisteredEventFFi outside of known RegisteredEvent enum range"),
@@ -923,7 +1091,25 @@ pub unsafe extern "C" fn crosvm_client_unregister_listener(
     .unwrap_or(false)
 }
 
-/// Set Working Set Size config in guest.
+// TODO(b/288432539): remove once concierge is migrated
+#[no_mangle]
+pub unsafe extern "C" fn crosvm_client_balloon_wss_config(
+    socket_path: *const c_char,
+    config: *const BalloonWssConfigFfi,
+) -> bool {
+    if config.is_null() {
+        return false;
+    }
+    let ret;
+    unsafe {
+        let wsr_config = (&*config).into();
+        ret = crosvm_client_balloon_wsr_config(socket_path, &wsr_config);
+    }
+    ret
+}
+// ^ TODO(b/288432539): remove once concierge is migrated
+
+/// Set Working Set Reporting config in guest.
 ///
 /// The function returns true on success or false if an error occured.
 ///
@@ -933,9 +1119,9 @@ pub unsafe extern "C" fn crosvm_client_unregister_listener(
 /// !raw_pointer.is_null() checks should prevent unsafe behavior but the caller should ensure no
 /// null pointers are passed.
 #[no_mangle]
-pub unsafe extern "C" fn crosvm_client_balloon_wss_config(
+pub unsafe extern "C" fn crosvm_client_balloon_wsr_config(
     socket_path: *const c_char,
-    config: *const BalloonWssConfigFfi,
+    config: *const BalloonWSRConfigFfi,
 ) -> bool {
     catch_unwind(|| {
         if let Some(socket_path) = validate_socket_path(socket_path) {
@@ -950,7 +1136,7 @@ pub unsafe extern "C" fn crosvm_client_balloon_wss_config(
                         actual_bins.push((*config).intervals[idx as usize]);
                     }
                     let request =
-                        VmRequest::BalloonCommand(BalloonControlCommand::WorkingSetSizeConfig {
+                        VmRequest::BalloonCommand(BalloonControlCommand::WorkingSetConfig {
                             bins: actual_bins,
                             refresh_threshold: (*config).refresh_threshold,
                             report_threshold: (*config).report_threshold,
