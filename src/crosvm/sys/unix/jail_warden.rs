@@ -19,6 +19,8 @@ use base::syslog;
 use base::unix::process::fork_process;
 use base::unix::process::Child;
 use base::AsRawDescriptor;
+#[cfg(feature = "swap")]
+use base::AsRawDescriptors;
 use base::Tube;
 use devices::virtio::VirtioDeviceType;
 use devices::BusDevice;
@@ -89,6 +91,10 @@ impl JailWardenImpl {
         cros_tracing::push_descriptors!(&mut keep_rds);
         let (main_tube, worker_tube) = Tube::pair()?;
         keep_rds.push(worker_tube.as_raw_descriptor());
+        #[cfg(feature = "swap")]
+        if let Some(swap_device_helper) = &swap_device_helper {
+            keep_rds.extend(swap_device_helper.as_raw_descriptors());
+        }
 
         let jail = match &config.jail_config {
             Some(jail_config) => {
