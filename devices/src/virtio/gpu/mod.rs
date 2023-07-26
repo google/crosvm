@@ -17,7 +17,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::sync::Arc;
-use std::sync::Condvar;
 
 use anyhow::anyhow;
 use anyhow::Context;
@@ -1082,8 +1081,11 @@ pub struct Gpu {
     mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
     resource_bridges: Option<ResourceBridges>,
     event_devices: Vec<EventDevice>,
-    worker_thread: Option<WorkerThread<()>>,
-    worker_thread_activated: Arc<(Mutex<Option<GpuActivationResources>>, Condvar)>,
+    // The worker thread + a channel used to activate it.
+    // NOTE: The worker thread doesn't respond to `WorkerThread::stop` when in the pre-activate
+    // phase. You must drop the channel first. That is also why the channel is first in the tuple
+    // (tuple members are dropped in order).
+    worker_thread: Option<(mpsc::Sender<GpuActivationResources>, WorkerThread<()>)>,
     display_backends: Vec<DisplayBackend>,
     display_params: Vec<GpuDisplayParameters>,
     display_event: Arc<AtomicBool>,
@@ -1176,7 +1178,6 @@ impl Gpu {
             resource_bridges: Some(ResourceBridges::new(resource_bridges)),
             event_devices,
             worker_thread: None,
-            worker_thread_activated: Arc::new((Mutex::new(None), Condvar::new())),
             display_backends,
             display_params,
             display_event: Arc::new(AtomicBool::new(false)),
@@ -1405,7 +1406,6 @@ impl VirtioDevice for Gpu {
         let external_blob = self.external_blob;
         let udmabuf = self.udmabuf;
         let fence_state = Arc::new(Mutex::new(Default::default()));
-        let worker_thread_activated = self.worker_thread_activated.clone();
 
         #[cfg(windows)]
         let mut wndproc_thread = self.wndproc_thread.take();
@@ -1423,8 +1423,9 @@ impl VirtioDevice for Gpu {
         let rutabaga_server_descriptor = self.rutabaga_server_descriptor.take();
 
         let (init_finished_tx, init_finished_rx) = mpsc::channel();
+        let (activate_tx, activate_rx) = mpsc::channel();
 
-        self.worker_thread = Some(WorkerThread::start("v_gpu", move |kill_evt| {
+        let worker_thread = WorkerThread::start("v_gpu", move |kill_evt| {
             #[cfg(unix)]
             if let Some(cgroup_path) = gpu_cgroup_path {
                 move_task_to_cgroup(cgroup_path, base::gettid())
@@ -1465,12 +1466,11 @@ impl VirtioDevice for Gpu {
             // Tell the parent thread that the init phase is complete.
             let _ = init_finished_tx.send(());
 
-            let (activated_mut, activated_cvar) = &*worker_thread_activated;
-            let mut activated = activated_mut.lock();
-            while activated.is_none() {
-                activated = activated_cvar.wait(activated).unwrap();
-            }
-            let activation_resources = activated.take().unwrap();
+            let activation_resources: GpuActivationResources = match activate_rx.recv() {
+                Ok(x) => x,
+                // Other half of channel was dropped.
+                Err(mpsc::RecvError) => return,
+            };
 
             rutabaga_fence_handler_resources
                 .lock()
@@ -1494,7 +1494,9 @@ impl VirtioDevice for Gpu {
                 state: Frontend::new(virtio_gpu, fence_state),
             }
             .run()
-        }));
+        });
+
+        self.worker_thread = Some((activate_tx, worker_thread));
 
         match init_finished_rx.recv() {
             Ok(()) => {}
@@ -1521,16 +1523,19 @@ impl VirtioDevice for Gpu {
         let (cursor_queue, cursor_evt) = queues.remove(&1).unwrap();
         let cursor_queue = LocalQueueReader::new(cursor_queue, interrupt.clone());
 
-        let (activated_mut, activated_cvar) = &*self.worker_thread_activated;
-        activated_mut.lock().replace(GpuActivationResources {
-            mem,
-            interrupt,
-            ctrl_queue,
-            ctrl_evt,
-            cursor_queue,
-            cursor_evt,
-        });
-        activated_cvar.notify_one();
+        self.worker_thread
+            .as_mut()
+            .expect("worker thread missing on activate")
+            .0
+            .send(GpuActivationResources {
+                mem,
+                interrupt,
+                ctrl_queue,
+                ctrl_evt,
+                cursor_queue,
+                cursor_evt,
+            })
+            .expect("failed to send activation resources to worker thread");
 
         Ok(())
     }
