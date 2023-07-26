@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 use std::io;
+use std::os::fd::AsRawFd;
 use std::sync::Arc;
 
 use base::AsRawDescriptor;
@@ -90,7 +91,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
             let res = if let Some(offset) = file_offset {
                 unsafe {
                     libc::pread64(
-                        self.0.source.as_raw_descriptor(),
+                        self.0.duped_fd.as_raw_fd(),
                         vec.as_mut_ptr() as *mut libc::c_void,
                         vec.len(),
                         offset as libc::off64_t,
@@ -99,7 +100,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
             } else {
                 unsafe {
                     libc::read(
-                        self.0.source.as_raw_descriptor(),
+                        self.0.duped_fd.as_raw_fd(),
                         vec.as_mut_ptr() as *mut libc::c_void,
                         vec.len(),
                     )
@@ -138,7 +139,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
             let res = if let Some(offset) = file_offset {
                 unsafe {
                     libc::preadv64(
-                        self.0.source.as_raw_descriptor(),
+                        self.0.duped_fd.as_raw_fd(),
                         iovecs.as_mut_ptr() as *mut _,
                         iovecs.len() as i32,
                         offset as libc::off64_t,
@@ -147,7 +148,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
             } else {
                 unsafe {
                     libc::readv(
-                        self.0.source.as_raw_descriptor(),
+                        self.0.duped_fd.as_raw_fd(),
                         iovecs.as_mut_ptr() as *mut _,
                         iovecs.len() as i32,
                     )
@@ -186,7 +187,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
             let res = if let Some(offset) = file_offset {
                 unsafe {
                     libc::pwrite64(
-                        self.0.source.as_raw_descriptor(),
+                        self.0.duped_fd.as_raw_fd(),
                         vec.as_ptr() as *const libc::c_void,
                         vec.len(),
                         offset as libc::off64_t,
@@ -195,7 +196,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
             } else {
                 unsafe {
                     libc::write(
-                        self.0.source.as_raw_descriptor(),
+                        self.0.duped_fd.as_raw_fd(),
                         vec.as_ptr() as *const libc::c_void,
                         vec.len(),
                     )
@@ -235,7 +236,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
             let res = if let Some(offset) = file_offset {
                 unsafe {
                     libc::pwritev64(
-                        self.0.source.as_raw_descriptor(),
+                        self.0.duped_fd.as_raw_fd(),
                         iovecs.as_ptr() as *mut _,
                         iovecs.len() as i32,
                         offset as libc::off64_t,
@@ -244,7 +245,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
             } else {
                 unsafe {
                     libc::writev(
-                        self.0.source.as_raw_descriptor(),
+                        self.0.duped_fd.as_raw_fd(),
                         iovecs.as_ptr() as *mut _,
                         iovecs.len() as i32,
                     )
@@ -275,7 +276,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
         let mode_u32: u32 = mode.into();
         let ret = unsafe {
             libc::fallocate64(
-                self.0.source.as_raw_descriptor(),
+                self.0.duped_fd.as_raw_fd(),
                 mode_u32 as libc::c_int,
                 file_offset as libc::off64_t,
                 len as libc::off64_t,
@@ -290,7 +291,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
 
     /// Sync all completed write operations to the backing storage.
     pub async fn fsync(&self) -> AsyncResult<()> {
-        let ret = unsafe { libc::fsync(self.0.source.as_raw_descriptor()) };
+        let ret = unsafe { libc::fsync(self.0.duped_fd.as_raw_fd()) };
         if ret == 0 {
             Ok(())
         } else {
@@ -301,7 +302,7 @@ impl<F: AsRawDescriptor> PollSource<F> {
     /// Sync all data of completed write operations to the backing storage, avoiding updating extra
     /// metadata.
     pub async fn fdatasync(&self) -> AsyncResult<()> {
-        let ret = unsafe { libc::fdatasync(self.0.source.as_raw_descriptor()) };
+        let ret = unsafe { libc::fdatasync(self.0.duped_fd.as_raw_fd()) };
         if ret == 0 {
             Ok(())
         } else {

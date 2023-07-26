@@ -2,12 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fs::File;
 use std::future::Future;
 use std::io;
 use std::mem;
-use std::os::unix::io::FromRawFd;
-use std::os::unix::io::RawFd;
+use std::os::fd::AsRawFd;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::Weak;
@@ -50,7 +48,7 @@ pub enum Error {
     CreatingContext(base::Error),
     /// Failed to copy the FD for the polling context.
     #[error("Failed to copy the FD for the polling context: {0}")]
-    DuplicatingFd(base::Error),
+    DuplicatingFd(std::io::Error),
     #[error("Executor failed")]
     ExecutorError(anyhow::Error),
     /// The Executor is gone.
@@ -78,7 +76,7 @@ impl From<Error> for io::Error {
             CantClearWakeEvent(e) => e.into(),
             CloneEvent(e) => e.into(),
             CreateEvent(e) => e.into(),
-            DuplicatingFd(e) => e.into(),
+            DuplicatingFd(e) => e,
             ExecutorError(e) => io::Error::new(io::ErrorKind::Other, e),
             ExecutorGone => io::Error::new(io::ErrorKind::Other, e),
             CreatingContext(e) => e.into(),
@@ -92,7 +90,7 @@ impl From<Error> for io::Error {
 
 // A poll operation that has been submitted and is potentially being waited on.
 struct OpData {
-    file: File,
+    file: Arc<std::os::fd::OwnedFd>,
     waker: Option<Waker>,
 }
 
@@ -109,14 +107,28 @@ enum OpStatus {
 pub struct RegisteredSource<F> {
     pub(crate) source: F,
     ex: Weak<RawExecutor<EpollReactor>>,
+    /// A clone of `source`'s underlying FD. Allows us to ensure that the FD isn't closed during
+    /// the epoll wait call. There are well defined sematics for closing an FD in an epoll context
+    /// so it might be possible to eliminate this dup if someone thinks hard about it.
+    pub(crate) duped_fd: Arc<std::os::fd::OwnedFd>,
 }
 
 impl<F: AsRawDescriptor> RegisteredSource<F> {
     pub(crate) fn new(raw: &Arc<RawExecutor<EpollReactor>>, f: F) -> Result<Self> {
-        add_fd_flags(f.as_raw_descriptor(), libc::O_NONBLOCK).map_err(Error::SettingNonBlocking)?;
+        let raw_fd = f.as_raw_descriptor();
+        assert_ne!(raw_fd, -1);
+
+        add_fd_flags(raw_fd, libc::O_NONBLOCK).map_err(Error::SettingNonBlocking)?;
+
+        // SAFETY: The FD is open for the duration of the BorrowedFd lifetime (this line) and not
+        // -1 (checked above).
+        let duped_fd = unsafe { std::os::fd::BorrowedFd::borrow_raw(raw_fd) }
+            .try_clone_to_owned()
+            .map_err(Error::DuplicatingFd)?;
         Ok(RegisteredSource {
             source: f,
             ex: Arc::downgrade(raw),
+            duped_fd: Arc::new(duped_fd),
         })
     }
 
@@ -127,7 +139,7 @@ impl<F: AsRawDescriptor> RegisteredSource<F> {
 
         let token = ex
             .reactor
-            .add_operation(self.source.as_raw_descriptor(), EventType::Read)?;
+            .add_operation(Arc::clone(&self.duped_fd), EventType::Read)?;
 
         Ok(PendingOperation {
             token: Some(token),
@@ -142,7 +154,7 @@ impl<F: AsRawDescriptor> RegisteredSource<F> {
 
         let token = ex
             .reactor
-            .add_operation(self.source.as_raw_descriptor(), EventType::Write)?;
+            .add_operation(Arc::clone(&self.duped_fd), EventType::Write)?;
 
         Ok(PendingOperation {
             token: Some(token),
@@ -228,22 +240,18 @@ impl EpollReactor {
         Ok(reactor)
     }
 
-    fn add_operation(&self, fd: RawFd, event_type: EventType) -> Result<WakerToken> {
-        let duped_fd = unsafe {
-            // Safe because duplicating an FD doesn't affect memory safety, and the dup'd FD
-            // will only be added to the poll loop.
-            File::from_raw_fd(dup_fd(fd)?)
-        };
+    fn add_operation(
+        &self,
+        file: Arc<std::os::fd::OwnedFd>,
+        event_type: EventType,
+    ) -> Result<WakerToken> {
         let mut ops = self.ops.lock();
         let entry = ops.vacant_entry();
         let next_token = entry.key();
         self.poll_ctx
-            .add_for_event(&duped_fd, event_type, next_token)
+            .add_for_event(&base::Descriptor(file.as_raw_fd()), event_type, next_token)
             .map_err(Error::SubmittingWaker)?;
-        entry.insert(OpStatus::Pending(OpData {
-            file: duped_fd,
-            waker: None,
-        }));
+        entry.insert(OpStatus::Pending(OpData { file, waker: None }));
         Ok(WakerToken(next_token))
     }
 
@@ -272,7 +280,7 @@ impl EpollReactor {
         match self.ops.lock().remove(token.0) {
             OpStatus::Pending(data) => self
                 .poll_ctx
-                .delete(&data.file)
+                .delete(&base::Descriptor(data.file.as_raw_fd()))
                 .map_err(Error::WaitContextError),
             OpStatus::Completed => Ok(()),
             // unreachable because we never create a WakerToken for `wake_event`.
@@ -306,7 +314,10 @@ impl Reactor for EpollReactor {
                         waker.wake();
                     }
 
-                    if let Err(e) = self.poll_ctx.delete(&data.file) {
+                    if let Err(e) = self
+                        .poll_ctx
+                        .delete(&base::Descriptor(data.file.as_raw_fd()))
+                    {
                         warn!("Failed to remove file from EpollCtx: {}", e);
                     }
                 }
@@ -349,7 +360,7 @@ impl Reactor for EpollReactor {
                 mem::drop(ops);
 
                 self.poll_ctx
-                    .delete(&file)
+                    .delete(&base::Descriptor(file.as_raw_fd()))
                     .map_err(Error::WaitContextError)?;
 
                 if let Some(waker) = waker {
@@ -378,20 +389,10 @@ impl AsRawDescriptors for EpollReactor {
     }
 }
 
-// Used to `dup` the FDs passed to the executor so there is a guarantee they aren't closed while
-// waiting in TLS to be added to the main polling context.
-unsafe fn dup_fd(fd: RawFd) -> Result<RawFd> {
-    let ret = libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0);
-    if ret < 0 {
-        Err(Error::DuplicatingFd(base::Error::last()))
-    } else {
-        Ok(ret)
-    }
-}
-
 #[cfg(test)]
 mod test {
     use std::cell::RefCell;
+    use std::fs::File;
     use std::io::Read;
     use std::io::Write;
     use std::rc::Rc;
