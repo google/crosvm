@@ -1280,14 +1280,6 @@ impl Gpu {
     }
 }
 
-impl Drop for Gpu {
-    fn drop(&mut self) {
-        if let Some(worker_thread) = self.worker_thread.take() {
-            worker_thread.stop();
-        }
-    }
-}
-
 impl VirtioDevice for Gpu {
     fn keep_rds(&self) -> Vec<RawDescriptor> {
         let mut keep_rds = Vec::new();
