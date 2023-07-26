@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Condvar;
 
@@ -1082,7 +1083,6 @@ pub struct Gpu {
     resource_bridges: Option<ResourceBridges>,
     event_devices: Vec<EventDevice>,
     worker_thread: Option<WorkerThread<()>>,
-    worker_thread_initialized: Arc<(Mutex<bool>, Condvar)>,
     worker_thread_activated: Arc<(Mutex<Option<GpuActivationResources>>, Condvar)>,
     display_backends: Vec<DisplayBackend>,
     display_params: Vec<GpuDisplayParameters>,
@@ -1176,7 +1176,6 @@ impl Gpu {
             resource_bridges: Some(ResourceBridges::new(resource_bridges)),
             event_devices,
             worker_thread: None,
-            worker_thread_initialized: Arc::new((Mutex::new(false), Condvar::new())),
             worker_thread_activated: Arc::new((Mutex::new(None), Condvar::new())),
             display_backends,
             display_params,
@@ -1406,8 +1405,6 @@ impl VirtioDevice for Gpu {
         let external_blob = self.external_blob;
         let udmabuf = self.udmabuf;
         let fence_state = Arc::new(Mutex::new(Default::default()));
-
-        let worker_thread_initialized = self.worker_thread_initialized.clone();
         let worker_thread_activated = self.worker_thread_activated.clone();
 
         #[cfg(windows)]
@@ -1424,6 +1421,8 @@ impl VirtioDevice for Gpu {
             .context("missing rutabaga_builder")
             .unwrap();
         let rutabaga_server_descriptor = self.rutabaga_server_descriptor.take();
+
+        let (init_finished_tx, init_finished_rx) = mpsc::channel();
 
         self.worker_thread = Some(WorkerThread::start("v_gpu", move |kill_evt| {
             #[cfg(unix)]
@@ -1463,9 +1462,8 @@ impl VirtioDevice for Gpu {
                 None => return,
             };
 
-            let (initialized_mut, initialized_cvar) = &*worker_thread_initialized;
-            *initialized_mut.lock() = true;
-            initialized_cvar.notify_one();
+            // Tell the parent thread that the init phase is complete.
+            let _ = init_finished_tx.send(());
 
             let (activated_mut, activated_cvar) = &*worker_thread_activated;
             let mut activated = activated_mut.lock();
@@ -1498,10 +1496,9 @@ impl VirtioDevice for Gpu {
             .run()
         }));
 
-        let (initialized_mut, initialized_cvar) = &*self.worker_thread_initialized;
-        let mut initialized = initialized_mut.lock();
-        while !*initialized {
-            initialized = initialized_cvar.wait(initialized).unwrap();
+        match init_finished_rx.recv() {
+            Ok(()) => {}
+            Err(mpsc::RecvError) => error!("virtio-gpu worker thread init failed"),
         }
     }
 
