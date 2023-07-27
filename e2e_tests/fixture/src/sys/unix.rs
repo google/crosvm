@@ -17,6 +17,7 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
+use std::time::Instant;
 
 use anyhow::anyhow;
 use anyhow::Context;
@@ -25,7 +26,7 @@ use libc::O_DIRECT;
 use tempfile::TempDir;
 
 use crate::utils::find_crosvm_binary;
-use crate::utils::run_with_timeout;
+use crate::utils::run_with_status_check;
 use crate::vm::local_path_from_url;
 use crate::vm::Config;
 
@@ -172,19 +173,32 @@ impl TestVmSys {
         command.args(&cfg.extra_args);
 
         println!("$ {:?}", command);
-        let mut process = Some(command.spawn()?);
+        let mut process = command.spawn()?;
 
-        // Open pipes. Apply timeout to `from_guest` since it will block until crosvm opens the
-        // other end.
-        let to_guest = File::create(to_guest_pipe)?;
-        let from_guest = match run_with_timeout(
-            move || File::open(from_guest_pipe),
-            VM_COMMUNICATION_TIMEOUT,
+        // Open pipes. Apply timeout to `to_guest` and `from_guest` since it will block until crosvm
+        // opens the other end.
+        let start = Instant::now();
+        let (to_guest, from_guest) = match run_with_status_check(
+            move || (File::create(to_guest_pipe), File::open(from_guest_pipe)),
+            Duration::from_millis(200),
+            || {
+                if start.elapsed() > VM_COMMUNICATION_TIMEOUT {
+                    return false;
+                }
+                if let Some(wait_result) = process.try_wait().unwrap() {
+                    println!("crosvm unexpectedly exited: {:?}", wait_result);
+                    false
+                } else {
+                    true
+                }
+            },
         ) {
-            Ok(from_guest) => from_guest.with_context(|| "Cannot open from_guest pipe")?,
+            Ok((to_guest, from_guest)) => (
+                to_guest.context("Cannot open to_guest pipe")?,
+                from_guest.context("Cannot open from_guest pipe")?,
+            ),
             Err(error) => {
                 // Kill the crosvm process if we cannot connect in time.
-                let mut process = process.take().unwrap();
                 process.kill().unwrap();
                 process.wait().unwrap();
                 panic!("Cannot connect to VM: {}", error);
@@ -196,7 +210,7 @@ impl TestVmSys {
             from_guest_reader: Arc::new(Mutex::new(BufReader::new(from_guest))),
             to_guest: Arc::new(Mutex::new(to_guest)),
             control_socket_path,
-            process,
+            process: Some(process),
         })
     }
 

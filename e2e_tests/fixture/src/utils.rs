@@ -18,7 +18,7 @@ use std::thread;
 use std::time::Duration;
 use std::time::SystemTime;
 
-use anyhow::anyhow;
+use anyhow::bail;
 use anyhow::Result;
 use tempfile::NamedTempFile;
 
@@ -60,6 +60,25 @@ where
     F: FnOnce() -> U + Send + 'static,
     U: Send + 'static,
 {
+    run_with_status_check(closure, timeout, || false)
+}
+
+/// Run the provided closure in a separate thread and return it's result. If the closure does not
+/// finish, continue_fn is called periodically with interval while continue_fn return true. Once
+/// continue_fn return false, an Error is returned instead.
+///
+/// WARNING: It is not possible to kill the closure if a timeout occurs. It is advised to panic
+/// when an error is returned.
+pub fn run_with_status_check<F, U, C>(
+    closure: F,
+    interval: Duration,
+    mut continue_fn: C,
+) -> Result<U>
+where
+    F: FnOnce() -> U + Send + 'static,
+    U: Send + 'static,
+    C: FnMut() -> bool,
+{
     let (tx, rx) = sync_channel::<()>(1);
     let handle = thread::spawn(move || {
         let result = closure();
@@ -67,10 +86,18 @@ where
         let _ = tx.send(());
         result
     });
-    match rx.recv_timeout(timeout) {
-        Ok(_) => Ok(handle.join().unwrap()),
-        Err(RecvTimeoutError::Timeout) => Err(anyhow!("closure timed out after {timeout:?}")),
-        Err(RecvTimeoutError::Disconnected) => Err(anyhow!("closure paniced")),
+    loop {
+        match rx.recv_timeout(interval) {
+            Ok(_) => {
+                return Ok(handle.join().unwrap());
+            }
+            Err(RecvTimeoutError::Timeout) => {
+                if !continue_fn() {
+                    bail!("closure timed out");
+                }
+            }
+            Err(RecvTimeoutError::Disconnected) => bail!("closure panicked"),
+        }
     }
 }
 
