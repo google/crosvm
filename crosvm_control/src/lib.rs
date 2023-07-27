@@ -949,11 +949,22 @@ pub unsafe extern "C" fn crosvm_client_balloon_wsr_config(
                     for idx in 0..(*config).num_intervals {
                         actual_bins.push((*config).intervals[idx as usize]);
                     }
+                    let refresh_threshold = match u32::try_from((*config).refresh_threshold) {
+                        Ok(r_t) => r_t,
+                        Err(_) => return false,
+                    };
+                    let report_threshold = match u32::try_from((*config).report_threshold) {
+                        Ok(r_p) => r_p,
+                        Err(_) => return false,
+                    };
                     let request =
                         VmRequest::BalloonCommand(BalloonControlCommand::WorkingSetConfig {
-                            bins: actual_bins,
-                            refresh_threshold: (*config).refresh_threshold,
-                            report_threshold: (*config).report_threshold,
+                            bins: actual_bins
+                                .iter()
+                                .map(|&b| u32::try_from(b).unwrap())
+                                .collect(),
+                            refresh_threshold,
+                            report_threshold,
                         });
                     vms_request(&request, socket_path).is_ok()
                 }

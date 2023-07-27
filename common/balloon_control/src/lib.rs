@@ -27,9 +27,9 @@ pub enum BalloonTubeCommand {
     WorkingSet,
     // Send balloon ws config to guest.
     WorkingSetConfig {
-        bins: Vec<u64>,
-        refresh_threshold: u64,
-        report_threshold: u64,
+        bins: Vec<u32>,
+        refresh_threshold: u32,
+        report_threshold: u32,
     },
 }
 
