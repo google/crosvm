@@ -140,6 +140,7 @@ pub(crate) struct CrossDomainContext {
 pub struct CrossDomain {
     channels: Option<Vec<RutabagaChannel>>,
     gralloc: Arc<Mutex<RutabagaGralloc>>,
+    fence_handler: RutabagaFenceHandler,
 }
 
 // TODO(gurchetansingh): optimize the item tracker.  Each requirements blob is long-lived and can
@@ -467,11 +468,13 @@ impl CrossDomain {
     /// initializing rutabaga gralloc.
     pub fn init(
         channels: Option<Vec<RutabagaChannel>>,
+        fence_handler: RutabagaFenceHandler,
     ) -> RutabagaResult<Box<dyn RutabagaComponent>> {
         let gralloc = RutabagaGralloc::new()?;
         Ok(Box::new(CrossDomain {
             channels,
             gralloc: Arc::new(Mutex::new(gralloc)),
+            fence_handler,
         }))
     }
 }
@@ -969,5 +972,13 @@ impl RutabagaComponent for CrossDomain {
             resample_evt: None,
             kill_evt: None,
         }))
+    }
+
+    // With "drm/virtio: Conditionally allocate virtio_gpu_fence" in the kernel, global fences for
+    // cross-domain aren't created.  However, that change is projected to land in the v6.6 kernel.
+    // For older kernels, signal the fence immediately on creation.
+    fn create_fence(&mut self, fence: RutabagaFence) -> RutabagaResult<()> {
+        self.fence_handler.call(fence);
+        Ok(())
     }
 }
