@@ -19,7 +19,6 @@ impl VhostUserVirtioDevice {
             | 1 << gpu::VIRTIO_GPU_F_RESOURCE_BLOB
             | 1 << gpu::VIRTIO_GPU_F_CONTEXT_INIT
             | 1 << gpu::VIRTIO_GPU_F_EDID
-            | 1 << gpu::VIRTIO_GPU_F_RESOURCE_SYNC
             | 1 << gpu::VIRTIO_GPU_F_CREATE_GUEST_HANDLE;
 
         let allow_protocol_features = VhostUserProtocolFeatures::CONFIG

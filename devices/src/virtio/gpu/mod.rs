@@ -59,7 +59,6 @@ pub use self::protocol::VIRTIO_GPU_F_CONTEXT_INIT;
 pub use self::protocol::VIRTIO_GPU_F_CREATE_GUEST_HANDLE;
 pub use self::protocol::VIRTIO_GPU_F_EDID;
 pub use self::protocol::VIRTIO_GPU_F_RESOURCE_BLOB;
-pub use self::protocol::VIRTIO_GPU_F_RESOURCE_SYNC;
 pub use self::protocol::VIRTIO_GPU_F_RESOURCE_UUID;
 pub use self::protocol::VIRTIO_GPU_F_VIRGL;
 pub use self::protocol::VIRTIO_GPU_SHM_ID_HOST_VISIBLE;
@@ -1335,8 +1334,7 @@ impl VirtioDevice for Gpu {
                 | 1 << VIRTIO_GPU_F_RESOURCE_UUID
                 | 1 << VIRTIO_GPU_F_RESOURCE_BLOB
                 | 1 << VIRTIO_GPU_F_CONTEXT_INIT
-                | 1 << VIRTIO_GPU_F_EDID
-                | 1 << VIRTIO_GPU_F_RESOURCE_SYNC;
+                | 1 << VIRTIO_GPU_F_EDID;
 
             if self.udmabuf {
                 virtio_gpu_features |= 1 << VIRTIO_GPU_F_CREATE_GUEST_HANDLE;
