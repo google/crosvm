@@ -684,51 +684,6 @@ impl From<WSBucket> for WorkingSetBucketFfi {
     }
 }
 
-// TODO(b/288432539): remove once concierge is migrated
-#[derive(Clone, Copy, Debug)]
-#[repr(C)]
-pub struct WSSBucketFfi {
-    age: u64,
-    bytes: [u64; 2],
-}
-
-impl WSSBucketFfi {
-    fn new() -> Self {
-        Self {
-            age: 0,
-            bytes: [0, 0],
-        }
-    }
-}
-
-impl From<WSBucket> for WSSBucketFfi {
-    fn from(other: WSBucket) -> Self {
-        Self {
-            age: other.age,
-            bytes: other.bytes,
-        }
-    }
-}
-
-impl From<WorkingSetBucketFfi> for WSSBucketFfi {
-    fn from(value: WorkingSetBucketFfi) -> Self {
-        WSSBucketFfi {
-            age: value.age,
-            bytes: value.bytes,
-        }
-    }
-}
-
-impl From<WSSBucketFfi> for WorkingSetBucketFfi {
-    fn from(value: WSSBucketFfi) -> Self {
-        WorkingSetBucketFfi {
-            age: value.age,
-            bytes: value.bytes,
-        }
-    }
-}
-// ^ */ TODO(b/288432539): remove once concierge is migrated
-
 #[repr(C)]
 #[derive(Debug)]
 pub struct BalloonWSFfi {
@@ -773,86 +728,6 @@ impl Default for BalloonWSFfi {
     }
 }
 
-// TODO(b/288432539): remove once concierge is migrated
-#[repr(C)]
-#[derive(Debug)]
-pub struct BalloonWSSFfi {
-    wss: [WSSBucketFfi; VIRTIO_BALLOON_WS_MAX_NUM_BINS],
-    num_bins: u8,
-    _reserved: [u8; 7],
-}
-
-impl From<&mut BalloonWSSFfi> for BalloonWSFfi {
-    fn from(value: &mut BalloonWSSFfi) -> Self {
-        let mut ws = [WorkingSetBucketFfi {
-            age: 0,
-            bytes: [0; 2],
-        }; VIRTIO_BALLOON_WS_MAX_NUM_BINS];
-        for (idx, &bucket) in value.wss.iter().enumerate() {
-            ws[idx] = bucket.into();
-        }
-        BalloonWSFfi {
-            ws,
-            num_bins: value.num_bins,
-            _reserved: value._reserved,
-        }
-    }
-}
-
-impl From<BalloonWSFfi> for BalloonWSSFfi {
-    fn from(value: BalloonWSFfi) -> Self {
-        let mut wss = [WSSBucketFfi {
-            age: 0,
-            bytes: [0; 2],
-        }; VIRTIO_BALLOON_WS_MAX_NUM_BINS];
-        for (idx, &bucket) in value.ws.iter().enumerate() {
-            wss[idx] = bucket.into();
-        }
-        BalloonWSSFfi {
-            wss,
-            num_bins: value.num_bins,
-            _reserved: value._reserved,
-        }
-    }
-}
-
-impl TryFrom<&BalloonWS> for BalloonWSSFfi {
-    type Error = &'static str;
-
-    fn try_from(value: &BalloonWS) -> Result<Self, Self::Error> {
-        if value.ws.len() > VIRTIO_BALLOON_WS_MAX_NUM_BINS {
-            return Err("too many WS buckets in source object.");
-        }
-
-        let mut ffi = Self {
-            wss: [WSSBucketFfi::new(); VIRTIO_BALLOON_WS_MAX_NUM_BINS],
-            num_bins: value.ws.len() as u8,
-            ..Default::default()
-        };
-        for (ffi_wss, other_wss) in ffi.wss.iter_mut().zip(value.ws.iter()) {
-            *ffi_wss = (*other_wss).into();
-        }
-        Ok(ffi)
-    }
-}
-
-impl BalloonWSSFfi {
-    pub fn new() -> Self {
-        Self {
-            wss: [WSSBucketFfi::new(); VIRTIO_BALLOON_WS_MAX_NUM_BINS],
-            num_bins: 0,
-            _reserved: [0; 7],
-        }
-    }
-}
-
-impl Default for BalloonWSSFfi {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-// ^ */ TODO(b/288432539): remove once concierge is migrated
-
 #[repr(C)]
 pub struct BalloonWSRConfigFfi {
     intervals: [u64; VIRTIO_BALLOON_WS_MAX_NUM_INTERVALS],
@@ -861,49 +736,6 @@ pub struct BalloonWSRConfigFfi {
     refresh_threshold: u64,
     report_threshold: u64,
 }
-
-// TODO(b/288432539): remove once concierge is migrated
-#[repr(C)]
-pub struct BalloonWssConfigFfi {
-    intervals: [u64; VIRTIO_BALLOON_WS_MAX_NUM_INTERVALS],
-    num_intervals: u8,
-    _reserved: [u8; 7],
-    refresh_threshold: u64,
-    report_threshold: u64,
-}
-
-impl From<&BalloonWssConfigFfi> for BalloonWSRConfigFfi {
-    fn from(value: &BalloonWssConfigFfi) -> Self {
-        BalloonWSRConfigFfi {
-            intervals: value.intervals,
-            num_intervals: value.num_intervals,
-            _reserved: value._reserved,
-            refresh_threshold: value.refresh_threshold,
-            report_threshold: value.report_threshold,
-        }
-    }
-}
-// ^ */ TODO(b/288432539): remove once concierge is migrated
-
-// TODO(b/288432539): remove once concierge is migrated
-#[no_mangle]
-pub unsafe extern "C" fn crosvm_client_balloon_wss(
-    socket_path: *const c_char,
-    wss: *mut BalloonWSSFfi,
-    actual: *mut u64,
-) -> bool {
-    if wss.is_null() {
-        return false;
-    }
-    let ret;
-    unsafe {
-        let mut ws: BalloonWSFfi = (&mut *wss).into();
-        ret = crosvm_client_balloon_working_set(socket_path, &mut ws, actual);
-        *wss = ws.into();
-    }
-    ret
-}
-// ^ */ TODO(b/288432539): remove once concierge is migrated
 
 /// Returns balloon working set of the crosvm instance whose control socket is listening on socket_path.
 ///
@@ -1090,24 +922,6 @@ pub unsafe extern "C" fn crosvm_client_unregister_listener(
     })
     .unwrap_or(false)
 }
-
-// TODO(b/288432539): remove once concierge is migrated
-#[no_mangle]
-pub unsafe extern "C" fn crosvm_client_balloon_wss_config(
-    socket_path: *const c_char,
-    config: *const BalloonWssConfigFfi,
-) -> bool {
-    if config.is_null() {
-        return false;
-    }
-    let ret;
-    unsafe {
-        let wsr_config = (&*config).into();
-        ret = crosvm_client_balloon_wsr_config(socket_path, &wsr_config);
-    }
-    ret
-}
-// ^ TODO(b/288432539): remove once concierge is migrated
 
 /// Set Working Set Reporting config in guest.
 ///
