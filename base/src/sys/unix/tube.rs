@@ -95,7 +95,7 @@ impl Tube {
     }
 
     pub fn recv<T: DeserializeOwned>(&self) -> Result<T> {
-        let msg_size = self.socket.peek_size().map_err(Error::Recv)?;
+        let msg_size = handle_eintr!(self.socket.peek_size()).map_err(Error::Recv)?;
         // This buffer is the right size, as the size received in peek_size() represents the size
         // of only the message itself and not the file descriptors. The descriptors are stored
         // separately in msghdr::msg_control.
@@ -154,7 +154,7 @@ impl Tube {
 
     #[cfg(feature = "proto_tube")]
     fn recv_proto<M: protobuf::Message>(&self) -> Result<M> {
-        let msg_size = self.socket.peek_size().map_err(Error::Recv)?;
+        let msg_size = handle_eintr!(self.socket.peek_size()).map_err(Error::Recv)?;
         let mut msg_bytes = vec![0u8; msg_size];
         let mut msg_descriptors_full = [0; TUBE_MAX_FDS];
 

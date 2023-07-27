@@ -34,7 +34,6 @@ fn boot_custom_vm_kernel_initrd() -> anyhow::Result<()> {
 }
 
 #[test]
-#[ignore = "b/293463612 test is flaky"]
 fn boot_test_vm_uring() -> anyhow::Result<()> {
     let mut vm = TestVm::new(
         Config::new().extra_args(vec!["--async-executor".to_string(), "uring".to_string()]),
