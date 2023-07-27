@@ -4,7 +4,7 @@
     "vscode": {
       "extensions": [
         "rust-lang.rust-analyzer",
-        "bungcip.better-toml",
+        "tamasfe.even-better-toml",
         "esbenp.prettier-vscode",
         "ms-python.vscode-pylance",
         "foxundermoon.shell-format",
