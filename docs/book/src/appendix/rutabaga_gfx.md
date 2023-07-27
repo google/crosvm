@@ -58,8 +58,8 @@ sudo make install
 If your VMM boots to a Linux guest, it's possible to run gfxstream with that.
 
 ```sh
-git clone https://android.googlesource.com/device/generic/goldfish-opengl
-cd goldfish-opengl
+git clone https://android.googlesource.com/platform/hardware/google/gfxstream
+cd gfxstream/guest
 meson amd64-build/
 ninja -C amd64-build/ install
 ```
