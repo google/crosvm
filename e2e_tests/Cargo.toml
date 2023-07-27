@@ -14,3 +14,5 @@ rand = "0.8"
 tempfile = "3"
 prebuilts = { path = "../prebuilts" }
 base = { path = "../base" }
+swap = { path= "../swap" }
+serde_json = "*"

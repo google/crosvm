@@ -35,6 +35,7 @@ DO_NOT_BUILD_RISCV64 = [
 # List of integration tests that will ask for root privileges.
 ROOT_TESTS = [
     "package(e2e_tests) & binary(pci_hotplug)",
+    "package(e2e_tests) & binary(swap)",
     "package(net_util) & binary(unix_tap)",
     "package(cros_tracing) & binary(trace_marker)",
 ]

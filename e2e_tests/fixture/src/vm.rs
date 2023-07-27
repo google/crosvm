@@ -495,66 +495,87 @@ impl TestVm {
 
     /// Hotplug a tap device.
     pub fn hotplug_tap(&mut self, tap_name: &str) -> Result<()> {
-        self.sys.crosvm_command(
-            "virtio-net",
-            vec!["add".to_owned(), tap_name.to_owned()],
-            self.sudo,
-        )
+        self.sys
+            .crosvm_command(
+                "virtio-net",
+                vec!["add".to_owned(), tap_name.to_owned()],
+                self.sudo,
+            )
+            .map(|_| ())
     }
 
     /// Remove hotplugged device on bus.
     pub fn remove_pci_device(&mut self, bus_num: u8) -> Result<()> {
-        self.sys.crosvm_command(
-            "virtio-net",
-            vec!["remove".to_owned(), bus_num.to_string()],
-            self.sudo,
-        )
+        self.sys
+            .crosvm_command(
+                "virtio-net",
+                vec!["remove".to_owned(), bus_num.to_string()],
+                self.sudo,
+            )
+            .map(|_| ())
     }
 
     pub fn stop(&mut self) -> Result<()> {
-        self.sys.crosvm_command("stop", vec![], self.sudo)
+        self.sys
+            .crosvm_command("stop", vec![], self.sudo)
+            .map(|_| ())
     }
 
     pub fn suspend(&mut self) -> Result<()> {
-        self.sys.crosvm_command("suspend", vec![], self.sudo)
+        self.sys
+            .crosvm_command("suspend", vec![], self.sudo)
+            .map(|_| ())
     }
 
     pub fn suspend_full(&mut self) -> Result<()> {
         self.sys
             .crosvm_command("suspend", vec!["--full".to_string()], self.sudo)
+            .map(|_| ())
     }
 
     pub fn resume(&mut self) -> Result<()> {
-        self.sys.crosvm_command("resume", vec![], self.sudo)
+        self.sys
+            .crosvm_command("resume", vec![], self.sudo)
+            .map(|_| ())
     }
 
     pub fn resume_full(&mut self) -> Result<()> {
         self.sys
             .crosvm_command("resume", vec!["--full".to_string()], self.sudo)
+            .map(|_| ())
     }
 
     pub fn disk(&mut self, args: Vec<String>) -> Result<()> {
-        self.sys.crosvm_command("disk", args, self.sudo)
+        self.sys.crosvm_command("disk", args, self.sudo).map(|_| ())
     }
 
     pub fn snapshot(&mut self, filename: &std::path::Path) -> Result<()> {
-        self.sys.crosvm_command(
-            "snapshot",
-            vec!["take".to_string(), String::from(filename.to_str().unwrap())],
-            self.sudo,
-        )
+        self.sys
+            .crosvm_command(
+                "snapshot",
+                vec!["take".to_string(), String::from(filename.to_str().unwrap())],
+                self.sudo,
+            )
+            .map(|_| ())
     }
 
     // No argument is passed in restore as we will always restore snapshot.bkp for testing.
     pub fn restore(&mut self, filename: &std::path::Path) -> Result<()> {
-        self.sys.crosvm_command(
-            "snapshot",
-            vec![
-                "restore".to_string(),
-                String::from(filename.to_str().unwrap()),
-            ],
-            self.sudo,
-        )
+        self.sys
+            .crosvm_command(
+                "snapshot",
+                vec![
+                    "restore".to_string(),
+                    String::from(filename.to_str().unwrap()),
+                ],
+                self.sudo,
+            )
+            .map(|_| ())
+    }
+
+    pub fn swap_command(&mut self, command: &str) -> Result<Vec<u8>> {
+        self.sys
+            .crosvm_command("swap", vec![command.to_string()], self.sudo)
     }
 }
 

@@ -377,7 +377,7 @@ impl TestVmSys {
         _command: &str,
         mut _args: Vec<String>,
         _sudo: bool,
-    ) -> Result<()> {
+    ) -> Result<Vec<u8>> {
         unimplemented!()
     }
 }

@@ -982,6 +982,8 @@ dependencies = [
  "net_util",
  "prebuilts",
  "rand",
+ "serde_json",
+ "swap",
  "tempfile",
 ]
 

@@ -340,7 +340,12 @@ impl TestVmSys {
         Ok(())
     }
 
-    pub fn crosvm_command(&self, command: &str, mut args: Vec<String>, sudo: bool) -> Result<()> {
+    pub fn crosvm_command(
+        &self,
+        command: &str,
+        mut args: Vec<String>,
+        sudo: bool,
+    ) -> Result<Vec<u8>> {
         args.push(self.control_socket_path.to_str().unwrap().to_string());
 
         println!("$ crosvm {} {:?}", command, &args.join(" "));
@@ -359,7 +364,7 @@ impl TestVmSys {
         if !output.status.success() {
             Err(anyhow!("Command failed with exit code {}", output.status))
         } else {
-            Ok(())
+            Ok(output.stdout)
         }
     }
 }
