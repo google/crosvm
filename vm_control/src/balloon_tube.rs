@@ -16,6 +16,7 @@ pub use balloon_control::BalloonWS;
 pub use balloon_control::WSBucket;
 pub use balloon_control::VIRTIO_BALLOON_WS_MAX_NUM_BINS;
 pub use balloon_control::VIRTIO_BALLOON_WS_MIN_NUM_BINS;
+use base::error;
 use base::Error as SysError;
 use base::Tube;
 use serde::Deserialize;
@@ -29,6 +30,7 @@ pub enum BalloonControlCommand {
     /// Set the size of the VM's balloon.
     Adjust {
         num_bytes: u64,
+        wait_for_success: bool,
     },
     Stats,
     WorkingSet,
@@ -41,12 +43,21 @@ pub enum BalloonControlCommand {
 
 fn do_send(tube: &Tube, cmd: &BalloonControlCommand) -> Option<VmResponse> {
     match *cmd {
-        BalloonControlCommand::Adjust { num_bytes } => {
+        BalloonControlCommand::Adjust {
+            num_bytes,
+            wait_for_success,
+        } => {
             match tube.send(&BalloonTubeCommand::Adjust {
                 num_bytes,
-                allow_failure: false,
+                allow_failure: wait_for_success,
             }) {
-                Ok(_) => Some(VmResponse::Ok),
+                Ok(_) => {
+                    if wait_for_success {
+                        None
+                    } else {
+                        Some(VmResponse::Ok)
+                    }
+                }
                 Err(_) => Some(VmResponse::Err(SysError::last())),
             }
         }
@@ -80,6 +91,7 @@ fn do_send(tube: &Tube, cmd: &BalloonControlCommand) -> Option<VmResponse> {
 pub struct BalloonTube {
     tube: Tube,
     pending_queue: VecDeque<(BalloonControlCommand, Option<usize>)>,
+    pending_adjust_with_completion: Option<(u64, usize)>,
 }
 
 #[cfg(feature = "balloon")]
@@ -88,6 +100,7 @@ impl BalloonTube {
         BalloonTube {
             tube,
             pending_queue: VecDeque::new(),
+            pending_adjust_with_completion: None,
         }
     }
 
@@ -97,26 +110,61 @@ impl BalloonTube {
         &mut self,
         cmd: BalloonControlCommand,
         key: Option<usize>,
-    ) -> Option<VmResponse> {
-        if !self.pending_queue.is_empty() {
-            self.pending_queue.push_back((cmd, key));
-            return None;
+    ) -> Option<(VmResponse, usize)> {
+        match cmd {
+            BalloonControlCommand::Adjust {
+                wait_for_success: true,
+                num_bytes,
+            } => {
+                let Some(key) = key else {
+                    error!("Asked for completion without reply key");
+                    return None;
+                };
+                let resp = self
+                    .pending_adjust_with_completion
+                    .take()
+                    .map(|(_, key)| (VmResponse::ErrString("Adjust overriden".to_string()), key));
+                if do_send(&self.tube, &cmd).is_some() {
+                    unreachable!("Unexpected early reply");
+                }
+                self.pending_adjust_with_completion = Some((num_bytes, key));
+                resp
+            }
+            _ => {
+                if !self.pending_queue.is_empty() {
+                    self.pending_queue.push_back((cmd, key));
+                    return None;
+                }
+                let resp = do_send(&self.tube, &cmd);
+                if resp.is_none() {
+                    self.pending_queue.push_back((cmd, key));
+                }
+                match key {
+                    None => None,
+                    Some(key) => resp.map(|r| (r, key)),
+                }
+            }
         }
-        let resp = do_send(&self.tube, &cmd);
-        if resp.is_none() {
-            self.pending_queue.push_back((cmd, key));
-        }
-        resp
     }
 
     /// Receives responses from the balloon tube, and returns them with
     /// their assoicated keys.
     pub fn recv(&mut self) -> Result<Vec<(VmResponse, usize)>> {
-        let mut responses = vec![];
         let res = self
             .tube
             .recv::<BalloonTubeResult>()
             .context("failed to read balloon tube")?;
+        if let BalloonTubeResult::Adjusted { num_bytes: actual } = res {
+            let Some((target, key)) = self.pending_adjust_with_completion else {
+                bail!("Unexpected balloon adjust to {}", actual);
+            };
+            if actual != target {
+                return Ok(vec![]);
+            }
+            self.pending_adjust_with_completion.take();
+            return Ok(vec![(VmResponse::Ok, key)]);
+        }
+        let mut responses = vec![];
         if self.pending_queue.is_empty() {
             bail!("Unexpected balloon tube result {:?}", res)
         }
@@ -220,14 +268,17 @@ mod tests {
     }
 
     #[test]
-    fn test_queued_adjust() {
+    fn test_queued_stats_adjust_no_reply() {
         let (host, device) = Tube::pair().unwrap();
         let mut balloon_tube = BalloonTube::new(host);
 
         let resp = balloon_tube.send_cmd(BalloonControlCommand::Stats, Some(0xc0ffee));
         assert!(resp.is_none());
         let resp = balloon_tube.send_cmd(
-            BalloonControlCommand::Adjust { num_bytes: 0 },
+            BalloonControlCommand::Adjust {
+                num_bytes: 0,
+                wait_for_success: false,
+            },
             Some(0xbadcafe),
         );
         assert!(resp.is_none());
@@ -243,5 +294,95 @@ mod tests {
 
         let cmd = device.recv::<BalloonTubeCommand>().unwrap();
         assert!(matches!(cmd, BalloonTubeCommand::Adjust { .. }));
+    }
+
+    #[test]
+    fn test_adjust_with_reply() {
+        let (host, device) = Tube::pair().unwrap();
+        let mut balloon_tube = BalloonTube::new(host);
+
+        let resp = balloon_tube.send_cmd(
+            BalloonControlCommand::Adjust {
+                num_bytes: 0xc0ffee,
+                wait_for_success: true,
+            },
+            Some(0xc0ffee),
+        );
+        assert!(resp.is_none());
+        let cmd = device.recv::<BalloonTubeCommand>().unwrap();
+        assert!(matches!(cmd, BalloonTubeCommand::Adjust { .. }));
+
+        let resp = balloon_tube.send_cmd(
+            BalloonControlCommand::Adjust {
+                num_bytes: 0xbadcafe,
+                wait_for_success: true,
+            },
+            Some(0xbadcafe),
+        );
+        assert!(matches!(resp, Some((VmResponse::ErrString(_), 0xc0ffee))));
+        let cmd = device.recv::<BalloonTubeCommand>().unwrap();
+        assert!(matches!(cmd, BalloonTubeCommand::Adjust { .. }));
+
+        device
+            .send(&BalloonTubeResult::Adjusted {
+                num_bytes: 0xc0ffee,
+            })
+            .unwrap();
+        let resp = balloon_tube.recv().unwrap();
+        assert_eq!(resp.len(), 0);
+
+        device
+            .send(&BalloonTubeResult::Adjusted {
+                num_bytes: 0xbadcafe,
+            })
+            .unwrap();
+        let resp = balloon_tube.recv().unwrap();
+        assert_eq!(resp.len(), 1);
+        assert_eq!(resp[0].1, 0xbadcafe);
+        assert!(matches!(resp[0].0, VmResponse::Ok));
+    }
+
+    #[test]
+    fn test_stats_and_adjust_with_reply() {
+        let (host, device) = Tube::pair().unwrap();
+        let mut balloon_tube = BalloonTube::new(host);
+
+        let resp = balloon_tube.send_cmd(BalloonControlCommand::Stats, Some(0xc0ffee));
+        assert!(resp.is_none());
+
+        let resp = balloon_tube.send_cmd(
+            BalloonControlCommand::Adjust {
+                num_bytes: 0xbadcafe,
+                wait_for_success: true,
+            },
+            Some(0xbadcafe),
+        );
+        assert!(resp.is_none());
+
+        let cmd = device.recv::<BalloonTubeCommand>().unwrap();
+        assert!(matches!(cmd, BalloonTubeCommand::Stats));
+        let cmd = device.recv::<BalloonTubeCommand>().unwrap();
+        assert!(matches!(cmd, BalloonTubeCommand::Adjust { .. }));
+
+        device
+            .send(&BalloonTubeResult::Adjusted {
+                num_bytes: 0xbadcafe,
+            })
+            .unwrap();
+        let resp = balloon_tube.recv().unwrap();
+        assert_eq!(resp.len(), 1);
+        assert_eq!(resp[0].1, 0xbadcafe);
+        assert!(matches!(resp[0].0, VmResponse::Ok));
+
+        device
+            .send(&BalloonTubeResult::Stats {
+                stats: BalloonStats::default(),
+                balloon_actual: 0,
+            })
+            .unwrap();
+        let resp = balloon_tube.recv().unwrap();
+        assert_eq!(resp.len(), 1);
+        assert_eq!(resp[0].1, 0xc0ffee);
+        assert!(matches!(resp[0].0, VmResponse::BalloonStats { .. }));
     }
 }

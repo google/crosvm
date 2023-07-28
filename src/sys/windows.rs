@@ -887,7 +887,15 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                                 #[cfg(feature = "balloon")]
                                 VmRequest::BalloonCommand(cmd) => {
                                     if let Some(balloon_tube) = balloon_tube {
-                                        balloon_tube.send_cmd(cmd, Some(id))
+                                        if let Some((r, key)) = balloon_tube.send_cmd(cmd, Some(id))
+                                        {
+                                            if key != id {
+                                                unimplemented!("not implemented on Windows");
+                                            }
+                                            Some(r)
+                                        } else {
+                                            None
+                                        }
                                     } else {
                                         error!("balloon not enabled");
                                         None
