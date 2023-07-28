@@ -849,6 +849,7 @@ impl Rutabaga {
 }
 
 /// Rutabaga Builder, following the Rust builder pattern.
+#[derive(Clone)]
 pub struct RutabagaBuilder {
     display_width: u32,
     display_height: u32,

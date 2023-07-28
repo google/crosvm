@@ -850,6 +850,14 @@ struct Worker {
     gpu_display_wait_descriptor_ctrl_rd: RecvTube,
 }
 
+struct WorkerReturn {
+    // None if device not yet activated.
+    queues: Option<Vec<Queue>>,
+    #[cfg(unix)]
+    gpu_control_tube: Tube,
+    resource_bridges: ResourceBridges,
+}
+
 impl Worker {
     fn run(&mut self) {
         let display_desc =
@@ -1137,11 +1145,14 @@ pub struct Gpu {
     // NOTE: The worker thread doesn't respond to `WorkerThread::stop` when in the pre-activate
     // phase. You must drop the channel first. That is also why the channel is first in the tuple
     // (tuple members are dropped in order).
-    worker_thread: Option<(mpsc::Sender<GpuActivationResources>, WorkerThread<()>)>,
+    worker_thread: Option<(
+        mpsc::Sender<GpuActivationResources>,
+        WorkerThread<WorkerReturn>,
+    )>,
     display_backends: Vec<DisplayBackend>,
     display_params: Vec<GpuDisplayParameters>,
     display_event: Arc<AtomicBool>,
-    rutabaga_builder: Option<RutabagaBuilder>,
+    rutabaga_builder: RutabagaBuilder,
     pci_bar_size: u64,
     external_blob: bool,
     rutabaga_component: RutabagaComponentType,
@@ -1248,7 +1259,7 @@ impl Gpu {
             display_backends,
             display_params,
             display_event: Arc::new(AtomicBool::new(false)),
-            rutabaga_builder: Some(rutabaga_builder),
+            rutabaga_builder,
             pci_bar_size: gpu_parameters.pci_bar_size,
             external_blob: gpu_parameters.external_blob,
             rutabaga_component: component,
@@ -1274,12 +1285,12 @@ impl Gpu {
         fence_handler: RutabagaFenceHandler,
         mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
     ) -> Option<Frontend> {
-        let rutabaga_server_descriptor = self
-            .rutabaga_server_descriptor
-            .take()
-            .map(to_rutabaga_descriptor);
-        let rutabaga_builder = self.rutabaga_builder.take()?;
-        let rutabaga = rutabaga_builder
+        let rutabaga_server_descriptor = self.rutabaga_server_descriptor.as_ref().map(|d| {
+            to_rutabaga_descriptor(d.try_clone().expect("failed to clone server descriptor"))
+        });
+        let rutabaga = self
+            .rutabaga_builder
+            .clone()
             .build(fence_handler, rutabaga_server_descriptor)
             .map_err(|e| error!("failed to build rutabaga {}", e))
             .ok()?;
@@ -1505,12 +1516,10 @@ impl VirtioDevice for Gpu {
 
         let mapper = Arc::clone(&self.mapper);
 
-        let rutabaga_builder = self
-            .rutabaga_builder
-            .take()
-            .context("missing rutabaga_builder")
-            .unwrap();
-        let rutabaga_server_descriptor = self.rutabaga_server_descriptor.take();
+        let rutabaga_builder = self.rutabaga_builder.clone();
+        let rutabaga_server_descriptor = self.rutabaga_server_descriptor.as_ref().map(|d| {
+            to_rutabaga_descriptor(d.try_clone().expect("failed to clone server descriptor"))
+        });
 
         let (init_finished_tx, init_finished_rx) = mpsc::channel();
         let (activate_tx, activate_rx) = mpsc::channel();
@@ -1527,13 +1536,17 @@ impl VirtioDevice for Gpu {
                 rutabaga_fence_handler_resources.clone(),
                 fence_state.clone(),
             );
-            let rutabaga_server_descriptor = rutabaga_server_descriptor.map(to_rutabaga_descriptor);
             let rutabaga =
                 match rutabaga_builder.build(rutabaga_fence_handler, rutabaga_server_descriptor) {
                     Ok(rutabaga) => rutabaga,
                     Err(e) => {
                         error!("failed to build rutabaga {}", e);
-                        return;
+                        return WorkerReturn {
+                            queues: None,
+                            #[cfg(unix)]
+                            gpu_control_tube,
+                            resource_bridges,
+                        };
                     }
                 };
 
@@ -1552,7 +1565,14 @@ impl VirtioDevice for Gpu {
                 gpu_display_wait_descriptor_ctrl_wr,
             ) {
                 Some(backend) => backend,
-                None => return,
+                None => {
+                    return WorkerReturn {
+                        queues: None,
+                        #[cfg(unix)]
+                        gpu_control_tube,
+                        resource_bridges,
+                    }
+                }
             };
 
             // Tell the parent thread that the init phase is complete.
@@ -1561,7 +1581,14 @@ impl VirtioDevice for Gpu {
             let activation_resources: GpuActivationResources = match activate_rx.recv() {
                 Ok(x) => x,
                 // Other half of channel was dropped.
-                Err(mpsc::RecvError) => return,
+                Err(mpsc::RecvError) => {
+                    return WorkerReturn {
+                        queues: None,
+                        #[cfg(unix)]
+                        gpu_control_tube,
+                        resource_bridges,
+                    };
+                }
             };
 
             rutabaga_fence_handler_resources
@@ -1570,8 +1597,10 @@ impl VirtioDevice for Gpu {
                     mem: activation_resources.mem.clone(),
                     ctrl_queue: activation_resources.ctrl_queue.clone(),
                 });
+            // Drop so we don't hold extra refs on the queue's `Arc`.
+            std::mem::drop(rutabaga_fence_handler_resources);
 
-            Worker {
+            let mut worker = Worker {
                 interrupt: activation_resources.interrupt,
                 exit_evt_wrtube,
                 #[cfg(unix)]
@@ -1584,8 +1613,22 @@ impl VirtioDevice for Gpu {
                 state: Frontend::new(virtio_gpu, fence_state),
                 #[cfg(windows)]
                 gpu_display_wait_descriptor_ctrl_rd,
+            };
+            worker.run();
+            // Need to drop `Frontend` for the `Arc::try_unwrap` below to succeed.
+            std::mem::drop(worker.state);
+            WorkerReturn {
+                queues: Some(vec![
+                    match Arc::try_unwrap(worker.ctrl_queue.queue) {
+                        Ok(x) => x.into_inner(),
+                        Err(_) => panic!("too many refs on ctrl_queue"),
+                    },
+                    worker.cursor_queue.queue.into_inner(),
+                ]),
+                #[cfg(unix)]
+                gpu_control_tube: worker.gpu_control_tube,
+                resource_bridges: worker.resource_bridges,
             }
-            .run()
         });
 
         self.worker_thread = Some((activate_tx, worker_thread));
@@ -1641,6 +1684,49 @@ impl VirtioDevice for Gpu {
 
     fn expose_shmem_descriptors_with_viommu(&self) -> bool {
         true
+    }
+
+    fn virtio_sleep(&mut self) -> anyhow::Result<Option<BTreeMap<usize, Queue>>> {
+        if let Some((activate_tx, worker_thread)) = self.worker_thread.take() {
+            drop(activate_tx);
+            let WorkerReturn {
+                queues,
+                #[cfg(unix)]
+                gpu_control_tube,
+                resource_bridges,
+            } = worker_thread.stop();
+
+            self.resource_bridges = Some(resource_bridges);
+            #[cfg(unix)]
+            {
+                self.gpu_control_tube = Some(gpu_control_tube);
+            }
+
+            match queues {
+                Some(queues) => return Ok(Some(queues.into_iter().enumerate().collect())),
+                // Device not activated yet.
+                None => return Ok(None),
+            }
+        }
+        Ok(None)
+    }
+
+    fn virtio_wake(
+        &mut self,
+        queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, Queue>)>,
+    ) -> anyhow::Result<()> {
+        match queues_state {
+            None => Ok(()),
+            Some((mem, interrupt, queues)) => {
+                assert!(self.worker_thread.is_none());
+                self.on_device_sandboxed();
+                // TODO(khei): activate is just what we want at the moment, but we should probably
+                // move it into a "start workers" function to make it obvious that it isn't
+                // strictly used for activate events.
+                self.activate(mem, interrupt, queues)?;
+                Ok(())
+            }
+        }
     }
 }
 
