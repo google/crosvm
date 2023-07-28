@@ -23,10 +23,10 @@ pub enum BalloonTubeCommand {
     },
     // Fetch balloon stats.
     Stats,
-    // Fetch balloon ws.
-    WorkingSet,
-    // Send balloon ws config to guest.
-    WorkingSetConfig {
+    // Fetch balloon wss.
+    WorkingSetSize,
+    // Send balloon wss config to guest.
+    WorkingSetSizeConfig {
         bins: Vec<u64>,
         refresh_threshold: u64,
         report_threshold: u64,
@@ -53,23 +53,23 @@ pub struct BalloonStats {
 pub const VIRTIO_BALLOON_WS_MIN_NUM_BINS: usize = 2;
 pub const VIRTIO_BALLOON_WS_MAX_NUM_BINS: usize = 16;
 
-// WSBucket stores information about a bucket (or bin) of the working set.
+// WSSBucket stores information about a bucket (or bin) of the working set size.
 #[derive(Default, Serialize, Deserialize, Debug, Clone, Copy)]
-pub struct WSBucket {
+pub struct WSSBucket {
     pub age: u64,
     pub bytes: [u64; 2],
 }
 
-// BalloonWS holds WS returned from the ws_queue.
+// BalloonWSS holds WSS returned from the wss_queue.
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
-pub struct BalloonWS {
-    /// working set, separated per histogram bucket.
-    pub ws: Vec<WSBucket>,
+pub struct BalloonWSS {
+    /// working set size, separated per histogram bucket.
+    pub wss: Vec<WSSBucket>,
 }
 
-impl BalloonWS {
+impl BalloonWSS {
     pub fn new() -> Self {
-        BalloonWS { ws: vec![] }
+        BalloonWSS { wss: vec![] }
     }
 }
 
@@ -83,8 +83,8 @@ pub enum BalloonTubeResult {
     Adjusted {
         num_bytes: u64,
     },
-    WorkingSet {
-        ws: BalloonWS,
+    WorkingSetSize {
+        wss: BalloonWSS,
         /// size of the balloon in bytes.
         balloon_actual: u64,
     },
