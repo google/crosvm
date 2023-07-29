@@ -443,8 +443,10 @@ bitflags! {
         const CONFIGURE_MEM_SLOTS = 0x0000_8000;
         /// Support reporting status.
         const STATUS = 0x0001_0000;
-        /// Support shared memory regions.
-        const SHARED_MEMORY_REGIONS = 0x0002_0000;
+        /// Support Xen mmap.
+        const XEN_MMAP = 0x0002_0000;
+        /// Support shared memory regions. (Non-standard.)
+        const SHARED_MEMORY_REGIONS = 0x8000_0000;
     }
 }
 
