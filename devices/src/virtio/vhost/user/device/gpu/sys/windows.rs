@@ -26,6 +26,8 @@ use cros_async::AsyncWrapper;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use gpu_display::EventDevice;
+use gpu_display::WindowProcedureThread;
+use gpu_display::WindowProcedureThreadBuilder;
 use hypervisor::ProtectionType;
 use serde::Deserialize;
 use serde::Serialize;
@@ -165,6 +167,19 @@ pub struct GpuBackendConfig {
     pub product_config: product::GpuBackendConfig,
 }
 
+#[derive(Deserialize, Serialize)]
+pub struct WindowProcedureThreadVmmConfig {
+    pub product_config: product::WindowProcedureThreadVmmConfig,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct WindowProcedureThreadSplitConfig {
+    // This is the config sent to the backend process.
+    pub wndproc_thread_builder: Option<WindowProcedureThreadBuilder>,
+    // Config sent to the main process.
+    pub vmm_config: WindowProcedureThreadVmmConfig,
+}
+
 pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
     cros_tracing::init();
 
@@ -177,10 +192,16 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
     let startup_args: CommonChildStartupArgs = bootstrap_tube.recv::<CommonChildStartupArgs>()?;
     let _child_cleanup = common_child_setup(startup_args)?;
 
-    let (mut config, input_event_backend_config): (GpuBackendConfig, InputEventBackendConfig) =
-        bootstrap_tube
-            .recv()
-            .context("failed to parse GPU backend config from bootstrap tube")?;
+    let (mut config, input_event_backend_config, wndproc_thread_builder): (
+        GpuBackendConfig,
+        InputEventBackendConfig,
+        WindowProcedureThreadBuilder,
+    ) = bootstrap_tube
+        .recv()
+        .context("failed to parse GPU backend config from bootstrap tube")?;
+    let wndproc_thread = wndproc_thread_builder
+        .start_thread()
+        .context("Failed to create window procedure thread for vhost GPU")?;
 
     let vhost_user_tube = config
         .device_vhost_user_tube
@@ -196,11 +217,6 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
     let display_backends = vec![virtio::DisplayBackend::WinApi(
         (&config.params.display_params[0]).into(),
     )];
-
-    let wndproc_thread_builder = gpu_display::WindowProcedureThread::builder();
-    let wndproc_thread = wndproc_thread_builder
-        .start_thread()
-        .context("failed to start wndproc_thread")?;
 
     let mut gpu_params = config.params.clone();
 

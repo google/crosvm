@@ -83,6 +83,10 @@ use devices::virtio::vhost::user::device::gpu::sys::windows::InputEventBackendCo
 use devices::virtio::vhost::user::device::gpu::sys::windows::InputEventSplitConfig;
 #[cfg(feature = "gpu")]
 use devices::virtio::vhost::user::device::gpu::sys::windows::InputEventVmmConfig;
+#[cfg(feature = "gpu")]
+use devices::virtio::vhost::user::device::gpu::sys::windows::WindowProcedureThreadSplitConfig;
+#[cfg(feature = "gpu")]
+use devices::virtio::vhost::user::device::gpu::sys::windows::WindowProcedureThreadVmmConfig;
 #[cfg(feature = "audio")]
 use devices::virtio::vhost::user::device::snd::sys::windows::SndBackendConfig;
 #[cfg(feature = "audio")]
@@ -93,6 +97,10 @@ use devices::virtio::vhost::user::device::snd::sys::windows::SndVmmConfig;
 use devices::virtio::vhost::user::device::NetBackendConfig;
 #[cfg(feature = "gpu")]
 use gpu_display::EventDevice;
+#[cfg(feature = "gpu")]
+use gpu_display::WindowProcedureThread;
+#[cfg(feature = "gpu")]
+use gpu_display::WindowProcedureThreadBuilder;
 use metrics::protos::event_details::EmulatorChildProcessExitDetails;
 use metrics::protos::event_details::RecordDetails;
 use metrics::MetricEventType;
@@ -114,6 +122,8 @@ use winapi::um::processthreadsapi::TerminateProcess;
 use crate::sys::windows::get_gpu_product_configs;
 #[cfg(feature = "audio")]
 use crate::sys::windows::get_snd_product_configs;
+#[cfg(feature = "gpu")]
+use crate::sys::windows::get_window_procedure_thread_product_configs;
 #[cfg(feature = "audio")]
 use crate::sys::windows::num_input_sound_devices;
 #[cfg(feature = "audio")]
@@ -665,6 +675,9 @@ fn run_internal(mut cfg: Config, log_args: LogArgs) -> Result<()> {
         .context("create input event devices for virtio-gpu device")?;
 
     #[cfg(feature = "gpu")]
+    let window_procedure_thread_builder = WindowProcedureThread::builder();
+
+    #[cfg(feature = "gpu")]
     let gpu_cfg = platform_create_gpu(
         &cfg,
         &mut main_child,
@@ -680,6 +693,15 @@ fn run_internal(mut cfg: Config, log_args: LogArgs) -> Result<()> {
         cfg.gpu_backend_config = Some(gpu_cfg.0);
         cfg.gpu_vmm_config = Some(gpu_cfg.1);
         cfg.input_event_split_config = Some(input_event_split_config);
+        cfg.window_procedure_thread_split_config = Some(
+            platform_create_window_procedure_thread_configs(
+                &cfg,
+                window_procedure_thread_builder,
+                main_child.alias_pid,
+                main_child.alias_pid,
+            )
+            .context("Failed to create window procedure thread configs")?,
+        );
         None
     } else {
         Some(start_up_gpu(
@@ -691,6 +713,7 @@ fn run_internal(mut cfg: Config, log_args: LogArgs) -> Result<()> {
             &mut children,
             &mut wait_ctx,
             &mut metric_tubes,
+            window_procedure_thread_builder,
             #[cfg(feature = "process-invariants")]
             &process_invariants,
         )?)
@@ -1663,6 +1686,27 @@ fn platform_create_input_event_config(cfg: &Config) -> Result<InputEventSplitCon
 }
 
 #[cfg(feature = "gpu")]
+/// Create Window procedure thread configurations.
+fn platform_create_window_procedure_thread_configs(
+    cfg: &Config,
+    mut wndproc_thread_builder: WindowProcedureThreadBuilder,
+    main_alias_pid: u32,
+    device_alias_pid: u32,
+) -> Result<WindowProcedureThreadSplitConfig> {
+    let product_config = get_window_procedure_thread_product_configs(
+        cfg,
+        &mut wndproc_thread_builder,
+        main_alias_pid,
+        device_alias_pid,
+    )
+    .context("create product window procedure thread configs")?;
+    Ok(WindowProcedureThreadSplitConfig {
+        wndproc_thread_builder: Some(wndproc_thread_builder),
+        vmm_config: WindowProcedureThreadVmmConfig { product_config },
+    })
+}
+
+#[cfg(feature = "gpu")]
 /// Create backend and VMM configurations for the GPU device.
 fn platform_create_gpu(
     cfg: &Config,
@@ -1711,6 +1755,7 @@ fn start_up_gpu(
     children: &mut HashMap<u32, ChildCleanup>,
     wait_ctx: &mut WaitContext<Token>,
     metric_tubes: &mut Vec<Tube>,
+    wndproc_thread_builder: WindowProcedureThreadBuilder,
     #[cfg(feature = "process-invariants")] process_invariants: &EmulatorProcessInvariants,
 ) -> Result<ChildProcess> {
     let (mut backend_cfg, mut vmm_cfg) = gpu_cfg;
@@ -1740,6 +1785,18 @@ fn start_up_gpu(
         .serialize_and_transport(gpu_child.process_id)
         .exit_context(Exit::TubeTransporterInit, "failed to initialize tube")?;
 
+    let mut wndproc_thread_cfg = platform_create_window_procedure_thread_configs(
+        cfg,
+        wndproc_thread_builder,
+        main_child.alias_pid,
+        gpu_child.alias_pid,
+    )
+    .context("failed to create window procedure thread configs")?;
+    let wndproc_thread_builder = wndproc_thread_cfg
+        .wndproc_thread_builder
+        .take()
+        .expect("The window procedure thread builder is missing");
+    cfg.window_procedure_thread_split_config = Some(wndproc_thread_cfg);
     // Update target PIDs to new child.
     device_host_user_tube.set_target_pid(main_child.alias_pid);
     main_vhost_user_tube.set_target_pid(gpu_child.alias_pid);
@@ -1771,7 +1828,11 @@ fn start_up_gpu(
     // Send backend config to GPU child.
     gpu_child
         .bootstrap_tube
-        .send(&(backend_cfg, input_event_backend_config))
+        .send(&(
+            backend_cfg,
+            input_event_backend_config,
+            wndproc_thread_builder,
+        ))
         .unwrap();
 
     Ok(gpu_child)

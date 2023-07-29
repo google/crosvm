@@ -126,6 +126,10 @@ use devices::VirtioPciDevice;
 use devices::WhpxSplitIrqChip;
 #[cfg(feature = "gpu")]
 use gpu_display::EventDevice;
+#[cfg(feature = "gpu")]
+use gpu_display::WindowProcedureThread;
+#[cfg(feature = "gpu")]
+use gpu_display::WindowProcedureThreadBuilder;
 #[cfg(feature = "gvm")]
 use hypervisor::gvm::Gvm;
 #[cfg(feature = "gvm")]
@@ -225,6 +229,8 @@ use crate::crosvm::sys::windows::stats::StatisticsCollector;
 pub(crate) use crate::sys::windows::product::get_gpu_product_configs;
 #[cfg(feature = "audio")]
 pub(crate) use crate::sys::windows::product::get_snd_product_configs;
+#[cfg(feature = "gpu")]
+pub(crate) use crate::sys::windows::product::get_window_procedure_thread_product_configs;
 use crate::sys::windows::product::log_descriptor;
 #[cfg(feature = "audio")]
 pub(crate) use crate::sys::windows::product::num_input_sound_devices;
@@ -333,6 +339,7 @@ fn create_gpu_device(
     vm_evt_wrtube: &SendTube,
     resource_bridges: Vec<Tube>,
     event_devices: Vec<EventDevice>,
+    wndproc_thread: WindowProcedureThread,
     product_args: GpuBackendConfigProduct,
 ) -> DeviceResult {
     let display_backends = vec![virtio::DisplayBackend::WinApi(
@@ -347,6 +354,7 @@ fn create_gpu_device(
         event_devices,
         features,
         product_args,
+        wndproc_thread,
     )?;
 
     Ok(VirtioDeviceStub {
@@ -634,11 +642,33 @@ fn create_virtio_devices(
     };
 
     #[cfg(feature = "gpu")]
+    if let Some(wndproc_thread_vmm_config) = cfg
+        .window_procedure_thread_split_config
+        .as_mut()
+        .map(|split_cfg| &mut split_cfg.vmm_config)
+    {
+        product::push_window_procedure_thread_control_tubes(
+            control_tubes,
+            wndproc_thread_vmm_config,
+        );
+    }
+
+    #[cfg(feature = "gpu")]
+    let mut wndproc_thread = cfg
+        .window_procedure_thread_split_config
+        .as_mut()
+        .and_then(|cfg| cfg.wndproc_thread_builder.take())
+        .map(WindowProcedureThreadBuilder::start_thread)
+        .transpose()
+        .context("Failed to start the window procedure thread.")?;
+
+    #[cfg(feature = "gpu")]
     if let Some(gpu_vmm_config) = cfg.gpu_vmm_config.take() {
         devs.push(create_virtio_gpu_device(
             cfg,
             gpu_vmm_config,
             event_devices,
+            &mut wndproc_thread,
             control_tubes,
         )?);
     }
@@ -701,6 +731,7 @@ fn create_virtio_gpu_device(
     cfg: &mut Config,
     mut gpu_vmm_config: GpuVmmConfig,
     event_devices: Option<Vec<EventDevice>>,
+    wndproc_thread: &mut Option<WindowProcedureThread>,
     #[allow(clippy::ptr_arg)] control_tubes: &mut Vec<TaggedControlTube>,
 ) -> DeviceResult<VirtioDeviceStub> {
     let resource_bridges = Vec::<Tube>::new();
@@ -731,6 +762,9 @@ fn create_virtio_gpu_device(
                         "event devices are missing when creating virtio-gpu in the current process."
                     )
                 })?,
+                wndproc_thread
+                    .take()
+                    .ok_or_else(|| anyhow!("Window procedure thread is missing."))?,
                 backend_config.product_config,
             )
             .context("create GPU device")

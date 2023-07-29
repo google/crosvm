@@ -6,6 +6,9 @@ use serde::Deserialize;
 use serde::Serialize;
 
 #[derive(Deserialize, Serialize)]
+pub struct WindowProcedureThreadVmmConfig {}
+
+#[derive(Deserialize, Serialize)]
 pub struct GpuBackendConfig {}
 
 #[derive(Deserialize, Serialize)]

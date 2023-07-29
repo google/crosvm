@@ -36,6 +36,8 @@ use devices::virtio::vhost::user::device::gpu::sys::windows::GpuBackendConfig;
 use devices::virtio::vhost::user::device::gpu::sys::windows::GpuVmmConfig;
 #[cfg(all(windows, feature = "gpu"))]
 use devices::virtio::vhost::user::device::gpu::sys::windows::InputEventSplitConfig;
+#[cfg(all(windows, feature = "gpu"))]
+use devices::virtio::vhost::user::device::gpu::sys::windows::WindowProcedureThreadSplitConfig;
 #[cfg(all(windows, feature = "audio"))]
 use devices::virtio::vhost::user::device::snd::sys::windows::SndSplitConfig;
 use devices::virtio::vsock::VsockConfig;
@@ -942,6 +944,8 @@ pub struct Config {
     #[cfg(feature = "vtpm")]
     pub vtpm_proxy: bool,
     pub wayland_socket_paths: BTreeMap<String, PathBuf>,
+    #[cfg(all(windows, feature = "gpu"))]
+    pub window_procedure_thread_split_config: Option<WindowProcedureThreadSplitConfig>,
     pub x_display: Option<String>,
 }
 
@@ -1146,6 +1150,8 @@ impl Default for Config {
             #[cfg(feature = "vtpm")]
             vtpm_proxy: false,
             wayland_socket_paths: BTreeMap::new(),
+            #[cfg(windows)]
+            window_procedure_thread_split_config: None,
             x_display: None,
         }
     }
