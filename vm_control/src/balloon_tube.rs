@@ -12,8 +12,8 @@ use anyhow::Result;
 pub use balloon_control::BalloonStats;
 use balloon_control::BalloonTubeCommand;
 pub use balloon_control::BalloonTubeResult;
-pub use balloon_control::BalloonWSS;
-pub use balloon_control::WSSBucket;
+pub use balloon_control::BalloonWS;
+pub use balloon_control::WSBucket;
 pub use balloon_control::VIRTIO_BALLOON_WS_MAX_NUM_BINS;
 pub use balloon_control::VIRTIO_BALLOON_WS_MIN_NUM_BINS;
 use base::Error as SysError;
@@ -31,8 +31,8 @@ pub enum BalloonControlCommand {
         num_bytes: u64,
     },
     Stats,
-    WorkingSetSize,
-    WorkingSetSizeConfig {
+    WorkingSet,
+    WorkingSetConfig {
         bins: Vec<u64>,
         refresh_threshold: u64,
         report_threshold: u64,
@@ -50,12 +50,12 @@ fn do_send(tube: &Tube, cmd: &BalloonControlCommand) -> Option<VmResponse> {
                 Err(_) => Some(VmResponse::Err(SysError::last())),
             }
         }
-        BalloonControlCommand::WorkingSetSizeConfig {
+        BalloonControlCommand::WorkingSetConfig {
             ref bins,
             refresh_threshold,
             report_threshold,
         } => {
-            match tube.send(&BalloonTubeCommand::WorkingSetSizeConfig {
+            match tube.send(&BalloonTubeCommand::WorkingSetConfig {
                 bins: bins.clone(),
                 refresh_threshold,
                 report_threshold,
@@ -68,12 +68,10 @@ fn do_send(tube: &Tube, cmd: &BalloonControlCommand) -> Option<VmResponse> {
             Ok(_) => None,
             Err(_) => Some(VmResponse::Err(SysError::last())),
         },
-        BalloonControlCommand::WorkingSetSize => {
-            match tube.send(&BalloonTubeCommand::WorkingSetSize) {
-                Ok(_) => None,
-                Err(_) => Some(VmResponse::Err(SysError::last())),
-            }
-        }
+        BalloonControlCommand::WorkingSet => match tube.send(&BalloonTubeCommand::WorkingSet) {
+            Ok(_) => None,
+            Err(_) => Some(VmResponse::Err(SysError::last())),
+        },
     }
 }
 
@@ -137,15 +135,9 @@ impl BalloonTube {
                 balloon_actual,
             },
             (
-                BalloonControlCommand::WorkingSetSize,
-                BalloonTubeResult::WorkingSetSize {
-                    wss,
-                    balloon_actual,
-                },
-            ) => VmResponse::BalloonWSS {
-                wss,
-                balloon_actual,
-            },
+                BalloonControlCommand::WorkingSet,
+                BalloonTubeResult::WorkingSet { ws, balloon_actual },
+            ) => VmResponse::BalloonWS { ws, balloon_actual },
             (_, resp) => {
                 bail!("Unexpected balloon tube result {:?}", resp);
             }

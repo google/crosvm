@@ -1296,7 +1296,7 @@ pub enum VmRequest {
 #[cfg(feature = "registered_events")]
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum RegisteredEvent {
-    VirtioBalloonWssReport,
+    VirtioBalloonWsReport,
     VirtioBalloonResize,
     VirtioBalloonOOMDeflation,
 }
@@ -1304,8 +1304,8 @@ pub enum RegisteredEvent {
 #[cfg(feature = "registered_events")]
 #[derive(Serialize, Deserialize, Debug)]
 pub enum RegisteredEventWithData {
-    VirtioBalloonWssReport {
-        wss_buckets: Vec<WSSBucket>,
+    VirtioBalloonWsReport {
+        ws_buckets: Vec<WSBucket>,
         balloon_actual: u64,
     },
     VirtioBalloonResize,
@@ -1316,7 +1316,7 @@ pub enum RegisteredEventWithData {
 impl RegisteredEventWithData {
     pub fn into_event(&self) -> RegisteredEvent {
         match self {
-            Self::VirtioBalloonWssReport { .. } => RegisteredEvent::VirtioBalloonWssReport,
+            Self::VirtioBalloonWsReport { .. } => RegisteredEvent::VirtioBalloonWsReport,
             Self::VirtioBalloonResize => RegisteredEvent::VirtioBalloonResize,
             Self::VirtioBalloonOOMDeflation => RegisteredEvent::VirtioBalloonOOMDeflation,
         }
@@ -1324,24 +1324,24 @@ impl RegisteredEventWithData {
 
     pub fn into_proto(&self) -> registered_events::RegisteredEvent {
         match self {
-            Self::VirtioBalloonWssReport {
-                wss_buckets,
+            Self::VirtioBalloonWsReport {
+                ws_buckets,
                 balloon_actual,
             } => {
-                let mut report = registered_events::VirtioBalloonWssReport {
+                let mut report = registered_events::VirtioBalloonWsReport {
                     balloon_actual: *balloon_actual,
-                    ..registered_events::VirtioBalloonWssReport::new()
+                    ..registered_events::VirtioBalloonWsReport::new()
                 };
-                for wss in wss_buckets {
-                    report.wss_buckets.push(registered_events::VirtioWssBucket {
-                        age: wss.age,
-                        file_bytes: wss.bytes[0],
-                        anon_bytes: wss.bytes[1],
-                        ..registered_events::VirtioWssBucket::new()
+                for ws in ws_buckets {
+                    report.ws_buckets.push(registered_events::VirtioWsBucket {
+                        age: ws.age,
+                        file_bytes: ws.bytes[0],
+                        anon_bytes: ws.bytes[1],
+                        ..registered_events::VirtioWsBucket::new()
                     });
                 }
                 let mut event = registered_events::RegisteredEvent::new();
-                event.set_wss_report(report);
+                event.set_ws_report(report);
                 event
             }
             Self::VirtioBalloonResize => {
@@ -1357,9 +1357,9 @@ impl RegisteredEventWithData {
         }
     }
 
-    pub fn from_wss(wss: &BalloonWSS, balloon_actual: u64) -> Self {
-        RegisteredEventWithData::VirtioBalloonWssReport {
-            wss_buckets: wss.wss.clone(),
+    pub fn from_ws(ws: &BalloonWS, balloon_actual: u64) -> Self {
+        RegisteredEventWithData::VirtioBalloonWsReport {
+            ws_buckets: ws.ws.clone(),
             balloon_actual,
         }
     }
@@ -2130,12 +2130,9 @@ pub enum VmResponse {
         stats: BalloonStats,
         balloon_actual: u64,
     },
-    /// Results of balloon WSS-R command
+    /// Results of balloon WS-R command
     #[cfg(feature = "balloon")]
-    BalloonWSS {
-        wss: BalloonWSS,
-        balloon_actual: u64,
-    },
+    BalloonWS { ws: BalloonWS, balloon_actual: u64 },
     /// Results of PCI hot plug
     #[cfg(feature = "pci-hotplug")]
     PciHotPlugResponse { bus: u8 },
@@ -2179,14 +2176,11 @@ impl Display for VmResponse {
                 )
             }
             #[cfg(feature = "balloon")]
-            VmResponse::BalloonWSS {
-                wss,
-                balloon_actual,
-            } => {
+            VmResponse::BalloonWS { ws, balloon_actual } => {
                 write!(
                     f,
-                    "wss: {}, balloon_actual: {}",
-                    serde_json::to_string_pretty(&wss)
+                    "ws: {}, balloon_actual: {}",
+                    serde_json::to_string_pretty(&ws)
                         .unwrap_or_else(|_| "invalid_response".to_string()),
                     balloon_actual,
                 )

@@ -835,8 +835,8 @@ pub struct Config {
     pub balloon_bias: i64,
     pub balloon_control: Option<PathBuf>,
     pub balloon_page_reporting: bool,
-    pub balloon_wss_num_bins: u8,
-    pub balloon_wss_reporting: bool,
+    pub balloon_ws_num_bins: u8,
+    pub balloon_ws_reporting: bool,
     pub battery_config: Option<BatteryConfig>,
     #[cfg(windows)]
     pub block_control_tube: Vec<Tube>,
@@ -1040,8 +1040,8 @@ impl Default for Config {
             balloon_bias: 0,
             balloon_control: None,
             balloon_page_reporting: false,
-            balloon_wss_num_bins: VIRTIO_BALLOON_WS_DEFAULT_NUM_BINS,
-            balloon_wss_reporting: false,
+            balloon_ws_num_bins: VIRTIO_BALLOON_WS_DEFAULT_NUM_BINS,
+            balloon_ws_reporting: false,
             battery_config: None,
             #[cfg(windows)]
             block_control_tube: Vec::new(),

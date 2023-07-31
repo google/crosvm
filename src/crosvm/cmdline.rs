@@ -133,7 +133,10 @@ pub enum CrossPlatformCommands {
     #[cfg(feature = "balloon")]
     BalloonStats(BalloonStatsCommand),
     #[cfg(feature = "balloon")]
-    BalloonWss(BalloonWssCommand),
+    BalloonWs(BalloonWsCommand),
+    // TODO(b/288432539): remove once concierge is migrated
+    #[cfg(feature = "balloon")]
+    BalloonWss(BalloonWsCommand),
     Battery(BatteryCommand),
     #[cfg(feature = "composite-disk")]
     CreateComposite(CreateCompositeCommand),
@@ -189,10 +192,10 @@ pub struct BalloonStatsCommand {
 }
 
 #[derive(argh::FromArgs)]
-#[argh(subcommand, name = "balloon_wss")]
-/// Prints virtio balloon working set size for a `VM_SOCKET`
-pub struct BalloonWssCommand {
-    #[argh(positional, arg_name = "VM_SOOCKET")]
+#[argh(subcommand, name = "balloon_ws")]
+/// Prints virtio balloon working set for a `VM_SOCKET`
+pub struct BalloonWsCommand {
+    #[argh(positional, arg_name = "VM_SOCKET")]
     /// VM control socket path.
     pub socket_path: String,
 }
@@ -954,13 +957,20 @@ pub struct RunCommand {
     #[argh(option)]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
-    /// set number of WSS bins to use (default = 4).
-    pub balloon_wss_num_bins: Option<u8>,
+    /// set number of WS bins to use (default = 4).
+    pub balloon_ws_num_bins: Option<u8>,
 
     #[argh(switch)]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
-    /// enable working set size reporting in balloon.
+    /// enable working set reporting in balloon.
+    pub balloon_ws_reporting: Option<bool>,
+
+    // TODO(b/288432539): remove once concierge is migrated
+    #[argh(switch)]
+    #[serde(skip)] // TODO(b/255223604)
+    #[merge(strategy = overwrite_option)]
+    /// enable working set reporting in balloon.
     pub balloon_wss_reporting: Option<bool>,
 
     #[argh(option)]
@@ -2881,8 +2891,10 @@ impl TryFrom<RunCommand> for super::config::Config {
         cfg.rng = !cmd.no_rng.unwrap_or_default();
         cfg.balloon = !cmd.no_balloon.unwrap_or_default();
         cfg.balloon_page_reporting = cmd.balloon_page_reporting.unwrap_or_default();
-        cfg.balloon_wss_num_bins = cmd.balloon_wss_num_bins.unwrap_or(4);
-        cfg.balloon_wss_reporting = cmd.balloon_wss_reporting.unwrap_or_default();
+        cfg.balloon_ws_num_bins = cmd.balloon_ws_num_bins.unwrap_or(4);
+        cfg.balloon_ws_reporting = cmd.balloon_ws_reporting.unwrap_or_default()
+        // TODO(b/288432539): remove once concierge is migrated
+            | cmd.balloon_wss_reporting.unwrap_or_default();
         #[cfg(feature = "audio")]
         {
             cfg.virtio_snds = cmd.virtio_snd;

@@ -512,7 +512,7 @@ fn create_virtio_devices(
     if let Some(balloon_device_tube) = balloon_device_tube {
         let balloon_features = (cfg.balloon_page_reporting as u64)
             << BalloonFeatures::PageReporting as u64
-            | (cfg.balloon_wss_reporting as u64) << BalloonFeatures::WSSReporting as u64;
+            | (cfg.balloon_ws_reporting as u64) << BalloonFeatures::WSReporting as u64;
         devs.push(create_balloon_device(
             cfg.protection_type,
             &cfg.jail_config,
@@ -531,7 +531,7 @@ fn create_virtio_devices(
                     .try_clone()
                     .context("failed to clone registered_evt_q tube")?,
             ),
-            cfg.balloon_wss_num_bins,
+            cfg.balloon_ws_num_bins,
         )?);
     }
 
