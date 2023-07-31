@@ -101,7 +101,6 @@ use vmm_vhost::VhostUserSlaveReqHandlerMut;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
 use crate::virtio::QueueConfig;
-use crate::virtio::QueueType::Split;
 use crate::virtio::SharedMemoryMapper;
 use crate::virtio::SharedMemoryRegion;
 
@@ -267,7 +266,7 @@ impl Vring {
         self.enabled = vring_snapshot.enabled;
         self.paused_queue = vring_snapshot
             .paused_queue
-            .map(|value| Queue::restore(Split, value))
+            .map(|value| Queue::restore(&self.queue, value))
             .transpose()?;
         Ok(())
     }

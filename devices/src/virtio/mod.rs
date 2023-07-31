@@ -76,7 +76,6 @@ pub use self::queue::split_descriptor_chain::Desc;
 pub use self::queue::split_descriptor_chain::SplitDescriptorChain;
 pub use self::queue::Queue;
 pub use self::queue::QueueConfig;
-pub use self::queue::QueueType;
 pub use self::rng::Rng;
 #[cfg(any(feature = "tpm", feature = "vtpm"))]
 pub use self::tpm::Tpm;

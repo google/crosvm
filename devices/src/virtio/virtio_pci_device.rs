@@ -1231,10 +1231,11 @@ impl Suspendable for VirtioPciDevice {
         if let Some(activated_queues_snapshot) = deser.activated_queues {
             let mut activated_queues = BTreeMap::new();
             for (index, queue_snapshot) in activated_queues_snapshot {
-                activated_queues.insert(
-                    index,
-                    Queue::restore(self.device.queue_type(), queue_snapshot)?,
-                );
+                let queue_config = self
+                    .queues
+                    .get(index)
+                    .with_context(|| format!("missing queue config for activated queue {index}"))?;
+                activated_queues.insert(index, Queue::restore(queue_config, queue_snapshot)?);
             }
 
             // Restore the activated queues.

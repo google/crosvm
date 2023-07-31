@@ -390,14 +390,6 @@ pub enum Queue {
     PackedVirtQueue(PackedQueue),
 }
 
-/// This enum is used to specify the type of virtqueue (split or packed).
-pub enum QueueType {
-    /// Split Virtqueue type
-    Split,
-    /// Packed Virtqueue type
-    Packed,
-}
-
 impl Queue {
     /// Asynchronously read the next descriptor chain from the queue.
     /// Returns a `DescriptorChain` when it is `await`ed.
@@ -451,10 +443,14 @@ impl Queue {
     }
 
     /// Restore queue from snapshot
-    pub fn restore(queue_type: QueueType, queue_value: serde_json::Value) -> anyhow::Result<Queue> {
-        match queue_type {
-            QueueType::Split => SplitQueue::restore(queue_value).map(Queue::SplitVirtQueue),
-            QueueType::Packed => PackedQueue::restore(queue_value).map(Queue::PackedVirtQueue),
+    pub fn restore(
+        queue_config: &QueueConfig,
+        queue_value: serde_json::Value,
+    ) -> anyhow::Result<Queue> {
+        if queue_config.acked_features & 1 << VIRTIO_F_RING_PACKED != 0 {
+            PackedQueue::restore(queue_value).map(Queue::PackedVirtQueue)
+        } else {
+            SplitQueue::restore(queue_value).map(Queue::SplitVirtQueue)
         }
     }
 
