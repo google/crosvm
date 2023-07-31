@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use anyhow::anyhow;
+use anyhow::Context;
 use base::error;
 #[cfg(windows)]
 use base::named_pipes::OverlappedWrapper;
@@ -520,6 +521,12 @@ pub struct Net<T: TapT + ReadNotifier + 'static> {
     slirp_kill_evt: Option<Event>,
 }
 
+#[derive(Serialize, Deserialize)]
+struct NetSnapshot {
+    avail_features: u64,
+    acked_features: u64,
+}
+
 impl<T> Net<T>
 where
     T: TapT + ReadNotifier,
@@ -851,6 +858,27 @@ where
                 Ok(())
             }
         }
+    }
+
+    fn virtio_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        serde_json::to_value(NetSnapshot {
+            acked_features: self.acked_features,
+            avail_features: self.avail_features,
+        })
+        .context("failed to snapshot virtio Net device")
+    }
+
+    fn virtio_restore(&mut self, data: serde_json::Value) -> anyhow::Result<()> {
+        let deser: NetSnapshot =
+            serde_json::from_value(data).context("failed to deserialize Net device")?;
+        anyhow::ensure!(
+            self.avail_features == deser.avail_features,
+            "Available features for net device do not match. expected: {},  got: {}",
+            deser.avail_features,
+            self.avail_features
+        );
+        self.acked_features = deser.acked_features;
+        Ok(())
     }
 
     fn reset(&mut self) -> bool {
