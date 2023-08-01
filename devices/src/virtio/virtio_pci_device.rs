@@ -62,6 +62,7 @@ use crate::pci::PciDisplaySubclass;
 use crate::pci::PciHeaderType;
 use crate::pci::PciId;
 use crate::pci::PciInterruptPin;
+use crate::pci::PciMassStorageSubclass;
 use crate::pci::PciSubclass;
 use crate::virtio::ipc_memory_mapper::IpcMemoryMapper;
 #[cfg(feature = "pci-hotplug")]
@@ -365,6 +366,10 @@ impl VirtioPciDevice {
         let pci_device_id = VIRTIO_PCI_DEVICE_ID_BASE + device.device_type() as u16;
 
         let (pci_device_class, pci_device_subclass) = match device.device_type() {
+            DeviceType::Block => (
+                PciClassCode::MassStorage,
+                &PciMassStorageSubclass::Other as &dyn PciSubclass,
+            ),
             DeviceType::Gpu => (
                 PciClassCode::DisplayController,
                 &PciDisplaySubclass::Other as &dyn PciSubclass,

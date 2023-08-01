@@ -67,6 +67,7 @@ pub use self::pci_configuration::PciClassCode;
 pub use self::pci_configuration::PciConfiguration;
 pub use self::pci_configuration::PciDisplaySubclass;
 pub use self::pci_configuration::PciHeaderType;
+pub use self::pci_configuration::PciMassStorageSubclass;
 pub use self::pci_configuration::PciProgrammingInterface;
 pub use self::pci_configuration::PciSerialBusSubClass;
 pub use self::pci_configuration::PciSubclass;
