@@ -26,6 +26,7 @@ use hypervisor::MemRegion;
 #[cfg(feature = "balloon")]
 mod balloon_tube;
 pub mod client;
+mod snapshot_format;
 pub mod sys;
 
 #[cfg(target_arch = "x86_64")]
@@ -68,7 +69,6 @@ use hypervisor::IoEventAddress;
 use hypervisor::IrqRoute;
 use hypervisor::IrqSource;
 pub use hypervisor::MemSlot;
-use hypervisor::VcpuSnapshot;
 use hypervisor::Vm;
 use libc::EINVAL;
 use libc::EIO;
@@ -89,6 +89,7 @@ use rutabaga_gfx::RutabagaMappedRegion;
 use rutabaga_gfx::VulkanInfo;
 use serde::Deserialize;
 use serde::Serialize;
+pub use snapshot_format::*;
 use swap::SwapStatus;
 use sync::Mutex;
 #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -125,7 +126,9 @@ pub enum VcpuControl {
     MakeRT,
     // Request the current state of the vCPU. The result is sent back over the included channel.
     GetStates(mpsc::Sender<VmRunMode>),
-    Snapshot(mpsc::Sender<anyhow::Result<VcpuSnapshot>>),
+    // Request the vcpu write a snapshot of itself to the writer, then send a `Result` back over
+    // the channel after completion/failure.
+    Snapshot(SnapshotWriter, mpsc::Sender<anyhow::Result<()>>),
     Restore(VcpuRestoreRequest),
 }
 
@@ -134,7 +137,7 @@ pub enum VcpuControl {
 #[derive(Clone, Debug)]
 pub struct VcpuRestoreRequest {
     pub result_sender: mpsc::Sender<anyhow::Result<()>>,
-    pub snapshot: Box<VcpuSnapshot>,
+    pub snapshot_reader: SnapshotReader,
     #[cfg(target_arch = "x86_64")]
     pub host_tsc_reference_moment: u64,
 }
@@ -323,8 +326,8 @@ pub enum RestoreCommand {
 pub enum DeviceControlCommand {
     SleepDevices,
     WakeDevices,
-    SnapshotDevices { snapshot_path: PathBuf },
-    RestoreDevices { restore_path: PathBuf },
+    SnapshotDevices { snapshot_writer: SnapshotWriter },
+    RestoreDevices { snapshot_reader: SnapshotReader },
     GetDevicesState,
     Exit,
 }
@@ -2024,37 +2027,31 @@ fn do_snapshot(
     }
     info!("flushed IRQs in {} iterations", flush_attempts);
 
+    let snapshot_writer = SnapshotWriter::new(snapshot_path)?;
+
     // Snapshot Vcpus
-    let vcpu_path = snapshot_path.with_extension("vcpu");
-    let cpu_file = File::create(&vcpu_path)
-        .with_context(|| format!("failed to open path {}", vcpu_path.display()))?;
     let (send_chan, recv_chan) = mpsc::channel();
-    kick_vcpus(VcpuControl::Snapshot(send_chan));
+    kick_vcpus(VcpuControl::Snapshot(
+        snapshot_writer.add_namespace("vcpu")?,
+        send_chan,
+    ));
     // Validate all Vcpus snapshot successfully
-    let mut cpu_vec = Vec::with_capacity(vcpu_size);
     for _ in 0..vcpu_size {
-        match recv_chan
+        recv_chan
             .recv()
-            .context("Failed to snapshot Vcpu, aborting snapshot")?
-        {
-            Ok(snap) => {
-                cpu_vec.push(snap);
-            }
-            Err(e) => bail!("Failed to snapshot Vcpu, aborting snapshot: {}", e),
-        }
+            .context("Failed to recv Vcpu snapshot response")?
+            .context("Failed to snapshot Vcpu")?;
     }
-    serde_json::to_writer(cpu_file, &cpu_vec).expect("Failed to write Vcpu state");
 
     // Snapshot irqchip
-    let irqchip_path = snapshot_path.with_extension("irqchip");
-    let irqchip_file = File::create(&irqchip_path)
-        .with_context(|| format!("failed to open path {}", irqchip_path.display()))?;
     let irqchip_snap = snapshot_irqchip()?;
-    serde_json::to_writer(irqchip_file, &irqchip_snap).expect("Failed to write irqchip state");
+    snapshot_writer
+        .write_fragment("irqchip", &irqchip_snap)
+        .context("Failed to write irqchip state")?;
 
     // Snapshot devices
     device_control_tube
-        .send(&DeviceControlCommand::SnapshotDevices { snapshot_path })
+        .send(&DeviceControlCommand::SnapshotDevices { snapshot_writer })
         .context("send command to devices control socket")?;
     let resp: VmResponse = device_control_tube
         .recv()
@@ -2081,38 +2078,33 @@ pub fn do_restore(
     let _guard = VcpuSuspendGuard::new(&kick_vcpus, vcpu_size);
     let _devices_guard = DeviceSleepGuard::new(device_control_tube)?;
 
+    let snapshot_reader = SnapshotReader::new(restore_path)?;
+
     // Restore IrqChip
-    let irq_path = restore_path.with_extension("irqchip");
-    let irq_file = File::open(&irq_path)
-        .with_context(|| format!("failed to open path {}", irq_path.display()))?;
-    let irq_snapshot: serde_json::Value = serde_json::from_reader(irq_file)?;
+    let irq_snapshot: serde_json::Value = snapshot_reader.read_fragment("irqchip")?;
     restore_irqchip(irq_snapshot)?;
 
     // Restore Vcpu(s)
-    let vcpu_path = restore_path.with_extension("vcpu");
-    let cpu_file = File::open(&vcpu_path)
-        .with_context(|| format!("failed to open path {}", vcpu_path.display()))?;
-    let vcpu_snapshots: Vec<VcpuSnapshot> = serde_json::from_reader(cpu_file)?;
-    if vcpu_snapshots.len() != vcpu_size {
+    let vcpu_snapshot_reader = snapshot_reader.namespace("vcpu")?;
+    let vcpu_snapshot_count = vcpu_snapshot_reader.list_fragments()?.len();
+    if vcpu_snapshot_count != vcpu_size {
         bail!(
             "bad cpu count in snapshot: expected={} got={}",
             vcpu_size,
-            vcpu_snapshots.len()
+            vcpu_snapshot_count,
         );
     }
-
     #[cfg(target_arch = "x86_64")]
     let host_tsc_reference_moment = {
         // SAFETY: rdtsc takes no arguments.
         unsafe { _rdtsc() }
     };
     let (send_chan, recv_chan) = mpsc::channel();
-    for vcpu_snap in vcpu_snapshots {
-        let vcpu_id = vcpu_snap.vcpu_id;
+    for vcpu_id in 0..vcpu_size {
         kick_vcpu(
             VcpuControl::Restore(VcpuRestoreRequest {
                 result_sender: send_chan.clone(),
-                snapshot: Box::new(vcpu_snap),
+                snapshot_reader: vcpu_snapshot_reader.clone(),
                 #[cfg(target_arch = "x86_64")]
                 host_tsc_reference_moment,
             }),
@@ -2128,7 +2120,7 @@ pub fn do_restore(
 
     // Restore devices
     device_control_tube
-        .send(&DeviceControlCommand::RestoreDevices { restore_path })
+        .send(&DeviceControlCommand::RestoreDevices { snapshot_reader })
         .context("send command to devices control socket")?;
     let resp: VmResponse = device_control_tube
         .recv()

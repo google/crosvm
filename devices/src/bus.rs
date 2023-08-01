@@ -8,10 +8,8 @@ use std::cmp::Ord;
 use std::cmp::Ordering;
 use std::cmp::PartialEq;
 use std::cmp::PartialOrd;
-use std::collections::btree_map::BTreeMap;
-use std::collections::hash_map::HashMap;
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::collections::VecDeque;
 use std::fmt;
 use std::result;
 use std::sync::Arc;
@@ -423,6 +421,34 @@ impl Bus {
             .collect()
     }
 
+    /// Same as `unique_devices`, but also calculates the "snapshot key" for each device.
+    ///
+    /// The keys are used to associate a particular device with data in a serialized snapshot. The
+    /// keys need to be stable across multiple runs of the same crosvm binary.
+    ///
+    /// It is most convienent to calculate all the snapshot keys at once, because the keys are
+    /// dependant on the order of devices on the bus.
+    fn unique_devices_with_snapshot_key(&self) -> Vec<(String, BusDeviceEntry)> {
+        let mut next_ids = BTreeMap::<String, usize>::new();
+        let mut choose_key = |debug_label: String| -> String {
+            let label = debug_label.replace(char::is_whitespace, "-");
+            let id = next_ids.entry(label.clone()).or_default();
+            let key = format!("{}-{}", label, id);
+            *id += 1;
+            key
+        };
+
+        let mut result = Vec::new();
+        for device_entry in self.unique_devices() {
+            let key = match &device_entry {
+                BusDeviceEntry::OuterSync(d) => choose_key(d.lock().debug_label()),
+                BusDeviceEntry::InnerSync(d) => choose_key(d.debug_label()),
+            };
+            result.push((key, device_entry));
+        }
+        result
+    }
+
     pub fn sleep_devices(&self) -> anyhow::Result<()> {
         for device_entry in self.unique_devices() {
             match device_entry {
@@ -463,26 +489,27 @@ impl Bus {
 
     pub fn snapshot_devices(
         &self,
-        mut add_snapshot: impl FnMut(u32, serde_json::Value),
+        snapshot_writer: &vm_control::SnapshotWriter,
     ) -> anyhow::Result<()> {
-        for device_entry in self.unique_devices() {
+        for (snapshot_key, device_entry) in self.unique_devices_with_snapshot_key() {
             match device_entry {
                 BusDeviceEntry::OuterSync(dev) => {
                     let mut dev = dev.lock();
                     debug!("Snapshot on device: {}", dev.debug_label());
-                    add_snapshot(
-                        u32::from(dev.device_id()),
-                        dev.snapshot()
+                    snapshot_writer.write_fragment(
+                        &snapshot_key,
+                        &(*dev)
+                            .snapshot()
                             .with_context(|| format!("failed to snapshot {}", dev.debug_label()))?,
-                    )
+                    )?;
                 }
                 BusDeviceEntry::InnerSync(dev) => {
                     debug!("Snapshot on device: {}", dev.debug_label());
-                    add_snapshot(
-                        u32::from(dev.device_id()),
-                        dev.snapshot_sync()
+                    snapshot_writer.write_fragment(
+                        &snapshot_key,
+                        &dev.snapshot_sync()
                             .with_context(|| format!("failed to snapshot {}", dev.debug_label()))?,
-                    )
+                    )?;
                 }
             }
         }
@@ -491,36 +518,38 @@ impl Bus {
 
     pub fn restore_devices(
         &self,
-        devices_map: &mut HashMap<u32, VecDeque<serde_json::Value>>,
+        snapshot_reader: &vm_control::SnapshotReader,
     ) -> anyhow::Result<()> {
-        let mut pop_snapshot = |device_id| {
-            devices_map
-                .get_mut(&u32::from(device_id))
-                .and_then(|dq| dq.pop_front())
-        };
-        for device_entry in self.unique_devices() {
+        let mut unused_keys: BTreeSet<String> =
+            snapshot_reader.list_fragments()?.into_iter().collect();
+        for (snapshot_key, device_entry) in self.unique_devices_with_snapshot_key() {
+            unused_keys.remove(&snapshot_key);
             match device_entry {
                 BusDeviceEntry::OuterSync(dev) => {
                     let mut dev = dev.lock();
                     debug!("Restore on device: {}", dev.debug_label());
-                    let snapshot = pop_snapshot(dev.device_id()).ok_or_else(|| {
-                        anyhow!("missing snapshot for device {}", dev.debug_label())
-                    })?;
-                    dev.restore(snapshot).with_context(|| {
-                        format!("restore failed for device {}", dev.debug_label())
-                    })?;
+                    dev.restore(snapshot_reader.read_fragment(&snapshot_key)?)
+                        .with_context(|| {
+                            format!("restore failed for device {}", dev.debug_label())
+                        })?;
                 }
                 BusDeviceEntry::InnerSync(dev) => {
                     debug!("Restore on device: {}", dev.debug_label());
-                    let snapshot = pop_snapshot(dev.device_id()).ok_or_else(|| {
-                        anyhow!("missing snapshot for device {}", dev.debug_label())
-                    })?;
-                    dev.restore_sync(snapshot).with_context(|| {
-                        format!("restore failed for device {}", dev.debug_label())
-                    })?;
+                    dev.restore_sync(snapshot_reader.read_fragment(&snapshot_key)?)
+                        .with_context(|| {
+                            format!("restore failed for device {}", dev.debug_label())
+                        })?;
                 }
             }
         }
+
+        if !unused_keys.is_empty() {
+            error!(
+                "unused restore data in bus, devices might be missing: {:?}",
+                unused_keys
+            );
+        }
+
         Ok(())
     }
 

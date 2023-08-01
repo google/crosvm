@@ -41,9 +41,6 @@ cfg_if::cfg_if! {
     }
 }
 
-use std::collections::HashMap;
-use std::collections::VecDeque;
-use std::fs::File;
 use std::sync::Arc;
 
 use anyhow::anyhow;
@@ -255,130 +252,44 @@ fn wake_buses(buses: &[&Bus]) {
     }
 }
 
-fn snapshot_devices(
-    bus: &Bus,
-    add_snapshot: impl FnMut(u32, serde_json::Value),
-) -> anyhow::Result<()> {
-    match bus.snapshot_devices(add_snapshot) {
-        Ok(_) => {
-            debug!(
-                "Devices snapshot successfully for {:?} Bus",
-                bus.get_bus_type()
-            );
-            Ok(())
-        }
-        Err(e) => {
-            // If snapshot fails, wake devices and return error
-            error!(
-                "failed to snapshot devices: {:#} on {:?} Bus",
-                e,
-                bus.get_bus_type()
-            );
-            Err(e)
-        }
-    }
-}
-
-fn restore_devices(
-    bus: &Bus,
-    devices_map: &mut HashMap<u32, VecDeque<serde_json::Value>>,
-) -> anyhow::Result<()> {
-    match bus.restore_devices(devices_map) {
-        Ok(_) => {
-            debug!(
-                "Devices restore successfully for {:?} Bus",
-                bus.get_bus_type()
-            );
-            Ok(())
-        }
-        Err(e) => {
-            // If restore fails, wake devices and return error
-            error!(
-                "failed to restore devices: {:#} on {:?} Bus",
-                e,
-                bus.get_bus_type()
-            );
-            Err(e)
-        }
-    }
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct SnapshotRoot {
-    guest_memory_metadata: serde_json::Value,
-    devices: Vec<HashMap<u32, serde_json::Value>>,
-}
-
 async fn snapshot_handler(
-    path: &std::path::Path,
+    snapshot_writer: vm_control::SnapshotWriter,
     guest_memory: &GuestMemory,
     buses: &[&Bus],
 ) -> anyhow::Result<()> {
-    let mut snapshot_root = SnapshotRoot {
-        guest_memory_metadata: serde_json::Value::Null,
-        devices: Vec::new(),
-    };
-
-    // TODO(b/268093674): Better output file format.
-    // TODO(b/268094487): If the snapshot fail, this leaves an incomplete memory snapshot at the
-    // requested path.
-
-    let mut json_file =
-        File::create(path).with_context(|| format!("failed to open {}", path.display()))?;
-
-    let mem_path = path.with_extension("mem");
-    let mut mem_file = File::create(&mem_path)
-        .with_context(|| format!("failed to open {}", mem_path.display()))?;
-
-    snapshot_root.guest_memory_metadata = guest_memory
-        .snapshot(&mut mem_file)
+    let guest_memory_metadata = guest_memory
+        .snapshot(&mut snapshot_writer.raw_fragment("mem")?)
         .context("failed to snapshot memory")?;
-
-    for bus in buses {
-        snapshot_devices(bus, |id, snapshot| {
-            snapshot_root.devices.push([(id, snapshot)].into())
-        })
-        .context("failed to snapshot devices")?;
+    snapshot_writer.write_fragment("mem_metadata", &guest_memory_metadata)?;
+    for (i, bus) in buses.iter().enumerate() {
+        bus.snapshot_devices(&snapshot_writer.add_namespace(&format!("bus{i}"))?)
+            .context("failed to snapshot bus devices")?;
+        debug!(
+            "Devices snapshot successfully for {:?} Bus",
+            bus.get_bus_type()
+        );
     }
-
-    serde_json::to_writer(&mut json_file, &snapshot_root)?;
-
     Ok(())
 }
 
 async fn restore_handler(
-    path: &std::path::Path,
+    snapshot_reader: vm_control::SnapshotReader,
     guest_memory: &GuestMemory,
     buses: &[&Bus],
 ) -> anyhow::Result<()> {
-    let file = File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
-
-    let mem_path = path.with_extension("mem");
-    let mut mem_file =
-        File::open(&mem_path).with_context(|| format!("failed to open {}", mem_path.display()))?;
-
-    let snapshot_root: SnapshotRoot = serde_json::from_reader(file)?;
-
-    let mut devices_map: HashMap<u32, VecDeque<serde_json::Value>> = HashMap::new();
-    for (id, device) in snapshot_root.devices.into_iter().flatten() {
-        devices_map.entry(id).or_default().push_back(device)
-    }
-
-    {
-        guest_memory.restore(snapshot_root.guest_memory_metadata, &mut mem_file)?;
-
-        for bus in buses {
-            restore_devices(bus, &mut devices_map)?;
-        }
-    }
-
-    for (key, _) in devices_map.iter().filter(|(_, v)| !v.is_empty()) {
-        info!(
-            "Unused restore data for device_id {}, device might be missing.",
-            key
+    let guest_memory_metadata = snapshot_reader.read_fragment("mem_metadata")?;
+    guest_memory.restore(
+        guest_memory_metadata,
+        &mut snapshot_reader.raw_fragment("mem")?,
+    )?;
+    for (i, bus) in buses.iter().enumerate() {
+        bus.restore_devices(&snapshot_reader.namespace(&format!("bus{i}"))?)
+            .context("failed to restore bus devices")?;
+        debug!(
+            "Devices restore successfully for {:?} Bus",
+            bus.get_bus_type()
         );
     }
-
     Ok(())
 }
 
@@ -435,14 +346,13 @@ async fn handle_command_tube(
                             .await
                             .context("failed to reply to wake devices request")?;
                     }
-                    DeviceControlCommand::SnapshotDevices {
-                        snapshot_path: path,
-                    } => {
+                    DeviceControlCommand::SnapshotDevices { snapshot_writer } => {
                         assert!(
                             matches!(devices_state, DevicesState::Sleep),
                             "devices must be sleeping to snapshot"
                         );
-                        if let Err(e) = snapshot_handler(path.as_path(), &guest_memory, buses).await
+                        if let Err(e) =
+                            snapshot_handler(snapshot_writer, &guest_memory, buses).await
                         {
                             error!("failed to snapshot: {:#}", e);
                             command_tube
@@ -456,13 +366,13 @@ async fn handle_command_tube(
                             .await
                             .context("Failed to send response")?;
                     }
-                    DeviceControlCommand::RestoreDevices { restore_path: path } => {
+                    DeviceControlCommand::RestoreDevices { snapshot_reader } => {
                         assert!(
                             matches!(devices_state, DevicesState::Sleep),
                             "devices must be sleeping to restore"
                         );
                         if let Err(e) =
-                            restore_handler(path.as_path(), &guest_memory, &[&*io_bus, &*mmio_bus])
+                            restore_handler(snapshot_reader, &guest_memory, &[&*io_bus, &*mmio_bus])
                                 .await
                         {
                             error!("failed to restore: {:#}", e);

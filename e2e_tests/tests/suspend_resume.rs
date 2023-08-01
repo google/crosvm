@@ -23,6 +23,25 @@ use tempfile::NamedTempFile;
 // System-wide suspend/resume, snapshot/restore.
 // Tests below check for snapshot/restore functionality, and suspend/resume.
 
+fn compare_snapshots(a: &Path, b: &Path) -> (bool, String) {
+    let result = std::process::Command::new("diff")
+        .arg("-qr")
+        // vcpu and irqchip have timestamps that differ even if a freshly restored VM is
+        // snapshotted before it starts running again.
+        .arg("--exclude")
+        .arg("vcpu*")
+        .arg("--exclude")
+        .arg("irqchip")
+        .arg(a)
+        .arg(b)
+        .output()
+        .unwrap();
+    (
+        result.status.success(),
+        String::from_utf8(result.stdout).unwrap(),
+    )
+}
+
 #[test]
 fn suspend_snapshot_restore_resume() -> anyhow::Result<()> {
     suspend_resume_system(false)
@@ -118,11 +137,15 @@ fn suspend_resume_system(disabled_sandbox: bool) -> anyhow::Result<()> {
         vm.exec_in_guest("cat /tmp/foo").unwrap().stdout.trim()
     );
 
-    let snap1 = std::fs::read_to_string(&snap1_path).unwrap();
-    let snap2 = std::fs::read_to_string(&snap2_path).unwrap();
-    let snap3 = std::fs::read_to_string(&snap3_path).unwrap();
-    assert_ne!(snap1, snap2);
-    assert_eq!(snap1, snap3);
+    let (equal, output) = compare_snapshots(&snap1_path, &snap2_path);
+    assert!(
+        !equal,
+        "1st and 2nd snapshot are unexpectedly equal:\n{output}"
+    );
+
+    let (equal, output) = compare_snapshots(&snap1_path, &snap3_path);
+    assert!(equal, "1st and 3rd snapshot are not equal:\n{output}");
+
     Ok(())
 }
 
@@ -175,10 +198,6 @@ fn snapshot_vhost_user() {
         // suspend VM
         vm.suspend_full().unwrap();
         vm.snapshot(&snap_path).unwrap();
-
-        let snapshot_json = std::fs::read_to_string(&snap_path).unwrap();
-
-        assert!(snapshot_json.contains("\"device_name\":\"virtio-block\""));
     }
 
     let (_block_vu_device, _net_vu_device, block_socket, net_socket) = spin_up_vhost_user_devices();

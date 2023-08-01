@@ -678,7 +678,7 @@ const PCI_RESET_CPU_BIT: u8 = 1 << 2;
 
 impl BusDevice for PciConfigIo {
     fn debug_label(&self) -> String {
-        format!("pci config io-port 0x{:03x}", self.config_address)
+        "pci config io-port".to_string()
     }
 
     fn device_id(&self) -> DeviceId {
