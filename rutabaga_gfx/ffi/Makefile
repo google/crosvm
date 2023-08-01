@@ -40,13 +40,13 @@ build:
 
 install: build
 ifeq ($(UNAME), Linux)
-	install -D -m 755 $(OUT)/$(LIB_NAME) $(DESTDIR)$(libdir)
+	install -D -m 755 -t $(DESTDIR)$(libdir) $(OUT)/$(LIB_NAME)
 endif
 ifeq ($(UNAME), Darwin)
         install_name_tool -id $(DESTDIR)$(libdir)/$(LIB_NAME) $(DESTDIR)$(libdir)/$(LIB_NAME)
 endif
-	ln -sf $(DESTDIR)$(prefix)/$(LIB_NAME) $(DESTDIR)$(libdir)/$(LIB_NAME).$(RUTABAGA_VERSION)
-	ln -sf $(DESTDIR)$(prefix)/$(LIB_NAME) $(DESTDIR)$(libdir)/$(LIB_NAME).$(RUTABAGA_VERSION_MAJOR)
+	ln -sf $(DESTDIR)$(libdir)/$(LIB_NAME) $(DESTDIR)$(libdir)/$(LIB_NAME).$(RUTABAGA_VERSION)
+	ln -sf $(DESTDIR)$(libdir)/$(LIB_NAME) $(DESTDIR)$(libdir)/$(LIB_NAME).$(RUTABAGA_VERSION_MAJOR)
 ifeq ($(UNAME), Linux)
 	install -D -m 0644 $(SRC)/share/rutabaga_gfx_ffi.pc $(DESTDIR)$(libdir)/pkgconfig/rutabaga_gfx_ffi.pc
 	install -D -m 0644 $(SRC)/include/rutabaga_gfx_ffi.h $(DESTDIR)$(includedir)/rutabaga_gfx_ffi.h
