@@ -33,7 +33,7 @@ pub struct VringBase {
 /// Worker that takes care of running the vhost device.
 pub struct Worker<T: Vhost> {
     interrupt: Interrupt,
-    pub queues: BTreeMap<usize, (Queue, Event)>,
+    pub queues: BTreeMap<usize, Queue>,
     pub vhost_handle: T,
     pub vhost_interrupt: Vec<Event>,
     acked_features: u64,
@@ -43,7 +43,7 @@ pub struct Worker<T: Vhost> {
 
 impl<T: Vhost> Worker<T> {
     pub fn new(
-        queues: BTreeMap<usize, (Queue, Event)>,
+        queues: BTreeMap<usize, Queue>,
         vhost_handle: T,
         vhost_interrupt: Vec<Event>,
         interrupt: Interrupt,
@@ -98,7 +98,7 @@ impl<T: Vhost> Worker<T> {
             .set_mem_table(&mem)
             .map_err(Error::VhostSetMemTable)?;
 
-        for (&queue_index, (queue, queue_evt)) in self.queues.iter() {
+        for (&queue_index, queue) in self.queues.iter() {
             self.vhost_handle
                 .set_vring_num(queue_index, queue.size())
                 .map_err(Error::VhostSetVringNum)?;
@@ -135,7 +135,7 @@ impl<T: Vhost> Worker<T> {
             }
             self.set_vring_call_for_entry(queue_index, queue.vector() as usize)?;
             self.vhost_handle
-                .set_vring_kick(queue_index, queue_evt)
+                .set_vring_kick(queue_index, queue.event())
                 .map_err(Error::VhostSetVringKick)?;
         }
 
@@ -184,7 +184,7 @@ impl<T: Vhost> Worker<T> {
                             .wait()
                             .map_err(Error::VhostIrqRead)?;
                         self.interrupt
-                            .signal_used_queue(self.queues[&index].0.vector());
+                            .signal_used_queue(self.queues[&index].vector());
                     }
                     Token::InterruptResample => {
                         self.interrupt.interrupt_resample();
@@ -198,7 +198,7 @@ impl<T: Vhost> Worker<T> {
                             match socket.recv() {
                                 Ok(VhostDevRequest::MsixEntryChanged(index)) => {
                                     let mut qindex = 0;
-                                    for (&queue_index, (queue, _evt)) in self.queues.iter() {
+                                    for (&queue_index, queue) in self.queues.iter() {
                                         if queue.vector() == index as u16 {
                                             qindex = queue_index;
                                             break;
@@ -289,7 +289,7 @@ impl<T: Vhost> Worker<T> {
                         .map_err(Error::VhostSetVringCall)?;
                 }
             } else {
-                for (&queue_index, (queue, _evt)) in self.queues.iter() {
+                for (&queue_index, queue) in self.queues.iter() {
                     let vector = queue.vector() as usize;
                     if !msix_config.table_masked(vector) {
                         if let Some(irqfd) = msix_config.get_irqfd(vector) {

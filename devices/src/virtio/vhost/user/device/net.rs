@@ -9,7 +9,6 @@ use anyhow::bail;
 use anyhow::Context;
 use base::error;
 use base::AsRawDescriptors;
-use base::Event;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::IntoAsync;
@@ -116,7 +115,7 @@ pub struct NetBackend<T: TapT + IntoAsync> {
     acked_protocol_features: VhostUserProtocolFeatures,
     mtu: u16,
     #[cfg(all(windows, feature = "slirp"))]
-    slirp_kill_event: Event,
+    slirp_kill_event: base::Event,
     workers: [Option<(TaskHandle<Queue>, oneshot::Sender<()>)>; MAX_QUEUE_NUM],
 }
 
@@ -203,9 +202,8 @@ where
         queue: virtio::Queue,
         mem: GuestMemory,
         doorbell: Interrupt,
-        kick_evt: Event,
     ) -> anyhow::Result<()> {
-        sys::start_queue(self, idx, queue, mem, doorbell, kick_evt)
+        sys::start_queue(self, idx, queue, mem, doorbell)
     }
 
     fn stop_queue(&mut self, idx: usize) -> anyhow::Result<virtio::Queue> {

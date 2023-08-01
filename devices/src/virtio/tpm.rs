@@ -40,7 +40,6 @@ const TPM_BUFSIZE: usize = 4096;
 struct Worker {
     interrupt: Interrupt,
     queue: Queue,
-    queue_evt: Event,
     backend: Box<dyn TpmBackend>,
 }
 
@@ -111,7 +110,7 @@ impl Worker {
         }
 
         let wait_ctx = match WaitContext::build_with(&[
-            (&self.queue_evt, Token::QueueAvailable),
+            (self.queue.event(), Token::QueueAvailable),
             (&kill_evt, Token::Kill),
         ])
         .and_then(|wc| {
@@ -140,7 +139,7 @@ impl Worker {
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
                     Token::QueueAvailable => {
-                        if let Err(e) = self.queue_evt.wait() {
+                        if let Err(e) = self.queue.event().wait() {
                             error!("vtpm failed reading queue Event: {}", e);
                             break 'wait;
                         }
@@ -197,19 +196,18 @@ impl VirtioDevice for Tpm {
         &mut self,
         _mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: BTreeMap<usize, (Queue, Event)>,
+        mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         if queues.len() != 1 {
             return Err(anyhow!("expected 1 queue, got {}", queues.len()));
         }
-        let (queue, queue_evt) = queues.pop_first().unwrap().1;
+        let queue = queues.pop_first().unwrap().1;
 
         let backend = self.backend.take().context("no backend in vtpm")?;
 
         let worker = Worker {
             interrupt,
             queue,
-            queue_evt,
             backend,
         };
 

@@ -17,7 +17,6 @@ use argh::FromArgs;
 use base::clone_descriptor;
 use base::error;
 use base::warn;
-use base::Event;
 use base::FromRawDescriptor;
 use base::SafeDescriptor;
 use base::Tube;
@@ -66,7 +65,11 @@ async fn run_out_queue(
             break;
         }
 
-        wl::process_out_queue(&doorbell, &queue, &mut wlstate.borrow_mut());
+        wl::process_out_queue(
+            &doorbell,
+            &mut queue.borrow_mut(),
+            &mut wlstate.borrow_mut(),
+        );
     }
 }
 
@@ -86,8 +89,11 @@ async fn run_in_queue(
             break;
         }
 
-        if wl::process_in_queue(&doorbell, &queue, &mut wlstate.borrow_mut())
-            == Err(wl::DescriptorsExhausted)
+        if wl::process_in_queue(
+            &doorbell,
+            &mut queue.borrow_mut(),
+            &mut wlstate.borrow_mut(),
+        ) == Err(wl::DescriptorsExhausted)
         {
             if let Err(e) = kick_evt.next_val().await {
                 error!("Failed to read kick event for in queue: {}", e);
@@ -204,13 +210,16 @@ impl VhostUserBackend for WlBackend {
         queue: Queue,
         _mem: GuestMemory,
         doorbell: Interrupt,
-        kick_evt: Event,
     ) -> anyhow::Result<()> {
         if self.workers[idx].is_some() {
             warn!("Starting new queue handler without stopping old handler");
             self.stop_queue(idx)?;
         }
 
+        let kick_evt = queue
+            .event()
+            .try_clone()
+            .context("failed to clone queue event")?;
         let kick_evt = EventAsync::new(kick_evt, &self.ex)
             .context("failed to create EventAsync for kick_evt")?;
 

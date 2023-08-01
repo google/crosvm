@@ -202,7 +202,7 @@ impl VirtioDevice for VideoDevice {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: BTreeMap<usize, (Queue, Event)>,
+        mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         if queues.len() != QUEUE_SIZES.len() {
             return Err(anyhow!(
@@ -217,8 +217,8 @@ impl VirtioDevice for VideoDevice {
             .context("failed to create kill Event pair")?;
         self.kill_evt = Some(self_kill_evt);
 
-        let (cmd_queue, cmd_evt) = queues.pop_first().unwrap().1;
-        let (event_queue, event_evt) = queues.pop_first().unwrap().1;
+        let cmd_queue = queues.pop_first().unwrap().1;
+        let event_queue = queues.pop_first().unwrap().1;
         let backend = self.backend;
         let resource_bridge = self
             .resource_bridge
@@ -240,7 +240,7 @@ impl VirtioDevice for VideoDevice {
                             }
                         };
 
-                    if let Err(e) = worker.run(device, &cmd_evt, &event_evt, &kill_evt) {
+                    if let Err(e) = worker.run(device, &kill_evt) {
                         error!("Failed to start decoder worker: {}", e);
                     };
                     // Don't return any information since the return value is never checked.
@@ -292,7 +292,7 @@ impl VirtioDevice for VideoDevice {
                         }
                     };
 
-                    if let Err(e) = worker.run(device, &cmd_evt, &event_evt, &kill_evt) {
+                    if let Err(e) = worker.run(device, &kill_evt) {
                         error!("Failed to start encoder worker: {}", e);
                     }
                 }),

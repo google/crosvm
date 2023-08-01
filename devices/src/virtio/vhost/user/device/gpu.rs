@@ -13,7 +13,6 @@ use anyhow::bail;
 use anyhow::Context;
 use base::error;
 use base::warn;
-use base::Event;
 use base::Tube;
 use cros_async::EventAsync;
 use cros_async::Executor;
@@ -148,7 +147,6 @@ impl VhostUserBackend for GpuBackend {
         queue: Queue,
         mem: GuestMemory,
         doorbell: Interrupt,
-        kick_evt: Event,
     ) -> anyhow::Result<()> {
         if self.queue_workers[idx].is_some() {
             warn!("Starting new queue handler without stopping old handler");
@@ -163,6 +161,10 @@ impl VhostUserBackend for GpuBackend {
             _ => bail!("attempted to start unknown queue: {}", idx),
         }
 
+        let kick_evt = queue
+            .event()
+            .try_clone()
+            .context("failed to clone queue event")?;
         let kick_evt = EventAsync::new(kick_evt, &self.ex)
             .context("failed to create EventAsync for kick_evt")?;
 

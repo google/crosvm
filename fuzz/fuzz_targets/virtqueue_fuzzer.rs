@@ -9,6 +9,7 @@ use std::io::Read;
 use std::io::Write;
 use std::mem::size_of;
 
+use base::Event;
 use crosvm_fuzz::fuzz_target;
 use crosvm_fuzz::rand::FuzzRng;
 use devices::virtio::QueueConfig;
@@ -74,7 +75,7 @@ fuzz_target!(|data: &[u8]| {
     q.set_ready(true);
 
     GUEST_MEM.with(|mem| {
-        let mut q = if let Ok(q) = q.activate(mem) {
+        let mut q = if let Ok(q) = q.activate(mem, Event::new().unwrap()) {
             q
         } else {
             return;

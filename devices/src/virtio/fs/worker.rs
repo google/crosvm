@@ -2,13 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::fs::File;
 use std::io;
 use std::os::unix::io::AsRawFd;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use base::error;
@@ -141,7 +139,7 @@ impl fuse::Mapper for Mapper {
 }
 
 pub struct Worker<F: FileSystem + Sync> {
-    queue: Rc<RefCell<Queue>>,
+    queue: Queue,
     server: Arc<fuse::Server<F>>,
     irq: Interrupt,
     tube: Arc<Mutex<Tube>>,
@@ -150,13 +148,12 @@ pub struct Worker<F: FileSystem + Sync> {
 
 pub fn process_fs_queue<F: FileSystem + Sync>(
     interrupt: &Interrupt,
-    queue: &Rc<RefCell<Queue>>,
+    queue: &mut Queue,
     server: &Arc<fuse::Server<F>>,
     tube: &Arc<Mutex<Tube>>,
     slot: u32,
 ) -> Result<()> {
     let mapper = Mapper::new(Arc::clone(tube), slot);
-    let mut queue = queue.borrow_mut();
     while let Some(mut avail_desc) = queue.pop() {
         let total =
             server.handle_message(&mut avail_desc.reader, &mut avail_desc.writer, &mapper)?;
@@ -177,7 +174,7 @@ impl<F: FileSystem + Sync> Worker<F> {
         slot: u32,
     ) -> Worker<F> {
         Worker {
-            queue: Rc::new(RefCell::new(queue)),
+            queue,
             server,
             irq,
             tube,
@@ -185,12 +182,7 @@ impl<F: FileSystem + Sync> Worker<F> {
         }
     }
 
-    pub fn run(
-        &mut self,
-        queue_evt: Event,
-        kill_evt: Event,
-        watch_resample_event: bool,
-    ) -> Result<()> {
+    pub fn run(&mut self, kill_evt: Event, watch_resample_event: bool) -> Result<()> {
         // We need to set the no setuid fixup secure bit so that we don't drop capabilities when
         // changing the thread uid/gid. Without this, creating new entries can fail in some corner
         // cases.
@@ -221,9 +213,11 @@ impl<F: FileSystem + Sync> Worker<F> {
             Kill,
         }
 
-        let wait_ctx =
-            WaitContext::build_with(&[(&queue_evt, Token::QueueReady), (&kill_evt, Token::Kill)])
-                .map_err(Error::CreateWaitContext)?;
+        let wait_ctx = WaitContext::build_with(&[
+            (self.queue.event(), Token::QueueReady),
+            (&kill_evt, Token::Kill),
+        ])
+        .map_err(Error::CreateWaitContext)?;
 
         if watch_resample_event {
             if let Some(resample_evt) = self.irq.get_resample_evt() {
@@ -238,10 +232,10 @@ impl<F: FileSystem + Sync> Worker<F> {
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
                     Token::QueueReady => {
-                        queue_evt.wait().map_err(Error::ReadQueueEvent)?;
+                        self.queue.event().wait().map_err(Error::ReadQueueEvent)?;
                         if let Err(e) = process_fs_queue(
                             &self.irq,
-                            &self.queue,
+                            &mut self.queue,
                             &self.server,
                             &self.tube,
                             self.slot,

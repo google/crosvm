@@ -81,9 +81,10 @@ fuzz_target!(|bytes| {
     let mut q = QueueConfig::new(QUEUE_SIZE, 0);
     q.set_size(QUEUE_SIZE / 2);
     q.set_ready(true);
-    let q = q.activate(&mem).expect("QueueConfig::activate");
-
-    let queue_evt = Event::new().unwrap();
+    let q = q
+        .activate(&mem, Event::new().unwrap())
+        .expect("QueueConfig::activate");
+    let queue_evt = q.event().try_clone().unwrap();
 
     let features = base_features(ProtectionType::Unprotected);
 
@@ -112,7 +113,7 @@ fuzz_target!(|bytes| {
                 None,   // msix_config
                 0xFFFF, // VIRTIO_MSI_NO_VECTOR
             ),
-            BTreeMap::from([(0, (q, queue_evt.try_clone().unwrap()))]),
+            BTreeMap::from([(0, q)]),
         )
         .unwrap();
 

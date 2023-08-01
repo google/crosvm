@@ -191,9 +191,9 @@ impl Vsock {
         interrupt: Interrupt,
         mut queues: VsockQueues,
     ) -> anyhow::Result<()> {
-        let (rx_queue, rx_queue_evt) = queues.rx;
-        let (tx_queue, tx_queue_evt) = queues.tx;
-        let (event_queue, event_queue_evt) = queues.event;
+        let rx_queue = queues.rx;
+        let tx_queue = queues.tx;
+        let event_queue = queues.event;
 
         let host_guid = self.host_guid.clone();
         let guest_cid = self.guest_cid;
@@ -201,15 +201,7 @@ impl Vsock {
             "userspace_virtio_vsock",
             move |kill_evt| {
                 let mut worker = Worker::new(mem, interrupt, host_guid, guest_cid);
-                let result = worker.run(
-                    rx_queue,
-                    tx_queue,
-                    event_queue,
-                    rx_queue_evt,
-                    tx_queue_evt,
-                    event_queue_evt,
-                    kill_evt,
-                );
+                let result = worker.run(rx_queue, tx_queue, event_queue, kill_evt);
 
                 match result {
                     Err(e) => {
@@ -254,7 +246,7 @@ impl VirtioDevice for Vsock {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: BTreeMap<usize, (Queue, Event)>,
+        mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         if queues.len() != QUEUE_SIZES.len() {
             return Err(anyhow!(
@@ -288,7 +280,7 @@ impl VirtioDevice for Vsock {
 
     fn virtio_wake(
         &mut self,
-        queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, (Queue, Event)>)>,
+        queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, Queue>)>,
     ) -> anyhow::Result<()> {
         if let Some((mem, interrupt, queues)) = queues_state {
             self.start_worker(
@@ -1337,11 +1329,13 @@ impl Worker {
         rx_queue: Queue,
         tx_queue: Queue,
         event_queue: Queue,
-        rx_queue_evt: Event,
-        tx_queue_evt: Event,
-        event_queue_evt: Event,
         kill_evt: Event,
     ) -> Result<Option<PausedQueues>> {
+        let rx_queue_evt = rx_queue
+            .event()
+            .try_clone()
+            .map_err(VsockError::CloneDescriptor)?;
+
         // Note that this mutex won't ever be contended because the HandleExecutor is single
         // threaded. We need the mutex for compile time correctness, but technically it is not
         // actually providing mandatory locking, at least not at the moment. If we later use a
@@ -1369,8 +1363,14 @@ impl Worker {
 
             let (send, recv) = mpsc::channel(CHANNEL_SIZE);
 
-            let tx_evt_async =
-                EventAsync::new(tx_queue_evt, &ex).expect("Failed to set up the tx queue event");
+            let tx_evt_async = EventAsync::new(
+                tx_queue
+                    .event()
+                    .try_clone()
+                    .map_err(VsockError::CloneDescriptor)?,
+                &ex,
+            )
+            .expect("Failed to set up the tx queue event");
             let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
             let tx_handler = self.process_tx_queue(tx_queue, tx_evt_async, send, stop_rx);
             let tx_handler = tx_handler.fuse();
@@ -1382,8 +1382,14 @@ impl Worker {
             let packet_handler = packet_handler.fuse();
             pin_mut!(packet_handler);
 
-            let event_evt_async = EventAsync::new(event_queue_evt, &ex)
-                .expect("Failed to set up the event queue event");
+            let event_evt_async = EventAsync::new(
+                event_queue
+                    .event()
+                    .try_clone()
+                    .map_err(VsockError::CloneDescriptor)?,
+                &ex,
+            )
+            .expect("Failed to set up the event queue event");
             let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
             let event_handler = self.process_event_queue(event_queue, event_evt_async, stop_rx);
             let event_handler = event_handler.fuse();
@@ -1457,14 +1463,14 @@ impl Worker {
 
 /// Queues & events for the vsock device.
 struct VsockQueues {
-    rx: (Queue, Event),
-    tx: (Queue, Event),
-    event: (Queue, Event),
+    rx: Queue,
+    tx: Queue,
+    event: Queue,
 }
 
-impl TryFrom<BTreeMap<usize, (Queue, Event)>> for VsockQueues {
+impl TryFrom<BTreeMap<usize, Queue>> for VsockQueues {
     type Error = anyhow::Error;
-    fn try_from(mut queues: BTreeMap<usize, (Queue, Event)>) -> result::Result<Self, Self::Error> {
+    fn try_from(mut queues: BTreeMap<usize, Queue>) -> result::Result<Self, Self::Error> {
         if queues.len() < 3 {
             anyhow::bail!(
                 "{} queues were found, but an activated vsock must have at 3 active queues.",

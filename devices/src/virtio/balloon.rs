@@ -851,16 +851,16 @@ async fn handle_pending_adjusted_responses(
 
 /// Represents queues & events for the balloon device.
 struct BalloonQueues {
-    inflate: (Queue, Event),
-    deflate: (Queue, Event),
-    stats: Option<(Queue, Event)>,
-    reporting: Option<(Queue, Event)>,
-    events: Option<(Queue, Event)>,
-    ws: (Option<(Queue, Event)>, Option<(Queue, Event)>),
+    inflate: Queue,
+    deflate: Queue,
+    stats: Option<Queue>,
+    reporting: Option<Queue>,
+    events: Option<Queue>,
+    ws: (Option<Queue>, Option<Queue>),
 }
 
 impl BalloonQueues {
-    fn new(inflate: (Queue, Event), deflate: (Queue, Event)) -> Self {
+    fn new(inflate: Queue, deflate: Queue) -> Self {
         BalloonQueues {
             inflate,
             deflate,
@@ -935,12 +935,12 @@ struct WorkerReturn {
 // The main worker thread. Initialized the asynchronous worker tasks and passes them to the executor
 // to be processed.
 fn run_worker(
-    inflate_queue: (Queue, Event),
-    deflate_queue: (Queue, Event),
-    stats_queue: Option<(Queue, Event)>,
-    reporting_queue: Option<(Queue, Event)>,
-    events_queue: Option<(Queue, Event)>,
-    ws_queues: (Option<(Queue, Event)>, Option<(Queue, Event)>),
+    inflate_queue: Queue,
+    deflate_queue: Queue,
+    stats_queue: Option<Queue>,
+    reporting_queue: Option<Queue>,
+    events_queue: Option<Queue>,
+    ws_queues: (Option<Queue>, Option<Queue>),
     command_tube: Tube,
     #[cfg(windows)] vm_memory_client: VmMemoryClient,
     release_memory_tube: Option<Tube>,
@@ -965,9 +965,13 @@ fn run_worker(
     let paused_queues = {
         // The first queue is used for inflate messages
         let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
+        let inflate_queue_evt = inflate_queue
+            .event()
+            .try_clone()
+            .expect("failed to clone queue event");
         let inflate = handle_queue(
-            inflate_queue.0,
-            EventAsync::new(inflate_queue.1, &ex).expect("failed to create async event"),
+            inflate_queue,
+            EventAsync::new(inflate_queue_evt, &ex).expect("failed to create async event"),
             release_memory_tube.as_ref(),
             interrupt.clone(),
             |guest_address, len| {
@@ -987,9 +991,13 @@ fn run_worker(
 
         // The second queue is used for deflate messages
         let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
+        let deflate_queue_evt = deflate_queue
+            .event()
+            .try_clone()
+            .expect("failed to clone queue event");
         let deflate = handle_queue(
-            deflate_queue.0,
-            EventAsync::new(deflate_queue.1, &ex).expect("failed to create async event"),
+            deflate_queue,
+            EventAsync::new(deflate_queue_evt, &ex).expect("failed to create async event"),
             None,
             interrupt.clone(),
             |guest_address, len| {
@@ -1008,8 +1016,12 @@ fn run_worker(
         // The next queue is used for stats messages if VIRTIO_BALLOON_F_STATS_VQ is negotiated.
         let (stats_tx, stats_rx) = mpsc::channel::<()>(1);
         let has_stats_queue = stats_queue.is_some();
-        let stats = if let Some((stats_queue, stats_queue_evt)) = stats_queue {
+        let stats = if let Some(stats_queue) = stats_queue {
             let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
+            let stats_queue_evt = stats_queue
+                .event()
+                .try_clone()
+                .expect("failed to clone queue event");
             handle_stats_queue(
                 stats_queue,
                 EventAsync::new(stats_queue_evt, &ex).expect("failed to create async event"),
@@ -1030,8 +1042,12 @@ fn run_worker(
 
         // The next queue is used for reporting messages
         let has_reporting_queue = reporting_queue.is_some();
-        let reporting = if let Some((reporting_queue, reporting_queue_evt)) = reporting_queue {
+        let reporting = if let Some(reporting_queue) = reporting_queue {
             let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
+            let reporting_queue_evt = reporting_queue
+                .event()
+                .try_clone()
+                .expect("failed to clone queue event");
             handle_reporting_queue(
                 reporting_queue,
                 EventAsync::new(reporting_queue_evt, &ex).expect("failed to create async event"),
@@ -1059,8 +1075,12 @@ fn run_worker(
         // If VIRTIO_BALLOON_F_WS_REPORTING is set 2 queues must handled - one for WS data and one
         // for WS notifications.
         let has_ws_data_queue = ws_queues.0.is_some();
-        let ws_data = if let Some((ws_data_queue, ws_data_queue_evt)) = ws_queues.0 {
+        let ws_data = if let Some(ws_data_queue) = ws_queues.0 {
             let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
+            let ws_data_queue_evt = ws_data_queue
+                .event()
+                .try_clone()
+                .expect("failed to clone queue event");
             handle_ws_data_queue(
                 ws_data_queue,
                 EventAsync::new(ws_data_queue_evt, &ex).expect("failed to create async event"),
@@ -1080,8 +1100,12 @@ fn run_worker(
 
         let (ws_op_tx, ws_op_rx) = mpsc::channel::<WSOp>(1);
         let has_ws_op_queue = ws_queues.1.is_some();
-        let ws_op = if let Some((ws_op_queue, ws_op_queue_evt)) = ws_queues.1 {
+        let ws_op = if let Some(ws_op_queue) = ws_queues.1 {
             let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
+            let ws_op_queue_evt = ws_op_queue
+                .event()
+                .try_clone()
+                .expect("failed to clone queue event");
             handle_ws_op_queue(
                 ws_op_queue,
                 EventAsync::new(ws_op_queue_evt, &ex).expect("failed to create async event"),
@@ -1128,8 +1152,12 @@ fn run_worker(
 
         // The next queue is used for events if VIRTIO_BALLOON_F_EVENTS_VQ is negotiated.
         let has_events_queue = events_queue.is_some();
-        let events = if let Some((events_queue, events_queue_evt)) = events_queue {
+        let events = if let Some(events_queue) = events_queue {
             let stop_rx = create_stop_oneshot(&mut stop_queue_oneshots);
+            let events_queue_evt = events_queue
+                .event()
+                .try_clone()
+                .expect("failed to clone queue event");
             handle_events_queue(
                 events_queue,
                 EventAsync::new(events_queue_evt, &ex).expect("failed to create async event"),
@@ -1406,7 +1434,7 @@ impl Balloon {
     /// are not negotiated) into a structure that is easier to work with.
     fn get_queues_from_map(
         &self,
-        mut queues: BTreeMap<usize, (Queue, Event)>,
+        mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<BalloonQueues> {
         let expected_queues = Balloon::num_expected_queues(self.acked_features);
         if queues.len() != expected_queues {
@@ -1560,7 +1588,7 @@ impl VirtioDevice for Balloon {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        queues: BTreeMap<usize, (Queue, Event)>,
+        queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         let queues = self.get_queues_from_map(queues)?;
         self.start_worker(mem, interrupt, queues)
@@ -1588,7 +1616,7 @@ impl VirtioDevice for Balloon {
 
     fn virtio_wake(
         &mut self,
-        queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, (Queue, Event)>)>,
+        queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, Queue>)>,
     ) -> anyhow::Result<()> {
         if let Some((mem, interrupt, queues)) = queues_state {
             if queues.len() < 2 {

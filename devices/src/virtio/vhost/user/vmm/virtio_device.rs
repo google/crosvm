@@ -161,7 +161,7 @@ impl VirtioDevice for VhostUserVirtioDevice {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        queues: BTreeMap<usize, (Queue, Event)>,
+        queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         let worker_thread = self
             .handler
@@ -216,7 +216,7 @@ impl VirtioDevice for VhostUserVirtioDevice {
         &mut self,
         // Vhost user doesn't need to pass queue_states back to the device process, since it will
         // already have it.
-        _queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, (Queue, Event)>)>,
+        _queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, Queue>)>,
     ) -> anyhow::Result<()> {
         self.handler
             .borrow_mut()

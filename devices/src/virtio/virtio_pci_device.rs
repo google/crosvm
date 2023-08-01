@@ -546,17 +546,15 @@ impl VirtioPciDevice {
                         .context("failed to register ioevent")?;
                     evt.ioevent_registered = true;
                 }
+                let queue_evt = evt.event.try_clone().context("failed to clone queue_evt")?;
                 Ok((
                     queue_index,
-                    (
-                        queue
-                            .activate(&self.mem)
-                            .context("failed to activate queue")?,
-                        evt.event.try_clone().context("failed to clone queue_evt")?,
-                    ),
+                    queue
+                        .activate(&self.mem, queue_evt)
+                        .context("failed to activate queue")?,
                 ))
             })
-            .collect::<anyhow::Result<BTreeMap<usize, (Queue, Event)>>>()?;
+            .collect::<anyhow::Result<BTreeMap<usize, Queue>>>()?;
 
         if let Some(iommu) = &self.iommu {
             self.device.set_iommu(iommu);
@@ -1130,28 +1128,13 @@ impl Suspendable for VirtioPciDevice {
                     .expect("virtio_wake failed, can't recover");
             }
             Some(SleepState::Active { activated_queues }) => {
-                let mut queues_to_wake = BTreeMap::new();
-
-                for (index, queue) in activated_queues.into_iter() {
-                    queues_to_wake.insert(
-                        index,
-                        (
-                            queue,
-                            self.queue_evts[index]
-                                .event
-                                .try_clone()
-                                .expect("failed to clone event"),
-                        ),
-                    );
-                }
-
                 self.device
                     .virtio_wake(Some((
                         self.mem.clone(),
                         self.interrupt
                             .clone()
                             .expect("interrupt missing for already active queues"),
-                        queues_to_wake,
+                        activated_queues,
                     )))
                     .expect("virtio_wake failed, can't recover");
             }
@@ -1237,9 +1220,16 @@ impl Suspendable for VirtioPciDevice {
                     .queues
                     .get(index)
                     .with_context(|| format!("missing queue config for activated queue {index}"))?;
+                let queue_evt = self
+                    .queue_evts
+                    .get(index)
+                    .with_context(|| format!("missing queue event for activated queue {index}"))?
+                    .event
+                    .try_clone()
+                    .context("failed to clone queue event")?;
                 activated_queues.insert(
                     index,
-                    Queue::restore(queue_config, queue_snapshot, &self.mem)?,
+                    Queue::restore(queue_config, queue_snapshot, &self.mem, queue_evt)?,
                 );
             }
 

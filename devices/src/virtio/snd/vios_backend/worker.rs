@@ -30,9 +30,7 @@ pub struct Worker {
     // Lock order: Must never hold more than one queue lock at the same time.
     interrupt: Interrupt,
     control_queue: Arc<Mutex<Queue>>,
-    control_queue_evt: Event,
     event_queue: Queue,
-    event_queue_evt: Event,
     vios_client: Arc<VioSClient>,
     streams: Vec<StreamProxy>,
     io_thread: Option<thread::JoinHandle<Result<()>>>,
@@ -45,13 +43,9 @@ impl Worker {
         vios_client: Arc<VioSClient>,
         interrupt: Interrupt,
         control_queue: Arc<Mutex<Queue>>,
-        control_queue_evt: Event,
         event_queue: Queue,
-        event_queue_evt: Event,
         tx_queue: Arc<Mutex<Queue>>,
-        tx_queue_evt: Event,
         rx_queue: Arc<Mutex<Queue>>,
-        rx_queue_evt: Event,
     ) -> Result<Worker> {
         let mut streams: Vec<StreamProxy> = Vec::with_capacity(vios_client.num_streams() as usize);
         {
@@ -83,23 +77,13 @@ impl Worker {
             .spawn(move || {
                 try_set_real_time_priority();
 
-                io_loop(
-                    interrupt_clone,
-                    tx_queue,
-                    tx_queue_evt,
-                    rx_queue,
-                    rx_queue_evt,
-                    senders,
-                    kill_io,
-                )
+                io_loop(interrupt_clone, tx_queue, rx_queue, senders, kill_io)
             })
             .map_err(SoundError::CreateThread)?;
         Ok(Worker {
             interrupt,
             control_queue,
-            control_queue_evt,
             event_queue,
-            event_queue_evt,
             vios_client,
             streams,
             io_thread: Some(io_thread),
@@ -123,8 +107,8 @@ impl Worker {
             Kill,
         }
         let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
-            (&self.control_queue_evt, Token::ControlQAvailable),
-            (&self.event_queue_evt, Token::EventQAvailable),
+            (self.control_queue.lock().event(), Token::ControlQAvailable),
+            (self.event_queue.event(), Token::EventQAvailable),
             (&event_notifier, Token::EventTriggered),
             (&kill_evt, Token::Kill),
         ])
@@ -141,7 +125,9 @@ impl Worker {
             for wait_evt in wait_events.iter().filter(|e| e.is_readable) {
                 match wait_evt.token {
                     Token::ControlQAvailable => {
-                        self.control_queue_evt
+                        self.control_queue
+                            .lock()
+                            .event()
                             .wait()
                             .map_err(SoundError::QueueEvt)?;
                         self.process_controlq_buffers()?;
@@ -150,7 +136,10 @@ impl Worker {
                         // Just read from the event object to make sure the producer of such events
                         // never blocks. The buffers will only be used when actual virtio-snd
                         // events are triggered.
-                        self.event_queue_evt.wait().map_err(SoundError::QueueEvt)?;
+                        self.event_queue
+                            .event()
+                            .wait()
+                            .map_err(SoundError::QueueEvt)?;
                     }
                     Token::EventTriggered => {
                         event_notifier.wait().map_err(SoundError::QueueEvt)?;
@@ -505,9 +494,7 @@ impl Drop for Worker {
 fn io_loop(
     interrupt: Interrupt,
     tx_queue: Arc<Mutex<Queue>>,
-    tx_queue_evt: Event,
     rx_queue: Arc<Mutex<Queue>>,
-    rx_queue_evt: Event,
     senders: Vec<Sender<Box<StreamMsg>>>,
     kill_evt: Event,
 ) -> Result<()> {
@@ -518,8 +505,8 @@ fn io_loop(
         Kill,
     }
     let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
-        (&tx_queue_evt, Token::TxQAvailable),
-        (&rx_queue_evt, Token::RxQAvailable),
+        (tx_queue.lock().event(), Token::TxQAvailable),
+        (rx_queue.lock().event(), Token::RxQAvailable),
         (&kill_evt, Token::Kill),
     ])
     .map_err(SoundError::WaitCtx)?;
@@ -529,11 +516,19 @@ fn io_loop(
         for wait_evt in wait_events.iter().filter(|e| e.is_readable) {
             let queue = match wait_evt.token {
                 Token::TxQAvailable => {
-                    tx_queue_evt.wait().map_err(SoundError::QueueEvt)?;
+                    tx_queue
+                        .lock()
+                        .event()
+                        .wait()
+                        .map_err(SoundError::QueueEvt)?;
                     &tx_queue
                 }
                 Token::RxQAvailable => {
-                    rx_queue_evt.wait().map_err(SoundError::QueueEvt)?;
+                    rx_queue
+                        .lock()
+                        .event()
+                        .wait()
+                        .map_err(SoundError::QueueEvt)?;
                     &rx_queue
                 }
                 Token::Kill => {

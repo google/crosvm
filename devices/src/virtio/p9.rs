@@ -72,7 +72,6 @@ pub type P9Result<T> = result::Result<T, P9Error>;
 struct Worker {
     interrupt: Interrupt,
     queue: Queue,
-    queue_evt: Event,
     server: p9::Server,
 }
 
@@ -104,7 +103,7 @@ impl Worker {
         }
 
         let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
-            (&self.queue_evt, Token::QueueReady),
+            (self.queue.event(), Token::QueueReady),
             (&kill_evt, Token::Kill),
         ])
         .map_err(P9Error::CreateWaitContext)?;
@@ -119,7 +118,7 @@ impl Worker {
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
                     Token::QueueReady => {
-                        self.queue_evt.wait().map_err(P9Error::ReadQueueEvent)?;
+                        self.queue.event().wait().map_err(P9Error::ReadQueueEvent)?;
                         self.process_queue()?;
                     }
                     Token::InterruptResample => {
@@ -207,13 +206,13 @@ impl VirtioDevice for P9 {
         &mut self,
         _guest_mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: BTreeMap<usize, (Queue, Event)>,
+        mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         if queues.len() != 1 {
             return Err(anyhow!("expected 1 queue, got {}", queues.len()));
         }
 
-        let (queue, queue_evt) = queues.remove(&0).unwrap();
+        let queue = queues.remove(&0).unwrap();
 
         let server = self.server.take().context("missing server")?;
 
@@ -221,7 +220,6 @@ impl VirtioDevice for P9 {
             let mut worker = Worker {
                 interrupt,
                 queue,
-                queue_evt,
                 server,
             };
 

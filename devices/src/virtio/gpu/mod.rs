@@ -1501,7 +1501,7 @@ impl VirtioDevice for Gpu {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: BTreeMap<usize, (Queue, Event)>,
+        mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         if queues.len() != QUEUE_SIZES.len() {
             return Err(anyhow!(
@@ -1511,9 +1511,17 @@ impl VirtioDevice for Gpu {
             ));
         }
 
-        let (ctrl_queue, ctrl_evt) = queues.remove(&0).unwrap();
+        let ctrl_queue = queues.remove(&0).unwrap();
+        let ctrl_evt = ctrl_queue
+            .event()
+            .try_clone()
+            .context("failed to clone queue event")?;
         let ctrl_queue = SharedQueueReader::new(ctrl_queue, interrupt.clone());
-        let (cursor_queue, cursor_evt) = queues.remove(&1).unwrap();
+        let cursor_queue = queues.remove(&1).unwrap();
+        let cursor_evt = cursor_queue
+            .event()
+            .try_clone()
+            .context("failed to clone queue event")?;
         let cursor_queue = LocalQueueReader::new(cursor_queue, interrupt.clone());
 
         self.worker_thread

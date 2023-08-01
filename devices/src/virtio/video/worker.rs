@@ -298,19 +298,11 @@ impl Worker {
     /// # Arguments
     ///
     /// * `device` - Instance of backend device
-    /// * `cmd_evt` - Driver-to-device kick event for the command queue
-    /// * `event_evt` - Driver-to-device kick event for the event queue
     /// * `kill_evt` - `Event` notified to make `run` stop and return
-    pub fn run(
-        &mut self,
-        mut device: Box<dyn Device>,
-        cmd_evt: &Event,
-        event_evt: &Event,
-        kill_evt: &Event,
-    ) -> Result<()> {
+    pub fn run(&mut self, mut device: Box<dyn Device>, kill_evt: &Event) -> Result<()> {
         let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
-            (cmd_evt, Token::CmdQueue),
-            (event_evt, Token::EventQueue),
+            (self.cmd_queue.event(), Token::CmdQueue),
+            (self.event_queue.event(), Token::EventQueue),
             (kill_evt, Token::Kill),
         ])
         .and_then(|wc| {
@@ -329,11 +321,11 @@ impl Worker {
             for wait_event in wait_events.iter().filter(|e| e.is_readable) {
                 match wait_event.token {
                     Token::CmdQueue => {
-                        let _ = cmd_evt.wait();
+                        let _ = self.cmd_queue.event().wait();
                         self.handle_command_queue(device.as_mut(), &wait_ctx)?;
                     }
                     Token::EventQueue => {
-                        let _ = event_evt.wait();
+                        let _ = self.event_queue.event().wait();
                     }
                     Token::Event { id } => {
                         self.handle_event(device.as_mut(), id)?;

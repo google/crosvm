@@ -170,9 +170,7 @@ struct Worker {
     kill_evt: Event,
     in_avail_evt: Event,
     receive_queue: Arc<Mutex<Queue>>,
-    receive_evt: Event,
     transmit_queue: Arc<Mutex<Queue>>,
-    transmit_evt: Event,
 }
 
 impl Worker {
@@ -187,8 +185,14 @@ impl Worker {
         }
 
         let wait_ctx: WaitContext<Token> = WaitContext::build_with(&[
-            (&self.transmit_evt, Token::TransmitQueueAvailable),
-            (&self.receive_evt, Token::ReceiveQueueAvailable),
+            (
+                self.transmit_queue.lock().event(),
+                Token::TransmitQueueAvailable,
+            ),
+            (
+                self.receive_queue.lock().event(),
+                Token::ReceiveQueueAvailable,
+            ),
             (&self.in_avail_evt, Token::InputAvailable),
             (&self.kill_evt, Token::Kill),
         ])?;
@@ -203,7 +207,9 @@ impl Worker {
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
                     Token::TransmitQueueAvailable => {
-                        self.transmit_evt
+                        self.transmit_queue
+                            .lock()
+                            .event()
                             .wait()
                             .context("failed reading transmit queue Event")?;
                         process_transmit_queue(
@@ -213,7 +219,9 @@ impl Worker {
                         );
                     }
                     Token::ReceiveQueueAvailable => {
-                        self.receive_evt
+                        self.receive_queue
+                            .lock()
+                            .event()
                             .wait()
                             .context("failed reading receive queue Event")?;
                         if let Some(in_buf_ref) = self.input.as_ref() {
@@ -326,14 +334,14 @@ impl VirtioDevice for Console {
         &mut self,
         _mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: BTreeMap<usize, (Queue, Event)>,
+        mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         if queues.len() < 2 {
             return Err(anyhow!("expected 2 queues, got {}", queues.len()));
         }
 
-        let (receive_queue, receive_evt) = queues.remove(&0).unwrap();
-        let (transmit_queue, transmit_evt) = queues.remove(&1).unwrap();
+        let receive_queue = queues.remove(&0).unwrap();
+        let transmit_queue = queues.remove(&1).unwrap();
 
         if self.in_avail_evt.is_none() {
             self.in_avail_evt = Some(Event::new().context("failed creating Event")?);
@@ -374,10 +382,8 @@ impl VirtioDevice for Console {
                 kill_evt,
                 // Device -> driver
                 receive_queue: Arc::new(Mutex::new(receive_queue)),
-                receive_evt,
                 // Driver -> device
                 transmit_queue: Arc::new(Mutex::new(transmit_queue)),
-                transmit_evt,
             };
             if let Err(e) = worker.run() {
                 error!("console run failure: {:?}", e);
@@ -428,7 +434,7 @@ impl VirtioDevice for Console {
 
     fn virtio_wake(
         &mut self,
-        queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, (Queue, Event)>)>,
+        queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, Queue>)>,
     ) -> anyhow::Result<()> {
         match queues_state {
             None => Ok(()),

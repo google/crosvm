@@ -492,7 +492,6 @@ pub enum WorkerCmd {
     StartQueue {
         index: usize,
         queue: Queue,
-        kick_evt: Event,
         interrupt: Interrupt,
     },
     StopQueue {
@@ -563,8 +562,9 @@ pub async fn run_worker(
             worker_cmd = worker_rx.next() => {
                 match worker_cmd {
                     None => anyhow::bail!("worker control channel unexpectedly closed"),
-                    Some(WorkerCmd::StartQueue{index, queue, kick_evt, interrupt}) => {
+                    Some(WorkerCmd::StartQueue{index, queue, interrupt}) => {
                         let (tx, rx) = oneshot::channel();
+                        let kick_evt = queue.event().try_clone().expect("Failed to clone queue event");
                         let (handle_queue_future, remote_handle) = handle_queue(
                             Rc::clone(disk_state),
                             Rc::new(RefCell::new(queue)),
@@ -992,7 +992,7 @@ impl VirtioDevice for BlockAsync {
         &mut self,
         _mem: GuestMemory,
         interrupt: Interrupt,
-        queues: BTreeMap<usize, (Queue, Event)>,
+        queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         assert!(self.num_activated_queues.is_none());
         self.num_activated_queues = Some(queues.len());
@@ -1037,12 +1037,11 @@ impl VirtioDevice for BlockAsync {
 
             let (worker_tx, worker_rx) = mpsc::unbounded();
             // Add commands to start all the queues before starting the worker.
-            for (index, (queue, event)) in queues.into_iter() {
+            for (index, queue) in queues.into_iter() {
                 worker_tx
                     .unbounded_send(WorkerCmd::StartQueue {
                         index,
                         queue,
-                        kick_evt: event,
                         interrupt: interrupt.clone(),
                     })
                     .unwrap_or_else(|_| panic!("worker channel closed early"));
@@ -1156,7 +1155,7 @@ impl VirtioDevice for BlockAsync {
 
     fn virtio_wake(
         &mut self,
-        queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, (Queue, Event)>)>,
+        queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, Queue>)>,
     ) -> anyhow::Result<()> {
         if let Some((mem, interrupt, queues)) = queues_state {
             // TODO: activate is just what we want at the moment, but we should probably move
@@ -1656,18 +1655,20 @@ mod tests {
         // activate with queues of an arbitrary size.
         let mut q0 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q0.set_ready(true);
-        let q0 = q0.activate(&mem).expect("QueueConfig::activate");
-        let e0 = Event::new().unwrap();
+        let q0 = q0
+            .activate(&mem, Event::new().unwrap())
+            .expect("QueueConfig::activate");
 
         let mut q1 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q1.set_ready(true);
-        let q1 = q1.activate(&mem).expect("QueueConfig::activate");
-        let e1 = Event::new().unwrap();
+        let q1 = q1
+            .activate(&mem, Event::new().unwrap())
+            .expect("QueueConfig::activate");
 
         b.activate(
             mem.clone(),
             Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
-            BTreeMap::from([(0, (q0, e0)), (1, (q1, e1))]),
+            BTreeMap::from([(0, q0), (1, q1)]),
         )
         .expect("activate should succeed");
         // assert resources are consumed
@@ -1695,18 +1696,20 @@ mod tests {
         // re-activate should succeed
         let mut q0 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q0.set_ready(true);
-        let q0 = q0.activate(&mem).expect("QueueConfig::activate");
-        let e0 = Event::new().unwrap();
+        let q0 = q0
+            .activate(&mem, Event::new().unwrap())
+            .expect("QueueConfig::activate");
 
         let mut q1 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q1.set_ready(true);
-        let q1 = q1.activate(&mem).expect("QueueConfig::activate");
-        let e1 = Event::new().unwrap();
+        let q1 = q1
+            .activate(&mem, Event::new().unwrap())
+            .expect("QueueConfig::activate");
 
         b.activate(
             mem,
             Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
-            BTreeMap::from([(0, (q0, e0)), (1, (q1, e1))]),
+            BTreeMap::from([(0, q0), (1, q1)]),
         )
         .expect("re-activate should succeed");
     }
@@ -1767,21 +1770,19 @@ mod tests {
         // activate with queues of an arbitrary size.
         let mut q0 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q0.set_ready(true);
-        let q0 = q0.activate(&mem).expect("QueueConfig::activate");
-        let e0 = Event::new().unwrap();
+        let q0 = q0
+            .activate(&mem, Event::new().unwrap())
+            .expect("QueueConfig::activate");
 
         let mut q1 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q1.set_ready(true);
-        let q1 = q1.activate(&mem).expect("QueueConfig::activate");
-        let e1 = Event::new().unwrap();
+        let q1 = q1
+            .activate(&mem, Event::new().unwrap())
+            .expect("QueueConfig::activate");
 
         let interrupt = Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR);
-        b.activate(
-            mem,
-            interrupt.clone(),
-            BTreeMap::from([(0, (q0, e0)), (1, (q1, e1))]),
-        )
-        .expect("activate should succeed");
+        b.activate(mem, interrupt.clone(), BTreeMap::from([(0, q0), (1, q1)]))
+            .expect("activate should succeed");
 
         // assert the original size first
         assert_eq!(
@@ -1878,18 +1879,20 @@ mod tests {
         // activate with queues of an arbitrary size.
         let mut q0 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q0.set_ready(true);
-        let q0 = q0.activate(&mem).expect("QueueConfig::activate");
-        let e0 = Event::new().unwrap();
+        let q0 = q0
+            .activate(&mem, Event::new().unwrap())
+            .expect("QueueConfig::activate");
 
         let mut q1 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q1.set_ready(true);
-        let q1 = q1.activate(&mem).expect("QueueConfig::activate");
-        let e1 = Event::new().unwrap();
+        let q1 = q1
+            .activate(&mem, Event::new().unwrap())
+            .expect("QueueConfig::activate");
 
         b.activate(
             mem.clone(),
             Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
-            BTreeMap::from([(0, (q0, e0)), (1, (q1, e1))]),
+            BTreeMap::from([(0, q0), (1, q1)]),
         )
         .expect("activate should succeed");
 
@@ -1906,18 +1909,20 @@ mod tests {
         // activate should succeed
         let mut q0 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q0.set_ready(true);
-        let q0 = q0.activate(&mem).expect("QueueConfig::activate");
-        let e0 = Event::new().unwrap();
+        let q0 = q0
+            .activate(&mem, Event::new().unwrap())
+            .expect("QueueConfig::activate");
 
         let mut q1 = QueueConfig::new(DEFAULT_QUEUE_SIZE, 0);
         q1.set_ready(true);
-        let q1 = q1.activate(&mem).expect("QueueConfig::activate");
-        let e1 = Event::new().unwrap();
+        let q1 = q1
+            .activate(&mem, Event::new().unwrap())
+            .expect("QueueConfig::activate");
 
         b.activate(
             mem,
             Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
-            BTreeMap::from([(0, (q0, e0)), (1, (q1, e1))]),
+            BTreeMap::from([(0, q0), (1, q1)]),
         )
         .expect("activate should succeed");
 

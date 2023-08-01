@@ -129,13 +129,17 @@ impl ConsoleDevice {
         ex: &Executor,
         queue: Arc<Mutex<virtio::Queue>>,
         doorbell: Interrupt,
-        kick_evt: Event,
     ) -> anyhow::Result<()> {
         let input_queue = match self.input.as_mut() {
             Some(input_queue) => input_queue,
             None => return Ok(()),
         };
 
+        let kick_evt = queue
+            .lock()
+            .event()
+            .try_clone()
+            .context("Failed to clone queue event")?;
         let kick_evt =
             EventAsync::new(kick_evt, ex).context("Failed to create EventAsync for kick_evt")?;
 
@@ -172,8 +176,12 @@ impl ConsoleDevice {
         ex: &Executor,
         queue: Arc<Mutex<virtio::Queue>>,
         doorbell: Interrupt,
-        kick_evt: Event,
     ) -> anyhow::Result<()> {
+        let kick_evt = queue
+            .lock()
+            .event()
+            .try_clone()
+            .context("Failed to clone queue event")?;
         let kick_evt =
             EventAsync::new(kick_evt, ex).context("Failed to create EventAsync for kick_evt")?;
 
@@ -285,7 +293,7 @@ impl VirtioDevice for AsyncConsole {
         &mut self,
         _mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: BTreeMap<usize, (Queue, Event)>,
+        mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         if queues.len() < 2 {
             return Err(anyhow!("expected 2 queues, got {}", queues.len()));
@@ -308,8 +316,8 @@ impl VirtioDevice for AsyncConsole {
         };
 
         let ex = Executor::new().expect("failed to create an executor");
-        let (receive_queue, receive_evt) = queues.remove(&0).unwrap();
-        let (transmit_queue, transmit_evt) = queues.remove(&1).unwrap();
+        let receive_queue = queues.remove(&0).unwrap();
+        let transmit_queue = queues.remove(&1).unwrap();
 
         self.state =
             VirtioConsoleState::Running(WorkerThread::start("v_console", move |kill_evt| {
@@ -317,9 +325,9 @@ impl VirtioDevice for AsyncConsole {
                 let receive_queue = Arc::new(Mutex::new(receive_queue));
                 let transmit_queue = Arc::new(Mutex::new(transmit_queue));
 
-                console.start_receive_queue(&ex, receive_queue, interrupt.clone(), receive_evt)?;
+                console.start_receive_queue(&ex, receive_queue, interrupt.clone())?;
 
-                console.start_transmit_queue(&ex, transmit_queue, interrupt, transmit_evt)?;
+                console.start_transmit_queue(&ex, transmit_queue, interrupt)?;
 
                 // Run until the kill event is signaled and cancel all tasks.
                 ex.run_until(async {

@@ -163,7 +163,6 @@ pub trait VhostUserBackend {
         queue: Queue,
         mem: GuestMemory,
         doorbell: Interrupt,
-        kick_evt: Event,
     ) -> anyhow::Result<()>;
 
     /// Indicates that the backend should stop processing requests for virtio queue number `idx`.
@@ -216,9 +215,6 @@ struct Vring {
     enabled: bool,
     // Active queue that is only `Some` when the device is sleeping.
     paused_queue: Option<Queue>,
-    // This queue kick_evt is saved so that the queues handlers can start back up with the
-    // same events when it is woken up.
-    kick_evt: Option<Event>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -237,7 +233,6 @@ impl Vring {
             doorbell: None,
             enabled: false,
             paused_queue: None,
-            kick_evt: None,
         }
     }
 
@@ -246,7 +241,6 @@ impl Vring {
         self.doorbell = None;
         self.enabled = false;
         self.paused_queue = None;
-        self.kick_evt = None;
     }
 
     fn snapshot(&self) -> anyhow::Result<VringSnapshot> {
@@ -261,12 +255,24 @@ impl Vring {
         })
     }
 
-    fn restore(&mut self, vring_snapshot: VringSnapshot, mem: &GuestMemory) -> anyhow::Result<()> {
+    fn restore(
+        &mut self,
+        vring_snapshot: VringSnapshot,
+        mem: &GuestMemory,
+        event: Option<Event>,
+    ) -> anyhow::Result<()> {
         self.queue.restore(vring_snapshot.queue)?;
         self.enabled = vring_snapshot.enabled;
         self.paused_queue = vring_snapshot
             .paused_queue
-            .map(|value| Queue::restore(&self.queue, value, mem))
+            .map(|value| {
+                Queue::restore(
+                    &self.queue,
+                    value,
+                    mem,
+                    event.context("missing queue event")?,
+                )
+            })
             .transpose()?;
         Ok(())
     }
@@ -586,8 +592,6 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
         }
 
         let kick_evt = self.ops.set_vring_kick(index, file)?;
-        // Save kick_evts so they can be re-used when waking up the device.
-        vring.kick_evt = Some(kick_evt.try_clone().expect("Failed to clone kick_evt"));
 
         // Enable any virtqueue features that were negotiated (like VIRTIO_RING_F_EVENT_IDX).
         vring.queue.ack_features(self.backend.acked_features());
@@ -599,7 +603,7 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
             .cloned()
             .ok_or(VhostError::InvalidOperation)?;
 
-        let queue = match vring.queue.activate(&mem) {
+        let queue = match vring.queue.activate(&mem, kick_evt) {
             Ok(queue) => queue,
             Err(e) => {
                 error!("failed to activate vring: {:#}", e);
@@ -611,7 +615,7 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
 
         if let Err(e) = self
             .backend
-            .start_queue(index as usize, queue, mem, doorbell, kick_evt)
+            .start_queue(index as usize, queue, mem, doorbell)
         {
             error!("Failed to start queue {}: {}", index, e);
             return Err(VhostError::SlaveInternalError);
@@ -739,17 +743,8 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
             if let Some(queue) = vring.paused_queue.take() {
                 let mem = self.mem.clone().ok_or(VhostError::SlaveInternalError)?;
                 let doorbell = vring.doorbell.clone().expect("Failed to clone doorbell");
-                let kick_evt = vring
-                    .kick_evt
-                    .as_ref()
-                    .ok_or(VhostError::SlaveInternalError)?
-                    .try_clone()
-                    .expect("Failed to clone kick_evt");
 
-                if let Err(e) = self
-                    .backend
-                    .start_queue(index, queue, mem, doorbell, kick_evt)
-                {
+                if let Err(e) = self.backend.start_queue(index, queue, mem, doorbell) {
                     error!("Failed to start queue {}: {}", index, e);
                     return Err(VhostError::SlaveInternalError);
                 }
@@ -787,28 +782,30 @@ impl VhostUserSlaveReqHandlerMut for DeviceRequestHandler {
 
         let snapshotted_vrings = device_request_handler_snapshot.vrings;
         assert_eq!(snapshotted_vrings.len(), self.vrings.len());
-        for (vring, snapshotted_vring) in self.vrings.iter_mut().zip(snapshotted_vrings.into_iter())
-        {
-            vring
-                .restore(snapshotted_vring, mem)
-                .map_err(VhostError::RestoreError)?;
-        }
 
-        // `queue_evts` should only be `Some` if the snapshotted device is already activated.
-        // This wire up the doorbell events.
-        if let Some(queue_evts) = queue_evts {
-            // TODO(b/288596005): It is assumed that the index of `queue_evts` should map to the
-            // index of `self.vrings`. However, this assumption may break in the future, so a Map
-            // of indexes to queue_evt should be used to support sparse activated queues.
-            for (index, queue_evt_fd) in queue_evts.into_iter().enumerate() {
-                if let Some(vring) = self.vrings.get_mut(index) {
-                    let kick_evt = self.ops.set_vring_kick(index as u8, Some(queue_evt_fd))?;
-                    // Save kick_evts so they can be re-used when waking up the device.
-                    vring.kick_evt = Some(kick_evt);
-                } else {
-                    return Err(VhostError::VringIndexNotFound(index));
-                }
-            }
+        let mut queue_evts_iter = queue_evts.map(Vec::into_iter);
+
+        for (index, (vring, snapshotted_vring)) in self
+            .vrings
+            .iter_mut()
+            .zip(snapshotted_vrings.into_iter())
+            .enumerate()
+        {
+            let queue_evt = if let Some(queue_evts_iter) = &mut queue_evts_iter {
+                // TODO(b/288596005): It is assumed that the index of `queue_evts` should map to the
+                // index of `self.vrings`. However, this assumption may break in the future, so a
+                // Map of indexes to queue_evt should be used to support sparse activated queues.
+                let queue_evt_file = queue_evts_iter
+                    .next()
+                    .ok_or(VhostError::VringIndexNotFound(index))?;
+                Some(self.ops.set_vring_kick(index as u8, Some(queue_evt_file))?)
+            } else {
+                None
+            };
+
+            vring
+                .restore(snapshotted_vring, mem, queue_evt)
+                .map_err(VhostError::RestoreError)?;
         }
 
         self.backend
@@ -976,6 +973,7 @@ mod tests {
 
     use anyhow::anyhow;
     use anyhow::bail;
+    use base::Event;
     #[cfg(unix)]
     use tempfile::Builder;
     #[cfg(unix)]
@@ -1075,7 +1073,6 @@ mod tests {
             queue: Queue,
             _mem: GuestMemory,
             _doorbell: Interrupt,
-            _kick_evt: Event,
         ) -> anyhow::Result<()> {
             self.active_queues[idx] = Some(queue);
             Ok(())
@@ -1144,12 +1141,13 @@ mod tests {
                 println!("activate_mem_table: queue_index={}", idx);
                 let mut queue = QueueConfig::new(0x10, 0);
                 queue.set_ready(true);
-                let queue = queue.activate(&mem).expect("QueueConfig::activate");
-                let queue_evt = Event::new().unwrap();
+                let queue = queue
+                    .activate(&mem, Event::new().unwrap())
+                    .expect("QueueConfig::activate");
                 let irqfd = Event::new().unwrap();
 
                 vmm_handler
-                    .activate_vring(&mem, idx, &queue, &queue_evt, &irqfd)
+                    .activate_vring(&mem, idx, &queue, &irqfd)
                     .unwrap();
             }
 
@@ -1228,12 +1226,13 @@ mod tests {
             println!("activate_mem_table: queue_index={}", idx);
             let mut queue = QueueConfig::new(0x10, 0);
             queue.set_ready(true);
-            let queue = queue.activate(&mem).expect("QueueConfig::activate");
-            let queue_evt = Event::new().unwrap();
+            let queue = queue
+                .activate(&mem, Event::new().unwrap())
+                .expect("QueueConfig::activate");
             let irqfd = Event::new().unwrap();
 
             vmm_handler
-                .activate_vring(&mem, idx, &queue, &queue_evt, &irqfd)
+                .activate_vring(&mem, idx, &queue, &irqfd)
                 .unwrap();
         }
     }

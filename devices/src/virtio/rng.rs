@@ -35,7 +35,6 @@ pub type Result<T> = std::result::Result<T, RngError>;
 struct Worker {
     interrupt: Interrupt,
     queue: Queue,
-    queue_evt: Event,
 }
 
 impl Worker {
@@ -74,7 +73,7 @@ impl Worker {
         }
 
         let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
-            (&self.queue_evt, Token::QueueAvailable),
+            (self.queue.event(), Token::QueueAvailable),
             (&kill_evt, Token::Kill),
         ]) {
             Ok(pc) => pc,
@@ -105,7 +104,7 @@ impl Worker {
             for event in events.iter().filter(|e| e.is_readable) {
                 match event.token {
                     Token::QueueAvailable => {
-                        if let Err(e) = self.queue_evt.wait() {
+                        if let Err(e) = self.queue.event().wait() {
                             error!("failed reading queue Event: {}", e);
                             break 'wait;
                         }
@@ -165,20 +164,16 @@ impl VirtioDevice for Rng {
         &mut self,
         _mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: BTreeMap<usize, (Queue, Event)>,
+        mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         if queues.len() != 1 {
             return Err(anyhow!("expected 1 queue, got {}", queues.len()));
         }
 
-        let (queue, queue_evt) = queues.remove(&0).unwrap();
+        let queue = queues.remove(&0).unwrap();
 
         self.worker_thread = Some(WorkerThread::start("v_rng", move |kill_evt| {
-            let worker = Worker {
-                interrupt,
-                queue,
-                queue_evt,
-            };
+            let worker = Worker { interrupt, queue };
             worker.run(kill_evt)
         }));
 
@@ -206,7 +201,7 @@ impl VirtioDevice for Rng {
 
     fn virtio_wake(
         &mut self,
-        queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, (Queue, Event)>)>,
+        queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, Queue>)>,
     ) -> anyhow::Result<()> {
         if let Some((mem, interrupt, queues)) = queues_state {
             self.activate(mem, interrupt, queues)?;

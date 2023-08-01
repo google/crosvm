@@ -23,7 +23,6 @@ use anyhow::anyhow;
 use anyhow::Context;
 use base::error;
 use base::Error as BaseError;
-use base::Event;
 use base::RawDescriptor;
 use base::WorkerThread;
 use data_model::Le32;
@@ -109,7 +108,7 @@ impl VirtioDevice for Sound {
         &mut self,
         _mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: BTreeMap<usize, (Queue, Event)>,
+        mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         if self.worker_thread.is_some() {
             return Err(anyhow!("virtio-snd: Device is already active"));
@@ -120,10 +119,10 @@ impl VirtioDevice for Sound {
                 queues.len(),
             ));
         }
-        let (control_queue, control_queue_evt) = queues.remove(&0).unwrap();
-        let (event_queue, event_queue_evt) = queues.remove(&1).unwrap();
-        let (tx_queue, tx_queue_evt) = queues.remove(&2).unwrap();
-        let (rx_queue, rx_queue_evt) = queues.remove(&3).unwrap();
+        let control_queue = queues.remove(&0).unwrap();
+        let event_queue = queues.remove(&1).unwrap();
+        let tx_queue = queues.remove(&2).unwrap();
+        let rx_queue = queues.remove(&3).unwrap();
 
         let vios_client = self.vios_client.clone();
         vios_client
@@ -137,13 +136,9 @@ impl VirtioDevice for Sound {
                     vios_client,
                     interrupt,
                     Arc::new(Mutex::new(control_queue)),
-                    control_queue_evt,
                     event_queue,
-                    event_queue_evt,
                     Arc::new(Mutex::new(tx_queue)),
-                    tx_queue_evt,
                     Arc::new(Mutex::new(rx_queue)),
-                    rx_queue_evt,
                 ) {
                     Ok(mut worker) => match worker.control_loop(kill_evt) {
                         Ok(_) => true,

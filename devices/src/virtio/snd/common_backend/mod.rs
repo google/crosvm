@@ -429,7 +429,7 @@ impl VirtioDevice for VirtioSnd {
         &mut self,
         _guest_mem: GuestMemory,
         interrupt: Interrupt,
-        queues: BTreeMap<usize, (Queue, Event)>,
+        queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         if queues.len() != self.queue_sizes.len() {
             return Err(anyhow!(
@@ -474,7 +474,7 @@ enum LoopState {
 
 fn run_worker(
     interrupt: Interrupt,
-    queues: BTreeMap<usize, (Queue, Event)>,
+    queues: BTreeMap<usize, Queue>,
     snd_data: SndData,
     kill_evt: Event,
     stream_info_builders: Vec<StreamInfoBuilder>,
@@ -496,8 +496,9 @@ fn run_worker(
     let streams = Rc::new(AsyncRwLock::new(streams));
 
     let mut queues: Vec<(Queue, EventAsync)> = queues
-        .into_iter()
-        .map(|(_, (q, e))| {
+        .into_values()
+        .map(|q| {
+            let e = q.event().try_clone().expect("Failed to clone queue event");
             (
                 q,
                 EventAsync::new(e, &ex).expect("Failed to create async event for queue"),

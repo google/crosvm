@@ -16,7 +16,6 @@ use argh::FromArgs;
 use base::error;
 use base::warn;
 use base::AsRawDescriptors;
-use base::Event;
 use base::RawDescriptor;
 use base::Tube;
 use cros_async::EventAsync;
@@ -63,7 +62,7 @@ async fn handle_fs_queue(
             error!("Failed to read kick event for fs queue: {}", e);
             break;
         }
-        if let Err(e) = process_fs_queue(&doorbell, &queue, &server, &tube, slot) {
+        if let Err(e) = process_fs_queue(&doorbell, &mut queue.borrow_mut(), &server, &tube, slot) {
             error!("Process FS queue failed: {}", e);
             break;
         }
@@ -180,13 +179,16 @@ impl VhostUserBackend for FsBackend {
         queue: virtio::Queue,
         _mem: GuestMemory,
         doorbell: Interrupt,
-        kick_evt: Event,
     ) -> anyhow::Result<()> {
         if self.workers[idx].is_some() {
             warn!("Starting new queue handler without stopping old handler");
             self.stop_queue(idx)?;
         }
 
+        let kick_evt = queue
+            .event()
+            .try_clone()
+            .context("failed to clone queue event")?;
         let kick_evt = EventAsync::new(kick_evt, &self.ex)
             .context("failed to create EventAsync for kick_evt")?;
         let (handle, registration) = AbortHandle::new_pair();

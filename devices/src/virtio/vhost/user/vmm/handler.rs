@@ -221,7 +221,6 @@ impl VhostUserHandler {
         mem: &GuestMemory,
         queue_index: usize,
         queue: &Queue,
-        queue_evt: &Event,
         irqfd: &Event,
     ) -> Result<()> {
         self.vu
@@ -254,7 +253,7 @@ impl VhostUserHandler {
             .set_vring_call(queue_index, irqfd)
             .map_err(Error::SetVringCall)?;
         self.vu
-            .set_vring_kick(queue_index, queue_evt)
+            .set_vring_kick(queue_index, queue.event())
             .map_err(Error::SetVringKick)?;
         self.vu
             .set_vring_enable(queue_index, true)
@@ -268,7 +267,7 @@ impl VhostUserHandler {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        queues: BTreeMap<usize, (Queue, Event)>,
+        queues: BTreeMap<usize, Queue>,
         label: &str,
     ) -> Result<WorkerThread<()>> {
         self.set_mem_table(&mem)?;
@@ -280,11 +279,11 @@ impl VhostUserHandler {
         let msix_config = msix_config_opt.lock();
 
         let non_msix_evt = Event::new().map_err(Error::CreateEvent)?;
-        for (&queue_index, (queue, queue_evt)) in queues.iter() {
+        for (&queue_index, queue) in queues.iter() {
             let irqfd = msix_config
                 .get_irqfd(queue.vector() as usize)
                 .unwrap_or(&non_msix_evt);
-            self.activate_vring(&mem, queue_index, queue, queue_evt, irqfd)?;
+            self.activate_vring(&mem, queue_index, queue, irqfd)?;
         }
 
         drop(msix_config);

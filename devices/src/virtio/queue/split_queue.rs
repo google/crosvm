@@ -12,6 +12,7 @@ use anyhow::bail;
 use anyhow::Context;
 use anyhow::Result;
 use base::error;
+use base::Event;
 use data_model::Le32;
 use serde::Deserialize;
 use serde::Serialize;
@@ -40,6 +41,8 @@ const VIRTQ_AVAIL_F_NO_INTERRUPT: u16 = 0x1;
 #[derive(Debug)]
 pub struct SplitQueue {
     mem: GuestMemory,
+
+    event: Event,
 
     /// The queue size in elements the driver selected. This is always guaranteed to be a power of
     /// two, as required for split virtqueues.
@@ -96,7 +99,7 @@ struct virtq_used_elem {
 
 impl SplitQueue {
     /// Constructs an activated split virtio queue with the given configuration.
-    pub fn new(config: &QueueConfig, mem: &GuestMemory) -> Result<SplitQueue> {
+    pub fn new(config: &QueueConfig, mem: &GuestMemory, event: Event) -> Result<SplitQueue> {
         let size = config.size();
         if !size.is_power_of_two() {
             bail!("split queue size {size} is not a power of 2");
@@ -125,6 +128,7 @@ impl SplitQueue {
 
         Ok(SplitQueue {
             mem: mem.clone(),
+            event,
             size,
             vector: config.vector(),
             desc_table: config.desc_table(),
@@ -165,6 +169,11 @@ impl SplitQueue {
     /// Getter for device area
     pub fn used_ring(&self) -> GuestAddress {
         self.used_ring
+    }
+
+    /// Get a reference to the queue's "kick event"
+    pub fn event(&self) -> &Event {
+        &self.event
     }
 
     // Return `index` modulo the currently configured queue size.
@@ -557,10 +566,12 @@ impl SplitQueue {
     pub fn restore(
         queue_value: serde_json::Value,
         mem: &GuestMemory,
+        event: Event,
     ) -> anyhow::Result<SplitQueue> {
         let s: SplitQueueSnapshot = serde_json::from_value(queue_value)?;
         let queue = SplitQueue {
             mem: mem.clone(),
+            event,
             size: s.size,
             vector: s.vector,
             desc_table: s.desc_table,
@@ -682,7 +693,9 @@ mod tests {
         queue.ack_features((1u64) << VIRTIO_RING_F_EVENT_IDX);
         queue.set_ready(true);
 
-        queue.activate(mem).expect("QueueConfig::activate failed")
+        queue
+            .activate(mem, Event::new().unwrap())
+            .expect("QueueConfig::activate failed")
     }
 
     fn fake_desc_chain(mem: &GuestMemory) -> DescriptorChain {

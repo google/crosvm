@@ -158,15 +158,15 @@ impl VirtioMmioDevice {
             .enumerate()
             .filter(|(_, (q, _))| q.ready())
             .map(|(queue_index, (queue, evt))| {
+                let queue_evt = evt.try_clone().context("failed to clone queue_evt")?;
                 Ok((
                     queue_index,
-                    (
-                        queue.activate(&mem).context("failed to activate queue")?,
-                        evt.try_clone().context("failed to clone queue_evt")?,
-                    ),
+                    queue
+                        .activate(&mem, queue_evt)
+                        .context("failed to activate queue")?,
                 ))
             })
-            .collect::<anyhow::Result<BTreeMap<usize, (Queue, Event)>>>()?;
+            .collect::<anyhow::Result<BTreeMap<usize, Queue>>>()?;
 
         if let Err(e) = self.device.activate(mem, interrupt, queues) {
             error!("{} activate failed: {:#}", self.debug_label(), e);

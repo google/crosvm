@@ -14,6 +14,7 @@ use anyhow::Context;
 use anyhow::Result;
 use base::error;
 use base::warn;
+use base::Event;
 use serde::Deserialize;
 use serde::Serialize;
 use sync::Mutex;
@@ -86,9 +87,11 @@ impl Default for PackedQueueIndex {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct PackedQueue {
     mem: GuestMemory,
+
+    event: Event,
 
     // The queue size in elements the driver selected
     size: u16,
@@ -137,7 +140,7 @@ pub struct PackedQueueSnapshot {
 
 impl PackedQueue {
     /// Constructs an empty virtio queue with the given `max_size`.
-    pub fn new(config: &QueueConfig, mem: &GuestMemory) -> Result<Self> {
+    pub fn new(config: &QueueConfig, mem: &GuestMemory, event: Event) -> Result<Self> {
         let size = config.size();
 
         let desc_table = config.desc_table();
@@ -165,6 +168,7 @@ impl PackedQueue {
 
         Ok(PackedQueue {
             mem: mem.clone(),
+            event,
             size,
             vector: config.vector(),
             desc_table: config.desc_table(),
@@ -206,6 +210,11 @@ impl PackedQueue {
     /// Getter for device area
     pub fn used_ring(&self) -> GuestAddress {
         self.device_event_suppression
+    }
+
+    /// Get a reference to the queue's "kick event"
+    pub fn event(&self) -> &Event {
+        &self.event
     }
 
     fn area_sizes(
@@ -491,7 +500,11 @@ impl PackedQueue {
 
     /// TODO: b/290307056 - Implement restore for packed virtqueue,
     /// add tests to validate.
-    pub fn restore(_queue_value: serde_json::Value, _mem: &GuestMemory) -> Result<PackedQueue> {
+    pub fn restore(
+        _queue_value: serde_json::Value,
+        _mem: &GuestMemory,
+        _event: Event,
+    ) -> Result<PackedQueue> {
         bail!("Restore for packed virtqueue not implemented.");
     }
 }

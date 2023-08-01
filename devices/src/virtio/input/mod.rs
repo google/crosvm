@@ -433,7 +433,7 @@ impl<T: EventSource> Worker<T> {
 
     // Allow error! and early return anywhere in function
     #[allow(clippy::needless_return)]
-    fn run(&mut self, event_queue_evt: Event, status_queue_evt: Event, kill_evt: Event) {
+    fn run(&mut self, kill_evt: Event) {
         if let Err(e) = self.event_source.init() {
             error!("failed initializing event source: {}", e);
             return;
@@ -448,8 +448,8 @@ impl<T: EventSource> Worker<T> {
             Kill,
         }
         let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
-            (&event_queue_evt, Token::EventQAvailable),
-            (&status_queue_evt, Token::StatusQAvailable),
+            (self.event_queue.event(), Token::EventQAvailable),
+            (self.status_queue.event(), Token::StatusQAvailable),
             (&self.event_source, Token::InputEventsAvailable),
             (&kill_evt, Token::Kill),
         ]) {
@@ -483,14 +483,14 @@ impl<T: EventSource> Worker<T> {
             for wait_event in wait_events.iter().filter(|e| e.is_readable) {
                 match wait_event.token {
                     Token::EventQAvailable => {
-                        if let Err(e) = event_queue_evt.wait() {
+                        if let Err(e) = self.event_queue.event().wait() {
                             error!("failed reading event queue Event: {}", e);
                             break 'wait;
                         }
                         eventq_needs_interrupt |= self.send_events();
                     }
                     Token::StatusQAvailable => {
-                        if let Err(e) = status_queue_evt.wait() {
+                        if let Err(e) = self.status_queue.event().wait() {
                             error!("failed reading status queue Event: {}", e);
                             break 'wait;
                         }
@@ -578,13 +578,13 @@ where
         &mut self,
         _mem: GuestMemory,
         interrupt: Interrupt,
-        mut queues: BTreeMap<usize, (Queue, Event)>,
+        mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         if queues.len() != 2 {
             return Err(anyhow!("expected 2 queues, got {}", queues.len()));
         }
-        let (event_queue, event_queue_evt) = queues.remove(&0).unwrap();
-        let (status_queue, status_queue_evt) = queues.remove(&1).unwrap();
+        let event_queue = queues.remove(&0).unwrap();
+        let status_queue = queues.remove(&1).unwrap();
 
         let source = self
             .source
@@ -597,7 +597,7 @@ where
                 event_queue,
                 status_queue,
             };
-            worker.run(event_queue_evt, status_queue_evt, kill_evt);
+            worker.run(kill_evt);
             worker
         }));
 
@@ -626,7 +626,7 @@ where
 
     fn virtio_wake(
         &mut self,
-        queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, (Queue, Event)>)>,
+        queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, Queue>)>,
     ) -> anyhow::Result<()> {
         if let Some((mem, interrupt, queues)) = queues_state {
             self.activate(mem, interrupt, queues)?;

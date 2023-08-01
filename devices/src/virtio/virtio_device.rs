@@ -118,7 +118,7 @@ pub trait VirtioDevice: Send {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        queues: BTreeMap<usize, (Queue, Event)>,
+        queues: BTreeMap<usize, Queue>,
     ) -> Result<()>;
 
     /// Optionally deactivates this device. If the reset method is
@@ -223,7 +223,7 @@ pub trait VirtioDevice: Send {
     /// is an error.
     fn virtio_wake(
         &mut self,
-        _queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, (Queue, Event)>)>,
+        _queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, Queue>)>,
     ) -> anyhow::Result<()> {
         anyhow::bail!("virtio_wake not implemented for {}", self.debug_label());
     }

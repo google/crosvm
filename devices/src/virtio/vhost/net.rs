@@ -184,7 +184,7 @@ where
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        queues: BTreeMap<usize, (Queue, Event)>,
+        queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         if queues.len() != NUM_QUEUES {
             return Err(anyhow!(
@@ -410,19 +410,21 @@ pub mod tests {
 
         let mut q0 = QueueConfig::new(1, 0);
         q0.set_ready(true);
-        let q0 = q0.activate(&guest_memory).expect("QueueConfig::activate");
-        let e0 = Event::new().unwrap();
+        let q0 = q0
+            .activate(&guest_memory, Event::new().unwrap())
+            .expect("QueueConfig::activate");
 
         let mut q1 = QueueConfig::new(1, 0);
         q1.set_ready(true);
-        let q1 = q1.activate(&guest_memory).expect("QueueConfig::activate");
-        let e1 = Event::new().unwrap();
+        let q1 = q1
+            .activate(&guest_memory, Event::new().unwrap())
+            .expect("QueueConfig::activate");
 
         // Just testing that we don't panic, for now
         let _ = net.activate(
             guest_memory,
             Interrupt::new(IrqLevelEvent::new().unwrap(), None, VIRTIO_MSI_NO_VECTOR),
-            BTreeMap::from([(0, (q0, e0)), (1, (q1, e1))]),
+            BTreeMap::from([(0, q0), (1, q1)]),
         );
     }
 }

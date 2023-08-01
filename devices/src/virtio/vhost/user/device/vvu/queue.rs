@@ -434,6 +434,7 @@ mod test {
     use std::io::Read;
     use std::io::Write;
 
+    use base::Event;
     use vm_memory::GuestMemory;
 
     use super::*;
@@ -465,7 +466,9 @@ mod test {
         queue.set_avail_ring(IOVA(addrs.avail));
         queue.set_used_ring(IOVA(addrs.used));
         queue.set_ready(true);
-        queue.activate(mem).expect("QueueConfig::activate")
+        queue
+            .activate(mem, Event::new().unwrap())
+            .expect("QueueConfig::activate")
     }
 
     fn device_write(q: &mut DeviceQueue, data: &[u8]) -> usize {

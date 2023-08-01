@@ -251,7 +251,7 @@ impl PvClock {
     fn start_worker(
         &mut self,
         interrupt: Interrupt,
-        mut queues: BTreeMap<usize, (Queue, Event)>,
+        mut queues: BTreeMap<usize, Queue>,
         pvclock_worker: PvClockWorker,
     ) -> anyhow::Result<()> {
         if queues.len() != QUEUE_SIZES.len() {
@@ -262,7 +262,7 @@ impl PvClock {
             ));
         }
 
-        let (set_pvclock_page_queue, set_pvclock_page_queue_evt) = queues.remove(&0).unwrap();
+        let set_pvclock_page_queue = queues.remove(&0).unwrap();
 
         let suspend_tube = self
             .suspend_tube
@@ -274,7 +274,6 @@ impl PvClock {
             move |kill_evt| {
                 run_worker(
                     pvclock_worker,
-                    set_pvclock_page_queue_evt,
                     set_pvclock_page_queue,
                     suspend_tube,
                     interrupt,
@@ -527,7 +526,6 @@ struct WorkerReturn {
 // TODO(b/237300012): asyncify this device.
 fn run_worker(
     mut worker: PvClockWorker,
-    set_pvclock_page_queue_evt: Event,
     mut set_pvclock_page_queue: Queue,
     suspend_tube: Tube,
     interrupt: Interrupt,
@@ -542,7 +540,7 @@ fn run_worker(
     }
 
     let wait_ctx: WaitContext<Token> = match WaitContext::build_with(&[
-        (&set_pvclock_page_queue_evt, Token::SetPvClockPageQueue),
+        (set_pvclock_page_queue.event(), Token::SetPvClockPageQueue),
         (suspend_tube.get_read_notifier(), Token::SuspendResume),
         // TODO(b/242743502): Can also close on Tube closure for Unix once CloseNotifier is
         // implemented for Tube.
@@ -586,7 +584,7 @@ fn run_worker(
         for event in events.iter().filter(|e| e.is_readable) {
             match event.token {
                 Token::SetPvClockPageQueue => {
-                    let _ = set_pvclock_page_queue_evt.wait();
+                    let _ = set_pvclock_page_queue.event().wait();
                     let desc_chain = match set_pvclock_page_queue.pop() {
                         Some(desc_chain) => desc_chain,
                         None => {
@@ -729,7 +727,7 @@ impl VirtioDevice for PvClock {
         &mut self,
         mem: GuestMemory,
         interrupt: Interrupt,
-        queues: BTreeMap<usize, (Queue, Event)>,
+        queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         let tsc_frequency = self.tsc_frequency;
         let total_suspend_ns = self.total_suspend_ns.clone();
@@ -761,7 +759,7 @@ impl VirtioDevice for PvClock {
 
     fn virtio_wake(
         &mut self,
-        queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, (Queue, Event)>)>,
+        queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, Queue>)>,
     ) -> anyhow::Result<()> {
         if let Some((mem, interrupt, queues)) = queues_state {
             let worker_snap = self
@@ -839,10 +837,7 @@ mod tests {
             .activate(
                 mem.clone(),
                 make_interrupt(),
-                BTreeMap::from([(
-                    0,
-                    (fake_queue.activate(&mem).unwrap(), Event::new().unwrap()),
-                )]),
+                BTreeMap::from([(0, fake_queue.activate(&mem, Event::new().unwrap()).unwrap())]),
             )
             .expect("activate should succeed");
 
@@ -866,10 +861,7 @@ mod tests {
         let mut wake_queues = BTreeMap::new();
         let mut fake_queue = QueueConfig::new(TEST_QUEUE_SIZE, 0);
         fake_queue.set_ready(true);
-        wake_queues.insert(
-            0,
-            (fake_queue.activate(mem).unwrap(), Event::new().unwrap()),
-        );
+        wake_queues.insert(0, fake_queue.activate(mem, Event::new().unwrap()).unwrap());
         let queues_state = (mem.clone(), make_interrupt(), wake_queues);
         pvclock_device
             .virtio_wake(Some(queues_state))

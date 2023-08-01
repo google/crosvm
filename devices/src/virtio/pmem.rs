@@ -178,7 +178,6 @@ async fn handle_queue(
 }
 
 fn run_worker(
-    queue_evt: Event,
     queue: &mut Queue,
     pmem_device_tube: Tube,
     interrupt: Interrupt,
@@ -188,6 +187,10 @@ fn run_worker(
 ) {
     let ex = Executor::new().unwrap();
 
+    let queue_evt = queue
+        .event()
+        .try_clone()
+        .expect("failed to clone queue event");
     let queue_evt = EventAsync::new(queue_evt, &ex).expect("failed to set up the queue event");
 
     // Process requests from the virtio queue.
@@ -292,13 +295,13 @@ impl VirtioDevice for Pmem {
         &mut self,
         _memory: GuestMemory,
         interrupt: Interrupt,
-        mut queues: BTreeMap<usize, (Queue, Event)>,
+        mut queues: BTreeMap<usize, Queue>,
     ) -> anyhow::Result<()> {
         if queues.len() != 1 {
             return Err(anyhow!("expected 1 queue, got {}", queues.len()));
         }
 
-        let (mut queue, queue_event) = queues.remove(&0).unwrap();
+        let mut queue = queues.remove(&0).unwrap();
 
         let mapping_arena_slot = self.mapping_arena_slot;
         // We checked that this fits in a usize in `Pmem::new`.
@@ -311,7 +314,6 @@ impl VirtioDevice for Pmem {
 
         self.worker_thread = Some(WorkerThread::start("v_pmem", move |kill_event| {
             run_worker(
-                queue_event,
                 &mut queue,
                 pmem_device_tube,
                 interrupt,
@@ -343,7 +345,7 @@ impl VirtioDevice for Pmem {
 
     fn virtio_wake(
         &mut self,
-        queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, (Queue, Event)>)>,
+        queues_state: Option<(GuestMemory, Interrupt, BTreeMap<usize, Queue>)>,
     ) -> anyhow::Result<()> {
         if let Some((mem, interrupt, queues)) = queues_state {
             self.activate(mem, interrupt, queues)?;
