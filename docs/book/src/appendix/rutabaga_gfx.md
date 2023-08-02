@@ -23,33 +23,35 @@ common use case.
 ### Build dependencies
 
 ```sh
-sudo apt-get install libdrm
-sudo apt-get install libglm-dev
-sudo apt-get install libstb-dev
+sudo apt install libdrm libglm-dev libstb-dev
 ```
 
 ### Build AEMU base
 
 ```sh
 git clone https://android.googlesource.com/platform/hardware/google/aemu
-cmake -DAEMU_COMMON_GEN_PKGCONFIG=ON -DAEMU_COMMON_BUILD_CONFIG=gfxstream
-          -DENABLE_VKCEREAL_TESTS=OFF . ../
-make -j && sudo make install
+cd aemu/
+cmake -DAEMU_COMMON_GEN_PKGCONFIG=ON \
+       -DAEMU_COMMON_BUILD_CONFIG=gfxstream \
+       -DENABLE_VKCEREAL_TESTS=OFF -B build
+cmake --build build -j
+sudo cmake --install build
 ```
 
 ### Build gfxstream
 
 ```sh
 git clone https://android.googlesource.com/platform/hardware/google/gfxstream
-meson -Ddefault_library=static amd64-build/
-ninja -C amd64-build
-sudo ninja -C amd64-build/ install
+cd gfxstream/
+meson -Ddefault_library=static build/
+meson install -C build
 ```
 
 ### Build FFI bindings to Rutabaga
 
 ```sh
 cd $(crosvm_dir)/rutabaga_gfx/ffi/
+make
 sudo make install
 ```
 
@@ -60,8 +62,8 @@ If your VMM boots to a Linux guest, it's possible to run gfxstream with that.
 ```sh
 git clone https://android.googlesource.com/platform/hardware/google/gfxstream
 cd gfxstream/guest
-meson amd64-build/
-ninja -C amd64-build/ install
+meson build/
+meson install -C build
 ```
 
 Headless Vulkan tests (`deqp-vk`, `vulkaninfo`) should work after that.
