@@ -1019,7 +1019,7 @@ pub fn create_video_device(
             jail.mount_bind(sys_devices_path, sys_devices_path, false)?;
 
             // Required for loading dri libraries loaded by minigbm on AMD devices.
-            jail_mount_bind_if_exists(&mut jail, &["/usr/lib64"])?;
+            jail_mount_bind_if_exists(&mut jail, &["/usr/lib64", "/usr/lib"])?;
         }
 
         // Device nodes required by libchrome which establishes Mojo connection in libvda.

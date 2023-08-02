@@ -103,3 +103,6 @@ prctl: arg0 == PR_SET_NAME
 userfaultfd: 1
 # 0xc018aa3f == UFFDIO_API, 0xaa00 == USERFAULTFD_IOC_NEW
 ioctl: arg1 == 0xc018aa3f || arg1 == 0xaa00
+
+# Required by VAAPI backend
+access: 1
