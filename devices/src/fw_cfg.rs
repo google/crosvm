@@ -334,10 +334,18 @@ impl BusDevice for FwCfgDevice {
                     self.cur_entry = FW_CFG_SIGNATURE_SELECTOR;
                 }
                 _ => {
-                    let entries_index = (selector as usize) - FW_CFG_FILE_FIRST;
+                    let entries_index = selector as usize;
+
+                    // Checks if the 15th bit is set. The bit indicates whether the fw_cfg item
+                    // selected is archetecture specific.
+                    if (FW_CFG_SELECTOR_ARCH_MASK & selector) > 0 {
+                        self.cur_item_type = FwCfgItemType::ArchSpecificItem;
+                    } else {
+                        self.cur_item_type = FwCfgItemType::GenericItem;
+                    }
 
                     // Check if the selector key is valid.
-                    if self.files.len() - 1 < entries_index {
+                    if self.entries[self.cur_item_type.value()].len() <= entries_index {
                         return;
                     }
 
@@ -608,6 +616,17 @@ mod tests {
                 string: Some("testdata".into()),
                 path: None,
             }
+        );
+    }
+
+    #[test]
+    // Try to cause underflow by using a selector less than FW_CFG_FILE_FIRST but not one of the
+    // special selectors
+    fn attempt_underflow_read() {
+        let (_device, _bai) = setup_read(
+            &FILENAMES,
+            &get_contents(),
+            (FW_CFG_FILE_FIRST - 0x05) as u16,
         );
     }
 
