@@ -545,12 +545,22 @@ impl Default for Pic {
     }
 }
 
+/// The PIC is only used in very early boot on x86_64, and snapshots are not
+/// generally taken during that time, so we can safely skip the PIC for now.
 impl Suspendable for Pic {
     fn sleep(&mut self) -> anyhow::Result<()> {
         Ok(())
     }
 
     fn wake(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        Ok(serde_json::Value::Null)
+    }
+
+    fn restore(&mut self, _data: serde_json::Value) -> anyhow::Result<()> {
         Ok(())
     }
 }
