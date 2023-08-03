@@ -1905,10 +1905,8 @@ pub struct Wl {
     wayland_paths: BTreeMap<String, PathBuf>,
     mapper: Option<Box<dyn SharedMemoryMapper>>,
     resource_bridge: Option<Tube>,
-    use_transition_flags: bool,
-    use_send_vfd_v2: bool,
-    use_shmem: bool,
     base_features: u64,
+    acked_features: u64,
     #[cfg(feature = "minigbm")]
     gralloc: Option<RutabagaGralloc>,
     address_offset: Option<u64>,
@@ -1925,10 +1923,8 @@ impl Wl {
             wayland_paths,
             mapper: None,
             resource_bridge,
-            use_transition_flags: false,
-            use_send_vfd_v2: false,
-            use_shmem: false,
             base_features,
+            acked_features: 0,
             #[cfg(feature = "minigbm")]
             gralloc: None,
             address_offset: None,
@@ -1979,15 +1975,7 @@ impl VirtioDevice for Wl {
     }
 
     fn ack_features(&mut self, value: u64) {
-        if value & (1 << VIRTIO_WL_F_TRANS_FLAGS) != 0 {
-            self.use_transition_flags = true;
-        }
-        if value & (1 << VIRTIO_WL_F_SEND_FENCES) != 0 {
-            self.use_send_vfd_v2 = true;
-        }
-        if value & (1 << VIRTIO_WL_F_USE_SHMEM) != 0 {
-            self.use_shmem = true;
-        }
+        self.acked_features |= value;
     }
 
     fn activate(
@@ -2007,15 +1995,16 @@ impl VirtioDevice for Wl {
         let mapper = self.mapper.take().context("missing mapper")?;
 
         let wayland_paths = self.wayland_paths.clone();
-        let use_transition_flags = self.use_transition_flags;
-        let use_send_vfd_v2 = self.use_send_vfd_v2;
+        let use_transition_flags = self.acked_features & (1 << VIRTIO_WL_F_TRANS_FLAGS) != 0;
+        let use_send_vfd_v2 = self.acked_features & (1 << VIRTIO_WL_F_SEND_FENCES) != 0;
+        let use_shmem = self.acked_features & (1 << VIRTIO_WL_F_USE_SHMEM) != 0;
         let resource_bridge = self.resource_bridge.take();
         #[cfg(feature = "minigbm")]
         let gralloc = self
             .gralloc
             .take()
             .expect("gralloc already passed to worker");
-        let address_offset = if !self.use_shmem {
+        let address_offset = if !use_shmem {
             self.address_offset
         } else {
             None
