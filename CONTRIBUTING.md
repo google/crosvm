@@ -74,7 +74,7 @@ Change-Id: I47651060c2ce3a7e9f850b7ed9af8bd035f82de6
 To make changes to crosvm, start your work on a new branch tracking `origin/main`.
 
 ```bash
-git checkout --branch myfeature --track origin/main
+git checkout -b myfeature --track origin/main
 ```
 
 After making the necessary changes, and testing them via
