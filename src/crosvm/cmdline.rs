@@ -1981,7 +1981,7 @@ pub struct RunCommand {
     #[argh(option, arg_name = "PATH")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
-    /// Redirects slirp network packets to the supplied log file rather than the current directory as `slirp_capture_packets.pcap`
+    /// redirects slirp network packets to the supplied log file rather than the current directory as `slirp_capture_packets.pcap`
     pub slirp_capture_file: Option<String>,
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]

@@ -220,7 +220,7 @@ impl CallbackHandler for Handler {
                             d.as_secs() as u32,
                             d.subsec_nanos(),
                             ethernet_pkt,
-                            (len - VETH_HEADER_LENGTH) as u32,
+                            len - VETH_HEADER_LENGTH as u32,
                         )
                         .unwrap();
                 }
