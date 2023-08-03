@@ -12,15 +12,6 @@ use serde::Serialize;
 
 use crate::crosvm::config::Config;
 
-#[cfg(feature = "audio")]
-pub fn parse_ac97_options(
-    _ac97_params: &mut devices::Ac97Parameters,
-    key: &str,
-    _value: &str,
-) -> Result<(), String> {
-    Err(format!("unknown ac97 parameter {}", key))
-}
-
 pub fn check_serial_params(
     #[allow(unused_variables)] serial_params: &SerialParameters,
 ) -> Result<(), String> {
@@ -71,15 +62,5 @@ impl FromStr for HypervisorKind {
             "whpx" => Ok(HypervisorKind::Whpx),
             _ => Err("invalid hypervisor backend"),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[cfg(feature = "audio")]
-    #[test]
-    fn parse_ac97_vaild() {
-        crate::crosvm::config::parse_ac97_options("backend=win_audio")
-            .expect("parse should have succeded");
     }
 }

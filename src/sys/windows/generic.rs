@@ -146,7 +146,6 @@ pub(super) fn handle_tagged_control_tube_event(
     virtio_snd_host_mute_tube: &mut Option<Tube>,
     service_vm_state: &mut ServiceVmState,
     ipc_main_loop_tube: Option<&Tube>,
-    ac97_host_tubes: &[Tube],
 ) {
 }
 
@@ -165,7 +164,6 @@ pub(super) fn push_triggers<'a>(
 
 pub(super) fn handle_received_token<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     token: &Token,
-    _ac97_host_tubes: &[Tube],
     _anti_tamper_main_thread_tube: &Option<ProtoTube>,
     _balloon_tube: Option<&mut BalloonTube>,
     _control_tubes: &BTreeMap<usize, SharedTaggedControlTube>,

@@ -89,12 +89,6 @@ pub use self::i8042::I8042Device;
 pub use self::irq_event::IrqEdgeEvent;
 pub use self::irq_event::IrqLevelEvent;
 pub use self::irqchip::*;
-#[cfg(feature = "audio")]
-pub use self::pci::Ac97Backend;
-#[cfg(feature = "audio")]
-pub use self::pci::Ac97Dev;
-#[cfg(feature = "audio")]
-pub use self::pci::Ac97Parameters;
 pub use self::pci::BarRange;
 pub use self::pci::CrosvmDeviceId;
 pub use self::pci::GpeScope;

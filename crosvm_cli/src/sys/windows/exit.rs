@@ -260,7 +260,6 @@ pub enum Exit {
     CloneEvent = 0xE000000A,
     CloneVcpu = 0xE000000B,
     ConfigureVcpu = 0xE000000C,
-    CreateAc97 = 0xE000000D,
     CreateConsole = 0xE000000E,
     CreateDisk = 0xE000000F,
     CreateEvent = 0xE0000010,

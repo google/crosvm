@@ -94,8 +94,6 @@ use devices::virtio::NetParameters;
 #[cfg(feature = "pci-hotplug")]
 use devices::virtio::NetParametersMode;
 use devices::virtio::VirtioTransportType;
-#[cfg(feature = "audio")]
-use devices::Ac97Dev;
 use devices::Bus;
 use devices::BusDeviceObj;
 use devices::CoIommuDev;
@@ -886,14 +884,6 @@ fn create_devices(
                 devices.push((Box::new(dev) as Box<dyn BusDeviceObj>, stub.jail));
             }
         }
-    }
-
-    #[cfg(feature = "audio")]
-    for ac97_param in &cfg.ac97_parameters {
-        let dev = Ac97Dev::try_new(vm.get_memory().clone(), ac97_param.clone())
-            .context("failed to create ac97 device")?;
-        let jail = simple_jail(&cfg.jail_config, dev.minijail_policy())?;
-        devices.push((Box::new(dev), jail));
     }
 
     #[cfg(feature = "usb")]

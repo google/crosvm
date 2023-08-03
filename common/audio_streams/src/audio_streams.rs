@@ -534,26 +534,6 @@ impl<'a> PlaybackBuffer<'a> {
         self.drop.latency_bytes()
     }
 
-    /// Writes up to `size` bytes directly to this buffer inside of the given callback function
-    /// with a buffer size error check.
-    ///
-    /// TODO(b/238933737): Investigate removing this method for Windows when
-    /// switching from Ac97 to Virtio-Snd
-    pub fn copy_cb_with_checks<F: FnOnce(&mut [u8])>(
-        &mut self,
-        size: usize,
-        cb: F,
-    ) -> Result<(), PlaybackBufferError> {
-        // only write complete frames.
-        let len = size / self.buffer.frame_size * self.buffer.frame_size;
-        if self.buffer.offset + len > self.buffer.buffer.len() {
-            return Err(PlaybackBufferError::SliceOutOfBounds);
-        }
-        cb(&mut self.buffer.buffer[self.buffer.offset..(self.buffer.offset + len)]);
-        self.buffer.offset += len;
-        Ok(())
-    }
-
     /// Writes up to `size` bytes directly to this buffer inside of the given callback function.
     pub fn copy_cb<F: FnOnce(&mut [u8])>(&mut self, size: usize, cb: F) -> io::Result<usize> {
         self.buffer.write_copy_cb(size, cb)

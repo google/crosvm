@@ -2204,12 +2204,6 @@ impl Display for VmResponse {
     }
 }
 
-/// Enum to send control requests to all Ac97 audio devices.
-#[derive(Serialize, Deserialize, Debug)]
-pub enum Ac97Control {
-    Mute(bool),
-}
-
 #[sorted]
 #[derive(Error, Debug)]
 pub enum VirtioIOMMUVfioError {

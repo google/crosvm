@@ -110,8 +110,6 @@ use devices::virtio::BalloonMode;
 use devices::virtio::Console;
 #[cfg(feature = "gpu")]
 use devices::virtio::GpuParameters;
-#[cfg(feature = "audio")]
-use devices::Ac97Dev;
 use devices::BusDeviceObj;
 #[cfg(feature = "gvm")]
 use devices::GvmIrqChip;
@@ -711,7 +709,6 @@ fn create_devices(
     dynamic_mapping_device_tube: Option<Tube>,
     inflate_tube: Option<Tube>,
     init_balloon_size: u64,
-    #[allow(unused)] ac97_device_tubes: Vec<Tube>,
     tsc_frequency: u64,
     virtio_snd_state_device_tube: Option<Tube>,
     virtio_snd_control_device_tube: Option<Tube>,
@@ -765,27 +762,6 @@ fn create_devices(
         pci_devices.push((dev, stub.jail));
     }
 
-    #[cfg(feature = "audio")]
-    if !product::virtio_sound_enabled() {
-        if cfg.ac97_parameters.len() != ac97_device_tubes.len() {
-            panic!(
-                "{} Ac97 device(s) will be made, but only {} Ac97 device tubes are present.",
-                cfg.ac97_parameters.len(),
-                ac97_device_tubes.len()
-            );
-        }
-
-        for (ac97_param, ac97_device_tube) in cfg
-            .ac97_parameters
-            .iter()
-            .zip(ac97_device_tubes.into_iter())
-        {
-            let dev = Ac97Dev::try_new(mem.clone(), ac97_param.clone(), ac97_device_tube)
-                .exit_context(Exit::CreateAc97, "failed to create ac97 device")?;
-            pci_devices.push((Box::new(dev), None));
-        }
-    }
-
     Ok(pci_devices)
 }
 
@@ -797,7 +773,6 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     vm_control_ids_to_remove: &mut Vec<usize>,
     next_control_id: &mut usize,
     service_vm_state: &mut ServiceVmState,
-    ac97_host_tubes: &[Tube],
     disk_host_tubes: &[Tube],
     ipc_main_loop_tube: Option<&Tube>,
     vm_evt_rdtube: &RecvTube,
@@ -886,7 +861,6 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                             virtio_snd_host_mute_tube,
                             service_vm_state,
                             ipc_main_loop_tube,
-                            ac97_host_tubes,
                         )
                     }
                     TaggedControlTube::Vm(tube) => match tube.0.recv::<VmRequest>() {
@@ -1024,7 +998,6 @@ fn handle_readable_event<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
         #[allow(unreachable_patterns)]
         _ => product::handle_received_token(
             &event.token,
-            ac97_host_tubes,
             anti_tamper_main_thread_tube,
             balloon_tube,
             control_tubes,
@@ -1181,7 +1154,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     gralloc: RutabagaGralloc,
     #[cfg(feature = "stats")] stats: Option<Arc<Mutex<StatisticsCollector>>>,
     service_pipe_name: Option<String>,
-    ac97_host_tubes: Vec<Tube>,
     memory_size_mb: u64,
     host_cpu_topology: bool,
     tsc_sync_mitigations: TscSyncMitigations,
@@ -1419,7 +1391,6 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
                 &mut next_control_id,
                 &mut service_vm_state,
                 disk_host_tubes.as_slice(),
-                &ac97_host_tubes,
                 ipc_main_loop_tube.as_ref(),
                 &vm_evt_rdtube,
                 &mut control_tubes,
@@ -2399,18 +2370,6 @@ where
     )
     .context("failed to create system allocator")?;
 
-    #[allow(unused_mut)]
-    let mut ac97_host_tubes = Vec::new();
-    #[allow(unused_mut)]
-    let mut ac97_device_tubes = Vec::new();
-    #[cfg(feature = "audio")]
-    for _ in &cfg.ac97_parameters {
-        let (ac97_host_tube, ac97_device_tube) =
-            Tube::pair().exit_context(Exit::CreateTube, "failed to create tube")?;
-        ac97_host_tubes.push(ac97_host_tube);
-        ac97_device_tubes.push(ac97_device_tube);
-    }
-
     // Allocate the ramoops region first.
     let ramoops_region = match &components.pstore {
         Some(pstore) => Some(
@@ -2469,7 +2428,6 @@ where
         dynamic_mapping_device_tube,
         /* inflate_tube= */ None,
         init_balloon_size,
-        ac97_host_tubes,
         tsc_state.frequency,
         virtio_snd_state_device_tube,
         virtio_snd_device_mute_tube,
@@ -2547,7 +2505,6 @@ where
         #[cfg(feature = "stats")]
         stats,
         cfg.service_pipe_name,
-        ac97_device_tubes,
         vm_memory_size_mb,
         cfg.host_cpu_topology,
         tsc_sync_mitigations,

@@ -37,25 +37,6 @@ pub enum HypervisorKind {
     },
 }
 
-#[cfg(feature = "audio")]
-pub fn parse_ac97_options(
-    #[allow(unused_variables)] ac97_params: &mut devices::Ac97Parameters,
-    key: &str,
-    #[allow(unused_variables)] value: &str,
-) -> Result<(), String> {
-    match key {
-        #[cfg(feature = "audio_cras")]
-        "client_type" => ac97_params
-            .set_client_type(value)
-            .map_err(|e| crate::crosvm::config::invalid_value_err(value, e)),
-        #[cfg(feature = "audio_cras")]
-        "socket_type" => ac97_params
-            .set_socket_type(value)
-            .map_err(|e| crate::crosvm::config::invalid_value_err(value, e)),
-        _ => Err(format!("unknown ac97 parameter {}", key)),
-    }
-}
-
 // Doesn't do anything on unix.
 pub fn check_serial_params(_serial_params: &SerialParameters) -> Result<(), String> {
     Ok(())
@@ -234,18 +215,9 @@ mod tests {
 
     use super::*;
     use crate::crosvm::config::from_key_values;
-    #[cfg(feature = "audio_cras")]
-    use crate::crosvm::config::parse_ac97_options;
     use crate::crosvm::config::BindMount;
     use crate::crosvm::config::DEFAULT_TOUCH_DEVICE_HEIGHT;
     use crate::crosvm::config::DEFAULT_TOUCH_DEVICE_WIDTH;
-
-    #[cfg(feature = "audio_cras")]
-    #[test]
-    fn parse_ac97_socket_type() {
-        parse_ac97_options("socket_type=unified").expect("parse should have succeded");
-        parse_ac97_options("socket_type=legacy").expect("parse should have succeded");
-    }
 
     #[test]
     fn parse_coiommu_options() {

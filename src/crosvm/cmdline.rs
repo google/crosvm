@@ -47,8 +47,6 @@ use devices::virtio::GpuParameters;
 use devices::virtio::NetParameters;
 #[cfg(unix)]
 use devices::virtio::NetParametersMode;
-#[cfg(feature = "audio")]
-use devices::Ac97Parameters;
 use devices::FwCfgParameters;
 use devices::PflashParameters;
 use devices::SerialHardware;
@@ -75,8 +73,6 @@ use super::gpu_config::fixup_gpu_options;
 #[cfg(all(feature = "gpu", feature = "virgl_renderer_next"))]
 use super::sys::GpuRenderServerParameters;
 use crate::crosvm::config::from_key_values;
-#[cfg(feature = "audio")]
-use crate::crosvm::config::parse_ac97_options;
 use crate::crosvm::config::parse_bus_id_addr;
 use crate::crosvm::config::parse_cpu_affinity;
 use crate::crosvm::config::parse_cpu_capacity;
@@ -897,28 +893,6 @@ pub struct RunCommand {
     /// It purpose is to emulate ACPI ACPI0003 device, replicate and propagate the
     /// ac adapter status from the host to the guest.
     pub ac_adapter: Option<bool>,
-
-    #[cfg(feature = "audio")]
-    #[argh(
-        option,
-        from_str_fn(parse_ac97_options),
-        arg_name = "[backend=BACKEND,capture=true,capture_effect=EFFECT,client_type=TYPE,shm-fd=FD,client-fd=FD,server-fd=FD]"
-    )]
-    #[serde(skip)] // TODO(b/255223604)
-    #[merge(strategy = append)]
-    /// comma separated key=value pairs for setting up Ac97 devices.
-    /// Can be given more than once.
-    /// Possible key values:
-    ///     backend=(null, cras) - Where to route the audio
-    ///          device. If not provided, backend will default to
-    ///          null. `null` for /dev/null, cras for CRAS server.
-    ///     capture - Enable audio capture
-    ///     capture_effects - | separated effects to be enabled for
-    ///         recording. The only supported effect value now is
-    ///         EchoCancellation or aec.
-    ///     client_type - Set specific client type for cras backend.
-    ///     socket_type - Set specific socket type for cras backend.
-    pub ac97: Vec<Ac97Parameters>,
 
     #[argh(option, arg_name = "PATH")]
     #[serde(skip)] // TODO(b/255223604)
@@ -2578,7 +2552,6 @@ impl TryFrom<RunCommand> for super::config::Config {
 
         #[cfg(feature = "audio")]
         {
-            cfg.ac97_parameters = cmd.ac97;
             cfg.sound = cmd.sound;
         }
         cfg.vhost_user_snd = cmd.vhost_user_snd;

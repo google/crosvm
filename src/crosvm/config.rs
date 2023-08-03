@@ -47,10 +47,6 @@ use devices::virtio::vhost::user::device::gpu::sys::windows::GpuVmmConfig;
 use devices::virtio::vhost::user::device::snd::sys::windows::SndSplitConfig;
 use devices::virtio::vsock::VsockConfig;
 use devices::virtio::NetParameters;
-#[cfg(feature = "audio")]
-use devices::Ac97Backend;
-#[cfg(feature = "audio")]
-use devices::Ac97Parameters;
 use devices::FwCfgParameters;
 use devices::PciAddress;
 use devices::PflashParameters;
@@ -654,36 +650,6 @@ pub fn parse_bus_id_addr(v: &str) -> Result<(u8, u8, u16, u16), String> {
     }
 }
 
-#[cfg(feature = "audio")]
-pub fn parse_ac97_options(s: &str) -> Result<Ac97Parameters, String> {
-    let mut ac97_params: Ac97Parameters = Default::default();
-
-    let opts = s
-        .split(',')
-        .map(|frag| frag.split('='))
-        .map(|mut kv| (kv.next().unwrap_or(""), kv.next().unwrap_or("")));
-
-    for (k, v) in opts {
-        match k {
-            "backend" => {
-                ac97_params.backend = v
-                    .parse::<Ac97Backend>()
-                    .map_err(|e| invalid_value_err(v, e))?;
-            }
-            "capture" => {
-                ac97_params.capture = v
-                    .parse::<bool>()
-                    .map_err(|e| format!("invalid capture option: {}", e))?;
-            }
-            _ => {
-                super::sys::config::parse_ac97_options(&mut ac97_params, k, v)?;
-            }
-        }
-    }
-
-    Ok(ac97_params)
-}
-
 pub fn invalid_value_err<T: AsRef<str>, S: ToString>(value: T, expected: S) -> String {
     format!("invalid value {}: {}", value.as_ref(), expected.to_string())
 }
@@ -828,8 +794,6 @@ mod serde_serial_params {
 pub struct Config {
     #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
     pub ac_adapter: bool,
-    #[cfg(feature = "audio")]
-    pub ac97_parameters: Vec<Ac97Parameters>,
     pub acpi_tables: Vec<PathBuf>,
     pub android_fstab: Option<PathBuf>,
     pub async_executor: Option<ExecutorKind>,
@@ -1033,8 +997,6 @@ impl Default for Config {
         Config {
             #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), unix))]
             ac_adapter: false,
-            #[cfg(feature = "audio")]
-            ac97_parameters: Vec::new(),
             acpi_tables: Vec::new(),
             android_fstab: None,
             async_executor: None,
@@ -1648,35 +1610,6 @@ mod tests {
 
         let res: MemOptions = from_key_values("size=0x4000").unwrap();
         assert_eq!(res.size, Some(16384));
-    }
-
-    #[cfg(feature = "audio_cras")]
-    #[test]
-    fn parse_ac97_vaild() {
-        parse_ac97_options("backend=cras").expect("parse should have succeded");
-    }
-
-    #[cfg(feature = "audio")]
-    #[test]
-    fn parse_ac97_null_vaild() {
-        parse_ac97_options("backend=null").expect("parse should have succeded");
-    }
-
-    #[cfg(feature = "audio_cras")]
-    #[test]
-    fn parse_ac97_capture_vaild() {
-        parse_ac97_options("backend=cras,capture=true").expect("parse should have succeded");
-    }
-
-    #[cfg(feature = "audio_cras")]
-    #[test]
-    fn parse_ac97_client_type() {
-        parse_ac97_options("backend=cras,capture=true,client_type=crosvm")
-            .expect("parse should have succeded");
-        parse_ac97_options("backend=cras,capture=true,client_type=arcvm")
-            .expect("parse should have succeded");
-        parse_ac97_options("backend=cras,capture=true,client_type=none")
-            .expect_err("parse should have failed");
     }
 
     #[test]

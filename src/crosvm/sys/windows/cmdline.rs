@@ -153,9 +153,6 @@ mod tests {
                 "mode=borderless_full_screen,hidden,refresh-rate=60",
             ]);
         }
-        if cfg!(feature = "audio") {
-            args.extend(["--ac97", "backend=win_audio"]);
-        }
         args.extend([
             "--service-pipe-name",
             "service-ipc-8244a83a-ae3f-486f-9c50-3fc47b309d27",

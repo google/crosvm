@@ -4,14 +4,6 @@
 
 //! Implements pci devices and busses.
 
-#[cfg(feature = "audio")]
-mod ac97;
-#[cfg(feature = "audio")]
-mod ac97_bus_master;
-#[cfg(feature = "audio")]
-mod ac97_mixer;
-#[cfg(feature = "audio")]
-mod ac97_regs;
 mod acpi;
 #[cfg(unix)]
 mod coiommu;
@@ -35,12 +27,6 @@ use libc::EINVAL;
 use serde::Deserialize;
 use serde::Serialize;
 
-#[cfg(feature = "audio")]
-pub use self::ac97::Ac97Backend;
-#[cfg(feature = "audio")]
-pub use self::ac97::Ac97Dev;
-#[cfg(feature = "audio")]
-pub use self::ac97::Ac97Parameters;
 pub use self::acpi::DeviceVcfgRegister;
 pub use self::acpi::DsmMethod;
 pub use self::acpi::GpeScope;
