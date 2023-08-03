@@ -297,7 +297,11 @@ fn perform_read<F: FnMut(&mut [u8]) -> io::Result<usize>>(
     if bytes_read != buf.len() {
         Err(io::Error::new(
             io::ErrorKind::UnexpectedEof,
-            "failed to fill whole buffer",
+            format!(
+                "failed to fill whole buffer, expected {} got {}",
+                buf.len(),
+                bytes_read
+            ),
         ))
     } else {
         Ok(bytes_read)
@@ -444,9 +448,14 @@ impl DuplicateHandleTube {
 
 /// Wrapper for Tube used for sending and recving protos. The main usecase is to send a message
 /// without serialization bloat caused from `serde-json`.
+#[derive(Serialize, Deserialize)]
 pub struct ProtoTube(Tube);
 
 impl ProtoTube {
+    pub fn pair() -> Result<(ProtoTube, ProtoTube)> {
+        Tube::pair().map(|(t1, t2)| (ProtoTube(t1), ProtoTube(t2)))
+    }
+
     pub fn pair_with_buffer_size(size: usize) -> Result<(ProtoTube, ProtoTube)> {
         Tube::pair_with_buffer_size(size).map(|(t1, t2)| (ProtoTube(t1), ProtoTube(t2)))
     }
@@ -463,6 +472,12 @@ impl ProtoTube {
 impl ReadNotifier for ProtoTube {
     fn get_read_notifier(&self) -> &dyn AsRawDescriptor {
         self.0.get_read_notifier()
+    }
+}
+
+impl AsRawDescriptor for ProtoTube {
+    fn as_raw_descriptor(&self) -> RawDescriptor {
+        self.0.as_raw_descriptor()
     }
 }
 
