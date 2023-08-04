@@ -1458,6 +1458,17 @@ fn run_control<V: VmArch + 'static, Vcpu: VcpuArch + 'static>(
     guest_os.irq_chip.kick_halted_vcpus();
     let _ = exit_evt.signal();
 
+    if guest_os.devices_thread.is_some() {
+        if let Err(e) = device_ctrl_tube.send(&DeviceControlCommand::Exit) {
+            error!("failed to stop device control loop: {}", e);
+        };
+        if let Some(thread) = guest_os.devices_thread.take() {
+            if let Err(e) = thread.join() {
+                error!("failed to exit devices thread: {:?}", e);
+            }
+        }
+    }
+
     // Shut down the VM memory handler thread.
     if let Err(e) = vm_memory_handler_control.send(&VmMemoryHandlerRequest::Exit) {
         error!(
