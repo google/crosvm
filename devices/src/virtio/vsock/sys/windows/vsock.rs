@@ -143,6 +143,7 @@ pub struct Vsock {
     guest_cid: u64,
     host_guid: Option<String>,
     features: u64,
+    acked_features: u64,
     worker_thread: Option<WorkerThread<Option<PausedQueues>>>,
 }
 
@@ -152,6 +153,7 @@ pub struct Vsock {
 struct VsockSnapshot {
     guest_cid: u64,
     features: u64,
+    acked_features: u64,
 }
 
 impl Vsock {
@@ -160,6 +162,7 @@ impl Vsock {
             guest_cid,
             host_guid,
             features: base_features,
+            acked_features: 0,
             worker_thread: None,
         })
     }
@@ -244,7 +247,7 @@ impl VirtioDevice for Vsock {
     }
 
     fn ack_features(&mut self, value: u64) {
-        self.features &= value;
+        self.acked_features &= value;
     }
 
     fn activate(
@@ -303,6 +306,7 @@ impl VirtioDevice for Vsock {
         serde_json::to_value(VsockSnapshot {
             guest_cid: self.guest_cid,
             features: self.features,
+            acked_features: self.acked_features,
         })
         .context("failed to serialize vsock snapshot")
     }
@@ -318,10 +322,11 @@ impl VirtioDevice for Vsock {
         );
         anyhow::ensure!(
             self.features == vsock_snapshot.features,
-            "expected features to match, but they did not. Live: {}, snapshot: {}",
+            "vsock: expected features to match, but they did not. Live: {}, snapshot: {}",
             self.features,
             vsock_snapshot.features
         );
+        self.acked_features = vsock_snapshot.acked_features;
 
         Ok(())
     }
