@@ -1620,7 +1620,7 @@ impl VirtioDevice for Balloon {
         let snap: BalloonSnapshot = serde_json::from_value(data).context("error deserializing")?;
         if snap.features != self.features {
             anyhow::bail!(
-                "expected features to match, but they did not. Live: {:?}, snapshot {:?}",
+                "balloon: expected features to match, but they did not. Live: {:?}, snapshot {:?}",
                 self.features,
                 snap.features,
             );
