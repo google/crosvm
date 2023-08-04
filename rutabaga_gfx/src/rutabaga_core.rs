@@ -186,7 +186,7 @@ pub trait RutabagaComponent {
     }
 
     /// Implementations must return a RutabagaHandle of the fence on success.
-    fn export_fence(&self, _fence_id: u32) -> RutabagaResult<RutabagaHandle> {
+    fn export_fence(&self, _fence_id: u64) -> RutabagaResult<RutabagaHandle> {
         Err(RutabagaError::Unsupported)
     }
 
@@ -877,7 +877,7 @@ impl Rutabaga {
     }
 
     /// Exports the given fence for import into other processes.
-    pub fn export_fence(&self, fence_id: u32) -> RutabagaResult<RutabagaHandle> {
+    pub fn export_fence(&self, fence_id: u64) -> RutabagaResult<RutabagaHandle> {
         let component = self
             .components
             .get(&self.default_component)
@@ -1183,9 +1183,6 @@ impl RutabagaBuilder {
         } else {
             #[cfg(feature = "virgl_renderer")]
             if self.default_component == RutabagaComponentType::VirglRenderer {
-                #[cfg(not(feature = "virgl_renderer_next"))]
-                let rutabaga_server_descriptor = None;
-
                 let virgl = VirglRenderer::init(
                     self.virglrenderer_flags,
                     fence_handler.clone(),

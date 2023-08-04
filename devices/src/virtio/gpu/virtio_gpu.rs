@@ -789,7 +789,7 @@ impl VirtioGpu {
     }
 
     /// If supported, export the fence with the given `fence_id` to a file.
-    pub fn export_fence(&self, fence_id: u32) -> ResourceResponse {
+    pub fn export_fence(&self, fence_id: u64) -> ResourceResponse {
         match self.rutabaga.export_fence(fence_id) {
             Ok(handle) => ResourceResponse::Resource(ResourceInfo::Fence {
                 handle: to_safe_descriptor(handle.os_handle),

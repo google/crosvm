@@ -76,7 +76,6 @@ use self::virtio_gpu::VirtioGpu;
 use self::virtio_gpu::VirtioGpuSnapshot;
 use super::copy_config;
 use super::resource_bridge::ResourceRequest;
-use super::resource_bridge::ResourceResponse;
 use super::DescriptorChain;
 use super::DeviceType;
 use super::Interrupt;
@@ -379,13 +378,7 @@ impl Frontend {
     pub fn process_resource_bridge(&mut self, resource_bridge: &Tube) -> anyhow::Result<()> {
         let response = match resource_bridge.recv() {
             Ok(ResourceRequest::GetBuffer { id }) => self.virtio_gpu.export_resource(id),
-            Ok(ResourceRequest::GetFence { seqno }) => {
-                // The seqno originated from self.backend, so it should fit in a u32.
-                match u32::try_from(seqno) {
-                    Ok(fence_id) => self.virtio_gpu.export_fence(fence_id),
-                    Err(_) => ResourceResponse::Invalid,
-                }
-            }
+            Ok(ResourceRequest::GetFence { seqno }) => self.virtio_gpu.export_fence(seqno),
             Err(e) => return Err(e).context("Error receiving resource bridge request"),
         };
 

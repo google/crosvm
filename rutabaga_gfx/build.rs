@@ -137,7 +137,9 @@ fn virglrenderer() -> Result<()> {
     if env::var("CROSVM_BUILD_VARIANT").unwrap_or_default() == "chromeos"
         || env::var("CROSVM_USE_SYSTEM_VIRGLRENDERER").unwrap_or_else(|_| "0".to_string()) != "0"
     {
-        pkg_config::Config::new().probe("virglrenderer")?;
+        pkg_config::Config::new()
+            .atleast_version("1.0.0")
+            .probe("virglrenderer")?;
         virglrenderer_deps()?;
         return Ok(());
     }
