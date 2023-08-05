@@ -68,10 +68,9 @@ use x86_64::set_enable_pnp_data_msr_config;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use x86_64::CpuIdCall;
 
+pub(crate) use super::sys::HypervisorKind;
 #[cfg(unix)]
 use crate::crosvm::sys::config::SharedDir;
-
-pub(crate) use super::sys::HypervisorKind;
 
 cfg_if::cfg_if! {
     if #[cfg(unix)] {
@@ -920,7 +919,7 @@ pub struct Config {
     #[cfg(unix)]
     #[serde(skip)]
     pub shared_dirs: Vec<SharedDir>,
-    #[cfg(feature = "slirp-ring-capture")]
+    #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
     pub slirp_capture_file: Option<String>,
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub smbios: SmbiosOptions,
@@ -1124,7 +1123,7 @@ impl Default for Config {
             service_pipe_name: None,
             #[cfg(unix)]
             shared_dirs: Vec::new(),
-            #[cfg(feature = "slirp-ring-capture")]
+            #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
             slirp_capture_file: None,
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             smbios: SmbiosOptions::default(),

@@ -52,7 +52,8 @@ impl Slirp {
     // TODO(nkgold): delete this code path as single process mode is no longer supported.
     pub fn new(
         shutdown_event: Event,
-        #[cfg(feature = "slirp-ring-capture")] slirp_capture_file: &Option<String>,
+        #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
+        slirp_capture_file: &Option<String>,
     ) -> Result<Slirp> {
         let (host_pipe, guest_pipe) = named_pipes::pair_with_buffer_size(
             &FramingMode::Message,
@@ -67,7 +68,7 @@ impl Slirp {
         let slirp_thread;
         {
             let slirp_pipe = host_pipe;
-            #[cfg(feature = "slirp-ring-capture")]
+            #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
             let slirp_capture_file_clone = slirp_capture_file.clone();
             slirp_thread = thread::spawn(move || {
                 let disable_access_to_host = !cfg!(feature = "guest-to-host-net-loopback");
@@ -76,7 +77,7 @@ impl Slirp {
                     slirp_pipe,
                     shutdown_event,
                     disable_access_to_host,
-                    #[cfg(feature = "slirp-ring-capture")]
+                    #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
                     slirp_capture_file_clone,
                 )
                 .expect("Failed to start slirp");
@@ -115,7 +116,8 @@ impl Slirp {
     pub fn run_slirp_process(
         slirp_pipe: PipeConnection,
         shutdown_event: Event,
-        #[cfg(feature = "slirp-ring-capture")] mut slirp_capture_file: Option<String>,
+        #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
+        mut slirp_capture_file: Option<String>,
     ) {
         // SLIRP_DEBUG is basically a CSV of debug options as defined in libslirp/src/slirp.c. See
         // g_parse_debug_string for more info on the format.
@@ -133,7 +135,7 @@ impl Slirp {
             slirp_pipe,
             shutdown_event,
             disable_access_to_host,
-            #[cfg(feature = "slirp-ring-capture")]
+            #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
             slirp_capture_file.take(),
         ) {
             Err(Error::Slirp(SlirpError::BrokenPipe(e))) => {
@@ -354,6 +356,6 @@ impl IntoAsync for Slirp {}
 pub struct SlirpStartupConfig {
     pub slirp_pipe: PipeConnection,
     pub shutdown_event: Event,
-    #[cfg(feature = "slirp-ring-capture")]
+    #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
     pub slirp_capture_file: Option<String>,
 }

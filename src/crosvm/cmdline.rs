@@ -1977,7 +1977,7 @@ pub struct RunCommand {
     /// path to a socket from where to read single touch input events (such as those from a touchscreen) and write status updates to, optionally followed by width and height (defaults to 800x1280)
     pub single_touch: Vec<TouchDeviceOption>,
 
-    #[cfg(feature = "slirp-ring-capture")]
+    #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
     #[argh(option, arg_name = "PATH")]
     #[serde(skip)] // TODO(b/255223604)
     #[merge(strategy = overwrite_option)]
@@ -2697,7 +2697,7 @@ impl TryFrom<RunCommand> for super::config::Config {
             {
                 cfg.service_pipe_name = cmd.service_pipe_name;
             }
-            #[cfg(feature = "slirp-ring-capture")]
+            #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
             {
                 cfg.slirp_capture_file = cmd.slirp_capture_file;
             }

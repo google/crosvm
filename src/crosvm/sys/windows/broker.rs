@@ -1364,7 +1364,7 @@ fn start_up_net_backend(
         shutdown_event: slirp_kill_event
             .try_clone()
             .expect("Failed to clone slirp kill event."),
-        #[cfg(feature = "slirp-ring-capture")]
+        #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
         slirp_capture_file: cfg.slirp_capture_file.take(),
     };
     slirp_child.bootstrap_tube.send(&slirp_config).unwrap();

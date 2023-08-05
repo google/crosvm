@@ -76,7 +76,7 @@ pub(crate) fn run_slirp(args: RunSlirpCommand) -> Result<()> {
     net_util::Slirp::run_slirp_process(
         slirp_config.slirp_pipe,
         slirp_config.shutdown_event,
-        #[cfg(feature = "slirp-ring-capture")]
+        #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
         slirp_config.slirp_capture_file,
     );
     Ok(())
