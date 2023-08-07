@@ -1,16 +1,25 @@
 # Introduction
 
 The crosvm project is a hosted (a.k.a.
-[type-2](https://en.wikipedia.org/wiki/Hypervisor#Classification)) virtual machine monitor.
+[type-2](https://en.wikipedia.org/wiki/Hypervisor#Classification)) virtual machine monitor similar
+to QEMU-KVM or VirtualBox.
 
-crosvm runs untrusted operating systems along with virtualized devices. Initially intended to be
-used with KVM and Linux, crosvm supports multiple kinds of hypervisors. crosvm is focussed on safety
-within the programming language and a sandbox around the virtual devices to protect the host from
-attack in case of exploits in crosvm itself.
+It is a VMM that can run untrusted operating systems in a sandboxed environment. crosvm focuses on
+safety first and foremost, both in its language of choice (Rust) and through its
+[runtime sandbox](appendix/sandboxing.md) system. Each virtual device (disk, network, etc) is by
+default executed inside a [minijail](appendix/minijail.md) sandbox, isolated from the rest. In case
+of an exploit or vulnerability, this sandbox prevents an attacker from escaping and doing harmful
+things to the host operating system. On top of that, crosvm also relies on a
+[syscall security policy](appendix/seccomp.md) that prevents unwanted system calls from being
+executed by a compromised device.
 
-Other programs similar to crosvm are QEMU and VirtualBox. An operating system, made of a root file
-system image and a kernel binary, are given as input to crosvm and then crosvm will run the
-operating system using the platform's hypervisor.
+Initially it was intended to be used with KVM and Linux, but it now also supports
+[other types of platforms](https://github.com/google/crosvm/tree/main/hypervisor/src).
+
+To run crosvm all that is needed is an operating system image (a root file system plus a kernel) and
+crosvm will run it through the platform's hypervisor. See the
+[example usage](running_crosvm/example_usage.md) page to get started or visit the
+[building crosvm](building_crosvm/index.md) section to compile your own from source.
 
 - [Announcements](https://groups.google.com/a/chromium.org/g/crosvm-announce)
 - [Developer Mailing List](https://groups.google.com/a/chromium.org/g/crosvm-dev)
