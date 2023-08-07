@@ -530,12 +530,11 @@ impl Vcpu for WhpxVcpu {
         }
     }
 
-    /// Signals to the hypervisor that this guest is being paused by userspace. This suspends the
-    /// entire VM, not just this VCPU. NO virtual processor may be running when this is called.
+    /// Signals to the hypervisor that this guest is being paused by userspace. On some hypervisors,
+    /// this is used to control the pvclock. On WHPX, we handle it separately with virtio-pvclock.
+    /// So the correct implementation here is to do nothing.
     fn on_suspend(&self) -> Result<()> {
-        // TODO: this isn't in capability features, but only available in 19H1 windows.
-        // safe because we asssume the vm partition is still valid.
-        check_whpx!(unsafe { WHvSuspendPartitionTime(self.vm_partition.partition) })
+        Ok(())
     }
 
     /// Enables a hypervisor-specific extension on this Vcpu.  `cap` is a constant defined by the
