@@ -161,7 +161,7 @@ fn process_policy(process_type: ProcessType, cfg: &Config) -> sandbox::policy::P
         ProcessType::Main => main_process_policy(cfg),
         ProcessType::Metrics => sandbox::policy::METRICS,
         ProcessType::Net => sandbox::policy::NET,
-        ProcessType::Slirp => sandbox::policy::SLIRP,
+        ProcessType::Slirp => slirp_process_policy(cfg),
         ProcessType::Gpu => gpu_process_policy(),
         ProcessType::Snd => sandbox::policy::SND,
         ProcessType::Broker => unimplemented!("No broker policy"),
@@ -199,6 +199,23 @@ fn gpu_process_policy() -> sandbox::policy::Policy {
     for dll in BLOCKLIST_GRAPHICS_DLLS.iter() {
         policy.dll_blocklist.push(dll.to_string());
     }
+    policy
+}
+
+#[cfg(feature = "sandbox")]
+fn slirp_process_policy(#[allow(unused)] cfg: &Config) -> sandbox::policy::Policy {
+    #[allow(unused_mut)]
+    let mut policy = sandbox::policy::SLIRP;
+
+    #[cfg(any(feature = "slirp-ring-capture", feature = "slirp-debug"))]
+    if let Some(path) = &cfg.slirp_capture_file {
+        policy.exceptions.push(sandbox::policy::Rule {
+            subsystem: sandbox::SubSystem::SUBSYS_FILES,
+            semantics: sandbox::Semantics::FILES_ALLOW_ANY,
+            pattern: path.to_owned(),
+        });
+    }
+
     policy
 }
 
