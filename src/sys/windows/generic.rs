@@ -11,6 +11,7 @@ use arch::VcpuArch;
 use arch::VirtioDeviceStub;
 use arch::VmArch;
 use base::AsRawDescriptor;
+use base::CloseNotifier;
 use base::Event;
 use base::EventToken;
 use base::ProtoTube;
@@ -66,6 +67,15 @@ pub(super) enum TaggedControlTube {
 
 impl ReadNotifier for TaggedControlTube {
     fn get_read_notifier(&self) -> &dyn AsRawDescriptor {
+        panic!(
+            "get_read_notifier called on generic tagged control: {:?}",
+            self
+        )
+    }
+}
+
+impl CloseNotifier for TaggedControlTube {
+    fn get_close_notifier(&self) -> &dyn AsRawDescriptor {
         panic!(
             "get_read_notifier called on generic tagged control: {:?}",
             self
