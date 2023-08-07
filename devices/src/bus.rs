@@ -10,6 +10,7 @@ use std::cmp::PartialEq;
 use std::cmp::PartialOrd;
 use std::collections::btree_map::BTreeMap;
 use std::collections::hash_map::HashMap;
+use std::collections::BTreeSet;
 use std::collections::VecDeque;
 use std::fmt;
 use std::result;
@@ -75,7 +76,7 @@ pub struct ConfigWriteResult {
     pub removed_pci_devices: Vec<PciAddress>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]
 pub enum BusType {
     Mmio,
     Io,
@@ -377,9 +378,27 @@ impl Bus {
         None
     }
 
+    /// There is no unique ID for device instances. For now we use the Arc pointers to dedup them.
+    ///
+    /// See virtio-gpu for an example of a single device instance with multiple bus entries.
+    ///
+    /// TODO: Add a unique ID to BusDevice and use that instead of pointers.
+    fn unique_devices(&self) -> Vec<BusDeviceEntry> {
+        let mut seen_ptrs = BTreeSet::new();
+        self.devices
+            .lock()
+            .iter()
+            .map(|(_, bus_entry)| bus_entry.device.clone())
+            .filter(|dev| match dev {
+                BusDeviceEntry::OuterSync(dev) => seen_ptrs.insert(Arc::as_ptr(dev) as *const u8),
+                BusDeviceEntry::InnerSync(dev) => seen_ptrs.insert(Arc::as_ptr(dev) as *const u8),
+            })
+            .collect()
+    }
+
     pub fn sleep_devices(&self) -> anyhow::Result<()> {
-        for (_, device_entry) in self.devices.lock().iter() {
-            match &device_entry.device {
+        for device_entry in self.unique_devices() {
+            match device_entry {
                 BusDeviceEntry::OuterSync(dev) => {
                     let mut dev = (*dev).lock();
                     dev.sleep()
@@ -395,8 +414,8 @@ impl Bus {
     }
 
     pub fn wake_devices(&self) -> anyhow::Result<()> {
-        for (_, device_entry) in self.devices.lock().iter() {
-            match &device_entry.device {
+        for device_entry in self.unique_devices() {
+            match device_entry {
                 BusDeviceEntry::OuterSync(dev) => {
                     let mut dev = dev.lock();
                     dev.wake()
@@ -415,8 +434,8 @@ impl Bus {
         &self,
         mut add_snapshot: impl FnMut(u32, serde_json::Value),
     ) -> anyhow::Result<()> {
-        for (_, device_entry) in self.devices.lock().iter() {
-            match &device_entry.device {
+        for device_entry in self.unique_devices() {
+            match device_entry {
                 BusDeviceEntry::OuterSync(dev) => {
                     let dev = dev.lock();
                     add_snapshot(
@@ -444,8 +463,8 @@ impl Bus {
                 .get_mut(&u32::from(device_id))
                 .and_then(|dq| dq.pop_front())
         };
-        for (_, device_entry) in self.devices.lock().iter() {
-            match &device_entry.device {
+        for device_entry in self.unique_devices() {
+            match device_entry {
                 BusDeviceEntry::OuterSync(dev) => {
                     let mut dev = dev.lock();
                     let snapshot = pop_snapshot(dev.device_id()).ok_or_else(|| {
