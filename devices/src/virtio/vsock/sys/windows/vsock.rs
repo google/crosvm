@@ -247,7 +247,7 @@ impl VirtioDevice for Vsock {
     }
 
     fn ack_features(&mut self, value: u64) {
-        self.acked_features &= value;
+        self.acked_features |= value;
     }
 
     fn activate(
