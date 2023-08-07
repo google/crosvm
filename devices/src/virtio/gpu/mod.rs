@@ -271,7 +271,7 @@ pub fn create_fence_handler<Q>(
 where
     Q: QueueReader + Send + Clone + 'static,
 {
-    RutabagaClosure::new(Box::new(move |completed_fence: RutabagaFence| {
+    RutabagaFenceHandler::new(move |completed_fence: RutabagaFence| {
         let mut signal = false;
 
         if let Some(ref fence_handler_resources) = *fence_handler_resources.lock() {
@@ -312,7 +312,7 @@ where
                 fence_handler_resources.ctrl_queue.signal_used();
             }
         }
-    }))
+    })
 }
 
 pub struct ReturnDescriptor {

@@ -147,18 +147,14 @@ fn create_ffi_fence_handler(
     user_data: u64,
     fence_cb: rutabaga_fence_callback,
 ) -> RutabagaFenceHandler {
-    RutabagaFenceClosure::new(Box::new(move |completed_fence| {
-        fence_cb(user_data, &completed_fence)
-    }))
+    RutabagaFenceHandler::new(move |completed_fence| fence_cb(user_data, &completed_fence))
 }
 
 fn create_ffi_debug_handler(
     user_data: u64,
     debug_cb: rutabaga_debug_callback,
 ) -> RutabagaDebugHandler {
-    RutabagaDebugClosure::new(Box::new(move |rutabaga_debug| {
-        debug_cb(user_data, &rutabaga_debug)
-    }))
+    RutabagaDebugHandler::new(move |rutabaga_debug| debug_cb(user_data, &rutabaga_debug))
 }
 
 #[no_mangle]

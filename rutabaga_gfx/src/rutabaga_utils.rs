@@ -659,18 +659,19 @@ impl RutabagaHandle {
     }
 }
 
-pub struct RutabagaClosure<S> {
-    closure: Box<dyn Fn(S) + Send + Sync>,
+#[derive(Clone)]
+pub struct RutabagaHandler<S> {
+    closure: Arc<dyn Fn(S) + Send + Sync>,
 }
 
-type RutabagaHandler<S> = Arc<RutabagaClosure<S>>;
-
-impl<S> RutabagaClosure<S>
+impl<S> RutabagaHandler<S>
 where
     S: Send + Sync + Clone + 'static,
 {
-    pub fn new(closure: Box<dyn Fn(S) + Send + Sync>) -> RutabagaHandler<S> {
-        Arc::new(RutabagaClosure { closure })
+    pub fn new(closure: impl Fn(S) + Send + Sync + 'static) -> RutabagaHandler<S> {
+        RutabagaHandler {
+            closure: Arc::new(closure),
+        }
     }
 
     pub fn call(&self, data: S) {
@@ -678,14 +679,12 @@ where
     }
 }
 
-impl<S> fmt::Debug for RutabagaClosure<S> {
+impl<S> fmt::Debug for RutabagaHandler<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Closure debug").finish()
     }
 }
 
-pub type RutabagaFenceClosure = RutabagaClosure<RutabagaFence>;
 pub type RutabagaFenceHandler = RutabagaHandler<RutabagaFence>;
 
-pub type RutabagaDebugClosure = RutabagaClosure<RutabagaDebug>;
 pub type RutabagaDebugHandler = RutabagaHandler<RutabagaDebug>;
