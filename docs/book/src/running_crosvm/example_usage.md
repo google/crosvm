@@ -48,6 +48,9 @@ The full source for this example can be executed directly:
 ./tools/examples/example_simple
 ```
 
+The login username will be the username on the host, and it will prompt to decide the password on
+the first login in the VM.
+
 ## Add Networking Support
 
 Networking support is easiest set up with a TAP device on the host, which can be done with:
