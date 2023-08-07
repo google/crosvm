@@ -81,6 +81,7 @@ pub use self::bus_stats::BusStatistics;
 pub use self::debugcon::Debugcon;
 pub use self::fw_cfg::Error as FwCfgError;
 pub use self::fw_cfg::FwCfgDevice;
+pub use self::fw_cfg::FwCfgItemType;
 pub use self::fw_cfg::FwCfgParameters;
 pub use self::fw_cfg::FW_CFG_BASE_PORT;
 pub use self::fw_cfg::FW_CFG_MAX_FILE_SLOTS;

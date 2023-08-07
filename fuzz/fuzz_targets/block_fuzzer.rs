@@ -102,6 +102,7 @@ fuzz_target!(|bytes| {
         None,
         None,
         None,
+        None,
     )
     .unwrap();
 

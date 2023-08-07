@@ -261,6 +261,7 @@ impl<'a> VirtioDeviceBuilder for DiskConfig<'a> {
                 None,
                 self.disk.async_executor,
                 None,
+                self.disk.bootindex,
             )
             .context("failed to create block device")?,
         ))
@@ -288,6 +289,7 @@ impl<'a> VirtioDeviceBuilder for DiskConfig<'a> {
                 None,
                 disk.async_executor,
                 None,
+                self.disk.bootindex,
             )
             .context("failed to create block device")?,
         );

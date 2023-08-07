@@ -54,6 +54,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         multiple_workers: false,
         async_executor: None,
         packed_queue: false,
+        bootindex: None,
     };
 
     let block = Box::new(BlockAsync::new(
@@ -69,6 +70,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         None,
         None,
         None,
+        disk.bootindex,
     )?);
 
     let listener = VhostUserListener::new_from_socket_or_vfio(

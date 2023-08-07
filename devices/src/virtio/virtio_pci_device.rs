@@ -593,6 +593,14 @@ impl VirtioPciDevice {
         }
         Ok(())
     }
+
+    pub fn virtio_device(&self) -> &dyn VirtioDevice {
+        self.device.as_ref()
+    }
+
+    pub fn pci_address(&self) -> Option<PciAddress> {
+        self.pci_address
+    }
 }
 
 impl PciDevice for VirtioPciDevice {
@@ -893,6 +901,10 @@ impl PciDevice for VirtioPciDevice {
         assert!(self.supports_iommu());
         self.iommu = Some(Arc::new(Mutex::new(iommu)));
         Ok(())
+    }
+
+    fn as_virtio_pci_device(&self) -> Option<&VirtioPciDevice> {
+        Some(self)
     }
 }
 

@@ -627,6 +627,9 @@ pub async fn run_worker(
 
 /// Virtio device for exposing block level read/write operations on a host file.
 pub struct BlockAsync {
+    // We need to make boot_index public bc the field is used by the main crate to determine boot
+    // order
+    pub boot_index: Option<usize>,
     // We keep these members crate-public as they are accessed by the vhost-user device.
     pub(crate) disk_image: Option<Box<dyn DiskFile>>,
     pub(crate) disk_size: Arc<AtomicU64>,
@@ -664,6 +667,7 @@ impl BlockAsync {
         queue_size: Option<u16>,
         executor_kind: Option<ExecutorKind>,
         num_queues: Option<u16>,
+        boot_index: Option<usize>,
     ) -> SysResult<BlockAsync> {
         if block_size % SECTOR_SIZE as u32 != 0 {
             error!(
@@ -714,6 +718,7 @@ impl BlockAsync {
             control_tube,
             executor_kind,
             num_activated_queues: None,
+            boot_index,
         })
     }
 
@@ -1179,6 +1184,11 @@ impl VirtioDevice for BlockAsync {
         );
         Ok(())
     }
+
+    fn bootorder_fw_cfg(&self, pci_slot: u8) -> Option<(Vec<u8>, usize)> {
+        self.boot_index
+            .map(|s| (format!("scsi@{}/disk@0,0", pci_slot).as_bytes().to_vec(), s))
+    }
 }
 
 #[cfg(test)]
@@ -1222,6 +1232,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .unwrap();
         let mut num_sectors = [0u8; 4];
@@ -1248,6 +1259,7 @@ mod tests {
             false,
             4096,
             false,
+            None,
             None,
             None,
             None,
@@ -1284,6 +1296,7 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
             )
             .unwrap();
             // writable device should set VIRTIO_BLK_F_FLUSH + VIRTIO_BLK_F_DISCARD
@@ -1309,6 +1322,7 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
             )
             .unwrap();
             // writable device should set VIRTIO_F_FLUSH + VIRTIO_BLK_F_RO
@@ -1329,6 +1343,7 @@ mod tests {
                 false,
                 512,
                 false,
+                None,
                 None,
                 None,
                 None,
@@ -1365,6 +1380,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .unwrap();
         assert_eq!(
@@ -1387,6 +1403,7 @@ mod tests {
             Some(128),
             None,
             Some(1),
+            None,
         )
         .unwrap();
         assert_eq!([128; 1], b.queue_max_sizes());
@@ -1647,6 +1664,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .unwrap();
 
@@ -1762,6 +1780,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .unwrap();
 
@@ -1871,6 +1890,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .unwrap();
 
@@ -1900,7 +1920,7 @@ mod tests {
         // Create a BlockAsync to test with multiple worker threads
         let features = base_features(ProtectionType::Unprotected);
         let mut b = BlockAsync::new(
-            features, disk_image, true, false, false, 512, true, None, None, None, None, None,
+            features, disk_image, true, false, false, 512, true, None, None, None, None, None, None,
         )
         .unwrap();
 

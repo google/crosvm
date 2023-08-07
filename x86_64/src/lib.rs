@@ -811,7 +811,11 @@ impl arch::LinuxArch for X8664arch {
         let suspend_evt = Event::new().map_err(Error::CreateEvent)?;
 
         if !components.fw_cfg_parameters.is_empty() {
-            Self::setup_fw_cfg_device(&io_bus, components.fw_cfg_parameters.clone())?;
+            Self::setup_fw_cfg_device(
+                &io_bus,
+                components.fw_cfg_parameters.clone(),
+                components.bootorder_fw_cfg_blob.clone(),
+            )?;
         }
 
         if !components.no_i8042 {
@@ -1702,8 +1706,7 @@ impl X8664arch {
         cmdline
     }
 
-    /// Sets up fw_cfg device. Currently creates an fw_cfg with no slots, so nothing can be
-    /// inserted into it.
+    /// Sets up fw_cfg device.
     ///  # Arguments
     ///
     /// * - `io_bus` - the IO bus object
@@ -1712,9 +1715,24 @@ impl X8664arch {
     fn setup_fw_cfg_device(
         io_bus: &devices::Bus,
         fw_cfg_parameters: Vec<FwCfgParameters>,
+        bootorder_fw_cfg_blob: Vec<u8>,
     ) -> Result<()> {
         match devices::FwCfgDevice::new(FW_CFG_MAX_FILE_SLOTS, fw_cfg_parameters) {
-            Ok(device) => {
+            Ok(mut device) => {
+                // this condition will only be true if the user specified at least one bootindex
+                // option on the command line. If none were specified, bootorder_fw_cfg_blob will
+                // only have a null byte (null terminator)
+                if bootorder_fw_cfg_blob.len() > 1 {
+                    // Add boot order file to the device. If the file is not present, firmware may
+                    // not be able to boot.
+                    if let Err(err) = device.add_file(
+                        "bootorder",
+                        bootorder_fw_cfg_blob,
+                        devices::FwCfgItemType::GenericItem,
+                    ) {
+                        return Err(Error::CreateFwCfgDevice(err));
+                    }
+                }
                 io_bus
                     .insert(Arc::new(Mutex::new(device)), FW_CFG_BASE_PORT, FW_CFG_WIDTH)
                     .unwrap();

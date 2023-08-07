@@ -316,6 +316,7 @@ pub struct VmComponents {
     pub ac_adapter: bool,
     pub acpi_sdts: Vec<SDT>,
     pub android_fstab: Option<File>,
+    pub bootorder_fw_cfg_blob: Vec<u8>,
     pub cpu_capacity: BTreeMap<usize, u32>,
     pub cpu_clusters: Vec<CpuSet>,
     pub cpu_frequencies: BTreeMap<usize, Vec<u32>>,

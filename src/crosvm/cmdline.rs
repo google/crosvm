@@ -995,6 +995,12 @@ pub struct RunCommand {
     ///     packed-queue=BOOL - Use packed virtqueue
     ///         in block device. If false, use split virtqueue.
     ///         (default: false)
+    ///     bootindex=NUM - An index dictating the order that the
+    ///         firmware will consider devices to boot from.
+    ///         For example, if bootindex=2, then the BIOS
+    ///         will attempt to boot from the current device
+    ///         after failing to boot from the device with
+    ///         bootindex=1.
     block: Vec<DiskOptionWithId>,
 
     /// ratelimit enforced on detected bus locks in guest.
@@ -1235,11 +1241,11 @@ pub struct RunCommand {
     /// fw_cfg.
     /// Possible key values:
     ///     name - Name of the file in fw_cfg that will
-    ///      be associated with user-provided data
+    ///      be associated with provided data
     ///     path - Path to data that will be included in
-    ///      fw_cfg under filename
+    ///      fw_cfg under name
     ///     string - Alternative to path, data to be in
-    ///      included in fw_cfg under filename
+    ///      included in fw_cfg under name
     pub fw_cfg: Vec<FwCfgParameters>,
 
     #[cfg(feature = "gdb")]

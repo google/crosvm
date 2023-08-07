@@ -17,6 +17,7 @@ pub(crate) mod pci_hotplug_helpers;
 pub(crate) mod pci_hotplug_manager;
 mod vcpu;
 
+use devices::virtio::VirtioDevice;
 use std::cmp::max;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -1161,6 +1162,7 @@ fn setup_vm_components(cfg: &Config) -> Result<VmComponents> {
             .checked_mul(1024 * 1024)
             .ok_or_else(|| anyhow!("requested memory size too large"))?,
         swiotlb,
+        bootorder_fw_cfg_blob: Vec::new(),
         vcpu_count: cfg.vcpu_count.unwrap_or(1),
         vcpu_affinity: cfg.vcpu_affinity.clone(),
         cpu_clusters: cfg.cpu_clusters.clone(),
@@ -1825,6 +1827,51 @@ where
     )?;
 
     arch::assign_pci_addresses(&mut devices, &mut sys_allocator)?;
+
+    let pci_devices: Vec<&dyn PciDevice> = devices
+        .iter()
+        .filter_map(|d| (d.0).as_pci_device())
+        .collect();
+
+    let virtio_devices: Vec<(&dyn VirtioDevice, devices::PciAddress)> = pci_devices
+        .into_iter()
+        .flat_map(|s| {
+            if let Some(virtio_pci_device) = s.as_virtio_pci_device() {
+                std::iter::zip(
+                    Some(virtio_pci_device.virtio_device()),
+                    virtio_pci_device.pci_address(),
+                )
+                .next()
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let mut open_firmware_device_paths: Vec<(Vec<u8>, usize)> = virtio_devices
+        .iter()
+        .flat_map(|s| (s.0).bootorder_fw_cfg(s.1.dev))
+        .collect();
+
+    // order the OpenFirmware device paths, in ascending order, by their boot_index
+    open_firmware_device_paths.sort_by(|a, b| (a.1).cmp(&(b.1)));
+
+    // "/pci@iocf8/" is x86 specific and represents the root at the system bus port
+    let mut bootorder_fw_cfg_blob =
+        open_firmware_device_paths
+            .into_iter()
+            .fold(Vec::new(), |a, b| {
+                a.into_iter()
+                    .chain("/pci@i0cf8/".as_bytes().iter().copied())
+                    .chain(b.0.into_iter())
+                    .chain("\n".as_bytes().iter().copied())
+                    .collect()
+            });
+
+    // the "bootorder" file is expected to end with a null terminator
+    bootorder_fw_cfg_blob.push(0);
+
+    components.bootorder_fw_cfg_blob = bootorder_fw_cfg_blob;
 
     let (translate_response_senders, request_rx) = setup_virtio_access_platform(
         &mut sys_allocator,

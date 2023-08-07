@@ -44,6 +44,7 @@ use crate::BusDevice;
 use crate::DeviceId;
 use crate::IrqLevelEvent;
 use crate::Suspendable;
+use crate::VirtioPciDevice;
 
 #[sorted]
 #[derive(Error, Debug)]
@@ -479,6 +480,11 @@ pub trait PciDevice: Send + Suspendable {
     /// Sets the IOMMU for the device if `supports_iommu()`
     fn set_iommu(&mut self, _iommu: IpcMemoryMapper) -> anyhow::Result<()> {
         bail!("Iommu not supported.");
+    }
+
+    // Used for bootorder
+    fn as_virtio_pci_device(&self) -> Option<&VirtioPciDevice> {
+        None
     }
 }
 

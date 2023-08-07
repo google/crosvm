@@ -262,4 +262,18 @@ pub trait VirtioDevice: Send {
             self.debug_label()
         );
     }
+
+    // Returns a tuple consisting of the non-arch specific part of the OpenFirmware path,
+    // represented as bytes, and the boot index of a device. The non-arch specific part of path for
+    // a virtio-blk device, for example, would consist of everything after the first '/' below:
+    // pci@i0cf8/scsi@6[,3]/disk@0,0
+    //    ^           ^  ^       ^ ^
+    //    |           |  |       fixed
+    //    |           | (PCI function related to disk (optional))
+    // (x86 specf  (PCI slot holding disk)
+    //  root at sys
+    //  bus port)
+    fn bootorder_fw_cfg(&self, _pci_address: u8) -> Option<(Vec<u8>, usize)> {
+        None
+    }
 }

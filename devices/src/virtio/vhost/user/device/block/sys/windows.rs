@@ -84,6 +84,7 @@ pub fn start_device(opts: Options) -> anyhow::Result<()> {
         None,
         disk_option.async_executor,
         None,
+        None,
     )?);
 
     // TODO(b/213170185): Uncomment once sandbox is upstreamed.
