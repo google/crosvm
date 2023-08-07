@@ -378,17 +378,16 @@ impl Bus {
     }
 
     pub fn sleep_devices(&self) -> anyhow::Result<()> {
-        let devices_lock = &(self.devices).lock();
-        for (_, device_entry) in devices_lock.iter() {
-            match &(device_entry.device) {
+        for (_, device_entry) in self.devices.lock().iter() {
+            match &device_entry.device {
                 BusDeviceEntry::OuterSync(dev) => {
-                    let mut device_lock = (*dev).lock();
-                    device_lock.sleep().with_context(|| {
-                        format!("failed to sleep {}", device_lock.debug_label())
-                    })?;
+                    let mut dev = (*dev).lock();
+                    dev.sleep()
+                        .with_context(|| format!("failed to sleep {}", dev.debug_label()))?;
                 }
                 BusDeviceEntry::InnerSync(dev) => {
-                    (**dev).sleep_sync().context("failed to sleep device")?;
+                    dev.sleep_sync()
+                        .with_context(|| format!("failed to sleep {}", dev.debug_label()))?;
                 }
             }
         }
@@ -396,17 +395,16 @@ impl Bus {
     }
 
     pub fn wake_devices(&self) -> anyhow::Result<()> {
-        let devices_lock = &(self.devices).lock();
-        for (_, device_entry) in devices_lock.iter() {
-            match &(device_entry.device) {
+        for (_, device_entry) in self.devices.lock().iter() {
+            match &device_entry.device {
                 BusDeviceEntry::OuterSync(dev) => {
-                    let mut device_lock = (*dev).lock();
-                    device_lock
-                        .wake()
-                        .with_context(|| format!("failed to wake {}", device_lock.debug_label()))?;
+                    let mut dev = dev.lock();
+                    dev.wake()
+                        .with_context(|| format!("failed to wake {}", dev.debug_label()))?;
                 }
                 BusDeviceEntry::InnerSync(dev) => {
-                    (**dev).wake_sync().context("failed to wake device")?;
+                    dev.wake_sync()
+                        .with_context(|| format!("failed to wake {}", dev.debug_label()))?;
                 }
             }
         }
@@ -417,30 +415,21 @@ impl Bus {
         &self,
         mut add_snapshot: impl FnMut(u32, serde_json::Value),
     ) -> anyhow::Result<()> {
-        let devices_lock = &(self.devices).lock();
-        for (_, device_entry) in devices_lock.iter() {
-            let (device_id, serialized_device, device_label) = match &(device_entry.device) {
+        for (_, device_entry) in self.devices.lock().iter() {
+            match &device_entry.device {
                 BusDeviceEntry::OuterSync(dev) => {
-                    let device_lock = (*dev).lock();
-                    (
-                        u32::from(device_lock.device_id()),
-                        (*device_lock).snapshot(),
-                        (*device_lock).debug_label(),
+                    let dev = dev.lock();
+                    add_snapshot(
+                        u32::from(dev.device_id()),
+                        dev.snapshot()
+                            .with_context(|| format!("failed to snapshot {}", dev.debug_label()))?,
                     )
                 }
-                BusDeviceEntry::InnerSync(dev) => (
-                    u32::from((dev).device_id()),
-                    (**dev).snapshot_sync(),
-                    (**dev).debug_label(),
+                BusDeviceEntry::InnerSync(dev) => add_snapshot(
+                    u32::from(dev.device_id()),
+                    dev.snapshot_sync()
+                        .with_context(|| format!("failed to snapshot {}", dev.debug_label()))?,
                 ),
-            };
-            match serialized_device {
-                Ok(snapshot) => {
-                    add_snapshot(device_id, snapshot);
-                }
-                Err(e) => {
-                    return Err(anyhow!("Failed to snapshot {}: {}.", device_label, e));
-                }
             }
         }
         Ok(())
@@ -450,39 +439,29 @@ impl Bus {
         &self,
         devices_map: &mut HashMap<u32, VecDeque<serde_json::Value>>,
     ) -> anyhow::Result<()> {
-        let devices_lock = &(self.devices).lock();
-        for (_, device_entry) in devices_lock.iter() {
-            match &(device_entry.device) {
+        let mut pop_snapshot = |device_id| {
+            devices_map
+                .get_mut(&u32::from(device_id))
+                .and_then(|dq| dq.pop_front())
+        };
+        for (_, device_entry) in self.devices.lock().iter() {
+            match &device_entry.device {
                 BusDeviceEntry::OuterSync(dev) => {
-                    let mut device_lock = (*dev).lock();
-                    let device_id = u32::from(device_lock.device_id());
-                    let device_data = devices_map.get_mut(&device_id);
-                    match device_data {
-                        Some(dev_dq) => {
-                            match dev_dq.pop_front() {
-                                Some(dev_data) => {
-                                    (*device_lock).restore(dev_data).context("device failed to restore snapshot")?;
-                                }
-                                None => base::info!("no data found in snapshot for {}", device_lock.debug_label()),
-                            }
-                        },
-                        None => base::info!("device {} does not have stored data in the snapshot. Device data will not change.", (*device_lock).debug_label()),
-                    }
+                    let mut dev = dev.lock();
+                    let snapshot = pop_snapshot(dev.device_id()).ok_or_else(|| {
+                        anyhow!("missing snapshot for device {:?}", dev.debug_label())
+                    })?;
+                    dev.restore(snapshot).with_context(|| {
+                        format!("restore failed for device {:?}", dev.debug_label())
+                    })?;
                 }
                 BusDeviceEntry::InnerSync(dev) => {
-                    let device_id = u32::from(dev.device_id());
-                    let device_data = devices_map.get_mut(&device_id);
-                    match device_data {
-                        Some(dev_dq) => {
-                            match dev_dq.pop_front() {
-                                Some(dev_data) => {
-                                    (**dev).restore_sync(dev_data).context("device failed to restore snapshot")?;
-                                }
-                                None => base::info!("no data found in snapshot for {}", (**dev).debug_label()),
-                            }
-                        },
-                        None => base::info!("device {} does not have stored data in the snapshot. Device data will not change.", dev.debug_label()),
-                    }
+                    let snapshot = pop_snapshot(dev.device_id()).ok_or_else(|| {
+                        anyhow!("missing snapshot for device {:?}", dev.debug_label())
+                    })?;
+                    dev.restore_sync(snapshot).with_context(|| {
+                        format!("restore failed for device {:?}", dev.debug_label())
+                    })?;
                 }
             }
         }
