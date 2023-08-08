@@ -152,6 +152,14 @@ pub struct SmbiosOemStrings {
     pub count: u8,
 }
 
+#[repr(C, packed)]
+#[derive(Default, Clone, Copy, FromBytes, AsBytes)]
+pub struct SmbiosEndOfTable {
+    pub typ: u8,
+    pub length: u8,
+    pub handle: u16,
+}
+
 fn write_and_incr<T: AsBytes + FromBytes>(
     mem: &GuestMemory,
     val: T,
@@ -240,14 +248,14 @@ pub fn setup_smbios(mem: &GuestMemory, oem_strings: &[String]) -> Result<()> {
 
     {
         handle += 1;
-        let smbios_sysinfo = SmbiosSysInfo {
+        let smbios_sysinfo = SmbiosEndOfTable {
             typ: END_OF_TABLE,
-            length: mem::size_of::<SmbiosSysInfo>() as u8,
+            length: mem::size_of::<SmbiosEndOfTable>() as u8,
             handle,
-            ..Default::default()
         };
         curptr = write_and_incr(mem, smbios_sysinfo, curptr)?;
-        curptr = write_and_incr(mem, 0_u8, curptr)?;
+        curptr = write_and_incr(mem, 0_u8, curptr)?; // No strings
+        curptr = write_and_incr(mem, 0_u8, curptr)?; // Structure terminator
     }
 
     {
@@ -299,7 +307,12 @@ mod tests {
             mem::size_of::<SmbiosOemStrings>(),
             0x5usize,
             concat!("Size of: ", stringify!(SmbiosOemStrings))
-        )
+        );
+        assert_eq!(
+            mem::size_of::<SmbiosEndOfTable>(),
+            0x4usize,
+            concat!("Size of: ", stringify!(SmbiosEndOfTable))
+        );
     }
 
     #[test]
