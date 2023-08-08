@@ -18,6 +18,7 @@ mkdir -p /newroot/proc /newroot/sys /newroot/dev || true
 mount --move /sys /newroot/sys
 mount --move /proc /newroot/proc
 mount --move /dev /newroot/dev
+ln -sf /proc/self/fd /newroot/dev/fd
 
 cp /bin/delegate /newroot/bin/delegate || true
 
