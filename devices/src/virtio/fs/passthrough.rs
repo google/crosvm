@@ -1590,7 +1590,8 @@ impl FileSystem for PassthroughFs {
         let mut opts = FsOptions::DO_READDIRPLUS
             | FsOptions::READDIRPLUS_AUTO
             | FsOptions::EXPORT_SUPPORT
-            | FsOptions::DONT_MASK;
+            | FsOptions::DONT_MASK
+            | FsOptions::CACHE_SYMLINKS;
         if self.cfg.posix_acl {
             opts |= FsOptions::POSIX_ACL;
         }
