@@ -76,7 +76,7 @@ impl UsbEndpoint {
             .get_transfer_type()
             .map_err(Error::GetXhciTransferType)?
         {
-            XhciTransferType::Normal(buffer) => buffer,
+            XhciTransferType::Normal => transfer.create_buffer().map_err(Error::CreateBuffer)?,
             XhciTransferType::Noop => {
                 return transfer
                     .on_transfer_complete(&TransferStatus::Completed, 0)

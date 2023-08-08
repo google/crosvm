@@ -295,7 +295,10 @@ impl HostDevice {
             .get_transfer_type()
             .map_err(Error::GetXhciTransferType)?;
         match transfer_type {
-            XhciTransferType::SetupStage(setup) => {
+            XhciTransferType::SetupStage => {
+                let setup = xhci_transfer
+                    .create_usb_request_setup()
+                    .map_err(Error::CreateUsbRequestSetup)?;
                 if self.ctl_ep_state != ControlEndpointState::SetupStage {
                     error!("Control endpoint is in an inconsistant state");
                     return Ok(());
@@ -307,13 +310,14 @@ impl HostDevice {
                     .map_err(Error::TransferComplete)?;
                 self.ctl_ep_state = ControlEndpointState::DataStage;
             }
-            XhciTransferType::DataStage(buffer) => {
+            XhciTransferType::DataStage => {
                 if self.ctl_ep_state != ControlEndpointState::DataStage {
                     error!("Control endpoint is in an inconsistant state");
                     return Ok(());
                 }
                 // Requests with a DataStage will be executed here.
                 // Requests without a DataStage will be executed in StatusStage.
+                let buffer = xhci_transfer.create_buffer().map_err(Error::CreateBuffer)?;
                 self.execute_control_transfer(xhci_transfer, Some(buffer))?;
                 self.executed = true;
                 self.ctl_ep_state = ControlEndpointState::StatusStage;

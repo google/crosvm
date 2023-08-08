@@ -115,14 +115,14 @@ impl XhciTransferState {
 pub enum XhciTransferType {
     // Normal means bulk transfer or interrupt transfer, depending on endpoint type.
     // See spec 4.11.2.1.
-    Normal(ScatterGatherBuffer),
+    Normal,
     // See usb spec for setup stage, data stage and status stage,
     // see xHCI spec 4.11.2.2 for corresponding trbs.
-    SetupStage(UsbRequestSetup),
-    DataStage(ScatterGatherBuffer),
+    SetupStage,
+    DataStage,
     StatusStage,
     // See xHCI spec 4.11.2.3.
-    Isochronous(ScatterGatherBuffer),
+    Isochronous,
     // See xHCI spec 6.4.1.4.
     Noop,
 }
@@ -132,47 +132,12 @@ impl Display for XhciTransferType {
         use self::XhciTransferType::*;
 
         match self {
-            Normal(_) => write!(f, "Normal"),
-            SetupStage(_) => write!(f, "SetupStage"),
-            DataStage(_) => write!(f, "DataStage"),
+            Normal => write!(f, "Normal"),
+            SetupStage => write!(f, "SetupStage"),
+            DataStage => write!(f, "DataStage"),
             StatusStage => write!(f, "StatusStage"),
-            Isochronous(_) => write!(f, "Isochronous"),
+            Isochronous => write!(f, "Isochronous"),
             Noop => write!(f, "Noop"),
-        }
-    }
-}
-
-impl XhciTransferType {
-    /// Analyze transfer descriptor and return transfer type.
-    pub fn new(mem: GuestMemory, td: TransferDescriptor) -> Result<XhciTransferType> {
-        // We can figure out transfer type from the first trb.
-        // See transfer descriptor description in xhci spec for more details.
-        match td[0].trb.get_trb_type().map_err(Error::TrbType)? {
-            TrbType::Normal => {
-                let buffer = ScatterGatherBuffer::new(mem, td).map_err(Error::CreateBuffer)?;
-                Ok(XhciTransferType::Normal(buffer))
-            }
-            TrbType::SetupStage => {
-                let trb = td[0].trb.cast::<SetupStageTrb>().map_err(Error::CastTrb)?;
-                Ok(XhciTransferType::SetupStage(UsbRequestSetup::new(
-                    trb.get_request_type(),
-                    trb.get_request(),
-                    trb.get_value(),
-                    trb.get_index(),
-                    trb.get_length(),
-                )))
-            }
-            TrbType::DataStage => {
-                let buffer = ScatterGatherBuffer::new(mem, td).map_err(Error::CreateBuffer)?;
-                Ok(XhciTransferType::DataStage(buffer))
-            }
-            TrbType::StatusStage => Ok(XhciTransferType::StatusStage),
-            TrbType::Isoch => {
-                let buffer = ScatterGatherBuffer::new(mem, td).map_err(Error::CreateBuffer)?;
-                Ok(XhciTransferType::Isochronous(buffer))
-            }
-            TrbType::Noop => Ok(XhciTransferType::Noop),
-            t => Err(Error::BadTrbType(t)),
         }
     }
 }
@@ -310,7 +275,42 @@ impl XhciTransfer {
 
     /// Get transfer type.
     pub fn get_transfer_type(&self) -> Result<XhciTransferType> {
-        XhciTransferType::new(self.mem.clone(), self.transfer_trbs.clone())
+        // We can figure out transfer type from the first trb.
+        // See transfer descriptor description in xhci spec for more details.
+        match self.transfer_trbs[0]
+            .trb
+            .get_trb_type()
+            .map_err(Error::TrbType)?
+        {
+            TrbType::Normal => Ok(XhciTransferType::Normal),
+            TrbType::SetupStage => Ok(XhciTransferType::SetupStage),
+            TrbType::DataStage => Ok(XhciTransferType::DataStage),
+            TrbType::StatusStage => Ok(XhciTransferType::StatusStage),
+            TrbType::Isoch => Ok(XhciTransferType::Isochronous),
+            TrbType::Noop => Ok(XhciTransferType::Noop),
+            t => Err(Error::BadTrbType(t)),
+        }
+    }
+
+    /// Create a scatter gather buffer for the given xhci transfer
+    pub fn create_buffer(&self) -> Result<ScatterGatherBuffer> {
+        ScatterGatherBuffer::new(self.mem.clone(), self.transfer_trbs.clone())
+            .map_err(Error::CreateBuffer)
+    }
+
+    /// Create a usb request setup for the control transfer buffer
+    pub fn create_usb_request_setup(&self) -> Result<UsbRequestSetup> {
+        let trb = self.transfer_trbs[0]
+            .trb
+            .checked_cast::<SetupStageTrb>()
+            .map_err(Error::CastTrb)?;
+        Ok(UsbRequestSetup::new(
+            trb.get_request_type(),
+            trb.get_request(),
+            trb.get_value(),
+            trb.get_index(),
+            trb.get_length(),
+        ))
     }
 
     /// Get endpoint number.

@@ -26,12 +26,16 @@ pub enum Error {
     BufferLen(BufferError),
     #[error("failed to clear halt: {0}")]
     ClearHalt(UsbUtilError),
-    #[error("failed to create contro tube: {0}")]
+    #[error("failed to create scatter gather buffer: {0}")]
+    CreateBuffer(XhciTransferError),
+    #[error("failed to create control tube: {0}")]
     CreateControlTube(TubeError),
     #[error("failed to create libusb context: {0}")]
     CreateLibUsbContext(UsbUtilError),
     #[error("failed to create transfer: {0}")]
     CreateTransfer(UsbUtilError),
+    #[error("failed to create USB request setup: {0}")]
+    CreateUsbRequestSetup(XhciTransferError),
     #[error("failed to free streams: {0}")]
     FreeStreams(UsbUtilError),
     #[error("failed to get active config: {0}")]
