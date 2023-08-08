@@ -15,7 +15,7 @@ The currently supported backends are:
 - [`trace_marker`](https://crosvm.dev/doc/cros_tracing/trace_marker/index.html):
   [ftrace](https://docs.kernel.org/trace/ftrace.html) backend to log trace events to the Linux
   kernel. Only supported on Linux systems. Enabled by compiling crosvm with the
-  `--features trace_marker` flag.
+  `--features trace_marker` flag. (On CrOS it is USE flag `crosvm-trace-marker`)
 
 ## cros_tracing Overview
 
