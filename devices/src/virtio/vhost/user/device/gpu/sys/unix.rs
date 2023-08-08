@@ -235,13 +235,6 @@ pub fn run_gpu_device(opts: Options) -> anyhow::Result<()> {
     // These are only used when there is an input device.
     let event_devices = Vec::new();
 
-    // The regular gpu device sets this to true when sandboxing is enabled. Assume that we
-    // are always sandboxed.
-    gpu_parameters.external_blob = true;
-
-    // Fallback for when external_blob is not available on the machine. Currently always off.
-    gpu_parameters.system_blob = false;
-
     let base_features = virtio::base_features(ProtectionType::Unprotected);
 
     let listener = VhostUserListener::new_from_socket_or_vfio(&socket, &vfio, MAX_QUEUE_NUM, None)?;
