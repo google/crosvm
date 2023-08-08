@@ -1042,7 +1042,7 @@ impl DisplayBackend {
             #[cfg(unix)]
             DisplayBackend::Wayland(path) => GpuDisplay::open_wayland(path.as_ref()),
             #[cfg(unix)]
-            DisplayBackend::X(display) => GpuDisplay::open_x(display.as_ref()),
+            DisplayBackend::X(display) => GpuDisplay::open_x(display.as_deref()),
             DisplayBackend::Stub => GpuDisplay::open_stub(),
             #[cfg(windows)]
             DisplayBackend::WinApi(display_properties) => match wndproc_thread.take() {

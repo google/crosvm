@@ -326,14 +326,11 @@ pub struct GpuDisplay {
 
 impl GpuDisplay {
     /// Opens a connection to X server
-    pub fn open_x<S: AsRef<str>>(display_name: Option<S>) -> GpuDisplayResult<GpuDisplay> {
+    pub fn open_x(display_name: Option<&str>) -> GpuDisplayResult<GpuDisplay> {
         let _ = display_name;
         #[cfg(feature = "x")]
         {
-            let display = match display_name {
-                Some(s) => gpu_display_x::DisplayX::open_display(Some(s.as_ref()))?,
-                None => gpu_display_x::DisplayX::open_display(None)?,
-            };
+            let display = gpu_display_x::DisplayX::open_display(display_name)?;
 
             let wait_ctx = WaitContext::new()?;
             wait_ctx.add(&display, DisplayEventToken::Display)?;
