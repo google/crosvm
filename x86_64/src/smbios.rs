@@ -237,6 +237,11 @@ pub fn setup_smbios(mem: &GuestMemory, options: &SmbiosOptions) -> Result<()> {
             handle,
             manufacturer: 1, // First string written in this section
             product_name: 2, // Second string written in this section
+            serial_number: if options.serial_number.is_some() {
+                3 // Third string written in this section
+            } else {
+                0 // Serial number not specified
+            },
             ..Default::default()
         };
         curptr = write_and_incr(mem, smbios_sysinfo, curptr)?;
@@ -256,6 +261,9 @@ pub fn setup_smbios(mem: &GuestMemory, options: &SmbiosOptions) -> Result<()> {
                 .unwrap_or(DEFAULT_SMBIOS_PRODUCT_NAME),
             curptr,
         )?;
+        if let Some(serial_number) = options.serial_number.as_deref() {
+            curptr = write_string(mem, serial_number, curptr)?;
+        }
         curptr = write_and_incr(mem, 0u8, curptr)?;
     }
 

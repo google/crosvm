@@ -1368,6 +1368,9 @@ pub struct SmbiosOptions {
     /// System product name.
     pub product_name: Option<String>,
 
+    /// System serial number (free-form string).
+    pub serial_number: Option<String>,
+
     /// Additional OEM strings to add to SMBIOS table.
     #[serde(default)]
     pub oem_strings: Vec<String>,
