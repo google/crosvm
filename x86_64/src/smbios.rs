@@ -190,7 +190,7 @@ fn write_string(mem: &GuestMemory, val: &str, mut curptr: GuestAddress) -> Resul
     Ok(curptr)
 }
 
-pub fn setup_smbios(mem: &GuestMemory, options: &SmbiosOptions) -> Result<()> {
+pub fn setup_smbios(mem: &GuestMemory, options: &SmbiosOptions, bios_size: u64) -> Result<()> {
     let physptr = GuestAddress(SMBIOS_START)
         .checked_add(mem::size_of::<Smbios30Entrypoint>() as u64)
         .ok_or(Error::NotEnoughMemory)?;
@@ -199,6 +199,13 @@ pub fn setup_smbios(mem: &GuestMemory, options: &SmbiosOptions) -> Result<()> {
 
     {
         handle += 1;
+
+        // BIOS ROM size is encoded as 64K * (n + 1)
+        let rom_size = (bios_size >> 16)
+            .saturating_sub(1)
+            .try_into()
+            .unwrap_or(0xFF);
+
         let smbios_biosinfo = SmbiosBiosInfo {
             typ: BIOS_INFORMATION,
             length: mem::size_of::<SmbiosBiosInfo>() as u8,
@@ -207,6 +214,7 @@ pub fn setup_smbios(mem: &GuestMemory, options: &SmbiosOptions) -> Result<()> {
             version: 2, // Second string written in this section
             characteristics: PCI_SUPPORTED,
             characteristics_ext2: IS_VIRTUAL_MACHINE,
+            rom_size,
             ..Default::default()
         };
         curptr = write_and_incr(mem, smbios_biosinfo, curptr)?;
@@ -362,7 +370,7 @@ mod tests {
         let mem = GuestMemory::new(&[(GuestAddress(SMBIOS_START), 4096)]).unwrap();
 
         // Use default 3.0 SMBIOS format.
-        setup_smbios(&mem, &SmbiosOptions::default()).unwrap();
+        setup_smbios(&mem, &SmbiosOptions::default(), 0).unwrap();
 
         let smbios_ep: Smbios30Entrypoint =
             mem.read_obj_from_addr(GuestAddress(SMBIOS_START)).unwrap();
