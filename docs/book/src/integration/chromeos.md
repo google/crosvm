@@ -116,5 +116,9 @@ If you need your changes faster than the usual merge frequency, please follow th
 **Never** submit code just to ChromeOS, as it will cause upstream to diverge and result in merge
 conflicts down the road.
 
+## Running a Tryjob
+
+For googlers, see go/cdg-site
+
 [chromiumos/platform/crosvm]: https://chromium.googlesource.com/chromiumos/platform/crosvm
 [crosvm/crosvm]: https://chromium.googlesource.com/crosvm/crosvm
