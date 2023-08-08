@@ -117,11 +117,12 @@ impl TestVmSys {
     }
 
     /// Configures the VM rootfs to load from the guest_under_test assets.
-    fn configure_rootfs(command: &mut Command, o_direct: bool, path: &Path) {
+    fn configure_rootfs(command: &mut Command, o_direct: bool, rw: bool, path: &Path) {
         let rootfs_and_option = format!(
-            "{}{},ro,root",
+            "{}{}{},root",
             path.as_os_str().to_str().unwrap(),
-            if o_direct { ",direct=true" } else { "" }
+            if o_direct { ",direct=true" } else { "" },
+            if rw { "" } else { ",ro" }
         );
         command
             .args(["--block", &rootfs_and_option])
@@ -246,17 +247,24 @@ impl TestVmSys {
                     test_dir.join("rw_rootfs.img"),
                 )
                 .unwrap();
-                TestVmSys::configure_rootfs(command, cfg.o_direct, &test_dir.join("rw_rootfs.img"));
+                TestVmSys::configure_rootfs(
+                    command,
+                    cfg.o_direct,
+                    true,
+                    &test_dir.join("rw_rootfs.img"),
+                );
             } else if cfg.rootfs_compressed {
                 TestVmSys::configure_rootfs(
                     command,
                     cfg.o_direct,
+                    false,
                     &local_path_from_url(rootfs_url).with_extension("raw"),
                 );
             } else {
                 TestVmSys::configure_rootfs(
                     command,
                     cfg.o_direct,
+                    false,
                     &local_path_from_url(rootfs_url),
                 );
             }
