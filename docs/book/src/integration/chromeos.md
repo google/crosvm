@@ -25,27 +25,31 @@ crosvm on ChromeOS is usually built with Portage, so it follows the same general
 
 The developer guide section on
 [Make your Changes](https://chromium.googlesource.com/chromiumos/docs/+/main/developer_guide.md#make-your-changes)
-applies to crosvm as well. You can build crosvm with `cros_workon_make`:
+applies to crosvm as well. You can specify the development version to be built with cros_workon, and
+build with cros build-packages. Consecutive builds without changes to dependency can be done with
+emerge.
 
 ```bash
-cros_workon --board=${BOARD} start crosvm
-cros_workon_make --board=${BOARD} crosvm
+(chroot)$ cros_workon --board=${BOARD} start chromeos-base/crosvm
+(chroot or host)$ cros build-packages --board=${BOARD} chromeos-base/crosvm
+(chroot)$ emerge-${BOARD} chromeos-base/crosvm -j 10
 ```
 
 Deploy it via `cros deploy`:
 
 ```bash
-cros_workon_make --board=${BOARD} --install crosvm
-cros deploy ${IP} crosvm
+(chroot)$ cros deploy ${IP} crosvm
 ```
 
 Iterative test runs can be done as well:
 
 ```bash
-cros_workon_make --board=${BOARD} --test crosvm
+(chroot)$ FEATURES=test emerge-${BOARD} chromeos-base/crosvm -j 10
 ```
 
-Warning: `cros_workon_make` patches the local Cargo.toml file. Please do not submit these changes.
+Warning: Using `cros_workon_make` is possible but patches the local Cargo.toml file and some
+configuration files. Please do not submit these changes. Also something makes it rebuild a lot of
+the files.
 
 ### Rebuilding all crosvm dependencies
 
@@ -54,7 +58,7 @@ Crosvm has a lot of rust dependencies that are installed into a registry inside 
 up to date, run:
 
 ```bash
-emerge-${BOARD} --update --deep -j$(nproc) crosvm
+(chroot or host)$ cros build-packages --board=${BOARD} chromeos-base/crosvm
 ```
 
 ## Building crosvm for Linux
