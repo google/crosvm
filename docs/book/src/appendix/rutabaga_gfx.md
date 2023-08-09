@@ -43,7 +43,7 @@ sudo cmake --install build
 ```sh
 git clone https://android.googlesource.com/platform/hardware/google/gfxstream
 cd gfxstream/
-meson -Ddefault_library=static build/
+meson setup -Ddefault_library=static build/
 meson install -C build
 ```
 
@@ -62,7 +62,7 @@ If your VMM boots to a Linux guest, it's possible to run gfxstream with that.
 ```sh
 git clone https://android.googlesource.com/platform/hardware/google/gfxstream
 cd gfxstream/guest
-meson build/
+meson setup build/
 meson install -C build
 ```
 
