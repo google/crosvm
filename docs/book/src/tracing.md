@@ -45,6 +45,7 @@ The categories that are currently supported by cros_tracing are:
 
 - VirtioFs
 - VirtioNet
+- USB
 
 ### The trace_marker Backend
 
