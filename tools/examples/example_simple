@@ -27,6 +27,15 @@ if ! [ -f rootfs ]; then
     # ANCHOR_END: kernel
 fi
 
+if [ "$(groups | grep kvm -c)" -eq 0 ]; then
+    echo "Adding user $USER to the kvm group to grant access to /dev/kvm"
+    # ANCHOR: kvm
+    sudo adduser "$USER" kvm
+    # ANCHOR_END: kvm
+    echo "Please logout and log back in to reflect the kvm group."
+    exit 1
+fi
+
 # ANCHOR: run
 # Create `/var/empty` where crosvm can do chroot for jailing each virtio device.
 # Devices can't be jailed if /var/empty doesn't exist.

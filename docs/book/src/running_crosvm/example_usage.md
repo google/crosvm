@@ -34,6 +34,24 @@ The kernel binary is going to be saved in the same directory.
 Note: Most distributions use an init ramdisk, which is extracted at the same time and needs to be
 passed to crosvm as well.
 
+### Add the user to the kvm group
+
+To run crosvm without `sudo`, the user should be added to the `kvm` group in order to obtain the
+access to the `/dev/kvm` file. If the user is already in the kvm group, skip this part. Otherwise,
+execute the command below.
+
+```bash
+{{#include ../../../../tools/examples/example_simple:kvm}}
+```
+
+You can check if the user is in the kvm group or not with the following command:
+
+```bash
+groups | grep kvm
+```
+
+After executing the `adduser` command above, please logout and log back in to reflect the kvm group.
+
 ### Launch the VM
 
 With all the files in place, crosvm can be run:
