@@ -152,7 +152,7 @@ struct rutabaga_handle {
 };
 
 struct rutabaga_mapping {
-    uint64_t ptr;
+    void *ptr;
     uint64_t size;
 };
 

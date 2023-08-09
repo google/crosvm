@@ -9,6 +9,7 @@ use std::convert::TryInto;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::os::raw::c_char;
+use std::os::raw::c_void;
 use std::panic::catch_unwind;
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
@@ -102,7 +103,7 @@ pub struct rutabaga_handle {
 
 #[repr(C)]
 pub struct rutabaga_mapping {
-    pub ptr: u64,
+    pub ptr: *mut c_void,
     pub size: u64,
 }
 
@@ -539,7 +540,7 @@ pub extern "C" fn rutabaga_resource_map(
     catch_unwind(AssertUnwindSafe(|| {
         let result = ptr.map(resource_id);
         let internal_map = return_on_error!(result);
-        (*mapping).ptr = internal_map.ptr;
+        (*mapping).ptr = internal_map.ptr as *mut c_void;
         (*mapping).size = internal_map.size;
         NO_ERROR
     }))
