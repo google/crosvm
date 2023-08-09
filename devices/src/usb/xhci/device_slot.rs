@@ -722,9 +722,9 @@ impl DeviceSlot {
                     let dequeue_pointer = trc.get_dequeue_pointer();
                     let dcs = trc.get_consumer_cycle_state();
                     trc.stop(auto_cb.clone());
-                    stream_context_array.stream_contexts[i]
+                    stream_context_array.stream_contexts[i + 1]
                         .set_tr_dequeue_pointer(DequeuePtr::new(dequeue_pointer));
-                    stream_context_array.stream_contexts[i].set_dequeue_cycle_state(dcs);
+                    stream_context_array.stream_contexts[i + 1].set_dequeue_cycle_state(dcs);
                 }
                 self.mem
                     .write_obj_at_addr(stream_context_array, stream_context_array_addr)
@@ -794,9 +794,9 @@ impl DeviceSlot {
                     let dequeue_pointer = trc.get_dequeue_pointer();
                     let dcs = trc.get_consumer_cycle_state();
                     trc.stop(auto_cb.clone());
-                    stream_context_array.stream_contexts[i]
+                    stream_context_array.stream_contexts[i + 1]
                         .set_tr_dequeue_pointer(DequeuePtr::new(dequeue_pointer));
-                    stream_context_array.stream_contexts[i].set_dequeue_cycle_state(dcs);
+                    stream_context_array.stream_contexts[i + 1].set_dequeue_cycle_state(dcs);
                 }
                 self.mem
                     .write_obj_at_addr(stream_context_array, stream_context_array_addr)
