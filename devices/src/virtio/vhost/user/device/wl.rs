@@ -25,8 +25,6 @@ use cros_async::AsyncWrapper;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use cros_async::IoSource;
-use futures::future::AbortHandle;
-use futures::future::Abortable;
 use hypervisor::ProtectionType;
 #[cfg(feature = "minigbm")]
 use rutabaga_gfx::RutabagaGralloc;
@@ -267,7 +265,6 @@ impl VhostUserBackend for WlBackend {
             }
             Some(state) => state.clone(),
         };
-        let (handle, registration) = AbortHandle::new_pair();
         let queue = Rc::new(RefCell::new(queue));
         let queue_task = match idx {
             0 => {
@@ -283,31 +280,27 @@ impl VhostUserBackend for WlBackend {
                             .context("failed to create async WaitContext")
                     })?;
 
-                self.ex.spawn_local(Abortable::new(
-                    run_in_queue(queue.clone(), doorbell, kick_evt, wlstate, wlstate_ctx),
-                    registration,
+                self.ex.spawn_local(run_in_queue(
+                    queue.clone(),
+                    doorbell,
+                    kick_evt,
+                    wlstate,
+                    wlstate_ctx,
                 ))
             }
-            1 => self.ex.spawn_local(Abortable::new(
-                run_out_queue(queue.clone(), doorbell, kick_evt, wlstate),
-                registration,
-            )),
+            1 => self
+                .ex
+                .spawn_local(run_out_queue(queue.clone(), doorbell, kick_evt, wlstate)),
             _ => bail!("attempted to start unknown queue: {}", idx),
         };
-        self.workers[idx] = Some(WorkerState {
-            abort_handle: handle,
-            queue_task,
-            queue,
-        });
+        self.workers[idx] = Some(WorkerState { queue_task, queue });
         Ok(())
     }
 
     fn stop_queue(&mut self, idx: usize) -> anyhow::Result<Queue> {
         if let Some(worker) = self.workers.get_mut(idx).and_then(Option::take) {
-            worker.abort_handle.abort();
-
             // Wait for queue_task to be aborted.
-            let _ = self.ex.run_until(worker.queue_task);
+            let _ = self.ex.run_until(worker.queue_task.cancel());
 
             let queue = match Rc::try_unwrap(worker.queue) {
                 Ok(queue_cell) => queue_cell.into_inner(),
@@ -322,7 +315,7 @@ impl VhostUserBackend for WlBackend {
 
     fn reset(&mut self) {
         for worker in self.workers.iter_mut().filter_map(Option::take) {
-            worker.abort_handle.abort();
+            let _ = self.ex.run_until(worker.queue_task.cancel());
         }
     }
 

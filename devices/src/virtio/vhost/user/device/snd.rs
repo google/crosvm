@@ -15,8 +15,6 @@ use cros_async::sync::RwLock as AsyncRwLock;
 use cros_async::EventAsync;
 use cros_async::Executor;
 use futures::channel::mpsc;
-use futures::future::AbortHandle;
-use futures::future::Abortable;
 use hypervisor::ProtectionType;
 use once_cell::sync::OnceCell;
 pub use sys::run_snd_device;
@@ -179,8 +177,9 @@ impl VhostUserBackend for SndBackend {
     }
 
     fn reset(&mut self) {
+        let ex = SND_EXECUTOR.get().expect("Executor not initialized");
         for worker in self.workers.iter_mut().filter_map(Option::take) {
-            worker.abort_handle.abort();
+            let _ = ex.run_until(worker.queue_task.cancel());
         }
     }
 
@@ -205,7 +204,6 @@ impl VhostUserBackend for SndBackend {
             .context("failed to clone queue event")?;
         let mut kick_evt =
             EventAsync::new(kick_evt, ex).context("failed to create EventAsync for kick_evt")?;
-        let (handle, registration) = AbortHandle::new_pair();
         let queue = Rc::new(AsyncRwLock::new(queue));
         let queue_task = match idx {
             0 => {
@@ -215,23 +213,20 @@ impl VhostUserBackend for SndBackend {
                 let tx_send = self.tx_send.clone();
                 let rx_send = self.rx_send.clone();
                 let ctrl_queue = queue.clone();
-                Some(ex.spawn_local(Abortable::new(
-                    async move {
-                        handle_ctrl_queue(
-                            ex,
-                            &streams,
-                            &snd_data,
-                            ctrl_queue,
-                            &mut kick_evt,
-                            doorbell,
-                            tx_send,
-                            rx_send,
-                            None,
-                        )
-                        .await
-                    },
-                    registration,
-                )))
+                Some(ex.spawn_local(async move {
+                    handle_ctrl_queue(
+                        ex,
+                        &streams,
+                        &snd_data,
+                        ctrl_queue,
+                        &mut kick_evt,
+                        doorbell,
+                        tx_send,
+                        rx_send,
+                        None,
+                    )
+                    .await
+                }))
             }
             1 => None, // TODO(woodychow): Add event queue support
             2 | 3 => {
@@ -243,26 +238,16 @@ impl VhostUserBackend for SndBackend {
                 let mut recv = recv.ok_or_else(|| anyhow!("queue restart is not supported"))?;
                 let streams = Rc::clone(&self.streams);
                 let queue_pcm_queue = queue.clone();
-                let queue_task = ex.spawn_local(Abortable::new(
-                    async move {
-                        handle_pcm_queue(&streams, send, queue_pcm_queue, &kick_evt, None).await
-                    },
-                    registration,
-                ));
-
-                let (handle2, registration2) = AbortHandle::new_pair();
+                let queue_task = ex.spawn_local(async move {
+                    handle_pcm_queue(&streams, send, queue_pcm_queue, &kick_evt, None).await
+                });
 
                 let queue_response_queue = queue.clone();
-                let response_queue_task = ex.spawn_local(Abortable::new(
-                    async move {
-                        send_pcm_response_worker(queue_response_queue, doorbell, &mut recv, None)
-                            .await
-                    },
-                    registration2,
-                ));
+                let response_queue_task = ex.spawn_local(async move {
+                    send_pcm_response_worker(queue_response_queue, doorbell, &mut recv, None).await
+                });
 
                 self.response_workers[idx - PCM_RESPONSE_WORKER_IDX_OFFSET] = Some(WorkerState {
-                    abort_handle: handle2,
                     queue_task: response_queue_task,
                     queue: queue.clone(),
                 });
@@ -273,11 +258,7 @@ impl VhostUserBackend for SndBackend {
         };
 
         if let Some(queue_task) = queue_task {
-            self.workers[idx] = Some(WorkerState {
-                abort_handle: handle,
-                queue_task,
-                queue,
-            });
+            self.workers[idx] = Some(WorkerState { queue_task, queue });
         }
         Ok(())
     }
@@ -285,10 +266,8 @@ impl VhostUserBackend for SndBackend {
     fn stop_queue(&mut self, idx: usize) -> anyhow::Result<virtio::Queue> {
         let ex = SND_EXECUTOR.get().expect("Executor not initialized");
         if let Some(worker) = self.workers.get_mut(idx).and_then(Option::take) {
-            worker.abort_handle.abort();
-
             // Wait for queue_task to be aborted.
-            let _ = ex.run_until(worker.queue_task);
+            let _ = ex.run_until(worker.queue_task.cancel());
         }
         if idx == 2 || idx == 3 {
             if let Some(worker) = self
@@ -296,10 +275,8 @@ impl VhostUserBackend for SndBackend {
                 .get_mut(idx - PCM_RESPONSE_WORKER_IDX_OFFSET)
                 .and_then(Option::take)
             {
-                worker.abort_handle.abort();
-
                 // Wait for queue_task to be aborted.
-                let _ = ex.run_until(worker.queue_task);
+                let _ = ex.run_until(worker.queue_task.cancel());
             }
         }
         if let Some(worker) = self.workers.get_mut(idx).and_then(Option::take) {

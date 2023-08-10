@@ -67,8 +67,6 @@ use base::Protection;
 use base::SafeDescriptor;
 use base::SharedMemory;
 use cros_async::TaskHandle;
-use futures::future::AbortHandle;
-use futures::future::Aborted;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error as ThisError;
@@ -952,8 +950,7 @@ impl SharedMemoryMapper for VhostShmemMapper {
 }
 
 pub(crate) struct WorkerState<T, U> {
-    pub(crate) abort_handle: AbortHandle,
-    pub(crate) queue_task: TaskHandle<std::result::Result<U, Aborted>>,
+    pub(crate) queue_task: TaskHandle<U>,
     pub(crate) queue: T,
 }
 

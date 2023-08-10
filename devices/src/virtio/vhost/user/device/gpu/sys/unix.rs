@@ -20,8 +20,6 @@ use base::UnlinkUnixSeqpacketListener;
 use cros_async::AsyncWrapper;
 use cros_async::Executor;
 use cros_async::IoSource;
-use futures::future::AbortHandle;
-use futures::future::Abortable;
 use hypervisor::ProtectionType;
 use sync::Mutex;
 
@@ -92,14 +90,10 @@ impl GpuBackend {
                 .ex
                 .async_from(bridge)
                 .context("failed to create async tube")?;
-            let (handle, registration) = AbortHandle::new_pair();
-            self.ex
-                .spawn_local(Abortable::new(
-                    run_resource_bridge(tube, state.clone()),
-                    registration,
-                ))
-                .detach();
-            self.platform_workers.borrow_mut().push(handle);
+            let task = self
+                .ex
+                .spawn_local(run_resource_bridge(tube, state.clone()));
+            self.platform_workers.borrow_mut().push(task);
         }
 
         // Start handling the display.
@@ -115,11 +109,8 @@ impl GpuBackend {
                     .context("failed to create async WaitContext")
             })?;
 
-        let (handle, registration) = AbortHandle::new_pair();
-        self.ex
-            .spawn_local(Abortable::new(run_display(display, state), registration))
-            .detach();
-        self.platform_workers.borrow_mut().push(handle);
+        let task = self.ex.spawn_local(run_display(display, state));
+        self.platform_workers.borrow_mut().push(task);
 
         Ok(())
     }

@@ -25,8 +25,6 @@ use broker_ipc::CommonChildStartupArgs;
 use cros_async::AsyncWrapper;
 use cros_async::EventAsync;
 use cros_async::Executor;
-use futures::future::AbortHandle;
-use futures::future::Abortable;
 use gpu_display::EventDevice;
 use hypervisor::ProtectionType;
 use serde::Deserialize;
@@ -96,14 +94,10 @@ impl GpuBackend {
         }
         .context("failed to clone inner WaitContext for gpu display")?;
 
-        let (handle, registration) = AbortHandle::new_pair();
-        self.ex
-            .spawn_local(Abortable::new(
-                run_display(display, state, self.gpu.clone()),
-                registration,
-            ))
-            .detach();
-        self.platform_workers.borrow_mut().push(handle);
+        let task = self
+            .ex
+            .spawn_local(run_display(display, state, self.gpu.clone()));
+        self.platform_workers.borrow_mut().push(task);
 
         Ok(())
     }
