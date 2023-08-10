@@ -291,11 +291,11 @@ fn create_block_device(cfg: &Config, disk: &DiskOption, disk_device_tube: Tube) 
         disk.sparse,
         disk.packed_queue,
         disk.block_size,
-        false,
+        disk.multiple_workers,
         disk.id,
         Some(disk_device_tube),
         None,
-        None,
+        disk.async_executor,
         None,
     )
     .exit_context(Exit::BlockDeviceNew, "failed to create block device")?;
