@@ -353,11 +353,8 @@ impl BusDevice for FwCfgDevice {
                     // selected is going to be written to or only read via the data port. Since
                     // writes to the data port have been deprecated as of Qemu v2.4, we don't
                     // support them either. This code is only included for clarity.
-                    if (FW_CFG_SELECTOR_RW_MASK & selector) > 0 {
-                        self.entries[self.cur_item_type.value()][entries_index].allow_write = true;
-                    } else {
-                        self.entries[self.cur_item_type.value()][entries_index].allow_write = false;
-                    }
+                    self.entries[self.cur_item_type.value()][entries_index].allow_write =
+                        (FW_CFG_SELECTOR_RW_MASK & selector) > 0;
 
                     // Checks if the 15th bit is set. The bit indicates whether the fw_cfg item
                     // selected is archetecture specific.
