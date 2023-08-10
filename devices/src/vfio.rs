@@ -961,7 +961,7 @@ impl VfioDevice {
     pub fn acpi_dsm(&self, args: &[u8]) -> Result<Vec<u8>> {
         let count = args.len();
         let mut dsm = vec_with_array_field::<vfio_acpi_dsm, u8>(count);
-        dsm[0].argsz = (mem::size_of::<vfio_acpi_dsm>() + count * mem::size_of::<u8>()) as u32;
+        dsm[0].argsz = (mem::size_of::<vfio_acpi_dsm>() + mem::size_of_val(args)) as u32;
         dsm[0].padding = 0;
         // Safe as we allocated enough space to hold args
         unsafe {
