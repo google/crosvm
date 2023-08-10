@@ -8,7 +8,7 @@ directory. You can also find a runnable sample in `tools/examples/example_fs`.
 
 ## Creating a Shared Directory on the Host Machine
 
-Run following commands in host machine, to create a shared directory:
+To create a shared directory, run the following commands in the host machine:
 
 ```sh
 mkdir host_shared_dir
@@ -39,3 +39,16 @@ mount -t virtiofs my_shared_tag /tmp/guest_shared_dir
 
 You can now add files to the shared directory. Any files you put in the `guest_shared_dir` will
 appear in the `host_shared_dir` on the host machine, and vice versa.
+
+## Running VirtioFS as root filesystem
+
+It is also possible to boot crosvm directly from a virtio-fs directory, as long as the directory
+structure matches that of a valid rootfs. The outcome is similar to running a chroot but inside a
+VM.
+
+Running VMs with virtio-fs as root filesystem may not be ideal as performance will not be as good as
+running a root disk with virtio-block, but it can be useful to run tests and debug while sharing
+files between host and guest.
+
+You can refer to the [advanced usage](../running_crosvm/advanced_usage.md#with-virtiofs) page for
+the instructions on how to run virtio-fs as rootfs.
