@@ -305,8 +305,6 @@ pub struct VirtioGpu {
     scanouts: Map<u32, VirtioGpuScanout>,
     scanouts_updated: Arc<AtomicBool>,
     cursor_scanout: VirtioGpuScanout,
-    // Maps event devices to scanout number.
-    event_devices: Map<u32, u32>,
     mapper: Arc<Mutex<Option<Box<dyn SharedMemoryMapper>>>>,
     rutabaga: Rutabaga,
     resources: Map<u32, VirtioGpuResource>,
@@ -380,7 +378,6 @@ impl VirtioGpu {
             scanouts,
             scanouts_updated: display_event,
             cursor_scanout,
-            event_devices: Default::default(),
             mapper,
             rutabaga,
             resources: Default::default(),
@@ -390,7 +387,7 @@ impl VirtioGpu {
 
         for event_device in event_devices {
             virtio_gpu
-                .import_event_device(event_device, 0)
+                .import_event_device(event_device)
                 .map_err(|e| error!("failed to import event device {}", e))
                 .ok()?;
         }
@@ -399,14 +396,9 @@ impl VirtioGpu {
     }
 
     /// Imports the event device
-    pub fn import_event_device(
-        &mut self,
-        event_device: EventDevice,
-        scanout_id: u32,
-    ) -> VirtioGpuResult {
+    pub fn import_event_device(&mut self, event_device: EventDevice) -> VirtioGpuResult {
         let mut display = self.display.borrow_mut();
-        let event_device_id = display.import_event_device(event_device)?;
-        self.event_devices.insert(event_device_id, scanout_id);
+        let _event_device_id = display.import_event_device(event_device)?;
         Ok(OkNoData)
     }
 
