@@ -178,6 +178,12 @@ pub struct Config {
     /// Url to rootfs image
     pub(super) rootfs_url: Option<Url>,
 
+    /// If rootfs image is writable
+    pub(super) rootfs_rw: bool,
+
+    /// If rootfs image is zstd compressed
+    pub(super) rootfs_compressed: bool,
+
     /// Console hardware type
     pub(super) console_hardware: String,
 }
@@ -193,6 +199,8 @@ impl Default for Config {
             kernel_url: kernel_prebuilt_url_string(),
             initrd_url: None,
             rootfs_url: Some(rootfs_prebuilt_url_string()),
+            rootfs_rw: false,
+            rootfs_compressed: false,
             console_hardware: "virtio-console".to_owned(),
         }
     }
@@ -251,6 +259,16 @@ impl Config {
 
     pub fn with_rootfs(mut self, url: &str) -> Self {
         self.rootfs_url = Some(Url::parse(url).unwrap());
+        self
+    }
+
+    pub fn rootfs_is_rw(mut self) -> Self {
+        self.rootfs_rw = true;
+        self
+    }
+
+    pub fn rootfs_is_compressed(mut self) -> Self {
+        self.rootfs_compressed = true;
         self
     }
 
@@ -317,12 +335,30 @@ impl TestVm {
         }
 
         if let Some(rootfs_url) = &cfg.rootfs_url {
-            let rootfs_path = local_path_from_url(rootfs_url);
-            if !rootfs_path.exists() && rootfs_url.scheme() != "file" {
-                download_file(rootfs_url.as_str(), &rootfs_path).unwrap();
+            let rootfs_download_path = local_path_from_url(rootfs_url);
+            if !rootfs_download_path.exists() && rootfs_url.scheme() != "file" {
+                download_file(rootfs_url.as_str(), &rootfs_download_path).unwrap();
             }
-            assert!(rootfs_path.exists(), "{:?} does not exist", rootfs_path);
-            TestVmSys::check_rootfs_file(&rootfs_path);
+            assert!(
+                rootfs_download_path.exists(),
+                "{:?} does not exist",
+                rootfs_download_path
+            );
+
+            if cfg.rootfs_compressed {
+                let rootfs_raw_path = rootfs_download_path.with_extension("raw");
+                Command::new("zstd")
+                    .arg("-d")
+                    .arg(&rootfs_download_path)
+                    .arg("-o")
+                    .arg(&rootfs_raw_path)
+                    .arg("-f")
+                    .output()
+                    .expect("Failed to decompress rootfs");
+                TestVmSys::check_rootfs_file(&rootfs_raw_path);
+            } else {
+                TestVmSys::check_rootfs_file(&rootfs_download_path);
+            }
         }
     }
 
