@@ -9,7 +9,6 @@ mod virtio_gpu;
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::collections::VecDeque;
 use std::io::Read;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -325,7 +324,6 @@ pub struct ReturnDescriptor {
 
 pub struct Frontend {
     fence_state: Arc<Mutex<FenceState>>,
-    return_cursor_descriptors: VecDeque<ReturnDescriptor>,
     virtio_gpu: VirtioGpu,
 }
 
@@ -333,7 +331,6 @@ impl Frontend {
     fn new(virtio_gpu: VirtioGpu, fence_state: Arc<Mutex<FenceState>>) -> Frontend {
         Frontend {
             fence_state,
-            return_cursor_descriptors: Default::default(),
             virtio_gpu,
         }
     }
@@ -750,10 +747,6 @@ impl Frontend {
         Some(ReturnDescriptor { desc_chain, len })
     }
 
-    pub fn return_cursor(&mut self) -> Option<ReturnDescriptor> {
-        self.return_cursor_descriptors.pop_front()
-    }
-
     pub fn event_poll(&self) {
         self.virtio_gpu.event_poll();
     }
@@ -965,12 +958,6 @@ impl Worker {
                         break 'wait;
                     }
                 }
-            }
-
-            // All cursor commands go first because they have higher priority.
-            while let Some(desc) = self.state.return_cursor() {
-                self.cursor_queue.add_used(desc.desc_chain, desc.len);
-                signal_used_cursor = true;
             }
 
             if display_available {
