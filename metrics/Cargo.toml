@@ -15,7 +15,7 @@ serde_json = { version = "*", optional = true }
 sync = { path = "../common/sync" }
 
 [target.'cfg(windows)'.dependencies]
-chrono = { version = "*" }
+chrono = { version = "0.4.19" }
 winapi = { version = "*" }
 win_util = { path = "../win_util" }
 wmi = { version = "^0.9" }
