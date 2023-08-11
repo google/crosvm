@@ -321,7 +321,6 @@ pub struct GpuDisplay {
     // are declared [Rust RFC 1857].
     inner: Box<dyn SysDisplayT>,
     wait_ctx: WaitContext<DisplayEventToken>,
-    is_x: bool,
 }
 
 impl GpuDisplay {
@@ -342,7 +341,6 @@ impl GpuDisplay {
                 surfaces: Default::default(),
                 imports: Default::default(),
                 wait_ctx,
-                is_x: true,
             })
         }
         #[cfg(not(feature = "x"))]
@@ -361,13 +359,7 @@ impl GpuDisplay {
             surfaces: Default::default(),
             imports: Default::default(),
             wait_ctx,
-            is_x: false,
         })
-    }
-
-    /// Return whether this display is an X display
-    pub fn is_x(&self) -> bool {
-        self.is_x
     }
 
     fn handle_event_device(&mut self, event_device_id: u32) {

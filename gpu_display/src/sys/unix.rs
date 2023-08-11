@@ -57,7 +57,6 @@ impl UnixGpuDisplayExt for GpuDisplay {
             surfaces: Default::default(),
             imports: Default::default(),
             wait_ctx,
-            is_x: false,
         })
     }
 }
