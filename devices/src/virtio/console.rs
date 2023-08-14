@@ -6,6 +6,7 @@
 //! Windows ; outside of this use-case, please use [[asynchronous::AsyncConsole]] instead.
 
 pub mod asynchronous;
+mod multiport;
 mod sys;
 
 use std::collections::BTreeMap;

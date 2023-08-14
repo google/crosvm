@@ -42,9 +42,12 @@ use crate::virtio;
 use crate::virtio::async_device::AsyncQueueState;
 use crate::virtio::async_utils;
 use crate::virtio::base_features;
+use crate::virtio::console::multiport::ConsolePortInfo;
+use crate::virtio::console::multiport::ControlPort;
 use crate::virtio::console::virtio_console_config;
 use crate::virtio::console::ConsoleError;
 use crate::virtio::copy_config;
+use crate::virtio::device_constants::console::VIRTIO_CONSOLE_F_MULTIPORT;
 use crate::virtio::DeviceType;
 use crate::virtio::Interrupt;
 use crate::virtio::Queue;
@@ -120,6 +123,7 @@ async fn run_rx_queue(
 pub struct ConsolePort {
     input: Option<AsyncQueueState<AsyncSerialInput>>,
     output: AsyncQueueState<Box<dyn io::Write + Send>>,
+    info: ConsolePortInfo,
 }
 
 impl SerialDevice for ConsolePort {
@@ -129,13 +133,21 @@ impl SerialDevice for ConsolePort {
         input: Option<Box<dyn SerialInput>>,
         output: Option<Box<dyn io::Write + Send>>,
         _sync: Option<Box<dyn FileSync + Send>>,
-        _options: SerialOptions,
+        options: SerialOptions,
         _keep_rds: Vec<RawDescriptor>,
     ) -> ConsolePort {
         let input = input.map(AsyncSerialInput).map(AsyncQueueState::Stopped);
         let output = AsyncQueueState::Stopped(output.unwrap_or_else(|| Box::new(io::sink())));
+        let info = ConsolePortInfo {
+            console: options.console,
+            name: options.name.unwrap_or_default(),
+        };
 
-        ConsolePort { input, output }
+        ConsolePort {
+            input,
+            output,
+            info,
+        }
     }
 
     #[cfg(windows)]
@@ -232,55 +244,137 @@ impl ConsolePort {
     }
 }
 
-/// Console device.
+/// Console device with an optional control port to support for multiport
 pub struct ConsoleDevice {
     avail_features: u64,
-    port: ConsolePort,
+    // Port 0 always exists.
+    port0: ConsolePort,
+    // Control port, if multiport is in use.
+    control_port: Option<ControlPort>,
+    // Port 1..n, if they exist.
+    extra_ports: Vec<ConsolePort>,
 }
 
 impl ConsoleDevice {
+    /// Create a console device with the multiport feature enabled
+    /// The multiport feature is referred to virtio spec.
+    pub fn new_multi_port(
+        protection_type: ProtectionType,
+        port0: ConsolePort,
+        extra_ports: Vec<ConsolePort>,
+    ) -> ConsoleDevice {
+        let avail_features =
+            virtio::base_features(protection_type) | (1 << VIRTIO_CONSOLE_F_MULTIPORT);
+
+        let info = std::iter::once(&port0)
+            .chain(extra_ports.iter())
+            .map(|port| port.info.clone())
+            .collect::<Vec<_>>();
+
+        ConsoleDevice {
+            avail_features,
+            port0,
+            control_port: Some(ControlPort::new(info)),
+            extra_ports,
+        }
+    }
+
     /// Return available features
     pub fn avail_features(&self) -> u64 {
         self.avail_features
     }
 
-    /// Start the receive queue for port0, which always exists.
-    pub fn start_receive_queue(
+    /// Return whether current console device supports multiport feature
+    pub fn is_multi_port(&self) -> bool {
+        self.avail_features & (1 << VIRTIO_CONSOLE_F_MULTIPORT) != 0
+    }
+
+    /// Return the number of the port initiated by the console device
+    pub fn max_ports(&self) -> usize {
+        1 + self.extra_ports.len()
+    }
+
+    /// Return the reference of the console port by port_id
+    fn get_console_port(&mut self, port_id: usize) -> anyhow::Result<&mut ConsolePort> {
+        match port_id {
+            0 => Ok(&mut self.port0),
+            port_id => self
+                .extra_ports
+                .get_mut(port_id - 1)
+                .with_context(|| format!("failed to get console port {}", port_id)),
+        }
+    }
+
+    /// Start the queue with the index `idx`
+    pub fn start_queue(
         &mut self,
         ex: &Executor,
+        idx: usize,
         queue: Arc<Mutex<virtio::Queue>>,
         doorbell: Interrupt,
     ) -> anyhow::Result<()> {
-        let port = &mut self.port;
-        port.start_receive_queue(ex, queue, doorbell)
+        match idx {
+            // rxq (port0)
+            0 => self.port0.start_receive_queue(ex, queue, doorbell),
+            // txq (port0)
+            1 => self.port0.start_transmit_queue(ex, queue, doorbell),
+            // control port rxq
+            2 => self
+                .control_port
+                .as_mut()
+                .unwrap()
+                .start_receive_queue(ex, queue, doorbell),
+            // control port txq
+            3 => self
+                .control_port
+                .as_mut()
+                .unwrap()
+                .start_transmit_queue(ex, queue, doorbell),
+            // {4, 5} -> port1 {rxq, txq} if exist
+            // {6, 7} -> port2 {rxq, txq} if exist
+            // ...
+            _ => {
+                let port_id = idx / 2 - 1;
+                let port = self.get_console_port(port_id)?;
+                match idx % 2 {
+                    0 => port.start_receive_queue(ex, queue, doorbell),
+                    1 => port.start_transmit_queue(ex, queue, doorbell),
+                    _ => unreachable!(),
+                }
+            }
+        }
     }
 
-    /// Stop the receive queue for port0, which always exists.
-    pub fn stop_receive_queue(&mut self) -> anyhow::Result<bool> {
-        let port = &mut self.port;
-        port.stop_receive_queue().context("failed to stop rx queue")
-    }
-
-    /// Start the transmit queue for port0, which always exists.
-    pub fn start_transmit_queue(
-        &mut self,
-        ex: &Executor,
-        queue: Arc<Mutex<virtio::Queue>>,
-        doorbell: Interrupt,
-    ) -> anyhow::Result<()> {
-        let port = &mut self.port;
-        port.start_transmit_queue(ex, queue, doorbell)
-    }
-
-    /// Stop the transmit queue for port0, which always exists.
-    pub fn stop_transmit_queue(&mut self) -> anyhow::Result<bool> {
-        let port = &mut self.port;
-        port.stop_transmit_queue()
-            .context("failed to stop tx queue")
+    /// Stop the queue with the index `idx`
+    pub fn stop_queue(&mut self, idx: usize) -> anyhow::Result<bool> {
+        match idx {
+            0 => self
+                .port0
+                .stop_receive_queue()
+                .context("failed to stop rx queue"),
+            1 => self
+                .port0
+                .stop_transmit_queue()
+                .context("failed to stop tx queue"),
+            2 => self.control_port.as_mut().unwrap().stop_receive_queue(),
+            3 => self.control_port.as_mut().unwrap().stop_transmit_queue(),
+            _ => {
+                let port_id = idx / 2 - 1;
+                let port = self.get_console_port(port_id)?;
+                match idx % 2 {
+                    0 => port.stop_receive_queue().context("failed to stop rx queue"),
+                    1 => port
+                        .stop_transmit_queue()
+                        .context("failed to stop tx queue"),
+                    _ => unreachable!(),
+                }
+            }
+        }
     }
 }
 
 impl SerialDevice for ConsoleDevice {
+    /// Create a default console device, without multiport support
     fn new(
         protection_type: ProtectionType,
         evt: Event,
@@ -292,12 +386,13 @@ impl SerialDevice for ConsoleDevice {
     ) -> ConsoleDevice {
         let avail_features =
             virtio::base_features(protection_type) | 1 << VHOST_USER_F_PROTOCOL_FEATURES;
-        let console_port =
-            ConsolePort::new(protection_type, evt, input, output, sync, options, keep_rds);
+        let port0 = ConsolePort::new(protection_type, evt, input, output, sync, options, keep_rds);
 
         ConsoleDevice {
             avail_features,
-            port: console_port,
+            port0,
+            control_port: None,
+            extra_ports: vec![],
         }
     }
 
@@ -427,21 +522,19 @@ impl VirtioDevice for AsyncConsole {
                 let receive_queue = Arc::new(Mutex::new(receive_queue));
                 let transmit_queue = Arc::new(Mutex::new(transmit_queue));
 
-                console.start_receive_queue(&ex, receive_queue, interrupt.clone())?;
-
-                console.start_transmit_queue(&ex, transmit_queue, interrupt)?;
+                // Start transmit queue of port 0
+                console.start_queue(&ex, 0, receive_queue, interrupt.clone())?;
+                // Start receive queue of port 0
+                console.start_queue(&ex, 1, transmit_queue, interrupt.clone())?;
 
                 // Run until the kill event is signaled and cancel all tasks.
                 ex.run_until(async {
                     async_utils::await_and_exit(&ex, kill_evt).await?;
-                    if let Some(input) = console.port.input.as_mut() {
+                    let port = &mut console.port0;
+                    if let Some(input) = port.input.as_mut() {
                         input.stop().context("failed to stop rx queue")?;
                     }
-                    console
-                        .port
-                        .output
-                        .stop()
-                        .context("failed to stop tx queue")?;
+                    port.output.stop().context("failed to stop tx queue")?;
 
                     Ok(console)
                 })?

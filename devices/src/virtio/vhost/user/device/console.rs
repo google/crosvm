@@ -165,35 +165,30 @@ impl VhostUserBackend for ConsoleBackend {
         doorbell: Interrupt,
     ) -> anyhow::Result<()> {
         let queue = Arc::new(Mutex::new(queue));
+        let res = self
+            .device
+            .console
+            .start_queue(&self.ex, idx, queue.clone(), doorbell);
+
         match idx {
             // ReceiveQueue
-            0 => {
-                let res =
-                    self.device
-                        .console
-                        .start_receive_queue(&self.ex, queue.clone(), doorbell);
-                self.active_in_queue = Some(queue);
-                res
-            }
+            0 => self.active_in_queue = Some(queue),
             // TransmitQueue
-            1 => {
-                let res =
-                    self.device
-                        .console
-                        .start_transmit_queue(&self.ex, queue.clone(), doorbell);
-                self.active_out_queue = Some(queue);
-                res
-            }
+            1 => self.active_out_queue = Some(queue),
+
             _ => bail!("attempted to start unknown queue: {}", idx),
         }
+
+        res
     }
 
     fn stop_queue(&mut self, idx: usize) -> anyhow::Result<virtio::Queue> {
+        if let Err(e) = self.device.console.stop_queue(idx) {
+            error!("error while stopping queue {}: {}", idx, e);
+        }
+
         match idx {
             0 => {
-                if let Err(e) = self.device.console.stop_receive_queue() {
-                    error!("error while stopping rx queue: {}", e);
-                }
                 if let Some(active_in_queue) = self.active_in_queue.take() {
                     let queue = match Arc::try_unwrap(active_in_queue) {
                         Ok(queue_mutex) => queue_mutex.into_inner(),
@@ -205,9 +200,6 @@ impl VhostUserBackend for ConsoleBackend {
                 }
             }
             1 => {
-                if let Err(e) = self.device.console.stop_transmit_queue() {
-                    error!("error while stopping tx queue: {}", e);
-                }
                 if let Some(active_out_queue) = self.active_out_queue.take() {
                     let queue = match Arc::try_unwrap(active_out_queue) {
                         Ok(queue_mutex) => queue_mutex.into_inner(),

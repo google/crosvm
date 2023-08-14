@@ -250,3 +250,9 @@ pub mod wl {
     pub const VIRTIO_WL_F_SEND_FENCES: u32 = 0x02;
     pub const VIRTIO_WL_F_USE_SHMEM: u32 = 0x03;
 }
+
+pub mod console {
+    pub const VIRTIO_CONSOLE_F_SIZE: u32 = 0;
+    pub const VIRTIO_CONSOLE_F_MULTIPORT: u32 = 1;
+    pub const VIRTIO_CONSOLE_F_EMERG_WRITE: u32 = 2;
+}
