@@ -6,6 +6,8 @@ use std::fs::OpenOptions;
 use std::os::windows::fs::OpenOptionsExt;
 
 use anyhow::Context;
+use base::warn;
+use winapi::um::winbase::FILE_FLAG_NO_BUFFERING;
 use winapi::um::winnt::FILE_SHARE_READ;
 use winapi::um::winnt::FILE_SHARE_WRITE;
 
@@ -19,11 +21,19 @@ pub fn get_seg_max(_queue_size: u16) -> u32 {
 impl DiskOption {
     /// Open the specified disk file.
     pub fn open(&self) -> anyhow::Result<Box<dyn disk::DiskFile>> {
+        let mut open_option = OpenOptions::new();
+        open_option
+            .read(true)
+            .write(!self.read_only)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE);
+
+        if self.direct {
+            warn!("Opening disk file with no buffering");
+            open_option.custom_flags(FILE_FLAG_NO_BUFFERING);
+        }
+
         Ok(disk::create_disk_file(
-            OpenOptions::new()
-                .read(true)
-                .write(!self.read_only)
-                .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+            open_option
                 .open(&self.path)
                 .context("Failed to open disk file")?,
             self.sparse,
