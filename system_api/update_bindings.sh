@@ -15,14 +15,8 @@ fi
 
 FILES=(
     "src/bindings/client/org_chromium_spaced.rs"
-    "src/bindings/client/org_chromium_userdataauth.rs"
     "src/bindings/client/org_chromium_vtpm.rs"
-    "src/protos/auth_factor.rs"
-    "src/protos/fido.rs"
-    "src/protos/key.rs"
-    "src/protos/rpc.rs"
     "src/protos/spaced.rs"
-    "src/protos/UserDataAuth.rs"
     "src/protos/vtpm_interface.rs"
 )
 
