@@ -8,7 +8,6 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use crate::pci::MsixConfig;
 use anyhow::Context;
 use base::error;
 use base::Event;
@@ -20,6 +19,7 @@ use vm_memory::GuestMemory;
 use vmm_vhost::message::VhostUserProtocolFeatures;
 use vmm_vhost::message::VhostUserVirtioFeatures;
 
+use crate::pci::MsixConfig;
 use crate::virtio::copy_config;
 use crate::virtio::vhost::user::vmm::Connection;
 use crate::virtio::vhost::user::vmm::Result;
@@ -246,6 +246,10 @@ impl VirtioDevice for VhostUserVirtioDevice {
         msix_config: &Arc<Mutex<MsixConfig>>,
         device_activated: bool,
     ) -> anyhow::Result<()> {
+        // Other aspects of the restore operation will depend on the mem table
+        // being set.
+        self.handler.borrow_mut().set_mem_table(&mem)?;
+
         if device_activated {
             let non_msix_evt = Event::new().context("Failed to create event")?;
             queue_configs
