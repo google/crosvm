@@ -31,7 +31,7 @@ ifeq ($(UNAME), Darwin)
 LIB_NAME := librutabaga_gfx_ffi.dylib
 endif
 
-RUTABAGA_VERSION := $(RUTABAGA_VERSION_MAJOR).1.1-alpha.1
+RUTABAGA_VERSION := $(RUTABAGA_VERSION_MAJOR).1.2
 
 all: build
 

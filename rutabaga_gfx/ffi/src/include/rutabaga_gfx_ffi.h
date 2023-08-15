@@ -27,7 +27,7 @@ extern "C" {
  */
 #define RUTABAGA_VERSION_MAJOR 0
 #define RUTABAGA_VERSION_MINOR 1
-#define RUTABAGA_VERSION_PATCH 1
+#define RUTABAGA_VERSION_PATCH 2
 
 /**
  * Rutabaga capsets.
@@ -161,6 +161,9 @@ struct rutabaga_command {
     uint32_t cmd_size;
     uint8_t *cmd;
 
+    /**
+     * Unstable, don't use until version > 0.1.2
+     */
     uint32_t num_in_fences;
     uint64_t *fence_ids;
 };
