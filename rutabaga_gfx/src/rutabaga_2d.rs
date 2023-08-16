@@ -8,7 +8,8 @@ use std::cmp::max;
 use std::cmp::min;
 use std::cmp::Ordering;
 
-use data_model::*;
+use data_model::VolatileMemory;
+use data_model::VolatileSlice;
 
 use crate::rutabaga_core::Rutabaga2DInfo;
 use crate::rutabaga_core::RutabagaComponent;
