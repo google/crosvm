@@ -7,17 +7,15 @@
 use std::cmp::max;
 use std::cmp::min;
 use std::cmp::Ordering;
-
-use data_model::VolatileMemory;
-use data_model::VolatileSlice;
+use std::io::IoSliceMut;
 
 use crate::rutabaga_core::Rutabaga2DInfo;
 use crate::rutabaga_core::RutabagaComponent;
 use crate::rutabaga_core::RutabagaResource;
 use crate::rutabaga_utils::*;
 
-/// Transfers a resource from potentially many chunked src VolatileSlices to a dst VolatileSlice.
-pub fn transfer_2d<'a, S: Iterator<Item = VolatileSlice<'a>>>(
+/// Transfers a resource from potentially many chunked src slices to a dst slice.
+fn transfer_2d(
     resource_w: u32,
     resource_h: u32,
     rect_x: u32,
@@ -26,10 +24,10 @@ pub fn transfer_2d<'a, S: Iterator<Item = VolatileSlice<'a>>>(
     rect_h: u32,
     dst_stride: u32,
     dst_offset: u64,
-    dst: VolatileSlice,
+    mut dst: IoSliceMut,
     src_stride: u32,
     src_offset: u64,
-    mut srcs: S,
+    srcs: &[&[u8]],
 ) -> RutabagaResult<()> {
     if rect_w == 0 || rect_h == 0 {
         return Ok(());
@@ -56,6 +54,7 @@ pub fn transfer_2d<'a, S: Iterator<Item = VolatileSlice<'a>>>(
     let mut next_src;
     let mut next_line;
     let mut current_height = 0u64;
+    let mut srcs = srcs.iter();
     let mut src_opt = srcs.next();
 
     // Cumulative start offset of the current src.
@@ -65,7 +64,7 @@ pub fn transfer_2d<'a, S: Iterator<Item = VolatileSlice<'a>>>(
             break;
         }
 
-        let src_size = src.size() as u64;
+        let src_size = src.len() as u64;
 
         // Cumulative end offset of the current src.
         let src_end_offset = checked_arithmetic!(src_start_offset + src_size)?;
@@ -104,7 +103,10 @@ pub fn transfer_2d<'a, S: Iterator<Item = VolatileSlice<'a>>>(
                 }
             }
 
-            let src_subslice = src.get_slice(offset_within_src as usize, copyable_size as usize)?;
+            let src_end = offset_within_src + copyable_size;
+            let src_subslice = src
+                .get(offset_within_src as usize..src_end as usize)
+                .ok_or(RutabagaError::InvalidIovec)?;
 
             let dst_line_vertical_offset = checked_arithmetic!(current_height * dst_stride)?;
             let dst_line_horizontal_offset =
@@ -113,9 +115,12 @@ pub fn transfer_2d<'a, S: Iterator<Item = VolatileSlice<'a>>>(
                 checked_arithmetic!(dst_line_vertical_offset + dst_line_horizontal_offset)?;
             let dst_start_offset = checked_arithmetic!(dst_resource_offset + dst_line_offset)?;
 
-            let dst_subslice = dst.get_slice(dst_start_offset as usize, copyable_size as usize)?;
+            let dst_end_offset = dst_start_offset + copyable_size;
+            let dst_subslice = dst
+                .get_mut(dst_start_offset as usize..dst_end_offset as usize)
+                .ok_or(RutabagaError::InvalidIovec)?;
 
-            src_subslice.copy_to_volatile_slice(dst_subslice);
+            dst_subslice.copy_from_slice(src_subslice);
         } else if src_line_start_offset >= src_start_offset {
             next_src = true;
             next_line = false;
@@ -210,7 +215,7 @@ impl RutabagaComponent for Rutabaga2D {
         let mut src_slices = Vec::with_capacity(iovecs.len());
         for iovec in &iovecs {
             // Safe because Rutabaga users should have already checked the iovecs.
-            let slice = unsafe { VolatileSlice::from_raw_parts(iovec.base as *mut u8, iovec.len) };
+            let slice = unsafe { std::slice::from_raw_parts(iovec.base as *mut u8, iovec.len) };
             src_slices.push(slice);
         }
 
@@ -229,10 +234,10 @@ impl RutabagaComponent for Rutabaga2D {
             transfer.h,
             dst_stride,
             dst_offset,
-            VolatileSlice::new(info_2d.host_mem.as_mut_slice()),
+            IoSliceMut::new(info_2d.host_mem.as_mut_slice()),
             src_stride,
             src_offset,
-            src_slices.iter().cloned(),
+            &src_slices,
         )?;
 
         resource.info_2d = Some(info_2d);
@@ -245,7 +250,7 @@ impl RutabagaComponent for Rutabaga2D {
         _ctx_id: u32,
         resource: &mut RutabagaResource,
         transfer: Transfer3D,
-        buf: Option<VolatileSlice>,
+        buf: Option<IoSliceMut>,
     ) -> RutabagaResult<()> {
         let mut info_2d = resource
             .info_2d
@@ -274,9 +279,7 @@ impl RutabagaComponent for Rutabaga2D {
             dst_slice,
             src_stride,
             src_offset,
-            [VolatileSlice::new(info_2d.host_mem.as_mut_slice())]
-                .iter()
-                .cloned(),
+            &[info_2d.host_mem.as_mut_slice()],
         )?;
 
         resource.info_2d = Some(info_2d);

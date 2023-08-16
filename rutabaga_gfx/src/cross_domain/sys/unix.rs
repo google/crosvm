@@ -11,7 +11,6 @@ use std::os::unix::io::AsRawFd;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::prelude::AsFd;
 
-use data_model::VolatileSlice;
 use libc::O_ACCMODE;
 use libc::O_WRONLY;
 use nix::cmsg_space;
@@ -86,20 +85,12 @@ pub fn descriptor_analysis(
 }
 
 impl CrossDomainState {
-    fn send_msg(
-        &self,
-        opaque_data: VolatileSlice,
-        descriptors: &[RawDescriptor],
-    ) -> RutabagaResult<usize> {
-        let mut vec = vec![0; opaque_data.size()];
-        opaque_data.copy_to(&mut vec);
-        let iovecs = IoSlice::new(&vec);
-
+    fn send_msg(&self, opaque_data: &[u8], descriptors: &[RawDescriptor]) -> RutabagaResult<usize> {
         let cmsg = ControlMessage::ScmRights(descriptors);
         if let Some(connection) = &self.connection {
             let bytes_sent = sendmsg::<()>(
                 connection.as_raw_descriptor(),
-                &[iovecs],
+                &[IoSlice::new(opaque_data)],
                 &[cmsg],
                 MsgFlags::empty(),
                 None,
@@ -177,7 +168,7 @@ impl CrossDomainContext {
     pub(crate) fn send(
         &self,
         cmd_send: &CrossDomainSendReceive,
-        opaque_data: VolatileSlice,
+        opaque_data: &[u8],
     ) -> RutabagaResult<()> {
         let mut descriptors = [0; CROSS_DOMAIN_MAX_IDENTIFIERS];
 
@@ -275,22 +266,13 @@ pub fn channel_wait(receiver: &Receiver) -> RutabagaResult<()> {
     Ok(())
 }
 
-pub fn read_volatile(file: &File, opaque_data: VolatileSlice) -> RutabagaResult<usize> {
-    let mut vec = vec![0; opaque_data.size()];
-    let byte_slice: &mut [u8] = &mut vec;
-
-    let bytes_read = read(file.as_raw_fd(), byte_slice)?;
-
-    opaque_data.copy_from(&vec);
+pub fn read_volatile(file: &File, opaque_data: &mut [u8]) -> RutabagaResult<usize> {
+    let bytes_read = read(file.as_raw_fd(), opaque_data)?;
     Ok(bytes_read)
 }
 
-pub fn write_volatile(file: &File, opaque_data: VolatileSlice) -> RutabagaResult<()> {
-    let mut vec = vec![0; opaque_data.size()];
-    opaque_data.copy_to(&mut vec);
-    let byte_slice: &mut [u8] = &mut vec;
-
-    write(file.as_raw_fd(), byte_slice)?;
+pub fn write_volatile(file: &File, opaque_data: &[u8]) -> RutabagaResult<()> {
+    write(file.as_raw_fd(), opaque_data)?;
     Ok(())
 }
 

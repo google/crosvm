@@ -5,6 +5,7 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap as Map;
 use std::collections::BTreeSet as Set;
+use std::io::IoSliceMut;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::result::Result;
@@ -242,12 +243,11 @@ impl VirtioGpuScanout {
 
         let mut transfer = Transfer3D::new_2d(0, 0, self.width, self.height);
         transfer.stride = fb.stride();
-        rutabaga.transfer_read(
-            0,
-            resource.resource_id,
-            transfer,
-            Some(fb.as_volatile_slice()),
-        )?;
+        let fb_slice = fb.as_volatile_slice();
+        let buf = IoSliceMut::new(unsafe {
+            std::slice::from_raw_parts_mut(fb_slice.as_mut_ptr(), fb_slice.size())
+        });
+        rutabaga.transfer_read(0, resource.resource_id, transfer, Some(buf))?;
 
         display.flip(surface_id);
         Ok(OkNoData)
@@ -780,6 +780,9 @@ impl VirtioGpu {
         transfer: Transfer3D,
         buf: Option<VolatileSlice>,
     ) -> VirtioGpuResult {
+        let buf = buf.map(|vs| {
+            IoSliceMut::new(unsafe { std::slice::from_raw_parts_mut(vs.as_mut_ptr(), vs.size()) })
+        });
         self.rutabaga
             .transfer_read(ctx_id, resource_id, transfer, buf)?;
         Ok(OkNoData)

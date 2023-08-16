@@ -4,8 +4,6 @@
 
 use std::fs::File;
 
-use data_model::VolatileSlice;
-
 use super::super::cross_domain_protocol::CrossDomainInit;
 use super::super::cross_domain_protocol::CrossDomainSendReceive;
 use super::super::CrossDomainContext;
@@ -47,7 +45,7 @@ impl CrossDomainContext {
     pub(crate) fn send(
         &self,
         _cmd_send: &CrossDomainSendReceive,
-        _opaque_data: VolatileSlice,
+        _opaque_data: &[u8],
     ) -> RutabagaResult<()> {
         Err(RutabagaError::Unsupported)
     }
@@ -64,11 +62,11 @@ pub fn channel_wait(_receiver: &Receiver) -> RutabagaResult<()> {
     Err(RutabagaError::Unsupported)
 }
 
-pub fn read_volatile(_file: &File, _opaque_data: VolatileSlice) -> RutabagaResult<usize> {
+pub fn read_volatile(_file: &File, _opaque_data: &mut [u8]) -> RutabagaResult<usize> {
     Err(RutabagaError::Unsupported)
 }
 
-pub fn write_volatile(_file: &File, _opaque_data: VolatileSlice) -> RutabagaResult<()> {
+pub fn write_volatile(_file: &File, _opaque_data: &[u8]) -> RutabagaResult<()> {
     Err(RutabagaError::Unsupported)
 }
 

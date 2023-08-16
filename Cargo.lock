@@ -2312,7 +2312,6 @@ version = "0.1.1-alpha.1"
 dependencies = [
  "anyhow",
  "cfg-if",
- "data_model 0.1.1-alpha.1",
  "libc",
  "log",
  "nix",

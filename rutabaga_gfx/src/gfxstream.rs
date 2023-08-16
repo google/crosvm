@@ -9,6 +9,7 @@
 #![cfg(feature = "gfxstream")]
 
 use std::convert::TryInto;
+use std::io::IoSliceMut;
 use std::mem::size_of;
 use std::os::raw::c_char;
 use std::os::raw::c_int;
@@ -19,8 +20,6 @@ use std::process::abort;
 use std::ptr::null;
 use std::ptr::null_mut;
 use std::sync::Arc;
-
-use data_model::VolatileSlice;
 
 use crate::generated::virgl_renderer_bindings::iovec;
 use crate::generated::virgl_renderer_bindings::virgl_box;
@@ -538,7 +537,7 @@ impl RutabagaComponent for Gfxstream {
         ctx_id: u32,
         resource: &mut RutabagaResource,
         transfer: Transfer3D,
-        buf: Option<VolatileSlice>,
+        buf: Option<IoSliceMut>,
     ) -> RutabagaResult<()> {
         if transfer.is_empty() {
             return Ok(());
@@ -559,9 +558,9 @@ impl RutabagaComponent for Gfxstream {
         };
 
         let (iovecs, num_iovecs) = match buf {
-            Some(buf) => {
-                iov.base = buf.as_ptr() as *mut c_void;
-                iov.len = buf.size();
+            Some(mut buf) => {
+                iov.base = buf.as_mut_ptr() as *mut c_void;
+                iov.len = buf.len();
                 (&mut iov as *mut RutabagaIovec as *mut iovec, 1)
             }
             None => (null_mut(), 0),

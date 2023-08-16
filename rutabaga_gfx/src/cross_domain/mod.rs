@@ -11,13 +11,11 @@ use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::fs::File;
 use std::mem::size_of;
-use std::ptr::copy_nonoverlapping;
 use std::sync::Arc;
 use std::sync::Condvar;
 use std::sync::Mutex;
 use std::thread;
 
-use data_model::VolatileSlice;
 use log::error;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
@@ -234,32 +232,31 @@ impl CrossDomainState {
 
         // Safe because we've verified the iovecs are attached and owned only by this context.
         let slice =
-            unsafe { VolatileSlice::from_raw_parts(iovecs[0].base as *mut u8, iovecs[0].len) };
+            unsafe { std::slice::from_raw_parts_mut(iovecs[0].base as *mut u8, iovecs[0].len) };
 
         match ring_write {
             RingWrite::Write(cmd, opaque_data_opt) => {
-                slice.copy_from(&[cmd]);
+                if slice.len() < size_of::<T>() {
+                    return Err(RutabagaError::InvalidIovec);
+                }
+                let (cmd_slice, opaque_data_slice) = slice.split_at_mut(size_of::<T>());
+                cmd_slice.copy_from_slice(cmd.as_bytes());
                 if let Some(opaque_data) = opaque_data_opt {
-                    let offset = size_of::<T>();
-                    let sub_slice = slice.sub_slice(offset, opaque_data.len())?;
-                    let dst_ptr = sub_slice.as_mut_ptr();
-                    let src_ptr = opaque_data.as_ptr();
-
-                    // Safe because:
-                    //
-                    // (1) The volatile slice has atleast `opaque_data.len()' bytes.
-                    // (2) The both the destination and source are non-overlapping.
-                    unsafe {
-                        copy_nonoverlapping(src_ptr, dst_ptr, opaque_data.len());
+                    if opaque_data_slice.len() < opaque_data.len() {
+                        return Err(RutabagaError::InvalidIovec);
                     }
+                    opaque_data_slice[..opaque_data.len()].copy_from_slice(opaque_data);
                 }
             }
             RingWrite::WriteFromFile(mut cmd_read, ref mut file, readable) => {
-                let offset = size_of::<CrossDomainReadWrite>();
-                let sub_slice = slice.offset(offset)?;
+                if slice.len() < size_of::<CrossDomainReadWrite>() {
+                    return Err(RutabagaError::InvalidIovec);
+                }
+                let (cmd_slice, opaque_data_slice) =
+                    slice.split_at_mut(size_of::<CrossDomainReadWrite>());
 
                 if readable {
-                    bytes_read = read_volatile(file, sub_slice)?;
+                    bytes_read = read_volatile(file, opaque_data_slice)?;
                 }
 
                 if bytes_read == 0 {
@@ -267,7 +264,7 @@ impl CrossDomainState {
                 }
 
                 cmd_read.opaque_data_size = bytes_read.try_into()?;
-                slice.copy_from(&[cmd_read]);
+                cmd_slice.copy_from_slice(cmd_read.as_bytes());
             }
         }
 
@@ -601,11 +598,7 @@ impl CrossDomainContext {
         }
     }
 
-    fn write(
-        &self,
-        cmd_write: &CrossDomainReadWrite,
-        opaque_data: VolatileSlice,
-    ) -> RutabagaResult<()> {
+    fn write(&self, cmd_write: &CrossDomainReadWrite, opaque_data: &[u8]) -> RutabagaResult<()> {
         let mut items = self.item_state.lock().unwrap();
 
         // Most of the time, hang-up and writing will be paired.  In lieu of this, remove the
@@ -804,16 +797,14 @@ impl RutabagaContext for CrossDomainContext {
                     let cmd_send = CrossDomainSendReceive::read_from_prefix(commands.as_bytes())
                         .ok_or(RutabagaError::InvalidCommandBuffer)?;
 
-                    let opaque_data = VolatileSlice::new(
-                        commands
-                            .get_mut(
-                                opaque_data_offset
-                                    ..opaque_data_offset + cmd_send.opaque_data_size as usize,
-                            )
-                            .ok_or(RutabagaError::InvalidCommandSize(
-                                cmd_send.opaque_data_size as usize,
-                            ))?,
-                    );
+                    let opaque_data = commands
+                        .get_mut(
+                            opaque_data_offset
+                                ..opaque_data_offset + cmd_send.opaque_data_size as usize,
+                        )
+                        .ok_or(RutabagaError::InvalidCommandSize(
+                            cmd_send.opaque_data_size as usize,
+                        ))?;
 
                     self.send(&cmd_send, opaque_data)?;
                 }
@@ -825,16 +816,14 @@ impl RutabagaContext for CrossDomainContext {
                     let cmd_write = CrossDomainReadWrite::read_from_prefix(commands.as_bytes())
                         .ok_or(RutabagaError::InvalidCommandBuffer)?;
 
-                    let opaque_data = VolatileSlice::new(
-                        commands
-                            .get_mut(
-                                opaque_data_offset
-                                    ..opaque_data_offset + cmd_write.opaque_data_size as usize,
-                            )
-                            .ok_or(RutabagaError::InvalidCommandSize(
-                                cmd_write.opaque_data_size as usize,
-                            ))?,
-                    );
+                    let opaque_data = commands
+                        .get_mut(
+                            opaque_data_offset
+                                ..opaque_data_offset + cmd_write.opaque_data_size as usize,
+                        )
+                        .ok_or(RutabagaError::InvalidCommandSize(
+                            cmd_write.opaque_data_size as usize,
+                        ))?;
 
                     self.write(&cmd_write, opaque_data)?;
                 }

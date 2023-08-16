@@ -10,6 +10,7 @@
 use std::cmp::min;
 use std::convert::TryFrom;
 use std::io::Error as SysError;
+use std::io::IoSliceMut;
 use std::mem::size_of;
 use std::mem::transmute;
 use std::os::raw::c_char;
@@ -23,7 +24,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use data_model::VolatileSlice;
 use log::debug;
 use log::error;
 use log::warn;
@@ -576,7 +576,7 @@ impl RutabagaComponent for VirglRenderer {
         ctx_id: u32,
         resource: &mut RutabagaResource,
         transfer: Transfer3D,
-        buf: Option<VolatileSlice>,
+        buf: Option<IoSliceMut>,
     ) -> RutabagaResult<()> {
         if transfer.is_empty() {
             return Ok(());
@@ -597,9 +597,9 @@ impl RutabagaComponent for VirglRenderer {
         };
 
         let (iovecs, num_iovecs) = match buf {
-            Some(buf) => {
-                iov.base = buf.as_ptr() as *mut c_void;
-                iov.len = buf.size();
+            Some(mut buf) => {
+                iov.base = buf.as_mut_ptr() as *mut c_void;
+                iov.len = buf.len();
                 (&mut iov as *mut RutabagaIovec as *mut iovec, 1)
             }
             None => (null_mut(), 0),

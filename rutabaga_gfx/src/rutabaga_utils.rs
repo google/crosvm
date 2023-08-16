@@ -14,7 +14,6 @@ use std::path::PathBuf;
 use std::str::Utf8Error;
 use std::sync::Arc;
 
-use data_model::VolatileMemoryError;
 #[cfg(unix)]
 use nix::Error as NixError;
 use remain::sorted;
@@ -311,9 +310,6 @@ pub enum RutabagaError {
     #[cfg(feature = "vulkano")]
     #[error("vulkano memory map failure {0}")]
     VkMemoryMapError(MemoryMapError),
-    /// Volatile memory error
-    #[error("noticed a volatile memory error {0}")]
-    VolatileMemoryError(VolatileMemoryError),
 }
 
 #[cfg(unix)]
@@ -344,12 +340,6 @@ impl From<TryFromIntError> for RutabagaError {
 impl From<Utf8Error> for RutabagaError {
     fn from(e: Utf8Error) -> RutabagaError {
         RutabagaError::Utf8Error(e)
-    }
-}
-
-impl From<VolatileMemoryError> for RutabagaError {
-    fn from(e: VolatileMemoryError) -> RutabagaError {
-        RutabagaError::VolatileMemoryError(e)
     }
 }
 
