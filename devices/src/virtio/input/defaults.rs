@@ -4,7 +4,8 @@
 
 use std::collections::BTreeMap;
 
-use super::constants::*;
+use linux_input_sys::constants::*;
+
 use super::virtio_input_absinfo;
 use super::virtio_input_bitmap;
 use super::virtio_input_device_ids;

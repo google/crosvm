@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 #[allow(dead_code)]
-mod constants;
 mod defaults;
 mod evdev;
 mod event_source;
@@ -27,6 +26,7 @@ use base::WaitContext;
 use base::WorkerThread;
 use data_model::Le16;
 use data_model::Le32;
+use linux_input_sys::constants::*;
 use linux_input_sys::virtio_input_event;
 use linux_input_sys::InputEventDecoder;
 use remain::sorted;
@@ -37,7 +37,6 @@ use vm_memory::GuestMemory;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 
-use self::constants::*;
 use self::event_source::EvdevEventSource;
 use self::event_source::EventSource;
 use self::event_source::SocketEventSource;

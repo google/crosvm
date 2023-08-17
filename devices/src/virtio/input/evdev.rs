@@ -13,8 +13,8 @@ use base::ioctl_with_ptr;
 use base::ioctl_with_ref;
 use base::AsRawDescriptor;
 use data_model::Le32;
+use linux_input_sys::constants::*;
 
-use super::constants::*;
 use super::virtio_input_absinfo;
 use super::virtio_input_bitmap;
 use super::virtio_input_device_ids;

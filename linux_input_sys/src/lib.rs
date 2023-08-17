@@ -4,44 +4,16 @@
 
 //! Linux input system bindings.
 
+pub mod constants;
+
 use std::mem::size_of;
 
+use constants::*;
 use data_model::zerocopy_from_slice;
 use data_model::Le16;
 use data_model::SLe32;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-
-pub const EV_SYN: u16 = 0x00;
-pub const EV_KEY: u16 = 0x01;
-pub const EV_REL: u16 = 0x02;
-pub const EV_ABS: u16 = 0x03;
-pub const SYN_REPORT: u16 = 0;
-pub const REL_X: u16 = 0x00;
-pub const REL_Y: u16 = 0x01;
-pub const ABS_X: u16 = 0x00;
-pub const ABS_Y: u16 = 0x01;
-pub const ABS_PRESSURE: u16 = 0x18;
-pub const ABS_TILT_X: u16 = 0x1a;
-pub const ABS_TILT_Y: u16 = 0x1b;
-pub const ABS_TOOL_WIDTH: u16 = 0x1c;
-pub const BTN_TOUCH: u16 = 0x14a;
-pub const BTN_TOOL_FINGER: u16 = 0x145;
-pub const ABS_MT_SLOT: u16 = 0x2f;
-pub const ABS_MT_TOUCH_MAJOR: u16 = 0x30;
-pub const ABS_MT_TOUCH_MINOR: u16 = 0x31;
-pub const ABS_MT_WIDTH_MAJOR: u16 = 0x32;
-pub const ABS_MT_WIDTH_MINOR: u16 = 0x33;
-pub const ABS_MT_ORIENTATION: u16 = 0x34;
-pub const ABS_MT_POSITION_X: u16 = 0x35;
-pub const ABS_MT_POSITION_Y: u16 = 0x36;
-pub const ABS_MT_TOOL_TYPE: u16 = 0x37;
-pub const ABS_MT_BLOB_ID: u16 = 0x38;
-pub const ABS_MT_TRACKING_ID: u16 = 0x39;
-pub const ABS_MT_PRESSURE: u16 = 0x3a;
-pub const ABS_MT_DISTANCE: u16 = 0x3b;
-pub const ABS_MT_TOOL_X: u16 = 0x3c;
-pub const ABS_MT_TOOL_Y: u16 = 0x3d;
 
 /// Allows a raw input event of the implementor's type to be decoded into
 /// a virtio_input_event.

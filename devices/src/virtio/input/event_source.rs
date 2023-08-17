@@ -9,12 +9,12 @@ use std::io::Write;
 use base::warn;
 use base::AsRawDescriptor;
 use base::RawDescriptor;
+use linux_input_sys::constants::*;
 use linux_input_sys::input_event;
 use linux_input_sys::virtio_input_event;
 use linux_input_sys::InputEventDecoder;
 use zerocopy::AsBytes;
 
-use super::constants::*;
 use super::evdev::grab_evdev;
 use super::evdev::ungrab_evdev;
 use super::InputError;
