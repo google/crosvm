@@ -24,7 +24,7 @@ use net_util::TapTCommon;
 fn count_virtio_net_devices(vm: &mut TestVm) -> usize {
     let lspci_result = vm.exec_in_guest("lspci -n").unwrap();
     // Count occurance for virtio net device: 1af4:1041
-    lspci_result.matches("1af4:1041").count()
+    lspci_result.stdout.matches("1af4:1041").count()
 }
 
 /// Poll func until it returns true, or timeout is exceeded.

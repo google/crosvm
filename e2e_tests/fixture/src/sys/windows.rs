@@ -22,7 +22,9 @@ use anyhow::Context;
 use anyhow::Result;
 use base::named_pipes;
 use base::PipeConnection;
+use delegate::wire_format::DelegateMessage;
 use rand::Rng;
+use serde_json::StreamDeserializer;
 
 use crate::utils::find_crosvm_binary;
 use crate::vm::local_path_from_url;
@@ -123,7 +125,15 @@ fn create_client_pipe_helper(from_guest_pipe: &str, logs_dir: &str) -> PipeConne
 }
 
 pub struct TestVmSys {
-    pub(crate) from_guest_reader: Arc<Mutex<BufReader<PipeConnection>>>,
+    pub(crate) from_guest_reader: Arc<
+        Mutex<
+            StreamDeserializer<
+                'static,
+                serde_json::de::IoRead<BufReader<PipeConnection>>,
+                DelegateMessage,
+            >,
+        >,
+    >,
     pub(crate) to_guest: Arc<Mutex<PipeConnection>>,
     pub(crate) process: Option<Child>, // Use `Option` to allow taking the ownership in `Drop::drop()`.
 }
@@ -227,7 +237,9 @@ impl TestVmSys {
         let from_guest_reader = BufReader::new(to_guest.try_clone().unwrap());
 
         Ok(TestVmSys {
-            from_guest_reader: Arc::new(Mutex::new(from_guest_reader)),
+            from_guest_reader: Arc::new(Mutex::new(
+                serde_json::Deserializer::from_reader(from_guest_reader).into_iter(),
+            )),
             to_guest: Arc::new(Mutex::new(to_guest)),
             process,
         })

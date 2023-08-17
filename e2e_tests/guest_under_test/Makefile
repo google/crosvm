@@ -54,6 +54,8 @@ clean-all:
 
 x86_64_initramfs: $(TARGET)/initramfs
 
+delegate: $(TARGET)/rootfs-build/delegate
+
 ################################################################################
 # Build rootfs
 
@@ -71,10 +73,10 @@ $(TARGET)/rootfs: $(TARGET)/rootfs-build/delegate rootfs/Dockerfile
 		docker rm $$CONTAINER
 
 # Build and copy delegate binary into rootfs build directory
-$(TARGET)/rootfs-build/delegate: rootfs/delegate.rs
+$(TARGET)/rootfs-build/delegate: rootfs/delegate/Cargo.toml rootfs/delegate/src/main.rs rootfs/delegate/src/wire_format.rs
 	rustup target add $(RUST_TARGET)
-	rustc --edition=2018 rootfs/delegate.rs --out-dir $(@D) \
-		 $(RUSTFLAGS) --target $(RUST_TARGET)
+	CARGO_TARGET_DIR=$(TARGET) RUSTFLAGS=$(RUSTFLAGS) cargo build --target $(RUST_TARGET) --release --manifest-path=rootfs/delegate/Cargo.toml
+	cp $(TARGET)/$(RUST_TARGET)/release/delegate $(TARGET)/rootfs-build/delegate
 
 ################################################################################
 # Build initramfs

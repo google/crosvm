@@ -843,6 +843,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "delegate"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "derive-into-owned"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1075,10 +1083,13 @@ dependencies = [
  "base",
  "cfg-if",
  "crc32fast",
+ "delegate",
  "libc",
  "log",
  "prebuilts",
  "rand",
+ "serde",
+ "serde_json",
  "shlex",
  "tempfile",
  "url",

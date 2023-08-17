@@ -34,6 +34,7 @@ fn backcompat_test_simple_lspci(vm: &mut TestVm) {
     let result = vm
         .exec_in_guest("lspci -n")
         .unwrap()
+        .stdout
         .trim()
         .replace("\r", "");
     assert_eq!(

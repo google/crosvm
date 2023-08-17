@@ -41,6 +41,7 @@ fn mount_block(config: VmConfig) {
     assert_eq!(
         vm.exec_in_guest("mount -t ext4 /dev/vdb /mnt && echo 42")
             .unwrap()
+            .stdout
             .trim(),
         "42"
     );
@@ -71,6 +72,7 @@ fn resize(config: VmConfig) {
     assert_eq!(
         vm.exec_in_guest("blockdev --getsize64 /dev/vdb")
             .unwrap()
+            .stdout
             .trim()
             .parse::<u64>()
             .unwrap(),
@@ -96,6 +98,7 @@ fn resize(config: VmConfig) {
         if vm
             .exec_in_guest("blockdev --getsize64 /dev/vdb")
             .unwrap()
+            .stdout
             .trim()
             .parse::<u64>()
             .unwrap()
@@ -108,6 +111,7 @@ fn resize(config: VmConfig) {
     assert_eq!(
         vm.exec_in_guest("blockdev --getsize64 /dev/vdb")
             .unwrap()
+            .stdout
             .trim()
             .parse::<u64>()
             .unwrap(),
@@ -130,6 +134,7 @@ fn run_vhost_user_test(cmd_type: CmdType, config: VmConfig) {
     assert_eq!(
         vm.exec_in_guest("mount -t ext4 /dev/vdb /mnt && echo 42")
             .unwrap()
+            .stdout
             .trim(),
         "42"
     );

@@ -22,7 +22,9 @@ use std::time::Instant;
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
+use delegate::wire_format::DelegateMessage;
 use libc::O_DIRECT;
+use serde_json::StreamDeserializer;
 use tempfile::TempDir;
 
 use crate::utils::find_crosvm_binary;
@@ -61,7 +63,15 @@ pub struct TestVmSys {
     /// Maintain ownership of test_dir until the vm is destroyed.
     #[allow(dead_code)]
     pub test_dir: TempDir,
-    pub from_guest_reader: Arc<Mutex<BufReader<File>>>,
+    pub from_guest_reader: Arc<
+        Mutex<
+            StreamDeserializer<
+                'static,
+                serde_json::de::IoRead<BufReader<std::fs::File>>,
+                DelegateMessage,
+            >,
+        >,
+    >,
     pub to_guest: Arc<Mutex<File>>,
     pub control_socket_path: PathBuf,
     pub process: Option<Child>, // Use `Option` to allow taking the ownership in `Drop::drop()`.
@@ -207,7 +217,9 @@ impl TestVmSys {
 
         Ok(TestVmSys {
             test_dir,
-            from_guest_reader: Arc::new(Mutex::new(BufReader::new(from_guest))),
+            from_guest_reader: Arc::new(Mutex::new(
+                serde_json::Deserializer::from_reader(BufReader::new(from_guest)).into_iter(),
+            )),
             to_guest: Arc::new(Mutex::new(to_guest)),
             control_socket_path,
             process: Some(process),

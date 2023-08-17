@@ -61,7 +61,10 @@ fn suspend_resume_system(disabled_sandbox: bool) -> anyhow::Result<()> {
     vm.exec_in_guest("mount -t tmpfs none /tmp").unwrap();
 
     vm.exec_in_guest("echo foo > /tmp/foo").unwrap();
-    assert_eq!("foo", vm.exec_in_guest("cat /tmp/foo").unwrap().trim());
+    assert_eq!(
+        "foo",
+        vm.exec_in_guest("cat /tmp/foo").unwrap().stdout.trim()
+    );
 
     vm.suspend_full().unwrap();
     // Take snapshot of original VM state
@@ -72,7 +75,10 @@ fn suspend_resume_system(disabled_sandbox: bool) -> anyhow::Result<()> {
     vm.resume_full().unwrap();
 
     vm.exec_in_guest("echo bar > /tmp/foo").unwrap();
-    assert_eq!("bar", vm.exec_in_guest("cat /tmp/foo").unwrap().trim());
+    assert_eq!(
+        "bar",
+        vm.exec_in_guest("cat /tmp/foo").unwrap().stdout.trim()
+    );
 
     vm.suspend_full().unwrap();
     let snap2_path = dir.path().join("snapshot2.bkp");
@@ -87,7 +93,7 @@ fn suspend_resume_system(disabled_sandbox: bool) -> anyhow::Result<()> {
     vm.snapshot(&snap2_path).unwrap();
 
     vm.resume_full().unwrap();
-    assert_eq!("42", echo_cmd.wait(&mut vm).unwrap());
+    assert_eq!("42", echo_cmd.wait_ok(&mut vm).unwrap().stdout.trim());
 
     // shut down VM
     // restore VM
@@ -107,7 +113,10 @@ fn suspend_resume_system(disabled_sandbox: bool) -> anyhow::Result<()> {
     vm.snapshot(&snap3_path).unwrap();
     vm.resume_full().unwrap();
 
-    assert_eq!("foo", vm.exec_in_guest("cat /tmp/foo").unwrap().trim());
+    assert_eq!(
+        "foo",
+        vm.exec_in_guest("cat /tmp/foo").unwrap().stdout.trim()
+    );
 
     let snap1 = std::fs::read_to_string(&snap1_path).unwrap();
     let snap2 = std::fs::read_to_string(&snap2_path).unwrap();

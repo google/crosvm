@@ -100,6 +100,6 @@ fn file_ugid() {
     // Access: 2023-04-05 03:06:27.110144457 +0000
     // Modify: 2023-04-05 03:06:27.110144457 +0000
     // Change: 2023-04-05 03:06:27.110144457 +0000
-    assert!(output.contains(&format!("Uid: ({}/", mapped_uid)));
-    assert!(output.contains(&format!("Gid: ({}/", mapped_gid)));
+    assert!(output.stdout.contains(&format!("Uid: ({}/", mapped_uid)));
+    assert!(output.stdout.contains(&format!("Gid: ({}/", mapped_gid)));
 }

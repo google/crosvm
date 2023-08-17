@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::env;
-use std::io::BufRead;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
@@ -17,6 +16,7 @@ use anyhow::Result;
 use base::syslog;
 use base::test_utils::check_can_sudo;
 use crc32fast::hash;
+use delegate::wire_format::DelegateMessage;
 use log::Level;
 use prebuilts::download_file;
 use url::Url;
@@ -24,6 +24,10 @@ use url::Url;
 use crate::sys::SerialArgs;
 use crate::sys::TestVmSys;
 use crate::utils::run_with_timeout;
+use delegate::wire_format::ExitStatus;
+use delegate::wire_format::GuestToHostMessage;
+use delegate::wire_format::HostToGuestMessage;
+use delegate::wire_format::ProgramExit;
 
 const PREBUILT_URL: &str = "https://storage.googleapis.com/crosvm/integration_tests";
 
@@ -98,57 +102,36 @@ impl GuestProcess {
         }
     }
 
-    /// Waits for the process to finish execution and return the produced stdout.
+    /// Waits for the process to finish execution and return ExitStatus.
     /// Will fail on a non-zero exit code.
-    pub fn wait(self, vm: &mut TestVm) -> Result<String> {
+    pub fn wait_ok(self, vm: &mut TestVm) -> Result<ProgramExit> {
         let command = self.command.clone();
-        let (exit_code, output) = self.wait_unchecked(vm)?;
-        if exit_code != 0 {
-            bail!(
-                "Command `{}` terminated with exit code {}",
-                command,
-                exit_code
-            );
+        let result = self.wait_result(vm)?;
+
+        match &result.exit_status {
+            ExitStatus::Code(0) => Ok(result),
+            ExitStatus::Code(code) => {
+                bail!("Command `{}` terminated with exit code {}", command, code)
+            }
+            ExitStatus::Signal(code) => bail!("Command `{}` stopped with signal {}", command, code),
+            ExitStatus::None => bail!("Command `{}` stopped for unknown reason", command),
         }
-        Ok(output)
     }
 
-    /// Same as `wait` but will return a tuple of (exit code, output) instead of failing
-    /// on a non-zero exit code.
-    pub fn wait_unchecked(self, vm: &mut TestVm) -> Result<(i32, String)> {
-        // First read echo of command
-        let echo = vm
-            .read_line_from_guest(COMMUNICATION_TIMEOUT)
-            .with_context(|| {
-                format!(
-                    "Command `{}`: Failed to read echo from guest pipe",
-                    self.command
-                )
-            })?;
-        assert_eq!(echo.trim(), self.command.trim());
-
-        // Then read stdout and exit code
-        let mut output = Vec::<String>::new();
-        let exit_code = loop {
-            let line = vm.read_line_from_guest(self.timeout).with_context(|| {
-                format!(
-                    "Command `{}`: Failed to read response from guest",
-                    self.command
-                )
-            })?;
-            let trimmed = line.trim();
-            if trimmed.starts_with(TestVm::EXIT_CODE_LINE) {
-                let exit_code_str = &trimmed[(TestVm::EXIT_CODE_LINE.len() + 1)..];
-                break exit_code_str.parse::<i32>().unwrap();
-            }
-            output.push(trimmed.to_owned());
-        };
-
-        // Finally get the VM in a ready state again.
-        vm.wait_for_guest(COMMUNICATION_TIMEOUT)
-            .with_context(|| format!("Command `{}`: Failed to wait for guest", self.command))?;
-
-        Ok((exit_code, output.join("\n")))
+    /// Same as `wait_ok` but will return a ExitStatus instead of failing on a non-zero exit code,
+    /// will only fail when cannot receive output from guest.
+    pub fn wait_result(self, vm: &mut TestVm) -> Result<ProgramExit> {
+        let message = vm.read_message_from_guest(self.timeout).with_context(|| {
+            format!(
+                "Command `{}`: Failed to read response from guest",
+                self.command
+            )
+        })?;
+        // VM is ready when receiving any message (as for current protocol)
+        match message {
+            GuestToHostMessage::ProgramExit(exit_info) => Ok(exit_info),
+            _ => bail!("Receive other message when anticipating ProgramExit"),
+        }
     }
 }
 
@@ -294,11 +277,6 @@ pub struct TestVm {
 }
 
 impl TestVm {
-    /// Line sent by the delegate binary when the guest is ready.
-    const READY_LINE: &'static str = "\x05READY";
-    /// Line sent by the delegate binary to terminate the stdout and send the exit code.
-    const EXIT_CODE_LINE: &'static str = "\x05EXIT_CODE";
-
     /// Downloads prebuilts if needed.
     fn initialize_once() {
         if let Err(e) = syslog::init() {
@@ -380,7 +358,7 @@ impl TestVm {
             ready: false,
             sudo,
         };
-        vm.wait_for_guest(BOOT_TIMEOUT)
+        vm.wait_for_guest_ready(BOOT_TIMEOUT)
             .with_context(|| "Guest did not become ready after boot")?;
         Ok(vm)
     }
@@ -421,28 +399,32 @@ impl TestVm {
     }
 
     /// Executes the provided command in the guest.
-    /// Returns the stdout that was produced by the command, or a GuestProcessError::ExitCode if
-    /// the program did not exit with 0.
-    pub fn exec_in_guest(&mut self, command: &str) -> Result<String> {
-        self.exec_in_guest_async(command)?.wait(self)
+    /// Returns command output as Ok(ProgramExit), or an Error if the program did not exit with 0.
+    pub fn exec_in_guest(&mut self, command: &str) -> Result<ProgramExit> {
+        self.exec_in_guest_async(command)?.wait_ok(self)
     }
 
-    /// Same as `exec_in_guest` but will return a tuple of (exit code, output) instead of failing
-    /// on a non-zero exit code.
-    pub fn exec_in_guest_unchecked(&mut self, command: &str) -> Result<(i32, String)> {
-        self.exec_in_guest_async(command)?.wait_unchecked(self)
+    /// Same as `exec_in_guest` but will return Ok(ProgramExit) instead of failing on a
+    /// non-zero exit code.
+    pub fn exec_in_guest_unchecked(&mut self, command: &str) -> Result<ProgramExit> {
+        self.exec_in_guest_async(command)?.wait_result(self)
     }
 
     /// Executes the provided command in the guest asynchronously.
-    /// The command will be run in the guest, but output will not be read until GuestProcess::wait
-    /// is called.
+    /// The command will be run in the guest, but output will not be read until
+    /// GuestProcess::wait_ok() or GuestProcess::wait_result() is called.
     pub fn exec_in_guest_async(&mut self, command: &str) -> Result<GuestProcess> {
         assert!(self.ready);
         self.ready = false;
 
-        // Send command and read echo from the pipe
-        self.write_line_to_guest(command, COMMUNICATION_TIMEOUT)
-            .with_context(|| format!("Command `{}`: Failed to write to guest pipe", command))?;
+        // Send command to guest
+        self.write_message_to_guest(
+            &HostToGuestMessage::RunCommand {
+                command: command.to_owned(),
+            },
+            COMMUNICATION_TIMEOUT,
+        )
+        .with_context(|| format!("Command `{}`: Failed to write to guest pipe", command))?;
 
         Ok(GuestProcess {
             command: command.to_owned(),
@@ -451,42 +433,70 @@ impl TestVm {
     }
 
     // Waits for the guest to be ready to receive commands
-    fn wait_for_guest(&mut self, timeout: Duration) -> Result<()> {
+    fn wait_for_guest_ready(&mut self, timeout: Duration) -> Result<()> {
         assert!(!self.ready);
-        let line = self.read_line_from_guest(timeout)?;
-        if line.trim() == TestVm::READY_LINE {
-            self.ready = true;
-            Ok(())
-        } else {
-            Err(anyhow!(
-                "Recevied unexpected data from delegate: {:?}",
-                line.trim()
-            ))
+        let message: GuestToHostMessage = self.read_message_from_guest(timeout)?;
+        match message {
+            GuestToHostMessage::Ready => {
+                self.ready = true;
+                Ok(())
+            }
+            _ => Err(anyhow!("Recevied unexpected data from delegate")),
         }
     }
 
     /// Reads one line via the `from_guest` pipe from the guest delegate.
-    fn read_line_from_guest(&mut self, timeout: Duration) -> Result<String> {
+    fn read_message_from_guest(&mut self, timeout: Duration) -> Result<GuestToHostMessage> {
         let reader = self.sys.from_guest_reader.clone();
-        run_with_timeout(
-            move || {
-                let mut data = String::new();
-                reader.lock().unwrap().read_line(&mut data)?;
-                println!("<- {:?}", data);
-                Ok(data)
+
+        let result = run_with_timeout(
+            move || loop {
+                let message = { reader.lock().unwrap().next() };
+
+                if let Some(message_result) = message {
+                    if let Ok(msg) = message_result {
+                        match msg {
+                            DelegateMessage::GuestToHost(guest_to_host) => {
+                                return Ok(guest_to_host);
+                            }
+                            // Guest will send an echo of the message sent from host, ignore it
+                            DelegateMessage::HostToGuest(_) => {
+                                continue;
+                            }
+                        }
+                    } else {
+                        bail!(format!(
+                            "Failed to receive message from guest: {:?}",
+                            message_result.unwrap_err()
+                        ))
+                    };
+                };
             },
             timeout,
-        )?
+        );
+        match result {
+            Ok(x) => {
+                self.ready = true;
+                x
+            }
+            Err(x) => Err(x),
+        }
     }
 
     /// Send one line via the `to_guest` pipe to the guest delegate.
-    fn write_line_to_guest(&mut self, data: &str, timeout: Duration) -> Result<()> {
+    fn write_message_to_guest(
+        &mut self,
+        data: &HostToGuestMessage,
+        timeout: Duration,
+    ) -> Result<()> {
         let writer = self.sys.to_guest.clone();
-        let data = data.to_owned();
+        let data_str = serde_json::to_string_pretty(&DelegateMessage::HostToGuest(data.clone()))?;
         run_with_timeout(
             move || -> Result<()> {
-                println!("-> {:?}", data);
-                writeln!(writer.lock().unwrap(), "{}", data)?;
+                println!("-> {}", &data_str);
+                {
+                    writeln!(writer.lock().unwrap(), "{}", &data_str)?;
+                }
                 Ok(())
             },
             timeout,

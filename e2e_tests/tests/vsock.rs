@@ -147,7 +147,7 @@ fn host_to_guest_connection(vm: &mut TestVm, guest_cid: u32, guest_port: u32) {
     let host_stdout = std::str::from_utf8(&output.stdout).unwrap();
     assert_eq!(host_stdout.trim(), MESSAGE_TO_HOST);
 
-    guest_cmd.wait(vm).unwrap();
+    guest_cmd.wait_ok(vm).unwrap();
 }
 
 #[test]
@@ -248,7 +248,7 @@ fn guest_to_host_connection(vm: &mut TestVm, host_port: u32) {
 
     let cmd = format!("ncat --recv-only --vsock {HOST_CID} {host_port}; echo ''");
     let guest_stdout = retry(|| vm.exec_in_guest(&cmd), NCAT_RETRIES).unwrap();
-    assert_eq!(guest_stdout.trim(), MESSAGE_TO_GUEST);
+    assert_eq!(guest_stdout.stdout.trim(), MESSAGE_TO_GUEST);
 
     host_ncat.wait_with_timeout(SERVER_TIMEOUT).unwrap();
 }

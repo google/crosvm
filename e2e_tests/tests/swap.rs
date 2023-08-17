@@ -70,6 +70,7 @@ fn load_checksum_tmpfs_file(vm: &mut TestVm) -> String {
     // does not work due to the protocol of the connection between host and guest.
     vm.exec_in_guest(&format!("cat {} | sha256sum", SWAP_FILE_PATH))
         .unwrap()
+        .stdout
 }
 
 #[ignore = "Only to be called by swap_enabled"]
